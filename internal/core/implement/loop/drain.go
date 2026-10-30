@@ -634,6 +634,10 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		st.Judging = nil
 		res.Judged = &j
 		pruneLapse(&st, j.Issue)
+		// With eligibility-residual in shadow, the decision adapter is asked
+		// beside the answer just taken and the pair is recorded in the newest
+		// lab home; it changes nothing the move does (drain_decide.go).
+		shadowDrainJudgement(d.Context, repoRoot, o, j, plan)
 		return nil
 	}
 	if d.Judgement != "" {
@@ -1026,22 +1030,31 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			judging.Hold = judgeHold
 			st.Judging = &judging
 			pruneLapse(&st, v.ID)
-			// A judge routed to a runner answers in this move, taken as the
-			// host's answer is; one that does not answer leaves the host's
-			// request standing, and is not started again for it
-			// (drain_judge.go).
+			// The decision adapter, when eligibility-residual is turned on,
+			// and then a judge routed to a runner answer in this move, taken
+			// as the host's answer is; one that does not answer leaves the
+			// host's request standing, and is not asked again for it
+			// (drain_decide.go, drain_judge.go).
 			var taken *DrainJudgement
 			clause := ""
 			if judging.RoutedAsked {
-				clause = judgeAskedClause(v.ID)
+				clause = adapterAskedClause(repoRoot, o, d, v.ID)
 			} else {
-				var started bool
-				if taken, clause, started, err = routedJudgement(repoRoot, iss, v, judging, plan, &st, o, d, now); err != nil {
+				var adapterAsked, started bool
+				if taken, clause, adapterAsked, err = adapterJudgement(d.Context, repoRoot, o, judging, plan, &st, now); err != nil {
 					return refuseMoved(err)
 				}
-				// Marked as asked only once the runner was started: a
-				// judge that never started is asked again next move.
-				if taken == nil && started {
+				if taken == nil {
+					var routed string
+					if taken, routed, started, err = routedJudgement(repoRoot, iss, v, judging, plan, &st, o, d, now); err != nil {
+						return refuseMoved(err)
+					}
+					clause = joinNext(clause, routed)
+				}
+				// Marked as asked only once the adapter was asked or the
+				// runner was started: a judge that never started is asked
+				// again next move.
+				if taken == nil && (adapterAsked || started) {
 					st.Judging.RoutedAsked = true
 				}
 			}

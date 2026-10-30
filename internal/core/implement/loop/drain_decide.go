@@ -11,17 +11,22 @@ package loop
 //   - Configured for shadow, the host (or the routed runner) decides exactly
 //     as it does today; once its answer is taken, the adapter is asked the
 //     same question over the same record and the pair is recorded in the
-//     newest lab home (shadowDrainJudgement). Shadow never changes, delays or
-//     stops the drain.
+//     newest lab home (shadowDrainJudgement). Shadow never changes or stops
+//     the drain, and its one call, made after the answer is taken, is bounded
+//     by drainShadowTimeout.
 //   - Turned on, the adapter is asked once the host's request is written
-//     (decideDrainJudgement): its answer is taken as a routed judge's is,
+//     (decideDrainJudgement, through adapterJudgement), before any runner the
+//     drain's judge is routed to: its answer is taken as a routed judge's is,
 //     under the same disposition rules (judgeAnswer), and the judgement's
 //     Route names the adapter and the model that answered. An adapter that
 //     cannot answer leaves the host's request standing, with a fallback
-//     receipt kept beside the routed judge's.
+//     receipt kept beside the routed judge's, and the request is marked as
+//     asked, so the polls that follow ask it nothing again.
 //
 // Both functions read the configuration themselves (loadDrainRouter), so the
-// drain's call sites pass only what they already hold.
+// drain's call sites pass only what they already hold. On the host, the
+// default, neither asks anything, and the drain moves as it did before the
+// adapter existed.
 
 import (
 	"context"
@@ -48,6 +53,11 @@ const drainAdapterRoute = "decision-adapter"
 // drainAdapterTimeout bounds one adapter call: a typed answer over one record
 // takes about a second, so this is for a provider that hangs.
 const drainAdapterTimeout = 2 * time.Minute
+
+// drainShadowTimeout bounds the adapter's call in shadow, where its answer
+// decides nothing: a provider slower than this costs the pair (recorded as
+// failed), never the move's time.
+const drainShadowTimeout = 20 * time.Second
 
 // loadDrainRouter reads the decision adapter's configuration for the checkout
 // at repoRoot. Tests replace it.
@@ -92,7 +102,8 @@ func drainValue(j DrainJudgement) string {
 // the pair. It returns the receipt, nil when the type is not in shadow, the
 // issue has left the open ledger, or the configuration cannot be read (the
 // drain has its answer; shadow never stops it). The drain's take point calls
-// it before applying j.
+// it once j is applied and recorded, so an answer the move could not take is
+// never paired.
 func shadowDrainJudgement(ctx context.Context, repoRoot string, o Options, j DrainJudgement, plan capture.DrainPlan) *decision.Receipt {
 	iss, ok := plan.OpenIssue(j.Issue)
 	if !ok || drainValue(j) == "" {
@@ -102,7 +113,7 @@ func shadowDrainJudgement(ctx context.Context, repoRoot string, o Options, j Dra
 	if err != nil || r.Mode(drainJudgementType) != oracle.JudgementShadow {
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(ctxOr(ctx), drainAdapterTimeout)
+	ctx, cancel := context.WithTimeout(ctxOr(ctx), drainShadowTimeout)
 	defer cancel()
 	_, rc, err := r.Decide(ctx, drainState(iss), drainQuestion(), decision.Answered(drainValue(j)))
 	if err != nil {
@@ -138,7 +149,7 @@ func decideDrainJudgement(ctx context.Context, repoRoot string, o Options, judgi
 	asked := drainAdapterRoute + " " + rc.Target
 	if errors.Is(err, decision.ErrHostPending) {
 		return nil, &runner.FallbackReceipt{At: now, Role: RoleDrainJudge, Asked: asked, Reason: runner.ReasonFailed,
-			Detail: rc.Fallback + "; the host's request stands", Ran: runner.Host}, nil
+			Detail: strings.TrimSuffix(rc.Fallback, "the host decided") + "the host's request stands", Ran: runner.Host}, nil
 	}
 	if err != nil {
 		return nil, nil, err
@@ -155,6 +166,47 @@ func decideDrainJudgement(ctx context.Context, repoRoot string, o Options, judgi
 	}
 	taken.Route = &runner.RouteRecord{Asked: asked, Ran: asked, Model: termsafe.Sanitize(rc.ModelReported)}
 	return &taken, nil, nil
+}
+
+// adapterJudgement is the drain's move over the request it awaits, judging,
+// when eligibility-residual is turned on: the adapter's answer, taken as a
+// routed judge's is, or nil with the clause the move's next step adds and the
+// fallback receipt kept in st, the host's request then standing. asked
+// reports whether the adapter was asked and did not answer, so the request is
+// marked as asked (DrainJudging.RoutedAsked) and the polls that follow while
+// the host's request stands ask it nothing again. Not turned on, it asks
+// nothing and returns nil, "", false. A drain stopped while the adapter was
+// asked is no fallback: the move refuses, and the next one asks again.
+func adapterJudgement(ctx context.Context, repoRoot string, o Options, judging DrainJudging, plan capture.DrainPlan,
+	st *DrainState, now time.Time) (taken *DrainJudgement, clause string, asked bool, err error) {
+	ctx = ctxOr(ctx)
+	taken, fb, err := decideDrainJudgement(ctx, repoRoot, o, judging, plan, now)
+	if err != nil {
+		return nil, "", false, err
+	}
+	if fb == nil {
+		return taken, "", false, nil
+	}
+	if ctx.Err() != nil {
+		return nil, "", false, refuse(StageDrain, "", "", "the drain was stopped while the decision adapter judged "+judging.Issue+
+			"; the move took no answer", "run `abcd drain` again, which asks the decision adapter again")
+	}
+	keepJudgeFallback(st, *fb)
+	return nil, "the decision adapter did not judge " + judging.Issue + ", recorded as a fallback: " + fb.Detail, true, nil
+}
+
+// adapterAskedClause is the move's clause for a request marked as asked
+// (DrainJudging.RoutedAsked) when the drain's judge is not routed to a
+// runner and eligibility-residual is turned on: the decision adapter was the
+// one asked, in an earlier move, and is not asked again. Otherwise it is the
+// routed runner's clause (judgeAskedClause).
+func adapterAskedClause(repoRoot string, o Options, d DrainOptions, issue string) string {
+	if !judgeRouted(o, d) {
+		if r, err := loadDrainRouter(repoRoot, o); err == nil && r.Mode(drainJudgementType) == oracle.JudgementOn {
+			return "the decision adapter was already asked over " + issue + " for this request and did not answer, so it is not asked again and the request is the host's"
+		}
+	}
+	return judgeAskedClause(issue)
 }
 
 // ctxOr is ctx, or the background context when it is nil.

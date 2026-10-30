@@ -43,16 +43,25 @@ func (f *drainFakeJudge) Judge(context.Context, decision.State, decision.Questio
 // adapter answering, and pairs kept in got.
 func withDrainRouter(t *testing.T, mode string, adapter *drainFakeJudge, got *[]lab.Pair) {
 	t.Helper()
+	withDrainRouterWindow(t, mode, 0, adapter, got)
+}
+
+// withDrainRouterWindow is withDrainRouter with the adapter's window in
+// tokens; the default window when zero.
+func withDrainRouterWindow(t *testing.T, mode string, window int, adapter *drainFakeJudge, got *[]lab.Pair) {
+	t.Helper()
 	routes := map[decision.Type]oracle.Target{}
 	if mode != oracle.JudgementHost {
 		routes[decision.EligibilityResidual] = oracle.Target{Provider: "openrouter", Model: "typesafe/jev-1.13", Mode: mode}
 	}
 	prev := loadDrainRouter
 	loadDrainRouter = func(string, Options) (*decision.Router, error) {
-		return decision.NewForTest(routes, func(oracle.Target) decision.Judge { return adapter }, func(p lab.Pair) (string, string, error) {
+		r := decision.NewForTest(routes, func(oracle.Target) decision.Judge { return adapter }, func(p lab.Pair) (string, string, error) {
 			*got = append(*got, p)
 			return "lab-261029000000-abcdef0", abcdhome.Display("lab/x/lab-261029000000-abcdef0/pairs.jsonl"), nil
-		}), nil
+		})
+		r.Window = window
+		return r, nil
 	}
 	t.Cleanup(func() { loadDrainRouter = prev })
 }
