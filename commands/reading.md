@@ -291,7 +291,7 @@ the ingest, which records it as an override. The receipt's `model_reported` is
 the output's `instrument.model`. The ingest's `--json` result carries a `route`
 receipt (`tier_asked`, `connection_tried`, `connection_used`, `fallback_reason`,
 `override`, `settings_sent`, `model_reported`, `provider_call`, null until a provider adapter answers the step, and
-`unpinned`, the fields the receipt could not pin, each with its reason) and its text a `route:` line;
+`unpinned`, the harness leg's list of the fields it could not pin, each with its reason, and null on a provider leg, whose `provider_call` carries its own) and its text a `route:` line;
 relay it with the result. When no configured provider can serve the tier, one
 stderr line says the step goes through the harness instead. A `--route` naming
 an agent this invocation does not dispatch, a tier outside the set, a connection

@@ -68,8 +68,8 @@ flags.
   the update chapter's ([21-update.md](21-update.md#sub-verbs)).
 - **Uninstall** is reversible removal: the marker block, abcd's README parts
   (and a README.md abcd created, once nothing but blank lines remains), abcd's
-  own `PATH` entry where abcd owns it, and the provenance record that proves
-  that ownership. It leaves `.abcd/` intact but for clearing `readme.created`
+  own `PATH` entry where abcd owns it, the provenance record that proves
+  that ownership, and the `PATH` line setup added to the shell settings. It leaves `.abcd/` intact but for clearing `readme.created`
   from `.abcd/config.json` once the README.md that record vouches for is gone,
   never mutates the hook manifest, and a later install re-installs cleanly.
   It finds the entry by scanning `PATH`, so an entry that was installed into a
@@ -1382,7 +1382,8 @@ manifest are intact); the audit reconciles the registered path against the
 registry. It never mutates, and never auto-fixes user-scope state.
 
 **Uninstall** removes the marker block, abcd's own `PATH` entry where abcd owns
-it, and the provenance record by which that ownership is proven. Ownership is
+it, the provenance record by which that ownership is proven, and the `PATH`
+line setup added to the shell settings. Ownership is
 the same three-shape predicate detection classifies with, and only one of the
 three is a pointer at all: the dev shim; the owned copy the `path-entry` record
 names and whose bytes still hash to the recorded value, which is the default
