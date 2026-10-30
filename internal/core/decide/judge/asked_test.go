@@ -17,8 +17,9 @@ import (
 // type a file outside this package names, and only those, is in it. A step
 // wired to the router without its type added to asked, or a type left in
 // asked after its step stopped asking, fails here. A file that dot-imports
-// the package fails it too: its unqualified names cannot be read as the
-// package's, so the pin fails closed rather than miss them.
+// the package fails it too, and so does one that builds a type by
+// conversion: neither can be read as naming a constant, so the pin fails
+// closed rather than miss them.
 func TestAskedIsTheTypesTheCallersName(t *testing.T) {
 	consts := map[string]Type{}
 	fset := token.NewFileSet()
@@ -83,7 +84,16 @@ func TestAskedIsTheTypesTheCallersName(t *testing.T) {
 		if local == "" {
 			return nil
 		}
+		var built error
 		ast.Inspect(f, func(n ast.Node) bool {
+			if call, ok := n.(*ast.CallExpr); ok {
+				if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "Type" {
+					if x, ok := sel.X.(*ast.Ident); ok && x.Name == local && built == nil {
+						built = fmt.Errorf("%s builds a judgement type by conversion (%s.Type(...)), which this pin of asked "+
+							"cannot read; name the type's constant instead", fset.Position(call.Pos()), local)
+					}
+				}
+			}
 			if sel, ok := n.(*ast.SelectorExpr); ok {
 				if x, ok := sel.X.(*ast.Ident); ok && x.Name == local {
 					if ty, ok := consts[sel.Sel.Name]; ok {
@@ -93,7 +103,7 @@ func TestAskedIsTheTypesTheCallersName(t *testing.T) {
 			}
 			return true
 		})
-		return nil
+		return built
 	})
 	if err != nil {
 		t.Fatal(err)
