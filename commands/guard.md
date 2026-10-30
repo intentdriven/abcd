@@ -1053,7 +1053,7 @@ Merging is the technical facilitator's decision where `facilitator.mode` is
 `human`. The guard reads the mode the way `abcd land`'s merge gate does: from
 the default branch's committed `.abcd/config.json` and
 `~/.abcd.noindex/config.json`, a `human` in either winning. It reads the default
-branch as origin names it, just fetched within 15 seconds, never this checkout's
+branch as origin names it, just fetched within about 15 seconds, never this checkout's
 own refs, and a mode it cannot read, an unreachable or slow origin included,
 counts as `human`; so does a checkout where gh would act on another remote
 (`upstream`, `github`, or a `gh repo set-default` choice). While it

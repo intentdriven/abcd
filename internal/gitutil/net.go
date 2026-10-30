@@ -127,9 +127,23 @@ func LocalGit(dir string, args ...string) (string, error) {
 // deadline of its own (the shell guard reading the merge mode inside a host's
 // hook) has git killed when ctx ends, and the error says so. It runs with the
 // person's own configuration and credentials, as Net does, never prompting.
+//
+// Unlike Net it runs none of the checkout's hooks (core.hooksPath=/dev/null):
+// its callers read, and have no hook of the repository's to honour, so a
+// fetch it makes runs no program the checkout chose. Once ctx ends, Wait
+// waits netContextWaitDelay for a helper git started (a remote-https) to let
+// go of the output, then returns, so the caller's deadline holds.
 func NetContext(ctx context.Context, dir string, args ...string) (string, error) {
-	return runHookedContext(ctx, dir, true, "", args, nil)
+	return runHookedContext(ctx, dir, true, "", append([]string{"-c", "core.hooksPath=/dev/null"}, args...), nil)
 }
+
+// netContextWaitDelay is NetContext's grace, once its context has ended, for
+// git and the helpers it started to close the output. It is far longer than
+// contextWaitDelay because exec's own copy of the output runs under it (this
+// runner does not read to EOF first), so a short grace on a loaded machine
+// could cut an answer git already gave; a cut answer is an error, which the
+// callers read as the cautious one.
+const netContextWaitDelay = 2 * time.Second
 
 // runHooked is Net (network true) and LocalGit (false), with stdin fed to
 // the command when it is not "". With sink set, stdout is written to it as
@@ -148,6 +162,9 @@ func runHookedContext(parent context.Context, dir string, network bool, stdin st
 	}
 	full = append(append(full, "-C", dir), args...)
 	cmd := exec.CommandContext(ctx, "git", full...)
+	if parent.Done() != nil {
+		cmd.WaitDelay = netContextWaitDelay
+	}
 	cmd.Env = append(ScrubbedEnv(), "GIT_TERMINAL_PROMPT=0")
 	if network {
 		cmd.Env = netEnv(cmd.Env)
@@ -163,7 +180,7 @@ func runHookedContext(parent context.Context, dir string, network bool, stdin st
 	if sink != nil {
 		cmd.Stdout = sink
 	}
-	what := "git " + args[0]
+	what := "git " + gitVerb(args)
 	if err := cmd.Run(); err != nil {
 		if perr := parent.Err(); perr != nil {
 			return "", fmt.Errorf("%s: %w", what, perr)
@@ -261,4 +278,17 @@ func netSSHCommand(dir string) string {
 		return ""
 	}
 	return "ssh " + netSSHOptions
+}
+
+// gitVerb is the subcommand among args, past any leading -c options, for an
+// error to name.
+func gitVerb(args []string) string {
+	for i := 0; i < len(args); i++ {
+		if args[i] == "-c" {
+			i++
+			continue
+		}
+		return args[i]
+	}
+	return "git"
 }

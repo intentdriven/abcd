@@ -134,7 +134,7 @@ branch's committed `.abcd/config.json` and `~/.abcd.noindex/config.json`, a
 `human` in either winning, never the working tree's copy. It reads the default
 branch as origin names it and only after fetching it, never from the refs this
 checkout holds, which an agent can move (`git remote set-head`,
-`git update-ref`), within 15 seconds. A mode that cannot be read, an origin
+`git update-ref`), within about 15 seconds. A mode that cannot be read, an origin
 that cannot be reached or does not answer in time included, counts as `human`,
 and so does a checkout where the forge client would act on another remote than
 origin (one named `upstream` or `github`, which gh prefers, or one

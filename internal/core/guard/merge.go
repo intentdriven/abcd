@@ -538,7 +538,8 @@ var approveEventRe = regexp.MustCompile(`event\s*:\s*APPROVE\b`)
 // review route whose event field is APPROVE, or whose event or body the line
 // does not show (an unfixed field, --input); or one carrying a review
 // mutation whose event is APPROVE, in the query or in a field (a GraphQL
-// variable) set to APPROVE. A
+// variable) set to APPROVE; a GraphQL call whose query is not on the line is
+// read as one that may carry such a mutation. A
 // review that comments or requests changes is not one, and neither is a
 // read of the reviews, whatever its --jq filter says.
 func forgeApproval(s segment) bool {
@@ -576,6 +577,17 @@ func forgeApproval(s segment) bool {
 					mutation = mutation || (ok && strings.Contains(w, m))
 				}
 			}
+			// A GraphQL call whose query is not on the line may carry a
+			// review mutation; its event is then read from its fields.
+			eps := apiEndpoints(s, from)
+			gql := graphqlCall(s, eps) || unknownEndpoint(s, eps)
+			queryShown := false
+			for i := from; i < len(s.tokens); i++ {
+				if v, vfixed, vok, isField := fieldValue(s, i); isField && vok && vfixed && strings.HasPrefix(v, "query=") && !strings.HasPrefix(v, "query=@") {
+					queryShown = true
+				}
+			}
+			mutation = mutation || (gql && !queryShown)
 			if !rest && !mutation {
 				continue
 			}
@@ -592,7 +604,13 @@ func forgeApproval(s segment) bool {
 				case !isField:
 				case vok && vfixed && (strings.EqualFold(v, "event=APPROVE") || (mutation && strings.HasSuffix(v, "=APPROVE"))):
 					return true
-				case rest && (!vok || (!vfixed && (v == "" || strings.HasPrefix(v, "event=")))):
+				case rest && !vok:
+					// The value word is not fixed at all: it is the event
+					// unless the line fixes another key (per_page="$N").
+					if key := fixedLead(s.tokens[i+1]); key == "" || strings.HasPrefix("event=", key) || strings.HasPrefix(key, "event=") {
+						return true
+					}
+				case rest && !vfixed && (v == "" || strings.HasPrefix(v, "event=")):
 					return true
 				}
 			}

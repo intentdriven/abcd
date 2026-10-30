@@ -143,6 +143,9 @@ func TestAMergeNamingItsRepositoryCountsAsHuman(t *testing.T) {
 		}
 	}
 	reads := 0
+	if d, err := Defaults().WithMergeMode(modeOf(false, &reads)).Check(`cd ../other && gh pr merge 1 --auto`); err != nil || !strings.Contains(d.Message, "changes directory or sets GH_REPO") {
+		t.Fatalf("a merge after a cd says the cd is why: %+v, %v", d, err)
+	}
 	for _, cmd := range []string{
 		`gh api -X PUT repos/{owner}/{repo}/pulls/123/merge`,
 		`gh api -X PUT repos/:owner/:repo/pulls/123/merge`,
@@ -191,6 +194,8 @@ func TestTheApprovalActIsThePersons(t *testing.T) {
 			{`gh api graphql -f query='mutation($e:PullRequestReviewEvent){addPullRequestReview(input:{pullRequestId:"X",event:$e}){clientMutationId}}' -f e=APPROVE`, approveForgeEntryID},
 			{`gh api repos/{owner}/{repo}/pulls/12/reviews --input review.json`, approveForgeEntryID},
 			{`gh api repos/{owner}/{repo}/pulls/12/reviews -f event="$E"`, approveForgeEntryID},
+			{`gh api repos/{owner}/{repo}/pulls/12/reviews -f "$KV"`, approveForgeEntryID},
+			{`gh api graphql -F query=@review.graphql -F event=APPROVE`, approveForgeEntryID},
 		} {
 			d, err := reg.Check(c.cmd)
 			if err != nil || d.Verdict != VerdictBlock || d.EntryID != c.entry {
@@ -212,6 +217,7 @@ func TestTheApprovalActIsThePersons(t *testing.T) {
 			`gh api repos/{owner}/{repo}/pulls/12/reviews -f event=COMMENT -f body=ok`,
 			`gh api repos/{owner}/{repo}/pulls/12/reviews --jq '[.[] | select(.state=="APPROVED")] | length'`,
 			`gh api repos/{owner}/{repo}/pulls/12/reviews -f event=COMMENT -f body='please APPROVE when ready'`,
+			`gh api "repos/{owner}/{repo}/pulls/$PR/reviews" -F per_page="$N"`,
 		} {
 			if d, err := reg.Check(cmd); err != nil || d.Verdict == VerdictBlock {
 				t.Fatalf("human %v: Check(%q) = %+v, %v; want it allowed", human, cmd, d, err)
