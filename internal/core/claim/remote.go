@@ -620,8 +620,13 @@ func decideReserve(p *prepared, j judged) (Result, message, string, error) {
 				return Result{}, message{}, "", backOff("you are already building %s from your worktree %s on this machine, until %s; "+
 					"renew it from there, or pass --take-over to continue here", p.id, wt, stamp(exp))
 			}
-			return Result{}, message{}, "", backOff("you are already building %s on another computer, until %s%s; pass --take-over to continue here",
-				p.id, stamp(exp), declaredTipNote(p, j))
+			note, doubtful := declaredTipNote(p, j)
+			tail := "pass --take-over to continue here"
+			if doubtful {
+				tail = takeOverDoubtfulTail(j.Holder)
+			}
+			return Result{}, message{}, "", backOff("you are already building %s on another computer, until %s%s; %s",
+				p.id, stamp(exp), note, tail)
 		}
 		res.Act = ActTakenOver
 		res.Replaced = &Replaced{Holder: j.Holder, Copy: CopyAnother, YourCopy: yourCopyAt(siblingCopy(p.root, j.Copy)),

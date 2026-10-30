@@ -57,29 +57,41 @@ func reservationPushers(ctx context.Context, root, ref string) ([]Push, error) {
 // an id the person only declares: whether the declaration pairs it with a
 // login, and, when it does, whether the forge's record of pushes says that
 // login pushed j's tip, so the person can tell a reservation that is not
-// their other account's. It names neither the paired login nor the pusher:
-// it is shown on this terminal alone, and says only whether they match.
-func declaredTipNote(p *prepared, j judged) string {
+// their other account's. doubtful is true when nothing ties the reservation
+// to an account of theirs (the id is unpaired, or its paired account did not
+// push it), and the back-off then says plainly what a take-over would do. It
+// names neither the paired login nor the pusher: it is shown on this
+// terminal alone, and says only whether they match.
+func declaredTipNote(p *prepared, j judged) (note string, doubtful bool) {
 	h := j.Holder
 	if !p.self.declaredOnly(h) {
-		return ""
+		return "", false
 	}
 	login, paired := p.self.pairedLogin(h)
 	if !paired {
 		return fmt.Sprintf(" (%s is an id %s declares as yours with no login beside it, so which account pushed this reservation is not checked)",
-			h, DeclaredHolderIDsFile)
+			h, DeclaredHolderIDsFile), true
 	}
 	pusher, why := tipPusher(p.root, p.id, j.Commit)
 	switch {
 	case why != "":
 		return fmt.Sprintf(" (%s is an id %s pairs with an account's login, but whether that account pushed this reservation is not known: %s)",
-			h, DeclaredHolderIDsFile, why)
+			h, DeclaredHolderIDsFile, why), false
 	case sameHolder(pusher, login):
 		return fmt.Sprintf(" (%s is an id %s pairs with an account's login, and the forge's record of pushes says the account it is paired with pushed this reservation)",
-			h, DeclaredHolderIDsFile)
+			h, DeclaredHolderIDsFile), false
 	}
 	return fmt.Sprintf(" (%s is an id %s pairs with an account's login, but the forge's record of pushes says an account other than the one it is paired with pushed this reservation, so it is not your other account's)",
-		h, DeclaredHolderIDsFile)
+		h, DeclaredHolderIDsFile), true
+}
+
+// takeOverDoubtfulTail is how the other-copy back-off over a reservation no
+// account of the person's is tied to ends: what --take-over would do, and
+// why it is allowed.
+func takeOverDoubtfulTail(id string) string {
+	return fmt.Sprintf("--take-over is still allowed here, only because %s lists %s as yours: it replaces that reservation with yours and ends its hold, "+
+		"while its withdrawals are carried untouched and none is re-armed from here; if the id is not yours, remove it from %s and leave the reservation be",
+		DeclaredHolderIDsFile, id, DeclaredHolderIDsFile)
 }
 
 // tipPusher is the login the forge's record of pushes to id's branch says
