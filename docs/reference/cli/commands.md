@@ -1764,7 +1764,8 @@ Rank the lessons a lifeboat's retrospectives carry against the new voyage's brie
 **Flags:**
 
 ```
-      --brief string   rank against this file's text (the press release the interview is writing) instead of the target's framing chapter
+      --brief string    rank against this file's text (the press release the interview is writing) instead of the target's framing chapter
+      --scores string   rank by the host's scores in this file (a scores document answering every lesson's question; - reads stdin)
 ```
 
 **Example:**

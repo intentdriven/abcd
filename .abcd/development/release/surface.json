@@ -1654,6 +1654,13 @@
           "type": "string",
           "required": false,
           "hidden": false
+        },
+        {
+          "name": "scores",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
         }
       ]
     },
