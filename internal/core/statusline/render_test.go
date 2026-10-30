@@ -62,7 +62,7 @@ func TestRenderFullRow(t *testing.T) {
 // fixture, so a reordering shows up here as well as in the row test.
 func TestRenderOrderIsFixed(t *testing.T) {
 	want := []ElementKey{
-		KeyPresence, KeyRepo, KeyBranch, KeyModel,
+		KeyPresence, KeyRepo, KeyBranch, KeyMerging, KeyModel,
 		KeyContext, KeyFiveHour, KeySevenDay, KeyIntents, KeyIssues,
 	}
 	got := Order()
@@ -667,7 +667,7 @@ func TestRenderShowsTheSessionNameAfterTheBadge(t *testing.T) {
 	in := fullInput(t)
 	in.Payload.SessionName = "Alice"
 	row := renderRow(in, Defaults())
-	want := "abcd-managed · Alice · abcd · main · Opus · ctx 8% · 5h 24% · 7d 41% · itd 12 · iss 34"
+	want := "abcd-managed · Alice · abcd · main · autonomous merging · Opus · ctx 8% · 5h 24% · 7d 41% · itd 12 · iss 34"
 	if got := row.Plain(); got != want {
 		t.Fatalf("row.Plain() =\n  %q\nwant\n  %q", got, want)
 	}
