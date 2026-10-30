@@ -3,6 +3,7 @@ package implement
 import (
 	"os"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -492,5 +493,196 @@ func TestHoldWatchKeepsItsAnswerThroughAnUnreadableLook(t *testing.T) {
 	w.Read = func() (machineload.Snapshot, error) { return machineload.Snapshot{HasLoad: true, Load1: 3}, nil }
 	if q, wt := w.Look(); q != quiet || !reflect.DeepEqual(wt, waiting) {
 		t.Fatalf("look with no process table gave quiet %s, waiting %v; want the last answer, %s and %v", q, wt, quiet, waiting)
+	}
+}
+
+// holderPIDs is the pids of hs, in their order.
+func holderPIDs(hs []GateHolder) []int {
+	out := []int{}
+	for _, h := range hs {
+		out = append(out, h.PID)
+	}
+	return out
+}
+
+// TestWaitNamesAWholeRunPreflightOnce: with one slot a whole run's waiter
+// (70002, beneath its `make preflight` 70000) holds the command hold while it
+// runs `make preflight-stages`, and its make is the unit in the slot. The
+// holder sits beneath the slot, not above it, and the two are one preflight:
+// a waiter queued behind it names the holder once, and never its make as a
+// second holder whose tree, the holder's included, would count its CPU twice
+// (iss-2610241419324875).
+func TestWaitNamesAWholeRunPreflightOnce(t *testing.T) {
+	home := t.TempDir()
+	const age = 5 * time.Minute
+	opened := waitT0.Add(-time.Minute)
+	writeHold(t, home, WaitHolder{PID: 70002, StartUnix: waitT0.Add(-age).Unix(), Opened: opened,
+		Until: opened.Add(WaitCommandCap), Form: HoldCommand, Dir: "/work/repo"})
+	clock := &fakeClock{now: waitT0}
+	tb := &runTable{clock: clock, at: func(time.Time) ([]machineload.Proc, map[int][]string) {
+		return joinRuns(wholeRunOf(70000, 501, age, true), wholeRunOf(80000, 501, time.Minute, false))
+	}}
+	req := wholeRunReq(t, home, 80000, 501, clock, tb)
+	req.Timeout = 0
+	res, err := WaitLoad(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != WaitTimedOut || res.Holder == nil || res.Holder.PID != 70002 || !slices.Contains(res.Still, WaitOnLock) {
+		t.Fatalf("result %+v; want shut by the whole run's command hold, held by its waiter 70002", res)
+	}
+	if want := []GateHolder{{PID: 70002, Hold: true, AgeS: 60}}; !reflect.DeepEqual(res.Holders, want) {
+		t.Fatalf("holders = %+v, want the whole run once, as its hold's holder: %+v", res.Holders, want)
+	}
+}
+
+// TestWaitMarksAQuietHolderAboveOneSlot: above one slot a whole run holds its
+// slot under the settle hold, so the quiet notice, which speaks of a command
+// hold, never comes; a waiter behind two whole runs that fill the slots marks
+// the one whose tree has used no CPU for QuietSpan as quiet in its holders,
+// and not the one keeping half a core busy (iss-2610241419324875).
+func TestWaitMarksAQuietHolderAboveOneSlot(t *testing.T) {
+	clock := &fakeClock{now: waitT0}
+	tb := &runTable{clock: clock, at: func(time.Time) ([]machineload.Proc, map[int][]string) {
+		return joinRuns(wholeRunOf(70000, 502, 20*time.Minute, true), wholeRunOf(75000, 502, 20*time.Minute, true),
+			wholeRunOf(80000, 501, time.Minute, false))
+	}}
+	req := wholeRunReq(t, t.TempDir(), 80000, 501, clock, tb)
+	req.Getenv = slotsEnv("2")
+	// 70000's tree uses no CPU; 75000's go test keeps half a core busy.
+	req.Read = func() (machineload.Snapshot, error) {
+		s, err := tb.read()
+		for i := range s.Procs {
+			if s.Procs[i].PID == 75004 {
+				s.Procs[i].CPU = clock.Now().Sub(waitT0) / 2
+			}
+		}
+		return s, err
+	}
+	req.Timeout = QuietSpan + 2*time.Minute
+	req.OnQuiet = func(r WaitResult) {
+		t.Fatalf("the quiet notice came above one slot, where no command hold is taken: %+v", r.Quiet)
+	}
+	res, err := WaitLoad(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != WaitTimedOut || res.Holder != nil || !slices.Contains(res.Still, WaitOnPreflight) {
+		t.Fatalf("result %+v; want a timeout shut on the two running preflights, with no command hold", res)
+	}
+	hs := res.Holders
+	if len(hs) != 2 || hs[0].PID != 70000 || hs[1].PID != 75000 {
+		t.Fatalf("holders = %+v, want the two whole runs' makes, 70000 and 75000", hs)
+	}
+	if !hs[0].Measured || !hs[0].Quiet || hs[0].CPU != 0 {
+		t.Fatalf("quiet run = %+v, want measured, at no CPU, and marked quiet", hs[0])
+	}
+	if !hs[1].Measured || hs[1].Quiet || hs[1].CPU < 0.45 || hs[1].CPU > 0.55 {
+		t.Fatalf("busy run = %+v, want measured at half a core and not marked quiet", hs[1])
+	}
+}
+
+// TestWaitDoesNotMarkARunStartingShortChildrenQuiet: above one slot a whole
+// run whose own processes use no CPU while it starts a short git child at
+// every look, each gone by the next, is working, as the notice's watch
+// judges it (TestWaitCountsShortLivedChildrenAsWork), so it is measured but
+// never marked quiet.
+func TestWaitDoesNotMarkARunStartingShortChildrenQuiet(t *testing.T) {
+	clock := &fakeClock{now: waitT0}
+	tb := &runTable{clock: clock, at: func(time.Time) ([]machineload.Proc, map[int][]string) {
+		return joinRuns(wholeRunOf(70000, 502, 20*time.Minute, true), wholeRunOf(75000, 502, 20*time.Minute, true),
+			wholeRunOf(80000, 501, time.Minute, false))
+	}}
+	req := wholeRunReq(t, t.TempDir(), 80000, 501, clock, tb)
+	req.Getenv = slotsEnv("2")
+	n := 0
+	req.Read = func() (machineload.Snapshot, error) {
+		s, err := tb.read()
+		n++
+		s.Procs = append(s.Procs, machineload.Proc{PID: 5000 + n, PPID: 70000, PGID: 70000, UID: 502, Age: time.Second, CPU: 10 * time.Millisecond, Name: "git"})
+		return s, err
+	}
+	req.Timeout = QuietSpan + 2*time.Minute
+	res, err := WaitLoad(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Holders) == 0 || res.Holders[0].PID != 70000 {
+		t.Fatalf("holders = %+v, want 70000 first", res.Holders)
+	}
+	if h := res.Holders[0]; !h.Measured || h.Quiet {
+		t.Fatalf("run starting git children = %+v, want measured and not marked quiet", h)
+	}
+}
+
+// TestWaitMarksAWholeRunQuietPastItsWaitersReads: at one slot a waiter of
+// another account names a stalled whole run by its make preflight (70000),
+// whose holding waiter (70002) reads the table beneath it while its command
+// runs. Those reads, a ps child of 70002 caught at every other look and gone
+// by the next, are the waiter's, not the run's work, so they do not keep the
+// run from being marked quiet.
+func TestWaitMarksAWholeRunQuietPastItsWaitersReads(t *testing.T) {
+	clock := &fakeClock{now: waitT0}
+	tb := &runTable{clock: clock, at: func(time.Time) ([]machineload.Proc, map[int][]string) {
+		return joinRuns(wholeRunOf(70000, 502, 20*time.Minute, true), wholeRunOf(80000, 501, time.Minute, false))
+	}}
+	req := wholeRunReq(t, t.TempDir(), 80000, 501, clock, tb)
+	n := 0
+	req.Read = func() (machineload.Snapshot, error) {
+		s, err := tb.read()
+		if n++; n%2 == 0 {
+			s.Procs = append(s.Procs, machineload.Proc{PID: 9000 + n, PPID: 70002, PGID: 70000, UID: 502, CPU: 20 * time.Millisecond, Name: "ps"})
+		}
+		return s, err
+	}
+	req.Timeout = QuietSpan + 2*time.Minute
+	res, err := WaitLoad(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Holders) != 1 || res.Holders[0].PID != 70000 {
+		t.Fatalf("holders = %+v, want the whole run's make 70000 alone", res.Holders)
+	}
+	if h := res.Holders[0]; !h.Measured || !h.Quiet {
+		t.Fatalf("stalled run = %+v, want measured and marked quiet despite its waiter's reads", h)
+	}
+}
+
+// TestWaitDoesNotNameAUnitAtItsRaceGateAsAHolder: above one slot a preflight
+// parked at its own race gate (80000, its race waiter queued) runs nothing
+// and takes no slot (machineload.Ahead.TakingSlots), so a waiter shut by the
+// two units that do take them (a race run and a unit stage) names those two
+// as its holders, and not the parked one.
+func TestWaitDoesNotNameAUnitAtItsRaceGateAsAHolder(t *testing.T) {
+	procs := []machineload.Proc{
+		{PID: 80000, PPID: 1, PGID: 80000, UID: 502, Age: 9 * time.Minute, Name: "make"},
+		{PID: 80001, PPID: 80000, PGID: 80000, UID: 502, Age: 2 * time.Minute, Name: "go"},
+		{PID: 80002, PPID: 80001, PGID: 80000, UID: 502, Age: 2 * time.Minute, Name: "abcd"},
+		{PID: 81000, PPID: 1, PGID: 81000, UID: 502, Age: 9 * time.Minute, Name: "make"},
+		raceRun(81001, 81000),
+	}
+	args := map[int][]string{
+		80000: {"preflight"},
+		80001: {"run", "./cmd/abcd", "implement", "load", "--race-gate", "--timeout", "2h"},
+		80002: {"implement", "load", "--race-gate", "--timeout", "2h"},
+		81000: {"preflight"},
+	}
+	unit, unitArgs := otherAccountsPreflight(82000)
+	for k, v := range unitArgs {
+		args[k] = v
+	}
+	clock := &fakeClock{now: waitT0}
+	req := waitReq(t.TempDir(), 60000, clock, poll{load: 3, procs: append(procs, unit...), args: args})
+	req.Getenv = slotsEnv("2")
+	req.Timeout = 0
+	res, err := WaitLoad(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != WaitTimedOut || !slices.Contains(res.Still, WaitOnPreflight) {
+		t.Fatalf("result %+v; want shut on the two preflights taking the slots", res)
+	}
+	if got := holderPIDs(res.Holders); !reflect.DeepEqual(got, []int{81000, 82000}) {
+		t.Fatalf("holders %v, want the race run 81000 and the unit stage 82000, not 80000 parked at its race gate", got)
 	}
 }

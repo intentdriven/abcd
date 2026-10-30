@@ -84,6 +84,10 @@ func isAbcdName(name string) bool {
 	return name == abcdProgram || strings.HasPrefix(name, abcdProgram+"-")
 }
 
+// IsAbcdName reports whether a process's base name is abcd's, a plugin
+// build's platform-suffixed name included.
+func IsAbcdName(name string) bool { return isAbcdName(name) }
+
 // isProgramWord reports whether word names one of the programs the gate reads
 // the arguments of: go, make, or abcd.
 func isProgramWord(word string) bool {

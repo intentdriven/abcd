@@ -433,3 +433,22 @@ func TestImplementLoadWaitLinesShowEachHolder(t *testing.T) {
 		}
 	}
 }
+
+// TestHoldersTextMarksAQuietHolder: a measured holder marked quiet reads
+// `quiet:` in place of `using`, so a stalled run above one slot, which holds
+// its slot under the settle hold and is never named by the quiet notice,
+// still reads as one in the `holding:` part (iss-2610241419324875); a busy
+// one and one not yet measured read as before.
+func TestHoldersTextMarksAQuietHolder(t *testing.T) {
+	got := holdersText([]implement.GateHolder{
+		{PID: 777, AgeS: 40 * 60, Measured: true, Quiet: true},
+		{PID: 888, AgeS: 30 * 60, Measured: true, CPU: 0.5},
+		{PID: 999, AgeS: 60},
+	})
+	want := "pid 777 for 40m0s, quiet: 0% of a core over the last 10m0s; " +
+		"pid 888 for 30m0s, using 50% of a core over the last 10m0s; " +
+		"pid 999 for 1m0s, not yet measured"
+	if got != want {
+		t.Fatalf("holdersText = %q, want %q", got, want)
+	}
+}

@@ -63,8 +63,9 @@ import (
 // stricter wait-load keeps it shut: it cannot yield its place, because the
 // others cannot see why it is shut, and telling them would need the shared
 // writable file this design rules out. A waiter running its command holds every
-// later gate for the command's length, by design. A look that finds the
-// machine free does not open the gate: the waiter waits a random 15 to 60
+// later first gate for the command's length, at one preflight at a time, and a
+// slot of it above one, by design. A look that finds the machine free does not
+// open the gate: the waiter waits a random 15 to 60
 // seconds and checks everything again, and opens only if that re-check also
 // finds it free, so two starters released by one quiet minute do not start
 // together (iss-2610102020442624).
@@ -575,6 +576,7 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 			// An open gate names nothing that held it shut; what an earlier
 			// look found is WaitedOn's.
 			res.Still, res.RaceRuns, res.Holder = nil, []int{}, nil
+			res.Holders, res.Quiet, res.HoldGates = nil, nil, nil
 			res.Preflights, res.Waiters, res.UngatedTests = nil, nil, nil
 			res.WaitedS = now().Sub(start).Seconds()
 			return true, nil
@@ -1012,11 +1014,14 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 	// passing unreadable look neither clears a quiet nor says it again.
 	if procsOK && err == nil {
 		res.Quiet = judgeHolder(&watch.quiet, res.Holder, snap, req.Self, args, t)
-		slots := ahead.Busy
+		// A unit that takes no slot (above one, a preflight parked at its own
+		// race gate, running nothing) is not holding anything, so it is never
+		// named as a holder.
+		slots := ahead.TakingSlots(res.Slots).Busy
 		if req.Race {
 			slots = racing
 		}
-		res.Holders = measureHolders(watch, res.Holder, slots, snap, t)
+		res.Holders = measureHolders(watch, res.Holder, slots, snap, req.Self, args, t)
 	}
 	if len(crossed) > 0 && (len(shut) == 0 || (crossedShut && slices.Equal(shut, []string{WaitOnWaiter}))) {
 		crossedOnly = crossedLook{n: len(crossed), crossed: crossed, queued: queued}

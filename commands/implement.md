@@ -860,8 +860,8 @@ package's tests run through `--wait -- go test …` rather than plain
 (iss-2610241130157455). A waiter queued ahead of yours still delays yours, under
 any account, until it opens or reaches its own `--timeout` (it may be shut by
 its own account's stricter `wait-load`, which you cannot see), and a waiter
-running its command holds every later gate for the command's length, by
-design. The one exception is a waiter ahead with a higher pid, as after the
+running its command holds every later first gate for the command's length with
+one preflight at a time, and a slot of it above one, by design. The one exception is a waiter ahead with a higher pid, as after the
 machine's process ids wrap: it may run an abcd built before the start order
 (v0.15.0 and earlier), which waits on every lower pid and so on yours, and
 each would wait on the other until its timeout. So once such waiters alone
@@ -1030,8 +1030,10 @@ Without a command the hold lasts two minutes, so run the gated work straight
 after it opens. The command form, `implement load --wait -- go test -race ./...`,
 runs the command once the gate opens, exits with the command's exit code
 (128+N, as a shell reports it, when signal N killed the command, so a SIGTERM
-reads 143, never a failed gate's 1), and holds the gate until the command has
-started its own race run, the command exits, or 60 minutes pass; to every other
+reads 143, never a failed gate's 1), and, with one preflight at a time or for a
+command that is a race run, holds the gate until the command has started its
+own race run, the command exits, or 60 minutes pass (above one, any other
+command's hold lasts two minutes, as without a command); to every other
 account its waiter is running its command until the command exits, which with
 one preflight at a time shuts their first gates and above one takes a slot. A
 command that is a race run (`go`, then `test` with `-race`) is gated as one
@@ -1047,15 +1049,21 @@ it exits and releases the hold, so the command is never left running without
 its waiter. A symlinked `~/.abcd.noindex` is refused, and so is a home that lies inside a git working tree, unless that home is the account's own home itself, before anything is created under it (exit 1). Relay a timeout as
 printed; do not loop around it.
 
-A command hold lasts as long as its command runs, so the gate watches the CPU
-the holder's whole process tree (the waiter and every descendant, git children
-included) uses between looks (iss-2610241419324875). Once that tree has used
-no more than a tenth of one core for ten minutes, every waiter behind the hold
-says so in one more `waiting for capacity:` line, as a fact: `the holder (pid
-N, <checkout>) has held the test slot for M using little CPU (under 10% of a
-core for the last 10m0s); if it is yours and stuck, stop it by its own pid`.
-The holder says the same on its own standard error while others queue at any
-gate it holds. Little CPU is not a verdict: a slow run waiting on its subprocesses uses
+A command hold lasts until its command exits, starts its own race run or has
+run 60 minutes, so
+the gate watches the CPU the holder's whole process tree (the waiter and every
+descendant, git children included) uses between looks (iss-2610241419324875).
+Once that tree has used no more than a tenth of one core for ten minutes, every
+waiter behind the hold says so in one more `waiting for capacity:` line, as a
+fact: `the holder (pid N, <checkout>) has held the test slot for M using little
+CPU (under 10% of a core for the last 10m0s); if it is yours and stuck, stop it
+by its own pid`. The holder says the same on its own standard error while
+others queue at any gate it holds. That notice speaks of a command hold, which
+a command that is not a race run takes only at one preflight at a time; above
+one such a run holds its slot under the two-minute settle hold, so no notice
+names it, and a stalled one is shown after `holding:` (below) with its CPU and,
+once it has used no more than a tenth of a core for ten minutes, marked quiet.
+Little CPU is not a verdict: a slow run waiting on its subprocesses uses
 little too, so only its owner can judge. Each watcher judges from its own
 looks, so a waiter that joins late watches ten minutes before it says
 anything; a child seen at one look and gone by the next counts as work, and a tree
@@ -1069,14 +1077,21 @@ command or `make preflight` in its test stages (at the race gate, every race
 run), whatever its account. Each comes with its age (how long it has held the
 slot, or run) and its tree's CPU over the last ten minutes, or `not yet
 measured` until this waiter has watched it that long (`pid 777 for 11m0s,
-using 2% of a core over the last 10m0s`). The line is said again every ten
+using 2% of a core over the last 10m0s`). A holder whose tree has used no more
+than a tenth of a core over those ten minutes, with no waiter of its own queued
+at a gate, is marked quiet in its place, whatever hold it is under (`pid 777
+for 40m0s, quiet: 0% of a core over the last 10m0s`), and `--json` sets
+`"quiet": true` on it. A preflight is named once, whether its make runs the
+holding waiter (`make preflight`) or the waiter runs its make (`--wait -- make
+preflight`). The line is said again every ten
 minutes while the gate stays shut, so the figure reaches it
 (iss-2610241457170255). Two limits remain. A child that starts and exits
 between two looks is never seen, so a tree of short git children can read
-lower than it used, and for the quiet notice such a tree counts as working.
-And only a holder in your own account's hold record can be said quiet with
-its checkout named; another account's holder is shown with its age and CPU
-alone.
+lower than it used; such a tree counts as working, so neither the quiet notice
+nor the quiet mark calls it quiet.
+And only a holder in your own account's hold record can be said quiet in the
+notice with its checkout named; another account's holder is shown after
+`holding:` with its age and CPU, and the quiet mark, alone.
 
 While it waits, and while its command runs, in a checkout, the waiter also
 keeps your own reservations from lapsing, so a record you reserved by hand

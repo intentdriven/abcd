@@ -8,7 +8,8 @@ import (
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
-// A command hold lasts as long as its command runs (iss-2610241419324875). On
+// A command hold lasts until its command exits, starts its own race run or
+// WaitCommandCap passes (iss-2610241419324875). On
 // 2026-10-24 a `go test -timeout 60m` of the loop suite, admitted through the
 // first gate, held the slot for 45 minutes on a loaded machine, working
 // through tests at 30 to 70 seconds each, most of its time in git
@@ -73,6 +74,18 @@ type QuietHolder struct {
 // the hold record's holder, or work the process table shows in its slot (a
 // waiter running its command, a make preflight in its test stages, or at the
 // race gate a race run).
+//
+// Quiet marks a holder this waiter has measured whose tree used no more than
+// QuietShare of a core over the last QuietSpan and has no waiter of its own
+// queued at either gate: the same fact the quiet notice states
+// (judgeHolder), for every holder named, of any account. The notice speaks
+// only of a command hold, which a run that is not a race run takes only at
+// one preflight at a time; above one such a run holds its slot under the
+// settle hold, so a stalled one is told to the waiters behind it by this
+// marker alone (iss-2610241419324875). Like the notice, it is a fact, not a
+// verdict. It is read from the meter (cpuMeter), which judges as the notice's
+// watch (quietWatch) does: a child gone since the last look is work, so a
+// run that keeps starting short git children is never marked quiet.
 type GateHolder struct {
 	PID int `json:"pid"`
 	// Hold says it is the holder of this account's hold record; its age is
@@ -84,6 +97,10 @@ type GateHolder struct {
 	// is not yet measured, and CPU is zero.
 	Measured bool    `json:"measured"`
 	CPU      float64 `json:"cpu_cores,omitempty"`
+	// Quiet says it is measured, its CPU is at most QuietShare, no member
+	// has left its tree within QuietSpan, and no waiter of its own is
+	// queued at either gate.
+	Quiet bool `json:"quiet,omitempty"`
 }
 
 // quietWatch follows one holder's tree between looks. Its zero value watches
@@ -190,7 +207,9 @@ type holderWatch struct {
 // the CPU the tree used in each interval between looks, by the interval's
 // end. A member that starts and exits between two looks is never seen, and
 // one gone since the last look adds nothing more, so the meter can read low
-// for a tree of short-lived children. A member new to the tree counts its
+// for a tree of short-lived children; the interval it left in is marked
+// instead, and the tree is not settled (settled) while one such interval is
+// within the last QuietSpan. A member new to the tree counts its
 // whole CPU so far, so a long-running process moved under the tree reads high
 // for the look that finds it.
 type cpuMeter struct {
@@ -203,6 +222,8 @@ type cpuMeter struct {
 type cpuInterval struct {
 	end  time.Time
 	used time.Duration
+	// left says a member seen at the last look was gone at this one.
+	left bool
 }
 
 // measure takes one look at the tree under pid, started at start, at t, and
@@ -218,8 +239,14 @@ func (m *cpuMeter) measure(procs []machineload.Proc, pid int, t time.Time) (floa
 			used += now
 		}
 	}
+	left := false
+	for p := range m.prev {
+		if _, ok := tree[p]; !ok {
+			left = true
+		}
+	}
 	m.prev = tree
-	m.used = append(m.used, cpuInterval{end: t, used: used})
+	m.used = append(m.used, cpuInterval{end: t, used: used, left: left})
 	m.used = slices.DeleteFunc(m.used, func(i cpuInterval) bool { return !i.end.After(t.Add(-QuietSpan)) })
 	if t.Sub(m.first) < QuietSpan {
 		return 0, false
@@ -231,16 +258,34 @@ func (m *cpuMeter) measure(procs []machineload.Proc, pid int, t time.Time) (floa
 	return total.Seconds() / QuietSpan.Seconds(), true
 }
 
+// settled says no member of the tree has left it within the last QuietSpan:
+// a child gone between looks did work the meter could not see, which the
+// notice's watch counts as work too.
+func (m *cpuMeter) settled() bool {
+	return !slices.ContainsFunc(m.used, func(i cpuInterval) bool { return i.left })
+}
+
 // measureHolders names each holder ahead at this look, the hold record's
 // holder first (when it holds the command form), then the work in the slots,
 // each once, a slot beneath another holder named counting as part of it, as
 // the first gate's slots count them (machineload.Ahead.Busy): at the race
 // gate a race command's waiter and the go test -race under it are one holder,
-// whose tree would otherwise be counted twice. Each is metered: a holder
-// first seen at this look starts its meter, and one no longer ahead drops it.
-// A pid whose start time moved past holdStartSlack is a new process, and
-// starts a new meter.
-func measureHolders(w *holderWatch, h *WaitHolder, slots []int, snap machineload.Snapshot, t time.Time) []GateHolder {
+// whose tree would otherwise be counted twice. The hold's holder and a slot
+// are one preflight whichever way they nest, so each is named once: a slot
+// beneath the holder (`--wait -- make preflight`, the make under the waiter)
+// and a slot above it (a whole run, whose `make preflight` runs the holding
+// waiter beneath it, iss-2610241419324875) are both left to the holder, which
+// would otherwise be named twice and its CPU counted twice. Each is metered:
+// a holder first seen at this look starts its meter, and one no longer ahead
+// drops it. A pid whose start time moved past holdStartSlack is a new
+// process, and starts a new meter.
+//
+// A measured holder whose tree used no more than QuietShare of a core over
+// the last QuietSpan is marked Quiet, unless a waiter of its own is queued at
+// either gate beneath it (queuedUnder, as judgeHolder excludes one, from
+// self's look at the same snapshot and args), so a waiter's line marks a
+// stalled holder whatever form its hold takes.
+func measureHolders(w *holderWatch, h *WaitHolder, slots []int, snap machineload.Snapshot, self machineload.Self, args map[int][]string, t time.Time) []GateHolder {
 	if w.meters == nil {
 		w.meters = map[int]*cpuMeter{}
 	}
@@ -263,13 +308,14 @@ func measureHolders(w *holderWatch, h *WaitHolder, slots []int, snap machineload
 			return
 		}
 		cpu, measured := m.measure(withoutReaders(snap, pid).Procs, pid, t)
-		out = append(out, GateHolder{PID: pid, Hold: hold, AgeS: age.Seconds(), Measured: measured, CPU: cpu})
+		quiet := measured && cpu <= QuietShare && m.settled() && !queuedUnder(snap, self, args, pid)
+		out = append(out, GateHolder{PID: pid, Hold: hold, AgeS: age.Seconds(), Measured: measured, CPU: cpu, Quiet: quiet})
 	}
 	if h != nil && h.Form == HoldCommand {
 		add(h.PID, true, t.Sub(h.Opened))
 	}
 	beneath := func(pid int) bool {
-		if h != nil && h.Form == HoldCommand && machineload.Descends(snap.Procs, pid, h.PID) {
+		if h != nil && h.Form == HoldCommand && (machineload.Descends(snap.Procs, pid, h.PID) || machineload.Descends(snap.Procs, h.PID, pid)) {
 			return true
 		}
 		return slices.ContainsFunc(slots, func(other int) bool { return machineload.Descends(snap.Procs, pid, other) })
@@ -298,16 +344,25 @@ func measureHolders(w *holderWatch, h *WaitHolder, slots []int, snap machineload
 const readerName = "ps"
 
 // withoutReaders is snap without the processes that only read the table: any
-// ps that is a direct child of holder, which is the holder's own read (on
-// macOS ps lists itself, as a child of its caller) whether the holder or
-// another's look took the snapshot. Each is gone by the next
-// look, and a member gone between looks counts as work, so left in, a
-// holder's own reads would keep it from ever being quiet. The holder starts
-// no ps but its reads, and another's reader is gone before its arguments
-// could be asked for, so for it the name is the handle there is.
+// ps that is a direct child of holder, or of an abcd in holder's tree, which
+// is that abcd's own read (on macOS ps lists itself, as a child of its caller)
+// whether its tree or another's look took the snapshot. Each is gone by the
+// next look, and a member gone between looks counts as work, so left in, a
+// holder's own reads would keep it from ever being quiet. The abcd beneath
+// is a whole run's waiter, under the make preflight a waiter names from the
+// slots: its watch reads the table while its command runs, and those reads
+// are no more the run's work than the holder's own. An abcd starts no ps but
+// its reads, and another's reader is gone before its arguments could be asked
+// for, so for it the name is the handle there is.
 func withoutReaders(snap machineload.Snapshot, holder int) machineload.Snapshot {
+	readers := map[int]bool{holder: true}
+	for _, p := range snap.Procs {
+		if machineload.IsAbcdName(p.Name) && machineload.Descends(snap.Procs, p.PID, holder) {
+			readers[p.PID] = true
+		}
+	}
 	snap.Procs = slices.DeleteFunc(slices.Clone(snap.Procs), func(p machineload.Proc) bool {
-		return p.PPID == holder && p.Name == readerName
+		return readers[p.PPID] && p.Name == readerName
 	})
 	return snap
 }

@@ -217,8 +217,12 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"gates: above one preflight at a time it stays shut while another race run is\n" +
 			"live, judges and takes the race gate's hold as well as its own, and from the\n" +
 			"moment it opens every race gate and every other such command counts it as a\n" +
-			"race run, so a second one waits for the first. A command hold lasts as long as\n" +
-			"its command runs, so once the holder's whole process tree has used no more than\n" +
+			"race run, so a second one waits for the first. A command that is not a race run\n" +
+			"takes the command hold only at one preflight at a time; above one its hold lasts\n" +
+			implement.WaitSettle.String() + ", as without a command, and the process table counts it in its slot.\n" +
+			"A command hold lasts until its command exits, starts its own race run or has run\n" +
+			implement.WaitCommandCap.String() + ", so once\n" +
+			"the holder's whole process tree has used no more than\n" +
 			shareText(implement.QuietShare) + " of a core for " + implement.QuietSpan.String() + ", each waiter behind it says so in one more\n" +
 			"`waiting for capacity:` line naming its pid, its checkout and how long it has held\n" +
 			"the slot, and the holder says so on its own standard error while others queue.\n" +
@@ -228,9 +232,14 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"account's hold is said quiet. Every waiting line also names each holder ahead,\n" +
 			"of any account, after `holding:`, with its age and its tree's CPU over the last\n" +
 			implement.QuietSpan.String() + ", or `not yet measured` until this waiter has watched it that long, and\n" +
-			"is said again every " + implement.QuietSpan.String() + " while the gate stays shut. A child that starts\n" +
+			"marks one `quiet:` in place of `using` once that CPU is no more than " + shareText(implement.QuietShare) + "\n" +
+			"of a core and no waiter of its own is queued at a gate, whatever hold it is\n" +
+			"under, so a stalled run above one preflight at a time, which no notice names,\n" +
+			"still reads as one. The line is said again every " + implement.QuietSpan.String() + " while the gate\n" +
+			"stays shut. A child that starts\n" +
 			"and exits between two looks is never seen, so a tree of short children (git)\n" +
-			"reads low, and counts as working for the quiet notice. A\n" +
+			"reads low, and counts as working: neither the notice nor the mark calls it\n" +
+			"quiet. A\n" +
 			"symlinked " + abcdhome.Display() + " is refused. On a CI runner it opens at once.\n\n" +
 			"While it waits, and while its command runs, in a checkout, the waiter keeps\n" +
 			"your own reservations from lapsing: at once and then every five minutes it\n" +
@@ -766,12 +775,19 @@ func waitConditions(res implement.WaitResult) string {
 }
 
 // holdersText names each holder ahead with its age and its tree's CPU over
-// the last span, or that this waiter has not watched it a span yet.
+// the last span, or that this waiter has not watched it a span yet. A holder
+// marked quiet (implement.GateHolder.Quiet) says so in place of `using`, so a
+// stalled run reads as one whatever form its hold takes: above one slot a
+// run that is not a race run holds its slot under the settle hold, and the
+// quiet notice, which speaks of a command hold, never comes for it.
 func holdersText(hs []implement.GateHolder) string {
 	list := make([]string, len(hs))
 	for i, h := range hs {
 		cpu := "not yet measured"
-		if h.Measured {
+		switch {
+		case h.Measured && h.Quiet:
+			cpu = fmt.Sprintf("quiet: %.0f%% of a core over the last %s", h.CPU*100, implement.QuietSpan)
+		case h.Measured:
 			cpu = fmt.Sprintf("using %.0f%% of a core over the last %s", h.CPU*100, implement.QuietSpan)
 		}
 		list[i] = fmt.Sprintf("pid %d for %s, %s", h.PID, seconds(h.AgeS).Round(time.Second), cpu)

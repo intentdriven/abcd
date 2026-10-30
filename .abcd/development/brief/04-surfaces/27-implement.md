@@ -289,7 +289,7 @@ plus a step for each crossed waiter ahead beyond the first, so the earlier of
 two waiters behind the same one opens before the later stops counting it; no
 back-off breaks that cycle, since the back-off cap bounds only the last look,
 and a stand-back starts the count again.
-A waiter running its command holds every later gate for the command's length, by design. A look that finds the machine clear does not open the
+A waiter running its command holds every later first gate for the command's length at one preflight at a time, and a slot of it above one, by design. A look that finds the machine clear does not open the
 gate: the waiter waits a random 15 to 60 seconds and checks everything again,
 and opens only if that re-check is clear too (iss-2610102020442624). Within one
 account it also takes a hold under the abcd home, which a waiter beneath the
@@ -298,7 +298,7 @@ in one moment, so the command form shows itself as running its command from the
 moment it opens and looks once more two seconds later; it stands back from the
 other unless it started earlier and has the lower pid too, gives up its hold,
 re-draws its jitter and waits again, at most three times, while the other runs.
-A command hold lasts as long as its command runs: on 2026-10-24 a long, slow
+A command hold lasts until its command exits, starts its own race run or has run 60 minutes: on 2026-10-24 a long, slow
 `go test` of the loop suite held the first gate for 45 minutes while nine
 preflights queued, and they could not tell whether it was working
 (iss-2610241419324875). So each waiter behind a command hold, and the holder
@@ -308,7 +308,12 @@ carries; a child seen at one look and gone by the next counts as work. When the 
 more than a tenth of a core for ten minutes (`QuietShare`, `QuietSpan`), the
 waiters' `waiting for capacity:` line says so as a fact, with the holder's pid,
 the checkout its hold record names and how long it has held the slot, and the
-holder says it on its own standard error while others queue. It is not a
+holder says it on its own standard error while others queue. That notice
+speaks of a command hold, which a command that is not a race run takes only at
+one preflight at a time; above one such a run holds its slot under the settle
+hold, so no notice names it, and a stalled one is shown in the `holding:` part
+below with its CPU and, once it has used no more than a tenth of a core for ten
+minutes, marked quiet. It is not a
 diagnosis: a slow run waiting on its subprocesses uses little CPU too. A tree
 with a waiter of its own queued at a gate is not counted quiet. The gate only
 says it: the hold stays in force and nothing is signalled, since a process is
@@ -316,11 +321,16 @@ stopped only by its owner through its own handle.
 Every waiting line also names each holder ahead, the hold record's and the
 work the process table shows in a slot of any account, with its age and its
 tree's CPU over the last ten minutes of this waiter's looks, or `not yet
-measured` before then, and the line is said again each span while the gate
-stays shut (iss-2610241457170255). A child that starts and exits between two
-looks is never seen, so a tree of short git children reads low and, for the
-quiet notice, counts as working; only the hold record's holder, of the
-waiter's own account, is said quiet with its checkout.
+measured` before then, and a holder whose tree has used no more than a tenth
+of a core over that span, with no waiter of its own queued at a gate, is marked
+`quiet:` in place of its use, whatever hold it is under (`GateHolder.Quiet`,
+`"quiet": true` in `--json`); a preflight is named once whichever way its make
+and the holding waiter nest, and a unit taking no slot (above one, a
+preflight at its race gate) is not named. The line is said again each span
+while the gate stays shut (iss-2610241457170255). A child that starts and exits between two
+looks is never seen, so a tree of short git children reads low, and counts as
+working for the quiet notice and the quiet mark alike; only the hold record's holder, of the waiter's own
+account, is said quiet in the notice with its checkout.
 The later start stands back whatever the pids; the earlier one stands back from
 a lower pid as well, which an older abcd (v0.15.1 and earlier) runs past.
 It runs a command given after `--` and exits with its code,
