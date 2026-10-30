@@ -80,9 +80,9 @@ pushed, and a render reads neither an id nor a login there (the login may come
 from that home's machine configuration), so it names no hold as the reader's,
 a login-named hold made before the id included. No trailer and no ref name
 abcd pushes carries the person's login. The commit author and committer fields
-still carry the person's git identity, or, when that is not a person's, the
-token's account (below), by ruling; and holds already pushed under a login are
-not rewritten.
+carry the person's git identity when it is a person's, and otherwise the login
+and no-reply address of the account the forge token resolves to (below), by
+ruling; and holds already pushed under a login are not rewritten.
 
 The id is read first from the environment variable `ABCD_HOLDER_ID`, then from
 `~/.abcd.noindex/holder-id`, and only then minted. The variable is for a
@@ -97,10 +97,23 @@ holds its earlier sessions made read as another holder's until they lapse (no
 take-over moves them), and the cap counts each session's holds separately.
 
 A hold is the person's own when its holder is their kept id, an id listed in
-`~/.abcd.noindex/holder-ids` (one per line, `#` comments, under the same
-guards; absent, it lists none), which is where a person declares the ids of
+`~/.abcd.noindex/holder-ids`, which is where a person declares the ids of
 their other machines and accounts, or, on a hold made before the holder id,
-the login the resolver below yields, compared without regard to case. Every
+the login the resolver below yields, compared without regard to case. The
+declaration holds one id per line, `h_<32 hex>` alone or followed by the
+GitHub login of the account that id is the person's on
+(`h_<32 hex> <login>`, whitespace between, `#` starting a comment): an id with a login
+beside it is paired with that login, one without is unpaired. It is read only
+from the account's own home, never from a repository's tiers, through the
+guard every home declaration is read through: a regular file the account owns
+that no other account can write, through no symbolic link, within 64 KiB.
+Absent, it declares none. A file failing any of that, a line that is not one
+id and at most one login, and an id declared twice with two pairings each
+refuse every act that reads it, naming the file and the line's number alone,
+never its contents, with nothing pushed, while a render reads no declared id
+from it and still reads the kept id and the login. The paired login is read
+and compared on this machine alone: it is never written into a trailer, a ref
+name, a record or a comment, and no output names it. Every
 "yours" judgement reads it this way: the renewal and release of one's own
 reservation, the other-copy back-off and warning, the cap's count, the
 ceiling, the land fence's own-release check and the renders that say "you".
@@ -114,9 +127,12 @@ login any more, so it lasts at most the day's window after the update. The
 release hold's withdrawals are the person's own by the same judgement, and a
 release branch is still held to the forge's record of who pushed each commit:
 a commit is read as its pusher's when it names them by username, or names a
-holder id, which no record of pushes can be matched against; the reader's own
-ids are held to the reader's own login, so a commit another login pushed naming
-the reader's id is not read as the reader's.
+holder id the reader does not own, which no record of pushes can be matched
+against. The reader's own ids are held to an account: their kept id counts
+only when the reader's own login pushed the commit, a declared id paired with
+a login counts only when that login pushed it, and an unpaired declared id
+counts for no one, so this copy reads no release end from a commit naming it
+and acts on none of its withdrawals.
 
 Across versions the change fails safe. A copy on an older release reads the
 new holds as held until it updates: its reader takes a holder to be a GitHub
@@ -164,8 +180,9 @@ The holder query prints `would reserve as <login> (from <source>)`, the
 source being `git`, `config` or `token`, then `holder id: <id> (kept in
 ~/.abcd.noindex/holder-id)`, or `(from ABCD_HOLDER_ID)`, with the same
 statement of what the id keeps out of what is pushed (no trailer or branch
-name carries the login; the author and committer still carry the git
-identity; holds already pushed are not rewritten), and, when any are
+name carries the login; the author and committer carry the git identity when
+it is a person's, otherwise the token account's login and no-reply address;
+holds already pushed are not rewritten), and, when any are
 declared, `also yours: <ids>`; or as JSON the document `{"login", "id",
 "noreply", "source", "holder_id", "holder_id_from", "holder_id_file",
 "declared_holder_ids", "declared_holder_ids_file"}` (`id` and `noreply` when
@@ -579,8 +596,13 @@ withdrawing nothing, and an admission or a release is refused.
   account pushed above that newest push are never read: they cannot re-arm,
   drop, admit or change the person's withdrawals, and each act names them
   once for each tip, counted by pusher (`not_read`, on the act and in
-  `abcd peers`). The person's own entries are taken from their newest push,
-  every other person's from the tip. When that newest push cannot be found or
+  `abcd peers`). The person's own entries (their kept id, or their login on
+  an entry made before the id) are taken from their newest push, and every
+  other entry from the tip, a declared id's included, whether or not the
+  person's own login has pushed to the branch: a take-over between two
+  accounts of one person, and its round trip back, carries each account's
+  entries as the tip records them, and drops a declared id's entry only for
+  the person's own entry for the same pull request. When that newest push cannot be found or
   placed (an app's push above it, which says nothing of which person sent it;
   the record read short, not caught up with the tip, broken or not
   answering; a commit the record places several accounts on; or the push past
@@ -627,9 +649,12 @@ withdrawing nothing, and an admission or a release is refused.
   person's after a take-over and a release of theirs included). A
   reservation is that login's own when it names them by username or names a
   holder id: the record of pushes names accounts, and no id can be matched
-  against one, so an id stands for whoever pushed it, except one of the
-  reader's own ids, which counts only when the reader's own login pushed it.
-  A commit another login pushes naming someone else's id can do no more than
+  against one, so an id stands for whoever pushed it, except the reader's
+  own ids: the kept id counts only when the reader's own login pushed it, a
+  declared id paired with a login only when that login pushed it, and an
+  unpaired declared id for no one, so a reservation or tombstone naming it is
+  passed over and the release is judged by the reservation beneath it. A
+  commit another login pushes naming someone else's id can do no more than
   one naming themselves already could. A tombstone its holder did not
   push ends nothing (dcn-2610230833367984): it is named once for its tip
   (`not_ended`), nothing is acted on, and `abcd peers` lists none of its
@@ -678,6 +703,50 @@ withdrawing nothing, and an admission or a release is refused.
   GitHub identity, so a copy of another person carries the withdrawals
   forward untouched and names them, with whose they are (`stranded`), on the
   reservation it makes and in `abcd peers` (`release_withdrawals`).
+- **What a copy acts on.** Every act that re-arms, withdraws again or admits
+  a merge (a settle, the holder's release, a renewal's withdrawal again, an
+  admission) acts on an entry only when it names the person themselves (their
+  kept id, or their login on an entry made before the id), read from their
+  own newest push, or names a declared id paired with a login whose own
+  newest push to the branch records that entry exactly. Every other entry is
+  carried untouched and listed `stranded`, on the act and in `abcd peers`,
+  where `due` lists only what the next act in fact acts on. An entry naming
+  an unpaired declared id is never acted on, and one line on the terminal
+  (`unpaired`, on the act and in `abcd peers`) names the id and
+  says that writing its account's login beside it in
+  `~/.abcd.noindex/holder-ids` lets this copy settle it; the line names no
+  login. An admission of such an entry is refused with the same line. The
+  other-copy back-off over a reservation naming a declared id says, on the
+  terminal alone and naming no login, whether the id is paired and, when it
+  is, whether the forge's record of pushes says its paired account pushed
+  that reservation, so the person can tell one that is not their other
+  account's before taking it over.
+- **What ties a push to a login.** The pusher of each commit on a release
+  branch is the login the forge's own activity record of pushes to that
+  branch names (the repository activity endpoint,
+  `repos/<owner>/<name>/activity`, asked for the branch's full ref, the
+  record `abcd status` holds announcements to as well), placed on the commits each push carried. Nothing
+  on this path falls back to a commit's author or committer fields, which
+  any writer can set. Where that record cannot say (a page read short, a
+  record not caught up with the tip, a push missing from it, an app's push,
+  which names no person, a commit several accounts' pushes are placed on, or
+  a push past the 64 commits read), nothing is read as anyone's push and
+  nothing is acted on for that person. What a listing reads of the record is
+  kept for one tip in the checkout's local tier and read by listings alone;
+  an act always asks the forge again. So a take-over carries a paired id's
+  entries, and they are acted on, only as far as that check reaches: an
+  entry is acted on when the paired login's own newest push records it, and
+  that reach is no more than the write access the pushing account already
+  holds on the repository.
+- **Withdrawals made before the holder id.** A person whose ended release
+  holds withdrawals named by their login, and whose home keeps no holder id
+  yet, has nothing of them re-armed until their first reservation or
+  announcement keeps one: `abcd peers` never mints an id, so its listing says
+  each time that held merges from before the holder id stay held until the
+  next reservation or announcement (`due_awaits_holder_id`), and a
+  reservation then settles them as it keeps the id (an announcement keeps the
+  id, and the next listing settles them). Neither a read nor a push naming
+  the login stands in (dcn-2610300525431448).
 - **Lost withdrawals.** An older abcd ignores the `Abcd-Withdrawn` trailer, so
   its renewal, take-over or tombstone rewrites the tip without them. For each
   release claimed in the last 14 days, `abcd peers` and the launch check walk
@@ -756,7 +825,8 @@ reservation held that the footprint leaves out, a `warning:` line on stderr,
 and `generated_unread` when generated files were not recognised, a `not
 recognised:` line. A release's acts add `withdrew` and `withdrawals` (each
 `number`, `id`, `form`, `head`, `by`, `state`), `admitted` for an admission
-(`act: admitted`), `stranded`, `settles` (`subject`, `commit`, `settled`,
+(`act: admitted`), `stranded`, `unpaired` (each unpaired declared id among
+the stranded), `settles` (`subject`, `commit`, `settled`,
 `failures`, `failed`), `forge_failures` (`number`, `act`, `reason`) and
 `forge_unchecked`; the text form warns of every failure on stderr. An
 admission refused exits 2.

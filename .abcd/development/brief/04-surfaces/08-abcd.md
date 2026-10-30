@@ -281,7 +281,13 @@ no tag on origin, holding no merge), `hand_backs_by_holder` (`holder`,
 `release_withdrawals` (each release's withdrawn pull requests by state: held,
 admitted, due (read from the reader's own newest push to the branch, as the
 forge's record of pushes shows it, as an act's settle reads them, so one
-nothing re-arms is never due), stranded for another person, skipped, with
+nothing re-arms is never due: the reader's own, and a paired declared id's
+that its login's own newest push records), stranded (another person's, and a
+declared id's this copy does not act on), skipped, with
+`holder_claimed` (true when the holder is a holder id that is not the
+reader's), `unpaired` (each unpaired declared id among the stranded),
+`due_awaits_holder_id` (true when the reader keeps no holder id yet, so the
+due ones stay held until their next reservation or announcement), 
 `reader`, `not_read` (the commits other accounts pushed above the reader's
 newest push, counted by pusher, never read) and `unplaced` (why that push
 cannot be found or placed, when none of the reader's is listed), `lapsed`
@@ -290,7 +296,8 @@ person's next act ends five minutes later, and `not_ended` naming the holder who
 does not show they pushed, which ends nothing either), `lost_withdrawals` (each recent release's withdrawals a later
 commit dropped), `settled` (each ended release of the reader's whose
 withdrawals the listing re-armed or skipped, with `not_read`, `unplaced` and
-`not_ended`, each once for each tip, and `failures`, a comment not
+`not_ended`, each once for each tip, `not_ended_claimed` (true when that
+holder is a holder id that is not the reader's), and `failures`, a comment not
 posted as sent among them, iss-2610222014550692) and `view`
 (`origin`, `fetched_at`, `age_seconds`). When the fetch fails, the listing renders the view as last
 fetched with its age, names the failure on stderr and in `fetch_error`, and

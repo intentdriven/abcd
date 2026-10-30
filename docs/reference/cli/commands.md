@@ -4838,6 +4838,11 @@ or could write, or one that holds no id, is refused, never replaced. A
 reservation under an id listed in
 ~/.abcd.noindex/holder-ids (one per line, # comments; the ids your other
 machines and accounts print with --holder) is yours too, from another copy.
+Write the GitHub login of the account an id is yours on after it, on its line
+(h_<32 hex> <login>), and a release's commit naming that id counts only when
+that account pushed it; an id with no login beside it names no account, so
+abcd reads no release end from it and acts on none of its withdrawals. The
+login is read on this machine only and never pushed.
 
 abcd still works out your GitHub username, which is never pushed, from the first
 of these that names it: user.email, when it is a GitHub no-reply address;

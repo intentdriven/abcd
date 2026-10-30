@@ -51,8 +51,9 @@ func TestReserveHolderPlainAndJSON(t *testing.T) {
 	if err != nil || !regexp.MustCompile(`^h_[0-9a-f]{32}$`).MatchString(id) {
 		t.Fatalf("--holder kept %q, %v; want a minted holder id", kept, err)
 	}
-	idLine := "holder id: " + id + " (kept in ~/.abcd.noindex/holder-id); no trailer and no branch name abcd pushes carries your login, " +
-		"though each commit's author and committer still carry your git identity, and holds already pushed are not rewritten\n"
+	idLine := "holder id: " + id + " (kept in ~/.abcd.noindex/holder-id); no trailer and no branch name abcd pushes carries your login; " +
+		"each commit's author and committer carry your git identity when it is a person's, otherwise the token account's login and no-reply address, " +
+		"and holds already pushed are not rewritten\n"
 	if code != 0 || stdout != "would reserve as octo (from git)\n"+idLine || stderr != "abcd: "+claim.MintNoticeLine(id)+"\n" {
 		t.Fatalf("exit %d, stdout %q, stderr %q; want the git holder and the holder id, and the mint told once", code, stdout, stderr)
 	}

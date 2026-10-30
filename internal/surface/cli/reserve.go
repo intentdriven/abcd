@@ -317,7 +317,12 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"or could write, or one that holds no id, is refused, never replaced. A\n" +
 			"reservation under an id listed in\n" +
 			"~/.abcd.noindex/holder-ids (one per line, # comments; the ids your other\n" +
-			"machines and accounts print with --holder) is yours too, from another copy.\n\n" +
+			"machines and accounts print with --holder) is yours too, from another copy.\n" +
+			"Write the GitHub login of the account an id is yours on after it, on its line\n" +
+			"(h_<32 hex> <login>), and a release's commit naming that id counts only when\n" +
+			"that account pushed it; an id with no login beside it names no account, so\n" +
+			"abcd reads no release end from it and acts on none of its withdrawals. The\n" +
+			"login is read on this machine only and never pushed.\n\n" +
 			"abcd still works out your GitHub username, which is never pushed, from the first\n" +
 			"of these that names it: user.email, when it is a GitHub no-reply address;\n" +
 			"reservation.github_username in the machine configuration (the repository's own\n" +
@@ -449,8 +454,9 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 
 // holderIDScope is what the holder id does and does not keep out of what abcd
 // pushes, the same words the help and the brief use.
-const holderIDScope = "no trailer and no branch name abcd pushes carries your login, " +
-	"though each commit's author and committer still carry your git identity, and holds already pushed are not rewritten"
+const holderIDScope = "no trailer and no branch name abcd pushes carries your login; " +
+	"each commit's author and committer carry your git identity when it is a person's, otherwise the token account's login and no-reply address, " +
+	"and holds already pushed are not rewritten"
 
 // reserveHolderOutput is `reserve --holder`'s document: the account and the
 // source that named it, as before, with the holder id what abcd pushes names

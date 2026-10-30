@@ -479,9 +479,10 @@ machines that reserve on network time.
 **The holder** is named by the user's holder id: `h_` and 32 random lower-case
 hex characters, minted the first time one is needed into
 `~/.abcd.noindex/holder-id` (owner-only) and kept. No trailer and no branch
-name a reservation pushes carries the user's GitHub login; the commit's author
-and committer fields still carry the user's git identity, and holds already
-pushed under a login are not rewritten. The act that mints an id says so once,
+name a reservation pushes carries the user's GitHub login. The commit's author
+and committer fields carry the user's git identity when it is a person's;
+otherwise they carry the login and no-reply address of the account the forge
+token resolves to. Holds already pushed under a login are not rewritten. The act that mints an id says so once,
 on stderr, naming the id and the file: holds made under an earlier id of the
 user's read as someone else's until they lapse, and the cap counts them apart.
 Relay it. A holder-id file another account owns or could write, one that holds
@@ -492,7 +493,16 @@ file left empty is most likely another run minting at that moment: retry, and
 look at the file only if it is still empty. The ids of the user's other
 machines and accounts (each prints its own with `--holder`) can be listed in
 `~/.abcd.noindex/holder-ids`, one per line with `#` comments; a reservation
-under one of them is the user's own, from another copy.
+under one of them is the user's own, from another copy. A line may carry the
+GitHub login of the account the id is the user's on after it
+(`h_<32 hex> <login>`): a release's commit naming that id then counts as the
+user's only when the forge's record of pushes says that account pushed it, and
+this copy settles the id's withdrawals that account's own push records. An id
+with no login beside it names no account: this copy reads no release end from
+a commit naming it and acts on none of its withdrawals, which `abcd peers` and
+the release list as stranded with a note saying how to pair it. The login is
+read on this machine only, never pushed, and never echoed: a malformed line is
+refused by its number alone.
 
 **A hosted or ephemeral session** starts with a fresh home, so it would mint a
 new id every time. Set `ABCD_HOLDER_ID` to the user's id in that environment's

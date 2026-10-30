@@ -150,8 +150,10 @@ payload adds:
   requests by state: `held` (withdrawn until the release ends), `admitted`
   (re-armed by the cutting copy's `--admit`), `due` (yours, re-armed on your
   next act now the release has ended, as your own newest push to its branch
-  records it), `stranded` (another person's ended release: listed for them,
-  never re-armed from here) and `skipped` (named for its owner, because its
+  records it, and those of an id you declare paired with its account's login
+  that that account's own newest push records), `stranded` (another person's
+  ended release, and a declared id's this copy does not act on: listed, never
+  re-armed from here) and `skipped` (named for its owner, because its
   head moved, it was closed, its recorded node id is not the forge's, it
   needs a manual merge, or the forge refused its re-arm five times). A merged
   one is not listed. Your own pull requests are listed as your own newest push
@@ -165,7 +167,12 @@ payload adds:
   its holder did not push ends nothing, so none of yours on it is `due`, and
   `not_ended` names that holder. A reader whose GitHub username is not known
   has no newest push to read, so their own on an ended release are listed as
-  `stranded`, never `due`. `holder_claimed` is true when `holder` is a holder
+  `stranded`, never `due`. `unpaired` names each id you declare in
+  `~/.abcd.noindex/holder-ids` with no login beside it among the stranded:
+  tell the user that writing that account's login after the id, on its line,
+  lets this copy settle them. `due_awaits_holder_id` is true when your home
+  keeps no holder id yet: held merges from before the holder id stay held
+  until your next reservation or announcement keeps one. `holder_claimed` is true when `holder` is a holder
   id that is not yours: an id names no account the forge's record of pushes
   could vouch for, so the text shows it as "(claimed)", as `abcd status`
   shows a sender named by a holder id. `lapsed` is set only while the release still holds
