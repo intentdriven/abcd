@@ -22,7 +22,7 @@
 # goes to a private temporary directory instead, runs as a child, and is
 # removed afterwards.
 #
-# Usage: scripts/abcd <verb> [args...] from the checkout root, or by its path
+# Usage: scripts/abcd.sh <verb> [args...] from the checkout root, or by its path
 # (or a symlink to it) from anywhere; the verb runs in the caller's working
 # directory. A tree that does not build exits 2 and runs nothing, so a broken
 # build never reads as a guard's block.
@@ -44,14 +44,14 @@ if [ ! -f "$root/cmd/abcd/main.go" ]; then
 	shown="$root"
 	# shellcheck disable=SC2088
 	case $root in "${HOME:-/nonexistent}"/*) shown="~/${root#"$HOME"/}" ;; esac
-	echo "scripts/abcd: $shown holds no cmd/abcd/main.go, so it is not a source checkout of abcd; nothing ran" >&2
+	echo "scripts/abcd.sh: $shown holds no cmd/abcd/main.go, so it is not a source checkout of abcd; nothing ran" >&2
 	exit 2
 fi
 
 # build <output>: link the tree to <output>, or exit 2 having run nothing.
 build() {
 	if ! (cd "$root" && go build -buildvcs=false -o "$1" ./cmd/abcd); then
-		echo "scripts/abcd: cmd/abcd did not build, so nothing ran" >&2
+		echo "scripts/abcd.sh: cmd/abcd did not build, so nothing ran" >&2
 		exit 2
 	fi
 }

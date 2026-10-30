@@ -153,7 +153,7 @@ func dogfoodStalenessFrom(cur vintage.Current, cwd string) DogfoodReport {
 // proceeds. The check is disk-only; it never touches the network.
 //
 // A go run build of the checkout being installed, or the build its
-// scripts/abcd has just made of it, is current by construction and proceeds:
+// scripts/abcd.sh has just made of it, is current by construction and proceeds:
 // neither stamps a revision, so its vintage reads unknown, yet it is built from
 // this tree as it stands (iss-2610240824047504, iss-2610241240133009). Any other
 // unstamped binary in a source checkout of abcd, a copy left in its local tier
@@ -165,7 +165,7 @@ func staleBinaryRefusal(cur vintage.Current, cwd string) string {
 	}
 	if !cur.Known {
 		if top, err := gitutil.Toplevel(cwd); err == nil && top != "" && abcdrepo.LooksLikeSourceTree(top) {
-			return "the running abcd binary's vintage cannot be determined (an unstamped or modified/dirty build), so it may be applying stale install logic. In this source checkout, run it as `scripts/abcd ahoy install`, which builds the tree as it stands into the checkout's local tier; where that tier cannot be written, or to proceed anyway, re-run with --allow-stale-binary."
+			return "the running abcd binary's vintage cannot be determined (an unstamped or modified/dirty build), so it may be applying stale install logic. In this source checkout, run it as `scripts/abcd.sh ahoy install`, which builds the tree as it stands into the checkout's local tier; where that tier cannot be written, or to proceed anyway, re-run with --allow-stale-binary."
 		}
 		return "the running abcd binary's vintage cannot be determined (an unstamped or modified/dirty build), so it may be applying stale install logic. Rebuild it with `make build`, or re-run with --allow-stale-binary to proceed anyway."
 	}

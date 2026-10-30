@@ -19,7 +19,7 @@ import (
 // reads Unknown to Compare; GoRunModule is what lets a caller tell it apart
 // from a real unstamped binary (iss-2610240824047504). ok is false for any
 // other build: a binary on disk, a go test binary, an installed copy, and the
-// build scripts/abcd makes, which CheckoutBuild reports.
+// build scripts/abcd.sh makes, which CheckoutBuild reports.
 func GoRunModule() (module string, ok bool) {
 	bi, ok := debug.ReadBuildInfo()
 	if !ok {
@@ -33,7 +33,7 @@ func GoRunModule() (module string, ok bool) {
 }
 
 // CheckoutBuild reports the module path and executable of the running binary
-// when it is the build scripts/abcd has just made of a checkout's tree
+// when it is the build scripts/abcd.sh has just made of a checkout's tree
 // (iss-2610241240133009): an unstamped development build of the module's
 // cmd/abcd at abcdrepo.CheckoutBuildRel, run by the script, which names it in
 // abcdrepo.CheckoutBuildEnv after it relinks it. Like a go run build it is the
@@ -56,13 +56,13 @@ func CheckoutBuild() (module, exe string, ok bool) {
 }
 
 // checkoutMark is abcdrepo.CheckoutBuildEnv as this process started with it.
-// The mark vouches only for the binary scripts/abcd has just built and run, so
+// The mark vouches only for the binary scripts/abcd.sh has just built and run, so
 // it is taken out of the environment as the package initialises: a process
 // abcd starts (a session a load waiter or a build runs, a hook) and anything
 // that runs the local-tier binary by path from there never inherits it.
 var checkoutMark = takeEnv(abcdrepo.CheckoutBuildEnv)
 
-// CheckoutMark is the executable scripts/abcd named when it started this
+// CheckoutMark is the executable scripts/abcd.sh named when it started this
 // process (abcdrepo.CheckoutBuildEnv), or "" when nothing did.
 func CheckoutMark() string { return checkoutMark }
 
@@ -115,7 +115,7 @@ func checkoutBuildOf(pkgPath, mainPath, mainVersion string, settings []debug.Bui
 
 // unstampedCommand reports a development build ("(devel)") of the main
 // module's cmd/abcd with no vcs.revision stamped, the build both go run and
-// scripts/abcd make.
+// scripts/abcd.sh make.
 func unstampedCommand(pkgPath, mainPath, mainVersion string, settings []debug.BuildSetting) bool {
 	if mainPath == "" || mainVersion != "(devel)" || pkgPath != mainPath+"/cmd/abcd" {
 		return false

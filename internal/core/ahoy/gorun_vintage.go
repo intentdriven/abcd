@@ -24,7 +24,7 @@ func swapGoRunModule(f func() (string, bool)) (restore func()) {
 }
 
 // checkoutBuild is the seam for reading whether the running binary is the
-// build scripts/abcd has just made, of which module, and its executable
+// build scripts/abcd.sh has just made, of which module, and its executable
 // (vintage.CheckoutBuild); a test swaps it.
 var checkoutBuild = vintage.CheckoutBuild
 
@@ -41,7 +41,7 @@ const maxGoModBytes = 1 << 20
 // goRunOfCheckout reports whether the running binary is a build of the
 // checkout holding cwd as that tree stands: a go run build of the module the
 // checkout declares (vintage.GoRunModule, iss-2610240824047504), or the build
-// scripts/abcd has just made in that checkout's own local tier
+// scripts/abcd.sh has just made in that checkout's own local tier
 // (vintage.CheckoutBuild, iss-2610241240133009). Either is the tree as it
 // stands, so the build is that checkout's own and never older than it. The
 // local-tier build must be the same file as <top>/abcdrepo.CheckoutBuildRel,

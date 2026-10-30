@@ -406,7 +406,7 @@ func TestDevBuildOutsidePluginRootIsNotCalledAStalePATHCopy(t *testing.T) {
 	}
 }
 
-// The binary scripts/abcd builds sits inside the source checkout, under its
+// The binary scripts/abcd.sh builds sits inside the source checkout, under its
 // local tier, but it was relinked from the tree as it stands when the script
 // ran it: a page documenting what it lacks is ahead of the code, not proof the
 // binary is old, so it takes the dev build's note, never `make build`, which
@@ -441,7 +441,7 @@ func TestCheckoutBuildInTheLocalTierIsNotToldToRebuild(t *testing.T) {
 		}
 		for _, not := range []string{"make build", "abcd update", pluginUpdateRemedy} {
 			if strings.Contains(stderr, not) {
-				t.Errorf("scripts/abcd's build must not be advised %q:\n%s", not, stderr)
+				t.Errorf("scripts/abcd.sh's build must not be advised %q:\n%s", not, stderr)
 			}
 		}
 	})
@@ -457,7 +457,7 @@ func TestCheckoutBuildInTheLocalTierIsNotToldToRebuild(t *testing.T) {
 				t.Setenv("ABCD_PLUGIN_ROOT", "")
 			}
 			_, _, stderr := runMain(t, "frobnicate")
-			for _, want := range []string{"`frobnicate` command", "run directly", "`scripts/abcd`"} {
+			for _, want := range []string{"`frobnicate` command", "run directly", "`scripts/abcd.sh`"} {
 				if !strings.Contains(stderr, want) {
 					t.Errorf("stderr lacks %q:\n%s", want, stderr)
 				}
@@ -471,7 +471,7 @@ func TestCheckoutBuildInTheLocalTierIsNotToldToRebuild(t *testing.T) {
 	}
 }
 
-// setCheckoutMark says which executable scripts/abcd started, as the binary
+// setCheckoutMark says which executable scripts/abcd.sh started, as the binary
 // read it from its environment: "" for a run the script did not start.
 func setCheckoutMark(t *testing.T, path string) {
 	t.Helper()

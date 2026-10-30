@@ -26,7 +26,7 @@ func TestGoRunModuleOf(t *testing.T) {
 	}{
 		{"go run of the checkout", mod + "/cmd/abcd", mod, "(devel)", goRunExe, nil, true},
 		{"a built binary on disk", mod + "/cmd/abcd", mod, "(devel)", "/Users/x/.local/bin/abcd", nil, false},
-		{"scripts/abcd's build, which CheckoutBuild reports", mod + "/cmd/abcd", mod, "(devel)", "/Users/x/src/abcd/" + abcdrepo.CheckoutBuildRel, nil, false},
+		{"scripts/abcd.sh's build, which CheckoutBuild reports", mod + "/cmd/abcd", mod, "(devel)", "/Users/x/src/abcd/" + abcdrepo.CheckoutBuildRel, nil, false},
 		{"a stamped build", mod + "/cmd/abcd", mod, "(devel)", goRunExe, stamped, false},
 		{"a released module version", mod + "/cmd/abcd", mod, "v0.14.0", goRunExe, nil, false},
 		{"a go test binary", mod + "/internal/core/ahoy.test", mod, "(devel)", goRunExe, nil, false},
@@ -63,7 +63,7 @@ func TestTheMarkIsTakenOutOfTheEnvironment(t *testing.T) {
 	}
 }
 
-// TestCheckoutBuildOf: the build scripts/abcd has just made is an unstamped
+// TestCheckoutBuildOf: the build scripts/abcd.sh has just made is an unstamped
 // development build of the module's cmd/abcd at a checkout's local tier, and
 // only while the script's mark names that very file. A copy left there and run
 // directly carries no mark, so it is not one (iss-2610241240133009).

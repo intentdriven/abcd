@@ -38,7 +38,7 @@ func LooksLikeSourceTree(dir string) bool {
 	return err == nil && fi.Mode().IsRegular()
 }
 
-// CheckoutBuildRel is where scripts/abcd builds a source checkout's own abcd,
+// CheckoutBuildRel is where scripts/abcd.sh builds a source checkout's own abcd,
 // relative to the checkout root, slash-separated: the gitignored local tier,
 // relinked from the tree as it stands each time the script runs it
 // (iss-2610241240133009). The script and this constant name the same path, and
@@ -46,7 +46,7 @@ func LooksLikeSourceTree(dir string) bool {
 // holds them together.
 const CheckoutBuildRel = ".abcd/.work.local/bin/abcd"
 
-// CheckoutBuildEnv is the variable scripts/abcd sets, to the absolute path of
+// CheckoutBuildEnv is the variable scripts/abcd.sh sets, to the absolute path of
 // the binary it has just relinked, before it execs that binary. The script
 // clears any value it inherits and the binary takes the mark out of its own
 // environment as it starts (vintage.CheckoutMark), so a binary left in the

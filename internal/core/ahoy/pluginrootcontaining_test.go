@@ -46,7 +46,7 @@ func TestPluginRootContaining(t *testing.T) {
 	}
 }
 
-// TestTheCheckoutsOwnBuildIsInNoPluginRoot: the build scripts/abcd makes sits in
+// TestTheCheckoutsOwnBuildIsInNoPluginRoot: the build scripts/abcd.sh makes sits in
 // the checkout's local tier, under a directory with the plugin layout that holds
 // no plugin binary. It is placed in no root, as go run's build never was, so a
 // plain terminal resolves the plugin the way go run did instead of reading the

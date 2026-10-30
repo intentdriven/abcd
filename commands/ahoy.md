@@ -507,7 +507,7 @@ and the person-only questions alone: the abcd download, the shell settings,
 the commit checks and the commit identity, plus the status line where it can be
 wired and one question for each tool it offers to install.
 
-In a source checkout of abcd, run it as `scripts/abcd ahoy install`: the script
+In a source checkout of abcd, run it as `scripts/abcd.sh ahoy install`: the script
 builds the checkout as it stands and starts that build, so its unstamped
 vintage is not refused as stale there. So is `go run ./cmd/abcd ahoy install`,
 though `go run` reports every nonzero exit as 1. Any other unstamped binary is

@@ -14,7 +14,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdrepo"
 )
 
-// scripts/abcd, the source checkout's own abcd (iss-2610241240133009), driven
+// scripts/abcd.sh, the source checkout's own abcd (iss-2610241240133009), driven
 // against a stub `go` so no compile runs. The stub records how it was called
 // and, for `build -buildvcs=false -o <path>`, removes <path> and writes a fake
 // binary there, as go does, unless STUB_UP_TO_DATE says the tree is unchanged;
@@ -61,16 +61,16 @@ type devBinaryRun struct {
 	log    string
 }
 
-// devBinaryCheckout lays out a checkout holding the real scripts/abcd, a
+// devBinaryCheckout lays out a checkout holding the real scripts/abcd.sh, a
 // cmd/abcd/main.go to mark it a source checkout, and a subdirectory to call it
 // from; it returns the checkout root with symlinks resolved, as the script's
 // `pwd -P` reports it.
 func devBinaryCheckout(t *testing.T) string {
 	t.Helper()
 	if runtime.GOOS == "windows" {
-		t.Skip("scripts/abcd is a POSIX shell script; the checkout runs on macOS and Linux")
+		t.Skip("scripts/abcd.sh is a POSIX shell script; the checkout runs on macOS and Linux")
 	}
-	body, err := os.ReadFile(filepath.Join("..", "..", "..", "scripts", "abcd"))
+	body, err := os.ReadFile(filepath.Join("..", "..", "..", "scripts", "abcd.sh"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func devBinaryCheckout(t *testing.T) string {
 	if err := os.WriteFile(filepath.Join(root, "cmd", "abcd", "main.go"), []byte("package main\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	writeExec(t, filepath.Join(root, "scripts", "abcd"), string(body))
+	writeExec(t, filepath.Join(root, "scripts", "abcd.sh"), string(body))
 	return root
 }
 
@@ -97,7 +97,7 @@ func devBinaryPath(root string) string {
 
 func runDevBinary(t *testing.T, root string, env []string, args ...string) devBinaryRun {
 	t.Helper()
-	return runDevBinaryAs(t, filepath.Join(root, "sub"), filepath.Join(root, "scripts", "abcd"), root, env, args...)
+	return runDevBinaryAs(t, filepath.Join(root, "sub"), filepath.Join(root, "scripts", "abcd.sh"), root, env, args...)
 }
 
 // runDevBinaryAs runs the script as path from dir, for the checkout at root; a
@@ -126,7 +126,7 @@ func runDevBinaryAs(t *testing.T, dir, path, root string, env []string, args ...
 	if err := cmd.Run(); err != nil {
 		ee, ok := err.(*exec.ExitError)
 		if !ok {
-			t.Fatalf("running scripts/abcd: %v", err)
+			t.Fatalf("running scripts/abcd.sh: %v", err)
 		}
 		code = ee.ExitCode()
 	}
@@ -154,14 +154,14 @@ func devBinaryLeftovers(t *testing.T, root string) []string {
 // TestTheCheckoutsAbcdKeepsTheBinarysExitCode is iss-2610241240133009's
 // detector: `go run ./cmd/abcd` turned every nonzero exit into 1, so exit 2
 // and exit 3 were unreadable to the agents the dogfooding rule sends to it.
-// scripts/abcd builds the tree to the local tier and runs the binary itself,
+// scripts/abcd.sh builds the tree to the local tier and runs the binary itself,
 // so each code arrives as the binary exited with it.
 func TestTheCheckoutsAbcdKeepsTheBinarysExitCode(t *testing.T) {
 	root := devBinaryCheckout(t)
 	for _, want := range []int{0, 1, 2, 3} {
 		got := runDevBinary(t, root, []string{"FAKE_EXIT=" + strconv.Itoa(want)}, "reserve", "iss-1")
 		if got.code != want {
-			t.Errorf("the binary exited %d; scripts/abcd exited %d, want the same code\nstderr:\n%s", want, got.code, got.stderr)
+			t.Errorf("the binary exited %d; scripts/abcd.sh exited %d, want the same code\nstderr:\n%s", want, got.code, got.stderr)
 		}
 	}
 }
@@ -176,7 +176,7 @@ func TestTheCheckoutsAbcdBuildsToTheLocalTierAndRunsInPlace(t *testing.T) {
 	root := devBinaryCheckout(t)
 	got := runDevBinary(t, root, nil, "capture", "two words", "--severity", "minor")
 	if got.code != 0 {
-		t.Fatalf("scripts/abcd exited %d\nstderr:\n%s", got.code, got.stderr)
+		t.Fatalf("scripts/abcd.sh exited %d\nstderr:\n%s", got.code, got.stderr)
 	}
 	for _, want := range []string{
 		"cwd=" + root + "\n",
@@ -217,7 +217,7 @@ func TestTheCheckoutsAbcdReplacesTheBinaryWhole(t *testing.T) {
 
 	got := runDevBinary(t, root, nil, "status")
 	if got.code != 0 {
-		t.Fatalf("scripts/abcd exited %d\nstderr:\n%s", got.code, got.stderr)
+		t.Fatalf("scripts/abcd.sh exited %d\nstderr:\n%s", got.code, got.stderr)
 	}
 	if !strings.Contains(got.log, "bin-at-link-end=#!/bin/sh\n# old build\n") {
 		t.Errorf("the link wrote to the binary's own path, so a call starting then could run it half written:\n%s", got.log)
@@ -249,9 +249,9 @@ func TestTheCheckoutsAbcdIgnoresCDPATH(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(decoy, "scripts"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	got := runDevBinaryAs(t, root, filepath.Join("scripts", "abcd"), root, []string{"CDPATH=" + decoy}, "status")
+	got := runDevBinaryAs(t, root, filepath.Join("scripts", "abcd.sh"), root, []string{"CDPATH=" + decoy}, "status")
 	if got.code != 0 {
-		t.Fatalf("scripts/abcd exited %d\nstderr:\n%s", got.code, got.stderr)
+		t.Fatalf("scripts/abcd.sh exited %d\nstderr:\n%s", got.code, got.stderr)
 	}
 	if want := "cwd=" + root + "\n"; !strings.Contains(got.log, want) {
 		t.Errorf("with CDPATH=%s the build did not run at the root %s:\n%s", decoy, root, got.log)
@@ -274,7 +274,7 @@ func TestTheCheckoutsAbcdFollowsASymlinkToItself(t *testing.T) {
 	if err := os.MkdirAll(links, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	rel, err := filepath.Rel(links, filepath.Join(root, "scripts", "abcd"))
+	rel, err := filepath.Rel(links, filepath.Join(root, "scripts", "abcd.sh"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +284,7 @@ func TestTheCheckoutsAbcdFollowsASymlinkToItself(t *testing.T) {
 	}
 	got := runDevBinaryAs(t, filepath.Join(root, "sub"), link, root, nil, "status")
 	if got.code != 0 {
-		t.Fatalf("scripts/abcd through %s exited %d\nstderr:\n%s", link, got.code, got.stderr)
+		t.Fatalf("scripts/abcd.sh through %s exited %d\nstderr:\n%s", link, got.code, got.stderr)
 	}
 	if want := "cwd=" + root + "\n"; !strings.Contains(got.log, want) {
 		t.Errorf("through a symlink the build did not run at the root %s:\n%s", root, got.log)
@@ -300,7 +300,7 @@ func TestTheCheckoutsAbcdRefusesOutsideASourceCheckout(t *testing.T) {
 	}
 	got := runDevBinary(t, root, nil, "status")
 	if got.code != 2 {
-		t.Errorf("outside a source checkout scripts/abcd exited %d, want 2", got.code)
+		t.Errorf("outside a source checkout scripts/abcd.sh exited %d, want 2", got.code)
 	}
 	if got.log != "" {
 		t.Errorf("outside a source checkout it still ran something:\n%s", got.log)
@@ -374,7 +374,7 @@ func TestTheCheckoutsAbcdBuildsElsewhereWhenTheTierIsReadOnly(t *testing.T) {
 	// A mark an earlier run left in the environment must not reach this build.
 	got := runDevBinary(t, root, []string{"FAKE_EXIT=3", abcdrepo.CheckoutBuildEnv + "=/inherited/" + abcdrepo.CheckoutBuildRel}, "reserve", "iss-1")
 	if got.code != 3 {
-		t.Errorf("with a read-only tier scripts/abcd exited %d, want the binary's 3\nstderr:\n%s", got.code, got.stderr)
+		t.Errorf("with a read-only tier scripts/abcd.sh exited %d, want the binary's 3\nstderr:\n%s", got.code, got.stderr)
 	}
 	m := regexp.MustCompile(`(?m)^args=build -buildvcs=false -o (\S+) \./cmd/abcd$`).FindStringSubmatch(got.log)
 	if m == nil {

@@ -36,7 +36,7 @@ import (
 // binary can prove on disk (adr-38: no network on any path the user did not
 // ask to reach the network). Its sources, in order of strength:
 //
-//  0. A build scripts/abcd left in a checkout's local tier and ran directly is
+//  0. A build scripts/abcd.sh left in a checkout's local tier and ran directly is
 //     judged first by that checkout's own command pages: one documenting what
 //     the binary refused proves it is behind the tree, and it is sent to the
 //     script.
@@ -60,7 +60,7 @@ import (
 var osExecutable = os.Executable
 
 // checkoutMark is vintage.CheckoutMark, overridable so a test can say whether
-// scripts/abcd started the running binary.
+// scripts/abcd.sh started the running binary.
 var checkoutMark = vintage.CheckoutMark
 
 // unknownCommandRe matches cobra's unknown-command line: the token and the
@@ -149,13 +149,13 @@ func staleUsageNote(root *cobra.Command, args []string, msg string) string {
 			return hint
 		}
 	}
-	// A build scripts/abcd left in a checkout's local tier and ran directly is
+	// A build scripts/abcd.sh left in a checkout's local tier and ran directly is
 	// judged by that checkout's own pages, whichever plugin root resolves (in
 	// a plain terminal none may): it is the tree as it stood at the script's
 	// last run, so a page the tree has since gained is proof it is behind.
 	if checkout, left := leftCheckoutBuild(); left {
 		if what, documented := surfaceDocuments(checkout, skew); documented {
-			return fmt.Sprintf("this checkout's command surface documents %s, which is not in this build — a build scripts/abcd left in the checkout's local tier, run directly, so it is the tree as it stood when the script last ran; run it through the checkout's `scripts/abcd`, which rebuilds it first", what)
+			return fmt.Sprintf("this checkout's command surface documents %s, which is not in this build — a build scripts/abcd.sh left in the checkout's local tier, run directly, so it is the tree as it stood when the script last ran; run it through the checkout's `scripts/abcd.sh`, which rebuilds it first", what)
 		}
 	}
 	pluginRoot, rootOK := ahoy.ResolvePluginRoot()
@@ -448,7 +448,7 @@ func executableUnder(root string) bool {
 }
 
 // executableIsCheckoutBuild reports whether the running binary is the build
-// scripts/abcd makes in root's local tier (abcdrepo.CheckoutBuildRel). It sits
+// scripts/abcd.sh makes in root's local tier (abcdrepo.CheckoutBuildRel). It sits
 // inside the checkout, but it is the tree as it stood when the script ran it,
 // not an artefact `make build` refreshes, so a page documenting what it lacks
 // gets a dev build's note, never the rebuild remedy (iss-2610241240133009).
@@ -462,7 +462,7 @@ func executableIsCheckoutBuild(root string) bool {
 }
 
 // leftCheckoutBuild reports the checkout whose local tier the running binary
-// sits in (abcdrepo.CheckoutBuildRel) when it is not the build scripts/abcd has
+// sits in (abcdrepo.CheckoutBuildRel) when it is not the build scripts/abcd.sh has
 // just made and started: a copy left there and run directly, which is as old
 // as the script's last run, whatever the tree has become since.
 func leftCheckoutBuild() (checkout string, ok bool) {

@@ -63,7 +63,7 @@ func TestGoRunOfThisCheckoutIsCurrent(t *testing.T) {
 	}
 }
 
-// localTierBuild puts a file where scripts/abcd builds checkout's abcd and
+// localTierBuild puts a file where scripts/abcd.sh builds checkout's abcd and
 // returns its path.
 func localTierBuild(t *testing.T, checkout string) string {
 	t.Helper()
@@ -78,7 +78,7 @@ func localTierBuild(t *testing.T, checkout string) string {
 }
 
 // TestTheScriptsBuildOfThisCheckoutIsCurrent is iss-2610241240133009: the
-// build scripts/abcd has just made in the local tier of the checkout being
+// build scripts/abcd.sh has just made in the local tier of the checkout being
 // installed is that tree as it stands, so it proceeds as a go run build does.
 // The build of another checkout of the same module, run by that checkout's
 // script path while standing here, is that tree's build, not this one's, and
@@ -120,7 +120,7 @@ func TestTheScriptsBuildOfThisCheckoutIsCurrent(t *testing.T) {
 }
 
 // TestAnUnknownVintageInASourceCheckoutIsSentToTheScript: in a source checkout
-// of abcd the remedy for an unstamped binary is the checkout's scripts/abcd,
+// of abcd the remedy for an unstamped binary is the checkout's scripts/abcd.sh,
 // because `make build` in a linked worktree makes another unstamped binary.
 // Elsewhere the remedy stays the rebuild.
 func TestAnUnknownVintageInASourceCheckoutIsSentToTheScript(t *testing.T) {
@@ -137,8 +137,8 @@ func TestAnUnknownVintageInASourceCheckoutIsSentToTheScript(t *testing.T) {
 	if err := os.WriteFile(mainGo, []byte("package main\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if reason := staleBinaryRefusal(unknown, src); !strings.Contains(reason, "`scripts/abcd ahoy install`") || strings.Contains(reason, "make build") {
-		t.Errorf("in a source checkout the refusal should send the person to scripts/abcd, not make build: %s", reason)
+	if reason := staleBinaryRefusal(unknown, src); !strings.Contains(reason, "`scripts/abcd.sh ahoy install`") || strings.Contains(reason, "make build") {
+		t.Errorf("in a source checkout the refusal should send the person to scripts/abcd.sh, not make build: %s", reason)
 	}
 	if reason := staleBinaryRefusal(unknown, sourceCheckout(t, "example.com/someone/else")); !strings.Contains(reason, "make build") {
 		t.Errorf("outside a source checkout the refusal should name the rebuild: %s", reason)
