@@ -393,7 +393,8 @@ func (k *asker) namesPusher(holder, login string) bool {
 // first recorded it (firstRecord), held under that id, was pushed by the
 // account the id is held to, since a later push that carries it says
 // nothing of who first recorded it. One naming self's kept id is among them
-// when own, self's own newest push, records it as theirs (ownRecord.mine).
+// when own, self's own newest push, records it as theirs (ownRecord.mine),
+// kept ones included, which a live renewal tries to withdraw again.
 // One naming an id self pairs with a login (DeclaredHolderIDsFile) is among
 // them when the newest push of that login to the branch, as the forge's
 // record of pushes shows it, records it exactly as ws does, and that login
@@ -408,12 +409,14 @@ func (k *asker) vouched(ws []Withdrawal, own ownRecord) map[Withdrawal]bool {
 	mine := own.mine(k.self)
 	for _, w := range ws {
 		switch {
-		case !w.unsettled():
-			continue
 		case validHolderID(w.By) && w.By == k.self.ID:
-			if slices.Contains(mine, w) {
+			// A kept one, a withdrawal the forge refused, which a live
+			// renewal tries again, is theirs on the same terms.
+			if (w.unsettled() || w.State == WithdrawnKept) && slices.Contains(mine, w) {
 				out[w] = true
 			}
+			continue
+		case !w.unsettled():
 			continue
 		case !k.self.declaredOnly(w.By):
 			continue
