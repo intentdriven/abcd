@@ -4,6 +4,7 @@
   "elements": {
     "repo": true,
     "branch": true,
+    "merging": true,
     "model": true,
     "context": true,
     "five_hour": true,

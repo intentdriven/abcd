@@ -55,9 +55,7 @@ func newParFixtureRuleset(t *testing.T, steps string, o Options, ruleset string)
 	repo.Git("push", "-q", "origin", "main")
 	repo.Git("fetch", "-q", "origin")
 	gh := t.TempDir()
-	if err := os.WriteFile(filepath.Join(gh, "gh"), []byte(stubGH), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	installStubGH(t, gh, ruleset)
 	t.Setenv("PATH", gh+string(os.PathListSeparator)+os.Getenv("PATH"))
 	f := &parFixture{repo: repo, gh: gh, stages: DefaultStages(), now: time.Date(2026, 9, 30, 9, 0, 0, 0, time.UTC)}
 	o.Now = f.clock

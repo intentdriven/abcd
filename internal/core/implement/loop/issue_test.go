@@ -362,9 +362,7 @@ func TestAnIssueLaneLandsOnePullRequestThatResolvesItsIssue(t *testing.T) {
 	repo.Git("push", "-q", "origin", "main")
 	repo.Git("fetch", "-q", "origin")
 	gh := t.TempDir()
-	if err := os.WriteFile(filepath.Join(gh, "gh"), []byte(stubGH), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	installStubGH(t, gh, queueRuleset("SQUASH"))
 	t.Setenv("PATH", gh+string(os.PathListSeparator)+os.Getenv("PATH"))
 	start, err := Start(repo.Root(), eligibleIssue, Options{noReserve: true})
 	if err != nil {

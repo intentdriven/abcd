@@ -10,6 +10,23 @@ every stop"). The second is the away mode, below: the person's word that they
 are away and sessions should work on (itd-2610180912189125,
 spc-2610180914469489).
 
+The waiting-on state is not who merges. That is the repository's
+`facilitator.mode` (`human` or `auto`, in `.abcd/config.json`), which the merge
+gate reads (itd-2610150602547271, spc-2610161609350616). While it is `auto`,
+the status-line row carries one more element after the branch,
+`autonomous merging`; under `human`, which every fresh install starts with,
+the row has no such element. The row reads the mode as the merge gate does:
+the default branch's committed `.abcd/config.json` and the machine layer,
+never the working tree's copy, so a branch that commits `auto` does not show
+itself as autonomous. The read asks git only, with its questions inside the
+row's own git time and killed at its end, and asks the network nothing. A mode
+that cannot be read drops the element and says why on stderr, masked, as the
+row's other elements do; a repository with no default branch yet shows
+nothing and says nothing, having nothing to merge into. The element is
+switchable in `~/.abcd.noindex/statusline.json` as `merging`, like the row's
+other elements. It reaches the host only through the status line the person
+consented to at install; nothing else in the host's settings calls abcd.
+
 ## Sub-verbs
 
 > _Machine-checked (`surface_coverage`, spc-27): each row records the verb's

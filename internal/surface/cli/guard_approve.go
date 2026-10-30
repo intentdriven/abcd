@@ -152,7 +152,9 @@ func newGuardApproveCommand() *cobra.Command {
 				// Each prompt reads the registry afresh, as the hook does, so
 				// a run judges against the repository as it stands, and only
 				// where that is at least as strong as it was at the base.
-				ld := guard.LoadRepoAt(rulesRoot(dir, cmd.ErrOrStderr()), base)
+				root := rulesRoot(dir, cmd.ErrOrStderr())
+				ld := guard.LoadRepoAt(root, base)
+				ld.Registry = ld.Registry.WithMergeMode(guardMergeMode(root))
 				return guard.ApprovePrompt(ld, guard.NewFiles(dir).WithRunDirs(runDirs...), tool, input)
 			})
 		},

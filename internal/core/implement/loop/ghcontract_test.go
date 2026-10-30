@@ -32,3 +32,23 @@ func TestTheStubForgeClientRefusesAFieldGhRefuses(t *testing.T) {
 		}
 	}
 }
+
+// The stub answers the merge gate's REST reads only as a plain GET, as the
+// real forge client does with no method or field: a call carrying either is
+// a write the gate never makes.
+func TestTheStubForgeClientAnswersOnlyAGet(t *testing.T) {
+	gh := filepath.Join(t.TempDir(), "gh")
+	if err := os.WriteFile(gh, []byte(stubGH), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"api", "-X", "POST", "repos/{owner}/{repo}/pulls/7/reviews?per_page=100"},
+		{"api", "repos/{owner}/{repo}/pulls/7/reviews?per_page=100", "-f", "event=APPROVE"},
+	} {
+		cmd := exec.Command(gh, args...)
+		cmd.Dir = filepath.Dir(gh)
+		if out, err := cmd.CombinedOutput(); err == nil {
+			t.Fatalf("stub %v answered a non-GET: %s", args, out)
+		}
+	}
+}

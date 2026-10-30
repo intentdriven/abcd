@@ -893,23 +893,30 @@ until the last step.
    request a killed invocation opened is found by the forge's listing of the
    branch, never opened twice.
 5. It reads the merge rule from the ruleset mirror (`.abcd/work/rulesets/`) at
-   the lane's base, so the lane's own commits cannot change it (decision 3):
-   where an active ruleset gates the default branch through a merge queue and
-   an active ruleset on it requires a person's approval, it arms auto-merge
-   with the queue's method; otherwise it leaves the pull request open for a
-   person to merge (ruling AM1). A pull_request rule requires approval when its
-   `required_approving_review_count` is one or more, or when
-   `require_code_owner_review` is set and the CODEOWNERS file the forge reads
-   at the lane's base names at least one owner. That file is the first found
-   in `.github/`, the root and `docs/`, so one there shadows the later ones
-   even when it names nobody, and a line names an owner only when its pattern
-   is followed by `@name`, `@org/team` or an e-mail address: a code-owner
-   review with nobody to own the change asks no person for anything. A missing
-   mirror requires nothing, so the pull request stays open; a mirror file that
-   cannot be read or parsed is refused, which also arms nothing. Where a queue
-   exists but nothing requires approval, the step's note, the run record and
-   the run's status say "left open for a person to merge: the ruleset requires
-   no approval", and no later step arms it. Before arming, the loop asks the
+   the lane's base, so the lane's own commits cannot change it (decision 3),
+   and asks the merge gate, the one decision `abcd land` asks too
+   ([`38-land.md`](38-land.md), which replaced ruling AM1): the facilitator
+   mode as the default branch's tip just fetched and
+   `~/.abcd.noindex/config.json` declare it, never the lane's checkout; the
+   pull request author's permission on the repository; the approvals of the
+   pushed head; and in `auto` a review receipt naming it. An unverified author
+   arms nothing; a contributor's pull request arms nothing until an approval
+   of its head by someone with write access counts; `human` arms the pull
+   request of an author with write access only once an approval of its head
+   counts (a review by someone else with write access, or the technical
+   facilitator's approval recorded through `abcd land`); `auto` arms one only
+   when a review receipt names its head. The loop mints no review receipt
+   itself, since the pushed head carries the records commit its validators did
+   not read: in `auto` the head's review is recorded through `abcd land`. An armed pull request goes into the merge
+   queue by its method, or, where no queue gates the default branch, is armed
+   as the forge's auto-merge with a merge commit; a forge that refuses
+   auto-merge is refused at exit 2, saying so. A pull request the gate does
+   not arm is left open, and the step's note, the run record and the run's
+   status say "left open:" with the gate's reason; the lane is parked, and
+   each later step asks the gate again, so an approval or a review receipt
+   given since arms it, and otherwise the wait names the reason as it now
+   stands. A mirror file that cannot be read or parsed is refused, which
+   arms nothing, and so is a `facilitator.mode` that cannot be read. Before arming, the loop asks the
    forge whether the pull request merges (`gh pr view` for its `mergeable`
    and `mergeStateStatus` fields), and one the forge reports `CONFLICTING` is
    refused at exit 2, unarmed, since the merge queue never takes it

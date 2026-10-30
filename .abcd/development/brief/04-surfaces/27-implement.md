@@ -508,9 +508,9 @@ the landing's merge rule decides, the land fence fetches the reservation and
 arms nothing unless it is still this person's, from this copy, and live,
 naming the other person, the other copy or the release, as contention; when it
 holds it is renewed for a day, with a ruleset mirror at the lane's base or
-without one, since every landing waits on a person (the approval an armed
-merge needs, or the merge of a pull request left open, as a checkout with no
-mirror always leaves it), which is also past any queue's
+without one, since a landing can wait on a person (the approval the merge
+gate needs, or a review receipt naming the head, [`38-land.md`](38-land.md)),
+which is also past any queue's
 `check_response_timeout_minutes`. Past the fence the hold rests on renewals at half the lease: each step
 of the run, whatever its stage, each receipt handed back, each status render,
 the load gate's waiter, while it waits and while its command runs, for each

@@ -100,3 +100,47 @@ func TestDividesTheCoresAmongTheSlotsSetOnTheMachine(t *testing.T) {
 		t.Fatalf("printed %q (stderr %q), want %q", got, errOut.String(), "8\n")
 	}
 }
+
+// TestTimeoutPrintsTheScaledPackageBudget: given -timeout and the stage's base
+// budget, the tool prints that budget scaled with the load as the stage starts
+// (implement.PreflightTimeout), as one go duration and a newline, so
+// `go test -timeout "$t"` reads it whole.
+func TestTimeoutPrintsTheScaledPackageBudget(t *testing.T) {
+	var out, errOut bytes.Buffer
+	code := runArgs([]string{"-timeout", "40m"}, &out, &errOut, func(string) string { return "" }, func() (machineload.Snapshot, error) {
+		return machineload.Snapshot{Load1: 24, HasLoad: true, Cores: 16}, nil
+	}, t.TempDir())
+	if got := out.String(); code != 0 || got != "1h20m0s\n" || errOut.Len() != 0 {
+		t.Fatalf("exit %d, printed %q (stderr %q), want 0 and %q", code, got, errOut.String(), "1h20m0s\n")
+	}
+}
+
+// TestTimeoutRefusesABaseItCannotRead: a base that is not a positive go
+// duration is a Makefile mistake, so the tool prints nothing on standard
+// output and exits 2, and the stage's `&&` chain fails there, rather than
+// handing go test an empty -timeout.
+func TestTimeoutRefusesABaseItCannotRead(t *testing.T) {
+	for _, base := range []string{"forty", "", "0s", "-5m"} {
+		var out, errOut bytes.Buffer
+		code := runArgs([]string{"-timeout", base}, &out, &errOut, func(string) string { return "" }, idle, t.TempDir())
+		if code != 2 || out.Len() != 0 || !strings.Contains(errOut.String(), "-timeout") {
+			t.Errorf("base %q: exit %d, printed %q (stderr %q), want exit 2, nothing printed and a note naming -timeout", base, code, out.String(), errOut.String())
+		}
+	}
+}
+
+// TestArgumentsItDoesNotKnowAreRefused: anything but no argument or
+// `-timeout <base>` exits 2 and prints nothing, so a mistyped recipe line fails
+// loudly instead of being read as a -p.
+func TestArgumentsItDoesNotKnowAreRefused(t *testing.T) {
+	for _, args := range [][]string{{"-timeout"}, {"-p", "4"}, {"-timeout", "40m", "extra"}} {
+		var out, errOut bytes.Buffer
+		if code := runArgs(args, &out, &errOut, func(string) string { return "" }, idle, t.TempDir()); code != 2 || out.Len() != 0 || errOut.Len() == 0 {
+			t.Errorf("args %q: exit %d, printed %q (stderr %q), want exit 2 and a usage note", args, code, out.String(), errOut.String())
+		}
+	}
+	var out, errOut bytes.Buffer
+	if code := runArgs(nil, &out, &errOut, func(string) string { return "" }, idle, t.TempDir()); code != 0 || out.String() != "16\n" {
+		t.Errorf("no args: exit %d, printed %q, want 0 and the -p %q", code, out.String(), "16\n")
+	}
+}

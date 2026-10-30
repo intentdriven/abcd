@@ -628,6 +628,18 @@ d="$(newrepo rs006-none)"
 resolve_with_note "$d" "fixed by rewording the message" ""
 expect pass "$d" "RS006 resolution naming no test" -- commits main HEAD
 
+# A function whose name holds Test past its first letter is not a test name:
+# machineload.GoTestTimeout was read as TestTimeout (iss-2610301246136766). A
+# test qualified by its package still counts.
+d="$(newrepo rs006-inner)"
+resolve_with_note "$d" "fixed in machineload.GoTestTimeout; pkg.TestRealGuard pins it" "TestRealGuard"
+expect pass "$d" "RS006 resolution naming a function that holds Test" -- commits main HEAD
+
+d="$(newrepo rs006-qualified)"
+resolve_with_note "$d" "fixed; pkg.TestInventedGuard pins it" "TestRealGuard"
+expect_refusal_naming "$d" "RS006 resolution naming a qualified test no file defines" \
+	"RS006 iss-999's resolution names TestInventedGuard" -- commits main HEAD
+
 # --- RS003: the ledger's existing stamps stay reachable ----------------------
 
 d="$(newrepo rs003-good)"

@@ -54,9 +54,10 @@ type boardOutput struct {
 	// is flagged (itd-28); omitted when the tree holds none. The text render
 	// lists the dated reviews and folds the release receipts into one line.
 	Reviews *reviews.Board `json:"reviews,omitempty"`
-	// Facilitator is facilitator.mode as the layered configuration resolves it, with the
-	// layer and origin that set it, or the read's refusal as Error
-	// (spc-2610161609350616 step 2); present in a managed checkout only.
+	// Facilitator is facilitator.mode as the merge gate resolves it (the
+	// default branch's committed configuration beside the machine layer), with
+	// the layer and origin that set it, or the read's refusal as Error
+	// (spc-2610161609350616); present in a managed checkout only.
 	Facilitator *boardFacilitator `json:"facilitator,omitempty"`
 	// Status is the Now / Next / Later block (itd-2609212103568351), present
 	// in a checkout abcd manages and omitted elsewhere.
@@ -85,17 +86,21 @@ type boardFacilitator struct {
 }
 
 // readBoardFacilitator reads facilitator.mode for a managed checkout, nil
-// elsewhere. The reader's notes are not printed here: they are the notes
-// layered.RootsFor writes for cwd, which the oracle member (boardOracle)
-// already prints on every board run. A refusal is masked with the home
-// redacted, since it can carry an absolute path and a key a configuration
-// file wrote.
+// elsewhere, through the merge gate's own resolver
+// (landing.ReadDefaultFacilitator): the default branch's committed
+// .abcd/config.json beside the machine layer, never the checkout's working
+// tree, so the board says what the gate does. A repository with no default
+// branch yet is drawn as unreadable, with the reason. The machine layer's
+// notes are not printed here: a refused home's is the note layered.RootsFor
+// writes for cwd, which the oracle member (boardOracle) already prints on
+// every board run. A refusal is masked with the home redacted, since it can
+// carry an absolute path and a key a configuration file wrote.
 func readBoardFacilitator(cwd string) *boardFacilitator {
 	root, err := gitutil.CheckoutRoot(cwd, statuslineStore)
 	if err != nil || !ahoy.Managed(root) {
 		return nil
 	}
-	f, _, err := landing.ReadFacilitator(cwd)
+	f, err := landing.ReadDefaultFacilitator(cwd)
 	if err != nil {
 		return &boardFacilitator{Key: landing.KeyFacilitatorMode, Error: termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
 	}

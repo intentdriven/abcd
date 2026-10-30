@@ -1049,6 +1049,50 @@ one stash stack for the whole repository, so a bare pop can take another
 worktree's work. A stash with a message and a pop by entry (`stash@{N}`) are not
 warned about, and neither is anything in a single-worktree clone.
 
+Merging is the technical facilitator's decision where `facilitator.mode` is
+`human`. The guard reads the mode the way `abcd land`'s merge gate does: from
+the default branch's committed `.abcd/config.json` and
+`~/.abcd.noindex/config.json`, a `human` in either winning. It reads the default
+branch as origin names it, just fetched within about 15 seconds, never this checkout's
+own refs, and a mode it cannot read, an unreachable or slow origin included,
+counts as `human`; so does a checkout where gh would act on another remote
+(`upstream`, `github`, or a `gh repo set-default` choice). While it
+is `human`, these commands are a **block**, each naming the setting that allows
+it (`facilitator.mode: auto` on the default branch, with no `human` in the
+machine layer): `gh pr merge --auto` (`merge-auto-human`); any other
+`gh pr merge` that merges, into the queue where one gates the default branch
+and at once where none does (`merge-now-human`; `gh pr merge --disable-auto`
+withdraws an arming and is allowed); a `gh api graphql` whose query is the
+`enqueuePullRequest`, `enablePullRequestAutoMerge` or `mergePullRequest`
+mutation (`merge-enqueue-human`); a `gh api graphql` whose query is not on the
+line, read from a file, from `--input` or from a substitution
+(`merge-graphql-unread-human`); and a `PUT` to the REST merge route
+`repos/{owner}/{repo}/pulls/N/merge` (`merge-rest-human`). In `auto` they are
+allowed, except a merge command that names its repository (`-R`, `--repo`, a
+`GH_REPO` prefix, a REST route spelling owner and name, or one the line does
+not fix, or after the line changed directory or set `GH_REPO`): this
+checkout's mode does not answer for another repository, so that is refused too. The safe
+form is to say the pull request is ready for the technical facilitator's
+approval and leave the arming to `abcd land`.
+
+Recording the technical facilitator's approval, `abcd land --approve`, is a
+**block** in every mode: it is the person's own act, and an approval an agent
+records is a false record of who approved. The binary's spelling is the registry
+entry `abcd-land-approve`; under any other program name (in a source checkout,
+`go run ./cmd/abcd` or `go run .`; a cross-compiled or renamed build) the land verb with `--approve` is
+refused as `abcd-land-approve-any-program`, whatever the program is called. A
+flag word that a substitution prints is not read. An approving review on the
+forge is a **block** in every mode too (`forge-review-approve`):
+`gh pr review --approve`; a `gh api` call to the REST review route whose event
+is `APPROVE` or not shown on the line; and one carrying the
+`addPullRequestReview` or `submitPullRequestReview` mutation with an `APPROVE`
+event. A review that comments or requests changes,
+and a read of the reviews, are allowed. Never
+run any of them; tell the person which head you believe is ready and let them
+approve it. These blocks stop an agent merging or approving by mistake; they
+are not a wall against a determined one, which holds the person's own
+credentials.
+
 A `bash -c` or `sh -c` script built from variables that runs `rm`, `rmdir`,
 `shred` or `unlink` is a **block** (`shell-c-variable-delete`): what it deletes
 is named only when it runs, so no check made before it can read it, and a host

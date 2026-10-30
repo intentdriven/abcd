@@ -815,7 +815,9 @@ and reports it the same way.
 ## Build
 
 ```bash
-make preflight   # the pre-push gate: the load check first (load-check, a
+make preflight   # the pre-push gate: it waits its turn at the load gate
+                 # (a records-only change waits at no gate),
+                 # then runs the load check (load-check, a
                  # warning, never a failure), then fmt-check, lint-reviews,
                  # lint-issues, record-lint, issue-drift,
                  # docs-lint, check-attribution, secrets-check, vulncheck,

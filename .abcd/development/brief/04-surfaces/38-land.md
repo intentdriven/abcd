@@ -96,9 +96,9 @@ bound: the refusal says so and gives the push to run by hand.
    branch that moves after the gate cannot change what is pushed. The push of a branch other
    than the default is not a merge, so it does not wait on the facilitator.
 4. **Enqueue** (`land.enqueue`). The branch's one open pull request from this
-   repository is armed by the merge gate, pinned to the head
-   (`--match-head-commit`), and then confirmed in the merge queue at that
-   head, through the forge's GraphQL API (the forge client's pull-request
+   repository is armed where the merge gate (below) allows, pinned to the head
+   (`--match-head-commit`), and, where a queue gates the default branch,
+   confirmed in the merge queue at that head, through the forge's GraphQL API (the forge client's pull-request
    view has no merge-queue field), asked of the repository the forge client
    named when `origin` was checked. The same query reads the forge's review
    decision, which the note reports (REVIEW_REQUIRED: held for a person's
@@ -148,14 +148,81 @@ bound: the refusal says so and gives the push to run by hand.
 
 ## The merge gate
 
-Whether the verb arms a merge is decided in one function, `mergeGate`, the
-seat of the facilitator mode draft itd-97 describes (auto: queue at once;
-human: the merge waits for the facilitator), which replaces it when that
-toggle is built (ruling R4). Until then every repository runs in human mode,
-and in human mode ruling AM1 ([`34-build.md`](34-build.md)) is the behaviour:
-auto-merge is armed only where a merge queue gates the default branch and a
-ruleset requires a person's approval. abcd and every managed repository take
-this one code path (ruling R3).
+Whether the verb arms a merge is decided in one function, `mergeGate`
+(`internal/core/landing/facilitator.go`), which the build loop's arm asks
+too, so abcd and every managed repository take one code path (ruling R3). It
+replaces ruling AM1 ([`34-build.md`](34-build.md)), which armed only where a
+ruleset required a person's approval and so let a change touching no owned
+path merge with no person reading it (itd-2610150602547271).
+
+Its inputs:
+
+- **The facilitator mode**, `facilitator.mode` in `.abcd/config.json`: `human`
+  (a person is the technical facilitator; the bundled default, so installing
+  abcd changes nothing about who merges) or `auto` (abcd is). It is read from
+  the default branch's committed file at the tip just fetched, beside
+  `~/.abcd.noindex/config.json`, never from the branch being landed, so a
+  branch that commits `auto`, or deletes the default branch's `human`, does
+  not decide its own gate (dcn-2610230058333177). `human` from either file
+  wins. A value that is neither is refused, naming the file, its text masked
+  for the terminal, and nothing is armed.
+- **Who the author is.** One seam reads the pull request author's
+  permission on the repository from the forge (`role_name`): Write, Maintain
+  and Admin are write access; Read and Triage, a 404 or no role make a
+  contributor; a custom role counts as its base, read from the same
+  answer's legacy level. A permission the forge cannot be asked for, or a
+  custom role whose base cannot be read, is unverified.
+- **The approvals of the head.** An approval counts when it is the latest
+  review by someone with write access, approves the head commit itself and is
+  not the author's own; or when the technical facilitator recorded it through
+  the verb's approval act, which writes `.abcd/.work.local/approvals/<sha>`.
+  The second exists because the forge refuses an author's approval of their
+  own pull request, and the facilitator authors most of the pull requests
+  abcd opens. It is the person's act, and the shell guard refuses it to an
+  agent ([`17-guard.md`](17-guard.md)).
+- **A review receipt** naming the head, recorded through the verb, the proof
+  that the review pair passed it.
+
+The decision, in order:
+
+1. An unverified author: nothing is armed, whatever the approvals, and the
+   note says the role is unverified.
+2. A contributor's pull request, in either mode: nothing is armed until an
+   approval of its head counts, and the note says an approval by someone with
+   write access is needed. Once one counts, the mode decides as for an author
+   with write access.
+3. `human`: the pull request of an author with write access is armed only
+   once an approval of its head counts; until then the note says it waits for
+   the technical facilitator's approval. The product thinker never approves a merge: their
+   part is to try the outcome and judge it.
+4. `auto`: the pull request of an author with write access is armed with no
+   one asked, but only when a review receipt names its head; otherwise the
+   note names the commit with no recorded review pair. Automated merging is never unreviewed
+   merging: the reviews are automated, not skipped.
+
+`human` holds against an agent merging by mistake, not against one set on
+getting round it, and the verb says so wherever it describes the mode. The
+gate assumes agents keep the rules: the recorded approval is a file in the
+checkout's local tier, which anything running as the person's account can
+write, and an agent holds the person's forge login and can reach routes the
+shell guard cannot read ([`17-guard.md`](17-guard.md)). The approval is a rule
+agents keep, not a proof of who approved; nothing proves an approval was the
+person's yet.
+
+abcd's own repository commits `"facilitator": {"mode": "auto"}`: its pull
+requests are opened by people with write access, so each is armed once a
+review receipt names its head, and a contributor's still waits for an approval
+by someone with write access. A machine that sets `human` in `~/.abcd.noindex/config.json` holds every one
+of them for the technical facilitator's approval.
+
+An armed pull request goes by the ruleset mirror's method: into the merge
+queue where one gates the default branch, and otherwise as the forge's
+auto-merge with a merge commit; where the forge refuses auto-merge, the step
+says so and arms nothing. abcd adds no approval rule or code-owner file to the
+forge, and changes none of its settings: the forge lets a pull request merge
+with no approval, so abcd enforces this itself. Every forge read the gate
+makes is a GET, its fields pinned in `internal/ghcontract` after a live
+read-only call, and a forge answer that cannot be read counts for nothing.
 
 ## Trust boundaries
 
@@ -288,6 +355,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--approve` | bool |
 | `--no-enqueue` | bool |
 | `--no-push` | bool |
 | `--record-review` | stringArray |

@@ -16,7 +16,7 @@ production_mode: hand-written
 
 ## Press Release
 
-> When several sessions on one machine push work at once, each preflight waits for its turn as one whole run. A queued run does nothing until the gate admits it: no lint, no build, no test. So the runs waiting never add to the load the running one is judged by. The number allowed at once is read again at every look, so a change to it applies to the runs already queued at their next look, and the wait names the value it judged by and where that value came from. Two runs that reach the gate together never wait on each other until they time out.
+> When several sessions on one machine push work at once, each preflight waits for its turn as one whole run (a records-only change takes a shorter preflight that waits at no gate). A queued run does nothing until the gate admits it: no lint, no build, no test. So the runs waiting never add to the load the running one is judged by. The number allowed at once is read again at every look, so a change to it applies to the runs already queued at their next look, and the wait's report names the value it judged by and where that value came from (always in its JSON form, and on the line saying the gate opened when more than one run is allowed at once). Two runs that reach the gate together never wait on each other until they time out.
 
 ## Why This Matters
 
@@ -35,13 +35,13 @@ We expect fewer test timeouts and faster landings, because runs that wait no lon
 - macOS and Linux machines. <!-- cond: cond-2610262202434440 -->
 - Sessions running an abcd that carries this change; a session on an older abcd keeps today's queue and its unmetered stages. <!-- cond: cond-2610262202437482 -->
 - One machine shared by several sessions, whichever account each runs in. <!-- cond: cond-2610262202435764 -->
-- The number allowed at once is 1 or 2, the current default; it may rise above 2 only once further measurement shows that 2 still leaves room (product thinker, 26 October 2026). <!-- cond: cond-2610262202435155 -->
+- The number allowed at once is a whole number from 1 to 4, and 1 by default (product thinker, 26 October 2026; the bound was raised from 2 to 4 on 28 October 2026). <!-- cond: cond-2610262202435155 -->
 - Not on CI runners, which never wait. <!-- cond: cond-2610262202436858 -->
 
 ## Acceptance Criteria
 
-- Given one run allowed at once and three preflights started within a minute, when they run, then only the admitted one does any work (lint, build, test or any other check), and the other two wait doing nothing.
-- Given a run waiting, when the number allowed at once changes, then the waiting run judges by the new number at its next look, and names the value and where it came from.
+- Given one run allowed at once and three full preflights started within a minute, when they run, then only the admitted one does any work (lint, build, test or any other check), and the other two wait doing nothing.
+- Given a run waiting, when the number allowed at once changes, then the waiting run judges by the new number at its next look, and its report names the value and where it came from (always in its JSON form, and on the opening line when more than one run is allowed at once).
 - Given two runs from different accounts reaching the gate at the same moment, when both wait, then one is admitted within a minute and neither waits on the other until it times out.
 - Given a repository whose own settings name a number of runs for the gate, when any run waits, then that number is ignored.
 

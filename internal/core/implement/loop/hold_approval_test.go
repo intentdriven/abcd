@@ -1,9 +1,10 @@
 package loop
 
-// hold_approval_test.go is where DR6c's hold meets AM1's arm decision: a held
-// lane is never armed, and a released lane lands through the arm decision, so
-// it is armed only where the ruleset requires a person's approval and is left
-// open for a person where none does.
+// hold_approval_test.go is where DR6c's hold meets the merge gate's arm
+// decision (spc-2610161609350616 step 4, which retired ruling AM1): a held
+// lane is never armed, and a released lane lands through the gate, so in
+// human mode it is armed only where an approval of its head counts and is
+// left open for the technical facilitator's approval where none does.
 
 import (
 	"strings"
@@ -32,7 +33,7 @@ func releaseHeldLane2(t *testing.T, f *parFixture) Lane {
 	return Lane{}
 }
 
-func TestAReleasedLaneIsLeftOpenWhereTheRulesetRequiresNoApproval(t *testing.T) {
+func TestAReleasedLaneIsLeftOpenWhereNoApprovalCounts(t *testing.T) {
 	f := siblingAtArm(t, false, unreviewedQueueRuleset("MERGE"), func(ld *Landing) bool { return ld.Merge != "" })
 	if l := f.lane(t, "lane-2"); l.Landing.Armed || !strings.HasPrefix(l.Landing.Merge, leftOpenForAPerson) {
 		t.Fatalf("lane 2 is left open before the hand-back: %+v", l.Landing)
@@ -42,11 +43,11 @@ func TestAReleasedLaneIsLeftOpenWhereTheRulesetRequiresNoApproval(t *testing.T) 
 		t.Fatalf("the released lane is left open for a person: %+v", l.Landing)
 	}
 	if strings.Contains(f.ghLog(t), "--auto") {
-		t.Fatalf("no lane of a run without a required approval is ever armed:\n%s", f.ghLog(t))
+		t.Fatalf("no lane of a run whose heads no approval counts for is ever armed:\n%s", f.ghLog(t))
 	}
 }
 
-func TestAReleasedLaneIsArmedWhereTheRulesetRequiresApproval(t *testing.T) {
+func TestAReleasedLaneIsArmedWhereAnApprovalCounts(t *testing.T) {
 	f := armedSibling(t, false)
 	l := releaseHeldLane2(t, f)
 	if !l.Landing.Armed {
