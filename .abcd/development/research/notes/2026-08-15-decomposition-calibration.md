@@ -2699,3 +2699,32 @@ The proposal: put the task in each session's title beside its name (for example 
 Verdict at filing: FILE-AS-IS, confirmed by the product thinker, who chose the status line approach. Typed link: builds on itd-2610111707085098. Advisory reversal flags: none; the title form asked for would have reversed the naming intent's stable address, and was declined in favour of the status line.
 
 Grade: the routing survived. The first reading took the request at its word, a change to the title, and the check that the title is also the host's messaging address moved the part to the status line before anything was filed.
+
+## 2026-10-30: abcd's help fits the screen it is read on (product thinker, routing given in the request)
+
+The proposal: "both abcd --help --agent and abcd --help are not formatted to be readable. capture as an intent to have the output formatted so that it can be read on a small/regular screen; also, conduct SOTA whether abcd --help --agent should be exported as .json by default".
+
+| Part | Type | Home |
+| --- | --- | --- |
+| both help listings laid out to the terminal's width, readable at 80 columns | capability | itd-2610301327282266 |
+| whether `--help --agent` writes JSON by default | capability (a default an agent relies on) | held for the state-of-the-art pass; folds into iss-2610301320457709, the machine-readable listing, or this draft once it returns |
+
+Verdict at filing: SPLIT. The product thinker named the first part an intent in the request itself; the second was asked as research, so it is held, not filed. Typed links: refines itd-146 and itd-2610090831227812. Advisory reversal flags: a JSON default for `--help --agent` would reverse the convention that help is text for a person, flagged for the product thinker when the research returns.
+
+Grade: the routing survived. The research returned no on a JSON default (help stays text, JSON behind `--json`), so the held part folded into iss-2610301320457709 as a remedy rewrite, not a filing, and the reversal flag lapsed with nothing reversed.
+
+## 2026-10-30: an agent learns how to call abcd from the abcd it runs (product thinker, routing confirmed)
+
+The proposal: "SOTA other verbs (e.g. explain) to make it easier for agents to actually use abcd; then interview me to allow planning this as a new feature", after a state-of-the-art pass on agent-facing CLI affordances.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| explain a command and the exact input it accepts, from the running binary; one source of command facts, generated page blocks, per-command JSON, a prose lint, each page's first line | capability | itd-2610301346085246 |
+| refusals with a code, a hint and the next command; next steps on success | capability | itd-2610301428378830 (builds on the first) |
+| a practice run of a filled-in input | capability | itd-2610301428390406 |
+| a published refusal code is never renumbered | trust rule | an ADR, minted with the spec that introduces codes |
+| the plugin pages generated whole from text in the binary | reversal of adr-2610290238168123 Decision 2 | flagged; declined at the interview (generated blocks inside hand-written pages, the program's code as the source) |
+
+Verdict at filing: FILE-AS-IS (one draft). Both pre-interview reviews said SPLIT; the interview first kept every part in one intent, then the product thinker ruled SPLIT three ways after it. Typed links: refines itd-2609212113220149, itd-2610090831227812, itd-111 and itd-121; the second builds on the first. Advisory reversal flag: raised and lapsed unconfirmed, the product thinker choosing code-first derivation after a second state-of-the-art pass rejected a hand-edited JSON source.
+
+Grade: the first routing did not survive. Filing four promises as one intent was the miss both reviewers named, the same bundling miss as the 2026-10-24 and 2026-10-26 entries; the reversal flag was right and decided the pages' form.
