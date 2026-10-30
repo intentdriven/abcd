@@ -79,8 +79,7 @@ The recorder takes the idea's slug, the store, and the verdict JSON, from a
 file or stdin.
 
 The store is **private** unless the run names the public one
-(iss-2610300838089246, the product thinker's ruling of 2026-10-30, which
-replaced the question every run asked since 2026-10-14). Nobody is asked: the
+(iss-2610300838089246). Nobody is asked: the
 command page records privately and names the public store only on the person's
 word, never on an inference. The recorder refuses a run that names both stores,
 writing nothing. A store left unnamed keeps an idea private, the failure that

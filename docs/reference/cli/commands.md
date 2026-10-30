@@ -1734,7 +1734,7 @@ unknown verdict, or one missing its reason, is refused with nothing written.
 **Example:**
 
 ```
-abcd embargo triage GHSA-xxxx-xxxx-xxxx not-a-vulnerability --by "Alice Example" --reason "the behaviour is the documented one"
+abcd embargo triage GHSA-xxxx-xxxx-xxxx not-a-vulnerability --by "<who decided>" --reason "the behaviour is the documented one"
 ```
 
 ### `abcd embark`

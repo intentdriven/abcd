@@ -11,10 +11,10 @@ committed, nothing public carries an advisory id or a hint of one, and closing
 or publishing an advisory takes one approval per act, bound to exactly what was
 shown.
 
-This chapter describes the first rung: intake, triage, closing, the outbound
-check and publication. Running fix lanes, landing the fixes with redaction,
-requesting a CVE, restoring redacted records and the broken embargo are later
-rungs, each its own record.
+This chapter describes intake, triage, closing, the outbound check and
+publication. `embargo` runs no fix lane, lands no fix, requests no CVE,
+restores no redacted record and has no step for an embargo broken before
+publication; those stay the person's (below).
 
 ## Sub-verbs
 

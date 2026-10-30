@@ -297,8 +297,7 @@ see. The person then lands the record in a change of its own.
 
 ## What stays the person's act
 
-In this release `embargo` does not fix, land or announce anything. These stay
-with the person:
+`embargo` does not fix, land or announce anything. These stay with the person:
 
 - fixing each vulnerability, landing the fixes so they are in the release
   that publishes the advisories, and resolving each private record in the
