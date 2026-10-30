@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -534,10 +535,10 @@ func TestAnotherCopyOfTheSamePersonIsRefusedWithoutTakeOver(t *testing.T) {
 	declareHolderIDs(t, cloud.home, laptop.keptHolderID()+"\n")
 	tip := w.remoteTip("iss-5")
 	_, err := cloud.reserve("iss-5", "a.go")
-	want := "you are already building iss-5 on another computer, until 2026-10-03T16:00:00Z (" + laptop.keptHolderID() + " is an id ~/.abcd.noindex/holder-ids " +
+	want := "you are already building iss-5 on another computer, until 2026-10-03T16:00:00Z (" + laptop.keptHolderID() + " is an id " + abcdhome.Display("holder-ids") + " " +
 		"declares as yours with no login beside it, so which account pushed this reservation is not checked); --take-over is still allowed here, only because " +
-		"~/.abcd.noindex/holder-ids lists " + laptop.keptHolderID() + " as yours: it replaces that reservation with yours; if the id is not yours, remove it from " +
-		"~/.abcd.noindex/holder-ids and leave the reservation be"
+		abcdhome.Display("holder-ids") + " lists " + laptop.keptHolderID() + " as yours: it replaces that reservation with yours; if the id is not yours, remove it from " +
+		abcdhome.Display("holder-ids") + " and leave the reservation be"
 	if !errors.Is(err, ErrBackOff) || err.Error() != want {
 		t.Fatalf("the cloud copy's reserve = %v; want %q", err, want)
 	}

@@ -195,7 +195,7 @@ func TestARacingMintKeepsTheFirstID(t *testing.T) {
 			t.Fatalf("racing mints gave %v, %v; want one id", ids, errs)
 		}
 	}
-	if got := notices(); len(got) != 1 || got[0] != MintNoticeLine(ids[0]) {
+	if got := notices(); len(got) != 1 || got[0] != mintNoticeLine(ids[0]) {
 		t.Fatalf("racing mints told %q; want the one mint that wrote the file told once", got)
 	}
 }
@@ -237,7 +237,7 @@ func TestAHolderIDFileNoOneElseMayTrustIsRefused(t *testing.T) {
 			c.setup(t, path)
 			before, _ := os.ReadFile(path)
 			_, err := holderID(home)
-			if err == nil || !strings.Contains(err.Error(), c.want) || !strings.Contains(err.Error(), "~/.abcd.noindex/holder-id") {
+			if err == nil || !strings.Contains(err.Error(), c.want) || !strings.Contains(err.Error(), abcdhome.Display("holder-id")) {
 				t.Fatalf("err = %v; want a refusal naming the file and %q", err, c.want)
 			}
 			if after, _ := os.ReadFile(path); string(after) != string(before) {
@@ -285,7 +285,7 @@ func TestTheDeclaredHolderIDsAreReadAsTheirFileSays(t *testing.T) {
 	if err := os.Chmod(p, 0o622); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ownSelf(home, "octo", false); err == nil || !strings.Contains(err.Error(), "~/.abcd.noindex/holder-ids") {
+	if _, err := ownSelf(home, "octo", false); err == nil || !strings.Contains(err.Error(), abcdhome.Display("holder-ids")) {
 		t.Fatalf("a declaration another account can write: %v; want a refusal naming it", err)
 	}
 }

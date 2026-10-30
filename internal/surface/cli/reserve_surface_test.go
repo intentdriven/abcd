@@ -121,7 +121,7 @@ func (w *reserveWorld) remoteTip(t *testing.T, id string) string {
 
 // reserveRun runs the CLI in dir and returns its exit code and both streams,
 // less the line telling a fresh holder id's mint, which the first act under
-// each clone's home prints (claim.MintNoticeLine): the tests of that line
+// each clone's home prints (claim.MintNoticeLineForTest): the tests of that line
 // read it through reserveRunRaw.
 func reserveRun(t *testing.T, dir string, args ...string) (int, string, string) {
 	t.Helper()

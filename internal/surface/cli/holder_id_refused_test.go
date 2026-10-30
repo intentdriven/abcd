@@ -3,10 +3,10 @@ package cli
 import (
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/claim"
 )
 
@@ -22,7 +22,7 @@ func TestEveryRenderNamesARefusedHolderID(t *testing.T) {
 		setup       func(t *testing.T, home string)
 	}{
 		{"a kept file another account can write", claim.HolderIDsWritableByOthers, func(t *testing.T, home string) {
-			path := filepath.Join(home, ".abcd.noindex", "holder-id")
+			path := abcdhome.Path(home, "holder-id")
 			if err := os.Chmod(path, 0o620); err != nil {
 				t.Fatal(err)
 			}

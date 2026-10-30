@@ -134,7 +134,7 @@ func TestAFreshMintIsToldOnce(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("notices %q; want one", got)
 	}
-	for _, want := range []string{id, "~/.abcd.noindex/holder-id", "read as someone else's until they lapse", HolderIDEnv, "~/.abcd.noindex/holder-ids"} {
+	for _, want := range []string{id, abcdhome.Display("holder-id"), "read as someone else's until they lapse", HolderIDEnv, abcdhome.Display("holder-ids")} {
 		if !strings.Contains(got[0], want) {
 			t.Fatalf("notice %q does not name %q", got[0], want)
 		}
@@ -171,7 +171,7 @@ func TestAMintIntoAFolderOthersCanWriteRefuses(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := p.reserve("iss-5", "a.go")
-	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "~/.abcd.noindex can be written by every account") ||
+	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), abcdhome.Display()+" can be written by every account") ||
 		!strings.Contains(err.Error(), "no holder id is minted there") {
 		t.Fatalf("err = %v; want the exposed folder refused", err)
 	}
@@ -194,7 +194,7 @@ func TestAnEmptyKeptIDIsRetriedNotRemoved(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := holderID(home)
-	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "~/.abcd.noindex/holder-id is empty") || !strings.Contains(err.Error(), "retry") ||
+	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), abcdhome.Display("holder-id")+" is empty") || !strings.Contains(err.Error(), "retry") ||
 		strings.Contains(err.Error(), "remove it") {
 		t.Fatalf("err = %v; want a retry, and no removal advised", err)
 	}

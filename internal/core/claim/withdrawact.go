@@ -41,6 +41,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/lease"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -116,7 +117,7 @@ type Settle struct {
 func (s Settle) Notes() []string {
 	var out []string
 	for _, l := range []string{lapsedEndLine(s.Subject, s.LapsedAt), notEndedLine(s.Subject, s.NotEnded, s.NotEndedClaimed), unplacedLine(s.Subject, s.Person, s.Unplaced),
-		notReadLine(s.Subject, s.Person, s.NotRead), ByHandLine(s.Subject, s.ByHand, true)} {
+		notReadLine(s.Subject, s.Person, s.NotRead), byHandLine(s.Subject, s.ByHand, true)} {
 		if l != "" {
 			out = append(out, l)
 		}
@@ -168,7 +169,7 @@ func claimedName(holder string, claimed bool) string {
 	return holder
 }
 
-// ByHandLine is the sentence naming the entries under preIDMarker on
+// byHandLine is the sentence naming the entries under preIDMarker on
 // subject, which no copy re-arms: their authors re-arm them by hand. While
 // the release is still being cut (ended false: the stranded note of a
 // take-over or a renewal, an admission's refusal) it says the re-arm waits
@@ -176,7 +177,7 @@ func claimedName(holder string, claimed bool) string {
 // (the settle that ends it, the listing of an ended release) it names no
 // time. It names the pull requests alone, never a holder; "" when ws is
 // empty.
-func ByHandLine(subject string, ws []Withdrawal, ended bool) string {
+func byHandLine(subject string, ws []Withdrawal, ended bool) string {
 	when := ""
 	if !ended {
 		when = "once the release ends, "
@@ -195,7 +196,7 @@ func ByHandLine(subject string, ws []Withdrawal, ended bool) string {
 // SettledLine is the sentence naming one settled withdrawal.
 func SettledLine(subject string, w Withdrawal) string {
 	if w.preID() && w.State == WithdrawnManual {
-		return ByHandLine(subject, []Withdrawal{w}, true)
+		return byHandLine(subject, []Withdrawal{w}, true)
 	}
 	switch w.State {
 	case WithdrawnRearmed:
@@ -222,10 +223,10 @@ func SettledLine(subject string, w Withdrawal) string {
 	return fmt.Sprintf("#%d withdrawn for %s", w.Number, subject)
 }
 
-// StrandedLine names the withdrawals of another person's that a release
+// strandedLine names the withdrawals of another person's that a release
 // holds and this copy does not re-arm: "#12, #34 withdrawn by octo for
 // rel-v0.16.0 stay withdrawn: only a copy of octo's re-arms them".
-func StrandedLine(subject string, ws []Withdrawal) string {
+func strandedLine(subject string, ws []Withdrawal) string {
 	by := map[string][]Withdrawal{}
 	var order []string
 	for _, w := range ws {
@@ -246,10 +247,10 @@ func StrandedLine(subject string, ws []Withdrawal) string {
 
 // StrandedNote names every withdrawal of ws, the stranded ones on subject,
 // to a reader whose kept holder id is ownID: another person's by whose they
-// are (StrandedLine), those naming the reader's own id by why no copy of
+// are (strandedLine), those naming the reader's own id by why no copy of
 // theirs acts on them (ownStrandedLine), never calling the reader's own id
 // another's, and those under preIDMarker as left to be re-armed by hand
-// (ByHandLine), once the release ends unless ended says it has.
+// (byHandLine), once the release ends unless ended says it has.
 func StrandedNote(subject string, ws []Withdrawal, ownID string, loginKnown, ended bool) string {
 	var others, own, byHand []Withdrawal
 	for _, w := range ws {
@@ -264,10 +265,10 @@ func StrandedNote(subject string, ws []Withdrawal, ownID string, loginKnown, end
 	}
 	var parts []string
 	if len(byHand) > 0 {
-		parts = append(parts, ByHandLine(subject, byHand, ended))
+		parts = append(parts, byHandLine(subject, byHand, ended))
 	}
 	if len(others) > 0 {
-		parts = append(parts, StrandedLine(subject, others))
+		parts = append(parts, strandedLine(subject, others))
 	}
 	if len(own) > 0 {
 		parts = append(parts, ownStrandedLine(subject, own, loginKnown))
@@ -285,7 +286,7 @@ func ownStrandedLine(subject string, ws []Withdrawal, loginKnown bool) string {
 	if !loginKnown {
 		return fmt.Sprintf("%s withdrawn under your holder id for %s are not re-armed from here: which GitHub account you are is not known in this session, "+
 			"so your own newest push to its branch cannot be read; a reservation act, which asks the forge, settles them, "+
-			"or set git's user.email to your GitHub no-reply address, or reservation.github_username in ~/.abcd.noindex/config.json",
+			"or set git's user.email to your GitHub no-reply address, or reservation.github_username in "+abcdhome.Display("config.json"),
 			strings.Join(numbers(ws), ", "), subject)
 	}
 	return fmt.Sprintf("%s named by your holder id on %s stay withdrawn: the reservation that first recorded them under your id was not pushed by your own GitHub account, "+
@@ -1447,7 +1448,7 @@ type ReleaseWithdrawals struct {
 	HolderIDRefused string `json:"holder_id_refused,omitempty"`
 	// ByHand is each entry under preIDMarker on a release that has ended,
 	// still withdrawn or settled as left by hand: no copy re-arms one, so
-	// its author re-arms it by hand (ByHandLine).
+	// its author re-arms it by hand (byHandLine).
 	ByHand []Withdrawal `json:"by_hand,omitempty"`
 }
 
@@ -1497,7 +1498,7 @@ func (r ReleaseWithdrawals) Lines() []string {
 	if l := UnpairedLine(r.Unpaired); l != "" {
 		out = append(out, l)
 	}
-	if l := ByHandLine(r.Subject, r.ByHand, r.Ended); l != "" {
+	if l := byHandLine(r.Subject, r.ByHand, r.Ended); l != "" {
 		out = append(out, l)
 	}
 	for _, w := range r.Skipped {

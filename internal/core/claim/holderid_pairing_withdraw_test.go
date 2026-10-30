@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // A declared holder id is held to the account its declaration pairs it with
@@ -253,7 +255,7 @@ func TestAListingSplitsDueFromStrandedByWhoseRecordItIs(t *testing.T) {
 		t.Fatalf("octo's listing = %+v; want #11-#14 due and #15, #16 stranded", rw)
 	}
 	i := slices.IndexFunc(rw.Lines(), func(l string) bool {
-		return strings.HasPrefix(l, unpairedD+" is an id ~/.abcd.noindex/holder-ids declares as yours with no login beside it")
+		return strings.HasPrefix(l, unpairedD+" is an id "+abcdhome.Display("holder-ids")+" declares as yours with no login beside it")
 	})
 	if i < 0 || strings.Contains(rw.Lines()[i], "maya") || !slices.Equal(rw.Unpaired, []string{unpairedD}) {
 		t.Fatalf("lines %q, unpaired %v; want the unpaired id named with how to pair it, naming no login", rw.Lines(), rw.Unpaired)

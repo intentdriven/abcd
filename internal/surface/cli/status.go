@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/github"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -140,11 +141,11 @@ func newStatusCommand(asJSON *bool) *cobra.Command {
 			"block headed STATUS of at most ten lines and one more that counts the\n" +
 			"rest, read from disk alone.\n" +
 			"An announcement informs and grants nothing.\n\n" +
-			"When ~/.abcd.noindex/holder-ids is there and its guarded read refuses it, no\n" +
+			"When " + abcdhome.Display("holder-ids") + " is there and its guarded read refuses it, no\n" +
 			"declared id is read as yours, and one line on stderr names the class of the\n" +
 			"refusal, never the file's contents (holder_ids_refused in --json).\n\n" +
 			"When your holder id is set or kept but refused (ABCD_HOLDER_ID set to\n" +
-			"anything but one holder id, or ~/.abcd.noindex/holder-id refused by its\n" +
+			"anything but one holder id, or " + abcdhome.Display("holder-id") + " refused by its\n" +
 			"guarded read), no hold or withdrawal under it is read as yours, and one line\n" +
 			"on stderr names the class of the refusal, never the value or the file's\n" +
 			"contents (holder_id_refused in --json).\n\n" +

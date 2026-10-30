@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -66,7 +67,7 @@ func TestAMalformedHolderIDsLineRefusesNamingOnlyItsNumber(t *testing.T) {
 			home := t.TempDir()
 			declareHolderIDs(t, home, c.body)
 			_, err := ownSelf(home, "octo", true)
-			if err == nil || !strings.Contains(err.Error(), "~/.abcd.noindex/holder-ids line ") {
+			if err == nil || !strings.Contains(err.Error(), abcdhome.Display("holder-ids")+" line ") {
 				t.Fatalf("err = %v; want a refusal naming the file and the line", err)
 			}
 			if strings.Contains(err.Error(), c.secret) || strings.Contains(err.Error(), "maya") {
@@ -140,11 +141,11 @@ func TestAHolderIDsFileNoOneElseMayTrustActsOnNoDeclaredID(t *testing.T) {
 			id := p.keptHolderID()
 			path := declareHolderIDs(t, p.home, pairedA+" maya\n")
 			c.setup(t, p.home, path)
-			if _, _, _, err := readDeclaredHolderIDs(p.home); err == nil || !strings.Contains(err.Error(), "~/.abcd.noindex/holder-ids") {
+			if _, _, _, err := readDeclaredHolderIDs(p.home); err == nil || !strings.Contains(err.Error(), abcdhome.Display("holder-ids")) {
 				t.Fatalf("err = %v; want a refusal naming the file", err)
 			}
 			tip := w.remoteTip("iss-2")
-			if _, err := p.reserve("iss-2", "b.go"); err == nil || !strings.Contains(err.Error(), "~/.abcd.noindex/holder-ids") {
+			if _, err := p.reserve("iss-2", "b.go"); err == nil || !strings.Contains(err.Error(), abcdhome.Display("holder-ids")) {
 				t.Fatalf("an act over the refused declaration: %v; want it refused naming the file", err)
 			}
 			if w.remoteTip("iss-2") != tip {

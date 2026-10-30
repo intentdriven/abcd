@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/embargo"
 	"github.com/intentdriven/abcd/internal/core/launch"
@@ -258,7 +259,7 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"the tombstone (settles in --json), so no copy acts twice, a copy of another\n" +
 			"person never re-arms (stranded in --json), and each id you declare with no\n" +
 			"login beside it that names one of those is listed (unpaired in --json): writing\n" +
-			"its account's login after it in ~/.abcd.noindex/holder-ids lets this copy settle\n" +
+			"its account's login after it in " + abcdhome.Display("holder-ids") + " lets this copy settle\n" +
 			"them. A person's withdrawals are read only from their own newest push to the\n" +
 			"release's branch, as the forge's record of pushes shows it: commits others\n" +
 			"pushed above it are counted and never read (not_read in settles), and when that\n" +
@@ -306,7 +307,7 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"store. A release does not consult it. A build's and a drain's reservations\n" +
 			"consult it too.\n\n" +
 			"The holder is named by your holder id: h_ and 32 random lower-case hex\n" +
-			"characters, minted the first time one is needed into ~/.abcd.noindex/holder-id\n" +
+			"characters, minted the first time one is needed into " + abcdhome.Display("holder-id") + "\n" +
 			"(owner-only) and kept. No trailer and no branch name abcd pushes carries your\n" +
 			"GitHub login. Each commit's author and committer fields carry your git\n" +
 			"identity when it is a person's; when it is unset or a machine's, they carry the\n" +
@@ -319,7 +320,7 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"anything but one id, every act refuses. A holder-id file another account owns\n" +
 			"or could write, or one that holds no id, is refused, never replaced. A\n" +
 			"reservation under an id listed in\n" +
-			"~/.abcd.noindex/holder-ids (one per line, # comments; the ids your other\n" +
+			abcdhome.Display("holder-ids") + " (one per line, # comments; the ids your other\n" +
 			"machines and accounts print with --holder) is yours too, from another copy.\n" +
 			"Write the GitHub login of the account an id is yours on after it, on its line\n" +
 			"(h_<32 hex> <login>), and a release's commit naming that id counts only when\n" +

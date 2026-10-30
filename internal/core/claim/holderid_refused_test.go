@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -82,7 +83,7 @@ func TestARefusedHolderIDsFileIsNamedByItsClassOnEveryRead(t *testing.T) {
 				t.Fatal("an act's read of the refused declaration did not refuse")
 			}
 			line := HolderIDsRefusedLine(c.class)
-			if !strings.HasPrefix(line, "~/.abcd.noindex/holder-ids is refused (") || !strings.Contains(line, "no declared id is read") ||
+			if !strings.HasPrefix(line, abcdhome.Display("holder-ids")+" is refused (") || !strings.Contains(line, "no declared id is read") ||
 				strings.Contains(line, "secret") || strings.Contains(line, "maya") || strings.Contains(line, pairedA) || strings.Contains(line, home) {
 				t.Fatalf("line %q; want the file and the class named, and nothing it holds", line)
 			}

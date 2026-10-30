@@ -832,7 +832,7 @@ func decideAdmit(p *prepared, j judged) (Result, message, string, error) {
 	case !j.Withdrawn[i].unsettled():
 		return Result{}, message{}, "", refuse("#%d is recorded %s on %s, so there is nothing to admit; %s", n, j.Withdrawn[i].State, p.id, nothingPushed)
 	case j.Withdrawn[i].preID():
-		return Result{}, message{}, "", refuse("#%d was not admitted: %s; %s", n, ByHandLine(p.id, j.Withdrawn[i:i+1], false), nothingPushed)
+		return Result{}, message{}, "", refuse("#%d was not admitted: %s; %s", n, byHandLine(p.id, j.Withdrawn[i:i+1], false), nothingPushed)
 	case p.self.unpaired(j.Withdrawn[i].By) && !p.acts(j.Withdrawn[i]):
 		return Result{}, message{}, "", refuse("#%d was not admitted: %s; %s", n, UnpairedLine([]string{j.Withdrawn[i].By}), nothingPushed)
 	case !p.acts(j.Withdrawn[i]):

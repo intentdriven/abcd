@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/claim"
 )
 
@@ -46,15 +47,15 @@ func TestReserveHolderPlainAndJSON(t *testing.T) {
 	calls := fakeForge(t, "octo-person", 4242, nil)
 
 	code, stdout, stderr := reserveRunRaw(t, p, "reserve", "--holder")
-	kept, err := os.ReadFile(filepath.Join(w.home, ".abcd.noindex", "holder-id"))
+	kept, err := os.ReadFile(abcdhome.Path(w.home, "holder-id"))
 	id := strings.TrimSpace(string(kept))
 	if err != nil || !regexp.MustCompile(`^h_[0-9a-f]{32}$`).MatchString(id) {
 		t.Fatalf("--holder kept %q, %v; want a minted holder id", kept, err)
 	}
-	idLine := "holder id: " + id + " (kept in ~/.abcd.noindex/holder-id); no trailer and no branch name abcd pushes carries your login; " +
+	idLine := "holder id: " + id + " (kept in " + abcdhome.Display("holder-id") + "); no trailer and no branch name abcd pushes carries your login; " +
 		"each commit's author and committer carry your git identity when it is a person's, otherwise the token account's login and no-reply address, " +
 		"and holds already pushed are not rewritten\n"
-	if code != 0 || stdout != "would reserve as octo (from git)\n"+idLine || stderr != "abcd: "+claim.MintNoticeLine(id)+"\n" {
+	if code != 0 || stdout != "would reserve as octo (from git)\n"+idLine || stderr != "abcd: "+claim.MintNoticeLineForTest(id)+"\n" {
 		t.Fatalf("exit %d, stdout %q, stderr %q; want the git holder and the holder id, and the mint told once", code, stdout, stderr)
 	}
 	code, stdout, stderr = reserveRunRaw(t, p, "reserve", "--holder", "--json")
@@ -63,8 +64,8 @@ func TestReserveHolderPlainAndJSON(t *testing.T) {
 		t.Fatalf("--json: exit %d, %v\n%s%s; want the kept id read and no second mint told", code, err, stdout, stderr)
 	}
 	want := map[string]any{"login": "octo", "id": float64(1234), "noreply": octoMail, "source": "git",
-		"holder_id": id, "holder_id_from": "~/.abcd.noindex/holder-id", "holder_id_file": "~/.abcd.noindex/holder-id",
-		"declared_holder_ids_file": "~/.abcd.noindex/holder-ids"}
+		"holder_id": id, "holder_id_from": abcdhome.Display("holder-id"), "holder_id_file": abcdhome.Display("holder-id"),
+		"declared_holder_ids_file": abcdhome.Display("holder-ids")}
 	if len(got) != len(want)+1 {
 		t.Fatalf("--json = %v; want %v and declared_holder_ids", got, want)
 	}
@@ -81,12 +82,12 @@ func TestReserveHolderPlainAndJSON(t *testing.T) {
 	}
 
 	other := "h_0123456789abcdef0123456789abcdef"
-	if err := os.WriteFile(filepath.Join(w.home, ".abcd.noindex", "holder-ids"), []byte(other+" # the laptop\n"), 0o600); err != nil {
+	if err := os.WriteFile(abcdhome.Path(w.home, "holder-ids"), []byte(other+" # the laptop\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	code, stdout, stderr = reserveRun(t, pat, "reserve", "--holder")
 	if code != 0 || stdout != "would reserve as octo-person (from token)\n"+idLine+
-		"also yours: "+other+" (declared in ~/.abcd.noindex/holder-ids)\n" || calls.n != 1 {
+		"also yours: "+other+" (declared in "+abcdhome.Display("holder-ids")+")\n" || calls.n != 1 {
 		t.Fatalf("exit %d, stdout %q, stderr %q after %d calls; want the token's holder after one", code, stdout, stderr, calls.n)
 	}
 }
@@ -223,7 +224,7 @@ func TestReserveHolderNamesTheEnvironmentsID(t *testing.T) {
 	if code != 0 || !strings.Contains(stdout, "holder id: "+env+" (from ABCD_HOLDER_ID); no trailer and no branch name") || stderr != "" {
 		t.Fatalf("exit %d, stdout %q, stderr %q; want the variable's id, from the variable, and no mint told", code, stdout, stderr)
 	}
-	if _, err := os.Lstat(filepath.Join(w.home, ".abcd.noindex", "holder-id")); !os.IsNotExist(err) {
+	if _, err := os.Lstat(abcdhome.Path(w.home, "holder-id")); !os.IsNotExist(err) {
 		t.Fatalf("--holder under the variable wrote the home's holder-id: %v", err)
 	}
 	code, stdout, _ = reserveRun(t, p, "reserve", "--holder", "--json")

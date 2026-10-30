@@ -88,8 +88,8 @@ func RegisterMintNotice(f func(string)) {
 	mintNotice.Store(&f)
 }
 
-// MintNoticeLine is the sentence a fresh mint of id is told by.
-func MintNoticeLine(id string) string {
+// mintNoticeLine is the sentence a fresh mint of id is told by.
+func mintNoticeLine(id string) string {
 	return fmt.Sprintf("minted a new holder id, %s, and kept it in %s: holds made under an earlier id of yours (another home, or this one before it was emptied) "+
 		"read as someone else's until they lapse, and the cap counts them apart; to keep one id, set %s to it in each environment, or list your earlier ids in %s",
 		id, HolderIDFile, HolderIDEnv, DeclaredHolderIDsFile)
@@ -422,7 +422,7 @@ func mintHolderID(home string) (string, error) {
 	err = fsutil.CreateExclusiveIn(dir, holderIDLeaf, []byte(minted+"\n"), abcdhome.FileMode)
 	if err == nil {
 		if f := mintNotice.Load(); f != nil {
-			(*f)(MintNoticeLine(minted))
+			(*f)(mintNoticeLine(minted))
 		}
 		return minted, nil
 	}
@@ -636,3 +636,8 @@ func holderFileRefusal(file string, refusal fsutil.DeclarationRefusal, err error
 	}
 	return refuse("%s %s, so which holds are yours cannot be told; %s", file, why, nothingSent)
 }
+
+// MintNoticeLineForTest is mintNoticeLine for the front door's tests, which
+// expect the sentence a fresh mint is told by on stderr: the front door
+// itself is handed the sentence through RegisterMintNotice and never builds it.
+func MintNoticeLineForTest(id string) string { return mintNoticeLine(id) }

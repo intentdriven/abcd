@@ -3,10 +3,10 @@ package cli
 import (
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/claim"
 )
 
@@ -21,7 +21,7 @@ func TestEveryRenderNamesARefusedHolderIDsFile(t *testing.T) {
 	if code, _, stderr := reserveRun(t, octo, "reserve", "iss-1", "--footprint", "a.go"); code != 0 {
 		t.Fatalf("reserve: exit %d, %s", code, stderr)
 	}
-	path := filepath.Join(w.home, ".abcd.noindex", "holder-ids")
+	path := abcdhome.Path(w.home, "holder-ids")
 	if err := os.WriteFile(path, []byte("h_0123456789abcdef0123456789abcdef mayasecret\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestEveryRenderNamesARefusedHolderIDsFile(t *testing.T) {
 		}
 		clean(name+" --json", stdout+stderr)
 	}
-	if code, _, stderr := reserveRun(t, octo, "reserve", "iss-2", "--footprint", "b.go"); code != 2 || !strings.Contains(stderr, "~/.abcd.noindex/holder-ids") {
+	if code, _, stderr := reserveRun(t, octo, "reserve", "iss-2", "--footprint", "b.go"); code != 2 || !strings.Contains(stderr, abcdhome.Display("holder-ids")) {
 		t.Fatalf("an act over the refused declaration: exit %d, %s; want it refused naming the file", code, stderr)
 	}
 }
