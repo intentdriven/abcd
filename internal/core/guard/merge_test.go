@@ -16,12 +16,20 @@ func modeOf(human bool, reads *int) MergeMode {
 	}
 }
 
+// namesItsRepository are the cases of TestHumanModeRefusesTheMergeCommands
+// that name (or may name) their repository, so auto refuses them as well.
+var namesItsRepository = map[string]bool{
+	`gh -R o/r pr merge 123 --auto`:              true,
+	`gh api -X PUT "repos/$REPO/pulls/$N/merge"`: true,
+	`gh api -X PUT "$URL"`:                       true,
+}
+
 // TestHumanModeRefusesTheMergeCommands is spc-2610161609350616 step 5: while
 // facilitator.mode is human, `gh pr merge --auto`, a `gh pr merge` that
 // merges, and the GraphQL enqueue and auto-merge mutations are refused,
 // naming the setting that allows each; withdrawing an arming is not a merge.
-// In auto every one is allowed, and the mode is read only when a merge
-// command asks.
+// In auto every one is allowed but those naming their repository
+// (namesItsRepository), and the mode is read only when a merge command asks.
 func TestHumanModeRefusesTheMergeCommands(t *testing.T) {
 	for _, c := range []struct {
 		cmd   string
@@ -70,6 +78,9 @@ func TestHumanModeRefusesTheMergeCommands(t *testing.T) {
 			}
 			if d.Verdict != VerdictBlock || d.EntryID != c.entry || !strings.Contains(d.Message, "facilitator.mode: auto") {
 				t.Fatalf("Check(%q) = %q via %q (%s), want a block via %q naming the setting", c.cmd, d.Verdict, d.EntryID, d.Message, c.entry)
+			}
+			if namesItsRepository[c.cmd] {
+				return // refused in auto too: TestAMergeNamingItsRepositoryCountsAsHuman
 			}
 			d, err = Defaults().WithMergeMode(modeOf(false, &reads)).Check(c.cmd)
 			if err != nil || d.Verdict == VerdictBlock {

@@ -323,7 +323,7 @@ func graphqlMerge(s segment, from int) (string, bool) {
 	unread, unknown, query := false, false, false
 	for i := from; i < len(s.tokens); i++ {
 		w, fixed, ok := forgeWord(s, i)
-		if ok && fixed && (w == "--input" || strings.HasPrefix(w, "--input=")) {
+		if flagCouldBe(s.tokens[i], "--input") || (ok && fixed && strings.HasPrefix(w, "--input=")) {
 			unread = true
 		}
 		v, vfixed, vok, isField := fieldValue(s, i)
@@ -459,7 +459,7 @@ var mergeRouteLoose = regexp.MustCompile(`(?i)(^|/)pulls/[^/]+/merge/?([?#].*)?$
 func restMerge(s segment, from int, eps []int) (put, route, spelled bool) {
 	for _, i := range eps {
 		tok := s.tokens[i]
-		if !unfixed(tok) {
+		if !isUnknown(tok) && !strings.ContainsRune(tok, varMark) {
 			if m := mergePathRe.FindStringSubmatch(tok); m != nil {
 				route = true
 				spelled = spelled || !placeholder(m[2], "owner") || !placeholder(m[3], "repo")

@@ -122,9 +122,9 @@ var wordReaders = map[string]string{
 
 	// merge.go: the merge rule (spc-2610161609350616 step 5).
 	"mergeCommands": "sitesNamed and operandReadings; a later word the line does not fix reads as empty, so a flag a substitution prints is not taken as --auto",
-	"graphqlMerge":  "forgeWord on every word: a field the line does not fix is a query it cannot read, refused while the mode is human",
-	"fieldValue":    "forgeWord; reads a flag word only where the line fixes it, and hands its value back with whether it is fixed",
-	"restMerge":     "isUnknown and varMark on every word (unfixed): a route or method word the line does not fix counts as the merge route or as PUT",
+	"graphqlMerge":  "forgeWord and flagCouldBe on every word: a field or an --input the line does not fix is a query it cannot read, refused while the mode is human",
+	"fieldValue":    "exempt: reads a flag word only where forgeWord says the line fixes it, against the names ghFieldFlags lists, and hands the value back with whether it is fixed",
+	"restMerge":     "isUnknown on the endpoint words and every method word: a route or method word the line does not fix counts as the merge route or as PUT",
 	"apiEndpoints":  "operandReadings, with gh api's value flags, so a method, header or field value is never read as the endpoint",
 	"forgeApproval": "sitesNamed, operandReadings and forgeWord; a word the line does not fix is never read as -a, --approve or an APPROVE event, and an unfixed event field on the REST review route counts as one",
 	"approveAct":    "commandSites and commandNamed; a word the line does not fix reads as empty, so a flag a substitution prints is not taken as --approve, as commands/guard.md names",
