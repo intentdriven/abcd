@@ -112,8 +112,8 @@ func TestRouteRefusalsExitTwoBeforeAnyStep(t *testing.T) {
 		broken string
 	}{
 		{"agent not dispatched", []string{"--route", "scribe=economy"}, `this invocation dispatches principle-distiller, not "scribe"`, ""},
-		{"tier outside the vocabulary", []string{"--route", "principle-distiller=cheap"}, `tier "cheap" is not one of`, ""},
-		{"connection not configured", []string{"--route", "principle-distiller=local@lab"}, `connection "lab" is not configured`, ""},
+		{"tier outside the vocabulary", []string{"--route", "principle-distiller=cheap"}, "its tier (a 5-byte value, not quoted) is not one of", ""},
+		{"connection not configured", []string{"--route", "principle-distiller=local@lab"}, "its connection (a 3-byte value, not quoted) is not configured", ""},
 		{"runner route on a verb that launches no runner", []string{"--route", "principle-distiller=runner:opencode"}, "names a runner", ""},
 		{"malformed routing table", nil, "schema_version", `{"schema_version":2,"agents":{}}`},
 	}

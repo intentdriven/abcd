@@ -1321,7 +1321,13 @@ whose header states the overflow, the unreviewed documents and every chunk's
 receipt, and whose `receipt` is the emit's), listing every finding with its key, both ends quoted and
 located, and the record it was filed as, linked to (`already open`) or
 addressed by (`addressed: resolved` or `addressed: wontfix`); a second run the
-same day takes the next free suffix. Each row's `state` is `filed`, `linked`
+same day takes the next free suffix. A summary is held to the 1 MiB the reviews
+board reads: when every finding in full would take it past that, the summary
+keeps its header and the findings table, which every record's evidence line
+points into, and each finding in full goes to `01-findings.md` beside it, under
+the same number. A pass whose table alone would pass the limit is refused before
+the first finding is filed, so no record cites a report that was never written;
+run it over one intent against the corpus instead. Each row's `state` is `filed`, `linked`
 or `addressed`, and an addressed row's `addressed_by` names the record and its
 folder. Report `status`, `report_path`, and the `filed`, `linked` and
 `addressed` ids. The same findings ingested again are a `noop` naming the report.
