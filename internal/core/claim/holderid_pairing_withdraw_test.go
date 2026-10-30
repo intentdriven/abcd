@@ -224,9 +224,9 @@ func TestARoundTripTakeOverBetweenTwoPairedAccountsLosesNoWithdrawal(t *testing.
 
 // TestAListingSplitsDueFromStrandedByWhoseRecordItIs: on an ended release,
 // octo's own withdrawals and those of an id octo pairs with maya that maya's
-// own push records are due; one of an unpaired id, and one naming maya's id
-// that mal pushed, are stranded, and the listing says how to pair the
-// unpaired id.
+// own push, holding the cut under that id, first records are due; one of an
+// unpaired id, and one naming maya's id that mal pushed, are stranded, and
+// the listing says how to pair the unpaired id.
 func TestAListingSplitsDueFromStrandedByWhoseRecordItIs(t *testing.T) {
 	w := newWorld(t)
 	f := armedForge(t)
@@ -238,6 +238,8 @@ func TestAListingSplitsDueFromStrandedByWhoseRecordItIs(t *testing.T) {
 	entry := func(n int, by string) Withdrawal {
 		return Withdrawal{Number: n, ID: "PR_" + strings.Repeat("x", n), Form: FormAutoSquash, Head: headA, By: by, State: WithdrawnPending}
 	}
+	// maya's push holds the cut under her own id, as her take-over writes it.
+	m.Holder = mayaB
 	m.Withdrawn = append(slices.Clone(ws), entry(14, mayaB))
 	w.pushAs(f, "rel-v0.16.0", "maya", m.text())
 	m.Withdrawn = append(m.Withdrawn, entry(15, unpairedD), entry(16, mayaB))

@@ -53,7 +53,8 @@ func TestEveryLineNamingAnotherHoldersReleaseMarksTheirIDClaimed(t *testing.T) {
 	if own, err := JudgedHolds(octo.dir, w.clock(), octo.opts()); err != nil || len(own) != 1 || strings.Contains(own[0].Text(), SenderClaimed) {
 		t.Fatalf("octo's own hold = %+v, %v; want octo's id not called claimed", own, err)
 	}
-	w.set(w.clock().Add(3 * time.Hour))
+	// Past the lease, and still inside the take-over margin.
+	w.set(w.clock().Add(24*time.Hour + 2*time.Minute))
 	if _, err := Fetch(maya.dir, maya.opts()); err != nil {
 		t.Fatal(err)
 	}
