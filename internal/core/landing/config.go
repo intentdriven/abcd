@@ -426,9 +426,11 @@ func deadlineErr(err error) error {
 // whether the repository's facilitator.mode is auto, read through the merge
 // gate's own resolver (readDefaultFacilitatorContext): the default branch's
 // committed .abcd/config.json and the machine layer, never the working tree's
-// copy, so the row and the gate cannot disagree about who merges. Its git
-// questions are bounded by ctx, the row's git share, and ask the network
-// nothing. A repository with no default branch yet says nothing and notes
+// copy, so an auto written only in the working tree changes neither the row
+// nor the gate. The row reads the default branch as last fetched while the
+// gate fetches first, so after the mode changes on origin the two can differ
+// until the next fetch. Its git questions are bounded by ctx, the row's git
+// share, and ask the network nothing. A repository with no default branch yet says nothing and notes
 // nothing: there is nothing to merge into. Any other failure drops the element
 // and returns the note saying why, masked, for the front door's stderr.
 //

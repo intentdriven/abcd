@@ -895,7 +895,7 @@ until the last step.
 5. It reads the merge rule from the ruleset mirror (`.abcd/work/rulesets/`) at
    the lane's base, so the lane's own commits cannot change it (decision 3),
    and asks the merge gate, the one decision `abcd land` asks too
-   ([`38-land.md`](38-land.md), which replaced ruling AM1): the facilitator
+   ([`38-land.md`](38-land.md)): the facilitator
    mode as the default branch's tip just fetched and
    `~/.abcd.noindex/config.json` declare it, never the lane's checkout; the
    pull request author's permission on the repository; the approvals of the
@@ -914,7 +914,7 @@ until the last step.
    not arm is left open, and the step's note, the run record and the run's
    status say "left open:" with the gate's reason; the lane is parked, and
    each later step asks the gate again, so an approval or a review receipt
-   given since arms it, and otherwise the wait names the reason as it now
+   given since arms it, and otherwise the wait names the reason as it
    stands. A mirror file that cannot be read or parsed is refused, which
    arms nothing, and so is a `facilitator.mode` that cannot be read. Before arming, the loop asks the
    forge whether the pull request merges (`gh pr view` for its `mergeable`

@@ -151,9 +151,7 @@ bound: the refusal says so and gives the push to run by hand.
 Whether the verb arms a merge is decided in one function, `mergeGate`
 (`internal/core/landing/facilitator.go`), which the build loop's arm asks
 too, so abcd and every managed repository take one code path (ruling R3). It
-replaces ruling AM1 ([`34-build.md`](34-build.md)), which armed only where a
-ruleset required a person's approval and so let a change touching no owned
-path merge with no person reading it (itd-2610150602547271).
+replaces ruling AM1 ([`34-build.md`](34-build.md)) (itd-2610150602547271).
 
 Its inputs:
 
@@ -207,7 +205,7 @@ checkout's local tier, which anything running as the person's account can
 write, and an agent holds the person's forge login and can reach routes the
 shell guard cannot read ([`17-guard.md`](17-guard.md)). The approval is a rule
 agents keep, not a proof of who approved; nothing proves an approval was the
-person's yet.
+person's.
 
 abcd's own repository commits `"facilitator": {"mode": "auto"}`: its pull
 requests are opened by people with write access, so each is armed once a
