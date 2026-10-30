@@ -130,7 +130,7 @@ func TestTheGuardReadsTheModeOnlyAsJustFetched(t *testing.T) {
 	fresh := guardRepo(t)
 	commitConfig(t, fresh, `{"facilitator":{"mode":"auto"}}`+"\n")
 	withOrigin(t, fresh)
-	git(fresh, "update-ref", "refs/remotes/origin/main", git(fresh, "commit-tree", "-m", "stale", git(fresh, "mktree")))
+	git(fresh, "update-ref", "refs/remotes/origin/main", git(fresh, "-c", "user.email=fixture@example.invalid", "-c", "user.name=Fixture", "commit-tree", "-m", "stale", git(fresh, "mktree")))
 	stdout, _, code = runGuard(preToolUse(t, "Bash", merge, fresh), "guard", "hook")
 	if code != 0 || strings.Contains(stdout, "deny") {
 		t.Fatalf("origin's auto, just fetched, lets gh pr merge --auto through over a stale local ref: exit %d, stdout %q", code, stdout)
