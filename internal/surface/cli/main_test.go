@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
+	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/core/sessionname"
@@ -105,6 +106,13 @@ func TestMain(m *testing.M) {
 	// test that did not ask for either must see stdout exactly as before.
 	// The naming tests swap in a fixture machine (hook_session_name_test.go).
 	sessionNameMachine = func() (sessionname.Machine, bool) { return sessionname.Machine{}, false }
+	// No waiter or implement status run here renews a run's reservation:
+	// either would renew the runs of the checkout it runs in, and push their
+	// renewals to its origin. The waiter's own tests swap in a fixture
+	// (runsFixture), status's renewal test its own, and the loop's tests renew
+	// runs of fixture repositories.
+	loadRenewRuns = func(string) []loop.RunRenewal { return nil }
+	statusRenewRuns = func(string, string) []loop.RunRenewal { return nil }
 	real := os.Getenv("HOME")
 	// The machine's own home is out of reach of every test that did not set
 	// HOME itself: its rules.json (the rules loader) and its layered files,

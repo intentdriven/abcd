@@ -106,7 +106,7 @@ type Tool struct {
 func downloadEffects(program string) string {
 	return "abcd downloads the one " + program + " build its own release names from " + program +
 		"'s GitHub release page, checks it against the sha256 abcd's release fixes before anything is written, " +
-		"and puts the program in your own bin folder (~/.local/bin unless XDG_BIN_HOME names another); it needs no admin " +
+		"and puts the program in your own bin folder ($XDG_BIN_HOME, else $XDG_DATA_HOME/../bin, else ~/.local/bin); it needs no admin " +
 		"rights, uses no package manager, and records the copy in " + abcdhome.Display("tools.json") + " so abcd runs exactly " +
 		"that copy and abcd ahoy uninstall removes it."
 }

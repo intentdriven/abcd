@@ -252,14 +252,34 @@ func (d DiskCheck) Refusal() error {
 }
 
 // RefusalAtOpen is the waiter's refusal when a volume is low at its last
-// look before it opens, after it has waited: other work filled the disk
-// while it waited. Nil when no volume is low.
-func (d DiskCheck) RefusalAtOpen() error {
+// look before it opens, after it has waited. Nil when no volume is low.
+// firstFloor is the floor the first look judged against, and slots, read from
+// setting, the count this look read: when this look's floor is above the
+// first's and every low volume still has the first's floor free, only the
+// floor moved, because the count rose, and the refusal leads with that
+// (dcn-2610300618371321); otherwise other work filled the disk while it
+// waited.
+func (d DiskCheck) RefusalAtOpen(firstFloor uint64, slots int, setting string) error {
 	if d.Status != DiskLow {
 		return nil
 	}
-	return errors.New("the disk fell below the floor while this waited, so no test stage is admitted: a test stage writes gigabytes of build output and test binaries, " +
+	lead := "the disk fell below the floor while this waited"
+	if d.FloorBytes > firstFloor && d.lowAbove(firstFloor) {
+		lead = fmt.Sprintf("the disk floor rose to %s while this waited, because %s is now %d (it was %s when this began to wait)",
+			bytesText(d.FloorBytes), setting, slots, bytesText(firstFloor))
+	}
+	return errors.New(lead + ", so no test stage is admitted: a test stage writes gigabytes of build output and test binaries, " +
 		"and on a full disk every preflight fails or writes truncated files. The gate did not open and took no hold.\n" + d.describe())
+}
+
+// lowAbove reports whether every low volume has at least floor free.
+func (d DiskCheck) lowAbove(floor uint64) bool {
+	for _, v := range d.Volumes {
+		if v.Low && v.FreeBytes < floor {
+			return false
+		}
+	}
+	return true
 }
 
 // Note is one line saying what the check could not read, "" when it read

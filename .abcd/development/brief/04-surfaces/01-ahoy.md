@@ -68,9 +68,10 @@ flags.
   the update chapter's ([21-update.md](21-update.md#sub-verbs)).
 - **Uninstall** is reversible removal: the marker block, abcd's README parts
   (and a README.md abcd created, once nothing but blank lines remains), abcd's
-  own `PATH` entry where abcd owns it, and the provenance record that proves
-  that ownership. It leaves `.abcd/` intact but for clearing `readme.created`
-  from `.abcd/config.json` once the README.md that record vouches for is gone,
+  own `PATH` entry where abcd owns it, the provenance record that proves
+  that ownership, and the `PATH` line setup added to the shell settings. It
+  leaves `.abcd/` intact but for clearing `readme.created` from
+  `.abcd/config.json` once the README.md that record vouches for is gone,
   never mutates the hook manifest, and a later install re-installs cleanly.
   It finds the entry by scanning `PATH`, so an entry that was installed into a
   directory `PATH` does not carry is removed by naming that directory again,
@@ -98,7 +99,11 @@ flags.
   and the owner's plan where the sign-in can see it. It requires only the checks
   every pull request's workflows report, reading a workflow's trigger only in
   plain YAML and leaving out one written in any other form, and names a
-  required check no workflow is known to report. A tightening that could break a working CI is advisory
+  required check no workflow is known to report. It pins each required check
+  to the one app whose check runs reported it on the recent commits, by the id
+  GitHub names; a check two apps or a commit status reported, or no recent run
+  reported, stays on any source and is named, and an existing pin is never
+  changed. A tightening that could break a working CI is advisory
   until the workflows comply, and so is one over a workflow or local action it
   could not read, or drawn from workflow files that differ from the default
   branch's on GitHub. The organization's Actions policy is read and
@@ -154,8 +159,8 @@ stays. A ruleset abcd cannot read whole, of another target, or excluding refs
 is not updated. A setting GitHub accepts only on top of another that is off and stays off
 (push protection without secret scanning, security updates without alerts) is
 advisory. No request body names the repository's visibility. It then
-mirrors the result into the repo's committed settings mirror, which has three
-blocks:
+mirrors the result into the repo's committed settings mirror, which has a
+managed and an observed block, and an owed block while anything is owed:
 
 - a managed block holding what abcd holds the repository to;
 - an owed block naming what the plan or the visibility does not offer yet;
@@ -1382,7 +1387,8 @@ manifest are intact); the audit reconciles the registered path against the
 registry. It never mutates, and never auto-fixes user-scope state.
 
 **Uninstall** removes the marker block, abcd's own `PATH` entry where abcd owns
-it, and the provenance record by which that ownership is proven. Ownership is
+it, the provenance record by which that ownership is proven, and the `PATH`
+line setup added to the shell settings. Ownership is
 the same three-shape predicate detection classifies with, and only one of the
 three is a pointer at all: the dev shim; the owned copy the `path-entry` record
 names and whose bytes still hash to the recorded value, which is the default
