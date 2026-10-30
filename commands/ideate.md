@@ -32,7 +32,7 @@ the repository. The choice decides who can ever read the verdict.
   `~/.abcd.noindex/ideas/<root-sha>/`, readable by the person's account alone,
   and no decision points at it. Name no source behind the idea anywhere
   public while it is private.
-- **Public** (only on the person's word) — the verdict is written into the repository, under
+- **Public** (only once the person has said so) — the verdict is written into the repository, under
   `.abcd/development/research/ideas/<root-sha>/`, with a decision record in
   `.abcd/work/decisions/` pointing at it, and is public once pushed, sources
   included.
@@ -141,11 +141,11 @@ refuses a split with no ruling.
 
 Compose the verdict document and hand it to the binary. With no flag, or with
 `--private`, the verdict is recorded privately; `--public` records it in the
-repository and is passed only on the person's word. Both flags together are
-refused, writing nothing.
+repository and is passed only once the person has said the idea is public.
+Both flags together are refused, writing nothing.
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" ideate record <idea-slug> --verdict-json <path>   # private; add --public on the person's word; - for stdin
+"${CLAUDE_PLUGIN_ROOT}/abcd" ideate record <idea-slug> --verdict-json <path>   # private; --public only once the person said so; - for stdin
 ```
 
 `<idea-slug>` is lower-case kebab-case (it becomes a filename). The document:
