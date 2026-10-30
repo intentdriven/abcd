@@ -495,9 +495,11 @@ func TestAMadeUpLoginOnALapsedReleaseGetsTheMarker(t *testing.T) {
 // rel-v0.16.0 and withdraws #12; octo takes the lapsed cut over and, #12
 // armed again by hand, withdraws it again; maya takes the lapsed cut back.
 // Her own newest push records her #12 and the tip octo's: both still to
-// settle, both vouched for by their holder's own push, so the earliest
-// recorded, hers, is the one her take-over writes, once, and her release
-// re-arms it.
+// settle, both vouched for by their holder's own push, and hers is her own,
+// which another login's entry never displaces, so hers is the one her
+// take-over writes, once, and her release re-arms it. Octo still finds his
+// own #12 through his own push: his next act keeps it over hers on the tip,
+// finds #12 armed, and records it so, once, under his id.
 func TestARoundTripBetweenTwoHoldersKeepsOneEntryForAPullRequest(t *testing.T) {
 	w := newWorld(t)
 	f := quietForge(t)
@@ -528,7 +530,7 @@ func TestARoundTripBetweenTwoHoldersKeepsOneEntryForAPullRequest(t *testing.T) {
 	}
 	ws := tipEntries(t, w, "rel-v0.16.0")
 	if len(ws) != 1 || ws[0].Number != 12 || ws[0].By != mayaB || !ws[0].Pending() {
-		t.Fatalf("maya's take-over records %+v; want #12 once, hers, the earliest recorded", ws)
+		t.Fatalf("maya's take-over records %+v; want #12 once, her own", ws)
 	}
 	f.reset()
 	res, err := maya.do(Request{Record: "rel-v0.16.0", Release: true})
@@ -540,6 +542,17 @@ func TestARoundTripBetweenTwoHoldersKeepsOneEntryForAPullRequest(t *testing.T) {
 	}
 	if ws := tipEntries(t, w, "rel-v0.16.0"); len(ws) != 1 {
 		t.Fatalf("release records %+v; want one entry", ws)
+	}
+	f.reset()
+	res, err = octo.reserve("iss-8", "o.go")
+	if err != nil {
+		t.Fatalf("octo's act after the release: %v", err)
+	}
+	if s := settleOf(t, res, "rel-v0.16.0"); len(s.Settled) != 1 || s.Settled[0].By != octoKept || s.Settled[0].State != WithdrawnFoundArmed {
+		t.Fatalf("octo's settle = %+v; want his own #12 found armed", s)
+	}
+	if ws := tipEntries(t, w, "rel-v0.16.0"); len(ws) != 1 || ws[0].By != octoKept || len(f.mutations()) != 0 {
+		t.Fatalf("tip records %+v, mutations %v; want #12 once, octo's, and nothing armed twice", ws, f.mutations())
 	}
 }
 

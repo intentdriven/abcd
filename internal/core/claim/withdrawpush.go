@@ -833,7 +833,7 @@ func (k *tipCache) save() {
 // under the id and pushed by self's own login, and it would read as theirs
 // from then on, so it is dropped. The result holds one entry for each pull
 // request (oneEach): another holder's entry for a pull request self's own
-// record also names is weighed against self's, never written beside it.
+// record also names is never written beside self's, and never kept over it.
 func merged(k *asker, base, onto []Withdrawal, own ownRecord, self Self) []Withdrawal {
 	mine := own.mine(self)
 	var out []Withdrawal
@@ -858,14 +858,15 @@ func merged(k *asker, base, onto []Withdrawal, own ownRecord, self Self) []Withd
 // oneEach is ws with one entry for each pull request, in the order ws first
 // names each, a release holding one entry for each (unwritableWithdrawals
 // refuses a commit listing one twice). Of two entries for one pull request
-// the one kept is, in order: the one still to settle (withdrawn or admitted)
-// over a settled one; then the one its holder's own push vouches for
-// (k.vouches; an entry of mine, self's own as their own newest push records
-// it, always is, and one under preIDMarker never is); then, both vouched or
-// neither, the one recorded earliest on the branch (k.recordedAt). So a
-// reader's own entry, read from their own push, is kept over the marker
-// entry another holder's push wrote for the same pull request, and a later
-// entry another login pushed never displaces an earlier vouched one.
+// the one kept is an entry of mine, self's own as their own newest push
+// records it, over every other, whatever its state, its vouching or where it
+// was recorded: another login's entry never displaces the reader's own.
+// Between two entries neither of which is of mine, the one kept is, in order:
+// the one still to settle (withdrawn or admitted) over a settled one; then
+// the one its holder's own push vouches for (k.vouches; one under
+// preIDMarker never is); then, both vouched or neither, the one recorded
+// earliest on the branch (k.recordedAt). So a later entry another login
+// pushed never displaces an earlier vouched one.
 func (k *asker) oneEach(ws, mine []Withdrawal) []Withdrawal {
 	var out []Withdrawal
 	for _, w := range ws {
@@ -883,6 +884,9 @@ func (k *asker) oneEach(ws, mine []Withdrawal) []Withdrawal {
 // preferred reports whether a is kept over b, two entries for one pull
 // request (oneEach).
 func (k *asker) preferred(a, b Withdrawal, mine []Withdrawal) bool {
+	if ma, mb := slices.Contains(mine, a), slices.Contains(mine, b); ma != mb {
+		return ma
+	}
 	if a.unsettled() != b.unsettled() {
 		return a.unsettled()
 	}
