@@ -227,7 +227,7 @@ named directly.
 ## The load check
 
 The load check is what abcd's own test lanes run before they start
-(itd-2609231434459890, spc-2609231542463113): once as the first prerequisite
+(itd-2609231434459890, spc-2609231542463113): once as the first stage
 of `make preflight`, and once in the eval harness's
 `TestMain`, never once per test package. It reads the machine through
 `internal/core/machineload`, a standard-library-only leaf (macOS: the
@@ -264,7 +264,8 @@ as it was printed; the run's hand-written load samples share the name and carry
 no `triggers`. Without its wait flag the check exits 0 on every status: it never
 refuses, waits or signals anything. With its wait flag it is the one waiter
 concurrent sessions gate a preflight or a race run with, and `make preflight`
-runs its own test stages through it: it blocks until the one-minute load is
+waits at it once, as one whole run (a records-only change takes a shorter
+rule that waits at no gate): it blocks until the one-minute load is
 below the wait limit, no other `go test -race` run is live, no other
 `make preflight` is running and no other waiter is ahead of it in the queue (one
 that started earlier, whatever its pid, or within two seconds of it with the
@@ -289,7 +290,7 @@ plus a step for each crossed waiter ahead beyond the first, so the earlier of
 two waiters behind the same one opens before the later stops counting it; no
 back-off breaks that cycle, since the back-off cap bounds only the last look,
 and a stand-back starts the count again.
-A waiter running its command holds every later gate for the command's length, by design. A look that finds the machine clear does not open the
+A waiter running its command holds every later first gate for the command's length at one preflight at a time, and a slot of it above one, by design. A look that finds the machine clear does not open the
 gate: the waiter waits a random 15 to 60 seconds and checks everything again,
 and opens only if that re-check is clear too (iss-2610102020442624). Within one
 account it also takes a hold under the abcd home, which a waiter beneath the
@@ -298,6 +299,41 @@ in one moment, so the command form shows itself as running its command from the
 moment it opens and looks once more two seconds later; it stands back from the
 other unless it started earlier and has the lower pid too, gives up its hold,
 re-draws its jitter and waits again, at most three times, while the other runs.
+A command hold lasts until its command exits, starts its own race run or has run 60 minutes: on 2026-10-24 a long, slow
+`go test` of the loop suite held the first gate for 45 minutes while nine
+preflights queued, and they could not tell whether it was working
+(iss-2610241419324875). So each waiter behind a command hold, and the holder
+itself while its command runs, follows the CPU of the holder's whole process
+tree between its looks, from the cumulative CPU times the process table
+carries; a child seen at one look and gone by the next counts as work, except a
+waiter's own errands in the tree (its reads of the table and the git and gh of
+its reservation renewal), which are not the run's work. When the tree has used no
+more than a tenth of a core for ten minutes (`QuietShare`, `QuietSpan`), the
+waiters' `waiting for capacity:` line says so as a fact, with the holder's pid,
+the checkout its hold record names and how long it has held the slot, and the
+holder says it on its own standard error while others queue. That notice
+speaks of a command hold, which a command that is not a race run takes only at
+one preflight at a time; above one such a run holds its slot under the settle
+hold, so no notice names it, and a stalled one is shown in the `holding:` part
+below with its CPU and, once it has used no more than a tenth of a core for ten
+minutes, marked quiet. It is not a
+diagnosis: a slow run waiting on its subprocesses uses little CPU too. A tree
+with a waiter of its own queued at a gate is not counted quiet. The gate only
+says it: the hold stays in force and nothing is signalled, since a process is
+stopped only by its owner through its own handle.
+Every waiting line also names each holder ahead, the hold record's and the
+work the process table shows in a slot of any account, with its age and its
+tree's CPU over the last ten minutes of this waiter's looks, or `not yet
+measured` before then, and a holder whose tree has used no more than a tenth
+of a core over that span, with no waiter of its own queued at a gate, is marked
+`quiet:` in place of its use, whatever hold it is under (`GateHolder.Quiet`,
+`"quiet": true` in the JSON result); a preflight is named once whichever way its make
+and the holding waiter nest, and a unit taking no slot (above one, a
+preflight at its race gate) is not named. The line is said again each span
+while the gate stays shut (iss-2610241457170255). A child that starts and exits between two
+looks is never seen, so a tree of short git children reads low, and counts as
+working for the quiet notice and the quiet mark alike; only the hold record's holder, of the waiter's own
+account, is said quiet in the notice with its checkout.
 The later start stands back whatever the pids; the earlier one stands back from
 a lower pid as well, which an older abcd (v0.15.1 and earlier) runs past.
 It runs a command given after `--` and exits with its code,
@@ -319,7 +355,9 @@ the load or the process table, taking a hold, or waiting a jitter or a settle,
 so the race stage follows the tests as it did before the gate existed. Both
 gates refuse, exiting 1 without waiting, while the volume holding the Go build
 cache or the worktree store has less free space than the disk floor: 4 GiB for
-each preflight the first gate admits at once, and 8 GiB at least. Above one it is
+each preflight the first gate admits at once, and 8 GiB at least; a disk that
+falls below the floor while a gate waits is refused before the gate
+opens. Above one the race gate is
 shut only by another live `go test -race` run, a race waiter queued ahead of
 it by the same rule (started earlier, or within two seconds of it with the
 lower pid) or running its command, the load limit and
@@ -338,10 +376,10 @@ account at one opens its race gate at once, so its race stage can start beside
 the race stage of an account above one, and race stages are kept apart only
 among accounts that all set more than one. And the plain form of the first gate
 takes no last look, so across accounts two openers whose re-checks fall in one
-moment can both open into the last free slot, one more in their test stages
+moment can both open into the last free slot, one more running
 than the setting. A first gate's waiter never queues
 there, and a race waiter never queues at the first gate. A preflight whose
-race waiter is queued runs nothing: at one it counts as in its test stages, and
+race waiter is queued runs nothing: at one it still takes its slot, and
 above one it takes no slot until its race run starts (iss-2610282016250805),
 since the race gate, not the slot count, keeps race runs to one at a time. Each gate keeps its
 own hold record and is shut only by it: a first gate's command hold lasts
@@ -352,7 +390,7 @@ hold is taken at one slot; a look that reads more than one, for a waiter whose
 own command is not a race run, judges it as the settle hold
 (dcn-2610300618371321), so a raised count reaches a run already queued behind
 it, and the running preflights are still counted against the slots. How many preflights
-the first gate admits to their test stages at once is the person's own machine
+the first gate admits at once, each a whole run, is the person's own machine
 setting (iss-2610161639025702): `load.preflights` in <!-- record-lint: forward-looking -->
 `~/.abcd.noindex/config.json`, read through the layered configuration with the
 machine layer alone, or `ABCD_LOAD_PREFLIGHTS` in the environment for a trial;
@@ -367,12 +405,12 @@ preflight at a time applies, since the gate never read that file before the
 setting existed; an unknown key in its load object is named on that line too.
 Only a `load.preflights` that is there and unusable refuses the wait. At one the
 first gate reads exactly as above. Above one it
-admits a waiter while fewer than that many units of work are in their test
-stages (a running preflight, or a waiter running its command, counted once
+admits a waiter while fewer than that many units of work are running
+(a running preflight, or a waiter running its command, counted once
 where one runs beneath the other), a waiter queued ahead still shuts it, a live
 race run does not shut it by itself and the load limit still does, and an
 opener still stands back from one that opened beside it, as above, whose mark
-then counts it as a unit in its test stages; an opener stands back only from a
+then counts it as a running unit; an opener stands back only from a
 waiter at its own gate; a lone race run gated in the command form, its
 command `go test -race`, is gated as a race run for both gates: it stays
 shut while another race run is live, judges and takes the race gate's hold as

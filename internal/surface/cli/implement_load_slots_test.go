@@ -58,7 +58,7 @@ func TestImplementLoadWaitAdmitsASecondPreflightWithTwoSlots(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d\n%s%s", code, out, errOut)
 	}
-	want := "fewer than 2 other preflights or gated commands are in their test stages (2 at once, set by " + implement.PreflightSlotsEnv + ")"
+	want := "fewer than 2 other preflights or gated commands are running (2 at once, set by " + implement.PreflightSlotsEnv + ")"
 	if !strings.Contains(out, want) {
 		t.Fatalf("output lacks %q:\n%s", want, out)
 	}
@@ -136,7 +136,7 @@ func TestImplementLoadWaitRaceGate(t *testing.T) {
 func TestImplementLoadRaceGateOpensAtOnceWithOneSlot(t *testing.T) {
 	waitFixture(t, machine(40, 40, 40, liveRace))
 	code, out, errOut := implementCLI(t, "implement", "load", "--race-gate", "--timeout", "1m")
-	want := "race gate open at once: one preflight at a time may be in its test stages, so the race stage follows its tests at once\n"
+	want := "race gate open at once: one preflight runs at a time, so the race stage follows its tests at once\n"
 	if code != 0 || out != want {
 		t.Fatalf("exit %d, want 0 and exactly %q:\n%s%s", code, want, out, errOut)
 	}

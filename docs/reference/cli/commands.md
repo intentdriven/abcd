@@ -2312,15 +2312,15 @@ verb requires it, and skipping it is never warned about.
 
 #### `abcd ideate record`
 
-Validate a host-composed gauntlet verdict: Writes the dated record to the private or public store; refuses without an idea slug, the answer or --verdict-json.
+Validate a host-composed gauntlet verdict: Writes the dated record, private unless --public; refuses without an idea slug or --verdict-json.
 
-**Usage:** `abcd ideate record <idea-slug> --private|--public --verdict-json <file|-> [flags]`
+**Usage:** `abcd ideate record <idea-slug> [--private | --public] --verdict-json <file|-> [flags]`
 
 **Flags:**
 
 ```
-      --private               the idea is private: record the verdict in ~/.abcd.noindex/ideas/<root-sha>/, owner-only, with no decision pointing at it (exclusive with --public)
-      --public                the idea is public: commit the verdict under .abcd/development/research/ideas/<root-sha>/ and record a decision pointing at it (exclusive with --private)
+      --private               the idea is private, the default: record the verdict in ~/.abcd.noindex/ideas/<root-sha>/, owner-only, with no decision pointing at it (exclusive with --public)
+      --public                the idea is public, on the person's word only: commit the verdict under .abcd/development/research/ideas/<root-sha>/ and record a decision pointing at it (exclusive with --private)
       --verdict-json string   path to the host-composed verdict JSON (or - for stdin)
 ```
 
@@ -2547,7 +2547,7 @@ value out of range, is reported loudly and every default is used.
 
 With --wait it waits for capacity instead of warning, and it is the one waiter
 concurrent sessions gate a preflight or a race run with, in place of a hand-written
-loop; `make preflight` runs its test stages through it. It blocks until the
+loop; `make preflight` waits at it once, as one whole run. It blocks until the
 one-minute load average is below the wait limit (`wait-load <load>` in the same
 file; by default twice the online core count), no other `go test -race` run is
 live, no other `make preflight` is running and no other waiter is ahead of it in
@@ -2614,19 +2614,19 @@ past its 5m0s cap). An account at one opens its race gate at once
 whatever another account set, and a checkout older than the gate runs its race
 stage ungated, so set more than 1 only once no such checkout runs a preflight. A
 first gate's waiter never queues behind a race waiter. A preflight whose race
-waiter is queued runs nothing: at 1 it still counts as in its test stages, and
+waiter is queued runs nothing: at 1 it still takes its slot, and
 above 1 it takes no slot until its race run starts, which the race gate keeps
 to one at a time. A waiter that has opened stands back only from a waiter that
 opened in the same moment at its own gate, never from one at the other gate.
 
-How many preflights the first gate admits to their test stages at once is your
+How many preflights the first gate admits at once, each a whole run, is your
 own machine's setting: `load.preflights` in `~/.abcd.noindex/config.json`, or ABCD_LOAD_PREFLIGHTS in the
 environment, which wins, for a trial; a whole number from 1 to 4, 1 by default,
 and never read from a repository file, so a checkout cannot raise the machine's
 load. At 1 both gates read as before the setting existed. Above 1 the
-first gate opens while fewer than that many other preflights or waiters running
-their command are in their test stages (a `--wait -- make preflight` counts
-once), a waiter queued ahead still shuts it, and a live race run does not shut
+first gate opens while fewer than that many other preflights or gated commands
+are running (a `--wait -- make preflight` counts once), a waiter queued ahead
+still shuts it, and a live race run does not shut
 it by itself; the load limit still does, and the race gate keeps race stages
 apart, so one race stage may run beside that many unit stages. A value it
 cannot use refuses the wait, naming where it was set. A `~/.abcd.noindex/config.json`
@@ -2666,7 +2666,30 @@ command that is a race run (go, then `test` with -race) is gated as one for both
 gates: above one preflight at a time it stays shut while another race run is
 live, judges and takes the race gate's hold as well as its own, and from the
 moment it opens every race gate and every other such command counts it as a
-race run, so a second one waits for the first. A
+race run, so a second one waits for the first. A command that is not a race run
+takes the command hold only at one preflight at a time; above one its hold lasts
+2m0s, as without a command, and the process table counts it in its slot.
+A command hold lasts until its command exits, starts its own race run or has run
+1h0m0s, so once
+the holder's whole process tree has used no more than
+10% of a core for 10m0s, each waiter behind it says so in one more
+`waiting for capacity:` line naming its pid, its checkout and how long it has held
+the slot, and the holder says so on its own standard error while others queue.
+Little CPU is a fact, not a verdict: a slow run waiting on its subprocesses uses
+little too. The hold stays in force and nothing is signalled; a tree with a
+waiter of its own queued at a gate is not counted quiet; only your own
+account's hold is said quiet. Every waiting line also names each holder ahead,
+of any account, after `holding:`, with its age and its tree's CPU over the last
+10m0s, or `not yet measured` until this waiter has watched it that long, and
+marks one `quiet:` in place of `using` once that CPU is no more than 10%
+of a core and no waiter of its own is queued at a gate, whatever hold it is
+under, so a stalled run above one preflight at a time, which no notice names,
+still reads as one. The line is said again every 10m0s while the gate
+stays shut. A child that starts
+and exits between two looks is never seen, so a tree of short children (git)
+reads low, and counts as working: neither the notice nor the mark calls it
+quiet; a waiter's own reads of the table and its renewals' git and gh in the
+tree are not counted. A
 symlinked ~/.abcd.noindex is refused. On a CI runner it opens at once.
 
 While it waits, and while its command runs, in a checkout, the waiter keeps

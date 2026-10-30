@@ -214,7 +214,7 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-2610141646523373](2610141646523373-ingested-pages-are-private-by-default.md) | Ingested pages are private by default and reach the project only by a person's promotion | accepted | 2026-10-14 |
 | [adr-2610141646525117](2610141646525117-the-librarian-treats-unknown-rights-as.md) | The librarian treats unknown rights as all rights reserved, files privately first, and admits only named ratings | accepted | 2026-10-14 |
 | [adr-2610141949110653](2610141949110653-the-brief-session-s-browser-editor-ships.md) | The brief session's browser editor ships as a vendored bundle the binary embeds | accepted | 2026-10-14 |
-| [adr-2610142116480836](2610142116480836-ideate-verdicts-are-private-or-public-by.md) | Ideate verdicts are private or public by the person's choice, and an idea's source is named publicly only when it graduates | accepted | 2026-10-14 |
+| [adr-2610142116480836](2610142116480836-ideate-verdicts-are-private-or-public-by.md) | Ideate verdicts are private or public by the person's choice, and an idea's source is named publicly only when it graduates (superseded by adr-2610300908239458) | superseded | 2026-10-14 |
 | [adr-2610142147242544](2610142147242544-abcd-s-site-is-built-onto-its-own-github.md) | abcd's record is built onto its own GitHub Pages, and abcdev.app becomes abcd's documentation site | proposed | 2026-10-14 |
 | [adr-2610150603484802](2610150603484802-a-fresh-install-s-facilitator-is-a.md) | A fresh install's facilitator is a person until the repository says auto | accepted | 2026-10-15 |
 | [adr-2610150729333337](2610150729333337-a-status-branch-moves-without-a.md) | A status branch moves without a preflight receipt | proposed | 2026-10-15 |
@@ -234,4 +234,5 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-2610281718537125](2610281718537125-a-release-publishes-with-no-approval.md) | A release publishes with no approval step | accepted | 2026-10-28 |
 | [adr-2610290238168123](2610290238168123-the-brief-states-the-design-and-why-each.md) | The brief states the design and why; each command's page states what abcd does, once, and is the copy checked against the code (supersedes adr-2609231028044006) | accepted | 2026-10-29 |
 | [adr-2610291037481588](2610291037481588-the-contributors-page-counts-people-and.md) | The contributors page counts people and names none | accepted | 2026-10-29 |
+| [adr-2610300908239458](2610300908239458-ideate-verdicts-are-private-unless-the.md) | Ideate verdicts are private unless the person says public (supersedes adr-2610142116480836) | accepted | 2026-10-30 |
 <!-- /index -->

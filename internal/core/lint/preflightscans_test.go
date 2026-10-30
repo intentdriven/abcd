@@ -18,7 +18,7 @@ import (
 // iss-2610261151481013): govulncheck over the module and gitleaks over the
 // commits the branch would land, the scans that failed 12 of 32 failed CI runs
 // between 2026-10-18 and 2026-10-26. Both are preflight prerequisites, so a
-// finding stops the run before its test stages wait at the load gate, and both
+// finding stops the run before its build and test stages, and both
 // take their versions from .github/workflows/ci.yml, so the local scan is CI's.
 
 func TestPreflightRunsTheHostedScans(t *testing.T) {
