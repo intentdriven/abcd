@@ -18,6 +18,9 @@ package judge
 // An answer whose first token is none of the options, or one with no
 // log-probabilities at all, is no answer: an error, which the router records
 // as a failed pair in shadow and falls back to the host on, never a guess.
+// The first token is the answer the model gave (the call asks for one token),
+// so an option ranked among its alternatives never stands in for an answer
+// that named none.
 
 import (
 	"context"
@@ -133,14 +136,14 @@ func (a LogprobAdapter) Judge(ctx context.Context, s State, q Question) (Answer,
 			}
 			return nil
 		}}
-	_, rec, err := a.Calls.Call(ctx, a.Creds, req, opts...)
+	content, rec, err := a.Calls.Call(ctx, a.Creds, req, opts...)
 	if err != nil {
 		return Answer{}, err
 	}
 	if !carried {
 		return Answer{}, errNoLogprobs
 	}
-	got, err := fromLogprobs(q, ls, top)
+	got, err := fromLogprobs(q, ls, string(content), top)
 	if err != nil {
 		return Answer{}, err
 	}
@@ -153,20 +156,17 @@ func (a LogprobAdapter) Judge(ctx context.Context, s State, q Question) (Answer,
 // is an option's label adds its probability to that option's; the options'
 // probabilities are normalised over the options, and the most probable is the
 // answer (the first in the question's order on a tie). No alternative naming
-// an option is no answer.
-func fromLogprobs(q Question, ls []string, top []openaiapi.TokenLogprob) (Answer, error) {
+// an option is no answer, and neither is an answer, answered (the model's own
+// first token), that is none of the labels, whatever its alternatives name.
+func fromLogprobs(q Question, ls []string, answered string, top []openaiapi.TokenLogprob) (Answer, error) {
 	choices := q.Choices()
 	mass := make([]float64, len(ls))
 	total := 0.0
 	for _, t := range top {
-		tok := strings.TrimSpace(t.Token)
-		for i, l := range ls {
-			if strings.EqualFold(tok, l) {
-				p := math.Exp(t.Logprob)
-				mass[i] += p
-				total += p
-				break
-			}
+		if i := labelOf(ls, t.Token); i >= 0 {
+			p := math.Exp(t.Logprob)
+			mass[i] += p
+			total += p
 		}
 	}
 	if total <= 0 || math.IsNaN(total) || math.IsInf(total, 0) {
@@ -177,6 +177,10 @@ func fromLogprobs(q Question, ls []string, top []openaiapi.TokenLogprob) (Answer
 		return Answer{}, fmt.Errorf("judge: none of the %d alternatives at the answer's first token (%s) is one of the labels %s, so no option is scored",
 			len(top), detailList(seen), strings.Join(ls, ", "))
 	}
+	if labelOf(ls, answered) < 0 {
+		return Answer{}, fmt.Errorf("judge: the model answered %s, which is none of the labels %s, so no option is scored",
+			strconv.Quote(clip(strings.TrimSpace(answered))), strings.Join(ls, ", "))
+	}
 	best := 0
 	for i := range mass {
 		if mass[i] > mass[best] {
@@ -184,6 +188,18 @@ func fromLogprobs(q Question, ls []string, top []openaiapi.TokenLogprob) (Answer
 		}
 	}
 	return Answer{Value: choices[best], Probability: mass[best] / total}, nil
+}
+
+// labelOf is the index of the label tok names, trimmed of space and read
+// without regard to case, or -1 when it names none.
+func labelOf(ls []string, tok string) int {
+	tok = strings.TrimSpace(tok)
+	for i, l := range ls {
+		if strings.EqualFold(tok, l) {
+			return i
+		}
+	}
+	return -1
 }
 
 // detailList joins the alternatives an error quotes, bounded.

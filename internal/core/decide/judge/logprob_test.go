@@ -133,7 +133,7 @@ func TestTheLogprobCandidateReadsAChooseQuestionByItsLetters(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a, err := fromLogprobs(q, ls, []openaiapi.TokenLogprob{{Token: "B", Logprob: -0.1}, {Token: " a", Logprob: -2.0}, {Token: "b", Logprob: -3.0}})
+	a, err := fromLogprobs(q, ls, "B", []openaiapi.TokenLogprob{{Token: "B", Logprob: -0.1}, {Token: " a", Logprob: -2.0}, {Token: "b", Logprob: -3.0}})
 	if err != nil || a.Value != q.Options[1] || a.Probability <= 0.5 || a.Probability >= 1 {
 		t.Fatalf("answer %+v, err %v", a, err)
 	}
@@ -283,5 +283,27 @@ func TestAnUnmarkedRouteIsTheFirstCandidate(t *testing.T) {
 	}
 	if _, ok := f.sent(t)["logprobs"]; ok {
 		t.Fatal("the first candidate asks for no log-probabilities")
+	}
+}
+
+// The model's own answer is its first token. One that is none of the labels
+// is no answer, even when a label sits among the alternatives below it: the
+// candidate never promotes an alternative over what the model said.
+func TestTheLogprobCandidateRefusesAnOffLabelAnswerWhateverTheAlternatives(t *testing.T) {
+	f := newLPFake(t, 200, lpAnswer("small/model", "no", `{"content":[{"token":"no","logprob":-0.01,"top_logprobs":[`+
+		`{"token":"no","logprob":-0.01},{"token":"C","logprob":-7.0}]}]}`))
+	cfg, err := oracle.LoadAPI(lpRoots(t, f.srv.URL+"/v1", marked, "host"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := Question{Type: EligibilityResidual, Kind: KindChoose, Ask: "Which hand-back, if any?",
+		Options: []string{"no", "user-visible", "trust-rule"}}
+	tgt := oracle.Target{Provider: "lp", Model: "small/model", Mode: oracle.JudgementOn}
+	a, err := LogprobAdapter{Calls: cfg, Target: tgt}.Judge(context.Background(), State{Text: "s"}, q)
+	if err == nil || !strings.Contains(err.Error(), `answered "no"`) || !strings.Contains(err.Error(), "A, B, C") {
+		t.Fatalf("an off-label answer is no answer: answer %+v, err %v", a, err)
+	}
+	if f.calls.Load() != 1 {
+		t.Fatalf("asked once, got %d calls", f.calls.Load())
 	}
 }
