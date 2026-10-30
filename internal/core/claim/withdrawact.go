@@ -556,6 +556,10 @@ func (p *prepared) ownRelease(tree string, j *judged) (Settle, error) {
 	case own.why != "":
 		return s, refuse("%s; %s", unplacedLine(p.id, p.holder, own.why), nothingPushed)
 	}
+	// What the commit the act's push is written on records: an unvouched
+	// entry under the reader's kept id is carried only over a commit that
+	// holds it (merged).
+	onto := j.Withdrawn
 	if holder != "" && held.found && (held.commit != j.Commit || unread) {
 		// The release as its holder's own newest push records it, over the
 		// tip the act's push is written on.
@@ -564,7 +568,7 @@ func (p *prepared) ownRelease(tree string, j *judged) (Settle, error) {
 		j.verdict = lease.Judge(lease.Stamp{ClaimedAt: held.m.ClaimedAt, ExpiresAt: held.m.ExpiresAt}, lease.Default, p.now)
 		j.mine, j.thisCopy = p.self.Owns(held.m.Holder), held.m.Copy == p.copy
 	}
-	j.Withdrawn = merged(j.Withdrawn, own, p.self)
+	j.Withdrawn = merged(j.Withdrawn, onto, own, p.self)
 	p.vouched = k.vouched(j.Withdrawn, own)
 	s.NotRead = own.above
 	return s, nil
@@ -910,7 +914,7 @@ func settleTip(a actor, tree, id string, t tip, own bool) (s Settle, ok bool) {
 	if lapsed && !(rec.found && rec.at == 0 && rec.commit == t.Commit) {
 		return Settle{}, false
 	}
-	acted, held := pushableWithdrawals(merged(t.Withdrawn, rec, a.self))
+	acted, held := pushableWithdrawals(merged(t.Withdrawn, t.Withdrawn, rec, a.self))
 	vouched := k.vouched(acted, rec)
 	due := slices.ContainsFunc(rec.mine(a.self), Withdrawal.unsettled) || len(vouched) > 0
 	s.NotRead = rec.above
@@ -1551,6 +1555,10 @@ func readerRecord(root, id, tip string, reader Self, ws *[]Withdrawal) (ownRecor
 	case own.why != "":
 		return unread(own)
 	}
-	*ws = merged(*ws, own, reader)
+	var onto []Withdrawal
+	if len(links) > 0 && links[0].readable {
+		onto = links[0].m.Withdrawn
+	}
+	*ws = merged(*ws, onto, own, reader)
 	return own, k.vouched(*ws, own)
 }
