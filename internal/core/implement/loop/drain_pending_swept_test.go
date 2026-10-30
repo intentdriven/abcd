@@ -59,11 +59,12 @@ func TestAPendingHandBackIsPublishedOverASweptBranch(t *testing.T) {
 	}
 
 	q := otherCopy(t, bare, quinnEmail)
-	res, err := Drain(q, Options{}, DrainOptions{})
+	var res DrainResult
+	asHomeOf(t, q, func() { res, err = Drain(q, Options{}, DrainOptions{}) })
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p := passedFor(t, res, secondIssue); p.Check != CheckReservation || !strings.Contains(p.Reason, secondIssue+" was handed back by octo as trust-rule") {
+	if p := passedFor(t, res, secondIssue); p.Check != CheckReservation || !strings.Contains(p.Reason, secondIssue+" was handed back by "+heldBy(t, patEmail)+" as trust-rule") {
 		t.Fatalf("Quinn's drain passes the hand-back over, naming it: %+v", p)
 	}
 	if got := refOf(t, bare, secondIssue); got != tomb {

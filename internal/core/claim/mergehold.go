@@ -79,8 +79,8 @@ func (m MergeHold) Reason() string {
 func (h Hold) yourCopy() string { return yourCopyAt(h.Sibling) }
 
 // Waits is what ends each hold, for the caller's next step: the copy cutting
-// the release merges it, or that copy's holder releases the hold or stops
-// renewing it, or the tag reaches origin. Another person's hold is named by
+// the release merges it, or that copy's holder releases the hold, or the tag
+// reaches origin, or the hold lapses unrenewed (lapses). Another person's hold is named by
 // its subject and its holder id, which names no one a reader could ask, so
 // the words say what ends it rather than whom to ask. "" when nothing holds.
 func (m MergeHold) Waits() string {
