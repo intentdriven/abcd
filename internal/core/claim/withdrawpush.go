@@ -761,13 +761,17 @@ func (k *tipCache) save() {
 
 // merged is the withdrawals a push of self's carries over base, the
 // withdrawals of the record it is written over: every entry of another
-// person's, and every entry naming an id self only declares (another account
-// or home of theirs, whose own push recorded it), as base records it, and
-// self's own (their kept id, or their login) only as their own newest push
-// (own) records them, so nothing another login pushed is carried as theirs.
-// A declared id's entry for a pull request self's own record also names is
-// dropped for self's. An entry naming self's kept id or login with no push of
-// self's login is not theirs to carry, and is dropped.
+// person's, every entry naming an id self only declares (another account or
+// home of theirs, whose own push recorded it), and every entry naming self's
+// kept id that self's own newest push does not record as theirs
+// (ownRecord.mine: one another login first recorded), as base records it,
+// each carried as another's, which nothing here acts on unless it is
+// vouched; and self's own only as their own newest push (own) records them,
+// named by their kept id (Self.asKept), so nothing another login pushed is
+// carried as theirs and no push carries their login. An entry of base for a
+// pull request self's own record also names is dropped for self's. An entry
+// naming self's login with no push of self's login is not theirs to carry,
+// and is dropped.
 func merged(base []Withdrawal, own ownRecord, self Self) []Withdrawal {
 	mine := own.mine(self)
 	var out []Withdrawal
