@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/decide/judge"
@@ -243,11 +244,14 @@ type scoreFake struct {
 	err   error
 	calls int
 	seen  []judge.Question
+	// slow is how long each answer takes, past any deadline the caller set.
+	slow time.Duration
 }
 
 func (f *scoreFake) Judge(_ context.Context, s judge.State, q judge.Question) (judge.Answer, error) {
 	f.calls++
 	f.seen = append(f.seen, q)
+	time.Sleep(f.slow)
 	if f.err != nil {
 		return judge.Answer{}, f.err
 	}
@@ -493,5 +497,87 @@ func TestRankPredecessorLessonsTurnedOn(t *testing.T) {
 		scoresFor(t, v, func(LessonQuestion) int { return 4 }))
 	if err != nil || got.RankedBy != corereflect.RankedByHost || failing.calls != 1 {
 		t.Fatalf("the host's scores are taken: %+v %v calls %d", got.Judgement, err, failing.calls)
+	}
+}
+
+// withLessonBudgets shortens the ranking's overall time for the adapter, on
+// and in shadow, for the length of one test.
+func withLessonBudgets(t *testing.T, on, shadow time.Duration) {
+	t.Helper()
+	oldOn, oldShadow := lessonAdapterBudget, lessonShadowBudget
+	lessonAdapterBudget, lessonShadowBudget = on, shadow
+	t.Cleanup(func() { lessonAdapterBudget, lessonShadowBudget = oldOn, oldShadow })
+}
+
+// Shadow stops asking at the first lesson whose pair is recorded as failed: a
+// provider that hangs costs one deadline, not one per lesson. The lessons not
+// reached keep no pair, and the note names them and says why; the host's
+// scores still rank.
+func TestRankPredecessorLessonsInShadowStopsAtTheFirstFailedPair(t *testing.T) {
+	v, err := PredecessorLessons(lessonsLifeboat(t), lessonsFraming)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter, pairs := &scoreFake{err: context.DeadlineExceeded}, []lab.Pair{}
+	got, err := RankPredecessorLessons(context.Background(), v, lessonsRouter(oracle.JudgementShadow, adapter, &pairs),
+		scoresFor(t, v, func(LessonQuestion) int { return 2 }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if adapter.calls != 1 || len(pairs) != 1 || pairs[0].Skipped != lab.SkippedFailed || pairs[0].StateSHA256 != v.Questions[0].StateSHA256 {
+		t.Fatalf("asked once, one failed pair: calls %d pairs %+v", adapter.calls, pairs)
+	}
+	jd := got.Judgement
+	if jd == nil || jd.Pairs != 1 || got.RankedBy != corereflect.RankedByHost || len(got.Questions) != 0 {
+		t.Fatalf("the host's scores rank, one pair kept: %+v", jd)
+	}
+	for _, want := range []string{"4 lesson(s) not asked", "lesson-2 through lesson-5", "keep no pair", "lesson-1", "failed"} {
+		if !strings.Contains(jd.PairsNote, want) {
+			t.Fatalf("the note names the lessons not asked and why (%q): %q", want, jd.PairsNote)
+		}
+	}
+}
+
+// Shadow has one deadline for the whole pass: once it is spent, no further
+// lesson is asked, even of an adapter that answers.
+func TestRankPredecessorLessonsInShadowStopsWhenItsTimeRunsOut(t *testing.T) {
+	withLessonBudgets(t, time.Minute, 20*time.Millisecond)
+	v, err := PredecessorLessons(lessonsLifeboat(t), lessonsFraming)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter, pairs := &scoreFake{slow: 60 * time.Millisecond}, []lab.Pair{}
+	got, err := RankPredecessorLessons(context.Background(), v, lessonsRouter(oracle.JudgementShadow, adapter, &pairs),
+		scoresFor(t, v, func(LessonQuestion) int { return 2 }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if adapter.calls != 1 || len(pairs) != 1 || pairs[0].Skipped != "" || got.Judgement.Pairs != 1 {
+		t.Fatalf("one lesson asked before the time ran out: calls %d pairs %+v", adapter.calls, pairs)
+	}
+	for _, want := range []string{"4 lesson(s) not asked", "lesson-2 through lesson-5", "ran out"} {
+		if !strings.Contains(got.Judgement.PairsNote, want) {
+			t.Fatalf("the note says the time ran out (%q): %q", want, got.Judgement.PairsNote)
+		}
+	}
+}
+
+// Turned on, the ranking has one deadline for the whole pass too: once it is
+// spent the host's request stands, with a receipt saying so.
+func TestRankPredecessorLessonsTurnedOnStopsWhenItsTimeRunsOut(t *testing.T) {
+	withLessonBudgets(t, 20*time.Millisecond, time.Minute)
+	v, err := PredecessorLessons(lessonsLifeboat(t), lessonsFraming)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter, pairs := &scoreFake{slow: 60 * time.Millisecond}, []lab.Pair{}
+	got, err := RankPredecessorLessons(context.Background(), v, lessonsRouter(oracle.JudgementOn, adapter, &pairs), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if adapter.calls != 1 || len(got.Questions) != 5 || got.RankedBy != corereflect.RankedByTermOverlap || got.Judgement == nil ||
+		!strings.Contains(got.Judgement.Fallback, "at lesson-2") || !strings.Contains(got.Judgement.Fallback, "ran out") ||
+		!strings.Contains(got.Judgement.Fallback, "the host's request stands") {
+		t.Fatalf("the host's request stands once the time is spent: calls %d %+v", adapter.calls, got.Judgement)
 	}
 }

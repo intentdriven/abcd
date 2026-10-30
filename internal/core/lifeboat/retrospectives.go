@@ -25,6 +25,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/decide/judge"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
+	"github.com/intentdriven/abcd/internal/core/lab"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	corereflect "github.com/intentdriven/abcd/internal/core/reflect"
 	"github.com/intentdriven/abcd/internal/core/update"
@@ -271,6 +272,16 @@ const (
 	lessonShadowTimeout  = 20 * time.Second
 )
 
+// The ranking's whole time for the adapter, every lesson's call within it, so
+// one command is bounded however many lessons the lifeboat carries: turned on,
+// a ranking not done in time leaves the host's request standing; in shadow,
+// which decides nothing, the lessons not reached are not asked and keep no
+// pair. Tests shorten them.
+var (
+	lessonAdapterBudget = 5 * time.Minute
+	lessonShadowBudget  = 2 * time.Minute
+)
+
 // LessonScoresSchemaVersion is the scores file's shape.
 const LessonScoresSchemaVersion = 1
 
@@ -402,9 +413,21 @@ func RankPredecessorLessons(ctx context.Context, v LessonsView, r *judge.Router,
 		return v, nil
 	}
 	if mode == oracle.JudgementOn {
+		jd.Target = r.Target(judge.EmbarkLessonRanking)
+		bctx, cancelBudget := context.WithTimeout(ctx, lessonAdapterBudget)
+		defer cancelBudget()
+		outOfTime := func(id string) string {
+			return fmt.Sprintf("at %s, the decision adapter's time for the whole ranking (%s) ran out, so the host's request stands",
+				id, lessonAdapterBudget)
+		}
 		got, probs := make([]int, len(v.lessons)), make([]float64, len(v.lessons))
 		for i, l := range v.lessons {
-			cctx, cancel := context.WithTimeout(ctx, lessonAdapterTimeout)
+			if bctx.Err() != nil && ctx.Err() == nil {
+				jd.Fallback = outOfTime(l.ID)
+				v.Judgement = jd
+				return v, nil
+			}
+			cctx, cancel := context.WithTimeout(bctx, lessonAdapterTimeout)
 			a, rc, err := r.Decide(cctx, lessonState(v.framing, l), q, judge.Pending())
 			cancel()
 			jd.Target = rc.Target
@@ -413,6 +436,9 @@ func RankPredecessorLessons(ctx context.Context, v LessonsView, r *judge.Router,
 			}
 			if errors.Is(err, judge.ErrHostPending) {
 				jd.Fallback = fmt.Sprintf("at %s, %s", l.ID, strings.TrimSuffix(rc.Fallback, "the host decided")+"the host's request stands")
+				if bctx.Err() != nil {
+					jd.Fallback = outOfTime(l.ID)
+				}
 				v.Judgement = jd
 				return v, nil
 			}
@@ -436,10 +462,22 @@ func RankPredecessorLessons(ctx context.Context, v LessonsView, r *judge.Router,
 
 // shadowLessons asks the adapter beside each of the host's scores and records
 // the pairs, through the router's shadow route; it notes in jd how many were
-// kept and where, or why not. Only a stopped ctx is an error.
+// kept and where, or why not. The pass is bounded: it has lessonShadowBudget
+// in all, and asks no further lesson once the adapter has failed one (its pair
+// is recorded as failed), since a provider that hangs would otherwise cost
+// every lesson its deadline while the host's scores, already settled, wait.
+// The lessons not reached are not asked and keep no pair; the note names them
+// and says why. Only a stopped ctx is an error.
 func shadowLessons(ctx context.Context, r *judge.Router, v LessonsView, scores []int, q judge.Question, jd *LessonsJudgement) error {
+	jd.Target = r.Target(judge.EmbarkLessonRanking)
+	bctx, cancelBudget := context.WithTimeout(ctx, lessonShadowBudget)
+	defer cancelBudget()
 	for i, l := range v.lessons {
-		cctx, cancel := context.WithTimeout(ctx, lessonShadowTimeout)
+		if bctx.Err() != nil && ctx.Err() == nil {
+			noteLessonsNotAsked(jd, v.lessons[i:], fmt.Sprintf("the shadow pass's time (%s) ran out", lessonShadowBudget))
+			return nil
+		}
+		cctx, cancel := context.WithTimeout(bctx, lessonShadowTimeout)
 		_, rc, err := r.Decide(cctx, lessonState(v.framing, l), q, judge.Answered(strconv.Itoa(scores[i])))
 		cancel()
 		if ctx.Err() != nil {
@@ -456,8 +494,34 @@ func shadowLessons(ctx context.Context, r *judge.Router, v LessonsView, scores [
 		case rc.Note != "" && jd.PairsNote == "":
 			jd.PairsNote = rc.Note
 		}
+		if rc.PairSkipped == lab.SkippedFailed {
+			why := fmt.Sprintf("the decision adapter failed to answer %s (its pair is recorded as failed)", l.ID)
+			if bctx.Err() != nil {
+				why = fmt.Sprintf("the shadow pass's time (%s) ran out while the decision adapter judged %s (its pair is recorded as failed)",
+					lessonShadowBudget, l.ID)
+			}
+			noteLessonsNotAsked(jd, v.lessons[i+1:], why)
+			return nil
+		}
 	}
 	return nil
+}
+
+// noteLessonsNotAsked adds to jd's pairs note the lessons the shadow pass did
+// not reach, and why: they were not asked and keep no pair.
+func noteLessonsNotAsked(jd *LessonsJudgement, rest []corereflect.Lesson, why string) {
+	if len(rest) == 0 {
+		return
+	}
+	ids := rest[0].ID
+	if len(rest) > 1 {
+		ids += " through " + rest[len(rest)-1].ID
+	}
+	n := fmt.Sprintf("%d lesson(s) not asked in shadow (%s), so they keep no pair: %s", len(rest), ids, why)
+	if jd.PairsNote != "" {
+		n = jd.PairsNote + "; " + n
+	}
+	jd.PairsNote = n
 }
 
 // readLessonScores reads the host's scores file and holds it to the questions
