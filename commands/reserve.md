@@ -159,11 +159,14 @@ another account pushed above it is counted in `settles` and never read. A pull r
 on the record as `kept`, carried by your renewals, and the next live renewal
 tries the withdrawal again, so reserving the release again is the remedy. A
 copy never withdraws a pull request whose entry under your holder id it did
-not first record: one the release already records under your id in a commit
+not first record: one the release already records withdrawn or admitted
+under your id, at the head and in the form it is armed in now, in a commit
 another login pushed is left armed, with the forge untouched and nothing
 recorded, and named in `forge_failures`; the launch check keeps naming it, so
-tell the user to withdraw it from the merge path by hand. Tell the user what
-was withdrawn.
+tell the user to withdraw it from the merge path by hand. One recorded `kept`,
+and one under an id you only declare (another home or account of yours), is
+withdrawn again, recorded under your own id. Tell the user what was
+withdrawn.
 
 One release is cut at a time: reserving a release while another release is
 still being cut backs off (exit 3), naming the release and its holder. A
@@ -215,7 +218,9 @@ finished by running it again (the release's settle arms it too). When the
 forge then refuses the arming, a second renewal puts it back to withdrawn and
 the refusal says so. The launch check lets an admitted pull request through
 only at the head it was admitted at, and only as your own newest push to the
-release's branch records it.
+release's branch records it; one under an id you only declare passes only
+when that id's own account or home recorded it, so one another login wrote
+there is named armed.
 
 Every other withdrawn pull request is re-armed when the release ends, and an
 admitted one is checked on the forge and armed if it is not. A release ends
@@ -243,9 +248,9 @@ only while the cut's tip is that person's own newest push, as the forge's
 record of pushes places it; under a commit another login pushed, only their
 `--release` or the tag ends it. Another person's act ends nothing of it
 (dcn-2610271926369425). It also ends a cut holding only `pre_id` entries or
-another holder's, settling each `pre_id` one as `manual` and carrying the
-other holder's entries unchanged on the tombstone, for that holder's own copy
-to settle. Nothing renews a
+another holder's, while those are still withdrawn or admitted, settling each
+`pre_id` one as `manual` and carrying the other holder's entries unchanged on
+the tombstone, for that holder's own copy to settle. Nothing renews a
 release lease by itself, so a cut still going on renews it by reserving the
 release again from the cutting copy; until then the lapse is reported
 (`/abcd:peers`, and the launch check refuses the cut).

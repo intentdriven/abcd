@@ -575,13 +575,18 @@ withdrawing nothing, and an admission or a release is refused.
   withdrawal the forge refused before), read from this person's own newest
   push (see "Whose a withdrawal is"); what another account pushed above it is
   counted and never read. A copy never withdraws a pull request whose entry
-  under its own id it did not first record: where the record its push is
-  written over holds an entry for an armed pull request under the reader's
-  kept or declared id that this copy does not act on (see "What a copy acts
+  its push would carry without becoming that entry's first record: where the
+  record its push is written over holds an entry for an armed pull request,
+  still withdrawn or admitted, recording the same withdrawal the copy would
+  record (the same number, node id, form and head, under the reader's kept
+  id or their login), that this copy does not act on (see "What a copy acts
   on"), that withdrawal is refused (a `withdraw` failure) with the forge left
   as it is and nothing recorded, so the pull request stays armed, the launch
   check keeps naming it, and the refusal names the one step left: withdraw it
-  from the merge path by hand.
+  from the merge path by hand. Any other entry is withdrawn over, since the
+  copy's push is then the first record of the entry it writes: one recorded
+  `kept`, which the walk for a first record stops at, and one under an id the
+  reader only declares, which names another id than the copy's own.
 - **The record.** One `Abcd-Withdrawn` trailer a pull request, at most 40 on a
   tip, six fields separated by one space: its number, its node id, the form it
   was armed in (`queue` for a merge-queue entry, which is also the form of one
@@ -684,7 +689,10 @@ withdrawing nothing, and an admission or a release is refused.
   the forge again and arms it when it is not, which finishes an admission cut
   off between its record and its arming. The launch check passes an admitted
   pull request only at the head it was admitted at, and only as the reader's
-  own newest push to the branch records it admitted.
+  own newest push to the branch records it admitted; one recorded under an id
+  the reader only declares only as a copy of theirs acts on it (see "What a
+  copy acts on"), so an admission under that id another login wrote is named
+  armed.
 - **When a release ends.** A release ends on its holder's release (including
   after a take-over by the same person from another copy), once its tag is on
   origin, or on a tombstone of the holder's that is the holder's own newest
