@@ -255,16 +255,20 @@ type asker struct {
 // namesPusher reports whether a commit login pushed names that login's own
 // person as its holder. A holder named by a GitHub username, as every hold
 // made before the holder id is, names login when it is login. A holder id
-// names no account the record of pushes could be matched against, so one of
-// self's own ids names login only when login is self's, and an id of anyone
-// else's is taken as naming whoever pushed it: the record of pushes, not the
-// trailer, says who the person is, and a commit someone else pushes naming
-// another's id can do no more than one naming themselves already could.
+// names no account the record of pushes could be matched against, so self's
+// own kept id names login only when login is self's, and any other id is
+// taken as naming whoever pushed it: the record of pushes, not the trailer,
+// says who the person is, and a commit someone else pushes naming another's
+// id can do no more than one naming themselves already could. An id self
+// only declares (DeclaredHolderIDsFile) is another account's of the person's,
+// whose login self does not know, so it too names whoever pushed it: held to
+// self's login, the other account's own reservation and tombstone would never
+// read as its own, and a release it took over would never end here.
 func (k *asker) namesPusher(holder, login string) bool {
 	switch {
 	case !validHolderID(holder):
 		return sameHolder(holder, login)
-	case k.self.Owns(holder):
+	case holder == k.self.ID:
 		return k.self.Login != "" && sameHolder(login, k.self.Login)
 	}
 	return true
@@ -580,10 +584,16 @@ func (k *tipCache) save() {
 // withdrawals of the record it is written over: every entry of another
 // person's as base records it, and self's own only as their own newest push
 // (own) records them, so nothing another login pushed is carried as theirs.
+// When self's login has pushed nothing to the branch (own not found), an
+// entry naming an id self only declares is kept as base records it: it is
+// the person's other account's, which its own push recorded under a login
+// self cannot name, and dropping it would lose that account's withdrawal from
+// a take-over of its cut. An entry naming self's kept id or login with no
+// push of self's login is not theirs to carry, and is dropped.
 func merged(base []Withdrawal, own ownRecord, self Self) []Withdrawal {
 	var out []Withdrawal
 	for _, w := range base {
-		if !self.Owns(w.By) {
+		if !self.Owns(w.By) || !own.found && self.declaredOnly(w.By) {
 			out = append(out, w)
 		}
 	}

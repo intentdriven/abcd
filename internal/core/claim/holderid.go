@@ -132,6 +132,13 @@ func (s Self) Owns(holder string) bool {
 	return s.Login != "" && sameHolder(holder, s.Login)
 }
 
+// declaredOnly reports whether holder is an id s declares as the person's
+// (Declared) and is not s's own kept id: another account's or home's of
+// theirs.
+func (s Self) declaredOnly(holder string) bool {
+	return validHolderID(holder) && holder != s.ID && slices.Contains(s.Declared, holder)
+}
+
 // Known reports whether anything names the reader: a holder id or a login.
 func (s Self) Known() bool { return s.ID != "" || len(s.Declared) > 0 || s.Login != "" }
 
