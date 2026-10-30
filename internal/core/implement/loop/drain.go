@@ -507,6 +507,9 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		if len(leaseNotes) > 0 {
 			res.Next = joinNext(append([]string{res.Next}, leaseNotes...)...)
 		}
+		if diags := drainRouterDiagnostics(repoRoot, o); len(diags) > 0 {
+			res.Next = joinNext(append([]string{res.Next}, diags...)...)
+		}
 		if write {
 			st.UpdatedAt = now
 			if err := writeDrain(repoRoot, st); err != nil {
@@ -1078,28 +1081,35 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			// and then a judge routed to a runner answer in this move, taken
 			// as the host's answer is; one that does not answer leaves the
 			// host's request standing, and is not asked again for it
-			// (drain_decide.go, drain_judge.go).
+			// (drain_decide.go, drain_judge.go). Each is marked asked alone,
+			// and only once it was: a runner that never started is started
+			// by a later move, whatever the adapter did.
 			var taken *DrainJudgement
 			clause := ""
-			if judging.RoutedAsked {
-				clause = adapterAskedClause(repoRoot, o, d, v.ID)
+			if judging.AdapterAsked {
+				clause = adapterAskedClause(v.ID)
 			} else {
-				var adapterAsked, started bool
+				var adapterAsked bool
 				if taken, clause, adapterAsked, err = adapterJudgement(d.Context, repoRoot, o, judging, plan, &st, now); err != nil {
 					return refuseMoved(err)
 				}
-				if taken == nil {
+				if taken == nil && adapterAsked {
+					st.Judging.AdapterAsked = true
+				}
+			}
+			if taken == nil {
+				if judging.RoutedAsked {
+					clause = joinNext(clause, judgeAskedClause(v.ID))
+				} else {
 					var routed string
+					var started bool
 					if taken, routed, started, err = routedJudgement(repoRoot, iss, v, judging, plan, &st, o, d, now); err != nil {
 						return refuseMoved(err)
 					}
 					clause = joinNext(clause, routed)
-				}
-				// Marked as asked only once the adapter was asked or the
-				// runner was started: a judge that never started is asked
-				// again next move.
-				if taken == nil && (adapterAsked || started) {
-					st.Judging.RoutedAsked = true
+					if taken == nil && started {
+						st.Judging.RoutedAsked = true
+					}
 				}
 			}
 			if taken == nil {
