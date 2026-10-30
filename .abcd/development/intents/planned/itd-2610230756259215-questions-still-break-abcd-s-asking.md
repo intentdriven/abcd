@@ -1,22 +1,23 @@
 ---
 id: itd-2610230756259215
 slug: questions-still-break-abcd-s-asking
-spec_id: null
-kind: null
+spec_id: spc-2610301917245442
+kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: [itd-2610030810350727, itd-201, itd-2610030810370060]
 severity: minor
-related_issues: [iss-2610230745597968]
+related_issues: [iss-2610230745597968, iss-2610301855200679]
 origin: extracted-from-record
 production_mode: hand-written
+impact: additive
 ---
 
-# A question is checked by abcd before it is asked
+# Every question abcd asks passes its check before the person sees it
 
 ## Press Release
 
-> _Written by the technical facilitator from the diagnosis of iss-2610230745597968 (planning preparation, 2026-10-23). Not yet confirmed by the product thinker; step 3 of the planning interview confirms or refines it._
+> _Written by the technical facilitator from the diagnosis of iss-2610230745597968 (planning preparation, 2026-10-23), and extended on 2026-10-30 with the question-writing agent of iss-2610301855200679 at the product thinker's request. Settled under the product thinker's delegation of 2026-10-30 (dcn-2610301913469955), which leaves only design choices with an obvious trade-off to them._
 
 > **An abcd question now reaches the person on its first try.** Before an
 > agent puts a question to Iris, the product thinker, it hands the draft to
@@ -44,6 +45,18 @@ production_mode: hand-written
 > lines," said Nia, a technical facilitator who runs abcd's interviews.
 > "Now the drafter asks abcd, and the question is up before I have read
 > the brief again."
+>
+> The drafter becomes abcd's question-writing agent. It does not hand back a
+> question that has not passed: It writes, checks, fixes every fault and
+> checks again until abcd's check is clean, and only then returns. A question
+> too long for one screen is never cut and never sent over the limit: The
+> writer splits it into numbered parts, Q1a and then Q1b, each one a checked
+> question; when there are too many answers for one screen, Q1a offers the
+> first of them and "None of these", which leads on to Q1b with the rest. A
+> question's header is only its number (Q1, Q1a), because the status line
+> already says whom it is for. The agent running the interview asks only what
+> the writer returns and never writes a question of its own, so the check's
+> refusal is a last resort the person does not meet.
 
 ## Why This Matters
 
@@ -100,8 +113,22 @@ spent nine and a half minutes and about 174 thousand tokens recounting
 over-limit tabs with a counting script it wrote itself, because it is told
 to count rows by hand and has no way to have abcd count them.
 
+On 2026-10-30 the class showed itself again, in abcd's own checkout. In one
+planning interview the drafter returned a refusal for three of ten drafts,
+because the quoted material and its options did not fit 24 rows for one
+decision and its rules let it give up; the agent running the interview then
+put over-limit questions to the product thinker itself, and once wrote a
+question without the drafter, which the check blocked in front of the person
+(no decide-later option, 28 rows). The product thinker filed
+iss-2610301855200679, noting that they had asked for this to be fixed several
+times before, and proposed that a sub-agent keep working on a question until
+it conforms and only then put it to the person: a question-writing agent
+whose rules can be configured, splitting a question that is too long into
+parts such as Q1a and Q1b.
+
 Every earlier round left the asker guessing what the check would say. This
-intent lets the asker ask the check.
+intent lets the asker ask the check, and makes the writer keep asking it
+until the answer is clean.
 
 ## Mechanism
 
@@ -110,20 +137,25 @@ first ask, and a refused question to be admitted on its next ask, because
 the check and the hook call one function over the same input, so a draft the
 check passes cannot be refused by a hook running the same binary, and a
 refusal that names every fault at once leaves nothing for the next ask to
-discover. Shown wrong if a question the check passed is then refused by a
-hook of the same version, if a drafter run still writes its own counting
-script, or if an agent given the grouped refusal needs more than one retry
-to clear the faults it named.
+discover. Because the writer returns only a draft the check passed, and the agent asks
+only what the writer returns, we expect no refusal to reach the person in an
+interview run this way. Shown wrong if a question the check passed is then
+refused by a hook of the same version, if a drafter run still writes its own
+counting script, if an agent given the grouped refusal needs more than one
+retry to clear the faults it named, or if a refusal reaches the person in an
+interview where every question came from the writer, judged from the
+recorded lab interviews of decision 22, since the hook cannot see where a
+question came from.
 
 ## Scope Conditions
 
-- The host's question tool takes the input the hook already reads: tabs, each with a header, a question text and options carrying a label and a description. A host whose question tool takes another shape is outside the claim.
-- The verb and the hook are the same abcd version. The hook runs the plugin's installed binary; in abcd's own checkout an agent runs the source tree, and a released binary predating the verb has no verb at all. Across versions the verb's verdict is evidence, not a guarantee, and its reported version is what shows the difference.
-- The drafter, or the agent drafting for itself, can run the abcd binary from a shell. A host that gives its sub-agents no shell falls back to the hand count, and the claim does not cover it.
-- Row counts are the check's estimate of the host's view at 80 columns, with the frame as calibrated. A host that changes its frame makes the check and the new verb wrong together, and neither notices it.
-- The claim covers the rules the check can see. Content rules it cannot see, such as bundling separate issues into tabs of one question, repeating the options in the text, or asking a question with one defensible answer, stay with the drafter and the agent.
-- The verdict holds for the state it was judged in. A mode set, or the person marked away, between the check and the ask can change what the hook does; the verb flags every verdict that depends on that state.
-- An agent that uses neither the drafter nor the new verb is reached only through the refusal, so the one-retry claim for that agent rests on the grouped refusal alone.
+- The host's question tool takes the input the hook already reads: tabs, each with a header, a question text and options carrying a label and a description. A host whose question tool takes another shape is outside the claim. <!-- cond: cond-2610301917242187 -->
+- The verb and the hook are the same abcd version. The hook runs the plugin's installed binary; in abcd's own checkout an agent runs the source tree, and a released binary predating the verb has no verb at all. Across versions the verb's verdict is evidence, not a guarantee, and its reported version is what shows the difference. <!-- cond: cond-2610301917242167 -->
+- The drafter, or the agent drafting for itself, can run the abcd binary from a shell. A host that gives its sub-agents no shell falls back to the hand count, and the claim does not cover it. <!-- cond: cond-2610301917241788 -->
+- Row counts are the check's estimate of the host's view at 80 columns, with the frame as calibrated. A host that changes its frame makes the check and the new verb wrong together, and neither notices it. <!-- cond: cond-2610301917246661 -->
+- The claim covers the rules the check can see. Content rules it cannot see, such as bundling separate issues into tabs of one question, repeating the options in the text, or asking a question with one defensible answer, stay with the drafter and the agent. <!-- cond: cond-2610301917246513 -->
+- The verdict holds for the state it was judged in. A mode set, or the person marked away, between the check and the ask can change what the hook does; the verb flags every verdict that depends on that state. <!-- cond: cond-2610301917245587 -->
+- An agent that uses neither the drafter nor the new verb is reached only through the refusal, so the one-retry claim for that agent rests on the grouped refusal alone. <!-- cond: cond-2610301917243787 -->
 
 ## What's In Scope
 
@@ -134,19 +166,24 @@ to clear the faults it named.
 - The hook's refusal naming every fault, one line per rule and tab, with no cut, and naming the verb and the drafter.
 - The guard chapter of the brief (`04-surfaces/17-guard.md`) gaining the `question` row in its sub-verbs table and the verb's exit rules beside `guard check`'s, landed by the build in the same change as the verb.
 
+- The drafter as abcd's question-writing agent: It loops (write, run the check, fix every fault) until the check is clean, at most five checks to a part, and returns only then; its refusals go to the agent that called it, never to the person (decision 32).
+- Splitting a question that does not fit into numbered parts (Q1a, Q1b, and so on), as tabs when the parts are independent decisions and as successive questions when a part depends on the answer before it, each passing the check (decision 33).
+- Headers that carry only the question's number, such as Q1 or Q1a, with no role word: The agent sets the status line to the person the question is for before asking it, and the answer sets it back (decision 37).
+- Only a question whose header is in abcd's number grammar is held to abcd's rules; any other question runs unchecked whatever the status line says (decision 36).
+- The asking rules telling the agent that runs an interview to ask only what the writer returns and never to write or edit a question itself.
+
 ## What's Out of Scope
 
-- Which questions the status line makes abcd's when they carry no chip: the open question below. The hook keeps its present behaviour until it is answered.
 - Rewriting a refused question inside the hook: the check refuses and never rewrites, so it never puts words in the agent's mouth.
 - Tightening the structured type's own check so a missing `Now:` or `Change later:` line is refused there (decision 14).
 - Content rules the check cannot see (bundled issues, repetition, one-answer questions); iss-2610090816296964 and iss-2610161739587645 keep them.
 - The required "Unclear" option of iss-2610150551207288.
-- Re-calibrating the host's frame or the 24-row limit.
+- Re-calibrating the host's frame or abcd's 24-row limit. A repository's own limits are itd-2610301914350541, which builds on this intent.
 - Refusing a question only for its height: iss-2610070637562567's ruling stands, and the verb reports the overrun as a fault while the hook still shows it.
 
 ## Acceptance Criteria
 
-_Seeded by the technical facilitator (planning preparation, 2026-10-23) and unconfirmed. Step 8 of the planning interview walks the person-visible criteria one at a time as stories, and the technical criteria as one list to accept, edit or strike._
+_Seeded by the technical facilitator (planning preparation, 2026-10-23), extended on 2026-10-30 with the question-writing agent, and accepted under the product thinker's delegation of 2026-10-30 (dcn-2610301913469955; decision 30)._
 
 Seen by a person:
 
@@ -164,6 +201,19 @@ Seen by a person:
 - **Given** the status line names the product thinker, **when** the technical
   facilitator checks a draft by hand, **then** the status line still names
   the product thinker afterwards.
+
+- **Given** a question whose material does not fit one screen, **when** the
+  writer prepares it, **then** the person sees numbered parts, Q1a and then
+  Q1b, each fitting a window 80 columns wide, as tabs of one screen when the
+  parts are independent and one after another when a part depends on the
+  answer before it, with no refusal line before any of them.
+- **Given** a question with more answers than fit one screen, **when** the
+  person sees Q1a, **then** it offers the first answers and "None of these",
+  and choosing "None of these" brings Q1b with the rest and "Decide later".
+- **Given** any question abcd asks through the host's question tool, **when**
+  the person reads its header,
+  **then** the header is only its number, such as Q1 or Q1a, and the status
+  line names whom it is for.
 
 Technical, as one list:
 
@@ -195,11 +245,9 @@ Technical, as one list:
   apply.
 - **Given** a partial result with no finding among the rules it could apply,
   **when** the verb exits, **then** it exits 2, never 0.
-- **Given** an unchipped draft, **when** the verb judges it, **then** the
-  result is marked as depending on the mode.
-- **Given** a draft whose chips name a different person from the one the
-  mode names, **when** the verb judges it, **then** the result says the
-  addressee changes and that the register rule follows the chip.
+- **Given** a draft whose header is not in abcd's number grammar, **when**
+  the verb judges it, **then** it reports the draft is not abcd's question and
+  is not checked, whatever the mode.
 - **Given** the 25-row case, **when** the verb reports rows, **then** that tab
   reads 8 for the header and frame, 7 for the question text, 10 for the
   options and 25 in total, the split the check itself computes.
@@ -250,8 +298,9 @@ Technical, as one list:
   only by the hook on the ask, and it does not count rows by hand.
 - **Given** the GRILL domain as generated, **when** it renders, **then** the
   drafter rule and the rule for a host with no agents both name
-  `abcd guard question`, and the "in abcd's own interviews" scope words are
-  unchanged.
+  `abcd guard question`, it tells the agent running an interview to ask only
+  what the writer returns, its header rule names the number form, and the
+  "in abcd's own interviews" scope words are unchanged.
 - **Given** a managed lab repository on a plugin binary carrying the verb,
   **when** the verb runs there, **then** it works without abcd's own checkout.
 - **Given** the 25-row material, **when** each of three recorded lab runs of
@@ -269,13 +318,38 @@ Technical, as one list:
   state the verb's exit codes beside `guard check`'s, and record-lint's
   surface coverage passes.
 
+- **Given** a draft the check refuses, **when** the writer works on it,
+  **then** it runs the check after every fix, at most five times to a part,
+  and returns either a draft on which the check exits 0 or, once the five are
+  spent, its refusal carrying the check's last findings, to the calling agent
+  only; it never refuses for length.
+- **Given** a writer's refusal, **when** the calling agent receives it,
+  **then** it re-briefs the writer (shorter material, or a further split) and
+  asks the person nothing until a draft passes.
+- **Given** a header made of `Q`, a number and an optional part letter (`Q1`,
+  `Q1a`, `Q2/5`), **when** the check reads it, **then** it is abcd's question
+  and is held to the asking rules; a header in the older form with a role
+  word (`Product Q2`) is still read as abcd's, so no agent asking today is
+  refused, and the writer writes only the number form.
+- **Given** the status line names the product thinker, **when** a question
+  whose header is not in that grammar is asked, **then** the hook lets it
+  through unchecked.
+- **Given** a question with a number header, **when** the hook judges its
+  register, **then** it follows the person the status line names.
+- **Given** the material the drafter refused for length on 2026-10-30,
+  **when** each of three recorded lab runs of the writer prepares it,
+  **then** every run returns parts on which the check exits 0, and none
+  returns a refusal.
+- **Given** a managed lab repository, **when** each of three recorded
+  interviews of at least ten questions runs through the writer, **then** the
+  hook refuses none of the questions asked.
 ## Decisions
 
 Each decision below was taken on 2026-10-23 by the technical facilitator on the product thinker's delegation, in planning preparation, and revised the same day after a design and feasibility review and a record-discipline review. The product thinker reviews them at the planning interview.
 
 1. 2026-10-23, the technical facilitator on the product thinker's delegation, planning preparation: The verb is `abcd guard question`, a sub-verb of `guard`, because the question check already lives in the guard (`abcd guard hook` judges the question tool's payload) and `guard check` is the read-only sibling for shell commands; a new top-level verb would add a family for one act, and overloading `guard check` would put two input grammars behind one positional.
 2. 2026-10-23, the technical facilitator on the product thinker's delegation, planning preparation: One decision function, lifted out of the hook into `internal/core/question`, takes the field view, the mode state and the away state and returns the outcome, the addressee, the findings and the row split; the hook and the verb both call it, and the store reads that feed it stay one helper in `internal/surface/cli` both use, because two callers of one function cannot drift apart as two copies of the same rules would.
-3. 2026-10-23, the technical facilitator on the product thinker's delegation, planning preparation: The away state is read inside that path, so the outcome set is `admit`, `admit-with-rows-note`, `refuse`, `refuse-away`, `admit-unchecked` (an unchipped question under a managed mode) and `unchecked` (each fail-open path of the hook), and an `unchecked` result is marked `partial` with `unread` naming each store the verb could not read and the rules it therefore could not apply, because the hook refuses every question while the person is away before any limit is checked, and a verb that omitted it would report admission the hook then refuses.
+3. 2026-10-23, the technical facilitator on the product thinker's delegation, planning preparation: The away state is read inside that path, so the outcome set is `admit`, `admit-with-rows-note`, `refuse`, `refuse-away`, `admit-unchecked` (a question whose header is not in abcd's grammar, in any mode, per decision 36) and `unchecked` (each fail-open path of the hook), and an `unchecked` result is marked `partial` with `unread` naming each store the verb could not read and the rules it therefore could not apply, because the hook refuses every question while the person is away before any limit is checked, and a verb that omitted it would report admission the hook then refuses.
 4. 2026-10-23, the technical facilitator on the product thinker's delegation, planning preparation: Input is the host question tool's input (`{"questions": [...]}`, decoded as the hook decodes it) from a file or `-` for standard input, or abcd's structured question type with `--ask` (decoded strictly, since abcd owns that schema), read under the hook's size bound; the flag chooses the form and nothing is guessed, because both shapes open with a `questions` key and a wrong guess reports the wrong faults.
 5. 2026-10-23, the technical facilitator on the product thinker's delegation, planning preparation: The verb reads the mode and away stores and never writes them, so its `hook` outcome is true for that checkout at that moment; every result that depends on either store is marked `depends_on_state`, because a mode set between the check and the ask can turn an unchecked admission into a refusal.
 6. 2026-10-23, the technical facilitator on the product thinker's delegation, planning preparation: The JSON (`_type` `abcd/question-check/v1`) carries `version`, `hook`, `depends_on_state`, `addressee` per tab with an `addressee_changes` note, `findings` (every finding with tab, part, rule, value, limit, remedy and whether it refuses), `by_rule` (one entry per rule and tab, with one echoed value and a count), `rows` (per tab: `header_and_frame`, `question_text`, `options`, `total`, the shape the drafter already returns) with `rows_limit`, and `ready`; the drafter copies fields rather than translating them.
@@ -283,15 +357,15 @@ Each decision below was taken on 2026-10-23 by the technical facilitator on the 
 8. 2026-10-23, the technical facilitator on the product thinker's delegation, planning preparation: Exit 0 when there is no finding at all and every store was read, 1 on any finding including a rows overrun alone, 2 when the input or any store that decides which rules apply cannot be read, a partial result included even when it found nothing, so a check that could not run in full never reads as clean (invariant 16); this departs from `guard check`, which exits 0 on a warning, because a warned command is meant to run while the verb answers whether a draft is ready, and the hook shows an over-tall question only because the person may already be answering it, which a draft never is.
 9. 2026-10-23, the technical facilitator on the product thinker's delegation, planning preparation: The verb writes nothing, neither a mode nor an open-question marker, a branch record or a log, because a check that marked a question open would leave the status line naming a person for a question never asked, which is why `guard hook` is no stand-in.
 10. 2026-10-23, the technical facilitator on the product thinker's delegation, planning preparation: The verb reports its binary version and the drafter records it, and the "never refused" claim holds only between a verb and a hook of the same version, because the hook runs the plugin's installed binary while an agent in abcd's own checkout runs the source tree, and a released binary predating the verb has none.
-11. 2026-10-23, the technical facilitator on the product thinker's delegation, planning preparation: The drafter chips every draft, runs the verb after every edit through the plugin's binary resolution, and returns the verb's `ready` as its `questions`, its `rows` and its `version`, with `checked_by` set to `abcd`; the hand count stays in its page only for a host that gives the drafter no shell, with `checked_by` set to `hand`, and an exit 2 from the verb is returned as the drafter's refusal and never triggers the hand count, because a failed check read as a reason to count by hand would restore the script this intent removes.
+11. 2026-10-23, the technical facilitator on the product thinker's delegation, planning preparation: The drafter labels every draft with its number header (decision 37), runs the verb after every edit through the plugin's binary resolution, and returns the verb's `ready` as its `questions`, its `rows` and its `version`, with `checked_by` set to `abcd`; the hand count stays in its page only for a host that gives the drafter no shell, with `checked_by` set to `hand`, and an exit 2 from the verb is returned as the drafter's refusal and never triggers the hand count, because a failed check read as a reason to count by hand would restore the script this intent removes.
 12. 2026-10-23, the technical facilitator on the product thinker's delegation, planning preparation: The refusal names every fault as one line per rule and tab, each with one echoed value and a count of the rest, then one line naming `abcd guard question` and the drafter, and the ten-part cut goes; the bound becomes the rules times the checked tabs (the check stops at the tab and option ceilings), because rule 12 adds one finding per matching line of text and so grows with the payload, which one line per rule and tab does not.
 13. 2026-10-23, the technical facilitator on the product thinker's delegation, planning preparation: One renderer in `internal/core/question` writes the grouped finding lines, and both the deny text and the verb's text render use it, so the words an agent is refused with and the words the verb shows cannot drift.
 14. 2026-10-23, the technical facilitator on the product thinker's delegation, planning preparation: The structured type's own check is not tightened; composition guarantees the order of the parts it carries, and a missing `Now:` or `Change later:` line or decide-later label is still named by the limits check, because `Fields` leaves a missing line out on purpose so the gap is reported rather than invented, and tightening `Check` would change what abcd's setup interview and the plain-Terminal runner accept, which is a separate change made after checking those callers.
 15. 2026-10-23, the technical facilitator on the product thinker's delegation, planning preparation: A fix that adds or changes a chip can bring a second refusal, since a `Product` chip turns on the register rule; the verb shows the new addressee and its findings before the ask, which is where that second round now happens.
 16. 2026-10-23, the technical facilitator on the product thinker's delegation, planning preparation: No filled layout skeleton is appended to the refusal, because the `--ask` composition gives the order of the parts by construction and the refusal stays a list of faults.
-17. 2026-10-23, the technical facilitator on the product thinker's delegation, planning preparation: The GRILL text changes in two sentences only, the drafter rule (it runs `abcd guard question` on the draft and returns what the check counted) and the fallback for a host with no agents (which checks its own draft with the same verb before asking); the "in abcd's own interviews" words and the line the refusal adds for an unchipped question wait on the open question, because changing either now would settle it by the back door.
+17. 2026-10-23, the technical facilitator on the product thinker's delegation, planning preparation (revised 2026-10-30 by decisions 35 to 37, which add a sentence that the agent running an interview asks only what the writer returns, and move the chip rules to the number form and the status line): The GRILL text changes in two sentences only, the drafter rule (it runs `abcd guard question` on the draft and returns what the check counted) and the fallback for a host with no agents (which checks its own draft with the same verb before asking); the "in abcd's own interviews" words and the line the refusal adds for an unchipped question wait on the open question, because changing either now would settle it by the back door.
 18. 2026-10-23, the technical facilitator on the product thinker's delegation, planning preparation: The verb is wired on the command line, documented on the plugin's guard command page, in the generated command-line reference and in the brief's guard chapter (its sub-verbs row and its exit rules, landed by the build in the same change, never ahead of it), and generated into the drafter page by `make asking-sync`, because a verb lands with its brief row (spec-moves-with-the-surface) and a verb that is not wired is not done.
-19. 2026-10-23, the technical facilitator on the product thinker's delegation, planning preparation: This intent resolves iss-2610230745597968 when it ships; it supplies the exact count iss-2610090816296964's lab assumed without resolving that issue, so that issue is named in prose and not in `related_issues`, because a join there would be one-sided until the issue names this intent back and would read as unresolved when this intent ships.
+19. 2026-10-23, the technical facilitator on the product thinker's delegation, planning preparation: This intent resolves iss-2610230745597968 and, since 2026-10-30, iss-2610301855200679 when it ships; it supplies the exact count iss-2610090816296964's lab assumed without resolving that issue, so that issue is named in prose and not in `related_issues`, because a join there would be one-sided until the issue names this intent back and would read as unresolved when this intent ships.
 20. 2026-10-23, the technical facilitator on the product thinker's delegation, planning preparation: The three intents this builds on (itd-2610030810350727, itd-201, itd-2610030810370060) are written into `builds_on` through `abcd intent edge`, never by hand.
 21. 2026-10-23, the technical facilitator on the product thinker's delegation, planning preparation: Before a release carries the verb, the drafter in abcd's own checkout runs it from the source tree, as every abcd call there does, and records the version it reports; in a repository whose installed binary has no `guard question`, the drafter says its draft is checked only by the hook on the ask and counts nothing by hand, because a hand count is the cause this intent removes, and the hook's refusal is the check that binary still has. Only a host that gives the drafter no shell counts by hand.
 22. 2026-10-23, the technical facilitator on the product thinker's delegation, planning preparation: The criteria that rest on a live model run (the drafter's file writes and verb calls, and the second ask admitted) are judged by three recorded lab runs on one pinned binary and one fixed material, each transcript kept in the lab's record as the evidence; a criterion passes only when every run passes, and one failing run fails it, because a live run varies between attempts and a repeatable lab procedure is what a later run can check again, which a unit test with a fake model cannot show.
@@ -301,58 +375,37 @@ Each decision below was taken on 2026-10-23 by the technical facilitator on the 
 26. 2026-10-23, the technical facilitator on the product thinker's delegation, planning preparation: itd-2609292108373494 is kept beside this intent: handing the grill to an installed skill is a different capability; the open question's answer decides whether that skill's unchipped questions are checked, and is the fact both records cite.
 27. 2026-10-23, the technical facilitator on the product thinker's delegation, planning preparation: itd-169 is kept beside this intent: itd-169 decides when and to whom a stopping loop speaks, this intent whether the question it asks passes the check, and neither needs the other's scope.
 28. 2026-10-23, the technical facilitator on the product thinker's delegation, planning preparation: itd-90 is kept beside this intent: this check covers only the rules a deterministic check can see, while which questions reach the product thinker at all is itd-90's judgement.
-29. 2026-10-23, the technical facilitator on the product thinker's delegation, planning preparation: itd-201's relation to this intent stays open with the open question: whether this intent only builds on it or reverses its decision 10 depends on the product thinker's answer.
+29. 2026-10-23, the technical facilitator on the product thinker's delegation, planning preparation: itd-201's relation to this intent stays open with the open question: whether this intent only builds on it or reverses its decision 10 depends on the product thinker's answer. Resolved 2026-10-30 by decision 36: It builds on itd-201, and decision 10 stands.
+
+Taken on 2026-10-30 by the technical facilitator under the product thinker's
+delegation of the same day (dcn-2610301913469955: the technical facilitator
+settles what is sensible, and only real design trade-offs go to the product
+thinker), when iss-2610301855200679
+was folded in:
+
+30. iss-2610301855200679 is planned inside this intent, not as an intent of its own, because this draft is not planned yet, its scope already has the drafter call the check after every edit, and the issue extends exactly that loop; two plans would share one surface (the drafter page and the GRILL text) and one would wait on the other. The issue is joined both ways (`related_issues`, `related_intents`), and this intent resolves it when it ships (decision 19). The criteria above, the 2026-10-23 ones included, are accepted under the same delegation, recorded as dcn-2610301913469955; the open question was put to the product thinker (decision 36).
+31. The agent keeps its name, `abcd:question-drafter`, and becomes the question-writing agent by contract, because the issue's remedy asks to turn the drafter into that agent, not to add a second one, and a rename would oblige retiring the old name (retire-the-name) across every interview page and generated block for no change in what it does; its page describes it as abcd's question-writing agent.
+32. The writer loops until the check exits 0, at most five checks to a part (the lab criterion's three plus a margin), because a model's fixes can swing between two rules and an unreadable store makes exit 0 unreachable, and the record bounds every agent loop (the drain's fix rounds). Its refusals have three causes, each returned to the calling agent and never to the person: a missing or contradictory part of its brief, the check's exit 2 (decision 11), and five checks spent, which carries the check's last findings. The calling agent re-briefs and asks nothing until a draft passes. Where the binary has no check or the host gives the writer no shell (decision 21 and the scope conditions), the writer cannot loop, and the claim that no refusal reaches the person does not cover that case.
+33. A question that does not fit is split into numbered parts, Q1a and Q1b, in one of two ways, settled by whether a part depends on the answer before it. Parts that do not depend on each other are separate decisions, such as the criteria of one feature, and are asked as tabs of one question, up to four to a screen, as the asking rules already allow. A part that depends on the earlier answer is asked as its own question after it, never as a tab, because a tab shows every part before any is answered and the asking rules ask a dependent question alone, after that answer. Too many answers for one screen are the dependent case: Q1a offers the first answers and "None of these", which leads on to Q1b with the rest and the decide-later answer, and "Decide later" anywhere ends the question; no grouping is invented, since asking rule 2 forbids made-up options. One decision whose quoted material alone is too long cannot be spread over parts without asking the same choice twice, so the writer quotes it shorter and faithfully, keeping every answer's gain and cost, or, where the material holds several decisions, splits it into those decisions. The part letter is there for the person's reading order, and the header grammar admits it (decision 37).
+34. Per-repository layout limits are their own draft, itd-2610301914350541, which builds on this intent, because both reviews of 2026-10-30 found them a promise that can be built and checked on its own (the split-the-intent doctrine), touching the rules loader, the hook, the generated pages and the configuration schema; that draft holds the one list of the rules that stay fixed.
+35. The agent running an interview asks only what the writer returns and never writes or edits a question itself, stated in the generated asking rules. This half is taught, not gated: Nothing in the question tool's input can show where a question came from, and the verb writes no receipt (decisions 7 and 9), so it is judged from the recorded lab interviews (decision 22), and the hook's refusal stays the last resort for an agent that ignores the rule.
+
+Ruled by the product thinker on 2026-10-30:
+
+36. **Only abcd's label makes a question abcd's.** A question whose header is not in abcd's number grammar runs unchecked whatever the status line says; the status line no longer turns an unlabelled question into abcd's. Chosen over the status line deciding, at the cost that an abcd question whose label was forgotten goes through unchecked, which decision 35's rule and the writer, who always labels, carry. This answers the open question, keeps itd-201's decision 10 as written (decision 29 becomes builds-on), and binds brief invariant 1 to every question abcd asks, each of which carries the label; the change that lands this rewords the invariant to say so.
+37. **A question's header is only its number**, such as Q1, Q1a or Q2/5, never a role word, because the status line already tells the person whether a question is for the product thinker or the technical facilitator. The agent sets the status line to the addressee before it asks (`abcd mode product-thinker` or `abcd mode facilitator`) and the answer sets it back; the register rule follows the mode; the header grammar becomes `Q`, a number, an optional part letter and an optional total. The older form with a role word (`Product Q2`) stays readable as abcd's, settled without a question because refusing it would break every agent and page that asks that way today for no gain to the person, who no longer sees it once the writer writes only the number form.
+
+38. Taken on 2026-10-30 under the product thinker's delegation, when the spec was written: The number-only header holds for questions asked through the host's question tool, where the status line names the addressee. The interviews abcd draws itself in a plain Terminal (setup, the written interviews and the connect guide) have no status line, so their header keeps its role word, the only place there that says whom a question is for. Decision 36 also settles two earlier items: the outcome `admit-unchecked` now means any question outside abcd's grammar in any mode (decision 3), and the refusal line decision 17 held back for an unchipped question goes, since that path is gone.
 
 ## Open Questions
 
-1. **When the status line is waiting on a person, is any question asked
-   then held to abcd's asking rules, or only a question that carries abcd's
-   chip?** For the product thinker.
-
-   Today the hook holds both. The guard's command page says: "A question is
-   abcd's when a header is in abcd's chip grammar (a role word, then `Q` and
-   the question's number, such as `Product Q2`) or when `/abcd:mode` names
-   somebody; any other question belongs to another tool and runs
-   unchecked." A refused unchipped question is told: "This question carries
-   no abcd chip: it is treated as abcd's because the mode names the product
-   thinker; another tool's question asked now is held to abcd's rules."
-   The asking rules the agent reads, meanwhile, scope the chip and the
-   drafter to "abcd's own interviews", and itd-201's decision 10 scopes the
-   mode gate to abcd's own interviews and says other tools' questions in a
-   managed repository are not refused.
-
-   Example: in a repository abcd manages, an agent hands the product
-   thinker a step to run, so the status line reads "waiting on the product
-   thinker". Later the agent asks the same person, with no chip, which of
-   two test names they prefer. Today that question is refused until it has
-   a chip, a decide-later option and `Now:`/`Change later:` lines.
-
-   - **The status line alone makes it abcd's (keep today's behaviour, and
-     make the asking rules say so).** Every question asked while someone is
-     waited on looks the same and is checked, so a forgotten chip cannot
-     slip an abcd question past the check. The cost is that an ordinary or
-     another tool's question asked at that moment must follow abcd's layout
-     too, and agents need to be told so in the rules they read. Recording
-     this answer would reverse itd-201's decision 10 as written, since that
-     decision says other tools' questions are not refused.
-   - **Only a chip makes it abcd's.** An unchipped question runs unchecked
-     whatever the status line says, matching the "own interviews" wording
-     and itd-201's decision 10. The cost is that an abcd question whose chip
-     was forgotten goes through unchecked, so the chip rule carries the
-     whole weight. Invariant 1 holds every question prompt to showing the
-     current state, what each option means and how to change it later, so
-     this answer must still keep that invariant for an unchipped question
-     abcd asks, or record why the invariant covers chipped questions only
-     and reword it in the same change.
-
-   _Flagged for the product thinker to confirm, not classified: whether
-   either answer is recorded as a reversal of itd-201's decision 10 is
-   theirs to say._
+_All resolved: The one open question (which questions the status line makes abcd's) was answered by the product thinker on 2026-10-30, decision 36._
 
 ## Typed Links
 
 - **refines `itd-2610030810350727`** (one layout and its check): the verb runs that check before the ask, and the refusal's form changes (decision 23); the `builds_on` edge stays, since the check must exist first.
 - **builds on `itd-201`** (the asking rules as a domain): two of its generated sentences change (decision 17).
+- **built on by `itd-2610301914350541`** (a repository sets the layout limits of abcd's questions): It makes the check's limits per-repository, with fixed bounds.
 - **builds on `itd-2610030810370060`** (interviews in a plain Terminal): the `--ask` form reuses its structured question type and its composition into the host input.
 
 ## Audit Notes
@@ -362,3 +415,4 @@ _Empty. Populated by intent-auditor when intent moves to shipped/._
 ## Grounds
 
 - pursued: we expect one command that checks a draft question exactly as the hook would to end the repeated refusals, because the drafter and agents would see every fault and the true row count before asking instead of counting by hand; shown wrong if a draft the command passed is later refused, or if a drafter run still writes its own counting script
+- pursued: the product thinker proposed that a question-writing agent keep working on a question until it passes abcd's check and only then put it to the person; we expect no refusal to reach the person in an interview run through the writer, and we are wrong if the recorded lab interviews still show a question refused in front of the person, or if the writer hands back a refusal for length.
