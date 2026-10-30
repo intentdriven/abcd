@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/decide/judge"
 	"github.com/intentdriven/abcd/internal/core/lab"
 	"github.com/intentdriven/abcd/internal/core/oracle"
@@ -264,7 +265,7 @@ func lessonsRouter(mode string, adapter *scoreFake, pairs *[]lab.Pair) *judge.Ro
 	}
 	return judge.NewForTest(routes, func(oracle.Target) judge.Judge { return adapter }, func(p lab.Pair) (string, string, error) {
 		*pairs = append(*pairs, p)
-		return "lab-261030000000-abcdef0", "~/.abcd.noindex/lab/x/lab-261030000000-abcdef0/pairs.jsonl", nil
+		return "lab-261030000000-abcdef0", abcdhome.Display("lab/x/lab-261030000000-abcdef0/pairs.jsonl"), nil
 	})
 }
 
