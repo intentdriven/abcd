@@ -4,14 +4,13 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 )
 
 // No push carries a login (iss-2610290809526033): a withdrawal of the
 // person's own recorded before the holder id names their login, and every
 // push of theirs that carries it names their kept id instead; one of another
-// holder's still to settle names that holder's login, and no act writes over
-// it until that holder's own copy settles it.
+// holder's still to settle is written under the marker for a holder from
+// before the holder id (holderid_marker_test.go).
 
 // newCommitsSince is every commit on origin that before does not list, as
 // each message reads.
@@ -87,59 +86,4 @@ func TestAPersonsOwnPreIDWithdrawalIsPushedUnderTheirKeptID(t *testing.T) {
 			}
 		})
 	}
-}
-
-// mayasPreIDEntry is a withdrawal maya recorded before the holder id.
-var mayasPreIDEntry = Withdrawal{Number: 12, ID: "PR_twelve", Form: FormQueue, Head: headB, By: "maya", State: WithdrawnPending}
-
-// TestAnotherHoldersPreIDWithdrawalHoldsBackEveryActThatWouldWriteIt: a
-// withdrawal maya recorded before the holder id names her login. A take-over
-// of her lapsed cut, and the settle of an ended release that also holds one
-// of octo's own, would each write it into a new commit, so each refuses with
-// one line naming how many, and no login, pushes nothing and touches nothing
-// on the forge.
-func TestAnotherHoldersPreIDWithdrawalHoldsBackEveryActThatWouldWriteIt(t *testing.T) {
-	t.Run("a take-over of the lapsed cut", func(t *testing.T) {
-		w := newWorld(t)
-		f := armedForge(t)
-		m := message{Record: "rel-v0.16.0", Holder: "maya", Copy: "9f2c41d07be35a6c80e1f4b2a7d39c55", ClaimedAt: w.clock(),
-			ExpiresAt: w.clock().Add(time.Hour), Withdrawn: []Withdrawal{mayasPreIDEntry}, AssistedBy: "abcd:0.0.0"}
-		tip := w.pushTipAt("rel-v0.16.0", m.text(), w.clock())
-		w.set(w.clock().Add(2 * time.Hour))
-		octo := w.clone("1234+octo@users.noreply.github.com", "")
-		f.reset()
-		_, err := octo.do(Request{Record: "rel-v0.16.0"})
-		if err == nil || !strings.Contains(err.Error(), "1 withdrawal recorded before the holder id by another holder") || strings.Contains(err.Error(), "maya") {
-			t.Fatalf("octo's take-over: %v; want it refused, naming one withdrawal and no login", err)
-		}
-		if w.remoteTip("rel-v0.16.0") != tip || len(f.mutations()) != 0 {
-			t.Fatalf("tip %s, mutations %v; want nothing pushed and nothing touched", w.remoteTip("rel-v0.16.0"), f.mutations())
-		}
-	})
-	t.Run("the settle of an ended release", func(t *testing.T) {
-		w := newWorld(t)
-		f := armedForge(t)
-		own := Withdrawal{Number: 11, ID: "PR_eleven", Form: FormAutoSquash, Head: headA, By: "octo", State: WithdrawnPending}
-		m := message{Record: "rel-v0.16.0", Holder: "octo", Copy: "9f2c41d07be35a6c80e1f4b2a7d39c55", ClaimedAt: w.clock(),
-			ExpiresAt: w.clock().Add(time.Hour), Withdrawn: []Withdrawal{own, mayasPreIDEntry}, AssistedBy: "abcd:0.0.0"}
-		tip := w.pushTipAt("rel-v0.16.0", m.text(), w.clock())
-		w.tagOrigin("v0.16.0")
-		f.mu.Lock()
-		f.prs[11].method = ""
-		f.mu.Unlock()
-		octo := w.clone("1234+octo@users.noreply.github.com", "")
-		f.reset()
-		res, err := octo.reserve("iss-8", "o.go")
-		if err != nil {
-			t.Fatal(err)
-		}
-		i := slices.IndexFunc(res.Settles, func(s Settle) bool { return s.Subject == "rel-v0.16.0" })
-		if i < 0 || !strings.Contains(res.Settles[i].Failed, "1 withdrawal recorded before the holder id by another holder") ||
-			strings.Contains(res.Settles[i].Failed, "maya") || len(res.Settles[i].Settled) != 0 {
-			t.Fatalf("settles = %+v; want rel-v0.16.0's settle refused, naming one withdrawal and no login", res.Settles)
-		}
-		if w.remoteTip("rel-v0.16.0") != tip || len(f.mutations()) != 0 {
-			t.Fatalf("tip %s, mutations %v; want nothing pushed and nothing touched", w.remoteTip("rel-v0.16.0"), f.mutations())
-		}
-	})
 }

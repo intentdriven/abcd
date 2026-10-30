@@ -347,13 +347,19 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 		res.Stranded = stranded(m.Withdrawn, p.acts)
 		res.Unpaired = unpairedOf(res.Stranded, p.self)
 	}
+	var byHand []Withdrawal
 	if isRelease(p.id) {
 		// No push carries a login: the person's own withdrawals made before
 		// the holder id are named by their kept id, and another holder's
-		// still to settle hold the act back.
-		var held int
-		if m.Withdrawn, held = pushableWithdrawals(p.self.asKept(m.Withdrawn)); held > 0 {
-			return Result{}, refuse("%s; %s", heldBeforeIDLine(p.id, held), nothingPushed)
+		// still to settle are written under the marker (pushable), and
+		// named so among the stranded. The holder's release, which ends the
+		// release, settles each under the marker as left to be re-armed by
+		// hand (settledByHand).
+		m.Withdrawn = pushable(p.self.asKept(m.Withdrawn))
+		res.Stranded = pushable(res.Stranded)
+		if p.req.Release {
+			m.Withdrawn, byHand = settledByHand(m.Withdrawn)
+			res.Stranded = slices.DeleteFunc(res.Stranded, Withdrawal.preID)
 		}
 	}
 	if !p.req.Release {
@@ -414,10 +420,14 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 	res.DerivedUnchecked = p.derivedGap
 	res.ForkUnchecked = forkUnchecked
 	res.ForkAllowed = forkAllowed
-	if settleOwn {
+	switch {
+	case settleOwn:
 		s, final, ws := p.settleOwnRelease(tree, sha, m.Withdrawn)
+		s.ByHand = byHand
 		settles = append(settles, s)
 		res.Commit, m.Withdrawn = final, ws
+	case len(byHand) > 0:
+		settles = append(settles, Settle{Subject: p.id, Commit: sha, Settled: []Withdrawal{}, Person: p.holder, ByHand: byHand})
 	}
 	if isRelease(p.id) && !p.req.Release && p.req.Admit == 0 {
 		// A release reserved anew withdraws the merges already armed, now
@@ -821,6 +831,8 @@ func decideAdmit(p *prepared, j judged) (Result, message, string, error) {
 			n, p.id, listed, nothingPushed)
 	case !j.Withdrawn[i].unsettled():
 		return Result{}, message{}, "", refuse("#%d is recorded %s on %s, so there is nothing to admit; %s", n, j.Withdrawn[i].State, p.id, nothingPushed)
+	case j.Withdrawn[i].preID():
+		return Result{}, message{}, "", refuse("#%d was not admitted: %s; %s", n, ByHandLine(p.id, j.Withdrawn[i:i+1]), nothingPushed)
 	case p.self.unpaired(j.Withdrawn[i].By) && !p.acts(j.Withdrawn[i]):
 		return Result{}, message{}, "", refuse("#%d was not admitted: %s; %s", n, UnpairedLine([]string{j.Withdrawn[i].By}), nothingPushed)
 	case !p.acts(j.Withdrawn[i]):

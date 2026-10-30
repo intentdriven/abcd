@@ -86,7 +86,10 @@ func (f ForgeFailure) Line() string {
 // newest push could not be found or placed, and nothing of theirs was acted
 // on; NotEnded, when set, is the holder of a release whose tip is a tombstone
 // that holder's own newest push is not, which ends nothing. NotRead, Unplaced
-// and NotEnded are named once for each tip.
+// and NotEnded are named once for each tip. ByHand is each entry under
+// preIDMarker the act settled as left to be re-armed by hand when it ended
+// the release (settledByHand): no copy re-arms one, and nothing is posted on
+// it.
 type Settle struct {
 	Subject  string         `json:"subject"`
 	Commit   string         `json:"commit,omitempty"`
@@ -104,14 +107,16 @@ type Settle struct {
 	NotEndedClaimed bool `json:"not_ended_claimed,omitempty"`
 	// LapsedAt, when set, is when the release's lease lapsed: the settle
 	// ended a cut that lapsed with no tag on origin (dcn-2610271926369425).
-	LapsedAt *time.Time `json:"lapsed_at,omitempty"`
+	LapsedAt *time.Time   `json:"lapsed_at,omitempty"`
+	ByHand   []Withdrawal `json:"by_hand,omitempty"`
 }
 
-// Notes is each sentence naming what the settle did not act on, and the
-// lapse it ended a cut on.
+// Notes is each sentence naming what the settle did not act on, the entries
+// it left to be re-armed by hand, and the lapse it ended a cut on.
 func (s Settle) Notes() []string {
 	var out []string
-	for _, l := range []string{lapsedEndLine(s.Subject, s.LapsedAt), notEndedLine(s.Subject, s.NotEnded, s.NotEndedClaimed), unplacedLine(s.Subject, s.Person, s.Unplaced), notReadLine(s.Subject, s.Person, s.NotRead)} {
+	for _, l := range []string{lapsedEndLine(s.Subject, s.LapsedAt), notEndedLine(s.Subject, s.NotEnded, s.NotEndedClaimed), unplacedLine(s.Subject, s.Person, s.Unplaced),
+		notReadLine(s.Subject, s.Person, s.NotRead), ByHandLine(s.Subject, s.ByHand)} {
 		if l != "" {
 			out = append(out, l)
 		}
@@ -121,7 +126,7 @@ func (s Settle) Notes() []string {
 
 // said reports whether s says anything.
 func (s Settle) said() bool {
-	return s.Commit != "" || len(s.Settled)+len(s.Failures)+len(s.NotRead) > 0 || s.Failed != "" || s.Unplaced != "" || s.NotEnded != ""
+	return s.Commit != "" || len(s.Settled)+len(s.Failures)+len(s.NotRead)+len(s.ByHand) > 0 || s.Failed != "" || s.Unplaced != "" || s.NotEnded != ""
 }
 
 // lapsedEndLine is the sentence naming a cut a settle ended because its lease
@@ -163,8 +168,27 @@ func claimedName(holder string, claimed bool) string {
 	return holder
 }
 
+// ByHandLine is the sentence naming the entries under preIDMarker on
+// subject, which no copy re-arms: their authors re-arm them by hand once the
+// release ends. It names the pull requests alone, never a holder; "" when ws
+// is empty.
+func ByHandLine(subject string, ws []Withdrawal) string {
+	switch len(ws) {
+	case 0:
+		return ""
+	case 1:
+		return fmt.Sprintf("%s was withdrawn for %s by a holder from before the holder id, whom nothing abcd pushes may name, so no copy re-arms it: "+
+			"once the release ends, its author re-arms it by hand", numbers(ws)[0], subject)
+	}
+	return fmt.Sprintf("%s were withdrawn for %s by holders from before the holder id, whom nothing abcd pushes may name, so no copy re-arms them: "+
+		"once the release ends, each one's author re-arms it by hand", strings.Join(numbers(ws), ", "), subject)
+}
+
 // SettledLine is the sentence naming one settled withdrawal.
 func SettledLine(subject string, w Withdrawal) string {
+	if w.preID() && w.State == WithdrawnManual {
+		return ByHandLine(subject, []Withdrawal{w})
+	}
 	switch w.State {
 	case WithdrawnRearmed:
 		return fmt.Sprintf("#%d re-armed (%s, at %s) after %s", w.Number, w.Form, w.Head[:12], subject)
@@ -214,19 +238,26 @@ func StrandedLine(subject string, ws []Withdrawal) string {
 
 // StrandedNote names every withdrawal of ws, the stranded ones on subject,
 // to a reader whose kept holder id is ownID: another person's by whose they
-// are (StrandedLine), and those naming the reader's own id by why no copy of
+// are (StrandedLine), those naming the reader's own id by why no copy of
 // theirs acts on them (ownStrandedLine), never calling the reader's own id
-// another's.
+// another's, and those under preIDMarker as left to be re-armed by hand
+// (ByHandLine).
 func StrandedNote(subject string, ws []Withdrawal, ownID string, loginKnown bool) string {
-	var others, own []Withdrawal
+	var others, own, byHand []Withdrawal
 	for _, w := range ws {
-		if ownID != "" && w.By == ownID {
+		switch {
+		case w.preID():
+			byHand = append(byHand, w)
+		case ownID != "" && w.By == ownID:
 			own = append(own, w)
-		} else {
+		default:
 			others = append(others, w)
 		}
 	}
 	var parts []string
+	if len(byHand) > 0 {
+		parts = append(parts, ByHandLine(subject, byHand))
+	}
 	if len(others) > 0 {
 		parts = append(parts, StrandedLine(subject, others))
 	}
@@ -574,38 +605,24 @@ func (p *prepared) ownRelease(tree string, j *judged) (Settle, error) {
 	return s, nil
 }
 
-// pushableWithdrawals is ws as a new commit on a release may carry them: no
-// push carries a login, so an entry naming its withdrawer by a login (one
-// recorded before the holder id; the reader's own are named by their kept id
-// by then, Self.asKept) is not written. One of those already settled needs
-// nothing more and is left out; held counts those still to settle (withdrawn,
-// admitted or kept), which only their withdrawer's own copy can settle, and
-// which no act writes over (heldBeforeIDLine).
-func pushableWithdrawals(ws []Withdrawal) (out []Withdrawal, held int) {
+// pushable is ws as a new commit on a release may carry them: no push
+// carries a login, so an entry naming its withdrawer by a login (one recorded
+// before the holder id by another holder; the reader's own are named by their
+// kept id by then, Self.asKept) is written under preIDMarker while it is
+// still to settle (withdrawn, admitted or kept), kept in the record and no
+// one's, and one already settled needs nothing more and is left out.
+func pushable(ws []Withdrawal) []Withdrawal {
+	var out []Withdrawal
 	for _, w := range ws {
 		switch {
-		case validHolderID(w.By):
+		case validHolderID(w.By) || w.preID():
 			out = append(out, w)
 		case w.unsettled() || w.State == WithdrawnKept:
-			held++
+			w.By = preIDMarker
 			out = append(out, w)
 		}
 	}
-	return out, held
-}
-
-// heldBeforeIDLine is the sentence an act that would write over subject's
-// withdrawals refuses with when n of them, still to settle, were recorded
-// before the holder id by another holder: they name that holder by their
-// login, which nothing abcd pushes may carry, so only that holder's own
-// copy, on its next act, settles them. It names no login.
-func heldBeforeIDLine(subject string, n int) string {
-	what := fmt.Sprintf("%d withdrawals", n)
-	if n == 1 {
-		what = "1 withdrawal"
-	}
-	return fmt.Sprintf("%s still holds %s recorded before the holder id by another holder, which name that holder by their login, and nothing abcd pushes may carry a login, "+
-		"so this act writes nothing over it: that holder's own copy settles them first, on its next act, and then this act can be run again", subject, what)
+	return out
 }
 
 // withdrawalOf is ws's entry for pull request n.
@@ -914,9 +931,14 @@ func settleTip(a actor, tree, id string, t tip, own bool) (s Settle, ok bool) {
 	if lapsed && !(rec.found && rec.at == 0 && rec.commit == t.Commit) {
 		return Settle{}, false
 	}
-	acted, held := pushableWithdrawals(merged(k, t.Withdrawn, t.Withdrawn, rec, a.self))
+	acted := pushable(merged(k, t.Withdrawn, t.Withdrawn, rec, a.self))
 	vouched := k.vouched(acted, rec)
-	due := slices.ContainsFunc(rec.mine(a.self), Withdrawal.unsettled) || len(vouched) > 0
+	// An entry under the marker is settled by the act that ends the release
+	// (settledByHand): any settle of the reader's own, and, with none due,
+	// the holder's own --release or their next act over their own lapsed
+	// cut, which ends it.
+	byHandDue := (own || lapsed) && slices.ContainsFunc(acted, func(w Withdrawal) bool { return w.preID() && w.unsettled() })
+	due := slices.ContainsFunc(rec.mine(a.self), Withdrawal.unsettled) || len(vouched) > 0 || byHandDue
 	s.NotRead = rec.above
 	if !due {
 		k.cache().markDone(a.holder, doneScope(a.self))
@@ -938,13 +960,6 @@ func settleTip(a actor, tree, id string, t tip, own bool) (s Settle, ok bool) {
 		}
 	}
 	shown := s.shownOnce(a.root, id, t.Commit)
-	if held > 0 {
-		// Nothing is touched on the forge either: a re-arm with no
-		// tombstone recording it would be read as still withdrawn.
-		s.Failed = heldBeforeIDLine(id, held)
-		shown()
-		return s, true
-	}
 	if why, _ := loginMismatch(a.root, a.self); why != "" {
 		s.Failed = why
 		shown()
@@ -965,17 +980,18 @@ func settleTip(a actor, tree, id string, t tip, own bool) (s Settle, ok bool) {
 	}
 	shown()
 	ws, settled, changed, fails, why := rearmMine(a, acted, vouched)
+	ws, byHand := settledByHand(ws)
 	s.Settled, s.Failures, s.Failed = append(s.Settled, settled...), fails, why
-	if !changed {
+	if !changed && len(byHand) == 0 {
 		return s, true
 	}
 	final, err := a.pushTombstone(tree, id, base, ws)
 	if err != nil {
 		s.Failed = fmt.Sprintf("settled %s, but the tombstone recording it was not pushed (%s); the next act of a copy of yours finds them armed and records them",
-			strings.Join(numbers(settled), ", "), redacted(err))
+			strings.Join(numbers(append(slices.Clone(settled), byHand...)), ", "), redacted(err))
 		return s, true
 	}
-	s.Commit = final
+	s.Commit, s.ByHand = final, byHand
 	s.Failures = append(s.Failures, commentSettled(a, settled, lapsed)...)
 	return s, true
 }
@@ -1370,6 +1386,10 @@ type ReleaseWithdrawals struct {
 	// (Self.HolderIDRefused) when Due is not empty: every act refuses until
 	// it is fixed, so nothing settles Due (HolderIDRefusedLine).
 	HolderIDRefused string `json:"holder_id_refused,omitempty"`
+	// ByHand is each entry under preIDMarker on a release that has ended,
+	// still withdrawn or settled as left by hand: no copy re-arms one, so
+	// its author re-arms it by hand (ByHandLine).
+	ByHand []Withdrawal `json:"by_hand,omitempty"`
 }
 
 // Lines is each sentence the listing shows for the release's withdrawals.
@@ -1416,6 +1436,9 @@ func (r ReleaseWithdrawals) Lines() []string {
 		out = append(out, StrandedNote(r.Subject, r.Stranded, r.ownID, r.loginKnown))
 	}
 	if l := UnpairedLine(r.Unpaired); l != "" {
+		out = append(out, l)
+	}
+	if l := ByHandLine(r.Subject, r.ByHand); l != "" {
 		out = append(out, l)
 	}
 	for _, w := range r.Skipped {
@@ -1473,6 +1496,8 @@ func (s Snapshot) ReleaseWithdrawals(root string, reader Self, now time.Time) []
 		for _, w := range ws {
 			switch {
 			case w.State == WithdrawnMerged:
+			case w.preID() && rw.Ended && (w.unsettled() || w.State == WithdrawnManual):
+				rw.ByHand = append(rw.ByHand, w)
 			case skippedForOwner(w.State):
 				rw.Skipped = append(rw.Skipped, w)
 			case w.State == WithdrawnAdmitted && !rw.Ended:
@@ -1496,7 +1521,7 @@ func (s Snapshot) ReleaseWithdrawals(root string, reader Self, now time.Time) []
 		if r.State == StateExpired && stillBeingCut(r) {
 			rw.Lapsed, rw.LapsedAt = true, r.EffectiveExpiry
 		}
-		if len(rw.Held)+len(rw.Admitted)+len(rw.Due)+len(rw.Stranded)+len(rw.Skipped)+len(rw.NotRead) > 0 || rw.Lapsed || rw.NotEnded != "" || rw.Unplaced != "" {
+		if len(rw.Held)+len(rw.Admitted)+len(rw.Due)+len(rw.Stranded)+len(rw.Skipped)+len(rw.NotRead)+len(rw.ByHand) > 0 || rw.Lapsed || rw.NotEnded != "" || rw.Unplaced != "" {
 			out = append(out, rw)
 		}
 	}

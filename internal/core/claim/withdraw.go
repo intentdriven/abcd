@@ -33,6 +33,22 @@ const (
 	FormAutoRebase = "auto:rebase"
 )
 
+// preIDMarker is the one holder name a withdrawal carries in place of the
+// login of another holder who recorded it before the holder id
+// (iss-2610290809526033): nothing abcd pushes carries a login, so an act that
+// writes such an entry, still to settle, into a new commit writes it under
+// this marker, meaning "a holder from before the holder id". It is neither a
+// holder id nor a GitHub username (the underscore occurs in no username, and
+// it is no h_ id), so it is no reader's own: no first record, own record,
+// vouching or lost-withdrawal walk counts it as anyone's, and no copy re-arms,
+// withdraws again or admits it. The act that ends the release settles it as
+// left to be re-armed by hand (WithdrawnManual, settledByHand). A release
+// written by abcd v0.15.x ignores the withdrawal trailer, and one before the
+// holder id reads every commit naming a holder id, which every commit
+// carrying the marker is, as unreadable, so no older reader reads it as
+// anyone's either.
+const preIDMarker = "pre_id"
+
 // WithdrawalForms is the closed vocabulary of forms.
 var WithdrawalForms = []string{FormQueue, FormAutoMerge, FormAutoSquash, FormAutoRebase}
 
@@ -64,7 +80,9 @@ const (
 	// is already mergeable and the repository has no merge queue to put it
 	// in ("clean status"); abcd never merges someone else's pull request
 	// outright (dcn-2610230328230096), so it needs a manual merge by its
-	// owner, and no copy tries again.
+	// owner, and no copy tries again. An entry under preIDMarker is settled
+	// in it too, without the forge being asked, when the release ends: no
+	// copy re-arms it, so its author re-arms it by hand.
 	WithdrawnManual = "manual"
 	// WithdrawnRefused: the forge refused its re-arm maxRearmRefusals times
 	// for a reason other than clean status, so no copy tries again and its
@@ -108,11 +126,16 @@ type Withdrawal struct {
 	Head string `json:"head"`
 	// By is the holder whose reservation withdrew it: their holder id
 	// (holderid.go), or, on a withdrawal recorded before the id, their GitHub
-	// username. Only a copy of that person re-arms it (dcn-2610222219297651).
+	// username, which a push of abcd's writes as preIDMarker for any holder
+	// but the pusher. Only a copy of that person re-arms it
+	// (dcn-2610222219297651), and none re-arms one under the marker.
 	By string `json:"by"`
 	// State is where it stands, one of WithdrawalStates.
 	State string `json:"state"`
 }
+
+// preID reports whether the withdrawal names its holder by preIDMarker.
+func (w Withdrawal) preID() bool { return w.By == preIDMarker }
 
 // Pending reports whether the withdrawal is still to settle.
 func (w Withdrawal) Pending() bool { return w.State == WithdrawnPending }
@@ -152,7 +175,7 @@ func validNodeID(s string) bool { return nodeIDRe.MatchString(s) }
 func parseWithdrawal(v string) (Withdrawal, bool) {
 	f := strings.Split(v, " ")
 	if len(f) != 6 || !withdrawnNumberRe.MatchString(f[0]) || !validNodeID(f[1]) || !slices.Contains(WithdrawalForms, f[2]) ||
-		!validBlob(f[3]) || !validHolder(f[4]) || !slices.Contains(WithdrawalStates, f[5]) {
+		!validBlob(f[3]) || !validHolder(f[4]) && f[4] != preIDMarker || !slices.Contains(WithdrawalStates, f[5]) {
 		return Withdrawal{}, false
 	}
 	n, err := strconv.Atoi(f[0])
@@ -230,6 +253,21 @@ func carried(tip []Withdrawal, ownReservation bool) []Withdrawal {
 		}
 	}
 	return out
+}
+
+// settledByHand is ws with each entry under preIDMarker still to settle
+// (withdrawn or admitted) settled as WithdrawnManual, for its author to re-arm
+// by hand, and those entries as settled: what the act that ends a release
+// records, since no copy re-arms one.
+func settledByHand(ws []Withdrawal) (out, byHand []Withdrawal) {
+	out = slices.Clone(ws)
+	for i, w := range out {
+		if w.preID() && w.unsettled() {
+			out[i].State = WithdrawnManual
+			byHand = append(byHand, out[i])
+		}
+	}
+	return out, byHand
 }
 
 // withWithdrawal is ws with w in place of the entry for its pull request, or

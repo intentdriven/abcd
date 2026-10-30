@@ -816,7 +816,7 @@ func (k *tipCache) save() {
 // merged is the withdrawals a push of self's carries over base, the
 // withdrawals of the record it is written over, onto onto, the withdrawals
 // of the commit the push is written on, as k reads the branch: every entry of
-// another person's and every entry naming an
+// another person's (one under preIDMarker included) and every entry naming an
 // id self only declares (another account or home of theirs, whose own push
 // recorded it), as base records it, each carried as another's, which nothing
 // here acts on unless it is vouched; and self's own only as their own newest
@@ -861,9 +861,11 @@ func merged(k *asker, base, onto []Withdrawal, own ownRecord, self Self) []Withd
 // the one kept is, in order: the one still to settle (withdrawn or admitted)
 // over a settled one; then the one its holder's own push vouches for
 // (k.vouches; an entry of mine, self's own as their own newest push records
-// it, always is); then, both vouched or neither, the one recorded earliest on
-// the branch (k.recordedAt). So a later entry another login pushed never
-// displaces an earlier vouched one.
+// it, always is, and one under preIDMarker never is); then, both vouched or
+// neither, the one recorded earliest on the branch (k.recordedAt). So a
+// reader's own entry, read from their own push, is kept over the marker
+// entry another holder's push wrote for the same pull request, and a later
+// entry another login pushed never displaces an earlier vouched one.
 func (k *asker) oneEach(ws, mine []Withdrawal) []Withdrawal {
 	var out []Withdrawal
 	for _, w := range ws {
@@ -896,12 +898,13 @@ func (k *asker) preferred(a, b Withdrawal, mine []Withdrawal) bool {
 // when that login pushed the reservation that first recorded it; and one
 // naming a holder id that is not self's, which stands for whoever pushed it
 // (namesPusher), when one login's push placed the reservation that first
-// recorded it. One naming self's kept id that is not of mine never does.
+// recorded it. One under preIDMarker, and one naming self's kept id that is
+// not of mine, never does.
 func (k *asker) vouches(w Withdrawal, mine []Withdrawal) bool {
 	switch {
 	case slices.Contains(mine, w):
 		return true
-	case k == nil || w.By == k.self.ID:
+	case k == nil || w.preID() || w.By == k.self.ID:
 		return false
 	case k.self.declaredOnly(w.By):
 		return k.vouched([]Withdrawal{w}, ownRecord{})[w]

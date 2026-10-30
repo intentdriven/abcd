@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -32,18 +31,8 @@ func writeCommit(p *prepared, m commitMessage, tree, parent string) (string, err
 func writeEmptyCommit(root string, who identity, now time.Time, m commitMessage, tree, parent string) (string, error) {
 	f := m.messageFamily()
 	if r, ok := m.(message); ok {
-		// No commit carries a login: every withdrawal names its holder id
-		// (pushableWithdrawals), whichever act composed it.
-		if n := len(r.Withdrawn) - len(slices.DeleteFunc(slices.Clone(r.Withdrawn), func(w Withdrawal) bool { return !validHolderID(w.By) })); n > 0 {
-			return "", refuse("%s; %s", heldBeforeIDLine(r.Record, n), nothingPushed)
-		}
-		// A release holds one entry for each pull request (oneEach).
-		seen := map[int]bool{}
-		for _, w := range r.Withdrawn {
-			if seen[w.Number] {
-				return "", refuse("the commit composed for %s was not written: it lists #%d twice, and a release holds one entry for each pull request; %s", r.Record, w.Number, nothingPushed)
-			}
-			seen[w.Number] = true
+		if why := unwritableWithdrawals(r.Withdrawn); why != "" {
+			return "", refuse("the commit composed for %s was not written: %s; %s", r.Record, why, nothingPushed)
 		}
 	}
 	text := m.text()
@@ -69,6 +58,25 @@ func writeEmptyCommit(root string, who identity, now time.Time, m commitMessage,
 		return "", refuse("git named the %s commit %s, which is not an object name; %s", f.name, echo(sha), nothingPushed)
 	}
 	return sha, nil
+}
+
+// unwritableWithdrawals is why no commit may carry ws, "" when one may: no
+// commit carries a login, so every withdrawal names its holder by a holder id
+// or by preIDMarker (pushable), whichever act composed it, and a release
+// holds one entry for each pull request (oneEach), so none is listed twice.
+// It names no holder.
+func unwritableWithdrawals(ws []Withdrawal) string {
+	seen := map[int]bool{}
+	for _, w := range ws {
+		switch {
+		case !validHolderID(w.By) && !w.preID():
+			return fmt.Sprintf("#%d's withdrawal names its holder by neither a holder id nor the marker for a holder from before the holder id, and nothing abcd pushes may carry a login", w.Number)
+		case seen[w.Number]:
+			return fmt.Sprintf("it lists #%d twice, and a release holds one entry for each pull request", w.Number)
+		}
+		seen[w.Number] = true
+	}
+	return ""
 }
 
 // readTip reads the commit ref names in this checkout's object store as the

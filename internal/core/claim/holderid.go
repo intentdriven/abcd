@@ -139,9 +139,10 @@ type Self struct {
 // Owns reports whether holder, a reservation's holder or an announcement's
 // sender, is the reader's own: one of their holder ids exactly, or, for a
 // hold made before the id, their login compared as the forge compares it.
+// preIDMarker is no one's.
 func (s Self) Owns(holder string) bool {
 	switch {
-	case holder == "":
+	case holder == "" || holder == preIDMarker:
 		return false
 	case validHolderID(holder):
 		return holder == s.ID || slices.Contains(s.Declared, holder)
@@ -161,7 +162,7 @@ func (s Self) declaredOnly(holder string) bool {
 // id, their login.
 func (s Self) isOwn(holder string) bool {
 	switch {
-	case holder == "":
+	case holder == "" || holder == preIDMarker:
 		return false
 	case validHolderID(holder):
 		return holder == s.ID
