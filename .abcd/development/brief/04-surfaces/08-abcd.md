@@ -159,8 +159,10 @@ whether the attribution gate is wanted. The command decides; the binary writes.
 repository abcd manages, the board says what the merge gate does with a ready
 pull request, read through the gate's own resolver: `facilitator.mode` as the
 default branch's committed `.abcd/config.json` and the machine layer declare
-it, never the checkout's working tree, so the board and the gate never
-disagree. A `human` from any layer wins, and a refused home reads as `human`.
+it, never the checkout's working tree. The board reads the default branch at
+the tip this checkout last fetched and asks the network nothing, where the gate
+fetches it first, so after the mode changes on origin the two can disagree
+until the next fetch. A `human` from any layer wins, and a refused home reads as `human`.
 Under `human` the line says the gate merges once the technical facilitator
 approves the head; under `auto`, that it merges autonomously once a review pair
 has passed the head. The product view draws a line of its own above the
