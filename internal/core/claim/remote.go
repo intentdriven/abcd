@@ -623,7 +623,7 @@ func decideReserve(p *prepared, j judged) (Result, message, string, error) {
 			note, doubtful := declaredTipNote(p, j)
 			tail := "pass --take-over to continue here"
 			if doubtful {
-				tail = takeOverDoubtfulTail(j.Holder)
+				tail = takeOverDoubtfulTail(j.Holder, isRelease(p.id))
 			}
 			return Result{}, message{}, "", backOff("you are already building %s on another computer, until %s%s; %s",
 				p.id, stamp(exp), note, tail)

@@ -87,11 +87,15 @@ func declaredTipNote(p *prepared, j judged) (note string, doubtful bool) {
 
 // takeOverDoubtfulTail is how the other-copy back-off over a reservation no
 // account of the person's is tied to ends: what --take-over would do, and
-// why it is allowed.
-func takeOverDoubtfulTail(id string) string {
-	return fmt.Sprintf("--take-over is still allowed here, only because %s lists %s as yours: it replaces that reservation with yours and ends its hold, "+
-		"while its withdrawals are carried untouched and none is re-armed from here; if the id is not yours, remove it from %s and leave the reservation be",
-		DeclaredHolderIDsFile, id, DeclaredHolderIDsFile)
+// why it is allowed; for a release (release true), what becomes of its hold
+// and its withdrawals too.
+func takeOverDoubtfulTail(id string, release bool) string {
+	does := "it replaces that reservation with yours"
+	if release {
+		does += " and ends its hold, while its withdrawals are carried untouched and none is re-armed from here"
+	}
+	return fmt.Sprintf("--take-over is still allowed here, only because %s lists %s as yours: %s; if the id is not yours, remove it from %s and leave the reservation be",
+		DeclaredHolderIDsFile, id, does, DeclaredHolderIDsFile)
 }
 
 // tipPusher is the login the forge's record of pushes to id's branch says

@@ -764,10 +764,10 @@ withdrawing nothing, and an admission or a release is refused.
   that reservation, so the person can tell one that is not their other
   account's before taking it over. When nothing ties it to an account of
   theirs (the id is unpaired, or its paired account did not push it), the
-  back-off ends by saying that `--take-over` is allowed only because the
-  declaration lists the id as theirs, that it replaces the reservation and
-  ends its hold while acting on none of its withdrawals, and that an id that
-  is not theirs is removed from the declaration instead.
+  back-off ends by saying that a take-over is allowed only because the
+  declaration lists the id as theirs, that it replaces the reservation (and,
+  for a release, ends its hold while acting on none of its withdrawals), and
+  that an id that is not theirs is removed from the declaration instead.
 - **What ties a push to a login.** The pusher of each commit on a release
   branch is the login the forge's own activity record of pushes to that
   branch names (the repository activity endpoint,
