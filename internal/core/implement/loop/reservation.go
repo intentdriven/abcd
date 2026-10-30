@@ -77,14 +77,14 @@ func claimOptions(now time.Time) claim.Options {
 // too, and logged once.
 //
 // A reservation that has lapsed is revived, judged for overlap like a new
-// one (claim's crowding), but, once every lane is past its implement stage
-// and no spec step is pending, against the same person's other copy only on
-// the files the run's lanes' commits changed (revivalChangedFiles;
-// iss-2610261837062463, dcn-2610291352512058, dcn-2610291925508286), so that
-// copy holding a file the lanes never touched stops nothing; the renewal's
-// note names each such reservation it went ahead past. While a lane may hold
-// uncommitted work, or where those files cannot be read, the whole footprint
-// is judged, as before.
+// one (claim's crowding), but, once no spec step is pending and every lane is
+// past all editing (pastEditing), against the same person's other copy only
+// on the files the run's lanes' commits changed (revivalChangedFiles;
+// iss-2610261837062463, dcn-2610291352512058, dcn-2610291925508286,
+// dcn-2610292238191496), so that copy holding a file the lanes never touched
+// stops nothing; the renewal's note names each such reservation it went ahead
+// past. While any lane may yet hold uncommitted work, or where those files
+// cannot be read, the whole footprint is judged, as before.
 func renewReservation(repoRoot string, st *State, now time.Time, snap *claim.Snapshot) string {
 	if st.ReservedAt == nil {
 		return ""

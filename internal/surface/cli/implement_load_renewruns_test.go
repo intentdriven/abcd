@@ -77,6 +77,46 @@ func TestImplementLoadWaitRenewsTheRunsWhileItsCommandRuns(t *testing.T) {
 	}
 }
 
+// TestImplementLoadWaitLetsARenewalInFlightFinish (dcn-2610292238191496): a
+// renewal round still in flight when the gated command exits, its push made
+// and its state not yet written, is waited for before the waiter exits, so
+// the renewal it made is said on standard error, not dropped unsaid.
+func TestImplementLoadWaitLetsARenewalInFlightFinish(t *testing.T) {
+	waitFixture(t, machine(3, 3, 3))
+	dir := t.TempDir()
+	started, inFlight, exiting := filepath.Join(dir, "started"), filepath.Join(dir, "in-flight"), filepath.Join(dir, "exiting")
+	runsFixture(t, func(string) []loop.RunRenewal {
+		if _, err := os.Stat(started); err != nil {
+			return nil
+		}
+		if _, err := os.Stat(inFlight); err == nil {
+			return nil
+		}
+		if err := os.WriteFile(inFlight, nil, 0o600); err != nil {
+			t.Error(err)
+		}
+		// The round is still in flight when the command exits, and goes on
+		// a while after it.
+		for range 1000 {
+			if _, err := os.Stat(exiting); err == nil {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		time.Sleep(500 * time.Millisecond)
+		return []loop.RunRenewal{{RunID: "run-1", Key: "itd-82", Renewed: true,
+			Note: "renewed the reservation on itd-82, its lease having lapsed, until 2026-10-11T20:00:00Z"}}
+	})
+	script := `: > "$1"; i=0; while [ ! -e "$2" ] && [ $i -lt 1000 ]; do sleep 0.01; i=$((i+1)); done; [ -e "$2" ] && : > "$3"`
+	code, out, errOut := implementCLI(t, "implement", "load", "--wait", "--", "sh", "-c", script, "sh", started, inFlight, exiting)
+	if code != 0 {
+		t.Fatalf("no renewal round was in flight while the command ran (exit %d):\n%s%s", code, out, errOut)
+	}
+	if want := "abcd implement load --wait: run run-1: renewed the reservation on itd-82, its lease having lapsed, until 2026-10-11T20:00:00Z\n"; !strings.Contains(errOut, want) {
+		t.Errorf("the renewal in flight when the command exited went unsaid; standard error lacks %q:\n%s", want, errOut)
+	}
+}
+
 // TestImplementStatusRenewsTheRunsItShows (iss-2610261837062463,
 // dcn-2610291352512058): before it renders, implement status renews a due
 // reservation of each run it shows, those of the checkout it runs in or the

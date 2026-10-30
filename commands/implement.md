@@ -628,13 +628,17 @@ renewal only renews this person's own reservation from this copy: it never
 reserves a released record again and never takes one over. A renewal of one
 that has lapsed is judged for overlap like a new reservation, since it held
 nothing while it lapsed: another person's live reservation of any path in its
-footprint refuses it, and so does your own from another copy. Once every lane
-is past its implement stage and no spec step is still to be opened, your other
-copy refuses it only where that copy holds a file the run's lanes changed (read
-as the narrowing reads them, at the lane's head or its branch's tip); while a
-lane is still at or before its implement stage, whose edits the branch does not
-yet show, or a step is still to be opened, or when the files cannot be read,
-the whole footprint is judged, since two automated lanes never edit one file.
+footprint refuses it, and so does your own from another copy. Only once no
+spec step is still to be opened and every lane is past all editing (done,
+discarded or handed back, at its landing, or at validate awaiting its
+reviewers alone, with no implementer out or due for a fix round and no sync
+conflict waiting to be resolved) does your other copy refuse it only where
+that copy holds a file the run's lanes changed (read as the narrowing reads
+them, at the lane's head or its branch's tip). An implementer's edits stay
+uncommitted until its receipt, so the branch does not show them: while any
+lane is in any other state, a held lane included, or a step is still to be
+opened, or when the files cannot be read, the whole footprint is judged, since
+two automated lanes never edit one file.
 It keeps its whole footprint, and the record's line names your other copy's
 reservation it went ahead past, a file none of the lanes' commits changed. At step 5, before
 the merge rule decides, the **land fence** fetches the reservation and arms
@@ -997,8 +1001,8 @@ every five minutes it renews each
 of your live reservations that is half through its lease and whose latest
 commit this copy pushed, for
 its own term or two hours, whichever is longer, and says each renewal on
-standard error. It never reserves anything new, takes nothing over and revives
-nothing that has lapsed, so a lease shorter than ten minutes can still lapse
+standard error. Your own reservations it only renews: it reserves nothing new,
+takes nothing over and revives none that has lapsed, so a lease shorter than ten minutes can still lapse
 between two rounds; a renewal that fails, or a reservation whose latest commit this copy did not push (or pushed before it kept a note of it), is said once, and the wait goes on.
 
 On the same rounds it renews the reservation of each run in progress that
@@ -1015,7 +1019,10 @@ renews them. Each renewal, and each failure, is said
 on standard error, a failure once until what is said of it changes.
 
 The renewal runs beside the gate, never in it, so the gate's order and its
-open never wait on one, and it stops when the gated command exits. Since the
+open never wait on one. It stops when the gated command exits, letting a round
+already in flight finish and say what it renewed first, for at most as long as
+one networked git command may run and a minute more, so a renewal it pushed is
+never left unsaid. Since the
 renewal runs through git and gh, no
 waiter counts another's git or gh child as its command, so gate make or go,
 never git or gh itself.

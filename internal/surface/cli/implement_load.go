@@ -49,6 +49,12 @@ var (
 	// loadRenewRuns renews the due reservations of the runs the waiter's
 	// checkout serves (loop.RenewRuns), in each round beside loadRenew.
 	loadRenewRuns = func(root string) []loop.RunRenewal { return loop.RenewRuns(root, time.Now()) }
+	// loadRenewStopWait bounds how long the waiter, its command exited, waits
+	// for a renewal round in flight to finish (dcn-2610292238191496): one
+	// networked git command's own cap (gitutil.NetTimeout), so a push under
+	// way ends, pushed or failed, and a minute for the local reads and the
+	// run record's write that follow it.
+	loadRenewStopWait = gitutil.NetTimeout + time.Minute
 )
 
 // newImplementLoadCommand builds `implement load`, the load check that runs once
@@ -198,9 +204,9 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"renews each of your live\n" +
 			"reservations that is half through its lease and whose latest commit this copy\n" +
 			"pushed, for its own term or\n" +
-			"two hours, whichever is longer, and says each renewal on standard error. It\n" +
-			"never reserves anything new, takes nothing over and revives nothing that has\n" +
-			"lapsed, so a lease shorter than ten minutes can still lapse between two rounds;\n" +
+			"two hours, whichever is longer, and says each renewal on standard error. Your\n" +
+			"own reservations it only renews: it reserves nothing new, takes nothing over and\n" +
+			"revives none that has lapsed, so a lease shorter than ten minutes can still lapse between two rounds;\n" +
 			"a renewal that fails, or a reservation whose latest commit this copy did not push (or pushed before it kept a note of it), is said once, and the wait goes on.\n" +
 			"On the same rounds it renews, as implement step does, the due reservation of\n" +
 			"each run in progress that lives in this checkout, or in another worktree of\n" +
@@ -210,8 +216,9 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"lock the round skips that checkout's runs, and the next round renews them. Each is said\n" +
 			"on standard error, a failure once until what is said of it changes. The\n" +
 			"renewal runs beside the gate, never in it, so\n" +
-			"the gate's order and its open never wait on one, and it stops when the gated\n" +
-			"command exits. Since it runs through git and gh, no waiter counts another's git or gh\n" +
+			"the gate's order and its open never wait on one; it stops when the gated\n" +
+			"command exits, letting a round in flight finish and be said first, for at most\n" +
+			"as long as one networked git command may run and a minute more. Since it runs through git and gh, no waiter counts another's git or gh\n" +
 			"child as its command: gate make or go, never git or gh itself.",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
@@ -362,9 +369,12 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 // what is said of it changes.
 //
 // It runs beside the gate, never in it: the gate's looks, its order and its
-// open neither wait on a renewal nor read one, and stop returns at once, a
-// renewal still in flight finishing unsaid. Stop may be called more than
-// once. Outside a checkout there is nothing to renew.
+// open neither wait on a renewal nor read one. Stop starts no further round
+// and waits, for at most loadRenewStopWait, for a round in flight to finish
+// and be said, so a renewal it pushed is not left unsaid
+// (dcn-2610292238191496); past that bound whatever the round says is
+// dropped. Stop may be called more than once. Outside a checkout there is
+// nothing to renew.
 func startHoldRenewal(w io.Writer) (stop func()) {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -384,9 +394,10 @@ func startHoldRenewal(w io.Writer) (stop func()) {
 		}
 	}
 	// The seams are read here, once, so the goroutine reads no shared state.
-	renew, renewRuns, every, round := loadRenew, loadRenewRuns, loadRenewEvery, loadRenewRound
-	done := make(chan struct{})
+	renew, renewRuns, every, round, stopWait := loadRenew, loadRenewRuns, loadRenewEvery, loadRenewRound, loadRenewStopWait
+	done, finished := make(chan struct{}), make(chan struct{})
 	go func() {
+		defer close(finished)
 		tick := time.NewTicker(every)
 		defer tick.Stop()
 		failed := map[string]bool{}
@@ -427,15 +438,28 @@ func startHoldRenewal(w io.Writer) (stop func()) {
 				return
 			case <-tick.C:
 			}
+			// A tick and the stop can be ready at once, and select picks
+			// either: the stop wins, so no round starts after it.
+			select {
+			case <-done:
+				return
+			default:
+			}
 		}
 	}()
 	var once sync.Once
 	return func() {
 		once.Do(func() {
+			close(done)
+			wait := time.NewTimer(stopWait)
+			defer wait.Stop()
+			select {
+			case <-finished:
+			case <-wait.C:
+			}
 			mu.Lock()
 			stopped = true
 			mu.Unlock()
-			close(done)
 		})
 	}
 }

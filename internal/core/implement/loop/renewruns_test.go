@@ -61,7 +61,9 @@ func TestTheWaiterRenewsARunWhoseLaneIsItsCheckout(t *testing.T) {
 
 // TestTheWaiterPassesOverARunWhoseLockIsHeld: a run whose lock another
 // invocation holds is a step mid-act, which renews the reservation itself,
-// so RenewRuns passes over it silently, pushing and logging nothing.
+// so RenewRuns, and RenewRunsIn (implement status's) alike, passes over it
+// silently once the lock's bounded wait (lockTimeout) is up, pushing and
+// logging nothing, and never waits on the lock past that bound.
 func TestTheWaiterPassesOverARunWhoseLockIsHeld(t *testing.T) {
 	shortLockTimeout(t)
 	f := newNarrowFixture(t)
@@ -77,13 +79,23 @@ func TestTheWaiterPassesOverARunWhoseLockIsHeld(t *testing.T) {
 		})
 	}()
 	<-held
-	got := RenewRuns(f.repo.Root(), before.claimed.Add(61*time.Minute))
+	due := before.claimed.Add(61 * time.Minute)
+	for name, renew := range map[string]func() []RunRenewal{
+		"RenewRuns":   func() []RunRenewal { return RenewRuns(f.repo.Root(), due) },
+		"RenewRunsIn": func() []RunRenewal { return RenewRunsIn(f.repo.Root(), "", due) },
+	} {
+		begin := time.Now()
+		got := renew()
+		if took := time.Since(begin); took > 10*lockTimeout+5*time.Second {
+			t.Errorf("%s waited %s on the held lock; want it bounded by the lock's wait", name, took)
+		}
+		if len(got) != 0 {
+			t.Errorf("%s over a held lock = %+v; want the run passed over silently", name, got)
+		}
+	}
 	close(release)
 	if err := <-done; err != nil {
 		t.Fatal(err)
-	}
-	if len(got) != 0 {
-		t.Fatalf("RenewRuns over a held lock = %+v; want the run passed over silently", got)
 	}
 	if tip := f.tip(t); tip.commit != before.commit {
 		t.Fatalf("a renewal was pushed under another invocation's lock: %+v", tip)
@@ -94,7 +106,7 @@ func TestTheWaiterPassesOverARunWhoseLockIsHeld(t *testing.T) {
 }
 
 // TestALapsedRevivalIsJudgedOnTheLanesChangedFiles: the run's reservation
-// of the directory docs lapsed while its validators judged the lane, its
+// of the directory docs lapsed while its reviewer judged the lane, its
 // implementer done and its work committed, and the same person's other copy
 // reserved a file in it since. A revival backs off that copy's reservation of
 // a file the lane's branch changed, logging the failed renewal; once that
@@ -103,6 +115,9 @@ func TestTheWaiterPassesOverARunWhoseLockIsHeld(t *testing.T) {
 func TestALapsedRevivalIsJudgedOnTheLanesChangedFiles(t *testing.T) {
 	f := newNarrowFixture(t)
 	f.implement(t, Options{}, "docs/page.md")
+	if l := f.answerUntil(t, nil, func(l Lane) bool { return l.awaitsRole(RoleRuthless) }); l.Stage != StageValidate || len(l.Awaits) != 1 {
+		t.Fatalf("the lane awaits its reviewer alone: stage %s, awaits %+v", l.Stage, l.Awaits)
+	}
 	before := f.tip(t)
 	lapsed := before.expires.Add(time.Minute)
 
@@ -231,4 +246,128 @@ func TestALapseIsRevivedOnceThoughTheViewWasReadBeforeAnotherRevival(t *testing.
 	if n != 1 {
 		t.Fatalf("the run record logs %d renewals; want one", n)
 	}
+}
+
+// answerUntil steps the run, answering each agent it hands out whose role
+// returns names with that return, until stop holds of the current lane, which
+// it returns.
+func (f *narrowFixture) answerUntil(t *testing.T, returns map[string]string, stop func(Lane) bool) Lane {
+	t.Helper()
+	for range 4 * len(Sequence) {
+		l := currentLane(t, f.repo, f.runID)
+		if stop(l) {
+			return l
+		}
+		if a := l.awaiting(); a != nil && returns[a.Role] != "" {
+			path := filepath.Join(f.repo.Root(), filepath.FromSlash(a.Receipt))
+			if err := os.WriteFile(path, []byte(returns[a.Role]), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Receipt(f.repo.Root(), f.runID, path, f.stages, Options{}); err != nil {
+				t.Fatalf("the %s's return: %v", a.Role, err)
+			}
+			continue
+		}
+		if _, err := advance(f.repo.Root(), f.runID, f.stages, Options{}); err != nil {
+			t.Fatalf("stepping the run: %v", err)
+		}
+	}
+	t.Fatal("the lane never reached the state the test waits for")
+	return Lane{}
+}
+
+// revivalBacksOffOnGuide reports, failing t otherwise, that the lapsed
+// revival of the run's reservation is refused over the same person's other
+// copy's reservation of docs/guide.md, a file the lane's branch does not
+// change, and that the reservation does not move: the whole footprint was
+// judged, not the branch's changed files (dcn-2610292238191496).
+func (f *narrowFixture) revivalBacksOffOnGuide(t *testing.T, what string) {
+	t.Helper()
+	before := f.tip(t)
+	lapsed := before.expires.Add(time.Minute)
+	f.reserveAs(t, "iss-77", "octo", "docs/guide.md", lapsed)
+	got := RenewRuns(f.repo.Root(), lapsed.Add(time.Minute))
+	if len(got) != 1 || got[0].Renewed || !strings.Contains(got[0].Note, "could not renew the reservation on "+secondIssue) ||
+		!strings.Contains(got[0].Note, "docs/guide.md") {
+		t.Fatalf("a revival %s = %+v; want it refused on the other copy's docs/guide.md", what, got)
+	}
+	if tip := f.tip(t); tip.commit != before.commit {
+		t.Fatalf("the refused revival moved the reservation: %+v", tip)
+	}
+}
+
+// TestALapsedRevivalBeforeAFixRoundIsJudgedWhole: the lane's reviewer asked
+// for a fix, so it waits at validate for a fresh implementer, whose edits stay
+// uncommitted until its receipt and may reach any file of the found_at. A
+// lapsed revival, whether the fix round's implementer is out, editing
+// docs/guide.md, or its findings are yet to be handed out, is judged on the
+// whole footprint and backs off the same person's other copy's reservation of
+// docs/guide.md, though the branch changed only docs/page.md.
+func TestALapsedRevivalBeforeAFixRoundIsJudgedWhole(t *testing.T) {
+	fixFirst := map[string]string{RoleRuthless: reviewerReturn("FIX FIRST"), RoleSecurity: reviewerReturn("APPROVE")}
+	for name, stop := range map[string]func(Lane) bool{
+		"while the fix round's implementer works": func(l Lane) bool { return l.awaitsRole(RoleImplementer) },
+		"before the fix round's findings are handed out": func(l Lane) bool {
+			n := len(l.Validation)
+			if n == 0 || len(l.Awaits) > 0 {
+				return false
+			}
+			for _, v := range l.Validation[n-1].Validators {
+				if v.Verdict == "" {
+					return false
+				}
+			}
+			return true
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newNarrowFixture(t)
+			f.implement(t, Options{}, "docs/page.md")
+			l := f.answerUntil(t, fixFirst, stop)
+			if l.Stage != StageValidate {
+				t.Fatalf("the fix round waits at validate: %s", l.Stage)
+			}
+			if err := os.WriteFile(filepath.Join(l.Worktree, "docs", "guide.md"), []byte("the guide, half fixed\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			f.revivalBacksOffOnGuide(t, name)
+		})
+	}
+}
+
+// TestALapsedRevivalWithASyncConflictPendingIsJudgedWhole: the lane's
+// landing synced with the default branch and conflicted, which sends it back
+// to validate for a fresh implementer to resolve; that implementer's edits
+// stay uncommitted until its receipt. A lapsed revival then is judged on the
+// whole footprint and backs off.
+func TestALapsedRevivalWithASyncConflictPendingIsJudgedWhole(t *testing.T) {
+	f := newNarrowFixture(t)
+	f.implement(t, Options{}, "docs/page.md")
+	l := currentLane(t, f.repo, f.runID)
+	editState(t, f.repo.Root(), f.runID, func(doc map[string]any) {
+		lane := doc["lanes"].([]any)[0].(map[string]any)
+		lane["syncs"] = []any{map[string]any{
+			"at": stamp(time.Now().UTC()), "siblings": []any{}, "merged": l.HeadSHA, "conflicted": true,
+			"paths": []any{"docs/guide.md"}, "brief": "sync-1/brief.md", "receipt": "sync-1/receipt.json",
+		}}
+	})
+	if l := currentLane(t, f.repo, f.runID); l.Stage != StageValidate || l.pendingSync() == nil || len(l.Awaits) != 0 {
+		t.Fatalf("the lane waits at validate on its sync conflict, its implementer not yet out: %+v", l)
+	}
+	f.revivalBacksOffOnGuide(t, "with a sync conflict pending")
+}
+
+// TestALapsedRevivalWithAHeldLaneIsJudgedWhole: a lane in a state the
+// allow-list does not name, held here, counts as one that may yet edit, so a
+// lapsed revival is judged on the whole footprint and backs off.
+func TestALapsedRevivalWithAHeldLaneIsJudgedWhole(t *testing.T) {
+	f := newNarrowFixture(t)
+	f.implement(t, Options{}, "docs/page.md")
+	editState(t, f.repo.Root(), f.runID, func(doc map[string]any) {
+		doc["lanes"].([]any)[0].(map[string]any)["stage"] = string(StageHeld)
+	})
+	if l := currentLane(t, f.repo, f.runID); l.Stage != StageHeld {
+		t.Fatalf("the lane is held: %s", l.Stage)
+	}
+	f.revivalBacksOffOnGuide(t, "with a held lane")
 }

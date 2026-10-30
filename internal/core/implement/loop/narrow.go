@@ -111,22 +111,23 @@ func laneChangedFiles(repoRoot string, l Lane, head string) (files []string, dec
 
 // revivalChangedFiles is the files a lapsed revival of st's reservation is
 // judged on against the same person's other copy (claim.Request.OwnOverlapOn;
-// iss-2610261837062463, dcn-2610291352512058, dcn-2610291925508286): the
-// files each lane of the run still at work changed, read as laneChangedFiles
-// reads them, at its branch's tip, which holds the implementer's commits
-// before any receipt records a head. It reads them only once no lane is still
-// at or before its implement stage and no spec step is pending: until then an
-// implementer may hold edits its branch does not show (the tip is still its
-// base while it works uncommitted) and a lane yet to open has changed nothing
-// it can name, so nil is returned and the whole footprint is judged, since two
-// automated lanes must never edit one file. nil too when any lane's files
-// cannot be read; a non-nil empty list when no lane changed a file.
+// iss-2610261837062463, dcn-2610291352512058, dcn-2610291925508286,
+// dcn-2610292238191496): the files each lane of the run still at work
+// changed, read as laneChangedFiles reads them, at its branch's tip, which
+// holds the implementer's commits before any receipt records a head. It reads
+// them only once no spec step is pending and every lane is past all editing
+// (pastEditing): an implementer's edits stay uncommitted until its receipt, so
+// the tip of a lane that has one at work, or may hand one out next, does not
+// show them, and a lane yet to open has changed nothing it can name. Until
+// then nil is returned and the whole footprint is judged, since two automated
+// lanes must never edit one file. nil too when any lane's files cannot be
+// read; a non-nil empty list when no lane changed a file.
 func revivalChangedFiles(repoRoot string, st State) []string {
 	if len(st.Pending) > 0 {
 		return nil
 	}
-	for _, l := range st.Lanes {
-		if mayHoldUncommittedWork(l.Stage) {
+	for i := range st.Lanes {
+		if !pastEditing(st, i) {
 			return nil
 		}
 	}
@@ -153,10 +154,21 @@ func revivalChangedFiles(repoRoot string, st State) []string {
 	return files
 }
 
-// mayHoldUncommittedWork reports whether a lane at stage s may hold edits its
-// branch does not show: one at or before its implement stage, whose
-// implementer may be at work, or one whose stage is unset.
-func mayHoldUncommittedWork(s Stage) bool {
-	i := slices.Index(Sequence, s)
-	return s == "" || (i >= 0 && i <= slices.Index(Sequence, StageImplement))
+// pastEditing reports whether lane i of st can hold no edit its branch does
+// not show, now or by the run's next hand-out: an allow-list, so a stage or
+// state not named here (held, an unset stage, one still at or before its
+// implement stage) counts as editing. A lane is past editing when it is done,
+// discarded or handed back, at its landing (a landing's conflicting sync sends
+// it back to validate first), or at validate awaiting its reviewers alone: no
+// implementer out (a fix round's, or a sync conflict's), no sync conflict
+// pending, and no fix round its findings hand an implementer next.
+func pastEditing(st State, i int) bool {
+	l := st.Lanes[i]
+	switch l.Stage {
+	case StageDone, StageDiscarded, StageHandedBack, StageLand:
+		return true
+	case StageValidate:
+		return !l.awaitsRole(RoleImplementer) && l.pendingSync() == nil && laneWant(st, i).role != RoleImplementer
+	}
+	return false
 }

@@ -89,10 +89,14 @@ func TestImplementLoadWaitRenewsTheCallersHoldsWhileItWaits(t *testing.T) {
 }
 
 // TestImplementLoadWaitNeverWaitsOnARenewal: a renewal that never returns,
-// as a push stuck on the network would, does not delay the open, and after
-// the open nothing more is said of it.
+// as a push stuck on the network would, does not delay the open, the waiter's
+// exit waits for it no longer than its bound (loadRenewStopWait), and past
+// that bound nothing more is said of it.
 func TestImplementLoadWaitNeverWaitsOnARenewal(t *testing.T) {
 	waitFixture(t, machine(3, 3, 3))
+	prevStopWait := loadRenewStopWait
+	loadRenewStopWait = 50 * time.Millisecond
+	t.Cleanup(func() { loadRenewStopWait = prevStopWait })
 	stuck := make(chan struct{})
 	started := make(chan struct{}, 1)
 	renewFixture(t, func(string) ([]claim.Renewal, error) {

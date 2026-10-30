@@ -2592,9 +2592,9 @@ your own reservations from lapsing: at once and then every five minutes it
 renews each of your live
 reservations that is half through its lease and whose latest commit this copy
 pushed, for its own term or
-two hours, whichever is longer, and says each renewal on standard error. It
-never reserves anything new, takes nothing over and revives nothing that has
-lapsed, so a lease shorter than ten minutes can still lapse between two rounds;
+two hours, whichever is longer, and says each renewal on standard error. Your
+own reservations it only renews: it reserves nothing new, takes nothing over and
+revives none that has lapsed, so a lease shorter than ten minutes can still lapse between two rounds;
 a renewal that fails, or a reservation whose latest commit this copy did not push (or pushed before it kept a note of it), is said once, and the wait goes on.
 On the same rounds it renews, as implement step does, the due reservation of
 each run in progress that lives in this checkout, or in another worktree of
@@ -2604,8 +2604,9 @@ which the drain renews; while another invocation holds the checkout's run
 lock the round skips that checkout's runs, and the next round renews them. Each is said
 on standard error, a failure once until what is said of it changes. The
 renewal runs beside the gate, never in it, so
-the gate's order and its open never wait on one, and it stops when the gated
-command exits. Since it runs through git and gh, no waiter counts another's git or gh
+the gate's order and its open never wait on one; it stops when the gated
+command exits, letting a round in flight finish and be said first, for at most
+as long as one networked git command may run and a minute more. Since it runs through git and gh, no waiter counts another's git or gh
 child as its command: gate make or go, never git or gh itself.
 
 **Flags:**
