@@ -1076,8 +1076,16 @@ func IngestConsistency(req ConsistencyIngestRequest) (ConsistencyIngestResult, e
 		return ConsistencyIngestResult{}, afterFiling(fmt.Errorf("intent: writing report %s: %w", reportRel, err))
 	}
 	if findings != "" {
+		// The summary and its findings file are one report: a summary whose
+		// findings file failed would match a re-ingest's receipt and payload and
+		// make it a noop, leaving the findings unwritten for good. So both files
+		// this run created go, and a re-ingest writes the report again.
 		findingsRel := ReviewsShelfRelDir + "/" + dirName + "/" + consistencyFindingsFile
-		if err := writeNewRepoFile(req.RepoRoot, findingsRel, findings); err != nil {
+		if err := writeConsistencyFindings(req.RepoRoot, findingsRel, findings); err != nil {
+			if !errors.Is(err, fs.ErrExist) {
+				_ = os.Remove(filepath.Join(req.RepoRoot, filepath.FromSlash(findingsRel)))
+			}
+			_ = os.Remove(filepath.Join(req.RepoRoot, filepath.FromSlash(reportRel)))
 			return ConsistencyIngestResult{}, afterFiling(err)
 		}
 	}
@@ -1704,6 +1712,10 @@ func findConsistencyReport(repoRoot, rcp, payloadDigest string) (string, error) 
 // (reviews.maxSummaryBytes, which the reviews charter's RD004 holds a
 // summary to). A variable only so a test can lower it.
 var maxConsistencySummaryBytes = 1 << 20
+
+// writeConsistencyFindings writes consistencyFindingsFile. A variable only so a
+// test can make the write fail.
+var writeConsistencyFindings = writeNewRepoFile
 
 // consistencyFindingsFile holds each finding in full, beside a summary that
 // would otherwise pass maxConsistencySummaryBytes. The summary keeps the

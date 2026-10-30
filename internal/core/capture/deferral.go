@@ -7,6 +7,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/grounds"
+	"github.com/intentdriven/abcd/internal/core/mdrender"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -74,6 +75,14 @@ func Defer(req DeferRequest) (DeferResult, error) {
 		return DeferResult{}, refused(fmt.Errorf("defer: the reason is empty — a deferral with no stated reason records nothing; nothing written"))
 	}
 	reason = termsafe.EncodeHiddenRunes(reason)
+	// The reason lands in the body as one line, so it is put to the renderer
+	// the way a grounds entry is (grounds.renderable): a line the site
+	// renderer refuses would pass here and stop the record gate at its next
+	// run (iss-2610261616580903).
+	if err := mdrender.RefusalIn(deferralLine(req.After, reason)); err != nil {
+		return DeferResult{}, refused(fmt.Errorf("defer: the reason carries markdown the site renderer refuses (%v); "+
+			"nothing written: put markup in a closed code span or reword it", err))
+	}
 	// An id the ledger does not hold is refused before the preamble provisions
 	// anything (iss-2609302305500526).
 	if err := requireHeld(issuesRoot, req.ID); err != nil {
@@ -148,6 +157,11 @@ func Defer(req DeferRequest) (DeferResult, error) {
 	return result, nil
 }
 
+// deferralLine is the line a deferral writes under its section heading.
+func deferralLine(after, reason string) string {
+	return "Deferred past " + after + ": " + reason
+}
+
 // appendDeferralSection writes one dated `## Deferral` section into the record,
 // the body half of a deferral's shape: the frontmatter pair is what the cut
 // reads, and the section is what a reader of the record sees, one per cycle.
@@ -159,7 +173,7 @@ func Defer(req DeferRequest) (DeferResult, error) {
 // a record lives. A deferral past a different anchor appends, so each cycle's
 // section stays in the record.
 func appendDeferralSection(content, date, after, reason string) string {
-	heading, line := "## Deferral "+date, "Deferred past "+after+": "+reason
+	heading, line := "## Deferral "+date, deferralLine(after, reason)
 	if i := sameCycleDeferral(content, after); i >= 0 {
 		lines := strings.Split(content, "\n")
 		lines[i], lines[i+2] = heading, line

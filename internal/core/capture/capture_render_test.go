@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/site"
 )
 
 // TestCaptureRefusesABodyTheSiteRendererRefuses (iss-2610261616580903): issue
@@ -39,5 +41,41 @@ func TestCaptureRefusesABodyTheSiteRendererRefuses(t *testing.T) {
 	req.Text = "the receipt names its `<input_fingerprint>` but never checks it"
 	if _, err := Capture(req); err != nil {
 		t.Fatalf("the same text with the placeholder in a code span: %v", err)
+	}
+}
+
+// TestConsistencyIngestRefusesAnUnrenderableFindingBeforeFiling
+// (iss-2610261616580903): the consistency pass asks the site renderer about
+// every finding it would file before it files any, so when the renderer
+// refuses one, nothing is filed and no report is written, rather than the
+// refusal stopping the filing after the earlier findings are in the ledger. A
+// finding's free text is neutralised before it reaches the filing, so no
+// payload trips the renderer today; the check is made to refuse the second
+// finding's body here, to hold the ordering to account for when one does.
+func TestConsistencyIngestRefusesAnUnrenderableFindingBeforeFiling(t *testing.T) {
+	const marker = "the second finding's body"
+	checkRecordBody = func(rel, content string) error {
+		if strings.Contains(content, marker) {
+			return errors.New("a construct the renderer refuses")
+		}
+		return site.CheckRecordBody(rel, content)
+	}
+	t.Cleanup(func() { checkRecordBody = site.CheckRecordBody })
+	root := consistencyLedgerRepo(t)
+	second := cxFinding("itd-10 and itd-11 disagree in "+marker, cxDoubleExplain)
+	second["class"] = "scope_leakage"
+	payload := consistencyPayloadWith(t, root, []any{cxFinding(cxDoubleSummary, cxDoubleExplain), second})
+	_, err := IngestConsistency(root, payload, "2026-09-26", nil)
+	if err == nil || !strings.Contains(err.Error(), "consistency finding 2") ||
+		!strings.Contains(err.Error(), "site renderer refuses") {
+		t.Fatalf("err = %v, want a refusal naming finding 2 and the renderer", err)
+	}
+	for _, f := range ledgerFiles(t, root) {
+		if filepath.Base(f) != lockFilename {
+			t.Fatalf("a refused ingest wrote %s", f)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, ".abcd/work/reviews")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("a refused ingest wrote a report (%v)", err)
 	}
 }
