@@ -39,10 +39,10 @@ var sentences = map[string]string{
 		"Writes nothing; refuses any argument.",
 	"abcd ahoy install": "Apply the install gaps the detection finds: " +
 		"Writes .abcd/, the name-guard hooks and the PATH entry, and installs a tool only on a yes; refuses a stale binary.",
-	"abcd ahoy remote": "Enable GitHub secret scanning and push protection: " +
-		"Writes nothing bare, only the settings and their mirror through apply; refuses an unknown sub-verb.",
-	"abcd ahoy remote apply": "Enable GitHub secret scanning and push protection on this repository: " +
-		"Writes both settings and their mirror; refuses an unconfirmed run.",
+	"abcd ahoy remote": "Apply abcd's GitHub settings baseline: " +
+		"Writes nothing bare, only the settings, rulesets and their mirrors through apply; refuses an unknown sub-verb.",
+	"abcd ahoy remote apply": "Apply every GitHub setting the remote audit finds differing: " +
+		"Writes those settings, abcd's own rulesets and their mirrors; refuses an unconfirmed run.",
 	"abcd ahoy uninstall": "Remove abcd from this repository, leaving .abcd/ in place: " +
 		"Writes the removal of the marker block, PATH copy, and provenance record; refuses any argument.",
 	"abcd ahoy worktree": "List this repository's worktrees and its lane in the worktree store: " +

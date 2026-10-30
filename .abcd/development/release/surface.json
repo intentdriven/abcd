@@ -355,13 +355,13 @@
     {
       "path": "abcd ahoy remote",
       "hidden": false,
-      "sentence": "Enable GitHub secret scanning and push protection: Writes nothing bare, only the settings and their mirror through apply; refuses an unknown sub-verb.",
+      "sentence": "Apply abcd's GitHub settings baseline: Writes nothing bare, only the settings, rulesets and their mirrors through apply; refuses an unknown sub-verb.",
       "flags": []
     },
     {
       "path": "abcd ahoy remote apply",
       "hidden": false,
-      "sentence": "Enable GitHub secret scanning and push protection on this repository: Writes both settings and their mirror; refuses an unconfirmed run.",
+      "sentence": "Apply every GitHub setting the remote audit finds differing: Writes those settings, abcd's own rulesets and their mirrors; refuses an unconfirmed run.",
       "flags": [
         {
           "name": "yes",

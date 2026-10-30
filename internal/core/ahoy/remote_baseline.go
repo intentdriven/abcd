@@ -97,10 +97,21 @@ type SettingsAudit struct {
 	// RequiredChecks is the check names the baseline requires on the default
 	// branch: github.required_checks when set, else those every pull request's
 	// workflows report.
-	RequiredChecks []string  `json:"required_checks,omitempty"`
-	Findings       []Finding `json:"findings"`
+	RequiredChecks []string `json:"required_checks,omitempty"`
+	// RequiredCheckApps is the app each required check is pinned to: the one
+	// app whose check runs reported it on the recent commits. A check missing
+	// from it stays required from any source, and a note says why.
+	RequiredCheckApps map[string]CheckApp `json:"required_check_apps,omitempty"`
+	Findings          []Finding           `json:"findings"`
 	// Notes say what the audit left out of its reading, and why.
 	Notes []string `json:"notes,omitempty"`
+}
+
+// CheckApp is the GitHub App a required check is pinned to, by the id
+// GitHub's check runs name, never one abcd knows in advance.
+type CheckApp struct {
+	ID   int64  `json:"id"`
+	Slug string `json:"slug,omitempty"`
 }
 
 // Differences returns the findings the apply can act on, as
@@ -307,8 +318,8 @@ func auditSettings(in auditInput) *SettingsAudit {
 	add(boolFinding(settingWiki, in.obj.HasWiki, false))
 	add(boolFinding(settingProjects, in.obj.HasProjects, false))
 
-	rules, checks, notes := ghBranchRules(in, priv)
-	a.RequiredChecks, a.Notes = checks, append(a.Notes, notes...)
+	rules, checks, apps, notes := ghBranchRules(in, priv)
+	a.RequiredChecks, a.RequiredCheckApps, a.Notes = checks, apps, append(a.Notes, notes...)
 	for _, f := range rules {
 		add(f)
 	}
@@ -522,8 +533,9 @@ type effectiveRule struct {
 }
 
 // ghBranchRules reads the default branch's effective rules and judges the four
-// branch settings, with the required checks the baseline asks for.
-func ghBranchRules(in auditInput, priv bool) (findings []Finding, checks, notes []string) {
+// branch settings, with the required checks the baseline asks for and the app
+// each is pinned to.
+func ghBranchRules(in auditInput, priv bool) (findings []Finding, checks []string, apps map[string]CheckApp, notes []string) {
 	names := []string{settingBranchDeletion, settingBranchForcePush, settingRequiredChecks, settingCodeOwnerReview}
 	all := func(state, note string) []Finding {
 		out := make([]Finding, 0, len(names))
@@ -534,21 +546,23 @@ func ghBranchRules(in auditInput, priv bool) (findings []Finding, checks, notes 
 	}
 	branch := in.obj.DefaultBranch
 	if !branchNameRe.MatchString(branch) || strings.Contains(branch, "..") {
-		return all(findingUnknown, "GitHub's answer did not name a default branch abcd can put into a request"), nil, nil
+		return all(findingUnknown, "GitHub's answer did not name a default branch abcd can put into a request"), nil, nil, nil
 	}
 	out, err := github.API(in.root, nil, "repos/"+in.repo+"/rules/branches/"+branch)
 	if err != nil {
 		if planRefusal(err) && priv {
-			return all(findingOwed, "rulesets are not offered for a private repository on this plan; owed until the repository is public"), nil, nil
+			return all(findingOwed, "rulesets are not offered for a private repository on this plan; owed until the repository is public"), nil, nil, nil
 		}
-		return all(findingUnknown, readFailure("the default branch's rules", err)), nil, nil
+		return all(findingUnknown, readFailure("the default branch's rules", err)), nil, nil, nil
 	}
 	var rules []effectiveRule
 	if json.Unmarshal(out, &rules) != nil {
-		return all(findingUnknown, "the default branch's rules could not be read as JSON"), nil, nil
+		return all(findingUnknown, "the default branch's rules could not be read as JSON"), nil, nil, nil
 	}
 	var deletion, forcePush, codeOwner, queue bool
-	current := map[string]bool{}
+	// current holds each required context's sources: an app id, or 0 for any
+	// source. Two rulesets may require one context, each from its own source.
+	current := map[string][]int64{}
 	for _, r := range rules {
 		switch r.Type {
 		case "deletion":
@@ -567,12 +581,13 @@ func ghBranchRules(in auditInput, priv bool) (findings []Finding, checks, notes 
 		case "required_status_checks":
 			var p struct {
 				Checks []struct {
-					Context string `json:"context"`
+					Context       string `json:"context"`
+					IntegrationID int64  `json:"integration_id"`
 				} `json:"required_status_checks"`
 			}
 			if json.Unmarshal(r.Parameters, &p) == nil {
 				for _, c := range p.Checks {
-					current[c.Context] = true
+					current[c.Context] = append(current[c.Context], c.IntegrationID)
 				}
 			}
 		}
@@ -591,13 +606,147 @@ func ghBranchRules(in auditInput, priv bool) (findings []Finding, checks, notes 
 	} else {
 		checks, notes = scaffold.RequiredChecks(in.root, branch, queue)
 	}
-	findings = append(findings, requiredChecksFinding(checks, current))
+	apps, sourceNotes := ghCheckApps(in.root, in.repo, branch, checks)
+	f, pinNotes := requiredChecksFinding(checks, current, apps)
+	findings = append(findings, f)
+	notes = append(append(notes, sourceNotes...), pinNotes...)
 
 	review := Finding{Setting: settingCodeOwnerReview, Current: "not required", Target: branchTarget(settingCodeOwnerReview), State: findingDiffers}
 	if codeOwner {
 		review.Current, review.State = "required", findingOK
 	}
-	return append(findings, review), checks, notes
+	return append(findings, review), checks, apps, notes
+}
+
+// checkSourceRefs is how many of the default branch's newest commits, and of
+// the newest pull requests' heads, the audit reads check runs from.
+const checkSourceRefs = 3
+
+// commitSHARe is a full commit id, the only shape put into a request path.
+var commitSHARe = regexp.MustCompile(`^[0-9a-f]{40}$`)
+
+// ghCheckApps finds the app that reports each required check, from the check
+// runs and commit statuses on the default branch's newest commits and the
+// newest pull requests' heads. A check one app alone reported is pinned to it.
+// A check two apps reported, or a commit status reported, stays on any source,
+// since pinning it would refuse a report the repository relies on; so does a
+// check no recent run reported. Each is named. A read that fails or is cut
+// short could hide a second source, so then nothing is pinned.
+func ghCheckApps(root, repo, branch string, checks []string) (map[string]CheckApp, []string) {
+	if len(checks) == 0 {
+		return nil, nil
+	}
+	stay := func(why string) []string {
+		return []string{"every required check stays on any source: " + why}
+	}
+	n := strconv.Itoa(checkSourceRefs)
+	var shas []string
+	for _, read := range []struct{ what, path string }{
+		{"the default branch's newest commits", "repos/" + repo + "/commits?sha=" + branch + "&per_page=" + n},
+		{"the newest pull requests", "repos/" + repo + "/pulls?state=all&base=" + branch + "&sort=updated&direction=desc&per_page=" + n},
+	} {
+		out, err := github.API(root, nil, read.path)
+		if err != nil {
+			return nil, stay(readFailure(read.what, err))
+		}
+		var list []struct {
+			SHA  string `json:"sha"`
+			Head struct {
+				SHA string `json:"sha"`
+			} `json:"head"`
+		}
+		if json.Unmarshal(out, &list) != nil {
+			return nil, stay(read.what + " could not be read as JSON")
+		}
+		for _, item := range list {
+			sha := item.SHA
+			if sha == "" {
+				sha = item.Head.SHA
+			}
+			if commitSHARe.MatchString(sha) && !inSet(sha, shas) {
+				shas = append(shas, sha)
+			}
+		}
+	}
+	reporters := map[string]map[int64]string{}
+	byStatus := map[string]bool{}
+	for _, sha := range shas {
+		out, err := github.API(root, nil, "repos/"+repo+"/commits/"+sha+"/check-runs?per_page=100")
+		if err != nil {
+			return nil, stay(readFailure("the check runs of "+sha[:12], err))
+		}
+		var runs struct {
+			Total int `json:"total_count"`
+			Runs  []struct {
+				Name string `json:"name"`
+				App  struct {
+					ID   int64  `json:"id"`
+					Slug string `json:"slug"`
+				} `json:"app"`
+			} `json:"check_runs"`
+		}
+		if json.Unmarshal(out, &runs) != nil {
+			return nil, stay("the check runs of " + sha[:12] + " could not be read as JSON")
+		}
+		if runs.Total > len(runs.Runs) {
+			return nil, stay(sha[:12] + " has more check runs than the one page abcd reads")
+		}
+		for _, r := range runs.Runs {
+			if reporters[r.Name] == nil {
+				reporters[r.Name] = map[int64]string{}
+			}
+			reporters[r.Name][r.App.ID] = r.App.Slug
+		}
+		out, err = github.API(root, nil, "repos/"+repo+"/commits/"+sha+"/status?per_page=100")
+		if err != nil {
+			return nil, stay(readFailure("the commit statuses of "+sha[:12], err))
+		}
+		var status struct {
+			Total    int `json:"total_count"`
+			Statuses []struct {
+				Context string `json:"context"`
+			} `json:"statuses"`
+		}
+		if json.Unmarshal(out, &status) != nil {
+			return nil, stay("the commit statuses of " + sha[:12] + " could not be read as JSON")
+		}
+		if status.Total > len(status.Statuses) {
+			return nil, stay(sha[:12] + " has more commit statuses than the one page abcd reads")
+		}
+		for _, s := range status.Statuses {
+			byStatus[s.Context] = true
+		}
+	}
+	apps := map[string]CheckApp{}
+	var unseen, mixed []string
+	for _, c := range checks {
+		by := reporters[c]
+		switch {
+		case len(by) > 1 || (len(by) == 1 && byStatus[c]):
+			mixed = append(mixed, c)
+		case len(by) == 1:
+			for id, slug := range by {
+				if id > 0 {
+					apps[c] = CheckApp{ID: id, Slug: slug}
+				} else {
+					unseen = append(unseen, c)
+				}
+			}
+		default:
+			unseen = append(unseen, c)
+		}
+	}
+	var notes []string
+	if len(mixed) > 0 {
+		notes = append(notes, "reported by more than one source, so required from any source: "+strings.Join(mixed, ", "))
+	}
+	if len(unseen) > 0 {
+		notes = append(notes, "no recent run reported it, so required from any source: "+strings.Join(unseen, ", "))
+	}
+	if len(apps) == 0 {
+		apps = nil
+	}
+	return apps, notes
 }
 
 // branchTarget words each branch setting's target.
@@ -613,25 +762,75 @@ func branchTarget(setting string) string {
 	return ""
 }
 
-// requiredChecksFinding compares the required contexts with the checks the
-// baseline asks for. A required context no workflow is known to report is
-// named, because a pull request waits on it until it reports; abcd does not
-// remove it, since it is not abcd's to remove.
-func requiredChecksFinding(want []string, current map[string]bool) Finding {
+// requiredChecksFinding compares the required contexts, and the source each is
+// required from, with the checks the baseline asks for and the apps they are
+// pinned to. A check required from any source that the baseline pins differs:
+// pinning it is a tightening the apply makes only on the yes. A check already
+// pinned to another app is left as it is and named, never re-pinned. A
+// required context no workflow is known to report is named, because a pull
+// request waits on it until it reports; abcd does not remove it, since it is
+// not abcd's to remove.
+func requiredChecksFinding(want []string, current map[string][]int64, apps map[string]CheckApp) (Finding, []string) {
 	have := make([]string, 0, len(current))
 	for c := range current {
 		have = append(have, c)
 	}
 	sort.Strings(have)
-	f := Finding{Setting: settingRequiredChecks, Current: listOrNone(have), Target: listOrNone(want)}
+	shown := make([]string, 0, len(have))
+	pinned := map[string]string{}
+	for _, c := range have {
+		var pins []string
+		for _, id := range current[c] {
+			if id != 0 {
+				pins = append(pins, "app "+strconv.FormatInt(id, 10))
+			}
+		}
+		if len(pins) > 0 {
+			pinned[c] = strings.Join(pins, ", ")
+			c += " (from " + pinned[c] + ")"
+		}
+		shown = append(shown, c)
+	}
+	targets := make([]string, 0, len(want))
+	for _, c := range want {
+		if app, ok := apps[c]; ok {
+			c += " (from " + app.label() + ")"
+		}
+		targets = append(targets, c)
+	}
+	f := Finding{Setting: settingRequiredChecks, Current: listOrNone(shown), Target: listOrNone(targets)}
 	wantSet := map[string]bool{}
-	var missing []string
+	var missing, unpinned, elsewhere []string
 	for _, c := range want {
 		wantSet[c] = true
-		if !current[c] {
+		sources, required := current[c]
+		if !required {
 			missing = append(missing, c)
+			continue
+		}
+		app, pin := apps[c]
+		if !pin {
+			continue
+		}
+		pinnedHere, pinnedElsewhere := false, false
+		for _, id := range sources {
+			pinnedHere = pinnedHere || id == app.ID
+			pinnedElsewhere = pinnedElsewhere || (id != 0 && id != app.ID)
+		}
+		switch {
+		case pinnedHere:
+		case pinnedElsewhere:
+			elsewhere = append(elsewhere, c)
+		default:
+			unpinned = append(unpinned, c)
 		}
 	}
+	var notes []string
+	for _, c := range elsewhere {
+		notes = append(notes, c+" is required from "+pinned[c]+" though recent runs report it from "+
+			apps[c].label()+"; its source is left as it is")
+	}
+	missing = append(missing, unpinned...)
 	var stale []string
 	for _, c := range have {
 		if !wantSet[c] {
@@ -654,7 +853,15 @@ func requiredChecksFinding(want []string, current map[string]bool) Finding {
 	default:
 		f.State = findingOK
 	}
-	return f
+	return f, notes
+}
+
+// label names an app as a person reads it: its slug, or its id.
+func (a CheckApp) label() string {
+	if a.Slug != "" {
+		return a.Slug
+	}
+	return "app " + strconv.FormatInt(a.ID, 10)
 }
 
 func listOrNone(items []string) string {

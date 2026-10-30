@@ -163,7 +163,11 @@ func applyRulesets(root, repo string, audit *SettingsAudit, find map[string]Find
 		if differs(settingRequiredChecks) && len(audit.RequiredChecks) > 0 {
 			contexts := make([]any, 0, len(audit.RequiredChecks))
 			for _, c := range audit.RequiredChecks {
-				contexts = append(contexts, map[string]any{"context": c})
+				check := map[string]any{"context": c}
+				if app, ok := audit.RequiredCheckApps[c]; ok {
+					check["integration_id"] = app.ID
+				}
+				contexts = append(contexts, check)
 			}
 			rules = append(rules, map[string]any{"type": "required_status_checks", "parameters": map[string]any{
 				"do_not_enforce_on_create":             false,
@@ -420,8 +424,18 @@ func mergeRuleset(cur currentRuleset, want map[string]any) (map[string]any, erro
 			}
 			checks, _ := params["required_status_checks"].([]any)
 			for _, c := range wantParams["required_status_checks"].([]any) {
-				if !hasCheck(checks, c.(map[string]any)["context"]) {
-					checks = append(checks, c)
+				wc := c.(map[string]any)
+				i := checkIndex(checks, wc["context"])
+				if i < 0 {
+					checks = append(checks, wc)
+					continue
+				}
+				// A check required from any source gains the app abcd pins it
+				// to; one already pinned keeps the source it has.
+				if id, pin := wc["integration_id"]; pin {
+					if hc := checks[i].(map[string]any); hc["integration_id"] == nil {
+						hc["integration_id"] = id
+					}
 				}
 			}
 			params["required_status_checks"] = checks
@@ -474,13 +488,14 @@ func ruleIndex(rules []any, typ any) int {
 	return -1
 }
 
-func hasCheck(checks []any, context any) bool {
-	for _, c := range checks {
+// checkIndex is the position of the required check named context, or -1.
+func checkIndex(checks []any, context any) int {
+	for i, c := range checks {
 		if m, ok := c.(map[string]any); ok && m["context"] == context {
-			return true
+			return i
 		}
 	}
-	return false
+	return -1
 }
 
 func containsValue(list []any, v any) bool {
