@@ -133,23 +133,17 @@ planned):
    work on a timetable, not started by hand with a reminder.
 4. **The number of reads adapts to recent results**: half as many after three
    clean spot-checks in a row, the full number again after any finding.
-5. **No person reads code.** In the product thinker's words: "the role must
-   not have to read code, the entire point of abcd is that humans do not have
-   to read code. Agents (e.g. a model that hasn't written the code) should
-   spot-check code written by other agents (and might as well read all); the
-   TF spot-checks how outcome maps against specs and also spot-checks
-   autonomous decisions (with the aim to identify where those are wrong); a
-   human TF spot-checks to ensure the autonomous (i.e. AI) TF replacement is
-   optimised in their decision making; the PT may get involved but only in
-   mapping what the AI returns against intents (their definition of good);
-   both never have to read code, they won't be able to judge it (a product
-   thinker by definition, a technical facilitator is precisely this, a
-   facilitator)." So the reading is layered: a model that did not write a
-   change reviews the code (all of it, not a sample); the technical
-   facilitator, human or abcd, spot-checks outcomes against specs and
-   autonomous decisions; a human technical facilitator spot-checks the
-   automated facilitator's decisions; the product thinker maps what came back
-   against the intents.
+5. **No person reads code.** The product thinker ruled that no person in
+   abcd's roles has to read code, since sparing people that is the point of
+   abcd, and that neither the product thinker nor the technical facilitator
+   could judge it. The reading is therefore layered. A model that did not
+   write a change reviews its code, and may as well review all of it rather
+   than a sample. The technical facilitator, whether a person or abcd,
+   spot-checks how outcomes match their specs and where autonomous decisions
+   went wrong. A human technical facilitator spot-checks the automated
+   facilitator's decisions, to keep its judgement sound. The product thinker
+   takes part only in matching what came back against the intents, which
+   are their definition of good.
 
 6. **The draw is seeded from a public randomness beacon** fetched when the
    spot-check starts (for example drand), stored with it so the list can be
