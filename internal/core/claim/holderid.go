@@ -117,6 +117,12 @@ type Self struct {
 	Declared []string
 	// Login is the resolved GitHub login, "" when it cannot be told.
 	Login string
+	// paired is the GitHub login DeclaredHolderIDsFile pairs with each
+	// declared id that has one beside it: the account that id is the
+	// person's on, which a commit naming it is held to (asker.namesPusher).
+	// It is read and compared on this machine alone, and never written into
+	// anything pushed or shown.
+	paired map[string]string
 }
 
 // Owns reports whether holder, a reservation's holder or an announcement's
@@ -137,6 +143,38 @@ func (s Self) Owns(holder string) bool {
 // theirs.
 func (s Self) declaredOnly(holder string) bool {
 	return validHolderID(holder) && holder != s.ID && slices.Contains(s.Declared, holder)
+}
+
+// isOwn reports whether holder names the reader themselves rather than one
+// of their declared ids: their kept holder id, or, on a hold made before the
+// id, their login.
+func (s Self) isOwn(holder string) bool {
+	switch {
+	case holder == "":
+		return false
+	case validHolderID(holder):
+		return holder == s.ID
+	}
+	return s.Login != "" && sameHolder(holder, s.Login)
+}
+
+// pairedLogin is the login DeclaredHolderIDsFile pairs with holder, an id s
+// only declares; ok is false for any other holder, and for a declared id
+// with no login beside it.
+func (s Self) pairedLogin(holder string) (login string, ok bool) {
+	if !s.declaredOnly(holder) {
+		return "", false
+	}
+	login, ok = s.paired[holder]
+	return login, ok
+}
+
+// unpaired reports whether holder is an id s only declares with no login
+// beside it: nothing ties a commit naming it to an account, so this copy
+// reads no end from it and acts on none of its withdrawals.
+func (s Self) unpaired(holder string) bool {
+	_, ok := s.pairedLogin(holder)
+	return s.declaredOnly(holder) && !ok
 }
 
 // Known reports whether anything names the reader: a holder id or a login.
@@ -187,8 +225,8 @@ func readerSelf(root string, o Options) Self {
 			s.ID = id
 		}
 	}
-	if ids, err := declaredHolderIDs(home); err == nil {
-		s.Declared = ids
+	if ids, paired, err := declaredHolderIDs(home); err == nil {
+		s.Declared, s.paired = ids, paired
 	}
 	return s
 }
@@ -236,7 +274,7 @@ func ownSelf(home, login string, mint bool) (Self, error) {
 	if err != nil {
 		return Self{}, err
 	}
-	if s.Declared, err = declaredHolderIDs(home); err != nil {
+	if s.Declared, s.paired, err = declaredHolderIDs(home); err != nil {
 		return Self{}, err
 	}
 	return s, nil
@@ -341,35 +379,51 @@ func mintHolderID(home string) (string, error) {
 }
 
 // declaredHolderIDs is the ids home declares as the person's too
-// (DeclaredHolderIDsFile): one per line, a # starting a comment, blank lines
-// passed over, read under the kept id's guards. An absent file declares none;
-// one that refuses, or a line that is not one holder id, is an error naming
-// it.
-func declaredHolderIDs(home string) ([]string, error) {
+// (DeclaredHolderIDsFile), and the login paired with each that has one: one
+// id per line, optionally followed by the GitHub login of the account it is
+// the person's on, a # starting a comment, blank lines passed over, read
+// under the kept id's guards. An absent file declares none; one that
+// refuses, a line that is not one id and at most one login, and an id
+// declared twice with two different pairings are each an error naming the
+// line by its number alone, never its contents.
+func declaredHolderIDs(home string) ([]string, map[string]string, error) {
 	data, refusal, err := fsutil.ReadHomeDeclaration(home, abcdhome.Rel(holderIDsLeaf), maxHolderIDsBytes)
 	switch refusal {
 	case fsutil.DeclarationOK:
 	case fsutil.DeclarationAbsent:
-		return nil, nil
+		return nil, nil, nil
 	default:
-		return nil, holderFileRefusal(DeclaredHolderIDsFile, refusal, err)
+		return nil, nil, holderFileRefusal(DeclaredHolderIDsFile, refusal, err)
 	}
 	var ids []string
+	paired := map[string]string{}
 	for i, l := range strings.Split(string(data), "\n") {
 		l, _, _ = strings.Cut(l, "#")
-		l = strings.TrimSpace(l)
-		if l == "" {
+		f := strings.Fields(l)
+		if len(f) == 0 {
 			continue
 		}
-		if !validHolderID(l) {
-			return nil, refuse("%s line %d is not a holder id (h_ and 32 lower-case hex characters), so which holds are yours cannot be told; %s",
-				DeclaredHolderIDsFile, i+1, nothingSent)
+		if len(f) > 2 || !validHolderID(f[0]) || len(f) == 2 && !validUsername(f[1]) {
+			return nil, nil, refuse("%s line %d is not a holder id (h_ and 32 lower-case hex characters), alone or followed by one GitHub login, "+
+				"so which holds are yours cannot be told; %s", DeclaredHolderIDsFile, i+1, nothingSent)
 		}
-		if !slices.Contains(ids, l) {
-			ids = append(ids, l)
+		id, login := f[0], ""
+		if len(f) == 2 {
+			login = f[1]
+		}
+		if slices.Contains(ids, id) {
+			if had := paired[id]; !sameHolder(had, login) && (had != "" || login != "") {
+				return nil, nil, refuse("%s line %d declares an id an earlier line declares with another login, or with none, "+
+					"so which account it is yours on cannot be told; %s", DeclaredHolderIDsFile, i+1, nothingSent)
+			}
+			continue
+		}
+		ids = append(ids, id)
+		if login != "" {
+			paired[id] = login
 		}
 	}
-	return ids, nil
+	return ids, paired, nil
 }
 
 // holderFileRefusal is the refusal of a holder-id file one of the home
