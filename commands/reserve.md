@@ -118,7 +118,8 @@ queued before it (**Withdrawn merges** below). The hold binds sessions, not
 people, so the cutting session tells people working in the repository by hand
 to hold.
 `/abcd:peers` shows the line "release
-v0.16.0 being cut by @octo: merges are held", by the same rule the hold
+v0.16.0 being cut by @octo: merges are held; the hold lapses at <time> unless
+the cut renews it", by the same rule the hold
 counts with: in the cutting copy it shows "you are cutting release v0.16.0
 from this copy: every other session's merges are held", and a release dated
 more than five minutes ahead whose first sighting this checkout cannot keep

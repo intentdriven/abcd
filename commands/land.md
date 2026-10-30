@@ -230,7 +230,7 @@ hand-run `gh pr merge` the merge gate did not allow.
 reservations and `origin`'s release tags, as the implement loop's land fence
 does, and makes the same judgement. While another session holds a live
 release reservation (`rel-vX.Y.Z`, ended by the tag `vX.Y.Z` reaching
-`origin` or by its holder releasing it), or an unreadable one within its hold,
+`origin`, by its holder releasing it, or by its lapse at the time it names), or an unreadable one within its hold,
 nothing is pushed, armed or queued, and the refusal names the release, its
 holder (or "your worktree … on this machine" when another worktree of this
 checkout cut it, else "your copy on another computer") and until when. A session cutting
@@ -241,8 +241,8 @@ from the cutting checkout is not held. A checkout with no `origin` is not
 held. A release reserved with a date more than five minutes ahead of this
 clock holds from when this checkout first saw it; a checkout that cannot keep
 that sighting (no `.abcd/.work.local/`) does not count it, and prints one
-notice line naming it. Exit 3 means back off: relay who holds the release, and
-run `abcd land` again once it is tagged.
+notice line naming it. Exit 3 means back off: relay who holds the release and until when, and
+run `abcd land` again once it is tagged or the hold has lapsed.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a
