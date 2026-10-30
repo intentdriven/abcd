@@ -481,13 +481,15 @@ func TestRouteFlagRefusals(t *testing.T) {
 	dispatched := []string{"scribe", "intent-auditor"}
 	cases := []struct{ name, route, want string }{
 		{"agent the invocation does not dispatch", "security-reviewer=frontier", `this invocation dispatches scribe, intent-auditor, not "security-reviewer"`},
-		{"agent not in the roster", "ghost=frontier", `this invocation dispatches scribe, intent-auditor, not "ghost"`},
+		// An agent off the roster is only what the caller typed, so it is named
+		// by its length; one of the roster is named.
+		{"agent not in the roster", "ghost=frontier", `this invocation dispatches scribe, intent-auditor, not the agent given (a 5-byte value, not quoted)`},
 		{"tier outside the enum", "scribe=cheap", "host-decides"},
-		{"connection not configured", "scribe=local@elsewhere", "elsewhere"},
+		{"connection not configured", "scribe=local@elsewhere", "its connection (a 9-byte value, not quoted) is not configured"},
 		{"no tier", "scribe", "<agent>=<tier>"},
 		{"empty connection", "scribe=local@", "connection"},
 		{"bad setting", "scribe=local?temperature", "k=v"},
-		{"bad setting key", "scribe=local?Temp=1", "Temp"},
+		{"bad setting key", "scribe=local?Temp=1", "setting (a 4-byte value, not quoted) is not a parameter name"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
