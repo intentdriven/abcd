@@ -86,7 +86,9 @@
 #      lapse. The step says which: the id came from ABCD_HOLDER_ID, or it was
 #      minted here, naming it so the person can copy it into the environment's
 #      settings. It never chooses or writes an id itself, and a variable set
-#      to anything but one id is named as such, never echoed;
+#      to anything but one id is named as such, never echoed; abcd refuses the
+#      lookup under such a variable, so step 4 then sets no identity and says
+#      the variable, not the token, is why;
 #   5. one line per prerequisite, on standard output, which the host hands to
 #      the session.
 #
@@ -382,10 +384,21 @@ field() {
 	printf '%s' "$answer" | sed -n 's/.*"'"$1"'"[[:space:]]*:[[:space:]]*"\([^"\\]*\)".*/\1/p' | head -n 1
 }
 
+# holder_env_malformed says whether ABCD_HOLDER_ID is set to anything but one
+# holder id, which abcd refuses (never echoing it) before it names any account.
+holder_env_malformed() {
+	[ -n "${ABCD_HOLDER_ID:-}" ] && ! [[ "$ABCD_HOLDER_ID" =~ ^h_[0-9a-f]{32}$ ]]
+}
 identity_step() {
 	local login noreply source id
 	answer="$(as_abcd go run ./cmd/abcd reserve --holder --json 2>/dev/null)" || {
-		no_identity
+		if holder_env_malformed; then
+			# The lookup refused on the variable, not the token: no login
+			# is printed, so none can be set as the author.
+			miss "the author identity was not set: ABCD_HOLDER_ID is set but is not a holder id (h_ and 32 lower-case hex characters), so \`abcd reserve --holder\` refuses, as every reservation and announcement does, before it names the forge token's account; set ABCD_HOLDER_ID to the id \`abcd reserve --holder\` prints, or unset it, and run the setup again. The brief's first step stops before any work."
+		else
+			no_identity
+		fi
 		return 0
 	}
 	answer="$(printf '%s' "$answer" | tr -d '\r\n')"
