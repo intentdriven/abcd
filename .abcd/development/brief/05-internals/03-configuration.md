@@ -370,19 +370,21 @@ rather than skipped:
   `source-selection`, `memory-check`, `ledger-category`, `ledger-severity`,
   `prepass-overlap`, `present-tense-advisory`, `embark-lesson-ranking`. A
   route naming anything else is
-  a diagnostic and is skipped. The drain's judgement before a lane opens is
-  meant to run as `eligibility-residual`, a choice of `no`, `user-visible` or
-  `trust-rule`. Its routing is built (`loop/drain_decide.go`). In shadow, the
-  routing records a pair once the host's or the routed judge's answer is
-  taken. Turned on, it asks the adapter once the host's request is written,
-  and takes the answer the way a routed judge's is taken, with the route named
-  `decision-adapter <provider>/<model>`. If the adapter cannot answer, the
-  host's request stands, with a fallback receipt beside the routed judge's.
-  Nothing in the drain's move calls this routing yet, so until that call is
-  added the drain's judgement stays on the host whatever this route says. No
-  other type's step calls the router yet either. Those judgements are made in
-  the host's command pages, which hand nothing back to the binary, so a route
-  to one of them takes effect only once its step calls the router. `abcd lab harvest` reports the agreement per type, and
+  a diagnostic and is skipped. The drain's judgement before a lane opens runs
+  as `eligibility-residual`, a choice of `no`, `user-visible` or
+  `trust-rule`, and the drain's move calls the router for it
+  (`loop/drain_decide.go`). On the host, the default, the drain moves as it
+  always did. In shadow, the move records a pair once the host's or the
+  routed judge's answer is taken, and changes nothing else. Turned on, the
+  move asks the adapter once the host's request is written, before any runner
+  the drain's judge is routed to, and takes the answer the way a routed
+  judge's is taken, with the route named `decision-adapter <provider>/<model>`
+  in the drain's record. If the adapter cannot answer, the host's request
+  stands, with a fallback receipt in the drain's state beside the routed
+  judge's, and the adapter is not asked again for that request. No other
+  type's step calls the router yet. Those judgements are made in the host's
+  command pages, which hand nothing back to the binary, so they stay on the
+  host whatever their route says until their step calls the router. `abcd lab harvest` reports the agreement per type, and
   the research note filed from it is the evidence a ruling turns a type on
   with.
 - **A route to a provider that holds a key sits on the machine alone.** Only a

@@ -101,8 +101,10 @@ carries `agreement`. A judgement type is put in shadow by setting
 `oracle.judgements.<type>` to `shadow:<provider>/<model>` in
 `~/.abcd.noindex/config.json`. The host keeps deciding, and each answer the
 adapter gives beside it is appended to `pairs.jsonl` in the newest lab home.
-No step calls the router yet, so every type stays on the host and no pair is
-kept until that call is added; until then `agreement` is absent.
+Today the drain's judgement before a lane opens (`eligibility-residual`) is
+the one step that goes through the router, so it is the one type whose pairs
+are kept; every other type stays on the host whatever its route says, and a
+lab with no pairs has no `agreement`.
 For each type, `agreement` gives `pairs`, `compared` (the adapter answered),
 `agreed`, `skipped` (the state was over the model's window, or the call
 failed), `rate`, and the compared and agreed counts in four probability

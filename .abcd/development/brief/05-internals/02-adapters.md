@@ -280,11 +280,11 @@ into agreement per type, with counts and probability bands, and the research
 note filed from it is the evidence a ruling turns a type on with. The first
 candidate is `typesafe/jev-1.13` on OpenRouter's list. The live paid check
 against it is owed to a person (iss-2609291925398978). The drain's judgement
-(`eligibility-residual`) has its routing built but is not yet called from the
-drain's move, and no other type's step calls the router yet, so until those
-calls are added every judgement stays on the host. The tests drive the
-router, the pairs file, the harvest and the drain's routing with a fake
-adapter and a temporary home.
+(`eligibility-residual`) is the one type whose step calls the router: the
+drain's move asks it in each mode. No other type's step calls the router yet,
+so every other judgement stays on the host whatever its route says. The tests
+drive the router, the pairs file, the harvest and the drain's moves in each
+mode with a fake adapter and a temporary home.
 
 ### Reviewer routes — the command-line runner, and RepoPrompt over MCP
 
