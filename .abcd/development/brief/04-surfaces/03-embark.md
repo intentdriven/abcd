@@ -56,7 +56,8 @@ Bare `/abcd:embark` prints dispatcher help and mutates nothing.
   and runs no product audit.
 - **The lessons** take the same two paths and answer what the previous voyage
   learned (itd-24): every lesson the lifeboat's release retrospectives carry,
-  ranked against the new voyage's brief (the target's framing chapter, or the
+  ranked against the new voyage's brief (the target's framing chapter, read
+  inside the target so no directory on its path leads out of it, or the
   text of a brief file the caller names), the three most like it first and the
   rest as a list, for the press-release interview to ask which apply. The
   manifest is verified first, a lesson is attributed to its directory's

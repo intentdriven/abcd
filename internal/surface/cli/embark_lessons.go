@@ -155,7 +155,18 @@ func embarkLessonsFraming(targetAbs, brief string) (text, source string, err err
 		}
 		return string(data), "--brief", nil
 	}
-	data, err := fsutil.ReadGuarded(filepath.Join(targetAbs, filepath.FromSlash(embarkFramingRel)), maxEmbarkBriefBytes)
+	// Read inside the target: with a route set, the chapter is sent to the
+	// decision adapter, so a directory on its path that leads out of the
+	// target is refused, as a link at the leaf always was.
+	root, err := os.OpenRoot(targetAbs)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", "", nil
+		}
+		return "", "", fmt.Errorf("opening the target: %w", err)
+	}
+	defer root.Close()
+	data, err := fsutil.ReadGuardedInRoot(root, filepath.FromSlash(embarkFramingRel), maxEmbarkBriefBytes)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return "", "", nil

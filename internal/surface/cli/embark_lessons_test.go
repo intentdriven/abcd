@@ -296,3 +296,23 @@ func TestEmbarkLessonsSaysWhenTheHomeIsNotRead(t *testing.T) {
 		t.Fatalf("the refused home routes nothing: %+v", v)
 	}
 }
+
+// The target's framing chapter is read inside the target: a directory on its
+// path that leads out of the target is refused, nothing ranked, so no file
+// outside it becomes the state the decision adapter is sent.
+func TestEmbarkLessonsRefusesAFramingChapterOutsideTheTarget(t *testing.T) {
+	lb, target := lessonsTarget(t)
+	outside := t.TempDir()
+	dev := filepath.Join(target, ".abcd", "development")
+	if err := os.Rename(dev, filepath.Join(outside, "development")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(outside, "development"), dev); err != nil {
+		t.Fatal(err)
+	}
+	stdout, stderr, err := runCLISplit(t, "embark", "lessons", lb, target, "--json")
+	var ee *exitError
+	if !errors.As(err, &ee) || ee.Code != 2 || !strings.Contains(ee.Msg, "framing chapter") {
+		t.Fatalf("a framing chapter outside the target is read: err %v\nstdout:\n%s\nstderr:\n%s", err, stdout, stderr)
+	}
+}
