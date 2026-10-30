@@ -215,6 +215,17 @@ twice, and the rule reads it from both ends. A hand edit that types a legal valu
 in a legal combination is byte-identical to a command's write, so the rule
 catches implausible hand edits, not all of them.
 
+Issue text the site renderer refuses is refused at the write (exit 2, nothing
+written), with the construct named, because the record gate would refuse the
+same body at its next run. That covers a placeholder named after a void HTML
+element (`<input>`, `<link>`), inline HTML (a tag with attributes, a closing
+tag, or an element with its closing tag), an unclosed code span, a
+reference-form image, and a reference link to a label the body does not
+define, where it defines any. A `capture defer` reason is held to the
+renderer too, and more strictly, as a grounds entry is: a line appended to a
+record may carry no image and no reference link at all. Put a placeholder, a
+path or code in a code span.
+
 A single whitespace-free word is refused (exit 2, nothing written): a lone
 token reads as a mistyped sub-verb, never as issue text. A near-miss of a real
 sub-verb is refused the same way, with the correction named, so a two-word input
