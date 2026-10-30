@@ -22,34 +22,44 @@
         "do_not_enforce_on_create": false,
         "required_status_checks": [
           {
-            "context": "attribution"
+            "context": "attribution",
+            "integration_id": 15368
           },
           {
-            "context": "check (macos-latest)"
+            "context": "check (macos-latest)",
+            "integration_id": 15368
           },
           {
-            "context": "check (ubuntu-latest)"
+            "context": "check (ubuntu-latest)",
+            "integration_id": 15368
           },
           {
-            "context": "cold-reading-evals"
+            "context": "cold-reading-evals",
+            "integration_id": 15368
           },
           {
-            "context": "external-review"
+            "context": "external-review",
+            "integration_id": 15368
           },
           {
-            "context": "gitleaks"
+            "context": "gitleaks",
+            "integration_id": 15368
           },
           {
-            "context": "record-lint"
+            "context": "record-lint",
+            "integration_id": 15368
           },
           {
-            "context": "smoke"
+            "context": "smoke",
+            "integration_id": 15368
           },
           {
-            "context": "wip-guard"
+            "context": "zizmor",
+            "integration_id": 15368
           },
           {
-            "context": "zizmor"
+            "context": "wip-guard",
+            "integration_id": 15368
           }
         ],
         "strict_required_status_checks_policy": true
