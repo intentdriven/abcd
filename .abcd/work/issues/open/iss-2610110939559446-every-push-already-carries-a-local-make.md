@@ -10,6 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "Makefile"
 remedy: "post the local preflight receipt as a commit status (the gh-signoff pattern) only to skip duplicate pull-request-level work, never in the merge queue, and only once a receipt can be attested rather than asserted"
+related_intents: [itd-2610261025516272]
 ---
 
 Every push already carries a local make preflight receipt that ran the same gates CI runs, but CI cannot see it, so the pull-request run repeats the work. The receipt is the pusher's word, not an attestation, and with many agents pushing that is too weak to replace the queue run; it could only spare duplicate work before the queue.

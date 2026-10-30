@@ -87,6 +87,29 @@ func TestResolveRefusesASettingTheAdapterDoesNotAccept(t *testing.T) {
 		wantAll(t, err, "top_k", "--route scribe=economy@openrouter?top_k=40", "openrouter", "seed, temperature")
 	})
 
+	t.Run("from the --route, a long key", func(t *testing.T) {
+		// A key the --route typed is named by the typed-setting rule: by its
+		// length once it is eight bytes or more, as the error boundary would
+		// withhold it, while the whole --route is withheld by the boundary.
+		const key = "zqlongsettingkey7x"
+		f := newFx(t)
+		l := f.load()
+		c := Connection{Name: "openrouter", Models: models, Accepts: accepts, Roles: roles}
+		s := &spy{named: map[string]Connection{"openrouter": c}}
+		routes, err := ParseRoutes([]string{"scribe=economy@openrouter?" + key + "=40"}, []string{"scribe"}, s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := l.Apply(routes); err != nil {
+			t.Fatal(err)
+		}
+		_, err = Resolve("scribe", l, s)
+		wantAll(t, err, "(a 18-byte name, not quoted) (from --route", "openrouter", "seed, temperature")
+		if msg := strings.ReplaceAll(err.Error(), "scribe=economy@openrouter?"+key+"=40", ""); strings.Contains(msg, key) {
+			t.Fatalf("refusal %q names the typed key apart from its --route", err)
+		}
+	})
+
 	t.Run("from the connection's defaults", func(t *testing.T) {
 		f := newFx(t)
 		f.machine(`{"scribe":{"tier":"local"}}`)

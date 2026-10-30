@@ -27,6 +27,24 @@ type OwnOverlap struct {
 	Record string
 	// Expiry is when the other reservation stops holding.
 	Expiry time.Time
+	// Copy names the copy the other reservation was made from
+	// (iss-2610290507526253), as yourCopyAt words it: "your worktree <path>
+	// on this machine" or "your copy on another computer", or "your other
+	// copy" when the worktrees could not be listed and it is in none listed,
+	// with CopyUnread saying why.
+	Copy       string
+	CopyUnread string
+}
+
+// ownCopyIn is how an own overlap names the copy holding key, among the
+// sibling worktrees sibs, whose listing failed for unread when it is not "":
+// that copy's words, and why the worktrees could not be listed when that
+// leaves the copy unknown.
+func ownCopyIn(sibs map[string]siblingAt, unread, key string) (copy, whyUnread string) {
+	if at := sibs[key].Path; at != "" || unread == "" {
+		return yourCopyAt(at), ""
+	}
+	return "your other copy", unread
 }
 
 // GeneratedShare is a path a reservation shares with the live reservation of
@@ -61,10 +79,15 @@ func (g GeneratedShare) Line() string {
 // that asks for it (Request.WarnOwnOverlap, the reserve verb's) and shares a
 // path with the same person's reservation from another copy goes ahead, and
 // res names each such path (Result.OwnOverlap); every other act backs off it,
-// as it backs off another person's. res also names each generated file it
-// shares, with the record it is shared with (Result.GeneratedShared,
-// iss-2610282340087862), and why no generated file was recognised, when the
-// overlap was judged without them (Result.GeneratedUnread).
+// as it backs off another person's, except a renewal reviving a lapsed tip
+// that names the files its work changed (Request.OwnOverlapOn;
+// iss-2610261837062463, dcn-2610291352512058): it backs off that copy only
+// where a path they share lies in one of those files, and goes ahead over
+// any other, named in res as the warned act's are. res also names each
+// generated file it shares, with the record it is shared with
+// (Result.GeneratedShared, iss-2610282340087862), and why no generated file
+// was recognised, when the overlap was judged without them
+// (Result.GeneratedUnread).
 //
 // Both are judged on the view just fetched, not compared-and-swapped: each
 // reservation is its own ref, so two people racing can each pass the cap or
@@ -108,6 +131,17 @@ func crowding(p *prepared, j judged, res *Result) error {
 	}
 	res.GeneratedUnread = snap.GeneratedUnread
 	var own []OwnOverlap
+	// The worktrees are listed only for an own overlap's words, once.
+	var sibs map[string]siblingAt
+	var sibsUnread string
+	sibsListed := false
+	ownCopy := func(r Reservation) (string, string) {
+		if !sibsListed {
+			sibs, sibsUnread = siblingCopies(p.root, ownCopyKey(p.root))
+			sibsListed = true
+		}
+		return ownCopyIn(sibs, sibsUnread, r.key)
+	}
 	for _, r := range others {
 		mine := sameHolder(r.Holder, p.holder)
 		// This copy's own reservations on other records are no overlap: the
@@ -127,11 +161,14 @@ func crowding(p *prepared, j judged, res *Result) error {
 							res.GeneratedShared = append(res.GeneratedShared, s)
 						}
 					}
-				case mine && p.req.WarnOwnOverlap:
+				case mine && (p.req.WarnOwnOverlap || (p.req.Renew && p.req.OwnOverlapOn != nil && !touches(p.req.OwnOverlapOn, shared))):
 					// This person's other copy: their own act, asked by hand,
 					// goes ahead and is told; an automated one (a build's, a
-					// drain's) backs off below.
+					// drain's) backs off below, unless it revives a lapsed
+					// reservation and the shared path is no file its work
+					// changed, which that copy may go on holding.
 					o := OwnOverlap{Path: shared, Record: r.Record, Expiry: r.EffectiveExpiry}
+					o.Copy, o.CopyUnread = ownCopy(r)
 					if !slices.Contains(own, o) {
 						own = append(own, o)
 					}
@@ -147,6 +184,18 @@ func crowding(p *prepared, j judged, res *Result) error {
 		return cmp.Or(strings.Compare(a.Path, b.Path), strings.Compare(a.Record, b.Record))
 	})
 	return nil
+}
+
+// touches reports whether a path the work changed lies in shared, the path
+// an overlap names, or shared lies in it: two automated lanes must never edit
+// the same files.
+func touches(changed []string, shared string) bool {
+	for _, c := range changed {
+		if _, ok := sharedPath(c, shared); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // overlap is the path two footprint paths share as an overlap: sharedPath's,
@@ -186,10 +235,19 @@ func GeneratedUnreadLine(why string) string {
 }
 
 // Warning is how a person is told their reservation shares a path with their
-// own from another copy, the same words wherever it is shown.
+// own from another copy, naming that copy, the same words wherever it is
+// shown.
 func (o OwnOverlap) Warning() string {
-	return fmt.Sprintf("%s is also in the footprint of %s, which you hold from your other copy until %s; reserved anyway, since both are yours",
-		echo(o.Path), o.Record, stamp(o.Expiry))
+	where := o.Copy
+	if where == "" {
+		where = "your other copy"
+	}
+	line := fmt.Sprintf("%s is also in the footprint of %s, which you hold from %s until %s; reserved anyway, since both are yours",
+		echo(o.Path), o.Record, where, stamp(o.Expiry))
+	if o.CopyUnread != "" {
+		line += " (" + o.CopyUnread + ")"
+	}
+	return line
 }
 
 // addsOne reports whether an act on the judged tip adds a live reservation to
@@ -338,6 +396,31 @@ func sharedPath(a, b string) (string, bool) {
 		return a, true
 	}
 	return "", false
+}
+
+// OtherCopyOverlap is the first path of footprint that holder's live
+// reservation of a record other than id, made from another copy, shares in
+// the view s, as crowding judges an overlap (a generated file is shared), and
+// that reservation; ok is false when none does. It reads the view alone. A
+// run whose lane leaves its landing for a fresh round judges it
+// (iss-2610261837062463, dcn-2610300422481486): a lapsed revival may have
+// gone ahead past that copy on a file no lane had changed
+// (Request.OwnOverlapOn), which the fresh round's implementer may now edit,
+// and two automated lanes must never edit one file.
+func (s Snapshot) OtherCopyOverlap(id string, footprint []string, holder string) (OwnOverlap, bool) {
+	for _, r := range s.Reservations {
+		if r.State != StateLive || r.Record == id || r.Copy == CopyThis || !sameHolder(r.Holder, holder) {
+			continue
+		}
+		for _, want := range footprint {
+			for _, held := range r.Footprint {
+				if shared, ok := overlap(want, held, s.Generated); ok {
+					return OwnOverlap{Path: shared, Record: r.Record, Expiry: r.EffectiveExpiry}, true
+				}
+			}
+		}
+	}
+	return OwnOverlap{}, false
 }
 
 // Contention is why a reservation of id with footprint would back off on the

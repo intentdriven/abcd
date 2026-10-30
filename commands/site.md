@@ -81,6 +81,16 @@ and the baseline is per-repo site configuration on the same opt-in footing as
 `.abcd/site.json` itself — the record data proper stays record-format, git and
 `CHANGELOG.md`.
 
+The contributors page and the `authorship` block of `record.json` name no
+person. The human authors are a count: how many people wrote the history and
+how many commits they made (`human_authors` and `human_commits`), with each
+person counted once by the address they commit from, compared without regard
+to case, or by the login inside a forge privacy address, so both forms of that
+address are one person. A name never decides it, and a `.mailmap` in the
+repository folds identities before they are counted. The bots and tools that
+authored commits are named in their own row, and the models the
+`Assisted-by:` trailers declare are named in the tally beside it.
+
 A site served below the root of its host takes `--base-path`: a project's
 GitHub Pages address is `owner.github.io/<repo>/`, so its build passes
 `--base-path /<repo>/` and every root-absolute link the build writes (the
@@ -96,7 +106,9 @@ composed and nothing is read from `site-src/`: every page is built from what
 abcd already writes to the repository, and the interface words, the
 stylesheet, the scripts and the headers policy come from the binary. The about
 page at `/` is, in this order and each only where the repository holds it: the
-identity block `.abcd/positioning.json` points at (as the heading), the
+identity block `.abcd/positioning.json` points at (as the heading, and only
+when abcd writes the file it lives in: one under `.abcd/`, outside the local
+tier), the
 brief's opening (the first section with text in
 `.abcd/development/brief/01-product/01-press-release.md`), the press releases of
 the three newest shipped intents whose audit was met (newest by id: a
@@ -121,8 +133,8 @@ lives under `docs/`) are left out, and so is a hand-written `docs/` tree or
 `README.md`: a project's own documentation is read on GitHub. A project site
 also shows nothing read from git history, and the build does not read it: no
 contributors page, no timeline, none of the health page's authorship checks
-(the same-author pairs, the commits declaring nothing or more than one model,
-and the share disclosing assistance), and no `authorship`, `history` or
+(the commits declaring nothing or more than one model, and the share
+disclosing assistance), and no `authorship`, `history` or
 per-record `dates` in `record.json`. A record is dated by the `date` in its
 own frontmatter alone, and one without is undated.
 A build whose `--project` and settings file disagree is refused, both ways.

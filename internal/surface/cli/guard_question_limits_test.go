@@ -568,9 +568,9 @@ func TestModeMadeQuestionAbcdsSaysSo(t *testing.T) {
 // runner's WaitDelay, the root lookup failed, the gate read the checkout as one
 // with no mode store and admitted the question silently, and the test read the
 // empty stdout as "not one hook output object: EOF" (iss-2610090642394550; the
-// lookup's own fix is iss-2610100846469473). gittest.SlowPipeGit makes that
-// miss happen without load, on every toplevel call, and the refusal still
-// arrives.
+// lookup's own fixes are iss-2610100846469473 and iss-2610272041031418).
+// gittest.SlowPipeGit holds git's output open without load, on every toplevel
+// call, and the refusal still arrives.
 func TestModeMadeQuestionSurvivesAGitHoldingItsPipe(t *testing.T) {
 	foreign := hostQuestion{Header: "Ship", Question: "Ship it?", Options: []hostOption{{Label: "Yes"}, {Label: "No"}}}
 	root := managedCheckout(t)

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -247,5 +248,207 @@ func TestImplementLoadWaitSaysWhenItStandsBack(t *testing.T) {
 	code, out, errOut := implementCLI(t, "implement", "load", "--wait", "--", "sh", "-c", "exit 0")
 	if code != 0 || !strings.Contains(out, "standing back") || !strings.Contains(out, "pid 40001") {
 		t.Fatalf("exit %d; want 0 and a line standing back from pid 40001\n%s%s", code, out, errOut)
+	}
+}
+
+// TestImplementLoadWaitSaysAQuietHolder: a command hold whose holder's tree
+// has used little CPU for the quiet span is named again in the waiting line,
+// as a fact, with its pid, checkout and how long it has held the slot, and
+// the wait still times out behind it: the gate says, it never stops the holder
+// (iss-2610241419324875).
+func TestImplementLoadWaitSaysAQuietHolder(t *testing.T) {
+	t0 := waitFixture(t, machine(3, 3, 3))
+	opened := t0.Add(-time.Minute)
+	home, _ := os.UserHomeDir()
+	raw, _ := json.Marshal(implement.WaitHolder{PID: 777, StartUnix: opened.Unix(), Opened: opened,
+		Until: opened.Add(implement.WaitCommandCap), Form: implement.HoldCommand, Dir: "/work/repo"})
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(abcdhome.Path(home, implement.WaitHoldFileName), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// The holder and its make age with the clock and use no CPU.
+	loadReader = func() (machineload.Snapshot, error) {
+		aged := loadNow().Sub(t0)
+		return machine(3, 3, 3,
+			machineload.Proc{PID: 777, PPID: 1, PGID: 777, UID: 501, Age: time.Minute + aged, Name: "abcd"},
+			machineload.Proc{PID: 778, PPID: 777, PGID: 777, UID: 501, Age: time.Minute + aged, CPU: time.Second, Name: "make"}), nil
+	}
+	code, out, errOut := implementCLI(t, "implement", "load", "--wait", "--timeout", "12m")
+	if code != 1 {
+		t.Fatalf("exit %d, want 1 (timed out)\n%s%s", code, out, errOut)
+	}
+	if n := strings.Count(out, "waiting for capacity:"); n != 2 {
+		t.Fatalf("%d waiting lines, want 2 (the wait, then the quiet holder):\n%s", n, out)
+	}
+	for _, want := range []string{
+		"another waiter holds the gate (pid 777, until",
+		"; the holder (pid 777, /work/repo) has held the test slot for 11m0s using little CPU (under 10% of a core for the last 10m0s); if it is yours and stuck, stop it by its own pid",
+		"load gate still shut after 12m0s",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("output lacks %q:\n%s", want, out)
+		}
+	}
+}
+
+// lockedBuffer is a writer a goroutine writes while the test reads it.
+type lockedBuffer struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (l *lockedBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+func (l *lockedBuffer) String() string { l.mu.Lock(); defer l.mu.Unlock(); return l.b.String() }
+
+// TestStartQuietWatchSaysItsOwnQuiet drives the holder's own watch at a short
+// interval against a quiet tree on macOS's reader, a fresh ps child of the
+// holder at every read: the reads are left out, and the holder says once,
+// on its own output, that it has held the slot using little CPU while a
+// waiter queues.
+func TestStartQuietWatchSaysItsOwnQuiet(t *testing.T) {
+	var mu sync.Mutex
+	t0 := time.Date(2026, 10, 24, 14, 0, 0, 0, time.UTC)
+	now, n := t0, 0
+	prevRead, prevArgs, prevNow, prevEvery := loadReader, loadArgsReader, loadNow, loadQuietEvery
+	t.Cleanup(func() { loadReader, loadArgsReader, loadNow, loadQuietEvery = prevRead, prevArgs, prevNow, prevEvery })
+	loadQuietEvery = time.Millisecond
+	loadNow = func() time.Time { mu.Lock(); defer mu.Unlock(); return now }
+	loadReader = func() (machineload.Snapshot, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		now = now.Add(time.Minute)
+		n++
+		aged := now.Sub(t0)
+		ps := machineload.Proc{PID: 9000 + n, PPID: 777, PGID: 777, UID: 501, CPU: 20 * time.Millisecond, Name: "ps"}
+		snap := machine(3, 3, 3,
+			machineload.Proc{PID: 777, PPID: 1, PGID: 777, UID: 501, Age: time.Minute + aged, Name: "abcd"},
+			machineload.Proc{PID: 778, PPID: 777, PGID: 777, UID: 501, Age: time.Minute + aged, CPU: time.Second, Name: "make"},
+			machineload.Proc{PID: 60000, PPID: 1, PGID: 60000, UID: 501, Age: aged, Name: "abcd"},
+			ps)
+		return snap, nil
+	}
+	loadArgsReader = func([]int) (map[int][]string, error) {
+		return map[int][]string{60000: {"implement", "load", "--wait", "--", "make", "preflight"}}, nil
+	}
+	var out lockedBuffer
+	stop := startQuietWatch(&out, implement.WaitHolder{PID: 777, Opened: t0, Form: implement.HoldCommand, Gate: implement.GateTests, Dir: "/work/repo"}, nil)
+	for deadline := time.Now().Add(10 * time.Second); !strings.Contains(out.String(), "using little CPU") && time.Now().Before(deadline); {
+		time.Sleep(5 * time.Millisecond)
+	}
+	stop()
+	got := out.String()
+	if strings.Count(got, "using little CPU") != 1 {
+		t.Fatalf("want the quiet said once:\n%s", got)
+	}
+	for _, want := range []string{"this command (pid 777, /work/repo) has held the test slot for", "another waiter queues (pid 60000)", "stop it by its own pid"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("output lacks %q:\n%s", want, got)
+		}
+	}
+}
+
+// TestImplementLoadWaitReleasesItsHoldBeforeStoppingTheWatch: the holder's
+// watch can be in the middle of a slow read of the table when the command
+// ends, and the hold is released without waiting for that read.
+func TestImplementLoadWaitReleasesItsHoldBeforeStoppingTheWatch(t *testing.T) {
+	waitFixture(t, machine(3, 3, 3))
+	prevEvery, prevMark := loadQuietEvery, loadMark
+	t.Cleanup(func() { loadQuietEvery, loadMark = prevEvery, prevMark })
+	loadQuietEvery = 10 * time.Millisecond
+	loadMark = func() (func(), error) { return func() {}, nil }
+	home, _ := os.UserHomeDir()
+	hold := abcdhome.Path(home, implement.WaitHoldFileName)
+	started := filepath.Join(t.TempDir(), "started")
+	read := loadReader
+	var mu sync.Mutex
+	released := map[bool]int{}
+	loadReader = func() (machineload.Snapshot, error) {
+		if _, err := os.Stat(started); err == nil {
+			// The watch's read: slow until the hold is gone, as a ps run on a
+			// loaded machine can be, or three seconds at most.
+			gone := false
+			for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
+				if _, err := os.Stat(hold); errors.Is(err, os.ErrNotExist) {
+					gone = true
+					break
+				}
+			}
+			mu.Lock()
+			released[gone]++
+			mu.Unlock()
+		}
+		return read()
+	}
+	code, out, errOut := implementCLI(t, "implement", "load", "--wait", "--", "sh", "-c", `touch "$1"; sleep 0.2`, "sh", started)
+	if code != 0 {
+		t.Fatalf("exit %d\n%s%s", code, out, errOut)
+	}
+	if released[true] == 0 || released[false] != 0 {
+		t.Fatalf("watch reads ending with the hold released / still held: %d / %d; want the hold released while a read was in flight", released[true], released[false])
+	}
+}
+
+// TestImplementLoadWaitLinesShowEachHolder: the first waiting line names the
+// holder's age and says it is not yet measured; the line a span later gives
+// its tree's CPU over that span (iss-2610241457170255).
+func TestImplementLoadWaitLinesShowEachHolder(t *testing.T) {
+	t0 := waitFixture(t, machine(3, 3, 3))
+	opened := t0.Add(-time.Minute)
+	home, _ := os.UserHomeDir()
+	raw, _ := json.Marshal(implement.WaitHolder{PID: 777, StartUnix: opened.Unix(), Opened: opened,
+		Until: opened.Add(implement.WaitCommandCap), Form: implement.HoldCommand, Dir: "/work/repo"})
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(abcdhome.Path(home, implement.WaitHoldFileName), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// The holder's make keeps a whole core busy.
+	loadReader = func() (machineload.Snapshot, error) {
+		aged := loadNow().Sub(t0)
+		return machine(3, 3, 3,
+			machineload.Proc{PID: 777, PPID: 1, PGID: 777, UID: 501, Age: time.Minute + aged, Name: "abcd"},
+			machineload.Proc{PID: 778, PPID: 777, PGID: 777, UID: 501, Age: time.Minute + aged, CPU: aged, Name: "make"}), nil
+	}
+	code, out, errOut := implementCLI(t, "implement", "load", "--wait", "--timeout", "11m")
+	if code != 1 {
+		t.Fatalf("exit %d, want 1 (timed out)\n%s%s", code, out, errOut)
+	}
+	if n := strings.Count(out, "waiting for capacity:"); n != 2 {
+		t.Fatalf("%d waiting lines, want 2:\n%s", n, out)
+	}
+	for _, want := range []string{
+		"; holding: pid 777 for 1m0s, not yet measured\n",
+		"; holding: pid 777 for 11m0s, using 100% of a core over the last 10m0s\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("output lacks %q:\n%s", want, out)
+		}
+	}
+}
+
+// TestHoldersTextMarksAQuietHolder: a measured holder marked quiet reads
+// `quiet:` in place of `using`, so a stalled run above one slot, which holds
+// its slot under the settle hold and is never named by the quiet notice,
+// still reads as one in the `holding:` part (iss-2610241419324875); a busy
+// one and one not yet measured read as before.
+func TestHoldersTextMarksAQuietHolder(t *testing.T) {
+	got := holdersText([]implement.GateHolder{
+		{PID: 777, AgeS: 40 * 60, Measured: true, Quiet: true},
+		{PID: 888, AgeS: 30 * 60, Measured: true, CPU: 0.5},
+		{PID: 999, AgeS: 60},
+	})
+	want := "pid 777 for 40m0s, quiet: 0% of a core over the last 10m0s; " +
+		"pid 888 for 30m0s, using 50% of a core over the last 10m0s; " +
+		"pid 999 for 1m0s, not yet measured"
+	if got != want {
+		t.Fatalf("holdersText = %q, want %q", got, want)
 	}
 }

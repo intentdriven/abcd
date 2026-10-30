@@ -1,8 +1,8 @@
 package ideate
 
 // visibility_test.go pins iss-2610090740139804: every verdict is private or
-// public by the person's answer, and the answer decides the one store it is
-// written to. A public verdict is committed under the research store keyed on
+// public, and the store named decides where it is written (the record verb
+// names private unless --public is given, iss-2610300838089246). A public verdict is committed under the research store keyed on
 // the repository's root commit, with a decision pointing at it; a private one
 // lands owner-only in ~/.abcd.noindex/ideas/<root-sha>/ and the repository is
 // left exactly as it was.
@@ -111,10 +111,11 @@ func TestRecordPrivateLandsInTheHomeStoreOnly(t *testing.T) {
 	assertNothingWritten(t, root)
 }
 
-// TestRecordRefusesWithoutAnAnswer proves the verb never writes without the
-// person's answer: a store with no visibility, or one outside the enum, is
-// refused before anything is written, in either store.
-func TestRecordRefusesWithoutAnAnswer(t *testing.T) {
+// TestRecordRefusesAnUnnamedStore proves the core never picks a store for its
+// caller: a store with no visibility, or one outside the enum, is refused
+// before anything is written, in either store. The record verb defaults to
+// private before it calls in, so only a direct caller can reach this.
+func TestRecordRefusesAnUnnamedStore(t *testing.T) {
 	for _, vis := range []Visibility{"", "secret", "Public"} {
 		t.Run(string(vis), func(t *testing.T) {
 			root := seedRepo(t)

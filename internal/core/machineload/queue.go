@@ -78,11 +78,20 @@ var errandPrograms = []string{psProgram, "git", "gh"}
 
 func isErrandName(name string) bool { return slices.Contains(errandPrograms, name) }
 
+// IsErrandName reports whether a process's base name is one a waiter's own
+// errands run under (errandPrograms): the ps it reads the machine with and
+// the git and gh it renews reservations through.
+func IsErrandName(name string) bool { return isErrandName(name) }
+
 func isMakeName(name string) bool { return slices.Contains(makePrograms, name) }
 
 func isAbcdName(name string) bool {
 	return name == abcdProgram || strings.HasPrefix(name, abcdProgram+"-")
 }
+
+// IsAbcdName reports whether a process's base name is abcd's, a plugin
+// build's platform-suffixed name included.
+func IsAbcdName(name string) bool { return isAbcdName(name) }
 
 // isProgramWord reports whether word names one of the programs the gate reads
 // the arguments of: go, make, or abcd.
@@ -120,6 +129,10 @@ func isLoadWaiter(args []string) bool {
 	wait, race := waiterFlags(args)
 	return wait || race
 }
+
+// IsLoadWaiter reports whether args, abcd's arguments after the program name,
+// run a waiter at either gate (isLoadWaiter).
+func IsLoadWaiter(args []string) bool { return isLoadWaiter(args) }
 
 // isRaceWaiter reports whether args are a waiter's at the race gate:
 // `implement load --race-gate`, the flag before any `--`. A race waiter waits
@@ -205,9 +218,10 @@ type Ahead struct {
 	// or in the same tie group with a lower pid; queueOrder) or running the
 	// command they gate, in pid order.
 	Waiters []int
-	// Busy is the work in its test stages: each preflight in Preflights and
-	// each waiter in Waiters running its command, counted once where one runs
-	// beneath the other (`--wait -- make preflight` is one unit), in pid order.
+	// Busy is the work running past its first gate: each preflight in
+	// Preflights and each waiter in Waiters running its command, counted once
+	// where one runs beneath the other (`--wait -- make preflight` is one
+	// unit), in pid order.
 	Busy []int
 	// Queued is the waiters in Waiters queued ahead, not running a command.
 	Queued []int
@@ -225,9 +239,9 @@ type Ahead struct {
 }
 
 // TakingSlots is a as the first gate counts it against slots units of work
-// in their test stages at once (the load.preflights setting; zero or less
-// reads as one). Above one slot the units at their race gate (AtRaceGate)
-// are dropped from Preflights, Busy and Waiters: each is idle until its race
+// at once (the load.preflights setting; zero or less reads as one). Above
+// one slot the units at their race gate (AtRaceGate) are dropped from
+// Preflights, Busy and Waiters: each is idle until its race
 // run starts, and then it is busy again, beneath its make or as its race
 // waiter running its command. Race runs are kept apart by the race gate
 // (RaceAhead, RaceRuns and the race gate's hold), never by this count, and
@@ -256,8 +270,8 @@ func (a Ahead) Uncrossed() Ahead {
 }
 
 // Shut reports which of the queue's conditions hold the first gate shut when
-// it admits slots units of work to their test stages at once (the
-// load.preflights setting; zero or less reads as one): every unit in Busy
+// it admits slots units of work at once (the load.preflights setting; zero
+// or less reads as one): every unit in Busy
 // takes a slot, and the gate is shut on preflight or on waiter once they are
 // all taken, by the kind of unit that takes them. A waiter queued ahead shuts
 // it whatever slots is, so a free slot never lets a waiter jump the queue.
@@ -320,7 +334,7 @@ func QueueAhead(snap Snapshot, self Self, args map[int][]string) Ahead {
 			out.Preflights = append(out.Preflights, pid)
 		}
 	}
-	// Each unit of work in its test stages once: a preflight or a waiter
+	// Each unit of work running past the gate once: a preflight or a waiter
 	// running its command, unless it runs beneath another of them.
 	units := append(append([]int(nil), out.Preflights...), runningW...)
 	for _, pid := range units {
@@ -572,8 +586,8 @@ func queueOrder(ws []Proc) []int {
 // machine can still give, which is twice the online cores (the waiter's
 // default limit, DefaultWaitFactor) less the one-minute load rounded up,
 // never more than the cores divided among the preflights the first gate
-// admits to their test stages at once (load.preflights; zero or less reads as
-// one, and one is go's own default of the cores) and never fewer than a
+// admits at once (load.preflights; zero or less reads as one, and one is go's
+// own default of the cores) and never fewer than a
 // quarter of the cores, or one, so a run on a loaded machine still makes
 // progress. With n slots, n concurrent stages each take at most the cores
 // divided by n (half at two, a quarter at four, where on most machines the

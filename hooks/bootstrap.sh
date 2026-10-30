@@ -831,6 +831,16 @@ fi
 if [ -n "$use_cache" ]; then
 	release_tag="$cached_tag"
 	expected_sha="$cached_sha"
+	# 7b for the cache: the cached bytes must claim the release the cache
+	# records, as the download's must (7b below). A cache this script filled
+	# passed 7b when it downloaded them, but one seeded from a plugin root's
+	# earlier binary, or filled before 7b existed, never did, and a cache hit
+	# verified against the published manifest raises the mark.
+	claims=$(release_claims "$cache_binary")
+	if [ -n "$claims" ] && [ "$claims" != "$cached_tag" ]; then
+		named=$(printf '%s' "$claims" | tr '\n' ' ' | sed 's/ $//')
+		refuse "the cached $asset is recorded as release $cached_tag, but its build metadata names release $named, so it is not that release's build; nothing was installed, and any abcd this machine already has is left as it was — remove the cached artefact at $cache_binary and start a session with network access to fetch the release again, whose download is checked the same way"
+	fi
 	# The notice names the trust the install rests on, never more (adr-46
 	# decision 3): a manifest-verified cache says so; an offline one says it was
 	# provisioned from an unauthenticated cache, so the reader is never told a

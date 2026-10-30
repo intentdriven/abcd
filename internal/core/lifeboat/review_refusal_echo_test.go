@@ -24,7 +24,7 @@ func TestReviewLifeboatRefusalsDoNotEchoTheValue(t *testing.T) {
 				t.Fatalf("fixture: the %s field was not replaced", field)
 			}
 			dir := reviewFixture(t, "abc", &Summary{Grounded: 7, Blank: 3})
-			_, err := ReviewLifeboat(dir, realSourceDir(t), []byte(payload))
+			_, err := ReviewLifeboat(dir, realSourceDir(t), []byte(payload), okScan)
 			if err == nil {
 				t.Fatalf("an out-of-set %s was accepted", field)
 			}

@@ -24,6 +24,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/ideate"
+	"github.com/intentdriven/abcd/internal/core/source"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
@@ -47,7 +48,7 @@ func newIdeateCommand(asJSON *bool) *cobra.Command {
 	var verdictJSON string
 	var private, public bool
 	recordCmd := &cobra.Command{
-		Use: "record <idea-slug> --private|--public --verdict-json <file|->",
+		Use: "record <idea-slug> [--private | --public] --verdict-json <file|->",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return &exitError{Code: 2, Msg: "ideate record: <idea-slug> is required"}
@@ -88,9 +89,9 @@ func newIdeateCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	recordCmd.Flags().BoolVar(&private, "private", false,
-		"the idea is private: record the verdict in "+abcdhome.Display("ideas")+"/<root-sha>/, owner-only, with no decision pointing at it (exclusive with --public)")
+		"the idea is private, the default: record the verdict in "+abcdhome.Display("ideas")+"/<root-sha>/, owner-only, with no decision pointing at it (exclusive with --public)")
 	recordCmd.Flags().BoolVar(&public, "public", false,
-		"the idea is public: commit the verdict under "+ideate.ResearchRelDir+"/<root-sha>/ and record a decision pointing at it (exclusive with --private)")
+		"the idea is public, on the person's word only: commit the verdict under "+ideate.ResearchRelDir+"/<root-sha>/ and record a decision pointing at it (exclusive with --private)")
 	recordCmd.Flags().StringVar(&verdictJSON, "verdict-json", "",
 		"path to the host-composed verdict JSON (or - for stdin)")
 
@@ -138,11 +139,11 @@ func ideateStoreRoot(cmd *cobra.Command) (string, error) {
 	return root, nil
 }
 
-// ideateStore turns the person's answer into the store the verdict is written
-// to (iss-2610090740139804). The answer is required and has no default: the
-// host asks "is this idea private or public?" before it records, and the flag
-// carries the answer, so neither flag, or both, refuses before anything is read
-// or written. The store is keyed on the repository's root commit, so a
+// ideateStore turns the flags into the store the verdict is written to. A
+// verdict is private unless --public is given (iss-2610300838089246): nobody is
+// asked, and a forgotten flag leaves an idea private rather than publishing it.
+// Both flags name two stores, so they refuse before anything is read or
+// written. The store is keyed on the repository's root commit, so a
 // repository with no commit yet is refused here, naming why; HOME is resolved
 // only for a private verdict, and the core judges it.
 func ideateStore(repoRoot string, private, public bool) (ideate.Store, error) {
@@ -150,14 +151,11 @@ func ideateStore(repoRoot string, private, public bool) (ideate.Store, error) {
 	switch {
 	case private && public:
 		return ideate.Store{}, &exitError{Code: 2, Msg: "ideate record: --private and --public are exclusive; " +
-			"pass the one answer the person gave (nothing written)"}
-	case private:
-		vis = ideate.VisibilityPrivate
+			"pass --public only on the person's word, and neither flag for a private verdict (nothing written)"}
 	case public:
 		vis = ideate.VisibilityPublic
 	default:
-		return ideate.Store{}, &exitError{Code: 2, Msg: "ideate record: one of --private or --public is required; " +
-			"ask the person whether the idea is private or public, then record it with that answer (nothing written)"}
+		vis = ideate.VisibilityPrivate
 	}
 	// A shallow clone's `rev-list --max-parents=0 HEAD` names its graft, not the
 	// repository's root, so a verdict keyed on it would land in a folder no full
@@ -183,6 +181,12 @@ func ideateStore(repoRoot string, private, public bool) (ideate.Store, error) {
 			"and a verdict is filed under the repository's root commit; commit once, then record (nothing written)"}
 	}
 	store := ideate.Store{Visibility: vis, RootSHA: sha}
+	// The corpus a `source:<key>` is resolved against is the person's default
+	// one. A home that cannot be resolved leaves it empty, which the core reads
+	// as no corpus: a well-formed key is then accepted on its shape alone.
+	if dir, err := source.DefaultDir(); err == nil {
+		store.SourcesDir = dir
+	}
 	if vis == ideate.VisibilityPrivate {
 		// The error is not checked here: an unresolved home reaches the core as
 		// "", and the core's refusal names it in the same words for every caller.
@@ -216,14 +220,15 @@ func renderIdeateResult(res ideate.Result) string {
 	} else {
 		out += fmt.Sprintf("  pointer:   %s\n", res.DecisionPath)
 	}
-	out += fmt.Sprintf("  claims:    %d (verified %d · falsified %d · unverifiable %d)\n",
-		res.Claims.Total(), res.Claims.Verified, res.Claims.Falsified, res.Claims.Unverifiable)
+	out += fmt.Sprintf("  claims:    %d (verified %d · quoted %d · falsified %d · unverifiable %d)\n",
+		res.Claims.Total(), res.Claims.Verified, res.Claims.Quoted, res.Claims.Falsified, res.Claims.Unverifiable)
 	if len(res.CitedRecords) == 0 {
-		out += "  grill:     no entry in the record covers, contradicts, or supersedes this\n"
+		out += fmt.Sprintf("  grill:     no entry in the record covers, contradicts, or supersedes this (%d search(es) recorded)\n", res.Searches)
 	} else {
-		out += fmt.Sprintf("  grill:     %d hit(s), all cited ids resolved: %v\n", res.GrillHits, res.CitedRecords)
+		out += fmt.Sprintf("  grill:     %d hit(s), all cited ids resolved: %v (%d search(es) recorded)\n",
+			res.GrillHits, res.CitedRecords, res.Searches)
 	}
-	out += fmt.Sprintf("  adversary: %d kill attempt(s)\n", res.KillAttempts)
+	out += fmt.Sprintf("  adversary: %d reviewer(s), %d kill attempt(s)\n", res.Reviewers, res.KillAttempts)
 	if res.RejectedAlternatives == 0 {
 		out += "  rejected:  none, recorded explicitly\n"
 	} else {
@@ -243,7 +248,7 @@ func renderIdeateResult(res ideate.Result) string {
 		out += "  next:      the idea may graduate to a draft intent — `abcd intent \"<text>\"`\n"
 	case res.Verdict == ideate.VerdictReframed:
 		out += "  next:      the idea as posed does not graduate, but its reframing may — " +
-			"`abcd intent \"<text>\"` with the reframing the record carries, not the original wording\n"
+			"`abcd intent \"<text>\"` with the record's \"The reframing\" section, not the original wording\n"
 	default:
 		out += "  next:      the idea does not graduate; the record is why\n"
 	}

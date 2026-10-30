@@ -22,6 +22,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/claim"
@@ -74,6 +75,18 @@ func claimOptions(now time.Time) claim.Options {
 // still runs, since the land fence is where a lost reservation stops the run.
 // A view that shows the reservation held by another person or copy is said
 // too, and logged once.
+//
+// A reservation that has lapsed is revived, judged for overlap like a new
+// one (claim's crowding), but, once no spec step is pending and every lane is
+// past all editing (pastEditing), against the same person's other copy only
+// on the files the run's lanes' commits changed (revivalChangedFiles;
+// iss-2610261837062463, dcn-2610291352512058, dcn-2610291925508286,
+// dcn-2610292238191496), so that copy holding a file the lanes never touched
+// stops nothing; the renewal's note names each such reservation it went ahead
+// past. An issue run's revival at its landing narrows as its renewal there
+// does (narrowedFootprint), so such a file lies outside it; only an intent
+// run's keeps its whole footprint (dcn-2610300615451659). While any lane may yet hold uncommitted work, or where those files
+// cannot be read, the whole footprint is judged, as before.
 func renewReservation(repoRoot string, st *State, now time.Time, snap *claim.Snapshot) string {
 	if st.ReservedAt == nil {
 		return ""
@@ -99,11 +112,27 @@ func renewReservation(repoRoot string, st *State, now time.Time, snap *claim.Sna
 	// could not be made is said in the renewal's note.
 	var declined string
 	req.Narrow, _, declined = narrowedFootprint(repoRoot, *st, *own)
+	lapsed := own.State == claim.StateExpired
+	if lapsed {
+		req.OwnOverlapOn = revivalChangedFiles(repoRoot, *st)
+	}
 	res, err := reserveRenewal(repoRoot, req, claimOptions(now))
 	if err != nil {
 		return renewFailed(st, now, err)
 	}
-	note := fmt.Sprintf("renewed the reservation on %s, half its lease having passed, until %s", st.Key, stamp(res.ExpiresAt))
+	why := "half its lease having passed"
+	if lapsed {
+		why = "its lease having lapsed"
+	}
+	note := fmt.Sprintf("renewed the reservation on %s, %s, until %s", st.Key, why, stamp(res.ExpiresAt))
+	if len(res.OwnOverlap) > 0 {
+		past := make([]string, len(res.OwnOverlap))
+		for i, o := range res.OwnOverlap {
+			past[i] = o.Path + " (" + o.Record + ")"
+		}
+		note += "; revived past your other copy's reservation of " + strings.Join(past, ", ") +
+			", which no commit of this run's lanes touched"
+	}
 	switch {
 	case res.Narrowed:
 		note += fmt.Sprintf("; its footprint narrowed from %s to the files its branch changed: %s",
@@ -483,39 +512,60 @@ type released struct {
 // blob when it is not "" (claim.Request.HandBackBlob). The clause quotes a
 // refusal and a holder, both derived from the remote, so it is returned
 // terminal-safe and home-redacted for every caller.
-func releaseAt(repoRoot, id, tip, kind, blob string, now time.Time) (out released) {
+func releaseAt(repoRoot, id, tip, kind, blob string, now time.Time) released {
+	return releaseWith(repoRoot, claim.Request{Record: id, Release: true, Tip: tip, HandBack: kind, HandBackBlob: blob}, now)
+}
+
+// releaseOverAbsent publishes the hand-back kind, judged over blob, on a
+// branch origin no longer holds, as its first commit
+// (claim.Request.OverAbsent), and reads the outcome as releaseAt does.
+func releaseOverAbsent(repoRoot, id, kind, blob string, now time.Time) released {
+	return releaseWith(repoRoot, claim.Request{Record: id, Release: true, HandBack: kind, HandBackBlob: blob, OverAbsent: true}, now)
+}
+
+// releaseWith makes the release req asks for and says what it came to.
+func releaseWith(repoRoot string, req claim.Request, now time.Time) (out released) {
+	id, kind := req.Record, req.HandBack
 	defer func() {
 		out.clause = termsafe.Sanitize(fsutil.RedactHome(out.clause))
 		out.pending = termsafe.Sanitize(fsutil.RedactHome(out.pending))
 	}()
-	res, err := claimReserve(repoRoot, claim.Request{Record: id, Release: true, Tip: tip, HandBack: kind, HandBackBlob: blob}, claimOptions(now))
+	res, err := claimReserve(repoRoot, req, claimOptions(now))
+	// A release over an absent branch finds no reservation to release: it
+	// pushes a tombstone to the branch, or nothing.
+	already, tombstone := "the reservation on "+id+" was already released", "released the reservation on "+id+" with a tombstone"
+	if req.OverAbsent {
+		already, tombstone = "nothing was pushed to "+id+"'s branch", "pushed a tombstone to "+id+"'s branch"
+	}
 	var nh *claim.NotHeld
 	switch {
 	case err == nil && res.Act == claim.ActAlreadyReleased && kind != "" && res.HandBackUnpublished != "":
-		out = released{clause: "the reservation on " + id + " was already released; " + res.HandBackUnpublished}
+		out = released{clause: already + "; " + res.HandBackUnpublished}
 		if res.HandBackUnread {
 			out.pending = out.clause
 		}
 		return out
 	case err == nil && res.Act == claim.ActAlreadyReleased:
-		return released{clause: "the reservation on " + id + " was already released"}
+		return released{clause: already}
 	case err == nil && kind != "" && res.HandBackUnpublished != "":
-		out = released{clause: "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + "); " + res.HandBackUnpublished}
+		out = released{clause: tombstone + " (" + shortSHA(res.Commit) + "); " + res.HandBackUnpublished}
 		if res.HandBackUnread {
 			out.pending = out.clause
 		}
 		return out
 	case err == nil && kind != "":
-		return released{published: true, clause: "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + ") marking it handed back as " + kind +
+		return released{published: true, clause: tombstone + " (" + shortSHA(res.Commit) + ") marking it handed back as " + kind +
 			", so no drain takes it again until its record changes on " + claim.Remote + "'s default branch"}
 	case err == nil && res.HandBackKept != nil:
-		return released{clause: "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + "); " + res.HandBackKept.KeptNote(id)}
+		return released{clause: tombstone + " (" + shortSHA(res.Commit) + "); " + res.HandBackKept.KeptNote(id)}
 	case err == nil:
-		return released{clause: "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + ")"}
+		return released{clause: tombstone + " (" + shortSHA(res.Commit) + ")"}
 	case errors.As(err, &nh) && nh.Why == claim.NotHeldAnotherPerson:
 		out = released{clause: "left the reservation on " + id + " as it stands: it is " + nh.Holder + "'s"}
 	case errors.As(err, &nh) && nh.Why == claim.NotHeldAnotherCopy:
 		out = released{clause: "left the reservation on " + id + " as it stands: " + nh.YourCopy + " holds it"}
+	case errors.As(err, &nh) && nh.Why == claim.NotHeldMoved && req.OverAbsent:
+		out = released{clause: "left the reservation on " + id + " as it stands: it was reserved again since its branch was found absent"}
 	case errors.As(err, &nh) && nh.Why == claim.NotHeldMoved:
 		out = released{clause: "left the reservation on " + id + " as it stands: it was renewed or reserved again since the drain took it"}
 	case errors.Is(err, claim.ErrRefused) && !isPushFailure(err):
@@ -803,44 +853,107 @@ func widenReservation(repoRoot, key string, fp []string, takeOver bool, own clai
 // change any file of the found_at. The sync calls it once it knows it will
 // merge and before it merges (mergeDefault; dcn-2610171009498218), so a
 // refusal leaves the branch and the worktree at the judged head; the move
-// calls it for any other way back from the landing (performMove). A tip of this copy's that already covers the found_at, an
-// intent's run, and a run holding no reservation take no act; a tip the view
-// shows lost is the land fence's to stop. The widening is the one a resume
-// makes (widenReservation), judged for overlap and against the cap; a
-// refusal of it refuses the step for a person, naming what it met, with
-// nothing merged by the step and nothing pushed, and the lane stays at its
-// landing. note is the run record's line for a widening made.
-func reserveOnLeavingLand(repoRoot string, st State, lane Lane, now time.Time) (note string, err error) {
-	if st.ReservedAt == nil || st.Issue() == "" {
+// calls it for any other way back from the landing (performMove), to is the
+// stage the lane goes to. A tip the view shows lost is the land fence's to
+// stop, and a run holding no reservation takes no act. The widening is the
+// one a resume makes (widenReservation), judged for overlap and against the
+// cap; a refusal of it refuses the step for a person, naming what it met,
+// with nothing merged by the step and nothing pushed, and the lane stays at
+// its landing. note is the run record's line for a widening made.
+//
+// A reservation that needs no widening, an intent run's or an issue run's
+// already covering its found_at, is judged again for overlap with the same
+// person's other copy on its whole footprint as the lane goes back to
+// editing (to anything but held; iss-2610261837062463,
+// dcn-2610300422481486): a lapsed revival with every lane past editing was
+// judged against that copy only on the files the lanes had changed
+// (revivalChangedFiles), and the fresh round's implementer may change any
+// other. A hold is no fresh round and is not judged. The reservations are
+// fetched first; an overlap, a fetch that fails but for a lost network, or a
+// view that cannot be read after the fetch refuses the step as a widening's
+// refusal does, a lost network waits on the shared outage probe as the
+// default branch's fetch does (dcn-2610300615451659), and either way the lane
+// stays at its landing.
+func reserveOnLeavingLand(repoRoot string, st State, lane Lane, to Stage, now time.Time) (note string, err error) {
+	if st.ReservedAt == nil {
 		return "", nil
 	}
-	fp, err := runFootprint(repoRoot, st.Key, st.Spec, "the lane stays at its landing and nothing is pushed")
-	if err != nil {
-		return "", err
+	issue := st.Issue() != ""
+	var fp []string
+	if issue {
+		if fp, err = runFootprint(repoRoot, st.Key, st.Spec, "the lane stays at its landing and nothing is pushed"); err != nil {
+			return "", err
+		}
 	}
 	snap, err := claim.View(repoRoot, now)
 	if err != nil {
 		return "", refuse(string(StageLand), "", lane.ID,
-			"the lane leaves its landing for a fresh round, and its reservation on "+st.Key+" cannot be read to reserve its whole found_at again: "+fsutil.RedactHome(err.Error())+"; the lane stays at its landing and nothing is pushed",
+			"the lane leaves its landing for a fresh round, and its reservation on "+st.Key+" cannot be read to judge it again: "+fsutil.RedactHome(err.Error())+"; the lane stays at its landing and nothing is pushed",
 			"settle what it names, then run `abcd implement step` again")
 	}
 	own, ok := snap.Lookup(st.Key)
-	if !ok || own.Copy != claim.CopyThis || (own.State != claim.StateLive && own.State != claim.StateExpired) || covers(own.Footprint, fp) {
+	if !ok || own.Copy != claim.CopyThis || (own.State != claim.StateLive && own.State != claim.StateExpired) {
 		return "", nil
 	}
-	r, err := widenReservation(repoRoot, st.Key, fp, false, own, now)
-	if err != nil {
-		reason := err.Error()
-		if rf, ok := AsRefusal(err); ok {
-			reason = rf.Reason
+	if issue && !covers(own.Footprint, fp) {
+		r, err := widenReservation(repoRoot, st.Key, fp, false, own, now)
+		if err != nil {
+			reason := err.Error()
+			if rf, ok := AsRefusal(err); ok {
+				reason = rf.Reason
+			}
+			return "", refuse(string(StageLand), "", lane.ID,
+				fmt.Sprintf("the lane leaves its landing for a fresh round, whose fix round may change any file of %s's found_at, but its reservation, narrowed to %s, cannot be widened back to %s: %s; the lane stays at its landing, its branch at the judged head %s, with nothing merged and nothing pushed",
+					st.Key, strings.Join(own.Footprint, ", "), strings.Join(fp, ", "), reason, shortSHA(lane.HeadSHA)),
+				"wait for the reservation it names to end, or settle it with its holder, then run `abcd implement step` again; or hand the lane back so the issue is built again")
+		}
+		return r.note + ", widened again as the lane leaves its landing for a fresh round", nil
+	}
+	if to == StageHeld {
+		return "", nil
+	}
+	// The step fetched no reservation unless a renewal was due, so the other
+	// copy's are fetched now, as every act fetches before it judges. A lost
+	// network is waited out on the shared probe, as the default branch's
+	// fetch is (fetchRefusal); any other failed fetch, or a view that cannot
+	// be read after a good one, refuses the step for a person. Either way the
+	// lane stays at its landing with nothing merged and nothing pushed.
+	if _, ferr := claim.Fetch(repoRoot, claimOptions(now)); errors.Is(ferr, claim.ErrNoOrigin) {
+		return "", nil
+	} else if ferr != nil {
+		reason := ferr.Error()
+		if fe := (*claim.FetchError)(nil); errors.As(ferr, &fe) {
+			reason = fe.Reason
+		}
+		if r := netFailure(StageLand, lane.ID, "git fetch the reservations", errors.New(reason)); r != nil {
+			return "", r
 		}
 		return "", refuse(string(StageLand), "", lane.ID,
-			fmt.Sprintf("the lane leaves its landing for a fresh round, whose fix round may change any file of %s's found_at, but its reservation, narrowed to %s, cannot be widened back to %s: %s; the lane stays at its landing, its branch at the judged head %s, with nothing merged and nothing pushed",
-				st.Key, strings.Join(own.Footprint, ", "), strings.Join(fp, ", "), reason, shortSHA(lane.HeadSHA)),
-			"wait for the reservation it names to end, or settle it with its holder, then run `abcd implement step` again; or hand the lane back so the issue is built again")
+			"the lane leaves its landing for a fresh round, and the reservations cannot be fetched to judge "+st.Key+"'s again against your other copy: "+fsutil.RedactHome(reason)+"; the lane stays at its landing and nothing is pushed",
+			"settle what it names, then run `abcd implement step` again")
 	}
-	return r.note + ", widened again as the lane leaves its landing for a fresh round", nil
+	if snap, err = leavingView(repoRoot, now); err != nil {
+		return "", refuse(string(StageLand), "", lane.ID,
+			"the lane leaves its landing for a fresh round, and the reservations, fetched, cannot be read to judge "+st.Key+"'s again against your other copy: "+fsutil.RedactHome(err.Error())+"; the lane stays at its landing and nothing is pushed",
+			"settle what it names, then run `abcd implement step` again")
+	}
+	if o, ok := snap.OtherCopyOverlap(st.Key, own.Footprint, own.Holder); ok {
+		// Only an issue run's lane can be handed back here, to be built again.
+		remedy := "wait for that reservation to end, or release it from your other copy, then run `abcd implement step` again"
+		if issue {
+			remedy += "; or hand the lane back so the issue is built again"
+		}
+		return "", refuse(string(StageLand), "", lane.ID,
+			fmt.Sprintf("the lane leaves its landing for a fresh round, whose fix round may change any file of %s's footprint, but %s is also in the footprint of %s, which you hold from your other copy until %s; the lane stays at its landing, its branch at the judged head %s, with nothing merged and nothing pushed",
+				st.Key, termsafe.Sanitize(o.Path), o.Record, stamp(o.Expiry), shortSHA(lane.HeadSHA)),
+			remedy)
+	}
+	return "", nil
 }
+
+// leavingView reads the reservations reserveOnLeavingLand has just fetched;
+// a test replaces it to fail that read after a good fetch.
+var leavingView = claim.View
 
 // covers reports whether every path of fp lies within held: equal to one of
 // its paths or beneath one, segment by segment, the sense in which two
@@ -882,6 +995,11 @@ func runFootprint(repoRoot, key, specID, outcome string) ([]string, error) {
 			"give the issue's record a found_at naming the file the fix changes, which the build reserves it with")
 	}
 	fp, err := specPackages(repoRoot, specID)
+	var entry *footprintEntryError
+	if errors.As(err, &entry) {
+		return nil, refuse(StageReservation, "", "", entry.Error()+", then run abcd build again; "+outcome,
+			"name each package on the `- packages:` line of "+specID+"'s `## Footprint` section by its path alone; the reservation names those paths for every other participant")
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -902,8 +1020,13 @@ func noFootprint(specID, key string) string {
 const maxSpecBytes = 1 << 20
 
 // specPackages is the packages specID's `## Footprint` section names, each
-// cleaned (a trailing slash dropped), in the order written; empty when the
-// spec has no such section or it names none.
+// read as written when that names something in the tree and otherwise as its
+// leading path alone, a trailing parenthetical note dropped, and cleaned (a
+// trailing slash dropped), in the order written; empty when the
+// spec has no such section or it names none. An entry that is still prose,
+// holding whitespace and naming nothing in the tree, is a
+// *footprintEntryError rather than a path that shares nothing with the
+// package it means (iss-2610241549334990).
 func specPackages(repoRoot, specID string) ([]string, error) {
 	store, err := spec.Load(repoRoot)
 	if err != nil {
@@ -918,12 +1041,66 @@ func specPackages(repoRoot, specID string) ([]string, error) {
 		return nil, err
 	}
 	var out []string
-	for _, p := range spec.ReadFootprint(string(data)).Packages {
-		if p = path.Clean(strings.TrimSpace(p)); p != "." && !slices.Contains(out, p) {
+	for _, entry := range spec.ReadFootprint(string(data)).Packages {
+		p := strings.TrimSpace(entry)
+		if !inTree(repoRoot, p) {
+			p = leadingPath(p)
+		}
+		if strings.ContainsFunc(p, unicode.IsSpace) && !inTree(repoRoot, p) {
+			return nil, &footprintEntryError{Spec: specID, Entry: entry}
+		}
+		if p = path.Clean(p); p != "." && !slices.Contains(out, p) {
 			out = append(out, p)
 		}
 	}
 	return out, nil
+}
+
+// leadingPath is a packages entry less a trailing parenthetical note, one
+// set off from the path by whitespace: `internal/core/x (new)` is
+// internal/core/x, while `app/(marketing)` is a path and stays whole. An
+// entry that is all parenthetical is left as it is.
+func leadingPath(entry string) string {
+	e := strings.TrimSpace(entry)
+	if !strings.HasSuffix(e, ")") {
+		return e
+	}
+	depth := 0
+	for i := len(e) - 1; i > 0; i-- {
+		switch e[i] {
+		case ')':
+			depth++
+		case '(':
+			if depth--; depth == 0 {
+				if lead := strings.TrimRightFunc(e[:i], unicode.IsSpace); len(lead) < i {
+					return lead
+				}
+				return e
+			}
+		}
+	}
+	return e
+}
+
+// inTree reports whether p, a repository-relative path, names something in
+// repoRoot's working tree; a path leaving the tree names nothing in it.
+func inTree(repoRoot, p string) bool {
+	rel := filepath.FromSlash(p)
+	if !filepath.IsLocal(rel) {
+		return false
+	}
+	_, err := os.Lstat(filepath.Join(repoRoot, rel))
+	return err == nil
+}
+
+// footprintEntryError is a spec's packages entry that names no path: still
+// prose once its trailing note is dropped, and nothing in the tree by that
+// name. The start refuses at the reservation on it, and the pick excludes
+// its intent at the check `footprint`.
+type footprintEntryError struct{ Spec, Entry string }
+
+func (e *footprintEntryError) Error() string {
+	return fmt.Sprintf("%s's packages entry %q under ## Footprint names no path; write it as its path alone, any note in a trailing parenthetical", e.Spec, e.Entry)
 }
 
 // releaseKey releases a reservation a start took and then could not create

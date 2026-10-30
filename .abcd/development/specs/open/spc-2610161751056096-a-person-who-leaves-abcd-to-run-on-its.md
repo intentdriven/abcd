@@ -156,7 +156,7 @@ So the guard keeps its place as adr-42's mistake filter, teaching inside the bou
 
 ### Checks that read the machine run outside
 
-The load gate, the peers scan, and the reservation renewals and fences the loop takes between stages already run in abcd, outside any launch. What changes is what happens to a gate an agent reaches inside the fence: `make preflight` runs its test stages through `abcd implement load --wait`, and inside the fence that waiter would read the fence's view of the process table. On Linux the process namespace shows it only its own processes. On macOS it sees none at all: `/bin/ps` cannot be started inside the fence and `pgrep` finds nothing, so `implement load` reports the check unavailable and carries on (Step 1 evidence, probe 5). It also could not write its hold under abcd's home, and on macOS today's waiter already refuses for that reason rather than opening.
+The load gate, the peers scan, and the reservation renewals and fences the loop takes between stages already run in abcd, outside any launch. What changes is what happens to a gate an agent reaches inside the fence: `make preflight` waits at `abcd implement load --wait` once, as one whole run, and inside the fence that waiter would read the fence's view of the process table. On Linux the process namespace shows it only its own processes. On macOS it sees none at all: `/bin/ps` cannot be started inside the fence and `pgrep` finds nothing, so `implement load` reports the check unavailable and carries on (Step 1 evidence, probe 5). It also could not write its hold under abcd's home, and on macOS today's waiter already refuses for that reason rather than opening.
 
 So a waiter never judges the machine from inside a fence:
 

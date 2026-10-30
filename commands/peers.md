@@ -1,6 +1,6 @@
 ---
 name: peers
-description: "List what sibling worktrees and branches hold that this checkout lacks, and the reservations: Writes the fetched reservations; refuses outside a git checkout."
+description: "List what peers hold that this checkout lacks, and the reservations: Writes the fetched reservations, re-arms withdrawn merges; refuses outside a git checkout."
 block: agents
 user-invocable: false
 ---
@@ -16,7 +16,23 @@ branches (and the default branch, and `origin`'s release tags `v*`); the fetch
 updates the remote-tracking reservation branches and the release tags abcd
 keeps under `refs/abcd/release-tags/`, and stamps when it ran in the local
 tier, with when it first fetched each reservation dated ahead of this
-computer's clock or undated, and nothing else is written. The release-tag
+computer's clock or undated. One more act follows the fetch, and only when a
+release you withdrew pull requests for has ended (its tag on `origin`, or a
+tombstone its holder pushed) with some not yet re-armed: a tombstone is pushed to the release's
+reservation branch first, then each is re-armed through `gh` in the form it
+was taken from (auto-merge or a merge-queue entry), pinned to the head it had
+when withdrawn, or skipped when its head moved, it was closed or merged, its
+recorded node id is not the forge's, or it can merge now with no merge queue
+to put it in, and a second tombstone records each outcome (see
+`/abcd:reserve`). Each pull request re-armed, found armed or skipped for its
+owner then gets one fixed comment, and a comment that fails is named in
+`settled`'s `failures`. A release lease of yours that lapsed with no tag on
+`origin` ends five minutes later: the listing then ends it and re-arms what it
+withdrew of yours, and says so; until then it reports the lapse. Another
+person's lapsed cut ends nothing from here. A release another person withdrew pull requests for
+is never re-armed from here: its withdrawals are listed for that person, and
+one recorded as yours that no reservation of yours recorded first is named
+and left alone. Nothing else is written or posted. The release-tag
 refs are ordinary refs in this checkout, so `git log --all` lists the commits
 they name and `git push --mirror` would push them.
 
@@ -125,7 +141,50 @@ payload adds:
   `effective_expiry`, `own` (this copy's own cut), `unsighted` (dated more
   than five minutes ahead or undated, with no first sighting kept here), neither of
   which holds a merge, and `text`, the line the text form shows it by. Tell
-  the user who is cutting which release, and that merges are held.
+  the user who is cutting which release, and that merges are held until
+  `effective_expiry`. A hold past that time holds nothing: read it again
+  just before acting on it or relaying it, and never pass on a hold from an
+  earlier read.
+- `release_withdrawals`: each release whose reservation records withdrawn
+  pull requests, with its `subject`, `holder`, `ended` (its tag on `origin`,
+  or a tombstone of its holder's that is their own newest push), `lapsed` and `lapsed_at` (its lease lapsed before it
+  ended, which ends nothing: its holder renews it, or ends it with
+  `--release`, after `--take-over` from another copy of theirs), and the pull
+  requests by state: `held` (withdrawn until the release ends), `admitted`
+  (re-armed by the cutting copy's `--admit`), `due` (yours, re-armed on your
+  next act now the release has ended, as your own newest push to its branch
+  records it), `stranded` (another person's ended release: listed for them,
+  never re-armed from here) and `skipped` (named for its owner, because its
+  head moved, it was closed, its recorded node id is not the forge's, it
+  needs a manual merge, or the forge refused its re-arm five times). A merged
+  one is not listed. Your own pull requests are listed as your own newest push
+  to the branch records them, never as a commit someone else pushed above it
+  does: `reader` is you, `not_read` counts the commits other accounts pushed
+  above your newest push, by `pusher` and `commits` (never read), and
+  `unplaced` says why your newest push cannot be found or placed in the
+  forge's record of pushes, in which case none of yours is listed. A
+  tombstone ends the release only when it is its holder's own newest push,
+  another person's after a take-over and a release of theirs included; one
+  its holder did not push ends nothing, so none of yours on it is `due`, and
+  `not_ended` names that holder. `lapsed` is set only while the release still holds
+  pull requests withdrawn or admitted. Tell the user about
+  any `lapsed` release, and any `stranded` or `skipped` pull request: its
+  owner has to act on it.
+- `lost_withdrawals`: each release claimed in the last 14 days whose branch
+  history records withdrawn pull requests a later commit dropped and the tip
+  does not carry (an older abcd's renewal; abcd's own correction after a
+  refused withdrawal keeps the entry as `kept`, so it is never among them), as
+  `subject` and `lost`. Nothing re-arms them; tell the
+  user, whose withdrawer re-arms them by hand.
+- `settled`: each ended release of yours whose withdrawn pull requests this
+  listing re-armed or skipped, with the tombstone `commit` it pushed,
+  `failures` naming each pull request the forge refused or whose comment was
+  not posted as sent (act `comment`), `not_ended` naming the holder of a
+  reservation whose tombstone they did not push (it ends nothing, and nothing
+  is re-armed), `not_read` counting the commits other accounts pushed above
+  your newest push (never read), and `unplaced` saying why your newest push
+  cannot be found or placed (nothing of yours is acted on; a later act asks
+  again), each named once for each tip.
 - `hand_backs_by_holder`: for each holder, the hand-backs of the last 24
   hours: each released tip carrying a hand-back, as `record`, `kind` (one of
   `user-visible`, `trust-rule`, `design-finding`, `second-package`,

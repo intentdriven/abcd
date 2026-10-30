@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
+	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/core/sessionname"
@@ -80,6 +81,12 @@ func TestMain(m *testing.M) {
 		os.Exit(code)
 	}
 	pageRunnerExtraEnv = []string{cliTestAsBinaryEnv + "=1"}
+	// No test here reaches the machine's own GitHub login: one that did would
+	// pass on a developer's machine and fail on CI, which has none.
+	showGHLogin, err := gittest.HideGHLogin()
+	if err != nil {
+		panic(err)
+	}
 	// The machine's login shell never shapes a setup run here: with no shell
 	// named, the shell-settings offer (itd-2610240919030303) is not raised,
 	// and a test that wants it names one with t.Setenv.
@@ -99,6 +106,13 @@ func TestMain(m *testing.M) {
 	// test that did not ask for either must see stdout exactly as before.
 	// The naming tests swap in a fixture machine (hook_session_name_test.go).
 	sessionNameMachine = func() (sessionname.Machine, bool) { return sessionname.Machine{}, false }
+	// No waiter or implement status run here renews a run's reservation:
+	// either would renew the runs of the checkout it runs in, and push their
+	// renewals to its origin. The waiter's own tests swap in a fixture
+	// (runsFixture), status's renewal test its own, and the loop's tests renew
+	// runs of fixture repositories.
+	loadRenewRuns = func(string) []loop.RunRenewal { return nil }
+	statusRenewRuns = func(string, string) []loop.RunRenewal { return nil }
 	real := os.Getenv("HOME")
 	// The machine's own home is out of reach of every test that did not set
 	// HOME itself: its rules.json (the rules loader) and its layered files,
@@ -126,6 +140,7 @@ func TestMain(m *testing.M) {
 	})
 	code := m.Run()
 	_ = os.RemoveAll(emptyHome)
+	showGHLogin()
 	builtAbcd.Remove()
 	os.Exit(code)
 }

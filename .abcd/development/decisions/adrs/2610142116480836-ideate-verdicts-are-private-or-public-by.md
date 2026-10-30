@@ -1,10 +1,10 @@
 ---
 id: adr-2610142116480836
 slug: ideate-verdicts-are-private-or-public-by
-status: accepted
+status: superseded
 date: 2026-10-14
 supersedes: null
-superseded_by: null
+superseded_by: adr-2610300908239458
 related_intents: [itd-2610141646456128, itd-2610141646452213, itd-2610141646454347]
 related_rfcs: []
 related_adrs: [adr-41, adr-2610141646525117]

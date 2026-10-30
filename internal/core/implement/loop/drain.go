@@ -165,6 +165,9 @@ type DrainState struct {
 	// (drain_wait.go).
 	WaitingUntil *time.Time `json:"waiting_until,omitempty"`
 	Waiting      string     `json:"waiting,omitempty"`
+	// Skips are the issues and paths a person holds back for now, each with
+	// its reason; the list clears when the drain ends (drain_skip.go).
+	Skips []DrainSkip `json:"skips,omitempty"`
 }
 
 // DrainLane is one issue the drain handed to a lane.
@@ -220,6 +223,12 @@ type DrainOptions struct {
 	// Context ends the move's routed judge: the front door ends it on an
 	// interrupt or a termination. context.Background when nil.
 	Context context.Context
+	// Skip are --skip's targets, issue ids or paths, held back for now with
+	// SkipReason, --reason; Unskip are --unskip's, taken off the list
+	// (drain_skip.go).
+	Skip       []string
+	SkipReason string
+	Unskip     []string
 }
 
 // DrainResult is one drain invocation's summary.
@@ -278,6 +287,9 @@ type DrainResult struct {
 	// PendingHandBacks are the hand-backs routed and not yet published on
 	// origin, as this call leaves them (drain_pending.go).
 	PendingHandBacks []DrainPendingHandBack `json:"pending_hand_backs,omitempty"`
+	// Skips is the drain's skip list as this call leaves it: empty once the
+	// drain has ended, which clears it (drain_skip.go).
+	Skips []DrainSkip `json:"skips"`
 }
 
 // DrainCounts are the drain's totals (itd-82 scope 8): its lanes by outcome,
@@ -327,6 +339,9 @@ func Drain(repoRoot string, o Options, d DrainOptions) (DrainResult, error) {
 	}
 	flags, err := parsePaceFlags(o.Pace, o.SubAgents, o.FixRounds)
 	if err != nil {
+		return DrainResult{}, err
+	}
+	if err := checkSkips(d); err != nil {
 		return DrainResult{}, err
 	}
 	// The rule first: a repository without its own record is refused before
@@ -423,6 +438,12 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			}
 		}
 	}
+	// The skip list takes this move's --skip and --unskip before the plan
+	// is read, so the move passes over what it holds back (drain_skip.go).
+	skipped, err := applySkips(&st, d, now)
+	if err != nil {
+		return DrainResult{}, err
+	}
 	// The ledger as origin's default branch holds it, fetched now, before any
 	// judgement or reservation: a move that cannot read it plans nothing and
 	// waits (drain_origin.go).
@@ -453,6 +474,16 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		}
 		if st.Stopped != "" && st.WaitingUntil != nil {
 			st.WaitingUntil, st.Waiting, write = nil, "", true
+		}
+		if skipped != "" {
+			res.Next = joinNext(skipped, res.Next)
+			write = true
+		}
+		// A drain that ends clears its skip list: a hold for now never
+		// outlives the drain it was given to.
+		if st.Stopped != "" && len(st.Skips) > 0 {
+			res.Next = joinNext(res.Next, fmt.Sprintf("the skip list's %d entr%s cleared with the drain's end", len(st.Skips), plural(len(st.Skips), "y is", "ies are")))
+			st.Skips, write = nil, true
 		}
 		if repaced != "" {
 			res.Next = joinNext(repaced, res.Next)
@@ -508,6 +539,10 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		}
 		res.OriginWait = st.OriginWait
 		res.PendingHandBacks = st.PendingHandBacks
+		res.Skips = st.Skips
+		if res.Skips == nil {
+			res.Skips = []DrainSkip{}
+		}
 		res.Counts = drainCounts(repoRoot, st, res.Flags, res.Passed)
 		// The normal ending is claimed only once every lane has ended: an
 		// outage stop is taken before the lane in progress is read, so a
@@ -635,6 +670,10 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		st.Judging = nil
 		res.Judged = &j
 		pruneLapse(&st, j.Issue)
+		// With eligibility-residual in shadow, the decision adapter is asked
+		// beside the answer just taken and the pair is recorded in the newest
+		// lab home; it changes nothing the move does (drain_decide.go).
+		shadowDrainJudgement(d.Context, repoRoot, o, j, plan)
 		return nil
 	}
 	if d.Judgement != "" {
@@ -894,6 +933,14 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		if st.taken(v.ID, blobs) {
 			continue
 		}
+		// An issue the skip list holds back is passed over before anything
+		// is pushed or asked over it (drain_skip.go).
+		if iss, ok := plan.OpenIssue(v.ID); ok {
+			if s, ok := skipOf(st, iss); ok {
+				res.Passed = append(res.Passed, skipPassed(v.ID, s))
+				continue
+			}
+		}
 		if l, ok := lapseOf(st, v.ID); ok && now.Before(l.coolDownEnds()) {
 			ends := l.coolDownEnds()
 			if cooling.IsZero() || ends.Before(cooling) {
@@ -1027,22 +1074,31 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			judging.Hold = judgeHold
 			st.Judging = &judging
 			pruneLapse(&st, v.ID)
-			// A judge routed to a runner answers in this move, taken as the
-			// host's answer is; one that does not answer leaves the host's
-			// request standing, and is not started again for it
-			// (drain_judge.go).
+			// The decision adapter, when eligibility-residual is turned on,
+			// and then a judge routed to a runner answer in this move, taken
+			// as the host's answer is; one that does not answer leaves the
+			// host's request standing, and is not asked again for it
+			// (drain_decide.go, drain_judge.go).
 			var taken *DrainJudgement
 			clause := ""
 			if judging.RoutedAsked {
-				clause = judgeAskedClause(v.ID)
+				clause = adapterAskedClause(repoRoot, o, d, v.ID)
 			} else {
-				var started bool
-				if taken, clause, started, err = routedJudgement(repoRoot, iss, v, judging, plan, &st, o, d, now); err != nil {
+				var adapterAsked, started bool
+				if taken, clause, adapterAsked, err = adapterJudgement(d.Context, repoRoot, o, judging, plan, &st, now); err != nil {
 					return refuseMoved(err)
 				}
-				// Marked as asked only once the runner was started: a
-				// judge that never started is asked again next move.
-				if taken == nil && started {
+				if taken == nil {
+					var routed string
+					if taken, routed, started, err = routedJudgement(repoRoot, iss, v, judging, plan, &st, o, d, now); err != nil {
+						return refuseMoved(err)
+					}
+					clause = joinNext(clause, routed)
+				}
+				// Marked as asked only once the adapter was asked or the
+				// runner was started: a judge that never started is asked
+				// again next move.
+				if taken == nil && (adapterAsked || started) {
 					st.Judging.RoutedAsked = true
 				}
 			}
@@ -1441,6 +1497,10 @@ func readDrain(repoRoot string) (DrainState, bool, error) {
 	}
 	if !st.waitWritten() {
 		return DrainState{}, false, refuse(StageDrain, "", "", DrainStateRel+" names a wait the drain never writes",
+			"the drain is the file's only writer; restore it or remove it")
+	}
+	if !st.skipsWritten() {
+		return DrainState{}, false, refuse(StageDrain, "", "", DrainStateRel+" names a skip-list entry the drain never writes",
 			"the drain is the file's only writer; restore it or remove it")
 	}
 	if !st.pendingWritten() {

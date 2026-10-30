@@ -448,8 +448,9 @@ jobs:
       # -timeout is a declared budget, not go test's 10m per-package default:
       # internal/surface/cli under -race on the macOS runner measured 418-568s
       # passing, and a slow runner crossed 600s with no test hung, ejecting an
-      # unrelated pull request from the merge queue (iss-2609260319483365). 20m
-      # is about twice the slowest passing run, so a real hang still fails with
+      # unrelated pull request from the merge queue (iss-2609260319483365). The
+      # budget was first 20m, about twice the slowest passing run, and is 40m
+      # since 2026-10-17, so a real hang still fails with
       # a goroutine dump where the enclosing ceiling leaves room for it: in
       # release.yml's verify job it does, while this job's own ceiling, held
       # below the merge queue's response cap, is the binding one on macOS (see
@@ -467,10 +468,21 @@ jobs:
       # on 2026-10-15: 172-244s and 160s under -race on the ubuntu runner, they
       # started last in import-path order and were still running when two
       # checks were cancelled at the leg's 30-minute ceiling.
+      #
+      # ABCD_TEST_SHARDS runs each package that opts in through
+      # internal/testshard (internal/core/implement/loop, internal/core/claim
+      # and internal/surface/cli) as that many test processes, each with its
+      # share of the tests under the same -timeout, as the preflight recipe does
+      # (iss-2610290720087336). As one process implement/loop took 2244s of the
+      # macOS pass's 40 minutes on a passing run, and a queue entry timed out on
+      # it with no test hung. This step and the macOS pass below carry the same
+      # count as the preflight recipe; TestCIRacePassesShardLikePreflight holds
+      # the three to it.
       - name: Test (race, internal)
         if: matrix.os == 'ubuntu-latest' && needs.changes.outputs.inert != 'true'
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
+          ABCD_TEST_SHARDS: "3"
         run: go test -race -timeout 40m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
 
       # The macOS leg's one pass over the module (iss-2610110938293273): race-enabled, over
@@ -489,6 +501,7 @@ jobs:
         if: matrix.os == 'macos-latest' && github.event_name != 'pull_request'
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
+          ABCD_TEST_SHARDS: "3"
         run: go test -race -timeout 40m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./...
 
       # The plain-only guards on the macOS leg (iss-2610180542030806): the same

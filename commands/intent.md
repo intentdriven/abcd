@@ -54,6 +54,19 @@ sitting there reach no gate and no release cut.
 It is a pointer, never a precondition — filing a draft without it is a normal
 thing to do.
 
+
+## A shared main checkout is refused
+
+A write through this verb backs off with exit 3, writing nothing, when the
+checkout it would write into is a main working tree that two or more live
+sessions started in: a record written there lands under every one of them.
+Work in a worktree of your own in the machine-scoped store
+(`~/.abcd.noindex/worktrees/<root-sha>/<name>/`, made with `git worktree add`)
+and run the verb from there; the refusal names the command. A linked worktree is never
+refused, nor is a checkout one session or none works in, so a person working
+alone is not held up. The session-start hook records which checkout each
+session starts in, and a session stops counting when its host process ends.
+Reads are never refused.
 ## Decompose before filing (itd-84, hand-run)
 
 One proposal is rarely one record. Before running the create command below,
@@ -908,9 +921,15 @@ that ships an intent parks an OWED review marker, so a fidelity review is owed
 by construction. The listing reads the first marker of every intent in
 `shipped/` and returns one entry per shipped intent (`intent_id`, `state`,
 `receipt_id`, and `re_emit` where the review is owed), with the totals `owed`,
-`dead_lettered` and `ingested`. The owed set is `OWED` plus `none`: a shipped
-intent with no marker at all owes the review too, and its re-emit mints the
-receipt. A `DEAD_LETTER` review is listed under its own heading, unreviewed,
+`dead_lettered`, `ingested` and `hand_audited`. The owed set is `OWED` plus
+`none`: a shipped intent with no marker at all owes the review too, and its
+re-emit mints the receipt, unless its Audit Notes read as a hand-written audit:
+one of its paragraphs or list items names an acceptance criterion (`ac-2`,
+`criterion 2`, or an item of a numbered list) and gives one of the auditor's
+verdicts in capitals (`MET`, `MET_WITH_CONCERNS`, `NOT_MET`, `INCONCLUSIVE`).
+Such an intent's state is `hand-audited`: it is counted in `hand_audited`,
+carries no receipt and no re-emit, and is not owed. Any other note, a ruling's
+amendment line among them, leaves the intent owed. A `DEAD_LETTER` review is listed under its own heading, unreviewed,
 with the reason the quarantine recorded, and is not counted as owed. An
 `INGESTED` review whose verdict left a check owed carries `audit_owed: true`,
 the `audit_owed_issue` carrying it and its `re_emit`, is counted in
@@ -1302,7 +1321,13 @@ whose header states the overflow, the unreviewed documents and every chunk's
 receipt, and whose `receipt` is the emit's), listing every finding with its key, both ends quoted and
 located, and the record it was filed as, linked to (`already open`) or
 addressed by (`addressed: resolved` or `addressed: wontfix`); a second run the
-same day takes the next free suffix. Each row's `state` is `filed`, `linked`
+same day takes the next free suffix. A summary is held to the 1 MiB the reviews
+board reads: when every finding in full would take it past that, the summary
+keeps its header and the findings table, which every record's evidence line
+points into, and each finding in full goes to `01-findings.md` beside it, under
+the same number. A pass whose table alone would pass the limit is refused before
+the first finding is filed, so no record cites a report that was never written;
+run it over one intent against the corpus instead. Each row's `state` is `filed`, `linked`
 or `addressed`, and an addressed row's `addressed_by` names the record and its
 folder. Report `status`, `report_path`, and the `filed`, `linked` and
 `addressed` ids. The same findings ingested again are a `noop` naming the report.

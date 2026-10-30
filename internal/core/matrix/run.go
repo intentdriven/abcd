@@ -456,7 +456,7 @@ func routeAgrees(dc roleCell, p CellPin) error {
 	}
 	routes, err := oracle.ParseRunnerRoutes([]string{dc.Route}, []string{string(dc.role)})
 	if err != nil {
-		return err
+		return declaredRoute(dc.Route, err)
 	}
 	fr := routes[0]
 	if p.Runner != fr.Runner {

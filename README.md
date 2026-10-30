@@ -147,8 +147,8 @@ If you use `abcd` in your work, please cite it. The form below is rendered from
 repository* button reads:
 
 ```bibtex
-@software{reppel_abcd,
-  author  = {Reppel, Alex},
+@software{intentdriven_abcd,
+  author  = {{intentdriven}},
   title   = {{abcd}: {Agent-Based} {Configuration} for {Development}},
   url     = {https://github.com/intentdriven/abcd},
   license = {MIT}

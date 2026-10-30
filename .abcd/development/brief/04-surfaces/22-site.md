@@ -116,7 +116,9 @@ the publish switch and no composition, and the workflow. The interface words,
 styles, scripts and headers policy ship in the binary, and the workflow builds
 and gates with the project flag, so the repository carries no site sources.
 The landing page is an about page derived in code, from four parts in this
-order, each rendered only where the repository holds it: the identity block,
+order, each rendered only where the repository holds it: the identity block
+(only when abcd writes the file it lives in: one under `.abcd/`, outside the
+local tier),
 the brief's opening (the first section of the brief skeleton,
 `01-product/01-press-release.md`), the press releases of the newest shipped
 intents whose audit was met, newest id first (a timestamped id carries when
@@ -280,7 +282,9 @@ check's report prints each name as it runs it, passing or failing.
 Scope follows adr-47 decision 3 exactly. Composed surfaces are the landing page and
 every manifest-selected span; the verbatim record rendering is exempt; and the
 attribution escape is a verification, so a name on the contributors page must match
-a trailer or contributor git actually carries. The externally-generated docs tree
+a trailer, or a bot or tool author, that git actually carries. The page names no
+person: the human authors are a count of people and of their commits
+(adr-2610291037481588), so a person's name there fails the check. The externally-generated docs tree
 is dropped from the page walk before any gate sees it, the mobile checks included,
 so they say nothing about that subtree: its words are gated at the source by
 docs-lint instead. In production the two trees share one output directory, so

@@ -8,7 +8,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/layered"
 )
 
-// How many preflights the first gate admits to their test stages at once
+// How many preflights the first gate admits at once, each as one whole run
 // (iss-2610161639025702), one race stage able to run beside them
 // (iss-2610282016250805), is a setting of the person's own machine, never of
 // a checkout: a repository that could raise it could raise the machine's load
@@ -58,7 +58,7 @@ const MaxPreflightSlots = 4
 // slotsRangeError is the refusal of a count outside one to MaxPreflightSlots.
 func slotsRangeError(n int) error {
 	if n > MaxPreflightSlots {
-		return fmt.Errorf("the first gate admits at most %d preflights to their test stages at once (want a whole number from 1 to %d)",
+		return fmt.Errorf("the first gate admits at most %d preflights at once (want a whole number from 1 to %d)",
 			MaxPreflightSlots, MaxPreflightSlots)
 	}
 	return fmt.Errorf("want a whole number from 1 to %d", MaxPreflightSlots)
@@ -71,19 +71,31 @@ const (
 	SlotsEnv     = "env"
 )
 
+// slotsSetting is the setting a count from src was read from, as a message
+// names it.
+func slotsSetting(src string) string {
+	if src == SlotsEnv {
+		return PreflightSlotsEnv
+	}
+	return PreflightSlotsKey
+}
+
 // The two gates a waiter waits at.
 const (
-	// GateTests is the first gate, before a preflight's test stages.
+	// GateTests is the first gate, before any of a preflight's stages.
 	GateTests = "tests"
 	// GateRace is the race gate, before the race stage (--race-gate).
 	GateRace = "race"
 )
 
-// PreflightSlots resolves how many preflights the first gate admits to their
-// test stages at once, where that came from, and a note when the machine's
-// config.json was read past (machineConfigNote), for the account whose home
-// is home. It reads getenv and the machine's config.json, and no repository
-// file.
+// PreflightSlots resolves how many preflights the first gate admits at once,
+// where that came from, and a note when the machine's config.json was read
+// past (machineConfigNote), for the account whose home is home. It reads
+// getenv and the machine's config.json, and no repository file. It is the one
+// reader of the count: WaitLoad calls it at every look, its race-gate
+// shortcut included, and cmd/test-parallelism calls it before it divides the
+// cores by the count (PreflightParallelism, machineload.GoTestParallelism), so
+// the gate and a stage's -p never judge by different values.
 func PreflightSlots(getenv func(string) string, home string) (int, string, string, error) {
 	if v := strings.TrimSpace(getenv(PreflightSlotsEnv)); v != "" {
 		n, err := strconv.Atoi(v)
@@ -117,7 +129,7 @@ func PreflightSlots(getenv func(string) string, home string) (int, string, strin
 		return nil
 	})
 	if err != nil {
-		return 0, "", "", fmt.Errorf("the load gate stops rather than guess how many preflights the first gate admits to their test stages at once: %w", err)
+		return 0, "", "", fmt.Errorf("the load gate stops rather than guess how many preflights the first gate admits at once: %w", err)
 	}
 	if v.Layer == layered.Machine {
 		note := ""

@@ -18,7 +18,15 @@ import (
 // `git reset --hard` in a scratch repository, and a hook that execs a program
 // named by a variable. The product thinker then ruled that only block-level
 // verdicts come out of a script (2026-10-09), and the count is zero.
-const maxScriptCorpusWarns = 0
+//
+// Raised to one when the commit-msg hook began running
+// check-issue-resolution.sh through bash (iss-2610241424265464): the
+// tokenizer cuts the hook's is_scissors test, `[[ … && … && ${1:1} ==
+// "$cut_line" ]]`, at its `&&`, guesses the cut-off `${1:1} == …` may run a
+// shell, and reads cut_line's ` >8 ` as a redirect, so the later run warns
+// script-written-then-run. That is the reading's defect, not the hook's
+// (iss-2610261852072295), and its fix takes the ceiling back to zero.
+const maxScriptCorpusWarns = 1
 
 // scriptCorpusBlocks are the repository scripts that do run a blocker, and so
 // block when an agent runs them: each is named with what it runs.

@@ -38,7 +38,7 @@ func pressReleasePayload(t *testing.T, pf PressReleaseFile) []byte {
 
 func TestSynthPressReleaseDeterministicFromBrief(t *testing.T) {
 	dir := synthLifeboat(t, map[string]string{briefPressReleasePath: briefPR})
-	res, err := ComposePressRelease(dir, nil)
+	res, err := ComposePressRelease(dir, nil, okScan)
 	if err != nil {
 		t.Fatalf("ComposePressRelease: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestSynthPressReleaseDeterministicFallbackSpine(t *testing.T) {
 	dir := synthLifeboat(t, map[string]string{
 		spineRelPath: "# The spine\n\nOne intent leads to the next.\n",
 	})
-	if _, err := ComposePressRelease(dir, nil); err != nil {
+	if _, err := ComposePressRelease(dir, nil, okScan); err != nil {
 		t.Fatalf("ComposePressRelease: %v", err)
 	}
 	pf := readPressReleaseFile(t, dir)
@@ -81,7 +81,7 @@ func TestSynthPressReleaseDeterministicFallbackSpine(t *testing.T) {
 
 func TestSynthPressReleaseDeterministicAbsentPlaceholder(t *testing.T) {
 	dir := synthLifeboat(t, map[string]string{}) // no brief PR, no spine
-	if _, err := ComposePressRelease(dir, nil); err != nil {
+	if _, err := ComposePressRelease(dir, nil, okScan); err != nil {
 		t.Fatalf("ComposePressRelease must still write: %v", err)
 	}
 	pf := readPressReleaseFile(t, dir)
@@ -96,12 +96,12 @@ func TestSynthPressReleaseDeterministicAbsentPlaceholder(t *testing.T) {
 
 func TestSynthPressReleaseDeterministicByteIdentical(t *testing.T) {
 	dir := synthLifeboat(t, map[string]string{briefPressReleasePath: briefPR})
-	if _, err := ComposePressRelease(dir, nil); err != nil {
+	if _, err := ComposePressRelease(dir, nil, okScan); err != nil {
 		t.Fatal(err)
 	}
 	j1, _ := os.ReadFile(filepath.Join(dir, "press-release.json"))
 	m1, _ := os.ReadFile(filepath.Join(dir, "press-release.md"))
-	if _, err := ComposePressRelease(dir, nil); err != nil {
+	if _, err := ComposePressRelease(dir, nil, okScan); err != nil {
 		t.Fatal(err)
 	}
 	j2, _ := os.ReadFile(filepath.Join(dir, "press-release.json"))
@@ -115,7 +115,7 @@ func TestSynthPressReleaseDeterministicByteIdentical(t *testing.T) {
 
 func TestSynthPressReleaseDelegatedReplace(t *testing.T) {
 	dir := synthLifeboat(t, map[string]string{briefPressReleasePath: briefPR})
-	if _, err := ComposePressRelease(dir, nil); err != nil {
+	if _, err := ComposePressRelease(dir, nil, okScan); err != nil {
 		t.Fatal(err)
 	}
 	pay := pressReleasePayload(t, PressReleaseFile{
@@ -127,7 +127,7 @@ func TestSynthPressReleaseDelegatedReplace(t *testing.T) {
 		Quotes:        []PressReleaseQuote{{Attribution: "a maintainer", Text: "It carries the theory."}},
 		Evidence:      []string{briefPressReleasePath, "does/not/exist.md"},
 	})
-	res, err := ComposePressRelease(dir, pay)
+	res, err := ComposePressRelease(dir, pay, okScan)
 	if err != nil {
 		t.Fatalf("delegated compose: %v", err)
 	}
@@ -152,7 +152,7 @@ func TestSynthPressReleaseDelegatedReplace(t *testing.T) {
 
 func TestSynthPressReleaseWholeDocRefusal(t *testing.T) {
 	dir := synthLifeboat(t, map[string]string{briefPressReleasePath: briefPR})
-	if _, err := ComposePressRelease(dir, nil); err != nil {
+	if _, err := ComposePressRelease(dir, nil, okScan); err != nil {
 		t.Fatal(err)
 	}
 	before, err := os.ReadFile(filepath.Join(dir, "press-release.json"))
@@ -166,7 +166,7 @@ func TestSynthPressReleaseWholeDocRefusal(t *testing.T) {
 		Body:          "Cites nothing resolvable.",
 		Evidence:      []string{"nope/a.md", "adr-24"}, // adr-24 is a record id, not an admissible press-release path
 	})
-	_, err = ComposePressRelease(dir, pay)
+	_, err = ComposePressRelease(dir, pay, okScan)
 	if !errors.Is(err, ErrPressReleaseUncited) {
 		t.Fatalf("want ErrPressReleaseUncited, got %v", err)
 	}
@@ -194,7 +194,7 @@ func TestSynthPressReleaseGuardedReaderBattery(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := ComposePressRelease(dir, tc.raw); err == nil {
+			if _, err := ComposePressRelease(dir, tc.raw, okScan); err == nil {
 				t.Fatalf("%s must be a structural error (exit 2)", tc.name)
 			}
 		})
@@ -212,7 +212,7 @@ func TestSynthPressReleaseCanary(t *testing.T) {
 		Quotes:        []PressReleaseQuote{{Attribution: hostile, Text: hostile}},
 		Evidence:      []string{briefPressReleasePath},
 	})
-	if _, err := ComposePressRelease(dir, pay); err != nil {
+	if _, err := ComposePressRelease(dir, pay, okScan); err != nil {
 		t.Fatalf("canary must ingest as inert data: %v", err)
 	}
 	pf := readPressReleaseFile(t, dir)
@@ -243,7 +243,7 @@ func TestSynthPressReleaseCitesPrinciples(t *testing.T) {
 		Body:          "The release rests on what the record established.",
 		Evidence:      []string{"principles.json"},
 	})
-	res, err := ComposePressRelease(dir, payload)
+	res, err := ComposePressRelease(dir, payload, okScan)
 	if err != nil {
 		t.Fatalf("ComposePressRelease citing principles.json: %v", err)
 	}

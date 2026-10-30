@@ -42,6 +42,32 @@ func TestExecuteStringFamilyInspected(t *testing.T) {
 		// option: the operand is still resolved and matched normally.
 		{"sh -c -x a harmless push", "sh -c -x 'git push origin main'", VerdictAllow, ""},
 
+		// Each shell reads the -c cluster's option letters its own way: an o
+		// (in bash an O too) takes the next word before the command string
+		// does, unless zsh or ksh read its name from the rest of the word, and
+		// bash reads its long options after one dash.
+		{"bash -cO takes a shopt first", "bash -cO extglob 'git push --force origin main'", VerdictBlock, "git-push-force"},
+		{"bash -Oc takes a shopt first", "bash -Oc extglob 'git push --force origin main'", VerdictBlock, "git-push-force"},
+		{"bash -co takes an option first", "bash -co errexit 'git push --force origin main'", VerdictBlock, "git-push-force"},
+		{"zsh -co takes an option first", "zsh -co errexit 'git push --force origin main'", VerdictBlock, "git-push-force"},
+		{"bash -cOo takes two words first", "bash -cOo extglob errexit 'git push --force origin main'", VerdictBlock, "git-push-force"},
+		{"bash -rcfile and its value come first", "bash -rcfile /dev/null -c 'git push --force origin main'", VerdictBlock, "git-push-force"},
+		{"bash -restricted is no -c", "bash -restricted -c 'git push --force origin main'", VerdictBlock, "git-push-force"},
+		{"zsh -o with a name holding c is no -c", "zsh -ocshnullglob -c 'git push --force origin main'", VerdictBlock, "git-push-force"},
+		{"bash -co a harmless echo", "bash -co errexit 'echo hi'", VerdictAllow, ""},
+		// bash reads a long option only before its first letter option; after
+		// one it is letters, and a c among them is -c.
+		{"bash long option after a letter is letters", "bash -x -rcfile 'git push --force origin main'", VerdictBlock, "git-push-force"},
+		{"bash --rcfile's value keeps the long options", "bash --rcfile /dev/null -rcfile /dev/null -c 'git push --force origin main'", VerdictBlock, "git-push-force"},
+		// zsh's -b ends the options as -- does, so the word after it is the
+		// command string, whatever it starts with.
+		{"zsh -b ends the options before the -c string", "zsh -c -b '-x; git push --force origin main'", VerdictBlock, "git-push-force"},
+		// A lone - ends the options as -- does, and zsh ends them at a lone +
+		// too; bash steps over a lone + as an empty cluster.
+		{"bash -c - ends the options", "bash -c - 'git push --force origin main'", VerdictBlock, "git-push-force"},
+		{"zsh -c + ends the options", "zsh -c + 'git push --force origin main'", VerdictBlock, "git-push-force"},
+		{"bash -c + is an empty cluster", "bash -c + 'git push --force origin main'", VerdictBlock, "git-push-force"},
+
 		{"env -S a harmless command", "env -S ls", VerdictAllow, ""},
 		{"env -S a harmless build", "env -S 'make build'", VerdictAllow, ""},
 		{"env -S a non-delete gh subcommand", "env -S 'gh repo view owner/repo'", VerdictAllow, ""},

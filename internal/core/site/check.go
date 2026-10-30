@@ -796,7 +796,8 @@ type generatorWords struct {
 	// the package's own metadata.
 	names map[string]bool
 	// attribution is the authorship vocabulary the attribution surface prints —
-	// contributor names and declared `Assisted-by:` values, read out of git.
+	// bot and tool author names and declared `Assisted-by:` values, read out of
+	// git. No person's name is in it: the page counts people and names none.
 	// It is empty everywhere else, which is what keeps the escape scoped to the
 	// one page adr-47 decision 3 grants it to.
 	attribution map[string]bool
@@ -882,8 +883,10 @@ func (c *checker) generatorWords() generatorWords {
 }
 
 // attributionWords is the vocabulary the attribution surface prints: every
-// contributor's name and every declared `Assisted-by:` value, read out of git
-// by the same pass the page renders from.
+// bot or tool author's name and every declared `Assisted-by:` value, read out
+// of git by the same pass the page renders from. No person's name is in it: the
+// page counts people and names none (adr-2610291037481588), so a person's name
+// on that page is untraceable text like any other.
 //
 // This is adr-47 decision 3's carve-out — "the contributors page prints model
 // names under the declared attribution escape" — implemented as a VERIFICATION
@@ -902,9 +905,6 @@ func (c *checker) attributionWords() map[string]bool {
 		if s = strings.TrimSpace(s); s != "" {
 			out[strings.ToLower(s)] = true
 		}
-	}
-	for _, a := range auth.Humans {
-		add(a.Name)
 	}
 	for _, a := range auth.Bots {
 		add(a.Name)
@@ -953,6 +953,11 @@ func uiStrings(ui UI) []string {
 	walk = func(v reflect.Value, t reflect.Type) {
 		for i := 0; i < t.NumField(); i++ {
 			f := t.Field(i)
+			if retiredLabel(f) {
+				// No page renders a retired label, so it is not a word the
+				// generator may add.
+				continue
+			}
 			switch f.Type.Kind() {
 			case reflect.Struct:
 				walk(v.Field(i), f.Type)

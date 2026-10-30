@@ -2,6 +2,7 @@ package claim
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -20,6 +21,23 @@ var errNotPushedHere = errors.New("its latest commit is not one this copy pushed
 // pushedRelDir keeps, per record, the last reservation commit this copy
 // pushed for it (notePushed): the commit names RenewDue renews from.
 const pushedRelDir = stateRelDir + "/pushed"
+
+// renewLockRel is the lock RenewDue holds over its whole pass in a copy, from
+// the view it reads to its last push, so two waiters in one copy take turns: the
+// second reads the tips the first has just pushed and finds nothing due, where
+// unlocked it judged from the tips both read, lost each push to the first, and
+// reported every loss as a fault (iss-2610270659564789).
+const renewLockRel = stateRelDir + "/renew.lock"
+
+// renewLockWait bounds how long a pass waits for a sibling's to end. A pass is
+// usually a few seconds of pushes; a sibling holding the lock past this is slow
+// (a stalled network) or stopped, and either way this pass renews nothing and
+// answers ErrRenewalBusy, so a due reservation never lapses unsaid.
+var renewLockWait = 2 * time.Minute
+
+// ErrRenewalBusy is RenewDue's answer when another pass in the same copy held
+// the renewal lock for all of renewLockWait, and this pass renewed nothing.
+var ErrRenewalBusy = errors.New("another renewal pass in this copy has held its lock")
 
 // Renewal is one reservation RenewDue renewed, or failed to: Until is the
 // renewed lease's end, and Err why it could not be renewed.
@@ -41,9 +59,38 @@ type Renewal struct {
 // cut. Only a reservation whose tip is the commit this copy itself last
 // pushed for it (pushedHere) is renewed; any other tip is left as it is, and
 // answered with errNotPushedHere.
-// The error is a view that could not be read; each renewal's own failure is
-// in its Renewal.
+// Each pass holds the copy's renewal lock (renewLockRel); a copy whose lock
+// cannot be laid renews unlocked rather than not at all.
+// The error is a view that could not be read, or ErrRenewalBusy; each
+// renewal's own failure is in its Renewal.
 func RenewDue(root string, o Options) ([]Renewal, error) {
+	r, err := os.OpenRoot(root)
+	if err == nil {
+		defer r.Close()
+		err = mkStateDir(r, stateRelDir)
+	}
+	if err != nil {
+		return renewDue(root, o)
+	}
+	var out []Renewal
+	ran := false
+	err = fsutil.WithFileLockIn(r, renewLockRel, renewLockWait, func() error {
+		ran = true
+		var verr error
+		out, verr = renewDue(root, o)
+		return verr
+	})
+	switch {
+	case ran:
+		return out, err
+	case errors.Is(err, fsutil.ErrLockContention):
+		return nil, fmt.Errorf("%w for over %s", ErrRenewalBusy, renewLockWait)
+	}
+	return renewDue(root, o)
+}
+
+// renewDue is one renewal pass, RenewDue's body under its lock.
+func renewDue(root string, o Options) ([]Renewal, error) {
 	now := o.now()
 	snap, err := View(root, now)
 	if err != nil {

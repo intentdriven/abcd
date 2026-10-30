@@ -39,10 +39,10 @@ var sentences = map[string]string{
 		"Writes nothing; refuses any argument.",
 	"abcd ahoy install": "Apply the install gaps the detection finds: " +
 		"Writes .abcd/, the name-guard hooks and the PATH entry, and installs a tool only on a yes; refuses a stale binary.",
-	"abcd ahoy remote": "Enable GitHub secret scanning and push protection: " +
-		"Writes nothing bare, only the settings and their mirror through apply; refuses an unknown sub-verb.",
-	"abcd ahoy remote apply": "Enable GitHub secret scanning and push protection on this repository: " +
-		"Writes both settings and their mirror; refuses an unconfirmed run.",
+	"abcd ahoy remote": "Apply abcd's GitHub settings baseline: " +
+		"Writes nothing bare, only the settings, rulesets and their mirrors through apply; refuses an unknown sub-verb.",
+	"abcd ahoy remote apply": "Apply every GitHub setting the remote audit finds differing: " +
+		"Writes those settings, abcd's own rulesets and their mirrors; refuses an unconfirmed run.",
 	"abcd ahoy uninstall": "Remove abcd from this repository, leaving .abcd/ in place: " +
 		"Writes the removal of the marker block, PATH copy, and provenance record; refuses any argument.",
 	"abcd ahoy worktree": "List this repository's worktrees and its lane in the worktree store: " +
@@ -163,6 +163,8 @@ var sentences = map[string]string{
 		"Writes nothing; refuses a hazard with exit 1 and a command it cannot parse with exit 2.",
 	"abcd guard approve": "Answer a headless agent's permission prompts over MCP: " +
 		"Writes nothing; refuses every prompt but a shell command the guard reads whole and clears.",
+	"abcd guard allow": "Let one exact unproven delete through the hook, once: " +
+		"Writes one allow record in your home folder; refuses without --once, and when an agent runs it.",
 	"abcd guard hook": "Judge the shell command in a host's pre-tool-use payload: " +
 		"Writes branch records and a question's mode; refuses a hazard or a badly built question.",
 
@@ -192,7 +194,7 @@ var sentences = map[string]string{
 	"abcd ideate": "Judge an idea through the host-run admission gauntlet: " +
 		"Writes nothing bare, and one verdict record, private or public; refuses an unknown sub-verb.",
 	"abcd ideate record": "Validate a host-composed gauntlet verdict: " +
-		"Writes the dated record to the private or public store; refuses without an idea slug, the answer or --verdict-json.",
+		"Writes the dated record, private unless --public; refuses without an idea slug or --verdict-json.",
 
 	"abcd identity": "Record the identity block and propose drift corrections: " +
 		"Writes nothing bare, only the block and its pointer; refuses an unknown sub-verb.",
@@ -236,7 +238,7 @@ var sentences = map[string]string{
 	"abcd implement report": "Derive the comparison of the division modes from the run log: " +
 		"Writes nothing; refuses --date and --log together.",
 	"abcd implement status": "Render the implement loop's runs in this checkout, lane by lane: " +
-		"Writes nothing; refuses a --run naming no run.",
+		"Writes a due renewal to origin, its outcome to the run record; refuses a --run naming no run.",
 	"abcd implement step": "Perform the next stage of an implement loop run's lane and exit: " +
 		"Writes the run's state and the lane's stages; refuses a push with no preflight receipt.",
 
@@ -393,8 +395,8 @@ var sentences = map[string]string{
 	"abcd mode queue": "Queue one step for the person's return while they are away: " +
 		"Writes the away record; refuses when no away record holds.",
 
-	"abcd peers": "List what sibling worktrees and branches hold that this checkout lacks, and the reservations: " +
-		"Writes the fetched reservations; refuses outside a git checkout.",
+	"abcd peers": "List what peers hold that this checkout lacks, and the reservations: " +
+		"Writes the fetched reservations, re-arms withdrawn merges; refuses outside a git checkout.",
 
 	"abcd status": "List everyone's announcements, reservations and releases being cut: " +
 		"Writes the fetched status branches and reservations; refuses outside a git checkout.",

@@ -57,15 +57,17 @@ type verdict struct {
 	Reason string
 	// SettledAt is when the tip last held or was written: the latest of its
 	// commit date, its own times and its effective expiry past the take-over
-	// margin. The branch is spent no earlier than SettledAt plus the age.
+	// margin. The branch is spent no earlier than SettledAt plus the wait its
+	// tip takes (judge): none for a release, the age for anything else.
 	SettledAt time.Time
 }
 
-// judge decides whether a branch is spent at now, untouched for olderThan.
+// judge decides whether a branch is spent at now, olderThan being the age a
+// tip other than a release must have been untouched.
 // It fails closed: anything it cannot classify keeps the branch.
 //
 // A branch is spent only when its tip has settled, every time it carries,
-// its lease included past claim.TakeoverMargin, olderThan before now, and:
+// its lease included past claim.TakeoverMargin, before now, and:
 //
 //   - (a) the record is terminal on origin's default branch and the tip is a
 //     commit the sweep can classify; or
@@ -77,6 +79,15 @@ type verdict struct {
 //
 // So a hand-back anywhere on a branch whose record is still open keeps it,
 // and so does a commit of any kind the sweep does not know.
+//
+// How long the tip must have settled depends on what it is. A plain
+// tombstone is spent as soon as it has settled, at the next sweep: a release
+// is the holder's own act, so nobody is coming back to it (the product
+// thinker's ruling of 2026-10-28, iss-2610281719275461). So is a hand-back on
+// a terminal record, whose task is finished, so the hand-back has nobody left
+// to hand the record to. Any other tip waits
+// olderThan past settling: a lapse is no one's act, and the age gives a holder
+// whose session stopped time to return and see the branch.
 func judge(f facts, now time.Time, olderThan time.Duration) verdict {
 	if f.Unreadable != "" || len(f.Chain) == 0 {
 		return verdict{Reason: KeptUnreadable}
@@ -87,7 +98,11 @@ func judge(f facts, now time.Time, olderThan time.Duration) verdict {
 		v.Reason = KeptUnknown
 		return v
 	}
-	if now.Before(v.SettledAt.Add(olderThan)) {
+	wait := olderThan
+	if tip.Kind == KindPlainTombstone || (tip.Kind == KindHandBack && f.Terminal) {
+		wait = 0
+	}
+	if now.Before(v.SettledAt.Add(wait)) {
 		v.Reason = KeptRecent
 		return v
 	}

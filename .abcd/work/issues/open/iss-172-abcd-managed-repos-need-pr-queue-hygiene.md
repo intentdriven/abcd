@@ -7,7 +7,7 @@ category: "observation"
 source: "user-observation"
 found_during: "explainability-plan merge stall"
 found_at: ".github/workflows"
-related_intents: [itd-107]
+related_intents: [itd-107, itd-2610261025516272]
 related_issues: [iss-178]
 remedy: "Waits on the itd-107 planning interview (ruling H): either way, render rung 1 into the merge-lifecycle steps itd-107 emits (after arming auto-merge, poll mergeStateStatus and run `gh pr update-branch` on BEHIND, strict never relaxed); if rung 2 is scaffolded, emit a merge queue with a `merge_group` trigger on every required workflow where the forge offers one, and otherwise an update-branch workflow on a GitHub App token, proven by a scaffold test that the emitted files carry that trigger or name that secret and keep strict true; if rung 1 only, close rung 2 as wontfix naming the credential cost."
 deferred_after: "v0.11.1"

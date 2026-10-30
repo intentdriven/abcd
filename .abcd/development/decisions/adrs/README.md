@@ -188,7 +188,7 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-2609212115255771](2609212115255771-phases-and-milestones-are-retired.md) | Phases and milestones are retired: sequencing is dependencies rendered as status, the checkpoint is the derived release (supersedes adr-9; superseded by adr-2609292012006845) | superseded | 2026-09-21 |
 | [adr-2609221009491186](2609221009491186-a-provider-adapter-serves-only-the.md) | A provider adapter serves only the models it lists, under a vendor denylist no listing overrides; everything else runs on the host (superseded by adr-2609300107513982) | superseded | 2026-09-22 |
 | [adr-2609221017021499](2609221017021499-every-external-credential-abcd-holds-is.md) | Every external credential abcd holds is named in configuration and kept in one store the person chose; never the harness, never the repository | accepted | 2026-09-22 |
-| [adr-2609231028044006](2609231028044006-surface-chapter-shape-claims-are-derived.md) | Shape claims in the brief's surface chapters are derived, never hand-authored | accepted | 2026-09-23 |
+| [adr-2609231028044006](2609231028044006-surface-chapter-shape-claims-are-derived.md) | Shape claims in the brief's surface chapters are derived, never hand-authored (superseded by adr-2610290238168123) | superseded | 2026-09-23 |
 | [adr-2609231048308186](2609231048308186-the-catalog-pins-the-latest-release-s.md) | The catalog pins the latest release's plugin archive | accepted | 2026-09-23 |
 | [adr-2609291342092738](2609291342092738-a-drain-takes-an-issue-alone-only-when.md) | A drain takes an issue alone only when its fields say it needs no decision | accepted | 2026-09-29 |
 | [adr-2609292012006845](2609292012006845-now-next-and-later-list-an-intent-in-a.md) | Now, Next and Later list an intent in a lane under Now only; phases stay retired (supersedes adr-2609212115255771) | accepted | 2026-09-29 |
@@ -214,7 +214,7 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-2610141646523373](2610141646523373-ingested-pages-are-private-by-default.md) | Ingested pages are private by default and reach the project only by a person's promotion | accepted | 2026-10-14 |
 | [adr-2610141646525117](2610141646525117-the-librarian-treats-unknown-rights-as.md) | The librarian treats unknown rights as all rights reserved, files privately first, and admits only named ratings | accepted | 2026-10-14 |
 | [adr-2610141949110653](2610141949110653-the-brief-session-s-browser-editor-ships.md) | The brief session's browser editor ships as a vendored bundle the binary embeds | accepted | 2026-10-14 |
-| [adr-2610142116480836](2610142116480836-ideate-verdicts-are-private-or-public-by.md) | Ideate verdicts are private or public by the person's choice, and an idea's source is named publicly only when it graduates | accepted | 2026-10-14 |
+| [adr-2610142116480836](2610142116480836-ideate-verdicts-are-private-or-public-by.md) | Ideate verdicts are private or public by the person's choice, and an idea's source is named publicly only when it graduates (superseded by adr-2610300908239458) | superseded | 2026-10-14 |
 | [adr-2610142147242544](2610142147242544-abcd-s-site-is-built-onto-its-own-github.md) | abcd's record is built onto its own GitHub Pages, and abcdev.app becomes abcd's documentation site | proposed | 2026-10-14 |
 | [adr-2610150603484802](2610150603484802-a-fresh-install-s-facilitator-is-a.md) | A fresh install's facilitator is a person until the repository says auto | accepted | 2026-10-15 |
 | [adr-2610150729333337](2610150729333337-a-status-branch-moves-without-a.md) | A status branch moves without a preflight receipt | proposed | 2026-10-15 |
@@ -232,4 +232,7 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-2610241057124151](2610241057124151-abcd-installs-the-tools-it-needs-from.md) | abcd installs the tools it needs from downloads pinned in its own release | accepted | 2026-10-24 |
 | [adr-2610241101463288](2610241101463288-setup-asks-short-questions-and-lists-its.md) | Setup asks short questions and lists its defaults on one plan | accepted | 2026-10-24 |
 | [adr-2610281718537125](2610281718537125-a-release-publishes-with-no-approval.md) | A release publishes with no approval step | accepted | 2026-10-28 |
+| [adr-2610290238168123](2610290238168123-the-brief-states-the-design-and-why-each.md) | The brief states the design and why; each command's page states what abcd does, once, and is the copy checked against the code (supersedes adr-2609231028044006) | accepted | 2026-10-29 |
+| [adr-2610291037481588](2610291037481588-the-contributors-page-counts-people-and.md) | The contributors page counts people and names none | accepted | 2026-10-29 |
+| [adr-2610300908239458](2610300908239458-ideate-verdicts-are-private-unless-the.md) | Ideate verdicts are private unless the person says public (supersedes adr-2610142116480836) | accepted | 2026-10-30 |
 <!-- /index -->

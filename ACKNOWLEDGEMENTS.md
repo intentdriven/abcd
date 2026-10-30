@@ -16,7 +16,7 @@ record and is responsible for all AI-assisted output — its correctness, licens
 and fit for the project. See [`CONTRIBUTING.md`](.github/CONTRIBUTING.md).
 
 External reports sharpen the record, and fix commits credit their reporters with
-a `Reported-by:` trailer. [Andy Woods (@andytwoods)](https://github.com/andytwoods)
+a `Reported-by:` trailer. A contributor
 reported the README's undocumented git requirement and proposed the route-scoped
 shape of the Requirements section the README carries
 ([#496](https://github.com/intentdriven/abcd/issues/496)), and surfaced the

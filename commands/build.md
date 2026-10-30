@@ -67,6 +67,17 @@ spec's `- packages:` line to the files the work changes. A step's own
   <itd-N> with; fill its packages line, then run abcd build again; nothing was
   started`. An issue whose `found_at` names no repository-relative path is
   refused the same way. Report the refusal as it stands: the footprint is the spec's to name, never one invented here.
+- Each entry of that line is read as its path alone. An entry that names
+  something in the tree as written is reserved as written; otherwise a
+  trailing parenthetical note set off by a space is dropped
+  (`internal/core/x (new)` reserves `internal/core/x`, while
+  `app/(marketing)` stays whole), and a comma inside a note does not split
+  the entry. An entry that is still prose
+  once its note is dropped, holding a space and naming nothing in the tree,
+  is refused at the `reservation` stage, exit 2, starting nothing: `<spc-N>'s
+  packages entry "<entry>" under ## Footprint names no path; write it as its
+  path alone, any note in a trailing parenthetical, then run abcd build
+  again; nothing was started`.
 - Another person's live reservation, or yours from another copy, refuses
   the start as contention, exit 3: back off and take other work. Each
   worktree is its own copy, so a build in a sibling worktree of this checkout
@@ -226,8 +237,9 @@ When the argument is `next`, let the run choose the intent:
 The candidates are the planned intents that pass every check above, judged by
 the same function, less one this checkout already has a run in progress for.
 In a checkout with `origin`, an intent whose spec's `## Footprint` names no
-packages is excluded too, at the check `footprint`, since its start would be
-refused at the reservation; the pick moves to the next candidate.
+packages, or names one by prose rather than by its path, is excluded too, at
+the check `footprint`, since its start would be refused at the reservation;
+the pick moves to the next candidate.
 Each is scored from its record, three parts at equal weight, each 0 to 100:
 
 - criteria clarity: the share of its acceptance criteria written in
@@ -553,7 +565,9 @@ naming the time, and nothing changes; stop driving the run and invoke it again
 at or after that time, when a new window opens. The pause lives in the state
 file, so no process waits through it.
 `"${CLAUDE_PLUGIN_ROOT}/abcd" implement status --json` renders every run, its
-lanes and its record, and writes nothing. A lane's `worktree` is home-relative,
+lanes and its record; before it renders it renews any run reservation that is
+due, pushing the renewal to origin and logging it in the run record
+(`implement.md` says how). A lane's `worktree` is home-relative,
 or its directory name when it sits outside HOME; its `brief` and `receipt` keep
 their full home-relative paths, because the agent acts on them.
 
@@ -631,7 +645,9 @@ A lane's stages run in order:
    until then the lane is waiting for its full check (since the time the wait
    began) while the other lanes carry on; run `make preflight` in the lane's
    worktree, then `step` again; never push, skip a hook or mint a receipt by
-   hand. It opens the pull request through `gh`, with a body built from the
+   hand. Before the push it announces `merging <the lane's record>`
+   (`/abcd:implement` says how) and pushes only once that is on `origin`; a
+   push typed by hand would post no announcement. It opens the pull request through `gh`, with a body built from the
    run's records and passed through the outbound scrub, ending with
    `Assisted-by: abcd:<version>` and then one `Assisted-by:` per model the
    lane's receipts reported, re-reads the body the forge holds and strips a
@@ -650,7 +666,8 @@ A lane's stages run in order:
    computer"), and the pull request stays open and unarmed, since a session
    cutting a release has the final say on what merges before its tag. Tell the
    user who is cutting which release, and step again once the release is
-   tagged or its holder released it; never merge around the hold. The copy
+   tagged, its holder released it or the hold lapsed at the time the refusal
+   names, which needs no one's leave; never merge around a live hold. The copy
    cutting the release is not held. A fetch `origin` does not answer arms
    nothing either. Then `step` exits 3 until the
    pushed head is an ancestor of the default branch on `origin`; stop driving

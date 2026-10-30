@@ -25,18 +25,22 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/decisions"
 	"github.com/intentdriven/abcd/internal/core/homeignore"
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/core/source"
 	"github.com/intentdriven/abcd/internal/core/update"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -56,18 +60,48 @@ func (e *SlugError) Error() string {
 		"and carries no path separator or dot segment", termsafe.Sanitize(e.Slug), e.Reason, MaxSlugLen)
 }
 
-// CitationError is the record-grill citation gate's refusal: a hit names a record
-// id that does not resolve in this repository, so the grill is reporting on
-// something that is not there. It names every offending id, because a composer
-// handed one id at a time re-runs the whole gauntlet once per mistake.
+// CitationError is the citation gate's refusal: the verdict names a record id
+// that does not resolve in this repository, in a grill hit or anywhere else in
+// its legs, so it is reporting on something that is not there. It names every
+// offending id and where each was written, because a composer handed one id at
+// a time re-runs the whole gauntlet once per mistake.
 type CitationError struct {
+	// Unresolved is the sorted, deduped set of ids that name no record.
 	Unresolved []string
+	// At is each unresolved id with the part of the verdict it was written in,
+	// in the order the verdict carries them.
+	At []UnresolvedCitation
+}
+
+// UnresolvedCitation is one id that names no record, and the leg (or the other
+// part of the verdict) it was written in.
+type UnresolvedCitation struct {
+	Where string
+	ID    string
+}
+
+// newCitationError builds the refusal from the citations that did not resolve.
+func newCitationError(at []UnresolvedCitation) *CitationError {
+	seen := map[string]bool{}
+	var ids []string
+	for _, c := range at {
+		if !seen[c.ID] {
+			seen[c.ID] = true
+			ids = append(ids, c.ID)
+		}
+	}
+	sort.Strings(ids)
+	return &CitationError{Unresolved: ids, At: at}
 }
 
 func (e *CitationError) Error() string {
-	return "the record grill cites records that do not exist in this repository — nothing was written: " +
-		strings.Join(e.Unresolved, ", ") +
-		"\nevery grill hit is cited by id, and an id that names no record is a hit on nothing; re-run the grill against the live record"
+	parts := make([]string, len(e.At))
+	for i, c := range e.At {
+		parts[i] = c.Where + " cites " + c.ID
+	}
+	return "the verdict cites records that do not exist in this repository — nothing was written: " +
+		strings.Join(parts, "; ") +
+		"\nevery record id in the verdict must name a record, and an id that names none cites nothing; check each against the live record"
 }
 
 // ExistsError is the no-overwrite refusal: a verdict record for this slug already
@@ -84,17 +118,17 @@ func (e *ExistsError) Error() string {
 		" — refusing to overwrite it; a re-run of the same idea keeps the first record, and a different run earns its own slug"
 }
 
-// VisibilityError is the refusal for a verdict with no answer to "is this idea
-// private or public?" (iss-2610090740139804). It is typed because it is an
-// OPERAND fault: the fix is to ask the person and re-run with the answer, never
-// to re-compose the verdict, and never to pick a store on their behalf.
+// VisibilityError is the refusal for a store that names neither private nor
+// public (iss-2610090740139804). It is typed because it is an OPERAND fault: the
+// fix is to name the store and re-run, never to re-compose the verdict. The
+// record verb never reaches it, because it defaults to private.
 type VisibilityError struct {
 	Got Visibility
 }
 
 func (e *VisibilityError) Error() string {
-	return "the verdict's store is not answered (" + termsafe.DescribeRefused(string(e.Got)) + ") — nothing was written; " +
-		"ask the person whether the idea is private or public, and record it with that answer"
+	return "the verdict's store is not named (" + termsafe.DescribeRefused(string(e.Got)) + ") — nothing was written; " +
+		"name the store, private or public, and record again"
 }
 
 // Record validates the host-composed verdict for slug and writes it.
@@ -108,10 +142,9 @@ func (e *VisibilityError) Error() string {
 // rather than accepted: if recording the pointer fails after the verdict landed,
 // the verdict is removed again, so a run never leaves half a decision behind.
 //
-// store carries the person's answer, private or public, and the root commit
-// both stores are keyed on (iss-2610090740139804); it is checked beside the
-// slug, before the payload is decoded, so a run without the answer writes
-// nothing. A private verdict goes to recordPrivate and never touches the
+// store names the store, private or public, and the root commit both stores
+// are keyed on (iss-2610090740139804); it is checked beside the slug, before
+// the payload is decoded, so a store that names neither writes nothing. A private verdict goes to recordPrivate and never touches the
 // repository.
 //
 // A public verdict's artefacts are COMMITTED, so both go through the
@@ -140,7 +173,7 @@ func Record(repoRoot, slug string, store Store, raw []byte, at time.Time) (Resul
 	if err != nil {
 		return Result{}, err
 	}
-	v, err := validate(repoRoot, red, p)
+	v, err := validate(repoRoot, store.SourcesDir, red, p)
 	if err != nil {
 		return Result{}, err
 	}
@@ -273,7 +306,7 @@ func recordPrivate(v verdictDoc, red *recordRedactor, store Store, name string, 
 }
 
 // validateStore is the store's operand check, run beside the slug's and before
-// the payload is decoded: the answer must be given, the key must be a git
+// the payload is decoded: the store must be named, the key must be a git
 // object name before it reaches a path, and a private verdict's home must be
 // one a commit cannot carry.
 func validateStore(store Store) error {
@@ -334,6 +367,15 @@ func decodePayload(repoRoot string, raw []byte) (Payload, error) {
 	if len(raw) > MaxPayloadBytes {
 		return Payload{}, fmt.Errorf("verdict payload exceeds the %d-byte cap", MaxPayloadBytes)
 	}
+	// An older shape is refused before the strict decode, which would stop at
+	// the first field version 2 moved (a version-1 adversarial leg's
+	// kill_attempts) and never name the version to compose.
+	var peek struct {
+		SchemaVersion int `json:"schema_version"`
+	}
+	if json.Unmarshal(raw, &peek) == nil && peek.SchemaVersion > 0 && peek.SchemaVersion < SchemaVersion {
+		return Payload{}, olderSchemaError(peek.SchemaVersion)
+	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	var p Payload
@@ -349,13 +391,26 @@ func decodePayload(repoRoot string, raw []byte) (Payload, error) {
 	case p.SchemaVersion > SchemaVersion:
 		return Payload{}, update.TooNew("verdict",
 			p.SchemaVersion, SchemaVersion)
-	case p.SchemaVersion != SchemaVersion:
+	case p.SchemaVersion < 0:
 		return Payload{}, fmt.Errorf("unsupported verdict schema_version %d", p.SchemaVersion)
+	case p.SchemaVersion != SchemaVersion:
+		return Payload{}, olderSchemaError(p.SchemaVersion)
 	}
 	if !promptVersionRe.MatchString(p.PromptVersion) {
 		return Payload{}, errors.New("verdict payload is missing a semver prompt_version")
 	}
 	return p, nil
+}
+
+// olderSchemaError refuses an older shape, which is never upgraded: version 1
+// had nowhere to put a search, a second reviewer or a reframing, so reading it
+// as version 2 would invent what each leg proved. The message names the
+// version to compose, because the host that sent it is reading an older
+// command page.
+func olderSchemaError(got int) error {
+	return fmt.Errorf("the verdict payload is schema_version %d, which this abcd no longer records — nothing was written; "+
+		"compose it as version %d, which adds origin_sources, the grill's searches, the adversarial leg's reviewers and ruling, "+
+		"and a reframing for a reframed verdict (the ideate command page carries the shape)", got, SchemaVersion)
 }
 
 // verdictDoc is the validated, cleaned document — the only shape the renderer and
@@ -364,11 +419,15 @@ type verdictDoc struct {
 	slug         string
 	idea         string
 	verdict      Verdict
+	origins      []string
 	claims       []Claim
 	hits         []GrillHit
-	kills        []KillAttempt
+	searches     []Search
+	reviewers    []Reviewer
+	ruling       *Ruling
 	rejected     []RejectedAlternative
 	noneRejected bool
+	reframing    string
 	cited        []string
 	// redactions counts the secret/PII spans stage one rewrote out of the free
 	// text above, so the surface can say what happened instead of the record
@@ -378,8 +437,8 @@ type verdictDoc struct {
 
 // validate runs every gate over the decoded payload and returns the cleaned
 // document. The order is deliberate: cheap structural checks first, and the
-// citation gate — the only one that touches the filesystem — last, so a malformed
-// document never costs a record scan.
+// citation gate and the sources check — the only ones that touch the
+// filesystem — last, so a malformed document never costs a record scan.
 //
 // red is stage one of the store-before-commit gate (redact.go). Every free-text
 // field is redacted on the way in, ahead of termsafe's cleaning and well ahead of
@@ -389,7 +448,9 @@ type verdictDoc struct {
 // relation, a kill outcome, a cited record id — are validated shapes with nothing
 // to redact, and running a matcher over them would corrupt a value the record is
 // keyed on rather than protect anything.
-func validate(repoRoot string, red *recordRedactor, p Payload) (verdictDoc, error) {
+//
+// sourcesDir is the corpus a `source:<key>` is resolved against (Store.SourcesDir).
+func validate(repoRoot, sourcesDir string, red *recordRedactor, p Payload) (verdictDoc, error) {
 	var v verdictDoc
 
 	idea, n := red.field(p.Idea)
@@ -415,30 +476,71 @@ func validate(repoRoot string, red *recordRedactor, p Payload) (verdictDoc, erro
 		}
 	}
 	var err error
-	var n1, n2, n3, n4 int
-	if v.claims, n1, err = validateResearch(red, p.Legs[0]); err != nil {
+	var n0, n1, n2, n3, n4, n5 int
+	if v.origins, n0, err = validateOrigins(red, p.OriginSources); err != nil {
 		return v, err
 	}
-	if v.hits, n2, err = validateGrill(red, p.Legs[1]); err != nil {
+	if v.claims, n1, err = validateResearch(red, p.Legs[0], v.origins); err != nil {
 		return v, err
 	}
-	if v.kills, n3, err = validateAdversarial(red, p.Legs[2]); err != nil {
+	if v.hits, v.searches, n2, err = validateGrill(red, p.Legs[1]); err != nil {
+		return v, err
+	}
+	if v.reviewers, v.ruling, n3, err = validateAdversarial(red, p.Legs[2]); err != nil {
 		return v, err
 	}
 	if v.rejected, v.noneRejected, n4, err = validateRejected(red, p); err != nil {
 		return v, err
 	}
-	v.redactions += n1 + n2 + n3 + n4
-	if v.cited, err = resolveCitations(repoRoot, v.hits); err != nil {
+	if v.reframing, n5, err = validateReframing(red, p); err != nil {
+		return v, err
+	}
+	v.redactions += n0 + n1 + n2 + n3 + n4 + n5
+	if v.cited, err = resolveCitations(repoRoot, v); err != nil {
+		return v, err
+	}
+	if err := resolveSourceKeys(sourcesDir, v); err != nil {
 		return v, err
 	}
 	return v, nil
 }
 
+// validateOrigins checks the sources the idea came from. The list is required
+// but may be empty: the self-quotation check (validateResearch) compares every
+// verified claim against it, and a list that could be left out would let that
+// check be skipped by omission, the failure the rejected-alternatives marker
+// exists for. An origin is free text, because an idea can come from a
+// conversation as well as a page; it is never a primary source, so its shape is
+// not one.
+func validateOrigins(red *recordRedactor, origins []string) ([]string, int, error) {
+	if origins == nil {
+		return nil, 0, errors.New("the verdict does not say where the idea came from — nothing was written; " +
+			"list the sources it came from in \"origin_sources\", or [] for an idea with no source behind it " +
+			"(a claim checked only against the idea's own source is quoted, not verified, and that check reads the list)")
+	}
+	if len(origins) > maxOriginSources {
+		return nil, 0, fmt.Errorf("the verdict carries %d origin sources (max %d)", len(origins), maxOriginSources)
+	}
+	redactions := 0
+	out := make([]string, 0, len(origins))
+	for i, o := range origins {
+		text, n := red.field(o)
+		redactions += n
+		clean := termsafe.CleanProseLine(text, maxSourceBytes)
+		if clean == "" {
+			return nil, 0, fmt.Errorf("origin source %d is empty", i+1)
+		}
+		out = append(out, clean)
+	}
+	return out, redactions, nil
+}
+
 // validateResearch checks the first leg: at least one claim, each with prose, a
-// named primary source, and a registered status.
-func validateResearch(red *recordRedactor, leg Leg) ([]Claim, int, error) {
-	if len(leg.Hits) > 0 || len(leg.KillAttempts) > 0 {
+// primary source of a known shape, and a registered status. A claim marked
+// verified whose primary source is one of the idea's own origins is refused:
+// checked against the source the idea came from, it was quoted, not verified.
+func validateResearch(red *recordRedactor, leg Leg, origins []string) ([]Claim, int, error) {
+	if len(leg.Hits) > 0 || len(leg.Searches) > 0 || len(leg.Reviewers) > 0 || leg.Ruling != nil {
 		return nil, 0, errors.New("the research leg carries another leg's evidence; each leg carries only its own")
 	}
 	if len(leg.Claims) == 0 {
@@ -447,13 +549,14 @@ func validateResearch(red *recordRedactor, leg Leg) ([]Claim, int, error) {
 	if len(leg.Claims) > maxClaims {
 		return nil, 0, fmt.Errorf("the research leg carries %d claims (max %d)", len(leg.Claims), maxClaims)
 	}
+	origin := originKeys(origins)
 	redactions := 0
 	out := make([]Claim, 0, len(leg.Claims))
 	for i, c := range leg.Claims {
 		at := i + 1
-		// A primary source is free text too: the field holds a URL by convention,
-		// but nothing constrains it, and a file:// path to the researcher's own
-		// working copy is the commonest thing a research leg reaches for.
+		// A primary source is free text until its shape is checked, and a
+		// file:// path to the researcher's own working copy is the commonest
+		// thing a research leg reaches for, so it is redacted like any prose.
 		claim, n := red.field(c.Claim)
 		source, m := red.field(c.PrimarySource)
 		redactions += n + m
@@ -465,24 +568,123 @@ func validateResearch(red *recordRedactor, leg Leg) ([]Claim, int, error) {
 		if src == "" {
 			return nil, 0, fmt.Errorf("claim %d names no primary source; a claim checked against nothing is an assertion", at)
 		}
+		if !sourceShaped(src) {
+			return nil, 0, fmt.Errorf("claim %d names a primary source of no known shape (%s); %s",
+				at, termsafe.DescribeRefused(src), sourceShapes)
+		}
 		if !claimStatusEnum[c.Status] {
-			return nil, 0, fmt.Errorf("claim %d has an out-of-enum status (%s); a claim is %s, %s, or %s",
-				at, termsafe.DescribeRefused(string(c.Status)), ClaimVerified, ClaimFalsified, ClaimUnverifiable)
+			return nil, 0, fmt.Errorf("claim %d has an out-of-enum status (%s); a claim is %s, %s, %s, or %s",
+				at, termsafe.DescribeRefused(string(c.Status)), ClaimVerified, ClaimQuoted, ClaimFalsified, ClaimUnverifiable)
+		}
+		if c.Status == ClaimVerified && origin[sourceKey(src)] {
+			return nil, 0, fmt.Errorf("claim %d is marked %s, but its primary source is one of the idea's own origin sources — nothing was written; "+
+				"a claim checked only against the source the idea came from is %s, not %s", at, ClaimVerified, ClaimQuoted, ClaimVerified)
 		}
 		out = append(out, Claim{Claim: text, PrimarySource: src, Status: c.Status})
 	}
 	return out, redactions, nil
 }
 
+// sourceShapes says in words what sourceShaped accepts, for every refusal of a
+// source to quote, so the refusals cannot drift from the check.
+var sourceShapes = "a source is an https:// address, source:<key> for a source filed in the sources corpus, or a record id (" +
+	recordid.CitedIDForms() + ")"
+
+// sourceShaped reports whether a cleaned source is one of the three shapes a
+// source may take: an https:// address with a host and no whitespace, a
+// `source:<key>` whose key has the corpus's key grammar, or a record id. The
+// address is not fetched and the record id is resolved with every other
+// citation (resolveCitations); this is the shape alone, so a remark heard in
+// passing cannot stand where a source does.
+func sourceShaped(src string) bool {
+	switch {
+	case strings.HasPrefix(src, "https://"):
+		if strings.IndexFunc(src, unicode.IsSpace) >= 0 {
+			return false
+		}
+		u, err := url.Parse(src)
+		return err == nil && u.Host != ""
+	case strings.HasPrefix(src, sourceKeyPrefix):
+		return source.ValidKey(strings.TrimPrefix(src, sourceKeyPrefix))
+	}
+	return recordid.CitedIDRe.MatchString(src)
+}
+
+// sourceKeyPrefix marks a source filed in the sources corpus.
+const sourceKeyPrefix = "source:"
+
+// sourceKey is the spelling the self-quotation check compares sources by, so
+// one source written two ways is still one source: an address loses its
+// fragment and a trailing slash, its host is lower-cased and http and https
+// meet, and a record id is folded as the resolver folds it (`ADR-0035` is
+// adr-35). Anything else is compared as written.
+func sourceKey(s string) string {
+	if lower := strings.ToLower(s); strings.HasPrefix(lower, "https://") || strings.HasPrefix(lower, "http://") {
+		if u, err := url.Parse(s); err == nil && u.Host != "" {
+			k := "https://" + strings.ToLower(u.Host) + strings.TrimSuffix(u.EscapedPath(), "/")
+			if u.RawQuery != "" {
+				k += "?" + u.RawQuery
+			}
+			return k
+		}
+	}
+	if c := recordid.CanonCitedID(s); c != "" {
+		return c
+	}
+	return s
+}
+
+// originKeys is every source the idea's origins name, by sourceKey. An origin
+// is free text, so besides the whole entry each word of it that is an address
+// or a source key counts, as written and with surrounding punctuation trimmed
+// ("https://… the post the idea came from" names the post, and so does
+// "(https://…)"). A record id counts only as a whole entry: one mentioned in
+// passing is not where the idea came from, and checking it is a primary check.
+func originKeys(origins []string) map[string]bool {
+	keys := make(map[string]bool, len(origins))
+	for _, o := range origins {
+		keys[sourceKey(o)] = true
+		for _, w := range strings.Fields(o) {
+			for _, s := range []string{w, strings.Trim(w, "()<>[]{},.;\"'")} {
+				if lower := strings.ToLower(s); strings.HasPrefix(lower, "https://") || strings.HasPrefix(lower, "http://") ||
+					strings.HasPrefix(s, sourceKeyPrefix) {
+					keys[sourceKey(s)] = true
+				}
+			}
+		}
+	}
+	return keys
+}
+
+// addressRe matches a web address written in running text, up to the next
+// space, quote, bracket, comma or semicolon, so an id written straight after
+// one (`…/thread;itd-9`) is still read as a citation.
+var addressRe = regexp.MustCompile(`(?i)\bhttps?://[^\s,;<>"'()\[\]]+`)
+
+// withoutAddresses blanks every web address in text, so an id-shaped segment
+// of a path (`…/adr-0007-use-markdown.md`) is read as part of the address it
+// sits in, not as a citation of a record in this repository.
+func withoutAddresses(text string) string {
+	return addressRe.ReplaceAllString(text, " ")
+}
+
 // validateGrill checks the second leg. An EMPTY hit list is valid and meaningful:
 // "no entry in the record touches this idea" is a finding, and the commonest one
-// for a genuinely new idea. What is not valid is a hit that cites nothing usable.
-func validateGrill(red *recordRedactor, leg Leg) ([]GrillHit, int, error) {
-	if len(leg.Claims) > 0 || len(leg.KillAttempts) > 0 {
-		return nil, 0, errors.New("the record-grill leg carries another leg's evidence; each leg carries only its own")
+// for a genuinely new idea — but only when the grill says what it searched. A
+// grill with no hits and no searches is indistinguishable from one whose search
+// never ran, so it is refused. What is never valid is a hit that cites nothing
+// usable, or a search that cannot say what it searched or what came back.
+func validateGrill(red *recordRedactor, leg Leg) ([]GrillHit, []Search, int, error) {
+	if len(leg.Claims) > 0 || len(leg.Reviewers) > 0 || leg.Ruling != nil {
+		return nil, nil, 0, errors.New("the record-grill leg carries another leg's evidence; each leg carries only its own")
 	}
 	if len(leg.Hits) > maxHits {
-		return nil, 0, fmt.Errorf("the record grill carries %d hits (max %d)", len(leg.Hits), maxHits)
+		return nil, nil, 0, fmt.Errorf("the record grill carries %d hits (max %d)", len(leg.Hits), maxHits)
+	}
+	if len(leg.Hits) == 0 && len(leg.Searches) == 0 {
+		return nil, nil, 0, errors.New("the record grill found no hits and records no searches — nothing was written; " +
+			"an empty grill says what it searched: list each search under \"searches\" as {terms, places, count}, " +
+			"so a grill that found nothing can be told from one that never looked")
 	}
 	redactions := 0
 	out := make([]GrillHit, 0, len(leg.Hits))
@@ -491,14 +693,14 @@ func validateGrill(red *recordRedactor, leg Leg) ([]GrillHit, int, error) {
 		// Bounded BEFORE the id is matched or quoted, so an over-long one is
 		// described rather than echoed.
 		if len(h.Record) > maxRecordIDBytes {
-			return nil, 0, fmt.Errorf("grill hit %d cites a %d-byte record id (max %d)", at, len(h.Record), maxRecordIDBytes)
+			return nil, nil, 0, fmt.Errorf("grill hit %d cites a %d-byte record id (max %d)", at, len(h.Record), maxRecordIDBytes)
 		}
 		if !recordid.CitedIDRe.MatchString(h.Record) {
-			return nil, 0, fmt.Errorf("grill hit %d cites %s, which is not a record id (want %s)",
+			return nil, nil, 0, fmt.Errorf("grill hit %d cites %s, which is not a record id (want %s)",
 				at, termsafe.DescribeRefused(h.Record), recordid.CitedIDForms())
 		}
 		if !relationEnum[h.Relation] {
-			return nil, 0, fmt.Errorf("grill hit %d (%s) has an out-of-enum relation (%s); a hit is %s, %s, or %s",
+			return nil, nil, 0, fmt.Errorf("grill hit %d (%s) has an out-of-enum relation (%s); a hit is %s, %s, or %s",
 				at, h.Record, termsafe.DescribeRefused(string(h.Relation)), RelationCovered, RelationContradicted, RelationSuperseded)
 		}
 		// The cited id is NOT redacted: CitedIDRe has just proved it is a record
@@ -512,40 +714,206 @@ func validateGrill(red *recordRedactor, leg Leg) ([]GrillHit, int, error) {
 			Note:     termsafe.CleanProseLine(note, maxProseBytes),
 		})
 	}
+	searches, n, err := validateSearches(red, leg.Searches)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	return out, searches, redactions + n, nil
+}
+
+// validateSearches checks the grill's search record: each search names at least
+// one term and one place, and says how many entries came back. A count of zero
+// is the finding an empty grill rests on; an omitted count is refused, because
+// read as zero it would report a search that never returned as one that found
+// nothing.
+func validateSearches(red *recordRedactor, in []Search) ([]Search, int, error) {
+	if len(in) > maxSearches {
+		return nil, 0, fmt.Errorf("the record grill carries %d searches (max %d)", len(in), maxSearches)
+	}
+	redactions := 0
+	out := make([]Search, 0, len(in))
+	for i, s := range in {
+		at := i + 1
+		if s.Count == nil {
+			return nil, 0, fmt.Errorf("grill search %d records no count; a search that cannot say what came back records nothing", at)
+		}
+		if *s.Count < 0 {
+			return nil, 0, fmt.Errorf("grill search %d records a negative count", at)
+		}
+		terms, n, err := cleanList(red, s.Terms, maxSearchTerms, fmt.Sprintf("grill search %d", at), "term")
+		if err != nil {
+			return nil, 0, err
+		}
+		places, m, err := cleanList(red, s.Places, maxSearchPlaces, fmt.Sprintf("grill search %d", at), "place")
+		if err != nil {
+			return nil, 0, err
+		}
+		redactions += n + m
+		count := *s.Count
+		out = append(out, Search{Terms: terms, Places: places, Count: &count})
+	}
 	return out, redactions, nil
 }
 
-// validateAdversarial checks the third leg: at least one attempt, each with prose
-// and a registered outcome. The leg's fresh-context, off-policy, unknown-authorship
-// conduct is the orchestrating prompt's obligation — the binary cannot observe how
-// an agent was run, and pretending to check it would be theatre.
-func validateAdversarial(red *recordRedactor, leg Leg) ([]KillAttempt, int, error) {
-	if len(leg.Claims) > 0 || len(leg.Hits) > 0 {
-		return nil, 0, errors.New("the adversarial-review leg carries another leg's evidence; each leg carries only its own")
+// cleanList redacts and line-cleans a required, bounded list of short values,
+// refusing an empty list or an empty member. owner and noun name the list in a
+// refusal ("grill search 2 names no place").
+func cleanList(red *recordRedactor, in []string, max int, owner, noun string) ([]string, int, error) {
+	if len(in) == 0 {
+		return nil, 0, fmt.Errorf("%s names no %s", owner, noun)
 	}
-	if len(leg.KillAttempts) == 0 {
-		return nil, 0, errors.New("the adversarial-review leg carries no kill attempts; an adversary that tried nothing reviewed nothing")
-	}
-	if len(leg.KillAttempts) > maxKillAttempts {
-		return nil, 0, fmt.Errorf("the adversarial review carries %d attempts (max %d)", len(leg.KillAttempts), maxKillAttempts)
+	if len(in) > max {
+		return nil, 0, fmt.Errorf("%s names %d %ss (max %d)", owner, len(in), noun, max)
 	}
 	redactions := 0
-	out := make([]KillAttempt, 0, len(leg.KillAttempts))
-	for i, k := range leg.KillAttempts {
+	out := make([]string, 0, len(in))
+	for j, raw := range in {
+		text, n := red.field(raw)
+		redactions += n
+		clean := termsafe.CleanProseLine(text, maxSourceBytes)
+		if clean == "" {
+			return nil, 0, fmt.Errorf("%s %s %d is empty", owner, noun, j+1)
+		}
+		out = append(out, clean)
+	}
+	return out, redactions, nil
+}
+
+// validateAdversarial checks the third leg: at least one reviewer, each under a
+// label of its own with at least one kill attempt, a registered verdict, and the
+// sources it consulted; and, where the reviewers' verdicts differ, the ruling
+// that settled the split. The leg's fresh-context, off-policy, unknown-authorship
+// conduct is the orchestrating prompt's obligation — the binary cannot observe
+// how an agent was run, and pretending to check it would be theatre.
+func validateAdversarial(red *recordRedactor, leg Leg) ([]Reviewer, *Ruling, int, error) {
+	if len(leg.Claims) > 0 || len(leg.Hits) > 0 || len(leg.Searches) > 0 {
+		return nil, nil, 0, errors.New("the adversarial-review leg carries another leg's evidence; each leg carries only its own")
+	}
+	if len(leg.Reviewers) == 0 {
+		return nil, nil, 0, errors.New("the adversarial-review leg carries no reviewers; an adversary that was never run reviewed nothing")
+	}
+	if len(leg.Reviewers) > maxReviewers {
+		return nil, nil, 0, fmt.Errorf("the adversarial review carries %d reviewers (max %d)", len(leg.Reviewers), maxReviewers)
+	}
+	redactions := 0
+	labels := map[string]int{}
+	out := make([]Reviewer, 0, len(leg.Reviewers))
+	for i, r := range leg.Reviewers {
+		at := i + 1
+		raw, n := red.field(r.Label)
+		redactions += n
+		label := termsafe.CleanProseLine(raw, maxLabelBytes)
+		if label == "" {
+			return nil, nil, 0, fmt.Errorf("reviewer %d has no label; each reviewer's findings are kept under its label", at)
+		}
+		if first, dup := labels[label]; dup {
+			return nil, nil, 0, fmt.Errorf("reviewer %d repeats the label of reviewer %d; each reviewer is kept under a label of its own", at, first)
+		}
+		labels[label] = at
+		if !r.Verdict.Valid() {
+			return nil, nil, 0, fmt.Errorf("reviewer %d has an out-of-enum verdict (%s); a reviewer's verdict is one of %s|%s|%s",
+				at, termsafe.DescribeRefused(string(r.Verdict)), VerdictSurvives, VerdictKilled, VerdictReframed)
+		}
+		kills, n, err := validateKillAttempts(red, at, r.KillAttempts)
+		if err != nil {
+			return nil, nil, 0, err
+		}
+		redactions += n
+		if len(r.Sources) > maxReviewerSources {
+			return nil, nil, 0, fmt.Errorf("reviewer %d names %d sources (max %d)", at, len(r.Sources), maxReviewerSources)
+		}
+		sources := make([]string, 0, len(r.Sources))
+		for j, s := range r.Sources {
+			text, n := red.field(s)
+			redactions += n
+			src := termsafe.CleanProseLine(text, maxSourceBytes)
+			if !sourceShaped(src) {
+				return nil, nil, 0, fmt.Errorf("reviewer %d source %d is of no known shape (%s); %s",
+					at, j+1, termsafe.DescribeRefused(src), sourceShapes)
+			}
+			sources = append(sources, src)
+		}
+		out = append(out, Reviewer{Label: label, KillAttempts: kills, Verdict: r.Verdict, Sources: sources})
+	}
+	ruling, n, err := validateRuling(red, leg.Ruling, out)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	return out, ruling, redactions + n, nil
+}
+
+// validateKillAttempts checks one reviewer's attempts: at least one, each with
+// prose and a registered outcome.
+func validateKillAttempts(red *recordRedactor, reviewer int, in []KillAttempt) ([]KillAttempt, int, error) {
+	if len(in) == 0 {
+		return nil, 0, fmt.Errorf("reviewer %d carries no kill attempts; an adversary that tried nothing reviewed nothing", reviewer)
+	}
+	if len(in) > maxKillAttempts {
+		return nil, 0, fmt.Errorf("reviewer %d carries %d attempts (max %d)", reviewer, len(in), maxKillAttempts)
+	}
+	redactions := 0
+	out := make([]KillAttempt, 0, len(in))
+	for i, k := range in {
 		at := i + 1
 		attempt, n := red.field(k.Attempt)
 		redactions += n
 		text := termsafe.CleanProseLine(attempt, maxProseBytes)
 		if text == "" {
-			return nil, 0, fmt.Errorf("kill attempt %d has no text", at)
+			return nil, 0, fmt.Errorf("reviewer %d kill attempt %d has no text", reviewer, at)
 		}
 		if !killOutcomeEnum[k.Outcome] {
-			return nil, 0, fmt.Errorf("kill attempt %d has an out-of-enum outcome (%s); an attempt is %s, %s, or %s",
-				at, termsafe.DescribeRefused(string(k.Outcome)), KillSurvived, KillPartial, KillFatal)
+			return nil, 0, fmt.Errorf("reviewer %d kill attempt %d has an out-of-enum outcome (%s); an attempt is %s, %s, or %s",
+				reviewer, at, termsafe.DescribeRefused(string(k.Outcome)), KillSurvived, KillPartial, KillFatal)
 		}
 		out = append(out, KillAttempt{Attempt: text, Outcome: k.Outcome})
 	}
 	return out, redactions, nil
+}
+
+// validateRuling checks the ruling against the reviewers it settles. It is
+// required when their verdicts differ, and optional otherwise; given, it names
+// who ruled, a registered verdict, and the reason. Whether the ruling was
+// right is the person's judgement, and the binary never checks it against the
+// verdict the whole gauntlet reached.
+func validateRuling(red *recordRedactor, in *Ruling, reviewers []Reviewer) (*Ruling, int, error) {
+	if in == nil {
+		for _, r := range reviewers[1:] {
+			if r.Verdict != reviewers[0].Verdict {
+				return nil, 0, fmt.Errorf("the reviewers' verdicts differ (%s) and the adversarial-review leg records no ruling — nothing was written; "+
+					"a split between reviewers is recorded with the ruling that settled it: \"ruling\": {by, verdict, reason}",
+					reviewerVerdicts(reviewers))
+			}
+		}
+		return nil, 0, nil
+	}
+	by, n := red.field(in.By)
+	reason, m := red.field(in.Reason)
+	out := Ruling{
+		By:      termsafe.CleanProseLine(by, maxLabelBytes),
+		Verdict: in.Verdict,
+		Reason:  termsafe.CleanProseLine(reason, maxProseBytes),
+	}
+	switch {
+	case out.By == "":
+		return nil, 0, errors.New("the ruling does not say who ruled")
+	case !out.Verdict.Valid():
+		return nil, 0, fmt.Errorf("the ruling has an out-of-enum verdict (%s); a ruling is one of %s|%s|%s",
+			termsafe.DescribeRefused(string(in.Verdict)), VerdictSurvives, VerdictKilled, VerdictReframed)
+	case out.Reason == "":
+		return nil, 0, errors.New("the ruling records no reason; the reason is what a later reader weighs the split by")
+	}
+	return &out, n + m, nil
+}
+
+// reviewerVerdicts lists each reviewer's verdict by its position, for the
+// split refusal. Only core-owned values reach it: a position and a registered
+// verdict, never a label.
+func reviewerVerdicts(reviewers []Reviewer) string {
+	parts := make([]string, len(reviewers))
+	for i, r := range reviewers {
+		parts[i] = fmt.Sprintf("reviewer %d %s", i+1, r.Verdict)
+	}
+	return strings.Join(parts, ", ")
 }
 
 // validateRejected enforces the explicit-empty-marker rule. Omission is refused
@@ -590,39 +958,241 @@ func validateRejected(red *recordRedactor, p Payload) ([]RejectedAlternative, bo
 	return out, false, redactions, nil
 }
 
-// resolveCitations is AC 4's gate: every record id the grill cited must name a
-// record that exists in this repository. It returns the sorted, deduped set as the
-// proof the result carries.
+// validateReframing checks the reframing against the verdict: a reframed
+// verdict carries a non-empty one, and any other verdict carries none, since a
+// reframing beside a surviving or a killed idea leaves a reader to guess which
+// of the two the record means.
+func validateReframing(red *recordRedactor, p Payload) (string, int, error) {
+	text, n := red.field(p.Reframing)
+	reframing := termsafe.CleanProse(text, maxIdeaBytes)
+	switch {
+	case p.Verdict == VerdictReframed && reframing == "":
+		return "", 0, errors.New("the verdict is reframed and carries no reframing — nothing was written; " +
+			"a reframed verdict records the idea's surviving shape in \"reframing\", because that, not the original wording, is what may graduate")
+	case p.Verdict != VerdictReframed && reframing != "":
+		return "", 0, fmt.Errorf("the verdict carries a reframing beside a %s verdict; only a reframed verdict has one, and the two contradict each other", p.Verdict)
+	}
+	return reframing, n, nil
+}
+
+// citedText is one place in the verdict a record id may be written, and the
+// part of the verdict it belongs to, which a refusal names.
+type citedText struct {
+	where string
+	text  string
+}
+
+// citationPlaces lists every place in the cleaned document a record id may be
+// written, each with the part of the verdict it belongs to: every leg's prose
+// and sources, the rejected alternatives, the origin sources and the
+// reframing. The idea's own words are not among them — it is the subject of
+// the record, in the words it entered with — and nor are the grill's search
+// terms and places, where a searched-for id that names nothing is the finding.
+// A grill hit's record is not here either: it is resolved on its own, exactly,
+// because it is the grill's citation proof.
+func citationPlaces(v verdictDoc) []citedText {
+	const (
+		research    = "the research leg"
+		grill       = "the record-grill leg"
+		adversarial = "the adversarial-review leg"
+	)
+	var out []citedText
+	add := func(where string, texts ...string) {
+		for _, t := range texts {
+			out = append(out, citedText{where: where, text: t})
+		}
+	}
+	for _, c := range v.claims {
+		add(research, c.Claim, c.PrimarySource)
+	}
+	for _, h := range v.hits {
+		add(grill, h.Note)
+	}
+	for _, r := range v.reviewers {
+		add(adversarial, r.Label)
+		for _, k := range r.KillAttempts {
+			add(adversarial, k.Attempt)
+		}
+		add(adversarial, r.Sources...)
+	}
+	if v.ruling != nil {
+		add(adversarial, v.ruling.By, v.ruling.Reason)
+	}
+	for _, r := range v.rejected {
+		add("the rejected alternatives", r.Alternative, r.WhyRejected)
+	}
+	add("the origin sources", v.origins...)
+	add("the reframing", v.reframing)
+	return out
+}
+
+// proseIDRe finds a record id of a resolvable family anywhere in running text,
+// in any case and with any zero padding. Its families are recordid's cited
+// families, so prose is held to exactly the ids a grill hit may cite. The token
+// boundaries are checked in code (idsIn), because Go's regexp has no lookbehind.
+var proseIDRe = regexp.MustCompile(`(?i)(?:` + citedAlternation() + `)-[0-9]+`)
+
+// citedAlternation is recordid.CitedFamilies as an alternation.
+func citedAlternation() string {
+	fams := recordid.CitedFamilies()
+	for i, f := range fams {
+		fams[i] = regexp.QuoteMeta(f)
+	}
+	return strings.Join(fams, "|")
+}
+
+// idsIn returns every record id written in text as a whole token: not preceded
+// by a letter, digit or hyphen (`xitd-1`, `pre-itd-1` name nothing), and not
+// followed by a letter or digit. A hyphen after the number does not stop it
+// being a citation, so `itd-104-ideate` names itd-104, as record-lint reads
+// the same shape.
+func idsIn(text string) []string {
+	var out []string
+	for _, loc := range proseIDRe.FindAllStringIndex(text, -1) {
+		if loc[0] > 0 && isIDByte(text[loc[0]-1], true) {
+			continue
+		}
+		if loc[1] < len(text) && isIDByte(text[loc[1]], false) {
+			continue
+		}
+		out = append(out, text[loc[0]:loc[1]])
+	}
+	return out
+}
+
+// isIDByte reports whether b would make a matched id part of a longer token: a
+// letter or digit on either side, and a hyphen before it.
+func isIDByte(b byte, before bool) bool {
+	switch {
+	case b >= 'a' && b <= 'z', b >= 'A' && b <= 'Z', b >= '0' && b <= '9':
+		return true
+	case b == '-':
+		return before
+	}
+	return false
+}
+
+// resolveCitations is criterion 1's gate (and AC 4's before it): every record id
+// the verdict cites, in any leg, must name a record that exists in this
+// repository. It returns the sorted, deduped set of the GRILL's citations as the
+// proof the result carries; every other id it resolved is proved by the record
+// having been written at all.
 //
 // It builds ONE resolver for the whole document, so every citation is judged
-// against the same view of the record.
-func resolveCitations(repoRoot string, hits []GrillHit) ([]string, error) {
-	if len(hits) == 0 {
+// against the same view of the record, and only when the document cites
+// something: a verdict that names no id costs no scan.
+//
+// A prose id is folded to the spelling the resolver keys on (recordid.CanonCitedID)
+// before it is looked up, so `ADR-0035` in a kill attempt names adr-35; an id
+// that folds to nothing (an all-zero number) names no record and is refused.
+func resolveCitations(repoRoot string, v verdictDoc) ([]string, error) {
+	type found struct{ where, id string }
+	var prose []found
+	for _, place := range citationPlaces(v) {
+		for _, raw := range idsIn(withoutAddresses(place.text)) {
+			prose = append(prose, found{where: place.where, id: raw})
+		}
+	}
+	if len(v.hits) == 0 && len(prose) == 0 {
 		return nil, nil
 	}
 	r, err := recordid.NewResolver(repoRoot)
 	if err != nil {
 		return nil, err
 	}
-	seen := map[string]bool{}
-	var cited, unresolved []string
-	for _, h := range hits {
-		if seen[h.Record] {
-			continue
+	var missing []UnresolvedCitation
+	seen := map[UnresolvedCitation]bool{}
+	miss := func(where, id string) {
+		c := UnresolvedCitation{Where: where, ID: id}
+		if !seen[c] {
+			seen[c] = true
+			missing = append(missing, c)
 		}
-		seen[h.Record] = true
+	}
+	cited := map[string]bool{}
+	for _, h := range v.hits {
 		if !r.Has(h.Record) {
-			unresolved = append(unresolved, h.Record)
+			miss("the record-grill leg", h.Record)
 			continue
 		}
-		cited = append(cited, h.Record)
+		cited[h.Record] = true
 	}
-	if len(unresolved) > 0 {
-		sort.Strings(unresolved)
-		return nil, &CitationError{Unresolved: unresolved}
+	for _, f := range prose {
+		canon := recordid.CanonCitedID(f.id)
+		switch {
+		case len(f.id) > maxRecordIDBytes:
+			// Bounded before it is echoed: the prose cap admits an id of
+			// thousands of digits, and the refusal describes it instead.
+			miss(f.where, termsafe.DescribeRefused(f.id))
+		case canon == "":
+			miss(f.where, strings.ToLower(f.id))
+		case !r.Has(canon):
+			miss(f.where, canon)
+		}
 	}
-	sort.Strings(cited)
-	return cited, nil
+	if len(missing) > 0 {
+		return nil, newCitationError(missing)
+	}
+	out := make([]string, 0, len(cited))
+	for id := range cited {
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// resolveSourceKeys checks every `source:<key>` the verdict cites — a claim's
+// primary source or a reviewer's — against the sources corpus at dir. Where
+// there is no corpus (dir is empty, or names a directory with none in it) there
+// is nothing to resolve against, and the key's shape, already checked, is all
+// that can be proved; a corpus that exists and cannot be read refuses the run,
+// because a key it might not carry would otherwise be recorded as filed.
+func resolveSourceKeys(dir string, v verdictDoc) error {
+	type cite struct{ where, key string }
+	var keys []cite
+	for i, c := range v.claims {
+		if k, ok := strings.CutPrefix(c.PrimarySource, sourceKeyPrefix); ok {
+			keys = append(keys, cite{where: fmt.Sprintf("claim %d", i+1), key: k})
+		}
+	}
+	for i, r := range v.reviewers {
+		for _, s := range r.Sources {
+			if k, ok := strings.CutPrefix(s, sourceKeyPrefix); ok {
+				keys = append(keys, cite{where: fmt.Sprintf("reviewer %d", i+1), key: k})
+			}
+		}
+	}
+	if len(keys) == 0 || dir == "" {
+		return nil
+	}
+	want := make([]string, len(keys))
+	for i, k := range keys {
+		want[i] = k.key
+	}
+	unfiled, err := source.Unfiled(dir, want)
+	switch {
+	case errors.Is(err, source.ErrNoCorpus):
+		return nil
+	case err != nil:
+		return fmt.Errorf("the verdict cites a filed source, and the sources corpus cannot be read to resolve it — nothing was written: %w", err)
+	}
+	if len(unfiled) == 0 {
+		return nil
+	}
+	missing := map[string]bool{}
+	for _, k := range unfiled {
+		missing[k] = true
+	}
+	var parts []string
+	for _, k := range keys {
+		if missing[k.key] {
+			// The key has the corpus's key grammar (sourceShaped), so it is
+			// safe to quote, and it is the one handle a refusal names a source by.
+			parts = append(parts, k.where+" cites "+sourceKeyPrefix+k.key)
+		}
+	}
+	return fmt.Errorf("the verdict cites sources the sources corpus does not carry — nothing was written: %s; "+
+		"file each with `abcd library add`, or cite it by its https:// address", strings.Join(parts, ", "))
 }
 
 // result builds the transport-agnostic outcome from the validated document.
@@ -632,17 +1202,24 @@ func (v verdictDoc) result(slug, rel string) Result {
 		Idea:                 v.idea,
 		Verdict:              v.verdict,
 		Graduates:            v.verdict == VerdictSurvives,
+		Reframing:            v.reframing,
 		Path:                 rel,
 		GrillHits:            len(v.hits),
 		CitedRecords:         v.cited,
-		KillAttempts:         len(v.kills),
+		Searches:             len(v.searches),
+		Reviewers:            len(v.reviewers),
 		RejectedAlternatives: len(v.rejected),
 		Redactions:           v.redactions,
+	}
+	for _, r := range v.reviewers {
+		res.KillAttempts += len(r.KillAttempts)
 	}
 	for _, c := range v.claims {
 		switch c.Status {
 		case ClaimVerified:
 			res.Claims.Verified++
+		case ClaimQuoted:
+			res.Claims.Quoted++
 		case ClaimFalsified:
 			res.Claims.Falsified++
 		case ClaimUnverifiable:

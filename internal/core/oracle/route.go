@@ -3,9 +3,10 @@ package oracle
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
-	"github.com/intentdriven/abcd/internal/core/layered"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // RouteSyntax is the --route flag's grammar, as every refusal names it.
@@ -64,7 +65,7 @@ func ParseRoutes(texts, dispatched []string, conns Connections) ([]FlagRoute, er
 		}
 		if fr.Connection != "" {
 			if _, ok := conns.Named(fr.Connection); !ok {
-				return fmt.Errorf("--route %s: connection %q is not configured on this machine", shown, layered.BoundKey(fr.Connection))
+				return fmt.Errorf("--route %s: its connection (%s) is not configured on this machine", shown, termsafe.DescribeRefused(fr.Connection))
 			}
 		}
 		return nil
@@ -86,13 +87,26 @@ func ParseRunnerRoutes(texts, dispatched []string) ([]FlagRoute, error) {
 // notDispatched is the refusal of a --route naming an agent the invocation
 // does not dispatch.
 func notDispatched(shown string, dispatched []string, agent string) error {
-	return fmt.Errorf("--route %s: this invocation dispatches %s, not %q; a --route naming any other agent is refused, never merged or ignored",
-		shown, dispatchList(dispatched), layered.BoundKey(agent))
+	return fmt.Errorf("--route %s: this invocation dispatches %s, not %s; a --route naming any other agent is refused, never merged or ignored",
+		shown, dispatchList(dispatched), namedAgent(agent))
+}
+
+// namedAgent is how a refusal names the agent a --route gave: quoted when it
+// is an agent of the roster, so the caller reads which one, and otherwise by
+// its length alone, since it is only what the caller typed.
+func namedAgent(agent string) string {
+	if inRoster(agent) {
+		return strconv.Quote(agent)
+	}
+	return "the agent given (" + termsafe.DescribeRefused(agent) + ")"
 }
 
 // parseEach parses every --route value, holds each to the bound, the
 // invocation's dispatched set and one route per agent, and hands it to check
-// for what the invocation's own dispatch admits.
+// for what the invocation's own dispatch admits. Each refusal names the value
+// by its position among the --route values, never by its text: the build
+// loop's step carries it into its --json refusal document, which the error
+// boundary's pass does not read.
 func parseEach(texts, dispatched []string, parse func(string) (FlagRoute, error), check func(fr FlagRoute, shown string) error) ([]FlagRoute, error) {
 	can := map[string]bool{}
 	for _, a := range dispatched {
@@ -100,8 +114,8 @@ func parseEach(texts, dispatched []string, parse func(string) (FlagRoute, error)
 	}
 	seen := map[string]bool{}
 	var out []FlagRoute
-	for _, text := range texts {
-		shown := layered.BoundKey(text)
+	for i, text := range texts {
+		shown := RoutePosition(i)
 		if len(text) > MaxRouteBytes {
 			return nil, fmt.Errorf("--route %s: it is %d bytes; a --route is at most %d, because a receipt carries it verbatim",
 				shown, len(text), MaxRouteBytes)
@@ -125,6 +139,10 @@ func parseEach(texts, dispatched []string, parse func(string) (FlagRoute, error)
 	return out, nil
 }
 
+// RoutePosition is how a refusal names the --route value at index i of an
+// invocation's --route values: "number <i+1>", read after "--route".
+func RoutePosition(i int) string { return "number " + strconv.Itoa(i+1) }
+
 // parseRoute reads one tier route, <agent>=<tier>[@<connection>][?k=v,...].
 func parseRoute(text string) (FlagRoute, error) {
 	head, query, hasQuery := strings.Cut(text, "?")
@@ -138,7 +156,9 @@ func parseRoute(text string) (FlagRoute, error) {
 	}
 	tier, err := ParseTier(tierText)
 	if err != nil {
-		return FlagRoute{}, err
+		// ParseTier names a routing file's tier as written; a typed one is
+		// named by its length.
+		return FlagRoute{}, fmt.Errorf("its tier (%s) is not one of %s", termsafe.DescribeRefused(tierText), tierList())
 	}
 	fr := FlagRoute{Agent: agent, Row: Row{Tier: tier}, Connection: conn, Text: text}
 	if hasQuery {
@@ -146,14 +166,14 @@ func parseRoute(text string) (FlagRoute, error) {
 		for _, pair := range strings.Split(query, ",") {
 			k, v, ok := strings.Cut(pair, "=")
 			if !ok || k == "" || v == "" {
-				return FlagRoute{}, fmt.Errorf("setting %q is not k=v; want %s", layered.BoundKey(pair), RouteSyntax)
+				return FlagRoute{}, fmt.Errorf("a setting (%s) is not k=v; want %s", termsafe.DescribeRefused(pair), RouteSyntax)
 			}
 			if _, dup := raw[k]; dup {
-				return FlagRoute{}, fmt.Errorf("setting %s is given more than once", layered.BoundKey(k))
+				return FlagRoute{}, fmt.Errorf("a setting's key (%s) is given more than once", termsafe.DescribeRefused(k))
 			}
 			raw[k] = settingValue(v)
 		}
-		s, err := checkSettings(raw)
+		s, err := checkSettings(raw, true)
 		if err != nil {
 			return FlagRoute{}, err
 		}
@@ -174,11 +194,11 @@ func parseRunnerRoute(text string) (FlagRoute, error) {
 	rung, isRunner := strings.CutPrefix(rest, runnerRung)
 	if !isRunner {
 		if _, err := parseRoute(text); err == nil {
-			return FlagRoute{}, fmt.Errorf("names a tier, and this invocation runs %s on the host or a runner, which "+
-				"a tier does not choose; want %s", layered.BoundKey(agent), RunnerRouteSyntax)
+			return FlagRoute{}, fmt.Errorf("names a tier, and this invocation runs its roles on the host or a runner, which "+
+				"a tier does not choose; want %s", RunnerRouteSyntax)
 		}
-		return FlagRoute{}, fmt.Errorf("names no runner: the runner is named after %s, as in %s=%sopencode; want %s",
-			runnerRung, layered.BoundKey(agent), runnerRung, RunnerRouteSyntax)
+		return FlagRoute{}, fmt.Errorf("names no runner: the runner is named after %s, as in <role>=%sopencode; want %s",
+			runnerRung, runnerRung, RunnerRouteSyntax)
 	}
 	if strings.Contains(rung, "?") {
 		return FlagRoute{}, fmt.Errorf("a runner route takes no settings: the runner's harness sets its model's own; want %s", RunnerRouteSyntax)
@@ -198,7 +218,7 @@ func parseRunnerRung(role, rung, text string) (FlagRoute, error) {
 		}
 		provider, id, ok := strings.Cut(model, "/")
 		if !ok || provider == "" || id == "" {
-			return FlagRoute{}, fmt.Errorf("model %q is not <provider>/<model>; want %s", layered.BoundKey(model), RunnerRouteSyntax)
+			return FlagRoute{}, fmt.Errorf("its model (%s) is not <provider>/<model>; want %s", termsafe.DescribeRefused(model), RunnerRouteSyntax)
 		}
 	}
 	return FlagRoute{Agent: role, Runner: name, Model: model, Text: text}, nil

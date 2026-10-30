@@ -17,10 +17,10 @@ func TestSynthesisDoesNotPerturbManifest(t *testing.T) {
 	}
 	before := readProvenanceFile(t, lb).ManifestSHA256
 
-	if _, err := SynthesizePrinciples(lb, nil); err != nil {
+	if _, err := SynthesizePrinciples(lb, nil, okScan); err != nil {
 		t.Fatalf("SynthesizePrinciples: %v", err)
 	}
-	if _, err := ComposePressRelease(lb, nil); err != nil {
+	if _, err := ComposePressRelease(lb, nil, okScan); err != nil {
 		t.Fatalf("ComposePressRelease: %v", err)
 	}
 
@@ -38,10 +38,10 @@ func TestSynthesisDoesNotPerturbManifest(t *testing.T) {
 func TestEmbarkToleratesSynthesis(t *testing.T) {
 	src := embarkableSourceFixture(t)
 	lb := packSource(t, src)
-	if _, err := SynthesizePrinciples(lb, nil); err != nil {
+	if _, err := SynthesizePrinciples(lb, nil, okScan); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ComposePressRelease(lb, nil); err != nil {
+	if _, err := ComposePressRelease(lb, nil, okScan); err != nil {
 		t.Fatal(err)
 	}
 

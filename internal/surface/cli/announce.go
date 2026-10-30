@@ -69,6 +69,9 @@ func newAnnounceCommand(asJSON *bool) *cobra.Command {
 			"session's forge token, asked whose account it is. When git's identity is not a\n" +
 			"person's, the token's account sends and authors the announcement, and the\n" +
 			"identity git had is shown nowhere.\n\n" +
+			"abcd's own pushes announce first through this same code: abcd land, and a\n" +
+			"build or drain lane's landing, post \"merging <item>\" and push only once it is\n" +
+			"on origin. A push typed by hand with git push posts no announcement.\n\n" +
 			"Exit 0 when the announcement reached origin; exit 2 on every refusal, when it\n" +
 			"was not sent, and when a push was made but whether it landed cannot be told.\n" +
 			"Nothing is pushed on a refusal except \"not sent\", which follows pushes origin\n" +
@@ -131,21 +134,9 @@ func announceRefusal(err error) error {
 	return &exitError{Code: 2, Msg: msg + "; not sent, and nothing was pushed"}
 }
 
-// announceEmbargoCheck is the embargo check an announcement is held to (C5):
-// `abcd embargo check` on its whole message and the record it names. Any
-// finding refuses it, and a check that cannot run is an error, which refuses
-// it too.
-func announceEmbargoCheck(root, home, text string, records []string) (bool, error) {
-	if home == "" {
-		return false, fmt.Errorf("the home directory cannot be named, so the embargo store cannot be found")
-	}
-	res, err := embargo.Check(embargo.CheckRequest{Home: home, RepoRoot: root, Files: []string{"-"},
-		Stdin: strings.NewReader(text), Records: records})
-	if err != nil {
-		return false, err
-	}
-	return !res.Clean(), nil
-}
+// announceEmbargoCheck is the embargo check an announcement is held to (C5),
+// the one abcd's own pushes announce through too.
+var announceEmbargoCheck claim.EmbargoCheck = embargo.AnnouncementCheck
 
 // renderAnnounce is the text form: one line saying what went out, as whom, on
 // which branch, and until when.

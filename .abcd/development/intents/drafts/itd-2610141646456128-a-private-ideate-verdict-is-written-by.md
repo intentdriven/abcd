@@ -20,8 +20,8 @@ production_mode: hand-written
 ## Press Release
 
 > **A person who keeps an idea private records its verdict without anything
-> reaching the project.** Every ideate verdict is recorded either privately or
-> publicly, and abcd asks which; it never guesses. A private verdict goes to
+> reaching the project.** Every ideate verdict is recorded privately unless
+> the person says it is public; abcd never asks and never guesses public. A private verdict goes to
 > the person's own store, readable by them alone, with no line in the project's
 > decision log. The grill reads that store too, so an earlier private verdict on
 > the same idea is found and cited. An idea's source is named in public only
@@ -34,7 +34,8 @@ production_mode: hand-written
 ## Why This Matters
 
 The product thinker ruled on 2026-10-14 that each ideate run asks whether the
-idea is private or public, private verdicts going to
+idea is private or public, and on 2026-10-30 that it defaults to private and does
+not ask (iss-2610300838089246), private verdicts going to
 `~/.abcd.noindex/ideas/<root-sha>/` with no decision-log line. The binary can
 only write into the repository, so every private run records in a throwaway
 worktree and copies the note out by hand (iss-2610090740139804); the lab of
@@ -46,8 +47,7 @@ adoption (iss-2610090742488191).
 
 ## What's In Scope
 
-- `ideate record --private` and `--public`; with neither, a question at a
-  terminal and a refusal elsewhere.
+- `ideate record --private` and `--public`; with neither, a private verdict.
 - The private store, its file mode, its listing, and citing a private verdict
   from another private verdict.
 - The rule that names an idea's source publicly, and credits it, at graduation.
@@ -82,9 +82,9 @@ in the decision log.
   under `~/.abcd.noindex/ideas/<root-sha>/` with owner-only permissions, it
   passes the same redaction as a public verdict, no decision-log line is
   appended, and the working tree is unchanged.
-- **Given** neither `--private` nor `--public`, **when** `ideate record` runs at
-  a terminal, **then** it asks which; **when** it runs without one, **then** it
-  refuses with exit 2 and writes nothing.
+- **Given** neither `--private` nor `--public`, **when** `ideate record` runs,
+  **then** it records the verdict privately, exactly as `--private` does, and
+  asks nothing; **given** both, **then** it refuses with exit 2 and writes nothing.
 - **Given** a private verdict, **when** another private verdict's grill cites it
   by its key, **then** the citation resolves; **when** a public verdict cites
   it, **then** the public verdict is refused.

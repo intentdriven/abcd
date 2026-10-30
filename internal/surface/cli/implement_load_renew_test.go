@@ -2,12 +2,14 @@ package cli
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/machineload"
 )
 
@@ -19,7 +21,14 @@ func renewFixture(t *testing.T, renew func(root string) ([]claim.Renewal, error)
 	rounds := make(chan struct{}, 64)
 	prevRenew, prevEvery, prevRound := loadRenew, loadRenewEvery, loadRenewRound
 	loadRenew, loadRenewEvery = renew, time.Millisecond
-	loadRenewRound = func() { rounds <- struct{}{} }
+	// A full channel drops the signal rather than block the round: renewal now
+	// runs for the whole command, so a test that stops reading must not wedge it.
+	loadRenewRound = func() {
+		select {
+		case rounds <- struct{}{}:
+		default:
+		}
+	}
 	t.Cleanup(func() { loadRenew, loadRenewEvery, loadRenewRound = prevRenew, prevEvery, prevRound })
 	return rounds
 }
@@ -88,11 +97,38 @@ func TestImplementLoadWaitRenewsTheCallersHoldsWhileItWaits(t *testing.T) {
 	}
 }
 
+// TestImplementLoadWaitSaysABusyRenewalAsItself (iss-2610270659564789): a
+// round that renewed nothing because a sibling pass in the copy held the
+// renewal lock says so, once while it stands, and never as a view that could
+// not be read.
+func TestImplementLoadWaitSaysABusyRenewalAsItself(t *testing.T) {
+	waitFixture(t, machine(3, 3, 3, liveRace), machine(3, 3, 3, liveRace), machine(3, 3, 3))
+	rounds := renewFixture(t, func(string) ([]claim.Renewal, error) {
+		return nil, fmt.Errorf("%w for over 2m0s", claim.ErrRenewalBusy)
+	})
+	gateReads(t, rounds, 2)
+	code, out, errOut := implementCLI(t, "implement", "load", "--wait")
+	if code != 0 {
+		t.Fatalf("exit %d\n%s%s", code, out, errOut)
+	}
+	busy := "abcd implement load --wait: renewed nothing this round, since another renewal pass in this copy has held its lock for over 2m0s; the wait goes on\n"
+	if n := strings.Count(errOut, busy); n != 1 {
+		t.Errorf("the busy round is said %d times, want once while it stands:\n%s", n, errOut)
+	}
+	if strings.Contains(errOut, "could not read the reservations") {
+		t.Errorf("a busy round reads as a view that could not be read:\n%s", errOut)
+	}
+}
+
 // TestImplementLoadWaitNeverWaitsOnARenewal: a renewal that never returns,
-// as a push stuck on the network would, does not delay the open, and after
-// the open nothing more is said of it.
+// as a push stuck on the network would, does not delay the open, the waiter's
+// exit waits for it no longer than its bound (loadRenewStopWait), and past
+// that bound nothing more is said of it.
 func TestImplementLoadWaitNeverWaitsOnARenewal(t *testing.T) {
 	waitFixture(t, machine(3, 3, 3))
+	prevStopWait := loadRenewStopWait
+	loadRenewStopWait = 50 * time.Millisecond
+	t.Cleanup(func() { loadRenewStopWait = prevStopWait })
 	stuck := make(chan struct{})
 	started := make(chan struct{}, 1)
 	renewFixture(t, func(string) ([]claim.Renewal, error) {
@@ -114,5 +150,40 @@ func TestImplementLoadWaitNeverWaitsOnARenewal(t *testing.T) {
 	}
 	if strings.Contains(errOut, "renew") {
 		t.Errorf("a renewal is said on standard error:\n%s", errOut)
+	}
+}
+
+// TestImplementLoadWaitExitsSoonAfterItsCommandThoughARoundIsInFlight
+// (dcn-2610300422481486): a renewal round still in flight when the gated
+// command exits, its push slow on the network, holds the waiter's exit for a
+// few seconds at most, well inside the plain form's settle hold, not for as
+// long as the push may take: a waiter lingering on it reads as queued, with
+// only git and gh children, and holds every other gate on the machine shut.
+// The renewal the round makes after that is not said.
+func TestImplementLoadWaitExitsSoonAfterItsCommandThoughARoundIsInFlight(t *testing.T) {
+	waitFixture(t, machine(3, 3, 3))
+	if loadRenewStopWait > implement.WaitSettle/10 {
+		t.Errorf("the waiter waits up to %s for a round in flight; want a few seconds, well inside the settle hold of %s", loadRenewStopWait, implement.WaitSettle)
+	}
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	renewFixture(t, func(string) ([]claim.Renewal, error) {
+		select {
+		case <-release:
+		case <-time.After(20 * time.Second):
+		}
+		return []claim.Renewal{{Record: "iss-5", Until: time.Now()}}, nil
+	})
+	begin := time.Now()
+	code, out, errOut := implementCLI(t, "implement", "load", "--wait", "--", "true")
+	took := time.Since(begin)
+	if code != 0 {
+		t.Fatalf("exit %d\n%s%s", code, out, errOut)
+	}
+	if took > 10*time.Second {
+		t.Fatalf("the waiter exited %s after its command, a renewal round in flight; want a few seconds at most", took.Round(time.Second))
+	}
+	if strings.Contains(errOut, "renewed your reservation") {
+		t.Errorf("the renewal finished past the bound is said:\n%s", errOut)
 	}
 }

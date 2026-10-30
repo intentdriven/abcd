@@ -16,7 +16,7 @@ package site
 //     CHANGELOG.md, each rendered only where the repository holds it;
 //   - the record explorer, as the composed route renders it, less everything
 //     read out of git history rather than written by abcd: the contributors
-//     page (author names and declared tools), the timeline (records placed at
+//     page (the count of authors and the declared tools), the timeline (records placed at
 //     the day git first saw them), the health page's authorship checks, and
 //     record.json's authorship, history and per-record git dates. The
 //     references page, which reads ACKNOWLEDGEMENTS.md, is left out too. A

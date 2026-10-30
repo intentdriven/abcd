@@ -11,12 +11,12 @@ import (
 
 // SlowPipeGit puts a `git` first on PATH that runs the real one and, for a
 // call whose arguments contain match, leaves a background process holding its
-// output pipes open for a few seconds after it exits. A caller that waits on
-// git with a WaitDelay (gitutil's context-bound runner) then sees
-// exec.ErrWaitDelay ("WaitDelay expired before I/O complete") although git
-// answered: the same error a heavily loaded machine produces when the copy of
-// git's output misses the delay. It is the deterministic stand-in for that
-// load, so no test has to generate CPU load to reproduce it.
+// output pipes open for a second after it exits. A runner that let exec copy
+// git's output under a WaitDelay saw exec.ErrWaitDelay ("WaitDelay expired
+// before I/O complete") although git answered: the same error a heavily
+// loaded machine produced when the copy of git's output missed the delay
+// (iss-2610272041031418). It is the deterministic stand-in for that load, so
+// no test has to generate CPU load to show git's answer is read whole.
 //
 // The first hangs matching calls hold the pipe; later ones answer cleanly. A
 // negative hangs holds it on every matching call. The returned function
@@ -41,7 +41,7 @@ func SlowPipeGit(t *testing.T, match string, hangs int) (calls func() int) {
 		"  n=$(cat '" + count + "' 2>/dev/null || echo 0); n=$((n+1)); echo $n > '" + count + "'\n" +
 		"  if [ " + strconv.Itoa(hangs) + " -lt 0 ] || [ $n -le " + strconv.Itoa(hangs) + " ]; then\n" +
 		"    '" + real + "' \"$@\"; rc=$?\n" +
-		"    sleep 3 &\n" +
+		"    sleep 1 &\n" +
 		"    exit $rc\n" +
 		"  fi;;\n" +
 		"esac\n" +

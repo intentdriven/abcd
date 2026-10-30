@@ -30,6 +30,7 @@ type backtickScanner struct {
 // default for a file this test names is to pair through PairCodeSpan.
 var backtickScanners = map[string]backtickScanner{
 	"internal/adapter/scanner/identity.go":        {2, "two delimiter sets: a backtick is one of the characters that may end an identity token, and one of those that bounds the path token an owner slug is judged in; nothing is paired"},
+	"internal/core/assistedby/body.go":            {2, "stripFencedBlocks is the Go copy of scripts/check-attribution.sh's strip_fenced_blocks, held to that gate by TestJudgeBodyMatchesTheGate: a backtick there is a fence opener's character, and an opener whose info string carries one is no fence, as the gate reads it; nothing is paired"},
 	"internal/core/capture/promote.go":            {1, "a WRITER: codeSpan measures the longest backtick run to choose a fence the value cannot close; nothing is paired"},
 	"internal/core/guard/tokenize.go":             {25, "the shell tokenizer: a backtick there is command substitution, a shell grammar, not markdown"},
 	"internal/core/guard/payload.go":              {3, "targetsAnExpansion reads a shell line's raw text for an assignment target that holds an expansion: a backtick there opens or closes a command substitution, a shell grammar, not markdown; nothing is paired"},

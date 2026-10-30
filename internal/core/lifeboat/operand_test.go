@@ -75,7 +75,7 @@ var lifeboatOperandGates = map[string]func(dir string) error{
 		return err
 	},
 	"graveyard lessons": func(dir string) error {
-		_, err := IngestLessons(dir, []byte(`{"schema_version":1,"lessons":[]}`))
+		_, err := IngestLessons(dir, []byte(`{"schema_version":1,"lessons":[]}`), okScan)
 		return err
 	},
 	"manifest verification": verifyManifest,
@@ -115,7 +115,7 @@ func TestLifeboatOperandAcceptsAPlainNestedPath(t *testing.T) {
 	if _, _, err := gateSynthLifeboat(nestedOperand(t)); err != nil {
 		t.Errorf("gateSynthLifeboat refused a plain nested operand: %v", err)
 	}
-	if _, err := IngestLessons(nestedOperand(t), []byte(`{"schema_version":1,"lessons":[]}`)); err != nil {
+	if _, err := IngestLessons(nestedOperand(t), []byte(`{"schema_version":1,"lessons":[]}`), okScan); err != nil {
 		t.Errorf("IngestLessons refused a plain nested operand: %v", err)
 	}
 }
