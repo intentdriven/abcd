@@ -141,8 +141,9 @@ func notEndedLine(subject, holder string, claimed bool) string {
 	if holder == "" {
 		return ""
 	}
+	name := claimedName(holder, claimed)
 	return fmt.Sprintf("%s's tip is a tombstone %s did not push, as the forge's record of pushes says, over %s's reservation, so it ends nothing "+
-		"and no withdrawal is re-armed: the release ends with %s's --release, or when its tag is on %s", subject, claimedName(holder, claimed), holder, holder, Remote)
+		"and no withdrawal is re-armed: the release ends with %s's --release, or when its tag is on %s", subject, name, name, name, Remote)
 }
 
 // holderClaimed reports whether holder, a release's holder as a reading of
