@@ -650,6 +650,8 @@ func renderReserve(w io.Writer, out reserveOutput) {
 		}
 	}
 	if len(out.Stranded) > 0 {
+		// A reserve act resolves the person's GitHub login or refuses before
+		// it pushes anything, so the login is known whenever it strands one.
 		fmt.Fprintf(w, "  note: %s\n", claim.StrandedNote(out.Record, out.Stranded, out.Holder, true))
 		if l := claim.UnpairedLine(out.Unpaired); l != "" {
 			fmt.Fprintf(w, "  note: %s\n", l)
