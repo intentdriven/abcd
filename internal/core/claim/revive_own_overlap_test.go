@@ -105,3 +105,28 @@ func TestAnOtherCopyOverlapReadsEveryHolderOfTheReaders(t *testing.T) {
 		}
 	}
 }
+
+// TestAnOtherCopyOverlapFallsBackOnTheOwnReservationsLogin: a lane whose own
+// reservation was made before the holder id, under the reader's login, still
+// counts their live reservation from another copy under that login when the
+// reader's login cannot be read here, compared as the forge compares a
+// login; never another person's.
+func TestAnOtherCopyOverlapFallsBackOnTheOwnReservationsLogin(t *testing.T) {
+	until := t0.Add(time.Hour)
+	for _, c := range []struct {
+		name, holder string
+		want         bool
+	}{
+		{"the same login", "OCTO", true},
+		{"another person's login", "quinn", false},
+	} {
+		s := Snapshot{Reservations: []Reservation{
+			{Record: "iss-1", Holder: "octo", Copy: CopyThis, State: StateLive, Footprint: []string{"loop/a.go"}, EffectiveExpiry: until},
+			{Record: "iss-2", Holder: c.holder, Copy: "9f2c41d07be35a6c80e1f4b2a7d39c55", State: StateLive, Footprint: []string{"loop"}, EffectiveExpiry: until},
+		}}
+		o, ok := s.OtherCopyOverlap("iss-1", []string{"loop/a.go"}, "octo", Self{})
+		if ok != c.want || ok && (o.Path != "loop/a.go" || o.Record != "iss-2") {
+			t.Errorf("%s: overlap %+v, %v; want %v", c.name, o, ok, c.want)
+		}
+	}
+}
