@@ -106,7 +106,8 @@ func NewForTest(routes map[Type]oracle.Target, adapter func(oracle.Target) Judge
 // a model not on its provider's allowlist (or one oracle.denylist matches)
 // before any call, and returns the Router the repository at repoRoot judges
 // with: the adapter is the API adapter with the key resolved by name from the
-// account's credential store, and shadow pairs go to the newest lab minted for
+// account's credential store (scored by log-probability where the provider's
+// block marks the model so, candidate), and shadow pairs go to the newest lab minted for
 // the repository. A route to a type outside the registry is a diagnostic.
 func Load(roots layered.Roots, repoRoot string) (*Router, error) {
 	cfg, err := oracle.LoadAPI(roots)
@@ -132,10 +133,22 @@ func Load(roots layered.Roots, repoRoot string) (*Router, error) {
 		}
 	}
 	creds := credential.Store(roots.Home)
-	r := newRouter(routes, func(t oracle.Target) Judge { return Adapter{Calls: cfg, Creds: creds, Target: t} },
+	r := newRouter(routes, func(t oracle.Target) Judge { return candidate(cfg, creds, t) },
 		func(p lab.Pair) (string, string, error) { return lab.RecordPair(repoRoot, p) })
 	r.Diagnostics = diags
 	return r, nil
+}
+
+// candidate is the implementation a route to t is judged by: the second
+// candidate, a small text model scored by log-probability (LogprobAdapter),
+// when t's provider block names its model in logprob_models; the first, a
+// typed-decision model (Adapter), otherwise. Both call through cfg, so both
+// are held to the allowlist and the denylist before any call.
+func candidate(cfg *oracle.APIConfig, creds credential.Source, t oracle.Target) Judge {
+	if cfg.ScoresByLogprob(t) {
+		return LogprobAdapter{Calls: cfg, Creds: creds, Target: t}
+	}
+	return Adapter{Calls: cfg, Creds: creds, Target: t}
 }
 
 // Target is the adapter t is routed to, as <provider>/<model>; "" when t is
