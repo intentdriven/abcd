@@ -41,8 +41,17 @@ func TestEnumRefusalsDoNotEchoTheValue(t *testing.T) {
 			legs(p, 1)["hits"].([]any)[0].(map[string]any)["relation"] = enumLeak
 		}, "grill hit 1"},
 		"kill outcome": {func(p map[string]any) {
-			legs(p, 2)["kill_attempts"].([]any)[0].(map[string]any)["outcome"] = enumLeak
+			legs(p, 2)["reviewers"].([]any)[0].(map[string]any)["kill_attempts"].([]any)[0].(map[string]any)["outcome"] = enumLeak
 		}, "kill attempt 1"},
+		"reviewer verdict": {func(p map[string]any) {
+			legs(p, 2)["reviewers"].([]any)[1].(map[string]any)["verdict"] = enumLeak
+		}, "reviewer 2"},
+		"ruling verdict": {func(p map[string]any) {
+			legs(p, 2)["ruling"] = map[string]any{"by": "the product thinker", "verdict": enumLeak, "reason": "a reason"}
+		}, "ruling"},
+		"primary source": {func(p map[string]any) {
+			legs(p, 0)["claims"].([]any)[0].(map[string]any)["primary_source"] = shortLeak
+		}, "claim 1"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {

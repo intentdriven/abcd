@@ -11,6 +11,12 @@ production_mode: hand-written
 found_at: "commands/ideate.md"
 remedy: "Deliver itd-2610141646454347: the verdict records a reviewer pair per reviewer, ideas reach reviewers one per context, and each reviewer's own research is recorded."
 related_intents: [itd-2610141646454347]
+resolution: "each reviewer is recorded under its own label with its own kill attempts, verdict and consulted sources, and the command page gives each reviewer one idea per context"
+impact: breaking
+resolved_by:
+  intent: "itd-2610141646454347"
+  spec: "spc-2610142138047122"
+  commit: "81baf3f6a"
 ---
 
 ideate's leg 3 asks for one fresh evaluator, which conflicts with the standing Opus+Sonnet review-pair rule under the machine-wide sub-agent cap; fitting the pair into the cap meant batching several ideas into one evaluator context, and one evaluator made a single tool call and never opened the repository it judged (lab finding F-6).

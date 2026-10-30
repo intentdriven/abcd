@@ -1077,6 +1077,28 @@ read is not the one gh will post). So is a `.abcd/config/pii.json` that does not
 load, and a line handing the forge more than sixteen texts. A warn never stops a
 command, and it never passes one in silence.
 
+A pull request's own text is held to two more checks before it is posted,
+each of which the hosted checks would otherwise make only after the push. A
+`gh pr create`, `gh pr new` or `gh pr edit` whose body or body file carries no
+`Assisted-by:` line in one of the three accepted forms
+(`Assisted-by: <Vendor>:<model-version>`, `Assisted-by: None`, or the
+`Assisted-by: abcd:<version>` label abcd writes) is a **block**
+(`forge-text-disclosure`). So is one carrying a `Co-authored-by:` line, a
+tool's "Generated with" footer, or an `abcd:` label in a form abcd never writes.
+The body is judged as the attribution gate's body arm judges it: fenced blocks
+are stripped first, since the forge renders them as examples, carriage returns
+are dropped, and the line must stand alone, so a trailer in the middle of a
+sentence does not count. A title, a comment and an issue are not held to it. In
+a repository that also sets `outbound.declare_mentions: true`, a pull request
+whose title and body name an issue id (`iss-N`) without a `Resolves: iss-N` or
+`Refs: iss-N` line declaring it is a **block** too (`forge-text-mention`): the
+rule CI's issue-resolution gate applies to the pull request (RS004), read from
+both halves together, since a title has no room for a trailer. Neither check
+judges a body the line does not fix or the guard could not read, and the mention
+check judges nothing when any of the pull request's text is hidden from it (a
+variable title, a body on standard input): the hidden part may hold the
+declaration.
+
 It does not see: a body or a path the line does not fix (`--body "$BODY"`,
 `--body-file "$F"`, a substitution other than the `cat` document above), a body
 on standard input (`--body-file -`), a flag spelled by a substitution
@@ -1089,7 +1111,9 @@ script the line runs, and every other posting path: `gh api`, `gh pr review`,
 after posting stays the control for those.
 
 Nothing changes in a repository that did not opt in. The opt-in is read from
-the working tree on each check. `--outbound` is one switch for this check and
+the working tree on each check, and `outbound.declare_mentions` counts only
+beside `outbound.forge`: RS004 is a rule a repository adopts, so `ahoy install`
+never sets it. `--outbound` is one switch for this check and
 the commit-message hook together, so to turn it off remove both
 `outbound.forge` and `outbound.hook` from `.abcd/config.json` (or set both to
 `false`): a later `ahoy install` leaves both off as they are, but completes a
