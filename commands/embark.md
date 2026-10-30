@@ -105,14 +105,21 @@ twice, names a lesson or a `state_sha256` not asked (the brief changed since the
 questions were listed: list them again), puts a score off the scale, or carries
 anything else is refused, exit 2, nothing ranked.
 
-The person's own `~/.abcd.noindex/config.json` may route the judgement
-(`oracle.judgements.embark-lesson-ranking`), and `judgement` says how it ran:
+The configuration may route the judgement
+(`oracle.judgements.embark-lesson-ranking`), and `judgement` says how it ran.
+Only the person's own `~/.abcd.noindex/config.json` can turn it on. The target
+repository's `.abcd/config.json` can also put it in shadow, to a provider the
+person configured on this machine that needs no key, and then every lesson and
+the brief's framing go to that provider once the scores are handed back.
 - `mode: "shadow"`: you still score; once you hand the scores back, the
   decision adapter scores each lesson beside yours, and `judgement.pairs` counts
-  the pairs recorded in the newest lab home. Your scores rank.
+  the pairs recorded in the newest lab home. Your scores rank. The adapter is
+  asked one lesson at a time, for two minutes in all, and no more once it fails
+  to answer one; `judgement.pairs_note` names the lessons not asked and why.
 - `mode: "on"`: the adapter's scores rank (`ranked_by: "decision-adapter"`) and
-  `questions` is empty: score nothing. When the adapter cannot answer,
-  `judgement.fallback` says why and the questions stand: score them as above.
+  `questions` is empty: score nothing. When the adapter cannot answer, or has
+  not scored every lesson within five minutes, `judgement.fallback` says why
+  and the questions stand: score them as above.
 Say a `fallback`, or a `diagnostics` line (a route the configuration could not
 use), to the product thinker in one plain sentence.
 

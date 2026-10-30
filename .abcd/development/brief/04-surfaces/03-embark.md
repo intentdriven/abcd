@@ -84,10 +84,17 @@ Bare `/abcd:embark` prints dispatcher help and mutates nothing.
   ([`05-internals/02-adapters.md`](../05-internals/02-adapters.md)). On the
   host, as above. In shadow, once the host's scores are given, the decision
   adapter scores each lesson beside them and each pair is recorded in the
-  newest lab home; the host's scores rank. Turned on, which only the person's
-  own machine configuration can do, the adapter's scores rank the lessons and
-  the host is asked nothing. An adapter that cannot answer leaves the host's
-  questions standing, with a fallback receipt in the result saying why. A
+  newest lab home; the host's scores rank. The target repository's own
+  configuration may set shadow too, to a keyless provider the person
+  configured on the machine, so the lessons and the framing can leave the
+  machine on a repository's word, but only to a provider the person chose. The
+  shadow pass has two minutes in all and stops at the first lesson the adapter
+  fails to answer; the lessons not asked keep no pair, and the result names
+  them and says why. Turned on, which only the person's own machine
+  configuration can do, the adapter's scores rank the lessons and the host is
+  asked nothing. An adapter that cannot answer, or that has not scored every
+  lesson within five minutes, leaves the host's questions standing, with a
+  fallback receipt in the result saying why. A
   route in the configuration naming a judgement type that does not exist is
   reported, never left silently on the host.
 
