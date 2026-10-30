@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "disabled": false,
+  "entries": {
+    "git-am-no-verify": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "git",
+        "subcommand": "am",
+        "value_flags": [
+          "-C",
+          "-c",
+          "--git-dir",
+          "--work-tree",
+          "--namespace",
+          "--exec-path",
+          "--super-prefix",
+          "--config-env",
+          "--attr-source",
+          "--shallow-file"
+        ],
+        "flags": [
+          "--no-verify|-n"
+        ]
+      },
+      "why": "`--no-verify` (and `-n`, which means the same on `git am`) skips the checks the repository installed as commit hooks, so each patch is recorded as a commit without ever being looked at.",
+      "successor": "Apply the patches without the flag and fix whatever the hooks report; if a hook is wrong, fix the hook.",
+      "fixtures": {
+        "known_bad": [
+          "git am --no-verify 0001-fix.patch",
+          "git am -n 0001-fix.patch"
+        ],
+        "known_good": [
+          "git am 0001-fix.patch",
+          "git am --3way 0001-fix.patch",
+          "git cherry-pick -n abc1234"
+        ]
+      }
+    },
+    "git-merge-no-verify": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "git",
+        "subcommand": "merge",
+        "value_flags": [
+          "-C",
+          "-c",
+          "--git-dir",
+          "--work-tree",
+          "--namespace",
+          "--exec-path",
+          "--super-prefix",
+          "--config-env",
+          "--attr-source",
+          "--shallow-file"
+        ],
+        "flags": [
+          "--no-verify"
+        ]
+      },
+      "why": "`--no-verify` skips the checks the repository installed as merge-commit hooks, so the merge is recorded without ever being looked at.",
+      "successor": "Merge without the flag and fix whatever the hooks report; if a hook is wrong, fix the hook.",
+      "fixtures": {
+        "known_bad": [
+          "git merge --no-verify origin/main",
+          "git -C ../other merge --no-verify topic"
+        ],
+        "known_good": [
+          "git merge -n origin/main",
+          "git merge --no-verify-signatures origin/main",
+          "git merge -m \"no-verify in text\" topic",
+          "git merge origin/main"
+        ]
+      }
+    },
+    "git-pull-no-verify": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "git",
+        "subcommand": "pull",
+        "value_flags": [
+          "-C",
+          "-c",
+          "--git-dir",
+          "--work-tree",
+          "--namespace",
+          "--exec-path",
+          "--super-prefix",
+          "--config-env",
+          "--attr-source",
+          "--shallow-file"
+        ],
+        "flags": [
+          "--no-verify"
+        ]
+      },
+      "why": "`--no-verify` is passed on to the merge `git pull` makes, so the merge skips the repository's commit hooks and is recorded without ever being looked at.",
+      "successor": "Pull without the flag and fix whatever the hooks report; if a hook is wrong, fix the hook.",
+      "fixtures": {
+        "known_bad": [
+          "git pull --no-verify origin main"
+        ],
+        "known_good": [
+          "git pull -n origin main",
+          "git pull origin main"
+        ]
+      }
+    },
+    "git-rebase-no-verify": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "git",
+        "subcommand": "rebase",
+        "value_flags": [
+          "-C",
+          "-c",
+          "--git-dir",
+          "--work-tree",
+          "--namespace",
+          "--exec-path",
+          "--super-prefix",
+          "--config-env",
+          "--attr-source",
+          "--shallow-file"
+        ],
+        "flags": [
+          "--no-verify"
+        ]
+      },
+      "why": "`--no-verify` skips the repository's pre-rebase hook, so the history is rewritten without the check the repository installed for it.",
+      "successor": "Rebase without the flag and fix whatever the hook reports; if a hook is wrong, fix the hook.",
+      "fixtures": {
+        "known_bad": [
+          "git rebase --no-verify origin/main",
+          "git rebase --onto main --no-verify topic"
+        ],
+        "known_good": [
+          "git rebase -n origin/main",
+          "git rebase origin/main",
+          "git push -n origin main"
+        ]
+      }
+    }
+  }
+}
