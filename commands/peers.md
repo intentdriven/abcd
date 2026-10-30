@@ -183,7 +183,10 @@ payload adds:
   before the holder id stay held until your next reservation or announcement
   keeps one. `holder_id_refused` is set instead when the id is set or kept
   but refused (the class of the refusal): every act refuses until it is
-  fixed, so tell the user what to fix. `holder_claimed` is true when `holder` is
+  fixed, so tell the user what to fix. `by_hand` lists, on an ended release,
+  each pull request another holder withdrew before the holder id, written
+  under the marker `pre_id`: no copy re-arms it, so tell the user its author
+  re-arms it by hand. `holder_claimed` is true when `holder` is
   a holder id that is not yours: an id names no account the forge's record of
   pushes could vouch for, so the text shows it as "(claimed)", as `abcd status`
   shows a sender named by a holder id. `lapsed` is set only while the release

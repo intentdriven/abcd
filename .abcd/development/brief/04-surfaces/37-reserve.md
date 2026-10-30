@@ -583,8 +583,8 @@ withdrawing nothing, and an admission or a release is refused.
   reservation withdrew it (their holder id; the GitHub username on a
   withdrawal recorded before the id, which no push of abcd's writes: a
   person's own are written under their kept id in every push of theirs
-  that carries them, and read as the ones their login recorded, and an act
-  that would write over another holder's still to settle refuses, below),
+  that carries them, and read as the ones their login recorded, and another
+  holder's still to settle are written under the marker `pre_id`, below),
   and its state: `withdrawn` (still to settle),
   `admitted`, `rearmed`, `armed` (found armed or queued again, counted done),
   `moved`, `closed`, `merged`, `mismatch`, `manual` or `refused` (skipped for
@@ -594,7 +594,11 @@ withdrawing nothing, and an admission or a release is refused.
   Every field is fixed-form, so no free text reaches the remote. The reader
   reads it strictly: any other shape, a pull request named twice, more than
   40, one on a record's reservation, or a settled state on a reservation that
-  is not released makes the tip unreadable, as a bad hand-back does. Whether a
+  is not released makes the tip unreadable, as a bad hand-back does. abcd
+  never writes a pull request twice: where two records are combined it keeps
+  one entry for each (below), and a commit composed with a pull request
+  listed twice, or with a withdrawal whose holder is neither a holder id nor
+  `pre_id`, is refused before it is written, with nothing pushed. Whether a
   withdrawal fits is measured on the tombstone any holder would write (the
   longest holder name, a 39-character username, which is longer than any
   holder id, and the longest label), never the cutter's own. Every commit on the
@@ -625,7 +629,10 @@ withdrawing nothing, and an admission or a release is refused.
   whether or not the person's own login has pushed to the branch: a take-over
   between two accounts of one person, and its round trip back, carries each
   account's entries as the tip records them, and drops a declared id's entry
-  only for the person's own entry for the same pull request. An entry under
+  only for the person's own entry for the same pull request; another
+  holder's entry for a pull request the person's own also names is weighed
+  against it, and one of the two is written ("One entry for each pull
+  request", below). An entry under
   their kept id that they did not first record is carried as another's only
   when the commit the push is written on holds it exactly as it stands, so the
   walk for its first record passes over that push; over any other commit (a
@@ -808,12 +815,42 @@ withdrawing nothing, and an admission or a release is refused.
   with one line on stderr) and never the value or the file's contents.
 - **Withdrawals another holder made before the holder id.** An entry naming
   another holder by their login names that login, which nothing abcd pushes
-  carries, so an act that would write one still to settle (withdrawn,
-  admitted or kept) into a new commit, a take-over or a settle among them,
-  refuses before it pushes anything or touches the forge, with one line
-  saying how many the release holds and that the holder's own copy settles
-  them first; it names no login. One of theirs already settled needs nothing
-  more and is not written.
+  carries, so an act that writes one still to settle (withdrawn, admitted or
+  kept) into a new commit, a renewal, a take-over or a settle among them,
+  writes it under the one fixed marker `pre_id`, meaning a holder from before
+  the holder id, and keeps it on the release (dcn-2610301516040054); one
+  already settled needs nothing more and is not written. The marker is
+  neither a holder id nor a
+  GitHub username, so it is no one's own: no first record, own record,
+  vouching or lost-withdrawal walk counts it as any reader's, and no copy
+  re-arms, withdraws again or admits it (an admission is refused, naming the
+  pull request alone). Renewals and take-overs carry it unchanged. The act
+  that ends the release (the holder's release, their next act over their own
+  lapsed cut, or a settle of the reader's own) settles each one still to
+  settle as `manual` without asking the forge, posts nothing on it, and
+  prints one line naming its pull requests to be re-armed by hand by their
+  authors, naming no login; `abcd peers` names them so too (`by_hand`, on
+  the settle and the release) once the release has ended, and the take-over
+  that writes one names it so among the stranded. An older release reads no
+  marker entry as anyone's: abcd v0.15.x passes the withdrawal trailer over
+  as a key it does not know, and the default branch before the holder id
+  reads every commit naming a holder id, which every commit carrying the
+  marker is, as unreadable. The holder who first recorded the entry still
+  finds it, through their own newest push rather than the tip: their own
+  entry for that pull request, read from that push, is kept over the marker
+  entry (below), so their next act re-arms it under their kept id, and the
+  tombstone it pushes lists the pull request once.
+- **One entry for each pull request.** Where an act combines the release as
+  the reader's own newest push records it with the tip it is written over,
+  two entries for one pull request are weighed and only one is written: the
+  one still to settle over a settled one; then the one its holder's own push
+  vouches for (the reader's own as their own newest push records it always
+  is; a `pre_id` entry never is; another holder's login only when that login
+  pushed the reservation that first recorded it; another holder's id when
+  one account's push placed that reservation); then, both vouched or
+  neither, the one recorded earliest on the branch. So a later entry another
+  login pushed for a pull request never displaces an earlier vouched one, and
+  a round trip between two holders writes one entry.
 - **Lost withdrawals.** An older abcd ignores the `Abcd-Withdrawn` trailer, so
   its renewal, take-over or tombstone rewrites the tip without them. For each
   release claimed in the last 14 days, `abcd peers` and the launch check walk

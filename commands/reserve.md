@@ -291,7 +291,15 @@ they are), and `/abcd:peers` names them (`release_withdrawals`). Beside
 `stranded`, `unpaired` lists each id the person declares in
 `~/.abcd.noindex/holder-ids` with no login beside it that names one of the
 stranded withdrawals: tell the user that writing that account's login after
-the id, on its line, lets this copy settle them. A
+the id, on its line, lets this copy settle them. Another holder's withdrawal
+recorded before the holder id names their login, which nothing abcd pushes
+carries, so a reservation over it writes it under the marker `pre_id` (a
+holder from before the holder id): it is no one's, no copy re-arms or admits
+it, and the act that ends the release settles it as `manual` and prints a line
+naming its pull requests for their authors to re-arm by hand (`by_hand` on the
+settle); tell the user. The holder who recorded it still re-arms it from their
+own newest push, which keeps their own entry over the marker one. A release
+holds one entry for each pull request, and abcd never writes one twice. A
 withdrawal recorded on an earlier commit of the branch and missing from a
 later one, with the tip not carrying it either, is reported lost
 (`lost_withdrawals` on `/abcd:peers`, and a warning in the launch check): an
