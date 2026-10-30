@@ -11,6 +11,8 @@ production_mode: hand-written
 found_at: ".abcd/development/brief/00-meta.md:42"
 remedy: "Rewrite the /abcd:embark bullet in 00-meta.md (line 42) to say embark verifies the lifeboat and writes its five record families plus the marker block into the target, and never writes brief/**; drop the 'amended press release becomes the new repo's initial brief' clause and re-check 'one canonical skeleton, used three ways' (line 44)."
 finding_ref: cfk-893a6122bdfde0cb
+resolution: "The same defect as iss-2610262150120055, found by the consistency pass: 00-meta.md no longer says embark writes a new repository's brief, and the question of whether it should is registered in 03-evidence/03-open-questions.md."
+impact: internal
 ---
 
 Meta says embark writes the new repo's brief by reversing the mapping; the embark chapter says only the record families land and everything else is never written

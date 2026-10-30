@@ -118,9 +118,11 @@ a launch. Relay the refusal message so the user knows what to fix.
 The later verbs that write a host payload into the lifeboat (`graveyard`,
 `principles`, `press-release` and `review`) secret-scan the bytes they would
 write before any write, and a hard-fail secret refuses the whole call (exit 2),
-leaving the lifeboat as it was. A packed lifeboat carries no scanner settings of
-its own, so abcd's built-in rules judge: a source repository's own extra
-patterns and its gitleaks opt-in apply at pack, where that repository is read.
+leaving the lifeboat as it was. A packed lifeboat carries no scanner settings
+of its own, so abcd's built-in rules judge. `review` is handed the source
+repository, so it also scans with that repository's settings, as `pack` does:
+its own extra patterns and its gitleaks opt-in. It refuses what either scan
+refuses, so nothing the source declares can clear a hit the built-in rules make.
 
 ## Graveyard interpretation (layer 3)
 
@@ -236,9 +238,11 @@ lifeboat path), write it to a file, then:
 "${CLAUDE_PLUGIN_ROOT}/abcd" disembark review <lifeboat-dir> <source-repo> --review-json <path>   # or - for stdin
 ```
 
-The `<source-repo>` argument is **required**; its content is never read — the
-binary gates it as a real directory only, so the review stays deterministic and
-safe even when the source is gone. The binary always **stamps the attestation
+The `<source-repo>` argument is **required**; the review reads none of its
+content — the binary gates it as a real directory, and the secret scan above
+reads only its scanner settings and git identity (and runs gitleaks where the
+source opted in), so the review stays deterministic and safe even when the
+source is gone. The binary always **stamps the attestation
 fields itself** (source name, manifest hash, manifest-verified flag, coverage
 summary) — they are never taken from the agent's payload.
 

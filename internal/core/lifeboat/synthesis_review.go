@@ -10,9 +10,10 @@ package lifeboat
 //
 //   - DETERMINISTIC (raw == nil): the verdict is a mechanical, pure mapping over
 //     verifyManifest + the packed coverage summary — no model, no wall-clock, and
-//     the source repo's CONTENT is never read (it is gated as a real dir only, so
-//     the audit stays deterministic and safe even when the source is gone). The
-//     inputs are the lifeboat's own sealed files.
+//     the source repo's CONTENT is never read (the core gates it as a real dir
+//     only, so the audit stays deterministic and safe even when the source is
+//     gone; a front door's scan may read its scanner settings). The inputs are
+//     the lifeboat's own sealed files.
 //   - DELEGATED (raw != nil): untrusted host/model JSON is validated behind the
 //     same guards as an intent verdict — DisallowUnknownFields, a three-branch
 //     schema gate, a mode gate, a semver prompt_version, an enum-membership verdict
@@ -96,12 +97,13 @@ func ReviewLifeboat(lifeboatDir, sourceRepo string, raw []byte, scan SecretScan)
 	if err != nil {
 		return ReviewResult{}, err
 	}
-	// Gate the source repo as a real dir. Its CONTENT is never read — this keeps the
-	// audit deterministic and safe when the source is gone. A symlinked or absent
-	// source is structural (mirrors embark's target gate). It is the one operand
-	// not proved against a symlinked ancestor (proveOperand): nothing under it is
-	// read or written and only its base name reaches the audit, so an ancestor
-	// link redirects nothing (iss-2609261232464351).
+	// Gate the source repo as a real dir. The core never reads its CONTENT — this
+	// keeps the audit deterministic and safe when the source is gone. A symlinked
+	// or absent source is structural (mirrors embark's target gate). It is the one
+	// operand not proved against a symlinked ancestor (proveOperand): nothing under
+	// it is written and only its base name reaches the audit. A front door's scan
+	// may read its scanner settings, but beside a scan that does not, so an
+	// ancestor link redirects nothing that clears a hit (iss-2609261232464351).
 	srcAbs, err := filepath.Abs(sourceRepo)
 	if err != nil {
 		return ReviewResult{}, err

@@ -507,9 +507,12 @@ and the person-only questions alone: the abcd download, the shell settings,
 the commit checks and the commit identity, plus the status line where it can be
 wired and one question for each tool it offers to install.
 
-In a source checkout of abcd, `go run ./cmd/abcd ahoy install` is treated as
-current: `go run` builds the checkout as it stands, so its unstamped vintage is
-not refused as stale there. Any other unstamped binary is still refused. On
+In a source checkout of abcd, run it as `scripts/abcd.sh ahoy install`: the script
+builds the checkout as it stands and starts that build, so its unstamped
+vintage is not refused as stale there. So is `go run ./cmd/abcd ahoy install`,
+though `go run` reports every nonzero exit as 1. Any other unstamped binary is
+still refused, a copy left in the checkout's local tier and run directly
+included. On
 the `PATH` there means a release copy, as anywhere else: the `--dev` shim
 rebuilds abcd on every call and is never the status line's entry.
 
@@ -1319,12 +1322,27 @@ not read leaves a check out, never makes it required. A required check that no w
 named too, because a pull request waits on it until it reports. A repository
 with no CI is given no required check.
 
+Each required check is pinned to the app that reports it, so a status set by
+anyone else does not satisfy it. abcd reads the check runs and commit statuses
+on the default branch's three newest commits and the three newest pull
+requests' heads, and pins a check to the one app it saw report it, by the id
+GitHub's answer names. A check two apps report, or a commit status reports,
+stays required from any source, since pinning it would refuse a report the
+repository relies on. So does a check no recent run reported. Each is named in
+the audit's notes. A read that fails, or a page of runs or statuses cut short,
+pins nothing. A check already required from any source that abcd would pin
+differs: pinning it is a tightening, applied only on the yes. A check already
+pinned to an app keeps its source, and if recent runs report it from another
+app, the notes say so.
+
 Requiring SHA pinning is offered only when every `uses:` in the workflows is
 already pinned to a commit. Making the workflow token read-only is offered only
 when the token is already read-only or every workflow declares its own
 `permissions:`. Otherwise each is advisory and says what to change first. A
 workflow file abcd could not read, and a local action (`uses: ./…`) whose own
-steps it does not read, hold both at advisory, named in the note.
+steps it does not read, hold SHA pinning at advisory, named in the note. They
+hold the workflow token at advisory only while its default is still write: a
+default that is already read-only has nothing left to stop.
 
 These three are read from this checkout's workflow files but apply to the
 default branch, so abcd first compares the files with the default branch's on
@@ -1385,11 +1403,13 @@ already has keeps working beside abcd's.
 After every step succeeds, the apply writes two mirrors. The desired state goes
 into `.abcd/work/rulesets/repo-settings.json`, and each ruleset it applied goes
 beside it as `abcd-<name>.json`. A later verify reads the same intent from the
-tree rather than from a web console. The settings mirror has three blocks:
+tree rather than from a web console. The settings mirror has two blocks, and a
+third while anything is owed:
 
 - `managed`: what abcd holds the repository to;
 - `observed`: the merge settings it only records;
-- `owed`: the settings the plan or the visibility does not offer yet.
+- `owed`: the settings the plan or the visibility does not offer yet, written
+  only while there is one.
 
 No file the apply writes names a person. A repository owned by a person is
 recorded by its name alone, and a bypass actor by its type and id.
@@ -1468,8 +1488,9 @@ adapter refuses as `oracle_api.config_refused`, naming the file and the key.
 A route the configuration read skips (a repository's route to a provider that
 holds a key, a repository's route that is not `<provider>/<model>` or whose
 name is not a plain lower-case name, a repository's route to a model a provider
-holding no key does not list, a route to a provider this machine has not
-configured, or a role outside the roster) is the optional gap `oracle_api.route_skipped`, its
+holding no key does not list, a repository's judgement route that turns a type
+on, which only `~/.abcd.noindex/config.json` may set, a route to a provider this
+machine has not configured, or a role outside the roster) is the optional gap `oracle_api.route_skipped`, its
 `detail` one line per skipped route; relay each line. A skipped
 repository route never displaces the machine's: where `~/.abcd.noindex/config.json`
 routes the same name, that route applies.

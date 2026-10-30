@@ -7,7 +7,9 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/gittest"
 )
@@ -57,16 +59,17 @@ func TestPreflightScansTakeTheirVersionsFromCI(t *testing.T) {
 
 // scanRepo is a repository with a ci.yml pinning both tools, a default branch
 // on origin, and a branch one commit ahead of it; stubs is a directory put
-// first on the script's PATH.
+// first on the script's PATH, and tmp the script's TMPDIR.
 type scanRepo struct {
 	t     *testing.T
 	dir   string
 	stubs string
+	tmp   string
 }
 
 func newScanRepo(t *testing.T, changeGoMod bool) *scanRepo {
 	t.Helper()
-	r := &scanRepo{t: t, dir: t.TempDir(), stubs: t.TempDir()}
+	r := &scanRepo{t: t, dir: t.TempDir(), stubs: t.TempDir(), tmp: t.TempDir()}
 	r.git("init", "-q", "-b", "main")
 	r.git("config", "user.name", "Alice Example")
 	r.git("config", "user.email", "alice@example.com")
@@ -129,6 +132,19 @@ func (r *scanRepo) args(name string) string {
 // PATH and nothing else of the caller's but the system tools.
 func (r *scanRepo) run(mode string) (int, string) {
 	r.t.Helper()
+	cmd := r.command(mode)
+	out, err := cmd.CombinedOutput()
+	if ee, ok := err.(*exec.ExitError); ok {
+		return ee.ExitCode(), string(out)
+	} else if err != nil {
+		r.t.Fatalf("preflight-scans.sh %s: %v\n%s", mode, err, out)
+	}
+	return 0, string(out)
+}
+
+// command is the script's command for one mode, as run runs it.
+func (r *scanRepo) command(mode string) *exec.Cmd {
+	r.t.Helper()
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {
 		r.t.Fatal(err)
@@ -149,14 +165,22 @@ func (r *scanRepo) run(mode string) (int, string) {
 	cmd.Env = []string{
 		"PATH=" + r.stubs + ":" + gitDir + ":/usr/bin:/bin",
 		"HOME=" + r.t.TempDir(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1",
+		"TMPDIR=" + r.tmp,
 	}
-	out, err := cmd.CombinedOutput()
-	if ee, ok := err.(*exec.ExitError); ok {
-		return ee.ExitCode(), string(out)
-	} else if err != nil {
-		r.t.Fatalf("preflight-scans.sh %s: %v\n%s", mode, err, out)
+	return cmd
+}
+
+// noCopyLeft fails the test when the script left a copy of a tree in its
+// TMPDIR.
+func (r *scanRepo) noCopyLeft() {
+	r.t.Helper()
+	left, err := os.ReadDir(r.tmp)
+	if err != nil {
+		r.t.Fatal(err)
 	}
-	return 0, string(out)
+	for _, e := range left {
+		r.t.Errorf("the scan left %s behind in its TMPDIR", e.Name())
+	}
 }
 
 // govulncheckFinding is a finding as govulncheck prints one: exit 3, and a
@@ -179,23 +203,113 @@ func TestVulncheckRunsCIsVersionAndPassesAClearModule(t *testing.T) {
 	}
 }
 
-// TestVulncheckSaysAFindingLikelyStandsOnTheDefaultBranch: a branch that
-// changes neither go.mod nor go.sum most likely did not bring the finding in,
-// and govulncheck is not a required check, so the scan warns that the finding
-// most likely stands on the default branch, names each fix, and does not stop
-// a preflight no branch cut from there could pass.
-func TestVulncheckSaysAFindingLikelyStandsOnTheDefaultBranch(t *testing.T) {
+// TestVulncheckWarnsOfAFindingTheForkPointCarries: a branch that changes
+// neither go.mod nor go.sum, whose fork point's tree reports the same
+// vulnerability, did not bring the finding in, and govulncheck is not a
+// required check, so the scan warns, says to rebase first if the default
+// branch has moved (it may hold the fix), names each fix, and does not stop a
+// preflight no branch cut from there could pass.
+func TestVulncheckWarnsOfAFindingTheForkPointCarries(t *testing.T) {
 	r := newScanRepo(t, false)
 	r.stub("go", govulncheckFinding)
 	code, out := r.run("vulncheck")
 	if code != 0 {
 		t.Fatalf("a finding the branch did not bring in: exit %d, want 0\n%s", code, out)
 	}
-	for _, want := range []string{"WARNING", "origin/main", "neither go.mod nor go.sum", "net/http@go1.26.10"} {
+	for _, want := range []string{"WARNING", "origin/main", "neither go.mod nor go.sum", "fork point", "rebase first", "net/http@go1.26.10"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the refusal does not say %q:\n%s", want, out)
 		}
 	}
+	if n := strings.Count(r.args("go"), "govulncheck@v1.7.0 ./..."); n != 2 {
+		t.Errorf("the scan ran %d time(s), want twice, the head and the fork point:\n%s", n, r.args("go"))
+	}
+	r.noCopyLeft()
+}
+
+// TestVulncheckStopsAFindingTheBranchsOwnCodeBringsIn: govulncheck judges
+// reachability, so a branch that moves no dependency can still newly reach a
+// vulnerable symbol in a module the default branch already requires
+// (iss-2610262259078996). The fork point's tree is scanned the same way, and
+// an id it does not report stops the preflight, named; an id it does report is
+// not blamed on the branch.
+func TestVulncheckStopsAFindingTheBranchsOwnCodeBringsIn(t *testing.T) {
+	r := newScanRepo(t, false)
+	// The stub runs where the scan runs: the branch's own tree holds
+	// feature.txt, the fork point's does not.
+	r.stub("go", `echo 'Vulnerability #1: GO-2026-0001'
+if [ -f feature.txt ]; then echo 'Vulnerability #2: GO-2026-0002'; echo '    Fixed in: example.com/dep@v1.2.4'; fi
+exit 3`)
+	code, out := r.run("vulncheck")
+	if code != 1 {
+		t.Fatalf("a finding the branch's code brings in: exit %d, want 1\n%s", code, out)
+	}
+	if strings.Contains(out, "WARNING") {
+		t.Errorf("a finding the branch brings in is only warned about:\n%s", out)
+	}
+	if !strings.Contains(out, "  GO-2026-0002\n") || strings.Contains(out, "  GO-2026-0001\n") {
+		t.Errorf("the stop does not name the new id alone:\n%s", out)
+	}
+	if !strings.Contains(out, "example.com/dep@v1.2.4") {
+		t.Errorf("the stop does not name the fix:\n%s", out)
+	}
+	r.noCopyLeft()
+}
+
+// TestVulncheckStopsWhenTheForkPointCannotBeScanned: with no scan of the
+// fork point there is nothing to show the default branch carries the
+// finding, so it stops as any finding does.
+func TestVulncheckStopsWhenTheForkPointCannotBeScanned(t *testing.T) {
+	r := newScanRepo(t, false)
+	r.stub("go", `if [ -f feature.txt ]; then echo 'Vulnerability #1: GO-2026-0001'; exit 3; fi
+echo 'go: cannot load the module' >&2; exit 1`)
+	code, out := r.run("vulncheck")
+	if code != 1 {
+		t.Fatalf("a finding with the fork point unscanned: exit %d, want 1\n%s", code, out)
+	}
+	if strings.Contains(out, "WARNING") || !strings.Contains(out, "could not be scanned") {
+		t.Errorf("the unscanned fork point is not said, or the finding is only warned about:\n%s", out)
+	}
+	r.noCopyLeft()
+}
+
+// TestVulncheckInterruptedLeavesNoCopyBehind: an interrupt while the fork
+// point's copy is being scanned, as a terminal's Ctrl-C sends it to the whole
+// process group, still removes the copy.
+func TestVulncheckInterruptedLeavesNoCopyBehind(t *testing.T) {
+	r := newScanRepo(t, false)
+	started := filepath.Join(r.stubs, "fork-scan-started")
+	r.stub("go", `if [ -f feature.txt ]; then echo 'Vulnerability #1: GO-2026-0001'; exit 3; fi
+: >"`+started+`"
+sleep 30`)
+	cmd := r.command("vulncheck")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		if _, err := os.Stat(started); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			t.Fatal("the fork point's scan never started")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGINT); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-done:
+	case <-time.After(20 * time.Second):
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		t.Fatal("the interrupted scan did not end")
+	}
+	r.noCopyLeft()
 }
 
 func TestVulncheckOnABranchThatMovesADependencyBlamesNoOne(t *testing.T) {

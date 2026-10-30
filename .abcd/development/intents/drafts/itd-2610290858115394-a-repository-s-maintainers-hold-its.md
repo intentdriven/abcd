@@ -66,7 +66,7 @@ The product thinker decided on 2026-10-29:
 
 Technical choices with one defensible state-of-the-art answer, recorded rather than asked:
 
-- The role is read from the forge's `role_name` for the caller, never the legacy `permission` field, which reports Maintain as write ([collaborators API](https://docs.github.com/en/rest/collaborators/collaborators?apiVersion=2022-11-28#get-repository-permissions-for-a-user)), and it is keyed on the token's login.
+- The role is read from the forge's `role_name` for the caller, keyed on the token's login ([collaborators API](https://docs.github.com/en/rest/collaborators/collaborators?apiVersion=2022-11-28#get-repository-permissions-for-a-user)). A custom role's base is read from the same call's legacy `permission` field (admin, write or read): that field folds Maintain into write and Triage into read, so it never moves an account across the line between maintainer and contributor, and a missing or unknown value is unverified.
 - A client-side check is a courtesy and says so: enforcement belongs on the server ([Pro Git: hooks](https://git-scm.com/book/en/v2/Customizing-Git-Git-Hooks)). abcd's wording names the GitHub setting that is the boundary, as the reservation page already does.
 - Version tags: a tag ruleset where "only users with bypass permissions can create tags" ([available rules](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets)).
 - Each required check is pinned to the app that must post it, so a writer cannot post a passing status under its name (same source).

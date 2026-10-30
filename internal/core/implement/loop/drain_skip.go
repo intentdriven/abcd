@@ -69,10 +69,17 @@ func checkSkips(d DrainOptions) error {
 		return refuse(StageDrain, "", "", "--reason names why an issue is held back, and no --skip names one",
 			"give --skip <iss-N|path> with --reason, or leave --reason out")
 	}
-	for _, list := range [][]string{d.Skip, d.Unskip} {
-		for _, t := range list {
+	// A refused target is named by its flag, its position among that flag's
+	// values and its length, never by its text: the refusal reaches the --json
+	// refusal document, which the error boundary's pass does not read.
+	for _, l := range []struct {
+		flag string
+		list []string
+	}{{"--skip", d.Skip}, {"--unskip", d.Unskip}} {
+		for i, t := range l.list {
 			if _, ok := skipTarget(t); !ok {
-				return refuse(StageDrain, "", "", fmt.Sprintf("%q is neither an issue id nor a repository-relative path", termsafe.Sanitize(t)),
+				return refuse(StageDrain, "", "", fmt.Sprintf("%s number %d (%s) is neither an issue id nor a repository-relative path",
+					l.flag, i+1, termsafe.DescribeRefused(t)),
 					"name an issue (iss-<N>) or a path inside the checkout, such as internal/core/capture")
 			}
 		}

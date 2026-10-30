@@ -16,7 +16,7 @@ LDFLAGS := -s -w$(if $(VERSION), -X github.com/intentdriven/abcd/internal/core.V
 # Go step `preflight` makes, below.
 GO_TOOLCHAIN_VERSION := $(shell sed -n 's/^go \([0-9][0-9.]*\)$$/\1/p' go.mod)
 
-.PHONY: build test vet clean preflight precheck load-check lint-reviews lint-issues record-lint issue-drift docs-lint site-render smoke \
+.PHONY: build test vet clean preflight preflight-stages precheck load-check lint-reviews lint-issues record-lint issue-drift docs-lint site-render smoke \
 	evals-cold-reading check-attribution secrets-check vulncheck scaffold-sync scaffold-sync-check asking-sync asking-sync-check fmt fmt-check
 
 # Cross-compile every supported target to bin/abcd-<goos>-<arch>.
@@ -91,8 +91,9 @@ evals-cold-reading:
 # env GOROOT` fetches and caches the declared toolchain if the machine lacks it,
 # then reports where it landed, and the gofmt under that GOROOT is the one CI
 # runs. `fmt` applies the same binary, so the remedy and the diagnosis can never
-# disagree, and `preflight` runs this gate before any other and then exports the
-# same GOTOOLCHAIN to every Go step it makes (see below).
+# disagree, and `preflight` exports the same GOTOOLCHAIN to every Go step it
+# makes (see below), the load gate's `go run` first, and runs this gate first
+# among its stages, straight after the load check.
 #
 # It REFUSES rather than falling back when the toolchain cannot be resolved
 # (offline, or the fetch declined). A fallback would print a filename judged by
@@ -167,9 +168,12 @@ check-attribution:
 # read from ci.yml. A scan that cannot run here (no gitleaks on PATH, or no
 # network for govulncheck's database) is skipped loudly, never passed in
 # silence, and CI's scan still runs. A govulncheck finding on a branch that
-# changes neither go.mod nor go.sum most likely stands on the default branch
-# (iss-2610261151481013), and govulncheck is not a required check, so it warns
-# and does not stop the run; a gitleaks that runs and cannot scan stops it.
+# changes neither go.mod nor go.sum, when the fork point's own tree reports
+# every vulnerability it names, was not brought in by the branch
+# (iss-2610261151481013, iss-2610262259078996), and govulncheck is not a
+# required check, so it warns and does not stop the run; any other finding
+# stops it, and so does a gitleaks that runs and cannot scan. The comparison is
+# by id, so a branch newly reaching an id the fork point reaches is warned of.
 secrets-check:
 	@bash scripts/preflight-scans.sh secrets
 
@@ -294,14 +298,16 @@ asking-sync-check:
 # again, so a verdict that no longer holds fails the run rather than skipping
 # its tests. `make preflight PREFLIGHT_RECORDS_ONLY=` takes the full rule
 # whatever the change. TestPreflightRecordsRuleRunsPrechecksTests holds the
-# second rule's gates to the first's and its test lines to precheck's.
+# second rule's gates to every gate the full run runs (preflight-stages's) and
+# its test lines to precheck's. The records rule waits at no load gate.
 ifneq ($(filter preflight,$(MAKECMDGOALS)),)
 PREFLIGHT_RECORDS_ONLY := $(shell scripts/records-only.sh >/dev/null 2>&1 && echo yes)
 endif
 
 ifneq ($(PREFLIGHT_RECORDS_ONLY),yes)
 # Pre-push gate (run before a push, never by it: .githooks/pre-push checks the
-# receipt the last step mints, below): the load check first (a
+# receipt the last step mints, below). It waits at the load gate as one whole
+# run, then runs its stages (preflight-stages): the load check first (a
 # warning, never a failure: load-check), then the format gate (fmt-check), the
 # six lint gates
 # (lint-reviews, lint-issues, record-lint, issue-drift,
@@ -329,27 +335,35 @@ ifneq ($(PREFLIGHT_RECORDS_ONLY),yes)
 # which is the split CI's two jobs cover. Under a minute each in CI, and
 # several on a loaded machine, hence EVAL_TIMEOUT above.
 #
-# The test stages wait their turn on the machine (iss-2610102020442624,
-# iss-2610140638074587). Before them the load gate (`abcd implement load
-# --wait`) stays shut while the load is at the wait limit, another go test
+# A preflight waits for its turn as one whole run (itd-2610262127138979,
+# iss-2610241537197997): `preflight` runs nothing but the load gate's command
+# form (`abcd implement load --wait -- make preflight-stages`), so a queued
+# preflight does no lint, eval, build, vet or test work, and the waiter is the
+# parent of the whole run, its turn held until the run ends. Its prerequisites
+# ran before the old gate, which stood only before the test stages, so thirty
+# queued runs once kept a 10-core machine overloaded while they waited, and a
+# gate inside the run waited out its two hours behind a run queued meanwhile.
+# The gate stays shut while the load is at the wait limit, another go test
 # -race run is live, another make preflight is running, or another waiter is
 # queued ahead or running its command, under any account: it reads all of that
 # from the process table, which shows every account's processes, never from a
 # file another account could write. Once clear it waits 15 to 60 seconds and
 # checks again, so two preflights in one quiet minute do not start together; a
 # preflight whose own gate is waiting takes that waiter's place in the queue.
-# It gives up after two hours, failing the preflight and naming what it still
-# waited on, and on a CI runner it opens at once. How many preflights the
-# first gate admits to their test stages at once, one race stage able to run
-# beside them, is the person's own machine setting, never the checkout's:
+# It gives up after twelve hours, failing the preflight and naming what it
+# still waited on, and on a CI runner it opens at once. Wrapping `make
+# preflight` in the command form as well is harmless: the inner waiter is part
+# of the outer one's turn and opens at once. How many preflights may run at
+# once is the person's own machine setting, never the checkout's:
 # load.preflights in ~/.abcd.noindex/config.json, or ABCD_LOAD_PREFLIGHTS in
 # the environment for a trial, one by default and four at most
-# (iss-2610161639025702, iss-2610282016250805). The race
-# stage waits at its own gate (`--race-gate`, spelt without --wait so an older
-# abcd never reads a preflight there as queued at its first gate). At one, the
-# race gate opens at once once the disk check passes. Above one,
-# the first gate admits a preflight while fewer than that many others are in
-# their test stages (one queued at its race gate runs nothing and takes no
+# (iss-2610161639025702, iss-2610282016250805), read again at every look of the
+# wait, so a change reaches the runs already queued. The race stage waits at
+# its own gate (`--race-gate`, spelt without --wait so an older abcd never
+# reads a preflight there as queued at its first gate). At one, the race gate
+# opens at once once the disk check passes. Above one, the first gate admits a
+# preflight while fewer than that many others are running (one queued at its
+# race gate runs nothing and takes no
 # slot), a live race run does not shut it by itself, and a waiter queued ahead
 # still does; and the race gate is shut while another go test
 # -race run or race waiter ahead is live, the load is at the limit or the race
@@ -370,16 +384,37 @@ ifneq ($(PREFLIGHT_RECORDS_ONLY),yes)
 # test hung, and on 2026-10-25 claim, implement/loop and surface/cli each
 # outran 20 minutes on a 10-core Mac at a load of 5 to 7, with no test hung
 # (iss-2610250007404944).
-preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution secrets-check vulncheck site-render smoke evals-cold-reading
+preflight:
+	go run ./cmd/abcd implement load --wait --timeout 12h -- $(PREFLIGHT_STAGES_MAKE)
+	@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)"
+
+# The make the gate runs the stages with. It is named through this variable so
+# the gate's line is an ordinary recipe line: make runs a line that names MAKE
+# directly even under -n, -q and -t, and a dry run would then queue at the gate
+# for hours. So `make -n preflight` prints the gate's line and runs nothing;
+# `make -n preflight-stages` shows the stages. The cost is make's jobserver: a
+# `make -j` preflight runs its stages one job at a time.
+# The 12h above is internal/core/landing's preflightGateWait, which `abcd land`
+# bounds a preflight by (TestGateTimeoutOutlastsTheWholeRunWait).
+PREFLIGHT_STAGES_MAKE = $(MAKE) --no-print-directory preflight-stages
+
+# preflight's stages: its gates as prerequisites, then build, vet and the two
+# test stages. It is `preflight`'s command, run inside the turn the load gate
+# gave the whole run, so it waits at no first gate of its own: a second waiter
+# inside a held turn waited out its two hours behind a run queued meanwhile,
+# each shut by the other (TestPreflightStagesHaveNoGateOfTheirOwn). Run alone it
+# is ungated and mints no receipt; run `make preflight`. The variables exported
+# for `preflight` below reach it through the environment. It is the full
+# rule's alone: the records-only rule below waits at no gate and runs no stages
+# make, and TestPreflightRecordsRuleRunsPrechecksTests holds its gates to these.
+preflight-stages: load-check fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution secrets-check vulncheck site-render smoke evals-cold-reading
 	go build ./...
 	go vet ./...
-	go run ./cmd/abcd implement load --wait --timeout 2h
 	p=$$(go run ./cmd/test-parallelism) && \
 	go test -p "$$p" -timeout 40m ./...
 	go run ./cmd/abcd implement load --race-gate --timeout 2h
 	p=$$(go run ./cmd/test-parallelism) && \
 	go test -race -p "$$p" -timeout 40m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
-	@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)"
 
 else
 preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution secrets-check vulncheck site-render smoke evals-cold-reading
@@ -429,7 +464,8 @@ precheck: export GOTOOLCHAIN := go$(GO_TOOLCHAIN_VERSION)
 # The starting state is read while this Makefile is PARSED, which is before any
 # prerequisite runs; a recipe line or a prerequisite would run after, or in parallel
 # with, the gates. It is read only when `preflight` is named on the command line, so
-# no other target pays for a git status.
+# no other target pays for a git status. It is read before the load gate's wait, so
+# a tree changed while the run is queued mints no receipt.
 ifneq ($(filter preflight,$(MAKECMDGOALS)),)
 PREFLIGHT_BEGAN := $(shell scripts/preflight-receipt.sh state)
 endif
@@ -438,7 +474,8 @@ endif
 # under `smoke` and `evals-cold-reading`) that the preflight's check already
 # warned on the terminal, so one preflight shows one warning. A target-specific
 # exported variable reaches the target's prerequisites and recipe, and not a
-# prerequisite run on its own.
+# prerequisite run on its own; this one and the ones below reach preflight's
+# stages through the environment of the make the load gate starts.
 preflight: export ABCD_LOAD_CHECKED := preflight
 
 # The three longest packages (internal/core/implement/loop, internal/core/claim
@@ -449,11 +486,11 @@ preflight: export ABCD_LOAD_CHECKED := preflight
 # in parallel, since nearly every one sets HOME through t.Setenv. Each opts in
 # from its TestMain through internal/testshard, which shards only a whole-package
 # run, so a -run, a profile or -json runs as before, and go test's cache still
-# reads every shard's inputs. CI sets no shards (iss-2610251004378066). A
-# sharded package counts as one of the stage's -p packages and runs three
-# processes, so the stage can run up to six more test processes than its -p
-# while all three are running at once; none of the three uses t.Parallel, so
-# each process keeps to about one core.
+# reads every shard's inputs. CI's two race passes set the same shard count
+# as preflight. A sharded package counts as one of the stage's -p packages
+# and runs three processes, so the stage can run up to six more test processes
+# than its -p while all three are running at once; none of the three uses
+# t.Parallel, so each process keeps to about one core.
 preflight: export ABCD_TEST_SHARDS := 3
 
 # Every Go step preflight makes — its own recipe lines and every go run and go
@@ -462,9 +499,14 @@ preflight: export ABCD_TEST_SHARDS := 3
 # that asserts standard-library wording passed preflight on a newer local go and
 # failed CI (pull request 728). The go on PATH switches to the declared release
 # and puts its bin first on PATH for anything it runs, so a `go` a test execs is
-# the declared one too. `fmt-check` runs second, straight after the load check,
-# and its resolver (scripts/pinned-toolchain.sh) refuses, naming the skew, when
-# the release cannot be fetched, before any gate runs on it.
+# the declared one too. The first Go step is the load gate's own `go run
+# ./cmd/abcd implement load --wait` on the preflight line, before any stage, so
+# a machine that lacks the declared release and cannot fetch it (offline) sees
+# that go run fail with go's own toolchain download error, before anything is
+# waited for or gated. Once the release is cached, `fmt-check` runs first among
+# the stages, straight after the load check, and its resolver
+# (scripts/pinned-toolchain.sh) refuses, naming the skew, whenever the release
+# cannot be resolved, before any other gate runs on it.
 preflight: export GOTOOLCHAIN := go$(GO_TOOLCHAIN_VERSION)
 
 # The test binaries these targets run skip the flush to stable storage

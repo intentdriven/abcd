@@ -248,24 +248,35 @@ func TestRecordsOnlyRunsAnUncommittedEditInFull(t *testing.T) {
 
 // TestPreflightRecordsRuleRunsPrechecksTests: the Makefile carries two
 // preflight rules, the full one first, so every reader of the first rule (the
-// load gates, the race lane, the receipt) reads the full run. The second, taken
-// for a records-only change, runs the same gates, checks the verdict again
-// before anything else, runs precheck's build, vet and test lines and nothing
-// else, and mints a receipt that says it is records-only.
+// load gates, the race lane, the receipt) reads the full run. The full rule
+// waits at the load gate as one whole run and runs its gates and stages as
+// preflight-stages, inside the same branch (itd-2610262127138979). The second,
+// taken for a records-only change, runs every gate the full run runs (its
+// prerequisites are preflight-stages's) with no load gate, checks the verdict
+// again before anything else, runs precheck's build, vet and test lines and
+// nothing else, and mints a receipt that says it is records-only.
 func TestPreflightRecordsRuleRunsPrechecksTests(t *testing.T) {
 	makefile := readRepoFile(t, filepath.Join("..", "..", ".."), "Makefile")
 	lines := strings.Split(makefile, "\n")
 	var rules []int
+	stages := -1
 	for i, l := range lines {
 		if strings.HasPrefix(l, "preflight:") && !strings.HasPrefix(l, "preflight: export ") {
 			rules = append(rules, i)
+		}
+		if strings.HasPrefix(l, "preflight-stages:") && stages < 0 {
+			stages = i
 		}
 	}
 	if len(rules) != 2 {
 		t.Fatalf("the Makefile declares %d preflight rules, want 2 (the full run, then the records-only run)", len(rules))
 	}
-	if lines[rules[0]] != lines[rules[1]] {
-		t.Errorf("the records-only rule's gates differ from the full rule's:\n%s\n%s", lines[rules[1]], lines[rules[0]])
+	if stages < rules[0] || stages > rules[1] {
+		t.Fatalf("preflight-stages is declared at line %d, want it in the full rule's branch, between the two preflight rules (lines %d and %d)", stages+1, rules[0]+1, rules[1]+1)
+	}
+	gates := func(l, target string) []string { return strings.Fields(strings.TrimPrefix(l, target+":")) }
+	if got, want := gates(lines[rules[1]], "preflight"), gates(lines[stages], "preflight-stages"); !slices.Equal(got, want) {
+		t.Errorf("the records-only rule's gates differ from every gate the full run runs (preflight-stages's):\n%s\n%s", lines[rules[1]], lines[stages])
 	}
 	var body []string
 	for _, l := range lines[rules[1]+1:] {
@@ -274,7 +285,7 @@ func TestPreflightRecordsRuleRunsPrechecksTests(t *testing.T) {
 		}
 		body = append(body, strings.TrimPrefix(l, "\t"))
 	}
-	if !slices.Contains(lines[rules[0]:rules[1]], "else") || !slices.Contains(lines[rules[1]:], "endif") {
+	if !slices.Contains(lines[stages:rules[1]], "else") || !slices.Contains(lines[rules[1]:], "endif") {
 		t.Fatal("the two preflight rules are not the two branches of one conditional")
 	}
 	precheck, ok := makeRecipe(makefile, "precheck")

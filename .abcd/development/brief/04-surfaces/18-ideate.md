@@ -161,9 +161,10 @@ something a later reader depends on:
 - **The record would mislead a later reader**: an empty `rejected_alternatives`
   list with no explicit marker saying nothing was weighed, because silence and
   "nothing was weighed" read identically; a split between reviewers with no
-  ruling, or a `reframed` verdict with no reframing, because each leaves the
-  reader to guess what was decided; or a verdict record that already exists
-  for this slug and date, because overwriting erases a recorded reason.
+  ruling, a `reframed` verdict with no reframing, or a reframing beside any
+  other verdict, because each leaves the reader to guess what was decided; or a
+  verdict record that already exists for this slug and date, because
+  overwriting erases a recorded reason.
 - **The store is not answered**: neither answer, or both. The product
   thinker's answer decides who can ever read the verdict, so the verb never
   picks one.

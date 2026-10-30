@@ -1,10 +1,10 @@
 ---
 id: adr-2609231028044006
 slug: surface-chapter-shape-claims-are-derived
-status: accepted
+status: superseded
 date: 2026-09-23
 supersedes: null
-superseded_by: null
+superseded_by: adr-2610290238168123
 related_intents: [itd-147]
 related_rfcs: []
 related_adrs: [adr-30, adr-40]

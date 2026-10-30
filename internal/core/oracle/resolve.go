@@ -335,7 +335,13 @@ func (p providerLeg) take(r *Route, c Connection, rowSettings Settings) error {
 	var refused []string
 	for _, k := range sortedKeys(sent) {
 		if !c.Accepted(k) {
-			refused = append(refused, fmt.Sprintf("%s (from %s)", k, p.where(k, c.Name)))
+			// A key the --route set is named by the typed-setting rule; one
+			// from a routing row or the connection's defaults as written.
+			name := k
+			if _, typed := p.flag[k]; typed {
+				name = typedSettingName(k)
+			}
+			refused = append(refused, fmt.Sprintf("%s (from %s)", name, p.where(k, c.Name)))
 		}
 	}
 	if len(refused) > 0 {

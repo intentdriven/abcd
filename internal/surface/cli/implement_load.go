@@ -18,7 +18,9 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/implement"
+	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/machineload"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
@@ -38,14 +40,28 @@ var (
 	// loadMark is the command form's mark; nil is the core's /bin/sleep.
 	loadMark func() (func(), error)
 	// loadRenew renews the caller's own reservations half through their
-	// lease, run every loadRenewEvery while the waiter waits; loadRenewRound,
-	// when set, is called after each round has been said.
+	// lease, run every loadRenewEvery while the waiter waits and while its
+	// command runs; loadRenewRound, when set, is called after each round has
+	// been said.
 	loadRenew      = func(root string) ([]claim.Renewal, error) { return claim.RenewDue(root, claim.Options{}) }
 	loadRenewEvery = 5 * time.Minute
 	loadRenewRound func()
 	// loadQuietEvery is how often a command hold's holder looks at its own
 	// tree while its command runs (implement.HoldWatch).
 	loadQuietEvery = implement.HoldWatchEvery
+	// loadRenewRuns renews the due reservations of the runs the waiter's
+	// checkout serves (loop.RenewRuns), in each round beside loadRenew.
+	loadRenewRuns = func(root string) []loop.RunRenewal { return loop.RenewRuns(root, time.Now()) }
+	// loadRenewStopWait bounds how long the waiter, its command exited, waits
+	// for a renewal round in flight to finish and be said
+	// (dcn-2610300422481486): a few seconds, enough for a round whose push has
+	// returned to write the run record and say it, and far inside the plain
+	// form's settle hold (implement.WaitSettle). A waiter that lingered on a
+	// slow push, its only children git and gh, would read as queued, sort
+	// ahead of every later waiter and hold every other gate on the machine
+	// shut. A renewal pushed past the bound goes unsaid, and the next round,
+	// any waiter's or step's, reads the fresh tip.
+	loadRenewStopWait = 5 * time.Second
 )
 
 // newImplementLoadCommand builds `implement load`, the load check that runs once
@@ -216,16 +232,28 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"and exits between two looks is never seen, so a tree of short children (git)\n" +
 			"reads low, and counts as working for the quiet notice. A\n" +
 			"symlinked " + abcdhome.Display() + " is refused. On a CI runner it opens at once.\n\n" +
-			"While it waits, in a checkout, the waiter keeps your own reservations from\n" +
-			"lapsing: at once and then every five minutes it renews each of your live\n" +
+			"While it waits, and while its command runs, in a checkout, the waiter keeps\n" +
+			"your own reservations from lapsing: at once and then every five minutes it\n" +
+			"renews each of your live\n" +
 			"reservations that is half through its lease and whose latest commit this copy\n" +
 			"pushed, for its own term or\n" +
-			"two hours, whichever is longer, and says each renewal on standard error. It\n" +
-			"never reserves anything new, takes nothing over and revives nothing that has\n" +
-			"lapsed, so a lease shorter than ten minutes can still lapse between two rounds;\n" +
-			"a renewal that fails, or a reservation whose latest commit this copy did not push (or pushed before it kept a note of it), is said once, and the wait goes on. The renewal runs beside the gate, never in it, so\n" +
-			"the gate's order and its open never wait on one, and it stops when the gate\n" +
-			"opens. Since it runs through git and gh, no waiter counts another's git or gh\n" +
+			"two hours, whichever is longer, and says each renewal on standard error. Your\n" +
+			"own reservations it only renews: it reserves nothing new, takes nothing over and\n" +
+			"revives none that has lapsed, so a lease shorter than ten minutes can still lapse between two rounds;\n" +
+			"a renewal that fails, or a reservation whose latest commit this copy did not push (or pushed before it kept a note of it), is said once, and the wait goes on.\n" +
+			"On the same rounds it renews, as implement step does, the due reservation of\n" +
+			"each run in progress that lives in this checkout, or in another worktree of\n" +
+			"the repository with a lane whose worktree is this checkout, reviving one that\n" +
+			"has lapsed and logging each in the run record, but not a run parked at land,\n" +
+			"which the drain renews; while another invocation holds the checkout's run\n" +
+			"lock the round skips that checkout's runs, and the next round renews them. Each is said\n" +
+			"on standard error, a failure once until what is said of it changes. The\n" +
+			"renewal runs beside the gate, never in it, so\n" +
+			"the gate's order and its open never wait on one; it stops when the waiter\n" +
+			"exits, its command done or, without one, its gate open, waiting at most " + loadRenewStopWait.String() + "\n" +
+			"for a round in flight to finish and be said, so a renewal still pushing then may go unsaid,\n" +
+			"since a waiter lingering on a slow push reads as queued and holds every other gate shut.\n" +
+			"Since it runs through git and gh, no waiter counts another's git or gh\n" +
 			"child as its command: gate make or go, never git or gh itself.",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
@@ -320,17 +348,23 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 	if race {
 		flag = "--race-gate"
 	}
-	stopRenewal := startHoldRenewal(cmd.ErrOrStderr())
+	// The renewal goes on until the command exits, not only while the gate is
+	// shut: an agent's preflight or go test runs for hours under the gate, and
+	// nothing else renews a build's reservation meanwhile
+	// (iss-2610261837062463). Every line the waiter itself says on standard
+	// error goes through errOut too, so none is written beside a renewal's.
+	errOut := sharedStderr(cmd.ErrOrStderr())
+	stopRenewal := startHoldRenewal(errOut)
+	defer stopRenewal()
 	res, err := implement.WaitLoad(req)
-	stopRenewal()
 	if err != nil {
 		return &exitError{Code: 1, Msg: "abcd implement load " + flag + ": " + err.Error()}
 	}
 	if res.SlotsNote != "" {
-		fmt.Fprintf(cmd.ErrOrStderr(), "abcd implement load %s: %s\n", flag, res.SlotsNote)
+		fmt.Fprintf(errOut, "abcd implement load %s: %s\n", flag, res.SlotsNote)
 	}
 	if res.DiskNote != "" {
-		fmt.Fprintf(cmd.ErrOrStderr(), "abcd implement load %s: %s\n", flag, res.DiskNote)
+		fmt.Fprintf(errOut, "abcd implement load %s: %s\n", flag, res.DiskNote)
 	}
 	if err := render(out, asJSON, res, func(w io.Writer) { renderLoadWait(w, res) }); err != nil {
 		return err
@@ -347,14 +381,14 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 	}
 	stopWatch := func() {}
 	if res.Hold != nil && res.Hold.Form == implement.HoldCommand {
-		stopWatch = startQuietWatch(cmd.ErrOrStderr(), *res.Hold, res.HoldGates)
+		stopWatch = startQuietWatch(errOut, *res.Hold, res.HoldGates)
 	}
-	code, runErr := runGated(cmd, command, unmark)
+	code, runErr := runGated(cmd, command, errOut, unmark)
 	unmark()
 	if res.Hold != nil && res.Hold.Form == implement.HoldCommand {
 		home, _ := os.UserHomeDir()
 		if err := implement.ReleaseWaitHold(home, *res.Hold); err != nil {
-			fmt.Fprintf(cmd.ErrOrStderr(), "abcd implement load --wait: the hold %s could not be released (%v); it lapses once this process is gone\n",
+			fmt.Fprintf(errOut, "abcd implement load --wait: the hold %s could not be released (%v); it lapses once this process is gone\n",
 				abcdhome.Display(implement.HoldFileName(res.Hold.Gate)), err)
 		}
 	}
@@ -371,16 +405,31 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 }
 
 // startHoldRenewal renews the caller's own reservations while the waiter
-// waits, so a reservation made by hand does not lapse while its preflight
-// waits its turn (iss-2610170926295770): from the checkout the waiter runs
-// in, at once and then every loadRenewEvery, it renews each of this person's
-// live reservations that is half through its lease and whose latest commit
-// this copy pushed (claim.RenewDue), and says each renewal on w. A renewal
-// that fails, or a reservation left unrenewed, is said once until it
-// succeeds, and the wait goes on. It runs beside the gate,
-// never in it: the gate's looks, its order and its open neither wait on a
-// renewal nor read one, and stop returns at once, a renewal still in flight
-// finishing unsaid. Outside a checkout there is nothing to renew.
+// waits and while its command runs, so a reservation made by hand does not
+// lapse while its preflight waits its turn (iss-2610170926295770): from the
+// checkout the waiter runs in, at once and then every loadRenewEvery, it
+// renews each of this person's live reservations that is half through its
+// lease and whose latest commit this copy pushed (claim.RenewDue), and says
+// each renewal on w. A renewal that fails, or a reservation left unrenewed,
+// is said once until it succeeds, and the wait goes on.
+//
+// On the same rounds it renews the due reservation of each run the checkout
+// serves (loop.RenewRuns; iss-2610261837062463, dcn-2610291352512058): a run
+// in progress living in it, or in a sibling worktree with a lane whose
+// worktree it is, so a build whose implementer holds its stage for hours,
+// its go test and make preflight queued and running here, keeps its
+// reservation with no step to renew it. Each run's renewal is said on w, and
+// one that fails, or finds the reservation another's, is said once until
+// what is said of it changes.
+//
+// It runs beside the gate, never in it: the gate's looks, its order and its
+// open neither wait on a renewal nor read one. Stop starts no further round
+// and waits, for at most loadRenewStopWait (a few seconds), for a round in
+// flight to finish and be said (dcn-2610292238191496, dcn-2610300422481486);
+// past that bound whatever the round says is dropped, a renewal it pushed
+// included, rather than keep the waiter, read as queued, holding every other
+// gate shut. Stop may be called more than once. Outside a checkout there is
+// nothing to renew.
 func startHoldRenewal(w io.Writer) (stop func()) {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -400,19 +449,39 @@ func startHoldRenewal(w io.Writer) (stop func()) {
 		}
 	}
 	// The seams are read here, once, so the goroutine reads no shared state.
-	renew, every, round := loadRenew, loadRenewEvery, loadRenewRound
-	done := make(chan struct{})
+	renew, renewRuns, every, round, stopWait := loadRenew, loadRenewRuns, loadRenewEvery, loadRenewRound, loadRenewStopWait
+	done, finished := make(chan struct{}), make(chan struct{})
 	go func() {
+		defer close(finished)
 		tick := time.NewTicker(every)
 		defer tick.Stop()
 		failed := map[string]bool{}
-		viewFailed := false
+		runSaid := map[string]string{}
+		// The round's own fault, said once while it stands: a sibling pass
+		// holding the copy's renewal lock is not a view that could not be read.
+		const (
+			noFault = iota
+			busy
+			viewFailed
+		)
+		fault := noFault
 		for {
 			got, err := renew(root)
-			if err != nil && !viewFailed {
+			now := noFault
+			switch {
+			case errors.Is(err, claim.ErrRenewalBusy):
+				now = busy
+			case err != nil:
+				now = viewFailed
+			}
+			switch {
+			case now == fault:
+			case now == busy:
+				say("abcd implement load --wait: renewed nothing this round, since %v; the wait goes on\n", err)
+			case now == viewFailed:
 				say("abcd implement load --wait: could not read the reservations to renew them (%v); the wait goes on\n", err)
 			}
-			viewFailed = err != nil
+			fault = now
 			for _, r := range got {
 				switch {
 				case r.Err != nil && !failed[r.Record]:
@@ -423,6 +492,17 @@ func startHoldRenewal(w io.Writer) (stop func()) {
 				}
 				failed[r.Record] = r.Err != nil
 			}
+			for _, r := range renewRuns(root) {
+				note := termsafe.Sanitize(fsutil.RedactHome(r.Note))
+				key := r.Root + "\x00" + r.RunID
+				if r.Renewed || runSaid[key] != note {
+					say("abcd implement load --wait: run %s: %s\n", termsafe.Sanitize(r.RunID), note)
+				}
+				runSaid[key] = note
+				if r.Renewed {
+					delete(runSaid, key)
+				}
+			}
 			if round != nil {
 				round()
 			}
@@ -431,13 +511,29 @@ func startHoldRenewal(w io.Writer) (stop func()) {
 				return
 			case <-tick.C:
 			}
+			// A tick and the stop can be ready at once, and select picks
+			// either: the stop wins, so no round starts after it.
+			select {
+			case <-done:
+				return
+			default:
+			}
 		}
 	}()
+	var once sync.Once
 	return func() {
-		mu.Lock()
-		stopped = true
-		mu.Unlock()
-		close(done)
+		once.Do(func() {
+			close(done)
+			wait := time.NewTimer(stopWait)
+			defer wait.Stop()
+			select {
+			case <-finished:
+			case <-wait.C:
+			}
+			mu.Lock()
+			stopped = true
+			mu.Unlock()
+		})
 	}
 }
 
@@ -506,8 +602,34 @@ func shareText(share float64) string {
 	return strconv.FormatFloat(share*100, 'f', -1, 64) + "%"
 }
 
-// runGated runs the gated command with the verb's own streams and returns its
-// exit code; the error is a command that could not be started. A SIGINT or
+// sharedStderr is the waiter's standard error as the gated command and the
+// renewal's messages share it while the command runs. A file is passed to the
+// command as it is, so the command writes to it directly, a terminal staying
+// one. Any other writer is wrapped so each write holds a lock: the command's
+// output is then copied into it by a goroutine of exec's, and a
+// bytes.Buffer's own copy (ReadFrom) would drop every renewal message written
+// while the command ran.
+func sharedStderr(w io.Writer) io.Writer {
+	if _, ok := w.(*os.File); ok {
+		return w
+	}
+	return &lockedWriter{w: w}
+}
+
+// lockedWriter serializes the writes to w.
+type lockedWriter struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
+func (l *lockedWriter) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.w.Write(p)
+}
+
+// runGated runs the gated command with the verb's own streams, standard
+// error as stderr gives it (sharedStderr), and returns its exit code; the error is a command that could not be started. A SIGINT or
 // SIGTERM to the waiter is forwarded to the command, and the waiter goes on
 // waiting for it: a waiter that died first would orphan the command, whose
 // hold then reads as a dead holder's, and the next waiter would be admitted
@@ -516,9 +638,9 @@ func shareText(share float64) string {
 // with 1. started is called once the command has started, to stop the
 // waiter's mark (implement.WaitResult.Unmark). The caller releases the hold
 // once this returns.
-func runGated(cmd *cobra.Command, command []string, started func()) (int, error) {
+func runGated(cmd *cobra.Command, command []string, stderr io.Writer, started func()) (int, error) {
 	c := exec.Command(command[0], command[1:]...)
-	c.Stdin, c.Stdout, c.Stderr = cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr()
+	c.Stdin, c.Stdout, c.Stderr = cmd.InOrStdin(), cmd.OutOrStdout(), stderr
 	sigs := make(chan os.Signal, 2)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(sigs)

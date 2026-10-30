@@ -221,12 +221,20 @@ func forgeWord(s segment, i int) (text string, fixed, ok bool) {
 	return lit.text, false, true
 }
 
-// forgePostsOf returns the posting commands segment s runs.
-func forgePostsOf(s segment, seg int) []forgePost {
-	var out []forgePost
+// ghRepoFlags are gh's options that take the next word as their value
+// wherever they stand, before the command group as after it: `gh -R o/r pr
+// create` is `gh pr create` on o/r.
+var ghRepoFlags = []string{"-R", "--repo"}
+
+// forgePostsOf returns the posting commands segment s runs. complete is false
+// when a gh site's words had more readings than the guard follows, so a
+// posting command among them may not have been found.
+func forgePostsOf(s segment, seg int) (out []forgePost, complete bool) {
+	complete = true
 	for _, a := range sitesNamed(s, "gh") {
 		args := s.tokens[a.idx+1:]
-		readings, _ := operandReadings(args, nil, 2)
+		readings, all := operandReadings(args, ghRepoFlags, 2)
+		complete = complete && all
 		for _, idx := range readings {
 			if len(idx) < 2 {
 				continue
@@ -241,7 +249,7 @@ func forgePostsOf(s segment, seg int) []forgePost {
 			break
 		}
 	}
-	return out
+	return out, complete
 }
 
 // The text flags, by what each hands the forge.
@@ -251,9 +259,15 @@ const (
 	forgeBodyFile = "body file"
 )
 
+// ghBoolShorts are the boolean shorthands of gh's posting commands (--draft,
+// --editor, --fill, --web, --help), the ones pflag lets a text flag follow in
+// one word: `-db x` is --draft then --body x.
+const ghBoolShorts = "defwh"
+
 // forgeFlag names the text flag a word sets (forgeTitle, forgeBody,
 // forgeBodyFile), and the value attached to it, if any: `--body`, `--body=x`,
-// `-b`, `-bx` and `-b=x`.
+// `-b`, `-bx`, `-b=x`, and each of those behind boolean shorthands (`-db x`,
+// `-dbx`). Any other shorthand takes the rest of the word as its own value.
 func forgeFlag(w string) (name, val string, attached bool) {
 	longs := map[string]string{"--title": forgeTitle, "--body": forgeBody, "--body-file": forgeBodyFile}
 	if strings.HasPrefix(w, "--") {
@@ -267,14 +281,18 @@ func forgeFlag(w string) (name, val string, attached bool) {
 		return "", "", false
 	}
 	shorts := map[byte]string{'t': forgeTitle, 'b': forgeBody, 'F': forgeBodyFile}
-	l, ok := shorts[w[1]]
-	if !ok {
-		return "", "", false
+	for i := 1; i < len(w); i++ {
+		if l, ok := shorts[w[i]]; ok {
+			if i+1 == len(w) {
+				return l, "", false
+			}
+			return l, strings.TrimPrefix(w[i+1:], "="), true
+		}
+		if !strings.ContainsRune(ghBoolShorts, rune(w[i])) {
+			break
+		}
 	}
-	if len(w) == 2 {
-		return l, "", false
-	}
-	return l, strings.TrimPrefix(w[2:], "="), true
+	return "", "", false
 }
 
 // forgeValues reads the text flags in the words from start on, up to `--`.
@@ -342,10 +360,13 @@ func (r Registry) forgeText(rc *readCtx, segs []segment, recs []scriptSeg) []pay
 		return nil
 	}
 	var posts []forgePost
+	complete := true
 	for i, s := range segs {
-		posts = append(posts, forgePostsOf(s, i)...)
+		p, all := forgePostsOf(s, i)
+		posts = append(posts, p...)
+		complete = complete && all
 	}
-	if len(posts) == 0 || !r.forge.on() {
+	if (len(posts) == 0 && complete) || !r.forge.on() {
 		return nil
 	}
 	var out []payloadSignal
@@ -353,6 +374,16 @@ func (r Registry) forgeText(rc *readCtx, segs []segment, recs []scriptSeg) []pay
 		if !containsSignal(out, sig) {
 			out = append(out, sig)
 		}
+	}
+	if !complete {
+		add(payloadSignal{
+			id: forgeUnreadEntryID, verdict: VerdictWarn, family: familyForge,
+			reason: "This line's gh words can be read more ways than the guard follows, so it could not tell which gh " +
+				"command runs and has not checked any text it hands the forge for a live agent-session URL or a tool " +
+				"attribution footer.",
+			successor: "Write the gh command out in full, with no word left to a substitution or a variable, so the guard " +
+				"checks what is posted.",
+		})
 	}
 	judged, readBytes := 0, 0
 	for _, p := range posts {

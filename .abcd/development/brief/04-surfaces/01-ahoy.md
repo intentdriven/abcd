@@ -98,7 +98,11 @@ flags.
   and the owner's plan where the sign-in can see it. It requires only the checks
   every pull request's workflows report, reading a workflow's trigger only in
   plain YAML and leaving out one written in any other form, and names a
-  required check no workflow is known to report. A tightening that could break a working CI is advisory
+  required check no workflow is known to report. It pins each required check
+  to the one app whose check runs reported it on the recent commits, by the id
+  GitHub names; a check two apps or a commit status reported, or no recent run
+  reported, stays on any source and is named, and an existing pin is never
+  changed. A tightening that could break a working CI is advisory
   until the workflows comply, and so is one over a workflow or local action it
   could not read, or drawn from workflow files that differ from the default
   branch's on GitHub. The organization's Actions policy is read and
@@ -876,7 +880,12 @@ anything, in this order:
 
 Run from a source checkout of abcd through `go run ./cmd/abcd`, setup is a
 build of that checkout as it stands, so the stale-binary refusal treats it as
-current (`gorun_vintage.go`, iss-2610240824047504). With no plugin root, the
+current (`gorun_vintage.go`, iss-2610240824047504). So is the build that
+checkout's own `scripts/abcd.sh` has just made in its local tier, which the
+script names in `ABCD_CHECKOUT_BUILD` before running it
+(iss-2610241240133009); another checkout's build, or a copy left in the tier
+and run directly, is refused, and in a source checkout the refusal sends the
+person to that script. With no plugin root, the
 copy `~/.abcd.noindex/path-entry` records still reports its install mode
 (iss-2610240916382802).
 
