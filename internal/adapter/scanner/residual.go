@@ -247,8 +247,8 @@ func atURLPathRoot(at int, urls urlSet) bool {
 // on", shared by the detector, SweepCallerHome, the backstop and the
 // home_path_other skip: a letter or digit continues it, and nothing else does.
 // The only false positive the trailing anchor exists for is a longer
-// alphanumeric name that starts with the home ("/Users/alexandra" under abcd-audit:allow
-// HOME=/Users/alex, "/rootfs" under HOME=/root). '.', '-' and '_' are abcd-audit:allow
+// alphanumeric name that starts with the home ("/Users/everett" under abcd-audit:allow
+// HOME=/Users/eve, "/rootfs" under HOME=/root). '.', '-' and '_' are abcd-audit:allow
 // boundaries: "/Users/me.zip", "/Users/me-old" and "/Users/me_snapshot" are abcd-audit:allow
 // the caller's name with a suffix, not another user, and treating the
 // punctuation as a continuation let every one of them through the detector

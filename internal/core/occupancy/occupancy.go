@@ -39,6 +39,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/sessionname"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 )
 
 // dirLeaf is the markers' folder under abcd's home.
@@ -196,8 +197,9 @@ func Forget(home, sessionID string) error {
 // sharers returns the ids of the sessions whose marker names checkout and
 // whose host is still running, one per host process, sorted. The process
 // table is read, through readTable, only when two or more markers name
-// checkout, so a checkout no one else works in costs one folder read. A
-// marker whose host has ended is removed.
+// checkout, so a checkout no one else works in costs one folder read and a
+// stat of each marker spelt otherwise. A marker whose host has ended is
+// removed.
 func sharers(home, checkout string, readTable func() (sessionname.Table, error)) ([]string, error) {
 	dir, err := open(home, false)
 	if err != nil {
@@ -212,9 +214,10 @@ func sharers(home, checkout string, readTable func() (sessionname.Table, error))
 		return nil, fmt.Errorf("occupancy: %w", err)
 	}
 	want := canonical(checkout)
+	wantInfo, _ := os.Stat(want)
 	var named []found
 	for _, f := range all {
-		if f.m.Checkout == want {
+		if f.m.Checkout == want || sameDir(f.m.Checkout, wantInfo) {
 			named = append(named, f)
 		}
 	}
@@ -259,6 +262,17 @@ func canonical(path string) string {
 	return filepath.Clean(path)
 }
 
+// sameDir reports whether the directory path names is the one want
+// describes, so a checkout spelt in another case on a case-insensitive
+// filesystem, or in another Unicode normalization, is the same checkout.
+func sameDir(path string, want os.FileInfo) bool {
+	if want == nil {
+		return false
+	}
+	fi, err := os.Stat(path)
+	return err == nil && os.SameFile(fi, want)
+}
+
 // mainWorkingTree reports whether root, a working-tree top, is a repository's
 // main working tree rather than a linked worktree: git keeps a directory at a
 // main tree's .git and a file at a linked one's.
@@ -297,4 +311,122 @@ func Check(home, root string, readTable func() (sessionname.Table, error)) error
 		return nil
 	}
 	return &SharedError{Sessions: len(ids)}
+}
+
+// treeOf returns the working-tree top a file at path would be written into
+// on its cleaned reading: the nearest ancestor of path holding a .git entry,
+// a directory at a main working tree's top and a file at a linked one's. The
+// path is cleaned and its symlinks resolved first, so a write through a link
+// is judged by the tree it lands in; a ".." after a link can land elsewhere
+// on the raw reading, which CheckPath judges too. It runs no git subprocess,
+// so the hook on the host's file tools stays cheap on every write
+// (iss-2610280051498465). ok is false for a relative path and for one in no
+// checkout.
+func treeOf(path string) (root string, ok bool) {
+	if !filepath.IsAbs(path) {
+		return "", false
+	}
+	return treeAt(landing(filepath.Clean(path)))
+}
+
+// treeAt is treeOf's walk up from a path already resolved.
+func treeAt(dir string) (string, bool) {
+	for {
+		if _, err := os.Lstat(filepath.Join(dir, ".git")); err == nil {
+			return dir, true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", false
+		}
+		dir = parent
+	}
+}
+
+// maxHops bounds the symlinks landing follows, as the kernel's own limit
+// does; a chain longer than that is one the write fails on anyway.
+const maxHops = 40
+
+// landing is where a write to the absolute path p lands: each component that
+// exists is taken as the kernel takes it, a symlink followed (one whose
+// target is not yet made included, since writing through it makes that
+// target) and a ".." stepping up from the directory reached so far, not from
+// the name spelt before it. The part not yet made is joined as written.
+func landing(p string) string {
+	hops := 0
+	return follow(p, &hops)
+}
+
+func follow(p string, hops *int) string {
+	vol := filepath.VolumeName(p)
+	sep := string(filepath.Separator)
+	cur := vol + sep
+	for _, c := range strings.Split(p[len(vol):], sep) {
+		switch c {
+		case "", ".":
+			continue
+		case "..":
+			cur = filepath.Dir(cur)
+			continue
+		}
+		next := filepath.Join(cur, c)
+		fi, err := os.Lstat(next)
+		if err != nil || fi.Mode()&os.ModeSymlink == 0 || *hops >= maxHops {
+			cur = next
+			continue
+		}
+		target, err := os.Readlink(next)
+		if err != nil {
+			cur = next
+			continue
+		}
+		*hops++
+		if !filepath.IsAbs(target) {
+			target = cur + sep + target
+		}
+		cur = follow(target, hops)
+	}
+	return cur
+}
+
+// CheckPath is Check on the working tree a file at path would be written
+// into, for a writer that names a file rather than a checkout: the hook on
+// the host's own file tools. A path in no checkout is nil, and so is one in
+// that tree's local tier: it is ignored and kept for that checkout alone, so
+// a file written there lands in no peer's index, and the SCRATCH rule sends
+// a linked worktree's handovers and helper scripts to the main checkout's.
+//
+// A path is judged twice when its spelling and the kernel can disagree: as
+// cleaned before it is resolved (how a writer that normalizes the path first
+// reads it) and as written (how the kernel resolves a ".." after a symlink).
+// Either reading landing in a shared main checkout outside its tier refuses
+// the write, so no spelling opens the exemption.
+func CheckPath(home, path string, readTable func() (sessionname.Table, error)) error {
+	if !filepath.IsAbs(path) {
+		return nil
+	}
+	readings := []string{landing(filepath.Clean(path))}
+	if raw := landing(path); raw != readings[0] {
+		readings = append(readings, raw)
+	}
+	tier := filepath.FromSlash(localtier.RelDir)
+	var failed error
+	for _, at := range readings {
+		root, ok := treeAt(at)
+		if !ok {
+			continue
+		}
+		if rel, err := filepath.Rel(root, at); err == nil &&
+			(rel == tier || strings.HasPrefix(rel, tier+string(filepath.Separator))) {
+			continue
+		}
+		var shared *SharedError
+		switch err := Check(home, root, readTable); {
+		case errors.As(err, &shared):
+			return err
+		case err != nil && failed == nil:
+			failed = err
+		}
+	}
+	return failed
 }

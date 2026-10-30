@@ -88,8 +88,8 @@ func (e *ExistsError) Unwrap() error { return ErrExists }
 // (criterion 7).
 var ErrUnshippedTargets = errors.New("intents targeted at this release are still unshipped")
 
-// UnshippedError lists the intents whose target_release names the release and
-// which have not shipped.
+// UnshippedError lists the planned intents targeted at the release that are
+// still unshipped (unshippedTargets).
 type UnshippedError struct {
 	Tag     string
 	Intents []TargetedIntent

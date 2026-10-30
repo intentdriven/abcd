@@ -249,3 +249,178 @@ func TestCheckRefusesOnlyASharedMainWorkingTree(t *testing.T) {
 		t.Errorf("a linked worktree must never be refused; got %v", err)
 	}
 }
+
+// TestTreeOfWalksUpToTheNearestGit: a file's working tree is found by
+// walking up to the nearest .git, directory or file, with no git
+// subprocess, so the file tools' hook stays cheap. A file not yet written,
+// in a folder not yet made, still names the tree it would land in; a path
+// in no checkout names none.
+func TestTreeOfWalksUpToTheNearestGit(t *testing.T) {
+	// The temporary folder may sit behind a link (/var on macOS), which the
+	// walk resolves, so the expected roots are spelt resolved.
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	main := filepath.Join(base, "main")
+	linked := filepath.Join(base, "linked")
+	for _, d := range []string{filepath.Join(main, ".git"), filepath.Join(main, "a", "b"), linked, filepath.Join(base, "loose")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(linked, ".git"), []byte("gitdir: elsewhere\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		path, want string
+		ok         bool
+	}{
+		{filepath.Join(main, "a", "b", "file.go"), main, true},
+		{filepath.Join(main, "new", "deeper", "file.md"), main, true},
+		{filepath.Join(main, ".git", "config"), main, true},
+		{filepath.Join(linked, "file.go"), linked, true},
+		{filepath.Join(base, "loose", "file.go"), "", false},
+	} {
+		got, ok := treeOf(tc.path)
+		if ok != tc.ok || got != tc.want {
+			t.Errorf("treeOf(%s) = %q, %v; want %q, %v", tc.path, got, ok, tc.want, tc.ok)
+		}
+	}
+}
+
+// TestCheckPathJudgesTheTreeAFileLandsIn: CheckPath is Check on the working
+// tree a file would be written into (iss-2610280051498465): refused in a
+// main checkout two live sessions share, not in a linked worktree of it, and
+// not outside any checkout.
+func TestCheckPathJudgesTheTreeAFileLandsIn(t *testing.T) {
+	home := t.TempDir()
+	base := t.TempDir()
+	main := filepath.Join(base, "main")
+	linked := filepath.Join(base, "linked")
+	for _, d := range []string{filepath.Join(main, ".git"), linked} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(linked, ".git"), []byte("gitdir: elsewhere\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	tab := table(now, 101, 102)
+	for id, pid := range map[string]int{"s1": 101, "s2": 102} {
+		if err := Note(home, id, main, hostOf(tab, pid), tab); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var shared *SharedError
+	if err := CheckPath(home, filepath.Join(main, "x", "f.go"), read(tab)); !errors.As(err, &shared) || shared.Sessions != 2 {
+		t.Errorf("a file in a shared main checkout: want a SharedError for 2 sessions, got %v", err)
+	}
+	if err := CheckPath(home, filepath.Join(linked, "f.go"), read(tab)); err != nil {
+		t.Errorf("a file in a linked worktree must not be refused: %v", err)
+	}
+	if err := CheckPath(home, filepath.Join(base, "f.go"), read(tab)); err != nil {
+		t.Errorf("a file in no checkout must not be refused: %v", err)
+	}
+	// The local tier is ignored and kept for this checkout alone, so a file
+	// written there lands in no peer's index; the SCRATCH rule sends a linked
+	// worktree's handovers and helper scripts there.
+	for _, rel := range []string{".abcd/.work.local/scratch/handover.md", ".abcd/.work.local/new/deeper/x.sh"} {
+		if err := CheckPath(home, filepath.Join(main, filepath.FromSlash(rel)), read(tab)); err != nil {
+			t.Errorf("a file in the shared checkout's local tier (%s) must not be refused: %v", rel, err)
+		}
+	}
+	if err := CheckPath(home, filepath.Join(main, ".abcd", "work", "x.md"), read(tab)); !errors.As(err, &shared) {
+		t.Errorf("a file in the shared checkout's committed tier must still be refused, got %v", err)
+	}
+}
+
+// TestCheckPathJudgesWhereAWriteLandsNotHowItIsSpelt: the local tier's
+// exemption and the tree a file lands in are judged by where the write lands,
+// never by the path's spelling. A ".." after a symlink is resolved as the
+// kernel resolves it, a symlink whose target is not yet made by where writing
+// through it creates the file, a nested or differently cased tier is not the
+// main checkout's tier, and a checkout root spelt in another case on a
+// case-insensitive filesystem is the same checkout.
+func TestCheckPathJudgesWhereAWriteLandsNotHowItIsSpelt(t *testing.T) {
+	home := t.TempDir()
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	main := filepath.Join(base, "main")
+	linked := filepath.Join(base, "linked")
+	tier := filepath.Join(main, ".abcd", ".work.local")
+	for _, d := range []string{filepath.Join(main, ".git"), filepath.Join(main, "internal"), tier, linked} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(linked, ".git"), []byte("gitdir: elsewhere\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(base, "outside")
+	if err := os.MkdirAll(outside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for link, target := range map[string]string{
+		filepath.Join(tier, "into"):     filepath.Join(main, "internal"),
+		filepath.Join(tier, "dangling"): filepath.Join(main, "internal", "new.go"),
+		filepath.Join(tier, "rel"):      "../../internal",
+		filepath.Join(tier, "out"):      outside,
+		filepath.Join(tier, "loop1"):    filepath.Join(tier, "loop2"),
+		filepath.Join(tier, "loop2"):    filepath.Join(tier, "loop1"),
+		filepath.Join(main, "loop1"):    filepath.Join(main, "loop2"),
+		filepath.Join(main, "loop2"):    filepath.Join(main, "loop1"),
+		filepath.Join(main, "out"):      outside,
+		filepath.Join(linked, "into"):   filepath.Join(main, "internal"),
+		filepath.Join(linked, "main"):   main,
+	} {
+		if err := os.Symlink(target, link); err != nil {
+			t.Fatal(err)
+		}
+	}
+	now := time.Now()
+	tab := table(now, 101, 102)
+	for id, pid := range map[string]int{"s1": 101, "s2": 102} {
+		if err := Note(home, id, main, hostOf(tab, pid), tab); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sep := string(filepath.Separator)
+	denied := []string{
+		tier + sep + ".." + sep + ".." + sep + "internal" + sep + "x.go",
+		tier + sep + "into" + sep + "x.go",
+		tier + sep + "into" + sep + ".." + sep + "x.go",
+		tier + sep + "rel" + sep + "x.go",
+		tier + sep + "dangling",
+		linked + sep + "into" + sep + ".." + sep + "x.go",
+		main + sep + ".abcd" + sep + ".WORK.LOCAL" + sep + "x.md",
+		main + sep + "sub" + sep + ".abcd" + sep + ".work.local" + sep + "x.md",
+		linked + sep + "main" + sep + "x.go",
+		main + sep + "loop1" + sep + "x.go", // a loop the walk gives up on still names this tree
+	}
+	if other := filepath.Join(base, "MAIN"); other != main {
+		if fi, err := os.Stat(other); err == nil && fi.IsDir() {
+			denied = append(denied, other+sep+"x.go") // a case-insensitive filesystem
+		}
+	}
+	for _, p := range denied {
+		var shared *SharedError
+		if err := CheckPath(home, p, read(tab)); !errors.As(err, &shared) {
+			t.Errorf("CheckPath(%s): the write lands in the shared checkout's tree, want a SharedError, got %v", p, err)
+		}
+	}
+	for _, p := range []string{
+		tier + sep + "scratch" + sep + "x.md",
+		tier + sep + "a" + sep + ".." + sep + "b.md",
+		tier + sep + "loop1" + sep + "x.md", // the kernel refuses it (too many links); it lands nowhere else
+		tier + sep + "out" + sep + "x.go",
+		main + sep + "out" + sep + "x.go",
+	} {
+		if err := CheckPath(home, p, read(tab)); err != nil {
+			t.Errorf("CheckPath(%s): the write lands in the local tier or in no checkout, want nil, got %v", p, err)
+		}
+	}
+}

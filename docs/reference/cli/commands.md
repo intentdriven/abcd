@@ -129,7 +129,7 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
       --live-sessions string    answer the live brief session question: where sessions may run, local, cloud or both, or none, which answers no and is not asked again; stored in .abcd/config.json as sessions.live and honoured in any run, the approve-everything flag included; abcd session setup then does the setting up
       --only-waiting            ask only the setup that waits after an abcd update: the questions this repository never answered and the settings whose default changed, never one answered or deferred with decide later; every kind of change is approved up front, as the yes to the offer abcd update news makes approves them; with the approve-everything flag no question is answered, so each still waits
       --oracle-backend string   oracle backend: host-delegated | native | cli | api | mcp
-      --outbound                opt this repo into both outbound checks, which refuse a live agent-session URL or a tool attribution footer: the committed commit-msg hook over every commit message, and the shell guard's check of the title, body and body file a posting gh pr or gh issue command hands the forge; it also sets this clone's git config --local abcd.binary to the abcd copy whose build provenance it verified and, where no core.hooksPath is set and no commit-msg hook is there, writes abcd's copy of that hook into the clone's git hooks directory, and says so when it cannot do either; the choice is recorded in .abcd/config.json as outbound.hook and outbound.forge, so a later install without the flag keeps both
+      --outbound                opt this repo into both outbound checks, which refuse a live agent-session URL or a tool attribution footer: the committed commit-msg hook over every commit message, and the shell guard's check of the title, body and body file a posting gh pr or gh issue command hands the forge, which also refuses a pull request body (gh pr create, new or edit) with no Assisted-by line in an accepted form, or one carrying a Co-authored-by line; it also sets this clone's git config --local abcd.binary to the abcd copy whose build provenance it verified and, where no core.hooksPath is set and no commit-msg hook is there, writes abcd's copy of that hook into the clone's git hooks directory, and says so when it cannot do either; the choice is recorded in .abcd/config.json as outbound.hook and outbound.forge, so a later install without the flag keeps both
       --readme-parts string     answer the README question: the parts of README.md abcd keeps current, comma-separated from licence, links, contents, release-badge, build-badge and abcd-badge, or none, which answers no and is not asked again; stored in .abcd/config.json and honoured in any run, the approve-everything flag included
       --refuse-adopt            decline to adopt an unmanaged repo
       --scan-deep string        enable deep scan: true | false
@@ -1791,6 +1791,43 @@ Judge a shell command against the hazard registry before it runs: Writes branch 
 
 **Usage:** `abcd guard`
 
+#### `abcd guard allow`
+
+Let one exact unproven delete through the hook, once: Writes one allow record in your home folder; refuses without --once, and when an agent runs it.
+
+**Usage:** `abcd guard allow --once --command <line> [flags]`
+
+Allows one exact command line through the shell guard's hook, once, within
+ten minutes: the person's way past a branch delete or a worktree removal the
+guard could not prove safe (merged, with no open pull request, in no
+worktree, held by no reservation, and for a worktree clean and in use by
+nothing). It lets past nothing else: a line any other hazard blocks stays
+blocked.
+
+The allow is the person's own act. The guard refuses this verb when an
+agent runs it, and refuses a shell write into the store, so run it yourself
+in a terminal (or with your host's `!` prefix). The line must match the
+agent's command byte for byte. The allow is recorded under
+~/.abcd.noindex/guard-allow/<root-commit>/, keyed on the repository's root
+commit, read only while this account owns it and no one else can write it,
+and removed as the hook uses it. The store's log.jsonl records each line,
+when it was allowed and when it was used, and never who.
+
+--once is required: an allow is only ever for one use.
+
+**Flags:**
+
+```
+      --command string   the exact command line to allow
+      --once             allow the line for one use (required)
+```
+
+**Example:**
+
+```
+abcd guard allow --once --command 'git branch -D feat/done'
+```
+
 #### `abcd guard approve`
 
 Answer a headless agent's permission prompts over MCP: Writes nothing; refuses every prompt but a shell command the guard reads whole and clears.
@@ -2057,11 +2094,21 @@ so each gets a verdict — the backslash is read as bash reads it, the
 unterminated document blocks.
 
 The hook judges only what the host hands it, and the plugin's hook
-manifest hands it the shell tool and the question tool and nothing else.
-A call through any other tool never reaches the guard: a file the host's
-own tools write or edit, or a command a tool from another extension runs,
-is neither checked nor warned about. That is the guard's standing scope,
-not a degradation, and the guard: line of abcd ahoy does not report it.
+manifest hands it the shell tool, the question tool and the host's
+file-writing tools (Write, Edit, MultiEdit, NotebookEdit) and nothing else.
+A file one of those tools writes is not held to the registry: it is denied
+with the host's deny when it lands in a main checkout two or more live
+sessions started in, with the refusal the record verbs give, naming the
+worktree store. The file's working tree is found by walking up to its .git,
+so a linked worktree, a checkout one session or none works in, a path in no
+checkout, and a file in a checkout's own local tier (.abcd/.work.local/,
+which git ignores) are written silently. A file call naming no path, a
+relative path with no absolute session directory, or a count that cannot
+be made, lets the write run and warns loudly. A call through
+any other tool never reaches the guard: a command a tool from another
+extension runs is neither checked nor warned about. That is the guard's
+standing scope, not a degradation, and the guard: line of abcd ahoy does
+not report it.
 
 A host whose shell tool takes a per-call working directory passes it as
 tool_input.workdir. It is resolved against the session directory, and a
@@ -2547,9 +2594,10 @@ the race stage that follows it, and a race run of your own goes through
 `--wait -- go test -race`. It is spelt without --wait because an
 older abcd reads any `implement load --wait` as a waiter at its first gate, and
 would count a preflight at its race gate as queued, not in its tests, so the two
-are refused together. At one preflight at a time, the default, it opens at once,
-without reading the machine, taking a hold or waiting a jitter, so a preflight's
-race stage follows its tests exactly as before. Above one it is shut only while
+are refused together. At one preflight at a time, the default, it opens at once
+once the disk check below passes, without reading the load or the process table,
+taking a hold or waiting a jitter, so a preflight's race stage follows its tests
+as before. Above one it is shut only while
 another `go test -race` run is live, a race waiter is ahead of it (by the same
 rule) or running its command, the load is at the wait limit, or the race gate's
 own hold is in force (each gate is shut only by its own gate's hold). That keeps
@@ -2583,6 +2631,19 @@ that cannot be read for it (writable by others, not valid JSON, or a `load`
 that is not an object) is read past instead: one preflight at a time applies,
 and one line on stderr names the file, the cause and how to fix it; so does a
 key under `load` that nothing reads.
+
+Both gates refuse, exiting 1 without waiting, while the volume holding the Go
+build cache (`go env GOCACHE`) or the one holding the worktree store
+(`~/.abcd.noindex/worktrees`) has less free space than the disk floor: 4 GiB for each
+preflight the first gate admits at once (`load.preflights`), and 8 GiB at least, so
+8 GiB at the default and 16 GiB at four. The waiter reads the disk as it starts
+and again just before it opens (the race gate at one preflight at a time reads
+it once, as it starts), and refuses at either look. The refusal names
+each low volume, its free space and the floor, and, when the cache's own volume
+is low, the cache's size and a command that deletes its build entries unused for
+two days. A disk it cannot read, in whole or in part, is never refused: one line
+on stderr says it was not checked, and why. The load check (`--site`) prints the
+same finding as a warning and never fails for it.
 
 Within one account the waiter that opens also takes a hold,
 `~/.abcd.noindex/load-wait.json` at the first gate and `~/.abcd.noindex/load-wait-race.json` at
@@ -2620,7 +2681,7 @@ child as its command: gate make or go, never git or gh itself.
 **Flags:**
 
 ```
-      --race-gate          wait at the race gate, before a race stage, instead of the first gate: open at once at one preflight at a time, and above that shut only by another go test -race run, a race waiter ahead, the load and the race gate's hold
+      --race-gate          wait at the race gate, before a race stage, instead of the first gate: open at once at one preflight at a time unless the disk is below the floor, and above that shut only by another go test -race run, a race waiter ahead, the load and the race gate's hold
       --site string        where the check runs: preflight | eval-harness
       --timeout duration   with --wait or --race-gate, give up after this long and exit 1 (default 30m0s)
       --wait               wait until the load is below the wait limit and no other go test -race run is live
@@ -3773,8 +3834,12 @@ credentials, so run it only on a branch whose content you trust.
      queue where the merge gate allows it (today: only where a merge queue gates the
      default branch and a ruleset requires a person's approval), pinned to the
      head, then confirmed in the queue. An arming someone else made is left as it
-     is. With no pull request it prints the `gh pr create` command and stops; it
-     never opens one.
+     is. With no pull request it composes the body from the branch's commits (each
+     subject, their Refs:, Resolves: and Delivers: lines, abcd's own Assisted-by label
+     and the models their Assisted-by: lines name) into the
+     checkout's .abcd/.work.local/ where it has one, judges it as the shell guard
+     judges a posted body, prints the `gh pr create` command naming it with
+     --body-file, and stops; it never opens one.
 
 land.push and land.enqueue are read from .abcd/config.json (in the working
 directory's checkout and the branch's own) and ~/.abcd.noindex/config.json,

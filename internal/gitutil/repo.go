@@ -1,6 +1,7 @@
 package gitutil
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/procgroup"
 )
 
 // isolatedGit builds a git command under root with global and system config
@@ -50,16 +52,18 @@ func guardObjectRead(ctx context.Context, cmd *exec.Cmd, root string, args []str
 }
 
 // contextWaitDelay is how long a context-bound git's Wait waits, once the
-// context has ended and git was killed, for its output pipes to close — so a
-// process git started that kept a pipe open cannot hold the caller past its
-// deadline.
+// context has ended, for git to exit after it was killed.
 //
-// exec starts the same timer when git exits on its own, so on a heavily loaded
-// machine the copy of an answer git already gave can miss it, and Wait reports
-// exec.ErrWaitDelay over a successful git (iss-2610100846469473). It is
-// therefore set only for a context that can end: a caller with no deadline
-// (Toplevel, RootCommit) has no deadline to protect, and waits for git's
-// output as every unbounded isolated command (Run, RunLimited) does.
+// exec also starts that timer when git exits on its own and times its own
+// copy of git's output from it, so on a heavily loaded machine the copy of an
+// answer git already gave could miss it, and Wait reported exec.ErrWaitDelay
+// over a successful git (iss-2610100846469473, iss-2610272041031418). A
+// context-bound git's output is therefore read by runBoundedCmd and the other
+// context-bound runners through procgroup.RunToEOF, to EOF before Wait, which
+// leaves exec nothing to copy or time: a process git started that keeps a
+// pipe open holds the read until the context ends, and no later. It is set
+// only for a context that can end: a caller with no deadline (Toplevel,
+// RootCommit) has no deadline to protect.
 const contextWaitDelay = 50 * time.Millisecond
 
 // isolatedGitContext is isolatedGit bound to ctx: when ctx ends, git is KILLED,
@@ -381,8 +385,8 @@ var ErrNoRootAnswer = errors.New("git gave no root commit for a repository")
 // its symlinks resolved, carries a .git entry; or the repository has no
 // commits yet. Every other failure is an error a
 // caller must handle: ErrNoRootAnswer for a git that did not answer for a
-// repository-shaped directory, ErrGitTimedOut for one whose output missed the
-// runner's wait twice. A failed git call is never read as an answer, since a
+// repository-shaped directory, and under RootCommitContext the context's own
+// error for a git that had not answered when it ended. A failed git call is never read as an answer, since a
 // caller keying a store on the identity would otherwise take a real
 // repository for none (iss-2610051434156079).
 //
@@ -411,9 +415,6 @@ func RootCommitContext(ctx context.Context, root string) (string, error) {
 		return "", ctxErr
 	}
 	if err != nil {
-		if errors.Is(err, ErrGitTimedOut) {
-			return "", err
-		}
 		if notARepository(root, err) || emptyHistory(ctx, root, err) {
 			return "", nil
 		}
@@ -612,7 +613,12 @@ func trackedFiles(ctx context.Context, root string, env ...string) ([]string, er
 		cmd.Env = append(cmd.Env, env...)
 		return cmd
 	}
-	in, err := git("rev-parse", "--is-inside-work-tree").Output()
+	output := func(args ...string) ([]byte, error) {
+		var out bytes.Buffer
+		err := procgroup.RunToEOF(ctx, git(args...), &out, nil)
+		return out.Bytes(), err
+	}
+	in, err := output("rev-parse", "--is-inside-work-tree")
 	if err != nil || strings.TrimSpace(string(in)) != "true" {
 		if RepoShaped(root) {
 			// Repo-shaped, but git could not answer: absent from PATH, an
@@ -624,7 +630,7 @@ func trackedFiles(ctx context.Context, root string, env ...string) ([]string, er
 		// Not a repository → nothing tracked, not an error.
 		return nil, nil
 	}
-	out, err := git("ls-files", "-z").Output()
+	out, err := output("ls-files", "-z")
 	if err != nil {
 		return nil, err
 	}
@@ -681,27 +687,20 @@ func RunLimited(root string, maxBytes int, args ...string) (string, error) {
 	return out, err
 }
 
-// ErrGitTimedOut is RunLimitedContext's answer for a git whose output was
-// still open when the wait for it ran out (exec.ErrWaitDelay), on a retry as
-// well as the first time. Nothing cancelled it; git may well have answered. On
-// a heavily loaded machine the copy of git's output can miss the runner's
-// WaitDelay after git exits, and a caller that read that error as git's answer
-// turned it into "not a repository" or "no root commit" (iss-2610100846469473).
-// A caller that must tell "git said no" from "git did not answer" checks for
-// it with errors.Is; the exec error it came from stays wrapped.
+// ErrGitTimedOut is a lookup's answer for a git that did not answer in time,
+// for a caller that bounds a lookup with a clock of its own and reports the
+// bound's end as git not answering (the prompt router's root-commit lookup),
+// so it can be told from "git said no" with errors.Is. A context-bound runner
+// here answers its context's own error instead.
 var ErrGitTimedOut = errors.New("git did not answer in time")
 
 // RunLimitedContext is RunLimited bound to ctx: when ctx ends before git
 // answers, git is killed (isolatedGitContext) and the error wraps ctx's own,
 // so errors.Is(err, context.DeadlineExceeded) tells a caller that git did not
 // answer in time rather than that it said no. It is the one primitive every
-// deadline-bound git question goes through.
-//
-// Under a context that can end, the WaitDelay that bounds a killed git's
-// pipes also starts when git exits on its own (contextWaitDelay), so on a
-// loaded machine a git that answered can still come back as
-// exec.ErrWaitDelay, its output not yet copied. That miss is asked once more;
-// a second miss is returned as ErrGitTimedOut, never as git's answer.
+// deadline-bound git question goes through. git's output is read to EOF
+// before Wait (contextWaitDelay), so a git that answered is read whole however
+// late its output closes, until ctx ends.
 func RunLimitedContext(ctx context.Context, root string, maxBytes int, args ...string) (string, error) {
 	return runLimitedContext(ctx, root, maxBytes, false, args)
 }
@@ -720,21 +719,11 @@ func runLimitedContext(ctx context.Context, root string, maxBytes int, network b
 	if err := ctx.Err(); err != nil {
 		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 	}
-	command := func() *exec.Cmd {
-		cmd := isolatedGitContext(ctx, root, args...)
-		if network {
-			cmd.Env = netEnv(cmd.Env)
-		}
-		return cmd
+	cmd := isolatedGitContext(ctx, root, args...)
+	if network {
+		cmd.Env = netEnv(cmd.Env)
 	}
-	out, _, err := runBoundedCmd(command(), maxBytes)
-	if errors.Is(err, exec.ErrWaitDelay) && ctx.Err() == nil {
-		out, _, err = runBoundedCmd(command(), maxBytes)
-		if errors.Is(err, exec.ErrWaitDelay) && ctx.Err() == nil {
-			return "", fmt.Errorf("git %s: %w: its output was still open when the wait for it ran out, on a retry too (%w)",
-				strings.Join(args, " "), ErrGitTimedOut, err)
-		}
-	}
+	out, _, err := runBoundedCmd(ctx, cmd, maxBytes)
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), ctxErr)
 	}
@@ -816,16 +805,17 @@ func runBounded(root string, maxBytes int, args ...string) (string, bool, error)
 // run git with stdout and stderr bounded, return stdout verbatim, and report
 // whether it was cut short.
 func runBoundedBytes(root string, maxBytes int, args ...string) ([]byte, bool, error) {
-	return runBoundedCmd(isolatedGit(root, args...), maxBytes)
+	return runBoundedCmd(context.Background(), isolatedGit(root, args...), maxBytes)
 }
 
-// runBoundedCmd runs an isolated git command with stdout and stderr bounded.
-func runBoundedCmd(cmd *exec.Cmd, maxBytes int) ([]byte, bool, error) {
+// runBoundedCmd runs an isolated git command, built under ctx (an unbounded
+// one under context.Background), with stdout and stderr bounded and read to
+// EOF before Wait (procgroup.RunToEOF): a git that answered is never reported
+// as a wait that ran out.
+func runBoundedCmd(ctx context.Context, cmd *exec.Cmd, maxBytes int) ([]byte, bool, error) {
 	w := &capWriter{remaining: maxBytes}
 	e := &capWriter{remaining: 4096}
-	cmd.Stdout = w
-	cmd.Stderr = e
-	if err := cmd.Run(); err != nil {
+	if err := procgroup.RunToEOF(ctx, cmd, w, e); err != nil {
 		return nil, w.overflowed, fmt.Errorf("%w (stderr: %q)", err, strings.TrimSpace(string(e.buf)))
 	}
 	return w.buf, w.overflowed, nil

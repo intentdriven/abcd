@@ -490,7 +490,7 @@ func TestNoPullRequestPrintsTheCreateCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := step(t, res, "enqueue")
-	if s.Status != StatusStopped || s.Command != "gh pr create --base main --head feat/x" {
+	if s.Status != StatusStopped || !strings.HasPrefix(s.Command, "gh pr create --base main --head feat/x --title ") {
 		t.Fatalf("enqueue step %+v, want stopped with the create command", s)
 	}
 	if f.forge.called("pr", "create") != 0 || f.forge.called("pr", "merge") != 0 {

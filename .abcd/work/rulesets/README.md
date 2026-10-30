@@ -11,18 +11,16 @@ in the tree rather than only a web console.
   status checks (strict; the file's `required_status_checks` list is the
   count), and the merge queue. **No bypass actors**: nobody
   merges past a red required check.
-- `main-review.json` — the pull-request rule requiring a code-owner review on
-  changes to the publish surface (`.github/CODEOWNERS`). Its approval count is
-  0, and the code-owner approval is required all the same: GitHub requires a
-  code owner's approval on a pull request that modifies owned content whatever
-  the count. **No bypass actors.** None is needed for the owner: a pull request
-  whose author is the only code owner of what it changes merges with no
-  code-owner approval. The fifteen most recent of the owner's pull requests
-  that changed owned paths, read on 29 October 2026, merged with no review and
-  no bypass. The rule
-  binds every other writer, whose pull request needs the owner's approval. It
-  is a separate ruleset so that a bypass, if one is ever added, cannot also
-  cover the required checks: a bypass covers every rule in its ruleset.
+- `main-review.json` — the pull-request rule requiring a code-owner review.
+  Its approval count is 0, and the repository has no code-owners file, so the
+  rule names no owner and requires no approval: only an account with write
+  access or above can merge, which is the repository's maintainer test. The
+  publish surface is listed in `.abcd/work/publish-surface.txt`. **No bypass
+  actors.** It is a separate ruleset so that a bypass, if one is ever added,
+  cannot also cover the required checks: a bypass covers every rule in its
+  ruleset. abcd's build and drain lanes arm auto-merge only where a ruleset
+  requires an approval, so in this repository they leave their pull requests
+  open for a maintainer to merge.
 - `reservations-protection.json` — deletion and force-push protection for
   `refs/heads/abcd-reserved/**`, the branches `abcd reserve` pushes
   (itd-2609091034175565). It is its own ruleset because it guards abcd's

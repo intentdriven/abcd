@@ -11,4 +11,4 @@ resolution: "Fixed in the 2026-08-23 manual-test triage pass; verified by rebuil
 impact: fix
 ---
 
-Contributor author rows should link to forge profiles, derived deterministically (no API per adr-47) from the forge noreply email pattern, graceful absence otherwise. Includes the repo-side .mailmap fix: the old-format noreply REPPL@users.noreply.github.com (39 commits) is not folded into Alex Reppel; maintainer authorised the one-line unification 2026-08-23 (report 19).
+Contributor author rows should link to forge profiles, derived deterministically (no API per adr-47) from the forge noreply email pattern, graceful absence otherwise. Includes the repo-side .mailmap fix: the old-format noreply <login>@users.noreply.github.com (39 commits) is not folded into the product thinker's canonical name; maintainer authorised the one-line unification 2026-08-23 (report 19).

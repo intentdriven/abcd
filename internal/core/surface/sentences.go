@@ -163,6 +163,8 @@ var sentences = map[string]string{
 		"Writes nothing; refuses a hazard with exit 1 and a command it cannot parse with exit 2.",
 	"abcd guard approve": "Answer a headless agent's permission prompts over MCP: " +
 		"Writes nothing; refuses every prompt but a shell command the guard reads whole and clears.",
+	"abcd guard allow": "Let one exact unproven delete through the hook, once: " +
+		"Writes one allow record in your home folder; refuses without --once, and when an agent runs it.",
 	"abcd guard hook": "Judge the shell command in a host's pre-tool-use payload: " +
 		"Writes branch records and a question's mode; refuses a hazard or a badly built question.",
 

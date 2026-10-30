@@ -51,6 +51,14 @@
 #          honest, so a commit that merely touches an issue's ground is not
 #          pushed into claiming a fix it did not make.
 #
+#          Its message half also runs alone, `message <file>` (`-` for the
+#          standard input), which the committed commit-msg hook calls so a
+#          bare mention is refused at the commit rather than by the preflight
+#          that runs this gate over the range tens of minutes later
+#          (iss-2610241424265464); and the shell guard holds a pull
+#          request's title and body to it before gh posts them
+#          (internal/core/issuemention, tied to this file by a test).
+#
 #          SCOPE. RS004 judges COMMIT MESSAGES and PULL-REQUEST TITLES/BODIES,
 #          and nothing else. An id written in the BODY OF A RECORD is a
 #          different surface with its own rule — `prose_citation_resolves`, in
@@ -246,7 +254,7 @@ fail() {
 }
 
 usage() {
-	echo "usage: check-issue-resolution.sh commits <base-ref> <head-ref> | ledger [<ref>] | pr <title-file> <body-file>" >&2
+	echo "usage: check-issue-resolution.sh commits <base-ref> <head-ref> | ledger [<ref>] | pr <title-file> <body-file> | message <file>|-" >&2
 	exit 2
 }
 
@@ -844,6 +852,26 @@ $body")"
 	echo "check-issue-resolution: RS004 checked the pull-request title and body"
 }
 
+# check_message applies RS004 to one commit message, the form the commit-msg
+# hook runs before the commit exists. It reads the file only, never history, so
+# it runs in any clone, a shallow one included. A file of `-` is the standard
+# input, which the hook hands it so that it writes no file before a shell runs
+# this one.
+check_message() {
+	local file="$1" msg
+	if [ "$file" = - ]; then
+		msg="$(tr -d '\r')"
+	else
+		[ -f "$file" ] || {
+			echo "check-issue-resolution: no such file: $file" >&2
+			exit 2
+		}
+		msg="$(tr -d '\r' <"$file")"
+	fi
+	check_mentions "the commit message" "$msg" "$(declared_ids "$msg")"
+	echo "check-issue-resolution: RS004 checked the commit message"
+}
+
 check_commits() {
 	local base="$1" head="$2"
 	local range
@@ -1135,24 +1163,29 @@ check_ledger() {
 # code the contract reserves for it, never a violation.
 # The probe itself is rc-checked: comparing a failed substitution against
 # "true" would let the very fault this arm exists to report disarm it.
-rc=0
-shallow="$(git rev-parse --is-shallow-repository 2>&1)" || rc=$?
-if [ "$rc" -ne 0 ]; then
-	echo "check-issue-resolution: git rev-parse --is-shallow-repository failed (exit $rc) — refusing rather than reporting a vacuous pass:" >&2
-	echo "$shallow" >&2
-	exit 2
+#
+# The message form reads one file and no history, so it is exempt: the
+# commit-msg hook runs it in whatever clone the commit is made in.
+if [ "${1:-}" != message ]; then
+	rc=0
+	shallow="$(git rev-parse --is-shallow-repository 2>&1)" || rc=$?
+	if [ "$rc" -ne 0 ]; then
+		echo "check-issue-resolution: git rev-parse --is-shallow-repository failed (exit $rc) — refusing rather than reporting a vacuous pass:" >&2
+		echo "$shallow" >&2
+		exit 2
+	fi
+	case "$shallow" in
+	true)
+		echo "check-issue-resolution: shallow checkout — RS002/RS003 cannot tell an absent commit from an unfetched one; run 'git fetch --unshallow' first (CI checks out with fetch-depth: 0)." >&2
+		exit 2
+		;;
+	false) ;;
+	*)
+		echo "check-issue-resolution: unexpected git rev-parse --is-shallow-repository output \"$shallow\" — refusing rather than guessing." >&2
+		exit 2
+		;;
+	esac
 fi
-case "$shallow" in
-true)
-	echo "check-issue-resolution: shallow checkout — RS002/RS003 cannot tell an absent commit from an unfetched one; run 'git fetch --unshallow' first (CI checks out with fetch-depth: 0)." >&2
-	exit 2
-	;;
-false) ;;
-*)
-	echo "check-issue-resolution: unexpected git rev-parse --is-shallow-repository output \"$shallow\" — refusing rather than guessing." >&2
-	exit 2
-	;;
-esac
 
 case "${1:-}" in
 commits)
@@ -1162,6 +1195,10 @@ commits)
 ledger)
 	[ $# -le 2 ] || usage
 	check_ledger "${2:-HEAD}"
+	;;
+message)
+	[ $# -eq 2 ] || usage
+	check_message "$2"
 	;;
 pr)
 	# RS004 over the artefact no commit message reaches: the title and body a

@@ -45,11 +45,7 @@ inbound = outbound statement is the whole of it.
   not run again on the push the merge makes to `main`; a nightly run checks
   `main` instead. When the queue drops an entry, a sweep cancels the CI runs
   still going for it, so they stop holding runners the live entries need.
-- **Publish surface reviews.** Paths listed in
-  [`.github/CODEOWNERS`](CODEOWNERS) ship behaviour to installed users
-  (plugin hooks and commands, agent prompts, workflows, gates and build
-  config). Changes there additionally require a code-owner review. The applied
-  branch rulesets are mirrored under
+- **Branch rulesets.** The applied branch rulesets are mirrored under
   [`.abcd/work/rulesets/`](../.abcd/work/rulesets/).
 - **Volume cap.** At most three open pull requests per external author at a
   time — review attention is the scarce resource this protects.
@@ -58,7 +54,9 @@ inbound = outbound statement is the whole of it.
   steps locally, together with the fmt-check format gate, the lint-reviews,
   lint-issues, record-lint, issue-drift,
   docs-lint, check-attribution (the identity and trailers of the branch's
-  commits) and site-render gates and both tagged eval lanes (smoke,
+  commits), secrets-check and vulncheck (CI's gitleaks and govulncheck scans,
+  skipped loudly where they cannot run) and site-render gates and both tagged
+  eval lanes (smoke,
   evals-cold-reading, about five seconds each — the untagged test step compiles
   neither). Every Go step it makes runs on the toolchain `go.mod` declares,
   which is the one CI runs, and the format gate runs that toolchain's gofmt
@@ -86,7 +84,9 @@ inbound = outbound statement is the whole of it.
   provisions; with no banlist it warns loudly and lets the commit through),
   the commit-msg outbound check (it refuses a live agent-session URL or a tool's attribution footer in a commit message, through
   this checkout's own `abcd lint outbound`, built from `./cmd/abcd`, and refuses the commit when it cannot run
-  the check) and the pre-push receipt check: a push of a commit the remote does
+  the check; in this repository it also refuses a message that names an issue id with no `Resolves:` or `Refs:`
+  line declaring it, the message half of the RS004 gate, leaving merge commits to the range check)
+  and the pre-push receipt check: a push of a commit the remote does
   not hold yet needs a passing `make preflight` run on that commit with nothing
   uncommitted beside it, and the hook checks the receipt that run mints rather
   than running the preflight while the push holds its connection open. The

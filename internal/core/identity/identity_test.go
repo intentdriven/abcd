@@ -74,8 +74,8 @@ func writeHomeFile(t *testing.T, rel, body string) string {
 
 func TestCheck_Match(t *testing.T) {
 	isolate(t)
-	dir := gitRepo(t, "Alex Reppel", "alex@example.com")
-	writePin(t, dir, `{"name":"Alex Reppel","email":"alex@example.com"}`)
+	dir := gitRepo(t, "Alice", "alice@example.com")
+	writePin(t, dir, `{"name":"Alice","email":"alice@example.com"}`)
 	res, err := Check(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -88,7 +88,7 @@ func TestCheck_Match(t *testing.T) {
 func TestCheck_Mismatch(t *testing.T) {
 	isolate(t)
 	dir := gitRepo(t, "Test User", "test@example.com")
-	writePin(t, dir, `{"name":"Alex Reppel","email":"alex@example.com"}`)
+	writePin(t, dir, `{"name":"Alice","email":"alice@example.com"}`)
 	res, err := Check(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -96,14 +96,14 @@ func TestCheck_Mismatch(t *testing.T) {
 	if res.Status != StatusMismatch {
 		t.Fatalf("want StatusMismatch, got %v — %s", res.Status, res.Reason)
 	}
-	if res.Effective.Email != "test@example.com" || res.Record.Email != "alex@example.com" {
+	if res.Effective.Email != "test@example.com" || res.Record.Email != "alice@example.com" {
 		t.Fatalf("result did not carry both identities: %+v", res)
 	}
 }
 
 func TestCheck_NoRecord(t *testing.T) {
 	isolate(t)
-	dir := gitRepo(t, "Alex Reppel", "alex@example.com")
+	dir := gitRepo(t, "Alice", "alice@example.com")
 	// no record written
 	res, err := Check(dir)
 	if err != nil {
@@ -142,18 +142,18 @@ func TestCheck_IgnoresACommittedPin(t *testing.T) {
 // its root commit, and it wins over their machine-wide default there.
 func TestCheck_RepoRecordOutranksTheMachineRecord(t *testing.T) {
 	isolate(t)
-	dir := gitRepo(t, "Alex at Work", "alex@work.example")
+	dir := gitRepo(t, "Alice at Work", "alice@work.example")
 	// isolate blanks GIT_AUTHOR_*, which git reads as an empty ident.
-	t.Setenv("GIT_AUTHOR_NAME", "Alex at Work")
-	t.Setenv("GIT_AUTHOR_EMAIL", "alex@work.example")
+	t.Setenv("GIT_AUTHOR_NAME", "Alice at Work")
+	t.Setenv("GIT_AUTHOR_EMAIL", "alice@work.example")
 	runGitT(t, dir, "commit", "--allow-empty", "-m", "root", "--no-verify")
 	sha := gittest.RootCommit(t, dir)
-	writePin(t, dir, `{"name":"Alex Reppel","email":"alex@example.com"}`)
+	writePin(t, dir, `{"name":"Alice","email":"alice@example.com"}`)
 	ref, err := repoRecordRef(sha)
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeHomeFile(t, ref.Rel, `{"name":"Alex at Work","email":"alex@work.example"}`)
+	writeHomeFile(t, ref.Rel, `{"name":"Alice at Work","email":"alice@work.example"}`)
 	res, err := Check(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -188,7 +188,7 @@ func TestCheck_RefusedRecordFailsClosed(t *testing.T) {
 			}
 		},
 		"incomplete": func(t *testing.T, p string) {
-			if err := os.WriteFile(p, []byte(`{"name":"Alex"}`), 0o600); err != nil {
+			if err := os.WriteFile(p, []byte(`{"name":"Alice"}`), 0o600); err != nil {
 				t.Fatal(err)
 			}
 		},
@@ -196,8 +196,8 @@ func TestCheck_RefusedRecordFailsClosed(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			isolate(t)
 			t.Setenv("HOME", t.TempDir())
-			dir := gitRepo(t, "Alex Reppel", "alex@example.com")
-			p := writeHomeFile(t, MachineRecordRef().Rel, `{"name":"Alex Reppel","email":"alex@example.com"}`)
+			dir := gitRepo(t, "Alice", "alice@example.com")
+			p := writeHomeFile(t, MachineRecordRef().Rel, `{"name":"Alice","email":"alice@example.com"}`)
 			mutate(t, p)
 			if _, err := Check(dir); err == nil || !errors.Is(err, ErrRecordRefused) {
 				t.Fatalf("want ErrRecordRefused, got %v", err)
@@ -210,13 +210,13 @@ func TestCheck_RefusedRecordFailsClosed(t *testing.T) {
 // a symlinked user-level home, as the rules loader refuses rules.json there.
 func TestCheck_RecordBehindASymlinkedHomeIsRefused(t *testing.T) {
 	isolate(t)
-	dir := gitRepo(t, "Alex Reppel", "alex@example.com")
+	dir := gitRepo(t, "Alice", "alice@example.com")
 	home := os.Getenv("HOME")
 	real := filepath.Join(t.TempDir(), "real-home")
 	if err := os.MkdirAll(real, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(real, "identity.json"), []byte(`{"name":"Alex Reppel","email":"alex@example.com"}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(real, "identity.json"), []byte(`{"name":"Alice","email":"alice@example.com"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(real, filepath.Join(home, filepath.FromSlash(abcdhome.Rel()))); err != nil {
@@ -241,7 +241,7 @@ func writeRepoPin(t *testing.T, root, body string) {
 func TestCheck_UnsetIdentity(t *testing.T) {
 	isolate(t)
 	dir := gitRepo(t, "", "") // no user.name/email anywhere
-	writePin(t, dir, `{"name":"Alex Reppel","email":"alex@example.com"}`)
+	writePin(t, dir, `{"name":"Alice","email":"alice@example.com"}`)
 	res, err := Check(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -258,8 +258,8 @@ func TestCheck_UnsetIdentity(t *testing.T) {
 // StatusOK, letting a mis-attributed commit through.
 func TestCheck_AuthorEnvOverride(t *testing.T) {
 	isolate(t)
-	dir := gitRepo(t, "Alex Reppel", "alex@example.com") // config matches the pin
-	writePin(t, dir, `{"name":"Alex Reppel","email":"alex@example.com"}`)
+	dir := gitRepo(t, "Alice", "alice@example.com") // config matches the pin
+	writePin(t, dir, `{"name":"Alice","email":"alice@example.com"}`)
 	t.Setenv("GIT_AUTHOR_NAME", "Test User")
 	t.Setenv("GIT_AUTHOR_EMAIL", "test@example.com")
 	res, err := Check(dir)
@@ -282,7 +282,7 @@ func recordHome(t *testing.T) string {
 
 func TestWriteRecord_RoundTrip(t *testing.T) {
 	home := recordHome(t)
-	want := Record{Name: "Alex Reppel", Email: "alex@example.com"}
+	want := Record{Name: "Alice", Email: "alice@example.com"}
 	if err := WriteRecord(home, MachineRecordRef(), want); err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +308,7 @@ func TestWriteRecord_RepoScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Record{Name: "Alex at Work", Email: "alex@work.example"}
+	want := Record{Name: "Alice at Work", Email: "alice@work.example"}
 	if err := WriteRecord(home, ref, want); err != nil {
 		t.Fatal(err)
 	}
@@ -322,7 +322,7 @@ func TestWriteRecord_RepoScope(t *testing.T) {
 }
 
 func TestWriteRecord_RequiresBothFields(t *testing.T) {
-	if err := WriteRecord(recordHome(t), MachineRecordRef(), Record{Name: "Alex"}); err == nil {
+	if err := WriteRecord(recordHome(t), MachineRecordRef(), Record{Name: "Alice"}); err == nil {
 		t.Fatal("want error when email is missing")
 	}
 }
@@ -343,10 +343,10 @@ func TestWriteRecord_RefusesAMachineIdentity(t *testing.T) {
 func TestWriteRecord_RejectsUnpinnableChars(t *testing.T) {
 	home := recordHome(t)
 	for _, r := range []Record{
-		{Name: `Alex "the dev"`, Email: "alex@example.com"}, // double-quote
-		{Name: `back\slash`, Email: "alex@example.com"},     // backslash
-		{Name: "line\nbreak", Email: "alex@example.com"},    // control char
-		{Name: "Alex", Email: `a"x@example.com`},            // quote in email
+		{Name: `Alice "the dev"`, Email: "alice@example.com"}, // double-quote
+		{Name: `back\slash`, Email: "alice@example.com"},      // backslash
+		{Name: "line\nbreak", Email: "alice@example.com"},     // control char
+		{Name: "Alice", Email: `a"x@example.com`},             // quote in email
 	} {
 		if err := WriteRecord(home, MachineRecordRef(), r); err == nil {
 			t.Fatalf("want error for unpinnable record %+v", r)
@@ -407,9 +407,9 @@ func TestBlocks(t *testing.T) {
 // as matching while every commit was authored by someone else.
 func TestCheck_AuthorRoleConfigOutranksUser(t *testing.T) {
 	isolate(t)
-	dir := gitRepo(t, "Alex Reppel", "alex@example.com") // user.* matches the pin
+	dir := gitRepo(t, "Alice", "alice@example.com") // user.* matches the pin
 	runGitT(t, dir, "config", "author.name", "Test User")
-	writePin(t, dir, `{"name":"Alex Reppel","email":"alex@example.com"}`)
+	writePin(t, dir, `{"name":"Alice","email":"alice@example.com"}`)
 	res, err := Check(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -417,7 +417,7 @@ func TestCheck_AuthorRoleConfigOutranksUser(t *testing.T) {
 	if res.Status != StatusMismatch {
 		t.Fatalf("want StatusMismatch (author.name outranks user.name), got %v — %s", res.Status, res.Reason)
 	}
-	if res.Effective.Name != "Test User" || res.Effective.Email != "alex@example.com" {
+	if res.Effective.Name != "Test User" || res.Effective.Email != "alice@example.com" {
 		t.Fatalf("effective author did not follow git's author.name precedence: %+v", res.Effective)
 	}
 }

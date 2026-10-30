@@ -413,7 +413,9 @@ func onlyOpenQuestionsFails(r intent.ReadyResult) (intent.ReadyCheck, bool) {
 // shippedReviewMove renders a shipped intent's next move from its review state,
 // read by the intent store's one reader of the review marker
 // (itd-2609150819445595): owed names the receipt and the re-emit; a record with
-// no marker owes the review too, and the re-emit mints its receipt; a
+// no marker owes the review too, and the re-emit mints its receipt, unless its
+// Audit Notes read as a hand-written audit (intent.HandAudited: they name the
+// criteria and give a verdict on them), which owes nothing and has no receipt; a
 // dead-lettered review is unreviewed and says why; an ingested one owes nothing.
 // The re-emit command is the reader's own (intent.ReEmitCommand), built from
 // verbIntentAudit.
@@ -423,6 +425,8 @@ func shippedReviewMove(r intent.ReviewEntry) string {
 		return "fidelity review owed, receipt " + r.ReceiptID + " — re-emit the request with `" + r.ReEmit + "`"
 	case intent.ReviewNone:
 		return "fidelity review owed, no receipt yet — `" + r.ReEmit + "` mints one and emits the request"
+	case intent.ReviewHandAudited:
+		return "none: shipped; audited by hand in the record's Audit Notes, with no reviewer's marker"
 	case intent.ReviewDeadLetter:
 		reason := r.Reason
 		if reason == "" {

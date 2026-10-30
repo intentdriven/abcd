@@ -35,7 +35,7 @@ func TestShellDomainIsGeneratedFromTheGuardRegistry(t *testing.T) {
 		t.Fatalf("the %s domain ships dormant: it would teach only on *%s", ShellDomain, ShellDomain)
 	}
 	reg := guard.Defaults()
-	if want := append(reg.Lessons(), reg.ScriptLesson(), reg.ShellCLesson()); !reflect.DeepEqual(d.Rules, want) {
+	if want := append(reg.Lessons(), reg.ScriptLesson(), reg.ShellCLesson(), reg.DeleteLesson()); !reflect.DeepEqual(d.Rules, want) {
 		t.Errorf("%s rules drifted from the guard registry:\n got %q\nwant %q", ShellDomain, d.Rules, want)
 	}
 	if want := reg.RecallTerms(); !reflect.DeepEqual(d.Recall, want) {
@@ -83,9 +83,9 @@ func TestShellDomainFollowsRegistryEdits(t *testing.T) {
 	if len(grown.Rules) != len(base.Rules)+1 {
 		t.Fatalf("adding an entry gave %d rules, want %d", len(grown.Rules), len(base.Rules)+1)
 	}
-	// The entries' lessons come first, in id order; the guard's script rule
-	// and its -c script rule close the list.
-	if last := grown.Rules[len(grown.Rules)-3]; !strings.Contains(last, "(zz-shred-disk)") || !strings.Contains(last, "Shredding cannot be undone.") {
+	// The entries' lessons come first, in id order; the guard's script rule,
+	// its -c script rule and its delete-proof rule close the list.
+	if last := grown.Rules[len(grown.Rules)-4]; !strings.Contains(last, "(zz-shred-disk)") || !strings.Contains(last, "Shredding cannot be undone.") {
 		t.Errorf("the added entry's lesson is missing or out of id order: %q", last)
 	}
 	if !holds(grown.Recall, "shred") {
