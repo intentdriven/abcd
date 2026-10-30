@@ -250,7 +250,7 @@ func ownStrandedLine(subject string, ws []Withdrawal, loginKnown bool) string {
 			strings.Join(numbers(ws), ", "), subject)
 	}
 	return fmt.Sprintf("%s named by your holder id on %s stay withdrawn: the reservation that first recorded them under your id was not pushed by your own GitHub account, "+
-		"so no copy of yours acts on them, and their owner re-arms them by hand", strings.Join(numbers(ws), ", "), subject)
+		"so no copy of yours acts on them, and each pull request's author re-arms it by hand", strings.Join(numbers(ws), ", "), subject)
 }
 
 // actor is who an act's commits are written as: the person, their holder,
@@ -1277,7 +1277,7 @@ func otherLiveRelease(root, id string, now time.Time, self Self) error {
 		}
 		lapseEnds := ""
 		if !notEnded {
-			lapseEnds = fmt.Sprintf(", or, from %s, at %s's next act from any copy while the cut's tip is their own newest push", stamp(r.EffectiveExpiry.Add(TakeoverMargin)), holder)
+			lapseEnds = fmt.Sprintf(", or, from %s, at the next act of a copy of %s while the cut's tip is their own newest push", stamp(r.EffectiveExpiry.Add(TakeoverMargin)), holder)
 		}
 		return backOff("%s is still being cut by %s: its lease lapsed at %s%s, but it still holds merges withdrawn or admitted, and one release is cut at a time; "+
 			"it ends when %s renews it (abcd reserve %s) and finishes the cut, or ends it (abcd reserve %s --release)%s; %s",
@@ -1381,7 +1381,7 @@ func (r ReleaseWithdrawals) Lines() []string {
 			"what it withdrew until %s ends it (abcd reserve %s --release, after --take-over from another copy of theirs) or its tag is on %s",
 			r.Subject, stamp(r.LapsedAt), claimedName(r.NotEnded, r.HolderClaimed), claimedName(r.NotEnded, r.HolderClaimed), r.Subject, Remote))
 	case r.Lapsed:
-		out = append(out, fmt.Sprintf("%s's lease lapsed at %s before the release ended: it holds no merge now, and from %s the next act of a copy of %s's "+
+		out = append(out, fmt.Sprintf("%s's lease lapsed at %s before the release ended: it holds no merge now, and from %s the next act of a copy of %s "+
 			"ends it and re-arms what it withdrew, while the cut's tip is their own newest push (else their --release ends it); %s renews it from the cutting copy first (abcd reserve %s) if the cut goes on",
 			r.Subject, stamp(r.LapsedAt), stamp(r.LapsedAt.Add(TakeoverMargin)), claimedName(r.Holder, r.HolderClaimed), claimedName(r.Holder, r.HolderClaimed), r.Subject))
 	}

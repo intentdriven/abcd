@@ -449,7 +449,8 @@ func TestALapsedReleaseStillBeingCutBlocksASecondRelease(t *testing.T) {
 	f.reset()
 	_, err := b.do(Request{Record: "rel-v0.17.0"})
 	if !errors.Is(err, ErrBackOff) || !strings.Contains(err.Error(), "rel-v0.16.0 is still being cut by "+a.holderID()) ||
-		!strings.Contains(err.Error(), "abcd reserve rel-v0.16.0 --release") || len(f.mutations()) != 0 {
+		!strings.Contains(err.Error(), "abcd reserve rel-v0.16.0 --release") || len(f.mutations()) != 0 ||
+		!strings.Contains(err.Error(), "at the next act of a copy of "+a.holderID()+" ("+SenderClaimed+") while the cut's tip") || strings.Contains(err.Error(), ")'s") {
 		t.Fatalf("B's reserve = %v, mutations %v; want a back-off naming how rel-v0.16.0 ends", err, f.mutations())
 	}
 	if f.pr(11).method != "SQUASH" {

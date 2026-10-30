@@ -83,7 +83,8 @@ func TestAnEntryUnderACopysKeptIDAnotherLoginFirstRecordedIsNeverThatCopysOwn(t 
 			if !rw.Ended || slices.Contains(numbers(rw.Due), "#14") || !slices.Contains(numbers(rw.Stranded), "#14") {
 				t.Fatalf("the second copy's listing = %+v; want #14 stranded, never due", rw)
 			}
-			if l := strings.Join(rw.Lines(), "\n"); strings.Contains(l, "only a copy of "+studioID) || !strings.Contains(l, "#14 named by your holder id on rel-v0.16.0 stay withdrawn") {
+			if l := strings.Join(rw.Lines(), "\n"); strings.Contains(l, "only a copy of "+studioID) || !strings.Contains(l, "#14 named by your holder id on rel-v0.16.0 stay withdrawn") ||
+				!strings.Contains(l, "each pull request's author re-arms it by hand") || strings.Contains(l, "their owner") {
 				t.Fatalf("the second copy's lines = %q; want #14 named as under its own id, never as another's", rw.Lines())
 			}
 			if _, err := SettleEndedReleases(b.dir, b.opts()); err != nil {
