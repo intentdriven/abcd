@@ -383,6 +383,84 @@ The product thinker's walk and sign-off of 2026-10-23 (dcn-2610230805325396):
 
 - **Signed off as written, with one wording fix.** The eleven stories stand, the technical list is accepted, and the press release, grounds, scope conditions and build order are signed off. The press release's second part now names the kinds of choice decided overnight and listed for the morning, not those still raised with a person, matching the product thinker's ruling of 2026-10-22 that such trade-offs are decided and listed; the product thinker signed off the corrected text.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in
+the [autonomous-loops SOTA note](../../research/notes/2026-10-23-autonomous-loops-sota.md).
+The format and re-injection were surveyed on 2026-10-18 for the first slice
+(itd-2610180912189125, its `## SOTA`) and the central view on 2026-10-17; this
+pass covers crash safety, the wake, the state vocabulary and the away report.
+
+- **Crash safety is file-system dependent, not a sequence.** Pillai and
+  colleagues found 60 crash vulnerabilities across eleven widely used systems
+  because application protocols "depend on subtle behaviors of the underlying
+  file system" that differ across file systems (OSDI 2014). The practitioner
+  summary: POSIX's rename atomicity "only applies to normal operation, not to
+  crashes", the parent directory needs its own fsync, and macOS needs
+  `F_FULLFSYNC` to reach the disk (Dan Luu). The decision's sequence is the
+  right floor; the lab the decision names is what confirms it.
+- **The host's stop refusal has a cap and a blind spot.** A Stop hook's block
+  continues the turn at most eight times in a row, reset by each tool call
+  and adjustable with `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`;
+  `StopFailure` fires instead of Stop on an API error (rate limit, overload,
+  authentication) and its output is ignored; the Stop input lists pending
+  `session_crons` and `background_tasks` (Claude Code hooks).
+- **The host's wakes die with the process.** Session-scoped tasks fire only
+  while the session runs and is idle, run late by up to half their gap, expire
+  after seven days, and a self-paced loop whose wake comes due while the
+  process is down does not fire (Claude Code scheduled tasks). A wake written
+  to the checklist as a time is the record; the host's cron is only the device.
+- **A state vocabulary to key on, many to one.** A2A's task states
+  (`working`; `input-required` and `auth-required` as interrupted,
+  non-terminal states; `completed`, `failed`, `canceled`, `rejected` as
+  terminal) can be mapped onto the record's decided states: working to
+  `working`, waiting to `input-required` or `auth-required` (though abcd's
+  waiting also covers waiting on something outside, not only a person), and
+  stopped to nothing, since abcd's stopped is not terminal; the mapping is
+  lossy, and whether to rename is the first question below; the host's
+  `claude agents --json` reports `working`, `blocked`, `done`, `failed`,
+  `stopped` and is the supported read, while its state file "is not a stable
+  interface" (A2A 1.0; Claude Code agent view).
+- **The pre-run sweep and the morning lists have precedents.** The host's
+  cloud projects advise sending "one small piece of the real work" before a
+  batch and group threads as "Waiting on you"; Temporal's pause (pre-release:
+  invite-only on Temporal Cloud, Server v1.30.0 behind a flag self-hosted)
+  records identity, reason and request id; GitHub's deployment gate holds a
+  job in "Waiting" until a run is cancelled at the 35-day workflow-run limit,
+  which includes "time spent on waiting and approval" (the 30-day failure is
+  the Enterprise Server 3.5 page's; the current cloud pages do not state a
+  limit) (host, Temporal and GitHub docs).
+- **The phone can be reached by standards.** Web Push stores a message for a
+  `TTL` with a 4096-byte payload floor (RFC 8030), and iOS 16.4 delivers it to
+  home-screen web apps without a developer account (WebKit blog): the push
+  carries the stop's id, the page fetches the options.
+
+**Path 2**: the checklist as decided (JSON, temp-fsync-rename-dir-fsync,
+last-good copy, validate on read), written by the canonical `fsutil` writer
+with an `F_FULLFSYNC` option on macOS and proved by the kill-and-reboot lab;
+a proposal, against the recorded state decision (working; waiting; stopped),
+to map the checklist's states onto A2A's where they fit (working to working,
+waiting to input-required or auth-required, stopped with no A2A equivalent)
+so the checklist line, the central-view line and a later bridge share words,
+the renaming itself being the first question at the end of this section; the host's `claude agents --json` as the
+instant local tier where it exists, never its state file; a wake recorded as a
+time in the checklist with the host's cron as the device. The Web Push sender
+is a Go dependency in the relay, not the binary, and needs explicit sign-off;
+a relay-notified phone sits against the local-only stance on agent messaging,
+and the fit-challenge before the build must say where that stance ends. The
+independent fit-challenge is still owed before the build, and the questions below are kept for it.
+
+Questions this pass raised for the fit-challenge before the build. They are kept here, not under Open Questions, so they do not hold a build the record already rules ready:
+
+- Whether the checklist's state names adopt A2A's task-state
+  vocabulary where it fits (working; input-required or auth-required for
+  waiting; no A2A state for stopped) so the central view and a later host or
+  protocol bridge share one set of words, which revisits the recorded state
+  decision, or keep the decided names and map at the bridge.
+- Whether the canonical writer gains an `F_FULLFSYNC` option
+  on macOS for the checklist and the away record, and whether the
+  kill-mid-write lab also pulls power rather than only killing the process.
+
 ## Open Questions
 
 _All resolved at the product thinker's walk and sign-off of 2026-10-23 (dcn-2610230805325396)._

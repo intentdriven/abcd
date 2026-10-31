@@ -70,8 +70,24 @@ interview walks each one.
   prompt is submitted, **then** the prompt passes through and the person is
   told the local-model check did not run.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [security-isolation SOTA note](../../research/notes/2026-10-23-security-isolation-sota.md).
+
+- **The prompt seam can hold and cannot rewrite**: a `UserPromptSubmit` hook "Blocks the prompt, so it never reaches Claude" on exit 2 or `decision: "block"`, and "can't replace the prompt; it only injects `additionalContext` alongside it"; the default hook timeout there is 30 seconds (Claude Code hooks). On this host "redact" is unavailable; "hold and tell" is.
+- **The prompt is the smaller channel**: "Your prompts and the files Claude reads are transmitted to the Anthropic API or your configured provider with or without a sandbox"; a prompt-only check leaves file reads and tool results unchecked, so "nothing leaves this machine unchecked" should read "no prompt leaves unchecked" (Claude Code sandbox environments).
+- **Rule-based detection misses what matters most, and small models do not close the gap**: REDACT (June 2026) recall on HIGH-sensitivity categories Presidio (a candidate opt-in adapter) 0.07, GLiNER 0.42, OpenAI's Privacy Filter 0.57, GPT-4.1 0.74, Claude Sonnet 4.6 0.77; partial micro-F1 0.195 / 0.320 / 0.512 / 0.597 / 0.636. PIIBench (April 2026) put every detector under F1 0.14. The two rank differently and agree that a local-only gate cannot carry the promise (arXiv 2606.19881; arXiv 2604.15776).
+- **The earlier local survey's hybrid figure stands** (deterministic ~69%, hybrid ~83%, a practitioner benchmark): deterministic layer as the gate, local model as the assist (2026-08-22 note).
+- **Presidio**, a candidate opt-in adapter, is regex, checksum and NER recognisers in Python, "transitioning to a community-owned project", with "no guarantee that Presidio will find all sensitive information" (Presidio docs).
+- **Fail-open at the hook is a configuration choice, not a host constraint**: the default `UserPromptSubmit` timeout is 30 seconds and settable per hook; a hook that reaches it is cancelled and the prompt proceeds unless the hook sets `onFailure: "block"` (host v2.1.295 or later), which blocks the prompt on failure or timeout. A blocked prompt's text is still written to the local transcript (the block message ends with "Original prompt:" unless the hook suppresses it), which a privacy-motivated hold should disclose (Claude Code hooks).
+
+**Path 2: native, deterministic-first, hold-and-tell at the hook, with the local model as the opt-in adapter behind the existing scanner seam** (adr-22's shape). The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
+- (SOTA 2026-10-23) **The host answers "redact or hold" with hold**: the record should say so by capability ("where the host lets a hook hold a prompt") rather than by harness.
+- (SOTA 2026-10-23) **Whether the promise is narrowed to prompts**, since file reads and tool results leave unchecked on every host surveyed.
+- (SOTA 2026-10-23) **Fail-closed or fail-open at the hook**: the host offers both (`onFailure: "block"`, or the default that lets the prompt through); the owed ADR chooses, and hold-within-budget is a latency discipline rather than the only fail-closed posture. A held prompt's text still reaches the local transcript either way.
 - **Redact or hold**: does a finding rewrite the prompt, or stop it and ask the
   person?
 - **Latency**: what delay per prompt the person accepts before the check is

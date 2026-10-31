@@ -60,6 +60,60 @@ Ruled by the product thinker on 2026-09-21, in the interview that filed and plan
 2. The interface is the host's too, so the two are compared like for like.
 3. Turned on per judgement type, never all at once.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in
+the [models, prompts and measurement SOTA note](../../research/notes/2026-10-23-models-prompts-measurement-sota.md);
+what Jev is and why shadow first are in the
+[Jev and model-routing pass](../../research/notes/2026-09-22-jev-and-model-routing-sota.md).
+
+- **An agreement number is a property of the protocol.** Scale, retained
+  cases, abstention handling and pooling determine what the figure estimates;
+  protocol choice alone moved one benchmark's accuracy from 0.551 to 0.899 and
+  kappa across zero with no verdict changed; for binary verdicts the common
+  correlations are one statistic, and Cohen's kappa differs from them only by
+  a marginal-mismatch factor, so reporting several adds nothing: report kappa
+  with the protocol and the marginals (Rao and Callison-Burch, arXiv
+  2606.00093, 2026).
+- **Raw agreement overstates.** Across 21 judges and about 541,000
+  judgements, exact match exceeded kappa by 33–41 points on MT-Bench, and two
+  production judges with test–retest reliability above 0.95 still showed
+  position bias above 0.10 (Norman, Rivera and Hughes, arXiv 2606.19544,
+  2026).
+- **Jev's calibration is asserted, not shown**: an unpublished training
+  method, no reliability diagram, no ECE. The nearest outside test, option
+  scoring on open Qwen2.5 models, found base models near-calibrated, instruct
+  models overconfident, and temperature scaling on 600 labelled cases cutting
+  ECE from 0.10 to 0.03 without changing accuracy; the speed advantage narrows
+  as the state grows (Dibia, 2026).
+- **A vendor-run comparison** (900 cases, September 2026) found Jev calibrated
+  on closed classification (error 0.032 and 0.096), poorly calibrated on
+  rubric scoring (0.284; lowest human correlation of six models) and seven
+  points behind frontier models on 77-way routing — vendor evidence, and the
+  page's method for the 0.284 figure is an unfinished TODO with a placeholder
+  link to its test materials, so that figure is a hint only; the direction
+  still says `choose` and yes/no types go first and `score` types last.
+- **ECE is paired with Brier**, since ECE alone rewards reporting the base
+  rate (2026 preprints, snippets only).
+- **Contrary to nothing ruled**: decisions 1–3 stand; this only shapes what
+  the harvest reports.
+
+**Path 2**, as planned: the one interface is the seam, Jev the first adapter
+behind it, a log-probability scorer the second. The harvest reports, per type,
+kappa beside percentage agreement with the protocol stated, ECE over ten bins
+and Brier, counts and probability bands, and for `choose` agreement under a
+permuted option order; the shadow pairs double as the labelled set a
+temperature scale for the second candidate is fitted on, held out from the
+pairs it is scored on. No dependency. This pass came after the build was planned and had no fit-challenge before
+the intent shipped, so it stands as notes for a later revision.
+
+Questions this pass raised, kept as notes for a later revision of the shipped work:
+
+- Whether the `score` kind is held back from the first
+  shadow configuration altogether, given that rubric scoring is where the
+  first candidate measured weakest, or run in shadow precisely to measure
+  that.
+
 ## Open Questions
 
 _None open._

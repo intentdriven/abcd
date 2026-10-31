@@ -56,6 +56,58 @@ Typed links: builds on itd-2609212137128014 (the lab verbs); held to the discipl
 
 > _Required (the itd-1 discipline): add at least one Given-When-Then bullet describing the verifiable bar for "shipped" before this draft can be planned._
 
+## SOTA
+
+Surveyed on 2026-10-23. Repeats, power and the "re-runnable, not
+reproducible" stance for a lab's measures are in the
+[model-matrix SOTA note](../../research/notes/2026-10-16-model-matrix-sota.md).
+The durable step record a long unattended run needs is in the
+[autonomous loops SOTA note](../../research/notes/2026-10-23-autonomous-loops-sota.md).
+
+- **The intention the facilitator wrote by hand (hand step 3) has a standard
+  shape.** AsPredicted's pre-registration asks eight questions: whether any
+  data has been collected already; the main question or hypothesis; the
+  dependent variables and how they are measured; the conditions; exactly
+  which analyses; how outliers and exclusions are handled; what determines
+  the sample size; and anything else, such as exploratory analyses
+  ([AsPredicted example form](https://aspredicted.org/kv692.pdf)). The record's
+  intention already covers hypothesis, falsifiers, measures and stop
+  conditions. The form adds three fields a drafted intention should carry:
+  "has the world already been looked at" (which matters most for a lab in the
+  real project, hand step 4), the analysis fixed in advance, and the exclusion
+  rule.
+- **End-to-end automated research works poorly without a person at the
+  stages.** An independent evaluation of an "AI Scientist" system found that
+  "42% of experiments failed due to coding errors", that "some papers
+  contained hallucinated numerical results", and that its literature check
+  "often misclassif[ied] established concepts … as novel"
+  ([Beel, Kan and Baumgart, arXiv 2502.14297](https://arxiv.org/abs/2502.14297)).
+  Agent Laboratory reports that "human involvement, providing feedback at
+  each stage, significantly improves the overall quality of research"
+  ([Schmidgall et al., arXiv 2501.04227](https://arxiv.org/abs/2501.04227)).
+  This informs the "what runs unattended" question, which stays open until
+  the downstream harvest per decision 1: the evidence comes from
+  paper-writing systems, not pinned-version lab runs, and it suggests two
+  human gates, confirming the intention and adopting the harvest, with a
+  failed or empty stage reporting itself loudly rather than producing a
+  result. The product thinker's wish for labs "ideally automated, too" is
+  the tension the harvest has to settle.
+- **The state-of-the-art pass (hand step 2) is the stage most prone to a
+  confident wrong answer.** The novelty misclassification above is that
+  failure. An automated lab keeps the pass's cite-only-what-was-opened rule
+  and its "not verified" list.
+- **A harvested number needs its repeats stated.** The model-matrix note
+  finds spread within one model-and-harness pairing larger than spread
+  between pairings, so a lab's stop condition names a repeat count from a
+  pilot, not a single run.
+
+**Path 2**: native, on the shipped lab verbs, with the intention drafted as a
+pre-registration-shaped record the person confirms, the run's stages as
+durable steps, and two human gates (intention, adoption) as the default the
+evidence suggests, to be confirmed after the downstream harvest per
+decision 1. No dependency. The independent fit-challenge runs at plan time,
+after the downstream lab's harvest, per decision 1.
+
 ## Open Questions
 
 - Which of the nine hand steps abcd drafts for the person to confirm, and which it performs.

@@ -94,11 +94,72 @@ edits anything beyond a pin is synced rather than left alone.
 - **Given** a landed commit, **when** the attribution gate reads it, **then** the person is author and committer, the message names the bot and the workflow, it carries `Assisted-by: None`, and the gate's script is unchanged.
 - **Given** the intent is proposed for shipping, **when** its record is read, **then** it carries a security review of the workflow and its script (M3), and adr-2609292116133348 or its successor records the widened bound.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in
+the [forge, CI and merge SOTA note](../../research/notes/2026-10-23-forge-ci-merge-sota.md).
+
+- **The two-workflow split is the documented pattern, and the artefact
+  boundary is the seam**: GitHub Security Lab's "preventing pwn requests"
+  runs untrusted code under `pull_request`, hands results on as artefacts
+  that "are themselves untrusted", and lets a privileged `workflow_run`
+  workflow consume them as data; GitHub's hardening guide says such
+  workflows "must not explicitly check out untrusted code".
+- **zizmor flags the privileged trigger regardless**: `dangerous-triggers`
+  covers `pull_request_target`, `workflow_run` and (since v1.31.0)
+  `issue_comment`; `artipacked` wants `persist-credentials: false`. A
+  finding on a deliberate privileged trigger is waived on the record, not
+  designed away.
+- **The credential's shape**: `actions/create-github-app-token` mints a
+  one-hour installation token, revokes it in its post step by default, and
+  narrows it with `permission-<name>` inputs; the intent mints and revokes in
+  shell per CG1, so the action is cited for the lifetime and narrowing the
+  shell mint must match, not as a proposal to adopt it. GitHub states that apart from
+  `workflow_dispatch` and `repository_dispatch`, "other `GITHUB_TOKEN`-triggered
+  events do not create workflow runs at all", which is iss-209's dead end in
+  the forge's words.
+- **Where the secrets are decides the trigger, and one case is undocumented**:
+  "When a Dependabot event triggers a workflow, the only secrets available to
+  the workflow are Dependabot secrets", with a read-only `GITHUB_TOKEN`; the
+  same page names `pull_request_target` as its two-step route and never
+  mentions `workflow_run`. Whether a `workflow_run` started by a
+  Dependabot-triggered run counts as a Dependabot event (Dependabot secrets,
+  read-only token) is undocumented in the pages read and is settled by a
+  small experiment before the trigger is chosen (prefer the experiment);
+  `pull_request_target` is rejected because zizmor and the Security Lab both
+  name it as the dangerous trigger. Dependabot's github-actions ecosystem
+  reaches `.github/workflows` and a root `action.yml` only.
+- **Renovate reaches the template but lands as a bot**: its regex custom
+  manager matches any file through `managerFilePatterns`, so a `.tmpl` under
+  `internal/` is updatable in the same pull request; run as a GitHub App with
+  `platformCommit` (the default on GitHub), "GitHub determines the git author
+  string" and `gitAuthor` is ignored. So a hosted Renovate bump is
+  bot-authored and still needs this repository's re-authoring; only a
+  self-hosted Renovate with `gitAuthor` set to the person avoids it, at the
+  cost of a new tool, runner and credential.
+
+**Path 2**: a native workflow shaped to the Security Lab pattern, with the
+template diff crossing the artefact boundary as data and the push job holding
+a one-hour App token narrowed to `contents: write` and `workflows: write`,
+because the replayed commit touches `.github/workflows/` and GitHub lists the
+Workflows permission as an additional permission on the refs and contents
+endpoints, so a push with `contents: write` alone is refused. Renovate
+stays the structural alternative the product thinker may still choose; it
+needs explicit sign-off as a new tool and app and does not remove the
+re-authoring step. The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - **One workflow or two**: extend the shipped `dependency-reauthor.yml`, which runs on `pull_request` in one job and reads Dependabot secrets, or add a second workflow. The answer sets the trigger (`pull_request` or `workflow_run`), whether the compute and push jobs are new jobs beside the shipped one, which secret store the App credentials must sit in for that trigger (to be confirmed against the platform's documentation), and so which concurrency key applies.
 - **One commit or two on the bot's branch**: the shipped bound admits exactly one bot commit; the pin half needs the bot's workflow edit re-authored as the person and the template change beside it, as one replayed commit carrying both or as two.
 - **Renovate instead**: Renovate's regex custom manager can update a pin in the template in the same pull request as the workflow, the simpler structural fix recorded in iss-209's remedy grounds and rejected for now because it is a new tool and app that needs the person's sign-off. Put to the person here: adopt it, or build the workflow above.
+- (SOTA 2026-10-23) If Renovate is chosen, who re-authors its bot-authored
+  commit: the hosted app commits as the App (`platformCommit`), so the
+  shipped re-authoring would still run, with the bot's name added to its
+  declared set.
+- (SOTA 2026-10-23) Which zizmor finding the privileged trigger raises
+  (`dangerous-triggers` on `workflow_run`) and where its waiver is recorded,
+  given the acceptance criterion asks for no findings at the regular persona.
 
 ## Audit Notes
 

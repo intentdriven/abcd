@@ -86,8 +86,74 @@ dogfooding.
   solo-readiness decision by the product thinker (adopt, hold, or rerun),
   filed as a dated decision.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in
+the [models, prompts and measurement SOTA note](../../research/notes/2026-10-23-models-prompts-measurement-sota.md);
+repeats, power, blind review and the trial record are in the
+[model-matrix note](../../research/notes/2026-10-16-model-matrix-sota.md).
+
+- **Pair versus solo: it depends, and effort flips the answer.** Across
+  fifteen experiments, pairing moderately raised quality, moderately cut
+  duration and moderately increased effort, depending on task complexity and
+  the pair's expertise (Dybå, Arisholm, Sjøberg, Hannay and Shull, 2007; the
+  2009 journal meta-analysis was not opened). Duo's human minutes are effort
+  and must be counted, or the comparison omits half of one arm's cost.
+- **The best human-plus-AI trial measured the opposite of what people
+  felt**: 16 maintainers, 246 issues randomised per issue, AI-allowed issues
+  19 % slower against a predicted 24 % and a felt 20 % speedup (METR, 2025;
+  the blog post cited gives no interval).
+- **The follow-up could not staff the no-AI arm**: 30–50 % of developers
+  withheld tasks from it, pay and multi-agent timing confounded the rest, and
+  neither cohort's interval excluded zero (−18 %, −38 % to +9 %, n = 10;
+  −4 %, −15 % to +9 %, n = 47); METR lists fixed-task experiments and
+  developer-level randomisation as alternatives (METR, February 2026). The
+  "who plays duo's human" question is the binding constraint; a declared
+  human budget per arm is the honest form.
+- **The one vendor RCT is one task**: 55.8 % faster building an HTTP server
+  (Peng et al., 2023).
+- **Running the same item in both arms is a crossover, and carryover is the
+  threat nobody analyses**: of 67 crossover experiments in software
+  engineering, carryover was modelled in about 3 % (Frattini, Fucci and Vegas,
+  2024). Randomise items to arms; twin only where an item cannot be split;
+  name carryover wherever an item did run twice.
+- **Escalation quality is a two-by-two**, not a rate: the reliance
+  literature's constructs are fragmented across three views (Raees and
+  Papangelis, 2026), and the field's common objective form, scoring
+  over-reliance (accepting a wrong recommendation) and under-reliance
+  (rejecting a right one) separately, is its convention rather than that
+  paper's finding. Report both error cells, with a judge outside
+  the run proposing the "should have escalated" column.
+- **Power**: three-run comparisons rank the weaker arm first in 28–44 % of
+  resamples (matrix note); the report states the smallest difference it could
+  detect, as the matrix intent already requires.
+
+**Path 2**: the paired run is a matrix run whose cell is the mode (the matrix
+intent's decision 11 names this reuse), with its trial record, repeats
+sizing, blind review and per-item divergence listing; two metrics join the
+record for this use, human minutes per arm and tokens per arm (from
+itd-2609292107351737's metering), and escalation is scored as the two-by-two.
+Repeats sizing and a minimum detectable difference contradict the v1
+out-of-scope line on statistical machinery; that line stands until the
+product thinker revisits it, and a v1 that keeps honest counts still states
+its n and that no difference below the observed spread can be read. The seam
+is the trial record's mapping onto an Inspect sample and a Harbor trial. No
+dependency. The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
+- (SOTA 2026-10-23) Whether items are randomised to arms (METR's unit) with
+  twinned pairs only as the exception, which answers the matched-backlog
+  question below in favour of controlling carryover over controlling
+  difficulty.
+- (SOTA 2026-10-23) Whether human minutes per arm are declared as a budget
+  before the run and counted as effort in the report, and who judges the
+  "should have escalated" column when the maintainer was duo's human.
+- (SOTA 2026-10-23) Whether the v1 out-of-scope line on statistical machinery
+  (honest counts, no significance claims from n=1) is revisited to admit
+  repeats sizing and a stated minimum detectable difference, or v1 keeps
+  honest counts and states only its n and that no difference below the
+  observed spread can be read.
 - **Matched-backlog construction** — the same items run twice risk
   contamination (the second arm inherits knowledge via the record); twinned
   item pairs risk unequal difficulty. Which bias is cheaper to control?
