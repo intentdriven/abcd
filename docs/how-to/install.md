@@ -525,9 +525,12 @@ export PATH="$HOME/.local/bin:$PATH"
 ```
 
 Or let setup add it: abcd's setup, run at a terminal, asks whether to add that
-line to the file your shell reads (`~/.zshrc` for zsh; for bash,
-`~/.bash_profile` on macOS and `~/.bashrc` on Linux), names the file, and adds
-the line only if you say yes. It keeps a copy of the file in
+line to the file your shell reads, names the file, and adds the line only if
+you say yes. For zsh that is `.zshrc` in the folder `ZDOTDIR` names, or
+`~/.zshrc` when it names none; a `ZDOTDIR` outside your home folder is not
+edited. For bash on macOS it is the first of `~/.bash_profile`,
+`~/.bash_login` and `~/.profile` that exists, else a new `~/.bash_profile`; on
+Linux it is `~/.bashrc`. It keeps a copy of the file in
 `~/.abcd.noindex/backups/` first, never edits a file that is a link to one kept
 elsewhere, and abcd's uninstall takes the line out again. Open a new terminal
 afterwards.

@@ -412,7 +412,7 @@ by the bare render; orphan and stale-claim audits are deferred.
 
 Not built: a curator role on the `principle-distiller` agent (the agent and the
 disembark sub-verb it feeds ship; this role does not), ingest and ask run
-reports, any verb that writes user-scope memory outside the repo (the prompt recall only reads `~/.abcd.noindex/memory/`), and the automatic extraction of a
+reports, any verb that writes a curated page to the user-scope `~/.abcd.noindex/memory/` (the prompt recall reads the pages there, and the memory command's add verb writes only notes, to `~/.abcd.noindex/memory.json`, which the recall reads beside the repository's `.abcd/memory.json`), and the automatic extraction of a
 spec's modification grammar into the store at spec completion.
 
 ### Composition with adjacent surfaces

@@ -59,10 +59,13 @@ core and the packaging boundary holds.
   user-scope history store. There is no `abcd init` and no config get/set pair:
   install is the write path a person reaches for, and the bare invocation,
   its `--dry-run`, `--identity`, `--remote` and `--providers` modes, and `doctor`
-  are the read-only halves. Four further forms write: `uninstall` takes abcd back
-  out again, `remote apply` turns on the forge's own secret scanning, `connect`
-  configures a provider on this machine after one verification call, and
-  `credential --home` stores a verified key. The full surface is
+  are the read-only halves. Six further forms write: `uninstall` takes abcd back
+  out again, `remote apply` applies every differing setting of the GitHub
+  settings baseline the ahoy chapter lists, with abcd's own rulesets and their
+  mirrors, `connect` configures a provider on this machine after one
+  verification call, `credential --home` stores a verified key, `worktree add`
+  makes a worktree in the store, and `worktree prune` reclaims the merged, clean
+  ones, archiving their notes first. The full surface is
   the machine-checked table in
   [`04-surfaces/01-ahoy.md`](../04-surfaces/01-ahoy.md); this milestone is what
   install has to do, not the whole verb.
@@ -105,11 +108,11 @@ core and the packaging boundary holds.
   a prompt, the host's subagent dispatch runs it, abcd consumes the structured
   result. Native, CLI, API and MCP adapters are opt-in for an operator who wants
   abcd to reach a model directly; the default install needs no API keys.
-- **MCP front door** *(design target)*: a second thin door over the unchanged
-  core (adr-23). `internal/surface/` holds `cli`, the one door onto the core, and
-  `dashboard`, the network listener behind `abcd dashboard`; the second door is added
-  once a surface is worth exposing, and the core needs no rework for it because it
-  is transport-agnostic already.
+- **MCP front door** *(design target)*: another thin door over the unchanged
+  core (adr-23). `internal/surface/` holds `cli`, `dashboard`, the network listener
+  behind `abcd dashboard`, and `session`, the brief session relay's listener behind
+  `abcd session serve`; the MCP door is added once a surface is worth exposing, and
+  the core needs no rework for it because it is transport-agnostic already.
 
 ## 4. Native minimal spec engine
 

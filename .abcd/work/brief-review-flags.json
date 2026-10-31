@@ -322,14 +322,6 @@
       "applied": "2026-10-23T05:52:31Z"
     },
     {
-      "chapter": "22-site.md",
-      "sentence": "setup whose files are written or already current (a declined, refused or switched-off run carries no such note), since it asks the network nothing to learn which release is latest.",
-      "replacement": "setup whose files are written or already current (a run declined at the switch, refused before anything is written, or switched off carries no such note), since it asks the network nothing to learn which release is latest.",
-      "evidence": "internal/core/site/setup.go:512",
-      "commit": "fd4f4538ee4ca75cf3c346ab4679ed94571d99c0",
-      "applied": "2026-10-23T05:54:23Z"
-    },
-    {
       "chapter": "01-ahoy.md",
       "sentence": "nothing resolves it today)",
       "replacement": "the prompt router's recall reads them, read only)",
@@ -340,7 +332,7 @@
     {
       "chapter": "07-library.md",
       "sentence": "reports, user-scope memory outside the repo, and the automatic extraction of a",
-      "replacement": "reports, any verb that writes user-scope memory outside the repo (the prompt recall only reads `~/.abcd.noindex/memory/`), and the automatic extraction of a",
+      "replacement": "reports, any verb that writes a curated page to the user-scope `~/.abcd.noindex/memory/` (the prompt recall reads the pages there, and the memory command's add verb writes only notes, to `~/.abcd.noindex/memory.json`, which the recall reads beside the repository's `.abcd/memory.json`), and the automatic extraction of a",
       "evidence": "internal/core/recall/pages.go:56",
       "commit": "332aa6a2dfd2bdd4a4631188b528cd1002a8729f",
       "applied": "2026-10-23T06:27:37Z"
