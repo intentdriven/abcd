@@ -489,16 +489,41 @@ earlier version wrote wider is narrowed when abcd next writes it
                                  harvest; index.jsonl beside the homes registers them,
                                  never committed (itd-2609212137128014)
   worktrees/<root-sha>/<name>/   session and agent worktrees, never beside the checkout;
-                                 the build loop creates each lane's worktree here today
-                                 and ahoy reports one its repository no longer links;
-                                 the store's own verbs and its reclaim are NOT BUILT
+                                 the worktree store's add verb and the build loop
+                                 create them, its list verb lists the lane, its
+                                 prune verb reclaims the merged, clean ones, and ahoy
+                                 reports one its repository no longer links
                                  (itd-2609091014076309)
   notes/<root-sha>/              the store's notes archive: a reclaimed worktree's
-                                 .abcd/.work.local/, redacted, beside a manifest
-                                 (NOT BUILT — itd-2609091014076309)
+                                 .abcd/.work.local/, redacted, beside a manifest;
+                                 the worktree store's prune verb writes it before
+                                 it removes the worktree (itd-2609091014076309)
   runs/<root-sha>/               an autonomous run's shared state: the run log, one
                                  claim per record, one record per joined session
                                  (itd-2609221656373558)
+  dogfood/<root-sha>/            builds of the reviewed default branch for the
+                                 checkouts dogfood-roots lists, one per commit, with
+                                 the record of the last check (iss-2610070547057816)
+  ideas/<root-sha>/              the ideate verdicts kept private, owner-only; only
+                                 one the person says is public reaches the repository
+  away/<root-sha>/               the away mode's record and its lock, shared by every
+                                 working copy of the repository (itd-2610180912189125)
+  guard-allow/<root-sha>/        the one-shot allows the guard's allow verb writes,
+                                 each letting one exact line through the hook once,
+                                 and their log (iss-2610241239492159)
+  after-update/                  each repository's answer to the offer after an
+                                 update, <root-sha>/<tag>.json, and news-seen, the
+                                 newest release whose news this computer was shown
+  occupancy/                     one marker per running host session, naming the
+                                 checkout it started in; the record writers count
+                                 the live ones (iss-2610240859590333)
+  sessions/                      names.json, the machine's session-name register,
+                                 with names.json.lock beside it (itd-2610111707085098)
+  rules-state/                   the rules loader's per-session ledgers of the
+                                 domains already injected
+  dashboard/                     run.json naming the one dashboard server this
+                                 computer runs, seen.json the devices that opened it,
+                                 and the control.lock start and stop take
   inbox/                         reports managed repositories filed back to abcd,
                                  <received-stamp>-<sender-key>.md; promoted/ keeps
                                  the ones filed as captures (itd-2609221656361680)
@@ -552,6 +577,24 @@ earlier version wrote wider is narrowed when abcd next writes it
                                  on and the command the harness ran before abcd
                                  took the row; written on the status-line offer's
                                  consent, left by uninstall
+  holder-id                      this account's holder id, h_ and 32 hex characters,
+                                 minted once and kept: the opaque name its
+                                 reservations and announcements carry
+                                 (iss-2610290809526033)
+  load-wait.json                 the load gate's hold for the test stages, taken by
+                                 the waiter that opens, under .load-wait.lock
+  load-wait-race.json            the race gate's hold, the same way
+  shell-path.json                the record of the one line install added to a shell
+                                 startup file, so removing it takes out that line
+                                 alone (itd-2610240919030303)
+  tools.json                     the installed-tools record: the path and sha256 of
+                                 each program abcd installed, which it runs or
+                                 removes only while the bytes still match
+  identity.json                  the person's own commit identity on this machine,
+                                 {"name", "email"}, written by ahoy and read by the
+                                 committed pre-commit guard (itd-2610240918547728)
+  identity/<root-sha>.json       the identity for one repository, which wins over
+                                 identity.json there
   path-entry                     the abcd copy this machine owns, the one PATH binary a
                                  hook will run
   cache-attestation              the bootstrap's record that the plugin data
@@ -568,6 +611,12 @@ earlier version wrote wider is narrowed when abcd next writes it
   trusted-roots                  foreign-uid configuration roots the caller vouches for
   local-transcript-roots         checkouts whose transcripts are pulled in to
                                  <repo>/.abcd/.work.local/transcripts/ instead
+  filter-roots                   checkouts whose content filters abcd's git status
+                                 reads switch back on
+  dogfood-roots                  checkouts whose hooks run a build of the reviewed
+                                 branch: path, tab, remote URL, optional branch
+  holder-ids                     the holder ids of the person's other machines and
+                                 accounts, each optionally followed by its login
 
 <anywhere>/<repo>/             REPO — a single repository (the only install target)
   .abcd/                         repo-scope record + config.json + rules.json
@@ -577,16 +626,23 @@ earlier version wrote wider is narrowed when abcd next writes it
 
 The same inventory is stated in prose under *The two `.abcd/` scopes* in
 [`05-internals/03-configuration.md`](../05-internals/03-configuration.md#the-two-abcd-scopes);
-the two are one list and must agree. The three declaration files at the bottom
-are caller-controlled and line-oriented. `trusted-roots` and
-`local-transcript-roots` are the two that widen what a session will trust, so
-each is honoured only when it is a regular file this uid owns that no one else
-can write, and a file failing either test is ignored with one line saying which
-test it failed. `path-entry`, `cache-attestation` and `release-mark` are held to the same test,
+the two are one list and must agree. The five declaration files at the bottom
+are caller-controlled and line-oriented. `trusted-roots`,
+`local-transcript-roots`, `filter-roots` and `dogfood-roots` are the four that
+widen what a session will trust, and one reader serves them
+(`fsutil.HomeDeclarationNames`, and `HomeDeclarationEntry` for the fields of a
+`dogfood-roots` line), so each is honoured only when it is a regular file this
+uid owns that no one else can write, and a file failing either test is ignored
+with one line saying which test it failed (for `filter-roots`, a note in
+`abcd ahoy`'s report, since the reads it switches on print nothing).
+`holder-ids` is read through the same guard, but a file failing it, or holding
+a line that is not a holder id, refuses the act that needed it; a render reads
+it as declaring no id and names why.
+`path-entry`, `cache-attestation` and `release-mark` are held to the same test,
 by the install verb and by the hook shims that consult `path-entry`, and a record
 failing it vouches for nothing.
 `load-limits` is a setting, not a declaration, but it is read through the same
-guard as the two that widen trust, and a file failing it, or holding a line that
+guard as the four that widen trust, and a file failing it, or holding a line that
 does not parse, is reported loudly and all three of its limits take their defaults.
 `rules.json` is read through that guard too, because it injects text into every
 session on the machine, but a file failing it — or failing to parse — fails the

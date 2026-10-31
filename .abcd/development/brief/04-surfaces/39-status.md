@@ -116,7 +116,10 @@ succeeded (C10). The JSON document carries `status_view`, `announcements`,
 `doubtful`, `unread`, the counts `unread_names`, `branches_not_read`,
 `branches_left_to_read` and `announcements_not_read`, `grants`, and the
 reservations block's own fields, with `senders_unchecked`, `not_dropped`,
-`local_tier_missing` and `read_error` when each has something to say.
+`local_tier_missing`, `read_error`, `holder_ids_refused` (the class of the
+guarded read's refusal of the declared ids' file) and `holder_id_refused`
+(the class of the refusal of the reader's own holder id) when each has
+something to say.
 
 ## The prompt hook's block
 

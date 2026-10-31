@@ -1,6 +1,7 @@
 package site
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -11,18 +12,19 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
-// The install command exists in four committed forms: the universal one-liner in
-// README.md, the script in site-src/install.sh.tmpl, and the per-OS one-liners
-// under docs/how-to/install.md's macOS and Linux headings. adr-47 makes all four
-// surfaces of one repository, so they are one command written four times — and a
-// reader who follows any of them must end up with the same bytes in the same
-// place.
+// The installer exists in two committed forms: the script in
+// site-src/install.sh.tmpl, which the release publishes as install.sh and
+// abcdev.app serves, and that script as the site build renders it. The README
+// and docs/how-to/install.md document one short command that pipes the
+// release's install.sh into sh (iss-2610240827243654), and the guide adds a
+// hardened form of it, so the logic lives in one script and the documented
+// forms are held to fetching it
+// (TestDocumentedInstallCommandFetchesTheReleasedInstaller).
 //
-// The per-OS forms are the universal one with OS detection resolved: same release
-// URLs, same checksum step, same install destination, `uname -s` replaced by the
-// OS it would have printed. This test holds them to exactly that, so a change to
-// one of them fails the build rather than shipping a page that quietly disagrees
-// with the script beside it.
+// The forms below must end up with the same bytes in the same place: same
+// release URLs, same checksum step, same install destination. This test holds
+// them to exactly that, so a change to one fails the build rather than shipping
+// a page that quietly disagrees with the script beside it.
 const (
 	checksumsAsset = "checksums.txt"
 	installDir     = "$HOME/.local/bin"
@@ -81,10 +83,9 @@ var fetchingCurl = regexp.MustCompile(`curl\s+-`)
 // sees the flag.
 var qFirstCurl = regexp.MustCompile(`curl\s+-q\b`)
 
-// protoPin and protoRedirPin match the HTTPS transport pin in either quoting the
-// surfaces use — `'=https'` in the standalone script, bare `=https` inside the
-// single-quoted `sh -c '…'` one-liners, which cannot nest a single quote. The
-// `\s` after `--proto` keeps protoPin from also matching `--proto-redir`.
+// protoPin and protoRedirPin match the HTTPS transport pin quoted (`'=https'`,
+// as the installer writes it) or bare (`=https`). The `\s` after `--proto`
+// keeps protoPin from also matching `--proto-redir`.
 var protoPin = regexp.MustCompile(`--proto\s+'?=https'?`)
 var protoRedirPin = regexp.MustCompile(`--proto-redir\s+'?=https'?`)
 
@@ -105,9 +106,11 @@ func unsetsVar(script, v string) bool {
 	return regexp.MustCompile(`\bunset\b[^\n;]*\b` + regexp.QuoteMeta(v) + `\b`).MatchString(script)
 }
 
-// TestInstallSurfacesHardenCurl holds all four public install surfaces (and the
-// served render) to the curl hardening bootstrap already carries. Without it the
-// checksum step every surface performs is defeated by a local curl surface the
+// TestInstallSurfacesHardenCurl holds the installer, as reviewed and as served,
+// to the curl hardening bootstrap already carries. The documented command that
+// fetches the installer is plain by ruling and is not held to it; its hardened
+// form takes the installer's own fetch flags (installForms). Without this the
+// checksum step the installer performs is defeated by a local curl surface the
 // victim need not have set maliciously — direnv, a sourced .env — so the fix is
 // not "verify harder" but "close the fetch": -q first, the env scrub, the proto
 // pins. See GHSA-x4v8-rxvx-8v89 and hooks/bootstrap.sh.
@@ -255,8 +258,9 @@ func assertNoPrivilegeEscalation(t *testing.T, s installSurface) {
 	}
 }
 
-// assertOSResolution checks the one difference the forms are allowed: a per-OS
-// form names its OS where the universal form detects it, and nothing else moves.
+// assertOSResolution checks that the form detects the OS and builds the binary
+// name from that and $arch alone, so the name always matches what the release
+// publishes.
 func assertOSResolution(t *testing.T, s installSurface) {
 	t.Helper()
 
@@ -279,9 +283,8 @@ func assertOSResolution(t *testing.T, s installSurface) {
 }
 
 // assertArchMapping checks that the form translates the kernel's architecture
-// spellings into the ones the release matrix publishes. The OS-detecting forms
-// carry both translations; the macOS form carries only x86_64, because Apple
-// silicon already reports arm64 and aarch64 never appears there.
+// spellings into the ones the release matrix publishes: x86_64 to amd64 and
+// aarch64 to arm64.
 func assertArchMapping(t *testing.T, s installSurface) {
 	t.Helper()
 
@@ -296,22 +299,10 @@ func assertArchMapping(t *testing.T, s installSurface) {
 func loadInstallSurfaces(t *testing.T) []installSurface {
 	t.Helper()
 
-	readmePath := filepath.Join(repoRoot(), "README.md")
 	templatePath := filepath.Join(repoRoot(), "site-src", "install.sh.tmpl")
-	guidePath := filepath.Join(repoRoot(), "docs", "how-to", "install.md")
-
-	guide := readFile(t, guidePath)
 	bothArches := []archMapping{amd64FromX8664, arm64FromAarch64}
 
 	surfaces := []installSurface{
-		{
-			name:      "readme-one-liner",
-			source:    "README.md",
-			script:    onlyInstallBlock(t, "README.md", fencedBlocks(readFile(t, readmePath))),
-			osToken:   "$os",
-			verifiers: []string{verifierGNU, verifierBSD},
-			archMap:   bothArches,
-		},
 		{
 			name:      "install-sh-template",
 			source:    "site-src/install.sh.tmpl",
@@ -320,25 +311,9 @@ func loadInstallSurfaces(t *testing.T) []installSurface {
 			verifiers: []string{verifierGNU, verifierBSD},
 			archMap:   bothArches,
 		},
-		{
-			name:      "how-to-macos",
-			source:    "docs/how-to/install.md (### macOS)",
-			script:    onlyInstallBlock(t, "docs/how-to/install.md (### macOS)", blocksUnder(fencedBlocks(guide), "macOS")),
-			osToken:   "darwin",
-			verifiers: []string{verifierBSD},
-			archMap:   []archMapping{amd64FromX8664},
-		},
-		{
-			name:      "how-to-linux",
-			source:    "docs/how-to/install.md (### Linux)",
-			script:    onlyInstallBlock(t, "docs/how-to/install.md (### Linux)", blocksUnder(fencedBlocks(guide), "Linux")),
-			osToken:   "linux",
-			verifiers: []string{verifierGNU},
-			archMap:   bothArches,
-		},
 	}
 
-	// The FIFTH form: the script this repository SERVES at /install.sh. It is the
+	// The SECOND form: the script this repository SERVES at /install.sh. It is the
 	// only form a reader of abcdev.app ever executes — the template is what was
 	// reviewed, this is what is downloaded — so holding it to the same rules is
 	// what makes the render's "copy plus a comment" claim checkable rather than
@@ -425,17 +400,6 @@ func fencedBlocks(md string) []fencedBlock {
 	return out
 }
 
-// blocksUnder keeps the blocks sitting under one H3.
-func blocksUnder(blocks []fencedBlock, heading string) []fencedBlock {
-	var out []fencedBlock
-	for _, b := range blocks {
-		if b.heading == heading {
-			out = append(out, b)
-		}
-	}
-	return out
-}
-
 // onlyInstallBlock returns the single block that downloads from the release, and
 // fails when a surface grew a second one — two install commands on one page is
 // the drift this test exists to catch.
@@ -489,6 +453,10 @@ func sortedKeys(m map[string]bool) []string {
 	return out
 }
 
+// releasedPlatformCase reads the platform list off the installer's
+// require_released_platform: the case pattern right after `case "$1-$2" in`.
+var releasedPlatformCase = regexp.MustCompile(`case "\$1-\$2" in\s*\n\s*([a-z0-9| -]+)\)`)
+
 // TestLinkedAssetsMatchTheReleaseMatrix earns the manifest's `release.assets`
 // claim.
 //
@@ -497,40 +465,25 @@ func sortedKeys(m map[string]bool) []string {
 // does not read that workflow — a page that parses CI configuration to decide
 // what to link is a worse dependency than a constant. So the claim is held here
 // instead: the linked names must be exactly the `abcd-<os>-<arch>` matrix the
-// four committed install surfaces themselves derive.
+// installer itself admits (require_released_platform in site-src/install.sh.tmpl).
 //
 // A platform added to the release matrix with no link on the page, or a link to
 // a platform nothing publishes, fails this test — which is the whole content of
 // the claim.
 func TestLinkedAssetsMatchTheReleaseMatrix(t *testing.T) {
-	surfaces := loadInstallSurfaces(t)
-
-	// The OSes the per-OS surfaces resolve to, and the architectures their
-	// mappings produce. Both are read off the surfaces rather than restated.
-	oses := map[string]bool{}
-	arches := map[string]bool{}
-	for _, s := range surfaces {
-		if s.osToken != "$os" {
-			oses[s.osToken] = true
-		}
-		for _, m := range s.archMap {
-			arches[m.to] = true
-		}
+	// The platforms the installer admits are the release matrix as the one
+	// script every documented install runs states it.
+	template := readFile(t, filepath.Join(repoRoot(), "site-src", "install.sh.tmpl"))
+	admitted := releasedPlatformCase.FindStringSubmatch(template)
+	if admitted == nil {
+		t.Fatal("site-src/install.sh.tmpl has no require_released_platform case naming the released platforms")
 	}
-	// Apple silicon reports arm64 already, so no surface maps to it; it is the
-	// passthrough the aarch64 mapping proves is a published architecture.
-	if !arches["arm64"] || !arches["amd64"] {
-		t.Fatalf("the install surfaces resolve architectures %v; expected at least amd64 and arm64", keysOf(arches))
-	}
-	if len(oses) == 0 {
-		t.Fatal("no per-OS install surface names an operating system")
-	}
-
 	want := map[string]bool{}
-	for os := range oses {
-		for arch := range arches {
-			want["abcd-"+os+"-"+arch] = true
-		}
+	for _, p := range strings.Split(admitted[1], "|") {
+		want["abcd-"+strings.TrimSpace(p)] = true
+	}
+	if !want["abcd-darwin-arm64"] || !want["abcd-linux-amd64"] {
+		t.Fatalf("the installer admits %v; expected macOS and Linux on amd64 and arm64", keysOf(want))
 	}
 
 	got := map[string]bool{}
@@ -598,10 +551,9 @@ func TestInstallSurfacesRecordInTheNoindexHome(t *testing.T) {
 		}
 		seen++
 		t.Run(s.name, func(t *testing.T) {
-			// A one-liner redirects into the record; the installer writes a
-			// private temporary file beside it and moves it into place.
-			if !strings.Contains(s.script, "> "+pathEntryRecord) &&
-				!strings.Contains(s.script, `mv -f "$entry_tmp" `+pathEntryRecord) {
+			// The installer writes a private temporary file beside the record
+			// and moves it into place.
+			if !strings.Contains(s.script, `mv -f "$entry_tmp" `+pathEntryRecord) {
 				t.Errorf("%s does not write its record to %s", s.source, pathEntryRecord)
 			}
 			if strings.Contains(s.script, oldHome) || strings.Contains(s.script, `"$HOME/.abcd/`) {
@@ -610,7 +562,7 @@ func TestInstallSurfacesRecordInTheNoindexHome(t *testing.T) {
 		})
 	}
 	if seen == 0 {
-		t.Fatal("no install form records the owned PATH copy; the README and the install guide's one-liners each do")
+		t.Fatal("no install form records the owned PATH copy; the installer does")
 	}
 }
 
@@ -632,5 +584,224 @@ func TestInstallSurfacesRefuseASymlinkedAbcdHome(t *testing.T) {
 				t.Errorf("%s writes ~/.abcd.noindex/path-entry but does not test %s before its first fetch", s.source, symlinkedHomeGuard)
 			}
 		})
+	}
+}
+
+// The documented install forms are rendered from site-src/install.sh.tmpl,
+// the one source (iss-2609261423214723): the release-download prefix and the
+// curl hardening flags are read off the template's own checksums.txt fetch,
+// so a template that moves either moves every documented form with it. The
+// person ruled on 2026-10-28 that README and the install guide show curl's
+// plain form, and that the guide offers the hardened form as an option.
+//
+// installerFetch matches that fetch: its flags before -fsSLO, and the
+// release-download prefix before checksums.txt.
+var installerFetch = regexp.MustCompile(`curl ((?:-[^\s]+ (?:'[^']*' )?)+)-fsSLO "(https://[^"\s]+/releases/latest/download/)` +
+	regexp.QuoteMeta(checksumsAsset) + `"`)
+
+// curlFlag matches one curl option and its quoted argument, if it has one.
+var curlFlag = regexp.MustCompile(`-[^\s']+(?: '[^']*')?`)
+
+// installForms returns the documented command and its hardened form, rendered
+// from the template's text: the plain form fetches the release's installer
+// with curl's -fsSL and pipes it into sh; the hardened form adds the
+// template's own fetch flags and --noproxy '*', which stands for the proxy
+// variables the template unsets before it fetches anything.
+func installForms(t *testing.T, tmpl string) (plain, hardened string) {
+	t.Helper()
+	m := installerFetch.FindStringSubmatch(tmpl)
+	if m == nil {
+		t.Fatalf("site-src/install.sh.tmpl has no curl fetch of %s to render the documented install command from", checksumsAsset)
+	}
+	url := m[2] + installScriptName
+	return "curl -fsSL " + url + " | sh",
+		"curl " + m[1] + "--noproxy '*' -fsSL " + url + " | sh"
+}
+
+// templateInstallForms renders the documented forms from this repository's
+// template.
+func templateInstallForms(t *testing.T) (plain, hardened string) {
+	t.Helper()
+	return installForms(t, readFile(t, filepath.Join(repoRoot(), "site-src", "install.sh.tmpl")))
+}
+
+// The README's install block sits between these markers and is the rendering
+// of renderReadmeInstallBlock, byte for byte, so a hand edit fails
+// TestReadmeInstallBlockIsRendered.
+const (
+	installBlockBegin = "<!-- BEGIN GENERATED: install-command -->"
+	installBlockEnd   = "<!-- END GENERATED: install-command -->"
+)
+
+// renderReadmeInstallBlock is what the README carries between the markers.
+func renderReadmeInstallBlock(plain string) string {
+	return "\n<!-- Written by `go test ./internal/core/site -run TestReadmeInstallBlockIsRendered -update` " +
+		"from site-src/install.sh.tmpl; edit the template, never this block. -->\n" +
+		"```sh\n" + plain + "\n```\n"
+}
+
+// spliceInstallBlock returns readme with its one install block rendered from
+// plain, every byte outside the block kept. A README with no block, an
+// unclosed one, or more than one is an error: the gate never guesses where
+// the block belongs.
+func spliceInstallBlock(readme, plain string) (string, error) {
+	switch n := strings.Count(readme, installBlockBegin); n {
+	case 0:
+		return "", fmt.Errorf("README.md carries no %s marker", installBlockBegin)
+	case 1:
+	default:
+		return "", fmt.Errorf("README.md carries %d %s markers; it must carry one", n, installBlockBegin)
+	}
+	start := strings.Index(readme, installBlockBegin) + len(installBlockBegin)
+	stop := strings.Index(readme[start:], installBlockEnd)
+	if stop < 0 {
+		return "", fmt.Errorf("README.md opens %s and never closes it with %s", installBlockBegin, installBlockEnd)
+	}
+	return readme[:start] + renderReadmeInstallBlock(plain) + readme[start+stop:], nil
+}
+
+// checkInstallBlock is the gate: nil when readme carries exactly the block the
+// template renders, and an error naming the drift otherwise.
+func checkInstallBlock(readme, plain string) error {
+	want, err := spliceInstallBlock(readme, plain)
+	if err != nil {
+		return err
+	}
+	if want != readme {
+		return fmt.Errorf("README.md's install block is not the rendering of site-src/install.sh.tmpl; " +
+			"run `go test ./internal/core/site -run TestReadmeInstallBlockIsRendered -update`")
+	}
+	return nil
+}
+
+// TestReadmeInstallBlockIsRendered holds the README's install block to the
+// rendering of the template (iss-2609261423214723). With -update it rewrites
+// the block instead of failing.
+func TestReadmeInstallBlockIsRendered(t *testing.T) {
+	path := filepath.Join(repoRoot(), "README.md")
+	readme := readFile(t, path)
+	plain, _ := templateInstallForms(t)
+	err := checkInstallBlock(readme, plain)
+	if err == nil {
+		return
+	}
+	if *update {
+		synced, serr := spliceInstallBlock(readme, plain)
+		if serr != nil {
+			t.Fatal(serr)
+		}
+		if werr := os.WriteFile(path, []byte(synced), 0o644); werr != nil {
+			t.Fatal(werr)
+		}
+		t.Log("rewrote README.md's install block from site-src/install.sh.tmpl")
+		return
+	}
+	t.Error(err)
+}
+
+// TestHandEditedInstallBlockIsRefused proves the gate refuses what it exists
+// to refuse: a block edited by hand, a block whose markers are gone, and a
+// second block.
+func TestHandEditedInstallBlockIsRefused(t *testing.T) {
+	plain, _ := templateInstallForms(t)
+	rendered := "intro\n" + installBlockBegin + renderReadmeInstallBlock(plain) + installBlockEnd + "\noutro\n"
+	if err := checkInstallBlock(rendered, plain); err != nil {
+		t.Fatalf("the rendered block must pass the gate: %v", err)
+	}
+	for name, readme := range map[string]string{
+		"hand-edited command": strings.Replace(rendered, " | sh", " | bash", 1),
+		"hand-edited note":    strings.Replace(rendered, "never this block", "this block", 1),
+		"markers removed":     strings.NewReplacer(installBlockBegin, "", installBlockEnd, "").Replace(rendered),
+		"end marker removed":  strings.Replace(rendered, installBlockEnd, "", 1),
+		"block twice":         rendered + rendered,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := checkInstallBlock(readme, plain); err == nil {
+				t.Errorf("the gate passed a README whose install block was %s", name)
+			}
+		})
+	}
+}
+
+// installBlocks returns every block that downloads from the release, in page
+// order.
+func installBlocks(blocks []fencedBlock) []string {
+	var found []string
+	for _, b := range blocks {
+		if downloadURL.MatchString(b.body) {
+			found = append(found, strings.TrimSpace(b.body))
+		}
+	}
+	return found
+}
+
+// TestDocumentedInstallCommandFetchesTheReleasedInstaller holds the README and
+// the install guide to exactly the forms they document, in page order (the
+// README shows the command alone, the guide shows it and then its hardened
+// form), each byte for byte the template's rendering, and each form to the
+// release-download prefix go.mod names.
+func TestDocumentedInstallCommandFetchesTheReleasedInstaller(t *testing.T) {
+	plain, hardened := templateInstallForms(t)
+	for _, c := range []string{plain, hardened} {
+		if !strings.Contains(c, " "+releaseDownloadPrefix(t)+installScriptName+" ") {
+			t.Fatalf("the documented command %q does not fetch from the installer's release-download prefix %q",
+				c, releaseDownloadPrefix(t))
+		}
+	}
+	// The pin is the floor: a template that drops a flag fails here rather than
+	// weakening the hardened form in silence, and one that adds a flag fails
+	// until this line and the guide's bullet for it are written.
+	if !strings.HasPrefix(hardened, "curl -q --proto '=https' --proto-redir '=https' --tlsv1.2 --noproxy '*' ") {
+		t.Errorf("the hardened form %q does not carry the template's fetch flags and --noproxy '*'", hardened)
+	}
+	guide := readFile(t, filepath.Join(repoRoot(), "docs", "how-to", "install.md"))
+	flags, _, _ := strings.Cut(strings.TrimPrefix(hardened, "curl "), " https://")
+	for _, flag := range curlFlag.FindAllString(flags, -1) {
+		if flag == "-fsSL" {
+			continue
+		}
+		if !strings.Contains(guide, "\n- `"+flag+"` ") {
+			t.Errorf("docs/how-to/install.md has no bullet explaining the hardened form's %s", flag)
+		}
+	}
+	documentedInstallForms := map[string][]string{
+		"README.md": {plain},
+		filepath.Join("docs", "how-to", "install.md"): {plain, hardened},
+	}
+	for doc, want := range documentedInstallForms {
+		t.Run(doc, func(t *testing.T) {
+			got := installBlocks(fencedBlocks(readFile(t, filepath.Join(repoRoot(), doc))))
+			if !equalStrings(got, want) {
+				t.Errorf("%s documents\n\t%s\nwant\n\t%s", doc, strings.Join(got, "\n\t"), strings.Join(want, "\n\t"))
+			}
+		})
+	}
+}
+
+// TestTheHomePageShowsTheDocumentedInstallCommand renders this repository's
+// own site and holds its install chapter to the documented command: the page
+// builds its install tabs from the guide's headings under `## CLI`, and only a
+// tab whose section holds the command shows it, with the read-the-script link
+// beside it. A heading change in the guide that left no such tab would ship a
+// home page with no install command on it.
+func TestTheHomePageShowsTheDocumentedInstallCommand(t *testing.T) {
+	out := t.TempDir()
+	if _, err := Build(Request{RepoRoot: repoRoot(), OutDir: out, Stamp: fixtureStamp, LeaveUI: true}); err != nil {
+		t.Fatalf("build this repository's site: %v", err)
+	}
+	html := readFile(t, filepath.Join(out, "index.html"))
+	start := strings.Index(html, `<div role="tabpanel" id="panel-macos-and-linux"`)
+	if start < 0 {
+		t.Fatal("the home page has no macOS and Linux install panel")
+	}
+	panel := html[start:]
+	if end := strings.Index(panel[1:], `<div role="tabpanel"`); end >= 0 {
+		panel = panel[:end+1]
+	}
+	if !strings.Contains(panel, "releases/latest/download/"+installScriptName+" | sh") {
+		t.Error("the macOS and Linux panel does not show the documented install command")
+	}
+	if !strings.Contains(panel, `<a href="/`+installScriptName+`">`) {
+		t.Error("the macOS and Linux panel has no read-the-script link beside the command")
 	}
 }

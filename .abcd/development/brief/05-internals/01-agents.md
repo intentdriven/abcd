@@ -311,7 +311,7 @@ Every prompt carries declared frontmatter. The fields:
 | `name` | yes | The agent's registered name; the flat-glob harness registration runs on `name` and `description` |
 | `description` | yes | When the host should dispatch this agent |
 | `color` | optional | A presentation hint. Nine prompts carry one: the four cold-reading definitions (cyan), `docs-currency-reviewer` (blue), `ruthless-reviewer` (orange), `security-reviewer` (red), `sota-researcher` (purple), and `intent-auditor` (green). It tracks no group — the auditor carries one and `lifeboat-reviewer` does not — so it is decoration a prompt opts into, not a signal to read |
-| `tools` / `model` | optional | Tool allow-list and model hint for the host's dispatch, carried by the repo-workflow reviewer and researcher prompts |
+| `tools` / `model` | optional | Tool allow-list and model hint for the host's dispatch. The four repo-workflow reviewer and researcher prompts carry `tools`; only `ruthless-reviewer` and `security-reviewer` also carry `model` |
 | `prompt_version` | yes | Semver of the prompt, bumped on any prompt change; the changelog entry is keyed on it |
 | `capability_scope` | yes | `{ task_classes: [...], designed_for: "<one line>" }`: the task classes the agent is designed for. `task_classes` is authored as a YAML inline list, never a block list, because the frontmatter parser does not support one nested there |
 | `position` | cold-reading definitions | The reading position this definition is for; the locator resolves a position to its definition by this field |

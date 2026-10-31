@@ -1,13 +1,14 @@
 # Configuration Model
 
 Almost nothing here is a decision anyone has to make. Installing abcd asks
-four questions and, at a terminal, a fifth about the README, records the
-answers and whether it created the README, and gets on with it; `ahoy install
---attribution` writes one more key and `ahoy install --outbound` two more, and
-nine further keys can be hand-set and are read but never written. Beyond those
-eighteen, the binary reads only keys a person opts into: the provider adapter's
-`oracle` keys (the reviewer route's `oracle.review` among them) and the
-interview's list style, both below, the implement loop's `pace`
+four questions and, at a terminal, a fifth about the README and two about live
+brief sessions, records the answers and whether it created the README, and gets
+on with it; `ahoy install --attribution` writes one more key and `ahoy install
+--outbound` two more, and twelve further keys can be hand-set and are read but
+never written. Beyond those twenty-two, the binary reads only keys a person
+opts into: the provider adapter's `oracle` keys (the reviewer route's
+`oracle.review` among them) and the interview's list style, both below, the
+implement loop's `pace`
 (`internal/core/implement/loop/pace.go`), the consistency pass's `consistency`
 keys (`internal/core/intent/consistency_config.go`), the reservation holder's
 `reservation.github_username`, read from the machine layer alone
@@ -17,7 +18,14 @@ keys (`internal/core/intent/consistency_config.go`), the reservation holder's
 (`internal/core/claim/maxlive.go`), the load gate's `load.preflights`, read
 from the machine layer alone (the person's `~/.abcd.noindex/config.json`), 1 to
 4 and 1 by default, never from a repository
-(`internal/core/implement/load_slots.go`), and the runner routes under `roles` and
+(`internal/core/implement/load_slots.go`), the quiet window of `ahoy worktree
+prune`, `worktrees.quiet_days` (how many days without activity make an
+unmerged worktree with no open pull request quiet: 1 to 36500 and 14 by
+default; `internal/core/ahoy/worktree/quiet.go`), the matrix run's spending
+cap `matrix.spend_cap` (an amount in usd for a run with a metered cell, set
+in the machine layer alone, a repository's refused, and with no default: a
+run's own `spend_cap` overrides it, and a metered run with neither is refused;
+`internal/core/matrix/cap.go`), and the runner routes under `roles` and
 `runner` (`internal/core/runner/config.go`). Everything else on this page is either a
 store abcd lays out for itself, a policy that follows from one of those four
 answers, or an axis the design commits to and has not built.
@@ -30,7 +38,7 @@ shipped behaviour. Everything after them is **staged**, per the truth rule in
 
 ### The keys the binary reads
 
-Eighteen keys plus a `meta` block. Install asks about visibility, the docs target,
+Twenty-two keys plus a `meta` block. Install asks about visibility, the docs target,
 the oracle backend, the deep scan (the last only when visibility is private
 and the deep scanner is on `PATH`), and the README question (only of a person
 at a terminal, in a run without the approve-everything flag, once
@@ -38,20 +46,31 @@ at a terminal, in a run without the approve-everything flag, once
 `readme.parts`, a list of part names (`[]` for no), which
 `ahoy install --readme-parts` also sets in any run. Install also records
 `readme.created` when it creates `README.md`, and uninstall clears it once that
-file is gone. `attribution.hook` is written by `ahoy install --attribution`, and
-`outbound.hook` and `outbound.forge` together by `ahoy install --outbound`, the
-one outbound switch; the shell guard reads `outbound.forge`, and an install
+file is gone. Install asks the same person whether to set up live brief
+sessions and where they may run, and writes the answer as `sessions.live`
+(`local`, `cloud`, `both` or `none`; the answer `later` writes nothing), which
+`ahoy install --live-sessions` also sets in any run. `abcd session setup`
+writes it too, recording where sessions may run, and `abcd session blueprint`,
+and `abcd session start` when the sign-in app is not yet set up, ask the
+question again at a terminal while it is unanswered. `attribution.hook` is
+written by `ahoy install --attribution`, and `outbound.hook` and
+`outbound.forge` together by `ahoy install --outbound`, the one outbound
+switch; the shell guard reads `outbound.forge`, and an install
 completes a repository that records only one of the two and leaves the other
 absent, while a key set to `false` is the repository's choice and is left as it
-is. The remaining ten —
+is. The remaining twelve —
 whether abcd should enable the forge's own secret scanning, the rules loader's
 refresh backstop, the filing-time match's threshold and compared fields,
 whether `abcd land` pushes and queues, whether a reservation may be made on
 an origin GitHub names a fork, the GitHub settings the remote apply keeps
-and the checks it requires, and whether the shell guard also holds a pull
+and the checks it requires, whether the shell guard also holds a pull
 request's title and body to RS004 (`outbound.declare_mentions`, a rule a
-repository adopts, so no install sets it) — are hand-set: the binary reads them
-and never writes them.
+repository adopts, so no install sets it), who merges (`facilitator.mode`,
+`human` by default or `auto`, read by the merge gate, the board and the shell
+guard at the default branch's tip, where `human` from any layer wins) and the
+file a release cut appends its digest to (`release.digest`, read from the
+repository layer alone) — are hand-set: the binary reads them and never writes
+them.
 
 ```json
 {
@@ -127,6 +146,22 @@ and never writes them.
                                         //   reservation is made when GitHub names an origin push URL a
                                         //   fork (04-surfaces/37-reserve.md)
   },
+  "facilitator": {
+    "mode": "human"                     // "human" (default) | "auto": whether a person or abcd merges, read
+                                        //   at the default branch's tip; human from any layer wins
+  },
+  "release": {
+    "digest": "internal/core/releasedigest/digest.json"
+                                        // the file each release cut appends its release to; absent
+                                        //   writes no digest. Read from the repository layer alone
+  },
+  "sessions": {
+    "live": "local"                     // "local" | "cloud" | "both" | "none": where live brief sessions
+                                        //   may run. Written by install's question,
+                                        //   `ahoy install --live-sessions`, `session
+                                        //   setup`, and the answer `session start`
+                                        //   or `session blueprint` asks
+  },
   "readme": {
     "parts": ["licence", "links"],      // the README parts abcd keeps in README.md; [] is answered no and is
                                         //   not asked again, an absent key is not yet answered. Written by
@@ -173,13 +208,15 @@ origin's push URLs a fork, so a malformed value (neither `"refuse"` nor one
 plain owner and one plain name), or a misspelt key under `reservation`, refuses
 a reservation on a fork naming the file and never stops one anywhere else. The machine layer's `reservation.github_username`
 (04-surfaces/37-reserve.md) shares the namespace; it is read from the machine
-layer alone and is not one of the eighteen. The holder lookup reads the
+layer alone and is not one of the twenty-two. The holder lookup reads the
 machine's own file whatever origin is, so a misspelt key under `reservation`
 there refuses every reservation that reaches that lookup, on a fork or not.
 
 There is no separate `.abcd/meta.json` at repo scope: setup metadata is the `meta`
-block. This repository's own config carries five of these blocks — `docs`, `meta`,
-`oracle`, `outbound` and `repo` — which is what an unremarkable managed repo looks like.
+block. This repository's own config carries eight of these blocks — `docs`,
+`facilitator`, `meta`, `oracle`, `outbound`, `release`, `repo` and `sessions`. All
+but `facilitator` and `release`, which this repository sets by hand for its own
+merging and release cuts, are what an unremarkable managed repo carries.
 
 ### The provider adapter's keys
 
@@ -614,10 +651,11 @@ belong in a drainer layer that does not exist.
 Schema versioning and cross-version migration come in a later phase: a
 configuration record carries `schema_version: 1`, and migrators are added if a
 later phase changes the shape (itd-9). The stamp is a convention rather than a
-held rule, and the tree is not uniform — eight of the fourteen committed records
-carry it, and six do not, the record-lint and docs-lint configuration among
-them. Nothing refuses an unstamped record, so a migration that arrives before the
-stamps do has no version to read on those six.
+held rule, and the tree is not uniform — nine of the fifteen committed records
+carry it (`config.json` in its `meta` block), and six do not, the record-lint
+and docs-lint configuration among them. Nothing refuses an unstamped record, so
+a migration that arrives before the stamps do has no version to read on those
+six.
 
 ## The history store
 
@@ -739,17 +777,18 @@ apart. Three properties are load-bearing:
 
 ## The worktree store
 
-**Design target (itd-2609091014076309, `intents/planned/`; unbuilt).** No
-`worktree` verb exists in the shipped binary. The build loop is the one writer
-today: each lane's worktree is created at `<root-sha>/<run>-<lane>/` in this store
-(`implement/loop`, `WorktreeStoreRel`), and nothing lists or reclaims what it
-leaves. What follows is the layout the intent commits to, at the location
+**The verbs ship (itd-2609091014076309).** `abcd ahoy worktree add <name>` makes a
+worktree in this repository's lane, `abcd ahoy worktree list` lists the lane
+(`--all` every lane on the machine), and `abcd ahoy worktree prune` reclaims
+the merged, clean ones, archiving their notes first. The build loop writes here
+too: each lane's worktree is created at `<root-sha>/<run>-<lane>/` in this store
+(`implement/loop`, `WorktreeStoreRel`). What follows is the layout, at the location
 [adr-2610031751065746](../../decisions/adrs/2610031751065746-the-worktree-store-lives-under-the.md)
 sets, on the rule
 [adr-2609091248200336](../../decisions/adrs/2609091248200336-a-tool-never-creates-directories-in-user.md)
 records and that record carries forward unchanged: a tool never creates directories in user-owned project space, so a
 session's or an agent's worktree is machine-scoped rather than a sibling of the
-checkout. It would be user-scope and keyed on the repository's root-commit SHA,
+checkout. It is user-scope and keyed on the repository's root-commit SHA,
 exactly as the history, transcript and voyage stores are, and never committed:
 
 ```
@@ -758,10 +797,10 @@ exactly as the history, transcript and voyage stores are, and never committed:
     <name>/                   one git worktree of that repository, on its own branch
 ```
 
-Three properties are load-bearing, and each is the intent's to deliver:
+Three properties are load-bearing:
 
 - **Git is the registry.** `git worktree list --porcelain` already names every
-  worktree wherever it sits, so the store keeps no index of its own. The verb reads
+  worktree wherever it sits, so the store keeps no index of its own. `list` reads
   git's answer and says which entries are in the lane, which are outside it, and
   whether each is clean and merged. The worktree's own `.git` file, not a mutable
   path label, says which checkout a lane belongs to.
@@ -769,7 +808,8 @@ Three properties are load-bearing, and each is the intent's to deliver:
   transcript store's discipline: each level made individually and re-verified as a
   real directory.
 - **Reclaim is explicit and provable.** `prune` removes a worktree only when its
-  branch is merged into the default branch and its tree is clean, names everything
+  tree is clean and its branch is merged into the default branch, or is a quiet
+  unmerged one the person names with `--yes`, names everything
   it declined and why, and never deletes a directory git does not recognise as a
   worktree of the repository.
 
@@ -962,9 +1002,9 @@ acts on the scope that applies.
 
 **User scope, `~/.abcd.noindex/`** — one per machine, machine-local shared state only: the
 history registry, the transcript corpus, the voyage operations namespace, the
-lab store, the worktree store (the build loop writes each lane's worktree
-there today; the store's own verbs and its reclaim are unbuilt) and its staged
-notes archive (`notes/<root-sha>/`, which nothing writes yet), the run state an autonomous run's sessions share
+lab store, the worktree store (`ahoy worktree add`, `list` and `prune`, and the
+build loop's lanes) and its notes archive (`notes/<root-sha>/`, which `ahoy
+worktree prune` writes), the run state an autonomous run's sessions share
 ([`../04-surfaces/27-implement.md`](../04-surfaces/27-implement.md)), the inbox of reports managed repositories file back to abcd
 ([`../04-surfaces/29-report.md`](../04-surfaces/29-report.md)), the setup
 answers that change the machine in `interviews/` (one record per install run
@@ -973,12 +1013,13 @@ that asked them), the copies of the harness's settings file in `backups/`
 (its readers are every key read through the layered reader,
 `internal/core/layered`: the provider adapter's `oracle` keys, the reviewer
 route's `oracle.review`, the filing-time match's `match`, the
-`land` switches, `consistency.max_request_bytes`, the implement loop's `pace`
-and the role routes under `roles`, each read with the repo-scope
-`.abcd/config.json` above it, except `land`, whose layers are ANDed; the
+`land` switches, `consistency.max_request_bytes`, the implement loop's `pace`,
+the role routes under `roles` and `worktrees.quiet_days`, each read with the
+repo-scope `.abcd/config.json` above it, except `land`, whose layers are ANDed; the
 provider blocks, `oracle.rp`, `oracle.bundled_context_providers`, the whole
 `runner` namespace (`runner.fallback_host` and every `runner.<name>`),
-`interview.list`, `reservation.github_username`, `reservation.max_live` (1 to
+`interview.list`, `matrix.spend_cap` (a repository's figure refused),
+`reservation.github_username`, `reservation.max_live` (1 to
 100, 10 by default, read past to 10 when the file cannot be read, which the
 refusal at the cap says) and `load.preflights` (how many preflights the first
 gate admits at once, each a whole run, one race stage able to run beside
@@ -1024,9 +1065,27 @@ shadows a personal note with the same id), curated cross-project memory pages
 under `memory/` (the prompt router's recall reads them, read only), and the `sources/` corpus
 `/abcd:library` reads and writes (abcd never creates that one unasked: only its
 explicit init does, and every other corpus verb and the page say so and stop
-when it is absent). It also holds the caller-controlled declarations: the owned
-PATH entry, the trusted configuration roots, and the checkouts whose transcripts
-are pulled in. And it keeps itself out of a git repository in the home folder:
+when it is absent). It keeps abcd's own working records there too: the builds
+of the reviewed default branch in `dogfood/<root-sha>/` ([the dogfood
+store](#the-dogfood-store)), the private idea verdicts in `ideas/<root-sha>/`,
+the away mode's record in `away/<root-sha>/`, the one-shot allows `abcd guard
+allow --once` writes in `guard-allow/<root-sha>/`, each repository's answer to
+the offer after an update and the newest release whose news was shown in
+`after-update/`, one marker per running host session in `occupancy/`, the
+session-name register in `sessions/names.json`, the rules loader's per-session
+ledgers in `rules-state/`, the dashboard's run file, seen devices and lock in
+`dashboard/`, this account's holder id in `holder-id`, the load gate's two
+holds in `load-wait.json` and `load-wait-race.json` (taken under
+`.load-wait.lock`), the record of the line install added to a shell startup
+file in `shell-path.json`, the installed-tools record in `tools.json`, and the
+person's commit identity in `identity/<root-sha>.json` for one repository and
+`identity.json` everywhere else. It also holds the owned PATH entry and the
+caller-controlled declarations: the trusted configuration roots, the
+checkouts whose transcripts are pulled in, the checkouts whose content filters
+are switched back on (`filter-roots`), the checkouts whose hooks run a build of
+the reviewed default branch (`dogfood-roots`), and the holder ids of the
+person's other machines and accounts (`holder-ids`).
+And it keeps itself out of a git repository in the home folder:
 a `.gitignore` holding `*`, laid once beside a `gitignore-laid` marker, so a
 person who deletes the ignore file is never overruled (`internal/core/homeignore`).
 **Never the design record.** The same inventory is drawn as a tree
@@ -1081,14 +1140,26 @@ lays the file in a home that lacks it. **Invariant:** the credential store's abc
 stays refused inside any git working tree, the account's own included, whatever
 `.gitignore` says.
 
-**A symlinked `~/.abcd.noindex` hosts nothing abcd trusts.** Every file in the user
-scope whose contents abcd acts on — `rules.json`, `trusted-roots`,
-`local-transcript-roots`, `dogfood-roots`, `path-entry`, `cache-attestation`, `release-mark`, `config.json`,
-`oracle-routing.json`, `statusline.json`, `load-limits`, `credentials.json` and
-`credential-homes.json` — is refused when `~/.abcd.noindex`, or a directory below it on the way to the file, is a
-symlink: the rule the rules loader states for `rules.json`, applied by one check
-(`fsutil.HomeScopeLink`, read through `fsutil.ReadHomeDeclaration`) so it cannot
-drift per file. The rule holds against a race as well as a layout: a reader or
+**A symlinked `~/.abcd.noindex` hosts nothing abcd trusts.** Every file in the
+user scope that abcd reads as the caller's own word, through the owner and
+permission guard (a regular file this uid owns that no one else can write) —
+`rules.json`, `memory.json`, the pages under `memory/`, `trusted-roots`,
+`local-transcript-roots`, `filter-roots`, `dogfood-roots`, `holder-ids`,
+`holder-id`, `path-entry`, `cache-attestation`, `release-mark`, `config.json`,
+`oracle-routing.json`, `statusline.json`, `load-limits`, `credentials.json`,
+`credential-homes.json`, `tools.json`, `identity.json`,
+`identity/<root-sha>.json`, the files of `away/<root-sha>/`, the one-shot allows
+in `guard-allow/<root-sha>/`, the markers in `occupancy/`,
+`sessions/names.json`, the ledgers in `rules-state/`, `dashboard/run.json`,
+`dashboard/seen.json`, and the check records and builds in
+`dogfood/<root-sha>/` — is refused when `~/.abcd.noindex`, or a directory
+below it on the way to the file, is a symlink: the rule the rules loader states
+for `rules.json`, applied by one rule (`fsutil.HomeScopeLink`'s), held by
+`fsutil.ReadHomeDeclaration` and its `Denying` and `In` forms over a folder
+opened by `fsutil.OpenHomeScope`, `EnsureHomeScope`, `OpenHomeDeclarationScope`
+or `EnsureHomeDeclarationScope`, and for the dogfood store by `fsutil.OpenHomeScope`
+with `fsutil.CallersAlone`, so it cannot drift per file.
+The rule holds against a race as well as a layout: a reader or
 writer opens `~/.abcd.noindex` and each level below it relative to the descriptor of the
 level above (`fsutil.OpenHomeScope`, or `fsutil.EnsureHomeScope` to create the
 missing levels), confirms each descriptor is the real directory its judgement
@@ -1099,12 +1170,28 @@ descriptor too: the credential store's mode 0600 is judged on the fstat of the
 file that is opened (`fsutil.ReadHomeDeclarationDenying`), never on its path,
 so a store swapped for a group-readable file after any check is refused. A symlinked `~/.abcd.noindex` holding no such file reads as absent and
 costs nothing. A file that is there behind the link is refused the way its reader
-refuses any declaration that is not the caller's word: the rules load fails, a
-declaration is ignored with a note, the path entry and the cache attestation
-vouch for nothing, the credential store refuses loudly. Every write abcd makes
-into those files — the credential and the provider block `ahoy connect` adds, the
+refuses any file that is not the caller's word: the rules load fails; the
+machine memory layer is refused, so its notes are not recalled; the memory
+pages are named as refused and set aside; a declaration is ignored with a note, except `holder-ids`, which refuses
+the act that needed it (the paragraph under the tree in
+[`../04-surfaces/01-ahoy.md`](../04-surfaces/01-ahoy.md#what-abcd-manages--repos-and-abcdnoindex)
+says how); the path entry, the cache attestation, the release mark and the
+installed-tools record vouch for nothing; the credential store, the holder id,
+the identity record, the away store and the dashboard's files are refused
+loudly, naming the file (save `abcd mode back`, which names a refused away
+record on a line of its own and replaces it with a closed record, printing
+nothing from it); a read of the machine configuration or routing table
+fails naming the file, save the keys above that are read past with a note; the
+session-name register leaves the session unnamed with a note; the status-line
+settings and the load limits take their defaults with a note; and a dogfood
+check record (named in an `IGNORED` note when it is not this account's alone)
+or build, a one-shot allow, an occupancy marker and a
+rules-loader ledger are passed over as if absent, so the installed release
+runs, the line stays refused, the marker is not counted and the domains are
+injected again. These writes into those files — the
+credential and the provider block `ahoy connect` adds, the
 path entry, the routing table and the status-line setting `ahoy install` writes,
-and the path entry and cache attestation `hooks/bootstrap.sh` writes — refuses
+and the path entry and cache attestation `hooks/bootstrap.sh` writes — refuse
 the link rather than writing through it, naming it and the repair: replace the
 link with a real directory. The path entry's removal on uninstall goes through
 the same descriptor, so it removes nothing behind the link. A credential
@@ -1518,9 +1605,9 @@ clone carries, because it is out-of-tree output.
 **Memory locations to keep straight.** Curated memory exists at both scopes, and
 there is one non-abcd location alongside them: the repo-scope `.abcd/memory/` is
 the **primary** store, holding the curated summaries `abcd library ingest` writes
-and the canonical input for principle distillation; the user-scope `~/.abcd.noindex/memory/` is a
-**later phase**, which will hold personal preferences and cross-project
-principles with no single repo home (nothing in the binary resolves it today);
+and the canonical input for principle distillation; the user-scope `~/.abcd.noindex/memory/` holds
+personal preferences and cross-project principles with no single repo home
+(the prompt router's recall reads its pages, and no verb writes one there);
 and a root-level `memory/` is the legacy snapshot abcd respects and never writes
 to. Which scope a curated page lands in is a routing decision — see
 [`07-memory.md`](07-memory.md). Retrieval across the two is not a flat union, which
@@ -1528,8 +1615,8 @@ would overflow context, but keyword recall with a budget bracket (itd-39). When
 the brief says "memory" unqualified, it means the repo-scope store. The memory
 notes are a separate thing from these curated pages, and they ship at both
 scopes today: a `memory.json` in the repository's `.abcd/` and another in
-`~/.abcd.noindex/`, which [the prompt router](#the-prompt-routers-output)
-recalls together.
+`~/.abcd.noindex/`, which `abcd memory add` writes, and
+[the prompt router](#the-prompt-routers-output) recalls the two together.
 
 **AI transparency level (staged).** A second axis, independent of visibility. It
 has no backing intent or ADR, no shipped code reads it, and ahoy neither prompts
@@ -1624,8 +1711,10 @@ abcd/
 │   │   ├── openaiapi/                  #   outside the capability seams; 02-adapters.md is the
 │   │   ├── repoprompt/                 #   catalogue
 │   │   └── tailscale/
-│   └── surface/                        # front doors: cli/, and dashboard/, the one network
-│                                       #   listener (an mcp/ door is adr-23's third)
+│   └── surface/                        # front doors: cli/, and the two network listeners,
+│                                       #   dashboard/ and session/, the brief session relay
+│                                       #   `abcd session serve` runs (adr-23's mcp/ door
+│                                       #   is not built)
 ├── commands/<verb>.md                  # markdown command surfaces, flat; the gated list lives in
 │                                       #   ../04-surfaces/README.md (abcd.md is the bare /abcd board)
 ├── agents/<name>.md                    # host-delegated agent prompts, plus per-agent fixtures/

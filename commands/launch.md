@@ -1150,13 +1150,17 @@ when `--out` is inside it, and with the home directory as `~` otherwise.
 
 - `--tag` refuses unless the newest dated CHANGELOG version is that tag.
 - `--verify` refuses unless the committed catalog pins exactly this archive's
-  download address and digest. `auto-release.yml` runs it on the pushed commit
-  in `detect`, before the tag is made; the release workflow runs it again on the
-  tagged commit in `verify`, before anything is built, and once more in the
-  publish job, where the verified archive is the file it checksums, attests and
+  download address and digest. `release.yml`'s `verify` job runs it on the
+  commit it releases, before anything is built and, on the path
+  `auto-release.yml` calls, before the tag is made; the publish job runs it once
+  more, where the verified archive is the file it checksums, attests and
   uploads. With `--verify` the pin is the dirty-tree gate, since a payload file
   that differs from the commit changes the digest; without it, an uncommitted
-  change in the working tree refuses the render (exit 2).
+  change in the working tree refuses the render (exit 2). `--verify` does not
+  judge the merges armed on the forge: it reproduces a committed pin and cuts
+  nothing, and the commit it renders is the one pushed, which a merge armed
+  since cannot change. Without `--verify` the render judges them, as the cut
+  does.
 - `--repository <owner/name>` refuses unless the archive's download address lies
   under that repository's
   `https://github.com/<owner>/<name>/releases/download/<tag>/`, compared

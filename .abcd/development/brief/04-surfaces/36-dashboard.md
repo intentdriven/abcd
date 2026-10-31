@@ -1,6 +1,7 @@
 # `/abcd:dashboard` — The Product Thinker's Dashboard, Through Tailscale
 
-`/abcd:dashboard` runs the one network listener abcd has: a server on this
+`/abcd:dashboard` runs one of abcd's two network listeners (the other is the
+brief session relay, [`37-session.md`](37-session.md)): a server on this
 computer that the product thinker opens from a phone, an iPad or another
 computer on their own Tailscale network (itd-2610032150577708,
 spc-2610040741034208). Who may reach it, and on what terms, is the standing
@@ -130,9 +131,10 @@ network; abcd keeps no device list of its own on the tailnet.
 
 ## Exit codes
 
-`0` done; `1` a failure after something started (the server could not be
-reached and was stopped, or it did not stop in time and its run file is kept);
-`2` refused, with nothing started or stopped.
+`0` done; `1` a failure: after something started (the server could not be
+reached and was stopped, or it did not stop in time and its run file is kept),
+or before the start verb starts anything, when whether abcd manages the
+checkout could not be read; `2` refused, with nothing started or stopped.
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 
