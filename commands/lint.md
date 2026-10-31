@@ -153,7 +153,7 @@ currency-clean.
 "${CLAUDE_PLUGIN_ROOT}/abcd" lint site --out site
 ```
 
-reads the built output directory and the repository it came from, and runs eight
+reads the built output directory and the repository it came from, and runs nine
 independent gates. Each reports EVERY failure it finds rather than the first, so
 one run is one review round. An output directory with no `index.html` is
 rendered first: a caller who has not built yet is asking the same question as
@@ -203,12 +203,20 @@ one who has. It writes nothing except that render, and reaches no network.
   served at `owner.github.io/widgets/`); the stylesheet the `mobile` gate reads
   is resolved against the same path. At the default, `/`, every root-absolute
   link is inside the site and the gate has nothing to find.
+- `link-targets` — every `/docs/` link on a composed surface, and every target
+  in the redirect map (`site-src/redirects`, served as `_redirects`), names a
+  file in the output directory: the path itself, or a directory URL's
+  `index.html`. The `/docs/` tree is the documentation generator's, so its half
+  is judged only once that tree is in the output; in an output with no `docs/`
+  directory those targets are counted in a note and fail nothing. A redirect to
+  an absolute URL, or one with a placeholder or wildcard, is not judged.
 
 Report the gates that passed, then every finding under the gate that raised it,
 each with the file and the `data-src` span a reader's next edit goes to. Exit is
 `0` when nothing failed, `1` when something did, and `2` when the check could
 not run at all (no composition manifest, an unreadable input). A shrinkable
-baseline entry is printed as a note and does not change the exit code.
+baseline entry, and the count of `/docs/` targets an output without its docs
+tree could not judge, are printed as notes and do not change the exit code.
 
 The fix for a finding is always at its SOURCE — the page, the record, the
 manifest or the stylesheet — never in the generated output, which the next build

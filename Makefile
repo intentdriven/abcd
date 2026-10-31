@@ -243,11 +243,13 @@ docs-lint:
 #
 # Builds into a throwaway directory, then runs `lint site` over it before
 # discarding it. Build alone answers "does it render"; the publish gates
-# (provenance, hero, banned-tokens, snippets, baseline, mobile, figure-labels)
-# are what release.yml's post-publish site job runs, so a change that renders but
-# trips a check gate would otherwise pass every pre-publish gate and fail only
-# AFTER the binaries ship. `lint site` needs no mkdocs — it excludes docs/ — so a
-# plain build output suffices. Roughly ten seconds, almost all of it writing files.
+# (provenance, hero, banned-tokens, snippets, baseline, mobile, figure-labels,
+# base-path, link-targets) are what release.yml's post-publish site job runs, so
+# a change that renders but trips a check gate would otherwise pass every
+# pre-publish gate and fail only AFTER the binaries ship. `lint site` needs no
+# mkdocs — it excludes docs/ from its page walk, and link-targets leaves the
+# /docs/ targets of an output with no docs tree to a note — so a plain build
+# output suffices; the site workflow, which does run mkdocs, judges them. Roughly ten seconds, almost all of it writing files.
 site-render:
 	@rm -rf .abcd/.work.local/scratch/site-render-check
 	@go run ./cmd/abcd site build --out .abcd/.work.local/scratch/site-render-check >/dev/null

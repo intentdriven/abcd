@@ -2,7 +2,7 @@ package site
 
 // `abcd lint site` — the gates adr-47 decision 3 arms.
 //
-// The build renders; this says whether what it rendered may be published. Seven
+// The build renders; this says whether what it rendered may be published. Nine
 // independent checks run over an already-built output directory and the
 // repository it came from, each reporting EVERY failure it finds rather than
 // the first, because a gate that stops at one finding turns a single review into
@@ -24,6 +24,10 @@ package site
 //     and inline widths, over every emitted page.
 //  7. Loop-figure labels — every label in a page's lifted diagram is a phrase on
 //     that page, so a drawing cannot drift from the prose beside it.
+//  8. Base path — every root-absolute URL sits under the path the site is
+//     served below.
+//  9. Link targets — every /docs/ link on a composed surface and every redirect
+//     target names a file in the output as it will be served (linktargets.go).
 //
 // # Scope
 //
@@ -38,7 +42,9 @@ package site
 //
 // `/docs/` is MkDocs' own tree and is not this build's output at all, so it is
 // excluded from the page walk before any gate sees it — including the mobile
-// checks, which therefore say nothing about it. Its words are gated at the
+// checks, which therefore say nothing about it. The link-targets gate is the one
+// that looks INTO it, and only to ask whether a file is there: a link the
+// composer writes into `/docs/`, or a redirect into it, must land. Its words are gated at the
 // source by docs-lint, and its layout is the SSG's own responsibility. A green
 // report here is a statement about the pages abcd renders, and about no others.
 //
@@ -152,12 +158,13 @@ const (
 	CheckMobile       = "mobile"
 	CheckFigureLabels = "figure-labels"
 	CheckBasePath     = "base-path"
+	CheckLinkTargets  = "link-targets"
 )
 
 // CheckNames is every check this verb runs, in the order it runs them.
 var CheckNames = []string{
 	CheckProvenance, CheckHero, CheckBannedTokens, CheckSnippets,
-	CheckBaseline, CheckMobile, CheckFigureLabels, CheckBasePath,
+	CheckBaseline, CheckMobile, CheckFigureLabels, CheckBasePath, CheckLinkTargets,
 }
 
 // maxOutputPageBytes bounds one emitted page read.
@@ -223,8 +230,10 @@ type CheckResult struct {
 	Checks []string `json:"checks"`
 	// Findings fail the run.
 	Findings []CheckFinding `json:"findings"`
-	// Notes do not. The ratchet's shrink invitation is the only one: a baseline
-	// entry whose reference has been fixed is news, not a failure.
+	// Notes do not. The ratchet's shrink invitation is one: a baseline entry
+	// whose reference has been fixed is news, not a failure. The other is the
+	// link-targets gate's count of /docs/ targets it could not judge, in an
+	// output the docs generator has not written into.
 	Notes []CheckFinding `json:"notes"`
 	// Built reports whether this run rendered the output itself.
 	Built bool `json:"built"`
@@ -233,7 +242,7 @@ type CheckResult struct {
 // OK reports whether the run found nothing that fails it.
 func (r CheckResult) OK() bool { return len(r.Findings) == 0 }
 
-// checker carries everything the eight checks read, gathered once.
+// checker carries everything the checks read, gathered once.
 type checker struct {
 	repoRoot string
 	// root is repoRoot as an os.Root containment scope, shared by every read of a
@@ -381,6 +390,9 @@ func Check(req CheckRequest) (CheckResult, error) {
 	c.checkMobile()
 	c.checkFigureLabels()
 	c.checkBasePath()
+	if err := c.checkLinkTargets(); err != nil {
+		return CheckResult{}, err
+	}
 
 	sortFindings(res.Findings)
 	sortFindings(res.Notes)
@@ -489,6 +501,9 @@ func (c *checker) readPages() error {
 				gates := []string{CheckHero, CheckBannedTokens, CheckSnippets, CheckMobile, CheckFigureLabels}
 				if c.base != "/" {
 					gates = append(gates, CheckBasePath)
+				}
+				if isComposedSurface(rel) {
+					gates = append(gates, CheckLinkTargets)
 				}
 				for _, name := range gates {
 					c.fail(name, rel, "", "this page did not parse, so this gate could not examine it")
