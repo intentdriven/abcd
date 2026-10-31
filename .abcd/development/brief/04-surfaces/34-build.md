@@ -1006,7 +1006,11 @@ reviews are the only gate on what it says.
   store's lock. The start records a digest of the checkout too, over its
   HEAD, its index and every file the ignore rules admit outside the local
   tier, so a change anyone makes there during the reviews or before the plan
-  hands the lane back. Ignored files and the git directory are not covered,
+  hands the lane back. For the index it covers the tree the index writes and
+  every entry with its flags (intent-to-add, skip-worktree and
+  assume-unchanged included, the cached file stats not); an index path that
+  is not a regular file, or an index past 1 GiB, is not read, and the lane is
+  handed back. Ignored files and the git directory are not covered,
   and the local tier is left out by design: the run's state and the
   reviewers' returns are written there, as they are for the build's
   validators.

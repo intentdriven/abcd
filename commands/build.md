@@ -272,11 +272,15 @@ gate on what it says.
 The run has one lane, `plan <itd-N> (--auto-plan)`, which records the draft's
 path, the SHA-256 of its bytes and a digest of the checkout (`auto_plan` on
 the lane), and takes two stages. The checkout's digest covers its HEAD, its
-index, and every file the ignore rules admit outside the local tier. It does
-not cover ignored files or the git directory (refs other than HEAD, the
-configuration, the hooks). The local tier is left out by design: the run's
-own state and the reviewers' returns are written there, as they are for the
-build's validators.
+index, and every file the ignore rules admit outside the local tier. For the
+index it covers the tree the index writes and every entry with its mode,
+object, stage, path and flags: an intent-to-add entry, a skip-worktree flag
+and an assume-unchanged flag each count, and the file stats git caches there
+do not. It does not cover ignored files or the git directory (refs other than
+HEAD, the configuration, the hooks). An index path that is not a regular
+file, or an index past 1 GiB, is not read, and the run hands the lane back.
+The local tier is left out by design: the run's own state and the reviewers'
+returns are written there, as they are for the build's validators.
 
 1. `plan-review` — `implement step` hands the draft to a fresh
    `ruthless-reviewer` for the design and feasibility lens, and, once its
@@ -290,14 +294,15 @@ build's validators.
    refused. Once both are in, a `FIX FIRST` hands the lane back as
    `not-planned` with the findings: nobody is there to answer them, so tell
    the person and point them to the planning interview. A checkout that
-   changed since the start (its HEAD, its index, or a file the ignore rules
-   admit outside the local tier) hands the lane back too, whoever changed it:
-   the person, a peer session or a reviewer. Tell the person before the run
-   starts that a commit, a staged change or an edited file in this checkout
-   while the reviews run hands the run back; work in another checkout of the
-   repository does not change this one's digest. The reviews always run on
-   this session's agents: a role routed to a runner, and a reviewer route,
-   are not used for them, and a `--route` on such a step is refused.
+   changed since the start (its HEAD, its index's entries or their flags, or a
+   file the ignore rules admit outside the local tier) hands the lane back
+   too, whoever changed it: the person, a peer session or a reviewer. Tell
+   the person before the run starts that a commit, a staged change or an
+   edited file in this checkout while the reviews run hands the run back;
+   work in another checkout of the repository does not change this one's
+   digest. The reviews always run on this session's agents: a role routed to
+   a runner, and a reviewer route, are not used for them, and a `--route` on
+   such a step is refused.
 2. `plan` — two steps. The first checks the rows above again on the record as
    it stands, both recorded verdicts, the draft's bytes and the checkout, and
    marks the lane as planning; it writes only the run's state. The second
