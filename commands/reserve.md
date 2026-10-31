@@ -520,7 +520,8 @@ user's read as someone else's until they lapse, and the cap counts them apart.
 Relay it. A holder-id file another account owns or could write, one that holds
 no id, and a `~/.abcd.noindex` another account can write are each refused,
 never replaced or minted into, and under a HOME inside a git working tree that
-is not the account's own no holder id is read or kept, so the act refuses. A
+is not the account's own no holder id is read or kept, so the act refuses
+unless `ABCD_HOLDER_ID` is set to the user's id. A
 file left empty is most likely another run minting at that moment: retry, and
 look at the file only if it is still empty. The ids of the user's other
 machines and accounts (each prints its own with `--holder`) can be listed in

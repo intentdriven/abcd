@@ -642,8 +642,11 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 	if sig, ok := r.sharedStashSignal(segs, r.gitValueFlags()); ok {
 		signals = append(signals, sig)
 	}
-	// The merge rule (merge.go): the merge commands while facilitator.mode is
-	// human, and the facilitator's approval act in any mode.
+	// The person's own acts under any program name (personacts.go), and the
+	// merge rule (merge.go): the merge commands while facilitator.mode is
+	// human, and an approving review on the forge in any mode. The acts come
+	// first, so a line holding both names the act.
+	signals = append(signals, personActSignals(segs)...)
 	signals = append(signals, r.mergeSignals(segs)...)
 
 	// A brace group the tokenizer did not expand (past the cap) is folded in the same way,

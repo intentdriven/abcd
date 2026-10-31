@@ -14,7 +14,8 @@ shown.
 This chapter describes intake, triage, closing, the outbound check and
 publication. `embargo` runs no fix lane, lands no fix, requests no CVE,
 restores no redacted record and has no step for an embargo broken before
-publication; those stay the person's (below).
+publication; the person handles each of those, and the section below lists the
+ones the command page hands them.
 
 ## Sub-verbs
 

@@ -120,7 +120,7 @@ While that reservation is live, every other session's land step (an
 `implement step` arming a merge, or `abcd land`, under any account, on any
 computer) refuses to arm, names your holder id and the release, and leaves its pull
 request open for you to merge or hold; `/abcd:peers` shows other sessions
-"release vX.Y.Z being cut by <your holder id>: merges are held; the hold
+"release vX.Y.Z being cut by <your holder id> (claimed): merges are held; the hold
 lapses at <time> unless the cut renews it" (the `h_…` id `abcd reserve
 --holder` prints), and shows this copy "you
 are cutting release vX.Y.Z from this copy: every other session's merges are
@@ -540,8 +540,8 @@ Then summarise the JSON for the user:
   them the release page would cite (`in_press_release`), the guard verdict
   (`guard`) and the findings verdict (`findings`). A refused cut (`ready`
   false) carries its `refusals`, each naming what blocks it; relay them as
-  information. A refused cut changes nothing about the preview's exit, which
-  stays the bundle's. When the cut could not be read at all, `cut_error` says
+  information. A refused cut changes nothing about the preview's exit: the
+  preview exits 0 whenever it runs. When the cut could not be read at all, `cut_error` says
   why in its place. The plain preview renders the cut after the bundle report,
   under its own `abcd launch --dry-run —` line, as `launch ship` renders it.
 
@@ -600,7 +600,7 @@ dirt anywhere else is not the derivation's concern (the ingest's pre-flight
 judges the whole tree), and `--allow-dirty` does not waive it, because the cut
 would still be read from HEAD. Commit the records (or discard the change) and
 run again. The preview (`launch --dry-run`) carries the same refusal in its
-cut, rendered `REFUSED` with the paths, and its exit stays the bundle's.
+cut, rendered `REFUSED` with the paths, and still exits 0.
 
 The cut also lists every planned intent that names a release it must land by
 (`targets`, one `targeted:` line each in the render, and `targets_error` when

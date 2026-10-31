@@ -76,9 +76,10 @@ guard every home declaration is read through; a file that fails that, or holds
 no id, refuses the act and is never replaced. A HOME inside a git working tree
 that is not the account's own is judged as the machine layer is: no holder id
 is read from it or minted into it, so an act there refuses before anything is
-pushed, and a render reads neither an id nor a login there (the login may come
-from that home's machine configuration), so it names no hold as the reader's,
-a login-named hold made before the id included. No trailer and no ref name
+pushed unless `ABCD_HOLDER_ID` names the id, and a render reads neither an id
+nor a login there (the login may come from that home's machine configuration),
+so it names as the reader's only the holds under the id `ABCD_HOLDER_ID` names,
+never a login-named hold made before the id. No trailer and no ref name
 abcd pushes carries the person's login. The commit author and committer fields
 carry the person's git identity when it is a person's, and otherwise the login
 and no-reply address of the account the forge token resolves to (below), by
@@ -128,8 +129,8 @@ id; no commit carries the login beside it, not even for one release. The
 listing of each holder's hand-backs of the last day (`abcd peers`) goes by the
 name each tombstone carries, not by person, since it knows no one else's ids:
 one person's hand-back made before the holder id and one made after list as
-two holders. That is accepted as the change's cost: no tombstone is named by a
-login any more, so it lasts at most the day's window after the update. The
+two holders, for at most the day's window, since no tombstone abcd pushes
+names a login. The
 release hold's withdrawals are the person's own by the same judgement, and a
 release branch is still held to the forge's record of who pushed each commit:
 a commit is read as its pusher's when it names them by username, or names a

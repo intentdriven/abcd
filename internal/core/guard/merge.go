@@ -24,7 +24,8 @@ import (
 //     directory or set GH_REPO) is refused too, since the mode read is this
 //     checkout's;
 //   - in any mode, the technical facilitator's approval acts are refused:
-//     `abcd land --approve` under any program name, and an approving review
+//     `abcd land --approve` under any program name (read in personacts.go,
+//     with the person's other acts), and an approving review
 //     posted on the forge (`gh pr review --approve`, the REST and GraphQL
 //     review routes with APPROVE). An agent that makes either writes a false
 //     record of who approved.
@@ -39,7 +40,7 @@ import (
 // cannot tell the mode and judges no merge command; the approval acts are
 // refused whatever the registry knows. The `abcd` binary's own spelling of the
 // land approval is the registry entry abcd-land-approve, which also teaches
-// it; every other spelling is raised here.
+// it; every other program's spelling is raised in personacts.go.
 //
 // It guards against an agent merging or approving by mistake, not against a
 // determined one: the agent holds the person's own credentials, and can point
@@ -59,11 +60,6 @@ const (
 	// merge mutation; both are refused while the mode is human.
 	mergeRESTEntryID   = "merge-rest-human"
 	mergeUnreadEntryID = "merge-graphql-unread-human"
-
-	// approveAnyEntryID is the reserved id the approval act is refused under,
-	// in any mode, when the program running it is not one the registry entry
-	// abcd-land-approve names: `go run`, or abcd built under another name.
-	approveAnyEntryID = "abcd-land-approve-any-program"
 
 	// approveForgeEntryID is the reserved id an approving review posted on
 	// the forge is refused under, in any mode.
@@ -139,13 +135,6 @@ func (r Registry) mergeSignals(segs []segment) []payloadSignal {
 		}
 	}
 	for _, s := range segs {
-		if approveAct(s) {
-			add(payloadSignal{
-				id: approveAnyEntryID, verdict: VerdictBlock, family: familyMerge,
-				reason:    "Recording the technical facilitator's approval of a head is the person's own act: the merge gate arms what it approves, so an approval an agent records is a false record of who approved, whatever facilitator.mode says.",
-				successor: "Leave this one to the person: tell them the head you believe is ready and why, and let them run `abcd land --approve` themselves.",
-			})
-		}
 		if forgeApproval(s) {
 			add(payloadSignal{
 				id: approveForgeEntryID, verdict: VerdictBlock, family: familyMerge,
@@ -498,32 +487,6 @@ func placeholder(w, name string) bool { return w == "{"+name+"}" || w == ":"+nam
 // unfixed reports whether tok holds text the line does not fix: a
 // substitution's output, or a variable's value in a re-read payload.
 func unfixed(tok string) bool { return isUnknown(tok) || strings.ContainsRune(tok, varMark) }
-
-// approveAct reports whether segment s records the technical facilitator's
-// approval under a name the registry entry abcd-land-approve does not read:
-// any program, abcd's command built under another name, `go run` of the
-// module or of `.`, given the land verb and --approve in either order. What the
-// program is called is not read, since a build is runnable under any name;
-// the words it is handed are. A word the line does not fix reads as empty,
-// so a flag a substitution prints is not taken as --approve.
-func approveAct(s segment) bool {
-	for _, a := range commandSites(s) {
-		if commandNamed(s, a, "abcd") {
-			continue
-		}
-		// cobra parses the found command's flags wherever they stand, so
-		// `--approve land` sets land's --approve as `land --approve` does.
-		land, approve := false, false
-		for _, w := range literalWords(s, a.idx+1) {
-			land = land || w == "land"
-			approve = approve || boolFlagOn(w, "--approve")
-		}
-		if land && approve {
-			return true
-		}
-	}
-	return false
-}
 
 // reviewRouteLoose is the REST route that posts a pull request review or
 // submits a pending one, unknown parts read as one segment each.
