@@ -410,6 +410,9 @@ func verifyLaneReceipt(c Context, lane *Lane, receiptRel, want string) error {
 	}
 	missing = append(missing, commitGaps(c.RepoRoot, lane, rc.Commits)...)
 	missing = append(missing, resolutionGaps(rc.Resolves, rc.Commits)...)
+	// The backstop to the widening before an edit (widen.go): a branch that
+	// changes a path the issue's reservation does not cover is refused.
+	missing = append(missing, unheldGaps(c, *lane, c.Now)...)
 	if iss := c.State.Issue(); iss != "" && !resolvesIssue(*lane, rc, iss) {
 		missing = append(missing, "a resolution of "+iss+", the lane's issue, in resolves (the landing resolves it with the commit named there)")
 	}

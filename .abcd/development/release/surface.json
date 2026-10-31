@@ -2552,6 +2552,27 @@
       ]
     },
     {
+      "path": "abcd implement widen",
+      "hidden": false,
+      "sentence": "Widen an issue lane's hold to a path before it is edited: Writes the reservation and a run record line; refuses another copy's live hold, with exit 3.",
+      "flags": [
+        {
+          "name": "lane",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "run",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd inbox",
       "hidden": false,
       "group": "agents",

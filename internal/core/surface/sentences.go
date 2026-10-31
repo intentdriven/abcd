@@ -237,6 +237,8 @@ var sentences = map[string]string{
 		"Writes the release and a claim_released line; refuses a claim another session holds.",
 	"abcd implement report": "Derive the comparison of the division modes from the run log: " +
 		"Writes nothing; refuses --date and --log together.",
+	"abcd implement widen": "Widen an issue lane's hold to a path before it is edited: " +
+		"Writes the reservation and a run record line; refuses another copy's live hold, with exit 3.",
 	"abcd implement status": "Render the implement loop's runs in this checkout, lane by lane: " +
 		"Writes a due renewal to origin, its outcome to the run record; refuses a --run naming no run.",
 	"abcd implement step": "Perform the next stage of an implement loop run's lane and exit: " +
