@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/procgroup/run.go"
 remedy: "After Wait, treat a failing command whose context has ended as cut, so its error wraps the context's own; pin it with a test whose wait never sees the context end."
-resolution: "RunToEOF now treats a failure Wait reports once ctx has ended as cut, so a command its context stopped wraps ctx's error even when the killed pipes drain before the wait sees ctx end. TestRunToEOFStopsACommandThatHangsWhosePipesCloseFirst forces that order with a context whose Done never fires; it failed first with the CI message (signal: killed) and passes now. Every RunToEOF caller was checked: those that read an exit code check ctx.Err() first, the rest pass the error up as a failure."
+resolution: "RunToEOF now treats a failure Wait reports once ctx has ended as cut, so a command its context stopped wraps ctx's error even when the killed pipes drain before the wait sees ctx end. TestRunToEOFStopsACommandThatHangsWhosePipesCloseFirst forces that order with a context whose Done never fires; it failed first with the CI message (signal: killed) and passes now. Every RunToEOF caller was checked: those that read an exit code check their context first, the rest pass the error up as a failure."
 impact: fix
 ---
 
