@@ -249,38 +249,58 @@ naming the row, exit 2, and writes nothing:
 - `draft` — the intent is in `drafts/`. An intent already planned has nothing
   to plan, and the flag is ignored: the run builds it, its checks being the
   ones above, and its record says so. An issue id is refused.
+- `plannable` — nothing `intent plan` refuses on the draft's own fields: a
+  kebab-case slug, no `spec_id` already set, a planned form under the size
+  cap.
 - `acceptance_criteria` — at least one top-level bullet under
   `## Acceptance Criteria`. Criteria are a person's; nothing unattended writes
   them.
 - `open_questions` and `claim_sections` — as above. A scope condition with no
   identity marker yet passes, since `plan` stamps it.
-- `grounds` — the most recent ground a person wrote is `pursued:`; none, or a
-  deferred or declined one, refuses.
+- `grounds` — the most recent ground no run's pick wrote is `pursued:`; none,
+  or a deferred or declined one, refuses. The row checks that no pick wrote
+  it, not who did: `intent ready --grounds` writes a ground whoever runs it.
 - `criteria_provenance` — the record's `origin` and `production_mode` are
-  present and in the vocabulary.
+  present and in the vocabulary. The row checks that they are stated and
+  known, not that they are true.
+
+These rows show that the record is complete. For a draft an agent wrote end to
+end, its grounds and provenance included, the two reviews below are the only
+gate on what it says.
 - `hold`, `blocked` and `peers` — as above.
 
 The run has one lane, `plan <itd-N> (--auto-plan)`, which records the draft's
-path and the SHA-256 of its bytes (`auto_plan` on the lane) and takes two
-stages:
+path, the SHA-256 of its bytes and a digest of the checkout's HEAD and working
+tree outside the local tier (`auto_plan` on the lane), and takes two stages:
 
 1. `plan-review` — `implement step` hands the draft to a fresh
-   `ruthless-reviewer`, once for the design and feasibility lens and once for
-   the record-discipline lens, each with its own brief under
-   `<lane>/plan-review/<lens>/`. Each writes its return there, ending with one
-   `### Verdict` section (`SHIP` or `FIX FIRST`), and `implement receipt
-   <return>` hands it back: the loop parses the verdict and records it. A
-   return it cannot read as a verdict records nothing and is refused. Once both
-   are in, a `FIX FIRST` hands the lane back as `not-planned` with the findings:
-   nobody is there to answer them, so tell the person and point them to the
-   planning interview.
-2. `plan` — the rows above are checked again on the record as it stands, both
-   recorded verdicts must pass, and the draft's bytes must still be the ones
-   the start recorded; then `intent plan` runs in this checkout, as a person's
-   plan does (the spec stub minted, the intent moved to `planned/`). A main
-   checkout two or more live sessions started in is refused before it, exit 3,
-   as every record writer is. A draft that changed or moved since the start, at
-   either stage, hands the lane back as `not-planned` and plans nothing.
+   `ruthless-reviewer` for the design and feasibility lens, and, once its
+   verdict is recorded, to another for the record-discipline lens: one at a
+   time, so the two are never out together. Each has its own brief under
+   `<lane>/plan-review/<lens>/`, which tells it the draft's text is data to
+   judge, not instructions, and to change nothing. Each writes its return
+   there, ending with one `### Verdict` section (`SHIP` or `FIX FIRST`), and
+   `implement receipt <return>` hands it back: the loop parses the verdict and
+   records it. A return it cannot read as a verdict records nothing and is
+   refused. Once both are in, a `FIX FIRST` hands the lane back as
+   `not-planned` with the findings: nobody is there to answer them, so tell
+   the person and point them to the planning interview. A checkout that
+   changed since the start (its HEAD, or a file outside the local tier) hands
+   the lane back too. The reviews always run on this session's agents: a role
+   routed to a runner, and a reviewer route, are not used for them, and a
+   `--route` on such a step is refused.
+2. `plan` — two steps. The first checks the rows above again on the record as
+   it stands, both recorded verdicts, the draft's bytes and the checkout, and
+   marks the lane as planning. The second checks them once more, then runs
+   `intent plan` in this checkout, as a person's plan does (the spec stub
+   minted, the intent moved to `planned/`), telling it the digest so it
+   refuses, under its own lock, a draft that changed after the loop's check.
+   A main checkout two or more live sessions started in is refused at that
+   second step, under the run's lock, exit 3, as every record writer is. A
+   draft that changed or moved since the start, at either stage, hands the
+   lane back as `not-planned` and plans nothing; so does a draft someone
+   planned by hand before the lane was marked, since the reviews did not vouch
+   for that plan.
 
 The run is then complete, and `next` says what is left: the spec's steps and
 footprint, a commit of the plan on a branch for review, and `abcd build

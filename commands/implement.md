@@ -206,10 +206,12 @@ last, and a fourth reads its record at the end:
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement record [--run <run-id>] [--transcript <path>]... --json
 ```
 
-A run `/abcd:build --auto-plan` started is driven the same way: its one lane
-takes the stages `plan-review` (a `ruthless-reviewer` per lens, each return
-handed back with `implement receipt`) and `plan`, never the five below, and
-`/abcd:build` says what each does. Its lane carries `auto_plan` in `status
+A run `/abcd:build --auto-plan` started is stepped the same way, except that
+its reviews are always this session's agents: no runner and no reviewer route
+is handed one, and a `--route` on its step is refused. Its one lane takes the
+stages `plan-review` (a `ruthless-reviewer` per lens, one after the other,
+each return handed back with `implement receipt`) and `plan`, never the five
+below, and `/abcd:build` says what each does. Its lane carries `auto_plan` in `status
 --json` and `record --json`: the draft, its digest, each review's lens, return
 and the verdict the loop recorded, and the planned record and spec.
 

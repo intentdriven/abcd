@@ -972,27 +972,37 @@ thinker's sign-off and stays the human's act; the auto-plan is the one other
 door, and
 adr-2610310235000654 records what stands in for the sign-off: recorded
 decisions, grounds present, criteria provenance, and two review receipts.
-Each part is something a person already wrote into the record, or a verdict
-the loop recorded itself, so nothing is inferred.
+Each part is a field the record carries, or a verdict the loop recorded
+itself, so nothing is inferred. The record-only parts show that the record is
+complete, not who wrote it: the grounds row reads the last ground no run's
+pick wrote, and the provenance row that `origin` and `production_mode` are
+stated in the vocabulary. For a draft an agent wrote end to end, the two
+reviews are the only gate on what it says.
 
 - **The start** checks the record-only parts in place of the readiness gate:
   the draft carries its criteria, asks no open question, answers its claim
   sections (a scope condition not yet stamped passes, since the plan stamps
-  it), records a person's `pursued:` grounds last, states its `origin` and
+  it), is one the plan takes (a kebab-case slug, no `spec_id` set), carries
+  `pursued:` as its last ground no run's pick wrote, states its `origin` and
   `production_mode`, is not held and names no unsettled blocker; the peers
   check is the build's. A draft short of any is refused, writing nothing. An
   intent already planned has nothing to plan, so the build runs as without
   the flag.
 - **The lane** takes two stages instead of five. `plan-review` hands the
-  draft to two fresh adversarial reviewers, one for design and feasibility and
-  one for record discipline (the proven pair the adversarial-review principle
-  names), and the loop records each verdict from the reviewer's own return, as
-  it does a validator's. `plan` checks the substitute again on the record as it
-  stands and runs the plan in the run's checkout, as a person's plan does.
+  draft to two fresh adversarial reviewers in turn, one for design and
+  feasibility and one for record discipline (the proven pair the
+  adversarial-review principle names), always on the host's agents, and the
+  loop records each verdict from the reviewer's own return, as it does a
+  validator's. `plan` checks the substitute again on the record as it stands,
+  marks the lane as planning, and on its next step runs the plan in the run's
+  checkout, as a person's plan does; a record planned before the mark is
+  another act's, and the lane is handed back.
 - **Bound to the bytes reviewed.** The start records the draft's digest, and
   either stage hands the lane back with the draft unplanned when the bytes
   changed or the draft moved: otherwise the reviews would vouch for a text
-  they never read.
+  they never read. The plan itself compares the digest under the intent
+  store's lock, and the start records a digest of the checkout too, so a
+  change the reviewers made elsewhere hands the lane back.
 - **A finding goes back to the person.** The build's validators send findings
   to a fresh implementer; a plan review's would rewrite the person's record,
   which is the judgement the sign-off stands for, so a review that does not
