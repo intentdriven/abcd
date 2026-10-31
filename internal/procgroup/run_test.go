@@ -74,6 +74,28 @@ func TestRunToEOFStopsACommandThatHangs(t *testing.T) {
 	}
 }
 
+// unseenEnd is the context a command was built with, as RunToEOF's wait
+// sees it on a run where the command's pipes close first: its Done never
+// closes, and its Err is the command's context's.
+type unseenEnd struct{ context.Context }
+
+func (unseenEnd) Done() <-chan struct{} { return nil }
+
+// TestRunToEOFStopsACommandThatHangsWhosePipesCloseFirst: a command its
+// context stopped is answered as the context's error even when the pipes the
+// kill closed are drained before the wait sees the context end, which under
+// load lost the race the other way and returned the bare signal: killed
+// (iss-2610310054494441).
+func TestRunToEOFStopsACommandThatHangsWhosePipesCloseFirst(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	cmd := shCommand(t, ctx, `exec sleep 10`)
+	err := RunToEOF(unseenEnd{ctx}, cmd, &bytes.Buffer{}, &bytes.Buffer{})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("RunToEOF = %v; want context.DeadlineExceeded", err)
+	}
+}
+
 // TestRunToEOFReportsAFailureAsItself: a command that exits non-zero is its
 // exit error, with what it wrote read whole.
 func TestRunToEOFReportsAFailureAsItself(t *testing.T) {
