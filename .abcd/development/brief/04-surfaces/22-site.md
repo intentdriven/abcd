@@ -265,11 +265,13 @@ entry and no links.
 
 ## The gates
 
-The lint's site target runs eight independent gates over a rendered tree and reports
+The lint's site target runs nine independent gates over a rendered tree and reports
 every failure rather than the first: provenance, hero drift against the identity
 block, banned tokens over composed text, `abcd …` snippets against the generated
-CLI reference, the unresolved-reference ratchet, the static mobile checks, and the
-loop-figure labels, and the base path of every root-absolute link. The eight are named once in the code that runs them, and the
+CLI reference, the unresolved-reference ratchet, the static mobile checks, the
+loop-figure labels, the base path of every root-absolute link, and the link
+targets: every `/docs/` link on a composed page and every redirect target names a
+file in the built output. The nine are named once in the code that runs them, and the
 check's report prints each name as it runs it, passing or failing.
 
 Scope follows adr-47 decision 3 exactly. Composed surfaces are the landing page and
