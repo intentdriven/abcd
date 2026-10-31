@@ -216,7 +216,7 @@ func newAhoyWorktreePruneCommand(asJSON *bool) *cobra.Command {
 			}
 			roots, notes := layered.RootsFor(root)
 			for _, n := range notes {
-				fmt.Fprintln(cmd.ErrOrStderr(), termsafe.Sanitize(fsutil.RedactHome(n)))
+				fmt.Fprintln(cmd.ErrOrStderr(), noteLine(n))
 			}
 			days, err := worktree.QuietDays(roots)
 			if err != nil {

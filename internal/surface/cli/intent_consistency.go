@@ -51,10 +51,8 @@ func newIntentConsistencyCommand(asJSON *bool) *cobra.Command {
 			if len(args) == 1 {
 				id = args[0]
 			}
-			roots, notes := layered.RootsFor(repoRoot)
-			for _, n := range notes {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd intent consistency: %s\n", termsafe.Sanitize(fsutil.RedactHome(n)))
-			}
+			// The route resolved above has printed the layers' notes already.
+			roots, _ := layered.RootsFor(repoRoot)
 			cfg, err := intent.LoadConsistencyConfig(roots)
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent consistency: the request limit is refused: " +

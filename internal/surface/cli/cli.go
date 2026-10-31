@@ -4848,7 +4848,7 @@ func newPrompter(cmd *cobra.Command) ahoy.Prompter {
 	cwd, _ := os.Getwd()
 	if t, notes, ok := drawnTerminal(in, cmd.OutOrStdout(), cmd.ErrOrStderr(), cwd); ok {
 		for _, n := range notes {
-			fmt.Fprintf(cmd.ErrOrStderr(), "abcd: %s\n", termsafe.Sanitize(n))
+			fmt.Fprintln(cmd.ErrOrStderr(), noteLine(n))
 		}
 		return &drawnPrompter{setupQuestions: setupQuestions{cwd: cwd, w: t.Out}, term: t}
 	}

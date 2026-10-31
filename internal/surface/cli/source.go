@@ -344,7 +344,7 @@ func askLibraryClass(cmd *cobra.Command) (string, error) {
 			"abcd asks only at a terminal, and this is not one; the class is never guessed, and nothing was written"}
 	}
 	for _, n := range notes {
-		fmt.Fprintf(cmd.ErrOrStderr(), "abcd: %s\n", termsafe.Sanitize(n))
+		fmt.Fprintln(cmd.ErrOrStderr(), noteLine(n))
 	}
 	got, err := drawnPut(t, question.Ask{Questions: []question.Question{source.ClassQuestion()}})
 	switch {

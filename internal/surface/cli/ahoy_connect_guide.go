@@ -120,7 +120,7 @@ func runConnectGuide(cmd *cobra.Command, args []string, baseURL, resume string, 
 	}
 	roots, notes := layered.RootsFor(cwd)
 	for _, n := range notes {
-		fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s\n", termsafe.Sanitize(fsutil.RedactHome(n)))
+		fmt.Fprintln(cmd.ErrOrStderr(), noteLine(n))
 	}
 	req := oracle.GuideRequest{Roots: roots, BaseURL: baseURL, EnvNames: envNames()}
 	if len(args) == 1 {
