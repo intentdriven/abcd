@@ -69,16 +69,16 @@ non-interactive mode does to that path.
   and are deleted after `cleanupPeriodDays` (30 days by default);
   `--no-session-persistence` suppresses a run's transcript (Claude Code
   sessions and sub-agents docs).
-- **The hooks run unless the lane is started bare, and abcd's runner starts
-  lanes bare.** Without `--bare` a `-p` session runs the project's hooks and
-  plugins; `--bare` skips them, is the host's recommendation for scripts, and
-  "will become the default for `-p` in a future release" (Claude Code
-  headless docs). abcd's shipped claude runner launches every lane with
-  `--print --bare` on a paid key (RN2, dcn-2610020000000016) and with
-  `--no-session-persistence`, so a runner lane fires none of abcd's
-  `SessionEnd` and `SubagentStop` capture and leaves no transcript in the
-  host's store; the guard reaches it as the run's permission-prompt answerer
-  instead (dcn-2610161624025493).
+- **Both lane routes are already captured.** Without `--bare` a `-p` session
+  runs the project's hooks and plugins; `--bare` skips them, is the host's
+  recommendation for scripts, and "will become the default for `-p` in a
+  future release" (Claude Code headless docs). A host-route lane, the default,
+  runs as a sub-agent in the person's session, where abcd's `SubagentStop` hook
+  captures its transcript. A role routed to abcd's claude runner is launched
+  with `--print --bare` on a paid key (RN2, dcn-2610020000000016) and with
+  `--no-session-persistence`, so for that role no hook fires and no session is
+  left in the host's store; the runner's dispatcher captures it from its stream instead, storing each lane's transcript as a native record through `history.Capture` and its redaction door, keyed on the session id and the role (`runner.HistoryStore`, wired into build and drain). The guard reaches a runner lane
+  as its permission-prompt answerer (dcn-2610161624025493).
 - **Termination matters.** On SIGTERM the host runs `SessionEnd` and no other
   hook, records no result for the turn, and exits 143; SIGINT ends the turn
   first; the Stop hook's `transcript_path` may lag the conversation (Claude
@@ -89,17 +89,20 @@ non-interactive mode does to that path.
   to Claude Code and changes between versions" (Claude Code sessions docs), so
   the raw file is stored and the index derived.
 
-**Path 2, with the capture source left to a ruling.** Under the runner as
-shipped, the one record a lane leaves is the `stream-json` stream the runner
-already reads, so approach (c), a sink on that stream, is the one that needs no
-reversal. Approach (a), capture at the seam through the same hooks, needs a
-lane started without `--bare` (or with the plugin and hooks passed
-explicitly), which reverses RN2 and dcn-2610161624025493; it is a proposal for
-the technical facilitator to rule on, not the decided shape. An ingest by
-session id from the result is dropped as a fallback, because runner lanes
-persist no session. Whichever is ruled keys the capture by run id, lane, pass
-and phase set in the lane's environment and goes through `history.Capture` and
-its redaction door, best-effort as the criteria require. No Go dependency. The independent fit-challenge runs at plan
+**Path 2: the capture exists on both routes; the keys do not.** A host-route
+lane is captured by the `SubagentStop` hook, approach (a); a lane whose role
+is routed to a runner is captured from its stream by the dispatcher, approach
+(c) as shipped. Neither capture is keyed by the run id, lane, pass and phase
+the first criterion asks for: the hook's record carries the person's session
+and the sub-agent, the runner's the session id and the role, and the run's
+record can list transcripts named at its end, which links them to the run but
+not to a lane, pass or phase. The gap is setting those keys in the lane's
+environment or the dispatch request and recording them on the capture,
+through the same `history.Capture` door. For a host-route lane whose hook did
+not fire (a SIGTERM window), an ingest by session id from the result's
+`session_id` and the sub-agent paths stays the fallback; a runner lane needs
+none, since it persists no session and the dispatcher already stores its
+stream. Best-effort as the criteria require. No Go dependency. The independent fit-challenge runs at plan
 time.
 
 ## Acceptance Criteria

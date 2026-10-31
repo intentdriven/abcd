@@ -256,11 +256,11 @@ rule. On the host side: the lane runs as abcd's shipped claude runner already
 launches it, with `--print --bare` and `--no-session-persistence` on a paid
 key only (RN2, dcn-2610020000000016), and with the guard supplied as the
 run's permission-prompt answerer, an inline `abcd guard approve` MCP server,
-rather than as a hook (dcn-2610161624025493). Bare mode still skips abcd's
-hook-based capture; starting a lane without `--bare` so the hooks run would
-reverse RN2 and dcn-2610161624025493, and is a proposal for the technical
-facilitator to rule on, not the decided shape. The lane sets its permission
-mode explicitly; a
+rather than as a hook (dcn-2610161624025493). Bare mode costs the lane no
+transcript: the dispatcher stores every runner lane's stream in the history
+store through `history.Capture`, and a host-route lane, the default, is
+captured by the `SubagentStop` hook in the person's session. The lane sets its
+permission mode explicitly; a
 lane is ended with SIGINT before any SIGTERM, so the turn's result is
 recorded; and the lane's result JSON (`modelUsage`, `num_turns`,
 `permission_denials`, the error subtype) is the receipt's machine-read half,
@@ -942,31 +942,30 @@ that path.
 
 1. (a) Capture at the seam through the same `SessionEnd`/`SubagentStop` hooks,
    handing the run id, lane, pass and phase to the hook through the lane's
-   environment so the capture is keyed. abcd's shipped runner starts every
-   lane with `--bare` (RN2, dcn-2610020000000016), so no hook fires in a
-   lane; this option needs a lane started without `--bare`, or with the plugin
-   and hooks passed explicitly, which reverses RN2 and dcn-2610161624025493
-   and is left for the technical facilitator to rule on.
+   environment so the capture is keyed. This is how a host-route lane, the
+   default, is captured today, without those keys. It does not reach a role
+   routed to abcd's runner, which starts the lane with `--bare` (RN2,
+   dcn-2610020000000016), so no hook fires there.
 2. (b) Ingest after the fact by session id, from the result's `session_id` and
-   the sub-agent paths, when the hook did not fire. Not available to runner
-   lanes: the runner passes `--no-session-persistence`, so a lane leaves no
-   session to ingest.
-3. (c) A structured-stream sink from `stream-json` with sub-agent text
-   forwarded: complete, but a second format beside the one the store already
-   reads.
+   the sub-agent paths, when the hook did not fire: the fallback for a
+   host-route lane. It does not apply to a runner lane, which passes
+   `--no-session-persistence` and leaves no session to ingest.
+3. (c) A sink on the run's stream. This is how a runner lane is captured
+   today: the dispatcher stores each lane's stream as a native transcript
+   through `history.Capture` and its redaction door, keyed on the session id
+   and the role (`runner.HistoryStore`, wired into build and drain).
 
 ### Recommendation
 
-**Path 2, with the capture source left to a ruling.** Under the runner as
-shipped, the one record a lane leaves is the `stream-json` stream the runner
-already reads, so option 3 is the one that needs no reversal; option 1 is a
-proposal that needs RN2 and dcn-2610161624025493 reversed first, and option 2
-is dropped, since runner lanes persist no session. Whichever is ruled goes
-through `history.Capture` and its redaction door, best-effort as the criteria
-require.
-The capture stores the raw transcript and derives its index, because the
-format is declared unstable; the run id, lane and phase are keyed from the
-environment the loop sets, not parsed from the transcript. No Go dependency.
+**Path 2: keep both captures as shipped and add the keys.** A host-route lane
+stays on option 1 with option 2 as its fallback, and a runner lane on option
+3; both go through `history.Capture` and its redaction door, best-effort as
+the criteria require. The gap is the keys: neither capture is keyed by run
+id, lane, pass and phase, and the run's record links transcripts named at its
+end to the run only. The capture stores the raw transcript and derives its
+index, because the format is declared unstable; the run id, lane, pass and
+phase are keyed from the environment or the dispatch request the loop sets,
+not parsed from the transcript. No Go dependency.
 
 ### Local fit risks
 
@@ -984,11 +983,11 @@ environment the loop sets, not parsed from the transcript. No Go dependency.
 - A durable-execution engine (Temporal, DBOS) for the build loop: each needs a
   server or a Postgres; the loop's state file already gives the one property
   that matters (replay from recorded outcomes), as the 2026-10-17 note found.
-- Dropping `--bare` from runner lanes on this pass's say alone: the shipped
-  runner keeps it with a paid key (RN2, dcn-2610020000000016) and answers the
-  guard through an MCP permission-prompt approver instead of a hook
-  (dcn-2610161624025493); bare mode removes only the hook-based capture, and
-  reversing that ruling is the technical facilitator's call.
+- Dropping `--bare` from runner lanes: the shipped runner keeps it with a
+  paid key (RN2, dcn-2610020000000016), answers the guard through an MCP
+  permission-prompt approver instead of a hook (dcn-2610161624025493), and
+  captures each lane from its stream, so a hook in the lane would add nothing
+  the dispatcher does not already record.
 - A learned or router-based sub-agent class (2026-09-22 note), and sizing the
   pool from live rate-limit headers in a subscription host that reports none.
 - A sentinel dependency as the hold mechanism: every comparable system holds

@@ -118,8 +118,10 @@ decisions leave implicit.
   paid key only (RN2, dcn-2610020000000016: "runner keeps --bare with an API
   key"). The guard does not reach it as a hook: it is supplied as the run's
   permission-prompt answerer, an `abcd guard approve` MCP server passed inline
-  (dcn-2610161624025493). What bare mode still leaves out is abcd's hook-based
-  capture.
+  (dcn-2610161624025493). Its transcript is still kept: the dispatcher captures
+  every runner lane from its stream, storing each lane's transcript as a native record through `history.Capture` and its redaction door, keyed on the session id and the role (`runner.HistoryStore`, wired into build and drain). A
+  host-route lane, the default, runs in the person's session, where the
+  `SubagentStop` hook captures it.
 - **The host's own session state is not a read for the loop.** The supervisor's
   `state.json` "is not a stable interface"; `claude agents --json` is (Claude
   Code agent view).
@@ -134,9 +136,7 @@ lane runs as the shipped runner launches it (bare, on a paid key, with the
 guard as its permission-prompt answerer and no session persisted), sets its
 permission mode explicitly, is ended with SIGINT before SIGTERM, and its
 result JSON is read by the runner adapter, not the loop, with a zeroed crash
-result accounted as "unknown". Starting a lane without `--bare` so that the
-hooks run would reverse RN2 and dcn-2610161624025493; it is a proposal for the
-technical facilitator to rule on, not the decided shape. No Go dependency. The
+result accounted as "unknown". No Go dependency. The
 independent fit-challenge is still owed before the build, and the questions
 below are kept for it.
 
@@ -146,12 +146,6 @@ Questions this pass raised for the fit-challenge before the build. They are kept
   read the loop makes, is recorded under an idempotency key in the state file
   so a re-entry replays rather than re-asks, and whether the state file's
   schema version is refused when newer than the binary knows.
-- Whether the technical facilitator reverses RN2
-  (dcn-2610020000000016) and dcn-2610161624025493 so that a lane starts
-  without `--bare` and abcd's capture hooks run in it, given that the shipped
-  runner starts lanes bare with the guard as an MCP permission-prompt
-  answerer, and that bare is announced as the future default for `-p`. Until
-  it is ruled, the runner stays as shipped.
 
 ## Open Questions
 
