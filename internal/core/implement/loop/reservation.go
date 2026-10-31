@@ -761,8 +761,12 @@ func reserveResumed(repoRoot string, res *StartResult, o Options) error {
 	if st.handedBack() {
 		return nil
 	}
-	fp, err := runFootprint(repoRoot, st.Key, st.Spec, res.RunID+" is unchanged")
-	if err != nil {
+	var fp []string
+	if ap := st.autoPlanLane(); ap != nil {
+		// An auto-plan run has no spec yet: it reserves the draft's two
+		// paths, as its start did (autoplan.go).
+		fp = autoPlanFootprint(*ap)
+	} else if fp, err = runFootprint(repoRoot, st.Key, st.Spec, res.RunID+" is unchanged"); err != nil {
 		return err
 	}
 	now := o.now()
@@ -1210,3 +1214,14 @@ func releaseHandedBack(repoRoot string, run State, hb HandBack, now time.Time) s
 // StageReservationLost is the run record's stage for a reservation the view
 // shows held by another person or copy.
 const StageReservationLost = "reservation_lost"
+
+// autoPlanLane is the auto-plan run's lane record (autoplan.go), or nil for
+// every other run.
+func (s State) autoPlanLane() *AutoPlan {
+	for _, l := range s.Lanes {
+		if l.AutoPlan != nil {
+			return l.AutoPlan
+		}
+	}
+	return nil
+}

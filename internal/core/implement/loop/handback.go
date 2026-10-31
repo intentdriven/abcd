@@ -65,6 +65,19 @@ func handBackSummary(key string, hb HandBack) string {
 		}
 		return b.String()
 	}
+	if hb.Verdict == HandBackNotPlanned {
+		// An auto-plan lane (autoplan.go): the substitute did not hold, or a
+		// plan was found that the run cannot vouch for, so the run records no
+		// plan; the reason says where the record stands.
+		fmt.Fprintf(&b, "%s is handed back as %s: %s", key, hb.Verdict, hb.Reason)
+		if hb.Verdicts != "" {
+			fmt.Fprintf(&b, " (plan reviews: %s)", hb.Verdicts)
+		}
+		if len(hb.Findings) > 0 {
+			fmt.Fprintf(&b, "; the findings: %s", strings.Join(hb.Findings, ", "))
+		}
+		return b.String()
+	}
 	fmt.Fprintf(&b, "%s is handed back as %s: round %d did not pass after %s, the run's cap (%s)",
 		key, hb.Verdict, hb.Round, fixRoundsPhrase(hb.FixRounds), hb.Verdicts)
 	if len(hb.NotMet) > 0 {

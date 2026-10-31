@@ -108,6 +108,14 @@ func (l Lane) masked() Lane {
 		r.Stage, r.Check, r.Reason, r.Final = line(r.Stage), line(r.Check), free(r.Reason), free(r.Final)
 		return r
 	})
+	l.AutoPlan = maskPtr(l.AutoPlan, func(ap AutoPlan) AutoPlan {
+		ap.Draft, ap.Digest, ap.Checkout, ap.Planned, ap.Spec = line(ap.Draft), line(ap.Digest), line(ap.Checkout), line(ap.Planned), line(ap.Spec)
+		ap.Reviews = maskEach(ap.Reviews, func(r PlanReview) PlanReview {
+			r.Lens, r.Role, r.Brief, r.Return, r.Verdict = line(r.Lens), line(r.Role), line(r.Brief), line(r.Return), line(r.Verdict)
+			return r
+		})
+		return ap
+	})
 	return l
 }
 

@@ -224,7 +224,20 @@ const lockFileName = ".lock"
 // the key. So is a validation round's `routes` (spc-2609251028149555, AC 10):
 // the tier each role of the round ran at, the tier a failed round moved it up
 // from, and the failing gate output that caused the switch.
-const SchemaVersion = 16
+//
+// Version 17 added a lane's `auto_plan` (spc-2609202134338445 step 11,
+// adr-2610310235000654): the `abcd build --auto-plan` lane's draft and its
+// digest, its two plan reviews with the verdicts the loop recorded, and the
+// planned record and spec, beside the stages `plan-review` and `plan`.
+// Version 16 is its strict subset, read as a run with no auto-plan lane and
+// written back at version 17; a file of version 16 or lower carrying
+// `auto_plan` is not one its version wrote, and is refused naming it.
+// Releases that write version 16 refuse a version-17 file as a newer abcd's
+// before any strict decode.
+const SchemaVersion = 17
+
+// schemaVersionUnplanned is the last version before a lane's auto-plan record.
+const schemaVersionUnplanned = 16
 
 // schemaVersionUnpinned is the version before a route's pins: read, never
 // written.
@@ -537,6 +550,10 @@ type Lane struct {
 	// same, and since when the lane has refused at that stage. Nil while the
 	// lane's steps succeed, and in an intent's run.
 	Refused *LaneRefused `json:"refused,omitempty"`
+	// AutoPlan is the `abcd build --auto-plan` lane's record (autoplan.go):
+	// the draft as the start checked it, its two plan reviews and what the
+	// plan made. Nil on every other lane.
+	AutoPlan *AutoPlan `json:"auto_plan,omitempty"`
 }
 
 // ReceiptRecord is one implementer's receipt the loop verified.
@@ -1098,7 +1115,10 @@ func readListedState(root *os.Root, runID string) (State, error) {
 	case st.SchemaVersion <= schemaVersionUnpinned && st.pinned() != "":
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.pinned(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnpinned:
+	case st.SchemaVersion <= schemaVersionUnplanned && st.autoPlanned() != "":
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.autoPlanned(), st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnplanned:
 		// Read as the current version, its stages already carried over by
 		// decodeState when it named them `step`; the next write carries it, and
 		// this read writes nothing.
@@ -1132,6 +1152,10 @@ func readListedState(root *os.Root, runID string) (State, error) {
 	// (iss-2610121516559163).
 	if !st.handBacksWritten() {
 		return State{}, refuse("state", "", "", rel+" carries a hand-back the loop never writes: a control, bidi or zero-width character in its text",
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	}
+	if !st.autoPlansWritten() {
+		return State{}, refuse("state", "", "", rel+" carries an auto-plan record the loop never writes: a draft, digest, spec, lens, path or verdict outside what the loop stores",
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}
 	if !st.receiptsWritten() {
