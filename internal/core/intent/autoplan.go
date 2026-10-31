@@ -14,6 +14,7 @@ package intent
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -29,6 +30,7 @@ import (
 // build's own rows under the build's own names.
 const (
 	AutoPlanCheckDraft         = "draft"
+	AutoPlanCheckPlannable     = "plannable"
 	AutoPlanCheckCriteria      = "acceptance_criteria"
 	AutoPlanCheckOpenQuestions = StartCheckOpenQuestions
 	AutoPlanCheckClaimSections = StartCheckClaimSections
@@ -37,6 +39,10 @@ const (
 	AutoPlanCheckHold          = StartCheckHold
 	AutoPlanCheckBlocked       = StartCheckBlocked
 )
+
+// ErrDraftChanged is Plan's refusal of a draft whose bytes are not the ones
+// PlanOptions.ExpectDigest names, or of a record no longer in drafts/.
+var ErrDraftChanged = errors.New("intent: the draft is not the one the caller judged")
 
 // AutoPlanResult is every record-only auto-plan check for one intent.
 type AutoPlanResult struct {
@@ -79,6 +85,9 @@ func PlannedPathOf(draftRel string) string {
 // The rows, in order:
 //
 //   - draft: the record is in drafts/ (a planned record has nothing to plan).
+//   - plannable: nothing `plan` itself refuses on a draft's own fields: a
+//     slug in kebab-case, no `spec_id` already set (a half-planned draft),
+//     and a planned form under the record's size cap.
 //   - acceptance_criteria: `## Acceptance Criteria` holds at least one
 //     top-level bullet, by the parser plan itself applies.
 //   - open_questions: no open question, the build's row: every decision is
@@ -111,6 +120,11 @@ func AutoPlanChecks(repoRoot, intentID string) (AutoPlanResult, error) {
 	content := string(data)
 	res := AutoPlanResult{IntentID: it.ID, Path: it.Path, Bucket: it.Bucket, Digest: DraftDigest(data)}
 	res.Rows = append(res.Rows, autoPlanDraftRow(it))
+	plannable, err := autoPlanPlannableRow(it, content)
+	if err != nil {
+		return AutoPlanResult{}, err
+	}
+	res.Rows = append(res.Rows, plannable)
 	res.Rows = append(res.Rows, autoPlanCriteriaRow(it.ID, content))
 	res.Rows = append(res.Rows, startOpenQuestionsRow(it.ID, content))
 	claims, err := autoPlanClaimSectionsRow(it, content)
@@ -144,6 +158,34 @@ func autoPlanDraftRow(it Intent) StartRow {
 		row.Remedy = "name a draft intent: `abcd intent` lists them"
 	}
 	return row
+}
+
+// autoPlanPlannableRow refuses a draft `plan` would refuse on its own fields,
+// so no review is spent on a draft the plan stage could never plan.
+func autoPlanPlannableRow(it Intent, content string) (StartRow, error) {
+	row := StartRow{Name: AutoPlanCheckPlannable}
+	switch {
+	case !slugRe.MatchString(it.Slug):
+		row.Detail = fmt.Sprintf("%s has slug %q, and plan takes a kebab-case one", it.ID, clip(it.Slug, groundsDetailRunes))
+		row.Remedy = "correct the slug in the record's frontmatter, then run --auto-plan again"
+		return row, nil
+	case !frontmatter.IsNull(it.SpecID):
+		row.Detail = fmt.Sprintf("%s is a draft that already carries spec_id %q (half-planned), which plan refuses", it.ID, clip(it.SpecID, groundsDetailRunes))
+		row.Remedy = "a draft carries `spec_id: null`: plan it by hand with `abcd intent plan`, which names what to repair, or set it to null if no spec realises it"
+		return row, nil
+	}
+	probe, err := probeMinter().Mint(specFamily)
+	if err != nil {
+		return StartRow{}, err
+	}
+	if err := checkDraftFaceSize(content, it, probe, "", "", it.Path); err != nil {
+		row.Detail = err.Error()
+		row.Remedy = "shorten the record, then run --auto-plan again"
+		return row, nil
+	}
+	row.OK = true
+	row.Detail = "plan takes its slug, its unset spec_id and its size"
+	return row, nil
 }
 
 // autoPlanCriteriaRow refuses a draft whose criteria are still the seeded
