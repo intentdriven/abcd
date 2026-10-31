@@ -155,23 +155,30 @@ banlist stub and the gitignore rules. What the markdown owns is the interview
 around them: which file carries the identity, what the tagline should say,
 whether the attribution gate is wanted. The command decides; the binary writes.
 
-**The merges line** (itd-2610150602547271, spc-2610161609350616 step 2): in a
-repository abcd manages, the board says who merges a ready pull request, read
-through the layered configuration: `facilitator.mode` and the layer and origin
-that set it, a person from any layer winning, and a refused home reading as a
-person. The product view draws a
-line of its own above the version (`merges: a person (the bundled default)`);
-the facilitator view draws a `merges:` row after the status block that also names
-the key and the mode as configured (`merges: a person (facilitator.mode human,
-from the bundled default)`). The merge gate does not read the mode until step 4,
-so the line names a person in every repository and draws an `auto` as set but
-not yet read (`merges: a person (facilitator.mode auto, from .abcd/config.json;
-the merge gate does not read it yet)`). The JSON carries a `facilitator` object (`key`, `mode`,
-`layer`, `origin`, and `home_refused` when a refused home decided it). A read
-the layered reader refuses is drawn as unreadable, and carried as `key` and
-`error` alone; every part is masked
-before it is drawn, since the refusal can quote a key a configuration file wrote.
-In an unmanaged repository the line is absent and the field omitted. It is not
+**The merges line** (itd-2610150602547271, spc-2610161609350616): in a
+repository abcd manages, the board says what the merge gate does with a ready
+pull request, read through the gate's own resolver: `facilitator.mode` as the
+default branch's committed `.abcd/config.json` and the machine layer declare
+it, never the checkout's working tree. The board reads the default branch at
+the tip this checkout last fetched and asks the network nothing, where the gate
+fetches it first, so after the mode changes on origin the two can disagree
+until the next fetch. A `human` from any layer wins, and a refused home reads as `human`.
+Under `human` the line says the gate merges once the technical facilitator
+approves the head; under `auto`, that it merges autonomously once a review pair
+has passed the head. The product view draws a line of its own above the
+version (`merges: once the technical facilitator approves (the bundled
+default)`, `merges: autonomously, once a review pair passes (set in
+.abcd/config.json at origin/main)`); the facilitator view draws a `merges:` row after
+the status block that also names the key and the mode as configured (`merges:
+once the technical facilitator approves the head (facilitator.mode human, from
+the bundled default)`). A contributor's pull request needs an approval of its
+head in either mode; the command page says so, and the line does not. The JSON
+carries a `facilitator` object (`key`, `mode`, `layer`, `origin`, and
+`home_refused` when a refused home decided it). A read the resolver refuses, or
+a repository with no default branch to read the mode at, is drawn as
+unreadable, and carried as `key` and `error` alone; every part is masked before
+it is drawn, since the refusal can quote a key a configuration file wrote. In
+an unmanaged repository the line is absent and the field omitted. It is not
 `abcd mode`'s `facilitator` state, which is whose answer the loop is waiting on.
 
 **The presence line** (itd-200, spc-70) adds to the four fields: in a repository abcd manages, the text render carries a
@@ -284,7 +291,21 @@ no tag on origin, holding no merge), `hand_backs_by_holder` (`holder`,
 `release_withdrawals` (each release's withdrawn pull requests by state: held,
 admitted, due (read from the reader's own newest push to the branch, as the
 forge's record of pushes shows it, as an act's settle reads them, so one
-nothing re-arms is never due), stranded for another person, skipped, with
+nothing re-arms is never due: the reader's own, and a paired declared id's
+that its login's own newest push records, and an unpaired declared id's that a
+reservation under it pushed by the reader's own login first recorded, each
+entry under one of the reader's ids, the kept one included, only when the
+account that id is held to pushed the reservation that first recorded it),
+stranded (another person's, and a declared id's this copy does not act on),
+skipped, and `by_hand` (on an ended release, the ones recorded before the
+holder id, which no copy re-arms and their authors re-arm by hand), with
+`holder_claimed` (true when the holder is a holder id that is not
+the reader's), `unpaired` (each unpaired declared id among the stranded),
+`due_awaits_holder_id` (true when the reader keeps no holder id yet and
+`ABCD_HOLDER_ID` is not set, so the due ones stay held until their next
+reservation or announcement), `holder_id_refused` (the class of the refusal
+when the reader's id is set or kept but refused, which every act refuses
+over),
 `reader`, `not_read` (the commits other accounts pushed above the reader's
 newest push, counted by pusher, never read) and `unplaced` (why that push
 cannot be found or placed, when none of the reader's is listed), `lapsed`
@@ -293,11 +314,17 @@ person's next act ends five minutes later, and `not_ended` naming the holder who
 does not show they pushed, which ends nothing either), `lost_withdrawals` (each recent release's withdrawals a later
 commit dropped), `settled` (each ended release of the reader's whose
 withdrawals the listing re-armed or skipped, with `not_read`, `unplaced` and
-`not_ended`, each once for each tip, and `failures`, a comment not
+`not_ended`, each once for each tip, `not_ended_claimed` (true when that
+holder is a holder id that is not the reader's), and `failures`, a comment not
 posted as sent among them, iss-2610222014550692) and `view`
 (`origin`, `fetched_at`, `age_seconds`). When the fetch fails, the listing renders the view as last
 fetched with its age, names the failure on stderr and in `fetch_error`, and
-exits 1; the peer rows are unchanged. A checkout with no remote named
+exits 1; the peer rows are unchanged. When `~/.abcd.noindex/holder-ids` is
+there and its guarded read refused it, the listing reads no declared id,
+carries the class of the refusal in `holder_ids_refused`, and names that
+class in one line on stderr, never the file's contents or a login; a holder
+id set or kept but refused is named the same way, as `holder_id_refused`,
+never its value or the file's contents. A checkout with no remote named
 `origin` lists none. The board's peers line reads only the peer reader, and
 fetches nothing.
 

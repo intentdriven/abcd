@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/core/machineload"
 )
 
 // m7: a preflight past its bound is stopped with every process it started,
@@ -114,4 +116,38 @@ func makefileGateTimeout(t *testing.T, target, marker string) time.Duration {
 	}
 	t.Fatalf("the Makefile's %s recipe runs no `%s --timeout <d>`", target, marker)
 	return 0
+}
+
+// TestRunBoundHoldsBothStagesAtTheTimeoutCap: each of preflight's two test
+// stages takes its base package budget, or machineload.TestTimeoutMaxFactor
+// times it when the load is past one per core as it starts (iss-2610241911052191),
+// so land's bound on the run admits both stages at that cap.
+func TestRunBoundHoldsBothStagesAtTheTimeoutCap(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "Makefile"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stages []time.Duration
+	for _, l := range strings.Split(string(raw), "\n") {
+		f := strings.Fields(l)
+		for i := 0; i+1 < len(f); i++ {
+			if f[i] == "./cmd/test-parallelism" && f[i+1] == "-timeout" && i+2 < len(f) {
+				d, err := time.ParseDuration(strings.TrimSuffix(f[i+2], ")"))
+				if err != nil {
+					t.Fatalf("the Makefile's stage base %q: %v", f[i+2], err)
+				}
+				stages = append(stages, d)
+			}
+		}
+	}
+	if len(stages) != 2 {
+		t.Fatalf("the Makefile derives %d stage timeouts through cmd/test-parallelism -timeout, want 2 (the unit and race stages)", len(stages))
+	}
+	var need time.Duration
+	for _, d := range stages {
+		need += time.Duration(machineload.TestTimeoutMaxFactor) * d
+	}
+	if preflightRunBound < need {
+		t.Fatalf("preflightRunBound is %s; two stages at %d times their bases %v need %s", preflightRunBound, machineload.TestTimeoutMaxFactor, stages, need)
+	}
 }

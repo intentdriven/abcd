@@ -32,11 +32,13 @@ package loop
 //     (`gh`), with a body built from the records and passed through the
 //     outbound scrub; after creating it the loop re-reads the body the forge
 //     holds and strips a session URL or a tool footer the harness appended.
-//  5. arm: the merge rule from the ruleset mirror at the lane's base
-//     (.abcd/work/rulesets/): auto-merge armed with the queue's method where a
-//     merge queue gates the default branch and a ruleset requires a person's
-//     approval, the pull request left open for a person where either is absent
-//     (decision 3; ruling AM1). A pull request the forge reports CONFLICTING
+//  5. arm: the merge gate `abcd land` asks (landing.DecideMerge, which
+//     replaced ruling AM1): the facilitator mode at the default branch's
+//     fetched tip, the author's permission, the approvals of the pushed head
+//     and, in auto, a review receipt naming it. Where it allows, the merge is
+//     armed by the ruleset mirror's queue method, or as auto-merge with no
+//     queue; otherwise the pull request is left open, saying why, and each
+//     later step asks again. A pull request the forge reports CONFLICTING
 //     is refused instead of armed (conflict.go). Nothing is pushed to the lane
 //     after this step.
 //  6. merged: the lane's pushed head must be an ancestor of the default
@@ -68,6 +70,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/embargo"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/landing"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -593,19 +596,27 @@ func announceOptions(now time.Time) claim.Options {
 // (landing.GH), refused when the client is not installed.
 func forge(c Context, lane Lane, args ...string) (string, error) {
 	out, err := landing.GH(c.RepoRoot, args...)
+	if err != nil {
+		return "", forgeRefusal(lane, args, err)
+	}
+	return out, nil
+}
+
+// forgeRefusal is a forge client failure as the loop refuses it.
+func forgeRefusal(lane Lane, args []string, err error) error {
 	if errors.Is(err, landing.ErrNoForgeClient) {
-		return "", refuse(string(StageLand), "", lane.ID, "the forge client `gh` is not installed, and the landing opens the pull request through it",
+		return refuse(string(StageLand), "", lane.ID, "the forge client `gh` is not installed, and the landing opens the pull request through it",
 			"install gh and sign in with your own identity (`gh auth login`), then run `abcd implement step` again")
 	}
 	if err != nil {
 		what := "gh " + strings.Join(args[:min(2, len(args))], " ")
 		if r := netFailure(StageLand, lane.ID, what, err); r != nil {
-			return "", r
+			return r
 		}
-		return "", refuse(string(StageLand), "", lane.ID, gitutil.ScrubURLCredentials(fsutil.RedactHome(err.Error())),
+		return refuse(string(StageLand), "", lane.ID, gitutil.ScrubURLCredentials(fsutil.RedactHome(err.Error())),
 			"settle what the forge client reports, then run `abcd implement step` again")
 	}
-	return out, nil
+	return nil
 }
 
 // openPR is the lane branch's open pull request as the forge lists it.
@@ -805,11 +816,15 @@ func readMergeRule(c Context, lane Lane, def string) (landing.MergeRule, error) 
 	return r, nil
 }
 
-// landArm arms the merge by the ruleset's rule, or leaves the pull request
-// open where no merge queue gates the default branch, or where no ruleset
-// requires a person's approval (ruling AM1): a merge the loop arms is one a
-// person must still approve. A pull request the forge reports conflicting is
-// refused, unarmed.
+// landArm asks the merge gate (landing.DecideMerge, the one decision `abcd
+// land` asks too, spc-2610161609350616 step 4) whether to arm the lane's pull
+// request, and arms it by the method the gate names, or leaves it open with
+// the gate's reason: a contributor's pull request until a maintainer's
+// approval of its head counts, a maintainer's in human mode until the
+// technical facilitator's does, and in auto until a review receipt names it.
+// A lane left open is parked: landMerged asks the gate again on each step, so
+// an approval given later arms it. A pull request the forge reports
+// conflicting is refused, unarmed.
 func landArm(c Context, lane *Lane) (Outcome, error) {
 	ld := lane.Landing
 	def, err := defaultBranch(c, *lane)
@@ -820,7 +835,6 @@ func landArm(c Context, lane *Lane) (Outcome, error) {
 	if err != nil {
 		return Outcome{}, err
 	}
-	method, approval := rule.Method, rule.Approval
 	// The land fence (spc-2610031753359849 spec 2): before the rule decides,
 	// the run's reservation must still be this person's from this copy, and
 	// it is renewed for fenceLease, a day.
@@ -836,14 +850,6 @@ func landArm(c Context, lane *Lane) (Outcome, error) {
 		held += "; " + notice
 	}
 	n := strconv.Itoa(lane.PR)
-	if method == "" {
-		ld.Merge = "left open: no ruleset gates " + def + " through a merge queue"
-		return Outcome{Stay: true, Note: "pull request #" + n + " " + ld.Merge + "; it lands when a person merges it" + held}, nil
-	}
-	if !approval {
-		ld.Merge = "left open for a person to merge: the ruleset requires no approval on " + def
-		return Outcome{Stay: true, Note: "pull request #" + n + " " + ld.Merge + ", so the loop does not arm auto-merge; it lands when a person merges it" + held}, nil
-	}
 	// A pull request the forge already reports conflicting never enters the
 	// queue, and nothing is pushed to a lane after arming: it is refused here,
 	// unarmed, naming what conflicts (iss-2610110908443341). A verdict the
@@ -863,13 +869,67 @@ func landArm(c Context, lane *Lane) (Outcome, error) {
 		}
 		return Outcome{}, conflictRefusal(c, *lane, def, tracking, m)
 	}
-	// The arming is pinned to the pushed head: the forge refuses it when the
-	// pull request's head is another commit.
-	if _, err := forge(c, *lane, "pr", "merge", n, "--auto", landing.MergeMethods[method], "--match-head-commit="+ld.Pushed); err != nil {
+	d, err := askMergeGate(c, *lane, def, rule)
+	if err != nil {
 		return Outcome{}, err
 	}
+	if !d.Arm {
+		ld.Merge = "left open: " + d.Why
+		return Outcome{Stay: true, Note: "pull request #" + n + " " + ld.Merge + "; the loop asks again on each step, and it lands when it is armed or a person merges it" + held}, nil
+	}
+	return armLane(c, lane, def, rule, d, held)
+}
+
+// askMergeGate asks the merge gate about the lane's pull request: the mode as
+// the default branch's tip just fetched and the machine layer declare it,
+// never the lane's checkout (dcn-2610230058333177), with the ruleset mirror's
+// rule at the lane's base. A mode that cannot be read is refused, masked,
+// and nothing is armed.
+func askMergeGate(c Context, lane Lane, def string, rule landing.MergeRule) (landing.MergeDecision, error) {
+	tracking, err := fetchDefault(c, lane, def)
+	if err != nil {
+		return landing.MergeDecision{}, err
+	}
+	tip, err := gitutil.Run(c.RepoRoot, "rev-parse", "--verify", "--quiet", tracking+"^{commit}", "--")
+	if err != nil || !gitutil.IsFullSHA(tip) {
+		return landing.MergeDecision{}, fmt.Errorf("resolving %s: %v", tracking, err)
+	}
+	roots, _ := layered.RootsFor(c.RepoRoot)
+	d, err := landing.DecideMerge(landing.MergeQuery{RepoRoot: c.RepoRoot, Roots: roots, Tip: tip, TipName: Remote + "/" + def, Default: def,
+		Rule: rule, Repo: "{owner}/{repo}", PR: strconv.Itoa(lane.PR), Head: lane.Landing.Pushed, Forge: gateForge(c, lane)})
+	if err != nil {
+		return landing.MergeDecision{}, refuse(string(StageLand), "", lane.ID, termsafe.Sanitize(fsutil.RedactHome(err.Error()))+" at "+Remote+"/"+def+", so nothing was armed",
+			"correct the file it names, then run `abcd implement step` again")
+	}
+	return d, nil
+}
+
+// gateForge is the forge client as the merge gate reads through it: run from
+// the checkout the run lives in (gh resolves {owner}/{repo} there, as it does
+// for the loop's pull request), its failures returned as they are, so the gate
+// can tell a 404 from a read it could not make.
+func gateForge(c Context, lane Lane) landing.ForgeCall {
+	return func(args ...string) (string, error) { return landing.GH(c.RepoRoot, args...) }
+}
+
+// armLane arms the lane's pull request by the gate's method, pinned to the
+// pushed head: the forge refuses it when the pull request's head is another
+// commit. With no queue the arming is the forge's auto-merge, which a
+// repository can leave switched off: that refusal is said, naming it.
+func armLane(c Context, lane *Lane, def string, rule landing.MergeRule, d landing.MergeDecision, held string) (Outcome, error) {
+	ld := lane.Landing
+	n := strconv.Itoa(lane.PR)
+	args := []string{"pr", "merge", n, "--auto", d.Method, "--match-head-commit=" + ld.Pushed}
+	if _, err := landing.GH(c.RepoRoot, args...); err != nil {
+		if rule.Method == "" && !errors.Is(err, landing.ErrNoForgeClient) {
+			return Outcome{}, refuse(string(StageLand), "", lane.ID,
+				"no merge queue gates "+def+", and the forge refused to arm pull request #"+n+"'s auto-merge: "+gitutil.ScrubURLCredentials(termsafe.Sanitize(fsutil.RedactHome(err.Error()))),
+				"allow auto-merge in the repository's settings, or merge it yourself, then run `abcd implement step` again")
+		}
+		return Outcome{}, forgeRefusal(*lane, args, err)
+	}
 	ld.Armed = true
-	ld.Merge = "auto-merge armed through " + def + "'s merge queue (" + strings.ToLower(method) + ")"
+	ld.Merge = d.Why
 	return Outcome{Stay: true, Note: "pull request #" + n + ": " + ld.Merge + "; nothing is pushed to the lane after this" + held}, nil
 }
 
@@ -917,6 +977,23 @@ func landMerged(c Context, lane *Lane) (Outcome, error) {
 				return resyncLane(c, lane, def, tracking, m)
 			}
 			return Outcome{}, conflictRefusal(c, *lane, def, tracking, m)
+		}
+		// A pull request left open is asked about again: an approval of its
+		// head, or a review receipt naming it, given since arms it now, and
+		// the reason it waits is brought up to date otherwise.
+		if !ld.Armed {
+			rule, err := readMergeRule(c, *lane, def)
+			if err != nil {
+				return Outcome{}, err
+			}
+			d, err := askMergeGate(c, *lane, def, rule)
+			if err != nil {
+				return Outcome{}, err
+			}
+			if d.Arm {
+				return armLane(c, lane, def, rule, d, "")
+			}
+			ld.Merge = "left open: " + d.Why
 		}
 		return Outcome{}, contend(string(StageLand), "", lane.ID,
 			"pull request #"+n+" is not merged yet: "+shortSHA(ld.Pushed)+" is not on "+Remote+"/"+def+" ("+m.note()+")",

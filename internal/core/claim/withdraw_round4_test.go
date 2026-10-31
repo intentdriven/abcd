@@ -45,7 +45,7 @@ func TestAFormAnotherLoginRewroteIsNeverReArmed(t *testing.T) {
 		t.Fatal(err)
 	}
 	// mal's tombstone ends nothing; octo's own --release over it does.
-	if len(res.Settles) != 1 || !slices.Equal(res.Settles[0].NotRead, []PushCount{{Pusher: "mal", Commits: 1}}) || res.Settles[0].NotEnded != "octo" || len(f.mutations()) != 0 {
+	if len(res.Settles) != 1 || !slices.Equal(res.Settles[0].NotRead, []PushCount{{Pusher: "mal", Commits: 1}}) || res.Settles[0].NotEnded != octo.holderID() || len(f.mutations()) != 0 {
 		t.Fatalf("settles = %+v, mutations %v; want mal's tombstone counted and named, and nothing acted on", res.Settles, f.mutations())
 	}
 	if _, err := octo.do(Request{Record: "rel-v0.16.0", Release: true}); err != nil {
@@ -115,8 +115,8 @@ func TestALiveRenewalWithdrawsAgainOnlyWhatItsWithdrawerRecorded(t *testing.T) {
 	m, ws := w.tipWithdrawals("rel-v0.16.0")
 	m.Withdrawn = append(ws, Withdrawal{Number: 14, ID: "PR_fourteen", Form: FormAutoMerge, Head: headA, By: "octo", State: WithdrawnPending})
 	m.ClaimedAt, m.ExpiresAt = w.clock(), w.clock().Add(time.Hour)
-	planted := w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m.text(), w.clock())
-	f.pusherOf[planted] = "mal"
+	rival := w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m.text(), w.clock())
+	f.pusherOf[rival] = "mal"
 	f.reset()
 	w.set(t0.Add(time.Minute))
 	res, err := octo.do(Request{Record: "rel-v0.16.0"})
@@ -160,7 +160,7 @@ func TestALiveRenewalWithdrawsAgainNothingTheRecordDoesNotSettle(t *testing.T) {
 		f.reset()
 		w.set(t0.Add(time.Hour))
 		_, err := octo.do(Request{Record: "rel-v0.16.0"})
-		if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "abcd acts on none of octo's withdrawals on rel-v0.16.0") {
+		if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "abcd acts on none of "+octo.holderID()+"'s withdrawals on rel-v0.16.0") {
 			t.Fatalf("%s: renewal = %v; want refused, naming why", name, err)
 		}
 		if len(f.mutations()) != 0 || w.remoteTip("rel-v0.16.0") != record {
@@ -258,7 +258,7 @@ func TestPeersNeverCallsAWithdrawalAnAppOrAnotherLoginPushedDue(t *testing.T) {
 		},
 	} {
 		w, f, octo := releasedWithNothingArmed(t)
-		record, tomb := w.forgedOver("rel-v0.16.0")
+		record, tomb := w.rewrittenOver("rel-v0.16.0")
 		f.pusherOf[record], f.pusherOf[tomb] = pusher, pusher
 		if _, err := Fetch(octo.dir, octo.opts()); err != nil {
 			t.Fatal(err)
@@ -268,7 +268,7 @@ func TestPeersNeverCallsAWithdrawalAnAppOrAnotherLoginPushedDue(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			got := snap.ReleaseWithdrawals(octo.dir, "octo", w.clock())
+			got := snap.ReleaseWithdrawals(octo.dir, octo.self(), w.clock())
 			if len(got) != 1 {
 				t.Fatalf("%s: listing = %+v; want rel-v0.16.0", pusher, got)
 			}
@@ -304,7 +304,7 @@ func TestAVerdictKeptForATipIsNotReadForAnother(t *testing.T) {
 	k.place(headB, pushedByApp, "")
 	k.place(headC, pushedByLogin, "Octo")
 	k.place(headA, pushedByNone, "")
-	k.markDone("quinn")
+	k.markDone("quinn", "")
 	k.save()
 	again := readTipCache(root, "rel-v0.16.0", headA)
 	if kind, _, ok := again.placed(headB); !ok || kind != pushedByApp {
@@ -316,11 +316,11 @@ func TestAVerdictKeptForATipIsNotReadForAnother(t *testing.T) {
 	if _, _, ok := again.placed(headA); ok {
 		t.Fatal("a commit the record placed nothing on was kept")
 	}
-	if !again.isDone("Quinn") || again.isDone("octo") {
+	if !again.isDone("Quinn", "") || again.isDone("octo", "") {
 		t.Fatal("the persons found done were not kept as they were")
 	}
 	other := readTipCache(root, "rel-v0.16.0", headC)
-	if _, _, ok := other.placed(headB); ok || other.isDone("quinn") {
+	if _, _, ok := other.placed(headB); ok || other.isDone("quinn", "") {
 		t.Fatal("what was kept for one tip was read for another")
 	}
 }
@@ -423,7 +423,7 @@ func TestAnAdmittedMergeFoundArmedAtANewHeadCountsAsDone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, rw := range snap.ReleaseWithdrawals(p.dir, "octo", w.clock()) {
+	for _, rw := range snap.ReleaseWithdrawals(p.dir, p.self(), w.clock()) {
 		if slices.Contains(numbersOf(rw.Skipped), 11) {
 			t.Fatalf("listing skips #11 for its owner: %+v", rw)
 		}
@@ -513,7 +513,7 @@ func pushIndex(ps []Push, after string) int {
 // newest push, and both are counted, not read.
 func TestAPushCarryingSeveralCommitsIsPlacedOnEachOfThem(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
-	record, tomb := w.forgedOver("rel-v0.16.0")
+	record, tomb := w.rewrittenOver("rel-v0.16.0")
 	f.edit = func(ps []Push) []Push {
 		i, j := pushIndex(ps, tomb), pushIndex(ps, record)
 		one := Push{Before: ps[j].Before, After: tomb, Pusher: "mal"}
@@ -532,7 +532,7 @@ func TestAPushCarryingSeveralCommitsIsPlacedOnEachOfThem(t *testing.T) {
 // nothing is re-armed.
 func TestAForcedPushIsPlacedOnEveryCommitBeneathIt(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
-	_, tomb := w.forgedOver("rel-v0.16.0") // octo's own pushes
+	_, tomb := w.rewrittenOver("rel-v0.16.0") // octo's own pushes
 	m, _ := w.tipWithdrawals("rel-v0.16.0")
 	forced := w.pushChild("rel-v0.16.0", tomb, m.text()+"\n", t0)
 	if _, err := Fetch(octo.dir, octo.opts()); err != nil {
@@ -557,7 +557,7 @@ func TestAForcedPushIsPlacedOnEveryCommitBeneathIt(t *testing.T) {
 // octo's withdrawal beneath it is re-armed.
 func TestAPushIsPlacedOnlyOnTheCommitsAboveItsEarlierTip(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
-	_, tomb := w.forgedOver("rel-v0.16.0") // octo's own pushes
+	_, tomb := w.rewrittenOver("rel-v0.16.0") // octo's own pushes
 	m, _ := w.tipWithdrawals("rel-v0.16.0")
 	later := w.pushChild("rel-v0.16.0", tomb, m.text()+"\n", t0)
 	f.pusherOf[later] = "mal"
@@ -573,7 +573,7 @@ func TestAPushIsPlacedOnlyOnTheCommitsAboveItsEarlierTip(t *testing.T) {
 // is named.
 func TestAPushThisCheckoutCannotPlaceIsPlacedOnTheWholeLine(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
-	_, tomb := w.forgedOver("rel-v0.16.0") // octo's own pushes
+	_, tomb := w.rewrittenOver("rel-v0.16.0") // octo's own pushes
 	m, _ := w.tipWithdrawals("rel-v0.16.0")
 	back := w.pushChild("rel-v0.16.0", tomb, m.text()+"\n", t0) // octo's, as the record reads by default
 	// Two pushes of mal's this checkout never saw, then octo's back to the
@@ -599,7 +599,7 @@ func TestAPushThisCheckoutCannotPlaceIsPlacedOnTheWholeLine(t *testing.T) {
 func TestARecordWithAPushMissingSettlesNothing(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
 	before := w.remoteTip("rel-v0.16.0")
-	record, tomb := w.forgedOver("rel-v0.16.0")
+	record, tomb := w.rewrittenOver("rel-v0.16.0")
 	f.edit = func(ps []Push) []Push {
 		i, j := pushIndex(ps, tomb), pushIndex(ps, record)
 		return slices.Concat(ps[:i], []Push{{Before: before, After: tomb, Pusher: "octo"}, {Before: record, After: before, Pusher: "mal"}}, ps[j+1:])
@@ -651,7 +651,7 @@ func TestUnbrokenNeedsEveryLinkDownToTheBranchsFirstPush(t *testing.T) {
 // full, places no newest push of octo's.
 func TestARecordOfNoPushesSettlesNothing(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
-	w.forgedOver("rel-v0.16.0")
+	w.rewrittenOver("rel-v0.16.0")
 	f.edit = func([]Push) []Push { return nil }
 	s := settleAfter(t, octo)
 	if len(f.mutations()) != 0 || s.Unplaced == "" {
@@ -728,8 +728,8 @@ func TestAnUnrecordedWithdrawalIsShownAgainWhenTheSettleNamingItIsLost(t *testin
 	}
 	m, ws := w.tipWithdrawals("rel-v0.16.0")
 	m.Withdrawn = append(ws, Withdrawal{Number: 14, ID: "PR_fourteen", Form: FormAutoMerge, Head: headA, By: "octo", State: WithdrawnPending})
-	planted := w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m.text(), w.clock())
-	f.pusherOf[planted] = "mal"
+	rival := w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m.text(), w.clock())
+	f.pusherOf[rival] = "mal"
 	w.tagOrigin("v0.16.0")
 	if _, err := Fetch(octo.dir, octo.opts()); err != nil {
 		t.Fatal(err)
@@ -739,7 +739,11 @@ func TestAnUnrecordedWithdrawalIsShownAgainWhenTheSettleNamingItIsLost(t *testin
 		t.Fatal(err)
 	}
 	h, _ := resolveHolder(octo.dir, identity{Name: "Pat Example", Email: "1234+octo@users.noreply.github.com"}, octo.opts(), false)
-	a := actor{root: octo.dir, who: identity{Name: "Pat Example", Email: "1234+octo@users.noreply.github.com"}, holder: h.Login,
+	self, err := ownSelf(octo.home, h.Login, false)
+	if err != nil || self.ID == "" {
+		t.Fatalf("the settling copy's holder = %+v, %v", self, err)
+	}
+	a := actor{root: octo.dir, who: identity{Name: "Pat Example", Email: "1234+octo@users.noreply.github.com"}, holder: self.ID, self: self,
 		copy: ownCopyKey(octo.dir), now: w.clock(), label: "abcd:v0.0.0"}
 	// origin goes away once the record is read, so the claim is not pushed.
 	away := w.bare + ".away"

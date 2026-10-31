@@ -369,6 +369,15 @@ func renderHarvest(w io.Writer, res lab.Harvested) {
 			}
 			fmt.Fprintf(w, "agreement %s: %d/%d compared agree (%s), %d skipped\n",
 				termsafe.Sanitize(t.Type), t.Agreed, t.Compared, rate, t.Skipped)
+			// The bands, as harvest.md prints them: how often the adapter
+			// agreed at each probability it gave.
+			if len(t.Bands) > 0 {
+				parts := make([]string, 0, len(t.Bands))
+				for _, bd := range t.Bands {
+					parts = append(parts, fmt.Sprintf("%s: %d/%d", termsafe.Sanitize(bd.Band), bd.Agreed, bd.Compared))
+				}
+				fmt.Fprintf(w, "  by the adapter's probability (agreed/compared): %s\n", strings.Join(parts, ", "))
+			}
 		}
 		if a.Unreadable > 0 {
 			fmt.Fprintf(w, "  %s in pairs.jsonl did not parse and are not counted\n", countOf(a.Unreadable, "line"))

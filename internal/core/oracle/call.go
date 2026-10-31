@@ -109,7 +109,10 @@ type CallRequest struct {
 // resolves to nothing, because an unauthenticated call is never made. An
 // answer whose reported model an oracle.denylist entry refuses is discarded:
 // the provider substituted a model the configuration refuses, and the refusal
-// names what it reported.
+// names what it reported. A sink an openaiapi.WithTopLogprobs option in opts
+// carries has already run by then, inside the call, so what it was handed
+// counts only when Call returns no error (judge.LogprobAdapter reads it
+// after).
 func (c *APIConfig) Call(ctx context.Context, creds credential.Source, req CallRequest, opts ...openaiapi.Option) ([]byte, CallRecord, error) {
 	t := req.Target
 	if err := c.Admit(t.Provider, t.Model); err != nil {

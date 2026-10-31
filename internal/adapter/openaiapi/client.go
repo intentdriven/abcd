@@ -276,6 +276,10 @@ type Client struct {
 	base      *url.URL
 	probeWait time.Duration
 	hc        *http.Client
+	// topLogprobs and logprobSink are a call's ask for its answer's
+	// log-probabilities (logprobs.go); a nil sink asks nothing.
+	topLogprobs int
+	logprobSink LogprobSink
 }
 
 // Option configures a Client.
@@ -598,6 +602,7 @@ func (c *Client) render(req Request) ([]byte, error) {
 	if req.Provider != nil {
 		fields[ProviderRoutingField] = req.Provider
 	}
+	c.logprobFields(fields)
 	keys := make([]string, 0, len(req.Settings))
 	for k := range req.Settings {
 		keys = append(keys, k)
@@ -646,6 +651,9 @@ type completion struct {
 			Content *string `json:"content"`
 		} `json:"message"`
 		FinishReason *string `json:"finish_reason"`
+		// Logprobs is kept raw and read only by a call that asked
+		// (logprobs.go).
+		Logprobs json.RawMessage `json:"logprobs"`
 	} `json:"choices"`
 	servedBy
 	Error json.RawMessage `json:"error"`
@@ -770,6 +778,7 @@ func (c *Client) decode(raw []byte, asked string, contract func([]byte) error) (
 	if p := cc.Choices[0].FinishReason; p != nil {
 		a.finish = *p
 	}
+	c.readLogprobs(cc.Choices[0].Logprobs, &a)
 	return c.admit(&a, asked, contract)
 }
 
@@ -781,6 +790,11 @@ type assembled struct {
 	id       string
 	provider string
 	usage    *Usage
+	// logprobs is the first answer token's alternatives, and logprobsRead
+	// whether a logprobs member carried a token, for a call that asked
+	// (logprobs.go).
+	logprobs     []TokenLogprob
+	logprobsRead bool
 }
 
 // admit holds an answer as read to the adapter's rules and the caller's
@@ -808,6 +822,7 @@ func (c *Client) admit(a *assembled, asked string, contract func([]byte) error) 
 				termsafe.Sanitize(bound(c.scrub(err.Error()))))
 		}
 	}
+	c.handLogprobs(a)
 	return res, nil
 }
 

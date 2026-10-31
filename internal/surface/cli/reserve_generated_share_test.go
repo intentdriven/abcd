@@ -26,7 +26,7 @@ func TestReserveNamesAGeneratedFileItShares(t *testing.T) {
 	}
 	code, stdout, stderr := reserveRun(t, q, "reserve", "iss-2", "--footprint", "docs/commands.md", "--footprint", "b.go")
 	const line = `  shared: "docs/commands.md" is also in the footprint of iss-1, but origin's default branch declares it generated, so it is no overlap; whichever lands second regenerates it after merging` + "\n"
-	if code != 0 || !strings.Contains(stdout, "reserved iss-2 for quinn") || !strings.Contains(stdout, line) || stderr != "" {
+	if code != 0 || !strings.Contains(stdout, "reserved iss-2 for "+heldBy(t, q)) || !strings.Contains(stdout, line) || stderr != "" {
 		t.Fatalf("the reserve sharing only the generated file: exit %d, stdout %q, stderr %q; want it made, naming the shared file", code, stdout, stderr)
 	}
 	code, raw, stderr := reserveRun(t, q, "reserve", "iss-3", "--footprint", "docs/commands.md", "--json")

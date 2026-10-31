@@ -566,7 +566,7 @@ asks the person whether to add that line to the file their shell reads, and
 its one line names both, as in ``Add `export PATH="$HOME/.local/bin:$PATH"` to
 ~/.zshrc?``; `?` shows the rest, including that the line puts the folder ahead
 of the rest of the `PATH`. It adds the line only on a yes (the
-`path.shell_settings_offered` gap), keeps a copy of the file first, never
+`path.shell_settings_offered` gap), keeps a copy of an existing file first, never
 edits a file that is a link kept elsewhere, and `abcd ahoy uninstall` removes
 the line again. Off a terminal, under `--yes`, or on a no, the line stays the
 person's to add.
@@ -788,14 +788,20 @@ only at a terminal and behind no category approval. Off a terminal, or under
 `optional_skipped`; relay that and tell the user to run `abcd ahoy install` in
 their own terminal. Never write the record on the user's behalf.
 
-**A repository that still stores an identity is migrated.** A repository set up
-before this change committed one person's identity in
-`.abcd/config/identity.json` (`git_identity.repo_pin`). abcd no longer reads it
-to check commits. On its owner's machine (the person whose git identity is the
+**A repository that still stores an identity is migrated.** A repository may
+still commit one person's identity in `.abcd/config/identity.json`
+(`git_identity.repo_pin`); abcd reads it only to move it, never to check
+commits. On its owner's machine (the person whose git identity is the
 stored one) the install asks, at a terminal, whether to move it: a yes records
 it as that person's record for this repository, keeps any `production_mode` it
 declared in `.abcd/config/provenance.json`, removes `identity.json` from the
-working tree, and says each of those; the owner commits the removal. On anyone
+working tree, and says each of those; the owner commits the removal. A record
+the owner already keeps for this repository is left as it is, never
+overwritten. When the file holds anything abcd cannot carry (a setting other
+than the name, the email and `production_mode`, or a `production_mode` that
+disagrees with `.abcd/config/provenance.json`), the move is not offered and the
+gap names what blocks it. A file whose identity is incomplete, or a tool's, is
+no one's to move: every machine sees it as another person's. On anyone
 else's machine the gap says only that the stored identity is not theirs and is
 not read, names no one, and nothing is copied or removed. The stored file is read through
 the guarded reader: one that is a symlink, not a regular file, or over 64 KiB
@@ -1239,8 +1245,12 @@ entry — the owned copy (or a legacy pinned symlink), found wherever it sits on
 removed with it even when no plugin root resolves any more — and leaves
 `.abcd/` intact, so the
 repo's record survives. The persistent download cache is left to the harness's
-own uninstall to delete. Report `marker.removed`, the `readme` receipt and
-the entry note. The `readme` receipt lists the parts it `removed` from
+own uninstall to delete. Uninstall also takes out the `PATH` line `abcd ahoy
+install` added to the person's shell settings and nothing else in that file,
+and deletes a file setup created for the line once nothing else is in it.
+Report
+`marker.removed`, the `readme` receipt, the entry note and `shell_path`: whether
+that line was taken out (`removed`) and its `note`, relayed as given. The `readme` receipt lists the parts it `removed` from
 `README.md`, each whose text was still abcd's; the parts it `left`, each with
 its `reason` (edited by hand, or a mark duplicated or unclosed) and its
 `line`; whether it `deleted` a `README.md` abcd itself created once nothing
@@ -1312,9 +1322,9 @@ declares, and the owner's plan where the sign-in can see it. A visibility
 mismatch is advisory: no command of abcd's changes a repository's visibility.
 
 Only checks that every pull request reports are required. A workflow that runs
-only when some paths change, one whose base-branch filter leaves the default
-branch out, one whose `types:` filter leaves out a pull request's opening or a
-push to it, one whose trigger is written in any form outside the plain YAML
+only when some paths change, one with a `branches-ignore` filter or a
+`branches` filter that leaves the default branch out, one whose `types:` filter
+leaves out a pull request's opening, its reopening or a push to it, one whose trigger is written in any form outside the plain YAML
 abcd reads (an inline `{...}` mapping, an alias, an anchor, a tag, a merge key,
 or a key that is not one of GitHub's five filters), and, under a merge queue,
 one that does not run on the queue, are left out and named: a form abcd does
@@ -1402,8 +1412,8 @@ already has keeps working beside abcd's.
 
 After every step succeeds, the apply writes two mirrors. The desired state goes
 into `.abcd/work/rulesets/repo-settings.json`, and each ruleset it applied goes
-beside it as `abcd-<name>.json`. A later verify reads the same intent from the
-tree rather than from a web console. The settings mirror has two blocks, and a
+beside it as `abcd-<name>.json`. The mirror records the intent in the tree, so a
+reviewer reads it there rather than in a web console. The settings mirror has two blocks, and a
 third while anything is owed:
 
 - `managed`: what abcd holds the repository to;
@@ -1593,7 +1603,13 @@ what served each call, one extra request per call, made only because the
 person turned it on) are added to the block by hand afterwards, on an
 OpenRouter block alone, as the configuration chapter of the brief describes,
 and a configured provider's verification sends the first listed model's pin
-when it has one. A block on this machine takes a local pin there instead
+when it has one. Nor does it mark a model for scoring by log-probability:
+`logprob_models` (a list of models from the block's own `models`, none by
+default) is added by hand too, on any block, and a judgement routed to a
+model it names is asked as the decision adapter's second candidate, which
+reads each option's one-token answer by its log-probability. A model the
+block does not list, or one named twice, is refused when the configuration
+is read. A block on this machine takes a local pin there instead
 (the runtime, its version, the weights' digest, quantisation, context length
 and KV-cache type, and on llama.cpp the GGUF file's name, since llama-server
 reports no digest, iss-2610161734428291), which probes the server before the

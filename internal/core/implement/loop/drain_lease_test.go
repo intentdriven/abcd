@@ -50,7 +50,7 @@ func TestAWaitingDrainMoveRenewsTheLaneInProgress(t *testing.T) {
 		t.Fatalf("the paused drain opens nothing: %+v", res)
 	}
 	after := originReservation(t, bare, ref)
-	if after.commit == before.commit || !after.claimed.Equal(c.t) || after.holder != "octo" || after.released {
+	if after.commit == before.commit || !after.claimed.Equal(c.t) || after.holder != heldBy(t, patEmail) || after.released {
 		t.Fatalf("the waiting move renews the lane's reservation: before %+v, after %+v", before, after)
 	}
 	if note := recordNote(t, repo, first.Start.RunID, StageReservationRenewed); !strings.Contains(note, "renewed the reservation on "+secondIssue) {
@@ -109,13 +109,13 @@ func TestALaneWhoseReservationIsAnothersPushesNothingAndIsHandedBack(t *testing.
 		t.Fatalf("Pat's release: %v", err)
 	}
 	q := otherCopy(t, f.bare, quinnEmail)
-	if _, err := claim.Reserve(q, claim.Request{Record: secondIssue, Footprint: []string{"AGENTS.md"}}, claim.Options{}); err != nil {
+	if _, err := claim.Reserve(q, claim.Request{Record: secondIssue, Footprint: []string{"AGENTS.md"}}, as(t, q, claim.Options{})); err != nil {
 		t.Fatalf("Quinn's reservation: %v", err)
 	}
 
 	_, err := advance(repo.Root(), f.runID, f.stages, Options{})
 	r, ok := AsRefusal(err)
-	if !ok || !strings.Contains(r.Reason, "quinn") || !strings.Contains(r.Reason, "does not push") {
+	if !ok || !strings.Contains(r.Reason, heldBy(t, quinnEmail)) || !strings.Contains(r.Reason, "does not push") {
 		t.Fatalf("the push refuses on Quinn's reservation: %v", err)
 	}
 	if got := gitIn(t, f.bare, "for-each-ref", "--format=%(refname)", "refs/heads/"+l.Branch); got != "" {
@@ -130,10 +130,10 @@ func TestALaneWhoseReservationIsAnothersPushesNothingAndIsHandedBack(t *testing.
 		t.Fatal(err)
 	}
 	route := routeOf(t, res.Routed, secondIssue)
-	if route.Kind != claim.HandBackStuck || !strings.Contains(route.Reason, "quinn") {
+	if route.Kind != claim.HandBackStuck || !strings.Contains(route.Reason, heldBy(t, quinnEmail)) {
 		t.Fatalf("the drain hands the lane back at once: %+v", route)
 	}
-	if tip := originReservation(t, f.bare, claim.RefPrefix+secondIssue); tip.holder != "quinn" || tip.released {
+	if tip := originReservation(t, f.bare, claim.RefPrefix+secondIssue); tip.holder != heldBy(t, quinnEmail) || tip.released {
 		t.Fatalf("Quinn's reservation is left as it stands: %+v", tip)
 	}
 }

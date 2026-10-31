@@ -87,7 +87,7 @@ func TestEmbarkLessonsShowsTheFewMostLikeTheBrief(t *testing.T) {
 	}
 
 	out := string(runCLI(t, "embark", "lessons", lb, target))
-	for _, want := range []string{"which of these apply?", "1. [v0.1.0] Audit every intent", "the rest (2):"} {
+	for _, want := range []string{"which of these apply?", "1. lesson-1 [v0.1.0] Audit every intent", "the rest (2):"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the lessons view does not show %q:\n%s", want, out)
 		}
@@ -114,7 +114,7 @@ func TestEmbarkLessonsShowsTheFewMostLikeTheBrief(t *testing.T) {
 		t.Fatal(err)
 	}
 	out = string(runCLI(t, "embark", "lessons", lb, t.TempDir(), "--brief", brief))
-	if !strings.Contains(out, "1. [v0.2.0] Write the scanner's fixtures at runtime.") {
+	if !strings.Contains(out, "1. lesson-5 [v0.2.0] Write the scanner's fixtures at runtime.") {
 		t.Errorf("--brief did not rank against the named text:\n%s", out)
 	}
 }

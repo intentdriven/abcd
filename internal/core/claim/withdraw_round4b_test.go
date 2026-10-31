@@ -56,8 +56,8 @@ func TestAReleaseNamesWhatItDoesNotActOnOncePerTip(t *testing.T) {
 		m, ws := w.tipWithdrawals("rel-v0.16.0")
 		m.Withdrawn = append(ws, Withdrawal{Number: 14, ID: "PR_fourteen", Form: FormAutoMerge, Head: headA, By: "octo", State: WithdrawnPending})
 		m.ClaimedAt, m.ExpiresAt = w.clock(), w.clock().Add(time.Hour)
-		planted := w.pushChild("rel-v0.16.0", record, m.text(), w.clock())
-		f.pusherOf[planted] = "mal"
+		rival := w.pushChild("rel-v0.16.0", record, m.text(), w.clock())
+		f.pusherOf[rival] = "mal"
 		f.reset()
 		w.set(t0.Add(time.Minute))
 		return w, f, octo, record
@@ -74,7 +74,7 @@ func TestAReleaseNamesWhatItDoesNotActOnOncePerTip(t *testing.T) {
 	for _, x := range res.Settles {
 		notes += strings.Join(x.Notes(), "\n")
 	}
-	if !strings.Contains(notes, "1 commit above octo's newest push to rel-v0.16.0's branch, pushed by mal (1), are not read") {
+	if !strings.Contains(notes, "1 commit above "+octo.holderID()+"'s newest push to rel-v0.16.0's branch, pushed by mal (1), are not read") {
 		t.Fatalf("notes = %q; want mal's commit named", notes)
 	}
 	res, err = octo.reserve("iss-8", "o.go")
@@ -89,7 +89,7 @@ func TestAReleaseNamesWhatItDoesNotActOnOncePerTip(t *testing.T) {
 		set(f, record)
 		tip := w.remoteTip("rel-v0.16.0")
 		_, err := octo.do(Request{Record: "rel-v0.16.0", Release: true})
-		if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "abcd acts on none of octo's withdrawals on rel-v0.16.0") ||
+		if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "abcd acts on none of "+octo.holderID()+"'s withdrawals on rel-v0.16.0") ||
 			len(f.mutations()) != 0 || w.remoteTip("rel-v0.16.0") != tip {
 			t.Fatalf("%s: release = %v, mutations %v; want refused, naming why, nothing pushed", name, err, f.mutations())
 		}
@@ -98,12 +98,14 @@ func TestAReleaseNamesWhatItDoesNotActOnOncePerTip(t *testing.T) {
 
 // TestAWithdrawalIsVouchedForOnlyWithinTheWalk: octo's newest push within
 // the 64 commits read, beneath commits another login pushed, is read and
-// re-armed from; one past them is not found, and nothing is re-armed.
+// re-armed from when the commit beneath it, the reservation, is read too, so
+// the walk shows that push first recorded #11; one at the walk's last commit,
+// or past it, is not, and nothing is re-armed.
 func TestAWithdrawalIsVouchedForOnlyWithinTheWalk(t *testing.T) {
 	for _, c := range []struct {
 		renewals int
 		rearmed  bool
-	}{{maxChain - 1, true}, {maxChain, false}} {
+	}{{maxChain - 2, true}, {maxChain - 1, false}, {maxChain, false}} {
 		w := newWorld(t)
 		f := newFakeForge(t, map[int]*fakePR{11: {id: "PR_eleven", head: headA, method: "SQUASH"}})
 		p := w.clone("1234+octo@users.noreply.github.com", "")
@@ -190,14 +192,17 @@ func (p *participant) prepared(t *testing.T) *prepared {
 	return pr
 }
 
+// quinnID is the holder id quinn's copy keeps.
+var quinnID = "h_" + strings.Repeat("c", 32)
+
 // TestASettleNamesOnlyItsOwnPersonsWithdrawals: another person's withdrawal
 // on an ended release is theirs to settle, so the act names it stranded on
 // a reservation, never as this person's.
 func TestASettleNamesOnlyItsOwnPersonsWithdrawals(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
-	w.forgedOver("rel-v0.16.0") // octo's #11, octo's own pushes
+	w.rewrittenOver("rel-v0.16.0") // octo's #11, octo's own pushes
 	m, ws := w.tipWithdrawals("rel-v0.16.0")
-	m.Withdrawn = append(ws, Withdrawal{Number: 12, ID: "PR_twelve", Form: FormAutoMerge, Head: headB, By: "quinn", State: WithdrawnPending})
+	m.Withdrawn = append(ws, Withdrawal{Number: 12, ID: "PR_twelve", Form: FormAutoMerge, Head: headB, By: quinnID, State: WithdrawnPending})
 	w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m.text(), t0)
 	s := settleAfter(t, octo)
 	if s.Unplaced != "" || len(s.NotRead) != 0 || strings.Contains(strings.Join(s.Notes(), "\n"), "#12") {
@@ -212,7 +217,7 @@ func TestASettleNamesOnlyItsOwnPersonsWithdrawals(t *testing.T) {
 // once for each tip, so a new tip names them again.
 func TestAnUnrecordedWithdrawalIsNamedAgainOnANewTip(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
-	record, tomb := w.forgedOver("rel-v0.16.0")
+	record, tomb := w.rewrittenOver("rel-v0.16.0")
 	f.pusherOf[record], f.pusherOf[tomb] = "mal", "mal"
 	if s := settleAfter(t, octo); !slices.Equal(s.NotRead, []PushCount{{Pusher: "mal", Commits: 2}}) {
 		t.Fatalf("settle = %+v", s)
@@ -246,7 +251,7 @@ func TestALapsedReleaseHoldingOnlySettledEntriesIsNotListedLapsed(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, rw := range snap.ReleaseWithdrawals(p.dir, "octo", at) {
+	for _, rw := range snap.ReleaseWithdrawals(p.dir, p.self(), at) {
 		if rw.Lapsed {
 			t.Fatalf("listing = %+v; want no lapse named for a release holding only a kept entry", rw)
 		}
@@ -289,7 +294,7 @@ func TestAnAdmittedMergeTheSettleCannotArmIsNamedForItsOwner(t *testing.T) {
 // record, so it is re-armed.
 func TestAPersonsOwnPushOfSeveralCommitsVouchesForEach(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
-	record, tomb := w.forgedOver("rel-v0.16.0")
+	record, tomb := w.rewrittenOver("rel-v0.16.0")
 	f.edit = func(ps []Push) []Push {
 		i, j := pushIndex(ps, tomb), pushIndex(ps, record)
 		return slices.Concat(ps[:i], []Push{{Before: ps[j].Before, After: tomb, Pusher: "octo"}}, ps[j+1:])

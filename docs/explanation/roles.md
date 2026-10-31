@@ -1,6 +1,6 @@
 # Roles
 
-`abcd` is built for three roles: A **product thinker**, a **technical facilitator**, and a **team of AI agents**. The product thinker is always a person. The facilitator is a person in a fresh install; letting a repository make it an AI is a design target, not yet shipped, and which of the two holds the role changes what waits for approval rather than what the role is. The agents do the building.
+`abcd` is built for three roles: A **product thinker**, a **technical facilitator**, and a **team of AI agents**. The product thinker is always a person. The facilitator is a person in a fresh install, and a repository can hand the merge approval to abcd with `facilitator.mode: auto`; which of the two holds the role changes what waits for approval rather than what the role is. The agents do the building.
 
 ## Product thinker
 

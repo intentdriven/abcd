@@ -53,22 +53,25 @@ func newAnnounceCommand(asJSON *bool) *cobra.Command {
 			"long it stands (default 30m, from 1m to 24h). An announcement carries no free text: a\n" +
 			"question points at the item, and the conversation happens there.\n\n" +
 			"The announcement is one commit that changes no file on your own status branch,\n" +
-			"abcd-status/<your GitHub username in lower case> on the remote named origin,\n" +
-			"carrying the kind, the item, you as sender, this working copy, the time sent\n" +
-			"and the expiry. The verb lists the status branches on origin (git ls-remote),\n" +
-			"fetches each one named by a lower-case GitHub username, with origin's default\n" +
+			"abcd-status/<your holder id> on the remote named origin, carrying the kind,\n" +
+			"the item, you as sender (your holder id), this working copy, the time sent and\n" +
+			"the expiry. The verb lists the status branches on origin (git ls-remote),\n" +
+			"fetches each one named by a holder id or a lower-case GitHub username (the\n" +
+			"names announcements had before the holder id, still read), with origin's default\n" +
 			"branch, then makes one plain fast-forward push with the repository's hooks\n" +
 			"running. A push that lost a race to another of your sessions is rebuilt on the\n" +
 			"new tip and pushed again, up to three times; then it says \"not sent\" and why.\n" +
 			"Nothing is ever forced.\n\n" +
 			"A record must already be on origin's default branch, since an announcement is\n" +
 			"public; a record the embargo store on this machine holds is refused, and so is\n" +
-			"every announcement when that store cannot be checked. The sender is worked out\n" +
-			"as reserve's holder is: from user.email when it is a GitHub no-reply address,\n" +
-			"then reservation.github_username in the machine configuration, then the\n" +
-			"session's forge token, asked whose account it is. When git's identity is not a\n" +
-			"person's, the token's account sends and authors the announcement, and the\n" +
-			"identity git had is shown nowhere.\n\n" +
+			"every announcement when that store cannot be checked. The sender is your holder\n" +
+			"id, as reserve's holder is (`abcd reserve --holder` prints it), so no\n" +
+			"announcement carries your GitHub login; the account is still worked out as\n" +
+			"reserve's is: from user.email when it is a GitHub no-reply address, then\n" +
+			"reservation.github_username in the machine configuration, then the session's\n" +
+			"forge token, asked whose account it is. When git's identity is not a person's,\n" +
+			"the token's account authors the announcement, and the identity git had is\n" +
+			"shown nowhere.\n\n" +
 			"abcd's own pushes announce first through this same code: abcd land, and a\n" +
 			"build or drain lane's landing, post \"merging <item>\" and push only once it is\n" +
 			"on origin. A push typed by hand with git push posts no announcement.\n\n" +

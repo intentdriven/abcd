@@ -9,7 +9,9 @@ package judge
 //   - shadow:<provider>/<model>: the host decides; the adapter answers beside
 //     it and decides nothing; the pair is recorded in the newest lab home
 //     (criterion 1). A state larger than the model's window is not sent: the
-//     pair is recorded as skipped with its size (criterion 5).
+//     pair is recorded as skipped with its size (criterion 5). A caller
+//     stopped before or during the adapter's call keeps no pair: the
+//     adapter's silence is the stop's, not the adapter's.
 //   - <provider>/<model>: the adapter decides and the receipt names the
 //     route; an adapter that cannot answer — unreachable, failed, an answer
 //     outside the question's choices, a state over its window — leaves the
@@ -23,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/credential"
@@ -103,7 +106,8 @@ func NewForTest(routes map[Type]oracle.Target, adapter func(oracle.Target) Judge
 // a model not on its provider's allowlist (or one oracle.denylist matches)
 // before any call, and returns the Router the repository at repoRoot judges
 // with: the adapter is the API adapter with the key resolved by name from the
-// account's credential store, and shadow pairs go to the newest lab minted for
+// account's credential store (scored by log-probability where the provider's
+// block marks the model so, candidate), and shadow pairs go to the newest lab minted for
 // the repository. A route to a type outside the registry is a diagnostic.
 func Load(roots layered.Roots, repoRoot string) (*Router, error) {
 	cfg, err := oracle.LoadAPI(roots)
@@ -123,12 +127,37 @@ func Load(roots layered.Roots, repoRoot string) (*Router, error) {
 			continue
 		}
 		routes[Type(pr.Name)] = pr.Target
+		if !slices.Contains(asked, Type(pr.Name)) && (pr.Target.Mode == oracle.JudgementShadow || pr.Target.Mode == oracle.JudgementOn) {
+			diags = append(diags, fmt.Sprintf("decision adapter: oracle.judgements.%s in %s routes a type no step asks through the decision adapter yet; "+
+				"the host decides it alone, nothing runs beside it, and no pair is recorded", pr.Name, termsafe.Sanitize(pr.Target.Origin)))
+		}
 	}
 	creds := credential.Store(roots.Home)
-	r := newRouter(routes, func(t oracle.Target) Judge { return Adapter{Calls: cfg, Creds: creds, Target: t} },
+	r := newRouter(routes, func(t oracle.Target) Judge { return candidate(cfg, creds, t) },
 		func(p lab.Pair) (string, string, error) { return lab.RecordPair(repoRoot, p) })
 	r.Diagnostics = diags
 	return r, nil
+}
+
+// candidate is the implementation a route to t is judged by: the second
+// candidate, a small text model scored by log-probability (LogprobAdapter),
+// when t's provider block names its model in logprob_models; the first, a
+// typed-decision model (Adapter), otherwise. Both call through cfg, so both
+// are held to the allowlist and the denylist before any call.
+func candidate(cfg *oracle.APIConfig, creds credential.Source, t oracle.Target) Judge {
+	if cfg.ScoresByLogprob(t) {
+		return LogprobAdapter{Calls: cfg, Creds: creds, Target: t}
+	}
+	return Adapter{Calls: cfg, Creds: creds, Target: t}
+}
+
+// Target is the adapter t is routed to, as <provider>/<model>; "" when t is
+// on the host.
+func (r *Router) Target(t Type) string {
+	if r.Mode(t) == oracle.JudgementHost {
+		return ""
+	}
+	return r.routes[t].String()
 }
 
 // Mode is how t is routed: oracle.JudgementHost, JudgementShadow or
@@ -181,12 +210,20 @@ func (r *Router) Decide(ctx context.Context, s State, q Question, host Judge) (A
 		if err != nil {
 			return a, rc, err
 		}
+		if stopped(ctx) {
+			rc.Note = "the shadow pair was not kept: the caller stopped before the adapter answered"
+			return a, rc, nil
+		}
 		pair := lab.Pair{Type: string(q.Type), Kind: string(q.Kind), StateSHA256: rc.StateSHA256, StateTokens: size,
 			Host: a.Value, Target: rc.Target}
 		if size > r.window() {
 			pair.Skipped = lab.SkippedWindow
 			pair.Detail = fmt.Sprintf("the state is about %d tokens, more than the window of %d; the host decided alone", size, r.window())
 		} else if sa, err := r.ask(ctx, tgt, s, q); err != nil {
+			if stopped(ctx) {
+				rc.Note = "the shadow pair was not kept: the caller stopped before the adapter answered"
+				return a, rc, nil
+			}
 			pair.Skipped, pair.Detail = lab.SkippedFailed, detail(err)
 		} else {
 			p := sa.Probability
@@ -244,6 +281,12 @@ func (r *Router) ask(ctx context.Context, tgt oracle.Target, s State, q Question
 	}
 	a.Value = v
 	return a, nil
+}
+
+// stopped reports whether the caller stopped ctx: cancelled, not merely past
+// a deadline it set, which bounds a slow adapter and costs its pair as failed.
+func stopped(ctx context.Context) bool {
+	return errors.Is(ctx.Err(), context.Canceled)
 }
 
 // detail is an error's account for a pair or a receipt: terminal-safe, one

@@ -507,6 +507,9 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		if len(leaseNotes) > 0 {
 			res.Next = joinNext(append([]string{res.Next}, leaseNotes...)...)
 		}
+		if diags := drainRouterDiagnostics(repoRoot, o); len(diags) > 0 {
+			res.Next = joinNext(append([]string{res.Next}, diags...)...)
+		}
 		if write {
 			st.UpdatedAt = now
 			if err := writeDrain(repoRoot, st); err != nil {
@@ -908,18 +911,19 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	var cooling time.Time
 	// The wait this move may end in (drain_wait.go): the cap, counted in the
 	// move's view before any reservation or judgement for the holder this
-	// copy reserves as, read with no network act ("" when only the forge
-	// could name it, where each reservation act counts it instead), and the
+	// copy reserves as, read with no network act (claim.ReaderSelf: unknown
+	// when neither a holder id nor a login can be read here, where each
+	// reservation act counts it instead), and the
 	// issues passed over because another holds them. A wait the drain was
 	// in is taken off here, and written again if the move still waits.
 	prevWait := waitFrom(&st)
-	capHolder := ""
+	var capHolder claim.Self
 	// The cap is the person's own (reservation.max_live); a setting that
 	// cannot be used leaves the count to the reservation act, which refuses
 	// naming the file.
 	capLimit, capErr := claim.MaxLive, error(nil)
 	if view != nil && reserving {
-		capHolder = claim.ReaderHolder(repoRoot, claimOptions(now))
+		capHolder = claim.ReaderSelf(repoRoot, claimOptions(now))
 		capLimit, capErr = claim.MaxLiveFor(claimOptions(now))
 	}
 	var capped, held []string
@@ -998,10 +1002,14 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 				continue
 			}
 			// Under --take-over, this person's own reservation from another
-			// copy (a hosted session's, lost with its local tier) holds
-			// nothing off: the reservation act below takes it over
-			// (spc-2610161044461448 step 15).
-			takeOver := ""
+			// copy holds nothing off: the reservation act below takes it over
+			// (spc-2610161044461448 step 15). A hosted session that restarted
+			// lost its local tier, so its earlier copy is another copy; it is
+			// still this person's only when its holder id is (claim.Self): kept
+			// across sessions by ABCD_HOLDER_ID, or declared in holder-ids. A
+			// restart that minted a fresh id reads its earlier holds as another
+			// person's, which no take-over moves.
+			var takeOver claim.Self
 			if o.TakeOver {
 				takeOver = capHolder
 			}
@@ -1009,7 +1017,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 				// The reason quotes what another writer chose (a reserved
 				// footprint), and the agent driving the drain reads it.
 				why = termsafe.Sanitize(why) + "; passed over with nothing pushed and no judgement asked"
-				if r, ok := view.Lookup(v.ID); ok && r.State == claim.StateLive && r.Copy != claim.CopyThis && claim.SameHolder(r.Holder, capHolder) {
+				if r, ok := view.Lookup(v.ID); ok && r.State == claim.StateLive && r.Copy != claim.CopyThis && capHolder.Owns(r.Holder) {
 					why += "; it is your own reservation from another copy: to move it to this one, run `abcd drain --take-over`"
 				}
 				res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckReservation, Reason: why})
@@ -1045,7 +1053,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			if reserving && !owned && judgeHold == nil {
 				// At the cap no reservation is made and no judgement asked:
 				// the drain waits for a pull request to merge.
-				if capHolder != "" && capErr == nil {
+				if capHolder.Known() && capErr == nil {
 					if mine := view.LiveHeldBy(capHolder, v.ID); len(mine) >= capLimit {
 						capped = mine
 						break
@@ -1078,28 +1086,35 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			// and then a judge routed to a runner answer in this move, taken
 			// as the host's answer is; one that does not answer leaves the
 			// host's request standing, and is not asked again for it
-			// (drain_decide.go, drain_judge.go).
+			// (drain_decide.go, drain_judge.go). Each is marked asked alone,
+			// and only once it was: a runner that never started is started
+			// by a later move, whatever the adapter did.
 			var taken *DrainJudgement
 			clause := ""
-			if judging.RoutedAsked {
-				clause = adapterAskedClause(repoRoot, o, d, v.ID)
+			if judging.AdapterAsked {
+				clause = adapterAskedClause(v.ID)
 			} else {
-				var adapterAsked, started bool
+				var adapterAsked bool
 				if taken, clause, adapterAsked, err = adapterJudgement(d.Context, repoRoot, o, judging, plan, &st, now); err != nil {
 					return refuseMoved(err)
 				}
-				if taken == nil {
+				if taken == nil && adapterAsked {
+					st.Judging.AdapterAsked = true
+				}
+			}
+			if taken == nil {
+				if judging.RoutedAsked {
+					clause = joinNext(clause, judgeAskedClause(v.ID))
+				} else {
 					var routed string
+					var started bool
 					if taken, routed, started, err = routedJudgement(repoRoot, iss, v, judging, plan, &st, o, d, now); err != nil {
 						return refuseMoved(err)
 					}
 					clause = joinNext(clause, routed)
-				}
-				// Marked as asked only once the adapter was asked or the
-				// runner was started: a judge that never started is asked
-				// again next move.
-				if taken == nil && (adapterAsked || started) {
-					st.Judging.RoutedAsked = true
+					if taken == nil && started {
+						st.Judging.RoutedAsked = true
+					}
 				}
 			}
 			if taken == nil {

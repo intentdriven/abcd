@@ -57,7 +57,7 @@ func TestADrainTakesOverThisPersonsReservationFromAnotherCopy(t *testing.T) {
 		t.Fatal(err)
 	}
 	r, ok := snap.Lookup(secondIssue)
-	if !ok || r.Copy != claim.CopyThis || r.State != claim.StateLive || r.Holder != "octo" {
+	if !ok || r.Copy != claim.CopyThis || r.State != claim.StateLive || r.Holder != heldBy(t, patEmail) {
 		t.Fatalf("the reservation is this copy's now: %+v", r)
 	}
 	res := judge(t, repo, Options{TakeOver: true}, took, JudgementNo, "", "an internal page fix")
@@ -72,7 +72,7 @@ func TestADrainTakesOverThisPersonsReservationFromAnotherCopy(t *testing.T) {
 func TestADrainTakeOverNeverMovesAnotherPersonsReservation(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
 	q := otherCopy(t, bare, quinnEmail)
-	if _, err := claim.Reserve(q, claim.Request{Record: secondIssue, Footprint: []string{"commands/drain.md"}}, claim.Options{}); err != nil {
+	if _, err := claim.Reserve(q, claim.Request{Record: secondIssue, Footprint: []string{"commands/drain.md"}}, as(t, q, claim.Options{})); err != nil {
 		t.Fatal(err)
 	}
 	held := gitIn(t, bare, "for-each-ref", "--format=%(objectname)", claim.RefPrefix+secondIssue)

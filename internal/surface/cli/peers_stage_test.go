@@ -59,7 +59,7 @@ func TestPeersListsALanesStageAndItsHoldersRecentHandBacks(t *testing.T) {
 	act := func(dir string, at time.Time, req claim.Request) {
 		t.Helper()
 		t.Chdir(dir)
-		if _, err := claim.Reserve(dir, req, claim.Options{Now: func() time.Time { return at }}); err != nil {
+		if _, err := claim.Reserve(dir, req, claim.Options{Now: func() time.Time { return at }, Home: cloneHomes[dir]}); err != nil {
 			t.Fatalf("%+v at %s: %v", req, at, err)
 		}
 	}
@@ -98,6 +98,7 @@ func TestPeersListsALanesStageAndItsHoldersRecentHandBacks(t *testing.T) {
 	// Last: a hand-back dated three hours ahead of every clock here.
 	handBack(q, ahead, claim.HandBackClosed, now.Add(3*time.Hour))
 
+	quinn, octo := heldBy(t, q), heldBy(t, p)
 	r := w.clone(t, "r", "5+rae@users.noreply.github.com")
 	code, raw, stderr := reserveRun(t, r, "peers", "--json")
 	if code != 0 {
@@ -110,7 +111,7 @@ func TestPeersListsALanesStageAndItsHoldersRecentHandBacks(t *testing.T) {
 	stages := map[string]string{}
 	for _, res := range got.Reservations {
 		stages[res.Record] = res.Stage
-		if res.Record == "iss-200" && (res.State != "live" || res.Holder != "quinn") {
+		if res.Record == "iss-200" && (res.State != "live" || res.Holder != quinn) {
 			t.Errorf("iss-200 = %+v; want Q's live lane", res)
 		}
 		if res.Record == "iss-202" && res.State != "expired" {
@@ -128,7 +129,7 @@ func TestPeersListsALanesStageAndItsHoldersRecentHandBacks(t *testing.T) {
 	if len(got.HandBacksByHolder) != 2 {
 		t.Fatalf("hand_backs_by_holder = %+v; want octo's and quinn's", got.HandBacksByHolder)
 	}
-	qh := got.HandBacksByHolder[byHolder["quinn"]]
+	qh := got.HandBacksByHolder[byHolder[quinn]]
 	if len(qh.HandBacks) != claim.HandBacksShown || qh.More != recent-claim.HandBacksShown {
 		t.Fatalf("quinn's hand-backs = %d shown, %d more; want %d and %d", len(qh.HandBacks), qh.More, claim.HandBacksShown, recent-claim.HandBacksShown)
 	}
@@ -142,7 +143,7 @@ func TestPeersListsALanesStageAndItsHoldersRecentHandBacks(t *testing.T) {
 			t.Errorf("%s is listed, but it was handed back a day ago or ahead of the clock: %+v", hb.Record, hb)
 		}
 	}
-	ph := got.HandBacksByHolder[byHolder["octo"]]
+	ph := got.HandBacksByHolder[byHolder[octo]]
 	if len(ph.HandBacks) != 1 || ph.HandBacks[0].Record != ps || ph.HandBacks[0].Kind != "trust-rule" || ph.More != 0 {
 		t.Errorf("octo's hand-backs = %+v; want %s as trust-rule alone", ph, ps)
 	}
@@ -159,20 +160,20 @@ func TestPeersListsALanesStageAndItsHoldersRecentHandBacks(t *testing.T) {
 		}
 		return ""
 	}
-	if l := line("  iss-200  live  quinn"); !strings.Contains(l, "stage implement") {
+	if l := line("  iss-200  live  " + quinn); !strings.Contains(l, "stage implement") {
 		t.Errorf("Q's lane is not listed with its stage: %q\n%s", l, text)
 	}
-	if l := line("  iss-201  live  octo"); l == "" || strings.Contains(l, "stage") {
+	if l := line("  iss-201  live  " + octo); l == "" || strings.Contains(l, "stage") {
 		t.Errorf("P's plain reservation is listed with a stage: %q\n%s", l, text)
 	}
-	if l := line("  iss-202  expired  quinn"); l == "" || strings.Contains(l, "stage") {
+	if l := line("  iss-202  expired  " + quinn); l == "" || strings.Contains(l, "stage") {
 		t.Errorf("Q's lapsed lane is not listed, or is listed with a stage: %q\n%s", l, text)
 	}
 	for _, want := range []string{
-		"  handed back by quinn in the last day:\n    " + ids[newest[0]] + "  " + kindOf(newest[0]) + "  at " + now.Add(-ago(newest[0])).Format(time.RFC3339) + "\n" +
+		"  handed back by " + quinn + " in the last day:\n    " + ids[newest[0]] + "  " + kindOf(newest[0]) + "  at " + now.Add(-ago(newest[0])).Format(time.RFC3339) + "\n" +
 			"    " + ids[newest[1]] + "  " + kindOf(newest[1]) + "  at " + now.Add(-ago(newest[1])).Format(time.RFC3339) + "\n",
 		fmt.Sprintf("    and %d more\n", recent-claim.HandBacksShown),
-		"  handed back by octo in the last day:\n    " + ps + "  trust-rule  at ",
+		"  handed back by " + octo + " in the last day:\n    " + ps + "  trust-rule  at ",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the text listing lacks %q:\n%s", want, text)

@@ -225,6 +225,11 @@ const loadGateCall = "go run ./cmd/abcd implement load --wait"
 // parallelismCall derives each test stage's go test -p.
 const parallelismCall = `p=$$(go run ./cmd/test-parallelism) && \`
 
+// timeoutCall derives each test stage's go test -timeout from its base budget,
+// scaled with the load as the stage starts (iss-2610241911052191); the base is
+// what CI's steps declare (TestRaceLaneBudgetIsDeclaredAndFitsItsJob).
+var timeoutCall = regexp.MustCompile(`^t=\$\$\(go run \./cmd/test-parallelism -timeout (\S+)\) && \\$`)
+
 // wholeRunTimeout is the least the whole run's gate may wait: the queue on a
 // shared machine has run hours deep, and a gate that gives up first fails a
 // preflight that did nothing wrong.
@@ -296,7 +301,9 @@ func TestPreflightWaitsAsOneWholeRun(t *testing.T) {
 // run's turn, so they wait at no first gate: a second waiter inside a held
 // turn could deadlock against a run queued meanwhile, each shut by the other
 // until its timeout. Each go test stage takes the -p derived as it starts, so
-// one run cannot saturate the machine.
+// one run cannot saturate the machine, and the -timeout scaled as it starts, so
+// a package slowed by the load is not killed with no test hung
+// (iss-2610241911052191).
 func TestPreflightStagesHaveNoGateOfTheirOwn(t *testing.T) {
 	recipe, ok := makeRecipe(readRepoFile(t, filepath.Join("..", "..", ".."), "Makefile"), preflightStages)
 	if !ok {
@@ -313,8 +320,11 @@ func TestPreflightStagesHaveNoGateOfTheirOwn(t *testing.T) {
 			continue
 		}
 		tests++
-		if i == 0 || strings.TrimSpace(lines[i-1]) != parallelismCall || !strings.Contains(l, ` -p "$$p" `) {
+		if i < 2 || strings.TrimSpace(lines[i-2]) != parallelismCall || !strings.Contains(l, ` -p "$$p" `) {
 			t.Errorf("%s's %q does not take the -p derived as it starts (%s)", preflightStages, l, parallelismCall)
+		}
+		if i < 1 || !timeoutCall.MatchString(strings.TrimSpace(lines[i-1])) || !strings.Contains(l, ` -timeout "$$t" `) {
+			t.Errorf("%s's %q does not take the -timeout scaled as it starts (%s)", preflightStages, l, timeoutCall)
 		}
 	}
 	if tests != 2 {
@@ -328,8 +338,8 @@ func TestPreflightStagesHaveNoGateOfTheirOwn(t *testing.T) {
 const raceGateCall = "go run ./cmd/abcd implement load --race-gate"
 
 // TestPreflightGatesItsRaceStage: the race stage waits at the race gate after
-// the unit stage and before it derives its -p, so the -p reflects the load as
-// the race stage starts. It stays inside the whole run: above one slot it is
+// the unit stage and before it derives its -p and -timeout, so both reflect the
+// load as the race stage starts. It stays inside the whole run: above one slot it is
 // what keeps race stages apart.
 func TestPreflightGatesItsRaceStage(t *testing.T) {
 	recipe, ok := makeRecipe(readRepoFile(t, filepath.Join("..", "..", ".."), "Makefile"), preflightStages)
@@ -349,8 +359,8 @@ func TestPreflightGatesItsRaceStage(t *testing.T) {
 			unit = i
 		}
 	}
-	if unit < 0 || gate < 0 || race < 0 || !(unit < gate && gate < race) || strings.TrimSpace(lines[race-1]) != parallelismCall || gate != race-2 {
-		t.Fatalf("preflight's recipe has the unit stage at line %d, the race gate %q at %d and the race stage at %d; want the gate straight before the race stage's -p:\n%s",
+	if unit < 0 || gate < 0 || race < 0 || !(unit < gate && gate < race) || strings.TrimSpace(lines[race-2]) != parallelismCall || gate != race-3 {
+		t.Fatalf("preflight's recipe has the unit stage at line %d, the race gate %q at %d and the race stage at %d; want the gate straight before the race stage's -p and -timeout:\n%s",
 			unit, raceGateCall, gate, race, recipe)
 	}
 }

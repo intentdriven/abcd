@@ -178,8 +178,9 @@ func (a Announcement) Standing(now time.Time) bool { return a.Unreadable == "" &
 // BranchDoubt is a status branch read as doubtful (C11): named, with the
 // reason, while every other branch is still read.
 type BranchDoubt struct {
-	// Branch is the name after abcd-status/, always a lower-case username: a
-	// branch by any other name is counted, never kept as a doubt.
+	// Branch is the name after abcd-status/, always a holder id or a
+	// lower-case username (statusName): a branch by any other name is
+	// counted, never kept as a doubt.
 	Branch string
 	Reason string
 	// Tip is the commit the branch ended in when it was found doubtful; "" for
@@ -267,7 +268,8 @@ type StatusFetch struct {
 // FetchStatus is `abcd status`'s read of the remote: it lists the status
 // branches on origin (`git ls-remote`), then fetches, in one command, the
 // reservations with origin's release tags, every status branch whose name is
-// a lower-case GitHub username and origin's default branch, and stamps when.
+// a holder id or a lower-case GitHub username and origin's default branch,
+// and stamps when.
 // A branch under abcd-status/ by any other name is not fetched: two names that
 // differ only in case break every fetch on a case-insensitive filesystem
 // (decision 10), so it is counted, never named and never kept (C11). Then it
@@ -328,7 +330,7 @@ func FetchStatus(root string, lookup PusherLookup, o Options) (StatusFetch, erro
 // listStatusBranches asks origin which status branches it holds (`git
 // ls-remote origin refs/heads/abcd-status/*`), read line by line, never
 // whole, so however many origin lists the listing is read: the first
-// maxStatusBranches names that are lower-case GitHub usernames, in origin's
+// maxStatusBranches names that are holder ids or lower-case GitHub usernames, in origin's
 // order, then sorted; how many more such names it listed (past), which are
 // not read and not fetched; and the tally of every other name, which is not
 // fetched and is never kept. own, when not "", is the sender's own branch
@@ -393,8 +395,11 @@ func (t nameTally) digest() string {
 }
 
 // statusName reports whether name, after abcd-status/, is a branch the reader
-// reads: a GitHub username in lower case.
-func statusName(name string) bool { return validUsername(name) && name == strings.ToLower(name) }
+// reads: a holder id, or the GitHub username in lower case a branch made
+// before the holder id is named by.
+func statusName(name string) bool {
+	return (validHolderID(name) || validUsername(name)) && name == strings.ToLower(name)
+}
 
 // ReadStatus is everyone's status as this checkout last fetched it, from
 // disk alone: no fetch and no push (invariant 7). It reads the release holds
@@ -1202,7 +1207,7 @@ func keptAnnouncement(root, commit string) (Announcement, bool) {
 		a.Unreadable, a.Check = fixedReason(e.Unreadable), SenderDoubtful
 		return a, true
 	}
-	if !slices.Contains(AnnouncementKinds, e.Kind) || !validUsername(e.Sender) {
+	if !slices.Contains(AnnouncementKinds, e.Kind) || !validHolder(e.Sender) {
 		return Announcement{}, false
 	}
 	if canon, _, err := announcementItem(e.Item); err != nil || canon != e.Item {
@@ -1224,6 +1229,11 @@ func keptAnnouncement(root, commit string) (Announcement, bool) {
 	switch v := pusherKept(root, commit); {
 	case !sameHolder(a.Sender, a.Branch):
 		a.Check, a.Doubtful = SenderDoubtful, DoubtSender
+	case validHolderID(a.Branch):
+		// A branch named by a holder id names no account, so the forge's
+		// record of who pushed it can neither vouch for its sender nor
+		// contradict it: the sender stays claimed (checkSenders asks nothing
+		// of such a branch).
 	case v.known && sameHolder(v.login, a.Branch):
 		a.Check = SenderVerified
 	case v.known:
@@ -1458,7 +1468,9 @@ func checkSenders(root string, now time.Time, lookup PusherLookup, held map[stri
 	ask := map[string][]string{}
 	var branches []string // newest first, as keptAnnouncements orders them
 	for _, a := range keptAnnouncements(root, now, held) {
-		if a.Unreadable == "" && a.Standing(now) && !pusherKept(root, a.Commit).asked {
+		// A branch named by a holder id names no account to compare the
+		// forge's pusher with (keptAnnouncement), so it is not asked about.
+		if a.Unreadable == "" && !validHolderID(a.Branch) && a.Standing(now) && !pusherKept(root, a.Commit).asked {
 			if _, ok := ask[a.Branch]; !ok {
 				branches = append(branches, a.Branch)
 			}

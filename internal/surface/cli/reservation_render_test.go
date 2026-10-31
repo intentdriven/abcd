@@ -127,12 +127,12 @@ func TestReservationRendersTouchNoNetwork(t *testing.T) {
 	if err := json.Unmarshal([]byte(raw), &rec); err != nil {
 		t.Fatalf("abcd iss-5 --json: %v\n%s", err, raw)
 	}
-	if r := rec.Reservation; r == nil || r.State != "live" || r.Holder != "octo" || r.Copy != "" || r.AgeSeconds == nil ||
-		!strings.HasPrefix(r.Text, "live, reserved by octo until ") || !strings.Contains(r.Text, ", as of the last fetch ") {
+	if r := rec.Reservation; r == nil || r.State != "live" || r.Holder != heldBy(t, p) || r.Copy != "" || r.AgeSeconds == nil ||
+		!strings.HasPrefix(r.Text, "live, reserved by "+heldBy(t, p)+" until ") || !strings.Contains(r.Text, ", as of the last fetch ") {
 		t.Fatalf("iss-5's reservation = %+v; want P's live reservation with the view's age", rec.Reservation)
 	}
 	code, text, errOut := reserveRun(t, q, "iss-5")
-	if code != 0 || !strings.Contains(text, "\n  reservation: live, reserved by octo until ") {
+	if code != 0 || !strings.Contains(text, "\n  reservation: live, reserved by "+heldBy(t, p)+" until ") {
 		t.Fatalf("abcd iss-5: exit %d, want the reservation line\n%s%s", code, text, errOut)
 	}
 	code, raw, errOut = reserveRun(t, q, "iss-6", "--json")
@@ -163,7 +163,7 @@ func TestReservationRendersTouchNoNetwork(t *testing.T) {
 			}
 		}
 	}
-	if !strings.HasPrefix(reserved, "reserved by octo until ") || !strings.Contains(reserved, ", as of the last fetch ") {
+	if !strings.HasPrefix(reserved, "reserved by "+heldBy(t, p)+" until ") || !strings.Contains(reserved, ", as of the last fetch ") {
 		t.Fatalf("the board's itd-7 reads reserved %q; want P's reservation with the view's age\n%s", reserved, raw)
 	}
 	// P's own board names nothing: its reservation is this copy's.
@@ -175,12 +175,12 @@ func TestReservationRendersTouchNoNetwork(t *testing.T) {
 	// The build's peers check reads the same view: P's reserved intent is
 	// refused, and `build next` excludes it, with no fetch and no push.
 	code, raw, errOut = reserveRun(t, q, "build", "itd-8", "--json")
-	if code != 3 || !strings.Contains(raw, `"check": "peers"`) || !strings.Contains(raw, "reserved by octo until ") ||
+	if code != 3 || !strings.Contains(raw, `"check": "peers"`) || !strings.Contains(raw, "reserved by "+heldBy(t, p)+" until ") ||
 		!strings.Contains(raw, "as of the last fetch") {
 		t.Fatalf("abcd build itd-8: exit %d, want the peers check naming P's reservation\n%s%s", code, raw, errOut)
 	}
 	code, raw, errOut = reserveRun(t, q, "build", "next", "--json")
-	if code != 2 || !strings.Contains(raw, `"id": "itd-8"`) || !strings.Contains(raw, "reserved by octo until ") {
+	if code != 2 || !strings.Contains(raw, `"id": "itd-8"`) || !strings.Contains(raw, "reserved by "+heldBy(t, p)+" until ") {
 		t.Fatalf("abcd build next: exit %d, want itd-8 excluded naming P's reservation\n%s%s", code, raw, errOut)
 	}
 
@@ -196,7 +196,7 @@ func TestReservationRendersTouchNoNetwork(t *testing.T) {
 	// The user endpoint is asked only where documented: `reserve --holder`
 	// (and the reservation acts), once, for the token's account.
 	code, text, errOut = reserveRun(t, q, "reserve", "--holder")
-	if code != 0 || text != "would reserve as quinn (from token)\n" {
+	if code != 0 || !strings.HasPrefix(text, "would reserve as quinn (from token)\nholder id: "+heldBy(t, q)+" (kept in ") {
 		t.Fatalf("reserve --holder: exit %d\n%s%s", code, text, errOut)
 	}
 	if calls := ghCalls(); len(calls) != 1 || calls[0] != "api --hostname github.com user" {

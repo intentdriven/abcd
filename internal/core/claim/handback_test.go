@@ -203,7 +203,7 @@ func TestADrainBacksOffAHandBackUntilItsRecordChanges(t *testing.T) {
 	tomb := w.remoteTip("iss-5")
 	w.set(t0.Add(20 * time.Minute))
 	_, err := q.do(Request{Record: "iss-5", Footprint: []string{"b.go"}, Drain: true})
-	want := "iss-5 was handed back by octo as user-visible at 2026-10-03T14:10:00Z, and its record on origin's default branch is unchanged since: " +
+	want := "iss-5 was handed back by " + p.keptHolderID() + " as user-visible at 2026-10-03T14:10:00Z, and its record on origin's default branch is unchanged since: " +
 		"a drain takes it again only once a person changes the record; take other work; nothing was pushed"
 	if !errors.Is(err, ErrBackOff) || err.Error() != want {
 		t.Fatalf("Q's drain reserving the handed-back issue = %v; want %q", err, want)
@@ -215,7 +215,7 @@ func TestADrainBacksOffAHandBackUntilItsRecordChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if why := snap.HandBack("iss-5", w.clock()); !strings.HasPrefix(why, "iss-5 was handed back by octo as user-visible at 2026-10-03T14:10:00Z") {
+	if why := snap.HandBack("iss-5", w.clock()); !strings.HasPrefix(why, "iss-5 was handed back by "+p.keptHolderID()+" as user-visible at 2026-10-03T14:10:00Z") {
 		t.Fatalf("the view's hand-back = %q; want it named", why)
 	}
 	w.fileOnMain("iss-5", "The widget breaks; a person settled the user-visible question: keep the page as it is.")
@@ -246,10 +246,10 @@ func TestAPersonsOwnReserveOverAHandBackGoesAheadWithANote(t *testing.T) {
 	if err != nil || res.Act != ActReserved {
 		t.Fatalf("Q's own reserve over the hand-back = %+v, %v; want it reserved", res, err)
 	}
-	if h := res.HandedBack; h == nil || h.Kind != "trust-rule" || h.Holder != "octo" || !h.At.Equal(t0) {
-		t.Fatalf("the result's hand-back = %+v; want octo's trust-rule hand-back", h)
+	if h := res.HandedBack; h == nil || h.Kind != "trust-rule" || h.Holder != p.keptHolderID() || !h.At.Equal(t0) {
+		t.Fatalf("the result's hand-back = %+v; want P's trust-rule hand-back", h)
 	}
-	if note := res.HandedBack.Note("iss-5"); note != "iss-5 was handed back by octo as trust-rule at 2026-10-03T14:00:00Z, "+
+	if note := res.HandedBack.Note("iss-5"); note != "iss-5 was handed back by "+p.keptHolderID()+" as trust-rule at 2026-10-03T14:00:00Z, "+
 		"and its record on origin's default branch is unchanged since; this reservation is a person's own, so it was made" {
 		t.Fatalf("the note = %q", note)
 	}

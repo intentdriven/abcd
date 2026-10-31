@@ -168,13 +168,18 @@ type Request struct {
 // prepared is a request checked and filled in from the checkout, before the
 // remote is asked anything.
 type prepared struct {
-	root   string
-	id     string
-	req    Request
-	lease  time.Duration
-	now    time.Time
-	who    identity
+	root  string
+	id    string
+	req   Request
+	lease time.Duration
+	now   time.Time
+	who   identity
+	// holder is the holder id every message the act writes names (holderid.go),
+	// and self whose holds are the person's own: that id, the ids their home
+	// declares, and the login the resolver named, which only a hold made before
+	// the id carries.
 	holder string
+	self   Self
 	copy   string
 	label  string
 	// home is where the machine layer of the configuration is read, for the
@@ -183,7 +188,15 @@ type prepared struct {
 	// derivedGap is why the act's fetch could not read origin's default
 	// branch, "" when it read it: the derived release is then not applied.
 	derivedGap string
+	// vouched is the release's withdrawals naming an id self pairs with a
+	// login whose own newest push records them (asker.vouched), set by
+	// ownRelease: with self's own, what the act may act on (acts).
+	vouched map[Withdrawal]bool
 }
+
+// acts reports whether the act may re-arm, withdraw again or admit w
+// (actsOn).
+func (p *prepared) acts(w Withdrawal) bool { return actsOn(p.self, p.vouched)(w) }
 
 // prepare checks a request in the order the refusals promise: the id before
 // any ref name is formed, then the footprint and the lease before any git
@@ -319,7 +332,10 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 	if err != nil {
 		return nil, err
 	}
-	p.holder = h.Login
+	if p.self, err = ownSelf(p.home, h.Login, true); err != nil {
+		return nil, err
+	}
+	p.holder = p.self.ID
 	if !p.who.person() {
 		// Git's identity is unset or a machine's: the token's account authors
 		// the reservation, so that identity never reaches a commit.

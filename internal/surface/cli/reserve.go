@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/embargo"
 	"github.com/intentdriven/abcd/internal/core/launch"
@@ -129,8 +130,9 @@ type reserveOutput struct {
 	// records (iss-2610222014550692); ForgeFailures each pull request the
 	// forge refused a withdrawal or re-arm of, and ForgeUnchecked why the
 	// armed merges could not be listed at all. Admitted is the pull request
-	// --admit re-armed; Stranded each withdrawal of another person's the
-	// release carries; Settles each release whose withdrawals the act re-armed
+	// --admit re-armed; Stranded each withdrawal the release carries that this
+	// copy does not act on, and Unpaired each id the person declares with no
+	// login beside it among them; Settles each release whose withdrawals the act re-armed
 	// or skipped. The text form warns of every failure on stderr.
 	Withdrew       []claim.Withdrawal   `json:"withdrew,omitempty"`
 	Withdrawals    []claim.Withdrawal   `json:"withdrawals,omitempty"`
@@ -138,6 +140,7 @@ type reserveOutput struct {
 	ForgeUnchecked string               `json:"forge_unchecked,omitempty"`
 	Admitted       *claim.Withdrawal    `json:"admitted,omitempty"`
 	Stranded       []claim.Withdrawal   `json:"stranded,omitempty"`
+	Unpaired       []string             `json:"unpaired,omitempty"`
 	Settles        []claim.Settle       `json:"settles,omitempty"`
 	// DirectoryFootprint is each footprint path naming a directory git
 	// tracks, with the tracked files beneath it (iss-2610230016544142): the
@@ -228,7 +231,7 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"Reserve an issue or an intent on the shared remote before starting work on it, so\n" +
 			"every other participant sees it is taken. The reservation is the branch\n" +
 			"abcd-reserved/<record-id> on the remote named origin: a chain of empty-tree commits\n" +
-			"naming the record, the holder (your GitHub username), this working copy, the files\n" +
+			"naming the record, the holder (your holder id, below), this working copy, the files\n" +
 			"the work will change (--footprint, once per repository-relative path) and the\n" +
 			"lease (--lease, from 1m to 24h; default 2h, or 24h for a release).\n\n" +
 			"A session cutting a release reserves the release instead, rel-vX.Y.Z, with no\n" +
@@ -254,11 +257,14 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"whose head moved, that was closed or merged, or that can only be merged by hand\n" +
 			"(no merge queue), is skipped and named for its owner; every state is recorded on\n" +
 			"the tombstone (settles in --json), so no copy acts twice, a copy of another\n" +
-			"person never re-arms (stranded in --json). A person's withdrawals are read only\n" +
-			"from their own newest push to the release's branch, as the forge's record of\n" +
-			"pushes shows it: commits others pushed above it are counted and never read\n" +
-			"(not_read in settles), and when that push cannot be found or placed nothing is\n" +
-			"acted on for that person (unplaced in settles).\n\n" +
+			"person never re-arms (stranded in --json), and each id you declare with no\n" +
+			"login beside it that names one of those is listed (unpaired in --json): writing\n" +
+			"its account's login after it in " + abcdhome.Display("holder-ids") + " lets this copy settle\n" +
+			"them. A person's withdrawals are read only from their own newest push to the\n" +
+			"release's branch, as the forge's record of pushes shows it: commits others\n" +
+			"pushed above it are counted and never read (not_read in settles), and when that\n" +
+			"push cannot be found or placed nothing is acted on for that person (unplaced in\n" +
+			"settles).\n\n" +
 			"Every act fetches the reservations from origin, judges the tip, writes one\n" +
 			"commit and makes one plain fast-forward push, with the repository's hooks\n" +
 			"running: a reservation, a renewal by the same person and copy, a take-over of\n" +
@@ -300,22 +306,53 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"nothing pushed, and so is the act when a store cannot be read, naming that\n" +
 			"store. A release does not consult it. A build's and a drain's reservations\n" +
 			"consult it too.\n\n" +
-			"The holder is your GitHub username, from the first of these that names it:\n" +
-			"user.email, when it is a GitHub no-reply address; reservation.github_username\n" +
-			"in the machine configuration (the repository's own configuration is never read\n" +
-			"for it); and the account this session's own GitHub token belongs to, which\n" +
-			"takes one call to GitHub's user endpoint, through gh. When git's identity is\n" +
-			"not a person's (unset, or a machine's), the token alone names the holder, that\n" +
-			"account authors the reservation commit, and the identity git had is shown\n" +
-			"nowhere. The checkout must have its local tier (.abcd/.work.local/), where this\n" +
-			"copy's key is kept. `abcd peers` lists every reservation.\n\n" +
+			"The holder is named by your holder id: h_ and 32 random lower-case hex\n" +
+			"characters, minted the first time one is needed into " + abcdhome.Display("holder-id") + "\n" +
+			"(owner-only) and kept. No trailer and no branch name abcd pushes carries your\n" +
+			"GitHub login. Each commit's author and committer fields carry your git\n" +
+			"identity when it is a person's; when it is unset or a machine's, they carry the\n" +
+			"GitHub account the token resolves to, by its login and no-reply address. Holds\n" +
+			"already pushed under your login are not rewritten. A fresh\n" +
+			"mint says so once on stderr: holds made under an earlier id of yours read as\n" +
+			"someone else's until they lapse. ABCD_HOLDER_ID, when set, is your id instead,\n" +
+			"read before the file and never written to it: set it to the id --holder prints\n" +
+			"in a hosted or ephemeral session's own settings, whose home is not kept; set to\n" +
+			"anything but one id, every act refuses. A holder-id file another account owns\n" +
+			"or could write, or one that holds no id, is refused, never replaced. A\n" +
+			"reservation under an id listed in\n" +
+			abcdhome.Display("holder-ids") + " (one per line, # comments; the ids your other\n" +
+			"machines and accounts print with --holder) is yours too, from another copy.\n" +
+			"Write the GitHub login of the account an id is yours on after it, on its line\n" +
+			"(h_<32 hex> <login>), and a release's commit naming that id counts only when\n" +
+			"that account pushed it; an id with no login beside it is held to your own\n" +
+			"login, as your other home under the same login pushes it, so abcd reads a\n" +
+			"release end from it, and acts on its withdrawals, only when your own login\n" +
+			"pushed the reservation that recorded them. The login is read on this machine\n" +
+			"only and never pushed. A holder-ids file the guarded read refuses (another\n" +
+			"account owns or could write it, it is not a regular file, it is too large or a\n" +
+			"line is malformed) refuses every act; --holder, abcd peers and abcd status read\n" +
+			"it as declaring no id, and each says so in one line on stderr naming the class\n" +
+			"of the refusal, never its contents (holder_ids_refused in --json).\n\n" +
+			"abcd still works out your GitHub username, which is never pushed, from the first\n" +
+			"of these that names it: user.email, when it is a GitHub no-reply address;\n" +
+			"reservation.github_username in the machine configuration (the repository's own\n" +
+			"configuration is never read for it); and the account this session's own GitHub\n" +
+			"token belongs to, which takes one call to GitHub's user endpoint, through gh. A\n" +
+			"reservation made before the holder id names that username, and is still yours.\n" +
+			"When git's identity is not a person's (unset, or a machine's), the token alone\n" +
+			"names the account, that account authors the reservation commit, and the\n" +
+			"identity git had is shown nowhere. The checkout must have its local tier\n" +
+			"(.abcd/.work.local/), where this copy's key is kept. `abcd peers` lists every\n" +
+			"reservation.\n\n" +
 			"--holder prints the account an act from this checkout would reserve as and the\n" +
-			"source that named it (git, config or token), or its --json document. It may\n" +
-			"make that one call to the user endpoint in two cases: git's identity is a\n" +
-			"person's but carries neither a GitHub no-reply address nor a machine key; or\n" +
-			"git's identity is not a person's (unset, or a machine's), when the machine key\n" +
-			"is skipped. It takes no record id and no other flag, and reserves, writes and\n" +
-			"pushes nothing. It exits 0 when the account is known and 2 when not.\n\n" +
+			"source that named it (git, config or token), then your holder id, where it\n" +
+			"comes from, and any ids declared as yours, or its --json document. It may make that\n" +
+			"one call to the user endpoint in two cases: git's identity is a person's but\n" +
+			"carries neither a GitHub no-reply address nor a machine key; or git's identity\n" +
+			"is not a person's (unset, or a machine's), when the machine key is skipped. It\n" +
+			"takes no record id and no other flag, reserves and pushes nothing, and writes\n" +
+			"only the holder id, when none is kept yet. It exits 0 when the account and the\n" +
+			"holder id are known and 2 when not.\n\n" +
 			"Exit 0 when the act reached origin (or a release was already made); exit 3 when\n" +
 			"the record is held by someone else or by your other copy, so back off; exit 2\n" +
 			"on every other refusal and failure. Nothing is pushed on a refusal, and a failed\n" +
@@ -422,15 +459,39 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().DurationVar(&leaseFor, "lease", 0, "how long the reservation holds, from 1m to 24h (default 2h, or 24h for a release)")
 	cmd.Flags().BoolVar(&release, "release", false, "release your reservation from this copy by pushing a tombstone")
 	cmd.Flags().IntVar(&admit, "admit", 0, "on a release reservation, from the copy cutting it: re-arm this withdrawn pull request and record it admitted")
-	cmd.Flags().BoolVar(&holder, "holder", false, "say which GitHub account an act would reserve as, and from where; reserves nothing")
+	cmd.Flags().BoolVar(&holder, "holder", false, "say which GitHub account an act would reserve as, and from where, and your holder id; reserves nothing")
 	sweep = addSweepFlags(cmd)
 	return cmd
 }
 
+// holderIDScope is what the holder id does and does not keep out of what abcd
+// pushes, the same words the help and the brief use.
+const holderIDScope = "no trailer and no branch name abcd pushes carries your login; " +
+	"each commit's author and committer carry your git identity when it is a person's, otherwise the token account's login and no-reply address, " +
+	"and holds already pushed are not rewritten"
+
+// reserveHolderOutput is `reserve --holder`'s document: the account and the
+// source that named it, as before, with the holder id what abcd pushes names
+// the person by, where it is kept, and the ids the person declares as theirs
+// too. None of it is pushed.
+type reserveHolderOutput struct {
+	claim.Holder
+	HolderID          string   `json:"holder_id"`
+	HolderIDFrom      string   `json:"holder_id_from"`
+	HolderIDFile      string   `json:"holder_id_file"`
+	DeclaredHolderIDs []string `json:"declared_holder_ids"`
+	DeclaredIDsFile   string   `json:"declared_holder_ids_file"`
+	// HolderIDsRefused is the class of the refusal of the declared ids'
+	// file when the guarded read refused it, so none of its ids is read
+	// (claim.HolderIDsRefusedLine); absent when it was read or is absent.
+	HolderIDsRefused string `json:"holder_ids_refused,omitempty"`
+}
+
 // runReserveHolder is `reserve --holder`: the account a reservation act from
-// this checkout would be made as, and the source that named it. It writes
-// nothing; when git's identity names no holder it may ask the forge's user
-// endpoint once, as the act itself would.
+// this checkout would be made as, the source that named it, and the holder id
+// the act would push in its place. It writes only the holder id, minted when
+// none is kept yet; when git's identity names no holder it may ask the
+// forge's user endpoint once, as the act itself would.
 func runReserveHolder(w, errw io.Writer, asJSON bool) error {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -441,11 +502,29 @@ func runReserveHolder(w, errw io.Writer, asJSON bool) error {
 		return &exitError{Code: 2, Msg: "abcd reserve: " + err.Error() + "; nothing was reserved"}
 	}
 	noteMachineHome(errw, "abcd reserve")
-	h, err := claim.ResolveHolder(root, claim.Options{ForgeUser: reserveForgeUser})
+	o := claim.Options{ForgeUser: reserveForgeUser}
+	h, err := claim.ResolveHolder(root, o)
 	if err != nil {
 		return &exitError{Code: 2, Msg: "abcd reserve: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
 	}
-	return render(w, asJSON, h, func(w io.Writer) { fmt.Fprintf(w, "would reserve as %s (from %s)\n", h.Login, h.Source) })
+	self, err := claim.OwnSelf(h.Login, o)
+	if err != nil {
+		return &exitError{Code: 2, Msg: "abcd reserve: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
+	}
+	from, where := claim.HolderIDFile, "kept in "+claim.HolderIDFile
+	if self.FromEnv {
+		from, where = claim.HolderIDEnv, "from "+claim.HolderIDEnv
+	}
+	out := reserveHolderOutput{Holder: h, HolderID: self.ID, HolderIDFrom: from, HolderIDFile: claim.HolderIDFile,
+		DeclaredHolderIDs: append([]string{}, self.Declared...), DeclaredIDsFile: claim.DeclaredHolderIDsFile, HolderIDsRefused: self.HolderIDsRefused}
+	noteHolderIDsRefused(errw, "abcd reserve", self.HolderIDsRefused)
+	return render(w, asJSON, out, func(w io.Writer) {
+		fmt.Fprintf(w, "would reserve as %s (from %s)\n", h.Login, h.Source)
+		fmt.Fprintf(w, "holder id: %s (%s); %s\n", self.ID, where, holderIDScope)
+		if len(self.Declared) > 0 {
+			fmt.Fprintf(w, "also yours: %s (declared in %s)\n", strings.Join(self.Declared, ", "), claim.DeclaredHolderIDsFile)
+		}
+	})
 }
 
 // reserveRefusal maps the core's two refusal classes to their exit codes: the
@@ -495,7 +574,7 @@ func reserveView(res claim.Result) reserveOutput {
 			EffectiveExpiry: rfc3339(o.Expiry), Copy: termsafe.Sanitize(o.Copy), CopyUnread: termsafe.Sanitize(o.CopyUnread)})
 		out.warnings = append(out.warnings, o.Warning())
 	}
-	out.Withdrew, out.Withdrawals, out.Stranded = res.Withdrew, res.Withdrawals, res.Stranded
+	out.Withdrew, out.Withdrawals, out.Stranded, out.Unpaired = res.Withdrew, res.Withdrawals, res.Stranded, res.Unpaired
 	out.Admitted, out.Settles = res.Admitted, res.Settles
 	out.ForgeUnchecked = termsafe.Sanitize(fsutil.RedactHome(res.ForgeUnchecked))
 	for _, f := range res.ForgeFailures {
@@ -572,7 +651,12 @@ func renderReserve(w io.Writer, out reserveOutput) {
 		}
 	}
 	if len(out.Stranded) > 0 {
-		fmt.Fprintf(w, "  note: %s\n", claim.StrandedLine(out.Record, out.Stranded))
+		// A reserve act resolves the person's GitHub login or refuses before
+		// it pushes anything, so the login is known whenever it strands one.
+		fmt.Fprintf(w, "  note: %s\n", claim.StrandedNote(out.Record, out.Stranded, out.Holder, true, out.Act == claim.ActReleased))
+		if l := claim.UnpairedLine(out.Unpaired); l != "" {
+			fmt.Fprintf(w, "  note: %s\n", l)
+		}
 	}
 	if len(out.Footprint) > 0 && out.Act != claim.ActAlreadyReleased {
 		quoted := make([]string, len(out.Footprint))

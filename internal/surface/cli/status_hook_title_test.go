@@ -17,7 +17,6 @@ import (
 // itd-2610111707085098). Its budgets are its own (ownHookBudgets), so a
 // loaded runner cannot leave the status unavailable.
 func TestThePromptThatNamesTheSessionCarriesTheStatus(t *testing.T) {
-	const line = "- @octo (claimed): merging #1012, for 30 min\n"
 	for _, c := range []struct {
 		name          string
 		asJSON, wreck bool
@@ -37,6 +36,7 @@ func TestThePromptThatNamesTheSessionCarriesTheStatus(t *testing.T) {
 			if code, _, stderr := reserveRun(t, octo, "announce", "merging", "1012"); code != 0 {
 				t.Fatalf("announce: exit %d, %s", code, stderr)
 			}
+			line := "- " + heldBy(t, octo) + " (claimed): merging #1012, for 30 min\n"
 			if code, _, stderr := reserveRun(t, pat, "status"); code != 0 {
 				t.Fatalf("status: exit %d, %s", code, stderr)
 			}

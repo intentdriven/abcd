@@ -78,12 +78,13 @@ func TestStatusListsEveryoneAndSaysWhatItRead(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("status: exit %d, stderr %q", code, stderr)
 	}
+	o, q := heldBy(t, octo), heldBy(t, quinn)
 	for _, want := range []string{
 		"abcd status — announcements as of the fetch 0m ago (",
-		"\n  @octo (claimed): merging #1012, for 30 min  sent ",
+		"\n  " + o + " (claimed): merging #1012, for 30 min  sent ",
 		"\nreservations — as of the fetch 0m ago",
-		"\n  rel-v0.16.0  live  quinn  until ",
-		"\n  release v0.16.0 being cut by @quinn: merges are held; the hold lapses at ",
+		"\n  rel-v0.16.0  live  " + q + "  until ",
+		"\n  release v0.16.0 being cut by " + q + " (claimed): merges are held; the hold lapses at ",
 		"\n" + claim.GrantsNothing + "\n",
 	} {
 		if !strings.Contains(stdout, want) {
@@ -106,17 +107,20 @@ func TestStatusListsEveryoneAndSaysWhatItRead(t *testing.T) {
 		t.Fatalf("--json view %+v, announcements %+v", got.View, got.Announcements)
 	}
 	a := got.Announcements[0]
-	if a.Branch != "abcd-status/octo" || a.Sender != "octo" || a.Kind != "merging" || a.Item != "#1012" || a.Check != claim.SenderClaimed ||
-		a.SentAt == "" || a.Until == "" || a.Commit == "" || a.Text != "@octo (claimed): merging #1012, for 30 min" {
+	if a.Branch != "abcd-status/"+o || a.Sender != o || a.Kind != "merging" || a.Item != "#1012" || a.Check != claim.SenderClaimed ||
+		a.SentAt == "" || a.Until == "" || a.Commit == "" || a.Text != o+" (claimed): merging #1012, for 30 min" {
 		t.Fatalf("--json announcement %+v", a)
 	}
-	if len(got.ReleaseHolds) != 1 || !strings.HasPrefix(got.ReleaseHolds[0].Text, "release v0.16.0 being cut by @quinn: merges are held; the hold lapses at ") ||
+	if len(got.ReleaseHolds) != 1 || !strings.HasPrefix(got.ReleaseHolds[0].Text, "release v0.16.0 being cut by "+q+" (claimed): merges are held; the hold lapses at ") ||
 		!strings.HasSuffix(got.ReleaseHolds[0].Text, " unless the cut renews it") ||
 		len(got.Reservations) != 1 || got.Reservations[0].Record != "rel-v0.16.0" {
 		t.Fatalf("--json holds %+v, reservations %+v", got.ReleaseHolds, got.Reservations)
 	}
-	if !strings.Contains(got.SendersUnchecked, "github.com") {
-		t.Fatalf("senders_unchecked = %q; want the reason a local origin cannot say who pushed", got.SendersUnchecked)
+	// A branch named by a holder id names no account for the forge's pusher
+	// to be compared with, so nothing is asked and nothing goes unchecked
+	// (iss-2610290809526033); a branch named by a login still is.
+	if got.SendersUnchecked != "" {
+		t.Fatalf("senders_unchecked = %q; want none: a holder id's branch is not asked about", got.SendersUnchecked)
 	}
 }
 

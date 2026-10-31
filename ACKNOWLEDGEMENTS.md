@@ -447,6 +447,28 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   and Harbor's `TrialResult` (0.24.0) at
   [`harbor-framework/harbor@d0fe0b24703f`](https://github.com/harbor-framework/harbor/blob/d0fe0b24703f4e53806be5cb3b5e07d622aebbfa/src/harbor/models/trial/result.py).
   abcd runs neither and depends on neither.
+- **Audit sampling and its evidence: ISA 530 (IAASB,
+  <https://www.ifac.org/system/files/publications/files/A028%202012%20IAASB%20Handbook%20ISA%20530.pdf>);
+  the selective labels problem (Lakkaraju et al., KDD 2017,
+  <https://www.cs.cornell.edu/home/kleinber/kdd17-selective.pdf>); the rule of
+  three (Hanley and Lippman-Hand, *JAMA* 1983, as restated by Newman, *JAMA*
+  1995, <https://jamanetwork.com/journals/jama/article-abstract/389714>);
+  automation bias (Parasuraman and Manzey, *Human Factors* 2010,
+  <https://pubmed.ncbi.nlm.nih.gov/21077562/>; Singh et al., FSE 2026,
+  <https://susi.usi.ch/usi/documents/336576>); studies of agent pull requests
+  and automated review (Oukay et al., MSR 2026,
+  <https://2026.msrconf.org/details/msr-2026-mining-challenge/27/>; Ehsani et
+  al., <https://arxiv.org/html/2601.15195>; CR-Bench,
+  <https://arxiv.org/html/2603.11078v1>); the NIST AI Risk Management
+  Framework (<https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.100-1.pdf>); and
+  Google's postmortem practice (*Site Reliability Engineering*, ch. 15,
+  <https://sre.google/sre-book/postmortem-culture/>)** — the grounds for a
+  person spot-checking what agents changed with no person reading it
+  (itd-2610301750162657): a sample no agent can steer, drawn across every
+  group the rule sorts, read before the automated verdict, honest about what a
+  clean read rules out, and each finding turned into a person's change to the
+  rule. The evidence is
+  `.abcd/development/research/notes/2026-10-30-spot-check-unattended-changes-sota.md`.
 - **Safe-fix tiers in linters (Ruff, <https://docs.astral.sh/ruff/linter/>;
   ESLint, <https://eslint.org/docs/latest/extend/custom-rules>) and the
   static-analysis lessons of Google (Sadowski et al., "Lessons from Building
@@ -457,6 +479,24 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   test for which fixes need no decision: one that keeps the meaning. The
   fix-in-place discipline (itd-2610271130017437) follows them; the evidence is
   `.abcd/development/research/notes/2026-10-27-fix-in-place-or-file-sota.md`.
+- **Evidence on how agents learn and use a tool: SWE-agent's ablations (Yang
+  et al., 2024, <https://arxiv.org/abs/2405.15793>); troubleshooting
+  documents for tool-call repair (Tsay et al., 2025,
+  <https://arxiv.org/abs/2510.17874>); augmented tool descriptions (Hasan et
+  al., 2026, <https://arxiv.org/abs/2602.14878>); and context files (Gloaguen
+  et al., 2026, <https://arxiv.org/abs/2602.11988>). Practice from
+  `kubectl explain` (<https://kubernetes.io/docs/reference/kubectl/generated/kubectl_explain/>),
+  rustc's error codes and `rustc --explain`
+  (<https://doc.rust-lang.org/error_codes/error-index.html>), the Model
+  Context Protocol's handling of input-validation errors (specification
+  2025-11-25, <https://modelcontextprotocol.io/specification/2025-11-25>), and
+  clap's retirement of its YAML builder
+  (<https://github.com/clap-rs/clap/issues/3087>)** — the grounds for an agent
+  learning a command from the running program (itd-2610301346085246), for
+  refusals that carry a code and the next command (itd-2610301428378830) and
+  for a practice run before a write (itd-2610301428390406): a short answer
+  from the binary over a long page, fix-oriented guidance over reference text,
+  and command facts held in code rather than in a hand-edited data file.
 
 ## References & sources
 

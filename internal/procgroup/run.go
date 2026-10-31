@@ -38,7 +38,8 @@ import (
 // through its Cancel (exec kills it by default; Bound kills its group) and
 // Wait closes the pipes, so the holder cannot keep the caller past ctx. The
 // command's WaitDelay is left to bound only a command that does not exit
-// once stopped. Output cut short by ctx is never answered as the command's:
+// once stopped. Output cut short by ctx is never answered as the command's,
+// nor is a failure Wait reports once ctx has ended, however the read ended:
 // the error then wraps ctx's own, with what Wait said in its text.
 func RunToEOF(ctx context.Context, cmd *exec.Cmd, stdout, stderr io.Writer) error {
 	var reads []func() error
@@ -112,6 +113,12 @@ func RunToEOF(ctx context.Context, cmd *exec.Cmd, stdout, stderr io.Writer) erro
 	default:
 	}
 	err := cmd.Wait()
+	// The kill that stops a command when ctx ends closes its pipes, so the
+	// read can end before the wait above sees ctx end: a command that failed
+	// once ctx had ended is ctx's too (iss-2610310054494441).
+	if err != nil && ctx.Err() != nil {
+		cut = true
+	}
 	<-drained
 	<-fed
 	switch {

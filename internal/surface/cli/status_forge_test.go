@@ -75,14 +75,12 @@ func TestTheForgesRecordJudgesEachPushLikeActivity(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := newReserveWorld(t)
-	octo := w.clone(t, "octo", octoMail)
 	pat := w.clone(t, "pat", "5+pat@users.noreply.github.com")
+	// The branch is named by octo's login, as a release before the holder id
+	// named it: only such a branch names an account the forge is asked about.
 	var tips []string
 	for _, item := range []string{"1", "2", "3", "4"} {
-		if code, _, stderr := reserveRun(t, octo, "announce", "merging", item); code != 0 {
-			t.Fatalf("announce: exit %d, %s", code, stderr)
-		}
-		tips = append(tips, gitCmd(t, w.origin, "rev-parse", claim.StatusRefPrefix+"octo"))
+		tips = append(tips, w.legacyAnnounce(t, "octo", item))
 	}
 	c1, c2, c3, c4 := tips[0], tips[1], tips[2], tips[3]
 	forgeAnswering(t, string(fixture), map[string]string{
@@ -140,14 +138,12 @@ func TestAnAppsPushToTheTipReachesIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := newReserveWorld(t)
-	octo := w.clone(t, "octo", octoMail)
 	pat := w.clone(t, "pat", "5+pat@users.noreply.github.com")
+	// The branch is named by octo's login, as a release before the holder id
+	// named it: only such a branch names an account the forge is asked about.
 	var tips []string
 	for _, item := range []string{"1", "2", "3", "4"} {
-		if code, _, stderr := reserveRun(t, octo, "announce", "merging", item); code != 0 {
-			t.Fatalf("announce: exit %d, %s", code, stderr)
-		}
-		tips = append(tips, gitCmd(t, w.origin, "rev-parse", claim.StatusRefPrefix+"octo"))
+		tips = append(tips, w.legacyAnnounce(t, "octo", item))
 	}
 	c1, c2, c3, c4 := tips[0], tips[1], tips[2], tips[3]
 	forgeAnswering(t, string(fixture), map[string]string{

@@ -221,7 +221,8 @@ Then record their reply, and only their reply:
 The answer is kept once per repository and release in abcd's home folder
 (`~/.abcd.noindex/after-update/`), never in the repository, and marks the news
 as shown. Not now is not asked again until the next release; `abcd ahoy` still
-lists what waits, with the command that runs it. A second answer for the same
+lists the upgrade as a gap, with the command that runs the setup that waits. A
+second answer for the same
 release is refused with exit 2 and changes nothing. On yes, run the setup that
 waits, `abcd ahoy install --only-waiting`, as
 [What the binary install does](ahoy.md#what-the-binary-install-does) on the ahoy page says, with an

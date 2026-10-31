@@ -55,9 +55,7 @@ across lines. abcd's own block is the "Identity (canonical)" section of
 
 `.abcd/positioning.json` records the block's location, the family severity, and
 the surfaces held to it. It sits beside the repo's other per-concern
-configuration rather than under `.abcd/config/`, where `identity.json` was the
-git commit-author pin a repository stored before that pin moved to each
-owner's own record on their machine.
+configuration rather than under `.abcd/config/`.
 
 The severity is the whole family's weight, and it is the one knob that changes
 what a failed check costs. `warn`, the default, reports drift as a warning, and

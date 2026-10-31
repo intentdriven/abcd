@@ -666,6 +666,39 @@ func TestPreflightParallelism(t *testing.T) {
 	}
 }
 
+// TestPreflightTimeout: a stage's go test -timeout is the base scaled with the
+// load as the stage starts (machineload.GoTestTimeout), and the base itself on
+// a CI runner, where the machine is not read, or where it cannot be read, so
+// CI's race steps and the local lane keep one declared budget.
+func TestPreflightTimeout(t *testing.T) {
+	base := 40 * time.Minute
+	read := func() (machineload.Snapshot, error) {
+		return machineload.Snapshot{Load1: 24, HasLoad: true, Cores: 16}, nil
+	}
+	if got := PreflightTimeout(noEnv, read, base); got != 80*time.Minute {
+		t.Fatalf("timeout at load 24 on 16 cores = %s, want 1h20m0s", got)
+	}
+	ci := func(k string) string {
+		if k == "CI" {
+			return "true"
+		}
+		return ""
+	}
+	called := false
+	got := PreflightTimeout(ci, func() (machineload.Snapshot, error) {
+		called = true
+		return read()
+	}, base)
+	if called || got != base {
+		t.Fatalf("on CI: timeout %s (read %v), want the base %s without reading the machine", got, called, base)
+	}
+	if got := PreflightTimeout(noEnv, func() (machineload.Snapshot, error) {
+		return machineload.Snapshot{}, machineload.ErrUnsupported
+	}, base); got != base {
+		t.Fatalf("on an unread machine: timeout %s, want the base %s", got, base)
+	}
+}
+
 // pairWaiter is a waiter in the command form at pid under uid, its go run
 // beneath launchd, started age before the clock's start; its command is not a
 // race run, so only the queue and the hold can shut another waiter on it.

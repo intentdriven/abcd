@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
@@ -45,11 +46,39 @@ func (f *fixture) copyOf(email string) string {
 	return dir
 }
 
+// homeOf is the home the copy at dir keeps its person's holder id in: the
+// fixture's home for its own checkout and P's other copies, as every copy of
+// P's on this machine shares it, and a home of their own for anyone else, as
+// their own machine would be, so a second person's holds are never P's.
+func (f *fixture) homeOf(dir string) string {
+	f.t.Helper()
+	// --local: the fixture's own git calls name an email of their own with -c.
+	email := strings.TrimSpace(f.repo.Git("-C", dir, "config", "--local", "user.email"))
+	if dir == f.repo.Root() || strings.EqualFold(email, patEmail) {
+		return f.home
+	}
+	home := filepath.Join(f.home, "people", strings.NewReplacer("+", "-", "@", "-").Replace(strings.ToLower(email)))
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		f.t.Fatal(err)
+	}
+	return home
+}
+
+// heldBy is the holder id the copy at dir's holds name (homeOf).
+func (f *fixture) heldBy(dir string) string {
+	f.t.Helper()
+	data, err := os.ReadFile(abcdhome.Path(f.homeOf(dir), "holder-id"))
+	if err != nil {
+		f.t.Fatalf("no holder id is kept for the copy at %s: %v", dir, err)
+	}
+	return strings.TrimSpace(string(data))
+}
+
 // cut reserves the release subject from the working copy dir at at, as a
 // session starting a cut does, with the release's default lease.
 func (f *fixture) cut(dir, subject string, at time.Time) {
 	f.t.Helper()
-	o := claim.Options{Now: func() time.Time { return at }, Home: f.home}
+	o := claim.Options{Now: func() time.Time { return at }, Home: f.homeOf(dir)}
 	if res, err := claim.Reserve(dir, claim.Request{Record: subject}, o); err != nil || res.Act != claim.ActReserved {
 		f.t.Fatalf("reserving %s: %+v %v", subject, res, err)
 	}
@@ -93,15 +122,16 @@ func TestLandWaitsWhileAnotherPersonCutsARelease(t *testing.T) {
 	f.forge.prs = f.prFor(f.head())
 	f.forge.views = []string{viewBlocked, viewQueued}
 	at := time.Now().UTC().Truncate(time.Second).Add(-time.Minute)
-	f.cut(f.copyOf(quinnEmail), "rel-v0.16.0", at)
+	q := f.copyOf(quinnEmail)
+	f.cut(q, "rel-v0.16.0", at)
 	_, err := f.land(f.options())
 	r := wantHeld(t, err)
-	want := "release v0.16.0 is being cut by quinn, until " + at.Add(24*time.Hour).Format(time.RFC3339) +
+	want := "release v0.16.0 is being cut by " + f.heldBy(q) + " (claimed), until " + at.Add(24*time.Hour).Format(time.RFC3339) +
 		", and a session cutting a release has the final say on what merges before its tag, so abcd land pushes, arms and queues nothing"
 	if r.Reason != want {
 		t.Fatalf("reason = %q; want %q", r.Reason, want)
 	}
-	if r.Fix != "ask quinn to merge it or to release rel-v0.16.0, or wait until v0.16.0 is tagged or the hold lapses at "+
+	if r.Fix != "the copy cutting v0.16.0 may merge this itself; otherwise wait until v0.16.0 is tagged, or until rel-v0.16.0, held by "+f.heldBy(q)+" (claimed) from that copy, is released or the hold lapses at "+
 		at.Add(24*time.Hour).Format(time.RFC3339)+" unrenewed, when nothing holds the merge, then run abcd land again" {
 		t.Fatalf("fix = %q", r.Fix)
 	}
@@ -172,7 +202,7 @@ func TestAnEndedCutHoldsNoLanding(t *testing.T) {
 				f.cut(q, "rel-v0.16.0", now.Add(-24*time.Hour-time.Minute))
 			} else {
 				f.cut(q, "rel-v0.16.0", now.Add(-time.Hour))
-				o := claim.Options{Now: func() time.Time { return now.Add(-time.Minute) }, Home: f.home}
+				o := claim.Options{Now: func() time.Time { return now.Add(-time.Minute) }, Home: f.homeOf(q)}
 				if res, err := claim.Reserve(q, claim.Request{Record: "rel-v0.16.0", Release: true}, o); err != nil || res.Act != claim.ActReleased {
 					t.Fatalf("releasing the cut: %+v %v", res, err)
 				}

@@ -85,13 +85,13 @@ func TestTheFenceAndLandJudgeOneReleaseAlike(t *testing.T) {
 	if fence == nil || !fence.Contention || land == nil || !land.Held {
 		t.Fatalf("fence %+v, land %+v; want both held", fence, land)
 	}
-	shared := "release v0.16.0 is being cut by quinn, until " + stamp(now.Add(-time.Minute).Add(lease.Max)) +
+	shared := "release v0.16.0 is being cut by " + heldBy(t, quinnEmail) + " (claimed), until " + stamp(now.Add(-time.Minute).Add(lease.Max)) +
 		", and a session cutting a release has the final say on what merges before its tag, so "
 	if !strings.HasPrefix(fence.Reason, shared) || !strings.HasPrefix(land.Reason, shared) {
 		t.Fatalf("fence %q, land %q; want both to start %q", fence.Reason, land.Reason, shared)
 	}
 
-	if _, err := claim.Reserve(q, claim.Request{Record: "rel-v0.16.0", Release: true}, clockAt(now)); err != nil {
+	if _, err := claim.Reserve(q, claim.Request{Record: "rel-v0.16.0", Release: true}, as(t, q, clockAt(now))); err != nil {
 		t.Fatal(err)
 	}
 	if fence, land := fenceHold(t, root, now), landHold(t, root); fence != nil || land != nil {

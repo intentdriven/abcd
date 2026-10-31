@@ -171,6 +171,35 @@ func TestShadowRecordsAFailedAdapterAndTheHostStillDecides(t *testing.T) {
 	}
 }
 
+// A caller stopped before or while the adapter is asked in shadow keeps no
+// pair: the adapter's silence is the stop's, not the adapter's, and the host
+// still decides.
+func TestShadowKeepsNoPairForAStoppedCaller(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	adapter, rec := &fake{value: "iss-1", p: 0.9}, &pairs{}
+	a, rc, err := router(oracle.JudgementShadow, adapter, rec).Decide(ctx, State{Text: "s"}, dupQuestion(), Answered("iss-2"))
+	if err != nil || a.Value != "iss-2" || adapter.calls != 0 || len(rec.got) != 0 || rc.Pair != "" || !strings.Contains(rc.Note, "stopped") {
+		t.Fatalf("an already stopped caller: answer %+v, receipt %+v, err %v, calls %d, pairs %+v", a, rc, err, adapter.calls, rec.got)
+	}
+	// Stopped while the adapter answers: its failure is the stop's.
+	ctx, cancel = context.WithCancel(context.Background())
+	stopping := &fake{err: context.Canceled}
+	stop := func(oracle.Target) Judge { cancel(); return stopping }
+	r := newRouter(map[Type]oracle.Target{DuplicateMatch: {Provider: "openrouter", Model: "typesafe/jev-1.13", Mode: oracle.JudgementShadow}}, stop, rec.record)
+	if _, rc, err := r.Decide(ctx, State{Text: "s"}, dupQuestion(), Answered("iss-2")); err != nil || len(rec.got) != 0 || !strings.Contains(rc.Note, "stopped") {
+		t.Fatalf("a caller stopped mid-call: receipt %+v, err %v, pairs %+v", rc, err, rec.got)
+	}
+	// A deadline the caller set for the adapter alone is the adapter's
+	// slowness, and its pair is kept as failed.
+	slow, cancelSlow := context.WithTimeout(context.Background(), 0)
+	defer cancelSlow()
+	if _, _, err := router(oracle.JudgementShadow, &fake{err: context.DeadlineExceeded}, rec).Decide(slow, State{Text: "s"}, dupQuestion(), Answered("iss-2")); err != nil ||
+		len(rec.got) != 1 || rec.got[0].Skipped != lab.SkippedFailed {
+		t.Fatalf("a slow adapter's pair is kept as failed: err %v, pairs %+v", err, rec.got)
+	}
+}
+
 // No lab minted: the host decides, and the receipt says the pair was not kept.
 func TestShadowWithNoLabStillDecidesAndSaysSo(t *testing.T) {
 	rec := &pairs{err: lab.ErrNoLab}
@@ -388,7 +417,35 @@ func TestLoadRefusesAnUnlistedModelBeforeAnyCall(t *testing.T) {
 	if rt.Mode(DuplicateMatch) != oracle.JudgementShadow || rt.Mode(RemedyRead) != oracle.JudgementOn || rt.Mode(MemoryCheck) != oracle.JudgementHost {
 		t.Fatalf("modes: %s %s %s", rt.Mode(DuplicateMatch), rt.Mode(RemedyRead), rt.Mode(MemoryCheck))
 	}
-	if len(rt.Diagnostics) != 1 || !strings.Contains(rt.Diagnostics[0], "lesson-polish") {
+	if len(rt.Diagnostics) != 3 || !strings.Contains(strings.Join(rt.Diagnostics, "\n"), "lesson-polish") {
 		t.Fatalf("diagnostics = %q, want the unknown type named", rt.Diagnostics)
+	}
+}
+
+// A route to a type in the registry that no step asks through the router yet
+// is kept, and said: the host decides it alone and nothing runs beside it, so
+// a shadow route there records no pair. A route to a type a step asks is not
+// remarked on.
+func TestLoadSaysARouteToATypeNoStepAsksYetRunsNothing(t *testing.T) {
+	roots := layered.Roots{Repo: t.TempDir(), Home: t.TempDir()}
+	p := abcdhome.Path(roots.Home, "config.json")
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(`{"oracle":{"api":{"openrouter":{"base_url":"https://openrouter.ai/api/v1","key":"openrouter",
+		"models":["typesafe/jev-1.13"]}},"judgements":{"duplicate-match":"shadow:openrouter/typesafe/jev-1.13",
+		"eligibility-residual":"shadow:openrouter/typesafe/jev-1.13","embark-lesson-ranking":"shadow:openrouter/typesafe/jev-1.13"}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rt, err := Load(roots, roots.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rt.Mode(DuplicateMatch) != oracle.JudgementShadow {
+		t.Fatalf("the route is kept: %s", rt.Mode(DuplicateMatch))
+	}
+	if len(rt.Diagnostics) != 1 || !strings.Contains(rt.Diagnostics[0], "oracle.judgements.duplicate-match") ||
+		!strings.Contains(rt.Diagnostics[0], "no step asks") || !strings.Contains(rt.Diagnostics[0], "no pair") {
+		t.Fatalf("diagnostics = %q, want the one route that runs nothing named", rt.Diagnostics)
 	}
 }

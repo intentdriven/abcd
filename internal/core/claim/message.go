@@ -178,7 +178,7 @@ const (
 	reasonNotEmptyTree  = "its tree is not the empty tree"
 	reasonNoObject      = "its commit object does not parse"
 	reasonRecord        = "it does not name this record exactly once"
-	reasonHolder        = "it does not name one GitHub username as its holder"
+	reasonHolder        = "it does not name one holder id or GitHub username as its holder"
 	reasonCopy          = "it does not name one working copy"
 	reasonTime          = "a time it carries is missing, repeated or not RFC 3339"
 	reasonFootprint     = "a footprint it names is not a repository-relative path"
@@ -375,8 +375,9 @@ func ReadReservationMessage(text string) (ReservationMessage, error) {
 }
 
 // validateReservation is the reservation family's validator: the trailers must
-// name record (the reservation's subject) exactly once, one GitHub username
-// as holder, one working copy, the lease's times and only
+// name record (the reservation's subject) exactly once, one holder (a holder
+// id, or the GitHub username a reservation made before the id names), one
+// working copy, the lease's times and only
 // repository-relative footprint paths, a tombstone's hand-back, when it
 // carries one, one kind from the vocabulary with one object name
 // (validateHandBack), and a reservation's lane stage, when it carries one,
@@ -389,7 +390,7 @@ func validateReservation(record string, t trailers) (message, string) {
 		return m, reasonRecord
 	}
 	m.Record = record
-	if m.Holder, ok = t.one(keyHolder); !ok || !validUsername(m.Holder) {
+	if m.Holder, ok = t.one(keyHolder); !ok || !validHolder(m.Holder) {
 		return message{}, reasonHolder
 	}
 	if m.Copy, ok = t.one(keyCopy); !ok || !validCopyKey(m.Copy) {

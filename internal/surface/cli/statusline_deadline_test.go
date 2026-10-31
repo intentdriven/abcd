@@ -52,7 +52,10 @@ const loadedGitLatency = "sleep 0.4"
 // widenBudgets resizes the verb's budgets for one test to sizes a loaded
 // machine's real git cannot outrun, keeping their order (git's share inside
 // abcd's ceiling, with room after it) and keeping every slow fixture far
-// beyond them. The production values return when the test ends.
+// beyond them. The production values return when the test ends. A test that
+// wants the whole row with nothing on stderr calls it too: the merging element
+// reads facilitator.mode with git questions of its own inside the same share,
+// which a race-enabled run on a loaded runner can outlast.
 func widenBudgets(t *testing.T) {
 	t.Helper()
 	overall, git, previous := statuslineBudget, statuslineGitBudget, previousCommandBudget

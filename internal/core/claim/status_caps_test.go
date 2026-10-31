@@ -81,7 +81,7 @@ func TestAListingPastTheOutputBoundStillReads(t *testing.T) {
 	runGit(t, w.bare, "pack-refs", "--all")
 	pat.status(nil)
 	v := pat.read()
-	if len(v.Announcements) != 1 || v.Announcements[0].Sender != "maya" || v.UnreadNames != 12000 {
+	if len(v.Announcements) != 1 || v.Announcements[0].Sender != maya.keptHolderID() || v.UnreadNames != 12000 {
 		t.Fatalf("announcements = %+v, unread names = %d; want maya's, and 12000 counted", v.Announcements, v.UnreadNames)
 	}
 }

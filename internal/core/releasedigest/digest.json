@@ -2,6 +2,1026 @@
   "schema_version": 1,
   "releases": [
     {
+      "tag": "v0.16.0",
+      "base_tag": "v0.15.1",
+      "entries": [
+        {
+          "line": "**Breaking: `abcd ideate record` takes only a version-2 verdict.** A version-1 payload is refused with a message naming version 2, and so is a verdict with a record id that does not resolve in any leg, a primary source that is not an https address, a filed source key or a record id, a grill with no hits and no recorded searches, or a claim marked verified whose only primary source is the idea's own. The grill records each search as its terms, places and count, and a claim checked only against the idea's own source reads quoted. Anything that writes verdicts moves to the version-2 shape the `ideate` command page shows; verdicts already on record are left as they are.",
+          "records": [
+            {
+              "id": "itd-2610141646454347",
+              "impact": "breaking"
+            },
+            {
+              "id": "iss-2610141647304982",
+              "impact": "breaking"
+            },
+            {
+              "id": "iss-2610141647307807",
+              "impact": "breaking"
+            },
+            {
+              "id": "iss-2610141647313018",
+              "impact": "breaking"
+            }
+          ]
+        },
+        {
+          "line": "**Breaking: a reframed or split ideate verdict must say so.** A reframed verdict must carry its reframing and any other verdict must not; the record renders it under The reframing. Each reviewer is recorded under its own label with its own kill attempts, verdict and consulted sources, one idea per reviewer context, and a split between reviewers is refused unless the ruling that settled it names who ruled, the verdict and the reason.",
+          "records": [
+            {
+              "id": "iss-2610141647308358",
+              "impact": "breaking"
+            },
+            {
+              "id": "iss-2610141647315880",
+              "impact": "breaking"
+            },
+            {
+              "id": "iss-2610262154123870",
+              "impact": "breaking"
+            }
+          ]
+        },
+        {
+          "line": "**Breaking: the sites abcd builds publish no person's name.** The contributors page and `record.json` give human authors only as a count of people and of their commits: no author name, login or profile link reaches a page or the JSON, and the health page's same-author panel is withdrawn. A project site shows no git-history details (authors, declared models, commit counts or dates) and its build reads no git history. Anything that read author names or profile links from `record.json` must stop relying on them.",
+          "records": [
+            {
+              "id": "iss-2610291028185585",
+              "impact": "breaking"
+            },
+            {
+              "id": "iss-2610150706489874",
+              "impact": "additive"
+            }
+          ]
+        },
+        {
+          "line": "**A session left to work on keeps working while it has work.** `abcd mode autonomous` (optionally `--until <time>`) records once for the repository, with who set it and when it ends, that sessions work on while the person is away, and repeats it at every session start, compaction and prompt. A session that tries to end its turn with work it can still do alone is handed the next item, a question it would have asked is decided and recorded, and an act only the person may approve is queued with `abcd mode queue`; `abcd mode back` ends the mode and lists what was queued and any stop the host forced. When a git read passes its deadline, the owed-work reading is marked incomplete and the session is let stop. The mode grants nothing: what a session may push stays whatever the person's own instructions say.",
+          "records": [
+            {
+              "id": "itd-2610180912189125",
+              "impact": "additive"
+            },
+            {
+              "id": "iss-2610170619247185",
+              "impact": "fix"
+            },
+            {
+              "id": "iss-2610241911001655",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "**A repository says who merges, and abcd keeps to it.** `facilitator.mode` in `.abcd/config.json` is `human` (the default) or `auto`. With `human`, a maintainer's ready pull request waits for the technical facilitator's approval and abcd arms the merge only once it is given, whoever asks; with `auto`, a maintainer's pull request that has passed its gates and its review pair goes into the merge queue, or has auto-merge armed where the forge has no queue, and the status line says merging is autonomous. A contributor's pull request waits for a maintainer's approval in either mode, and `human` set on the person's own machine always wins, so installing abcd changes nothing about who merges.",
+          "records": [
+            {
+              "id": "itd-2610150602547271",
+              "impact": "additive"
+            }
+          ]
+        },
+        {
+          "line": "**Private security reports stay private until their fix ships.** `abcd embargo` brings each private security advisory from GitHub into a private record on the person's own machine that never enters the public ledger, records the verdict and who gave it, closes on GitHub, with the explanation the person approved, an advisory judged not abcd's or not a vulnerability, and checks every commit message, pull-request body and record about to go public for anything that would give an advisory away. Once the release carrying the fixes is cut it shows the publication plan with each patched version; on one explicit yes it publishes one advisory, checks it went out as planned, then publishes the rest. Advisories have their own commands; the drain's rule is unchanged.",
+          "records": [
+            {
+              "id": "itd-2610112239022766",
+              "impact": "additive"
+            },
+            {
+              "id": "iss-2610090703514921",
+              "impact": "additive"
+            }
+          ]
+        },
+        {
+          "line": "**abcd audits and applies a repository's GitHub settings.** `abcd ahoy --remote` reports, read-only, how a managed repository's GitHub settings differ from a safe baseline, one line per setting with what it is now and what it should be; `abcd ahoy remote apply` turns on what is missing on a yes and writes down what it changed. It never changes whether a repository is public or private and never requires a check the repository's own workflows do not run. Each required check is pinned to the one app observed reporting it, and a check whose source is unclear stays on any source and is named. A setting the plan does not offer is listed as owed, and a repository can ask for a setting to be left alone in its own reviewed config.",
+          "records": [
+            {
+              "id": "itd-2610290746077716",
+              "impact": "additive"
+            },
+            {
+              "id": "iss-2610121535283764",
+              "impact": "additive"
+            },
+            {
+              "id": "iss-2610290913450522",
+              "impact": "additive"
+            }
+          ]
+        },
+        {
+          "line": "**A run records what it was actually run with.** Every model call, through the host, a command-line runner or a provider connection, records what abcd asked for (model, settings sent, prompt hash, harness version) and what answered (served model, provider, generation id, finish reason, token counts, cost); a field the route cannot show is named with its reason, never guessed. `abcd ahoy connect` verifies a new connection with a usage-in-stream request and, when the server refuses it with HTTP 400 or 422, asks again without it, writes `stream_usage: false` into the block it creates and says so; `--stream-usage` sets the value outright.",
+          "records": [
+            {
+              "id": "itd-166",
+              "impact": "additive"
+            },
+            {
+              "id": "iss-2608290811463906",
+              "impact": "additive"
+            },
+            {
+              "id": "iss-2610170934491794",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "**After a plugin update, abcd says what changed and offers the setup that waits.** The next session's first reply gives one line per release, from a short digest each release carries inside abcd; `abcd update news` prints those lines, and `abcd update news --full` gives the full summary: what waits on this repository and anything that now needs the person to act. When the update brings setup the repository needs, the reply offers to run setup again, which then asks only the new questions. Noticing the update reads only what is on disk, never the internet, and nothing changes without a yes.",
+          "records": [
+            {
+              "id": "itd-2610161616086564",
+              "impact": "additive"
+            },
+            {
+              "id": "itd-2610161617096084",
+              "impact": "additive"
+            }
+          ]
+        },
+        {
+          "line": "**Every contributor commits as themselves.** Each person's commit identity is kept on their own machine, in the abcd home (`identity.json`, or `identity/<root-sha>.json` for one repository); the commit check, `abcd ahoy --identity` and the committed pre-commit gate hold commits to that record and never read a committed pin, so no contributor is told to commit under the maintainer's name. A commit made under a bot's or an AI tool's name is still refused, a mistyped email of one's own is still caught, and setup moves a committed `.abcd/config/identity.json` to its owner's machine.",
+          "records": [
+            {
+              "id": "itd-2610240918547728",
+              "impact": "additive"
+            },
+            {
+              "id": "iss-2610240830397793",
+              "impact": "additive"
+            }
+          ]
+        },
+        {
+          "line": "**Setup installs the tools abcd needs for the person alone, checked.** A tool such as a secret scanner is installed with no admin rights into the person's own bin folder, as a download pinned in abcd's release and checked by sha256 (and, for gh, its signed build record) before anything runs; a copy the person already has is used, and setup says plainly how far each download could be checked. Homebrew is not the install step and no sudo advice is ever relayed. `abcd update` and the tool installer share one download rule, and each purpose reaches only its own hosts.",
+          "records": [
+            {
+              "id": "itd-2610240918594138",
+              "impact": "additive"
+            },
+            {
+              "id": "iss-2610240824571059",
+              "impact": "fix"
+            },
+            {
+              "id": "iss-2610242115122817",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "**Setup offers to put abcd's folder on the PATH.** When the folder abcd installs into is not on the person's PATH, setup asks once whether to add it to their shell settings, changes them only on a yes, never adds the same line twice, and undoes the change when abcd is removed; declined, the line to add is on the checklist at the end of setup.",
+          "records": [
+            {
+              "id": "itd-2610240919030303",
+              "impact": "additive"
+            }
+          ]
+        },
+        {
+          "line": "**An opted-in project's record is built onto its own GitHub Pages.** When a public project switches it on at setup, its own release workflow builds the project's about page and development record at each release and publishes them on the project's GitHub Pages. Every page opens with a line saying it is the record of an abcd-managed repository, linking to the repository, and every word on it comes from the repository; GitHub hosts it and abcd runs nothing.",
+          "records": [
+            {
+              "id": "itd-2610091010348892",
+              "impact": "additive"
+            }
+          ]
+        },
+        {
+          "line": "**The hooks can run the latest reviewed branch of a checkout.** A checkout listed in `dogfood-roots` in the abcd home (the checkout, a tab, the URL of a remote no agent can move, and optionally a tab and a branch, `main` when left out) runs, in every hook and through the command pages, a build of that branch's tip as the declared remote reports it; nothing in the checkout chooses it. Until that build is ready, or when it dies, the installed release runs. A remote on localhost or a loopback address is refused, a bracketed scp-like host is refused with its own reason, the store keeps every build a recorded tip names, and the docs name git's own inherited environment among what the build still takes from the account.",
+          "records": [
+            {
+              "id": "iss-2610070547057816",
+              "impact": "additive"
+            },
+            {
+              "id": "iss-2610121240517742",
+              "impact": "fix"
+            },
+            {
+              "id": "iss-2610121448005835",
+              "impact": "fix"
+            },
+            {
+              "id": "iss-2610121448010531",
+              "impact": "fix"
+            },
+            {
+              "id": "iss-2610121448011094",
+              "impact": "fix"
+            },
+            {
+              "id": "iss-2610121629141674",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "The brief session page asks for no relay address or token: it finds its relay from the repository's `relays.json` or the invite link, or is served by the host's own computer, signs in with GitHub, and opens on the brief's press release in plain words.",
+          "records": [
+            {
+              "id": "iss-2610161332024554",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "**abcd's closed-option judgements can run through a decision adapter.** The adapter answers with a value and a calibrated probability; it runs in shadow as a lab first, recorded beside the host's answer, and a research note turns a judgement over to it. Embark's lesson ranking is such a judgement: `abcd embark lessons` asks one score question per lesson and ranks by the scores, with term overlap breaking ties.",
+          "records": [
+            {
+              "id": "itd-2609221009495079",
+              "impact": "additive"
+            },
+            {
+              "id": "iss-2610262033055327",
+              "impact": "additive"
+            }
+          ]
+        },
+        {
+          "line": "**The shell guard answers the permission prompts of agents abcd starts.** A headless claude launch whose role may use the shell carries `abcd guard approve` as the harness's permission prompt tool: a command the guard reads whole and clears runs, and anything else is refused with the guard's reason. While a build or drain runs for the checkout or one of its lanes, abcd refuses the host's approval prompt for a shell command it cannot check, telling the agent to rewrite it into plain checkable steps or skip it; it never grants one, and build and drain say so as they start.",
+          "records": [
+            {
+              "id": "iss-2610161612203555",
+              "impact": "additive"
+            },
+            {
+              "id": "iss-2610171110154902",
+              "impact": "additive"
+            }
+          ]
+        },
+        {
+          "line": "**The shell guard refuses deleting a branch or removing a worktree it cannot prove spent.** A local or remote branch delete and a `git worktree remove` run only when the target is merged into origin's default branch, has no open pull request, is in no worktree and is held by no reservation, and a worktree must also be clean and in use by nothing; a check that cannot answer refuses. The person alone can allow one exact line once with `abcd guard allow`.",
+          "records": [
+            {
+              "id": "iss-2610241239492159",
+              "impact": "additive"
+            }
+          ]
+        },
+        {
+          "line": "**The shell guard checks pull-request text before it posts.** Where a repository sets `outbound.forge: true` in `.abcd/config.json`, a `gh pr create`, `new` or `edit` whose body carries no `Assisted-by` line in an accepted form is blocked (`forge-text-disclosure`), and, where `outbound.declare_mentions` is also set, so is one whose title and body name an issue id that no `Resolves:` or `Refs:` line declares (`forge-text-mention`). The bundled COMMITTING rule names pull-request bodies beside commits.",
+          "records": [
+            {
+              "id": "iss-2609061525437969",
+              "impact": "additive"
+            },
+            {
+              "id": "iss-2610261152125261",
+              "impact": "additive"
+            }
+          ]
+        },
+        {
+          "line": "**`abcd land` composes the pull-request body.** With no pull request open, it composes the body from the branch's commits (subjects and their `Refs:`, `Resolves:`, `Delivers:` and `Assisted-by:` lines), judges it with the shell guard's body checks, writes it to the local tier in a file named after the branch and its head commit, and prints the `gh pr create` that uses it; a body file already there is kept, judged and said so, so an edit survives a second run. `abcd land` and a build or drain lane's landing post `merging <item>` and push only once it is on origin, so a colleague's status read shows it before the branch exists there; a hand-typed `git push` posts none.",
+          "records": [
+            {
+              "id": "iss-220",
+              "impact": "additive"
+            },
+            {
+              "id": "iss-2610262229362789",
+              "impact": "fix"
+            },
+            {
+              "id": "iss-2610161645224876",
+              "impact": "additive"
+            }
+          ]
+        },
+        {
+          "line": "**A release reservation holds every merge, including those armed before it.** `abcd reserve rel-vX.Y.Z` withdraws each auto-merge and merge-queue entry already armed, records each withdrawal on its branch, admits a merge only by `--admit`, refuses the cut while an unadmitted merge is armed, and re-arms exactly what it withdrew when the release ends; each act is commented on the pull request. The hold's hand remedy for a queued pull request points at taking it out of the merge queue or at `--admit`, and every hand remedy says that nothing re-arms what it disarms.",
+          "records": [
+            {
+              "id": "iss-2610222014550692",
+              "impact": "additive"
+            },
+            {
+              "id": "iss-2610230410049950",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "**Spent reservation branches are deleted from the forge.** `abcd reserve --sweep` judges each reservation branch and, under the reservation-sweep workflow's App token, deletes the spent ones; a branch whose tip is a plain release is spent at the next sweep once the take-over margin has passed, and any other tip still waits its age. The reservations ruleset names that App as its only bypass.",
+          "records": [
+            {
+              "id": "iss-2610142200389875",
+              "impact": "additive"
+            },
+            {
+              "id": "iss-2610281719275461",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "**`abcd peers` says which copy holds each reservation.** Each reservation names this copy, the other worktree of the repository on this machine that made it (by its folder name), or elsewhere. The reader's live reservations are counted by copy against `reservation.max_live`, with a warning from four fifths of it that every session and account on the same login counts toward one total; the cap refusal groups the held records by copy, and the own-copy overlap warning of `abcd reserve` names the other copy.",
+          "records": [
+            {
+              "id": "iss-2610161457209287",
+              "impact": "additive"
+            },
+            {
+              "id": "iss-2610231004140527",
+              "impact": "additive"
+            },
+            {
+              "id": "iss-2610290507526253",
+              "impact": "additive"
+            }
+          ]
+        },
+        {
+          "line": "`abcd reserve` and `abcd build` warn when a footprint names a directory, giving its tracked file count, and a build reserves exactly the files its spec names. `abcd reserve` names each generated file a footprint shares with another live reservation, and that reservation's record, and a renewal or take-over of one's own hold names each held path the new footprint drops (`dropped_footprint`).",
+          "records": [
+            {
+              "id": "iss-2610230016544142",
+              "impact": "additive"
+            },
+            {
+              "id": "iss-2610282340087862",
+              "impact": "additive"
+            },
+            {
+              "id": "iss-2610290507512835",
+              "impact": "additive"
+            }
+          ]
+        },
+        {
+          "line": "**A main checkout that two or more live sessions started in refuses writes.** The record writers (`capture`, `intent`, `decide`, `spec close` and the index generator) refuse there with exit 3 and name the worktree store, and the guard hook denies the host's own file tools a write there outside the local tier; the session hooks keep one occupancy marker per session.",
+          "records": [
+            {
+              "id": "iss-2610240859590333",
+              "impact": "fix"
+            },
+            {
+              "id": "iss-2610280051498465",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "**A load-gate waiter says who holds the gate and how busy it is.** Every waiting line names each holder ahead with its age and its process tree's CPU over the last ten minutes, said again every ten minutes while the gate stays shut; a holder whose tree has used no more than a tenth of a core for ten minutes is reported as quiet, on the waiters' lines and on its own stderr. It is a report, not a diagnosis: nothing is signalled, and a tree of short-lived children can still read as working.",
+          "records": [
+            {
+              "id": "iss-2610241457170255",
+              "impact": "fix"
+            },
+            {
+              "id": "iss-2610241419324875",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "`abcd drain --skip <iss-N|path> --reason <why>` holds back an issue, or every issue whose `found_at` lies in a path, for the drain in progress; each move passes it over with the reason, `--unskip` lifts it, and the list clears when the drain ends.",
+          "records": [
+            {
+              "id": "iss-2610090642385898",
+              "impact": "additive"
+            }
+          ]
+        },
+        {
+          "line": "`abcd implement step --route <role>=runner:<name>[@<provider>/<model>]` runs one step's role on a named runner and allowlisted model, refusing an unknown or disabled runner and an unlisted model before anything is written, and records the route in the role's receipt.",
+          "records": [
+            {
+              "id": "iss-2610161801358637",
+              "impact": "additive"
+            }
+          ]
+        },
+        {
+          "line": "A machine provider block on an OpenRouter base URL can pin a model to exactly one upstream provider and one quantisation (`oracle.api.<provider>.pins`, with fallbacks off and data collection denied); each call sends the provider routing object and records it as the provider pin, and with `read_generation: true` the generation is read back after each call to record what served it.",
+          "records": [
+            {
+              "id": "iss-2610161734413178",
+              "impact": "additive"
+            }
+          ]
+        },
+        {
+          "line": "A machine provider block takes a local pin per model (runtime, version, weights digest, quantisation, context length, KV-cache type, and on llama.cpp the GGUF file's name); the server is probed before a pinned route runs, a mismatch is refused naming the fix, and the record carries the pin and what the server reported. A runner route whose provider is a block on this machine records `local: true` and lists the local fields, as not configured when there is no pin.",
+          "records": [
+            {
+              "id": "iss-2610161734428291",
+              "impact": "additive"
+            },
+            {
+              "id": "iss-2610171545099084",
+              "impact": "additive"
+            }
+          ]
+        },
+        {
+          "line": "`abcd intent ready` and record-lint (`spec_steps_serial`, a warning) flag a multi-step spec with no `needs` line, and planning asks for each step's needs, so steps that do not depend on each other are not held one behind another.",
+          "records": [
+            {
+              "id": "iss-2610230016561927",
+              "impact": "additive"
+            }
+          ]
+        },
+        {
+          "line": "Two waiters in one copy renew its reservations in turn under a per-copy lock, so the second finds nothing due rather than reporting the first's renewals as failures.",
+          "records": [
+            {
+              "id": "iss-2610270659564789",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "The preflight's govulncheck scan, on a branch that changes no dependency, also scans the fork point and only warns when the fork point reports every finding the branch does; a finding only the branch reports, or a fork point that cannot be scanned, stops the preflight.",
+          "records": [
+            {
+              "id": "iss-2610262259078996",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "A command abcd stops when its context ends is reported as stopped by that context, even when its pipes close before the wait sees the end.",
+          "records": [
+            {
+              "id": "iss-2610310054494441",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "The setup command page and the brief's identity, site, embargo and ideate chapters state what abcd does now: the settings mirror is read by a reviewer, the identity move says what keeps a record and what blocks it, uninstall reports the shell-settings line it removes, the update, ideate and embargo pages say what abcd does, and the embargo triage example names a role.",
+          "records": [
+            {
+              "id": "iss-2610301916124914",
+              "impact": "fix"
+            },
+            {
+              "id": "iss-2610301918307812",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "**A preflight waits for its turn as one whole run.** `make preflight` takes the load gate once for the whole run: a queued run does no lint, eval, build, vet or test work until the gate admits it, so the runs waiting never add to the load the running one is judged by. Whole runs are admitted as many at once as `load.preflights` allows (one by default), the setting is read again at every look so a change reaches runs already queued, the wait's report names the value it judged by and where it came from, and a records-only change takes a shorter preflight that waits at no gate.",
+          "records": [
+            {
+              "id": "itd-2610262127138979",
+              "impact": "fix"
+            },
+            {
+              "id": "iss-2610241537197997",
+              "impact": "fix"
+            },
+            {
+              "id": "iss-2610241414124940",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "**Reservation and announcement commits name no login.** Their trailers and the status branch name carry an opaque holder id, minted once per machine account and kept in the abcd home, and holds made before are still read as the person's own. A copy on an older release reads the new holds as held until it updates, and a person running two versions renews only from the new one; a hosted or ephemeral session keeps one id by setting `ABCD_HOLDER_ID`.",
+          "records": [
+            {
+              "id": "iss-2610290809526033",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "**Closing a session keeps its transcript.** The SessionEnd hook runs no git: it stages the raw transcript by session id into a machine-level pending folder, and the next session start (or a history drain) files, redacts and stores it, so the host does not cancel the hook on a loaded machine. A transcript that cannot be placed is named and kept, `abcd history discard --pending` removes one by hand, and a person on an older plugin gets this with the plugin update.",
+          "records": [
+            {
+              "id": "iss-2610241519088123",
+              "impact": "fix"
+            },
+            {
+              "id": "iss-2610281259462058",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "**A lapsed hold is lifted without a person.** Every release-hold line names when the hold lapses, and once it has, nothing holds the merge; `abcd status` and `abcd peers` name an expired release reservation with no tag on origin as a lapsed cut holding no merge, with how a cut resumes, and the prompt hook names each lapsed cut once, so a crashed holder's cut is not relayed as live.",
+          "records": [
+            {
+              "id": "iss-2610241104098581",
+              "impact": "fix"
+            },
+            {
+              "id": "iss-2610241107191205",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "A reservation stays live while its holder waits: `abcd implement load --wait` renews the caller's own live reservations from this copy once each is half through its lease, while it waits and while its command runs, `abcd implement status` renews the runs it shows, and a build's lapsed reservation revived later is judged against the person's other copy only on the files the run's lanes changed.",
+          "records": [
+            {
+              "id": "iss-2610170926295770",
+              "impact": "fix"
+            },
+            {
+              "id": "iss-2610261837062463",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "Each test stage of `make preflight` gives every package a 40-minute budget, doubled when the one-minute load passes one runnable per core as the stage starts, so a loaded machine's unit stage is not killed at twenty minutes with no test hung.",
+          "records": [
+            {
+              "id": "iss-2610241911052191",
+              "impact": "fix"
+            },
+            {
+              "id": "iss-2610250007404944",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "A preflight queued at its race gate takes no first-gate slot until its race run starts, so another preflight's unit stage can run meanwhile; `load.preflights` takes 1 to 4 and is described everywhere as how many whole preflight runs the first gate admits at once, with one race stage able to run beside them.",
+          "records": [
+            {
+              "id": "iss-2610282016250805",
+              "impact": "fix"
+            },
+            {
+              "id": "iss-2610290033556553",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "The load gate's queue stays first-come-first-served after macOS process ids wrap: every waiter that started earlier counts as ahead whatever its pid, and a wait stops counting waiters from an older abcd that cross it once they alone have held its gate shut for five minutes.",
+          "records": [
+            {
+              "id": "iss-2610222125175640",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "The load gate refuses, without waiting, a preflight's test or race stage, and any command run through `abcd implement load --wait`, while the volume holding the Go build cache or the worktree store has less free space than its floor (4 GiB per preflight admitted at once, 8 GiB at least), naming each low volume and offering a trim of build-cache entries unused for two days.",
+          "records": [
+            {
+              "id": "iss-2610281502581386",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "The load gate's waiting line names, by pid, the `go test` runs outside the gate that keep the load up, and the LOAD rules domain teaches gating a package's tests.",
+          "records": [
+            {
+              "id": "iss-2610241130157455",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "The ruthless, docs-currency and security reviewer definitions run no tests, builds or project code and ask the author for gated test evidence, so a review on a shared machine adds no ungated test run.",
+          "records": [
+            {
+              "id": "iss-2610272027437423",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "A git command run under a deadline ends at that deadline: the partial-clone guard's version probe and config read take the caller's deadline (30 seconds where there is none), and a deadline-bound read takes git's whole output before waiting on git, so an answer git gave is not lost on a loaded machine.",
+          "records": [
+            {
+              "id": "iss-2610110253059544",
+              "impact": "fix"
+            },
+            {
+              "id": "iss-2610181802344551",
+              "impact": "fix"
+            },
+            {
+              "id": "iss-2610272041031418",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "A burst of sub-agent stops on a loaded machine stages every transcript: a failed git lookup is retried within the hook's budget rather than read as no repository, and a transcript still not staged is counted in a marker that `abcd history staged` reports.",
+          "records": [
+            {
+              "id": "iss-2610051434156079",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "A session started with `--name` makes the session-start hook ask git nothing for it.",
+          "records": [
+            {
+              "id": "iss-2610152324354563",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "`abcd reserve`, the release hold and `abcd peers` name a sibling worktree on this machine as that worktree rather than as another computer, from one reading of the worktrees: siblings whose folders share names read by the fewest trailing folders that tell them apart, the ceiling counts siblings by copy key, and the cap refusal names copies from each holder's own live tips and says why the worktrees could not be listed.",
+          "records": [
+            {
+              "id": "iss-2610250013552001",
+              "impact": "fix"
+            },
+            {
+              "id": "iss-2610272352153282",
+              "impact": "fix"
+            },
+            {
+              "id": "iss-2610272352168723",
+              "impact": "fix"
+            },
+            {
+              "id": "iss-2610272352179242",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "Reading the reservations (`abcd peers`, the status line, the sweep's dry run) writes nothing into the git object store.",
+          "records": [
+            {
+              "id": "iss-2610231038335615",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "`abcd reserve` drops a footprint path named twice, so a renewal that repeats the held footprint stays under the message size cap.",
+          "records": [
+            {
+              "id": "iss-2610290507514841",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "A build reserves each entry of a spec's Footprint packages line by its leading path, dropping a trailing note and not splitting on a comma inside it; an entry that is still prose refuses the start, naming the spec and the entry.",
+          "records": [
+            {
+              "id": "iss-2610241549334990",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "abcd reads the generated-file declarations in `.gitattributes` as git does: a blank or comment line decides nothing whatever bytes it holds, so a non-ASCII comment does not void every declaration.",
+          "records": [
+            {
+              "id": "iss-2610172133042562",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "`abcd build` counts a peer as holding an intent only when it holds the record in another folder and changed it since their merge-base, so an old local branch carrying the default branch's unchanged copy does not block a build.",
+          "records": [
+            {
+              "id": "iss-2610222008081888",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "The implement loop's landing marks a lane's spec step landed in its records commit, so `spec close --remainder` and a fresh `abcd build` do not carry or reopen steps that already merged.",
+          "records": [
+            {
+              "id": "iss-2610110918418459",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "Two implement runs started in the same second list in start order, so a handed-back run is not read as the newer one and a record read is not refused as two runs in progress.",
+          "records": [
+            {
+              "id": "iss-2610261622501094",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "A drain state written by a newer abcd is refused as a newer abcd's, telling the person to run that abcd and keep the file, rather than as a file that does not parse.",
+          "records": [
+            {
+              "id": "iss-2610230223231843",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "The pre-push hook passes an empty-tree reservation or announcement pushed from a shallow clone, such as a hosted session's, and still refuses a push that changes a file, a rewrite, or a range reaching past the shallow line.",
+          "records": [
+            {
+              "id": "iss-2610171249310666",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "Hosted cloud setup gives the normal user it creates a read-only, root-owned copy of each proxy CA bundle that user cannot read, so networked git works as that user; TLS verification is never turned off.",
+          "records": [
+            {
+              "id": "iss-2610171249334225",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "The cloud hand-back's closing line says the report could not go with the work, which holds for every fallback to the tracking issue, rather than saying a push failed.",
+          "records": [
+            {
+              "id": "iss-2610170926360632",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "The cloud launch connector refuses an environment id that is not self-hosted before it asks the host, saying why; only a self-hosted environment can be started this way.",
+          "records": [
+            {
+              "id": "iss-2610222040438242",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "`abcd embargo publish` plans an advisory from the fix commit its private record names when the release carries no public record of it, and prints the command that restores the record after publication.",
+          "records": [
+            {
+              "id": "iss-2610171250466572",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "Embargo intake and every publication plan read each held advisory's state on GitHub, so an advisory published outside `abcd embargo publish` is recorded as published and released from `abcd embargo check`; a close is recorded only under a verdict that ends the private track.",
+          "records": [
+            {
+              "id": "iss-2610171250479046",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "`abcd embargo check --range` reads a merge commit for the lines it adds against every parent, so text a merge of the default branch brings in is not judged as the branch's own, and an advisory id no store holds passes when GitHub lists it among the repository's published advisories.",
+          "records": [
+            {
+              "id": "iss-2610290504257814",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "A verdict abcd leaves to the person, such as embargo triage, is asked with each item's evidence, the verdict the evidence supports and why the others do not fit, and is recorded only on the person's yes.",
+          "records": [
+            {
+              "id": "iss-2610241103012197",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "A status move such as `abcd capture resolve` writes the record at its new path with the mode it had, so a record kept 0600 in the embargo store stays 0600 and the embargo verbs keep reading the store.",
+          "records": [
+            {
+              "id": "iss-2610181517504705",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "Setup saves each config value on its own: a value deferred with decide later, or answered with something setup does not write, stays unset and is listed as remaining, while every answered value and every value passed by flag is written, in a full `abcd ahoy install` and with `--only-waiting`; a refused deep-scan answer draws a note naming the accepted answers and `--scan-deep`.",
+          "records": [
+            {
+              "id": "iss-2610020700263496",
+              "impact": "fix"
+            },
+            {
+              "id": "iss-2610170930394303",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "**A clone whose committed git hooks do not run is named.** Session start says so, on stderr and to the session, and setup asks at a terminal, as its own question, to set `core.hooksPath` to `.githooks`, listing the command when it cannot ask; setup does not report clean while the committed hooks do not run.",
+          "records": [
+            {
+              "id": "iss-2610241133284600",
+              "impact": "fix"
+            },
+            {
+              "id": "iss-2610241134315056",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "Setup asks about the commit identity as its own question at a terminal, never listed under or declined by the settings approval.",
+          "records": [
+            {
+              "id": "iss-2610240824005655",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "Setup run from a plain terminal offers the abcd download before the status line, and does not ask about the status line when it cannot be wired.",
+          "records": [
+            {
+              "id": "iss-2610240823574047",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "abcd reports the install mode from the copy the recorded PATH entry names when no plugin root resolves, so a working README install does not read as nothing installed.",
+          "records": [
+            {
+              "id": "iss-2610240916382802",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "In a source checkout of abcd, a `go run` build of the checkout being installed is treated as current, so `abcd ahoy install` does not refuse it as a stale binary.",
+          "records": [
+            {
+              "id": "iss-2610240824047504",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "The staleness line of bare `abcd ahoy` and `abcd --version` names what it compared against: the checkout tip for a source build, or the plugin manifest pin for a pinned install, with `abcd update --check` named as the way to compare with the newest release.",
+          "records": [
+            {
+              "id": "iss-2610040758303107",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "`abcd ahoy remote apply` names the settings it already changed on GitHub when it refuses after one, instead of saying nothing was changed.",
+          "records": [
+            {
+              "id": "iss-2610072347230409",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "`abcd ahoy install` leaves out of its `.gitignore` block any entry the file already lists in force, so no entry is written twice.",
+          "records": [
+            {
+              "id": "iss-2610020704152047",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "`abcd site setup` creates the site-render and site environments admitting only the default branch, reports an existing tag rule as one to remove, and the workflow it writes runs a published release from the default branch.",
+          "records": [
+            {
+              "id": "iss-2610281754577313",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "A step whose chat call to the person's own model server never got an answer falls back to the agent harness, saying whether a size count or model listing had already reached the server.",
+          "records": [
+            {
+              "id": "iss-2610090701491123",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "The opencode runner leaves the served model empty and listed as not reported, since its run mode names none, rather than recording the model it asked for as the model that answered.",
+          "records": [
+            {
+              "id": "iss-2610161709506207",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "The shell guard reads a syntax check such as `bash -n <file>` as running nothing, so a script that a run would refuse can still be checked; startup files are still judged.",
+          "records": [
+            {
+              "id": "iss-2610262219309883",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "The shell guard's forge-text check reads a short-flag cluster as gh does, so a body given behind boolean shorthands, as in `gh pr create -db '<text>'`, is judged.",
+          "records": [
+            {
+              "id": "iss-2610262229344994",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "`abcd capture`, and the consistency ingest for every finding it files, hold a record's body to the site renderer's check before writing, so a body the renderer refuses is refused at the write rather than at the next gate run.",
+          "records": [
+            {
+              "id": "iss-2610261616580903",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "A consistency report too large for the reviews board keeps its header and findings table in `00-summary.md` and writes each finding in full to `01-findings.md`; a pass whose table alone is too large is refused before any finding is filed.",
+          "records": [
+            {
+              "id": "iss-2610261651489204",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "The reflect seed treats an owed review marker as not audited and lists the intents the cut moved to next; an Audit Notes section with no marker counts as audited only when it names the acceptance criteria and gives a verdict on them.",
+          "records": [
+            {
+              "id": "iss-2610241431221889",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "abcd reads a checkout's local-tier state only when git tracks none of it, and record-lint refuses a change that tracks a file there.",
+          "records": [
+            {
+              "id": "iss-2610282211249070",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "`abcd ideate record` writes the private store when no visibility flag is given, `--public` stays the opt-in, and `/abcd:ideate` states that default instead of asking before every run.",
+          "records": [
+            {
+              "id": "iss-2610300838089246",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "The comments on capture's promotion request say its grounds are optional, as the code reads them.",
+          "records": [
+            {
+              "id": "iss-2610110915232822",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "abcd's repository names no organisation member in its tracked files: it carries no code-owners file, mailmap or committed identity pin, the citation names the organisation, and the scanner and test fixtures use personas.",
+          "records": [
+            {
+              "id": "iss-2610290855523061",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "abcd builds on Go 1.26.10, which carries the standard library's fix for GO-2026-6809 (crypto/x509: distrust compromised intermediate certificates), and every CI setup step and the preflight read that version from `go.mod`.",
+          "records": [
+            {
+              "id": "iss-2610222018028530",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "A release's notes do not describe a fix to a surface no earlier release had as a Fixed line: the cut marks a record whose path the previous tag did not hold and lists the commands that tag lacked, and the changelog ingest refuses a Fixed line citing such a record.",
+          "records": [
+            {
+              "id": "iss-2610172148157726",
+              "impact": "fix"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "tag": "v0.15.1",
       "base_tag": "v0.15.0",
       "entries": [

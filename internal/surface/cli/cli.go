@@ -29,6 +29,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/board"
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/grounds"
 	"github.com/intentdriven/abcd/internal/core/history"
 	"github.com/intentdriven/abcd/internal/core/identity"
@@ -1497,77 +1498,14 @@ func newEmbarkCommand(asJSON *bool) *cobra.Command {
 	}
 
 	// `lessons` is the predecessor's lessons the press-release interview shows
-	// (itd-24 criterion 6): the retrospectives the lifeboat carries, ranked
-	// against the new voyage's brief, the few first and the rest as a list.
-	var lessonsBrief string
-	lessonsCmd := &cobra.Command{
-		Use:  "lessons <lifeboat-dir> [target-dir]",
-		Args: cobra.RangeArgs(1, 2),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			lbAbs, tgtAbs, err := resolveDirs(args)
-			if err != nil {
-				return err
-			}
-			framing, source, err := embarkLessonsFraming(tgtAbs, lessonsBrief)
-			if err != nil {
-				return &exitError{Code: 2, Msg: "embark lessons: " + scrubPaths(err)}
-			}
-			view, err := lifeboat.PredecessorLessons(lbAbs, framing)
-			if err != nil {
-				return &exitError{Code: 2, Msg: "embark lessons: " + scrubPaths(err)}
-			}
-			out := embarkLessonsView{LessonsView: view, FramingSource: source}
-			return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) {
-				if source != "" {
-					fmt.Fprintf(w, "brief: %s\n", termsafe.Sanitize(source))
-				}
-				fmt.Fprint(w, view.Render())
-			})
-		},
-	}
-	lessonsCmd.Flags().StringVar(&lessonsBrief, "brief", "",
-		"rank against this file's text (the press release the interview is writing) instead of the target's framing chapter")
+	// (itd-24 criterion 6), and embark's lesson ranking as a judgement
+	// (embark_lessons.go).
+	lessonsCmd := newEmbarkLessonsCommand(asJSON, resolveDirs)
 
 	embarkCmd.AddCommand(probeCmd)
 	embarkCmd.AddCommand(fromCmd)
 	embarkCmd.AddCommand(lessonsCmd)
 	return embarkCmd
-}
-
-// embarkFramingRel is the new voyage's brief framing chapter, the text embark
-// ranks predecessor lessons against (spc-2609211751376504 scope 7).
-const embarkFramingRel = ".abcd/development/brief/01-product/06-framing.md"
-
-// maxEmbarkBriefBytes caps the brief text a ranking reads.
-const maxEmbarkBriefBytes = 256 * 1024
-
-// embarkLessonsView is the lessons view plus where the brief text came from:
-// the --brief file (named "--brief"), the target's framing chapter, or nothing.
-type embarkLessonsView struct {
-	lifeboat.LessonsView
-	FramingSource string `json:"framing_source"`
-}
-
-// embarkLessonsFraming reads the text the lessons are ranked against: the
-// --brief file when one is named, else the target's framing chapter, else none
-// (the lessons are then listed unranked). The reads are guarded: no symlink, a
-// regular file, capped.
-func embarkLessonsFraming(targetAbs, brief string) (text, source string, err error) {
-	if brief != "" {
-		data, err := fsutil.ReadGuarded(brief, maxEmbarkBriefBytes)
-		if err != nil {
-			return "", "", fmt.Errorf("reading --brief: %w", err)
-		}
-		return string(data), "--brief", nil
-	}
-	data, err := fsutil.ReadGuarded(filepath.Join(targetAbs, filepath.FromSlash(embarkFramingRel)), maxEmbarkBriefBytes)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return "", "", nil
-		}
-		return "", "", fmt.Errorf("reading the target's framing chapter: %w", err)
-	}
-	return string(data), embarkFramingRel, nil
 }
 
 // readLessonsPayload reads the untrusted lesson JSON behind the trust guards,
@@ -7097,6 +7035,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// made at the umask by an earlier abcd or by hand is narrowed here, once,
 	// before any verb reads or writes in it (homestop.go, narrowHome).
 	narrowHome()
+	// A fresh holder id is told once, on stderr, by the run that minted it
+	// (claim.RegisterMintNotice): the drain and build loops reserve inside
+	// this same run, so their mint is told here too.
+	claim.RegisterMintNotice(func(line string) { fmt.Fprintln(stderr, "abcd: "+line) })
+	defer claim.RegisterMintNotice(nil)
 
 	// abcd's home ignores itself (itd-2610140858048004): laid before the
 	// command for a home that already exists, and after it for a home the

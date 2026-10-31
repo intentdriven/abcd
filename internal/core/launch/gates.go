@@ -98,6 +98,22 @@ const (
 	DirtySkip
 )
 
+// MergeHoldPolicy is whether a render's gate suite judges the merges armed on
+// the forge (mergehold.go).
+type MergeHoldPolicy int
+
+const (
+	// MergeHoldJudge is the zero value: the row judges the merges armed, so a
+	// caller that states no policy fails closed.
+	MergeHoldJudge MergeHoldPolicy = iota
+	// MergeHoldSkip reports the row not armed. It exists for `launch archive
+	// --verify`, which reproduces a committed pin and cuts nothing: the
+	// release workflow runs it on the pushed commit, which a merge armed
+	// since cannot change, and where no listing of the merges is
+	// authorised. The cut's own preview and ship still judge them.
+	MergeHoldSkip
+)
+
 // DocAuditPreflight is the documentation audit's result, MEASURED by the
 // caller: it needs the docs-lint engine in internal/core/lint, which imports
 // this package, so the front door that holds both hands the result in as data
@@ -147,6 +163,8 @@ type suiteRequest struct {
 	Dirty    DirtyPolicy
 	DocAudit *DocAuditPreflight
 	Policy   GatePolicy
+	// MergeHold is whether the merge-hold row judges; the zero value judges.
+	MergeHold MergeHoldPolicy
 	// Kind is the declared artefact kind. Empty is the plugin shape every
 	// caller that predates the declaration assumes; any other kind reports the
 	// rows that judge a plugin payload as not armed.
@@ -211,8 +229,19 @@ func runGateSuite(req suiteRequest) suiteResult {
 
 	// The release hold's launch check (mergehold.go): a merge armed or queued
 	// that the cutting copy's release reservation has not admitted refuses
-	// the cut, whatever the artefact kind.
-	row, findings, lost := mergeHoldGate(req.RepoRoot)
+	// the cut, whatever the artefact kind, unless the render states
+	// MergeHoldSkip, which reports the row not armed.
+	var (
+		row      GateSummary
+		findings []GateFinding
+		lost     *GateSummary
+	)
+	if req.MergeHold == MergeHoldSkip {
+		row = GateSummary{Name: gateMergeHold, Status: "not_armed",
+			Detail: "a verify render reproduces a committed pin and cuts nothing, so no armed merge is judged"}
+	} else {
+		row, findings, lost = mergeHoldGate(req.RepoRoot)
+	}
 	if row.Status == "" {
 		hard(gateMergeHold, row.Detail, findings, ErrMergeHeld)
 	} else {

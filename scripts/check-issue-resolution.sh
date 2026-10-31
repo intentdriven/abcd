@@ -1103,7 +1103,11 @@ check_commits() {
 			if ! git grep -qE "^func ${name}\(" "$head" -- '*_test.go' 2>/dev/null; then
 				fail "RS006 $id's resolution names $name, which no _test.go file at $head defines. A resolution note is what later readers trust about how the fix was proved; name the test that exists, or say what proves the fix without naming one."
 			fi
-		done <<<"$(printf '%s\n' "$note" | grep -oE 'Test[A-Z][A-Za-z0-9_]*' | sort -u || true)"
+		# A name counts only where no identifier character precedes Test, so
+		# a function such as GoTestTimeout names no test, while pkg.TestX
+		# still does (iss-2610301246136766); the one character matched before
+		# it is stripped.
+		done <<<"$(printf '%s\n' "$note" | grep -oE '(^|[^A-Za-z0-9_])Test[A-Z][A-Za-z0-9_]*' | sed -E 's/^[^T]//' | sort -u || true)"
 	done <<<"$closed"
 
 	if [ -n "${declared// /}" ]; then

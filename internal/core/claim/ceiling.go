@@ -9,9 +9,11 @@ import (
 )
 
 // The cap counts a person's live reservations across every session, copy and
-// account that pushes as their GitHub login, while each machine reads its own
+// account whose holds are theirs (Self.Owns: their holder id, the ids their
+// home declares, and their login on a hold made before the id), while each
+// machine reads its own
 // reservation.max_live (maxlive.go). A machine's sessions can therefore hold
-// another account on the same login at a ceiling nobody here can read
+// another account of theirs at a ceiling nobody here can read
 // (iss-2610231004140527). The ceiling view says how near the reader stands to
 // this machine's, and from which copies the holds come.
 
@@ -42,29 +44,29 @@ type Ceiling struct {
 }
 
 // CeilingFor is the reader's ceiling in the view s, naming the reader's
-// siblings in s (NameSiblings) once its login is known, even when the cap is
-// then refused: false when the reader's GitHub login cannot be named without
-// the network, or this machine's reservation.max_live is one an act would
-// refuse.
+// siblings in s (NameSiblings) once it is known whose holds are the reader's
+// (ReaderSelf), even when the cap is then refused: false when neither a
+// holder id nor the reader's GitHub login can be read without the network,
+// or this machine's reservation.max_live is one an act would refuse.
 func CeilingFor(root string, s *Snapshot, o Options) (Ceiling, bool) {
-	holder := readerHolder(root, o)
-	if holder == "" {
+	self := readerSelf(root, o)
+	if !self.Known() {
 		return Ceiling{}, false
 	}
 	// The siblings are named whether or not the cap can be read: the rows
 	// that show them do not depend on it.
-	s.NameSiblings(root, holder)
+	s.NameSiblings(root, self)
 	limit, note, err := maxLive(o.home())
 	if err != nil {
 		return Ceiling{}, false
 	}
 	note = joinNote(note, s.SiblingsUnread)
-	c := Ceiling{Holder: holder, Limit: limit, Siblings: []SiblingLive{}, Note: note}
+	c := Ceiling{Holder: self.Name(), Limit: limit, Siblings: []SiblingLive{}, Note: note}
 	// Siblings are counted by copy key and shown by name, so two worktrees
 	// are never merged by what they are called (iss-2610272352168723).
 	bySibling := map[string]*SiblingLive{}
 	for _, r := range s.Reservations {
-		if r.State != StateLive || isRelease(r.Record) || !sameHolder(r.Holder, holder) {
+		if r.State != StateLive || isRelease(r.Record) || !self.Owns(r.Holder) {
 			continue
 		}
 		c.Live++
@@ -99,7 +101,7 @@ func (c Ceiling) Warning() string {
 		where = "at"
 	}
 	return fmt.Sprintf("%s holds %d of the %d live reservations this machine's %s allows, %s the cap; "+
-		"every session and account on the same login counts toward the same total, "+
+		"every session and account whose holds are yours counts toward the same total, "+
 		"so another account's own ceiling, which is not readable here, may already be reached",
 		c.Holder, c.Live, c.Limit, MaxLiveKey, where)
 }

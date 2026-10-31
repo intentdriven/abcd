@@ -69,3 +69,27 @@ func TestShellRefusesWhatCheckRefuses(t *testing.T) {
 		}
 	}
 }
+
+// The REST fields the merge gate decodes are pinned, and a field the forge
+// does not send is not.
+func TestTheRESTFieldsArePinned(t *testing.T) {
+	for _, c := range []struct {
+		resource, field string
+		ok              bool
+	}{
+		{"collaborator-permission", "role_name", true},
+		{"collaborator-permission", "permission", true},
+		{"pull-request-review", "commit_id", true},
+		{"pull-request-review", "user.login", true},
+		{"pull-request-review", "state", true},
+		{"pull-request", "user.login", true},
+		{"pull-request", "head.sha", true},
+		{"collaborator-permission", "role", false},
+		{"pull-request-review", "commit", false},
+		{"pull-request", "author", false},
+	} {
+		if got := ghcontract.RESTField(c.resource, c.field); got != c.ok {
+			t.Errorf("RESTField(%q, %q) = %v, want %v", c.resource, c.field, got, c.ok)
+		}
+	}
+}

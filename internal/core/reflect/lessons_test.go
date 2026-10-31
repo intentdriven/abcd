@@ -89,3 +89,40 @@ func TestRankLessonsWithFewerThanTheFew(t *testing.T) {
 		t.Fatalf("top %d / rest %d", len(rk.Top), len(rk.Rest))
 	}
 }
+
+// Embark's lesson ranking as a judgement (dcn-2610300523005947): the lessons
+// are ranked by the scores the host or the adapter gave, highest first; term
+// overlap against the brief breaks a tie, and the given order breaks the
+// rest. Each lesson carries its score.
+func TestRankLessonsByScoresRanksByTheScoresAndOverlapBreaksTies(t *testing.T) {
+	framing := "A tool that verifies an archive against its manifest."
+	lessons := []Lesson{
+		{ID: "lesson-1", Release: "v0.1.0", Text: "Hire a designer for the logo"},
+		{ID: "lesson-2", Release: "v0.1.0", Text: "Choose font colours early"},
+		{ID: "lesson-3", Release: "v0.2.0", Text: "Verify every archive against its manifest"},
+		{ID: "lesson-4", Release: "v0.2.0", Text: "Keep the archive small"},
+		{ID: "lesson-5", Release: "v0.3.0", Text: "Name the owner"},
+	}
+	rk := RankLessonsByScores(framing, lessons, []int{4, 0, 2, 2, 1}, []float64{0.9, 0.8, 0.7, 0.6, 0.5}, RankedByAdapter)
+	var order []string
+	for _, l := range append(append([]RankedLesson{}, rk.Top...), rk.Rest...) {
+		order = append(order, l.ID)
+	}
+	if got := strings.Join(order, " "); got != "lesson-1 lesson-3 lesson-4 lesson-5 lesson-2" {
+		t.Fatalf("order = %s, want the scores first and overlap breaking the 2-2 tie", got)
+	}
+	if rk.RankedBy != RankedByAdapter || !strings.Contains(rk.Heuristic, "heuristic") {
+		t.Fatalf("ranked by %q, heuristic %q", rk.RankedBy, rk.Heuristic)
+	}
+	if j := rk.Top[0].Judged; j == nil || *j != 4 || rk.Top[0].Probability == nil || *rk.Top[0].Probability != 0.9 {
+		t.Fatalf("the top lesson carries its score and probability: %+v", rk.Top[0])
+	}
+	// The host's scores carry no probability.
+	rk = RankLessonsByScores(framing, lessons, []int{0, 0, 0, 0, 0}, nil, RankedByHost)
+	if rk.Top[0].ID != "lesson-3" || rk.Top[0].Probability != nil || rk.RankedBy != RankedByHost {
+		t.Fatalf("all tied: overlap ranks, no probability: %+v", rk.Top)
+	}
+	if RankLessons(framing, lessons).RankedBy != RankedByTermOverlap {
+		t.Fatal("the term-overlap ranking names itself")
+	}
+}

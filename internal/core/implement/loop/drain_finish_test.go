@@ -45,9 +45,7 @@ func drainLandFixtureWith(t *testing.T, ruleset string) *landFixture {
 	repo.Git("push", "-q", "origin", "main")
 	repo.Git("fetch", "-q", "origin")
 	gh := t.TempDir()
-	if err := os.WriteFile(filepath.Join(gh, "gh"), []byte(stubGH), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	installStubGH(t, gh, ruleset)
 	t.Setenv("PATH", gh+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return &landFixture{repo: repo, bare: bare, gh: gh, stages: DefaultStages()}
 }
@@ -179,7 +177,7 @@ func TestAMergedLaneParkedAtLandIsFinishedOnTheNextDrainMove(t *testing.T) {
 	if st.ReservedAt == nil {
 		t.Fatal("the drain's run holds the issue's reservation")
 	}
-	if tomb := originReservation(t, f.bare, claim.RefPrefix+secondIssue); !tomb.released || tomb.holder != "octo" {
+	if tomb := originReservation(t, f.bare, claim.RefPrefix+secondIssue); !tomb.released || tomb.holder != heldBy(t, patEmail) {
 		t.Fatalf("finishing the merged lane tombstones its reservation: %+v", tomb)
 	}
 	if st.NextEligibleAt == nil || !st.NextEligibleAt.Equal(until) {

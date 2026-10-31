@@ -101,8 +101,8 @@ func TestHolderFromTokenWhenGitIsPersonWithoutLogin(t *testing.T) {
 	}
 	// A person's own git identity stays the author of the reservation.
 	p, err := prepare(r.Root(), Request{Record: "iss-5", Footprint: []string{"a.go"}}, o)
-	if err != nil || p.holder != "octo-person" || p.who != (identity{Name: "Pat Example", Email: "pat@example.com"}) {
-		t.Fatalf("prepare = %+v, %v; want holder octo-person authored by Pat Example", p, err)
+	if err != nil || p.self.Login != "octo-person" || !validHolderID(p.holder) || p.who != (identity{Name: "Pat Example", Email: "pat@example.com"}) {
+		t.Fatalf("prepare = %+v, %v; want the holder id, octo-person resolved, authored by Pat Example", p, err)
 	}
 }
 
@@ -118,9 +118,9 @@ func TestHolderFromTokenWhenGitIsVendor(t *testing.T) {
 		t.Fatalf("holder = %+v, %v; want %+v (the machine key is skipped)", h, err, want)
 	}
 	p, err := prepare(r.Root(), Request{Record: "iss-5", Footprint: []string{"a.go"}}, o)
-	if err != nil || p.holder != "octo-person" ||
+	if err != nil || p.self.Login != "octo-person" || !validHolderID(p.holder) ||
 		p.who != (identity{Name: "octo-person", Email: "4242+octo-person@users.noreply.github.com"}) {
-		t.Fatalf("prepare = %+v, %v; want the token's account as holder and author", p, err)
+		t.Fatalf("prepare = %+v, %v; want the holder id, and the token's account resolved and the author", p, err)
 	}
 }
 

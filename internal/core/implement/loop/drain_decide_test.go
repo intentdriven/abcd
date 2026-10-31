@@ -2,9 +2,15 @@ package loop
 
 import (
 	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -179,5 +185,108 @@ func TestDecideDrainJudgementRefusesAnUnlistedModelBeforeAnyCall(t *testing.T) {
 	_, _, err := decideDrainJudgement(context.Background(), root, o, judging, *plan, time.Now())
 	if err == nil || !strings.Contains(err.Error(), "not on openrouter's list") {
 		t.Fatalf("err = %v, want the allowlist refusal", err)
+	}
+}
+
+// The drain's real eligibility question through the log-probability
+// candidate, against a fake OpenAI-compatible endpoint: the question's own
+// words name the answers (user-visible, trust-rule, no), and the candidate's
+// prompt maps each to the letter it scores and says the letter wins. A letter
+// is taken as the kind it labels; the word itself, answered against that
+// instruction, is no answer, so the host's request stands with a receipt.
+func TestTheDrainsQuestionThroughTheLogprobCandidate(t *testing.T) {
+	plan, root, judging := drainDecidePlan(t)
+	var (
+		mu    sync.Mutex
+		reply string
+		sent  []byte
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			http.NotFound(w, r)
+			return
+		}
+		raw, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		sent = raw
+		body := reply
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, body)
+	}))
+	t.Cleanup(srv.Close)
+	answer := func(content, logprobs string) string {
+		return `{"model":"small/model","choices":[{"index":0,"finish_reason":"length","message":{"role":"assistant","content":` +
+			strconv.Quote(content) + `},"logprobs":` + logprobs + `}]}`
+	}
+	home := t.TempDir()
+	cfg := abcdhome.Path(home, "config.json")
+	if err := os.MkdirAll(filepath.Dir(cfg), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfg, []byte(`{"oracle":{"api":{"lp":{"base_url":"`+srv.URL+`/v1","models":["small/model"],`+
+		`"logprob_models":["small/model"]}},"judgements":{"eligibility-residual":"lp/small/model"}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	o := Options{Roots: &layered.Roots{Repo: root, Home: home}}
+	now := time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC)
+
+	mu.Lock()
+	reply = answer("D", `{"content":[{"token":"D","logprob":-0.1,"top_logprobs":[`+
+		`{"token":"D","logprob":-0.1},{"token":"C","logprob":-2.5},{"token":"no","logprob":-3.0}]}]}`)
+	mu.Unlock()
+	taken, fb, err := decideDrainJudgement(context.Background(), root, o, judging, *plan, now)
+	if err != nil || fb != nil || taken == nil {
+		t.Fatalf("taken %+v, fallback %+v, err %v", taken, fb, err)
+	}
+	if taken.Answer != JudgementYes || taken.Kind != HandBackTrustRule || !strings.Contains(taken.Reason, "probability 0.92") {
+		t.Fatalf("D labels trust-rule, at its probability over the letters: %+v", taken)
+	}
+	mu.Lock()
+	var req struct {
+		Messages []struct {
+			Content string `json:"content"`
+		} `json:"messages"`
+		MaxTokens   json.RawMessage `json:"max_tokens"`
+		Logprobs    json.RawMessage `json:"logprobs"`
+		TopLogprobs json.RawMessage `json:"top_logprobs"`
+	}
+	err = json.Unmarshal(sent, &req)
+	mu.Unlock()
+	if err != nil {
+		t.Fatalf("the request: %v", err)
+	}
+	var prompt strings.Builder
+	for _, m := range req.Messages {
+		prompt.WriteString(m.Content + "\n")
+	}
+	p := prompt.String()
+	for _, want := range []string{
+		drainQuestion().Ask,
+		"B. " + JudgementNo + "\n", "C. " + HandBackUserVisible + "\n", "D. " + HandBackTrustRule + "\n",
+		"reply with that answer's letter, never the word",
+		"Reply with one letter: B, C or D.",
+	} {
+		if !strings.Contains(p, want) {
+			t.Errorf("the prompt lacks %q:\n%s", want, p)
+		}
+	}
+	if !strings.HasSuffix(strings.TrimSpace(p), "Reply with one letter: B, C or D.") {
+		t.Errorf("the letter instruction is the prompt's last word:\n%s", p)
+	}
+	if string(req.MaxTokens) != "1" || string(req.Logprobs) != "true" || string(req.TopLogprobs) != "20" {
+		t.Errorf("one token and its alternatives: max_tokens %s logprobs %s top_logprobs %s", req.MaxTokens, req.Logprobs, req.TopLogprobs)
+	}
+
+	// The question's own word for the answer, against the instruction, is no
+	// answer, however a letter ranks below it.
+	mu.Lock()
+	reply = answer("no", `{"content":[{"token":"no","logprob":-0.01,"top_logprobs":[`+
+		`{"token":"no","logprob":-0.01},{"token":"D","logprob":-7.0}]}]}`)
+	mu.Unlock()
+	taken, fb, err = decideDrainJudgement(context.Background(), root, o, judging, *plan, now)
+	if err != nil || taken != nil || fb == nil || !strings.Contains(fb.Detail, `answered "no"`) ||
+		!strings.Contains(fb.Detail, "the host's request stands") {
+		t.Fatalf("an off-label answer leaves the host's request standing: taken %+v, fallback %+v, err %v", taken, fb, err)
 	}
 }

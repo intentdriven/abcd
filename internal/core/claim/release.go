@@ -81,13 +81,14 @@ type Hold struct {
 	// subject, rel-vX.Y.Z.
 	Release string `json:"release"`
 	Subject string `json:"subject"`
-	// Holder is the GitHub username cutting it; "" when the reservation is
-	// unreadable.
+	// Holder is the holder cutting it, as the reservation names them: a
+	// holder id, or the GitHub username a hold made before the id names; ""
+	// when the reservation is unreadable.
 	Holder string `json:"holder,omitempty"`
 	// Copy is CopyThis when the reservation names this checkout's own copy.
 	Copy string `json:"copy,omitempty"`
-	// Mine is true when the hold is under the reader's own username, from
-	// any copy; Own when it is also this copy's: the cutting session itself.
+	// Mine is true when the hold is the reader's own (Self.Owns), from any
+	// copy; Own when it is also this copy's: the cutting session itself.
 	// Only releaseHolds sets them.
 	Mine bool `json:"mine"`
 	Own  bool `json:"own"`
@@ -98,6 +99,10 @@ type Hold struct {
 	Sibling string `json:"sibling,omitempty"`
 	// key is the copy key the reservation names; never shown.
 	key string
+	// claimed is true when Holder is a holder id that is not the reader's
+	// (holderClaimed), which every line naming it marks; only releaseHolds
+	// sets it.
+	claimed bool
 	// EffectiveExpiry is when the hold ends unless it is renewed, released or
 	// its tag reaches origin first.
 	EffectiveExpiry time.Time `json:"effective_expiry"`
@@ -119,9 +124,13 @@ func (h Hold) Text() string {
 		return fmt.Sprintf("release %s held by an unreadable reservation (%s) until %s: merges are held",
 			h.Release, h.Unreadable, stamp(h.EffectiveExpiry))
 	}
-	return fmt.Sprintf("release %s being cut by @%s: merges are held; the hold lapses at %s unless the cut renews it",
-		h.Release, h.Holder, stamp(h.EffectiveExpiry))
+	return fmt.Sprintf("release %s being cut by %s: merges are held; the hold lapses at %s unless the cut renews it",
+		h.Release, h.holderName(), stamp(h.EffectiveExpiry))
 }
+
+// holderName is the hold's holder as a line names it: a login as @login, and
+// a holder id that is not the reader's marked claimed.
+func (h Hold) holderName() string { return claimedName(senderName(h.Holder), h.claimed) }
 
 // Line is the line a listing shows a judged hold by (JudgedHolds), by the
 // rule the merge hold counts it with: the cutting copy's own release as the
@@ -175,6 +184,9 @@ type Lapsed struct {
 	// holding.
 	RenewedAt time.Time `json:"renewed_at"`
 	LapsedAt  time.Time `json:"lapsed_at"`
+	// claimed is true when Holder is a holder id that is not the reader's
+	// (holderClaimed); only LapsedFor sets it.
+	claimed bool
 }
 
 // Text is the line a listing shows a lapsed cut by: "release v0.16.0: the cut
@@ -185,10 +197,10 @@ type Lapsed struct {
 // off; the withdrawal is a take-over and a release, since only the holder
 // releases a reservation.
 func (l Lapsed) Text() string {
-	return fmt.Sprintf("release %s: the cut by @%s lapsed at %s, last renewed %s, with no tag %s on origin; "+
+	return fmt.Sprintf("release %s: the cut by %s lapsed at %s, last renewed %s, with no tag %s on origin; "+
 		"no merge is held. From %s, any copy reserves it again with `abcd reserve %s`, to resume the cut or, "+
 		"followed by `abcd reserve %s --release`, to withdraw it",
-		l.Release, l.Holder, stamp(l.LapsedAt), stamp(l.RenewedAt), l.Release, stamp(l.LapsedAt.Add(TakeoverMargin)),
+		l.Release, claimedName(senderName(l.Holder), l.claimed), stamp(l.LapsedAt), stamp(l.RenewedAt), l.Release, stamp(l.LapsedAt.Add(TakeoverMargin)),
 		l.Subject, l.Subject)
 }
 
@@ -208,10 +220,21 @@ func (s Snapshot) Lapsed(now time.Time) []Lapsed {
 	return out
 }
 
+// LapsedFor is Lapsed for reader (ReaderSelf): each holder id that is not
+// theirs is marked claimed in the line naming it, as every listing marks it.
+func (s Snapshot) LapsedFor(now time.Time, reader Self) []Lapsed {
+	out := s.Lapsed(now)
+	for i := range out {
+		out[i].claimed = holderClaimed(out[i].Holder, reader)
+	}
+	return out
+}
+
 // releaseHolds is every release being cut as this checkout last fetched the
 // reservations, from disk alone: no fetch, no push and nothing written
-// (invariant 7). Each hold's Mine says whether it is under the username a
-// reservation verb here would resolve, and Own whether it is also from this
+// (invariant 7). Each hold's Mine says whether it is the reader's own
+// (ReaderSelf: their holder id, a declared one, or their login on a hold made
+// before the id), and Own whether it is also from this
 // copy. JudgedHolds reads it, for MergeHolds, which judges a merge from it for
 // the land fence and `abcd land`, and for `abcd peers`, which shows each hold
 // by the same rule (Hold.Line), as `abcd status` and the prompt hook do. It
@@ -230,14 +253,15 @@ func releaseHoldsAndLapsed(root string, now time.Time, o Options) ([]Hold, []Lap
 	if err != nil {
 		return nil, nil, err
 	}
-	lapsed := snap.Lapsed(now)
+	reader := readerSelf(root, o)
+	lapsed := snap.LapsedFor(now, reader)
 	holds := snap.Holds(now)
 	if len(holds) == 0 {
 		return nil, lapsed, nil
 	}
-	reader := readerHolder(root, o)
 	for i, h := range holds {
-		holds[i].Mine = h.Unreadable == "" && reader != "" && sameHolder(h.Holder, reader)
+		holds[i].Mine = h.Unreadable == "" && reader.Owns(h.Holder)
+		holds[i].claimed = h.Unreadable == "" && holderClaimed(h.Holder, reader)
 		holds[i].Own = holds[i].Mine && h.Copy == CopyThis
 		if holds[i].Mine && !holds[i].Own {
 			holds[i].Sibling = siblingCopy(root, h.key)

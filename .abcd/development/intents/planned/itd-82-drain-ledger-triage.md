@@ -121,6 +121,8 @@ _All resolved: the decision-record flag's home by decision 10, and whether `majo
 - **refines `itd-84`** (decompose before filing): the routing applied to a decision-shaped issue at hand-back.
 - **related `itd-2609211116005482`** (`abcd build next`): the sibling run over intents; the two share `--max` and `--until-empty` and the hand-over to `abcd implement`, and differ in their default count by the meaning of their names.
 - **builds_on `itd-50`**: the audit-driven fix round runs on an issue lane as on an intent lane.
+- **built on by `itd-2610301750162657`** (abcd's unattended work is spot-checked against specs and intents): Draws a few of the drain's fixes and hand-backs and has them checked against their specs, filing each finding against this intent's rule (adr-2609291342092738) for a person to amend.
+- **built on by `itd-2610301850454860`** (abcd records how each change landed): Records which changes a drain lane landed and under which rule.
 
 ## Audit Notes
 

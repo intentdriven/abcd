@@ -102,14 +102,14 @@ a checkout with more than one worktree), `interpreter-reads-stream` (a shell
 handed its script through a pipe, as in `cat x | sh`) or `forge-text-outbound`
 (a posting `gh pr` or `gh issue` command whose title or body carries a live
 agent-session URL or a tool attribution footer, in a repository that opted into
-the forge-text check, iss-2610142210511831), and its two pull-request checks,
+the forge-text check, iss-2610142210511831), its two pull-request checks,
 `forge-text-disclosure` (a `gh pr create`, `new` or `edit` whose body carries no
 `Assisted-by:` line in an accepted form, judged as the attribution gate's body
 arm judges it, iss-2609061525437969) and `forge-text-mention` (a pull request
 whose title and body name an issue id no `Resolves:` or `Refs:` line declares,
 RS004 before the push, in a repository that also sets
-`outbound.declare_mentions`, iss-2610261152125261), are enforced but not
-taught; the scripts the guard reads, and the variable-built `bash -c` or `sh -c`
+`outbound.declare_mentions`, iss-2610261152125261), and the merge rule below
+(all but its `abcd-land-approve` entry), are enforced but not taught; the scripts the guard reads, and the variable-built `bash -c` or `sh -c`
 script that deletes, which the guard refuses as `shell-c-variable-delete`
 (iss-2610161612200864), are taught by two rules the generator adds after the
 entries', each written beside the code that reads it. The registry taught is the one the guard
@@ -122,6 +122,84 @@ named on stderr and never taught. An entry's why and successor are each at most
 then refuses nothing. How the domain is recalled, overridden and
 silenced is the rules loader's
 ([`05-internals/03-configuration.md`](../05-internals/03-configuration.md)).
+
+## The merge rule
+
+Who merges is decided by `facilitator.mode`
+([`38-land.md`](38-land.md), itd-2610150602547271). `abcd land` and the build
+loop ask one merge gate before arming anything; the guard holds the same line
+on the commands themselves, so a path that never asks the gate is still
+stopped. The guard reads the mode as the gate does: the default
+branch's committed `.abcd/config.json` and `~/.abcd.noindex/config.json`, a
+`human` in either winning, never the working tree's copy. It reads the default
+branch as origin names it and only after fetching it, never from the refs this
+checkout holds, which an agent can move (`git remote set-head`,
+`git update-ref`), within about 15 seconds. A mode that cannot be read, an origin
+that cannot be reached or does not answer in time included, counts as `human`,
+and so does a checkout where the forge client would act on another remote than
+origin (one named `upstream` or `github`, which gh prefers, or one
+`gh repo set-default` chose). Origin's URL is taken as the checkout's
+configuration names it. The guard cannot import that resolver (it sits above
+the guard), so each front door that loads a repository's registry hands the mode
+in; a registry with no mode handed in judges no merge command.
+
+While the mode is `human`, these commands are refused, each naming the setting
+that allows it:
+
+- `gh pr merge --auto`, under `merge-auto-human`;
+- any other `gh pr merge` that merges, into the merge queue where one gates the
+  default branch and at once where none does, under `merge-now-human`
+  (`gh pr merge --disable-auto` withdraws an arming and is allowed);
+- a `gh api graphql` call whose query is the `enqueuePullRequest`,
+  `enablePullRequestAutoMerge` or `mergePullRequest` mutation, under
+  `merge-enqueue-human`;
+- a `gh api graphql` call whose query is not on the line (read from a file
+  with `query=@…`, from `--input`, or printed by a substitution), which could
+  be one of those mutations, under `merge-graphql-unread-human`;
+- a `PUT` to the REST merge route, `repos/{owner}/{repo}/pulls/N/merge`
+  (a method word the line does not fix counts as `PUT`, and a route word it
+  fixes only in part counts as the route where it could be), under
+  `merge-rest-human`. Only the endpoint word is read as the route; a call
+  whose endpoint the line does not fix at all is also read as GraphQL.
+
+In `auto` all of them are allowed, and the merge gate decides what abcd arms,
+except a merge command that names its repository (gh's repository flag in
+either spelling, a `GH_REPO` prefix, or a REST route spelling owner and name rather than gh's
+placeholders, or one the line does not fix), or that runs after the line
+changed directory or set `GH_REPO`: the mode read is this checkout's, which does not answer for
+another repository, so such a command is refused under the same id, with no
+setting offered, since none here would allow it.
+
+The technical facilitator's approval act, the land verb's approval of a head
+([`38-land.md`](38-land.md)), is refused to an agent in every mode: the merge
+gate counts that record as an approval of the head, so an agent that writes it
+records a false approval. Run through the binary it is refused by the registry
+entry `abcd-land-approve`, which the `SHELL` domain teaches. Under any other
+program name it is refused in code as `abcd-land-approve-any-program`: the
+guard reads the words the program is handed (the land verb and its approval
+flag, in either order, as the command parser reads them),
+not what the program is called, so `go run .`, a cross-compiled build, a
+wrapper script and a renamed copy are all refused (`go run ./cmd/abcd` is read
+as abcd, and the entry refuses it). A flag word a
+substitution prints is not read. The person's other acts are refused under any
+program name the same way: allowing one delete (`abcd-guard-allow-any-program`)
+and flipping a source-ledger line (`abcd-source-ledger-flip-any-program`, and
+`abcd-source-ledger-flip-retired-any-program` in the retired spelling). An
+approving review posted on the forge,
+which the gate also counts as an approval, is refused the same way in every
+mode, as `forge-review-approve`: an approving `gh pr review`; a `gh api` call to the
+REST review route whose `event` field is `APPROVE`, or whose event or body the
+line does not show; and one carrying the `addPullRequestReview` or
+`submitPullRequestReview` mutation with an `APPROVE` event. Reading the reviews
+is not refused, whatever its filter names. A review
+that comments or requests changes is not refused. The five merge ids,
+the four any-program ids and `forge-review-approve` are reserved, so a
+repository's `.abcd/guard.json` cannot declare an entry under them.
+
+The guard holds against an agent merging or approving by mistake, not against
+a determined one: an agent runs with the person's own credentials, can point
+origin at another repository, and can reach the forge by routes no command line
+shows.
 
 ## The question gate
 
@@ -583,8 +661,9 @@ recorded in their home folder, read only as their own (the rule the rules
 loader applies to the machine's rules file), used once within ten minutes by
 the hook and logged with the line and both times but never who. It lets past
 nothing else a line trips, and the check and the headless approver never use
-it. The guard refuses the allow when an agent runs it and refuses a shell write
-into its store. As with every hazard here, the trust model is a careless agent,
+it. The guard refuses the allow when an agent runs it, under any program name
+(as `abcd-guard-allow-any-program` where the program is not named abcd), and
+refuses a shell write into its store. As with every hazard here, the trust model is a careless agent,
 not a hostile one: a file tool writing into the store is not a shell command
 and goes unseen, a push that deletes as a side effect (pruning, mirroring) is
 not judged, and an allow is keyed on the line, not on the directory it runs in.

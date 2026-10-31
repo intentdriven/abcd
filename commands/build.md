@@ -40,9 +40,9 @@ until its lane shows.
 the reservation keeps people apart. In a checkout with a remote named
 `origin`, the run reserves its key there, as `/abcd:reserve` does, once the
 checks below pass and before the run is created: the branch
-`abcd-reserved/<id>` on `origin`, naming you (your GitHub username, from a
-no-reply `user.email` or `reservation.github_username` in
-`~/.abcd.noindex/config.json`), this copy, and the files the spec's
+`abcd-reserved/<id>` on `origin`, naming you (by your holder id, kept in
+`~/.abcd.noindex/holder-id`, never by your GitHub username), this copy, and
+the files the spec's
 `## Footprint` `- packages:` line names (an issue's `found_at` path for
 `build <iss-N>`). Every other participant, a second person, a second
 computer, a cloud session, sees it before starting the same item. The
@@ -86,7 +86,11 @@ spec's `- packages:` line to the files the work changes. A step's own
   the view as last fetched already shows it, names `abcd build <itd-N>
   --take-over`, the form `build next`'s exclusion takes too); pass
   `--take-over` only when the person means to move the work to this copy. It
-  never moves another person's.
+  never moves another person's. Whose a reservation is goes by holder id: a
+  hosted session that restarted with a fresh home and no `ABCD_HOLDER_ID`
+  minted a new one, so the reservations its earlier sessions made read as
+  another person's, not as your other copy's, until they lapse, and the cap
+  on your live reservations (ten, or `reservation.max_live`) counts them apart (`/abcd:reserve` says how to keep one id).
 - Any other refusal of the reservation (no username, no local tier, `origin`
   not answering) is exit 2, naming it, and starts nothing.
 
@@ -651,14 +655,18 @@ A lane's stages run in order:
    run's records and passed through the outbound scrub, ending with
    `Assisted-by: abcd:<version>` and then one `Assisted-by:` per model the
    lane's receipts reported, re-reads the body the forge holds and strips a
-   session URL or tool footer. It arms auto-merge with
-   the merge-queue method the ruleset mirror (`.abcd/work/rulesets/`) names
-   only where that mirror also requires a person's approval (an approving
-   review count of one or more, or a code-owner review with a CODEOWNERS file
-   naming an owner). Otherwise it leaves the pull request open for a person to
-   merge, says so in the step's note and the run record ("left open for a
-   person to merge: the ruleset requires no approval"), and never arms it on a
-   later step; a missing mirror requires nothing. It pushes nothing to the lane
+   session URL or tool footer. It arms the merge only where the merge gate
+   `abcd land` asks allows it (`commands/land.md`, "Who approves a merge"),
+   reading `facilitator.mode` from the default branch's committed
+   `.abcd/config.json` and `~/.abcd.noindex/config.json`, never the lane's
+   checkout: in `human`, once an approval of the pushed head counts; in
+   `auto`, once a review receipt names it (`abcd land --record-review`); and a
+   contributor's pull request in either mode only once an approval by someone
+   with write access counts. An armed merge goes into the merge queue by the
+   ruleset mirror's (`.abcd/work/rulesets/`) method, or as the forge's
+   auto-merge where no queue gates the default branch. Otherwise the step's
+   note and the run record say "left open: " and why, and each later step asks
+   the gate again, arming once it allows. It pushes nothing to the lane
    afterwards. Before it arms or leaves anything open, the land fence fetches
    the reservations from `origin` and, while another session holds a live
    release reservation (`rel-vX.Y.Z`, `/abcd:reserve`), arms nothing: `step`

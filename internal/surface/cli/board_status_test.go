@@ -264,22 +264,50 @@ func facilitatorBlock(b *statusblock.Block) string {
 	return strings.Join(board.Render(board.Input{Status: b}, board.Frame{View: board.Facilitator, Width: 1000}), "\n") + "\n"
 }
 
-// TestBoardSaysWhoMergesAndWhere is spc-2610161609350616 step 2 at the bare
-// board: in a managed checkout the text names who merges and the layer that
-// said so (compared with its spaces collapsed, since the row wraps at the
-// window), and --json carries the resolved facilitator.mode with its layer and
-// origin.
+// TestBoardSaysWhoMergesAndWhere is spc-2610161609350616 at the bare board:
+// in a managed checkout the text says what the merge gate does in the mode it
+// reads and the layer that said so (compared with its spaces collapsed, since
+// the row wraps at the window), and --json carries the resolved
+// facilitator.mode with its layer and origin. The mode is read as the gate
+// reads it, from the default branch's committed .abcd/config.json beside the
+// machine layer, so an auto in the checkout's working tree that main does not
+// carry changes nothing, and a repository with no default branch yet has no
+// mode to read. The product view is read in markdown, the form a host pastes,
+// which no window width breaks.
 func TestBoardSaysWhoMergesAndWhere(t *testing.T) {
 	root := managedCheckout(t)
-	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "merges: a person (facilitator.mode human, from the bundled default)") {
-		t.Fatalf("with no layer the board does not name the bundled person:\n%s", text)
+	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "merges: unreadable (the repository has no default branch to read facilitator.mode at)") {
+		t.Fatalf("with no default branch the board does not say the mode is unreadable:\n%s", text)
 	}
+	commitConfig(t, root, "")
+	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "merges: once the technical facilitator approves the head (facilitator.mode human, from the bundled default)") {
+		t.Fatalf("with no layer the board does not say the bundled human's approval merges:\n%s", text)
+	}
+	if text := flattenSpace(string(runCLI(t, "--view", "product", "--format", "markdown"))); !strings.Contains(text, "merges: once the technical facilitator approves (the bundled default)") {
+		t.Fatalf("the product view does not say the bundled human's approval merges:\n%s", text)
+	}
+	commitConfig(t, root, `{"facilitator":{"mode":"human"}}`+"\n")
 	if err := os.WriteFile(filepath.Join(root, ".abcd", "config.json"), []byte(`{"facilitator":{"mode":"auto"}}`+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "merges: a person (facilitator.mode auto, from .abcd/config.json; the merge gate does not read it yet)") {
-		t.Fatalf("the repository's auto is not named, with its file, as not read yet:\n%s", text)
+	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "merges: once the technical facilitator approves the head (facilitator.mode human, from .abcd/config.json at main)") {
+		t.Fatalf("an uncommitted auto decided the board, not main's human, as the gate reads it:\n%s", text)
 	}
+	assertBoardFacilitator(t, "human", ".abcd/config.json at main")
+	commitConfig(t, root, `{"facilitator":{"mode":"auto"}}`+"\n")
+	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "merges: autonomously, once a review pair passes the head (facilitator.mode auto, from .abcd/config.json at main)") {
+		t.Fatalf("main's auto is not said as autonomous merging, with its file:\n%s", text)
+	}
+	if text := flattenSpace(string(runCLI(t, "--view", "product", "--format", "markdown"))); !strings.Contains(text, "merges: autonomously, once a review pair passes (set in .abcd/config.json at main)") {
+		t.Fatalf("the product view does not say main's auto merges autonomously:\n%s", text)
+	}
+	assertBoardFacilitator(t, "auto", ".abcd/config.json at main")
+}
+
+// assertBoardFacilitator checks the board's --json facilitator is mode from the
+// repository layer's origin, with no error.
+func assertBoardFacilitator(t *testing.T, mode, origin string) {
+	t.Helper()
 	var got struct {
 		Facilitator *struct {
 			Key, Mode, Layer, Origin, Error string
@@ -288,8 +316,8 @@ func TestBoardSaysWhoMergesAndWhere(t *testing.T) {
 	if err := json.Unmarshal(runCLI(t, "--json"), &got); err != nil {
 		t.Fatal(err)
 	}
-	if f := got.Facilitator; f == nil || f.Key != "facilitator.mode" || f.Mode != "auto" || f.Layer != "repo" || f.Origin != ".abcd/config.json" || f.Error != "" {
-		t.Fatalf("--json facilitator = %+v; want facilitator.mode auto from the repo layer's .abcd/config.json", got.Facilitator)
+	if f := got.Facilitator; f == nil || f.Key != "facilitator.mode" || f.Mode != mode || f.Layer != "repo" || f.Origin != origin || f.Error != "" {
+		t.Fatalf("--json facilitator = %+v; want facilitator.mode %s from the repo layer's %s", got.Facilitator, mode, origin)
 	}
 }
 
@@ -300,9 +328,7 @@ func TestBoardSaysWhoMergesAndWhere(t *testing.T) {
 // mask is what keeps them off the terminal.
 func TestBoardSaysAnUnreadableModeIsUnreadable(t *testing.T) {
 	root := managedCheckout(t)
-	if err := os.WriteFile(filepath.Join(root, ".abcd", "config.json"), []byte("{\"facilitator\":{\"\\u001b[31mmode\":\"auto\"}}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	commitConfig(t, root, "{\"facilitator\":{\"\\u001b[31mmode\":\"auto\"}}\n")
 	text := string(runCLI(t, "--view", "facilitator"))
 	if !strings.Contains(text, "  merges:     unreadable (") || strings.ContainsRune(text, '\x1b') {
 		t.Fatalf("an unreadable mode is not drawn as unreadable and masked:\n%q", text)
@@ -310,8 +336,14 @@ func TestBoardSaysAnUnreadableModeIsUnreadable(t *testing.T) {
 	var got struct {
 		Facilitator map[string]any `json:"facilitator"`
 	}
-	if err := json.Unmarshal(runCLI(t, "--json"), &got); err != nil {
+	// The status line's merging element, which reads the same committed key,
+	// says its refusal on stderr, so stdout alone is the JSON document.
+	stdout, _, err := runCLISplit(t, "--json")
+	if err != nil {
 		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("%v:\n%s", err, stdout)
 	}
 	keys := slices.Sorted(maps.Keys(got.Facilitator))
 	if !slices.Equal(keys, []string{"error", "key"}) || got.Facilitator["error"] == "" {
@@ -320,16 +352,17 @@ func TestBoardSaysAnUnreadableModeIsUnreadable(t *testing.T) {
 }
 
 // TestBoardNamesARefusedHomeThatDecidedWhoMerges: a home inside the working
-// tree is refused, so the bundled person stands and the board says the refused
+// tree is refused, so the bundled human stands and the board says the refused
 // home decided it, in the text and as home_refused in --json.
 func TestBoardNamesARefusedHomeThatDecidedWhoMerges(t *testing.T) {
 	root := managedCheckout(t)
+	commitConfig(t, root, "")
 	home := filepath.Join(root, "planted-home")
 	if err := os.MkdirAll(home, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)
-	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "merges: a person (facilitator.mode human, from a refused home)") {
+	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "merges: once the technical facilitator approves the head (facilitator.mode human, from a refused home)") {
 		t.Fatalf("a refused home is not named as what decided who merges:\n%s", text)
 	}
 	var got struct {

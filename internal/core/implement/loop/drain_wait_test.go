@@ -89,7 +89,7 @@ func TestADrainWithOnlyHeldWorkLeftWaitsAndKeepsItsJudgements(t *testing.T) {
 	}
 	q := otherCopy(t, bare, quinnEmail)
 	quinn := claim.Options{Now: c.now}
-	if _, err := claim.Reserve(q, claim.Request{Record: eligibleIssue, Footprint: []string{"AGENTS.md"}}, quinn); err != nil {
+	if _, err := claim.Reserve(q, claim.Request{Record: eligibleIssue, Footprint: []string{"AGENTS.md"}}, as(t, q, quinn)); err != nil {
 		t.Fatalf("Quinn reserves the bug: %v", err)
 	}
 	handBackLaneOf(t, repo, first.Start.RunID, o, LaneHandBack{Kind: HandBackDesignFinding, Reason: "the page needs a decision", Home: "the brief"})
@@ -103,7 +103,7 @@ func TestADrainWithOnlyHeldWorkLeftWaitsAndKeepsItsJudgements(t *testing.T) {
 	if res.WaitingUntil == nil || !res.WaitingUntil.Equal(c.t.Add(15*time.Minute)) {
 		t.Fatalf("the drain says when it looks again: %v", res.WaitingUntil)
 	}
-	if !strings.Contains(res.Next, eligibleIssue) || !strings.Contains(res.Next, "reserved by quinn") {
+	if !strings.Contains(res.Next, eligibleIssue) || !strings.Contains(res.Next, "reserved by "+heldBy(t, quinnEmail)) {
 		t.Fatalf("next names the hold it waits on: %s", res.Next)
 	}
 	if len(res.Judgements) != 1 {
@@ -119,7 +119,7 @@ func TestADrainWithOnlyHeldWorkLeftWaitsAndKeepsItsJudgements(t *testing.T) {
 		t.Fatalf("a move before the wait ends keeps it: %+v", again.WaitingUntil)
 	}
 
-	if _, err := claim.Reserve(q, claim.Request{Record: eligibleIssue, Release: true}, quinn); err != nil {
+	if _, err := claim.Reserve(q, claim.Request{Record: eligibleIssue, Release: true}, as(t, q, quinn)); err != nil {
 		t.Fatalf("Quinn releases the bug: %v", err)
 	}
 	c.t = c.t.Add(15 * time.Minute)

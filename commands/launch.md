@@ -118,10 +118,11 @@ Reserve the release before anything else, from the copy that will cut it:
 
 While that reservation is live, every other session's land step (an
 `implement step` arming a merge, or `abcd land`, under any account, on any
-computer) refuses to arm, names you and the release, and leaves its pull
+computer) refuses to arm, names your holder id and the release, and leaves its pull
 request open for you to merge or hold; `/abcd:peers` shows other sessions
-"release vX.Y.Z being cut by @you: merges are held; the hold lapses at
-<time> unless the cut renews it", and shows this copy "you
+"release vX.Y.Z being cut by <your holder id> (claimed): merges are held; the hold
+lapses at <time> unless the cut renews it" (the `h_…` id `abcd reserve
+--holder` prints), and shows this copy "you
 are cutting release vX.Y.Z from this copy: every other session's merges are
 held". It takes no footprint and holds for a day. If the cut runs longer,
 run the same command again from the same copy to renew it for another day.
@@ -539,8 +540,8 @@ Then summarise the JSON for the user:
   them the release page would cite (`in_press_release`), the guard verdict
   (`guard`) and the findings verdict (`findings`). A refused cut (`ready`
   false) carries its `refusals`, each naming what blocks it; relay them as
-  information. A refused cut changes nothing about the preview's exit, which
-  stays the bundle's. When the cut could not be read at all, `cut_error` says
+  information. A refused cut changes nothing about the preview's exit: the
+  preview exits 0 whenever it runs. When the cut could not be read at all, `cut_error` says
   why in its place. The plain preview renders the cut after the bundle report,
   under its own `abcd launch --dry-run —` line, as `launch ship` renders it.
 
@@ -599,7 +600,7 @@ dirt anywhere else is not the derivation's concern (the ingest's pre-flight
 judges the whole tree), and `--allow-dirty` does not waive it, because the cut
 would still be read from HEAD. Commit the records (or discard the change) and
 run again. The preview (`launch --dry-run`) carries the same refusal in its
-cut, rendered `REFUSED` with the paths, and its exit stays the bundle's.
+cut, rendered `REFUSED` with the paths, and still exits 0.
 
 The cut also lists every planned intent that names a release it must land by
 (`targets`, one `targeted:` line each in the render, and `targets_error` when
@@ -749,10 +750,13 @@ ready cut's `--json` result carries the request block as a `routing` member
 the harness lets you choose one, and pass the same `--route` to the ingest step
 so its receipt records the override. The ingest's `--json` result carries a
 `route` receipt (`tier_asked`, `connection_tried`, `connection_used`,
-`fallback_reason`, `override`, `settings_sent`, `model_reported`, `provider_call`, null until a provider adapter answers the step, and
-`unpinned`, the fields the receipt could not pin, each with its reason) and its text a
-`route:` line; relay it with the result. When no configured provider can serve
-the tier, one stderr line says the step goes through the harness instead. A
+`fallback_reason`, `override`, `settings_sent`, `model_reported`,
+`provider_call`, null until a provider adapter answers the step, and
+`unpinned`, the harness leg's list of the fields it could not pin, each with
+its reason, and null on a provider leg, whose `provider_call` carries its own)
+and its text a `route:` line; relay it with the result. When no configured
+provider can serve the tier, one stderr line says the step goes through the
+harness instead. A
 `--route` naming an agent this invocation does not dispatch, a tier outside the
 set, a connection this machine has not configured, or a routing table that
 cannot be read exits 2 before anything is written. With no table accepted and no

@@ -151,6 +151,12 @@ case "$*" in
 			echo "abcd reserve: x509: certificate signed by unknown authority ($v=$f: permission denied)" >&2; exit 1 ;;
 		esac
 	done
+	# A variable set to anything but one holder id refuses, as the verb does,
+	# before anything is printed.
+	if [ -n "${ABCD_HOLDER_ID:-}" ] && ! printf '%s' "$ABCD_HOLDER_ID" | grep -Eq '^h_[0-9a-f]{32}$'; then
+		echo "abcd reserve: ABCD_HOLDER_ID is set but is not a holder id" >&2
+		exit 2
+	fi
 	if [ -n "${FAKE_HOLDER:-}" ]; then printf '%s\n' "$FAKE_HOLDER"; fi
 	echo "abcd reserve: git's identity is $(git config user.name) <$(git config user.email)>" >&2
 	exit "${FAKE_HOLDER_EXIT:-0}" ;;
@@ -845,5 +851,63 @@ func TestSetupRefusesASymlinkAtTheCACopy(t *testing.T) {
 	}
 	if st, err := os.Lstat(dst); err != nil || st.Mode()&os.ModeSymlink == 0 {
 		t.Errorf("the symlink was replaced or removed (%v, %v)", st.Mode(), err)
+	}
+}
+
+// TestSetupSaysWhereTheHolderIDCameFrom (iss-2610290809526033): a hosted
+// session's home is not kept, so the setup names the holder id the lookup
+// minted, for the person to copy into the environment's settings as
+// ABCD_HOLDER_ID; with the variable set it says the id came from there; set to
+// anything but one id, the lookup refuses as abcd does, and the setup names
+// that as why no author identity was set, never echoing the value and never
+// blaming the forge token. It never writes an id.
+func TestSetupSaysWhereTheHolderIDCameFrom(t *testing.T) {
+	const minted = "h_0123456789abcdef0123456789abcdef"
+	answer := `{"login":"` + tokenLogin + `","id":4242,"noreply":"` + tokenNoReply + `","source":"token","holder_id":"` + minted + `"}`
+	for _, tc := range []struct {
+		name      string
+		env       []string
+		code      int
+		want, not []string
+	}{
+		{"minted here", nil, 0,
+			[]string{"holder id: " + minted + ", kept in this session's home only", "set ABCD_HOLDER_ID=" + minted + " in the environment's settings",
+				"author identity set in the checkout"}, nil},
+		{"from the variable", []string{"ABCD_HOLDER_ID=h_ffffffffffffffffffffffffffffffff"}, 0,
+			[]string{"holder id: taken from ABCD_HOLDER_ID", "author identity set in the checkout"}, []string{minted, "h_ffff"}},
+		{"a malformed variable", []string{"ABCD_HOLDER_ID=octo-person-id"}, 1,
+			[]string{"holder id: ABCD_HOLDER_ID is set but is not a holder id",
+				"NOT IN PLACE: the author identity was not set: ABCD_HOLDER_ID is set but is not a holder id (h_ and 32 lower-case hex characters), so `abcd reserve --holder` refuses"},
+			[]string{"octo-person-id", minted, "could not be taken from the forge token", "author identity set in the checkout"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newSetupCase(t)
+			before := c.localIdentity()
+			out, code := c.script(append(append(setupRemote, "FAKE_HOLDER="+answer), tc.env...), setupScript)
+			if code != tc.code {
+				t.Fatalf("setup exited %d, want %d\n%s", code, tc.code, out)
+			}
+			if tc.code != 0 && c.localIdentity() != before {
+				t.Errorf("setup changed the checkout's identity with the lookup refused:\n%s", c.localIdentity())
+			}
+			for _, w := range tc.want {
+				if !strings.Contains(out, w) {
+					t.Errorf("setup output lacks %q:\n%s", w, out)
+				}
+			}
+			for _, n := range tc.not {
+				if strings.Contains(out, n) {
+					t.Errorf("setup output carries %q:\n%s", n, out)
+				}
+			}
+			if strings.Contains(c.callLog(), "holder-id") {
+				t.Errorf("setup wrote a holder id itself:\n%s", c.callLog())
+			}
+		})
+	}
+	c := newSetupCase(t)
+	out, _ := c.script(append(setupRemote, "FAKE_HOLDER="+holderJSON(tokenLogin, tokenNoReply, "token")), setupScript)
+	if strings.Contains(out, "holder id:") {
+		t.Errorf("an answer carrying no holder id was named one:\n%s", out)
 	}
 }

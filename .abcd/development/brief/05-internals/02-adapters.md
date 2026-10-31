@@ -278,13 +278,35 @@ receipt saying why. The allowlist refusal of adr-2609221009491186 happens when
 the configuration is read, before any call. `abcd lab harvest` turns the pairs
 into agreement per type, with counts and probability bands, and the research
 note filed from it is the evidence a ruling turns a type on with. The first
-candidate is `typesafe/jev-1.13` on OpenRouter's list. The live paid check
-against it is owed to a person (iss-2609291925398978). The drain's judgement
-(`eligibility-residual`) is the one type whose step calls the router: the
-drain's move asks it in each mode. No other type's step calls the router yet,
-so every other judgement stays on the host whatever its route says. The tests
-drive the router, the pairs file, the harvest and the drain's moves in each
-mode with a fake adapter and a temporary home.
+candidate is `typesafe/jev-1.13` on OpenRouter's list. The second is a small
+text model scored by log-probability, behind the same interface: a route
+reaches it when the provider's block names the model in `logprob_models`
+([`03-configuration.md`](03-configuration.md)). It is asked through the same
+`APIConfig.Call`, so the allowlist, the denylist, the key by name and the
+router's window check hold for it unchanged, for a one-token answer with
+`logprobs` and `top_logprobs`: a choose question's options are labelled by
+letter from B, skipping I (at most 24: A and I are words a reply can open
+with), a score is one digit, and yes or no is itself. Each
+option's probability is what the first token's alternatives give its label,
+normalised over the options, and the most probable is the answer. An answer
+whose alternatives name no option, one whose first token (the answer the
+model gave) is none of the labels, whatever its alternatives name, or one with
+no log-probabilities, is no answer: a failed pair in shadow, the host's
+fallback turned on, never a guess. The live paid check against either
+candidate is owed to a person (iss-2609291925398978). Two types' steps
+call the router. The drain's judgement (`eligibility-residual`) is one: the
+drain's move asks it in each mode. Embark's lesson ranking
+(`embark-lesson-ranking`) is the other: one score question per lesson, from 0
+to 4, which the host answers with a scores file, the adapter scoring beside it
+in shadow and in its place turned on
+([`04-surfaces/03-embark.md`](../04-surfaces/03-embark.md)). No other type's
+step calls the router yet, so every other judgement stays on the host whatever
+its route says, and a route set on one of them is a diagnostic saying it runs
+nothing and records no pair. A route naming a type outside the registry is a
+diagnostic too; both callers report them: the drain in its next step, embark
+on stderr and in its result. The tests drive the router, the pairs file, the harvest, the drain's
+moves and the lesson ranking in each mode with a fake adapter and a temporary
+home, and the second candidate against a fake chat endpoint.
 
 ### Reviewer routes — the command-line runner, and RepoPrompt over MCP
 

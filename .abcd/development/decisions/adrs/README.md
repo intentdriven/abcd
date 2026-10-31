@@ -235,4 +235,5 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-2610290238168123](2610290238168123-the-brief-states-the-design-and-why-each.md) | The brief states the design and why; each command's page states what abcd does, once, and is the copy checked against the code (supersedes adr-2609231028044006) | accepted | 2026-10-29 |
 | [adr-2610291037481588](2610291037481588-the-contributors-page-counts-people-and.md) | The contributors page counts people and names none | accepted | 2026-10-29 |
 | [adr-2610300908239458](2610300908239458-ideate-verdicts-are-private-unless-the.md) | Ideate verdicts are private unless the person says public (supersedes adr-2610142116480836) | accepted | 2026-10-30 |
+| [adr-2610301638558260](2610301638558260-a-published-refusal-code-is-never.md) | A published refusal code is never renamed or reused | proposed | 2026-10-30 |
 <!-- /index -->

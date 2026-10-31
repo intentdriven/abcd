@@ -221,13 +221,13 @@ func TestContentionAgreesWithCrowdingOnGeneratedFiles(t *testing.T) {
 		{"iss-3", []string{"docs"}},
 		{"iss-4", []string{"a.go"}},
 	} {
-		why := snap.Contention(c.id, c.fp, w.clock(), "")
+		why := snap.Contention(c.id, c.fp, w.clock(), Self{})
 		_, err := q.reserve(c.id, c.fp...)
 		if (why == "") != (err == nil) {
 			t.Fatalf("%s %v: Contention = %q, but the reservation act = %v", c.id, c.fp, why, err)
 		}
 	}
-	if why := snap.Contention("iss-4", []string{"a.go"}, w.clock(), ""); !strings.HasPrefix(why, `"a.go" is in the footprint of iss-1`) {
+	if why := snap.Contention("iss-4", []string{"a.go"}, w.clock(), Self{}); !strings.HasPrefix(why, `"a.go" is in the footprint of iss-1`) {
 		t.Fatalf("Contention over a.go = %q", why)
 	}
 }

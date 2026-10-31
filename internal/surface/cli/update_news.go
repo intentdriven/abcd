@@ -103,7 +103,7 @@ func runUpdateNewsAnswer(cmd *cobra.Command, cwd, answer string, asJSON bool) er
 			fmt.Fprintf(w, "abcd: recorded yes to setting up %s here; now run: %s\n", a.Release, onlyWaitingCommand)
 			return
 		}
-		fmt.Fprintf(w, "abcd: recorded not now for %s here; the offer is not repeated until the next release, and abcd ahoy still lists what waits.\n", a.Release)
+		fmt.Fprintf(w, "abcd: recorded not now for %s here; the offer is not repeated until the next release, and abcd ahoy still lists the upgrade, with the command that runs it.\n", a.Release)
 	}); rerr != nil {
 		return rerr
 	}

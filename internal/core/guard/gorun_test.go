@@ -30,12 +30,16 @@ func TestGuardReadsGoRunAsTheProgramItsPackageNames(t *testing.T) {
 	for _, line := range []string{
 		`go run ./cmd/abcd library ledger --list`,
 		`go run ./cmd/abcd capture "an agent ran abcd library ledger --flip 3"`,
-		`go run ./cmd/other library ledger --flip 3`,
 		`go test ./... -run TestLedger`,
 		`go build -o bin/abcd ./cmd/abcd`,
 	} {
 		if d, err := r.Check(line); err != nil || d.Verdict == VerdictBlock {
 			t.Errorf("%q: blocked under %q (%v)", line, d.EntryID, err)
 		}
+	}
+	// Another package's program is not read as abcd: the flip it is handed is
+	// refused as the person's act under any program, not by the entry.
+	if d, err := r.Check(`go run ./cmd/other library ledger --flip 3`); err != nil || d.Verdict != VerdictBlock || d.EntryID != ledgerFlipAnyEntryID {
+		t.Errorf("go run ./cmd/other library ledger --flip 3: %q under %q (%v), want a block under %q", d.Verdict, d.EntryID, err, ledgerFlipAnyEntryID)
 	}
 }

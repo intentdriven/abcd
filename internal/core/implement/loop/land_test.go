@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -42,6 +43,14 @@ const noQueueRuleset = `{"bypass_actors":[],"conditions":{"ref_name":{"exclude":
 // refuses to withdraw an armed merge), refuse-list (present, the forge's
 // listing of pull requests fails). It never reaches a network, and it
 // refuses a --json field the real forge client refuses (ghcontract).
+//
+// It answers the merge gate's REST reads as the forge does, a GET only: the
+// pull request's author (author-a, or the account in author), each account's
+// permission (role-<login> holds the answer; author-a writes and every
+// maintainer-<n> maintains, and any other account is the forge's 404), and
+// the reviews (reviews.json; with approved present, an approval of each head
+// the bare origin holds, each by a maintainer of its own, since every lane's
+// pull request is #7 here; else none).
 var stubGH = "#!/bin/sh\n" + ghcontract.Shell() + stubGHBody
 
 // stubGHBody is stubGH after the field check's definition.
@@ -78,9 +87,52 @@ case "$1 $2" in
       *--disable-auto*) if [ -f "$d/refuse-disarm" ]; then echo "stub gh: the forge refused" >&2; exit 1; fi ;;
     esac ;;
   "pr close") : ;;
+  "api "*)
+    if [ $# -ne 2 ]; then echo "stub gh: the merge gate reads with a plain GET" >&2; exit 1; fi
+    case "$2" in
+      "repos/{owner}/{repo}/pulls/7")
+        author=author-a; [ -f "$d/author" ] && author="$(cat "$d/author")"
+        printf '{"user":{"login":"%s"}}\n' "$author" ;;
+      "repos/{owner}/{repo}/pulls/7/reviews?per_page=100")
+        if [ -f "$d/reviews.json" ]; then cat "$d/reviews.json"
+        elif [ -f "$d/approved" ]; then
+          git ls-remote origin 'refs/heads/*' | awk 'BEGIN { printf "[" } { printf "%s{\"user\":{\"login\":\"maintainer-%d\"},\"state\":\"APPROVED\",\"commit_id\":\"%s\"}", (NR > 1 ? "," : ""), NR, $1 } END { print "]" }'
+        else echo '[]'; fi ;;
+      "repos/{owner}/{repo}/collaborators/"*/permission)
+        login="${2#repos/\{owner\}/\{repo\}/collaborators/}"; login="${login%/permission}"
+        if [ -f "$d/role-$login" ]; then cat "$d/role-$login"
+        else case "$login" in
+          author-a) echo '{"permission":"write","role_name":"write"}' ;;
+          maintainer-*) echo '{"permission":"write","role_name":"maintain"}' ;;
+          *) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
+        esac; fi ;;
+      *) echo "stub gh: unexpected call: $*" >&2; exit 1 ;;
+    esac ;;
   *) echo "stub gh: unexpected call: $*" >&2; exit 1 ;;
 esac
 `
+
+// installStubGH writes the stub forge client into gh. Where a ruleset given
+// asks for an approving review, the forge holds one of the head by a
+// maintainer other than the author (approved), as a person gave it.
+func installStubGH(t *testing.T, gh string, rulesets ...string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(gh, "gh"), []byte(stubGH), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range rulesets {
+		if approvingReview.MatchString(r) {
+			if err := os.WriteFile(filepath.Join(gh, "approved"), nil, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			return
+		}
+	}
+}
+
+// approvingReview is a pull-request rule asking for one approving review or
+// more.
+var approvingReview = regexp.MustCompile(`"required_approving_review_count":\s*[1-9]`)
 
 // landFixture is a repository whose default branch is on a local bare
 // remote, with a stub forge client first on PATH, an open capture the lane
@@ -135,9 +187,11 @@ func newLandFixtureWith(t *testing.T, files map[string]string) *landFixture {
 	repo.Git("fetch", "-q", "origin")
 
 	gh := t.TempDir()
-	if err := os.WriteFile(filepath.Join(gh, "gh"), []byte(stubGH), 0o755); err != nil {
-		t.Fatal(err)
+	var rulesets []string
+	for _, body := range files {
+		rulesets = append(rulesets, body)
 	}
+	installStubGH(t, gh, rulesets...)
 	t.Setenv("PATH", gh+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	// The fixture's run holds no reservation: a test that wants one takes it
@@ -430,17 +484,26 @@ func TestAPullRequestBodyThatArrivesDirtyIsReReadAndStripped(t *testing.T) {
 	}
 }
 
-// TestWithoutAMergeQueueThePullRequestIsLeftOpen is decision 3: where the
-// ruleset gates no merge through a queue, the pull request is left open and no
-// merge is armed.
-func TestWithoutAMergeQueueThePullRequestIsLeftOpen(t *testing.T) {
+// TestWithoutAMergeQueueTheMergeIsAutoMerge: where the ruleset gates no merge
+// through a queue (decision 3 as the merge gate amends it), a pull request no
+// approval counts for is left open and nothing is armed, and an approved one
+// is armed as the forge's auto-merge (a merge commit).
+func TestWithoutAMergeQueueTheMergeIsAutoMerge(t *testing.T) {
 	f := newLandFixture(t, noQueueRuleset)
 	l := f.landedToArmed(t)
 	if strings.Contains(f.ghLog(t), "pr merge") {
-		t.Fatalf("no merge is armed without a merge queue:\n%s", f.ghLog(t))
+		t.Fatalf("no merge is armed with no approval of the head:\n%s", f.ghLog(t))
 	}
 	if l.Landing == nil || !strings.Contains(l.Landing.Merge, "left open") {
 		t.Fatalf("the state says the pull request is left open: %+v", l.Landing)
+	}
+
+	g := newLandFixture(t, noQueueRuleset)
+	g.approve(t)
+	l = g.landedToArmed(t)
+	if !strings.Contains(g.ghLog(t), "pr merge 7 --auto --merge --match-head-commit="+l.Landing.Pushed) || !l.Landing.Armed ||
+		!strings.Contains(l.Landing.Merge, "no merge queue gates") {
+		t.Fatalf("an approved head with no queue is armed as auto-merge: %+v\n%s", l.Landing, g.ghLog(t))
 	}
 }
 

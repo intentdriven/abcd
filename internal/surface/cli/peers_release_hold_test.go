@@ -72,13 +72,13 @@ func TestPeersShowsTheCuttingCopysOwnReleaseAsItsCut(t *testing.T) {
 	if !is(h.Own, true) || !is(h.Unsighted, false) || h.Text != want || h.Copy != "this" {
 		t.Fatalf("the cutting copy's row = %+v; want own, not unsighted, and %q", h, want)
 	}
-	if !strings.Contains(text, "\n  "+want+"\n") || strings.Contains(text, "being cut by @octo: merges are held") {
+	if !strings.Contains(text, "\n  "+want+"\n") || strings.Contains(text, "being cut by "+heldBy(t, p)+": merges are held") {
 		t.Fatalf("the cutting copy's listing:\n%s", text)
 	}
 
 	r := w.clone(t, "r", quinnMail)
 	h, _ = peersHolds(t, r)
-	if !is(h.Own, false) || !is(h.Unsighted, false) || h.Text != "release v0.16.0 being cut by @octo: merges are held; the hold lapses at "+h.EffectiveExpiry+" unless the cut renews it" {
+	if !is(h.Own, false) || !is(h.Unsighted, false) || h.Text != "release v0.16.0 being cut by "+heldBy(t, p)+" (claimed): merges are held; the hold lapses at "+h.EffectiveExpiry+" unless the cut renews it" {
 		t.Fatalf("another person's row = %+v; want not own and the hold line", h)
 	}
 }

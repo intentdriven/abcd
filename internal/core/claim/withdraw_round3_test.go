@@ -10,11 +10,11 @@ import (
 	"github.com/intentdriven/abcd/internal/core/lease"
 )
 
-// forgedOver pushes, over id's tip, a reservation commit naming octo as its
+// rewrittenOver pushes, over id's tip, a reservation commit naming octo as its
 // holder and recording #11 withdrawn at headA, then a tombstone over it
 // carrying the same: what any writer who can push to the branch can write.
 // It returns the two commits.
-func (w *world) forgedOver(id string) (record, tomb string) {
+func (w *world) rewrittenOver(id string) (record, tomb string) {
 	w.t.Helper()
 	wd := []Withdrawal{{Number: 11, ID: "PR_eleven", Form: FormAutoSquash, Head: headA, By: "octo", State: WithdrawnPending}}
 	rec := message{Record: id, Holder: "octo", Copy: "9f2c41d07be35a6c80e1f4b2a7d39c55", ClaimedAt: t0, ExpiresAt: t0.Add(time.Hour), Withdrawn: wd}
@@ -49,7 +49,7 @@ func releasedWithNothingArmed(t *testing.T) (*world, *fakeForge, *participant) {
 // octo's record, and are re-armed.
 func TestAWithdrawalRecordedByACommitAnotherLoginPushedIsNeverReArmed(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
-	record, tomb := w.forgedOver("rel-v0.16.0")
+	record, tomb := w.rewrittenOver("rel-v0.16.0")
 	f.pusherOf[record], f.pusherOf[tomb] = "mal", "mal"
 	res, err := octo.reserve("iss-8", "o.go")
 	if err != nil {
@@ -59,7 +59,7 @@ func TestAWithdrawalRecordedByACommitAnotherLoginPushedIsNeverReArmed(t *testing
 		t.Fatalf("mutations %v, #11 %+v; want nothing re-armed for a record mal pushed", f.mutations(), f.pr(11))
 	}
 	if len(res.Settles) != 1 || !slices.Equal(res.Settles[0].NotRead, []PushCount{{Pusher: "mal", Commits: 2}}) || res.Settles[0].Commit != "" ||
-		!strings.Contains(strings.Join(res.Settles[0].Notes(), "\n"), "2 commits above octo's newest push to rel-v0.16.0's branch, pushed by mal (2), are not read") {
+		!strings.Contains(strings.Join(res.Settles[0].Notes(), "\n"), "2 commits above "+octo.holderID()+"'s newest push to rel-v0.16.0's branch, pushed by mal (2), are not read") {
 		t.Fatalf("settles = %+v; want mal's two commits counted and nothing pushed", res.Settles)
 	}
 	// The genuine case: octo pushed them (the verdict kept for the tip is
@@ -82,7 +82,7 @@ func TestAWithdrawalRecordedByACommitAnotherLoginPushedIsNeverReArmed(t *testing
 // record is whole.
 func TestARecordOfPushesThatIsPartialOrBehindDefersTheReArm(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
-	w.forgedOver("rel-v0.16.0") // octo's own pushes, as the record reads by default
+	w.rewrittenOver("rel-v0.16.0") // octo's own pushes, as the record reads by default
 	tip := w.remoteTip("rel-v0.16.0")
 	for i, c := range []struct {
 		name string
@@ -103,7 +103,7 @@ func TestARecordOfPushesThatIsPartialOrBehindDefersTheReArm(t *testing.T) {
 			t.Fatalf("%s: mutations %v, tip moved %v; want nothing done", name, f.mutations(), w.remoteTip("rel-v0.16.0") != tip)
 		}
 		if i == 0 && (len(res.Settles) != 1 || res.Settles[0].Unplaced == "" ||
-			!strings.Contains(strings.Join(res.Settles[0].Notes(), "\n"), "abcd acts on none of octo's withdrawals on rel-v0.16.0: the forge's record of who pushed")) ||
+			!strings.Contains(strings.Join(res.Settles[0].Notes(), "\n"), "abcd acts on none of "+octo.holderID()+"'s withdrawals on rel-v0.16.0: the forge's record of who pushed")) ||
 			i > 0 && len(res.Settles) != 0 {
 			t.Fatalf("%s: settles = %+v; want why named once for the tip", name, res.Settles)
 		}
@@ -127,7 +127,7 @@ func TestARecordOfPushesThatIsPartialOrBehindDefersTheReArm(t *testing.T) {
 // is re-armed, and why is named once for the tip.
 func TestAWithdrawalAnAppPushedIsLeftForItsPersonAndNamedOncePerTip(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
-	record, _ := w.forgedOver("rel-v0.16.0")
+	record, _ := w.rewrittenOver("rel-v0.16.0")
 	f.pusherOf[record] = "app"
 	res, err := octo.reserve("iss-8", "o.go")
 	if err != nil {
@@ -155,7 +155,7 @@ func TestAWithdrawalAnAppPushedIsLeftForItsPersonAndNamedOncePerTip(t *testing.T
 // and not on every act after.
 func TestAnUnrecordedWithdrawalIsNamedOncePerTip(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
-	record, tomb := w.forgedOver("rel-v0.16.0")
+	record, tomb := w.rewrittenOver("rel-v0.16.0")
 	f.pusherOf[record], f.pusherOf[tomb] = "mal", "mal"
 	for i, want := range []int{1, 0, 0} {
 		res, err := octo.reserve("iss-8", "o.go")
@@ -448,8 +448,9 @@ func TestALapsedReleaseStillBeingCutBlocksASecondRelease(t *testing.T) {
 	b := w.clone("99+quinn@users.noreply.github.com", "")
 	f.reset()
 	_, err := b.do(Request{Record: "rel-v0.17.0"})
-	if !errors.Is(err, ErrBackOff) || !strings.Contains(err.Error(), "rel-v0.16.0 is still being cut by octo") ||
-		!strings.Contains(err.Error(), "abcd reserve rel-v0.16.0 --release") || len(f.mutations()) != 0 {
+	if !errors.Is(err, ErrBackOff) || !strings.Contains(err.Error(), "rel-v0.16.0 is still being cut by "+a.holderID()) ||
+		!strings.Contains(err.Error(), "abcd reserve rel-v0.16.0 --release") || len(f.mutations()) != 0 ||
+		!strings.Contains(err.Error(), "at the next act of a copy of "+a.holderID()+" ("+SenderClaimed+") while the cut's tip") || strings.Contains(err.Error(), ")'s") {
 		t.Fatalf("B's reserve = %v, mutations %v; want a back-off naming how rel-v0.16.0 ends", err, f.mutations())
 	}
 	if f.pr(11).method != "SQUASH" {
@@ -481,7 +482,7 @@ func TestPeersNeverCallsAnUnrecordedWithdrawalDue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := snap.ReleaseWithdrawals(octo.dir, "octo", w.clock()); len(got) != 0 {
+	if got := snap.ReleaseWithdrawals(octo.dir, octo.self(), w.clock()); len(got) != 0 {
 		t.Fatalf("listing = %+v; want nothing of octo's on a branch octo never pushed to", got)
 	}
 }

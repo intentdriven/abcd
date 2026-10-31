@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -197,6 +198,35 @@ func TestLaunchArchiveVerifyRefusesADrift(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(outDir); len(entries) != 0 {
 		t.Errorf("a refused archive must not be left in --out, found %v", entries)
+	}
+}
+
+// TestLaunchArchiveVerifyJudgesNoArmedMerge: --verify reproduces a committed
+// pin and cuts nothing, so it does not judge the merges armed on the forge;
+// the release workflow runs it on the pushed commit, where no listing of the
+// merges is authorised, and a refusal there would leave the release untagged.
+// Without --verify the render is a cut's own and still refuses when the
+// merges cannot be listed.
+func TestLaunchArchiveVerifyJudgesNoArmedMerge(t *testing.T) {
+	r := shipArchiveRepo(t)
+	payload := composedPayload(t, t.TempDir(), "v0.4.1", "itd-73")
+	if out, err := shipIn(t, r, "launch", "ship", "--changelog-json", payload); exitCodeOf(err) != 0 {
+		t.Fatalf("ship: %v\n%s", err, out)
+	}
+	r.Commit("the release cut")
+	prev := launch.ReadArmedMerges
+	launch.ReadArmedMerges = func(string) (launch.ArmedMerges, error) {
+		return launch.ArmedMerges{}, errors.New("gh: no token in this environment")
+	}
+	t.Cleanup(func() { launch.ReadArmedMerges = prev })
+
+	out, err := shipIn(t, r, "launch", "archive", "--out", t.TempDir(), "--verify")
+	if code := exitCodeOf(err); code != 0 {
+		t.Fatalf("--verify exit = %d, want 0\n%s\n%v", code, out, err)
+	}
+	out, err = shipIn(t, r, "launch", "archive", "--out", t.TempDir())
+	if code := exitCodeOf(err); code != 2 || err == nil || !strings.Contains(err.Error(), "merge-hold") {
+		t.Fatalf("without --verify: exit = %d, err = %v; want 2 naming merge-hold\n%s", code, err, out)
 	}
 }
 

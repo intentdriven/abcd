@@ -87,17 +87,18 @@ func TestOneClonesHandBackIsPassedOverByAnotherClonesDrain(t *testing.T) {
 	tomb := refOf(t, bare, secondIssue)
 
 	q := otherCopy(t, bare, quinnEmail)
-	res, err := Drain(q, Options{}, DrainOptions{})
+	var res DrainResult
+	asHomeOf(t, q, func() { res, err = Drain(q, Options{}, DrainOptions{}) })
 	if err != nil {
 		t.Fatal(err)
 	}
 	if p := passedFor(t, res, secondIssue); p.Check != CheckReservation ||
-		!strings.Contains(p.Reason, secondIssue+" was handed back by octo as trust-rule") || !strings.Contains(p.Reason, "no judgement") {
+		!strings.Contains(p.Reason, secondIssue+" was handed back by "+heldBy(t, patEmail)+" as trust-rule") || !strings.Contains(p.Reason, "no judgement") {
 		t.Fatalf("Quinn's drain passes the hand-back over, naming it: %+v", p)
 	}
 	// Pat's drain went on to reserve the next issue for its own judgement, so
 	// Quinn's passes that over too, and has nothing to ask.
-	if p := passedFor(t, res, eligibleIssue); !strings.Contains(p.Reason, eligibleIssue+" is reserved by octo") {
+	if p := passedFor(t, res, eligibleIssue); !strings.Contains(p.Reason, eligibleIssue+" is reserved by "+heldBy(t, patEmail)) {
 		t.Fatalf("Quinn's drain passes over the issue Pat holds: %+v", p)
 	}
 	if res.Judging != nil {
@@ -212,21 +213,21 @@ func recordRel(t *testing.T, root, id string) string {
 func TestAPersonsOwnBuildOverAHandBackGoesAheadWithANote(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
 	q := otherCopy(t, bare, quinnEmail)
-	if _, err := claim.Reserve(q, claim.Request{Record: secondIssue, Footprint: []string{"commands/drain.md"}, Drain: true}, claim.Options{}); err != nil {
+	if _, err := claim.Reserve(q, claim.Request{Record: secondIssue, Footprint: []string{"commands/drain.md"}, Drain: true}, as(t, q, claim.Options{})); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := claim.Reserve(q, claim.Request{Record: secondIssue, Release: true, HandBack: claim.HandBackSecondPackage}, claim.Options{}); err != nil {
+	if _, err := claim.Reserve(q, claim.Request{Record: secondIssue, Release: true, HandBack: claim.HandBackSecondPackage}, as(t, q, claim.Options{})); err != nil {
 		t.Fatal(err)
 	}
 	res, err := Start(repo.Root(), secondIssue, Options{})
 	if err != nil {
 		t.Fatalf("Pat's own build over Quinn's hand-back: %v", err)
 	}
-	want := secondIssue + " was handed back by quinn as second-package at "
+	want := secondIssue + " was handed back by " + heldBy(t, quinnEmail) + " as second-package at "
 	if !strings.Contains(res.Reservation, want) || !strings.Contains(recordNote(t, repo, res.RunID, StageReservation), want) {
 		t.Fatalf("the start names the hand-back: %q", res.Reservation)
 	}
-	if r := originReservation(t, bare, claim.RefPrefix+secondIssue); r.released || r.holder != "octo" {
+	if r := originReservation(t, bare, claim.RefPrefix+secondIssue); r.released || r.holder != heldBy(t, patEmail) {
 		t.Fatalf("Pat holds the issue: %+v", r)
 	}
 }

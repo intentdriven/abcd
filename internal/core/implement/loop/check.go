@@ -374,10 +374,11 @@ type peerSnapshot struct {
 	// reservedErr is why the reservations could not be read; the check then
 	// fails closed on every intent, as it does on a peer it cannot read.
 	reservedErr string
-	// reader is the username the person resolves to, read only when a
-	// reservation another copy holds is in the view; "" when it cannot be
-	// told, and every other copy's reservation is then named by its holder.
-	reader string
+	// reader is whose holds are the person's own (claim.ReaderSelf), read
+	// only when a reservation another copy holds is in the view; the zero
+	// Self when it cannot be told, and every other copy's reservation is
+	// then named by its holder.
+	reader claim.Self
 	// now is when the reservations are judged.
 	now time.Time
 	// plan is the drain plan an issue's check reads (Options.plan); nil
@@ -434,7 +435,7 @@ func (snap *peerSnapshot) readReservations(repoRoot string) error {
 	snap.reserved = &view
 	for _, r := range view.Reservations {
 		if r.State == claim.StateLive && r.Copy != claim.CopyThis {
-			snap.reader = claim.ReaderHolder(repoRoot, claim.Options{})
+			snap.reader = claim.ReaderSelf(repoRoot, claim.Options{})
 			break
 		}
 	}
@@ -456,7 +457,7 @@ func (snap *peerSnapshot) reservationHolder(id string) (holder string, yours boo
 		return "", false
 	}
 	r, ok := snap.reserved.Lookup(id)
-	if ok && r.State == claim.StateLive && r.Copy != claim.CopyThis && claim.SameHolder(r.Holder, snap.reader) {
+	if ok && r.State == claim.StateLive && r.Copy != claim.CopyThis && snap.reader.Owns(r.Holder) {
 		if snap.takeOver {
 			return "", false
 		}

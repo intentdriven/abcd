@@ -1,10 +1,16 @@
 package landing
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // The landing's configuration keys, in .abcd/config.json and
@@ -187,17 +193,6 @@ func checkMode(m string) error {
 	return nil
 }
 
-// ReadFacilitator resolves facilitator.mode for the working directory cwd,
-// as the layered configuration resolves it, with the notes RootsFor wrote on the way (a
-// refused home among them) for the caller to print. The error is the reader's
-// raw text: a front door masks it before printing it, since it can quote a key
-// a configuration file wrote.
-func ReadFacilitator(cwd string) (Facilitator, []string, error) {
-	r, notes := layered.RootsFor(cwd)
-	f, err := readMode(r)
-	return f, notes, err
-}
-
 // readMode resolves facilitator.mode through the layered configuration
 // reader, which claims the facilitator namespace with its one key mode, so a
 // misspelt key is refused naming its file.
@@ -211,7 +206,13 @@ func ReadFacilitator(cwd string) (Facilitator, []string, error) {
 // the bundled default human does. A home RootsFor refused hides the machine
 // layer, and with it any machine-wide human, so the mode reads as human.
 func readMode(r layered.Roots) (Facilitator, error) {
-	s, err := layered.Load(layered.Config, r)
+	return readModeContext(context.Background(), r)
+}
+
+// readModeContext is readMode with the git questions of a repository layer
+// read at a commit bounded by ctx (layered.LoadContext).
+func readModeContext(ctx context.Context, r layered.Roots) (Facilitator, error) {
+	s, err := layered.LoadContext(ctx, layered.Config, r)
 	if err != nil {
 		return Facilitator{}, err
 	}
@@ -234,4 +235,221 @@ func readMode(r layered.Roots) (Facilitator, error) {
 		return Facilitator{Key: KeyFacilitatorMode, Mode: ModeAuto, Layer: vals[0].layer, Origin: vals[0].origin}, nil
 	}
 	return Facilitator{Key: KeyFacilitatorMode, Mode: ModeHuman, Layer: layered.Bundled.String(), Origin: layered.Bundled.String()}, nil
+}
+
+// readFacilitatorAt resolves facilitator.mode as the merge gate reads it: the
+// repository layer is .abcd/config.json as the commit tip holds it (the
+// default branch's tip, named name in every origin), read from the object
+// store of the repository at repoRoot, beside r's machine layer, never the
+// checkout of the branch being landed (dcn-2610230058333177). So a branch that
+// commits auto, or deletes the default branch's human, does not decide the
+// gate for itself. r's Repo is replaced; its Home and HomeRefused are kept.
+// The error is the reader's raw text, for the caller to mask.
+func readFacilitatorAt(r layered.Roots, repoRoot, tip, name string) (Facilitator, error) {
+	r.Repo, r.RepoAt, r.RepoAtName = repoRoot, tip, name
+	return readMode(r)
+}
+
+// ReadDefaultFacilitator resolves facilitator.mode for the repository holding
+// cwd as the merge gate does (readFacilitatorAt), at the tip of the default
+// branch git tracks for it (gitutil.DefaultRef), with the machine layer of the
+// caller's home (layered.HomeRoots, as RootsFor resolves it). The board reads
+// the mode through it; the shell guard reads ReadFetchedFacilitator. A repository with no default branch to read is
+// an error (ErrNoDefaultBranch): a caller that cannot read the mode takes it
+// as human.
+func ReadDefaultFacilitator(cwd string) (Facilitator, error) {
+	return readDefaultFacilitatorContext(context.Background(), cwd)
+}
+
+// FetchedReadTimeout bounds ReadFetchedFacilitator as a whole: the shell
+// guard asks it inside a host's hook, which may give up on a slow hook and
+// run the command anyway, so a slow origin must end the read first, as human.
+const FetchedReadTimeout = 15 * time.Second
+
+// ReadFetchedFacilitator is ReadDefaultFacilitator for a caller that judges
+// an act by the mode and so must not take it from refs an agent can move
+// (`git remote set-head`, `git update-ref` on a remote-tracking ref): the
+// shell guard, deciding a merge command. It asks Remote which branch is its
+// default and at which commit (git ls-remote --symref), fetches that branch,
+// and reads the mode at the commit Remote named, from the local object store,
+// all within FetchedReadTimeout. A remote that cannot be asked, a fetch that
+// fails or runs out of time, and a tip the fetch did not bring are errors,
+// which the caller counts as human: it never falls back to the checkout's
+// last fetch. So is a checkout where the forge client would act on another
+// remote than Remote (one named upstream or github, which gh prefers, or one
+// gh repo set-default chose), whose mode this read would not be. The fetch
+// writes what any fetch of the branch writes (its remote-tracking ref), never
+// origin/HEAD and never FETCH_HEAD, and starts no maintenance. The network
+// calls run as Net's do, with the person's own git configuration and
+// credentials and never a prompt, so a private repository reads as it fetches.
+//
+// It trusts Remote's URL as the checkout's configuration names it: an agent
+// that rewrites the URL is out of its reach, as the guard's limit says.
+func ReadFetchedFacilitator(cwd string) (Facilitator, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), FetchedReadTimeout)
+	defer cancel()
+	return readFetchedFacilitator(ctx, cwd)
+}
+
+func readFetchedFacilitator(ctx context.Context, cwd string) (Facilitator, error) {
+	r, _ := layered.HomeRoots()
+	fresh := func(what string, err error) error {
+		why := ""
+		if err != nil {
+			why = ": " + fsutil.RedactHome(err.Error())
+		}
+		return fmt.Errorf("%s, so the default branch's %s cannot be read as just fetched%s", what, KeyFacilitatorMode, why)
+	}
+	root, err := gitutil.ToplevelContext(ctx, cwd)
+	if err != nil {
+		return Facilitator{}, fmt.Errorf("%s is not inside a git checkout, so the default branch's %s cannot be read", fsutil.RedactHome(cwd), KeyFacilitatorMode)
+	}
+	if other, err := forgeRemote(ctx, root); err != nil {
+		return Facilitator{}, fresh("this checkout's remotes cannot be read", err)
+	} else if other != "" {
+		return Facilitator{}, fresh("the forge client would act on the remote "+other+" here, not on "+Remote, nil)
+	}
+	out, err := gitutil.NetContext(ctx, root, "ls-remote", "--symref", Remote, "HEAD")
+	if err != nil {
+		return Facilitator{}, fresh(Remote+" could not say which branch is its default", err)
+	}
+	def, tip := "", ""
+	for _, line := range strings.Split(out, "\n") {
+		if rest, ok := strings.CutPrefix(line, "ref: "); ok {
+			if target, name, ok := strings.Cut(rest, "\t"); ok && name == "HEAD" {
+				def, _ = strings.CutPrefix(target, "refs/heads/")
+			}
+		} else if sha, name, ok := strings.Cut(line, "\t"); ok && name == "HEAD" {
+			tip = sha
+		}
+	}
+	if def == "" || def == "HEAD" || !gitutil.IsFullSHA(tip) {
+		return Facilitator{}, fresh(Remote+" did not name a default branch and its tip", nil)
+	}
+	if _, err := gitutil.RunLimitedContext(ctx, root, 4096, "check-ref-format", "refs/heads/"+def); err != nil {
+		return Facilitator{}, fresh(Remote+"'s HEAD names a branch whose name is not a valid ref", nil)
+	}
+	if _, err := gitutil.NetContext(ctx, root, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--no-auto-maintenance", Remote, "refs/heads/"+def); err != nil {
+		return Facilitator{}, fresh("fetching "+Remote+"'s "+def+" failed", err)
+	}
+	if _, err := gitutil.RunLimitedContext(ctx, root, 4096, "cat-file", "-e", tip+"^{commit}"); err != nil {
+		return Facilitator{}, fresh(Remote+"'s "+def+" moved while it was fetched", nil)
+	}
+	return readFacilitatorAt(r, root, tip, Remote+"/"+def)
+}
+
+// forgeRemote names the remote the forge client would act on in the checkout
+// at root when that is not Remote, "" when it is Remote: gh takes a remote
+// gh repo set-default marked (remote.<name>.gh-resolved) first, then one
+// named upstream, then github, then origin. A set-default on Remote that
+// names another repository rather than "base" counts as another.
+func forgeRemote(ctx context.Context, root string) (string, error) {
+	out, err := gitutil.RunLimitedContext(ctx, root, 64<<10, "config", "--get-regexp", `^remote\..*\.(url|gh-resolved)$`)
+	if err != nil && strings.TrimSpace(out) != "" {
+		return "", err
+	}
+	urls := map[string]bool{}
+	for _, line := range strings.Split(out, "\n") {
+		key, _, _ := strings.Cut(line, " ")
+		name, ok := strings.CutPrefix(key, "remote.")
+		if !ok {
+			continue
+		}
+		if n, ok := strings.CutSuffix(name, ".gh-resolved"); ok {
+			// gh repo set-default marks the remote it chose "base", or, on
+			// a remote it does not act on as itself (a fork's parent),
+			// names the repository it acts on instead.
+			_, val, _ := strings.Cut(line, " ")
+			if n != Remote || strings.TrimSpace(val) != "base" {
+				return n + " (gh repo set-default)", nil
+			}
+		}
+		if n, ok := strings.CutSuffix(name, ".url"); ok {
+			urls[n] = true
+		}
+	}
+	for _, n := range []string{"upstream", "github"} {
+		if urls[n] {
+			return n, nil
+		}
+	}
+	return "", nil
+}
+
+// ErrNoDefaultBranch is ReadDefaultFacilitator's answer for a repository with
+// no default branch to read facilitator.mode at: one with no commit yet, say.
+// It is not a refusal of anything a file declares, so a caller that only
+// shows the mode (the status line) may stay quiet over it.
+var ErrNoDefaultBranch = errors.New("the repository has no default branch to read " + KeyFacilitatorMode + " at")
+
+// readDefaultFacilitatorContext is ReadDefaultFacilitator with every git
+// question bounded by ctx: a git still running when ctx ends is killed and the
+// read fails with ctx's error wrapped, never with ErrNoDefaultBranch. It asks
+// the network nothing: the default branch is the one last fetched, and its
+// configuration is read from the local object store. The status line reads
+// the mode through it, inside its own deadline.
+func readDefaultFacilitatorContext(ctx context.Context, cwd string) (Facilitator, error) {
+	r, _ := layered.HomeRoots()
+	root, err := gitutil.ToplevelContext(ctx, cwd)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return Facilitator{}, deadlineErr(ctxErr)
+	}
+	if errors.Is(err, gitutil.ErrGitTimedOut) {
+		return Facilitator{}, deadlineErr(err)
+	}
+	if err != nil {
+		return Facilitator{}, fmt.Errorf("%s is not inside a git checkout, so the default branch's %s cannot be read", fsutil.RedactHome(cwd), KeyFacilitatorMode)
+	}
+	ref := gitutil.DefaultRefContext(ctx, root)
+	var tip string
+	if ref != "" {
+		tip, err = gitutil.RunLimitedContext(ctx, root, 4096, "rev-parse", "--verify", "--quiet", ref+"^{commit}", "--")
+		tip = strings.TrimSpace(tip)
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return Facilitator{}, deadlineErr(ctxErr)
+	}
+	if ref == "" || err != nil || !gitutil.IsFullSHA(tip) {
+		return Facilitator{}, ErrNoDefaultBranch
+	}
+	name := strings.TrimPrefix(strings.TrimPrefix(ref, "refs/remotes/"), "refs/heads/")
+	r.Repo, r.RepoAt, r.RepoAtName = root, tip, name
+	return readModeContext(ctx, r)
+}
+
+// deadlineErr is the read's error when git did not answer before ctx ended.
+func deadlineErr(err error) error {
+	return fmt.Errorf("git did not answer in time to read the default branch's %s: %w", KeyFacilitatorMode, err)
+}
+
+// AutonomousMerging is the status line's merging element, read: it reports
+// whether the repository's facilitator.mode is auto, read through the merge
+// gate's own resolver (readDefaultFacilitatorContext): the default branch's
+// committed .abcd/config.json and the machine layer, never the working tree's
+// copy, so an auto written only in the working tree changes neither the row
+// nor the gate. The row reads the default branch as last fetched while the
+// gate fetches first, so after the mode changes on origin the two can differ
+// until the next fetch. Its git questions are bounded by ctx, the row's git
+// share, and ask the network nothing. A repository with no default branch yet says nothing and notes
+// nothing: there is nothing to merge into. Any other failure drops the element
+// and returns the note saying why, masked, for the front door's stderr.
+//
+// It lives here rather than in core/statusline because statusline cannot
+// import this package: landing reaches ahoy (through embargo, capture and
+// site), and ahoy reads statusline, so the import would close a cycle. The
+// front door hands it to statusline as statusline.MergingMode.
+func AutonomousMerging(ctx context.Context, root string) (bool, string) {
+	f, err := readDefaultFacilitatorContext(ctx, root)
+	switch {
+	case errors.Is(err, ErrNoDefaultBranch):
+		return false, ""
+	case err != nil:
+		msg := fsutil.RedactHome(err.Error())
+		if root != "" {
+			msg = strings.ReplaceAll(msg, root, ".")
+		}
+		return false, "statusline: DROPPED the merging element — " + KeyFacilitatorMode +
+			" could not be read (" + termsafe.CleanProseLine(msg, 300) + ")"
+	}
+	return f.Mode == ModeAuto, ""
 }
