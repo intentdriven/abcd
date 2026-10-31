@@ -1,0 +1,6 @@
+---
+id: dcn-2610310058421456
+slug: runtoeof-treats-a-failure-wait-reports
+date: 2026-10-31
+---
+2026-10-31 — RunToEOF treats a failure Wait reports once its context has ended as cut by the context (iss-2610310054494441), rather than wrapping the command's Cancel to record whether exec stopped it. The Cancel wrapper is exact but mutates the caller's Cancel and adds a second path for a command built without one; the ctx.Err() check is one condition. Its cost is a microsecond window: a command that failed on its own just as its context ended reads as stopped, and its exit text is still in the message. Every caller that reads an exit code already checks ctx.Err() first, so none loses an answer.
