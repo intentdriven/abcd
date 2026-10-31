@@ -101,12 +101,14 @@ hand. The git setting that opts a clone into the refresh keeps its name,
 
 ## Find the agents' commands
 
-The `/abcd:` menu lists the commands people run: `abcd`, `ahoy`, `build`,
-`capture`, `dashboard`, `decide`, `disembark`, `embark`, `ideate`, `intent`,
-`lab`, `launch`, `library`, `reading`, and `update`. The commands only agents
-run keep their names and their pages, and the host leaves them off the menu:
-`banlist`, `docs`, `drain`, `guard`, `history`, `identity`, `implement`,
-`inbox`, `lint`, `mode`, `peers`, `reflect`, `report`, `scribe`, and `site`.
+In v0.14.0 the `/abcd:` menu lists the commands people run: `abcd`, `ahoy`,
+`build`, `capture`, `dashboard`, `decide`, `disembark`, `embark`, `ideate`,
+`intent`, `lab`, `launch`, `library`, `reading`, and `update`. The commands
+only agents run keep their names and their pages, and the host leaves them off
+the menu: `banlist`, `docs`, `drain`, `guard`, `history`, `identity`,
+`implement`, `inbox`, `lint`, `mode`, `peers`, `reflect`, `report`, `scribe`,
+and `site`. Later releases add commands to both lists; `abcd --help` and
+`abcd --help --agent`, below, list the current set.
 
 - In the agent session: Typing one of the agents' commands in full gets the
   host's refusal. Ask your agent in plain words instead, and it runs the

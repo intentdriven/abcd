@@ -449,7 +449,7 @@ reason on stderr, as it refuses build next.
 ## The version
 
 The board's last line is the installed version, as the version flag names it
-(`abcd v0.13.4`), in both views and both forms, a list item in the markdown
+(`abcd vX.Y.Z`), in both views and both forms, a list item in the markdown
 form so the fence rule holds for it too; the JSON form carries it as `version`
 (itd-2610090831227812, spc-2610100613109045 decision 4). It is read from the
 same `core.VersionInfo` the flag reports, with no network and no subprocess

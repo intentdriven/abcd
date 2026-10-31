@@ -4,9 +4,11 @@ A destructive shell command typed by accident costs a person hours: a force
 push that erases a colleague's commits, an `rm -rf` with an unlucky glob, a
 `git clean` over uncommitted work. `/abcd:guard` catches those before they run
 and says what to run instead. It writes nothing but the record of a branch an
-agent creates and, when it admits abcd's own question where the badge shows,
-the waiting-on mode and the marker saying a question is open (both below), and
-it costs nothing to have on: an unrecognised command passes through untouched.
+agent creates, the one-shot allow a person records in their home folder with
+the guard's allow verb and, when it admits abcd's own question where the badge
+shows, the waiting-on mode and the marker saying a question is open (all below),
+and it costs nothing to have on: an unrecognised command passes through
+untouched.
 
 Two things use it. A person or a script asks it about one command line. A
 compatible agent harness asks it about every command the agent is about to run,

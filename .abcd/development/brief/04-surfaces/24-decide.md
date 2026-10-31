@@ -72,7 +72,9 @@ The writer resolves the checkout root as the ADR form does, and refuses, exit
 **2** with nothing written, outside a checkout, in a repository without the
 shared tier `.abcd/work/` (naming ahoy's install, which lays it; the writer
 creates `decisions/` inside an existing tier and never the tier itself), and for
-a text with nothing slug-able in it.
+a text with nothing slug-able in it. Both writes, a decision and an ADR, back off
+with exit **3** and nothing written in a main checkout two or more live sessions
+started in, and the refusal names the worktree store (iss-2610240859590333).
 
 ## Listing the decisions
 
@@ -145,8 +147,8 @@ and the citation resolver, the `abcd <record-id>` dispatch, `decide` itself and 
 the context-citation-currency gate share a locally defined handle regex and
 ADR-filename regex inside `internal/core/lint` (taking `recordid.FilenameNumRe`
 for itd, spc and iss but not for adr); the site's decisions index derives
-handles in `internal/core/site`, a package that does not import
-`core/recordid` at all; and the lifeboat re-implements the pair as
+handles in `internal/core/site` with its own pattern, importing
+`core/recordid` only for the store paths; and the lifeboat re-implements the pair as
 `gvCanonADRID` / `gvADRIDFromFilename`, whose own comment records that it
 agrees with the other two by inspection. The lifeboat's native ADR source adds
 a fourth local filter for numbered filenames. Four parallel derivations agreeing

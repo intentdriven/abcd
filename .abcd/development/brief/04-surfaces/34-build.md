@@ -666,9 +666,9 @@ machine-scoped worktree store, `~/.abcd.noindex/worktrees/<root-sha>/<run-id>-<l
 keyed on the repository's root commit in the full form the sibling stores use,
 on a branch `build/<run-id>-<lane-id>` cut from the default branch (origin's
 `HEAD` as last fetched, else the first of `main`, `master`, `trunk` and
-`develop`), never from whatever the checkout has checked out. The store's own
-verbs are planned and not yet shipped (itd-2609091014076309), so the lane is a
-plain `git worktree add` into the store's path. The path is derived, never
+`develop`), never from whatever the checkout has checked out. The lane enters
+the store through the same package as the store's own add, list and prune
+verbs (itd-2609091014076309). The path is derived, never
 taken: the run id and the lane id are each held to their own shape, and the name they
 compose must be one path segment of letters, digits, `.`, `_` and `-`, not led
 by `-` or `.` and holding no `..`, so no component can leave the store. Every

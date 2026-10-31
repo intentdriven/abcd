@@ -312,8 +312,8 @@ with `*CONCURRENCY` to force it).
   of the repository's root commit. Never beside the checkout, in the directory
   the user keeps their projects in, or inside the working tree
   ([adr-2610031751065746](.abcd/development/decisions/adrs/2610031751065746-the-worktree-store-lives-under-the.md)).
-  The store has no verbs yet: aim a plain `git worktree add` at the path, and
-  retire it with `git worktree remove`.
+  Make it with `scripts/abcd.sh ahoy worktree add <name>`; `list` shows the
+  lane, and `prune` reclaims merged, clean ones, archiving their notes.
 - **Scan before mutating anything a peer reads or runs.** Check the harness's
   session listing and announce the mutation to any peer found; before
   capturing, resolving or picking a record, also run `scripts/abcd.sh peers`,

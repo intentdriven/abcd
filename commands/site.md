@@ -244,11 +244,6 @@ provider, and these things differ:
   project's own docs are read on GitHub. A repository holding none of the
   about page's four parts yet is refused before anything is asked or written,
   since the site would be empty.
-- **A release of abcd that builds project sites.** The workflow downloads
-  abcd's latest release and builds with it, so its build fails until abcd
-  publishes a release whose `site build` takes `--project`. Setup does not ask
-  the network which release is latest, so it says this in a note on every run that writes, or finds current, the files
-  for a project site.
 - **The switch.** Before anything is written, setup asks whether to switch the
   project site on, naming the address. A yes writes `.abcd/site.json` holding
   the project site's settings (`"mode": "project"` and the `hosting` block with

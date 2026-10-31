@@ -116,7 +116,7 @@ var examples = map[string]string{
 	"abcd library ask":        `abcd library ask "why do record ids carry a timestamp?"`,
 	"abcd library cite-check": "abcd library cite-check draft.md",
 	"abcd library declassify": "abcd library declassify example-paper-2026",
-	"abcd library ingest":     "abcd library ingest https://example.com/paper.pdf",
+	"abcd library ingest":     "abcd library ingest https://example.com/article.html",
 
 	"abcd mode queue": `abcd mode queue "approve the embargo close for the example advisory"`,
 
