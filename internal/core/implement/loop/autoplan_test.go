@@ -11,6 +11,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/oracle"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -590,6 +591,27 @@ func TestTheCheckoutDigestWritesNoIndexAndReadsAMissingOne(t *testing.T) {
 	}
 	if _, err := os.Stat(index); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("the digest makes no index where there was none: %v", err)
+	}
+}
+
+// TestAnAutoPlanStartChargesItsReviewsToTheHost: the plan reviews only ever
+// run on the host, so the start's budget row charges them there, and a quota
+// the ruthless reviewer's routed runner reports neither appears nor refuses.
+func TestAnAutoPlanStartChargesItsReviewsToTheHost(t *testing.T) {
+	repo := draftRepo(t, draftIntent())
+	root := repo.Root()
+	cfg := runnerConfig(t, claudeImplements, "")
+	start, err := Start(root, "itd-10", Options{AutoPlan: true, Runners: cfg, Quota: quotaOf(map[string]int{runner.Claude: 1})})
+	if err != nil {
+		t.Fatalf("a runner's quota does not refuse an auto-plan start: %v", err)
+	}
+	st, err := ReadState(root, start.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	note := budgetEntry(t, st)
+	if strings.Contains(note, runner.Claude) || !strings.Contains(note, "the host reports no quota") {
+		t.Fatalf("the budget line charges the plan reviews to the host alone: %s", note)
 	}
 }
 

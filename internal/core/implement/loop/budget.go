@@ -46,7 +46,8 @@ func estimateShares(cfg *runner.Config, steps int, audits bool) []budgetShare {
 }
 
 // estimateSharesFor is estimateShares, or, for an auto-plan run
-// (autoplan.go), its two plan reviews alone.
+// (autoplan.go), its two plan reviews alone, charged to the host: they run on
+// the host's agents whatever the ruthless reviewer is routed to (Drive).
 func estimateSharesFor(cfg *runner.Config, steps int, audits, autoPlan bool) []budgetShare {
 	roles := []struct {
 		role string
@@ -65,7 +66,7 @@ func estimateSharesFor(cfg *runner.Config, steps int, audits, autoPlan bool) []b
 	var out []budgetShare
 	for _, r := range roles {
 		route := runner.Host
-		if cfg != nil {
+		if cfg != nil && !autoPlan {
 			route = cfg.RouteFor(r.role).Runner
 		}
 		k := -1
