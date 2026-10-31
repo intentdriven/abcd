@@ -100,7 +100,7 @@ func runWrittenInterview(cmd *cobra.Command, w *interview.Written, f writtenFlag
 	w.Verbs = verbsOf(cmd.Root())
 	w.DispatchContext = interruptContext
 
-	switch tm, tnotes, drawn := drawnTerminal(cmd.InOrStdin(), cmd.OutOrStdout(), errOut, w.Repo); {
+	switch tm, _, drawn := drawnTerminal(cmd.InOrStdin(), cmd.OutOrStdout(), errOut, w.Repo); {
 	case f.answers != "":
 		data, err := fsutil.ReadGuarded(f.answers, interview.MaxAnswersBytes)
 		if err != nil {
@@ -112,9 +112,7 @@ func runWrittenInterview(cmd *cobra.Command, w *interview.Written, f writtenFlag
 		}
 		w.Answer = fileAnswerer(errOut, w.Verb, file, f.answeredIn, !term.UTF8Locale(os.Getenv))
 	case drawn:
-		for _, n := range tnotes {
-			fmt.Fprintln(errOut, termsafe.Sanitize(n))
-		}
+		// The layers' notes drawnTerminal returns are the ones printed above.
 		w.Answer = drawnAnswerer(tm)
 	default:
 		return interview.WrittenResult{}, &exitError{Code: 2, Msg: w.Verb + ": the questions are drawn only at a terminal (stdin, stdout and stderr " +

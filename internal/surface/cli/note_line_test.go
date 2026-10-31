@@ -14,8 +14,9 @@ import (
 // prefixed "abcd: ", so a site that adds a prefix of its own prints it twice
 // ("abcd abcd: HOME …", "abcd land: abcd: HOME …"), and a site that adds none
 // prints the rules root's refusal unattributed. Every loop over a variable
-// named notes in this package prints each note through noteLine; a print site
-// written another way fails here, naming its position.
+// whose name ends in notes (notes, tnotes) in this package prints each note as
+// fmt.Fprintln(w, noteLine(n)), the note's line alone; a print site written
+// another way fails here, naming its position.
 func TestEveryLayerNoteIsPrintedThroughNoteLine(t *testing.T) {
 	fset := token.NewFileSet()
 	pkgs, err := parser.ParseDir(fset, ".", func(fi os.FileInfo) bool {
@@ -33,7 +34,7 @@ func TestEveryLayerNoteIsPrintedThroughNoteLine(t *testing.T) {
 				if !ok {
 					return true
 				}
-				if id, ok := rs.X.(*ast.Ident); !ok || id.Name != "notes" {
+				if id, ok := rs.X.(*ast.Ident); !ok || !strings.HasSuffix(strings.ToLower(id.Name), "notes") {
 					return true
 				}
 				ast.Inspect(rs.Body, func(m ast.Node) bool {
@@ -50,8 +51,8 @@ func TestEveryLayerNoteIsPrintedThroughNoteLine(t *testing.T) {
 					}
 					seen++
 					through := false
-					for _, arg := range call.Args {
-						if c, ok := arg.(*ast.CallExpr); ok {
+					if sel.Sel.Name == "Fprintln" && len(call.Args) == 2 {
+						if c, ok := call.Args[1].(*ast.CallExpr); ok {
 							if f, ok := c.Fun.(*ast.Ident); ok && f.Name == "noteLine" {
 								through = true
 							}
