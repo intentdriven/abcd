@@ -6,15 +6,26 @@
 
   <p>For people who know what they want to build and need help shipping it.</p>
 
-  <img src="https://img.shields.io/badge/status-experimental-orange" alt="Status: experimental">
-  <a href="https://github.com/intentdriven/abcd/releases"><img src="https://img.shields.io/github/v/release/intentdriven/abcd?cacheSeconds=300" alt="Release"></a>
-  <img src="https://img.shields.io/github/last-commit/intentdriven/abcd?cacheSeconds=300" alt="Last commit">
-  <br />
-  <img src="https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white" alt="Go 1.26">
-  <a href="https://claude.ai/claude-code"><img src="https://img.shields.io/badge/Built_with-Claude_Code-3B5CE7?logo=anthropic&logoColor=white" alt="Built with Claude Code"></a> <!-- docs-lint: allow -->
-  <br />
+  <a href="https://github.com/intentdriven/abcd/releases/latest"><img src="https://img.shields.io/github/v/release/intentdriven/abcd?cacheSeconds=300" alt="Latest release"></a>
   <img src="https://img.shields.io/badge/macOS-000000?logo=apple&logoColor=white" alt="macOS">
   <img src="https://img.shields.io/badge/Linux-core%20CI--tested-FCC624?logo=linux&logoColor=black" alt="Linux: core CI-tested">
+  <img src="https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white" alt="Go 1.26">
+  <br />
+  <a href="https://github.com/intentdriven/abcd/actions/workflows/ci.yml"><img src="https://github.com/intentdriven/abcd/actions/workflows/ci.yml/badge.svg" alt="Build"></a>
+  <img src="https://img.shields.io/github/last-commit/intentdriven/abcd?cacheSeconds=300" alt="Last commit">
+  <img src="https://img.shields.io/badge/status-experimental-orange" alt="Status: experimental">
+  <br />
+  <a href="https://claude.ai/claude-code"><img src="https://img.shields.io/badge/Built_with-Claude_Code-3B5CE7?logo=anthropic&logoColor=white" alt="Built with Claude Code"></a> <!-- docs-lint: allow -->
+  <a href="https://github.com/intentdriven/abcd"><img src="https://img.shields.io/badge/managed%20with-abcd-blue" alt="Managed with abcd"></a>
+
+  <p>
+    <a href="#install">Install</a> ·
+    <a href="#first-run">First run</a> ·
+    <a href="CHANGELOG.md">Changelog</a> ·
+    <a href=".github/CONTRIBUTING.md">Contributing</a> ·
+    <a href=".github/SECURITY.md">Security</a> ·
+    <a href="LICENSE">MIT licence</a>
+  </p>
 
 </div>
 

@@ -19,6 +19,9 @@
     "forge": true,
     "hook": true
   },
+  "readme": {
+    "parts": []
+  },
   "release": {
     "digest": "internal/core/releasedigest/digest.json"
   },
