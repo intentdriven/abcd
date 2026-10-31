@@ -91,9 +91,10 @@ Each confirmed by the product thinker on 2026-10-30, one at a time.
 
 - **Given** the work abcd decided alone in a spot-check window, **when**
   abcd draws, **then** the draw is seeded from a public random value fetched
-  when the spot-check starts and stored with it, every item in each group has
-  a chance of being picked, and the same stored value and items always give
-  the same list.
+  when the spot-check starts, whose signature abcd has verified itself before
+  anything is drawn (added 2026-10-31, decision 16), and stored with it,
+  every item in each group has a chance of being picked, and the same stored
+  value and items always give the same list.
 - **Given** the groups (drain fixes that landed, drain hand-backs, automatic
   merges, and the automated facilitator's own decisions), **when** the draw is
   made, **then** it picks up to the repository's set number per group, ten by
@@ -226,6 +227,21 @@ planned):
     can stop and resume at any item, a late item shows its state then and now,
     and the sample-size adaptation of decision 4 counts only fully reviewed
     windows.
+
+Ruled by the product thinker on 2026-10-31, in the planning interview:
+
+16. **abcd verifies the beacon's signature itself, at pick time.** The draft
+    stored the round, signature and chain hash for someone else to verify
+    later and added no library, since no dependency enters without the
+    product thinker's sign-off. The product thinker gave that sign-off for
+    the one dependency the verification needs, a pure-Go BLS library
+    (`github.com/cloudflare/circl/sign/bls`, chosen in the check of the same
+    day,
+    [`2026-10-31-drand-beacon-verification-sota.md`](../../research/notes/2026-10-31-drand-beacon-verification-sota.md)),
+    and ruled that a draw whose beacon signature does not verify is refused
+    exactly as a malformed reply is: nothing is written, one line names the
+    beacon and the round, and the landing's outcome is unchanged. The first
+    criterion carries the verification from this date.
 
 Settled by the record, so no question was put (2026-10-30):
 
