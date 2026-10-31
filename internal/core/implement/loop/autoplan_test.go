@@ -558,6 +558,49 @@ func TestAChangeStagedInTheIndexIsHandedBack(t *testing.T) {
 	}
 }
 
+// TestAnIndexEntryOrFlagAloneIsHandedBack: an intent-to-add entry, which the
+// tree `write-tree` makes leaves out, and a skip-worktree flag, which no tree
+// records, each change only the checkout's index, with HEAD and every file
+// on disk as the start found them, and each still hands the lane back: the
+// person's next `commit -a` would carry the first, and the second hides edits
+// to its file from `git status`.
+func TestAnIndexEntryOrFlagAloneIsHandedBack(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{"intent-to-add", []string{"add", "-N", "--", "later.md"}},
+		{"skip-worktree", []string{"update-index", "--skip-worktree", "--", "notes.md"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := draftRepo(t, draftIntent())
+			root := repo.Root()
+			repo.Write("notes.md", "as committed\n")
+			repo.Commit("notes")
+			repo.Write("later.md", "untracked from the start\n")
+			head := repo.Git("rev-parse", "HEAD")
+			start, err := Start(root, "itd-10", Options{AutoPlan: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			repo.Git(tc.args...)
+			if got := repo.Git("rev-parse", "HEAD"); got != head {
+				t.Fatalf("HEAD is as the start found it: %s, then %s", head, got)
+			}
+			for rel, want := range map[string]string{"notes.md": "as committed\n", "later.md": "untracked from the start\n"} {
+				if b, err := os.ReadFile(filepath.Join(root, rel)); err != nil || string(b) != want {
+					t.Fatalf("%s on disk is as the start found it: %q %v", rel, b, err)
+				}
+			}
+			reviewBoth(t, root, start.RunID, "SHIP", "SHIP")
+			res, err := advance(root, start.RunID, DefaultStages(), Options{})
+			if err != nil || res.HandBack == nil || !strings.Contains(res.HandBack.Reason, "checkout changed") {
+				t.Fatalf("an index changed only by %s is handed back: %+v %v", tc.name, res, err)
+			}
+		})
+	}
+}
+
 // TestTheCheckoutDigestWritesNoSharedIndex: in a checkout set to
 // core.splitIndex, the digest's copies of the index are written whole inside
 // its scratch directory, so the git directory gains no shared index file.
