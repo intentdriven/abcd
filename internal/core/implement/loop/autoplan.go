@@ -41,6 +41,7 @@ package loop
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -52,6 +53,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/intent"
@@ -217,20 +219,27 @@ func checkoutDigest(repoRoot string) (string, error) {
 	return intent.DraftDigest([]byte(head + " " + staged + " " + strings.TrimSpace(string(tree)))), nil
 }
 
+// maxIndexCopy bounds the copy of the checkout's index that indexDigest
+// makes: 1 GiB, past the index of any checkout git is used on, so the copy
+// never fills the scratch volume.
+var maxIndexCopy int64 = 1 << 30
+
 // indexDigest is what checkoutDigest folds in for the checkout's own index,
 // read through a copy of it at scratch: the tree `write-tree` makes of the
 // copy, with the SHA-256 of its entries as `ls-files --stage -t -v` lists
 // them (each entry's mode, object, stage, path and flag tags, its
 // skip-worktree and assume-unchanged flags included, intent-to-add entries,
 // which the tree leaves out, too, and no cached file stats). It is
-// "no-index" when the checkout has none yet, and, for an index git cannot
-// write as a tree (an unmerged path), the SHA-256 of its bytes, so any later
-// change to it, its cached file stats included, reads as a change. The copy
-// is written whole (core.splitIndex off), so nothing is written outside
-// scratch but the tree objects `write-tree` stores; reading a copy of a split
-// index refreshes the modification time of its shared file in the git
-// directory, as every git command that reads the checkout's index does. The
-// checkout's index is only read.
+// "no-index" when the checkout has none yet; for an index git cannot write
+// as a tree (an unmerged path), the SHA-256 of its bytes, so any later change
+// to it, its cached file stats included, reads as a change; and, for an index
+// path that is not a regular file or an index past maxIndexCopy, a value
+// unique to the call, so the run that meets it is handed back. The copy is
+// written whole (core.splitIndex off), so nothing is written outside scratch
+// but the tree objects `write-tree` stores; reading a copy of a split index
+// refreshes the modification time of its shared file in the git directory,
+// as every git command that reads the checkout's index does. The checkout's
+// index is only read, and never followed through a link or waited on.
 func indexDigest(repoRoot, scratch string) (string, error) {
 	out, err := pickGit(repoRoot, "rev-parse", "--git-path", "index")
 	if err != nil {
@@ -240,25 +249,46 @@ func indexDigest(repoRoot, scratch string) (string, error) {
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(repoRoot, path)
 	}
-	src, err := os.Open(path)
+	info, err := os.Lstat(path)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 		return "no-index", nil
 	case err != nil:
 		return "", fmt.Errorf("reading the checkout's index: %w", err)
+	case !info.Mode().IsRegular():
+		return uncopiedIndex()
+	}
+	// O_NOFOLLOW and O_NONBLOCK: a link or a pipe put in its place since the
+	// Lstat is neither followed nor waited on, and the Stat below refuses it.
+	src, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return "no-index", nil
+	case errors.Is(err, syscall.ELOOP):
+		return uncopiedIndex()
+	case err != nil:
+		return "", fmt.Errorf("reading the checkout's index: %w", err)
 	}
 	defer src.Close()
+	if now, err := src.Stat(); err != nil {
+		return "", fmt.Errorf("reading the checkout's index: %w", err)
+	} else if !now.Mode().IsRegular() || !os.SameFile(info, now) {
+		return uncopiedIndex()
+	}
 	dst, err := os.OpenFile(scratch, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return "", fmt.Errorf("copying the checkout's index: %w", err)
 	}
 	sum := sha256.New()
-	_, err = io.Copy(io.MultiWriter(dst, sum), src)
+	n, err := io.Copy(io.MultiWriter(dst, sum), io.LimitReader(src, maxIndexCopy+1))
 	if cerr := dst.Close(); err == nil {
 		err = cerr
 	}
 	if err != nil {
 		return "", fmt.Errorf("copying the checkout's index: %w", err)
+	}
+	if n > maxIndexCopy {
+		return uncopiedIndex()
 	}
 	bytesDigest := "bytes:" + hex.EncodeToString(sum.Sum(nil))
 	entries := sha256.New()
@@ -270,6 +300,16 @@ func indexDigest(repoRoot, scratch string) (string, error) {
 		return bytesDigest, nil
 	}
 	return "tree:" + strings.TrimSpace(string(tree)) + " entries:" + hex.EncodeToString(entries.Sum(nil)), nil
+}
+
+// uncopiedIndex is indexDigest's value for an index it does not copy: one no
+// other call returns, so a checkout digest holding it never matches again.
+func uncopiedIndex() (string, error) {
+	var nonce [16]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return "", err
+	}
+	return "uncopied:" + hex.EncodeToString(nonce[:]), nil
 }
 
 // checkoutHandBack hands an auto-plan lane back when the checkout is not the

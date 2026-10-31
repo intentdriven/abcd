@@ -7,7 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/oracle"
@@ -615,6 +617,72 @@ func TestTheCheckoutDigestWritesNoSharedIndex(t *testing.T) {
 	if err != nil || len(shared) != 0 {
 		t.Fatalf("the digest writes no shared index into the git directory: %v %v", shared, err)
 	}
+}
+
+// TestAnIndexTheDigestCannotCopyReadsAsChangedEveryTime: an index path that
+// is a symbolic link or a named pipe, or an index past the copy's bound, is
+// never followed, waited on or copied whole. Its digest differs from the
+// checkout's normal one and from every other, so a run that meets it is
+// handed back.
+func TestAnIndexTheDigestCannotCopyReadsAsChangedEveryTime(t *testing.T) {
+	repo := draftRepo(t, draftIntent())
+	root := repo.Root()
+	index := filepath.Join(root, ".git", "index")
+	normal, err := checkoutDigest(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unequal := func(t *testing.T, what string) {
+		t.Helper()
+		done := make(chan [2]string, 1)
+		go func() {
+			a, errA := checkoutDigest(root)
+			b, errB := checkoutDigest(root)
+			if errA != nil || errB != nil {
+				t.Errorf("%s: %v %v", what, errA, errB)
+			}
+			done <- [2]string{a, b}
+		}()
+		select {
+		case got := <-done:
+			if got[0] == normal || got[1] == normal || got[0] == got[1] {
+				t.Fatalf("%s reads as a change every time: %s %s, normal %s", what, got[0], got[1], normal)
+			}
+		case <-time.After(30 * time.Second):
+			// Let a digest held at the pipe go on, so the test ends.
+			if w, err := os.OpenFile(index, os.O_WRONLY|syscall.O_NONBLOCK, 0); err == nil {
+				w.Close()
+			}
+			t.Fatalf("%s is never waited on", what)
+		}
+	}
+	kept := index + ".real"
+	if err := os.Rename(index, kept); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(kept, index); err != nil {
+		t.Fatal(err)
+	}
+	unequal(t, "a symbolic link at the index path")
+	if err := os.Remove(index); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(index, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	unequal(t, "a named pipe at the index path")
+	if err := os.Remove(index); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(kept, index); err != nil {
+		t.Fatal(err)
+	}
+	if again, err := checkoutDigest(root); err != nil || again != normal {
+		t.Fatalf("the index put back digests as before: %v", err)
+	}
+	defer func(n int64) { maxIndexCopy = n }(maxIndexCopy)
+	maxIndexCopy = 16
+	unequal(t, "an index past the copy's bound")
 }
 
 // TestTheCheckoutDigestWritesNoIndexAndReadsAMissingOne: the digest reads the
