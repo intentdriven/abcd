@@ -123,8 +123,8 @@ type Verdict struct {
 	DependsOnState bool
 }
 
-// Rules is every rule of the limits check, in the spec's order.
-func Rules() []Rule {
+// allRules is every rule of the limits check, in the spec's order.
+func allRules() []Rule {
 	return []Rule{RuleHeader, RuleQuestionsPerCall, RuleOptions, RuleLabelWords, RuleMeaningSentences,
 		RuleDecideLater, RuleNoBold, RuleNeverRecommended, RuleRegister, RuleNowAndChangeLater,
 		RuleThingFirst, RuleEmDashListItem, RuleRows, RuleNoPreview}
@@ -134,10 +134,10 @@ func Rules() []Rule {
 // every rule but the rows limit (iss-2610070637562567).
 func RefusingFinding(f Finding) bool { return f.Rule != RuleRows }
 
-// Chipped reports whether any tab's header is in abcd's chip grammar.
-func Chipped(f Fields, l Limits) bool {
+// chipped reports whether any tab's header is in abcd's chip grammar.
+func chipped(f Fields, l Limits) bool {
 	for _, t := range f.Tabs {
-		if _, ok := ChipRole(t.Header, l); ok {
+		if _, ok := chipRole(t.Header, l); ok {
 			return true
 		}
 	}
@@ -155,14 +155,14 @@ func ChipPerson(role string) Person {
 	return Facilitator
 }
 
-// CallPerson is the person a chipped call names as a whole: the product
+// callPerson is the person a chipped call names as a whole: the product
 // thinker when any tab's chip names them, else the technical facilitator, so
 // the status line never says only the facilitator is owed an answer the
 // product thinker owes too.
-func CallPerson(f Fields, l Limits) Person {
+func callPerson(f Fields, l Limits) Person {
 	p := Facilitator
 	for _, t := range f.Tabs {
-		if role, ok := ChipRole(t.Header, l); ok && ChipPerson(role) == ProductThinker {
+		if role, ok := chipRole(t.Header, l); ok && ChipPerson(role) == ProductThinker {
 			p = ProductThinker
 		}
 	}
@@ -182,9 +182,9 @@ func checkedTabs(f Fields, l Limits) []Tab {
 func Decide(f Fields, s State, l Limits) Verdict {
 	v := Verdict{DependsOnState: s.Repo, ModeAfter: s.Mode}
 	for _, t := range checkedTabs(f, l) {
-		v.Rows = append(v.Rows, Rows(t, l))
+		v.Rows = append(v.Rows, tabRows(t, l))
 	}
-	v.Chipped = Chipped(f, l)
+	v.Chipped = chipped(f, l)
 	if s.Away {
 		v.Outcome = OutcomeRefuseAway
 		return v
@@ -194,7 +194,7 @@ func Decide(f Fields, s State, l Limits) Verdict {
 		// if the person were present; whether any rule should have been read
 		// at all is unknown.
 		v.Partial = true
-		v.Unread = append(v.Unread, Unread{Store: StoreAway, Err: s.AwayErr, Rules: Rules()})
+		v.Unread = append(v.Unread, Unread{Store: StoreAway, Err: s.AwayErr, Rules: allRules()})
 	}
 	if s.Badge && s.ModeErr != nil {
 		// The hook fails open here, whatever the question. A chipped
@@ -204,7 +204,7 @@ func Decide(f Fields, s State, l Limits) Verdict {
 		v.Partial = true
 		v.Outcome = OutcomeUnchecked
 		if !v.Chipped {
-			v.Unread = append(v.Unread, Unread{Store: StoreMode, Err: s.ModeErr, Rules: Rules()})
+			v.Unread = append(v.Unread, Unread{Store: StoreMode, Err: s.ModeErr, Rules: allRules()})
 			return v
 		}
 		v.Unread = append(v.Unread, Unread{Store: StoreMode, Err: s.ModeErr})
@@ -219,7 +219,7 @@ func Decide(f Fields, s State, l Limits) Verdict {
 		// whether the mode names somebody is unknown (iss-2610110432159652).
 		if s.RootErr != nil {
 			v.Partial = true
-			v.Unread = append(v.Unread, Unread{Store: StoreMode, Err: s.RootErr, Rules: Rules()})
+			v.Unread = append(v.Unread, Unread{Store: StoreMode, Err: s.RootErr, Rules: allRules()})
 			v.Outcome = OutcomeUnchecked
 			return v
 		}
@@ -233,7 +233,7 @@ func Decide(f Fields, s State, l Limits) Verdict {
 	who := s.Mode
 	if v.Chipped {
 		who = Unnamed
-		v.ModeAfter = CallPerson(f, l)
+		v.ModeAfter = callPerson(f, l)
 		v.ModeChanges = s.Badge && v.ModeAfter != s.Mode
 	}
 	v.Addressees = addressees(f, l, s.Mode)
@@ -280,7 +280,7 @@ func addressees(f Fields, l Limits, mode Person) []Person {
 	out := make([]Person, len(tabs))
 	for i, t := range tabs {
 		out[i] = mode
-		if role, ok := ChipRole(t.Header, l); ok {
+		if role, ok := chipRole(t.Header, l); ok {
 			out[i] = ChipPerson(role)
 		}
 	}

@@ -20,6 +20,15 @@ import (
 // `abcd guard question` and `abcd guard hook` of the same build give the same
 // answer, because both call questionState and question.Decide.
 
+// questionRules is every rule of the limits check, each of which the corpus
+// holds one draft for.
+var questionRules = []question.Rule{
+	question.RuleHeader, question.RuleQuestionsPerCall, question.RuleOptions, question.RuleLabelWords,
+	question.RuleMeaningSentences, question.RuleDecideLater, question.RuleNoBold, question.RuleNeverRecommended,
+	question.RuleRegister, question.RuleNowAndChangeLater, question.RuleThingFirst, question.RuleEmDashListItem,
+	question.RuleRows, question.RuleNoPreview,
+}
+
 // questionCorpusState is one checkout state a draft is judged in. Each makes
 // a fresh fixture and leaves the process standing in it.
 type questionCorpusState struct {
@@ -137,7 +146,7 @@ func TestGuardQuestionAndHookDecideAlike(t *testing.T) {
 	if len(drafts) < 20 {
 		t.Fatalf("the corpus holds %d drafts; want the 21-fault case, the 25-row case, one per rule and the clean drafts", len(drafts))
 	}
-	for _, rule := range question.Rules() {
+	for _, rule := range questionRules {
 		if !slices.Contains(drafts, "rule-"+string(rule)) {
 			t.Errorf("the corpus has no draft for the %s rule", rule)
 		}

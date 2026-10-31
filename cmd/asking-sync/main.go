@@ -81,7 +81,7 @@ func render(l question.Limits) string {
 // renderDrafter is the question-drafter's block: a note for whoever edits the
 // page, every asking rule as its own list item, and the row count the check
 // makes, each figure filled from l. It states the count in the words of
-// internal/core/question's estimate (estimateRows, Rows, blockRows), so
+// internal/core/question's estimate (estimateRows, tabRows, blockRows), so
 // the agent's arithmetic and the check's read one statement of each figure.
 func renderDrafter(l question.Limits) string {
 	var b strings.Builder

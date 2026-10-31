@@ -311,7 +311,7 @@ func TestGuardQuestionMarksAPartialResult(t *testing.T) {
 			t.Fatal(err)
 		}
 		res, _, _ := runQuestionVerb(t, "clean-unchipped")
-		if res.Hook != question.OutcomeUnchecked || !res.Partial || len(res.Unread) != 1 || res.Unread[0].Store != string(question.StoreMode) || len(res.Unread[0].Rules) != len(question.Rules()) {
+		if res.Hook != question.OutcomeUnchecked || !res.Partial || len(res.Unread) != 1 || res.Unread[0].Store != string(question.StoreMode) || len(res.Unread[0].Rules) != len(questionRules) {
 			t.Errorf("hook %q, partial %v, unread %+v", res.Hook, res.Partial, res.Unread)
 		}
 		if strings.Contains(res.Unread[0].Why, root) {

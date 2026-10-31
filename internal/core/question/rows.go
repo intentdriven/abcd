@@ -16,7 +16,7 @@ import (
 // figures were calibrated on 2026-10-03 against Claude Code's question view at
 // 80 by 24 (step 5 of spc-2610030944505997): the estimate of the screenshot's
 // question equals the 24 rows the host drew.
-func estimateRows(t Tab, l Limits) int { return Rows(t, l).Total }
+func estimateRows(t Tab, l Limits) int { return tabRows(t, l).Total }
 
 // RowSplit is the row estimate by part: the host's frame with the header's
 // chip row, the question text, and the options with their descriptions, and
@@ -31,9 +31,9 @@ type RowSplit struct {
 	Total          int `json:"total"`
 }
 
-// Rows is estimateRows by part: the one computation the rows rule and every
+// tabRows is estimateRows by part: the one computation the rows rule and every
 // caller that reports a tab's rows read.
-func Rows(t Tab, l Limits) RowSplit {
+func tabRows(t Tab, l Limits) RowSplit {
 	s := RowSplit{HeaderAndFrame: l.HostChromeRows, QuestionText: blockRows(t.Text, l.HostTextColumns)}
 	for _, o := range t.Options {
 		s.Options += max(1, blockRows(o.Label, l.HostOptionColumns)) + blockRows(o.Description, l.HostOptionColumns)

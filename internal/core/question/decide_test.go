@@ -37,7 +37,7 @@ func rowsTab() Tab {
 // rows finding the check makes carries exactly those figures, because both
 // read Rows.
 func TestRowsSplitIsTheChecks(t *testing.T) {
-	got := Rows(rowsTab(), Default)
+	got := tabRows(rowsTab(), Default)
 	want := RowSplit{HeaderAndFrame: 8, QuestionText: 7, Options: 10, Total: 25}
 	if got != want {
 		t.Fatalf("Rows = %+v, want %+v", got, want)
@@ -98,7 +98,7 @@ func TestDecideFollowsTheHooksOrder(t *testing.T) {
 			if (len(v.Findings) > 0) != tc.findings {
 				t.Errorf("findings = %v, want any: %v", rulesOf(v.Findings), tc.findings)
 			}
-			if len(v.Rows) != 1 || v.Rows[0] != Rows(tc.tab, Default) {
+			if len(v.Rows) != 1 || v.Rows[0] != tabRows(tc.tab, Default) {
 				t.Errorf("rows = %+v, want the tab's split", v.Rows)
 			}
 			if v.DependsOnState != tc.s.Repo {
@@ -117,11 +117,11 @@ func TestDecideNamesTheUnreadStoreAndItsRules(t *testing.T) {
 	unchipped := wellBuiltTab()
 	unchipped.Header = "Labels"
 	v := Decide(one(wellBuiltTab()), State{Repo: true, AwayErr: errStore}, Default)
-	if len(v.Unread) != 1 || v.Unread[0].Store != StoreAway || !slices.Equal(v.Unread[0].Rules, Rules()) {
+	if len(v.Unread) != 1 || v.Unread[0].Store != StoreAway || !slices.Equal(v.Unread[0].Rules, allRules()) {
 		t.Errorf("away unread = %+v, want the away store with every rule", v.Unread)
 	}
 	v = Decide(one(unchipped), State{Repo: true, Badge: true, ModeErr: errStore}, Default)
-	if len(v.Unread) != 1 || v.Unread[0].Store != StoreMode || !slices.Equal(v.Unread[0].Rules, Rules()) {
+	if len(v.Unread) != 1 || v.Unread[0].Store != StoreMode || !slices.Equal(v.Unread[0].Rules, allRules()) {
 		t.Errorf("mode unread, unchipped = %+v, want the mode store with every rule", v.Unread)
 	}
 	v = Decide(one(wellBuiltTab()), State{Repo: true, Badge: true, ModeErr: errStore}, Default)
