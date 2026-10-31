@@ -83,7 +83,7 @@ func runWrittenInterview(cmd *cobra.Command, w *interview.Written, f writtenFlag
 	}
 	roots, notes := layered.RootsFor(w.Repo)
 	for _, n := range notes {
-		fmt.Fprintln(errOut, termsafe.Sanitize(n))
+		fmt.Fprintln(errOut, noteLine(n))
 	}
 	cfg, err := runner.Load(roots)
 	if err != nil {
