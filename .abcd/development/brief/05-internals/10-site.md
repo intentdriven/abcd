@@ -103,8 +103,12 @@ intents:
 - **The README migration** — README's product narrative lives in
   `docs/explanation/{rationale,roles,artefacts,process}.md` and
   `docs/how-to/install.md`, and README is a contributor page keeping the
-  universal install one-liner, with a test that the one-liner, the
-  `install.sh` script and install.md's per-OS forms agree.
+  install command, one line that pipes the release's `install.sh` into `sh`.
+  README's install block is rendered from `site-src/install.sh.tmpl` between
+  `install-command` markers, so a hand edit fails the build
+  (iss-2609261423214723); a test holds README and install.md to exactly that
+  command and the guide's hardened form of it, both rendered from the same
+  template, and a test runs each form in a sandbox (iss-2610240827243654).
 
 The user-facing capabilities ride on this plumbing as intents: itd-135 (the
 landing page, umbrella), itd-136 (the record explorer pages), itd-137 (the

@@ -4,24 +4,25 @@
 # naming the build; every executable byte served from abcdev.app is a byte of
 # this file.
 #
-# Its behaviour is the README one-liner's: detect the platform, download the
-# released binary and checksums.txt, verify the SHA-256 against the manifest,
-# copy the binary into a directory the user owns. internal/core/site holds the
-# forms to one another by test — same release URLs, same checksum step, same
-# install destination — so none of them can drift alone.
+# The release publishes this file as install.sh, and the README and the
+# install guide document one command that pipes it into sh
+# (iss-2610240827243654), so this script is the whole install: detect the
+# platform, download the released binary and checksums.txt, verify the SHA-256
+# against the manifest, copy the binary into a directory the user owns.
+# internal/core/site holds it and its rendered copy to one another by test —
+# same release URLs, same checksum step, same install destination.
 #
 # internal/core/site runs the script to prove two steps (installsh_run_test.go).
 # When gh is present it verifies the binary's build provenance with `gh
 # attestation verify` and installs nothing if that fails; without gh, or with a
 # gh that is not signed in, the checksum stands alone and a warning says so
-# (iss-2610120617521209), as the one-liners do (installoneliner_run_test.go).
-# Like the one-liners, it refuses a symlinked ~/.abcd.noindex before it fetches
-# anything, and after the install it records the installed path and its SHA-256
-# in ~/.abcd.noindex/path-entry, the record the hooks and `abcd ahoy` read to
-# know the PATH copy as abcd's own (iss-2610240827243654). Beyond the
-# one-liners, it also records the release in ~/.abcd.noindex/release-mark, the
-# newest-release mark hooks/bootstrap.sh and `abcd update` keep
-# (iss-2610120601505029).
+# (iss-2610120617521209); installoneliner_run_test.go proves the same through
+# the documented command. It refuses a symlinked ~/.abcd.noindex before it
+# fetches anything more, and after the install it records the installed path
+# and its SHA-256 in ~/.abcd.noindex/path-entry, the record the hooks and `abcd
+# ahoy` read to know the PATH copy as abcd's own (iss-2610240827243654). It also
+# records the release in ~/.abcd.noindex/release-mark, the newest-release mark
+# hooks/bootstrap.sh and `abcd update` keep (iss-2610120601505029).
 #
 # Everything between `set -eu` and the last line is a definition. Only the final
 # `main "$@"` runs anything, so a download truncated in transit executes nothing.
@@ -32,10 +33,11 @@ set -eu
 # is a symlink. The hooks, ahoy and the bootstrap refuse a record behind such a
 # link rather than follow it (iss-2609281017573862), so the path-entry this
 # script writes would be ignored by every reader, and would land in whatever
-# the link points at, a dotfiles checkout typically. The one-liners make the
-# same test first. It is defined here, ahead of the fetch code below, so the
-# test that holds every form to "guard before the first fetch" reads it in the
-# order main runs it.
+# the link points at, a dotfiles checkout typically. It is defined here, ahead
+# of the fetch code below, so the test that holds the installer to "guard
+# before the first fetch" reads it in the order main runs it. The command that
+# pipes this script into sh has fetched the script itself by then; the guard
+# comes before every download the script makes.
 refuse_symlinked_home() {
 	[ ! -L "$HOME/.abcd.noindex" ] ||
 		die "~/.abcd.noindex is a symlink, which abcd refuses rather than follows; replace it with a real directory and re-run. Nothing is installed."
@@ -225,13 +227,13 @@ install_binary() {
 
 # record_path_entry records the binary just installed as $1/abcd in
 # ~/.abcd.noindex/path-entry: its path and the SHA-256 ($2) the release
-# manifest vouched for, two lines, exactly as the one-liners write them. The
-# hooks and `abcd ahoy` read it to know the PATH copy as abcd's own. The record
+# manifest vouched for, two lines. The hooks and `abcd ahoy` read it to know
+# the PATH copy as abcd's own. The record
 # replaces whatever named a copy before. It refuses, rather than writes
 # through, a ~/.abcd.noindex or a path-entry that is a symlink; the first was
 # refused before the download, and is tested again here in case it was swapped
 # in since. A record that cannot be written stops the install with that
-# reason, as the one-liners' `set -eu` does; the binary is already in place.
+# reason, as `set -eu` would; the binary is already in place.
 record_path_entry() {
 	[ ! -L "$HOME/.abcd.noindex" ] ||
 		die "~/.abcd.noindex became a symlink during the install, so path-entry was not recorded; abcd refuses such a link rather than follows it. Replace it with a real directory and re-run."
