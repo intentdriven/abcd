@@ -113,6 +113,7 @@ other builds share.
    decision 5 also gave it is recorded in adr-2610222222326104, and is not
    recorded twice.
    - needs: 2, 4, 8
+   - landed: 45a7ce2c5136
 12. **The no-host drive**
    Decision 5's reversal, moved here from step 3 so that no step waits on a
    later one: the loop driving itself with no host session, starting every
