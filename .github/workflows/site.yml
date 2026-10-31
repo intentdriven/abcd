@@ -575,6 +575,14 @@ jobs:
           set -euo pipefail
           pip install -r docs/requirements.txt
           mkdocs build -d site/docs
+          # lint site's link-targets gate judges the /docs/ links and the
+          # redirect targets only once the docs tree is in the output: with no
+          # site/docs it counts them in a note and fails nothing. Prove the
+          # tree is there, so the check below judges every one of them.
+          test -f site/docs/index.html || {
+            echo "::error::mkdocs wrote no site/docs/index.html, so lint site could judge no /docs/ link or redirect target"
+            exit 1
+          }
 
       - name: Check the rendered site
         # The provenance audit: unsourced text, docs-lint over rendered prose, CLI
@@ -1165,6 +1173,14 @@ jobs:
           set -euo pipefail
           pip install -r docs/requirements.txt
           mkdocs build -d site/docs
+          # lint site's link-targets gate judges the /docs/ links and the
+          # redirect targets only once the docs tree is in the output: with no
+          # site/docs it counts them in a note and fails nothing. Prove the
+          # tree is there, so the check below judges every one of them.
+          test -f site/docs/index.html || {
+            echo "::error::mkdocs wrote no site/docs/index.html, so lint site could judge no /docs/ link or redirect target"
+            exit 1
+          }
 
       - name: Check the rendered site
         # The preview is held to the same provenance and mobile gates as production —
