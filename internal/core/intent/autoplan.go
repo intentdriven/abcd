@@ -7,8 +7,9 @@ package intent
 // only on a draft whose decisions are all recorded, so every row here judges
 // what the record already carries: the criteria, the decisions (no open
 // question), the claim sections, the grounds and the record's provenance.
-// The rows check that the record is complete, not who wrote it. The two adversarial reviews are the loop's (they need
-// agents), and the hold and the blockers are the same rows the build reads.
+// The rows check that the record is complete, not who wrote it. The two
+// adversarial reviews are the loop's (they need agents), and the hold and the
+// blockers are the same rows the build reads.
 // Every row reads; none writes.
 
 import (
