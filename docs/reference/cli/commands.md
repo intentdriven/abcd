@@ -2167,6 +2167,52 @@ first, whatever its chip, with one reason that routes it by the act it asks
 about: an act only the person may approve to `abcd mode queue`, every other
 question to `abcd decide`; no mode is set and nothing is marked open.
 
+#### `abcd guard question`
+
+Check a draft question as the hook will judge it: Writes nothing; refuses an unreadable draft, a store it cannot read, and any finding.
+
+**Usage:** `abcd guard question [<file>|-] [flags]`
+
+Checks a draft question as the guard hook will judge it when it is asked,
+and writes nothing: no mode, no open-question marker, no branch record and
+no log. The draft is read from the file named, or from stdin when the
+argument is - or absent, under the hook's own 1 MiB bound. Without --ask it
+is the host question tool's input, {"questions": [...]}, read as the hook
+reads it; with --ask it is abcd's structured question type, decoded
+strictly, its structural findings reported under the rule structure, and
+composed into the host's input (the material first, the Now: and Change
+later: lines next, the question last, the decide-later option last) before
+it is judged. A line the draft does not carry is never invented: the
+check names it.
+
+The verb reads the stores the hook reads (the away record, and the mode
+where the status line's badge shows) and calls the one decision the hook
+calls, so it reports every finding, the rows each tab takes at 80 columns
+(header and frame, question text, options, total), what the hook would do
+with the draft in this checkout now (admit, admit-with-rows-note, refuse,
+refuse-away, admit-unchecked or unchecked), whether that answer depends on
+the mode or the away record, the binary's version, and the input ready to
+ask. The ready input is the draft's own bytes for the host form, every key
+the check does not read kept, and the composed input for --ask; it is left
+out when the hook would refuse. The verdict is evidence about a hook of the
+same version; a mode set, or the person marked away, before the ask can
+change it.
+
+Exit 0 when the hook would admit the draft as abcd's question with no
+finding at all and every store was read. Exit 1 on any finding, a tab
+over the rows limit alone included, and on a draft the hook would refuse
+while the person is away or would let through unchecked as not abcd's.
+Exit 2 when the draft is not JSON, is over the bound or has neither shape,
+and when a store the decision needed could not be read: the result is then
+partial, names each store and the rules it could not apply, and never reads
+as clean, even with no finding.
+
+**Flags:**
+
+```
+      --ask   read the draft as abcd's structured question type and judge it as composed into the host's input
+```
+
 ### `abcd help`
 
 Help about any command

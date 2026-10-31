@@ -1757,6 +1757,20 @@
       "flags": []
     },
     {
+      "path": "abcd guard question",
+      "hidden": false,
+      "sentence": "Check a draft question as the hook will judge it: Writes nothing; refuses an unreadable draft, a store it cannot read, and any finding.",
+      "flags": [
+        {
+          "name": "ask",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd history",
       "hidden": false,
       "group": "agents",

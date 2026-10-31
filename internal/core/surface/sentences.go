@@ -161,6 +161,8 @@ var sentences = map[string]string{
 		"Writes branch records and a question's mode; refuses a hazard and an unknown sub-verb.",
 	"abcd guard check": "Judge one shell command against the hazard registry: " +
 		"Writes nothing; refuses a hazard with exit 1 and a command it cannot parse with exit 2.",
+	"abcd guard question": "Check a draft question as the hook will judge it: " +
+		"Writes nothing; refuses an unreadable draft, a store it cannot read, and any finding.",
 	"abcd guard approve": "Answer a headless agent's permission prompts over MCP: " +
 		"Writes nothing; refuses every prompt but a shell command the guard reads whole and clears.",
 	"abcd guard allow": "Let one exact unproven delete through the hook, once: " +

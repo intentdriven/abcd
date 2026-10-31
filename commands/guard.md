@@ -1,7 +1,7 @@
 ---
 name: guard
 description: "Judge a shell command against the hazard registry before it runs: Writes branch records and a question's mode; refuses a hazard and an unknown sub-verb."
-argument-hint: "[check [--command <command>] | hook | approve --dir <dir> | allow --once --command <line>]"
+argument-hint: "[check [--command <command>] | question [<file>|-] [--ask] | hook | approve --dir <dir> | allow --once --command <line>]"
 block: agents
 user-invocable: false
 ---
@@ -64,6 +64,59 @@ differently. A script the command runs is resolved the same way: the check
 reads it relative to its own working directory, and the hook relative to the
 per-call working directory when the host names an existing one, else the
 session directory.
+
+## `question` — check a draft question before it is asked
+
+Check a question you have drafted for the host's question tool before you ask
+it. The check is the hook's own decision, read-only: it writes no mode, no
+open-question marker, no branch record and no log, so the status line is left
+exactly as it was. Pass the draft on **stdin**, in the same quoted-delimiter
+heredoc as `check`, or as a file path:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" guard question --json <<'ABCD_QUESTION_EOF'
+{"questions": [ … the host question tool's input, verbatim … ]}
+ABCD_QUESTION_EOF
+```
+
+Without `--ask` the draft is the host question tool's input, read exactly as
+the hook reads it. With `--ask` it is abcd's structured question type (`id`,
+`chip`, `material`, `ask`, `options`, `later`, `now`, `change_later`), read
+strictly, its structural faults reported under the rule `structure`, and
+composed into the host's input with the material first, the `Now:` and
+`Change later:` lines next, the question last and the decide-later option
+last. A line the draft does not carry is named as a finding, never invented.
+
+Then read the JSON (`_type` `abcd/question-check/v1`):
+
+- `hook` — what the hook would do with the draft in this checkout now:
+  `admit`, `admit-with-rows-note`, `refuse`, `refuse-away` (the person is
+  away; route the question with `abcd mode queue` or `abcd decide`),
+  `admit-unchecked` (not abcd's question: no chip, and no mode naming anyone,
+  so nothing was checked) or `unchecked` (a store could not be read).
+- `findings` — every finding at once, each with its `tab`, `part`, `rule`,
+  `value`, `limit`, `remedy` and whether it `refuses` (the rows limit alone
+  never does).
+- `rows` — each tab's rows at 80 columns, as `header_and_frame`,
+  `question_text`, `options` and `total`, against `rows_limit`. Report these
+  figures; never count rows by hand.
+- `ready` — the input to ask, absent when the hook would refuse: your draft as
+  written, every key kept, or the composition of an `--ask` draft.
+- `version` — the binary's version. The verdict holds for a hook of the same
+  version.
+- `depends_on_state`, `partial`, `unread` — whether a mode set or the person
+  marked away before the ask could change the answer, and each store the check
+  could not read with the rules it could not apply.
+- `addressee`, `addressee_changes` — whom each tab is for, and where an
+  admitted chip would re-set the mode.
+
+Exit codes: `0` only when the hook would admit the draft as abcd's question
+with no finding and every store was read; `1` on any finding, a tab over the
+rows limit alone included, and on a draft the hook would refuse while the
+person is away or let through unchecked as not abcd's; `2` when the draft is
+not JSON, is over 1 MiB or has neither shape, and when a store could not be
+read, even with no finding. Fix every finding and check again until it exits
+`0`, then ask the `ready` input.
 
 ## `hook` — the host adapter
 
