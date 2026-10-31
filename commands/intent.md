@@ -452,7 +452,10 @@ checks; the judgement is yours, as the host.
    ```
 
    This invocation IS the product thinker's sign-off act — never run it unattended
-   or infer consent. It mints the spec stub, links both sides, stamps an
+   or infer consent. The one unattended door is `abcd build <itd-N> --auto-plan`
+   (`/abcd:build`), which plans only a draft whose decisions are all recorded,
+   after two plan reviews, on the substitute adr-2610310235000654 records; it is
+   run only when the person asked for it. It mints the spec stub, links both sides, stamps an
    identity onto every unmarked scope condition, and moves the intent
    `drafts/ → planned/`. Every relative markdown link that named the draft's
    path, from any file in the tree, is repointed at `planned/` in the same

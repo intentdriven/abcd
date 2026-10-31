@@ -434,7 +434,8 @@ every lane alive with its stage and each agent it awaits, and each held lane wit
 its cause, the head judged, the landing step it stopped before and the two flags
 that decide it. The step verb performs the run's next move and exits (a lane's
 stages are worktree, brief, implement, validate and land; the lane as a whole
-lands one of the spec's steps). A run works in parallel up to its ceiling (ruling
+lands one of the spec's steps; the one lane of an auto-plan run takes
+plan-review and plan instead, [`34-build.md`](34-build.md) says why). A run works in parallel up to its ceiling (ruling
 DR6): a stage the binary owns moves on any lane first, then, while a slot is
 free, the first waiting work takes it, an open lane's before a new lane's and
 the lower spec step first; a lane opens for a ready spec step only when a helper

@@ -37,8 +37,8 @@ func pinnedRoutes() map[string]runner.RouteRecord {
 // refused, naming the version and the key; one of version 13 or lower is
 // refused with the sides it carries (v0.15.1 wrote neither).
 func TestAPinnedRouteIsVersion16s(t *testing.T) {
-	if SchemaVersion != 16 {
-		t.Fatalf("a route's pins are state version 16's, got %d", SchemaVersion)
+	if schemaVersionUnplanned != 16 {
+		t.Fatalf("a route's pins are state version 16's, got %d", schemaVersionUnplanned)
 	}
 	root, id, path := sidedRun(t)
 	base, err := os.ReadFile(path)
@@ -90,10 +90,10 @@ func TestAPinnedRouteIsVersion16s(t *testing.T) {
 // as the version before pins writes it, both sides and no pin, is version
 // 16's strict subset. It reads as the current version, decodes and re-encodes
 // losslessly apart from its version, and the run's next mutation writes it
-// back at 16.
+// back at the current version (16 when pins joined; the auto-plan made it 17).
 func TestAVersion15FileReadsAsVersion16s(t *testing.T) {
-	if SchemaVersion != 16 {
-		t.Fatalf("a route's pins are state version 16's, got %d", SchemaVersion)
+	if schemaVersionUnplanned != 16 {
+		t.Fatalf("a route's pins are state version 16's, got %d", schemaVersionUnplanned)
 	}
 	root, id, path := sidedRun(t)
 	editState(t, root, id, func(doc map[string]any) { doc["schema_version"] = 15 })
@@ -102,8 +102,8 @@ func TestAVersion15FileReadsAsVersion16s(t *testing.T) {
 		t.Fatal(err)
 	}
 	st, err := ReadState(root, id)
-	if err != nil || st.SchemaVersion != 16 {
-		t.Fatalf("a clean version-15 file reads as version 16: %v %v", st.SchemaVersion, err)
+	if err != nil || st.SchemaVersion != SchemaVersion {
+		t.Fatalf("a clean version-15 file reads as the current version: %v %v", st.SchemaVersion, err)
 	}
 	if r := st.Lanes[0].Receipts[0].Route; r == nil || r.Usage == nil || r.ModelAsked != sidedRoute().ModelAsked ||
 		r.ProviderPin != nil || r.PinConfigSHA256 != "" || r.LocalPin != nil || r.LocalServed != nil || r.Local {
@@ -120,7 +120,7 @@ func TestAVersion15FileReadsAsVersion16s(t *testing.T) {
 	if err := json.Unmarshal(encoded, &newDoc); err != nil {
 		t.Fatal(err)
 	}
-	oldDoc["schema_version"] = float64(16)
+	oldDoc["schema_version"] = float64(SchemaVersion)
 	if !reflect.DeepEqual(oldDoc, newDoc) {
 		t.Fatalf("re-encoding the version-15 file changed more than its version:\nread:    %s\nwritten: %s", old, encoded)
 	}
@@ -136,7 +136,7 @@ func TestAVersion15FileReadsAsVersion16s(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(oldDoc, writtenDoc) {
-		t.Fatalf("the next mutation writes the version-15 file back at version 16, nothing else changed:\nread:    %s\nwritten: %s", old, written)
+		t.Fatalf("the next mutation writes the version-15 file back at the current version, nothing else changed:\nread:    %s\nwritten: %s", old, written)
 	}
 	again, err := ReadState(root, id)
 	if err != nil || !reflect.DeepEqual(st, again) {

@@ -23,7 +23,7 @@ run; the payloads name the stage under `stage` and the spec's step under
 ## Start the run
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" build <itd-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--take-over] --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" build <itd-N> [--auto-plan] [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--take-over] --json
 ```
 
 Pass `--session` with the host session's id when it has joined the shared run
@@ -229,6 +229,63 @@ Refusal stops when the run finishes, when it hands a lane back or holds one
 (the work is then the person's), or after two hours with no activity in the
 run. No verb ends a run early, so a person who interrupts a build and carries
 on by hand sees the prompts again two hours after the run last moved.
+
+## Plan a draft with nobody present
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" build <itd-N> --auto-plan --json
+```
+
+`--auto-plan` plans a draft intent with no person present: the planning path
+`/abcd:intent` describes, the two adversarial reviews included, on the
+substitute for the product thinker's sign-off that adr-2610310235000654
+records. `abcd intent plan` stays the human's act; this flag is the one other
+door, and it opens only on a draft whose decisions are all recorded. Use it
+only when the person asked for an unattended plan.
+
+The checks replace `ready`, and every one must pass, or the start is refused
+naming the row, exit 2, and writes nothing:
+
+- `draft` — the intent is in `drafts/`. An intent already planned has nothing
+  to plan, and the flag is ignored: the run builds it, its checks being the
+  ones above, and its record says so. An issue id is refused.
+- `acceptance_criteria` — at least one top-level bullet under
+  `## Acceptance Criteria`. Criteria are a person's; nothing unattended writes
+  them.
+- `open_questions` and `claim_sections` — as above. A scope condition with no
+  identity marker yet passes, since `plan` stamps it.
+- `grounds` — the most recent ground a person wrote is `pursued:`; none, or a
+  deferred or declined one, refuses.
+- `criteria_provenance` — the record's `origin` and `production_mode` are
+  present and in the vocabulary.
+- `hold`, `blocked` and `peers` — as above.
+
+The run has one lane, `plan <itd-N> (--auto-plan)`, which records the draft's
+path and the SHA-256 of its bytes (`auto_plan` on the lane) and takes two
+stages:
+
+1. `plan-review` — `implement step` hands the draft to a fresh
+   `ruthless-reviewer`, once for the design and feasibility lens and once for
+   the record-discipline lens, each with its own brief under
+   `<lane>/plan-review/<lens>/`. Each writes its return there, ending with one
+   `### Verdict` section (`SHIP` or `FIX FIRST`), and `implement receipt
+   <return>` hands it back: the loop parses the verdict and records it. A
+   return it cannot read as a verdict records nothing and is refused. Once both
+   are in, a `FIX FIRST` hands the lane back as `not-planned` with the findings:
+   nobody is there to answer them, so tell the person and point them to the
+   planning interview.
+2. `plan` — the rows above are checked again on the record as it stands, both
+   recorded verdicts must pass, and the draft's bytes must still be the ones
+   the start recorded; then `intent plan` runs in this checkout, as a person's
+   plan does (the spec stub minted, the intent moved to `planned/`). A main
+   checkout two or more live sessions started in is refused before it, exit 3,
+   as every record writer is. A draft that changed or moved since the start, at
+   either stage, hands the lane back as `not-planned` and plans nothing.
+
+The run is then complete, and `next` says what is left: the spec's steps and
+footprint, a commit of the plan on a branch for review, and `abcd build
+<itd-N>` once it is on the default branch. The run reserves the draft's path
+and its planned path, and releases them when its lane is done or handed back.
 
 ## Pick the next intent
 

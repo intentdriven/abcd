@@ -400,6 +400,30 @@ func laneWant(st State, i int) want {
 			}
 		}
 		w.kind = wantBinary
+	case StagePlanReview:
+		// An auto-plan lane's reviews (autoplan.go): each one not out and
+		// without a verdict wants a reviewer; once both have returned the
+		// binary closes the stage.
+		if l.AutoPlan == nil {
+			w.kind = wantBinary
+			return w
+		}
+		out := false
+		for _, r := range l.AutoPlan.Reviews {
+			if r.Verdict != "" {
+				continue
+			}
+			if !l.awaited(r.Return) {
+				w.kind, w.role = wantAgent, r.Role
+				return w
+			}
+			out = true
+		}
+		if !out {
+			w.kind = wantBinary
+		}
+	case StagePlan:
+		w.kind = wantBinary
 	case StageLand:
 		if st.handedBack() && (l.Hold == nil || !l.Hold.Released) {
 			w.kind, w.hold = wantBinary, true
@@ -690,6 +714,9 @@ func performMove(repoRoot string, st *State, steps Stages, w want, now time.Time
 	case out.HandBack != nil:
 		handBackLane(st, &lane, *out.HandBack, out.Note, now)
 		releaseOnHandBack(repoRoot, st, *lane.HandBack, now)
+		if lane.AutoPlan != nil {
+			releaseAutoPlan(repoRoot, st, now)
+		}
 		st.Lanes[i] = lane
 		st.UpdatedAt = now
 		res := laneResult(*st, lane, "", nil)
@@ -719,6 +746,9 @@ func performMove(repoRoot string, st *State, steps Stages, w want, now time.Time
 	st.Lanes[i] = lane
 	if lane.Stage == StageDone {
 		openNext(st, now)
+		if lane.AutoPlan != nil {
+			releaseAutoPlan(repoRoot, st, now)
+		}
 	}
 	st.UpdatedAt = now
 	return laneResult(*st, lane, performed, handed), nil

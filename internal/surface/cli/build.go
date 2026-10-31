@@ -97,9 +97,9 @@ func errorsIsNoCheckout(err error) bool { return errors.Is(err, gitutil.ErrNoChe
 // newBuildCommand builds `abcd build <itd-N>`.
 func newBuildCommand(asJSON *bool) *cobra.Command {
 	var session, pace, subAgents, fixRounds string
-	var release, takeOver bool
+	var release, takeOver, autoPlan bool
 	cmd := &cobra.Command{
-		Use: "build <itd-N|iss-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--take-over] [--release]",
+		Use: "build <itd-N|iss-N> [--auto-plan] [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--take-over] [--release]",
 		Long: "Start the implement loop for one intent, or resume the run already in progress for it.\n" +
 			"An issue id starts the loop's issue-keyed lane instead (below).\n" +
 			"A new run's checks run first, and every one must pass:\n" +
@@ -192,6 +192,20 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"resolves it with the commit named there. A receipt carrying `handback` in its place\n" +
 			"ends the lane: its worktree and branch are discarded and the issue is handed back by\n" +
 			"kind. `abcd drain` starts these runs one at a time.\n\n" +
+			"--auto-plan plans a draft intent with no person present, on the substitute for the\n" +
+			"product thinker's sign-off adr-2610310235000654 records. The draft must carry its criteria,\n" +
+			"ask no open question, answer its claim sections (a scope condition not yet stamped passes),\n" +
+			"record a person's `pursued:` grounds last, state its origin and production_mode, not be held\n" +
+			"and name no unsettled blocker, and no peer may hold it; a draft short of any is refused\n" +
+			"naming the row, and nothing is written. The run's one lane hands the draft to two fresh\n" +
+			"ruthless-reviewer agents in turn, one for design and feasibility and one for record\n" +
+			"discipline, and the loop records each verdict from its return. A review that does not pass,\n" +
+			"or a draft whose bytes changed since the start, hands the lane back with the draft unplanned.\n" +
+			"Once both pass, the plan stage checks the substitute again and runs `intent plan` in this\n" +
+			"checkout, as a person's plan does, and the run is complete: the spec's steps, the commit and\n" +
+			"the build of the planned intent are separate acts. The run reserves the draft's two paths and\n" +
+			"releases them when its lane ends. On an intent already planned the flag has nothing to plan\n" +
+			"and the run builds it; on an issue it is refused. `abcd intent plan` stays the human's act.\n\n" +
 			"Exit 2 on a refusal, exit 3 when a peer holds the intent or the run state is locked\n" +
 			"(back off and take other work).",
 		Args: cobra.ExactArgs(1),
@@ -199,7 +213,7 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			const prefix = "abcd build"
 			if release {
 				var with []string
-				for _, f := range []string{"session", "pace", "sub-agents", "fix-rounds", "take-over"} {
+				for _, f := range []string{"session", "pace", "sub-agents", "fix-rounds", "take-over", "auto-plan"} {
 					if cmd.Flags().Changed(f) {
 						with = append(with, "--"+f)
 					}
@@ -223,7 +237,7 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
-			o := loop.Options{Session: session, Roots: &roots, Runners: cfg, TakeOver: takeOver}
+			o := loop.Options{Session: session, Roots: &roots, Runners: cfg, TakeOver: takeOver, AutoPlan: autoPlan}
 			if cmd.Flags().Changed("pace") {
 				o.Pace = &pace
 			}
@@ -284,6 +298,7 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().StringVar(&fixRounds, "fix-rounds", "", "the fix rounds a lane of this run may take before it is handed back, a whole number from 0 (bundled: 3); wins over every configured layer")
 	cmd.Flags().BoolVar(&takeOver, "take-over", false, "move your own live reservation on the key from another copy to this one; never another person's")
 	cmd.Flags().BoolVar(&release, "release", false, "push the tombstone over this copy's reservation on the key, changing nothing in the run's state")
+	cmd.Flags().BoolVar(&autoPlan, "auto-plan", false, "plan a draft intent with no person present, after two plan reviews, on adr-2610310235000654's substitute for the sign-off")
 	cmd.AddCommand(newBuildNextCommand(asJSON))
 	return cmd
 }
@@ -573,6 +588,20 @@ func renderLaneLine(w io.Writer, l loop.Lane) {
 			parts = append(parts, v.Role+" "+verdict)
 		}
 		fmt.Fprintf(w, "    validation round %d at %s: %s\n", r.Round, shortSHA(r.HeadSHA), termsafe.Sanitize(strings.Join(parts, ", ")))
+	}
+	if ap := l.AutoPlan; ap != nil {
+		parts := make([]string, 0, len(ap.Reviews))
+		for _, r := range ap.Reviews {
+			verdict := r.Verdict
+			if verdict == "" {
+				verdict = "pending"
+			}
+			parts = append(parts, r.Lens+" "+verdict)
+		}
+		fmt.Fprintf(w, "    auto-plan of %s: plan reviews %s\n", termsafe.Sanitize(ap.Draft), termsafe.Sanitize(strings.Join(parts, ", ")))
+		if ap.Spec != "" {
+			fmt.Fprintf(w, "    planned at %s with %s\n", termsafe.Sanitize(ap.Planned), termsafe.Sanitize(ap.Spec))
+		}
 	}
 	renderLanding(w, l.PR, l.Landing)
 	if cw := l.CheckWait(); cw != "" {
@@ -1118,6 +1147,15 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			id, err := loop.Resolve(root, runID)
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
+			}
+			// An auto-plan lane's plan writes the intent and spec records here,
+			// as `abcd intent plan` does, so it keeps the record writers'
+			// rule: a main checkout two or more live sessions started in is
+			// refused, exit 3 (iss-2610240859590333).
+			if loop.PlanStageNext(root, id) {
+				if err := refuseSharedMainCheckout(cmd, prefix, root); err != nil {
+					return err
+				}
 			}
 			var res loop.StepResult
 			var accepted []string

@@ -42,10 +42,20 @@ type budgetShare struct {
 // roles first name them: steps implementers and as many rounds of the two
 // reviewers, and, for an intent, the auditor once.
 func estimateShares(cfg *runner.Config, steps int, audits bool) []budgetShare {
+	return estimateSharesFor(cfg, steps, audits, false)
+}
+
+// estimateSharesFor is estimateShares, or, for an auto-plan run
+// (autoplan.go), its two plan reviews alone.
+func estimateSharesFor(cfg *runner.Config, steps int, audits, autoPlan bool) []budgetShare {
 	roles := []struct {
 		role string
 		runs int
 	}{{RoleImplementer, steps}, {RoleRuthless, steps}, {RoleSecurity, steps}}
+	if autoPlan {
+		roles = roles[1:2]
+		roles[0].runs, audits = 2, false
+	}
 	if audits {
 		roles = append(roles, struct {
 			role string
@@ -96,7 +106,7 @@ func (o Options) quota(name string) (runner.Quota, bool, error) {
 func budgetCheck(chk CheckResult, o Options) CheckRow {
 	steps := len(chk.steps)
 	audits := chk.Intent != ""
-	shares := estimateShares(o.Runners, steps, audits)
+	shares := estimateSharesFor(o.Runners, steps, audits, chk.autoPlan != nil)
 	total := 0
 	for _, s := range shares {
 		total += s.runs
@@ -106,6 +116,9 @@ func budgetCheck(chk CheckResult, o Options) CheckRow {
 		each += ", and the intent-auditor once"
 	}
 	head := fmt.Sprintf("an estimate of %d agent run(s) from %d step(s), each %s", total, steps, each)
+	if chk.autoPlan != nil {
+		head = fmt.Sprintf("an estimate of %d agent run(s) for the auto-plan: a ruthless-reviewer for each of the two plan reviews", total)
+	}
 
 	var parts, over []string
 	compared := false

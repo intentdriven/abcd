@@ -12,7 +12,8 @@ This chapter describes the part of the loop that ships: the checks, the pace
 (itd-2609201925079472, spc-2609202134341288), the state file, the step
 interface a host session drives with its window clock, the lane's five stages
 (its worktree, its brief, the implementer's receipt, the validators and the
-landing), and the run record read back at the end with the run's transcripts.
+landing), the run record read back at the end with the run's transcripts, and
+the auto-plan, a draft's planning run with nobody present (step 11).
 
 ## Sub-verbs
 
@@ -963,6 +964,43 @@ state with the session it was stored under; a run in progress is refused, since
 the record's transcripts are the run's, captured at its end. A capture that
 fails stops the call, with the transcripts before it recorded.
 
+## The auto-plan
+
+The auto-plan is a build run that takes the planning path on a draft with
+nobody present (decision 6, step 11). Planning by hand is the product
+thinker's sign-off and stays the human's act; the auto-plan is the one other
+door, and
+adr-2610310235000654 records what stands in for the sign-off: recorded
+decisions, grounds present, criteria provenance, and two review receipts.
+Each part is something a person already wrote into the record, or a verdict
+the loop recorded itself, so nothing is inferred.
+
+- **The start** checks the record-only parts in place of the readiness gate:
+  the draft carries its criteria, asks no open question, answers its claim
+  sections (a scope condition not yet stamped passes, since the plan stamps
+  it), records a person's `pursued:` grounds last, states its `origin` and
+  `production_mode`, is not held and names no unsettled blocker; the peers
+  check is the build's. A draft short of any is refused, writing nothing. An
+  intent already planned has nothing to plan, so the build runs as without
+  the flag.
+- **The lane** takes two stages instead of five. `plan-review` hands the
+  draft to two fresh adversarial reviewers, one for design and feasibility and
+  one for record discipline (the proven pair the adversarial-review principle
+  names), and the loop records each verdict from the reviewer's own return, as
+  it does a validator's. `plan` checks the substitute again on the record as it
+  stands and runs the plan in the run's checkout, as a person's plan does.
+- **Bound to the bytes reviewed.** The start records the draft's digest, and
+  either stage hands the lane back with the draft unplanned when the bytes
+  changed or the draft moved: otherwise the reviews would vouch for a text
+  they never read.
+- **A finding goes back to the person.** The build's validators send findings
+  to a fresh implementer; a plan review's would rewrite the person's record,
+  which is the judgement the sign-off stands for, so a review that does not
+  pass hands the draft back for the planning interview.
+- **It stops at the plan.** A planned intent still needs its spec's steps
+  before the build takes it, so the run ends complete with the plan written,
+  and says so; the spec author is not built here.
+
 ## Approval prompts while it runs
 
 A run is unattended: nobody is at the terminal to answer the host's approval
@@ -1030,6 +1068,7 @@ Sub-verbs: `abcd build next`.
 
 | Flag | Type |
 |---|---|
+| `--auto-plan` | bool |
 | `--fix-rounds` | string |
 | `--pace` | string |
 | `--release` | bool |

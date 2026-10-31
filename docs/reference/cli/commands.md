@@ -350,7 +350,7 @@ abcd banlist remove --private acme-internal
 
 Start the loop that takes one READY intent to delivered: Writes the run's state and its reservation; refuses an open question, a hold or a peer holding it.
 
-**Usage:** `abcd build <itd-N|iss-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--take-over] [--release] [flags]`
+**Usage:** `abcd build <itd-N|iss-N> [--auto-plan] [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--take-over] [--release] [flags]`
 
 Start the implement loop for one intent, or resume the run already in progress for it.
 An issue id starts the loop's issue-keyed lane instead (below).
@@ -454,12 +454,28 @@ resolves it with the commit named there. A receipt carrying `handback` in its pl
 ends the lane: its worktree and branch are discarded and the issue is handed back by
 kind. `abcd drain` starts these runs one at a time.
 
+--auto-plan plans a draft intent with no person present, on the substitute for the
+product thinker's sign-off adr-2610310235000654 records. The draft must carry its criteria,
+ask no open question, answer its claim sections (a scope condition not yet stamped passes),
+record a person's `pursued:` grounds last, state its origin and production_mode, not be held
+and name no unsettled blocker, and no peer may hold it; a draft short of any is refused
+naming the row, and nothing is written. The run's one lane hands the draft to two fresh
+ruthless-reviewer agents in turn, one for design and feasibility and one for record
+discipline, and the loop records each verdict from its return. A review that does not pass,
+or a draft whose bytes changed since the start, hands the lane back with the draft unplanned.
+Once both pass, the plan stage checks the substitute again and runs `intent plan` in this
+checkout, as a person's plan does, and the run is complete: the spec's steps, the commit and
+the build of the planned intent are separate acts. The run reserves the draft's two paths and
+releases them when its lane ends. On an intent already planned the flag has nothing to plan
+and the run builds it; on an issue it is refused. `abcd intent plan` stays the human's act.
+
 Exit 2 on a refusal, exit 3 when a peer holds the intent or the run state is locked
 (back off and take other work).
 
 **Flags:**
 
 ```
+      --auto-plan           plan a draft intent with no person present, after two plan reviews, on adr-2610310235000654's substitute for the sign-off
       --fix-rounds string   the fix rounds a lane of this run may take before it is handed back, a whole number from 0 (bundled: 3); wins over every configured layer
       --pace string         this run's working window and pause, <work-minutes>/<pause-minutes> (e.g. 90/240); wins over every configured layer
       --release             push the tombstone over this copy's reservation on the key, changing nothing in the run's state
