@@ -270,10 +270,16 @@ func plannedPointer(pointer string) dryrun.Write {
 	text := strings.Join(strings.Fields(pointer), " ")
 	slug := recordid.Slug(text, recordid.MaxSlugLen)
 	// The id is the family prefix and a sixteen-digit stamp, and the date
-	// ten characters, whatever the clock says, so the size is the size.
+	// ten characters, whatever the clock says, so the size is the size. The
+	// decision writer lays the record as its frontmatter (two delimiter lines
+	// of four bytes each around the id, slug and date lines), then the dated
+	// text; the delimiters are counted, not spelt, because this file judges
+	// and writes no frontmatter of its own.
 	id := decisions.Family + "-" + strings.Repeat("0", 16)
 	date := "0000-00-00"
-	size := len("---\nid: " + id + "\nslug: " + slug + "\ndate: " + date + "\n---\n" + date + " — " + text + "\n")
+	const delimiterLines = 2 * 4
+	size := delimiterLines + len("id: "+id+"\n") + len("slug: "+slug+"\n") + len("date: "+date+"\n") +
+		len(date+" — "+text+"\n")
 	return dryrun.Write{
 		Path:    decisions.RelDir + "/" + decisions.Family + "-" + dryrun.MintedID + "-" + slug + ".md",
 		Action:  dryrun.Create,
