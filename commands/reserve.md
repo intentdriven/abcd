@@ -18,8 +18,12 @@ them on the board (bare `/abcd:abcd`) and on a record's page
 **What it does to the remote.** The command's documented meaning is a push: it
 writes one commit to the branch `abcd-reserved/<record-id>` on the remote named
 `origin`, and to nothing else. The commit changes no file (its tree is the
-empty tree); its trailers name the record, the holder, this working copy, the
-footprint and the lease. The push is a plain fast-forward with the
+empty tree); its trailers name the record, the holder (by an opaque holder id,
+never the user's GitHub login), this working copy, the footprint and the
+lease. The commit's author and committer fields carry the user's git identity
+when that identity is a person's; when it is unset or a machine's, they carry the GitHub account the forge token resolves to, by its
+login and its no-reply address, so a machine identity never reaches the
+commit. The push is a plain fast-forward with the
 repository's hooks running, never forced and never with `--no-verify`, and it
 touches no HEAD, index or working tree here. When git's identity does not name
 the holder (below), it also makes one read-only call to GitHub's user endpoint,
@@ -118,8 +122,11 @@ queued before it (**Withdrawn merges** below). The hold binds sessions, not
 people, so the cutting session tells people working in the repository by hand
 to hold.
 `/abcd:peers` shows the line "release
-v0.16.0 being cut by @octo: merges are held; the hold lapses at <time> unless
-the cut renews it", by the same rule the hold
+v0.16.0 being cut by h_0123456789abcdef0123456789abcdef (claimed): merges are
+held; the hold lapses at <time> unless the cut renews it" (the holder's full
+id, here an invented one, marked claimed wherever a line names an id that is
+not yours, since no record of pushes vouches for whose it is; a release reserved before the holder id shows its holder's
+username, `@octo`), by the same rule the hold
 counts with: in the cutting copy it shows "you are cutting release v0.16.0
 from this copy: every other session's merges are held", and a release dated
 more than five minutes ahead whose first sighting this checkout cannot keep
@@ -150,8 +157,17 @@ by hand since), and only one your own newest push to the release's branch
 records as yours (see "Your record is your own newest push" below); what
 another account pushed above it is counted in `settles` and never read. A pull request the forge refused to withdraw stays
 on the record as `kept`, carried by your renewals, and the next live renewal
-tries the withdrawal again, so reserving the release again is the remedy. Tell
-the user what was withdrawn.
+tries the withdrawal again, so reserving the release again is the remedy. A
+copy never withdraws a pull request whose entry under your holder id it did
+not first record: one the release already records withdrawn or admitted
+under your id, at the head and in the form it is armed in now, in a commit
+another login pushed is left armed, with the forge untouched and nothing
+recorded, and named in `forge_failures`; the launch check keeps naming it, so
+tell the user to withdraw it from the merge path by hand. One recorded `kept`,
+and one withdrawn under an id you only declare (another home or account of
+yours), is withdrawn again, recorded under your own id. An admission under an
+id you only declare that this copy does not act on is left armed, and the
+launch check names it. Tell the user what was withdrawn.
 
 One release is cut at a time: reserving a release while another release is
 still being cut backs off (exit 3), naming the release and its holder. A
@@ -203,7 +219,9 @@ finished by running it again (the release's settle arms it too). When the
 forge then refuses the arming, a second renewal puts it back to withdrawn and
 the refusal says so. The launch check lets an admitted pull request through
 only at the head it was admitted at, and only as your own newest push to the
-release's branch records it.
+release's branch records it; one under an id you only declare passes only
+when that id's own account or home recorded it, so one another login wrote
+there is named armed.
 
 Every other withdrawn pull request is re-armed when the release ends, and an
 admitted one is checked on the forge and armed if it is not. A release ends
@@ -230,7 +248,10 @@ recorded withdrawn, each with one comment saying the cut lapsed. It does so
 only while the cut's tip is that person's own newest push, as the forge's
 record of pushes places it; under a commit another login pushed, only their
 `--release` or the tag ends it. Another person's act ends nothing of it
-(dcn-2610271926369425). Nothing renews a
+(dcn-2610271926369425). It also ends a cut holding only `pre_id` entries or
+another holder's, while those are still withdrawn or admitted, settling each
+`pre_id` one as `manual` and carrying the other holder's entries unchanged on
+the tombstone, for that holder's own copy to settle. Nothing renews a
 release lease by itself, so a cut still going on renews it by reserving the
 release again from the cutting copy; until then the lapse is reported
 (`/abcd:peers`, and the launch check refuses the cut).
@@ -280,7 +301,23 @@ Other people's entries on the tip are carried forward as the tip records
 them. A copy of another person
 never re-arms: a reservation it makes over the release carries the
 withdrawals forward untouched (`stranded`, and a `note:` line naming whose
-they are), and `/abcd:peers` names them (`release_withdrawals`). A
+they are), and `/abcd:peers` names them (`release_withdrawals`). Beside
+`stranded`, `unpaired` lists each id the person declares in
+`~/.abcd.noindex/holder-ids` with no login beside it that names one of the
+stranded withdrawals: tell the user that writing that account's login after
+the id, on its line, lets this copy settle them. Another holder's withdrawal
+recorded before the holder id names their login, which nothing abcd pushes
+carries, so a reservation over it writes it under the marker `pre_id` (a
+holder from before the holder id): it is no one's, no copy re-arms or admits
+it, and the act that ends the release settles it as `manual` and prints a line
+naming its pull requests for their authors to re-arm by hand (`by_hand` on the
+settle), and a reservation that writes one while the release is still being
+cut names it so among the stranded, to be re-armed by hand once the release
+ends; tell the user. The holder who recorded it still re-arms it from their
+own newest push, which keeps their own entry over the marker one. A release
+holds one entry for each pull request, and abcd never writes one twice. Where
+two entries name one pull request, your own, as your own newest push records
+it, is always the one kept: another login's entry never displaces it. A
 withdrawal recorded on an earlier commit of the branch and missing from a
 later one, with the tip not carrying it either, is reported lost
 (`lost_withdrawals` on `/abcd:peers`, and a warning in the launch check): an
@@ -406,8 +443,10 @@ and the output names the copy it replaced (`replaced.your_copy` in `--json`).
 It never moves another person's.
 
 **Exit 2 when the user is at the cap.** One person may hold at most ten live
-reservations by default, counted across every record by username, whichever of
-their sessions and copies holds them. A reservation past that is refused,
+reservations by default, counted across every record by whose holds are
+theirs (their holder id, any id declared in `~/.abcd.noindex/holder-ids`, and
+their username on a reservation made before the holder id), whichever of their
+sessions and copies holds them. A reservation past that is refused,
 naming the cap and the reservations; a renewal, and a take-over of the user's
 own other copy, of a reservation still live are never refused by the cap, while
 renewing one that has lapsed counts as a new one. The refusal advises waiting
@@ -456,8 +495,7 @@ the home directory redacted. Relay it.
 access to the repository and act in good faith. They are not an access
 control: anyone who can push can append a commit to another holder's
 reservation branch, and the holder a reservation names is read from its own
-trailer, set from that writer's `user.email`, machine configuration or token,
-so it is self-declared. The forge's push permissions are the only boundary.
+trailer, the holder id that writer's own home keeps, so it is self-declared. The forge's push permissions are the only boundary.
 
 **Clocks.** A reservation's expiry is written by the holder's clock and
 judged by the reader's, and the five-minute margin is all the disagreement it
@@ -470,15 +508,62 @@ reservation dated more than five minutes ahead of the reader counts from when
 that copy first fetched it, so it holds at most a day from then. Keep the
 machines that reserve on network time.
 
-**The holder** is the user's GitHub username, from the first of these that
-names it: `git config user.email` when it is a GitHub no-reply address;
-`reservation.github_username` in `~/.abcd.noindex/config.json`; and the
-account the session's own GitHub token belongs to, through one call to
+**The holder** is named by the user's holder id: `h_` and 32 random lower-case
+hex characters, minted the first time one is needed into
+`~/.abcd.noindex/holder-id` (owner-only) and kept. No trailer and no branch
+name a reservation pushes carries the user's GitHub login. The commit's author
+and committer fields carry the user's git identity when it is a person's;
+otherwise they carry the login and no-reply address of the account the forge
+token resolves to. Holds already pushed under a login are not rewritten. The act that mints an id says so once,
+on stderr, naming the id and the file: holds made under an earlier id of the
+user's read as someone else's until they lapse, and the cap counts them apart.
+Relay it. A holder-id file another account owns or could write, one that holds
+no id, and a `~/.abcd.noindex` another account can write are each refused,
+never replaced or minted into, and under a HOME inside a git working tree that
+is not the account's own no holder id is read or kept, so the act refuses. A
+file left empty is most likely another run minting at that moment: retry, and
+look at the file only if it is still empty. The ids of the user's other
+machines and accounts (each prints its own with `--holder`) can be listed in
+`~/.abcd.noindex/holder-ids`, one per line with `#` comments; a reservation
+under one of them is the user's own, from another copy. A line may carry the
+GitHub login of the account the id is the user's on after it
+(`h_<32 hex> <login>`): a release's commit naming that id then counts as the
+user's only when the forge's record of pushes says that account pushed it, and
+this copy settles the id's withdrawals that account's own push records. An id
+with no login beside it is held to the user's own login, which is all the same
+person's other machine under one login needs: a release's commit naming it
+counts only when that login pushed it, and this copy settles its withdrawals
+only when a reservation under the id that the user's own login pushed first
+recorded them. Any other of its withdrawals `abcd peers` and the release list
+as stranded, with a note saying how to pair it. The login is
+read on this machine only, never pushed, and never echoed: a malformed line is
+refused by its number alone.
+
+**A hosted or ephemeral session** starts with a fresh home, so it would mint a
+new id every time. Set `ABCD_HOLDER_ID` to the user's id in that environment's
+own settings (its environment variables, not a file in the repository): copy
+the value `abcd reserve --holder` prints on a machine whose id the user wants
+to keep, never invent one. Set, it is the holder id, read before
+`~/.abcd.noindex/holder-id` and never written to it; set to anything but one
+id, every act that needs the id refuses and nothing is minted in its place.
+Without it, each such session mints a new id, its earlier sessions' holds read
+as another holder's until they lapse (a take-over of them is refused as
+another person's), and the cap counts each session's holds separately.
+
+abcd still works out the user's GitHub username, locally, from the first of
+these that names it: `git config user.email` when it is a GitHub no-reply
+address; `reservation.github_username` in `~/.abcd.noindex/config.json`; and
+the account the session's own GitHub token belongs to, through one call to
 GitHub's user endpoint. The repository's own configuration is never read for
-it. When git's identity is not a person's (unset, or a machine's, as in a
-hosted cloud session), the token alone names the holder and that account
+it. A reservation made before the holder id names that username in its
+trailer, and is still the user's own: renewing or releasing it writes the
+holder id. A copy on an older abcd release reads a reservation named by a
+holder id as unreadable: it treats the record as held until that reservation's
+hold ends, and cannot renew it, so renew from the copy on the new release, or
+update the older copy. When git's identity is not a person's (unset, or a machine's, as in
+a hosted cloud session), the token alone names the account, and that account
 authors the reservation commit; the identity git had is shown nowhere. When
-nothing names the holder the refusal says why; relay it.
+nothing names the account the refusal says why; relay it.
 
 To learn the holder without reserving anything:
 
@@ -486,14 +571,26 @@ To learn the holder without reserving anything:
 "${CLAUDE_PLUGIN_ROOT}/abcd" reserve --holder --json
 ```
 
-It prints `{"login", "id", "noreply", "source"}` (`source` is `git`, `config`
-or `token`; `id` and `noreply` when known), or as text `would reserve as
-<login> (from <source>)`. It may make that one user-endpoint call in two
-cases: git's identity is a person's but carries neither a no-reply address nor
-a machine key; or git's identity is not a person's (unset, or a machine's), when
-the machine key is skipped. It takes no record id and no other flag, and
-reserves, writes and pushes nothing. Exit 0 when the account is known, 2 when
-not. Its `noreply` is the account's address; a person's own git identity still
+It prints `{"login", "id", "noreply", "source", "holder_id", "holder_id_from",
+"holder_id_file", "declared_holder_ids", "declared_holder_ids_file",
+"holder_ids_refused"}`
+(`source` is `git`, `config` or `token`; `id` and `noreply` when known;
+`holder_id_from` is `ABCD_HOLDER_ID` or the file; `holder_ids_refused`, when
+the guarded read refused `~/.abcd.noindex/holder-ids`, is the class of the
+refusal, as `/abcd:peers` names it, with no declared id read and one line on
+stderr saying so, naming the class alone; every act refuses until it is
+fixed), or as text `would reserve as
+<login> (from <source>)`, then `holder id: <id> (kept in
+~/.abcd.noindex/holder-id)`, or `(from ABCD_HOLDER_ID)`, with what the id does
+and does not keep out of what is pushed, and, when any are declared, `also
+yours: <ids>`. This is how to print the id to copy into `ABCD_HOLDER_ID`.
+None of it is pushed. It may make that one user-endpoint call in two cases:
+git's identity is a person's but carries neither a no-reply address nor a
+machine key; or git's identity is not a person's (unset, or a machine's), when
+the machine key is skipped. It takes no record id and no other flag, reserves
+and pushes nothing, and writes only the holder id, when none is kept yet and
+`ABCD_HOLDER_ID` is not set. Exit
+0 when the account and the holder id are known, 2 when not. Its `noreply` is the account's address; a person's own git identity still
 authors their commits.
 
 ## Release when done

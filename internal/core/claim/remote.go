@@ -139,9 +139,14 @@ type Result struct {
 	// Admitted is the pull request an --admit re-armed and recorded
 	// admitted; nil for every other act.
 	Admitted *Withdrawal
-	// Stranded is each withdrawal of another person's the commit pushed
-	// carries, which this copy never re-arms (dcn-2610222219297651).
+	// Stranded is each withdrawal the commit pushed carries that this copy
+	// does not act on: another person's, which it never re-arms
+	// (dcn-2610222219297651), and one naming an id the person declares that
+	// is not held to an account's push (actsOn).
 	Stranded []Withdrawal
+	// Unpaired is each id the person declares with no login beside it that
+	// names one of Stranded (UnpairedLine).
+	Unpaired []string
 	// Settles is each release whose withdrawals this act re-armed or
 	// skipped: its own on a release's --release, and any ended release of
 	// the same person's it found on its fetch.
@@ -274,7 +279,7 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 		}
 		// One release is cut at a time: a second would withdraw the merges
 		// the first admitted, and neither cut could tell.
-		if err := otherLiveRelease(root, p.id, p.now); err != nil {
+		if err := otherLiveRelease(root, p.id, p.now, p.self); err != nil {
 			return Result{}, err
 		}
 	}
@@ -318,13 +323,14 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 		// withdrawal as it stands, and once it has landed every one of this
 		// person's is re-armed and a second tombstone records each state.
 		m.Withdrawn = j.Withdrawn
-		if slices.ContainsFunc(j.Withdrawn, func(w Withdrawal) bool { return w.unsettled() && sameHolder(w.By, p.holder) }) {
-			if why, definite := loginMismatch(root, p.holder); definite {
+		if slices.ContainsFunc(j.Withdrawn, func(w Withdrawal) bool { return w.unsettled() && p.acts(w) }) {
+			if why, definite := loginMismatch(root, p.self); definite {
 				return Result{}, refuse("%s was not released: %s; %s", p.id, why, nothingPushed)
 			}
 			settleOwn = true
 		}
-		res.Stranded = stranded(j.Withdrawn, p.holder)
+		res.Stranded = stranded(j.Withdrawn, p.acts)
+		res.Unpaired = unpairedOf(res.Stranded, p.self)
 	case p.req.Admit != 0:
 		// The admission is recorded before the forge re-arms it, so a push
 		// that loses leaves nothing armed.
@@ -338,7 +344,23 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 		// A reservation keeps what its record still has withdrawn: its own
 		// admissions too while it is this person's reservation.
 		m.Withdrawn = carried(j.Withdrawn, j.mine && !j.message.released() && !j.derived)
-		res.Stranded = stranded(m.Withdrawn, p.holder)
+		res.Stranded = stranded(m.Withdrawn, p.acts)
+		res.Unpaired = unpairedOf(res.Stranded, p.self)
+	}
+	var byHand []Withdrawal
+	if isRelease(p.id) {
+		// No push carries a login: the person's own withdrawals made before
+		// the holder id are named by their kept id, and another holder's
+		// still to settle are written under the marker (pushable), and
+		// named so among the stranded. The holder's release, which ends the
+		// release, settles each under the marker as left to be re-armed by
+		// hand (settledByHand).
+		m.Withdrawn = pushable(p.self.asKept(m.Withdrawn))
+		res.Stranded = pushable(res.Stranded)
+		if p.req.Release {
+			m.Withdrawn, byHand = settledByHand(m.Withdrawn)
+			res.Stranded = slices.DeleteFunc(res.Stranded, Withdrawal.preID)
+		}
 	}
 	if !p.req.Release {
 		if err := crowding(p, j, &res); err != nil {
@@ -398,10 +420,14 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 	res.DerivedUnchecked = p.derivedGap
 	res.ForkUnchecked = forkUnchecked
 	res.ForkAllowed = forkAllowed
-	if settleOwn {
+	switch {
+	case settleOwn:
 		s, final, ws := p.settleOwnRelease(tree, sha, m.Withdrawn)
+		s.ByHand = byHand
 		settles = append(settles, s)
 		res.Commit, m.Withdrawn = final, ws
+	case len(byHand) > 0:
+		settles = append(settles, Settle{Subject: p.id, Commit: sha, Settled: []Withdrawal{}, Person: p.holder, ByHand: byHand})
 	}
 	if isRelease(p.id) && !p.req.Release && p.req.Admit == 0 {
 		// A release reserved anew withdraws the merges already armed, now
@@ -605,8 +631,13 @@ func decideReserve(p *prepared, j judged) (Result, message, string, error) {
 				return Result{}, message{}, "", backOff("you are already building %s from your worktree %s on this machine, until %s; "+
 					"renew it from there, or pass --take-over to continue here", p.id, wt, stamp(exp))
 			}
-			return Result{}, message{}, "", backOff("you are already building %s on another computer, until %s; pass --take-over to continue here",
-				p.id, stamp(exp))
+			note, doubtful := declaredTipNote(p, j)
+			tail := "pass --take-over to continue here"
+			if doubtful {
+				tail = takeOverDoubtfulTail(j.Holder, isRelease(p.id))
+			}
+			return Result{}, message{}, "", backOff("you are already building %s on another computer, until %s%s; %s",
+				p.id, stamp(exp), note, tail)
 		}
 		res.Act = ActTakenOver
 		res.Replaced = &Replaced{Holder: j.Holder, Copy: CopyAnother, YourCopy: yourCopyAt(siblingCopy(p.root, j.Copy)),
@@ -776,9 +807,9 @@ func decideAdmit(p *prepared, j judged) (Result, message, string, error) {
 		return Result{}, message{}, "", refuse("the reservation on %s was released at %s, so the cut has ended and admits nothing; %s",
 			p.id, stamp(j.ReleasedAt), nothingPushed)
 	case !j.mine:
-		if w, ok := withdrawalOf(j.Withdrawn, n); ok && w.unsettled() && sameHolder(w.By, p.holder) {
-			return Result{}, message{}, "", refuse("%s is reserved by %s, not by you: only the copy cutting a release admits a pull request into it, so %s takes the release back with --take-over and admits it; %s",
-				p.id, j.Holder, p.holder, nothingPushed)
+		if w, ok := withdrawalOf(j.Withdrawn, n); ok && w.unsettled() && p.self.Owns(w.By) {
+			return Result{}, message{}, "", refuse("%s is reserved by %s, not by you: only the copy cutting a release admits a pull request into it, so take the release back with --take-over and admit it then; %s",
+				p.id, j.Holder, nothingPushed)
 		}
 		return Result{}, message{}, "", refuse("%s is reserved by %s, not by you: only the copy cutting a release admits a pull request into it; %s",
 			p.id, j.Holder, nothingPushed)
@@ -800,7 +831,11 @@ func decideAdmit(p *prepared, j judged) (Result, message, string, error) {
 			n, p.id, listed, nothingPushed)
 	case !j.Withdrawn[i].unsettled():
 		return Result{}, message{}, "", refuse("#%d is recorded %s on %s, so there is nothing to admit; %s", n, j.Withdrawn[i].State, p.id, nothingPushed)
-	case !sameHolder(j.Withdrawn[i].By, p.holder):
+	case j.Withdrawn[i].preID():
+		return Result{}, message{}, "", refuse("#%d was not admitted: %s; %s", n, byHandLine(p.id, j.Withdrawn[i:i+1], false), nothingPushed)
+	case p.self.unpaired(j.Withdrawn[i].By) && !p.acts(j.Withdrawn[i]):
+		return Result{}, message{}, "", refuse("#%d was not admitted: %s; %s", n, UnpairedLine([]string{j.Withdrawn[i].By}), nothingPushed)
+	case !p.acts(j.Withdrawn[i]):
 		// Another person's copy never re-arms a withdrawal
 		// (dcn-2610222219297651), and an admission arms one under this
 		// person's account: only its withdrawer admits it
@@ -935,7 +970,7 @@ func judge(p *prepared, tree string) (judged, error) {
 		return j, nil
 	}
 	j.verdict = lease.Judge(lease.Stamp{ClaimedAt: t.ClaimedAt, ExpiresAt: t.ExpiresAt, FirstSeen: t.FirstSeen}, lease.Default, p.now)
-	j.mine = sameHolder(t.Holder, p.holder)
+	j.mine = p.self.Owns(t.Holder)
 	j.thisCopy = t.Copy == p.copy
 	return j, nil
 }

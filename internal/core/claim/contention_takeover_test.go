@@ -33,7 +33,7 @@ func TestContentionUnderATakeOverLetsThisPersonsOtherCopyThrough(t *testing.T) {
 		{"iss-3", "octo", []string{"c.go"}, "iss-3 has an unreadable reservation holding it until"},
 		{"iss-2", "octo", []string{"b.go", "d.go"}, `"d.go" is in the footprint of iss-4, reserved by octo until`},
 	} {
-		got := s.Contention(tc.id, tc.footprint, now, tc.takeOver)
+		got := s.Contention(tc.id, tc.footprint, now, Self{Login: tc.takeOver})
 		if tc.want == "" && got != "" || tc.want != "" && !strings.HasPrefix(got, tc.want) {
 			t.Errorf("Contention(%s, %v, take-over %q) = %q; want %q", tc.id, tc.footprint, tc.takeOver, got, tc.want)
 		}

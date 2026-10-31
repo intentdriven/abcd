@@ -274,7 +274,7 @@ func TestAFailedJudgementRequestReleasesTheReservationItTook(t *testing.T) {
 		t.Fatalf("origin took %d update(s) to %s; want the drain's reservation and its tombstone", len(pushed), secondIssue)
 	}
 	releasedOver(t, bare, secondIssue, pushed[0])
-	if p := originReservation(t, bare, claim.RefPrefix+secondIssue); p.holder != "octo" || p.commit != pushed[1] {
+	if p := originReservation(t, bare, claim.RefPrefix+secondIssue); p.holder != heldBy(t, patEmail) || p.commit != pushed[1] {
 		t.Fatalf("the tombstone is this person's, the move's last push: %+v", p)
 	}
 }
@@ -381,7 +381,7 @@ func TestAPollAfterTheHoldWasReleasedByHandReservesAgainBeforeAsking(t *testing.
 		t.Fatal(err)
 	}
 	r := originReservation(t, bare, claim.RefPrefix+secondIssue)
-	if r.released || r.parent != tombstone || r.holder != "octo" {
+	if r.released || r.parent != tombstone || r.holder != heldBy(t, patEmail) {
 		t.Fatalf("origin's reservation after the poll = %+v; want a live one over the tombstone %s", r, tombstone)
 	}
 	if h := poll.Judging.Hold; poll.Judging.Issue != secondIssue || h == nil || h.Commit != r.commit || h.Commit == taken {

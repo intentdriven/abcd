@@ -55,7 +55,7 @@ func TestADrainStateACommitCarriesIsRefusedAndPublishesNothing(t *testing.T) {
 		t.Fatalf("the clone should check the committed drain state out: %v", err)
 	}
 	beforeSecond, beforeEligible := refOf(t, bare, secondIssue), refOf(t, bare, eligibleIssue)
-	_, err = Drain(q, Options{}, DrainOptions{})
+	asHomeOf(t, q, func() { _, err = Drain(q, Options{}, DrainOptions{}) })
 	r := mustRefusal(t, err)
 	if r.Stage != StageDrain || !strings.Contains(r.Reason, "git tracks "+DrainStateRel) || !strings.Contains(r.Remedy, "git rm --cached") {
 		t.Fatalf("the drain should refuse the committed state by name and say how to untrack it: %+v", r)

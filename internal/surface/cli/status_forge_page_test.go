@@ -19,14 +19,12 @@ import (
 // again, and each says the record was not read in full.
 func TestAFullPageOfTheForgesRecordKeepsNoMarkForWhatItDidNotCover(t *testing.T) {
 	w := newReserveWorld(t)
-	octo := w.clone(t, "octo", octoMail)
 	pat := w.clone(t, "pat", "5+pat@users.noreply.github.com")
+	// The branch is named by octo's login, as a release before the holder id
+	// named it: only such a branch names an account the forge is asked about.
 	var tips []string
 	for _, item := range []string{"1", "2"} {
-		if code, _, stderr := reserveRun(t, octo, "announce", "merging", item); code != 0 {
-			t.Fatalf("announce: exit %d, %s", code, stderr)
-		}
-		tips = append(tips, gitCmd(t, w.origin, "rev-parse", claim.StatusRefPrefix+"octo"))
+		tips = append(tips, w.legacyAnnounce(t, "octo", item))
 	}
 	older, newer := tips[0], tips[1]
 	var page []map[string]any

@@ -27,7 +27,7 @@ import (
 // at, with the default release lease.
 func reserveRelease(t *testing.T, dir, subject string, at time.Time) {
 	t.Helper()
-	if res, err := claim.Reserve(dir, claim.Request{Record: subject}, clockAt(at)); err != nil || res.Act != claim.ActReserved {
+	if res, err := claim.Reserve(dir, claim.Request{Record: subject}, as(t, dir, clockAt(at))); err != nil || res.Act != claim.ActReserved {
 		t.Fatalf("reserving %s: %+v %v", subject, res, err)
 	}
 }
@@ -55,12 +55,13 @@ func TestTheFenceHoldsWhileAnotherPersonCutsARelease(t *testing.T) {
 				t.Fatalf("the checkout already sees the hold before the fence fetched: %+v %v", holds, err)
 			}
 			r := f.fenced(t)
-			want := "release v0.16.0 is being cut by quinn, until " + now.Add(-time.Minute).Add(24*time.Hour).Format(time.RFC3339) +
+			want := "release v0.16.0 is being cut by " + heldBy(t, quinnEmail) + " (claimed), until " + now.Add(-time.Minute).Add(24*time.Hour).Format(time.RFC3339) +
 				", and a session cutting a release has the final say on what merges before its tag, so this lane does not arm its merge"
 			if r.Reason != want {
 				t.Fatalf("the fence's reason = %q; want %q", r.Reason, want)
 			}
-			if !strings.Contains(r.Remedy, "the pull request stays open and unarmed") || !strings.Contains(r.Remedy, "quinn") ||
+			if !strings.Contains(r.Remedy, "the pull request stays open and unarmed") || !strings.Contains(r.Remedy, "held by "+heldBy(t, quinnEmail)+" (claimed) from that copy") ||
+				strings.Contains(r.Remedy, "ask ") ||
 				!strings.Contains(r.Remedy, "v0.16.0") {
 				t.Fatalf("the remedy names the holder and the release: %q", r.Remedy)
 			}
@@ -112,7 +113,7 @@ func TestATaggedOrReleasedCutHoldsNothing(t *testing.T) {
 			reserveRelease(t, q, "rel-v0.16.0", now.Add(-time.Hour))
 			if end == "tagged" {
 				gitIn(t, f.bare, "tag", "v0.16.0", "main")
-			} else if _, err := claim.Reserve(q, claim.Request{Record: "rel-v0.16.0", Release: true}, clockAt(now.Add(-time.Minute))); err != nil {
+			} else if _, err := claim.Reserve(q, claim.Request{Record: "rel-v0.16.0", Release: true}, as(t, q, clockAt(now.Add(-time.Minute)))); err != nil {
 				t.Fatal(err)
 			}
 			f.step(t)
@@ -296,7 +297,7 @@ func TestThePushFenceHoldsWhileAnotherPersonCutsARelease(t *testing.T) {
 			if !ok || !r.Contention || r.Stage != string(StageLand) {
 				t.Fatalf("the push fence refuses the push as contention: %v", err)
 			}
-			want := "release v0.16.0 is being cut by quinn, until " + now.Add(-time.Minute).Add(24*time.Hour).Format(time.RFC3339) +
+			want := "release v0.16.0 is being cut by " + heldBy(t, quinnEmail) + " (claimed), until " + now.Add(-time.Minute).Add(24*time.Hour).Format(time.RFC3339) +
 				", and a session cutting a release has the final say on what merges before its tag, so this lane does not push its branch"
 			if r.Reason != want {
 				t.Fatalf("the push fence's reason = %q; want %q", r.Reason, want)
@@ -306,7 +307,8 @@ func TestThePushFenceHoldsWhileAnotherPersonCutsARelease(t *testing.T) {
 			if !waitByDesign(r) {
 				t.Fatalf("a release hold is a wait by design, never a refusal a drain counts: %+v", r)
 			}
-			if !strings.Contains(r.Remedy, "nothing is pushed and no pull request is opened") || !strings.Contains(r.Remedy, "quinn") {
+			if !strings.Contains(r.Remedy, "nothing is pushed and no pull request is opened") || !strings.Contains(r.Remedy, "held by "+heldBy(t, quinnEmail)+" (claimed) from that copy") ||
+				strings.Contains(r.Remedy, "ask ") {
 				t.Fatalf("the remedy names what stays and the holder: %q", r.Remedy)
 			}
 			if got := f.remoteBranch(t, l.Branch); got != "" {

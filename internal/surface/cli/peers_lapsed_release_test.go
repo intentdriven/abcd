@@ -18,7 +18,7 @@ func TestPeersNamesALapsedReleaseAsHoldingNoMerge(t *testing.T) {
 	p := w.clone(t, "p", octoMail)
 	at := time.Now().UTC().Truncate(time.Second).Add(-48 * time.Hour)
 	t.Chdir(p)
-	if _, err := claim.Reserve(p, claim.Request{Record: "rel-v0.16.0"}, claim.Options{Now: func() time.Time { return at }}); err != nil {
+	if _, err := claim.Reserve(p, claim.Request{Record: "rel-v0.16.0"}, claim.Options{Now: func() time.Time { return at }, Home: cloneHomes[p]}); err != nil {
 		t.Fatal(err)
 	}
 	r := w.clone(t, "r", quinnMail)
@@ -44,7 +44,7 @@ func TestPeersNamesALapsedReleaseAsHoldingNoMerge(t *testing.T) {
 		t.Fatalf("release_holds = %s, lapsed_releases = %+v; want no hold and one lapsed cut", got.ReleaseHolds, got.LapsedReleases)
 	}
 	l := got.LapsedReleases[0]
-	if l.Release != "v0.16.0" || l.Subject != "rel-v0.16.0" || l.Holder != "octo" || l.RenewedAt != at.Format(time.RFC3339) ||
+	if l.Release != "v0.16.0" || l.Subject != "rel-v0.16.0" || l.Holder != heldBy(t, p) || l.RenewedAt != at.Format(time.RFC3339) ||
 		!strings.Contains(l.Text, "no merge is held") {
 		t.Fatalf("lapsed row = %+v", l)
 	}

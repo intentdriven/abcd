@@ -51,7 +51,7 @@ func TestBuildNextExcludesAnotherPersonsReservationWithTheViewsAge(t *testing.T)
 	})
 	bare := onOrigin(t, repo)
 	q := otherCopy(t, bare, quinnEmail)
-	if _, err := claim.Reserve(q, claim.Request{Record: "itd-10", Footprint: []string{"internal/core/intent"}}, claim.Options{}); err != nil {
+	if _, err := claim.Reserve(q, claim.Request{Record: "itd-10", Footprint: []string{"internal/core/intent"}}, as(t, q, claim.Options{})); err != nil {
 		t.Fatal(err)
 	}
 	fetchedBy(t, repo.Root())
@@ -68,7 +68,7 @@ func TestBuildNextExcludesAnotherPersonsReservationWithTheViewsAge(t *testing.T)
 		t.Fatalf("Q's intent is excluded: %+v", set.Excluded)
 	}
 	e := set.Excluded[i]
-	if e.Check != CheckPeers || !strings.Contains(e.Reason, "reserved by quinn until ") ||
+	if e.Check != CheckPeers || !strings.Contains(e.Reason, "reserved by "+heldBy(t, quinnEmail)+" until ") ||
 		!strings.Contains(e.Reason, "as of the last fetch under a minute ago") {
 		t.Fatalf("the exclusion names the holder, the expiry and the view's age at the peers check: %+v", e)
 	}
@@ -112,7 +112,7 @@ func TestBuildRefusesAnotherPersonsReservationAtThePeersCheck(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
 	bare := onOrigin(t, repo)
 	q := otherCopy(t, bare, quinnEmail)
-	if _, err := claim.Reserve(q, claim.Request{Record: "itd-10", Footprint: []string{"internal/widget"}}, claim.Options{}); err != nil {
+	if _, err := claim.Reserve(q, claim.Request{Record: "itd-10", Footprint: []string{"internal/widget"}}, as(t, q, claim.Options{})); err != nil {
 		t.Fatal(err)
 	}
 	fetchedBy(t, repo.Root())
@@ -123,7 +123,7 @@ func TestBuildRefusesAnotherPersonsReservationAtThePeersCheck(t *testing.T) {
 	if r.Stage != "check" || r.Check != CheckPeers || !r.Contention {
 		t.Fatalf("want the peers check as contention: %+v", r)
 	}
-	if !strings.Contains(r.Reason, "reserved by quinn until ") || !strings.Contains(r.Reason, "as of the last fetch") {
+	if !strings.Contains(r.Reason, "reserved by "+heldBy(t, quinnEmail)+" until ") || !strings.Contains(r.Reason, "as of the last fetch") {
 		t.Fatalf("the refusal names Q's reservation and the view's age: %q", r.Reason)
 	}
 	if strings.Contains(r.Reason, "take-over") || strings.Contains(r.Remedy, "take-over") {
@@ -221,7 +221,7 @@ func TestBuildReservesTheIntentWithItsSpecFootprint(t *testing.T) {
 		t.Fatalf("the reservation's footprint is the spec's packages: %v", fp)
 	}
 	tip := originReservation(t, bare, reservedRef)
-	if tip.holder != "octo" || tip.released {
+	if tip.holder != heldBy(t, patEmail) || tip.released {
 		t.Fatalf("the reservation is P's: %+v", tip)
 	}
 	st, err := ReadState(repo.Root(), res.RunID)
@@ -268,7 +268,7 @@ func TestAResumedRunWithoutAReservationReservesIt(t *testing.T) {
 	if err != nil || !again.Resumed {
 		t.Fatalf("starting again resumes the run: %+v %v", again, err)
 	}
-	if tip := originReservation(t, bare, reservedRef); tip.holder != "octo" || tip.parent != "" {
+	if tip := originReservation(t, bare, reservedRef); tip.holder != heldBy(t, patEmail) || tip.parent != "" {
 		t.Fatalf("the resumed run reserves its key: %+v", tip)
 	}
 	st, err := ReadState(repo.Root(), res.RunID)
@@ -405,7 +405,7 @@ func TestAHandedBackBuildLaneReleasesItsReservation(t *testing.T) {
 		t.Fatal(err)
 	}
 	handBackLaneOf(t, repo, res.RunID, Options{}, LaneHandBack{Kind: HandBackDesignFinding, Reason: "the page needs a decision", Home: "the brief"})
-	if tomb := originReservation(t, bare, claim.RefPrefix+secondIssue); !tomb.released || tomb.holder != "octo" {
+	if tomb := originReservation(t, bare, claim.RefPrefix+secondIssue); !tomb.released || tomb.holder != heldBy(t, patEmail) {
 		t.Fatalf("the handed-back issue's reservation is released: %+v", tomb)
 	}
 	if note := recordNote(t, repo, res.RunID, StageReservationReleased); !strings.Contains(note, "released the reservation on "+secondIssue) {
@@ -537,7 +537,7 @@ func TestAResumePublishesAFootprintTheSpecWidened(t *testing.T) {
 	if fp := footprintOf(t, bare, "itd-10"); !slices.Equal(fp, []string{"internal/widget", "commands", "internal/extra"}) {
 		t.Fatalf("origin's tip carries the widened footprint: %v", fp)
 	}
-	if after := originReservation(t, bare, reservedRef); after.parent != tip.commit || after.released || after.holder != "octo" {
+	if after := originReservation(t, bare, reservedRef); after.parent != tip.commit || after.released || after.holder != heldBy(t, patEmail) {
 		t.Fatalf("the widened reservation is the tip's child, still P's: before %+v, after %+v", tip, after)
 	}
 }
@@ -612,7 +612,7 @@ func TestAStepThatHandsAnIssueLaneBackReleasesItsReservation(t *testing.T) {
 	if err != nil || step.Stage != StageHandedBack || step.HandBack == nil {
 		t.Fatalf("a failed round with no fix round left hands the lane back: %+v %v", step, err)
 	}
-	if tomb := originReservation(t, bare, claim.RefPrefix+secondIssue); !tomb.released || tomb.holder != "octo" {
+	if tomb := originReservation(t, bare, claim.RefPrefix+secondIssue); !tomb.released || tomb.holder != heldBy(t, patEmail) {
 		t.Fatalf("the step that hands the lane back releases its reservation: %+v", tomb)
 	}
 	if note := recordNote(t, repo, id, StageReservationReleased); !strings.Contains(note, "released the reservation on "+secondIssue) {

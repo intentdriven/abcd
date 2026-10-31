@@ -68,7 +68,7 @@ func TestARenewalRenewsOnlyThisCopysOwnReservation(t *testing.T) {
 		t.Fatalf("a renewal names no footprint of its own: %v", err)
 	}
 	nh := notHeld(t, func() error { _, err := renew(q, "iss-5", false); return err }(), NotHeldAnotherPerson)
-	if nh.Holder != "octo" || !nh.Expiry.Equal(t0.Add(3*time.Hour)) {
+	if nh.Holder != p.keptHolderID() || !nh.Expiry.Equal(t0.Add(3*time.Hour)) {
 		t.Fatalf("the refusal names the holder and the expiry: %+v", nh)
 	}
 	notHeld(t, func() error { _, err := renew(p2, "iss-5", false); return err }(), NotHeldAnotherCopy)
@@ -146,7 +146,7 @@ func TestRevivingALapsedReservationIsJudgedForOverlap(t *testing.T) {
 	tip := w.remoteTip("iss-1")
 	w.set(t0.Add(3 * time.Minute))
 	_, err := p.do(Request{Record: "iss-1", Renew: true})
-	want := `"a.go" is in the footprint of iss-2, reserved by quinn until 2026-10-03T16:02:00Z; take other work; nothing was pushed`
+	want := `"a.go" is in the footprint of iss-2, reserved by ` + q.keptHolderID() + ` until 2026-10-03T16:02:00Z; take other work; nothing was pushed`
 	if !errors.Is(err, ErrBackOff) || err.Error() != want {
 		t.Fatalf("reviving P's lapsed iss-1 over Q's iss-2 = %v; want %q", err, want)
 	}

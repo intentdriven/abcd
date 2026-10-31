@@ -96,8 +96,8 @@ func TestALapsedReleaseEndsForItsHolderAndReArmsWhatItWithdrew(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := snap.ReleaseWithdrawals(cutter.dir, "octo", w.clock()); len(got) != 1 || !got[0].Lapsed ||
-		!strings.Contains(strings.Join(got[0].Lines(), "\n"), "the next act of a copy of octo's ends it and re-arms what it withdrew, while the cut's tip is their own newest push") {
+	if got := snap.ReleaseWithdrawals(cutter.dir, cutter.self(), w.clock()); len(got) != 1 || !got[0].Lapsed ||
+		!strings.Contains(strings.Join(got[0].Lines(), "\n"), "the next act of a copy of "+cutter.holderID()+" ends it and re-arms what it withdrew, while the cut's tip is their own newest push") {
 		t.Fatalf("listing inside the margin = %+v; want the lapse and when it ends", got)
 	}
 	// The cut renews in time, so its merges stay withdrawn past the old margin.
@@ -155,11 +155,11 @@ func TestALapsedReleaseEndsForItsHolderAndReArmsWhatItWithdrew(t *testing.T) {
 	}
 }
 
-// TestALapseAnotherLoginForgedEndsNothing (dcn-2610271926369425 review): a
+// TestALapseAnotherLoginWroteEndsNothing (dcn-2610271926369425 review): a
 // commit another login pushes over a live cut, naming its holder with a lease
 // long past, is no lapse of theirs: the tip is not the holder's own newest
 // push, so their next act re-arms nothing and pushes no tombstone.
-func TestALapseAnotherLoginForgedEndsNothing(t *testing.T) {
+func TestALapseAnotherLoginWroteEndsNothing(t *testing.T) {
 	w := newWorld(t)
 	f := armedForge(t)
 	octo := w.clone("1234+octo@users.noreply.github.com", "")
@@ -169,8 +169,8 @@ func TestALapseAnotherLoginForgedEndsNothing(t *testing.T) {
 	m, _ := w.tipWithdrawals("rel-v0.16.0")
 	past := t0.Add(-48 * time.Hour)
 	m.ClaimedAt, m.ExpiresAt = past, past.Add(time.Hour)
-	forged := w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m.text(), past)
-	f.pusherOf[forged] = "mal"
+	rival := w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m.text(), past)
+	f.pusherOf[rival] = "mal"
 	f.reset()
 	w.set(t0.Add(time.Minute))
 	if _, err := octo.reserve("iss-8", "o.go"); err != nil {
@@ -179,8 +179,8 @@ func TestALapseAnotherLoginForgedEndsNothing(t *testing.T) {
 	if got := f.mutations(); len(got) != 0 {
 		t.Fatalf("mutations = %v; want nothing re-armed on a lapse another login wrote", got)
 	}
-	if tip, _ := w.tipWithdrawals("rel-v0.16.0"); tip.released() || w.remoteTip("rel-v0.16.0") != forged {
-		t.Fatal("octo's act pushed a tombstone over the forged lapse")
+	if tip, _ := w.tipWithdrawals("rel-v0.16.0"); tip.released() || w.remoteTip("rel-v0.16.0") != rival {
+		t.Fatal("octo's act pushed a tombstone over a lapse another login wrote")
 	}
 }
 
@@ -277,7 +277,11 @@ func TestASweepThatLosesTheTombstoneRaceReArmsNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	h, _ := resolveHolder(laptop.dir, identity{Name: "Pat Example", Email: "1234+octo@users.noreply.github.com"}, laptop.opts(), false)
-	a := actor{root: laptop.dir, who: identity{Name: "Pat Example", Email: "1234+octo@users.noreply.github.com"}, holder: h.Login,
+	self, err := ownSelf(laptop.home, h.Login, false)
+	if err != nil || self.ID == "" {
+		t.Fatalf("the settling copy's holder = %+v, %v", self, err)
+	}
+	a := actor{root: laptop.dir, who: identity{Name: "Pat Example", Email: "1234+octo@users.noreply.github.com"}, holder: self.ID, self: self,
 		copy: ownCopyKey(laptop.dir), now: w.clock(), label: "abcd:v0.0.0"}
 	// The forge's record ends at the other copy's tombstone, not at the tip
 	// the laptop read, so nothing is verified and nothing is done.
@@ -344,7 +348,7 @@ func TestGhActingAsAnotherAccountTouchesNothing(t *testing.T) {
 	if err != nil || res.Act != ActReserved {
 		t.Fatalf("reserve = %+v, %v", res, err)
 	}
-	if len(res.Withdrew) != 0 || !strings.Contains(res.ForgeUnchecked, "gh acts as quinn, but the reservation's holder is octo") || len(f.mutations()) != 0 {
+	if len(res.Withdrew) != 0 || !strings.Contains(res.ForgeUnchecked, "gh acts as quinn, but you reserve as octo") || len(f.mutations()) != 0 {
 		t.Fatalf("result = %+v, mutations %v; want nothing withdrawn and the mismatch named", res, f.mutations())
 	}
 	// Withdrawn under the right account, then gh switches.
@@ -382,7 +386,7 @@ func TestOneReleaseIsCutAtATime(t *testing.T) {
 	}
 	quinn := w.clone("99+quinn@users.noreply.github.com", "")
 	for _, p := range []*participant{quinn, octo} {
-		if _, err := p.do(Request{Record: "rel-v0.17.0"}); !errors.Is(err, ErrBackOff) || !strings.Contains(err.Error(), "rel-v0.16.0 is being cut by octo") {
+		if _, err := p.do(Request{Record: "rel-v0.17.0"}); !errors.Is(err, ErrBackOff) || !strings.Contains(err.Error(), "rel-v0.16.0 is being cut by "+octo.holderID()) {
 			t.Fatalf("second release = %v; want a back-off naming the first", err)
 		}
 	}
@@ -440,7 +444,7 @@ func TestAReArmTheForgeFindsCleanNeedsAManualMerge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := snap.ReleaseWithdrawals(cutter.dir, "octo", w.clock()); len(got) != 1 || len(got[0].Skipped) != 1 ||
+	if got := snap.ReleaseWithdrawals(cutter.dir, cutter.self(), w.clock()); len(got) != 1 || len(got[0].Skipped) != 1 ||
 		!strings.Contains(got[0].Lines()[0], "#11 was not re-armed after rel-v0.16.0: it can merge now and there is no merge queue to put it in, so it needs a manual merge by its owner") {
 		t.Fatalf("listing = %+v; want #11 named for a manual merge", got)
 	}
@@ -470,7 +474,7 @@ func TestWithdrawalsAnOlderBinaryDroppedAreReportedLost(t *testing.T) {
 	}
 	lost := LostReleaseWithdrawals(cutter.dir, w.clock())
 	if len(lost) != 1 || lost[0].Subject != "rel-v0.16.0" || !slices.Equal(numbersOf(lost[0].Lost), []int{11, 12, 13}) ||
-		!strings.Contains(lost[0].Line(), "#11, #12, #13 withdrawn for rel-v0.16.0 by octo are lost") {
+		!strings.Contains(lost[0].Line(), "#11, #12, #13 withdrawn for rel-v0.16.0 by "+cutter.holderID()+" are lost") {
 		t.Fatalf("lost = %+v; want #11, #12, #13 named", lost)
 	}
 	// The launch check's reading names them too.
@@ -514,8 +518,11 @@ func TestTombstoneFitIsMeasuredForAnyHolder(t *testing.T) {
 	entry := func(n, idLen int) Withdrawal {
 		return Withdrawal{Number: 100000000 + n, ID: strings.Repeat("A", idLen), Form: FormAutoRebase, Head: headA, By: "octo", State: WithdrawnPending}
 	}
+	// A release reserved before the holder id names its cutter by a login,
+	// as short as octo's: the fit is not measured by it.
 	fitsAsOcto := func(ws []Withdrawal) bool {
 		m := pr.tombstone(nil)
+		m.Holder = "octo"
 		m.Withdrawn = ws
 		return checkMessage(p.dir, m.text()) == nil
 	}
@@ -561,7 +568,7 @@ func TestReArmMineSkipsAnotherPersonsEntryOnTheSameTip(t *testing.T) {
 		{Number: 11, ID: "PR_eleven", Form: FormAutoMerge, Head: headA, By: "octo", State: WithdrawnPending},
 		{Number: 12, ID: "PR_twelve", Form: FormAutoMerge, Head: headB, By: "quinn", State: WithdrawnPending},
 	}
-	out, settled, _, fails, why := rearmMine(actor{root: p.dir, holder: "octo", subject: "rel-v0.16.0"}, ws)
+	out, settled, _, fails, why := rearmMine(actor{root: p.dir, holder: "octo", self: Self{Login: "octo"}, subject: "rel-v0.16.0"}, ws, nil)
 	if why != "" || len(fails) != 0 || len(settled) != 1 || settled[0].Number != 11 || out[1].State != WithdrawnPending ||
 		!slices.Equal(f.mutations(), []string{"enablePullRequestAutoMerge #11"}) {
 		t.Fatalf("rearmMine = %+v %+v %+v %q, mutations %v; want only octo's #11", out, settled, fails, why, f.mutations())
@@ -660,10 +667,10 @@ func TestCarriedKeepsOnlyWhatIsStillToSettle(t *testing.T) {
 	if got := numbersOf(carried(ws, true)); !slices.Equal(got, []int{1, 2, 5}) {
 		t.Fatalf("carried from one's own = %v; want pending and admitted", got)
 	}
-	if got := numbersOf(stranded(ws, "octo")); !slices.Equal(got, []int{5}) {
+	if got := numbersOf(stranded(ws, actsOn(Self{Login: "octo"}, nil))); !slices.Equal(got, []int{5}) {
 		t.Fatalf("stranded for octo = %v; want quinn's", got)
 	}
-	if got := numbersOf(stranded(ws, "OCTO")); !slices.Equal(got, []int{5}) {
+	if got := numbersOf(stranded(ws, actsOn(Self{Login: "OCTO"}, nil))); !slices.Equal(got, []int{5}) {
 		t.Fatalf("stranded for OCTO = %v; want quinn's (holders compare without case)", got)
 	}
 }

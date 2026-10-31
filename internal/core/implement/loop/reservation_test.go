@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
@@ -36,6 +37,54 @@ func asPat(t *testing.T, repo *gittest.Repo) {
 	t.Helper()
 	repo.Git("config", "user.name", "Pat Example")
 	repo.Git("config", "user.email", patEmail)
+}
+
+// personHome is the home the person email names keeps their holder id in:
+// P, the fixture's own person, in HOME, as every copy of P's on this machine
+// does, and anyone else in a home of their own under it, as their own
+// machine would be, so a second person's holds are never P's.
+func personHome(t *testing.T, email string) string {
+	t.Helper()
+	gittest.Env(t) // HOME is the test's own from here on
+	home := os.Getenv("HOME")
+	if strings.EqualFold(email, patEmail) {
+		return home
+	}
+	dir := filepath.Join(home, "people", strings.NewReplacer("+", "-", "@", "-").Replace(strings.ToLower(email)))
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// as is o for an act from the copy at dir, under the home of the person its
+// git identity names (personHome).
+func as(t *testing.T, dir string, o claim.Options) claim.Options {
+	t.Helper()
+	o.Home = personHome(t, gitIn(t, dir, "config", "user.email"))
+	return o
+}
+
+// asHomeOf runs f with HOME at the home of the person the copy at dir names,
+// for an act whose claim options the test does not choose, and puts HOME
+// back after.
+func asHomeOf(t *testing.T, dir string, f func()) {
+	t.Helper()
+	home, was := personHome(t, gitIn(t, dir, "config", "user.email")), os.Getenv("HOME")
+	os.Setenv("HOME", home)
+	defer os.Setenv("HOME", was)
+	f()
+}
+
+// heldBy is the holder id the person email names keeps, which every hold a
+// copy of theirs makes names.
+func heldBy(t *testing.T, email string) string {
+	t.Helper()
+	data, err := os.ReadFile(abcdhome.Path(personHome(t, email), "holder-id"))
+	if err != nil {
+		t.Fatalf("no holder id is kept for %s: %v", email, err)
+	}
+	return strings.TrimSpace(string(data))
 }
 
 // clockAt is a claim clock fixed at at.
@@ -181,7 +230,7 @@ func TestAStepRenewsAtHalfLease(t *testing.T) {
 	if after.commit == before.commit || after.parent != before.commit {
 		t.Fatalf("the step pushes a renewal as the tip's child: before %+v, after %+v", before, after)
 	}
-	if after.claimed.Before(now) || after.expires.Sub(after.claimed) != 2*time.Hour || after.holder != "octo" {
+	if after.claimed.Before(now) || after.expires.Sub(after.claimed) != 2*time.Hour || after.holder != heldBy(t, patEmail) {
 		t.Fatalf("the renewal counts the default lease from the step: %+v", after)
 	}
 	if note := recordNote(t, f.repo, f.runID, StageReservationRenewed); !strings.Contains(note, "itd-10") || !strings.Contains(note, after.expires.Format(time.RFC3339)) {
@@ -264,12 +313,12 @@ func TestTheFenceRefusesAReservationNowAnotherPersons(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	reserveRun(t, f.repo, f.runID, "itd-10", now.Add(-130*time.Minute), "internal/widget")
 	q := otherCopy(t, f.bare, quinnEmail)
-	if res, err := claim.Reserve(q, claim.Request{Record: "itd-10", Footprint: []string{"internal/gadget"}}, clockAt(now.Add(-time.Minute))); err != nil || res.Act != claim.ActTakenOver {
+	if res, err := claim.Reserve(q, claim.Request{Record: "itd-10", Footprint: []string{"internal/gadget"}}, as(t, q, clockAt(now.Add(-time.Minute)))); err != nil || res.Act != claim.ActTakenOver {
 		t.Fatalf("Q takes the lapsed reservation over: %+v %v", res, err)
 	}
 	qTip := originReservation(t, f.bare, reservedRef)
 	r := f.fenced(t)
-	want := "the reservation on itd-10 is now quinn's, until " + qTip.expires.Format(time.RFC3339) + ", so this lane does not arm its merge"
+	want := "the reservation on itd-10 is now " + heldBy(t, quinnEmail) + "'s, until " + qTip.expires.Format(time.RFC3339) + ", so this lane does not arm its merge"
 	if r.Reason != want {
 		t.Fatalf("the fence's reason = %q; want %q", r.Reason, want)
 	}
@@ -457,7 +506,7 @@ func TestALandedLaneTombstonesItsOwnReservation(t *testing.T) {
 		t.Fatalf("the lane is done: %s", l.Stage)
 	}
 	tomb := originReservation(t, f.bare, reservedRef)
-	if !tomb.released || tomb.parent != held.commit || tomb.holder != "octo" {
+	if !tomb.released || tomb.parent != held.commit || tomb.holder != heldBy(t, patEmail) {
 		t.Fatalf("a tombstone child of the held reservation: held %+v, tip %+v", held, tomb)
 	}
 	if note := landNote(t, f); !strings.Contains(note, "released the reservation on itd-10") {
@@ -498,7 +547,7 @@ func TestALandedLaneLeavesAnotherPersonsReservation(t *testing.T) {
 	// person's approval) and the margin: Q takes it over.
 	q := otherCopy(t, f.bare, quinnEmail)
 	later := time.Now().UTC().Truncate(time.Second).Add(24*time.Hour + 10*time.Minute)
-	if res, err := claim.Reserve(q, claim.Request{Record: "itd-10", Footprint: []string{"internal/gadget"}}, clockAt(later)); err != nil || res.Act != claim.ActTakenOver {
+	if res, err := claim.Reserve(q, claim.Request{Record: "itd-10", Footprint: []string{"internal/gadget"}}, as(t, q, clockAt(later))); err != nil || res.Act != claim.ActTakenOver {
 		t.Fatalf("Q takes the reservation over: %+v %v", res, err)
 	}
 	qTip := originReservation(t, f.bare, reservedRef)
@@ -510,7 +559,7 @@ func TestALandedLaneLeavesAnotherPersonsReservation(t *testing.T) {
 	if got := originReservation(t, f.bare, reservedRef); got.commit != qTip.commit {
 		t.Fatalf("Q's reservation is left as it stands: %+v", got)
 	}
-	if note := landNote(t, f); !strings.Contains(note, "left the reservation on itd-10") || !strings.Contains(note, "quinn") {
+	if note := landNote(t, f); !strings.Contains(note, "left the reservation on itd-10") || !strings.Contains(note, heldBy(t, quinnEmail)) {
 		t.Fatalf("the landing names the holder it left the reservation with: %q", note)
 	}
 }

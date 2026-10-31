@@ -44,12 +44,12 @@ func TestALapsedReleaseIsNamedAsHoldingNoMerge(t *testing.T) {
 		t.Fatalf("the expired release is named as lapsed: %+v", lapsed)
 	}
 	l := lapsed[0]
-	if l.Release != "v0.16.0" || l.Subject != "rel-v0.16.0" || l.Holder != "octo" ||
+	if l.Release != "v0.16.0" || l.Subject != "rel-v0.16.0" || l.Holder != p.keptHolderID() ||
 		!l.RenewedAt.Equal(t0) || !l.LapsedAt.Equal(t0.Add(lease.Max)) {
 		t.Fatalf("lapsed = %+v; want v0.16.0 by octo, renewed %s, lapsed %s", l, t0, t0.Add(lease.Max))
 	}
 	text := l.Text()
-	for _, want := range []string{"release v0.16.0", "@octo", "lapsed at " + stamp(t0.Add(lease.Max)),
+	for _, want := range []string{"release v0.16.0: the cut by " + p.keptHolderID() + " lapsed at " + stamp(t0.Add(lease.Max)),
 		"last renewed " + stamp(t0), "no tag v0.16.0 on origin", "no merge is held",
 		"From " + stamp(t0.Add(lease.Max+TakeoverMargin)) + ", any copy reserves it again with `abcd reserve rel-v0.16.0`",
 		"`abcd reserve rel-v0.16.0 --release`, to withdraw it"} {

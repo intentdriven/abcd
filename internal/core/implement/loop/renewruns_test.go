@@ -150,7 +150,7 @@ func TestALapsedRevivalAtLandIsJudgedOnTheLanesChangedFiles(t *testing.T) {
 	before := f.tip(t)
 	lapsed := before.expires.Add(time.Minute)
 
-	f.reserveAs(t, "iss-77", "octo", "docs/page.md", lapsed)
+	f.reserveAs(t, "iss-77", heldBy(t, patEmail), "docs/page.md", lapsed)
 	got := RenewRuns(f.repo.Root(), lapsed.Add(time.Minute))
 	if len(got) != 1 || got[0].Renewed || !strings.Contains(got[0].Note, "could not renew the reservation on "+secondIssue) ||
 		!strings.Contains(got[0].Note, "docs/page.md") {
@@ -163,7 +163,7 @@ func TestALapsedRevivalAtLandIsJudgedOnTheLanesChangedFiles(t *testing.T) {
 	// The other copy's reservation of the changed file lapses, and it
 	// reserves a file of the directory the lane did not change.
 	free := lapsed.Add(5*time.Hour + time.Minute)
-	f.reserveAs(t, "iss-78", "octo", "docs/guide.md", free)
+	f.reserveAs(t, "iss-78", heldBy(t, patEmail), "docs/guide.md", free)
 	at := free.Add(time.Minute)
 	got = RenewRuns(f.repo.Root(), at)
 	if len(got) != 1 || !got[0].Renewed {
@@ -205,7 +205,7 @@ func TestALapsedIntentRevivalAtLandGoesPastItsOtherCopyOnAnUnchangedFile(t *test
 	ref := claim.RefPrefix + "itd-10"
 	before := originReservation(t, f.bare, ref)
 	lapsed := before.expires.Add(time.Minute)
-	(&narrowFixture{bare: f.bare}).reserveAs(t, "iss-77", "octo", "docs/guide.md", lapsed)
+	(&narrowFixture{bare: f.bare}).reserveAs(t, "iss-77", heldBy(t, patEmail), "docs/guide.md", lapsed)
 
 	at := lapsed.Add(time.Minute)
 	got := RenewRuns(f.repo.Root(), at)
@@ -240,7 +240,7 @@ func TestALapsedRevivalWhileTheImplementerWorksIsJudgedWhole(t *testing.T) {
 	before := f.tip(t)
 	lapsed := before.expires.Add(time.Minute)
 
-	f.reserveAs(t, "iss-77", "octo", "docs/page.md", lapsed)
+	f.reserveAs(t, "iss-77", heldBy(t, patEmail), "docs/page.md", lapsed)
 	got := RenewRuns(f.repo.Root(), lapsed.Add(time.Minute))
 	if len(got) != 1 || got[0].Renewed || !strings.Contains(got[0].Note, "could not renew the reservation on "+secondIssue) ||
 		!strings.Contains(got[0].Note, "docs/page.md") {
@@ -358,7 +358,7 @@ func (f *narrowFixture) revivalBacksOffOnGuide(t *testing.T, what string) {
 	t.Helper()
 	before := f.tip(t)
 	lapsed := before.expires.Add(time.Minute)
-	f.reserveAs(t, "iss-77", "octo", "docs/guide.md", lapsed)
+	f.reserveAs(t, "iss-77", heldBy(t, patEmail), "docs/guide.md", lapsed)
 	got := RenewRuns(f.repo.Root(), lapsed.Add(time.Minute))
 	if len(got) != 1 || got[0].Renewed || !strings.Contains(got[0].Note, "could not renew the reservation on "+secondIssue) ||
 		!strings.Contains(got[0].Note, "docs/guide.md") {

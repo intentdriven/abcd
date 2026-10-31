@@ -99,8 +99,8 @@ func TestThreeReservationActsAskTheForgeForTheHolderOnce(t *testing.T) {
 		{Request{Record: "iss-5", Release: true}, ActReleased},
 	} {
 		res, err := p.do(c.req)
-		if err != nil || res.Act != c.want || res.Holder != "octo-person" {
-			t.Fatalf("%s: %+v, %v; want %s as octo-person", c.want, res, err, c.want)
+		if err != nil || res.Act != c.want || res.Holder != p.keptHolderID() {
+			t.Fatalf("%s: %+v, %v; want %s by the holder id", c.want, res, err, c.want)
 		}
 	}
 	if n := gh.calls(); n != 1 {

@@ -911,18 +911,19 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	var cooling time.Time
 	// The wait this move may end in (drain_wait.go): the cap, counted in the
 	// move's view before any reservation or judgement for the holder this
-	// copy reserves as, read with no network act ("" when only the forge
-	// could name it, where each reservation act counts it instead), and the
+	// copy reserves as, read with no network act (claim.ReaderSelf: unknown
+	// when neither a holder id nor a login can be read here, where each
+	// reservation act counts it instead), and the
 	// issues passed over because another holds them. A wait the drain was
 	// in is taken off here, and written again if the move still waits.
 	prevWait := waitFrom(&st)
-	capHolder := ""
+	var capHolder claim.Self
 	// The cap is the person's own (reservation.max_live); a setting that
 	// cannot be used leaves the count to the reservation act, which refuses
 	// naming the file.
 	capLimit, capErr := claim.MaxLive, error(nil)
 	if view != nil && reserving {
-		capHolder = claim.ReaderHolder(repoRoot, claimOptions(now))
+		capHolder = claim.ReaderSelf(repoRoot, claimOptions(now))
 		capLimit, capErr = claim.MaxLiveFor(claimOptions(now))
 	}
 	var capped, held []string
@@ -1001,10 +1002,14 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 				continue
 			}
 			// Under --take-over, this person's own reservation from another
-			// copy (a hosted session's, lost with its local tier) holds
-			// nothing off: the reservation act below takes it over
-			// (spc-2610161044461448 step 15).
-			takeOver := ""
+			// copy holds nothing off: the reservation act below takes it over
+			// (spc-2610161044461448 step 15). A hosted session that restarted
+			// lost its local tier, so its earlier copy is another copy; it is
+			// still this person's only when its holder id is (claim.Self): kept
+			// across sessions by ABCD_HOLDER_ID, or declared in holder-ids. A
+			// restart that minted a fresh id reads its earlier holds as another
+			// person's, which no take-over moves.
+			var takeOver claim.Self
 			if o.TakeOver {
 				takeOver = capHolder
 			}
@@ -1012,7 +1017,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 				// The reason quotes what another writer chose (a reserved
 				// footprint), and the agent driving the drain reads it.
 				why = termsafe.Sanitize(why) + "; passed over with nothing pushed and no judgement asked"
-				if r, ok := view.Lookup(v.ID); ok && r.State == claim.StateLive && r.Copy != claim.CopyThis && claim.SameHolder(r.Holder, capHolder) {
+				if r, ok := view.Lookup(v.ID); ok && r.State == claim.StateLive && r.Copy != claim.CopyThis && capHolder.Owns(r.Holder) {
 					why += "; it is your own reservation from another copy: to move it to this one, run `abcd drain --take-over`"
 				}
 				res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckReservation, Reason: why})
@@ -1048,7 +1053,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			if reserving && !owned && judgeHold == nil {
 				// At the cap no reservation is made and no judgement asked:
 				// the drain waits for a pull request to merge.
-				if capHolder != "" && capErr == nil {
+				if capHolder.Known() && capErr == nil {
 					if mine := view.LiveHeldBy(capHolder, v.ID); len(mine) >= capLimit {
 						capped = mine
 						break

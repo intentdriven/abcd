@@ -194,7 +194,7 @@ func (f *narrowFixture) stepAt(t *testing.T, at time.Time) {
 func (f *narrowFixture) renewedAt(t *testing.T, before reservation, at time.Time) reservation {
 	t.Helper()
 	tip := f.tip(t)
-	if tip.parent != before.commit || tip.released || tip.holder != "octo" || !tip.claimed.Equal(at) {
+	if tip.parent != before.commit || tip.released || tip.holder != heldBy(t, patEmail) || !tip.claimed.Equal(at) {
 		t.Fatalf("the renewal is this holder's, over the last one, at %s: before %+v, after %+v", stamp(at), before, tip)
 	}
 	return tip
@@ -303,7 +303,7 @@ func TestALanesDirectoryReservationNarrowsToItsChangedFiles(t *testing.T) {
 	if fp := f.footprint(t); !slices.Equal(fp, []string{"docs/page.md"}) {
 		t.Fatalf("the resume keeps the narrowed footprint, never reserving the directory again: %q (%s)", fp, again.Reservation)
 	}
-	if tip := f.tip(t); tip.parent != narrowed.commit || tip.released || tip.holder != "octo" {
+	if tip := f.tip(t); tip.parent != narrowed.commit || tip.released || tip.holder != heldBy(t, patEmail) {
 		t.Fatalf("the resume is a renewal of the narrowed reservation: before %+v, after %+v", narrowed, tip)
 	}
 }
@@ -463,7 +463,7 @@ func TestALaneSentBackFromItsLandingJudgesItsOtherCopyAgain(t *testing.T) {
 	f := newNarrowFixture(t)
 	f.implement(t, Options{}, "docs/page.md")
 	f.toLand(t)
-	f.reserveAs(t, "iss-77", "octo", "docs/guide.md", time.Now().UTC().Truncate(time.Second))
+	f.reserveAs(t, "iss-77", heldBy(t, patEmail), "docs/guide.md", time.Now().UTC().Truncate(time.Second))
 	f.moveDefault(t, "other.txt")
 	judged := currentLane(t, f.repo, f.runID)
 
@@ -604,7 +604,7 @@ func TestALaneHeldAtItsLandingIsNotJudgedAgainstItsOtherCopy(t *testing.T) {
 	bare := strings.TrimSpace(f.repo.Git("remote", "get-url", "origin"))
 	reserveRun(t, f.repo, f.runID, "itd-10", f.now, "pkg")
 	f.handedBack(t)
-	(&narrowFixture{bare: bare}).reserveAs(t, "iss-77", "octo", "pkg/widget.go", f.now)
+	(&narrowFixture{bare: bare}).reserveAs(t, "iss-77", heldBy(t, patEmail), "pkg/widget.go", f.now)
 
 	res, err := advance(f.repo.Root(), f.runID, f.stages, f.opts())
 	if err != nil {

@@ -13,9 +13,10 @@ import (
 )
 
 // MaxLive is the most live reservations one person may hold unless their
-// machine's reservation.max_live says otherwise (maxlive.go), counted by
-// username across every record in the view: a laptop and a cloud session that
-// resolve to one username are one person. A release subject is not counted.
+// machine's reservation.max_live says otherwise (maxlive.go), counted across
+// every record in the view by whose holds are the person's own (Self.Owns):
+// their holder id, the ids their home declares, and their login on a hold
+// made before the id. A release subject is not counted.
 const MaxLive = 10
 
 // OwnOverlap is a path a person's own reservation shares with the live
@@ -113,12 +114,12 @@ func crowding(p *prepared, j judged, res *Result) error {
 		}
 		var mine []string
 		for _, r := range others {
-			if sameHolder(r.Holder, p.holder) && !isRelease(r.Record) {
+			if p.self.Owns(r.Holder) && !isRelease(r.Record) {
 				mine = append(mine, r.Record)
 			}
 		}
 		if len(mine) >= limit {
-			return capRefusalIn(&snap, p.root, p.holder, mine, limit, note)
+			return capRefusalIn(&snap, p.root, p.self, mine, limit, note)
 		}
 	}
 	// A renew-only act over a live tip keeps the tip's own footprint, so it
@@ -143,7 +144,7 @@ func crowding(p *prepared, j judged, res *Result) error {
 		return ownCopyIn(sibs, sibsUnread, r.key)
 	}
 	for _, r := range others {
-		mine := sameHolder(r.Holder, p.holder)
+		mine := p.self.Owns(r.Holder)
 		// This copy's own reservations on other records are no overlap: the
 		// work they name is this copy's, as a drain's next issue beside its
 		// own open lane.
@@ -347,16 +348,16 @@ func heldByPlace(held []string, where map[string]string) string {
 	return strings.Join(parts, "; ")
 }
 
-// capRefusalIn is the cap's refusal for holder in the view s, naming the copy
-// each of mine was made from by holder's own live tip, never another
+// capRefusalIn is the cap's refusal for self in the view s, naming the copy
+// each of mine was made from by self's own live tip, never another
 // holder's tip on the same record, and why the worktrees could not be listed
 // when they could not (iss-2610272352179242). The worktrees are listed only
 // now, for the refusal's words.
-func capRefusalIn(s *Snapshot, root, holder string, mine []string, limit int, note string) error {
-	s.NameSiblings(root, holder)
+func capRefusalIn(s *Snapshot, root string, self Self, mine []string, limit int, note string) error {
+	s.NameSiblings(root, self)
 	where := map[string]string{}
 	for _, r := range s.Reservations {
-		if r.State == StateLive && sameHolder(r.Holder, holder) && slices.Contains(mine, r.Record) {
+		if r.State == StateLive && self.Owns(r.Holder) && slices.Contains(mine, r.Record) {
 			where[r.Record] = copyPlace(r)
 		}
 	}
@@ -370,13 +371,13 @@ func capRefusal(mine []string, where map[string]string, limit int, note string) 
 	return &CapError{Held: slices.Clone(mine), Where: where, Limit: limit, Note: note}
 }
 
-// LiveHeldBy is the records holder holds live in the view, from any copy,
+// LiveHeldBy is the records self holds live in the view (Self.Owns), from any copy,
 // sorted, less except and less any release hold, which the cap does not count: the count the cap judges a fresh reservation of except
 // by (crowding), read from the view alone so a caller counts with no fetch.
-func (s Snapshot) LiveHeldBy(holder, except string) []string {
+func (s Snapshot) LiveHeldBy(self Self, except string) []string {
 	var out []string
 	for _, r := range s.Reservations {
-		if r.State == StateLive && r.Record != except && sameHolder(r.Holder, holder) && !isRelease(r.Record) {
+		if r.State == StateLive && r.Record != except && self.Owns(r.Holder) && !isRelease(r.Record) {
 			out = append(out, r.Record)
 		}
 	}
@@ -398,18 +399,25 @@ func sharedPath(a, b string) (string, bool) {
 	return "", false
 }
 
-// OtherCopyOverlap is the first path of footprint that holder's live
-// reservation of a record other than id, made from another copy, shares in
+// OtherCopyOverlap is the first path of footprint that a live reservation of
+// the reader's of a record other than id, made from another copy, shares in
 // the view s, as crowding judges an overlap (a generated file is shared), and
-// that reservation; ok is false when none does. It reads the view alone. A
+// that reservation; ok is false when none does. A reservation is the
+// reader's as crowding reads it (Self.Owns: their kept id, an id they
+// declare, or their login on one made before the id), or when it names
+// holder, the holder of their own reservation of id (its holder id exactly,
+// or the login one made before the id names, compared as the forge compares
+// it), so a reader whose id or login cannot be read here still counts the
+// copies holding under it. It reads the view alone. A
 // run whose lane leaves its landing for a fresh round judges it
 // (iss-2610261837062463, dcn-2610300422481486): a lapsed revival may have
 // gone ahead past that copy on a file no lane had changed
 // (Request.OwnOverlapOn), which the fresh round's implementer may now edit,
 // and two automated lanes must never edit one file.
-func (s Snapshot) OtherCopyOverlap(id string, footprint []string, holder string) (OwnOverlap, bool) {
+func (s Snapshot) OtherCopyOverlap(id string, footprint []string, holder string, reader Self) (OwnOverlap, bool) {
 	for _, r := range s.Reservations {
-		if r.State != StateLive || r.Record == id || r.Copy == CopyThis || !sameHolder(r.Holder, holder) {
+		mine := reader.Owns(r.Holder) || validHolderID(holder) && r.Holder == holder || validUsername(holder) && sameHolder(r.Holder, holder)
+		if r.State != StateLive || r.Record == id || r.Copy == CopyThis || !mine {
 			continue
 		}
 		for _, want := range footprint {
@@ -433,11 +441,11 @@ func (s Snapshot) OtherCopyOverlap(id string, footprint []string, holder string)
 // fetch and no push; the reservation act itself, whose push is the
 // compare-and-swap, still judges what origin holds by then.
 //
-// takeOver is the holder an act with --take-over reserves as, "" for any
-// other act: that person's own live reservation of id from another copy does
-// not hold it off, since the act takes it over (spc-2610161044461448 step 15).
-func (s Snapshot) Contention(id string, footprint []string, now time.Time, takeOver string) string {
-	if r, ok := s.Lookup(id); ok && r.Copy != CopyThis && !(takeOver != "" && r.State == StateLive && sameHolder(r.Holder, takeOver)) {
+// takeOver is whose holds are the person's own for an act with --take-over,
+// the zero Self for any other act: that person's own live reservation of id
+// from another copy does not hold it off, since the act takes it over (spc-2610161044461448 step 15).
+func (s Snapshot) Contention(id string, footprint []string, now time.Time, takeOver Self) string {
+	if r, ok := s.Lookup(id); ok && r.Copy != CopyThis && !(r.State == StateLive && takeOver.Owns(r.Holder)) {
 		switch {
 		case r.State == StateLive:
 			return fmt.Sprintf("%s is reserved by %s until %s, %s", id, r.Holder, stamp(r.EffectiveExpiry), s.AsOf(now))

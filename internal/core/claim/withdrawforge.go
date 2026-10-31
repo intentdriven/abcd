@@ -466,7 +466,7 @@ func (f mergeForge) arm(root string, w Withdrawal) (string, error) {
 // merged). Any other state ("" back) posts nothing: a mismatched node id
 // names no pull request the record is trusted for, and a kept or partial
 // withdrawal did not happen as a comment would say. Every value in it is
-// validated data (a number, the release's tag, a GitHub username), so it
+// validated data (a number, the release's tag, a holder id), so it
 // carries no free text from the branch, no session URL and no tool footer.
 // The person is named without an at-sign, so a comment mentions no one;
 // every subscriber of the pull request is notified, as by any comment.
@@ -676,18 +676,18 @@ func ArmedMergesForCut(root string, o Options) (ArmedMerges, error) {
 	if err != nil {
 		return ArmedMerges{}, err
 	}
-	reader := readerHolder(root, o)
+	reader := readerSelf(root, o)
 	var lapsed []Reservation
 	for _, r := range snap.Reservations {
 		// Only a release whose tip names the reader as its holder, or a
 		// tombstone, which may stand over the reader's own reservation, can
 		// be the reader's cut: another person's is not read.
-		if reader == "" || !isRelease(r.Record) || !sameHolder(r.Holder, reader) && r.State != StateReleased {
+		if !reader.Known() || !isRelease(r.Record) || !reader.Owns(r.Holder) && r.State != StateReleased {
 			continue
 		}
 		tip := r.Commit
-		r, _, _ = asCut(root, r, now)
-		if r.Copy != CopyThis || !sameHolder(r.Holder, reader) || !stillBeingCut(r) {
+		r, _, _ = asCut(root, r, now, reader)
+		if r.Copy != CopyThis || !reader.Owns(r.Holder) || !stillBeingCut(r) {
 			continue
 		}
 		if r.State != StateLive {
@@ -695,7 +695,12 @@ func ArmedMergesForCut(root string, o Options) (ArmedMerges, error) {
 			continue
 		}
 		a.Release = r.Record
-		own := readerRecord(root, r.Record, tip, reader)
+		// An admission under an id the reader only declares is exempt only
+		// as an act would act on it (vouched): its paired login's own newest
+		// push records it, or, unpaired, the reader's own login first
+		// recorded it. One another login wrote is named armed.
+		ws := slices.Clone(r.Withdrawn)
+		own, vouched := readerRecord(root, r.Record, tip, reader, &ws)
 		if own.why != "" {
 			for _, w := range r.Withdrawn {
 				if w.State == WithdrawnAdmitted {
@@ -705,11 +710,11 @@ func ArmedMergesForCut(root string, o Options) (ArmedMerges, error) {
 			a.UnverifiedWhy = own.why + "; run the check again in a minute, once the forge's record has caught up"
 			continue
 		}
-		for _, w := range own.mine(reader) {
-			switch w.State {
-			case WithdrawnAdmitted:
+		for _, w := range own.recorded(reader) {
+			switch {
+			case w.State == WithdrawnAdmitted && (!reader.declaredOnly(w.By) || vouched[w]):
 				a.Admitted = append(a.Admitted, w)
-			case WithdrawnKept:
+			case w.State == WithdrawnKept:
 				a.Kept = append(a.Kept, w)
 			}
 		}

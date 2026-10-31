@@ -2,12 +2,14 @@ package loop
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/claim"
 )
 
@@ -38,10 +40,25 @@ func realAnnouncer(t *testing.T, after func(n []claim.PushNotice, err error)) {
 }
 
 // asOcto gives the run's checkout a person's git identity whose no-reply
-// address names the GitHub user octo, so an announcement is sent as octo.
+// address names the GitHub user octo, so the person resolves and an
+// announcement is sent under their holder id.
 func (f *landFixture) asOcto() {
 	f.repo.Git("config", "user.name", "Pat Example")
 	f.repo.Git("config", "user.email", "1234+octo@users.noreply.github.com")
+}
+
+// runHolderID is the holder id the run's home keeps, which names the person's
+// status branch; "" when the home keeps none yet.
+func runHolderID(t *testing.T) string {
+	t.Helper()
+	data, err := os.ReadFile(abcdhome.Path(os.Getenv("HOME"), "holder-id"))
+	if errors.Is(err, os.ErrNotExist) {
+		return ""
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(string(data))
 }
 
 // colleague clones the fixture's origin as another person's working copy,
@@ -103,10 +120,10 @@ func TestALaneIsAnnouncedBeforeItsBranchReachesOrigin(t *testing.T) {
 	}
 	var found bool
 	for _, a := range seen {
-		found = found || (a.Branch == "octo" && a.Kind == "merging" && a.Item == "itd-10")
+		found = found || (a.Branch == runHolderID(t) && a.Branch != "" && a.Kind == "merging" && a.Item == "itd-10")
 	}
 	if !found {
-		t.Fatalf("the colleague's read once announced: %+v; want octo's merging itd-10", seen)
+		t.Fatalf("the colleague's read once announced: %+v; want the person's merging itd-10 under their holder id", seen)
 	}
 	if got := f.remoteBranch(t, l.Branch); got != l.HeadSHA {
 		t.Fatalf("the lane's head is pushed after the announcement: remote %q, head %s", got, l.HeadSHA)
@@ -115,7 +132,7 @@ func TestALaneIsAnnouncedBeforeItsBranchReachesOrigin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(recordText(st), "on its preflight receipt; announced merging itd-10 on abcd-status/octo, standing until ") {
+	if !strings.Contains(recordText(st), "on its preflight receipt; announced merging itd-10 on abcd-status/"+runHolderID(t)+", standing until ") {
 		t.Fatalf("the push's record names the announcement:\n%s", recordText(st))
 	}
 }
@@ -143,13 +160,17 @@ func TestALaneWhoseAnnouncementCannotBePublishedIsNotPushed(t *testing.T) {
 	if got := f.remoteBranch(t, l.Branch); got != "" {
 		t.Fatalf("a lane whose announcement failed was pushed: %s", got)
 	}
-	if got := f.remoteBranch(t, "abcd-status/octo"); got != "" {
+	if id := runHolderID(t); id != "" {
+		t.Fatalf("a refused announcement minted the holder id %s", id)
+	}
+	if got := f.repo.Git("ls-remote", "origin", "refs/heads/abcd-status/*"); strings.TrimSpace(got) != "" {
 		t.Fatalf("an announcement reached origin: %s", got)
 	}
 
 	f.asOcto()
 	f.step(t)
-	if f.remoteBranch(t, "abcd-status/octo") == "" || f.remoteBranch(t, l.Branch) != l.HeadSHA {
-		t.Fatalf("the next step announces, then pushes: status %q, lane %q", f.remoteBranch(t, "abcd-status/octo"), f.remoteBranch(t, l.Branch))
+	status := "abcd-status/" + runHolderID(t)
+	if runHolderID(t) == "" || f.remoteBranch(t, status) == "" || f.remoteBranch(t, l.Branch) != l.HeadSHA {
+		t.Fatalf("the next step announces, then pushes: status %q, lane %q", f.remoteBranch(t, status), f.remoteBranch(t, l.Branch))
 	}
 }

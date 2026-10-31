@@ -41,7 +41,9 @@ var ErrNoOrigin = errors.New("this checkout has no remote named origin")
 // data a writer chose: a surface quotes it and never treats it as instruction.
 type Reservation struct {
 	Record string
-	// Holder is the GitHub username the tip names; "" when it is unreadable.
+	// Holder is the holder the tip names: a holder id, or the GitHub
+	// username a reservation made before the id names; "" when it is
+	// unreadable.
 	Holder string
 	// Copy is CopyThis when the tip names this checkout's own copy, else "".
 	Copy string
@@ -114,9 +116,13 @@ type Snapshot struct {
 	siblingsNamed  bool
 }
 
-// LiveByHolder counts each person's live reservations of records, as the cap
-// counts them: usernames compared without regard to case and named as first
-// listed, and a release subject, which sits outside the cap, not counted.
+// LiveByHolder counts the live reservations of records under each holder
+// name the tips carry: names compared without regard to case and named as
+// first listed, and a release subject, which sits outside the cap, not
+// counted. It is a count by name, not by person: the cap counts the reader's
+// own holds under every name that is theirs (Self.Owns), so one person's
+// holds under a login made before the holder id and under the id, or under
+// two undeclared ids, are two entries here.
 func (s Snapshot) LiveByHolder() map[string]int {
 	out := map[string]int{}
 	names := map[string]string{}
@@ -343,14 +349,14 @@ func lastFetched(root string, ns namespace) time.Time {
 	return at.UTC()
 }
 
-// NameSiblings fills Sibling on holder's tips made from another worktree of
+// NameSiblings fills Sibling on self's tips (Self.Owns) made from another worktree of
 // the repository at root on this machine, reading each worktree's kept copy
 // key once (iss-2610231004140527). It is the only reader of the worktrees, so
 // a view that never shows a sibling never lists them; a second call does
 // nothing. A tip of anyone else is never named, since a copy key is no secret
 // from whoever pushed a tip. When the worktrees cannot be listed, every tip
 // reads as made elsewhere and SiblingsUnread says why.
-func (s *Snapshot) NameSiblings(root, holder string) {
+func (s *Snapshot) NameSiblings(root string, self Self) {
 	if s.siblingsNamed {
 		return
 	}
@@ -358,7 +364,7 @@ func (s *Snapshot) NameSiblings(root, holder string) {
 	var sibs map[string]siblingAt
 	for i := range s.Reservations {
 		r := &s.Reservations[i]
-		if r.Copy == CopyThis || !validCopyKey(r.key) || holder == "" || !sameHolder(r.Holder, holder) {
+		if r.Copy == CopyThis || !validCopyKey(r.key) || !self.Owns(r.Holder) {
 			continue
 		}
 		if sibs == nil {

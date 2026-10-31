@@ -74,7 +74,7 @@ func TestReserveUnderVendorIdentityShowsItNowhere(t *testing.T) {
 			t.Fatalf("the vendor identity %q is shown:\n%s", s, shown.String())
 		}
 	}
-	if !strings.Contains(shown.String(), "Abcd-Holder: octo-person") {
-		t.Fatalf("the reservation does not name the token's account as holder:\n%s", shown.String())
+	if !strings.Contains(shown.String(), "Abcd-Holder: "+heldBy(t, p)+"\n") || strings.Contains(shown.String(), "Abcd-Holder: octo-person") {
+		t.Fatalf("the reservation does not name the holder id as holder:\n%s", shown.String())
 	}
 }

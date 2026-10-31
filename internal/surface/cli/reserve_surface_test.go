@@ -2,9 +2,11 @@ package cli
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -22,7 +24,20 @@ import (
 type reserveWorld struct {
 	home   string
 	origin string
+	// people is the home each email's clones run under (cloneHome): the
+	// first email cloned runs under home itself, every other under one of its
+	// own, since a person's abcd home keeps their holder id
+	// (iss-2610290809526033) and two people never share one.
+	people map[string]string
 }
+
+// cloneHomes is the HOME reserveRun runs each clone's directory under, and
+// worldHome the world's own, for a directory no clone registered. A test
+// that sets HOME (t.Setenv) runs alone, so one world is live at a time.
+var (
+	cloneHomes = map[string]string{}
+	worldHome  string
+)
 
 func newReserveWorld(t *testing.T) *reserveWorld {
 	t.Helper()
@@ -30,7 +45,9 @@ func newReserveWorld(t *testing.T) *reserveWorld {
 	t.Setenv("HOME", home)
 	t.Setenv("ABCD_PLUGIN_ROOT", "")
 	t.Setenv("CLAUDE_PLUGIN_ROOT", "")
-	w := &reserveWorld{home: home, origin: filepath.Join(home, "origin.git")}
+	w := &reserveWorld{home: home, origin: filepath.Join(home, "origin.git"), people: map[string]string{}}
+	worldHome = home
+	t.Cleanup(func() { worldHome = ""; clear(cloneHomes) })
 	gittest.InitBare(t, w.origin)
 	seed := filepath.Join(home, "seed")
 	gitInitAt(t, seed)
@@ -58,7 +75,42 @@ func (w *reserveWorld) clone(t *testing.T, name, email string) string {
 	if err := os.WriteFile(filepath.Join(dir, ".git", "info", "exclude"), []byte(".abcd/.work.local/\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	cloneHomes[dir] = w.cloneHome(t, email)
 	return dir
+}
+
+// cloneHome is the home email's clones run under: the world's own for the
+// first email cloned, and one of its own, beneath it, for every other.
+func (w *reserveWorld) cloneHome(t *testing.T, email string) string {
+	t.Helper()
+	key := strings.ToLower(email)
+	if h, ok := w.people[key]; ok {
+		return h
+	}
+	h := w.home
+	if len(w.people) > 0 {
+		h = filepath.Join(w.home, "people", strconv.Itoa(len(w.people)))
+		if err := os.MkdirAll(h, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w.people[key] = h
+	return h
+}
+
+// harnessHome reports whether h is a HOME the world set (its own or a
+// clone's), which reserveRun moves to the clone it runs in; a HOME the test
+// set itself is left as it is.
+func harnessHome(h string) bool {
+	if h == worldHome {
+		return true
+	}
+	for _, v := range cloneHomes {
+		if v == h {
+			return true
+		}
+	}
+	return false
 }
 
 // remoteTip is the reservation branch's head on origin, "" when absent.
@@ -67,13 +119,38 @@ func (w *reserveWorld) remoteTip(t *testing.T, id string) string {
 	return gitCmd(t, w.origin, "for-each-ref", "--format=%(objectname)", "refs/heads/abcd-reserved/"+id)
 }
 
-// reserveRun runs the CLI in dir and returns its exit code and both streams.
+// reserveRun runs the CLI in dir and returns its exit code and both streams,
+// less the line telling a fresh holder id's mint, which the first act under
+// each clone's home prints (claim.MintNoticeLineForTest): the tests of that line
+// read it through reserveRunRaw.
 func reserveRun(t *testing.T, dir string, args ...string) (int, string, string) {
 	t.Helper()
+	code, stdout, stderr := reserveRunRaw(t, dir, args...)
+	return code, stdout, withoutMintNotice(stderr)
+}
+
+// reserveRunRaw is reserveRun with stderr as the CLI wrote it.
+func reserveRunRaw(t *testing.T, dir string, args ...string) (int, string, string) {
+	t.Helper()
 	t.Chdir(dir)
+	if h := cmp.Or(cloneHomes[dir], worldHome); h != "" && harnessHome(os.Getenv("HOME")) {
+		t.Setenv("HOME", h)
+	}
 	var stdout, stderr bytes.Buffer
 	code := Run(args, &stdout, &stderr)
 	return code, stdout.String(), stderr.String()
+}
+
+// withoutMintNotice is s less each line telling a fresh holder id's mint.
+func withoutMintNotice(s string) string {
+	lines := strings.SplitAfter(s, "\n")
+	out := lines[:0]
+	for _, l := range lines {
+		if !strings.HasPrefix(l, "abcd: minted a new holder id, ") {
+			out = append(out, l)
+		}
+	}
+	return strings.Join(out, "")
 }
 
 // reserveJSON is the --json document of one act.
@@ -167,7 +244,7 @@ func TestReserveUsageErrorsAndExitCodes(t *testing.T) {
 		t.Errorf("the reservation does not say what it did:\n%s", stdout)
 	}
 	code, _, stderr = reserveRun(t, q, "reserve", "iss-5", "--footprint", "b.go")
-	if code != 3 || !strings.Contains(stderr, "iss-5 is reserved by octo until") || !strings.Contains(stderr, "back off") {
+	if code != 3 || !strings.Contains(stderr, "iss-5 is reserved by "+heldBy(t, p)+" until") || !strings.Contains(stderr, "back off") {
 		t.Fatalf("Q's reservation over P's live one: exit %d, stderr %q; want the back-off exit 3", code, stderr)
 	}
 	code, _, stderr = reserveRun(t, q, "reserve", "iss-5", "--release")
@@ -197,9 +274,9 @@ func TestReserveJSONForEachAct(t *testing.T) {
 			t.Fatalf("%v: exit %d\n%s%s", step.args, code, stdout, stderr)
 		}
 		got := decodeReserve(t, stdout)
-		if got.Act != step.act || got.Record != "itd-7" || got.Holder != "octo" || got.Copy != "this" ||
+		if got.Act != step.act || got.Record != "itd-7" || got.Holder != heldBy(t, p) || got.Copy != "this" ||
 			len(got.Footprint) == 0 || got.EffectiveExpiry == "" || got.ClaimedAt == "" || got.Commit == "" || got.Replaced != nil {
-			t.Fatalf("%v: payload %+v; want act %s for itd-7 held by octo from this copy", step.args, got, step.act)
+			t.Fatalf("%v: payload %+v; want act %s for itd-7 held by P's holder id from this copy", step.args, got, step.act)
 		}
 		if got.Commit != w.remoteTip(t, "itd-7") {
 			t.Fatalf("%v: payload names commit %s, origin holds %s", step.args, got.Commit, w.remoteTip(t, "itd-7"))
@@ -234,8 +311,8 @@ func TestReserveTakeOverNamesTheCopyReplaced(t *testing.T) {
 	}
 	got := decodeReserve(t, raw)
 	if got.Act != "taken_over" || got.Copy != "this" || got.Replaced == nil || got.Replaced.Copy != "another" ||
-		got.Replaced.Holder != "octo" || got.Replaced.Commit == "" || got.Replaced.EffectiveExpiry == "" {
-		t.Fatalf("payload %+v; want a take-over replacing octo's other copy", got)
+		got.Replaced.Holder != heldBy(t, laptop) || got.Replaced.Commit == "" || got.Replaced.EffectiveExpiry == "" {
+		t.Fatalf("payload %+v; want a take-over replacing P's other copy", got)
 	}
 	for _, dir := range []string{laptop, cloud} {
 		key, err := os.ReadFile(filepath.Join(dir, ".abcd", ".work.local", "reservation", "copy-key"))

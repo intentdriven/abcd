@@ -118,10 +118,11 @@ Reserve the release before anything else, from the copy that will cut it:
 
 While that reservation is live, every other session's land step (an
 `implement step` arming a merge, or `abcd land`, under any account, on any
-computer) refuses to arm, names you and the release, and leaves its pull
+computer) refuses to arm, names your holder id and the release, and leaves its pull
 request open for you to merge or hold; `/abcd:peers` shows other sessions
-"release vX.Y.Z being cut by @you: merges are held; the hold lapses at
-<time> unless the cut renews it", and shows this copy "you
+"release vX.Y.Z being cut by <your holder id>: merges are held; the hold
+lapses at <time> unless the cut renews it" (the `h_…` id `abcd reserve
+--holder` prints), and shows this copy "you
 are cutting release vX.Y.Z from this copy: every other session's merges are
 held". It takes no footprint and holds for a day. If the cut runs longer,
 run the same command again from the same copy to renew it for another day.
@@ -749,10 +750,13 @@ ready cut's `--json` result carries the request block as a `routing` member
 the harness lets you choose one, and pass the same `--route` to the ingest step
 so its receipt records the override. The ingest's `--json` result carries a
 `route` receipt (`tier_asked`, `connection_tried`, `connection_used`,
-`fallback_reason`, `override`, `settings_sent`, `model_reported`, `provider_call`, null until a provider adapter answers the step, and
-`unpinned`, the fields the receipt could not pin, each with its reason) and its text a
-`route:` line; relay it with the result. When no configured provider can serve
-the tier, one stderr line says the step goes through the harness instead. A
+`fallback_reason`, `override`, `settings_sent`, `model_reported`,
+`provider_call`, null until a provider adapter answers the step, and
+`unpinned`, the harness leg's list of the fields it could not pin, each with
+its reason, and null on a provider leg, whose `provider_call` carries its own)
+and its text a `route:` line; relay it with the result. When no configured
+provider can serve the tier, one stderr line says the step goes through the
+harness instead. A
 `--route` naming an agent this invocation does not dispatch, a tier outside the
 set, a connection this machine has not configured, or a routing table that
 cannot be read exits 2 before anything is written. With no table accepted and no

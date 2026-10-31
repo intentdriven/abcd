@@ -410,16 +410,26 @@ func (a Announcement) Line(now time.Time) string {
 	if a.Unreadable != "" {
 		return termsafe.Sanitize(fmt.Sprintf("abcd-status/%s (doubtful: %s): an announcement that is not shown", a.Branch, a.Unreadable))
 	}
-	who := "@" + a.Sender + " (" + a.Check + ")"
+	sender := senderName(a.Sender)
+	who := sender + " (" + a.Check + ")"
 	switch {
 	case a.Doubtful == DoubtSender:
-		who = fmt.Sprintf("@%s on abcd-status/%s (doubtful: %s)", a.Sender, a.Branch, a.Doubtful)
+		who = fmt.Sprintf("%s on abcd-status/%s (doubtful: %s)", sender, a.Branch, a.Doubtful)
 	case a.Doubtful == DoubtPusher && a.Pusher != "":
-		who = fmt.Sprintf("@%s (doubtful: the forge's record names @%s as its pusher)", a.Sender, a.Pusher)
+		who = fmt.Sprintf("%s (doubtful: the forge's record names @%s as its pusher)", sender, a.Pusher)
 	case a.Doubtful != "":
-		who = fmt.Sprintf("@%s (doubtful: %s)", a.Sender, a.Doubtful)
+		who = fmt.Sprintf("%s (doubtful: %s)", sender, a.Doubtful)
 	}
 	return termsafe.Sanitize(fmt.Sprintf("%s: %s %s, %s", who, a.Kind, a.Item, timeLeft(a.Until, now)))
+}
+
+// senderName is how a line names a sender: a holder id as it is, and the
+// GitHub username an announcement made before the id names as @username.
+func senderName(s string) string {
+	if validHolderID(s) {
+		return s
+	}
+	return "@" + s
 }
 
 // timeLeft is how long an announcement still stands, as a line says it: "for 30

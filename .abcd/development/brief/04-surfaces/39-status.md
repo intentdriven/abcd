@@ -26,7 +26,9 @@ running session through the prompt hook, once each, from disk alone (below).
 The verb reads the remote once. It lists the status branches on `origin`
 (`git ls-remote origin refs/heads/abcd-status/*`), then fetches, in one
 command, the reservations with `origin`'s release tags, the first 500 status
-branches whose names are GitHub usernames in lower case, in `origin`'s order,
+branches whose names are holder ids or GitHub usernames in lower case (the
+names status branches had before the holder id, iss-2610290809526033), in
+`origin`'s order,
 each by its own refspec, and `origin`'s default branch, and stamps when in the
 local tier. Such branches past the 500 are counted and not fetched. A branch under
 `abcd-status/` by any other name is never fetched: two names that differ only
@@ -40,8 +42,10 @@ tracking ref under the namespace that is not among the names it fetches is
 deleted, since named refspecs prune nothing: a branch deleted on `origin`
 leaves nothing to read. Then it asks the forge, through `gh api`
 (the repository's activity record, `GET /repos/{owner}/{repo}/activity`, one
-call per status branch), who pushed each standing announcement it has not
-asked about before (C17). A push's record names the tip it left, so every
+call per status branch named by a username), who pushed each standing
+announcement it has not asked about before (C17). A branch named by a holder id
+names no account the forge's record could match, so it is not asked about and
+its senders stay claimed. A push's record names the tip it left, so every
 first-parent commit after the tip it moved from takes the same pusher, at
 most the walk's limit per push, and a push made by an app judges no commit,
 leaving its sender claimed; when it is the newest push to the tip held here,
@@ -91,14 +95,17 @@ that moved back or was rewritten, passed a merge, or gained more than one read
 covers since it was last read here, holds more than one read covers at its
 first read here, or gained more new commits than one intake takes in
 ("continuity not verified"); and a branch
-whose name is not a lower-case username, counted and never named.
+whose name is neither a holder id nor a lower-case username, counted and never
+named.
 
 ## What it shows
 
 The text form lists the announcements newest first, by when this checkout
 first fetched each, then by the time it carries, each by the line the prompt
-hook shows it by, `@maya (verified): merging #1012, for 30 min`, with the time
-sent; then each doubtful branch; then the reservations block `/abcd:peers`
+hook shows it by, `h_0123456789abcdef0123456789abcdef (claimed): merging #1012, for 30 min`
+(the full id, here an invented one; a sender
+named by a username, on a branch made before the holder id, shows as
+`@maya (verified): …`), with the time sent; then each doubtful branch; then the reservations block `/abcd:peers`
 lists, release holds, a live drain lane's stage and each holder's hand-backs
 from the last day included, each by the line the land fence counts it by;
 then the line that an announcement informs and grants nothing. A failed fetch
@@ -115,10 +122,12 @@ reservations block's own fields, with `senders_unchecked`, `not_dropped`,
 
 The prompt hook appends a `## STATUS` block to the text it injects
 when this checkout holds something it has not shown: a failed fetch per
-namespace, a release being cut ("release v0.16.0 being cut by @maya: merges
-are held; the hold lapses at <time> unless the cut renews it", C8), each
-release cut that lapsed within the last week ("release v0.16.0: the cut by
-@maya lapsed at …; no merge is held", iss-2610241107191205), then the newest
+namespace, a release being cut ("release v0.16.0 being cut by
+h_0123456789abcdef0123456789abcdef (claimed): merges are held; the hold lapses
+at <time> unless the cut renews it", C8, a holder id not the reader's marked
+claimed), each release cut that lapsed within the last
+week ("release v0.16.0: the cut by h_0123456789abcdef0123456789abcdef (claimed) lapsed
+at …; no merge is held", iss-2610241107191205), then the newest
 announcement per item, then the doubts,
 at most two one by one and otherwise one line that sums them up and always
 keeps its place, at most ten lines in all, then a count of the rest and the

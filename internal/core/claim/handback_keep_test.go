@@ -54,14 +54,14 @@ func TestAPlainReleaseOverAHandBackKeepsIt(t *testing.T) {
 	if kind, got := w.handBackOf(tomb); !slices.Equal(kind, []string{HandBackUserVisible}) || !slices.Equal(got, []string{blob}) {
 		t.Fatalf("Q's tombstone carries hand-back %v over %v; want user-visible over %s, the hand-back kept", kind, got, blob)
 	}
-	if k := rel.HandBackKept; k == nil || k.Kind != HandBackUserVisible || k.Holder != "octo" || !k.At.Equal(t0) {
-		t.Fatalf("the release's kept hand-back = %+v; want octo's user-visible hand-back of %s", k, stamp(t0))
+	if k := rel.HandBackKept; k == nil || k.Kind != HandBackUserVisible || k.Holder != w.holderIDOf("1234+octo@users.noreply.github.com") || !k.At.Equal(t0) {
+		t.Fatalf("the release's kept hand-back = %+v; want P's user-visible hand-back of %s", k, stamp(t0))
 	}
 	if note := rel.HandBackKept.KeptNote("iss-5"); !strings.Contains(note, "still stands") {
 		t.Fatalf("the kept note = %q", note)
 	}
 	if _, err := r.do(Request{Record: "iss-5", Footprint: []string{"c.go"}, Drain: true}); !errors.Is(err, ErrBackOff) ||
-		!strings.Contains(err.Error(), "was handed back by quinn as user-visible") {
+		!strings.Contains(err.Error(), "was handed back by "+w.holderIDOf("99+quinn@users.noreply.github.com")+" as user-visible") {
 		t.Fatalf("R's drain over the kept hand-back = %v; want the hand-back's back-off", err)
 	}
 
@@ -216,7 +216,7 @@ func TestAHandBackStandsOverARecordOriginHoldsInNoOneFile(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if why := snap.HandBack("iss-5", w.clock()); !strings.Contains(why, "was handed back by octo as trust-rule") {
+			if why := snap.HandBack("iss-5", w.clock()); !strings.Contains(why, "was handed back by "+p.keptHolderID()+" as trust-rule") {
 				t.Fatalf("the view's hand-back = %q; want it standing", why)
 			}
 		})

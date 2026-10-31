@@ -74,7 +74,7 @@ func LineFor(root, id string, now time.Time, o Options) (l Line, ok bool) {
 	switch {
 	case r.Copy == CopyThis:
 		l.Copy = LineThisCopy
-	case r.Holder != "" && sameHolder(r.Holder, readerHolder(root, o)):
+	case readerSelf(root, o).Owns(r.Holder):
 		l.Copy = LineAnotherCopy
 	}
 	who := r.Holder
@@ -159,7 +159,8 @@ func count(n int, noun string) string {
 // readerHolder is the GitHub username the person reading resolves to, read as
 // a reservation verb would read it but without the network: a render never
 // asks the forge, so a holder only the token could name is "" here, as is one
-// that cannot be told.
+// that cannot be told. It is never pushed: a hold made before the holder id
+// names it (Self.Login).
 func readerHolder(root string, o Options) string {
 	who, err := gitIdentity(root)
 	if err != nil {
@@ -174,10 +175,6 @@ func readerHolder(root string, o Options) string {
 
 // ReaderHolder is the GitHub username the person reading resolves to, read as
 // a reservation verb reads it, with no network act; "" when it cannot be
-// told. A render that tells this person's other copy apart from another
-// person reads it.
+// told. Whether a hold is the person's own is ReaderSelf's to say, since a
+// hold made since the holder id names no login.
 func ReaderHolder(root string, o Options) string { return readerHolder(root, o) }
-
-// SameHolder reports whether two usernames name one person, compared without
-// regard to case, as the forge compares them.
-func SameHolder(a, b string) bool { return a != "" && sameHolder(a, b) }

@@ -11,25 +11,30 @@ import (
 
 // TestReserveSaysWhenAHomeInsideAWorkingTreeIsNotRead: a HOME that lies
 // inside a git working tree is not read as the machine's layer, so
-// reservation.github_username there names no holder, the token does, and one
-// stderr line says why.
+// reservation.github_username there names no holder, and one stderr line says
+// why; nor is the holder id read or kept there (iss-2610290809526033), so the
+// query exits 2 saying so and writes nothing under that home.
 func TestReserveSaysWhenAHomeInsideAWorkingTreeIsNotRead(t *testing.T) {
 	w := newReserveWorld(t)
 	pat := w.clone(t, "pat", "pat@example.com")
 	fakeForge(t, "octo-person", 4242, nil)
 	plantHome(t)
 	code, stdout, stderr := reserveRun(t, pat, "reserve", "--holder")
-	if code != 0 || stdout != "would reserve as octo-person (from token)\n" {
-		t.Fatalf("exit %d, stdout %q, stderr %q; want the token's holder", code, stdout, stderr)
+	lines := strings.Split(strings.TrimSuffix(stderr, "\n"), "\n")
+	if code != 2 || stdout != "" || len(lines) != 2 || !strings.HasPrefix(lines[0], "abcd reserve: HOME lies inside the git working tree") ||
+		!strings.Contains(lines[1], "holder-id is neither read nor written there") || strings.Contains(stderr, "someone-else") {
+		t.Fatalf("exit %d, stdout %q, stderr %q; want the home's line and the holder id refused", code, stdout, stderr)
 	}
-	if strings.Count(stderr, "\n") != 1 || !strings.HasPrefix(stderr, "abcd reserve: ") || !strings.Contains(stderr, "HOME lies inside the git working tree") {
-		t.Fatalf("stderr %q; want one line saying HOME lies inside a working tree", stderr)
+	home, _ := os.UserHomeDir()
+	if _, err := os.Lstat(abcdhome.Path(home, "holder-id")); !os.IsNotExist(err) {
+		t.Fatalf("a holder id was written under the HOME inside a working tree: %v", err)
 	}
 }
 
 // TestReserveAndPeersSayWhenAHomeInsideAWorkingTreeIsNotRead: the act and
 // abcd peers, which reads the holder for the release holds, each put the one
-// line on stderr, and only under such a home.
+// line on stderr, and only under such a home; the act then refuses, pushing
+// nothing, since no holder id is read or kept there.
 func TestReserveAndPeersSayWhenAHomeInsideAWorkingTreeIsNotRead(t *testing.T) {
 	w := newReserveWorld(t)
 	p := w.clone(t, "p", octoMail)
@@ -50,9 +55,16 @@ func TestReserveAndPeersSayWhenAHomeInsideAWorkingTreeIsNotRead(t *testing.T) {
 			args = append(args, "iss-2", "--footprint", "b.go")
 		}
 		code, stdout, stderr := reserveRun(t, p, args...)
-		if code != 0 || strings.Count(stderr, "HOME lies inside the git working tree") != 1 || !strings.Contains(stderr, "abcd "+verb+": HOME lies inside") {
-			t.Fatalf("%s under a HOME inside a working tree: exit %d, stdout %q, stderr %q; want one line saying why", verb, code, stdout, stderr)
+		want, notes := 0, 1
+		if verb == "reserve" {
+			want, notes = 2, 2 // the home's line, then the refusal naming the holder id
 		}
+		if code != want || strings.Count(stderr, "HOME lies inside the git working tree") != notes || !strings.HasPrefix(stderr, "abcd "+verb+": HOME lies inside") {
+			t.Fatalf("%s under a HOME inside a working tree: exit %d, stdout %q, stderr %q; want exit %d and the line saying why", verb, code, stdout, stderr, want)
+		}
+	}
+	if tip := w.remoteTip(t, "iss-2"); tip != "" {
+		t.Fatalf("the refused act reached origin: %s", tip)
 	}
 }
 

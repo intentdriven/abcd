@@ -164,10 +164,18 @@ func (f *fakeForge) pushers(_ context.Context, root, ref string) ([]Push, error)
 	}
 	var out []Push
 	for _, l := range strings.Split(strings.TrimSpace(runGit(f.t, bare, "log", "--first-parent",
-		"--format=%H %P%x09%(trailers:key=Abcd-Holder,valueonly,separator=)", ref)), "\n") {
-		ids, holder, _ := strings.Cut(l, "\t")
+		"--format=%H %P%x09%(trailers:key=Abcd-Holder,valueonly,separator=)%x09%ce", ref)), "\n") {
+		ids, rest, _ := strings.Cut(l, "\t")
+		holder, committer, _ := strings.Cut(rest, "\t")
 		f := strings.Fields(ids)
-		p := Push{Before: zeroCommit, After: f[0], Pusher: strings.TrimSpace(holder)}
+		// The account that pushed is the one a hold made before the holder
+		// id names; a hold naming a holder id names no account, so the
+		// pusher is the committing clone's login, as gh would report it.
+		pusher := strings.TrimSpace(holder)
+		if validHolderID(pusher) {
+			pusher = NoReplyUsername(strings.TrimSpace(committer))
+		}
+		p := Push{Before: zeroCommit, After: f[0], Pusher: pusher}
 		if len(f) > 1 {
 			p.Before = f[1]
 		}
@@ -433,9 +441,9 @@ func TestAReleaseReservedWithdrawsEveryArmedMerge(t *testing.T) {
 	}
 	m, ws := w.tipWithdrawals("rel-v0.16.0")
 	want := []Withdrawal{
-		{Number: 11, ID: "PR_eleven", Form: FormAutoSquash, Head: headA, By: "octo", State: WithdrawnPending},
-		{Number: 12, ID: "PR_twelve", Form: FormQueue, Head: headB, By: "octo", State: WithdrawnPending},
-		{Number: 13, ID: "PR_thirteen", Form: FormQueue, Head: headC, By: "octo", State: WithdrawnPending},
+		{Number: 11, ID: "PR_eleven", Form: FormAutoSquash, Head: headA, By: p.holderID(), State: WithdrawnPending},
+		{Number: 12, ID: "PR_twelve", Form: FormQueue, Head: headB, By: p.holderID(), State: WithdrawnPending},
+		{Number: 13, ID: "PR_thirteen", Form: FormQueue, Head: headC, By: p.holderID(), State: WithdrawnPending},
 	}
 	if !slices.Equal(ws, want) || res.Commit != w.remoteTip("rel-v0.16.0") || m.released() {
 		t.Fatalf("origin's tip records %+v (commit %s, result %s); want %+v", ws, w.remoteTip("rel-v0.16.0"), res.Commit, want)
@@ -506,7 +514,7 @@ func TestAdmitReArmsOneWithdrawnMergeFromTheCuttingCopy(t *testing.T) {
 		t.Fatalf("admit from another copy = %v; want refused", err)
 	}
 	quinn := w.clone("99+quinn@users.noreply.github.com", "")
-	if _, err := quinn.do(Request{Record: "rel-v0.16.0", Admit: 11}); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "reserved by octo, not by you") {
+	if _, err := quinn.do(Request{Record: "rel-v0.16.0", Admit: 11}); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "reserved by "+p.holderID()+", not by you") {
 		t.Fatalf("admit by another person = %v; want refused", err)
 	}
 	if _, err := p.do(Request{Record: "rel-v0.16.0", Admit: 14}); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "#14 is not among the pull requests rel-v0.16.0 withdrew (#11, #12, #13)") {
@@ -613,8 +621,8 @@ func TestAnEndedReleaseIsReArmedByACopyOfTheSameHolder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := snap.ReleaseWithdrawals(quinn.dir, "quinn", w.clock()); len(got) != 1 || got[0].Subject != "rel-v0.16.0" || len(got[0].Stranded) != 3 ||
-		!strings.Contains(strings.Join(got[0].Lines(), "\n"), "#11, #12, #13 withdrawn by octo for rel-v0.16.0 stay withdrawn: only a copy of octo's re-arms them") {
+	if got := snap.ReleaseWithdrawals(quinn.dir, quinn.self(), w.clock()); len(got) != 1 || got[0].Subject != "rel-v0.16.0" || len(got[0].Stranded) != 3 ||
+		!strings.Contains(strings.Join(got[0].Lines(), "\n"), "#11, #12, #13 withdrawn by "+cutter.holderID()+" for rel-v0.16.0 stay withdrawn: only a copy of "+cutter.holderID()+"'s re-arms them") {
 		t.Fatalf("stranded = %+v; want the three named with their holder", got)
 	}
 	// The same person's other copy re-arms on its next act.
@@ -630,7 +638,7 @@ func TestAnEndedReleaseIsReArmedByACopyOfTheSameHolder(t *testing.T) {
 		t.Fatalf("settles = %+v; want the release settled on a tombstone", res.Settles)
 	}
 	m, ws := w.tipWithdrawals("rel-v0.16.0")
-	if !m.released() || m.Holder != "octo" || stateOf(ws, 11) != WithdrawnRearmed || stateOf(ws, 12) != WithdrawnRearmed {
+	if !m.released() || m.Holder != laptop.holderID() || stateOf(ws, 11) != WithdrawnRearmed || stateOf(ws, 12) != WithdrawnRearmed {
 		t.Fatalf("tombstone = %+v %+v; want octo's, every one rearmed", m, ws)
 	}
 	// Idempotent: the cutting copy's next act, and a listing, do nothing.
@@ -802,10 +810,10 @@ func TestAnotherPersonsTakeOverCarriesTheStrandedWithdrawals(t *testing.T) {
 	if err != nil || res.Act != ActTakenOver {
 		t.Fatalf("take-over = %+v, %v", res, err)
 	}
-	if len(res.Stranded) != 3 || res.Stranded[0].By != "octo" || len(f.mutations()) != 0 {
+	if len(res.Stranded) != 3 || res.Stranded[0].By != octo.holderID() || len(f.mutations()) != 0 {
 		t.Fatalf("result = %+v, mutations %v; want octo's three carried and nothing re-armed", res, f.mutations())
 	}
-	if _, ws := w.tipWithdrawals("rel-v0.16.0"); len(ws) != 3 || ws[0].By != "octo" || !ws[0].Pending() {
+	if _, ws := w.tipWithdrawals("rel-v0.16.0"); len(ws) != 3 || ws[0].By != octo.holderID() || !ws[0].Pending() {
 		t.Fatalf("quinn's reservation records %+v; want octo's withdrawals carried", ws)
 	}
 	// octo's next act re-arms nothing while quinn's cut holds the branch.

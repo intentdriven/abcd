@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/peers"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -72,6 +73,33 @@ type reservationsBlock struct {
 	View             reservationView `json:"view"`
 	FetchError       string          `json:"fetch_error,omitempty"`
 	DerivedUnchecked string          `json:"derived_unchecked,omitempty"`
+	// HolderIDsRefused is the class of the refusal of the declared ids'
+	// file when the guarded read refused it, so the listing read none of its
+	// ids as the reader's (claim.HolderIDsRefusedLine); stderr says so too.
+	HolderIDsRefused string `json:"holder_ids_refused,omitempty"`
+	// HolderIDRefused is the class of the refusal of the reader's holder id
+	// (ABCD_HOLDER_ID set to no id, or the kept file refused), so the
+	// listing read no id as the reader's (claim.HolderIDRefusedLine); stderr
+	// says so too.
+	HolderIDRefused string `json:"holder_id_refused,omitempty"`
+}
+
+// noteHolderIDsRefused writes the one line saying the declared ids' file
+// was refused as class, so no declared id was read, to errw under verb; it
+// writes nothing for no class.
+func noteHolderIDsRefused(errw io.Writer, verb, class string) {
+	if l := claim.HolderIDsRefusedLine(class); l != "" {
+		fmt.Fprintln(errw, verb+": "+l)
+	}
+}
+
+// noteHolderIDRefused writes the one line saying the reader's holder id was
+// refused as class, so no id was read, to errw under verb; it writes nothing
+// for no class.
+func noteHolderIDRefused(errw io.Writer, verb, class string) {
+	if l := claim.HolderIDRefusedLine(class); l != "" {
+		fmt.Fprintln(errw, verb+": "+l)
+	}
 }
 
 // reservationRow is one reservation as the listing shows it. Every value a
@@ -219,6 +247,14 @@ func newPeersCommand(asJSON *bool) *cobra.Command {
 			"lists no reservations.\n" +
 			"When the fetch fails, the reservations are listed as last fetched, with that\n" +
 			"view's age, and the failure is named on stderr and in fetch_error.\n\n" +
+			"When " + abcdhome.Display("holder-ids") + " is there and its guarded read refuses it, no\n" +
+			"declared id is read as yours, and one line on stderr names the class of the\n" +
+			"refusal, never the file's contents (holder_ids_refused in --json).\n\n" +
+			"When your holder id is set or kept but refused (ABCD_HOLDER_ID set to\n" +
+			"anything but one holder id, or " + abcdhome.Display("holder-id") + " refused by its\n" +
+			"guarded read), no hold or withdrawal under it is read as yours, and one line\n" +
+			"on stderr names the class of the refusal, never the value or the file's\n" +
+			"contents (holder_id_refused in --json).\n\n" +
 			"A worktree is named home-relative (~/...), or by its directory name when it\n" +
 			"sits outside HOME, on every stream. Exit 0 whatever the peers hold; exit 1 when\n" +
 			"the reservations could not be fetched; exit 2 outside a git checkout.",
@@ -242,6 +278,8 @@ func newPeersCommand(asJSON *bool) *cobra.Command {
 			if err := render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) { renderPeers(w, out) }); err != nil {
 				return err
 			}
+			noteHolderIDsRefused(cmd.ErrOrStderr(), "abcd peers", out.HolderIDsRefused)
+			noteHolderIDRefused(cmd.ErrOrStderr(), "abcd peers", out.HolderIDRefused)
 			if failed != "" {
 				// The last view is rendered; the failure is named and exits 1.
 				fmt.Fprintln(cmd.ErrOrStderr(), "abcd peers: "+failed)
@@ -496,6 +534,8 @@ func (b *reservationsBlock) fillView(root string, now time.Time, gap string, err
 		return "", false
 	}
 	out.View.Origin = true
+	reader := claim.ReaderSelf(root, claim.Options{Now: func() time.Time { return now }})
+	out.HolderIDsRefused, out.HolderIDRefused = reader.HolderIDsRefused, reader.HolderIDRefused
 	if err != nil {
 		out.FetchError = termsafe.Sanitize(fsutil.RedactHome(err.Error()))
 		failed = out.FetchError
@@ -539,9 +579,9 @@ func (b *reservationsBlock) fillView(root string, now time.Time, gap string, err
 		out.Reservations = append(out.Reservations, row)
 	}
 	out.LiveByHolder = snap.LiveByHolder()
-	out.ReleaseWithdrawals = snap.ReleaseWithdrawals(root, claim.ReaderHolder(root, claim.Options{Now: func() time.Time { return now }}), now)
+	out.ReleaseWithdrawals = snap.ReleaseWithdrawals(root, reader, now)
 	out.LostWithdrawals = claim.LostReleaseWithdrawals(root, now)
-	for _, l := range snap.Lapsed(now) {
+	for _, l := range snap.LapsedFor(now, reader) {
 		out.LapsedReleases = append(out.LapsedReleases, lapsedRow{Release: l.Release, Subject: l.Subject,
 			Holder: termsafe.Sanitize(l.Holder), Copy: l.Copy, RenewedAt: rfc3339(l.RenewedAt), LapsedAt: rfc3339(l.LapsedAt),
 			Text: termsafe.Sanitize(l.Text())})

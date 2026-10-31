@@ -47,7 +47,7 @@ func TestContentionNamesWhatHoldsARecordOffInTheView(t *testing.T) {
 		{"iss-8", []string{"internal"}, `"internal/z" is in the footprint of iss-7, reserved by quinn until`},
 		{"iss-8", []string{"internal/x/a.go", "internal/y/b.go"}, ""},
 	} {
-		got := s.Contention(tc.id, tc.footprint, now, "")
+		got := s.Contention(tc.id, tc.footprint, now, Self{})
 		if tc.want == "" && got != "" || tc.want != "" && !strings.HasPrefix(got, tc.want) {
 			t.Errorf("Contention(%s, %v) = %q; want %q", tc.id, tc.footprint, got, tc.want)
 		}

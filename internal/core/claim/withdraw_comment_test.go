@@ -65,11 +65,13 @@ func TestEachEventPostsItsOneFixedSentence(t *testing.T) {
 	if _, err := p.do(Request{Record: "rel-v0.16.0", Release: true}); err != nil {
 		t.Fatal(err)
 	}
+	// The withdrawer is named as the hold names them: by their holder id.
+	id := p.holderID()
 	want := []string{
-		"#11 abcd release hold: the merge of #11 is withdrawn by octo while release v0.16.0 is cut, and is re-armed after it.",
-		"#12 abcd release hold: the merge of #12 is withdrawn by octo while release v0.16.0 is cut, and is re-armed after it.",
-		"#13 abcd release hold: the merge of #13 is withdrawn by octo while release v0.16.0 is cut, and is re-armed after it.",
-		"#13 abcd release hold: the merge of #13 is admitted into release v0.16.0 by octo.",
+		"#11 abcd release hold: the merge of #11 is withdrawn by " + id + " while release v0.16.0 is cut, and is re-armed after it.",
+		"#12 abcd release hold: the merge of #12 is withdrawn by " + id + " while release v0.16.0 is cut, and is re-armed after it.",
+		"#13 abcd release hold: the merge of #13 is withdrawn by " + id + " while release v0.16.0 is cut, and is re-armed after it.",
+		"#13 abcd release hold: the merge of #13 is admitted into release v0.16.0 by " + id + ".",
 		"#11 abcd release hold: the merge of #11 is re-armed; the hold for release v0.16.0 has ended.",
 		"#12 abcd release hold: the merge of #12 is not re-armed; the hold for release v0.16.0 has ended. Its head changed while it was held, so its owner needs to re-arm it.",
 	}
@@ -400,7 +402,7 @@ func TestAReArmWhoseTombstoneDidNotLandIsCommentedOnByTheActThatRecordsIt(t *tes
 		t.Fatal(err)
 	}
 	want := []string{
-		"#11 abcd release hold: the merge of #11 is withdrawn by octo while release v0.16.0 is cut, and is re-armed after it.",
+		"#11 abcd release hold: the merge of #11 is withdrawn by " + p.holderID() + " while release v0.16.0 is cut, and is re-armed after it.",
 		"#11 abcd release hold: the merge of #11 is armed; the hold for release v0.16.0 has ended.",
 	}
 	if got := f.posted(); !slices.Equal(got, want) {

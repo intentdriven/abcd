@@ -27,9 +27,9 @@ func tombstonedByMal(t *testing.T) (*world, *fakeForge, *participant) {
 		t.Fatal(err)
 	}
 	m, ws := w.tipWithdrawals("rel-v0.16.0")
-	tm := message{Record: m.Record, Holder: "octo", Copy: m.Copy, ClaimedAt: w.clock(), ExpiresAt: w.clock(), ReleasedAt: w.clock(), Withdrawn: ws, AssistedBy: m.AssistedBy}
-	planted := w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), tm.text(), w.clock())
-	f.pusherOf[planted] = "mal"
+	tm := message{Record: m.Record, Holder: m.Holder, Copy: m.Copy, ClaimedAt: w.clock(), ExpiresAt: w.clock(), ReleasedAt: w.clock(), Withdrawn: ws, AssistedBy: m.AssistedBy}
+	rival := w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), tm.text(), w.clock())
+	f.pusherOf[rival] = "mal"
 	w.set(t0.Add(time.Minute))
 	return w, f, octo
 }
@@ -43,7 +43,7 @@ func TestAnotherLoginsTombstoneOverALiveReleaseBlocksASecondRelease(t *testing.T
 	quinn := w.clone("99+quinn@users.noreply.github.com", "")
 	f.reset()
 	_, err := quinn.do(Request{Record: "rel-v0.17.0"})
-	if !errors.Is(err, ErrBackOff) || !strings.Contains(err.Error(), "rel-v0.16.0 is being cut by octo") || len(f.mutations()) != 0 {
+	if !errors.Is(err, ErrBackOff) || !strings.Contains(err.Error(), "rel-v0.16.0 is being cut by "+octo.holderID()) || len(f.mutations()) != 0 {
 		t.Fatalf("quinn's reserve = %v, mutations %v; want a back-off naming octo's cut", err, f.mutations())
 	}
 	if _, err := octo.do(Request{Record: "rel-v0.16.0", Release: true}); err != nil {
@@ -58,12 +58,12 @@ func TestAnotherLoginsTombstoneOverALiveReleaseBlocksASecondRelease(t *testing.T
 // lease beneath that tombstone lapsing ends nothing either, while it holds
 // what it withdrew.
 func TestALapsedReleaseBeneathAnotherLoginsTombstoneBlocksASecondRelease(t *testing.T) {
-	w, f, _ := tombstonedByMal(t)
+	w, f, octo := tombstonedByMal(t)
 	w.set(t0.Add(lease.Max + TakeoverMargin + time.Hour))
 	quinn := w.clone("99+quinn@users.noreply.github.com", "")
 	f.reset()
 	_, err := quinn.do(Request{Record: "rel-v0.17.0"})
-	if !errors.Is(err, ErrBackOff) || !strings.Contains(err.Error(), "rel-v0.16.0 is still being cut by octo") || len(f.mutations()) != 0 {
+	if !errors.Is(err, ErrBackOff) || !strings.Contains(err.Error(), "rel-v0.16.0 is still being cut by "+octo.holderID()) || len(f.mutations()) != 0 {
 		t.Fatalf("quinn's reserve = %v, mutations %v; want a back-off naming octo's lapsed cut", err, f.mutations())
 	}
 }
@@ -88,7 +88,7 @@ func TestATombstoneTheRecordDoesNotPlaceBlocksASecondReleaseNamingWhy(t *testing
 // reservations that fails refuses the second release, naming the failure,
 // rather than skipping the check.
 func TestASecondReleaseIsRefusedWhenTheReservationsDoNotRead(t *testing.T) {
-	err := otherLiveRelease(t.TempDir(), "rel-v0.17.0", t0)
+	err := otherLiveRelease(t.TempDir(), "rel-v0.17.0", t0, Self{})
 	if err == nil || !strings.Contains(err.Error(), "reading the reservations") {
 		t.Fatalf("otherLiveRelease over no checkout = %v; want a refusal naming the failed reading", err)
 	}
@@ -131,8 +131,8 @@ func TestPeersReportsALapseBeneathAnotherLoginsTombstone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := snap.ReleaseWithdrawals(octo.dir, "octo", w.clock())
-	if len(got) != 1 || got[0].Ended || !got[0].Lapsed || got[0].NotEnded != "octo" || len(got[0].Held) != 3 || len(got[0].Due) != 0 {
+	got := snap.ReleaseWithdrawals(octo.dir, octo.self(), w.clock())
+	if len(got) != 1 || got[0].Ended || !got[0].Lapsed || got[0].NotEnded != octo.holderID() || len(got[0].Held) != 3 || len(got[0].Due) != 0 {
 		t.Fatalf("listing = %+v; want rel-v0.16.0 not ended, lapsed, holding #11-#13", got)
 	}
 }
