@@ -457,9 +457,10 @@ saying the person allowed it and when (exit 0, so no second judge re-reads it
 with the allow already used). `guard check` never uses an allow, and
 neither does the approver for a headless agent.
 
-**Never run `allow` yourself.** The guard refuses it when an agent runs it, in
-either spelling (`abcd …`, or `go run ./cmd/abcd …` in a source checkout), and refuses a shell write
-into its store. Tell the person the exact command and why it is safe, and let
+**Never run `allow` yourself.** The guard refuses it when an agent runs it,
+whatever the program is called: `abcd …` and `go run ./cmd/abcd …` as
+`abcd-guard-allow`, and a cross-compiled or renamed build or a wrapper script as
+`abcd-guard-allow-any-program`. It also refuses a shell write into its store. Tell the person the exact command and why it is safe, and let
 them decide.
 
 The allow is recorded under `~/.abcd.noindex/guard-allow/<root-commit>/`, one
@@ -915,8 +916,10 @@ running it is a **block** (`abcd-source-ledger-flip`); recording a line and
 listing the ledger are not. The retired spelling, `abcd source ledger --flip N`,
 is a **block** too (`abcd-source-ledger-flip-retired`), because a binary older
 than the library verb still answers it. The entries name the program `abcd`,
-so they match the binary on `PATH` and the plugin root's by basename, not a
-`go run` of the source or a copy under another name.
+so they match the binary on `PATH`, the plugin root's and a `go run` of the
+source; under any other program name (a cross-compiled or renamed build, a
+wrapper script) the flip is refused as `abcd-source-ledger-flip-any-program`,
+or `abcd-source-ledger-flip-retired-any-program` in the retired spelling.
 
 Starting another agent harness with its own permission checks turned off is a
 **block**, because that agent then runs every command with nobody asked and
@@ -1078,9 +1081,10 @@ approval and leave the arming to `abcd land`.
 Recording the technical facilitator's approval, `abcd land --approve`, is a
 **block** in every mode: it is the person's own act, and an approval an agent
 records is a false record of who approved. The binary's spelling is the registry
-entry `abcd-land-approve`; under any other program name (in a source checkout,
-`go run ./cmd/abcd` or `go run .`; a cross-compiled or renamed build) the land verb with `--approve` is
-refused as `abcd-land-approve-any-program`, whatever the program is called. A
+entry `abcd-land-approve`, which also matches `go run ./cmd/abcd`; under any
+other program name (`go run .` in the command's directory, a cross-compiled or
+renamed build, a wrapper script) the land verb with `--approve` is refused as
+`abcd-land-approve-any-program`, whatever the program is called. A
 flag word that a substitution prints is not read. An approving review on the
 forge is a **block** in every mode too (`forge-review-approve`):
 `gh pr review --approve`; a `gh api` call to the REST review route whose event

@@ -127,7 +127,9 @@ var wordReaders = map[string]string{
 	"restMerge":     "isUnknown on the endpoint words and every method word: a route or method word the line does not fix counts as the merge route or as PUT",
 	"apiEndpoints":  "operandReadings, with gh api's value flags, so a method, header or field value is never read as the endpoint",
 	"forgeApproval": "sitesNamed, operandReadings and forgeWord; a word the line does not fix is never read as -a, --approve or an APPROVE event, and an unfixed event field on the REST review route counts as one",
-	"approveAct":    "commandSites and commandNamed; a word the line does not fix reads as empty, so a flag a substitution prints is not taken as --approve, as commands/guard.md names",
+
+	// personacts.go: the person's own acts under any program name.
+	"actOf": "commandSites and commandNamed for the program; a verb or boolean flag the line does not fix reads as empty, deliberately fail-open, so a flag a substitution prints is not taken as set, as commands/guard.md names; a value flag is read fail-closed through knownText and unknownFlagCouldBe",
 
 	// speculate.go
 	"eligibleStart": "steppedBeforeCommand and anyProgram: no start where no program name is fixed",

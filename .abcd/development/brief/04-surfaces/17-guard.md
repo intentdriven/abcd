@@ -178,9 +178,14 @@ entry `abcd-land-approve`, which the `SHELL` domain teaches. Under any other
 program name it is refused in code as `abcd-land-approve-any-program`: the
 guard reads the words the program is handed (the land verb and its approval
 flag, in either order, as the command parser reads them),
-not what the program is called, so `go run` of the module or of `.`, a
-cross-compiled build and a renamed copy are all refused. A flag word a
-substitution prints is not read. An approving review posted on the forge,
+not what the program is called, so `go run .`, a cross-compiled build, a
+wrapper script and a renamed copy are all refused (`go run ./cmd/abcd` is read
+as abcd, and the entry refuses it). A flag word a
+substitution prints is not read. The person's other acts are refused under any
+program name the same way: allowing one delete (`abcd-guard-allow-any-program`)
+and flipping a source-ledger line (`abcd-source-ledger-flip-any-program`, and
+`abcd-source-ledger-flip-retired-any-program` in the retired spelling). An
+approving review posted on the forge,
 which the gate also counts as an approval, is refused the same way in every
 mode, as `forge-review-approve`: an approving `gh pr review`; a `gh api` call to the
 REST review route whose `event` field is `APPROVE`, or whose event or body the
@@ -188,7 +193,7 @@ line does not show; and one carrying the `addPullRequestReview` or
 `submitPullRequestReview` mutation with an `APPROVE` event. Reading the reviews
 is not refused, whatever its filter names. A review
 that comments or requests changes is not refused. The five merge ids,
-`abcd-land-approve-any-program` and `forge-review-approve` are reserved, so a
+the four any-program ids and `forge-review-approve` are reserved, so a
 repository's `.abcd/guard.json` cannot declare an entry under them.
 
 The guard holds against an agent merging or approving by mistake, not against
@@ -656,8 +661,9 @@ recorded in their home folder, read only as their own (the rule the rules
 loader applies to the machine's rules file), used once within ten minutes by
 the hook and logged with the line and both times but never who. It lets past
 nothing else a line trips, and the check and the headless approver never use
-it. The guard refuses the allow when an agent runs it and refuses a shell write
-into its store. As with every hazard here, the trust model is a careless agent,
+it. The guard refuses the allow when an agent runs it, under any program name
+(as `abcd-guard-allow-any-program` where the program is not named abcd), and
+refuses a shell write into its store. As with every hazard here, the trust model is a careless agent,
 not a hostile one: a file tool writing into the store is not a shell command
 and goes unseen, a push that deletes as a side effect (pruning, mirroring) is
 not judged, and an allow is keyed on the line, not on the directory it runs in.
