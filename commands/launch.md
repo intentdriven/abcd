@@ -120,7 +120,7 @@ While that reservation is live, every other session's land step (an
 `implement step` arming a merge, or `abcd land`, under any account, on any
 computer) refuses to arm, names your holder id and the release, and leaves its pull
 request open for you to merge or hold; `/abcd:peers` shows other sessions
-"release vX.Y.Z being cut by <your holder id>: merges are held; the hold
+"release vX.Y.Z being cut by <your holder id> (claimed): merges are held; the hold
 lapses at <time> unless the cut renews it" (the `h_…` id `abcd reserve
 --holder` prints), and shows this copy "you
 are cutting release vX.Y.Z from this copy: every other session's merges are
