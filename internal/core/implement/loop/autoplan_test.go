@@ -558,6 +558,22 @@ func TestAChangeStagedInTheIndexIsHandedBack(t *testing.T) {
 	}
 }
 
+// TestTheCheckoutDigestWritesNoSharedIndex: in a checkout set to
+// core.splitIndex, the digest's copies of the index are written whole inside
+// its scratch directory, so the git directory gains no shared index file.
+func TestTheCheckoutDigestWritesNoSharedIndex(t *testing.T) {
+	repo := draftRepo(t, draftIntent())
+	root := repo.Root()
+	repo.Git("config", "core.splitIndex", "true")
+	if _, err := checkoutDigest(root); err != nil {
+		t.Fatal(err)
+	}
+	shared, err := filepath.Glob(filepath.Join(root, ".git", "sharedindex.*"))
+	if err != nil || len(shared) != 0 {
+		t.Fatalf("the digest writes no shared index into the git directory: %v %v", shared, err)
+	}
+}
+
 // TestTheCheckoutDigestWritesNoIndexAndReadsAMissingOne: the digest reads the
 // checkout's index through a copy, so the index's bytes are the same after
 // it, even with a path staged since the index's tree was last cached; and a
