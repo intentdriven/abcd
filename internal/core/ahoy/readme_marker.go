@@ -34,6 +34,12 @@ import (
 // patterns below, which require a colon there; neither reading sees the
 // other's blocks.
 //
+// Where the owner puts a part decides its form (iss-2610311544004033): a part
+// whose opening fence continues an open block-level HTML block, such as a
+// centred badge row in a <p>, is written in its inline form, as HTML on lines
+// of its own, since the forge renders no Markdown there; anywhere else it is
+// written in its block form.
+//
 // readme_derive.go derives each part's body, readme_check.go checks it, and
 // readme_apply.go wires setup (`abcd ahoy install`, from the stored
 // `readme.parts`) and uninstall to the write and the removal here.
@@ -107,9 +113,11 @@ const (
 	readmeActionRefused   readmePartAction = "refused" // a broken file, or a body that would break its marks
 )
 
-// readmePartWant is one chosen part with its freshly derived body. The body
-// carries no trailing newline; CRLF in it reads as LF.
-type readmePartWant struct{ Name, Body string }
+// readmePartWant is one chosen part with its freshly derived bodies: Body, the
+// block form, for a part that stands on its own, and Inline, the inline form,
+// for a part whose opening mark continues an open HTML block (readmeInlineLines).
+// Neither carries a trailing newline; CRLF in them reads as LF.
+type readmePartWant struct{ Name, Body, Inline string }
 
 // readmePartOutcome says what happened to one part, for the summary. Lines are
 // 1-based lines of the file as it was read.
@@ -131,13 +139,25 @@ type readmePartsResult struct {
 	Parts   []readmePartOutcome
 }
 
+// bodyFor is the want's body for a place of the given form. A want with no
+// inline form (only a test builds one) is written as its block form.
+func (w readmePartWant) bodyFor(inline bool) string {
+	if inline && w.Inline != "" {
+		return normaliseReadmeBody(w.Inline)
+	}
+	return normaliseReadmeBody(w.Body)
+}
+
 // readmePartSpan is one well-formed part: its fences' 0-based line indices,
-// the hash its opening fence records ("" when it records none), and its body,
-// the lines between the fences joined with LF.
+// the hash its opening fence records ("" when it records none), its body, the
+// lines between the fences joined with LF, and whether its opening fence
+// continues an open HTML block, so it is written in its inline form
+// (readmeInlineLines).
 type readmePartSpan struct {
 	Name       string
 	Begin, End int
 	Hash, Body string
+	Inline     bool
 }
 
 // hashMatches reports whether the body is the text abcd recorded writing.
@@ -192,6 +212,7 @@ func renderReadmePart(name, body string, eol []byte) []byte {
 func parseReadmeParts(content []byte) readmeDoc {
 	lines, starts, ends := markerLines(content)
 	mask := mdrecord.Mask(lines)
+	inline := readmeInlineLines(content)
 	d := readmeDoc{starts: starts, ends: ends}
 	openers := map[string][]int{}
 	var open *readmePartSpan
@@ -211,7 +232,7 @@ func parseReadmeParts(content []byte) readmeDoc {
 			if h := readmeHashAttrRe.FindStringSubmatch(m[2]); h != nil {
 				hash = h[1]
 			}
-			open = &readmePartSpan{Name: m[1], Begin: i, Hash: hash}
+			open = &readmePartSpan{Name: m[1], Begin: i, Hash: hash, Inline: inline[i]}
 			continue
 		}
 		if m := readmeCloseRe.FindStringSubmatch(ln); m != nil {
@@ -296,7 +317,7 @@ func (d readmeDoc) spanBytes(content []byte, p readmePartSpan) (start, end int) 
 // naming a part outside the fixed order, or naming one twice, is the caller's
 // error.
 func planReadmeParts(content []byte, want []readmePartWant) ([]byte, readmePartsResult, error) {
-	fresh := map[string]string{}
+	fresh := map[string]readmePartWant{}
 	for _, w := range want {
 		if readmePartIndex(w.Name) < 0 {
 			return nil, readmePartsResult{}, fmt.Errorf("unknown README part %q (known: %s)", w.Name, strings.Join(readmePartOrder, ", "))
@@ -304,7 +325,7 @@ func planReadmeParts(content []byte, want []readmePartWant) ([]byte, readmeParts
 		if _, dup := fresh[w.Name]; dup {
 			return nil, readmePartsResult{}, fmt.Errorf("README part %q chosen twice", w.Name)
 		}
-		fresh[w.Name] = normaliseReadmeBody(w.Body)
+		fresh[w.Name] = w
 	}
 	var res readmePartsResult
 	doc := parseReadmeParts(content)
@@ -317,13 +338,12 @@ func planReadmeParts(content []byte, want []readmePartWant) ([]byte, readmeParts
 	}
 
 	// A body that would not read back as its own part (a line that reads as a
-	// fence, a code block it never closes) is refused, and the part is left as
-	// the file holds it.
-	refused := map[string]bool{}
-	for name, body := range fresh {
-		if !readmeBodyReadsBack(name, body) {
-			refused[name] = true
-		}
+	// fence, a code block it never closes), or an inline one holding a blank
+	// line, which would end the HTML block it stands in, is refused, and the
+	// part is left as the file holds it.
+	refused := func(name string, inline bool) bool {
+		body := fresh[name].bodyFor(inline)
+		return !readmeBodyReadsBack(name, body) || (inline && readmeBodyHasBlankLine(body))
 	}
 
 	eol := detectEOL(content)
@@ -335,7 +355,8 @@ func planReadmeParts(content []byte, want []readmePartWant) ([]byte, readmeParts
 	for i := len(doc.parts) - 1; i >= 0; i-- {
 		p := doc.parts[i]
 		present[p.Name] = true
-		body, wanted := fresh[p.Name]
+		w, wanted := fresh[p.Name]
+		body := w.bodyFor(p.Inline)
 		o := readmePartOutcome{Name: p.Name}
 		start, end := doc.spanBytes(out, p)
 		switch {
@@ -345,12 +366,18 @@ func planReadmeParts(content []byte, want []readmePartWant) ([]byte, readmeParts
 		case !p.hashMatches():
 			o.State, o.Action, o.Lines = readmePartEdited, readmeActionLeft, []int{p.Begin + 1}
 			o.Note = fmt.Sprintf("%s part edited by hand at line %d; left as it is", p.Name, p.Begin+1)
-		case wanted && refused[p.Name]:
+		case wanted && refused(p.Name, p.Inline):
 			o.State, o.Action = readmePartStale, readmeActionRefused
 			if p.Body == body {
 				o.State = readmePartCurrent
 			}
 			o.Note = readmeBodyRefusal(p.Name)
+		case !wanted && p.Inline:
+			// The part's own lines go, and no blank line takes their place:
+			// one would end the HTML block it stood in.
+			out = concat(out[:doc.starts[p.Begin]], out[doc.ends[p.End]:])
+			o.State, o.Action = readmePartCurrent, readmeActionRemoved
+			o.Note = p.Name + " part removed"
 		case !wanted:
 			out = composeMarkerRemoval(out, [][]int{{start, end}})
 			o.State, o.Action = readmePartCurrent, readmeActionRemoved
@@ -369,15 +396,16 @@ func planReadmeParts(content []byte, want []readmePartWant) ([]byte, readmeParts
 	// Absent parts, in the fixed order, so each one placed is there for the
 	// next one to stand beside.
 	for _, name := range readmePartOrder {
-		body, wanted := fresh[name]
+		w, wanted := fresh[name]
 		if !wanted || present[name] {
 			continue
 		}
 		o := readmePartOutcome{Name: name, State: readmePartAbsent}
-		if refused[name] {
+		place := placeReadmePart(out, name)
+		if refused(name, place.inline) {
 			o.Action, o.Note = readmeActionRefused, readmeBodyRefusal(name)
 		} else {
-			out = insertReadmePart(out, name, renderReadmePart(name, body, eol), eol)
+			out = place.insert(out, renderReadmePart(name, w.bodyFor(place.inline), eol), eol)
 			o.Action, o.Note = readmeActionWritten, name+" part written"
 		}
 		outcomes = append(outcomes, o)
@@ -393,7 +421,8 @@ func planReadmeParts(content []byte, want []readmePartWant) ([]byte, readmeParts
 		if o.Action != readmeActionWritten && o.Action != readmeActionRewritten {
 			continue
 		}
-		if s, _ := check.classify(o.Name, fresh[o.Name]); s != readmePartCurrent {
+		p, _ := check.find(o.Name)
+		if s, _ := check.classify(o.Name, fresh[o.Name].bodyFor(p.Inline)); s != readmePartCurrent {
 			return nil, readmePartsResult{}, fmt.Errorf("the composed README would not read back: the %s part reads %s", o.Name, s)
 		}
 	}
@@ -403,6 +432,16 @@ func planReadmeParts(content []byte, want []readmePartWant) ([]byte, readmeParts
 
 func readmeBodyRefusal(name string) string {
 	return name + " part refused: its text would break its own marks; left as it is"
+}
+
+// readmeBodyHasBlankLine reports whether body holds a blank line.
+func readmeBodyHasBlankLine(body string) bool {
+	for _, ln := range strings.Split(body, "\n") {
+		if strings.TrimSpace(ln) == "" {
+			return true
+		}
+	}
+	return false
 }
 
 // readmeBodyReadsBack reports whether body, rendered alone, reads back as one
@@ -441,17 +480,26 @@ func readmeLineList(lines []int) string {
 	return strings.Join(words[:len(words)-1], ", ") + " and " + words[len(words)-1]
 }
 
-// insertReadmePart places an absent part: beside the nearest present part in
+// readmePlace is where an absent part goes: the byte offset it is inserted
+// at, and whether it goes there in its inline form.
+type readmePlace struct {
+	at     int
+	inline bool
+}
+
+// placeReadmePart places an absent part: beside the nearest present part in
 // the fixed order, after it when that part comes earlier and before it when it
 // comes later (at equal distance, after the earlier one); else after a
-// leading frontmatter block; else after the first live level-one heading;
-// else at the top. Unlike the conventions block, a part is never appended at
-// the end, so it can never land inside a span nothing closes. One blank line
-// sets it off from the text on each side.
-func insertReadmePart(content []byte, name string, block, eol []byte) []byte {
+// leading frontmatter block; else after the first live level-one heading, a
+// Markdown one or an HTML <h1> (readmeTitleEnd); else at the top. Unlike the
+// conventions block, a part is never appended at the end, so it can never land
+// inside a span nothing closes. Beside an inline part it is inline too, on the
+// line next to it, so it joins the same HTML block; anywhere else it is a
+// block.
+func placeReadmePart(content []byte, name string) readmePlace {
 	doc := parseReadmeParts(content)
 	k := readmePartIndex(name)
-	at, bestDist, bestIdx := -1, 0, 0
+	at, bestDist, bestIdx, inline := -1, 0, 0, false
 	for _, p := range doc.parts {
 		j := readmePartIndex(p.Name)
 		if j < 0 || j == k {
@@ -464,7 +512,7 @@ func insertReadmePart(content []byte, name string, block, eol []byte) []byte {
 		if at != -1 && (dist > bestDist || (dist == bestDist && bestIdx < k)) {
 			continue
 		}
-		bestDist, bestIdx = dist, j
+		bestDist, bestIdx, inline = dist, j, p.Inline
 		if j < k {
 			at = doc.ends[p.End]
 		} else {
@@ -474,13 +522,27 @@ func insertReadmePart(content []byte, name string, block, eol []byte) []byte {
 	if at == -1 {
 		if loc := frontmatterRe.FindIndex(content); loc != nil {
 			at = loc[1]
-		} else if end := firstOutOfFenceH1(content); end != -1 {
+		} else if end := readmeTitleEnd(content); end != -1 {
 			at = end
 		} else {
 			at = 0
 		}
 	}
-	head, tail := content[:at], content[at:]
+	return readmePlace{at: at, inline: inline}
+}
+
+// insert writes block at the place. An inline block takes a line of its own
+// with no blank line on either side; any other is set off by one blank line
+// from the text on each side.
+func (pl readmePlace) insert(content, block, eol []byte) []byte {
+	head, tail := content[:pl.at], content[pl.at:]
+	if pl.inline {
+		var pre []byte
+		if len(head) > 0 && head[len(head)-1] != '\n' {
+			pre = eol
+		}
+		return concat(head, pre, block, eol, tail)
+	}
 	var pre []byte
 	if len(head) > 0 {
 		if head[len(head)-1] != '\n' {
@@ -491,6 +553,105 @@ func insertReadmePart(content []byte, name string, block, eol []byte) []byte {
 		}
 	}
 	return concat(head, pre, block, trailingSep(tail, eol), tail)
+}
+
+var (
+	// htmlH1Re opens an HTML level-one heading, after up to three spaces.
+	htmlH1Re = regexp.MustCompile(`(?i)^ {0,3}<h1(?:[ \t>]|$)`)
+	// htmlH1CloseRe closes one.
+	htmlH1CloseRe = regexp.MustCompile(`(?i)</h1[ \t]*>`)
+)
+
+// readmeTitleEnd returns the byte offset just past the first live level-one
+// heading: a Markdown `# ` line (as firstOutOfFenceH1 reads one) or an HTML
+// <h1> line, past the line holding its closing tag when that follows before a
+// blank line. A line in a code block or an HTML comment is not the title. It
+// is -1 when there is none.
+func readmeTitleEnd(content []byte) int {
+	lines, starts, ends := markerLines(content)
+	mask := mdrecord.Mask(lines)
+	for i := range lines {
+		if mask[i] != 0 {
+			continue
+		}
+		if h1Re.Match(content[starts[i]:ends[i]]) {
+			return ends[i]
+		}
+		if !htmlH1Re.MatchString(lines[i]) {
+			continue
+		}
+		for j := i; j < len(lines) && (j == i || strings.TrimSpace(lines[j]) != ""); j++ {
+			if htmlH1CloseRe.MatchString(lines[j]) {
+				return ends[j]
+			}
+		}
+		return ends[i]
+	}
+	return -1
+}
+
+// readmeInlineLines reports, per line of content as markerLines splits it,
+// whether the line continues an open block-level HTML block: one opened by a
+// block-level tag, or by a lone complete tag outside a paragraph (CommonMark's
+// types 6 and 7), which runs to the next blank line. The forge renders no
+// Markdown inside such a block, so a part whose opening fence is one of these
+// lines is written in its inline form. The block's own first line is not a
+// continuation, nor is a line in a leading frontmatter block, a code block, or
+// a block of another type (a <pre>, a comment), and the lines are read as the
+// forge's page reads them (readmePageLines).
+func readmeInlineLines(content []byte) []bool {
+	_, mstarts, _ := markerLines(content)
+	out := make([]bool, len(mstarts))
+	lines, starts := readmePageLines(content)
+	mask := mdrecord.Mask(lines)
+	fmEnd := 0
+	if loc := frontmatterRe.FindIndex(content); loc != nil {
+		fmEnd = loc[1]
+	}
+	cont := map[int]bool{} // a page line's start offset, for each continuation
+	var block *readmeHTMLBlock
+	para := false
+	for i, ln := range lines {
+		if starts[i] < fmEnd {
+			continue
+		}
+		blank := strings.TrimSpace(ln) == ""
+		if block != nil {
+			if block.ends(ln, blank) {
+				block, para = nil, false
+				continue
+			}
+			if block.end == nil {
+				cont[starts[i]] = true
+			}
+			continue
+		}
+		if mask[i] != 0 || blank {
+			para = false
+			continue
+		}
+		if b := openReadmeHTMLBlock(ln, para); b != nil {
+			para = false
+			if !b.ends(ln, false) {
+				block = b
+			}
+			continue
+		}
+		// What is left is a heading, a rule or a setext underline, each
+		// ending any paragraph; code indented outside one, which opens none;
+		// or paragraph text, a list item's or a quotation's included.
+		switch {
+		case atxHeadingRe.MatchString(ln), thematicBreakRe.MatchString(ln), para && setextUnderlineRe.MatchString(ln):
+			para = false
+		case !para && indentedCodeRe.MatchString(ln):
+		default:
+			para = true
+		}
+	}
+	for j, at := range mstarts {
+		out[j] = cont[at]
+	}
+	return out
 }
 
 // endsWithBlankLine reports whether b, which ends with a line ending, ends

@@ -6,25 +6,36 @@
 
   <p>For people who know what they want to build and need help shipping it.</p>
 
-  <a href="https://github.com/intentdriven/abcd/releases/latest"><img src="https://img.shields.io/github/v/release/intentdriven/abcd?cacheSeconds=300" alt="Latest release"></a>
+  <p>
+<!-- BEGIN ABCD:release-badge sha256=7094948651644ba7ca3cd0b237c40538e04bf2975e257cac31caf992ca8652e3 -->
+<a href="https://github.com/intentdriven/abcd/releases/latest"><img src="https://img.shields.io/github/v/release/intentdriven/abcd" alt="Latest release"></a>
+<!-- END ABCD:release-badge -->
   <img src="https://img.shields.io/badge/macOS-000000?logo=apple&logoColor=white" alt="macOS">
   <img src="https://img.shields.io/badge/Linux-core%20CI--tested-FCC624?logo=linux&logoColor=black" alt="Linux: core CI-tested">
   <img src="https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white" alt="Go 1.26">
   <br />
-  <a href="https://github.com/intentdriven/abcd/actions/workflows/ci.yml"><img src="https://github.com/intentdriven/abcd/actions/workflows/ci.yml/badge.svg" alt="Build"></a>
+<!-- BEGIN ABCD:build-badge sha256=fc018bb0d5546cdf08cdd9b418ff6c8b40510e358aeddcbb8005b1a461056dfc -->
+<a href="https://github.com/intentdriven/abcd/actions/workflows/ci.yml"><img src="https://github.com/intentdriven/abcd/actions/workflows/ci.yml/badge.svg" alt="Build"></a>
+<!-- END ABCD:build-badge -->
   <img src="https://img.shields.io/github/last-commit/intentdriven/abcd?cacheSeconds=300" alt="Last commit">
   <img src="https://img.shields.io/badge/status-experimental-orange" alt="Status: experimental">
   <br />
   <a href="https://claude.ai/claude-code"><img src="https://img.shields.io/badge/Built_with-Claude_Code-3B5CE7?logo=anthropic&logoColor=white" alt="Built with Claude Code"></a> <!-- docs-lint: allow -->
-  <a href="https://github.com/intentdriven/abcd"><img src="https://img.shields.io/badge/managed%20with-abcd-blue" alt="Managed with abcd"></a>
+<!-- BEGIN ABCD:abcd-badge sha256=f8e65d2312b3f8c5ac440938b25cb27c9ba5b76189680ac64d559316d1c83d96 -->
+<a href="https://github.com/intentdriven/abcd"><img src="https://img.shields.io/badge/managed%20with-abcd-blue" alt="Managed with abcd"></a>
+<!-- END ABCD:abcd-badge -->
+  </p>
 
   <p>
     <a href="#install">Install</a> ·
     <a href="#first-run">First run</a> ·
-    <a href="CHANGELOG.md">Changelog</a> ·
-    <a href=".github/CONTRIBUTING.md">Contributing</a> ·
-    <a href=".github/SECURITY.md">Security</a> ·
-    <a href="LICENSE">MIT licence</a>
+<!-- BEGIN ABCD:links sha256=22a380b23165fcde3a30c8d19493dd4842f095e035f87f2c1dd8a5ad4db4f7c7 -->
+<a href="CHANGELOG.md">Changelog</a> · <a href=".github/CONTRIBUTING.md">Contributing</a> · <a href=".github/SECURITY.md">Security</a>
+<!-- END ABCD:links -->
+    ·
+<!-- BEGIN ABCD:licence sha256=67a27fc758eb2f4bb27abdbae3f0866a647fea98f7ecb43c9b4d7f36492ffc24 -->
+<a href="LICENSE">MIT licence</a>
+<!-- END ABCD:licence -->
   </p>
 
 </div>
