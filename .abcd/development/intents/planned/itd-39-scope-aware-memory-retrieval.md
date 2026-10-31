@@ -63,7 +63,7 @@ The failure mode itd-3 guards against is *unbounded scaffolding outside the repo
 
 ## Open Questions
 
-- None for the product thinker. The three questions first left here are settled under Decisions (2026-10-11); the technical questions the plan leaves open are in the bundle's spec.
+_None open; the three questions first left here are settled under Decisions (2026-10-11), and the technical questions the plan leaves open are in the bundle's spec._
 
 ## Audit Notes
 
