@@ -67,11 +67,13 @@ What the 2026-10-30 design review found, for the spec to settle:
 ## Mechanism
 
 - We expect the check, the hook, and the asking rules to state and apply the
-  same limits in any one repository, because all three take them from one
-  resolver, which reads the repository's three values over abcd's defaults
-  and hands a value outside its bounds back as a refusal instead of passing
-  it on. Shown wrong if, in one repository on one abcd version, the figures
-  the injected GRILL domain states and the `limits` field `abcd guard
+  same limits in any one repository on any one machine, because all three
+  take them from one resolver, which reads the repository's three values over
+  abcd's defaults, lets the person's own file tighten the result and never
+  loosen it, and hands a value outside its bounds, or a personal value looser
+  than the limit in force, back as a refusal instead of passing it on. Shown
+  wrong if, in one repository on one machine and one abcd version, the
+  figures the injected GRILL domain states and the `limits` field `abcd guard
   question` reports ever differ.
 
 ## Scope Conditions
@@ -84,7 +86,8 @@ What the 2026-10-30 design review found, for the spec to settle:
 - The repository is a checkout whose root `layered.RootsFor` resolves, with <!-- cond: cond-2610301950039896 -->
   `.abcd/config.json` at that root. Outside a repository, in one with no such
   file, and in one whose file has no `question` namespace, the limits are
-  abcd's defaults.
+  abcd's defaults, tightened only where the person's own
+  `~/.abcd.noindex/config.json` sets a key below them (decision 5).
 - The verb, the hook, and the rules loader run the same abcd version, as <!-- cond: cond-2610301950032451 -->
   itd-2610230756259215's claim does. A binary predating this intent claims no
   `question` namespace: it applies the defaults without a word, and the only
@@ -116,10 +119,16 @@ Seen by a person:
 - **Given** the technical facilitator runs the check by hand in a repository
   that set its values, **when** they read its result, **then** it states the
   three values in force and that the repository's configuration set them.
-- **Given** a repository whose configuration sets no value, **when** a
-  question is asked there, **then** the person sees exactly what they see
-  today: the same limits, the same asking rules, and no mention of a
-  configuration.
+- **Given** a repository whose configuration sets no value, on a machine
+  whose own file sets none, **when** a question is asked there, **then** the
+  person sees what they see today but for one figure: the rows limit is 32
+  rather than 24 (decision 3), the asking rules state thirty-two, every other
+  limit and rule is unchanged, and no configuration is mentioned.
+- **Given** a person whose own `~/.abcd.noindex/config.json` sets
+  `question.rows` to 24 in a repository that set 40, **when** they read a
+  question abcd asks on their machine, **then** it fits 24 rows, and a peer
+  on a machine that set nothing reads the same question at the repository's
+  40.
 
 Technical, as one list:
 
@@ -133,14 +142,22 @@ Technical, as one list:
   `question.options`, `question.columns`, or `question.tabs`, **when** it
   reads the file, **then** it refuses naming the key and the file, and
   nothing falls through to the default.
-- **Given** a `question` key set in `~/.abcd.noindex/config.json`, **when**
-  the resolver reads it, **then** it refuses naming the repository's
-  `.abcd/config.json` as the one place the limits are set, as
-  `interview.list` refuses the repository layer today.
+- **Given** a `question` key set in `~/.abcd.noindex/config.json` at or below
+  the limit otherwise in force (the repository's value where
+  `.abcd/config.json` sets the key, else the bundled default), **when** the
+  resolver reads it, **then** the personal value is the limit in force for
+  that key, and `limits_source` names the machine file for it.
+- **Given** a `question` key set in `~/.abcd.noindex/config.json` above the
+  limit otherwise in force, **when** the resolver reads it, **then** it
+  refuses naming the key, the personal value, the limit in force, and the
+  file that set each, and nothing falls through: a personal value tightens
+  and never loosens (decision 5).
 - **Given** each key at its floor, at its ceiling, one below the floor, one
-  above the ceiling, and as a non-integer, **when** the resolver reads each,
-  **then** the floor and the ceiling are accepted and the other three are
-  refused, each refusal naming the key, the value it found, and the bounds.
+  above the ceiling, and as a non-integer, in either file, **when** the
+  resolver reads each, **then** the floor and the ceiling are accepted and
+  the other three are refused, each refusal naming the key, the value it
+  found, and the bounds; a personal value is judged by the bounds before it
+  is judged against the limit in force.
 - **Given** a value outside its bounds and a question whose header is in
   abcd's number grammar, **when** the hook judges it, **then** the deny names
   the key, the value, the bounds, and the file, names no asking rule, and a
@@ -155,18 +172,21 @@ Technical, as one list:
   `abcd rules` prints it, and every other domain loads as before.
 - **Given** a repository with values inside their bounds, **when** the GRILL
   domain is injected there, **then** its layout rule states those figures in
-  words and names `.abcd/config.json` as having set them; **given** no value
-  set, the rule reads as it does today and names no file.
+  words and names `.abcd/config.json` as having set them, and the machine
+  file for any key a personal value tightened; **given** no value set in
+  either file, the rule reads as it does today at the new default and names
+  no file.
 - **Given** a repository with values inside their bounds, **when** `abcd
   rules --json` renders the GRILL domain there, **then** its `source` is
   `bundled` while its layout rule's text names `.abcd/config.json`, and
   `abcd rules` prints its heading with no override label.
 - **Given** the same repository, **when** `abcd guard question` reports,
   **then** its JSON carries `limits` with the three values and
-  `limits_source` (`bundled`, or the repository file's path), `rows_limit`
-  equals `limits.rows`, and the figures in `limits` equal the figures the
-  injected layout rule states, held by a test that renders both from one
-  fixture checkout.
+  `limits_source`, one entry per key (`bundled`, the repository file's path,
+  or the machine file's path where a personal value tightened it),
+  `rows_limit` equals `limits.rows`, and the figures in `limits` equal the
+  figures the injected layout rule states, held by a test that renders both
+  from one fixture checkout.
 - **Given** a change to a `question` value during a session, **when** the
   next prompt that recalls GRILL arrives, **then** the domain is injected
   again with the new figures, because its text, and so its signature,
@@ -183,7 +203,8 @@ Technical, as one list:
   `.abcd/config.json` in no run.
 - **Given** a writer whose host gives it no shell, **when** it answers in a
   repository that set its values, **then** its output says it counted by
-  hand at abcd's defaults and that the repository's values were not read.
+  hand at abcd's defaults and that neither the repository's values nor the
+  person's were read.
 - **Given** every combination of the three keys at their floors and
   ceilings, **when** a question with one paragraph of material, both lines,
   two options, and a decide-later option is checked, **then** it is admitted
@@ -228,7 +249,8 @@ Technical, as one list:
 - **Given** the brief, **when** the change that lands the keys is read,
   **then** the configuration chapter (`05-internals/03-configuration.md`)
   lists the three keys with their defaults and bounds under the `question`
-  namespace, the guard chapter's `question` row names the exit 2 for a
+  namespace and says which layer sets each and that the machine file may
+  only tighten, the guard chapter's `question` row names the exit 2 for a
   refused value, the plugin's guard command page says where the limits are
   set and that the check reports them, and `docs-lint` and record-lint's
   surface coverage pass.
@@ -241,9 +263,10 @@ same day covers the routing, the review findings the record settles, and the
 criteria of an intent they asked to plan; the decisions below were taken
 under it by the technical facilitator, from the findings of the design review
 that split this intent out and of the two adversarial reviews that followed.
-The bounds (3), the repository-only layer (5), the absence of a writing verb
-(13), and the rows floor (17) are provisional and flagged for the product
-thinker, who reviews them at the planning interview.
+The bounds (3), the layering (5), the absence of a writing verb (13), and the
+rows floor (17) were flagged provisional for the product thinker, who ruled
+on them at the planning interview of 2026-10-31 (decision 18); none is
+provisional now.
 
 1. **The keys.** A repository sets three values in `.abcd/config.json` under
    one namespace: `question.rows`, `question.label_words`, and
@@ -269,11 +292,16 @@ thinker, who reviews them at the planning interview.
    the decide-later labels, and the role words, because the check, the hook,
    and every page match on them by text.
 3. **The bounds**, inclusive, stated once in `internal/core/question` beside
-   `Default` and rendered from there wherever they are named. Provisional,
-   flagged for the product thinker. A limit with no bounds can switch a
-   protection off with a legal value, so each key has a floor and a ceiling,
-   and the floor of each is drawn so that every question the binary composes
-   today is admitted whole at it. The smallest question that obeys every
+   `Default` and rendered from there wherever they are named. Settled on
+   2026-10-31 without a question, because the record already settles them:
+   the floors are derived from what the binary composes, and the ceilings
+   from where the protection stops protecting (decision 18). A limit with no
+   bounds can switch a protection off with a legal value, so each key has a
+   floor and a ceiling, and the floor of each is drawn so that every question
+   the binary composes today is admitted whole at it. The floor and the
+   default are different things: the floor is the least a team may set, and
+   the default is what a question may take where nobody sets anything, so
+   the default may sit above the floor and for rows it does. The smallest question that obeys every
    fixed rule is eighteen rows: the frame's eight, four lines of text (one
    line of material, the `Now:` line, the `Change later:` line, and the
    question), and three options at two rows each (a label row and a
@@ -283,14 +311,19 @@ thinker, who reviews them at the planning interview.
    answer beside "Decide later", which the check's floor of two options
    admits but the asking rules forbid, since a question is put only where
    two or more answers are each defensible.
-   - `question.rows`: 24 to 60. The floor is abcd's default and the
-     narrowest window abcd promises; every question the binary composes is
-     held to it today, and nothing in the record asks for a shorter question
-     (decision 17 and the open question hold the one trade-off). The ceiling
-     is a full-height terminal on a large display; past it, "fits one
-     screen" protects no screen a person has, and the writer would stop
-     splitting.
-   - `question.label_words`: 4 to 8. The floor is the longest label the
+   - `question.rows`: 24 to 60, default 32. The floor is the standard
+     screen and the narrowest window abcd promises; every question the
+     binary composes is held to it today, and nothing in the record asks
+     for a shorter question (decision 17 holds the one trade-off). The
+     default rises from 24 to 32 (`question.Default` in
+     `internal/core/question/limits.go` is 24 today; decision 18): 32 rows
+     of an 80-column window is what a question may take where nobody sets
+     anything, and a team whose screens are the standard 24 sets the floor.
+     The ceiling is a full-height terminal on a large display; past it,
+     "fits one screen" protects no screen a person has, and the writer would
+     stop splitting.
+   - `question.label_words`: 4 to 8, default 5, unchanged. The floor is the
+     longest label the
      binary composes, four words: "Yes, make the change"
      (`internal/core/ahoy/setup_question.go:184`), "Yes, make the changes"
      (`internal/core/ahoy/category_approval.go:35`), "Look up the list" and
@@ -298,8 +331,9 @@ thinker, who reviews them at the planning interview.
      and `:456`), and "It needs a key" (`connect_guide.go:511`); "None of
      these" is three. Past eight words a label of ordinary words fills its
      row at the option measure and wraps, and reads as a description.
-   - `question.description_sentences`: 2 to 4. The floor is abcd's default
-     and the longest description the binary composes, two sentences (the
+   - `question.description_sentences`: 2 to 4, default 2, unchanged. The
+     floor is abcd's default and the longest description the binary
+     composes, two sentences (the
      connect guide at `connect_guide.go:455` and `:511`, the source question
      at `internal/core/source/add.go:62` to `:67`, and the decide-later
      meanings of the setup and written interviews); the check counts a
@@ -321,17 +355,26 @@ thinker, who reviews them at the planning interview.
    force, whatever that limit is. Reason: These are the rules that protect
    the person rather than fit the window, and the bounds of decision 3 are
    drawn so that no value reaches one of them.
-5. **The repository layer alone.** Provisional, flagged for the product
-   thinker. A `question` key in `~/.abcd.noindex/config.json` is refused
-   naming the repository's file as the place for it, the mirror of
-   `interview.list` (`internal/core/layered/interview.go:22`), which the
-   machine layer alone may set. Reason: The limits describe the windows the
-   team reads in, and the check must give one answer for everyone who runs
-   it in that checkout: a machine value would pass a question for one person
-   that the hook refuses for a peer, and would have the writer split a
-   question on one machine and not on another, which is the drift between
-   two statements of one limit that itd-2610230756259215 closes. How a
-   person reads a list is theirs; how tall a question may be is the team's.
+5. **The repository sets the limit; a person's own file may only tighten
+   it.** Ruled on 2026-10-31 (decision 18). The limit otherwise in force for
+   a key is the repository's value where `.abcd/config.json` sets it, else
+   the bundled default. A `question` key in `~/.abcd.noindex/config.json` at
+   or below that limit applies on that person's checks; one above it is
+   refused naming the key, the personal value, the limit in force, and the
+   file that set each, and nothing falls through. The bounds of decision 3
+   hold for a personal value as for a repository's, and are judged first.
+   This is neither `interview.list`'s shape
+   (`internal/core/layered/interview.go:22`, the machine layer alone) nor the
+   plain layering every other key has, where the repository's value simply
+   wins. Reason: The project's value wins in every direction that could
+   loosen it, as every other abcd setting's project value wins, so a
+   personal value can never pass a question the team's limit would refuse;
+   and a person whose window is smaller than the team's can still have
+   questions that fit it, because the hook and the check run on the asking
+   person's own machine, which is the screen the question is shown on. The
+   consequence, stated plainly: a question can split differently on two
+   machines when one person has tightened, and the check reports which file
+   set each figure so the difference is readable.
 6. **One resolver, outside the rules loader.** The resolver is one function
    in `internal/core/layered`, beside `InterviewList`, taking the `Roots`
    that `layered.RootsFor(cwd)` builds and returning one of three states:
@@ -361,10 +404,11 @@ thinker, who reviews them at the planning interview.
    decision 2 made the verb and the hook one function so they cannot drift;
    a limit read in two places would reopen the drift one layer up, and a
    loader that read the file itself would be that second reader.
-7. **A value outside its bounds, or of the wrong type, is refused and
-   nothing falls through.** The hook refuses every question held to abcd's
-   rules, naming the key, the value, the bounds, and the file and no asking
-   rule, until the file is fixed; `abcd guard question` exits 2 with
+7. **A value outside its bounds, of the wrong type, or a personal value that
+   loosens, is refused and nothing falls through.** The hook refuses every
+   question held to abcd's rules, naming the key, the value, the bounds (or,
+   for a loosening personal value, the limit in force), and the file and no
+   asking rule, until the file is fixed; `abcd guard question` exits 2 with
    `refused` naming the same, so the writer returns its refusal to the
    calling agent (itd-2610230756259215 decision 11) and the person meets no
    question; the rules loader renders the GRILL domain from abcd's defaults
@@ -401,9 +445,10 @@ thinker, who reviews them at the planning interview.
    whatever keys it holds, because the stack reads both layers before it
    knows which keys either carries.
 9. **The check reports the values in force.** Its JSON gains `limits`
-   (`rows`, `label_words`, `description_sentences`) and `limits_source`
-   (`bundled` or the repository file's path), and `refused` on decision 7's
-   path; `rows_limit` of itd-2610230756259215 decision 6 stays and equals
+   (`rows`, `label_words`, `description_sentences`) and `limits_source`, one
+   entry per key (`bundled`, the repository file's path, or the machine
+   file's path where a personal value tightened it), and `refused` on
+   decision 7's path; `rows_limit` of itd-2610230756259215 decision 6 stays and equals
    `limits.rows`. The three fields are additive to `abcd/question-check/v1`,
    so the type name does not change. The text render states the same line.
    Reason: The writer copies fields rather than translating them, and the
@@ -411,15 +456,17 @@ thinker, who reviews them at the planning interview.
 10. **The writer takes the limits from the check, never from the file.**
     Its page tells it to use `limits` from every check result and to write
     to those figures; the hand count a host with no shell leaves it is made
-    at abcd's defaults, and its output says the repository's values were
-    not read, so the claim does not cover the repository's values reaching
-    such a writer. Reason: A writer that opened `.abcd/config.json` would be
-    a second reader with its own parsing, and an agent's reading of a file
-    is not the check's; the no-shell fallback counts at the narrowest values
-    because a question that fits them fits every window a repository may
-    set.
+    at abcd's defaults, and its output says that neither the repository's
+    values nor the person's were read, so the claim does not cover either
+    reaching such a writer. Reason: A writer that opened `.abcd/config.json`
+    or the person's file would be a second reader with its own parsing, and
+    an agent's reading of a file is not the check's; the no-shell fallback
+    counts at the defaults because they are the figures its page states
+    (decision 12), the only ones such a writer has, and the hook on the ask
+    still judges the question at the limits in force.
 11. **The GRILL domain keeps its bundled provenance**, and its layout rule
-    names `.abcd/config.json` when a value came from there. Reason: The
+    names `.abcd/config.json` when a value came from there, and the machine
+    file when a personal value tightened one. Reason: The
     `(repo override)` label means the repository replaced a domain's rules
     through `.abcd/rules.json`, which a repository may still do; setting a
     figure the generated rule states is a different act, and the rule's own
@@ -435,8 +482,9 @@ thinker, who reviews them at the planning interview.
     are written at build time and ship with the plugin, so they cannot state
     a repository's values; a block that stated figures as absolute would
     teach an agent in a configured repository the wrong ones.
-13. **No verb writes the values.** Provisional, flagged for the product
-    thinker. The keys are edited by hand, as `pace.*` and `interview.list`
+13. **No verb writes the values.** Settled on 2026-10-31 without a question,
+    because the record already settles it: a writer can be added when a team
+    asks for one (decision 18). The keys are edited by hand, as `pace.*` and `interview.list`
     are; no verb writes them, `abcd ahoy install` asks no question about
     them, and `abcd lint` gains no rule for them in this intent. Reason: The
     read is where a wrong value is met, at the first question, and it is
@@ -449,12 +497,16 @@ thinker, who reviews them at the planning interview.
     are set and that the check reports them. Reason: The spec moves with
     the surface, as itd-2610230756259215 decision 18 applies it.
 15. **Relation to itd-2610230756259215.** This intent builds on it and
-    changes nothing it promises at the defaults: the check's JSON gains
-    three additive fields (decision 9) and one more cause of exit 2, a
-    refused value, beside the parent's unreadable input and unread store;
-    the hook gains one read before `CheckLimits`; and every criterion of
-    that intent stated at twenty-four rows stays true in a repository that
-    sets no value. The parent spec's verb step (spc-2610301917245442, its
+    changes one figure it states, the default rows, which rises from 24 to
+    32 (decision 3); everything else it promises at the defaults holds: the
+    check's JSON gains three additive fields (decision 9) and one more cause
+    of exit 2, a refused value, beside the parent's unreadable input and
+    unread store; the hook gains one read before `CheckLimits`; and every
+    criterion of that intent stated at twenty-four rows holds at thirty-two
+    once this intent lands, in a repository that sets no value, on a machine
+    that tightens none. The parent's lines that name 24 as the limit in
+    force are edited when this intent lands, in the change that moves the
+    default. The parent spec's verb step (spc-2610301917245442, its
     JSON approach) must list `limits`, `limits_source`, and `refused` and
     the exit 2 for a refused value, so that the verb's contract is stated
     once; this intent's spec names that edit. Only the three keys are
@@ -471,18 +523,33 @@ thinker, who reviews them at the planning interview.
     recommendation by shape, and a plain Terminal has no four-option tool to
     split for; a later intent that redesigns the setup question could take
     the key up. Also out: configurable columns or host measures (the
-    review's second finding); a machine-layer value (decision 5);
-    configurable tabs, header width, prefixes, or labels (decision 2); a
+    review's second finding); a personal value that loosens a limit
+    (decision 5); configurable tabs, header width, prefixes, or labels (decision 2); a
     verb or an install question that writes the keys (decision 13);
     re-calibrating the host's frame; and what itd-2610230756259215 keeps out
     of its own scope.
 17. **The rows floor stays 24, the standard screen.** Taken on 2026-10-30
-    under the product thinker's delegation while they were away, provisional
-    and flagged for their review. It is the smaller change: every question
-    the binary composes already fits it, so none of abcd's own questions has
-    to change. The alternative floor of 18, the least a question obeying
-    every fixed rule can take (decision 3), waits on the product thinker's
-    ruling in `## Open Questions`.
+    under the product thinker's delegation while they were away, and settled
+    by their ruling of 2026-10-31 (decision 18): a team cannot set questions
+    shorter than a standard screen. Every question the binary composes
+    already fits 24, so none of abcd's own questions has to change. The
+    alternative floor of 18, the least a question obeying every fixed rule
+    can take (decision 3), was put to them and not taken.
+18. **The planning interview's rulings of 2026-10-31.** The product thinker
+    ruled on the items flagged provisional. The rows floor stays 24, the
+    standard screen, so a team cannot set a question shorter than one
+    (decision 17; the open question is closed). abcd's bundled default for
+    `question.rows` rises from 24 to 32, the other two defaults stay, and
+    the bounds stay 24 to 60, 4 to 8, and 2 to 4 (decision 3). A person's
+    own `~/.abcd.noindex/config.json` may set the three keys, but only to
+    tighten the limit otherwise in force, the repository's value or else the
+    default; a looser personal value is refused naming the key, the personal
+    value, the limit in force, and the file that set each, and the bounds
+    hold for it too (decision 5, rewritten from the repository-only layer
+    the draft held). The bounds of decision 3 and the absence of a writing
+    verb (decision 13) were not put as questions and stand as recorded,
+    because the record already settles them: the floors are derived from
+    what the binary composes, and a writer can be added when a team asks.
 
 Typed links: builds on itd-2610230756259215 (every question abcd asks passes
 its check before the person sees it), whose check, hook, and GRILL text read
@@ -491,11 +558,10 @@ its own typed links as built on by it.
 
 ## Open Questions
 
-- **Deferred** to the product thinker: may a team set questions shorter than
-  the standard screen, with a `question.rows` floor of 18 instead of 24?
-  Both answers are defensible on the record. Until they rule, the floor is
-  24 (decision 17), so planning and building proceed on it; lowering it later
-  changes one bound and the fixed questions' test.
+_None open. The one question deferred here, whether a team may set questions
+shorter than the standard screen with a `question.rows` floor of 18, was put
+to the product thinker on 2026-10-31 and answered: the floor stays 24
+(decisions 17 and 18)._
 
 ## Audit Notes
 
@@ -503,4 +569,4 @@ _Empty. Populated by intent-auditor when intent moves to shipped/._
 
 ## Grounds
 
-- pursued: Recorded by the technical facilitator under the product thinker's delegation of 2026-10-30 (dcn-2610301913469955), pending the product thinker's review. We expect a repository's own values for rows, label words, and description sentences, read through one resolver by the check, the hook, the asking rules, and the writer, to let a team fit abcd's questions to its windows without any person-protecting rule becoming reachable; shown wrong if a question the check passed is cut in a window of the configured height, if the injected asking rules and the check ever state different figures in one repository, or if any value inside its bounds admits a question without a decide-later option, with a recommended option, or without the thing decided quoted first.
+- pursued: Recorded by the technical facilitator under the product thinker's delegation of 2026-10-30 (dcn-2610301913469955), and reviewed by the product thinker at the planning interview of 2026-10-31 (decision 18). We expect a repository's own values for rows, label words, and description sentences, tightened and never loosened by a person's own file, read through one resolver by the check, the hook, the asking rules, and the writer, to let a team fit abcd's questions to its windows without any person-protecting rule becoming reachable; shown wrong if a question the check passed is cut in a window of the configured height, if the injected asking rules and the check ever state different figures in one repository, or if any value inside its bounds admits a question without a decide-later option, with a recommended option, or without the thing decided quoted first.
