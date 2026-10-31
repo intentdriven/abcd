@@ -1,0 +1,96 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "1c9e75aa3ddeba24de856889c1a826c9dfdb145d"
+    }
+  },
+  "verifier": {
+    "id": "docs-currency-reviewer@release"
+  },
+  "timeVerified": "2026-10-31T04:01:33Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-opus-5-5+claude-sonnet-5-5",
+  "tier": "full",
+  "manifestHash": "sha256:8b91303965bb81b8b9192de79f4f016b6759126089049e9c3d7f3b2cec6c69be",
+  "policy": {
+    "detector": "docs-currency-reviewer",
+    "version": "1",
+    "promptHash": "sha256:host-run-agent-harness-review-no-pinned-prompt",
+    "briefVersion": "0.16.0"
+  },
+  "categories": {
+    "misleading": 3,
+    "stale": 2,
+    "undocumented": 2
+  },
+  "failing": [
+    {
+      "id": "dc-1",
+      "category": "stale",
+      "severity": "nitpick",
+      "where": "README.md:127",
+      "summary": "README.md:127 (raised by opus as its dc-05): The board example ends with the line `abcd v0.13.4`, and README.md:92 says 'the board's last line names the installed version'. The current release is v0.16.0. Rendering the bare board in a throwaway repo gives the same four lines followed by the running build's version, so the rest of the example is current. The file is unchanged in 1438645. Fix: change the line to `abcd v0.16.0`, or to a placeholder that names no version. (also raised by the docs-currency review at README.md:127, folded here as one finding)",
+      "disposition": "deferred",
+      "record": "iss-2610310331276186",
+      "note": "Re-verified against the export: true. Deferred to its own capture and fixed after the tag."
+    },
+    {
+      "id": "dc-2",
+      "category": "undocumented",
+      "severity": "nitpick",
+      "where": "docs/how-to/install.md:489",
+      "summary": "docs/how-to/install.md:489 (raised by opus as its dc-06): Claim: setup adds the PATH line to '`~/.zshrc` for zsh; for bash, `~/.bash_profile` on macOS and `~/.bashrc` on Linux'. Reality: zsh uses `${ZDOTDIR:-$HOME}/.zshrc`, and bash on macOS uses the first of `.bash_profile`, `.bash_login` and `.profile` that exists, creating `.bash_profile` only when none does (internal/core/shellpath/shellpath.go:20-29, 246-253). Setup names the file it edits, so nobody is misled into a wrong act. The file is unchanged in 1438645. Fix: '(`~/.zshrc`, or `$ZDOTDIR/.zshrc`, for zsh; for bash on macOS the first of `~/.bash_profile`, `~/.bash_login` and `~/.profile` that exists, and `~/.bashrc` on Linux)'. (also raised by the docs-currency review at docs/how-to/install.md:487-492, folded here as one finding)",
+      "disposition": "deferred",
+      "record": "iss-2610310331279313",
+      "note": "Re-verified against the export: true. Deferred to its own capture and fixed after the tag."
+    },
+    {
+      "id": "dc-3",
+      "category": "stale",
+      "severity": "minor",
+      "where": "docs/how-to/upgrade-to-v0.14.0.md:93-99",
+      "summary": "docs/how-to/upgrade-to-v0.14.0.md:93-99 (raised by sonnet as its dc-01): Claim: the `/abcd:` menu lists exactly abcd, ahoy, build, capture, dashboard, decide, disembark, embark, ideate, intent, lab, launch, library, reading, update, and the agents-only list is banlist, docs, drain, guard, history, identity, implement, inbox, lint, mode, peers, reflect, report, scribe, site. Reality: the command pages without user-invocable:false now also include embargo, land, session and status (commands/embargo.md, land.md, session.md, status.md carry no such flag), and announce, checklist, memory and reserve are agent-only (commands/*.md frontmatter) but unlisted. Written in present tense, so a v0.16.0 reader gets a wrong menu. Fix: scope the sentence to v0.14.0 ('In v0.14.0 the menu listed...') or point at `abcd --help --agent` only.",
+      "disposition": "deferred",
+      "record": "iss-2610310331282356",
+      "note": "Re-verified against the export: true. Deferred to its own capture and fixed after the tag."
+    },
+    {
+      "id": "dc-4",
+      "category": "misleading",
+      "severity": "nitpick",
+      "where": "RELEASE.md:3 (quote at the 'Every model call' paragraph)",
+      "summary": "RELEASE.md:3 (quote at the 'Every model call' paragraph) (raised by sonnet as its dc-02): The quote 'A review came back weaker than last week's and I spent an hour blaming the diff,' said a technical facilitator, stops after the first sentence. The press release (.abcd/development/intents/shipped/itd-166-each-run-should-record-the-model.md:20) continues with a second quoted sentence carrying the point ('The record now shows the provider had served a different model under the same name. It took one line to see.'). The words present are exact, but the quote reads as an unfinished setup. Fix: carry the whole quotation.",
+      "disposition": "invalid",
+      "note": "Re-read: the quote is carried word for word from the intent's press release and what it says is true; which sentence the page quotes is the composer's choice, not a currency fault."
+    },
+    {
+      "id": "dc-5",
+      "category": "undocumented",
+      "severity": "minor",
+      "where": "RELEASE.md:3-4 and 'Also in this release'",
+      "summary": "RELEASE.md:3-4 and 'Also in this release' (raised by sonnet as its dc-03): CHANGELOG.md:27 lists a Breaking change (sites abcd builds publish no author name, login or profile link; record.json authorship reduced to counts) that RELEASE.md, whose lead is 'What you must change', never mentions. A consumer of record.json that reads author names is not warned on the release page. Fix: add one sentence to the must-change lead or the 'Also' list.",
+      "disposition": "deferred",
+      "record": "iss-2610310331295746",
+      "note": "Re-verified against the export: true. Deferred to its own capture and fixed after the tag."
+    },
+    {
+      "id": "dc-6",
+      "category": "misleading",
+      "severity": "nitpick",
+      "where": "RELEASE.md:3",
+      "summary": "RELEASE.md:3 (raised by sonnet as its dc-04): 'a primary source must be a web address, a filed source or a record' - the binary accepts only https:// addresses; an http:// source is refused ('names a primary source of no known shape ... an https:// address, source:<key> ... or a record id', verified live). CHANGELOG.md:25 says https correctly. Fix: say 'https address'.",
+      "disposition": "invalid",
+      "note": "Re-read: an https address is a web address and the page does not say http is accepted; the ideate command page states that only https addresses are taken."
+    },
+    {
+      "id": "dc-7",
+      "category": "misleading",
+      "severity": "nitpick",
+      "where": "RELEASE.md:11",
+      "summary": "RELEASE.md:11 (raised by sonnet as its dc-07): New wording: a person running several repositories 'gets, in each, a read-only report'. The report is produced only when asked (`abcd ahoy --remote`, one repository per run, commands/ahoy.md:1291-1297); nothing delivers it unprompted. The earlier 'one report across repositories' falsehood is fixed. Fix: 'can run, in each, a read-only report'.",
+      "disposition": "invalid",
+      "note": "Re-read: the paragraph goes on to say the report is read-only and changes settings only on the person's yes; that it runs on request is stated on the ahoy page, and nothing in the sentence is false."
+    }
+  ],
+  "_reviewProvenance": "Host-run docs-currency-reviewer pair (an Opus 5.5 agent and a Sonnet 5.5 agent on the same brief, full tier for a breaking release) over an exact export of 375a9babec7ea65b0a328d04e91003e087a1a37e (this receipt names 1c9e75aa3ddeba24de856889c1a826c9dfdb145d; provenanceExtra states the difference) with the binary built from it: every line of the 0.16.0 CHANGELOG section and RELEASE.md, and every user-facing page changed since v0.15.1, checked against the code and the binary. Opus PROMOTE; Sonnet PROMOTE. 7 findings recorded: 0 fixed, 3 invalid on re-verification, 4 deferred, each to its own open record. The pair reviewed 625c6e364 in full and then re-read each delta to this commit. The review of 625c6e364 found four minor wording faults in the changelog and release page; the changelog composer re-worded those lines (1438645), and both reviewers checked each changed line against the code. Preflight then refused two guard command-page sentences that named the go-run spelling without saying it applies in a source checkout; the qualifier was added before the roll and the same payload re-ingested (this commit), and both reviewers checked that delta too and returned PROMOTE on this commit. An earlier pair, run before the roll on 375a9babe, is not counted."
+}
