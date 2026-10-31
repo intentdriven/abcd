@@ -396,7 +396,7 @@ func TestAbcdBadgeOffByDefault(t *testing.T) {
 			t.Errorf("%s offers %q, want on, off, then deciding later", k, got)
 		}
 	}
-	v := buildReadmeView(repo, "public")
+	v := buildReadmeView(repo, "public", question.Default)
 	for _, a := range v.Asks[1:] {
 		for _, q := range a.Questions {
 			if got := choiceLabels(q); !reflect.DeepEqual(got, []string{"on", "off", question.Default.LaterLabels[0]}) {
@@ -416,7 +416,7 @@ func TestAbcdBadgeOffByDefault(t *testing.T) {
 	if parts, _ := storedReadmeParts(t, repo); !reflect.DeepEqual(parts, []string{"licence", "links"}) {
 		t.Errorf("taking every default stored %v, want [licence links]", parts)
 	}
-	view, ok := readmeView(repo)
+	view, ok := readmeView(repo, question.Default)
 	if ok {
 		t.Errorf("an answered pair still has a view to relay: %+v", view)
 	}
@@ -435,7 +435,7 @@ func TestReadmeOfferView(t *testing.T) {
 		repo := readmeRepo(t, "https://github.com/owner/repo.git", map[string]string{
 			"LICENSE": mitLicence, "README.md": readme, ".abcd/config.json": `{"repo": {"visibility": "private"}}`,
 		})
-		v, ok := readmeView(repo)
+		v, ok := readmeView(repo, question.Default)
 		if !ok {
 			t.Fatal("no view while the pair is unanswered")
 		}
@@ -494,7 +494,7 @@ func TestReadmeOfferView(t *testing.T) {
 			"LICENSE": mitLicence, "README.md": readme, ".github/workflows/ci.yml": "on: push\n",
 			".abcd/config.json": `{"repo": {"visibility": "public"}}`,
 		})
-		v, ok := readmeView(repo)
+		v, ok := readmeView(repo, question.Default)
 		if !ok {
 			t.Fatal("no view while the pair is unanswered")
 		}
@@ -514,7 +514,7 @@ func TestReadmeOfferView(t *testing.T) {
 	})
 	t.Run("answered", func(t *testing.T) {
 		repo := readmeRepo(t, "", map[string]string{".abcd/config.json": `{"readme": {"parts": []}}`})
-		if v, ok := readmeView(repo); ok {
+		if v, ok := readmeView(repo, question.Default); ok {
 			t.Errorf("an answered pair has a view: %+v", v)
 		}
 	})
@@ -586,12 +586,12 @@ func TestReadmeViewIsLinearInTheHeadings(t *testing.T) {
 		calls := 0
 		swap := measureFits
 		t.Cleanup(func() { measureFits = swap })
-		measureFits = func(h PromptHelp, def string) bool {
+		measureFits = func(h PromptHelp, l question.Limits, def string) bool {
 			calls++
-			return swap(h, def)
+			return swap(h, l, def)
 		}
 		start := time.Now()
-		v, ok := readmeView(repo)
+		v, ok := readmeView(repo, question.Default)
 		measureFits = swap
 		if !ok {
 			t.Fatal("no view while the pair is unanswered")
@@ -621,7 +621,7 @@ func TestFitLinesChecksABoundedNumberOfCandidates(t *testing.T) {
 			lines[i] = fmt.Sprintf("- [Heading %d](#heading-%d)", i, i)
 		}
 		calls := 0
-		got, left := fitLines(lines, func(ex []string, left int) bool {
+		got, left := fitLines(lines, question.Default.Rows, func(ex []string, left int) bool {
 			calls++
 			return len(ex) <= 5
 		})
@@ -645,7 +645,10 @@ func TestReadmeReasonIsFittedToTheRows(t *testing.T) {
 		files[fmt.Sprintf(".github/workflows/a-workflow-with-a-long-descriptive-name-number-%d.yml", i)] = "on: push\n"
 	}
 	repo := readmeRepo(t, "https://github.com/owner/repo.git", files)
-	v, ok := readmeView(repo)
+	// Measured at the rows floor, 24, the window the fixture is sized for:
+	// at the default, 32, the whole reason fits.
+	rows24 := question.Floors(question.Default)
+	v, ok := readmeView(repo, rows24)
 	if !ok {
 		t.Fatal("no view while the pair is unanswered")
 	}
@@ -658,14 +661,14 @@ func TestReadmeReasonIsFittedToTheRows(t *testing.T) {
 	if !strings.Contains(bb.Reason, "number-7.yml") {
 		t.Errorf("the view's reason %q does not name the workflows", bb.Reason)
 	}
-	if got := bb.help().ExampleNone; !strings.HasPrefix(got, "8 workflows in .github/workflows/") {
+	if got := bb.help(rows24).ExampleNone; !strings.HasPrefix(got, "8 workflows in .github/workflows/") {
 		t.Errorf("the build badge's tab says %q, want the short form counting the workflows", got)
 	}
 	long := strings.Repeat("a reason that goes on ", 200)
-	if got := fitReason(bb.help(), "on", long, ""); got != readmeReasonNotShown {
+	if got := fitReason(bb.help(rows24), rows24, "on", long, ""); got != readmeReasonNotShown {
 		t.Errorf("a reason too long to fit is said as %q, want %q", got, readmeReasonNotShown)
 	}
-	if got := fitReason(bb.help(), "on", ""); got != "" {
+	if got := fitReason(bb.help(rows24), rows24, "on", ""); got != "" {
 		t.Errorf("no reason is said as %q", got)
 	}
 }
@@ -686,7 +689,7 @@ func TestReadmeExampleQuotesTheExactLines(t *testing.T) {
 		"CHANGELOG.md": "x\n", "CONTRIBUTING.md": "x\n", "README.md": readme.String(),
 		".abcd/config.json": `{"repo": {"visibility": "private"}}`,
 	})
-	v, ok := readmeView(repo)
+	v, ok := readmeView(repo, question.Default)
 	if !ok {
 		t.Fatal("no view while the pair is unanswered")
 	}
@@ -754,7 +757,7 @@ func TestReadmeCutsStopBeforeAStyleFinding(t *testing.T) {
 	contents := func(readme string) (ReadmePartView, PromptHelp) {
 		t.Helper()
 		repo := readmeRepo(t, "", map[string]string{"README.md": readme, ".abcd/config.json": `{"repo": {"visibility": "private"}}`})
-		v, ok := readmeView(repo)
+		v, ok := readmeView(repo, question.Default)
 		if !ok {
 			t.Fatal("no view while the pair is unanswered")
 		}
@@ -793,10 +796,10 @@ func TestReadmeCutsStopBeforeAStyleFinding(t *testing.T) {
 		t.Errorf("lead %q, want %q", got, want)
 	}
 	h.Example, h.ExampleLeft = nil, 0
-	if got, want := fitReason(h, "off", "no **LICENSE** file", ""), "its reason is not shown here"; got != want {
+	if got, want := fitReason(h, question.Default, "off", "no **LICENSE** file", ""), "its reason is not shown here"; got != want {
 		t.Errorf("a reason tripping a style rule is said as %q, want %q", got, want)
 	}
-	if got, want := fitReason(h, "off", "no **LICENSE** file", "no licence"), "no licence"; got != want {
+	if got, want := fitReason(h, question.Default, "off", "no **LICENSE** file", "no licence"), "no licence"; got != want {
 		t.Errorf("a reason tripping a style rule falls back to %q, want its short form %q", got, want)
 	}
 }

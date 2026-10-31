@@ -19,6 +19,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/history"
 	"github.com/intentdriven/abcd/internal/core/launch"
+	"github.com/intentdriven/abcd/internal/core/question"
 	"github.com/intentdriven/abcd/internal/core/tools"
 )
 
@@ -61,11 +62,17 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	// The host-reach warnings, set once the run is past its refusals and its
 	// adoption question (below).
 	var hostReach []Gap
+	// The question limits' unread layer, when one was not read (below): every
+	// outcome past the resolution carries it, for the front door to say.
+	var limitsUnread string
 	// Every outcome past detection carries the warnings, the early returns
 	// included: a tool's own file holding the owner's words hides AGENTS.md
 	// whether or not this run changed anything. The full apply sets them from
 	// its final detection instead.
 	defer func() {
+		if err == nil {
+			res.limitsUnread = limitsUnread
+		}
 		if err == nil && res.Warnings == nil {
 			res.Warnings = installWarnings(det.Gaps, hostReach)
 		}
@@ -133,6 +140,18 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 			return InstallResult{Status: "refused", Notes: []string{perr.Error()}}, nil
 		}
 	}
+
+	// The question limits in force here (layered.QuestionLimits,
+	// itd-2610301914350541), resolved once before the first question: the
+	// README pair is cut to them. A refused value stops the run here, before
+	// any question, naming the key, the value, the bounds and the file; a file
+	// that could not be read leaves the defaults in force, and the front door
+	// says so.
+	limits, unreadLimits, lerr := questionLimits(abs)
+	if lerr != nil {
+		return InstallResult{Status: "refused", Notes: []string{limitsRefusal(lerr)}}, nil
+	}
+	limitsUnread = unreadLimits
 
 	// The yes to the after-update offer (--only-waiting): only what waits is
 	// put, and the yes approved every kind of change.
@@ -311,6 +330,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		sessionsFlag: opts.LiveSessions,
 		waiting:      waiting,
 		opts:         opts,
+		limits:       limits,
 	}
 
 	// Ordered apply steps.
@@ -573,6 +593,7 @@ type applyCtx struct {
 	shellPlan  *shellpath.Plan // what stepShellPath found for the entry's folder; nil when it did not look
 	shellAdded bool            // stepShellPath added the PATH line this run
 	opts       InstallOptions  // the run's options, as the plan left them
+	limits     question.Limits // the question limits in force, resolved once before the first question
 	downloaded bool            // stepDownload wrote the verified release to the PATH target
 	// needs is what a step the person approved left for them when it failed:
 	// the step to take by hand and why, reported in the default report ahead

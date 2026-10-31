@@ -617,6 +617,20 @@ func mustLoad(t *testing.T, f *fx) *APIConfig {
 // TestGuideQuestionsPassTheAskingLimits: every question the guide asks, on
 // every path, passes the structural check and the asking limits.
 func TestGuideQuestionsPassTheAskingLimits(t *testing.T) {
+	holdGuideQuestions(t, question.Default)
+}
+
+// TestGuideQuestionsPassTheAskingLimitsAtTheFloors holds the same questions
+// to the floor of every configurable key (itd-2610301914350541 decision 3):
+// the guide's four-word labels and two-sentence descriptions are the floors
+// of label words and description sentences.
+func TestGuideQuestionsPassTheAskingLimitsAtTheFloors(t *testing.T) {
+	holdGuideQuestions(t, question.Floors(question.Default))
+}
+
+// holdGuideQuestions is TestGuideQuestionsPassTheAskingLimits at the limits l.
+func holdGuideQuestions(t *testing.T, l question.Limits) {
+	t.Helper()
 	listed := newGuideFake(t, http.StatusOK, threeHundred())
 	keyed := newGuideFake(t, http.StatusUnauthorized, nil)
 	missing := newGuideFake(t, http.StatusNotFound, nil)
@@ -645,7 +659,7 @@ func TestGuideQuestionsPassTheAskingLimits(t *testing.T) {
 			t.Errorf("%s fails the structural check: %v", turn.Ask.Questions[0].ID, fs)
 		}
 		for _, who := range []question.Person{question.Unnamed, question.Facilitator} {
-			for _, fd := range question.CheckLimits(turn.Ask.Fields(), question.Default, question.Addressee{Person: who}) {
+			for _, fd := range question.CheckLimits(turn.Ask.Fields(), l, question.Addressee{Person: who}) {
 				t.Errorf("%s: %s", turn.Ask.Questions[0].ID, fd.String())
 			}
 		}

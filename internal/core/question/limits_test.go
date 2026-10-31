@@ -2,6 +2,9 @@ package question
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -632,7 +635,7 @@ func TestTheRowsRefusalNamesTheWholeTabAndItsSplit(t *testing.T) {
 	if f.Value != want {
 		t.Errorf("value = %q, want %q", f.Value, want)
 	}
-	for _, phrase := range []string{"24 rows at 80 columns", "header", "question text", "every option's label and description"} {
+	for _, phrase := range []string{"32 rows at 80 columns", "header", "question text", "every option's label and description"} {
 		if !strings.Contains(f.Limit, phrase) {
 			t.Errorf("limit %q does not say %q", f.Limit, phrase)
 		}
@@ -672,5 +675,191 @@ func TestChipRoleCompilesItsPatternOnce(t *testing.T) {
 	})
 	if allocs > 4 {
 		t.Errorf("ChipRole allocates %.0f times per call; a compiled-once pattern allocates at most 4", allocs)
+	}
+}
+
+// TestDefaultRowsIsThirtyTwoAboveTheFloor: the bundled rows default is 32, the
+// floor of question.rows stays 24, and the asking rules state thirty-two
+// (itd-2610301914350541 decisions 3, 17 and 18).
+func TestDefaultRowsIsThirtyTwoAboveTheFloor(t *testing.T) {
+	if Default.Rows != 32 {
+		t.Errorf("Default.Rows = %d, want 32", Default.Rows)
+	}
+	b, ok := BoundFor(RowsKey)
+	if !ok || b.Floor != 24 || b.Ceiling != 60 {
+		t.Errorf("the rows bound = %+v, %v; want 24 to 60", b, ok)
+	}
+	if !b.Admits(Default.Rows) || Default.Rows == b.Floor {
+		t.Errorf("the rows default %d is not above the floor %d inside its bound", Default.Rows, b.Floor)
+	}
+	if text := strings.Join(AskingRules(Default), "\n"); !strings.Contains(text, "fits thirty-two rows at eighty columns") {
+		t.Error("the asking rules do not state thirty-two rows")
+	}
+}
+
+// TestBoundsAreTheRecordedThree: the three configurable keys and their
+// inclusive bounds, in Bounded's order, and every default inside its bound.
+func TestBoundsAreTheRecordedThree(t *testing.T) {
+	want := []Bound{
+		{Key: "question.rows", Floor: 24, Ceiling: 60},
+		{Key: "question.label_words", Floor: 4, Ceiling: 8},
+		{Key: "question.description_sentences", Floor: 2, Ceiling: 4},
+	}
+	if !slices.Equal(Bounds, want) {
+		t.Fatalf("Bounds = %+v\nwant     %+v", Bounds, want)
+	}
+	for i, n := range Default.Configurable() {
+		if !Bounds[i].Admits(n) {
+			t.Errorf("the default %d of %s is outside %s", n, Bounds[i].Key, Bounds[i])
+		}
+	}
+	for _, c := range []struct {
+		b    Bound
+		n    int
+		want bool
+	}{{Bounds[0], 24, true}, {Bounds[0], 60, true}, {Bounds[0], 23, false}, {Bounds[0], 61, false}, {Bounds[2], 2, true}, {Bounds[2], 5, false}} {
+		if got := c.b.Admits(c.n); got != c.want {
+			t.Errorf("%s admits %d = %v, want %v", c.b.Key, c.n, got, c.want)
+		}
+	}
+	if got := Bounds[0].String(); got != "24 to 60" {
+		t.Errorf("String() = %q, want %q", got, "24 to 60")
+	}
+	if _, ok := BoundFor("question.options"); ok {
+		t.Error("question.options has a bound; the options count is not configurable")
+	}
+}
+
+// TestBoundedReplacesThreeFieldsOnly: Bounded, Floors and Ceilings change the
+// three configurable fields and nothing else.
+func TestBoundedReplacesThreeFieldsOnly(t *testing.T) {
+	got := Bounded(Default, 40, 6, 3)
+	want := Default
+	want.Rows, want.LabelWords, want.MeaningSentences = 40, 6, 3
+	if fmt.Sprintf("%#v", got) != fmt.Sprintf("%#v", want) {
+		t.Errorf("Bounded = %#v\nwant      %#v", got, want)
+	}
+	if got := Floors(Default).Configurable(); got != [3]int{24, 4, 2} {
+		t.Errorf("Floors = %v", got)
+	}
+	if got := Ceilings(Default).Configurable(); got != [3]int{60, 8, 4} {
+		t.Errorf("Ceilings = %v", got)
+	}
+	if Default.Rows != 32 {
+		t.Error("Bounded changed Default")
+	}
+}
+
+// boundCombinations is every combination of the three keys at their floors
+// and ceilings: eight limits.
+func boundCombinations() map[string]Limits {
+	out := map[string]Limits{}
+	for mask := 0; mask < 8; mask++ {
+		var v [3]int
+		var name []string
+		for i, b := range Bounds {
+			v[i], name = b.Floor, append(name, fmt.Sprintf("%s=%d", strings.TrimPrefix(b.Key, "question."), b.Floor))
+			if mask&(1<<i) != 0 {
+				v[i], name[i] = b.Ceiling, fmt.Sprintf("%s=%d", strings.TrimPrefix(b.Key, "question."), b.Ceiling)
+			}
+		}
+		out[strings.Join(name, ",")] = Bounded(Default, v[0], v[1], v[2])
+	}
+	return out
+}
+
+// minimalTab is the smallest question every fixed rule admits: one paragraph
+// of material, the Now: and Change later: lines, the question, two options
+// and the decide-later option, each label short and each description one
+// sentence.
+func minimalTab() Tab {
+	return Tab{
+		Header: "Tech Q1",
+		Text:   "The label above each question names whom it is for.\n\nNow: not applicable\nChange later: not applicable\n\nShould it name the role?",
+		Options: []Choice{
+			{Label: "Role and number", Description: "It says whom the question is for."},
+			{Label: "Number only", Description: "It is shorter."},
+			{Label: "Decide later", Description: "Nothing changes now."},
+		},
+	}
+}
+
+// TestEveryBoundCombinationKeepsTheFixedRules: at every combination of the
+// floors and ceilings the minimal question is admitted, and the same question
+// without its decide-later option, with an option marked recommended, with no
+// material before the question, or without its Now: line is refused, on the
+// rule that protects the person (itd-2610301914350541 decision 4).
+func TestEveryBoundCombinationKeepsTheFixedRules(t *testing.T) {
+	broken := []struct {
+		name string
+		rule Rule
+		edit func(*Tab)
+	}{
+		{"no decide-later option", RuleDecideLater, func(tb *Tab) { tb.Options = tb.Options[:2] }},
+		{"an option marked recommended", RuleNeverRecommended, func(tb *Tab) { tb.Options[0].Label = "Role (Recommended)" }},
+		{"no material before the question", RuleThingFirst, func(tb *Tab) {
+			tb.Text = "Now: not applicable\nChange later: not applicable\n\nShould it name the role?"
+		}},
+		{"no Now: line", RuleNowAndChangeLater, func(tb *Tab) {
+			tb.Text = strings.Replace(tb.Text, "Now: not applicable\n", "", 1)
+		}},
+	}
+	combos := boundCombinations()
+	if len(combos) != 8 {
+		t.Fatalf("%d combinations, want 8", len(combos))
+	}
+	for name, l := range combos {
+		t.Run(name, func(t *testing.T) {
+			if fs := CheckLimits(one(minimalTab()), l, facilitator()); len(fs) != 0 {
+				t.Errorf("the minimal question is refused:\n%s", render(fs))
+			}
+			for _, b := range broken {
+				tab := minimalTab()
+				b.edit(&tab)
+				fs := CheckLimits(one(tab), l, facilitator())
+				if !slices.Contains(rulesOf(fs), b.rule) {
+					t.Errorf("%s: findings %v, want a %s finding", b.name, rulesOf(fs), b.rule)
+				}
+			}
+		})
+	}
+}
+
+// TestTabsStayFixedAtTheCeilings: five tabs are refused on the tabs rule with
+// every configurable key at its ceiling, because the tabs to a call are not
+// configurable.
+func TestTabsStayFixedAtTheCeilings(t *testing.T) {
+	var f Fields
+	for range 5 {
+		f.Tabs = append(f.Tabs, minimalTab())
+	}
+	fs := CheckLimits(f, Ceilings(Default), facilitator())
+	if !slices.Contains(rulesOf(fs), RuleQuestionsPerCall) {
+		t.Errorf("five tabs at the ceilings: findings %v, want a %s finding", rulesOf(fs), RuleQuestionsPerCall)
+	}
+}
+
+// TestBoundsAreStatedOnce: no reader of a configurable limit writes a bound
+// of its own; each renders question.Bounds. The resolver is checked here; the
+// loader's note and the generated page sentence join the list as they land
+// (spc-2610301950037469 steps 3 and 4).
+func TestBoundsAreStatedOnce(t *testing.T) {
+	literal := regexp.MustCompile(`\b(24|60|4|8|2) to (60|8|4)\b|Floor:\s*\d|Ceiling:\s*\d`)
+	for _, rel := range []string{"../layered/question.go"} {
+		data, err := os.ReadFile(filepath.FromSlash(rel))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m := literal.Find(data); m != nil {
+			t.Errorf("%s states a bound itself (%q); render question.Bounds instead", rel, m)
+		}
+	}
+	// limits.go states each bound exactly once.
+	data, err := os.ReadFile("limits.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(regexp.MustCompile(`\{Key: \w+Key, Floor: \d+, Ceiling: \d+\}`).FindAll(data, -1)); n != len(Bounds) {
+		t.Errorf("limits.go states %d bounds as Bound values, want %d", n, len(Bounds))
 	}
 }

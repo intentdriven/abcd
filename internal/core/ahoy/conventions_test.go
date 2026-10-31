@@ -490,6 +490,23 @@ func TestRetireRechecksTheFile(t *testing.T) {
 // spc-2610030911534855): the file and what it repeats first, the question
 // last, the decide-later answer last.
 func TestConventionsRetireQuestionPassesTheLimits(t *testing.T) {
+	holdConventionsRetireQuestion(t, question.Default)
+	if _, ok := helpFor(conventionsRetirePromptPrefix + "README.md:" + repeatsCopy); ok {
+		t.Error("help is given for a file the registry does not name")
+	}
+}
+
+// TestConventionsRetireQuestionPassesTheLimitsAtTheFloors holds the same
+// questions to the floor of every configurable key (itd-2610301914350541
+// decision 3).
+func TestConventionsRetireQuestionPassesTheLimitsAtTheFloors(t *testing.T) {
+	holdConventionsRetireQuestion(t, question.Floors(question.Default))
+}
+
+// holdConventionsRetireQuestion is TestConventionsRetireQuestionPassesTheLimits
+// at the limits l.
+func holdConventionsRetireQuestion(t *testing.T, l question.Limits) {
+	t.Helper()
 	n := 0
 	for _, f := range toolConventionsFiles {
 		for _, how := range repeatKinds {
@@ -535,13 +552,10 @@ func TestConventionsRetireQuestionPassesTheLimits(t *testing.T) {
 			for _, finding := range question.Check(a) {
 				t.Errorf("%s: structural: %s", key, finding)
 			}
-			for _, finding := range question.CheckLimits(a.Fields(), question.Default, question.Addressee{}) {
+			for _, finding := range question.CheckLimits(a.Fields(), l, question.Addressee{}) {
 				t.Errorf("%s: %s", key, finding)
 			}
 		}
-	}
-	if _, ok := helpFor(conventionsRetirePromptPrefix + "README.md:" + repeatsCopy); ok {
-		t.Error("help is given for a file the registry does not name")
 	}
 	if _, ok := helpFor(retirePromptKey("CLAUDE.md", "no-such-kind")); ok {
 		t.Error("help is given for a way of repeating AGENTS.md that does not exist")
