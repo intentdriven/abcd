@@ -72,6 +72,13 @@ type Options struct {
 	// planned is built as it would be without it; an issue key is refused.
 	AutoPlan bool
 
+	// PlanGuard is the front door's rule for a step that writes the intent
+	// and spec records in this checkout, as an auto-plan lane's plan does
+	// (autoplan.go): it is called under the run's lock immediately before
+	// `intent plan` runs, and an error refuses the step as it is, the lane
+	// left at its plan and the run's state unwritten. Nil guards nothing.
+	PlanGuard func() error
+
 	// TakeOver is `abcd build --take-over`: the start's reservation moves
 	// this person's own live reservation from another copy to this one. It
 	// never moves another person's.
@@ -147,6 +154,8 @@ type Context struct {
 	// router decides the tier each role a round hands out runs at
 	// (escalate.go); nil records no route.
 	router *roundRouter
+	// planGuard is Options.PlanGuard, for the plan stage; nil guards nothing.
+	planGuard func() error
 }
 
 // Outcome is what a stage's body returns. A body that hands its work to an agent
@@ -925,7 +934,7 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 		logged := len(st.Record)
 		renewNote := renewReservation(repoRoot, st, now, nil)
 		renewed := len(st.Record) != logged
-		r, moved, err := move(repoRoot, st, steps, now, g, newRoundRouter(o))
+		r, moved, err := move(repoRoot, st, steps, now, g, newRoundRouter(o), o.PlanGuard)
 		if err != nil {
 			if rf, ok := AsRefusal(err); ok && renewNote != "" {
 				rf.Remedy += "; " + renewNote

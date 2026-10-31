@@ -195,12 +195,15 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"--auto-plan plans a draft intent with no person present, on the substitute for the\n" +
 			"product thinker's sign-off adr-2610310235000654 records. The draft must carry its criteria,\n" +
 			"ask no open question, answer its claim sections (a scope condition not yet stamped passes),\n" +
-			"record a person's `pursued:` grounds last, state its origin and production_mode, not be held\n" +
-			"and name no unsettled blocker, and no peer may hold it; a draft short of any is refused\n" +
-			"naming the row, and nothing is written. The run's one lane hands the draft to two fresh\n" +
-			"ruthless-reviewer agents in turn, one for design and feasibility and one for record\n" +
-			"discipline, and the loop records each verdict from its return. A review that does not pass,\n" +
-			"or a draft whose bytes changed since the start, hands the lane back with the draft unplanned.\n" +
+			"be one plan takes (kebab-case slug, no spec_id set), carry `pursued:` as its last ground no\n" +
+			"run's pick wrote, carry an origin and production_mode from the vocabulary, not be held and\n" +
+			"name no unsettled blocker, and no peer may hold it; a draft short of any is refused naming\n" +
+			"the row, and nothing is written. Those rows check that the record is complete, not who wrote\n" +
+			"it: for a draft an agent wrote end to end, the two reviews are the only gate. The run's one\n" +
+			"lane hands the draft to two fresh ruthless-reviewer agents in turn, one for design and\n" +
+			"feasibility and one for record discipline, always on the host, and the loop records each\n" +
+			"verdict from its return. A review that does not pass, a draft whose bytes changed, or a\n" +
+			"checkout that changed since the start, hands the lane back with the draft unplanned.\n" +
 			"Once both pass, the plan stage checks the substitute again and runs `intent plan` in this\n" +
 			"checkout, as a person's plan does, and the run is complete: the spec's steps, the commit and\n" +
 			"the build of the planned intent are separate acts. The run reserves the draft's two paths and\n" +
@@ -1148,15 +1151,6 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
-			// An auto-plan lane's plan writes the intent and spec records here,
-			// as `abcd intent plan` does, so it keeps the record writers'
-			// rule: a main checkout two or more live sessions started in is
-			// refused, exit 3 (iss-2610240859590333).
-			if loop.PlanStageNext(root, id) {
-				if err := refuseSharedMainCheckout(cmd, prefix, root); err != nil {
-					return err
-				}
-			}
 			var res loop.StepResult
 			var accepted []string
 			// A --yielded given at all is judged trimmed: a blank one names
@@ -1245,13 +1239,23 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 				// harness never outlives the step that started it.
 				ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 				defer stop()
-				res, err = loop.Drive(ctx, root, id, loop.DefaultStages(), loop.Options{Tiers: tiers},
+				// An auto-plan lane's plan writes the intent and spec records
+				// here, as `abcd intent plan` does, so it keeps the record
+				// writers' rule: a main checkout two or more live sessions
+				// started in is refused, exit 3 (iss-2610240859590333). The
+				// loop calls it under the run's lock, just before the plan.
+				guard := func() error { return refuseSharedMainCheckout(cmd, prefix, root) }
+				res, err = loop.Drive(ctx, root, id, loop.DefaultStages(), loop.Options{Tiers: tiers, PlanGuard: guard},
 					loop.Runners{Config: cfg, Transcripts: &lazyHistoryStore{cmd: cmd}})
 				if err == nil {
 					// A review the step handed to the host goes to the reviewer
 					// route instead when oracle.review selects one (itd-6).
 					res, err = loop.DriveReview(ctx, root, id, res, loop.DefaultStages(), loop.Options{}, review)
 				}
+			}
+			var backOff *exitError
+			if errors.As(err, &backOff) {
+				return backOff
 			}
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)

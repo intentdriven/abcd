@@ -66,9 +66,9 @@ func handBackSummary(key string, hb HandBack) string {
 		return b.String()
 	}
 	if hb.Verdict == HandBackNotPlanned {
-		// An auto-plan lane (autoplan.go): the substitute did not hold, and
-		// the draft stays unplanned.
-		fmt.Fprintf(&b, "%s is handed back as %s, still a draft: %s", key, hb.Verdict, hb.Reason)
+		// An auto-plan lane (autoplan.go): the substitute did not hold, so
+		// the run made no plan; the reason says where the record stands.
+		fmt.Fprintf(&b, "%s is handed back as %s: %s", key, hb.Verdict, hb.Reason)
 		if hb.Verdicts != "" {
 			fmt.Fprintf(&b, " (plan reviews: %s)", hb.Verdicts)
 		}

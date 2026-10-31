@@ -457,12 +457,15 @@ kind. `abcd drain` starts these runs one at a time.
 --auto-plan plans a draft intent with no person present, on the substitute for the
 product thinker's sign-off adr-2610310235000654 records. The draft must carry its criteria,
 ask no open question, answer its claim sections (a scope condition not yet stamped passes),
-record a person's `pursued:` grounds last, state its origin and production_mode, not be held
-and name no unsettled blocker, and no peer may hold it; a draft short of any is refused
-naming the row, and nothing is written. The run's one lane hands the draft to two fresh
-ruthless-reviewer agents in turn, one for design and feasibility and one for record
-discipline, and the loop records each verdict from its return. A review that does not pass,
-or a draft whose bytes changed since the start, hands the lane back with the draft unplanned.
+be one plan takes (kebab-case slug, no spec_id set), carry `pursued:` as its last ground no
+run's pick wrote, carry an origin and production_mode from the vocabulary, not be held and
+name no unsettled blocker, and no peer may hold it; a draft short of any is refused naming
+the row, and nothing is written. Those rows check that the record is complete, not who wrote
+it: for a draft an agent wrote end to end, the two reviews are the only gate. The run's one
+lane hands the draft to two fresh ruthless-reviewer agents in turn, one for design and
+feasibility and one for record discipline, always on the host, and the loop records each
+verdict from its return. A review that does not pass, a draft whose bytes changed, or a
+checkout that changed since the start, hands the lane back with the draft unplanned.
 Once both pass, the plan stage checks the substitute again and runs `intent plan` in this
 checkout, as a person's plan does, and the run is complete: the spec's steps, the commit and
 the build of the planned intent are separate acts. The run reserves the draft's two paths and
