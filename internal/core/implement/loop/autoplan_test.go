@@ -594,6 +594,41 @@ func TestTheCheckoutDigestWritesNoIndexAndReadsAMissingOne(t *testing.T) {
 	}
 }
 
+// TestACheckoutChangedAfterTheReviewsHandsThePlanBack: the plan stage checks
+// the checkout again, so a file that appears after the reviews closed, with
+// every row still passing, hands the lane back before anything is planned.
+func TestACheckoutChangedAfterTheReviewsHandsThePlanBack(t *testing.T) {
+	repo := draftRepo(t, draftIntent())
+	root := repo.Root()
+	start, err := Start(root, "itd-10", Options{AutoPlan: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reviewBoth(t, root, start.RunID, "SHIP", "SHIP")
+	if _, err := advance(root, start.RunID, DefaultStages(), Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "notes.md"), []byte("written after the reviews\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		res, err := advance(root, start.RunID, DefaultStages(), Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.HandBack != nil {
+			if !strings.Contains(res.HandBack.Reason, "checkout changed") {
+				t.Fatalf("the hand-back names the checkout: %+v", res.HandBack)
+			}
+			if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(draftRel))); err != nil {
+				t.Fatalf("the draft is not planned: %v", err)
+			}
+			return
+		}
+	}
+	t.Fatal("a checkout changed after the reviews hands the plan back")
+}
+
 // TestAnAutoPlanStartChargesItsReviewsToTheHost: the plan reviews only ever
 // run on the host, so the start's budget row charges them there, and a quota
 // the ruthless reviewer's routed runner reports neither appears nor refuses.

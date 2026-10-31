@@ -96,6 +96,32 @@ func TestPlanWithAnExpectedDigestRefusesAChangedDraft(t *testing.T) {
 	}
 }
 
+// TestPlanComparesTheExpectedDigestUnderTheLock: a draft rewritten after the
+// plan's corpus load and before it takes the store's lock is refused as
+// changed, so the compare is made on the bytes read under the lock, not on
+// any read before it.
+func TestPlanComparesTheExpectedDigestUnderTheLock(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, autoPlanDraftRel, autoPlanDraft)
+	reviewed := DraftDigest([]byte(autoPlanDraft))
+	changed := strings.Replace(autoPlanDraft, "then z.", "then w.", 1)
+	beforeIntentMintLock = func() {
+		beforeIntentMintLock = nil
+		writeFile(t, root, autoPlanDraftRel, changed)
+	}
+	t.Cleanup(func() { beforeIntentMintLock = nil })
+	_, err := Plan(root, "itd-10", PlanOptions{ExpectDigest: reviewed})
+	if !errors.Is(err, ErrDraftChanged) {
+		t.Fatalf("a draft rewritten just before the lock is refused as changed: %v", err)
+	}
+	if got, rerr := os.ReadFile(filepath.Join(root, autoPlanDraftRel)); rerr != nil || string(got) != changed {
+		t.Fatalf("the refused plan leaves the rewritten draft as it is: %v", rerr)
+	}
+	if ents, _ := os.ReadDir(filepath.Join(root, ".abcd", "development", "specs")); len(ents) != 0 {
+		t.Fatalf("the refused plan mints no spec: %v", ents)
+	}
+}
+
 // TestAutoPlanChecksRefuseADraftPlanWouldRefuse: a draft `plan` itself would
 // refuse (a spec_id already set, a slug not kebab-case) fails the plannable
 // row at the start, so no review is spent on it.
