@@ -42,7 +42,7 @@ handing an unachievable intent back to drafts.
 
 ## Footprint
 
-- packages: internal/core/implement/loop, internal/core/intent, internal/surface/cli, commands/build.md, commands/implement.md, .abcd/development/brief/04-surfaces/34-build.md
+- packages: internal/core/implement/loop, internal/core/intent, internal/surface/cli, commands/build.md, commands/implement.md, agents/intent-auditor.md, .abcd/development/brief/04-surfaces/34-build.md
 - tests: internal/core/implement/loop, internal/core/intent
 
 ## Approach
