@@ -47,11 +47,24 @@ Code bundling needs a thoughtful scope decision (source dirs only? everything tr
 - **Given** `disembark pack <repo> <path> --with-code` is invoked on a repo where the curator-suggested defaults exclude a file the user wants included, **when** the user inspects the curator output interactively, **then** the user can override the per-file decision before disembark commits the lifeboat.
 - **Given** a code-bundled lifeboat, **when** `/abcd:launch ship` runs against it, **then** `code/` is *not* automatically promoted to the public `abcd/` repo — code shipping respects the launch payload manifest's default-deny semantics; explicit allow-list entries are required.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [harness, interop and lifeboats SOTA note](../../research/notes/2026-10-23-harness-interop-lifeboats-sota.md), which reuses the itd-35 manifest finding in the same day's [security and isolation note](../../research/notes/2026-10-23-security-isolation-sota.md).
+
+- git answers two different questions first-party: `git archive` writes one tree (the named commit's tree only: no history, and no uncommitted or untracked work unless `--add-file` names it), honours `export-ignore` and `export-subst` from the tree's own `.gitattributes`, stores the commit id in a pax header; `git bundle` packs objects and refs for offline transfer, `verify` checks it "will apply cleanly", a self-contained bundle unpacks into an empty repository, and it carries no index, working tree, stash, config or hooks (git documentation).
+- Scope can be declared in the repository: `export-ignore` is the maintained in-tree statement of "not part of the shipped tree"; a curator starts from that baseline and the manifest records only deviations with their reasons.
+- BagIt (RFC 8493) is the standard for a payload with a per-file manifest: `data/`, `manifest-<alg>.txt` with one checksum per payload file, "complete" (everything listed exists and everything present is listed) against "valid" (every checksum verifies), SHA-512 recommended, and a note that manifests do not resist deliberate tampering. The draft's `code/_manifest.json` is BagIt-shaped, one digest per payload file and the complete/valid distinction, plus a decision column BagIt does not have; it is not a BagIt manifest that BagIt tooling would read.
+- The lifeboat's integrity manifest is being shaped as a flat digest-per-file list verified on extracted files (itd-35); `code/` is more rows in it, not a second mechanism.
+- The launch bundler is default-deny by construction ("no include pattern can promote a denied path", `internal/core/launch/bundle.go`), so `code/` never reaches a launch payload unless named.
+
+**Path 2 — a native `code/` family shaped to `git archive` scoping (`export-ignore` baseline, curator suggestions, per-file override recorded with its reason) and a BagIt-shaped manifest, with an opt-in `git bundle` as the history carrier verified on embark.** `git archive` carries HEAD's tree only, and a project is packed when it is being left behind, which is when uncommitted work exists: pack reports every uncommitted or untracked file it leaves out, or adds it with `--add-file` on the person's say-so, and never drops one silently (loud staging). The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - Which scope model wins? Likely user-picked at disembark with curator-suggested defaults, but needs confirmation.
 - How does `--with-code` interact with `/abcd:launch`'s default-deny payload manifest?
 - Do code-bundled lifeboats grow large enough to warrant compression / streaming?
+- (SOTA 2026-10-23) Does the fork-and-improve case want history (a bundle) or a tree (an archive) by default, and is the choice a flag or a question at pack time?
 
 ## Audit Notes
 

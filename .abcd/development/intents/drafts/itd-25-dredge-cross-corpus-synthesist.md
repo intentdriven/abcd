@@ -78,12 +78,24 @@ This intent moves from `drafts/` to `planned/` when ANY of the following happens
 2. **First user-reported pattern miss**: a user manually identifies a cross-corpus pattern they wished `/abcd:dredge` had surfaced.
 3. **itd-13 (scheduled dev-sync) ships**: scheduled sync makes dredge naturally periodic; the coupling decision (auto-couple vs on-demand) becomes concrete.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [memory-knowledge SOTA note](../../research/notes/2026-10-23-memory-knowledge-sota.md).
+
+- **Revisit trigger 1 has fired.** This repository alone holds 544 open issue records; the filing-time match's threshold was read off 449 of them on 2026-09-26 (`internal/core/record/match`).
+- **Lexical overlap is the strong baseline for same-finding detection.** On a six-project benchmark, REP, an information-retrieval detector "proposed a decade ago", beat the deep-learning detectors by 22.3% average RR@10 "for most projects", and Bugzilla's full-text search was "a useful baseline"; data age and tracker choice "cause a significant difference" (Zhang et al., TOSEM). That is duplicate-report detection, an analogue for clustering rather than a measurement of it.
+- **Cluster, let a model name the cluster, let people review the names.** Clio extracts facets, embeds one, runs k-means, keeps clusters above a size floor, has a model write each title and summary, audits them and builds a hierarchy; 94% reconstruction of known categories on synthetic data; $48.81 per 100,000 items (Tamkin et al.). The shape transfers; the embedding step need not at a few hundred records.
+- **Write-time and batch are two ends of one job.** Mem0 judges each new fact against its ten nearest memories as it arrives; abcd has that half shipped (itd-2609212137116617, `duplicates:` and `refines:` links). Dredge is the retrospective pass over what write-time matching let through.
+- **Source predicts recurrence.** Bugs found by code-analysis tools or human review were reopened 0.52 to 0.85 times the baseline, those from system testing or customers 1.12 to 1.46 times (Zimmermann et al., ICSE 2012); a cluster report should carry its members' `source:` distribution.
+- **Path 2**: native agglomerative clustering over the existing pairwise match score, with complete or average linkage rather than single linkage so every member clears the threshold against the cluster and not only against one neighbour, with a floor of three members, deterministic and explicable, with the host-delegated synthesist confined to naming and the one-line "why now", checked cite-or-drop against member ids; `capture list --dedupe` is a render of the same pairs. The seam is the pairwise scorer. No dependency. The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - **Synthesist output format.** JSON cluster report is mechanical; the human-readable Markdown should answer "what should I look at first?" — what's the right shape? Top-3 clusters with member-issue links and a one-line "why this matters now" per cluster, or something denser?
 - **Wontfix retention.** Do `wontfix/` issues feed the synthesist? Probably yes — patterns of "what we keep deciding not to do" are themselves useful signal. But weight differently from `open/`.
 - **Synthesist cadence.** If itd-13 (scheduled dev-sync) hasn't shipped, dredge is on-demand only. If itd-13 has shipped, does dredge auto-couple to dev-sync or stay on-demand?
 - **Cluster confidence reporting.** Should each cluster carry a confidence score the reviewer can use to weight findings, or is the user expected to sense-check each cluster manually?
+- (SOTA 2026-10-23) **Cluster floor and identity.** Clio keeps a cluster only above a minimum size; what is the floor here (three members?), and is a cluster's identity across runs its member set, so that a report can say a pattern grew since the last dredge rather than re-discovering it?
 
 ## Audit Notes
 

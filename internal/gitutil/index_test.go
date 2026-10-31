@@ -1,6 +1,7 @@
 package gitutil_test
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -41,5 +42,37 @@ func TestRunWithIndexLeavesTheRealIndexAlone(t *testing.T) {
 	}
 	if _, err := gitutil.RunWithIndex(repo.Root(), index, 4, "diff", "--cached", "HEAD"); err == nil {
 		t.Fatal("output past the cap is refused, never truncated")
+	}
+}
+
+// A scratch index is written whole, never split, so a repository set to
+// core.splitIndex gains no shared index file in its git directory from one; and
+// StreamWithIndex hands git's answer to the caller's writer as git writes it.
+func TestAScratchIndexWritesNoSharedIndexIntoTheRepository(t *testing.T) {
+	repo := gittest.NewRepo(t)
+	repo.Write("a.txt", "a\n")
+	repo.Commit("init")
+	repo.Git("config", "core.splitIndex", "true")
+	src, err := os.ReadFile(filepath.Join(repo.Root(), ".git", "index"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	index := filepath.Join(t.TempDir(), "index")
+	if err := os.WriteFile(index, src, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gitutil.RunWithIndex(repo.Root(), index, 4096, "write-tree"); err != nil {
+		t.Fatal(err)
+	}
+	var listing strings.Builder
+	if err := gitutil.StreamWithIndex(repo.Root(), index, &listing, "ls-files", "--stage"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(listing.String(), "\ta.txt\n") {
+		t.Fatalf("the listing reaches the writer: %q", listing.String())
+	}
+	shared, err := filepath.Glob(filepath.Join(repo.Root(), ".git", "sharedindex.*"))
+	if err != nil || len(shared) != 0 {
+		t.Fatalf("no shared index is written into the git directory: %v %v", shared, err)
 	}
 }

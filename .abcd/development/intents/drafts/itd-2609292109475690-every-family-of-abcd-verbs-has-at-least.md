@@ -72,6 +72,19 @@ interview walks each one.
   Linux, **then** every family has at least one passing scenario and a family
   with none fails the suite by name.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [verification-assurance SOTA note](../../research/notes/2026-10-23-verification-assurance-sota.md). The ground is shared with itd-75, whose fixtures and this intent's scenarios are one format.
+
+- **A declarative script a reviewer reads without Go exists and is the Go project's own**: a `testscript` file holds the commands, the expected output (regular-expression match or `cmp` against a file in the same archive) and the fixture tree, runs in a fresh work directory with `HOME=/no-home`, and gates a line to one platform with a condition such as `[unix]` (`testscript` package documentation; `cmd/internal/script/scripttest` runs the `go` command's own `testdata/script/*.txt`).
+- **The same engine has a standalone runner**, so a scenario is usable from CI or a non-Go project without `go test` (one practitioner's report of the `testscript` command).
+- **BATS** reads to anyone and emits TAP but needs Bash on every runner and keeps the fixture tree outside the test file (bats-core documentation); **godog** binds Gherkin steps to Go functions by regular expression, is pre-1.0 with a deprecated CLI, and reintroduces the step-definition tier itd-109's fit-challenge refused.
+- **Every family, by detection**: the smoke harness already walks the Cobra tree in-process, so a detector that fails on a top-level verb with no non-empty `scenarios/<family>/` directory is a few lines over an existing walk, not a hand-kept list.
+- **Its own tagged lane** is a question of run time and failure attribution, not of standing down: the CI classifier already stands the smoke harness down on a docs-confined pull request (with the race lane and the workflow audit), so scenarios inside that lane inherit the stand-down either way.
+- **Locally**, neither `rogpeppe/go-internal` nor `golang.org/x/tools` is a dependency today.
+
+**Path 1 for the format, shared with itd-75: scenarios are testscript files run from the harness.** This adds a test-only Go dependency on `github.com/rogpeppe/go-internal` and needs explicit sign-off; if refused, Path 2 is itd-75's in-house subset runner over the same files. The detector and the lane are native either way. The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - **Every family or a named list**: does the suite have to cover every
@@ -80,6 +93,10 @@ interview walks each one.
   whether a pull request confined to docs skips it.
 - **Scenario format**: Go tests beside the smoke harness, or a declarative
   script format a reviewer can read without Go.
+- (SOTA 2026-10-23) A family whose only real round trip needs the network or
+  a paid key (`launch`, parts of `memory`) is out of scope by the intent's own
+  rule; does the detector accept a scenario gated by a condition that is never
+  true in CI, or must each such family carry an offline round trip?
 
 ## Audit Notes
 

@@ -126,6 +126,60 @@ never mutate a remote uninvited; identity from caller-local facts only.
   together with its stated limit — registration was verified, a living
   executor was not — and never a bare green.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in
+the [forge, CI and merge SOTA note](../../research/notes/2026-10-23-forge-ci-merge-sota.md).
+It builds on the
+[2026-08-19 field research](../../research/notes/2026-08-19-collaborator-fence-field-research.md)
+this intent already cites.
+
+- **What a non-admin can read is sharp, and was tested**: without any
+  credential, `GET /repos/{o}/{r}/rules/branches/{branch}` and `GET
+  /repos/{o}/{r}/rulesets` answered 200 on a public repository; classic
+  branch protection answered 401; the repository record carried `visibility`
+  but not `delete_branch_on_merge` or `allow_auto_merge`; an organisation's
+  `members_can_*` fields were absent (probe of 2026-10-23).
+- **The documented edges match**: "Anyone with read access to a repository
+  can view its active rulesets"; `bypass_actors` is returned only with write
+  access to the ruleset; rules in "evaluate" rulesets are excluded and
+  "evaluate" is Enterprise-only; `security_and_analysis` needs admin, owner or
+  security manager; merge-related settings need `contents:read` plus
+  `contents:write` (GitHub REST docs).
+- **Scorecard models the caller axis and resolves it the wrong way for
+  abcd**: its Branch-Protection check is a five-rung ladder; `EnforceAdmins`,
+  `DismissStaleReviews`, `RequireLastPushApproval`, `RequiresStatusChecks`
+  and `UpToDateBeforeMerge` "require an admin token"; without one, "scores
+  will be determined as if all such requirements have been met", and
+  `EnforceAdmins` is false if any bypass actor exists. The ladder is worth
+  borrowing; the assume-met rule is the false green loud-staging forbids.
+- **The forge's CLI has the read-only probe**: `gh ruleset check [branch]`
+  shows the rules that apply from wherever they are configured, for a branch
+  that need not exist.
+- **"Registration is not a living executor" is documented**: a required
+  workflow a filter skips stays "Pending" forever; GitHub's advice is not to
+  require one that can skip.
+- **The apply side has a precedent that reports before it fixes**: Allstar's
+  Branch Protection policy defaults to `log`, with `issue` and `fix` opt-in.
+- **The HTTP status is part of the verdict, read with the caller and the
+  body**: GitHub returns 404 for a private resource without authentication
+  "to avoid confirming the existence of private repositories", so a 401, and
+  a 404 whose body is "Not Found", mean "unverifiable for this caller"; but
+  classic protection on an unprotected branch answers an authorised caller
+  with 404 and the body "Branch not protected" (probed on 2026-10-23 with a
+  token that can read the repository's settings), which means "absent". The
+  registry records the body text each verdict keys on.
+
+**Path 2**: a native doctor over an enumerated registry, shaped to
+Scorecard's Branch-Protection ladder for the tier summary and to the rulesets
+API's visibility edges for the caller-relative verdict (status plus caller
+plus body, so a 404 reads as absent only for a caller who can see the
+settings and only with the body that says so), with one forge adapter per
+piece as the seam; rulesets are read before classic protection because the
+former answers an anonymous reader. Scorecard as a dependency
+would need sign-off and is not recommended. The independent fit-challenge
+runs at plan time.
+
 ## Open Questions
 
 - **The caller axis needs modelling at planning:** multiple remotes (which is
@@ -143,6 +197,12 @@ never mutate a remote uninvited; identity from caller-local facts only.
 - **Cost advice:** the doctor could say what the user's tier makes free
   (public-repo runner minutes against private-repo multipliers) — worth a
   column, or noise?
+- (SOTA 2026-10-23) Whether this doctor and itd-2610161647248332's capability
+  probe share one registry, each piece naming its least-privileged read and
+  the statuses that mean applied, absent and unverifiable.
+- (SOTA 2026-10-23) Whether the tier summary borrows Scorecard's rung names
+  so a person can set it beside a Scorecard result, given its scoring rule is
+  rejected.
 
 ## Audit Notes
 

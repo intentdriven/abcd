@@ -105,6 +105,67 @@ sign-off, irreversible actions) stay human in both modes
   request's required checks and gates pass, **then** auto-merge is armed on it
   automatically, with no one asked.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [elicitation interviews SOTA note](../../research/notes/2026-10-23-elicitation-interviews-sota.md).
+
+- Autonomy is a design choice on a scale: Sheridan and Verplank's level 5
+  "executes that suggestion if the human approves", 6 "allows the human a
+  restricted time to veto", 7 "executes automatically, then necessarily informs";
+  a 2025 framework names the user's role at each level (operator, collaborator,
+  consultant, approver, observer; Feng, McDonald and Zhang). Human mode is the
+  approver level, auto-merge the observer level, a merge queue with a veto window
+  level 6.
+- The coding hosts have converged on classifier-gated auto with hard residual
+  refusals: the host abcd ships for never auto-approves its question tool or
+  writes to protected configuration paths, pauses after 3 consecutive or 20 total
+  blocks, blocks by default "Merging a pull request no human has approved,
+  approving Claude's own pull request, or disabling CI checks", and ignores `auto`
+  set in a project's settings; another deprecated "Ask Every Time" but still
+  prompts for deletion in every mode; a third allows its all-approve mode "only
+  … via command line". The residual list (a question to a person, configuration
+  paths, deletion, the product thinker's decisions) belongs in both modes.
+- Auto-merge is only a rule if something is required: it "merges a pull request
+  automatically after all required reviews and status checks pass" and is offered
+  "only on pull requests that cannot be merged immediately" (GitHub). "Checks
+  pass" must mean success on the merge-group ref: GitHub "considers a 'neutral'
+  check run conclusion as passing" (Kodiak).
+- The bots already live under the human-review rule: Renovate "can't automerge
+  its own PR until such a review has happened"; GitHub's own coding agent needs
+  "Another reviewer" because the requester's approval "won't count"; its
+  reviewer's "approval assessment alone does not count toward merge
+  requirements", but "When enabled, Copilot can submit an approval that counts
+  toward the repository's required-approvals rule", off by default and
+  enabled by an administrator, so the forge now lets a model approval satisfy
+  a required review where that is switched on. A repository's policy can
+  forbid the mode outright (QEMU declines AI-derived
+  contributions on sign-off grounds).
+- The human gate decays: automation bias "cannot be prevented by training or
+  instructions" (Parasuraman and Manzey, 2010); wrong advice raised error risk by
+  a pooled 1.26 (Goddard et al., 2011). An audit of auto-merged pull requests
+  (random re-review, rejection rate) is part of the mode.
+- On "is merging irreversible": no opened source states a position. That
+  Renovate and the GitHub agent allow a merge under required reviews and checks
+  is consistent with treating a reviewed, queued merge as revertable and
+  re-validated, but that reading is this pass's inference, not a field
+  position; the question stays with the product thinker, and the 2026-10-15
+  refinement reads the same way.
+
+**Path 2**: a native two-point mode shaped to the levels scale and the hosts'
+convergence. Repository configuration can forbid auto but should not alone arm
+it: the hosts refuse to take their auto mode from project or local settings,
+and a committed `.abcd/` file is writable by any agent in the run and by any
+pull request (the guard's protected-path list does not include it), so reading
+it from the repository root stops no agent from editing it. Either auto is
+armed from a user-level setting, with the repository able only to lower it, or
+the key is a protected path the guard refuses to write and only the person's
+own act changes; the planning interview rules which, and "Where does the mode
+live?" stays open. Solo v1 in-session and host-delegated; `pause` a temporary drop to human; "checks
+pass" defined as success with a human approval the requester cannot supply in
+human mode. No Go dependency.
+
+The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - **Where does the mode live?** A `.abcd/` config key, or a value of the
@@ -127,6 +188,9 @@ sign-off, irreversible actions) stay human in both modes
   not a hard rule: the guard registry could refuse `gh pr merge --auto` and an
   enqueue while the facilitator is human, which needs the guard to read the
   facilitator setting.
+- (SOTA 2026-10-23) Whether a model reviewer's approval may satisfy a forge's
+  required review in auto mode, given the forge's own reviewer does not count by
+  default and the requester's approval never does.
 
 ## Decisions
 

@@ -91,8 +91,8 @@ func overrideDrive(t *testing.T) (root, id string, steps Stages, o Options, path
 // version-12 file without it decodes and re-encodes losslessly apart from
 // its version.
 func TestARouteOverrideIsStateVersion16s(t *testing.T) {
-	if SchemaVersion != 16 {
-		t.Fatalf("the --route's record is state version 16's, got %d", SchemaVersion)
+	if schemaVersionUnplanned != 16 {
+		t.Fatalf("the --route's record is state version 16's, got %d", schemaVersionUnplanned)
 	}
 	root, id, steps, o, path := overrideDrive(t)
 	current, err := os.ReadFile(path)

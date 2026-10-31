@@ -112,6 +112,47 @@ We expect one dry-run-first command to replace the hand triage, because the tria
   - Exit codes: 0 when something was acted on, 1 when the run completed and acted on nothing, 2 on a refusal or a fault.
   - It writes only under `~/.abcd.noindex/` and the checkout's local tier.
 
+## SOTA
+
+Surveyed on 2026-10-23 for the seed this intent supersedes,
+[itd-118](../superseded/itd-118-merged-work-leaves-no-residue-abcd.md), and
+carried here when it was superseded; sources, evidence tiers and the local fit
+risks are in the [forge, CI and merge SOTA note](../../research/notes/2026-10-23-forge-ci-merge-sota.md)
+(its itd-118 section). Where the path below differs from this intent's
+rulings (the sweep is its own verb, and merged is judged against the freshly
+fetched default branch by ancestry or patch-equivalence), the rulings stand.
+
+- **The remote half is one forge setting.** GitHub's "Automatically delete
+  head branches" is set by an admin; branch protection and repository rules
+  "can also prevent branches being automatically deleted"; on a fork pull
+  request the fork's setting counts; a deleted head branch is restorable from
+  the closed pull request (GitHub docs). GitLab's project default offers
+  deletion for "non-protected source branches" and is overridable per merge
+  request (the merge request that added it).
+- **The CLI tidies both ends at merge time**: `gh pr merge --delete-branch`
+  deletes "the local and remote branch after merge".
+- **Git's own verbs cover the tracking ref and the worktree, each with a
+  refusal**: `git fetch --prune` (or `fetch.prune`) removes remote-tracking
+  refs only and "doesn't actually care about branches"; `git worktree remove`
+  refuses an unclean worktree without `--force` and a locked one without
+  `--force` twice; `git worktree prune` clears administrative files left by a
+  hand-deleted worktree.
+- **Squash and rebase merges leave no merge-base evidence**, so a local
+  branch cannot be proven merged from git alone; the forge's pull-request
+  state is the authority for "this branch landed" (inference from the merge
+  methods this repository allows).
+
+**Path 1**: adopt the forge setting (turned on by itd-106's reconciliation),
+`--delete-branch` at land time and `fetch.prune`; abcd's native part is the
+worktree in its own machine-scoped store, removed only when the forge
+reports the branch merged and the tree is clean, with a report naming what
+was left (dirty, locked, or no pull request). The independent fit-challenge is still owed before the build, and the questions below are kept for it.
+
+Questions this pass raised for the fit-challenge before the build. They are kept here, not under Open Questions, so they do not hold a build the record already rules ready:
+
+- What the sweep says about a branch with no pull request on the forge:
+  "unknown", never "stale", under loud-staging.
+
 ## Open Questions
 
 _None open; both were answered by the product thinker on 2026-10-23 (Decisions)._

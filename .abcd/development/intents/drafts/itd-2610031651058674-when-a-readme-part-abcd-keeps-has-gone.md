@@ -39,9 +39,21 @@ Typed links: builds on itd-2610031348087517 (the README parts and their marked p
 
 > _Required (the itd-1 discipline): add at least one Given-When-Then bullet describing the verifiable bar for "shipped" before this draft can be planned._
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [dashboard-sites SOTA note](../../research/notes/2026-10-23-dashboard-sites-sota.md).
+
+- **The marker already carries a checksum:** each part is wrapped in `<!-- BEGIN ABCD:<name> sha256=… -->` over a normalised body (`internal/core/ahoy/readme_marker.go`). That is cog's design: `-c` will "checksum the output to protect it against accidental change" (`[[[end]]] (sum: …)`), and on a hand edit "the checksum won't match, and cog will stop to avoid overwriting the edited output" (cog docs).
+- **"Would change if run again" is the staleness check the field uses:** cog's `--check` ("Check that the files would not change if run again", with `--diff` to show why); embedme's `--verify` ("Verify that running embedme would result in no changes. Useful for CI"); terraform-docs injects between `BEGIN_TF_DOCS` and `END_TF_DOCS` markers and leaves the rest alone. Only cog tells a hand edit from a stale derivation, and only at write time; the two-finding report is abcd's addition.
+- **Exit codes separate drift from breakage:** Prettier's `--check` exits 0 (formatted), 1 (not formatted), 2 (something wrong with the tool); abcd's lint already exits 2 on an error and 1 on warnings alone. A drifted part is the warning class; a duplicated or unclosed marker the error class.
+- **No colour in a pipe** (clig.dev; adr-49): the check runs in CI.
+
+**Path 2 — native, shaped to cog's checksum-plus-check pair and Prettier's exit codes: two findings per part from the marker's own data, hand-edited (body hash differs from the marker's) and stale (hashes agree but the regenerated body differs), exit 1 on either and 2 on a broken marker, with an optional diff.** The check reads the marker and never writes. The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
-_None recorded yet._
+- (SOTA 2026-10-23) Whether regenerating a part for comparison may make the badge-address or outbound checks the setup path makes, or must read the disk alone (adr-38).
+- (SOTA 2026-10-23) Whether a hand-edited part fails CI (exit 1) by default, given the owner may have meant the edit; and what the finding tells them to do (remove the marker, or run setup).
 
 ## Audit Notes
 

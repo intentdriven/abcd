@@ -556,6 +556,13 @@
       "sentence": "Start the loop that takes one READY intent to delivered: Writes the run's state and its reservation; refuses an open question, a hold or a peer holding it.",
       "flags": [
         {
+          "name": "auto-plan",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "fix-rounds",
           "shorthand": "",
           "type": "string",

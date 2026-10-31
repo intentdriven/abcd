@@ -197,6 +197,21 @@ of autonomous run A; recorded in [dcn-2609290000000007](../../../work/decisions/
    carried by its `blocked_by` on the store intent.
 5. **The mint-visibility criterion stays, as peer awareness** (ruled 2026-09-30 at the store intent's planning interview): timestamp ids make a clash impossible (adr-45), and the criterion is kept for what a peer learns, not for collision safety.
 
+## SOTA
+
+Surveyed on 2026-10-23 for the enforcement gap only (the store sibling carries its own prior art); sources, evidence tiers and the local fit risks are in the [security-isolation SOTA note](../../research/notes/2026-10-23-security-isolation-sota.md).
+
+- **The host now enforces worktree isolation itself with four checks, for a session already in a worktree**: edits targeting the main checkout, a command whose working directory resolves there or cannot be verified, git redirected by `-C`, `--git-dir`, `GIT_DIR`, `GIT_WORK_TREE` or a `cd`, and any command text it cannot parse ("You can't turn this check off"). The checks run "while a session is isolated in a worktree" and protect the main checkout from that session; a session started in the primary checkout, this intent's case, gets none of them, so they cannot replace the native block there (Claude Code worktrees).
+- **It states the same limit this intent states**: "None of them tracks which files a shell command writes, so a command that writes into the main checkout without running git there, such as `cp` or a shell redirect, isn't refused" (same page).
+- **The host's worktrees live inside the checkout** (`.claude/worktrees/<name>/`), against adr-2609091248200336; `${CLAUDE_PROJECT_DIR}` stays at the main checkout in hooks while the hook's `cwd` follows the worktree (same page).
+- **A `PreToolUse` hook can refuse with a reason, and "staying silent doesn't approve it"**; a hook that fails or times out lets the action proceed by default, and `onFailure: "block"` on a command or HTTP hook (host v2.1.295 or later) makes it block instead, the fail-closed setting for the native block's hook seam (Claude Code hooks).
+- **The host itself writes into the main checkout from a worktree session**: a standing approval ("Yes, and don't ask again") is saved to the main checkout's `.claude/settings.local.json`, so it applies in every worktree and survives the worktree's removal (Claude Code worktrees). That write is not a tool call, so no hook sees it; the allow-set names it, or the record states it as a known exception.
+- **The git backstop's reach is as drafted**: `pre-commit` and `pre-merge-commit` "can be bypassed with the `--no-verify` option" (githooks).
+- **An OS-level immutable flag exists and is the wrong tool**: `chflags uchg` stops git's own fast-forward and the allow-set with it (chflags(1)).
+- **No field precedent for a declared coordinator**; the closest shape is a renewed lease with an expiry and a fencing token, from the 2026-10-17 coordination note.
+
+**Path 2: build the block natively, shaped to the host's four checks and stating what they miss**, with the hook as the seam so a host check can replace a native one at a time; the coordinator's declaration as a lease file in the primary checkout's local tier (session, pid, start time), renewed while the session lives and expiring without it. The independent fit-challenge is still owed before the build.
+
 ## Open Questions
 
 - **How does a session declare itself the coordinator, and what stops a

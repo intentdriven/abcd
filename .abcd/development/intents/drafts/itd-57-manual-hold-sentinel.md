@@ -51,8 +51,58 @@ This is voyage-agnostic: every voyage that runs an autonomous loop eventually ne
 - **Given** configure is re-run on a voyage that already has the sentinel, **when** it completes, **then** the sentinel is unchanged (idempotent; never duplicated, never closed).
 - **Given** the linkage lint / completion-review machinery, **when** it evaluates the sentinel, **then** the sentinel is exempt from done-spec and progress nudges (permanently-open by design).
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in
+the [autonomous-loops SOTA note](../../research/notes/2026-10-23-autonomous-loops-sota.md).
+
+- **The repository has since shipped a hold that is a state, not a sentinel.**
+  `held: "<reason>"` in frontmatter, written by `abcd intent hold` and lifted
+  by `unhold`, refused as free text by the provenance lint, with `intent plan`
+  refusing a held record and naming the reason and the lift
+  (iss-2609200830076665, resolved); the build verb's readiness check reads
+  "not held" (itd-2609201916151817).
+- **Every comparable system holds with a first-class state and a recorded
+  reason.** A Kubernetes Job's `.spec.suspend` (stable since v1.24) can be set
+  at creation so "a custom controller decide[s] later when to start", yields a
+  `Suspended` condition whose `lastTransitionTime` says how long, and emits
+  `Suspended`/`Resumed` events; a CronJob's suspend counts missed runs
+  (Kubernetes docs, re-checked). Temporal's Workflow Pause (pre-release:
+  invite-only on Temporal Cloud, Server v1.30.0 behind a flag self-hosted) is
+  "recorded in Event History with the identity, reason, and request ID",
+  shows as a `Paused` status a list filter finds, and is distinct from
+  terminate (Temporal docs). GitHub's required reviewers hold a job in
+  "Waiting" until a human approves, and the run is cancelled at the 35-day
+  workflow-run limit, which includes waiting and approval time (Actions
+  limits; the 30-day failure is the Enterprise Server 3.5 page's).
+- **None of them uses a never-finishing dependency**, and the intent's own
+  references list the accidental-completion hazard a zero-task sentinel
+  carries.
+
+**Path 2**: the shipped `held:` state, itself shaped like the field's holds
+(Kubernetes suspend, Temporal pause), extended to the spec grain, rather than
+this intent's own sentinel mechanism; the divergence is from the intent, not
+from the SOTA, so under sota-per-intent this is Path 2 and no complexity stop
+is invoked, and `one-canonical-primitive` is the reason, since a sentinel
+beside the shipped `held:` state is a second hold. The proposal reverses the
+record's own Out-of-Scope line, "A bespoke spec hold/unhold verb — v1 rides
+the existing native dependency mechanism", which the interview accepts or
+rejects. What remains is the hold at the spec grain, the recorded
+identity, time and reason (Temporal), a visible held state and its reason in
+the selector's skip output (Kubernetes' condition; the third open question),
+idempotent re-application, and the exemption of a held record from
+progress nudges; the sentinel's id and its eager-or-lazy creation fall away.
+The record carries no ruling against the sentinel; this is a proposal for the
+plan-time interview, where the intent is re-scoped or superseded. No Go
+dependency. The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
+- (SOTA 2026-10-23) Whether this intent is re-scoped onto the shipped `held:`
+  state (spec grain, recorded who/when/why, the skip reason, the nudge
+  exemption) or superseded by a record that says so, given that every
+  comparable system holds with a state and a reason and the sentinel would be
+  a second hold mechanism.
 - Sentinel id: `spc-0-manual-hold` (sorts first) vs a non-`spc-` reserved id outside the normal numbering — which avoids colliding with the spec sequence and reads clearest in the graph?
 - Should configure plant it, or should it be lazily created on first `spec hold`-style use? (Eager = always present and discoverable; lazy = no clutter in projects that never hold anything.)
 - Does the existing native spec-dependency skip emit a clear "blocked by manual-hold" reason in the native selector's `next` output, or does that need a small message addition so the operator sees WHY a spec is skipped?

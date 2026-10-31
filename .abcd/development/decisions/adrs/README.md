@@ -236,4 +236,5 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-2610291037481588](2610291037481588-the-contributors-page-counts-people-and.md) | The contributors page counts people and names none | accepted | 2026-10-29 |
 | [adr-2610300908239458](2610300908239458-ideate-verdicts-are-private-unless-the.md) | Ideate verdicts are private unless the person says public (supersedes adr-2610142116480836) | accepted | 2026-10-30 |
 | [adr-2610301638558260](2610301638558260-a-published-refusal-code-is-never.md) | A published refusal code is never renamed or reused | proposed | 2026-10-30 |
+| [adr-2610310235000654](2610310235000654-an-unattended-plan-stands-in-for-the.md) | An unattended plan stands in for the sign-off only on a recorded, reviewed, unchanged draft | proposed | 2026-10-31 |
 <!-- /index -->
