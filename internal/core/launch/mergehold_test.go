@@ -213,3 +213,17 @@ func TestTheLaunchCheckPointsAKeptWithdrawalAtARenewal(t *testing.T) {
 		t.Fatalf("row = %+v; want the renewal named, never --admit", row)
 	}
 }
+
+// TestAVerifyRenderJudgesNoArmedMerge: a render that states MergeHoldSkip
+// (`launch archive --verify`) reports the row not armed and refuses nothing,
+// even where the forge cannot list the merges; the zero value still refuses.
+func TestAVerifyRenderJudgesNoArmedMerge(t *testing.T) {
+	withArmed(t, ArmedMerges{}, errors.New("gh: no token"), "main")
+	res := runGateSuite(suiteRequest{RepoRoot: t.TempDir(), Dirty: DirtySkip, MergeHold: MergeHoldSkip})
+	if row := mergeHoldRow(t, res); row.Status != "not_armed" || mergeHeld(res) {
+		t.Fatalf("row = %+v, refused = %v; want not armed and no refusal", row, mergeHeld(res))
+	}
+	if res := runGateSuite(suiteRequest{RepoRoot: t.TempDir(), Dirty: DirtySkip}); !mergeHeld(res) {
+		t.Fatalf("the zero policy must still refuse when the merges cannot be listed: %+v", res.Gates)
+	}
+}

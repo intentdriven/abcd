@@ -47,8 +47,8 @@ type archiveCheck struct {
 // repository, which a rename, a transfer or a fork leaves naming another
 // repository, so --verify alone passes on a pin every install 404s on. The
 // release workflows run it with the repository they release from, against the
-// tagged commit: in auto-release's detect job before the tag, in verify before
-// anything is built, and in the publish job, where the verified archive is the
+// tagged commit: in release.yml's verify job, which auto-release calls before
+// the tag and which runs before anything is built, and in the publish job, where the verified archive is the
 // file checksummed, attested and uploaded.
 //
 // Exit codes:
@@ -118,9 +118,16 @@ is written to --out.`,
 			// the release workflows' own outputs beside the checkout are not
 			// the payload. Without --verify nothing else judges the tree, so
 			// a dirty one refuses.
+			//
+			// The merge-hold policy is stated the same way. --verify
+			// reproduces a committed pin and cuts nothing: the release
+			// workflow runs it on the pushed commit, which a merge armed
+			// since cannot change, and with no token that lists the merges.
+			// The cut's own preview and ship judge them.
 			req.Dirty = launch.DirtyRefuse
 			if verify {
 				req.Dirty = launch.DirtySkip
+				req.MergeHold = launch.MergeHoldSkip
 			}
 
 			a, _, err := launch.RenderPluginArchive(req, out)

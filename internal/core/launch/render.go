@@ -70,6 +70,9 @@ type PayloadRenderRequest struct {
 	// closed; a caller that renders after its own writes, having run the gate
 	// before them, states DirtySkip.
 	Dirty DirtyPolicy
+	// MergeHold is whether the render judges the merges armed on the forge.
+	// The zero value judges them; a verify render states MergeHoldSkip.
+	MergeHold MergeHoldPolicy
 }
 
 // renderPathDocAudit is the render path's documentation-audit input. The
@@ -193,6 +196,8 @@ type PrecheckOptions struct {
 	// Dirty is how the dirty-tree gate treats uncommitted changes. The zero
 	// value refuses them.
 	Dirty DirtyPolicy
+	// MergeHold is whether the merge-hold row judges; the zero value judges.
+	MergeHold MergeHoldPolicy
 	// DocAudit is the documentation audit, measured by the caller. Nil reports
 	// the row as not armed.
 	DocAudit *DocAuditPreflight
@@ -347,7 +352,7 @@ func PrecheckPayload(repoRoot, dest string, opts PrecheckOptions) (PayloadPreche
 	// dirty-tree gate sees the tree the cut starts from.
 	suite := runGateSuite(suiteRequest{
 		RepoRoot: pre.Root, Bundle: bundle, Dirty: opts.Dirty,
-		DocAudit: opts.DocAudit, Policy: policy,
+		DocAudit: opts.DocAudit, Policy: policy, MergeHold: opts.MergeHold,
 	})
 	pre.Gates = append(pre.Gates, suite.Gates...)
 	pre.Warnings = suite.Warnings
@@ -437,7 +442,7 @@ func RenderPayload(req PayloadRenderRequest) (PayloadRenderResult, error) {
 	// The dirty-tree policy is the caller's: RenderPayload cannot know whether
 	// the gate already ran, so a request that states none refuses a dirty tree
 	// (iss-2609251827294854).
-	pre, err := PrecheckPayload(req.RepoRoot, req.Dest, PrecheckOptions{Dirty: req.Dirty, DocAudit: renderPathDocAudit})
+	pre, err := PrecheckPayload(req.RepoRoot, req.Dest, PrecheckOptions{Dirty: req.Dirty, MergeHold: req.MergeHold, DocAudit: renderPathDocAudit})
 	if err != nil {
 		return res, err
 	}

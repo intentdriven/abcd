@@ -335,7 +335,10 @@ The **hard-fail** gates refuse the release:
   be there. The row is `not_armed` where origin is not one repository on
   github.com. The reading is the reservation package's, which the launch
   package cannot import, so the front door registers it; a path with none
-  registered reports the row `not_armed`.
+  registered reports the row `not_armed`. The archive render that proves a
+  committed pin reports it `not_armed` too: it reproduces that pin and cuts
+  nothing, and the commit it renders is the one pushed, which a merge armed
+  since cannot change.
 - **The installability smoke** at its light tier, and at its deep tier on the
   cut and on a preview that asks for it (below).
 - **The payload parity diff**, which refuses only when its baseline cannot be
