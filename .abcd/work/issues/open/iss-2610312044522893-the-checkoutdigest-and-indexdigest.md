@@ -9,7 +9,7 @@ found_during: "landing PR #1301 (run-2610310228179894, lane-1)"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/implement/loop/autoplan.go"
-remedy: "Name both in each comment: the tree objects write-tree stores and the loose blobs add -A stores, all of them unreferenced."
+remedy: "Rewrite the checkoutDigest comment to name everything written outside the scratch directory: the tree objects write-tree stores, the loose blobs add -A stores (all unreferenced) and whatever a configured clean filter writes; leave the indexDigest comment as it is."
 ---
 
-The checkoutDigest and indexDigest comments in internal/core/implement/loop/autoplan.go (about lines 181-183 and 239) say nothing outside the scratch directory is written but the tree objects write-tree stores, yet the working-tree half's add -A on the scratch index also stores a loose blob for each admitted modified or untracked file.
+The checkoutDigest comment in internal/core/implement/loop/autoplan.go (about lines 181-183) says nothing outside the scratch directory is written but the tree objects write-tree stores, yet its add -A on the scratch index (about line 207) also stores a loose blob for each admitted modified or untracked file, and a configured clean filter may write objects of its own (Git LFS writes under .git/lfs/objects). The indexDigest comment is accurate: it runs only ls-files and write-tree.
