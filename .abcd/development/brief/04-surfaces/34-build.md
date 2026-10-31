@@ -995,14 +995,21 @@ reviews are the only gate on what it says.
   loop records each verdict from the reviewer's own return, as it does a
   validator's. `plan` checks the substitute again on the record as it stands,
   marks the lane as planning, and on its next step runs the plan in the run's
-  checkout, as a person's plan does; a record planned before the mark is
-  another act's, and the lane is handed back.
+  checkout, as a person's plan does. A record it finds already planned is
+  never counted as the run's plan: before the mark another act planned it,
+  and after it the run cannot tell its own stopped step from another act, so
+  the lane is handed back and the planned record left as it is.
 - **Bound to the bytes reviewed.** The start records the draft's digest, and
   either stage hands the lane back with the draft unplanned when the bytes
   changed or the draft moved: otherwise the reviews would vouch for a text
   they never read. The plan itself compares the digest under the intent
-  store's lock, and the start records a digest of the checkout too, so a
-  change the reviewers made elsewhere hands the lane back.
+  store's lock. The start records a digest of the checkout too, over its
+  HEAD, its index and every file the ignore rules admit outside the local
+  tier, so a change anyone makes there during the reviews or before the plan
+  hands the lane back. Ignored files and the git directory are not covered,
+  and the local tier is left out by design: the run's state and the
+  reviewers' returns are written there, as they are for the build's
+  validators.
 - **A finding goes back to the person.** The build's validators send findings
   to a fresh implementer; a plan review's would rewrite the person's record,
   which is the judgement the sign-off stands for, so a review that does not

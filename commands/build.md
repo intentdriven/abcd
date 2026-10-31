@@ -263,15 +263,20 @@ naming the row, exit 2, and writes nothing:
 - `criteria_provenance` — the record's `origin` and `production_mode` are
   present and in the vocabulary. The row checks that they are stated and
   known, not that they are true.
+- `hold`, `blocked` and `peers` — as above.
 
 These rows show that the record is complete. For a draft an agent wrote end to
 end, its grounds and provenance included, the two reviews below are the only
 gate on what it says.
-- `hold`, `blocked` and `peers` — as above.
 
 The run has one lane, `plan <itd-N> (--auto-plan)`, which records the draft's
-path, the SHA-256 of its bytes and a digest of the checkout's HEAD and working
-tree outside the local tier (`auto_plan` on the lane), and takes two stages:
+path, the SHA-256 of its bytes and a digest of the checkout (`auto_plan` on
+the lane), and takes two stages. The checkout's digest covers its HEAD, its
+index, and every file the ignore rules admit outside the local tier. It does
+not cover ignored files or the git directory (refs other than HEAD, the
+configuration, the hooks). The local tier is left out by design: the run's
+own state and the reviewers' returns are written there, as they are for the
+build's validators.
 
 1. `plan-review` — `implement step` hands the draft to a fresh
    `ruthless-reviewer` for the design and feasibility lens, and, once its
@@ -285,22 +290,31 @@ tree outside the local tier (`auto_plan` on the lane), and takes two stages:
    refused. Once both are in, a `FIX FIRST` hands the lane back as
    `not-planned` with the findings: nobody is there to answer them, so tell
    the person and point them to the planning interview. A checkout that
-   changed since the start (its HEAD, or a file outside the local tier) hands
-   the lane back too. The reviews always run on this session's agents: a role
-   routed to a runner, and a reviewer route, are not used for them, and a
-   `--route` on such a step is refused.
+   changed since the start (its HEAD, its index, or a file the ignore rules
+   admit outside the local tier) hands the lane back too, whoever changed it:
+   the person, a peer session or a reviewer. Tell the person before the run
+   starts that a commit, a staged change or an edited file in this checkout
+   while the reviews run hands the run back; work in another checkout of the
+   repository does not change this one's digest. The reviews always run on
+   this session's agents: a role routed to a runner, and a reviewer route,
+   are not used for them, and a `--route` on such a step is refused.
 2. `plan` — two steps. The first checks the rows above again on the record as
    it stands, both recorded verdicts, the draft's bytes and the checkout, and
-   marks the lane as planning. The second checks them once more, then runs
-   `intent plan` in this checkout, as a person's plan does (the spec stub
-   minted, the intent moved to `planned/`), telling it the digest so it
-   refuses, under its own lock, a draft that changed after the loop's check.
+   marks the lane as planning; it writes only the run's state. The second
+   checks them once more, then runs `intent plan` in this checkout, as a
+   person's plan does (the spec stub minted, the intent moved to `planned/`),
+   telling it the digest so it refuses, under its own lock, a draft that
+   changed after the loop's check.
    A main checkout two or more live sessions started in is refused at that
    second step, under the run's lock, exit 3, as every record writer is. A
    draft that changed or moved since the start, at either stage, hands the
-   lane back as `not-planned` and plans nothing; so does a draft someone
-   planned by hand before the lane was marked, since the reviews did not vouch
-   for that plan.
+   lane back as `not-planned` and plans nothing. A record the plan stage finds
+   already in `planned/` is handed back too, citing no verdict, since the
+   reviews did not vouch for that plan: one planned by hand before the lane
+   was marked, and one found after it, which the run cannot tell from its own
+   second step stopped after `intent plan` and before its state write. The
+   planned record stays as it is; tell the person to read it and its spec
+   before building it.
 
 The run is then complete, and `next` says what is left: the spec's steps and
 footprint, a commit of the plan on a branch for review, and `abcd build
