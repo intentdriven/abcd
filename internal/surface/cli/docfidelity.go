@@ -183,8 +183,9 @@ func fidelityRoot(verb string) (string, error) {
 // stands at. The binary labels the receipt; the reviewer never does.
 func newDocsFidelityRecordCommand(asJSON *bool) *cobra.Command {
 	var verdictJSON string
+	var dryRun bool
 	cmd := &cobra.Command{
-		Use:  "record --verdict-json <file|->",
+		Use:  "record --verdict-json <file|-> [--dry-run]",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			const verb = "abcd docs fidelity record"
@@ -198,6 +199,19 @@ func newDocsFidelityRecordCommand(asJSON *bool) *cobra.Command {
 			raw, err := readSynthesisPayload(cmd, verdictJSON)
 			if err != nil {
 				return &exitError{Code: 2, Msg: verb + ": " + scrubPaths(err)}
+			}
+			if dryRun {
+				plan, err := docfidelity.PlanRecord(root, raw, time.Now())
+				if err != nil {
+					return &exitError{Code: 2, Msg: verb + ": " + scrubPaths(err) + " (nothing written)"}
+				}
+				res := struct {
+					Receipt string             `json:"receipt"`
+					Review  docfidelity.Review `json:"review"`
+				}{plan.Receipt, plan.Review}
+				return renderDryRun(cmd.OutOrStdout(), *asJSON, verb, res, plan.Plan, func(w io.Writer) {
+					fmt.Fprintf(w, "  verdict %s for %s\n", plan.Review.Verdict, plan.Review.Commit)
+				})
 			}
 			rel, review, err := docfidelity.Record(root, raw, time.Now())
 			if err != nil {
@@ -214,6 +228,7 @@ func newDocsFidelityRecordCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&verdictJSON, "verdict-json", "", "the reviewer's verdict JSON (a file, or - for stdin)")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, dryRunFlagUsage)
 	return cmd
 }
 

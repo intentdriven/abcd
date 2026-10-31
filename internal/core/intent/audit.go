@@ -16,6 +16,7 @@ import (
 	"syscall"
 
 	"github.com/intentdriven/abcd/internal/core/condition"
+	"github.com/intentdriven/abcd/internal/core/dryrun"
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/spec"
@@ -880,28 +881,10 @@ func ReadVerdict(verdictPath string) ([]byte, error) {
 // (the receipt's model_reported), so the two can never describe different
 // reads of a file that changed between them.
 func IngestVerdictBytes(repoRoot string, raw []byte) (IngestVerdictResult, error) {
-
-	// Lenient first pass: recover _type + receipt id so we can classify and
-	// resolve the payload. A payload that is not a fidelity verdict at all, or that
-	// we cannot even key on, has no home and is rejected outright (not dead-lettered).
-	var lenient struct {
-		Type      string `json:"_type"`
-		ReceiptID string `json:"receipt_id"`
+	rcp, err := verdictReceipt(raw)
+	if err != nil {
+		return IngestVerdictResult{}, err
 	}
-	if err := json.Unmarshal(raw, &lenient); err != nil {
-		return IngestVerdictResult{}, fmt.Errorf("intent: verdict is not parseable JSON; refusing to ingest: %w", err)
-	}
-	if lenient.Type != VerdictType {
-		// Refused before any receipt resolves, so no redactor is built yet: the
-		// value is described, never quoted, as every other host-payload refusal
-		// is (iss-2609290033521472). The wanted type beside it finds a typo.
-		return IngestVerdictResult{}, fmt.Errorf("intent: verdict _type is %s, not %q; refusing to ingest",
-			termsafe.DescribeRefused(lenient.Type), VerdictType)
-	}
-	if !rcpIDRe.MatchString(lenient.ReceiptID) {
-		return IngestVerdictResult{}, fmt.Errorf("intent: verdict has no resolvable receipt_id (malformed or absent); refusing to ingest")
-	}
-	rcp := lenient.ReceiptID
 
 	// The receipt's resolution, every check judged on the record, and the
 	// write(s) are ONE critical section under the store's advisory lock, as every
@@ -943,6 +926,110 @@ func IngestVerdictBytes(repoRoot string, raw []byte) (IngestVerdictResult, error
 		return err
 	})
 	return res, err
+}
+
+// verdictReceipt is the ingest's lenient first pass, shared by the ingest and
+// its plan: the payload must be a fidelity verdict keyed on a receipt id, or
+// it has no home and is rejected outright (never dead-lettered).
+func verdictReceipt(raw []byte) (string, error) {
+	// Lenient first pass: recover _type + receipt id so we can classify and
+	// resolve the payload. A payload that is not a fidelity verdict at all, or that
+	// we cannot even key on, has no home and is rejected outright (not dead-lettered).
+	var lenient struct {
+		Type      string `json:"_type"`
+		ReceiptID string `json:"receipt_id"`
+	}
+	if err := json.Unmarshal(raw, &lenient); err != nil {
+		return "", fmt.Errorf("intent: verdict is not parseable JSON; refusing to ingest: %w", err)
+	}
+	if lenient.Type != VerdictType {
+		// Refused before any receipt resolves, so no redactor is built yet: the
+		// value is described, never quoted, as every other host-payload refusal
+		// is (iss-2609290033521472). The wanted type beside it finds a typo.
+		return "", fmt.Errorf("intent: verdict _type is %s, not %q; refusing to ingest",
+			termsafe.DescribeRefused(lenient.Type), VerdictType)
+	}
+	if !rcpIDRe.MatchString(lenient.ReceiptID) {
+		return "", fmt.Errorf("intent: verdict has no resolvable receipt_id (malformed or absent); refusing to ingest")
+	}
+	return lenient.ReceiptID, nil
+}
+
+// VerdictIngestPlan is what IngestVerdictBytes would do with a payload: the
+// result it would report, every file it would write, and what it would ask
+// the issue ledger to do.
+type VerdictIngestPlan struct {
+	Result IngestVerdictResult
+	Plan   dryrun.Plan
+}
+
+// PlanVerdictIngest is IngestVerdictBytes as a practice run (spc-
+// 2610301431131636): the receipt is resolved, the verdict judged against the
+// record under the store's lock, and the block composed, through the same
+// functions the ingest runs, and the writes they would make are returned
+// rather than made. The ledger is not asked: what the ingest would ask it to
+// file or resolve is reported as an effect, and an owed check's issue id,
+// which the ledger mints or links at the write, is reported as
+// dryrun.MintedID. A payload the ingest would refuse is refused here in the
+// same words; one it would quarantine plans the quarantine.
+func PlanVerdictIngest(repoRoot string, raw []byte) (VerdictIngestPlan, error) {
+	rcp, err := verdictReceipt(raw)
+	if err != nil {
+		return VerdictIngestPlan{}, err
+	}
+	var res IngestVerdictResult
+	var writes []auditWrite
+	var pv owedPreview
+	plan := func() error {
+		var err error
+		if pv, err = previewOwed(repoRoot, raw, rcp); err != nil {
+			return err
+		}
+		lg := auditLedgerOutcome{}
+		if pv.owed != nil && auditOwedFiler != nil {
+			lg.issue = "iss-" + dryrun.MintedID
+		}
+		if pv.clearRcp != "" && auditOwedClearer != nil {
+			lg.cleared = pv.clearIss
+		}
+		res, writes, err = planLocked(repoRoot, raw, rcp, lg)
+		return err
+	}
+	// The ingest takes the lock only where the store exists, because taking
+	// it creates the store; the plan follows it, so it creates nothing.
+	if _, err := os.Lstat(filepath.Join(repoRoot, IntentsRelDir)); errors.Is(err, fs.ErrNotExist) {
+		res, writes, err = planLocked(repoRoot, raw, rcp, auditLedgerOutcome{})
+		if err != nil {
+			return VerdictIngestPlan{}, err
+		}
+	} else if err := withIntentMintLock(repoRoot, plan); err != nil {
+		return VerdictIngestPlan{}, err
+	}
+	var p dryrun.Plan
+	for _, w := range writes {
+		action := dryrun.Replace
+		if _, err := os.Lstat(filepath.Join(repoRoot, filepath.FromSlash(w.rel))); err != nil {
+			action = dryrun.Create
+		}
+		pw := dryrun.Write{Path: filepath.ToSlash(w.rel), Action: action, Bytes: len(w.data), Content: w.data}
+		if w.intent && res.OwedIssue != "" {
+			pw.Pending = "the owed check's issue id is set by the ledger at the write"
+		}
+		p.Writes = append(p.Writes, pw)
+	}
+	switch {
+	case res.Status != "ingested":
+	case pv.owed != nil && auditOwedFiler != nil:
+		p.Effects = append(p.Effects, dryrun.Effect{
+			Effect: "file the owed check in the issue ledger, or link the open issue already carrying it",
+			Target: pv.owed.IntentID + " " + pv.owed.ReceiptID})
+	case pv.clearRcp != "" && auditOwedClearer != nil && pv.clearIss != "":
+		p.Effects = append(p.Effects, dryrun.Effect{Effect: "resolve the issue carrying the owed check", Target: pv.clearIss})
+	case pv.clearRcp != "" && auditOwedClearer != nil:
+		p.Effects = append(p.Effects, dryrun.Effect{
+			Effect: "resolve any open issue still carrying the owed check (none may be open)", Target: pv.clearItd + " " + pv.clearRcp})
+	}
+	return VerdictIngestPlan{Result: res, Plan: p}, nil
 }
 
 // owedPreview is what the first hold of the lock judged: the owed check a
@@ -1013,12 +1100,26 @@ func askAuditLedger(repoRoot string, pv owedPreview) (auditLedgerOutcome, error)
 // applies the verdict to those bytes. reingestVerdict and deadLetter are reached
 // only from here, so they run under the same hold.
 func ingestLocked(repoRoot string, raw []byte, rcp string, lg auditLedgerOutcome) (IngestVerdictResult, error) {
-	it, content, state, ok, err := findIntentByReceipt(repoRoot, rcp)
+	res, writes, err := planLocked(repoRoot, raw, rcp, lg)
 	if err != nil {
 		return IngestVerdictResult{}, err
 	}
+	if err := applyAuditWrites(repoRoot, writes); err != nil {
+		return IngestVerdictResult{}, err
+	}
+	return res, nil
+}
+
+// planLocked is ingestLocked up to its writes: every resolution and check,
+// and the bytes each write would lay, returned rather than written. The
+// ingest applies them in order; a practice run reports them.
+func planLocked(repoRoot string, raw []byte, rcp string, lg auditLedgerOutcome) (IngestVerdictResult, []auditWrite, error) {
+	it, content, state, ok, err := findIntentByReceipt(repoRoot, rcp)
+	if err != nil {
+		return IngestVerdictResult{}, nil, err
+	}
 	if !ok {
-		return IngestVerdictResult{}, fmt.Errorf("intent: verdict receipt %s matches no parked review marker (unsolicited); refusing to ingest", rcp)
+		return IngestVerdictResult{}, nil, fmt.Errorf("intent: verdict receipt %s matches no parked review marker (unsolicited); refusing to ingest", rcp)
 	}
 	if state == "INGESTED" {
 		return reingestVerdict(repoRoot, raw, it, rcp, content, lg)
@@ -1035,7 +1136,7 @@ func ingestLocked(repoRoot string, raw []byte, rcp string, lg auditLedgerOutcome
 	// parked, so a re-emit and a re-audit are still open. An absent or malformed
 	// hash is a malformed payload and keeps its existing DEAD_LETTER path below.
 	if err := checkIssuedPolicy(repoRoot, raw, it, rcp, content); err != nil {
-		return IngestVerdictResult{}, err
+		return IngestVerdictResult{}, nil, err
 	}
 
 	// The free-text renderer for this write, built ONCE and before anything is
@@ -1044,7 +1145,7 @@ func ingestLocked(repoRoot string, raw []byte, rcp string, lg auditLedgerOutcome
 	// halfway through the block it was about to render.
 	free, degraded, err := newVerdictProse(repoRoot)
 	if err != nil {
-		return IngestVerdictResult{}, err
+		return IngestVerdictResult{}, nil, err
 	}
 
 	// Full schema + semantic validation. Any failure with a resolvable receipt
@@ -1058,15 +1159,16 @@ func ingestLocked(repoRoot string, raw []byte, rcp string, lg auditLedgerOutcome
 	owed := owedFor(it, rcp, v)
 	block := ingestedBlock(rcp, v, rollup, free, owed, lg.issue)
 	if err := degraded(); err != nil {
-		return IngestVerdictResult{}, err
+		return IngestVerdictResult{}, nil, err
 	}
 	if err := checkReviewCitations(repoRoot, it, rcp, block); err != nil {
-		return IngestVerdictResult{}, err
+		return IngestVerdictResult{}, nil, err
 	}
 	updated := upsertReviewBlock(content, rcp, block)
-	if err := writeIntentFile(filepath.Join(repoRoot, it.Path), it.Path, updated); err != nil {
-		return IngestVerdictResult{}, err
+	if err := checkIntentFileSize(it.Path, updated); err != nil {
+		return IngestVerdictResult{}, nil, err
 	}
+	writes := []auditWrite{{rel: it.Path, data: []byte(updated), intent: true}}
 	split := countDispositions(v)
 	return withOwed(IngestVerdictResult{
 		Status: "ingested", ReceiptID: rcp, IntentID: it.ID, Criteria: len(v.Criteria),
@@ -1076,7 +1178,7 @@ func ingestLocked(repoRoot string, raw []byte, rcp string, lg auditLedgerOutcome
 		Narrowed: split[dispositionNarrowed], Falsified: split["falsified"],
 		Untested:                  split[dispositionUntested],
 		ReadingOccasionedStanding: occasionedStanding(updated),
-	}, owed, lg), nil
+	}, owed, lg), writes, nil
 }
 
 // reingestVerdict applies a verdict for a receipt already INGESTED. The receipt
@@ -1089,24 +1191,24 @@ func ingestLocked(repoRoot string, raw []byte, rcp string, lg auditLedgerOutcome
 // nothing written rather than dead-lettered: quarantine is for a receipt still
 // owed a verdict, and a bad re-ingest must never replace a good one. It runs
 // under the store lock ingestLocked holds.
-func reingestVerdict(repoRoot string, raw []byte, it Intent, rcp, content string, lg auditLedgerOutcome) (IngestVerdictResult, error) {
+func reingestVerdict(repoRoot string, raw []byte, it Intent, rcp, content string, lg auditLedgerOutcome) (IngestVerdictResult, []auditWrite, error) {
 	free, degraded, err := newVerdictProse(repoRoot)
 	if err != nil {
-		return IngestVerdictResult{}, err
+		return IngestVerdictResult{}, nil, err
 	}
 	v, verr := validateVerdict(raw, rcp, content)
 	if verr != nil {
-		return IngestVerdictResult{}, fmt.Errorf("intent: receipt %s is already INGESTED and this verdict does not validate: %s; "+
+		return IngestVerdictResult{}, nil, fmt.Errorf("intent: receipt %s is already INGESTED and this verdict does not validate: %s; "+
 			"an ingested verdict is replaced only by a valid one (nothing written)", rcp, free(verr.Error()))
 	}
 	rollup := countVerdicts(v)
 	owed := owedFor(it, rcp, v)
 	block := ingestedBlock(rcp, v, rollup, free, owed, lg.issue)
 	if err := degraded(); err != nil {
-		return IngestVerdictResult{}, err
+		return IngestVerdictResult{}, nil, err
 	}
 	if existing, ok := reviewBlockText(content, rcp); ok && sameReviewBlock(existing, block, rcp) {
-		return withOwed(IngestVerdictResult{Status: "noop", ReceiptID: rcp, IntentID: it.ID}, owed, lg), nil
+		return withOwed(IngestVerdictResult{Status: "noop", ReceiptID: rcp, IntentID: it.ID}, owed, lg), nil, nil
 	}
 	// A passing re-audit of a flagged receipt clears the flag: the replacement
 	// block carries none, and a dated line below it says when and which issue
@@ -1120,15 +1222,16 @@ func reingestVerdict(repoRoot string, raw []byte, it Intent, rcp, content string
 		block += "\n\n" + clearedLine(rcp, iss, auditNow())
 	}
 	if err := checkIssuedPolicy(repoRoot, raw, it, rcp, content); err != nil {
-		return IngestVerdictResult{}, err
+		return IngestVerdictResult{}, nil, err
 	}
 	if err := checkReviewCitations(repoRoot, it, rcp, block); err != nil {
-		return IngestVerdictResult{}, err
+		return IngestVerdictResult{}, nil, err
 	}
 	updated := upsertReviewBlock(content, rcp, block)
-	if err := writeIntentFile(filepath.Join(repoRoot, it.Path), it.Path, updated); err != nil {
-		return IngestVerdictResult{}, err
+	if err := checkIntentFileSize(it.Path, updated); err != nil {
+		return IngestVerdictResult{}, nil, err
 	}
+	writes := []auditWrite{{rel: it.Path, data: []byte(updated), intent: true}}
 	split := countDispositions(v)
 	return withOwed(IngestVerdictResult{
 		Status: "ingested", Replaced: true, ReceiptID: rcp, IntentID: it.ID, Criteria: len(v.Criteria),
@@ -1138,7 +1241,7 @@ func reingestVerdict(repoRoot string, raw []byte, it Intent, rcp, content string
 		Narrowed: split[dispositionNarrowed], Falsified: split["falsified"],
 		Untested:                  split[dispositionUntested],
 		ReadingOccasionedStanding: occasionedStanding(updated),
-	}, owed, lg), nil
+	}, owed, lg), writes, nil
 }
 
 // owedFor is the check v leaves owed on it, or nil when v passes: no
@@ -1431,31 +1534,28 @@ func validateConditionDispositions(v verdict, intentContent string) error {
 // DEAD_LETTER block recording all criteria INCONCLUSIVE. Never partial. It runs
 // under the store lock ingestLocked holds, so its two writes — the retained
 // payload and the record — land in one hold.
-func deadLetter(repoRoot string, it Intent, content, rcp string, raw []byte, reason string, free proseField, degraded func() error) (IngestVerdictResult, error) {
+func deadLetter(repoRoot string, it Intent, content, rcp string, raw []byte, reason string, free proseField, degraded func() error) (IngestVerdictResult, []auditWrite, error) {
 	if !rcpIDRe.MatchString(rcp) {
-		return IngestVerdictResult{}, fmt.Errorf("intent: receipt id %q is malformed; refusing to dead-letter", rcp)
+		return IngestVerdictResult{}, nil, fmt.Errorf("intent: receipt id %q is malformed; refusing to dead-letter", rcp)
 	}
-	dir := filepath.Join(repoRoot, reviewsRelDir)
 	dlRel := filepath.Join(reviewsRelDir, rcp+".deadletter.json")
 	untested := untestedDispositions(content)
 	block := deadLetterBlock(rcp, reason, dlRel, untested, free)
 	if err := degraded(); err != nil {
-		return IngestVerdictResult{}, err
+		return IngestVerdictResult{}, nil, err
 	}
 	// The quarantine's reason quotes the payload, so it is held to the same gate
 	// as a verdict, before anything is retained or written.
 	if err := checkReviewCitations(repoRoot, it, rcp, block); err != nil {
-		return IngestVerdictResult{}, err
-	}
-	if err := ensureRecordDir(repoRoot, reviewsRelDir); err != nil {
-		return IngestVerdictResult{}, err
-	}
-	if err := fsutil.WriteFileAtomic(filepath.Join(dir, rcp+".deadletter.json"), raw, 0o644); err != nil {
-		return IngestVerdictResult{}, fmt.Errorf("intent: retaining dead-letter payload %s: %w", dlRel, err)
+		return IngestVerdictResult{}, nil, err
 	}
 	updated := upsertReviewBlock(content, rcp, block)
-	if err := writeIntentFile(filepath.Join(repoRoot, it.Path), it.Path, updated); err != nil {
-		return IngestVerdictResult{}, err
+	if err := checkIntentFileSize(it.Path, updated); err != nil {
+		return IngestVerdictResult{}, nil, err
+	}
+	writes := []auditWrite{
+		{rel: filepath.ToSlash(dlRel), data: raw, ensureDir: reviewsRelDir},
+		{rel: it.Path, data: []byte(updated), intent: true},
 	}
 	// The counts exist so a surface reports the split WITHOUT re-reading the
 	// record, so they must agree with what was just written there: the quarantine
@@ -1468,7 +1568,49 @@ func deadLetter(repoRoot string, it Intent, content, rcp string, raw []byte, rea
 		// is: a surface must not print what the record was protected from.
 		DeadLetterPath: dlRel, Reason: free(reason),
 		ReadingOccasionedStanding: occasionedStanding(updated),
-	}, nil
+	}, writes, nil
+}
+
+// auditWrite is one write an ingest would make: a repo-relative path and its
+// bytes. An intent record is written through the store's own writer; a
+// retained dead-letter payload goes into ensureDir, created first as a real
+// directory of the checkout.
+type auditWrite struct {
+	rel       string
+	data      []byte
+	ensureDir string
+	intent    bool
+}
+
+// applyAuditWrites lays an ingest's planned writes in order, the retained
+// payload before the record, as the quarantine always has.
+func applyAuditWrites(repoRoot string, writes []auditWrite) error {
+	for _, w := range writes {
+		if w.intent {
+			if err := writeIntentFile(filepath.Join(repoRoot, w.rel), w.rel, string(w.data)); err != nil {
+				return err
+			}
+			continue
+		}
+		if w.ensureDir != "" {
+			if err := ensureRecordDir(repoRoot, w.ensureDir); err != nil {
+				return err
+			}
+		}
+		if err := fsutil.WriteFileAtomic(filepath.Join(repoRoot, filepath.FromSlash(w.rel)), w.data, 0o644); err != nil {
+			return fmt.Errorf("intent: retaining dead-letter payload %s: %w", filepath.FromSlash(w.rel), err)
+		}
+	}
+	return nil
+}
+
+// checkIntentFileSize is writeIntentFile's size refusal asked before the
+// write, so a plan refuses what the write would.
+func checkIntentFileSize(rel, content string) error {
+	if len(content) > maxIntentFileBytes {
+		return fmt.Errorf("intent: writing %s would produce %d bytes, past the %d-byte cap its own reader enforces; refusing", rel, len(content), maxIntentFileBytes)
+	}
+	return nil
 }
 
 // UnresolvedCitation is one record id a fragment cites that the repository's

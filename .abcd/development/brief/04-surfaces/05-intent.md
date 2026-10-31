@@ -748,6 +748,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--dry-run` | bool |
 | `--route` | stringArray |
 | `--verdict-json` | string |
 
@@ -777,6 +778,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--dry-run` | bool |
 | `--findings-json` | stringArray |
 | `--route` | stringArray |
 
@@ -831,6 +833,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--dry-run` | bool |
 | `--findings-json` | string |
 
 ### `abcd intent ready`

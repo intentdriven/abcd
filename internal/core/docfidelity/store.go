@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/dryrun"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/core/surface"
@@ -254,75 +255,108 @@ type payload struct {
 // Record validates the reviewer's verdict and saves it as the receipt for the
 // commit the checkout stands at, returning the receipt's repo-relative path
 // and the review as the gate now reads it. A refused payload writes nothing.
+//
+// It is PlanRecord followed by the plan's Apply, so a practice run
+// (`--dry-run`) and the real write share every check.
 func Record(root string, raw []byte, at time.Time) (string, Review, error) {
+	p, err := PlanRecord(root, raw, at)
+	if err != nil {
+		return "", Review{}, err
+	}
+	return p.Apply()
+}
+
+// RecordPlan is what Record would write: the receipt's path and bytes, and
+// the review as the gate would read it once the receipt is saved.
+type RecordPlan struct {
+	// Receipt is the receipt's repo-relative path.
+	Receipt string
+	// Review is the review as the gate would read it, built from the
+	// validated verdict: the gate's own reader runs on the saved file only,
+	// so a practice run reports the verdict, the commit and the findings it
+	// would save, and Apply returns what the reader then reads.
+	Review Review
+	// Plan is the one write, for a practice run to report.
+	Plan dryrun.Plan
+
+	root string
+	head string
+	data []byte
+}
+
+// PlanRecord does everything Record does before its write: the payload is
+// decoded and judged, the commit and the manifest are read, and the receipt
+// is composed. A refused payload is refused here, in the words Record
+// refuses it in, and nothing is written either way.
+func PlanRecord(root string, raw []byte, at time.Time) (RecordPlan, error) {
 	if len(raw) > maxPayloadBytes {
-		return "", Review{}, fmt.Errorf("the verdict is larger than %d bytes", maxPayloadBytes)
+		return RecordPlan{}, fmt.Errorf("the verdict is larger than %d bytes", maxPayloadBytes)
 	}
 	var p payload
 	if err := jsonstrict.Decode(raw, &p); err != nil {
-		return "", Review{}, fmt.Errorf("the verdict is refused: %w", err)
+		return RecordPlan{}, fmt.Errorf("the verdict is refused: %w", err)
 	}
 	switch p.VerificationResult {
 	case "PROMOTE", "HOLD", "INCONCLUSIVE":
 	default:
-		return "", Review{}, fmt.Errorf("verificationResult %q is not PROMOTE, HOLD or INCONCLUSIVE", p.VerificationResult)
+		return RecordPlan{}, fmt.Errorf("verificationResult %q is not PROMOTE, HOLD or INCONCLUSIVE", p.VerificationResult)
 	}
 	if strings.TrimSpace(p.JudgeModel) == "" {
-		return "", Review{}, errors.New("judgeModel is empty: a verdict names the judge that produced it")
+		return RecordPlan{}, errors.New("judgeModel is empty: a verdict names the judge that produced it")
 	}
 	if why := lint.FloatingJudgeModel(p.JudgeModel); why != "" {
-		return "", Review{}, fmt.Errorf("judgeModel %q is %s: a verdict names the pinned judge that produced it "+
+		return RecordPlan{}, fmt.Errorf("judgeModel %q is %s: a verdict names the pinned judge that produced it "+
 			"(a version or date, never latest), so the review can be re-run against the same judge", p.JudgeModel, why)
 	}
 	if p.Tier != "full" && p.Tier != "shallow" {
-		return "", Review{}, fmt.Errorf("tier %q is not full or shallow", p.Tier)
+		return RecordPlan{}, fmt.Errorf("tier %q is not full or shallow", p.Tier)
 	}
 	brief := 0
 	for i, f := range p.Failing {
 		if f.Doc != DocBrief && f.Doc != DocPublic {
-			return "", Review{}, fmt.Errorf("failing[%d].doc %q is not brief or public", i, f.Doc)
+			return RecordPlan{}, fmt.Errorf("failing[%d].doc %q is not brief or public", i, f.Doc)
 		}
 		if strings.TrimSpace(f.Chapter) == "" || strings.TrimSpace(f.Sentence) == "" || strings.TrimSpace(f.Evidence) == "" {
-			return "", Review{}, fmt.Errorf("failing[%d] needs its chapter, the sentence and the evidence", i)
+			return RecordPlan{}, fmt.Errorf("failing[%d] needs its chapter, the sentence and the evidence", i)
 		}
 		if f.Doc == DocBrief {
 			// The same parse Apply reads the chapter through, so a verdict saved
 			// here is one --apply can write; the receipt keeps the file name.
 			name, err := chapterFile(f.Chapter)
 			if err != nil {
-				return "", Review{}, fmt.Errorf("failing[%d]: %w", i, err)
+				return RecordPlan{}, fmt.Errorf("failing[%d]: %w", i, err)
 			}
 			p.Failing[i].Chapter = name
 		}
 		if strings.TrimSpace(f.Disposition) == "" {
-			return "", Review{}, fmt.Errorf("failing[%d] carries no disposition", i)
+			return RecordPlan{}, fmt.Errorf("failing[%d] carries no disposition", i)
 		}
 		if err := checkLine("sentence", f.Sentence); err != nil {
-			return "", Review{}, fmt.Errorf("failing[%d]: %w", i, err)
+			return RecordPlan{}, fmt.Errorf("failing[%d]: %w", i, err)
 		}
 		if err := checkLine("replacement", f.Replacement); err != nil {
-			return "", Review{}, fmt.Errorf("failing[%d]: %w", i, err)
+			return RecordPlan{}, fmt.Errorf("failing[%d]: %w", i, err)
 		}
 		if f.Replacement != "" && f.Replacement == f.Sentence {
-			return "", Review{}, fmt.Errorf("failing[%d].replacement must differ from the sentence", i)
+			return RecordPlan{}, fmt.Errorf("failing[%d].replacement must differ from the sentence", i)
 		}
 		if f.Doc == DocBrief {
 			brief++
 		}
 	}
 	if p.VerificationResult == "HOLD" && brief == 0 {
-		return "", Review{}, errors.New("a HOLD names no false brief sentence, so there is nothing to correct: a verdict with no confirmed brief sentence is PROMOTE")
+		return RecordPlan{}, errors.New("a HOLD names no false brief sentence, so there is nothing to correct: a verdict with no confirmed brief sentence is PROMOTE")
 	}
 	if p.VerificationResult == "PROMOTE" && brief > 0 {
-		return "", Review{}, fmt.Errorf("a PROMOTE names %d false brief sentence(s), so the brief is not current: a verdict with a confirmed brief sentence is HOLD", brief)
+		return RecordPlan{}, fmt.Errorf("a PROMOTE names %d false brief sentence(s), so the brief is not current: a verdict with a confirmed brief sentence is HOLD", brief)
 	}
 	head, err := gitutil.ResolveCommit(root, "HEAD")
 	if err != nil {
-		return "", Review{}, fmt.Errorf("resolving the commit under review: %w", err)
+		return RecordPlan{}, fmt.Errorf("resolving the commit under review: %w", err)
 	}
 	manifest, err := lint.ReleaseGateManifestHash(root)
 	if err != nil {
-		return "", Review{}, fmt.Errorf("reading the release-gate manifest: %w", err)
+		return RecordPlan{}, fmt.Errorf("reading the release-gate manifest: %w", err)
 	}
 	verifier := "host-delegated docs review"
 	if p.Verifier != nil && strings.TrimSpace(p.Verifier.ID) != "" {
@@ -346,16 +380,51 @@ func Record(root string, raw []byte, at time.Time) (string, Review, error) {
 	}
 	data, err := json.MarshalIndent(receipt, "", "  ")
 	if err != nil {
+		return RecordPlan{}, err
+	}
+	rel := filepath.ToSlash(filepath.Join(ReceiptsDir, head, GateName+".json"))
+	data = append(data, '\n')
+	action := dryrun.Create
+	if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(rel))); err == nil {
+		action = dryrun.Replace
+	}
+	return RecordPlan{
+		Receipt: rel,
+		Review:  plannedReview(head, p.VerificationResult, p.Failing),
+		Plan:    dryrun.Plan{Writes: []dryrun.Write{{Path: rel, Action: action, Bytes: len(data), Content: data}}},
+		root:    root, head: head, data: data,
+	}, nil
+}
+
+// Apply saves the planned receipt and returns its path and the review as the
+// gate's own reader now reads it.
+func (p RecordPlan) Apply() (string, Review, error) {
+	if err := os.MkdirAll(filepath.Join(p.root, ReceiptsDir, p.head), 0o755); err != nil {
 		return "", Review{}, err
 	}
-	rel := filepath.Join(ReceiptsDir, head, GateName+".json")
-	if err := os.MkdirAll(filepath.Join(root, ReceiptsDir, head), 0o755); err != nil {
+	if err := fsutil.WriteFileAtomic(filepath.Join(p.root, filepath.FromSlash(p.Receipt)), p.data, 0o644); err != nil {
 		return "", Review{}, err
 	}
-	if err := fsutil.WriteFileAtomic(filepath.Join(root, rel), append(data, '\n'), 0o644); err != nil {
-		return "", Review{}, err
+	return p.Receipt, SavedReview{Root: p.root, Commit: p.head}.Review(), nil
+}
+
+// plannedReview is the review a validated verdict reads as once saved: its
+// verdict decides the status, as the saved review's reader decides it.
+func plannedReview(head, verdict string, failing []lint.ReceiptFinding) Review {
+	r := Review{Commit: head, Verdict: verdict}
+	for _, f := range failing {
+		r.Findings = append(r.Findings, Sentence{Doc: docOf(f.Doc), Chapter: f.Chapter, Sentence: f.Sentence,
+			Evidence: f.Evidence, Replacement: f.Replacement})
 	}
-	return filepath.ToSlash(rel), SavedReview{Root: root, Commit: head}.Review(), nil
+	switch verdict {
+	case "HOLD":
+		r.Status = ReviewHold
+	case "PROMOTE":
+		r.Status = ReviewMatch
+	default:
+		r.Status = ReviewInconclusive
+	}
+	return r
 }
 
 // checkLine refuses a sentence or replacement the gate would match in, or
