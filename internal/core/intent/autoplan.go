@@ -5,9 +5,9 @@ package intent
 // substitute for the product thinker's sign-off that adr-2610310235000654
 // records, read from the draft alone. The planning path runs without a human
 // only on a draft whose decisions are all recorded, so every row here judges
-// something a person already wrote into the record: the criteria, the
-// decisions (no open question), the claim sections, the grounds and the
-// record's provenance. The two adversarial reviews are the loop's (they need
+// what the record already carries: the criteria, the decisions (no open
+// question), the claim sections, the grounds and the record's provenance.
+// The rows check that the record is complete, not who wrote it. The two adversarial reviews are the loop's (they need
 // agents), and the hold and the blockers are the same rows the build reads.
 // Every row reads; none writes.
 
@@ -95,7 +95,7 @@ func PlannedPathOf(draftRel string) string {
 //   - claim_sections: the mechanism answered or the section absent, and the
 //     scope conditions recorded; a condition with no identity marker yet
 //     passes, since plan is the verb that stamps one.
-//   - grounds: the most recent recorded ground a person wrote is `pursued:`.
+//   - grounds: the most recent ground no run's pick wrote is `pursued:`.
 //   - criteria_provenance: the record states where its text came from
 //     (`origin`) and how it was produced (`production_mode`), each a value
 //     of the closed vocabulary.
@@ -216,8 +216,8 @@ func autoPlanClaimSectionsRow(it Intent, content string) (StartRow, error) {
 	return startClaimSectionsRow(r, stamped), nil
 }
 
-// autoPlanGroundsRow refuses a draft whose most recent ground a person wrote
-// is not `pursued:`: a conjecture deferred or declined is not one to plan
+// autoPlanGroundsRow refuses a draft whose most recent ground no run's pick
+// wrote is not `pursued:`: a conjecture deferred or declined is not one to plan
 // unattended, and a record with none says nothing about why it is pursued.
 func autoPlanGroundsRow(id, content string) StartRow {
 	row := StartRow{Name: AutoPlanCheckGrounds}
@@ -230,7 +230,7 @@ func autoPlanGroundsRow(id, content string) StartRow {
 	}
 	switch {
 	case last == nil:
-		row.Detail = id + " records no grounds a person wrote: why it is pursued is unrecorded"
+		row.Detail = id + " records no grounds outside a run's pick: why it is pursued is unrecorded"
 		row.Remedy = groundsRemedy(id)
 	case last.Token != grounds.Pursued:
 		row.Detail = fmt.Sprintf("%s's most recent ground is %s: %s", id, last.Token, clip(last.Text, groundsDetailRunes))
