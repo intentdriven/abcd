@@ -517,6 +517,65 @@ func TestACheckoutChangedDuringTheReviewsIsHandedBack(t *testing.T) {
 	}
 }
 
+// TestAChangeStagedInTheIndexIsHandedBack: a change staged in the checkout's
+// index, with the working tree put back as HEAD has it, leaves HEAD and the
+// working tree as the start found them and still hands the lane back: the
+// person's next commit would carry it.
+func TestAChangeStagedInTheIndexIsHandedBack(t *testing.T) {
+	repo := draftRepo(t, draftIntent())
+	root := repo.Root()
+	repo.Write("notes.md", "as committed\n")
+	repo.Commit("notes")
+	start, err := Start(root, "itd-10", Options{AutoPlan: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo.Write("notes.md", "staged by a reviewer\n")
+	repo.Git("add", "notes.md")
+	repo.Write("notes.md", "as committed\n")
+	reviewBoth(t, root, start.RunID, "SHIP", "SHIP")
+	res, err := advance(root, start.RunID, DefaultStages(), Options{})
+	if err != nil || res.HandBack == nil || !strings.Contains(res.HandBack.Reason, "checkout changed") {
+		t.Fatalf("a change staged in the index during the reviews is handed back: %+v %v", res, err)
+	}
+}
+
+// TestTheCheckoutDigestWritesNoIndexAndReadsAMissingOne: the digest reads the
+// checkout's index through a copy, so the index's bytes are the same after
+// it, even with a path staged since the index's tree was last cached; and a
+// checkout with no index yet has a digest too.
+func TestTheCheckoutDigestWritesNoIndexAndReadsAMissingOne(t *testing.T) {
+	repo := draftRepo(t, draftIntent())
+	root := repo.Root()
+	repo.Write("notes.md", "staged\n")
+	repo.Git("add", "notes.md")
+	index := filepath.Join(root, ".git", "index")
+	before, err := os.ReadFile(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	staged, err := checkoutDigest(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after, err := os.ReadFile(index); err != nil || string(after) != string(before) {
+		t.Fatalf("the digest leaves the checkout's index byte-identical: %v", err)
+	}
+	if err := os.Remove(index); err != nil {
+		t.Fatal(err)
+	}
+	none, err := checkoutDigest(root)
+	if err != nil {
+		t.Fatalf("a checkout with no index has a digest: %v", err)
+	}
+	if none == staged {
+		t.Fatal("a checkout with no index digests apart from one with a path staged")
+	}
+	if _, err := os.Stat(index); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the digest makes no index where there was none: %v", err)
+	}
+}
+
 // TestABlockerUnsettledAfterTheReviewsHandsThePlanBack: the plan checks the
 // record-only rows again on the record as it stands, so a blocker that
 // unsettles after the start hands the lane back, the draft unplanned.
