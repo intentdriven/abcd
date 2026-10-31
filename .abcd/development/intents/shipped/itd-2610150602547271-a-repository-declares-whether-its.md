@@ -221,7 +221,8 @@ and under itd-115.
   code that they own", and any one owner's approval meets the requirement
   ([GitHub, About code owners](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners)).
   The page implies but does not state that a pull request touching no owned
-  path needs no owner, which is the gap AM1 leaves.
+  path needs no owner, which was the gap AM1 left while it stood in as the
+  merge gate; it was retired from that role on 2026-10-29.
 - **Bots already work under a human-review rule.** Renovate cannot automerge
   its own pull request until a required review has happened. GitHub's coding
   agent does not count its requester's approval, and for the forge's reviewer
@@ -236,7 +237,8 @@ and under itd-115.
 **Path 2**: native, with the declaration, the resolver and the guard as the
 record rules them, shaped to the hosts' "a project file cannot raise autonomy"
 rule and to the forge's queue and auto-merge as the executors. No dependency.
-The independent fit-challenge runs at plan time.
+This pass came after the build was planned and had no fit-challenge before
+the intent shipped, so it stands as notes for a later revision.
 
 ## Open Questions
 

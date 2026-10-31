@@ -163,7 +163,7 @@ Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in t
 - **The `addressed` marking has an outside name**: SARIF's `baselineState` `absent` (found in the baseline, not now) and `unchanged`, should the report ever want the standard's vocabulary.
 - **Locally**, `findingkey.Derive` already collapses whitespace, drops the status folder from each end's path and keys on class, both identity paths and quotes, under a versioned derivation domain (`abcd/finding-key/v1`, key prefix `cfk-`, bumped only when the derivation changes); the [model-matrix note](../../research/notes/2026-10-16-model-matrix-sota.md) records that two models agree on a key only when they quote the same text.
 
-**Path 2, confirmed as shipped: `findingkey.Derive` already drops the status folder (SARIF's stable-path rule) and versions its derivation domain (`abcd/finding-key/v1`, as SARIF versions its fingerprint names).** SARIF export is not worth adopting: one consumer, no ingestion target. No dependency. The independent fit-challenge runs at plan time.
+**Path 2, confirmed as shipped: `findingkey.Derive` already drops the status folder (SARIF's stable-path rule) and versions its derivation domain (`abcd/finding-key/v1`, as SARIF versions its fingerprint names).** SARIF export is not worth adopting: one consumer, no ingestion target. No dependency. The independent fit-challenge is still owed before the build, and the questions below are kept for it.
 
 Questions this pass raised for the fit-challenge before the build. They are kept here, not under Open Questions, so they do not hold a build the record already rules ready:
 

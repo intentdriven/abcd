@@ -170,6 +170,7 @@ inside its clone. No Go dependency.
   manifest's documentation.
 - Loud staging: a rendered prompt that cites a hook the binary does not yet
   ship (the worktree relocation) must say so at render time.
+- The answers record's merge authorisation must not alone arm a merge: a committed `.abcd/` file is writable by any agent in the run and by any pull request, and the guard's protected-path list does not cover it, so the rule itd-97's SOTA section sets for `auto` applies here too: repository configuration can forbid a merge but should not alone arm one. Merge authorisation comes from a user-level layer the repository can only lower, or the answers record sits on a guard-protected path.
 
 ## itd-2609201916151817: one verb takes a READY intent to delivered
 
@@ -251,11 +252,15 @@ non-deterministic read (the forge's answer, the runner's result, the peer
 listing) is written into the state file as the equivalent of an activity
 result, so a resumed invocation does not re-ask. The state file carries a
 schema version and a newer-than-known version is refused, Temporal's versioning
-rule. On the host side: the lane is not started with `--bare`, because abcd's
-capture and guard are hooks and plugins that `--bare` skips, or, once `--bare`
-becomes the default, the plugin and hooks are passed with `--plugin-dir` and
-`--settings` and the lane carries an API credential, since bare mode does not
-use the subscription login; the lane sets its permission mode explicitly; a
+rule. On the host side: the lane runs as abcd's shipped claude runner already
+launches it, with `--print --bare` and `--no-session-persistence` on a paid
+key only (RN2, dcn-2610020000000016), and with the guard supplied as the
+run's permission-prompt answerer, an inline `abcd guard approve` MCP server,
+rather than as a hook (dcn-2610161624025493). Bare mode still skips abcd's
+hook-based capture; starting a lane without `--bare` so the hooks run would
+reverse RN2 and dcn-2610161624025493, and is a proposal for the technical
+facilitator to rule on, not the decided shape. The lane sets its permission
+mode explicitly; a
 lane is ended with SIGINT before any SIGTERM, so the turn's result is
 recorded; and the lane's result JSON (`modelUsage`, `num_turns`,
 `permission_denials`, the error subtype) is the receipt's machine-read half,
@@ -936,21 +941,29 @@ that path.
 ### Options weighed
 
 1. (a) Capture at the seam through the same `SessionEnd`/`SubagentStop` hooks,
-   with the loop never passing `--bare` (or passing the plugin explicitly once
-   `--bare` is the default) and handing the run id, lane, pass and phase to the
-   hook through the lane's environment so the capture is keyed.
+   handing the run id, lane, pass and phase to the hook through the lane's
+   environment so the capture is keyed. abcd's shipped runner starts every
+   lane with `--bare` (RN2, dcn-2610020000000016), so no hook fires in a
+   lane; this option needs a lane started without `--bare`, or with the plugin
+   and hooks passed explicitly, which reverses RN2 and dcn-2610161624025493
+   and is left for the technical facilitator to rule on.
 2. (b) Ingest after the fact by session id, from the result's `session_id` and
-   the sub-agent paths, when the hook did not fire (a SIGTERM window, a host
-   that skipped hooks).
+   the sub-agent paths, when the hook did not fire. Not available to runner
+   lanes: the runner passes `--no-session-persistence`, so a lane leaves no
+   session to ingest.
 3. (c) A structured-stream sink from `stream-json` with sub-agent text
    forwarded: complete, but a second format beside the one the store already
    reads.
 
 ### Recommendation
 
-**Path 2.** Option 1 as the primary path and option 2 as the fallback the loop
-runs when the receipt names a session whose capture is missing, both through
-`history.Capture` and its redaction door, best-effort as the criteria require.
+**Path 2, with the capture source left to a ruling.** Under the runner as
+shipped, the one record a lane leaves is the `stream-json` stream the runner
+already reads, so option 3 is the one that needs no reversal; option 1 is a
+proposal that needs RN2 and dcn-2610161624025493 reversed first, and option 2
+is dropped, since runner lanes persist no session. Whichever is ruled goes
+through `history.Capture` and its redaction door, best-effort as the criteria
+require.
 The capture stores the raw transcript and derives its index, because the
 format is declared unstable; the run id, lane and phase are keyed from the
 environment the loop sets, not parsed from the transcript. No Go dependency.
@@ -971,8 +984,11 @@ environment the loop sets, not parsed from the transcript. No Go dependency.
 - A durable-execution engine (Temporal, DBOS) for the build loop: each needs a
   server or a Postgres; the loop's state file already gives the one property
   that matters (replay from recorded outcomes), as the 2026-10-17 note found.
-- The host's `--bare` for lanes: it is the host's recommendation for scripts,
-  and it removes the hooks abcd's capture and guard depend on.
+- Dropping `--bare` from runner lanes on this pass's say alone: the shipped
+  runner keeps it with a paid key (RN2, dcn-2610020000000016) and answers the
+  guard through an MCP permission-prompt approver instead of a hook
+  (dcn-2610161624025493); bare mode removes only the hook-based capture, and
+  reversing that ruling is the technical facilitator's call.
 - A learned or router-based sub-agent class (2026-09-22 note), and sizing the
   pool from live rate-limit headers in a subscription host that reports none.
 - A sentinel dependency as the hold mechanism: every comparable system holds

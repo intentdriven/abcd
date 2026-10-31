@@ -154,7 +154,7 @@ records it rests on are in the [verification and assurance SOTA note](../../rese
 to evidence-carrying repair briefs, a shortcut check in the re-audit, an
 explicit "cannot meet this criterion" exit and the fingerprinted finding
 identity. No dependency. The rulings stand. The three guards are raised below
-for the plan-time challenge.
+for the fit-challenge before the build.
 
 Questions this pass raised for the fit-challenge before the build. They are kept here, not under Open Questions, so they do not hold a build the record already rules ready:
 

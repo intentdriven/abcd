@@ -105,7 +105,7 @@ Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in t
 - **Numbered lists are the accessible form everywhere:** the host's screen-reader mode turns arrow-key menus into numbered lines with a "Select with numbers" prompt; the Go prompt library huh's `WithAccessible(true)` "will drop TUIs in favor of standard prompts", read from an `ACCESSIBLE` variable in its own example. huh is cited as a convention, not adopted.
 - **No surveyed CLI marks a status "waiting on you" by drawing a menu;** the record already names the write as the one exception and owes the chapter and page edits.
 
-**Path 2 — native over the standard library and golang.org/x/term (signed off), shaped to the host tool's 2–4 options and 12-character header, with the question object as the seam;** an environment-variable alias for the off switch is worth taking at the spec. The independent fit-challenge runs at plan time.
+**Path 2 — native over the standard library and golang.org/x/term (signed off), shaped to the host tool's 2–4 options and 12-character header, with the question object as the seam;** an environment-variable alias for the off switch is worth taking at the spec. The independent fit-challenge is still owed before the build, and the questions below are kept for it.
 
 Questions this pass raised for the fit-challenge before the build. They are kept here, not under Open Questions, so they do not hold a build the record already rules ready:
 

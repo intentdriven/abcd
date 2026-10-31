@@ -210,7 +210,7 @@ Surveyed on 2026-10-23 for the enforcement gap only (the store sibling carries i
 - **An OS-level immutable flag exists and is the wrong tool**: `chflags uchg` stops git's own fast-forward and the allow-set with it (chflags(1)).
 - **No field precedent for a declared coordinator**; the closest shape is a renewed lease with an expiry and a fencing token, from the 2026-10-17 coordination note.
 
-**Path 2: build the block natively, shaped to the host's four checks and stating what they miss**, with the hook as the seam so a host check can replace a native one at a time; the coordinator's declaration as a lease file in the primary checkout's local tier (session, pid, start time), renewed while the session lives and expiring without it. The independent fit-challenge runs at plan time.
+**Path 2: build the block natively, shaped to the host's four checks and stating what they miss**, with the hook as the seam so a host check can replace a native one at a time; the coordinator's declaration as a lease file in the primary checkout's local tier (session, pid, start time), renewed while the session lives and expiring without it. The independent fit-challenge is still owed before the build.
 
 ## Open Questions
 

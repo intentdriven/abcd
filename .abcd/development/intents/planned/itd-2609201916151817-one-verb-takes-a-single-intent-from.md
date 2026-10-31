@@ -107,12 +107,19 @@ decisions leave implicit.
   permission mode set starts in Manual mode, so a lane sets its mode
   explicitly (headless docs).
 - **Bare mode and signals.** `--bare` is the host's recommendation for scripts
-  and skips hooks and plugins, which carry abcd's capture and guard; it also
-  "doesn't use your subscription login", so a bare lane needs
-  `ANTHROPIC_API_KEY` or an `apiKeyHelper` in `--settings`, and a plugin and
-  its hooks are passed explicitly with `--plugin-dir` and `--settings`; SIGTERM
-  exits 143 with the turn unrecorded, SIGINT ends the turn first, and
-  `SessionEnd` still runs (Claude Code headless docs).
+  and skips hooks and plugins; it also "doesn't use your subscription login",
+  so a bare run needs `ANTHROPIC_API_KEY` or an `apiKeyHelper` in
+  `--settings`, and a plugin and its hooks are passed explicitly with
+  `--plugin-dir` and `--settings`; SIGTERM exits 143 with the turn unrecorded,
+  SIGINT ends the turn first, and `SessionEnd` still runs (Claude Code
+  headless docs).
+- **abcd's runner already launches lanes bare.** The shipped claude runner
+  starts a lane with `--print --bare` and `--no-session-persistence`, on a
+  paid key only (RN2, dcn-2610020000000016: "runner keeps --bare with an API
+  key"). The guard does not reach it as a hook: it is supplied as the run's
+  permission-prompt answerer, an `abcd guard approve` MCP server passed inline
+  (dcn-2610161624025493). What bare mode still leaves out is abcd's hook-based
+  capture.
 - **The host's own session state is not a read for the loop.** The supervisor's
   `state.json` "is not a stable interface"; `claude agents --json` is (Claude
   Code agent view).
@@ -123,13 +130,15 @@ the next step is considered, and a re-entry replays a recorded outcome rather
 than re-running the step; every non-deterministic read (the forge, the runner,
 the peer listing) is written into the state file as an activity result; the
 state file carries a schema version and refuses a newer one. On the host: a
-lane is not started with `--bare` (or, once bare is the default, the plugin
-and hooks are passed with `--plugin-dir` and `--settings` and the lane carries
-an API credential, since bare mode does not use the subscription login), sets
-its permission mode explicitly, is ended with SIGINT before SIGTERM, and its
+lane runs as the shipped runner launches it (bare, on a paid key, with the
+guard as its permission-prompt answerer and no session persisted), sets its
+permission mode explicitly, is ended with SIGINT before SIGTERM, and its
 result JSON is read by the runner adapter, not the loop, with a zeroed crash
-result accounted as "unknown". No Go dependency. The independent fit-challenge runs at
-plan time.
+result accounted as "unknown". Starting a lane without `--bare` so that the
+hooks run would reverse RN2 and dcn-2610161624025493; it is a proposal for the
+technical facilitator to rule on, not the decided shape. No Go dependency. The
+independent fit-challenge is still owed before the build, and the questions
+below are kept for it.
 
 Questions this pass raised for the fit-challenge before the build. They are kept here, not under Open Questions, so they do not hold a build the record already rules ready:
 
@@ -137,9 +146,12 @@ Questions this pass raised for the fit-challenge before the build. They are kept
   read the loop makes, is recorded under an idempotency key in the state file
   so a re-entry replays rather than re-asks, and whether the state file's
   schema version is refused when newer than the binary knows.
-- Whether a lane may ever be started with the host's `--bare`
-  mode, given that it skips the hooks that carry abcd's capture and guard and
-  is announced as the future default for `-p`.
+- Whether the technical facilitator reverses RN2
+  (dcn-2610020000000016) and dcn-2610161624025493 so that a lane starts
+  without `--bare` and abcd's capture hooks run in it, given that the shipped
+  runner starts lanes bare with the guard as an MCP permission-prompt
+  answerer, and that bare is announced as the future default for `-p`. Until
+  it is ruled, the runner stays as shipped.
 
 ## Open Questions
 

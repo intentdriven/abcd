@@ -69,11 +69,16 @@ non-interactive mode does to that path.
   and are deleted after `cleanupPeriodDays` (30 days by default);
   `--no-session-persistence` suppresses a run's transcript (Claude Code
   sessions and sub-agents docs).
-- **The hooks run unless the lane is started bare.** Without `--bare` a `-p`
-  session runs the project's hooks and plugins; `--bare` skips them, is the
-  host's recommendation for scripts, and "will become the default for `-p` in
-  a future release" (Claude Code headless docs). A lane started bare is
-  invisible to abcd's `SessionEnd` and `SubagentStop` capture.
+- **The hooks run unless the lane is started bare, and abcd's runner starts
+  lanes bare.** Without `--bare` a `-p` session runs the project's hooks and
+  plugins; `--bare` skips them, is the host's recommendation for scripts, and
+  "will become the default for `-p` in a future release" (Claude Code
+  headless docs). abcd's shipped claude runner launches every lane with
+  `--print --bare` on a paid key (RN2, dcn-2610020000000016) and with
+  `--no-session-persistence`, so a runner lane fires none of abcd's
+  `SessionEnd` and `SubagentStop` capture and leaves no transcript in the
+  host's store; the guard reaches it as the run's permission-prompt answerer
+  instead (dcn-2610161624025493).
 - **Termination matters.** On SIGTERM the host runs `SessionEnd` and no other
   hook, records no result for the turn, and exits 143; SIGINT ends the turn
   first; the Stop hook's `transcript_path` may lag the conversation (Claude
@@ -84,13 +89,17 @@ non-interactive mode does to that path.
   to Claude Code and changes between versions" (Claude Code sessions docs), so
   the raw file is stored and the index derived.
 
-**Path 2**: approach (a), capture at the seam through the same hooks, with the
-loop never passing `--bare` (or passing the plugin explicitly once bare is the
-default) and keying the capture by run id, lane, pass and phase set in the
-lane's environment; approach (b), ingest by session id from the result, as the
-fallback the loop runs when a receipt names a session whose capture is missing;
-both through `history.Capture` and its redaction door, best-effort as the
-criteria require. No Go dependency. The independent fit-challenge runs at plan
+**Path 2, with the capture source left to a ruling.** Under the runner as
+shipped, the one record a lane leaves is the `stream-json` stream the runner
+already reads, so approach (c), a sink on that stream, is the one that needs no
+reversal. Approach (a), capture at the seam through the same hooks, needs a
+lane started without `--bare` (or with the plugin and hooks passed
+explicitly), which reverses RN2 and dcn-2610161624025493; it is a proposal for
+the technical facilitator to rule on, not the decided shape. An ingest by
+session id from the result is dropped as a fallback, because runner lanes
+persist no session. Whichever is ruled keys the capture by run id, lane, pass
+and phase set in the lane's environment and goes through `history.Capture` and
+its redaction door, best-effort as the criteria require. No Go dependency. The independent fit-challenge runs at plan
 time.
 
 ## Acceptance Criteria

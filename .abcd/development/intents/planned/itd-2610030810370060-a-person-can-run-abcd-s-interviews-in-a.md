@@ -128,7 +128,7 @@ recorded for the product thinker to confirm); append-only drawing with repaint o
 option list, only in arrow-key mode; and a named reference palette for the badge
 ratios.
 
-The independent fit-challenge runs at plan time.
+The independent fit-challenge is still owed before the build, and the questions below are kept for it.
 
 Questions this pass raised for the fit-challenge before the build. They are kept here, not under Open Questions, so they do not hold a build the record already rules ready:
 

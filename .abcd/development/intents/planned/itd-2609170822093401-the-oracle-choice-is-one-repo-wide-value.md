@@ -267,7 +267,7 @@ for everything the decisions already rest on.
 **Path 2**, as planned: a native table resolved onto the host's per-invocation
 `model` and `effort` parameters on the harness leg and onto a connection on the
 provider leg; the request-block mapping is the seam. No dependency. The
-independent fit-challenge runs at plan time.
+independent fit-challenge is still owed before the build, and the questions below are kept for it.
 
 Questions this pass raised for the fit-challenge before the build. They are kept here, not under Open Questions, so they do not hold a build the record already rules ready:
 

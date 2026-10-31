@@ -64,7 +64,7 @@ Seeded by the facilitator on 2026-10-16; proposals until the product thinker con
 
 ## SOTA
 
-Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [security-isolation SOTA note](../../research/notes/2026-10-23-security-isolation-sota.md). This is half of the check decision 6 asked planning to make first: it weighs `srt` against a microVM, native profiles and the host's Bash sandbox, not against the other open-source fences, and not on a non-Claude launch (Codex, opencode); the other half is finished at plan time.
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [security-isolation SOTA note](../../research/notes/2026-10-23-security-isolation-sota.md). This is half of the check decision 6 asked planning to make first: it weighs `srt` against a microVM, native profiles and the host's Bash sandbox, not against the other open-source fences, and not on a non-Claude launch (Codex, opencode); the other half is finished at the fit-challenge before the build.
 
 - **Anthropic's sandbox-runtime (`srt`) meets the ADR's policy by configuration.** Writes are allow-only, reads deny-then-allow, network denied until a domain is listed; it wraps any command; Seatbelt on macOS, bubblewrap plus a seccomp filter on Linux; Apache-2.0, "Beta Research Preview", installed with npm (sandbox-runtime README).
 - **It denies the paths the ADR names on its own**: `.git/hooks`, `.git/config`, `.mcp.json`, `.claude/commands`, `.claude/agents` and shell start-up files, even inside an allowed write path (Claude Code sandbox environments).
@@ -77,7 +77,7 @@ Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in t
 - **Detection is a probe, not a config read**: the host's own check is a write outside the allowed paths failing with "Operation not permitted" or "Read-only file system" (Claude Code sandboxing).
 - **A microVM (Docker Sandboxes) is the stronger, heavier alternative**, with its own egress proxy and credential sentinel, at the cost of a Docker dependency (Docker Sandboxes architecture).
 
-**Path 1: adopt sandbox-runtime as the first fence behind the `internal/core/fence` seam**, its policy generated per launch as an `srt` settings file. It is a new runtime dependency (Node and npm; ripgrep on macOS and Linux by the README's requirements list, though the harness's own page says no extra package on macOS; bubblewrap and socat on Linux) and the adr-22 exception the ADR proposes, so it needs explicit sign-off. The independent fit-challenge runs at plan time.
+**Path 1: adopt sandbox-runtime as the first fence behind the `internal/core/fence` seam**, its policy generated per launch as an `srt` settings file. It is a new runtime dependency (Node and npm; ripgrep on macOS and Linux by the README's requirements list, though the harness's own page says no extra package on macOS; bubblewrap and socat on Linux) and the adr-22 exception the ADR proposes, so it needs explicit sign-off. The independent fit-challenge is still owed before the build, and the questions below are kept for it.
 
 Questions this pass raised for the fit-challenge before the build. They are kept here, not under Open Questions, so they do not hold a build the record already rules ready:
 

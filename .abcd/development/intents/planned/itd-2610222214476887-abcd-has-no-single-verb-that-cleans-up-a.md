@@ -146,8 +146,7 @@ fetched default branch by ancestry or patch-equivalence), the rulings stand.
 `--delete-branch` at land time and `fetch.prune`; abcd's native part is the
 worktree in its own machine-scoped store, removed only when the forge
 reports the branch merged and the tree is clean, with a report naming what
-was left (dirty, locked, or no pull request). The independent fit-challenge
-runs at plan time.
+was left (dirty, locked, or no pull request). The independent fit-challenge is still owed before the build, and the questions below are kept for it.
 
 Questions this pass raised for the fit-challenge before the build. They are kept here, not under Open Questions, so they do not hold a build the record already rules ready:
 

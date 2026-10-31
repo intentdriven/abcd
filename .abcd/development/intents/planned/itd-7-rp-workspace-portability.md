@@ -81,9 +81,9 @@ Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in t
 - Apple's file system guide describes Application Support as "app-specific data and support files … that your app creates and manages", under the app's bundle identifier, and says nothing about another app reading or writing there; writing a workspace entry into RepoPrompt's directory on embark writes into a store abcd does not own.
 - Fowler's Tolerant Reader is the pattern for an undocumented file: take only the elements used, make minimal structural assumptions, confine parsing to one place; schema-bound readers "tend to break when the provider adds a field".
 - abcd's existing RepoPrompt route is an MCP client on loopback that starts no process and reads no file (`internal/adapter/repoprompt`).
-- Where the research contradicts this planned record: the in-scope lines that a JSON Schema ships with the adapter and that embark writes under `~/Library/Application Support/RepoPrompt/Workspaces/`. The ruling (planned as written, waiting on itd-6) stands; the spec-writing interview can weigh this.
+- Where the research contradicts this planned record: the in-scope lines that a JSON Schema ships with the adapter and that embark writes under `~/Library/Application Support/RepoPrompt/Workspaces/`. The ruling (planned as written, its spec to follow itd-6, which shipped on 2026-10-12) stands; the spec-writing interview can weigh this.
 
-**Path 2 — carry the workspace file as an opaque, provenance-stamped artefact read tolerantly (path strings rewritten only where provably home-rooted), and on embark offer it to the person and to RepoPrompt's own interface rather than writing another app's store.** That interface is now concrete and limited: `manage_workspaces` can create a workspace by name and folders, not restore its selections or prompts. The independent fit-challenge runs at plan time.
+**Path 2 — carry the workspace file as an opaque, provenance-stamped artefact read tolerantly (path strings rewritten only where provably home-rooted), and on embark offer it to the person and to RepoPrompt's own interface rather than writing another app's store.** That interface is now concrete and limited: `manage_workspaces` can create a workspace by name and folders, not restore its selections or prompts. The independent fit-challenge is still owed before the build, and the questions below are kept for it.
 
 Questions this pass raised for the fit-challenge before the build. They are kept here, not under Open Questions, so they do not hold a build the record already rules ready:
 
@@ -102,4 +102,4 @@ _Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
 ## References
 
 [itd-22]: ../drafts/itd-22-harness-portability.md "itd-22 — harness portability"
-[itd-6]: ../superseded/itd-6-rp-mcp-only-integration.md "itd-6 — RP-only integration via MCP"
+[itd-6]: ../shipped/itd-6-rp-mcp-only-integration.md "itd-6 — RP-only integration via MCP"

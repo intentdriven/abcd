@@ -245,6 +245,10 @@ host, sub-agent worktrees placed in abcd's machine store through the host's
 machine store and keeps the host default inside its own clone). No Go
 dependency. The independent fit-challenge runs at plan time.
 
+Local fit risk: **the answers record must not alone authorise a merge.** The
+answers record lives in the rendered repository's committed `.abcd/` tier. A
+committed `.abcd/` file is writable by any agent in the run and by any pull request, and the guard's protected-path list does not cover it, so the rule itd-97's SOTA section sets for `auto` applies here too: repository configuration can forbid a merge but should not alone arm one. Merge authorisation comes from a user-level layer the repository can only lower, or the answers record sits on a guard-protected path.
+
 ## Open Questions
 
 - Verb name and family: `abcd routine` as its own verb, or a sub-verb of an

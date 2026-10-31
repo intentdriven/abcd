@@ -111,7 +111,7 @@ Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in t
 - **The host's screen-reader mode renders flat text:** no box characters, no colour-only cues, tables read as `Header: value` lines (the host's accessibility page). A markdown list, not a table, survives both renders unchanged; this replaces the `[F]` on the session-render facts.
 - **Research contradicts one ruling and the ruling stands:** clig.dev says "Suggest commands the user should run"; decision 6 keeps the product thinker's view command-free, and the menu (itd-2610031215002409) is where the next step lives.
 
-**Path 2 — native, shaped to the `gh status` and clig.dev conventions, with one renderer behind the Terminal, pipe and markdown forms as the seam.** No dependency. The independent fit-challenge runs at plan time.
+**Path 2 — native, shaped to the `gh status` and clig.dev conventions, with one renderer behind the Terminal, pipe and markdown forms as the seam.** No dependency. The independent fit-challenge is still owed before the build.
 
 ## Open Questions
 

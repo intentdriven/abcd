@@ -447,8 +447,8 @@ instant local tier where it exists, never its state file; a wake recorded as a
 time in the checklist with the host's cron as the device. The Web Push sender
 is a Go dependency in the relay, not the binary, and needs explicit sign-off;
 a relay-notified phone sits against the local-only stance on agent messaging,
-and the plan-time fit-challenge must say where that stance ends. The
-independent fit-challenge runs at plan time.
+and the fit-challenge before the build must say where that stance ends. The
+independent fit-challenge is still owed before the build, and the questions below are kept for it.
 
 Questions this pass raised for the fit-challenge before the build. They are kept here, not under Open Questions, so they do not hold a build the record already rules ready:
 

@@ -101,7 +101,7 @@ Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in t
 - **Per-person capabilities exist in the policy file** (grants' `app` field, read through `CapMap`; golink's `admin: true` is the worked example) and are the seam itd-2610040740135705 can use; not needed here.
 - **Chrome's Local Network Access gates public-to-local requests, not a local page;** the dashboard is unaffected, and a public page probing its tailnet IPv6 (unique-local) address is prompted; the tailnet IPv4 range (100.64.0.0/10) is not in the post's list of local ranges, so no prompt is claimed for it.
 
-**Path 2 — native, shaped to the Tailscale lookup, the annotation field's anchoring order and Go's own cross-origin layer, with the identity lookup as the seam.** No new dependency. The independent fit-challenge runs at plan time.
+**Path 2 — native, shaped to the Tailscale lookup, the annotation field's anchoring order and Go's own cross-origin layer, with the identity lookup as the seam.** No new dependency. The independent fit-challenge is still owed before the build, and the questions below are kept for it.
 
 Questions this pass raised for the fit-challenge before the build. They are kept here, not under Open Questions, so they do not hold a build the record already rules ready:
 

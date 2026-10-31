@@ -148,8 +148,7 @@ step chosen per install shape from where the command on the search path
 resolves, with the vendor's generic step for an unknown shape and "held" for
 a harness whose own settings hold its updates. This contradicts the "one per
 adapter to start" proposal in the open questions, on the grounds above; the
-ruling is the technical facilitator's. The independent fit-challenge runs at
-plan time.
+ruling is the technical facilitator's. The independent fit-challenge is still owed before the build, and the questions below are kept for it.
 
 Questions this pass raised for the fit-challenge before the build. They are kept here, not under Open Questions, so they do not hold a build the record already rules ready:
 

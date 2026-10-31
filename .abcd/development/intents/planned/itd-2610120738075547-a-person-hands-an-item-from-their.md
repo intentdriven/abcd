@@ -196,8 +196,7 @@ the brief directs a push of the work-in-progress branch after every commit and
 a report written early as "started" and overwritten at the end, so a session
 cut off mid-task still leaves a branch and a partial report. The host connector
 remains the seam: a host that offers a listing may enrich the list, and the
-remote-only read stays the floor. No Go dependency. The independent
-fit-challenge runs at plan time.
+remote-only read stays the floor. No Go dependency. The independent fit-challenge is still owed before the build, and the questions below are kept for it.
 
 Questions this pass raised for the fit-challenge before the build. They are kept here, not under Open Questions, so they do not hold a build the record already rules ready:
 
