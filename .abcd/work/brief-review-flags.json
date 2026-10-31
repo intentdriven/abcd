@@ -276,7 +276,7 @@
     {
       "chapter": "22-site.md",
       "sentence": "The lint's site target runs seven independent gates over a rendered tree and reports",
-      "replacement": "The lint's site target runs eight independent gates over a rendered tree and reports",
+      "replacement": "The lint's site target runs nine independent gates over a rendered tree and reports",
       "evidence": "internal/core/site/check.go:158",
       "commit": "80211ee7f3290487dfc4c53d8da8e46300fad20e",
       "applied": "2026-10-23T05:30:31Z"
@@ -284,7 +284,7 @@
     {
       "chapter": "22-site.md",
       "sentence": "loop-figure labels. The seven are named once in the code that runs them, and the",
-      "replacement": "loop-figure labels, and the base path of every root-absolute link. The eight are named once in the code that runs them, and the",
+      "replacement": "file in the built output. The nine are named once in the code that runs them, and the",
       "evidence": "internal/core/site/check.go:158",
       "commit": "80211ee7f3290487dfc4c53d8da8e46300fad20e",
       "applied": "2026-10-23T05:30:31Z"
