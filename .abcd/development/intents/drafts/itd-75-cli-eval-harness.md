@@ -33,8 +33,24 @@ This is also the natural home for the "wired or it isn't done" rule: a command t
 
 `evals/` in abcd-cli is the working prototype: a `smoke`-tagged Go harness that builds `abcd`, discovers the command tree via the exported root command, and smokes every command; wired into a `smoke` CI job, the release verify gate, and `make smoke`. This intent lifts that from a repo-local harness into an abcd capability every managed repo inherits, and adds the fixtures layer. Relates to the install surface (`ahoy`) and the "wired or it isn't done" principle.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [verification-assurance SOTA note](../../research/notes/2026-10-23-verification-assurance-sota.md).
+
+- **The Go project's own answer to "fixtures you drop in" is one text file per scenario**: commands at the top, the fixture tree below `-- name --` markers (txtar), run in a fresh `$WORK` with `HOME=/no-home`; `exec`, `stdout`, `stderr`, `cmp` and `!` are the assertions and bracketed conditions gate a line to a platform (`testscript` package documentation; the same engine tests the `go` command through `cmd/internal/script`, and `rsc.io/script` is a published copy of it with a `scripttest` subpackage, shown at v0.0.2 from 2023 and unsupported by its own README, so the go command's engine can be imported after all; `go-internal/testscript`, v1.16.0, is the maintained fork).
+- **txtar is built to be hand-edited and to diff in review**, and excludes binary data, file modes and symlinks by design (`golang.org/x/tools/txtar` documentation), which settles "committed samples" over seeded generators for determinism.
+- **Rust's `trycmd` is the same shape with an explicit filesystem sandbox** (`*.in/` as cwd, `*.out/` compared after) and a dump-then-overwrite update loop; its own advice is blunt snapshot tests for the many and hand-written tests for the peculiar (trycmd documentation). cram is the language-agnostic ancestor and is unmaintained.
+- **Gherkin with step definitions was already refused at itd-109's fit-challenge**; this pass found nothing new in its favour, and the practitioner case against it (a reported threefold maintenance cost) is anecdote from an author selling the alternative.
+- **Snapshot updates get rubber-stamped**; the practitioner consensus is small, focused expectations, dynamic values excluded, and snapshot diffs read in review. The harness should make an update a visible act, never a flag that passes silently.
+- **A fixture is marked safe by the repository's existing rule** ([secret-shaped-fixtures-at-runtime](../../principles/secret-shaped-fixtures-at-runtime.md)), carried in the archive's comment block, rather than by a new marker.
+- **Locally**, `evals/` already builds the binary once and walks the Cobra tree; `evals/data/` is empty and reserved; neither `rogpeppe/go-internal` nor `golang.org/x/tools` is in `go.mod`, so either route to txtar is a new dependency.
+
+**Path 1 for the format: scenarios are testscript files, adopted as is.** This adds a Go dependency and needs explicit sign-off, which weighs two routes: `github.com/rogpeppe/go-internal` (testscript v1.16.0, maintained) against `rsc.io/script` (a published copy of the go command's engine, v0.0.2 and unsupported); test-only if the harness runs it, runtime if the binary runs it for managed repositories. If refused, Path 2: a small in-house runner over the txtar grammar and a six-command subset, written so every file it accepts is a valid testscript file, which is the seam. The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - Fixture format: one folder per command with an input corpus + an expected-shape file, or a single manifest describing scenarios?
 - How synthetic data is generated and kept deterministic (seeded generators vs committed samples), and how a repo marks a fixture as containing only safe, non-sensitive data.
 - Which commands are safe to run for real by default versus opt-in, and how a mutating command declares a scratch sandbox.
+- (SOTA 2026-10-23) If the runner must ship inside the abcd binary so a managed repository in another language inherits it, is a runtime dependency on `go-internal` acceptable, or does that case force the in-house subset runner?
+- (SOTA 2026-10-23) Which of the existing Go write-path smokes (`capture`, `capture resolve`, `decide`) migrate to script scenarios and which stay in Go, so the repository does not hold two ways of doing the same thing.

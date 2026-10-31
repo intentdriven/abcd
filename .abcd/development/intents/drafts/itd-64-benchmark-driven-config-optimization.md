@@ -48,9 +48,54 @@ abcd is a configuration layer bringing together robust tools — its value is in
 - **Given** the wrap-only rule, **when** optimisation runs, **then** it tunes abcd's CONFIGURATION of a tool, never the tool itself.
 - **Given** the recording + analysis mechanics, **when** invoked outside Claude Code, **then** they run with no Claude-Code dependency, and run data stays local.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in
+the [models, prompts and measurement SOTA note](../../research/notes/2026-10-23-models-prompts-measurement-sota.md);
+repeats, power and cost-beside-accuracy are in the
+[model-matrix note](../../research/notes/2026-10-16-model-matrix-sota.md).
+
+- **Logged runs are observational.** Offline evaluation over data "collected
+  under a previous policy" is a screening gate, and a change that explores
+  configurations the logs never ran must go online (one vendor's guide,
+  MLflow, 2026); that causal validity needs the experiment is this section's
+  own inference from it, not a controlled-experiment source. The matrix
+  note's 20–113 runs per arm says what that experiment costs.
+- **The matrix run is the experiment this intent consumes.** Decision 11 of
+  itd-2610161733316518 says itd-64 consumes that run's tables; its trial record
+  (frozen commit, intent, cell → result) is the unit of comparable work.
+- **Optimisers need a metric with feedback, a trainset and a budget** (DSPy
+  GEPA: a metric that may return text, train and validation sets, `light` ≈
+  six candidates, result saved as JSON; Agrawal et al., ICLR 2026). abcd has
+  that metric only where itd-81 corpora exist.
+- **Keep the knob set small.** The matrix note's power finding (20–113 runs
+  per arm) means every added dimension multiplies the runs owed; by analogy
+  only, extra cascade depth rarely helped (118 of 135 comparisons, Bouchard,
+  2026) and higher reasoning effort lowered accuracy in most HAL runs (matrix
+  note). More configuration is not more signal.
+- **Attribute names exist; the standard does not.** OpenTelemetry's GenAI
+  registry names `gen_ai.request.model`, `gen_ai.response.model`,
+  `gen_ai.provider.name` and `gen_ai.usage.*` (cached tokens inside
+  `input_tokens`), but the conventions moved to a repository with no release
+  and a "TODO" schema URL. Borrow names only.
+- **"Better" is binary and reported with an interval**: pass rate on hidden
+  tests, true-negative rate for reviewers, cost per passing build; never a
+  composite chosen after the data are in (judge-calibration and matrix notes).
+
+**Path 2**: a native store whose record is the matrix run's trial record plus
+configuration fields (route, review bar, thresholds, prompt versions from
+itd-14), named with GenAI attribute names where one exists; analysis reports
+within-cell comparisons with intervals and shows observational correlations
+only as proposed cells for the next run; a proposal to change a default cites
+the run and the smallest difference it could detect. The trial record is the
+seam, already mapped onto an Inspect sample and a Harbor trial. No dependency
+now; a GEPA-style optimiser later would add a Python dependency and needs
+explicit sign-off. The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - What is the unit of "comparable work" for fair benchmarking (same intent? same spec shape? same task size)? Without it, configuration comparisons are confounded.
+- (SOTA 2026-10-23) Whether the store is the matrix run's record with configuration fields added (one record family) or a second family keyed to it; and whether an observational correlation may ever appear as a "recommendation" or only as a proposed cell.
 - Which configuration dimensions are in scope first (backend + review bar + thresholds are highest-leverage; agent-instruction revisions and loop settings are richer but noisier)?
 - What is the local store + schema for the config↔outcome record, and how does it reuse existing receipts/grill-reports vs add new fields?
 - How is "better outcome" defined and weighted (fidelity MET rate? fewer retries? time-to-SHIP? a composite)? This is the load-bearing value judgement.

@@ -45,6 +45,19 @@ Typed links: refines itd-61 (a brief edit's implied intents drawn out: this draf
 
 > _Required (the itd-1 discipline): add at least one Given-When-Then bullet describing the verifiable bar for "shipped" before this draft can be planned._
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [traceability-governance SOTA note](../../research/notes/2026-10-23-traceability-governance-sota.md). The 2026-10-04 note's shape (stable section identifier, `realises` link with a fingerprint, coverage report, status in the links not the prose) stands; this pass researched the gap.
+
+- **Identifiers are a field, never the heading.** Pandoc's auto identifiers are derived from heading text and suffixed `-1`, `-2` on duplicates in document order, so a rename or a move changes them; the stable form is an explicit `{#identifier}`. sphinx-needs hashes the title only when no `id` is given; StrictDoc keeps the UID free-form and adds a machine identifier that matches nodes "even if they are moved, renamed".
+- **A suspect link is cleared per parent, by an act.** Doorstop stores the parent's fingerprint in the link ("used by Doorstop to detect when a parent item is changed") and `doorstop clear <child> <parent>` clears the named parent only; Jama clears by hand when the change "has no impact or if you make the necessary changes". Neither expires a suspect link by time.
+- **Fingerprint normative text only.** Doorstop's fingerprint covers the item UID, `text`, `ref` and `references`, the UIDs in `links` and any extended attributes opted in, and excludes `header`, `level` and the link fingerprints (Doorstop item reference); Jama fires only on administrator-chosen fields. That scope is the field's answer to suspicion fatigue: layout and reflow fire nothing by construction, while a typo inside normative text still moves the fingerprint. abcd's one fingerprint primitive decides on purpose whether linked ids are in scope, as Doorstop's does.
+- **The evidence that it pays:** 71 subjects on real maintenance tasks were 24 per cent faster and 50 per cent more correct with trace links (Mäder and Egyed, 2016). The 2023 practitioner survey on costs could not be retrieved this pass.
+- **The read-only report shape:** Spec Kit's `analyze` is "STRICTLY READ-ONLY", one table of id, category, severity, location, summary and recommendation, with a coverage-gap pass and a 50-row cap. The coverage report's first row is the uncovered set.
+- **Path 2**: native, shaped to Doorstop's link-plus-fingerprint and OpenFastTrace's coverage states, with two seams: one fingerprint primitive shared with itd-78's edges and itd-61's trigger, and an explicit marker per section the rendering never derives from text. No Go dependency.
+
+The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - What a section is: a chapter, a heading or a paragraph (the research starts at heading).
@@ -52,6 +65,8 @@ Typed links: refines itd-61 (a brief edit's implied intents drawn out: this draf
 - Who clears a suspect link: the product thinker (owns what), or the facilitator for plumbing chapters.
 - How plumbing chapters are realised: by a step of a feature's spec, by a spec of their own, or by a trace list per section.
 - What the downstream lab shows about the present tense once the coverage is visible.
+- (SOTA 2026-10-23) Who may clear a suspect link and whether the clearing is recorded on the link (Doorstop re-stamps; Jama clears silently): the product thinker for sections they own, the facilitator for plumbing, and in either case a dated act or a bare re-stamp.
+- (SOTA 2026-10-23) Whether the section markers are inserted in one consented migration of the brief's files or appear as sections are first linked, given that the brief is the product thinker's text.
 
 ## Audit Notes
 

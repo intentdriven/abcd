@@ -77,6 +77,54 @@ by fixing them.
 - **Given** a change that adds an entry to the baseline, **when** the lint
   runs, **then** it fails: the file only shrinks.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in
+the [forge, CI and merge SOTA note](../../research/notes/2026-10-23-forge-ci-merge-sota.md).
+
+- **The most recent general design keys by file, rule and count, not by
+  line**: ESLint bulk suppressions (April 2025) hold
+  `{ "<file>": { "<rule>": { "count": n } } }` in one committed file for all
+  rules; a count exceeded reports every violation of that rule in that file;
+  a count too high exits non-zero ("There are suppressions left that do not
+  occur anymore") until `--prune-suppressions` runs; counts were chosen
+  because there is "no reliable way to determine whether the new violations
+  were introduced recently or already existed" (ESLint docs and blog). ESLint
+  applies the file to error-severity rules only ("If a rule is enabled as
+  `"warn"`, ESLint will not suppress the violations"), so the borrowed part is
+  the file shape and the count semantics; a shrink-only ratchet over a warn
+  tier has no direct precedent in these tools, and PHPStan's baseline is the
+  precedent that is not tier-restricted.
+- **PHPStan is the same shape** (`message`, `count`, `path`), reports an
+  entry whose error is gone, warns that regenerating to admit new errors
+  grows the file, and says "The life goal of a baseline file is to not
+  exist." Psalm's `--update-baseline` removes fixed issues and "will not add
+  new issues".
+- **detekt keys by signature** (`<RuleID>:<FileName>:<Signature>`, an id
+  that carries no line number, an inference from the format), and "auto
+  formatting cannot be combined with the baseline" because its signatures
+  would be too ambiguous: the finer key, at the cost of a signature per rule.
+- **Ruff has no baseline** (inline `--add-noqa` plus `RUF100`); Betterer is
+  the "only gets better" idea, with no stable release since August 2022 (5.4.0
+  on npm; one alpha, 6.0.0-alpha.1, in December 2024).
+- **The alternative family is new-code-only gating** (SonarQube: "do not
+  recommend adding conditions for overall code"; golangci-lint's
+  `new-from-merge-base`, already in the
+  [lint-subset note](../../research/notes/2026-09-30-merge-blocking-lint-subset-sota.md)
+  for blocking rules). No conflict: that note gated the error tier; this
+  intent is the warn tier, where a committed shrinking file is the debt
+  record the ratchet principle asks for, and where ESLint's precedent, built
+  for the error tier, is extended rather than copied.
+
+**Path 2**: a native shared baseline shaped to ESLint's file: one committed
+JSON keyed by path, rule id and count; a new warn rule's existing findings
+enter through an explicit `--suppress-rule <id>`-style admission in the
+change that adds the rule, the one named exception to shrink-only; the
+per-rule baselines fold in, as every precedent keeps one file for all rules;
+the count key is why an unrelated edit cannot re-key a finding, and detekt's
+signature key is the seam for a rule whose findings are many per file. No
+dependency. The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - **How a new warn rule's existing findings enter the file**: shrink-only
@@ -84,6 +132,11 @@ by fixing them.
   needs a declared path (the rule's first freeze in the change that adds the
   rule, or no freeze at all).
 - **Whether the per-rule baselines fold in** (see scope).
+- (SOTA 2026-10-23) Whether a count key is fine enough for rules with many
+  findings per file (prose citations), where a fix and a new finding in one
+  file cancel out in the count, or such a rule takes a signature key.
+- (SOTA 2026-10-23) Whether each entry carries the issue id that retires it,
+  which none of the precedents do and the ratchet principle asks for.
 - **The key** a finding carries in the file, so an unrelated edit does not
   read as a fixed finding plus a new one.
 

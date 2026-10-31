@@ -76,8 +76,23 @@ abcd doesn't need to host a separate audit service: the chain lives in `.abcd/lo
 - **Given** chain enablement is opt-in (default `false`), **when** a user with `oracle.audit.chain.enabled = false` runs disembark, **then** no chain entries are written, `_provenance.json` omits `audit_chain_root`, and embark of the resulting lifeboat skips chain verification without warning — opt-in means opt-in cleanly on both ends.
 - **Given** itd-9 (schema migration) and itd-16 (hash chain) both ship, **when** embark applies a schema migration to a chain entry, **then** the migrated entry's hash is RE-COMPUTED post-migration and recorded alongside the original hash in the migration log — schema upgrades are not silent over the chain.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [security-isolation SOTA note](../../research/notes/2026-10-23-security-isolation-sota.md).
+
+- **The named primitives are standards and fit**: RFC 8785 (JCS, Informational) sorts properties recursively and serialises numbers as ECMAScript does, for data that must be "expressed in an invariant format"; RFC 9562 (Proposed Standard) gives UUIDv7 "a time-ordered value field" and leaves counter rollover to the application (RFC 8785; RFC 9562).
+- **The tree should be RFC 6962's**: leaf `SHA-256(0x00 || d)`, node `SHA-256(0x01 || l || r)`, "required to give second preimage resistance"; Go's `x/mod/sumdb/tlog` is compatible with those proofs and would be a Go dependency needing sign-off (RFC 6962; x/mod/sumdb/tlog).
+- **The chain head has a standard text form**: a C2SP checkpoint, three lines (origin, tree size, base64 root) plus signature lines, the form the Go checksum database serves (tlog-checkpoint; Go modules reference).
+- **Tamper-evidence needs a reader who holds an earlier head**: a witness cosigns only a checkpoint consistent with the last one it signed; without someone outside the filesystem, whoever edits a transcript can recompute the chain, so a chain alone detects a partial edit, not a rewrite. The press release's "non-repudiability" is not reachable without that anchor; the ruling stands and this records the gap (tlog-witness).
+- **Signing needs no new dependency**: `ssh-keygen -Y sign` under a namespace, verified against an allowed-signers file; git's `gpg.format = ssh` uses the same (ssh-keygen(1); git gpg config). Signing is out of scope by the record; the cheapest anchor is nonetheless a signed head, the next cheapest a head pushed to the forge as a tag, which anchors only where the forge refuses to move or delete it (a tag ruleset or an immutable release) or a third party keeps a copy; otherwise whoever can push can rewrite the tag along with the chain.
+- **The attestation stack exists and is more than this needs**: in-toto Statements in DSSE envelopes, SLSA provenance, Rekor; "still under development", and a public log for private transcripts runs against the launch rule (in-toto Statement; DSSE; Rekor).
+- **What is hashed is the redacted transcript**, since the history store redacts on write; the claim must say so.
+
+**Path 2: native, shaped to RFC 6962 hashing and the C2SP checkpoint, with the head's signature and external anchor as the first seam**; JCS and UUIDv7 as drafted. The RFC 6962 tree is the segment's Merkle root; criterion 1's per-entry `prev_hash` stays as drafted, so the tree adds inclusion and consistency proofs over a chain it does not replace, and no criterion changes. The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
+- (SOTA 2026-10-23) **Where the head is anchored**: a signed checkpoint in the local tier, a tag pushed to the forge (an anchor only where protected or witnessed), or nowhere (and then the claim is "partial edits are detected", not "history is provable").
 - **Default on or opt-in?** Recommend opt-in (`enabled: false`) to avoid surprising users with verification failures during normal flow. Compliance-sensitive projects flip to `true` deliberately.
 - **Segment granularity** — daily segments fit the "one Merkle root per day" pattern from `~/.abcd/` v0. Hourly might be too granular; weekly might miss the audit point. Configurable in `.abcd/config.json`?
 - **Interaction with itd-9 schema migration** — does a migration regenerate the chain or carry it forward? Likely re-anchors the migrated entry while preserving the pre-migration hash for forensic comparison.

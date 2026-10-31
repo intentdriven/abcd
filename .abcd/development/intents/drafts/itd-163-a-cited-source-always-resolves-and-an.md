@@ -59,9 +59,21 @@ Closure is also what makes the credit surface legible to an outsider. A reader w
 - **Given** the backfilled tree, **when** the gate is first armed, **then** it reports zero violations, and the arming change and the backfill are the same change.
 - **Given** any evaluation of these rules, **when** they run, **then** no network access occurs; the rules read only committed files.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [sources-provenance SOTA note](../../research/notes/2026-10-23-sources-provenance-sota.md).
+
+- **REUSE 3.3 is the published gate of this shape.** Every covered file declares an SPDX identifier, `LICENSES/` "MUST include a License File for every license" in use and "MUST NOT include License Files for licenses under which none of the files ... are licensed": a bidirectional mirror that is checked, not generated (REUSE specification 3.3).
+- **A standard record for an influence exists.** The Citation File Format's `references` entries carry a required `type` (`software`, `software-code`, `website`, `blog`, `standard` among the values), `license`, `license-url`, `repository-code`, `commit`, `url` and `date-accessed` (CFF schema guide).
+- **CSL-JSON already has `software` as an item type and `custom` for anything else** (CSL-JSON input schema), so the registry can be entries in the one committed bibliography, with the Inspirations-versus-References split carried as a `custom.abcd.kind` field; the 2026-08-16 baseline's "tool repositories are Inspirations" is a rendering rule, not a storage one.
+- **Both ends of generated-versus-checked are mature.** Pandoc's `nocite` wildcard lists every store entry; `reuse lint` checks declarations against the store. Checking first and generating later is the ratchet.
+- **The deployed licence detector declines prose.** Licensee reads root licence files and `LICENSES/` by default and treats README mentions as opt-in, which supports leaving an unregistered prose-named influence to review rather than to a detector.
+- **Path 2**: a native lint family shaped to REUSE's two-way closure, the registry as CSL-JSON `software` entries with `custom.abcd.kind` and `custom.abcd.adopted_in`, closure scoped in the development tier to reference-style links and `@key` tokens that target the CSL file, the acknowledgements sections checked against the store now and generated from it as the next rung. One reader for all of it. No Go dependency. The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - Registry format: one JSON file beside `references.csl.json`, or one frontmattered markdown file per influence? The JSON form is easier to mirror-check; the per-file form matches how the rest of the record is kept.
+- (SOTA 2026-10-23) If registry entries share the CSL file with the academic baseline, does the baseline's admission rule (primary, verified, resolver link) bind a `software` entry whose only resolver is a repository URL and a commit?
 - Does the Inspirations section become generated from the registry (single source, like the changelog) or merely checked against it? Generation removes drift permanently but changes how contributors edit credit.
 - Closure scope: the spc-17 rules deliberately scope citations to footnote definitions in docs; the closure rule needs a stated scope for the development tier (intents, ADRs, principles), where citations are reference-style links rather than footnotes.
 - The "integrates a tool" clause of the acknowledgements header has no mechanical trigger; does the registry grow a `kind: tool` entry class so integrations are at least declarable, with detection left to review?
