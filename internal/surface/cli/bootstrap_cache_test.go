@@ -874,13 +874,16 @@ func TestBootstrapCacheProvisionRecordsDataDirInRoot(t *testing.T) {
 // consequence the record doubted: a copy installed that way is refreshed by the
 // very block that refreshes an `ahoy install` copy, and gains the plugin_root
 // stamp in the process. The fixture's record shape is read off the SHIPPED
-// one-liner rather than hand-asserted, so changing the one-liner's output
-// breaks this test instead of silently retiring the route again.
+// installer the documented command runs rather than hand-asserted, so
+// changing its output breaks this test instead of silently retiring the route
+// again.
 func TestBootstrapRefreshesAOneLinerInstalledPathCopy(t *testing.T) {
-	const oneLinerRecord = `printf "path=%s\nbinary_sha256=%s\n"`
-	for _, page := range []string{"README.md", "docs/how-to/install.md"} {
+	// The documented command runs the release's installer
+	// (iss-2610240827243654), so the record's shape is read off that script.
+	const oneLinerRecord = `printf 'path=%s\nbinary_sha256=%s\n'`
+	for _, page := range []string{"site-src/install.sh.tmpl"} {
 		if !strings.Contains(mustReadFile(t, bootstrapRepoFile(t, page)), oneLinerRecord) {
-			t.Fatalf("%s must install with a one-liner that writes the two-line path-entry record (%s); the refresh route is gated on it", page, oneLinerRecord)
+			t.Fatalf("%s must write the two-line path-entry record (%s); the refresh route is gated on it", page, oneLinerRecord)
 		}
 	}
 

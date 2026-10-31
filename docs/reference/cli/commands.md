@@ -4247,7 +4247,7 @@ Distil a local file or an https source into cited memory pages: Writes the pages
 **Example:**
 
 ```
-abcd library ingest https://example.com/paper.pdf
+abcd library ingest https://example.com/article.html
 ```
 
 #### `abcd library init`

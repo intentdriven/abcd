@@ -425,8 +425,8 @@ Deriving the count from the machine's resources is a later step
 
 ## The implement loop
 
-Three sub-verbs drive the loop a build starts, each over the run's state file in
-the checkout's local tier ([`34-build.md`](34-build.md) states the file, the
+Four sub-verbs drive the loop a build starts, the status, step, receipt and
+record verbs, each over the run's state file in the checkout's local tier ([`34-build.md`](34-build.md) states the file, the
 checks and the step interface). The status render reads every run, or the one
 named, and writes only the renewal of a due reservation of each run it shows,
 logged in the run record as a step logs it: it names the slots in use out of the run's ceiling,

@@ -179,7 +179,15 @@ Its inputs:
   abcd opens. It is the person's act, and the shell guard refuses it to an
   agent ([`17-guard.md`](17-guard.md)).
 - **A review receipt** naming the head, recorded through the verb, the proof
-  that the review pair passed it.
+  that the review pair passed it. The review act, which takes the review switch
+  once per reviewer's return, lands nothing. It needs at least two returns, no two
+  the same text, each naming the head's first nine characters and stating
+  under its one `### Verdict` heading a verdict that passes the stop rule
+  (SHIP or APPROVE: no critical or major finding). It then writes
+  `.abcd/.work.local/review-receipts/<sha>`, holding the commit, when it was
+  recorded and each return's name, verdict and SHA-256; the gate finds it in
+  any worktree of the repository. A return that falls short is refused,
+  exit 2, naming it, and nothing is written.
 
 The decision, in order:
 
@@ -295,7 +303,8 @@ with `name`, `status` (`done`, `skipped`, `off`, `stopped`, `left` or
 `announce`, `push` and `enqueue`, or `land` alone), `note` and an optional
 `command`; and `notices` when there are
 lines to show beside the steps (a release dated ahead that the hold did not
-count).
+count). The review act's document carries `commit` and `receipt`, the
+receipt's path.
 
 A landing a release cut holds exits 3, contention, as every verb that backs
 off does (itd-2609151838312703 C7, spc-2610150728396006 step 4). After the

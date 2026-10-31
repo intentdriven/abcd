@@ -61,6 +61,10 @@ The failure mode itd-3 guards against is *unbounded scaffolding outside the repo
 - **Given** a recall keyword that matches a page in both the workspace and user scope, **when** the hook resolves the match, **then** the workspace-scope page is injected and the user-scope page is suppressed (narrower scope wins).
 - **Given** any prompt, **when** the hook runs, **then** `~/.claude/.../memory/` is never read or written by the retrieval path.
 
+## Scope Conditions
+
+None stated.
+
 ## SOTA
 
 Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [memory-knowledge SOTA note](../../research/notes/2026-10-23-memory-knowledge-sota.md).
@@ -78,7 +82,7 @@ Questions this pass raised for the fit-challenge before the build. They are kept
 
 ## Open Questions
 
-- None for the product thinker. The three questions first left here are settled under Decisions (2026-10-11); the technical questions the plan leaves open are in the bundle's spec.
+_None open; the three questions first left here are settled under Decisions (2026-10-11), and the technical questions the plan leaves open are in the bundle's spec._
 
 ## Audit Notes
 
