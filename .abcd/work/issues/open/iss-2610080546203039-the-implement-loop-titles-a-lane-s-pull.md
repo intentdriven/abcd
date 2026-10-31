@@ -9,7 +9,7 @@ found_during: "landing PR #865 overnight, 2026-10-08"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/implement/loop/land.go"
-remedy: "When the landing composes a lane's pull-request title and body from the issue, add a 'Refs: <id>' line for every other record id the title or body names (and is not already declared), so RS004 does not refuse the PR."
+remedy: "Compose a lane's pull-request title as a conventional prefix with no scope and no record id (feat: or fix: from the record's kind, then the step or issue title with any ids taken out), keep record ids out of the body's prose, and declare every record id the lane names on its own Refs:, Resolves: or Delivers: line, so RS004 and the title rules pass with no edit by hand."
 ---
 
 The implement loop titles a lane's pull request from its issue's title; when that title names another record id, RS004 refuses the PR because no Refs line declares it (PR #865 named iss-2609261536147903 from its issue's title; fixed by hand by editing the body).
@@ -17,3 +17,7 @@ The implement loop titles a lane's pull request from its issue's title; when tha
 ## Evidence 2026-10-11
 
 A second occurrence: PR #947 (run-2610111820413440, iss-2610110359273529) quoted its issue's first line, which names iss-2610092011131598, into both the title and the body. The attribution job's RS004 step refused both ("the pull-request title names iss-2610092011131598 without declaring its relation to it", and the same for the body). It was fixed by hand: a `Refs: iss-2610092011131598` line added to the body, which clears the title mention too. Every lane whose issue text names another record will hit this until the landing writes the declarations itself.
+
+## Evidence 2026-10-31
+
+A third occurrence, on an intent lane this time. PR #1301 (run-2610310228179894, lane-1 of itd-2609201916151817) was opened with the title `build(itd-2609201916151817): …, step 11 of spc-2609202134338445`. land.go's title composer (about line 662) writes that shape for every intent lane. It breaks two repository rules: commit and pull-request titles take a conventional prefix with no scope, and record ids stand only on Refs:, Resolves: and Delivers: lines, never in a title or in body prose. The body also named both ids in prose. Both were fixed by hand with `gh pr edit`, giving the title `feat: plan a draft unattended with build --auto-plan` and the ids on Refs: lines only.
