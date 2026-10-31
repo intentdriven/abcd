@@ -441,10 +441,11 @@ func TestAPlanMadeByHandAtThePlanStageIsHandedBack(t *testing.T) {
 	}
 }
 
-// TestAKilledPlanStepIsRecordedAsThisRunsPlan: a plan made by this run's
-// second plan step, whose state write a kill lost, is found on the next step
-// and recorded as the run's own.
-func TestAKilledPlanStepIsRecordedAsThisRunsPlan(t *testing.T) {
+// TestAPlanFoundAfterTheMarkIsHandedBack: a record found in planned/ after
+// the lane was marked as planning is never credited to the run, since a
+// second step stopped after its plan and another act's plan look alike: the
+// lane is handed back citing no verdict, and the planned record stays.
+func TestAPlanFoundAfterTheMarkIsHandedBack(t *testing.T) {
 	repo := draftRepo(t, draftIntent())
 	root := repo.Root()
 	start, err := Start(root, "itd-10", Options{AutoPlan: true})
@@ -457,13 +458,29 @@ func TestAKilledPlanStepIsRecordedAsThisRunsPlan(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// The second step's plan, made and then killed before its state write.
-	if _, err := intent.Plan(root, "itd-10", intent.PlanOptions{}); err != nil {
+	st, err := ReadState(root, start.RunID)
+	if err != nil || !st.Lanes[0].AutoPlan.PlanStarted {
+		t.Fatalf("the lane is marked as planning: %v", err)
+	}
+	// A plan made with the lane marked: this run's second step, stopped
+	// before its state write, or another act's.
+	planned, err := intent.Plan(root, "itd-10", intent.PlanOptions{})
+	if err != nil {
 		t.Fatal(err)
 	}
 	res, err := advance(root, start.RunID, DefaultStages(), Options{})
-	if err != nil || !res.Complete || res.HandBack != nil {
-		t.Fatalf("the killed step's plan completes the run: %+v %v", res, err)
+	if err != nil || res.Complete || res.HandBack == nil || res.HandBack.Verdict != HandBackNotPlanned ||
+		res.HandBack.Verdicts != "" || !strings.Contains(res.HandBack.Reason, "cannot tell") {
+		t.Fatalf("a plan found after the mark is handed back, citing no verdict: %+v %v", res, err)
+	}
+	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(planned.Intent.Path))); err != nil {
+		t.Fatalf("the planned record stays where it is: %v", err)
+	}
+	if st, err = ReadState(root, start.RunID); err != nil {
+		t.Fatal(err)
+	}
+	if ap := st.Lanes[0].AutoPlan; ap.Planned != "" || ap.Spec != "" {
+		t.Fatalf("the lane records no plan of its own: %+v", ap)
 	}
 }
 

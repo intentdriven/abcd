@@ -101,8 +101,9 @@ type AutoPlan struct {
 	Spec    string `json:"spec,omitempty"`
 	// PlanStarted is written, with both reviews passing and the substitute
 	// checked again, by the plan stage's first step, before the step that
-	// runs `intent plan`: a record found planned is this run's plan only
-	// when it is set, and any other act's otherwise.
+	// runs `intent plan`. Only a begun plan records what it made; a record
+	// found in planned/ is never taken as this run's plan, and the mark only
+	// says, in the hand-back, whether this run might have made it.
 	PlanStarted bool `json:"plan_started,omitempty"`
 }
 
@@ -531,27 +532,28 @@ func verifyPlanReview(c Context, lane *Lane, receiptRel string) error {
 // nothing. The second checks it all once more, holds the step to the front
 // door's guard (Options.PlanGuard) under the run's lock, and runs the plan told
 // the digest the reviews read, so `intent plan` itself refuses, under the
-// store's lock, a draft that changed. A record found planned is recorded as
-// this run's plan only once the lane is marked, which a killed second step
-// leaves; found planned before it, it was planned by another act, and the
-// lane is handed back citing no verdict.
+// store's lock, a draft that changed. A record found in planned/ is never
+// recorded as this run's plan: a second step stopped after its plan and before
+// its state write leaves the same record another act's plan would, and the run
+// cannot tell the two apart, so the lane is handed back citing no verdict and
+// the planned record is left as it is.
 func planStage(c Context, lane *Lane) (Outcome, error) {
 	if lane.AutoPlan == nil {
 		return Outcome{}, refuse(string(StagePlan), "", lane.ID, "the lane carries no auto-plan record", "the loop writes it at the start; restore the run's state file")
 	}
 	ap := *lane.AutoPlan
 	id := c.State.Intent
-	done, planned, err := plannedAlready(c.RepoRoot, id, ap)
+	planned, err := plannedAlready(c.RepoRoot, id, ap)
 	if err != nil {
 		return Outcome{}, err
 	}
-	if planned {
-		if !ap.PlanStarted {
-			return Outcome{HandBack: &HandBack{Verdict: HandBackNotPlanned,
-				Reason: id + " was planned by another act before this run began its plan, so the run vouches for no plan of it: the plan reviews judged the draft, not the record now in planned/"}}, nil
+	if planned != "" {
+		reason := id + " was planned by another act before this run began its plan"
+		if ap.PlanStarted {
+			reason = id + " is in planned/, and the run cannot tell whether its own plan step stopped after planning it or another act planned it"
 		}
-		lane.AutoPlan = &done
-		return Outcome{Note: planNote(c, done, "was found planned, as an earlier call of this run's plan left it")}, nil
+		return Outcome{HandBack: &HandBack{Verdict: HandBackNotPlanned,
+			Reason: reason + ", so the run vouches for no plan of it: the plan reviews judged the draft, not the record now at " + planned + ", which stays as it is; read it and its spec before building it"}}, nil
 	}
 	if hb, err := draftHandBack(c, ap); err != nil || hb != nil {
 		return Outcome{HandBack: hb}, err
@@ -582,6 +584,10 @@ func planStage(c Context, lane *Lane) (Outcome, error) {
 	if hb, err := checkoutHandBack(c, ap); err != nil || hb != nil {
 		return Outcome{HandBack: hb}, err
 	}
+	// The first step writes the run's state alone, so the front door's guard,
+	// which stands for the record writers' rule, is held to the second, the
+	// one step that writes the record; the second judges it under the run's
+	// lock immediately before the plan.
 	if !ap.PlanStarted {
 		ap.PlanStarted = true
 		lane.AutoPlan = &ap
@@ -606,21 +612,19 @@ func planStage(c Context, lane *Lane) (Outcome, error) {
 	return Outcome{Note: planNote(c, ap, "is planned")}, nil
 }
 
-// plannedAlready reports the auto-plan record completed when the intent is
-// already in planned/ at the path plan moves the draft to, linked to a spec.
-// Whose plan that is, a killed call's of this run or another act's, is the
-// caller's to judge (planStage).
-func plannedAlready(repoRoot, id string, ap AutoPlan) (AutoPlan, bool, error) {
+// plannedAlready reports the planned record's path when the intent is already
+// in planned/ at the path plan moves the draft to, linked to a spec, and ""
+// otherwise. planStage hands such a record back, whoever planned it.
+func plannedAlready(repoRoot, id string, ap AutoPlan) (string, error) {
 	corpus, err := intent.Load(repoRoot)
 	if err != nil {
-		return ap, false, err
+		return "", err
 	}
 	it, ok := corpus.Lookup(id)
 	if !ok || it.Bucket != intent.BucketPlanned || it.Path != intent.PlannedPathOf(ap.Draft) || it.SpecID == "" || it.SpecID == "null" {
-		return ap, false, nil
+		return "", nil
 	}
-	ap.Planned, ap.Spec = it.Path, it.SpecID
-	return ap, true, nil
+	return it.Path, nil
 }
 
 // planNote is the run record's line for the plan.
