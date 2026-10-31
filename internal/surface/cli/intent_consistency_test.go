@@ -216,3 +216,24 @@ func TestIntentConsistencyIngestNamesTheFindingKey(t *testing.T) {
 		}
 	}
 }
+
+// TestIntentConsistencySaysTheHomeIsNotReadUnderOnePrefix: the configuration
+// layers' note on a HOME inside a working tree is printed once, carrying its
+// own "abcd: " prefix and no second one.
+func TestIntentConsistencySaysTheHomeIsNotReadUnderOnePrefix(t *testing.T) {
+	consistencyCLIRepo(t)
+	plantHome(t)
+	_, stderr, err := runCLISplit(t, "intent", "consistency", "--json")
+	if err != nil {
+		t.Fatalf("intent consistency: %v\n%s", err, stderr)
+	}
+	var lines []string
+	for _, l := range strings.Split(stderr, "\n") {
+		if strings.Contains(l, "HOME lies inside the git working tree") {
+			lines = append(lines, l)
+		}
+	}
+	if len(lines) != 1 || !strings.HasPrefix(lines[0], "abcd: HOME lies inside the git working tree") {
+		t.Fatalf("stderr does not name the unread home once under one prefix:\n%s", stderr)
+	}
+}

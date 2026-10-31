@@ -217,7 +217,7 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			}
 			roots, notes := layered.RootsFor(root)
 			for _, n := range notes {
-				fmt.Fprintln(cmd.ErrOrStderr(), termsafe.Sanitize(n))
+				fmt.Fprintln(cmd.ErrOrStderr(), noteLine(n))
 			}
 			cfg, err := loadRunners(cmd, roots)
 			if err != nil {
@@ -379,7 +379,7 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 			}
 			roots, notes := layered.RootsFor(root)
 			for _, n := range notes {
-				fmt.Fprintln(cmd.ErrOrStderr(), termsafe.Sanitize(n))
+				fmt.Fprintln(cmd.ErrOrStderr(), noteLine(n))
 			}
 			cfg, err := loadRunners(cmd, roots)
 			if err != nil {
@@ -1180,7 +1180,7 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			default:
 				roots, notes := layered.RootsFor(root)
 				for _, n := range notes {
-					fmt.Fprintln(cmd.ErrOrStderr(), termsafe.Sanitize(n))
+					fmt.Fprintln(cmd.ErrOrStderr(), noteLine(n))
 				}
 				cfg := routed
 				if cfg == nil {

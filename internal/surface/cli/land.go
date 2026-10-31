@@ -151,7 +151,7 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			}
 			roots, notes := layered.RootsFor(cwd)
 			for _, n := range notes {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd land: %s\n", termsafe.Sanitize(fsutil.RedactHome(n)))
+				fmt.Fprintln(cmd.ErrOrStderr(), noteLine(n))
 			}
 			o := landSeams
 			o.Roots, o.NoPush, o.NoEnqueue = roots, noPush, noEnqueue
