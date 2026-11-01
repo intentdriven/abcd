@@ -146,8 +146,8 @@ func newImplementOutageRecordCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&session, "session", "", "this session's id")
-	cmd.Flags().StringVar(&service, "service", "", "the service lost: "+enumHelp(implement.OutageServices()))
-	cmd.Flags().StringVar(&kind, "kind", "", "what noticed it: "+enumHelp(implement.OutageKinds()))
+	enumFlag(cmd.Flags(), &service, "service", "", "the service lost: ", implement.OutageServices(), "")
+	enumFlag(cmd.Flags(), &kind, "kind", "", "what noticed it: ", implement.OutageKinds(), "")
 	cmd.Flags().StringVar(&lane, "lane", "", "the lane that lost it")
 	cmd.Flags().StringVar(&what, "what", "", "what the lane was doing (the step it will retry)")
 	return cmd

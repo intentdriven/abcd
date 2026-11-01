@@ -82,29 +82,9 @@ func IngestLessons(lifeboatDir string, raw []byte, scan SecretScan) (LessonsResu
 	ids := collectFindingIDs(arch.Findings, aband.Findings)
 
 	// 3. Parse the untrusted lessons payload, fail-closed on structure.
-	if len(raw) > maxLessonsBytes {
-		return LessonsResult{}, fmt.Errorf("lessons payload exceeds the %d-byte cap", maxLessonsBytes)
-	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields() // reject smuggled extra fields
-	var lf LessonsFile
-	if err := dec.Decode(&lf); err != nil {
-		// The decoder names an undeclared field by the payload's own key:
-		// redacted, never raw (iss-2609290218032954).
-		return LessonsResult{}, fmt.Errorf("malformed lessons JSON: %s", scanner.RedactRefusal(abs, err.Error()))
-	}
-	if lf.SchemaVersion == 0 {
-		return LessonsResult{}, errors.New("lessons payload is missing schema_version")
-	}
-	if lf.SchemaVersion > LessonsSchemaVersion {
-		return LessonsResult{}, update.TooNew("lessons",
-			lf.SchemaVersion, LessonsSchemaVersion)
-	}
-	if lf.SchemaVersion != LessonsSchemaVersion {
-		return LessonsResult{}, fmt.Errorf("unsupported lessons schema_version %d", lf.SchemaVersion)
-	}
-	if len(lf.Lessons) > maxLessons {
-		return LessonsResult{}, fmt.Errorf("too many lessons (%d > %d)", len(lf.Lessons), maxLessons)
+	lf, err := decodeLessons(abs, raw)
+	if err != nil {
+		return LessonsResult{}, err
 	}
 
 	// 4. Per-entry validation, drop-not-fatal.
@@ -375,4 +355,36 @@ func filterEvidence(refs []string, ids map[string]bool) []string {
 // keeping divergent copies.
 func cleanLessonProse(s string) string {
 	return termsafe.CleanProse(s, maxLessonProseBytes)
+}
+
+// decodeLessons is the structural half of the lessons ingest: the size cap,
+// the strict decode, the three-branch schema gate and the lesson cap. A fault
+// here is fatal, and nothing is written; the per-entry checks after it drop an
+// entry rather than refuse the payload. abs only redacts a refusal.
+func decodeLessons(abs string, raw []byte) (LessonsFile, error) {
+	if len(raw) > maxLessonsBytes {
+		return LessonsFile{}, fmt.Errorf("lessons payload exceeds the %d-byte cap", maxLessonsBytes)
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields() // reject smuggled extra fields
+	var lf LessonsFile
+	if err := dec.Decode(&lf); err != nil {
+		// The decoder names an undeclared field by the payload's own key:
+		// redacted, never raw (iss-2609290218032954).
+		return LessonsFile{}, fmt.Errorf("malformed lessons JSON: %s", scanner.RedactRefusal(abs, err.Error()))
+	}
+	if lf.SchemaVersion == 0 {
+		return LessonsFile{}, errors.New("lessons payload is missing schema_version")
+	}
+	if lf.SchemaVersion > LessonsSchemaVersion {
+		return LessonsFile{}, update.TooNew("lessons",
+			lf.SchemaVersion, LessonsSchemaVersion)
+	}
+	if lf.SchemaVersion != LessonsSchemaVersion {
+		return LessonsFile{}, fmt.Errorf("unsupported lessons schema_version %d", lf.SchemaVersion)
+	}
+	if len(lf.Lessons) > maxLessons {
+		return LessonsFile{}, fmt.Errorf("too many lessons (%d > %d)", len(lf.Lessons), maxLessons)
+	}
+	return lf, nil
 }

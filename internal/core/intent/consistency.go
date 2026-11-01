@@ -715,6 +715,7 @@ func consistencyShape(rcp string) string {
 	return renderShape(reflect.TypeOf(consistencyPayload{}), shapeSpec{
 		hints: consistencyShapeHints(rcp),
 		lens:  map[string]int{"ends": 2},
+		ints:  map[string]int{"schema_version": ConsistencySchemaVersion},
 	})
 }
 
@@ -749,11 +750,14 @@ func consistencyProvenanceBlock(p auditPolicy, commit string, dirty []string) st
 // ---------------------------------------------------------------------------
 
 type consistencyPayload struct {
-	Type      string                   `json:"_type"`
-	ReceiptID string                   `json:"receipt_id"`
-	Verifier  verdictVerifier          `json:"verifier"`
-	Policy    verdictPolicy            `json:"policy"`
-	Findings  []consistencyFindingJSON `json:"findings"`
+	Type string `json:"_type"`
+	// SchemaVersion is the shape's version, ConsistencySchemaVersion. Findings
+	// composed before the field existed carry none, and read as version 1.
+	SchemaVersion int                      `json:"schema_version,omitempty"`
+	ReceiptID     string                   `json:"receipt_id"`
+	Verifier      verdictVerifier          `json:"verifier"`
+	Policy        verdictPolicy            `json:"policy"`
+	Findings      []consistencyFindingJSON `json:"findings"`
 }
 
 type consistencyFindingJSON struct {
@@ -1466,33 +1470,16 @@ func validateConsistency(repoRoot string, raw []byte, cache *consistencyIngestCa
 	}
 	dirtyPaths = unionSorted(dirtyPaths, now)
 
-	dec := json.NewDecoder(strings.NewReader(string(raw)))
-	dec.DisallowUnknownFields()
-	var p consistencyPayload
-	if err := dec.Decode(&p); err != nil {
-		return consistencyReview{}, fmt.Errorf("intent: malformed findings JSON: %s; refusing to ingest", redactRefused(repoRoot, err.Error()))
-	}
-	if dec.More() {
-		return consistencyReview{}, fmt.Errorf("intent: findings JSON carries more than one value; refusing to ingest")
-	}
-	for _, h := range [][2]string{{"policy.rubric_hash", p.Policy.RubricHash}, {"policy.prompt_hash", p.Policy.PromptHash}} {
-		if !sha256FieldRe.MatchString(h[1]) {
-			return consistencyReview{}, fmt.Errorf("intent: %s is required as sha256:<64 lowercase hex>, not %s; refusing to ingest",
-				h[0], termsafe.DescribeRefused(h[1]))
-		}
+	p, err := decodeConsistencyPayload(repoRoot, raw)
+	if err != nil {
+		return consistencyReview{}, err
 	}
 	want := consistencyPolicyFor(consistencyPromptBody(view, rcp))
 	if p.Policy.RubricHash != want.RubricHash || p.Policy.PromptHash != want.PromptHash {
 		return consistencyReview{}, issuedPolicyRefusal("findings payload", rcp, p.Policy, want, "abcd intent consistency"+scopeArg(scope))
 	}
-	if strings.TrimSpace(p.Verifier.ID) == "" {
-		return consistencyReview{}, fmt.Errorf("intent: verifier.id is required; refusing to ingest")
-	}
-	if p.Findings == nil {
-		return consistencyReview{}, fmt.Errorf("intent: findings is required (an empty list is a pass that found nothing); refusing to ingest")
-	}
-	if len(p.Findings) > maxConsistencyFindings {
-		return consistencyReview{}, fmt.Errorf("intent: %d findings exceed the cap of %d; refusing to ingest", len(p.Findings), maxConsistencyFindings)
+	if err := checkConsistencyBody(p); err != nil {
+		return consistencyReview{}, err
 	}
 
 	findings, err := validateConsistencyFindings(repoRoot, view, p.Findings)
@@ -1504,6 +1491,47 @@ func validateConsistency(repoRoot string, raw []byte, cache *consistencyIngestCa
 		CorpusDigest: c.Digest, Documents: len(c.Docs), Verifier: p.Verifier,
 		PayloadDigest: sha256Field(string(raw)), Findings: findings, Chunk: reviewChunk,
 	}, nil
+}
+
+// decodeConsistencyPayload is the strict decode of a findings payload: one
+// value, no field the shape does not declare, a schema version this binary
+// reads, and both policy hashes in their published shape. It needs no request
+// or corpus, so CheckConsistencyFindings runs it too.
+func decodeConsistencyPayload(repoRoot string, raw []byte) (consistencyPayload, error) {
+	dec := json.NewDecoder(strings.NewReader(string(raw)))
+	dec.DisallowUnknownFields()
+	var p consistencyPayload
+	if err := dec.Decode(&p); err != nil {
+		return consistencyPayload{}, fmt.Errorf("intent: malformed findings JSON: %s; refusing to ingest", redactRefused(repoRoot, err.Error()))
+	}
+	if dec.More() {
+		return consistencyPayload{}, fmt.Errorf("intent: findings JSON carries more than one value; refusing to ingest")
+	}
+	if err := unversionedSchemaGate("intent: the findings", p.SchemaVersion, ConsistencySchemaVersion); err != nil {
+		return consistencyPayload{}, fmt.Errorf("%w; refusing to ingest", err)
+	}
+	for _, h := range [][2]string{{"policy.rubric_hash", p.Policy.RubricHash}, {"policy.prompt_hash", p.Policy.PromptHash}} {
+		if !sha256FieldRe.MatchString(h[1]) {
+			return consistencyPayload{}, fmt.Errorf("intent: %s is required as sha256:<64 lowercase hex>, not %s; refusing to ingest",
+				h[0], termsafe.DescribeRefused(h[1]))
+		}
+	}
+	return p, nil
+}
+
+// checkConsistencyBody holds the payload's own fields to the contract: a
+// verifier, a findings list (empty is a pass that found nothing), and the cap.
+func checkConsistencyBody(p consistencyPayload) error {
+	if strings.TrimSpace(p.Verifier.ID) == "" {
+		return fmt.Errorf("intent: verifier.id is required; refusing to ingest")
+	}
+	if p.Findings == nil {
+		return fmt.Errorf("intent: findings is required (an empty list is a pass that found nothing); refusing to ingest")
+	}
+	if len(p.Findings) > maxConsistencyFindings {
+		return fmt.Errorf("intent: %d findings exceed the cap of %d; refusing to ingest", len(p.Findings), maxConsistencyFindings)
+	}
+	return nil
 }
 
 // unionSorted is the sorted set of the paths either list names.

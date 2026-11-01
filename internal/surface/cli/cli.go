@@ -55,6 +55,7 @@ import (
 	"github.com/intentdriven/abcd/internal/term"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // exitError carries a specific process exit code out of a command. The root
@@ -5486,9 +5487,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	// core/issueschema. --severity always did; --category and --source did not,
 	// and an operator who typed an unknown category had the accepted values in
 	// neither the help nor the refusal (iss-2609100519128005).
-	captureCmd.Flags().StringVar(&severity, "severity", "", "severity: "+enumHelp(issueschema.Severities)+" (default minor)")
-	captureCmd.Flags().StringVar(&category, "category", "", "issue category: "+enumHelp(issueschema.Categories)+" (default observation)")
-	captureCmd.Flags().StringVar(&source, "source", "", "surfacing channel: "+enumHelp(issueschema.Sources)+" (default user-observation)")
+	enumFlag(captureCmd.Flags(), &severity, "severity", "", "severity: ", issueschema.Severities, " (default minor)")
+	enumFlag(captureCmd.Flags(), &category, "category", "", "issue category: ", issueschema.Categories, " (default observation)")
+	enumFlag(captureCmd.Flags(), &source, "source", "", "surfacing channel: ", issueschema.Sources, " (default user-observation)")
 	captureCmd.Flags().StringVar(&slug, "slug", "", "override the slug derived from the text")
 	captureCmd.Flags().StringVar(&foundDuring, "found-during", "", "session/command context (default manual-capture)")
 	captureCmd.Flags().StringVar(&foundAt, "found-at", "", "optional repo-relative path, which must exist in this checkout, or a conceptual location in words")
@@ -6836,8 +6837,8 @@ func pagesJSONDistiller(cmd *cobra.Command, pagesJSON string) memory.Distiller {
 		if err != nil {
 			return nil, fmt.Errorf("cannot read --pages-json: %w", err)
 		}
-		var arr []map[string]any
-		if err := json.Unmarshal(raw, &arr); err != nil {
+		arr, err := memory.DecodePages(raw)
+		if err != nil {
 			return nil, fmt.Errorf("--pages-json must be a JSON array of page dicts: %w", err)
 		}
 		return arr, nil
@@ -6853,8 +6854,8 @@ func readPageJSON(cmd *cobra.Command, pageJSON string) (map[string]any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot read --page-json: %w", err)
 	}
-	var obj map[string]any
-	if err := json.Unmarshal(raw, &obj); err != nil {
+	obj, err := memory.DecodeAnswerPage(raw)
+	if err != nil {
 		return nil, fmt.Errorf("--page-json must be one JSON object (a DistilledPage dict): %w", err)
 	}
 	return obj, nil
@@ -7240,3 +7241,29 @@ func render(w io.Writer, asJSON bool, v any, text func(io.Writer)) error {
 // reads the same slice the reader's membership test and its refusal message read,
 // so a value added to core/issueschema reaches all three at once.
 func enumHelp(vals []string) string { return strings.Join(vals, " | ") }
+
+// allowedValuesAnnotation is the flag annotation enumFlag records a closed
+// set under, which the command facts read (surface.go, flagAllowed).
+const allowedValuesAnnotation = "abcd_allowed_values"
+
+// enumFlag declares a string flag that takes one of a closed set of values:
+// its help line is lead, the set through enumHelp, then tail, and the set is
+// recorded on the flag as an annotation. So the help, the reader's membership
+// check and the command facts all read the one slice the caller passes, and a
+// value added to it reaches all three at once (spc-2610301431075964 step 1).
+func enumFlag(fs *pflag.FlagSet, p *string, name, value, lead string, vals []string, tail string) {
+	fs.StringVar(p, name, value, lead+enumHelp(vals)+tail)
+	if err := fs.SetAnnotation(name, allowedValuesAnnotation, append([]string{}, vals...)); err != nil {
+		panic(err) // the flag was declared on the line above
+	}
+}
+
+// flagAllowed is the closed set enumFlag recorded on f, or nil for a flag
+// that takes any value.
+func flagAllowed(f *pflag.Flag) []string {
+	vals, ok := f.Annotations[allowedValuesAnnotation]
+	if !ok {
+		return nil
+	}
+	return append([]string{}, vals...)
+}

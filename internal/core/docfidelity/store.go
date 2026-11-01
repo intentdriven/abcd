@@ -242,6 +242,9 @@ func Enforce(root string, commands []surface.Command, population []string) (v Ve
 // detector or manifest hash: those label the receipt, and the reviewer never
 // labels its own verdict — Record stamps them from the checkout it reviewed.
 type payload struct {
+	// SchemaVersion is the shape's version, VerdictSchemaVersion. A verdict
+	// composed before the field existed carries none, and reads as version 1.
+	SchemaVersion      int    `json:"schema_version,omitempty"`
 	VerificationResult string `json:"verificationResult"`
 	JudgeModel         string `json:"judgeModel"`
 	Tier               string `json:"tier"`
@@ -251,70 +254,91 @@ type payload struct {
 	Failing []lint.ReceiptFinding `json:"failing"`
 }
 
-// Record validates the reviewer's verdict and saves it as the receipt for the
-// commit the checkout stands at, returning the receipt's repo-relative path
-// and the review as the gate now reads it. A refused payload writes nothing.
-func Record(root string, raw []byte, at time.Time) (string, Review, error) {
+// decodePayload is the whole of the verdict's own validation, run before
+// anything is read from the checkout: the strict decode, the schema version,
+// the closed fields, and every failing entry. Record runs it first and Check
+// runs it alone.
+func decodePayload(raw []byte) (payload, error) {
 	if len(raw) > maxPayloadBytes {
-		return "", Review{}, fmt.Errorf("the verdict is larger than %d bytes", maxPayloadBytes)
+		return payload{}, fmt.Errorf("the verdict is larger than %d bytes", maxPayloadBytes)
 	}
 	var p payload
 	if err := jsonstrict.Decode(raw, &p); err != nil {
-		return "", Review{}, fmt.Errorf("the verdict is refused: %w", err)
+		return payload{}, fmt.Errorf("the verdict is refused: %w", err)
+	}
+	switch {
+	case p.SchemaVersion == 0 || p.SchemaVersion == VerdictSchemaVersion:
+	case p.SchemaVersion > VerdictSchemaVersion:
+		return payload{}, fmt.Errorf("the verdict is schema_version %d, newer than this abcd reads (%d); update abcd, or compose it at version %d",
+			p.SchemaVersion, VerdictSchemaVersion, VerdictSchemaVersion)
+	default:
+		return payload{}, fmt.Errorf("the verdict is schema_version %d, which is not a version this abcd reads; compose it at version %d (an absent schema_version reads as %d)",
+			p.SchemaVersion, VerdictSchemaVersion, VerdictSchemaVersion)
 	}
 	switch p.VerificationResult {
 	case "PROMOTE", "HOLD", "INCONCLUSIVE":
 	default:
-		return "", Review{}, fmt.Errorf("verificationResult %q is not PROMOTE, HOLD or INCONCLUSIVE", p.VerificationResult)
+		return payload{}, fmt.Errorf("verificationResult %q is not PROMOTE, HOLD or INCONCLUSIVE", p.VerificationResult)
 	}
 	if strings.TrimSpace(p.JudgeModel) == "" {
-		return "", Review{}, errors.New("judgeModel is empty: a verdict names the judge that produced it")
+		return payload{}, errors.New("judgeModel is empty: a verdict names the judge that produced it")
 	}
 	if why := lint.FloatingJudgeModel(p.JudgeModel); why != "" {
-		return "", Review{}, fmt.Errorf("judgeModel %q is %s: a verdict names the pinned judge that produced it "+
+		return payload{}, fmt.Errorf("judgeModel %q is %s: a verdict names the pinned judge that produced it "+
 			"(a version or date, never latest), so the review can be re-run against the same judge", p.JudgeModel, why)
 	}
 	if p.Tier != "full" && p.Tier != "shallow" {
-		return "", Review{}, fmt.Errorf("tier %q is not full or shallow", p.Tier)
+		return payload{}, fmt.Errorf("tier %q is not full or shallow", p.Tier)
 	}
 	brief := 0
 	for i, f := range p.Failing {
 		if f.Doc != DocBrief && f.Doc != DocPublic {
-			return "", Review{}, fmt.Errorf("failing[%d].doc %q is not brief or public", i, f.Doc)
+			return payload{}, fmt.Errorf("failing[%d].doc %q is not brief or public", i, f.Doc)
 		}
 		if strings.TrimSpace(f.Chapter) == "" || strings.TrimSpace(f.Sentence) == "" || strings.TrimSpace(f.Evidence) == "" {
-			return "", Review{}, fmt.Errorf("failing[%d] needs its chapter, the sentence and the evidence", i)
+			return payload{}, fmt.Errorf("failing[%d] needs its chapter, the sentence and the evidence", i)
 		}
 		if f.Doc == DocBrief {
 			// The same parse Apply reads the chapter through, so a verdict saved
 			// here is one --apply can write; the receipt keeps the file name.
 			name, err := chapterFile(f.Chapter)
 			if err != nil {
-				return "", Review{}, fmt.Errorf("failing[%d]: %w", i, err)
+				return payload{}, fmt.Errorf("failing[%d]: %w", i, err)
 			}
 			p.Failing[i].Chapter = name
 		}
 		if strings.TrimSpace(f.Disposition) == "" {
-			return "", Review{}, fmt.Errorf("failing[%d] carries no disposition", i)
+			return payload{}, fmt.Errorf("failing[%d] carries no disposition", i)
 		}
 		if err := checkLine("sentence", f.Sentence); err != nil {
-			return "", Review{}, fmt.Errorf("failing[%d]: %w", i, err)
+			return payload{}, fmt.Errorf("failing[%d]: %w", i, err)
 		}
 		if err := checkLine("replacement", f.Replacement); err != nil {
-			return "", Review{}, fmt.Errorf("failing[%d]: %w", i, err)
+			return payload{}, fmt.Errorf("failing[%d]: %w", i, err)
 		}
 		if f.Replacement != "" && f.Replacement == f.Sentence {
-			return "", Review{}, fmt.Errorf("failing[%d].replacement must differ from the sentence", i)
+			return payload{}, fmt.Errorf("failing[%d].replacement must differ from the sentence", i)
 		}
 		if f.Doc == DocBrief {
 			brief++
 		}
 	}
 	if p.VerificationResult == "HOLD" && brief == 0 {
-		return "", Review{}, errors.New("a HOLD names no false brief sentence, so there is nothing to correct: a verdict with no confirmed brief sentence is PROMOTE")
+		return payload{}, errors.New("a HOLD names no false brief sentence, so there is nothing to correct: a verdict with no confirmed brief sentence is PROMOTE")
 	}
 	if p.VerificationResult == "PROMOTE" && brief > 0 {
-		return "", Review{}, fmt.Errorf("a PROMOTE names %d false brief sentence(s), so the brief is not current: a verdict with a confirmed brief sentence is HOLD", brief)
+		return payload{}, fmt.Errorf("a PROMOTE names %d false brief sentence(s), so the brief is not current: a verdict with a confirmed brief sentence is HOLD", brief)
+	}
+	return p, nil
+}
+
+// Record validates the reviewer's verdict and saves it as the receipt for the
+// commit the checkout stands at, returning the receipt's repo-relative path
+// and the review as the gate now reads it. A refused payload writes nothing.
+func Record(root string, raw []byte, at time.Time) (string, Review, error) {
+	p, err := decodePayload(raw)
+	if err != nil {
+		return "", Review{}, err
 	}
 	head, err := gitutil.ResolveCommit(root, "HEAD")
 	if err != nil {

@@ -367,7 +367,11 @@ func prepassRule(content string) string {
 
 // The host's return, decoded strictly.
 type prepassReturn struct {
-	Type           string            `json:"_type"`
+	Type string `json:"_type"`
+	// SchemaVersion is the shape's version, PrepassFindingsSchemaVersion.
+	// Findings composed before the field existed carry none, and read as
+	// version 1.
+	SchemaVersion  int               `json:"schema_version,omitempty"`
 	Intent         string            `json:"intent"`
 	InputDigest    string            `json:"input_digest"`
 	Summary        string            `json:"summary"`
@@ -528,6 +532,9 @@ func decodePrepassFindings(raw []byte) (prepassReturn, error) {
 	}
 	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
 		return prepassReturn{}, errors.New("intent prepass: the findings carry data after the object")
+	}
+	if err := unversionedSchemaGate("intent prepass: the findings", f.SchemaVersion, PrepassFindingsSchemaVersion); err != nil {
+		return prepassReturn{}, err
 	}
 	return f, nil
 }

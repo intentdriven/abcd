@@ -157,25 +157,9 @@ func deterministicPressRelease(abs string, paths map[string]bool) PressReleaseFi
 // restricted packed-path set is the whole-document refusal (ErrPressReleaseUncited).
 // Prose fields are sanitised and capped; the document is written whole on success.
 func validateDelegatedPressRelease(abs string, raw []byte, paths map[string]bool) (PressReleaseFile, error) {
-	if len(raw) > maxSynthesisBytes {
-		return PressReleaseFile{}, fmt.Errorf("press-release payload exceeds the %d-byte cap", maxSynthesisBytes)
-	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	var pf PressReleaseFile
-	if err := dec.Decode(&pf); err != nil {
-		// The decoder names an undeclared field by the payload's own key:
-		// redacted, never raw (iss-2609290218032954).
-		return PressReleaseFile{}, fmt.Errorf("malformed press-release JSON: %s", scanner.RedactRefusal(abs, err.Error()))
-	}
-	if err := synthSchemaGate("press-release", pf.SchemaVersion, PressReleaseSchemaVersion); err != nil {
+	pf, err := decodePressRelease(abs, raw)
+	if err != nil {
 		return PressReleaseFile{}, err
-	}
-	if err := synthModeGate(pf.Mode); err != nil {
-		return PressReleaseFile{}, err
-	}
-	if !promptVersionRe.MatchString(pf.PromptVersion) {
-		return PressReleaseFile{}, errors.New("delegated press-release payload is missing a semver prompt_version")
 	}
 
 	// The restricted P set: only brief/**, rescue/spine.md, and principles.json are
@@ -301,4 +285,31 @@ func renderPressReleaseMarkdown(f PressReleaseFile) string {
 		fmt.Fprintf(&b, "Evidence: %s\n", refs)
 	}
 	return b.String()
+}
+
+// decodePressRelease is the structural half of the delegated press release:
+// the size cap, the strict decode, and the schema, mode and prompt-version
+// gates. A fault here is fatal. abs only redacts a refusal.
+func decodePressRelease(abs string, raw []byte) (PressReleaseFile, error) {
+	if len(raw) > maxSynthesisBytes {
+		return PressReleaseFile{}, fmt.Errorf("press-release payload exceeds the %d-byte cap", maxSynthesisBytes)
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	var pf PressReleaseFile
+	if err := dec.Decode(&pf); err != nil {
+		// The decoder names an undeclared field by the payload's own key:
+		// redacted, never raw (iss-2609290218032954).
+		return PressReleaseFile{}, fmt.Errorf("malformed press-release JSON: %s", scanner.RedactRefusal(abs, err.Error()))
+	}
+	if err := synthSchemaGate("press-release", pf.SchemaVersion, PressReleaseSchemaVersion); err != nil {
+		return PressReleaseFile{}, err
+	}
+	if err := synthModeGate(pf.Mode); err != nil {
+		return PressReleaseFile{}, err
+	}
+	if !promptVersionRe.MatchString(pf.PromptVersion) {
+		return PressReleaseFile{}, errors.New("delegated press-release payload is missing a semver prompt_version")
+	}
+	return pf, nil
 }
