@@ -92,7 +92,10 @@ pauses the lane for its key rather than falling back to the subscription).
   (`runner.DefaultTimeout`), which nothing in configuration or on the command
   line changes, so an implementer that waits one to two hours at the load
   gate for a broad test run cannot finish on the runner; a second lane on the
-  load stream died the same way within the hour. A killed launch reports no
+  load stream died the same way within the hour, and two more there at the
+  hour's end, each with its work committed and its report written, partway
+  through `make preflight`, which their briefs named as the definition of
+  done (one at govulncheck, one queued behind four waiters at the load gate). A killed launch reports no
   result and so no `total_cost_usd`, which leaves its spend out of every
   tally.
 - **A planning interview stops when any session moves a branch.** The
