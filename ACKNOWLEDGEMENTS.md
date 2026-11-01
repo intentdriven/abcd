@@ -164,6 +164,16 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   SDK's approval docs give.
   <https://code.claude.com/docs/en/headless>,
   <https://code.claude.com/docs/en/agent-sdk/user-input>
+- **Configuration layering in git, Cargo, VS Code and Claude Code** — the
+  grounds for adr-2611011332427073's single precedence rule (bundled, home,
+  repository, the person's gitignored per-repository file, invocation) and
+  its three per-key exemptions: git's protected-configuration-only
+  `safe.directory`, VS Code's user-only machine and application scopes, and
+  Claude Code's deny-from-any-scope rule.
+  <https://git-scm.com/docs/git-config>,
+  <https://doc.rust-lang.org/cargo/reference/config.html>,
+  <https://code.visualstudio.com/docs/configure/settings>,
+  <https://code.claude.com/docs/en/settings>
 - **Cloudflare Workers and its v4 API (Cloudflare)** — the host the one
   provider behind `abcd site setup`'s hosting seam targets: an assets-only
   Worker deployed by the pinned `wrangler-action`, created, routed and
