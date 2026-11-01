@@ -13,13 +13,21 @@ package site
 // would break the links with every other gate passing.
 //
 // So this gate reads the output as it will be served. Every root-absolute URL
-// under `<base>docs/` on a composed surface, and every redirect target, must
+// under `<base>docs/` on a rendered page, and every redirect target, must
 // name a file in the output directory: the path itself, or for a directory URL
 // (one ending in `/`, or a bare name the host serves as one) its index.html.
 // A fragment and a query are not part of the file a URL names and are dropped
 // before the lookup. A redirect target that is an absolute URL leaves the
 // site, and one carrying a placeholder (`:splat`, `:name`) or a wildcard names
 // no single file; neither is judged.
+//
+// A rendered page here is every page this build writes, the verbatim record
+// rendering under `record/` included (iss-2610311732391345). The record is
+// exempt from the composed-text gates, which judge the words a composer
+// chose, but a record's link to a docs page is written through the same
+// siteHref as a composed one's, so a docs page that was renamed breaks it
+// just the same. This gate judges where a link lands, never its words, so it
+// reads the record pages too; the composed-text gates still do not.
 //
 // The `/docs/` half can only be judged once the docs tree is in the output. A
 // build the docs generator has not written into (the site-render gate's, which
@@ -52,7 +60,7 @@ const (
 // maxRedirectsBytes bounds the redirect map read.
 const maxRedirectsBytes = 1 << 20
 
-// checkLinkTargets runs the gate over the composed surfaces and the redirect
+// checkLinkTargets runs the gate over every rendered page and the redirect
 // map.
 func (c *checker) checkLinkTargets() error {
 	out, err := os.OpenRoot(c.outDir)
@@ -71,7 +79,7 @@ func (c *checker) checkLinkTargets() error {
 	}
 	unjudged := 0
 
-	for _, page := range c.composedPages() {
+	for _, page := range c.res.Pages {
 		for _, n := range findElements(c.pages[page], func(*htmlNode) bool { return true }) {
 			for _, attr := range basePathAttrs {
 				for _, u := range attrURLs(attr, n.Attr(attr)) {

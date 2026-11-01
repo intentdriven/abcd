@@ -1,7 +1,8 @@
 package site
 
 // The link-targets gate (iss-2610252224215664): every /docs/ link on a
-// composed page and every redirect target names a file in the built output.
+// rendered page, record pages included (iss-2610311732391345), and every
+// redirect target names a file in the built output.
 //
 // The composer writes a /docs/ link from the docs generator's URL shape
 // (siteHref), and the redirect map names /docs/ routes by hand, but `/docs/`
@@ -172,4 +173,62 @@ func TestLinkTargetsNoteADocsTreeThatIsAbsent(t *testing.T) {
 		t.Errorf("findings = %d, want only the non-docs redirect: %+v", n, findingsFor(res, CheckLinkTargets))
 	}
 	wantNote(t, res, CheckLinkTargets, "docs/")
+}
+
+// A record page is rendered verbatim and is exempt from the composed-text
+// gates, but its /docs/ links are written through the same siteHref, so a docs
+// page that went breaks them as surely as a composed one's
+// (iss-2610311732391345). The gate walks every rendered page for its /docs/
+// links: the record's link to a docs page that exists passes, and the one to a
+// page the docs tree does not serve fails on the record's own page.
+func TestLinkTargetsJudgeTheDocsLinksOnARecordPage(t *testing.T) {
+	r := newCheckRepo(t)
+	r.write("records/adrs/0002-linking.md", `---
+id: adr-2
+status: accepted
+date: 2026-01-01
+supersedes: null
+superseded_by: adr-1
+related_adrs: []
+related_intents: []
+related_rfcs: []
+---
+
+# ADR-2: the linking decision
+
+## Context
+
+The record names [the roles](../../docs/explanation/roles.md) and
+[a page that went](../../docs/explanation/gone.md).
+
+## Decision
+
+Keep it.
+
+## Consequences
+
+None.
+`)
+	r.build()
+	writeBuiltDocs(t, r, true)
+	res := r.check()
+	var onRecord []CheckFinding
+	for _, f := range findingsFor(res, CheckLinkTargets) {
+		if !strings.HasPrefix(f.Where, recordRoutePrefix) {
+			t.Errorf("a finding is not on the record page that carries the link: %+v", f)
+			continue
+		}
+		onRecord = append(onRecord, f)
+	}
+	wantFinding(t, res, CheckLinkTargets, "/docs/explanation/gone/")
+	if len(onRecord) != 1 {
+		t.Errorf("findings on the record page = %d, want only the gone page: %+v", len(onRecord), onRecord)
+	}
+	// The record rendering stays exempt from the composed-text gates: only the
+	// link-targets gate reads it.
+	for _, f := range res.Findings {
+		if strings.HasPrefix(f.Where, recordRoutePrefix) && f.Check != CheckLinkTargets {
+			t.Errorf("a composed-text gate judged the record rendering: %+v", f)
+		}
+	}
 }
