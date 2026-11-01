@@ -718,11 +718,13 @@ func TestUnlabelledQuestionRunsUncheckedUnderARefusedValue(t *testing.T) {
 	mustRunSilently(t, stdout, stderr, code)
 }
 
-// TestHookFailsOpenOnASymlinkedConfig (itd-2610301914350541 decision 8): a
-// .abcd/config.json the resolver will not read, here a symbolic link, is a
-// store the gate cannot read. abcd's question runs, unchecked even where it
-// breaks a rule, and the gate's NOT CHECKED line names the file; another
-// tool's question runs with nothing said.
+// TestHookFailsOpenOnASymlinkedConfig (itd-2610301914350541 decision 8,
+// approach 3): a .abcd/config.json the resolver will not read, here a
+// symbolic link, is an unread layer. abcd's question is still checked, at
+// abcd's defaults and not at the 40 rows the linked file sets: a well-built
+// question runs at exit 1 with the NOT CHECKED line naming the file, one that
+// breaks a rule is refused on it, and a 36-row tab is noted against the
+// default 32. Another tool's question runs with nothing said.
 func TestHookFailsOpenOnASymlinkedConfig(t *testing.T) {
 	repo := unmanagedRepo(t)
 	target := filepath.Join(t.TempDir(), "config.json")
@@ -735,24 +737,84 @@ func TestHookFailsOpenOnASymlinkedConfig(t *testing.T) {
 	if err := os.Symlink(target, filepath.Join(repo, filepath.FromSlash(layered.Config.RepoRel))); err != nil {
 		t.Fatal(err)
 	}
+	mustCheckAtTheDefaults(t, repo, ".abcd/config.json")
+}
+
+// TestHookChecksAtTheDefaultsOnAnUnparseableConfig (approach 3): a
+// .abcd/config.json the resolver reads but cannot parse (not JSON, a key
+// given twice, or over the resolver's size cap) is an unread layer too, and
+// never turns the check off: abcd's question is held to the defaults, and
+// the NOT CHECKED line names the file.
+func TestHookChecksAtTheDefaultsOnAnUnparseableConfig(t *testing.T) {
+	for name, body := range map[string]string{
+		"not JSON":       `{"question":{"rows":40}`,
+		"a key twice":    `{"question":{"rows":40},"question":{"rows":40}}`,
+		"over the cap":   `{"question":{"rows":40}}` + strings.Repeat(" ", layered.MaxFileBytes),
+		"trailing bytes": `{"question":{"rows":40}} {}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			repo := unmanagedRepo(t)
+			writeRepoQuestionConfig(t, repo, body)
+			mustCheckAtTheDefaults(t, repo, ".abcd/config.json")
+		})
+	}
+}
+
+// TestHookChecksAtTheDefaultsWithHomeUnset (approach 3): with HOME unset the
+// machine layer cannot be read, which is an unread layer: abcd's question is
+// checked at the defaults, loudly, and never let through unchecked.
+func TestHookChecksAtTheDefaultsWithHomeUnset(t *testing.T) {
+	repo := unmanagedRepo(t)
+	writeRepoQuestionConfig(t, repo, `{"question":{"rows":40}}`)
+	t.Setenv("HOME", "")
+	mustCheckAtTheDefaults(t, repo, "the home directory is unresolved")
+}
+
+// mustCheckAtTheDefaults asserts the gate's answer for abcd's question in
+// repo while a layer of the question limits is unread: checked at abcd's
+// defaults, with the NOT CHECKED line naming what was not read (want) on
+// stderr for an admission, at the head of the reason for a deny, and at the
+// head of a rows note. Another tool's question runs with nothing said.
+func mustCheckAtTheDefaults(t *testing.T, repo, want string) {
+	t.Helper()
+	const head = "abcd guard: NOT CHECKED at this repository's question limits"
+	stdout, stderr, code := runGuard(askPayload(t, repo, wellBuilt()), "guard", "hook")
+	if code != 1 || stdout != "" {
+		t.Fatalf("a well-built question under an unread config: want exit 1 and nothing on stdout; code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if !strings.HasPrefix(stderr, head) || !strings.Contains(stderr, want) || !strings.Contains(stderr, "checked at abcd's defaults") {
+		t.Errorf("the loud line must name %q and say the question is checked at the defaults; stderr = %q", want, stderr)
+	}
+	if strings.Contains(stderr, "UNGATED") {
+		t.Errorf("the question is checked at the defaults, so it must not be said to run ungated; stderr = %q", stderr)
+	}
+
 	broken := wellBuilt()
 	broken.Options[0].Label = "Role and number (Recommended)"
-	for _, q := range []hostQuestion{wellBuilt(), broken} {
-		stdout, stderr, code := runGuard(askPayload(t, repo, q), "guard", "hook")
-		line := mustFailOpen(t, stdout, stderr, code)
-		if !strings.Contains(line, ".abcd/config.json") || !strings.Contains(line, "question limits were not read") {
-			t.Errorf("the fail-open line must name the unread file and the limits; line = %q", line)
-		}
+	stdout, stderr, code = runGuard(askPayload(t, repo, broken), "guard", "hook")
+	reason := mustDeny(t, stdout, stderr, code)
+	if !strings.HasPrefix(reason, head) || !strings.Contains(reason, "break abcd's asking rules") || !strings.Contains(reason, "(never-recommended)") {
+		t.Errorf("a question that breaks a rule must be refused on it, the line first; reason:\n%s", reason)
 	}
+
+	if question.Default.Rows >= 36 {
+		t.Fatalf("precondition: the default rows limit (%d) must be below 36", question.Default.Rows)
+	}
+	stdout, stderr, code = runGuard(askPayload(t, repo, questionOfRows(t, 36)), "guard", "hook")
+	note := mustAdmitWithNote(t, stdout, stderr, code)
+	if !strings.HasPrefix(note, head) || !strings.Contains(note, fmt.Sprintf("limit: %d rows at 80 columns", question.Default.Rows)) {
+		t.Errorf("a 36-row tab must be noted against the default rows, the line first; note = %q", note)
+	}
+
 	foreign := hostQuestion{Header: "Pick a theme", Question: "Which theme?", Options: []hostOption{{Label: "Dark"}, {Label: "Light"}}}
-	stdout, stderr, code := runGuard(askPayload(t, repo, foreign), "guard", "hook")
+	stdout, stderr, code = runGuard(askPayload(t, repo, foreign), "guard", "hook")
 	mustRunSilently(t, stdout, stderr, code)
 }
 
 // TestHookNamesAnUnreadMachineConfig (itd-2610301914350541 decision 8): a
 // ~/.abcd.noindex/config.json the account cannot vouch for, here writable by
 // others, is unread whatever keys it holds, even none under question: abcd's
-// question runs and the gate names that file. A symlinked ~/.abcd.noindex
+// question is checked at the defaults and the gate names that file. A symlinked ~/.abcd.noindex
 // holding no config.json reads as absent: the limits are the defaults and
 // nothing is said.
 func TestHookNamesAnUnreadMachineConfig(t *testing.T) {
@@ -762,11 +824,7 @@ func TestHookNamesAnUnreadMachineConfig(t *testing.T) {
 		if err := os.Chmod(p, 0o666); err != nil {
 			t.Fatal(err)
 		}
-		stdout, stderr, code := runGuard(askPayload(t, repo, wellBuilt()), "guard", "hook")
-		line := mustFailOpen(t, stdout, stderr, code)
-		if !strings.Contains(line, abcdhome.Display(layered.Config.MachineRel)) {
-			t.Errorf("the fail-open line must name the machine file; line = %q", line)
-		}
+		mustCheckAtTheDefaults(t, repo, abcdhome.Display(layered.Config.MachineRel))
 	})
 	t.Run("a symlinked home with no config.json", func(t *testing.T) {
 		repo := unmanagedRepo(t)
@@ -785,11 +843,7 @@ func TestHookNamesAnUnreadMachineConfig(t *testing.T) {
 		if err := os.Symlink(dotfiles, abcdhome.Path(os.Getenv("HOME"))); err != nil {
 			t.Fatal(err)
 		}
-		stdout, stderr, code := runGuard(askPayload(t, repo, wellBuilt()), "guard", "hook")
-		line := mustFailOpen(t, stdout, stderr, code)
-		if !strings.Contains(line, abcdhome.Display()) {
-			t.Errorf("the fail-open line must name the machine layer; line = %q", line)
-		}
+		mustCheckAtTheDefaults(t, repo, abcdhome.Display())
 	})
 }
 
@@ -878,18 +932,4 @@ func mustRunSilently(t *testing.T, stdout, stderr string, code int) {
 	if code != 0 || stdout != "" || stderr != "" {
 		t.Fatalf("want the question admitted with nothing said; code=%d stdout=%q stderr=%q", code, stdout, stderr)
 	}
-}
-
-// mustFailOpen asserts the gate's fail-open-loud form (questionFailOpen):
-// exit 1, nothing on stdout, and the NOT CHECKED line on stderr, which it
-// returns.
-func mustFailOpen(t *testing.T, stdout, stderr string, code int) string {
-	t.Helper()
-	if code != 1 || stdout != "" {
-		t.Fatalf("want the gate's fail-open (exit 1, nothing on stdout); code=%d stdout=%q stderr=%q", code, stdout, stderr)
-	}
-	if !strings.HasPrefix(stderr, "abcd guard: NOT CHECKED — ") || !strings.HasSuffix(stderr, " The question runs UNGATED.\n") {
-		t.Fatalf("the fail-open line is not questionFailOpen's form: %q", stderr)
-	}
-	return stderr
 }

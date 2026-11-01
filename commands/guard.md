@@ -100,8 +100,19 @@ Then read the JSON (`_type` `abcd/question-check/v1`):
 - `rows` — each tab's rows at 80 columns, as `header_and_frame`,
   `question_text`, `options` and `total`, against `rows_limit`. Report these
   figures; never count rows by hand.
-- `ready` — the input to ask, absent when the hook would refuse: your draft as
-  written, every key kept, or the composition of an `--ask` draft.
+- `limits`, `limits_source` — the rows, label words and description sentences
+  the draft was judged at, which are the ones the hook holds abcd's question
+  to in this checkout (`.abcd/config.json` sets them under `question`, and your
+  own `~/.abcd.noindex/config.json` may set each lower), and where each came
+  from: `bundled`, `.abcd/config.json` or `~/.abcd.noindex/config.json`. Take
+  the limits from here, never from either file; `rows_limit` is `limits.rows`.
+- `refused` — present instead of `limits` while a limit is refused: the
+  `key`, the `value`, the `bounds` and the `file`, and for a personal value
+  that loosens the `limit` in force and the `limit_file` that set it, with
+  `why` in the resolver's words. Fix that file; no draft is ready until then.
+- `ready` — the input to ask, absent when the hook would refuse or a limit is
+  refused: your draft as written, every key kept, or the composition of an
+  `--ask` draft.
 - `version` — the binary's version. The verdict holds for a hook of the same
   version.
 - `depends_on_state`, `partial`, `unread` — whether a mode set or the person
@@ -113,7 +124,10 @@ Then read the JSON (`_type` `abcd/question-check/v1`):
 Exit codes: `0` when the draft has no finding and every store was read,
 whatever the hook would do with it; `1` on any finding, a tab over the rows
 limit alone included; `2` when the draft is not JSON, is over 1 MiB or has
-neither shape, and when a store could not be read, even with no finding. Fix
+neither shape, when a question limit is refused, whatever the draft, and when
+a store could not be read, a file of the question limits included, even with
+no finding (the draft is then checked at abcd's defaults, as the hook checks
+it, and `unread` names the file). Fix
 every finding and check again until it exits `0`, then read `hook`: ask the
 `ready` input where it is given, and where the person is away (`refuse-away`,
 no `ready`) route the question with `abcd mode queue` or `abcd decide`. A draft
@@ -174,8 +188,8 @@ bounds, not a whole number, under any other `question` key, or set in the
 person's own file looser than the limit in force refuses every abcd question,
 naming the file, the key, the value and the bounds and no asking rule, until
 the file is fixed; a file the hook cannot read, such as a symlinked
-`.abcd/config.json`, lets abcd's question run unchecked with a loud
-`NOT CHECKED` line naming it. A question that breaks any of them is refused with the host's
+`.abcd/config.json` or one that is not valid JSON, holds abcd's question to
+abcd's defaults instead, with a loud `NOT CHECKED` line naming it. A question that breaks any of them is refused with the host's
 deny, whose reason is one head line, "Blocked by the abcd guard (question tool): N part(s)
 of this question break abcd's asking rules; fix each and ask again.", then one
 line per part naming the tab, the part, the value, the limit and the remedy, so

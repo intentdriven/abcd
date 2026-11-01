@@ -220,14 +220,14 @@ Technical, as one list:
   test beside the one that holds them to the defaults today.
 - **Given** a `.abcd/config.json` the resolver cannot read (a symbolic link,
   or not a regular file), **when** the hook judges an abcd question,
-  **then** the question runs and the gate says on stderr that the file was
-  not read, in the form it uses for the mode store, and `abcd guard
+  **then** the question is checked at abcd's defaults and the gate says, in
+  its `NOT CHECKED` form, that the file was not read, and `abcd guard
   question` exits 2 with a partial result naming the file.
 - **Given** a `~/.abcd.noindex/config.json` the resolver cannot read (behind
   a symlinked `~/.abcd.noindex`, writable by group or other, or owned by
   another account), holding no `question` key, **when** the hook judges an
-  abcd question, **then** the question runs and the gate names that file on
-  stderr, and `abcd guard question` exits 2 naming it; **given** a symlinked
+  abcd question, **then** the question is checked at abcd's defaults and the
+  gate names that file, and `abcd guard question` exits 2 naming it; **given** a symlinked
   `~/.abcd.noindex` holding no `config.json`, **then** the limits are the
   defaults and nothing is said.
 - **Given** a repository whose configuration sets rows to 40, **when** a tab
@@ -420,17 +420,20 @@ provisional now.
    question written to figures that are not in force. The asking rules are
    still rendered because most of them are not about limits, and an agent
    reading them learns of the refusal before it drafts.
-8. **A file the resolver cannot read fails open and loud, in the hook's own
-   form.** A `.abcd/config.json` that is a symbolic link or not a regular
-   file, and a `~/.abcd.noindex/config.json` behind a symlinked
+8. **A file the resolver cannot read is loud, in the hook's own form, and
+   leaves the question checked at the defaults.** A `.abcd/config.json` that
+   is a symbolic link, not a regular file, or one the resolver cannot parse,
+   and a `~/.abcd.noindex/config.json` behind a symlinked
    `~/.abcd.noindex`, writable by group or other, or owned by another
-   account, even one holding no `question` key, take the path the hook
-   takes for a mode store it cannot read: the question runs, and the gate
-   writes the `questionFailOpen` line (`guard_question.go:447`) naming that
-   file, exit 1:
+   account, even one holding no `question` key, and an unresolved home, take
+   the path the spec's approach 3 names for an unread layer: abcd's question
+   is checked at abcd's defaults, as it was before any file could set a
+   limit, and the gate writes one line in its `NOT CHECKED` form naming that
+   file, on stderr at exit 1 for a question the defaults admit, and at the
+   head of the reason or the note otherwise:
 
    ```text
-   abcd guard: NOT CHECKED — <reason>. The question runs UNGATED.
+   abcd guard: NOT CHECKED at this repository's question limits — they were not read (<reason>), so the question is checked at abcd's defaults instead.
    ```
 
    The verb exits 2 with a partial result naming the file. A symlinked
@@ -443,7 +446,10 @@ provisional now.
    Reason: This is the guard's fail-open-loud contract for a store it cannot
    read, and a machine file the account cannot vouch for is such a store
    whatever keys it holds, because the stack reads both layers before it
-   knows which keys either carries.
+   knows which keys either carries. The defaults are what the gate checked
+   at before a file could set a limit, so a file that cannot be read never
+   leaves abcd's question less checked than an unconfigured repository's
+   (settled on 2026-11-01 in the build of spec step 2).
 9. **The check reports the values in force.** Its JSON gains `limits`
    (`rows`, `label_words`, `description_sentences`) and `limits_source`, one
    entry per key (`bundled`, the repository file's path, or the machine

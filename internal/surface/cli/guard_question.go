@@ -98,9 +98,11 @@ func isQuestionTool(name string) bool {
 // claim, or a personal value looser than the limit in force) refuses every
 // abcd question naming the key, the value, the bounds or the limit in force,
 // and the file, and no asking rule (limitsRefusedReason): nothing falls
-// through to the defaults. A layer it could not read is the fail-open-loud
-// case: the question runs, unchecked, and the gate names the file. Another
-// tool's question runs unchecked whatever either file says.
+// through to the defaults. A layer it could not read (a file that is not a
+// regular file, cannot be parsed or is over the size cap, or an unresolved
+// home) is loud and holds abcd's question to the defaults: one NOT CHECKED
+// line names the file, and a question the defaults admit runs at exit 1.
+// Another tool's question runs unchecked whatever either file says.
 func questionGate(cmd *cobra.Command, cwd string, raw json.RawMessage) error {
 	reads := questionState(cmd, cwd)
 	if reads.state.Away {
@@ -137,14 +139,17 @@ type questionReads struct {
 
 // questionState makes every store read the question gate's decision takes
 // (spc-2610301917245442, "One store reader"): the away record, the
-// repository root, whether the badge shows, the mode where it does, and the
-// binary's verbs. The hook and `abcd guard question` both call it and then
-// question.Decide, so the two read the same state the same way. It writes
-// nothing; a store it cannot read is named in the state, never fatal.
+// repository root, whether the badge shows, the mode where it does, the
+// binary's verbs, and the question limits in force (questionLimitsAt,
+// spc-2610301950037469 step 2). The hook and `abcd guard question` both call
+// it and then question.Decide, so the two read the same state the same way.
+// It writes nothing; a store it cannot read is named in the state, never
+// fatal.
 func questionState(cmd *cobra.Command, cwd string) questionReads {
 	r := questionReads{mode: mode.Managed}
 	r.state.Away, r.state.AwayErr = awayAtQuestion(cwd)
 	r.state.Verbs = verbsOf(cmd.Root())
+	questionLimitsAt(cwd, &r.state)
 	root, rerr := mode.Root(cwd)
 	if rerr != nil {
 		// In a tree that looks like a checkout but git would not name the
@@ -225,7 +230,49 @@ func presentQuestionGate(cmd *cobra.Command, reads questionReads, raw json.RawMe
 	if err != nil {
 		return questionFailOpen(stderr, "the question tool's input could not be read (%s)", err)
 	}
-	v := question.Decide(fields, reads.state, question.Default)
+	v := question.Decide(fields, reads.state, reads.state.Limits)
+	if !limitsWereUnread(v) {
+		return actOnQuestionVerdict(cmd, reads, v, "")
+	}
+	// A layer of the question limits could not be read, so abcd's question
+	// was checked at the defaults, and the gate says so wherever its answer
+	// is read: at the head of a deny's reason or a rows note, which the agent
+	// reads, and otherwise on stderr with exit 1, the loud non-blocking
+	// status the host shows, never a silent admission.
+	lead := limitsUnreadLine(reads.state.LimitsErr)
+	out := &wroteWriter{w: cmd.OutOrStdout()}
+	cmd.SetOut(out)
+	err = actOnQuestionVerdict(cmd, reads, v, lead)
+	cmd.SetOut(out.w)
+	var deny *hookDeny
+	if out.wrote || errors.As(err, &deny) {
+		return err
+	}
+	fmt.Fprint(stderr, lead)
+	if err == nil {
+		return &exitError{Code: 1}
+	}
+	return err
+}
+
+// limitsWereUnread reports whether the decision names an unread layer of the
+// question limits.
+func limitsWereUnread(v question.Verdict) bool {
+	for _, u := range v.Unread {
+		if u.Store == question.StoreLimits {
+			return true
+		}
+	}
+	return false
+}
+
+// actOnQuestionVerdict does what the hook does with a decision: a deny for a
+// refusal, the marker and the mode for an admission where the badge shows,
+// the rows note for an admission with rows findings, and questionFailOpen
+// for a store the decision needed and could not read. lead, when set, opens
+// the deny's reason and the rows note.
+func actOnQuestionVerdict(cmd *cobra.Command, reads questionReads, v question.Verdict, lead string) error {
+	stderr := cmd.ErrOrStderr()
 	switch v.Outcome {
 	case question.OutcomeUnchecked:
 		if reads.state.ModeErr != nil {
@@ -241,7 +288,11 @@ func presentQuestionGate(cmd *cobra.Command, reads questionReads, raw json.RawMe
 		if !v.Chipped {
 			why = modeMadeAbcds(reads.mode)
 		}
+		if v.Refused != nil {
+			return denyCall(lead + limitsRefusedReason(v.Refused.Reason, why))
+		}
 		var reason strings.Builder
+		reason.WriteString(lead)
 		writeLimitsRefusal(&reason, v.Findings, why)
 		return denyCall(reason.String())
 	}
@@ -268,7 +319,7 @@ func presentQuestionGate(cmd *cobra.Command, reads questionReads, raw json.RawMe
 		// Only rows findings are left: the question runs, and the agent
 		// reads the note after it returns. No permission decision is set,
 		// so the host's own permission flow still applies.
-		if err := writeHookNote(cmd.OutOrStdout(), rowsNote(v.Findings)); err != nil {
+		if err := writeHookNote(cmd.OutOrStdout(), lead+rowsNote(v.Findings)); err != nil {
 			return questionFailOpen(stderr, "the note on the question's height could not be written (%s)", err)
 		}
 	}
@@ -450,27 +501,65 @@ func writeLimitsRefusal(w io.Writer, findings []question.Finding, why string) {
 // refuse on.
 const rowsNotRefusingLine = "The rows limit does not refuse on its own: with only the rows finding(s) below, this question would have been shown, and a narrow window might cut it."
 
-// questionLimitsAt is the question limits in force for the repository
-// holding cwd, through the one resolver (layered.QuestionLimits) at the root
-// the rules loader resolves, so the gate and the injected GRILL domain read
-// one file (itd-2610301914350541 decision 6). The mode store keeps its own
-// root (mode.Root, git's toplevel); in a monorepo member with its own .abcd/
-// the two differ, and the limits follow the rules root.
+// questionLimitsAt puts the question limits in force for the repository
+// holding cwd on st, through the one resolver (layered.QuestionLimits) at the
+// root the rules loader resolves, so the gate and the injected GRILL domain
+// read one file (itd-2610301914350541 decision 6). The mode store keeps its
+// own root (mode.Root, git's toplevel); in a monorepo member with its own
+// .abcd/ the two differ, and the limits follow the rules root.
 //
-// The limits returned are always usable for the header grammar: on an unread
-// layer they are the defaults, as the resolver returns them, and on a refusal
-// they are the defaults too, since a refused value is never applied (the
-// question is refused before any limit is checked) and the chip grammar the
-// gate reads them for is the binary's alone.
-func questionLimitsAt(cwd string) (question.Limits, error) {
+// The outcome is one of three. In force: st.Limits and st.LimitsSource are
+// the resolver's. Unread (a layer the resolver could not read or parse, or an
+// unresolved home): st.LimitsErr and st.LimitsFile name it, and st.Limits is
+// the defaults the resolver returns with it, which abcd's question is then
+// checked at. Refused: st.LimitsRefused carries the refusal, and st.Limits is
+// the defaults, assigned here, read only for the header grammar (whose width
+// and role words no file sets, decision 2) and the rows split, since a
+// refused value is never applied and abcd's question is refused before any
+// limit is checked.
+func questionLimitsAt(cwd string, st *question.State) {
 	roots, _ := layered.RootsFor(cwd)
 	v, err := layered.QuestionLimits(roots)
 	var unread *layered.UnreadError
-	if err != nil && !errors.As(err, &unread) {
-		grammar := question.Default
-		return grammar, err
+	switch {
+	case err == nil, errors.As(err, &unread):
+		st.Limits = v.V
+		st.LimitsSource = make([]string, len(v.Sources))
+		for i, src := range v.Sources {
+			st.LimitsSource[i] = src.Origin
+		}
+		if err != nil {
+			st.LimitsErr, st.LimitsFile = err, unread.Origin
+		}
+	default:
+		st.Limits = question.Default
+		st.LimitsRefused = limitsRefusalOf(err)
 	}
-	return v.V, err
+}
+
+// limitsRefusalOf is the resolver's refusal as the decision carries it: the
+// key, the value, the bounds and the file of a value refused, the limit in
+// force and its file for a personal value that loosens, and the resolver's
+// own words for every refusal, an unclaimed key included.
+func limitsRefusalOf(err error) *question.LimitsRefusal {
+	r := &question.LimitsRefusal{Reason: err.Error()}
+	var kr *layered.KeyRefusedError
+	if errors.As(err, &kr) {
+		r.Key, r.Value, r.Bounds, r.File = kr.Key, kr.Value, kr.Bounds.String(), kr.Origin
+		if kr.Loosens() {
+			r.Limit, r.LimitFile = kr.Limit, kr.LimitOrigin
+		}
+	}
+	return r
+}
+
+// limitsUnreadLine is the gate's loud line for abcd's question while a layer
+// of the question limits could not be read: in the NOT CHECKED form, naming
+// the file, and saying what was done instead, since the question is not let
+// through unchecked but held to abcd's defaults.
+func limitsUnreadLine(err error) string {
+	return "abcd guard: NOT CHECKED at this repository's question limits — they were not read (" +
+		termsafe.Sanitize(scrubPaths(err)) + "), so the question is checked at abcd's defaults instead.\n"
 }
 
 // limitsRefusedReason is the deny for abcd's question while a question limit
@@ -482,13 +571,13 @@ func questionLimitsAt(cwd string) (question.Limits, error) {
 // and one line stating every key's bounds from question.Bounds. It names no
 // asking rule, so the agent fixes the configuration rather than redrafting a
 // question that may be well built.
-func limitsRefusedReason(err error, why string) string {
+func limitsRefusedReason(reason, why string) string {
 	var b strings.Builder
 	b.WriteString("Blocked by the abcd guard (question tool): a question limit in this repository's configuration is refused, so abcd asks no question until it is fixed.\n")
 	if why != "" {
 		b.WriteString(why + "\n")
 	}
-	b.WriteString(termsafe.Sanitize(scrubPaths(err)) + "\n")
+	b.WriteString(termsafe.Sanitize(scrubPaths(errors.New(reason))) + "\n")
 	b.WriteString("Fix the value in that file and ask again: " + boundsLine() + ", and a person's own " + abcdhome.Display(layered.Config.MachineRel) + " may set each only lower than the limit otherwise in force.")
 	return b.String()
 }

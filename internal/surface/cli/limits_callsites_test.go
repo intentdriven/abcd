@@ -31,10 +31,10 @@ var defaultLimitsAllowed = []string{
 }
 
 // limitsTakers are the functions that judge, state or render the limits:
-// question's check, chip grammar, row split and asking rules, and the
-// asking-sync renderers.
+// question's check, the shared decision the hook and the verb call, the chip
+// grammar, row split and asking rules, and the asking-sync renderers.
 var limitsTakers = map[string]bool{
-	"CheckLimits": true, "AskingRules": true, "AskingRulesFrom": true, "ChipRole": true,
+	"CheckLimits": true, "Decide": true, "AskingRules": true, "AskingRulesFrom": true, "ChipRole": true,
 	"IsAbcds": true, "Rows": true, "render": true, "renderDrafter": true, "syncTarget": true,
 }
 
@@ -146,6 +146,7 @@ func TestDefaultLimitsUsesFindsEachShape(t *testing.T) {
 
 func f() {
 	question.CheckLimits(fields, question.Default, who)
+	_ = question.Decide(fields, state, question.Default)
 	question.ChipRole(h, question.Default)
 	_ = question.AskingRules(question.Default)
 	_ = question.Default.Rows
@@ -154,6 +155,7 @@ func f() {
 	_ = question.Default.LaterLabels[0]
 	_ = question.Default.Columns
 	question.CheckLimits(fields, limits, who)
+	_ = question.Decide(fields, state, state.Limits)
 }
 `
 	fset := token.NewFileSet()
@@ -162,8 +164,8 @@ func f() {
 		t.Fatal(err)
 	}
 	got := defaultLimitsUses(fset, f)
-	if len(got) != 6 {
-		t.Fatalf("want the six uses of the default limits found, and the fixed figures left alone; got %d:\n%s", len(got), strings.Join(got, "\n"))
+	if len(got) != 7 {
+		t.Fatalf("want the seven uses of the default limits found, and the fixed figures left alone; got %d:\n%s", len(got), strings.Join(got, "\n"))
 	}
 	inPkg := `package question
 

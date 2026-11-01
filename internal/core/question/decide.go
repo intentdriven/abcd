@@ -52,7 +52,39 @@ const (
 	// whether a question without abcd's chip is abcd's and, for one, the
 	// product thinker's register rule.
 	StoreMode Store = "mode"
+	// StoreLimits is the question limits a repository's .abcd/config.json
+	// and the person's own ~/.abcd.noindex/config.json set
+	// (itd-2610301914350541). It is read for abcd's question only; a layer
+	// of it that could not be read leaves abcd's question checked at the
+	// defaults, so the rules it decides are applied, at the wrong figures
+	// for a repository that set its own.
+	StoreLimits Store = "limits"
 )
+
+// LimitsRefusal is a question limit the resolver read and refused: a value
+// outside its bounds, not a whole number, a key the question namespace does
+// not claim, or a personal value looser than the limit in force
+// (itd-2610301914350541 decision 7). While it holds, every question of
+// abcd's is refused and none is checked: nothing falls through to the
+// defaults. The fields are the resolver's; Key, Value, Bounds and File are
+// empty where the refusal names no single key (an unclaimed key is named in
+// Reason alone), and Limit and LimitFile are set only for a personal value
+// that loosens.
+type LimitsRefusal struct {
+	Key       string
+	Value     string
+	Bounds    string
+	File      string
+	Limit     int
+	LimitFile string
+	// Reason is the resolver's own refusal, naming the file; the surface
+	// scrubs it before it is shown.
+	Reason string
+}
+
+// limitsRules is the rules whose figures the question limits set: the label
+// words, the description sentences and the rows.
+func limitsRules() []Rule { return []Rule{RuleLabelWords, RuleMeaningSentences, RuleRows} }
 
 // State is what the gate knows about the checkout before it decides: whether
 // the person is away, whom the mode names, whether the badge shows, and the
@@ -79,6 +111,22 @@ type State struct {
 	RootErr error
 	// Verbs is the binary's verb list, for the register rule.
 	Verbs []string
+	// Limits is the question limits in force, as the resolver returned them
+	// (itd-2610301914350541): the defaults with what the repository's file
+	// set and the person's own file tightened. Where a layer was unread, and
+	// where a value was refused, it is the defaults, read then only for the
+	// header grammar and the rows split. The surface passes it to Decide.
+	Limits Limits
+	// LimitsSource is where each figure of Limits came from, one origin per
+	// key in Bounds' order: "bundled", or the file that set it.
+	LimitsSource []string
+	// LimitsRefused is set when a question limit was read and refused.
+	LimitsRefused *LimitsRefusal
+	// LimitsErr is why a layer of the question limits could not be read, and
+	// LimitsFile the file it names; abcd's question is then checked at the
+	// defaults.
+	LimitsErr  error
+	LimitsFile string
 }
 
 // Unread is one store the decision needed and could not read, with why and
@@ -87,6 +135,9 @@ type Unread struct {
 	Store Store
 	Err   error
 	Rules []Rule
+	// File is the file that could not be read, where the store is one: set
+	// for the question limits.
+	File string
 }
 
 // Verdict is the decision: the hook's outcome, every finding, each tab's
@@ -121,6 +172,10 @@ type Verdict struct {
 	// the outcome: a mode set, or the person marked away, between this
 	// verdict and the ask can turn it (decision 5).
 	DependsOnState bool
+	// Refused is the question limit that refused the call, set with the
+	// refuse outcome and no finding: the configuration, not the draft, is
+	// what must be fixed (itd-2610301914350541 decision 7).
+	Refused *LimitsRefusal
 }
 
 // allRules is every rule of the limits check, in the spec's order.
@@ -178,7 +233,15 @@ func checkedTabs(f Fields, l Limits) []Tab {
 // hook's order: the away record first (refuse-away before any limit), then
 // the mode store where the badge shows, then whether the question is abcd's,
 // then the limits. It writes nothing and reads no store: s carries what the
-// surface read.
+// surface read, and l is the limits the call is judged at, s.Limits as the
+// surface resolved them.
+//
+// The question limits' outcome is read only for abcd's question
+// (itd-2610301914350541): another tool's runs unchecked whatever either file
+// says. For abcd's, a refused limit is the refuse outcome with no finding and
+// Refused set, and an unread layer leaves the call checked at l (the
+// defaults, on that path), partial and naming the file, so a configuration
+// that cannot be read never lets a question through unchecked.
 func Decide(f Fields, s State, l Limits) Verdict {
 	v := Verdict{DependsOnState: s.Repo, ModeAfter: s.Mode}
 	for _, t := range checkedTabs(f, l) {
@@ -210,6 +273,11 @@ func Decide(f Fields, s State, l Limits) Verdict {
 		v.Unread = append(v.Unread, Unread{Store: StoreMode, Err: s.ModeErr})
 		v.Abcds = true
 		v.Addressees = addressees(f, l, Unnamed)
+		if s.LimitsRefused != nil {
+			v.Outcome, v.Refused = OutcomeRefuse, s.LimitsRefused
+			return v
+		}
+		v = limitsUnread(v, s)
 		v.Findings = CheckLimits(f, l, Addressee{Person: Unnamed, Verbs: s.Verbs})
 		return v
 	}
@@ -237,6 +305,12 @@ func Decide(f Fields, s State, l Limits) Verdict {
 		v.ModeChanges = s.Badge && v.ModeAfter != s.Mode
 	}
 	v.Addressees = addressees(f, l, s.Mode)
+	if s.LimitsRefused != nil {
+		v.Outcome, v.Refused = OutcomeRefuse, s.LimitsRefused
+		v.ModeAfter, v.ModeChanges = s.Mode, false
+		return v
+	}
+	v = limitsUnread(v, s)
 	v.Findings = CheckLimits(f, l, Addressee{Person: who, Verbs: s.Verbs})
 	refusing := false
 	for _, fd := range v.Findings {
@@ -256,6 +330,18 @@ func Decide(f Fields, s State, l Limits) Verdict {
 		v.Outcome = OutcomeAdmit
 	}
 	return failedOpen(v)
+}
+
+// limitsUnread marks v partial where a layer of the question limits could not
+// be read, naming the file and the rules whose figures it would have set.
+// Those rules are still applied, at the defaults the surface passes.
+func limitsUnread(v Verdict, s State) Verdict {
+	if s.LimitsErr == nil {
+		return v
+	}
+	v.Partial = true
+	v.Unread = append(v.Unread, Unread{Store: StoreLimits, Err: s.LimitsErr, Rules: limitsRules(), File: s.LimitsFile})
+	return v
 }
 
 // failedOpen is the away record's fail-open applied to an admission the hook

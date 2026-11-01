@@ -88,9 +88,12 @@ every store it read was read, whatever the hook would do with it, its report
 naming a refusal while the person is away or a pass unchecked as not abcd's;
 1 on any finding, a tab over the rows limit alone included, though the hook
 shows such a question; and 2 when the draft is not JSON, is over the hook's
-1 MiB bound or has neither input shape, and when a store the decision needed
-could not be read, the result then being partial even with no finding, so a
-check that could not run in full never reads as clean. "The question gate" below says what it reads and reports.
+1 MiB bound or has neither input shape, when a question limit the
+repository or the person set is refused, whatever the draft
+(itd-2610301914350541), and when a store the decision needed could not be
+read, a file of the question limits included, the result then being partial
+even with no finding, so a check that could not run in full never reads as
+clean. "The question gate" below says what it reads and reports.
 
 The check also answers in JSON when asked, and that is the form the plugin page
 uses: a verdict, and with it the entry that fired, its tier, why the command is
@@ -251,11 +254,15 @@ fixed.", the resolver's refusal naming the file, the key, the value and the
 bounds (or the limit in force and the file that set it), and one line stating
 every key's bounds from `question.Bounds`. It names no asking rule, so the
 agent fixes the file rather than redrafting the question, and nothing is marked
-open. A layer the resolver could not read, a `.abcd/config.json` that is a
-symlink or not a regular file, or a `~/.abcd.noindex/config.json` the account
-cannot vouch for, is the fail-open-loud case: abcd's question runs, unchecked,
-exit 1, with one `NOT CHECKED` line naming the file. Another tool's question
-runs unchecked whatever either file says. The
+open. A layer the resolver could not read (a `.abcd/config.json` that is a
+symlink, not a regular file, not one JSON object, holds a key twice or is
+over the resolver's size cap, a `~/.abcd.noindex/config.json` the account
+cannot vouch for, or an unresolved home) leaves abcd's question checked at
+abcd's defaults, loudly: one line, "abcd guard: NOT CHECKED at this
+repository's question limits", naming the file and saying the question is
+checked at the defaults instead, leads a deny's reason or a rows note, and
+otherwise goes to stderr with exit 1, so the question is never admitted
+silently. Another tool's question runs unchecked whatever either file says. The
 addressee the product thinker's register rule reads is each tab's chip role
 for a chipped question, since the mode the gate then sets follows the chip,
 and the mode's for a question without a chip; the binary's verb list
@@ -356,8 +363,16 @@ decision needed and could not read and the rules it therefore could not
 apply; each tab's `addressee` and, where an admitted chip would re-set the
 mode, `addressee_changes`; every finding with whether it `refuses`; `rows`
 per tab (`header_and_frame`, `question_text`, `options`, `total`, the split
-the rows rule computes) with `rows_limit`; and `ready`, the input to ask, left
-out when the hook would refuse: the draft's own value, every key the check
+the rows rule computes) with `rows_limit`; `limits` and `limits_source`, the
+three figures the draft was judged at (`rows`, `label_words`,
+`description_sentences`, the limits the hook holds abcd's question to, the
+defaults where a file of them was unread) and where each came from (`bundled`,
+`.abcd/config.json`, or `~/.abcd.noindex/config.json` where a personal value
+tightened it), `rows_limit` equalling `limits.rows`; `refused`, in their place
+while a limit is refused, naming the key, the value, the bounds and the file,
+and for a personal value that loosens the limit in force and the file that set
+it (itd-2610301914350541); and `ready`, the input to ask, left
+out when the hook would refuse or a limit is refused: the draft's own value, every key the check
 does not read (such as `multiSelect`) kept, for the host form, and the
 composition for the structured form. The verdict holds between a verb and a hook of the
 same version, which is why the version is reported.
