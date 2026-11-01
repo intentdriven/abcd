@@ -161,6 +161,14 @@ pauses the lane for its key rather than falling back to the subscription).
   permission prompts, even when it runs no command; a role without it (the
   planning interviewer) launches under `dontAsk`. Both launched under
   `--bare` from inside a host session.
+- **A hand run in text mode reports no cost.** The stand-in reviews ran
+  `claude -p` with plain text output, which carries no cost; only
+  `--output-format json` gives `total_cost_usd`. Nine review passes went
+  uncounted, so the night's spend per key started as an estimate.
+- **Spend is counted per key.** The person set 200 USD per key for the night,
+  swapping to the second key when the first reaches it, so each session keeps
+  a running total per key from its route receipts and says when it passes a
+  key's limit.
 - **The person ruled on key handling and caps.** One named key per session,
   read from the operating system's secret store; caps per day, week and month
   that pause and wait at the limit; a run with no cap set refuses to start;
