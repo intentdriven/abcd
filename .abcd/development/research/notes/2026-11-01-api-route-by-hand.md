@@ -82,6 +82,12 @@ pauses the lane for its key rather than falling back to the subscription).
   (iss-2611011402496418, dcn-2611011402510346, dcn-2611012123240576). The
   fallback record kept the reason but not the cost, so a refused launch's
   spend was lost.
+- **A planning interview stops when any session moves a branch.** The
+  person's interview, run from one worktree, watches every branch ref in the
+  repository's shared git directory, so a commit to an unrelated records
+  branch in another worktree stopped it before its first question and left
+  its answers empty. Parallel sessions and an interview on one machine need
+  the watch narrowed to the refs the interview depends on.
 - **zsh does not split an unquoted variable.** Three `--route` flags kept in
   one shell variable reached abcd as a single argument (`unknown flag:
   --route implementer`). A driver must pass each flag as its own word.
