@@ -287,14 +287,15 @@ func TestGuardQuestionWritesNothing(t *testing.T) {
 }
 
 // TestGuardQuestionReportsRefuseAwayWhileAway: while the person is away, any
-// draft is one the hook refuses, so the verb says refuse-away, exits 1, and
-// offers no ready input.
+// draft is one the hook refuses, so the verb says refuse-away and offers no
+// ready input; no rule is applied, so there is no finding and it exits 0
+// (decision 8), leaving the routing to the hook field.
 func TestGuardQuestionReportsRefuseAwayWhileAway(t *testing.T) {
 	awayCheckout(t)
 	setAwayHere(t)
 	for _, name := range []string{"clean-product-chip", "clean-unchipped", "four-tabs-21-faults"} {
 		res, _, code := runQuestionVerb(t, name)
-		if res.Hook != question.OutcomeRefuseAway || code != 1 || len(res.Ready) != 0 || !res.DependsOnState {
+		if res.Hook != question.OutcomeRefuseAway || code != 0 || len(res.Findings) != 0 || len(res.Ready) != 0 || !res.DependsOnState {
 			t.Errorf("%s while away: hook %q, exit %d, ready %d bytes, depends_on_state %v", name, res.Hook, code, len(res.Ready), res.DependsOnState)
 		}
 	}
@@ -349,12 +350,13 @@ func TestGuardQuestionPartialNeverExitsZero(t *testing.T) {
 
 // TestGuardQuestionSaysAnUnlabelledDraftIsNotAbcds: a draft without abcd's
 // chip, asked while the mode names nobody, is another tool's question to the
-// hook: the verb says so, checks nothing and exits 1, so a label forgotten
-// is caught before the ask.
+// hook: the verb says so in its hook field and its text, checks nothing, and
+// exits 0, since no finding was made (decision 8); the text names the missing
+// label so it is caught before the ask.
 func TestGuardQuestionSaysAnUnlabelledDraftIsNotAbcds(t *testing.T) {
 	managedCheckout(t)
 	res, _, code := runQuestionVerb(t, "clean-unchipped")
-	if res.Hook != question.OutcomeAdmitUnchecked || res.Abcds || len(res.Findings) != 0 || code != 1 {
+	if res.Hook != question.OutcomeAdmitUnchecked || res.Abcds || len(res.Findings) != 0 || code != 0 {
 		t.Errorf("hook %q, abcds %v, %d findings, exit %d", res.Hook, res.Abcds, len(res.Findings), code)
 	}
 	stdout, _, _ := runGuard("", "guard", "question", corpusPath(t, "clean-unchipped"))

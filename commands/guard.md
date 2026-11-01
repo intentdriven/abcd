@@ -110,13 +110,15 @@ Then read the JSON (`_type` `abcd/question-check/v1`):
 - `addressee`, `addressee_changes` — whom each tab is for, and where an
   admitted chip would re-set the mode.
 
-Exit codes: `0` only when the hook would admit the draft as abcd's question
-with no finding and every store was read; `1` on any finding, a tab over the
-rows limit alone included, and on a draft the hook would refuse while the
-person is away or let through unchecked as not abcd's; `2` when the draft is
-not JSON, is over 1 MiB or has neither shape, and when a store could not be
-read, even with no finding. Fix every finding and check again until it exits
-`0`, then ask the `ready` input.
+Exit codes: `0` when the draft has no finding and every store was read,
+whatever the hook would do with it; `1` on any finding, a tab over the rows
+limit alone included; `2` when the draft is not JSON, is over 1 MiB or has
+neither shape, and when a store could not be read, even with no finding. Fix
+every finding and check again until it exits `0`, then read `hook`: ask the
+`ready` input where it is given, and where the person is away (`refuse-away`,
+no `ready`) route the question with `abcd mode queue` or `abcd decide`. A draft
+the hook would let through unchecked as not abcd's (`admit-unchecked`) also
+exits `0`; label it with abcd's header if it is abcd's question.
 
 ## `hook` — the host adapter
 

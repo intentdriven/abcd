@@ -130,10 +130,11 @@ func newGuardQuestionCommand(asJSON *bool) *cobra.Command {
 			"out when the hook would refuse. The verdict is evidence about a hook of the\n" +
 			"same version; a mode set, or the person marked away, before the ask can\n" +
 			"change it.\n\n" +
-			"Exit 0 when the hook would admit the draft as abcd's question with no\n" +
-			"finding at all and every store was read. Exit 1 on any finding, a tab\n" +
-			"over the rows limit alone included, and on a draft the hook would refuse\n" +
-			"while the person is away or would let through unchecked as not abcd's.\n" +
+			"Exit 0 when the draft has no finding at all and every store was read,\n" +
+			"whatever the hook would do with it: the hook field says whether that is\n" +
+			"an admission, a refusal while the person is away, or a pass unchecked as\n" +
+			"not abcd's. Exit 1 on any finding, a tab over the rows limit alone\n" +
+			"included.\n" +
 			"Exit 2 when the draft is not JSON, is over the bound or has neither shape,\n" +
 			"and when a store the decision needed could not be read: the result is then\n" +
 			"partial, names each store and the rules it could not apply, and never reads\n" +
@@ -298,9 +299,11 @@ func findingJSON(f question.Finding, refuses bool) questionFindingJSON {
 }
 
 // questionCheckExit maps the result onto the verb's exit (decision 8): 2 for
-// a partial result, whatever it found; 1 for any finding, or a draft the hook
-// would refuse while away or let through as not abcd's; 0 only for a draft
-// the hook admits as abcd's with no finding at all.
+// a partial result, whatever it found; 1 for any finding; 0 for a result with
+// no finding at all and every store read. The exit answers whether the draft
+// has anything to fix, not what the hook does with it: a draft refused while
+// the person is away, or let through unchecked as not abcd's, carries no
+// finding, so it exits 0 and the hook field names the outcome.
 func questionCheckExit(res questionCheckResult) error {
 	if res.Partial {
 		stores := make([]string, len(res.Unread))
@@ -310,7 +313,7 @@ func questionCheckExit(res questionCheckResult) error {
 		return &exitError{Code: 2, Msg: "guard question: the check is partial: " + strings.Join(stores, " and ") +
 			" could not be read, so this draft is not known to be ready"}
 	}
-	if len(res.Findings) > 0 || res.Hook == question.OutcomeRefuseAway || res.Hook == question.OutcomeAdmitUnchecked {
+	if len(res.Findings) > 0 {
 		return &exitError{Code: 1}
 	}
 	return nil

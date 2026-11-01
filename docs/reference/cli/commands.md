@@ -2198,10 +2198,11 @@ out when the hook would refuse. The verdict is evidence about a hook of the
 same version; a mode set, or the person marked away, before the ask can
 change it.
 
-Exit 0 when the hook would admit the draft as abcd's question with no
-finding at all and every store was read. Exit 1 on any finding, a tab
-over the rows limit alone included, and on a draft the hook would refuse
-while the person is away or would let through unchecked as not abcd's.
+Exit 0 when the draft has no finding at all and every store was read,
+whatever the hook would do with it: the hook field says whether that is
+an admission, a refusal while the person is away, or a pass unchecked as
+not abcd's. Exit 1 on any finding, a tab over the rows limit alone
+included.
 Exit 2 when the draft is not JSON, is over the bound or has neither shape,
 and when a store the decision needed could not be read: the result is then
 partial, names each store and the rules it could not apply, and never reads

@@ -83,15 +83,14 @@ it past the guard. On the check it exits 2, like the rest.
 The question check answers for a draft question rather than a command line
 (itd-2610230756259215), and its exit rule is stricter than the check's,
 because a warned command is meant to run while a draft is asked about only to
-learn whether it is ready. It exits 0 only when the hook would admit the draft
-as abcd's question with no finding at all and every store it read was read; 1
-on any finding, a tab over the rows limit alone included, though the hook
-shows such a question, and on a draft the hook would refuse while the person
-is away or let through unchecked as not abcd's; and 2 when the draft is not
-JSON, is over the hook's 1 MiB bound or has neither input shape, and when a
-store the decision needed could not be read, the result then being partial
-even with no finding, so a check that could not run in full never reads as
-clean. "The question gate" below says what it reads and reports.
+learn whether it is ready. It exits 0 when the draft has no finding at all and
+every store it read was read, whatever the hook would do with it, its report
+naming a refusal while the person is away or a pass unchecked as not abcd's;
+1 on any finding, a tab over the rows limit alone included, though the hook
+shows such a question; and 2 when the draft is not JSON, is over the hook's
+1 MiB bound or has neither input shape, and when a store the decision needed
+could not be read, the result then being partial even with no finding, so a
+check that could not run in full never reads as clean. "The question gate" below says what it reads and reports.
 
 The check also answers in JSON when asked, and that is the form the plugin page
 uses: a verdict, and with it the entry that fired, its tier, why the command is
