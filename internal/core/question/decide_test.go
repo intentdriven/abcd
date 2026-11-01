@@ -60,15 +60,19 @@ func TestRowsSplitIsTheChecks(t *testing.T) {
 }
 
 // TestDecideFollowsTheHooksOrder: away refuses before any rule; an unread mode
-// store fails open; a question without a chip while the mode names nobody is
-// not abcd's; otherwise the limits decide, the rows limit alone admitting
-// with a note.
+// store fails open for a question without a chip and leaves a chipped one
+// checked; a question without a chip while the mode names nobody is not
+// abcd's; otherwise the limits decide, the rows limit alone admitting with a
+// note.
 func TestDecideFollowsTheHooksOrder(t *testing.T) {
 	broken := wellBuiltTab()
 	broken.Options[0].Label = "Role and number (Recommended)"
 	unchipped := wellBuiltTab()
 	unchipped.Header = "Labels"
+	unchippedBroken := broken
+	unchippedBroken.Header = "Labels"
 	errStore := errors.New("unreadable")
+	refusedRows := &LimitsRefusal{Key: RowsKey, Value: "100", Bounds: "24 to 60", File: ".abcd/config.json", Reason: "refused"}
 	for _, tc := range []struct {
 		name     string
 		tab      Tab
@@ -84,13 +88,24 @@ func TestDecideFollowsTheHooksOrder(t *testing.T) {
 		{"rows alone", rowsTab(), State{}, OutcomeAdmitWithRowsNote, false, true},
 		{"unchipped, mode names nobody", unchipped, State{Repo: true, Badge: true}, OutcomeAdmitUnchecked, false, false},
 		{"unchipped, mode names the product thinker", unchipped, State{Repo: true, Badge: true, Mode: ProductThinker}, OutcomeRefuse, false, true},
-		{"mode unread, chipped", wellBuiltTab(), State{Repo: true, Badge: true, ModeErr: errStore}, OutcomeUnchecked, true, false},
+		{"mode unread, chipped, clean", wellBuiltTab(), State{Repo: true, Badge: true, ModeErr: errStore}, OutcomeUnchecked, true, false},
+		{"mode unread, chipped, broken", broken, State{Repo: true, Badge: true, ModeErr: errStore}, OutcomeRefuse, true, true},
+		{"mode unread, chipped, rows alone", rowsTab(), State{Repo: true, Badge: true, ModeErr: errStore}, OutcomeAdmitWithRowsNote, true, true},
+		{"mode unread, limits unread, chipped, broken", broken, State{Repo: true, Badge: true, ModeErr: errStore, LimitsErr: errStore}, OutcomeRefuse, true, true},
 		{"mode unread, unchipped", unchipped, State{Repo: true, Badge: true, ModeErr: errStore}, OutcomeUnchecked, true, false},
+		{"mode unread, unchipped, broken", unchippedBroken, State{Repo: true, Badge: true, ModeErr: errStore}, OutcomeUnchecked, true, false},
 		{"root unread, unchipped", unchipped, State{RootErr: errStore}, OutcomeUnchecked, true, false},
 		{"root unread, chipped", wellBuiltTab(), State{RootErr: errStore}, OutcomeAdmit, false, false},
 		{"away unread, clean", wellBuiltTab(), State{Repo: true, AwayErr: errStore}, OutcomeUnchecked, true, false},
 		{"away unread, broken", broken, State{Repo: true, AwayErr: errStore}, OutcomeRefuse, true, true},
 		{"away unread, rows alone", rowsTab(), State{Repo: true, AwayErr: errStore}, OutcomeAdmitWithRowsNote, true, true},
+		{"limit refused, clean chipped", wellBuiltTab(), State{Repo: true, LimitsRefused: refusedRows}, OutcomeRefuse, false, false},
+		{"limit refused, unchipped", unchipped, State{Repo: true, Badge: true, LimitsRefused: refusedRows}, OutcomeAdmitUnchecked, false, false},
+		{"limit refused, mode unread, chipped", wellBuiltTab(), State{Repo: true, Badge: true, ModeErr: errStore, LimitsRefused: refusedRows}, OutcomeRefuse, true, false},
+		{"limits unread, clean", wellBuiltTab(), State{Repo: true, LimitsErr: errStore}, OutcomeUnchecked, true, false},
+		{"limits unread, broken", broken, State{Repo: true, LimitsErr: errStore}, OutcomeRefuse, true, true},
+		{"limits unread, rows alone", rowsTab(), State{Repo: true, LimitsErr: errStore}, OutcomeAdmitWithRowsNote, true, true},
+		{"limits unread, unchipped", unchipped, State{Repo: true, Badge: true, LimitsErr: errStore}, OutcomeAdmitUnchecked, false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			v := Decide(one(tc.tab), tc.s, rowsFloor)
@@ -132,6 +147,57 @@ func TestDecideNamesTheUnreadStoreAndItsRules(t *testing.T) {
 	v = Decide(one(wellBuiltTab()), State{Repo: true, Badge: true, ModeErr: errStore}, Default)
 	if len(v.Unread) != 1 || v.Unread[0].Store != StoreMode || len(v.Unread[0].Rules) != 0 {
 		t.Errorf("mode unread, chipped = %+v, want the mode store with no rule", v.Unread)
+	}
+}
+
+// TestDecideChecksAChippedQuestionWithTheModeUnread: a chipped question
+// needs no mode for its rules, since its chip names whom it is for, so with
+// the mode store unread it is checked at the limits passed: a refusing
+// finding refuses it, a tab over the rows limit alone is noted, and a clean
+// one is admitted on the loud status. None of them sets a mode, since the
+// mode could not be read.
+func TestDecideChecksAChippedQuestionWithTheModeUnread(t *testing.T) {
+	s := State{Repo: true, Badge: true, ModeErr: errors.New("unreadable")}
+	broken := wellBuiltTab()
+	broken.Options[0].Label = "Role and number (Recommended)"
+	v := Decide(one(broken), s, Default)
+	if v.Outcome != OutcomeRefuse || !v.Abcds || !slices.Contains(rulesOf(v.Findings), RuleNeverRecommended) {
+		t.Errorf("broken: outcome %q, abcds %v, findings %v; want refuse on never-recommended", v.Outcome, v.Abcds, rulesOf(v.Findings))
+	}
+	v = Decide(one(rowsTab()), s, rowsFloor)
+	if v.Outcome != OutcomeAdmitWithRowsNote || len(v.Findings) != 1 || v.Findings[0].Rule != RuleRows {
+		t.Errorf("rows alone at the floor: outcome %q, findings %v; want the rows note", v.Outcome, rulesOf(v.Findings))
+	}
+	if v = Decide(one(rowsTab()), s, Default); v.Outcome != OutcomeUnchecked || len(v.Findings) != 0 {
+		t.Errorf("the 25-row tab at the default rows: outcome %q, findings %v; want unchecked with none", v.Outcome, rulesOf(v.Findings))
+	}
+	for _, tab := range []Tab{broken, rowsTab(), wellBuiltTab()} {
+		v := Decide(one(tab), s, rowsFloor)
+		if v.ModeChanges || v.ModeAfter != Unnamed || !v.Partial {
+			t.Errorf("%q: mode after %v (changes %v), partial %v; want no mode set and a partial verdict", tab.Header, v.ModeAfter, v.ModeChanges, v.Partial)
+		}
+	}
+}
+
+// TestDecideCarriesTheLimitsOutcome (spc-2610301950037469, step 2): a refused
+// limit refuses abcd's call with no finding and the refusal on the verdict,
+// sets no mode, and leaves another tool's call alone; an unread layer of the
+// limits names its file and the three rules the keys decide, and the call is
+// still checked at the limits passed.
+func TestDecideCarriesTheLimitsOutcome(t *testing.T) {
+	r := &LimitsRefusal{Key: RowsKey, Value: "100", Bounds: "24 to 60", File: ".abcd/config.json", Reason: "refused"}
+	v := Decide(one(wellBuiltTab()), State{Repo: true, Badge: true, Mode: Facilitator, LimitsRefused: r}, Default)
+	if v.Outcome != OutcomeRefuse || v.Refused != r || len(v.Findings) != 0 || v.ModeChanges || v.ModeAfter != Facilitator {
+		t.Errorf("refused: outcome %q, refused %+v, findings %v, mode after %v (changes %v)", v.Outcome, v.Refused, rulesOf(v.Findings), v.ModeAfter, v.ModeChanges)
+	}
+	broken := wellBuiltTab()
+	broken.Options[0].Label = "One two three four five six"
+	v = Decide(one(broken), State{Repo: true, LimitsErr: errors.New("unparseable"), LimitsFile: ".abcd/config.json"}, Default)
+	if len(v.Unread) != 1 || v.Unread[0].Store != StoreLimits || v.Unread[0].File != ".abcd/config.json" || !slices.Equal(v.Unread[0].Rules, limitsRules()) {
+		t.Errorf("unread = %+v, want the limits store naming the file and the three rules", v.Unread)
+	}
+	if !slices.Contains(rulesOf(v.Findings), RuleLabelWords) || v.Outcome != OutcomeRefuse {
+		t.Errorf("an unread layer must leave the call checked at the limits passed: outcome %q, findings %v", v.Outcome, rulesOf(v.Findings))
 	}
 }
 

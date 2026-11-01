@@ -12,6 +12,17 @@ over the brief's earlier `1.0.0`-at-close expectation). The four M6 synthesis
 agents below entered at `0.1.0`, wired to their `abcd disembark` verbs and
 unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
+## 2026-11-01 (itd-2610301346085246 — the filled-in inputs carry a schema version)
+
+### intent-auditor 0.6.0
+
+MINOR: the Role 1 verdict and the Role 2 findings each carry a top-level
+`"schema_version": 1`, in every published block and in the shape each
+request states (spc-2610301431075964, step 1). The ingest reads an absent
+`schema_version` as 1, so a verdict or findings payload composed without it
+still ingests, and refuses any other version. No other field, rule or class
+changed. Unmeasured, in the `0.x` band.
+
 ## 2026-10-31 (itd-2610301914350541 — the default rows limit rises to 32)
 
 ### question-drafter 0.1.5

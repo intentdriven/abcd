@@ -237,6 +237,7 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-2610300908239458](2610300908239458-ideate-verdicts-are-private-unless-the.md) | Ideate verdicts are private unless the person says public (supersedes adr-2610142116480836) | accepted | 2026-10-30 |
 | [adr-2610301638558260](2610301638558260-a-published-refusal-code-is-never.md) | A published refusal code is never renamed or reused | proposed | 2026-10-30 |
 | [adr-2610310235000654](2610310235000654-an-unattended-plan-stands-in-for-the.md) | An unattended plan stands in for the sign-off only on a recorded, reviewed, unchanged draft | proposed | 2026-10-31 |
+| [adr-2611011332427073](2611011332427073-abcd-resolves-every-layered-setting-by.md) | abcd resolves every layered setting by one precedence rule | proposed | 2026-11-01 |
 | [adr-2611011813190527](2611011813190527-a-repository-declares-a-sequence-s-shape.md) | A repository declares a sequence's shape but never a widening flag | proposed | 2026-11-01 |
 | [adr-2611011813195749](2611011813195749-abcd-never-runs-a-foreign-executable.md) | abcd never runs a foreign executable under its own name, and no code that writes records is loaded at run time | proposed | 2026-11-01 |
 <!-- /index -->

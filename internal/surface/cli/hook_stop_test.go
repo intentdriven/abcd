@@ -86,11 +86,37 @@ func runStop(t *testing.T, payload string) (stopOut, string, string) {
 
 var behindItem = autonomy.OwedItem{Kind: autonomy.OwedBehind, Capped: true, Branch: "feat/behind", PR: 12, Head: "aaaa"}
 
+// stopTestNow is the minute the wake tests run at: four past noon UTC on an
+// ordinary day, so a `*/10` or `*/30` task's next match and lateness read
+// the same whatever the machine's zone and hour (iss-2610250107576049: read
+// from the real clock in the local zone, these tests failed for the hour a
+// daylight-saving fall-back repeats).
+var stopTestNow = time.Date(2026, 6, 15, 12, 4, 0, 0, time.UTC)
+
+// pinStopClock pins the stop hook's clock to now and the zone it reads the
+// session's task schedules in to loc, for one test.
+func pinStopClock(t *testing.T, now time.Time, loc *time.Location) {
+	t.Helper()
+	prev := stopClock
+	stopClock = func() (time.Time, *time.Location) { return now, loc }
+	t.Cleanup(func() { stopClock = prev })
+}
+
+// setAwayAt is `abcd mode autonomous [--hold-pushes]` from root, open-ended,
+// set at now rather than on the real clock.
+func setAwayAt(t *testing.T, root string, now time.Time, holdPushes bool) {
+	t.Helper()
+	if _, err := autonomy.SetAway(root, "", holdPushes, autonomy.Options{Home: os.Getenv("HOME"), Now: func() time.Time { return now }}); err != nil {
+		t.Fatalf("mode autonomous at %s: %v", now.Format(time.RFC3339), err)
+	}
+}
+
 // TestHookStopOutput: `{"decision":"block","reason":…}` only on a block, a
 // systemMessage while present with work owed; a malformed payload, an
 // unreadable record or a held lock allows with a stderr line.
 func TestHookStopOutput(t *testing.T) {
 	root := awayCheckout(t)
+	pinStopClock(t, stopTestNow, time.UTC)
 	owed := autonomy.Owed{Items: []autonomy.OwedItem{behindItem}}
 	asked := fakeOwed(t, &owed)
 
@@ -99,7 +125,7 @@ func TestHookStopOutput(t *testing.T) {
 	if out.Decision != "" || !strings.Contains(out.SystemMessage, "feat/behind") {
 		t.Errorf("present with work owed: %s", so)
 	}
-	if len(*asked) != 1 || (*asked)[0].Record.Holds(time.Now()) {
+	if len(*asked) != 1 || (*asked)[0].Record.Holds(stopTestNow) {
 		t.Errorf("present: the reader was asked %+v, want once, not away", *asked)
 	}
 	// Present, nothing owed: silent.
@@ -109,13 +135,13 @@ func TestHookStopOutput(t *testing.T) {
 	}
 
 	// Away, work owed: blocked.
-	setAway(t)
+	setAwayAt(t, root, stopTestNow, false)
 	owed = autonomy.Owed{Items: []autonomy.OwedItem{behindItem}}
 	out, so, _ = runStop(t, stopHookPayload(t, "s1", root, false, "Done.", "*/10 * * * *"))
 	if out.Decision != "block" || !strings.Contains(out.Reason, "feat/behind") || out.SystemMessage != "" {
 		t.Errorf("away with work owed, first stop: %s", so)
 	}
-	if q := (*asked)[len(*asked)-1]; q.Root != root || !q.Record.Holds(time.Now()) || q.Home == "" {
+	if q := (*asked)[len(*asked)-1]; q.Root != root || !q.Record.Holds(stopTestNow) || q.Home == "" || !q.Now().Equal(stopTestNow) {
 		t.Errorf("away: the reader was asked %+v", q)
 	}
 	// Away, nothing owed, a qualifying wake: allowed, silent.
@@ -198,7 +224,8 @@ func TestHookStopWakeCountAcrossRuns(t *testing.T) {
 	made := filepath.Join(t.TempDir(), "made")
 	gitAt(t, root, "worktree", "add", "-q", "-b", "feat/made", made)
 	made = realPath(t, made)
-	setAway(t)
+	pinStopClock(t, stopTestNow, time.UTC)
+	setAwayAt(t, root, stopTestNow, false)
 	owed := autonomy.Owed{Items: []autonomy.OwedItem{behindItem}}
 	asked := fakeOwed(t, &owed)
 	var blocks []bool
@@ -229,7 +256,8 @@ func TestHookStopWakeCountAcrossRuns(t *testing.T) {
 // line.
 func TestHookStopRecordsHandBack(t *testing.T) {
 	root := awayCheckout(t)
-	setAway(t, "--hold-pushes")
+	pinStopClock(t, stopTestNow, time.UTC)
+	setAwayAt(t, root, stopTestNow, true)
 	item := autonomy.OwedItem{Kind: autonomy.OwedUnpushed, Capped: true, Branch: "feat/ready", Head: strings.Repeat("c", 40)}
 	owed := autonomy.Owed{HandedBack: []autonomy.OwedItem{item}}
 	fakeOwed(t, &owed)
@@ -244,6 +272,77 @@ func TestHookStopRecordsHandBack(t *testing.T) {
 	}
 	if !strings.Contains(rec.PersonLine(), "1 item handed back") {
 		t.Errorf("the person's line: %q", rec.PersonLine())
+	}
+}
+
+// TestHookStopWakeAcrossDaylightSaving: the hook reads a session's task
+// schedules in the zone it is given, at the minute it is given, across both
+// daylight-saving changes (Europe/Berlin; nothing owed, so the wake must fire,
+// its lateness included, within the hour).
+//
+// The repeated hour of a fall-back is matched at its first occurrence only,
+// and that is decided here: a wake counts only on a minute every reading of
+// the schedule fires on. A host stepping its tasks' wall-clock minutes
+// (02:59 CEST, then 03:00 CET) never reaches the second occurrence; one
+// stepping absolute minutes reaches both. Counting the second occurrence would
+// let a session sleep on a wake the first kind of host never sends, past the
+// deadline that guards its reservations' renewal; not counting it costs at
+// most that hour's stops blocked, the session kept working, which the host's
+// continuation cap bounds and the away record shows.
+func TestHookStopWakeAcrossDaylightSaving(t *testing.T) {
+	berlin, err := time.LoadLocation("Europe/Berlin")
+	if err != nil {
+		t.Skipf("no zoneinfo for Europe/Berlin: %v", err)
+	}
+	// 2026-10-25 01:00 UTC: 03:00 CEST becomes 02:00 CET, so 02:00-02:59
+	// happens twice. 2027-03-28 01:00 UTC: 02:00 CET becomes 03:00 CEST, so
+	// 02:00-02:59 never happens.
+	firstTwoOhFive := time.Date(2026, 10, 25, 0, 5, 0, 0, time.UTC)  // 02:05 CEST
+	secondTwoOhFive := time.Date(2026, 10, 25, 1, 5, 0, 0, time.UTC) // 02:05 CET
+	gapEve := time.Date(2027, 3, 28, 0, 50, 0, 0, time.UTC)          // 01:50 CET
+	dayBefore := time.Date(2027, 3, 27, 0, 50, 0, 0, time.UTC)       // 01:50 CET
+	for _, tc := range []struct {
+		name     string
+		now      time.Time
+		loc      *time.Location
+		cron     string
+		blocked  bool
+		deadline string // the deadline a block names, in loc
+	}{
+		// 02:30 CEST, at most 30 minutes late: before 03:05 CET.
+		{"fall-back, first occurrence", firstTwoOhFive, berlin, "*/30 * * * *", false, ""},
+		// 02:30 CET repeats a minute and is not counted; 03:00 CET, up to 15
+		// minutes late, is past the deadline an hour on.
+		{"fall-back, second occurrence", secondTwoOhFive, berlin, "*/30 * * * *", true, "03:05 CET"},
+		// The same instant read in UTC: 01:30, by 01:45.
+		{"fall-back instant in UTC", secondTwoOhFive, time.UTC, "*/30 * * * *", false, ""},
+		// 02:15 never happens on the spring-forward day.
+		{"spring-forward, a minute in the gap", gapEve, berlin, "15 2 * * *", true, "03:50 CEST"},
+		// A day earlier 02:15 CET happens, by 02:45.
+		{"spring-forward eve, the same minute", dayBefore, berlin, "15 2 * * *", false, ""},
+		// Across the gap a wildcard hour wakes at 03:00 CEST.
+		{"spring-forward, a wildcard hour", gapEve, berlin, "*/10 * * * *", false, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := awayCheckout(t)
+			pinStopClock(t, tc.now, tc.loc)
+			setAwayAt(t, root, tc.now.Add(-time.Hour), false)
+			fakeOwed(t, &autonomy.Owed{})
+			out, so, se := runStop(t, stopHookPayload(t, "dst-1", root, false, "Done.", tc.cron))
+			if blocked := out.Decision == "block"; blocked != tc.blocked {
+				t.Fatalf("%s at %s: blocked %v, want %v\nstdout %q\nstderr %q",
+					tc.cron, tc.now.In(tc.loc).Format("2006-01-02 15:04 MST"), blocked, tc.blocked, so, se)
+			}
+			if tc.blocked && !strings.Contains(out.Reason, "before "+tc.deadline) {
+				t.Errorf("the block names no deadline at %s in the zone it was given: %s", tc.deadline, out.Reason)
+			}
+			if !tc.blocked {
+				st, err := autonomy.LoadSession(root, "dst-1")
+				if err != nil || st.State != autonomy.StateWaiting || !st.NextLook.After(tc.now) || st.NextLook.After(tc.now.Add(time.Hour)) {
+					t.Errorf("the session's state after a wake: %+v (%v), want waiting on a look within the hour", st, err)
+				}
+			}
+		})
 	}
 }
 

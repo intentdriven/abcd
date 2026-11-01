@@ -304,45 +304,11 @@ type reviewDropReport struct {
 // whole-payload refusal, mirroring intent's out-of-enum criterion.
 func validateReview(abs string, raw []byte) (ReviewVerdict, []ReviewFinding, reviewDropReport, error) {
 	var rep reviewDropReport
-	if len(raw) > maxSynthesisBytes {
-		return "", nil, rep, fmt.Errorf("review payload exceeds the %d-byte cap", maxSynthesisBytes)
-	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields() // reject smuggled extra fields
-	var in ReviewArtefact
-	if err := dec.Decode(&in); err != nil {
-		// The decoder names an undeclared field by the payload's own key:
-		// redacted, never raw (iss-2609290218032954).
-		return "", nil, rep, fmt.Errorf("malformed review JSON: %s", scanner.RedactRefusal(abs, err.Error()))
-	}
-	// Three-branch schema gate (mirrors IngestLessons).
-	if in.SchemaVersion == 0 {
-		return "", nil, rep, errors.New("review payload is missing schema_version")
-	}
-	if in.SchemaVersion > ReviewSchemaVersion {
-		return "", nil, rep, update.TooNew("review",
-			in.SchemaVersion, ReviewSchemaVersion)
-	}
-	if in.SchemaVersion != ReviewSchemaVersion {
-		return "", nil, rep, fmt.Errorf("unsupported review schema_version %d", in.SchemaVersion)
-	}
-	// Mode gate: a delegated payload must not claim deterministic. An absent mode is
-	// allowed (the core stamps delegated on write regardless).
-	if in.Mode != "" && in.Mode != ModeDelegated {
-		return "", nil, rep, fmt.Errorf("a delegated payload must not claim mode (%s)", termsafe.DescribeRefused(string(in.Mode)))
-	}
-	// prompt_version gate: required and semver-shaped in delegated mode.
-	if !promptVersionRe.MatchString(in.PromptVersion) {
-		return "", nil, rep, fmt.Errorf("prompt_version (%s) is not semver-shaped", termsafe.DescribeRefused(in.PromptVersion))
+	in, err := decodeReview(abs, raw)
+	if err != nil {
+		return "", nil, rep, err
 	}
 	rep.promptVersion = in.PromptVersion
-	// Whole-payload verdict membership gate.
-	if !in.Verdict.Valid() {
-		return "", nil, rep, fmt.Errorf("out-of-enum verdict (%s)", termsafe.DescribeRefused(string(in.Verdict)))
-	}
-	if len(in.Findings) > maxReviewFindings {
-		return "", nil, rep, fmt.Errorf("too many findings (%d > %d)", len(in.Findings), maxReviewFindings)
-	}
 
 	// Build the packed path set once — the live set a review finding must cite.
 	root, err := os.OpenRoot(abs)
@@ -451,4 +417,50 @@ func renderReviewMD(a ReviewArtefact) string {
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+// decodeReview is the structural half of the delegated review: the size cap,
+// the strict decode, the schema, mode and prompt-version gates, the verdict's
+// membership and the finding cap. A fault here is fatal; the per-finding
+// citation checks after it drop a finding. abs only redacts a refusal.
+func decodeReview(abs string, raw []byte) (ReviewArtefact, error) {
+	if len(raw) > maxSynthesisBytes {
+		return ReviewArtefact{}, fmt.Errorf("review payload exceeds the %d-byte cap", maxSynthesisBytes)
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields() // reject smuggled extra fields
+	var in ReviewArtefact
+	if err := dec.Decode(&in); err != nil {
+		// The decoder names an undeclared field by the payload's own key:
+		// redacted, never raw (iss-2609290218032954).
+		return ReviewArtefact{}, fmt.Errorf("malformed review JSON: %s", scanner.RedactRefusal(abs, err.Error()))
+	}
+	// Three-branch schema gate (mirrors IngestLessons).
+	if in.SchemaVersion == 0 {
+		return ReviewArtefact{}, errors.New("review payload is missing schema_version")
+	}
+	if in.SchemaVersion > ReviewSchemaVersion {
+		return ReviewArtefact{}, update.TooNew("review",
+			in.SchemaVersion, ReviewSchemaVersion)
+	}
+	if in.SchemaVersion != ReviewSchemaVersion {
+		return ReviewArtefact{}, fmt.Errorf("unsupported review schema_version %d", in.SchemaVersion)
+	}
+	// Mode gate: a delegated payload must not claim deterministic. An absent mode is
+	// allowed (the core stamps delegated on write regardless).
+	if in.Mode != "" && in.Mode != ModeDelegated {
+		return ReviewArtefact{}, fmt.Errorf("a delegated payload must not claim mode (%s)", termsafe.DescribeRefused(string(in.Mode)))
+	}
+	// prompt_version gate: required and semver-shaped in delegated mode.
+	if !promptVersionRe.MatchString(in.PromptVersion) {
+		return ReviewArtefact{}, fmt.Errorf("prompt_version (%s) is not semver-shaped", termsafe.DescribeRefused(in.PromptVersion))
+	}
+	// Whole-payload verdict membership gate.
+	if !in.Verdict.Valid() {
+		return ReviewArtefact{}, fmt.Errorf("out-of-enum verdict (%s)", termsafe.DescribeRefused(string(in.Verdict)))
+	}
+	if len(in.Findings) > maxReviewFindings {
+		return ReviewArtefact{}, fmt.Errorf("too many findings (%d > %d)", len(in.Findings), maxReviewFindings)
+	}
+	return in, nil
 }

@@ -236,38 +236,9 @@ func deterministicPrinciples(abs string) ([]Principle, []PrincipleDrop, error) {
 // fatal (nothing written); a per-entry fault drops that entry. It returns the
 // survivors, the recorded prompt_version, and the drops.
 func validateDelegatedPrinciples(abs string, raw []byte) ([]Principle, string, []PrincipleDrop, error) {
-	if len(raw) > maxSynthesisBytes {
-		return nil, "", nil, fmt.Errorf("principles payload exceeds the %d-byte cap", maxSynthesisBytes)
-	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	var pf PrinciplesFile
-	if err := dec.Decode(&pf); err != nil {
-		// The decoder names an undeclared field by the payload's own key:
-		// redacted, never raw (iss-2609290218032954).
-		return nil, "", nil, fmt.Errorf("malformed principles JSON: %s", scanner.RedactRefusal(abs, err.Error()))
-	}
-	if err := synthSchemaGate("principles", pf.SchemaVersion, PrinciplesSchemaVersion); err != nil {
+	pf, raws, err := decodePrinciples(abs, raw)
+	if err != nil {
 		return nil, "", nil, err
-	}
-	if err := synthModeGate(pf.Mode); err != nil {
-		return nil, "", nil, err
-	}
-	if !promptVersionRe.MatchString(pf.PromptVersion) {
-		return nil, "", nil, errors.New("delegated principles payload is missing a semver prompt_version")
-	}
-	if len(pf.Principles) > maxPrinciples {
-		return nil, "", nil, fmt.Errorf("too many principles (%d > %d)", len(pf.Principles), maxPrinciples)
-	}
-	// The same entries read raw, so an absent key and a null one are told apart:
-	// the typed decode reads both as nil, and they are different claims — a key
-	// considered and declined is null, an absent key is a claim not carried, and
-	// schema version 2 requires every entry to carry all four.
-	var raws struct {
-		Principles []map[string]json.RawMessage `json:"principles"`
-	}
-	if err := json.Unmarshal(raw, &raws); err != nil || len(raws.Principles) != len(pf.Principles) {
-		return nil, "", nil, errors.New("malformed principles JSON: the entries cannot be read as objects")
 	}
 
 	valid, err := buildPrincipleEvidenceSet(abs)
@@ -681,4 +652,50 @@ func bulletText(b string) string {
 func isMarkdownPath(p string) bool {
 	low := strings.ToLower(p)
 	return strings.HasSuffix(low, ".md") || strings.HasSuffix(low, ".markdown")
+}
+
+// principleEntries is the principles payload's entries read raw, so an absent
+// key and a null one are told apart.
+type principleEntries struct {
+	Principles []map[string]json.RawMessage `json:"principles"`
+}
+
+// decodePrinciples is the structural half of the delegated principles
+// payload: the size cap, the strict decode, the schema, mode and
+// prompt-version gates, the principle cap, and the entries read raw. A fault
+// here is fatal; the per-entry citation checks after it drop an entry. abs
+// only redacts a refusal.
+func decodePrinciples(abs string, raw []byte) (PrinciplesFile, principleEntries, error) {
+	var raws principleEntries
+	if len(raw) > maxSynthesisBytes {
+		return PrinciplesFile{}, raws, fmt.Errorf("principles payload exceeds the %d-byte cap", maxSynthesisBytes)
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	var pf PrinciplesFile
+	if err := dec.Decode(&pf); err != nil {
+		// The decoder names an undeclared field by the payload's own key:
+		// redacted, never raw (iss-2609290218032954).
+		return PrinciplesFile{}, raws, fmt.Errorf("malformed principles JSON: %s", scanner.RedactRefusal(abs, err.Error()))
+	}
+	if err := synthSchemaGate("principles", pf.SchemaVersion, PrinciplesSchemaVersion); err != nil {
+		return PrinciplesFile{}, raws, err
+	}
+	if err := synthModeGate(pf.Mode); err != nil {
+		return PrinciplesFile{}, raws, err
+	}
+	if !promptVersionRe.MatchString(pf.PromptVersion) {
+		return PrinciplesFile{}, raws, errors.New("delegated principles payload is missing a semver prompt_version")
+	}
+	if len(pf.Principles) > maxPrinciples {
+		return PrinciplesFile{}, raws, fmt.Errorf("too many principles (%d > %d)", len(pf.Principles), maxPrinciples)
+	}
+	// The same entries read raw, so an absent key and a null one are told apart:
+	// the typed decode reads both as nil, and they are different claims — a key
+	// considered and declined is null, an absent key is a claim not carried, and
+	// schema version 2 requires every entry to carry all four.
+	if err := json.Unmarshal(raw, &raws); err != nil || len(raws.Principles) != len(pf.Principles) {
+		return PrinciplesFile{}, raws, errors.New("malformed principles JSON: the entries cannot be read as objects")
+	}
+	return pf, raws, nil
 }
