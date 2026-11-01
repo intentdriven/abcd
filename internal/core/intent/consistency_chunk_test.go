@@ -539,9 +539,11 @@ func TestConsistencyChunkPairsHaveOneOwner(t *testing.T) {
 	}
 }
 
-// unchunkedPromptHash is consistencyRepo's unchunked prompt_hash when pair
-// ownership landed; only a deliberate change to the unchunked prompt moves it.
-const unchunkedPromptHash = "3b23856e57e20623c3da57593f5914efcf050ec8dd43a7decbee9527ebfabb5a"
+// unchunkedPromptHash is consistencyRepo's unchunked prompt_hash; only a
+// deliberate change to the unchunked prompt moves it. It last moved when the
+// findings shape gained its schema_version (spc-2610301431075964 step 1),
+// which the request's stated shape names.
+const unchunkedPromptHash = "7b6584b8567e408a2878f8e6061e41bd2ff04448163fd3b584f634bc136690e5"
 
 // TestConsistencyScopedChunkOwnership: in a scoped run the scope's own pairs
 // are chunk 1's, and every other pair is its group's one chunk's.

@@ -9,7 +9,7 @@ description: >-
   file:line evidence pointer. Role 2 (cross-document): reads the assembled
   brief-and-intents corpus and emits one findings JSON naming each contradiction
   between two documents, both ends quoted verbatim.
-prompt_version: 0.5.2
+prompt_version: 0.6.0
 reads_untrusted_input: true
 capability_scope:
   task_classes: [intent_audit, intent_consistency]
@@ -127,6 +127,7 @@ the structure the ingest decodes; where the two ever differ, the request wins.
 ```json
 {
   "_type": "abcd/intent-fidelity-verdict/v1",
+  "schema_version": 1,
   "receipt_id": "rcp-<echoed>",
   "verifier": { "id": "<dispatching-agent>", "version": "<model-id>" },
   "policy": { "rubric_hash": "sha256:<echoed>", "prompt_hash": "sha256:<echoed>" },
@@ -205,6 +206,7 @@ conditions of which one survived, one narrowed and one was never exercised:
 ```json
 {
   "_type": "abcd/intent-fidelity-verdict/v1",
+  "schema_version": 1,
   "receipt_id": "rcp-9f2a…",
   "verifier": { "id": "intent-auditor", "version": "claude-opus-4-8" },
   "policy": { "rubric_hash": "sha256:aa…", "prompt_hash": "sha256:bb…" },
@@ -325,6 +327,7 @@ the structure the ingest decodes; where the two ever differ, the request wins.
 ```json
 {
   "_type": "abcd/intent-consistency-findings/v1",
+  "schema_version": 1,
   "receipt_id": "rcp-<echoed>",
   "verifier": { "id": "<dispatching-agent>", "version": "<model-id>" },
   "policy": { "rubric_hash": "sha256:<echoed>", "prompt_hash": "sha256:<echoed>" },

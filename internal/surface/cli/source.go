@@ -315,7 +315,7 @@ func newSourceAddCommand(asJSON *bool, corpusFlag *string) *cobra.Command {
 	f.StringVar(&typ, "type", "", "the CSL item type (default document)")
 	f.BoolVar(&private, "private", false, "the source is private: file it under confidential/ (exclusive with --public)")
 	f.BoolVar(&public, "public", false, "the source is public: file it under public/ (exclusive with --private)")
-	f.StringVar(&perm, "permission", "", "permission_status: "+enumHelp(source.Permissions)+" (default by class)")
+	enumFlag(f, &perm, "permission", "", "permission_status: ", source.Permissions, " (default by class)")
 	f.StringArrayVar(&authors, "author", nil, `an author, "Family, Given" or a literal name (repeatable)`)
 	f.IntVar(&year, "year", 0, "the year of issue")
 	f.StringVar(&venue, "venue", "", "the container title (journal, site, publisher)")
@@ -416,7 +416,7 @@ func newSourceDeclassifyCommand(asJSON *bool, corpusFlag *string) *cobra.Command
 			})
 		},
 	}
-	cmd.Flags().StringVar(&perm, "permission", "", "permission_status after the move: "+enumHelp(source.Permissions)+" (default citable)")
+	enumFlag(cmd.Flags(), &perm, "permission", "", "permission_status after the move: ", source.Permissions, " (default citable)")
 	return cmd
 }
 
@@ -523,7 +523,7 @@ func newSourceLedgerCommand(asJSON *bool, corpusFlag *string) *cobra.Command {
 	f.StringVar(&claim, "claim", "", "what was decided or claimed")
 	f.StringVar(&key, "source", "", "the source key")
 	f.StringVar(&locator, "locator", "", "where in the source (pp., §)")
-	f.StringVar(&influence, "influence", "", "the influence: "+enumHelp(source.Influences))
+	enumFlag(f, &influence, "influence", "", "the influence: ", source.Influences, "")
 	f.StringArrayVar(&usedIn, "used-in", nil, "a repository-relative path the influence landed in (repeatable)")
 	f.IntVar(&corrects, "corrects", 0, "the line this record corrects")
 	f.IntVar(&flip, "flip", 0, "cite line N publicly (the person's act; checks the source's permission first)")

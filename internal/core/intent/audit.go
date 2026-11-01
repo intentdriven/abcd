@@ -133,7 +133,10 @@ var (
 // ---------------------------------------------------------------------------
 
 type verdict struct {
-	Type              string             `json:"_type"`
+	Type string `json:"_type"`
+	// SchemaVersion is the shape's version, VerdictSchemaVersion. A verdict
+	// composed before the field existed carries none, and reads as version 1.
+	SchemaVersion     int                `json:"schema_version,omitempty"`
 	ReceiptID         string             `json:"receipt_id"`
 	Verifier          verdictVerifier    `json:"verifier"`
 	Policy            verdictPolicy      `json:"policy"`
@@ -620,6 +623,7 @@ func verdictShape(rcp string) string {
 	return renderShape(reflect.TypeOf(verdict{}), shapeSpec{
 		hints:   verdictShapeHints(rcp),
 		mapKeys: map[string][]string{"acceptance_rollup": sortedKeys(verdictEnum)},
+		ints:    map[string]int{"schema_version": VerdictSchemaVersion},
 	})
 }
 
@@ -629,6 +633,7 @@ type shapeSpec struct {
 	hints   map[string]string   // a string field's placeholder; any other shows <string>
 	mapKeys map[string][]string // the keys a map field shows
 	lens    map[string]int      // the elements a list shows; any other shows one
+	ints    map[string]int      // an integer field's value; any other shows 0, which omitempty drops
 }
 
 // renderShape renders the struct type t as one example object, indented as a
@@ -675,6 +680,8 @@ func fillShape(v reflect.Value, name string, spec shapeSpec) {
 		} else {
 			v.SetString("<string>")
 		}
+	case reflect.Int:
+		v.SetInt(int64(spec.ints[name]))
 	case reflect.Slice:
 		n := max(spec.lens[name], 1)
 		s := reflect.MakeSlice(v.Type(), n, n)
@@ -1384,17 +1391,31 @@ func readVerdictFile(path string) ([]byte, error) {
 // contract and the intent's actual Acceptance Criteria. It returns a non-nil
 // error describing the first violation (the DEAD_LETTER reason).
 func validateVerdict(raw []byte, rcp, intentContent string) (verdict, error) {
+	v, err := decodeVerdict(raw)
+	if err != nil {
+		return verdict{}, err
+	}
+	if v.ReceiptID != rcp {
+		return verdict{}, fmt.Errorf("receipt_id %q disagrees with the resolved receipt %q", v.ReceiptID, rcp)
+	}
+	return judgeVerdict(v, intentContent)
+}
+
+// decodeVerdict is the part of validateVerdict that needs no record: the
+// strict decode, the schema version, the _type, the attestation chain's
+// shape, and a non-empty criteria list. CheckVerdict runs it alone.
+func decodeVerdict(raw []byte) (verdict, error) {
 	dec := json.NewDecoder(strings.NewReader(string(raw)))
 	dec.DisallowUnknownFields() // reject smuggled extra fields
 	var v verdict
 	if err := dec.Decode(&v); err != nil {
 		return verdict{}, fmt.Errorf("malformed verdict JSON: %v", err)
 	}
+	if err := unversionedSchemaGate("verdict", v.SchemaVersion, VerdictSchemaVersion); err != nil {
+		return verdict{}, err
+	}
 	if v.Type != VerdictType {
 		return verdict{}, fmt.Errorf("wrong _type %q (want %q)", v.Type, VerdictType)
-	}
-	if v.ReceiptID != rcp {
-		return verdict{}, fmt.Errorf("receipt_id %q disagrees with the resolved receipt %q", v.ReceiptID, rcp)
 	}
 	// The attestation chain (rubric + prompt the host pinned) is what makes this a
 	// VSA-shaped verdict rather than an unverifiable opinion; require both.
@@ -1429,7 +1450,13 @@ func validateVerdict(raw []byte, rcp, intentContent string) (verdict, error) {
 	if len(v.Criteria) == 0 {
 		return verdict{}, fmt.Errorf("criteria is empty")
 	}
+	return v, nil
+}
 
+// judgeVerdict is the part of validateVerdict that reads the record: every
+// criterion against the intent's Acceptance Criteria, the rollup, the gap
+// audit's evidence, and the scope-condition dispositions.
+func judgeVerdict(v verdict, intentContent string) (verdict, error) {
 	k := countAcceptanceCriteria(intentContent)
 	if k == 0 {
 		return verdict{}, fmt.Errorf("intent has no parseable Acceptance Criteria bullets to judge")

@@ -266,6 +266,7 @@ as an input in `explain` by name only.
    - needs: none
    - packages: internal/core/surface/facts.go, internal/core/surface/inputs.go, internal/surface/cli/inputs.go, internal/surface/cli/surface.go, internal/surface/cli/cli.go, internal/core/ideate, internal/core/intent, internal/core/release, internal/core/reading, internal/core/scribe, internal/core/lifeboat, internal/core/docfidelity, internal/core/memory
    - tests: internal/core/surface/facts_test.go, internal/core/surface/inputs_test.go, internal/surface/cli/inputs_test.go
+   - landed: caeab6619329
 2. The explain verb on both surfaces
    - needs: 1
    - packages: internal/surface/cli/explain.go, internal/core/surface/sentences.go, internal/core/surface/examples.go, internal/surface/cli/helpgroups.go, commands/explain.md, .abcd/development/brief/04-surfaces/41-explain.md, .abcd/development/brief/04-surfaces/README.md, .abcd/development/release/surface.json, docs/reference/cli/commands.md
