@@ -26,8 +26,9 @@ package site
 //     that page, so a drawing cannot drift from the prose beside it.
 //  8. Base path — every root-absolute URL sits under the path the site is
 //     served below.
-//  9. Link targets — every /docs/ link on a composed surface and every redirect
-//     target names a file in the output as it will be served (linktargets.go).
+//  9. Link targets — every /docs/ link on every rendered page, record pages
+//     included, and every redirect target names a file in the output as it
+//     will be served (linktargets.go).
 //
 // # Scope
 //
@@ -36,15 +37,17 @@ package site
 // `.abcd/site.json`, whichever tree the span came from. The verbatim record
 // rendering under `/record/**` is EXEMPT: the record legitimately contains
 // change-narration and tool names, and rewriting it to read better on the site
-// is the thing that ADR forbids. The static mobile checks are the exception
-// that covers everything THIS BUILD writes, record pages included: a table that
-// scrolls off a phone does so whatever tree its words came from.
+// is the thing that ADR forbids. The static mobile checks, the base path and
+// the link targets are the exceptions that cover everything THIS BUILD writes,
+// record pages included: a table that scrolls off a phone, a link outside the
+// base path, or a `/docs/` link to a renamed page fails whatever tree its words
+// came from.
 //
 // `/docs/` is MkDocs' own tree and is not this build's output at all, so it is
 // excluded from the page walk before any gate sees it — including the mobile
 // checks, which therefore say nothing about it. The link-targets gate is the one
-// that looks INTO it, and only to ask whether a file is there: a link the
-// composer writes into `/docs/`, or a redirect into it, must land. Its words are gated at the
+// that looks INTO it, and only to ask whether a file is there: a link any
+// rendered page carries into `/docs/`, or a redirect into it, must land. Its words are gated at the
 // source by docs-lint, and its layout is the SSG's own responsibility. A green
 // report here is a statement about the pages abcd renders, and about no others.
 //
@@ -498,12 +501,11 @@ func (c *checker) readPages() error {
 				// pass, so a genuine finding on an unparsed page cannot disappear.
 				// The base-path gate walks the pages only below a base path; at
 				// the root every root-absolute URL is inside the site, read or not.
-				gates := []string{CheckHero, CheckBannedTokens, CheckSnippets, CheckMobile, CheckFigureLabels}
+				// The link-targets gate walks every page, the record rendering
+				// included, so an unparsed record page is denied it too.
+				gates := []string{CheckHero, CheckBannedTokens, CheckSnippets, CheckMobile, CheckFigureLabels, CheckLinkTargets}
 				if c.base != "/" {
 					gates = append(gates, CheckBasePath)
-				}
-				if isComposedSurface(rel) {
-					gates = append(gates, CheckLinkTargets)
 				}
 				for _, name := range gates {
 					c.fail(name, rel, "", "this page did not parse, so this gate could not examine it")

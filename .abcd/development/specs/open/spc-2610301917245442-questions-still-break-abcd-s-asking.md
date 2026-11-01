@@ -68,6 +68,7 @@ Out of scope, recorded elsewhere: Per-repository layout limits (itd-261030191435
    - needs: none
    - packages: internal/core/question/decide.go, internal/core/question/rows.go, internal/core/question/ask.go, internal/surface/cli/guard_question.go, internal/surface/cli/guard_question_verb.go, internal/surface/cli/guard.go, commands/guard.md, docs/reference/cli/commands.md, .abcd/development/release/surface.json, .abcd/development/brief/04-surfaces/17-guard.md
    - tests: internal/core/question/decide_test.go, internal/core/question/ask_test.go, internal/surface/cli/guard_question_verb_test.go, internal/surface/cli/guard_question_corpus_test.go, internal/surface/cli/testdata/questions/corpus/, internal/core/lint/surfaceagents_test.go
+   - landed: ce643bd05b6f
 2. The grouped refusal and the one renderer
    - needs: 1
    - packages: internal/core/question/render.go, internal/surface/cli/guard_question.go, commands/guard.md, .abcd/development/brief/04-surfaces/17-guard.md

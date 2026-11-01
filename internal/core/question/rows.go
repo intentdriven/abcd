@@ -16,22 +16,29 @@ import (
 // figures were calibrated on 2026-10-03 against Claude Code's question view at
 // 80 by 24 (step 5 of spc-2610030944505997): the estimate of the screenshot's
 // question equals the 24 rows the host drew.
-func estimateRows(t Tab, l Limits) int { return splitRows(t, l).total() }
+func estimateRows(t Tab, l Limits) int { return tabRows(t, l).Total }
 
-// rowSplit is the row estimate by part: the host's frame with the header's
-// chip row, the question text, and the options with their descriptions. The
-// rows refusal reports it, so the asker sees which part to cut
-// (iss-2610071538055431).
-type rowSplit struct{ frame, text, options int }
+// RowSplit is the row estimate by part: the host's frame with the header's
+// chip row, the question text, and the options with their descriptions, and
+// their sum. The rows finding reports it, so the asker sees which part to cut
+// (iss-2610071538055431), and `abcd guard question` reports it for every tab
+// (spc-2610301917245442), so the drafter copies the check's figures instead of
+// counting by hand.
+type RowSplit struct {
+	HeaderAndFrame int `json:"header_and_frame"`
+	QuestionText   int `json:"question_text"`
+	Options        int `json:"options"`
+	Total          int `json:"total"`
+}
 
-func (s rowSplit) total() int { return s.frame + s.text + s.options }
-
-// splitRows is estimateRows by part.
-func splitRows(t Tab, l Limits) rowSplit {
-	s := rowSplit{frame: l.HostChromeRows, text: blockRows(t.Text, l.HostTextColumns)}
+// tabRows is estimateRows by part: the one computation the rows rule and every
+// caller that reports a tab's rows read.
+func tabRows(t Tab, l Limits) RowSplit {
+	s := RowSplit{HeaderAndFrame: l.HostChromeRows, QuestionText: blockRows(t.Text, l.HostTextColumns)}
 	for _, o := range t.Options {
-		s.options += max(1, blockRows(o.Label, l.HostOptionColumns)) + blockRows(o.Description, l.HostOptionColumns)
+		s.Options += max(1, blockRows(o.Label, l.HostOptionColumns)) + blockRows(o.Description, l.HostOptionColumns)
 	}
+	s.Total = s.HeaderAndFrame + s.QuestionText + s.Options
 	return s
 }
 

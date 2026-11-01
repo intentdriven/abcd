@@ -77,7 +77,8 @@ intents:
   the generated reference, the `.abcd/site-baseline.json` ratchet, the
   static mobile checks over every page, the loop-figure labels, the base path
   of every root-absolute link, and the link targets: every `/docs/` link on a
-  composed page and every redirect target names a file in the built output —
+  rendered page, the verbatim record rendering included, and every redirect
+  target names a file in the built output —
   and reports every failure, not the first. The rendered-overflow screenshot
   audit is CI's optional, non-gating job; static and rendered gates are
   complementary, and the audit's first run caught an overflow the static

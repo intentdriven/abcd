@@ -1,7 +1,7 @@
 ---
 name: reading
 description: "Render the cold-reading assembler's state: Writes nothing; refuses any argument."
-argument-hint: "[] | assemble --position <widening|entailment|comparative|detection> --target <HEAD|sha> [--out <dir>] [--dry-run] | ingest --reading-json <path> | ingest --dispatch <rdg-N>"
+argument-hint: "[] | assemble --position <widening|entailment|comparative|detection> --target <HEAD|sha> [--out <dir>] [--dry-run] | ingest --reading-json <path> [--dry-run] | ingest --dispatch <rdg-N>"
 block: people
 ---
 
@@ -275,6 +275,16 @@ that names the output: the output states its own run, position and regime, and
 there is no flag that could set one. A missing operand, a positional argument,
 and every refusal below exit 2. The one other flag, `--route`, routes the agent
 the output came from and sets nothing the output carries.
+
+**Practise before it counts.** Add `--dry-run` to judge the output exactly as
+the ingest does and write nothing: no reading record, refusal record, stage,
+sweep or run metadata. It prints each file the ingest would write; an item's id
+is shown as `<id>`, because the ledger mints it when it records the item. A
+refusal is the real run's, with the same exit 2, except that one the real run
+would record says where it would be recorded. `--dry-run` with `--dispatch` is
+refused: practise with `--reading-json`.
+With `--json` the result carries the usual fields plus `"dry_run": true`,
+`would_write` and `would_do`.
 
 **Model-tier routing.** The ingest dispatches the cold-reading agent of the
 position the output names (`cold-reading-<position>`), and resolves that agent's

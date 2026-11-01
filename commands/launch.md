@@ -1,7 +1,7 @@
 ---
 name: launch
 description: "Preview the release cut, the launch bundle, its secret scan and the gates: Writes only its pre-flight report, to the local tier; refuses without --dry-run."
-argument-hint: "[--dry-run [--deep-smoke] [--baseline <vX.Y.Z>] [--fetch-baseline]] | ship [--changelog-json <path>] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] | archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] | manifests --tree public|dev [--root <dir>] | receipts | scaffold [--confirm] [--dependency-reauthor]"
+argument-hint: "[--dry-run [--deep-smoke] [--baseline <vX.Y.Z>] [--fetch-baseline]] | ship [--changelog-json <path>] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] [--dry-run] | archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] | manifests --tree public|dev [--root <dir>] | receipts | scaffold [--confirm] [--dependency-reauthor]"
 block: people
 ---
 
@@ -820,7 +820,25 @@ Write the agent's payload to a file and hand it back to the binary:
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" launch ship --changelog-json <path>   # or - for stdin
 "${CLAUDE_PLUGIN_ROOT}/abcd" launch ship --changelog-json <path> --payload-dir <dir>   # also stage the payload
+"${CLAUDE_PLUGIN_ROOT}/abcd" launch ship --changelog-json <path> --dry-run   # check it; write nothing
 ```
+
+**Practise before it counts.** Add `--dry-run` to judge the payload against the
+cut exactly as the real ingest does: it prints each file the cut would write
+(the archived page, `RELEASE.md`, the digest, `CHANGELOG.md`, any intent whose
+target moves to `next`, and, where the archive is pinned, the catalog and the
+surface snapshot) with its size, then the tag, push and release the release
+workflow makes once the heading reaches the default branch. A refused payload
+gives the real run's refusal, its reasons and exit 2. Where the ship renders a
+payload the pre-flight gates run as well, and the report they would leave is
+named, not written. Nothing is written: no release record, pre-flight report,
+archive pin or staged payload. It reads the parity baseline already in the
+checkout, so `--fetch-baseline` with `--dry-run` is refused (exit 2); where the
+checkout cannot read the baseline, the parity gate's refusal says the real run
+needs `--fetch-baseline`. `--dry-run` without `--changelog-json` is refused too:
+the emit step writes nothing already.
+With `--json` the result carries the usual fields plus `"dry_run": true`,
+`would_write` and `would_do`.
 
 In a repository whose version-location contract
 (`.abcd/config/version-location.json`) declares `"publishes_plugin_archive": true`

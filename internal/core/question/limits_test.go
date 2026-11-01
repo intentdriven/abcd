@@ -553,13 +553,13 @@ func TestFindingsComeAllAtOnce(t *testing.T) {
 // TestChipRole reads the role word from a header in the chip grammar.
 func TestChipRole(t *testing.T) {
 	for h, want := range map[string]string{"Product Q2": "Product", "Setup Q1/4": "Setup", "Tech Q10": "Tech"} {
-		if got, ok := ChipRole(h, Default); !ok || got != want {
-			t.Errorf("ChipRole(%q) = %q, %v; want %q", h, got, ok, want)
+		if got, ok := chipRole(h, Default); !ok || got != want {
+			t.Errorf("chipRole(%q) = %q, %v; want %q", h, got, ok, want)
 		}
 	}
 	for _, h := range []string{"", "Pick a theme", "Product", "Product Q0", "product Q2", "Product Q2/", "Builder Q1"} {
-		if _, ok := ChipRole(h, Default); ok {
-			t.Errorf("ChipRole(%q) read a role", h)
+		if _, ok := chipRole(h, Default); ok {
+			t.Errorf("chipRole(%q) read a role", h)
 		}
 	}
 }
@@ -669,7 +669,7 @@ func TestAWordWiderThanTheMeasureCountsItsRows(t *testing.T) {
 // reads it once per tab.
 func TestChipRoleCompilesItsPatternOnce(t *testing.T) {
 	allocs := testing.AllocsPerRun(200, func() {
-		if _, ok := ChipRole("Product Q2", Default); !ok {
+		if _, ok := chipRole("Product Q2", Default); !ok {
 			t.Fatal("ChipRole did not read the chip")
 		}
 	})
