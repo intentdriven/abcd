@@ -46,9 +46,9 @@ func newIdeateCommand(asJSON *bool) *cobra.Command {
 	}
 
 	var verdictJSON string
-	var private, public bool
+	var private, public, dryRun bool
 	recordCmd := &cobra.Command{
-		Use: "record <idea-slug> [--private | --public] --verdict-json <file|->",
+		Use: "record <idea-slug> [--private | --public] --verdict-json <file|-> [--dry-run]",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return &exitError{Code: 2, Msg: "ideate record: <idea-slug> is required"}
@@ -79,6 +79,15 @@ func newIdeateCommand(asJSON *bool) *cobra.Command {
 			// The clock is read HERE, at the front door, and passed in: the date lands
 			// in a durable filename and a durable log line, so the core takes it as an
 			// argument a test can pin rather than reading it from under a writer.
+			if dryRun {
+				// The practice run is the real run's plan: every check the write
+				// makes, made here, and the writes reported rather than made.
+				plan, err := ideate.PlanRecord(repoRoot, args[0], store, raw, time.Now())
+				if err != nil {
+					return &exitError{Code: 2, Msg: "ideate record: " + scrubPaths(err)}
+				}
+				return renderDryRun(cmd.OutOrStdout(), *asJSON, "abcd ideate record", plan.Result, plan.Plan, nil)
+			}
 			res, err := ideate.Record(repoRoot, args[0], store, raw, time.Now())
 			if err != nil {
 				return &exitError{Code: 2, Msg: "ideate record: " + scrubPaths(err)}
@@ -94,6 +103,7 @@ func newIdeateCommand(asJSON *bool) *cobra.Command {
 		"the idea is public, on the person's word only: commit the verdict under "+ideate.ResearchRelDir+"/<root-sha>/ and record a decision pointing at it (exclusive with --private)")
 	recordCmd.Flags().StringVar(&verdictJSON, "verdict-json", "",
 		"path to the host-composed verdict JSON (or - for stdin)")
+	recordCmd.Flags().BoolVar(&dryRun, "dry-run", false, dryRunFlagUsage)
 
 	ideateCmd.AddCommand(recordCmd)
 	return ideateCmd

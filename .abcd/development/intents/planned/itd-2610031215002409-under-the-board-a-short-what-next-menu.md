@@ -95,6 +95,22 @@ Kept for the spec: CheckLimits over the menu object, with "Nothing for now" as t
 11. 2026-10-03, the technical facilitator, decided without a question: decision 3 (two records, linked, not one bundle) supersedes decision 1's question of whether the two are one bundle, as itd-2610031214560142's decision 13 records for the pair.
 12. 2026-10-03, the product thinker: the revised press release confirmed as written.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [dashboard-sites SOTA note](../../research/notes/2026-10-23-dashboard-sites-sota.md).
+
+- **The host's question limits are documented, not only in a schema:** "each `AskUserQuestion` call supports 1-4 questions with 2-4 options each", a `header` of "max 12 characters", options with `label` and `description`, and an optional free-text `response` (the Agent SDK's user-input page). The `[F]` on "the question tool takes no more than four" is settled in the record's favour.
+- **Prompt only where someone can answer:** clig.dev's "only use prompts … if `stdin` is an interactive terminal", "if `--no-input` is passed, don't prompt", "never require a prompt" is criterion B3.
+- **A machine-level off switch is the forge CLI's shape:** `GH_PROMPT_DISABLED` disables prompting, `GH_ACCESSIBLE_PROMPTER` switches to screen-reader-friendly prompts, `GH_SPINNER_DISABLED` replaces the spinner with text; all live in the person's environment, never the repository (gh manual), matching decision 8.
+- **Numbered lists are the accessible form everywhere:** the host's screen-reader mode turns arrow-key menus into numbered lines with a "Select with numbers" prompt; the Go prompt library huh's `WithAccessible(true)` "will drop TUIs in favor of standard prompts", read from an `ACCESSIBLE` variable in its own example. huh is cited as a convention, not adopted.
+- **No surveyed CLI marks a status "waiting on you" by drawing a menu;** the record already names the write as the one exception and owes the chapter and page edits.
+
+**Path 2 — native over the standard library and golang.org/x/term (signed off), shaped to the host tool's 2–4 options and 12-character header, with the question object as the seam;** an environment-variable alias for the off switch is worth taking at the spec. The independent fit-challenge is still owed before the build, and the questions below are kept for it.
+
+Questions this pass raised for the fit-challenge before the build. They are kept here, not under Open Questions, so they do not hold a build the record already rules ready:
+
+- Whether the machine setting that turns the menu off also reads an environment variable (the `GH_PROMPT_DISABLED` shape), so a shell profile or a CI image can set it without the settings file; and if so, which name.
+
 ## Open Questions
 
 - Which moves the menu offers, and whether they change with the state (for example, "answer the waiting questions" only when something is waiting). _Answered by decision 6._

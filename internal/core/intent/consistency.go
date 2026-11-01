@@ -17,6 +17,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/intentdriven/abcd/internal/core/dryrun"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/core/record/findingkey"
@@ -885,7 +886,20 @@ type ConsistencyIngestRequest struct {
 	Date  string
 	File  ConsistencyFiler
 	Check ConsistencyCheck
+	// Hold, when set, is the read-only half of File, asked by a plan: the
+	// record that already holds a finding (linked or addressed) and true, or
+	// false for a finding File would file as a new record. It writes nothing.
+	Hold ConsistencyHold
+	// Planned, when set, names the new record a finding File would file
+	// would be, for a plan to report; its id is minted at the write.
+	Planned ConsistencyPlanned
 }
+
+// ConsistencyHold is ConsistencyIngestRequest.Hold.
+type ConsistencyHold func(f ConsistencyFinding) (ConsistencyFiling, bool, error)
+
+// ConsistencyPlanned is ConsistencyIngestRequest.Planned.
+type ConsistencyPlanned func(f ConsistencyFinding, reportRel string) dryrun.Write
 
 // The states a report row is in: filed as a new record, linked to the open
 // record that already held it, or addressed by a resolved or won't-fix record
@@ -961,36 +975,73 @@ func ReadConsistencyFindings(path string) ([]byte, error) {
 // written unless the whole payload validates. A payload already ingested — the
 // same receipt and the same bytes, found on the shelf — is a noop naming the
 // report that holds it.
+//
+// It is PlanConsistencyIngest followed by the plan's Apply, so a practice run
+// (`--dry-run`) and the real ingest share every check.
 func IngestConsistency(req ConsistencyIngestRequest) (ConsistencyIngestResult, error) {
+	p, err := PlanConsistencyIngest(req)
+	if err != nil {
+		return ConsistencyIngestResult{}, err
+	}
+	return p.Apply()
+}
+
+// ConsistencyIngestPlan is what IngestConsistency would do: the result it
+// would report, as the plan can know it, and every write it would make.
+type ConsistencyIngestPlan struct {
+	// Result is the ingest's result as planned: a finding a record already
+	// holds carries that record's id, and one that would be filed carries
+	// "iss-" + dryrun.MintedID, the id the ledger mints at the write.
+	Result ConsistencyIngestResult
+	Plan   dryrun.Plan
+
+	req       ConsistencyIngestRequest
+	base      ConsistencyIngestResult
+	rv        consistencyReview
+	date      string
+	dirName   string
+	reportRel string
+	free      proseField
+	degraded  func() error
+}
+
+// PlanConsistencyIngest does everything IngestConsistency does before its
+// first write: every payload is validated, the set judged, the shelf read
+// for a report already holding it, the report's directory named and its size
+// bounded, and every finding held to the record gate. With the request's
+// Hold set it also asks which findings a record already holds, and composes
+// the report as the planned rows read, so the plan names each write. Nothing
+// is written.
+func PlanConsistencyIngest(req ConsistencyIngestRequest) (ConsistencyIngestPlan, error) {
 	if req.File == nil {
-		return ConsistencyIngestResult{}, fmt.Errorf("intent: consistency ingest has no ledger to file findings in")
+		return ConsistencyIngestPlan{}, fmt.Errorf("intent: consistency ingest has no ledger to file findings in")
 	}
 	if req.Check == nil {
-		return ConsistencyIngestResult{}, fmt.Errorf("intent: consistency ingest has no prose-citation check for the records it files; refusing to ingest (nothing written)")
+		return ConsistencyIngestPlan{}, fmt.Errorf("intent: consistency ingest has no prose-citation check for the records it files; refusing to ingest (nothing written)")
 	}
 	date := req.Date
 	if date == "" {
 		date = time.Now().UTC().Format(time.DateOnly)
 	}
 	if _, err := time.Parse(time.DateOnly, date); err != nil {
-		return ConsistencyIngestResult{}, fmt.Errorf("intent: report date %q is not YYYY-MM-DD", date)
+		return ConsistencyIngestPlan{}, fmt.Errorf("intent: report date %q is not YYYY-MM-DD", date)
 	}
 	payloads := req.Payloads
 	switch {
 	case len(payloads) == 0:
 		payloads = [][]byte{req.Payload}
 	case req.Payload != nil:
-		return ConsistencyIngestResult{}, fmt.Errorf("intent: consistency ingest was handed a payload and a chunk set at once; refusing to ingest (nothing written)")
+		return ConsistencyIngestPlan{}, fmt.Errorf("intent: consistency ingest was handed a payload and a chunk set at once; refusing to ingest (nothing written)")
 	}
 	// Every payload is validated whole before the set is judged, and the set
 	// before anything is written.
 	reviews, _, err := validateConsistencySet(req.RepoRoot, payloads)
 	if err != nil {
-		return ConsistencyIngestResult{}, err
+		return ConsistencyIngestPlan{}, err
 	}
 	rv, err := mergeConsistencyReviews(reviews)
 	if err != nil {
-		return ConsistencyIngestResult{}, err
+		return ConsistencyIngestPlan{}, err
 	}
 	res := ConsistencyIngestResult{
 		ReceiptID: rv.ReceiptID, Scope: rv.Scope, ReviewOfCommit: rv.Commit, Dirty: len(rv.DirtyPaths) > 0,
@@ -1001,25 +1052,25 @@ func IngestConsistency(req ConsistencyIngestRequest) (ConsistencyIngestResult, e
 	}
 	existing, err := findConsistencyReport(req.RepoRoot, rv.ReceiptID, rv.PayloadDigest)
 	if err != nil {
-		return ConsistencyIngestResult{}, err
+		return ConsistencyIngestPlan{}, err
 	}
 	if existing != "" {
 		res.Status, res.ReportPath = "noop", existing
-		return res, nil
+		return ConsistencyIngestPlan{Result: res, base: res, req: req}, nil
 	}
 	// The free-text renderer is built before anything is written, so a degraded
 	// detector stops the ingest before the first capture.
 	free, degraded, err := newVerdictProse(req.RepoRoot)
 	if err != nil {
-		return ConsistencyIngestResult{}, err
+		return ConsistencyIngestPlan{}, err
 	}
 	dirName, err := nextConsistencyReportDir(req.RepoRoot, date, rv.Scope)
 	if err != nil {
-		return ConsistencyIngestResult{}, err
+		return ConsistencyIngestPlan{}, err
 	}
 	reportRel := ReviewsShelfRelDir + "/" + dirName + "/00-summary.md"
 	if err := checkConsistencySummarySize(rv, date, free); err != nil {
-		return ConsistencyIngestResult{}, err
+		return ConsistencyIngestPlan{}, err
 	}
 
 	// Every finding is held to the record gate before the first is filed: a
@@ -1027,9 +1078,93 @@ func IngestConsistency(req ConsistencyIngestRequest) (ConsistencyIngestResult, e
 	// in the ledger with no report to cite.
 	for _, f := range rv.Findings {
 		if err := req.Check(f, reportRel); err != nil {
-			return ConsistencyIngestResult{}, fmt.Errorf("intent: finding %d of %d: %w", f.Number, len(rv.Findings), err)
+			return ConsistencyIngestPlan{}, fmt.Errorf("intent: finding %d of %d: %w", f.Number, len(rv.Findings), err)
 		}
 	}
+	p := ConsistencyIngestPlan{req: req, base: res, rv: rv, date: date, dirName: dirName, reportRel: reportRel, free: free, degraded: degraded}
+	planned, err := p.plannedRows()
+	if err != nil {
+		return ConsistencyIngestPlan{}, err
+	}
+	p.Result, p.Plan = planned.result, planned.plan
+	return p, nil
+}
+
+// plannedConsistency is a plan's rows and writes.
+type plannedConsistency struct {
+	result ConsistencyIngestResult
+	plan   dryrun.Plan
+}
+
+// plannedRows asks the request's Hold which findings a record already holds,
+// and composes the report as the planned rows read it. A request with no
+// Hold plans every finding as filed.
+func (p ConsistencyIngestPlan) plannedRows() (plannedConsistency, error) {
+	res := p.base
+	res.Status, res.ReportPath = "ingested", p.reportRel
+	res.Filed, res.Linked, res.Addressed, res.Rows = []string{}, []string{}, []string{}, []ConsistencyRow{}
+	var issues []dryrun.Write
+	for _, f := range p.rv.Findings {
+		filing, held := ConsistencyFiling{IssueID: "iss-" + dryrun.MintedID}, false
+		if p.req.Hold != nil {
+			got, ok, err := p.req.Hold(f)
+			if err != nil {
+				return plannedConsistency{}, err
+			}
+			if ok {
+				filing, held = got, true
+			}
+		}
+		row := newConsistencyRow(f, filing)
+		res.Rows = append(res.Rows, row)
+		switch {
+		case row.State == ConsistencyStateAddressed:
+			res.Addressed = append(res.Addressed, filing.IssueID)
+		case row.State == ConsistencyStateLinked:
+			res.Linked = append(res.Linked, filing.IssueID)
+		default:
+			res.Filed = append(res.Filed, filing.IssueID)
+		}
+		if held {
+			continue
+		}
+		w := dryrun.Write{Path: ".abcd/work/issues/open/iss-" + dryrun.MintedID + ".md", Action: dryrun.Create}
+		if p.req.Planned != nil {
+			w = p.req.Planned(f, p.reportRel)
+		}
+		issues = append(issues, w)
+	}
+	pending := ""
+	if len(res.Filed) > 0 {
+		pending = "the size counts each filed record's id as the longest one the ledger mints"
+	}
+	// The ids of records still to be filed are not known, so the report is
+	// composed with the longest id in their cells, as its size bound is.
+	sized := make([]ConsistencyRow, len(res.Rows))
+	for i, r := range res.Rows {
+		sized[i] = r
+		if r.State == ConsistencyStateFiled {
+			sized[i].IssueID = longestLedgerID
+		}
+	}
+	report, findings := renderConsistencyReport(p.rv, sized, p.date, p.free)
+	plan := dryrun.Plan{Writes: issues}
+	plan.Writes = append(plan.Writes, dryrun.Write{Path: p.reportRel, Action: dryrun.Create, Bytes: len(report), Pending: pending})
+	if findings != "" {
+		plan.Writes = append(plan.Writes, dryrun.Write{Path: ReviewsShelfRelDir + "/" + p.dirName + "/" + consistencyFindingsFile,
+			Action: dryrun.Create, Bytes: len(findings), Pending: pending})
+	}
+	return plannedConsistency{result: res, plan: plan}, nil
+}
+
+// Apply files the planned findings and writes the report. A plan of a set
+// already ingested is the noop it planned, and writes nothing.
+func (p ConsistencyIngestPlan) Apply() (ConsistencyIngestResult, error) {
+	res := p.base
+	if res.Status == "noop" {
+		return res, nil
+	}
+	req, rv, reportRel, dirName, date, free, degraded := p.req, p.rv, p.reportRel, p.dirName, p.date, p.free, p.degraded
 	for _, f := range rv.Findings {
 		filing, err := req.File(f, reportRel)
 		if err != nil {

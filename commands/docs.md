@@ -1,7 +1,7 @@
 ---
 name: docs
 description: "Keep the citation baseline `abcd lint docs` enforces, and judge the brief against the binary: Writes nothing bare; refuses an unknown sub-verb."
-argument-hint: "[cite refresh | cite confirm <url>... | fidelity [--report|--apply|--autonomous] [--intent <itd-N>]... | fidelity record --verdict-json <file|->]"
+argument-hint: "[cite refresh | cite confirm <url>... | fidelity [--report|--apply|--autonomous] [--intent <itd-N>]... | fidelity record --verdict-json <file|-> [--dry-run]]"
 block: agents
 user-invocable: false
 ---
@@ -113,6 +113,12 @@ never refuses. Use `INCONCLUSIVE` when you cannot judge; never
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" docs fidelity record --verdict-json verdict.json
 ```
+
+Add `--dry-run` to check the verdict first: the receipt it would save (its path
+and size) and the review the gate would read, or the refusal the real run would
+give, in the same words and with the same exit 2; nothing is written. With
+`--json` it adds `"dry_run": true`, `would_write` and `would_do` to the usual
+result.
 
 The binary labels the receipt with HEAD; a later commit makes it stale. When a
 HOLD carries drafted replacements, `docs fidelity --apply` writes them into the

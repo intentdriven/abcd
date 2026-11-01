@@ -157,7 +157,8 @@ type Options struct {
 	Roots layered.Roots
 	// Forge runs the forge client with args from dir.
 	Forge func(dir string, args ...string) (string, error)
-	// Git runs one networked git command (a push or a fetch) from dir.
+	// Git runs one networked git command (a push, a fetch, or the ls-remote
+	// that asks origin for its default branch) from dir.
 	Git GitFunc
 	// Gate runs the preflight in the branch's checkout at dir.
 	Gate func(dir string) error
@@ -609,7 +610,7 @@ func checkOrigin(o Options, dir, branch string) (originURLs, string, error) {
 		return urls, "", refuse(branch+" is the forge's default branch, and land never pushes the default branch",
 			"land a branch of your own and merge it through a pull request; nothing was gated or pushed")
 	}
-	odef, err := gitutil.RemoteHeadBranch(dir, Remote)
+	odef, err := gitutil.RemoteHeadBranch(o.Git, dir, Remote)
 	switch {
 	case err != nil:
 		return urls, "", refuse("land asked "+Remote+" which branch is its default (git ls-remote --symref "+Remote+" HEAD) and got no answer it can trust, so it cannot prove "+branch+" is not the default: "+fsutil.RedactHome(err.Error()),

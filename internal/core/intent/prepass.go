@@ -18,6 +18,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/intentdriven/abcd/internal/core/dryrun"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -421,46 +422,94 @@ type prepassQuestion struct {
 // against the input as it stands now and writes the planning brief. A payload
 // that does not validate is refused with nothing written; a brief at the path
 // that the pre-pass did not write is never replaced.
+//
+// It is PlanPrepassBrief followed by the plan's Apply, so a practice run
+// (`--dry-run`) and the real write share every check.
 func WritePrepassBrief(repoRoot, intentID string, raw []byte) (PrepassBriefResult, error) {
-	in, err := AssemblePrepass(repoRoot, intentID)
+	p, err := PlanPrepassBrief(repoRoot, intentID, raw)
 	if err != nil {
 		return PrepassBriefResult{}, err
+	}
+	return p.Apply()
+}
+
+// PrepassBriefPlan is what WritePrepassBrief would write: the result it
+// would report and the one brief it would lay.
+type PrepassBriefPlan struct {
+	Result PrepassBriefResult
+	Plan   dryrun.Plan
+
+	repoRoot string
+	brief    string
+}
+
+// PlanPrepassBrief does everything WritePrepassBrief does before its write:
+// the input is assembled, the findings are decoded and held to it, the brief
+// is composed, and the path is checked to hold nothing but a brief the
+// pre-pass wrote. Nothing is written.
+func PlanPrepassBrief(repoRoot, intentID string, raw []byte) (PrepassBriefPlan, error) {
+	in, err := AssemblePrepass(repoRoot, intentID)
+	if err != nil {
+		return PrepassBriefPlan{}, err
 	}
 	f, err := decodePrepassFindings(raw)
 	if err != nil {
-		return PrepassBriefResult{}, err
+		return PrepassBriefPlan{}, err
 	}
 	if f.Type != PrepassFindingsType {
-		return PrepassBriefResult{}, fmt.Errorf("intent prepass: the findings file's _type is %s, want %q", termsafe.DescribeRefused(f.Type), PrepassFindingsType)
+		return PrepassBriefPlan{}, fmt.Errorf("intent prepass: the findings file's _type is %s, want %q", termsafe.DescribeRefused(f.Type), PrepassFindingsType)
 	}
 	if !recordid.SameID(f.Intent, in.Intent) {
-		return PrepassBriefResult{}, fmt.Errorf("intent prepass: the findings file's intent is %s, not %s", termsafe.DescribeRefused(f.Intent), in.Intent)
+		return PrepassBriefPlan{}, fmt.Errorf("intent prepass: the findings file's intent is %s, not %s", termsafe.DescribeRefused(f.Intent), in.Intent)
 	}
 	if f.InputDigest != in.Digest {
-		return PrepassBriefResult{}, fmt.Errorf("intent prepass: the findings file's input_digest (%s) is not the one the record now assembles to, %s: an input moved since the pass; re-run the pre-pass", termsafe.DescribeRefused(f.InputDigest), in.Digest)
+		return PrepassBriefPlan{}, fmt.Errorf("intent prepass: the findings file's input_digest (%s) is not the one the record now assembles to, %s: an input moved since the pass; re-run the pre-pass", termsafe.DescribeRefused(f.InputDigest), in.Digest)
 	}
 	qs, res, err := validatePrepass(in, f)
 	if err != nil {
-		return PrepassBriefResult{}, err
+		return PrepassBriefPlan{}, err
 	}
 	brief := renderPrepassBrief(in, f, qs)
 
 	root, err := os.OpenRoot(repoRoot)
 	if err != nil {
-		return PrepassBriefResult{}, fmt.Errorf("intent prepass: opening the repository: %w", err)
+		return PrepassBriefPlan{}, fmt.Errorf("intent prepass: opening the repository: %w", err)
 	}
 	defer root.Close()
 	rel := PlanningBriefsRelDir + "/" + in.Intent + ".md"
 	if err := prepassMayReplace(root, rel); err != nil {
-		return PrepassBriefResult{}, err
+		return PrepassBriefPlan{}, err
 	}
-	if err := fsutil.WriteFileAtomicInRoot(root, rel, []byte(brief), 0o644); err != nil {
-		return PrepassBriefResult{}, fmt.Errorf("intent prepass: writing %s: %w", rel, err)
+	action := dryrun.Create
+	if _, err := root.Lstat(rel); err == nil {
+		action = dryrun.Replace
 	}
 	res.Intent = in.Intent
 	res.BriefPath = rel
 	res.Warnings = in.Warnings
-	return res, nil
+	return PrepassBriefPlan{
+		Result:   res,
+		Plan:     dryrun.Plan{Writes: []dryrun.Write{{Path: rel, Action: action, Bytes: len(brief), Content: []byte(brief)}}},
+		repoRoot: repoRoot, brief: brief,
+	}, nil
+}
+
+// Apply writes the planned brief, re-checking under the open root that the
+// path still holds nothing but a brief the pre-pass wrote.
+func (p PrepassBriefPlan) Apply() (PrepassBriefResult, error) {
+	root, err := os.OpenRoot(p.repoRoot)
+	if err != nil {
+		return PrepassBriefResult{}, fmt.Errorf("intent prepass: opening the repository: %w", err)
+	}
+	defer root.Close()
+	rel := p.Result.BriefPath
+	if err := prepassMayReplace(root, rel); err != nil {
+		return PrepassBriefResult{}, err
+	}
+	if err := fsutil.WriteFileAtomicInRoot(root, rel, []byte(p.brief), 0o644); err != nil {
+		return PrepassBriefResult{}, fmt.Errorf("intent prepass: writing %s: %w", rel, err)
+	}
+	return p.Result, nil
 }
 
 // ReadPrepassFindings reads the host's findings file for WritePrepassBrief:

@@ -188,7 +188,7 @@ func readmeDerive(cwd string, parts []string, vis string) ([]readmeDerived, []re
 	var want []readmePartWant
 	for _, d := range derived {
 		if d.Reason == "" {
-			want = append(want, readmePartWant{Name: d.Name, Body: d.Body})
+			want = append(want, readmePartWant{Name: d.Name, Body: d.Body, Inline: d.Inline})
 		}
 	}
 	return derived, want

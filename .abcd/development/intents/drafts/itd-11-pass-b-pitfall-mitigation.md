@@ -46,11 +46,25 @@ This intent hardens Pass B *if* Phase 0 sampling reveals the need. It's defensiv
 - **Given** a finding flagged as low-confidence, **when** the user inspects the lifeboat, **then** they can read the finding alongside its source transcript range and the reason for the low score (e.g., "matched only by semantic similarity, no keyword anchor; off-topic markers present").
 - **Given** Phase 0 sampling on the validation corpus showed a noise pattern, **when** the multi-strategy filter chain runs against that same corpus, **then** the precision (true positives / total findings) measurably exceeds the time-windowed baseline by at least a documented threshold — recorded in the disembark report's regression-check section.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [harness, interop and lifeboats SOTA note](../../research/notes/2026-10-23-harness-interop-lifeboats-sota.md), which reuses the local [transcript sampling](../../research/notes/transcript-sampling.md) measurement.
+
+- The local baseline: decision turns were 22.3% of user turns (138/619) and 1.4% of all turns across 14 stratified transcripts from 439 in one project, with stub sessions at zero; the viability ruling against a 15% floor rests on the user-turn denominator the sampling note adopted as a recorded measurement deviation, and on the spec's original all-turn metric (1.4%) the result was below the floor (NEEDS REDESIGN, superseded); the chain is tuned against this corpus or not at all.
+- Compaction practice keeps decisions and drops tool output: Anthropic's guidance preserves "architectural decisions, unresolved bugs, and implementation details", discards "redundant tool outputs", starts by maximising recall, and warns that aggressive compaction loses "subtle but critical context whose importance only becomes apparent later".
+- Agents "consistently depend on raw experience" and "often disregard or misinterpret condensed experience, even when it is the only experience provided" across 4 frameworks, 13 backbones and 9 environments (January 2026). The study tests self-evolving agents acting on experience, not a summariser reading a transcript, so by analogy it suggests a distiller should read transcript lines rather than a summary of them.
+- Verbalised confidence is overconfident; "consistency across multiple sampled responses" and aggregation reduce it, and no method wins everywhere (ICLR 2024). A model-reported `[0.0, 1.0]` is not a calibrated number.
+- The best of thirteen models located the step responsible for a hallucination in 41.1% of 693 annotated agent trajectories, 11.6% for tool-use hallucinations (AgentHallu, January 2026); the benchmark measures hallucination attribution, not fault-finding in general, so by analogy it suggests a finding without its transcript range is unreviewable.
+- abcd's transcript store is already JSONL and redacted fail-closed (`internal/core/history`), and the hosts' `transcript_path` files are JSONL, so time-window, keyword and record-id filtering is a deterministic pass over lines before any model reads them.
+
+**Path 2 — native structural confidence shaped to the calibration evidence: each finding carries the anchors that selected its range (window, keyword, record id, semantic only) and the range itself; the score is a rule over anchors present plus agreement between two independent distiller runs, never a self-report; semantic-only findings are quarantined, visibly, with the reason; the regression check runs against the sampled corpus.** The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - Does Phase 0 sampling actually reveal a noise problem, or is the time-windowed design sufficient?
 - What's the right confidence threshold for quarantine (vs accept, vs reject)?
 - Should low-confidence findings still be visible (in a separate `low-confidence.md` section) or hidden?
+- (SOTA 2026-10-23) Is a second distiller run for agreement worth its host cost on every disembark, or only when a finding rests on a semantic anchor alone?
 
 ## Audit Notes
 

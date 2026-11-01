@@ -196,8 +196,21 @@ string it exists to contain. Both are acceptance criteria rather than notes.
   and a machine-global layer that silently checks nothing is the worst outcome
   available.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [security-isolation SOTA note](../../research/notes/2026-10-23-security-isolation-sota.md).
+
+- **Git's own text rules out the un-ignore candidate**: "It is not possible to re-include a file if a parent directory of that file is excluded. Git doesn't list excluded directories for performance reasons, so any patterns on contained files have no effect, no matter where they are defined." A declaration must live outside the fenced directory, or the fence must exclude files rather than the directory (gitignore).
+- **Machine-wide patterns have one shipped precedent**: `git secrets --add --global` "Adds patterns to the global git config" and is read by hooks in every repository; the store is `~/.gitconfig`, which dotfile repositories commit, so the shape is worth copying and the location is not (git-secrets).
+- **Machine-wide hooks have two**: pre-commit's `init-templatedir` so "any newly cloned repository will automatically have the hooks set up", and `core.hooksPath`; both reach repositories abcd never prepared, and both replace the user's own git settings (pre-commit; githooks).
+- **A user-level exclude is already how one host fences a private file**: Claude Code adds `**/.claude/settings.local.json` to the user's `core.excludesFile` "so the file stays out of your commits in every repository" (Claude Code settings).
+- **The CI boundary is the record's own scope condition**: a forge runner clones and sees nothing of the home; nothing opened contradicts it, and no outside source is needed to state it.
+
+**Path 2 for the machine-global half: native, shaped to git-secrets' machine-wide layer for reach and to pre-commit's template directory for "repositories that do not exist yet", with the store in abcd's home and never in git config**; the template-directory route offered as a separate, explicit opt-in because it replaces the user's `init.templateDir`. For the declaration half the survey has only the negative finding, that the declaration must live outside the fenced directory; its shape is the ruling owed below. The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
+- (SOTA 2026-10-23) **Whether the machine-global layer reaches repositories abcd never prepared**: only a global hooks path or template directory does, and each edits the user's global git configuration.
 - **Where the declaration lives, and what it is.** A key in the repository's
   committed config, a marker file, or a value of the visibility switch itself
   (a third setting meaning "public, record committed"). The constraint the

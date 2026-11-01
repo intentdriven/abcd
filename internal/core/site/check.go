@@ -498,12 +498,11 @@ func (c *checker) readPages() error {
 				// pass, so a genuine finding on an unparsed page cannot disappear.
 				// The base-path gate walks the pages only below a base path; at
 				// the root every root-absolute URL is inside the site, read or not.
-				gates := []string{CheckHero, CheckBannedTokens, CheckSnippets, CheckMobile, CheckFigureLabels}
+				// The link-targets gate walks every page, the record rendering
+				// included, so an unparsed record page is denied it too.
+				gates := []string{CheckHero, CheckBannedTokens, CheckSnippets, CheckMobile, CheckFigureLabels, CheckLinkTargets}
 				if c.base != "/" {
 					gates = append(gates, CheckBasePath)
-				}
-				if isComposedSurface(rel) {
-					gates = append(gates, CheckLinkTargets)
 				}
 				for _, name := range gates {
 					c.fail(name, rel, "", "this page did not parse, so this gate could not examine it")

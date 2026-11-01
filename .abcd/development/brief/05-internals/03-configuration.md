@@ -600,6 +600,65 @@ layered resolver from the machine's file alone:
   arrow keys; each falls to `numbered` with one line on stderr saying so, and
   the interview goes on.
 
+### The question keys
+
+How tall one of abcd's questions may be, how many words an option's label may
+run to, and how many sentences its description may say are three keys under
+`question` (itd-2610301914350541, spc-2610301950037469), read through the
+layered resolver (`layered.QuestionLimits`, `internal/core/layered/question.go`)
+over `question.Default`. The repository sets them, and a person's own file may
+only set them lower:
+
+```json
+{
+  "question": {
+    "rows": 40,                         // 24 to 60; bundled default 32: the rows one
+                                        //   question, or one tab, may take at 80 columns
+    "label_words": 5,                   // 4 to 8; bundled default 5: the words to a label
+    "description_sentences": 2          // 2 to 4; bundled default 2: the sentences to
+                                        //   an option's description
+  }
+}
+```
+
+- **The repository sets a key; the machine file may only tighten it.** The
+  limit otherwise in force for a key is `.abcd/config.json`'s value where it
+  sets one, else the bundled default. A value in `~/.abcd.noindex/config.json`
+  at or below that limit is the limit on that person's checks, since the check
+  runs on the machine the question is shown on; one above it is refused naming
+  the key, the personal value, the limit in force and the file that set each.
+  Neither the plain layering every other key has, where the repository's value
+  simply wins, nor `interview.list`'s machine-only shape.
+- **Each key has a floor and a ceiling, both included.** `question.rows` 24 to
+  60, `question.label_words` 4 to 8, `question.description_sentences` 2 to 4,
+  stated once in `internal/core/question/limits.go` (`Bounds`) beside
+  `Default`. The floors are drawn so every question the binary composes is
+  admitted whole at them, and the ceilings where the protection would stop
+  protecting. A value outside them, or one that is not a whole number, is
+  refused naming the key, the value, the bounds and the file, in either file,
+  and a personal value is judged by the bounds before it is judged against the
+  limit in force. The rows default, 32, sits above the floor, 24, the
+  standard screen.
+- **Nothing else is configurable.** The resolver claims the `question`
+  namespace, so any other key under it (`question.options`, `question.columns`,
+  `question.tabs`, a misspelt one) is refused naming the key and the file. The
+  columns (80) and the host's three measured figures, the header's width and
+  grammar, the tabs to a call, the options to a question, the `Now:` and
+  `Change later:` prefixes and the decide-later labels stay the binary's.
+- **A refused value falls through to nothing.** Nothing is passed over for the
+  default: the binary's own interviews (`abcd intent interview`, `abcd reflect
+  interview`) and `abcd ahoy install` refuse before their first question, exit
+  2, naming the key, the value, the bounds and the file.
+- **A file the resolver cannot read fails open and loud.** A `.abcd/config.json`
+  that is a symlink or not a regular file, and a `~/.abcd.noindex/config.json`
+  behind a symlinked `~/.abcd.noindex`, writable by group or other, or owned by
+  another account, whatever keys it holds, leave abcd's defaults in force with
+  one line on stderr naming the file, in the question gate's `NOT CHECKED`
+  form. A symlinked `~/.abcd.noindex` holding no `config.json` reads as
+  absent, and nothing is said.
+- **No verb writes them.** The keys are edited by hand, as `pace.*` and
+  `interview.list` are; `abcd ahoy install` asks no question about them.
+
 ### Staged config keys
 
 No shipped code reads any of the keys below. None appears in any repository's

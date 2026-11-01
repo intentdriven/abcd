@@ -1437,6 +1437,13 @@
       "sentence": "Save a docs review's verdict as the receipt for HEAD: Writes the receipt in the local tier; refuses a verdict naming no judge.",
       "flags": [
         {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "verdict-json",
           "shorthand": "",
           "type": "string",
@@ -2039,6 +2046,13 @@
       "sentence": "Validate a host-composed gauntlet verdict: Writes the dated record, private unless --public; refuses without an idea slug or --verdict-json.",
       "flags": [
         {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "private",
           "shorthand": "",
           "type": "bool",
@@ -2566,6 +2580,27 @@
       ]
     },
     {
+      "path": "abcd implement widen",
+      "hidden": false,
+      "sentence": "Widen an issue lane's hold to a path before it is edited: Writes the reservation and a run record line; refuses another copy's live hold, with exit 3.",
+      "flags": [
+        {
+          "name": "lane",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "run",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd inbox",
       "hidden": false,
       "group": "agents",
@@ -2664,6 +2699,13 @@
       "sentence": "Ingest an intent-audit verdict into the shipped intent: Writes its Audit Notes; refuses without --verdict-json.",
       "flags": [
         {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "route",
           "shorthand": "",
           "type": "stringArray",
@@ -2741,6 +2783,13 @@
       "block": "agents",
       "sentence": "Ingest consistency findings as a dated review and a capture per finding: Writes the report and the ledger records; refuses without --findings-json.",
       "flags": [
+        {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "findings-json",
           "shorthand": "",
@@ -2874,6 +2923,13 @@
       "block": "agents",
       "sentence": "Print a draft's pre-pass input, or write its planning brief from the host's findings: Writes only the brief; refuses a record not on drafts/.",
       "flags": [
+        {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "findings-json",
           "shorthand": "",

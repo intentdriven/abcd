@@ -1,0 +1,10 @@
+{
+  "_type": "{{TYPE}}",
+  "intent": "itd-500",
+  "input_digest": "{{DIGEST}}",
+  "summary": "Shared config written into the project.",
+  "conflicts": [{"invariant": 2, "anchor_quote": "configuration is never written outside the",
+    "draft_quote": "into the project directory", "question": "Which gives, the invariant or the draft?"}],
+  "overlaps": [],
+  "unanchored": [{"question": "Who reads the shared file first?"}]
+}

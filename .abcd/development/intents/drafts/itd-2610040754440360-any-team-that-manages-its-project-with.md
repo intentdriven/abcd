@@ -44,10 +44,21 @@ Typed links: builds on itd-2610032150577708; carries the demonstration itd-140 n
 
 > _Required (the itd-1 discipline): add at least one Given-When-Then bullet describing the verifiable bar for "shipped" before this draft can be planned._
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [dashboard-sites SOTA note](../../research/notes/2026-10-23-dashboard-sites-sota.md). Most of this intent is internal plumbing; the one outside convention is where the proof lives.
+
+- **The dashboard already reads a project, not abcd:** its listener, gate and control files under abcd's home "name no project content", and pages come from the record site's renderer by record id. A second project needs a tree the renderer and the status read can open, not a second dashboard.
+- **A fixture tree is the Go convention for exactly this:** "The go tool will ignore a directory named "testdata", making it available to hold ancillary data needed by the tests" (cmd/go). A sparse sample project is a committed `testdata` tree with a `.abcd/` of a few records, opened by a test that starts the dashboard against it.
+- **A separate sample repository** is the honest alternative and a second checkout to keep current; Hugo's theme-submission page names `theme.toml` and screenshots but the example-site requirement often associated with it was not on the page opened, so it is not claimed.
+
+**Path 2 — native, shaped to the `testdata` fixture convention: the proof is a test that starts the dashboard on a committed sparse tree; an adopting project starts it with the same verb and no abcd-specific setup, and the test is what shows that claim true or false.** The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - What the sparse sample project holds, and where it lives.
 - How an adopting project starts the dashboard, and what of abcd's own setup it needs.
+- (SOTA 2026-10-23) Whether the discipline itd-140 names accepts a committed fixture tree as "a second, sparse sample project", or needs a real checkout a team could manage.
 
 ## Audit Notes
 

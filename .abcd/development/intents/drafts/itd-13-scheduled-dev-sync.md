@@ -48,11 +48,23 @@ Once real usage patterns emerge, the cost of "stale `.abcd/work/` until next dis
 - **Given** the user changes `dev_sync.interval` in `.abcd/config.json` from `"1h"` to `"30m"`, **when** the next `/abcd:ahoy install` (idempotent re-install) runs, **then** the scheduled job's interval updates to 30 minutes AND the change is recorded in the install report.
 - **Given** a scheduled `dev-sync` run fails (a configured oracle adapter unreachable, memory lock contention, etc.), **when** the next scheduled fire occurs, **then** the failure is recorded in the run report, surfaced via `abcd dev-sync status` as "last run: failed (N intervals ago)", and the next run attempts independently — no exponential backoff that hides recurring failures.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [memory-knowledge SOTA note](../../research/notes/2026-10-23-memory-knowledge-sota.md).
+
+- **The draft's sources have moved.** "Distilling new Claude memories" contradicts the ruling that abcd never reads the host's memory files (adr-2610091918443997); the oracle-adapter chats and the `dev-sync` verb do not exist; and the nearest ruling on running in the background is the dashboard's (itd-2610032150577708, decision 12: "started by hand, running until stopped, never starting by itself"), which covers the dashboard alone.
+- **Apple deprecates cron and says not to install it programmatically.** "The preferred way to add a timed job is to use launchd"; cron "has been deprecated in favor of launchd"; "you should not programmatically add a cron job" because the crontab is a shared resource (Apple's scheduling guide). That rules cron out on macOS, where Apple's guidance applies; the draft's cron entry is for Linux, where cron is not deprecated.
+- **Interval timers drop missed runs; calendar timers coalesce them.** launchd.plist(5): a `StartInterval` firing during sleep "will be missed", `StartCalendarInterval` events "will be coalesced into one event upon wake"; systemd: `Persistent=` "only has an effect on timers configured with `OnCalendar=`" and catches up a missed run from a timestamp on disk, while monotonic timers pause under suspend. On Linux a systemd user timer with `OnCalendar=` and `Persistent=true` is preferred for its catch-up, with cron the fallback where systemd is absent. If a scheduler is ever installed, it is a calendar job on both platforms.
+- **The harness writes memory during the session, not on a clock.** Auto memory is written as Claude works (vendor docs); no surveyed harness syncs memory by scheduler.
+- **Path 3**: no system scheduler by default, forced by the user's-directory-is-theirs, loud staging (a background job fails where nobody is looking) and the host-memory ruling that removed the draft's main source; the dashboard's "never starting by itself" is the nearest precedent, not yet a rule for background jobs. Sync on the hooks abcd already installs (`SessionStart`, `Stop`) and on demand; a calendar job (`StartCalendarInterval` on macOS; `OnCalendar` with `Persistent=true` on Linux, cron only where systemd is absent; with a single-instance lock) only where a person asks. The draft needs re-grounding before planning. The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - launchd vs cron — install both with platform detection?
 - Should the scheduled job log to `.abcd/logbook/dev-sync/<timestamp>/` (consistent with command logs) or a dedicated location?
 - What happens if a scheduled run conflicts with an in-progress disembark — locking, queuing, or skip?
+- (SOTA 2026-10-23) With the host's memory files off limits and no `dev-sync` verb, what are this intent's sources now, and is an event-driven sync on the installed hooks enough that no background job is needed at all?
+- (SOTA 2026-10-23) Does the dashboard's ruling (started by hand, running until stopped, never starting by itself; itd-2610032150577708, decision 12) extend to every background job abcd could install, or does it cover the dashboard alone? The product thinker has ruled it only for the dashboard.
 
 ## Audit Notes
 

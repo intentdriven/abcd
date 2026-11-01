@@ -45,6 +45,21 @@ We expect fewer repeated mistakes, because a note comes back exactly when a prom
 - **Given** any note, **when** it is written, **then** it records who wrote it, when, and in which session.
 - **Given** a session filling up, **when** a prompt matches notes, **then** recall shrinks as the session fills: the notes in full, then one line each, to the end of the session.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [memory-knowledge SOTA note](../../research/notes/2026-10-23-memory-knowledge-sota.md).
+
+- **The first harness now does the same thing, machine-local, reviewed after the fact.** Claude Code's auto memory is "notes Claude writes itself based on your corrections and preferences", stored per git repository under the host's own directory, "not shared across machines", with a `MEMORY.md` index loaded every session (the first 200 lines or 25 KB) and topic files on demand; the person audits by editing the files, with no approval step (vendor docs). adr-2610091918443997's "automatic capture with visible review" is the same stance.
+- **The same harness commits a subagent's memory without review.** The subagent `memory: project` scope stores under `.claude/agent-memory/<name>/` as "shareable via version control" and is "the recommended default scope" (vendor docs). abcd's rule that only a person promotes is a deliberate divergence; the docs comparison this intent owes (criterion N4) should say why.
+- **Every evaluated memory system consolidates on write; this bundle appends.** Mem0 (Chhikara et al., arXiv 2504.19413, 2025) retrieves the ten nearest existing memories for each new fact and has the model choose ADD, UPDATE, DELETE or NOOP; A-MEM (NeurIPS 2025) lets a new note update older notes' descriptions. abcd already owns a term-overlap match primitive (`internal/core/record/match`, threshold read off this ledger) used at capture time; running it over existing notes on `memory add` and saying "this looks like `mem-N`" back to the agent, advisory and never merging, is the native form.
+- **Stale notes are the hard case.** LongMemEval's hardest classes are knowledge updates and abstention; Mem0's graph variant marks a contradicted fact invalid rather than deleting it. Whether `remove` should leave a visible tombstone is the dashboard review's question.
+- **A rule in prose is not enforcement.** The vendor's own page says memory files are "context, not enforced configuration. To block an action regardless of what Claude decides, use a PreToolUse hook instead"; abcd's write gate and the later promotion guard are the right shape.
+- **Path 2**: the native design the spec holds, shaped to Mem0's write phase through the ledger's existing match primitive (advisory echo on add, no second scorer, no dependency). The independent fit-challenge is still owed before the build, and the questions below are kept for it.
+
+Questions this pass raised for the fit-challenge before the build. They are kept here, not under Open Questions, so they do not hold a build the record already rules ready:
+
+- Should `memory add` run the ledger's filing-time match over the notes already in reach and tell the agent when the new note restates or contradicts `mem-N`, never merging on its own? The published systems all judge a new fact against its neighbours at write time; the spec writes without looking.
+
 ## Open Questions
 
 _None for the product thinker. The four questions first left here are settled under Decisions (2026-10-11); the technical questions the plan leaves open are in the bundle's spec._

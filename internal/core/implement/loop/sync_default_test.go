@@ -60,6 +60,7 @@ func (f *landFixture) passToLand(t *testing.T, names ...string) Lane {
 	}
 	l := currentLane(t, repo, f.runID)
 	dir := filepath.Join(repo.Root(), filepath.FromSlash(RunRelDir), f.runID, l.ID)
+	widenAsImplementer(t, repo, l, names...)
 	sha := commitIn(t, repo, l, names...)
 	rc := goodReceipt(t, f.runID, l, dir, sha)
 	rc.Model = "claude-test-5"

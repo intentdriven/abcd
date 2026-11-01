@@ -171,6 +171,20 @@ language version. The verdict generalises.
   artefact is an ADR the facilitator reads directly, and the
   pull-into-planner mechanism is deferred to itd-39's substrate, not built here.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [traceability-governance SOTA note](../../research/notes/2026-10-23-traceability-governance-sota.md).
+
+- **The thing the verdict detects has a field definition.** An architectural decision is "a justified design choice that addresses a functional or non-functional requirement that is architecturally significant", and an architecturally significant requirement one with "a measurable effect on the architecture and quality" of the system (adr.github.io; MADR, which adds that "architecture" is not to be read too strictly). A standing choice that answers a requirement without being a user moment is the signature.
+- **The local bar is stricter than the field's.** Nygard's significance is structure, quality attributes, external dependencies, interfaces and construction techniques; this repository's ADR README demands hard to reverse, surprising without context and a real trade-off. The verdict should carry the local test, or "we use library X" fills the store.
+- **Store semantics the thin adoption already matches:** one record per decision, status-field supersession (Nygard; MADR's "superseded by ADR-0123"; adr-tools' `adr new -s N`), immutability after acceptance (log4brains: "an ADR is immutable. Only its status can change"). <!-- record-lint: illustrative -->
+- **Models are measured on generation, not on this verdict.** GPT-4 zero-shot generates "relevant and accurate Design Decisions" from an ADR's Context but "fall[s] short of human-level performance" (Dhar, Vaidhyanathan and Varma, ICSA 2024); a 2026 benchmark of ten small models finds robust zero-shot ADR generation above about 3B parameters and that semantic diversity "often correlates with hallucination". No published figure covers classifying a one-line idea as decision versus capability; the fixture set and the confirm step are load-bearing.
+- **MADR's optional "Confirmation" section** (how compliance with the decision is checked) is where the out-of-scope decision-aware review would later attach.
+- **Two details in the body above are stale, left unedited:** the store now mints `adr-<yymmddHHMMSS><rrrr>` through adr-45's allocator, not a next-free ordinal, and `abcd decide --adr` already writes the README-exact skeleton, so the verdict's writer is that call rather than a second template.
+- **Path 1 for the artefact, Path 2 for the verdict**: the existing ADR store with Nygard/MADR semantics, as ruled; a host-run classification proposed against the repository's three-part test, fixture-tested, recorded by the binary rather than computed by it, with the confirm question widened to the four homes an idea can have (ADR, intent draft, issue, drop) and one mint and one skeleton writer shared with `decide --adr`.
+
+The independent fit-challenge runs at plan time.
+
 ## Acceptance Criteria
 
 The original draft's full-store acceptance criteria are **superseded-by-decision**

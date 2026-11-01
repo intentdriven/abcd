@@ -33,12 +33,61 @@ production_mode: hand-written
 
 > _Required (the itd-1 discipline): add at least one Given-When-Then bullet describing the verifiable bar for "shipped" before this draft can be planned._
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in
+the [autonomous-loops SOTA note](../../research/notes/2026-10-23-autonomous-loops-sota.md).
+
+- **The vendor limits by model class, and the API's buckets are not shared
+  weights.** API rate limits are set "for each model class" and "Each row in
+  the following tables has its own RPM, ITPM, and OTPM limits": the classes
+  are separate token buckets, so running a top-class agent consumes none of
+  another class's capacity, and no cross-class weight follows from the
+  bucket sizes. Those sizes also vary by tier: the top class's input and
+  output buckets are a quarter of the others' at Start, about 0.3 at Build
+  and 0.4 at Scale, with the three lower classes identical at every tier,
+  and a bucket measures throughput, not price or sub-agent weight (Claude
+  API rate limits). On a subscription the classes share one window and the
+  vendor gives only an ordering, "Opus costs several times more per turn than
+  Sonnet, and Sonnet more than Haiku", with no published ratio (Claude
+  support).
+- **The host has a class vocabulary and a ceiling.** A sub-agent's `model` is
+  `sonnet`, `opus`, `haiku`, `fable`, a full id or `inherit`, resolved through
+  the call, the frontmatter, `CLAUDE_CODE_SUBAGENT_MODEL`, then the main
+  conversation's model; 20 running sub-agents is the default cap
+  (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`); every sub-agent draws on the same
+  usage limits, and cloud sessions share them too (Claude Code docs).
+- **The served model is reported after the fact.** The result's `modelUsage` is
+  keyed by the model that ran and includes sub-agents (Agent SDK cost
+  tracking), which is how an agent left at `host-decides` gets its class.
+- **Other vendors cut their classes differently.** A second vendor's models
+  page lists a flagship tier above Pro, Flash and Flash-Lite (Gemini models
+  page, opened on 2026-10-23); the class count is the vendor's, which is why
+  the class table is a seam.
+- **Weighted slot pools** (Airflow pools, the make jobserver) and sizing from
+  rate-limit headers are in the 2026-10-17 note.
+
+**Path 2**: a weighted slot pool, budget in middle-class units and a weight per
+class, mixed by share as ruled, with the double-per-class ladder as the bundled
+default in a table the repository may override, since no vendor publishes a
+shared-pool ratio (the API's per-class buckets are separate and tier-dependent,
+and the subscription ordering is "several times" with no number); an agent at
+`host-decides` counts at the top class until the host reports what ran, then is
+re-counted from `modelUsage`; the pool sits beside the pacing ceiling with the
+lower winning, and the host's concurrent-sub-agent cap is a third ceiling. The
+glossary word is "slots", keeping "budget" for the pacing lane's quota check.
+The ruling "double per class" is left intact; the evidence says the ratio is
+contestable, and the table is how that is carried. No Go dependency. The
+independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - How does a run know an agent's class? The routing table names a tier per agent (itd-2609201916056194); an agent left at `host-decides` has no class until the host says which model it ran, so the draft must say what it counts as.
 - Does the budget replace the pacing intent's `pace.sub_agents` ceiling (itd-2609201925079472, two by default), or sit beside it with the lower of the two winning?
 - Does the machine's own config (`~/.abcd.noindex/config.json`), which the pace settings already read between the repository's and the bundled layer, apply here too, or only the repository's config over abcd's default?
 - What is this called? The rebuilt pacing lane adds a budget check that compares an estimate of agent runs with a runner's reported quota (abcd-a5, 2026-10-10), so calling this a sub-agent "budget" would give one word two meanings; the glossary entry is settled at planning.
+- (SOTA 2026-10-23) Whether the class weights are a table the repository may override (with the ruled double-per-class ladder as the bundled default), given that no vendor publishes a shared-pool ratio: the API's classes are separate buckets whose sizes vary by tier (the top class a quarter, 0.3 or 0.4 of the others), and the subscription ordering is "several times" with no number.
+- (SOTA 2026-10-23) Whether an agent at `host-decides` is counted at the top class until the host's result names the model that ran, and re-counted then.
 
 ## Decisions
 

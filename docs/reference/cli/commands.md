@@ -1339,11 +1339,12 @@ Judge the brief against every shipped surface and the saved docs review: Writes 
 
 Save a docs review's verdict as the receipt for HEAD: Writes the receipt in the local tier; refuses a verdict naming no judge.
 
-**Usage:** `abcd docs fidelity record --verdict-json <file|-> [flags]`
+**Usage:** `abcd docs fidelity record --verdict-json <file|-> [--dry-run] [flags]`
 
 **Flags:**
 
 ```
+      --dry-run               check the input and report what would be written; write nothing
       --verdict-json string   the reviewer's verdict JSON (a file, or - for stdin)
 ```
 
@@ -2381,11 +2382,12 @@ verb requires it, and skipping it is never warned about.
 
 Validate a host-composed gauntlet verdict: Writes the dated record, private unless --public; refuses without an idea slug or --verdict-json.
 
-**Usage:** `abcd ideate record <idea-slug> [--private | --public] --verdict-json <file|-> [flags]`
+**Usage:** `abcd ideate record <idea-slug> [--private | --public] --verdict-json <file|-> [--dry-run] [flags]`
 
 **Flags:**
 
 ```
+      --dry-run               check the input and report what would be written; write nothing
       --private               the idea is private, the default: record the verdict in ~/.abcd.noindex/ideas/<root-sha>/, owner-only, with no decision pointing at it (exclusive with --public)
       --public                the idea is public, on the person's word only: commit the verdict under .abcd/development/research/ideas/<root-sha>/ and record a decision pointing at it (exclusive with --private)
       --verdict-json string   path to the host-composed verdict JSON (or - for stdin)
@@ -3374,6 +3376,43 @@ refusal, exit 3 on a pause or a locked run state.
       --yielded string         with --restart: the line the agent yielded with, NETWORK: <cmd>, when a network failure stopped it rather than it dying
 ```
 
+#### `abcd implement widen`
+
+Widen an issue lane's hold to a path before it is edited: Writes the reservation and a run record line; refuses another copy's live hold, with exit 3.
+
+**Usage:** `abcd implement widen <path>... --lane <lane-id> [--run <run-id>] [flags]`
+
+Widen an issue run's reservation to each path named before the lane's implementer
+edits it: the issue is reserved again on origin with the footprint its reservation holds
+and the paths it does not cover yet, judged for overlap and against the cap like any
+reservation. A path already covered adds nothing, and when every one is, nothing is
+pushed. The run record says what was widened. Only the run's current lane, at its
+implement or validate stage, widens; an intent's run holds its spec's footprint and is
+refused. A run holding no reservation has nothing to widen and says so.
+
+An implementer's receipt is refused while the lane's branch changes a path the
+reservation does not cover, naming this command, so a widening forgotten or an edit made
+through the shell is caught before the lane moves on.
+
+Run it from the checkout the run lives in; the lane's brief names the command in full.
+--run names the run; without it, the one run in progress in this checkout. Exit 2 on a
+refusal; exit 3 when another copy holds a live reservation on one of the paths, with
+nothing pushed (edit none of them, and stop without a receipt: the lane is handed to an
+implementer again on a later step), or on a locked run state.
+
+**Flags:**
+
+```
+      --lane string   the lane whose implementer is about to edit the paths (lane-<n>)
+      --run string    the run the lane belongs to (run-<16 digits>); the one run in progress when omitted
+```
+
+**Example:**
+
+```
+abcd implement widen internal/widget/b.go --lane lane-1 --run run-2609010000000001
+```
+
 ### `abcd inbox`
 
 List the reports managed repositories filed back to abcd, newest first: Writes nothing; refuses any argument.
@@ -3465,11 +3504,12 @@ abcd intent audit itd-2609010000000001
 
 Ingest an intent-audit verdict into the shipped intent: Writes its Audit Notes; refuses without --verdict-json.
 
-**Usage:** `abcd intent audit ingest --verdict-json <path> [flags]`
+**Usage:** `abcd intent audit ingest --verdict-json <path> [--dry-run] [flags]`
 
 **Flags:**
 
 ```
+      --dry-run               check the input and report what would be written; write nothing
       --route stringArray     route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
       --verdict-json string   path to the intent-audit verdict JSON, in the shape the Verdict shape section of its review request states
 ```
@@ -3518,11 +3558,12 @@ Emit the consistency request over the brief and every intent, or one intent agai
 
 Ingest consistency findings as a dated review and a capture per finding: Writes the report and the ledger records; refuses without --findings-json.
 
-**Usage:** `abcd intent consistency ingest --findings-json <path> [--findings-json <path>...] [flags]`
+**Usage:** `abcd intent consistency ingest --findings-json <path> [--findings-json <path>...] [--dry-run] [flags]`
 
 **Flags:**
 
 ```
+      --dry-run                     check the input and report what would be written; write nothing
       --findings-json stringArray   path to the consistency findings JSON the intent-auditor returned; give it once per chunk of an overflowing corpus
       --route stringArray           route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
@@ -3635,11 +3676,12 @@ abcd intent plan itd-2609010000000001
 
 Print a draft's pre-pass input, or write its planning brief from the host's findings: Writes only the brief; refuses a record not on drafts/.
 
-**Usage:** `abcd intent prepass <itd-N> [--findings-json <path>] [flags]`
+**Usage:** `abcd intent prepass <itd-N> [--findings-json <path> [--dry-run]] [flags]`
 
 **Flags:**
 
 ```
+      --dry-run                check the input and report what would be written; write nothing
       --findings-json string   path to the host's findings over the input; validates them and writes the planning brief
 ```
 

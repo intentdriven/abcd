@@ -56,6 +56,19 @@ abcd already owns the right instrument: the grill — a Socratic interview that 
 - **Given** a brief change whose implications are already captured (e.g. authored by the forward doc-fidelity path), **when** the pass runs, **then** the dedup recognizes the existing item and the pass does not create a duplicate.
 - **Given** the derivation cannot reliably run, **when** a brief edit is attempted, **then** the block holds (fail closed) rather than letting the edit commit unreconciled.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [traceability-governance SOTA note](../../research/notes/2026-10-23-traceability-governance-sota.md). The classification half (a model proposes new intent, issue, contradiction or no impact; the product thinker confirms; the recall and precision figures) is in the 2026-10-04 brief-to-record traceability note; this pass researched where the block lives, the trivial-edit filter and the pass's shape.
+
+- **The block.** git's `pre-commit` hook aborts the commit on a non-zero exit and "can be bypassed with the `--no-verify` option"; hooks are not tracked content. A hook is the early, loud copy; the gate that holds is the record-lint rule preflight and CI run, which is abcd's three-tier posture already.
+- **Trivial edits are kept out by the fingerprint's scope, not a second heuristic, and the scope is narrower than it looks.** Doorstop's fingerprint covers the item UID, `text`, `ref` and `references`, the UIDs in `links` and opted-in extended attributes, not `header`, `level` or layout; Jama fires only on configured fields. If the trigger is itd-2610040817105016's section fingerprint over normative text, a reflow or other whitespace-only edit fires nothing by construction, but a typo fix does move the fingerprint, marks the links suspect and, under the record-lint rule below, fails the gate until cleared; so editorial edits need a cheap clear-by-act (an "editorial, no impact" row the product thinker confirms in one step), or the open question's pre-filter stays open. "Any change fires the pass" narrows to any change of normative text.
+- **The errata world's triage rule transfers.** The IESG tells reviewers "only items that are clearly wrong should be considered" and "Significant clarifications should not be handled as errata reports": an editorial brief edit is cleared in one step, a technical one fires the pass, and an edit that changes what the product is owes a record.
+- **Single pass, then confirm, is the shipped shape.** Spec Kit's `analyze` runs once, read-only, one table with a location per finding, remediation "only offered". Its near-duplicate pass is a model's judgement with no published recall; duplicate-detection research was not surveyed this pass.
+- **The change-folder alternative** (OpenSpec: a proposal folder with spec deltas, archived and applied on acceptance) keeps the edit out of the brief until reconciled, at the cost of taking the brief out of the product thinker's hands between edit and apply.
+- **Path 2**: native. The deterministic suspect set is the trigger; the pass is single-shot and read-only in the finding-table shape; the block is a record-lint rule (a moved fingerprint with uncleared links fails), with the pre-commit hook as early warning; this moves the hold from the commit to the push and merge gates, so the criterion "blocked from committing" would read "blocked from reaching main" at planning, a rewording only the product thinker makes. The seam is the finding table, so the proposer can change without the gate changing. One assessment verb serves this intent and itd-2610040817105016.
+
+The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - What counts as "the brief edit committing"? The brief is a directory of files — does the block live at commit time (a pre-commit hook), at a `/abcd` surface, or both? abcd's three-tier design (pre-commit → CI → runtime) is the natural template.
@@ -63,6 +76,8 @@ abcd already owns the right instrument: the grill — a Socratic interview that 
 - How does dedup identify an "already-captured" implication robustly — provenance markers from the forward path, content matching against existing drafts/disciplines, or both?
 - Does the grill run interactively (like the existing grill) on every brief edit, or single-pass-then-confirm? Interactive is truer to the grill but heavier per edit.
 - Where do drawn-out **principles** land — as discipline drafts under `intents/disciplines/`, and does a framework-provided vs app-authored distinction apply (see [[itd-62-pluggable-safety-gate]])?
+- (SOTA 2026-10-23) Whether the gate holds the commit or the edit: a product thinker who edits their brief on the dashboard with no session open must not be stalled by a block only a session can clear.
+- (SOTA 2026-10-23) What the gate decides with no model present: an uncleared suspect link fails, but is a brief edit with no proposal on file a failure or a pending state?
 
 ## Evidence 2026-10-04 (a downstream lab)
 

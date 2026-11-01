@@ -1,7 +1,7 @@
 ---
 name: implement
 description: "Share one autonomous run between sessions and drive the implement loop: Writes nothing bare, only the run state its sub-verbs name; refuses an unknown sub-verb."
-argument-hint: "[join|leave|mode|claim|release|check|log|report|load|status|step|receipt|record|outage] …"
+argument-hint: "[join|leave|mode|claim|release|check|log|report|load|status|step|receipt|widen|record|outage] …"
 block: agents
 user-invocable: false
 ---
@@ -203,6 +203,7 @@ last, and a fourth reads its record at the end:
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement status [--run <run-id>] --json
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] [--accept-config-change] [--route <role>=runner:<name>[@<provider>/<model>]]... --json
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement receipt <path> [--run <run-id>] --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement widen <path>... --lane <lane-id> [--run <run-id>] --json
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement record [--run <run-id>] [--transcript <path>]... --json
 ```
 
@@ -272,6 +273,19 @@ a stage the binary performs is the call's answer, and no other lane moves.
 `receipt` looks the path up among every outstanding await of the run and
 advances the lane it belongs to; a path no await names is refused, naming the
 awaits there are, and frees nothing.
+
+`widen` is an issue lane implementer's, run from the checkout the run lives in
+before its first edit of a path beyond the lane's reservation; the lane's brief
+names the command in full. It reserves the issue again with the footprint its
+reservation holds and each path named that it does not cover yet, judged for
+overlap like any reservation, and the run record says what was widened; a path
+already covered adds nothing. Only the run's current lane widens, at its
+implement or validate stage; an intent's run holds its spec's footprint and is
+refused. Exit 3 means another copy holds a live reservation on one of the paths
+and nothing was pushed: the implementer edits none of them and stops without a
+receipt, and the lane is handed to an implementer again on a later step. An
+implementer's receipt is refused while the lane's branch changes a path the
+reservation does not cover, naming the paths and this command.
 
 When the stage hands the lane to a role that `roles.<role>.runner` in
 `~/.abcd.noindex/config.json` routes to a command-line runner (`claude` or `opencode`,

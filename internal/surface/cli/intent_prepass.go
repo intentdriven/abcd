@@ -21,8 +21,9 @@ import (
 // internal/core/intent; every refusal exits 2 with nothing written.
 func newIntentPrepassCommand(asJSON *bool) *cobra.Command {
 	var findingsJSON string
+	var dryRun bool
 	cmd := &cobra.Command{
-		Use:  "prepass <itd-N> [--findings-json <path>]",
+		Use:  "prepass <itd-N> [--findings-json <path> [--dry-run]]",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := intentStoreRoot(cmd)
@@ -30,6 +31,9 @@ func newIntentPrepassCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			id := args[0]
+			if dryRun && !cmd.Flags().Changed("findings-json") {
+				return &exitError{Code: 2, Msg: "abcd intent prepass: --dry-run checks a --findings-json input; the bare form writes nothing already (nothing written)"}
+			}
 			if !cmd.Flags().Changed("findings-json") {
 				in, err := intent.AssemblePrepass(repoRoot, id)
 				if err != nil {
@@ -50,6 +54,17 @@ func newIntentPrepassCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return prepassRefusal(err, "")
 			}
+			if dryRun {
+				plan, err := intent.PlanPrepassBrief(repoRoot, id, raw)
+				if err != nil {
+					return prepassRefusal(err, id)
+				}
+				return renderDryRun(cmd.OutOrStdout(), *asJSON, "abcd intent prepass", plan.Result, plan.Plan, func(w io.Writer) {
+					res := plan.Result
+					fmt.Fprintf(w, "  questions: %d conflicts · %d overlaps · %d unanchored (%d demoted from a conflict or an overlap that could not be anchored)\n",
+						res.Conflicts, res.Overlaps, res.Unanchored, res.Demoted)
+				})
+			}
 			res, err := intent.WritePrepassBrief(repoRoot, id, raw)
 			if err != nil {
 				return prepassRefusal(err, id)
@@ -66,6 +81,7 @@ func newIntentPrepassCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&findingsJSON, "findings-json", "", "path to the host's findings over the input; validates them and writes the planning brief")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, dryRunFlagUsage)
 	return cmd
 }
 

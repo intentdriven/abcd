@@ -47,8 +47,20 @@ abcd's `/abcd:ahoy` doesn't touch `.claude/settings.local.json`. Users start wit
 - **Given** the user wants to inspect what would be installed without committing, **when** they run `/abcd:ahoy dry-run`, **then** the proposed `settings.local.json` content is printed to stdout and no file is written.
 - **Given** an abcd-managed project on a later plugin upgrade, **when** the user runs `/abcd:ahoy install` (idempotent re-install), **then** the existing `settings.local.json` is NOT modified — permission templates are install-time only, not auto-upgraded — AND a hint is shown about how to re-apply the latest template manually if desired.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [security-isolation SOTA note](../../research/notes/2026-10-23-security-isolation-sota.md).
+
+- **The host now calls the layer this intent fills the fragile one**: Bash patterns "that try to constrain command arguments are fragile", a deny rule "doesn't match the same program by path or inside `sh -c`", and "For filesystem and network enforcement that doesn't depend on the command text, use sandboxing"; an allow rule also "approves an unsandboxed retry"; `Write(path)` rules "never match", only `Edit(path)` and `Read(path)` do (Claude Code permissions).
+- **The file's lifecycle**: `.claude/settings.local.json` is "You, in this one project only"; precedence managed > `--settings` > local > project > user, list keys merge; standing approvals are written at the repository root "resolved through worktrees to the main checkout"; the host adds the file to the user's global git excludes (Claude Code settings).
+- **Each harness has a different file and grammar**: Codex `sandbox_mode` and `approval_policy` with writable roots; opencode `permission` rules in `opencode.json` where "Most permissions default to `"allow"`" and `.env` reads are denied; Gemini CLI sandbox profiles (Codex sandboxing; opencode permissions; Gemini CLI sandbox).
+- **Project-type detection has a reference**: Linguist detects by extension, filename and heuristics and honours `.gitattributes` `linguist-language` overrides (Linguist).
+
+**Path 2: one abcd-owned project-type profile (tools, build and test commands) rendered to each harness's file by an adapter**, preferring the host's sandbox with auto-allow to prefix allows where it exists; the renderer is the seam. The draft as written names one host's private file, which the host-agnostic rule and the reach to other harnesses both argue against. The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
+- (SOTA 2026-10-23) **Whether a template should allow network tools at all** (`curl`, `wget`), given the egress intent exists to narrow exactly that.
 - What's the right default base permission set across all project types?
 - How granular is the project-type detection (Python with FastAPI vs Python with PyTorch — different needs)?
 - Where does the user see what was added — in the ahoy summary, in `.claude/settings.local.json` itself with comments, both?
