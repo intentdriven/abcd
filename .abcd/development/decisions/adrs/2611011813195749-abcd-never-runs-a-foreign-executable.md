@@ -34,7 +34,7 @@ We will keep the verbs compiled into the one attested binary (adr-21). No code t
 abcd is extended at capability seams instead (adr-22):
 
 - A repository declares, in data, which external program stands behind a seam, pinned by checksum and signer.
-- The person admits that program once from their home before it runs on their machine. The admission is bound to the repository's identity (its root commit), the program's checksum and signer, and the exact invocation and configuration the repository declares for it, so a yes given for one repository is never reused by another, and a changed argument or config asks again. Admitting is a person-act: the shell guard refuses it from an agent, and no sequence may contain it.
+- The person admits that program once from their home before it runs on their machine. The admission is bound to the repository's identity (its root commit), the program's checksum and signer, and the exact invocation and configuration the repository declares for it, and the configuration is bound by a digest of its contents (and of any file it points to), so a yes given for one repository is not reused by an unrelated one and a changed argument or config asks again; a fork shares its root commit, so a fork declaring the identical program, invocation and configuration bytes reuses the yes, which admits nothing the person has not already admitted. Admitting is a person-act: the shell guard refuses it from an agent, and no sequence may contain it.
 - The core's joins see the adapter's result unchanged: build, drain, lint, launch, the guard and the board.
 - The first seam is the project check of itd-62.
 

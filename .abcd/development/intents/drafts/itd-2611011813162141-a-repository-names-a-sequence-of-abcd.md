@@ -15,7 +15,7 @@ production_mode: hand-written
 
 ## Press Release
 
-> A repository names a sequence of abcd steps and a person runs it with one command: abcd run <name> reads a named list of abcd's own verbs and non-widening flags from the repository's config, judges each step through the guard, and runs them with the build loop's stage semantics, stopping on a refusal, a back-off or an open question and releasing what earlier steps reserved; for an agent the same list renders as step-by-step instructions, so each step is its own judged command line. No shell steps, no new top-level names, no shadowing of a built-in verb.
+> A repository names a sequence of abcd steps and a person runs it with one command: abcd run <name> reads a named list of abcd's own verbs and non-widening flags from the repository's config, judges each step through the guard, and runs them with the build loop's stage semantics, stopping on a refusal, a back-off or an open question; for an agent the same list renders as step-by-step instructions, so each step is its own judged command line. No shell steps, no new top-level names, no shadowing of a built-in verb.
 
 ## Why This Matters
 

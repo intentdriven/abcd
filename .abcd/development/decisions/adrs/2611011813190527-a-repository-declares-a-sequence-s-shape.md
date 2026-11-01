@@ -30,7 +30,7 @@ We will let a repository declare a sequence's shape and nothing more:
 - it may contain no shell step;
 - it may not add a top-level name or shadow a built-in verb.
 
-abcd expands each step and judges it against the guard's registry before running it. Steps fail closed: a step may use only verbs and flags classified as non-widening, so a widening flag (`--approve`, `--apply`, `--release`, an enqueue), a verb that widens with no flag at all (a push, `reserve`, `update`, `land` without `--no-push`) and any flag not yet classified are each refused when the file is read, and the refusal names the step. `abcd run <name>` itself takes no flag beyond the sequence's name and passes nothing on to its steps, so neither a person nor an agent can add a widening flag through it; work that needs one is the person's own direct command, where the guard sees the verb and the flag together.
+abcd expands each step and judges it against the guard's registry before running it. Steps fail closed: a step may use only verbs and flags classified as non-widening, so a widening flag (`--approve`, `--apply`, `--release`, an enqueue), a verb that widens with no flag at all (a push, `reserve`, `update`, and `land` in any form, since even `land --no-push` runs the branch's gate and arms its pull request for merge) and any flag not yet classified are each refused when the file is read, and the refusal names the step. `abcd run <name>` itself takes no flag beyond the sequence's name and passes nothing on to its steps, so neither a person nor an agent can add a widening flag through it; work that needs one is the person's own direct command, where the guard sees the verb and the flag together.
 
 ## Alternatives Considered
 
