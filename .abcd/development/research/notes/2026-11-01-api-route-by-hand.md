@@ -73,7 +73,7 @@ pauses the lane for its key rather than falling back to the subscription).
 - **An elapsed window refuses a route.** A run whose 120-minute window
   lapsed while its preflight queued refused `--route` because the step would
   only pause; stepping once without it took the zero-minute pause, and the
-  next step took the route.
+  next step took the route (iss-2611012124359297).
 - **The planning interview on the key ended on a refused question.** Run from
   a plain terminal, the routed interviewer wrote a sound question within a
   minute, abcd's question check refused it for its rows (39 against the
@@ -98,7 +98,7 @@ pauses the lane for its key rather than falling back to the subscription).
 - **The verdict word must open the verdict section.** `land --record-review`
   takes a return only when the first non-empty line under `### Verdict` is the
   verdict word; a first line such as `Head: <sha>` or `Verdict: SHIP` is
-  refused as not one a validator writes.
+  refused as not one a validator writes (iss-2611012124381670).
 - **The loop's own reviews do not cover its landing commit.** The landing's
   resolve commit lands after the reviewed head, and `abcd land` wants a fresh
   pair naming it, which cost two extra subscription reviews for a records-only
