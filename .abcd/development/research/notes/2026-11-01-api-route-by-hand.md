@@ -82,6 +82,13 @@ pauses the lane for its key rather than falling back to the subscription).
   (iss-2611011402496418, dcn-2611011402510346, dcn-2611012123240576). The
   fallback record kept the reason but not the cost, so a refused launch's
   spend was lost.
+- **The runner's one-hour bound killed a finished implementer.** A routed
+  implementer committed its fix and report, then ran its definition of done
+  over the whole internal tree, after the loop package alone had taken 1,459
+  seconds, and was killed at 1h0m0s before writing its receipt. The kill
+  counted as a failed start, the lane fell back to the host, and the host
+  finished the receipt from the committed work and a scoped definition of
+  done (iss-2611012202511008).
 - **A planning interview stops when any session moves a branch.** The
   person's interview, run from one worktree, watches every branch ref in the
   repository's shared git directory, so a commit to an unrelated records
