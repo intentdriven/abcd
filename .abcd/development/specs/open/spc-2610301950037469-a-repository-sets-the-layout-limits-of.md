@@ -89,6 +89,7 @@ Out of scope, recorded elsewhere: A configurable options count (`question.option
    - tests: internal/surface/cli/guard_question_verb_test.go, internal/surface/cli/guard_question_limits_test.go, internal/surface/cli/guard_question_rows_test.go, internal/surface/cli/guard_question_corpus_test.go, internal/surface/cli/testdata/questions/corpus/, internal/surface/cli/limits_callsites_test.go
 
    Waits for spc-2610301917245442's step 1 (`Decide`, `questionState`, and the verb) and step 3 (the header grammar and `IsAbcds`), whose State and Verdict this step extends and whose exit codes it adds one cause to.
+   - landed: 580ae5e5356a
 
 3. The asking rules, the loader, and the two front doors
    - needs: 2
