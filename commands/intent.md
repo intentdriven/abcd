@@ -1,7 +1,7 @@
 ---
 name: intent
 description: "File a draft intent from quoted text, or render the intent store's status bare: Writes the draft into drafts/; refuses a lone word."
-argument-hint: "[text] [--title \"<title>\"] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> [<itd-N>…] [--bundle <name>] [--impact <additive|breaking|fix>] [--target <vX.Y.Z|next>] | reclassify <itd-N> --kind <standalone|bundle-member --bundle <name>|superseded --by <itd-M|adr-N> --reason \"<why>\"> | hold <itd-N> --reason \"<text>\" | unhold <itd-N> | target <itd-N> <vX.Y.Z|next> | link <itd-N> <spc-N> | edge <itd-N> [--blocked-by <itd-M,...>] [--unblock <itd-M,...>] [--builds-on <itd-M,...>] [--drop-builds-on <itd-M,...>] | prepass <itd-N> [--findings-json <file>] | audit [<itd-N>] | audit --owed [--max <n>] | audit --issue-drift [--strict] | consistency [<itd-N>] | consistency ingest --findings-json <file> [--findings-json <file>…] | condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds \"<why>\" [--narrowing \"<what now holds>\"]]"
+argument-hint: "[text] [--title \"<title>\"] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> [<itd-N>…] [--bundle <name>] [--impact <additive|breaking|fix>] [--target <vX.Y.Z|next>] | reclassify <itd-N> --kind <standalone|bundle-member --bundle <name>|superseded --by <itd-M|adr-N> --reason \"<why>\"> | hold <itd-N> --reason \"<text>\" | unhold <itd-N> | target <itd-N> <vX.Y.Z|next> | link <itd-N> <spc-N> | edge <itd-N> [--blocked-by <itd-M,...>] [--unblock <itd-M,...>] [--builds-on <itd-M,...>] [--drop-builds-on <itd-M,...>] | prepass <itd-N> [--findings-json <file> [--dry-run]] | audit [<itd-N>] | audit --owed [--max <n>] | audit --issue-drift [--strict] | consistency [<itd-N>] | consistency ingest --findings-json <file> [--findings-json <file>…] [--dry-run] | condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds \"<why>\" [--narrowing \"<what now holds>\"]]"
 block: people
 ---
 
@@ -917,7 +917,20 @@ it (the one-sided-link remedy `ready` reports). Report the linked pair.
 "${CLAUDE_PLUGIN_ROOT}/abcd" intent audit --owed [--max <n>] --json            # drain them oldest first (see Drain below)
 "${CLAUDE_PLUGIN_ROOT}/abcd" intent audit <itd-N> --json                       # re-emit a shipped intent's review request
 "${CLAUDE_PLUGIN_ROOT}/abcd" intent audit ingest --verdict-json <file> --json  # apply a host-produced verdict
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent audit ingest --verdict-json <file> --dry-run --json  # check it; write nothing
 ```
+
+**Practise an input before it counts.** `intent audit ingest`, `intent
+consistency ingest` and `intent prepass --findings-json` each take `--dry-run`:
+the input is judged through the same validator the real run uses, and the run
+prints what it would write (each path, created or replaced, and its size) and
+what it would ask the issue ledger to do, or the refusal the real run would give,
+in the same words and with the same exit 2. Nothing is written anywhere. A record
+the ledger would file is named with `<id>` where its minted id goes, and an open
+issue it would link instead (the one already carrying an owed audit check) is
+named by its own id, so a re-ingest the real run leaves unchanged plans nothing. With
+`--json` the usual result carries `"dry_run": true`, `would_write` and
+`would_do`. A verdict the ingest would quarantine plans the quarantine.
 
 **Bare `intent audit` lists the debt and writes nothing.** Every `spec close`
 that ships an intent parks an OWED review marker, so a fidelity review is owed
@@ -1206,6 +1219,7 @@ the one it read: a stderr line `abcd intent audit --issue-drift: ledger of
 "${CLAUDE_PLUGIN_ROOT}/abcd" intent consistency --json                               # the brief and every intent
 "${CLAUDE_PLUGIN_ROOT}/abcd" intent consistency <itd-N> --json                       # one intent against the rest
 "${CLAUDE_PLUGIN_ROOT}/abcd" intent consistency ingest --findings-json <file> --json # file the findings
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent consistency ingest --findings-json <file> --dry-run --json # check them; file nothing
 "${CLAUDE_PLUGIN_ROOT}/abcd" intent consistency ingest --findings-json <chunk 1> --findings-json <chunk 2> --json # every chunk of an overflow
 ```
 

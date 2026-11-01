@@ -5,9 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/dryrun"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
@@ -147,8 +151,9 @@ func newIntentConsistencyCommand(asJSON *bool) *cobra.Command {
 		"on a provider route, the most chunks of an overflowing corpus sent in one run; a plan of more is refused, naming its count and bytes")
 
 	var findingsJSON []string
+	var ingestDryRun bool
 	ingestCmd := &cobra.Command{
-		Use:  "ingest --findings-json <path> [--findings-json <path>...]",
+		Use:  "ingest --findings-json <path> [--findings-json <path>...] [--dry-run]",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			repoRoot, err := intentStoreRoot(cmd)
@@ -180,12 +185,16 @@ func newIntentConsistencyCommand(asJSON *bool) *cobra.Command {
 				}
 				payloads = append(payloads, payload)
 			}
+			if ingestDryRun {
+				return planConsistencyIngest(cmd, "abcd intent consistency ingest", repoRoot, payloads, func(v any) any { return withReceipt(v, route, payloads[0]) }, *asJSON)
+			}
 			return ingestConsistency(cmd, "abcd intent consistency ingest", repoRoot, payloads, func(v any) any { return withReceipt(v, route, payloads[0]) },
 				func(w io.Writer) { renderReceiptLine(w, route, payloads[0]) }, *asJSON)
 		},
 	}
 	ingestCmd.Flags().StringArrayVar(&findingsJSON, "findings-json", nil,
 		"path to the consistency findings JSON the intent-auditor returned; give it once per chunk of an overflowing corpus")
+	ingestCmd.Flags().BoolVar(&ingestDryRun, "dry-run", false, dryRunFlagUsage)
 	ingestRoute = addRouteFlag(ingestCmd, auditAgent)
 	cmd.AddCommand(ingestCmd)
 	return cmd
@@ -404,6 +413,38 @@ func warnUnreviewed(w io.Writer, verb, reviews string, ov *intent.ConsistencyOve
 	}
 	fmt.Fprintf(w, "%s: warning: %s too large for any chunk, so no chunk %s %s: %s; raise consistency.max_request_bytes to read %s\n",
 		verb, what, reviews, it, strings.Join(parts, ", "), it)
+}
+
+// planConsistencyIngest is the ingest's practice run: the same checks the
+// ingest makes, through the core's plan of it, and every record it would
+// file and every report file it would write reported rather than written.
+// The answers a provider run kept for the set's chunks, which the real
+// ingest removes once the set is in the ledger, are named as an effect.
+func planConsistencyIngest(cmd *cobra.Command, verb, repoRoot string, payloads [][]byte, receipt func(any) any, asJSON bool) error {
+	if err := refuseSharedMainCheckout(cmd, verb, repoRoot); err != nil {
+		return err
+	}
+	plan, err := capture.PlanConsistencyChunks(repoRoot, payloads, "")
+	if err != nil {
+		return &exitError{Code: 2, Msg: verb + ": " + fsutil.RedactHome(err.Error())}
+	}
+	res := plan.Result
+	warnUnreviewed(cmd.ErrOrStderr(), verb, "reviewed", res.Overflow)
+	if res.Status == "ingested" {
+		for _, ch := range res.Chunks {
+			rel := intent.ConsistencyAnswerPath(ch.ReceiptID)
+			if _, err := os.Lstat(filepath.Join(repoRoot, filepath.FromSlash(rel))); err == nil {
+				plan.Plan.Effects = append(plan.Plan.Effects, dryrun.Effect{Effect: "remove the answer kept for chunk " + strconv.Itoa(ch.Index), Target: rel})
+			}
+		}
+	}
+	return renderDryRun(cmd.OutOrStdout(), asJSON, verb, receipt(res), plan.Plan, func(w io.Writer) {
+		fmt.Fprintf(w, "  would be %s (receipt %s, scope %s); report: %s\n", res.Status, res.ReceiptID, res.Scope, res.ReportPath)
+		if res.Status == "ingested" {
+			fmt.Fprintf(w, "  findings %d: would file %d · link to an open record %d · addressed by a closed record %d\n",
+				res.Findings, len(res.Filed), len(res.Linked), len(res.Addressed))
+		}
+	})
 }
 
 // ingestConsistency validates a consistency pass's findings, files them, and

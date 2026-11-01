@@ -1437,6 +1437,13 @@
       "sentence": "Save a docs review's verdict as the receipt for HEAD: Writes the receipt in the local tier; refuses a verdict naming no judge.",
       "flags": [
         {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "verdict-json",
           "shorthand": "",
           "type": "string",
@@ -2024,6 +2031,13 @@
       "block": "agents",
       "sentence": "Validate a host-composed gauntlet verdict: Writes the dated record, private unless --public; refuses without an idea slug or --verdict-json.",
       "flags": [
+        {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "private",
           "shorthand": "",
@@ -2671,6 +2685,13 @@
       "sentence": "Ingest an intent-audit verdict into the shipped intent: Writes its Audit Notes; refuses without --verdict-json.",
       "flags": [
         {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "route",
           "shorthand": "",
           "type": "stringArray",
@@ -2748,6 +2769,13 @@
       "block": "agents",
       "sentence": "Ingest consistency findings as a dated review and a capture per finding: Writes the report and the ledger records; refuses without --findings-json.",
       "flags": [
+        {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "findings-json",
           "shorthand": "",
@@ -2881,6 +2909,13 @@
       "block": "agents",
       "sentence": "Print a draft's pre-pass input, or write its planning brief from the host's findings: Writes only the brief; refuses a record not on drafts/.",
       "flags": [
+        {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "findings-json",
           "shorthand": "",
