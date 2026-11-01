@@ -3,7 +3,7 @@ schema_version: 1
 id: "iss-2611012047534449"
 slug: "once-a-role-falls-back-from-a-runner-to"
 severity: "minor"
-category: "process"
+category: "bug"
 source: "agent-observation"
 found_during: "routing build agents to the claude runner, 2026-11-01"
 origin: researcher-authored
