@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/autonomy"
 	"github.com/intentdriven/abcd/internal/core/layered"
@@ -514,7 +515,7 @@ func limitsRefusedReason(err error, why string) string {
 		b.WriteString(why + "\n")
 	}
 	b.WriteString(termsafe.Sanitize(scrubPaths(err)) + "\n")
-	b.WriteString("Fix the value in that file and ask again: " + boundsLine() + ", and a person's own ~/.abcd.noindex/config.json may set each only lower than the limit otherwise in force.")
+	b.WriteString("Fix the value in that file and ask again: " + boundsLine() + ", and a person's own " + abcdhome.Display(layered.Config.MachineRel) + " may set each only lower than the limit otherwise in force.")
 	return b.String()
 }
 

@@ -650,9 +650,9 @@ func TestHookDenyNamesTheRefusedKeyAndNoRule(t *testing.T) {
 		{name: "a key the namespace does not claim", repo: `{"question":{"options":3}}`,
 			want: []string{".abcd/config.json", "question.options"}},
 		{name: "a personal value that loosens", machine: `{"question":{"rows":40}}`,
-			want: []string{"~/.abcd.noindex/config.json (machine layer)", "question.rows is 40", "looser than 32 (bundled)"}},
+			want: []string{abcdhome.Display(layered.Config.MachineRel) + " (machine layer)", "question.rows is 40", "looser than 32 (bundled)"}},
 		{name: "a personal value looser than the repository's", repo: `{"question":{"rows":30}}`, machine: `{"question":{"rows":40}}`,
-			want: []string{"~/.abcd.noindex/config.json (machine layer)", "question.rows is 40", "looser than 30 (.abcd/config.json)"}},
+			want: []string{abcdhome.Display(layered.Config.MachineRel) + " (machine layer)", "question.rows is 40", "looser than 30 (.abcd/config.json)"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -764,7 +764,7 @@ func TestHookNamesAnUnreadMachineConfig(t *testing.T) {
 		}
 		stdout, stderr, code := runGuard(askPayload(t, repo, wellBuilt()), "guard", "hook")
 		line := mustFailOpen(t, stdout, stderr, code)
-		if !strings.Contains(line, "~/.abcd.noindex/config.json") {
+		if !strings.Contains(line, abcdhome.Display(layered.Config.MachineRel)) {
 			t.Errorf("the fail-open line must name the machine file; line = %q", line)
 		}
 	})
@@ -787,7 +787,7 @@ func TestHookNamesAnUnreadMachineConfig(t *testing.T) {
 		}
 		stdout, stderr, code := runGuard(askPayload(t, repo, wellBuilt()), "guard", "hook")
 		line := mustFailOpen(t, stdout, stderr, code)
-		if !strings.Contains(line, "~/.abcd.noindex") {
+		if !strings.Contains(line, abcdhome.Display()) {
 			t.Errorf("the fail-open line must name the machine layer; line = %q", line)
 		}
 	})
