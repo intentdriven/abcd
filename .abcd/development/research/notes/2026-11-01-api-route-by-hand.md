@@ -58,9 +58,57 @@ pauses the lane for its key rather than falling back to the subscription).
   ruled that a runner failing to start pauses the lane for its key and retries
   once per later step (dcn-2611012113432054), instead of the silent fallback
   to the session's subscription that parked the lanes above.
+- **The fallback is silent at the surface.** The step that fell back exited
+  0, about two seconds after the await was posted, and said only that the
+  host now runs the implementer; the reason (`2.1.316 exited with status 1`)
+  sat in the JSON. Nothing looked wrong until the JSON was read.
+- **A fallen-back lane still takes a slot.** On a run whose ceiling is two
+  lanes, a `--route` after the fallback was refused because the step would
+  have opened a third lane for the next spec step, not retried the parked
+  one: the parked lane counted as out.
+- **A lane can be handed to the host before any route exists.** One
+  `implement step` finished a lane and opened the next through its brief and
+  implement stages with no pause between, so the second lane was told to the
+  host before a route could be set for it.
+- **An elapsed window refuses a route.** A run whose 120-minute window
+  lapsed while its preflight queued refused `--route` because the step would
+  only pause; stepping once without it took the zero-minute pause, and the
+  next step took the route.
+- **The planning interview on the key ended on a refused question.** Run from
+  a plain terminal, the routed interviewer wrote a sound question within a
+  minute, abcd's question check refused it for its rows (39 against the
+  terminal's 32), the refusal counted as the runner's invalid answer with no
+  host to fall back to, and the interview ended on an internal message
+  (iss-2611011402496418, dcn-2611011402510346, dcn-2611012123240576). The
+  fallback record kept the reason but not the cost, so a refused launch's
+  spend was lost.
 - **zsh does not split an unquoted variable.** Three `--route` flags kept in
   one shell variable reached abcd as a single argument (`unknown flag:
   --route implementer`). A driver must pass each flag as its own word.
+
+## Landing by hand
+
+- **A reviewed follow-up moves the branch past the head the landing lands.**
+  The loop refused a lane whose branch carried a reviewed follow-up commit
+  (`… is at <sha>, not at the head <sha> the landing lands`), and the lane was
+  landed by hand with `abcd land` and `gh pr create` instead
+  (iss-2611011943357182).
+- **`land --record-review` takes one return per flag.** Two paths after one
+  flag read the second as the branch (`the branch's head cannot be resolved`).
+- **The verdict word must open the verdict section.** `land --record-review`
+  takes a return only when the first non-empty line under `### Verdict` is the
+  verdict word; a first line such as `Head: <sha>` or `Verdict: SHIP` is
+  refused as not one a validator writes.
+- **The loop's own reviews do not cover its landing commit.** The landing's
+  resolve commit lands after the reviewed head, and `abcd land` wants a fresh
+  pair naming it, which cost two extra subscription reviews for a records-only
+  commit (iss-2610311732460169, iss-2610312044511316).
+- **A return keeping an earlier round's verdict is refused.** A return with
+  two `Verdict` headings at any level is refused (`it has 2 Verdict sections`),
+  so a reviewer that keeps earlier rounds must rename their headings.
+- **The away queue needs an away record.** `abcd mode queue` refuses when the
+  person is not away, so a finding meant for their queue while they are
+  present has to be put to them directly.
 
 ## Review pairs outside a loop
 
@@ -88,6 +136,38 @@ pauses the lane for its key rather than falling back to the subscription).
   `/dev/null` or from the diff silences it.
 
 ## Cost and churn
+
+- **Measured cost of one review round on the key.** In one loop run's first
+  validate round, the ruthless reviewer cost 0.9654 USD and the security
+  reviewer 0.3326 USD, both on claude-opus-5-5, the runner's own default with
+  no model set, and no rate limit was hit; the token counts are in the run's
+  route receipts. The record of a failed launch drops its cost, as the claude
+  runner drops `total_cost_usd` on a non-success result.
+- **Permission modes differ by role.** A role granted the shell (the loop's
+  reviewers) launches on the shell route, with the guard answering its
+  permission prompts, even when it runs no command; a role without it (the
+  planning interviewer) launches under `dontAsk`. Both launched under
+  `--bare` from inside a host session.
+- **The person ruled on key handling and caps.** One named key per session,
+  read from the operating system's secret store; caps per day, week and month
+  that pause and wait at the limit; a run with no cap set refuses to start;
+  and a cap is raised only by a command refused to agents
+  (dcn-2611012123470476, itd-2611012123486967).
+
+- **The load gate, not the agents, set the pace.** Code preflights waited 1
+  to 2.5 hours each at the load gate in the afternoon, with seven or more
+  waiters behind one that had run more than two hours, and the load peaked
+  near 290 on 16 cores by a peer's count; records-only preflights took the
+  fast path in a few minutes. The machine ran out of application memory once
+  that evening (iss-2611011737317454).
+- **The merge queue's macOS race pass hit its watchdog.** It was stopped at
+  1h20m and dropped two pull requests from the queue (evidence on
+  iss-2610181757540736).
+- **A re-review of a small delta took 1 to 4 minutes per reviewer.** That is
+  the cost a delta review would pay each round, against a full pair.
+- **The installed release judges questions at 24 rows while main's default is
+  32.** A question drafted against main's figure gets the installed hook's
+  rows note.
 
 - **Every amendment restarts the head-bound checks.** A review receipt and a
   preflight receipt each name one head. Each fix to the records branch moved
