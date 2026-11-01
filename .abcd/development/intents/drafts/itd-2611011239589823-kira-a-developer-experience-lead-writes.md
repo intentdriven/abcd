@@ -22,8 +22,8 @@ production_mode: hand-written
 ## Why This Matters
 
 _Written by the agent on 2026-11-01 from the product thinker's rulings that
-day (dcn-2611011248594647) and two state-of-the-art reviews, restated; the
-planning interview confirms or rewrites it._
+day (dcn-2611011248594647, dcn-2611011551216958) and two state-of-the-art
+reviews, restated; the planning interview confirms or rewrites it._
 
 Rendering every documentation surface from its one home
 (itd-2611011151475128) leaves the pages no generator can write: how-to guides
@@ -43,8 +43,10 @@ abcd-managed repository has two surfaces people write in, restated:
 - **Everything else is generated**: reference from the command tree and
   schemas, install facts from the release, badges, citation and links.
 
-What the state-of-the-art review (2026-11-01) changed, each confirmed by the
-product thinker the same day:
+What the state-of-the-art review (2026-11-01) changed. The product thinker
+confirmed the routing that carried these changes the same day
+(dcn-2611011551216958 records the rulings); a bullet the decision does not
+name is the agent's proposal for the planning interview, and says so:
 
 - **Separate the owners, not the destination.** The how has its own owners
   in the same repository, site and navigation, never a second site: a project
@@ -63,9 +65,9 @@ product thinker the same day:
   test, in whatever form the product takes (a command run, a page visited, a
   call made), exercises are checked the way exercise tracks check theirs, a
   scripted recording is regenerated from its script on every change, and a
-  hand-recorded video carries the version it shows and a review date. A
-  repository that adopts the how adopts its tests as gates: the choice to
-  have the how is the opt-in.
+  hand-recorded video carries the version it shows and a review date.
+  Proposed by the agent: a repository that adopts the how adopts its tests as
+  gates, so the choice to have the how is the opt-in.
 - **Facts are filled in, never typed.** Versions, command names and flags in
   an authored page are filled in from the release when the site is built,
   never written as a version into a committed page (adr-19), so a tutorial

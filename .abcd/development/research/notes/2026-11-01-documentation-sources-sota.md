@@ -102,4 +102,8 @@ Not worth adopting: a separate learning site or repository; true two-way sync
 between rendered pages and their sources (no precedent; a one-way render with
 a match check gives the same safety); a git-backed content system from day
 one; freshness dates as the only control; version placeholders in tutorials
-(substitute real values when the page is built instead).
+(substitute real values when the page is built instead). The two-way sync
+ruled out here writes a rendered page's edits back into its source by
+itself; an offer to move a caught edit into its source, which the owner
+accepts or declines (itd-2611011151512956), is not that, and is the case
+finding 8 of review 1 leaves open.

@@ -44,19 +44,9 @@ renamed home leaves it pointing at nothing, silently.
   current answer.
 - Terms have one home too: the glossary. A chapter uses a term and links it,
   never defines it again.
-- A documentation surface holds no prose of its own. What people write
-  lives in one of two authored surfaces, the brief (what the product is and
-  why, who it is for and their roles) or the how (how-to guides and learning
-  material), and the README and the `docs/` pages are rendered from those and
-  from the repository's own facts
-  ([dcn-2611011248594647](../../work/decisions/dcn-2611011248594647-adopted-product-thinker-2026-11-01-no.md),
-  [itd-2611011151475128](../intents/drafts/itd-2611011151475128-a-product-thinker-never-keeps-two-copies.md)).
-  Text written into a rendered page by hand is a second home until it moves
-  to its source; the proposed rule that a render never discards it unasked
-  is [adr-2611011153058085](../decisions/adrs/2611011153058085-a-re-render-never-discards-hand-written.md).
 - The rule covers the whole written record: the brief, the intents, the
   ADRs and decisions, the command pages, the principles, the rules domains,
-  the conventions file, the README and `docs/`. Code is out of scope: a primitive in
+  the conventions file and `docs/`. Code is out of scope: a primitive in
   code has one home under
   [one canonical primitive](one-canonical-primitive.md).
 
@@ -68,5 +58,4 @@ discipline.
 
 **Where it was ruled.** The product thinker made it a standing rule on
 2026-10-27 (dcn-2610271112331508), in settling how the brief's restated
-sections are cut back, and extended it to the documentation surfaces on
-2026-11-01 (dcn-2611011248594647).
+sections are cut back.

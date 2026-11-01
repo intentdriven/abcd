@@ -39,7 +39,7 @@ impact: additive
 
 ## Typed Links
 
-- **built on by `itd-2611011151475128`** (every documentation surface rendered from its one home): Widens this intent's one home and drift check from the lockup lines to whole documentation surfaces.
+- **built on by and refined by `itd-2611011151475128`** (every documentation surface rendered from its one home): Widens this intent's one home and drift check from the lockup lines to whole documentation surfaces. A candidate reversal of this intent's no-autonomous-rewrite settlement, decided by that draft's "rendered or held" question and flagged for the product thinker.
 
 ## Audit Notes
 

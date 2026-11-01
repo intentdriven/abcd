@@ -8,7 +8,7 @@ reclassification_history: []
 builds_on: [itd-102]
 severity: minor
 refines: [itd-102]
-related_adrs: [adr-2611011153058085, adr-2609091248200336, adr-19, adr-53]
+related_adrs: [adr-2611011153058085, adr-2610031751065746, adr-19, adr-53]
 origin: researcher-authored
 production_mode: hand-written
 ---
@@ -22,7 +22,7 @@ production_mode: hand-written
 ## Why This Matters
 
 _Written by the agent on 2026-11-01 from the product thinker's rulings that
-day (dcn-2611011248594647), restated; the planning interview confirms or
+day (dcn-2611011248594647, dcn-2611011551216958), restated; the planning interview confirms or
 rewrites it._
 
 A hand-written README is a second home for what the brief already says, and a
@@ -31,16 +31,17 @@ still describes the product as "a host-agnostic configuration layer for
 intent-driven development", the wording the conventions file also carries,
 while the brief's identity block now names it differently. Two committed homes
 say two things. The principle that every claim has one home
-(`every-claim-has-one-home`) already rules this out for the record; the
-README and the docs pages are the surfaces it has not reached.
+(`every-claim-has-one-home`) already covers `docs/`; nothing yet enforces it
+on the README or a docs page, and the principle gains its documentation bound
+when this intent ships, not before (the record lands with the act).
 
 The product thinker's rulings on 2026-11-01, restated:
 
 - **No documentation surface holds prose of its own.** What people write
-  lives in one of two authored surfaces, the brief (what the product is and
-  why, its users and roles) or the how (itd-2611011239589823: how-to guides,
-  and optionally tutorials, exercises and video), and every documentation
-  surface is rendered from its one home. What abcd's README holds by hand
+  lives in the design record (the brief, with its principles) or the how
+  (itd-2611011239589823: how-to guides, and optionally tutorials, exercises
+  and video), and every documentation surface is rendered from its one home,
+  section by section as abcd comes to render it. What abcd's README holds by hand
   today is positioning, its users and their roles, all of which belong in the
   brief.
 - **The derived sections render now.** Install, requirements and first run
@@ -70,8 +71,9 @@ The product thinker's rulings on 2026-11-01, restated:
   for the record's readers; the README is the front door for someone who has
   never heard of the product, and the product thinker writes the text it
   opens with. adr-53 expresses audience by placement, never by a prose
-  register, so that text is placed as a source of its own for the front door
-  rather than written in a second register inside a brief chapter.
+  register, so the agent proposes placing that text as a page of the brief's
+  product chapter of its own, rather than writing it in a second register
+  inside another chapter.
 
 The rule meets two standing constraints, and holds both:
 
@@ -81,7 +83,7 @@ The rule meets two standing constraints, and holds both:
   sections abcd renders, section by section, holding any section a hand edit
   is still waiting in (adr-2611011153058085); and committing the result stays
   the person's act, as itd-2610031348087517's scope condition already says
-  for the setup parts.
+  for the setup parts (the space rule now held by adr-2610031751065746).
 - **No autonomous rewrite.** itd-102 settled that re-rendering from the
   identity block is always a proposed diff a person adopts. Whether a
   brief-sourced section is rendered in place or held to its home by a
@@ -136,9 +138,9 @@ edits caught by regenerating and comparing.
 - **Where the how lives.** Authored in place under `docs/` with facts filled
   in at build, or kept under the development record and rendered into
   `docs/`; the same question stands in itd-2611011239589823.
-- **The front-door text's place.** Where the text the README opens with lives
-  as a source of its own (adr-53), beside the identity block or as its own
-  page of the product chapter.
+- **The front-door text's place.** Whether the text the README opens with is
+  its own page of the brief's product chapter (adr-53), or sits beside the
+  identity block.
 - **Featured principles.** The README shows a few principles, not all; how a
   principle is marked as one the front page shows.
 - **The editing surface it waits on.** Which brief-editing work counts as
@@ -148,6 +150,13 @@ edits caught by regenerating and comparing.
   have no glossary entry, and the glossary's "rendered surface" means a
   public text held to the identity block; the terms get their entries, or
   the existing one widens, before planning.
+
+## Typed Links
+
+- **refined by `itd-2611011239589823`** (the how): Its how-to and tutorial
+  pages come from that surface.
+- **built on by `itd-2611011151512956`** (the way back): Catches a hand edit
+  to a page this intent renders and offers it back to its source.
 
 ## Audit Notes
 

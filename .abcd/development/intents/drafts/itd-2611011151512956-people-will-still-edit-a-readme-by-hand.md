@@ -17,7 +17,7 @@ production_mode: hand-written
 
 ## Press Release
 
-> People will still edit a README by hand. abcd scans every rendered documentation surface for text that has no home: a hand edit to a rendered section, or new prose added beside them. It assesses each piece, says which section of the brief or the how it belongs in, and in the next iteration offers the product thinker to move it there, from where it renders. Nothing hand-written is discarded unasked: a piece is replaced only once it has been moved into its source or the owner has chosen to drop it.
+> People will still edit a README by hand. abcd scans every rendered documentation surface for text that has no home: a hand edit to a rendered section, or new prose added beside them. It assesses each piece, says which section of the brief or the how it belongs in, and in the next iteration offers the owner of that source to move it there, from where it renders. Nothing hand-written is discarded unasked: a piece is replaced only once it has been moved into its source or the owner has chosen to drop it.
 
 ## Why This Matters
 
@@ -33,8 +33,9 @@ that the lane runs in both directions, restated:
 - **From the sources to the docs**, by rendering, always.
 - **From the docs back to the sources**, when a page was adjusted by hand:
   abcd finds the hand-written text, assesses where it belongs, and in a
-  subsequent iteration puts it to the product thinker with an offer to move it
-  into its source, from which it is then rendered.
+  subsequent iteration puts it to the owner of its source (the product
+  thinker for the brief, the product team or the educators for the how) with
+  an offer to move it there, from which it is then rendered.
 
 The lane serves both surfaces people write in: a hand edit to a page
 rendered from the brief is offered back to the brief, and one to a page
@@ -72,6 +73,15 @@ found that drafts the matching edit to a rendered page's source. The lane
 follows the established half (catch by comparison) and builds the missing one
 as a proposal.
 
+The same note lists "true two-way sync between rendered pages and their
+sources" as not worth adopting, because a one-way render with a match check
+gives the same safety. This lane is not that: rendering stays one way, and
+nothing is ever written back to a source by itself. What the match check
+alone does not give is the owner's text kept: under a compulsory render, a
+check that only fails leaves the person to rescue their own words. The offer
+back is a proposal the owner accepts or declines, which is the pattern the
+note's finding 8 records.
+
 ## Mechanism
 
 > _Prompted (the claim-recording gradient): why the authors expect this to work, as a falsifiable "we expect X because Y" — not the outcome restated. Replace this line with the claim, or with the exact token `None stated.` alone on its line to record the claim as considered and declined._
@@ -96,6 +106,11 @@ as a proposal.
 - **A declined offer.** Whether a piece the product thinker neither moves nor
   drops is offered again or held with a reason; its section stays held either
   way (adr-2611011153058085).
+
+## Typed Links
+
+- **built on by `itd-2611011239589823`** (the how): The lane offers a hand edit
+  to a page rendered from the how back to the how.
 
 ## Audit Notes
 
