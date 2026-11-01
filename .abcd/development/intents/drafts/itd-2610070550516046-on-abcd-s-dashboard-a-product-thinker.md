@@ -21,6 +21,8 @@ _Worded by the facilitator from the product thinker's request of 2026-10-07 ("a 
 
 Proposed links, for the product thinker to confirm at planning: builds on the dashboard (itd-2610032150577708, planned) and on the section-to-intent mapping of itd-2610040817105016 (draft), which this page draws; the revisit mark of itd-2610070549060530 (draft) refines this intent's ordering, as one narrow way to raise an idea.
 
+Extension proposed on 2026-11-01, for the product thinker to confirm at planning: a **goal view**. The product thinker picks an outcome from those abcd offers, drawn from the brief's unrealised sections (a new direction is a brief edit first, the product thinker's ruling of 2026-11-01), and the same page then shows only the brief sections, ideas and open issues that serve it, with what is still missing shown as proposed new ideas to choose from. Nothing about the goal is stored: the view is computed from the brief and the ideas each time, as the Now/Next/Later block is (adr-2609292012006845).
+
 ## Why This Matters
 
 > _Why this matters to the user — replace before planning._

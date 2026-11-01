@@ -27,6 +27,7 @@ adr-23 committed to the MCP server as the second thin front door over the unchan
 - Server lifecycle from the binary (an explicit serve verb) — stdio transport first; the CLI stays the reliable default front door (brief invariant: every capability reachable with no plugin host present).
 - Registration docs: how any MCP-capable harness registers the server (host-neutral; per-host pages arrive with per-host adoptions).
 - Parity evidence: an MCP client invoking a verb gets a result equivalent to the CLI invocation — the floor row of itd-22's parity suite.
+- **The one stable contract a tool built on abcd reads** (proposed 2026-11-01, to confirm at planning): a verb-shaped addition for a repository's product lives in the host's own plugin format or a script, and reaches abcd only through these tools' structured results and the JSON Schemas generated for them, so extending abcd never means loading code into it.
 
 ## What's Out of Scope
 
