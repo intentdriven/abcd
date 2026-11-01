@@ -258,9 +258,7 @@ func indexDigest(repoRoot, scratch string) (string, error) {
 	case !info.Mode().IsRegular():
 		return uncopiedIndex()
 	}
-	// O_NOFOLLOW and O_NONBLOCK: a link or a pipe put in its place since the
-	// Lstat is neither followed nor waited on, and the Stat below refuses it.
-	src, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	src, err := openIndex(path)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 		return "no-index", nil
@@ -300,6 +298,15 @@ func indexDigest(repoRoot, scratch string) (string, error) {
 		return bytesDigest, nil
 	}
 	return "tree:" + strings.TrimSpace(string(tree)) + " entries:" + hex.EncodeToString(entries.Sum(nil)), nil
+}
+
+// openIndex opens the checkout's index for indexDigest, after its Lstat.
+// O_NOFOLLOW and O_NONBLOCK: a link or a pipe put in its place since the
+// Lstat is neither followed nor waited on, and the Stat after the open
+// refuses the pipe, or a file that is not the one the Lstat saw. It is a
+// variable so a test can swap the path between the Lstat and the open.
+var openIndex = func(path string) (*os.File, error) {
+	return os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 }
 
 // uncopiedIndex is indexDigest's value for an index it does not copy: one no
