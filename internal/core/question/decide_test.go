@@ -11,7 +11,12 @@ import (
 // the hook's order, and Rows is the split the rows rule computes.
 
 // rowsTab is the 25-row case of itd-2610230756259215: eight rows of header and
-// frame, seven of question text and ten of options.
+// frame, seven of question text and ten of options. It runs past the rows
+// limit only at the floor, 24, since itd-2610301914350541 raised the default
+// to 32, so the tests that need it over the limit judge it at rowsFloor.
+// rowsFloor is Default with the rows limit at its floor, 24.
+var rowsFloor = Bounded(Default, Bounds[0].Floor, Default.LabelWords, Default.MeaningSentences)
+
 func rowsTab() Tab {
 	return Tab{
 		Header: "Product Q1",
@@ -34,22 +39,22 @@ func rowsTab() Tab {
 }
 
 // TestRowsSplitIsTheChecks: the 25-row case reads 8, 7, 10 and 25, and the
-// rows finding the check makes carries exactly those figures, because both
+// rows finding at the floor the check makes carries exactly those figures, because both
 // read Rows.
 func TestRowsSplitIsTheChecks(t *testing.T) {
-	got := tabRows(rowsTab(), Default)
+	got := tabRows(rowsTab(), rowsFloor)
 	want := RowSplit{HeaderAndFrame: 8, QuestionText: 7, Options: 10, Total: 25}
 	if got != want {
 		t.Fatalf("Rows = %+v, want %+v", got, want)
 	}
-	fs := CheckLimits(one(rowsTab()), Default, Addressee{})
+	fs := CheckLimits(one(rowsTab()), rowsFloor, Addressee{})
 	if len(fs) != 1 || fs[0].Rule != RuleRows {
 		t.Fatalf("the 25-row case must draw the rows finding alone; got %v", rulesOf(fs))
 	}
 	if fs[0].Value != "25 rows: header and frame 8, question text 7, options 10" {
 		t.Errorf("rows finding value = %q, not the split Rows computes", fs[0].Value)
 	}
-	if estimateRows(rowsTab(), Default) != got.Total {
+	if estimateRows(rowsTab(), rowsFloor) != got.Total {
 		t.Errorf("estimateRows and Rows disagree")
 	}
 }
@@ -88,7 +93,7 @@ func TestDecideFollowsTheHooksOrder(t *testing.T) {
 		{"away unread, rows alone", rowsTab(), State{Repo: true, AwayErr: errStore}, OutcomeAdmitWithRowsNote, true, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			v := Decide(one(tc.tab), tc.s, Default)
+			v := Decide(one(tc.tab), tc.s, rowsFloor)
 			if v.Outcome != tc.want {
 				t.Errorf("outcome = %q, want %q", v.Outcome, tc.want)
 			}
@@ -98,7 +103,7 @@ func TestDecideFollowsTheHooksOrder(t *testing.T) {
 			if (len(v.Findings) > 0) != tc.findings {
 				t.Errorf("findings = %v, want any: %v", rulesOf(v.Findings), tc.findings)
 			}
-			if len(v.Rows) != 1 || v.Rows[0] != tabRows(tc.tab, Default) {
+			if len(v.Rows) != 1 || v.Rows[0] != tabRows(tc.tab, rowsFloor) {
 				t.Errorf("rows = %+v, want the tab's split", v.Rows)
 			}
 			if v.DependsOnState != tc.s.Repo {

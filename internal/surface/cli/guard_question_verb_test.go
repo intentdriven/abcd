@@ -2,9 +2,7 @@ package cli
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"encoding/json"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -76,12 +74,14 @@ func TestGuardQuestionExitsZeroOnACleanDraft(t *testing.T) {
 	}
 }
 
-// TestGuardQuestionExitsOneOnARowsOverrunAlone: the 25-row case is admitted
-// by the hook with a note, and the verb still exits 1, because a draft is
+// TestGuardQuestionExitsOneOnARowsOverrunAlone: the rows-rule case, 34 rows
+// against the default limit of 32 (the 25-row case runs over only at the
+// floor, 24, since itd-2610301914350541 raised the default), is admitted by
+// the hook with a note, and the verb still exits 1, because a draft is
 // never ready while a tab runs past the limit.
 func TestGuardQuestionExitsOneOnARowsOverrunAlone(t *testing.T) {
 	unmanagedRepo(t)
-	res, _, code := runQuestionVerb(t, "rows-25")
+	res, _, code := runQuestionVerb(t, "rule-rows")
 	if code != 1 {
 		t.Errorf("exit = %d, want 1", code)
 	}
@@ -91,9 +91,9 @@ func TestGuardQuestionExitsOneOnARowsOverrunAlone(t *testing.T) {
 	if len(res.Findings) != 1 || res.Findings[0].Rule != string(question.RuleRows) || res.Findings[0].Refuses {
 		t.Errorf("findings = %+v, want the one rows finding, not refusing", res.Findings)
 	}
-	want := question.RowSplit{HeaderAndFrame: 8, QuestionText: 7, Options: 10, Total: 25}
-	if len(res.Rows) != 1 || res.Rows[0].RowSplit != want || res.RowsLimit != 24 {
-		t.Errorf("rows = %+v (limit %d), want tab 1 at %+v against 24", res.Rows, res.RowsLimit, want)
+	want := question.RowSplit{HeaderAndFrame: 8, QuestionText: 20, Options: 6, Total: 34}
+	if len(res.Rows) != 1 || res.Rows[0].RowSplit != want || res.RowsLimit != question.Default.Rows {
+		t.Errorf("rows = %+v (limit %d), want tab 1 at %+v against %d", res.Rows, res.RowsLimit, want, question.Default.Rows)
 	}
 	if len(res.Ready) == 0 {
 		t.Error("an admitted draft carries no ready input")
@@ -216,31 +216,6 @@ func TestGuardQuestionAskComposesTheDraft(t *testing.T) {
 	}
 }
 
-// treeHashes hashes every file under root, the .git directory included.
-func treeHashes(t *testing.T, root string) map[string][32]byte {
-	t.Helper()
-	out := map[string][32]byte{}
-	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			out[p+"/"] = [32]byte{}
-			return nil
-		}
-		b, err := os.ReadFile(p)
-		if err != nil {
-			return err
-		}
-		out[p] = sha256.Sum256(b)
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return out
-}
-
 // TestGuardQuestionWritesNothing: in a managed checkout with the mode on the
 // product thinker and no question open, the verb on a clean, a refused and a
 // rows-only draft leaves the mode file, the open-question marker and every
@@ -256,7 +231,7 @@ func TestGuardQuestionWritesNothing(t *testing.T) {
 	for name, want := range map[string]question.Outcome{
 		"clean-product-chip": question.OutcomeAdmit,
 		"rule-no-bold":       question.OutcomeRefuse,
-		"rows-25":            question.OutcomeAdmitWithRowsNote,
+		"rule-rows":          question.OutcomeAdmitWithRowsNote,
 	} {
 		res, _, _ := runQuestionVerb(t, name)
 		if res.Hook != want {
@@ -440,13 +415,13 @@ func TestGuardQuestionJSONCarriesTheVersion(t *testing.T) {
 // split, and every finding.
 func TestGuardQuestionTextGroupsRowsAndOutcome(t *testing.T) {
 	unmanagedRepo(t)
-	stdout, _, code := runGuard("", "guard", "question", corpusPath(t, "rows-25"))
+	stdout, _, code := runGuard("", "guard", "question", corpusPath(t, "rule-rows"))
 	if code != 1 {
 		t.Errorf("exit %d, want 1", code)
 	}
 	for _, want := range []string{
 		"hook: admit-with-rows-note:",
-		"tab 1: 25 rows: header and frame 8, question text 7, options 10",
+		"tab 1: 34 rows: header and frame 8, question text 20, options 6",
 		"findings: 1, 0 of them refusing",
 		"tab 1, whole tab (rows):",
 		"ready:",
