@@ -10,20 +10,22 @@
 <!-- BEGIN ABCD:release-badge sha256=7094948651644ba7ca3cd0b237c40538e04bf2975e257cac31caf992ca8652e3 -->
 <a href="https://github.com/intentdriven/abcd/releases/latest"><img src="https://img.shields.io/github/v/release/intentdriven/abcd" alt="Latest release"></a>
 <!-- END ABCD:release-badge -->
-  <img src="https://img.shields.io/badge/macOS-000000?logo=apple&logoColor=white" alt="macOS">
-  <img src="https://img.shields.io/badge/Linux-core%20CI--tested-FCC624?logo=linux&logoColor=black" alt="Linux: core CI-tested">
-  <img src="https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white" alt="Go 1.26">
-  <br />
 <!-- BEGIN ABCD:build-badge sha256=fc018bb0d5546cdf08cdd9b418ff6c8b40510e358aeddcbb8005b1a461056dfc -->
 <a href="https://github.com/intentdriven/abcd/actions/workflows/ci.yml"><img src="https://github.com/intentdriven/abcd/actions/workflows/ci.yml/badge.svg" alt="Build"></a>
 <!-- END ABCD:build-badge -->
   <img src="https://img.shields.io/github/last-commit/intentdriven/abcd?cacheSeconds=300" alt="Last commit">
-  <img src="https://img.shields.io/badge/status-experimental-orange" alt="Status: experimental">
   <br />
+  <img src="https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white" alt="Go 1.26">
   <a href="https://claude.ai/claude-code"><img src="https://img.shields.io/badge/Built_with-Claude_Code-3B5CE7?logo=anthropic&logoColor=white" alt="Built with Claude Code"></a> <!-- docs-lint: allow -->
 <!-- BEGIN ABCD:abcd-badge sha256=f8e65d2312b3f8c5ac440938b25cb27c9ba5b76189680ac64d559316d1c83d96 -->
 <a href="https://github.com/intentdriven/abcd"><img src="https://img.shields.io/badge/managed%20with-abcd-blue" alt="Managed with abcd"></a>
 <!-- END ABCD:abcd-badge -->
+  <br />
+  <img src="https://img.shields.io/badge/macOS-000000?logo=apple&logoColor=white" alt="macOS">
+  <img src="https://img.shields.io/badge/Linux-core%20CI--tested-FCC624?logo=linux&logoColor=black" alt="Linux: core CI-tested">
+  <br />
+  <!-- The status badge stays the last row, on its own, and the largest. -->
+  <img src="https://img.shields.io/badge/status-experimental-orange?style=for-the-badge" alt="Status: experimental">
   </p>
 
   <p>
