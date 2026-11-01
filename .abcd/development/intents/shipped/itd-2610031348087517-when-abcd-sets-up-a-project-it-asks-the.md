@@ -114,6 +114,10 @@ Overtaken:
 - The records review's disagreements with the design review (findings 1, 7, 8 and 9): settled by decisions 1, 2, 3 and 5.
 - The records review's interview questions Q1 to Q8: answered by decisions 1 to 7, and the Mechanism confirmed.
 
+## Typed Links
+
+- **refined by `itd-2611011151512956`** and **reversed in part by `itd-2611011151475128`** (pending the product thinker's confirmation): The owner's words move into the brief or the how, and a hand-edited part is offered back to its source instead of being left as it is.
+
 ## Audit Notes
 
 <!-- abcd-review: INGESTED receipt=rcp-5b7cb4b81566 -->

@@ -2745,3 +2745,15 @@ Verdict at filing: FILE-AS-IS, the product thinker naming the spot-check as the 
 Grade: the routing survived. The ideate pass had already done the splitting: of the proposal's four parts, one became the intent, one was already a standing rule, one waits as an open question, and one was declined with its reasons.
 
 At the planning interview the same evening the routing moved twice, both times at the product thinker's ruling after the two pre-interview reviewers (design and feasibility; record discipline) found that abcd keeps no lasting record of how a change landed: that record became its own draft, itd-2610301850454860, which the spot-check waits for; and the spot-check joined the autonomy grant's bundle (itd-2610240850336695), whose report lists the acts it draws from. The hand-back count, routed as an open question at filing, stayed in the intent. The product thinker also reframed who reads: no person reads code, so a model other than the writer reviews every change, and people check outcomes against specs and intents. Grade at planning: the first routing did not survive; it missed a plumbing prerequisite (the landing record) that only the feasibility review surfaced, the third time a capability was filed whose data did not yet exist.
+
+## 2026-11-01: documentation surfaces rendered from the brief, with a way back (product thinker, routing confirmed)
+
+| part | type | home |
+|---|---|---|
+| abcd renders the README and the `docs/` pages from each claim's one home; derived sections now, brief-sourced sections compulsory once the brief has an editing surface | capability | intent itd-2611011151475128 (draft) |
+| abcd catches hand-written text in a rendered surface, assesses where it belongs and offers it back to the brief in a later iteration | capability | intent itd-2611011151512956 (draft), building on the first and on itd-61 |
+| a re-render never discards hand-written text unasked | trust rule | adr-2611011153058085 (proposed) + a brief invariant owed once accepted |
+| a documentation surface holds no prose of its own | stance | a new bound in principle every-claim-has-one-home, not a new principle |
+| which section renders from which home, the marker form, the brief section in a stranger's register | plumbing | the brief's docs and identity surface pages, once the first intent's open question settles it |
+
+Links: the first intent refines itd-102 and reverses in part itd-2610031348087517 (its "never touches the owner's own words"), flagged for the product thinker, not auto-classified. Verdict at filing: SPLIT. Routing survived confirmation: yes (unchanged). Notes: the person's first framing put everything in the brief; the table moved install, first run and citation to derived facts, and the person agreed they render now. The reverse path came from the person, not the table: the table had made the forward path opt-in for managed repositories, and the person made it compulsory with the way back as its safety.

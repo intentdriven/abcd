@@ -104,3 +104,7 @@ _Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
   auto-drafted brief edits are the primary dedup case).
 - Posture precedent: abcd's tamper-evident provenance and fail-closed reviewers
   — "cannot proceed past an unresolved state" applied to brief edits.
+
+## Typed Links
+
+- **built on by `itd-2611011151512956`** (hand-written text caught and offered back to the brief): A piece moved from a documentation surface into the brief goes through this intent's reconciliation.

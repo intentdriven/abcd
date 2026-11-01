@@ -37,6 +37,10 @@ impact: additive
 - Identity home is a parseable markdown block, not a structured JSON file — consistent with markdown-as-single-source-of-truth; the config records only where the block lives.
 - The check is warn-tier by default (highlight, never gate) and per-repo upgradeable; autonomous rewriting is permanently out.
 
+## Typed Links
+
+- **built on by `itd-2611011151475128`** (every documentation surface rendered from its one home): Widens this intent's one home and drift check from the lockup lines to whole documentation surfaces.
+
 ## Audit Notes
 
 <!-- abcd-review: INGESTED receipt=rcp-52648dea351e -->
