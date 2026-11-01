@@ -647,7 +647,7 @@ func TestReadmeReasonIsFittedToTheRows(t *testing.T) {
 	repo := readmeRepo(t, "https://github.com/owner/repo.git", files)
 	// Measured at the rows floor, 24, the window the fixture is sized for:
 	// at the default, 32, the whole reason fits.
-	rows24 := question.Floors(question.Default)
+	rows24 := question.FloorsForTest(question.Default)
 	v, ok := readmeView(repo, rows24)
 	if !ok {
 		t.Fatal("no view while the pair is unanswered")

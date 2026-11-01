@@ -685,7 +685,7 @@ func TestDefaultRowsIsThirtyTwoAboveTheFloor(t *testing.T) {
 	if Default.Rows != 32 {
 		t.Errorf("Default.Rows = %d, want 32", Default.Rows)
 	}
-	b, ok := BoundFor(RowsKey)
+	b, ok := boundFor(RowsKey)
 	if !ok || b.Floor != 24 || b.Ceiling != 60 {
 		t.Errorf("the rows bound = %+v, %v; want 24 to 60", b, ok)
 	}
@@ -725,12 +725,12 @@ func TestBoundsAreTheRecordedThree(t *testing.T) {
 	if got := Bounds[0].String(); got != "24 to 60" {
 		t.Errorf("String() = %q, want %q", got, "24 to 60")
 	}
-	if _, ok := BoundFor("question.options"); ok {
+	if _, ok := boundFor("question.options"); ok {
 		t.Error("question.options has a bound; the options count is not configurable")
 	}
 }
 
-// TestBoundedReplacesThreeFieldsOnly: Bounded, Floors and Ceilings change the
+// TestBoundedReplacesThreeFieldsOnly: Bounded, FloorsForTest and CeilingsForTest change the
 // three configurable fields and nothing else.
 func TestBoundedReplacesThreeFieldsOnly(t *testing.T) {
 	got := Bounded(Default, 40, 6, 3)
@@ -739,11 +739,11 @@ func TestBoundedReplacesThreeFieldsOnly(t *testing.T) {
 	if fmt.Sprintf("%#v", got) != fmt.Sprintf("%#v", want) {
 		t.Errorf("Bounded = %#v\nwant      %#v", got, want)
 	}
-	if got := Floors(Default).Configurable(); got != [3]int{24, 4, 2} {
-		t.Errorf("Floors = %v", got)
+	if got := FloorsForTest(Default).Configurable(); got != [3]int{24, 4, 2} {
+		t.Errorf("FloorsForTest = %v", got)
 	}
-	if got := Ceilings(Default).Configurable(); got != [3]int{60, 8, 4} {
-		t.Errorf("Ceilings = %v", got)
+	if got := CeilingsForTest(Default).Configurable(); got != [3]int{60, 8, 4} {
+		t.Errorf("CeilingsForTest = %v", got)
 	}
 	if Default.Rows != 32 {
 		t.Error("Bounded changed Default")
@@ -833,7 +833,7 @@ func TestTabsStayFixedAtTheCeilings(t *testing.T) {
 	for range 5 {
 		f.Tabs = append(f.Tabs, minimalTab())
 	}
-	fs := CheckLimits(f, Ceilings(Default), facilitator())
+	fs := CheckLimits(f, CeilingsForTest(Default), facilitator())
 	if !slices.Contains(rulesOf(fs), RuleQuestionsPerCall) {
 		t.Errorf("five tabs at the ceilings: findings %v, want a %s finding", rulesOf(fs), RuleQuestionsPerCall)
 	}

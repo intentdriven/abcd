@@ -211,7 +211,7 @@ func TestSessionsViewPassesTheLimitsAtTheFloors(t *testing.T) {
 		t.Fatalf("detection carries no live-session view: %+v", det.Sessions)
 	}
 	for i, a := range det.Sessions.Asks {
-		for _, f := range question.CheckLimits(a.Fields(), question.Floors(question.Default), question.Addressee{}) {
+		for _, f := range question.CheckLimits(a.Fields(), question.FloorsForTest(question.Default), question.Addressee{}) {
 			t.Errorf("call %d: %+v", i, f)
 		}
 	}

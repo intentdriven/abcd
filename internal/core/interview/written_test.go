@@ -604,7 +604,7 @@ func TestWrittenSampleQuestionPassesTheLimitsAtTheFloors(t *testing.T) {
 	if fs := question.Check(a); len(fs) != 0 {
 		t.Fatalf("the sample fails the structural check: %v", fs)
 	}
-	for name, l := range map[string]question.Limits{"defaults": question.Default, "floors": question.Floors(question.Default)} {
+	for name, l := range map[string]question.Limits{"defaults": question.Default, "floors": question.FloorsForTest(question.Default)} {
 		for _, f := range question.CheckLimits(a.Fields(), l, question.Addressee{}) {
 			t.Errorf("%s: %s", name, f)
 		}

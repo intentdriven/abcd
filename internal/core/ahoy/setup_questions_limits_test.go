@@ -69,10 +69,10 @@ func TestEverySetupQuestionPassesTheLimits(t *testing.T) {
 
 // TestEverySetupQuestionPassesTheLimitsAtTheFloors holds the same questions,
 // the README pair built at those limits, to the floor of every configurable
-// key (question.Floors): a repository that sets the least it may still has
+// key (question.FloorsForTest): a repository that sets the least it may still has
 // every setup question admitted whole (itd-2610301914350541 decision 3).
 func TestEverySetupQuestionPassesTheLimitsAtTheFloors(t *testing.T) {
-	holdSetupQuestions(t, question.Floors(question.Default), map[string]bool{})
+	holdSetupQuestions(t, question.FloorsForTest(question.Default), map[string]bool{})
 }
 
 // holdSetupQuestions is TestEverySetupQuestionPassesTheLimits at the limits l,

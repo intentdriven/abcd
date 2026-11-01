@@ -15,7 +15,7 @@ import (
 // question unchecked, and the header rule is the one it is not held to.
 func TestSourceQuestionPassesTheLimitsAtTheFloors(t *testing.T) {
 	a := question.Ask{Questions: []question.Question{ClassQuestion()}}
-	for name, l := range map[string]question.Limits{"defaults": question.Default, "floors": question.Floors(question.Default)} {
+	for name, l := range map[string]question.Limits{"defaults": question.Default, "floors": question.FloorsForTest(question.Default)} {
 		for _, f := range question.CheckLimits(a.Fields(), l, question.Addressee{}) {
 			if f.Rule != question.RuleHeader {
 				t.Errorf("%s: %s", name, f)

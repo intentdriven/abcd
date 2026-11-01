@@ -125,8 +125,8 @@ var Bounds = []Bound{
 	{Key: DescriptionSentencesKey, Floor: 2, Ceiling: 4},
 }
 
-// BoundFor is the bound of key, and false for a key that is not configurable.
-func BoundFor(key string) (Bound, bool) {
+// boundFor is the bound of key, and false for a key that is not configurable.
+func boundFor(key string) (Bound, bool) {
 	for _, b := range Bounds {
 		if b.Key == key {
 			return b, true
@@ -148,15 +148,15 @@ func Bounded(l Limits, rows, labelWords, sentences int) Limits {
 	return l
 }
 
-// Floors is l at the floor of every configurable key, and Ceilings at the
-// ceiling of every one. They are for tests: every question the binary
-// composes is held to Floors(Default), and every combination of floors and
+// FloorsForTest is l at the floor of every configurable key, and CeilingsForTest at the
+// ceiling of every one. They are test seams, named so: every question the binary
+// composes is held to FloorsForTest(Default), and every combination of floors and
 // ceilings to the fixed rules.
-func Floors(l Limits) Limits {
+func FloorsForTest(l Limits) Limits {
 	return Bounded(l, Bounds[0].Floor, Bounds[1].Floor, Bounds[2].Floor)
 }
 
-// Ceilings is l at the ceiling of every configurable key (see Floors).
-func Ceilings(l Limits) Limits {
+// CeilingsForTest is l at the ceiling of every configurable key (see FloorsForTest).
+func CeilingsForTest(l Limits) Limits {
 	return Bounded(l, Bounds[0].Ceiling, Bounds[1].Ceiling, Bounds[2].Ceiling)
 }

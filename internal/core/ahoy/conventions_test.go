@@ -500,7 +500,7 @@ func TestConventionsRetireQuestionPassesTheLimits(t *testing.T) {
 // questions to the floor of every configurable key (itd-2610301914350541
 // decision 3).
 func TestConventionsRetireQuestionPassesTheLimitsAtTheFloors(t *testing.T) {
-	holdConventionsRetireQuestion(t, question.Floors(question.Default))
+	holdConventionsRetireQuestion(t, question.FloorsForTest(question.Default))
 }
 
 // holdConventionsRetireQuestion is TestConventionsRetireQuestionPassesTheLimits

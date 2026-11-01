@@ -85,7 +85,7 @@ func TestEveryCategoryApprovalPassesTheChecks(t *testing.T) {
 // decision 3): the approval over one change is admitted whole, and the longer
 // list still breaks the rows limit alone.
 func TestEveryCategoryApprovalPassesTheChecksAtTheFloors(t *testing.T) {
-	holdCategoryApprovals(t, question.Floors(question.Default))
+	holdCategoryApprovals(t, question.FloorsForTest(question.Default))
 }
 
 // holdCategoryApprovals is TestEveryCategoryApprovalPassesTheChecks at the

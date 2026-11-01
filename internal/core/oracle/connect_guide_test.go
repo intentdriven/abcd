@@ -625,7 +625,7 @@ func TestGuideQuestionsPassTheAskingLimits(t *testing.T) {
 // the guide's four-word labels and two-sentence descriptions are the floors
 // of label words and description sentences.
 func TestGuideQuestionsPassTheAskingLimitsAtTheFloors(t *testing.T) {
-	holdGuideQuestions(t, question.Floors(question.Default))
+	holdGuideQuestions(t, question.FloorsForTest(question.Default))
 }
 
 // holdGuideQuestions is TestGuideQuestionsPassTheAskingLimits at the limits l.
