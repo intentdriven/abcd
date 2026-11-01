@@ -30,7 +30,7 @@ We will let a repository declare a sequence's shape and nothing more:
 - it may contain no shell step;
 - it may not add a top-level name or shadow a built-in verb.
 
-abcd expands each step and judges it against the guard's registry before running it. A widening flag comes only from the person's own invocation or their home configuration, never from the committed sequence. A sequence that names one is refused when its file is read, and the refusal names the flag.
+abcd expands each step and judges it against the guard's registry before running it. Steps fail closed: a step may use only verbs and flags classified as non-widening, so a widening flag (`--approve`, `--apply`, `--release`, an enqueue), a verb that widens with no flag at all (a push, `reserve`, `update`, `land` without `--no-push`) and any flag not yet classified are each refused when the file is read, and the refusal names the step. `abcd run <name>` itself takes no flag beyond the sequence's name and passes nothing on to its steps, so neither a person nor an agent can add a widening flag through it; work that needs one is the person's own direct command, where the guard sees the verb and the flag together.
 
 ## Alternatives Considered
 
@@ -43,4 +43,5 @@ abcd expands each step and judges it against the guard's registry before running
 
 - A sequence is safe to run in someone else's clone: at worst it does what the clone's verbs already allow.
 - The verbs that sequences most often chain need stable exit codes and safe re-runs, because a sequence stops on a refusal or a back-off and is run again after the cause is fixed.
-- Work that genuinely needs approval, release or push keeps those flags in the person's own command, or in a native composite verb with its own refusals (`land`, `build`, `sweep`).
+- Work that genuinely needs approval, release or push stays the person's own direct command, or a native composite verb with its own refusals (`land`, `build`, `sweep`); a sequence covers the local, non-widening steps around it.
+- Each verb's flags need a widening or non-widening class the sequence reader can check; an unclassified flag is refused until it has one.

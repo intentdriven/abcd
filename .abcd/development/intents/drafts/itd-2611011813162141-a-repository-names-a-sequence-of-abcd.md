@@ -11,7 +11,7 @@ origin: researcher-authored
 production_mode: hand-written
 ---
 
-# A repository names a sequence of abcd steps and a person
+# A repository names a sequence of abcd steps a person runs
 
 ## Press Release
 
@@ -38,6 +38,7 @@ production_mode: hand-written
 Answered by the product thinker on 2026-11-01.
 
 1. **Sequences live in `.abcd/config.json`**, under one key read only by `abcd run`, not in a rules domain: data and the rules agents are taught stay apart, and an agent learns a sequence's steps from the page `abcd run` renders for it.
+2. **Steps fail closed, and `abcd run` passes nothing on** (adr-2611011813190527): only verbs and flags classified as non-widening may appear, a verb that widens with no flag (a push, `reserve`, `update`) is refused, and `abcd run <name>` takes no flag beyond the name, so a widening flag is only ever the person's own direct command.
 
 ## Open Questions
 
