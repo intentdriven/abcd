@@ -232,8 +232,9 @@ func (f *narrowFixture) toLand(t *testing.T) {
 // while the implementer works keeps the directory, and so does one while the
 // validators judge the lane, since a fix round may yet change another file
 // in it; the first renewal at the landing, its validators passed, narrows it
-// to the files the branch changed inside it, leaving out a file the branch
-// changed outside it. A resumed `abcd build` of the issue renews the narrowed
+// to the files the branch changed, README.txt, outside the found_at, among
+// them, since the lane widened its hold to it before the edit (widen.go). A
+// resumed `abcd build` of the issue renews the narrowed
 // footprint rather than reserving the directory again, so another person's
 // reservation of a file the narrowing freed does not refuse it.
 func TestALanesDirectoryReservationNarrowsToItsChangedFiles(t *testing.T) {
@@ -249,14 +250,18 @@ func TestALanesDirectoryReservationNarrowsToItsChangedFiles(t *testing.T) {
 		t.Fatalf("a renewal during the implement stage keeps the directory: %q", fp)
 	}
 
+	if _, err := Widen(f.repo.Root(), f.runID, currentLane(t, f.repo, f.runID).ID, []string{"README.txt"}, Options{Now: func() time.Time { return at }}); err != nil {
+		t.Fatal(err)
+	}
+	renewed = f.tip(t)
 	f.implement(t, Options{Now: func() time.Time { return at }}, "docs/page.md", "README.txt")
 
 	// While the validators judge the lane, a renewal keeps the directory.
 	validating := at.Add(61 * time.Minute)
 	f.stepAt(t, validating)
 	renewed = f.renewedAt(t, renewed, validating)
-	if fp := f.footprint(t); !slices.Equal(fp, []string{"docs"}) {
-		t.Fatalf("a renewal while the validators judge the lane keeps the directory: %q", fp)
+	if fp := f.footprint(t); !slices.Equal(fp, []string{"docs", "README.txt"}) {
+		t.Fatalf("a renewal while the validators judge the lane keeps the directory and the path it widened to: %q", fp)
 	}
 
 	// The first renewal at the landing narrows the footprint.
@@ -265,10 +270,10 @@ func TestALanesDirectoryReservationNarrowsToItsChangedFiles(t *testing.T) {
 	f.stepAt(t, later)
 	f.renewedAt(t, renewed, later)
 	fp := f.footprint(t)
-	if !slices.Equal(fp, []string{"docs/page.md"}) {
-		t.Fatalf("the footprint narrows to the branch's changed files within the directory: %q", fp)
+	if !slices.Equal(fp, []string{"README.txt", "docs/page.md"}) {
+		t.Fatalf("the footprint narrows to the branch's changed files: %q", fp)
 	}
-	if !covers([]string{"docs"}, fp) {
+	if !covers([]string{"docs", "README.txt"}, fp) {
 		t.Fatalf("a narrowed footprint never names a path outside the first: %q", fp)
 	}
 	st, err := ReadState(f.repo.Root(), f.runID)
@@ -300,7 +305,7 @@ func TestALanesDirectoryReservationNarrowsToItsChangedFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the resume renews the narrowed reservation, which overlaps nothing: %v", err)
 	}
-	if fp := f.footprint(t); !slices.Equal(fp, []string{"docs/page.md"}) {
+	if fp := f.footprint(t); !slices.Equal(fp, []string{"README.txt", "docs/page.md"}) {
 		t.Fatalf("the resume keeps the narrowed footprint, never reserving the directory again: %q (%s)", fp, again.Reservation)
 	}
 	if tip := f.tip(t); tip.parent != narrowed.commit || tip.released || tip.holder != heldBy(t, patEmail) {

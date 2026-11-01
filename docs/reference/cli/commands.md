@@ -3327,6 +3327,43 @@ refusal, exit 3 on a pause or a locked run state.
       --yielded string         with --restart: the line the agent yielded with, NETWORK: <cmd>, when a network failure stopped it rather than it dying
 ```
 
+#### `abcd implement widen`
+
+Widen an issue lane's hold to a path before it is edited: Writes the reservation and a run record line; refuses another copy's live hold, with exit 3.
+
+**Usage:** `abcd implement widen <path>... --lane <lane-id> [--run <run-id>] [flags]`
+
+Widen an issue run's reservation to each path named before the lane's implementer
+edits it: the issue is reserved again on origin with the footprint its reservation holds
+and the paths it does not cover yet, judged for overlap and against the cap like any
+reservation. A path already covered adds nothing, and when every one is, nothing is
+pushed. The run record says what was widened. Only the run's current lane, at its
+implement or validate stage, widens; an intent's run holds its spec's footprint and is
+refused. A run holding no reservation has nothing to widen and says so.
+
+An implementer's receipt is refused while the lane's branch changes a path the
+reservation does not cover, naming this command, so a widening forgotten or an edit made
+through the shell is caught before the lane moves on.
+
+Run it from the checkout the run lives in; the lane's brief names the command in full.
+--run names the run; without it, the one run in progress in this checkout. Exit 2 on a
+refusal; exit 3 when another copy holds a live reservation on one of the paths, with
+nothing pushed (edit none of them, and stop without a receipt: the lane is handed to an
+implementer again on a later step), or on a locked run state.
+
+**Flags:**
+
+```
+      --lane string   the lane whose implementer is about to edit the paths (lane-<n>)
+      --run string    the run the lane belongs to (run-<16 digits>); the one run in progress when omitted
+```
+
+**Example:**
+
+```
+abcd implement widen internal/widget/b.go --lane lane-1 --run run-2609010000000001
+```
+
 ### `abcd inbox`
 
 List the reports managed repositories filed back to abcd, newest first: Writes nothing; refuses any argument.
