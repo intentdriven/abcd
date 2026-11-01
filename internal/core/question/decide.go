@@ -31,9 +31,11 @@ const (
 	// OutcomeAdmitUnchecked is a question that is not abcd's: the hook lets it
 	// run unchecked and unmarked.
 	OutcomeAdmitUnchecked Outcome = "admit-unchecked"
-	// OutcomeUnchecked is one of the hook's fail-open paths: a store the
-	// decision needed could not be read, so the question runs on the hook's
-	// loud, non-blocking status and the verdict is partial.
+	// OutcomeUnchecked is a question the hook admits on its loud,
+	// non-blocking status because a store the decision needed could not be
+	// read, and the verdict is partial. abcd's question has been checked
+	// (Abcds is set), and only one the gate cannot tell is abcd's runs with
+	// no rule applied.
 	OutcomeUnchecked Outcome = "unchecked"
 )
 
@@ -241,7 +243,11 @@ func checkedTabs(f Fields, l Limits) []Tab {
 // says. For abcd's, a refused limit is the refuse outcome with no finding and
 // Refused set, and an unread layer leaves the call checked at l (the
 // defaults, on that path), partial and naming the file, so a configuration
-// that cannot be read never lets a question through unchecked.
+// that cannot be read never lets a question through unchecked. A mode store
+// that cannot be read is the same for a chipped question: its chip names whom
+// it is for, so it is checked at l, partial and naming the store, and only a
+// question without a chip, which the mode alone could make abcd's, runs
+// unchecked.
 func Decide(f Fields, s State, l Limits) Verdict {
 	v := Verdict{DependsOnState: s.Repo, ModeAfter: s.Mode}
 	for _, t := range checkedTabs(f, l) {
@@ -259,27 +265,21 @@ func Decide(f Fields, s State, l Limits) Verdict {
 		v.Partial = true
 		v.Unread = append(v.Unread, Unread{Store: StoreAway, Err: s.AwayErr, Rules: allRules()})
 	}
-	if s.Badge && s.ModeErr != nil {
-		// The hook fails open here, whatever the question. A chipped
-		// question needs no mode for its rules, so its findings are still
-		// reported; for one without a chip, whether it is abcd's at all is
-		// unknown, so no rule was applied.
+	modeUnread := s.Badge && s.ModeErr != nil
+	if modeUnread {
+		// For a question without a chip, whether it is abcd's at all is
+		// unknown, so no rule is applied and the hook fails open. A chipped
+		// question's chip already names whom it is for, so it needs no mode
+		// for its rules: it is checked at the limits in force like any other
+		// of abcd's, and only the mode the hook would set from its chip, and
+		// the marker, are left unwritten.
 		v.Partial = true
-		v.Outcome = OutcomeUnchecked
 		if !v.Chipped {
 			v.Unread = append(v.Unread, Unread{Store: StoreMode, Err: s.ModeErr, Rules: allRules()})
+			v.Outcome = OutcomeUnchecked
 			return v
 		}
 		v.Unread = append(v.Unread, Unread{Store: StoreMode, Err: s.ModeErr})
-		v.Abcds = true
-		v.Addressees = addressees(f, l, Unnamed)
-		if s.LimitsRefused != nil {
-			v.Outcome, v.Refused = OutcomeRefuse, s.LimitsRefused
-			return v
-		}
-		v = limitsUnread(v, s)
-		v.Findings = CheckLimits(f, l, Addressee{Person: Unnamed, Verbs: s.Verbs})
-		return v
 	}
 	if !v.Chipped && s.Mode == Unnamed {
 		// A question without a chip is abcd's only through the mode. Where
@@ -303,6 +303,10 @@ func Decide(f Fields, s State, l Limits) Verdict {
 		who = Unnamed
 		v.ModeAfter = callPerson(f, l)
 		v.ModeChanges = s.Badge && v.ModeAfter != s.Mode
+	}
+	if modeUnread {
+		// The mode cannot be read, so the hook sets none from the chip.
+		v.ModeAfter, v.ModeChanges = s.Mode, false
 	}
 	v.Addressees = addressees(f, l, s.Mode)
 	if s.LimitsRefused != nil {
@@ -344,9 +348,10 @@ func limitsUnread(v Verdict, s State) Verdict {
 	return v
 }
 
-// failedOpen is the away record's fail-open applied to an admission the hook
-// would otherwise make silently: with the away record unread, the hook admits
-// on its loud, non-blocking status, which is the unchecked outcome. An
+// failedOpen applies an unread store to an admission the hook would otherwise
+// make silently: with the away record, the mode store or a layer of the
+// question limits unread, the hook admits on its loud, non-blocking status,
+// which is the unchecked outcome. An
 // admission whose rows note the hook writes stays that outcome, since the note
 // is the hook's answer.
 func failedOpen(v Verdict) Verdict {

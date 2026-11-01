@@ -389,20 +389,26 @@ func questionCheckExit(res questionCheckResult) error {
 			"), so the hook refuses every abcd question until the file is fixed; no draft is ready"}
 	}
 	if res.Partial {
-		stores := make([]string, len(res.Unread))
-		for i, u := range res.Unread {
-			stores[i] = "the " + u.Store + " store"
-			if u.Store == string(question.StoreLimits) {
-				stores[i] = "the question limits in " + u.File
-			}
-		}
-		return &exitError{Code: 2, Msg: "guard question: the check is partial: " + strings.Join(stores, " and ") +
+		return &exitError{Code: 2, Msg: "guard question: the check is partial: " + unreadStores(res) +
 			" could not be read, so this draft is not known to be ready"}
 	}
 	if len(res.Findings) > 0 {
 		return &exitError{Code: 1}
 	}
 	return nil
+}
+
+// unreadStores names each store the result could not read, joined for a
+// sentence.
+func unreadStores(res questionCheckResult) string {
+	stores := make([]string, len(res.Unread))
+	for i, u := range res.Unread {
+		stores[i] = "the " + u.Store + " store"
+		if u.Store == string(question.StoreLimits) {
+			stores[i] = "the question limits in " + u.File
+		}
+	}
+	return strings.Join(stores, " and ")
 }
 
 // outcomeLine says what the hook would do with the draft, in a person's words.
@@ -427,7 +433,8 @@ func outcomeLine(o question.Outcome) string {
 // outcomeLineOf is outcomeLine for the result, saying so where the question
 // limits decided the outcome: a refused limit refuses the draft whatever it
 // holds, and limits that could not be read leave it checked at the defaults
-// rather than unchecked.
+// rather than unchecked. abcd's question admitted on the loud status for
+// any other unread store was checked too, and the line says which store.
 func outcomeLineOf(res questionCheckResult) string {
 	switch {
 	case res.Refused != nil && res.Hook == question.OutcomeRefuse:
@@ -436,6 +443,11 @@ func outcomeLineOf(res questionCheckResult) string {
 		return u.Store != string(question.StoreLimits)
 	}):
 		return "the question limits could not be read, so the hook would check this question at abcd's defaults and let it through on its loud status"
+	case res.Hook == question.OutcomeUnchecked && res.Abcds:
+		// abcd's question is checked whatever store was unread: a chipped
+		// one with the mode store unread is judged on its chip.
+		return "this question was checked and has no finding, but " + unreadStores(res) +
+			" could not be read, so the hook would let it through on its loud status"
 	}
 	return outcomeLine(res.Hook)
 }

@@ -85,9 +85,15 @@ func isQuestionTool(name string) bool {
 // whom it is for. Where the badge shows (a checkout abcd manages, with the
 // local tier the mode verb writes to), an admitted question is marked open and
 // a chipped one sets the mode from its chip (chipState), so the status line
-// names whom the question on screen is for. A store or marker the gate cannot
-// read or write is not a decision: the question runs and the gate says so, the
-// guard's fail-open-loud contract.
+// names whom the question on screen is for. A mode store the gate cannot read
+// leaves a chipped question judged all the same, at the limits in force,
+// since its chip names whom it is for: one that breaks a rule is refused, and
+// one that does not runs with no mode set and no marker, and one line says
+// so. A question without a chip is abcd's only through the mode, so with the
+// store unread it runs unchecked, loudly, the guard's fail-open-loud contract
+// for a question it cannot tell is its own. A marker or mode the gate cannot
+// write is not a decision either: the question, already judged, runs and the
+// gate says so.
 //
 // The limits abcd's question is held to are the repository's
 // (itd-2610301914350541): the resolver, layered.QuestionLimits, reads the
@@ -231,15 +237,17 @@ func presentQuestionGate(cmd *cobra.Command, reads questionReads, raw json.RawMe
 		return questionFailOpen(stderr, "the question tool's input could not be read (%s)", err)
 	}
 	v := question.Decide(fields, reads.state, reads.state.Limits)
-	if !limitsWereUnread(v) {
+	lead := unreadLead(reads, v)
+	if lead == "" {
 		return actOnQuestionVerdict(cmd, reads, v, "")
 	}
-	// A layer of the question limits could not be read, so abcd's question
-	// was checked at the defaults, and the gate says so wherever its answer
-	// is read: at the head of a deny's reason or a rows note, which the agent
-	// reads, and otherwise on stderr with exit 1, the loud non-blocking
-	// status the host shows, never a silent admission.
-	lead := limitsUnreadLine(reads.state.LimitsErr)
+	// A store abcd's question was checked without could not be read: the
+	// mode store, for a chipped question, whose mode is then not set, or a
+	// layer of the question limits, whose defaults it was then checked at.
+	// The gate says so, one line per store, wherever its answer is read: at
+	// the head of a deny's reason or a rows note, which the agent reads, and
+	// otherwise on stderr with exit 1, the loud non-blocking status the host
+	// shows, never a silent admission.
 	out := &wroteWriter{w: cmd.OutOrStdout()}
 	cmd.SetOut(out)
 	err = actOnQuestionVerdict(cmd, reads, v, lead)
@@ -255,27 +263,46 @@ func presentQuestionGate(cmd *cobra.Command, reads questionReads, raw json.RawMe
 	return err
 }
 
-// limitsWereUnread reports whether the decision names an unread layer of the
-// question limits.
-func limitsWereUnread(v question.Verdict) bool {
+// unreadLead is the lines the gate leads its answer with for abcd's question
+// checked without a store it could not read, one per store, in the
+// decision's order: the mode store's for a chipped question where the badge
+// shows (modeUnreadLine), and the question limits' (limitsUnreadLine). A
+// question without a chip and the mode store unread is not checked at all
+// and fails open on its own line instead (actOnQuestionVerdict), so it gets
+// neither.
+func unreadLead(reads questionReads, v question.Verdict) string {
+	var b strings.Builder
 	for _, u := range v.Unread {
-		if u.Store == question.StoreLimits {
-			return true
+		switch {
+		case u.Store == question.StoreMode && v.Chipped && reads.state.Badge && reads.state.ModeErr != nil:
+			b.WriteString(modeUnreadLine(reads.state.ModeErr))
+		case u.Store == question.StoreLimits:
+			b.WriteString(limitsUnreadLine(reads.state.LimitsErr))
 		}
 	}
-	return false
+	return b.String()
+}
+
+// modeUnreadLine is the gate's loud line for a chipped question while the
+// mode store could not be read: the question is judged on its chip, which
+// names whom it is for, and the mode and the open-question marker the gate
+// would write from that chip are not written.
+func modeUnreadLine(err error) string {
+	return "abcd guard: the mode store could not be read (" + termsafe.Sanitize(scrubPaths(err)) +
+		"), so the mode is not set from this question's chip and the question is not marked open; its chip names whom it is for, so it is judged without the mode.\n"
 }
 
 // actOnQuestionVerdict does what the hook does with a decision: a deny for a
 // refusal, the marker and the mode for an admission where the badge shows,
 // the rows note for an admission with rows findings, and questionFailOpen
-// for a store the decision needed and could not read. lead, when set, opens
-// the deny's reason and the rows note.
+// for a question the decision could not tell is abcd's because a store it
+// needed could not be read. lead, when set, opens the deny's reason and the
+// rows note.
 func actOnQuestionVerdict(cmd *cobra.Command, reads questionReads, v question.Verdict, lead string) error {
 	stderr := cmd.ErrOrStderr()
 	switch v.Outcome {
 	case question.OutcomeUnchecked:
-		if reads.state.ModeErr != nil {
+		if reads.state.ModeErr != nil && !v.Chipped {
 			return questionFailOpen(stderr, "the mode store could not be read (%s)", reads.state.ModeErr)
 		}
 		if reads.state.RootErr != nil && !v.Chipped {
@@ -301,7 +328,10 @@ func actOnQuestionVerdict(cmd *cobra.Command, reads questionReads, v question.Ve
 		// read: the caller's loud status is the whole answer.
 		return nil
 	}
-	if reads.state.Badge {
+	if reads.state.Badge && reads.state.ModeErr == nil {
+		// With the mode store unread the chipped question was still judged,
+		// and runs, but nothing is written beside a store the gate could not
+		// read: no marker, and no mode (modeUnreadLine says so).
 		want := stateOf(v.ModeAfter)
 		// The marker first: a marker written for a mode that then could not
 		// be set costs one reset to managed on the answer, while a mode set

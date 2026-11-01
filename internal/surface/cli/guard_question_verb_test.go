@@ -281,9 +281,12 @@ func TestGuardQuestionReportsRefuseAwayWhileAway(t *testing.T) {
 }
 
 // TestGuardQuestionMarksAPartialResult: a mode store the verb cannot read
-// makes the hook fail open, so the verb says unchecked, marks the result
-// partial and names the store; an away record it cannot read does the same,
-// naming every rule, since it decides whether any is read.
+// makes the hook fail open for a draft without a chip, so the verb says
+// unchecked, marks the result partial and names the store; a chipped draft is
+// judged on its chip all the same, refused on a rule it breaks, partial and
+// naming the store with no rule left unapplied; an away record it cannot read
+// marks the result partial too, naming every rule, since it decides whether
+// any is read.
 func TestGuardQuestionMarksAPartialResult(t *testing.T) {
 	t.Run("mode", func(t *testing.T) {
 		root := managedCheckout(t)
@@ -296,6 +299,30 @@ func TestGuardQuestionMarksAPartialResult(t *testing.T) {
 		}
 		if strings.Contains(res.Unread[0].Why, root) {
 			t.Errorf("the unread reason leaks the checkout's path: %q", res.Unread[0].Why)
+		}
+	})
+	t.Run("mode, chipped", func(t *testing.T) {
+		root := managedCheckout(t)
+		if err := os.WriteFile(modeFile(root), []byte("sideways\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		res, stderr, code := runQuestionVerb(t, "rule-never-recommended")
+		if res.Hook != question.OutcomeRefuse || !res.Abcds || code != 2 || len(res.Ready) != 0 {
+			t.Errorf("hook %q, abcds %v, exit %d, ready %d bytes; want refuse, abcd's, exit 2 and no ready input (stderr %q)", res.Hook, res.Abcds, code, len(res.Ready), stderr)
+		}
+		if !slices.ContainsFunc(res.Findings, func(f questionFindingJSON) bool { return f.Rule == string(question.RuleNeverRecommended) && f.Refuses }) {
+			t.Errorf("findings %+v; want the refusing never-recommended finding", res.Findings)
+		}
+		if !res.Partial || len(res.Unread) != 1 || res.Unread[0].Store != string(question.StoreMode) || len(res.Unread[0].Rules) != 0 {
+			t.Errorf("partial %v, unread %+v; want the mode store with no rule left unapplied", res.Partial, res.Unread)
+		}
+		res, _, code = runQuestionVerb(t, "clean-product-chip")
+		if res.Hook != question.OutcomeUnchecked || !res.Abcds || code != 2 || len(res.Findings) != 0 || res.AddresseeChanges != "" {
+			t.Errorf("clean: hook %q, abcds %v, exit %d, findings %+v, addressee_changes %q; want unchecked, abcd's, exit 2, none, and no mode change", res.Hook, res.Abcds, code, res.Findings, res.AddresseeChanges)
+		}
+		text, _, _ := runGuard("", "guard", "question", corpusPath(t, "clean-product-chip"))
+		if !strings.Contains(text, "this question was checked and has no finding, but the mode store could not be read") {
+			t.Errorf("the text does not say the clean chipped draft was checked; stdout:\n%s", text)
 		}
 	})
 	t.Run("away", func(t *testing.T) {

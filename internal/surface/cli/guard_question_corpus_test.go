@@ -19,7 +19,9 @@ import (
 // The verb and the hook decide alike (spc-2610301917245442, step 1): on every
 // draft of testdata/questions/corpus/, in every checkout state the gate reads,
 // `abcd guard question` and `abcd guard hook` of the same build give the same
-// answer, because both call questionState and question.Decide.
+// answer, because both call questionState and question.Decide. The mode store
+// unreadable is one of those states: a chipped draft is judged on its chip
+// there, and one without a chip runs unchecked.
 
 // questionRules is every rule of the limits check, each of which the corpus
 // holds one draft for.
@@ -243,6 +245,18 @@ func TestGuardQuestionAndHookDecideAlike(t *testing.T) {
 				case res.Hook == question.OutcomeAdmit:
 					if len(res.Findings) != 0 {
 						t.Errorf("admit with findings %+v", res.Findings)
+					}
+				}
+				if st.name == "mode store unreadable" {
+					// A chipped draft is judged on its chip with the mode
+					// unread, so one that breaks a rule is refused; nothing
+					// is marked open beside the store the gate could not
+					// read.
+					if res.Abcds && len(refusing) > 0 && res.Hook != question.OutcomeRefuse {
+						t.Errorf("abcd's draft with %d refusing findings: hook %q, want refuse", len(refusing), res.Hook)
+					}
+					if markedOpen(t, root) {
+						t.Error("a question was marked open with the mode store unread")
 					}
 				}
 				if rule, ok := strings.CutPrefix(name, "rule-"); ok && st.name == "unmanaged" &&

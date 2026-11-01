@@ -93,7 +93,9 @@ Then read the JSON (`_type` `abcd/question-check/v1`):
   `admit`, `admit-with-rows-note`, `refuse`, `refuse-away` (the person is
   away; route the question with `abcd mode queue` or `abcd decide`),
   `admit-unchecked` (not abcd's question: no chip, and no mode naming anyone,
-  so nothing was checked) or `unchecked` (a store could not be read).
+  so nothing was checked) or `unchecked` (a store could not be read, so the
+  hook lets the draft through on its loud status; abcd's draft is checked all
+  the same).
 - `findings` — every finding at once, each with its `tab`, `part`, `rule`,
   `value`, `limit`, `remedy` and whether it `refuses` (the rows limit alone
   never does).
@@ -215,9 +217,14 @@ the other person re-setting the mode. An admitted question is marked open in
 `.abcd/.work.local/question_open`, and the answer resets the state to
 `managed`: the plugin's hook on the question tool's result resets it when the
 answer comes back, and the next human message resets it on a host that does
-not run that hook. Where the state cannot be written or the question cannot be
-marked open, such as a local tier that is not writable, the question runs with
-a loud `NOT CHECKED` warning. A questions field the hook cannot read is the same case: the question runs, and the hook
+not run that hook. Where the state cannot be read, the hook still judges a
+question carrying abcd's chip, at the limits in force, since the chip says
+whom it is for: one that breaks a rule is refused, and any other runs with no
+mode set and nothing marked open, under one loud line saying the mode store
+could not be read. A question without a chip, which only the mode could make
+abcd's, runs with a loud `NOT CHECKED` warning instead. Where the state cannot
+be written or the question cannot be marked open, such as a local tier that is
+not writable, the question runs with a loud `NOT CHECKED` warning. A questions field the hook cannot read is the same case: the question runs, and the hook
 warns loudly. So is a payload the hook cannot decode at all: where it names the
 question tool the warning says the question runs, and where no tool name can be
 read the warning names no tool.

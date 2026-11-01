@@ -331,9 +331,18 @@ the other changes nothing. `abcd mode` remains the way to record whose answer
 is owed at a stop that is not a question. A question without abcd's chip while
 the mode names somebody is held to the field limits and marked open, and sets
 nothing. Where the badge does not show, the mode is neither read nor set. A
-state file or marker the gate cannot read or write, a read-only tier among
-them, is not a decision: the question runs and the hook says so on exit 1, the
-same fail-open-loud contract below. The manifest's pre-tool-use matcher names the
+mode store the gate cannot read leaves a chipped question judged all the
+same, at the limits in force, because its chip names whom it is for: one that
+breaks a rule is refused, and any other runs with no mode set from its chip
+and no marker written. One line says so, "abcd guard: the mode store could not
+be read", at the head of a deny's reason or a rows note and otherwise on
+stderr with exit 1; with a layer of the question limits unread as well, that
+layer's line follows it, one line per store. A question without a chip is
+abcd's only through the mode, so with the store unread it runs unchecked, and
+the hook says so on exit 1, the same fail-open-loud contract below. A state
+file or marker the gate cannot write, a read-only tier among them, is not a
+decision either: the question, already judged, runs and the hook says so on
+exit 1. The manifest's pre-tool-use matcher names the
 shell tool, the question tool and the host's file-writing tools, and nothing
 else.
 
@@ -357,7 +366,8 @@ carry is named by the limits check, never invented. Its JSON
 (`abcd/question-check/v1`) carries the binary's `version`; the outcome, what the
 hook would do with the draft in this checkout now (`admit`,
 `admit-with-rows-note`, `refuse`, `refuse-away`, `admit-unchecked` for a
-question that is not abcd's, `unchecked` for each fail-open path);
+question that is not abcd's, `unchecked` for an admission on the loud status
+because a store could not be read, abcd's question checked all the same);
 `depends_on_state`, set wherever a mode set or the person marked away before
 the ask could change that; `partial` and `unread`, naming each store the
 decision needed and could not read and the rules it therefore could not
