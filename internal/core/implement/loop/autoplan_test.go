@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -683,6 +685,109 @@ func TestAnIndexTheDigestCannotCopyReadsAsChangedEveryTime(t *testing.T) {
 	defer func(n int64) { maxIndexCopy = n }(maxIndexCopy)
 	maxIndexCopy = 16
 	unequal(t, "an index past the copy's bound")
+}
+
+// TestAnIndexSwappedAfterItsLstatIsNotCopied: the index path Lstat saw as a
+// regular file and the open then met as something else, swapped in through
+// the openIndex seam between the two, is never copied. A symbolic link is
+// refused by the open itself (ELOOP), and a named pipe or another regular
+// file by the Stat of what was opened (not regular, or not the file the Lstat
+// saw); each yields an uncopied value, and a different one each time.
+func TestAnIndexSwappedAfterItsLstatIsNotCopied(t *testing.T) {
+	repo := draftRepo(t, draftIntent())
+	root := repo.Root()
+	index := filepath.Join(root, ".git", "index")
+	kept := index + ".real"
+	original := openIndex
+	t.Cleanup(func() { openIndex = original })
+	for _, tc := range []struct {
+		name string
+		swap func() error
+	}{
+		{"a symbolic link", func() error {
+			if err := os.Rename(index, kept); err != nil {
+				return err
+			}
+			return os.Symlink(kept, index)
+		}},
+		{"a named pipe", func() error {
+			if err := os.Rename(index, kept); err != nil {
+				return err
+			}
+			return syscall.Mkfifo(index, 0o600)
+		}},
+		{"another regular file with the same bytes", func() error {
+			b, err := os.ReadFile(index)
+			if err != nil {
+				return err
+			}
+			if err := os.Rename(index, kept); err != nil {
+				return err
+			}
+			return os.WriteFile(index, b, 0o600)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var got [2]string
+			for i := range got {
+				digestSwapped(t, index, kept, tc.name, tc.swap, original, func(scratch string) (err error) {
+					got[i], err = indexDigest(root, scratch)
+					return err
+				})
+			}
+			if !strings.HasPrefix(got[0], "uncopied:") || !strings.HasPrefix(got[1], "uncopied:") || got[0] == got[1] {
+				t.Fatalf("%s swapped in after the Lstat yields an uncopied value every time: %q %q", tc.name, got[0], got[1])
+			}
+		})
+	}
+}
+
+// digestSwapped runs digest with openIndex swapping the index path through
+// swap just before the real open, and puts the index kept aside back after
+// it, whatever the digest did, so each case meets the checkout's own index
+// at its Lstat. A digest held at a pipe is let go on, so the test ends.
+func digestSwapped(t *testing.T, index, kept, what string, swap func() error, open func(string) (*os.File, error), digest func(scratch string) error) {
+	t.Helper()
+	defer func() {
+		if _, err := os.Lstat(kept); err != nil {
+			return
+		}
+		if err := os.Remove(index); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			t.Error(err)
+		}
+		if err := os.Rename(kept, index); err != nil {
+			t.Error(err)
+		}
+	}()
+	swapped := make(chan struct{}, 1)
+	openIndex = func(path string) (*os.File, error) {
+		if path == index {
+			if err := swap(); err != nil {
+				return nil, fmt.Errorf("swapping the index: %w", err)
+			}
+			swapped <- struct{}{}
+		}
+		return open(path)
+	}
+	scratch := filepath.Join(t.TempDir(), "checkout-index")
+	done := make(chan error, 1)
+	go func() { done <- digest(scratch) }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("%s swapped in after the Lstat is refused, not an error: %v", what, err)
+		}
+	case <-time.After(30 * time.Second):
+		if w, err := os.OpenFile(index, os.O_WRONLY|syscall.O_NONBLOCK, 0); err == nil {
+			w.Close()
+		}
+		t.Fatalf("%s swapped in after the Lstat is never waited on", what)
+	}
+	select {
+	case <-swapped:
+	default:
+		t.Fatalf("%s: the swap runs between the Lstat and the open", what)
+	}
 }
 
 // TestTheCheckoutDigestWritesNoIndexAndReadsAMissingOne: the digest reads the
