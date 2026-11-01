@@ -3,12 +3,16 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/mode"
 	"github.com/intentdriven/abcd/internal/core/question"
 )
@@ -277,9 +281,12 @@ func TestGuardQuestionReportsRefuseAwayWhileAway(t *testing.T) {
 }
 
 // TestGuardQuestionMarksAPartialResult: a mode store the verb cannot read
-// makes the hook fail open, so the verb says unchecked, marks the result
-// partial and names the store; an away record it cannot read does the same,
-// naming every rule, since it decides whether any is read.
+// makes the hook fail open for a draft without a chip, so the verb says
+// unchecked, marks the result partial and names the store; a chipped draft is
+// judged on its chip all the same, refused on a rule it breaks, partial and
+// naming the store with no rule left unapplied; an away record it cannot read
+// marks the result partial too, naming every rule, since it decides whether
+// any is read.
 func TestGuardQuestionMarksAPartialResult(t *testing.T) {
 	t.Run("mode", func(t *testing.T) {
 		root := managedCheckout(t)
@@ -292,6 +299,30 @@ func TestGuardQuestionMarksAPartialResult(t *testing.T) {
 		}
 		if strings.Contains(res.Unread[0].Why, root) {
 			t.Errorf("the unread reason leaks the checkout's path: %q", res.Unread[0].Why)
+		}
+	})
+	t.Run("mode, chipped", func(t *testing.T) {
+		root := managedCheckout(t)
+		if err := os.WriteFile(modeFile(root), []byte("sideways\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		res, stderr, code := runQuestionVerb(t, "rule-never-recommended")
+		if res.Hook != question.OutcomeRefuse || !res.Abcds || code != 2 || len(res.Ready) != 0 {
+			t.Errorf("hook %q, abcds %v, exit %d, ready %d bytes; want refuse, abcd's, exit 2 and no ready input (stderr %q)", res.Hook, res.Abcds, code, len(res.Ready), stderr)
+		}
+		if !slices.ContainsFunc(res.Findings, func(f questionFindingJSON) bool { return f.Rule == string(question.RuleNeverRecommended) && f.Refuses }) {
+			t.Errorf("findings %+v; want the refusing never-recommended finding", res.Findings)
+		}
+		if !res.Partial || len(res.Unread) != 1 || res.Unread[0].Store != string(question.StoreMode) || len(res.Unread[0].Rules) != 0 {
+			t.Errorf("partial %v, unread %+v; want the mode store with no rule left unapplied", res.Partial, res.Unread)
+		}
+		res, _, code = runQuestionVerb(t, "clean-product-chip")
+		if res.Hook != question.OutcomeUnchecked || !res.Abcds || code != 2 || len(res.Findings) != 0 || res.AddresseeChanges != "" {
+			t.Errorf("clean: hook %q, abcds %v, exit %d, findings %+v, addressee_changes %q; want unchecked, abcd's, exit 2, none, and no mode change", res.Hook, res.Abcds, code, res.Findings, res.AddresseeChanges)
+		}
+		text, _, _ := runGuard("", "guard", "question", corpusPath(t, "clean-product-chip"))
+		if !strings.Contains(text, "this question was checked and has no finding, but the mode store could not be read") {
+			t.Errorf("the text does not say the clean chipped draft was checked; stdout:\n%s", text)
 		}
 	})
 	t.Run("away", func(t *testing.T) {
@@ -429,5 +460,197 @@ func TestGuardQuestionTextGroupsRowsAndOutcome(t *testing.T) {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("the text render lacks %q:\n%s", want, stdout)
 		}
+	}
+}
+
+// The verb under the question limits a repository sets (spc-2610301950037469,
+// step 2): it judges at the limits the hook holds abcd's question to, reports
+// them and where each came from, and exits 2 while a limit is refused or a
+// file of them could not be read.
+
+// runQuestionVerbOnDraft runs the verb with --json on q, written as the host
+// question tool's input, and decodes the result.
+func runQuestionVerbOnDraft(t *testing.T, q hostQuestion) (questionCheckResult, string, int) {
+	t.Helper()
+	raw, err := json.Marshal(map[string]any{"questions": []hostQuestion{q}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(t.TempDir(), "draft.json")
+	if err := os.WriteFile(p, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stdout, stderr, code := runGuard("", "guard", "question", p, "--json")
+	var res questionCheckResult
+	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
+		t.Fatalf("the verb's output is not its JSON (exit %d): %v\nstdout %q\nstderr %q", code, err, stdout, stderr)
+	}
+	return res, stderr, code
+}
+
+// TestGuardQuestionChecksWithTheRepositorysLimits: under a repository's
+// question.rows of 40, a 30-row tab has no rows finding and a 41-row one has
+// one naming 40; the result reports the figures in force and the file that
+// set each, and rows_limit equals limits.rows. With no file, the figures are
+// the defaults, each bundled.
+func TestGuardQuestionChecksWithTheRepositorysLimits(t *testing.T) {
+	repo := unmanagedRepo(t)
+	res, _, code := runQuestionVerbOnDraft(t, wellBuilt())
+	want := questionLimitsJSON{Rows: question.Default.Rows, LabelWords: question.Default.LabelWords, DescriptionSentences: question.Default.MeaningSentences}
+	if code != 0 || res.Limits == nil || *res.Limits != want || res.LimitsSource == nil ||
+		*res.LimitsSource != (questionLimitsSourceJSON{Rows: "bundled", LabelWords: "bundled", DescriptionSentences: "bundled"}) {
+		t.Fatalf("an unconfigured repository: exit %d, limits %+v from %+v; want the defaults, bundled", code, res.Limits, res.LimitsSource)
+	}
+
+	writeRepoQuestionConfig(t, repo, `{"question":{"rows":40,"label_words":6}}`)
+	res, _, code = runQuestionVerbOnDraft(t, questionOfRows(t, 30))
+	if code != 0 || len(res.Findings) != 0 || res.Hook != question.OutcomeAdmit {
+		t.Errorf("a 30-row tab under rows 40: exit %d, hook %q, findings %+v; want it admitted with none", code, res.Hook, res.Findings)
+	}
+	if res.Limits == nil || *res.Limits != (questionLimitsJSON{Rows: 40, LabelWords: 6, DescriptionSentences: question.Default.MeaningSentences}) {
+		t.Errorf("limits = %+v, want rows 40, label words 6 and the default sentences", res.Limits)
+	}
+	if res.LimitsSource == nil || *res.LimitsSource != (questionLimitsSourceJSON{Rows: ".abcd/config.json", LabelWords: ".abcd/config.json", DescriptionSentences: "bundled"}) {
+		t.Errorf("limits_source = %+v, want the repository's file for the two it set", res.LimitsSource)
+	}
+	if res.RowsLimit != 40 {
+		t.Errorf("rows_limit = %d, want limits.rows, 40", res.RowsLimit)
+	}
+	res, _, code = runQuestionVerbOnDraft(t, questionOfRows(t, 41))
+	if code != 1 || len(res.Findings) != 1 || res.Findings[0].Rule != string(question.RuleRows) || !strings.Contains(res.Findings[0].Limit, "40 rows") {
+		t.Errorf("a 41-row tab under rows 40: exit %d, findings %+v; want the one rows finding naming 40", code, res.Findings)
+	}
+
+	writeMachineQuestionConfig(t, `{"question":{"rows":30}}`)
+	res, _, _ = runQuestionVerbOnDraft(t, wellBuilt())
+	if res.Limits == nil || res.Limits.Rows != 30 || res.LimitsSource.Rows != abcdhome.Display(layered.Config.MachineRel) || res.LimitsSource.LabelWords != ".abcd/config.json" {
+		t.Errorf("a person's tighter rows: limits %+v from %+v; want rows 30 from the machine file", res.Limits, res.LimitsSource)
+	}
+}
+
+// TestGuardQuestionExitsTwoOnARefusedValue: while a question limit is refused
+// the verb exits 2 on any draft, clean and not abcd's included, carrying
+// refused (the key, the value, the bounds and the file, and for a personal
+// value that loosens the limit in force and its file) and no ready input and
+// no limits, since none is in force. The hook refuses abcd's draft on the
+// configuration, with no finding.
+func TestGuardQuestionExitsTwoOnARefusedValue(t *testing.T) {
+	t.Run("outside the bounds", func(t *testing.T) {
+		repo := unmanagedRepo(t)
+		writeRepoQuestionConfig(t, repo, `{"question":{"rows":100}}`)
+		for _, name := range []string{"clean-product-chip", "clean-unchipped", "rule-label-words"} {
+			res, stderr, code := runQuestionVerb(t, name)
+			if code != 2 || res.Refused == nil || len(res.Ready) != 0 || res.Limits != nil || res.LimitsSource != nil {
+				t.Fatalf("%s: exit %d, refused %+v, ready %d bytes, limits %+v; want exit 2, refused, no ready, no limits", name, code, res.Refused, len(res.Ready), res.Limits)
+			}
+			r := *res.Refused
+			if r.Key != question.RowsKey || r.Value != "100" || r.Bounds != "24 to 60" || r.File != ".abcd/config.json" || r.Limit != 0 || r.LimitFile != "" {
+				t.Errorf("%s: refused = %+v", name, r)
+			}
+			if !strings.Contains(stderr, "a question limit is refused") {
+				t.Errorf("%s: stderr does not say a limit is refused: %q", name, stderr)
+			}
+		}
+		res, _, _ := runQuestionVerb(t, "clean-product-chip")
+		if res.Hook != question.OutcomeRefuse || len(res.Findings) != 0 {
+			t.Errorf("abcd's draft: hook %q, findings %+v; want refuse with no finding", res.Hook, res.Findings)
+		}
+		res, _, _ = runQuestionVerb(t, "clean-unchipped")
+		if res.Hook != question.OutcomeAdmitUnchecked {
+			t.Errorf("another tool's draft: hook %q; want admit-unchecked, as the hook does", res.Hook)
+		}
+	})
+	t.Run("a personal value that loosens", func(t *testing.T) {
+		repo := unmanagedRepo(t)
+		writeRepoQuestionConfig(t, repo, `{"question":{"rows":30}}`)
+		writeMachineQuestionConfig(t, `{"question":{"rows":40}}`)
+		res, _, code := runQuestionVerb(t, "clean-product-chip")
+		if code != 2 || res.Refused == nil {
+			t.Fatalf("exit %d, refused %+v", code, res.Refused)
+		}
+		r := *res.Refused
+		if r.Value != "40" || r.File != abcdhome.Display(layered.Config.MachineRel) || r.Limit != 30 || r.LimitFile != ".abcd/config.json" {
+			t.Errorf("refused = %+v; want 40 in the machine file, looser than 30 from the repository's", r)
+		}
+	})
+	t.Run("an unclaimed key", func(t *testing.T) {
+		repo := unmanagedRepo(t)
+		writeRepoQuestionConfig(t, repo, `{"question":{"options":3}}`)
+		res, _, code := runQuestionVerb(t, "clean-product-chip")
+		if code != 2 || res.Refused == nil || !strings.Contains(res.Refused.Why, "question.options") || !strings.Contains(res.Refused.Why, ".abcd/config.json") {
+			t.Errorf("exit %d, refused %+v; want the unclaimed key and the file named", code, res.Refused)
+		}
+	})
+}
+
+// TestGuardQuestionExitsTwoNamingAnUnreadConfig: a .abcd/config.json the
+// resolver could not read, a symbolic link or a file it cannot parse, makes
+// the result partial with an unread entry naming the file, and the verb exits
+// 2. The draft is checked at the defaults, as the hook checks it: a rule the
+// draft breaks is still found, and the limits reported are the defaults.
+func TestGuardQuestionExitsTwoNamingAnUnreadConfig(t *testing.T) {
+	for name, lay := range map[string]func(t *testing.T, repo string){
+		"a symbolic link": func(t *testing.T, repo string) {
+			target := filepath.Join(t.TempDir(), "config.json")
+			if err := os.WriteFile(target, []byte(`{"question":{"rows":40}}`), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.MkdirAll(filepath.Join(repo, ".abcd"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(target, filepath.Join(repo, filepath.FromSlash(layered.Config.RepoRel))); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"a key given twice": func(t *testing.T, repo string) {
+			writeRepoQuestionConfig(t, repo, `{"question":{"rows":40},"question":{"rows":40}}`)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			repo := unmanagedRepo(t)
+			lay(t, repo)
+			res, stderr, code := runQuestionVerb(t, "clean-product-chip")
+			if code != 2 || !res.Partial || len(res.Unread) != 1 || res.Unread[0].Store != string(question.StoreLimits) || res.Unread[0].File != ".abcd/config.json" {
+				t.Fatalf("exit %d, partial %v, unread %+v; want exit 2 and the limits' file named", code, res.Partial, res.Unread)
+			}
+			if res.Hook != question.OutcomeUnchecked || res.Limits == nil || res.Limits.Rows != question.Default.Rows || res.LimitsSource.Rows != "bundled" {
+				t.Errorf("hook %q, limits %+v from %+v; want the defaults, as the hook judges at them", res.Hook, res.Limits, res.LimitsSource)
+			}
+			if !strings.Contains(stderr, "the question limits in .abcd/config.json") {
+				t.Errorf("stderr does not name the unread file: %q", stderr)
+			}
+			res, _, code = runQuestionVerb(t, "rule-label-words")
+			if code != 2 || res.Hook != question.OutcomeRefuse ||
+				!slices.ContainsFunc(res.Findings, func(f questionFindingJSON) bool { return f.Rule == string(question.RuleLabelWords) }) {
+				t.Errorf("a draft breaking a rule: exit %d, hook %q, findings %+v; want it refused on the rule at the defaults", code, res.Hook, res.Findings)
+			}
+		})
+	}
+	t.Run("home unset", func(t *testing.T) {
+		unmanagedRepo(t)
+		t.Setenv("HOME", "")
+		res, _, code := runQuestionVerb(t, "rule-label-words")
+		if code != 2 || !res.Partial || res.Hook != question.OutcomeRefuse || len(res.Findings) == 0 {
+			t.Errorf("exit %d, partial %v, hook %q, %d findings; want the draft checked at the defaults and the result partial", code, res.Partial, res.Hook, len(res.Findings))
+		}
+	})
+}
+
+// TestGuardQuestionTextStatesTheLimitsInForce: the text render a person reads
+// by hand states each figure in force after the outcome, naming the file
+// after each figure a file set and nothing after a default, or the refusal.
+func TestGuardQuestionTextStatesTheLimitsInForce(t *testing.T) {
+	repo := unmanagedRepo(t)
+	writeRepoQuestionConfig(t, repo, `{"question":{"rows":40}}`)
+	stdout, _, _ := runGuard("", "guard", "question", corpusPath(t, "clean-product-chip"))
+	lines := strings.Split(stdout, "\n")
+	want := fmt.Sprintf("limits: 40 rows (.abcd/config.json), %d label words, %d description sentences", question.Default.LabelWords, question.Default.MeaningSentences)
+	if len(lines) < 2 || !strings.HasPrefix(lines[0], "hook: ") || lines[1] != want {
+		t.Errorf("the line after the outcome must be %q:\n%s", want, stdout)
+	}
+	writeRepoQuestionConfig(t, repo, `{"question":{"rows":100}}`)
+	stdout, _, code := runGuard("", "guard", "question", corpusPath(t, "clean-product-chip"))
+	if code != 2 || !strings.Contains(stdout, "limits: refused: .abcd/config.json (repo layer): question.rows is 100: outside 24 to 60") || strings.Contains(stdout, "ready:") {
+		t.Errorf("a refused value: exit %d; the render must state the refusal and no ready input:\n%s", code, stdout)
 	}
 }

@@ -7,9 +7,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/question"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
@@ -52,13 +55,52 @@ type questionCheckResult struct {
 	Findings         []questionFindingJSON   `json:"findings"`
 	Rows             []questionRowsJSON      `json:"rows"`
 	RowsLimit        int                     `json:"rows_limit"`
-	Ready            json.RawMessage         `json:"ready,omitempty"`
+	// Limits and LimitsSource are the question limits the check judged at,
+	// as the hook judges at them, and where each came from
+	// (spc-2610301950037469 step 2). Both are absent while a limit is
+	// refused, since no limit is then in force and Refused says why.
+	Limits       *questionLimitsJSON       `json:"limits,omitempty"`
+	LimitsSource *questionLimitsSourceJSON `json:"limits_source,omitempty"`
+	Refused      *questionRefusedJSON      `json:"refused,omitempty"`
+	Ready        json.RawMessage           `json:"ready,omitempty"`
 }
 
 type questionUnreadJSON struct {
 	Store string   `json:"store"`
 	Why   string   `json:"why"`
 	Rules []string `json:"rules"`
+	// File is the file that could not be read, for the question limits.
+	File string `json:"file,omitempty"`
+}
+
+// questionLimitsJSON is the three figures a repository sets, in force.
+type questionLimitsJSON struct {
+	Rows                 int `json:"rows"`
+	LabelWords           int `json:"label_words"`
+	DescriptionSentences int `json:"description_sentences"`
+}
+
+// questionLimitsSourceJSON is where each figure came from: "bundled", the
+// repository's .abcd/config.json, or the person's own
+// ~/.abcd.noindex/config.json where a personal value tightened it.
+type questionLimitsSourceJSON struct {
+	Rows                 string `json:"rows"`
+	LabelWords           string `json:"label_words"`
+	DescriptionSentences string `json:"description_sentences"`
+}
+
+// questionRefusedJSON is a question limit read and refused: the key, the
+// value, the bounds and the file, and for a personal value that loosens the
+// limit in force and the file that set it. Why is the resolver's whole
+// refusal, which alone names an unclaimed key.
+type questionRefusedJSON struct {
+	Key       string `json:"key,omitempty"`
+	Value     string `json:"value,omitempty"`
+	Bounds    string `json:"bounds,omitempty"`
+	File      string `json:"file,omitempty"`
+	Limit     int    `json:"limit,omitempty"`
+	LimitFile string `json:"limit_file,omitempty"`
+	Why       string `json:"why"`
 }
 
 type questionAddresseeJSON struct {
@@ -130,15 +172,27 @@ func newGuardQuestionCommand(asJSON *bool) *cobra.Command {
 			"out when the hook would refuse. The verdict is evidence about a hook of the\n" +
 			"same version; a mode set, or the person marked away, before the ask can\n" +
 			"change it.\n\n" +
+			"The limits judged at are the ones the hook holds abcd's question to in\n" +
+			"this checkout: abcd's defaults, with the rows, label words and description\n" +
+			"sentences the repository's .abcd/config.json sets under question, each\n" +
+			"tightened where the person's own " + abcdhome.Display(layered.Config.MachineRel) + " sets it\n" +
+			"lower. The result reports them (limits) and the file that set each\n" +
+			"(limits_source). A limit the hook refuses (a value outside its bounds, not\n" +
+			"a whole number, another key under question, or a personal value looser\n" +
+			"than the limit in force) is reported as refused, with no ready input, and\n" +
+			"a file that could not be read is named in the partial result, the draft\n" +
+			"checked at abcd's defaults, as the hook checks it.\n\n" +
 			"Exit 0 when the draft has no finding at all and every store was read,\n" +
 			"whatever the hook would do with it: the hook field says whether that is\n" +
 			"an admission, a refusal while the person is away, or a pass unchecked as\n" +
 			"not abcd's. Exit 1 on any finding, a tab over the rows limit alone\n" +
 			"included.\n" +
 			"Exit 2 when the draft is not JSON, is over the bound or has neither shape,\n" +
-			"and when a store the decision needed could not be read: the result is then\n" +
-			"partial, names each store and the rules it could not apply, and never reads\n" +
-			"as clean, even with no finding.",
+			"when a question limit is refused, whatever the draft, and when a store the\n" +
+			"decision needed, the question limits' files included, could not be read:\n" +
+			"the result is then partial, names each store and the rules it could not\n" +
+			"apply or applied at the defaults, and never reads as clean, even with no\n" +
+			"finding.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			src := "-"
@@ -155,7 +209,7 @@ func newGuardQuestionCommand(asJSON *bool) *cobra.Command {
 			}
 			cwd, _ := os.Getwd()
 			reads := questionState(cmd, cwd)
-			v := question.Decide(fields, reads.state, question.Default)
+			v := question.Decide(fields, reads.state, reads.state.Limits)
 			res := questionCheckOf(form, v, structural, ready, reads)
 			if rerr := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				writeQuestionCheck(w, res)
@@ -264,14 +318,38 @@ func questionCheckOf(form string, v question.Verdict, structural []question.Find
 		Addressee:      []questionAddresseeJSON{},
 		Findings:       []questionFindingJSON{},
 		Rows:           []questionRowsJSON{},
-		RowsLimit:      question.Default.Rows,
+		RowsLimit:      reads.state.Limits.Rows,
 	}
+	limitsUnreadSeen := false
 	for _, u := range v.Unread {
 		rules := make([]string, len(u.Rules))
 		for i, r := range u.Rules {
 			rules[i] = string(r)
 		}
-		res.Unread = append(res.Unread, questionUnreadJSON{Store: string(u.Store), Why: termsafe.Sanitize(scrubPaths(u.Err)), Rules: rules})
+		res.Unread = append(res.Unread, questionUnreadJSON{Store: string(u.Store), Why: termsafe.Sanitize(scrubPaths(u.Err)), Rules: rules, File: u.File})
+		limitsUnreadSeen = limitsUnreadSeen || u.Store == question.StoreLimits
+	}
+	if st := reads.state; st.LimitsErr != nil && !limitsUnreadSeen {
+		// A draft that is not abcd's is not checked, so the decision read no
+		// limit; the verb still says the limits could not be read, since a
+		// draft relabelled as abcd's would meet them.
+		res.Partial = true
+		res.Unread = append(res.Unread, questionUnreadJSON{Store: string(question.StoreLimits), Why: termsafe.Sanitize(scrubPaths(st.LimitsErr)), Rules: []string{}, File: st.LimitsFile})
+	}
+	if r := reads.state.LimitsRefused; r != nil {
+		res.Refused = &questionRefusedJSON{Key: r.Key, Value: termsafe.Sanitize(r.Value), Bounds: r.Bounds, File: r.File,
+			Limit: r.Limit, LimitFile: r.LimitFile, Why: termsafe.Sanitize(scrubPaths(errors.New(r.Reason)))}
+	} else {
+		c := reads.state.Limits.Configurable()
+		res.Limits = &questionLimitsJSON{Rows: c[0], LabelWords: c[1], DescriptionSentences: c[2]}
+		src := make([]string, 3)
+		for i := range src {
+			src[i] = "bundled"
+			if i < len(reads.state.LimitsSource) {
+				src[i] = reads.state.LimitsSource[i]
+			}
+		}
+		res.LimitsSource = &questionLimitsSourceJSON{Rows: src[0], LabelWords: src[1], DescriptionSentences: src[2]}
 	}
 	for i, p := range v.Addressees {
 		res.Addressee = append(res.Addressee, questionAddresseeJSON{Tab: i + 1, Person: personName(p)})
@@ -288,7 +366,7 @@ func questionCheckOf(form string, v question.Verdict, structural []question.Find
 	for i, r := range v.Rows {
 		res.Rows = append(res.Rows, questionRowsJSON{Tab: i + 1, RowSplit: r})
 	}
-	if !v.Outcome.Refuses() {
+	if !v.Outcome.Refuses() && res.Refused == nil {
 		res.Ready = ready
 	}
 	return res
@@ -299,24 +377,38 @@ func findingJSON(f question.Finding, refuses bool) questionFindingJSON {
 }
 
 // questionCheckExit maps the result onto the verb's exit (decision 8): 2 for
-// a partial result, whatever it found; 1 for any finding; 0 for a result with
-// no finding at all and every store read. The exit answers whether the draft
+// a refused question limit and for a partial result, whatever it found; 1
+// for any finding; 0 for a result with no finding at all and every store
+// read. The exit answers whether the draft
 // has anything to fix, not what the hook does with it: a draft refused while
 // the person is away, or let through unchecked as not abcd's, carries no
 // finding, so it exits 0 and the hook field names the outcome.
 func questionCheckExit(res questionCheckResult) error {
+	if res.Refused != nil {
+		return &exitError{Code: 2, Msg: "guard question: a question limit is refused (" + res.Refused.Why +
+			"), so the hook refuses every abcd question until the file is fixed; no draft is ready"}
+	}
 	if res.Partial {
-		stores := make([]string, len(res.Unread))
-		for i, u := range res.Unread {
-			stores[i] = "the " + u.Store + " store"
-		}
-		return &exitError{Code: 2, Msg: "guard question: the check is partial: " + strings.Join(stores, " and ") +
+		return &exitError{Code: 2, Msg: "guard question: the check is partial: " + unreadStores(res) +
 			" could not be read, so this draft is not known to be ready"}
 	}
 	if len(res.Findings) > 0 {
 		return &exitError{Code: 1}
 	}
 	return nil
+}
+
+// unreadStores names each store the result could not read, joined for a
+// sentence.
+func unreadStores(res questionCheckResult) string {
+	stores := make([]string, len(res.Unread))
+	for i, u := range res.Unread {
+		stores[i] = "the " + u.Store + " store"
+		if u.Store == string(question.StoreLimits) {
+			stores[i] = "the question limits in " + u.File
+		}
+	}
+	return strings.Join(stores, " and ")
 }
 
 // outcomeLine says what the hook would do with the draft, in a person's words.
@@ -338,10 +430,52 @@ func outcomeLine(o question.Outcome) string {
 	return string(o)
 }
 
+// outcomeLineOf is outcomeLine for the result, saying so where the question
+// limits decided the outcome: a refused limit refuses the draft whatever it
+// holds, and limits that could not be read leave it checked at the defaults
+// rather than unchecked. abcd's question admitted on the loud status for
+// any other unread store was checked too, and the line says which store.
+func outcomeLineOf(res questionCheckResult) string {
+	switch {
+	case res.Refused != nil && res.Hook == question.OutcomeRefuse:
+		return "a question limit in this repository's configuration is refused, so the hook would refuse this question, and every abcd question, until the file is fixed"
+	case res.Hook == question.OutcomeUnchecked && len(res.Unread) > 0 && !slices.ContainsFunc(res.Unread, func(u questionUnreadJSON) bool {
+		return u.Store != string(question.StoreLimits)
+	}):
+		return "the question limits could not be read, so the hook would check this question at abcd's defaults and let it through on its loud status"
+	case res.Hook == question.OutcomeUnchecked && res.Abcds:
+		// abcd's question is checked whatever store was unread: a chipped
+		// one with the mode store unread is judged on its chip.
+		return "this question was checked and has no finding, but " + unreadStores(res) +
+			" could not be read, so the hook would let it through on its loud status"
+	}
+	return outcomeLine(res.Hook)
+}
+
+// limitsLine is the text render's statement of the question limits: each
+// figure in force, the file that set it after each figure a file set and
+// nothing after a default, or the refusal.
+func limitsLine(res questionCheckResult) string {
+	if res.Refused != nil {
+		return "limits: refused: " + res.Refused.Why + "; the hook refuses every abcd question until the file is fixed"
+	}
+	l, s := res.Limits, res.LimitsSource
+	part := func(n int, what, src string) string {
+		p := fmt.Sprintf("%d %s", n, what)
+		if src != "bundled" {
+			p += " (" + termsafe.Sanitize(src) + ")"
+		}
+		return p
+	}
+	return "limits: " + part(l.Rows, "rows", s.Rows) + ", " + part(l.LabelWords, "label words", s.LabelWords) + ", " +
+		part(l.DescriptionSentences, "description sentences", s.DescriptionSentences)
+}
+
 // writeQuestionCheck is the text render: the outcome, the rows of each tab,
 // every finding, what could not be read, and the ready input, verbatim.
 func writeQuestionCheck(w io.Writer, res questionCheckResult) {
-	fmt.Fprintf(w, "hook: %s: %s.\n", res.Hook, outcomeLine(res.Hook))
+	fmt.Fprintf(w, "hook: %s: %s.\n", res.Hook, outcomeLineOf(res))
+	fmt.Fprintln(w, limitsLine(res))
 	fmt.Fprintf(w, "version: %s\n", termsafe.Sanitize(res.Version))
 	for _, a := range res.Addressee {
 		fmt.Fprintf(w, "tab %d is for: %s\n", a.Tab, a.Person)
@@ -368,6 +502,10 @@ func writeQuestionCheck(w io.Writer, res questionCheckResult) {
 		rules := "none"
 		if len(u.Rules) > 0 {
 			rules = strings.Join(u.Rules, ", ")
+		}
+		if u.Store == string(question.StoreLimits) {
+			fmt.Fprintf(w, "partial: the question limits were not read (%s); rules checked at abcd's defaults instead: %s\n", u.Why, rules)
+			continue
 		}
 		fmt.Fprintf(w, "partial: the %s store was not read (%s); rules not applied: %s\n", u.Store, u.Why, rules)
 	}
