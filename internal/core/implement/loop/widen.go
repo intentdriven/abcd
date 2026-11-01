@@ -25,7 +25,6 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
-	"github.com/intentdriven/abcd/internal/core/vintage"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/shellquote"
@@ -244,10 +243,7 @@ func widenCommand(runID, laneID, paths string) string {
 // abcdCommand is how a command line the loop renders for an agent names abcd
 // (widenCommand).
 func abcdCommand() string {
-	if _, ok := vintage.GoRunModule(); ok {
-		return "go run ./cmd/abcd"
-	}
-	if _, _, ok := vintage.CheckoutBuild(); ok {
+	if sourceBuild() {
 		return "go run ./cmd/abcd"
 	}
 	if p, err := os.Executable(); err == nil && filepath.IsAbs(p) {

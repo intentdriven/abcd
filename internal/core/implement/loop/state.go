@@ -1222,7 +1222,7 @@ func decodeState(data []byte) (State, error) {
 		// not parse, whose remedy would throw the run away.
 		return State{}, refuse("state", "", "", fmt.Sprintf("is schema version %d, which a newer abcd wrote; this abcd reads versions %d to %d",
 			peek.SchemaVersion, schemaVersionUnpaced, SchemaVersion),
-			"run the newer abcd that wrote it (`abcd update` brings this one up to date); do not remove the run directory, which holds the run")
+			newerWriterRemedy("do not remove the run directory, which holds the run"))
 	}
 	if err != nil || peek.SchemaVersion < schemaVersionUnpaced {
 		var st State
