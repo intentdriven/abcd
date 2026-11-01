@@ -31,6 +31,7 @@ runs".
 | Verb | Bucket | Status |
 |---|---|---|
 | `check` | gate | shipped |
+| `question` | gate | shipped |
 | `hook` | — | shipped |
 | `approve` | — | shipped |
 | `allow` | — | shipped |
@@ -78,6 +79,18 @@ silence as clearance. A command line the guard cannot split is the exception on
 the hook: it is blocked (`command-unparsable`), not let through, because a line
 the guard misreads may be one bash runs, and a pass would carry every hazard in
 it past the guard. On the check it exits 2, like the rest.
+
+The question check answers for a draft question rather than a command line
+(itd-2610230756259215), and its exit rule is stricter than the check's,
+because a warned command is meant to run while a draft is asked about only to
+learn whether it is ready. It exits 0 when the draft has no finding at all and
+every store it read was read, whatever the hook would do with it, its report
+naming a refusal while the person is away or a pass unchecked as not abcd's;
+1 on any finding, a tab over the rows limit alone included, though the hook
+shows such a question; and 2 when the draft is not JSON, is over the hook's
+1 MiB bound or has neither input shape, and when a store the decision needed
+could not be read, the result then being partial even with no finding, so a
+check that could not run in full never reads as clean. "The question gate" below says what it reads and reports.
 
 The check also answers in JSON when asked, and that is the form the plugin page
 uses: a verdict, and with it the entry that fired, its tier, why the command is
@@ -295,6 +308,39 @@ them, is not a decision: the question runs and the hook says so on exit 1, the
 same fail-open-loud contract below. The manifest's pre-tool-use matcher names the
 shell tool, the question tool and the host's file-writing tools, and nothing
 else.
+
+**Checking a draft before it is asked** (itd-2610230756259215,
+spc-2610301917245442). The gate's decision is one function,
+`question.Decide`, over the field view and a `question.State` (the away
+record, whether the badge shows, the mode's person, the binary's verbs, and
+each store the reads could not make), and one surface helper,
+`questionState`, makes those reads. The hook calls the two and then acts on
+the verdict, its writes (the marker, the mode set from a chip, the rows note)
+all after the decision. The question check calls the
+same two and writes nothing: no marker, no mode, no branch record, no log, so
+the status line never names a person for a question that was never asked. It
+reads the host question tool's input, `{"questions": [...]}`, decoded as the
+hook decodes it, or, when its flag for the structured form is given, abcd's structured question type
+(`question.Ask`), decoded strictly, its structural findings reported under the
+rule `structure`, and composed through `Ask.Fields` into the host's input, so
+the material comes first, the `Now:` and `Change later:` lines next, the
+question last and the decide-later option last; a line the draft does not
+carry is named by the limits check, never invented. Its JSON
+(`abcd/question-check/v1`) carries the binary's `version`; the outcome, what the
+hook would do with the draft in this checkout now (`admit`,
+`admit-with-rows-note`, `refuse`, `refuse-away`, `admit-unchecked` for a
+question that is not abcd's, `unchecked` for each fail-open path);
+`depends_on_state`, set wherever a mode set or the person marked away before
+the ask could change that; `partial` and `unread`, naming each store the
+decision needed and could not read and the rules it therefore could not
+apply; each tab's `addressee` and, where an admitted chip would re-set the
+mode, `addressee_changes`; every finding with whether it `refuses`; `rows`
+per tab (`header_and_frame`, `question_text`, `options`, `total`, the split
+the rows rule computes) with `rows_limit`; and `ready`, the input to ask, left
+out when the hook would refuse: the draft's own value, every key the check
+does not read (such as `multiSelect`) kept, for the host form, and the
+composition for the structured form. The verdict holds between a verb and a hook of the
+same version, which is why the version is reported.
 
 **While the person is away** (spc-2610180914469489, "The question reroute";
 dcn-2610180937177502, dcn-2610181003477194), the gate reads the away record
@@ -962,7 +1008,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd guard`
 
-Sub-verbs: `abcd guard allow`, `abcd guard approve`, `abcd guard check`, `abcd guard hook`.
+Sub-verbs: `abcd guard allow`, `abcd guard approve`, `abcd guard check`, `abcd guard hook`, `abcd guard question`.
 
 Flags: none.
 
@@ -998,5 +1044,13 @@ Sub-verbs: none.
 Sub-verbs: none.
 
 Flags: none.
+
+### `abcd guard question`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--ask` | bool |
 
 <!-- surface-appendix:end -->

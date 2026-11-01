@@ -1,7 +1,7 @@
 ---
 name: library
 description: "Render the sources corpus and the checkout's memory store, read-only: Writes nothing; refuses only when neither store can be read. Use when the user says 'ingest this', 'add this source/URL/paper to the corpus' or 'register this source' (that is library add), or 'consult sources', 'check the corpus' or 'what do my sources say'."
-argument-hint: "[<empty>] | init | add [document] --key K [--private|--public] [...] | declassify <key> | ledger [--decision D --claim C --source K --influence I | --flip N | --list] | sync-banlist [--refresh] | cite-check <file|-> | ingest <path-or-https-url> [--keep-original] | ask <question> | lint"
+argument-hint: "[<empty>] | init | add [document] --key K [--private|--public] [...] | declassify <key> | ledger [--decision D --claim C --source K --influence I | --flip N | --list] | sync-banlist [--refresh] | cite-check <file|-> | ingest <path-or-https-url> [--keep-original] [--dry-run] | ask <question> [--file-back --page-json <file|-> [--dry-run]] | lint"
 block: people
 ---
 
@@ -324,6 +324,17 @@ governs its export). Report `status`, `licence`, and the written `pages`, and
 redacted by the native scanner alone. A gitleaks run that fails refuses the
 ingest. An
 already-known source re-ingests from the registry with no `--pages-json`.
+
+**Practise before it counts.** Add `--dry-run` to `ingest`, or to `ask
+--file-back`, to check the pages through the same validator and redaction the
+real write uses and store nothing: the source is read as the real run reads it,
+a URL fetched included, and the store's writer runs its whole sequence in
+memory, so the report names every file it would create or replace (the pages,
+the registry, the index, the log, a kept original) with its size. A refusal is
+the real run's. `ask --dry-run` without `--file-back` is refused (exit 2): an
+ask that files nothing back writes nothing already.
+With `--json` the result carries the usual fields plus `"dry_run": true`,
+`would_write` and `would_do`.
 
 ### Ask memory
 

@@ -34,6 +34,14 @@ import (
 // ten-second deadline. A test replaces it with constructed sets.
 var stopOwedReader = autonomy.ReadOwed
 
+// stopClock is the seam onto the hook's clock and the zone it reads the
+// session's task schedules in: the machine's own, time.Now and nil (the
+// local zone, as the host reads its tasks). A test pins both, so a wake it
+// asserts reads the same minutes whatever the machine's zone and whatever
+// hour the test runs in, a daylight-saving change's included
+// (iss-2610250107576049).
+var stopClock = func() (time.Time, *time.Location) { return time.Now(), nil }
+
 // stopReadBudget bounds the owed read, counted from the hook's start (the
 // checkout's root and root commit included), its forge listing's own
 // ten-second deadline inside it. Judging, the session's state and at most a
@@ -139,7 +147,7 @@ nothing.`,
 			if err != nil {
 				return nil // not a checkout abcd can key a store on: nothing to check
 			}
-			now := time.Now()
+			now, loc := stopClock()
 			rec, away, err := st.Away(now)
 			if err != nil {
 				return stopAllow(cmd, "%s; read as not away", fsutil.RedactHome(err.Error()))
@@ -155,6 +163,7 @@ nothing.`,
 			in := autonomy.StopInput{
 				SessionID: p.SessionID, StopHookActive: p.StopHookActive, LastAssistantMessage: p.LastAssistantMessage,
 				SessionCrons: p.SessionCrons, BackgroundTasks: p.BackgroundTasks, Cap: stopBlockCap(cmd.ErrOrStderr()),
+				Location: loc,
 			}
 			var prev autonomy.SessionState
 			if away {
@@ -285,7 +294,7 @@ written. Every outcome exits 0.`,
 			if err != nil {
 				return nil
 			}
-			now := time.Now()
+			now, _ := stopClock()
 			_, away, err := st.Away(now)
 			if err != nil {
 				diagnosticLine(cmd.ErrOrStderr(), "abcd stop: %s; read as not away, nothing recorded", fsutil.RedactHome(err.Error()))

@@ -1,0 +1,64 @@
+{
+  "questions": [
+    {
+      "header": "Login",
+      "multiSelect": false,
+      "question": "Should the login timeout be raised?",
+      "options": [
+        {
+          "label": "Yes, raise it to one full hour",
+          "description": "The change ships with the next release."
+        },
+        {
+          "label": "No",
+          "description": "Nothing changes."
+        }
+      ]
+    },
+    {
+      "header": "Export",
+      "multiSelect": false,
+      "question": "Should the export keep the old column order?",
+      "options": [
+        {
+          "label": "Yes",
+          "description": "The change ships with the next release."
+        },
+        {
+          "label": "No",
+          "description": "Nothing changes."
+        }
+      ]
+    },
+    {
+      "header": "Search",
+      "multiSelect": false,
+      "question": "Should search match partial words?",
+      "options": [
+        {
+          "label": "Yes",
+          "description": "The change ships with the next release."
+        },
+        {
+          "label": "No",
+          "description": "Nothing changes."
+        }
+      ]
+    },
+    {
+      "header": "Backups",
+      "multiSelect": false,
+      "question": "Should backups run every night?",
+      "options": [
+        {
+          "label": "Yes",
+          "description": "The change ships with the next release."
+        },
+        {
+          "label": "No",
+          "description": "Nothing changes."
+        }
+      ]
+    }
+  ]
+}

@@ -159,3 +159,4 @@ Out of scope: a practice run for commands that take no filled-in input
    - needs: 1
    - packages: internal/core/release, internal/core/reading, internal/core/scribe, internal/core/lifeboat, internal/core/memory, internal/surface/cli/ship.go, internal/surface/cli/reading.go, internal/surface/cli/scribe.go, internal/surface/cli/cli.go, commands/launch.md, commands/reading.md, commands/scribe.md, commands/disembark.md, commands/library.md
    - tests: internal/surface/cli/dryrun_test.go, internal/core/release/plan_test.go
+   - landed: 66d21b2d5e4a

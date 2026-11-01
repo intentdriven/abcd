@@ -1,6 +1,7 @@
 package loop
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
@@ -8,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // A drain lane merges origin's default branch in its sync (spc-2610161044461448
@@ -149,6 +151,127 @@ func TestAConflictOnADeclaredGeneratedFileGoesToTheImplementer(t *testing.T) {
 	}
 	if f.remoteBranch(t, l.Branch) != "" {
 		t.Fatal("nothing is pushed")
+	}
+}
+
+// TestARegeneratedFileIsPushedAsAPullRequestThatMergesCleanly is
+// iss-2610252224311175: the default branch moves gen.txt, which origin
+// declares generated, under a live lane that also changed it; the sync's
+// conflict goes to a fresh implementer, who merges the default branch's tip
+// and commits the regenerated file in the merge; once a fresh round judges
+// that head, the lane's records, push, pull request and arming follow, and
+// the pushed head holds the default branch's tip, so the pull request merges
+// into it cleanly, as a fast-forward, carrying the regenerated file.
+func TestARegeneratedFileIsPushedAsAPullRequestThatMergesCleanly(t *testing.T) {
+	f := syncFixture(t)
+	judged := f.passToLand(t, "fix.txt", "gen.txt").HeadSHA
+	tip := f.moveMain(t, "generated again on main\n", "gen.txt")
+
+	// The sync conflicts on the generated file and goes to an implementer.
+	f.step(t)
+	res := f.step(t)
+	l := currentLane(t, f.repo, f.runID)
+	s := l.pendingSync()
+	if s == nil || s.Merged != tip || !slices.Equal(s.Paths, []string{"gen.txt"}) || l.HeadSHA != judged {
+		t.Fatalf("the generated file's conflict waits on an implementer, the branch at the judged head: %+v", l)
+	}
+	if res.Awaiting == nil || res.Awaiting.Role != RoleImplementer || res.Awaiting.Receipt != s.Receipt {
+		t.Fatalf("a fresh implementer is handed the sync brief: %+v", res)
+	}
+
+	// The implementer merges the default branch's tip, regenerates gen.txt
+	// over the conflict, and commits the merge.
+	const regenerated = "regenerated over both sides\n"
+	_ = gitErr(f.repo, "-C", l.Worktree, "merge", "--no-edit", s.Merged)
+	if err := os.WriteFile(filepath.Join(l.Worktree, "gen.txt"), []byte(regenerated), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f.repo.Git("-C", l.Worktree, "add", "--", "gen.txt")
+	f.repo.Git("-C", l.Worktree, "commit", "-q", "--no-edit")
+	merge := strings.TrimSpace(f.repo.Git("-C", l.Worktree, "rev-parse", "HEAD"))
+	if parents := strings.Fields(f.repo.Git("rev-list", "--parents", "-n", "1", merge)); len(parents) != 3 || parents[1] != judged || parents[2] != tip {
+		t.Fatalf("the implementer's merge commit joins the judged head and the default branch's tip: %q", parents)
+	}
+
+	laneDir := filepath.Join(f.repo.Root(), filepath.FromSlash(RunRelDir), f.runID, l.ID)
+	receipt := filepath.Join(f.repo.Root(), filepath.FromSlash(res.Awaiting.Receipt))
+	rel, err := filepath.Rel(laneDir, filepath.Dir(receipt))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{ReportFileName: "regenerated gen.txt in the merge\n", DoDFileName: "ok\n"} {
+		if err := os.WriteFile(filepath.Join(laneDir, rel, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rc := LaneReceipt{SchemaVersion: ReceiptSchemaVersion, RunID: f.runID, Lane: l.ID, Branch: l.Branch, Commits: []string{merge},
+		DefinitionOfDone: &DoDRun{Command: "make check", ExitCode: zero(), Output: filepath.ToSlash(filepath.Join(rel, DoDFileName))},
+		Report:           filepath.ToSlash(filepath.Join(rel, ReportFileName)), Model: "claude-test-5"}
+	data, err := json.Marshal(rc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(receipt, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Receipt(f.repo.Root(), f.runID, receipt, f.stages, Options{}); err != nil {
+		t.Fatalf("the implementer's receipt carrying the merged sha verifies: %v", err)
+	}
+	if l := currentLane(t, f.repo, f.runID); l.HeadSHA != merge || l.pendingSync() != nil || !l.syncRoundDue() {
+		t.Fatalf("the resolved sync names the merge head, and a fresh round is due over it: %+v", l)
+	}
+
+	// A fresh round judges the merge head; the landing goes on without a
+	// second sync, through its records, push, pull request and arming.
+	passRound(t, f.repo, f.runID, f.stages, RoleRuthless, RoleSecurity)
+	stepTo(t, f.repo, f.runID, f.stages, StageLand)
+	for range 8 {
+		f.step(t)
+		l = currentLane(t, f.repo, f.runID)
+		if l.Landing != nil && l.Landing.Pushed == "" && l.Landing.RecordsDone {
+			preflighted(t, l, l.HeadSHA)
+		}
+		if l.Landing != nil && l.Landing.Armed {
+			break
+		}
+	}
+	l = currentLane(t, f.repo, f.runID)
+	if l.Landing == nil || !l.Landing.Armed || l.PR != 7 || len(l.Syncs) != 1 {
+		t.Fatalf("the merge head's pull request is opened and armed, with no second sync: %+v %+v", l.Landing, l.Syncs)
+	}
+	pushed := l.Landing.Pushed
+	if got := f.remoteBranch(t, l.Branch); got != pushed || pushed != l.HeadSHA {
+		t.Fatalf("origin holds the lane's head: %s, pushed %s, head %s", got, pushed, l.HeadSHA)
+	}
+	if on, err := gitutil.IsAncestor(f.repo.Root(), merge, pushed); err != nil || !on {
+		t.Fatalf("the pushed head carries the implementer's merge %s: %v", merge, err)
+	}
+	if !strings.Contains(f.ghLog(t), "pr merge 7 --auto --merge --match-head-commit="+pushed) {
+		t.Fatalf("the pull request is armed at the pushed head:\n%s", f.ghLog(t))
+	}
+
+	// The pull request merges cleanly: origin's default branch, unmoved since
+	// the sync, is an ancestor of the pushed head, so the merge is a
+	// fast-forward that brings the regenerated file.
+	f.repo.Git("fetch", "-q", "origin")
+	onMain := strings.TrimSpace(f.repo.Git("rev-parse", "refs/remotes/origin/main"))
+	if onMain != tip {
+		t.Fatalf("origin's default branch has not moved since the sync: %s, want %s", onMain, tip)
+	}
+	if on, err := gitutil.IsAncestor(f.repo.Root(), onMain, pushed); err != nil || !on {
+		t.Fatalf("the pull request's head holds the default branch's tip %s, so it merges without a conflict: %v", onMain, err)
+	}
+	// The merge, as the queue makes it: a push of the pushed head to origin's
+	// default branch, which git refuses unless it is a fast-forward.
+	f.merged(t, pushed)
+	if got := f.repo.Git("--git-dir", f.bare, "show", "main:gen.txt"); got+"\n" != regenerated && got != regenerated {
+		t.Fatalf("the default branch carries the regenerated file: %q", got)
+	}
+	if res := f.step(t); res.PerformedStage != StageLand || !res.Complete {
+		t.Fatalf("once merged, the landing completes: %+v", res)
+	}
+	if st, err := ReadState(f.repo.Root(), f.runID); err != nil || st.Lanes[0].Stage != StageDone {
+		t.Fatalf("the lane is done: %+v %v", st.Lanes, err)
 	}
 }
 
