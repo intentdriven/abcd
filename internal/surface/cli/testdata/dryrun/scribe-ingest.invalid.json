@@ -1,0 +1,2 @@
+{"_type": "{{TYPE}}", "run": "rdg-2609250000000001", "context_sha256": "{{CONTEXT}}",
+ "dispositions": [{"item": "{{ITEM}}", "state": "accepted", "grounds": "the constraint the reading names is real and binds the verb as shipped", "authored": "a field the scribe may not write"}]}

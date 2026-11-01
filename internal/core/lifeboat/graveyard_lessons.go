@@ -45,46 +45,76 @@ import (
 // are: every file the call would write is handed to scan before anything is
 // cleared or written, and a non-nil error refuses the whole call, leaving the
 // lifeboat as it was. Refuse, never redact. A nil scan fails closed.
+//
+// It is PlanIngestLessons followed by the plan's Apply, so a practice run
+// (`--dry-run`) and the real write share every check.
 func IngestLessons(lifeboatDir string, raw []byte, scan SecretScan) (LessonsResult, error) {
+	p, err := PlanIngestLessons(lifeboatDir, raw, scan)
+	if err != nil {
+		return LessonsResult{}, err
+	}
+	return p.Apply()
+}
+
+// LessonsPlan is what IngestLessons would do: the result it would report, and
+// the files it would write and clear.
+type LessonsPlan struct {
+	Result LessonsResult
+	SynthPlan
+}
+
+// Apply clears the prior layer 3 and writes the planned survivors.
+func (p LessonsPlan) Apply() (LessonsResult, error) {
+	if err := p.apply(); err != nil {
+		return LessonsResult{}, err
+	}
+	return p.Result, nil
+}
+
+// PlanIngestLessons does everything IngestLessons does before its first
+// write: the lifeboat gate, the payload's decode and per-entry validation, the
+// composition of every survivor file, and the secret scan over those bytes. A
+// refused payload is refused here, in the same words; nothing is written.
+func PlanIngestLessons(lifeboatDir string, raw []byte, scan SecretScan) (LessonsPlan, error) {
 	if scan == nil {
-		return LessonsResult{}, errors.New("lessons: a secret scan is required")
+		return LessonsPlan{}, errors.New("lessons: a secret scan is required")
 	}
 	abs, err := filepath.Abs(lifeboatDir)
 	if err != nil {
-		return LessonsResult{}, err
+		return LessonsPlan{}, err
 	}
 	// 1. Gate the lifeboat: a real directory, reached through no symlinked
 	// ancestor inside a checkout, carrying a parseable _provenance.json.
 	if err := proveOperand("lifeboat", abs); err != nil {
-		return LessonsResult{}, err
+		return LessonsPlan{}, err
 	}
 	if !fsutil.IsRealDir(abs) {
-		return LessonsResult{}, fmt.Errorf("lifeboat %s is not a directory", filepath.Base(abs))
+		return LessonsPlan{}, fmt.Errorf("lifeboat %s is not a directory", filepath.Base(abs))
 	}
 	if !isAbcdLifeboat(abs) {
-		return LessonsResult{}, fmt.Errorf("%s is not an abcd lifeboat (no parseable %s)", filepath.Base(abs), ProvenanceName)
+		return LessonsPlan{}, fmt.Errorf("%s is not an abcd lifeboat (no parseable %s)", filepath.Base(abs), ProvenanceName)
 	}
 	// graveyard/ must be a real directory — never a symlink we would read or write
 	// through. This is one belt of the belt-and-suspenders containment.
 	if !fsutil.IsRealDir(filepath.Join(abs, "graveyard")) {
-		return LessonsResult{}, errors.New("lifeboat graveyard/ is missing or not a real directory")
+		return LessonsPlan{}, errors.New("lifeboat graveyard/ is missing or not a real directory")
 	}
 
 	// 2. Read layers 1 + 2 behind the read guards and build the live id set.
 	arch, err := readGraveyardFile[Archaeology](abs, path.Join("graveyard", "archaeology.json"))
 	if err != nil {
-		return LessonsResult{}, err
+		return LessonsPlan{}, err
 	}
 	aband, err := readGraveyardFile[Abandoned](abs, path.Join("graveyard", "abandoned.json"))
 	if err != nil {
-		return LessonsResult{}, err
+		return LessonsPlan{}, err
 	}
 	ids := collectFindingIDs(arch.Findings, aband.Findings)
 
 	// 3. Parse the untrusted lessons payload, fail-closed on structure.
 	lf, err := decodeLessons(abs, raw)
 	if err != nil {
-		return LessonsResult{}, err
+		return LessonsPlan{}, err
 	}
 
 	// 4. Per-entry validation, drop-not-fatal.
@@ -138,7 +168,7 @@ func IngestLessons(lifeboatDir string, raw []byte, scan SecretScan) (LessonsResu
 		sort.Slice(mainLessons, func(i, j int) bool { return mainLessons[i].ID < mainLessons[j].ID })
 		data, err := marshalLessonsFile(mainLessons)
 		if err != nil {
-			return LessonsResult{}, err
+			return LessonsPlan{}, err
 		}
 		planned = append(planned, plannedFile(path.Join("graveyard", "lessons.json"), data))
 	}
@@ -146,7 +176,7 @@ func IngestLessons(lifeboatDir string, raw []byte, scan SecretScan) (LessonsResu
 	for _, l := range lowLessons {
 		data, err := marshalLessonsFile([]Lesson{l})
 		if err != nil {
-			return LessonsResult{}, err
+			return LessonsPlan{}, err
 		}
 		// The filename is built from the VALIDATED lesson id (lessonIDRe +
 		// maxLessonIDLen) — that regex is the path-traversal defence: the id can
@@ -155,33 +185,26 @@ func IngestLessons(lifeboatDir string, raw []byte, scan SecretScan) (LessonsResu
 		planned = append(planned, plannedFile(path.Join("graveyard", "low-confidence", l.ID+".json"), data))
 	}
 	if err := scan(planned); err != nil {
-		return LessonsResult{}, err
+		return LessonsPlan{}, err
 	}
 
-	// 6. Write survivors. os.Root is an independent containment assertion over the
-	//    relative target; the durable write itself runs through the canonical
-	//    fsutil.WriteFileAtomic. Two layers, so a bug in one is not an escape.
-	root, err := os.OpenRoot(abs)
-	if err != nil {
-		return LessonsResult{}, err
-	}
-	defer root.Close()
-
-	// Each ingest is a FULL REPLACEMENT of layer 3: clear the prior interpretation
-	// before writing the current survivors, so a lesson promoted low->high leaves
-	// no stale low-confidence/<id>.json and a lesson dropped from a later payload
-	// does not persist. Removal runs through the contained os.Root; a missing
-	// path is not an error.
-	if err := clearLayer3(root); err != nil {
-		return LessonsResult{}, err
-	}
-
-	if err := writePlanned(root, abs, planned); err != nil {
-		return LessonsResult{}, err
-	}
+	// 6. The writes, laid by Apply. os.Root is an independent containment
+	//    assertion over the relative target; the durable write itself runs
+	//    through the canonical fsutil.WriteFileAtomic. Two layers, so a bug in
+	//    one is not an escape.
+	//
+	// Each ingest is a FULL REPLACEMENT of layer 3: the prior interpretation is
+	// cleared before the current survivors are written, so a lesson promoted
+	// low->high leaves no stale low-confidence/<id>.json and a lesson dropped
+	// from a later payload does not persist. Removal runs through the contained
+	// os.Root; a missing path is not an error. The plan names every file the
+	// clear would remove that the survivors do not write again.
+	sp := newSynthPlan(abs, planned)
+	sp.clearLayer3 = true
+	sp.planRemove(layer3Files(abs))
 	res.Written = len(mainLessons)
 	res.LowConfidence = len(lowLessons)
-	return res, nil
+	return LessonsPlan{Result: res, SynthPlan: sp}, nil
 }
 
 // plannedFile is one file a post-pack verb is about to write into the

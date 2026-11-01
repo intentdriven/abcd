@@ -1,0 +1,27 @@
+{
+  "questions": [
+    {
+      "header": "Product Q1",
+      "multiSelect": false,
+      "question": "The status line names whom the session waits on.\nIt shows above every question.\n\nNow: the label names the role.\nChange later: edit the interview page.\n\nShould the label name the role as well as the number?",
+      "options": [
+        {
+          "label": "Role and number",
+          "description": "It says whom the question is for and where you are in the interview. It costs a few characters."
+        },
+        {
+          "label": "Number only",
+          "description": "The label is shorter and the status line says whom it is for, so nothing is lost."
+        },
+        {
+          "label": "Role only",
+          "description": "The label says whom. You lose your place."
+        },
+        {
+          "label": "Decide later",
+          "description": "Nothing changes now."
+        }
+      ]
+    }
+  ]
+}

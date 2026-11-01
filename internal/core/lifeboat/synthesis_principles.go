@@ -49,13 +49,42 @@ import (
 // "principles": [] and reports the drops, exit 0. Both files are secret-scanned
 // before either is written, as pack's planned bytes are; a non-nil error from
 // scan refuses the whole call, and a nil scan fails closed.
+//
+// It is PlanPrinciples followed by the plan's Apply, so a practice run
+// (`--dry-run`) and the real write share every check.
 func SynthesizePrinciples(lifeboatDir string, raw []byte, scan SecretScan) (PrinciplesResult, error) {
+	p, err := PlanPrinciples(lifeboatDir, raw, scan)
+	if err != nil {
+		return PrinciplesResult{}, err
+	}
+	return p.Apply()
+}
+
+// PrinciplesPlan is what SynthesizePrinciples would do: the result it would
+// report and the two files it would write.
+type PrinciplesPlan struct {
+	Result PrinciplesResult
+	SynthPlan
+}
+
+// Apply writes the planned principles.json and principles.md.
+func (p PrinciplesPlan) Apply() (PrinciplesResult, error) {
+	if err := p.apply(); err != nil {
+		return PrinciplesResult{}, err
+	}
+	return p.Result, nil
+}
+
+// PlanPrinciples does everything SynthesizePrinciples does before its write:
+// the gate, either mode's synthesis or validation, the composition of both
+// files, and the secret scan over them. Nothing is written.
+func PlanPrinciples(lifeboatDir string, raw []byte, scan SecretScan) (PrinciplesPlan, error) {
 	if scan == nil {
-		return PrinciplesResult{}, errors.New("principles: a secret scan is required")
+		return PrinciplesPlan{}, errors.New("principles: a secret scan is required")
 	}
 	abs, _, err := gateSynthLifeboat(lifeboatDir)
 	if err != nil {
-		return PrinciplesResult{}, err
+		return PrinciplesPlan{}, err
 	}
 
 	res := PrinciplesResult{LifeboatDir: fsutil.RedactHome(abs)}
@@ -73,7 +102,7 @@ func SynthesizePrinciples(lifeboatDir string, raw []byte, scan SecretScan) (Prin
 		var drops []PrincipleDrop
 		principles, drops, err = deterministicPrinciples(abs)
 		if err != nil {
-			return PrinciplesResult{}, err
+			return PrinciplesPlan{}, err
 		}
 		res.Dropped = len(drops)
 		res.Drops = drops
@@ -82,7 +111,7 @@ func SynthesizePrinciples(lifeboatDir string, raw []byte, scan SecretScan) (Prin
 		var drops []PrincipleDrop
 		principles, promptVersion, drops, err = validateDelegatedPrinciples(abs, raw)
 		if err != nil {
-			return PrinciplesResult{}, err
+			return PrinciplesPlan{}, err
 		}
 		res.Dropped = len(drops)
 		res.Drops = drops
@@ -103,33 +132,23 @@ func SynthesizePrinciples(lifeboatDir string, raw []byte, scan SecretScan) (Prin
 	}
 	data, err := marshalSynth(file)
 	if err != nil {
-		return PrinciplesResult{}, err
+		return PrinciplesPlan{}, err
 	}
 	planned := []PlannedFile{
 		plannedFile("principles.json", data),
 		plannedFile("principles.md", []byte(renderPrinciplesMarkdown(file))),
 	}
 	if err := scan(planned); err != nil {
-		return PrinciplesResult{}, err
+		return PrinciplesPlan{}, err
 	}
 
-	root, err := os.OpenRoot(abs)
-	if err != nil {
-		return PrinciplesResult{}, err
-	}
-	defer root.Close()
-
-	// Full replacement: a single-file artifact, so the atomic overwrite IS the
-	// replacement — no accretion across runs, no stale twin.
-	if err := writePlanned(root, abs, planned); err != nil {
-		return PrinciplesResult{}, err
-	}
-
+	// Full replacement: a single-file artifact, so the atomic overwrite Apply
+	// makes IS the replacement — no accretion across runs, no stale twin.
 	res.Mode = mode
 	res.Written = len(principles)
 	res.PrinciplesPath = "principles.json"
 	res.RenderPath = "principles.md"
-	return res, nil
+	return PrinciplesPlan{Result: res, SynthPlan: newSynthPlan(abs, planned)}, nil
 }
 
 // deterministicPrinciples surfaces each packed ADR's own stated decision as a
