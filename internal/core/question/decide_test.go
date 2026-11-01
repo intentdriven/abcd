@@ -10,13 +10,13 @@ import (
 // The shared decision (spc-2610301917245442, step 1): Decide judges a call in
 // the hook's order, and Rows is the split the rows rule computes.
 
+// rowsFloor is Default with the rows limit at its floor, 24.
+var rowsFloor = Bounded(Default, Bounds[0].Floor, Default.LabelWords, Default.MeaningSentences)
+
 // rowsTab is the 25-row case of itd-2610230756259215: eight rows of header and
 // frame, seven of question text and ten of options. It runs past the rows
 // limit only at the floor, 24, since itd-2610301914350541 raised the default
 // to 32, so the tests that need it over the limit judge it at rowsFloor.
-// rowsFloor is Default with the rows limit at its floor, 24.
-var rowsFloor = Bounded(Default, Bounds[0].Floor, Default.LabelWords, Default.MeaningSentences)
-
 func rowsTab() Tab {
 	return Tab{
 		Header: "Product Q1",
