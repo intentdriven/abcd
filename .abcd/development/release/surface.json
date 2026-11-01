@@ -1213,6 +1213,13 @@
       "sentence": "Validate host-produced lesson JSON against a packed lifeboat: Writes the lessons that cite their evidence; refuses without --lessons-json.",
       "flags": [
         {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "lessons-json",
           "shorthand": "",
           "type": "string",
@@ -1262,6 +1269,13 @@
       "sentence": "Compose a lifeboat's press release, or validate the host's: Writes the press-release files in the lifeboat; refuses a host draft citing nothing resolvable.",
       "flags": [
         {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "press-release-json",
           "shorthand": "",
           "type": "string",
@@ -1282,6 +1296,13 @@
       "hidden": false,
       "sentence": "Distil a lifeboat's principles from its ADRs, or validate the host's: Writes the principles files in the lifeboat; refuses a directory that is not a lifeboat.",
       "flags": [
+        {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "principles-json",
           "shorthand": "",
@@ -1317,6 +1338,13 @@
       "hidden": false,
       "sentence": "Review a packed lifeboat against its source repository, or validate the host's verdict: Writes the review in the lifeboat; refuses an unregistered verdict.",
       "flags": [
+        {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "review-json",
           "shorthand": "",
@@ -3223,6 +3251,13 @@
           "hidden": false
         },
         {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "fetch-baseline",
           "shorthand": "",
           "type": "bool",
@@ -3384,6 +3419,13 @@
       "sentence": "Query memory and synthesise a cited answer: Writes a memory page only with --file-back; refuses outside a git checkout.",
       "flags": [
         {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "file-back",
           "shorthand": "",
           "type": "bool",
@@ -3431,6 +3473,13 @@
       "hidden": false,
       "sentence": "Distil a local file or an https source into cited memory pages: Writes the pages; refuses a URL that is not https.",
       "flags": [
+        {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "keep-original",
           "shorthand": "",
@@ -3823,6 +3872,13 @@
           "hidden": false
         },
         {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "reading-json",
           "shorthand": "",
           "type": "string",
@@ -4058,6 +4114,13 @@
           "name": "dispositions",
           "shorthand": "",
           "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
           "required": false,
           "hidden": false
         },

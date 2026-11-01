@@ -87,15 +87,44 @@ func removeLegacyReviewArtefact(root *os.Root, manifest12 string) {
 // audit files are secret-scanned before either is written, as pack's planned
 // bytes are; a non-nil error from scan refuses the whole call (nothing written,
 // nothing removed), and a nil scan fails closed.
+//
+// It is PlanReview followed by the plan's Apply, so a practice run
+// (`--dry-run`) and the real write share every check.
 func ReviewLifeboat(lifeboatDir, sourceRepo string, raw []byte, scan SecretScan) (ReviewResult, error) {
+	p, err := PlanReview(lifeboatDir, sourceRepo, raw, scan)
+	if err != nil {
+		return ReviewResult{}, err
+	}
+	return p.Apply()
+}
+
+// ReviewPlan is what ReviewLifeboat would do: the result it would report, the
+// review pair it would write, and the legacy pair it would remove.
+type ReviewPlan struct {
+	Result ReviewResult
+	SynthPlan
+}
+
+// Apply writes the planned review pair and removes this manifest's legacy one.
+func (p ReviewPlan) Apply() (ReviewResult, error) {
+	if err := p.apply(); err != nil {
+		return ReviewResult{}, err
+	}
+	return p.Result, nil
+}
+
+// PlanReview does everything ReviewLifeboat does before its write: both
+// gates, the manifest attestation, either mode's verdict, the composition of
+// the pair, and the secret scan. Nothing is written or removed.
+func PlanReview(lifeboatDir, sourceRepo string, raw []byte, scan SecretScan) (ReviewPlan, error) {
 	if scan == nil {
-		return ReviewResult{}, errors.New("review: a secret scan is required")
+		return ReviewPlan{}, errors.New("review: a secret scan is required")
 	}
 	// 1. Gate the lifeboat (real dir + parseable header + schema) and read the
 	//    immutable provenance header — needed to name the audit file.
 	abs, prov, err := gateSynthLifeboat(lifeboatDir)
 	if err != nil {
-		return ReviewResult{}, err
+		return ReviewPlan{}, err
 	}
 	// Gate the source repo as a real dir. The core never reads its CONTENT — this
 	// keeps the audit deterministic and safe when the source is gone. A symlinked
@@ -106,10 +135,10 @@ func ReviewLifeboat(lifeboatDir, sourceRepo string, raw []byte, scan SecretScan)
 	// ancestor link redirects nothing that clears a hit (iss-2609261232464351).
 	srcAbs, err := filepath.Abs(sourceRepo)
 	if err != nil {
-		return ReviewResult{}, err
+		return ReviewPlan{}, err
 	}
 	if !fsutil.IsRealDir(srcAbs) {
-		return ReviewResult{}, fmt.Errorf("source %s is not a directory", filepath.Base(srcAbs))
+		return ReviewPlan{}, fmt.Errorf("source %s is not a directory", filepath.Base(srcAbs))
 	}
 	sourceName := sanitize(filepath.Base(srcAbs))
 
@@ -148,7 +177,7 @@ func ReviewLifeboat(lifeboatDir, sourceRepo string, raw []byte, scan SecretScan)
 		// --- delegated mode -----------------------------------------------------
 		verdict, findings, drops, err := validateReview(abs, raw)
 		if err != nil {
-			return ReviewResult{}, err
+			return ReviewPlan{}, err
 		}
 		audit.Mode = ModeDelegated
 		audit.PromptVersion = drops.promptVersion
@@ -165,7 +194,7 @@ func ReviewLifeboat(lifeboatDir, sourceRepo string, raw []byte, scan SecretScan)
 	//    replacement, no stale twin.
 	data, err := marshalSynth(audit)
 	if err != nil {
-		return ReviewResult{}, err
+		return ReviewPlan{}, err
 	}
 	jsonRel := path.Join(reviewArtefactDir, "review-"+manifest12+".json")
 	mdRel := path.Join(reviewArtefactDir, "review-"+manifest12+".md")
@@ -174,29 +203,26 @@ func ReviewLifeboat(lifeboatDir, sourceRepo string, raw []byte, scan SecretScan)
 		plannedFile(mdRel, []byte(renderReviewMD(audit))),
 	}
 	if err := scan(planned); err != nil {
-		return ReviewResult{}, err
+		return ReviewPlan{}, err
 	}
 
-	root, err := os.OpenRoot(abs)
-	if err != nil {
-		return ReviewResult{}, err
-	}
-	defer root.Close()
-	if err := writePlanned(root, abs, planned); err != nil {
-		return ReviewResult{}, err
-	}
 	// Clean replacement across the spc-30 rename: a lifeboat reviewed before it
-	// carries the pre-rename pair under audit/. Remove THIS manifest's stale
-	// pair (never another manifest's, and never an unrelated file), then prune
-	// audit/ if that emptied it. Best-effort by design — the review is written
-	// and valid either way, so a removal failure must not fail the run.
-	removeLegacyReviewArtefact(root, manifest12)
+	// carries the pre-rename pair under audit/. Apply removes THIS manifest's
+	// stale pair (never another manifest's, and never an unrelated file), then
+	// prunes audit/ if that emptied it. Best-effort by design — the review is
+	// written and valid either way, so a removal failure must not fail the run.
+	sp := newSynthPlan(abs, planned)
+	sp.legacyManifest12 = manifest12
+	sp.planRemove([]string{
+		path.Join(legacyReviewDir, "oracle-"+manifest12+".json"),
+		path.Join(legacyReviewDir, "oracle-"+manifest12+".md"),
+	})
 
 	res.Verdict = audit.Verdict
 	res.Written = len(audit.Findings)
 	res.ReviewPath = jsonRel
 	res.RenderPath = mdRel
-	return res, nil
+	return ReviewPlan{Result: res, SynthPlan: sp}, nil
 }
 
 // deterministicVerdict is the pinned, pure mapping (design §4.3): a failed manifest

@@ -110,6 +110,13 @@ type sourceMaterial struct {
 // Ingest runs the full ingest flow for one source (a local path or an https
 // URL; a plaintext http source is refused — see isURL).
 func Ingest(req IngestRequest) (IngestResult, error) {
+	return ingest(req, nil)
+}
+
+// ingest is Ingest with its writes routed through pl: the store when pl is
+// nil, a plan's overlay otherwise (PlanIngest), so the practice run and the
+// real ingest share every step.
+func ingest(req IngestRequest, pl *storePlanner) (IngestResult, error) {
 	if req.Distiller == nil {
 		return IngestResult{}, newIngestError("ingest requires a Distiller")
 	}
@@ -213,7 +220,7 @@ func Ingest(req IngestRequest) (IngestResult, error) {
 				Pages: recorded, SourceTokenCount: tokenCount, TokenCountVersion: TokenCountVersion,
 			}
 			var newRegistry map[string]any
-			report, err := WritePages(root, nil, func(current map[string]any) (map[string]any, error) {
+			report, err := writeThrough(pl, root, nil, func(current map[string]any) (map[string]any, error) {
 				merged, err := MergeIngest(current, event)
 				if err != nil {
 					return nil, err
@@ -224,14 +231,14 @@ func Ingest(req IngestRequest) (IngestResult, error) {
 			if err != nil {
 				return IngestResult{}, err
 			}
-			if pagesWritten != nil {
+			if pagesWritten != nil && pl == nil {
 				pagesWritten()
 			}
 			// Best-effort keep-original: a failure after the durable write is
 			// recorded, never reported as total failure (iss-30).
 			kept, keepErr := "", ""
 			if req.KeepOriginal {
-				if k, serr := keepOriginal(root, material, contentHash, redactor); serr != nil {
+				if k, serr := keepOriginalThrough(pl, root, material, contentHash, redactor); serr != nil {
 					keepErr = keepOriginalErrorMessage(serr)
 				} else {
 					kept = k
@@ -371,11 +378,11 @@ func Ingest(req IngestRequest) (IngestResult, error) {
 	for _, w := range plan.Writes {
 		pageWrites = append(pageWrites, PageWrite{Filename: w.Filename, Frontmatter: w.Frontmatter, Body: w.Body})
 	}
-	report, err := WritePages(root, pageWrites, merge, now)
+	report, err := writeThrough(pl, root, pageWrites, merge, now)
 	if err != nil {
 		return IngestResult{}, err
 	}
-	if pagesWritten != nil {
+	if pagesWritten != nil && pl == nil {
 		pagesWritten()
 	}
 	// storeOriginal runs AFTER the durable page + registry write. A failure
@@ -383,7 +390,7 @@ func Ingest(req IngestRequest) (IngestResult, error) {
 	// failure — record it and return the successful result (iss-30).
 	kept, keepErr := "", ""
 	if req.KeepOriginal {
-		if k, serr := keepOriginal(root, material, contentHash, redactor); serr != nil {
+		if k, serr := keepOriginalThrough(pl, root, material, contentHash, redactor); serr != nil {
 			keepErr = keepOriginalErrorMessage(serr)
 		} else {
 			kept = k
@@ -1061,6 +1068,16 @@ func keepOriginalErrorMessage(err error) string {
 // its segment walk, so a write by path would follow a store directory swapped
 // for a symlink in between; opening a fresh handle re-runs the walk, and the
 // write then resolves inside the directory that handle opened.
+//
+// keepOriginalThrough is the planner's seam: a plan keeps the original in its
+// overlay, through the same redaction.
+func keepOriginalThrough(pl *storePlanner, repoRoot string, material sourceMaterial, contentHash string, redactor *storeRedactor) (string, error) {
+	if pl != nil {
+		return pl.keep(material, contentHash, redactor)
+	}
+	return keepOriginal(repoRoot, material, contentHash, redactor)
+}
+
 func keepOriginal(repoRoot string, material sourceMaterial, contentHash string, redactor *storeRedactor) (string, error) {
 	store, err := openStore(repoRoot)
 	if err != nil {

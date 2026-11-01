@@ -1,0 +1,4 @@
+{"schema_version": 1, "lessons": [
+  {"id": "les-engine-v1", "lesson": "the first engine was retired for a reason the revert names", "confidence": "high", "evidence": ["rev-9f3a1c2d4e5b"]},
+  {"id": "les-adr-twelve", "lesson": "the superseded decision is still worth reading", "confidence": "low", "evidence": ["adr-12"]}
+]}

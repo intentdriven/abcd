@@ -531,6 +531,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--dry-run` | bool |
 | `--file-back` | bool |
 | `--page-json` | string |
 | `--top-n` | int |
@@ -555,6 +556,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--dry-run` | bool |
 | `--keep-original` | bool |
 | `--pages-json` | string |
 
