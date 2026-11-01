@@ -1,0 +1,15 @@
+{
+  "_type": "abcd/intent-consistency-findings/v1",
+  "receipt_id": "{{RECEIPT}}",
+  "verifier": {"id": "intent-auditor", "version": "claude-opus-5-5"},
+  "policy": {"rubric_hash": "{{RUBRIC}}", "prompt_hash": "{{PROMPT}}"},
+  "findings": [{
+    "class": "premise_contradiction", "severity": "colossal",
+    "summary": "itd-10 and itd-11 disagree on how many specs an intent owns",
+    "explanation": "One says exactly one spec for life; the other says one or more.",
+    "ends": [
+      {"path": ".abcd/development/intents/planned/itd-10-one-spec.md", "quote": "An intent carries exactly one spec for its whole life."},
+      {"path": ".abcd/development/intents/shipped/itd-11-many-specs.md", "quote": "An intent owns one or more specs, each closed in turn."}
+    ]
+  }]
+}

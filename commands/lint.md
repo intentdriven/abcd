@@ -203,8 +203,9 @@ one who has. It writes nothing except that render, and reaches no network.
   served at `owner.github.io/widgets/`); the stylesheet the `mobile` gate reads
   is resolved against the same path. At the default, `/`, every root-absolute
   link is inside the site and the gate has nothing to find.
-- `link-targets` — every `/docs/` link on a composed surface, and every target
-  in the redirect map (`site-src/redirects`, served as `_redirects`), names a
+- `link-targets` — every `/docs/` link on a rendered page, the record pages
+  under `/record/` included, and every target in the redirect map
+  (`site-src/redirects`, served as `_redirects`), names a
   file in the output directory: the path itself, or a directory URL's
   `index.html`. The `/docs/` tree is the documentation generator's, so its half
   is judged only once that tree is in the output; in an output with no `docs/`

@@ -145,7 +145,17 @@ Both flags together are refused, writing nothing.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" ideate record <idea-slug> --verdict-json <path>   # private; --public only once the person said so; - for stdin
+"${CLAUDE_PLUGIN_ROOT}/abcd" ideate record <idea-slug> --verdict-json <path> --dry-run   # check it; write nothing
 ```
+
+**Practise before it counts.** Add `--dry-run` to check the verdict document through the same
+validator the real record uses: it prints what would be written (each path, created or
+replaced, and its size, with the record's opening lines) or the refusal the real run
+would give, in the same words and with the same exit 2, and writes nothing anywhere.
+With `--json` the result carries the usual fields plus `"dry_run": true`,
+`would_write` and `would_do`.
+A public verdict's pointer is named with `<id>` where its decision id goes: the
+decision writer mints it when it records the pointer.
 
 `<idea-slug>` is lower-case kebab-case (it becomes a filename). The document:
 

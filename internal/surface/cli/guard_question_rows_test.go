@@ -18,8 +18,8 @@ import (
 // redraft a question the person was ready to answer; a question cut at the
 // bottom of a short window costs less than that.
 
-// tallQuestion is wellBuilt with more material than fits: every rule holds
-// but the rows limit.
+// tallQuestion is wellBuilt with more material than fits the default rows
+// limit, 32: every rule holds but the rows limit.
 func tallQuestion() hostQuestion {
 	q := wellBuilt()
 	more := []string{
@@ -29,6 +29,14 @@ func tallQuestion() hostQuestion {
 		"A total after a slash appears only when the interview's length is known.",
 		"The number counts the questions put to this person in this interview.",
 		"It starts again at one when the next interview opens.",
+		"The role word tells the person whether the question is theirs.",
+		"A product question carries no record number and no command.",
+		"A technical question may name the record it is about.",
+		"The setup questions carry their own role word.",
+		"A part letter marks a question split into parts.",
+		"The label is never bold and never coloured.",
+		"It is the same in every window the host draws.",
+		"It is read by the hook before the question is shown.",
 	}
 	q.Question = strings.Join(more, "\n") + "\n\n" + q.Question
 	return q

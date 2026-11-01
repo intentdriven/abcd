@@ -28,9 +28,9 @@ impact: additive
 > the status line still says whom the session is waiting on, and no
 > question is marked as open.
 >
-> For example, a draft about one criterion comes back as "tab 2 is 25 rows
-> (header and frame 8, question text 7, options 10); the limit is 24". The
-> drafter shortens one option's description, checks again, gets 23 rows and
+> For example, a draft about one criterion comes back as "tab 2 is 34 rows
+> (header and frame 8, question text 16, options 10); the limit is 32". The
+> drafter shortens one option's description, checks again, gets 31 rows and
 > no faults, and the question appears. Iris sees one question that fits
 > their window, with the thing being decided first and the question last,
 > and never sees the redrafting behind it.
@@ -178,7 +178,7 @@ question came from.
 - Tightening the structured type's own check so a missing `Now:` or `Change later:` line is refused there (decision 14).
 - Content rules the check cannot see (bundled issues, repetition, one-answer questions); iss-2610090816296964 and iss-2610161739587645 keep them.
 - The required "Unclear" option of iss-2610150551207288.
-- Re-calibrating the host's frame or abcd's 24-row limit. A repository's own limits are itd-2610301914350541, which builds on this intent.
+- Re-calibrating the host's frame or abcd's default rows limit, which itd-2610301914350541 raised from 24 to 32. A repository's own limits are that intent, which builds on this one.
 - Refusing a question only for its height: iss-2610070637562567's ruling stands, and the verb reports the overrun as a fault while the hook still shows it.
 
 ## Acceptance Criteria
@@ -303,8 +303,10 @@ Technical, as one list:
   "in abcd's own interviews" scope words are unchanged.
 - **Given** a managed lab repository on a plugin binary carrying the verb,
   **when** the verb runs there, **then** it works without abcd's own checkout.
-- **Given** the 25-row material, **when** each of three recorded lab runs of
-  the drafter prepares the question, **then** in every run the drafter writes
+- **Given** the 25-row material, in a lab repository whose
+  `.abcd/config.json` sets `question.rows` to 24 (since itd-2610301914350541
+  the default is 32, which the material fits), **when** each of three
+  recorded lab runs of the drafter prepares the question, **then** in every run the drafter writes
   no file and calls the verb at most three times.
 - **Given** a managed lab repository, **when** each of three recorded live
   sessions asks the 21-fault question and is refused, **then** in every

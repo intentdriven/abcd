@@ -472,7 +472,14 @@ func runSetup(cwd string, p ahoy.Prompter, errOut io.Writer, install func() (aho
 		}
 		err = &exitError{Code: stop.code, Msg: termsafe.SanitizeBlock(stop.msg)}
 	}()
-	return install()
+	res, err = install()
+	// A question-limits layer setup could not read left its questions at
+	// abcd's defaults: said once, in the question gate's fail-open form
+	// (itd-2610301914350541 decision 8).
+	if err == nil && res.LimitsUnread() != "" {
+		_ = questionFailOpen(errOut, "%s; setup's questions were measured at abcd's defaults", errors.New(res.LimitsUnread()))
+	}
+	return res, err
 }
 
 // endOnStop is deferred by a verb that asks through newPrompter outside

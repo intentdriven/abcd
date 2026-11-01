@@ -3475,8 +3475,9 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 	auditRoute = addRouteFlag(auditCmd, auditAgent)
 
 	var verdictJSON string
+	var ingestDryRun bool
 	ingestCmd := &cobra.Command{
-		Use:  "ingest --verdict-json <path>",
+		Use:  "ingest --verdict-json <path> [--dry-run]",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			repoRoot, err := intentStoreRoot(cmd)
@@ -3502,6 +3503,19 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 			payload, err := intent.ReadVerdict(verdictJSON)
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent audit ingest: " + err.Error()}
+			}
+			if ingestDryRun {
+				plan, err := intent.PlanVerdictIngest(repoRoot, payload)
+				if err != nil {
+					return &exitError{Code: 2, Msg: "abcd intent audit ingest: " + err.Error()}
+				}
+				res := plan.Result
+				return renderDryRun(cmd.OutOrStdout(), *asJSON, "abcd intent audit ingest", withReceipt(res, route, payload), plan.Plan, func(w io.Writer) {
+					fmt.Fprintf(w, "  would be %s (receipt %s, intent %s)\n", res.Status, res.ReceiptID, res.IntentID)
+					if res.Status == "dead_letter" {
+						fmt.Fprintf(w, "  DEAD_LETTER: %s\n", res.Reason)
+					}
+				})
 			}
 			res, err := intent.IngestVerdictBytes(repoRoot, payload)
 			if err != nil {
@@ -3544,6 +3558,7 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	ingestCmd.Flags().StringVar(&verdictJSON, "verdict-json", "", "path to the intent-audit verdict JSON, in the shape the Verdict shape section of its review request states")
+	ingestCmd.Flags().BoolVar(&ingestDryRun, "dry-run", false, dryRunFlagUsage)
 	ingestRoute = addRouteFlag(ingestCmd, auditAgent)
 	auditCmd.AddCommand(ingestCmd)
 	auditCmd.Flags().BoolVar(&issueDrift, "issue-drift", false,

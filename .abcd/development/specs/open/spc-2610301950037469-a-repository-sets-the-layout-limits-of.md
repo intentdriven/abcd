@@ -81,6 +81,7 @@ Out of scope, recorded elsewhere: A configurable options count (`question.option
    - tests: internal/core/question/limits_test.go, internal/core/layered/question_test.go, internal/core/ahoy/setup_questions_limits_test.go, internal/core/ahoy/category_approval_test.go, internal/core/ahoy/sessions_ask_test.go, internal/core/ahoy/conventions_test.go, internal/core/ahoy/install_test.go, internal/core/oracle/connect_guide_test.go, internal/core/source/add_test.go, internal/core/interview/written_test.go
 
    Waits for no step of spc-2610301917245442: The default, the bounds, the resolver, the plain-Terminal interview's check, and the install's README fit read nothing the verb adds. The parent's lines that state 24 as the limit in force (its press-release example, its out-of-scope line, and its lab pass rule) are edited in this step's change, since the figure moves here.
+   - landed: ef06f3cdc866
 
 2. The check reports and the hook reads
    - needs: 1

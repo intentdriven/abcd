@@ -270,12 +270,15 @@ every failure rather than the first: provenance, hero drift against the identity
 block, banned tokens over composed text, `abcd …` snippets against the generated
 CLI reference, the unresolved-reference ratchet, the static mobile checks, the
 loop-figure labels, the base path of every root-absolute link, and the link
-targets: every `/docs/` link on a composed page and every redirect target names a
+targets: every `/docs/` link on a rendered page, the verbatim record rendering
+included, and every redirect target names a
 file in the built output. The nine are named once in the code that runs them, and the
 check's report prints each name as it runs it, passing or failing.
 
 Scope follows adr-47 decision 3 exactly. Composed surfaces are the landing page and
-every manifest-selected span; the verbatim record rendering is exempt; and the
+every manifest-selected span; the verbatim record rendering is exempt from the
+composed-text gates, though the link targets, which judge where a link lands rather
+than its words, read its `/docs/` links too; and the
 attribution escape is a verification, so a name on the contributors page must match
 a trailer, or a bot or tool author, that git actually carries. The page names no
 person: the human authors are a count of people and of their commits
