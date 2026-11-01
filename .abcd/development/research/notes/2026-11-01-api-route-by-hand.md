@@ -88,7 +88,13 @@ pauses the lane for its key rather than falling back to the subscription).
   seconds, and was killed at 1h0m0s before writing its receipt. The kill
   counted as a failed start, the lane fell back to the host, and the host
   finished the receipt from the committed work and a scoped definition of
-  done (iss-2611012202511008).
+  done (iss-2611012202511008). Every routed role gets the same fixed hour
+  (`runner.DefaultTimeout`), which nothing in configuration or on the command
+  line changes, so an implementer that waits one to two hours at the load
+  gate for a broad test run cannot finish on the runner; a second lane on the
+  load stream died the same way within the hour. A killed launch reports no
+  result and so no `total_cost_usd`, which leaves its spend out of every
+  tally.
 - **A planning interview stops when any session moves a branch.** The
   person's interview, run from one worktree, watches every branch ref in the
   repository's shared git directory, so a commit to an unrelated records
