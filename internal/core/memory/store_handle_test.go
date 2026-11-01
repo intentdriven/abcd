@@ -84,7 +84,7 @@ func TestFileBackRefusesASymlinkedStore(t *testing.T) {
 		"type": "topic", "domain": "auth", "slug": "rotation-summary",
 		"body": "# Rotation summary\nRotate daily.\n",
 	}
-	_, err = fileBack(repo, matches, page, nil, fixedNow)
+	_, err = fileBack(nil, repo, matches, page, nil, fixedNow)
 	var unsafe *UnsafeStorePathError
 	if !errors.As(err, &unsafe) {
 		t.Fatalf("fileBack on a symlinked store = %v (%T); want *UnsafeStorePathError before any read", err, err)

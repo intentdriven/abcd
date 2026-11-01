@@ -25,25 +25,18 @@ import (
 	"github.com/intentdriven/abcd/internal/core/dryrun"
 	"github.com/intentdriven/abcd/internal/core/ideate"
 	"github.com/intentdriven/abcd/internal/core/intent"
+	"github.com/intentdriven/abcd/internal/core/lifeboat"
+	"github.com/intentdriven/abcd/internal/core/reading"
+	"github.com/intentdriven/abcd/internal/core/scribe"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
 // dryRunPending is every command with a filled-in input whose practice run is
-// step 2 of spc-2610301431131636, not yet built. The list only shrinks: a new
-// command with a -json input and no --dry-run fails the test, and so does an
-// entry here that has gained one.
-var dryRunPending = map[string]bool{
-	"abcd disembark graveyard":     true,
-	"abcd disembark press-release": true,
-	"abcd disembark principles":    true,
-	"abcd disembark review":        true,
-	"abcd launch ship":             true,
-	"abcd library ask":             true,
-	"abcd library ingest":          true,
-	"abcd reading ingest":          true,
-	"abcd scribe ingest":           true,
-}
+// not yet built. Step 2 of spc-2610301431131636 emptied it, and it stays empty:
+// a new command with a -json input and no --dry-run fails the test, and so
+// does an entry here that has gained one.
+var dryRunPending = map[string]bool{}
 
 // filledInInputCommands walks the live tree for every visible command with a
 // local flag ending -json.
@@ -198,6 +191,122 @@ var dryRunCases = map[string]func(t *testing.T) dryRunFixture{
 			invalid: []string{"intent", "audit", "ingest", "--verdict-json", dryRunTemplate(t, "intent-audit-ingest.invalid.json", fill)},
 		}
 	},
+	"abcd disembark graveyard": func(t *testing.T) dryRunFixture {
+		t.Setenv("HOME", t.TempDir())
+		dir := realPath(t, buildGraveyardLifeboat(t))
+		t.Chdir(filepath.Dir(dir))
+		return dryRunFixture{repo: dir, home: os.Getenv("HOME"),
+			valid:   []string{"disembark", "graveyard", dir, "--lessons-json", dryRunTemplate(t, "disembark-graveyard.valid.json", nil)},
+			invalid: []string{"disembark", "graveyard", dir, "--lessons-json", dryRunTemplate(t, "disembark-graveyard.invalid.json", nil)},
+		}
+	},
+	"abcd disembark principles": func(t *testing.T) dryRunFixture {
+		t.Setenv("HOME", t.TempDir())
+		dir := realPath(t, buildSynthLifeboat(t, synthOpts{}))
+		t.Chdir(filepath.Dir(dir))
+		return dryRunFixture{repo: dir, home: os.Getenv("HOME"),
+			valid:   []string{"disembark", "principles", dir, "--principles-json", dryRunTemplate(t, "disembark-principles.valid.json", nil)},
+			invalid: []string{"disembark", "principles", dir, "--principles-json", dryRunTemplate(t, "disembark-principles.invalid.json", nil)},
+		}
+	},
+	"abcd disembark press-release": func(t *testing.T) dryRunFixture {
+		t.Setenv("HOME", t.TempDir())
+		dir := realPath(t, buildSynthLifeboat(t, synthOpts{briefPR: true}))
+		t.Chdir(filepath.Dir(dir))
+		return dryRunFixture{repo: dir, home: os.Getenv("HOME"),
+			valid:   []string{"disembark", "press-release", dir, "--press-release-json", dryRunTemplate(t, "disembark-press-release.valid.json", nil)},
+			invalid: []string{"disembark", "press-release", dir, "--press-release-json", dryRunTemplate(t, "disembark-press-release.invalid.json", nil)},
+		}
+	},
+	"abcd disembark review": func(t *testing.T) dryRunFixture {
+		t.Setenv("HOME", t.TempDir())
+		dir := realPath(t, buildSynthLifeboat(t, synthOpts{sourceName: "src", coverage: &lifeboat.Summary{Grounded: 7, Blank: 3}}))
+		src := realSrcDir(t, "src")
+		t.Chdir(filepath.Dir(dir))
+		return dryRunFixture{repo: dir, home: os.Getenv("HOME"),
+			valid:   []string{"disembark", "review", dir, src, "--review-json", dryRunTemplate(t, "disembark-review.valid.json", nil)},
+			invalid: []string{"disembark", "review", dir, src, "--review-json", dryRunTemplate(t, "disembark-review.invalid.json", nil)},
+		}
+	},
+	"abcd launch ship": func(t *testing.T) dryRunFixture {
+		t.Setenv("HOME", t.TempDir())
+		r := shipReadyRepo(t)
+		repo := realPath(t, r.Root())
+		t.Chdir(repo)
+		return dryRunFixture{repo: repo, home: os.Getenv("HOME"),
+			valid:   []string{"launch", "ship", "--changelog-json", dryRunTemplate(t, "launch-ship.valid.json", nil)},
+			invalid: []string{"launch", "ship", "--changelog-json", dryRunTemplate(t, "launch-ship.invalid.json", nil)},
+		}
+	},
+	"abcd library ingest": func(t *testing.T) dryRunFixture {
+		repo, _ := memoryStoreFixture(t)
+		src, _ := ingestOperands(t, t.TempDir())
+		return dryRunFixture{repo: repo, home: os.Getenv("HOME"),
+			valid: []string{"library", "ingest", src, "--keep-original",
+				"--pages-json", dryRunTemplate(t, "library-ingest.valid.json", nil)},
+			invalid: []string{"library", "ingest", src, "--pages-json", dryRunTemplate(t, "library-ingest.invalid.json", nil)},
+		}
+	},
+	"abcd library ask": func(t *testing.T) dryRunFixture {
+		repo, _ := memoryStoreFixture(t)
+		// A filed-back answer cites the pages it was synthesised from, so the
+		// store is seeded through a real ingest first.
+		src, pages := ingestOperands(t, t.TempDir())
+		runCLI(t, "library", "ingest", src, "--pages-json", pages)
+		const q = "what does the auth rotation page say"
+		return dryRunFixture{repo: repo, home: os.Getenv("HOME"),
+			valid:   []string{"library", "ask", q, "--file-back", "--page-json", dryRunTemplate(t, "library-ask.valid.json", nil)},
+			invalid: []string{"library", "ask", q, "--file-back", "--page-json", dryRunTemplate(t, "library-ask.invalid.json", nil)},
+		}
+	},
+	"abcd reading ingest": func(t *testing.T) dryRunFixture {
+		// The shipped definition is read from this checkout, before the
+		// working directory moves into the fixture.
+		srcRoot := repoRootFromTest(t)
+		t.Setenv("HOME", t.TempDir())
+		repo := realPath(t, readingRepo(t))
+		t.Chdir(repo)
+		runID, manifestHash, def := parkedRunForIngest(t, srcRoot, repo, "detection")
+		// The real ingest lays its stage root and the stage's lock before it
+		// judges the output, a refused one included, so the fixture starts
+		// from a checkout an earlier ingest has already laid them in; the
+		// refusal parity below then compares two runs that write nothing.
+		stage := filepath.Join(repo, filepath.FromSlash(reading.IngestStageDir))
+		if err := os.MkdirAll(stage, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(stage, ".lock"), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		fill := map[string]string{"RUN": runID, "REGIME": def.Regime, "MANIFEST": manifestHash,
+			"DEFINITION": def.SHA256, "ASSEMBLER": reading.AssemblerVersion()}
+		return dryRunFixture{repo: repo, home: os.Getenv("HOME"),
+			valid:   []string{"reading", "ingest", "--reading-json", dryRunTemplate(t, "reading-ingest.valid.json", fill)},
+			invalid: []string{"reading", "ingest", "--reading-json", dryRunTemplate(t, "reading-ingest.invalid.json", fill)},
+		}
+	},
+	"abcd scribe ingest": func(t *testing.T) dryRunFixture {
+		repo, item := scribeRepo(t)
+		repo = realPath(t, repo)
+		t.Chdir(repo)
+		ground := "the constraint the reading names is real and binds the verb as shipped"
+		disp := filepath.Join(t.TempDir(), "dispositions.md")
+		if err := os.WriteFile(disp, []byte(item+": accepted — "+ground+".\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		var asm scribe.AssembleResult
+		if err := json.Unmarshal(runCLI(t, "scribe", "assemble", "--run", "rdg-2609250000000001",
+			"--dispositions", disp, "--json"), &asm); err != nil {
+			t.Fatal(err)
+		}
+		fill := map[string]string{"TYPE": scribe.OutputType, "CONTEXT": asm.ContextSHA256, "ITEM": item}
+		return dryRunFixture{repo: repo, home: os.Getenv("HOME"),
+			valid: []string{"scribe", "ingest", "--scribe-json", dryRunTemplate(t, "scribe-ingest.valid.json", fill),
+				"--dispositions", disp},
+			invalid: []string{"scribe", "ingest", "--scribe-json", dryRunTemplate(t, "scribe-ingest.invalid.json", fill),
+				"--dispositions", disp},
+		}
+	},
 	"abcd docs fidelity record": func(t *testing.T) dryRunFixture {
 		t.Setenv("HOME", t.TempDir())
 		repo := realPath(t, armedCloseRepo(t))
@@ -349,6 +458,19 @@ func TestDryRunWritesNothingAndPlansTheRealWrite(t *testing.T) {
 			}
 			matched := make([]bool, len(got.WouldWrite))
 			for _, p := range wrote {
+				// A path the real run removed is planned as a remove effect.
+				if _, err := os.Lstat(p); os.IsNotExist(err) {
+					hit := false
+					for _, e := range got.WouldDo {
+						if e.Effect == "remove" && plannedPathRe(fx.repo, fx.home, e.Target).MatchString(p) {
+							hit = true
+						}
+					}
+					if !hit {
+						t.Errorf("the real run removed %s, which the practice run did not plan (planned %+v)", p, got.WouldDo)
+					}
+					continue
+				}
 				hit := false
 				for i, w := range got.WouldWrite {
 					if !matched[i] && plannedPathRe(fx.repo, fx.home, w.Path).MatchString(p) {
@@ -400,5 +522,34 @@ func TestDryRunPrepassBareIsRefused(t *testing.T) {
 	_, err := runCLIErr(t, "intent", "prepass", "itd-500", "--dry-run")
 	if code := exitCodeOf(err); code != 2 || !strings.Contains(err.Error(), "--findings-json") {
 		t.Fatalf("bare prepass --dry-run = %d %v; want exit 2 naming --findings-json", code, err)
+	}
+}
+
+// TestDryRunStep2OperandRefusals (spc-2610301431131636 step 2): a --dry-run
+// beside a run that reads no filled-in input, or beside a flag that would
+// write, is refused with exit 2 rather than ignored, and writes nothing.
+func TestDryRunStep2OperandRefusals(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	r := shipReadyRepo(t)
+	repo := realPath(t, r.Root())
+	t.Chdir(repo)
+	payload := dryRunTemplate(t, "launch-ship.valid.json", nil)
+	before := treeHashes(t, repo)
+	for name, tc := range map[string]struct {
+		args []string
+		want string
+	}{
+		"ship's emit step":             {[]string{"launch", "ship", "--dry-run"}, "--changelog-json"},
+		"ship with a fetch":            {[]string{"launch", "ship", "--changelog-json", payload, "--dry-run", "--fetch-baseline"}, "--fetch-baseline"},
+		"an ask filing nothing":        {[]string{"library", "ask", "a question", "--dry-run"}, "--file-back"},
+		"a reading sent to a provider": {[]string{"reading", "ingest", "--dispatch", "rdg-2609250000000001", "--dry-run"}, "--reading-json"},
+	} {
+		_, err := runCLIErr(t, tc.args...)
+		if code := exitCodeOf(err); code != 2 || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: %v = exit %d (%v); want exit 2 naming %s", name, tc.args, code, err, tc.want)
+		}
+	}
+	if d := hashDiff(before, treeHashes(t, repo)); len(d) != 0 {
+		t.Fatalf("a refused --dry-run changed %v", d)
 	}
 }

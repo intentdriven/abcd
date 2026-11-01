@@ -190,9 +190,10 @@ func newReadingCommand(asJSON *bool) *cobra.Command {
 
 	var readingJSON string
 	var dispatchRun string
+	var readingDryRun bool
 	var readingRoute *routeFlag
 	ingestCmd := &cobra.Command{
-		Use: "ingest --reading-json <path>",
+		Use: "ingest --reading-json <path> [--dry-run]",
 		Long: "Validate the JSON a cold reading returned and write its reading records.\n\n" +
 			"The verb checks what the reading was LICENSED to produce, not only what it saw: the\n" +
 			"supply regime is read from the position's definition and compared with the output's own\n" +
@@ -218,7 +219,10 @@ func newReadingCommand(asJSON *bool) *cobra.Command {
 			"Every stored finding is matched against the record as a capture is: its pattern and body are\n" +
 			"compared with the open and resolved issues, the intents and every earlier reading item, never\n" +
 			"with another item of the same run, and a likely repeat is written onto the reading record as a\n" +
-			"duplicates: or refines: link and shown, printed and as matches in --json.",
+			"duplicates: or refines: link and shown, printed and as matches in --json.\n\n" +
+			"With --dry-run the output is judged exactly as above and nothing is written: no reading\n" +
+			"record, no refusal record, no stage, no sweep and no run metadata. The report names each\n" +
+			"file the ingest would write; a refusal the ingest would record says where instead.",
 		Example: "  abcd reading ingest --reading-json ./reading-output.json --json",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 0 {
@@ -233,6 +237,10 @@ func newReadingCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "reading ingest: --dispatch and --reading-json each name the output to ingest, " +
 					"so give one: --dispatch <run> sends the parked run to the provider its position is pointed at, " +
 					"--reading-json <path> ingests what the host's reader returned"}
+			}
+			if dispatchRun != "" && readingDryRun {
+				return &exitError{Code: 2, Msg: "reading ingest: --dry-run checks an output the host's reader returned, and " +
+					"--dispatch sends the run to a provider to produce one; practise with --reading-json <path>"}
 			}
 			if dispatchRun != "" {
 				return runReadingDispatch(cmd, readingRoute, dispatchRun, *asJSON)
@@ -277,12 +285,30 @@ func newReadingCommand(asJSON *bool) *cobra.Command {
 			// configured as the capture verb's is and never a refusal.
 			root := captureRoot(cwd)
 			mc, matchRefused := resolveMatch(cmd.ErrOrStderr(), "reading ingest", root)
-			res, err := reading.Ingest(reading.IngestRequest{
+			req := reading.IngestRequest{
 				RepoRoot:   root,
 				OutputPath: resolved,
 				Output:     payload,
 				Match:      mc,
-			})
+			}
+			if readingDryRun {
+				plan, err := reading.PlanIngest(req)
+				res := plan.Result
+				if err != nil {
+					if res.HasDisclosure() {
+						_ = render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+							renderIngestResult(w, res)
+						})
+					}
+					return readingRefusal("reading ingest", err)
+				}
+				return renderDryRun(cmd.OutOrStdout(), *asJSON, "abcd reading ingest", withReceipt(res, route, payload), plan.Plan, func(w io.Writer) {
+					fmt.Fprintf(w, "  run %s at the %s position (%s): %d record(s) would be written, %d item(s) refused\n",
+						res.RunID, res.Position, res.Regime, len(res.Records), res.RefusedCount)
+					renderReceiptLine(w, route, payload)
+				})
+			}
+			res, err := reading.Ingest(req)
 			if err == nil && mc == nil && matchRefused != nil {
 				for _, r := range res.Records {
 					res.Matches = append(res.Matches, capture.ReadingMatch{ID: r.ID, Match: matchRefused})
@@ -318,6 +344,7 @@ func newReadingCommand(asJSON *bool) *cobra.Command {
 	}
 	ingestCmd.Flags().StringVar(&readingJSON, "reading-json", "",
 		"path to the JSON the cold reading returned")
+	ingestCmd.Flags().BoolVar(&readingDryRun, "dry-run", false, dryRunFlagUsage)
 	ingestCmd.Flags().StringVar(&dispatchRun, "dispatch", "",
 		"send the parked run <rdg-N> to the provider its position is pointed at (oracle.roles.cold-reading-<position>) and ingest the answer")
 	var readingAgents []string

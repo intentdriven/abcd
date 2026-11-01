@@ -1,7 +1,7 @@
 ---
 name: scribe
 description: "Assemble a ledger scribe's context and ingest what it transcribed: Writes nothing bare; refuses an unknown sub-verb."
-argument-hint: "assemble --run <rdg-N> --dispositions <path> [--out <dir>] [--dry-run] | ingest --scribe-json <path> --dispositions <path> [--context <path>]"
+argument-hint: "assemble --run <rdg-N> --dispositions <path> [--out <dir>] [--dry-run] | ingest --scribe-json <path> --dispositions <path> [--context <path>] [--dry-run]"
 block: agents
 user-invocable: false
 ---
@@ -93,6 +93,14 @@ context.
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" scribe ingest --scribe-json ./scribe-output.json --dispositions ./dispositions.md --json
 ```
+
+**Practise before it counts.** Add `--dry-run` to make every check below and
+write nothing: it prints each record the capture verbs would write, its id
+shown as `<id>`, and the manifest it would promote, or the real run's refusal
+with the same exit 2. The capture verbs' own redaction and refusals run only
+when they write, so a practice run that passes can still be stopped there.
+With `--json` the result carries the usual fields plus `"dry_run": true`,
+`would_write` and `would_do`.
 
 `--dispositions` names the researcher's dispositions text again, the same file
 `assemble` was handed, and is required. `--context` names the context when

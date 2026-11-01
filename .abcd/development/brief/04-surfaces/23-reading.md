@@ -420,6 +420,7 @@ Sub-verbs: none.
 | Flag | Type |
 |---|---|
 | `--dispatch` | string |
+| `--dry-run` | bool |
 | `--reading-json` | string |
 | `--route` | stringArray |
 

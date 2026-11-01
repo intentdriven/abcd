@@ -1159,11 +1159,12 @@ abcd disembark coverage probe-report.json
 
 Validate host-produced lesson JSON against a packed lifeboat: Writes the lessons that cite their evidence; refuses without --lessons-json.
 
-**Usage:** `abcd disembark graveyard <lifeboat-dir> --lessons-json <file|-> [flags]`
+**Usage:** `abcd disembark graveyard <lifeboat-dir> --lessons-json <file|-> [--dry-run] [flags]`
 
 **Flags:**
 
 ```
+      --dry-run               check the input and report what would be written; write nothing
       --lessons-json string   path to the host-produced lesson JSON (or - for stdin)
       --route stringArray     route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
@@ -1208,11 +1209,12 @@ Show the file set a pack would write: Writes nothing; refuses a repository path 
 
 Compose a lifeboat's press release, or validate the host's: Writes the press-release files in the lifeboat; refuses a host draft citing nothing resolvable.
 
-**Usage:** `abcd disembark press-release <lifeboat-dir> [--press-release-json <file|->] [flags]`
+**Usage:** `abcd disembark press-release <lifeboat-dir> [--press-release-json <file|->] [--dry-run] [flags]`
 
 **Flags:**
 
 ```
+      --dry-run                     check the input and report what would be written; write nothing
       --press-release-json string   path to host-produced press-release JSON (or - for stdin); absent runs deterministic mode
       --route stringArray           route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
@@ -1227,11 +1229,12 @@ abcd disembark press-release ../lifeboat
 
 Distil a lifeboat's principles from its ADRs, or validate the host's: Writes the principles files in the lifeboat; refuses a directory that is not a lifeboat.
 
-**Usage:** `abcd disembark principles <lifeboat-dir> [--principles-json <file|->] [flags]`
+**Usage:** `abcd disembark principles <lifeboat-dir> [--principles-json <file|->] [--dry-run] [flags]`
 
 **Flags:**
 
 ```
+      --dry-run                  check the input and report what would be written; write nothing
       --principles-json string   path to host-produced principle JSON (or - for stdin); absent runs deterministic mode
       --route stringArray        route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
@@ -1258,11 +1261,12 @@ Report which brief sections a lifeboat could ground from a repository: Writes no
 
 Review a packed lifeboat against its source repository, or validate the host's verdict: Writes the review in the lifeboat; refuses an unregistered verdict.
 
-**Usage:** `abcd disembark review <lifeboat-dir> <source-repo> [--review-json <file|->] [flags]`
+**Usage:** `abcd disembark review <lifeboat-dir> <source-repo> [--review-json <file|->] [--dry-run] [flags]`
 
 **Flags:**
 
 ```
+      --dry-run              check the input and report what would be written; write nothing
       --review-json string   path to the host-produced review verdict JSON (or - for stdin); absent runs deterministic mode
       --route stringArray    route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
@@ -4176,7 +4180,7 @@ Scaffold the release gate for the declared artefact kind: Writes its workflows a
 
 Cut a release, deriving its version and records from what shipped: Writes the CHANGELOG heading, RELEASE.md, and the archive pin; refuses a cut its gates stop.
 
-**Usage:** `abcd launch ship [--changelog-json <file|->] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] [flags]`
+**Usage:** `abcd launch ship [--changelog-json <file|->] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] [--dry-run] [flags]`
 
 Cut a release from HEAD, deriving its version and changelog from the records that shipped
 since the last tag. A fresh cut runs the pre-flight gates before it writes anything.
@@ -4193,11 +4197,19 @@ None of these comparisons looks inside a checked-out submodule, so uncommitted c
 inside one does not make the tree dirty and no program the submodule's own
 configuration names runs; a submodule moved to a different commit still does.
 
+With --changelog-json, --dry-run is a practice run: the composed changelog is judged against
+the cut exactly as the real ingest judges it, the pre-flight gates run when the ship renders a
+payload, and the report names every file the cut would write and the tag, push and release
+the release workflow makes after it. Nothing is written: no pre-flight report, no release
+record, no archive pin and no staged payload. It reads the parity baseline already in the
+checkout, so --fetch-baseline is refused beside it.
+
 **Flags:**
 
 ```
       --allow-dirty             cut from a working tree with uncommitted changes; the pre-flight report records the override and every path it carried (waives the dirty-tree gate only — never lockstep, the archive pin's clean-payload refusal, the cut's uncommitted-records refusal, or the findings gate's refusal of an uncommitted open/ issue record)
       --changelog-json string   path to the host-composed changelog JSON (or - for stdin); absent runs the deterministic emit step
+      --dry-run                 check the input and report what would be written; write nothing
       --fetch-baseline          read the parity baseline from the anchor tag's published plugin archive, verified against the release's checksums.txt (a network fetch; default: a fresh render at the tag)
       --payload-dir string      stage the versioned release payload in this directory (must be empty and outside the repository)
       --route stringArray       route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
@@ -4281,11 +4293,12 @@ history.
 
 Query memory and synthesise a cited answer: Writes a memory page only with --file-back; refuses outside a git checkout.
 
-**Usage:** `abcd library ask <question> [flags]`
+**Usage:** `abcd library ask <question> [--dry-run] [flags]`
 
 **Flags:**
 
 ```
+      --dry-run            with --file-back: check the input and report what would be written; write nothing
       --file-back          file the synthesised answer back as a new memory page
       --page-json string   the answer page dict as JSON (file path, or - for stdin)
       --top-n int          retrieval depth (0 uses the pinned default)
@@ -4343,11 +4356,12 @@ abcd library declassify example-paper-2026
 
 Distil a local file or an https source into cited memory pages: Writes the pages; refuses a URL that is not https.
 
-**Usage:** `abcd library ingest <path-or-https-url> [flags]`
+**Usage:** `abcd library ingest <path-or-https-url> [--dry-run] [flags]`
 
 **Flags:**
 
 ```
+      --dry-run             check the input and report what would be written; write nothing
       --keep-original       store the original at .abcd/memory/sources/<sha256>.<ext>
       --pages-json string   DistilledPage JSON array (file path, or - for stdin)
 ```
@@ -4842,7 +4856,7 @@ abcd reading assemble --position widening --target HEAD
 
 Validate the JSON one cold reading returned: Writes its reading records; refuses output the position's licence does not allow.
 
-**Usage:** `abcd reading ingest --reading-json <path> [flags]`
+**Usage:** `abcd reading ingest --reading-json <path> [--dry-run] [flags]`
 
 Validate the JSON a cold reading returned and write its reading records.
 
@@ -4875,10 +4889,15 @@ compared with the open and resolved issues, the intents and every earlier readin
 with another item of the same run, and a likely repeat is written onto the reading record as a
 duplicates: or refines: link and shown, printed and as matches in --json.
 
+With --dry-run the output is judged exactly as above and nothing is written: no reading
+record, no refusal record, no stage, no sweep and no run metadata. The report names each
+file the ingest would write; a refusal the ingest would record says where instead.
+
 **Flags:**
 
 ```
       --dispatch string       send the parked run <rdg-N> to the provider its position is pointed at (oracle.roles.cold-reading-<position>) and ingest the answer
+      --dry-run               check the input and report what would be written; write nothing
       --reading-json string   path to the JSON the cold reading returned
       --route stringArray     route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
@@ -5303,7 +5322,7 @@ abcd scribe assemble --run rdg-2609010000000001 --dispositions dispositions.md
 
 Validate a scribe's output against the supplied dispositions: Writes what it transcribed through the capture verbs; refuses anything the scribe authored.
 
-**Usage:** `abcd scribe ingest --scribe-json <path> --dispositions <path> [flags]`
+**Usage:** `abcd scribe ingest --scribe-json <path> --dispositions <path> [--dry-run] [flags]`
 
 Validate the JSON a scribe session returned and write its records through the capture verbs.
 
@@ -5324,12 +5343,17 @@ the ingest and names what landed before it. Fidelity flags and refusals are repo
 written. Once every write has landed, and when at least one record did, the manifest is promoted
 beside the run, write-once; an ingest that lands no record leaves the run open.
 
+With --dry-run every check above is made and nothing is written: the report names each
+record the capture verbs would write, its id shown as <id>, and the manifest it would promote.
+The capture verbs' own redaction and refusals are made only when they write.
+
 **Flags:**
 
 ```
       --context string        the context the session was handed, when assemble wrote it under --out
                               (default: the local-tier scribe run directory of the output's run)
       --dispositions string   the researcher's dispositions text, the file assemble was handed
+      --dry-run               check the input and report what would be written; write nothing
       --scribe-json string    path to the JSON the scribe session returned
 ```
 
