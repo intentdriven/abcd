@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -18,7 +19,9 @@ import (
 // The verb and the hook decide alike (spc-2610301917245442, step 1): on every
 // draft of testdata/questions/corpus/, in every checkout state the gate reads,
 // `abcd guard question` and `abcd guard hook` of the same build give the same
-// answer, because both call questionState and question.Decide.
+// answer, because both call questionState and question.Decide. The mode store
+// unreadable is one of those states: a chipped draft is judged on its chip
+// there, and one without a chip runs unchecked.
 
 // questionRules is every rule of the limits check, each of which the corpus
 // holds one draft for.
@@ -76,6 +79,13 @@ var questionCorpusStates = []questionCorpusState{
 		}
 		return root
 	}, true},
+	// The question limits a repository sets (spc-2610301950037469, step 2),
+	// each from a configuration fixture under corpus/config/: values in
+	// force, a value the resolver refuses, and a file it cannot parse, which
+	// leaves abcd's question checked at the defaults.
+	{"limits in force", corpusConfig("limits-in-force"), false},
+	{"limits refused", corpusConfig("limits-refused"), false},
+	{"limits unparseable", corpusConfig("limits-unparseable"), false},
 	{"root unfindable", func(t *testing.T) string {
 		root := managedCheckout(t)
 		setMode(t, root, mode.ProductThinker)
@@ -83,6 +93,20 @@ var questionCorpusStates = []questionCorpusState{
 exec "$REAL_GIT" "$@"`)
 		return root
 	}, false},
+}
+
+// corpusConfig is a checkout state: an unmanaged repository whose
+// .abcd/config.json is the named fixture of corpus/config/.
+func corpusConfig(name string) func(t *testing.T) string {
+	return func(t *testing.T) string {
+		repo := unmanagedRepo(t)
+		body, err := os.ReadFile(filepath.Join(questionCorpusDir, "config", name+".json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeRepoQuestionConfig(t, repo, string(body))
+		return repo
+	}
 }
 
 // denyHeadRe reads the count a limits refusal's head line gives.
@@ -176,8 +200,20 @@ func TestGuardQuestionAndHookDecideAlike(t *testing.T) {
 						rows = append(rows, f)
 					}
 				}
-				switch res.Hook {
-				case question.OutcomeRefuse:
+				switch {
+				case res.Refused != nil:
+					// A refused limit: the verb carries it whatever the
+					// draft, and the hook refuses abcd's draft on it, naming
+					// it and no asking rule.
+					if res.Hook == question.OutcomeRefuse {
+						if !strings.Contains(reason, "a question limit in this repository's configuration is refused") || !strings.Contains(reason, res.Refused.Why) {
+							t.Errorf("the deny does not name the verb's refusal %q:\n%s", res.Refused.Why, reason)
+						}
+						if len(res.Findings) != 0 || denyHeadRe.MatchString(reason) {
+							t.Errorf("a refused limit must refuse on the configuration alone: findings %+v, reason:\n%s", res.Findings, reason)
+						}
+					}
+				case res.Hook == question.OutcomeRefuse:
 					m := denyHeadRe.FindStringSubmatch(reason[strings.Index(reason, "Blocked by"):])
 					if m == nil {
 						t.Fatalf("the deny has no head line:\n%s", reason)
@@ -193,7 +229,7 @@ func TestGuardQuestionAndHookDecideAlike(t *testing.T) {
 					if more := len(refusing) - maxRefusalParts; more > 0 && !strings.Contains(reason, fmt.Sprintf("... and %d more part(s)", more)) {
 						t.Errorf("the deny does not count the %d findings it leaves out:\n%s", more, reason)
 					}
-				case question.OutcomeAdmitWithRowsNote:
+				case res.Hook == question.OutcomeAdmitWithRowsNote:
 					if len(refusing) != 0 || len(rows) == 0 {
 						t.Errorf("a rows note with findings %+v", res.Findings)
 					}
@@ -202,13 +238,25 @@ func TestGuardQuestionAndHookDecideAlike(t *testing.T) {
 							t.Errorf("the note lacks tab %d's rows %q:\n%s", f.Tab, f.Value, note)
 						}
 					}
-				case question.OutcomeRefuseAway, question.OutcomeAdmitUnchecked:
+				case res.Hook == question.OutcomeRefuseAway, res.Hook == question.OutcomeAdmitUnchecked:
 					if len(res.Findings) != 0 {
 						t.Errorf("%s with findings %+v", res.Hook, res.Findings)
 					}
-				case question.OutcomeAdmit:
+				case res.Hook == question.OutcomeAdmit:
 					if len(res.Findings) != 0 {
 						t.Errorf("admit with findings %+v", res.Findings)
+					}
+				}
+				if st.name == "mode store unreadable" {
+					// A chipped draft is judged on its chip with the mode
+					// unread, so one that breaks a rule is refused; nothing
+					// is marked open beside the store the gate could not
+					// read.
+					if res.Abcds && len(refusing) > 0 && res.Hook != question.OutcomeRefuse {
+						t.Errorf("abcd's draft with %d refusing findings: hook %q, want refuse", len(refusing), res.Hook)
+					}
+					if markedOpen(t, root) {
+						t.Error("a question was marked open with the mode store unread")
 					}
 				}
 				if rule, ok := strings.CutPrefix(name, "rule-"); ok && st.name == "unmanaged" &&

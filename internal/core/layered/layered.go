@@ -329,9 +329,10 @@ func LoadContext(ctx context.Context, f File, r Roots) (*Stack, error) {
 // single JSON object, and an unresolved home. Everything after a successful
 // load (an unknown key Claim refuses, a value Get or a resolver refuses) is a
 // refusal of a value read, not an UnreadError, so a caller tells the two
-// apart with errors.As and never by reading words: the question gate fails
-// open and loud on the first and closed on the second
-// (itd-2610301914350541 decision 8).
+// apart with errors.As and never by reading words: on the first the question
+// gate checks abcd's question at the defaults, loudly, naming the file, and on
+// the second it refuses abcd's question (itd-2610301914350541 decisions 7
+// and 8).
 type UnreadError struct {
 	// Origin names the file in the tilde or repo-relative form every refusal
 	// uses.

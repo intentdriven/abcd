@@ -148,21 +148,107 @@ func TestGuardLeavesQuestionsAloneWhereUnmanaged(t *testing.T) {
 	}
 }
 
-// TestGuardQuestionGateFailsOpenLoud: a mode store the gate cannot read is not
-// a decision, so the question runs and the gate says so on the loud,
-// non-blocking status — the guard's own fail-open-loud contract.
-func TestGuardQuestionGateFailsOpenLoud(t *testing.T) {
+// TestGuardQuestionGateFailsOpenLoudWithoutAChip: a question without abcd's
+// chip is abcd's only through the mode, so with the mode store unreadable the
+// gate cannot tell whether it is abcd's: it is not a decision, so the
+// question runs, unchecked, and the gate says so on the loud, non-blocking
+// status, the guard's own fail-open-loud contract, in one line.
+func TestGuardQuestionGateFailsOpenLoudWithoutAChip(t *testing.T) {
 	root := managedCheckout(t)
 	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(mode.FileRelPath)), []byte("sideways\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, stderr, code := runGuard(questionCall(t, root), "guard", "hook")
-	if code != 1 {
-		t.Fatalf("an unreadable mode store must fail open loud (exit 1); got %d (stderr %q)", code, stderr)
+	unchipped := wellBuilt()
+	unchipped.Header = "Labels"
+	unchipped.Options[0].Label = "Role and number (Recommended)"
+	stdout, stderr, code := runGuard(askPayload(t, root, unchipped), "guard", "hook")
+	if code != 1 || stdout != "" {
+		t.Fatalf("an unreadable mode store must fail open loud for a question without a chip (exit 1, no stdout); code=%d stdout=%q stderr=%q", code, stdout, stderr)
 	}
-	if !strings.Contains(stderr, "NOT CHECKED") {
-		t.Errorf("the fail-open must say so; stderr = %q", stderr)
+	if lines := strings.Split(strings.TrimRight(stderr, "\n"), "\n"); len(lines) != 1 {
+		t.Errorf("want one stderr line, got %d: %q", len(lines), stderr)
 	}
+	for _, want := range []string{"NOT CHECKED", "the mode store could not be read", "UNGATED"} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("the fail-open must say %q; stderr = %q", want, stderr)
+		}
+	}
+}
+
+// TestGuardQuestionGateJudgesAChippedQuestionWithTheModeUnread: a chipped
+// question's chip names whom it is for, so with the mode store unreadable it
+// is judged all the same, at the limits in force. One that breaks a rule is
+// refused on it; one over the rows limit alone is shown with the note; a
+// clean one runs at exit 1. Each answer leads with one line saying the mode
+// store was not read, so no mode is set from the chip and the question is
+// not marked open, and none says the question ran ungated. With a layer of
+// the question limits unread as well, each store has its own line, and both
+// are true.
+func TestGuardQuestionGateJudgesAChippedQuestionWithTheModeUnread(t *testing.T) {
+	const modeLine = "abcd guard: the mode store could not be read ("
+	const limitsLine = "abcd guard: NOT CHECKED at this repository's question limits"
+	root := managedCheckout(t)
+	store := filepath.Join(root, filepath.FromSlash(mode.FileRelPath))
+	if err := os.WriteFile(store, []byte("sideways\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	untouched := func(what string) {
+		t.Helper()
+		if markedOpen(t, root) {
+			t.Errorf("%s: the question was marked open beside a mode store the gate could not read", what)
+		}
+		if b, err := os.ReadFile(store); err != nil || string(b) != "sideways\n" {
+			t.Errorf("%s: the mode store was written: %q (%v)", what, b, err)
+		}
+	}
+
+	broken := wellBuilt()
+	broken.Options[0].Label = "Role and number (Recommended)"
+	stdout, stderr, code := runGuard(askPayload(t, root, broken), "guard", "hook")
+	reason := mustDeny(t, stdout, stderr, code)
+	if !strings.HasPrefix(reason, modeLine) || !strings.Contains(reason, "break abcd's asking rules") || !strings.Contains(reason, "(never-recommended)") {
+		t.Errorf("a chipped question that breaks a rule must be refused on it, the mode line first; reason:\n%s", reason)
+	}
+	untouched("refused")
+
+	stdout, stderr, code = runGuard(askPayload(t, root, questionOfRows(t, 36)), "guard", "hook")
+	note := mustAdmitWithNote(t, stdout, stderr, code)
+	if !strings.HasPrefix(note, modeLine) || !strings.Contains(note, "past abcd's rows limit") {
+		t.Errorf("a chipped tab over the rows limit must be noted, the mode line first; note = %q", note)
+	}
+	untouched("noted")
+
+	stdout, stderr, code = runGuard(askPayload(t, root, wellBuilt()), "guard", "hook")
+	if code != 1 || stdout != "" {
+		t.Fatalf("a clean chipped question with the mode store unread: want exit 1 and nothing on stdout; code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	lines := strings.Split(strings.TrimRight(stderr, "\n"), "\n")
+	if len(lines) != 1 || !strings.HasPrefix(lines[0], modeLine) || !strings.Contains(lines[0], "the mode is not set from this question's chip") {
+		t.Errorf("want the one mode line on stderr; stderr = %q", stderr)
+	}
+	if strings.Contains(stderr, "UNGATED") || strings.Contains(stderr, "NOT CHECKED") {
+		t.Errorf("the chipped question was checked, so nothing may say it was not; stderr = %q", stderr)
+	}
+	untouched("admitted")
+
+	writeRepoQuestionConfig(t, root, `{"question":{"rows":40}`)
+	stdout, stderr, code = runGuard(askPayload(t, root, wellBuilt()), "guard", "hook")
+	if code != 1 || stdout != "" {
+		t.Fatalf("with the limits unread too: want exit 1 and nothing on stdout; code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	lines = strings.Split(strings.TrimRight(stderr, "\n"), "\n")
+	if len(lines) != 2 || !strings.HasPrefix(lines[0], modeLine) || !strings.HasPrefix(lines[1], limitsLine) || !strings.Contains(lines[1], "checked at abcd's defaults") {
+		t.Errorf("want the mode line, then the limits line; stderr = %q", stderr)
+	}
+	if strings.Contains(stderr, "UNGATED") {
+		t.Errorf("the question was checked at the defaults, so nothing may say it ran ungated; stderr = %q", stderr)
+	}
+	stdout, stderr, code = runGuard(askPayload(t, root, broken), "guard", "hook")
+	reason = mustDeny(t, stdout, stderr, code)
+	if !strings.HasPrefix(reason, modeLine) || !strings.Contains(reason, "\n"+limitsLine) || !strings.Contains(reason, "(never-recommended)") {
+		t.Errorf("with both unread, the deny must lead with both lines and refuse on the rule; reason:\n%s", reason)
+	}
+	untouched("with the limits unread")
 }
 
 // TestGuardQuestionGateSaysWhenItCannotFindTheRoot (iss-2610110432159652): a

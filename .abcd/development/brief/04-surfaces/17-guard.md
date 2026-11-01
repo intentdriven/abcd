@@ -88,9 +88,12 @@ every store it read was read, whatever the hook would do with it, its report
 naming a refusal while the person is away or a pass unchecked as not abcd's;
 1 on any finding, a tab over the rows limit alone included, though the hook
 shows such a question; and 2 when the draft is not JSON, is over the hook's
-1 MiB bound or has neither input shape, and when a store the decision needed
-could not be read, the result then being partial even with no finding, so a
-check that could not run in full never reads as clean. "The question gate" below says what it reads and reports.
+1 MiB bound or has neither input shape, when a question limit the
+repository or the person set is refused, whatever the draft
+(itd-2610301914350541), and when a store the decision needed could not be
+read, a file of the question limits included, the result then being partial
+even with no finding, so a check that could not run in full never reads as
+clean. "The question gate" below says what it reads and reports.
 
 The check also answers in JSON when asked, and that is the form the plugin page
 uses: a verdict, and with it the entry that fired, its tier, why the command is
@@ -233,9 +236,34 @@ another tool's (itd-201 decision 10; spc-2610030944505997, open question 1,
 decided (a)), and the compensating control is the interview pages teaching the
 chip.
 
-abcd's question is held to the field limits (`question.CheckLimits` over
-`question.Default`) wherever the hook runs, managed or not: the setup interview
-asks before a repository is managed, and the limits need no store. The
+abcd's question is held to the field limits (`question.CheckLimits`) wherever
+the hook runs, managed or not: the setup interview asks before a repository is
+managed, and the limits need no store. The limits are the resolver's
+(`layered.QuestionLimits`, itd-2610301914350541): `question.Default` with the
+rows, label words and description sentences the repository's
+`.abcd/config.json` sets as `question.rows`, `question.label_words` and
+`question.description_sentences`, at the root the rules loader
+resolves rather than git's toplevel, each
+tightened where the person's own `~/.abcd.noindex/config.json` sets it lower.
+A value the resolver read and refused, outside its bounds, not a whole number,
+another key under the same namespace, or a personal value looser than
+the limit in force, refuses every abcd question with the host's deny, whatever
+the question holds and nothing falling through to the defaults: one head line,
+"Blocked by the abcd guard (question tool): a question limit in this
+repository's configuration is refused, so abcd asks no question until it is
+fixed.", the resolver's refusal naming the file, the key, the value and the
+bounds (or the limit in force and the file that set it), and one line stating
+every key's bounds from `question.Bounds`. It names no asking rule, so the
+agent fixes the file rather than redrafting the question, and nothing is marked
+open. A layer the resolver could not read (a `.abcd/config.json` that is a
+symlink, not a regular file, not one JSON object, holds a key twice or is
+over the resolver's size cap, a `~/.abcd.noindex/config.json` the account
+cannot vouch for, or an unresolved home) leaves abcd's question checked at
+abcd's defaults, loudly: one line, "abcd guard: NOT CHECKED at this
+repository's question limits", naming the file and saying the question is
+checked at the defaults instead, leads a deny's reason or a rows note, and
+otherwise goes to stderr with exit 1, so the question is never admitted
+silently. Another tool's question runs unchecked whatever either file says. The
 addressee the product thinker's register rule reads is each tab's chip role
 for a chipped question, since the mode the gate then sets follows the chip,
 and the mode's for a question without a chip; the binary's verb list
@@ -303,9 +331,18 @@ the other changes nothing. `abcd mode` remains the way to record whose answer
 is owed at a stop that is not a question. A question without abcd's chip while
 the mode names somebody is held to the field limits and marked open, and sets
 nothing. Where the badge does not show, the mode is neither read nor set. A
-state file or marker the gate cannot read or write, a read-only tier among
-them, is not a decision: the question runs and the hook says so on exit 1, the
-same fail-open-loud contract below. The manifest's pre-tool-use matcher names the
+mode store the gate cannot read leaves a chipped question judged all the
+same, at the limits in force, because its chip names whom it is for: one that
+breaks a rule is refused, and any other runs with no mode set from its chip
+and no marker written. One line says so, "abcd guard: the mode store could not
+be read", at the head of a deny's reason or a rows note and otherwise on
+stderr with exit 1; with a layer of the question limits unread as well, that
+layer's line follows it, one line per store. A question without a chip is
+abcd's only through the mode, so with the store unread it runs unchecked, and
+the hook says so on exit 1, the same fail-open-loud contract below. A state
+file or marker the gate cannot write, a read-only tier among them, is not a
+decision either: the question, already judged, runs and the hook says so on
+exit 1. The manifest's pre-tool-use matcher names the
 shell tool, the question tool and the host's file-writing tools, and nothing
 else.
 
@@ -329,15 +366,24 @@ carry is named by the limits check, never invented. Its JSON
 (`abcd/question-check/v1`) carries the binary's `version`; the outcome, what the
 hook would do with the draft in this checkout now (`admit`,
 `admit-with-rows-note`, `refuse`, `refuse-away`, `admit-unchecked` for a
-question that is not abcd's, `unchecked` for each fail-open path);
+question that is not abcd's, `unchecked` for an admission on the loud status
+because a store could not be read, abcd's question checked all the same);
 `depends_on_state`, set wherever a mode set or the person marked away before
 the ask could change that; `partial` and `unread`, naming each store the
 decision needed and could not read and the rules it therefore could not
 apply; each tab's `addressee` and, where an admitted chip would re-set the
 mode, `addressee_changes`; every finding with whether it `refuses`; `rows`
 per tab (`header_and_frame`, `question_text`, `options`, `total`, the split
-the rows rule computes) with `rows_limit`; and `ready`, the input to ask, left
-out when the hook would refuse: the draft's own value, every key the check
+the rows rule computes) with `rows_limit`; `limits` and `limits_source`, the
+three figures the draft was judged at (`rows`, `label_words`,
+`description_sentences`, the limits the hook holds abcd's question to, the
+defaults where a file of them was unread) and where each came from (`bundled`,
+`.abcd/config.json`, or `~/.abcd.noindex/config.json` where a personal value
+tightened it), `rows_limit` equalling `limits.rows`; `refused`, in their place
+while a limit is refused, naming the key, the value, the bounds and the file,
+and for a personal value that loosens the limit in force and the file that set
+it (itd-2610301914350541); and `ready`, the input to ask, left
+out when the hook would refuse or a limit is refused: the draft's own value, every key the check
 does not read (such as `multiSelect`) kept, for the host form, and the
 composition for the structured form. The verdict holds between a verb and a hook of the
 same version, which is why the version is reported.
