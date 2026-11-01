@@ -76,8 +76,7 @@ generator take part, after an outside design tool was weighed as an addition
 and found to offer no comparison or ranking of its own, restated:
 
 - **One candidate contract is the only way into a round.** Every candidate is
-  one self-contained HTML file with a provenance note beside it naming the
-  generator, the model, the brief, the round and the candidate it was derived
+  one self-contained HTML file with a provenance note naming where it came
   from, written the same way for a native candidate and an imported one, so
   the design history reads the same whatever made a design.
 - **The native generator is the default, and never a stub.** The host's own
@@ -85,7 +84,7 @@ and found to offer no comparison or ranking of its own, restated:
   (adr-22's native default; adr-25's host delegation). An outside generator,
   whether another design tool, a skill or a file made by hand, takes part only
   by producing files in the contract's shape, which abcd reads.
-- **abcd never starts an outside tool's agent run.** It reads the files an
+- **In a design round, abcd never starts an outside tool's agent run.** It reads the files an
   outside generator left; it does not drive the tool, because such a run is an
   agent abcd did not launch, outside the fence and the permission prompts
   abcd's own runs keep.
@@ -95,9 +94,9 @@ and found to offer no comparison or ranking of its own, restated:
   ranking and the record of every judgement are abcd's and the person's.
 - **No outside tool is named until the native rounds ship.** A named import
   adapter for one particular tool is weighed, if at all, after the native
-  round works and the contract has been proved through it, as the earlier
-  choice to build an outside tool's review loop natively first did
-  (iss-2610080623391354).
+  round works and the contract has been proved through it, as
+  iss-2610080623391354 proposes for an outside tool's review loop: a native
+  prototype first.
 
 The practical experience of both labs (the procedure as it ran, the brief's
 hard rules, the tool's behaviours as requirements for abcdesign.app's design
@@ -120,7 +119,9 @@ stage, the candidate defaults, the faults and the measures) is recorded in
 
 - **The provenance note's form.** Whether it is a sidecar file beside each
   candidate or a block inside the HTML file itself, and which of its fields
-  are required for an imported candidate that cannot name its model.
+  (the generator, the model, the brief, the round, the candidate it was
+  derived from) are required for an imported candidate that cannot name its
+  model.
 - **A design seam in the brief.** The brief's adapter seams carry no design or
   prototyping seam; whether the candidate contract becomes one, with its
   import-only boundary stated there, or stays a rule of this intent alone.
