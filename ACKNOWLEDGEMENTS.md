@@ -164,6 +164,20 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   SDK's approval docs give.
   <https://code.claude.com/docs/en/headless>,
   <https://code.claude.com/docs/en/agent-sdk/user-input>
+- **Configuration layering in git, Cargo, VS Code, Claude Code, ESLint and
+  Terraform** — the grounds for adr-2611011332427073's single precedence rule
+  (bundled, home, repository, the person's gitignored per-repository file,
+  invocation) and its three per-key exemptions: git's
+  protected-configuration-only `safe.directory`, VS Code's user-only machine
+  and application scopes, Claude Code's deny-from-any-scope rule, Terraform's
+  per-user CLI credentials, and ESLint's removal of personal configuration in
+  v8.0.0 as the case against a personal layer beating the project.
+  <https://git-scm.com/docs/git-config>,
+  <https://doc.rust-lang.org/cargo/reference/config.html>,
+  <https://code.visualstudio.com/docs/configure/settings>,
+  <https://code.claude.com/docs/en/settings>,
+  <https://eslint.org/docs/v8.x/use/configure/configuration-files>,
+  <https://developer.hashicorp.com/terraform/cli/config/config-file>
 - **Cloudflare Workers and its v4 API (Cloudflare)** — the host the one
   provider behind `abcd site setup`'s hosting seam targets: an assets-only
   Worker deployed by the pinned `wrangler-action`, created, routed and
