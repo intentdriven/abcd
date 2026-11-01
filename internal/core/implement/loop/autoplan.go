@@ -26,7 +26,9 @@ package loop
 // start records a digest of HEAD, the index's entries and their flags, and
 // the working tree outside the local tier (checkoutDigest says what it leaves
 // out), and a checkout that changed during the reviews, or before the plan,
-// is handed back. The plan writes what a person's `abcd intent plan` writes,
+// is handed back. A start whose digest could not copy the checkout's index
+// (UncopiedIndex) is handed back by the lane's first step, before any review
+// is handed out, since that digest never matches again. The plan writes what a person's `abcd intent plan` writes,
 // in the checkout the run lives in, and the run ends there: writing the
 // spec's steps, committing the plan and building it are separate acts.
 //
@@ -61,6 +63,7 @@ import (
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/localtier"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // The auto-plan lane's stages.
@@ -101,6 +104,12 @@ type AutoPlan struct {
 	// minted; empty until the plan stage ran.
 	Planned string `json:"planned,omitempty"`
 	Spec    string `json:"spec,omitempty"`
+	// UncopiedIndex is why the start's checkout digest did not copy the
+	// checkout's index (indexNotRegular, indexReplaced or indexPastBound), and
+	// empty when it copied it. A digest of an uncopied index never matches
+	// again, so the end check could only hand the lane back: the lane's first
+	// step hands it back at once, before any plan review is handed out.
+	UncopiedIndex string `json:"uncopied_index,omitempty"`
 	// PlanStarted is written, with both reviews passing and the substitute
 	// checked again, by the plan stage's first step, before the step that
 	// runs `intent plan`. Only a begun plan records what it made; a record
@@ -163,11 +172,11 @@ func autoPlanCheck(repoRoot string, res CheckResult, session string, snap *peerS
 		}
 	}
 	if res.OK {
-		tree, err := checkoutDigest(repoRoot)
+		tree, uncopied, err := checkoutDigestOf(repoRoot)
 		if err != nil {
 			return res, err
 		}
-		res.autoPlan = &AutoPlan{Draft: ap.Path, Digest: ap.Digest, Checkout: tree}
+		res.autoPlan = &AutoPlan{Draft: ap.Path, Digest: ap.Digest, Checkout: tree, UncopiedIndex: uncopied}
 	}
 	return res, nil
 }
@@ -186,37 +195,44 @@ func autoPlanCheck(repoRoot string, res CheckResult, session string, snap *peerS
 // and the reviewers' returns live. The plan reviewers are told to change
 // nothing, and the digest is how a change is seen.
 func checkoutDigest(repoRoot string) (string, error) {
+	digest, _, err := checkoutDigestOf(repoRoot)
+	return digest, err
+}
+
+// checkoutDigestOf is checkoutDigest with why indexDigest did not copy the
+// checkout's index, "" when it copied it or the checkout has none.
+func checkoutDigestOf(repoRoot string) (digest, uncopied string, err error) {
 	out, err := pickGit(repoRoot, "rev-parse", "--verify", "HEAD")
 	if err != nil {
-		return "", fmt.Errorf("reading the checkout's HEAD: %w", err)
+		return "", "", fmt.Errorf("reading the checkout's HEAD: %w", err)
 	}
 	head := strings.TrimSpace(out)
 	tmp, err := os.MkdirTemp("", "abcd-autoplan-")
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer os.RemoveAll(tmp)
-	staged, err := indexDigest(repoRoot, filepath.Join(tmp, "checkout-index"))
+	staged, uncopied, err := indexDigest(repoRoot, filepath.Join(tmp, "checkout-index"))
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	index := filepath.Join(tmp, "index")
 	if _, err := gitutil.RunWithIndex(repoRoot, index, 4096, "read-tree", head); err != nil {
-		return "", fmt.Errorf("staging the checkout: %w", err)
+		return "", "", fmt.Errorf("staging the checkout: %w", err)
 	}
 	if _, err := pickGitIndex(repoRoot, index, "add", "-A"); err != nil {
-		return "", fmt.Errorf("staging the checkout: %w", err)
+		return "", "", fmt.Errorf("staging the checkout: %w", err)
 	}
 	// The local tier, where the run's own state lives, is out of the digest
 	// even in a checkout that does not ignore it.
 	if _, err := gitutil.RunWithIndex(repoRoot, index, 4096, "rm", "-r", "-q", "--cached", "--ignore-unmatch", "--", localtier.RelDir); err != nil {
-		return "", fmt.Errorf("staging the checkout: %w", err)
+		return "", "", fmt.Errorf("staging the checkout: %w", err)
 	}
 	tree, err := gitutil.RunWithIndex(repoRoot, index, 4096, "write-tree")
 	if err != nil {
-		return "", fmt.Errorf("staging the checkout: %w", err)
+		return "", "", fmt.Errorf("staging the checkout: %w", err)
 	}
-	return intent.DraftDigest([]byte(head + " " + staged + " " + strings.TrimSpace(string(tree)))), nil
+	return intent.DraftDigest([]byte(head + " " + staged + " " + strings.TrimSpace(string(tree)))), uncopied, nil
 }
 
 // maxIndexCopy bounds the copy of the checkout's index that indexDigest
@@ -234,16 +250,18 @@ var maxIndexCopy int64 = 1 << 30
 // as a tree (an unmerged path), the SHA-256 of its bytes, so any later change
 // to it, its cached file stats included, reads as a change; and, for an index
 // path that is not a regular file or an index past maxIndexCopy, a value
-// unique to the call, so the run that meets it is handed back. The copy is
+// unique to the call, so the run that meets it is handed back, with why it
+// was not copied (indexNotRegular, indexReplaced or indexPastBound) as the
+// second result, which is "" with every other value. The copy is
 // written whole (core.splitIndex off), so nothing is written outside scratch
 // but the tree objects `write-tree` stores; reading a copy of a split index
 // refreshes the modification time of its shared file in the git directory,
 // as every git command that reads the checkout's index does. The checkout's
 // index is only read, and never followed through a link or waited on.
-func indexDigest(repoRoot, scratch string) (string, error) {
+func indexDigest(repoRoot, scratch string) (digest, uncopied string, err error) {
 	out, err := pickGit(repoRoot, "rev-parse", "--git-path", "index")
 	if err != nil {
-		return "", fmt.Errorf("finding the checkout's index: %w", err)
+		return "", "", fmt.Errorf("finding the checkout's index: %w", err)
 	}
 	path := strings.TrimSpace(out)
 	if !filepath.IsAbs(path) {
@@ -252,30 +270,32 @@ func indexDigest(repoRoot, scratch string) (string, error) {
 	info, err := os.Lstat(path)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		return "no-index", nil
+		return "no-index", "", nil
 	case err != nil:
-		return "", fmt.Errorf("reading the checkout's index: %w", err)
+		return "", "", fmt.Errorf("reading the checkout's index: %w", err)
 	case !info.Mode().IsRegular():
-		return uncopiedIndex()
+		return uncopiedIndex(indexNotRegular)
 	}
 	src, err := openIndex(path)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		return "no-index", nil
+		return "no-index", "", nil
 	case errors.Is(err, syscall.ELOOP):
-		return uncopiedIndex()
+		return uncopiedIndex(indexNotRegular)
 	case err != nil:
-		return "", fmt.Errorf("reading the checkout's index: %w", err)
+		return "", "", fmt.Errorf("reading the checkout's index: %w", err)
 	}
 	defer src.Close()
 	if now, err := src.Stat(); err != nil {
-		return "", fmt.Errorf("reading the checkout's index: %w", err)
-	} else if !now.Mode().IsRegular() || !os.SameFile(info, now) {
-		return uncopiedIndex()
+		return "", "", fmt.Errorf("reading the checkout's index: %w", err)
+	} else if !now.Mode().IsRegular() {
+		return uncopiedIndex(indexNotRegular)
+	} else if !os.SameFile(info, now) {
+		return uncopiedIndex(indexReplaced)
 	}
 	dst, err := os.OpenFile(scratch, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
-		return "", fmt.Errorf("copying the checkout's index: %w", err)
+		return "", "", fmt.Errorf("copying the checkout's index: %w", err)
 	}
 	sum := sha256.New()
 	n, err := io.Copy(io.MultiWriter(dst, sum), io.LimitReader(src, maxIndexCopy+1))
@@ -283,21 +303,21 @@ func indexDigest(repoRoot, scratch string) (string, error) {
 		err = cerr
 	}
 	if err != nil {
-		return "", fmt.Errorf("copying the checkout's index: %w", err)
+		return "", "", fmt.Errorf("copying the checkout's index: %w", err)
 	}
 	if n > maxIndexCopy {
-		return uncopiedIndex()
+		return uncopiedIndex(indexPastBound)
 	}
 	bytesDigest := "bytes:" + hex.EncodeToString(sum.Sum(nil))
 	entries := sha256.New()
 	if err := gitutil.StreamWithIndex(repoRoot, scratch, entries, "ls-files", "-z", "--stage", "-t", "-v"); err != nil {
-		return bytesDigest, nil
+		return bytesDigest, "", nil
 	}
 	tree, err := gitutil.RunWithIndex(repoRoot, scratch, 4096, "write-tree")
 	if err != nil {
-		return bytesDigest, nil
+		return bytesDigest, "", nil
 	}
-	return "tree:" + strings.TrimSpace(string(tree)) + " entries:" + hex.EncodeToString(entries.Sum(nil)), nil
+	return "tree:" + strings.TrimSpace(string(tree)) + " entries:" + hex.EncodeToString(entries.Sum(nil)), "", nil
 }
 
 // openIndex opens the checkout's index for indexDigest, after its Lstat.
@@ -309,14 +329,71 @@ var openIndex = func(path string) (*os.File, error) {
 	return os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 }
 
-// uncopiedIndex is indexDigest's value for an index it does not copy: one no
-// other call returns, so a checkout digest holding it never matches again.
-func uncopiedIndex() (string, error) {
+// Why indexDigest did not copy the checkout's index, as AutoPlan.UncopiedIndex
+// stores it: the index path is not a regular file (a symbolic link, a pipe or
+// another special file, seen by the Lstat, the open or the Stat after it), it
+// was replaced by another file between its Lstat and its open, or it is past
+// maxIndexCopy.
+const (
+	indexNotRegular = "not-regular"
+	indexReplaced   = "replaced"
+	indexPastBound  = "past-bound"
+)
+
+// uncopiedIndex is indexDigest's value for an index it does not copy, and
+// why: a value no other call returns, so a checkout digest holding it never
+// matches again.
+func uncopiedIndex(why string) (string, string, error) {
 	var nonce [16]byte
 	if _, err := rand.Read(nonce[:]); err != nil {
-		return "", err
+		return "", "", err
 	}
-	return "uncopied:" + hex.EncodeToString(nonce[:]), nil
+	return "uncopied:" + hex.EncodeToString(nonce[:]), why, nil
+}
+
+// uncopiedHandBack hands an auto-plan lane back when the start's checkout
+// digest did not copy the checkout's index; nil when it did. That digest
+// never matches again, so the end check's hand-back is already decided, and
+// the lane is handed back before a plan review is spent on it, naming the
+// index and why it was not copied rather than the end check's reason.
+func uncopiedHandBack(c Context, ap AutoPlan) *HandBack {
+	if ap.UncopiedIndex == "" {
+		return nil
+	}
+	return &HandBack{Verdict: HandBackNotPlanned,
+		Reason: "the run could not copy the checkout's index " + indexName(c.RepoRoot) + " when it started: it " + uncopiedWhy(ap.UncopiedIndex) +
+			", so the start's digest of the checkout can never match again and the check after the plan reviews could only hand the draft back; no plan review was started, and the draft stays unplanned: make the index a regular file within " +
+			sizeName(maxIndexCopy) + ", then start the run again"}
+}
+
+// uncopiedWhy is a stored UncopiedIndex for a sentence.
+func uncopiedWhy(why string) string {
+	switch why {
+	case indexNotRegular:
+		return "is not a regular file (a symbolic link, a pipe or another special file)"
+	case indexReplaced:
+		return "was replaced by another file as the run opened it"
+	default:
+		return "is past the " + sizeName(maxIndexCopy) + " the run copies"
+	}
+}
+
+// indexName is the checkout's index path for a sentence, as git names it (the
+// main checkout's is .git/index), with the home directory redacted.
+func indexName(repoRoot string) string {
+	out, err := pickGit(repoRoot, "rev-parse", "--git-path", "index")
+	if p := strings.TrimSpace(out); err == nil && p != "" {
+		return termsafe.Sanitize(fsutil.RedactHome(p))
+	}
+	return "(its path could not be read)"
+}
+
+// sizeName is a byte count for a sentence: whole GiB as such, bytes otherwise.
+func sizeName(n int64) string {
+	if n > 0 && n%(1<<30) == 0 {
+		return fmt.Sprintf("%d GiB", n>>30)
+	}
+	return fmt.Sprintf("%d bytes", n)
 }
 
 // checkoutHandBack hands an auto-plan lane back when the checkout is not the
@@ -360,6 +437,17 @@ func (st State) autoPlansWritten() bool {
 			return false
 		}
 		if ap.Spec != "" && !recordid.ValidSpecID(ap.Spec) {
+			return false
+		}
+		// An index the start did not copy is one of the reasons indexDigest
+		// states, and hands the lane back before any review or plan.
+		switch ap.UncopiedIndex {
+		case "":
+		case indexNotRegular, indexReplaced, indexPastBound:
+			if ap.PlanStarted || slices.ContainsFunc(ap.Reviews, func(r PlanReview) bool { return r.Verdict != "" || r.Pass }) {
+				return false
+			}
+		default:
 			return false
 		}
 		dir, err := laneRel(st.RunID, l.ID, StagePlanReview)
@@ -461,6 +549,11 @@ func planReviewStage(c Context, lane *Lane) (Outcome, error) {
 	ap := lane.AutoPlan
 	if ap == nil {
 		return Outcome{}, refuse(string(StagePlanReview), "", lane.ID, "the lane carries no auto-plan record", "the loop writes it at the start; restore the run's state file")
+	}
+	// An index the start could not copy has decided the run already: it is
+	// handed back before the first review is handed out.
+	if hb := uncopiedHandBack(c, *ap); hb != nil {
+		return Outcome{HandBack: hb}, nil
 	}
 	if hb, err := draftHandBack(c, *ap); err != nil || hb != nil {
 		return Outcome{HandBack: hb}, err
