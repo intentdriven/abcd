@@ -95,6 +95,11 @@ func runWrittenInterview(cmd *cobra.Command, w *interview.Written, f writtenFlag
 	if !interview.Reaches(cfg, w.Role) {
 		return interview.WrittenResult{}, &exitError{Code: 2, Msg: termsafe.SanitizeBlock(w.NoRoute().Error())}
 	}
+	limits, err := questionLimitsFor(roots, errOut)
+	if err != nil {
+		return interview.WrittenResult{}, &exitError{Code: 2, Msg: w.Verb + ": " + err.Error() + " (nothing was run)"}
+	}
+	w.Limits = limits
 	w.Config = cfg
 	w.Transcripts = &lazyHistoryStore{cmd: cmd}
 	w.Verbs = verbsOf(cmd.Root())
@@ -216,4 +221,23 @@ func labelOf(q question.Question, value string) string {
 		}
 	}
 	return value
+}
+
+// questionLimitsFor resolves the question limits a front door's questions are
+// held to (layered.QuestionLimits, itd-2610301914350541). A refused value is
+// returned as the error, sanitised, for the door to refuse before any
+// question; a layer that could not be read fails open and loud: one line on
+// errOut in the question gate's own form, naming the file, and the defaults.
+func questionLimitsFor(roots layered.Roots, errOut io.Writer) (question.Limits, error) {
+	v, err := layered.QuestionLimits(roots)
+	var unread *layered.UnreadError
+	switch {
+	case err == nil:
+		return v.V, nil
+	case errors.As(err, &unread):
+		// The resolver hands back the defaults with an unread layer.
+		_ = questionFailOpen(errOut, "%s; the questions are measured at abcd's defaults", err)
+		return v.V, nil
+	}
+	return question.Limits{}, errors.New(termsafe.Sanitize(fsutil.RedactHome(err.Error())))
 }

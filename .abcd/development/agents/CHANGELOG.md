@@ -12,6 +12,16 @@ over the brief's earlier `1.0.0`-at-close expectation). The four M6 synthesis
 agents below entered at `0.1.0`, wired to their `abcd disembark` verbs and
 unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
+## 2026-10-31 (itd-2610301914350541 — the default rows limit rises to 32)
+
+### question-drafter 0.1.5
+
+PATCH: the generated asking-rules block and the row count now state abcd's
+default rows limit as thirty-two rather than twenty-four, since the bundled
+`question.rows` rose from 24 to 32 (a repository may set it from 24 to 60).
+The drafter's own behaviour is unchanged: it counts each tab as the check
+does, against the figure its page states. Unmeasured, in the `0.x` band.
+
 ## 2026-10-27 (iss-2610272027437423 — a reviewer runs no tests)
 
 ### ruthless-reviewer 0.3.0

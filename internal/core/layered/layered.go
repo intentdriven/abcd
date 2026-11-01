@@ -12,7 +12,9 @@
 // match.threshold), how a plain-Terminal interview takes a choice from a
 // list (itd-2610030810370060, interview.list), and the build loop's review set
 // and model-class map (itd-2610240922461281, review.* and models.classes, the
-// map and the ceiling read from the machine layer alone). A consumer reads through it rather than opening a file of
+// map and the ceiling read from the machine layer alone), and the layout
+// limits of abcd's questions (itd-2610301914350541, question.*, the machine
+// layer admitted only where it tightens). A consumer reads through it rather than opening a file of
 // its own, so the precedence order, the guarded reads and the refusals are
 // spelled once.
 //
@@ -280,8 +282,8 @@ func LoadContext(ctx context.Context, f File, r Roots) (*Stack, error) {
 		return nil, fmt.Errorf("layered: file family %q / %q is not a pair of clean relative paths", f.RepoRel, f.MachineRel)
 	}
 	if r.Home == "" && !r.HomeRefused {
-		return nil, fmt.Errorf("%s: the home directory is unresolved, so the machine layer "+
-			"cannot be read; set HOME and retry", f.MachineOrigin())
+		return nil, unread(f.MachineOrigin(), fmt.Errorf("%s: the home directory is unresolved, so the machine layer "+
+			"cannot be read; set HOME and retry", f.MachineOrigin()))
 	}
 	s := &Stack{
 		flag:    doc{layer: Flag, flagOrigins: map[string]string{}},
@@ -296,11 +298,11 @@ func LoadContext(ctx context.Context, f File, r Roots) (*Stack, error) {
 		}
 		raw, err := read()
 		if err != nil {
-			return nil, fmt.Errorf("%s (repo layer): %w", s.repo.origin, err)
+			return nil, unread(s.repo.origin, fmt.Errorf("%s (repo layer): %w", s.repo.origin, err))
 		}
 		if raw != nil {
 			if s.repo.root, err = parse(raw, f); err != nil {
-				return nil, fmt.Errorf("%s (repo layer): %w", s.repo.origin, err)
+				return nil, unread(s.repo.origin, fmt.Errorf("%s (repo layer): %w", s.repo.origin, err))
 			}
 		}
 	}
@@ -311,15 +313,38 @@ func LoadContext(ctx context.Context, f File, r Roots) (*Stack, error) {
 	}
 	raw, err := readMachine(r.Home, f.MachineRel)
 	if err != nil {
-		return nil, fmt.Errorf("%s (machine layer): %w", f.MachineOrigin(), err)
+		return nil, unread(f.MachineOrigin(), fmt.Errorf("%s (machine layer): %w", f.MachineOrigin(), err))
 	}
 	if raw != nil {
 		if s.machine.root, err = parse(raw, f); err != nil {
-			return nil, fmt.Errorf("%s (machine layer): %w", f.MachineOrigin(), err)
+			return nil, unread(f.MachineOrigin(), fmt.Errorf("%s (machine layer): %w", f.MachineOrigin(), err))
 		}
 	}
 	return s, nil
 }
+
+// UnreadError is a layer Load could not read or parse: a file that is a
+// symlink or not a regular file, one behind a symlinked directory, writable
+// by others or owned by another account (machine layer), one that is not a
+// single JSON object, and an unresolved home. Everything after a successful
+// load (an unknown key Claim refuses, a value Get or a resolver refuses) is a
+// refusal of a value read, not an UnreadError, so a caller tells the two
+// apart with errors.As and never by reading words: the question gate fails
+// open and loud on the first and closed on the second
+// (itd-2610301914350541 decision 8).
+type UnreadError struct {
+	// Origin names the file in the tilde or repo-relative form every refusal
+	// uses.
+	Origin string
+	// Err is the whole message, the text Load returned before the type
+	// existed, wrapping the cause.
+	Err error
+}
+
+func (e *UnreadError) Error() string { return e.Err.Error() }
+func (e *UnreadError) Unwrap() error { return e.Err }
+
+func unread(origin string, err error) error { return &UnreadError{Origin: origin, Err: err} }
 
 // Present reports whether the layer's file exists (repo, machine) or any flag
 // was set (flag).

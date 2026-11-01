@@ -12,11 +12,17 @@ import (
 // fails on any finding of either.
 func heldToEveryCheck(t *testing.T, q question.Question) {
 	t.Helper()
+	heldToEveryCheckAt(t, q, question.Default)
+}
+
+// heldToEveryCheckAt is heldToEveryCheck at the limits l.
+func heldToEveryCheckAt(t *testing.T, q question.Question, l question.Limits) {
+	t.Helper()
 	a := question.Ask{Questions: []question.Question{q}}
 	for _, f := range question.Check(a) {
 		t.Errorf("%s: structural: %s", q.ID, f)
 	}
-	for _, f := range question.CheckLimits(a.Fields(), question.Default, question.Addressee{}) {
+	for _, f := range question.CheckLimits(a.Fields(), l, question.Addressee{}) {
 		t.Errorf("%s: %s", q.ID, f)
 	}
 }
@@ -71,6 +77,21 @@ func TestACategoryApprovalListsWhatItWrites(t *testing.T) {
 // is listed and the yes counts them; the longer list breaks the rows limit
 // alone, which the guard shows with a note rather than refusing.
 func TestEveryCategoryApprovalPassesTheChecks(t *testing.T) {
+	holdCategoryApprovals(t, question.Default)
+}
+
+// TestEveryCategoryApprovalPassesTheChecksAtTheFloors holds the same
+// approvals to the floor of every configurable key (itd-2610301914350541
+// decision 3): the approval over one change is admitted whole, and the longer
+// list still breaks the rows limit alone.
+func TestEveryCategoryApprovalPassesTheChecksAtTheFloors(t *testing.T) {
+	holdCategoryApprovals(t, question.FloorsForTest(question.Default))
+}
+
+// holdCategoryApprovals is TestEveryCategoryApprovalPassesTheChecks at the
+// limits l.
+func holdCategoryApprovals(t *testing.T, l question.Limits) {
+	t.Helper()
 	cats := append(append([]GapCategory(nil), categoryPromptOrder...), GapCategory("alpha"))
 	for _, c := range cats {
 		for _, n := range []int{1, 12} {
@@ -90,14 +111,14 @@ func TestEveryCategoryApprovalPassesTheChecks(t *testing.T) {
 				t.Errorf("%s over %d: yes means %q", c, n, q.Options[0].Meaning)
 			}
 			if n == 1 {
-				heldToEveryCheck(t, q)
+				heldToEveryCheckAt(t, q, l)
 				continue
 			}
 			a := question.Ask{Questions: []question.Question{q}}
 			for _, f := range question.Check(a) {
 				t.Errorf("%s over %d: structural: %s", c, n, f)
 			}
-			for _, f := range question.CheckLimits(a.Fields(), question.Default, question.Addressee{}) {
+			for _, f := range question.CheckLimits(a.Fields(), l, question.Addressee{}) {
 				if f.Rule != question.RuleRows {
 					t.Errorf("%s over %d: %s", c, n, f)
 				}

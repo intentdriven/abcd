@@ -18,9 +18,12 @@ package ahoy
 // HelpedPrompter, the plugin page from the README view detection carries.
 
 import (
+	"errors"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/question"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -168,7 +171,7 @@ type ReadmePartView struct {
 // readmeView is the README view of the project at cwd, and false once the
 // pair is answered (or the config cannot be read): only an unanswered pair is
 // asked.
-func readmeView(cwd string) (ReadmeView, bool) {
+func readmeView(cwd string, l question.Limits) (ReadmeView, bool) {
 	cfg, err := readConfig(cwd)
 	if err != nil {
 		return ReadmeView{}, false
@@ -177,12 +180,13 @@ func readmeView(cwd string) (ReadmeView, bool) {
 		return ReadmeView{}, false
 	}
 	vis, _ := stringVal(subMap(cfg, "repo"), "visibility")
-	return buildReadmeView(cwd, vis), true
+	return buildReadmeView(cwd, vis, l), true
 }
 
 // buildReadmeView derives every part as it would be written in the project at
-// cwd, whose declared visibility is vis, and builds the questions.
-func buildReadmeView(cwd, vis string) ReadmeView {
+// cwd, whose declared visibility is vis, and builds the questions, each cut to
+// fit l, the question limits in force there.
+func buildReadmeView(cwd, vis string, l question.Limits) ReadmeView {
 	s := readmeSettings{Parts: readmePartOrder, Visibility: vis}
 	v := ReadmeView{Public: s.public(), Parts: []ReadmePartView{}, Asks: []question.Ask{}, helps: map[string]PromptHelp{}}
 	if !v.Public {
@@ -215,7 +219,7 @@ func buildReadmeView(cwd, vis string) ReadmeView {
 	var call []question.Question
 	for _, pv := range v.offered() {
 		n++
-		h := pv.help()
+		h := pv.help(l)
 		v.helps[pv.Name] = h
 		call = append(call, valueQuestion(n, h, choiceValues(h.Choices), pv.Default))
 		if len(call) == question.Default.QuestionsPerCall[1] {
@@ -260,13 +264,13 @@ func (v ReadmeView) q1Help() PromptHelp {
 }
 
 // help is the part's help in this project: its current setting, and its
-// example cut to the lines the question can quote within the limits, or the
+// example cut to the lines the question can quote within the limits l, or the
 // reason it writes none, said as fully as the limits allow.
-func (pv ReadmePartView) help() PromptHelp {
+func (pv ReadmePartView) help(l question.Limits) PromptHelp {
 	h, _ := readmeHelp(readmePartKeyPrefix + pv.Name)
 	h.Now = pv.Now
-	h.ExampleNone = fitReason(h, pv.Default, pv.Reason, pv.short)
-	h.Example, h.ExampleLeft = fitExample(h, pv.Example, pv.Default)
+	h.ExampleNone = fitReason(h, l, pv.Default, pv.Reason, pv.short)
+	h.Example, h.ExampleLeft = fitExample(h, l, pv.Example, pv.Default)
 	return h
 }
 
@@ -276,15 +280,15 @@ func (pv ReadmePartView) help() PromptHelp {
 const readmeReasonNotShown = "its reason is not shown here"
 
 // fitReason is the first of reasons (the whole reason, then its short form)
-// that the question h asks still passes the limits with, else
+// that the question h asks still passes the limits l with, else
 // readmeReasonNotShown; "" where there is no reason.
-func fitReason(h PromptHelp, def string, reasons ...string) string {
+func fitReason(h PromptHelp, l question.Limits, def string, reasons ...string) string {
 	if len(reasons) == 0 || reasons[0] == "" {
 		return ""
 	}
 	for _, r := range reasons {
 		h.ExampleNone = r
-		if r != "" && measureFits(h, def) {
+		if r != "" && measureFits(h, l, def) {
 			return r
 		}
 	}
@@ -296,16 +300,17 @@ func fitReason(h PromptHelp, def string, reasons ...string) string {
 var measureFits = fitsLimits
 
 // fitsLimits reports whether the question h asks, with def its default,
-// passes every limit (question.CheckLimits): the rows (question.Default.Rows
-// at its columns) and the style rules alike. The host's question hook denies
+// passes every limit l sets (question.CheckLimits): the rows (l.Rows at its
+// columns, the limit in force in the repository, layered.QuestionLimits) and
+// the style rules alike. The host's question hook denies
 // a setup question on any finding but the rows (guard_question.go), so a
 // quoted README line that trips a style rule (an em dash in a list item, a
 // bold or dunder heading, iss-2610120129098206) would close the page's whole
 // call; the cut leaves it out instead.
-func fitsLimits(h PromptHelp, def string) bool {
+func fitsLimits(h PromptHelp, l question.Limits, def string) bool {
 	q := valueQuestion(0, h, choiceValues(h.Choices), def)
 	q.Chip = setupChip(1)
-	return len(question.CheckLimits(question.Ask{Questions: []question.Question{q}}.Fields(), question.Default, question.Addressee{})) == 0
+	return len(question.CheckLimits(question.Ask{Questions: []question.Question{q}}.Fields(), l, question.Addressee{})) == 0
 }
 
 // fitExample is lines, or as many of the first of them as the question h asks
@@ -313,27 +318,27 @@ func fitsLimits(h PromptHelp, def string) bool {
 // the question's lead says (PromptHelp.ExampleIntro). It stops before the
 // first line too tall for the rows or tripping a style rule. The lines shown
 // are exact; none is cut.
-func fitExample(h PromptHelp, lines []string, def string) ([]string, int) {
-	return fitLines(lines, func(ex []string, left int) bool {
+func fitExample(h PromptHelp, l question.Limits, lines []string, def string) ([]string, int) {
+	return fitLines(lines, l.Rows, func(ex []string, left int) bool {
 		h.Example, h.ExampleLeft = ex, left
-		return measureFits(h, def)
+		return measureFits(h, l, def)
 	})
 }
 
 // fitLines is fitExample's cut, with fits judging the first lines of an
 // example and how many it leaves out. Every line takes at least one row, so
-// no example of more lines than the limit has rows can fit: the cut starts
-// there, not at the last line, and fits is called at most
-// question.Default.Rows+1 times however many lines there are (a README of
+// no example of more lines than rows, the rows limit in force, can fit: the
+// cut starts there, not at the last line, and fits is called at most rows+1
+// times however many lines there are (a README of
 // thousands of headings, read whole, is one contents line each). It keeps the
 // longest run of first lines that fits, so a line that trips a rule ends the
 // run before it. Where not even one line fits, it shows none and leaves them
 // all out.
-func fitLines(lines []string, fits func(ex []string, left int) bool) ([]string, int) {
-	if len(lines) == 0 || len(lines) <= question.Default.Rows && fits(lines, 0) {
+func fitLines(lines []string, rows int, fits func(ex []string, left int) bool) ([]string, int) {
+	if len(lines) == 0 || len(lines) <= rows && fits(lines, 0) {
 		return lines, 0
 	}
-	for k := min(len(lines)-1, question.Default.Rows); k >= 1; k-- {
+	for k := min(len(lines)-1, rows); k >= 1; k-- {
 		if fits(lines[:k:k], len(lines)-k) {
 			return lines[:k:k], len(lines) - k
 		}
@@ -365,7 +370,7 @@ func readmeStorable(cwd string) bool {
 // (no answer at all, which a door that draws the question gives for deciding
 // later, included) decides later, and the parts after it are not asked.
 func (a *applyCtx) askReadme(vis string) ([]string, bool) {
-	v := buildReadmeView(a.cwd, vis)
+	v := buildReadmeView(a.cwd, vis, a.limits)
 	switch strings.ToLower(strings.TrimSpace(promptHelped(a.prompter, v.q1Help(), readmeQ1Choices, SetupLaterValue))) {
 	case "yes":
 	case "no":
@@ -386,3 +391,33 @@ func (a *applyCtx) askReadme(vis string) ([]string, bool) {
 	}
 	return parts, true
 }
+
+// questionLimits resolves the question limits in force in the repository at
+// abs (layered.QuestionLimits, itd-2610301914350541), which the README pair is
+// cut to. It returns the limits, and with them the reason a layer was not
+// read ("" when every layer was), in which case the limits are the defaults;
+// or the refusal of a value read, on which nothing is asked.
+func questionLimits(abs string) (question.Limits, string, error) {
+	roots, _ := layered.RootsFor(abs)
+	v, err := layered.QuestionLimits(roots)
+	var unread *layered.UnreadError
+	switch {
+	case err == nil:
+		return v.V, "", nil
+	case errors.As(err, &unread):
+		return v.V, fsutil.RedactHome(err.Error()), nil
+	}
+	return question.Limits{}, "", err
+}
+
+// limitsRefusal is the install's refusal of a question value: the resolver's
+// words, naming the key, the value, the bounds (or the limit in force) and
+// the file, and that nothing is asked until it is fixed.
+func limitsRefusal(err error) string {
+	return fsutil.RedactHome(err.Error()) + "; abcd asks no question until the value is fixed there, so nothing was asked or written"
+}
+
+// LimitsUnread is why a question-limits layer was not read, "" when every
+// layer was: the run's questions were measured at abcd's defaults, which the
+// front door says in the question gate's fail-open form.
+func (r InstallResult) LimitsUnread() string { return r.limitsUnread }

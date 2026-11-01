@@ -84,6 +84,7 @@ func newWrittenRun(t *testing.T, machine string) *writtenRun {
 		Name: Retrospective, Verb: "abcd reflect interview", Role: RoleReflectionComposer, Target: "v0.2.0",
 		Repo: r.repo, Task: "Ask about the release.", Done: "The outcome is a summary.",
 		Seed:        json.RawMessage(`{"tag":"v0.2.0"}`),
+		Limits:      question.Default,
 		Config:      cfg,
 		Transcripts: nopStore{},
 		CheckDone: func(raw json.RawMessage) error {
@@ -592,5 +593,44 @@ func TestAShellInterviewIsJudgedAgainstTheHeadItLaunchedOn(t *testing.T) {
 		if i < 0 || !strings.Contains(argv[i], `"--base=`+head+`"`) {
 			t.Errorf("%s: the approver is not judged against the launch's HEAD %s: %q", turn, head, argv)
 		}
+	}
+}
+
+// TestWrittenSampleQuestionPassesTheLimitsAtTheFloors: the question the brief
+// shows the role as the shape to write is admitted whole at the defaults and
+// at the floor of every configurable key (itd-2610301914350541 decision 3).
+func TestWrittenSampleQuestionPassesTheLimitsAtTheFloors(t *testing.T) {
+	a := question.Ask{Questions: []question.Question{sampleQuestion(1)}}
+	if fs := question.Check(a); len(fs) != 0 {
+		t.Fatalf("the sample fails the structural check: %v", fs)
+	}
+	for name, l := range map[string]question.Limits{"defaults": question.Default, "floors": question.FloorsForTest(question.Default)} {
+		for _, f := range question.CheckLimits(a.Fields(), l, question.Addressee{}) {
+			t.Errorf("%s: %s", name, f)
+		}
+	}
+}
+
+// TestTheInterviewMeasuresWithItsLimits: a role's question is checked with
+// the limits the front door resolved, not the defaults: a five-word label the
+// defaults admit is refused where label words are four, and the brief states
+// the limits in force.
+func TestTheInterviewMeasuresWithItsLimits(t *testing.T) {
+	q := sampleQuestion(1)
+	q.Options[0].Label = "Five words in this label"
+	a := question.Ask{Questions: []question.Question{q}}
+	if _, err := checkAsk(a, question.Default, nil); err != nil {
+		t.Fatalf("the defaults refused a five-word label: %v", err)
+	}
+	tight := question.Bounded(question.Default, 40, 4, 2)
+	_, err := checkAsk(a, tight, nil)
+	if err == nil || !strings.Contains(err.Error(), string(question.RuleLabelWords)) {
+		t.Fatalf("err = %v, want a %s refusal at four label words", err, question.RuleLabelWords)
+	}
+	r := newWrittenRun(t, "")
+	r.w.Limits = tight
+	brief := r.w.brief(1, 0, nil, "")
+	if !strings.Contains(brief, "fits forty rows at eighty columns") || !strings.Contains(brief, "at most four words") {
+		t.Errorf("the brief does not state the limits in force:\n%s", brief)
 	}
 }

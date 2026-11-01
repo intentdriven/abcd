@@ -198,6 +198,25 @@ func TestSessionsFlagAnswers(t *testing.T) {
 	}
 }
 
+// TestSessionsViewPassesTheLimitsAtTheFloors: both live-session questions are
+// admitted whole at the floor of every configurable key
+// (itd-2610301914350541 decision 3).
+func TestSessionsViewPassesTheLimitsAtTheFloors(t *testing.T) {
+	setupHermetic(t)
+	det, err := DryRun(installedRepo(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if det.Sessions == nil || len(det.Sessions.Asks) != 2 {
+		t.Fatalf("detection carries no live-session view: %+v", det.Sessions)
+	}
+	for i, a := range det.Sessions.Asks {
+		for _, f := range question.CheckLimits(a.Fields(), question.FloorsForTest(question.Default), question.Addressee{}) {
+			t.Errorf("call %d: %+v", i, f)
+		}
+	}
+}
+
 // TestSessionsViewPassesTheLimits: while the question is open, detection
 // carries both questions as the host's question tool takes them, each passing
 // every asking limit, Q1 and Q2 in calls of their own.
