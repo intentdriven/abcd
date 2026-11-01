@@ -115,8 +115,10 @@ func TestAProjectBuildRendersItsAboutPageFromWhatAbcdWrites(t *testing.T) {
 	}
 	// The interface words, styles and scripts are the binary's; the
 	// repository carries no site sources, and nothing of abcd's own (the
-	// redirect map, the installer) is served.
-	for src, dst := range map[string]string{"site.css": "site.css", "site.js": "site.js", "record.js": "record.js", "headers": "_headers"} {
+	// redirect map, the installer) is served. Nor is a host's own
+	// configuration file: GitHub Pages reads no `_headers` (iss-2610142036270003),
+	// so the content policy rides in each page instead.
+	for src, dst := range map[string]string{"site.css": "site.css", "site.js": "site.js", "record.js": "record.js"} {
 		want, err := setupSources.ReadFile("setupsrc/" + src)
 		if err != nil {
 			t.Fatal(err)
@@ -125,7 +127,7 @@ func TestAProjectBuildRendersItsAboutPageFromWhatAbcdWrites(t *testing.T) {
 			t.Errorf("%s is not the binary's %s", dst, src)
 		}
 	}
-	for _, absent := range []string{"_redirects", "install.sh"} {
+	for _, absent := range []string{"_redirects", "_headers", "install.sh"} {
 		if _, ok := files[absent]; ok {
 			t.Errorf("a project site serves %s", absent)
 		}

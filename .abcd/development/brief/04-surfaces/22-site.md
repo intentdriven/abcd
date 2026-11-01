@@ -113,8 +113,12 @@ for the website.
 
 So setting one up writes two files and no more: the site's settings, holding
 the publish switch and no composition, and the workflow. The interface words,
-styles, scripts and headers policy ship in the binary, and the workflow builds
+styles, scripts and content policy ship in the binary, and the workflow builds
 and gates with the project flag, so the repository carries no site sources.
+GitHub Pages serves no header a site declares, so each page carries its
+content policy as an element in its head rather than in a `_headers` file, and
+the gate holds every page to it. A policy in a page cannot refuse framing, and
+`nosniff` has no in-page form, so a project site goes without those two.
 The landing page is an about page derived in code, from four parts in this
 order, each rendered only where the repository holds it: the identity block
 (only when abcd writes the file it lives in: one under `.abcd/`, outside the
@@ -265,14 +269,15 @@ entry and no links.
 
 ## The gates
 
-The lint's site target runs nine independent gates over a rendered tree and reports
+The lint's site target runs ten independent gates over a rendered tree and reports
 every failure rather than the first: provenance, hero drift against the identity
 block, banned tokens over composed text, `abcd …` snippets against the generated
 CLI reference, the unresolved-reference ratchet, the static mobile checks, the
-loop-figure labels, the base path of every root-absolute link, and the link
-targets: every `/docs/` link on a rendered page, the verbatim record rendering
+loop-figure labels, the base path of every root-absolute link, the link
+targets (every `/docs/` link on a rendered page, the verbatim record rendering
 included, and every redirect target names a
-file in the built output. The nine are named once in the code that runs them, and the
+file in the built output), and, on a project site, the content policy each
+page carries in its head. The ten are named once in the code that runs them, and the
 check's report prints each name as it runs it, passing or failing.
 
 Scope follows adr-47 decision 3 exactly. Composed surfaces are the landing page and
