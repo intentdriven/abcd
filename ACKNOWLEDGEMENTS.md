@@ -497,7 +497,7 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   for a practice run before a write (itd-2610301428390406): a short answer
   from the binary over a long page, fix-oriented guidance over reference text,
   and command facts held in code rather than in a hand-edited data file.
-- **The Diátaxis framework (<https://diataxis.fr/>); living documentation
+- **Living documentation
   (Cyrille Martraire, <https://speakerdeck.com/cyriux/leaving-documentation-or-living-documentation>);
   spec-driven tools as reviewed by Birgitta Böckeler
   (<https://martinfowler.com/articles/exploring-gen-ai/sdd-3-tools.html>);
@@ -513,7 +513,7 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   the Kubernetes release docs handbook
   (<https://github.com/kubernetes/sig-release/blob/master/release-team/role-handbooks/docs/README.md>);
   and Charm's vhs-action (<https://github.com/charmbracelet/vhs-action>)** —
-  the grounds for rendering each documentation page from its one home
+  with the Diátaxis framework credited above, the grounds for rendering each documentation page from its one home
   (itd-2611011151475128), catching a hand edit and offering it back to its
   source (itd-2611011151512956) and a second authored surface for how-to
   guides and learning material (itd-2611011239589823): explanation authored in

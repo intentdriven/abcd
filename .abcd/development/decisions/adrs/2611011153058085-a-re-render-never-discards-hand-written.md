@@ -7,7 +7,7 @@ supersedes: null
 superseded_by: null
 related_intents: [itd-2611011151475128, itd-2611011151512956, itd-2611011239589823, itd-2610031348087517, itd-102]
 related_rfcs: []
-related_adrs: [adr-2610031751065746, adr-53]
+related_adrs: [adr-2610031751065746]
 ---
 
 # ADR-2611011153058085: A re-render never discards hand-written text unasked
@@ -22,7 +22,7 @@ people will rewrite their README whatever the convention says. A render that
 writes the surface whole would then destroy whatever was written by hand since
 the last one, silently and in the owner's own repository.
 
-Three constraints were already locked. itd-2610031348087517 never touches the
+Three standing records bear on it. itd-2610031348087517 never touches the
 owner's own words and leaves a hand-edited part as it is; that is the
 behaviour this decision would replace for repositories under the new rule
 (the reversal waits on the product thinker's confirmation at the intents'
@@ -71,8 +71,10 @@ into its source, or the owner has explicitly chosen to drop it.
 - abcd must keep what it last rendered into each section, or a digest of it,
   so a hand edit can be told from a stale render. The setup parts' marker
   already carries a checksum over its body (`internal/core/ahoy/readme_marker.go`,
-  which itd-2610031651058674's check reads); the rendered sections reuse that
-  marker rather than invent a second one.
+  which itd-2610031651058674's check reads). A section rendered in place
+  reuses that marker rather than invent a second one; a section held to its
+  home by a proposed diff needs the same record of what was last proposed,
+  in a form the marker question settles.
 - A section can be held from rendering by an undecided piece of hand-written
   text; the reverse path has to surface that hold, or a section can go stale
   unnoticed behind it.

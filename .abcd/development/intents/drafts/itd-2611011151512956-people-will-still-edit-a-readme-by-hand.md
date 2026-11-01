@@ -13,11 +13,11 @@ origin: researcher-authored
 production_mode: hand-written
 ---
 
-# Hand-written text in a rendered surface is caught and offered back to its source
+# Hand-written text in a rendered page is caught and offered back to its source
 
 ## Press Release
 
-> People will still edit a README by hand. abcd scans every rendered documentation surface for text that has no home: a hand edit to a rendered section, or new prose added beside them. It assesses each piece, says which section of the brief or the how it belongs in, and in the next iteration offers the owner of that source to move it there, from where it renders. Nothing hand-written is discarded unasked: a piece is replaced only once it has been moved into its source or the owner has chosen to drop it.
+> People will still edit a README by hand. abcd scans every rendered documentation surface for text that has no home: a hand edit to a rendered section, or new prose added beside them. It assesses each piece, says which section of the brief or the how it belongs in, and in the next iteration offers to move it there for the source's owner to accept, from where it renders. Nothing hand-written is discarded unasked: a piece is replaced only once it has been moved into its source or the owner has chosen to drop it.
 
 ## Why This Matters
 
@@ -32,10 +32,13 @@ that the lane runs in both directions, restated:
 
 - **From the sources to the docs**, by rendering, always.
 - **From the docs back to the sources**, when a page was adjusted by hand:
-  abcd finds the hand-written text, assesses where it belongs, and in a
-  subsequent iteration puts it to the owner of its source (the product
-  thinker for the brief, the product team or the educators for the how) with
-  an offer to move it there, from which it is then rendered.
+  the hand-written text is caught and offered back to its source rather than
+  overwritten (dcn-2611011248594647).
+
+How it is offered is the agent's proposal for the planning interview: abcd
+assesses where a piece belongs and puts it to the owner of its source (the
+product thinker for the brief, the product team or the educators for the
+how), at a time the open questions below settle.
 
 The lane serves both surfaces people write in: a hand edit to a page
 rendered from the brief is offered back to the brief, and one to a page

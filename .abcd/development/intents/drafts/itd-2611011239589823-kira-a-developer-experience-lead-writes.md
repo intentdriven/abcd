@@ -68,10 +68,12 @@ name is the agent's proposal for the planning interview, and says so:
   hand-recorded video carries the version it shows and a review date.
   Proposed by the agent: a repository that adopts the how adopts its tests as
   gates, so the choice to have the how is the opt-in.
-- **Facts are filled in, never typed.** Versions, command names and flags in
-  an authored page are filled in from the release when the site is built,
-  never written as a version into a committed page (adr-19), so a tutorial
-  cannot go on naming a release long since replaced.
+- **Facts are filled in, never typed.** Proposed by the agent: versions,
+  command names and flags in an authored page come from the release, never
+  written as a version into a committed page (adr-19), so a tutorial cannot go
+  on naming a release long since replaced. Where they are filled in is open in
+  itd-2611011151475128, since a managed repository's docs are read on the
+  forge with no site build (itd-2610091010348892).
 - **Every change that alters behaviour says what it does to the how.** A
   docs-impact state, needed, done or not needed, is recorded on the change, so
   "not needed" is a choice rather than a silence, and the release cut refuses

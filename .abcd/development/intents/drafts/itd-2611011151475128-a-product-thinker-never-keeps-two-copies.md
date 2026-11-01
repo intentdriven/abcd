@@ -8,7 +8,7 @@ reclassification_history: []
 builds_on: [itd-102]
 severity: minor
 refines: [itd-102]
-related_adrs: [adr-2611011153058085, adr-2610031751065746, adr-19, adr-53]
+related_adrs: [adr-2611011153058085, adr-2610031751065746, adr-19, adr-53, adr-2610142147242544]
 origin: researcher-authored
 production_mode: hand-written
 ---
@@ -59,11 +59,6 @@ The product thinker's rulings on 2026-11-01, restated:
   tutorial pages from the how, and the reference pages from their sources,
   as the CLI reference already does. Left hand-written, an explanation page
   drifts the way the README did.
-- **Facts are filled in, never typed.** A version, a command name or a flag
-  inside an explanation or a guide is filled in from the release when the
-  site is built, or shown as a live badge the forge draws, and never written
-  as a version into a committed page (adr-19; itd-2610031348087517's
-  decision 4 applied the same to the README).
 - **Not everything goes into the brief.** The brief is the why and the what;
   how-to guides and tutorials belong in the how, and reference facts derive
   from the release and the code, so the brief does not become a user manual.
@@ -74,6 +69,15 @@ The product thinker's rulings on 2026-11-01, restated:
   register, so the agent proposes placing that text as a page of the brief's
   product chapter of its own, rather than writing it in a second register
   inside another chapter.
+
+Proposed by the agent, not ruled: **facts inside an authored page are filled
+in, never typed.** A version, a command name or a flag in an explanation or a
+guide comes from the release rather than being typed, and is never written as
+a version into a committed page (adr-19; itd-2610031348087517's decision 4
+applied the same to the README). Where it is filled in is open: the product
+thinker ruled on 2026-10-15 that a managed repository's docs are read on the
+forge and its site renders no docs (itd-2610091010348892), so there is no site
+build to fill anything in for most repositories.
 
 The rule meets two standing constraints, and holds both:
 
@@ -146,6 +150,13 @@ edits caught by regenerating and comparing.
 - **The editing surface it waits on.** Which brief-editing work counts as
   "the brief has an editing surface" for the compulsory step: live brief
   sessions, itd-61's reconciliation of a human edit, or itd-90's interview.
+- **Whether "render now" keeps the setup question.** itd-2610031348087517
+  asks the owner at setup whether abcd keeps parts of the README current;
+  whether the derived sections stay behind that question or render without
+  it, which would reverse that question too.
+- **Where facts are filled in.** For docs a managed repository reads on the
+  forge with no site build (itd-2610091010348892): a live badge, a generated
+  region committed by a verb the person runs, or no version at all.
 - **The terms.** "The how", "documentation surface" and "authored surface"
   have no glossary entry, and the glossary's "rendered surface" means a
   public text held to the identity block; the terms get their entries, or
@@ -153,8 +164,8 @@ edits caught by regenerating and comparing.
 
 ## Typed Links
 
-- **refined by `itd-2611011239589823`** (the how): Its how-to and tutorial
-  pages come from that surface.
+- **built on by and refined by `itd-2611011239589823`** (the how): Its how-to
+  and tutorial pages come from that surface.
 - **built on by `itd-2611011151512956`** (the way back): Catches a hand edit
   to a page this intent renders and offers it back to its source.
 

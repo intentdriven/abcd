@@ -67,7 +67,8 @@ Verdict: supported, with changes.
    separate teams for the Book, Rustlings and the Reference in one
    organisation and toolchain ([Rust teams](https://rust-lang.org/governance/teams/lang/)).
 2. How-to guides belong with the product owners, tutorials may belong to an
-   education team (CONSENSUS, framework): a how-to serves a competent user at
+   education team (CONSENSUS, framework; the ownership split is inferred from
+   the framework's split of readers, which it states): a how-to serves a competent user at
    work, a tutorial a learner at study
    ([Diátaxis: tutorials and how-to](https://diataxis.fr/tutorials-how-to/)).
 3. Make tutorials and exercises runnable and run them in CI (CONSENSUS):
