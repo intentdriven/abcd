@@ -74,15 +74,15 @@ func (p cutPlan) dryrun(nextTag string) dryrun.Plan {
 		out.Writes = append(out.Writes, dryrun.Write{Path: p.digestRel, Action: action, Bytes: len(p.digest), Content: p.digest})
 	}
 	out.Writes = append(out.Writes, dryrun.Write{Path: changelogFile, Action: dryrun.Replace, Bytes: len(p.changelog), Content: p.changelog})
-	out.Effects = ReleaseEffects(nextTag)
+	out.Effects = releaseEffects(nextTag)
 	return out
 }
 
-// ReleaseEffects is what follows a written cut that this program does not do
+// releaseEffects is what follows a written cut that this program does not do
 // itself: the release workflow tags the version the dated heading names once
 // the commit carrying it reaches the default branch, pushes the tag, and
 // publishes the release.
-func ReleaseEffects(nextTag string) []dryrun.Effect {
+func releaseEffects(nextTag string) []dryrun.Effect {
 	if nextTag == "" {
 		return nil
 	}
