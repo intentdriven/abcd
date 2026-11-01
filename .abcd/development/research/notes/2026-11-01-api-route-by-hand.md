@@ -93,8 +93,21 @@ pauses the lane for its key rather than falling back to the subscription).
   (`… is at <sha>, not at the head <sha> the landing lands`), and the lane was
   landed by hand with `abcd land` and `gh pr create` instead
   (iss-2611011943357182).
+- **A lane landed by hand stays stuck after its merge.** Once that pull
+  request merged, `implement step` still refused at land on the head
+  mismatch, though both heads were on the default branch; moving the branch
+  back as the remedy asked led to a demand for a full preflight of the
+  already-merged records commit, one to two hours on this machine. The loop
+  should see that its landing head is already on the default branch before
+  its head and receipt checks (iss-2611011943357182).
 - **`land --record-review` takes one return per flag.** Two paths after one
   flag read the second as the branch (`the branch's head cannot be resolved`).
+- **A return must name the head, and a reviewer's own format can drop it.**
+  `land --record-review` refuses a return that does not contain the head's
+  first nine characters. A security reviewer run from its own definition
+  twice left the sha out of its verdict line though the prompt asked for it;
+  an output contract appended to the system prompt, making the first line
+  `Reviewed head: <sha>`, fixed it.
 - **The verdict word must open the verdict section.** `land --record-review`
   takes a return only when the first non-empty line under `### Verdict` is the
   verdict word; a first line such as `Head: <sha>` or `Verdict: SHIP` is
