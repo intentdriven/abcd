@@ -30,6 +30,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/board"
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/dryrun"
 	"github.com/intentdriven/abcd/internal/core/grounds"
 	"github.com/intentdriven/abcd/internal/core/history"
 	"github.com/intentdriven/abcd/internal/core/identity"
@@ -55,6 +56,7 @@ import (
 	"github.com/intentdriven/abcd/internal/term"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // exitError carries a specific process exit code out of a command. The root
@@ -1146,8 +1148,9 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 
 	var lessonsJSON string
 	var graveyardRoute *routeFlag
+	var graveyardDryRun bool
 	graveyardCmd := &cobra.Command{
-		Use:  "graveyard <lifeboat-dir> --lessons-json <file|->",
+		Use:  "graveyard <lifeboat-dir> --lessons-json <file|-> [--dry-run]",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if lessonsJSON == "" {
@@ -1172,6 +1175,14 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			// a drop is reported honestly, not a failure. Only structural faults
 			// (not a lifeboat, unreadable graveyard, unparseable/oversize payload)
 			// return an error and exit 2.
+			if graveyardDryRun {
+				plan, err := lifeboat.PlanIngestLessons(dirAbs, raw, deferredLifeboatSecretScan(dirAbs))
+				if err != nil {
+					return &exitError{Code: 2, Msg: "disembark graveyard: " + scrubPaths(err)}
+				}
+				return renderLifeboatDryRun(cmd, *asJSON, "abcd disembark graveyard", plan.Result, plan.Result.LifeboatDir,
+					plan.Result.Render(), plan.Plan, route, raw)
+			}
 			res, err := lifeboat.IngestLessons(dirAbs, raw, deferredLifeboatSecretScan(dirAbs))
 			if err != nil {
 				return &exitError{Code: 2, Msg: "disembark graveyard: " + scrubPaths(err)}
@@ -1183,6 +1194,7 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	graveyardCmd.Flags().StringVar(&lessonsJSON, "lessons-json", "", "path to the host-produced lesson JSON (or - for stdin)")
+	graveyardCmd.Flags().BoolVar(&graveyardDryRun, "dry-run", false, dryRunFlagUsage)
 	graveyardRoute = addRouteFlag(graveyardCmd, graveyardAgent)
 
 	// The three M6 synthesis verbs (itd-88) share one dual-mode shape: WITHOUT the
@@ -1193,8 +1205,9 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 	// honestly and stays exit 0.
 	var principlesJSON string
 	var principlesRoute *routeFlag
+	var principlesDryRun bool
 	principlesCmd := &cobra.Command{
-		Use:  "principles <lifeboat-dir> [--principles-json <file|->]",
+		Use:  "principles <lifeboat-dir> [--principles-json <file|->] [--dry-run]",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			route, err := principlesRoute.resolve(cmd, "disembark principles", delegatedAgent(principlesJSON, principlesAgent))
@@ -1212,6 +1225,14 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return &exitError{Code: 2, Msg: "disembark principles: " + scrubPaths(err)}
 			}
+			if principlesDryRun {
+				plan, err := lifeboat.PlanPrinciples(dirAbs, raw, deferredLifeboatSecretScan(dirAbs))
+				if err != nil {
+					return &exitError{Code: 2, Msg: "disembark principles: " + scrubPaths(err)}
+				}
+				return renderLifeboatDryRun(cmd, *asJSON, "abcd disembark principles", plan.Result, plan.Result.LifeboatDir,
+					plan.Result.Render(), plan.Plan, route, raw)
+			}
 			res, err := lifeboat.SynthesizePrinciples(dirAbs, raw, deferredLifeboatSecretScan(dirAbs))
 			if err != nil {
 				return &exitError{Code: 2, Msg: "disembark principles: " + scrubPaths(err)}
@@ -1223,12 +1244,14 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	principlesCmd.Flags().StringVar(&principlesJSON, "principles-json", "", "path to host-produced principle JSON (or - for stdin); absent runs deterministic mode")
+	principlesCmd.Flags().BoolVar(&principlesDryRun, "dry-run", false, dryRunFlagUsage)
 	principlesRoute = addRouteFlag(principlesCmd, principlesAgent)
 
 	var pressReleaseJSON string
 	var pressReleaseRoute *routeFlag
+	var pressReleaseDryRun bool
 	pressReleaseCmd := &cobra.Command{
-		Use:  "press-release <lifeboat-dir> [--press-release-json <file|->]",
+		Use:  "press-release <lifeboat-dir> [--press-release-json <file|->] [--dry-run]",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			route, err := pressReleaseRoute.resolve(cmd, "disembark press-release", delegatedAgent(pressReleaseJSON, pressReleaseAgent))
@@ -1250,6 +1273,14 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			// refusal (ErrPressReleaseUncited): exit 2, the derived file left untouched
 			// (design §5 exception). It flows through the generic exit-2 wrapping like
 			// every other structural fault.
+			if pressReleaseDryRun {
+				plan, err := lifeboat.PlanPressRelease(dirAbs, raw, deferredLifeboatSecretScan(dirAbs))
+				if err != nil {
+					return &exitError{Code: 2, Msg: "disembark press-release: " + scrubPaths(err)}
+				}
+				return renderLifeboatDryRun(cmd, *asJSON, "abcd disembark press-release", plan.Result, plan.Result.LifeboatDir,
+					plan.Result.Render(), plan.Plan, route, raw)
+			}
 			res, err := lifeboat.ComposePressRelease(dirAbs, raw, deferredLifeboatSecretScan(dirAbs))
 			if err != nil {
 				return &exitError{Code: 2, Msg: "disembark press-release: " + scrubPaths(err)}
@@ -1261,12 +1292,14 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	pressReleaseCmd.Flags().StringVar(&pressReleaseJSON, "press-release-json", "", "path to host-produced press-release JSON (or - for stdin); absent runs deterministic mode")
+	pressReleaseCmd.Flags().BoolVar(&pressReleaseDryRun, "dry-run", false, dryRunFlagUsage)
 	pressReleaseRoute = addRouteFlag(pressReleaseCmd, pressReleaseAgent)
 
 	var reviewJSON string
 	var reviewRoute *routeFlag
+	var reviewDryRun bool
 	reviewCmd := &cobra.Command{
-		Use: "review <lifeboat-dir> <source-repo> [--review-json <file|->]",
+		Use: "review <lifeboat-dir> <source-repo> [--review-json <file|->] [--dry-run]",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 2 {
 				return &exitError{Code: 2, Msg: "disembark review: <lifeboat-dir> <source-repo> are both required"}
@@ -1301,6 +1334,14 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			scan := bothSecretScans(deferredLifeboatSecretScan(dirAbs), deferredLifeboatSecretScan(srcAbs))
+			if reviewDryRun {
+				plan, err := lifeboat.PlanReview(dirAbs, srcAbs, raw, scan)
+				if err != nil {
+					return &exitError{Code: 2, Msg: "disembark review: " + scrubPaths(err)}
+				}
+				return renderLifeboatDryRun(cmd, *asJSON, "abcd disembark review", plan.Result, plan.Result.LifeboatDir,
+					plan.Result.Render(), plan.Plan, route, raw)
+			}
 			res, err := lifeboat.ReviewLifeboat(dirAbs, srcAbs, raw, scan)
 			if err != nil {
 				return &exitError{Code: 2, Msg: "disembark review: " + scrubPaths(err)}
@@ -1312,6 +1353,7 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	reviewCmd.Flags().StringVar(&reviewJSON, "review-json", "", "path to the host-produced review verdict JSON (or - for stdin); absent runs deterministic mode")
+	reviewCmd.Flags().BoolVar(&reviewDryRun, "dry-run", false, dryRunFlagUsage)
 	reviewRoute = addRouteFlag(reviewCmd, reviewAgent)
 
 	disembarkCmd.AddCommand(probeCmd)
@@ -1396,6 +1438,22 @@ func deferredLifeboatSecretScan(root string) lifeboat.SecretScan {
 		}
 		return scan(files)
 	}
+}
+
+// renderLifeboatDryRun renders a post-pack verb's practice run: the planned
+// writes and removals, each path inside the lifeboat, then the report the real
+// run would give and its receipt line. v is the result the real run would
+// return, carried under --json with the plan beside it.
+func renderLifeboatDryRun(cmd *cobra.Command, asJSON bool, verb string, v any, lifeboatDir, report string,
+	plan dryrun.Plan, route *oracle.Route, raw []byte) error {
+	return renderDryRun(cmd.OutOrStdout(), asJSON, verb, withReceipt(v, route, raw), plan, func(w io.Writer) {
+		fmt.Fprintf(w, "  each path is inside the lifeboat %s\n", termsafe.Sanitize(lifeboatDir))
+		fmt.Fprintln(w, "  the real run would report:")
+		for _, line := range strings.Split(strings.TrimRight(report, "\n"), "\n") {
+			fmt.Fprintf(w, "    %s\n", line)
+		}
+		renderReceiptLine(w, route, raw)
+	})
 }
 
 // bothSecretScans is a scan that refuses what either a or b refuses, a first,
@@ -5501,9 +5559,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	// core/issueschema. --severity always did; --category and --source did not,
 	// and an operator who typed an unknown category had the accepted values in
 	// neither the help nor the refusal (iss-2609100519128005).
-	captureCmd.Flags().StringVar(&severity, "severity", "", "severity: "+enumHelp(issueschema.Severities)+" (default minor)")
-	captureCmd.Flags().StringVar(&category, "category", "", "issue category: "+enumHelp(issueschema.Categories)+" (default observation)")
-	captureCmd.Flags().StringVar(&source, "source", "", "surfacing channel: "+enumHelp(issueschema.Sources)+" (default user-observation)")
+	enumFlag(captureCmd.Flags(), &severity, "severity", "", "severity: ", issueschema.Severities, " (default minor)")
+	enumFlag(captureCmd.Flags(), &category, "category", "", "issue category: ", issueschema.Categories, " (default observation)")
+	enumFlag(captureCmd.Flags(), &source, "source", "", "surfacing channel: ", issueschema.Sources, " (default user-observation)")
 	captureCmd.Flags().StringVar(&slug, "slug", "", "override the slug derived from the text")
 	captureCmd.Flags().StringVar(&foundDuring, "found-during", "", "session/command context (default manual-capture)")
 	captureCmd.Flags().StringVar(&foundAt, "found-at", "", "optional repo-relative path, which must exist in this checkout, or a conceptual location in words")
@@ -6716,21 +6774,35 @@ func renderMemoryStatus(w io.Writer, st memory.BareStatus) {
 func addMemorySubcommands(lib *cobra.Command, asJSON *bool) {
 	// ingest <path-or-https-url> [--keep-original] [--pages-json <file|->]
 	var pagesJSON string
-	var keepOriginalFlag bool
+	var keepOriginalFlag, ingestDryRun bool
 	ingestCmd := &cobra.Command{
-		Use:  "ingest <path-or-https-url>",
+		Use:  "ingest <path-or-https-url> [--dry-run]",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := memoryStoreRoot(cmd)
 			if err != nil {
 				return err
 			}
-			res, err := memory.Ingest(memory.IngestRequest{
+			req := memory.IngestRequest{
 				RepoRoot:     repoRoot,
 				Source:       args[0],
 				KeepOriginal: keepOriginalFlag,
 				Distiller:    pagesJSONDistiller(cmd, pagesJSON),
-			})
+			}
+			if ingestDryRun {
+				// The source is read as the real ingest reads it, a URL
+				// fetched included; nothing is stored.
+				plan, err := memory.PlanIngest(req)
+				if err != nil {
+					return err
+				}
+				res := plan.Result
+				return renderDryRun(cmd.OutOrStdout(), *asJSON, "abcd library ingest", res, plan.Plan, func(w io.Writer) {
+					fmt.Fprintf(w, "  would be %s, content hash %s\n", res.Status, res.ContentHash)
+					fmt.Fprintf(w, "  licence:      %s\n", termsafe.Sanitize(res.Licence))
+				})
+			}
+			res, err := memory.Ingest(req)
 			if err != nil {
 				return err
 			}
@@ -6766,16 +6838,23 @@ func addMemorySubcommands(lib *cobra.Command, asJSON *bool) {
 	}
 	ingestCmd.Flags().BoolVar(&keepOriginalFlag, "keep-original", false, "store the original at .abcd/memory/sources/<sha256>.<ext>")
 	ingestCmd.Flags().StringVar(&pagesJSON, "pages-json", "", "DistilledPage JSON array (file path, or - for stdin)")
+	ingestCmd.Flags().BoolVar(&ingestDryRun, "dry-run", false, dryRunFlagUsage)
 	lib.AddCommand(ingestCmd)
 
 	// ask <question> [--top-n N] [--file-back] [--page-json <file|->]
 	var topN int
-	var fileBack bool
+	var fileBack, askDryRun bool
 	var pageJSON string
 	askCmd := &cobra.Command{
-		Use:  "ask <question>",
+		Use:  "ask <question> [--dry-run]",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// An ask that files nothing back writes nothing already, so a
+			// practice run beside it is refused rather than ignored.
+			if askDryRun && !fileBack {
+				return &exitError{Code: 2, Msg: "abcd library ask: --dry-run checks the page a --file-back would file, and an " +
+					"ask without --file-back writes nothing already; pass --file-back --page-json <file|->"}
+			}
 			repoRoot, err := memoryStoreRoot(cmd)
 			if err != nil {
 				return err
@@ -6788,6 +6867,18 @@ func addMemorySubcommands(lib *cobra.Command, asJSON *bool) {
 				}
 				req.FileBackPage = page
 				req.DecideFileBack = func(memory.DistilledPage) bool { return true }
+			}
+			if askDryRun {
+				plan, err := memory.PlanAsk(req)
+				if err != nil {
+					return err
+				}
+				res := plan.Result
+				return renderDryRun(cmd.OutOrStdout(), *asJSON, "abcd library ask", res, plan.Plan, func(w io.Writer) {
+					if res.FileBack != nil {
+						fmt.Fprintf(w, "  the file-back would be %s: %s\n", res.FileBack.Status, strings.Join(res.FileBack.Pages, ", "))
+					}
+				})
 			}
 			res, err := memory.Ask(req)
 			if err != nil {
@@ -6804,6 +6895,7 @@ func addMemorySubcommands(lib *cobra.Command, asJSON *bool) {
 	askCmd.Flags().IntVar(&topN, "top-n", 0, "retrieval depth (0 uses the pinned default)")
 	askCmd.Flags().BoolVar(&fileBack, "file-back", false, "file the synthesised answer back as a new memory page")
 	askCmd.Flags().StringVar(&pageJSON, "page-json", "", "the answer page dict as JSON (file path, or - for stdin)")
+	askCmd.Flags().BoolVar(&askDryRun, "dry-run", false, "with --file-back: "+dryRunFlagUsage)
 	lib.AddCommand(askCmd)
 
 	// lint — full-store curator health-check; blockers exit nonzero.
@@ -6851,8 +6943,8 @@ func pagesJSONDistiller(cmd *cobra.Command, pagesJSON string) memory.Distiller {
 		if err != nil {
 			return nil, fmt.Errorf("cannot read --pages-json: %w", err)
 		}
-		var arr []map[string]any
-		if err := json.Unmarshal(raw, &arr); err != nil {
+		arr, err := memory.DecodePages(raw)
+		if err != nil {
 			return nil, fmt.Errorf("--pages-json must be a JSON array of page dicts: %w", err)
 		}
 		return arr, nil
@@ -6868,8 +6960,8 @@ func readPageJSON(cmd *cobra.Command, pageJSON string) (map[string]any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot read --page-json: %w", err)
 	}
-	var obj map[string]any
-	if err := json.Unmarshal(raw, &obj); err != nil {
+	obj, err := memory.DecodeAnswerPage(raw)
+	if err != nil {
 		return nil, fmt.Errorf("--page-json must be one JSON object (a DistilledPage dict): %w", err)
 	}
 	return obj, nil
@@ -7255,3 +7347,29 @@ func render(w io.Writer, asJSON bool, v any, text func(io.Writer)) error {
 // reads the same slice the reader's membership test and its refusal message read,
 // so a value added to core/issueschema reaches all three at once.
 func enumHelp(vals []string) string { return strings.Join(vals, " | ") }
+
+// allowedValuesAnnotation is the flag annotation enumFlag records a closed
+// set under, which the command facts read (surface.go, flagAllowed).
+const allowedValuesAnnotation = "abcd_allowed_values"
+
+// enumFlag declares a string flag that takes one of a closed set of values:
+// its help line is lead, the set through enumHelp, then tail, and the set is
+// recorded on the flag as an annotation. So the help, the reader's membership
+// check and the command facts all read the one slice the caller passes, and a
+// value added to it reaches all three at once (spc-2610301431075964 step 1).
+func enumFlag(fs *pflag.FlagSet, p *string, name, value, lead string, vals []string, tail string) {
+	fs.StringVar(p, name, value, lead+enumHelp(vals)+tail)
+	if err := fs.SetAnnotation(name, allowedValuesAnnotation, append([]string{}, vals...)); err != nil {
+		panic(err) // the flag was declared on the line above
+	}
+}
+
+// flagAllowed is the closed set enumFlag recorded on f, or nil for a flag
+// that takes any value.
+func flagAllowed(f *pflag.Flag) []string {
+	vals, ok := f.Annotations[allowedValuesAnnotation]
+	if !ok {
+		return nil
+	}
+	return append([]string{}, vals...)
+}

@@ -238,4 +238,5 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-2610301638558260](2610301638558260-a-published-refusal-code-is-never.md) | A published refusal code is never renamed or reused | proposed | 2026-10-30 |
 | [adr-2610310235000654](2610310235000654-an-unattended-plan-stands-in-for-the.md) | An unattended plan stands in for the sign-off only on a recorded, reviewed, unchanged draft | proposed | 2026-10-31 |
 | [adr-2611011153058085](2611011153058085-a-re-render-never-discards-hand-written.md) | A re-render never discards hand-written text unasked | proposed | 2026-11-01 |
+| [adr-2611011332427073](2611011332427073-abcd-resolves-every-layered-setting-by.md) | abcd resolves every layered setting by one precedence rule | proposed | 2026-11-01 |
 <!-- /index -->

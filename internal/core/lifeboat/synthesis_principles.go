@@ -49,13 +49,42 @@ import (
 // "principles": [] and reports the drops, exit 0. Both files are secret-scanned
 // before either is written, as pack's planned bytes are; a non-nil error from
 // scan refuses the whole call, and a nil scan fails closed.
+//
+// It is PlanPrinciples followed by the plan's Apply, so a practice run
+// (`--dry-run`) and the real write share every check.
 func SynthesizePrinciples(lifeboatDir string, raw []byte, scan SecretScan) (PrinciplesResult, error) {
+	p, err := PlanPrinciples(lifeboatDir, raw, scan)
+	if err != nil {
+		return PrinciplesResult{}, err
+	}
+	return p.Apply()
+}
+
+// PrinciplesPlan is what SynthesizePrinciples would do: the result it would
+// report and the two files it would write.
+type PrinciplesPlan struct {
+	Result PrinciplesResult
+	SynthPlan
+}
+
+// Apply writes the planned principles.json and principles.md.
+func (p PrinciplesPlan) Apply() (PrinciplesResult, error) {
+	if err := p.apply(); err != nil {
+		return PrinciplesResult{}, err
+	}
+	return p.Result, nil
+}
+
+// PlanPrinciples does everything SynthesizePrinciples does before its write:
+// the gate, either mode's synthesis or validation, the composition of both
+// files, and the secret scan over them. Nothing is written.
+func PlanPrinciples(lifeboatDir string, raw []byte, scan SecretScan) (PrinciplesPlan, error) {
 	if scan == nil {
-		return PrinciplesResult{}, errors.New("principles: a secret scan is required")
+		return PrinciplesPlan{}, errors.New("principles: a secret scan is required")
 	}
 	abs, _, err := gateSynthLifeboat(lifeboatDir)
 	if err != nil {
-		return PrinciplesResult{}, err
+		return PrinciplesPlan{}, err
 	}
 
 	res := PrinciplesResult{LifeboatDir: fsutil.RedactHome(abs)}
@@ -73,7 +102,7 @@ func SynthesizePrinciples(lifeboatDir string, raw []byte, scan SecretScan) (Prin
 		var drops []PrincipleDrop
 		principles, drops, err = deterministicPrinciples(abs)
 		if err != nil {
-			return PrinciplesResult{}, err
+			return PrinciplesPlan{}, err
 		}
 		res.Dropped = len(drops)
 		res.Drops = drops
@@ -82,7 +111,7 @@ func SynthesizePrinciples(lifeboatDir string, raw []byte, scan SecretScan) (Prin
 		var drops []PrincipleDrop
 		principles, promptVersion, drops, err = validateDelegatedPrinciples(abs, raw)
 		if err != nil {
-			return PrinciplesResult{}, err
+			return PrinciplesPlan{}, err
 		}
 		res.Dropped = len(drops)
 		res.Drops = drops
@@ -103,33 +132,23 @@ func SynthesizePrinciples(lifeboatDir string, raw []byte, scan SecretScan) (Prin
 	}
 	data, err := marshalSynth(file)
 	if err != nil {
-		return PrinciplesResult{}, err
+		return PrinciplesPlan{}, err
 	}
 	planned := []PlannedFile{
 		plannedFile("principles.json", data),
 		plannedFile("principles.md", []byte(renderPrinciplesMarkdown(file))),
 	}
 	if err := scan(planned); err != nil {
-		return PrinciplesResult{}, err
+		return PrinciplesPlan{}, err
 	}
 
-	root, err := os.OpenRoot(abs)
-	if err != nil {
-		return PrinciplesResult{}, err
-	}
-	defer root.Close()
-
-	// Full replacement: a single-file artifact, so the atomic overwrite IS the
-	// replacement — no accretion across runs, no stale twin.
-	if err := writePlanned(root, abs, planned); err != nil {
-		return PrinciplesResult{}, err
-	}
-
+	// Full replacement: a single-file artifact, so the atomic overwrite Apply
+	// makes IS the replacement — no accretion across runs, no stale twin.
 	res.Mode = mode
 	res.Written = len(principles)
 	res.PrinciplesPath = "principles.json"
 	res.RenderPath = "principles.md"
-	return res, nil
+	return PrinciplesPlan{Result: res, SynthPlan: newSynthPlan(abs, planned)}, nil
 }
 
 // deterministicPrinciples surfaces each packed ADR's own stated decision as a
@@ -217,38 +236,9 @@ func deterministicPrinciples(abs string) ([]Principle, []PrincipleDrop, error) {
 // fatal (nothing written); a per-entry fault drops that entry. It returns the
 // survivors, the recorded prompt_version, and the drops.
 func validateDelegatedPrinciples(abs string, raw []byte) ([]Principle, string, []PrincipleDrop, error) {
-	if len(raw) > maxSynthesisBytes {
-		return nil, "", nil, fmt.Errorf("principles payload exceeds the %d-byte cap", maxSynthesisBytes)
-	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	var pf PrinciplesFile
-	if err := dec.Decode(&pf); err != nil {
-		// The decoder names an undeclared field by the payload's own key:
-		// redacted, never raw (iss-2609290218032954).
-		return nil, "", nil, fmt.Errorf("malformed principles JSON: %s", scanner.RedactRefusal(abs, err.Error()))
-	}
-	if err := synthSchemaGate("principles", pf.SchemaVersion, PrinciplesSchemaVersion); err != nil {
+	pf, raws, err := decodePrinciples(abs, raw)
+	if err != nil {
 		return nil, "", nil, err
-	}
-	if err := synthModeGate(pf.Mode); err != nil {
-		return nil, "", nil, err
-	}
-	if !promptVersionRe.MatchString(pf.PromptVersion) {
-		return nil, "", nil, errors.New("delegated principles payload is missing a semver prompt_version")
-	}
-	if len(pf.Principles) > maxPrinciples {
-		return nil, "", nil, fmt.Errorf("too many principles (%d > %d)", len(pf.Principles), maxPrinciples)
-	}
-	// The same entries read raw, so an absent key and a null one are told apart:
-	// the typed decode reads both as nil, and they are different claims — a key
-	// considered and declined is null, an absent key is a claim not carried, and
-	// schema version 2 requires every entry to carry all four.
-	var raws struct {
-		Principles []map[string]json.RawMessage `json:"principles"`
-	}
-	if err := json.Unmarshal(raw, &raws); err != nil || len(raws.Principles) != len(pf.Principles) {
-		return nil, "", nil, errors.New("malformed principles JSON: the entries cannot be read as objects")
 	}
 
 	valid, err := buildPrincipleEvidenceSet(abs)
@@ -662,4 +652,50 @@ func bulletText(b string) string {
 func isMarkdownPath(p string) bool {
 	low := strings.ToLower(p)
 	return strings.HasSuffix(low, ".md") || strings.HasSuffix(low, ".markdown")
+}
+
+// principleEntries is the principles payload's entries read raw, so an absent
+// key and a null one are told apart.
+type principleEntries struct {
+	Principles []map[string]json.RawMessage `json:"principles"`
+}
+
+// decodePrinciples is the structural half of the delegated principles
+// payload: the size cap, the strict decode, the schema, mode and
+// prompt-version gates, the principle cap, and the entries read raw. A fault
+// here is fatal; the per-entry citation checks after it drop an entry. abs
+// only redacts a refusal.
+func decodePrinciples(abs string, raw []byte) (PrinciplesFile, principleEntries, error) {
+	var raws principleEntries
+	if len(raw) > maxSynthesisBytes {
+		return PrinciplesFile{}, raws, fmt.Errorf("principles payload exceeds the %d-byte cap", maxSynthesisBytes)
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	var pf PrinciplesFile
+	if err := dec.Decode(&pf); err != nil {
+		// The decoder names an undeclared field by the payload's own key:
+		// redacted, never raw (iss-2609290218032954).
+		return PrinciplesFile{}, raws, fmt.Errorf("malformed principles JSON: %s", scanner.RedactRefusal(abs, err.Error()))
+	}
+	if err := synthSchemaGate("principles", pf.SchemaVersion, PrinciplesSchemaVersion); err != nil {
+		return PrinciplesFile{}, raws, err
+	}
+	if err := synthModeGate(pf.Mode); err != nil {
+		return PrinciplesFile{}, raws, err
+	}
+	if !promptVersionRe.MatchString(pf.PromptVersion) {
+		return PrinciplesFile{}, raws, errors.New("delegated principles payload is missing a semver prompt_version")
+	}
+	if len(pf.Principles) > maxPrinciples {
+		return PrinciplesFile{}, raws, fmt.Errorf("too many principles (%d > %d)", len(pf.Principles), maxPrinciples)
+	}
+	// The same entries read raw, so an absent key and a null one are told apart:
+	// the typed decode reads both as nil, and they are different claims — a key
+	// considered and declined is null, an absent key is a claim not carried, and
+	// schema version 2 requires every entry to carry all four.
+	if err := json.Unmarshal(raw, &raws); err != nil || len(raws.Principles) != len(pf.Principles) {
+		return PrinciplesFile{}, raws, errors.New("malformed principles JSON: the entries cannot be read as objects")
+	}
+	return pf, raws, nil
 }

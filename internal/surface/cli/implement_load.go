@@ -320,7 +320,7 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) { renderLoad(w, res) })
 		},
 	}
-	cmd.Flags().StringVar(&site, "site", "", "where the check runs: "+enumHelp(implement.LoadSites()))
+	enumFlag(cmd.Flags(), &site, "site", "", "where the check runs: ", implement.LoadSites(), "")
 	cmd.Flags().BoolVar(&wait, "wait", false, "wait until the load is below the wait limit and no other go test -race run is live")
 	cmd.Flags().BoolVar(&race, "race-gate", false, "wait at the race gate, before a race stage, instead of the first gate: open at once at one preflight at a time unless the disk is below the floor, and above that shut only by another go test -race run, a race waiter ahead, the load and the race gate's hold")
 	cmd.Flags().DurationVar(&timeout, "timeout", implement.WaitDefaultTimeout, "with --wait or --race-gate, give up after this long and exit 1")

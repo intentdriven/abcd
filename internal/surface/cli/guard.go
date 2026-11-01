@@ -197,6 +197,7 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 	}
 	checkCmd.Flags().StringVar(&command, "command", "", "the candidate command line (default: read from stdin)")
 	guardCmd.AddCommand(checkCmd)
+	guardCmd.AddCommand(newGuardQuestionCommand(asJSON))
 
 	guardCmd.AddCommand(newGuardHookCommand())
 	guardCmd.AddCommand(newGuardApproveCommand())

@@ -50,6 +50,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/dryrun"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/record/match"
 	"github.com/intentdriven/abcd/internal/core/recordid"
@@ -538,7 +539,7 @@ func Ingest(req IngestRequest) (IngestResult, error) {
 	}
 	lock := filepath.Join(repoRoot, filepath.FromSlash(IngestStageDir), stageLockName)
 	err = fsutil.WithFileLock(lock, ingestLockTimeout, func() error {
-		return ingestUnderLock(root, repoRoot, req, &res)
+		return ingestUnderLock(root, repoRoot, req, &res, nil)
 	})
 	if errors.Is(err, fsutil.ErrLockContention) {
 		return res, fmt.Errorf("reading: another ingest is running in this checkout and did not finish "+
@@ -567,7 +568,12 @@ func ensureStageRoot(root *os.Root) error {
 }
 
 // ingestUnderLock is Ingest's body, everything the stage lock has to cover.
-func ingestUnderLock(root *os.Root, repoRoot string, req IngestRequest, res *IngestResult) error {
+//
+// pl is nil for the real ingest. A practice run (PlanIngest) passes its plan:
+// every check runs as written, every refusal is the real run's in the same
+// words save that it is recorded nowhere, and each write, removal and sweep is
+// added to the plan instead of made.
+func ingestUnderLock(root *os.Root, repoRoot string, req IngestRequest, res *IngestResult, pl *ingestPlan) error {
 	// Read-only. The orphans are named now so that every path out of this
 	// function — a refusal before the run is proven, a recorded refusal, a
 	// failed write — can say what it saw; they are cleared only below, once the
@@ -632,22 +638,22 @@ func ingestUnderLock(root *os.Root, repoRoot string, req IngestRequest, res *Ing
 	// refused run with nothing durable to find it by (iss-2608311518250688).
 	def, err := LoadDefinition(repoRoot, pos)
 	if err != nil {
-		return refuse(root, res, out, manifest, Definition{Position: pos}, free, err)
+		return refuse(pl, root, res, out, manifest, Definition{Position: pos}, free, err)
 	}
 	res.Regime = def.Regime
 
 	if err := checkRegime(out, def, free); err != nil {
-		return refuse(root, res, out, manifest, def, free, err)
+		return refuse(pl, root, res, out, manifest, def, free, err)
 	}
 	if err := checkInstrument(out, def, manifest, free); err != nil {
-		return refuse(root, res, out, manifest, def, free, err)
+		return refuse(pl, root, res, out, manifest, def, free, err)
 	}
 
 	items, refusals, refusedCount, err := validateItems(out, manifest, def, free)
 	res.RefusedItems = refusals
 	res.RefusedCount = refusedCount
 	if err != nil {
-		return refuse(root, res, out, manifest, def, free, err)
+		return refuse(pl, root, res, out, manifest, def, free, err)
 	}
 
 	// The items are the host's words, bound for reading records that
@@ -671,6 +677,9 @@ func ingestUnderLock(root *os.Root, repoRoot string, req IngestRequest, res *Ing
 		RepoRoot: repoRoot, Run: out.RunID, Items: items,
 	}); err != nil {
 		cause := fmt.Errorf("reading: run %s: %w", out.RunID, err)
+		if pl != nil {
+			return cause
+		}
 		if rbErr := rollbackThisRun(root, res, out.RunID); rbErr != nil {
 			return fmt.Errorf("%w (and the earlier attempt at run %s could not be rolled back: %v)",
 				cause, out.RunID, rbErr)
@@ -694,6 +703,17 @@ func ingestUnderLock(root *os.Root, repoRoot string, req IngestRequest, res *Ing
 	// It is reported as `pending_stages` here, and the bare `reading` verb
 	// reports it as `orphaned_ingests`; `staged_runs` is a different directory
 	// and does not show it.
+	if pl != nil {
+		// The sweep is planned, never made: each orphan's stage would be
+		// cleared and its never-committed records rolled back.
+		for _, o := range orphans {
+			pl.Effects = append(pl.Effects, dryrun.Effect{Effect: "clear the orphaned stage and roll back its records",
+				Target: IngestStageDir + "/" + o})
+		}
+		res.ClearedStages = orphans
+		res.PendingStages = nil
+		return planWrite(root, repoRoot, res, out, manifest, def, free, items, pl)
+	}
 	cleared, rolledBack, err := sweepOrphanStages(root, orphans)
 	res.ClearedStages = cleared
 	res.RolledBack = rolledBack
@@ -1097,8 +1117,15 @@ func runOutcome(root *os.Root, runID string) (string, error) {
 // its ledger write and its commit marker, and ac-10 says a refused run leaves
 // no reading records — so the one delete a refusal performs is rollbackThisRun
 // on the id it was already proven to carry no outcome for.
-func refuse(root *os.Root, res *IngestResult, out Output, m Manifest, def Definition,
+func refuse(pl *ingestPlan, root *os.Root, res *IngestResult, out Output, m Manifest, def Definition,
 	free payloadField, cause error) error {
+	if pl != nil {
+		// A practice run records nothing and rolls nothing back: it says the
+		// refusal the real run would record, and where.
+		reason := strings.TrimPrefix(cause.Error(), "reading: ")
+		rel := ReadingsRecordDir + "/" + out.RunID + "/" + RefusalFileName
+		return fmt.Errorf("reading: %s; the real run would record the refusal at %s", reason, rel)
+	}
 	// ac-10's other half: a refused run leaves a refusal record and NO reading
 	// records. Usually there are none to leave, because nothing has been staged
 	// yet — but a PREVIOUS ingest of this run id can have died between its

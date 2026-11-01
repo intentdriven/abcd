@@ -83,6 +83,12 @@ type AskResult struct {
 
 // Ask runs deterministic retrieval -> synthesis -> optional file-back.
 func Ask(req AskRequest) (AskResult, error) {
+	return ask(req, nil)
+}
+
+// ask is Ask with a file-back's writes routed through pl: the store when pl
+// is nil, a plan's overlay otherwise (PlanAsk).
+func ask(req AskRequest, pl *storePlanner) (AskResult, error) {
 	root := req.RepoRoot
 	now := req.Now
 	if now.IsZero() {
@@ -122,7 +128,7 @@ func Ask(req AskRequest) (AskResult, error) {
 	}
 	var fb *FileBackResult
 	if req.FileBackPage != nil {
-		result, err := fileBack(root, matches, req.FileBackPage, req.DecideFileBack, now)
+		result, err := fileBack(pl, root, matches, req.FileBackPage, req.DecideFileBack, now)
 		if err != nil {
 			return AskResult{}, err
 		}
@@ -393,7 +399,7 @@ func fileBackSource(matches []MatchedPage, ingestedAt string) (map[string]any, e
 	return buildMultiSource(entries, note)
 }
 
-func fileBack(root string, matches []MatchedPage, rawPage map[string]any, decide FileBackDecision, now time.Time) (FileBackResult, error) {
+func fileBack(pl *storePlanner, root string, matches []MatchedPage, rawPage map[string]any, decide FileBackDecision, now time.Time) (FileBackResult, error) {
 	ingestedAt := now.Format("2006-01-02")
 	if _, ok := rawPage["source"]; !ok {
 		src, err := fileBackSource(matches, ingestedAt)
@@ -518,7 +524,7 @@ func fileBack(root string, matches []MatchedPage, rawPage map[string]any, decide
 				return nr, nil
 			}
 		}
-		r, err := WritePages(root, pageWrites, merge, now)
+		r, err := writeThrough(pl, root, pageWrites, merge, now)
 		if err != nil {
 			return FileBackResult{}, err
 		}

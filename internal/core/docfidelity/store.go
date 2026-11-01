@@ -243,6 +243,9 @@ func Enforce(root string, commands []surface.Command, population []string) (v Ve
 // detector or manifest hash: those label the receipt, and the reviewer never
 // labels its own verdict — Record stamps them from the checkout it reviewed.
 type payload struct {
+	// SchemaVersion is the shape's version, VerdictSchemaVersion. A verdict
+	// composed before the field existed carries none, and reads as version 1.
+	SchemaVersion      int    `json:"schema_version,omitempty"`
 	VerificationResult string `json:"verificationResult"`
 	JudgeModel         string `json:"judgeModel"`
 	Tier               string `json:"tier"`
@@ -250,6 +253,84 @@ type payload struct {
 		ID string `json:"id"`
 	} `json:"verifier,omitempty"`
 	Failing []lint.ReceiptFinding `json:"failing"`
+}
+
+// decodePayload is the whole of the verdict's own validation, run before
+// anything is read from the checkout: the strict decode, the schema version,
+// the closed fields, and every failing entry. PlanRecord (and so Record and
+// its --dry-run) runs it first, and Check runs it alone.
+func decodePayload(raw []byte) (payload, error) {
+	if len(raw) > maxPayloadBytes {
+		return payload{}, fmt.Errorf("the verdict is larger than %d bytes", maxPayloadBytes)
+	}
+	var p payload
+	if err := jsonstrict.Decode(raw, &p); err != nil {
+		return payload{}, fmt.Errorf("the verdict is refused: %w", err)
+	}
+	switch {
+	case p.SchemaVersion == 0 || p.SchemaVersion == VerdictSchemaVersion:
+	case p.SchemaVersion > VerdictSchemaVersion:
+		return payload{}, fmt.Errorf("the verdict is schema_version %d, newer than this abcd reads (%d); update abcd, or compose it at version %d",
+			p.SchemaVersion, VerdictSchemaVersion, VerdictSchemaVersion)
+	default:
+		return payload{}, fmt.Errorf("the verdict is schema_version %d, which is not a version this abcd reads; compose it at version %d (an absent schema_version reads as %d)",
+			p.SchemaVersion, VerdictSchemaVersion, VerdictSchemaVersion)
+	}
+	switch p.VerificationResult {
+	case "PROMOTE", "HOLD", "INCONCLUSIVE":
+	default:
+		return payload{}, fmt.Errorf("verificationResult %q is not PROMOTE, HOLD or INCONCLUSIVE", p.VerificationResult)
+	}
+	if strings.TrimSpace(p.JudgeModel) == "" {
+		return payload{}, errors.New("judgeModel is empty: a verdict names the judge that produced it")
+	}
+	if why := lint.FloatingJudgeModel(p.JudgeModel); why != "" {
+		return payload{}, fmt.Errorf("judgeModel %q is %s: a verdict names the pinned judge that produced it "+
+			"(a version or date, never latest), so the review can be re-run against the same judge", p.JudgeModel, why)
+	}
+	if p.Tier != "full" && p.Tier != "shallow" {
+		return payload{}, fmt.Errorf("tier %q is not full or shallow", p.Tier)
+	}
+	brief := 0
+	for i, f := range p.Failing {
+		if f.Doc != DocBrief && f.Doc != DocPublic {
+			return payload{}, fmt.Errorf("failing[%d].doc %q is not brief or public", i, f.Doc)
+		}
+		if strings.TrimSpace(f.Chapter) == "" || strings.TrimSpace(f.Sentence) == "" || strings.TrimSpace(f.Evidence) == "" {
+			return payload{}, fmt.Errorf("failing[%d] needs its chapter, the sentence and the evidence", i)
+		}
+		if f.Doc == DocBrief {
+			// The same parse Apply reads the chapter through, so a verdict saved
+			// here is one --apply can write; the receipt keeps the file name.
+			name, err := chapterFile(f.Chapter)
+			if err != nil {
+				return payload{}, fmt.Errorf("failing[%d]: %w", i, err)
+			}
+			p.Failing[i].Chapter = name
+		}
+		if strings.TrimSpace(f.Disposition) == "" {
+			return payload{}, fmt.Errorf("failing[%d] carries no disposition", i)
+		}
+		if err := checkLine("sentence", f.Sentence); err != nil {
+			return payload{}, fmt.Errorf("failing[%d]: %w", i, err)
+		}
+		if err := checkLine("replacement", f.Replacement); err != nil {
+			return payload{}, fmt.Errorf("failing[%d]: %w", i, err)
+		}
+		if f.Replacement != "" && f.Replacement == f.Sentence {
+			return payload{}, fmt.Errorf("failing[%d].replacement must differ from the sentence", i)
+		}
+		if f.Doc == DocBrief {
+			brief++
+		}
+	}
+	if p.VerificationResult == "HOLD" && brief == 0 {
+		return payload{}, errors.New("a HOLD names no false brief sentence, so there is nothing to correct: a verdict with no confirmed brief sentence is PROMOTE")
+	}
+	if p.VerificationResult == "PROMOTE" && brief > 0 {
+		return payload{}, fmt.Errorf("a PROMOTE names %d false brief sentence(s), so the brief is not current: a verdict with a confirmed brief sentence is HOLD", brief)
+	}
+	return p, nil
 }
 
 // Record validates the reviewer's verdict and saves it as the receipt for the
@@ -289,66 +370,9 @@ type RecordPlan struct {
 // is composed. A refused payload is refused here, in the words Record
 // refuses it in, and nothing is written either way.
 func PlanRecord(root string, raw []byte, at time.Time) (RecordPlan, error) {
-	if len(raw) > maxPayloadBytes {
-		return RecordPlan{}, fmt.Errorf("the verdict is larger than %d bytes", maxPayloadBytes)
-	}
-	var p payload
-	if err := jsonstrict.Decode(raw, &p); err != nil {
-		return RecordPlan{}, fmt.Errorf("the verdict is refused: %w", err)
-	}
-	switch p.VerificationResult {
-	case "PROMOTE", "HOLD", "INCONCLUSIVE":
-	default:
-		return RecordPlan{}, fmt.Errorf("verificationResult %q is not PROMOTE, HOLD or INCONCLUSIVE", p.VerificationResult)
-	}
-	if strings.TrimSpace(p.JudgeModel) == "" {
-		return RecordPlan{}, errors.New("judgeModel is empty: a verdict names the judge that produced it")
-	}
-	if why := lint.FloatingJudgeModel(p.JudgeModel); why != "" {
-		return RecordPlan{}, fmt.Errorf("judgeModel %q is %s: a verdict names the pinned judge that produced it "+
-			"(a version or date, never latest), so the review can be re-run against the same judge", p.JudgeModel, why)
-	}
-	if p.Tier != "full" && p.Tier != "shallow" {
-		return RecordPlan{}, fmt.Errorf("tier %q is not full or shallow", p.Tier)
-	}
-	brief := 0
-	for i, f := range p.Failing {
-		if f.Doc != DocBrief && f.Doc != DocPublic {
-			return RecordPlan{}, fmt.Errorf("failing[%d].doc %q is not brief or public", i, f.Doc)
-		}
-		if strings.TrimSpace(f.Chapter) == "" || strings.TrimSpace(f.Sentence) == "" || strings.TrimSpace(f.Evidence) == "" {
-			return RecordPlan{}, fmt.Errorf("failing[%d] needs its chapter, the sentence and the evidence", i)
-		}
-		if f.Doc == DocBrief {
-			// The same parse Apply reads the chapter through, so a verdict saved
-			// here is one --apply can write; the receipt keeps the file name.
-			name, err := chapterFile(f.Chapter)
-			if err != nil {
-				return RecordPlan{}, fmt.Errorf("failing[%d]: %w", i, err)
-			}
-			p.Failing[i].Chapter = name
-		}
-		if strings.TrimSpace(f.Disposition) == "" {
-			return RecordPlan{}, fmt.Errorf("failing[%d] carries no disposition", i)
-		}
-		if err := checkLine("sentence", f.Sentence); err != nil {
-			return RecordPlan{}, fmt.Errorf("failing[%d]: %w", i, err)
-		}
-		if err := checkLine("replacement", f.Replacement); err != nil {
-			return RecordPlan{}, fmt.Errorf("failing[%d]: %w", i, err)
-		}
-		if f.Replacement != "" && f.Replacement == f.Sentence {
-			return RecordPlan{}, fmt.Errorf("failing[%d].replacement must differ from the sentence", i)
-		}
-		if f.Doc == DocBrief {
-			brief++
-		}
-	}
-	if p.VerificationResult == "HOLD" && brief == 0 {
-		return RecordPlan{}, errors.New("a HOLD names no false brief sentence, so there is nothing to correct: a verdict with no confirmed brief sentence is PROMOTE")
-	}
-	if p.VerificationResult == "PROMOTE" && brief > 0 {
-		return RecordPlan{}, fmt.Errorf("a PROMOTE names %d false brief sentence(s), so the brief is not current: a verdict with a confirmed brief sentence is HOLD", brief)
+	p, err := decodePayload(raw)
+	if err != nil {
+		return RecordPlan{}, err
 	}
 	head, err := gitutil.ResolveCommit(root, "HEAD")
 	if err != nil {
