@@ -154,6 +154,7 @@ Out of scope: a practice run for commands that take no filled-in input
    - needs: none
    - packages: internal/core/ideate, internal/core/intent, internal/core/docfidelity, internal/surface/cli/ideate.go, internal/surface/cli/intent_prepass.go, internal/surface/cli/intent_consistency.go, internal/surface/cli/docfidelity.go, internal/surface/cli/cli.go, commands/ideate.md, commands/intent.md, commands/docs.md
    - tests: internal/surface/cli/dryrun_test.go, internal/core/ideate/plan_test.go, internal/core/intent/plan_test.go
+   - landed: c85f673ed4f6
 2. The release, reading, scribe, disembark and memory inputs
    - needs: 1
    - packages: internal/core/release, internal/core/reading, internal/core/scribe, internal/core/lifeboat, internal/core/memory, internal/surface/cli/ship.go, internal/surface/cli/reading.go, internal/surface/cli/scribe.go, internal/surface/cli/cli.go, commands/launch.md, commands/reading.md, commands/scribe.md, commands/disembark.md, commands/library.md
