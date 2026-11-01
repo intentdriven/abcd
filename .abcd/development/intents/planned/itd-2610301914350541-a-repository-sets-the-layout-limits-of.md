@@ -219,7 +219,7 @@ Technical, as one list:
   at the floor of every key, **then** every one is admitted whole, held by a
   test beside the one that holds them to the defaults today.
 - **Given** a `.abcd/config.json` the resolver cannot read (a symbolic link,
-  or not a regular file), **when** the hook judges an abcd question,
+  not a regular file, or one it cannot parse), **when** the hook judges an abcd question,
   **then** the question is checked at abcd's defaults and the gate says, in
   its `NOT CHECKED` form, that the file was not read, and `abcd guard
   question` exits 2 with a partial result naming the file.
@@ -443,8 +443,9 @@ provisional now.
    `layered` package exports the distinction the gate needs, an unreadable
    layer against a value it read and refused, so the hook can tell decision
    7's fail-closed path from this one without reading the error's words.
-   Reason: This is the guard's fail-open-loud contract for a store it cannot
-   read, and a machine file the account cannot vouch for is such a store
+   Reason: This is the guard's loud contract for a store it cannot read,
+   here holding the question to the defaults rather than failing open, and a
+   machine file the account cannot vouch for is such a store
    whatever keys it holds, because the stack reads both layers before it
    knows which keys either carries. The defaults are what the gate checked
    at before a file could set a limit, so a file that cannot be read never

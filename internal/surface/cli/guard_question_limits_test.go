@@ -718,14 +718,14 @@ func TestUnlabelledQuestionRunsUncheckedUnderARefusedValue(t *testing.T) {
 	mustRunSilently(t, stdout, stderr, code)
 }
 
-// TestHookFailsOpenOnASymlinkedConfig (itd-2610301914350541 decision 8,
+// TestHookChecksAtTheDefaultsOnASymlinkedConfig (itd-2610301914350541 decision 8,
 // approach 3): a .abcd/config.json the resolver will not read, here a
 // symbolic link, is an unread layer. abcd's question is still checked, at
 // abcd's defaults and not at the 40 rows the linked file sets: a well-built
 // question runs at exit 1 with the NOT CHECKED line naming the file, one that
 // breaks a rule is refused on it, and a 36-row tab is noted against the
 // default 32. Another tool's question runs with nothing said.
-func TestHookFailsOpenOnASymlinkedConfig(t *testing.T) {
+func TestHookChecksAtTheDefaultsOnASymlinkedConfig(t *testing.T) {
 	repo := unmanagedRepo(t)
 	target := filepath.Join(t.TempDir(), "config.json")
 	if err := os.WriteFile(target, []byte(`{"question":{"rows":40}}`), 0o644); err != nil {
