@@ -241,11 +241,12 @@ the hook runs, managed or not: the setup interview asks before a repository is
 managed, and the limits need no store. The limits are the resolver's
 (`layered.QuestionLimits`, itd-2610301914350541): `question.Default` with the
 rows, label words and description sentences the repository's
-`.abcd/config.json` sets under `question`, at the root the rules loader
+`.abcd/config.json` sets as `question.rows`, `question.label_words` and
+`question.description_sentences`, at the root the rules loader
 resolves rather than git's toplevel, each
 tightened where the person's own `~/.abcd.noindex/config.json` sets it lower.
 A value the resolver read and refused, outside its bounds, not a whole number,
-a key the `question` namespace does not claim, or a personal value looser than
+another key under the same namespace, or a personal value looser than
 the limit in force, refuses every abcd question with the host's deny, whatever
 the question holds and nothing falling through to the defaults: one head line,
 "Blocked by the abcd guard (question tool): a question limit in this
