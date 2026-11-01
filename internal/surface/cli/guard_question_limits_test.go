@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -11,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/mode"
 	"github.com/intentdriven/abcd/internal/core/question"
 	"github.com/intentdriven/abcd/internal/gittest"
@@ -624,4 +627,269 @@ func TestUnreadableQuestionPayloadFailsOpenAsAQuestion(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestHookDenyNamesTheRefusedKeyAndNoRule (itd-2610301914350541 decision 7):
+// a question value read and refused refuses every abcd question, however well
+// built, with a deny naming the key, the value, the bounds (or, for a personal
+// value that loosens, the limit in force and the file that set it), and the
+// file, and no asking rule, so the agent fixes the configuration rather than
+// redrafting. Nothing falls through to the defaults, and nothing is marked
+// open.
+func TestHookDenyNamesTheRefusedKeyAndNoRule(t *testing.T) {
+	cases := []struct {
+		name    string
+		repo    string
+		machine string
+		want    []string
+	}{
+		{name: "outside the bounds", repo: `{"question":{"rows":100}}`,
+			want: []string{".abcd/config.json (repo layer)", "question.rows is 100", "outside 24 to 60"}},
+		{name: "not a whole number", repo: `{"question":{"label_words":5.5}}`,
+			want: []string{".abcd/config.json (repo layer)", "question.label_words is 5.5", "4 to 8"}},
+		{name: "a key the namespace does not claim", repo: `{"question":{"options":3}}`,
+			want: []string{".abcd/config.json", "question.options"}},
+		{name: "a personal value that loosens", machine: `{"question":{"rows":40}}`,
+			want: []string{"~/.abcd.noindex/config.json (machine layer)", "question.rows is 40", "looser than 32 (bundled)"}},
+		{name: "a personal value looser than the repository's", repo: `{"question":{"rows":30}}`, machine: `{"question":{"rows":40}}`,
+			want: []string{"~/.abcd.noindex/config.json (machine layer)", "question.rows is 40", "looser than 30 (.abcd/config.json)"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root := managedCheckout(t)
+			if c.repo != "" {
+				writeRepoQuestionConfig(t, root, c.repo)
+			}
+			if c.machine != "" {
+				writeMachineQuestionConfig(t, c.machine)
+			}
+			stdout, stderr, code := runGuard(askPayload(t, root, wellBuilt()), "guard", "hook")
+			reason := mustDeny(t, stdout, stderr, code)
+			lines := strings.Split(reason, "\n")
+			if !strings.HasPrefix(lines[0], "Blocked by the abcd guard (question tool): a question limit in this repository's configuration is refused") {
+				t.Errorf("the head line must say a question limit is refused; reason:\n%s", reason)
+			}
+			for _, w := range c.want {
+				if !strings.Contains(reason, w) {
+					t.Errorf("the deny must name %q; reason:\n%s", w, reason)
+				}
+			}
+			for _, b := range question.Bounds {
+				if !strings.Contains(reason, b.Key+" takes "+b.String()) {
+					t.Errorf("the deny must state %s's bounds; reason:\n%s", b.Key, reason)
+				}
+			}
+			for _, ln := range lines {
+				if findingLineRe.MatchString(ln) {
+					t.Errorf("the deny must name no asking rule; it carries the finding line %q", ln)
+				}
+			}
+			if strings.Contains(reason, "break abcd's asking rules") {
+				t.Errorf("the deny must not read as an asking-rules refusal; reason:\n%s", reason)
+			}
+			if markedOpen(t, root) {
+				t.Error("a question refused on its configuration was marked open")
+			}
+		})
+	}
+}
+
+// TestUnlabelledQuestionRunsUncheckedUnderARefusedValue: a refused value
+// refuses only abcd's question. Another tool's question, one with no header in
+// abcd's grammar asked while the mode names nobody, runs unchecked and
+// unmarked whatever the configuration says, in a managed checkout and
+// elsewhere.
+func TestUnlabelledQuestionRunsUncheckedUnderARefusedValue(t *testing.T) {
+	foreign := hostQuestion{
+		Header:   "Pick a theme",
+		Question: "Which theme?",
+		Options:  []hostOption{{Label: "Dark (Recommended)"}, {Label: "Light"}},
+	}
+	root := managedCheckout(t)
+	writeRepoQuestionConfig(t, root, `{"question":{"rows":100}}`)
+	stdout, stderr, code := runGuard(askPayload(t, root, foreign), "guard", "hook")
+	mustRunSilently(t, stdout, stderr, code)
+	if markedOpen(t, root) {
+		t.Error("another tool's question was marked open")
+	}
+	repo := unmanagedRepo(t)
+	writeRepoQuestionConfig(t, repo, `{"question":{"rows":100}}`)
+	stdout, stderr, code = runGuard(askPayload(t, repo, foreign), "guard", "hook")
+	mustRunSilently(t, stdout, stderr, code)
+}
+
+// TestHookFailsOpenOnASymlinkedConfig (itd-2610301914350541 decision 8): a
+// .abcd/config.json the resolver will not read, here a symbolic link, is a
+// store the gate cannot read. abcd's question runs, unchecked even where it
+// breaks a rule, and the gate's NOT CHECKED line names the file; another
+// tool's question runs with nothing said.
+func TestHookFailsOpenOnASymlinkedConfig(t *testing.T) {
+	repo := unmanagedRepo(t)
+	target := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(target, []byte(`{"question":{"rows":40}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(repo, ".abcd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(repo, filepath.FromSlash(layered.Config.RepoRel))); err != nil {
+		t.Fatal(err)
+	}
+	broken := wellBuilt()
+	broken.Options[0].Label = "Role and number (Recommended)"
+	for _, q := range []hostQuestion{wellBuilt(), broken} {
+		stdout, stderr, code := runGuard(askPayload(t, repo, q), "guard", "hook")
+		line := mustFailOpen(t, stdout, stderr, code)
+		if !strings.Contains(line, ".abcd/config.json") || !strings.Contains(line, "question limits were not read") {
+			t.Errorf("the fail-open line must name the unread file and the limits; line = %q", line)
+		}
+	}
+	foreign := hostQuestion{Header: "Pick a theme", Question: "Which theme?", Options: []hostOption{{Label: "Dark"}, {Label: "Light"}}}
+	stdout, stderr, code := runGuard(askPayload(t, repo, foreign), "guard", "hook")
+	mustRunSilently(t, stdout, stderr, code)
+}
+
+// TestHookNamesAnUnreadMachineConfig (itd-2610301914350541 decision 8): a
+// ~/.abcd.noindex/config.json the account cannot vouch for, here writable by
+// others, is unread whatever keys it holds, even none under question: abcd's
+// question runs and the gate names that file. A symlinked ~/.abcd.noindex
+// holding no config.json reads as absent: the limits are the defaults and
+// nothing is said.
+func TestHookNamesAnUnreadMachineConfig(t *testing.T) {
+	t.Run("writable by others", func(t *testing.T) {
+		repo := unmanagedRepo(t)
+		p := writeMachineQuestionConfig(t, `{}`)
+		if err := os.Chmod(p, 0o666); err != nil {
+			t.Fatal(err)
+		}
+		stdout, stderr, code := runGuard(askPayload(t, repo, wellBuilt()), "guard", "hook")
+		line := mustFailOpen(t, stdout, stderr, code)
+		if !strings.Contains(line, "~/.abcd.noindex/config.json") {
+			t.Errorf("the fail-open line must name the machine file; line = %q", line)
+		}
+	})
+	t.Run("a symlinked home with no config.json", func(t *testing.T) {
+		repo := unmanagedRepo(t)
+		if err := os.Symlink(t.TempDir(), abcdhome.Path(os.Getenv("HOME"))); err != nil {
+			t.Fatal(err)
+		}
+		stdout, stderr, code := runGuard(askPayload(t, repo, wellBuilt()), "guard", "hook")
+		mustRunSilently(t, stdout, stderr, code)
+	})
+	t.Run("a symlinked home holding config.json", func(t *testing.T) {
+		repo := unmanagedRepo(t)
+		dotfiles := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dotfiles, filepath.FromSlash(layered.Config.MachineRel)), []byte(`{}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(dotfiles, abcdhome.Path(os.Getenv("HOME"))); err != nil {
+			t.Fatal(err)
+		}
+		stdout, stderr, code := runGuard(askPayload(t, repo, wellBuilt()), "guard", "hook")
+		line := mustFailOpen(t, stdout, stderr, code)
+		if !strings.Contains(line, "~/.abcd.noindex") {
+			t.Errorf("the fail-open line must name the machine layer; line = %q", line)
+		}
+	})
+}
+
+// Fixtures for the hook's read of the question limits a repository sets
+// (itd-2610301914350541, spc-2610301950037469 step 2): the repository's
+// .abcd/config.json and the person's own ~/.abcd.noindex/config.json, and a
+// question of an exact height.
+
+// writeRepoQuestionConfig writes body as the repository's .abcd/config.json.
+func writeRepoQuestionConfig(t *testing.T, repo, body string) string {
+	t.Helper()
+	p := filepath.Join(repo, filepath.FromSlash(layered.Config.RepoRel))
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// writeMachineQuestionConfig writes body as the person's own
+// ~/.abcd.noindex/config.json under the sandboxed HOME, owner-only, as the
+// home-declaration guard reads it.
+func writeMachineQuestionConfig(t *testing.T, body string) string {
+	t.Helper()
+	dir := abcdhome.Path(os.Getenv("HOME"))
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(dir, filepath.FromSlash(layered.Config.MachineRel))
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// rowsOfRe reads the estimate a rows finding names.
+var rowsOfRe = regexp.MustCompile(`^([0-9]+) rows:`)
+
+// rowsOf is the rows the check estimates q takes, read from the rows finding
+// it names at a limit of one row, so the test measures with the check's own
+// estimate and never a copy of it.
+func rowsOf(t *testing.T, q hostQuestion) int {
+	t.Helper()
+	tab := question.Tab{Header: q.Header, Text: q.Question}
+	for _, o := range q.Options {
+		tab.Options = append(tab.Options, question.Choice{Label: o.Label, Description: o.Description})
+	}
+	one := question.Bounded(question.Default, 1, question.Default.Configurable()[1], question.Default.Configurable()[2])
+	for _, f := range question.CheckLimits(question.Fields{Tabs: []question.Tab{tab}}, one, question.Addressee{Person: question.Unnamed}) {
+		if f.Rule == question.RuleRows {
+			m := rowsOfRe.FindStringSubmatch(f.Value)
+			if m == nil {
+				t.Fatalf("the rows finding's value is not in its form: %q", f.Value)
+			}
+			n, _ := strconv.Atoi(m[1])
+			return n
+		}
+	}
+	t.Fatal("no rows finding at a limit of one row")
+	return 0
+}
+
+// questionOfRows is wellBuilt grown, one short line of material at a time, to
+// exactly rows rows, every other rule holding.
+func questionOfRows(t *testing.T, rows int) hostQuestion {
+	t.Helper()
+	q := wellBuilt()
+	base := q.Question
+	var more []string
+	for rowsOf(t, q) < rows {
+		more = append(more, fmt.Sprintf("Line %d of the material is short.", len(more)+1))
+		q.Question = strings.Join(more, "\n") + "\n\n" + base
+	}
+	if got := rowsOf(t, q); got != rows {
+		t.Fatalf("precondition: the fixture is %d rows, want %d", got, rows)
+	}
+	return q
+}
+
+// mustRunSilently asserts the hook admitted the call with nothing to say:
+// exit 0 and nothing on either stream.
+func mustRunSilently(t *testing.T, stdout, stderr string, code int) {
+	t.Helper()
+	if code != 0 || stdout != "" || stderr != "" {
+		t.Fatalf("want the question admitted with nothing said; code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+}
+
+// mustFailOpen asserts the gate's fail-open-loud form (questionFailOpen):
+// exit 1, nothing on stdout, and the NOT CHECKED line on stderr, which it
+// returns.
+func mustFailOpen(t *testing.T, stdout, stderr string, code int) string {
+	t.Helper()
+	if code != 1 || stdout != "" {
+		t.Fatalf("want the gate's fail-open (exit 1, nothing on stdout); code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if !strings.HasPrefix(stderr, "abcd guard: NOT CHECKED — ") || !strings.HasSuffix(stderr, " The question runs UNGATED.\n") {
+		t.Fatalf("the fail-open line is not questionFailOpen's form: %q", stderr)
+	}
+	return stderr
 }

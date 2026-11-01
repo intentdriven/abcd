@@ -220,9 +220,29 @@ another tool's (itd-201 decision 10; spc-2610030944505997, open question 1,
 decided (a)), and the compensating control is the interview pages teaching the
 chip.
 
-abcd's question is held to the field limits (`question.CheckLimits` over
-`question.Default`) wherever the hook runs, managed or not: the setup interview
-asks before a repository is managed, and the limits need no store. The
+abcd's question is held to the field limits (`question.CheckLimits`) wherever
+the hook runs, managed or not: the setup interview asks before a repository is
+managed, and the limits need no store. The limits are the resolver's
+(`layered.QuestionLimits`, itd-2610301914350541): `question.Default` with the
+rows, label words and description sentences the repository's
+`.abcd/config.json` sets under `question`, at the root the rules loader
+resolves rather than git's toplevel, each
+tightened where the person's own `~/.abcd.noindex/config.json` sets it lower.
+A value the resolver read and refused, outside its bounds, not a whole number,
+a key the `question` namespace does not claim, or a personal value looser than
+the limit in force, refuses every abcd question with the host's deny, whatever
+the question holds and nothing falling through to the defaults: one head line,
+"Blocked by the abcd guard (question tool): a question limit in this
+repository's configuration is refused, so abcd asks no question until it is
+fixed.", the resolver's refusal naming the file, the key, the value and the
+bounds (or the limit in force and the file that set it), and one line stating
+every key's bounds from `question.Bounds`. It names no asking rule, so the
+agent fixes the file rather than redrafting the question, and nothing is marked
+open. A layer the resolver could not read, a `.abcd/config.json` that is a
+symlink or not a regular file, or a `~/.abcd.noindex/config.json` the account
+cannot vouch for, is the fail-open-loud case: abcd's question runs, unchecked,
+exit 1, with one `NOT CHECKED` line naming the file. Another tool's question
+runs unchecked whatever either file says. The
 addressee the product thinker's register rule reads is each tab's chip role
 for a chipped question, since the mode the gate then sets follows the chip,
 and the mode's for a question without a chip; the binary's verb list

@@ -109,7 +109,18 @@ the number of questions and options, each label's words and each meaning's
 sentences, the decide-later option, no bold and no recommended mark, the `Now:`
 and `Change later:` lines, the thing quoted before the question, the rows it
 takes, and no side preview (the host hides every option's description while a
-preview shows, so the meaning goes in the description). A question that breaks any of them is refused with the host's
+preview shows, so the meaning goes in the description). Three of those limits are
+the repository's to set: `question.rows` (24 to 60, 32 by default),
+`question.label_words` (4 to 8, 5 by default) and
+`question.description_sentences` (2 to 4, 2 by default) in `.abcd/config.json`,
+and a person's own `~/.abcd.noindex/config.json` may set each only lower. The
+hook holds abcd's question to the limits in force there. A value outside its
+bounds, not a whole number, under any other `question` key, or set in the
+person's own file looser than the limit in force refuses every abcd question,
+naming the file, the key, the value and the bounds and no asking rule, until
+the file is fixed; a file the hook cannot read, such as a symlinked
+`.abcd/config.json`, lets abcd's question run unchecked with a loud
+`NOT CHECKED` line naming it. A question that breaks any of them is refused with the host's
 deny, whose reason is one head line, "Blocked by the abcd guard (question tool): N part(s)
 of this question break abcd's asking rules; fix each and ask again.", then one
 line per part naming the tab, the part, the value, the limit and the remedy, so

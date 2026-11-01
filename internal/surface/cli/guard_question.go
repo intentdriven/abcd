@@ -9,6 +9,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/autonomy"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/mode"
 	"github.com/intentdriven/abcd/internal/core/question"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -86,6 +87,19 @@ func isQuestionTool(name string) bool {
 // names whom the question on screen is for. A store or marker the gate cannot
 // read or write is not a decision: the question runs and the gate says so, the
 // guard's fail-open-loud contract.
+//
+// The limits abcd's question is held to are the repository's
+// (itd-2610301914350541): the resolver, layered.QuestionLimits, reads the
+// three question keys of .abcd/config.json at the rules root over
+// question.Default, tightened where the person's own
+// ~/.abcd.noindex/config.json sets one lower. A value it read and refused
+// (outside its bounds, not a whole number, a key the namespace does not
+// claim, or a personal value looser than the limit in force) refuses every
+// abcd question naming the key, the value, the bounds or the limit in force,
+// and the file, and no asking rule (limitsRefusedReason): nothing falls
+// through to the defaults. A layer it could not read is the fail-open-loud
+// case: the question runs, unchecked, and the gate names the file. Another
+// tool's question runs unchecked whatever either file says.
 func questionGate(cmd *cobra.Command, cwd string, raw json.RawMessage) error {
 	away, unread := awayAtQuestion(cwd)
 	if away {
@@ -171,7 +185,12 @@ func presentQuestionGate(cmd *cobra.Command, cwd string, raw json.RawMessage) er
 			return questionFailOpen(stderr, "the mode store could not be read (%s)", err)
 		}
 	}
-	chip := hasAbcdChip(fields)
+	// The limits are resolved before the question is known to be abcd's,
+	// since the chip grammar is read through them, but their outcome is acted
+	// on only for abcd's question: another tool's runs unchecked whatever the
+	// configuration says.
+	limits, lerr := questionLimitsAt(cwd)
+	chip := hasAbcdChip(fields, limits)
 	if !chip && st == mode.Managed {
 		// A question without a chip is abcd's only through the mode store,
 		// found through git's toplevel. In a tree that looks like a checkout
@@ -185,6 +204,18 @@ func presentQuestionGate(cmd *cobra.Command, cwd string, raw json.RawMessage) er
 		return nil
 	}
 
+	if lerr != nil {
+		var unread *layered.UnreadError
+		if errors.As(lerr, &unread) {
+			return questionFailOpen(stderr, "the question limits were not read, so the question was not held to them (%s)", lerr)
+		}
+		why := ""
+		if !chip {
+			why = modeMadeAbcds(st)
+		}
+		return denyCall(limitsRefusedReason(lerr, why))
+	}
+
 	// A chip names the addressee of its own tab, and the mode the gate sets
 	// follows the chip, so a chipped question is checked against its chips
 	// and not against a mode it is about to replace.
@@ -192,7 +223,7 @@ func presentQuestionGate(cmd *cobra.Command, cwd string, raw json.RawMessage) er
 	if chip {
 		who = question.Unnamed
 	}
-	findings := question.CheckLimits(fields, question.Default, question.Addressee{
+	findings := question.CheckLimits(fields, limits, question.Addressee{
 		Person: who,
 		Verbs:  verbsOf(cmd.Root()),
 	})
@@ -212,7 +243,7 @@ func presentQuestionGate(cmd *cobra.Command, cwd string, raw json.RawMessage) er
 	if badge {
 		want := st
 		if chip {
-			want = chipState(fields)
+			want = chipState(fields, limits)
 		}
 		// The marker first: a marker written for a mode that then could not
 		// be set costs one reset to managed on the answer, while a mode set
@@ -245,10 +276,10 @@ func presentQuestionGate(cmd *cobra.Command, cwd string, raw json.RawMessage) er
 // the how of the work, the facilitator's half, never the what. A call whose
 // tabs name both people sets the product thinker, so the status line never
 // says only the facilitator is owed an answer the product thinker owes too.
-func chipState(f question.Fields) mode.State {
+func chipState(f question.Fields, l question.Limits) mode.State {
 	st := mode.Facilitator
 	for _, t := range f.Tabs {
-		if role, ok := question.ChipRole(t.Header, question.Default); ok && chipRoleState(role) == mode.ProductThinker {
+		if role, ok := question.ChipRole(t.Header, l); ok && chipRoleState(role) == mode.ProductThinker {
 			st = mode.ProductThinker
 		}
 	}
@@ -339,10 +370,12 @@ func decodeQuestions(raw json.RawMessage) (question.Fields, error) {
 	return f, nil
 }
 
-// hasAbcdChip reports whether any tab's header is in abcd's chip grammar.
-func hasAbcdChip(f question.Fields) bool {
+// hasAbcdChip reports whether any tab's header is in abcd's chip grammar, read
+// through l (whose header width and role words are the binary's and no
+// repository sets, itd-2610301914350541 decision 2).
+func hasAbcdChip(f question.Fields, l question.Limits) bool {
 	for _, t := range f.Tabs {
-		if _, ok := question.ChipRole(t.Header, question.Default); ok {
+		if _, ok := question.ChipRole(t.Header, l); ok {
 			return true
 		}
 	}
@@ -441,6 +474,59 @@ func writeLimitsRefusal(w io.Writer, findings []question.Finding, why string) {
 // rowsNotRefusingLine opens the rows findings a refusal names but does not
 // refuse on.
 const rowsNotRefusingLine = "The rows limit does not refuse on its own: with only the rows finding(s) below, this question would have been shown, and a narrow window might cut it."
+
+// questionLimitsAt is the question limits in force for the repository
+// holding cwd, through the one resolver (layered.QuestionLimits) at the root
+// the rules loader resolves, so the gate and the injected GRILL domain read
+// one file (itd-2610301914350541 decision 6). The mode store keeps its own
+// root (mode.Root, git's toplevel); in a monorepo member with its own .abcd/
+// the two differ, and the limits follow the rules root.
+//
+// The limits returned are always usable for the header grammar: on an unread
+// layer they are the defaults, as the resolver returns them, and on a refusal
+// they are the defaults too, since a refused value is never applied (the
+// question is refused before any limit is checked) and the chip grammar the
+// gate reads them for is the binary's alone.
+func questionLimitsAt(cwd string) (question.Limits, error) {
+	roots, _ := layered.RootsFor(cwd)
+	v, err := layered.QuestionLimits(roots)
+	var unread *layered.UnreadError
+	if err != nil && !errors.As(err, &unread) {
+		grammar := question.Default
+		return grammar, err
+	}
+	return v.V, err
+}
+
+// limitsRefusedReason is the deny for abcd's question while a question limit
+// is refused (itd-2610301914350541 decision 7): one head line saying abcd
+// asks nothing until the file is fixed, then, when why is set, the line
+// saying why a question without abcd's chip is abcd's, the resolver's own
+// refusal naming the file, the key, the value and the bounds (or, for a
+// personal value that loosens, the limit in force and the file that set it),
+// and one line stating every key's bounds from question.Bounds. It names no
+// asking rule, so the agent fixes the configuration rather than redrafting a
+// question that may be well built.
+func limitsRefusedReason(err error, why string) string {
+	var b strings.Builder
+	b.WriteString("Blocked by the abcd guard (question tool): a question limit in this repository's configuration is refused, so abcd asks no question until it is fixed.\n")
+	if why != "" {
+		b.WriteString(why + "\n")
+	}
+	b.WriteString(termsafe.Sanitize(scrubPaths(err)) + "\n")
+	b.WriteString("Fix the value in that file and ask again: " + boundsLine() + ", and a person's own ~/.abcd.noindex/config.json may set each only lower than the limit otherwise in force.")
+	return b.String()
+}
+
+// boundsLine states each configurable key's bounds, rendered from
+// question.Bounds, the one statement of them.
+func boundsLine() string {
+	parts := make([]string, len(question.Bounds))
+	for i, b := range question.Bounds {
+		parts[i] = b.Key + " takes " + b.String()
+	}
+	return strings.Join(parts, ", ")
+}
 
 // questionFailOpen is the gate's failOpen: exit 1, which lets the question run
 // and keeps the warning in front of a human.
