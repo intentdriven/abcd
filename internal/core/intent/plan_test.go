@@ -135,3 +135,57 @@ func TestPlanVerdictIngestRefusesAsTheIngestDoes(t *testing.T) {
 		t.Fatalf("plan refuses as %v, the ingest as %v", perr, ierr)
 	}
 }
+
+// TestPlanVerdictIngestLinksTheOpenCarrierOfAReIngest: a failing verdict
+// ingested once leaves an open issue carrying its owed check; planning the
+// same bytes again links that issue, as the ingest's filer would, so the plan
+// is the ingest's noop with nothing written and nothing asked of the ledger.
+// With no carrier open the plan keeps the id the ledger would mint.
+func TestPlanVerdictIngestLinksTheOpenCarrierOfAReIngest(t *testing.T) {
+	f := withFakeAuditLedger(t)
+	prevLookup := auditOwedCarriers
+	SetAuditCarrierLookup(func(o AuditOwed) ([]string, error) {
+		if id, ok := f.open[o.ReceiptID]; ok {
+			return []string{id}, nil
+		}
+		return nil, nil
+	})
+	t.Cleanup(func() { auditOwedCarriers = prevLookup })
+	root := t.TempDir()
+	rcp := shipOne(t, root)
+	raw, err := os.ReadFile(writeVerdict(t, root, verdictWith(t, rcp, "NOT_MET")))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := PlanVerdictIngest(root, raw)
+	if err != nil {
+		t.Fatalf("PlanVerdictIngest: %v", err)
+	}
+	if first.Result.Status != "ingested" || first.Result.OwedIssue != "iss-"+dryrun.MintedID || first.Result.OwedIssueLinked ||
+		len(first.Plan.Writes) != 1 || first.Plan.Writes[0].Pending == "" {
+		t.Fatalf("a first failing verdict must plan a filing with the minted id pending: %+v", first)
+	}
+	if _, err := IngestVerdictBytes(root, raw); err != nil {
+		t.Fatalf("ingest: %v", err)
+	}
+	filed := len(f.filed)
+
+	before := prepassTree(t, root)
+	again, err := PlanVerdictIngest(root, raw)
+	if err != nil {
+		t.Fatalf("PlanVerdictIngest again: %v", err)
+	}
+	planTreeUnchanged(t, root, before)
+	if len(f.filed) != filed {
+		t.Fatal("the plan must not ask the ledger to file")
+	}
+	if again.Result.Status != "noop" || again.Result.OwedIssue != f.nextID || !again.Result.OwedIssueLinked ||
+		len(again.Plan.Writes) != 0 || len(again.Plan.Effects) != 0 {
+		t.Fatalf("a re-ingest of the same failing verdict must plan the ingest's noop linking %s: %+v", f.nextID, again)
+	}
+	res, err := IngestVerdictBytes(root, raw)
+	if err != nil || res.Status != again.Result.Status || res.OwedIssue != again.Result.OwedIssue || res.OwedIssueLinked != again.Result.OwedIssueLinked {
+		t.Fatalf("the ingest = %+v (%v), the plan = %+v", res, err, again.Result)
+	}
+}

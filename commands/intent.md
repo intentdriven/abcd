@@ -926,7 +926,9 @@ the input is judged through the same validator the real run uses, and the run
 prints what it would write (each path, created or replaced, and its size) and
 what it would ask the issue ledger to do, or the refusal the real run would give,
 in the same words and with the same exit 2. Nothing is written anywhere. A record
-the ledger would file is named with `<id>` where its minted id goes. With
+the ledger would file is named with `<id>` where its minted id goes, and an open
+issue it would link instead (the one already carrying an owed audit check) is
+named by its own id, so a re-ingest the real run leaves unchanged plans nothing. With
 `--json` the usual result carries `"dry_run": true`, `would_write` and
 `would_do`. A verdict the ingest would quarantine plans the quarantine.
 

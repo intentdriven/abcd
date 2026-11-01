@@ -967,11 +967,13 @@ type VerdictIngestPlan struct {
 // 2610301431131636): the receipt is resolved, the verdict judged against the
 // record under the store's lock, and the block composed, through the same
 // functions the ingest runs, and the writes they would make are returned
-// rather than made. The ledger is not asked: what the ingest would ask it to
-// file or resolve is reported as an effect, and an owed check's issue id,
-// which the ledger mints or links at the write, is reported as
-// dryrun.MintedID. A payload the ingest would refuse is refused here in the
-// same words; one it would quarantine plans the quarantine.
+// rather than made. The ledger is not asked to file or resolve anything: what
+// the ingest would ask of it is reported as an effect. An owed check's issue
+// id is the open carrier the ledger would link, read through its read-only
+// lookup (SetAuditCarrierLookup) with this store's lock released as the
+// ingest asks the filer, or dryrun.MintedID where the ledger would mint one.
+// A payload the ingest would refuse is refused here in the same words; one it
+// would quarantine plans the quarantine.
 func PlanVerdictIngest(repoRoot string, raw []byte) (VerdictIngestPlan, error) {
 	rcp, err := verdictReceipt(raw)
 	if err != nil {
@@ -980,21 +982,7 @@ func PlanVerdictIngest(repoRoot string, raw []byte) (VerdictIngestPlan, error) {
 	var res IngestVerdictResult
 	var writes []auditWrite
 	var pv owedPreview
-	plan := func() error {
-		var err error
-		if pv, err = previewOwed(repoRoot, raw, rcp); err != nil {
-			return err
-		}
-		lg := auditLedgerOutcome{}
-		if pv.owed != nil && auditOwedFiler != nil {
-			lg.issue = "iss-" + dryrun.MintedID
-		}
-		if pv.clearRcp != "" && auditOwedClearer != nil {
-			lg.cleared = pv.clearIss
-		}
-		res, writes, err = planLocked(repoRoot, raw, rcp, lg)
-		return err
-	}
+	var extras []string
 	// The ingest takes the lock only where the store exists, because taking
 	// it creates the store; the plan follows it, so it creates nothing.
 	if _, err := os.Lstat(filepath.Join(repoRoot, IntentsRelDir)); errors.Is(err, fs.ErrNotExist) {
@@ -1002,8 +990,25 @@ func PlanVerdictIngest(repoRoot string, raw []byte) (VerdictIngestPlan, error) {
 		if err != nil {
 			return VerdictIngestPlan{}, err
 		}
-	} else if err := withIntentMintLock(repoRoot, plan); err != nil {
-		return VerdictIngestPlan{}, err
+	} else {
+		if err := withIntentMintLock(repoRoot, func() error {
+			var err error
+			pv, err = previewOwed(repoRoot, raw, rcp)
+			return err
+		}); err != nil {
+			return VerdictIngestPlan{}, err
+		}
+		var lg auditLedgerOutcome
+		if lg, extras, err = planAuditLedger(repoRoot, pv); err != nil {
+			return VerdictIngestPlan{}, err
+		}
+		if err := withIntentMintLock(repoRoot, func() error {
+			var err error
+			res, writes, err = planLocked(repoRoot, raw, rcp, lg)
+			return err
+		}); err != nil {
+			return VerdictIngestPlan{}, err
+		}
 	}
 	var p dryrun.Plan
 	for _, w := range writes {
@@ -1012,13 +1017,22 @@ func PlanVerdictIngest(repoRoot string, raw []byte) (VerdictIngestPlan, error) {
 			action = dryrun.Create
 		}
 		pw := dryrun.Write{Path: filepath.ToSlash(w.rel), Action: action, Bytes: len(w.data), Content: w.data}
-		if w.intent && res.OwedIssue != "" {
+		if w.intent && res.OwedIssue != "" && !res.OwedIssueLinked {
 			pw.Pending = "the owed check's issue id is set by the ledger at the write"
 		}
 		p.Writes = append(p.Writes, pw)
 	}
+	// The filer runs before the record is judged afresh, so the duplicates it
+	// declines are declined whether or not the record changes.
+	for _, id := range extras {
+		p.Effects = append(p.Effects, dryrun.Effect{
+			Effect: "decline as a duplicate of " + res.OwedIssue + ", the open issue carrying the same owed check", Target: id})
+	}
 	switch {
 	case res.Status != "ingested":
+	case pv.owed != nil && auditOwedFiler != nil && res.OwedIssueLinked:
+		p.Effects = append(p.Effects, dryrun.Effect{
+			Effect: "link the open issue already carrying the owed check", Target: res.OwedIssue})
 	case pv.owed != nil && auditOwedFiler != nil:
 		p.Effects = append(p.Effects, dryrun.Effect{
 			Effect: "file the owed check in the issue ledger, or link the open issue already carrying it",
@@ -1030,6 +1044,31 @@ func PlanVerdictIngest(repoRoot string, raw []byte) (VerdictIngestPlan, error) {
 			Effect: "resolve any open issue still carrying the owed check (none may be open)", Target: pv.clearItd + " " + pv.clearRcp})
 	}
 	return VerdictIngestPlan{Result: res, Plan: p}, nil
+}
+
+// planAuditLedger is askAuditLedger as a practice run, called with the intent
+// store's lock released as that is: the ledger outcome the ingest would write
+// with, and the extra open carriers the filer would decline as duplicates. An
+// owed check an open issue already carries is linked to it, the oldest first
+// as the filer links; with none open, or no lookup linked, the ledger would
+// mint the id at the write.
+func planAuditLedger(repoRoot string, pv owedPreview) (auditLedgerOutcome, []string, error) {
+	switch {
+	case pv.owed != nil && auditOwedFiler != nil:
+		if auditOwedCarriers != nil {
+			carriers, err := auditOwedCarriers(*pv.owed)
+			if err != nil {
+				return auditLedgerOutcome{}, nil, fmt.Errorf("intent: the audit of %s leaves a check owed and the ledger could not be read for the issue carrying it: %w", pv.owed.IntentID, err)
+			}
+			if len(carriers) > 0 {
+				return auditLedgerOutcome{issue: carriers[0], linked: true}, carriers[1:], nil
+			}
+		}
+		return auditLedgerOutcome{issue: "iss-" + dryrun.MintedID}, nil, nil
+	case pv.clearRcp != "" && auditOwedClearer != nil:
+		return auditLedgerOutcome{cleared: pv.clearIss}, nil, nil
+	}
+	return auditLedgerOutcome{}, nil, nil
 }
 
 // owedPreview is what the first hold of the lock judged: the owed check a
