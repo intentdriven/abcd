@@ -20,7 +20,13 @@
     "hook": true
   },
   "readme": {
-    "parts": []
+    "parts": [
+      "release-badge",
+      "build-badge",
+      "abcd-badge",
+      "licence",
+      "links"
+    ]
   },
   "release": {
     "digest": "internal/core/releasedigest/digest.json"

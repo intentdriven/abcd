@@ -745,9 +745,37 @@ match its hash was edited by hand: setup names it and its line
 writes the others. Two marks for one part, or a mark with no partner, leaves
 the whole file as it is and names the line. A new part goes beside the nearest
 part already there, else after a leading frontmatter block, else after the
-first level-one heading, else at the top. Marks shown inside a code block, as
-above, are not read as a part. A project with no `README.md` gets one holding
-only the chosen parts, with no title and no prose.
+first level-one heading, a `# ` line or an HTML `<h1>` line, else at the top.
+Marks shown inside a code block, as above, are not read as a part. A project
+with no `README.md` gets one holding only the chosen parts, with no title and
+no prose.
+
+### Parts inside an HTML header
+
+A part whose opening mark sits inside an HTML block, such as a centred header
+written in `<p>` or `<div>` tags with no blank line before the mark, is written
+as HTML, because the forge shows Markdown there as plain text. A badge is one
+`<a>` around one `<img>`; the licence, the links and the contents are each one
+line of links joined by a middle dot, with short labels (`MIT licence`,
+`Contributing`, `Security`), and the contents lists the level-two headings
+only. Anywhere else a part is written as the table above says. There is no
+setting for it: where you put the marks decides. To put parts in a header, write
+each part's two marks where you want it, with nothing between them and the
+hash of the empty text (`e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`)
+in the opening mark, then run setup:
+
+```html
+<p>
+<!-- BEGIN ABCD:release-badge sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 -->
+<!-- END ABCD:release-badge -->
+<img src="https://img.shields.io/badge/Go-1.26-00ADD8" alt="Go 1.26">
+</p>
+```
+
+A new part placed beside such a part goes on the line next to it, with no
+blank line, so it joins the same row; a part setup takes out leaves no blank
+line behind. A blank line ends an HTML block, so a mark after one is written
+as Markdown again.
 
 ### The question
 

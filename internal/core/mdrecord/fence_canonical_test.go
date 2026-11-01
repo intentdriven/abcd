@@ -35,7 +35,7 @@ var fenceWriters = map[string]fenceWriter{
 	"internal/core/glossary/index.go":               {2, "a WRITER: renderLayout wraps the generated layout tree in one fence; it reads no fences"},
 	"internal/core/history/reconstruct_render.go":   {1, "a WRITER: writeFenced opens a fence longer than any backtick run in the body, the floor of three; it reads no fences"},
 	"internal/core/implement/loop/brief.go":         {2, "a WRITER: the lane brief shows the receipt's shape inside one json fence, before any record body it quotes; it reads no fences"},
-	"internal/core/implement/loop/issuebrief.go":    {2, "a WRITER: the issue lane brief shows the receipt's shape inside one json fence, before any record body it quotes; it reads no fences"},
+	"internal/core/implement/loop/issuebrief.go":    {4, "a WRITER: the issue lane brief shows the widen command inside one sh fence and the receipt's shape inside one json fence, each before or after the record body it quotes, never inside it; it reads no fences"},
 	"internal/core/interview/written.go":            {1, "a WRITER: an AI-written interview's turn brief shows the question's shape, the seed and the answers inside four-backtick json fences, every backtick in the JSON escaped; it reads no fences"},
 	"internal/core/lifeboat/sources_conventions.go": {3, "judges one line or the whole text: a README prose measure skips a delimiter line, and a presence test asks whether any fence exists; neither tracks which lines a fence covers"},
 	"internal/core/reading/project.go":              {2, "fenceDelimiterRe judges one frontmatter line and refuses it; which lines a fence covers is floorFences, which reads mdrecord"},

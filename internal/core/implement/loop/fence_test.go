@@ -22,7 +22,7 @@ func fenceMarkers(s string) (open, close int) {
 func TestQuotedTextCannotCloseItsFence(t *testing.T) {
 	st := State{RunID: "run-1", Key: "iss-2609300000000101"}
 	lane := Lane{ID: "lane-1", Branch: "build/x", BaseSHA: strings.Repeat("a", 40), Worktree: "wt"}
-	brief := string(renderIssueBrief(st, lane, "lane-dir", issueBriefSources{
+	brief := string(renderIssueBrief(st, lane, "repo-root", "lane-dir", issueBriefSources{
 		issuePath: "issue.md", issueText: forgedClose, remedy: forgedClose,
 		conventions: forgedClose, conventionsFrom: "the whole file",
 	}))

@@ -1360,11 +1360,22 @@ the build badge's image with the forge's `branch` and `event` keys), the
 outbound scrub (`scanner.ScrubOutbound`), and the project's own docs-lint bans
 where it keeps `.abcd/docs-lint.json`; a part failing any one, or one that
 cannot be derived, is left out with the reason in the notes, and the derivation
-imports no network package. The write keeps a current part, rewrites a stale
-one where it stands, places an absent one beside the nearest present part, else
-after a leading frontmatter block, else after the first live level-one heading,
-else at the top, and removes one no longer chosen, or no longer derivable,
-whose body still matches its hash. A part whose body does not match its hash
+imports no network package. Each part is derived in two forms, both passing
+the checks: the block form above, and an inline form for a place inside an HTML
+block, where the forge renders no Markdown: a badge as one `<a>` around one
+`<img>`, and the licence, the links and the contents each as one line of HTML
+links joined by a spaced middle dot, with short labels, the contents listing
+level-two headings only, every text and attribute HTML-escaped. Which form a
+part takes is decided by where it stands, with no setting: a part whose opening
+fence continues an open block-level HTML block (CommonMark types 6 and 7, which
+run to the next blank line) is inline, any other is a block. The write keeps a
+current part, rewrites a stale one where it stands in the form its place takes,
+places an absent one beside the nearest present part (on the next line with no
+blank line, in the inline form, when that part is inline), else after a leading
+frontmatter block, else after the first live level-one heading, a Markdown `# `
+line or an HTML `<h1>` line, else at the top, and removes one no longer chosen,
+or no longer derivable, whose body still matches its hash, an inline one leaving
+no blank line in its block. A part whose body does not match its hash
 was edited by hand and is named with its line and left; a duplicated or
 unclosed fence refuses the whole write, naming the line. A run in which every
 part is current writes nothing, so the file's bytes and modification time are

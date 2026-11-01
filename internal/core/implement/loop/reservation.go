@@ -804,15 +804,21 @@ func reserveResumed(repoRoot string, res *StartResult, o Options) error {
 // written (a spec's packages line that gained a path) is reserved with it,
 // so the widening is published and judged for overlap like any reservation,
 // with the tip's term, so a widening resume never cuts the fence's day either.
-// An issue's tip that lies within its record's footprint, while its lane is
-// at its landing (landing), is the narrowing of that landing (narrow.go),
-// renewed as it stands, never read as a widening; anywhere short of the
-// landing nothing has narrowed it, so a tip narrower than the found_at is a
-// found_at widened mid-run, and is widened like an intent's.
+// An issue's tip, while its lane is at its landing (landing), is the
+// narrowing of that landing (narrow.go) to the files the lane changed, a
+// path it widened to beyond its found_at before an edit (widen.go) among
+// them, renewed as it stands, never read as a widening: no implementer edits
+// at the landing, and a lane leaving it for a fresh round reserves its
+// found_at again (reserveOnLeavingLand). Anywhere short of the landing
+// nothing has narrowed it, so a tip narrower than the found_at is a found_at
+// widened mid-run, and is widened like an intent's.
 // A renewal the fetched tip shows the view was stale for (the reservation
 // gone, released by a tombstone, or moved to this person's other copy)
 // falls back to the reservation any other resume makes: a reserve with the
-// record's footprint, --take-over passed through.
+// record's footprint, --take-over passed through. For an issue whose tip
+// this copy holds, live or lapsed, that footprint is the found_at with the
+// tip's paths beside it, so a path the lane widened to (widen.go) is never
+// dropped by a widening, a revival or a fallback.
 func reserveAgain(repoRoot, key string, fp []string, takeOver, landing bool, stage string, now time.Time) (reserved, error) {
 	plain := claim.Request{Footprint: fp, TakeOver: takeOver}
 	snap, err := claim.View(repoRoot, now)
@@ -820,15 +826,23 @@ func reserveAgain(repoRoot, key string, fp []string, takeOver, landing bool, sta
 		return reserveKey(repoRoot, key, plain, now)
 	}
 	r, ok := snap.Lookup(key)
+	// An issue's tip this copy holds, live or lapsed, names the paths its
+	// lane widened to beyond the found_at before an edit (widen.go), and the
+	// lane's branch changes them: a reservation made again keeps them beside
+	// the found_at rather than dropping them.
+	if validIssueKey(key) && ok && r.Copy == claim.CopyThis && (r.State == claim.StateLive || r.State == claim.StateExpired) {
+		fp = heldWith(fp, r.Footprint)
+		plain.Footprint = fp
+	}
 	if !ok || r.Copy != claim.CopyThis || r.State != claim.StateLive {
 		return reserveKey(repoRoot, key, plain, now)
 	}
-	// An issue run's tip within the record's footprint, its lane at the
-	// landing, is the narrowing that landing made (narrow.go), never a
-	// widening of the record: the resume renews it as it stands, so it
-	// neither publishes the whole found_at again nor is refused by an
-	// overlap the narrowing let in.
-	narrowed := landing && validIssueKey(key) && covers(fp, r.Footprint)
+	// An issue run's tip, its lane at the landing, is the narrowing that
+	// landing made (narrow.go), a path the lane widened to beyond the
+	// record's footprint included, never a widening of the record: the
+	// resume renews it as it stands, so it neither publishes the whole
+	// found_at again nor is refused by an overlap the narrowing let in.
+	narrowed := landing && validIssueKey(key)
 	if !narrowed && !covers(r.Footprint, fp) {
 		return widenReservation(repoRoot, key, fp, takeOver, r, now)
 	}
@@ -900,6 +914,10 @@ func reserveOnLeavingLand(repoRoot string, st State, lane Lane, to Stage, now ti
 		return "", nil
 	}
 	if issue && !covers(own.Footprint, fp) {
+		// The narrowed tip names the files the lane changed, a path it widened
+		// to beyond the found_at among them (widen.go), and the fresh round
+		// still changes those: they are kept beside the found_at.
+		fp = heldWith(fp, own.Footprint)
 		r, err := widenReservation(repoRoot, st.Key, fp, false, own, now)
 		if err != nil {
 			reason := err.Error()

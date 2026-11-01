@@ -83,6 +83,7 @@ var examples = map[string]string{
 	"abcd implement outage probe":  "abcd implement outage probe --session s-example",
 	"abcd implement outage record": "abcd implement outage record --session s-example --service network --kind tool --lane cli --what \"git push\"",
 	"abcd implement receipt":       "abcd implement receipt review-receipt.json --run run-2609010000000001",
+	"abcd implement widen":         "abcd implement widen internal/widget/b.go --lane lane-1 --run run-2609010000000001",
 	"abcd implement release":       "abcd implement release iss-2609010000000001 --session s-example",
 
 	"abcd inbox promote": "abcd inbox promote rpt-2609010000000001",
