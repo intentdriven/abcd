@@ -164,6 +164,20 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   SDK's approval docs give.
   <https://code.claude.com/docs/en/headless>,
   <https://code.claude.com/docs/en/agent-sdk/user-input>
+- **Go's plugin package, GitHub CLI extensions, HashiCorp go-plugin, SLSA
+  and VS Code workspace trust** — the grounds for adr-2611011813195749
+  (no code that writes records is loaded at run time; abcd is extended at
+  pinned capability seams) and adr-2611011813190527 (a repository declares a
+  sequence's shape, never a widening flag): the plugin package's exact-build
+  rule, the absence of provenance checks for PATH-discovered extensions, an
+  RPC handshake that is no security measure, provenance that covers only a
+  build's own artefacts, and tasks that never run automatically in an
+  untrusted workspace.
+  <https://pkg.go.dev/plugin>,
+  <https://cli.github.com/manual/gh_extension>,
+  <https://github.com/hashicorp/go-plugin>,
+  <https://slsa.dev/spec/v1.0/threats>,
+  <https://code.visualstudio.com/docs/editing/workspaces/workspace-trust>
 - **Cloudflare Workers and its v4 API (Cloudflare)** — the host the one
   provider behind `abcd site setup`'s hosting seam targets: an assets-only
   Worker deployed by the pinned `wrangler-action`, created, routed and
