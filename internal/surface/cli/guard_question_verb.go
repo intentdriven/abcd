@@ -10,7 +10,9 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/question"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
@@ -173,7 +175,7 @@ func newGuardQuestionCommand(asJSON *bool) *cobra.Command {
 			"The limits judged at are the ones the hook holds abcd's question to in\n" +
 			"this checkout: abcd's defaults, with the rows, label words and description\n" +
 			"sentences the repository's .abcd/config.json sets under question, each\n" +
-			"tightened where the person's own ~/.abcd.noindex/config.json sets it\n" +
+			"tightened where the person's own " + abcdhome.Display(layered.Config.MachineRel) + " sets it\n" +
 			"lower. The result reports them (limits) and the file that set each\n" +
 			"(limits_source). A limit the hook refuses (a value outside its bounds, not\n" +
 			"a whole number, another key under question, or a personal value looser\n" +
