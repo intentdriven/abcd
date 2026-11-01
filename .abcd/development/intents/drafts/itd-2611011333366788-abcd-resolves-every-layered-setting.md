@@ -15,7 +15,7 @@ production_mode: hand-written
 
 ## Press Release
 
-> abcd resolves every layered setting through the shared resolver by the one order adr-2611011332427073 sets: bundled default, the person's home file, the repository's file, the person's gitignored per-repository file, then the invocation; each restriction, capability and personal key declares its class on the key, the rules loader, guard.json, outbound.forge, the status line and the environment variables read outside the resolver move onto it, and the configuration chapter states the rule once with each key's class.
+> abcd resolves every layered setting through the shared resolver by the one order adr-2611011332427073 sets: bundled default, the person's home file, the repository's file, the person's gitignored per-repository file, then the invocation; each restriction, capability and personal key declares its class on the key, the rules loader, guard.json, outbound.forge, the status line and the environment variables read outside the resolver move onto it, and the configuration chapter states the rule once with each key's class. A personal spending cap, read as a restriction from any layer, bounds what a repository's model tiers can cost the person. The per-repository layer is read as the person's only while git tracks nothing at its path, no part of its path is a symlink, and the file passes the home file's guarded read, and abcd says so when a pull starts tracking a file at that path.
 
 ## Why This Matters
 
