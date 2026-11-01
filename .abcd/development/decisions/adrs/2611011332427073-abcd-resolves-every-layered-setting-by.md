@@ -39,16 +39,18 @@ We will resolve every layered setting by one rule, lowest precedence first:
 1. abcd's bundled default;
 2. the person's home file (`~/.abcd.noindex/`);
 3. the repository's committed file (`.abcd/`);
-4. the person's gitignored file in that repository (in the local tier);
+4. the person's gitignored file in that repository, kept in the main checkout's local tier and read from every linked worktree of it;
 5. the invocation: a flag, or an environment variable that names the same key.
 
 The closer and more specific layer wins for an ordinary preference. Three classes of setting are exempt from that order, and each class is declared per key, never per layer:
 
 - **Restrictions only tighten.** A cap, a deny list, a kill switch or an off switch from any layer holds, and no layer can loosen what another tightened. List-valued restrictions are merged, never replaced.
-- **A repository never grants capability or trust.** A key that widens what abcd may do, spend or reach is read from the person's layers alone, or from a repository the person has trusted from their home.
+- **A repository never grants capability or trust.** A key that widens what abcd may do, spend or reach is read from the person's home and the invocation alone, or from a repository the person has trusted from their home.
 - **Some keys belong to the person or the machine.** Identity, credentials, paid routes, local resource budgets and the person's own display are read from home and the invocation only. A repository value for such a key is ignored, with a diagnostic naming it.
 
-The model-tier routing table follows the ordinary order. The repository's table sets the project's tiers, and the person's gitignored per-repository file overrides them for that person alone. A fan-out ceiling stays a restriction.
+Layer 4 sits inside the working tree, and a repository can ship a file there: a path `.gitignore` names is still checked out when the repository tracks it, and the repository controls `.gitignore` itself. So layer 4 counts as the person's only while git tracks no file at its path and the file passes the home file's guarded read: a regular file this account owns that no one else can write. A layer-4 file that fails either test is read as the repository's. For a capability or personal key, layer 4 is never read: such a key comes from home or the invocation.
+
+The model-tier routing table follows the ordinary order. The repository's table sets the project's tiers, and the person's layer-4 file overrides them for that person alone. A repository that sets every agent to frontier therefore raises what the person spends until they override it. That is accepted: the tier is an ordinary preference, it adds no paid route (paid routes are personal keys), and the person's own spending cap, a restriction, bounds it from any layer. A fan-out ceiling stays a restriction.
 
 ## Alternatives Considered
 
