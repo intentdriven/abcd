@@ -98,6 +98,18 @@ pauses the lane for its key rather than falling back to the subscription).
   done (one at govulncheck, one queued behind four waiters at the load gate). A killed launch reports no
   result and so no `total_cost_usd`, which leaves its spend out of every
   tally.
+- **A busy main re-reviews a lane on every move.** While other sessions
+  merged, one lane synced with main and took a fresh full review round three
+  times in fifteen minutes, each round costing 1.10 to 1.50 USD on the
+  runner, though the lane's own change never moved; a delta review of the
+  sync merge would have judged what changed (iss-2611012123291272).
+- **A receipt verified without a model cannot land.** The host-written
+  receipt left the model out, the run's state copied that absence at
+  verification, and the landing then refused the records commit for want of
+  a model to name in its trailer. Correcting the receipt file changed
+  nothing, `--restart` refuses a lane at land, and the remedy's fix round
+  could not be reached, so the model was written into the state by hand, its
+  prior copy kept (iss-2611012309408370).
 - **A planning interview stops when any session moves a branch.** The
   person's interview, run from one worktree, watches every branch ref in the
   repository's shared git directory, so a commit to an unrelated records
