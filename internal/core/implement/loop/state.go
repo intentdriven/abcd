@@ -234,7 +234,21 @@ const lockFileName = ".lock"
 // `auto_plan` is not one its version wrote, and is refused naming it.
 // Releases that write version 16 refuse a version-17 file as a newer abcd's
 // before any strict decode.
-const SchemaVersion = 17
+//
+// Version 18 added an await's `paused` and `running` (iss-2611012047534449,
+// dcn-2611012113432054): why a role waits for the runner that failed to
+// start it, rather than being handed to the host, and the runner a step
+// started for it, claimed so no second step starts another. Version 17 is its
+// strict subset, read as a run no runner paused and none holds, and written
+// back at version 18; a file of version 17 or lower carrying either is not
+// one its version wrote, and is refused naming it. Releases that write
+// version 17 refuse a version-18 file as a newer abcd's before any strict
+// decode.
+const SchemaVersion = 18
+
+// schemaVersionUnpaused is the last version before an await's pause and
+// claim on a runner: read, never written.
+const schemaVersionUnpaused = 17
 
 // schemaVersionUnplanned is the last version before a lane's auto-plan record.
 const schemaVersionUnplanned = 16
@@ -699,6 +713,13 @@ type Await struct {
 	// (itd-6), recorded under the run's lock as it placed it; nil for every
 	// other await, the host's included.
 	Answered *RouteAnswer `json:"answered,omitempty"`
+	// Paused is why the role waits for its runner, which failed to start it
+	// (runner_pause.go): it is handed to no one, the host included, and a
+	// later step retries it; nil for every other await.
+	Paused *RunnerPause `json:"paused,omitempty"`
+	// Running is the runner a step started for the role, claimed under the
+	// lock so no other step starts a second one; nil when none is running.
+	Running *RunnerClaim `json:"running,omitempty"`
 }
 
 // RouteAnswer is the answer a reviewer route placed at an await's return path:
@@ -832,6 +853,22 @@ func (s State) answered() string {
 		for _, a := range l.Awaits {
 			if a.Answered != nil {
 				return "`answered` on " + l.ID + "'s " + a.Role
+			}
+		}
+	}
+	return ""
+}
+
+// pausedOnRunner reports the first await, in a state, that carries `paused`
+// or `running`, which only version 18 and later write, or "".
+func (s State) pausedOnRunner() string {
+	for _, l := range s.Lanes {
+		for _, a := range l.Awaits {
+			switch {
+			case a.Paused != nil:
+				return "`paused` on " + l.ID + "'s " + a.Role
+			case a.Running != nil:
+				return "`running` on " + l.ID + "'s " + a.Role
 			}
 		}
 	}
@@ -1118,7 +1155,10 @@ func readListedState(root *os.Root, runID string) (State, error) {
 	case st.SchemaVersion <= schemaVersionUnplanned && st.autoPlanned() != "":
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.autoPlanned(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnplanned:
+	case st.SchemaVersion <= schemaVersionUnpaused && st.pausedOnRunner() != "":
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.pausedOnRunner(), st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnpaused:
 		// Read as the current version, its stages already carried over by
 		// decodeState when it named them `step`; the next write carries it, and
 		// this read writes nothing.

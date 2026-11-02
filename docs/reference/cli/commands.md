@@ -3245,7 +3245,11 @@ last commit: everything left uncommitted is saved aside under the lane's directo
 proved to apply to that commit, the lane's worktree is reset and cleaned as your own git
 resets and cleans it (the repository's hooks run on the reset), the run record
 names the aside for review, and the implementer await is re-told; the brief never names
-the aside. An await a rate limit kept, because what its agent left could not be saved
+the aside. When a route is in force for the re-told role (roles.<role>.runner, or a
+--route given with --restart), the fresh agent is started on that runner at once instead,
+and one it fails to start pauses the lane as a step's does; a --route for a role the
+restart does not re-tell is refused before anything is changed. An await a rate limit
+kept, because what its agent left could not be saved
 aside, is marked in the run state, and --restart re-tells it the same way once that is
 settled, a validator's included: only a validator's partial return is saved aside, its
 worktree is not touched, and a validator of the round that is still out unmarked is left
@@ -3298,8 +3302,8 @@ step alone, over every configured route, asking for the model named after @ in p
 the runner's own runner.<name>.model, which every other role keeps; one per role. The
 runner must be one the machine enables and the model one its provider lists, or the step
 is refused before anything is written, naming the fix; a tier route, and a --route with
---release, --discard, --restart or --accept-config-change (which writes its acceptance
-before the step is judged), are refused too. The model is held to the pins the machine
+--release, --discard or --accept-config-change (which writes its acceptance before the
+step is judged), are refused too. The model is held to the pins the machine
 sets for it, as the runner's own model is: opencode holds them, and a --route naming
 claude, which holds none, for a pinned model is refused before anything is written,
 naming runner.opencode.model. A step hands at most one role out, so
@@ -3312,11 +3316,21 @@ recorded in the run record. A setup warning about a role's configured route is n
 for a role the --route replaces. The role's receipt in the run's state, and the run
 record, carry the --route verbatim.
 A runner that is absent, refuses, fails, runs past its time,
-or writes a receipt the verifier refuses leaves the lane awaiting and the host is handed
-the role as with no runner, and the call records one fallback naming the role, the runner
-asked for, the reason and the route that runs it. A role left unset is the host's, and
-the call is exactly the host-driven step. A step that re-tells an await starts nothing.
-An interrupt kills the runner's process group.
+or writes a receipt the verifier refuses pauses the lane: the role is handed to no one,
+the host included, the result names it as paused with why (the runner's reason and the
+first line it wrote to stderr, redacted), and the call records one fallback naming the
+role, the runner asked for, the reason and none as the route that ran it. Each later
+step that hands no agent out retries one held role once on its runner, the one waiting
+longest: a paused role, or one already with the host (from an earlier fallback, or a
+step before its route existed) whose receipt nothing has written; the run record names
+each retry. A --route for a held role retries it at once on that route, and is the
+step's one move; with --restart, and with any route in force, the restarted role starts
+on its runner at once. A role a runner is running is claimed in the run's state, so no
+second step starts another for it. A paused role whose route has since moved to the
+host is handed to the host by the next step that hands no agent out, its pause cleared
+and the person's route, not a fallback, named in the run record. A role left unset is
+the host's, and the call is
+exactly the host-driven step. An interrupt kills the runner's process group.
 
 With oracle.review set to rp (in .abcd/config.json or ~/.abcd.noindex/config.json, the
 MCP oracle's address, oracle.rp.url, in the latter alone), a ruthless or security review

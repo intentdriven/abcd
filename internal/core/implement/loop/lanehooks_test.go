@@ -136,7 +136,7 @@ func TestARestartsResetRunsTheRepositorysHooks(t *testing.T) {
 	if err := os.Remove(mark); err != nil && !os.IsNotExist(err) {
 		t.Fatal(err)
 	}
-	if _, err := Restart(repo.Root(), runID, "lane-1", "", Options{}); err != nil {
+	if _, err := restartLane(repo.Root(), runID, "lane-1", "", Options{}); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := os.ReadFile(mark)

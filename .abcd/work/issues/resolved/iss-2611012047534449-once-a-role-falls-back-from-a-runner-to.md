@@ -10,8 +10,16 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/implement/loop"
 remedy: "Following dcn-2611012113432054: when a runner fails to start a role, pause the lane and say why, rather than handing the role to the host. Each later implement step retries the paused role once on the runner. --route, or --restart while a route is in force, retries it at once. A role already with the host from an earlier fallback, or from a step before the route existed, with nothing received, is retried the same way, so lanes parked like this can move. The run record names each retry. Record the runner's first stderr line in the pause's reason, so 'Not logged in' or a limit reads as the cause rather than 'exited with status 1'. A restart today never consults a runner, whatever the route."
+resolution: "A runner that fails to start a role now pauses the lane and says why, with the runner's first stderr line redacted, instead of handing the role to the host; each later step retries one held role once on its runner, and --route or --restart under a route retries it at once."
+impact: fix
+resolved_by:
+  commit: "51bdbf7bcd7ab79771fb79c9111169a0218fd3e8"
 ---
 
 Once a role falls back from a runner to the host, nothing can send it back to the runner, so a lane on the API key cannot recover from one failed start. On 2026-11-01 the claude runner exited with status 1 on lane 2 of run-2610312053481114: it had no API key in its environment, and claude --bare answered 'Not logged in', which the loop recorded only as 'exited with status 1'. The loop handed the implementer to the host session. After that, --route on the lane was refused, because the step hands no role out: a re-told await starts nothing, and --route is refused with --restart. The lane cannot be discarded, because it is not held. Lane 2 of run-2611010452297194, handed to the host before the person routed agent work to the API key, is stuck the same way. The same applies to a runner that hits a rate or spending limit mid-step: switching to a second key helps only the next step, not the lane that failed. Both lanes are parked with no agent.
 
 The machine's configured route does not rescue such a lane either. Later the same day the person set roles.implementer.runner to claude in ~/.abcd.noindex/config.json. A peer session then ran implement step --restart on a lane that had fallen back (run-2611012037155265 lane 1), with the API key in the command's environment. The restart reset the lane from its last commit and handed the implementer to the host again, without asking the runner. So a restart never consults a runner, whatever route is in force, and run-2611012037155265 is parked as well.
+
+## Grounds
+
+- pursued: a lane whose runner fails to start keeps its role off the host and resumes on the runner once the key works; a failed start that hands the role to the host, or a held lane no step can move, would show it wrong

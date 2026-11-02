@@ -120,7 +120,7 @@ func TestAFilterPlantedMidRunStopsTheRestartBeforeGit(t *testing.T) {
 	marker := markerFilter(t, repo, l.Worktree)
 	before := stateBytes(t, repo.Root(), runID)
 
-	_, err := Restart(repo.Root(), runID, "lane-1", "", Options{})
+	_, err := restartLane(repo.Root(), runID, "lane-1", "", Options{})
 	r := mustRefusal(t, err)
 	if r.Stage != StageConfig || !strings.Contains(r.Reason, "filter.planted.clean") || !strings.Contains(r.Remedy, AcceptConfigFlag) {
 		t.Fatalf("the restart is refused naming the planted key and the accepting flag: %+v", r)

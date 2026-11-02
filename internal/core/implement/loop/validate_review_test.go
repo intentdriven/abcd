@@ -1014,7 +1014,7 @@ func TestARestartReTellsAReviewWithNoAnswerRecorded(t *testing.T) {
 	if err := os.Remove(f.abs(limited.Receipt)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Restart(f.repo.Root(), f.runID, "lane-1", "", f.opts()); err != nil {
+	if _, err := restartLane(f.repo.Root(), f.runID, "lane-1", "", f.opts()); err != nil {
 		t.Fatalf("a restart takes the kept validator: %v", err)
 	}
 	if fresh := f.await(t, "lane-1", RoleRuthless); fresh.Answered != nil {

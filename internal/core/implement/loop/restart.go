@@ -22,6 +22,7 @@ package loop
 // the same way.
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -34,6 +35,7 @@ import (
 	"unicode"
 
 	"github.com/intentdriven/abcd/internal/core/implement"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/localtier"
@@ -95,7 +97,7 @@ type RestartAside struct {
 	Receipt string `json:"receipt,omitempty"`
 }
 
-// RestartResult is what Restart returns: the lane's step result, re-telling
+// RestartResult is what restartLane returns: the lane's step result, re-telling
 // the implementer await, and the aside.
 type RestartResult struct {
 	StepResult
@@ -212,7 +214,7 @@ func snapshot(worktree, head, tmp string) ([]byte, []string, error) {
 	return patch, files, nil
 }
 
-// Restart restarts a lane whose implementer died, or yielded on a network
+// restartLane restarts a lane whose implementer died, or yielded on a network
 // failure (yielded is then its `NETWORK: <cmd>` line): what the agent left
 // uncommitted is saved aside under the lane's directory, the lane's worktree
 // is reset to its last commit and cleaned, the run record names the aside, and
@@ -226,12 +228,95 @@ func snapshot(worktree, head, tmp string) ([]byte, []string, error) {
 // neither an implementer out nor an await a rate limit kept, for a lane whose
 // worktree is not the one the loop derives for it, and when the saved patch
 // would not apply to the lane's head.
-func Restart(repoRoot, runID, laneID, yielded string, o Options) (RestartResult, error) {
+func restartLane(repoRoot, runID, laneID, yielded string, o Options) (RestartResult, error) {
+	res, _, err := restart(repoRoot, runID, laneID, yielded, o)
+	return res, err
+}
+
+// RestartDrive is restartLane under the run's routes (iss-2611012047534449): a
+// re-told role routed to a runner, by the configuration or a --route, is
+// started on its runner at once, as a held role is retried
+// (runner_pause.go), rather than re-told to the host; one the runner fails
+// to start pauses the lane. A --route for a role the restart does not re-tell
+// is refused before anything is changed. With rs.Config nil, or in an
+// auto-plan run, it is restartLane. The first routed role re-told is started; any
+// other is retried by a later step.
+func RestartDrive(ctx context.Context, repoRoot, runID, laneID, yielded string, steps Stages, o Options, rs Runners) (RestartResult, error) {
+	if rs.Config != nil {
+		if over := rs.Config.FlagRoutes(); len(over) > 0 {
+			st, err := ReadState(repoRoot, runID)
+			if err != nil {
+				return RestartResult{}, err
+			}
+			told := map[string]bool{}
+			for _, l := range st.Lanes {
+				for _, a := range l.Awaits {
+					if l.ID == laneID && (a.Role == RoleImplementer || a.Kept != "") {
+						told[a.Role] = true
+					}
+				}
+			}
+			for role, text := range over {
+				if !told[role] {
+					return RestartResult{}, refuse(StageRoute, "", laneID,
+						fmt.Sprintf("--route %s routes the %s, and the restart of %s re-tells no %s", text, role, laneID, role),
+						"run the restart without that --route; nothing was changed")
+				}
+			}
+		}
+	}
+	res, told, err := restart(repoRoot, runID, laneID, yielded, o)
+	if err != nil || rs.Config == nil {
+		return res, err
+	}
+	restartGap(repoRoot, runID)
+	st, err := ReadState(repoRoot, runID)
+	if err != nil || st.autoPlanning() {
+		return res, err
+	}
+	for _, aw := range told {
+		route := rs.Config.RouteFor(aw.Role)
+		if route.Runner == runner.Host || toolsFor(aw.Role) == nil {
+			continue
+		}
+		if st.NextEligibleAt != nil && o.now().Before(*st.NextEligibleAt) {
+			res.Next = fmt.Sprintf("the %s is routed to %s, and the run is paused until %s: the first `abcd implement step` after it starts the runner for it; do not start an agent for it",
+				aw.Role, route.Runner, st.NextEligibleAt.UTC().Format(time.RFC3339))
+			res.Awaiting = nil
+			return res, nil
+		}
+		why := "restarted from its last commit with a route in force"
+		if text := route.Override(); text != "" {
+			why += " (--route " + text + ")"
+		}
+		r, err := dispatchAwait(ctx, repoRoot, runID, steps, o, rs, laneID, aw, why, res.StepResult)
+		if errors.Is(err, errClaimed) {
+			// A peer's step retried the role between the restart's write
+			// and this claim: its runner has it, so the host is handed
+			// nothing, as Drive answers the same moment.
+			res.Awaiting = nil
+			res.Next = fmt.Sprintf("another `abcd implement step` started the runner for %s's %s; run `abcd implement step` once it has finished", laneID, aw.Role)
+			return res, nil
+		}
+		res.StepResult = r
+		return res, err
+	}
+	return res, nil
+}
+
+// restartGap runs between a restart's write and RestartDrive's dispatch,
+// where a peer's step may claim the re-told role; a test stands in for that
+// peer here.
+var restartGap = func(repoRoot, runID string) {}
+
+// restart is restartLane, also returning the awaits it re-told.
+func restart(repoRoot, runID, laneID, yielded string, o Options) (RestartResult, []Await, error) {
 	why, err := whyOf(yielded)
 	if err != nil {
-		return RestartResult{}, err
+		return RestartResult{}, nil, err
 	}
 	var res RestartResult
+	var retold []Await
 	err = mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		i := slices.IndexFunc(st.Lanes, func(l Lane) bool { return l.ID == laneID })
 		if i < 0 {
@@ -286,8 +371,9 @@ func Restart(repoRoot, runID, laneID, yielded string, o Options) (RestartResult,
 				res.Aside = aside
 			}
 			// The fresh agent's return is its own: no answer a route placed
-			// for the gone one stays recorded on the await.
-			aw.Since, aw.Kept, aw.Answered = now, "", nil
+			// for the gone one stays recorded on the await, nor a pause or
+			// a claim of a runner that started it.
+			aw.Since, aw.Kept, aw.Answered, aw.Paused, aw.Running = now, "", nil, nil, nil
 			lane.Awaits[k] = aw
 			told = append(told, aw)
 			saved := "nothing was left uncommitted"
@@ -311,9 +397,10 @@ func Restart(repoRoot, runID, laneID, yielded string, o Options) (RestartResult,
 			}
 			res.Next = strings.Join(moves, "; and ")
 		}
+		retold = told
 		return true, nil
 	})
-	return res, err
+	return res, retold, err
 }
 
 // provedAside is what proveAside read of a gone agent's leavings, for

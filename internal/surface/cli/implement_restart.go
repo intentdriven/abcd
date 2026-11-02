@@ -1,9 +1,12 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/spf13/cobra"
 
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -12,10 +15,14 @@ import (
 
 // runRestart is `implement step --restart <lane-id> [--yielded <line>]`: the
 // lane's gone implementer is restarted as a fresh agent from the lane's last
-// commit, its uncommitted work saved aside (iss-2610080620372731).
-func runRestart(w io.Writer, asJSON bool, root, runID, laneID, yielded string, accepted []string) error {
+// commit, its uncommitted work saved aside (iss-2610080620372731). A role a
+// route in force sends to a runner, the configuration's or a --route, is
+// started on that runner at once rather than re-told to the host
+// (iss-2611012047534449).
+func runRestart(ctx context.Context, cmd *cobra.Command, asJSON bool, root, runID, laneID, yielded string, accepted []string, rs loop.Runners) error {
 	const prefix = "abcd implement step"
-	res, err := loop.Restart(root, runID, laneID, yielded, loop.Options{})
+	w := cmd.OutOrStdout()
+	res, err := loop.RestartDrive(ctx, root, runID, laneID, yielded, loop.DefaultStages(), loop.Options{}, rs)
 	if err != nil {
 		return loopFail(w, asJSON, prefix, err)
 	}

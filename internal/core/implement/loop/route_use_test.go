@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -18,7 +19,7 @@ import (
 // not use is refused before anything is written, naming the role the step
 // hands out or that it hands none: a reviewer routed while the step hands out
 // the implementer, and the implementer routed while the step re-tells the
-// await an earlier step began.
+// await an earlier step began and whose receipt the host's agent wrote.
 func TestAStepsRouteForARoleItDoesNotHandOutIsRefused(t *testing.T) {
 	root, id, steps, o := startToImplement(t)
 	newDriveEnv(t, "ok", "claude")
@@ -45,9 +46,15 @@ func TestAStepsRouteForARoleItDoesNotHandOutIsRefused(t *testing.T) {
 		t.Fatal("a refused --route wrote the run's state")
 	}
 
-	// The host is handed the implementer; a second step re-tells that await.
-	if res, err := advance(root, id, steps, o); err != nil || res.Awaiting == nil {
+	// The host is handed the implementer and its agent writes the receipt;
+	// a second step re-tells that await, which is the host's to hand back,
+	// so no --route retries it (iss-2611012047534449).
+	res, err := advance(root, id, steps, o)
+	if err != nil || res.Awaiting == nil {
 		t.Fatalf("the implementer is handed out: %+v %v", res, err)
+	}
+	if err := os.WriteFile(res.Awaiting.Receipt, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
 	}
 	before = stateBytes(t, root, id)
 	_, err = Drive(context.Background(), root, id, steps, o,

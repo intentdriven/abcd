@@ -804,6 +804,11 @@ func idleResult(st State) StepResult {
 	if i := st.current(); i >= 0 {
 		l := st.Lanes[i]
 		res.Lane, res.Stage, res.Awaiting = l.ID, l.Stage, l.awaiting()
+		if a := res.Awaiting; a != nil && a.Paused != nil {
+			// A paused role is the runner's to retry, named as paused and
+			// never as awaited, as laneResult names it.
+			res.Paused, res.Awaiting = a, nil
+		}
 		res.Next = nextMove(st, l)
 	}
 	if out := st.allAwaits(); len(out) > 1 {

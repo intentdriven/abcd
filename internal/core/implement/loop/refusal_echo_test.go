@@ -19,7 +19,7 @@ func TestARefusalOfATypedIDDoesNotRepeatIt(t *testing.T) {
 		t.Errorf("a run id that is not one = %+v; want it refused without repeating it", r)
 	}
 	repo, runID, _, _, _ := deadLane(t)
-	_, err = Restart(repo.Root(), runID, typed, "", Options{})
+	_, err = restartLane(repo.Root(), runID, typed, "", Options{})
 	if r := mustRefusal(t, err); strings.Contains(r.Reason, typed) || !strings.Contains(r.Reason, "has no lane") {
 		t.Fatalf("a restart of a lane the run does not have = %+v; want it refused without repeating it", r)
 	}

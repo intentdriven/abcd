@@ -38,13 +38,14 @@ func TestBuildRefusesARunnerModelOffItsAllowlistBeforeTheRun(t *testing.T) {
 	runDirAbsent(t, repo.Root())
 }
 
-// TestAStepWhoseRunnerIsAbsentHandsTheHostTheRoleAndCountsIt is criteria 3
-// and 4 at the front door: `implement step` at a stage whose role is routed to
-// a runner that is not on PATH hands the host the role as before, names the
-// fallback, and `implement status` and `implement record` count it per runner
-// and per role. PATH holds git's own directory alone, so no harness on the
-// machine can be reached.
-func TestAStepWhoseRunnerIsAbsentHandsTheHostTheRoleAndCountsIt(t *testing.T) {
+// TestAStepWhoseRunnerIsAbsentPausesTheLaneAndCountsIt is criteria 3 and 4 at
+// the front door, under iss-2611012047534449: `implement step` at a stage
+// whose role is routed to a runner that is not on PATH hands the role to no
+// one, the host included, names it as paused with why, and a later step
+// retries it once; `implement status` and `implement record` count each
+// failed start per runner and per role. PATH holds git's own directory alone,
+// so no harness on the machine can be reached.
+func TestAStepWhoseRunnerIsAbsentPausesTheLaneAndCountsIt(t *testing.T) {
 	repo := buildRepo(t)
 	repo.Write("AGENTS.md", "# AGENTS.md\n\n- Run make check.\n")
 	repo.Commit("conventions")
@@ -73,29 +74,35 @@ func TestAStepWhoseRunnerIsAbsentHandsTheHostTheRoleAndCountsIt(t *testing.T) {
 		Awaiting *struct {
 			Role string `json:"role"`
 		} `json:"awaiting"`
-		Fallback *struct {
+		Paused *struct {
 			Role   string `json:"role"`
-			Asked  string `json:"asked"`
-			Reason string `json:"reason"`
-			Ran    string `json:"ran"`
-		} `json:"fallback"`
+			Paused struct {
+				Runner string `json:"runner"`
+				Reason string `json:"reason"`
+				Detail string `json:"detail"`
+			} `json:"paused"`
+		} `json:"paused"`
+		Fallback *struct{} `json:"fallback"`
 	}
 	if err := json.Unmarshal([]byte(mustImplement(t, "implement", "step", "--json")), &res); err != nil {
 		t.Fatal(err)
 	}
-	if res.Awaiting == nil || res.Awaiting.Role != "implementer" {
-		t.Fatalf("the host is handed the implementer: %+v", res)
+	if res.Awaiting != nil || res.Fallback != nil {
+		t.Fatalf("the host is handed nothing: %+v", res)
 	}
-	if fb := res.Fallback; fb == nil || fb.Asked != "opencode" || fb.Reason != "absent" || fb.Ran != "host" {
-		t.Fatalf("the step names the fallback: %+v", res.Fallback)
+	if p := res.Paused; p == nil || p.Role != "implementer" || p.Paused.Runner != "opencode" || p.Paused.Reason != "absent" ||
+		!strings.Contains(p.Paused.Detail, "not on PATH") {
+		t.Fatalf("the step names the paused role and why: %+v", res.Paused)
 	}
 	text := mustImplement(t, "implement", "step")
-	if !strings.Contains(text, "awaits the implementer's receipt") {
-		t.Fatalf("a step while awaiting re-tells the await: %s", text)
+	for _, want := range []string{"PAUSED: lane-1's implementer waits for the opencode runner", "retried: lane-1's implementer on the opencode runner", "Do not start an agent"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("a later step retries the paused role once and says so (%q): %s", want, text)
+		}
 	}
 	status := mustImplement(t, "implement", "status")
-	if !strings.Contains(status, "fallbacks: 1 (by runner: opencode 1; by role: implementer 1)") {
-		t.Fatalf("status counts the fallback per runner and per role:\n%s", status)
+	if !strings.Contains(status, "fallbacks: 2 (by runner: opencode 2; by role: implementer 2)") {
+		t.Fatalf("status counts each failed start per runner and per role:\n%s", status)
 	}
 	var rec struct {
 		FallbackCounts struct {
@@ -107,10 +114,10 @@ func TestAStepWhoseRunnerIsAbsentHandsTheHostTheRoleAndCountsIt(t *testing.T) {
 	if err := json.Unmarshal([]byte(mustImplement(t, "implement", "record", "--json")), &rec); err != nil {
 		t.Fatal(err)
 	}
-	if c := rec.FallbackCounts; c.Total != 1 || c.ByRunner["opencode"] != 1 || c.ByRole["implementer"] != 1 {
+	if c := rec.FallbackCounts; c.Total != 2 || c.ByRunner["opencode"] != 2 || c.ByRole["implementer"] != 2 {
 		t.Fatalf("the run record counts the fallback: %+v", c)
 	}
-	if text := mustImplement(t, "implement", "record"); !strings.Contains(text, "fallbacks: 1 (by runner: opencode 1; by role: implementer 1)") {
+	if text := mustImplement(t, "implement", "record"); !strings.Contains(text, "fallbacks: 2 (by runner: opencode 2; by role: implementer 2)") {
 		t.Fatalf("the record's text counts the fallback:\n%s", text)
 	}
 }

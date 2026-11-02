@@ -93,7 +93,7 @@ func editsIntact(t *testing.T, repo *gittest.Repo, l Lane) {
 func TestRestartSavesAsideThenResetsToLastCommit(t *testing.T) {
 	repo, runID, l, dir, head := deadLane(t)
 
-	res, err := Restart(repo.Root(), runID, "lane-1", "", Options{})
+	res, err := restartLane(repo.Root(), runID, "lane-1", "", Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +181,7 @@ func TestRestartSavesAsideThenResetsToLastCommit(t *testing.T) {
 func TestRestartRecordsYieldReason(t *testing.T) {
 	repo, runID, l, dir, _ := deadLane(t)
 
-	if _, err := Restart(repo.Root(), runID, "lane-1", "it felt like stopping", Options{}); err == nil {
+	if _, err := restartLane(repo.Root(), runID, "lane-1", "it felt like stopping", Options{}); err == nil {
 		t.Fatal("a yield that is not a NETWORK: line is refused")
 	} else {
 		mustRefusal(t, err)
@@ -190,7 +190,7 @@ func TestRestartRecordsYieldReason(t *testing.T) {
 	editsIntact(t, repo, l)
 
 	// A yield that is blank is no yield: it is refused, not read as a death.
-	if _, err := Restart(repo.Root(), runID, "lane-1", " \t\n", Options{}); err == nil {
+	if _, err := restartLane(repo.Root(), runID, "lane-1", " \t\n", Options{}); err == nil {
 		t.Fatal("a blank yield is refused")
 	} else {
 		mustRefusal(t, err)
@@ -198,7 +198,7 @@ func TestRestartRecordsYieldReason(t *testing.T) {
 	noAside(t, dir)
 	editsIntact(t, repo, l)
 
-	if _, err := Restart(repo.Root(), runID, "lane-1", "  NETWORK: git push origin build/x \n", Options{}); err != nil {
+	if _, err := restartLane(repo.Root(), runID, "lane-1", "  NETWORK: git push origin build/x \n", Options{}); err != nil {
 		t.Fatal(err)
 	}
 	_, meta := asideOf(t, dir)
@@ -231,7 +231,7 @@ func TestRestartRefusedWhileOutageOpen(t *testing.T) {
 	}
 	before := stateBytes(t, repo.Root(), runID)
 
-	_, err = Restart(repo.Root(), runID, "lane-1", "", Options{})
+	_, err = restartLane(repo.Root(), runID, "lane-1", "", Options{})
 	r := mustRefusal(t, err)
 	if !r.Contention || !strings.Contains(r.Reason, "outage") {
 		t.Fatalf("an open outage is a wait, named: %+v", r)
@@ -263,7 +263,7 @@ func TestRestartRefusedAfterOutageGaveUp(t *testing.T) {
 	}
 	before := stateBytes(t, repo.Root(), runID)
 
-	_, err = Restart(repo.Root(), runID, "lane-1", "", Options{})
+	_, err = restartLane(repo.Root(), runID, "lane-1", "", Options{})
 	r := mustRefusal(t, err)
 	if r.Contention || !strings.Contains(r.Reason, "gave up") || !strings.Contains(r.Remedy, "implement outage clear") {
 		t.Fatalf("a given-up outage refuses the restart, naming the clear: %+v", r)
@@ -279,7 +279,7 @@ func TestRestartRefusedAfterOutageGaveUp(t *testing.T) {
 // and a lane the run does not have — is refused, changing nothing.
 func TestRestartRefusedWithoutImplementerAwait(t *testing.T) {
 	repo, runID, l, dir, _ := deadLane(t)
-	if _, err := Restart(repo.Root(), runID, "lane-9", "", Options{}); err == nil {
+	if _, err := restartLane(repo.Root(), runID, "lane-9", "", Options{}); err == nil {
 		t.Fatal("a lane the run does not have is refused")
 	} else {
 		mustRefusal(t, err)
@@ -291,7 +291,7 @@ func TestRestartRefusedWithoutImplementerAwait(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := stateBytes(t, repo.Root(), runID)
-	_, err := Restart(repo.Root(), runID, "lane-1", "", Options{})
+	_, err := restartLane(repo.Root(), runID, "lane-1", "", Options{})
 	if r := mustRefusal(t, err); !strings.Contains(r.Reason, "implementer") {
 		t.Fatalf("the refusal names the missing implementer: %+v", r)
 	}
@@ -314,7 +314,7 @@ func TestRestartRefusedForForeignWorktreePath(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	_, err := Restart(repo.Root(), runID, "lane-1", "", Options{})
+	_, err := restartLane(repo.Root(), runID, "lane-1", "", Options{})
 	if r := mustRefusal(t, err); !strings.Contains(r.Reason, "worktree") {
 		t.Fatalf("the refusal names the worktree: %+v", r)
 	}
@@ -335,7 +335,7 @@ func TestRestartChangesNothingWhenPatchFailsCheck(t *testing.T) {
 	checkAsidePatch = func(worktree, patch string) error { return errors.New("error: patch failed: one.txt:1") }
 	before := stateBytes(t, repo.Root(), runID)
 
-	_, err := Restart(repo.Root(), runID, "lane-1", "", Options{})
+	_, err := restartLane(repo.Root(), runID, "lane-1", "", Options{})
 	if r := mustRefusal(t, err); !strings.Contains(r.Reason, "patch failed") {
 		t.Fatalf("the refusal carries git's reason: %+v", r)
 	}

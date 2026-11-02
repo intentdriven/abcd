@@ -262,7 +262,7 @@ func TestARateLimitAfterARestartLeavesTheReToldAwait(t *testing.T) {
 	f.stepUntil(t, "the implementer is out", func(st State) bool { return len(st.Lanes) == 1 && st.Lanes[0].awaitsRole(RoleImplementer) })
 	gone := f.await(t, "lane-1", RoleImplementer)
 	f.now = f.now.Add(time.Minute)
-	if _, err := Restart(f.repo.Root(), f.runID, "lane-1", "", f.opts()); err != nil {
+	if _, err := restartLane(f.repo.Root(), f.runID, "lane-1", "", f.opts()); err != nil {
 		t.Fatal(err)
 	}
 	fresh := f.await(t, "lane-1", RoleImplementer)
@@ -332,7 +332,7 @@ func TestARestartReTellsAValidatorARateLimitKept(t *testing.T) {
 	if err := os.Remove(f.abs(limited.Receipt)); err != nil {
 		t.Fatal(err)
 	}
-	res, err := Restart(f.repo.Root(), f.runID, "lane-1", "", f.opts())
+	res, err := restartLane(f.repo.Root(), f.runID, "lane-1", "", f.opts())
 	if err != nil {
 		t.Fatalf("a restart takes the kept validator: %v", err)
 	}
@@ -361,7 +361,7 @@ func TestARestartLeavesALiveValidatorOfTheSameRound(t *testing.T) {
 	if err := os.Remove(f.abs(limited.Receipt)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Restart(f.repo.Root(), f.runID, "lane-1", "", f.opts()); err != nil {
+	if _, err := restartLane(f.repo.Root(), f.runID, "lane-1", "", f.opts()); err != nil {
 		t.Fatal(err)
 	}
 	if got := f.await(t, "lane-1", RoleSecurity); got != live {
@@ -401,7 +401,7 @@ func TestARestartOfTwoKeptAwaitsProvesBothBeforeSavingEither(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := f.state(t)
-	_, err := Restart(f.repo.Root(), f.runID, "lane-1", "", f.opts())
+	_, err := restartLane(f.repo.Root(), f.runID, "lane-1", "", f.opts())
 	if r := mustRefusal(t, err); !strings.Contains(r.Reason, `"`+second.Receipt+`" cannot be read`) {
 		t.Fatalf("the refusal names the unreadable partial return: %+v", r)
 	}
