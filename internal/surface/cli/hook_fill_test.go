@@ -135,6 +135,36 @@ func TestPlainRouterOutputFollowsTheTranscriptsFill(t *testing.T) {
 	}
 }
 
+// TestRouterAfterACompactionKeepsTheRulesWhole: on the first prompt after a
+// compaction, the reset has deleted the fill file and the transcript's last
+// response is the one before the compaction boundary, which measured the
+// context the compaction replaced. The fill is unknown, so the rules come back
+// in full rather than shrunk by the old figure and then pinned in that form by
+// the ledger.
+func TestRouterAfterACompactionKeepsTheRulesWhole(t *testing.T) {
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := t.TempDir()
+	writeRepoRules(t, dir, threeRules)
+	p := filepath.Join(realPath(t, t.TempDir()), "session.jsonl")
+	body := `{"type":"user","message":{"role":"user","content":"hello"}}` + "\n" +
+		`{"type":"assistant","message":{"id":"msg_1","role":"assistant","model":"claude-opus-4-1-20250805","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":160000,"output_tokens":3}}}` + "\n" +
+		`{"parentUuid":null,"isSidechain":false,"type":"system","subtype":"compact_boundary","content":"Conversation compacted","isMeta":false,"level":"info","compactMetadata":{"trigger":"manual","preTokens":160000}}` + "\n" +
+		`{"type":"user","isSidechain":false,"isCompactSummary":true,"message":{"role":"user","content":"This session is being continued from a previous conversation."}}` + "\n"
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := fillRouterJSON(t, promptPayload(t, "compacted-a", dir, "count the widget", p))
+	if f := env.Fill; f == nil || f.Source != rules.FillSourceUnknown || !strings.Contains(f.Reason, "compaction") {
+		t.Fatalf("fill = %+v, want unknown past the compaction", f)
+	}
+	plain, _ := runHook(t, promptPayload(t, "compacted-b", dir, "count the widget", p), "hook", "prompt-router")
+	if !strings.Contains(plain, "Ship widgets in pairs.") {
+		t.Errorf("the pre-compaction figure shrank the domain:\n%s", plain)
+	}
+}
+
 // TestPromptRouterResetMakesTheFillDirectoryAndDeletesTheSessionsFile: the
 // session-start and pre-compact reset makes ~/.abcd.noindex/fill/ for the
 // status line to write into, and deletes the session's fill file with its

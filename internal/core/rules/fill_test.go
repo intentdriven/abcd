@@ -278,6 +278,43 @@ func TestTranscriptFillSkipsWhatIsNotThisSessionsRequest(t *testing.T) {
 	wantPct(t, ReadFill("", "", tr), FillSourceTranscript, 10)
 }
 
+// compactBoundary is the line the host writes into the main conversation when
+// it compacts the session, with the token count the compaction began from,
+// and compactSummary the summary entry it starts the compacted context with.
+const (
+	compactBoundary = `{"parentUuid":null,"isSidechain":false,"type":"system","subtype":"compact_boundary","content":"Conversation compacted","isMeta":false,"level":"info","compactMetadata":{"trigger":"manual","preTokens":160000}}`
+	compactSummary  = `{"type":"user","isSidechain":false,"isCompactSummary":true,"message":{"role":"user","content":"This session is being continued from a previous conversation."}}`
+)
+
+// TestTranscriptFillStopsAtACompaction: a response before the host's
+// compaction boundary measured the context the compaction replaced, so with
+// no response since, the fill is unknown and says why; a response after the
+// boundary is read as before. A side chain's boundary is another
+// conversation's and does not stop the scan.
+func TestTranscriptFillStopsAtACompaction(t *testing.T) {
+	compacted := writeTranscript(t,
+		userLine,
+		assistantLine("claude-opus-4-1", 0, 0, 160_000),
+		compactBoundary,
+		compactSummary,
+		`{"type":"user","isMeta":true,"message":{"role":"user","content":"meta"}}`,
+	)
+	wantUnknown(t, ReadFill("", "", compacted), "past a compaction")
+
+	answered := writeTranscript(t,
+		assistantLine("claude-opus-4-1", 0, 0, 160_000),
+		compactBoundary,
+		compactSummary,
+		userLine,
+		assistantLine("claude-opus-4-1", 0, 0, 20_000),
+	)
+	wantPct(t, ReadFill("", "", answered), FillSourceTranscript, 10)
+
+	sideBoundary := strings.Replace(compactBoundary, `"isSidechain":false`, `"isSidechain":true`, 1)
+	side := writeTranscript(t, assistantLine("claude-opus-4-1", 0, 0, 40_000), sideBoundary)
+	wantPct(t, ReadFill("", "", side), FillSourceTranscript, 20)
+}
+
 // TestFillOfAFullerWindowThanTheTableIsFull: input past the table's window
 // (a session running a larger window than the table holds) reads as full.
 func TestFillOfAFullerWindowThanTheTableIsFull(t *testing.T) {
