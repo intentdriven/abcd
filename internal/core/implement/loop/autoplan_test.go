@@ -354,6 +354,15 @@ func TestAStoredAutoPlanTheLoopNeverWritesIsRefused(t *testing.T) {
 			ap := doc["lanes"].([]any)[0].(map[string]any)["auto_plan"].(map[string]any)
 			ap["planned"], ap["spec"] = intent.PlannedPathOf(draftRel), "spc-2610010000000001"
 		},
+		"an uncopied index of no reason the loop states": func(doc map[string]any) {
+			doc["lanes"].([]any)[0].(map[string]any)["auto_plan"].(map[string]any)["uncopied_index"] = "too-big"
+		},
+		"an uncopied index with a review's verdict": func(doc map[string]any) {
+			ap := doc["lanes"].([]any)[0].(map[string]any)["auto_plan"].(map[string]any)
+			ap["uncopied_index"] = indexPastBound
+			rv := ap["reviews"].([]any)[0].(map[string]any)
+			rv["verdict"], rv["pass"] = "SHIP", true
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			var doc map[string]any
@@ -701,22 +710,22 @@ func TestAnIndexSwappedAfterItsLstatIsNotCopied(t *testing.T) {
 	original := openIndex
 	t.Cleanup(func() { openIndex = original })
 	for _, tc := range []struct {
-		name string
-		swap func() error
+		name, why string
+		swap      func() error
 	}{
-		{"a symbolic link", func() error {
+		{"a symbolic link", indexNotRegular, func() error {
 			if err := os.Rename(index, kept); err != nil {
 				return err
 			}
 			return os.Symlink(kept, index)
 		}},
-		{"a named pipe", func() error {
+		{"a named pipe", indexNotRegular, func() error {
 			if err := os.Rename(index, kept); err != nil {
 				return err
 			}
 			return syscall.Mkfifo(index, 0o600)
 		}},
-		{"another regular file with the same bytes", func() error {
+		{"another regular file with the same bytes", indexReplaced, func() error {
 			b, err := os.ReadFile(index)
 			if err != nil {
 				return err
@@ -728,15 +737,18 @@ func TestAnIndexSwappedAfterItsLstatIsNotCopied(t *testing.T) {
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			var got [2]string
+			var got, why [2]string
 			for i := range got {
 				digestSwapped(t, index, kept, tc.name, tc.swap, original, func(scratch string) (err error) {
-					got[i], err = indexDigest(root, scratch)
+					got[i], why[i], err = indexDigest(root, scratch)
 					return err
 				})
 			}
 			if !strings.HasPrefix(got[0], "uncopied:") || !strings.HasPrefix(got[1], "uncopied:") || got[0] == got[1] {
 				t.Fatalf("%s swapped in after the Lstat yields an uncopied value every time: %q %q", tc.name, got[0], got[1])
+			}
+			if why[0] != tc.why || why[1] != tc.why {
+				t.Fatalf("%s swapped in after the Lstat is not copied because it %s: %q %q", tc.name, tc.why, why[0], why[1])
 			}
 		})
 	}
@@ -994,5 +1006,64 @@ func TestAnAutoPlanReviewIsNeverHandedToARunner(t *testing.T) {
 	}
 	if after := stateBytes(t, root, start.RunID); string(after) != string(before) {
 		t.Fatal("a refused --route writes nothing")
+	}
+}
+
+// TestAStartThatCannotCopyTheIndexHandsBackBeforeAnyReview: a start whose
+// checkout digest could not copy the index (a symbolic link at the index
+// path, or an index past the copy's bound) has a result already decided,
+// since the end check can only read that digest as changed. The lane's first
+// step hands it back at once, naming the index and why it was not copied,
+// with no plan review handed out and no brief written, and not with the end
+// check's "the checkout changed" reason.
+func TestAStartThatCannotCopyTheIndexHandsBackBeforeAnyReview(t *testing.T) {
+	for _, tc := range []struct {
+		name, why string
+		set       func(t *testing.T, index string)
+	}{
+		{"a symbolic link at the index path", "not a regular file", func(t *testing.T, index string) {
+			kept := index + ".real"
+			if err := os.Rename(index, kept); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(kept, index); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"an index past the copy's bound", "past the 16 bytes", func(t *testing.T, _ string) {
+			n := maxIndexCopy
+			t.Cleanup(func() { maxIndexCopy = n })
+			maxIndexCopy = 16
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := draftRepo(t, draftIntent())
+			root := repo.Root()
+			tc.set(t, filepath.Join(root, ".git", "index"))
+			start, err := Start(root, "itd-10", Options{AutoPlan: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			res, err := advance(root, start.RunID, DefaultStages(), Options{})
+			if err != nil || res.HandBack == nil || res.Awaiting != nil || res.HandBack.Verdict != HandBackNotPlanned {
+				t.Fatalf("the first step hands the lane back, handing out no review: %+v %v", res, err)
+			}
+			reason := res.HandBack.Reason
+			if strings.Contains(reason, "checkout changed") || !strings.Contains(reason, ".git/index") || !strings.Contains(reason, tc.why) {
+				t.Fatalf("the hand-back names the index and why it was not copied, not the end check's reason: %q", reason)
+			}
+			st, err := ReadState(root, start.RunID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, r := range st.Lanes[0].AutoPlan.Reviews {
+				if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(r.Brief))); !errors.Is(err, fs.ErrNotExist) {
+					t.Fatalf("no plan review brief is written: %s %v", r.Brief, err)
+				}
+			}
+			if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(draftRel))); err != nil {
+				t.Fatalf("the draft is not planned: %v", err)
+			}
+		})
 	}
 }

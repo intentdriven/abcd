@@ -162,12 +162,28 @@ const (
 	CheckFigureLabels = "figure-labels"
 	CheckBasePath     = "base-path"
 	CheckLinkTargets  = "link-targets"
+	// CheckContentPolicy holds a project site's pages to the content policy
+	// each carries in its own head (project_policy.go).
+	CheckContentPolicy = "content-policy"
 )
 
 // CheckNames is every check this verb runs, in the order it runs them.
 var CheckNames = []string{
 	CheckProvenance, CheckHero, CheckBannedTokens, CheckSnippets,
 	CheckBaseline, CheckMobile, CheckFigureLabels, CheckBasePath, CheckLinkTargets,
+	CheckContentPolicy,
+}
+
+// composedCheckNames is every check a composed site's run makes: all but the
+// project route's content policy.
+func composedCheckNames() []string {
+	out := make([]string, 0, len(CheckNames))
+	for _, name := range CheckNames {
+		if name != CheckContentPolicy {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // maxOutputPageBytes bounds one emitted page read.
@@ -330,6 +346,12 @@ func Check(req CheckRequest) (CheckResult, error) {
 	if err := routeAgrees(manifest, req.Project); err != nil {
 		return CheckResult{}, err
 	}
+	// The content-policy gate judges a project site alone: a composed site's
+	// host serves its policy as a header, so the gate is not reported as
+	// having run there.
+	if !manifest.Project() {
+		res.Checks = composedCheckNames()
+	}
 	// A project site's interface words are the binary's, and its identity
 	// block the one abcd wrote and `.abcd/positioning.json` points at.
 	ui, identityLoc := UI{}, manifest.Identity
@@ -396,6 +418,7 @@ func Check(req CheckRequest) (CheckResult, error) {
 	if err := c.checkLinkTargets(); err != nil {
 		return CheckResult{}, err
 	}
+	c.checkContentPolicy()
 
 	sortFindings(res.Findings)
 	sortFindings(res.Notes)
@@ -506,6 +529,10 @@ func (c *checker) readPages() error {
 				gates := []string{CheckHero, CheckBannedTokens, CheckSnippets, CheckMobile, CheckFigureLabels, CheckLinkTargets}
 				if c.base != "/" {
 					gates = append(gates, CheckBasePath)
+				}
+				// The content-policy gate walks every page of a project site.
+				if c.project {
+					gates = append(gates, CheckContentPolicy)
 				}
 				for _, name := range gates {
 					c.fail(name, rel, "", "this page did not parse, so this gate could not examine it")

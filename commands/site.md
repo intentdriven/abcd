@@ -104,7 +104,13 @@ the site's settings only (`"mode": "project"`, the `hosting` block and its
 switch; `abcd site setup --provider github-pages` writes it, below). Nothing is
 composed and nothing is read from `site-src/`: every page is built from what
 abcd already writes to the repository, and the interface words, the
-stylesheet, the scripts and the headers policy come from the binary. The about
+stylesheet and the scripts come from the binary. GitHub Pages reads no
+`_headers` file and serves no header a site declares, so a project build
+writes none: each page carries the content policy abcd's headers file gives
+its route as a `<meta http-equiv="Content-Security-Policy">` in its head, less
+`frame-ancestors`, which a policy in a page cannot enforce. A project site on
+GitHub Pages can therefore be framed by another site and is served without
+`nosniff`. The about
 page at `/` is, in this order and each only where the repository holds it: the
 identity block `.abcd/positioning.json` points at (as the heading, and only
 when abcd writes the file it lives in: one under `.abcd/`, outside the local

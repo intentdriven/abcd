@@ -167,8 +167,9 @@ func TestCheckPassesAWellFormedRender(t *testing.T) {
 		t.Errorf("pages = %d, composed = %d; the record rendering should be read for the mobile gate",
 			len(res.Pages), len(res.Composed))
 	}
-	if len(res.Checks) != 9 {
-		t.Errorf("checks run = %v, want nine", res.Checks)
+	// The content-policy gate is the project route's alone (project_policy.go).
+	if len(res.Checks) != 9 || containsString(res.Checks, CheckContentPolicy) {
+		t.Errorf("checks run = %v, want nine, without %s", res.Checks, CheckContentPolicy)
 	}
 }
 
