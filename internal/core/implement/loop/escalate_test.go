@@ -76,7 +76,7 @@ func tieredFix(t *testing.T, repo *gittest.Repo, runID string, o Options, file s
 		}
 	}
 	rc := LaneReceipt{SchemaVersion: ReceiptSchemaVersion, RunID: runID, Lane: l.ID, Branch: l.Branch, Commits: []string{sha},
-		DefinitionOfDone: &DoDRun{Command: "make check", ExitCode: zero(), Output: rel + "/" + DoDFileName}, Report: rel + "/" + ReportFileName}
+		DefinitionOfDone: &DoDRun{Command: "make check", ExitCode: zero(), Output: rel + "/" + DoDFileName}, Report: rel + "/" + ReportFileName, Model: "a-model"}
 	data, _ := json.Marshal(rc)
 	path := filepath.Join(repo.Root(), filepath.FromSlash(res.Awaiting.Receipt))
 	if err := os.WriteFile(path, data, 0o600); err != nil {

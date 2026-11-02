@@ -264,7 +264,7 @@ func TestTheHostDrivesALaneThroughTheCLI(t *testing.T) {
 
 	laneDir := filepath.Dir(filepath.Join(repo.Root(), filepath.FromSlash(await.Awaiting.Receipt)))
 	receipt := `{"schema_version":1,"run_id":"` + start.RunID + `","lane":"lane-1","branch":"` + state.Lanes[0].Branch +
-		`","commits":["` + sha + `"],"definition_of_done":{"command":"make check","exit_code":0,"output":"dod.log"},"report":"report.md"}`
+		`","commits":["` + sha + `"],"definition_of_done":{"command":"make check","exit_code":0,"output":"dod.log"},"report":"report.md","model":"a-model"}`
 	if err := os.WriteFile(filepath.Join(laneDir, "receipt.json"), []byte(receipt), 0o600); err != nil {
 		t.Fatal(err)
 	}

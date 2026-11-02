@@ -31,13 +31,14 @@ func TestTheRecordsCommitTrailerIsTheReceiptsModel(t *testing.T) {
 	}
 }
 
-// TestALandingWhoseReceiptReportsNoModelIsRefused: with no model to disclose,
-// the records commit is not made, and nothing is written in the lane's
-// worktree; the refusal names the missing value.
+// TestALandingWhoseReceiptReportsNoModelIsRefused: with no model to disclose
+// (a receipt verified before the model was required, whose file and route
+// report none either), the records commit is not made, and nothing is written
+// in the lane's worktree; the refusal names the missing value.
 func TestALandingWhoseReceiptReportsNoModelIsRefused(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
-	f.model = ""
 	l := f.validated(t)
+	setModel(t, f, "", nil, true)
 	head := l.HeadSHA
 	f.step(t) // prepare
 	_, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
@@ -271,24 +272,10 @@ func TestAPullRequestWhoseReceiptsNameNoModelIsNotOpened(t *testing.T) {
 		l := currentLane(t, f.repo, f.runID)
 		preflighted(t, l, l.HeadSHA)
 		f.step(t) // push
-		st, err := ReadState(f.repo.Root(), f.runID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		i := st.current()
-		for j := range st.Lanes[i].Receipts {
-			st.Lanes[i].Receipts[j].Model = model
-		}
-		root, err := os.OpenRoot(f.repo.Root())
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = writeState(root, st)
-		root.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, err = advance(f.repo.Root(), f.runID, f.stages, Options{})
+		// The receipt's file reports the same, so reading it again mends
+		// nothing.
+		setModel(t, f, model, nil, true)
+		_, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
 		r := mustRefusal(t, err)
 		if r.Stage != string(StageLand) || !strings.Contains(r.Reason, "model") || !strings.Contains(r.Remedy, "model") {
 			t.Fatalf("model %q: the pull request's step is refused naming the model: %+v", model, r)

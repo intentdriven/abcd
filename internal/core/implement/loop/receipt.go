@@ -410,6 +410,12 @@ func verifyLaneReceipt(c Context, lane *Lane, receiptRel, want string) error {
 	}
 	missing = append(missing, commitGaps(c.RepoRoot, lane, rc.Commits)...)
 	missing = append(missing, resolutionGaps(rc.Resolves, rc.Commits)...)
+	// The landing's Assisted-by: trailer names the model, so a receipt that
+	// reports none is refused here, where the implementer can still add it,
+	// rather than at the landing (iss-2611012309408370).
+	if strings.TrimSpace(rc.Model) == "" {
+		missing = append(missing, "the model your harness runs (\"model\"), which the landing's Assisted-by: trailer names")
+	}
 	// The backstop to the widening before an edit (widen.go): a branch that
 	// changes a path the issue's reservation does not cover is refused.
 	missing = append(missing, unheldGaps(c, *lane, c.Now)...)

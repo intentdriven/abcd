@@ -167,6 +167,10 @@ func TestAReceiptShortOfItsLaneIsRefusedNamingWhatIsMissing(t *testing.T) {
 			}
 			return rc
 		}, []string{"the report (report.md does not exist)"}},
+		{"no model", func(t *testing.T, _ *gittest.Repo, _ Lane, _ string, rc *LaneReceipt) any {
+			rc.Model = " "
+			return rc
+		}, []string{"the model your harness runs"}},
 		{"everything missing at once", func(t *testing.T, _ *gittest.Repo, _ Lane, _ string, rc *LaneReceipt) any {
 			rc.Commits, rc.DefinitionOfDone, rc.Report = nil, nil, ""
 			return rc

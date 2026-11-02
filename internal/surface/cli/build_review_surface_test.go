@@ -47,7 +47,7 @@ func laneAtValidate(t *testing.T, repo *gittest.Repo) {
 	repo.Git("-C", wt, "commit", "-q", "-m", "build it")
 	sha := strings.TrimSpace(repo.Git("-C", wt, "rev-parse", "HEAD"))
 	receipt := `{"schema_version":1,"run_id":"` + state.RunID + `","lane":"lane-1","branch":"` + state.Lanes[0].Branch +
-		`","commits":["` + sha + `"],"definition_of_done":{"command":"make check","exit_code":0,"output":"dod.log"},"report":"report.md"}`
+		`","commits":["` + sha + `"],"definition_of_done":{"command":"make check","exit_code":0,"output":"dod.log"},"report":"report.md","model":"a-model"}`
 	for name, body := range map[string]string{"receipt.json": receipt, "dod.log": "ok\n", "report.md": "built it\n"} {
 		if err := os.WriteFile(filepath.Join(laneDir, name), []byte(body), 0o600); err != nil {
 			t.Fatal(err)
