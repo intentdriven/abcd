@@ -73,7 +73,7 @@ pauses the lane for its key rather than falling back to the subscription).
 - **An elapsed window refuses a route.** A run whose 120-minute window
   lapsed while its preflight queued refused `--route` because the step would
   only pause; stepping once without it took the zero-minute pause, and the
-  next step took the route (iss-2611012124359297).
+  next step took the route (iss-2611012124359297). <!-- record-lint: forward-looking -->
 - **The planning interview on the key ended on a refused question.** Run from
   a plain terminal, the routed interviewer wrote a sound question within a
   minute, abcd's question check refused it for its rows (39 against the
@@ -123,7 +123,7 @@ pauses the lane for its key rather than falling back to the subscription).
 - **A lane's pull-request title can name an issue with no `Refs:` line.** The
   loop put the step title's "(resolves iss-…)" into a pull-request title with
   no matching trailer line in the body, a shape the resolution gate refuses;
-  the body needed a `Refs:` line added by hand (iss-2611020148533389).
+  the body needed a `Refs:` line added by hand (iss-2611020148533389). <!-- record-lint: forward-looking -->
 - **A planning interview stops when any session moves a branch.** The
   person's interview, run from one worktree, watches every branch ref in the
   repository's shared git directory, so a commit to an unrelated records
@@ -159,7 +159,7 @@ pauses the lane for its key rather than falling back to the subscription).
 - **The verdict word must open the verdict section.** `land --record-review`
   takes a return only when the first non-empty line under `### Verdict` is the
   verdict word; a first line such as `Head: <sha>` or `Verdict: SHIP` is
-  refused as not one a validator writes (iss-2611012124381670).
+  refused as not one a validator writes (iss-2611012124381670). <!-- record-lint: forward-looking -->
 - **The loop's own reviews do not cover its landing commit.** The landing's
   resolve commit lands after the reviewed head, and `abcd land` wants a fresh
   pair naming it, which cost two extra subscription reviews for a records-only
@@ -167,6 +167,13 @@ pauses the lane for its key rather than falling back to the subscription).
 - **A return keeping an earlier round's verdict is refused.** A return with
   two `Verdict` headings at any level is refused (`it has 2 Verdict sections`),
   so a reviewer that keeps earlier rounds must rename their headings.
+- **A major issue cannot be built on the key.** The build refuses an issue
+  rated major as the person's, even one the person directed, so its only
+  route is a host session on the subscription (iss-2611020305525945). <!-- record-lint: forward-looking -->
+- **A package-wide location blocks every lane in that package.** An issue
+  whose location named a whole package could not be built while another lane
+  held one file in it, and narrowing the location is a records change that
+  takes as long to land as the other lane.
 - **The away queue needs an away record.** `abcd mode queue` refuses when the
   person is not away, so a finding meant for their queue while they are
   present has to be put to them directly.
@@ -221,7 +228,7 @@ pauses the lane for its key rather than falling back to the subscription).
   read from the operating system's secret store; caps per day, week and month
   that pause and wait at the limit; a run with no cap set refuses to start;
   and a cap is raised only by a command refused to agents
-  (dcn-2611012123470476, itd-2611012123486967).
+  (dcn-2611012123470476, itd-2611012123486967). <!-- record-lint: forward-looking -->
 
 - **The load gate, not the agents, set the pace.** Code preflights waited 1
   to 2.5 hours each at the load gate in the afternoon, with seven or more
@@ -255,7 +262,7 @@ pauses the lane for its key rather than falling back to the subscription).
 ## What to automate, in order
 
 1. Read the key from named keychain services, with two keys and a spending
-   cap (Henry's key-supply work, itd-2611011230226453).
+   cap (Henry's key-supply work, itd-2611011230226453). <!-- record-lint: forward-looking -->
 2. A failed runner start pauses the lane and carries the runner's own report
    (iss-2611012047534449, iss-2611012049508108).
 3. A verb that runs a review pair on the runner over a named head, handing it
