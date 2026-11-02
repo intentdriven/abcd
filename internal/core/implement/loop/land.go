@@ -457,18 +457,9 @@ func assistedByTrailers(rs []ReceiptRecord) ([]string, string) {
 	}
 	var out []string
 	for i, r := range rs {
-		var v string
-		switch {
-		case r.Model == "":
-			return nil, fmt.Sprintf("receipt %d (%s) reports no model", i+1, r.Receipt)
-		case assistedby.NamesAbcd(r.Model):
-			return nil, fmt.Sprintf("receipt %d (%s) reports abcd as its model, a label reserved for text abcd composes from record facts", i+1, r.Receipt)
-		case bareClaudeRe.MatchString(r.Model):
-			v = "Claude:" + r.Model
-		case assistedby.IsModelValue(r.Model):
-			v = r.Model
-		default:
-			return nil, fmt.Sprintf("receipt %d (%s) reports a model in no form the trailer takes (%s)", i+1, r.Receipt, termsafe.DescribeRefused(r.Model))
+		v, problem := modelTrailer(r.Model)
+		if problem != "" {
+			return nil, fmt.Sprintf("receipt %d (%s) %s", i+1, r.Receipt, problem)
 		}
 		if t := "Assisted-by: " + v; !slices.Contains(out, t) {
 			out = append(out, t)
@@ -477,14 +468,38 @@ func assistedByTrailers(rs []ReceiptRecord) ([]string, string) {
 	return out, ""
 }
 
-// rereadModels fills the model of each receipt the lane recorded without one
-// (iss-2611012309408370): from the route that ran it when its runner reported
-// one, else from the receipt file the record points at, read again, so a
-// receipt corrected after it verified reaches the landing without anyone
-// editing the run's state. Only the model is taken from the file; everything
-// else stays as it verified. It returns the run log's note naming each
-// receipt it filled, "" when it filled none, and a value assistedByTrailers
-// refuses is still refused there.
+// modelTrailer is the Assisted-by: value a receipt's model names, or, when it
+// names none, what is wrong with it: no model, abcd's own label, or a value in
+// no form the trailer takes (described, never quoted).
+func modelTrailer(model string) (string, string) {
+	switch {
+	case model == "":
+		return "", "reports no model"
+	case assistedby.NamesAbcd(model):
+		return "", "reports abcd as its model, a label reserved for text abcd composes from record facts"
+	case bareClaudeRe.MatchString(model):
+		return "Claude:" + model, ""
+	case assistedby.IsModelValue(model):
+		return model, ""
+	}
+	return "", "reports a model in no form the trailer takes (" + termsafe.DescribeRefused(model) + ")"
+}
+
+// nameable reports whether model is one the trailer can name.
+func nameable(model string) bool {
+	_, problem := modelTrailer(model)
+	return problem == ""
+}
+
+// rereadModels replaces the model of each receipt the lane recorded with none
+// the trailer can name (iss-2611012309408370): with the model the runner that
+// ran it reported, when that one is nameable, else with the model the receipt
+// file the record points at reports, read again, when that one is nameable and
+// differs. So a receipt corrected after it verified reaches the landing without
+// anyone editing the run's state. Only the model is taken from the file;
+// everything else stays as it verified. It returns the run log's note naming
+// each receipt it changed, "" when it changed none; a receipt it could not
+// mend is still refused by assistedByTrailers.
 func rereadModels(c Context, lane *Lane) string {
 	var filled []string
 	var root *os.Root
@@ -495,10 +510,10 @@ func rereadModels(c Context, lane *Lane) string {
 	}()
 	for i := range lane.Receipts {
 		r := &lane.Receipts[i]
-		if r.Model != "" {
+		if nameable(r.Model) {
 			continue
 		}
-		if r.Route != nil && r.Route.Model != "" && plainWritten(r.Route.Model) {
+		if r.Route != nil && r.Route.Model != "" && plainWritten(r.Route.Model) && nameable(r.Route.Model) {
 			r.Model = r.Route.Model
 			filled = append(filled, r.Receipt+" from the route that ran it")
 			continue
@@ -510,7 +525,7 @@ func rereadModels(c Context, lane *Lane) string {
 			}
 		}
 		rc, err := readReceipt(c.RepoRoot, root, r.Receipt, lane.ID)
-		if err != nil || strings.TrimSpace(rc.Model) == "" || !plainWritten(rc.Model) {
+		if err != nil || rc.Model == r.Model || !plainWritten(rc.Model) || !nameable(rc.Model) {
 			continue
 		}
 		r.Model = rc.Model
@@ -519,7 +534,7 @@ func rereadModels(c Context, lane *Lane) string {
 	if len(filled) == 0 {
 		return ""
 	}
-	return "took the model of " + strings.Join(filled, "; ") + ", since the receipt verified without one"
+	return "took the model of " + strings.Join(filled, "; ") + ", since the receipt verified with none the trailer can name"
 }
 
 // modelGap is the refusal of a landing step whose text must name the models

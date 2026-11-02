@@ -589,9 +589,9 @@ over each of the run's lanes' own diff.
    commits them on the lane's branch with `Delivers:` (when the close ships the
    intent) and `Resolves:` trailers, and an `Assisted-by:` naming the model the
    lane's receipts reported, since the records carry that model's prose. A
-   receipt that verified without a model (one written before it was required)
-   takes the model the runner that ran it reported, or else its file's model,
-   read again, so a corrected receipt file lands without anyone editing the
+   receipt that verified without a model the trailer can name (none, as one
+   written before it was required, or one in another form) takes the model the
+   runner that ran it reported, or else its file's model, read again, so a corrected receipt file lands without anyone editing the
    run's state; the run log names where the model came from, and a lane with
    no model in any of them is refused. The commit runs the
    repository's hooks; one that refuses stops the landing, which resumes once

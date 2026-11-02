@@ -45,11 +45,11 @@ func TestAReceiptThatReportsNoModelIsRefused(t *testing.T) {
 	}
 }
 
-// forgetModel clears the model of every receipt the lane recorded, as a
-// receipt verified before the model was required left it, and sets each
-// receipt's route to route. With strip, the model is taken out of each
-// receipt's file too.
-func forgetModel(t *testing.T, f *landFixture, route *runner.RouteRecord, strip bool) {
+// setModel sets the model of every receipt the lane recorded to model, as a
+// receipt verified before the model was required left it, and each receipt's
+// route to route. With inFile, each receipt's file reports model too (none
+// when it is empty).
+func setModel(t *testing.T, f *landFixture, model string, route *runner.RouteRecord, inFile bool) {
 	t.Helper()
 	st, err := ReadState(f.repo.Root(), f.runID)
 	if err != nil {
@@ -58,8 +58,8 @@ func forgetModel(t *testing.T, f *landFixture, route *runner.RouteRecord, strip 
 	i := st.current()
 	for j := range st.Lanes[i].Receipts {
 		r := &st.Lanes[i].Receipts[j]
-		r.Model, r.Route = "", route
-		if !strip {
+		r.Model, r.Route = model, route
+		if !inFile {
 			continue
 		}
 		p := filepath.Join(f.repo.Root(), filepath.FromSlash(r.Receipt))
@@ -72,6 +72,9 @@ func forgetModel(t *testing.T, f *landFixture, route *runner.RouteRecord, strip 
 			t.Fatal(err)
 		}
 		delete(m, "model")
+		if model != "" {
+			m["model"] = model
+		}
 		out, err := json.Marshal(m)
 		if err != nil {
 			t.Fatal(err)
@@ -121,7 +124,7 @@ func TestALandingReadsACorrectedReceiptsModelAgain(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
 	f.model = "claude-test-5"
 	f.validated(t)
-	forgetModel(t, f, nil, false)
+	setModel(t, f, "", nil, false)
 	landsWithModel(t, f, "from its file", "Assisted-by: Claude:claude-test-5")
 }
 
@@ -130,6 +133,17 @@ func TestALandingReadsACorrectedReceiptsModelAgain(t *testing.T) {
 func TestALandingTakesTheModelOfTheRouteThatRanIt(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
 	f.validated(t)
-	forgetModel(t, f, &runner.RouteRecord{Asked: runner.Claude, Ran: runner.Claude, Model: "claude-route-1"}, true)
+	setModel(t, f, "", &runner.RouteRecord{Asked: runner.Claude, Ran: runner.Claude, Model: "claude-route-1"}, true)
 	landsWithModel(t, f, "from the route that ran it", "Assisted-by: Claude:claude-route-1")
+}
+
+// TestALandingReadsAnUnnameableModelAgain: a receipt that verified with a
+// model the trailer cannot name, and was corrected in its file, lands with the
+// corrected model, as the refusal's remedy says it will.
+func TestALandingReadsAnUnnameableModelAgain(t *testing.T) {
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	f.model = "claude-test-5"
+	f.validated(t)
+	setModel(t, f, "unprefixed-model", nil, false)
+	landsWithModel(t, f, "from its file", "Assisted-by: Claude:claude-test-5")
 }
