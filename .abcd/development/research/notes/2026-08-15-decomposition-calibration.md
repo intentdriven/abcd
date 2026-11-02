@@ -2781,7 +2781,7 @@ The proposal: after a private ideate verdict reframed the idea into an open ques
 | Part | Type | Home |
 | --- | --- | --- |
 | per-landing and weekly cost and time, the estimate before a run | capability | itd-2611011325403127 |
-| cache reuse, affected-only race, inert changes stand down in the queue, macOS off every entry, batching as an option | capability | itd-2611011325421304 |
+| reuse of unchanged test results on the person's machine (affected-only race, inert changes in the queue, macOS off every entry and batching stay in itd-2610261025516272 or with itd-2610262141001890, as the interview ruled) | capability | itd-2611011325421304 |
 | labelled self-attestation behind a switch only the person sets | capability | itd-2611011325428560 |
 | a self-attested result is labelled as such and only the person, by an act no agent can perform, switches it on | trust rule | adr-2611011327164895 (proposed) |
 | a pull-only checker on a machine the person owns, reporting as its own App | capability | itd-2611011325430933 |
@@ -2790,4 +2790,4 @@ The proposal: after a private ideate verdict reframed the idea into an open ques
 
 Verdict at filing: SPLIT five ways plus one ADR, the product thinker choosing separate intents in this order over folding them into itd-2610261025516272. Typed links: the fewer-tests, self-attestation and checker drafts refine itd-2610261025516272 (advisory); the profiles draft refines itd-106; the measure builds on itd-166. Advisory reversal flags: none.
 
-Grade: pending the planning interviews. Watch for the bundling miss of earlier entries: itd-2611011325421304 carries five criteria and may split again at its interview.
+Grade: pending the planning interviews. Watch for the bundling miss of earlier entries: itd-2611011325421304 carries six criteria; its interview kept it whole and handed macOS scheduling and batching back.

@@ -10,7 +10,7 @@ related_rfcs: []
 related_adrs: [adr-2610222222326104, adr-2610120937435856]
 ---
 
-# ADR-2611011231015519: abcd spends a person's money only within the budget they set, overshooting by at most one response
+# ADR-2611011231015519: The launches abcd makes spend a person's money only within the budget they set, overshooting by at most one response
 
 ## Context
 
@@ -18,7 +18,7 @@ abcd starts agents itself when a role is routed to a command-line runner, and on
 
 ## Decision
 
-We will spend a person's money only within a budget they set. Any launch that bills a person per token, through any route abcd starts, runs only under a budget of the person's own: caps per day, per week and per month, set in their own configuration through a command abcd refuses to agents, with no default figure abcd supplies; a route with no budget set refuses to start. Each launch is handed no more than the smallest remaining cap less a headroom, through the harness's own budget limit, and a launch is started only when every remainder is above a floor. Each launch's reported cost is added before the next starts, a failed launch's included, and a launch whose cost cannot be read is charged the whole bound it was handed. The harness counts the response that crossed its limit, so a period may overshoot its cap by at most that one response, which the headroom is there to absorb. When a cap is reached the work pauses until the period resets or the person raises the cap; it never continues on the host session or on another route. A route that bills no money (the host session, the subscription route) needs no budget.
+We will spend a person's money, in the launches abcd makes, only within a budget they set; spend on the same key outside abcd's launches is neither counted nor bounded, and the record of totals is writable by the person's own account, residuals the provider's own console limit covers. Any launch that bills a person per token, through any route abcd starts, runs only under a budget of the person's own: caps per day, per week and per month, set in their own configuration through a command abcd refuses to agents, with no default figure abcd supplies; a route with no budget set refuses to start. Each launch is handed no more than the smallest remaining cap less a headroom, through the harness's own budget limit, and a launch is started only when every remainder is above a floor. Each launch's reported cost is added before the next starts, a failed launch's included, and a launch whose cost cannot be read is charged the whole bound it was handed. The harness counts the response that crossed its limit, so a period may overshoot its cap by at most that one response, which the headroom is there to absorb. When a cap is reached the work pauses until the period resets or the person raises the cap; it never continues on the host session or on another route. A route that bills no money (the host session, the subscription route) needs no budget.
 
 This refines decisions 17 and 34 of itd-2610161733316518 from matrix runs to every route that spends the person's money, keeping 17's person-named figure with no default and 34's rule that no launch starts unless its remainder covers it; the refinement is advisory until the product thinker accepts it.
 

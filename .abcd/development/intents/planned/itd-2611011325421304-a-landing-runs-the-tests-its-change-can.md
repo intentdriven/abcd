@@ -18,7 +18,7 @@ impact: fix
 
 ## Press Release
 
-> **A change to one package is checked in minutes, because abcd reruns only what the change could have affected.** Maya's agent fixes a bug in one package and runs the check before pushing. Instead of an hour of every test in the project twice over, abcd reuses every result that cannot have changed and reruns the rest, and the report says how many tests ran and how many were reused. Nothing the check guarded is skipped: a test whose inputs changed always runs, and a test abcd cannot see the inputs of always runs too.
+> **A change to one package is checked in minutes, because abcd reruns only what the change could have affected.** Maya's agent fixes a bug in one package and runs the check before pushing. Instead of an hour of every test in the project twice over, abcd reuses every result that cannot have changed and reruns the rest, and the report says how many tests ran and how many were reused. Nothing the check guarded is skipped: a test whose inputs changed always runs, and a test declared as reading what abcd cannot see always runs too.
 
 ## Why This Matters
 
@@ -46,10 +46,11 @@ impact: fix
 
 ## Decisions
 
-- 2026-11-01, the product thinker in the planning interview: reuse of unchanged test results becomes its own intent, shipped first. This intent refines itd-2610261025516272 by taking its three reuse criteria verbatim; that draft keeps a pointer and the landing route.
+- 2026-11-01, the product thinker in the planning interview: reuse of unchanged test results becomes its own intent, shipped first. This intent refines itd-2610261025516272 by taking its three reuse criteria, the first and third verbatim and the second reworded to name the list on the default branch; that draft keeps a pointer and the landing route.
 - 2026-11-01, the product thinker: hosted CI reuse (restoring file times in a fresh checkout) is left to a follow-up intent; this one covers the person's machine.
 - 2026-11-01, the product thinker: the always-rerun tests are named on a list on the default branch, never by a test or a change itself.
 - 2026-11-01, the product thinker: the press release, the mechanism claim, the four scope conditions and all six acceptance criteria were confirmed, the second worded to name the list on the default branch and its release-cut half confirmed separately; impact is fix.
+- 2026-11-02, after the interview, from the landing reviews: the press release's 'a test abcd cannot see the inputs of always runs too' was made precise as 'a test declared as reading what abcd cannot see always runs too', since only a declared test can be rerun on purpose; an undeclared test that reads a subprocess, the clock or the network is reused on the person's machine and caught only by the hosted full run. Flagged for the product thinker's review.
 - 2026-11-01, the product thinker: reuse is planned alone and first. The drafts itd-2610110940216682 (every change checked in full once) and itd-2610262141001890 (how many checks run at once) are kept separate from it and are to be planned together later; itd-2610262141001890 waits on itd-2610262140595217, so bundling them with reuse would have held reuse back.
 
 ## Open Questions
