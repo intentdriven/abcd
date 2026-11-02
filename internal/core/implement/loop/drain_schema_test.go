@@ -17,7 +17,8 @@ import (
 // its model is local, which version 1 never wrote. Version 1 is read as
 // version 2's strict subset and written back at 2; a version-1 file carrying
 // any of those fields is refused naming it; a version above 2 is a newer
-// abcd's.
+// abcd's. Version 3 added a judge fallback receipt's `spent`
+// (iss-2611021751406429), on the same terms.
 
 // judgedDrain is writtenDrain with its first judgement answered by a routed
 // judge whose route carries sides.
@@ -61,9 +62,49 @@ func storedDrainVersion(t *testing.T, path string) int {
 	return peek.SchemaVersion
 }
 
-func TestDrainSchemaVersionIsTwo(t *testing.T) {
-	if DrainSchemaVersion != 2 {
-		t.Fatalf("DrainSchemaVersion = %d, want 2", DrainSchemaVersion)
+func TestDrainSchemaVersionIsThree(t *testing.T) {
+	if DrainSchemaVersion != 3 || drainSchemaVersionUnspent != 2 || drainSchemaVersionUnpinned != 1 {
+		t.Fatalf("DrainSchemaVersion = %d (%d, %d), want 3 (2, 1)", DrainSchemaVersion, drainSchemaVersionUnspent, drainSchemaVersionUnpinned)
+	}
+}
+
+// TestAJudgeFallbacksSpendIsVersionThrees: a judge fallback receipt's
+// `spent` is version 3's (iss-2611021751406429): a version-2 file carrying one
+// is refused naming it, one carrying none reads and is written back at 3, and
+// version 3's own reads with the spend kept.
+func TestAJudgeFallbacksSpendIsVersionThrees(t *testing.T) {
+	spent := func() DrainState {
+		st := judgedDrain(runner.Sides{})
+		st.JudgeFallbacks = []runner.FallbackReceipt{{Role: "drain-judge", Asked: "claude", Reason: runner.ReasonFailed,
+			Detail: "killed", Ran: "none", Spent: &runner.Spend{ChargedRuns: 1}}}
+		return st
+	}
+	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+	root := repo.Root()
+	writeDrainAt(t, root, spent(), 2)
+	_, _, err := readDrain(root)
+	rf := mustRefusal(t, err)
+	if !strings.Contains(rf.Reason, "schema version 2") || !strings.Contains(rf.Reason, "`spent`") {
+		t.Errorf("a version-2 drain state carrying a spend is refused naming it: %q", rf.Reason)
+	}
+	path := writeDrainAt(t, root, judgedDrain(runner.Sides{}), 2)
+	st, _, err := readDrain(root)
+	if err != nil {
+		t.Fatalf("a version-2 drain state with no spend reads: %v", err)
+	}
+	if err := writeDrain(root, st); err != nil {
+		t.Fatal(err)
+	}
+	if v := storedDrainVersion(t, path); v != 3 {
+		t.Errorf("the drain writes a version-2 state back at version %d, want 3", v)
+	}
+	writeDrainAt(t, root, spent(), 3)
+	st, _, err = readDrain(root)
+	if err != nil {
+		t.Fatalf("a version-3 drain state carrying a spend reads: %v", err)
+	}
+	if s := st.JudgeFallbacks[0].Spent; s == nil || s.ChargedRuns != 1 {
+		t.Errorf("the judge fallback's spend is kept: %+v", st.JudgeFallbacks)
 	}
 }
 
@@ -88,8 +129,8 @@ func TestAVersionOneDrainStateReadsAndIsWrittenBackAtTwo(t *testing.T) {
 	if err := writeDrain(root, st); err != nil {
 		t.Fatal(err)
 	}
-	if v := storedDrainVersion(t, path); v != 2 {
-		t.Errorf("the drain writes a version-1 state back at version %d, want 2", v)
+	if v := storedDrainVersion(t, path); v != DrainSchemaVersion {
+		t.Errorf("the drain writes a version-1 state back at version %d, want %d", v, DrainSchemaVersion)
 	}
 }
 
@@ -142,16 +183,16 @@ func TestAVersionTwoDrainStateCarryingLocalReads(t *testing.T) {
 	}
 }
 
-// TestAVersionThreeDrainStateIsRefusedAsNewer: a version above 2 is a newer
+// TestAVersionFourDrainStateIsRefusedAsNewer: a version above 3 is a newer
 // abcd's, refused as that before any strict decode (iss-2610230223231843).
-func TestAVersionThreeDrainStateIsRefusedAsNewer(t *testing.T) {
+func TestAVersionFourDrainStateIsRefusedAsNewer(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
 	root := repo.Root()
-	writeDrainAt(t, root, judgedDrain(runner.Sides{Local: true}), 3)
+	writeDrainAt(t, root, judgedDrain(runner.Sides{Local: true}), 4)
 	_, _, err := readDrain(root)
 	rf := mustRefusal(t, err)
-	if !strings.Contains(rf.Reason, "schema version 3, which a newer abcd wrote") || !strings.Contains(rf.Reason, "reads version 2") {
-		t.Errorf("a version-3 drain state is refused as a newer abcd's: %q", rf.Reason)
+	if !strings.Contains(rf.Reason, "schema version 4, which a newer abcd wrote") || !strings.Contains(rf.Reason, "reads version 3") {
+		t.Errorf("a version-4 drain state is refused as a newer abcd's: %q", rf.Reason)
 	}
 }
 

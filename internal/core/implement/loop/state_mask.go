@@ -59,6 +59,13 @@ func (st State) masked() State {
 	st.Fallbacks = maskEach(st.Fallbacks, func(f runner.FallbackReceipt) runner.FallbackReceipt {
 		f.Role, f.Asked, f.Detail, f.Ran = line(f.Role), line(f.Asked), free(f.Detail), line(f.Ran)
 		f.Reason = runner.Reason(line(string(f.Reason)))
+		f.Spent = maskPtr(f.Spent, func(s runner.Spend) runner.Spend {
+			s.Cost = maskPtr(s.Cost, func(c oracle.Cost) oracle.Cost {
+				c.Unit = line(c.Unit)
+				return c
+			})
+			return s
+		})
 		return f
 	})
 	return st

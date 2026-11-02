@@ -35,10 +35,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/layered"
@@ -201,6 +204,12 @@ func (c *ClaudeCLI) Run(ctx context.Context, req Request) (Answer, []byte, error
 		if what := claudeRateLimit(res.stdout); what != "" {
 			return Answer{}, transcript, rateLimited(what)
 		}
+		var fl *Failure
+		if errors.Is(err, ErrKilled) && errors.As(err, &fl) {
+			// Killed, it wrote no result event: what it spent is read
+			// from the stream it did write (iss-2611021751406429).
+			fl.Spent = spendOf(claudeSpent(res.stdout))
+		}
 		return Answer{}, transcript, err
 	}
 	ans, err := parseClaude(res.stdout)
@@ -347,6 +356,76 @@ func meterClaude(ans *Answer, line []byte) {
 		}
 		ans.ServedModels = append(ans.ServedModels, cleanHarness(k))
 	}
+}
+
+// claudeSpent reads what a killed claude run spent from the stream it wrote
+// (iss-2611021751406429): the result event's usage and cost when one came
+// before the kill, else the usage its assistant messages carry, summed once
+// per message (the stream repeats a message's usage on each of its content
+// blocks, so the last seen for an id stands) and with no cost, which only the
+// result event reports. Every line is read leniently: a line that is not an
+// event is skipped, never a reason to drop what the others show.
+func claudeSpent(out []byte) Answer {
+	type usage struct {
+		InputTokens              *int `json:"input_tokens"`
+		OutputTokens             *int `json:"output_tokens"`
+		CacheReadInputTokens     *int `json:"cache_read_input_tokens"`
+		CacheCreationInputTokens *int `json:"cache_creation_input_tokens"`
+	}
+	var ans Answer
+	byID := map[string]usage{}
+	var order []string
+	for _, line := range bytes.Split(out, []byte("\n")) {
+		line = bytes.TrimSpace(line)
+		var ev struct {
+			Type    string `json:"type"`
+			Message struct {
+				ID    string `json:"id"`
+				Usage *usage `json:"usage"`
+			} `json:"message"`
+		}
+		if len(line) == 0 || json.Unmarshal(line, &ev) != nil {
+			continue
+		}
+		switch ev.Type {
+		case "result":
+			var r Answer
+			meterClaude(&r, line)
+			if r.Usage != nil || r.Cost != nil {
+				return r
+			}
+		case "assistant":
+			if ev.Message.Usage == nil {
+				continue
+			}
+			id := ev.Message.ID
+			if id == "" {
+				id = strconv.Itoa(len(order))
+			}
+			if _, seen := byID[id]; !seen {
+				order = append(order, id)
+			}
+			byID[id] = *ev.Message.Usage
+		}
+	}
+	if len(order) == 0 {
+		return ans
+	}
+	sum := &oracle.Usage{}
+	add := func(to *int, n *int) {
+		if n != nil && *n >= 0 && *to <= math.MaxInt-*n {
+			*to += *n
+		}
+	}
+	for _, id := range order {
+		u := byID[id]
+		add(&sum.PromptTokens, u.InputTokens)
+		add(&sum.CompletionTokens, u.OutputTokens)
+		add(&sum.CacheReadTokens, u.CacheReadInputTokens)
+		add(&sum.CacheWriteTokens, u.CacheCreationInputTokens)
+	}
+	ans.Usage = sum
+	return ans
 }
 
 // claudeUnpinned lists the fields a claude run could not pin. The cost is

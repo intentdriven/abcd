@@ -29,6 +29,18 @@ package loop
 // passed), and the claim is dropped when the dispatch ends: so a second step,
 // in this checkout or a peer's, never starts a second runner for a role one is
 // already running, and a claim whose step was killed lapses with its bound.
+// The bound a claim outlasts is the longest the run can last: its own, and the
+// most its clock stands still while it waits at the load gate
+// (runner.LongestRun, iss-2611021751406429).
+//
+// A role killed is not always a failed start (iss-2611021751406429): an
+// implementer killed after it committed its work on the lane's branch and
+// wrote its report has done what the lane waits on but its receipt. So that
+// lane is kept at its stage (stage `killed`): the await stays out, neither
+// paused nor counted as a fallback, for the host or the next step's runner to
+// write the receipt from the branch and the report. Whatever the kill, what
+// the killed launch spent, as its transcript shows it, is kept: on the
+// fallback receipt of a failed start, and in the record's line of a kept one.
 
 import (
 	"context"
@@ -37,6 +49,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -44,6 +57,7 @@ import (
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // StageRetry is the record's stage for a held role retried on its runner, and
@@ -61,8 +75,9 @@ const StageUnpaused = "unpaused"
 // paused role is handed to no one.
 const ranNone = "none"
 
-// claimGrace is how long past the run's own time bound a claim stands, so a
-// runner killed at its bound has had its dispatch end before the claim lapses.
+// claimGrace is how long past the run's longest (runner.LongestRun) a claim
+// stands, so a runner killed at its bound has had its dispatch end before the
+// claim lapses.
 const claimGrace = 5 * time.Minute
 
 // maxStderrLine bounds the stderr line a pause carries.
@@ -378,7 +393,7 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		if a.Running != nil && now.Before(a.Running.Until) {
 			return false, errClaimed
 		}
-		a.Running = &RunnerClaim{Runner: route.Runner, Session: session, Until: now.Add(timeout + claimGrace)}
+		a.Running = &RunnerClaim{Runner: route.Runner, Session: session, Until: now.Add(runner.LongestRun(timeout) + claimGrace)}
 		lane.Awaits = slices.Clone(lane.Awaits)
 		lane.Awaits[k] = a
 		st.Lanes[i] = lane
@@ -461,6 +476,12 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		if fell != nil {
 			fb = *fell
 		}
+		if out.Failure != nil && errors.Is(out.Failure, runner.ErrKilled) && aw.Role == RoleImplementer {
+			if n, ok := workStands(repoRoot, worktree, base, aw); ok {
+				r, err := keepKilled(repoRoot, runID, laneID, aw, session, fb, n, o)
+				return retry(r, nil), err
+			}
+		}
 		stderr := ""
 		if tap != nil {
 			stderr = redactStderr(repoRoot, tap.first)
@@ -520,6 +541,81 @@ func pauseAwait(repoRoot, runID, laneID string, aw Await, session string, fb run
 		return true, nil
 	})
 	return res, paused, err
+}
+
+// StageKilled is the record's stage for a role killed after its work stood:
+// the lane is kept at its stage for its receipt, not paused.
+const StageKilled = "killed"
+
+// workStands reports whether a killed implementer's work stands: commits on
+// the lane's branch past its base, which its worktree has checked out, and
+// its report written beside the receipt it did not write; and how many
+// commits. Anything that cannot be read stands for nothing, and the kill is a
+// failed start as any other.
+func workStands(repoRoot, worktree, base string, aw Await) (int, bool) {
+	if worktree == "" || base == "" {
+		return 0, false
+	}
+	report := filepath.Join(filepath.Dir(absIn(repoRoot, aw.Receipt)), ReportFileName)
+	fi, err := os.Lstat(report)
+	if err != nil || !fi.Mode().IsRegular() || fi.Size() == 0 {
+		return 0, false
+	}
+	out, err := gitutil.Run(worktree, "rev-list", "--count", base+"..HEAD", "--")
+	if err != nil {
+		return 0, false
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(out))
+	if err != nil || n <= 0 {
+		return 0, false
+	}
+	return n, true
+}
+
+// keepKilled records a role its runner killed after its work stood
+// (workStands): its claim and any pause are dropped and no fallback receipt
+// is written, since this was no failed start; the await stays out for the
+// host, or the next step's runner, to write its receipt from the branch and
+// the report; and the record's line names the kill, the commits and what the
+// launch spent. It returns the lane's result, which names the await.
+func keepKilled(repoRoot, runID, laneID string, aw Await, session string, fb runner.FallbackReceipt, commits int, o Options) (StepResult, error) {
+	var res StepResult
+	err := mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+		now := o.now()
+		i, k := st.findAwait(repoRoot, aw.Receipt)
+		var lane Lane
+		if i >= 0 && st.Lanes[i].ID == laneID {
+			lane = st.Lanes[i]
+			a := lane.Awaits[k]
+			if a.Running != nil && a.Running.Session == session {
+				a.Running = nil
+			}
+			a.Paused = nil
+			lane.Awaits = slices.Clone(lane.Awaits)
+			lane.Awaits[k] = a
+			st.Lanes[i] = lane
+		} else if j := slices.IndexFunc(st.Lanes, func(l Lane) bool { return l.ID == laneID }); j >= 0 {
+			// The await was handed back while the runner ran: nothing waits.
+			lane = st.Lanes[j]
+		}
+		spent := "its transcript showed nothing it spent"
+		if fb.Spent != nil {
+			spent = "it spent " + fb.Spent.Text(fb.Asked)
+		}
+		st.Record = append(st.Record, Entry{At: now, Lane: laneID, Stage: StageKilled,
+			Note: fmt.Sprintf("the %s on the %s runner was killed (%s) after it committed %d commit(s) past the lane's base and wrote its report; "+
+				"that is no failed start, so the lane stays at its stage, neither paused nor counted as a fallback, for the host or the next step's runner to write its receipt; %s",
+				aw.Role, fb.Asked, fsutil.RedactHome(fb.Detail), commits, spent)})
+		st.UpdatedAt = now
+		res = laneResult(*st, lane, "", nil)
+		if a := res.Awaiting; a != nil && a.Receipt == aw.Receipt {
+			res.Next = fmt.Sprintf("%s's %s was killed by the %s runner after committing %d commit(s) past its base and writing its report, so its work stands and only its receipt is missing; "+
+				"the lane stays at its stage. Write that receipt from the branch and the report: %s. Or the next `abcd implement step` retries it on its runner",
+				laneID, aw.Role, fb.Asked, commits, handedMove(*a, res.Tier))
+		}
+		return true, nil
+	})
+	return res, err
 }
 
 // releaseClaim drops the claim session took on the await at receipt, when the

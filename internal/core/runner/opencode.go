@@ -37,6 +37,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"math"
 	"os"
 
@@ -127,6 +128,12 @@ func (o *OpenCodeCLI) Run(ctx context.Context, req Request) (Answer, []byte, err
 	res, err := o.launch.run(ctx, OpenCode, bin, o.args(req), seal, req.Dir, req.timeout())
 	transcript := res.transcript()
 	if err != nil {
+		var fl *Failure
+		if errors.Is(err, ErrKilled) && errors.As(err, &fl) {
+			// Each finished step carries its own cost: what the killed run
+			// spent is their sum (iss-2611021751406429).
+			fl.Spent = spendOf(openCodeSpent(res.stdout))
+		}
 		return Answer{}, transcript, err
 	}
 	ans, err := parseOpenCode(res.stdout)
@@ -231,6 +238,22 @@ func meterOpenCode(ans *Answer, line []byte) {
 	add(&ans.Usage.ReasoningTokens, t.Reasoning, &c.reasoning, &l.reasoning)
 	add(&ans.Usage.CacheReadTokens, t.Cache.Read, &c.cacheRead, &l.cacheRead)
 	add(&ans.Usage.CacheWriteTokens, t.Cache.Write, &c.cacheWrite, &l.cacheWrite)
+}
+
+// openCodeSpent reads what a killed opencode run spent: the tokens and cost
+// of every step it finished, each line read leniently, so a line cut short by
+// the kill drops nothing the others show (iss-2611021751406429).
+func openCodeSpent(out []byte) Answer {
+	var ans Answer
+	for _, line := range bytes.Split(out, []byte("\n")) {
+		line = bytes.TrimSpace(line)
+		var ev openCodeEvent
+		if len(line) == 0 || json.Unmarshal(line, &ev) != nil || ev.Type != "step_finish" {
+			continue
+		}
+		meterOpenCode(&ans, line)
+	}
+	return ans
 }
 
 // parseOpenCode reads the event stream: one JSON object per line. An error
