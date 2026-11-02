@@ -231,8 +231,8 @@ func TestARoleARunnerHoldsIsNotStartedAgain(t *testing.T) {
 // round-trips through the state as written.
 func TestAPausedStateIsVersion18s(t *testing.T) {
 	root, id, _, _, _, _ := pauseOnClaude(t)
-	if SchemaVersion != 18 || schemaVersionUnpaused != 17 {
-		t.Fatalf("the pause is state version 18's: %d %d", SchemaVersion, schemaVersionUnpaused)
+	if schemaVersionUnspent != 18 || schemaVersionUnpaused != 17 {
+		t.Fatalf("the pause is state version 18's: %d %d", schemaVersionUnspent, schemaVersionUnpaused)
 	}
 	st, err := ReadState(root, id)
 	if err != nil {

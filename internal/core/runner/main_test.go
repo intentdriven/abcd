@@ -92,6 +92,22 @@ func fakeHarness(mode string) int {
 	case "sleeper":
 		time.Sleep(60 * time.Second)
 		return 0
+	case "spend-hang":
+		// A run that works, spends, and is killed before its closing event
+		// (iss-2611021751406429): claude's assistant messages carry their
+		// usage, repeated on each content block; opencode's finished steps
+		// carry their own cost.
+		if name == "opencode" {
+			fmt.Println(`{"type":"step_finish","sessionID":"ses_fake1","part":{"reason":"tool-calls","cost":0.25,"tokens":{"input":100,"output":20,"reasoning":0,"cache":{"read":5,"write":1}}}}`)
+			fmt.Println(`{"type":"step_finish","sessionID":"ses_fake1","part":{"reason":"tool-calls","cost":0.5,"tokens":{"input":200,"output":30,"reasoning":0,"cache":{"read":5,"write":1}}}}`)
+		} else {
+			fmt.Println(`{"type":"system","subtype":"init","session_id":"fake-session-1","model":"fake-model"}`)
+			fmt.Println(`{"type":"assistant","message":{"id":"msg_1","usage":{"input_tokens":100,"output_tokens":20,"cache_read_input_tokens":1000,"cache_creation_input_tokens":50}},"session_id":"fake-session-1"}`)
+			fmt.Println(`{"type":"assistant","message":{"id":"msg_1","usage":{"input_tokens":100,"output_tokens":20,"cache_read_input_tokens":1000,"cache_creation_input_tokens":50}},"session_id":"fake-session-1"}`)
+			fmt.Println(`{"type":"assistant","message":{"id":"msg_2","usage":{"input_tokens":7,"output_tokens":3,"cache_read_input_tokens":1100,"cache_creation_input_tokens":0}},"session_id":"fake-session-1"}`)
+		}
+		time.Sleep(60 * time.Second)
+		return 0
 	case "hang":
 		child := exec.Command(os.Args[0])
 		child.Env = append(os.Environ(), fakeModeEnv+"=sleeper")

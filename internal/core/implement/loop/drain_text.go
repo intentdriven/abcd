@@ -43,6 +43,9 @@ func (st DrainState) textWritten() bool {
 	}
 	for _, f := range st.JudgeFallbacks {
 		texts = append(texts, f.Role, f.Asked, string(f.Reason), f.Detail, f.Ran)
+		if f.Spent != nil && f.Spent.Cost != nil {
+			texts = append(texts, f.Spent.Cost.Unit)
+		}
 	}
 	for _, p := range st.PendingHandBacks {
 		texts = append(texts, p.Why)

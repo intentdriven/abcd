@@ -5,7 +5,13 @@ package runner
 // the fallback receipt, one per fallback, which Tally counts per runner and
 // per role for the run's summary (criteria 3 and 4).
 
-import "time"
+import (
+	"fmt"
+	"strconv"
+	"time"
+
+	"github.com/intentdriven/abcd/internal/core/oracle"
+)
 
 // RouteRecord is the route a role asked for and the one that ran it, and,
 // when a runner ran it, both sides of the run (itd-166).
@@ -53,6 +59,48 @@ type FallbackReceipt struct {
 	// harness's output.
 	Detail string `json:"detail"`
 	Ran    string `json:"ran"`
+	// Spent is what the launch spent when it was killed (ErrKilled), read
+	// from its transcript; nil for every other failure, which spent nothing
+	// a transcript shows or reported its spend as it ended.
+	Spent *Spend `json:"spent,omitempty"`
+}
+
+// Spend is what a killed launch spent (iss-2611021751406429). A harness
+// killed at its bound writes no closing event, so the cost it would have
+// reported there never comes: the token counts and any cost its transcript
+// does carry are read from it instead, and a launch whose transcript shows no
+// cost is charged as one agent run of its runner's budget, the unit Quota
+// counts, so its spend is never dropped from the tally.
+type Spend struct {
+	Usage *oracle.Usage `json:"usage,omitempty"`
+	Cost  *oracle.Cost  `json:"cost,omitempty"`
+	// ChargedRuns is the agent runs the launch is charged when its
+	// transcript shows no cost: one, else zero.
+	ChargedRuns int `json:"charged_runs,omitempty"`
+}
+
+// spendOf is the spend a killed launch's partial answer shows.
+func spendOf(ans Answer) *Spend {
+	s := &Spend{Usage: ans.Usage, Cost: ans.Cost}
+	if s.Cost == nil {
+		s.ChargedRuns = 1
+	}
+	return s
+}
+
+// Text is the spend as a record's line names it.
+func (s Spend) Text(runner string) string {
+	var out string
+	if u := s.Usage; u != nil {
+		out = fmt.Sprintf("%d prompt, %d completion, %d cache-read and %d cache-write tokens",
+			u.PromptTokens, u.CompletionTokens, u.CacheReadTokens, u.CacheWriteTokens)
+	} else {
+		out = "no tokens its transcript shows"
+	}
+	if s.Cost != nil {
+		return out + " at a cost of " + strconv.FormatFloat(s.Cost.Amount, 'f', -1, 64) + " " + s.Cost.Unit
+	}
+	return out + fmt.Sprintf(", and no cost, so it is charged as %d agent run of the %s runner's budget", s.ChargedRuns, runner)
 }
 
 // Counts is the fallback intel a run's summary reports.
@@ -60,6 +108,11 @@ type Counts struct {
 	Total    int            `json:"total"`
 	ByRunner map[string]int `json:"by_runner"`
 	ByRole   map[string]int `json:"by_role"`
+	// CostUSD is what the killed launches among them spent, as their
+	// transcripts show it in USD, and ChargedRuns the agent runs charged for
+	// those whose transcripts show no cost (Spend).
+	CostUSD     float64 `json:"cost_usd,omitempty"`
+	ChargedRuns int     `json:"charged_runs,omitempty"`
 }
 
 // Tally counts fallback receipts per runner asked for and per role. A run with
@@ -70,6 +123,12 @@ func Tally(rs []FallbackReceipt) Counts {
 		c.Total++
 		c.ByRunner[r.Asked]++
 		c.ByRole[r.Role]++
+		if s := r.Spent; s != nil {
+			if s.Cost != nil && s.Cost.Unit == oracle.CostUSD && oracle.ReadableCost(c.CostUSD+s.Cost.Amount) {
+				c.CostUSD += s.Cost.Amount
+			}
+			c.ChargedRuns += s.ChargedRuns
+		}
 	}
 	return c
 }

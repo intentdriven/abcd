@@ -219,6 +219,9 @@ type Failure struct {
 	Runner string
 	Reason Reason
 	Detail string
+	// Spent is what a killed launch spent, read from its transcript
+	// (ErrKilled, Spend); nil for every other failure.
+	Spent *Spend
 	// cause is the launch stage that failed (ErrNotOnPath, ErrRefused,
 	// ErrNotStarted), nil for every other failure; errors.Is reads it.
 	cause error
@@ -325,7 +328,8 @@ func prompt(r Request) string {
 	fmt.Fprintf(&b, "Receipt: %s\n", r.Receipt)
 	b.WriteString("Read the brief and follow it exactly: it states your task and the output contract. " +
 		"Write your receipt to the Receipt path, in the shape the brief names.\n")
-	fmt.Fprintf(&b, "Time: this run is stopped %s after it starts, receipt written or not; "+
+	fmt.Fprintf(&b, "Time: this run is stopped %s after it starts, receipt written or not, "+
+		"not counting up to as long again that it waits queued at abcd's load gate; "+
 		"leave time to write your receipt.\n", r.timeout())
 	return b.String()
 }

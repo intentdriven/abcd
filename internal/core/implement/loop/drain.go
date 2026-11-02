@@ -68,7 +68,19 @@ const drainLockRel = RunRelDir + "/drain.lock"
 // the key. v0.15.1 reads no version first, so it refuses a version-2 file as
 // one that does not parse; releases after it that write version 1 refuse it
 // as a newer abcd's before any strict decode.
-const DrainSchemaVersion = 2
+//
+// Version 3 added a judge fallback receipt's `spent`, as the run state's
+// version 19 does (iss-2611021751406429): what a judge's launch killed past
+// its time spent. Versions 1 and 2 are its strict subsets, read as a drain no
+// killed judge fell back from, and written back at version 3; a file of
+// version 2 or lower carrying it is refused naming it. Releases that write
+// version 2 refuse a version-3 file as a newer abcd's before any strict
+// decode.
+const DrainSchemaVersion = 3
+
+// drainSchemaVersionUnspent is the drain state's version before a judge
+// fallback receipt's spend: read, never written.
+const drainSchemaVersionUnspent = 2
 
 // drainSchemaVersionUnpinned is the drain state's version before a judge
 // route's pins: read, never written.
@@ -1475,7 +1487,7 @@ func readDrain(repoRoot string) (DrainState, bool, error) {
 			newerWriterRemedy("do not remove the drain state, which holds the drain"))
 	}
 	var st DrainState
-	if err := jsonstrict.Decode(data, &st); err != nil || (st.SchemaVersion != DrainSchemaVersion && st.SchemaVersion != drainSchemaVersionUnpinned) {
+	if err := jsonstrict.Decode(data, &st); err != nil || st.SchemaVersion < drainSchemaVersionUnpinned || st.SchemaVersion > DrainSchemaVersion {
 		why := fmt.Sprintf("schema_version %d (this abcd reads %d to %d)", st.SchemaVersion, drainSchemaVersionUnpinned, DrainSchemaVersion)
 		if err != nil {
 			why = err.Error()
@@ -1485,6 +1497,13 @@ func readDrain(repoRoot string) (DrainState, bool, error) {
 	}
 	if st.SchemaVersion == drainSchemaVersionUnpinned {
 		if p := cmp.Or(st.pinned(), st.overridden()); p != "" {
+			return DrainState{}, false, refuse(StageDrain, "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote",
+				DrainStateRel, st.SchemaVersion, p, st.SchemaVersion),
+				"the drain is the file's only writer; restore it or remove it")
+		}
+	}
+	if st.SchemaVersion <= drainSchemaVersionUnspent {
+		if p := st.judgeSpent(); p != "" {
 			return DrainState{}, false, refuse(StageDrain, "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote",
 				DrainStateRel, st.SchemaVersion, p, st.SchemaVersion),
 				"the drain is the file's only writer; restore it or remove it")
@@ -1541,6 +1560,18 @@ func readDrain(repoRoot string) (DrainState, bool, error) {
 		}
 	}
 	return st, st.Stopped == "", nil
+}
+
+// judgeSpent reports the first judge fallback receipt, in a drain state, that
+// carries a killed launch's `spent`, which only version 3 and later write, or
+// "".
+func (s DrainState) judgeSpent() string {
+	for i, f := range s.JudgeFallbacks {
+		if f.Spent != nil {
+			return fmt.Sprintf("`spent` on judge fallback receipt %d", i)
+		}
+	}
+	return ""
 }
 
 // pinned reports the first judgement, in a drain state, whose route carries a

@@ -66,6 +66,10 @@ type Outcome struct {
 	Answer *Answer
 	// Fallback is the receipt this dispatch recorded, nil when none.
 	Fallback *FallbackReceipt
+	// Failure is the routed runner's failure the fallback was for, nil when
+	// none: errors.Is(Failure, ErrKilled) tells a launch killed with its
+	// work possibly done from one that never ran it.
+	Failure *Failure
 	// Receipt is the role's receipt block.
 	Receipt RoleReceipt
 }
@@ -135,7 +139,10 @@ func (d *Dispatcher) Dispatch(ctx context.Context, req Request) (Outcome, error)
 		// since nothing fell back.
 		return Outcome{}, err
 	}
-	fb := FallbackReceipt{At: d.now(), Role: req.Role, Asked: route.Runner, Reason: fl.Reason, Detail: fl.Detail, Ran: landing}
+	// A killed launch's spend rides on its receipt (iss-2611021751406429).
+	fb := FallbackReceipt{At: d.now(), Role: req.Role, Asked: route.Runner, Reason: fl.Reason, Detail: fl.Detail, Ran: landing,
+		Spent: fl.Spent}
+	out.Failure = fl
 	if landing == route.Runner || landing == "" {
 		fb.Ran = none
 	}

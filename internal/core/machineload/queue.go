@@ -442,6 +442,48 @@ func QueuedAt(snap Snapshot, self Self, args map[int][]string, race bool) []int 
 	return waiting
 }
 
+// AbcdUnder returns, in pid order, the processes descended from root that
+// execute abcd: the ones whose arguments QueuedUnder asks for. A runner reads
+// it for the harness it started (iss-2611021751406429).
+func AbcdUnder(snap Snapshot, root int) []int {
+	if !snap.HasProcs || root <= 0 {
+		return nil
+	}
+	var out []int
+	for _, p := range snap.Procs {
+		if isAbcdName(p.Name) && Descends(snap.Procs, p.PID, root) {
+			out = append(out, p.PID)
+		}
+	}
+	sort.Ints(out)
+	return out
+}
+
+// QueuedUnder returns, in pid order, the waiters descended from root that are
+// queued at either gate: an `implement load --wait` or `--race-gate` (args,
+// keyed by pid, the program name dropped) with no child but its own errands,
+// so it runs no command yet. A runner reads it to stop its clock while the
+// role it started waits for its turn at the load gate (iss-2611021751406429):
+// time spent queued behind other preflights is the machine's, not the role's.
+func QueuedUnder(snap Snapshot, root int, args map[int][]string) []int {
+	if !snap.HasProcs || root <= 0 {
+		return nil
+	}
+	running := map[int]bool{}
+	for _, p := range snap.Procs {
+		if !isErrandName(p.Name) {
+			running[p.PPID] = true
+		}
+	}
+	var out []int
+	for _, pid := range AbcdUnder(snap, root) {
+		if isLoadWaiter(args[pid]) && !running[pid] {
+			out = append(out, pid)
+		}
+	}
+	return out
+}
+
 // gateTable is one snapshot read for a gate: the processes by pid, the waiters
 // running a command, self's process and ancestors, and the gate candidates.
 type gateTable struct {

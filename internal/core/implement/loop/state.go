@@ -244,7 +244,20 @@ const lockFileName = ".lock"
 // one its version wrote, and is refused naming it. Releases that write
 // version 17 refuse a version-18 file as a newer abcd's before any strict
 // decode.
-const SchemaVersion = 18
+//
+// Version 19 added a fallback receipt's `spent` (iss-2611021751406429): what
+// a launch killed past its time or with its step spent, read from its
+// transcript, or the agent run it is charged when that shows no cost.
+// Version 18 is its strict subset, read as a run no killed launch fell back
+// from, and written back at version 19; a file of version 18 or lower
+// carrying it is not one its version wrote, and is refused naming it.
+// Releases that write version 18 refuse a version-19 file as a newer abcd's
+// before any strict decode.
+const SchemaVersion = 19
+
+// schemaVersionUnspent is the last version before a fallback receipt's
+// spend: read, never written.
+const schemaVersionUnspent = 18
 
 // schemaVersionUnpaused is the last version before an await's pause and
 // claim on a runner: read, never written.
@@ -859,6 +872,17 @@ func (s State) answered() string {
 	return ""
 }
 
+// spent reports the first fallback receipt, in a state, that carries a killed
+// launch's `spent`, which only version 19 and later write, or "".
+func (s State) spent() string {
+	for _, f := range s.Fallbacks {
+		if f.Spent != nil {
+			return "`spent` on a fallback receipt of the " + f.Role
+		}
+	}
+	return ""
+}
+
 // pausedOnRunner reports the first await, in a state, that carries `paused`
 // or `running`, which only version 18 and later write, or "".
 func (s State) pausedOnRunner() string {
@@ -1158,7 +1182,10 @@ func readListedState(root *os.Root, runID string) (State, error) {
 	case st.SchemaVersion <= schemaVersionUnpaused && st.pausedOnRunner() != "":
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.pausedOnRunner(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnpaused:
+	case st.SchemaVersion <= schemaVersionUnspent && st.spent() != "":
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.spent(), st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnspent:
 		// Read as the current version, its stages already carried over by
 		// decodeState when it named them `step`; the next write carries it, and
 		// this read writes nothing.

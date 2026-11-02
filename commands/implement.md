@@ -293,7 +293,12 @@ enabled under `runner.<name>` there), `step` starts it itself, in the lane's
 worktree, with the same brief and receipt path, for at most the role's
 `roles.<role>.timeout` there (a duration from 5m to 12h; three hours for the
 implementer and one for every other role when unset; the drain judge keeps
-the drain's own bound, and a repository's value is skipped), which the run's prompt names; the claude runner runs in print
+the drain's own bound, and a repository's value is skipped), which the run's prompt names.
+The bound's clock stands still while the runner's process tree holds an `abcd
+implement load --wait` or `--race-gate` waiter queued at the load gate (read
+from the process table every thirty seconds), so a role queued behind other
+preflights is not killed for the machine's wait, up to the bound again: a run
+lasts at most twice its bound, and a kill says how long it waited there. The claude runner runs in print
 mode with `--bare`, so the repository's hooks, plugins and configured servers do
 not run, and, when the role's contract grants the shell, with the guard
 answering its permission prompts (`abcd guard approve`, see `commands/guard.md`):
@@ -358,8 +363,22 @@ configuration no longer routing it, or the repository keeping it on the host)
 is not waited on: the next `step` that hands no agent out clears its pause,
 records an `unpaused` line naming the person's route (not a fallback), and
 hands it to you as any await with the host.
+A runner killed past its time, or when its step ended, leaves no closing event
+and so no cost of its own: its fallback receipt carries `spent`, the tokens and
+any cost its transcript shows, and, when it shows no cost, `charged_runs` 1,
+the launch charged as one agent run of its runner's budget; the run record's
+`fallback_counts` sums them as `cost_usd` and `charged_runs`. A fallback
+receipt's `spent` is state schema version 19's, and the drain state's version
+3's for its judge. An implementer
+killed after it committed past the lane's base and wrote its report is no
+failed start: the lane stays at its stage, neither paused nor counted as a
+fallback, the result names the implementer's await with its receipt still to
+write from the branch and the report, and the run records a `killed` line with
+the commits and what the launch spent; write the receipt, or the next `step`
+retries the role on its runner.
 A role a runner is running is claimed in the run's state (an await's
-`running`, until the run's time bound has passed), so a second `step`, here or
+`running`, until the run's time bound, and as long again for the load gate,
+has passed), so a second `step`, here or
 in a peer's checkout, never starts another for it. An await's `paused` and
 `running` are state schema version 18's. The runner configuration is read on
 every `step`; a fault is refused at the `runner` stage before anything runs.

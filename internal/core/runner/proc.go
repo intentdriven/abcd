@@ -63,10 +63,19 @@ type launcher struct {
 	lookPath  func(string) (string, error)
 	maxStdout int
 	maxStderr int
+	// gateWaiting reports whether the process tree a run's harness leads
+	// holds a waiter queued at abcd's load gate (queuedAtGate); nil asks
+	// nothing, and the run's clock never stops. gatePoll is how often it is
+	// asked; zero is gatePollInterval.
+	gateWaiting func(pid int) bool
+	gatePoll    time.Duration
 }
 
+// defaultLauncher is a harness's launcher: its clock stops while the role
+// waits at the load gate (gatewait.go).
 func defaultLauncher() launcher {
-	return launcher{lookPath: exec.LookPath, maxStdout: defaultMaxStdout, maxStderr: defaultMaxStderr}
+	return launcher{lookPath: exec.LookPath, maxStdout: defaultMaxStdout, maxStderr: defaultMaxStderr,
+		gateWaiting: queuedAtGate}
 }
 
 // procResult is what one run produced.
@@ -177,18 +186,53 @@ func (l launcher) run(ctx context.Context, runner, bin string, args, seal []stri
 	if err := cmd.Start(); err != nil {
 		return procResult{}, failAt(ErrNotStarted, runner, ReasonFailed, "%s could not be started", filepath.Base(bin))
 	}
+	// The clock stands still while the harness's tree waits at the load gate
+	// (gatewait.go): each look that finds a waiter queued moves the deadline
+	// by the time since the last look, up to gateCredit.
+	deadline := time.Now().Add(timeout)
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
+	var looks <-chan time.Time
+	if l.gateWaiting != nil {
+		every := l.gatePoll
+		if every <= 0 {
+			every = gatePollInterval
+		}
+		ticker := time.NewTicker(every)
+		defer ticker.Stop()
+		looks = ticker.C
+	}
+	lastLook := time.Now()
+	var waited time.Duration
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 	var werr error
 	killed := ""
-	select {
-	case werr = <-done:
-	case <-timer.C:
-		killed = fmt.Sprintf("did not finish within the time allowed (%s)", timeout)
-	case <-ctx.Done():
-		killed = "was stopped: the run it belongs to ended"
+wait:
+	for {
+		select {
+		case werr = <-done:
+			break wait
+		case at := <-looks:
+			d := at.Sub(lastLook)
+			lastLook = at
+			if left := gateCredit(timeout) - waited; left > 0 && l.gateWaiting(cmd.Process.Pid) {
+				d = min(d, left)
+				waited += d
+				deadline = deadline.Add(d)
+				timer.Reset(time.Until(deadline))
+			}
+		case <-timer.C:
+			killed = fmt.Sprintf("did not finish within the time allowed (%s)", timeout)
+			if waited > 0 {
+				killed = fmt.Sprintf("did not finish within the time allowed (%s, and %s it waited at the load gate)",
+					timeout, waited.Round(time.Second))
+			}
+			break wait
+		case <-ctx.Done():
+			killed = "was stopped: the run it belongs to ended"
+			break wait
+		}
 	}
 	if killed != "" {
 		// The group this child leads (Setpgid), through the pid this handle
@@ -206,7 +250,7 @@ func (l launcher) run(ctx context.Context, runner, bin string, args, seal []stri
 	name := filepath.Base(bin)
 	switch {
 	case killed != "":
-		return res, fail(runner, ReasonFailed, "%s %s; its process group was killed", name, killed)
+		return res, failAt(ErrKilled, runner, ReasonFailed, "%s %s; its process group was killed", name, killed)
 	case res.overflow != "":
 		return res, fail(runner, ReasonFailed, "%s wrote past the %s bound (%d bytes); the rest was discarded",
 			name, res.overflow, l.bound(res.overflow))
@@ -224,12 +268,15 @@ func (l launcher) run(ctx context.Context, runner, bin string, args, seal []stri
 
 // The launch stages a Failure can name through errors.Is: the program was not
 // found, it was found and refused, or it was admitted and could not start.
-// Every other failure (a non-zero exit, a run past its time, an overrun bound)
-// is none of them.
+// ErrKilled names a run that started and was killed, past its time or when
+// the run it belongs to ended (iss-2611021751406429): its work may stand in
+// its working tree, and what it spent shows only in its transcript. Every
+// other failure (a non-zero exit, an overrun bound) is none of them.
 var (
 	ErrNotOnPath  = errors.New("not on PATH")
 	ErrRefused    = errors.New("refused before it is run")
 	ErrNotStarted = errors.New("could not be started")
+	ErrKilled     = errors.New("killed")
 )
 
 // Command is one program found on PATH that another package runs under this
@@ -267,9 +314,12 @@ type Output struct {
 // device on stdin, the bounds, and the process group killed through this
 // handle at the timeout or when ctx ends. A failure is a *Failure, whose
 // errors.Is names the stage for ErrNotOnPath, ErrRefused and ErrNotStarted;
-// the output is returned whenever the program produced some.
+// the output is returned whenever the program produced some. Its clock never
+// stops: the load gate's credit is a role's (gatewait.go), and c.Timeout is
+// the caller's own bound.
 func Exec(ctx context.Context, c Command) (Output, error) {
 	l := defaultLauncher()
+	l.gateWaiting = nil
 	if c.MaxStdout > 0 {
 		l.maxStdout = c.MaxStdout
 	}
