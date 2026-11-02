@@ -22,3 +22,5 @@ Spent, with the work on origin/main and the worktree clean:
 Unlanded and unruled: worktrees A, B, C, D, E1, E2, F and integration (the 2 September security-sweep lanes, 10 to 124 commits each, none on main) and 18 local branches with no worktree (phase-9/* and readings/opening-run, 18 to 190 commits each, the cold-reading Iteration 2 work). Nobody has said whether they are kept or dropped. The September worktrees also sit under the abbreviated store key 488a0aa9, which AGENTS.md says names a directory no verb reads.
 
 itd-118 (draft) is the automated form of this cleanup; until it ships, the release cut has no step that does it by hand. Related: a record captured on 2 September and held only on those unlanded branches says nothing maintains the worktree convention.
+
+2026-11-02: origin/fix/statusline-tests-widen-git-budget (#1283 closed, superseded by the merged #1281) still stands. The guard's git-delete-unproven refuses deleting it, since its tip is merged by no route the guard can prove, and only the person can allow each delete, one command at a time. A cleanup verb would need to put the list to the person for one ruling.
