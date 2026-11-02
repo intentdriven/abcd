@@ -239,4 +239,6 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-2610310235000654](2610310235000654-an-unattended-plan-stands-in-for-the.md) | An unattended plan stands in for the sign-off only on a recorded, reviewed, unchanged draft | proposed | 2026-10-31 |
 | [adr-2611011153058085](2611011153058085-a-re-render-never-discards-hand-written.md) | A re-render never discards hand-written text unasked | proposed | 2026-11-01 |
 | [adr-2611011332427073](2611011332427073-abcd-resolves-every-layered-setting-by.md) | abcd resolves every layered setting by one precedence rule | proposed | 2026-11-01 |
+| [adr-2611011813190527](2611011813190527-a-repository-declares-a-sequence-s-shape.md) | A repository declares a sequence's shape but never a widening flag | proposed | 2026-11-01 |
+| [adr-2611011813195749](2611011813195749-abcd-never-runs-a-foreign-executable.md) | abcd never runs a foreign executable under its own name, and no code that writes records is loaded at run time | proposed | 2026-11-01 |
 <!-- /index -->
