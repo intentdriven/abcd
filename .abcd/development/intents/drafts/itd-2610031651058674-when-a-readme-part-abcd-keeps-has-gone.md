@@ -55,6 +55,10 @@ Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in t
 - (SOTA 2026-10-23) Whether regenerating a part for comparison may make the badge-address or outbound checks the setup path makes, or must read the disk alone (adr-38).
 - (SOTA 2026-10-23) Whether a hand-edited part fails CI (exit 1) by default, given the owner may have meant the edit; and what the finding tells them to do (remove the marker, or run setup).
 
+## Typed Links
+
+- **built on by and refined by `itd-2611011151512956`** (hand-written text caught and offered back to its source): Widens this check from the README parts to every rendered section and adds the offer back.
+
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._

@@ -2203,15 +2203,28 @@ out when the hook would refuse. The verdict is evidence about a hook of the
 same version; a mode set, or the person marked away, before the ask can
 change it.
 
+The limits judged at are the ones the hook holds abcd's question to in
+this checkout: abcd's defaults, with the rows, label words and description
+sentences the repository's .abcd/config.json sets under question, each
+tightened where the person's own ~/.abcd.noindex/config.json sets it
+lower. The result reports them (limits) and the file that set each
+(limits_source). A limit the hook refuses (a value outside its bounds, not
+a whole number, another key under question, or a personal value looser
+than the limit in force) is reported as refused, with no ready input, and
+a file that could not be read is named in the partial result, the draft
+checked at abcd's defaults, as the hook checks it.
+
 Exit 0 when the draft has no finding at all and every store was read,
 whatever the hook would do with it: the hook field says whether that is
 an admission, a refusal while the person is away, or a pass unchecked as
 not abcd's. Exit 1 on any finding, a tab over the rows limit alone
 included.
 Exit 2 when the draft is not JSON, is over the bound or has neither shape,
-and when a store the decision needed could not be read: the result is then
-partial, names each store and the rules it could not apply, and never reads
-as clean, even with no finding.
+when a question limit is refused, whatever the draft, and when a store the
+decision needed, the question limits' files included, could not be read:
+the result is then partial, names each store and the rules it could not
+apply or applied at the defaults, and never reads as clean, even with no
+finding.
 
 **Flags:**
 
