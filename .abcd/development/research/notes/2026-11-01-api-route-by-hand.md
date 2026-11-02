@@ -122,7 +122,7 @@ pauses the lane for its key rather than falling back to the subscription).
 - **A lane's pull-request title can name an issue with no `Refs:` line.** The
   loop put the step title's "(resolves iss-…)" into a pull-request title with
   no matching trailer line in the body, a shape the resolution gate refuses;
-  the body needed a `Refs:` line added by hand (iss-2611020148533389). <!-- record-lint: forward-looking -->
+  the body needed a `Refs:` line added by hand (iss-2610080546203039).
 - **A planning interview stops when any session moves a branch.** The
   person's interview, run from one worktree, watches every branch ref in the
   repository's shared git directory, so a commit to an unrelated records
