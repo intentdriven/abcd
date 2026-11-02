@@ -9,7 +9,7 @@ found_during: "CI and local compute investigation, 2026-11-01"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "Makefile"
-remedy: "Make every test helper that finds the repository through runtime.Caller find it by walking up from the test's working directory to go.mod (sweep the pattern, not the nine files listed), then add -trimpath to the preflight's unit and race go test lines and to CI's go test steps, so Go's test cache reuses unchanged packages that open no file across worktrees (whether packages whose tests open files may be reused across worktrees is open question 3 of itd-2611011325421304); prove it with a preflight in a fresh worktree that reports reused packages, and with the whole suite passing under -trimpath."
+remedy: "Make every test helper that finds the repository through runtime.Caller find it by walking up from the test's working directory to go.mod (sweep the pattern, not the nine files listed), then add -trimpath to the preflight's unit and race go test lines and to CI's go test steps, so Go's test cache reuses unchanged packages whose tests' logs name no path inside the module (no open, stat, lstat or chdir of one; criterion 4's walk up to go.mod is such a lookup) across worktrees (whether packages whose tests open files may be reused across worktrees is open question 3 of itd-2611011325421304); prove it with a preflight in a fresh worktree that reports reused packages, and with the whole suite passing under -trimpath."
 related_intents: [itd-2611011325421304]
 ---
 
