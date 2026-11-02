@@ -259,7 +259,7 @@ func fillFromTranscript(p string) Fill {
 		return unknownFill("the transcript's tail holds no response's token usage")
 	}
 	name := windowModelName(model)
-	window, ok := ContextWindow(name)
+	window, ok := contextWindow(name)
 	if !ok {
 		return unknownFill("the transcript's last response names a model the window table does not hold")
 	}
@@ -351,7 +351,7 @@ func readTranscriptTail(p string) ([]byte, error) {
 
 // contextWindows is the per-model window table, in tokens, beside the bracket
 // table step 6 adds. A model offered with more than one window size lists
-// each, and ContextWindow takes the smaller, so a doubt about the window
+// each, and contextWindow takes the smaller, so a doubt about the window
 // shrinks recall rather than flooding the context. A model not listed has no
 // window here, and a fill read for it is unknown. The keys are the models'
 // API names without a snapshot date (windowModelName).
@@ -377,10 +377,10 @@ var contextWindows = map[string][]int64{
 	"claude-haiku-5-5":  {1_000_000},
 }
 
-// ContextWindow is the window the table declares for model, in tokens: the
+// contextWindow is the window the table declares for model, in tokens: the
 // smallest size the model is offered with. ok is false for a model the table
 // does not name.
-func ContextWindow(model string) (window int64, ok bool) {
+func contextWindow(model string) (window int64, ok bool) {
 	sizes, ok := contextWindows[model]
 	if !ok || len(sizes) == 0 {
 		return 0, false

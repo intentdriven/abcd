@@ -360,17 +360,17 @@ func TestUnnamedModelYieldsUnknownFill(t *testing.T) {
 // window size is divided by the smaller, whatever order the table lists them
 // in, so a doubt shrinks recall rather than flooding the context.
 func TestAmbiguousWindowTakesTheSmaller(t *testing.T) {
-	if w, ok := ContextWindow("claude-sonnet-4-5"); !ok || w != 200_000 {
-		t.Errorf("ContextWindow(claude-sonnet-4-5) = %d, %v; want 200000", w, ok)
+	if w, ok := contextWindow("claude-sonnet-4-5"); !ok || w != 200_000 {
+		t.Errorf("contextWindow(claude-sonnet-4-5) = %d, %v; want 200000", w, ok)
 	}
 	contextWindows["test-model-two-windows"] = []int64{1_000_000, 200_000}
 	defer delete(contextWindows, "test-model-two-windows")
-	if w, ok := ContextWindow("test-model-two-windows"); !ok || w != 200_000 {
-		t.Errorf("ContextWindow = %d, %v; want the smaller, 200000", w, ok)
+	if w, ok := contextWindow("test-model-two-windows"); !ok || w != 200_000 {
+		t.Errorf("contextWindow = %d, %v; want the smaller, 200000", w, ok)
 	}
 	tr := writeTranscript(t, assistantLine("claude-sonnet-4-5-20250929", 0, 0, 100_000))
 	wantPct(t, ReadFill("", "", tr), FillSourceTranscript, 50)
-	if _, ok := ContextWindow("claude-sonnet-4-5-20250929"); ok {
+	if _, ok := contextWindow("claude-sonnet-4-5-20250929"); ok {
 		t.Error("the table is keyed on the dated name; windowModelName drops the date")
 	}
 }
