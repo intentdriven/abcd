@@ -34,7 +34,7 @@ own timeout.
 
 ## Footprint
 
-- packages: internal/core/machineload, internal/core/implement, internal/surface/cli, internal/core/rules, commands, docs, .abcd/development/brief
+- packages: internal/core/machineload, internal/core/implement, internal/surface/cli, internal/core/rules, internal/core/ahoy, commands, docs, .abcd/development/brief
 - tests: internal/core/machineload, internal/core/implement, internal/surface/cli
 
 ## Design
@@ -45,9 +45,9 @@ own timeout.
 
 - `Platform`: `darwin` or `linux`.
 - `Level`: on macOS, `normal`, `warn`, `urgent` or `critical`, mapped from
-  the sysctl values 1, 2, 3 and 4. Any other value above 1 reads as at least
-  `warn`, so a level abcd does not know holds the gate rather than opening it;
-  only a failed read is unreadable.
+  the sysctl values 1, 2, 3 and 4. Any other value above 1 reads as `critical`, the highest
+  level, so a level abcd does not know shuts the gate at either floor rather
+  than opening it; only a failed read is unreadable.
 - `StallPct`: on Linux, `avg10` of the `some` line, a percentage.
 - `Raw`: the raw value, for the report.
 
@@ -122,7 +122,12 @@ any look takes a memory settle before it opens:
 
 - The record is `~/.abcd.noindex/load-memory-admit.json`, written through
   the same `os.Root` the holds use. It carries the pid, start and time of
-  the last admission of a waiter that waited on memory.
+  the last admission of a waiter that waited on memory. The waiter
+  writes it before it opens and before its queue entry or hold lets any
+  later waiter look, so a waiter behind it can never find the pressure low
+  and no record in the same moment; a record it cannot write is named in
+  `MemoryNote` and the waiter opens as it would without the settle, so the
+  record never wedges a run.
 - While that admission is younger than `WaitMemorySettle` (2 minutes,
   the same as `WaitSettle`) and its holder is not this waiter,
   `memory` stays shut.

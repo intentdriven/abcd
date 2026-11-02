@@ -1,6 +1,6 @@
 ---
 id: dcn-2611020720105206
-slug: abcd-s-new-website-ships-before-the
+slug: abcd-s-new-website-follows-the-release-cut
 date: 2026-11-02
 ---
 
