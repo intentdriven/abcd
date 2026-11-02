@@ -621,7 +621,7 @@ func renderBrief(st State, lane Lane, laneDir string, src briefSources) []byte {
 	p("  \"commits\": [\"<the full object name of every commit you made on the branch>\"],\n")
 	p("  \"definition_of_done\": {\"command\": \"<what you ran>\", \"exit_code\": 0, \"output\": %q},\n", DoDFileName)
 	p("  \"report\": %q,\n", ReportFileName)
-	p("  \"model\": \"<the model id your harness reports, or leave the field out>\",\n")
+	p("  \"model\": \"<the model id your harness reports; required: the landing's Assisted-by: trailer names it>\",\n")
 	p("  \"resolves\": [{\"issue\": \"iss-<N>\", \"commit\": \"<the commit of yours that fixed it>\", \"note\": \"<the resolution>\",\n")
 	p("                \"impact\": \"additive|breaking|fix|internal\", \"grounds\": \"pursued: <what is expected, and what would show it wrong>\"}]\n")
 	p("}\n")

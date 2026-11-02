@@ -450,8 +450,9 @@ lane builds and each step before it with what landed it), `implement` (awaits an
 `implementer`'s receipt at `.abcd/.work.local/run/<run-id>/<lane-id>/receipt.json`),
 then `validate` and `land`. An implementer's receipt is one strict JSON object:
 `schema_version`, `run_id`, `lane`, `branch`, `commits` (full object names),
-`definition_of_done` (`command`, `exit_code`, `output`), `report`, an optional
-`model`, and an optional `resolves` list naming each capture the lane fixed
+`definition_of_done` (`command`, `exit_code`, `output`), `report`, `model`
+(the model its harness runs, which the landing's `Assisted-by:` names; a
+receipt without one is refused), and an optional `resolves` list naming each capture the lane fixed
 (`issue`, the `commit` of the receipt's that fixed it, `note`, `impact`,
 `grounds`), with `output` and `report` paths inside the lane's directory.
 `receipt` refuses it, naming every gap, unless each commit is on the lane's
@@ -587,8 +588,12 @@ over each of the run's lanes' own diff.
    lane's receipts declared fixed it runs `capture resolve` with that commit. It
    commits them on the lane's branch with `Delivers:` (when the close ships the
    intent) and `Resolves:` trailers, and an `Assisted-by:` naming the model the
-   lane's receipts reported, since the records carry that model's prose (a lane
-   whose receipt reports no model is refused). The commit runs the
+   lane's receipts reported, since the records carry that model's prose. A
+   receipt that verified without a model (one written before it was required)
+   takes the model the runner that ran it reported, or else its file's model,
+   read again, so a corrected receipt file lands without anyone editing the
+   run's state; the run log names where the model came from, and a lane with
+   no model in any of them is refused. The commit runs the
    repository's hooks; one that refuses stops the landing, which resumes once
    what the hook names is settled.
 3. It pushes the lane's branch only once the repository's preflight receipt

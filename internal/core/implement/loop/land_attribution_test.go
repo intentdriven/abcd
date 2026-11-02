@@ -31,13 +31,14 @@ func TestTheRecordsCommitTrailerIsTheReceiptsModel(t *testing.T) {
 	}
 }
 
-// TestALandingWhoseReceiptReportsNoModelIsRefused: with no model to disclose,
-// the records commit is not made, and nothing is written in the lane's
-// worktree; the refusal names the missing value.
+// TestALandingWhoseReceiptReportsNoModelIsRefused: with no model to disclose
+// (a receipt verified before the model was required, whose file and route
+// report none either), the records commit is not made, and nothing is written
+// in the lane's worktree; the refusal names the missing value.
 func TestALandingWhoseReceiptReportsNoModelIsRefused(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
-	f.model = ""
 	l := f.validated(t)
+	forgetModel(t, f, nil, true)
 	head := l.HeadSHA
 	f.step(t) // prepare
 	_, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
