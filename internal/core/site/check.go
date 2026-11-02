@@ -271,11 +271,13 @@ type checker struct {
 	root     *os.Root
 	outDir   string
 	manifest Manifest
-	ui       UI
-	repo     RepoMeta
-	identity positioning.Block
-	hasBlock bool
-	tokens   *lint.TokenChecker
+	// manifestPath is the settings file the manifest was read from.
+	manifestPath string
+	ui           UI
+	repo         RepoMeta
+	identity     positioning.Block
+	hasBlock     bool
+	tokens       *lint.TokenChecker
 
 	// pages are the parsed emitted documents, keyed by output-relative path.
 	pages map[string]*htmlNode
@@ -336,7 +338,7 @@ func Check(req CheckRequest) (CheckResult, error) {
 		res.Built = true
 	}
 
-	manifest, err := loadRoute(repoRoot, req.Project)
+	manifest, manifestPath, err := loadRouteFrom(repoRoot, req.Project)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return CheckResult{}, ErrNoManifest
@@ -388,7 +390,7 @@ func Check(req CheckRequest) (CheckResult, error) {
 	defer srcRoot.Close()
 
 	c := &checker{
-		repoRoot: repoRoot, root: srcRoot, outDir: outDir, manifest: manifest, ui: ui, repo: repo,
+		repoRoot: repoRoot, root: srcRoot, outDir: outDir, manifest: manifest, manifestPath: manifestPath, ui: ui, repo: repo,
 		tokens: tokens, pages: map[string]*htmlNode{}, sources: map[string]*sourceFile{},
 		styles: map[string]*styleSheet{}, res: &res, base: base,
 		identityLoc: identityLoc, project: manifest.Project(),
@@ -1327,7 +1329,7 @@ func (c *checker) checkSnippets() {
 		// Nothing to pin against is a state, not a pass. Printing `ok snippets`
 		// for a run that never compared anything is the report telling a reader
 		// a gate held when it did not run.
-		c.note(CheckSnippets, ManifestRelPath,
+		c.note(CheckSnippets, c.manifestPath,
 			"docs.cli names no CLI reference, so no `abcd …` snippet on the site is pinned to anything")
 		return
 	}

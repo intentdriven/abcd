@@ -159,23 +159,30 @@ const (
 // them there, and ManifestRelPath otherwise. It refuses a file of the other
 // route's shape, both ways.
 func loadRoute(repoRoot string, project bool) (Manifest, error) {
+	m, _, err := loadRouteFrom(repoRoot, project)
+	return m, err
+}
+
+// loadRouteFrom is loadRoute, also naming the settings file it read, so a
+// note about the settings names the file a person would edit.
+func loadRouteFrom(repoRoot string, project bool) (Manifest, string, error) {
 	if project {
 		m, err := loadManifestAt(repoRoot, ProjectSettingsRelPath)
 		switch {
 		case err == nil && !m.Project():
-			return Manifest{}, fmt.Errorf("%w: %s: mode is not %q, and the file beside a composition holds a project site's settings only",
+			return Manifest{}, "", fmt.Errorf("%w: %s: mode is not %q, and the file beside a composition holds a project site's settings only",
 				ErrManifestInvalid, ProjectSettingsRelPath, ModeProject)
 		case err == nil:
-			return m, nil
+			return m, ProjectSettingsRelPath, nil
 		case !os.IsNotExist(err):
-			return Manifest{}, err
+			return Manifest{}, "", err
 		}
 	}
 	m, err := LoadManifest(repoRoot)
 	if err != nil {
-		return Manifest{}, err
+		return Manifest{}, "", err
 	}
-	return m, routeAgrees(m, project)
+	return m, ManifestRelPath, routeAgrees(m, project)
 }
 
 // routeAgrees refuses a build or a gate whose --project flag and settings file

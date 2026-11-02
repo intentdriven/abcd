@@ -191,6 +191,12 @@ func TestTheFileBesideACompositionIsReadOnlyOnTheProjectRoute(t *testing.T) {
 	if m, err := loadRoute(f.Root(), false); err != nil || m.Project() {
 		t.Fatalf("the composed route reads the project settings: %+v, %v", m, err)
 	}
+	// The gate's notes about the settings name the file each route read.
+	for project, want := range map[bool]string{true: ProjectSettingsRelPath, false: ManifestRelPath} {
+		if _, from, err := loadRouteFrom(f.Root(), project); err != nil || from != want {
+			t.Errorf("the route with project=%v read %q (%v), want %s", project, from, err, want)
+		}
+	}
 	composition := mustRead(t, f.Root(), ManifestRelPath)
 	f.write(ProjectSettingsRelPath, string(composition))
 	if _, err := loadRoute(f.Root(), true); !errors.Is(err, ErrManifestInvalid) || !strings.Contains(err.Error(), ProjectSettingsRelPath) {
