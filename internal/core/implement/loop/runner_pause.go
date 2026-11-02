@@ -53,6 +53,10 @@ const (
 	StagePaused = "paused"
 )
 
+// StageUnpaused is the record's stage for a paused role the person has since
+// routed to the host: the pause is cleared and the host's agent takes it.
+const StageUnpaused = "unpaused"
+
 // ranNone is the route a fallback receipt names when nothing ran the role: a
 // paused role is handed to no one.
 const ranNone = "none"
@@ -175,6 +179,84 @@ func heldRole(repoRoot string, st State, cfg *runner.Config, now time.Time, only
 		}
 	}
 	return best, found
+}
+
+// releaseToHost is the move a step that handed no agent out makes for a role
+// paused for its runner whose route the person has since moved to the host
+// (their machine configuration dropping the runner, or a repository layer
+// keeping the role on the host): the pause waited for the runner, never for
+// the person's own choice. The paused role waiting longest is released in one
+// write under the lock: its pause is cleared, it is with the host from now,
+// and the record names the person's route, which is not a fallback, so no
+// fallback receipt is written. The step's answer names it for the host to
+// start, as any await with the host is re-told. It reports false, with res as
+// it is, when no paused role is routed to the host or the run cannot hand an
+// agent out now. res is the step's own result: when the step also performed a
+// stage abcd runs itself, that stays its answer and the release is added to
+// its next move.
+func releaseToHost(repoRoot, runID string, o Options, rs Runners, res StepResult) (StepResult, bool, error) {
+	if rs.Config == nil || res.Complete || res.NextEligibleAt != nil || res.Outage != nil || res.RateLimit != nil || res.HandBack != nil {
+		return res, false, nil
+	}
+	var out StepResult
+	released := false
+	err := mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+		if st.autoPlanning() {
+			return false, nil
+		}
+		now := o.now()
+		bi, bk := -1, -1
+		for _, i := range st.laneOrder() {
+			l := st.Lanes[i]
+			if l.Stage == StageDone || l.Stage == StageDiscarded || l.HandBack != nil {
+				continue
+			}
+			for k, a := range l.Awaits {
+				if a.Paused == nil || rs.Config.RouteFor(a.Role).Runner != runner.Host {
+					continue
+				}
+				if a.Running != nil && now.Before(a.Running.Until) {
+					// A step's runner holds it: its dispatch ends the claim.
+					continue
+				}
+				if bi < 0 || a.Paused.At.Before(st.Lanes[bi].Awaits[bk].Paused.At) {
+					bi, bk = i, k
+				}
+			}
+		}
+		if bi < 0 {
+			return false, nil
+		}
+		lane := st.Lanes[bi]
+		a := lane.Awaits[bk]
+		p := *a.Paused
+		a.Since, a.Paused, a.Running = now, nil, nil
+		lane.Awaits = slices.Clone(lane.Awaits)
+		lane.Awaits[bk] = a
+		st.Lanes[bi] = lane
+		st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: StageUnpaused,
+			Note: fmt.Sprintf("the %s, paused since %s for the %s runner (%s), is routed to the host now: the person's route, not a fallback, so the pause is cleared and the host's agent takes it",
+				a.Role, p.Since.UTC().Format(time.RFC3339), p.Runner, p.Why())})
+		st.UpdatedAt = now
+		out = laneResult(*st, lane, "", nil)
+		out.Paused, out.Awaiting = nil, &a
+		out.Tier = roundTier(lane, a)
+		out.Next = fmt.Sprintf("%s's %s, paused for the %s runner, is routed to the host now, so it is yours: %s",
+			lane.ID, a.Role, p.Runner, handedMove(a, out.Tier))
+		released = true
+		return true, nil
+	})
+	if err != nil {
+		return res, true, err
+	}
+	if !released {
+		return res, false, nil
+	}
+	if res.PerformedStage == "" {
+		return out, true, nil
+	}
+	res.Next += "; and " + out.Next
+	return res, true, nil
 }
 
 // received reports whether anything stands at an await's receipt path. A path
@@ -465,7 +547,7 @@ func releaseClaim(repoRoot, runID, receipt, session string) error {
 func pausedRoleMove(lane Lane, a Await) string {
 	p := a.Paused
 	return fmt.Sprintf("%s's %s is paused: the %s runner did not start it (%s), and it is not handed to the host. "+
-		"The next `abcd implement step` retries it on the runner once; `abcd implement step --route %s=runner:<name>` retries it now. "+
+		"The next `abcd implement step` retries it on the runner once, or hands it to you if its route has since moved to the host; `abcd implement step --route %s=runner:<name>` retries it now. "+
 		"Do not start an agent for it; tell the user the reason",
 		lane.ID, a.Role, p.Runner, p.Why(), a.Role)
 }

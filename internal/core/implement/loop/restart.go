@@ -269,6 +269,7 @@ func RestartDrive(ctx context.Context, repoRoot, runID, laneID, yielded string, 
 	if err != nil || rs.Config == nil {
 		return res, err
 	}
+	restartGap(repoRoot, runID)
 	st, err := ReadState(repoRoot, runID)
 	if err != nil || st.autoPlanning() {
 		return res, err
@@ -290,6 +291,11 @@ func RestartDrive(ctx context.Context, repoRoot, runID, laneID, yielded string, 
 		}
 		r, err := dispatchAwait(ctx, repoRoot, runID, steps, o, rs, laneID, aw, why, res.StepResult)
 		if errors.Is(err, errClaimed) {
+			// A peer's step retried the role between the restart's write
+			// and this claim: its runner has it, so the host is handed
+			// nothing, as Drive answers the same moment.
+			res.Awaiting = nil
+			res.Next = fmt.Sprintf("another `abcd implement step` started the runner for %s's %s; run `abcd implement step` once it has finished", laneID, aw.Role)
 			return res, nil
 		}
 		res.StepResult = r
@@ -297,6 +303,11 @@ func RestartDrive(ctx context.Context, repoRoot, runID, laneID, yielded string, 
 	}
 	return res, nil
 }
+
+// restartGap runs between a restart's write and RestartDrive's dispatch,
+// where a peer's step may claim the re-told role; a test stands in for that
+// peer here.
+var restartGap = func(repoRoot, runID string) {}
 
 // restart is restartLane, also returning the awaits it re-told.
 func restart(repoRoot, runID, laneID, yielded string, o Options) (RestartResult, []Await, error) {

@@ -1102,7 +1102,10 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"each retry. A --route for a held role retries it at once on that route, and is the\n" +
 			"step's one move; with --restart, and with any route in force, the restarted role starts\n" +
 			"on its runner at once. A role a runner is running is claimed in the run's state, so no\n" +
-			"second step starts another for it. A role left unset is the host's, and the call is\n" +
+			"second step starts another for it. A paused role whose route has since moved to the\n" +
+			"host is handed to the host by the next step that hands no agent out, its pause cleared\n" +
+			"and the person's route, not a fallback, named in the run record. A role left unset is\n" +
+			"the host's, and the call is\n" +
 			"exactly the host-driven step. An interrupt kills the runner's process group.\n\n" +
 			"With oracle.review set to rp (in .abcd/config.json or " + abcdhome.Display("config.json") + ", the\n" +
 			"MCP oracle's address, oracle.rp.url, in the latter alone), a ruthless or security review\n" +

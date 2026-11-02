@@ -346,3 +346,97 @@ func TestTheStderrLineIsRedactedAndBounded(t *testing.T) {
 		t.Fatalf("the line is bounded on a rune: %d %q", len(got), got)
 	}
 }
+
+// TestAPausedRoleRoutedToTheHostIsHandedToTheHost: a role paused for its
+// runner whose route the person has since moved to the host is not parked
+// for good: the next step clears the pause, names the person's route in the
+// record rather than a fallback, and hands the role to the host, starting no
+// runner.
+func TestAPausedRoleRoutedToTheHostIsHandedToTheHost(t *testing.T) {
+	root, id, steps, o, env, _ := pauseOnClaude(t)
+	host := Runners{Config: runnerConfig(t, "", ""), Transcripts: &memTranscripts{}}
+	res, err := Drive(context.Background(), root, id, steps, o, host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := env.launches(t, "claude"); n != 1 {
+		t.Fatalf("a role routed to the host starts no runner: %d launches", n)
+	}
+	if res.Paused != nil || res.Awaiting == nil || res.Awaiting.Role != RoleImplementer || res.Awaiting.Paused != nil {
+		t.Fatalf("the role is handed to the host, no longer paused: awaiting %+v paused %+v", res.Awaiting, res.Paused)
+	}
+	if strings.Contains(res.Next, "retries it on the runner") || !strings.Contains(res.Next, res.Awaiting.Receipt) {
+		t.Fatalf("the step tells the host to start the role, promising no retry: %s", res.Next)
+	}
+	if !recordSays(t, root, id, StageUnpaused, RoleImplementer, runner.Claude, "host") {
+		t.Fatal("the run record names the person's route to the host")
+	}
+	st, err := ReadState(root, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a := st.Lanes[0].Awaits[0]; a.Paused != nil {
+		t.Fatalf("the pause is cleared in the state: %+v", a.Paused)
+	}
+	if n := len(st.Fallbacks); n != 1 {
+		t.Fatalf("the person's route is not recorded as a fallback: %+v", st.Fallbacks)
+	}
+	// A later step re-tells it to the host as any await with the host.
+	res, err = Drive(context.Background(), root, id, steps, o, host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Awaiting == nil || res.Awaiting.Role != RoleImplementer || env.launches(t, "claude") != 1 {
+		t.Fatalf("the role stays with the host: %+v, %d launches", res.Awaiting, env.launches(t, "claude"))
+	}
+}
+
+// TestARestartWhoseRolePeerStepTookHandsTheHostNothing: a peer's step that
+// claims the re-told role between the restart's write and its dispatch has
+// its runner on it, so the restart tells the host to start nothing.
+func TestARestartWhoseRolePeerStepTookHandsTheHostNothing(t *testing.T) {
+	repo, runID, _, _, _ := deadLane(t)
+	env := newDriveEnv(t, "ok", "claude")
+	cfg := runnerConfig(t, claudeImplementer, "")
+	gap := restartGap
+	t.Cleanup(func() { restartGap = gap })
+	restartGap = func(repoRoot, id string) {
+		if err := mutate(repoRoot, id, func(_ *os.Root, st *State) (bool, error) {
+			a := &st.Lanes[0].Awaits[0]
+			a.Running = &RunnerClaim{Runner: runner.Claude, Session: "peer-session", Until: time.Now().Add(time.Hour)}
+			return true, nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	res, err := RestartDrive(context.Background(), repo.Root(), runID, "lane-1", "", DefaultStages(), Options{}, Runners{Config: cfg, Transcripts: &memTranscripts{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := env.launches(t, "claude"); n != 0 {
+		t.Fatalf("the restart starts no second runner: %d launches", n)
+	}
+	if res.Awaiting != nil || !strings.Contains(res.Next, "another `abcd implement step` started the runner") {
+		t.Fatalf("the host is handed nothing a peer's runner holds: awaiting %+v, next %s", res.Awaiting, res.Next)
+	}
+}
+
+// TestAPausedRoleAPeersRunnerHoldsIsNamedPausedNotAwaited: a step that finds
+// the paused role's retry already running in a peer's step names the role as
+// paused, never as an await the host would start.
+func TestAPausedRoleAPeersRunnerHoldsIsNamedPausedNotAwaited(t *testing.T) {
+	root, id, steps, o, env, _ := pauseOnClaude(t)
+	if err := mutate(root, id, func(_ *os.Root, st *State) (bool, error) {
+		st.Lanes[0].Awaits[0].Running = &RunnerClaim{Runner: runner.Claude, Session: "peer-session", Until: o.now().Add(time.Hour)}
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Drive(context.Background(), root, id, steps, o, Runners{Config: runnerConfig(t, claudeImplementer, ""), Transcripts: &memTranscripts{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if env.launches(t, "claude") != 1 || res.Awaiting != nil || res.Paused == nil {
+		t.Fatalf("the paused role is named paused, not awaited: %d launches, awaiting %+v paused %+v", env.launches(t, "claude"), res.Awaiting, res.Paused)
+	}
+}

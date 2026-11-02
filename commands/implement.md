@@ -350,6 +350,11 @@ names the retry in `retried`, and the run record in a `retry` line. A `--route`
 for a held role retries it at once on that route, as the step's one move; a
 `--route` with `--restart`, or any route in force for the restarted role,
 starts the fresh agent on its runner at once rather than re-telling it to you.
+A paused role whose route the person has since moved to the host (the machine
+configuration no longer routing it, or the repository keeping it on the host)
+is not waited on: the next `step` that hands no agent out clears its pause,
+records an `unpaused` line naming the person's route (not a fallback), and
+hands it to you as any await with the host.
 A role a runner is running is claimed in the run's state (an await's
 `running`, until the run's time bound has passed), so a second `step`, here or
 in a peer's checkout, never starts another for it. An await's `paused` and

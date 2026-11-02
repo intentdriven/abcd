@@ -625,7 +625,9 @@ step` that hands no agent out retries one held role once on its runner, and
 names it in `retried`; `implement step --route <role>=runner:<name>` retries
 it at once. A role already with you, from a step before its route existed,
 whose receipt you have not written is retried the same way, so do not start an
-agent for it once its role is routed. Every failed start is recorded as a
+agent for it once its role is routed. A paused role whose route has since
+moved to the host is handed to you by the next step that hands no other agent
+out, as `awaiting`: start it then. Every failed start is recorded as a
 fallback whose route that ran is `none`; `implement status` and `implement
 record` count them per runner and per role.
 

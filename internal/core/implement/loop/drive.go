@@ -138,8 +138,13 @@ func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options,
 		return res, err
 	}
 	if res.Awaiting == nil || !res.handed {
-		// The step handed no agent out: a held role, paused or with the
-		// host with nothing received, is retried once on its runner.
+		// The step handed no agent out: a paused role the person has since
+		// routed to the host is the host's now; otherwise a held role,
+		// paused or with the host with nothing received, is retried once
+		// on its runner.
+		if r, took, err := releaseToHost(repoRoot, runID, o, rs, res); took || err != nil {
+			return r, err
+		}
 		return retryHeld(ctx, repoRoot, runID, steps, o, rs, res)
 	}
 	aw := *res.Awaiting
