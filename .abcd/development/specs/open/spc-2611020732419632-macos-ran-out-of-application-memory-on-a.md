@@ -45,7 +45,8 @@ own timeout.
 
 - `Platform`: `darwin` or `linux`.
 - `Level`: on macOS, `normal`, `warn`, `urgent` or `critical`, mapped from
-  the sysctl values 1, 2, 3 and 4. Any value other than 1, 2, 3 or 4 reads as `critical`,
+  the sysctl values 1, 2, 3 and 4 (3 is mapped for a kernel that reports it;
+  the build confirms which values the running kernel emits). Any value other than 1, 2, 3 or 4 reads as `critical`,
   the highest level, so a level abcd does not know shuts the gate at either floor rather
   than opening it; only a failed read is unreadable.
 - `StallPct`: on Linux, `avg10` of the `some` line, a percentage.
@@ -103,7 +104,9 @@ waiter and the check:
   the floor) and `MemoryNote` (not checked and why, or a repository key
   ignored). The wait line names the level and the floor, for example
   `memory pressure warn (floor warn)` or
-  `memory stalled 14.2% over 10s (floor 10%)`.
+  `memory stalled 14.2% over 10s (floor 10%)`. A waiter held only by the
+  settle names it instead, with the reading and the waiter it follows:
+  `memory settling after pid 4242 opened 30s ago (pressure normal, floor warn)`.
 - When the timeout passes with memory still shut, the result is `WaitTimedOut`,
   as for load, and `Still` names `memory` (criterion 3).
 - A reading that cannot be taken sets `MemoryNote` and shuts nothing
@@ -124,6 +127,11 @@ was last seen, the gate admits one run per settle:
   the same `os.Root` the holds use. It carries `pressure_at`, the last time
   any waiter read memory at or above the floor, and `admitted_at` with the
   pid and start of the last waiter admitted while the episode lasted.
+  Every write is a read-modify-write of both fields under one exclusive lock
+  (`load-memory-admit.lock`, taken as the holds take theirs), replacing the
+  file atomically, so a waiter writing `pressure_at` never writes back an
+  `admitted_at` older than the one another waiter just wrote. A lock it
+  cannot take within one poll counts as a record it cannot write (below).
 - A waiter that reads memory at or above the floor writes `pressure_at`. So
   an episode starts only when a waiter sees pressure, and a machine that
   never comes under pressure has no record and behaves exactly as today.
