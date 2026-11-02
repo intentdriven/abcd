@@ -117,11 +117,13 @@ pauses the lane for its key rather than falling back to the subscription).
   report said its landing should also resolve a second issue; the host's
   receipt left it out, an accepted receipt cannot be handed in again, and the
   landing takes its resolves from the run's state, so that issue has to be
-  resolved in a separate records change after the merge.
+  resolved in a separate records change after the merge (part of
+  iss-2611012202511008: it arises only when the host writes the receipt after
+  a kill).
 - **A lane's pull-request title can name an issue with no `Refs:` line.** The
   loop put the step title's "(resolves iss-…)" into a pull-request title with
   no matching trailer line in the body, a shape the resolution gate refuses;
-  the body needed a `Refs:` line added by hand.
+  the body needed a `Refs:` line added by hand (iss-2611020148533389).
 - **A planning interview stops when any session moves a branch.** The
   person's interview, run from one worktree, watches every branch ref in the
   repository's shared git directory, so a commit to an unrelated records
