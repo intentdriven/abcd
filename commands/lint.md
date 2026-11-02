@@ -153,7 +153,7 @@ currency-clean.
 "${CLAUDE_PLUGIN_ROOT}/abcd" lint site --out site
 ```
 
-reads the built output directory and the repository it came from, and runs nine
+reads the built output directory and the repository it came from, and runs ten
 independent gates. Each reports EVERY failure it finds rather than the first, so
 one run is one review round. An output directory with no `index.html` is
 rendered first: a caller who has not built yet is asking the same question as
@@ -211,6 +211,17 @@ one who has. It writes nothing except that render, and reaches no network.
   is judged only once that tree is in the output; in an output with no `docs/`
   directory those targets are counted in a note and fail nothing. A redirect to
   an absolute URL, or one with a placeholder or wildcard, is not judged.
+- `content-policy` — with `--project` only, since a composed site's host
+  serves its policy as a header: every page carries exactly one
+  `<meta http-equiv="Content-Security-Policy">` in its head, ahead of every
+  stylesheet and script it loads, holding the policy abcd's headers file gives
+  its route (`/` for the about page, `/record/*` for the record). GitHub Pages
+  serves no header a site declares, so a project build writes no `_headers`
+  and each page carries its policy itself. A policy in a page cannot refuse
+  framing, so `frame-ancestors` is left out of it, and the `nosniff` header has
+  no in-page form: a project site on GitHub Pages goes without both. The
+  referrer policy the headers declare, `strict-origin-when-cross-origin`, is
+  what browsers apply when none is served.
 
 Report the gates that passed, then every finding under the gate that raised it,
 each with the file and the `data-src` span a reader's next edit goes to. Exit is

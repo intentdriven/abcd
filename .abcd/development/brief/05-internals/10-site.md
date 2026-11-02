@@ -69,16 +69,18 @@ intents:
   record actually writes: nested lists, blockquotes with structure inside them,
   reference links, setext headings, rules, autolinks and CommonMark emphasis;
   anything still outside it is a build failure naming file and line.
-- **`abcd lint site`** runs nine independent gates over a rendered tree —
+- **`abcd lint site`** runs ten independent gates over a rendered tree —
   the provenance audit over every rendered text node, the hero against the
   Identity block, docs-lint's banned tokens over composed text (the verbatim
   record rendering under `/record/` exempt, the attribution escape a
   verification against the trailers git carries), CLI-snippet drift against
   the generated reference, the `.abcd/site-baseline.json` ratchet, the
   static mobile checks over every page, the loop-figure labels, the base path
-  of every root-absolute link, and the link targets: every `/docs/` link on a
+  of every root-absolute link, the link targets (every `/docs/` link on a
   rendered page, the verbatim record rendering included, and every redirect
-  target names a file in the built output —
+  target names a file in the built output), and, on a project site, the
+  content policy every page carries in its head, since GitHub Pages serves no
+  header a site declares —
   and reports every failure, not the first. The rendered-overflow screenshot
   audit is CI's optional, non-gating job; static and rendered gates are
   complementary, and the audit's first run caught an overflow the static

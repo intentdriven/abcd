@@ -21,3 +21,7 @@ A second occurrence: PR #947 (run-2610111820413440, iss-2610110359273529) quoted
 ## Evidence 2026-10-31
 
 A third occurrence, on an intent lane this time. PR #1301 (run-2610310228179894, lane-1 of itd-2609201916151817) was opened with the title `build(itd-2609201916151817): …, step 11 of spc-2609202134338445`. land.go's title composer (about line 662) writes that shape for every intent lane. It breaks the title rule: a commit or pull-request title takes a conventional prefix with no scope (the COMMITTING rules, .github/CONTRIBUTING.md). The ids in it broke no rule: RS004 judges iss- ids only, and accepts a mention a Refs: line in the body declares. The title was rewritten by hand with `gh pr edit` to `feat: plan a draft unattended with build --auto-plan`.
+
+## Evidence 2026-11-02
+
+#1344, the landing of spc-2610142146250176's step 1 (run-2611012152474713), was titled from its step title, which names an issue: "… emits no Cloudflare files (resolves iss-2610142036270003), step 1 of spc-2610142146250176". The lane's receipt named no resolves, so the body carried no Resolves: or Refs: line for that issue, and the build session added a Refs: line to the body by hand before the pull request reached its record gate.

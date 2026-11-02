@@ -7,7 +7,13 @@
 // `github-pages` environment with the run's own short-lived token and three
 // permissions (contents: read, pages: write, id-token: write), and deploys the
 // rendered site through actions/upload-pages-artifact and actions/deploy-pages,
-// each pinned to a full commit. There is no host configuration file.
+// each pinned to a full commit. There is no host configuration file, and
+// GitHub Pages serves no response header a site declares: a `_headers` file
+// would be served as a plain file and protect nothing. So the project build
+// writes none, and each page carries its content policy in its own head
+// (internal/core/site's project_policy.go, iss-2610142036270003). The framing
+// refusal and `nosniff` have no in-page form, and a Pages site goes without
+// them.
 //
 // The host half speaks the GitHub REST API through the forge, as the person
 // who invoked the verb — the way the site setup's forge stage does, so abcd

@@ -1,6 +1,7 @@
 package statusline
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -240,5 +241,42 @@ func TestParsePayloadLiftsTheSessionName(t *testing.T) {
 		if p.SessionName != c.want {
 			t.Errorf("%s: SessionName = %q, want %q", name, p.SessionName, c.want)
 		}
+	}
+}
+
+// TestParsePayloadLiftsTheSessionIDAndNeverEchoesIt: the payload's
+// session_id is lifted as given, for naming the session's fill file
+// (spc-2610111627213138 step 5), an absent or null one is empty, and like the
+// working directory it is kept out of the JSON envelope, which carries the
+// row's values only.
+func TestParsePayloadLiftsTheSessionIDAndNeverEchoesIt(t *testing.T) {
+	for name, c := range map[string]struct {
+		json, want string
+	}{
+		"given":  {`{"session_id":"abc123"}`, "abc123"},
+		"absent": {`{}`, ""},
+		"null":   {`{"session_id":null}`, ""},
+	} {
+		p, err := ParsePayload([]byte(c.json))
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if p.SessionID != c.want {
+			t.Errorf("%s: SessionID = %q, want %q", name, p.SessionID, c.want)
+		}
+	}
+	full, err := ParsePayload([]byte(fullPayloadJSON))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if full.SessionID != "abc123" {
+		t.Fatalf("fixture SessionID = %q, want abc123", full.SessionID)
+	}
+	out, err := json.Marshal(full)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(out), "abc123") {
+		t.Errorf("the session id reached the envelope: %s", out)
 	}
 }

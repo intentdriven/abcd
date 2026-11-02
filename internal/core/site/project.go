@@ -23,8 +23,11 @@ package site
 //     project build never walks git history (no log, no shortlog, no blame):
 //     it asks git only for the origin remote, which names the repository, the
 //     commit it builds, and the root commit that marks its output directory;
-//   - the interface words, the stylesheet, the scripts and the headers policy,
-//     from the binary (setupsrc/), never from files in the repository.
+//   - the interface words, the stylesheet and the scripts, from the binary
+//     (setupsrc/), never from files in the repository; and the content policy,
+//     read from the binary's headers file and carried in each page's head
+//     rather than in a `_headers` file GitHub Pages would not read
+//     (project_policy.go).
 //
 // The composed route (a `.abcd/site.json` with no mode: abcd's own site) is
 // untouched by any of this. `abcd site build --project` and `abcd lint site
@@ -156,10 +159,11 @@ func projectUI() (UI, error) {
 }
 
 // projectCopies are the static files a project site is served with, from the
-// binary: the headers policy, the stylesheet and the two scripts. There is no
-// redirect map (that is abcd's own URL history) and no installer.
+// binary: the stylesheet and the two scripts. There is no redirect map (that
+// is abcd's own URL history), no installer, and no host configuration file:
+// GitHub Pages reads no `_headers`, so each page carries its content policy
+// itself (project_policy.go, iss-2610142036270003).
 var projectCopies = []struct{ src, dst string }{
-	{"headers", "_headers"},
 	{"site.css", "site.css"},
 	{"site.js", "site.js"},
 	{"record.js", "record.js"},
