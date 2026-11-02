@@ -30,7 +30,7 @@ impact: fix
 
 ## Scope Conditions
 
-- The person's own machine, with one Go cache shared by the worktrees of a checkout; hosted CI is out of scope here, because a fresh checkout's new file times defeat the cache there too (left to a follow-up intent). <!-- cond: cond-2611012047502529 -->
+- The person's own machine, with one Go cache and one fixed check directory (~/.abcd.noindex/tests/<root-sha>/) shared by the worktrees of a checkout, one check at a time; hosted CI is out of scope here, because a fresh checkout's new file times defeat the cache there too (left to a follow-up intent). <!-- cond: cond-2611012047502529 -->
 - Go repositories; another language keeps the records-only path and whatever reuse its own tooling offers. <!-- cond: cond-2611012047501260 -->
 - Tests that are deterministic given their inputs; a test that reads state the cache cannot see (a subprocess's output, a binary it builds, the clock, the network) is declared and always reruns. <!-- cond: cond-2611012047500069 -->
 - The full check, uncached, still runs where it runs today in hosted CI (pull request, merge queue, nightly); this intent changes what the person's machine repeats, not what lands untested. <!-- cond: cond-2611012047500513 -->
@@ -50,14 +50,17 @@ impact: fix
 - 2026-11-01, the product thinker: hosted CI reuse (restoring file times in a fresh checkout) is left to a follow-up intent; this one covers the person's machine.
 - 2026-11-01, the product thinker: the always-rerun tests are named on a list on the default branch, never by a test or a change itself.
 - 2026-11-01, the product thinker: the press release, the mechanism claim, the four scope conditions and all six acceptance criteria were confirmed, the second worded to name the list on the default branch and its release-cut half confirmed separately; impact is fix.
-- 2026-11-02, after the interview, from the landing reviews: the press release's 'a test abcd cannot see the inputs of always runs too' was made precise as 'a test declared as reading what abcd cannot see always runs too' (declared meaning named on the list kept on the default branch), since only a declared test can be rerun on purpose; an undeclared test that reads a subprocess, the clock or the network is reused on the person's machine and caught only by the hosted full run. Flagged for the product thinker's review.
+- 2026-11-02, the product thinker: the test stages run from one fixed check directory per repository, ~/.abcd.noindex/tests/<root-sha>/, outside every working tree as a verifier's copy must be, and one check uses it at a time; this keeps criterion 1 for tests that open or stat files in the tree, which Go keys by their absolute path.
+- 2026-11-02, after the interview, from the landing reviews: the press release's 'a test abcd cannot see the inputs of always runs too' was made precise as 'a test declared as reading what abcd cannot see always runs too' (declared meaning named on the list kept on the default branch), since only a declared test can be rerun on purpose; an undeclared test that reads a subprocess, the clock or the network is reused on the person's machine and caught only by the hosted full run. The product thinker confirmed the edited wording on 2026-11-02.
 - 2026-11-01, the product thinker: reuse is planned alone and first. The drafts itd-2610110940216682 (every change checked in full once) and itd-2610262141001890 (how many checks run at once) are kept separate from it and are to be planned together later; itd-2610262141001890 waits on itd-2610262140595217, so bundling them with reuse would have held reuse back.
 
 ## Open Questions
 
-1. resolved: reuse on the person's machine is this intent; restoring file times so hosted CI can reuse results is a follow-up intent of its own.
-3. open (2026-11-02, from the landing reviews): Go hashes a file a test opens by a relative name joined to the package's absolute directory (cmd/go/internal/test/test.go, computeTestInputsID), so such a test misses the cache in a worktree at another path even when nothing it reads changed; a file opened by an absolute name outside the module root is not hashed at all, so a test that reads one can be reused with a stale result. Keep criterion 1 for tests that open files by running the test stages from one fixed directory per checkout, or narrow criterion 1 to tests whose test log names no path inside the module (no open, stat, lstat or chdir of one)?
-2. resolved: the tests that always rerun are named on a list kept on the default branch, so a change cannot declare its own tests away.
+_All resolved; the rulings are in the Decisions section._
+
+1. resolved: reuse on the person's machine is this intent; restoring file times so hosted CI can reuse results is a follow-up intent of its own (2026-11-01).
+2. resolved: the tests that always rerun are named on a list kept on the default branch, so a change cannot declare its own tests away (2026-11-01).
+3. resolved: the test stages run from one fixed check directory per repository, ~/.abcd.noindex/tests/<root-sha>/, used by one check at a time, so criterion 1 holds for tests that read the tree (2026-11-02).
 
 ## Decomposition
 

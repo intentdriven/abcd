@@ -1,0 +1,6 @@
+---
+id: dcn-2611020715491928
+slug: the-product-thinker-ruled-on-the-morning
+date: 2026-11-02
+---
+2026-11-02 — The product thinker ruled on the morning of 2026-11-02, in an interview another session relayed and one question put here: the test stages run from one fixed check directory per repository, ~/.abcd.noindex/tests/<root-sha>/, used by one check at a time, so results carry over between worktrees and criterion 1 of itd-2611011325421304 holds for tests that read the tree; a key's budget caps count the whole key, every session on that key pauses together at a cap, and spend never passes it; what happens at a cap is a per-repository setting, pausing by default, with moving to a second key the person named for that purpose as the alternative and the subscription never; the terminal interview fix iss-2611011402496418 is lowered to minor so the build loop takes it on the API key; and a command agents cannot run that admits one named issue above minor to the build loop is to be built next (iss-2611020305525945). The same morning they confirmed the edited wording of itd-2611011325421304's press release, that a test declared as reading what abcd cannot see always runs, in place of the wording confirmed at its interview.
