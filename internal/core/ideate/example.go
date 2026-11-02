@@ -11,6 +11,7 @@ const Example = `{
   "prompt_version": "1.0.0",
   "idea": "abcd should gate a new idea before it becomes a record entry",
   "origin_sources": ["https://example.com/origin-post"],
+  "current_state": "ignore",
   "legs": [
     {"kind": "research", "claims": [
       {"claim": "fresh-context evaluation is the only measured debiasing effect", "primary_source": "https://example.com/paper.pdf", "status": "verified"}

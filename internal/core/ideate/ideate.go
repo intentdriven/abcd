@@ -106,6 +106,9 @@ const (
 	maxKillAttempts = 200
 	// maxReviewers caps the adversarial leg's reviewers.
 	maxReviewers = 16
+	// maxImpliesBuilding caps the gaps one reviewer lists as what the idea
+	// implies building.
+	maxImpliesBuilding = 50
 	// maxReviewerSources caps the sources one reviewer names.
 	maxReviewerSources = 50
 	// maxOriginSources caps the sources the idea came from.
@@ -235,6 +238,30 @@ const (
 
 var killOutcomeEnum = map[KillOutcome]bool{KillSurvived: true, KillPartial: true, KillFatal: true}
 
+// CurrentState is the product thinker's choice of whether the adversarial leg
+// may judge the idea against what the repository's product ships today
+// (iss-2610310815034547). The set is CLOSED and the field is REQUIRED: the two
+// modes ask the reviewers different questions, so a record that cannot say
+// which one they answered cannot be read.
+type CurrentState string
+
+const (
+	// CurrentStateIgnore, the default the command page applies when the person
+	// names neither: the reviewers judge the idea as an ambition for the
+	// product the repository builds. A gap between the idea and what the
+	// product ships today is not a kill attempt; it is what the idea implies
+	// building.
+	CurrentStateIgnore CurrentState = "ignore"
+	// CurrentStateConsider: what the product ships today is in scope, and a
+	// delivery gap may be a kill attempt.
+	CurrentStateConsider CurrentState = "consider"
+)
+
+var currentStateEnum = map[CurrentState]bool{CurrentStateIgnore: true, CurrentStateConsider: true}
+
+// Valid reports whether c is a registered current-state mode.
+func (c CurrentState) Valid() bool { return currentStateEnum[c] }
+
 // Claim is one load-bearing claim and the primary source it was checked against.
 //
 // The binary cannot judge whether a source is PRIMARY — that is the researching
@@ -297,6 +324,12 @@ type Reviewer struct {
 	KillAttempts []KillAttempt `json:"kill_attempts"`
 	Verdict      Verdict       `json:"verdict"`
 	Sources      []string      `json:"sources"`
+	// ImpliesBuilding is optional: the gaps between the idea and what the
+	// product ships today that the reviewer named as what the idea implies
+	// building. Under the ignore mode such a gap is never a kill attempt, and
+	// this is where it is kept, because it is the roadmap the exercise exists
+	// to find (iss-2610310815034547).
+	ImpliesBuilding []string `json:"implies_building,omitempty"`
 }
 
 // Ruling settles a split between reviewers: who ruled, what they ruled, and
@@ -331,6 +364,9 @@ type Payload struct {
 	// not verified, and a verdict that left them out would skip that check by
 	// omission. An empty list says the idea has no source behind it.
 	OriginSources []string `json:"origin_sources"`
+	// CurrentState is whether the adversarial leg judged the idea against what
+	// the product ships today. Required; see CurrentState.
+	CurrentState CurrentState `json:"current_state"`
 	// Legs are the three legs, IN ORDER. An array rather than three named fields
 	// precisely so the order is a property of the document the binary can check.
 	Legs []Leg `json:"legs"`
@@ -367,6 +403,8 @@ type Result struct {
 	Slug    string  `json:"slug"`
 	Idea    string  `json:"idea"`
 	Verdict Verdict `json:"verdict"`
+	// CurrentState is the mode the adversarial leg ran under.
+	CurrentState CurrentState `json:"current_state"`
 	// Graduates reports whether this verdict admits the idea to a draft intent.
 	// Ideate mints nothing itself; this is the signal the surface relays.
 	Graduates bool `json:"graduates"`

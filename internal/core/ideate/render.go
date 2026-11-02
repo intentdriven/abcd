@@ -129,11 +129,18 @@ func renderAdversarial(b *strings.Builder, v verdictDoc) {
 	b.WriteString("out the research and received the idea as an artefact of unknown\n")
 	b.WriteString("authorship — the evaluator-outside-the-loop principle applied to ideas.\n")
 	b.WriteString("Each reviewer's attempts, verdict and sources are kept under its own label.\n\n")
+	renderCurrentState(b, v)
 	// The label sits after a fixed prefix, so it cannot open a block of its own.
 	for _, r := range v.reviewers {
 		fmt.Fprintf(b, "### Reviewer %s — %s\n\n", r.Label, r.Verdict)
 		for _, k := range r.KillAttempts {
 			fmt.Fprintf(b, "- **%s** — %s\n", k.Outcome, k.Attempt)
+		}
+		if len(r.ImpliesBuilding) > 0 {
+			b.WriteString("\nWhat the idea implies building:\n\n")
+			for _, g := range r.ImpliesBuilding {
+				fmt.Fprintf(b, "- %s\n", termsafe.BlockText(g))
+			}
 		}
 		if len(r.Sources) == 0 {
 			b.WriteString("\nSources consulted: none named.\n\n")
@@ -142,6 +149,22 @@ func renderAdversarial(b *strings.Builder, v verdictDoc) {
 		}
 	}
 	renderRuling(b, v)
+}
+
+// renderCurrentState states the mode the reviewers ran under, so a reader
+// knows whether a gap between the idea and what the product ships today was
+// open to them as a kill (iss-2610310815034547).
+func renderCurrentState(b *strings.Builder, v verdictDoc) {
+	switch v.currentState {
+	case CurrentStateIgnore:
+		b.WriteString("Current state: ignored. The reviewers judged the idea as an ambition for\n")
+		b.WriteString("the product this repository builds: a gap between the idea and what the\n")
+		b.WriteString("product ships today was out of scope as a kill, and reads as what the idea\n")
+		b.WriteString("implies building.\n\n")
+	case CurrentStateConsider:
+		b.WriteString("Current state: considered. What the product ships today was in scope, so a\n")
+		b.WriteString("gap between the idea and today's delivery could be a kill.\n\n")
+	}
 }
 
 // renderRuling writes the ruling that settled a split between reviewers. Where

@@ -63,6 +63,7 @@ func validPayload() map[string]any {
 		"prompt_version": "1.0.0",
 		"idea":           "abcd should gate a new idea before it becomes a record entry",
 		"origin_sources": []any{"https://example.invalid/origin-post"},
+		"current_state":  "ignore",
 		"legs": []any{
 			map[string]any{
 				"kind": "research",

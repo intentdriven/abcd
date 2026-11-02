@@ -73,6 +73,21 @@ instructs the host to strip authorship and prior-leg framing before the hand-off
 and to give each reviewer exactly one idea in its context: a reviewer that has
 already judged another idea compares the two instead of attacking this one.
 
+Leg 3 also runs under a **current-state** mode the person chooses
+(iss-2610310815034547), carried in the verdict as `current_state`. Under
+`ignore`, the default, the reviewers judge the idea as an ambition for the
+product the repository builds: a gap between the idea and what that product
+ships today is what the idea implies building, never a kill, and each
+reviewer's list of those gaps is kept in the record as its `implies_building`,
+because it is the roadmap the review finds. Under `consider`,
+today's delivery is in scope. The mode is required in the payload and stated in
+the record, because the two modes ask the reviewers different questions and a
+reader has to know which one a verdict answers. Ignore is the default because
+an idea about where a product should go would otherwise be killed for not being
+built yet, which is the roadmap the exercise exists to find. The rule is worded
+for the repository's own product, so it holds in any repository abcd manages;
+`commands/ideate.md` carries the brief each reviewer is given.
+
 ## Behaviour
 
 The recorder takes the idea's slug, the store, and the verdict JSON, from a
@@ -154,7 +169,8 @@ something a later reader depends on:
   at all, a claim naming no primary source or one of no known shape, a
   `source:` key the sources corpus does not carry (where a corpus exists), a
   grill with no hits that records no searches, a `verified` claim whose source is
-  one of the idea's own origin sources, an out-of-enum verdict or outcome. Every closed set is closed, and an unregistered
+  one of the idea's own origin sources, an out-of-enum verdict or outcome, a
+  missing or out-of-enum `current_state`. Every closed set is closed, and an unregistered
   value refuses the document rather than being coerced. The refusal names the
   field and describes the value by its length, never quoting it: closed-set
   members are not redacted on the way in, so a quote would carry whatever was

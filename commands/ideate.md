@@ -1,7 +1,7 @@
 ---
 name: ideate
 description: "Judge an idea through the host-run admission gauntlet: Writes nothing bare, and one verdict record, private or public; refuses an unknown sub-verb."
-argument-hint: "<the idea, in one or two sentences>"
+argument-hint: "<the idea, in one or two sentences> [--current-state ignore|consider]"
 block: people
 ---
 
@@ -128,6 +128,28 @@ they are the whole point of it:
   and dispatch a new reviewer for the next idea. A reviewer that has already
   judged another idea compares the two instead of attacking this one.
 
+**Current state.** The person chooses whether the review may judge the idea
+against what the product the repository builds ships today, by giving
+`--current-state ignore` or `--current-state consider` with the idea. Do not
+ask: `ignore` is the default, applied whenever they name neither, and the mode
+goes into the verdict as `current_state`.
+
+- **`ignore`** (the default) — tell each reviewer the idea is an ambition for
+  the product the repository builds, as its brief, identity block and intents
+  describe that product. A gap between the idea and what that product ships
+  today is out of scope as a kill attempt: the reviewer lists it separately, as
+  what the idea implies building, and never rests a `fatal` attempt or a
+  `killed` verdict on it. Record that list as the reviewer's
+  `implies_building`, so the roadmap the review finds is kept with the verdict. The reviewer attacks the ambition itself: whether the
+  need is real, whether it holds against competitors converging on the same
+  ground, whether it is coherent with the rest of the product's ambition, and
+  its wording.
+- **`consider`** — what the product ships today is in scope, and a delivery gap
+  may be a kill attempt like any other.
+
+Hand the mode to each reviewer as a rule of the review, not as anyone's view of
+the idea, so it carries no authorship signal.
+
 Ask each reviewer for concrete **kill attempts**, each with an outcome:
 `survived`, `partial` (it landed but is not on its own fatal), or `fatal`; for its
 own verdict (`survives`, `killed` or `reframed`); and for the sources it
@@ -165,6 +187,7 @@ decision writer mints it when it records the pointer.
   "prompt_version": "1.0.0",
   "idea": "the idea in the words it entered with",
   "origin_sources": ["https://… the post the idea came from"],
+  "current_state": "ignore",
   "legs": [
     {"kind": "research", "claims": [
       {"claim": "…", "primary_source": "https://…", "status": "verified|quoted|falsified|unverifiable"}
@@ -180,6 +203,7 @@ decision writer mints it when it records the pointer.
      "reviewers": [
        {"label": "reviewer-a", "verdict": "survives|killed|reframed",
         "kill_attempts": [{"attempt": "…", "outcome": "survived|partial|fatal"}],
+        "implies_building": ["optional: a gap between the idea and what the product ships today"],
         "sources": ["https://…"]},
        {"label": "reviewer-b", "verdict": "survives|killed|reframed",
         "kill_attempts": [{"attempt": "…", "outcome": "survived|partial|fatal"}],
@@ -198,6 +222,13 @@ decision writer mints it when it records the pointer.
 **The verdict is recorded either way.** A killed idea earns exactly as full a
 record as a surviving one — that record is what stops the idea being talked back
 into six months from now.
+
+`current_state` is required, `ignore` or `consider`: the mode the person chose
+for leg 3, and `ignore` where they named neither. The record states it in leg 3,
+so a later reader knows whether a delivery gap was open to the reviewers as a
+kill. A reviewer's `implies_building` is optional: the gaps it named as what the
+idea implies building, recorded under its label. Leave it out where it named
+none.
 
 `ruling` is needed only when the reviewers' verdicts differ, and `reframing` only
 with a `reframed` verdict, which the binary refuses without one; a reframing beside
@@ -264,7 +295,8 @@ Exit codes:
   person chose, or with neither for private), an
   unresolvable citation names the leg and the id, a primary source of no known
   shape, a `source:<key>` the corpus does not carry, an empty grill with no
-  searches, a split between reviewers with no ruling, a reframed verdict with no
+  searches, a missing or unknown `current_state`, a split between reviewers
+  with no ruling, a reframed verdict with no
   reframing, a `verified` claim resting on the idea's own source, and a version 1
   payload are each refused naming what to fix, a payload fault names the field, a
   verdict record that already exists under today's date is refused rather than
