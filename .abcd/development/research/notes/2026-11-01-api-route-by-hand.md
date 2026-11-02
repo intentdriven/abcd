@@ -109,7 +109,19 @@ pauses the lane for its key rather than falling back to the subscription).
   a model to name in its trailer. Correcting the receipt file changed
   nothing, `--restart` refuses a lane at land, and the remedy's fix round
   could not be reached, so the model was written into the state by hand, its
-  prior copy kept (iss-2611012309408370).
+  prior copy kept (iss-2611012309408370). A second lane on the load stream
+  hit the same refusal and took the same way out, reading the model from the
+  runner's stored transcript, which records it on every turn though the
+  receipt never arrived.
+- **An accepted receipt cannot gain a resolve.** A killed implementer's
+  report said its landing should also resolve a second issue; the host's
+  receipt left it out, an accepted receipt cannot be handed in again, and the
+  landing takes its resolves from the run's state, so that issue has to be
+  resolved in a separate records change after the merge.
+- **A lane's pull-request title can name an issue with no `Refs:` line.** The
+  loop put the step title's "(resolves iss-…)" into a pull-request title with
+  no matching trailer line in the body, a shape the resolution gate refuses;
+  the body needed a `Refs:` line added by hand.
 - **A planning interview stops when any session moves a branch.** The
   person's interview, run from one worktree, watches every branch ref in the
   repository's shared git directory, so a commit to an unrelated records
