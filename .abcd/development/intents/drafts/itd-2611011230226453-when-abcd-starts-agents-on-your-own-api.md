@@ -69,6 +69,15 @@ _All resolved on 2026-11-01 by the product thinker; the rulings are in the Decis
 
 - 2026-11-01, the night run by hand (reported by the session that ran on the second key): the product thinker set a per-key ceiling for the night, with work moving to the second key when the first reached it. Three sessions spent concurrently, two on the main key and one on the second, so one key's cap was shared across sessions and a total kept per session undercounted it. Before moving keys a session had to ask the others what was left, since nothing shared held the figure. Sessions warned each other at about three quarters of the ceiling. Each session tallied cost from its own run states by a hand-written script, so spend outside the build loop went uncounted: the planning interviewer's launch on the main key, and review pairs run by hand through `claude --bare` in text output, which reports no cost. The per-key store, the warning and the every-launch count above come from this evidence; moving to a second named key at a cap, which the night practised, is captured separately for the product thinker, since their ruling for this intent then was one key per session and a pause at the cap; the at-cap setting ruled on 2026-11-02 now admits it.
 
+## Inputs for the spec
+
+The landing reviews of 2026-11-02 tried several exact budget models and found constraints the spec must meet:
+- The harness reports cost once per launch (`total_cost_usd` on the result), not per response, so any headroom is sized from launch costs, which only makes it more conservative.
+- A headroom fixed per key and multiplied by the number of launches allowed at once admits only one launch at a time once a cost is recorded; letting several run needs the remainder divided among them, rechecked so the bounds plus their crossing responses stay within the cap.
+- Besides a launch held back by running launches' reservations and a cap reached, a third state exists: a remainder above zero but below the headroom with nothing running; it is named, says the remainder and the headroom, and says what lifts it.
+- A launch whose cost cannot be read is charged at least its whole bound, and the overshoot it may still hide is named as a residual.
+- How many launches may run on a key at once is a named figure in the person's configuration, and a key route with it unset behaves as one with no budget set.
+
 ## Decomposition
 
 Hand-run four-piece table, 2026-11-01, revised the same evening after two pre-interview reviews (design and feasibility; record discipline) and the product thinker's six rulings on keys and budgets.
