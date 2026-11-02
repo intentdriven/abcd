@@ -54,7 +54,7 @@ impact: fix
 
 ## Open Questions
 
-_All resolved on 2026-11-01 in the planning interview; the rulings are in `## Decisions`._
+_All resolved on 2026-11-01 in the planning interview; the rulings are in the Decisions section._
 
 1. resolved: reuse on the person's machine is this intent; restoring file times so hosted CI can reuse results is a follow-up intent of its own.
 2. resolved: the tests that always rerun are named on a list kept on the default branch, so a change cannot declare its own tests away.

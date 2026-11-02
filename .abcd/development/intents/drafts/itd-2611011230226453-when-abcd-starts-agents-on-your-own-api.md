@@ -52,9 +52,7 @@ production_mode: hand-written
 
 ## Open Questions
 
-_All resolved on 2026-11-01 by the product thinker; the rulings are in `## Decisions`._
-
-## Decisions`._
+_All resolved on 2026-11-01 by the product thinker; the rulings are in the Decisions section._
 
 ## Decisions
 
