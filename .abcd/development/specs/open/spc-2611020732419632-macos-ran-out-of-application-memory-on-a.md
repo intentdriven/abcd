@@ -16,7 +16,7 @@ check reports the same reading as a warning. The reading comes from the
 operating system's own pressure signal:
 
 - on macOS, the `kern.memorystatus_vm_pressure_level` sysctl, which reads 1
-  for normal, 2 for warning and 4 for critical, and which an ordinary account
+  for normal, 2 for warning, 3 for urgent and 4 for critical, and which an ordinary account
   can read;
 - on Linux, the `some avg10` share of `/proc/pressure/memory`, the kernel's
   pressure stall information, available from 4.20.
@@ -45,8 +45,8 @@ own timeout.
 
 - `Platform`: `darwin` or `linux`.
 - `Level`: on macOS, `normal`, `warn`, `urgent` or `critical`, mapped from
-  the sysctl values 1, 2, 3 and 4. Any other value above 1 reads as `critical`, the highest
-  level, so a level abcd does not know shuts the gate at either floor rather
+  the sysctl values 1, 2, 3 and 4. Any value other than 1, 2, 3 or 4 reads as `critical`,
+  the highest level, so a level abcd does not know shuts the gate at either floor rather
   than opening it; only a failed read is unreadable.
 - `StallPct`: on Linux, `avg10` of the `some` line, a percentage.
 - `Raw`: the raw value, for the report.
@@ -128,14 +128,16 @@ any look takes a memory settle before it opens:
   and no record in the same moment; a record it cannot write is named in
   `MemoryNote` and the waiter opens as it would without the settle, so the
   record never wedges a run.
-- While that admission is younger than `WaitMemorySettle` (2 minutes,
-  the same as `WaitSettle`) and its holder is not this waiter,
-  `memory` stays shut.
+- Every waiter reads the record, whether or not it saw memory shut: while
+  the last admission is younger than `WaitMemorySettle` (2 minutes, the same
+  as `WaitSettle`) and its holder is not this waiter, `memory` stays shut. So
+  a run that reaches the gate after the pressure falls starts no sooner than
+  one that waited for it, and the queue keeps them in start order.
 - After the settle, memory is read again before the next waiter opens. So
   the stage just admitted has had time to show its own memory use.
 
-A waiter that never saw memory shut neither reads nor writes the record. So a
-machine that never comes under pressure behaves exactly as today.
+Only a waiter that waited on memory writes the record. So a machine that never
+comes under pressure has no record, and behaves exactly as today.
 
 ### The check (`load.go`)
 
@@ -193,7 +195,9 @@ Each criterion has a test, watched to fail before the change.
 7. **One at a time with a settle.** `TestWaitMemorySettleSerialises`: two
    waiters on memory at four slots; the pressure falls; the first opens and
    writes the record; the second stays shut on `memory` until the settle
-   passes, then re-reads. `TestWaitMemoryNoRecordWithoutPressure`.
+   passes, then re-reads. `TestWaitMemorySettleHoldsALatecomer`: a
+   waiter that arrives after the pressure falls, inside the settle, waits
+   for it too. `TestWaitMemoryNoRecordWithoutPressure`.
 8. **Linux.** `TestParsePressureMemory` (the `some`/`full` lines, malformed
    and missing fields). `TestWaitMemoryLinuxStall` (14.2 against 10 waits).
    `TestReadMemoryLinuxNoFile` (a missing file reads as not checked, naming
