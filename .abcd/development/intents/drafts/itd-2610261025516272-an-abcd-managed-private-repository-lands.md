@@ -59,9 +59,7 @@ We expect the local check per landing to cost in proportion to what a change tou
 
 ## Acceptance Criteria
 
-- Given a commit whose check has passed in one worktree, when the same commit is checked in a fresh worktree on the same machine, then every test whose inputs are unchanged is reused rather than rerun, and the check's report counts the tests it ran and the tests it reused.
-- Given a test that reads an input the result cache cannot see (a file a subprocess reads, or a file outside the repository), when the repository declares that test, then it reruns on every check; and given a release cut, when its gates run, then every test runs without reuse on the tree being tagged.
-- Given a change to records alone, when its check runs, then only the tests whose inputs include those records rerun, and the report says which ran and why.
+- The reuse of unchanged test results on the person's machine, the tests that always rerun, and the record-only rerun are moved to itd-2611011325421304 (2026-11-01), which refines this intent; this intent keeps the landing route.
 - Given a check that ran only a part of the gates, as an agent's quick check of one step does, when anyone lands the branch, then the landing is refused, naming the gates the check left out; only a check that covered every gate on the landing tree, each run or reused, lets it land.
 - Given a feature built in several reviewed steps, when it lands, then it lands as one change with one landing check, and each step in between was checked with reuse rather than with a full run.
 - Given a private repository with no merge queue and two branches ready to land, when abcd lands them, then it lands one at a time, each tested merged onto the default branch as it stands at that moment, and the tree that reaches the default branch is the tree that check ran on.

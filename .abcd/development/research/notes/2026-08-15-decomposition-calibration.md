@@ -2758,3 +2758,36 @@ At the planning interview the same evening the routing moved twice, both times a
 | which section renders from which home, the marker form, the brief section in a stranger's register | plumbing | the brief's docs and identity surface pages, once the first intent's open question settles it |
 
 Links: the first intent refines itd-102 and reverses in part itd-2610031348087517 (its "never touches the owner's own words"), flagged for the product thinker, not auto-classified. Verdict at filing: SPLIT. Routing survived confirmation: partly. The first table was confirmed unchanged; the person then added the how as a second authored surface, which the same day's research supported with changes, and the second routing (a third intent, the lane and the ADR widened to the how) was confirmed in its turn; review moved the principle bound to ship time. Notes: the person's first framing put everything in the brief; the table moved install, first run and citation to derived facts, and the person agreed they render now. The reverse path came from the person, not the table: the table had made the forward path opt-in for managed repositories, and the person made it compulsory with the way back as its safety.
+
+## 2026-11-01: a build or drain on the person's API key stops at a spending cap they set (product thinker, routing confirmed)
+
+The proposal: after the first live run of the claude runner on the product thinker's own key spent 1.30 USD on two reviews while the run's budget check reported itself skipped, cap what a build or a drain may spend on a key route.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| stopping at the cap, the harness's budget limit per launch, spent against cap shown per role | capability | itd-2611011230226453 |
+| abcd never spends the person's money past a figure they named; an unknown cost counts as reaching it | trust rule | adr-2611011231015519 (proposed), and a brief invariant when it is accepted |
+| reading the reported cost and the remaining-budget arithmetic | plumbing | the build and drain brief chapters, carried by the intent |
+| (none) | stance | none |
+
+Verdict at filing: SPLIT, intent and ADR, the product thinker choosing both over folding the rule into the intent. Typed links: the intent builds on itd-166; the ADR refines decision 17 of itd-2610161733316518 (advisory, for the product thinker to confirm). Advisory reversal flags: none.
+
+Grade: pending the planning interview.
+
+## 2026-11-01: cutting hosted CI and local compute for private repositories (product thinker, routing confirmed)
+
+The proposal: after a private ideate verdict reframed the idea into an open question of itd-2610261025516272, the product thinker asked for options within a week in three areas (fewer tests, honest self-attestation, an independent machine on the person's network) and for transparent measurement, then added two more (bundling landings into one full check; the check profiles a new repository is offered).
+
+| Part | Type | Home |
+| --- | --- | --- |
+| per-landing and weekly cost and time, the estimate before a run | capability | itd-2611011325403127 |
+| cache reuse, affected-only race, inert changes stand down in the queue, macOS off every entry, batching as an option | capability | itd-2611011325421304 |
+| labelled self-attestation behind a switch only the person sets | capability | itd-2611011325428560 |
+| a self-attested result is labelled as such and only the person, by an act no agent can perform, switches it on | trust rule | adr-2611011327164895 (proposed) |
+| a pull-only checker on a machine the person owns, reporting as its own App | capability | itd-2611011325430933 |
+| the check profiles a new repository is offered, with their gates and costs | capability | itd-2611011325449761 |
+| the merged tree is the tree tested; a check counts only from its pinned source; an unknown figure is never zero | trust rule | already standing (iss-172, iss-2610290913450522, invariant 16); cited, no new ADR |
+
+Verdict at filing: SPLIT five ways plus one ADR, the product thinker choosing separate intents in this order over folding them into itd-2610261025516272. Typed links: the fewer-tests, self-attestation and checker drafts refine itd-2610261025516272 (advisory); the profiles draft refines itd-106; the measure builds on itd-166. Advisory reversal flags: none.
+
+Grade: pending the planning interviews. Watch for the bundling miss of earlier entries: itd-2611011325421304 carries five criteria and may split again at its interview.
