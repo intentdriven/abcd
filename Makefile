@@ -261,13 +261,16 @@ site-render:
 	@echo "site-render: the record and docs render and pass the site gates, and the record on the project route too"
 
 # Propagate the pinned action refs in the committed release workflows back into
-# the scaffold templates they were rendered from (iss-209). Dependabot only ever
-# edits the rendered workflow, which breaks the self-scaffold parity test; this
-# is the one-way fix — re-rendering the template over the workflow would revert
-# the bump instead.
+# the scaffold templates they were rendered from (iss-209), and the pins in the
+# committed project-site.yml back into the site template, the github-pages
+# adapter and the site package's golden renders. Dependabot only ever edits the
+# rendered workflow, which breaks the self-scaffold parity test and the project
+# site's; this is the one-way fix — re-rendering the template over the workflow
+# would revert the bump instead.
 #
 # Nothing in CI calls either target. The drift is GATED by `go test`
-# (TestSelfScaffoldParity and TestSyncRepoPinsIsCleanToday, both under
+# (TestSelfScaffoldParity, TestAbcdsRecordIsOnTheProjectRouteSetupWrites and
+# TestSyncRepoPinsIsCleanToday, all under
 # preflight), which is what fails a bump that only landed on the workflow;
 # these are the human's read-only look at it and the one-command fix.
 scaffold-sync:

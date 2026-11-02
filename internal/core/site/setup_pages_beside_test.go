@@ -227,7 +227,10 @@ func TestAbcdsRecordIsOnTheProjectRouteSetupWrites(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(got, want) {
-		t.Fatalf("%s is not the workflow `abcd site setup` writes for abcd; re-render it", ProjectWorkflowRelPath)
+		t.Fatalf("%s is not the workflow `abcd site setup` writes for abcd. "+
+			"If a dependency bump changed its action pins, run `make scaffold-sync`, which carries them into "+
+			"the site template, the github-pages adapter and the golden renders; never re-render over the "+
+			"bump, which reverts it. Otherwise re-render it with `scripts/abcd.sh site setup --project --provider github-pages`", ProjectWorkflowRelPath)
 	}
 	if got := (githubpages.Adapter{}).Profile(hosting.Site{Name: m.Hosting.Name, Repo: abcdReleaseRepo}).Address; got != abcdRecordAddress {
 		t.Fatalf("abcd's Pages address is %s, and abcdRecordAddress says %s", got, abcdRecordAddress)
