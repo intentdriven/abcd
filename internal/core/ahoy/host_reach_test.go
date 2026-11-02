@@ -1,10 +1,12 @@
 package ahoy
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -215,7 +217,24 @@ func TestHostVersionWarning(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			home, _ := setupHermetic(t)
-			readClaudeVersion = real
+			// Time the probe alone, not the whole install: the install's own
+			// work is slow under the race detector on a loaded runner, and
+			// what is asserted is that the reading gives up at its timeout
+			// (iss-2610241212419547).
+			var (
+				mu     sync.Mutex
+				probes []time.Duration
+				errs   []error
+			)
+			readClaudeVersion = func(project string) (hostVersion, error) {
+				start := time.Now()
+				v, err := real(project)
+				mu.Lock()
+				probes = append(probes, time.Since(start))
+				errs = append(errs, err)
+				mu.Unlock()
+				return v, err
+			}
 			t.Cleanup(func() { readClaudeVersion = noHostVersion })
 			if tc.name == "no answer in time" {
 				hostVersionTimeout = 300 * time.Millisecond
@@ -241,13 +260,28 @@ func TestHostVersionWarning(t *testing.T) {
 			// beside it, and nothing that resolves a claude of the machine's.
 			t.Setenv("PATH", bin+string(os.PathListSeparator)+"/usr/bin"+string(os.PathListSeparator)+"/bin")
 
-			start := time.Now()
 			res, err := Install(repo, installOpts(), RefusingPrompter{})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if elapsed := time.Since(start); tc.name == "no answer in time" && elapsed > 4*time.Second {
-				t.Errorf("install waited %s on a command that never answers", elapsed)
+			if tc.name == "no answer in time" {
+				mu.Lock()
+				got, gotErrs := append([]time.Duration(nil), probes...), append([]error(nil), errs...)
+				mu.Unlock()
+				if len(got) == 0 {
+					t.Fatal("install never read the host version")
+				}
+				// The command sleeps 5s; a probe back well before that gave
+				// up at its timeout rather than waiting for the answer.
+				limit := hostVersionTimeout + 2*time.Second
+				for i, d := range got {
+					if d > limit {
+						t.Errorf("the version probe waited %s on a command that never answers, want under %s", d, limit)
+					}
+					if !errors.Is(gotErrs[i], errHostNoAnswer) {
+						t.Errorf("the version probe returned %v, want %v", gotErrs[i], errHostNoAnswer)
+					}
+				}
 			}
 			var hits []string
 			for _, w := range res.Warnings {

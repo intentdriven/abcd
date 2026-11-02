@@ -10,6 +10,10 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/surface/cli"
 remedy: "make the test's timing budget injectable, or assert behaviour rather than elapsed time"
+resolution: "the test now times the version probe alone and asserts it gives up at its timeout, instead of bounding the whole install"
+impact: internal
+resolved_by:
+  commit: "403b15733"
 ---
 
 TestHostVersionWarning failed once on a timing check during a loaded test run (load average 20-28) and passed when run alone: a wall-clock assertion that depends on machine load.
