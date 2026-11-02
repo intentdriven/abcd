@@ -614,7 +614,7 @@ func renderBrief(st State, lane Lane, laneDir string, src briefSources) []byte {
 	p("   of the packages you changed, each behind the repository's load gate where it has one. Do not run\n")
 	p("   the repository's whole pre-push gate (its full preflight): the landing waits for that gate's\n")
 	p("   own receipt before it pushes, so it runs once, there. Write the scoped run's whole output there,\n")
-	p("   and name what you ran in the receipt.\n")
+	p("   and name what you ran as the receipt's definition_of_done command.\n")
 	p("3. Your receipt, `%s`, in exactly this shape (strict JSON: any other field refuses it):\n\n", at(ReceiptFileName))
 	p("```json\n")
 	p("{\n")

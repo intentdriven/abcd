@@ -79,6 +79,11 @@ func (d *Dispatcher) Dispatch(ctx context.Context, req Request) (Outcome, error)
 	if err := req.check(); err != nil {
 		return Outcome{}, err
 	}
+	if req.Timeout == 0 {
+		// A request that names no bound runs for the role's own
+		// (roles.<role>.timeout, iss-2611012202511008).
+		req.Timeout = d.Config.TimeoutFor(req.Role)
+	}
 	if req.Model != "" {
 		// A request's model is admitted here, against the provider's
 		// allowlist, as a configured route is when it is read: whoever stored

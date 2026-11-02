@@ -292,8 +292,8 @@ When the stage hands the lane to a role that `roles.<role>.runner` in
 enabled under `runner.<name>` there), `step` starts it itself, in the lane's
 worktree, with the same brief and receipt path, for at most the role's
 `roles.<role>.timeout` there (a duration from 5m to 12h; three hours for the
-implementer and one for every other role when unset, and a repository's value
-is skipped), which the run's prompt names; the claude runner runs in print
+implementer and one for every other role when unset; the drain judge keeps
+the drain's own bound, and a repository's value is skipped), which the run's prompt names; the claude runner runs in print
 mode with `--bare`, so the repository's hooks, plugins and configured servers do
 not run, and, when the role's contract grants the shell, with the guard
 answering its permission prompts (`abcd guard approve`, see `commands/guard.md`):

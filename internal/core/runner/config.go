@@ -13,7 +13,8 @@ package runner
 //     answers to is a diagnostic and is skipped, as the oracle's routes are.
 //   - roles.<role>.timeout bounds one run of that role on a runner, a Go
 //     duration from MinTimeout to MaxTimeout (DefaultImplementerTimeout for
-//     the implementer and DefaultTimeout for every other role when unset).
+//     the implementer and DefaultTimeout for every other role when unset; the
+//     drain judge's is the drain's own and is skipped with a diagnostic).
 //     Only the machine layer sets it: how long a run may spend the person's
 //     key is theirs to say, so a repository's value is a diagnostic and is
 //     skipped.
@@ -106,10 +107,10 @@ type RunnerConfig struct {
 
 // Config is the runner configuration one invocation read.
 type Config struct {
-	roles   map[string]Route
+	roles map[string]Route
 	// timeouts is each role's roles.<role>.timeout from the machine layer.
 	timeouts map[string]time.Duration
-	runners map[string]RunnerConfig
+	runners  map[string]RunnerConfig
 	// flagModels is the model route each role's --route asks its runner for,
 	// keyed by role (Override); a role absent here runs its runner's machine
 	// model.
@@ -363,6 +364,14 @@ func (c *Config) readTimeout(s *layered.Stack, role string, known bool) error {
 		if !known {
 			c.diagnose(role, fmt.Sprintf("runner: %s names %q, which is neither an agent in the roster "+
 				"nor the implementer or the drain judge; the timeout is skipped", where, role))
+			continue
+		}
+		if role == roleDrainJudge {
+			// The drain bounds its judge itself, well inside the lease of the
+			// reservation it took to ask it, so a longer bound would outlive
+			// the reservation the judgement stands on.
+			c.diagnose(role, fmt.Sprintf("runner: %s is skipped: the drain bounds its judge itself, inside "+
+				"the lease of the reservation it took to ask it", where))
 			continue
 		}
 		v, err := layered.Decode[string](f.Raw)
