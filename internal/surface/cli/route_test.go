@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/lifeboat"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/spf13/cobra"
@@ -40,6 +41,53 @@ func routeWorld(t *testing.T, repoTable, machineTable string) string {
 		put(abcdhome.Path(home, "oracle-routing.json"), machineTable)
 	}
 	return repo
+}
+
+// TestEnclosingCheckoutRoutingTableIsOutOfReach (iss-2610311710599351): the
+// suite's pin keeps the routing table of the checkout the tests run in from
+// every test that laid none out, and leaves a repository a test lays out its
+// own table. The enclosing checkout is a fixture here, so the test needs no
+// table committed anywhere: a temporary repository whose table routes the
+// graveyard interpreter to the economy tier, which no connection serves, so a
+// table that got through would put a routing notice in front of the --json
+// document.
+func TestEnclosingCheckoutRoutingTableIsOutOfReach(t *testing.T) {
+	const table = `{"schema_version":1,"agents":{"graveyard-interpreter":{"tier":"economy","fan_out":1}}}`
+	enclosing := routeWorld(t, table, "")
+	t.Cleanup(pinEnclosingRoutingLayer(enclosing))
+	// A test that never changes directory runs in its package's directory
+	// inside the checkout.
+	pkg := filepath.Join(enclosing, "internal", "surface", "cli")
+	if err := os.MkdirAll(pkg, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(pkg)
+
+	roots, _ := layered.RootsFor(pkg)
+	l, err := oracle.Load(roots)
+	if err != nil {
+		t.Fatalf("load the routing table from the package directory: %v", err)
+	}
+	if l.Accepted() {
+		t.Errorf("the routing table of the checkout at %s reached a test that laid none out", roots.Repo)
+	}
+	out := runCLI(t, "disembark", "graveyard", buildGraveyardLifeboat(t), "--lessons-json",
+		lessonsPayloadFile(t, t.TempDir(), lifeboat.Lesson{ID: "les-x", Lesson: "y",
+			Confidence: lifeboat.ConfidenceHigh, Evidence: []string{"adr-12"}}), "--json")
+	if !json.Valid(out) {
+		t.Errorf("disembark graveyard --json run from the package directory is not one JSON document:\n%s", out)
+	}
+
+	// A repository a test lays out keeps its own table.
+	repo := routeWorld(t, table, "")
+	fixture, _ := layered.RootsFor(repo)
+	fl, err := oracle.Load(fixture)
+	if err != nil {
+		t.Fatalf("load the fixture's routing table: %v", err)
+	}
+	if !fl.Accepted() {
+		t.Error("the routing table of a repository the test laid out was dropped with the enclosing checkout's")
+	}
 }
 
 // member decodes one top-level member of a verb's --json output.

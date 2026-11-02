@@ -152,6 +152,29 @@ type RegistryMerge func(current map[string]any) (map[string]any, error)
 // under the lock and must return the COMPLETE new mapping. A zero now is sampled
 // as time.Now().UTC() AFTER the lock is held.
 func WritePages(repoRoot string, writes []PageWrite, merge RegistryMerge, now time.Time) (WriteReport, error) {
+	rendered, redactor, err := prepareWrites(repoRoot, writes, merge)
+	if err != nil {
+		return WriteReport{}, err
+	}
+	var report WriteReport
+	lockErr := WithStoreLock(repoRoot, func() error {
+		r, err := writePagesLocked(diskStore{}, repoRoot, rendered, merge, redactor, now)
+		if err != nil {
+			return err
+		}
+		report = r
+		return nil
+	})
+	if lockErr != nil {
+		return WriteReport{}, lockErr
+	}
+	return report, nil
+}
+
+// prepareWrites is WritePages before the store lock: every page's filename
+// judged, its body and frontmatter redacted, and the batch rendered. A plan
+// (storePlanner.writePages) runs exactly this, so its refusals are the write's.
+func prepareWrites(repoRoot string, writes []PageWrite, merge RegistryMerge) ([]renderedWrite, *storeRedactor, error) {
 	// Redact every page BODY here, in the one primitive every verb writes
 	// through, so no body reaches the committed store unscanned whichever verb
 	// built it (GHSA-j5f5-phgm-9m73). A redactor that stood at one call site
@@ -175,7 +198,7 @@ func WritePages(repoRoot string, writes []PageWrite, merge RegistryMerge, now ti
 	if len(writes) > 0 || merge != nil {
 		r, err := newStoreRedactor(repoRoot)
 		if err != nil {
-			return WriteReport{}, err
+			return nil, nil, err
 		}
 		redactor = r
 	}
@@ -191,11 +214,11 @@ func WritePages(repoRoot string, writes []PageWrite, merge RegistryMerge, now ti
 			// merged inside writePagesLocked — none of which is reached once
 			// this returns an error.
 			if err := redactor.judgeFilename(w.Filename); err != nil {
-				return WriteReport{}, err
+				return nil, nil, err
 			}
 			body, _, rerr := redactor.redactText(w.Body, w.Filename)
 			if rerr != nil {
-				return WriteReport{}, rerr
+				return nil, nil, rerr
 			}
 			w.Body = body
 			// The caller's map is never mutated; a nil frontmatter is left for
@@ -203,7 +226,7 @@ func WritePages(repoRoot string, writes []PageWrite, merge RegistryMerge, now ti
 			if w.Frontmatter != nil {
 				fm := deepCopyMap(w.Frontmatter)
 				if err := redactor.redactLeaves(nil, fm, w.Filename); err != nil {
-					return WriteReport{}, err
+					return nil, nil, err
 				}
 				w.Frontmatter = fm
 			}
@@ -213,50 +236,38 @@ func WritePages(repoRoot string, writes []PageWrite, merge RegistryMerge, now ti
 	}
 	rendered, err := renderWrites(writes)
 	if err != nil {
-		return WriteReport{}, err
+		return nil, nil, err
 	}
-	var report WriteReport
-	lockErr := WithStoreLock(repoRoot, func() error {
-		r, err := writePagesLocked(repoRoot, rendered, merge, redactor, now)
-		if err != nil {
-			return err
-		}
-		report = r
-		return nil
-	})
-	if lockErr != nil {
-		return WriteReport{}, lockErr
-	}
-	return report, nil
+	return rendered, redactor, nil
 }
 
-func writePagesLocked(repoRoot string, rendered []renderedWrite, merge RegistryMerge, redactor *storeRedactor, now time.Time) (WriteReport, error) {
+func writePagesLocked(fs storeFS, repoRoot string, rendered []renderedWrite, merge RegistryMerge, redactor *storeRedactor, now time.Time) (WriteReport, error) {
 	mem := Dir(repoRoot)
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
 	stamp := now.Format("2006-01-02 15:04")
 
-	created, err := ensureSkeleton(mem)
+	created, err := ensureSkeletonIn(fs, mem)
 	if err != nil {
 		return WriteReport{}, err
 	}
-	backfilled, err := backfillLegacy(mem)
+	backfilled, err := backfillLegacyIn(fs, mem)
 	if err != nil {
 		return WriteReport{}, err
 	}
-	pruned, err := pruneOrphans(repoRoot, mem)
+	pruned, err := pruneOrphans(fs, repoRoot, mem)
 	if err != nil {
 		return WriteReport{}, err
 	}
-	healed, err := reconcile(mem)
+	healed, err := reconcile(fs, mem)
 	if err != nil {
 		return WriteReport{}, err
 	}
 
 	var wrote []string
 	for _, r := range rendered {
-		if err := writeStringAtomic(filepath.Join(mem, r.write.Filename), r.text); err != nil {
+		if err := fs.write(filepath.Join(mem, r.write.Filename), r.text); err != nil {
 			return WriteReport{}, err
 		}
 		wrote = append(wrote, r.write.Filename)
@@ -266,7 +277,7 @@ func writePagesLocked(repoRoot string, rendered []renderedWrite, merge RegistryM
 		// Load the registry fresh UNDER the lock, then apply the caller's merge
 		// to that authoritative read — never to a snapshot taken before the lock
 		// was held (the lost-update fix).
-		current, err := LoadRegistry(SourcesIndexPath(repoRoot))
+		current, err := fs.loadRegistry(SourcesIndexPath(repoRoot))
 		if err != nil {
 			return WriteReport{}, err
 		}
@@ -290,12 +301,12 @@ func writePagesLocked(repoRoot string, rendered []renderedWrite, merge RegistryM
 		if err := redactor.redactRegistryLeaves(baseline, registry, filepath.Base(SourcesIndexPath(repoRoot))); err != nil {
 			return WriteReport{}, err
 		}
-		if err := writeStringAtomic(SourcesIndexPath(repoRoot), SerializeRegistry(registry)); err != nil {
+		if err := fs.write(SourcesIndexPath(repoRoot), SerializeRegistry(registry)); err != nil {
 			return WriteReport{}, err
 		}
 	}
 
-	post, err := reconcile(mem)
+	post, err := reconcile(fs, mem)
 	if err != nil {
 		return WriteReport{}, err
 	}
@@ -305,7 +316,7 @@ func writePagesLocked(repoRoot string, rendered []renderedWrite, merge RegistryM
 		for _, r := range rendered {
 			events = append(events, logEvent(r.write, stamp))
 		}
-		if err := appendLog(mem, events); err != nil {
+		if err := appendLog(fs, mem, events); err != nil {
 			return WriteReport{}, err
 		}
 	}
@@ -438,7 +449,7 @@ func pageFiles(mem string) ([]string, error) {
 // Locked sequence steps
 // ---------------------------------------------------------------------------
 
-func ensureSkeleton(mem string) ([]string, error) {
+func ensureSkeletonIn(fs storeFS, mem string) ([]string, error) {
 	skeletons := []struct {
 		name   string
 		render func() string
@@ -451,12 +462,12 @@ func ensureSkeleton(mem string) ([]string, error) {
 	var created []string
 	for _, s := range skeletons {
 		path := filepath.Join(mem, s.name)
-		_, present, err := triStateRead(path)
+		_, present, err := fs.read(path)
 		if err != nil {
 			return nil, err
 		}
 		if !present {
-			if err := writeStringAtomic(path, s.render()); err != nil {
+			if err := fs.write(path, s.render()); err != nil {
 				return nil, err
 			}
 			created = append(created, s.name)
@@ -465,15 +476,17 @@ func ensureSkeleton(mem string) ([]string, error) {
 	return created, nil
 }
 
-func backfillLegacy(mem string) ([]string, error) {
-	files, err := pageFiles(mem)
+func backfillLegacy(mem string) ([]string, error) { return backfillLegacyIn(diskStore{}, mem) }
+
+func backfillLegacyIn(fs storeFS, mem string) ([]string, error) {
+	files, err := fs.pages(mem)
 	if err != nil {
 		return nil, err
 	}
 	var backfilled []string
 	for _, name := range files {
 		path := filepath.Join(mem, name)
-		text, present, err := triStateRead(path)
+		text, present, err := fs.read(path)
 		if err != nil {
 			return nil, err
 		}
@@ -505,12 +518,12 @@ func backfillLegacy(mem string) ([]string, error) {
 				continue
 			}
 			newRegion := region + "source:\n  class: " + backfillSourceClass + "\n"
-			if err := writeStringAtomic(path, joinFileFrontmatter(newRegion, body)); err != nil {
+			if err := fs.write(path, joinFileFrontmatter(newRegion, body)); err != nil {
 				return nil, err
 			}
 		} else {
 			newRegion := "source:\n  class: " + backfillSourceClass + "\n"
-			if err := writeStringAtomic(path, joinFileFrontmatter(newRegion, "\n"+text)); err != nil {
+			if err := fs.write(path, joinFileFrontmatter(newRegion, "\n"+text)); err != nil {
 				return nil, err
 			}
 		}
@@ -519,22 +532,22 @@ func backfillLegacy(mem string) ([]string, error) {
 	return backfilled, nil
 }
 
-func pruneOrphans(repoRoot, mem string) ([]string, error) {
-	registry, err := LoadRegistry(SourcesIndexPath(repoRoot))
+func pruneOrphans(fs storeFS, repoRoot, mem string) ([]string, error) {
+	registry, err := fs.loadRegistry(SourcesIndexPath(repoRoot))
 	if err != nil {
 		return nil, err
 	}
 	if len(registry) == 0 {
 		return nil, nil
 	}
-	files, err := pageFiles(mem)
+	files, err := fs.pages(mem)
 	if err != nil {
 		return nil, err
 	}
 	var pruned []string
 	for _, name := range files {
 		path := filepath.Join(mem, name)
-		text, present, err := triStateRead(path)
+		text, present, err := fs.read(path)
 		if err != nil {
 			return nil, err
 		}
@@ -564,7 +577,7 @@ func pruneOrphans(repoRoot, mem string) ([]string, error) {
 			}
 		}
 		if !live {
-			if err := os.Remove(path); err != nil {
+			if err := fs.remove(path); err != nil {
 				return nil, err
 			}
 			pruned = append(pruned, name)
@@ -577,14 +590,14 @@ func pageSourceBlock(text string) map[string]any {
 	return parsePage(text).source()
 }
 
-func reconcile(mem string) ([]string, error) {
-	files, err := pageFiles(mem)
+func reconcile(fs storeFS, mem string) ([]string, error) {
+	files, err := fs.pages(mem)
 	if err != nil {
 		return nil, err
 	}
 	var infos []PageInfo
 	for _, name := range files {
-		text, present, err := triStateRead(filepath.Join(mem, name))
+		text, present, err := fs.read(filepath.Join(mem, name))
 		if err != nil {
 			return nil, err
 		}
@@ -602,12 +615,12 @@ func reconcile(mem string) ([]string, error) {
 	var rewritten []string
 	for _, d := range desired {
 		path := filepath.Join(mem, d.name)
-		current, present, err := triStateRead(path)
+		current, present, err := fs.read(path)
 		if err != nil {
 			return nil, err
 		}
 		if !present || sha256Hex(current) != sha256Hex(d.content) {
-			if err := writeStringAtomic(path, d.content); err != nil {
+			if err := fs.write(path, d.content); err != nil {
 				return nil, err
 			}
 			rewritten = append(rewritten, d.name)
@@ -616,9 +629,9 @@ func reconcile(mem string) ([]string, error) {
 	return rewritten, nil
 }
 
-func appendLog(mem string, events []string) error {
+func appendLog(fs storeFS, mem string, events []string) error {
 	path := filepath.Join(mem, "log.md")
-	current, present, err := triStateRead(path)
+	current, present, err := fs.read(path)
 	if err != nil {
 		return err
 	}
@@ -626,7 +639,7 @@ func appendLog(mem string, events []string) error {
 	if present {
 		base = current
 	}
-	return writeStringAtomic(path, base+strings.Join(events, ""))
+	return fs.write(path, base+strings.Join(events, ""))
 }
 
 // ---------------------------------------------------------------------------

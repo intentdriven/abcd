@@ -55,6 +55,56 @@ The mechanism is intentionally left undecided; the planning/grill stage chooses 
 
 Open questions for grill: does capturing a headless (non-interactive) run need a different hook than an interactive one? Does capture interfere with the live run-console view or the timeout/cancel controls? Should the capture be best-effort (never block a run pass) or gated? What is the retention/size policy for autonomous transcripts vs interactive?
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in
+the [autonomous-loops SOTA note](../../research/notes/2026-10-23-autonomous-loops-sota.md).
+The store, the redaction door and the hook as capture path were settled in the
+2026-07-30 session-recording note; this pass covers what the host's
+non-interactive mode does to that path.
+
+- **A headless run is stored like a session.** A `claude -p` session is written
+  to the same transcript store and is resumable by id, though left out of the
+  picker; sub-agent transcripts persist under the session's `subagents/` folder
+  and are deleted after `cleanupPeriodDays` (30 days by default);
+  `--no-session-persistence` suppresses a run's transcript (Claude Code
+  sessions and sub-agents docs).
+- **Both lane routes are already captured.** Without `--bare` a `-p` session
+  runs the project's hooks and plugins; `--bare` skips them, is the host's
+  recommendation for scripts, and "will become the default for `-p` in a
+  future release" (Claude Code headless docs). A host-route lane, the default,
+  runs as a sub-agent in the person's session, where abcd's `SubagentStop` hook
+  captures its transcript. A role routed to abcd's claude runner is launched
+  with `--print --bare` on a paid key (RN2, dcn-2610020000000016) and with
+  `--no-session-persistence`, so for that role no hook fires and no session is
+  left in the host's store; the runner's dispatcher captures it from its stream instead, storing each lane's transcript as a native record through `history.Capture` and its redaction door, keyed on the session id and the role (`runner.HistoryStore`, wired into build and drain). The guard reaches a runner lane
+  as its permission-prompt answerer (dcn-2610161624025493).
+- **Termination matters.** On SIGTERM the host runs `SessionEnd` and no other
+  hook, records no result for the turn, and exits 143; SIGINT ends the turn
+  first; the Stop hook's `transcript_path` may lag the conversation (Claude
+  Code docs). `SubagentStop` carries `agent_transcript_path`, which abcd
+  already captures; `--forward-subagent-text` on `stream-json` is the
+  alternative reconstruction from the stream.
+- **The format is declared unstable.** The transcript "entry format is internal
+  to Claude Code and changes between versions" (Claude Code sessions docs), so
+  the raw file is stored and the index derived.
+
+**Path 2: the capture exists on both routes; the keys do not.** A host-route
+lane is captured by the `SubagentStop` hook, approach (a); a lane whose role
+is routed to a runner is captured from its stream by the dispatcher, approach
+(c) as shipped. Neither capture is keyed by the run id, lane, pass and phase
+the first criterion asks for: the hook's record carries the person's session
+and the sub-agent, the runner's the session id and the role, and the run's
+record can list transcripts named at its end, which links them to the run but
+not to a lane, pass or phase. The gap is setting those keys in the lane's
+environment or the dispatch request and recording them on the capture,
+through the same `history.Capture` door. For a host-route lane whose hook did
+not fire (a SIGTERM window), an ingest by session id from the result's
+`session_id` and the sub-agent paths stays the fallback; a runner lane needs
+none, since it persists no session and the dispatcher already stores its
+stream. Best-effort as the criteria require. No Go dependency. The independent fit-challenge runs at plan
+time.
+
 ## Acceptance Criteria
 
 > _Given-When-Then per the itd-1 discipline._

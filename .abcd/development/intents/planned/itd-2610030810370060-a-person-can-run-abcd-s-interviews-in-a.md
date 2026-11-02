@@ -78,6 +78,63 @@ Flagged for the product thinker to confirm (record-discipline review, 2026-10-03
 4. 2026-10-03, the product thinker: the record marks where each answer was given ("answered in: Terminal" or "answered in: Claude Code"); otherwise the records are the same.
 5. 2026-10-03, the technical facilitator, signing off a new dependency: raw terminal mode and window size come from golang.org/x/term (v0.46.0; depends only on golang.org/x/sys, already an indirect dependency), adopted as a direct dependency when this is built. ACKNOWLEDGEMENTS.md gains it in the same change.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [elicitation interviews SOTA note](../../research/notes/2026-10-23-elicitation-interviews-sota.md).
+
+Checked against the decisions of 2026-10-03, which stand.
+
+- The line-mode fallback has a shipped convention to copy exactly: huh's
+  accessible mode prints `"%d. %s"`, prompts "Enter a number between %d and %d:"
+  and re-asks on invalid input; GitHub's CLI is huh in accessible mode with the
+  Base16 theme, exposed as three independent switches (accessible prompter,
+  spinner, colour) rather than one mode (gh help environment; cli/cli
+  prompter.go).
+- The host's own screen-reader mode is the fullest current specification: menus
+  "become numbered lists", "No color-only cues", "No redraws of content that
+  hasn't changed", yes/no as typed `y`/`n`, a bell on a question, a first line
+  saying how the mode was enabled, and it "doesn't turn on automatically when a
+  screen reader is running".
+- Screen-reader users ask for a substring filter in the numbered mode because
+  "someone might add or remove a workflow or label" and the numbers shift (GitHub
+  community discussion, April 2025); accept a unique substring of a label as well
+  as a number.
+- What breaks speech synthesis is "Non-alphanumeric visual cues and uses of
+  constant screen redraws" (GitHub blog, 2025); 2026 practitioner consensus still
+  prefers a linear stream, and the one controlled study (12 developers, CHI 2021)
+  names ASCII decoration and jargon errors. The research still favours a numbered
+  default; decision 3 weighed that and stands, with the arrow-key mode strictly
+  additive on a real TTY.
+- Prompt only when stdin is a TTY, exit promptly on Ctrl-C, honour `NO_COLOR`
+  ("present and not an empty string"), `TERM=dumb` and `--no-color`, check stdout
+  and stderr separately (clig.dev; no-color.org). The signed-off
+  `golang.org/x/term` (signed off at v0.46.0 in decision 5; v0.47.0 was
+  published 2026-10-09 and a newer release is listed) covers `MakeRaw` with restorable
+  state, `GetSize` and `IsTerminal`; survey, the former Go default, is archived
+  and never supported pipes.
+- Sixteen-colour slots have no values to measure ("there's no standard, terminal
+  emulators just choose colours"; bright-black unreadable in Solarized Dark; bold
+  may promote to bright): certify the badge against a named reference palette and
+  let the role word carry the meaning with no colour at all.
+
+**Path 2**, as decided: the native renderer on `golang.org/x/term`, shaped to
+huh's accessible contract for the numbered mode and the host's screen-reader
+rules, the numbered mode being the one code path every fallback shares. Four
+additions from the research: substring selection in numbered mode; a setting
+plus a flag, with `TERM=dumb` and non-TTY honoured independently and never
+auto-detected from a screen reader (decision 3's screen-reader case is thereby
+met by the setting and the flag, since no terminal can detect a screen reader;
+recorded for the product thinker to confirm); append-only drawing with repaint only of the
+option list, only in arrow-key mode; and a named reference palette for the badge
+ratios.
+
+The independent fit-challenge is still owed before the build, and the questions below are kept for it.
+
+Questions this pass raised for the fit-challenge before the build. They are kept here, not under Open Questions, so they do not hold a build the record already rules ready:
+
+- Which reference palette the badge contrast is certified
+  against on a sixteen-colour terminal, since the slots carry no standard values.
+
 ## Open Questions
 
 - Which interviews run in a plain Terminal: only those whose questions the binary fixes (setup, routing confirmation), or also those an agent composes from the record (planning, retrospective) through a runner the person routed.

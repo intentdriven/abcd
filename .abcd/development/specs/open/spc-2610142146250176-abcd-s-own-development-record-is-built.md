@@ -46,6 +46,7 @@ A failure at any step leaves the record where it was.
 1. The project route carries its content policy in each page and emits no Cloudflare files (resolves iss-2610142036270003)
    - packages: internal/core/site, internal/adapter/hosting/githubpages
    - tests: internal/core/site, internal/adapter/hosting/githubpages
+   - landed: 1de72e16b2af
 2. abcd's repository switches its record on to the project route, and its README and docs link the record at the Pages address
    - packages: .abcd/, .github/workflows, docs/
    - tests: internal/core/site, internal/surface/cli

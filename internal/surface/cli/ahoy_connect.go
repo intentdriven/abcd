@@ -81,7 +81,7 @@ const setupExample = "abcd ahoy connect openrouter --base-url https://openrouter
 func runAhoyProviders(cmd *cobra.Command, cwd string, asJSON bool) error {
 	roots, notes := layered.RootsFor(cwd)
 	for _, n := range notes {
-		fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s\n", termsafe.Sanitize(fsutil.RedactHome(n)))
+		fmt.Fprintln(cmd.ErrOrStderr(), noteLine(n))
 	}
 	cfg, err := oracle.LoadAPI(roots)
 	if err != nil {
@@ -202,7 +202,7 @@ func newAhoyConnectCommand(asJSON *bool) *cobra.Command {
 			}
 			roots, notes := layered.RootsFor(cwd)
 			for _, n := range notes {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s\n", termsafe.Sanitize(fsutil.RedactHome(n)))
+				fmt.Fprintln(cmd.ErrOrStderr(), noteLine(n))
 			}
 			// Picking draws a list, so it needs what drawing needs: every
 			// stream a terminal (adr-49).

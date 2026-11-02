@@ -64,6 +64,45 @@ what the pilot proved and schemas what it exposed.
   runs, Then it reports the surface as unavailable and writes nothing — a
   loud no-op, never a partial pass.
 
+## SOTA
+
+Surveyed on 2026-08-19 in the [issue-ledger forge-sync survey](../../research/notes/2026-08-19-issue-ledger-forge-sync-sota.md)
+and hand-run in the [forge-mirror pilot](../../research/notes/2026-08-19-forge-mirror-pilot.md);
+the pull direction was re-checked on 2026-10-23 in the
+[forge, CI and merge SOTA note](../../research/notes/2026-10-23-forge-ci-merge-sota.md)
+(its itd-116 section), which found nothing that reopens the standing decision.
+
+- **One canonical store, a derived mirror.** CoreOS's GitHub↔JIRA syncer went
+  one-way on purpose; Fossil avoids reconciliation with one store; Backlog.md
+  makes the same markdown the agent API [CONSENSUS].
+- **Bidirectional sync fails in three documented ways** (echo loops, origin
+  ambiguity, timestamp-only conflicts under clock skew). The survivors contain
+  them with a stable external id written back into the canonical record:
+  git-bug stamps `github-id`/`github-url`, git-issue keeps an import map
+  [EVIDENCE].
+- **The mirror closes when the canonical record resolves, and a forge-side
+  close that was never imported is reopened.** ClusterFuzz/OSS-Fuzz is the
+  production precedent [EVIDENCE].
+- **The forge's issue list carries pull requests**, told apart by the
+  `pull_request` key; the issue id of a pull request is not its pull-request
+  number (2026-10-23 re-check).
+- **A full first mirror-out is bounded by the forge's write limits, not its
+  read budget.** No more than 80 content-generating requests a minute and 500
+  an hour, some endpoints lower
+  ([REST rate limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)).
+  Writes go serially, at least one second apart
+  ([REST best practices](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api)).
+  The open ledger held 544 records on 2026-10-23 (the "~140" in the question
+  below is the pilot-era count), so one full pass is a little over an hour
+  of creations. That bounds the cost of the subset question below without
+  deciding it: a one-off pass of an hour is affordable, so whole versus subset
+  stays a product choice; either way a pass should be resumable, recording
+  progress in the write-back field.
+
+**Path 2**: a native one-way mirror shaped to git-bug's bridge (an external id
+on the record, idempotent upsert, a self-healing reopen), with the forge as one
+adapter. No dependency. The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - Which rung first: `scripts/forge-mirror.sh` (the earned next step per

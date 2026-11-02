@@ -30,6 +30,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/board"
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/dryrun"
 	"github.com/intentdriven/abcd/internal/core/grounds"
 	"github.com/intentdriven/abcd/internal/core/history"
 	"github.com/intentdriven/abcd/internal/core/identity"
@@ -55,6 +56,7 @@ import (
 	"github.com/intentdriven/abcd/internal/term"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // exitError carries a specific process exit code out of a command. The root
@@ -1146,8 +1148,9 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 
 	var lessonsJSON string
 	var graveyardRoute *routeFlag
+	var graveyardDryRun bool
 	graveyardCmd := &cobra.Command{
-		Use:  "graveyard <lifeboat-dir> --lessons-json <file|->",
+		Use:  "graveyard <lifeboat-dir> --lessons-json <file|-> [--dry-run]",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if lessonsJSON == "" {
@@ -1172,6 +1175,14 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			// a drop is reported honestly, not a failure. Only structural faults
 			// (not a lifeboat, unreadable graveyard, unparseable/oversize payload)
 			// return an error and exit 2.
+			if graveyardDryRun {
+				plan, err := lifeboat.PlanIngestLessons(dirAbs, raw, deferredLifeboatSecretScan(dirAbs))
+				if err != nil {
+					return &exitError{Code: 2, Msg: "disembark graveyard: " + scrubPaths(err)}
+				}
+				return renderLifeboatDryRun(cmd, *asJSON, "abcd disembark graveyard", plan.Result, plan.Result.LifeboatDir,
+					plan.Result.Render(), plan.Plan, route, raw)
+			}
 			res, err := lifeboat.IngestLessons(dirAbs, raw, deferredLifeboatSecretScan(dirAbs))
 			if err != nil {
 				return &exitError{Code: 2, Msg: "disembark graveyard: " + scrubPaths(err)}
@@ -1183,6 +1194,7 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	graveyardCmd.Flags().StringVar(&lessonsJSON, "lessons-json", "", "path to the host-produced lesson JSON (or - for stdin)")
+	graveyardCmd.Flags().BoolVar(&graveyardDryRun, "dry-run", false, dryRunFlagUsage)
 	graveyardRoute = addRouteFlag(graveyardCmd, graveyardAgent)
 
 	// The three M6 synthesis verbs (itd-88) share one dual-mode shape: WITHOUT the
@@ -1193,8 +1205,9 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 	// honestly and stays exit 0.
 	var principlesJSON string
 	var principlesRoute *routeFlag
+	var principlesDryRun bool
 	principlesCmd := &cobra.Command{
-		Use:  "principles <lifeboat-dir> [--principles-json <file|->]",
+		Use:  "principles <lifeboat-dir> [--principles-json <file|->] [--dry-run]",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			route, err := principlesRoute.resolve(cmd, "disembark principles", delegatedAgent(principlesJSON, principlesAgent))
@@ -1212,6 +1225,14 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return &exitError{Code: 2, Msg: "disembark principles: " + scrubPaths(err)}
 			}
+			if principlesDryRun {
+				plan, err := lifeboat.PlanPrinciples(dirAbs, raw, deferredLifeboatSecretScan(dirAbs))
+				if err != nil {
+					return &exitError{Code: 2, Msg: "disembark principles: " + scrubPaths(err)}
+				}
+				return renderLifeboatDryRun(cmd, *asJSON, "abcd disembark principles", plan.Result, plan.Result.LifeboatDir,
+					plan.Result.Render(), plan.Plan, route, raw)
+			}
 			res, err := lifeboat.SynthesizePrinciples(dirAbs, raw, deferredLifeboatSecretScan(dirAbs))
 			if err != nil {
 				return &exitError{Code: 2, Msg: "disembark principles: " + scrubPaths(err)}
@@ -1223,12 +1244,14 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	principlesCmd.Flags().StringVar(&principlesJSON, "principles-json", "", "path to host-produced principle JSON (or - for stdin); absent runs deterministic mode")
+	principlesCmd.Flags().BoolVar(&principlesDryRun, "dry-run", false, dryRunFlagUsage)
 	principlesRoute = addRouteFlag(principlesCmd, principlesAgent)
 
 	var pressReleaseJSON string
 	var pressReleaseRoute *routeFlag
+	var pressReleaseDryRun bool
 	pressReleaseCmd := &cobra.Command{
-		Use:  "press-release <lifeboat-dir> [--press-release-json <file|->]",
+		Use:  "press-release <lifeboat-dir> [--press-release-json <file|->] [--dry-run]",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			route, err := pressReleaseRoute.resolve(cmd, "disembark press-release", delegatedAgent(pressReleaseJSON, pressReleaseAgent))
@@ -1250,6 +1273,14 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			// refusal (ErrPressReleaseUncited): exit 2, the derived file left untouched
 			// (design §5 exception). It flows through the generic exit-2 wrapping like
 			// every other structural fault.
+			if pressReleaseDryRun {
+				plan, err := lifeboat.PlanPressRelease(dirAbs, raw, deferredLifeboatSecretScan(dirAbs))
+				if err != nil {
+					return &exitError{Code: 2, Msg: "disembark press-release: " + scrubPaths(err)}
+				}
+				return renderLifeboatDryRun(cmd, *asJSON, "abcd disembark press-release", plan.Result, plan.Result.LifeboatDir,
+					plan.Result.Render(), plan.Plan, route, raw)
+			}
 			res, err := lifeboat.ComposePressRelease(dirAbs, raw, deferredLifeboatSecretScan(dirAbs))
 			if err != nil {
 				return &exitError{Code: 2, Msg: "disembark press-release: " + scrubPaths(err)}
@@ -1261,12 +1292,14 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	pressReleaseCmd.Flags().StringVar(&pressReleaseJSON, "press-release-json", "", "path to host-produced press-release JSON (or - for stdin); absent runs deterministic mode")
+	pressReleaseCmd.Flags().BoolVar(&pressReleaseDryRun, "dry-run", false, dryRunFlagUsage)
 	pressReleaseRoute = addRouteFlag(pressReleaseCmd, pressReleaseAgent)
 
 	var reviewJSON string
 	var reviewRoute *routeFlag
+	var reviewDryRun bool
 	reviewCmd := &cobra.Command{
-		Use: "review <lifeboat-dir> <source-repo> [--review-json <file|->]",
+		Use: "review <lifeboat-dir> <source-repo> [--review-json <file|->] [--dry-run]",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 2 {
 				return &exitError{Code: 2, Msg: "disembark review: <lifeboat-dir> <source-repo> are both required"}
@@ -1301,6 +1334,14 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			scan := bothSecretScans(deferredLifeboatSecretScan(dirAbs), deferredLifeboatSecretScan(srcAbs))
+			if reviewDryRun {
+				plan, err := lifeboat.PlanReview(dirAbs, srcAbs, raw, scan)
+				if err != nil {
+					return &exitError{Code: 2, Msg: "disembark review: " + scrubPaths(err)}
+				}
+				return renderLifeboatDryRun(cmd, *asJSON, "abcd disembark review", plan.Result, plan.Result.LifeboatDir,
+					plan.Result.Render(), plan.Plan, route, raw)
+			}
 			res, err := lifeboat.ReviewLifeboat(dirAbs, srcAbs, raw, scan)
 			if err != nil {
 				return &exitError{Code: 2, Msg: "disembark review: " + scrubPaths(err)}
@@ -1312,6 +1353,7 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	reviewCmd.Flags().StringVar(&reviewJSON, "review-json", "", "path to the host-produced review verdict JSON (or - for stdin); absent runs deterministic mode")
+	reviewCmd.Flags().BoolVar(&reviewDryRun, "dry-run", false, dryRunFlagUsage)
 	reviewRoute = addRouteFlag(reviewCmd, reviewAgent)
 
 	disembarkCmd.AddCommand(probeCmd)
@@ -1396,6 +1438,22 @@ func deferredLifeboatSecretScan(root string) lifeboat.SecretScan {
 		}
 		return scan(files)
 	}
+}
+
+// renderLifeboatDryRun renders a post-pack verb's practice run: the planned
+// writes and removals, each path inside the lifeboat, then the report the real
+// run would give and its receipt line. v is the result the real run would
+// return, carried under --json with the plan beside it.
+func renderLifeboatDryRun(cmd *cobra.Command, asJSON bool, verb string, v any, lifeboatDir, report string,
+	plan dryrun.Plan, route *oracle.Route, raw []byte) error {
+	return renderDryRun(cmd.OutOrStdout(), asJSON, verb, withReceipt(v, route, raw), plan, func(w io.Writer) {
+		fmt.Fprintf(w, "  each path is inside the lifeboat %s\n", termsafe.Sanitize(lifeboatDir))
+		fmt.Fprintln(w, "  the real run would report:")
+		for _, line := range strings.Split(strings.TrimRight(report, "\n"), "\n") {
+			fmt.Fprintf(w, "    %s\n", line)
+		}
+		renderReceiptLine(w, route, raw)
+	})
 }
 
 // bothSecretScans is a scan that refuses what either a or b refuses, a first,
@@ -1574,8 +1632,12 @@ type hookInput struct {
 	// ToolName is supplied by the PostToolUse and PermissionRequest hooks;
 	// read by `hook question-answered` and `hook permission-request`.
 	ToolName string `json:"tool_name"`
-	// TranscriptPath is supplied by the Stop hook; it names the session
-	// transcript on disk. Read by `hook session-end` only.
+	// TranscriptPath names the session transcript on disk. It has two
+	// readers: `hook session-end`, which the Stop hook supplies it to and
+	// which captures the transcript, and `hook prompt-router`, which reads at
+	// most the transcript's last 256 KiB, through the guarded read, to learn
+	// how full the session is when the status line kept no fill file for it
+	// (rules.ReadFill, spc-2610111627213138 step 5).
 	TranscriptPath string `json:"transcript_path"`
 
 	// The SubagentStop fields, read by `hook subagent-stop` only. The event
@@ -1652,12 +1714,18 @@ func hookSession(in hookInput) string {
 // Recalled names each memory item text carries after the rules block
 // (spc-2610111627213138), an empty list on a turn that recalls nothing,
 // beside Injected for the domains, so a reader can tell what came back.
+//
+// Fill says how full the session is and where that came from: the status
+// line's fill file, the transcript's tail, or unknown with the reason
+// (rules.ReadFill, spc-2610111627213138 step 5). It is present on every
+// evaluated prompt and absent when the prompt could not be evaluated.
 type routerView struct {
-	Text     string    `json:"text"`
-	Injected []string  `json:"injected"`
-	Recalled []string  `json:"recalled"`
-	Active   *[]string `json:"active,omitempty"`
-	Error    string    `json:"error,omitempty"`
+	Text     string      `json:"text"`
+	Injected []string    `json:"injected"`
+	Recalled []string    `json:"recalled"`
+	Fill     *rules.Fill `json:"fill,omitempty"`
+	Active   *[]string   `json:"active,omitempty"`
+	Error    string      `json:"error,omitempty"`
 	// SessionTitle is the session's title when this prompt set it
 	// (hook_session_name.go), and absent on every other prompt.
 	SessionTitle string `json:"session_title,omitempty"`
@@ -1714,14 +1782,21 @@ func newHookCommand(asJSON *bool) *cobra.Command {
 on a turn with nothing new. With --json, stdout is one envelope in place of the
 generic machine-reader shape:
 
-  {"text": ..., "injected": [...], "recalled": [...], "active": [...], "error": ...}
+  {"text": ..., "injected": [...], "recalled": [...], "fill": {...}, "active": [...], "error": ...}
 
 text is byte for byte what the plain form writes; injected names the domains
 text carries, and recalled the notes and pages (a note by its id, a page as
 page:<filename>); active is the full set of domains in
-force this turn, so a name missing from it has stopped. error is present only
-when the prompt could not be evaluated, and then active is absent: the set is
-unknown. A memory.json, page store or page that cannot be read is named on
+force this turn, so a name missing from it has stopped. fill says how full the
+session is and where that came from: its source is "status-line" (the
+percentage the status line recorded for this session in
+` + rules.FillDirDisplay + `), "transcript" (the last response's input in the
+transcript the payload names, at most its last ` + fmt.Sprint(rules.TranscriptTailBytes/1024) + ` KiB read, over the window
+abcd's table holds for that response's model, with the model named), or
+"unknown" with the reason; used_percentage is absent when it is unknown. The
+fill is reported only, and changes nothing injected. error is present only
+when the prompt could not be evaluated, and then active and fill are absent:
+the set is unknown. A memory.json, page store or page that cannot be read is named on
 stderr and recalls nothing, and the rules still inject. Every outcome, an error included,
 exits 0, so the hook can never wedge a session.
 
@@ -1895,7 +1970,12 @@ envelope carries it as system_message.`,
 				if recalled == nil {
 					recalled = []string{}
 				}
-				return routerEmit(cmd, routerView{Text: text, Injected: injected, Recalled: recalled, Active: &res.Active, SessionTitle: title, SystemMessage: away.Message})
+				// How full the session is, reported and not yet acted on
+				// (spc-2610111627213138 step 5): the brackets that act on it
+				// are step 6's. Read only for the envelope, so the plain
+				// form, which the host injects, reads nothing more than it did.
+				fill := rules.ReadFill(rules.UserHome(), in.SessionID, in.TranscriptPath)
+				return routerEmit(cmd, routerView{Text: text, Injected: injected, Recalled: recalled, Fill: &fill, Active: &res.Active, SessionTitle: title, SystemMessage: away.Message})
 			}
 			emitPrompt(cmd, text, title, away.Message)
 			return nil
@@ -1906,7 +1986,7 @@ envelope carries it as system_message.`,
 	// the next prompt re-injects (the event-driven refresh, D1/B2).
 	hookCmd.AddCommand(&cobra.Command{
 		Use:   "prompt-router-reset",
-		Short: "SessionStart/PreCompact: clear the dedup ledger",
+		Short: "SessionStart/PreCompact: clear the dedup ledger and the session's fill file",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			in, err := readHookInput(cmd)
@@ -1915,6 +1995,19 @@ envelope carries it as system_message.`,
 				return nil
 			}
 			session := hookSession(in)
+			// The fill's half of the reset (spc-2610111627213138 step 5):
+			// the fill directory the status line writes into is made here,
+			// never by the status line, and the session's fill file goes
+			// with its ledgers, so a compaction does not leave the hook
+			// reading the full session's figure. Before the ledger's reset,
+			// so a ledger that will not reset does not also keep the old
+			// figure. A symlinked ~/.abcd.noindex is refused quietly: it is
+			// the machine's layout, and the status line keeps no fill there.
+			if err := rules.ResetFill(rules.UserHome(), in.SessionID); err != nil && !errors.Is(err, fsutil.ErrHomeScopeSymlinked) {
+				// ResetFill's errors carry their own "rules:" prefix
+				// (iss-2608261550491547's reason).
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s\n", termsafe.Sanitize(err.Error()))
+			}
 			if err := rules.ResetState(session); err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: reset failed (%s)\n", termsafe.Sanitize(err.Error()))
 				return nil
@@ -3474,8 +3567,9 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 	auditRoute = addRouteFlag(auditCmd, auditAgent)
 
 	var verdictJSON string
+	var ingestDryRun bool
 	ingestCmd := &cobra.Command{
-		Use:  "ingest --verdict-json <path>",
+		Use:  "ingest --verdict-json <path> [--dry-run]",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			repoRoot, err := intentStoreRoot(cmd)
@@ -3501,6 +3595,19 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 			payload, err := intent.ReadVerdict(verdictJSON)
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent audit ingest: " + err.Error()}
+			}
+			if ingestDryRun {
+				plan, err := intent.PlanVerdictIngest(repoRoot, payload)
+				if err != nil {
+					return &exitError{Code: 2, Msg: "abcd intent audit ingest: " + err.Error()}
+				}
+				res := plan.Result
+				return renderDryRun(cmd.OutOrStdout(), *asJSON, "abcd intent audit ingest", withReceipt(res, route, payload), plan.Plan, func(w io.Writer) {
+					fmt.Fprintf(w, "  would be %s (receipt %s, intent %s)\n", res.Status, res.ReceiptID, res.IntentID)
+					if res.Status == "dead_letter" {
+						fmt.Fprintf(w, "  DEAD_LETTER: %s\n", res.Reason)
+					}
+				})
 			}
 			res, err := intent.IngestVerdictBytes(repoRoot, payload)
 			if err != nil {
@@ -3543,6 +3650,7 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	ingestCmd.Flags().StringVar(&verdictJSON, "verdict-json", "", "path to the intent-audit verdict JSON, in the shape the Verdict shape section of its review request states")
+	ingestCmd.Flags().BoolVar(&ingestDryRun, "dry-run", false, dryRunFlagUsage)
 	ingestRoute = addRouteFlag(ingestCmd, auditAgent)
 	auditCmd.AddCommand(ingestCmd)
 	auditCmd.Flags().BoolVar(&issueDrift, "issue-drift", false,
@@ -4848,7 +4956,7 @@ func newPrompter(cmd *cobra.Command) ahoy.Prompter {
 	cwd, _ := os.Getwd()
 	if t, notes, ok := drawnTerminal(in, cmd.OutOrStdout(), cmd.ErrOrStderr(), cwd); ok {
 		for _, n := range notes {
-			fmt.Fprintf(cmd.ErrOrStderr(), "abcd: %s\n", termsafe.Sanitize(n))
+			fmt.Fprintln(cmd.ErrOrStderr(), noteLine(n))
 		}
 		return &drawnPrompter{setupQuestions: setupQuestions{cwd: cwd, w: t.Out}, term: t}
 	}
@@ -5486,9 +5594,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	// core/issueschema. --severity always did; --category and --source did not,
 	// and an operator who typed an unknown category had the accepted values in
 	// neither the help nor the refusal (iss-2609100519128005).
-	captureCmd.Flags().StringVar(&severity, "severity", "", "severity: "+enumHelp(issueschema.Severities)+" (default minor)")
-	captureCmd.Flags().StringVar(&category, "category", "", "issue category: "+enumHelp(issueschema.Categories)+" (default observation)")
-	captureCmd.Flags().StringVar(&source, "source", "", "surfacing channel: "+enumHelp(issueschema.Sources)+" (default user-observation)")
+	enumFlag(captureCmd.Flags(), &severity, "severity", "", "severity: ", issueschema.Severities, " (default minor)")
+	enumFlag(captureCmd.Flags(), &category, "category", "", "issue category: ", issueschema.Categories, " (default observation)")
+	enumFlag(captureCmd.Flags(), &source, "source", "", "surfacing channel: ", issueschema.Sources, " (default user-observation)")
 	captureCmd.Flags().StringVar(&slug, "slug", "", "override the slug derived from the text")
 	captureCmd.Flags().StringVar(&foundDuring, "found-during", "", "session/command context (default manual-capture)")
 	captureCmd.Flags().StringVar(&foundAt, "found-at", "", "optional repo-relative path, which must exist in this checkout, or a conceptual location in words")
@@ -6701,21 +6809,35 @@ func renderMemoryStatus(w io.Writer, st memory.BareStatus) {
 func addMemorySubcommands(lib *cobra.Command, asJSON *bool) {
 	// ingest <path-or-https-url> [--keep-original] [--pages-json <file|->]
 	var pagesJSON string
-	var keepOriginalFlag bool
+	var keepOriginalFlag, ingestDryRun bool
 	ingestCmd := &cobra.Command{
-		Use:  "ingest <path-or-https-url>",
+		Use:  "ingest <path-or-https-url> [--dry-run]",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := memoryStoreRoot(cmd)
 			if err != nil {
 				return err
 			}
-			res, err := memory.Ingest(memory.IngestRequest{
+			req := memory.IngestRequest{
 				RepoRoot:     repoRoot,
 				Source:       args[0],
 				KeepOriginal: keepOriginalFlag,
 				Distiller:    pagesJSONDistiller(cmd, pagesJSON),
-			})
+			}
+			if ingestDryRun {
+				// The source is read as the real ingest reads it, a URL
+				// fetched included; nothing is stored.
+				plan, err := memory.PlanIngest(req)
+				if err != nil {
+					return err
+				}
+				res := plan.Result
+				return renderDryRun(cmd.OutOrStdout(), *asJSON, "abcd library ingest", res, plan.Plan, func(w io.Writer) {
+					fmt.Fprintf(w, "  would be %s, content hash %s\n", res.Status, res.ContentHash)
+					fmt.Fprintf(w, "  licence:      %s\n", termsafe.Sanitize(res.Licence))
+				})
+			}
+			res, err := memory.Ingest(req)
 			if err != nil {
 				return err
 			}
@@ -6751,16 +6873,23 @@ func addMemorySubcommands(lib *cobra.Command, asJSON *bool) {
 	}
 	ingestCmd.Flags().BoolVar(&keepOriginalFlag, "keep-original", false, "store the original at .abcd/memory/sources/<sha256>.<ext>")
 	ingestCmd.Flags().StringVar(&pagesJSON, "pages-json", "", "DistilledPage JSON array (file path, or - for stdin)")
+	ingestCmd.Flags().BoolVar(&ingestDryRun, "dry-run", false, dryRunFlagUsage)
 	lib.AddCommand(ingestCmd)
 
 	// ask <question> [--top-n N] [--file-back] [--page-json <file|->]
 	var topN int
-	var fileBack bool
+	var fileBack, askDryRun bool
 	var pageJSON string
 	askCmd := &cobra.Command{
-		Use:  "ask <question>",
+		Use:  "ask <question> [--dry-run]",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// An ask that files nothing back writes nothing already, so a
+			// practice run beside it is refused rather than ignored.
+			if askDryRun && !fileBack {
+				return &exitError{Code: 2, Msg: "abcd library ask: --dry-run checks the page a --file-back would file, and an " +
+					"ask without --file-back writes nothing already; pass --file-back --page-json <file|->"}
+			}
 			repoRoot, err := memoryStoreRoot(cmd)
 			if err != nil {
 				return err
@@ -6773,6 +6902,18 @@ func addMemorySubcommands(lib *cobra.Command, asJSON *bool) {
 				}
 				req.FileBackPage = page
 				req.DecideFileBack = func(memory.DistilledPage) bool { return true }
+			}
+			if askDryRun {
+				plan, err := memory.PlanAsk(req)
+				if err != nil {
+					return err
+				}
+				res := plan.Result
+				return renderDryRun(cmd.OutOrStdout(), *asJSON, "abcd library ask", res, plan.Plan, func(w io.Writer) {
+					if res.FileBack != nil {
+						fmt.Fprintf(w, "  the file-back would be %s: %s\n", res.FileBack.Status, strings.Join(res.FileBack.Pages, ", "))
+					}
+				})
 			}
 			res, err := memory.Ask(req)
 			if err != nil {
@@ -6789,6 +6930,7 @@ func addMemorySubcommands(lib *cobra.Command, asJSON *bool) {
 	askCmd.Flags().IntVar(&topN, "top-n", 0, "retrieval depth (0 uses the pinned default)")
 	askCmd.Flags().BoolVar(&fileBack, "file-back", false, "file the synthesised answer back as a new memory page")
 	askCmd.Flags().StringVar(&pageJSON, "page-json", "", "the answer page dict as JSON (file path, or - for stdin)")
+	askCmd.Flags().BoolVar(&askDryRun, "dry-run", false, "with --file-back: "+dryRunFlagUsage)
 	lib.AddCommand(askCmd)
 
 	// lint — full-store curator health-check; blockers exit nonzero.
@@ -6836,8 +6978,8 @@ func pagesJSONDistiller(cmd *cobra.Command, pagesJSON string) memory.Distiller {
 		if err != nil {
 			return nil, fmt.Errorf("cannot read --pages-json: %w", err)
 		}
-		var arr []map[string]any
-		if err := json.Unmarshal(raw, &arr); err != nil {
+		arr, err := memory.DecodePages(raw)
+		if err != nil {
 			return nil, fmt.Errorf("--pages-json must be a JSON array of page dicts: %w", err)
 		}
 		return arr, nil
@@ -6853,8 +6995,8 @@ func readPageJSON(cmd *cobra.Command, pageJSON string) (map[string]any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot read --page-json: %w", err)
 	}
-	var obj map[string]any
-	if err := json.Unmarshal(raw, &obj); err != nil {
+	obj, err := memory.DecodeAnswerPage(raw)
+	if err != nil {
 		return nil, fmt.Errorf("--page-json must be one JSON object (a DistilledPage dict): %w", err)
 	}
 	return obj, nil
@@ -7240,3 +7382,29 @@ func render(w io.Writer, asJSON bool, v any, text func(io.Writer)) error {
 // reads the same slice the reader's membership test and its refusal message read,
 // so a value added to core/issueschema reaches all three at once.
 func enumHelp(vals []string) string { return strings.Join(vals, " | ") }
+
+// allowedValuesAnnotation is the flag annotation enumFlag records a closed
+// set under, which the command facts read (surface.go, flagAllowed).
+const allowedValuesAnnotation = "abcd_allowed_values"
+
+// enumFlag declares a string flag that takes one of a closed set of values:
+// its help line is lead, the set through enumHelp, then tail, and the set is
+// recorded on the flag as an annotation. So the help, the reader's membership
+// check and the command facts all read the one slice the caller passes, and a
+// value added to it reaches all three at once (spc-2610301431075964 step 1).
+func enumFlag(fs *pflag.FlagSet, p *string, name, value, lead string, vals []string, tail string) {
+	fs.StringVar(p, name, value, lead+enumHelp(vals)+tail)
+	if err := fs.SetAnnotation(name, allowedValuesAnnotation, append([]string{}, vals...)); err != nil {
+		panic(err) // the flag was declared on the line above
+	}
+}
+
+// flagAllowed is the closed set enumFlag recorded on f, or nil for a flag
+// that takes any value.
+func flagAllowed(f *pflag.Flag) []string {
+	vals, ok := f.Annotations[allowedValuesAnnotation]
+	if !ok {
+		return nil
+	}
+	return append([]string{}, vals...)
+}

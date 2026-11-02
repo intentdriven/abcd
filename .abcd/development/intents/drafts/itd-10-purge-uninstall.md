@@ -49,8 +49,55 @@ But for projects that genuinely leave abcd (acquired, deprecated, pivot), the li
 - **Given** scheduled `dev-sync` jobs were installed (per itd-13), **when** `/abcd:ahoy destroy` runs successfully, **then** the scheduled jobs are also removed and the final summary report enumerates the removed schedule entries.
 - **Given** a repo with a clean abcd installation, **when** the user runs `/abcd:ahoy uninstall` (marker-only) followed later by `/abcd:ahoy destroy`, **then** `destroy` still removes the residual `.abcd/` namespace contents that `uninstall` left behind — the two sub-verbs are composable, not mutually exclusive.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in
+the [install-update-release SOTA note](../../research/notes/2026-10-23-install-update-release-sota.md).
+
+- **Preview, then tiers, then honesty about what is left** is the convention:
+  `mise implode --dry-run` previews; `mise implode` "removes the CLI, installed
+  tools, cache and state", keeps "the user config directory unless you pass
+  `--config`", and tells the person to remove shell activation lines
+  themselves. rustup has one verb (`rustup self uninstall`); uv has none and
+  documents the steps, including removing the binaries a pre-0.5.0 install
+  left in `~/.cargo/bin`, which an upgrade does not remove.
+- **"Zap" names the danger and admits collateral**: Homebrew's `brew
+  uninstall --zap` is to "Remove all files associated with a cask. May remove
+  files which are shared between applications".
+- **Binary and state are removed in separate steps, with a warning on the
+  second**: the harness's uninstall page removes the binary per install method
+  and then, under a warning that it "will delete all your settings... and
+  session history", the configuration, noting that other installed clients
+  recreate the directory.
+- **Destroy-class verbs plan first**: `terraform destroy` is `apply
+  -destroy`, and `plan -destroy` shows "the proposed destroy changes without
+  executing them"; the drafted enumerated confirmation matches.
+- **Two scopes, not one**: every tool separates the project's files from the
+  person's machine-level state. This intent is a repository destroy; the
+  machine-level counterpart (the user-level home, `path-entry`, the plugin
+  data directory the harness keeps across updates) has no verb and is out of
+  this intent's scope.
+
+**Path 2 — native, shaped to `mise implode`**: keep the enumerated
+confirmation, add `--dry-run` as a first-class flag, keep the design record by
+default behind a flag that names it (the "config" tier every surveyed tool
+keeps; proposed answer to the open question below), and have the summary name
+what `destroy` cannot remove (shell-profile lines, commits in git history that
+still carry `.abcd/`, machine-level state) with the one command for each. The
+2026-05-07 naming ruling is untouched. The independent fit-challenge runs at
+plan time.
+
 ## Open Questions
 
+- (SOTA 2026-10-23) Does `destroy` take `--dry-run`, and does a misspelt flag
+  refuse rather than run (unrecognized input never writes)?
+- (SOTA 2026-10-23) Is `.abcd/development/` kept by default and removed only
+  when a flag names it, the way mise keeps config unless `--config`? This is
+  the proposed answer to the design-record question below, for the product
+  thinker to rule on.
+- (SOTA 2026-10-23) Is a machine-level removal (the user-level home,
+  `path-entry`, the plugin data directory) filed as its own intent, since no
+  repository-scoped verb may reach it?
 - ~~Should `destroy` offer to back up `.abcd/lifeboat/` somewhere first (since it may be valuable independently)?~~ Moot under adr-35: a lifeboat is written out of tree, to a destination `disembark pack` is handed, so `destroy` finds none inside the repository.
 - Same question for `.abcd/development/` (it's design history, not just runtime state)?
 - **Naming — resolved 2026-05-07.** Two-tier on `/abcd:ahoy`: `/abcd:ahoy uninstall` is reversible marker-only removal (re-running `ahoy` re-installs cleanly); the deeper destroy surfaces as `/abcd:ahoy destroy` — fits the nautical metaphor (scuttling a ship has a name and a weight) and the verb's danger is encoded in the verb itself. The `uninstall` description ("reversible marker-only removal") makes the distinction discoverable. Plan-review for this intent treats this naming as decided rather than re-opening.

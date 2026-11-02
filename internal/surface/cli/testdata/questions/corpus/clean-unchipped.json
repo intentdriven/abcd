@@ -1,0 +1,23 @@
+{
+  "questions": [
+    {
+      "header": "Labels",
+      "multiSelect": false,
+      "question": "Every question names who it is for in a short label above it: for example, the label reads Product Q2 on the second question put to you.\n\nNow: not applicable\nChange later: not applicable\n\nShould the label name the role as well as the number?",
+      "options": [
+        {
+          "label": "Role and number",
+          "description": "It says whom it is for and where you are. It costs a few characters."
+        },
+        {
+          "label": "Number only",
+          "description": "The label is shorter. You read the question to learn whom it is for."
+        },
+        {
+          "label": "Decide later",
+          "description": "Nothing changes now. The question comes back at the next interview."
+        }
+      ]
+    }
+  ]
+}

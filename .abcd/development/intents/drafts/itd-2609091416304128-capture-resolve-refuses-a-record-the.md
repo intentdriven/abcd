@@ -79,6 +79,45 @@ We expect a local comparison against the last-fetched default-branch ref to catc
 - `internal/core/issueschema.StatusDirs` and its shell pin — the precedent for holding a Go spelling and a shell spelling of one ledger fact to each other by test.
 - `AGENTS.md` § Definition of done — the rule that the resolve lands in the same change as the fix, which is why the refusal is after the fix and the render is the earlier surface.
 
+## SOTA
+
+Checked on 2026-10-23 against git's own manual (git 2.52.0, `git help config`,
+the version on the development machine). The design is otherwise internal: the
+ledger at a ref, RS001's classification and the Go/shell pin are all
+repository mechanics, listed under `## Prior Art`. The two open questions
+below that turn on git's documented behaviour have an answer in the manual.
+
+- **"Which age to state" has a third source beside the two the record names,
+  and it answers a different question.** With `core.logAllRefUpdates`, each
+  update to a ref is logged "by
+  appending the new and old SHA-1, the date/time and the reason of the
+  update". The log is created automatically for remote refs under
+  `refs/remotes/`. This is "true by default in a repository that has a working
+  directory", false in a bare one. So `git reflog show --date=iso
+  origin/main` gives the time the local copy of the default branch last moved,
+  and why ("fetch: fast-forward"). A ref is logged only when it changes: a
+  fetch that finds the default branch unmoved writes no entry, so on a quiet
+  upstream the reflog age grows while the view is fresh, overstating
+  staleness. `FETCH_HEAD`'s mtime has the opposite flaw: it says when we last
+  looked, at anything. The two answer different questions, "when did our copy
+  last change" and "when did we last look", and reflogs expire (90 days by
+  default). One line can state both with their meaning, falling back where no
+  reflog exists (a bare repository, or one with the setting off); which line
+  is the interview's, not this pass's.
+- **The default branch can come from git, not a new identity field.**
+  `remote.<name>.followRemoteHEAD` defaults to `create`, so `git fetch` creates
+  `remotes/<name>/HEAD` when the remote has one and the local copy does not.
+  An already existing local reference is left untouched unless the setting is
+  `always`; `warn` reports a mismatch. A repository fetched by a recent git
+  therefore carries `refs/remotes/origin/HEAD`. A stale symbolic ref is the
+  failure mode, and `warn` is the documented way to see it.
+- **Both sources are read-only and need no fetch**, which keeps the record's
+  withdrawn-fetch ruling intact.
+
+**Path 1** for the two facts (adopt git's reflog and `remotes/<name>/HEAD` as
+they are); the refusal itself stays native. No dependency. The independent
+fit-challenge runs at plan time.
+
 ## Open Questions
 
 - **Which age to state.** Git records no per-ref fetch time; what it has is the modification time of `FETCH_HEAD` (the last fetch of anything) and the ref tip's commit date (when the upstream last changed, not when we last looked). Stating both is honest and noisy; the interview picks the line.

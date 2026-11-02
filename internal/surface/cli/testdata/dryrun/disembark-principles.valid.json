@@ -1,0 +1,3 @@
+{"schema_version": 2, "mode": "delegated", "prompt_version": "0.2.0", "principles": [
+  {"id": "prn-cascade", "principle": "the cascade is fixed", "confidence": "high", "claim_type": "causal", "reference": "adr-12", "comparison": null, "evidence": ["adr-12"]}
+]}

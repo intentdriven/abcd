@@ -264,3 +264,52 @@ func TestStructuralCheckRefusesAMeaningPointingAtMissingMaterial(t *testing.T) {
 		t.Fatalf("the same meaning over material is refused:\n%s", listFindings(fs))
 	}
 }
+
+// TestAskComposedGivesMaterialStateThenQuestion (spc-2610301917245442, step
+// 1): composed into the host's field view, a structured question gives its
+// material first, the Now: and Change later: lines next and the ask last, and
+// its decide-later option is the last option, so a draft written in the type
+// comes back with its parts in the layout's order and passes the limits.
+func TestAskComposedGivesMaterialStateThenQuestion(t *testing.T) {
+	q := keyQuestion()
+	q.Chip = "Product Q1"
+	f := one(q).Fields()
+	if len(f.Tabs) != 1 {
+		t.Fatalf("tabs = %d, want 1", len(f.Tabs))
+	}
+	text := f.Tabs[0].Text
+	material := strings.Index(text, q.Material[0].Text)
+	list := strings.Index(text, "- "+q.Material[1].Items[0])
+	now := strings.Index(text, "Now: "+q.Now)
+	later := strings.Index(text, "Change later: "+q.ChangeLater)
+	if material != 0 || !(material < list && list < now && now < later) {
+		t.Errorf("parts out of order (material %d, list %d, now %d, change later %d):\n%s", material, list, now, later, text)
+	}
+	if !strings.HasSuffix(text, "\n\n"+q.Ask) {
+		t.Errorf("the text does not end with the ask on its own paragraph:\n%s", text)
+	}
+	opts := f.Tabs[0].Options
+	if last := opts[len(opts)-1]; last.Label != q.Later.Label || last.Description != q.Later.Meaning {
+		t.Errorf("last option = %+v, want the decide-later option", last)
+	}
+	if fs := question.CheckLimits(f, question.Default, question.Addressee{}); len(fs) != 0 {
+		t.Errorf("the composed question breaks the limits:\n%s", listFindings(fs))
+	}
+}
+
+// TestAskMissingNowIsAFindingNotALine: a structured question without its Now:
+// line composes without one, and the limits check names the gap, so nothing
+// invents what holds now (itd-2610230756259215 decision 14).
+func TestAskMissingNowIsAFindingNotALine(t *testing.T) {
+	q := keyQuestion()
+	q.Chip = "Product Q1"
+	q.Now = ""
+	f := one(q).Fields()
+	if strings.Contains(f.Tabs[0].Text, "Now:") {
+		t.Fatalf("the composition invented a Now: line:\n%s", f.Tabs[0].Text)
+	}
+	fs := question.CheckLimits(f, question.Default, question.Addressee{})
+	if len(fs) != 1 || fs[0].Rule != question.RuleNowAndChangeLater || fs[0].Value != "no Now: line" {
+		t.Errorf("want the one now-and-change-later finding naming the missing line; got:\n%s", listFindings(fs))
+	}
+}

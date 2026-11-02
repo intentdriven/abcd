@@ -40,6 +40,11 @@ handing an unachievable intent back to drafts.
 - A per-intent `audit_mode`; the loop applies to every lane.
 - A verification receipt schema; the grounds entry is the record.
 
+## Footprint
+
+- packages: internal/core/implement/loop, internal/core/intent, internal/surface/cli, commands/build.md, commands/implement.md, agents/intent-auditor.md, .abcd/development/brief/04-surfaces/34-build.md
+- tests: internal/core/implement/loop, internal/core/intent
+
 ## Approach
 
 Three additions to the implement spec's state machine (`fix-round`,

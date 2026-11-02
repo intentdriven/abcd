@@ -98,6 +98,17 @@ func toolsFor(role string) []string {
 // that did not run it, returns the await for the host to act on, as advance
 // returns it; the latter also names the fallback it recorded.
 func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options, rs Runners) (StepResult, error) {
+	// An auto-plan run's reviews stay on the host (autoplan.go): its lane has
+	// no worktree a runner could be confined to, so no role of it is routed,
+	// nothing is dispatched and no fallback is recorded; a --route for it is
+	// refused before anything is written, as one the step will not use is.
+	if st, err := ReadState(repoRoot, runID); err == nil && st.autoPlanning() && rs.Config != nil {
+		if len(rs.Config.FlagRoutes()) > 0 {
+			return StepResult{}, refuse(StageRoute, "", "", "--route routes a role to a runner, and an auto-plan run's plan reviews run on the host's agents",
+				"step again without --route; nothing was written")
+		}
+		rs.Config = nil
+	}
 	var routed func(string) bool
 	var overrides map[string]string
 	if rs.Config != nil {

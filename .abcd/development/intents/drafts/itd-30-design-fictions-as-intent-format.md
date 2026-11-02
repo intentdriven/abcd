@@ -83,6 +83,54 @@ This intent moves from `drafts/` to `planned/` when ANY of the following happens
 3. **First shipped intent** whose `intent-fidelity-reviewer` finding is "diverged on texture not on acceptance" — i.e., the acceptance bullets passed but the *feel* the press release implied did not match. This signals fictions might catch what press releases miss.
 4. **A non-engineer collaborator** asks for a less marketing-shaped capture format directly.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [elicitation interviews SOTA note](../../research/notes/2026-10-23-elicitation-interviews-sota.md).
+
+- The originators define design fiction as making things, not prose: "the
+  deliberate use of diegetic prototypes to suspend disbelief about change … It's
+  not a kind of fiction. It's a kind of design." (Sterling, 2012); "Design
+  Fiction is making things that tell stories." (Bleecker, 2009). A diary entry or
+  clipping is a diegetic artefact only when treated as an object from the future.
+- Evidence for design fiction in requirements engineering is thin: the RE 2018
+  entry point (Darby, Tsekleves and Sawyer) and recent HCI uses run with nine or
+  ten participants and no comparison condition; a 2025 game-RE study measured
+  acceptance, not requirement quality. Nothing opened compares story-based
+  elicitation with a press-release form.
+- A fiction and a scenario have different plots: HCI scenarios use "Overcoming
+  the Monster" and design fiction "a 'Voyage and Return' or a 'Quest'" (Blythe,
+  CHI 2017). Given/When/Then presumes the first; extracting a "Then" from the
+  second invents it (our inference from Blythe's plots, not his claim).
+- The field's own reviewers lacked evaluation guidelines as of 2020 (Muller et
+  al.) and its critics say corporate use declaws it into "a PR exercise"; a second
+  format without its own rubric becomes the ungated path.
+- BDD already runs story to rules to examples, with examples found in conversation
+  first (Wynne's example mapping, "about 25 minutes" a story); scenarios should
+  describe behaviour "not the implementation", and UI-mechanics steps "often
+  require more work to maintain" (Cucumber), which is the specific risk of the
+  screenshot-caption sub-format.
+- Extraction by a model works on clear input and echoes otherwise: generated
+  acceptance scenarios were "helpful 95% of the time", and of the downstream
+  test scripts "60% were usable as generated" (Ferreira et al., AST 2025); a
+  2026 comparison of `epic`-organised against requirement-aligned Gherkin
+  generation found the zero-shot baseline echoing requirement wording, lexical
+  metrics missing abstracted coverage, and expert raters preferring the
+  abstracted output (Siddeeq et al.). The nearest evidence (requirements- and
+  story-to-Gherkin generation) suggests extraction echoes its input unless the
+  prompt carries contrasting examples and the check is not lexical; no study
+  extracts criteria from a fiction, so the open question on
+  acceptance-extraction trust narrows but stays open.
+- The baseline format is also defective in the wild: 56 per cent of 1,023 user
+  stories from 18 companies had a detected defect (Lucassen et al., 2016).
+
+**Path 2**: the fiction as the discovery input to the same contract, kept in the
+record as the `## Design Fiction` section, with the extracted rules and examples
+as what the gate and the auditor read first, judged by a blind reader rather
+than word overlap; the fiction interview extends the grill machinery as the
+implementation note requires. The revisit triggers stand. No Go dependency.
+
+The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - **Naming of the format flag.** `--format=fiction` (terse) vs `--format=design-fiction` (precise but verbose). Recommend short form with `design-fiction` only in frontmatter and docs.
@@ -92,6 +140,10 @@ This intent moves from `drafts/` to `planned/` when ANY of the following happens
 - **Auditor reading model.** Press releases are short and quote-shaped; fictions are longer and scene-shaped. Does `intent-fidelity-reviewer` need a separate prompt path for each format, or does one prompt with a "format-aware" preamble suffice? Probably one prompt with conditional preamble; revisit after first three shipped fictions.
 - **Interaction with itd-15 (self-dogfooded SOTA audit).** If abcd self-disembarks under the fiction format, does the SOTA audit treat fiction-format intents differently? Recommend no — same audit, same criteria.
 - **CLI surface for choosing format on `intent new` without args.** When the user types `/abcd:intent new` with no args, do we ask format-first or free-text-first? Recommend free-text-first (capture the spark), then ask format ("does this feel more like a press release or a scene from someone's day?") — gives the choice context.
+- (SOTA 2026-10-23) Whether the screenshot caption stays in the artefact-type set
+  given it anchors the scene to a screen before one exists, or carries a caveat.
+- (SOTA 2026-10-23) How the auditor compares a fiction's textural claims with
+  delivered reality without lexical overlap, which rewards echoes.
 
 ## Audit Notes
 

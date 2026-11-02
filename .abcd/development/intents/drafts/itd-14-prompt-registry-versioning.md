@@ -49,11 +49,62 @@ Prompt registry + versioning is the heavier rigour layer (option E from the brie
 - **Given** `## Last SOTA Audit:` footers exist on existing agents, **when** the registry migration runs, **then** every footer is converted to a structured `## Changelog` entry with `audit:` event type AND the original footer date is preserved.
 - **Given** itd-15 (self-dogfooded SOTA audit) is shipped, **when** abcd self-disembarks, **then** the SOTA audit's findings emit `## Changelog` entries (with `audit:` event type) on the affected agents — the registry is the canonical surface for both manual and audit-driven updates.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in
+the [models, prompts and measurement SOTA note](../../research/notes/2026-10-23-models-prompts-measurement-sota.md);
+the versioning consensus it checks against practice is in the
+[prompting baseline](../../research/prompting/01-general-best-practices.md).
+
+- **The substance of the first two criteria has shipped in a different
+  shape.** The `agent_contract` lint (`internal/core/lint/agentcontract.go`)
+  requires a semver `prompt_version`, refuses a prompt changed without a bump
+  at preflight and in CI rather than in a pre-commit hook, and demands a
+  changelog entry per bump in one log kept outside `agents/` because a harness
+  loads that tree whole (iss-110), not a `## Changelog` section per agent.
+  Criterion 5 has no `Last SOTA Audit` footers left to convert. What remains
+  is the golden diff on a bump (3), the revert verb (4) and the `audit:` entry
+  shape (6).
+- **Versions are immutable, deployment is a pointer, rollback moves it.**
+  Langfuse gives each version an id, uses labels as movable pointers, returns
+  404 rather than silently falling back when a label is missing, and defines
+  rollback as moving the `production` label (Langfuse prompt version control
+  docs).
+- **Regression runs on the pull request and posts a diff.** promptfoo's
+  GitHub Action evaluates edited prompts against their previous versions on
+  every PR touching them, posts a result link and caches model calls; its
+  page documents no gate (promptfoo GitHub Action docs).
+- **A prompt asset names its model and parameters** (Prompty frontmatter:
+  model id, provider, options), and an optimised prompt is a saved build
+  artefact (DSPy GEPA saves the optimised instructions as JSON).
+- **"Only formatting" is a behaviour change**: spreads of up to 76 accuracy
+  points from formatting alone (Sclar et al., ICLR 2024), so a PATCH bump
+  cannot be exempt from the golden run.
+- **The same prompt drifts when the model does**: 84 % to 51 % on the same
+  questions between two releases of one model (Chen, Zaharia and Zou, 2023),
+  so a version record names the model its golden run used.
+- **Contrarian**: for eighteen in-repo markdown prompts, git plus the lint is
+  the registry; the value left here is the golden diff and a revert that writes
+  its own entry.
+
+**Path 2**: native, shaped to Langfuse's version-and-pointer model and
+promptfoo's PR-time before/after. The version stays in frontmatter; a changelog
+entry gains the model id and fixture-set hash of its golden run and an
+`audit:` event type; `abcd prompts revert` rewrites from git and writes the
+entry; the golden diff is a host-run review recorded as a receipt the entry
+cites, surfaced before the commit completes only where the host offers a hook
+that can wait — a deterministic pre-commit hook cannot run fixtures. The seam:
+the entry and receipt are shaped so one promptfoo eval result or Langfuse
+version record maps onto them field by field. No dependency. The independent
+fit-challenge runs at plan time.
+
 ## Open Questions
 
 - Where does the prompt version live — frontmatter field, footer, or git tag?
 - How aggressive is the "block edit until tests pass" check — pre-commit hook, or manual workflow?
 - How does this interact with itd-15 (self-dogfooded SOTA audit)?
+- (SOTA 2026-10-23) The first acceptance criterion names `agents/<name>/CHANGELOG.md` and `lint_prompts.py`; the shipped lint keeps the log outside `agents/` (iss-110) and is Go. Does the criterion follow the shipped shape, or is a per-agent log inside the tree still wanted?
+- (SOTA 2026-10-23) Which golden-run facts the changelog entry records beside the version: model id, fixture-set hash, receipt path — and whether a PATCH bump that ran no golden run is refused or merely marked.
 
 ## Audit Notes
 

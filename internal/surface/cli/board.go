@@ -136,7 +136,7 @@ func boardPresence(cwd string, stderr io.Writer) *boardStatusline {
 		set = statusline.Defaults()
 	}
 	for _, n := range notes {
-		fmt.Fprintf(stderr, "abcd: %s\n", termsafe.Sanitize(n))
+		fmt.Fprintln(stderr, noteLine(n))
 	}
 	set.Disabled = false
 	res, err := statusline.Compose(root, statusline.Payload{}, set)

@@ -3,6 +3,7 @@ package gitutil_test
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/gittest"
@@ -29,7 +30,7 @@ func TestRemoteHeadBranchNamesOriginsHEADBranch(t *testing.T) {
 	for _, head := range []string{"main", "develop"} {
 		r, _ := remoteWorld(t, head)
 		before := r.Git("for-each-ref")
-		got, err := gitutil.RemoteHeadBranch(r.Root(), "origin")
+		got, err := gitutil.RemoteHeadBranch(nil, r.Root(), "origin")
 		if err != nil || got != head {
 			t.Fatalf("RemoteHeadBranch = %q, %v; want %q", got, err, head)
 		}
@@ -45,7 +46,7 @@ func TestRemoteHeadBranchErrsOnAnUnreachableRemote(t *testing.T) {
 	if err := os.RemoveAll(bare); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := gitutil.RemoteHeadBranch(r.Root(), "origin"); err == nil {
+	if got, err := gitutil.RemoteHeadBranch(nil, r.Root(), "origin"); err == nil {
 		t.Fatalf("RemoteHeadBranch = %q, nil; want an error", got)
 	}
 }
@@ -56,7 +57,7 @@ func TestRemoteHeadBranchErrsOnADetachedHEAD(t *testing.T) {
 	if _, err := gitutil.Run(bare, "update-ref", "--no-deref", "HEAD", sha); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := gitutil.RemoteHeadBranch(r.Root(), "origin"); err == nil {
+	if got, err := gitutil.RemoteHeadBranch(nil, r.Root(), "origin"); err == nil {
 		t.Fatalf("RemoteHeadBranch = %q, nil; want an error for a detached HEAD", got)
 	}
 }
@@ -72,7 +73,7 @@ func TestRemoteHeadBranchErrsOnAnInvalidName(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(bare, "HEAD"), []byte("ref: refs/heads/a..b\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := gitutil.RemoteHeadBranch(r.Root(), "origin"); err == nil {
+	if got, err := gitutil.RemoteHeadBranch(nil, r.Root(), "origin"); err == nil {
 		t.Fatalf("RemoteHeadBranch = %q, nil; want an error for an invalid name", got)
 	}
 }
@@ -110,5 +111,30 @@ func TestRemoteHeadFromParsesEachAnswer(t *testing.T) {
 		if err != nil || got != c.want {
 			t.Errorf("%s: got %q, %v; want %q", c.name, got, err, c.want)
 		}
+	}
+}
+
+// The caller's runner asks the remote (iss-2610161849042422): it gets the one
+// ls-remote call, from root, and its answer is the one read; an option-shaped
+// remote never reaches it.
+func TestRemoteHeadBranchAsksThroughTheCallersRunner(t *testing.T) {
+	root := gittest.NewRepo(t).Root()
+	var calls [][]string
+	git := func(dir string, args ...string) (string, error) {
+		if dir != root {
+			t.Errorf("runner called from %q, want %q", dir, root)
+		}
+		calls = append(calls, args)
+		return "ref: refs/heads/trunk\tHEAD\n", nil
+	}
+	got, err := gitutil.RemoteHeadBranch(git, root, "origin")
+	if err != nil || got != "trunk" {
+		t.Fatalf("RemoteHeadBranch = %q, %v; want trunk, the runner's answer", got, err)
+	}
+	if want := []string{"ls-remote", "--symref", "origin", "HEAD"}; len(calls) != 1 || !slices.Equal(calls[0], want) {
+		t.Fatalf("runner calls %v, want one %v", calls, want)
+	}
+	if _, err := gitutil.RemoteHeadBranch(git, root, "--upload-pack=x"); err == nil || len(calls) != 1 {
+		t.Fatalf("an option-shaped remote: err %v, runner calls %d; want an error and no call", err, len(calls))
 	}
 }

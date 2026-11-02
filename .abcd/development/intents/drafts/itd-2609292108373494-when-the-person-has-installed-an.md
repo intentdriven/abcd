@@ -73,6 +73,47 @@ interview walks each one.
   **then** abcd's own interview continues from the last recorded answer and says
   that it took over.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [elicitation interviews SOTA note](../../research/notes/2026-10-23-elicitation-interviews-sota.md).
+
+- A skill has a small, stable on-disk shape: `SKILL.md` with `name` (which "Must
+  match the parent directory name") and `description`, optional `compatibility`,
+  and progressive disclosure (Agent Skills specification). Detection reads
+  those two fields and one more: a skill with `disable-model-invocation: true`
+  cannot be invoked by the agent on its own (its description is not even in
+  context), so such a skill is detected but cannot be handed over, and abcd
+  tells the person to type the skill's command or runs its own interview.
+- Where a host looks differs per host: the host abcd ships for reads personal,
+  project, nested, additional-directory and plugin skill directories, and other
+  hosts use their own (one 2026 survey lists six). The path table is the part a
+  new host replaces.
+- abcd can start a skill only through the host (its CLI or SDK loads a leading
+  `/skill-name`), and a headless start cannot hold an interview: there the
+  host's question tool auto-resolves with an empty answer (anthropics/claude-code
+  issue 50728, closed "not planned"), and even interactively it has an open
+  rendering bug (February 2026).
+  A hand-over is therefore only meaningful inside a live interactive session,
+  started by abcd's command page telling the agent to invoke the named skill.
+- Public interviewing skills disagree on abcd's core rule: the brainstorming
+  skill forbids option menus ("Options steer"), a grill-me skill gives "your
+  recommended answer" with each question. abcd's rules travel to the external
+  interviewer as a stated brief, abcd records which interviewer asked, and the
+  record shape is unaffected because abcd writes it from the answers.
+- The skill ecosystem is unvetted (a vendor scan put critical issues in 13.4 per
+  cent of 3,984 skills; the vendor sells the remedy): detect one skill the person
+  named, never scan for "any interviewing skill".
+
+**Path 2**: the person names one skill (user-level, overridable per repository);
+abcd checks the host-specific path for a `SKILL.md` whose `name` matches its
+directory and that does not set `disable-model-invocation`; the command page
+hands over in a live session and prints the asking
+discipline it expects; otherwise, and always when headless, abcd's own interview
+runs and says so. Covers the grill and the planning interview alike. No Go
+dependency.
+
+The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - **How the person names the skill**: a setting in the repository's
@@ -82,6 +123,9 @@ interview walks each one.
   hand-over pass them to the skill, or accept the skill's own?
 - **Which interviews it covers**: the grill of a draft only, or the planning
   interview too.
+- (SOTA 2026-10-23) Whether answers taken by an interviewer that recommends
+  (grill-me's shape) need a marker in the record, given
+  `widen-options-never-recommend` binds abcd's own questions only.
 
 ## Audit Notes
 

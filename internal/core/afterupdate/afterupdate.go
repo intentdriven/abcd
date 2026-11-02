@@ -24,7 +24,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 	"time"
 
@@ -34,6 +33,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/core/releasedigest"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // The answers the offer takes.
@@ -66,10 +66,6 @@ const maxActionIDs = 5
 
 // lockTimeout bounds the wait for news-seen's lock.
 const lockTimeout = 5 * time.Second
-
-// rootSHARe is a repository's root commit as a store key: a full SHA-1 or
-// SHA-256 object name.
-var rootSHARe = regexp.MustCompile(`\A(?:[0-9a-f]{40}|[0-9a-f]{64})\z`)
 
 var (
 	// ErrNotRelease is the refusal of a running binary that is not a release
@@ -252,7 +248,7 @@ func Record(cwd, answer string) (Answer, error) {
 	if err != nil {
 		return Answer{}, err
 	}
-	if !rootSHARe.MatchString(det.RootSHA) {
+	if !gitutil.IsFullSHA(det.RootSHA) {
 		return Answer{}, ErrNoOffer
 	}
 	home, err := homeDir()
@@ -339,7 +335,7 @@ func dueOffer(cwd, running string, held *ahoy.DetectionResult) (*Offer, error) {
 			return nil, err
 		}
 	}
-	if !rootSHARe.MatchString(det.RootSHA) {
+	if !gitutil.IsFullSHA(det.RootSHA) {
 		return nil, nil
 	}
 	answered, err := hasAnswer(det.RootSHA, running)

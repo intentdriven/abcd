@@ -1,7 +1,7 @@
 ---
 name: disembark
 description: "Pack a repository into a lifeboat, probing and planning first: Writes nothing in the source, only inside the lifeboat; refuses an unknown sub-verb."
-argument-hint: "pack <source-repo> <dest> | plan [<source-repo>] | probe [<source-repo>] | coverage <report.json>... | review <lifeboat-dir> <source-repo> [--review-json <file|->] | principles <lifeboat-dir> [--principles-json <file|->] | press-release <lifeboat-dir> [--press-release-json <file|->] | graveyard <lifeboat-dir> --lessons-json <file|->"
+argument-hint: "pack <source-repo> <dest> | plan [<source-repo>] | probe [<source-repo>] | coverage <report.json>... | review <lifeboat-dir> <source-repo> [--review-json <file|->] [--dry-run] | principles <lifeboat-dir> [--principles-json <file|->] [--dry-run] | press-release <lifeboat-dir> [--press-release-json <file|->] [--dry-run] | graveyard <lifeboat-dir> --lessons-json <file|-> [--dry-run]"
 block: people
 ---
 
@@ -139,7 +139,19 @@ it rests on), write that document to a file, then:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" disembark graveyard <lifeboat-dir> --lessons-json <path>   # or - for stdin
+"${CLAUDE_PLUGIN_ROOT}/abcd" disembark graveyard <lifeboat-dir> --lessons-json <path> --dry-run   # check it; write nothing
 ```
+
+**Practise before it counts.** `--dry-run` on `graveyard`, `principles`,
+`press-release` and `review` runs every check the real run makes, the secret
+scan included, and writes nothing into the lifeboat: it prints each file the
+verb would write (its path inside the lifeboat, created or replaced, and its
+size), each file it would remove, and the report the real run would give; a
+refused payload gives the real run's refusal and exit 2. On the three
+synthesis verbs it works with or without the payload flag, since the
+deterministic mode writes too.
+With `--json` the result carries the usual fields plus `"dry_run": true`,
+`would_write` and `would_do`.
 
 The verb is a **cite-or-be-dropped** gate. A lesson survives only if at least one
 of its `evidence` refs resolves to a live finding id from layers 1/2; a lesson

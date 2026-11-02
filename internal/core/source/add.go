@@ -49,8 +49,7 @@ func ClassQuestion() question.Question {
 		ID:   "library.class",
 		Chip: "Library",
 		Material: []question.Block{
-			{Kind: question.KindParagraph, Text: "The item you are adding has no class yet. " +
-				"abcd files every item as private or public, once, and never guesses."},
+			{Kind: question.KindParagraph, Text: "This item has no class yet. abcd files each item private or public, once."},
 			{Kind: question.KindList, Items: []string{
 				"private: filed under confidential/, consulted but never cited",
 				"public: filed under public/, citable once its permission allows",
@@ -66,7 +65,7 @@ func ClassQuestion() question.Question {
 		Later: question.Option{Value: AnswerLater, Label: question.Default.LaterLabels[0],
 			Meaning: "Adds nothing. Run the command again with --private or --public."},
 		Now:         "nothing is added until you answer",
-		ChangeLater: "library declassify moves a private item to public once it is published",
+		ChangeLater: "library declassify makes a private item public once published",
 	}
 }
 

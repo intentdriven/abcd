@@ -1042,6 +1042,7 @@ Sub-verbs: none.
 |---|---|
 | `--allow-dirty` | bool |
 | `--changelog-json` | string |
+| `--dry-run` | bool |
 | `--fetch-baseline` | bool |
 | `--payload-dir` | string |
 | `--route` | stringArray |

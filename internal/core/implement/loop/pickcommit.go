@@ -156,11 +156,13 @@ func resetLaneTree(dir, head string) error {
 
 // pickGitIndex is pickGit on a scratch index, for a command that must read the
 // working tree as the person's git does without touching the lane's own index.
+// The scratch index is written whole, as gitutil.RunWithIndex writes one, so a
+// repository set to core.splitIndex gains no shared index file from it.
 func pickGitIndex(dir, index string, args ...string) (string, error) {
 	if !filepath.IsAbs(index) {
 		return "", fmt.Errorf("the scratch index %q is not an absolute path", index)
 	}
-	cmd := gitutil.WorkingTreeCommand(dir, args...)
+	cmd := gitutil.WorkingTreeCommand(dir, append([]string{"-c", "core.splitIndex=false"}, args...)...)
 	cmd.Env = append(cmd.Env, "GIT_INDEX_FILE="+index)
 	return gitutil.RunTreeCommand(cmd, args)
 }

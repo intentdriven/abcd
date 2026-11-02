@@ -232,8 +232,60 @@ the Decisions above where the two disagree.
   **when** a user attempts the install, **then** the failure names the required
   host version rather than presenting as a broken plugin.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in
+the [install-update-release SOTA note](../../research/notes/2026-10-23-install-update-release-sota.md).
+
+- **The update rule is documented now.** The harness's plugin-loading
+  reference states that a plugin's version is the manifest `version`, else
+  the entry's, else for an archive "the `sha256` pin in the marketplace entry,
+  or the digest of the downloaded file when there is no pin", and that a
+  cached copy is replaced only when that computed version changes. The
+  2026-08-20 experiment's "observed, not contractual" caveat is retired; its
+  corollary stands (a re-published zip under an unchanged version never
+  reaches installed users).
+- **The archive source is as assumed.** `url` (HTTPS only) and `sha256`
+  ("refuses a download that doesn't match"), harness v2.1.224 or later, root
+  at the top of the zip or one level down, 256 MiB and five redirects at most
+  (marketplace reference). The vendor's own hosting guide says "Pin each
+  archive with `sha256`", which is the E1 ruling.
+- **Automatic reach is opt-in.** Background auto-update is off by default for
+  a third-party marketplace; a user enables it per marketplace or an admin
+  sets `autoUpdate` in managed settings; the pass runs up to ten minutes after
+  the first message and the running session keeps its loaded version (hosting
+  guide, loading reference). "Every cut reaches users" holds for opted-in users.
+- **`releases/latest` is picked by commit date**: "the most recent
+  non-prerelease, non-draft release, sorted by the `created_at` attribute",
+  which "is the date of the commit used for the release" (releases REST
+  reference). A hotfix cut from an older commit would not become latest; the
+  bootstrap's cold start still follows that URL.
+- **Attestations are SLSA Build L2** on their own, L3 only through a reusable
+  workflow; `gh attestation verify` treats only the certificate and the
+  timestamps as tamper-proof and the predicate as "often user-controlled"
+  (artifact attestations concept, `gh attestation verify` manual).
+- **Immutable releases are generally available (2025-10-28)**: published
+  assets "can't be added, modified, or deleted", the tag is protected, and a
+  release attestation is minted; the draft-then-publish flow they require is
+  the one `release.yml` already runs. Enabling the setting makes the pin's
+  target unchangeable by anyone with push access.
+- The offline key stays deferred: minisign's trusted comment covers the
+  downgrade case, and nothing found forces the key now.
+
+**Path 1 — adopt the forge's features as they are**: the documented version
+rule closes open question 1, the pin closes the install-time verification
+gap, and enabling immutable releases is the one addition worth a record. The
+independent fit-challenge runs at plan time.
+
 ## Open Questions
 
+- (SOTA 2026-10-23) Immutable releases still allow a superseded Release and
+  its tag to be deleted, but the tag name can never be reused and a published
+  release's assets cannot be changed or removed; does the record keep
+  itd-70's prune under that constraint, or retire it (itd-70)?
+- (SOTA 2026-10-23) Does the bootstrap's cold start resolve the tag from the
+  pinned catalog or the release mark rather than from `releases/latest`, so a
+  hotfix cut from an older commit is not skipped?
 - **Does an unpinned archive at a stable URL actually re-check for a new
   release?** The remaining empirical unknown, and the only thing between this
   shape and settled. The catalog never changes and the URL never changes, so the

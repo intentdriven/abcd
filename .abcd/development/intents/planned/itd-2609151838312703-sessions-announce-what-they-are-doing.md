@@ -127,6 +127,40 @@ Ruled by the product thinker at the planning interview of 2026-10-15:
 - Radicle's collaborative objects (each peer the sole writer of its own namespace) and Anthropic's sixteen-agent compiler run (coordination by locks alone), both cited in the research note: the per-writer branch and the hold-as-reservation.
 - The prompt-router hook (`abcd hook prompt-router`, itd-20's loader): the path a fetched note is shown through; no second hook.
 
+## SOTA
+
+Surveyed on 2026-10-14 and ruled on 2026-10-15; sources, the options and the
+adversarial review are in the [session-messages note](../../research/notes/2026-10-14-session-messages-across-accounts.md),
+with the record inventory in the [multi-agent coordination note](../../research/notes/2026-10-03-multi-agent-coordination-sota-and-run-lessons.md).
+This heading collects the grounds on 2026-10-23; no new pass was run.
+
+- **Most coordination traffic is locks, not conversation.** "Hold your merge"
+  is a lease, "who owns this" a reservation. Anthropic's sixteen-agent compiler
+  run (Carlini, February 2026) coordinated with locks alone (practitioner
+  report, cited in the note).
+- **Each peer the sole writer of its own namespace** (Radicle's collaborative
+  objects) is the shape the per-session branch copies; one shared mailbox
+  branch races on concurrent pushes.
+- **Peer text is a live prompt-injection route.** The note records four
+  incidents (the GitHub MCP toxic flow, Clinejection, Comment and Control,
+  GitLost). The architectural defence (CaMeL; the design-patterns paper) keeps
+  untrusted text from reaching an agent as free text; spotlighting lowers
+  attack success without removing it. Hence fixed kinds, no free text.
+- **The host's own messages are per login.** They reach the same account's
+  cloud sessions and machines, never another login or the forge, so they stay
+  a wake-up accelerator.
+- **A sender's identity on the remote is self-declared.** A ruleset binds a
+  prefix to a team, role or app, never to one user, so a sender is shown as
+  "claims to be" until identity can be bound.
+- **Shown cost**: `git ls-remote` with a pattern still downloads every ref
+  (1,011 on 2026-10-14); `--heads` narrows it.
+
+**Path 2**: native, on the reservation primitive already on the remote, shaped
+to Radicle's per-writer namespaces; no dependency. Probe P1 (a hosted
+session's push outside its own prefix, and the pusher the forge names) comes
+before the build. The independent fit-challenge ran in the 2026-10-14 design
+pass.
+
 ## Open Questions
 
 _None open._

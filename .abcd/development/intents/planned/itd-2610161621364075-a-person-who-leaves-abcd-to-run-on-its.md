@@ -62,6 +62,28 @@ Seeded by the facilitator on 2026-10-16; proposals until the product thinker con
 - **Given** abcd's guard is active in a launched agent, **when** the agent runs a command the guard refuses, **then** the refusal and its advice reach the agent inside the fence as they do outside.
 - **Given** a fenced run, **when** it finishes, **then** the person's host settings are byte-identical to before the run.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [security-isolation SOTA note](../../research/notes/2026-10-23-security-isolation-sota.md). This is half of the check decision 6 asked planning to make first: it weighs `srt` against a microVM, native profiles and the host's Bash sandbox, not against the other open-source fences, and not on a non-Claude launch (Codex, opencode); the other half is finished at the fit-challenge before the build.
+
+- **Anthropic's sandbox-runtime (`srt`) meets the ADR's policy by configuration.** Writes are allow-only, reads deny-then-allow, network denied until a domain is listed; it wraps any command; Seatbelt on macOS, bubblewrap plus a seccomp filter on Linux; Apache-2.0, "Beta Research Preview", installed with npm (sandbox-runtime README).
+- **It denies the paths the ADR names on its own**: `.git/hooks`, `.git/config`, `.mcp.json`, `.claude/commands`, `.claude/agents` and shell start-up files, even inside an allowed write path (Claude Code sandbox environments).
+- **On Linux the deny list is built once at launch** and "does not cover anything the session creates later, such as `git init`, `git clone`, or scaffolding"; on macOS the denies are checked at write time. The run must create every worktree before the fence goes up (same page).
+- **Whole-process is the vendor's own bar for unattended runs**: the shell-only sandbox "is not sufficient for fully unattended runs"; a run without prompts belongs "inside a container, a VM, or the sandbox runtime" (same page).
+- **Every comparable harness uses the same primitives**: Codex is "an OS-enforced sandbox", Seatbelt on macOS and bubblewrap on Linux; Gemini CLI uses `sandbox-exec` profiles or a container (Codex sandboxing; Gemini CLI sandbox).
+- **`sandbox-exec` is deprecated in its man page** ("The `sandbox-exec` command is DEPRECATED") and relied on by all three vendors; no Apple removal statement was found (sandbox-exec(1)).
+- **Linux prerequisites are the ADR's scope condition**: Ubuntu 24.04's default AppArmor policy blocks bubblewrap's user namespaces, fixed by a `bwrap` profile; Landlock is the kernel's unprivileged alternative, with a Go binding that would be a Go dependency and covers Linux only (Claude Code sandboxing; Landlock; go-landlock).
+- **Inside the fence, unix sockets are blocked by default**, so a push over SSH needs the agent socket allowed (by path on macOS, wholesale on Linux) or HTTPS through the credential store (README).
+- **Detection is a probe, not a config read**: the host's own check is a write outside the allowed paths failing with "Operation not permitted" or "Read-only file system" (Claude Code sandboxing).
+- **A microVM (Docker Sandboxes) is the stronger, heavier alternative**, with its own egress proxy and credential sentinel, at the cost of a Docker dependency (Docker Sandboxes architecture).
+
+**Path 1: adopt sandbox-runtime as the first fence behind the `internal/core/fence` seam**, its policy generated per launch as an `srt` settings file. It is a new runtime dependency (Node and npm; ripgrep on macOS and Linux by the README's requirements list, though the harness's own page says no extra package on macOS; bubblewrap and socat on Linux) and the adr-22 exception the ADR proposes, so it needs explicit sign-off. The independent fit-challenge is still owed before the build, and the questions below are kept for it.
+
+Questions this pass raised for the fit-challenge before the build. They are kept here, not under Open Questions, so they do not hold a build the record already rules ready:
+
+- On Linux the mandatory deny list is built at launch, so a worktree or clone the agent creates afterwards sits outside it: does the run forbid creating worktrees inside the fence, or rebuild the fence around them?
+- Which route a fenced push takes: the `ssh-agent` socket allowed by path, or HTTPS through the credential store the fence must still reach.
+
 ## Open Questions
 
 None open. Each question the two reviews raised is settled in Decisions 1 to 8. How opencode launches are fenced is left to the spec, under decision 6.

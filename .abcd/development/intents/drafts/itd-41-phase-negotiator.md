@@ -51,12 +51,27 @@ The danger is a fluent fake. An agent asked "what are the trade-offs?" will inve
 - **Given** the product thinker proposes pulling an intent into an earlier phase, **when** the negotiator analyses the change, **then** it names, from the dependency graph, every item whose dependency chain is affected, and names which `## Phase Acceptance` bullet of the affected phase is put at risk.
 - **Given** the negotiator has finished, **when** the product thinker reviews the output, **then** the phase plan is unchanged on disk until the product thinker authors it — the negotiator's output is advisory.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [traceability-governance SOTA note](../../research/notes/2026-10-23-traceability-governance-sota.md).
+
+- **The record this draft rests on is superseded.** adr-9 (phases) gave way to adr-2609212115255771, which retires the phase, the milestone and the word roadmap: "Sequencing is dependencies plus the shelves", Now/Next/Later "is a rendered status, never stored", and the derived release is the checkpoint. The phase plan the negotiator proposes no longer exists in the record; the re-sequencing analysis over the dependency graph does. Nothing ruled here is contradicted by the research; the plan-time interview owes the product thinker this fact first.
+- **The field's sequencing conversations are about what a move costs, not about phases.** Shape Up bets "only one cycle ahead", drops unchosen pitches, revives an idea only when "brought back with a context, by a person, with a purpose", and holds that "There is nothing special about bugs that makes them automatically more important than everything else". Now-Next-Later exists because "Putting features in dated columns turns every date into a commitment".
+- **Cost of delay is the one quantitative "what does waiting cost"**, and it needs a duration per item; the no-estimates rule excludes that term, and the relative job size SAFe substitutes is the part its critics reject. Without durations it degenerates to severity weighted by what waits behind an item, which is itd-78's derived order.
+- **Story mapping is the "work backwards from what each slice makes true" instrument** without phases: a backbone that "just is", a walking skeleton built first, release slices drawn across the map so "we never release a car without brakes" (Patton).
+- **Grounded-or-asked is a shipped shape:** Spec Kit's `analyze` gives every finding a location and a severity and offers remediation the user approves; a cost with no location is the defect this draft names.
+- **Path 2, a proposed re-scope for the plan-time interview to confirm** (the product thinker has not ruled it, and the superseded-record fact above comes first in that interview): native, shaped to cost of delay's question without its numbers. Given a proposed move (pull forward, hold, defer, mark to revisit), the asserted costs come from itd-78's transitive closure and the affected intents' acceptance criteria, each with a location; everything else is a tagged Socratic question, as adr-10 holds. The seam is itd-78's ordering function, which the negotiator reads and never writes; the product thinker's own order (itd-2610070550516046) and the revisit mark (itd-2610070549060530) are the "phasing choice" it now interrogates.
+
+The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - Surface shape — is this a sub-verb of a phase-oriented command, a sub-verb under `/abcd:intent` (alongside `grill`), or its own command? adr-10 leaves the surface to this intent; it needs deciding at plan time.
 - Should the negotiator's discussion be persisted (a logbook artefact, like grill reports) so a phase doc can cite the negotiation that shaped it?
 - How does the negotiator behave when the dependency DAG is prose-only for some area — degrade to pure Socratic questioning (adr-10's stated limit), or prompt the product thinker to formalise that DAG slice first?
 - Does the negotiator share a Socratic-move taxonomy module with the grill skill, or keep its own copy until the two demonstrably converge?
+- (SOTA 2026-10-23) With phases retired (adr-2609212115255771), what the negotiator negotiates: a proposed move in the product thinker's order, a revisit mark, or a hold; and whether the draft is re-scoped, superseded by a narrower one, or folded into itd-78's report.
+- (SOTA 2026-10-23) Whether the retired words (phase, milestone, roadmap) are replaced throughout the draft at plan time or the draft is rewritten against the rendered Now/Next/Later.
 
 ## Audit Notes
 

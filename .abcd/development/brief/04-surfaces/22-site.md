@@ -113,8 +113,12 @@ for the website.
 
 So setting one up writes two files and no more: the site's settings, holding
 the publish switch and no composition, and the workflow. The interface words,
-styles, scripts and headers policy ship in the binary, and the workflow builds
+styles, scripts and content policy ship in the binary, and the workflow builds
 and gates with the project flag, so the repository carries no site sources.
+GitHub Pages serves no header a site declares, so each page carries its
+content policy as an element in its head rather than in a `_headers` file, and
+the gate holds every page to it. A policy in a page cannot refuse framing, and
+`nosniff` has no in-page form, so a project site goes without those two.
 The landing page is an about page derived in code, from four parts in this
 order, each rendered only where the repository holds it: the identity block
 (only when abcd writes the file it lives in: one under `.abcd/`, outside the
@@ -142,11 +146,6 @@ are and when any of them landed are git's record, not abcd's, so the
 contributors page, the timeline, the health page's authorship checks and
 record.json's authorship, history and per-record git dates are all left out,
 and a record is dated by its own frontmatter alone.
-
-The project route depends on abcd's own releases: the workflow downloads abcd's
-latest release to build with, so a project site cannot build until a release of
-abcd carries the project flag. Setup states this in a note on every project
-setup whose files are written or already current (a run declined at the switch, refused before anything is written, or switched off carries no such note), since it asks the network nothing to learn which release is latest.
 
 The gate holds the line: on a project site, a rendered span whose source file
 abcd does not write fails the site's gate, on every page, the record's own
@@ -270,15 +269,21 @@ entry and no links.
 
 ## The gates
 
-The lint's site target runs eight independent gates over a rendered tree and reports
+The lint's site target runs ten independent gates over a rendered tree and reports
 every failure rather than the first: provenance, hero drift against the identity
 block, banned tokens over composed text, `abcd …` snippets against the generated
-CLI reference, the unresolved-reference ratchet, the static mobile checks, and the
-loop-figure labels, and the base path of every root-absolute link. The eight are named once in the code that runs them, and the
+CLI reference, the unresolved-reference ratchet, the static mobile checks, the
+loop-figure labels, the base path of every root-absolute link, the link
+targets (every `/docs/` link on a rendered page, the verbatim record rendering
+included, and every redirect target names a
+file in the built output), and, on a project site, the content policy each
+page carries in its head. The ten are named once in the code that runs them, and the
 check's report prints each name as it runs it, passing or failing.
 
 Scope follows adr-47 decision 3 exactly. Composed surfaces are the landing page and
-every manifest-selected span; the verbatim record rendering is exempt; and the
+every manifest-selected span; the verbatim record rendering is exempt from the
+composed-text gates, though the link targets, which judge where a link lands rather
+than its words, read its `/docs/` links too; and the
 attribution escape is a verification, so a name on the contributors page must match
 a trailer, or a bot or tool author, that git actually carries. The page names no
 person: the human authors are a count of people and of their commits

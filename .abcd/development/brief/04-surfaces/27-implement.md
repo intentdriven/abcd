@@ -36,6 +36,7 @@ own state lives in the checkout's local tier, not in the shared run state below;
 | `status` | — | shipped |
 | `step` | — | shipped |
 | `receipt` | — | shipped |
+| `widen` | — | shipped |
 | `record` | — | shipped |
 | `outage` | — | shipped |
 | `outage record` | — | shipped |
@@ -425,8 +426,8 @@ Deriving the count from the machine's resources is a later step
 
 ## The implement loop
 
-Three sub-verbs drive the loop a build starts, each over the run's state file in
-the checkout's local tier ([`34-build.md`](34-build.md) states the file, the
+Four sub-verbs drive the loop a build starts, the status, step, receipt and
+record verbs, each over the run's state file in the checkout's local tier ([`34-build.md`](34-build.md) states the file, the
 checks and the step interface). The status render reads every run, or the one
 named, and writes only the renewal of a due reservation of each run it shows,
 logged in the run record as a step logs it: it names the slots in use out of the run's ceiling,
@@ -434,7 +435,8 @@ every lane alive with its stage and each agent it awaits, and each held lane wit
 its cause, the head judged, the landing step it stopped before and the two flags
 that decide it. The step verb performs the run's next move and exits (a lane's
 stages are worktree, brief, implement, validate and land; the lane as a whole
-lands one of the spec's steps). A run works in parallel up to its ceiling (ruling
+lands one of the spec's steps; the one lane of an auto-plan run takes
+plan-review and plan instead, [`34-build.md`](34-build.md) says why). A run works in parallel up to its ceiling (ruling
 DR6): a stage the binary owns moves on any lane first, then, while a slot is
 free, the first waiting work takes it, an open lane's before a new lane's and
 the lower spec step first; a lane opens for a ready spec step only when a helper
@@ -471,6 +473,28 @@ record verb reads a run's record back at the end, and on a complete run captures
 the run's transcripts into the history store, one capture per path; a
 transcript stored without the scanner coverage the repository armed carries its
 scan gap on the record, as the history verb reports it for a capture.
+
+An issue lane widens its hold before it edits a path beyond it
+(iss-2610311224444576; dcn-2610311251002713, dcn-2610311544325397). Its brief
+names the widen verb, run from the run's checkout with the run, the lane and
+each further path: the issue is reserved again with the footprint its
+reservation holds and the paths it does not cover, judged for overlap and
+against the cap like any reservation, and the run record names the paths
+widened to; a path already covered adds nothing, and a run holding no
+reservation has nothing to widen. Only the run's current lane widens, at its
+implement or validate stage, and an intent's run, whose footprint is its
+spec's, is refused. Another copy's live hold on one of the paths is
+contention: nothing is pushed, the record line says the widening backed off,
+and the implementer edits none of them and stops without a receipt, the lane
+handed to an implementer again on a later step. As the backstop, an
+implementer's receipt is refused while the lane's branch changes a path the
+reservation does not cover, naming the paths and the widen verb, so a
+widening forgotten or an edit made through the shell is caught before the
+lane moves on. The landing's narrowing keeps a path the lane widened to and
+changed, a resume at land renews that narrowing as it stands, a resume that
+reserves again over this copy's live or lapsed hold keeps the paths that hold
+names beside the found_at, and a lane leaving land for a fresh round reserves
+its found_at again beside the paths its narrowed hold names.
 
 A run that holds a reservation on the shared remote (itd-2609091034175565;
 the state's `reserved_at`) holds it for the copy the run lives in. The step
@@ -622,7 +646,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd implement`
 
-Sub-verbs: `abcd implement check`, `abcd implement claim`, `abcd implement join`, `abcd implement leave`, `abcd implement load`, `abcd implement log`, `abcd implement mode`, `abcd implement outage`, `abcd implement receipt`, `abcd implement record`, `abcd implement release`, `abcd implement report`, `abcd implement status`, `abcd implement step`.
+Sub-verbs: `abcd implement check`, `abcd implement claim`, `abcd implement join`, `abcd implement leave`, `abcd implement load`, `abcd implement log`, `abcd implement mode`, `abcd implement outage`, `abcd implement receipt`, `abcd implement record`, `abcd implement release`, `abcd implement report`, `abcd implement status`, `abcd implement step`, `abcd implement widen`.
 
 Flags: none.
 
@@ -795,5 +819,14 @@ Sub-verbs: none.
 | `--route` | stringArray |
 | `--run` | string |
 | `--yielded` | string |
+
+### `abcd implement widen`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--lane` | string |
+| `--run` | string |
 
 <!-- surface-appendix:end -->

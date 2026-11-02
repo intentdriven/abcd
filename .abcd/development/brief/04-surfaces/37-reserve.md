@@ -50,6 +50,25 @@ leaves out, neither named again nor beneath a directory it names, which no
 longer holds anything off (`dropped_footprint`, a warning on stderr in the text form,
 iss-2610290507512835). Its lease is from one minute to 24 hours, two hours by
 default. A release takes no footprint, take-over or lease.
+A reservation, a renewal and a take-over first consult the embargo store on
+this machine, as an announcement does: a record the store holds, a footprint
+naming something under embargo, or a store that cannot be read refuses the
+act with nothing pushed. A release never consults it, so a reservation can
+always be ended.
+A fourth form, the sweep, takes no record and no flag but its apply switch
+and its age threshold. It lists the spent reservation branches on `origin`,
+and with the apply switch deletes them, each with a lease on the exact tip
+it judged, so a branch re-reserved meanwhile survives. A branch is spent when
+its tip has settled, its lease past the five-minute margin included (a plain
+release, or a hand-back on a finished record, at once; any other tip once
+untouched past the age threshold, 7 days by default, at least 1), and either its
+record is finished on `origin`'s default branch or every commit on it is a
+reservation or a plain release. An unreadable tip, or one the sweep cannot
+classify, keeps the branch whatever its record; on a record still open, so do
+a hand-back, any other commit the sweep cannot classify, and a history it
+cannot read to its root. Only the reservations ruleset's bypass actor
+may delete these branches, so the scheduled reservation-sweep workflow
+applies it, and `origin` refuses anyone else's applied sweep.
 Bare `abcd reserve` refuses as a usage error and points at `abcd peers`, which
 lists the reservations. The flags are in the appendix below.
 
@@ -932,7 +951,14 @@ reservation's footprint (or, for a build's or a drain's reservation, the same
 person's from another copy), or a drain's reservation meets a hand-back that stands,
 or the record is finished (resolved, won't-fixed, shipped or superseded) on
 origin's default branch. Exit 2 on the cap,
-on a fork origin, and on every other refusal and failure. The JSON document carries `act`, `record`, `holder`,
+on a fork origin, on the embargo store's refusal, and on every other refusal
+and failure. The sweep exits 0 when it ran (a branch that moved since it was
+judged is kept, not a failure) and 2 when it could not run or `origin`
+refused a deletion; its document carries `mode` (`dry_run` or `apply`),
+`as_of`, `older_than_days`, `spent`, `kept`, `deleted`,
+`default_branch_unread` and `branches` (each `record`, `branch`, `commit`,
+`kind`, `spent`, `reason`, `why`, `settled_at`, `outcome`, `error`).
+Otherwise the JSON document carries `act`, `record`, `holder`,
 `copy` (`this` or `another`, never a copy's key), `footprint`, `claimed_at`,
 `effective_expiry`, `commit`, `replaced` for a take-over,
 `derived_unchecked` when the default branch could not be read,

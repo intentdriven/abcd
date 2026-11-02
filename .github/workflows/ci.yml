@@ -302,7 +302,8 @@ jobs:
     # failing at ten minutes. The step names its slowest packages first, so they
     # start with the step rather than behind every faster package; a hang in one
     # of them fails at the package timeout, with a goroutine dump, before this
-    # ceiling cancels the job.
+    # ceiling cancels the job; a hang in a package that starts later meets the
+    # job clock's watchdog below first.
     # TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds every leg at or below the
     # cap, and TestCheckJobWarnsBeforeTheQueueCap holds the warning step at the
     # end of the job below it.
@@ -314,6 +315,23 @@ jobs:
     # The macOS leg's stand-in on a pull request runs on ubuntu; every other
     # leg and event runs on the matrix's own runner.
     runs-on: ${{ (matrix.os == 'macos-latest' && github.event_name == 'pull_request') && 'ubuntu-latest' || matrix.os }}
+    # The job clock's watchdog (cmd/ci-watchdog). go test's -timeout counts
+    # from each test binary's own start, so a package that starts late meets
+    # this job's cap first and is cancelled with no goroutine dump: on a
+    # passing merge-group run the last package started 23.8 minutes into the
+    # ubuntu leg and 66.0 into the macOS leg, against a 40m -timeout and caps
+    # of 45 and 85. Every step that runs go test therefore runs under the
+    # watchdog, which sends the test binaries under go test SIGQUIT (each prints
+    # its goroutines and fails) at the cap less the margin on the clock the
+    # "Record the job's start" step exports, then the step SIGKILL after 30
+    # seconds (dcn-2610311047146087). The cap here
+    # repeats the job's timeout-minutes, and the margin is declared only here;
+    # TestCheckJobTestStepsRunUnderTheJobClockWatchdog holds both, and every
+    # go test step's shell.
+    env:
+      ABCD_CI_LEG: check (${{ matrix.os }})
+      ABCD_CI_JOB_CAP_MINUTES: ${{ matrix.os == 'macos-latest' && 85 || 45 }}
+      ABCD_CI_WATCHDOG_MARGIN_MINUTES: 5
     steps:
       # The one step the macOS leg runs on a pull request. It runs nothing, and
       # says where the macOS suite runs instead.
@@ -328,11 +346,15 @@ jobs:
       # warning runs on. It is the first step that runs there, so the time the
       # runner spent before it (queueing, set-up) is not counted, and the
       # elapsed time the warning reads is a lower bound on what the merge
-      # queue's clock shows.
+      # queue's clock shows. The same instant is the job clock's watchdog's
+      # (the job's env above).
       - name: Record the job's start
         id: started
         if: matrix.os != 'macos-latest' || github.event_name != 'pull_request'
-        run: echo "epoch=$(date +%s)" >>"$GITHUB_OUTPUT"
+        run: |
+          epoch=$(date +%s)
+          echo "epoch=${epoch}" >>"$GITHUB_OUTPUT"
+          echo "ABCD_CI_JOB_STARTED=${epoch}" >>"$GITHUB_ENV"
 
       # Full history: the record-lint step below arms `-agent-diff` against the
       # base commit, and a three-dot range needs the base object AND a merge
@@ -422,6 +444,7 @@ jobs:
       # TestPlainTestStepRunsTheWholeModule the timeout.
       - name: Test
         if: matrix.os == 'ubuntu-latest' && needs.changes.outputs.inert == 'true'
+        shell: go run ./cmd/ci-watchdog bash --noprofile --norc -eo pipefail {0}
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
           ABCD_TEST_SHARDS: "3"
@@ -431,6 +454,7 @@ jobs:
       # TestTheOutsideInternalStepRunsWhatTheRaceLaneDoesNot holds the set.
       - name: Test (outside internal)
         if: matrix.os == 'ubuntu-latest' && needs.changes.outputs.inert != 'true'
+        shell: go run ./cmd/ci-watchdog bash --noprofile --norc -eo pipefail {0}
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
         run: go test ./cmd/...
@@ -445,6 +469,7 @@ jobs:
       # their packages.
       - name: Test (plain-only guards)
         if: matrix.os == 'ubuntu-latest' && needs.changes.outputs.inert != 'true'
+        shell: go run ./cmd/ci-watchdog bash --noprofile --norc -eo pipefail {0}
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
         run: go test -run '^(TestAHereDocBodyFeedStaysLinear|TestAPatternPastTheStepBudgetIsNotGenerated|TestAVeryDeepPathIsJudgedQuickly|TestAdjacencyProbeStaysLinearOnLongLines|TestAdjacencyProbeWindowIsBounded|TestBacktickPrePassStaysLinear|TestBraceScanStaysLinear|TestClosedOverDocumentsStayLinear|TestClosingScansAreLinear|TestDoubleQuotedBraceExpansionStaysLinear|TestExpandedHeredocBodyStaysLinear|TestForgeTextWorkIsLinear|TestGallopingProbeCostIsLinearInLineLength|TestGallopingProbeStaysBoundedOnLongLines|TestGluedFixedOutputStaysLinear|TestGluedSweepWorkIsLinear|TestHereDocumentPayloadStaysLinear|TestHistoryCaptureAcceptsWhatTheHooksAccept|TestHomeSpellingsStayLinear|TestIFSSplitCheckStaysLinear|TestJunctionBacktrackIsBounded|TestKillFeedGroupsAndStringsStayLinear|TestKillFeedReadingStaysLinear|TestMakerNoteWorkIsLinear|TestMetadataViewsWorkIsLinear|TestNestedHereDocumentPayloadStaysLinear|TestParameterExpansionReadingStaysLinear|TestPatternShapesStayLinear|TestQuotedSubstitutionStaysLinear|TestRawHeadingScanStaysLinearInTheOpenerCount|TestScanLineWorkIsLinear|TestScriptReadingStaysLinearOnAdversarialLines|TestSpeculationIsBoundedAtTheStdinCap|TestSpellingSetsStayLinear|TestSurfaceChapterProseStatesNoShape|TestSweepCallerHomeWorkIsLinear|TestSynopsisScanIsLinearInThePage|TestTheBudgetBoundsWallTimeOverLongLiterals|TestTheBudgetBoundsWallTimeOverManyLines|TestTheHiddenHTMLReadersStayLinear|TestTheTagWalksStayLinear|TestUTF16ViewWorkIsLinear|TestUnknownWordWalksStayLinear)$' ./internal/adapter/scanner ./internal/core/claim ./internal/core/guard ./internal/core/reading ./internal/surface/cli
@@ -487,6 +512,7 @@ jobs:
       # them, and the plain Test step above, to it.
       - name: Test (race, internal)
         if: matrix.os == 'ubuntu-latest' && needs.changes.outputs.inert != 'true'
+        shell: go run ./cmd/ci-watchdog bash --noprofile --norc -eo pipefail {0}
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
           ABCD_TEST_SHARDS: "3"
@@ -506,6 +532,7 @@ jobs:
       # passes where it runs at all, and none on a pull request.
       - name: Test (race, whole module)
         if: matrix.os == 'macos-latest' && github.event_name != 'pull_request'
+        shell: go run ./cmd/ci-watchdog bash --noprofile --norc -eo pipefail {0}
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
           ABCD_TEST_SHARDS: "3"
@@ -518,6 +545,7 @@ jobs:
       # steps to the list it derives from the test files.
       - name: Test (plain-only guards, macOS)
         if: matrix.os == 'macos-latest' && github.event_name != 'pull_request'
+        shell: go run ./cmd/ci-watchdog bash --noprofile --norc -eo pipefail {0}
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
         run: go test -run '^(TestAHereDocBodyFeedStaysLinear|TestAPatternPastTheStepBudgetIsNotGenerated|TestAVeryDeepPathIsJudgedQuickly|TestAdjacencyProbeStaysLinearOnLongLines|TestAdjacencyProbeWindowIsBounded|TestBacktickPrePassStaysLinear|TestBraceScanStaysLinear|TestClosedOverDocumentsStayLinear|TestClosingScansAreLinear|TestDoubleQuotedBraceExpansionStaysLinear|TestExpandedHeredocBodyStaysLinear|TestForgeTextWorkIsLinear|TestGallopingProbeCostIsLinearInLineLength|TestGallopingProbeStaysBoundedOnLongLines|TestGluedFixedOutputStaysLinear|TestGluedSweepWorkIsLinear|TestHereDocumentPayloadStaysLinear|TestHistoryCaptureAcceptsWhatTheHooksAccept|TestHomeSpellingsStayLinear|TestIFSSplitCheckStaysLinear|TestJunctionBacktrackIsBounded|TestKillFeedGroupsAndStringsStayLinear|TestKillFeedReadingStaysLinear|TestMakerNoteWorkIsLinear|TestMetadataViewsWorkIsLinear|TestNestedHereDocumentPayloadStaysLinear|TestParameterExpansionReadingStaysLinear|TestPatternShapesStayLinear|TestQuotedSubstitutionStaysLinear|TestRawHeadingScanStaysLinearInTheOpenerCount|TestScanLineWorkIsLinear|TestScriptReadingStaysLinearOnAdversarialLines|TestSpeculationIsBoundedAtTheStdinCap|TestSpellingSetsStayLinear|TestSurfaceChapterProseStatesNoShape|TestSweepCallerHomeWorkIsLinear|TestSynopsisScanIsLinearInThePage|TestTheBudgetBoundsWallTimeOverLongLiterals|TestTheBudgetBoundsWallTimeOverManyLines|TestTheHiddenHTMLReadersStayLinear|TestTheTagWalksStayLinear|TestUTF16ViewWorkIsLinear|TestUnknownWordWalksStayLinear)$' ./internal/adapter/scanner ./internal/core/claim ./internal/core/guard ./internal/core/reading ./internal/surface/cli

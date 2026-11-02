@@ -7,9 +7,12 @@ import (
 )
 
 // RemoteHeadBranch asks the remote which branch is its default and returns
-// the bare branch name: `git ls-remote --symref <remote> HEAD`, through Net (a
-// network call, its environment scrubbed and its time bounded), read for the
-// `ref: refs/heads/<branch>\tHEAD` line the remote advertises.
+// the bare branch name: `git ls-remote --symref <remote> HEAD`, run through
+// git, the caller's networked git runner (nil is Net: a network call, its
+// environment scrubbed and its time bounded), read for the
+// `ref: refs/heads/<branch>\tHEAD` line the remote advertises. A caller with
+// a seam for its networked git (abcd land's Options.Git) passes it, so the
+// call is the caller's to record and its answer the caller's to fake.
 //
 // It is the authority for an act on the remote, unlike DefaultRef, which
 // reads the tracked refs/remotes/origin/HEAD as this checkout last fetched it
@@ -20,11 +23,14 @@ import (
 // it advertises no symref for HEAD (a detached HEAD), when the target is
 // outside refs/heads/, when the name is empty or HEAD (whose tracking ref
 // would be origin/HEAD itself), or when `git check-ref-format` refuses it.
-func RemoteHeadBranch(root, remote string) (string, error) {
+func RemoteHeadBranch(git func(dir string, args ...string) (string, error), root, remote string) (string, error) {
 	if !RefIsSafe(remote) {
 		return "", errors.New("the remote's name is empty or option-shaped")
 	}
-	out, err := Net(root, "ls-remote", "--symref", remote, "HEAD")
+	if git == nil {
+		git = Net
+	}
+	out, err := git(root, "ls-remote", "--symref", remote, "HEAD")
 	if err != nil {
 		return "", fmt.Errorf("asking %s for its default branch: %w", remote, err)
 	}

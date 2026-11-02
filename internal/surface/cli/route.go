@@ -162,7 +162,7 @@ func (rf *routeFlag) resolve(cmd *cobra.Command, verb, agent string) (*oracle.Ro
 	}
 	roots, notes := layered.RootsFor(cwd)
 	for _, n := range notes {
-		fmt.Fprintf(stderr, "abcd %s\n", termsafe.Sanitize(fsutil.RedactHome(n)))
+		fmt.Fprintln(stderr, noteLine(n))
 	}
 	// The machine's provider configuration is read before the tables: a
 	// fault in it is refused rather than guessed past, since it decides where

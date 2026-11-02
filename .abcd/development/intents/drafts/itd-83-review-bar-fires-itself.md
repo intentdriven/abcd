@@ -106,6 +106,53 @@ same kind of rule, and it belongs in the same place — not copied into every re
   `abcd:docs-currency-reviewer` is demonstrably invoked from a production path, not
   merely present in `agents/`.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in
+the [forge, CI and merge SOTA note](../../research/notes/2026-10-23-forge-ci-merge-sota.md).
+The host-agnostic fallback was surveyed in the
+[AGENTS.md consumers note](../../research/notes/2026-09-30-claude-md-consumers-and-agents-md-sota.md)
+and its [recheck](../../research/notes/2026-10-03-agents-md-native-reading-recheck-sota.md)
+and is not redone.
+
+- **Measured uptake of automated review comments is low, and precision is the
+  stated reason**: CodeRabbit comments across 239 repositories were 36.4%
+  accepted, 7.3% discussed, 56.3% rejected, rejections attributed to
+  "invalid suggestions that were false positives, redundant, or out of scope"
+  (Lin et al., arXiv 2607.03316); across 13 review agents, agent-only pull
+  requests merged at 45.2% against 68.4% for human-only review and 12 of 13
+  agents averaged a signal ratio below 60% (Chowdhury et al., MSR 2026);
+  over 278,790 review conversations, agent suggestions were adopted at a
+  significantly lower rate than human ones and over half of the unadopted
+  were incorrect or were fixed another way (Zhong et al., arXiv 2603.15911).
+- **What gets acted on**: comments that are "concise, include code snippets,
+  and are manually triggered" (Sun et al., arXiv 2508.18771, 16 review
+  Actions, 22,000 comments). A rule that fires on the words of shipping is
+  nearer "manually triggered" than a bot on every push.
+- **The calibrated-precision precedent**: Google shipped ML-suggested edits
+  at a 50% target precision, with 40–50% of previewed suggestions applied.
+- **Review capacity is what the bar competes for**: under an enterprise "2×"
+  mandate, "per-reviewer load roughly doubled and automated review overtook
+  human review", with merge and revert rates unchanged (He et al., arXiv
+  2607.01904).
+- **The forge's own self-firing reviewer is advisory by default**: Copilot
+  code review is requestable automatically by repository, organisation or
+  ruleset; "By default, its reviews do not count toward required approvals";
+  a preview lets its approval satisfy a required-approval rule. A live
+  `copilot_code_review` ruleset rule was read anonymously on a public
+  repository on 2026-10-23.
+
+**Path 2**: a native review rule fired inside the host through the rules
+loader, with an opt-in forge-side reviewer adapter as the seam kept open for
+later; the reason the field's forge-bot shape is not adopted first is abcd's
+host-delegated boundary and the basics-built-in principle (a deferred seam is
+still Path 2 under sota-per-intent, so no complexity stop is invoked). The
+evidence supports the record's leaning on the open question it carries, ship
+the security rule as advisory until a measured true-negative rate exists
+(low measured precision; the forge's own self-firing reviewer is advisory by
+default); the call stays the maintainer's. The independent fit-challenge runs
+at plan time.
+
 ## Open Questions
 
 - **One `REVIEW` domain, or rules folded into the existing `COMMITTING` domain?**
@@ -121,6 +168,12 @@ same kind of rule, and it belongs in the same place — not copied into every re
 - **Host-agnosticism.** The loader's injection path is a Claude Code hook. Naming the
   fallback "`AGENTS.md`" assumes other harnesses read that file. Is that assumption
   good enough, or does the fallback need its own surface?
+- (SOTA 2026-10-23) Whether the rule asks the reviewer for one concise,
+  snippet-bearing finding set rather than a running commentary, since that
+  is the shape the measurements say gets acted on.
+- (SOTA 2026-10-23) Where a managed repository already has the forge's
+  self-firing reviewer (a `copilot_code_review` ruleset rule), whether the
+  review bar reports it as part of the bar or ignores it.
 
 ## Dependencies
 

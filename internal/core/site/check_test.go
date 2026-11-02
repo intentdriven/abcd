@@ -167,8 +167,9 @@ func TestCheckPassesAWellFormedRender(t *testing.T) {
 		t.Errorf("pages = %d, composed = %d; the record rendering should be read for the mobile gate",
 			len(res.Pages), len(res.Composed))
 	}
-	if len(res.Checks) != 8 {
-		t.Errorf("checks run = %v, want eight", res.Checks)
+	// The content-policy gate is the project route's alone (project_policy.go).
+	if len(res.Checks) != 9 || containsString(res.Checks, CheckContentPolicy) {
+		t.Errorf("checks run = %v, want nine, without %s", res.Checks, CheckContentPolicy)
 	}
 }
 
@@ -996,7 +997,7 @@ pre{overflow-x:auto}
 @media (max-width:700px){.wrap{padding:0 12px}}
 `,
 	"site-src/site.js":   "/* the fixture ships no behaviour */\n",
-	"site-src/redirects": "/old /new 301\n",
+	"site-src/redirects": "/old/ /docs/ 301\n",
 	"site-src/headers":   "/*\n  X-Frame-Options: DENY\n",
 	"CHANGELOG.md":       "# Changelog\n\n## [0.1.0] - 2026-01-02\n\n- The first cut (adr-1).\n",
 	"docs/README.md":     "# Documentation\n\nThe fixture's documentation index.\n",

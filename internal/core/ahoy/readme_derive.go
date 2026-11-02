@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -49,13 +50,16 @@ type readmeSettings struct {
 func (s readmeSettings) public() bool { return s.Visibility == "public" }
 
 // readmeDerived is one chosen part's derivation: a body that passed every
-// check, or the reason it is omitted (each reason leads with the part's name).
+// check, in its block form (Body) and its inline form (Inline, for a place
+// inside an HTML block, where the forge renders no Markdown), or the reason it
+// is omitted (each reason leads with the part's name).
 // Notes carry what a check noted without refusing (a docs-lint warning).
 // Short, where the reason lists what it found, says it in a few words (how
 // many workflows, not their names), for a question with no rows to spare.
 type readmeDerived struct {
 	Name   string
 	Body   string
+	Inline string
 	Reason string
 	Short  string
 	Notes  []string
@@ -93,15 +97,28 @@ func deriveReadmeParts(root string, s readmeSettings) []readmeDerived {
 			continue
 		}
 		src.notes, src.short = nil, ""
-		body, addrs, reason := src.derive(name)
+		body, inline, addrs, reason := src.derive(name)
 		d := readmeDerived{Name: name}
 		if reason != "" {
 			d.Reason, d.Short = name+" omitted: "+reason, src.short
 		} else {
-			var checked []string
+			// Both forms pass every check: either may be the one written,
+			// by where the owner puts the part.
+			var checked, checkedInline []string
 			d.Body, d.Reason, checked = checks.run(name, body, addrs)
 			if d.Reason == "" {
+				d.Inline, d.Reason, checkedInline = checks.run(name, inline, addrs)
+				if d.Reason != "" {
+					d.Body, d.Reason = "", d.Reason+" (in its inline form)"
+				}
+			}
+			if d.Reason == "" {
 				d.Notes = append(src.notes, checked...)
+				for _, n := range checkedInline {
+					if !slices.Contains(d.Notes, n) {
+						d.Notes = append(d.Notes, n)
+					}
+				}
 			}
 		}
 		derived = append(derived, d)
@@ -127,7 +144,9 @@ type readmeSource struct {
 	short string
 }
 
-func (r *readmeSource) derive(name string) (body string, addrs []readmeAddr, reason string) {
+// derive is one part's two forms: body, the block form, and inline, the form
+// written inside an HTML block, which is HTML throughout.
+func (r *readmeSource) derive(name string) (body, inline string, addrs []readmeAddr, reason string) {
 	switch name {
 	case "release-badge":
 		return r.releaseBadge()
@@ -136,13 +155,22 @@ func (r *readmeSource) derive(name string) (body string, addrs []readmeAddr, rea
 	case "abcd-badge":
 		return abcdBadge()
 	case "licence":
-		body, reason = r.licence()
+		body, inline, reason = r.licence()
 	case "links":
-		body, reason = r.links()
+		body, inline, reason = r.links()
 	case "contents":
-		body, reason = r.contents()
+		body, inline, reason = r.contents()
 	}
-	return body, nil, reason
+	return body, inline, nil, reason
+}
+
+// readmeInlineSep joins the links of an inline licence, links or contents
+// part: a spaced middle dot.
+const readmeInlineSep = " \u00b7 "
+
+// readmeInlineLink is one HTML link, its address and text HTML-escaped.
+func readmeInlineLink(href, text string) string {
+	return `<a href="` + html.EscapeString(href) + `">` + html.EscapeString(text) + `</a>`
 }
 
 // ---------------------------------------------------------------------------
@@ -248,41 +276,47 @@ func (r *readmeSource) forgeBadgeRemote() (forgeRemote, string) {
 // releaseBadge is the latest-release badge, drawn from the forge's data so no
 // version is written into the file (decision 4), linked to the forge's
 // latest-release page.
-func (r *readmeSource) releaseBadge() (string, []readmeAddr, string) {
+func (r *readmeSource) releaseBadge() (string, string, []readmeAddr, string) {
 	f, why := r.forgeBadgeRemote()
 	if why != "" {
-		return "", nil, why
+		return "", "", nil, why
 	}
 	img := "https://" + readmeBadgeImageHost + "/github/v/release/" + f.Owner + "/" + f.Name
 	link := f.page("/releases/latest")
-	return badgeMarkdown("Latest release", img, link), []readmeAddr{{readmeAddrImage, img}, {readmeAddrLink, link}}, ""
+	return badgeMarkdown("Latest release", img, link), badgeHTML("Latest release", img, link), []readmeAddr{{readmeAddrImage, img}, {readmeAddrLink, link}}, ""
 }
 
 // buildBadge is the forge's own workflow status badge, linked to the
 // workflow's runs.
-func (r *readmeSource) buildBadge() (string, []readmeAddr, string) {
+func (r *readmeSource) buildBadge() (string, string, []readmeAddr, string) {
 	f, why := r.forgeBadgeRemote()
 	if why != "" {
-		return "", nil, why
+		return "", "", nil, why
 	}
 	wf, why := r.workflow()
 	if why != "" {
-		return "", nil, why
+		return "", "", nil, why
 	}
 	img := f.page("/actions/workflows/" + wf + "/badge.svg")
 	link := f.page("/actions/workflows/" + wf)
-	return badgeMarkdown("Build", img, link), []readmeAddr{{readmeAddrImage, img}, {readmeAddrLink, link}}, ""
+	return badgeMarkdown("Build", img, link), badgeHTML("Build", img, link), []readmeAddr{{readmeAddrImage, img}, {readmeAddrLink, link}}, ""
 }
 
 // abcdBadge is the opt-in managed-with-abcd badge (decision 2). It reads
 // nothing from the project, so it is never omitted once chosen.
-func abcdBadge() (string, []readmeAddr, string) {
+func abcdBadge() (string, string, []readmeAddr, string) {
 	img := "https://" + readmeBadgeImageHost + "/badge/managed%20with-abcd-blue"
-	return badgeMarkdown("Managed with abcd", img, abcdPublicRepo), []readmeAddr{{readmeAddrImage, img}, {readmeAddrLink, abcdPublicRepo}}, ""
+	return badgeMarkdown("Managed with abcd", img, abcdPublicRepo), badgeHTML("Managed with abcd", img, abcdPublicRepo), []readmeAddr{{readmeAddrImage, img}, {readmeAddrLink, abcdPublicRepo}}, ""
 }
 
 func badgeMarkdown(alt, img, link string) string {
 	return "[![" + alt + "](" + img + ")](" + link + ")"
+}
+
+// badgeHTML is a badge's inline form: one line, an <a> around an <img>, every
+// attribute value HTML-escaped.
+func badgeHTML(alt, img, link string) string {
+	return `<a href="` + html.EscapeString(link) + `"><img src="` + html.EscapeString(img) + `" alt="` + html.EscapeString(alt) + `"></a>`
 }
 
 // workflowFileRe is a workflow file name the badge address can carry as it
@@ -409,7 +443,10 @@ var (
 // spdxIdentifierLines is how far into the file an identifier line counts.
 const spdxIdentifierLines = 20
 
-func (r *readmeSource) licence() (string, string) {
+// licence is the licence line, and inline one link to the file worded by the
+// identifier and the word licence ("MIT licence"), or "Licence" when abcd
+// cannot name it.
+func (r *readmeSource) licence() (string, string, string) {
 	file := ""
 	for _, n := range licenceFiles {
 		if hasRegularFile(r.root, "", n) {
@@ -418,7 +455,7 @@ func (r *readmeSource) licence() (string, string) {
 		}
 	}
 	if file == "" {
-		return "", "no LICENSE file (LICENSE, LICENSE.md or LICENSE.txt) at the root"
+		return "", "", "no LICENSE file (LICENSE, LICENSE.md or LICENSE.txt) at the root"
 	}
 	link := "[" + file + "](" + file + ")"
 	if id := licenceIdentifier(r.root, file); id != "" {
@@ -426,9 +463,9 @@ func (r *readmeSource) licence() (string, string) {
 		if n, ok := licenceNames[id]; ok {
 			name = n
 		}
-		return "Licensed under " + name + "; see " + link + ".", ""
+		return "Licensed under " + name + "; see " + link + ".", readmeInlineLink(file, id+" licence"), ""
 	}
-	return "See " + link + " for the licence terms.", ""
+	return "See " + link + " for the licence terms.", readmeInlineLink(file, "Licence"), ""
 }
 
 // licenceIdentifier names the licence from an identifier line in the file's
@@ -489,19 +526,20 @@ func readInRoot(root, rel string) ([]byte, error) {
 // ---------------------------------------------------------------------------
 
 // readmeLinkFiles are the files the links part looks for, in its order, each
-// with the words it is linked by.
-var readmeLinkFiles = []struct{ File, Label string }{
-	{"CHANGELOG.md", "Changelog"},
-	{"CONTRIBUTING.md", "Contributing guide"},
-	{"SECURITY.md", "Security policy"},
-	{"CODE_OF_CONDUCT.md", "Code of conduct"},
+// with the words it is linked by, and the shorter ones of its inline form.
+var readmeLinkFiles = []struct{ File, Label, Short string }{
+	{"CHANGELOG.md", "Changelog", "Changelog"},
+	{"CONTRIBUTING.md", "Contributing guide", "Contributing"},
+	{"SECURITY.md", "Security policy", "Security"},
+	{"CODE_OF_CONDUCT.md", "Code of conduct", "Code of conduct"},
 }
 
 // readmeLinkPlaces are where each file is looked for, first found wins.
 var readmeLinkPlaces = []string{"", ".github", "docs"}
 
-func (r *readmeSource) links() (string, string) {
-	var lines []string
+// links is a list of links, one per guide found, and inline one line of them.
+func (r *readmeSource) links() (string, string, string) {
+	var lines, inline []string
 	for _, lf := range readmeLinkFiles {
 		for _, place := range readmeLinkPlaces {
 			if hasRegularFile(r.root, place, lf.File) {
@@ -510,14 +548,15 @@ func (r *readmeSource) links() (string, string) {
 					target = place + "/" + lf.File
 				}
 				lines = append(lines, "- ["+lf.Label+"]("+target+")")
+				inline = append(inline, readmeInlineLink(target, lf.Short))
 				break
 			}
 		}
 	}
 	if len(lines) == 0 {
-		return "", "none of CHANGELOG.md, CONTRIBUTING.md, SECURITY.md or CODE_OF_CONDUCT.md is at the root, in .github/ or in docs/"
+		return "", "", "none of CHANGELOG.md, CONTRIBUTING.md, SECURITY.md or CODE_OF_CONDUCT.md is at the root, in .github/ or in docs/"
 	}
-	return strings.Join(lines, "\n"), ""
+	return strings.Join(lines, "\n"), strings.Join(inline, readmeInlineSep), ""
 }
 
 // ---------------------------------------------------------------------------
@@ -552,10 +591,14 @@ const noLevelTwoHeading = "the README has no level-two heading"
 // block. The setext reading is the top-level one: a heading inside a list
 // item or a quotation is not read. Anchors follow the forge's slug rule, numbered across every heading
 // the page renders, so a repeated heading links to the one it names.
-func (r *readmeSource) contents() (string, string) {
+//
+// The inline form lists the level-two headings only, so it stays one line of
+// HTML links; a heading whose anchor abcd cannot be sure of is shown there as
+// its plain text, HTML-escaped.
+func (r *readmeSource) contents() (string, string, string) {
 	data, err := readInRoot(r.root, "README.md")
 	if err != nil {
-		return "", readmeUnreadReason(err)
+		return "", "", readmeUnreadReason(err)
 	}
 	lines, starts := readmePageLines(data)
 	mask := mdrecord.Mask(lines)
@@ -578,7 +621,7 @@ func (r *readmeSource) contents() (string, string) {
 		}
 	}
 	seen := newReadmeSlugger()
-	var out []string
+	var out, inline []string
 	hasH2 := false
 	// heading numbers every heading the page renders and lists the live
 	// level-two and level-three ones outside every part. slugText is what
@@ -603,12 +646,19 @@ func (r *readmeSource) contents() (string, string) {
 		} else {
 			hasH2 = true
 		}
+		plain := readmePlainText(text, unmask)
 		if why != "" {
 			out = append(out, indent+"- "+listed)
+			if level == 2 {
+				inline = append(inline, html.EscapeString(plain))
+			}
 			r.notes = append(r.notes, fmt.Sprintf("contents part: the heading at line %d is listed without a link: %s", i+1, why))
 			return
 		}
 		out = append(out, indent+"- ["+listed+"](#"+slug+")")
+		if level == 2 {
+			inline = append(inline, readmeInlineLink("#"+slug, plain))
+		}
 	}
 	// A setext heading is the paragraph its underline ends, so the open
 	// paragraph's lines are kept, with the line it began on; inBlock is a
@@ -684,9 +734,22 @@ func (r *readmeSource) contents() (string, string) {
 		}
 	}
 	if !hasH2 {
-		return "", noLevelTwoHeading
+		return "", "", noLevelTwoHeading
 	}
-	return strings.Join(out, "\n"), ""
+	return strings.Join(out, "\n"), strings.Join(inline, readmeInlineSep), ""
+}
+
+// mdBackslashEscapeRe is a backslash escape: a backslash before ASCII
+// punctuation, which the page shows as the punctuation alone.
+var mdBackslashEscapeRe = regexp.MustCompile(`\\([!-/:-@\[-` + "`" + `{-~])`)
+
+// readmePlainText is a heading's text as the page shows it, for an HTML
+// block, where no Markdown is read: character references decoded, backslash
+// escapes dropped, code spans as the text they render, and a setext heading's
+// line break a space. masked is headingText's, with its unmask.
+func readmePlainText(masked string, unmask func(string, bool) string) string {
+	plain := mdBackslashEscapeRe.ReplaceAllString(decodeCharRefs(masked), "$1")
+	return strings.ReplaceAll(unmask(plain, true), "\n", " ")
 }
 
 // readmeHTMLBlock is an open HTML block, as the forge's markdown reads one: a

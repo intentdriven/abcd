@@ -488,17 +488,20 @@ func TestAnExistingPagesSiteIsNamedBeforeItIsPublishedOver(t *testing.T) {
 }
 
 // The project workflow downloads abcd's latest release to build with, and a
-// release made before project sites cannot build one. Setup cannot tell
-// without asking the network which release is latest, so a project site's
-// setup says so every time; a composed site's does not.
-func TestAProjectSiteSetupSaysItNeedsAReleaseThatBuildsProjectSites(t *testing.T) {
-	const want = "until abcd publishes a release that builds project sites"
+// published release builds project sites (v0.16.0 shipped `site build
+// --project`), so no setup warns that the build waits for one: a note saying
+// so would be false on every run.
+func TestNoSiteSetupSaysItWaitsForAReleaseThatBuildsProjectSites(t *testing.T) {
+	const stale = "builds project sites"
 	res := newPagesHarness(t).run(t)
-	if !strings.Contains(strings.Join(res.Notes, "\n"), want) {
-		t.Errorf("a project site's setup does not name the release it needs: %q", res.Notes)
+	if !strings.Contains(strings.Join(res.Notes, "\n"), "renders and deploys on the next published release") {
+		t.Fatalf("the project setup never reached its notes: %q", res.Notes)
+	}
+	if strings.Contains(strings.Join(res.Notes, "\n"), stale) {
+		t.Errorf("a project site's setup says its build waits for a release: %q", res.Notes)
 	}
 	composed := newHarness(t).run(t)
-	if strings.Contains(strings.Join(composed.Notes, "\n"), want) {
+	if strings.Contains(strings.Join(composed.Notes, "\n"), stale) {
 		t.Errorf("a composed site's setup names the project route's release: %q", composed.Notes)
 	}
 }

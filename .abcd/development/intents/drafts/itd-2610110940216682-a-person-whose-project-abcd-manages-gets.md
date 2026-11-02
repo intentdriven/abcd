@@ -41,11 +41,83 @@ We expect total CI time per merged change to fall by about half, with no change 
 - **Given** a platform whose suite runs a race-enabled pass, **when** the full suite runs there, **then** it runs one pass, not a plain pass and then a race pass.
 - **Given** the checks abcd sets up, **when** the person reads them, **then** one page says in plain words what runs where and why, and what a queue ejection means.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in
+the [forge, CI and merge SOTA note](../../research/notes/2026-10-23-forge-ci-merge-sota.md).
+The merge queue itself was surveyed under
+[itd-115](../superseded/itd-115-abcd-managed-repos-merge-prs-without-the.md); this pass
+covers the CI layout around it.
+
+- **The lineage tests the merge result and re-tests behind a failure**: Zuul
+  tests "each change applied to the tip of the branch exactly as it is going
+  to be merged" and re-tests the changes behind a failed one without it;
+  bors did the same on a staging branch and was phased out for GitHub's queue
+  (its page is undated and links to the July 2023 GA post); GitLab's merge
+  train removes a failed merge request and restarts the pipelines behind it,
+  but documents a job-level `retry` for jobs that fail intermittently: "If it
+  succeeds after a retry, the merge request is not removed from the merge
+  train". GitHub's queue has no retry of its own, so a retry there must sit
+  inside the job.
+- **GitHub's queue as documented**: required checks must trigger on
+  `merge_group`, or "The merge will fail as the required status check will
+  not be reported"; a queue cannot be enabled on a branch protection rule
+  whose branch-name pattern contains a wildcard; the availability statements
+  agree (the July 2023 changelog and GitHub's March 2024 account: public
+  organisation-owned repositories on GitHub.com and every repository on
+  Enterprise Cloud or Server, a personal account's public repository named in
+  neither); build concurrency is 1 to 100; a status-check timeout and group
+  sizes are ruleset settings; "Require all queue entries to pass required
+  checks" decides whether a failing entry may ride a passing group; the queue
+  "provides the same benefits as the Require branches to be up to date before
+  merging branch protection".
+- **A superseded group announces itself only to an App**: the `merge_group`
+  webhook's `destroyed` action (reason merged, dequeued or invalidated) is
+  delivered to GitHub Apps, not to Actions, which is why a polling sweep is
+  the Actions-only route; Actions concurrency cancels only with
+  `cancel-in-progress: true` and keeps one pending run per group.
+- **"Light on the pull request, heavy in the queue" is a named practice**:
+  Mergify's "two-step CI" ("Run fast tests on every PR, and run expensive
+  tests only before merge"), listed as something the native queue lacks as a
+  built-in (vendor page). GitHub's own monorepo account reports groups of 30
+  and a 33% shorter wait and says nothing about trimming the pull-request run
+  (vendor blog).
+- **The scarce runner is a constant**: five concurrent macOS jobs on Free,
+  Pro and Team, 50 on Enterprise; a job may run six hours.
+- **A nightly run keeps the cache warm within the rules**: caches unused for
+  seven days are evicted, 10 GB per repository, and a pull request can
+  restore caches made on the default branch but not on other pull requests.
+
+**Path 1** for the queue and its triggers (the forge's merge queue,
+`merge_group`, the ruleset's concurrency and timeout knobs, a scheduled run
+for the cache), with the workflow layout as abcd's own scaffold. No Go
+dependency: the forge feature is adopted as configuration, so the dependency
+gate is not reached. On the open questions the evidence says: turn the
+up-to-date rule off only where a queue gates the branch, since the queue
+re-tests the merge result, which is the gate iss-172's invariant protects,
+and refuse to turn it off anywhere else; on a platform flake the choice is
+real, eject and re-queue or one in-job retry of the platform job (GitLab's
+documented `retry` keeps a flaky merge request in its train; GitHub's queue
+has no retry of its own), and re-queueing is one command either way (`gh pr
+merge` adds a pull request whose required checks have passed to the queue,
+so re-queueing after an ejection is one command, an inference from the
+manual, which says nothing about ejections); size build concurrency below
+the macOS limit with the timeout above the measured suite. The independent
+fit-challenge runs at plan time.
+
 ## Open Questions
 
 - **Write the workflow, or check the person's own.** The scaffold reads a managed repository's CI and never writes it (it derives check names and writes nothing hard-coded). This intent either lays down a CI workflow of its own, or checks the person's CI against the shape and says what to change.
 - **The up-to-date rule.** Whether abcd turns off "require branches to be up to date" where a merge queue gates the default branch; the queue gives the same guarantee, and abcd's own repository kept the rule on 2026-09-01 (iss-2609012313465609 carries the measurement).
 - **Where a platform flake lands.** Running a platform's suite only in the queue turns a flake on that platform into a queue ejection and a re-queue (iss-2610051434156079 is one); whether that cost is accepted, or the queue retries a platform job once.
+- (SOTA 2026-10-23) Whether a managed repository without a merge queue (a
+  personal account's public repository, which neither availability statement
+  names) keeps the full suite on its pull requests, as the first scope
+  condition says, and how the probe in itd-2610161647248332 tells the two
+  apart.
+- (SOTA 2026-10-23) Whether the superseded-group sweep stays a polling
+  workflow or moves to a GitHub App that receives `merge_group` `destroyed`,
+  once a managed repository has an App for other reasons (H2).
 
 ## Decomposition
 

@@ -19,7 +19,7 @@ import (
 func resolveMatch(stderr io.Writer, verb, repoRoot string) (*match.Config, *match.Outcome) {
 	roots, notes := layered.RootsFor(repoRoot)
 	for _, n := range notes {
-		fmt.Fprintf(stderr, "abcd %s\n", termsafe.Sanitize(fsutil.RedactHome(n)))
+		fmt.Fprintln(stderr, noteLine(n))
 	}
 	cfg, err := match.LoadConfig(roots)
 	if err != nil {

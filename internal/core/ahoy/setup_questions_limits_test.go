@@ -64,6 +64,21 @@ var setupLimitsOwed = map[string]bool{}
 // What breaks a limit today is owed by name in setupLimitsOwed. A question the
 // install does not ask is not held to them.
 func TestEverySetupQuestionPassesTheLimits(t *testing.T) {
+	holdSetupQuestions(t, question.Default, setupLimitsOwed)
+}
+
+// TestEverySetupQuestionPassesTheLimitsAtTheFloors holds the same questions,
+// the README pair built at those limits, to the floor of every configurable
+// key (question.FloorsForTest): a repository that sets the least it may still has
+// every setup question admitted whole (itd-2610301914350541 decision 3).
+func TestEverySetupQuestionPassesTheLimitsAtTheFloors(t *testing.T) {
+	holdSetupQuestions(t, question.FloorsForTest(question.Default), map[string]bool{})
+}
+
+// holdSetupQuestions is TestEverySetupQuestionPassesTheLimits at the limits l,
+// with owed the findings allowed by name.
+func holdSetupQuestions(t *testing.T, l question.Limits, owed map[string]bool) {
+	t.Helper()
 	var helps []PromptHelp
 	for _, h := range promptHelp {
 		if h.Key == "oracle_backend" && !oracleBackendAsked() {
@@ -104,22 +119,22 @@ func TestEverySetupQuestionPassesTheLimits(t *testing.T) {
 	// part's tab in the calls of at most four the page makes, each built as
 	// the run builds it, with its current setting, its change-later line and
 	// its example, in the projects that make them tallest.
-	asks = append(asks, readmeLimitAsks(t)...)
+	asks = append(asks, readmeLimitAsks(t, l)...)
 
 	broken := map[string]bool{}
 	for _, a := range asks {
 		for _, f := range question.Check(a) {
 			t.Errorf("%s: structural: %s", askLabel(a, f.Tab), f)
 		}
-		for _, f := range question.CheckLimits(a.Fields(), question.Default, question.Addressee{}) {
+		for _, f := range question.CheckLimits(a.Fields(), l, question.Addressee{}) {
 			key := askLabel(a, f.Tab) + " " + string(f.Rule)
 			broken[key] = true
-			if !setupLimitsOwed[key] {
+			if !owed[key] {
 				t.Errorf("%s: %s", askLabel(a, f.Tab), f)
 			}
 		}
 	}
-	for key := range setupLimitsOwed {
+	for key := range owed {
 		if !broken[key] {
 			t.Errorf("%q is owed in setupLimitsOwed but the question no longer breaks it; delete its line", key)
 		}
@@ -148,7 +163,7 @@ func askLabel(a question.Ask, tab int) string {
 // where no part can be written, so every tab says why instead; and a public
 // project whose eight long-named workflows hold no ci.yml, so the build badge's
 // reason would name every one of them.
-func readmeLimitAsks(t *testing.T) []question.Ask {
+func readmeLimitAsks(t *testing.T, l question.Limits) []question.Ask {
 	t.Helper()
 	long := "a-rather-long-owner-name-of-39-chars-xx"
 	var headings strings.Builder
@@ -182,7 +197,7 @@ func readmeLimitAsks(t *testing.T) []question.Ask {
 	})
 	var out []question.Ask
 	for _, repo := range []string{full, private, empty, many, styled} {
-		v, ok := readmeView(repo)
+		v, ok := readmeView(repo, l)
 		if !ok {
 			t.Fatalf("no README view in %s", repo)
 		}

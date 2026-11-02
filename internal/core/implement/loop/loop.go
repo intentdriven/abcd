@@ -66,6 +66,19 @@ type Options struct {
 	// the routing tables and the machine's connections. Nil records no route.
 	Tiers *Tiering
 
+	// AutoPlan is `abcd build --auto-plan` (autoplan.go): a draft intent is
+	// planned by the run, on adr-2610310235000654's substitute for the
+	// sign-off, in place of being refused as not planned. An intent already
+	// planned is built as it would be without it; an issue key is refused.
+	AutoPlan bool
+
+	// PlanGuard is the front door's rule for a step that writes the intent
+	// and spec records in this checkout, as an auto-plan lane's plan does
+	// (autoplan.go): it is called under the run's lock immediately before
+	// `intent plan` runs, and an error refuses the step as it is, the lane
+	// left at its plan and the run's state unwritten. Nil guards nothing.
+	PlanGuard func() error
+
 	// TakeOver is `abcd build --take-over`: the start's reservation moves
 	// this person's own live reservation from another copy to this one. It
 	// never moves another person's.
@@ -141,6 +154,8 @@ type Context struct {
 	// router decides the tier each role a round hands out runs at
 	// (escalate.go); nil records no route.
 	router *roundRouter
+	// planGuard is Options.PlanGuard, for the plan stage; nil guards nothing.
+	planGuard func() error
 }
 
 // Outcome is what a stage's body returns. A body that hands its work to an agent
@@ -216,8 +231,21 @@ func (s Stages) lookup(name Stage) (StageDef, bool) {
 // StageDone.
 var Sequence = []Stage{StageWorktree, StageBrief, StageImplement, StageValidate, StageLand}
 
-// after returns the stage that follows name in Sequence.
+// PlanSequence is an auto-plan lane's stages (autoplan.go): its two plan
+// reviews, then the plan.
+var PlanSequence = []Stage{StagePlanReview, StagePlan}
+
+// after returns the stage that follows name in Sequence, or in PlanSequence
+// for an auto-plan lane's stage.
 func after(name Stage) Stage {
+	for i, n := range PlanSequence {
+		if n == name {
+			if i+1 < len(PlanSequence) {
+				return PlanSequence[i+1]
+			}
+			return StageDone
+		}
+	}
 	for i, n := range Sequence {
 		if n == name && i+1 < len(Sequence) {
 			return Sequence[i+1]
@@ -237,6 +265,8 @@ func DefaultStages() Stages {
 		{Name: StageImplement, Piece: 7, Run: implementStage, Verify: verifyReceipt},
 		{Name: StageValidate, Piece: 8, Run: validateStage, Verify: verifyValidation, Repeats: true},
 		{Name: StageLand, Piece: 9, Run: landStage},
+		{Name: StagePlanReview, Piece: 11, Run: planReviewStage, Verify: verifyPlanReview, Repeats: true},
+		{Name: StagePlan, Piece: 11, Run: planStage},
 	}
 }
 
@@ -394,6 +424,10 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 	if row, ok := keyCheck(key); !ok {
 		return StartResult{}, CheckResult{Key: key, Checks: []CheckRow{row}}.refusal()
 	}
+	if o.AutoPlan && validIssueKey(key) {
+		return StartResult{}, refuse("check", CheckKey, "", key+" is an issue, and --auto-plan plans a draft intent; an issue has nothing to plan",
+			"build the issue without --auto-plan: `abcd build "+key+"`")
+	}
 	flags, err := parsePaceFlags(o.Pace, o.SubAgents, o.FixRounds)
 	if err != nil {
 		return StartResult{}, err
@@ -437,12 +471,24 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 	}
 	snap.takeOver = o.TakeOver
 	snap.plan = o.plan
-	chk, err := check(repoRoot, key, o.Session, snap)
+	planning, err := autoPlans(repoRoot, key, o)
+	if err != nil {
+		return StartResult{}, err
+	}
+	var chk CheckResult
+	if planning {
+		chk, err = autoPlanCheck(repoRoot, CheckResult{Key: key, Checks: []CheckRow{{Name: CheckKey, OK: true, Detail: key + " is an intent"}}}, o.Session, snap)
+	} else {
+		chk, err = check(repoRoot, key, o.Session, snap)
+	}
 	if err != nil {
 		return StartResult{}, err
 	}
 	if !chk.OK {
 		return StartResult{}, chk.refusal()
+	}
+	if chk.autoPlan != nil && o.reserve == nil {
+		o.reserve = autoPlanFootprint(*chk.autoPlan)
 	}
 	// The budget check runs once the record may start, and writes nothing:
 	// a run its estimate exceeds is refused before the run directory exists.
@@ -524,9 +570,20 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 			Review:          &review,
 			ReservedAt:      rsv.at,
 		}
-		openNextLane(&st)
+		if chk.autoPlan != nil {
+			if err := openAutoPlanLane(&st, *chk.autoPlan); err != nil {
+				_ = root.Remove(runRel(id))
+				return err
+			}
+		} else {
+			openNextLane(&st)
+		}
 		st.Record = append(st.Record, Entry{At: now, Lane: st.Lanes[0].ID, Stage: "start",
 			Note: "checks passed; " + st.Lanes[0].ID + " opened for " + laneWork(st, st.Lanes[0])})
+		if o.AutoPlan && chk.autoPlan == nil {
+			st.Record = append(st.Record, Entry{At: now, Stage: "start",
+				Note: "--auto-plan: " + st.Intent + " is already planned, so there is nothing to plan; the run builds it"})
+		}
 		st.Record = append(st.Record, Entry{At: now, Stage: StagePace,
 			Note: "pace " + pace.String() + "; the first window opens now"})
 		st.Record = append(st.Record, Entry{At: now, Stage: StageReview, Note: "review set " + review.String()})
@@ -770,6 +827,9 @@ func startResult(st State, checks []CheckRow, resumed bool) StartResult {
 // laneWork names what a lane builds, for the run record: a spec step, or the
 // issue an issue-keyed run fixes.
 func laneWork(st State, l Lane) string {
+	if l.AutoPlan != nil {
+		return fmt.Sprintf("the auto-plan of %s (the draft %s, two plan reviews, then the plan)", st.Intent, l.AutoPlan.Draft)
+	}
 	if st.Issue() != "" {
 		return fmt.Sprintf("%s (%s)", st.Issue(), l.StepTitle)
 	}
@@ -874,7 +934,7 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 		logged := len(st.Record)
 		renewNote := renewReservation(repoRoot, st, now, nil)
 		renewed := len(st.Record) != logged
-		r, moved, err := move(repoRoot, st, steps, now, g, newRoundRouter(o))
+		r, moved, err := move(repoRoot, st, steps, now, g, newRoundRouter(o), o.PlanGuard)
 		if err != nil {
 			if rf, ok := AsRefusal(err); ok && renewNote != "" {
 				rf.Remedy += "; " + renewNote
@@ -1090,6 +1150,9 @@ func laneResult(st State, lane Lane, performed Stage, handed *Await) StepResult 
 	if st.Complete() {
 		res.Complete = true
 		res.Next = "nothing: every lane of " + st.RunID + " is done"
+		if st.autoPlanning() {
+			res.Next = autoPlanDoneMove(st)
+		}
 		return res
 	}
 	if res.Awaiting != nil {

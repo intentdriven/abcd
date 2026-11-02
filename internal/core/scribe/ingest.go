@@ -158,31 +158,47 @@ func (r IngestResult) Landed() []string {
 }
 
 // Ingest validates one scribe payload and writes what it transcribed.
+//
+// It is the checks PlanIngest makes, then the writes, so a practice run
+// (`--dry-run`) and the real ingest share every check of the scribe's own.
 func Ingest(req IngestRequest) (IngestResult, error) {
+	out, m, err := checkIngest(req)
+	if err != nil {
+		return IngestResult{}, err
+	}
+	res := newIngestResult(out, m)
+	return writeIngest(req, out, m, res)
+}
+
+// checkIngest is everything Ingest judges before its first write: the output
+// decoded against the closed shapes, the run's identity proven against the
+// parked context and the researcher's own text, the run committed and not yet
+// transcribed, and nothing authored. It writes nothing.
+func checkIngest(req IngestRequest) (Output, Manifest, error) {
 	if strings.TrimSpace(req.RepoRoot) == "" {
-		return IngestResult{}, errors.New("scribe: no repository root given")
+		return Output{}, Manifest{}, errors.New("scribe: no repository root given")
 	}
 	if strings.TrimSpace(req.ScribeJSONPath) == "" {
-		return IngestResult{}, errors.New("scribe: no scribe output named")
+		return Output{}, Manifest{}, errors.New("scribe: no scribe output named")
 	}
 	if strings.TrimSpace(req.DispositionsPath) == "" {
-		return IngestResult{}, errors.New("scribe: no dispositions supplied; the ingest holds every word the " +
+		return Output{}, Manifest{}, errors.New("scribe: no dispositions supplied; the ingest holds every word the " +
 			"scribe carries to the researcher's own dispositions text, the file assemble was handed, and the " +
 			"copy parked beside the context is no witness to it")
 	}
 	raw, err := fsutil.ReadGuarded(req.ScribeJSONPath, reading.MaxFileBytes)
 	if err != nil {
-		return IngestResult{}, fmt.Errorf("scribe: reading the scribe output: %w", err)
+		return Output{}, Manifest{}, fmt.Errorf("scribe: reading the scribe output: %w", err)
 	}
 	out, err := decodeOutput(raw, req.RepoRoot)
 	if err != nil {
-		return IngestResult{}, err
+		return Output{}, Manifest{}, err
 	}
 	if out.Type != OutputType {
-		return IngestResult{}, fmt.Errorf("scribe: the output's _type is %s, want %q", typeTag(out.Type, OutputType), OutputType)
+		return Output{}, Manifest{}, fmt.Errorf("scribe: the output's _type is %s, want %q", typeTag(out.Type, OutputType), OutputType)
 	}
 	if !recordid.ValidReadingRunID(out.Run) {
-		return IngestResult{}, fmt.Errorf("scribe: the output's run is %s, which is not a reading run id (rdg-N)",
+		return Output{}, Manifest{}, fmt.Errorf("scribe: the output's run is %s, which is not a reading run id (rdg-N)",
 			termsafe.DescribeRefused(out.Run))
 	}
 
@@ -191,32 +207,41 @@ func Ingest(req IngestRequest) (IngestResult, error) {
 	// cite that same hash.
 	ctx, m, err := proveContext(req, out)
 	if err != nil {
-		return IngestResult{}, err
+		return Output{}, Manifest{}, err
 	}
 	supplied, err := proveSupplied(req, ctx, m)
 	if err != nil {
-		return IngestResult{}, err
+		return Output{}, Manifest{}, err
 	}
 	if err := requireCommittedRun(req.RepoRoot, out.Run); err != nil {
-		return IngestResult{}, err
+		return Output{}, Manifest{}, err
 	}
 	if err := refusePromoted(req.RepoRoot, out.Run); err != nil {
-		return IngestResult{}, err
+		return Output{}, Manifest{}, err
 	}
 	items, err := runItems(req.RepoRoot, out.Run)
 	if err != nil {
-		return IngestResult{}, err
+		return Output{}, Manifest{}, err
 	}
 	if err := refuseAuthored(out, supplied, items); err != nil {
-		return IngestResult{}, err
+		return Output{}, Manifest{}, err
 	}
+	return out, m, nil
+}
 
-	res := IngestResult{
+// newIngestResult is the result an ingest of out starts from, before any
+// record has landed.
+func newIngestResult(out Output, m Manifest) IngestResult {
+	return IngestResult{
 		Run: out.Run, ContextSHA256: m.ContextSHA256,
 		Dispositions: []capture.DispositionResult{}, Admissions: []capture.AdmitResult{},
 		Surprises: []capture.SurpriseResult{}, Outstanding: nonNil(out.Outstanding),
 		FidelityFlags: nonNilFlags(out.FidelityFlags), Refusals: nonNilRefusals(out.Refusals),
 	}
+}
+
+// writeIngest is Ingest's writes, after checkIngest has passed.
+func writeIngest(req IngestRequest, out Output, m Manifest, res IngestResult) (IngestResult, error) {
 
 	// The writes, through the verbs' own functions, in payload order. Each takes
 	// the ledger lock for itself and applies its own redaction and refusals; the

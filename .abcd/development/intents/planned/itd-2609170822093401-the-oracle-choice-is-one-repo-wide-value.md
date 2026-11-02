@@ -225,6 +225,57 @@ Ruled by the product thinker on 2026-10-23, relayed by the coordinator:
 - **Given** a lane whose fix round failed, **when** the next round starts, **then** it runs one tier up from the role's tier and the state file records the round, the gate output and the switch.
 - **Given** a proposed route through a provider adapter, **when** the tier proposes it, **then** it is one the provider's allowlist admits, or the proposal names the refusal instead.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in
+the [models, prompts and measurement SOTA note](../../research/notes/2026-10-23-models-prompts-measurement-sota.md),
+which reuses the [Jev and model-routing pass](../../research/notes/2026-09-22-jev-and-model-routing-sota.md)
+and the [model-matrix note](../../research/notes/2026-10-16-model-matrix-sota.md)
+for everything the decisions already rest on.
+
+- **The harness leg works as the Mechanism claims.** The host's sub-agent docs
+  resolve a model in a fixed order: per-invocation parameter, then the
+  definition's `model` frontmatter (`inherit` means the main model), then a
+  `CLAUDE_CODE_SUBAGENT_MODEL` default, then the main conversation's model;
+  `effort` is settable on the same two surfaces (Claude Code sub-agents
+  documentation).
+- **A host force switch can override a row silently.**
+  `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` makes the environment value beat both
+  the frontmatter and the per-invocation parameter, and a mod's spawn hook can
+  replace the parameter; `CLAUDE_CODE_EFFORT_LEVEL` in the environment
+  likewise beats both the definition's and the per-invocation `effort`. The
+  receipt's "model reported" beside "tier asked" is
+  the only check (the third scope condition), and a mismatch that matches the
+  force variable should be named as such.
+- **Two-model cascades pay; deeper ones rarely do.** Two-model cascades
+  gained 2.1–8.2 points over single-model selection; allowing more than two
+  models did not improve mean accuracy in 118 of 135 comparisons (at most
+  +0.43 points); depth beyond two helped only when the deferral signal
+  reflected whether the current model was wrong rather than difficulty shared
+  across models (Bouchard, arXiv 2605.06350, 2026). Whether a failed fix round
+  is a current-model-error signal or a shared-difficulty signal decides
+  whether a second step pays; it is a plausible instance of the first, not a
+  tested one, and the paper studies single-query cascades, not fix loops.
+  Decision 1's one-tier-per-failed-round rule is consistent with this, and
+  the matrix run is where a second step is tested.
+- **Router benchmarking exists** (RouterArena, arXiv 2510.00202), and nothing
+  in it reopens decision 3.
+- **Served versus asked** stays as the matrix note has it: the receipt carries
+  the served model, provider and fallback attempts where the source exposes
+  them.
+
+**Path 2**, as planned: a native table resolved onto the host's per-invocation
+`model` and `effort` parameters on the harness leg and onto a connection on the
+provider leg; the request-block mapping is the seam. No dependency. The
+independent fit-challenge is still owed before the build, and the questions below are kept for it.
+
+Questions this pass raised for the fit-challenge before the build. They are kept here, not under Open Questions, so they do not hold a build the record already rules ready:
+
+- Whether a receipt whose reported model contradicts the
+  tier asked, on a host where the force variable is set, is recorded as a host
+  override by name, so a measurement run never mistakes a forced model for the
+  row's.
+
 ## Open Questions
 
 - Whether a fan-out bound on a row is read by any verb before

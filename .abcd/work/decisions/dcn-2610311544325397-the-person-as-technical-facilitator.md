@@ -1,0 +1,6 @@
+---
+id: dcn-2610311544325397
+slug: the-person-as-technical-facilitator
+date: 2026-10-31
+---
+2026-10-31 — The person, as technical facilitator, chose on 2026-10-31 how an issue lane widens its hold before it edits a path beyond its reservation (iss-2610311224444576, refining dcn-2610311251002713): the implementer runs abcd implement widen, naming the lane and each further path, before its first edit there; the step reserves the issue again with the held footprint and those paths, judged for overlap like any reservation, and exits 3 with nothing changed when another copy holds a live reservation on one, so that file is not edited and the implementer stops without a receipt, the implement stage handing the lane out again on a later step. As the backstop, an implementer's receipt is refused while the lane's branch changes a path its reservation does not cover, naming the paths and the widen step, which catches a forgotten call and an edit made through the shell. A lane leaving its landing for a fresh round keeps the paths it widened to beside its found_at. Rejected: a hook on the host's file tools as the control, since it reaches origin on every edit, fails offline, does not run on a host without hooks and misses edits made through the shell; and widening only at the receipt, which finds a clash after the work is done.

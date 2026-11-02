@@ -47,11 +47,24 @@ This intent commits abcd to taking lifeboat portability seriously: schemas evolv
 - **Given** the registered v1→v2 migrator, **when** it runs against a v1 artefact, **then** it produces a v2 artefact that round-trips cleanly through the v2 schema validator (no unknown fields, no missing required fields, all enums valid).
 - **Given** a lifeboat is migrated during embark, **when** the resulting `~/.abcd.noindex/voyage/<source-root-sha>/embark/provenance.json` (the operator-level voyage store adr-35 moved it to) is written, **then** it records the migration history (`was_schema: 1`, `now_schema: 2`, `migrators_applied: [...]`) so future audits can reconstruct what was changed.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [harness, interop and lifeboats SOTA note](../../research/notes/2026-10-23-harness-interop-lifeboats-sota.md).
+
+- The repository already carries seven independent schema versions (`probe.go` `SchemaVersion = 2`, `EmbarkSchemaVersion`, `GraveyardSchemaVersion`, `LessonsSchemaVersion`, `PrinciplesSchemaVersion = 2`, `PressReleaseSchemaVersion`, `ReviewSchemaVersion`) and refuses newer-than-known; no reader accepts an older revision yet.
+- Upcasters are the read-time pattern: Axon stores a revision with each event, an upcaster maps revision *x* to *x+1*, upcasters chain, and the store is never rewritten ("the complete event history remains intact"). A lifeboat is immutable in the same sense: migrate on read, never in place.
+- Kubernetes states the rule and the storage split: conversion is "a star with the internal form at the center", "it must be possible to round-trip your change … with no loss of information", adding a field with a sane default needs no new version, and a new version should not become preferred and stored in one release so a rollback still decodes. Its round trip serves an API server that converts both ways; abcd's chain is one-way (newer-than-known refused), so the half that applies is that each up-step loses no information.
+- Protobuf's field discipline: never change or reuse a field number, reserve removed numbers and names, old readers "simply ignore the new field".
+- Go's decoder ignores unknown keys by default and `DisallowUnknownFields` makes them an error; the lifeboat readers choose the error on purpose (`graveyard_lessons.go` calls it to "reject smuggled extra fields" and refuses any `schema_version` but its own), so Fowler's Tolerant Reader applies here only in bounded form: accept an older revision's known fields and default the missing ones, while unknown keys stay refused where a reader refuses them today; Parallel Change (expand, migrate, contract) is the writer's half.
+
+**Path 2 — native per-artefact upcaster chains shaped to Axon's revision model, with Kubernetes' no-information-loss rule applied to each one-way up-step (no downcasters, since newer-than-known stays refused): bounded tolerance per artefact as the first rung (an older revision's known fields accepted and missing ones defaulted, unknown keys still refused where the reader refuses them today, the lessons reader's smuggled-field guard among them), one single-step migrator per revision beside its artefact type, the lifeboat on disk untouched, "re-disembark required" when the chain has no step starting at the artefact's revision, the voyage store's provenance recording each step.** The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - Which schema version delta triggers re-disembark vs auto-migrate? Major-version bumps only?
 - Where do migrators live in the native layout?
 - Should `_provenance.json` record the migration history (was-v1, now-v2)?
+- (SOTA 2026-10-23) Should the probe's "is its schema version one this build understands" and embark's check be one function before any migrator lands?
 
 ## Audit Notes
 

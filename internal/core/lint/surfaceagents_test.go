@@ -140,3 +140,39 @@ func TestShippedConfigArmsTheAgentSweep(t *testing.T) {
 		}
 	}
 }
+
+// TestGuardPageDocumentsTheQuestionVerb (spc-2610301917245442, step 1): the
+// verb is wired on both front doors, so the plugin's guard page carries a
+// `question` section naming its JSON, its exit codes and its two input forms,
+// and the generated command-line reference documents `abcd guard question`
+// with its help line in the house form.
+func TestGuardPageDocumentsTheQuestionVerb(t *testing.T) {
+	page, err := os.ReadFile(filepath.Join(repoRootFromPackage, "commands", "guard.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(page)
+	at := strings.Index(text, "\n## `question`")
+	if at < 0 {
+		t.Fatal("commands/guard.md has no `question` section")
+	}
+	section := text[at+1:]
+	if end := strings.Index(section, "\n## "); end >= 0 {
+		section = section[:end]
+	}
+	for _, want := range []string{"guard question", "--ask", "abcd/question-check/v1", "`ready`", "`rows`", "`version`", "Exit codes", "`2`"} {
+		if !strings.Contains(section, want) {
+			t.Errorf("the guard page's `question` section does not name %s", want)
+		}
+	}
+	ref, err := os.ReadFile(filepath.Join(repoRootFromPackage, "docs", "reference", "cli", "commands.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(ref), "abcd guard question") {
+		t.Error("docs/reference/cli/commands.md does not document abcd guard question")
+	}
+	if !strings.Contains(string(ref), "Check a draft question as the hook will judge it: Writes nothing; refuses") {
+		t.Error("the reference does not carry the verb's help line in the house form")
+	}
+}

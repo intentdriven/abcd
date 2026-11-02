@@ -645,8 +645,8 @@ func TestAStepThisBuildDoesNotCarryIsRefusedByName(t *testing.T) {
 	if !bytes.Equal(before, stateBytes(t, repo.Root(), start.RunID)) {
 		t.Fatal("a refused step must leave the run unchanged")
 	}
-	if names := DefaultStages(); len(names) != len(Sequence) {
-		t.Fatalf("the production sequence names every step: %d of %d", len(names), len(Sequence))
+	if names := DefaultStages(); len(names) != len(Sequence)+len(PlanSequence) {
+		t.Fatalf("the production sequences name every step: %d of %d", len(names), len(Sequence)+len(PlanSequence))
 	}
 }
 

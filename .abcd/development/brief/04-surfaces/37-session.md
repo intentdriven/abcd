@@ -93,9 +93,10 @@ the forwarded address is trusted only behind a declared proxy, or, on a relay bo
 
 Updates are opaque bytes behind a one-byte tag; the relay never parses them or
 the brief. Everything is in memory: a session is dropped whole when the host
-closes it, or when nobody has been connected for thirty minutes. Nothing is
-written to disk and nothing is logged, no token, secret or brief text. The
-sign-in app's secret, on a cloud relay, is read from
+closes it, when nobody has been connected for thirty minutes, or twelve
+hours after the host opened it, however busy (each participant is told it
+expired). Nothing is written to disk and nothing is logged, no token,
+secret or brief text. The sign-in app's secret, on a cloud relay, is read from
 `ABCD_SESSION_GITHUB_CLIENT_SECRET` by name, added only to the relay's own
 exchange with GitHub, and never sent to a browser; GitHub's answer is passed
 on field by field, so nothing it echoes reaches the page. A local session's
@@ -108,8 +109,9 @@ the page on any origin but its own relay's signs in through the web flow
 alone.
 
 Limits: 256 KiB a message, 8 MiB of log a session, 32 participants a session,
-16 sessions a relay, five sign-in attempts a connection, and a connection that
-falls a thousand frames behind or misses a ping is dropped.
+twelve hours a session, 16 sessions a relay, five sign-in attempts a
+connection, and a connection that falls a thousand frames behind or misses a
+ping is dropped.
 
 ## The blueprint
 

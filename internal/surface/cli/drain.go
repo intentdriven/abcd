@@ -271,7 +271,7 @@ func runDrain(cmd *cobra.Command, asJSON bool, repoRoot string, maxLanes int, pa
 	const prefix = "abcd drain"
 	roots, notes := layered.RootsFor(repoRoot)
 	for _, n := range notes {
-		fmt.Fprintln(cmd.ErrOrStderr(), termsafe.Sanitize(n))
+		fmt.Fprintln(cmd.ErrOrStderr(), noteLine(n))
 	}
 	cfg, err := loadRunners(cmd, roots)
 	if err != nil {

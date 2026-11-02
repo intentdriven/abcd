@@ -44,9 +44,52 @@ _Proposed by the facilitator's review of 2026-10-10; not yet confirmed by the pr
 
 > _Required (the itd-1 discipline): add at least one Given-When-Then bullet describing the verifiable bar for "shipped" before this draft can be planned._
 
+## SOTA
+
+Surveyed on 2026-10-23. The plain-language rules a reader's profile would
+carry are in the [elicitation and interviews SOTA note](../../research/notes/2026-10-23-elicitation-interviews-sota.md)
+(its itd-168 and itd-172 sections: GOV.UK's checkable surface rules, the
+65-character title and 160-character summary, readability formulas judged
+unfit). Model routing is in the [models, prompts and measurement SOTA note](../../research/notes/2026-10-23-models-prompts-measurement-sota.md).
+The lineage stays under `## Prior Art`.
+
+- **Models follow short word-count limits reasonably and long ones badly;
+  abcd's limits are rows, characters and slug lengths a model sees only as
+  tokens, so the external counter stays the judge.** Across 26 models, "most
+  models reasonably follow short-length instructions but deteriorate sharply
+  beyond a certain threshold", and reasoning models follow length best
+  ([LIFEBench, Zhang et al., arXiv 2505.16234](https://arxiv.org/abs/2505.16234)).
+  The benchmark counts words, from 16 to 8,192; abcd's limits are short, so
+  what carries the argument here is not the benchmark but the mismatch
+  between what abcd counts and what a model sees, and the Scope Condition
+  "the rewriter never judges its own fit" holds even for short text.
+- **Shortening adds and drops meaning, and ordinary metrics do not see it.**
+  Simplification systems "risk introducing errors" by "inserting statements
+  unsupported by the corresponding original text, or by omitting key
+  information". These errors appear often in model outputs and in human
+  references, and "are not captured by existing evaluation metrics"
+  ([Devaraj et al., ACL 2022](https://aclanthology.org/2022.acl-long.506/)).
+  This is the Mechanism's falsifier exactly ("a dropped qualifier, an invented
+  claim"). The lab that sets the default model needs a meaning-preservation
+  check (inserted claim, dropped qualifier, by a judge that sees the original)
+  beside the fit and cost measures. A fit-only comparison would pick the model
+  that cuts hardest.
+- **Surface rules are checkable, readability scores are not.** The elicitation
+  note finds GOV.UK's surface rules (length, full stop, a verb, few shared
+  words) testable by a counter, and readability formulas a poor predictor. The
+  profile should carry rules of the first kind only, so the counter stays the
+  judge.
+
+**Path 2**: native, growing the question drafter into the rewriter (one
+canonical primitive), with abcd's counters as the stop rule and the lab
+scoring meaning preservation alongside fit and cost. No dependency. The
+independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - Which model is the default? The lab iss-2610090816296964 already plans compares the quick tier (Haiku 4.5) with the default tier on the drafter's material for fit, lost meaning and cost; its result sets the default, and the routing table (itd-2609201916056194) lets a team choose another.
+
+- (SOTA 2026-10-23) Does the default-model lab score meaning preservation (an inserted claim, a dropped qualifier, judged against the original) as well as fit and cost, so that the cheapest model to fit is not chosen for cutting hardest?
 
 ## Prior Art
 

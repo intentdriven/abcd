@@ -556,6 +556,13 @@
       "sentence": "Start the loop that takes one READY intent to delivered: Writes the run's state and its reservation; refuses an open question, a hold or a peer holding it.",
       "flags": [
         {
+          "name": "auto-plan",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "fix-rounds",
           "shorthand": "",
           "type": "string",
@@ -1206,6 +1213,13 @@
       "sentence": "Validate host-produced lesson JSON against a packed lifeboat: Writes the lessons that cite their evidence; refuses without --lessons-json.",
       "flags": [
         {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "lessons-json",
           "shorthand": "",
           "type": "string",
@@ -1255,6 +1269,13 @@
       "sentence": "Compose a lifeboat's press release, or validate the host's: Writes the press-release files in the lifeboat; refuses a host draft citing nothing resolvable.",
       "flags": [
         {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "press-release-json",
           "shorthand": "",
           "type": "string",
@@ -1275,6 +1296,13 @@
       "hidden": false,
       "sentence": "Distil a lifeboat's principles from its ADRs, or validate the host's: Writes the principles files in the lifeboat; refuses a directory that is not a lifeboat.",
       "flags": [
+        {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "principles-json",
           "shorthand": "",
@@ -1310,6 +1338,13 @@
       "hidden": false,
       "sentence": "Review a packed lifeboat against its source repository, or validate the host's verdict: Writes the review in the lifeboat; refuses an unregistered verdict.",
       "flags": [
+        {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "review-json",
           "shorthand": "",
@@ -1429,6 +1464,13 @@
       "hidden": false,
       "sentence": "Save a docs review's verdict as the receipt for HEAD: Writes the receipt in the local tier; refuses a verdict naming no judge.",
       "flags": [
+        {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "verdict-json",
           "shorthand": "",
@@ -1750,6 +1792,20 @@
       "flags": []
     },
     {
+      "path": "abcd guard question",
+      "hidden": false,
+      "sentence": "Check a draft question as the hook will judge it: Writes nothing; refuses an unreadable draft, a store it cannot read, and any finding.",
+      "flags": [
+        {
+          "name": "ask",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd history",
       "hidden": false,
       "group": "agents",
@@ -2017,6 +2073,13 @@
       "block": "agents",
       "sentence": "Validate a host-composed gauntlet verdict: Writes the dated record, private unless --public; refuses without an idea slug or --verdict-json.",
       "flags": [
+        {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "private",
           "shorthand": "",
@@ -2545,6 +2608,27 @@
       ]
     },
     {
+      "path": "abcd implement widen",
+      "hidden": false,
+      "sentence": "Widen an issue lane's hold to a path before it is edited: Writes the reservation and a run record line; refuses another copy's live hold, with exit 3.",
+      "flags": [
+        {
+          "name": "lane",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "run",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd inbox",
       "hidden": false,
       "group": "agents",
@@ -2643,6 +2727,13 @@
       "sentence": "Ingest an intent-audit verdict into the shipped intent: Writes its Audit Notes; refuses without --verdict-json.",
       "flags": [
         {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "route",
           "shorthand": "",
           "type": "stringArray",
@@ -2720,6 +2811,13 @@
       "block": "agents",
       "sentence": "Ingest consistency findings as a dated review and a capture per finding: Writes the report and the ledger records; refuses without --findings-json.",
       "flags": [
+        {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "findings-json",
           "shorthand": "",
@@ -2853,6 +2951,13 @@
       "block": "agents",
       "sentence": "Print a draft's pre-pass input, or write its planning brief from the host's findings: Writes only the brief; refuses a record not on drafts/.",
       "flags": [
+        {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "findings-json",
           "shorthand": "",
@@ -3160,6 +3265,13 @@
           "hidden": false
         },
         {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "fetch-baseline",
           "shorthand": "",
           "type": "bool",
@@ -3321,6 +3433,13 @@
       "sentence": "Query memory and synthesise a cited answer: Writes a memory page only with --file-back; refuses outside a git checkout.",
       "flags": [
         {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "file-back",
           "shorthand": "",
           "type": "bool",
@@ -3368,6 +3487,13 @@
       "hidden": false,
       "sentence": "Distil a local file or an https source into cited memory pages: Writes the pages; refuses a URL that is not https.",
       "flags": [
+        {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "keep-original",
           "shorthand": "",
@@ -3760,6 +3886,13 @@
           "hidden": false
         },
         {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "reading-json",
           "shorthand": "",
           "type": "string",
@@ -3995,6 +4128,13 @@
           "name": "dispositions",
           "shorthand": "",
           "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
           "required": false,
           "hidden": false
         },

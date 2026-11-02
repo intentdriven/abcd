@@ -286,7 +286,7 @@ func RecordRoute(n ExportNode) string { return "record/" + n.Type + "/" + n.ID +
 // so the page heading carries no dateline of its own.
 func (e *explorer) shell(route, title, script, body string) string {
 	var b strings.Builder
-	b.WriteString(e.c.headWith(title, script))
+	b.WriteString(e.c.headWith(policyRecord, title, script))
 	b.WriteString(e.c.headerFor("/record/"))
 	b.WriteString(`<main id="app"><div class="page">`)
 	b.WriteString(e.subnav(route))

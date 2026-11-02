@@ -161,6 +161,8 @@ var sentences = map[string]string{
 		"Writes branch records and a question's mode; refuses a hazard and an unknown sub-verb.",
 	"abcd guard check": "Judge one shell command against the hazard registry: " +
 		"Writes nothing; refuses a hazard with exit 1 and a command it cannot parse with exit 2.",
+	"abcd guard question": "Check a draft question as the hook will judge it: " +
+		"Writes nothing; refuses an unreadable draft, a store it cannot read, and any finding.",
 	"abcd guard approve": "Answer a headless agent's permission prompts over MCP: " +
 		"Writes nothing; refuses every prompt but a shell command the guard reads whole and clears.",
 	"abcd guard allow": "Let one exact unproven delete through the hook, once: " +
@@ -237,6 +239,8 @@ var sentences = map[string]string{
 		"Writes the release and a claim_released line; refuses a claim another session holds.",
 	"abcd implement report": "Derive the comparison of the division modes from the run log: " +
 		"Writes nothing; refuses --date and --log together.",
+	"abcd implement widen": "Widen an issue lane's hold to a path before it is edited: " +
+		"Writes the reservation and a run record line; refuses another copy's live hold, with exit 3.",
 	"abcd implement status": "Render the implement loop's runs in this checkout, lane by lane: " +
 		"Writes a due renewal to origin, its outcome to the run record; refuses a --run naming no run.",
 	"abcd implement step": "Perform the next stage of an implement loop run's lane and exit: " +

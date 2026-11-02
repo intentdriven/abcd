@@ -65,7 +65,6 @@ references.bib
 /site/
 
 # BEGIN ABCD
-# abcd-managed block — do not hand-edit. Run /abcd:ahoy to refresh.
-.abcd/.work.local/
+# abcd-managed block, do not hand-edit; run /abcd:ahoy to refresh.
 /memory/
 # END ABCD

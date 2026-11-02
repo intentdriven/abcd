@@ -241,6 +241,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--dry-run` | bool |
 | `--private` | bool |
 | `--public` | bool |
 | `--verdict-json` | string |

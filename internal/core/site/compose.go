@@ -91,6 +91,9 @@ type composer struct {
 	// project is the project route: the about page, the binary's assets, and
 	// nothing read from a person's own files (project.go).
 	project bool
+	// policies are the content policies a project page carries in its head,
+	// by route family (project_policy.go); nil on the composed route.
+	policies map[string]string
 }
 
 // at places the root-absolute site path p under the build's base path. Every
@@ -264,15 +267,17 @@ func (c *composer) ComposeLanding() (string, error) {
 // head renders the document head. The one external request the page makes is
 // the font stylesheet; there are no analytics, no trackers and no scripts from
 // anywhere but this build (adr-38, adr-48).
-func (c *composer) head() string { return c.headWith("", "") }
+func (c *composer) head() string { return c.headWith(policyAbout, "", "") }
 
 // headWith renders the head of a page that names itself — every explorer route
-// does — and that may need one more script than the landing page.
+// does — and that may need one more script than the landing page. family is
+// the route family whose content policy a project page carries
+// (project_policy.go); the composed route's host serves it as a header.
 //
 // A named page's title is `<page> · <project>`: the leading half is what a tab
 // strip and a search result show first, and it is a record heading or a
 // navigation label rather than a sentence written here.
-func (c *composer) headWith(pageTitle, script string) string {
+func (c *composer) headWith(family, pageTitle, script string) string {
 	title, desc := c.repo.Name, ""
 	if blk, ok := c.identity(); ok {
 		title, desc = blk.Title, blk.Tagline
@@ -284,6 +289,8 @@ func (c *composer) headWith(pageTitle, script string) string {
 	var b strings.Builder
 	b.WriteString("<!doctype html>\n<html lang=\"en\">\n<head>\n")
 	b.WriteString(`<meta charset="utf-8">` + "\n")
+	// Ahead of every stylesheet and script, which it governs only once read.
+	b.WriteString(c.policyElement(family))
 	b.WriteString(`<meta name="viewport" content="width=device-width, initial-scale=1">` + "\n")
 	b.WriteString("<title>" + escapeText(title) + "</title>\n")
 	if desc != "" {

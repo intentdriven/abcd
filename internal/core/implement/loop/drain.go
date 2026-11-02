@@ -1472,7 +1472,7 @@ func readDrain(repoRoot string) (DrainState, bool, error) {
 	if json.Unmarshal(data, &peek) == nil && peek.SchemaVersion > DrainSchemaVersion {
 		return DrainState{}, false, refuse(StageDrain, "", "", fmt.Sprintf("%s is schema version %d, which a newer abcd wrote; this abcd reads version %d",
 			DrainStateRel, peek.SchemaVersion, DrainSchemaVersion),
-			"run the newer abcd that wrote it (`abcd update` brings this one up to date); do not remove the drain state, which holds the drain")
+			newerWriterRemedy("do not remove the drain state, which holds the drain"))
 	}
 	var st DrainState
 	if err := jsonstrict.Decode(data, &st); err != nil || (st.SchemaVersion != DrainSchemaVersion && st.SchemaVersion != drainSchemaVersionUnpinned) {

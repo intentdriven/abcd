@@ -1,0 +1,3 @@
+{"schema_version": 2, "prompt_version": "1.0.0", "next_tag": "v0.4.1",
+ "entries": [{"section": "Added", "records": ["itd-99"], "text": "**Something else.** A record this cut does not carry."}],
+ "press_release": {"headlines": [{"records": ["itd-99"], "text": "What shipped in this release."}], "listed": [], "quotes": []}}

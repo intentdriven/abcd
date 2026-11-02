@@ -576,6 +576,9 @@ func build(req Request, written *labelsAdded) (Result, error) {
 			return Result{}, err
 		}
 		c.project, c.assets.project = true, true
+		if c.policies, err = projectPolicies(); err != nil {
+			return Result{}, err
+		}
 		compose = c.ComposeAbout
 		// Nothing abcd wrote for the about page is an empty site, refused here
 		// as setup refuses it, before anything is written.

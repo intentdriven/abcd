@@ -20,7 +20,18 @@ import (
 // (intent.SetAuditLedger), with its own lock released, since this ledger's
 // lock comes first in the one lock order.
 
-func init() { intent.SetAuditLedger(fileAuditOwed, clearAuditOwed) }
+func init() {
+	intent.SetAuditLedger(fileAuditOwed, clearAuditOwed)
+	intent.SetAuditCarrierLookup(lookupAuditOwed)
+}
+
+// lookupAuditOwed is fileAuditOwed's read-only half, for the ingest's practice
+// run: the open issues carrying o's owed check, oldest first, which the filer
+// would link (the first) and decline as duplicates (the rest). It files
+// nothing and takes no lock, so it writes nothing.
+func lookupAuditOwed(o intent.AuditOwed) ([]string, error) {
+	return openOwedCarriers(o.RepoRoot, o.IntentID, o.ReceiptID)
+}
 
 // Severity and category of an owed audit check. A criterion judged NOT_MET is
 // a shipped behaviour that does not do what its intent promised: a bug, and

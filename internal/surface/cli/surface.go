@@ -3,6 +3,8 @@ package cli
 //go:generate go run ../../../cmd/abcd-gen-surface
 
 import (
+	"strings"
+
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/surface"
 	"github.com/spf13/cobra"
@@ -77,7 +79,7 @@ func GuardSurface(repoRoot string) (changelog.SurfaceGuard, error) {
 }
 
 // commandSurface flattens a command tree into snapshot entries, depth-first from
-// cmd.
+// cmd. It is the snapshot half of surfaceWalk.
 //
 // Hidden commands are recorded, not skipped: the operator-internal `hook` subtree
 // is invoked by name from harness wiring, so removing it breaks installations
@@ -85,7 +87,26 @@ func GuardSurface(repoRoot string) (changelog.SurfaceGuard, error) {
 // surface.NewSnapshot, which sorts by command path — relying on cobra's traversal
 // order would make the artefact depend on registration order.
 func commandSurface(cmd *cobra.Command) []surface.Command {
-	out := []surface.Command{{
+	commands, _ := surfaceWalk(cmd)
+	return commands
+}
+
+// CommandFacts is every command's facts (spc-2610301431075964 step 1), in
+// canonical order, from a fresh tree that is never executed, for the same
+// reason SurfaceSnapshot builds one.
+func CommandFacts() []surface.Facts {
+	_, facts := surfaceWalk(NewRootCommand())
+	return surface.CanonicalFacts(facts)
+}
+
+// surfaceWalk is the one walk of the command tree both the compatibility
+// snapshot and the command facts are read from, so the two can never describe
+// different trees: each command yields its snapshot entry and its facts in
+// the same visit. The snapshot entry keeps its schema-4 shape; what the facts
+// add (defaults, closed sets, the usage line, the example and the inputs) is
+// no compatibility claim and stays out of it.
+func surfaceWalk(cmd *cobra.Command) ([]surface.Command, []surface.Facts) {
+	commands := []surface.Command{{
 		Path:   cmd.CommandPath(),
 		Hidden: cmd.Hidden,
 		// The help placement (itd-146): recorded so a regroup is visible in
@@ -95,11 +116,64 @@ func commandSurface(cmd *cobra.Command) []surface.Command {
 		Sentence: commandSentence(cmd),
 		Flags:    commandFlags(cmd),
 	}}
+	facts := []surface.Facts{commandFactsOf(cmd)}
 	for _, child := range cmd.Commands() {
-		out = append(out, commandSurface(child)...)
+		c, f := surfaceWalk(child)
+		commands = append(commands, c...)
+		facts = append(facts, f...)
 	}
-	return out
+	return commands, facts
 }
+
+// commandFactsOf is one command's facts. The inputs come from the input
+// registry (inputs.go), keyed by the command's path and the flag, and an
+// interview's --answers file is named as an input of its own kind.
+func commandFactsOf(cmd *cobra.Command) surface.Facts {
+	path := cmd.CommandPath()
+	f := surface.Facts{
+		Path:     path,
+		Hidden:   cmd.Hidden,
+		Sentence: commandSentence(cmd),
+		Example:  strings.TrimSpace(cmd.Example),
+	}
+	persistent := cmd.PersistentFlags()
+	// LocalFlags merges the persistent flags the command inherits into its
+	// flag set, as executing the command does, so it runs before the usage
+	// line is read: whether that line ends in "[flags]" depends on the merge,
+	// and read first it would differ from the line the help prints.
+	local := cmd.LocalFlags()
+	f.Usage = cmd.UseLine()
+	local.VisitAll(func(fl *pflag.Flag) {
+		kind := surface.FlagKind(fl.Value.Type())
+		ff := surface.FlagFact{
+			Name:       fl.Name,
+			Shorthand:  fl.Shorthand,
+			Type:       kind,
+			Required:   flagRequired(fl),
+			Allowed:    flagAllowed(fl),
+			Persistent: persistent.Lookup(fl.Name) != nil,
+			Hidden:     fl.Hidden,
+		}
+		if !surface.ZeroDefault(kind, fl.DefValue) {
+			ff.Default = fl.DefValue
+		}
+		f.Flags = append(f.Flags, ff)
+		if in, ok := inputFor(path, fl.Name); ok {
+			f.Inputs = append(f.Inputs, in.Fact())
+		} else if fl.Name == answersFlag {
+			f.Inputs = append(f.Inputs, surface.InputFact{Flag: fl.Name, Kind: surface.InputAnswers, Name: "interview answers"})
+		}
+	})
+	for _, child := range cmd.Commands() {
+		if !child.Hidden {
+			f.Subcommands = append(f.Subcommands, child.Name())
+		}
+	}
+	return f
+}
+
+// answersFlag is the flag an interview reads its answers file through.
+const answersFlag = "answers"
 
 // commandSentence is the sentence the manifest declares for cmd
 // (itd-2609212113220149), recorded so a reworded sentence is visible in the

@@ -312,7 +312,12 @@ record that contradicts itself (a tangled or contested set of answers only a
 hand edit repairs), or a found-at path the checkout would not let the write
 check for a reason other than its absence. Migration takes no input to refuse,
 so past the refusal outside a git checkout every verb shares (§ 2), each of its
-failures is a fault.
+failures is a fault. Exit 3 is the back-off code: in a main checkout two or
+more live sessions started in, every write is refused with nothing written, and
+the refusal names the worktree store (iss-2610240859590333). That covers the
+capture itself, resolving, marking wontfix, promoting, deferring, linking, a
+remedy, a migration's applied run and each reading-ledger write. A session count
+that cannot be made refuses nothing and says so on stderr.
 
 **Resolving** marks an issue resolved and moves it to
 `resolved/`. Impact is required, and resolving without it is refused with

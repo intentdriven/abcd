@@ -88,8 +88,14 @@ account's alone. `abcd peers` skips the store, counting it without its path.
   refuses an unpublished advisory's id, its reserved CVE id, its title (12
   characters or more, unless the advisory is closed or its verdict is the
   public track) and the store's location on this machine, naming where and
-  never repeating the match. A paraphrase or a count is beyond it and
-  stays the author's to avoid.
+  never repeating the match. It refuses as well any other advisory id that
+  the allow switch (repeatable, another project's advisory id, already public)
+  does not name and GitHub does not list among this repository's published
+  advisories. GitHub is asked only when such an id is found, an answer that
+  cannot be had leaves each refused, and an id of the placeholder form, each
+  four-character group one character repeated (`GHSA-xxxx-xxxx-xxxx`), is not
+  refused as unlisted. A paraphrase or a count is beyond it and stays the
+  author's to avoid.
 - **publish** shows the plan with each patched version taken from the first
   published release containing the fix, leaving out, with the reason, an
   advisory not resolved or released, one with no package, and one whose text would disclose

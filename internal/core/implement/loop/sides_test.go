@@ -49,13 +49,13 @@ func sidedRun(t *testing.T) (string, string, string) {
 }
 
 // TestASidedRouteRoundTrips is criterion 7's run-state half: a route record
-// carrying both sides is read back whole at the current version, 16; 14 is
-// the version that added them, 15 the run's review set and 16 a route's pins
-// beside them.
+// carrying both sides is read back whole at the current version, 17; 14 is
+// the version that added them, 15 the run's review set, 16 a route's pins
+// beside them and 17 a lane's auto-plan record.
 func TestASidedRouteRoundTrips(t *testing.T) {
-	if SchemaVersion != 16 || schemaVersionUnpinned != 15 || schemaVersionUnreviewed != 14 || schemaVersionUnmetered != 13 || schemaVersionUnrefused != 12 {
-		t.Fatalf("both sides are version 14's, after a lane's refusal's 13, the review set 15's and a route's pins 16's: %d %d %d %d %d",
-			SchemaVersion, schemaVersionUnpinned, schemaVersionUnreviewed, schemaVersionUnmetered, schemaVersionUnrefused)
+	if SchemaVersion != 17 || schemaVersionUnplanned != 16 || schemaVersionUnpinned != 15 || schemaVersionUnreviewed != 14 || schemaVersionUnmetered != 13 || schemaVersionUnrefused != 12 {
+		t.Fatalf("both sides are version 14's, after a lane's refusal's 13, the review set 15's, a route's pins 16's and an auto-plan 17's: %d %d %d %d %d %d",
+			SchemaVersion, schemaVersionUnplanned, schemaVersionUnpinned, schemaVersionUnreviewed, schemaVersionUnmetered, schemaVersionUnrefused)
 	}
 	root, id, _ := sidedRun(t)
 	st, err := ReadState(root, id)

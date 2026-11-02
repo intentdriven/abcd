@@ -350,7 +350,7 @@ abcd banlist remove --private acme-internal
 
 Start the loop that takes one READY intent to delivered: Writes the run's state and its reservation; refuses an open question, a hold or a peer holding it.
 
-**Usage:** `abcd build <itd-N|iss-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--take-over] [--release] [flags]`
+**Usage:** `abcd build <itd-N|iss-N> [--auto-plan] [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--take-over] [--release] [flags]`
 
 Start the implement loop for one intent, or resume the run already in progress for it.
 An issue id starts the loop's issue-keyed lane instead (below).
@@ -454,12 +454,31 @@ resolves it with the commit named there. A receipt carrying `handback` in its pl
 ends the lane: its worktree and branch are discarded and the issue is handed back by
 kind. `abcd drain` starts these runs one at a time.
 
+--auto-plan plans a draft intent with no person present, on the substitute for the
+product thinker's sign-off adr-2610310235000654 records. The draft must carry its criteria,
+ask no open question, answer its claim sections (a scope condition not yet stamped passes),
+be one plan takes (kebab-case slug, no spec_id set), carry `pursued:` as its last ground no
+run's pick wrote, carry an origin and production_mode from the vocabulary, not be held and
+name no unsettled blocker, and no peer may hold it; a draft short of any is refused naming
+the row, and nothing is written. Those rows check that the record is complete, not who wrote
+it: for a draft an agent wrote end to end, the two reviews are the only gate. The run's one
+lane hands the draft to two fresh ruthless-reviewer agents in turn, one for design and
+feasibility and one for record discipline, always on the host, and the loop records each
+verdict from its return. A review that does not pass, a draft whose bytes changed, or a
+checkout that changed since the start, hands the lane back with the draft unplanned.
+Once both pass, the plan stage checks the substitute again and runs `intent plan` in this
+checkout, as a person's plan does, and the run is complete: the spec's steps, the commit and
+the build of the planned intent are separate acts. The run reserves the draft's two paths and
+releases them when its lane ends. On an intent already planned the flag has nothing to plan
+and the run builds it; on an issue it is refused. `abcd intent plan` stays the human's act.
+
 Exit 2 on a refusal, exit 3 when a peer holds the intent or the run state is locked
 (back off and take other work).
 
 **Flags:**
 
 ```
+      --auto-plan           plan a draft intent with no person present, after two plan reviews, on adr-2610310235000654's substitute for the sign-off
       --fix-rounds string   the fix rounds a lane of this run may take before it is handed back, a whole number from 0 (bundled: 3); wins over every configured layer
       --pace string         this run's working window and pause, <work-minutes>/<pause-minutes> (e.g. 90/240); wins over every configured layer
       --release             push the tombstone over this copy's reservation on the key, changing nothing in the run's state
@@ -1140,11 +1159,12 @@ abcd disembark coverage probe-report.json
 
 Validate host-produced lesson JSON against a packed lifeboat: Writes the lessons that cite their evidence; refuses without --lessons-json.
 
-**Usage:** `abcd disembark graveyard <lifeboat-dir> --lessons-json <file|-> [flags]`
+**Usage:** `abcd disembark graveyard <lifeboat-dir> --lessons-json <file|-> [--dry-run] [flags]`
 
 **Flags:**
 
 ```
+      --dry-run               check the input and report what would be written; write nothing
       --lessons-json string   path to the host-produced lesson JSON (or - for stdin)
       --route stringArray     route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
@@ -1189,11 +1209,12 @@ Show the file set a pack would write: Writes nothing; refuses a repository path 
 
 Compose a lifeboat's press release, or validate the host's: Writes the press-release files in the lifeboat; refuses a host draft citing nothing resolvable.
 
-**Usage:** `abcd disembark press-release <lifeboat-dir> [--press-release-json <file|->] [flags]`
+**Usage:** `abcd disembark press-release <lifeboat-dir> [--press-release-json <file|->] [--dry-run] [flags]`
 
 **Flags:**
 
 ```
+      --dry-run                     check the input and report what would be written; write nothing
       --press-release-json string   path to host-produced press-release JSON (or - for stdin); absent runs deterministic mode
       --route stringArray           route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
@@ -1208,11 +1229,12 @@ abcd disembark press-release ../lifeboat
 
 Distil a lifeboat's principles from its ADRs, or validate the host's: Writes the principles files in the lifeboat; refuses a directory that is not a lifeboat.
 
-**Usage:** `abcd disembark principles <lifeboat-dir> [--principles-json <file|->] [flags]`
+**Usage:** `abcd disembark principles <lifeboat-dir> [--principles-json <file|->] [--dry-run] [flags]`
 
 **Flags:**
 
 ```
+      --dry-run                  check the input and report what would be written; write nothing
       --principles-json string   path to host-produced principle JSON (or - for stdin); absent runs deterministic mode
       --route stringArray        route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
@@ -1239,11 +1261,12 @@ Report which brief sections a lifeboat could ground from a repository: Writes no
 
 Review a packed lifeboat against its source repository, or validate the host's verdict: Writes the review in the lifeboat; refuses an unregistered verdict.
 
-**Usage:** `abcd disembark review <lifeboat-dir> <source-repo> [--review-json <file|->] [flags]`
+**Usage:** `abcd disembark review <lifeboat-dir> <source-repo> [--review-json <file|->] [--dry-run] [flags]`
 
 **Flags:**
 
 ```
+      --dry-run              check the input and report what would be written; write nothing
       --review-json string   path to the host-produced review verdict JSON (or - for stdin); absent runs deterministic mode
       --route stringArray    route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
@@ -1320,11 +1343,12 @@ Judge the brief against every shipped surface and the saved docs review: Writes 
 
 Save a docs review's verdict as the receipt for HEAD: Writes the receipt in the local tier; refuses a verdict naming no judge.
 
-**Usage:** `abcd docs fidelity record --verdict-json <file|-> [flags]`
+**Usage:** `abcd docs fidelity record --verdict-json <file|-> [--dry-run] [flags]`
 
 **Flags:**
 
 ```
+      --dry-run               check the input and report what would be written; write nothing
       --verdict-json string   the reviewer's verdict JSON (a file, or - for stdin)
 ```
 
@@ -2148,6 +2172,66 @@ first, whatever its chip, with one reason that routes it by the act it asks
 about: an act only the person may approve to `abcd mode queue`, every other
 question to `abcd decide`; no mode is set and nothing is marked open.
 
+#### `abcd guard question`
+
+Check a draft question as the hook will judge it: Writes nothing; refuses an unreadable draft, a store it cannot read, and any finding.
+
+**Usage:** `abcd guard question [<file>|-] [flags]`
+
+Checks a draft question as the guard hook will judge it when it is asked,
+and writes nothing: no mode, no open-question marker, no branch record and
+no log. The draft is read from the file named, or from stdin when the
+argument is - or absent, under the hook's own 1 MiB bound. Without --ask it
+is the host question tool's input, {"questions": [...]}, read as the hook
+reads it; with --ask it is abcd's structured question type, decoded
+strictly, its structural findings reported under the rule structure, and
+composed into the host's input (the material first, the Now: and Change
+later: lines next, the question last, the decide-later option last) before
+it is judged. A line the draft does not carry is never invented: the
+check names it.
+
+The verb reads the stores the hook reads (the away record, and the mode
+where the status line's badge shows) and calls the one decision the hook
+calls, so it reports every finding, the rows each tab takes at 80 columns
+(header and frame, question text, options, total), what the hook would do
+with the draft in this checkout now (admit, admit-with-rows-note, refuse,
+refuse-away, admit-unchecked or unchecked), whether that answer depends on
+the mode or the away record, the binary's version, and the input ready to
+ask. The ready input is the draft's own bytes for the host form, every key
+the check does not read kept, and the composed input for --ask; it is left
+out when the hook would refuse. The verdict is evidence about a hook of the
+same version; a mode set, or the person marked away, before the ask can
+change it.
+
+The limits judged at are the ones the hook holds abcd's question to in
+this checkout: abcd's defaults, with the rows, label words and description
+sentences the repository's .abcd/config.json sets under question, each
+tightened where the person's own ~/.abcd.noindex/config.json sets it
+lower. The result reports them (limits) and the file that set each
+(limits_source). A limit the hook refuses (a value outside its bounds, not
+a whole number, another key under question, or a personal value looser
+than the limit in force) is reported as refused, with no ready input, and
+a file that could not be read is named in the partial result, the draft
+checked at abcd's defaults, as the hook checks it.
+
+Exit 0 when the draft has no finding at all and every store was read,
+whatever the hook would do with it: the hook field says whether that is
+an admission, a refusal while the person is away, or a pass unchecked as
+not abcd's. Exit 1 on any finding, a tab over the rows limit alone
+included.
+Exit 2 when the draft is not JSON, is over the bound or has neither shape,
+when a question limit is refused, whatever the draft, and when a store the
+decision needed, the question limits' files included, could not be read:
+the result is then partial, names each store and the rules it could not
+apply or applied at the defaults, and never reads as clean, even with no
+finding.
+
+**Flags:**
+
+```
+      --ask   read the draft as abcd's structured question type and judge it as composed into the host's input
+```
+
 ### `abcd help`
 
 Help about any command
@@ -2315,11 +2399,12 @@ verb requires it, and skipping it is never warned about.
 
 Validate a host-composed gauntlet verdict: Writes the dated record, private unless --public; refuses without an idea slug or --verdict-json.
 
-**Usage:** `abcd ideate record <idea-slug> [--private | --public] --verdict-json <file|-> [flags]`
+**Usage:** `abcd ideate record <idea-slug> [--private | --public] --verdict-json <file|-> [--dry-run] [flags]`
 
 **Flags:**
 
 ```
+      --dry-run               check the input and report what would be written; write nothing
       --private               the idea is private, the default: record the verdict in ~/.abcd.noindex/ideas/<root-sha>/, owner-only, with no decision pointing at it (exclusive with --public)
       --public                the idea is public, on the person's word only: commit the verdict under .abcd/development/research/ideas/<root-sha>/ and record a decision pointing at it (exclusive with --private)
       --verdict-json string   path to the host-composed verdict JSON (or - for stdin)
@@ -3308,6 +3393,43 @@ refusal, exit 3 on a pause or a locked run state.
       --yielded string         with --restart: the line the agent yielded with, NETWORK: <cmd>, when a network failure stopped it rather than it dying
 ```
 
+#### `abcd implement widen`
+
+Widen an issue lane's hold to a path before it is edited: Writes the reservation and a run record line; refuses another copy's live hold, with exit 3.
+
+**Usage:** `abcd implement widen <path>... --lane <lane-id> [--run <run-id>] [flags]`
+
+Widen an issue run's reservation to each path named before the lane's implementer
+edits it: the issue is reserved again on origin with the footprint its reservation holds
+and the paths it does not cover yet, judged for overlap and against the cap like any
+reservation. A path already covered adds nothing, and when every one is, nothing is
+pushed. The run record says what was widened. Only the run's current lane, at its
+implement or validate stage, widens; an intent's run holds its spec's footprint and is
+refused. A run holding no reservation has nothing to widen and says so.
+
+An implementer's receipt is refused while the lane's branch changes a path the
+reservation does not cover, naming this command, so a widening forgotten or an edit made
+through the shell is caught before the lane moves on.
+
+Run it from the checkout the run lives in; the lane's brief names the command in full.
+--run names the run; without it, the one run in progress in this checkout. Exit 2 on a
+refusal; exit 3 when another copy holds a live reservation on one of the paths, with
+nothing pushed (edit none of them, and stop without a receipt: the lane is handed to an
+implementer again on a later step), or on a locked run state.
+
+**Flags:**
+
+```
+      --lane string   the lane whose implementer is about to edit the paths (lane-<n>)
+      --run string    the run the lane belongs to (run-<16 digits>); the one run in progress when omitted
+```
+
+**Example:**
+
+```
+abcd implement widen internal/widget/b.go --lane lane-1 --run run-2609010000000001
+```
+
 ### `abcd inbox`
 
 List the reports managed repositories filed back to abcd, newest first: Writes nothing; refuses any argument.
@@ -3399,11 +3521,12 @@ abcd intent audit itd-2609010000000001
 
 Ingest an intent-audit verdict into the shipped intent: Writes its Audit Notes; refuses without --verdict-json.
 
-**Usage:** `abcd intent audit ingest --verdict-json <path> [flags]`
+**Usage:** `abcd intent audit ingest --verdict-json <path> [--dry-run] [flags]`
 
 **Flags:**
 
 ```
+      --dry-run               check the input and report what would be written; write nothing
       --route stringArray     route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
       --verdict-json string   path to the intent-audit verdict JSON, in the shape the Verdict shape section of its review request states
 ```
@@ -3452,11 +3575,12 @@ Emit the consistency request over the brief and every intent, or one intent agai
 
 Ingest consistency findings as a dated review and a capture per finding: Writes the report and the ledger records; refuses without --findings-json.
 
-**Usage:** `abcd intent consistency ingest --findings-json <path> [--findings-json <path>...] [flags]`
+**Usage:** `abcd intent consistency ingest --findings-json <path> [--findings-json <path>...] [--dry-run] [flags]`
 
 **Flags:**
 
 ```
+      --dry-run                     check the input and report what would be written; write nothing
       --findings-json stringArray   path to the consistency findings JSON the intent-auditor returned; give it once per chunk of an overflowing corpus
       --route stringArray           route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
@@ -3569,11 +3693,12 @@ abcd intent plan itd-2609010000000001
 
 Print a draft's pre-pass input, or write its planning brief from the host's findings: Writes only the brief; refuses a record not on drafts/.
 
-**Usage:** `abcd intent prepass <itd-N> [--findings-json <path>] [flags]`
+**Usage:** `abcd intent prepass <itd-N> [--findings-json <path> [--dry-run]] [flags]`
 
 **Flags:**
 
 ```
+      --dry-run                check the input and report what would be written; write nothing
       --findings-json string   path to the host's findings over the input; validates them and writes the planning brief
 ```
 
@@ -4068,7 +4193,7 @@ Scaffold the release gate for the declared artefact kind: Writes its workflows a
 
 Cut a release, deriving its version and records from what shipped: Writes the CHANGELOG heading, RELEASE.md, and the archive pin; refuses a cut its gates stop.
 
-**Usage:** `abcd launch ship [--changelog-json <file|->] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] [flags]`
+**Usage:** `abcd launch ship [--changelog-json <file|->] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] [--dry-run] [flags]`
 
 Cut a release from HEAD, deriving its version and changelog from the records that shipped
 since the last tag. A fresh cut runs the pre-flight gates before it writes anything.
@@ -4085,11 +4210,19 @@ None of these comparisons looks inside a checked-out submodule, so uncommitted c
 inside one does not make the tree dirty and no program the submodule's own
 configuration names runs; a submodule moved to a different commit still does.
 
+With --changelog-json, --dry-run is a practice run: the composed changelog is judged against
+the cut exactly as the real ingest judges it, the pre-flight gates run when the ship renders a
+payload, and the report names every file the cut would write and the tag, push and release
+the release workflow makes after it. Nothing is written: no pre-flight report, no release
+record, no archive pin and no staged payload. It reads the parity baseline already in the
+checkout, so --fetch-baseline is refused beside it.
+
 **Flags:**
 
 ```
       --allow-dirty             cut from a working tree with uncommitted changes; the pre-flight report records the override and every path it carried (waives the dirty-tree gate only — never lockstep, the archive pin's clean-payload refusal, the cut's uncommitted-records refusal, or the findings gate's refusal of an uncommitted open/ issue record)
       --changelog-json string   path to the host-composed changelog JSON (or - for stdin); absent runs the deterministic emit step
+      --dry-run                 check the input and report what would be written; write nothing
       --fetch-baseline          read the parity baseline from the anchor tag's published plugin archive, verified against the release's checksums.txt (a network fetch; default: a fresh render at the tag)
       --payload-dir string      stage the versioned release payload in this directory (must be empty and outside the repository)
       --route stringArray       route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
@@ -4173,11 +4306,12 @@ history.
 
 Query memory and synthesise a cited answer: Writes a memory page only with --file-back; refuses outside a git checkout.
 
-**Usage:** `abcd library ask <question> [flags]`
+**Usage:** `abcd library ask <question> [--dry-run] [flags]`
 
 **Flags:**
 
 ```
+      --dry-run            with --file-back: check the input and report what would be written; write nothing
       --file-back          file the synthesised answer back as a new memory page
       --page-json string   the answer page dict as JSON (file path, or - for stdin)
       --top-n int          retrieval depth (0 uses the pinned default)
@@ -4235,11 +4369,12 @@ abcd library declassify example-paper-2026
 
 Distil a local file or an https source into cited memory pages: Writes the pages; refuses a URL that is not https.
 
-**Usage:** `abcd library ingest <path-or-https-url> [flags]`
+**Usage:** `abcd library ingest <path-or-https-url> [--dry-run] [flags]`
 
 **Flags:**
 
 ```
+      --dry-run             check the input and report what would be written; write nothing
       --keep-original       store the original at .abcd/memory/sources/<sha256>.<ext>
       --pages-json string   DistilledPage JSON array (file path, or - for stdin)
 ```
@@ -4247,7 +4382,7 @@ Distil a local file or an https source into cited memory pages: Writes the pages
 **Example:**
 
 ```
-abcd library ingest https://example.com/paper.pdf
+abcd library ingest https://example.com/article.html
 ```
 
 #### `abcd library init`
@@ -4734,7 +4869,7 @@ abcd reading assemble --position widening --target HEAD
 
 Validate the JSON one cold reading returned: Writes its reading records; refuses output the position's licence does not allow.
 
-**Usage:** `abcd reading ingest --reading-json <path> [flags]`
+**Usage:** `abcd reading ingest --reading-json <path> [--dry-run] [flags]`
 
 Validate the JSON a cold reading returned and write its reading records.
 
@@ -4767,10 +4902,15 @@ compared with the open and resolved issues, the intents and every earlier readin
 with another item of the same run, and a likely repeat is written onto the reading record as a
 duplicates: or refines: link and shown, printed and as matches in --json.
 
+With --dry-run the output is judged exactly as above and nothing is written: no reading
+record, no refusal record, no stage, no sweep and no run metadata. The report names each
+file the ingest would write; a refusal the ingest would record says where instead.
+
 **Flags:**
 
 ```
       --dispatch string       send the parked run <rdg-N> to the provider its position is pointed at (oracle.roles.cold-reading-<position>) and ingest the answer
+      --dry-run               check the input and report what would be written; write nothing
       --reading-json string   path to the JSON the cold reading returned
       --route stringArray     route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
@@ -5195,7 +5335,7 @@ abcd scribe assemble --run rdg-2609010000000001 --dispositions dispositions.md
 
 Validate a scribe's output against the supplied dispositions: Writes what it transcribed through the capture verbs; refuses anything the scribe authored.
 
-**Usage:** `abcd scribe ingest --scribe-json <path> --dispositions <path> [flags]`
+**Usage:** `abcd scribe ingest --scribe-json <path> --dispositions <path> [--dry-run] [flags]`
 
 Validate the JSON a scribe session returned and write its records through the capture verbs.
 
@@ -5216,12 +5356,17 @@ the ingest and names what landed before it. Fidelity flags and refusals are repo
 written. Once every write has landed, and when at least one record did, the manifest is promoted
 beside the run, write-once; an ingest that lands no record leaves the run open.
 
+With --dry-run every check above is made and nothing is written: the report names each
+record the capture verbs would write, its id shown as <id>, and the manifest it would promote.
+The capture verbs' own redaction and refusals are made only when they write.
+
 **Flags:**
 
 ```
       --context string        the context the session was handed, when assemble wrote it under --out
                               (default: the local-tier scribe run directory of the output's run)
       --dispositions string   the researcher's dispositions text, the file assemble was handed
+      --dry-run               check the input and report what would be written; write nothing
       --scribe-json string    path to the JSON the scribe session returned
 ```
 
@@ -5632,8 +5777,15 @@ user's own line is untouched everywhere abcd does not manage. With none
 recorded it prints nothing and exits 0.
 
 The checkout is resolved from the payload's `cwd` (falling back to the
-working directory). Empty stdin is an empty payload. It writes nothing, and
-nothing here prompts, reads a terminal, or touches the network.
+working directory). Empty stdin is an empty payload. It writes one file
+only: when it renders abcd's own row for a payload carrying the session id
+and the context percentage, it records that percentage and the time in the
+session's fill file, `~/.abcd.noindex/fill/<sha256 of the session id>.json`,
+where abcd's prompt hook reads how full the session is. It writes there only
+when that folder already exists (abcd's session-start hook makes it), creates
+no folder, and writes nothing else, nor anything at all when it runs the
+recorded command. Nothing here prompts, reads a terminal, or touches the
+network.
 
 It is time-bounded, because the harness waits on it at every refresh: abcd's
 own work stops at 500ms and the recorded status command at 5s.

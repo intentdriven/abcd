@@ -20,6 +20,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/shellquote"
 )
 
 // issueBriefSources is what an issue brief is rendered from.
@@ -106,9 +107,10 @@ func readIssueBriefSources(repoRoot string, st State, lane *Lane) (issueBriefSou
 	return src, nil
 }
 
-// renderIssueBrief writes an issue lane's brief. laneDir is the lane's
-// directory as the implementer, working in another checkout, must address it.
-func renderIssueBrief(st State, lane Lane, laneDir string, src issueBriefSources) []byte {
+// renderIssueBrief writes an issue lane's brief. repoRoot is the checkout the
+// run lives in and laneDir the lane's directory, each as the implementer,
+// working in another checkout, must address it.
+func renderIssueBrief(st State, lane Lane, repoRoot, laneDir string, src issueBriefSources) []byte {
 	var b bytes.Buffer
 	p := func(format string, a ...any) { fmt.Fprintf(&b, format, a...) }
 	at := func(name string) string { return filepath.Join(laneDir, name) }
@@ -129,6 +131,20 @@ func renderIssueBrief(st State, lane Lane, laneDir string, src issueBriefSources
 	p("- Commit on its branch, `%s`, cut from the default branch at `%s`. Never push, never switch\n", lane.Branch, lane.BaseSHA)
 	p("  branch, and never commit anywhere else.\n")
 	p("- Do not resolve %s yourself: the landing runs `capture resolve` with the commit your receipt names.\n\n", id)
+
+	p("## Files beyond the issue's place\n\n")
+	p("The run reserves %s on the shared remote with the path its found_at names, so no other copy\n", id)
+	p("edits it while you work. Before your first edit of any other file, widen the hold to it, from the\n")
+	p("checkout the run lives in:\n\n")
+	p("```sh\n(cd %s && %s)\n```\n\n", shellquote.Single(repoRoot), widenCommand(st.RunID, lane.ID, "<path>..."))
+	p("- Exit 0: the paths are held; edit them.\n")
+	p("- Exit 3 naming a reservation: another copy holds one of them. Edit none of them. If the fix cannot\n")
+	p("  be made without it, stop: write no receipt, and end by naming the path and the hold. The lane is\n")
+	p("  handed to an implementer again on a later step. Exit 3 naming a locked run state: run it again.\n")
+	p("- Exit 2: settle what it names.\n")
+	p("- The command not found, or an abcd with no `widen` sub-verb: edit nothing beyond the hold; stop without\n")
+	p("  a receipt and say so in your reply.\n\n")
+	p("Your receipt is refused while your branch changes a path the hold does not cover.\n\n")
 
 	p("## The work: %s's remedy\n\n", id)
 	p("%s", fenceQuoteNote)

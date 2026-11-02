@@ -1,10 +1,15 @@
 package capture
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/dryrun"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/record/match"
@@ -39,6 +44,32 @@ func IngestConsistency(repoRoot string, payload []byte, date string, mc *match.C
 // one valid payload for every chunk of one emit, and findings that share a key
 // across chunks are filed once.
 func IngestConsistencyChunks(repoRoot string, payloads [][]byte, date string, mc *match.Config) (intent.ConsistencyIngestResult, error) {
+	return intent.IngestConsistency(consistencyRequest(repoRoot, payloads, date, mc))
+}
+
+// PlanConsistencyChunks is IngestConsistencyChunks as a practice run
+// (spc-2610301431131636): the same request, with the ledger as its filer,
+// planned through intent.PlanConsistencyIngest, which runs every check the
+// ingest runs and writes nothing. The ledger is read to say which findings a
+// record already holds; none is filed.
+func PlanConsistencyChunks(repoRoot string, payloads [][]byte, date string) (intent.ConsistencyIngestPlan, error) {
+	p, err := intent.PlanConsistencyIngest(consistencyRequest(repoRoot, payloads, date, nil))
+	if err != nil || len(p.Result.Filed) == 0 {
+		return p, err
+	}
+	// The first filing in a ledger lays its allocation lock, which stays: a
+	// plan that files names it while it is absent.
+	lock := LedgerRelPath + "/" + lockFilename
+	if _, err := os.Lstat(filepath.Join(repoRoot, filepath.FromSlash(lock))); errors.Is(err, fs.ErrNotExist) {
+		p.Plan.Writes = append(p.Plan.Writes, dryrun.Write{Path: lock, Action: dryrun.Create,
+			Pending: "the ledger's allocation lock, laid by its first filing"})
+	}
+	return p, nil
+}
+
+// consistencyRequest is the ingest's request with the ledger as its filer,
+// its record gate and its read-only hold, for the ingest and its plan alike.
+func consistencyRequest(repoRoot string, payloads [][]byte, date string, mc *match.Config) intent.ConsistencyIngestRequest {
 	var ledger, open []Issue
 	var filedHere []string
 	loaded := false
@@ -115,20 +146,42 @@ func IngestConsistencyChunks(repoRoot string, payloads [][]byte, date string, mc
 		return refuseUnresolvedCitations(repoRoot, LedgerRelPath+"/"+statusDirName[StateOpen],
 			[]citedPart{{what: fmt.Sprintf("consistency finding %d", f.Number), text: text}})
 	}
-	filer := func(f intent.ConsistencyFinding, reportRel string) (intent.ConsistencyFiling, error) {
+	// hold is the filer's read-only half: the record that already holds the
+	// finding, which is linked or addressed and written to not at all.
+	hold := func(f intent.ConsistencyFinding) (intent.ConsistencyFiling, bool, error) {
 		if err := loadLedger(); err != nil {
-			return intent.ConsistencyFiling{}, err
+			return intent.ConsistencyFiling{}, false, err
 		}
 		if iss, held := recordKeyed(ledger, f.Key); held {
 			if iss.Status == StateOpen {
-				return intent.ConsistencyFiling{IssueID: iss.ID, Linked: true}, nil
+				return intent.ConsistencyFiling{IssueID: iss.ID, Linked: true}, true, nil
 			}
-			return intent.ConsistencyFiling{IssueID: iss.ID, Addressed: true, Folder: statusDirName[iss.Status]}, nil
+			return intent.ConsistencyFiling{IssueID: iss.ID, Addressed: true, Folder: statusDirName[iss.Status]}, true, nil
 		}
 		// A record filed before keys existed carries none; the prose match
 		// still links it, and writes nothing, so no key is back-filled.
 		if id := openRecordHolding(open, f); id != "" {
-			return intent.ConsistencyFiling{IssueID: id, Linked: true}, nil
+			return intent.ConsistencyFiling{IssueID: id, Linked: true}, true, nil
+		}
+		return intent.ConsistencyFiling{}, false, nil
+	}
+	// planned names the record a finding would be filed as: its folder and
+	// its slug, derived from the record's text as the capture derives it.
+	// The id is minted, and the record's size set, by the capture itself.
+	planned := func(f intent.ConsistencyFinding, reportRel string) dryrun.Write {
+		slug := deriveSlug(consistencyIssueText(f, reportRel))
+		if norm, err := normaliseSlug(slug); err == nil {
+			slug = norm
+		}
+		return dryrun.Write{
+			Path:    LedgerRelPath + "/" + statusDirName[StateOpen] + "/iss-" + dryrun.MintedID + "-" + slug + ".md",
+			Action:  dryrun.Create,
+			Pending: "the issue's id is minted, and its size set, when the ledger files it",
+		}
+	}
+	filer := func(f intent.ConsistencyFinding, reportRel string) (intent.ConsistencyFiling, error) {
+		if filing, held, err := hold(f); err != nil || held {
+			return filing, err
 		}
 		res, err := Capture(filed(f, reportRel))
 		if err != nil {
@@ -137,9 +190,9 @@ func IngestConsistencyChunks(repoRoot string, payloads [][]byte, date string, mc
 		filedHere = append(filedHere, res.ID)
 		return intent.ConsistencyFiling{IssueID: res.ID, Match: res.Match}, nil
 	}
-	return intent.IngestConsistency(intent.ConsistencyIngestRequest{
-		RepoRoot: repoRoot, Payloads: payloads, Date: date, File: filer, Check: check,
-	})
+	return intent.ConsistencyIngestRequest{
+		RepoRoot: repoRoot, Payloads: payloads, Date: date, File: filer, Check: check, Hold: hold, Planned: planned,
+	}
 }
 
 // What the pass writes on every record it files, spelt once so the filer and

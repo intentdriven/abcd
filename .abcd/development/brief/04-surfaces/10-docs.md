@@ -288,6 +288,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--dry-run` | bool |
 | `--verdict-json` | string |
 
 <!-- surface-appendix:end -->

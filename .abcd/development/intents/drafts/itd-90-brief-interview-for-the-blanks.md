@@ -52,9 +52,48 @@ This intent closes that gap by making the answering step **its own thing**: asyn
 - **Given** a blank the product thinker cannot answer now, **when** they defer it, **then** it is marked deferred and re-surfaces at embark, rather than being dropped or recorded as answered.
 - **Given** a `human-owned` blank left unanswered, **when** the interview completes, **then** abcd has not fabricated an answer for it — the section remains an open, honestly-empty prompt, not a model's guess presented as the human's.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [elicitation interviews SOTA note](../../research/notes/2026-10-23-elicitation-interviews-sota.md).
+
+- Asynchronous email interviews "garnered rich, insightful data that augmented
+  the phone interviews", with email participants cited in proportion to their
+  share of the sample (one sensitive-topic health study; 31 per cent chose
+  email themselves), and ran 4 to 5 exchange cycles over 27 to 28 days on
+  average (Hershberger and Kavanaugh, 2017); the export-answer-import loop is
+  viable and must be budgeted as several rounds, not one pass.
+- A static form is not the async interview: per-person yield from a survey was a
+  sixth to an eighth of an interview's (Obaidi et al., 2025), and self-administered
+  model interviews were acceptable but faulted for "insufficient depth" with no
+  equivalence shown (Gheyi et al., 2026). The re-import runs the adaptive
+  follow-up a form lacks.
+- "Defer" is a distinct recorded state: a don't-know option changes what the
+  other answers capture and its choosers are not neutral (Wetzelhütter, 2020).
+- The stop record the autonomous-loops pass recommends (an MCP-elicitation
+  envelope with addressee role, judgement-or-fact kind, a non-recommendation
+  flag, accept / decline / cancel, and a version) is the shape of a blank: one
+  record, answered live through the host's question tool or later from a file,
+  with the waiting state durable data that resumes on the same id.
+- PROV's `actedOnBehalfOf` names a facilitator relaying a product thinker's
+  answer; the `agent-assisted` flag the intent specifies is justified by the
+  co-creation evidence under itd-142.
+- Partials are confirmable, by analogy with Obaidi et al.'s delayed-taxonomy
+  condition (a classification taxonomy introduced after free elicitation
+  yielded the most needs), which is not a direct test of showing what was
+  found and asking for the top-up.
+
+**Path 2**: one record with two renderings, synchronous and asynchronous, the
+record canonical and the session incidental; in-progress answers keyed on the
+source (the voyage log) and shared with itd-142's hold register rather than a
+second store. No Go dependency.
+
+The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - **How synchronous must the loop be?** The strongest form is fully asynchronous — export the interview, answer it whenever, re-import — but a live assisted session may produce better answers. Whether both are supported, or one is canonical, is a design call.
 - **Where does a deferred or partial answer live between disembark and embark?** The coverage report travels with the lifeboat, but a lifeboat is regenerable output (adr-35); a durable home for in-progress answers keyed on the source (the voyage log?) may be needed so an interview taken between the two operations is not lost on a re-pack.
 - **Should partials be confirmable, or only blanks answerable?** A `partial` section is grounded-but-incomplete; whether the interview lets the product thinker top it up, or only touches true blanks, affects how much of the brief the human is asked to hold.
 - **What is the minimum viable assistant?** The `agent-assisted` provenance flag implies a helper exists, but the deterministic (no-assistant) interview must stand on its own first — the assistant is an enhancement, not a dependency.
+- (SOTA 2026-10-23) Whether the deferred-answer store and itd-142's hold register
+  are one store with two entry points; the research supplies no reason for two.

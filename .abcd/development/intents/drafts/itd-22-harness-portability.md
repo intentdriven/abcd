@@ -45,11 +45,27 @@ adr-23's portability promise — front doors over an unchanged core — needs sh
 - **Given** the parity suite passes on the reference host, **when** the same suite runs against any declared profile, **then** it emits a comparable per-check report suitable as adr-39 default-flip evidence.
 - **Given** the host-neutral docs skeleton, **when** a host's page is added at its adoption, **then** no existing page changes AND no committed page names a harness whose adoption is undecided.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [harness, interop and lifeboats SOTA note](../../research/notes/2026-10-23-harness-interop-lifeboats-sota.md).
+
+- The three harnesses abcd sits beside share one hook idiom: a JSON object on stdin with `session_id`, `transcript_path`, `cwd` and `hook_event_name`; exit 0 with JSON on stdout, exit 2 blocks with stderr as the reason; Claude Code and Gemini CLI treat any other code as a non-blocking warning, while Codex's page leaves other codes undefined (to be tested in the parity suite); `hookSpecificOutput.additionalContext` and `decision`/`reason` (Claude Code, Codex and Gemini CLI hook references). Event names differ (`PreToolUse` against `BeforeTool`), and which events honour exit 2 differs, so a profile is logic, not data.
+- Plugin formats have converged on one shape under different manifest names: `.claude-plugin/plugin.json`, a root `plugin.json` with `extensions.com.openai` (Codex), `gemini-extension.json`; each with `skills/`, `hooks/hooks.json` and an MCP server file; Codex plugin hooks bar a plugin from its public directory (vendor plugin references).
+- Codex's root `plugin.json` declares the open Agent Plugins 1.0.0 schema (`agent-plugins.org`), a vendor-neutral "interoperability floor": a portable core of `plugin.json`, `skills/` (Agent Skills) and `mcp.json`, with client behaviour, hooks among it, under reverse-domain extension keys; its steering committee draws from Amazon, Cursor, Microsoft, OpenAI and Vercel. It is the obvious seam for the "host's own plugin format first" rung, and whether the adaptor's manifest emitter targets it is for the plan; hook profiles stay logic in code either way.
+- The Agent Skills `SKILL.md` format is the one unit all three load unchanged (agentskills.io specification); its own client showcase page rendered empty, so adoption is read from the vendors' pages.
+- Hosts now import each other's configuration (`claude import codex --dry-run`), which is the direction the AGENTS.md-only amendment already takes.
+- The parity suite has a working model in the MCP conformance framework: requirements per revision, a YAML baseline of accepted gaps scoped to individual checks, `checks.json` and a `tier-check` summary that separates required from informative scenarios.
+- LSP's capabilities ("not every language server can support all features") are the precedent for a rung that declares what it cannot do; the Agent Client Protocol is a second stdio floor for abcd *as* an agent, recorded and not recommended.
+- The AGENTS.md re-check's cited study (about 20% more cost, no gain in success from always-loaded context files) argues against any per-host prose layer in the docs skeleton.
+
+**Path 2 — native host profiles in code, shaped to the three documented hook contracts, with the MCP conformance framework as the model for the parity report, written as a dated lab artefact.** No new dependency. The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - Does a host profile live in code (a Go type per host) or in committed configuration the adaptor reads?
 - Testing strategy for parity: run the entire acceptance matrix on every adopted host, or a pinned sample per release?
 - Where does the parity report live — a dated research note per run, or a receipt-shaped artefact beside the release gates?
+- (SOTA 2026-10-23) Each baseline entry in the parity report that accepts a host gap: does it need an issue id, so loud staging survives the baseline mechanism?
 
 ### Evidence (2026-08-26, second-harness adaptor lab, local tier)
 

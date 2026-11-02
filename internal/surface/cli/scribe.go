@@ -110,8 +110,9 @@ func newScribeCommand(asJSON *bool) *cobra.Command {
 		"write nothing; with --out the two artefacts still land in that directory")
 
 	var scribeJSON, contextPath, ingestDispositions string
+	var ingestDryRun bool
 	ingestCmd := &cobra.Command{
-		Use:   "ingest --scribe-json <path> --dispositions <path>",
+		Use:   "ingest --scribe-json <path> --dispositions <path> [--dry-run]",
 		Short: "Validate a scribe session's output and write what it transcribed",
 		Long: "Validate the JSON a scribe session returned and write its records through the capture verbs.\n\n" +
 			"The context the session was handed is proven first: it must hash to its parked manifest, and\n" +
@@ -128,7 +129,10 @@ func newScribeCommand(asJSON *bool) *cobra.Command {
 			"which apply their own redaction and refusals, the ordering gate included; the first refusal stops\n" +
 			"the ingest and names what landed before it. Fidelity flags and refusals are reported and never\n" +
 			"written. Once every write has landed, and when at least one record did, the manifest is promoted\n" +
-			"beside the run, write-once; an ingest that lands no record leaves the run open.",
+			"beside the run, write-once; an ingest that lands no record leaves the run open.\n\n" +
+			"With --dry-run every check above is made and nothing is written: the report names each\n" +
+			"record the capture verbs would write, its id shown as <id>, and the manifest it would promote.\n" +
+			"The capture verbs' own redaction and refusals are made only when they write.",
 		Example: "  abcd scribe ingest --scribe-json ./scribe-output.json --dispositions ./dispositions.md --json",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 0 {
@@ -148,12 +152,24 @@ func newScribeCommand(asJSON *bool) *cobra.Command {
 					"held to"}
 			}
 			cwd := mustCwd()
-			res, err := scribe.Ingest(scribe.IngestRequest{
+			req := scribe.IngestRequest{
 				RepoRoot:         captureRoot(cwd),
 				ScribeJSONPath:   resolveAgainst(cwd, scribeJSON),
 				ContextPath:      resolveAgainst(cwd, contextPath),
 				DispositionsPath: resolveAgainst(cwd, ingestDispositions),
-			})
+			}
+			if ingestDryRun {
+				plan, err := scribe.PlanIngest(req)
+				if err != nil {
+					return scribeRefusal("scribe ingest", err)
+				}
+				res := plan.Result
+				return renderDryRun(cmd.OutOrStdout(), *asJSON, "abcd scribe ingest", jsonSafeIngest(res), plan.Plan, func(w io.Writer) {
+					fmt.Fprintf(w, "  run %s: %d disposition(s), %d admission(s), %d surprise(s) would be written\n",
+						res.Run, len(res.Dispositions), len(res.Admissions), len(res.Surprises))
+				})
+			}
+			res, err := scribe.Ingest(req)
 			if err != nil {
 				// A refusal after something landed discloses what landed, before it
 				// exits: the operator's handle on the partial state is the render.
@@ -170,6 +186,7 @@ func newScribeCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	ingestCmd.Flags().StringVar(&scribeJSON, "scribe-json", "", "path to the JSON the scribe session returned")
+	ingestCmd.Flags().BoolVar(&ingestDryRun, "dry-run", false, dryRunFlagUsage)
 	ingestCmd.Flags().StringVar(&ingestDispositions, "dispositions", "",
 		"the researcher's dispositions text, the file assemble was handed")
 	ingestCmd.Flags().StringVar(&contextPath, "context", "",

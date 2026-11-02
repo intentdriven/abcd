@@ -82,7 +82,7 @@ func newLabMatrixCommand(asJSON *bool) *cobra.Command {
 			if approve == "" {
 				plan, notes, err := matrix.PlanForLab(root, args[0], decl, cores)
 				for _, n := range notes {
-					fmt.Fprintf(cmd.ErrOrStderr(), "abcd lab matrix: %s\n", termsafe.Sanitize(fsutil.RedactHome(n)))
+					fmt.Fprintln(cmd.ErrOrStderr(), noteLine(n))
 				}
 				if err != nil {
 					return matrixFailure(err)

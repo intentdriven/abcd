@@ -120,6 +120,61 @@ Ruled at this draft's planning interview, 2026-09-30 (the product thinker and te
 9. **A short-key directory's row names the full-key lane.**
 10. **The store's root is spelled under the renamed home** (2026-10-04, recorded with spc-2610031309233367's step 4, no interview): `~/.abcd.noindex/worktrees/<root-sha>/<name>/` and `~/.abcd.noindex/notes/<root-sha>/`, the location [adr-2610031751065746](../../decisions/adrs/2610031751065746-the-worktree-store-lives-under-the.md) sets when it supersedes adr-2609091248200336's `~/.abcd/` spelling. The trust rule and everything else in this record are unchanged.
 
+## SOTA
+
+Surveyed on 2026-10-23. The host-side findings are shared with the
+[security and isolation SOTA note](../../research/notes/2026-10-23-security-isolation-sota.md)
+(its itd-148 section) and the [autonomous loops SOTA note](../../research/notes/2026-10-23-autonomous-loops-sota.md).
+The store-manager comparison is new here. The internal lineage stays under
+`## Prior Art`.
+
+- **The first host now makes worktrees itself, inside the checkout.** A
+  sub-agent's `isolation: worktree` gives it a temporary worktree, held under
+  `git worktree lock` while it runs, at `.claude/worktrees/` under the
+  repository by default. Headless runs leave their worktrees and locks behind
+  for a later sweep. The host refuses a worktree whose git identity resolves
+  into the main checkout (Claude Code worktrees documentation, cited in both
+  notes). The host's default lands exactly where
+  adr-2609091248200336 forbids, which makes "never a host's default worktree
+  location" a live rule rather than a hypothetical.
+- **The host offers the seam to relocate.** A `WorktreeCreate` hook "replaces
+  the default git behavior", so a hook calling `abcd ahoy worktree add` can put
+  the host's own isolation worktrees in the store (Claude Code hooks
+  documentation, cited in the autonomous loops note). That turns the AGENTS.md
+  convention into a mechanism on that host. The seam is a pair of hooks, not
+  one: the host's periodic sweep keeps every worktree without its own marker,
+  a hook-made one included, and removes a hook-made worktree only through a
+  paired `WorktreeRemove` hook (Claude Code worktrees documentation).
+- **Third-party managers split on where worktrees live.** gwq keeps a central
+  base directory, `~/worktrees` by default, laid out by remote URL
+  (`{{.Host}}/{{.Owner}}/{{.Repository}}/{{.Branch}}`). It lists every
+  repository's worktrees with `-g` and deletes an unmerged branch only with
+  `--force-delete-branch` ([gwq](https://github.com/d-kuro/gwq)). Worktrunk
+  computes paths from a template, and its quick start shows the sibling layout
+  `~/repo.feature-auth`, the beside-the-project placement the ADR rules out
+  ([Worktrunk README](https://cdn.jsdelivr.net/gh/max-sixty/worktrunk@main/README.md)).
+  Worktrunk's `wt merge` removes worktree and branch together after a local
+  merge. The record keeps branch deletion out of scope (itd-118).
+- **A URL key and a root-commit key fail differently.** A URL key (gwq)
+  breaks on a rename, a fork and a repository with no remote. The root-commit
+  key survives all three, at the cost of putting every clone of one project on
+  the machine in one lane. The prune proof already ties a worktree to its
+  checkout. A name collision between two clones' `add` is the remaining case.
+- **Merged-and-clean is the field's prune rule too.** gwq's force flag for
+  unmerged branches and the host's lock-while-running match the record's
+  refusals: dirty, unmerged, locked, outside the store.
+
+**Path 2**: native, with git's own worktree and prune as the primitives and
+the root-commit key the sibling stores use. The host's `WorktreeCreate` hook
+is named as the seam that routes a host-made worktree into the store. No
+dependency. The record was ruled at its 2026-09-30 planning interview; this pass raises
+two questions below.
+
+Questions this pass raised for the fit-challenge before the build. They are kept here, not under Open Questions, so they do not hold a build the record already rules ready:
+
+- Two clones of one project on one machine share a lane, because they share a root commit. What does `add` do when the other clone already holds a worktree of that name: refuse naming the other checkout, or qualify the name?
+- Should abcd ship the host's `WorktreeCreate` hook, so a host-made isolation worktree lands in the store, or leave the AGENTS.md convention as the only route on that host? If it ships it, does it ship the paired `WorktreeRemove` hook too, since the host's sweep never removes a hook-made worktree and a sub-agent's throwaway lane would otherwise sit in the store until prune names it?
+
 ## Open Questions
 
 _None open._

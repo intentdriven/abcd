@@ -45,10 +45,22 @@ Typed links: builds on itd-2610032150577708.
 
 > _Required (the itd-1 discipline): add at least one Given-When-Then bullet describing the verifiable bar for "shipped" before this draft can be planned._
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [dashboard-sites SOTA note](../../research/notes/2026-10-23-dashboard-sites-sota.md).
+
+- **The forge's suggested changes are the closest pattern:** anyone may suggest, someone with write access applies, one or a batch becomes "a single commit", on which each suggester "will be a co-author" and the applier is "a co-author and the committer" (GitHub docs). Authority with the applier, credit to the proposer.
+- **Documents do the same:** in suggesting mode "you can suggest changes to a document without changing the original text" and the owner "can decide whether to keep them" (Google Docs help).
+- **The kernel's tags separate proposed, agreed and checked:** `Suggested-by:` names the idea's source, `Acked-by:` comes from "those responsible for or involved with the affected code" and "does not necessarily indicate acknowledgement of the entire patch", `Reviewed-by:` means reviewed and found acceptable (kernel submitting-patches); Git treats any `Key: value` block at the end of a message as trailers (git-interpret-trailers). A rewrite is a suggestion; an approval is an acknowledgement, not a review.
+- **Writes stay on the encrypted way in:** Go's cross-origin layer admits header-less clients on any network (net/http), so the gate and the session do the work everywhere, and only the tailnet adds an encrypted transport and a peer the daemon names; acting is tailnet-only, as this draft says, for that reason and not for the cross-origin layer's.
+
+**Path 2 — native, shaped to the forge's suggested-changes flow: a rewrite travels as a suggestion the facilitator applies, with the product thinker credited on the resulting change; an approval is a recorded acknowledgement the facilitator completes, never the planning sign-off itself.** This answers both open questions in the direction decision 2 points. The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - What approving an intent from the dashboard does: the planning sign-off itself, or a request the facilitator completes.
 - Whether a rewrite is proposed as text the facilitator merges, or written directly and reviewed after.
+- (SOTA 2026-10-23) How the product thinker is credited on a change made from their suggestion (a trailer on a commit a human authors), within the attribution gate's rules on who may be named.
 
 ## Audit Notes
 

@@ -81,7 +81,7 @@ func newAhoyCredentialCommand(asJSON *bool) *cobra.Command {
 			}
 			roots, notes := layered.RootsFor(cwd)
 			for _, n := range notes {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s\n", termsafe.Sanitize(fsutil.RedactHome(n)))
+				fmt.Fprintln(cmd.ErrOrStderr(), noteLine(n))
 			}
 			fail := func(err error, secret string) error {
 				msg := err.Error()

@@ -342,23 +342,76 @@ func Ingest(root string, current surface.Snapshot, raw []byte, at time.Time) (In
 }
 
 // ingest is Ingest with the writer seam exposed, so a test can observe the
-// order of the writes and fail any one of them.
+// order of the writes and fail any one of them. It is planIngest followed by
+// the plan's writes, so a practice run (PlanIngest) shares every check.
 func ingest(root string, current surface.Snapshot, raw []byte, at time.Time, ops fileOps) (IngestResult, error) {
+	res, p, err := planIngest(root, current, raw, at)
+	if err != nil || p == nil {
+		return res, err
+	}
+	// A failed write reports the cut alone, as a refused one does: nothing of
+	// the release landed.
+	failed := IngestResult{Cut: res.Cut}
+	var undo UndoPlan
+	if len(p.moves) == 0 {
+		undo, err = execute(ops, root, p.cut)
+	} else {
+		// The records are read and rewritten under the intent store's lock, as
+		// every intent write is, so a target edited since the cut read it is
+		// refused rather than overwritten.
+		err = intent.WithMintLock(root, func() error {
+			rewrites, err := intent.PlanTargetMoves(root, p.moves)
+			if err != nil {
+				return err
+			}
+			p.cut.records = rewrites
+			undo, err = execute(ops, root, p.cut)
+			return err
+		})
+	}
+	if err != nil {
+		return failed, err
+	}
+	res.Undo = undo
+	if res.Page.Written {
+		res.Page.Archived = undo.archived
+	}
+	return res, nil
+}
+
+// ingestPlan is a validated cut's writes, before any of them runs: the plan
+// execute lays, and the targets whose records it rewrites first.
+type ingestPlan struct {
+	cut   cutPlan
+	moves []launch.TargetMove
+}
+
+// planIngest does everything ingest does before its first write: the cut is
+// derived, the payload decoded and judged against it (the bijection, the
+// outbound and privacy policies, the persona registry), and every write
+// composed. It returns the result the real run would report and the plan,
+// or, for a refused cut, the result alone and a nil plan; a refused payload
+// or a repository that cannot take the cut is its error. It writes nothing.
+//
+// The target rewrites are not read here: the real run reads them under the
+// intent store's lock, just before it writes, and a practice run reads them
+// itself (PlanIngest).
+func planIngest(root string, current surface.Snapshot, raw []byte, at time.Time) (IngestResult, *ingestPlan, error) {
 	cut, err := Emit(root, current)
 	if err != nil {
-		return IngestResult{}, err
+		return IngestResult{}, nil, err
 	}
 	res := IngestResult{Cut: cut}
 	if !cut.Ready {
-		return res, nil
+		return res, nil, nil
 	}
 
 	payload, perr := decodeChangelogPayload(root, raw)
 	if perr != nil {
-		return res, perr
+		return res, nil, perr
 	}
 	if payload.NextTag != cut.NextTag {
-		return res, refusal(ReasonStaleCut, "next_tag", "the payload was composed against %s but this cut derives %q — "+
+		return res, nil, refusal(ReasonStaleCut, "next_tag", "the payload was composed against %s but this cut derives %q — "+
 			"the record set moved under the composer; re-run the emit step and compose again",
 			tagOrDescribed(payload.NextTag), cut.NextTag)
 	}
@@ -394,90 +447,68 @@ func ingest(root string, current surface.Snapshot, raw []byte, at time.Time, ops
 	section := renderSection(heading, entries, changelog.TargetMoveNote(moves))
 	content, before, err := insertSection(root, section)
 	if err != nil {
-		return res, err
+		return res, nil, err
 	}
 	plan := cutPlan{changelog: []byte(content), undo: UndoPlan{changelogBefore: before}}
 	var pageText, pageHead string
 	if hasPage {
 		if err := planPage(root, &plan); err != nil {
-			return res, err
+			return res, nil, err
 		}
 		pageHead = pageHeading(cut.NextTag, at)
 		pageText = renderPage(pageHead, page)
 		if v, _, ok := parsePageHeading(pageText); !ok || v != strings.TrimPrefix(cut.NextTag, "v") {
-			return res, fmt.Errorf("refusing to write %s: its heading does not name this cut's version %s", PageFile, cut.NextTag)
+			return res, nil, fmt.Errorf("refusing to write %s: its heading does not name this cut's version %s", PageFile, cut.NextTag)
 		}
 	}
 	// The declared digest's path and the file it appends to are checked here,
 	// with the other repository preconditions, before any write.
 	if err := planDigest(root, &plan); err != nil {
-		return res, err
+		return res, nil, err
 	}
 
 	// The outbound policy over what would be written, both documents: a session
 	// URL or a tool footer is refused here, where the composer can drop it,
 	// rather than found later in a public release record.
 	if err := checkOutbound(root, strings.Join(section, "\n"), "changelog section", "entries", &rs); err != nil {
-		return res, err
+		return res, nil, err
 	}
 	if err := checkPrivacy(root, strings.Join(section, "\n"), "changelog section", "entries", &rs); err != nil {
-		return res, err
+		return res, nil, err
 	}
 	if hasPage {
 		if err := checkOutbound(root, pageText, "release page", "press_release", &rs); err != nil {
-			return res, err
+			return res, nil, err
 		}
 		if err := checkPrivacy(root, pageText, "release page", "press_release", &rs); err != nil {
-			return res, err
+			return res, nil, err
 		}
 		if err := checkPersonas(root, pageText, &rs); err != nil {
-			return res, err
+			return res, nil, err
 		}
 	}
 	if len(rs) > 0 {
-		return res, &PayloadRefusal{Reasons: rs, incomplete: incomplete}
+		return res, nil, &PayloadRefusal{Reasons: rs, incomplete: incomplete}
 	}
 
 	if hasPage {
 		plan.page = []byte(pageText)
 	}
 	if err := composeDigest(&plan, cut, entries); err != nil {
-		return res, err
+		return res, nil, err
 	}
-	var undo UndoPlan
-	if len(moves) == 0 {
-		undo, err = execute(ops, root, plan)
-	} else {
-		// The records are read and rewritten under the intent store's lock, as
-		// every intent write is, so a target edited since the cut read it is
-		// refused rather than overwritten.
-		err = intent.WithMintLock(root, func() error {
-			rewrites, err := intent.PlanTargetMoves(root, moves)
-			if err != nil {
-				return err
-			}
-			plan.records = rewrites
-			undo, err = execute(ops, root, plan)
-			return err
-		})
-	}
-	if err != nil {
-		return res, err
-	}
-
 	res.Written = true
 	res.Path = changelogFile
 	res.Heading = heading
 	res.Lines = len(entries)
 	res.Cited = required
 	res.Moved = moves
-	res.Undo = undo
 	if hasPage {
 		res.Page = PageResult{
 			Written:   true,
 			Path:      PageFile,
 			Heading:   pageHead,
-			Archived:  undo.archived,
+			Archived:  plan.undo.archived,
 			Headlines: len(page.headlines),
 			Listed:    len(page.listed),
 			Quotes:    len(page.quotes),
@@ -485,7 +516,7 @@ func ingest(root string, current surface.Snapshot, raw []byte, at time.Time, ops
 	} else {
 		res.Page = PageResult{Reason: noPageReason(root)}
 	}
-	return res, nil
+	return res, &ingestPlan{cut: plan, moves: moves}, nil
 }
 
 // recordLintConfig is the repository's record-lint configuration, whose

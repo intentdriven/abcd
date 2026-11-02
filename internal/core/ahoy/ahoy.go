@@ -295,6 +295,10 @@ type InstallResult struct {
 	Report SetupReport `json:"report"`
 	// needs is the needs-you checklist the run found in its last detection.
 	needs []ReportStep
+	// limitsUnread is why a question-limits layer was not read, when one was
+	// not: the run's questions were measured at abcd's defaults
+	// (LimitsUnread).
+	limitsUnread string
 	// writeKinds runs parallel to Writes: what each write is, which the summary
 	// explains. Unexported, so the wire shape is unchanged.
 	writeKinds []writeKind

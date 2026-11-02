@@ -59,6 +59,21 @@ Two abcd governing rules shape *how* this gets built. First, **abcd never touche
 - **Given** abcd's local-first requirement, **when** the gate is invoked outside Claude Code (CI / pre-commit / runtime hook via the standalone CLI), **then** it runs to a verdict with no Claude Code dependency.
 - **Given** the pluggable framework, **when** a second risk type (e.g. a11y or privacy) is later added, **then** it plugs in as another validation discipline of the same kind without re-architecting the gate.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [security-isolation SOTA note](../../research/notes/2026-10-23-security-isolation-sota.md).
+
+- **The motivating figure is real, vendor-run and task-skewed**: Veracode's 2025 report found OWASP Top 10 flaws in 45% of test cases (80 curated tasks run across more than 100 models), scored by the vendor's own analyser; Java over 70%, XSS 86%, log injection 88% (Veracode press release).
+- **Secret scanners are high-recall, low-precision, measured**: Gitleaks precision 46%, recall 88%; TruffleHog recall 52%; GitHub's scanner precision 75%; false positives from "generic regular expressions and ineffective entropy calculation" (Basak et al., ESEM 2023, arXiv 2307.00714).
+- **Gitleaks**: MIT, `git`/`dir`/`stdin` modes, SARIF output, exit 0/1, and "Gitleaks is feature complete. I'm not merging new features", security patches only, the maintainer "shifting my focus to Betterleaks" (same maintainers, MIT; its SARIF support not confirmed in this pass), so the swappable seam is load-bearing from day one and the first-scanner choice is revisited at plan time (gitleaks README).
+- **TruffleHog**: AGPL-3, and "it can also log in to confirm if that secret is live", calling the provider with the found credential; outside a local-first default (trufflehog README).
+- **OSV-Scanner** for dependencies: Go, Apache-2.0, "19+ lockfile types", container images, and an offline mode after one database download (osv-scanner README).
+- **SARIF 2.1.0 (OASIS Standard) is the one interchange shape** with `result`, `fingerprints` and `suppression` objects; the candidate scanners all emit it (SARIF 2.1.0).
+- **Gates get ignored for presentation as much as precision**: twenty developers named "false positives and the way in which the warnings are presented" as the barriers (Johnson et al., ICSE 2013).
+- **The local seam exists**: `adapter/scanner` fails closed and treats external scanners as "config-selected plug-ins behind the same seam" (`internal/README.md`).
+
+**Path 1: adopt gitleaks and OSV-Scanner as the first wrapped scanners, executed on `PATH` and never imported, with SARIF 2.1.0 the only shape the gate parses**; a scanner missing or unparsable is INCONCLUSIVE. No Go dependency. The confirm-and-record flow of itd-2610071545369520 is what keeps a 46%-precision gate from being ignored. The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - Which scanner(s) to wrap first for the security/dep/secret instance, and how to keep the choice swappable (the wrap must not bind abcd to one vendor)?

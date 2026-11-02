@@ -87,8 +87,72 @@ planning interview walks each one.
   **then** it shows token counts without a money figure, names the refresh verb,
   and performs no network fetch.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in
+the [models, prompts and measurement SOTA note](../../research/notes/2026-10-23-models-prompts-measurement-sota.md);
+the gap itself is in the [token-metering](../../research/notes/2026-08-30-development-token-metering-gap.md)
+and [size-class](../../research/notes/2026-08-30-spec-size-classification-gap.md) notes.
+
+- **The transcript already carries the counts.** This repository's stream
+  fixture (`internal/core/runner/testdata/claude-stream-2.1.302.jsonl`) shows
+  per-message `input_tokens`, cache creation split by lifetime, cache read,
+  output, thinking tokens and `model`, with a result record carrying per-model
+  `costUSD` at `costBasis: "list"` and sub-agent statistics.
+- **The host's own dollar figure is local, at list price, and an estimate**:
+  `/usage` computes it "from token counts at list price", says it is "an
+  estimate", and that for subscribers "the session cost figure isn't relevant
+  for billing" (Claude Code cost docs). "API-equivalent estimate" is the
+  host's own framing.
+- **Two conventions disagree on what "input" is.** OpenTelemetry's
+  `gen_ai.usage.input_tokens` "SHOULD include ... cached tokens"; the host's
+  exported `type="input"` "excludes tokens read from or written to the prompt
+  cache" (GenAI attribute registry; Claude Code monitoring docs). Keep the
+  four raw counts and derive totals in the report, naming the convention.
+- **Community meters price from one community table.** ccusage reads the
+  host's local data, tracks cache tokens separately, prices from LiteLLM's
+  `model_prices_and_context_window.json` (a "community maintained list" at a
+  stable raw URL) and runs offline on cached prices, at the cost that "you
+  will need to upgrade to get updated pricing" (ccusage; LiteLLM docs).
+- **A price is four rates and modifiers**: base input, 5-minute cache write
+  (1.25×), 1-hour write (2×), cache read (0.1×, 0.025× or 0.05× on the newest
+  models), output; batch 50 % off; data residency 1.1× (vendor pricing page).
+  The user-level table needs that shape per model, and two cases a flat
+  four-rate row cannot hold: the long-context tier (one model pays higher
+  prices on a prompt over 100,000 tokens) and the fast-mode premium (the
+  stream records `speed`); the table either carries them or the report marks
+  such a session as priced at base rates.
+- **Relative size estimates are weak and overconfident.** Story points
+  correlated strongly with development time in 7 % of 37 projects and
+  estimators misestimated in 78 % of 37,440 stories (Tawosi, Moussa and
+  Sarro, ESEM 2022); relative estimates were less accurate, slower to produce
+  and not developer-independent than hour estimates (Jørgensen and Escott,
+  2022). A class is a distribution checked by hit rate, not a point.
+- **Task difficulty is predictable from task features, cost is not** (agent
+  psychometrics: IRT plus issue, repository, solution and test features
+  predicts task-level success; no tokens or dollars; Ge et al., 2026). The
+  corpus's own variable, review rounds, is the candidate denomination.
+
+**Path 2**: native metering at capture (four raw counts, model id, sub-agent
+split, aggregated into metadata), a report that derives totals and names its
+convention, and a user-level price table in LiteLLM's per-model field shape
+so a refresh can import that community file on explicit ask and a row can be
+hand-edited; size classes denominated in expected review rounds, declared
+before the build and reported as a hit rate per class beside measured tokens
+and rounds; attribution by capture stamp (the stream's session id; an agent
+name exists only as `agent.name` in the host's telemetry export, which the
+history store does not read) with the branch as fallback; itd-98 consumes this rather than counting
+its own. No dependency; the LiteLLM file is a format, not a library. The
+independent fit-challenge runs at plan time.
+
 ## Open Questions
 
+- (SOTA 2026-10-23) Whether the report shows cached tokens inside the input
+  total (the OpenTelemetry convention) or beside it (the host's), given that
+  the two disagree and both readers exist.
+- (SOTA 2026-10-23) Whether the price table's refresh imports LiteLLM's
+  community file wholesale, on explicit ask, or only the rows for models the
+  store has seen.
 - **What a size class measures**: the notes say depth does not track volume; is
   the class about the number of ways the work can be quietly wrong, the review
   rounds it takes, or tokens alone?

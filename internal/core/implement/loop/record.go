@@ -134,6 +134,10 @@ type RecordLane struct {
 	PR       int       `json:"pr,omitempty"`
 	Landing  *Landing  `json:"landing,omitempty"`
 	HandBack *HandBack `json:"hand_back,omitempty"`
+	// AutoPlan is the auto-plan lane's record: the draft, its digest, the
+	// plan reviews' verdicts as the loop recorded them, and what the plan
+	// made. Absent on every other lane.
+	AutoPlan *AutoPlan `json:"auto_plan,omitempty"`
 }
 
 // RecordVerdict is one verdict the loop recorded from a validator's return.
@@ -172,7 +176,7 @@ func recordOf(st State) RunRecord {
 	for _, l := range st.Lanes {
 		rl := RecordLane{ID: l.ID, Key: l.Key, SpecStep: l.SpecStep, StepTitle: l.StepTitle, Stage: l.Stage,
 			Branch: l.Branch, BaseSHA: l.BaseSHA, HeadSHA: l.HeadSHA, Receipts: l.Receipts, Verdicts: []RecordVerdict{},
-			Resolves: []string{}, PR: l.PR, Landing: l.Landing, HandBack: l.HandBack}
+			Resolves: []string{}, PR: l.PR, Landing: l.Landing, HandBack: l.HandBack, AutoPlan: l.AutoPlan}
 		if rl.Receipts == nil {
 			rl.Receipts = []ReceiptRecord{}
 		}
@@ -183,6 +187,14 @@ func recordOf(st State) RunRecord {
 				}
 				rl.Verdicts = append(rl.Verdicts, RecordVerdict{Round: r.Round, HeadSHA: r.HeadSHA, Role: v.Role,
 					Verdict: v.Verdict, Pass: v.Pass, Return: v.Return, Route: v.Route})
+			}
+		}
+		if l.AutoPlan != nil {
+			for _, r := range l.AutoPlan.Reviews {
+				if r.Verdict != "" {
+					rl.Verdicts = append(rl.Verdicts, RecordVerdict{Round: 1, Role: r.Role + " (" + r.Lens + " lens)",
+						Verdict: r.Verdict, Pass: r.Pass, Return: r.Return})
+				}
 			}
 		}
 		for _, r := range l.Resolves {

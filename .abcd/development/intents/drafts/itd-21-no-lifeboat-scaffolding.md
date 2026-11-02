@@ -51,11 +51,24 @@ abcd has two onboarding paths: `/abcd:ahoy install` (add abcd to an existing pro
 - **Given** the user accepts the starter intent, **when** init-project completes, **then** `intents/drafts/itd-1-<slug>.md` exists with a populated press release AND a populated `## Acceptance Criteria` section — itd-1's gate applies even at scaffold time.
 - **Given** a project type unsupported by the shipped templates (e.g., Elixir, Haskell), **when** the user picks "plain", **then** scaffolding falls back to a minimal language-agnostic skeleton (`README.md`, `LICENSE`, `.gitignore`, abcd conventions) AND the report records the absence of a language-specific template as a hint the user could contribute one.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [harness, interop and lifeboats SOTA note](../../research/notes/2026-10-23-harness-interop-lifeboats-sota.md), which reuses the [onboarding survey](../../research/notes/2026-09-30-onboarding-existing-projects-sota.md) and the [AGENTS.md re-check](../../research/notes/2026-10-03-agents-md-native-reading-recheck-sota.md).
+
+- Language initialisers are opinionated and move: `uv init` writes `.python-version`, `README.md`, `pyproject.toml` and `src/<pkg>/__init__.py` with `uv_build`, `--lib` adds `py.typed`, `--bare` writes only `pyproject.toml`, and it errors on an existing `pyproject.toml` (uv docs). Seven per-language templates frozen in a binary re-derive this by hand and go stale.
+- Copier is the scaffolder that handles the day after: answers recorded in `.copier-answers.yml` (never hand-edited), `copier update` replays them against the template's latest tag with conflicts marked, `_skip_if_exists` protects the person's files, `_migrations` run only on update (Copier docs).
+- A repository created from a GitHub template "starts with a single commit"; `gh repo create --template` adds `--include-all-branches`, `--add-readme`, `--gitignore`, `--license`.
+- The adoption shape from the onboarding survey holds for greenfield too: detect, propose a default the person accepts or overrides, leave what is not yours alone, record the answers, write once reversibly.
+- Where the research contradicts this draft's scope: "templates committed and versioned as assets embedded in the Go binary" and the Python criterion's exact file list; and where a shipped ruling already does: the second criterion's "CLAUDE.md marker block" is overridden by itd-2610030814013772's decision 7 (one conventions file, `AGENTS.md`; abcd writes no tool-specific conventions file for any tool), and the Python criterion's `.claude/settings.local.json` is one host's file in a scaffold meant to be host-agnostic; the interview decides.
+
+**Path 2 — a native scaffold shaped to Copier's answers-file discipline: delegate the language layout to the language's own initialiser where installed (fallback to a minimal skeleton, loudly), write only abcd's own artefacts, and record the interview's answers in `.abcd/` so `ahoy` re-runs read them; the unique value over `git init` plus `ahoy install` is the interview, the record and the starter intent, not a file tree.** The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - How does this differ from running `/abcd:ahoy install` after `git init` — what's the unique value?
 - Should `/abcd:init-project scaffold` always require running `/abcd:intent new` immediately after, or offer it as optional?
 - What's the conflict policy if directory isn't fully empty (per the brief's emptiness rules)?
+- (SOTA 2026-10-23) Which initialisers does the scaffold delegate to (`uv init`, `cargo new`, `go mod init`, `npm init`), and what does it do when none is installed for the chosen language?
 
 ## Amendments
 

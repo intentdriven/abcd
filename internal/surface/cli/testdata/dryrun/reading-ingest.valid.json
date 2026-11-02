@@ -1,0 +1,5 @@
+{"_type": "abcd.reading.output/1", "run_id": "{{RUN}}", "position": "detection", "regime": "{{REGIME}}",
+ "manifest_sha256": "{{MANIFEST}}",
+ "instrument": {"model": "a-model", "definition_sha256": "{{DEFINITION}}", "assembler_version": "{{ASSEMBLER}}"},
+ "items": [{"pattern": "the pattern this reading read under", "tension": "the record says one thing",
+            "constraint_in_play": "a stated constraint", "why_a_tension": "the two cannot both hold"}]}

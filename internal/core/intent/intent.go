@@ -247,6 +247,13 @@ type PlanOptions struct {
 	// (itd-2609212103572513). It is validated before anything moves; empty
 	// writes none.
 	Target string
+	// ExpectDigest, when set, is the "sha256:<hex>" (DraftDigest) of the draft
+	// bytes the caller judged: Plan compares it with the bytes it reads under
+	// the store's lock and refuses with ErrDraftChanged before anything moves
+	// or is minted when they differ, or when the record is no longer a draft.
+	// `abcd build --auto-plan` passes the digest its reviews read, so what is
+	// planned is exactly what they judged.
+	ExpectDigest string
 }
 
 // PlanResult reports a completed Plan: the updated planned intent and the spec

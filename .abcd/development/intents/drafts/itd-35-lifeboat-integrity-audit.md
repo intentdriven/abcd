@@ -62,6 +62,17 @@ The pattern is well-established (lifted from `~/.abcd/` v0's F-031 / F-032 work)
 - **Given** the audit substrate is opt-in via `.abcd/config.json` (per itd-16's resolved open question), **when** a user with `oracle.audit.chain.enabled = false` runs disembark, **then** no `_provenance.json` Merkle hashes are written AND embark of the resulting lifeboat skips the lifeboat-verification step without warning — opt-in means opt-in cleanly on both ends.
 - **Given** itd-9 (schema migration) and itd-35 (lifeboat audit) both ship, **when** an embark applies a schema migration, **then** the migrated artefact's hash is RE-COMPUTED post-migration and recorded alongside the original hash in the migration log — schema upgrades are not silent over the chain.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [security-isolation SOTA note](../../research/notes/2026-10-23-security-isolation-sota.md).
+
+- **A directory hash has a canonical Go form**: `dirhash` H1 is the SHA-256 of a sorted one-line-per-file summary (`sha256sum $(find . -type f | sort) | sha256sum`), and `HashZip` ignores "per-file modification times, and other metadata" (x/mod/sumdb/dirhash).
+- **The manifest other tools can read is a subject list inside a Statement**: in-toto Statement subjects "are matched purely by digest, regardless of content type", so a manifest shaped as `[{name, digest:{sha256}}]` can be wrapped in a Statement (with `_type` and a `predicateType`, both required) when interoperation is wanted; the bare list alone is not an in-toto artefact (in-toto Statement).
+- **Archives verify on their contents**: Go hashes "the files within the module's `.zip` file", not the archive bytes; the `.tar.gz` question is answered by verify-on-extract (Go modules reference).
+- **A root stored inside what it covers is recomputable by whoever edits it**; the witness rule from itd-16 applies, and "prove provenance" needs a signed manifest (`ssh-keygen -Y sign`, no dependency) or a root conveyed separately. Signing is out of scope by the record's own Out-of-Scope bullet, shared with itd-16, not by a ruling; the gap is recorded here (tlog-witness; ssh-keygen(1)).
+
+**Path 2: a flat, sorted, digest-per-file manifest in the in-toto subject shape, rooted with itd-16's RFC 6962 primitive, verified on extracted files**; sections become a report grouping rather than a hash layer. That amends the tree shape In Scope names (artefact → section → root) and criterion 1's per-artefact entries under a sectioned root, a change to the record the fit-challenge takes up before the build. The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - **Default-on or opt-in?** Inherits from itd-16's substrate (recommend opt-in to avoid surprise verification failures during normal flow).

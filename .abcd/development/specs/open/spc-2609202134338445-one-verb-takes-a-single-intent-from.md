@@ -113,6 +113,7 @@ other builds share.
    decision 5 also gave it is recorded in adr-2610222222326104, and is not
    recorded twice.
    - needs: 2, 4, 8
+   - landed: 45a7ce2c5136
 12. **The no-host drive**
    Decision 5's reversal, moved here from step 3 so that no step waits on a
    later one: the loop driving itself with no host session, starting every
@@ -265,8 +266,19 @@ spec stays open until the last lane closes it.
   receipt carries `handback: {kind, reason, home}`, which the loop reads at the
   receipt, before the validators, discarding the lane's worktree and branch
   and ending the lane handed back.
-- **Remaining: 11** (`--auto-plan` with its ADR) **and 12** (the no-host
-  drive). `--auto-plan` is not a flag yet. Piece 3's no-host part became step
+- **Landed (run-2610310228179894 lane-1): piece 11**, `--auto-plan`, with
+  adr-2610310235000654 (proposed until the product thinker accepts it), which
+  records the substitute for the sign-off: recorded decisions, grounds
+  present, criteria provenance and the two review receipts. `abcd build
+  <itd-N> --auto-plan` on a draft checks the record-only parts
+  (`intent.AutoPlanChecks`) and the peers, and opens one lane with the draft's
+  digest (state schema 17); `plan-review` hands the draft to a fresh
+  ruthless-reviewer per lens, design and feasibility then record discipline,
+  the loop parsing each verdict; `plan` checks the substitute again and runs
+  `intent plan` in the run's checkout. A failing review, or a draft that changed
+  or moved, hands the lane back unplanned. The run stops at the plan: a spec
+  author for the planned intent's steps is not built.
+- **Remaining: 12** (the no-host drive). Piece 3's no-host part became step
   12 on 2026-10-28, needing 3 and 11, so no step waits on a later one; its reversal
   is recorded in adr-2610222222326104, and it is built only once
   itd-2610222215485265 ships.

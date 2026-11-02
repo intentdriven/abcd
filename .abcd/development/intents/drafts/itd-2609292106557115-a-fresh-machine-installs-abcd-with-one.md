@@ -78,6 +78,54 @@ interview walks each one.
 - **Given** the release-asset layout contract, **when** a cut changes an asset
   name or path the contract names, **then** the release gate refuses the cut.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in
+the [install-update-release SOTA note](../../research/notes/2026-10-23-install-update-release-sota.md).
+
+- **The field has settled on installer + receipt + self-update that refuses
+  installs it did not make.** uv's standalone installer is the only route with
+  `uv self update` ("will re-run the installer"); every other route names its
+  package manager's upgrade, and `UV_UNMANAGED_INSTALL` disables self-update.
+  cargo-dist's updater reads an install receipt in `~/.config/<app>` (Linux,
+  macOS) or `%LOCALAPPDATA%\<app>` (Windows) before any check. abcd already
+  holds the same device: `path-entry`, `release-mark`, and the three ownership
+  proofs in the update package.
+- **Checksums travel with the script, never from the vendor's domain.**
+  mise: "Checksums never come from mise.jdx.dev"; the script embeds them and
+  stops "if it cannot get that checksum or if the archive does not match it".
+  `install.sh.tmpl` already reads `checksums.txt` from the same release and
+  runs `gh attestation verify` when `gh` is present, one step past the field.
+- **Ownership checks in the wild take both halves, one precedent each.**
+  Homebrew's installer is the uid-and-directory precedent: it refuses root
+  and inspects each target directory's owner before queuing `chown`. The
+  harness's native installer is the "did I make it" precedent: it leaves a
+  launcher it did not create in place, keeps installing new versions beside
+  it, and reports it in its doctor output rather than overwriting it, a
+  provenance rule closer to the receipt-and-digest half than to a uid check
+  (the harness's setup page).
+- **A minimum release age is a cheap defence against a bad cut**: mise skips
+  releases younger than 24 hours by default; the harness offers a `stable`
+  channel about a week behind.
+- **The `curl | sh` objections have specific answers**: wrap everything in
+  functions so a truncated download runs nothing (which `install.sh.tmpl`
+  does), and do not trust a browser view of the script, since a server can
+  serve curl a different file (a 2012 proof of concept).
+- **The swap primitive is understood**: minio/selfupdate (already a
+  dependency) writes `.new`, renames the running file to `.old`, and restores
+  it if the final rename fails; on Windows the `.old` file is hidden, not
+  removed.
+
+**Path 2 — native starter shaped to the cargo-dist and uv installer-plus-receipt
+pattern, with the receipt as the seam.** One starter rendered to both surfaces
+(open question 1, as `install.sh.tmpl` is already rendered to `/install.sh`);
+"owned" means both halves (open question 2): `path-entry` records the file's
+digest and the file and its directory belong to the invoking uid; the
+asset-layout contract is a Go test over `release.yml` plus one shared constant,
+the way `TestBootstrapUpdateLineIsTheSharedWording` already binds the script
+to the core (open question 3). No new dependency. The independent
+fit-challenge runs at plan time.
+
 ## Open Questions
 
 - **Which surfaces become the starter**: the session-start hook and the site's
@@ -86,6 +134,16 @@ interview walks each one.
   directory's owner, or the recorded hash itd-130's store keeps?
 - **Where the asset-layout contract lives**: a brief chapter the release gate
   reads, or a test over the release workflow.
+- (SOTA 2026-10-23) Does the starter adopt a minimum release age for the
+  cold-start fetch, as mise does, or does the release mark's "newest" stay the
+  only notion of latest? Offline either way; a second notion of latest is the
+  cost.
+- (SOTA 2026-10-23) Does the cold-start fetch resolve the tag from the pinned
+  catalog or the release mark rather than `releases/latest`, which the forge
+  picks by commit date and so skips a hotfix cut from an older commit?
+- (SOTA 2026-10-23) On a Windows machine there is no uid to check; does the
+  hand-over there rest on the receipt and digest alone, and does the record
+  say so?
 
 ## Audit Notes
 

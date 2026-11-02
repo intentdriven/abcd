@@ -1,0 +1,26 @@
+{
+  "schema_version": 2,
+  "prompt_version": "1.0.0",
+  "idea": "abcd should gate a new idea before it becomes a record entry",
+  "origin_sources": [],
+  "legs": [
+    {"kind": "research", "claims": [
+      {"claim": "fresh-context evaluation is the measured debiasing effect",
+       "primary_source": "https://example.invalid/paper", "status": "verified"}
+    ]},
+    {"kind": "record-grill", "hits": [
+      {"record": "itd-9999", "relation": "covered", "note": "already filed"}
+    ], "searches": [
+      {"terms": ["admission gate"], "places": [".abcd/development/intents/"], "count": 1}
+    ]},
+    {"kind": "adversarial-review", "reviewers": [
+      {"label": "reviewer-a", "verdict": "survives", "sources": [], "kill_attempts": [
+        {"attempt": "the gauntlet adds friction", "outcome": "survived"}
+      ]}
+    ]}
+  ],
+  "verdict": "survives",
+  "rejected_alternatives": [
+    {"alternative": "make it a blocking pre-capture gate", "why_rejected": "capture friction stays at one line"}
+  ]
+}

@@ -26,7 +26,7 @@ func TestAskingRulesFillEveryLimitFromTheirArgument(t *testing.T) {
 		{"options", func(l *Limits) { l.OptionsPerQ = [2]int{3, 5} }, "two to four options", "three to five options"},
 		{"tabs", func(l *Limits) { l.QuestionsPerCall = [2]int{1, 3} }, "up to four on a screen", "up to three on a screen"},
 		{"meaning sentences", func(l *Limits) { l.MeaningSentences = 3 }, "at most two sentences", "at most three sentences"},
-		{"rows", func(l *Limits) { l.Rows = 30 }, "twenty-four rows", "thirty rows"},
+		{"rows", func(l *Limits) { l.Rows = 30 }, "thirty-two rows", "thirty rows"},
 		{"columns", func(l *Limits) { l.Columns = 90 }, "at eighty columns", "at ninety columns"},
 		{"chip roles", func(l *Limits) { l.ChipRoles = []string{"Owner", "Builder"} }, `"Product Q2"`, `"Owner Q2"`},
 		{"later labels", func(l *Limits) { l.LaterLabels = []string{"Not yet"} }, `"Decide later"`, `"Not yet"`},
@@ -61,7 +61,7 @@ func TestAskingRulesFillEveryLimitFromTheirArgument(t *testing.T) {
 // rather than a table of figures.
 func TestAskingRulesWriteNumbersAsWords(t *testing.T) {
 	text := joined(AskingRules(Default))
-	for _, digits := range []string{"at most 5", "at most 12", "2 to 4", "24 rows", "80 columns", "up to 4"} {
+	for _, digits := range []string{"at most 5", "at most 12", "2 to 4", "32 rows", "80 columns", "up to 4"} {
 		if strings.Contains(text, digits) {
 			t.Errorf("the text states a limit in digits, %q", digits)
 		}
@@ -79,7 +79,7 @@ func TestAskingRulesWriteNumbersAsWords(t *testing.T) {
 // (iss-2610071538055431).
 func TestAskingRulesSayTheRowsIncludeTheOptions(t *testing.T) {
 	text := joined(AskingRules(Default))
-	const want = "fits twenty-four rows at eighty columns, counting the header, the host's frame, the question text, and every option's label and description"
+	const want = "fits thirty-two rows at eighty columns, counting the header, the host's frame, the question text, and every option's label and description"
 	if !strings.Contains(text, want) {
 		t.Errorf("the rule text does not say %q:\n%s", want, text)
 	}

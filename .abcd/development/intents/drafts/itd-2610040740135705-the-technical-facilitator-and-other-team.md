@@ -44,10 +44,22 @@ Typed links: builds on itd-2610032150577708.
 
 > _Required (the itd-1 discipline): add at least one Given-When-Then bullet describing the verifiable bar for "shipped" before this draft can be planned._
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [dashboard-sites SOTA note](../../research/notes/2026-10-23-dashboard-sites-sota.md).
+
+- **GitHub cannot tell the product thinker from the facilitator:** custom repository roles are Enterprise Cloud only, teams exist only in organisations, a personal repository has only an owner and write collaborators; for GitHub-side admission a configuration file keyed on GitHub user ids was the one mechanism that works everywhere (the GitHub roles note of 2026-10-14). That finding rules out GitHub as the role source; it says nothing about the tailnet identifiers this dashboard keys on, which are a different space.
+- **The tailnet can carry per-person roles, attested by the daemon:** a grant's `app` capability (`domainName/capabilityName` with JSON parameters) reaches the application through the lookup's `CapMap`; golink grants `"tailscale.com/cap/golink": [{"admin": true}]` and reads it "via the Tailscale daemon whois API" (Tailscale grants; golink). No header can forge it; but it lives in the tailnet's policy file, which the tailnet's admin edits, not the project.
+- **Each device is already let in separately:** the lookup names a node and a profile per connection and the devices-seen file lists them; a per-person view needs a mapping from profile to role, not a new admission step.
+- **A view per role is the cheap cut; hiding records is the hard one:** every page comes from one renderer by id, and the board intent's facilitator view is the same read arranged differently.
+
+**Path 2 — native, shaped to golink's capability model, with the role source as the seam: the project's configuration first (keyed on the stable user id the tailnet lookup reports, not the display login), a tailnet capability as an optional second source later.** A role list in the repository is shared working data read by a per-machine listener, and a role in the tailnet's policy file is the tailnet admin's to grant: two authorities for one fact, which the question below puts to the fit-challenge. The first release chooses a view per role and hides nothing. The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - Which roles exist beyond the two, and where the project declares who sees what.
 - Whether each person is let in separately, and how a view is chosen per person.
+- (SOTA 2026-10-23) Whether a role declared in the repository and a role granted in the tailnet's policy file may both exist, and which wins when they disagree; two authorities for one fact is the thing to challenge.
 
 ## Audit Notes
 

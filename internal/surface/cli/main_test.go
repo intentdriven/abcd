@@ -8,6 +8,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/layered"
+	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/core/sessionname"
 	"github.com/intentdriven/abcd/internal/core/vintage"
@@ -138,11 +139,47 @@ func TestMain(m *testing.M) {
 		}
 		return emptyHome, nil
 	})
+	// The checkout the suite runs in is out of reach of the routing table
+	// too (iss-2610311710599351). A verb resolves its roots from the working
+	// directory, which for a test that never changed it is this package's
+	// directory inside that checkout, so a table committed there (abcd's own
+	// .abcd/config/oracle-routing.json) would put a routing notice in front of
+	// a delegated verb's --json document. A test that lays out a table of its
+	// own does it in a temporary repository it changes into, and keeps it.
+	if cwd, err := os.Getwd(); err == nil {
+		pinEnclosingRoutingLayer(cwd)
+	}
 	code := m.Run()
 	_ = os.RemoveAll(emptyHome)
 	showGHLogin()
 	builtAbcd.Remove()
 	os.Exit(code)
+}
+
+// pinEnclosingRoutingLayer drops the routing table's repository layer
+// wherever it would be read at the repository root the layered resolver names
+// for cwd, the checkout the suite runs in; every other root is read as it is.
+// The root is judged by file identity, so a spelling of it through a symlink
+// is dropped too. It returns the restore; with no root to name it pins
+// nothing.
+func pinEnclosingRoutingLayer(cwd string) (restore func()) {
+	root := rules.Resolve(cwd).Root
+	if root == "" {
+		return func() {}
+	}
+	enclosing, err := os.Stat(root)
+	if err != nil {
+		return func() {}
+	}
+	return oracle.SwapRepoLayerRootForTest(func(repo string) string {
+		if repo == "" {
+			return ""
+		}
+		if fi, err := os.Stat(repo); err == nil && os.SameFile(fi, enclosing) {
+			return ""
+		}
+		return repo
+	})
 }
 
 // actAsBinary reports whether this test binary was started as the deep tier's

@@ -927,6 +927,11 @@ func DriveReview(ctx context.Context, repoRoot, runID string, res StepResult, st
 	if !ok {
 		return res, nil
 	}
+	// An auto-plan run's reviews read a draft, not a diff, and stay on the
+	// host's agents (autoplan.go): nothing is sent and no fallback recorded.
+	if st, err := ReadState(repoRoot, runID); err == nil && st.autoPlanning() {
+		return res, nil
+	}
 	ret, err := sendReview(ctx, repoRoot, runID, res.Lane, aw, rr)
 	switch {
 	case err != nil && ctx.Err() != nil:

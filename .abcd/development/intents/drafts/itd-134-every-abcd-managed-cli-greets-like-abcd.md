@@ -28,9 +28,21 @@ Every abcd-managed CLI greets like abcd does: one command scaffolds a banner for
 
 > _Required (the itd-1 discipline): add at least one Given-When-Then bullet describing the verifiable bar for "shipped" before this draft can be planned._
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [dashboard-sites SOTA note](../../research/notes/2026-10-23-dashboard-sites-sota.md).
+
+- **The colour contract is settled and language-neutral:** suppress colour when `NO_COLOR` is "present and not an empty string (regardless of its value)", flags and user configuration override it, and it covers "only ANSI color, not other styling" (no-color.org); no colour when stdout is not a TTY or `TERM` is `dumb` (clig.dev); "checking `$COLORTERM` is recommended" for truecolor, with the caveat that it "is not forwarded via sudo, ssh, etc." and programs "should fall back to using 8-bit color" (termstandard/colors). itd-112's shipped ladder already encodes this order.
+- **ASCII art needs a text alternative:** WCAG technique H86 says ASCII art "can be very confusing to people who are accessing the internet using screen readers" and "should also have a text explanation of what the picture is". The words beside the art (name, version, tagline) are that alternative; the art must never carry meaning the words do not.
+- **A rendered artefact beats generated code** for a CLI in any language; no standard for the file's shape was found, so the shape is abcd's to choose.
+- **Screen-reader modes drop decoration wholesale** (the host prints no box characters and no colour-only cues in that mode); a managed CLI driven from a session emits no banner at all, as itd-112's rule already requires for a machine-consumed stream.
+
+**Path 2 — native, shaped to the `NO_COLOR` and `COLORTERM` conventions: the generator emits rendered artefacts (plain text, 16-colour, 256-colour and 24-bit variants, since termstandard's fallback from truecolor is 8-bit colour, not 16) with the selection rule written beside them, never code.** The per-repo accent stays open; no convention for deriving a colour from a name was found in this pass. The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
-_None recorded yet._
+- (SOTA 2026-10-23) Whether four committed renderings (plain, 16-colour, 256-colour, 24-bit; termstandard's advised fallback from truecolor is 8-bit colour) or one plain file plus a rule is the right shape for a repository whose CLI may be in any language; and whether the README drift check's marker-and-checksum shape should guard them.
+- (SOTA 2026-10-23) Where the per-repo accent comes from: chosen by the owner at setup, derived from the project name, or absent in the first version.
 
 ## Audit Notes
 

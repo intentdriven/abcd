@@ -125,7 +125,7 @@ func briefStage(c Context, lane *Lane) (Outcome, error) {
 		if err != nil {
 			return Outcome{}, err
 		}
-		body = renderIssueBrief(c.State, *lane, laneDir, src)
+		body = renderIssueBrief(c.State, *lane, c.RepoRoot, laneDir, src)
 		from = fmt.Sprintf("%s and %s (%s)", c.State.Issue(), ConventionsFile, src.conventionsFrom)
 	} else {
 		src, err := readBriefSources(c.RepoRoot, c.State, lane)

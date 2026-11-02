@@ -47,6 +47,16 @@ This is the missing discipline at the root of abcd's own value chain. A framewor
 - **Given** the auditor and the existing grill, **when** their scopes are compared, **then** the auditor audits reasoning foundations and does not re-implement grill's interactive criteria-challenge loop.
 - **Given** a document that misapplies one domain's reasoning mode to another (e.g. demonstrative certainty applied to a normative claim), **when** audited, **then** the domain-appropriateness check flags it.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [memory-knowledge SOTA note](../../research/notes/2026-10-23-memory-knowledge-sota.md).
+
+- **Naming the theory in the prompt is a workable zero-shot method.** Gupta, Zuckerman and O'Connor (ACL 2024) produce claim, reason and warrant triples from Toulmin's model by prompting with the theory's name, and evaluate "coverage and validity" through a human study, automatic evaluation on prior datasets and robustness checks across models, prompts and theories. The source skill's move with Aristotle's framework is the same one; validity is measured by people, not assumed.
+- **The field is prompt-driven now and warns about judging itself.** The 2025 argument-mining survey flags "risks of bias and evaluation circularity" in LLM-assisted annotation and consolidates "LLM-judge reliability" as one of the evaluation practices to assess, beside component-level accuracy and soft-label quality (Li et al.); the judge-calibration note's "ground truth has to be manufactured" applies, so a first run over ten records with each circularity flag labelled true or false is part of the build.
+- **The forcing-function synthesis has a human precedent.** The premortem asks for the reasons the plan failed and makes dissent safe (Klein, HBR 2007); the "single most load-bearing unexamined assumption" is that move made by a reader with no stake.
+- **The output contract exists in two neighbours.** The intent auditor's verdict JSON carries a cited pointer on every claim and the cold reading emits three-element detections in document order; both are host-delegated definitions validated by the binary on ingest.
+- **Path 2**: a native, host-delegated agent definition shaped to Toulmin explication for the structure with the regress-terminus classes on each warrant, a structured report as the one canonical output (the table and the commentary are renderings of it), single-pass, advisory, as a standalone surface taking a document path so it reads ADRs and the brief; the seam is the output schema. No dependency. The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - Is the auditor a sub-verb of `/abcd:intent` (e.g. `/abcd:intent foundations <itd-N>`) or a standalone surface that takes any document path? The first keeps it in the intent flow; the second makes it reusable on ADRs and the brief.

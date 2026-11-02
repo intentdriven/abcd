@@ -2,6 +2,7 @@ package capture
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -304,5 +305,82 @@ func TestAPassingAuditResolvesAnOrphanCarrierOfAnUnflaggedReceipt(t *testing.T) 
 	}
 	if open := openIssues(t, root); len(open) != 0 {
 		t.Fatalf("a passing audit must resolve the orphan carrier of its receipt: %+v, open %+v", res, open)
+	}
+}
+
+// treeHashes maps every file under root, outside .git, to its bytes.
+func treeHashes(t *testing.T, root string) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if d.Name() == ".git" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		out[p] = string(b)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// TestThePlanOfAFailedReIngestLinksTheOpenCarrier: through the real ledger, a
+// failing verdict planned again after its ingest links the issue the ingest
+// filed and plans the ingest's noop, writing nothing; extra carriers left open
+// beside it are planned as the duplicates the filer declines.
+func TestThePlanOfAFailedReIngestLinksTheOpenCarrier(t *testing.T) {
+	root, rcp := auditOwedRepo(t)
+	raw := auditVerdict(t, root, rcp, "NOT_MET")
+	first, err := intent.IngestVerdictBytes(root, raw)
+	if err != nil || first.OwedIssue == "" {
+		t.Fatalf("ingest = %+v (%v)", first, err)
+	}
+
+	before := treeHashes(t, root)
+	plan, err := intent.PlanVerdictIngest(root, raw)
+	if err != nil {
+		t.Fatalf("PlanVerdictIngest: %v", err)
+	}
+	if after := treeHashes(t, root); !maps.Equal(before, after) {
+		t.Fatal("the plan wrote")
+	}
+	if plan.Result.Status != "noop" || plan.Result.OwedIssue != first.OwedIssue || !plan.Result.OwedIssueLinked ||
+		len(plan.Plan.Writes) != 0 || len(plan.Plan.Effects) != 0 {
+		t.Fatalf("the plan of a re-ingest must be the noop linking %s: %+v", first.OwedIssue, plan)
+	}
+
+	orphanCarriers(t, root, rcp, "iss-9912312359590001", "iss-9912312359590002")
+	before = treeHashes(t, root)
+	plan, err = intent.PlanVerdictIngest(root, raw)
+	if err != nil {
+		t.Fatalf("PlanVerdictIngest: %v", err)
+	}
+	if after := treeHashes(t, root); !maps.Equal(before, after) {
+		t.Fatal("the plan wrote")
+	}
+	var declined []string
+	for _, e := range plan.Plan.Effects {
+		if strings.HasPrefix(e.Effect, "decline as a duplicate of "+first.OwedIssue) {
+			declined = append(declined, e.Target)
+		}
+	}
+	if plan.Result.Status != "noop" || plan.Result.OwedIssue != first.OwedIssue ||
+		!slices.Equal(declined, []string{"iss-9912312359590001", "iss-9912312359590002"}) {
+		t.Fatalf("the plan must link the oldest carrier and decline the others: %+v", plan)
+	}
+	res, err := intent.IngestVerdictBytes(root, raw)
+	if err != nil || res.Status != "noop" || res.OwedIssue != first.OwedIssue {
+		t.Fatalf("the ingest = %+v (%v), planned %+v", res, err, plan.Result)
 	}
 }

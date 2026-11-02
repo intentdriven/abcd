@@ -22,11 +22,13 @@ import (
 // readingOperands idiom: it fails CLOSED, so an operand added to either verb
 // has to say what it does before it can ship. There is no operand that could
 // widen the context, name a path the allow list does not, or set a record's
-// content: the supplied dispositions are the researcher's, read whole.
+// content: the supplied dispositions are the researcher's, read whole. The
+// ingest's --dry-run (spc-2610301431131636) sets nothing either: it makes the
+// same checks and writes nothing.
 var scribeOperands = map[string][]string{
 	"abcd scribe":          {},
 	"abcd scribe assemble": {"dispositions", "dry-run", "out", "run"},
-	"abcd scribe ingest":   {"context", "dispositions", "scribe-json"},
+	"abcd scribe ingest":   {"context", "dispositions", "dry-run", "scribe-json"},
 }
 
 // TestScribeOperandsArePinned walks the registered tree and holds each scribe

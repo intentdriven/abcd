@@ -51,9 +51,61 @@ The marker belongs only where the question is conjectural. Where the record sett
 
 > _Required (the itd-1 discipline): add at least one Given-When-Then bullet describing the verifiable bar for "shipped" before this draft can be planned._
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [elicitation interviews SOTA note](../../research/notes/2026-10-23-elicitation-interviews-sota.md).
+
+- Mechanically checkable plain-language rules exist in two public standards:
+  GOV.UK ("Try to split up sentences that are over 25 words long", no more than
+  five sentences a paragraph, specialist terms explained on first use) and the US
+  federal guidance (write for a specific audience, present tense, no hidden
+  verbs). ISO 24495-1:2023 is the anchor for "plain language documents" and
+  applies to technical writing too; its four principle names were not readable on
+  any page opened.
+- Readability formulas are not gates: four formulas rated the flawed survey
+  question easier than its improved version with a success rate "below 50
+  percent" (Lenzner, 2014), and of eight metrics "most correlate poorly with human
+  judgments, including … FKGL" (Cachola et al., 2025). Check surface rules, not a
+  score.
+- Contrast: text needs "at least 4.5:1", values "should not be rounded (e.g.,
+  4.499:1 would not meet the 4.5:1 threshold)", and "Color is not used as the only
+  visual means of conveying information" (W3C). The badge figures stated here
+  clear that where abcd owns the pixels; on a sixteen-colour terminal the slots
+  carry no standard values, so the ratio is certified against a named palette and
+  the role word is the primary cue.
+- The palette authors differ on the pair: Okabe and Ito avoid red with green and
+  say "Show difference BOTH in color and shape"; Tol says "pure red and green can
+  be distinguished. Instead, yellow/green, blue/violet and … cyan/pink/grey
+  combinations can be problematic". The chosen dark blue and amber sit close to
+  Tol's high-contrast blue and yellow, which he rates colour-blind safe and
+  monochrome safe; the polarity difference is his lightness-separation rule.
+  Polarity on its own is a weak cue (the dark-mode evidence is about reading
+  speed, not recognition).
+- Stating that nothing is recommended is justified by the mechanism of the default
+  effect: defaults work partly by "conveying what the choice architect thinks"
+  (Jachimowicz et al., 2019), which an unstated absence of preference leaves the
+  reader to infer.
+- The host's screen-reader mode ("No color-only cues") is the nearest shipped
+  precedent for a role label that survives without colour.
+
+**Path 2**: a configured profile whose defaults are the GOV.UK and federal
+surface rules (an example present, no record ids or `file:line` pointers in the
+product thinker's layer, sentence length, present tense, bounded vocabulary),
+checked mechanically with the profile as the seam a later standard replaces; the
+badges by value where abcd draws, by role word plus polarity everywhere; the
+non-recommendation statement at conjectural questions only. No Go dependency.
+
+The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 **Decided 2026-08-29 (product thinker).** The register belongs to the product thinker and is changeable by them at any time, without asking the facilitator.
+
+- (SOTA 2026-10-23) Which named reference palette the badge ratios are certified
+  against where the terminal, not abcd, maps the sixteen colours.
+- (SOTA 2026-10-23) Whether the register check records which standard each rule
+  came from, so a disputed rule can be traced to GOV.UK, the federal guidance or
+  ISO 24495-1.
 
 ## Audit Notes
 

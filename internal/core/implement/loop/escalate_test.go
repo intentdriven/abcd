@@ -290,8 +290,8 @@ func (servesFrontier) Pointed(string) (oracle.Connection, bool) { return oracle.
 // one is not one its version wrote and is refused, naming the version and the
 // key; one of version 15, 14 or 13 carrying none reads as the current version.
 func TestARoundsRouteIsStateVersion16s(t *testing.T) {
-	if SchemaVersion != 16 {
-		t.Fatalf("a round's route is state version 16's, got %d", SchemaVersion)
+	if schemaVersionUnplanned != 16 {
+		t.Fatalf("a round's route is state version 16's, got %d", schemaVersionUnplanned)
 	}
 	repo := briefRepo(t, agentsMarked)
 	start, err := Start(repo.Root(), "itd-10", Options{})

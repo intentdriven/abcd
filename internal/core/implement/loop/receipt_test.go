@@ -43,6 +43,7 @@ func awaitingLane(t *testing.T) (*gittest.Repo, string, Lane, string) {
 // laneCommit commits one file in the lane's worktree and returns its sha.
 func laneCommit(t *testing.T, repo *gittest.Repo, l Lane, name string) string {
 	t.Helper()
+	widenAsImplementer(t, repo, l, name)
 	if err := os.WriteFile(filepath.Join(l.Worktree, name), []byte(name+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}

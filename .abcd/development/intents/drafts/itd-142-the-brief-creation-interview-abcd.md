@@ -114,6 +114,53 @@ was willing to consider.
   it runs from the all-blank coverage state through the same rounds — no
   separate greenfield flow.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [elicitation interviews SOTA note](../../research/notes/2026-10-23-elicitation-interviews-sota.md).
+
+- Narrative first is measured, not taste: in a split-ballot experiment 43 per cent
+  of open-ended answers were not on the closed list (Pew), and interviews that
+  introduced structure late yielded the most distinct needs per person, six to
+  eight times a form's (Obaidi et al., 2025).
+- Requirements are co-created: only 30 to 38 per cent of post-interview
+  requirements traced fully to the customer's own ideas (Ferrari, Spoletini and
+  Debnath, 2022), which is why per-item confirmation and authored-by provenance
+  are load-bearing rather than polite.
+- Machine interviewers under-probe and bundle questions even when told not to
+  (4.9 per cent deepening probes; 28.7 per cent of question-bearing turns
+  carried several questions, Zhang et al., HCOMP 2026), and ten models showed "a consistent
+  under-clarification bias" (ClarifyMT-Bench): one question per turn is enforced
+  structurally, and "ask only what the record cannot settle" is derived from the
+  record's state, never left to the model.
+- A model's follow-up questions are no worse than a human's and better when the
+  prompt names the mistakes to avoid (Shen, Singhal and Breaux, RE 2025); their
+  14 mistake types are a ready-made refusal list for the question-drafter.
+- Defaults decide: d = 0.68 over 58 studies, stronger when the default reads as
+  the designer's view (Jachimowicz et al., 2019). The nearest tool convention,
+  Spec Kit's clarify command, asks one question at a time with a
+  `**Recommended:**` option; `widen-options-never-recommend` reverses that on
+  purpose, and the evidence backs the reversal. Rotate the construals between
+  sessions; keep the null answer in a fixed, labelled place.
+- "Can't articulate yet" is a state, not a middle answer: offering a don't-know
+  option moved 7 to 17 points out of the middle category and its choosers "may
+  not have a neutral opinion" (Wetzelhütter, 2020).
+- Confirmation is a provenance control, not proof of validity (member checking
+  is contested, Birt et al., 2016); the switch interview's "connect the wrong
+  dots" and "never feed the customer your words" are cheap non-leading checks
+  (jobstobedone.org).
+- A cheap way to amend a committed product later lowers how often the interview
+  should ask (a value-of-information policy asked five times fewer questions
+  with better outcomes, NeurIPS 2026 workshop).
+
+**Path 2**: a native staged interview shaped to the BDD discovery pattern (story,
+then rules, then concrete examples) and the measured mistake list, asking through
+the stop record the autonomous-loops pass recommends so another renderer or
+interviewer can ask the same question, with the question lint as the replaceable
+part. No Go dependency. Nothing here touches the ratified escalation rule, the
+one-intent final round or the held working principle.
+
+The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - **The escalation rule — ratified (facilitator, 2026-08-28; decision log):** a
@@ -135,6 +182,12 @@ was willing to consider.
   the two taxonomies cannot fork. The home question — ledger state, brief
   section, or record family — stays with iss-2608220750029991 and the
   evidence chapter.
+- (SOTA 2026-10-23) Whether the up-to-three construals rotate order between
+  sessions (primacy is measured in self-administered forms) and whether a
+  rotation could itself read as a hidden preference.
+- (SOTA 2026-10-23) How cheap an amendment to a committed product must be for the
+  interview to proceed on a best reading rather than ask; the value-of-information
+  result makes this the lever on how many rounds run.
 
 ## Evidence 2026-10-04 (a downstream lab)
 

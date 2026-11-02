@@ -2,7 +2,7 @@ package site
 
 // `abcd lint site` — the gates adr-47 decision 3 arms.
 //
-// The build renders; this says whether what it rendered may be published. Seven
+// The build renders; this says whether what it rendered may be published. Nine
 // independent checks run over an already-built output directory and the
 // repository it came from, each reporting EVERY failure it finds rather than
 // the first, because a gate that stops at one finding turns a single review into
@@ -24,6 +24,11 @@ package site
 //     and inline widths, over every emitted page.
 //  7. Loop-figure labels — every label in a page's lifted diagram is a phrase on
 //     that page, so a drawing cannot drift from the prose beside it.
+//  8. Base path — every root-absolute URL sits under the path the site is
+//     served below.
+//  9. Link targets — every /docs/ link on every rendered page, record pages
+//     included, and every redirect target names a file in the output as it
+//     will be served (linktargets.go).
 //
 // # Scope
 //
@@ -32,13 +37,17 @@ package site
 // `.abcd/site.json`, whichever tree the span came from. The verbatim record
 // rendering under `/record/**` is EXEMPT: the record legitimately contains
 // change-narration and tool names, and rewriting it to read better on the site
-// is the thing that ADR forbids. The static mobile checks are the exception
-// that covers everything THIS BUILD writes, record pages included: a table that
-// scrolls off a phone does so whatever tree its words came from.
+// is the thing that ADR forbids. The static mobile checks, the base path and
+// the link targets are the exceptions that cover everything THIS BUILD writes,
+// record pages included: a table that scrolls off a phone, a link outside the
+// base path, or a `/docs/` link to a renamed page fails whatever tree its words
+// came from.
 //
 // `/docs/` is MkDocs' own tree and is not this build's output at all, so it is
 // excluded from the page walk before any gate sees it — including the mobile
-// checks, which therefore say nothing about it. Its words are gated at the
+// checks, which therefore say nothing about it. The link-targets gate is the one
+// that looks INTO it, and only to ask whether a file is there: a link any
+// rendered page carries into `/docs/`, or a redirect into it, must land. Its words are gated at the
 // source by docs-lint, and its layout is the SSG's own responsibility. A green
 // report here is a statement about the pages abcd renders, and about no others.
 //
@@ -152,12 +161,29 @@ const (
 	CheckMobile       = "mobile"
 	CheckFigureLabels = "figure-labels"
 	CheckBasePath     = "base-path"
+	CheckLinkTargets  = "link-targets"
+	// CheckContentPolicy holds a project site's pages to the content policy
+	// each carries in its own head (project_policy.go).
+	CheckContentPolicy = "content-policy"
 )
 
 // CheckNames is every check this verb runs, in the order it runs them.
 var CheckNames = []string{
 	CheckProvenance, CheckHero, CheckBannedTokens, CheckSnippets,
-	CheckBaseline, CheckMobile, CheckFigureLabels, CheckBasePath,
+	CheckBaseline, CheckMobile, CheckFigureLabels, CheckBasePath, CheckLinkTargets,
+	CheckContentPolicy,
+}
+
+// composedCheckNames is every check a composed site's run makes: all but the
+// project route's content policy.
+func composedCheckNames() []string {
+	out := make([]string, 0, len(CheckNames))
+	for _, name := range CheckNames {
+		if name != CheckContentPolicy {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // maxOutputPageBytes bounds one emitted page read.
@@ -223,8 +249,10 @@ type CheckResult struct {
 	Checks []string `json:"checks"`
 	// Findings fail the run.
 	Findings []CheckFinding `json:"findings"`
-	// Notes do not. The ratchet's shrink invitation is the only one: a baseline
-	// entry whose reference has been fixed is news, not a failure.
+	// Notes do not. The ratchet's shrink invitation is one: a baseline entry
+	// whose reference has been fixed is news, not a failure. The other is the
+	// link-targets gate's count of /docs/ targets it could not judge, in an
+	// output the docs generator has not written into.
 	Notes []CheckFinding `json:"notes"`
 	// Built reports whether this run rendered the output itself.
 	Built bool `json:"built"`
@@ -233,7 +261,7 @@ type CheckResult struct {
 // OK reports whether the run found nothing that fails it.
 func (r CheckResult) OK() bool { return len(r.Findings) == 0 }
 
-// checker carries everything the eight checks read, gathered once.
+// checker carries everything the checks read, gathered once.
 type checker struct {
 	repoRoot string
 	// root is repoRoot as an os.Root containment scope, shared by every read of a
@@ -318,6 +346,12 @@ func Check(req CheckRequest) (CheckResult, error) {
 	if err := routeAgrees(manifest, req.Project); err != nil {
 		return CheckResult{}, err
 	}
+	// The content-policy gate judges a project site alone: a composed site's
+	// host serves its policy as a header, so the gate is not reported as
+	// having run there.
+	if !manifest.Project() {
+		res.Checks = composedCheckNames()
+	}
 	// A project site's interface words are the binary's, and its identity
 	// block the one abcd wrote and `.abcd/positioning.json` points at.
 	ui, identityLoc := UI{}, manifest.Identity
@@ -381,6 +415,10 @@ func Check(req CheckRequest) (CheckResult, error) {
 	c.checkMobile()
 	c.checkFigureLabels()
 	c.checkBasePath()
+	if err := c.checkLinkTargets(); err != nil {
+		return CheckResult{}, err
+	}
+	c.checkContentPolicy()
 
 	sortFindings(res.Findings)
 	sortFindings(res.Notes)
@@ -486,9 +524,15 @@ func (c *checker) readPages() error {
 				// pass, so a genuine finding on an unparsed page cannot disappear.
 				// The base-path gate walks the pages only below a base path; at
 				// the root every root-absolute URL is inside the site, read or not.
-				gates := []string{CheckHero, CheckBannedTokens, CheckSnippets, CheckMobile, CheckFigureLabels}
+				// The link-targets gate walks every page, the record rendering
+				// included, so an unparsed record page is denied it too.
+				gates := []string{CheckHero, CheckBannedTokens, CheckSnippets, CheckMobile, CheckFigureLabels, CheckLinkTargets}
 				if c.base != "/" {
 					gates = append(gates, CheckBasePath)
+				}
+				// The content-policy gate walks every page of a project site.
+				if c.project {
+					gates = append(gates, CheckContentPolicy)
 				}
 				for _, name := range gates {
 					c.fail(name, rel, "", "this page did not parse, so this gate could not examine it")

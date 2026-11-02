@@ -51,7 +51,7 @@ waiting on right now; `facilitator.mode` declares who merges.
 ## The version
 
 The board's last line is the installed abcd version, in both views and both
-forms (`abcd v0.13.4`, a list item in the markdown form), and `--json` carries
+forms (`abcd vX.Y.Z`, a list item in the markdown form), and `--json` carries
 it as `version`. It is the version `abcd --version` reports, read off the
 binary with no network. When the user asks how abcd was installed, how old it
 is, or whether it has drifted from the reference it should match, run:

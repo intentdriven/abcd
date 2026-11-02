@@ -13,6 +13,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/adapter/openaiapi"
 	"github.com/intentdriven/abcd/internal/core/changelog"
+	"github.com/intentdriven/abcd/internal/core/dryrun"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/core/oracle"
@@ -46,6 +47,17 @@ func ingestCut(repoRoot string, raw []byte, at time.Time) (release.IngestResult,
 		return release.IngestResult{}, err
 	}
 	return release.Ingest(repoRoot, current, raw, at)
+}
+
+// planCut is ingestCut's practice run: the same live-surface walk and the
+// same judgement of the payload, reported as the writes the ingest would make
+// (release.PlanIngest), writing nothing.
+func planCut(repoRoot string, raw []byte, at time.Time) (release.IngestPlan, error) {
+	current, err := SurfaceSnapshot(repoRoot)
+	if err != nil {
+		return release.IngestPlan{}, err
+	}
+	return release.PlanIngest(repoRoot, current, raw, at)
 }
 
 // shipResult is what the ingest step reports: the release record that landed,
@@ -330,10 +342,10 @@ func bumpReason(cut release.Cut) string {
 func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 	var changelogJSON string
 	var payloadDir string
-	var allowDirty, fetchBaseline bool
+	var allowDirty, fetchBaseline, dryRun bool
 	var shipRoute *routeFlag
 	cmd := &cobra.Command{
-		Use: "ship [--changelog-json <file|->] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline]",
+		Use: "ship [--changelog-json <file|->] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] [--dry-run]",
 		Long: "Cut a release from HEAD, deriving its version and changelog from the records that shipped\n" +
 			"since the last tag. A fresh cut runs the pre-flight gates before it writes anything.\n\n" +
 			"The dirty-tree gate, the check for uncommitted records, and the check that the plugin\n" +
@@ -345,7 +357,13 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 			"waive that refusal.\n\n" +
 			"None of these comparisons looks inside a checked-out submodule, so uncommitted content\n" +
 			"inside one does not make the tree dirty and no program the submodule's own\n" +
-			"configuration names runs; a submodule moved to a different commit still does.",
+			"configuration names runs; a submodule moved to a different commit still does.\n\n" +
+			"With --changelog-json, --dry-run is a practice run: the composed changelog is judged against\n" +
+			"the cut exactly as the real ingest judges it, the pre-flight gates run when the ship renders a\n" +
+			"payload, and the report names every file the cut would write and the tag, push and release\n" +
+			"the release workflow makes after it. Nothing is written: no pre-flight report, no release\n" +
+			"record, no archive pin and no staged payload. It reads the parity baseline already in the\n" +
+			"checkout, so --fetch-baseline is refused beside it.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()
@@ -378,6 +396,21 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "abcd launch ship: --fetch-baseline reads the baseline a payload render's parity " +
 					"diff compares against, and the deterministic emit step renders no payload"}
 			}
+			// The practice run checks a composed changelog; the emit step reads
+			// none and writes nothing already, so a --dry-run beside it is
+			// refused rather than ignored.
+			if dryRun && changelogJSON == "" {
+				return &exitError{Code: 2, Msg: "abcd launch ship: --dry-run checks a composed changelog, and the deterministic " +
+					"emit step reads none and writes nothing already; pass --changelog-json <file|-> to practise the ingest, " +
+					"or run `abcd launch --dry-run` to preview the cut"}
+			}
+			// A fetch lays the downloaded baseline on disk, and a practice run
+			// writes nothing: it reads the baseline already in the checkout.
+			if dryRun && fetchBaseline {
+				return &exitError{Code: 2, Msg: "abcd launch ship: --fetch-baseline downloads the parity baseline, and a practice " +
+					"run writes nothing; --dry-run reads the baseline already in the checkout, so drop --fetch-baseline " +
+					"(nothing was written)"}
+			}
 			// Both steps dispatch the composer: the emit step hands the host
 			// its request block, the ingest step returns its receipt. The route
 			// is resolved first, so a refused --route or routing table stops
@@ -407,7 +440,7 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
 			}
 			if raw != nil {
-				return runShipIngest(cmd, root, raw, payloadDir, allowDirty, fetchBaseline, *asJSON, route, nil)
+				return runShipIngest(cmd, root, raw, payloadDir, allowDirty, fetchBaseline, dryRun, *asJSON, route, nil)
 			}
 			if err := shipRoute.admit("abcd launch ship", route); err != nil {
 				return err
@@ -445,7 +478,7 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 					return err
 				}
 				if d != nil {
-					return runShipIngest(cmd, root, d.payload, "", false, false, *asJSON, route, d)
+					return runShipIngest(cmd, root, d.payload, "", false, false, false, *asJSON, route, d)
 				}
 				route = fell
 			}
@@ -473,6 +506,7 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().BoolVar(&fetchBaseline, "fetch-baseline", false,
 		"read the parity baseline from the anchor tag's published plugin archive, verified against the release's checksums.txt "+
 			"(a network fetch; default: a fresh render at the tag)")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, dryRunFlagUsage)
 	shipRoute = addRouteFlag(cmd, changelogAgent)
 	return cmd
 }
@@ -497,7 +531,13 @@ type shipEmit struct {
 //
 // d is the dispatched step when a provider composed raw, whose receipt the
 // render carries in place of the host's.
-func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string, allowDirty, fetchBaseline, asJSON bool, route *oracle.Route, d *dispatched) error {
+//
+// dryRun makes it the practice run (spc-2610301431131636 step 2): every check
+// runs as it does for the real ingest, the pre-flight gates included, and
+// every write — the pre-flight report, the release record, the archive pin and
+// the staged payload — is reported instead of made. A refusal is the real
+// run's, rendered by the same code.
+func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string, allowDirty, fetchBaseline, dryRun, asJSON bool, route *oracle.Route, d *dispatched) error {
 	archive, err := launch.DeclaresPluginArchive(cwd)
 	if err != nil {
 		return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
@@ -527,6 +567,9 @@ func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string
 		// fills in the rest.
 		res           shipResult
 		preflightNote string
+		// planned is the practice run's report, filled as the run reaches
+		// each write it would make.
+		planned dryrun.Plan
 	)
 	// A release already in flight is the cut's own refusal (release-in-flight,
 	// exit 1), and that is the one to show. The pre-flight's parity diff would
@@ -574,7 +617,13 @@ func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string
 		// The report is written whatever the verdict: a refused cut is the one
 		// whose record matters most. A precheck that stopped before its gates (a
 		// structural fault) has no gate to report, and writes nothing.
-		if len(pre.Gates) > 0 {
+		if len(pre.Gates) > 0 && dryRun {
+			// The report is a dated directory the real run makes; the practice
+			// run names it and makes nothing.
+			planned.Effects = append(planned.Effects, dryrun.Effect{Effect: "record the pre-flight report",
+				Target: "a new dated directory of the local tier's launch log (preflight.json and preflight.md)"})
+			preflightNote = "; the real run would record the pre-flight report in the local tier"
+		} else if len(pre.Gates) > 0 {
 			report := pre.PreflightReport(time.Now(), "")
 			report.Targets = launchTargets(cwd, cmd.ErrOrStderr())
 			preflightDir, failure := writePreflight(cwd, report)
@@ -614,7 +663,16 @@ func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string
 		}
 	}
 	at := time.Now()
-	ingested, err := ingestCut(cwd, raw, at)
+	var ingested release.IngestResult
+	if dryRun {
+		var plan release.IngestPlan
+		plan, err = planCut(cwd, raw, at)
+		ingested = plan.Result
+		planned.Writes = append(planned.Writes, plan.Plan.Writes...)
+		planned.Effects = append(planned.Effects, plan.Plan.Effects...)
+	} else {
+		ingested, err = ingestCut(cwd, raw, at)
+	}
 	var refused *release.PayloadRefusal
 	if errors.As(err, &refused) {
 		// The composer's payload is refused: render the cut and every reason,
@@ -639,6 +697,9 @@ func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string
 	res.IngestResult = ingested
 	if ingested.Written && !archive {
 		res.ArchiveUnpinned = archiveUnpinnedReason
+	}
+	if dryRun {
+		return renderShipDryRun(cmd, cwd, res, planned, stage && ingested.Written, archive, payloadDir, asJSON, route, raw)
 	}
 	// Render only behind a written record: a refused cut has no version to
 	// stamp, and a refused document must leave the filesystem exactly as it
@@ -692,6 +753,51 @@ func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string
 		}
 	}); rerr != nil {
 		return rerr
+	}
+	if !res.Cut.Ready {
+		return &exitError{Code: 1}
+	}
+	return nil
+}
+
+// renderShipDryRun ends the practice run of `launch ship --changelog-json`:
+// it adds what a written cut would do after its release record — the archive
+// pin and the staged payload, when the ship renders one — to the plan, and
+// renders the practice run, the cut's report and the gates' results beside
+// it. A refused cut is still exit 1, as the real run's is.
+func renderShipDryRun(cmd *cobra.Command, cwd string, res shipResult, plan dryrun.Plan, renders, archive bool,
+	payloadDir string, asJSON bool, route *oracle.Route, raw []byte) error {
+	if renders && archive {
+		target := "the plugin archive rendered from this tree"
+		if next, err := launch.ParseSemver(strings.TrimPrefix(res.Cut.NextTag, "v")); err == nil {
+			if url, err := launch.ArchiveReleaseURL(cwd, next.String()); err == nil {
+				target = url
+			}
+		}
+		plan.Effects = append(plan.Effects, dryrun.Effect{Effect: "render and pin the plugin archive", Target: target})
+		const pending = "pinned to the archive's digest, which is known once the archive is rendered"
+		plan.Writes = append(plan.Writes, dryrun.Write{Path: ".claude-plugin/marketplace.json", Action: dryrun.Replace, Pending: pending})
+		if _, err := os.Stat(filepath.Join(cwd, filepath.FromSlash(SurfaceSnapshotPath))); err == nil {
+			plan.Writes = append(plan.Writes, dryrun.Write{Path: SurfaceSnapshotPath, Action: dryrun.Replace,
+				Pending: "regenerated beside the pin"})
+		}
+	}
+	if renders && payloadDir != "" {
+		plan.Effects = append(plan.Effects, dryrun.Effect{Effect: "stage the release payload", Target: fsutil.RedactHome(payloadDir)})
+	}
+	if res.Written && res.Cut.NextTag != "" {
+		res.RetrospectiveOwed = reflect.Nudge(res.Cut.NextTag)
+	}
+	if err := renderDryRun(cmd.OutOrStdout(), asJSON, "abcd launch ship", withReceipt(res, route, raw), plan, func(w io.Writer) {
+		renderCut(w, "abcd launch ship", res.Cut)
+		if res.ArchiveUnpinned != "" {
+			fmt.Fprintf(w, "  archive:    would not be pinned — %s\n", res.ArchiveUnpinned)
+		}
+		renderDeepSmoke(w, res.DeepSmoke)
+		renderParity(w, res.Parity)
+		renderReceiptLine(w, route, raw)
+	}); err != nil {
+		return err
 	}
 	if !res.Cut.Ready {
 		return &exitError{Code: 1}

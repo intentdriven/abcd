@@ -74,8 +74,20 @@ planning interview walks each one.
   **then** it reports no stub entry, and a consult over the six entries iss-55
   names returns document text rather than keywords.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [sources-provenance SOTA note](../../research/notes/2026-10-23-sources-provenance-sota.md).
+
+- **Extraction quality is measured.** On trafilatura's own 2026-10-02 benchmark (990 documents) trafilatura scores F 0.926, readability-lxml 0.853, jusText 0.862, newspaper4k 0.803 (trafilatura evaluation page). A Go port, go-trafilatura v2.2.6 (Apache-2.0, Go 1.26 or newer), exists and would be a Go dependency needing sign-off.
+- **The keyword-stub test needs no model.** jusText classifies a block by stopword density (bad below 0.30, good above 0.32 for long blocks), link density (above 0.2 is boilerplate) and length (70 and 200); a text that is only keywords has near-zero stopword density (jusText algorithm page). The density is computed against a per-language stoplist (the tool is called with `get_stoplist("English")`) and the bounds are block-level defaults for HTML, so the check must pick the stoplist by the entry's language, or skip with a warning when the language is unknown, and recalibrate the bounds for whole stored texts.
+- **PDF text in pure Go is weak.** pdfcpu extracts images, fonts and metadata, not plain text; ledongthuc/pdf extracts text but calls itself incomplete; poppler's `pdftotext` converts to plain text in reading-order or `-layout` mode (the three projects' own pages).
+- **Consult stays grep-first** (2026-07-08 ruling); the named upgrade, SQLite FTS5, is reachable CGO-free through modernc.org/sqlite (BSD-3-Clause, SQLite 3.54.1) and would be a dependency needing sign-off.
+- **adr-38 bars an implicit fetch, not an explicit verb**, so an `ingest` that fetches on command is within the rule; the page's "abcd fetches and converts nothing" predates it.
+- **Path 2**: consult and the stopword-density quality check (at `source add` and in `source lint`) are native; the backfill of the six stub entries is a documented act against a person's corpus, verified by `source lint` rather than by a build criterion; `ingest <url|file>` is explicit and converts through installed tools on PATH (`pdftotext`, `pandoc`, the trafilatura CLI), and with none present stages the bytes and tells the agent to convert and re-run with `--text`. The seam is the converter interface (bytes and media type in, text out), so go-trafilatura can replace the HTML rung under its own sign-off. The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
+- (SOTA 2026-10-23) The stopword threshold and token floor want calibrating on the real corpus before they harden; does the first cut ship as a lint warning and become a refusal once the six stubs and a sample of good entries have been scored?
 - **Does ingest fetch and convert in the binary**, or does the agent keep the
   fetch and the conversion while the binary does everything deterministic? The
   ingest page states "abcd fetches and converts nothing" today, and adr-38 bars

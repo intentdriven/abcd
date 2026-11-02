@@ -231,6 +231,7 @@ Sub-verbs: none.
 |---|---|
 | `--context` | string |
 | `--dispositions` | string |
+| `--dry-run` | bool |
 | `--scribe-json` | string |
 
 <!-- surface-appendix:end -->

@@ -7,8 +7,10 @@ import (
 	"io"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/autonomy"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/mode"
 	"github.com/intentdriven/abcd/internal/core/question"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -83,16 +85,37 @@ func isQuestionTool(name string) bool {
 // whom it is for. Where the badge shows (a checkout abcd manages, with the
 // local tier the mode verb writes to), an admitted question is marked open and
 // a chipped one sets the mode from its chip (chipState), so the status line
-// names whom the question on screen is for. A store or marker the gate cannot
-// read or write is not a decision: the question runs and the gate says so, the
-// guard's fail-open-loud contract.
+// names whom the question on screen is for. A mode store the gate cannot read
+// leaves a chipped question judged all the same, at the limits in force,
+// since its chip names whom it is for: one that breaks a rule is refused, and
+// one that does not runs with no mode set and no marker, and one line says
+// so. A question without a chip is abcd's only through the mode, so with the
+// store unread it runs unchecked, loudly, the guard's fail-open-loud contract
+// for a question it cannot tell is its own. A marker or mode the gate cannot
+// write is not a decision either: the question, already judged, runs and the
+// gate says so.
+//
+// The limits abcd's question is held to are the repository's
+// (itd-2610301914350541): the resolver, layered.QuestionLimits, reads the
+// three question keys of .abcd/config.json at the rules root over
+// question.Default, tightened where the person's own
+// ~/.abcd.noindex/config.json sets one lower. A value it read and refused
+// (outside its bounds, not a whole number, a key the namespace does not
+// claim, or a personal value looser than the limit in force) refuses every
+// abcd question naming the key, the value, the bounds or the limit in force,
+// and the file, and no asking rule (limitsRefusedReason): nothing falls
+// through to the defaults. A layer it could not read (a file that is not a
+// regular file, cannot be parsed or is over the size cap, or an unresolved
+// home) is loud and holds abcd's question to the defaults: one NOT CHECKED
+// line names the file, and a question the defaults admit runs at exit 1.
+// Another tool's question runs unchecked whatever either file says.
 func questionGate(cmd *cobra.Command, cwd string, raw json.RawMessage) error {
-	away, unread := awayAtQuestion(cwd)
-	if away {
+	reads := questionState(cmd, cwd)
+	if reads.state.Away {
 		return denyCall(awayQuestionRefusal())
 	}
-	if unread == nil {
-		return presentQuestionGate(cmd, cwd, raw)
+	if reads.state.AwayErr == nil {
+		return presentQuestionGate(cmd, reads, raw)
 	}
 	// The away record could not be read safely, so it reads as not away and
 	// the question is checked as if the person were present. Said on stderr,
@@ -100,15 +123,65 @@ func questionGate(cmd *cobra.Command, cwd string, raw json.RawMessage) error {
 	// unless the gate already answered on stdout, whose note exit 1 would
 	// drop. A deny folds the line into its reason.
 	fmt.Fprintf(cmd.ErrOrStderr(), "abcd guard: the away record was not read (%s), so it reads as not away and the question is checked as if the person were present.\n",
-		termsafe.Sanitize(scrubPaths(unread)))
+		termsafe.Sanitize(scrubPaths(reads.state.AwayErr)))
 	out := &wroteWriter{w: cmd.OutOrStdout()}
 	cmd.SetOut(out)
-	err := presentQuestionGate(cmd, cwd, raw)
+	err := presentQuestionGate(cmd, reads, raw)
 	cmd.SetOut(out.w)
 	if err == nil && !out.wrote {
 		return &exitError{Code: 1}
 	}
 	return err
+}
+
+// questionReads is what the gate reads before it decides: the state the
+// shared decision takes, and the two facts only the hook's writes need, the
+// repository root and the mode as the store spells it.
+type questionReads struct {
+	state question.State
+	root  string
+	mode  mode.State
+}
+
+// questionState makes every store read the question gate's decision takes
+// (spc-2610301917245442, "One store reader"): the away record, the
+// repository root, whether the badge shows, the mode where it does, the
+// binary's verbs, and the question limits in force (questionLimitsAt,
+// spc-2610301950037469 step 2). The hook and `abcd guard question` both call
+// it and then question.Decide, so the two read the same state the same way.
+// It writes nothing; a store it cannot read is named in the state, never
+// fatal.
+func questionState(cmd *cobra.Command, cwd string) questionReads {
+	r := questionReads{mode: mode.Managed}
+	r.state.Away, r.state.AwayErr = awayAtQuestion(cwd)
+	r.state.Verbs = verbsOf(cmd.Root())
+	questionLimitsAt(cwd, &r.state)
+	root, rerr := mode.Root(cwd)
+	if rerr != nil {
+		// In a tree that looks like a checkout but git would not name the
+		// root of, the mode store was never read (iss-2610110432159652).
+		// Outside every repository there is no store to miss.
+		if gitutil.RepoShaped(cwd) {
+			r.state.RootErr = rerr
+		}
+		return r
+	}
+	r.root = root
+	r.state.Repo = true
+	// The badge shows only in a checkout abcd manages with the local tier;
+	// only there is there a mode store to read.
+	r.state.Badge = ahoy.Managed(root) && mode.HasTier(root)
+	if !r.state.Badge {
+		return r
+	}
+	st, err := mode.ReadAt(root)
+	if err != nil {
+		r.state.ModeErr = err
+		return r
+	}
+	r.mode = st
+	r.state.Mode = addresseeOf(st)
+	return r
 }
 
 // awayAtQuestion reads whether the person is away for the repository holding
@@ -153,106 +226,145 @@ func (o *wroteWriter) Write(p []byte) (int, error) {
 }
 
 // presentQuestionGate is the gate while the person is present: everything
-// questionGate's comment describes after the away check.
-func presentQuestionGate(cmd *cobra.Command, cwd string, raw json.RawMessage) error {
+// questionGate's comment describes after the away check. The decision is
+// question.Decide's; this function only acts on it, and every write it makes
+// comes after the decision, so `abcd guard question`, which calls the same
+// decision, can never reach them.
+func presentQuestionGate(cmd *cobra.Command, reads questionReads, raw json.RawMessage) error {
 	stderr := cmd.ErrOrStderr()
 	fields, err := decodeQuestions(raw)
 	if err != nil {
 		return questionFailOpen(stderr, "the question tool's input could not be read (%s)", err)
 	}
+	v := question.Decide(fields, reads.state, reads.state.Limits)
+	lead := unreadLead(reads, v)
+	if lead == "" {
+		return actOnQuestionVerdict(cmd, reads, v, "")
+	}
+	// A store abcd's question was checked without could not be read: the
+	// mode store, for a chipped question, whose mode is then not set, or a
+	// layer of the question limits, whose defaults it was then checked at.
+	// The gate says so, one line per store, wherever its answer is read: at
+	// the head of a deny's reason or a rows note, which the agent reads, and
+	// otherwise on stderr with exit 1, the loud non-blocking status the host
+	// shows, never a silent admission.
+	out := &wroteWriter{w: cmd.OutOrStdout()}
+	cmd.SetOut(out)
+	err = actOnQuestionVerdict(cmd, reads, v, lead)
+	cmd.SetOut(out.w)
+	var deny *hookDeny
+	if out.wrote || errors.As(err, &deny) {
+		return err
+	}
+	fmt.Fprint(stderr, lead)
+	if err == nil {
+		return &exitError{Code: 1}
+	}
+	return err
+}
 
-	// The badge shows only in a checkout abcd manages with the local tier;
-	// only there is there a mode store to read.
-	root, rerr := mode.Root(cwd)
-	badge := rerr == nil && ahoy.Managed(root) && mode.HasTier(root)
-	st := mode.Managed
-	if badge {
-		if st, err = mode.ReadAt(root); err != nil {
-			return questionFailOpen(stderr, "the mode store could not be read (%s)", err)
+// unreadLead is the lines the gate leads its answer with for abcd's question
+// checked without a store it could not read, one per store, in the
+// decision's order: the mode store's for a chipped question where the badge
+// shows (modeUnreadLine), and the question limits' (limitsUnreadLine). A
+// question without a chip and the mode store unread is not checked at all
+// and fails open on its own line instead (actOnQuestionVerdict), so it gets
+// neither.
+func unreadLead(reads questionReads, v question.Verdict) string {
+	var b strings.Builder
+	for _, u := range v.Unread {
+		switch {
+		case u.Store == question.StoreMode && v.Chipped && reads.state.Badge && reads.state.ModeErr != nil:
+			b.WriteString(modeUnreadLine(reads.state.ModeErr))
+		case u.Store == question.StoreLimits:
+			b.WriteString(limitsUnreadLine(reads.state.LimitsErr))
 		}
 	}
-	chip := hasAbcdChip(fields)
-	if !chip && st == mode.Managed {
-		// A question without a chip is abcd's only through the mode store,
-		// found through git's toplevel. In a tree that looks like a checkout
-		// but git would not name the root of, the store was never read, so
-		// whether the mode names somebody is unknown: the question runs, and
-		// the gate says the check did not (iss-2610110432159652). Outside
-		// every repository there is no store to miss, and it stays silent.
-		if rerr != nil && gitutil.RepoShaped(cwd) {
-			return questionFailOpen(stderr, "the repository root could not be found, so the mode store was not read (%s)", rerr)
+	return b.String()
+}
+
+// modeUnreadLine is the gate's loud line for a chipped question while the
+// mode store could not be read: the question is judged on its chip, which
+// names whom it is for, and the mode and the open-question marker the gate
+// would write from that chip are not written.
+func modeUnreadLine(err error) string {
+	return "abcd guard: the mode store could not be read (" + termsafe.Sanitize(scrubPaths(err)) +
+		"), so the mode is not set from this question's chip and the question is not marked open; its chip names whom it is for, so it is judged without the mode.\n"
+}
+
+// actOnQuestionVerdict does what the hook does with a decision: a deny for a
+// refusal, the marker and the mode for an admission where the badge shows,
+// the rows note for an admission with rows findings, and questionFailOpen
+// for a question the decision could not tell is abcd's because a store it
+// needed could not be read. lead, when set, opens the deny's reason and the
+// rows note.
+func actOnQuestionVerdict(cmd *cobra.Command, reads questionReads, v question.Verdict, lead string) error {
+	stderr := cmd.ErrOrStderr()
+	switch v.Outcome {
+	case question.OutcomeUnchecked:
+		if reads.state.ModeErr != nil && !v.Chipped {
+			return questionFailOpen(stderr, "the mode store could not be read (%s)", reads.state.ModeErr)
 		}
+		if reads.state.RootErr != nil && !v.Chipped {
+			return questionFailOpen(stderr, "the repository root could not be found, so the mode store was not read (%s)", reads.state.RootErr)
+		}
+	case question.OutcomeAdmitUnchecked:
 		return nil
-	}
-
-	// A chip names the addressee of its own tab, and the mode the gate sets
-	// follows the chip, so a chipped question is checked against its chips
-	// and not against a mode it is about to replace.
-	who := addresseeOf(st)
-	if chip {
-		who = question.Unnamed
-	}
-	findings := question.CheckLimits(fields, question.Default, question.Addressee{
-		Person: who,
-		Verbs:  verbsOf(cmd.Root()),
-	})
-	// The rows limit alone does not refuse (iss-2610070637562567): a question
-	// too tall for the narrow window is shown, and the agent is told
-	// afterwards. Refusing it made the agent redraft a question the person
-	// was ready to answer.
-	if len(findings) > 0 && !rowsOnly(findings) {
+	case question.OutcomeRefuse:
 		why := ""
-		if !chip {
-			why = modeMadeAbcds(st)
+		if !v.Chipped {
+			why = modeMadeAbcds(reads.mode)
+		}
+		if v.Refused != nil {
+			return denyCall(lead + limitsRefusedReason(v.Refused.Reason, why))
 		}
 		var reason strings.Builder
-		writeLimitsRefusal(&reason, findings, why)
+		reason.WriteString(lead)
+		writeLimitsRefusal(&reason, v.Findings, why)
 		return denyCall(reason.String())
 	}
-	if badge {
-		want := st
-		if chip {
-			want = chipState(fields)
-		}
+	if !v.Abcds {
+		// Not abcd's question, unchecked because the away record was not
+		// read: the caller's loud status is the whole answer.
+		return nil
+	}
+	if reads.state.Badge && reads.state.ModeErr == nil {
+		// With the mode store unread the chipped question was still judged,
+		// and runs, but nothing is written beside a store the gate could not
+		// read: no marker, and no mode (modeUnreadLine says so).
+		want := stateOf(v.ModeAfter)
 		// The marker first: a marker written for a mode that then could not
 		// be set costs one reset to managed on the answer, while a mode set
 		// with no marker would stay parked with nothing left to reset it.
-		if err := mode.MarkQuestionOpen(root, want); err != nil {
+		if err := mode.MarkQuestionOpen(reads.root, want); err != nil {
 			return questionFailOpen(stderr, "the question could not be marked open, so the mode was not set from its chip and will not reset on the answer (%s)", err)
 		}
-		if want != st {
-			if err := mode.SetAt(root, want); err != nil {
+		if want != reads.mode {
+			if err := mode.SetAt(reads.root, want); err != nil {
 				return questionFailOpen(stderr, "the mode could not be set from the question's chip, so the status line does not say whom the question is for (%s)", err)
 			}
 		}
 	}
-	if len(findings) > 0 {
+	if len(v.Findings) > 0 {
 		// Only rows findings are left: the question runs, and the agent
 		// reads the note after it returns. No permission decision is set,
 		// so the host's own permission flow still applies.
-		if err := writeHookNote(cmd.OutOrStdout(), rowsNote(findings)); err != nil {
+		if err := writeHookNote(cmd.OutOrStdout(), lead+rowsNote(v.Findings)); err != nil {
 			return questionFailOpen(stderr, "the note on the question's height could not be written (%s)", err)
 		}
 	}
 	return nil
 }
 
-// chipState is the mode a chipped question sets (iss-2610100626211810): the
-// person its chips name. The Product chip names the product thinker, and the
-// Tech chip the technical facilitator. The Setup chip names the facilitator
-// too: the setup interview asks how abcd is installed and configured in a
-// repository (its visibility, its keys, the oracles it connects), which is
-// the how of the work, the facilitator's half, never the what. A call whose
-// tabs name both people sets the product thinker, so the status line never
-// says only the facilitator is owed an answer the product thinker owes too.
-func chipState(f question.Fields) mode.State {
-	st := mode.Facilitator
-	for _, t := range f.Tabs {
-		if role, ok := question.ChipRole(t.Header, question.Default); ok && chipRoleState(role) == mode.ProductThinker {
-			st = mode.ProductThinker
-		}
+// stateOf is the mode a person names: the inverse of addresseeOf.
+func stateOf(p question.Person) mode.State {
+	switch p {
+	case question.ProductThinker:
+		return mode.ProductThinker
+	case question.Facilitator:
+		return mode.Facilitator
 	}
-	return st
+	return mode.Managed
 }
 
 // chipRoleState is the mode one chip role word names: the product thinker
@@ -260,20 +372,7 @@ func chipState(f question.Fields) mode.State {
 // and Setup). The interview pages' test reads it to accept a page that names
 // a question's chip in place of setting the mode.
 func chipRoleState(role string) mode.State {
-	if role == question.ProductRole {
-		return mode.ProductThinker
-	}
-	return mode.Facilitator
-}
-
-// rowsOnly reports whether every finding is the rows limit's.
-func rowsOnly(findings []question.Finding) bool {
-	for _, f := range findings {
-		if f.Rule != question.RuleRows {
-			return false
-		}
-	}
-	return true
+	return stateOf(question.ChipPerson(role))
 }
 
 // rowsNote is what the agent is told when a question ran over the rows limit
@@ -337,16 +436,6 @@ func decodeQuestions(raw json.RawMessage) (question.Fields, error) {
 		f.Tabs[i] = t
 	}
 	return f, nil
-}
-
-// hasAbcdChip reports whether any tab's header is in abcd's chip grammar.
-func hasAbcdChip(f question.Fields) bool {
-	for _, t := range f.Tabs {
-		if _, ok := question.ChipRole(t.Header, question.Default); ok {
-			return true
-		}
-	}
-	return false
 }
 
 // addresseeOf is the person a mode names; a managed mode, or no mode store,
@@ -441,6 +530,97 @@ func writeLimitsRefusal(w io.Writer, findings []question.Finding, why string) {
 // rowsNotRefusingLine opens the rows findings a refusal names but does not
 // refuse on.
 const rowsNotRefusingLine = "The rows limit does not refuse on its own: with only the rows finding(s) below, this question would have been shown, and a narrow window might cut it."
+
+// questionLimitsAt puts the question limits in force for the repository
+// holding cwd on st, through the one resolver (layered.QuestionLimits) at the
+// root the rules loader resolves, so the gate and the injected GRILL domain
+// read one file (itd-2610301914350541 decision 6). The mode store keeps its
+// own root (mode.Root, git's toplevel); in a monorepo member with its own
+// .abcd/ the two differ, and the limits follow the rules root.
+//
+// The outcome is one of three. In force: st.Limits and st.LimitsSource are
+// the resolver's. Unread (a layer the resolver could not read or parse, or an
+// unresolved home): st.LimitsErr and st.LimitsFile name it, and st.Limits is
+// the defaults the resolver returns with it, which abcd's question is then
+// checked at. Refused: st.LimitsRefused carries the refusal, and st.Limits is
+// the defaults, assigned here, read only for the header grammar (whose width
+// and role words no file sets, decision 2) and the rows split, since a
+// refused value is never applied and abcd's question is refused before any
+// limit is checked.
+func questionLimitsAt(cwd string, st *question.State) {
+	roots, _ := layered.RootsFor(cwd)
+	v, err := layered.QuestionLimits(roots)
+	var unread *layered.UnreadError
+	switch {
+	case err == nil, errors.As(err, &unread):
+		st.Limits = v.V
+		st.LimitsSource = make([]string, len(v.Sources))
+		for i, src := range v.Sources {
+			st.LimitsSource[i] = src.Origin
+		}
+		if err != nil {
+			st.LimitsErr, st.LimitsFile = err, unread.Origin
+		}
+	default:
+		st.Limits = question.Default
+		st.LimitsRefused = limitsRefusalOf(err)
+	}
+}
+
+// limitsRefusalOf is the resolver's refusal as the decision carries it: the
+// key, the value, the bounds and the file of a value refused, the limit in
+// force and its file for a personal value that loosens, and the resolver's
+// own words for every refusal, an unclaimed key included.
+func limitsRefusalOf(err error) *question.LimitsRefusal {
+	r := &question.LimitsRefusal{Reason: err.Error()}
+	var kr *layered.KeyRefusedError
+	if errors.As(err, &kr) {
+		r.Key, r.Value, r.Bounds, r.File = kr.Key, kr.Value, kr.Bounds.String(), kr.Origin
+		if kr.Loosens() {
+			r.Limit, r.LimitFile = kr.Limit, kr.LimitOrigin
+		}
+	}
+	return r
+}
+
+// limitsUnreadLine is the gate's loud line for abcd's question while a layer
+// of the question limits could not be read: in the NOT CHECKED form, naming
+// the file, and saying what was done instead, since the question is not let
+// through unchecked but held to abcd's defaults.
+func limitsUnreadLine(err error) string {
+	return "abcd guard: NOT CHECKED at this repository's question limits — they were not read (" +
+		termsafe.Sanitize(scrubPaths(err)) + "), so the question is checked at abcd's defaults instead.\n"
+}
+
+// limitsRefusedReason is the deny for abcd's question while a question limit
+// is refused (itd-2610301914350541 decision 7): one head line saying abcd
+// asks nothing until the file is fixed, then, when why is set, the line
+// saying why a question without abcd's chip is abcd's, the resolver's own
+// refusal naming the file, the key, the value and the bounds (or, for a
+// personal value that loosens, the limit in force and the file that set it),
+// and one line stating every key's bounds from question.Bounds. It names no
+// asking rule, so the agent fixes the configuration rather than redrafting a
+// question that may be well built.
+func limitsRefusedReason(reason, why string) string {
+	var b strings.Builder
+	b.WriteString("Blocked by the abcd guard (question tool): a question limit in this repository's configuration is refused, so abcd asks no question until it is fixed.\n")
+	if why != "" {
+		b.WriteString(why + "\n")
+	}
+	b.WriteString(termsafe.Sanitize(scrubPaths(errors.New(reason))) + "\n")
+	b.WriteString("Fix the value in that file and ask again: " + boundsLine() + ", and a person's own " + abcdhome.Display(layered.Config.MachineRel) + " may set each only lower than the limit otherwise in force.")
+	return b.String()
+}
+
+// boundsLine states each configurable key's bounds, rendered from
+// question.Bounds, the one statement of them.
+func boundsLine() string {
+	parts := make([]string, len(question.Bounds))
+	for i, b := range question.Bounds {
+		parts[i] = b.Key + " takes " + b.String()
+	}
+	return strings.Join(parts, ", ")
+}
 
 // questionFailOpen is the gate's failOpen: exit 1, which lets the question run
 // and keeps the warning in front of a human.

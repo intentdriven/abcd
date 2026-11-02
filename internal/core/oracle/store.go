@@ -64,10 +64,31 @@ type Layered struct {
 	Diagnostics []string
 }
 
+// repoLayerRoot is the repository root Load reads the routing table's
+// repository layer at, given the one its Roots name; "" drops that layer.
+// It is the identity in production. A test suite whose verbs resolve their
+// roots from the process's working directory would otherwise read the
+// table committed to the checkout the tests run in, and its tests would pass
+// or fail by what that checkout carries rather than by their own fixtures
+// (iss-2610311710599351); only a substitution can keep it out, since those
+// tests never name a repository.
+var repoLayerRoot = func(repo string) string { return repo }
+
+// SwapRepoLayerRootForTest substitutes repoLayerRoot and returns the
+// restore. It is exported because the front-door tests that resolve routes
+// live in another package. Tests only; never called in production code, and
+// never safe to call from a parallel test.
+func SwapRepoLayerRootForTest(fn func(repo string) string) (restore func()) {
+	prev := repoLayerRoot
+	repoLayerRoot = fn
+	return func() { repoLayerRoot = prev }
+}
+
 // Load reads the repository and machine routing files through the layered
 // resolver and validates every row in them. A malformed file or row is an
 // error naming the file; an orphan row and a clamped fan-out are Diagnostics.
 func Load(r layered.Roots) (*Layered, error) {
+	r.Repo = repoLayerRoot(r.Repo)
 	s, err := layered.Load(layered.OracleRouting, r)
 	if err != nil {
 		return nil, fmt.Errorf("oracle routing: %w", err)

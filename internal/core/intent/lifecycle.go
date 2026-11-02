@@ -218,6 +218,11 @@ func Plan(repoRoot, intentID string, opts PlanOptions) (PlanResult, error) {
 	if err := refuseIfHeld(it, "plan"); err != nil {
 		return PlanResult{}, err
 	}
+	// A caller that judged a draft's bytes plans that draft or nothing: a record
+	// that has left drafts/ is not the one it judged.
+	if opts.ExpectDigest != "" && it.Bucket != BucketDrafts {
+		return PlanResult{}, fmt.Errorf("%w: %s is in %s/, no longer a draft (nothing moved)", ErrDraftChanged, intentID, it.Bucket)
+	}
 	// A record already in planned/ takes the identity step alone. Conditions get
 	// written after planning — the elicitation is a human conversation, not a
 	// one-shot — and Plan is the only writer of a marker there is, so refusing the
@@ -265,6 +270,14 @@ func Plan(repoRoot, intentID string, opts PlanOptions) (PlanResult, error) {
 		content, err := readIntentRefusingHold(draftAbs, draftRel, intentID, "plan")
 		if err != nil {
 			return err
+		}
+		// The bytes the caller judged are compared here, under the lock, on
+		// the bytes every write below is made from: compared before the lock,
+		// a write landing between the two reads would be planned unjudged.
+		if opts.ExpectDigest != "" {
+			if got := DraftDigest([]byte(content)); got != opts.ExpectDigest {
+				return fmt.Errorf("%w: %s reads %s, not the %s judged (nothing moved)", ErrDraftChanged, draftRel, got, opts.ExpectDigest)
+			}
 		}
 		// The record's fields are the ones these bytes carry, not the corpus's:
 		// the kind this write keeps and the spec_id it refuses on are judged on

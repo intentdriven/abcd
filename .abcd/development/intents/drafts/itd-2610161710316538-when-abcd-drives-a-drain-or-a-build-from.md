@@ -34,9 +34,21 @@ production_mode: hand-written
 
 > _Required (the itd-1 discipline): add at least one Given-When-Then bullet describing the verifiable bar for "shipped" before this draft can be planned._
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [security-isolation SOTA note](../../research/notes/2026-10-23-security-isolation-sota.md).
+
+- **A hook knows the permission mode on most events**: `permission_mode` is listed among the common fields of hook input, beside `cwd` and `session_id`, with the caveat "Not all events receive this field"; the `UserPromptSubmit` example carries it, so a probe reads it from an event that does (Claude Code hooks).
+- **Nothing documented tells a process whether the sandbox is on**: the environment page documents `CLAUDECODE=1` and `CLAUDE_CODE_CHILD_SESSION=1` as "spawned by the host" markers only (Claude Code environment variables).
+- **The host's own test is a probe**: "Confirm commands run inside the sandbox" is `touch ~/sandbox-probe` failing with "Operation not permitted" on macOS or "Read-only file system" on Linux (Claude Code sandboxing).
+- **"Protections on" has three answers**, not one: the mode, whether the Bash sandbox is on, and whether an unsandboxed retry is allowed, since an allow rule "also approves an unsandboxed retry" and file tools, MCP servers and hooks run "with your full access" even when it is on (same page).
+- **Precedent for the summary line**: Copilot writes blocked network requests into the pull-request body; abcd's model-matrix criteria already say isolation in the host's harness is "asserted, not proven" (Copilot agent firewall; itd-2610161733316518).
+
+**Path 2: a native probe shaped to the host's documented check**, run at the start of a drain or build through the run's own tool, reporting mode, write refusal and network refusal as three facts, each marked proven (a probe that failed as it should) or asserted (a host claim), repeated in the morning summary; a config read is the seam for a host that later exposes its state. The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
-_None recorded yet._
+- (SOTA 2026-10-23) What the probe targets: a write path and a host that are harmless when no fence is present, since the probe runs unfenced when it matters most.
 
 ## Audit Notes
 

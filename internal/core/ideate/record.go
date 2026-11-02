@@ -38,6 +38,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/decisions"
+	"github.com/intentdriven/abcd/internal/core/dryrun"
 	"github.com/intentdriven/abcd/internal/core/homeignore"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/source"
@@ -144,7 +145,7 @@ func (e *VisibilityError) Error() string {
 //
 // store names the store, private or public, and the root commit both stores
 // are keyed on (iss-2610090740139804); it is checked beside the slug, before
-// the payload is decoded, so a store that names neither writes nothing. A private verdict goes to recordPrivate and never touches the
+// the payload is decoded, so a store that names neither writes nothing. A private verdict goes to planPrivate and applyPrivate and never touches the
 // repository.
 //
 // A public verdict's artefacts are COMMITTED, so both go through the
@@ -154,15 +155,47 @@ func (e *VisibilityError) Error() string {
 // written, and a scanner that cannot be trusted refuses the run rather than
 // recording under it. A private verdict takes the same gate.
 func Record(repoRoot, slug string, store Store, raw []byte, at time.Time) (Result, error) {
-	if err := validateSlug(slug); err != nil {
+	p, err := PlanRecord(repoRoot, slug, store, raw, at)
+	if err != nil {
 		return Result{}, err
 	}
+	return p.Apply()
+}
+
+// RecordPlan is what Record would write, composed by PlanRecord and laid by
+// Apply: the result the real run reports (its decision path excepted, whose
+// id the decision writer mints at the write) and every write it would make.
+type RecordPlan struct {
+	Result Result
+	Plan   dryrun.Plan
+
+	repoRoot string
+	store    Store
+	name     string
+	rel      string
+	body     string
+	pointer  string
+}
+
+// PlanRecord does everything Record does before its first write (spc-
+// 2610301431131636): the operands are checked, the payload decoded and
+// validated, every citation and source key resolved, the free text redacted,
+// and both committed artefacts composed and re-scanned. A verdict already
+// recorded under the slug and date is refused here too, in the words the
+// write's exclusive create refuses it in. Nothing is written.
+//
+// A practice run (`--dry-run`) stops here and reports the plan; Record goes
+// on to Apply it, so the two share every check.
+func PlanRecord(repoRoot, slug string, store Store, raw []byte, at time.Time) (RecordPlan, error) {
+	if err := validateSlug(slug); err != nil {
+		return RecordPlan{}, err
+	}
 	if err := validateStore(store); err != nil {
-		return Result{}, err
+		return RecordPlan{}, err
 	}
 	p, err := decodePayload(repoRoot, raw)
 	if err != nil {
-		return Result{}, err
+		return RecordPlan{}, err
 	}
 	// The store-before-commit redactor is built BEFORE the first field is cleaned
 	// and long before the first byte is written, so a degraded scanner refuses the
@@ -171,34 +204,17 @@ func Record(repoRoot, slug string, store Store, raw []byte, at time.Time) (Resul
 	// scanner's identity probe.
 	red, err := newRecordRedactor(repoRoot)
 	if err != nil {
-		return Result{}, err
+		return RecordPlan{}, err
 	}
 	v, err := validate(repoRoot, store.SourcesDir, red, p)
 	if err != nil {
-		return Result{}, err
+		return RecordPlan{}, err
 	}
 	v.slug = slug
 	name := recordDate(at) + "-ideate-" + slug + ".md"
 	if store.Visibility == VisibilityPrivate {
-		return recordPrivate(v, red, store, name, at)
+		return planPrivate(v, red, store, name, at)
 	}
-
-	// ONE os.Root at the repository root, used for every path this function
-	// writes (the decision writer contains its own write the same way).
-	// It is the containment boundary: os.Root resolves every component, ancestors
-	// included, and refuses any path that would ESCAPE the root, so a repository
-	// whose `.abcd/development` is a symlink pointing outside the tree cannot
-	// redirect the write there. A leaf-only check would pass such a tree, because
-	// the kernel resolves the ancestors before the check ever sees them. os.Root
-	// does NOT refuse every symlink: a link that stays inside the tree is followed
-	// and the write lands at its in-tree target. Containment is the only guarantee
-	// this writer rests on, so that is correct, and a repository's own in-tree
-	// arrangement is left as it set it (iss-2610050259237102).
-	root, err := os.OpenRoot(repoRoot)
-	if err != nil {
-		return Result{}, err
-	}
-	defer root.Close()
 
 	// The shared tier the pointer is recorded in is checked BEFORE the verdict is
 	// written, so the commonest reason the pointer cannot land (a repository
@@ -207,7 +223,7 @@ func Record(repoRoot, slug string, store Store, raw []byte, at time.Time) (Resul
 	// step 3): ideate keeps no separate missing-log error, because there is no
 	// log to be missing.
 	if err := decisions.RequireSharedTier(repoRoot); err != nil {
-		return Result{}, err
+		return RecordPlan{}, err
 	}
 	dir := path.Join(ResearchRelDir, store.RootSHA)
 	rel := path.Join(dir, name)
@@ -223,8 +239,81 @@ func Record(repoRoot, slug string, store Store, raw []byte, at time.Time) (Resul
 	body := render(v, at)
 	pointer := pointerText(res)
 	if err := red.verify(body, pointer); err != nil {
+		return RecordPlan{}, err
+	}
+	// The exclusive create below is the no-overwrite guarantee; the plan
+	// reads the path too, so a practice run refuses a recorded slug in the
+	// same words. Read through the Root, so a component symlinked out of the
+	// tree is never followed to answer.
+	if root, err := os.OpenRoot(repoRoot); err == nil {
+		_, statErr := root.Lstat(rel)
+		root.Close()
+		if statErr == nil {
+			return RecordPlan{}, &ExistsError{Path: rel}
+		}
+	}
+	return RecordPlan{
+		Result: res,
+		Plan: dryrun.Plan{Writes: []dryrun.Write{
+			{Path: rel, Action: dryrun.Create, Bytes: len(body), Content: []byte(body)},
+			plannedPointer(pointer),
+		}},
+		repoRoot: repoRoot, store: store, name: name, rel: rel, body: body, pointer: pointer,
+	}, nil
+}
+
+// plannedPointer is the decision a public verdict's pointer would be
+// recorded as. The decision writer mints its id at the write, so the path
+// carries dryrun.MintedID where the id goes; the slug and the size follow
+// from the text, as the decision writer derives them.
+func plannedPointer(pointer string) dryrun.Write {
+	text := strings.Join(strings.Fields(pointer), " ")
+	slug := recordid.Slug(text, recordid.MaxSlugLen)
+	// The id is the family prefix and a sixteen-digit stamp, and the date
+	// ten characters, whatever the clock says, so the size is the size. The
+	// decision writer lays the record as its frontmatter (two delimiter lines
+	// of four bytes each around the id, slug and date lines), then the dated
+	// text; the delimiters are counted, not spelt, because this file judges
+	// and writes no frontmatter of its own.
+	id := decisions.Family + "-" + strings.Repeat("0", 16)
+	date := "0000-00-00"
+	const delimiterLines = 2 * 4
+	size := delimiterLines + len("id: "+id+"\n") + len("slug: "+slug+"\n") + len("date: "+date+"\n") +
+		len(date+" — "+text+"\n")
+	return dryrun.Write{
+		Path:    decisions.RelDir + "/" + decisions.Family + "-" + dryrun.MintedID + "-" + slug + ".md",
+		Action:  dryrun.Create,
+		Bytes:   size,
+		Pending: "the decision's id is minted when it is recorded",
+	}
+}
+
+// Apply lays the planned writes. Every refusal Record makes on the input was
+// made in PlanRecord; what remains is the write's own: the exclusive create
+// (a run for the same slug that landed in between), and the pointer, which
+// rolls the verdict back if it cannot be recorded, so a run never leaves half
+// a decision behind.
+func (p RecordPlan) Apply() (Result, error) {
+	if p.store.Visibility == VisibilityPrivate {
+		return applyPrivate(p)
+	}
+	res := p.Result
+	// ONE os.Root at the repository root, used for every path this function
+	// writes (the decision writer contains its own write the same way).
+	// It is the containment boundary: os.Root resolves every component, ancestors
+	// included, and refuses any path that would ESCAPE the root, so a repository
+	// whose `.abcd/development` is a symlink pointing outside the tree cannot
+	// redirect the write there. A leaf-only check would pass such a tree, because
+	// the kernel resolves the ancestors before the check ever sees them. os.Root
+	// does NOT refuse every symlink: a link that stays inside the tree is followed
+	// and the write lands at its in-tree target. Containment is the only guarantee
+	// this writer rests on, so that is correct, and a repository's own in-tree
+	// arrangement is left as it set it (iss-2610050259237102).
+	root, err := os.OpenRoot(p.repoRoot)
+	if err != nil {
 		return Result{}, err
 	}
+	defer root.Close()
 
 	// The research directory is CREATED when absent rather than demanded.
 	// Nothing in abcd establishes it and no convention check requires it, so
@@ -232,6 +321,7 @@ func Record(repoRoot, slug string, store Store, raw []byte, at time.Time) (Resul
 	// host legs have already been paid for, and with the verdict unrecoverable
 	// when it arrived on stdin. Through the Root, a component symlinked out of
 	// the tree still refuses.
+	dir := path.Dir(p.rel)
 	if err := root.MkdirAll(dir, 0o755); err != nil {
 		return Result{}, fmt.Errorf("preparing %s: %w", dir, err)
 	}
@@ -239,19 +329,19 @@ func Record(repoRoot, slug string, store Store, raw []byte, at time.Time) (Resul
 	// rather than a check followed by a write, so it holds against a concurrent
 	// run for the same slug without a lock. Nothing else here is shared: the
 	// pointer is a new file of its own, so two runs never contend for one.
-	if err := fsutil.CreateExclusiveIn(root, rel, []byte(body), 0o644); err != nil {
+	if err := fsutil.CreateExclusiveIn(root, p.rel, []byte(p.body), 0o644); err != nil {
 		if errors.Is(err, os.ErrExist) {
-			return Result{}, &ExistsError{Path: rel}
+			return Result{}, &ExistsError{Path: p.rel}
 		}
 		return Result{}, err
 	}
-	d, err := decisions.Record(repoRoot, pointer)
+	d, err := decisions.Record(p.repoRoot, p.pointer)
 	if err != nil {
 		// The verdict landed but its pointer did not. Roll the verdict back rather
 		// than leave one no session will find, and say the rollback failed if it
 		// does, because that is the one case a human must fix by hand.
-		if rmErr := root.Remove(rel); rmErr != nil {
-			return Result{}, fmt.Errorf("%w; THE ROLLBACK FAILED — remove %s by hand", err, rel)
+		if rmErr := root.Remove(p.rel); rmErr != nil {
+			return Result{}, fmt.Errorf("%w; THE ROLLBACK FAILED — remove %s by hand", err, p.rel)
 		}
 		return Result{}, err
 	}
@@ -259,30 +349,58 @@ func Record(repoRoot, slug string, store Store, raw []byte, at time.Time) (Resul
 	return res, nil
 }
 
-// recordPrivate writes a private verdict into the person's home store,
+// planPrivate composes a private verdict for the person's home store,
 // ~/.abcd.noindex/ideas/<root-sha>/, and nothing else: no decision points at
 // it, because the decisions folder is committed and the pointer would publish
 // the idea's slug.
+//
+// The record still goes through the redactor, stage two included, although it
+// is never committed: a credential in a private note is still a credential on
+// disk, and one redaction path for both stores means the private record a
+// person later publishes by hand was already scanned.
+func planPrivate(v verdictDoc, red *recordRedactor, store Store, name string, at time.Time) (RecordPlan, error) {
+	shown := abcdhome.Display("ideas", store.RootSHA, name)
+	res := v.result(v.slug, shown)
+	res.Visibility = VisibilityPrivate
+	body := render(v, at)
+	if err := red.verify(body); err != nil {
+		return RecordPlan{}, err
+	}
+	abs := filepath.Join(store.Home, filepath.FromSlash(path.Join(PrivateRel, store.RootSHA, name)))
+	if _, err := os.Lstat(abs); err == nil {
+		return RecordPlan{}, &ExistsError{Path: shown}
+	}
+	var writes []dryrun.Write
+	// The ignore file is laid before the verdict when abcd's home has not
+	// had it laid yet (applyPrivate), so the plan names both files the lay
+	// writes. A home the lay finds already marked writes neither.
+	homeAbs := filepath.Join(store.Home, filepath.FromSlash(abcdhome.Rel()))
+	if _, err := os.Lstat(filepath.Join(homeAbs, homeignore.MarkerName)); err != nil {
+		if _, err := os.Lstat(filepath.Join(homeAbs, homeignore.IgnoreName)); err != nil {
+			writes = append(writes, dryrun.Write{Path: abcdhome.Display(homeignore.IgnoreName), Action: dryrun.Create,
+				Pending: "laid by abcd's home-ignore writer"})
+		}
+		writes = append(writes, dryrun.Write{Path: abcdhome.Display(homeignore.MarkerName), Action: dryrun.Create,
+			Pending: "laid by abcd's home-ignore writer"})
+	}
+	writes = append(writes, dryrun.Write{Path: shown, Action: dryrun.Create, Bytes: len(body), Content: []byte(body)})
+	return RecordPlan{
+		Result: res, Plan: dryrun.Plan{Writes: writes},
+		store: store, name: name, body: body,
+	}, nil
+}
+
+// applyPrivate writes a planned private verdict into the person's home store.
 //
 // The folder is created and opened through the home-scope walk every writer
 // into abcd's home uses (fsutil.EnsureHomeScope), so a level symlinked out of
 // the home is refused rather than written through, and each level it creates is
 // owner-only. The record is created exclusively, owner-only, so a re-run keeps
 // the first record exactly as the public store does.
-//
-// The record still goes through the redactor, stage two included, although it
-// is never committed: a credential in a private note is still a credential on
-// disk, and one redaction path for both stores means the private record a
-// person later publishes by hand was already scanned.
-func recordPrivate(v verdictDoc, red *recordRedactor, store Store, name string, at time.Time) (Result, error) {
+func applyPrivate(p RecordPlan) (Result, error) {
+	store := p.store
 	rel := path.Join(PrivateRel, store.RootSHA)
-	shown := abcdhome.Display("ideas", store.RootSHA, name)
-	res := v.result(v.slug, shown)
-	res.Visibility = VisibilityPrivate
-	body := render(v, at)
-	if err := red.verify(body); err != nil {
-		return Result{}, err
-	}
+	shown := p.Result.Path
 	dir, err := fsutil.EnsureHomeScope(store.Home, rel, abcdhome.DirMode)
 	if err != nil {
 		return Result{}, fmt.Errorf("preparing %s: %w", abcdhome.Display("ideas", store.RootSHA), err)
@@ -296,13 +414,13 @@ func recordPrivate(v verdictDoc, red *recordRedactor, store Store, name string, 
 		return Result{}, fmt.Errorf("%s could not be laid, so a git repository in the home folder could stage a private verdict — nothing was written: %w",
 			abcdhome.Display(homeignore.IgnoreName), err)
 	}
-	if err := fsutil.CreateExclusiveIn(dir, name, []byte(body), abcdhome.FileMode); err != nil {
+	if err := fsutil.CreateExclusiveIn(dir, p.name, []byte(p.body), abcdhome.FileMode); err != nil {
 		if errors.Is(err, os.ErrExist) {
 			return Result{}, &ExistsError{Path: shown}
 		}
 		return Result{}, err
 	}
-	return res, nil
+	return p.Result, nil
 }
 
 // validateStore is the store's operand check, run beside the slug's and before

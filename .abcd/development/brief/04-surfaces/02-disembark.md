@@ -342,6 +342,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--dry-run` | bool |
 | `--lessons-json` | string |
 | `--route` | stringArray |
 
@@ -367,6 +368,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--dry-run` | bool |
 | `--press-release-json` | string |
 | `--route` | stringArray |
 
@@ -376,6 +378,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--dry-run` | bool |
 | `--principles-json` | string |
 | `--route` | stringArray |
 
@@ -393,6 +396,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--dry-run` | bool |
 | `--review-json` | string |
 | `--route` | stringArray |
 

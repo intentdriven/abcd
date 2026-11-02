@@ -64,6 +64,9 @@ type CheckResult struct {
 
 	// steps are the unlanded spec steps a run opens lanes for, in order.
 	steps []PendingStep
+	// autoPlan is the auto-plan lane's record when the result is an
+	// auto-plan's and every row passed (autoplan.go); nil otherwise.
+	autoPlan *AutoPlan
 }
 
 // record is the record a run built from the result delivers: the intent, or

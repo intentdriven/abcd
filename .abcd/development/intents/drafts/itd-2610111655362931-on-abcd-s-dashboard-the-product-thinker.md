@@ -34,6 +34,17 @@ production_mode: hand-written
 - **Given** notes written since the last review, **when** the person opens the review, **then** they see every one of those notes with who wrote it, when and in which session, and they keep, discard or promote each.
 - **Given** a note the person promotes, **when** the promotion lands, **then** the note joins the project's record, so every agent and teammate gets it; only a person promotes, and in a repository with more than two maintainers at least one other maintainer must agree before it lands.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [memory-knowledge SOTA note](../../research/notes/2026-10-23-memory-knowledge-sota.md).
+
+- **CODEOWNERS counts path owners, not maintainers.** Owners "must have write permissions", the last matching pattern wins, and owners are requested only for the paths they own (GitHub docs); one person can own every path in a four-maintainer repository, so option 1(a) does not measure the thing.
+- **The forge already implements "another maintainer agrees".** A ruleset can require a number of approving reviews, code-owner review, and "an approval from someone other than the last person to push" (GitHub rulesets docs); abcd's own mirror `.abcd/work/rulesets/main-review.json` carries `required_approving_review_count: 0` with `require_code_owner_review: true`, so the mirror shows whether the forge requires a second approval at all. That count is a merge-policy threshold, not a count of people (a four-maintainer repository can require one approval, a solo one none), so option 1(d) fails the same test as CODEOWNERS; in this repository it is zero.
+- **The maintainer count is one authenticated call, for organisation repositories.** `GET /repos/{owner}/{repo}/collaborators` returns each person's `role_name`, filtered on each row's permissions or `role_name` (the page documents `permission` as a single filter value, not a combined one), "the highest role assigned ... after considering all sources of grants" (GitHub REST docs); the Maintain role is defined for organisation-owned repositories, and the roles page does not cover user-owned ones.
+- **Harness memory review is edit-after-the-fact, and enforcement belongs in a hook.** Claude Code's auto memory has no approval gate (the person edits files from `/memory`), and its docs say memory files are "context, not enforced configuration. To block an action ... use a PreToolUse hook instead". The guard entry and terminal check the earlier spec drafted for the person's-act rule are the right shape.
+- **One editor had an approve-before-save pop-up for generated memories and reportedly withdrew it** (Cursor Memories; search snippets only, unverified).
+- **Path 1**, with the two jobs split: the forge's required approval on the pull request that carries the promotion is the agreement (2a), and the mirror shows only whether one is required at all; the count of people comes from the collaborators endpoint filtered to maintain or admin (push, for a personal repository), called once at the person's click (1c), with a declared list only for a repository with no forge (1b). A ruleset requiring zero approvals, as abcd's own does, means the more-than-two rule is enforced by nothing, which is open question 3. abcd's own part is refusing the promotion to an agent and stamping who promoted. The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 1. **Where does abcd learn how many maintainers a repository has?** (technical facilitator) The more-than-two rule needs the count, and abcd records none.
@@ -45,6 +56,7 @@ production_mode: hand-written
    - (a) As the forge's approval of the pull request that carries the promotion, required by the repository's ruleset; abcd checks nothing itself.
    - (b) As an `agreed_by` stamp the other maintainer adds by running `abcd memory agree <mem-id>` in their own checkout, which a `memory_promotion_agreed` record-lint rule requires before the change lands.
    - (c) Both.
+3. (SOTA 2026-10-23) **What does a promotion say in a repository whose ruleset requires no approving review?** The more-than-two rule is then enforced by nothing; the options are to refuse the promotion until the ruleset requires one, to land it and say in the note's stamp that no second maintainer was required, or to fall back to the `agreed_by` stamp of option 2(b) for that repository only.
 
 ## Audit Notes
 

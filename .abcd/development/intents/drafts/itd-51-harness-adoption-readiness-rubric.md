@@ -50,12 +50,26 @@ Critically, this is **not** a plan to swap the configured harness. This intent o
 - **Given** the live spec that enforces the guarantees for the harness abcd drives, **when** a reader follows its references, **then** it is identified as the instantiation of this rubric, and the rubric does not duplicate its enforcement detail.
 - **Given** the rubric, **when** a reader checks its framing, **then** it states explicitly that no replacement is planned and the rubric is readiness-only.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [harness, interop and lifeboats SOTA note](../../research/notes/2026-10-23-harness-interop-lifeboats-sota.md), which reuses the same day's [security and isolation note](../../research/notes/2026-10-23-security-isolation-sota.md).
+
+- OWASP's Top 10 for Agentic Applications (2025-12-09) gives the grouping: ASI02 Tool Misuse, ASI03 Identity and Privilege Abuse, ASI05 Unexpected Code Execution, ASI08 Cascading Failures and ASI09 Human-Agent Trust Exploitation (an agent's summary misleading the approver) cover the 2026-06-02 findings; the list was read from a vendor summary, the OWASP page being a download.
+- The Agent Control Standard v0.1.0 (OWASP GenAI, Apache-2.0) supplies the vocabulary for what a wrapper can do, `allow`, `deny`, `modify`, `ask`, `defer`, over nineteen lifecycle hooks; it also says "nobody verifies a self-declared claim in v0.1.0", its reference implementation evaluates two hooks live and its default failure posture is fail-open, so it is a vocabulary, not a gate.
+- OpenSSF Scorecard is the shape for a scored checklist that admits its limits: 0–10 per check, a risk weight per check, "the checks themselves are heuristics; there are false positives and false negatives", inconclusive as a result, JSON output.
+- The bounds the rubric names exist as host flags, each with a stated gap: Claude Code's `--max-turns` ("no limit by default"), `--max-budget-usd` (a client-side estimate that "spend can pass"), `--permission-prompts none`, `--restricted`, and a sandbox that covers shell commands only while file tools, MCP servers and hooks run outside it; Codex's `read-only`/`workspace-write`/`danger-full-access` with network off by default, whose page says monitoring "doesn't replace sandboxing, permissions, or review of the result".
+- Every vendor read separates a steering list from an enforced boundary (the security note's cross-cluster finding): a rubric row is "pass" only where a boundary enforces it, "conditional" where a list steers.
+- Verdict integrity has a measured ceiling: the best model located the step responsible for a hallucination in 41.1% of 693 annotated agent trajectories, 11.6% for tool-use hallucinations (AgentHallu, January 2026), so a reviewer reading the worker's transcript cannot be the sole verdict channel.
+
+**Path 2 — a native rubric recorded as an ADR, grouped by OWASP's agentic taxonomy, naming wrapper compensations in ACS's decision vocabulary, scored pass / conditional / fail / inconclusive in Scorecard's shape, with one added row: the harness states the limits of its own boundary.** The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - Where does the rubric live as a durable artifact — an ADR (it is a standing decision), a research-note record-type, or a dedicated `roadmap/` document? (Relates to the open research-notes record-type question logged in a working-log entry.)
 - Should the rubric's verification checks be purely manual (a human scores a candidate) or should some be machine-runnable probes reusing the existing external-tool monitor surface (the doctor/probes layer of spc-34, predecessor store)?
 - Does the rubric also cover non-safety adoption properties (cost, latency, observability, recovery), or stay scoped to the safety/integrity properties the 2026-06-02 review exposed?
 - How does the rubric stay in sync when a live spec refines the guarantee set — is the rubric the source of truth such a spec cites, or a downstream summary?
+- (SOTA 2026-10-23) Which rubric rows are flag-and-version facts that `ahoy`'s detection layer could probe, and which stay behavioural checks for a lab?
 
 ## Audit Notes
 

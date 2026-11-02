@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "agents": {
+    "cold-reading-comparative": {
+      "tier": "economy",
+      "fan_out": 1
+    },
+    "cold-reading-detection": {
+      "tier": "economy",
+      "fan_out": 1
+    },
+    "cold-reading-entailment": {
+      "tier": "economy",
+      "fan_out": 1
+    },
+    "cold-reading-widening": {
+      "tier": "economy",
+      "fan_out": 1
+    },
+    "docs-currency-reviewer": {
+      "tier": "economy",
+      "fan_out": 1
+    },
+    "graveyard-interpreter": {
+      "tier": "economy",
+      "fan_out": 1
+    },
+    "intent-auditor": {
+      "tier": "frontier",
+      "fan_out": 1
+    },
+    "lifeboat-reviewer": {
+      "tier": "frontier",
+      "fan_out": 1
+    },
+    "planning-interviewer": {
+      "tier": "frontier",
+      "fan_out": 1
+    },
+    "press-release-composer": {
+      "tier": "economy",
+      "fan_out": 1
+    },
+    "principle-distiller": {
+      "tier": "economy",
+      "fan_out": 1
+    },
+    "question-drafter": {
+      "tier": "economy",
+      "fan_out": 1
+    },
+    "reflection-composer": {
+      "tier": "economy",
+      "fan_out": 1
+    },
+    "release-changelog-composer": {
+      "tier": "frontier",
+      "fan_out": 1
+    },
+    "ruthless-reviewer": {
+      "tier": "frontier",
+      "fan_out": 1
+    },
+    "scribe": {
+      "tier": "economy",
+      "fan_out": 1
+    },
+    "security-reviewer": {
+      "tier": "frontier",
+      "fan_out": 1
+    },
+    "sota-researcher": {
+      "tier": "economy",
+      "fan_out": 1
+    }
+  }
+}

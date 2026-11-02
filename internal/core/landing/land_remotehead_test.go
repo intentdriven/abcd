@@ -5,6 +5,7 @@ package landing
 // writes origin/HEAD itself.
 
 import (
+	"errors"
 	"os"
 	"slices"
 	"strings"
@@ -191,5 +192,66 @@ func TestTheDefaultBranchRefusalCarriesNoSetHead(t *testing.T) {
 		if slices.ContainsFunc(f.gitCalls, func(c []string) bool { return len(c) > 0 && c[0] == "push" }) {
 			t.Fatalf("%s: pushed %v", name, f.pushes())
 		}
+	}
+}
+
+// iss-2610161849042422: land asks origin for its default branch through
+// Options.Git, the seam its push and fetch take, so a test records the
+// ls-remote call and fakes origin's answer without building a repository for
+// it. Origin itself names main, as the forge does, in every case: only the
+// faked answer can make land refuse.
+func TestOriginsDefaultBranchIsAskedThroughTheGitSeam(t *testing.T) {
+	lsRemote := []string{"ls-remote", "--symref", "origin", "HEAD"}
+	cases := []struct {
+		name   string
+		answer string
+		err    error
+		says   string
+	}{
+		{"unreachable", "", errors.New("git ls-remote: exit status 128 (fatal: could not read from remote repository)"), "got no answer it can trust"},
+		{"detached", strings.Repeat("a", 40) + "\tHEAD\n", nil, "got no answer it can trust"},
+		{"outside refs/heads", "ref: refs/tags/v1\tHEAD\n" + strings.Repeat("a", 40) + "\tHEAD\n", nil, "got no answer it can trust"},
+		{"HEAD itself", "ref: refs/heads/HEAD\tHEAD\n", nil, "got no answer it can trust"},
+		{"an invalid name", "ref: refs/heads/a..b\tHEAD\n", nil, "got no answer it can trust"},
+		{"another branch", "ref: refs/heads/develop\tHEAD\n" + strings.Repeat("a", 40) + "\tHEAD\n", nil, "names develop as its default"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFixture(t, "")
+			o := f.options()
+			real := o.Git
+			var asked [][]string
+			o.Git = func(dir string, args ...string) (string, error) {
+				if slices.Equal(args, lsRemote) {
+					asked = append(asked, args)
+					return c.answer, c.err
+				}
+				return real(dir, args...)
+			}
+			_, err := f.land(o)
+			if len(asked) != 1 {
+				t.Fatalf("land asked origin through Options.Git %d times, want once (%v)", len(asked), err)
+			}
+			wantRefusal(t, err, c.says)
+			wantRefusal(t, err, "git ls-remote --symref origin HEAD")
+			if len(f.pushes()) != 0 || len(f.gates) != 0 || len(f.fetches()) != 0 {
+				t.Fatalf("pushed %v, gated %v, fetched %v: want none", f.pushes(), f.gates, f.fetches())
+			}
+		})
+	}
+}
+
+// The real runner records the ls-remote call like any other networked git
+// call the landing makes.
+func TestTheLsRemoteCallIsRecordedBesideThePush(t *testing.T) {
+	f := newFixture(t, "")
+	o := f.options()
+	o.NoEnqueue = true
+	if _, err := f.land(o); err != nil {
+		t.Fatalf("land: %v", err)
+	}
+	want := []string{"ls-remote", "--symref", "origin", "HEAD"}
+	if !slices.ContainsFunc(f.gitCalls, func(c []string) bool { return slices.Equal(c, want) }) {
+		t.Fatalf("networked git calls %v: want %v among them", f.gitCalls, want)
 	}
 }

@@ -1,0 +1,14 @@
+{
+  "_type": "abcd/intent-fidelity-verdict/v1",
+  "receipt_id": "{{RECEIPT}}",
+  "verifier": {"id": "intent-auditor", "version": "test"},
+  "policy": {"rubric_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "prompt_hash": "{{PROMPT}}"},
+  "input_attestations": [],
+  "criteria": [
+    {"criterion_id": "ac-1", "verdict": "MET", "rationale": "the stub is parked",
+     "evidence": [{"ref": "internal/core/intent/audit.go:230", "quote": "owedBlock"}]}
+  ],
+  "acceptance_rollup": {"MET": 1, "MET_WITH_CONCERNS": 0, "NOT_MET": 0, "INCONCLUSIVE": 0},
+  "gap_audit": {"honoured": [], "diverged": [], "missing": []},
+  "scope_conditions": []
+}

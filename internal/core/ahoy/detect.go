@@ -192,7 +192,14 @@ func DryRun(cwd string) (DetectionResult, error) {
 		return DetectionResult{}, err
 	}
 	if hasGapID(det.Gaps, ReadmeOfferGapID) {
-		if v, ok := readmeView(abs); ok {
+		// The pair is cut to the question limits in force here; a refused
+		// value refuses the dry run, as it refuses the install, before any
+		// question is relayed (itd-2610301914350541).
+		l, _, lerr := questionLimits(abs)
+		if lerr != nil {
+			return DetectionResult{}, errors.New(limitsRefusal(lerr))
+		}
+		if v, ok := readmeView(abs, l); ok {
 			det.Readme = &v
 		}
 	}

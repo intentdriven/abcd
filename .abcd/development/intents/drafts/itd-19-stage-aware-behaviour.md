@@ -52,11 +52,23 @@ The ABCDevelopment workflow has stages with genuinely different intent (Autonomo
 - **Given** a Validation-stage project with `oracle.backend = "rp+codex"` requested by the profile, **when** RP is unavailable, **then** the project gracefully falls back per the resolution chain AND the disembark report flags "stage profile requested rp+codex but only Codex available".
 - **Given** a stage-aware project, **when** `/abcd:disembark pack <repo> <path>` runs, **then** the resulting lifeboat's `.abcd/config.json["meta"]` records the stage detected at disembark time so a downstream `/abcd:embark from <path>` can suggest the matching stage profile if its target location indicates the same stage.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [harness, interop and lifeboats SOTA note](../../research/notes/2026-10-23-harness-interop-lifeboats-sota.md).
+
+- `chezmoi data` writes "the computed template data to stdout" as JSON or YAML; the configuration file's `data` section is typed `object`, "Template data", so `devPath` is the person's own convention, not chezmoi's (chezmoi reference).
+- The contrarian take is twelve-factor's: grouping config into named environments "does not scale cleanly", settings should be "granular controls, each fully orthogonal", "never grouped together as 'environments'".
+- The counter-example is GitHub's deployment environments: a small fixed set of named targets, each carrying protection rules, secrets and variables a job must satisfy before running. Named stages work when few, fixed and each gates something.
+- Copier's answers file resolves the override question: a profile applied once is recorded with its origin, and a later run proposes only the diff, asking per key where the person's value differs.
+
+**Path 3 — deliberate divergence from twelve-factor's rule, bounded: four fixed stages are kept as a proposal layer, but every key stays an orthogonal setting in the one `.abcd/config.json` with its origin recorded (`profile:<stage>` or the person), so a transition shows a per-key diff and asks by name about person-set keys.** The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - What if the user explicitly overrode a config setting that the new stage profile would change — preserve override or re-prompt?
 - Is the Validation profile's "read-mostly" implemented via permission tightening, or is that a separate concern?
 - Should stage-aware behaviour be exposed in the lifeboat (so an embarked project knows what stage it expects to live in)?
+- (SOTA 2026-10-23) Is a per-key origin field in `.abcd/config.json` acceptable, or does the profile's provenance live in a sidecar the config schema does not carry?
 
 ## Audit Notes
 

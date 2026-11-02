@@ -49,9 +49,22 @@ The deterministic half of the machinery (itd-163) proves the declared sets are c
 - **Given** any run of the gate rules, **when** they evaluate, **then** no network access occurs; the network work exists only in the refresh verb.
 - **Given** a licence verdict older than the staleness policy, **when** lint runs, **then** the entry warns and eventually blocks on the same windows the citation baseline already enforces.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [sources-provenance SOTA note](../../research/notes/2026-10-23-sources-provenance-sota.md).
+
+- **The unknown form is two values, not one.** SPDX 2.3.1 distinguishes `NOASSERTION` (the creator "attempted to but cannot reach a reasonable objective determination", or made no attempt) from `NONE` (no licence information whatsoever, or no licence available), treats an absent field as `NOASSERTION`, and puts the explanation in the licence comment (SPDX 2.3.1 package information). SPDX 3.0.1 is current and keeps the two states as the `NoAssertionLicense` and `NoneLicense` individuals; the 2.3.1 tokens are used here on purpose, because they are what SPDX expressions and the licence list still carry.
+- **Normalisation has a grammar.** Identifiers are case-insensitive with canonical case recommended; `AND`, `OR`, `WITH` are case-sensitive; an off-list licence is `LicenseRef-` plus letters, digits, `-`, `.`; the list is at 3.29.0 (2026-09-16) and identifiers are deprecated, never renamed (SPDX license expressions; SPDX license list).
+- **Most sources answer by type, not by scraping.** A Crossref DOI record carries a `license` array with `URL`, `start`, `delay-in-days` and `content-version` (confirmed live for an entry already in the baseline: CC-BY-4.0, `vor`); DataCite carries `rights` with an SPDX `rightsIdentifierScheme`; arXiv's OAI-PMH `arXiv` format includes licence information; GitHub's `/repos/{owner}/{repo}/license` returns `spdx_id` or `null` through licensee at 98 per cent confidence; a web page marks its terms with `rel="license"` for "the main content", CC REL's RDFa, or schema.org `license`.
+- **URL-to-identifier is abcd's own table.** Crossref and CC REL return licence URLs, not identifiers; a small mapping file is needed and no opened source supplies it.
+- **The verdict is a receipt, and the baseline already holds receipts** with `outcome`, `verification: automatic | manual` and `verified_on`, preserving a current manual one.
+- **Path 2**: the verdict lives in the citation baseline under the entry's resolver URL (CSL stays pure and shareable); it accepts exactly an expression over a pinned CC0 copy of the SPDX list, `LicenseRef-` with a reason, `NONE`, or `NOASSERTION` with a reason, and refuses anything else before write; refresh resolves by type (Crossref or DataCite, arXiv OAI-PMH, GitHub licence endpoint, then page markup) inside the explicit verb only; a hand-attested verdict is `verification: manual` on the existing preserve-and-age rule; grandfathering ends when the backfill lands, not on a date. No Go dependency; the SPDX list is embedded data and wants an acknowledgements line. The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - Where the verdict canonically lives: the citation baseline (keeping `references.csl.json` pure CSL) or the CSL `custom` field (keeping one file per source, the pattern the confidential-sources design already uses)?
+- (SOTA 2026-10-23) Crossref's polite pool wants a contact in the User-Agent; is the contact the repository's declared address, opt-in, or does refresh run in the anonymous pool?
+- (SOTA 2026-10-23) Does the verdict record SPDX's declared licence only, or both declared and concluded, given the intent rules compatibility and judgement out of scope?
 - SPDX normalisation: accept free text and normalise on write, or refuse anything that is not an SPDX identifier or the unknown form?
 - Manual override: when a human has verified a licence the fetcher cannot see (a book, a paywalled paper), what is the attested-by-hand verdict form, and does it age differently?
 - Does grandfathering end at a dated deadline, or only when the licence backfill for the existing thirty-odd entries lands?

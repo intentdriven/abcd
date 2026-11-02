@@ -106,6 +106,39 @@ the record rather than in a transcript that is discarded.
   exact marker token — so the framing vocabulary can be pulled from the
   brief retrospectively (facilitator review requirement, 2026-08-28).
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [elicitation interviews SOTA note](../../research/notes/2026-10-23-elicitation-interviews-sota.md).
+
+- Design-document convention keeps interpretation out of "context", which must be
+  "entirely focused on objective background facts", and puts committed scope in
+  goals and non-goals (Ubl, Design Docs at Google); a construal is interpretive,
+  so it belongs beside goals, not in the context chapter.
+- The problem is a single story ("a single specific story that shows why the
+  status quo doesn't work", Shape Up ch. 6); the PR/FAQ writes it from the
+  customer's point of view. Neither template marks built against intended.
+- The one practitioner artefact with a structural line between exploring and
+  committed is the opportunity solution tree (Torres): the outcome "sets the
+  scope for discovery" and a backlog entry "is making a bet".
+- Living-spec tools split the two by file, not by marker: OpenSpec keeps specs as
+  "how your system currently behaves" and changes in separate folders merged on
+  archive; Spec Kit bans speculation from a spec and confines open points to
+  `[NEEDS CLARIFICATION: …]`. RFC 2119 words cannot carry "intended, not built":
+  they are for interoperation, used "sparingly".
+- The traceability pass of 2026-10-04 already recommends status in links, not
+  prose; the ratified `**Status: NOT YET REAL.**` marker puts status in prose.
+  The research disagrees with the ruling on that one point; the marker stands,
+  recorded as the first instance of that status, to be superseded by section
+  identifiers and `realises` links when that work lands.
+- A frame is a lens, not a solution (Dorst's frame creation, publisher
+  description only; primary texts paywalled).
+
+**Path 2**: the native section shaped to the design-doc convention, construal
+beside goals, the ratified marker kept, and a stable section identifier given at
+birth as the seam to link-carried status. No Go dependency.
+
+The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - Section position and filename within `01-product/` (the chapter is
@@ -113,6 +146,12 @@ the record rather than in a transcript that is discarded.
 - Whether the tier hypothesis for framing matches personas (blank below
   abcd-native) once probed against the corpus — where they disagree, the
   mapping table loses.
+- (SOTA 2026-10-23) Whether the framing section sits with the product chapter's
+  goals and scope or opens the chapter; the design-doc convention argues against
+  it reading as context.
+- (SOTA 2026-10-23) Whether the section carries a stable identifier from its first
+  instance, so the not-yet-real marker can later be replaced by links without a
+  rewrite.
 
 ## Evidence 2026-10-04 (a downstream lab)
 

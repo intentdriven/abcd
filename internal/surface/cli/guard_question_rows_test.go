@@ -18,8 +18,8 @@ import (
 // redraft a question the person was ready to answer; a question cut at the
 // bottom of a short window costs less than that.
 
-// tallQuestion is wellBuilt with more material than fits: every rule holds
-// but the rows limit.
+// tallQuestion is wellBuilt with more material than fits the default rows
+// limit, 32: every rule holds but the rows limit.
 func tallQuestion() hostQuestion {
 	q := wellBuilt()
 	more := []string{
@@ -29,6 +29,14 @@ func tallQuestion() hostQuestion {
 		"A total after a slash appears only when the interview's length is known.",
 		"The number counts the questions put to this person in this interview.",
 		"It starts again at one when the next interview opens.",
+		"The role word tells the person whether the question is theirs.",
+		"A product question carries no record number and no command.",
+		"A technical question may name the record it is about.",
+		"The setup questions carry their own role word.",
+		"A part letter marks a question split into parts.",
+		"The label is never bold and never coloured.",
+		"It is the same in every window the host draws.",
+		"It is read by the hook before the question is shown.",
 	}
 	q.Question = strings.Join(more, "\n") + "\n\n" + q.Question
 	return q
@@ -160,5 +168,50 @@ func TestRowsOnlyWhileManagedIsAdmitted(t *testing.T) {
 	}
 	if !markedOpen(t, root) {
 		t.Error("the admitted question was not marked open")
+	}
+}
+
+// TestHookAdmitsThirtyRowsUnderFortyAndNotesFortyOne (itd-2610301914350541):
+// in a repository whose .abcd/config.json sets question.rows to 40, the hook
+// holds abcd's question to 40 rows, not to the default. A tab of 30 rows, and
+// one of 36, which the default would note, run with no note; a tab of 41 runs
+// with the rows note naming 40 as the limit.
+func TestHookAdmitsThirtyRowsUnderFortyAndNotesFortyOne(t *testing.T) {
+	repo := unmanagedRepo(t)
+	writeRepoQuestionConfig(t, repo, `{"question":{"rows":40}}`)
+	if question.Default.Rows >= 36 {
+		t.Fatalf("precondition: the default rows limit (%d) must be below 36 for the 36-row tab to tell the two limits apart", question.Default.Rows)
+	}
+	for _, rows := range []int{30, 36, 40} {
+		stdout, stderr, code := runGuard(askPayload(t, repo, questionOfRows(t, rows)), "guard", "hook")
+		mustRunSilently(t, stdout, stderr, code)
+	}
+	stdout, stderr, code := runGuard(askPayload(t, repo, questionOfRows(t, 41)), "guard", "hook")
+	note := mustAdmitWithNote(t, stdout, stderr, code)
+	for _, want := range []string{"41 rows", "limit: 40 rows at 80 columns"} {
+		if !strings.Contains(note, want) {
+			t.Errorf("the note must name %q; note = %q", want, note)
+		}
+	}
+}
+
+// TestHookJudgesAtThePersonsTighterRows (itd-2610301914350541 decision 5): a
+// person's own ~/.abcd.noindex/config.json may set question.rows below the
+// repository's, and the hook, which runs on that person's machine, holds the
+// question to it. A 30-row tab under a repository's 40 and a machine file's
+// 24 gets the rows note naming 24; the same tab with no machine file gets
+// none.
+func TestHookJudgesAtThePersonsTighterRows(t *testing.T) {
+	repo := unmanagedRepo(t)
+	writeRepoQuestionConfig(t, repo, `{"question":{"rows":40}}`)
+	q := questionOfRows(t, 30)
+	stdout, stderr, code := runGuard(askPayload(t, repo, q), "guard", "hook")
+	mustRunSilently(t, stdout, stderr, code)
+
+	writeMachineQuestionConfig(t, `{"question":{"rows":24}}`)
+	stdout, stderr, code = runGuard(askPayload(t, repo, q), "guard", "hook")
+	note := mustAdmitWithNote(t, stdout, stderr, code)
+	if !strings.Contains(note, "limit: 24 rows at 80 columns") {
+		t.Errorf("the note must name the person's 24 as the limit; note = %q", note)
 	}
 }

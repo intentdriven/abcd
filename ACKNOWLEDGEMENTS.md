@@ -164,6 +164,20 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   SDK's approval docs give.
   <https://code.claude.com/docs/en/headless>,
   <https://code.claude.com/docs/en/agent-sdk/user-input>
+- **Configuration layering in git, Cargo, VS Code, Claude Code, ESLint and
+  Terraform** — the grounds for adr-2611011332427073's single precedence rule
+  (bundled, home, repository, the person's gitignored per-repository file,
+  invocation) and its three per-key exemptions: git's
+  protected-configuration-only `safe.directory`, VS Code's user-only machine
+  and application scopes, Claude Code's deny-from-any-scope rule, Terraform's
+  per-user CLI credentials, and ESLint's removal of personal configuration in
+  v8.0.0 as the case against a personal layer beating the project.
+  <https://git-scm.com/docs/git-config>,
+  <https://doc.rust-lang.org/cargo/reference/config.html>,
+  <https://code.visualstudio.com/docs/configure/settings>,
+  <https://code.claude.com/docs/en/settings>,
+  <https://eslint.org/docs/v8.x/use/configure/configuration-files>,
+  <https://developer.hashicorp.com/terraform/cli/config/config-file>
 - **Cloudflare Workers and its v4 API (Cloudflare)** — the host the one
   provider behind `abcd site setup`'s hosting seam targets: an assets-only
   Worker deployed by the pinned `wrangler-action`, created, routed and
@@ -497,6 +511,30 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   for a practice run before a write (itd-2610301428390406): a short answer
   from the binary over a long page, fix-oriented guidance over reference text,
   and command facts held in code rather than in a hand-edited data file.
+- **Living documentation
+  (Cyrille Martraire, <https://speakerdeck.com/cyriux/leaving-documentation-or-living-documentation>);
+  spec-driven tools as reviewed by Birgitta Böckeler
+  (<https://martinfowler.com/articles/exploring-gen-ai/sdd-3-tools.html>);
+  outdated references in documentation (Tan, Wagner and Treude,
+  <https://arxiv.org/abs/2212.01479>); Stripe's Markdoc
+  (<https://stripe.dev/blog/markdoc>); MDN's merger of its curriculum into its
+  learning area (<https://developer.mozilla.org/en-US/blog/curriculum-learn-web-development>);
+  the Rust Reference's tested examples
+  (<https://rust-lang.github.io/reference/dev-guide/print.html>); Exercism's
+  configlet (<https://exercism.org/docs/building/configlet>); Mattermost's
+  docs-impact labels
+  (<https://docs.mattermost.com/developers/contribute/more-info/getting-started/labels>);
+  the Kubernetes release docs handbook
+  (<https://github.com/kubernetes/sig-release/blob/master/release-team/role-handbooks/docs/README.md>);
+  and Charm's vhs-action (<https://github.com/charmbracelet/vhs-action>)** —
+  with the Diátaxis framework credited above, the grounds for rendering each documentation page from its one home
+  (itd-2611011151475128), catching a hand edit and offering it back to its
+  source (itd-2611011151512956) and a second authored surface for how-to
+  guides and learning material (itd-2611011239589823): explanation authored in
+  the design record, reference generated, how-to and tutorial pages written by
+  people with their steps run as tests, one site with separate owners, and a
+  docs-impact mark on every change that alters behaviour. The evidence is
+  `.abcd/development/research/notes/2026-11-01-documentation-sources-sota.md`.
 
 ## References & sources
 

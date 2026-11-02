@@ -76,6 +76,10 @@ type AuditCleared struct {
 var (
 	auditOwedFiler   func(AuditOwed) (AuditFiling, error)
 	auditOwedClearer func(AuditCleared) error
+	// auditOwedCarriers is the filer's read-only half, for a practice run:
+	// the open issues already carrying an owed check, oldest first, which the
+	// filer would link (the first) and decline as duplicates (the rest).
+	auditOwedCarriers func(AuditOwed) ([]string, error)
 	// auditNow dates the clearance line; a test pins it.
 	auditNow = time.Now
 )
@@ -86,6 +90,15 @@ var (
 // says that no issue carries it.
 func SetAuditLedger(file func(AuditOwed) (AuditFiling, error), clear func(AuditCleared) error) {
 	auditOwedFiler, auditOwedClearer = file, clear
+}
+
+// SetAuditCarrierLookup registers the ledger's read-only lookup of the open
+// issues carrying an owed check, oldest first, which PlanVerdictIngest asks in
+// place of the filer: a re-ingest the filer would link to an open carrier is
+// planned with that carrier's id, so a noop is planned as a noop. Unset, the
+// plan reports the id the ledger would mint (dryrun.MintedID).
+func SetAuditCarrierLookup(lookup func(AuditOwed) ([]string, error)) {
+	auditOwedCarriers = lookup
 }
 
 // owedCriteria is every criterion of v judged NOT_MET or INCONCLUSIVE, in the

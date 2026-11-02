@@ -82,12 +82,12 @@ const previewRemedy = "abcd's questions carry no side preview (decision 20): put
 // splitRemedy is rule 13's remedy (itd-2610030810350727 decision 9).
 const splitRemedy = "Split the material into parts: up to four parts of one thing as tabs, or successive questions, one part per question. Never move it into a message before the question, or into a preview."
 
-// ChipRole reads the role word from a header in the chip grammar,
+// chipRole reads the role word from a header in the chip grammar,
 // "<role> Q<n>" with an optional "/<total>", the role one of l.ChipRoles
 // ("Product Q2", "Tech Q3", "Setup Q1/4"). It judges the grammar alone, not the
 // width. A header in the grammar is abcd's: only abcd's interview pages are
 // taught to write it.
-func ChipRole(header string, l Limits) (string, bool) {
+func chipRole(header string, l Limits) (string, bool) {
 	m := chipRe(l).FindStringSubmatch(header)
 	if m == nil {
 		return "", false
@@ -331,9 +331,9 @@ func (c checker) tab(n int, t Tab) []Finding {
 	// 13. Rows. The estimate is the whole tab's, the frame and every option
 	// included, so the finding names the whole tab and says how its rows
 	// split, never the question text alone (iss-2610071538055431).
-	if s := splitRows(t, l); s.total() > l.Rows {
+	if s := tabRows(t, l); s.Total > l.Rows {
 		add("whole tab", RuleRows,
-			fmt.Sprintf("%d rows: header and frame %d, question text %d, options %d", s.total(), s.frame, s.text, s.options),
+			fmt.Sprintf("%d rows: header and frame %d, question text %d, options %d", s.Total, s.HeaderAndFrame, s.QuestionText, s.Options),
 			fmt.Sprintf("%d rows at %d columns for the whole tab: the header and the host's frame, the question text, and every option's label and description", l.Rows, l.Columns),
 			splitRemedy)
 	}

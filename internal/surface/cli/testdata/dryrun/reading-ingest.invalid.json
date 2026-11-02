@@ -1,0 +1,4 @@
+{"_type": "abcd.reading.output/0", "run_id": "{{RUN}}", "position": "detection", "regime": "{{REGIME}}",
+ "manifest_sha256": "{{MANIFEST}}",
+ "instrument": {"model": "a-model", "definition_sha256": "{{DEFINITION}}", "assembler_version": "{{ASSEMBLER}}"},
+ "items": []}

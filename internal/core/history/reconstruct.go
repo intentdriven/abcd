@@ -499,14 +499,27 @@ type rawMessage struct {
 	Role    string          `json:"role"`
 	Model   string          `json:"model"`
 	Content json.RawMessage `json:"content"`
-	Usage   *rawUsage       `json:"usage"`
+	Usage   *TokenUsage     `json:"usage"`
 }
 
-type rawUsage struct {
+// TokenUsage is the token-count shape of one API response as the harness's
+// transcript records it on an assistant line's message: the uncached input,
+// the output, and the input written to and read from the prompt cache. It is
+// exported for the rules loader's fill reader (spc-2610111627213138 step 5),
+// which reads the last response's input from a transcript's tail, so the two
+// readers of a transcript's usage parse one shape.
+type TokenUsage struct {
 	Input              int64 `json:"input_tokens"`
 	Output             int64 `json:"output_tokens"`
 	CacheCreationInput int64 `json:"cache_creation_input_tokens"`
 	CacheReadInput     int64 `json:"cache_read_input_tokens"`
+}
+
+// ContextInput is the whole input of the response: the uncached input and
+// the input written to and read from the cache. The three are disjoint, and
+// together they are what the response's request held in the context window.
+func (u TokenUsage) ContextInput() int64 {
+	return u.Input + u.CacheCreationInput + u.CacheReadInput
 }
 
 type rawBlock struct {
