@@ -363,7 +363,7 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 	route := rs.Config.RouteFor(aw.Role)
 	timeout := rs.Timeout
 	if timeout <= 0 {
-		timeout = runner.DefaultTimeout
+		timeout = rs.Config.TimeoutFor(aw.Role)
 	}
 	session := fmt.Sprintf("%s-%s-%s-%d", runID, laneID, aw.Role, o.now().Unix())
 	var worktree, base string
@@ -406,7 +406,7 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		// lane was cut from, never one the lane has since changed.
 		Base:      base,
 		SessionID: session,
-		Timeout:   rs.Timeout,
+		Timeout:   timeout,
 	}
 	var done *StepResult
 	var fell *runner.FallbackReceipt

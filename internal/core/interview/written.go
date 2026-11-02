@@ -146,7 +146,7 @@ type Written struct {
 	DispatchContext func(context.Context) (context.Context, context.CancelFunc)
 	// Now stamps the record's and the turns' names; time.Now when nil.
 	Now func() time.Time
-	// Timeout bounds one dispatch; runner.DefaultTimeout when zero.
+	// Timeout bounds one dispatch; the role's roles.<role>.timeout when zero.
 	Timeout time.Duration
 	// MaxTurns bounds the dispatches; DefaultMaxTurns when zero.
 	MaxTurns int

@@ -321,7 +321,11 @@ review is skipped.
   `roles.<role>.runner` routes to it. The opt-in is that key in
   `~/.abcd.noindex/config.json`, or for one step the person's own
   `abcd implement step --route <role>=runner:<name>[@<provider>/<model>]`,
-  which also picks the model; the route, the sealing and the fallback are in
+  which also picks the model. Each run is bounded by the machine's
+  `roles.<role>.timeout` (5m to 12h; three hours for the implementer and one
+  for every other role by default; the drain judge keeps the drain's own
+  bound, and a repository's value is skipped), and the
+  prompt tells the role its bound. The route, the sealing and the fallback are in
   [`34-build.md`](../04-surfaces/34-build.md). A claude launch whose role's
   contract grants the shell carries the guard as the harness's permission
   prompt tool, `abcd guard approve` over MCP on stdio, set on that launch's

@@ -409,7 +409,10 @@ func TestARoutedRoleRunsThroughItsRunner(t *testing.T) {
 		"--permission-prompt-tool=" + runner.ApproverTool,
 		// The approver judges against the registry at the lane's base.
 		`"--base=` + driveBase + `"`,
-		"Brief: " + filepath.Join(root, filepath.FromSlash(RunRelDir), "brief.md")} {
+		"Brief: " + filepath.Join(root, filepath.FromSlash(RunRelDir), "brief.md"),
+		// An implementer is bounded by its role's default, not the hour that
+		// killed three with their work committed (iss-2611012202511008).
+		"stopped " + runner.DefaultImplementerTimeout.String() + " after it starts"} {
 		if !strings.Contains(argv, want) {
 			t.Fatalf("the launch carries %q:\n%s", want, argv)
 		}
@@ -433,6 +436,20 @@ func TestARoutedRoleRunsThroughItsRunner(t *testing.T) {
 	}
 	if !named || len(st.Fallbacks) != 0 {
 		t.Fatalf("the run record names the runner and records no fallback: %+v %+v", st.Record, st.Fallbacks)
+	}
+}
+
+// TestARoutedRoleIsBoundByItsRolesTimeout: the person's roles.<role>.timeout
+// bounds the run, and the role is told it (iss-2611012202511008).
+func TestARoutedRoleIsBoundByItsRolesTimeout(t *testing.T) {
+	root, id, steps, o := startToImplement(t)
+	env := newDriveEnv(t, "ok", "claude")
+	cfg := runnerConfig(t, `{"roles":{"implementer":{"runner":"claude","timeout":"4h30m"}},"runner":{"claude":{}}}`, "")
+	if _, err := Drive(context.Background(), root, id, steps, o, Runners{Config: cfg, Transcripts: &memTranscripts{}}); err != nil {
+		t.Fatal(err)
+	}
+	if argv := strings.Join(env.argv(t, "claude"), "\n"); !strings.Contains(argv, "stopped 4h30m0s after it starts") {
+		t.Fatalf("the launch names the role's own bound:\n%s", argv)
 	}
 }
 
