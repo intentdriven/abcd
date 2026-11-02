@@ -2,7 +2,7 @@
 schema_version: 1
 id: "iss-2611011402496418"
 slug: "a-planning-interview-run-in-a-plain"
-severity: "major"
+severity: "minor"
 category: "bug"
 source: "manual-test"
 found_during: "first planning interview on the API-key runner, 2026-11-01"
@@ -17,3 +17,5 @@ A planning interview run in a plain terminal on the API-key runner ended at its 
 2026-11-01: the product thinker ruled the bound and the end state (dcn-2611012123240576): redrafts are bounded by a per-repository setting, three by default, and at the bound abcd shows the question as it stands, repaired mechanically where it can be, instead of ending the interview.
 
 2026-11-01, second occurrence: the product thinker retried a planning interview of itd-2610262140595217 at 21:45 on the main key from a plain terminal, and it ended before any question was shown, the check refusing the first question at 39 rows against 32 ("question text 23, options 8"), with the same internal message. The terminal route has now failed both of the product thinker's attempts on the key on this one rule.
+
+2026-11-02: lowered from major to minor by the product thinker's ruling (dcn-2611020715491928), so the build loop may take the fix on the API-key route; the ruling, not the defect's reach, sets the rating.
