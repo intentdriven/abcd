@@ -30,7 +30,7 @@ impact: fix
 
 ## Scope Conditions
 
-- The person's own machine, with one Go cache and one fixed check directory (~/.abcd.noindex/tests/<root-sha>/) shared by the worktrees of a checkout, one check at a time; hosted CI is out of scope here, because a fresh checkout's new file times defeat the cache there too (left to a follow-up intent). <!-- cond: cond-2611012047502529 -->
+- The person's own machine, with one Go cache and one fixed check directory (~/.abcd.noindex/tests/<root-sha>/) shared by every worktree and clone of the repository on that account, one check at a time; hosted CI is out of scope here, because a fresh checkout's new file times defeat the cache there too (left to a follow-up intent). <!-- cond: cond-2611012047502529 -->
 - Go repositories; another language keeps the records-only path and whatever reuse its own tooling offers. <!-- cond: cond-2611012047501260 -->
 - Tests that are deterministic given their inputs; a test that reads state the cache cannot see (a subprocess's output, a binary it builds, the clock, the network) is declared and always reruns. <!-- cond: cond-2611012047500069 -->
 - The full check, uncached, still runs where it runs today in hosted CI (pull request, merge queue, nightly); this intent changes what the person's machine repeats, not what lands untested. <!-- cond: cond-2611012047500513 -->

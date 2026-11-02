@@ -10,7 +10,7 @@ related_rfcs: []
 related_adrs: []
 ---
 
-# ADR-2611011327164895: A self-attested result is labelled as such and only the person can switch it on
+# ADR-2611011327164895: A self-attested result is labelled as such, and only the person switches it on, by an act abcd's own verbs refuse to its agents
 
 ## Context
 
