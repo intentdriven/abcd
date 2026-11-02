@@ -8,11 +8,13 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/landing"
+	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/core/statusline"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/procgroup"
@@ -117,8 +119,15 @@ const previousCommandWaitDelay = 100 * time.Millisecond
 // nothing and exits 0.
 //
 // It never prompts, never reads a terminal, never touches the network, and
-// writes nothing (TestStatuslineWritesNothing and
-// TestStatusVerbReachesNoWritePrimitive hold it). Every step it waits on is
+// writes one file only: when it renders abcd's own row for a payload carrying
+// the session id and the context percentage, it records that percentage in the
+// session's fill file, ~/.abcd.noindex/fill/<sha256 of the session id>.json,
+// for the prompt hook to read how full the session is, and only into a fill
+// directory the session-start hook already made (recordStatusFill; the product
+// thinker's ruling of 2026-10-11 on iss-2610050556383525). It writes nothing
+// else, creates no directory, and the pass-through path writes nothing at all
+// (TestStatuslineWritesOnlyTheFillFile and TestStatusVerbReachesNoWritePrimitive
+// hold it). Every step it waits on is
 // bounded (statuslineBudget and its siblings above): at a bound it prints
 // what it has — a row without the element that did not answer, the previous
 // command's output so far, or nothing — says why on stderr, and exits 0. A payload that does not parse, or is over the cap, is
@@ -149,8 +158,15 @@ func newStatuslineCommand(asJSON *bool) *cobra.Command {
 			"user's own line is untouched everywhere abcd does not manage. With none\n" +
 			"recorded it prints nothing and exits 0.\n\n" +
 			"The checkout is resolved from the payload's `cwd` (falling back to the\n" +
-			"working directory). Empty stdin is an empty payload. It writes nothing, and\n" +
-			"nothing here prompts, reads a terminal, or touches the network.\n\n" +
+			"working directory). Empty stdin is an empty payload. It writes one file\n" +
+			"only: when it renders abcd's own row for a payload carrying the session id\n" +
+			"and the context percentage, it records that percentage and the time in the\n" +
+			"session's fill file, `" + rules.FillDirDisplay + "<sha256 of the session id>.json`,\n" +
+			"where abcd's prompt hook reads how full the session is. It writes there only\n" +
+			"when that folder already exists (abcd's session-start hook makes it), creates\n" +
+			"no folder, and writes nothing else, nor anything at all when it runs the\n" +
+			"recorded command. Nothing here prompts, reads a terminal, or touches the\n" +
+			"network.\n\n" +
 			"It is time-bounded, because the harness waits on it at every refresh: abcd's\n" +
 			"own work stops at " + statuslineBudget.String() + " and the recorded status command at " +
 			previousCommandBudget.String() + ".\n" +
@@ -289,7 +305,39 @@ func decideStatus(gitCtx context.Context, gitBudget time.Duration, stdin io.Read
 	}
 	d.notes = append(d.notes, res.Notes...)
 	d.row = res.Row
+	if n := recordStatusFill(payload); n != "" {
+		d.notes = append(d.notes, n)
+	}
 	return d
+}
+
+// statusFillClock is the clock the fill's `at` is read from; a variable so a
+// test can fix it.
+var statusFillClock = time.Now
+
+// recordStatusFill is the status line's one write (spc-2610111627213138 step
+// 5; the product thinker's ruling of 2026-10-11, "Allow one fill file"): the
+// payload's context percentage, recorded for its session in the session's
+// fill file under ~/.abcd.noindex/fill/, where the prompt hook reads how full
+// the session is. It runs only on the path that renders abcd's own row, never
+// when the person's previous status command runs, and only when the payload
+// carries both the session id and the context percentage.
+//
+// It is the only call of rules.WriteFill on the verb's path, and the only
+// write there at all (TestStatusVerbReachesNoWritePrimitive holds both). A
+// fill directory that is not there, the session-start hook not installed or
+// the folder swept, is skipped with no notice, since a stateless verb cannot
+// say it once; any other failed write is returned as a note for stderr, and
+// the row renders either way.
+func recordStatusFill(p statusline.Payload) string {
+	if p.SessionID == "" || p.ContextPct == nil {
+		return ""
+	}
+	err := rules.WriteFill(rules.UserHome(), p.SessionID, *p.ContextPct, statusFillClock())
+	if err == nil || errors.Is(err, rules.ErrNoFillDirectory) {
+		return ""
+	}
+	return "the session's context fill was not recorded (" + strings.TrimPrefix(err.Error(), "rules: ") + "); the row renders without it"
 }
 
 // readStatusPayload reads the harness payload under the hook cap and parses

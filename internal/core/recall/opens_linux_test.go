@@ -4,7 +4,9 @@ package recall
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"io/fs"
 	"os"
@@ -13,6 +15,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/rules"
@@ -106,7 +109,12 @@ func (r *openRecorder) opened(t *testing.T) []string {
 // reach read, then matched — opens only the four places it declares (the two
 // memory.json layers and the two page scopes) and the directories on the way
 // to them, plus the repository's own git data when a personal note asks git
-// for the root commit. Nothing under the host's memory directory is opened.
+// for the root commit. The fill reader (spc-2610111627213138 step 5), asked
+// for a session with a fill file and for one without, opens only its two:
+// the session's fill file in ~/.abcd.noindex/fill/ and the one transcript
+// the hook's payload names, which the host keeps beside its memory
+// directory. Nothing under the host's memory directory is opened, and nothing
+// else of the host's files but that transcript.
 func TestRecallOpensOnlyTheDeclaredPlaces(t *testing.T) {
 	home := t.TempDir()
 	repo := gittest.NewRepo(t)
@@ -141,15 +149,36 @@ func TestRecallOpensOnlyTheDeclaredPlaces(t *testing.T) {
 	writePage(t, host, "fact_eng_auth-host.md", "# The host's auth page\n", "auth")
 	writeFile(t, filepath.Join(home, ".claude", "memory.json"), `{"schema_version": 1, "notes": []}`)
 
+	// The fill reader's two places: the session's fill file, as the
+	// session-start reset and the status line leave it, and the session's
+	// transcript, where the host keeps it, beside its memory directory.
+	if err := rules.ResetFill(home, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := rules.WriteFill(home, "with-fill", 40, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	fillDir := abcdhome.Path(home, "fill")
+	sum := sha256.Sum256([]byte("with-fill"))
+	fillFile := filepath.Join(fillDir, hex.EncodeToString(sum[:])+".json")
+	transcript := filepath.Join(filepath.Dir(host), "session.jsonl")
+	writeFile(t, transcript, `{"type":"assistant","message":{"model":"claude-opus-4-1","usage":{"input_tokens":1,"cache_read_input_tokens":19999}}}`+"\n")
+
 	rec := recordOpens(t, home, root)
 	items, refused := ReadItems(home, root)
 	// The root is asked of git itself, as the router asks it, so the opens
 	// git makes to answer are among those recorded.
 	here := func() (string, error) { return gitutil.RootCommitContext(context.Background(), root) }
 	res := Recall(Request{Items: items, Prompt: "the auth login is broken", Budget: rules.InjectionBudgetBytes, Root: here})
+	withFile := rules.ReadFill(home, "with-fill", transcript)
+	withoutFile := rules.ReadFill(home, "without-fill", transcript)
 	opened := rec.opened(t)
 
-	declared := []string{machineNotes, machinePages, projectNotes, projectPages}
+	if withFile.Source != rules.FillSourceStatusLine || withoutFile.Source != rules.FillSourceTranscript {
+		t.Fatalf("fills = %+v and %+v, want the status line's and the transcript's", withFile, withoutFile)
+	}
+
+	declared := []string{machineNotes, machinePages, projectNotes, projectPages, fillDir, fillFile, transcript}
 	allowed := func(p string) bool {
 		for _, d := range declared {
 			if p == d || filepath.Dir(p) == d && (d == machinePages || d == projectPages) || strings.HasPrefix(d, p+string(filepath.Separator)) {
@@ -164,8 +193,12 @@ func TestRecallOpensOnlyTheDeclaredPlaces(t *testing.T) {
 		t.Fatal("the recorder saw no open at all, so it proves nothing")
 	}
 	for _, p := range opened {
-		if p == host || strings.HasPrefix(p, filepath.Join(home, ".claude")) {
-			t.Errorf("the recall opened %s, under the host's own files", p)
+		if p == host || strings.HasPrefix(p, host+string(filepath.Separator)) {
+			t.Errorf("the recall or the fill reader opened %s, under the host's memory directory", p)
+			continue
+		}
+		if p != transcript && (p == filepath.Join(home, ".claude") || strings.HasPrefix(p, filepath.Join(home, ".claude")+string(filepath.Separator))) {
+			t.Errorf("the recall or the fill reader opened %s, under the host's own files and not the transcript named", p)
 			continue
 		}
 		if !allowed(p) {

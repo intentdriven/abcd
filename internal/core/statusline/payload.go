@@ -1,7 +1,9 @@
 package statusline
 
 // The harness's status payload, reduced to the values the row reads: the four
-// figures, and the session's name.
+// figures, and the session's name; and to two it never renders: the working
+// directory the checkout is resolved from, and the session id the session's
+// fill file is named by.
 //
 // The harness hands its status command a JSON object on stdin. This package
 // never touches stdin — the front door reads the bytes and hands them here —
@@ -47,6 +49,13 @@ type Payload struct {
 	// filesystem resolution only — never rendered, never echoed, so it is not
 	// sanitised and its tag keeps it out of every JSON envelope.
 	Cwd string `json:"-"`
+	// SessionID is the harness's own identifier for the session, the
+	// payload's `session_id`, empty when it is not supplied. It exists for one
+	// use: naming the session's fill file (spc-2610111627213138 step 5), which
+	// the rules loader keys on its hash. Like Cwd it is never rendered and
+	// never echoed, so it is not sanitised and its tag keeps it out of every
+	// JSON envelope.
+	SessionID string `json:"-"`
 	// SessionName is the session's title: one the person gave it, or the
 	// persona name abcd's prompt hook set (itd-2610111707085098). The
 	// harness supplies it only when the session has one. Sanitized, trimmed
@@ -81,6 +90,7 @@ type harnessPayload struct {
 		} `json:"seven_day"`
 	} `json:"rate_limits"`
 	Cwd         *string `json:"cwd"`
+	SessionID   *string `json:"session_id"`
 	SessionName *string `json:"session_name"`
 	Workspace   *struct {
 		CurrentDir *string `json:"current_dir"`
@@ -137,6 +147,9 @@ func ParsePayload(data []byte) (Payload, error) {
 			name = name[:maxSessionNameRunes]
 		}
 		p.SessionName = string(name)
+	}
+	if hp.SessionID != nil {
+		p.SessionID = *hp.SessionID
 	}
 	switch {
 	case hp.Cwd != nil && *hp.Cwd != "":

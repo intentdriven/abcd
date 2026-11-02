@@ -5777,8 +5777,15 @@ user's own line is untouched everywhere abcd does not manage. With none
 recorded it prints nothing and exits 0.
 
 The checkout is resolved from the payload's `cwd` (falling back to the
-working directory). Empty stdin is an empty payload. It writes nothing, and
-nothing here prompts, reads a terminal, or touches the network.
+working directory). Empty stdin is an empty payload. It writes one file
+only: when it renders abcd's own row for a payload carrying the session id
+and the context percentage, it records that percentage and the time in the
+session's fill file, `~/.abcd.noindex/fill/<sha256 of the session id>.json`,
+where abcd's prompt hook reads how full the session is. It writes there only
+when that folder already exists (abcd's session-start hook makes it), creates
+no folder, and writes nothing else, nor anything at all when it runs the
+recorded command. Nothing here prompts, reads a terminal, or touches the
+network.
 
 It is time-bounded, because the harness waits on it at every refresh: abcd's
 own work stops at 500ms and the recorded status command at 5s.

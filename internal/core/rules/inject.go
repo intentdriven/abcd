@@ -419,14 +419,22 @@ func ResetState(session string) error {
 }
 
 // PruneState removes session-state files older than maxAge, bounding the growth
-// of the state folder across many sessions. Best-effort housekeeping: a
-// missing folder or a per-entry error is ignored.
+// of the state folder across many sessions, and sweeps the fill directory
+// (~/.abcd.noindex/fill/, fill.go) by the same age. Best-effort housekeeping:
+// a missing folder or a per-entry error is ignored.
 func PruneState(maxAge time.Duration) {
+	pruneFill(UserHome(), maxAge)
 	dir, _, _, err := stateFolder(false)
 	if err != nil {
 		return
 	}
 	defer dir.Close()
+	pruneRoot(dir, maxAge)
+}
+
+// pruneRoot removes every entry directly in dir, other than a directory, last
+// modified before maxAge ago. A per-entry error is ignored.
+func pruneRoot(dir *os.Root, maxAge time.Duration) {
 	f, err := dir.Open(".")
 	if err != nil {
 		return

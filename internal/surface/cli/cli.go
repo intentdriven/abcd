@@ -1632,8 +1632,12 @@ type hookInput struct {
 	// ToolName is supplied by the PostToolUse and PermissionRequest hooks;
 	// read by `hook question-answered` and `hook permission-request`.
 	ToolName string `json:"tool_name"`
-	// TranscriptPath is supplied by the Stop hook; it names the session
-	// transcript on disk. Read by `hook session-end` only.
+	// TranscriptPath names the session transcript on disk. It has two
+	// readers: `hook session-end`, which the Stop hook supplies it to and
+	// which captures the transcript, and `hook prompt-router`, which reads at
+	// most the transcript's last 256 KiB, through the guarded read, to learn
+	// how full the session is when the status line kept no fill file for it
+	// (rules.ReadFill, spc-2610111627213138 step 5).
 	TranscriptPath string `json:"transcript_path"`
 
 	// The SubagentStop fields, read by `hook subagent-stop` only. The event
@@ -1710,12 +1714,18 @@ func hookSession(in hookInput) string {
 // Recalled names each memory item text carries after the rules block
 // (spc-2610111627213138), an empty list on a turn that recalls nothing,
 // beside Injected for the domains, so a reader can tell what came back.
+//
+// Fill says how full the session is and where that came from: the status
+// line's fill file, the transcript's tail, or unknown with the reason
+// (rules.ReadFill, spc-2610111627213138 step 5). It is present on every
+// evaluated prompt and absent when the prompt could not be evaluated.
 type routerView struct {
-	Text     string    `json:"text"`
-	Injected []string  `json:"injected"`
-	Recalled []string  `json:"recalled"`
-	Active   *[]string `json:"active,omitempty"`
-	Error    string    `json:"error,omitempty"`
+	Text     string      `json:"text"`
+	Injected []string    `json:"injected"`
+	Recalled []string    `json:"recalled"`
+	Fill     *rules.Fill `json:"fill,omitempty"`
+	Active   *[]string   `json:"active,omitempty"`
+	Error    string      `json:"error,omitempty"`
 	// SessionTitle is the session's title when this prompt set it
 	// (hook_session_name.go), and absent on every other prompt.
 	SessionTitle string `json:"session_title,omitempty"`
@@ -1772,14 +1782,21 @@ func newHookCommand(asJSON *bool) *cobra.Command {
 on a turn with nothing new. With --json, stdout is one envelope in place of the
 generic machine-reader shape:
 
-  {"text": ..., "injected": [...], "recalled": [...], "active": [...], "error": ...}
+  {"text": ..., "injected": [...], "recalled": [...], "fill": {...}, "active": [...], "error": ...}
 
 text is byte for byte what the plain form writes; injected names the domains
 text carries, and recalled the notes and pages (a note by its id, a page as
 page:<filename>); active is the full set of domains in
-force this turn, so a name missing from it has stopped. error is present only
-when the prompt could not be evaluated, and then active is absent: the set is
-unknown. A memory.json, page store or page that cannot be read is named on
+force this turn, so a name missing from it has stopped. fill says how full the
+session is and where that came from: its source is "status-line" (the
+percentage the status line recorded for this session in
+` + rules.FillDirDisplay + `), "transcript" (the last response's input in the
+transcript the payload names, at most its last ` + fmt.Sprint(rules.TranscriptTailBytes/1024) + ` KiB read, over the window
+abcd's table holds for that response's model, with the model named), or
+"unknown" with the reason; used_percentage is absent when it is unknown. The
+fill is reported only, and changes nothing injected. error is present only
+when the prompt could not be evaluated, and then active and fill are absent:
+the set is unknown. A memory.json, page store or page that cannot be read is named on
 stderr and recalls nothing, and the rules still inject. Every outcome, an error included,
 exits 0, so the hook can never wedge a session.
 
@@ -1953,7 +1970,12 @@ envelope carries it as system_message.`,
 				if recalled == nil {
 					recalled = []string{}
 				}
-				return routerEmit(cmd, routerView{Text: text, Injected: injected, Recalled: recalled, Active: &res.Active, SessionTitle: title, SystemMessage: away.Message})
+				// How full the session is, reported and not yet acted on
+				// (spc-2610111627213138 step 5): the brackets that act on it
+				// are step 6's. Read only for the envelope, so the plain
+				// form, which the host injects, reads nothing more than it did.
+				fill := rules.ReadFill(rules.UserHome(), in.SessionID, in.TranscriptPath)
+				return routerEmit(cmd, routerView{Text: text, Injected: injected, Recalled: recalled, Fill: &fill, Active: &res.Active, SessionTitle: title, SystemMessage: away.Message})
 			}
 			emitPrompt(cmd, text, title, away.Message)
 			return nil
@@ -1964,7 +1986,7 @@ envelope carries it as system_message.`,
 	// the next prompt re-injects (the event-driven refresh, D1/B2).
 	hookCmd.AddCommand(&cobra.Command{
 		Use:   "prompt-router-reset",
-		Short: "SessionStart/PreCompact: clear the dedup ledger",
+		Short: "SessionStart/PreCompact: clear the dedup ledger and the session's fill file",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			in, err := readHookInput(cmd)
@@ -1973,6 +1995,19 @@ envelope carries it as system_message.`,
 				return nil
 			}
 			session := hookSession(in)
+			// The fill's half of the reset (spc-2610111627213138 step 5):
+			// the fill directory the status line writes into is made here,
+			// never by the status line, and the session's fill file goes
+			// with its ledgers, so a compaction does not leave the hook
+			// reading the full session's figure. Before the ledger's reset,
+			// so a ledger that will not reset does not also keep the old
+			// figure. A symlinked ~/.abcd.noindex is refused quietly: it is
+			// the machine's layout, and the status line keeps no fill there.
+			if err := rules.ResetFill(rules.UserHome(), in.SessionID); err != nil && !errors.Is(err, fsutil.ErrHomeScopeSymlinked) {
+				// ResetFill's errors carry their own "rules:" prefix
+				// (iss-2608261550491547's reason).
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s\n", termsafe.Sanitize(err.Error()))
+			}
 			if err := rules.ResetState(session); err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: reset failed (%s)\n", termsafe.Sanitize(err.Error()))
 				return nil
