@@ -11,6 +11,12 @@ package runner
 //     is skipped, so the next layer's route, or the host, applies. The higher
 //     layer wins per role among the routes that stand. A role no agent
 //     answers to is a diagnostic and is skipped, as the oracle's routes are.
+//   - roles.<role>.timeout bounds one run of that role on a runner, a Go
+//     duration from MinTimeout to MaxTimeout (DefaultImplementerTimeout for
+//     the implementer and DefaultTimeout for every other role when unset).
+//     Only the machine layer sets it: how long a run may spend the person's
+//     key is theirs to say, so a repository's value is a diagnostic and is
+//     skipped.
 //   - runner.<name> enables a shipped runner (claude, opencode) on this
 //     machine, with an optional model route, <provider>/<model>, admitted
 //     against that provider's allowlist when the configuration is read
@@ -39,6 +45,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
@@ -51,6 +58,7 @@ const (
 	runnerKey   = "runner"
 	fallbackKey = "fallback_host"
 	modelKey    = "model"
+	timeoutKey  = "timeout"
 )
 
 // roleImplementer is the loop's implementer and roleDrainJudge the drain's
@@ -99,6 +107,8 @@ type RunnerConfig struct {
 // Config is the runner configuration one invocation read.
 type Config struct {
 	roles   map[string]Route
+	// timeouts is each role's roles.<role>.timeout from the machine layer.
+	timeouts map[string]time.Duration
 	runners map[string]RunnerConfig
 	// flagModels is the model route each role's --route asks its runner for,
 	// keyed by role (Override); a role absent here runs its runner's machine
@@ -121,7 +131,7 @@ func Load(r layered.Roots) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("runner: %w", err)
 	}
-	if err := s.Claim(rolesKey+".*", runnerKey); err != nil {
+	if err := s.Claim(rolesKey+".*", runnerKey, timeoutKey); err != nil {
 		return nil, fmt.Errorf("runner: %w", err)
 	}
 	if err := s.Claim(runnerKey, append([]string{fallbackKey}, runnerNames...)...); err != nil {
@@ -147,7 +157,7 @@ func Load(r layered.Roots) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("runner: the model routes are admitted against the provider configuration: %w", err)
 	}
-	c := &Config{roles: map[string]Route{}, runners: map[string]RunnerConfig{}, api: api}
+	c := &Config{roles: map[string]Route{}, timeouts: map[string]time.Duration{}, runners: map[string]RunnerConfig{}, api: api}
 	if err := c.readRunners(s); err != nil {
 		return nil, err
 	}
@@ -273,6 +283,9 @@ func (c *Config) readRoles(s *layered.Stack) error {
 		if !roleRe.MatchString(role) {
 			return fmt.Errorf("runner: %s.%s: the role is not a plain lower-case name", rolesKey, layered.BoundKey(role))
 		}
+		if err := c.readTimeout(s, role, known[role]); err != nil {
+			return err
+		}
 		key := rolesKey + "." + role + "." + runnerKey
 		found, err := s.Lookup(key)
 		if err != nil {
@@ -328,6 +341,57 @@ func (c *Config) readRoles(s *layered.Stack) error {
 		}
 	}
 	return nil
+}
+
+// readTimeout reads roles.<role>.timeout. A value outside the machine layer is
+// a diagnostic and is skipped, as is one for a role no agent answers to; a
+// machine value that is not a duration within MinTimeout and MaxTimeout is
+// refused, naming the key and the bounds.
+func (c *Config) readTimeout(s *layered.Stack, role string, known bool) error {
+	key := rolesKey + "." + role + "." + timeoutKey
+	found, err := s.Lookup(key)
+	if err != nil {
+		return fmt.Errorf("runner: %w", err)
+	}
+	for _, f := range found {
+		where := fmt.Sprintf("%s (%s layer): %s", f.Origin, f.Layer, key)
+		if f.Layer != layered.Machine {
+			c.diagnose(role, fmt.Sprintf("runner: %s is skipped: how long a run may spend the person's key is "+
+				"theirs to say, so only %s sets it", where, layered.Config.MachineOrigin()))
+			continue
+		}
+		if !known {
+			c.diagnose(role, fmt.Sprintf("runner: %s names %q, which is neither an agent in the roster "+
+				"nor the implementer or the drain judge; the timeout is skipped", where, role))
+			continue
+		}
+		v, err := layered.Decode[string](f.Raw)
+		if err != nil {
+			return fmt.Errorf("runner: %s: %w", where, err)
+		}
+		d, err := time.ParseDuration(v)
+		if err != nil || d < MinTimeout || d > MaxTimeout {
+			return fmt.Errorf("runner: %s is %q; it is a duration such as \"3h\" from %s to %s",
+				where, layered.BoundKey(v), MinTimeout, MaxTimeout)
+		}
+		c.timeouts[role] = d
+	}
+	return nil
+}
+
+// TimeoutFor is how long one run of role may take on a runner: the machine's
+// roles.<role>.timeout, else DefaultImplementerTimeout for the implementer and
+// DefaultTimeout for every other role.
+func (c *Config) TimeoutFor(role string) time.Duration {
+	if c != nil {
+		if d, ok := c.timeouts[role]; ok {
+			return d
+		}
+	}
+	if role == roleImplementer {
+		return DefaultImplementerTimeout
+	}
+	return DefaultTimeout
 }
 
 // displacedRunnerRoute returns the first personal route in lower, the layers

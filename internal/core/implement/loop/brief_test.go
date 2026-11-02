@@ -431,3 +431,37 @@ func TestABriefSourceTheBaseHoldsAsASymlinkIsRefused(t *testing.T) {
 		t.Fatalf("want the linked AGENTS.md refused: %+v", r)
 	}
 }
+
+// TestTheBriefScopesTheDefinitionOfDone: the implementer runs the definition
+// of done over what it changed, not the repository's whole pre-push gate,
+// which the landing waits for itself; a whole gate run inside a routed
+// implementer outlasted its bound three times on 2026-11-01
+// (iss-2611012202511008). The receipt names the model it ran.
+func TestTheBriefScopesTheDefinitionOfDone(t *testing.T) {
+	repo := briefRepo(t, agentsMarked)
+	start, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	advanceTo(t, repo, start.RunID, StageImplement)
+	st, err := ReadState(repo.Root(), start.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(st.Lanes[0].Brief)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	brief := strings.Join(strings.Fields(string(raw)), " ")
+	for _, want := range []string{
+		"scoped to what you changed",
+		"the tests of the packages you changed",
+		"Do not run the repository's whole pre-push gate",
+		"the landing waits for that gate's own receipt before it pushes",
+		"required: the landing's Assisted-by: trailer names it",
+	} {
+		if !strings.Contains(brief, want) {
+			t.Errorf("the brief says %q:\n%s", want, raw)
+		}
+	}
+}

@@ -67,7 +67,7 @@ type Runners struct {
 	// Transcripts is where each runner's transcript lands: abcd's own store
 	// (runner.HistoryStore) in production.
 	Transcripts runner.TranscriptStore
-	// Timeout bounds one runner's run; runner.DefaultTimeout when zero.
+	// Timeout bounds one runner's run; the role's Config.TimeoutFor when zero.
 	Timeout time.Duration
 }
 

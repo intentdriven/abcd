@@ -50,8 +50,23 @@ const (
 // them.
 var runnerNames = []string{Claude, OpenCode}
 
-// DefaultTimeout bounds one run when the request names no timeout.
+// DefaultTimeout bounds one run when the request names no timeout and the
+// person set no roles.<role>.timeout (Config.TimeoutFor).
 const DefaultTimeout = 60 * time.Minute
+
+// DefaultImplementerTimeout bounds an implementer's run when the person set no
+// roles.implementer.timeout. An implementer builds, commits, writes its report
+// and runs its scoped definition of done, which waits at the load gate behind
+// other preflights on a shared machine; on 2026-11-01 three routed
+// implementers were killed at the hour with their work committed and their
+// receipts unwritten (iss-2611012202511008).
+const DefaultImplementerTimeout = 3 * time.Hour
+
+// MinTimeout and MaxTimeout bound a roles.<role>.timeout the person sets.
+const (
+	MinTimeout = 5 * time.Minute
+	MaxTimeout = 12 * time.Hour
+)
 
 // Request is what a role is handed: the same the host sub-agent is handed.
 type Request struct {
@@ -310,5 +325,7 @@ func prompt(r Request) string {
 	fmt.Fprintf(&b, "Receipt: %s\n", r.Receipt)
 	b.WriteString("Read the brief and follow it exactly: it states your task and the output contract. " +
 		"Write your receipt to the Receipt path, in the shape the brief names.\n")
+	fmt.Fprintf(&b, "Time: this run is stopped %s after it starts, receipt written or not; "+
+		"leave time to write your receipt.\n", r.timeout())
 	return b.String()
 }
