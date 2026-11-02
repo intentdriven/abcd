@@ -417,7 +417,7 @@ func TestInjectionBudgetNamesTheFileThatOverflowedIt(t *testing.T) {
 		if n := rs.Notes(); len(n) != 0 {
 			t.Fatalf("a guard.json within every bound produced notes: %q", n)
 		}
-		res := Inject(rs, prompt, SessionState{}, 0)
+		res := Inject(rs, prompt, SessionState{}, 0, BracketUnknown)
 		trailer := res.Text[strings.LastIndex(res.Text, "\n# abcd rules"):]
 		if !strings.Contains(trailer, injectionTruncatedMarker) {
 			t.Fatalf("40 long repository lessons did not overflow the budget:\n%.300s", res.Text)
@@ -430,7 +430,7 @@ func TestInjectionBudgetNamesTheFileThatOverflowedIt(t *testing.T) {
 		dir := t.TempDir()
 		big := strings.Repeat("x", 20*1024)
 		writeRepoRules(t, dir, fmt.Sprintf(`{"schema_version":1,"domains":{"FLOOD":{"recall":["shell"],"rules":[%q,%q,%q,%q]}}}`, big, big, big, big))
-		res := Inject(mustLoad(t, dir), prompt, SessionState{}, 0)
+		res := Inject(mustLoad(t, dir), prompt, SessionState{}, 0, BracketUnknown)
 		trailer := res.Text[strings.LastIndex(res.Text, "\n# abcd rules"):]
 		if !strings.Contains(trailer, injectionTruncatedMarker) {
 			t.Fatalf("an 80 KiB domain did not overflow the budget:\n%.300s", res.Text)
@@ -523,7 +523,7 @@ func TestShellDomainTeachesTheCheckableShellCForms(t *testing.T) {
 	if rendered := Render(rs.Active()); !strings.Contains(rendered, lesson) {
 		t.Errorf("the rendered rules do not carry the -c script rule %q", lesson)
 	}
-	res := Inject(rs, "run a bash -c script that removes the old screenshots", SessionState{}, 0)
+	res := Inject(rs, "run a bash -c script that removes the old screenshots", SessionState{}, 0, BracketUnknown)
 	if !strings.Contains(res.Text, lesson) {
 		t.Errorf("a prompt about a bash -c script that removes files was not taught the -c script rule; injected:\n%.400s", res.Text)
 	}

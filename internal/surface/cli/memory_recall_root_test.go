@@ -142,7 +142,7 @@ func TestPromptRootLookupHasADeadline(t *testing.T) {
 	}
 	var errlog strings.Builder
 	start := time.Now()
-	res := recallMemory(&errlog, rs, repo, "why are the tests failing?", nil, rules.InjectionBudgetBytes, promptRoot(rootLookup{}, repo))
+	res := recallMemory(&errlog, rs, repo, "why are the tests failing?", nil, rules.InjectionBudgetBytes, promptRoot(rootLookup{}, repo), rules.BracketFresh)
 	if !bounded {
 		t.Fatalf("the recall's own root-commit lookup has no deadline (recalled %v)", res.Recalled)
 	}
@@ -179,7 +179,7 @@ func TestARecallPanicKeepsTheRules(t *testing.T) {
 				t.Fatalf("a panic in the recall escaped recallMemory, dropping the rules already rendered: %v", p)
 			}
 		}()
-		res = recallMemory(&errlog, rs, repo, "why are the tests failing?", ledger, rules.InjectionBudgetBytes, boom)
+		res = recallMemory(&errlog, rs, repo, "why are the tests failing?", ledger, rules.InjectionBudgetBytes, boom, rules.BracketFresh)
 	}()
 	if res.Text != "" || len(res.Recalled) != 0 || !maps.Equal(res.Ledger, ledger) {
 		t.Fatalf("a recovered recall recalled or moved the ledger: %+v", res)

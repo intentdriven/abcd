@@ -76,7 +76,7 @@ func readAndRecall(t *testing.T, home, repo, prompt string, ledger map[string]st
 	if len(refused) != 0 {
 		t.Fatalf("refused = %+v", refused)
 	}
-	return Recall(Request{Items: items, Prompt: prompt, Ledger: ledger, Budget: rules.InjectionBudgetBytes})
+	return Recall(Request{Items: items, Prompt: prompt, Ledger: ledger, Budget: rules.InjectionBudgetBytes, Bracket: rules.BracketFresh})
 }
 
 // TestAPageDeclaringAuthComesBackAndNoOther (P1): a page declaring
@@ -117,7 +117,7 @@ func TestRepeatedPromptInjectsMemoryOnce(t *testing.T) {
 	var state rules.SessionState
 	var sent []int
 	for turn := 1; turn <= backstop; turn++ {
-		inj := rules.Inject(rs, prompt, state, backstop)
+		inj := rules.Inject(rs, prompt, state, backstop, rules.BracketUnknown)
 		res := readAndRecall(t, home, repo, prompt, inj.State.Recalled)
 		inj.State.Recalled = res.Ledger
 		state = inj.State

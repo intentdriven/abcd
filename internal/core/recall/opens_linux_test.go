@@ -169,7 +169,7 @@ func TestRecallOpensOnlyTheDeclaredPlaces(t *testing.T) {
 	// The root is asked of git itself, as the router asks it, so the opens
 	// git makes to answer are among those recorded.
 	here := func() (string, error) { return gitutil.RootCommitContext(context.Background(), root) }
-	res := Recall(Request{Items: items, Prompt: "the auth login is broken", Budget: rules.InjectionBudgetBytes, Root: here})
+	res := Recall(Request{Items: items, Prompt: "the auth login is broken", Budget: rules.InjectionBudgetBytes, Root: here, Bracket: rules.BracketFresh})
 	withFile := rules.ReadFill(home, "with-fill", transcript)
 	withoutFile := rules.ReadFill(home, "without-fill", transcript)
 	opened := rec.opened(t)

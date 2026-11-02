@@ -25,7 +25,7 @@ func TestInjectActiveNamesTheFullSetEveryTurn(t *testing.T) {
 		want = append(want, d.Name)
 	}
 
-	first := Inject(rs, "count the widget", SessionState{}, 0)
+	first := Inject(rs, "count the widget", SessionState{}, 0, BracketUnknown)
 	if !slices.Equal(first.Injected, []string{"WIDGETS"}) {
 		t.Fatalf("turn 1 injected %v, want [WIDGETS]", first.Injected)
 	}
@@ -35,7 +35,7 @@ func TestInjectActiveNamesTheFullSetEveryTurn(t *testing.T) {
 
 	// A no-match turn injects no text (the zero-token promise) and still
 	// names the whole set.
-	second := Inject(rs, "paint a landscape", first.State, 0)
+	second := Inject(rs, "paint a landscape", first.State, 0, BracketUnknown)
 	if second.Text != "" {
 		t.Fatalf("a no-match turn must render nothing, got %q", second.Text)
 	}
@@ -56,11 +56,11 @@ func TestInjectActiveLetsAClientSeeADomainStop(t *testing.T) {
 	}
 	for how, next := range cases {
 		t.Run(how, func(t *testing.T) {
-			first := Inject(withWidgets("WIDGETS", widgets), "count the widget", SessionState{}, 0)
+			first := Inject(withWidgets("WIDGETS", widgets), "count the widget", SessionState{}, 0, BracketUnknown)
 			if !slices.Contains(first.Active, "WIDGETS") {
 				t.Fatalf("turn 1 active = %v, want WIDGETS in it", first.Active)
 			}
-			second := Inject(next, "count the widget", first.State, 0)
+			second := Inject(next, "count the widget", first.State, 0, BracketUnknown)
 			if slices.Contains(second.Active, "WIDGETS") {
 				t.Fatalf("turn 2 active = %v still names WIDGETS after it was %s", second.Active, how)
 			}
@@ -82,9 +82,9 @@ func TestInjectReturningDomainReinjects(t *testing.T) {
 	on := withWidgets("WIDGETS", widgets)
 	off := withWidgets("WIDGETS", Domain{State: StateDormant, Recall: widgets.Recall, Rules: widgets.Rules})
 
-	first := Inject(on, "count the widget", SessionState{}, 0)
-	second := Inject(off, "count the widget", first.State, 0)
-	third := Inject(on, "count the widget", second.State, 0)
+	first := Inject(on, "count the widget", SessionState{}, 0, BracketUnknown)
+	second := Inject(off, "count the widget", first.State, 0, BracketUnknown)
+	third := Inject(on, "count the widget", second.State, 0, BracketUnknown)
 	if !slices.Equal(third.Injected, []string{"WIDGETS"}) {
 		t.Fatalf("a domain back in force was deduped against its old signature: injected %v", third.Injected)
 	}
@@ -96,14 +96,14 @@ func TestInjectReturningDomainReinjects(t *testing.T) {
 // client to prune what it was just handed.
 func TestInjectActiveCarriesAnExplicitlyActivatedDormantDomain(t *testing.T) {
 	rs := withWidgets("WIDGETS", Domain{State: StateDormant, Recall: widgets.Recall, Rules: widgets.Rules})
-	res := Inject(rs, "*WIDGETS please", SessionState{}, 0)
+	res := Inject(rs, "*WIDGETS please", SessionState{}, 0, BracketUnknown)
 	if !slices.Equal(res.Injected, []string{"WIDGETS"}) {
 		t.Fatalf("*WIDGETS injected %v", res.Injected)
 	}
 	if !slices.Contains(res.Active, "WIDGETS") {
 		t.Fatalf("active = %v omits the domain injected this turn", res.Active)
 	}
-	next := Inject(rs, "carry on", res.State, 0)
+	next := Inject(rs, "carry on", res.State, 0, BracketUnknown)
 	if slices.Contains(next.Active, "WIDGETS") {
 		t.Fatalf("active = %v still names a dormant domain no prompt activated", next.Active)
 	}

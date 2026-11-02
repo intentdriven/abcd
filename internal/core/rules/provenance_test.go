@@ -79,14 +79,14 @@ func TestInjectLabelsRepoOverrides(t *testing.T) {
 	rs := Merge(Defaults(), RuleSet{SchemaVersion: 1, Domains: map[string]Domain{
 		"PII": {Rules: []string{"x"}},
 	}})
-	res := Inject(rs, "redact the api key in this token", SessionState{}, 0)
+	res := Inject(rs, "redact the api key in this token", SessionState{}, 0, BracketUnknown)
 	if res.Sources["PII"] != SourceRepo {
 		t.Fatalf("InjectResult.Sources[PII] = %q, want %q (%+v)", res.Sources["PII"], SourceRepo, res)
 	}
 	if got := res.Labels(); len(got) != 1 || got[0] != "PII (repo override)" {
 		t.Fatalf("Labels() = %v, want [PII (repo override)]", got)
 	}
-	plain := Inject(Defaults(), "commit and push", SessionState{}, 0)
+	plain := Inject(Defaults(), "commit and push", SessionState{}, 0, BracketUnknown)
 	if got := plain.Labels(); len(got) != 1 || got[0] != "COMMITTING" {
 		t.Fatalf("Labels() for a bundled domain = %v, want [COMMITTING]", got)
 	}

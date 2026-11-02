@@ -238,9 +238,11 @@ func readFillFile(home, session string) (Fill, bool) {
 
 // transcriptLine is the part of one transcript line the fill reader looks
 // at: an assistant line's model and token usage, in the shape
-// internal/core/history parses, and whether the line is a side chain's.
+// internal/core/history parses, a system line's subtype (the compaction
+// boundary), and whether the line is a side chain's.
 type transcriptLine struct {
 	Type        string `json:"type"`
+	Subtype     string `json:"subtype"`
 	IsSidechain bool   `json:"isSidechain"`
 	Message     *struct {
 		Model string              `json:"model"`
@@ -254,9 +256,9 @@ func fillFromTranscript(p string) Fill {
 	if err != nil {
 		return unknownFill(err.Error())
 	}
-	model, usage, ok := lastResponseUsage(tail)
-	if !ok {
-		return unknownFill("the transcript's tail holds no response's token usage")
+	model, usage, reason := lastResponseUsage(tail)
+	if reason != "" {
+		return unknownFill(reason)
 	}
 	name := windowModelName(model)
 	window, ok := contextWindow(name)
@@ -278,7 +280,19 @@ func fillFromTranscript(p string) Fill {
 // and usage. A side chain's line is another conversation's window, and a line
 // with no input (the harness's own synthetic notices) is no request at all,
 // so neither says how full this session is.
-func lastResponseUsage(tail []byte) (model string, usage history.TokenUsage, ok bool) {
+//
+// The scan stops at the main conversation's compaction boundary (a system
+// line of subtype compact_boundary): a response before it measured the
+// context the compaction replaced, so with no response since, nothing in the
+// tail says how full the compacted session is. Read past the boundary, the
+// first prompt after a compaction would be bracketed by the full session's
+// figure, and the ledgers, which key on content, would then pin every item in
+// that form until the next reset. A side chain's boundary is another
+// conversation's and does not stop it.
+//
+// reason is empty when a response was found, and otherwise says, in abcd's
+// own words, why the tail tells nothing.
+func lastResponseUsage(tail []byte) (model string, usage history.TokenUsage, reason string) {
 	lines := bytes.Split(tail, []byte("\n"))
 	for i := len(lines) - 1; i >= 0; i-- {
 		line := bytes.TrimSpace(lines[i])
@@ -289,15 +303,18 @@ func lastResponseUsage(tail []byte) (model string, usage history.TokenUsage, ok 
 		if err := json.Unmarshal(line, &tl); err != nil {
 			continue
 		}
+		if tl.Type == "system" && tl.Subtype == "compact_boundary" && !tl.IsSidechain {
+			return "", history.TokenUsage{}, "the transcript's tail is past a compaction with no response since"
+		}
 		if tl.Type != "assistant" || tl.IsSidechain || tl.Message == nil || tl.Message.Usage == nil {
 			continue
 		}
 		if tl.Message.Usage.ContextInput() <= 0 {
 			continue
 		}
-		return tl.Message.Model, *tl.Message.Usage, true
+		return tl.Message.Model, *tl.Message.Usage, ""
 	}
-	return "", history.TokenUsage{}, false
+	return "", history.TokenUsage{}, "the transcript's tail holds no response's token usage"
 }
 
 // readTranscriptTail reads at most the last TranscriptTailBytes of the

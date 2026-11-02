@@ -5280,19 +5280,43 @@ its .abcd/rules.json.
 session: each rule domain it matches, with the recall words that hit, and
 each memory note it recalls from ~/.abcd.noindex/memory.json and .abcd/memory.json,
 and each memory page from .abcd/memory/ and ~/.abcd.noindex/memory/, with its
-layer and the recall words that hit, each in full or as not fitting the
+layer and the recall words that hit. Each comes back in the form the
+context bracket gives it — a domain in full or as its heading and first
+rule, a note or page in full or as one line — or as not fitting the
 per-turn budget, or as larger than the whole budget, which no turn can
 carry in full. Notes and pages share one ranked order, a BM25F relevance
 score that decides which of them fit the budget: each shows its rank and
 score and, under it, every matched term with the fields it was found in
 (recall words, title, body) and what it added to the score. It reads
 against an empty ledger and writes nothing.
---prompt and a DOMAIN are two forms and are refused together, exit 2.
+
+--fill <percent-used>, with --prompt, sets how full the context window is,
+and so the bracket shown; without it the diagnostic has no session, so the
+fill is unknown and it renders the unknown-fill form. The brackets, read as
+the share of the window still free, are the loader's one table:
+
+- fresh (70% or more of the window free): Rules in full; notes and pages in
+  full, in ranked order, within the per-turn budget.
+- moderate (40% to 70% of the window free): Each rule domain as its heading
+  and first rule, with a line naming the command that renders the rest; the
+  top-ranked notes and pages in full within 8 KiB, the rest as one line
+  each.
+- depleted (below 40% of the window free, to the end of the session): Each
+  rule domain as its heading and first rule, with a line naming the command
+  that renders the rest; notes and pages as one line each, the top-ranked
+  lines within 2 KiB and always at least the top-ranked one.
+- unknown (no source tells how full the session is): Rules in full; notes
+  and pages as one line each, the top-ranked lines within 2 KiB and always
+  at least the top-ranked one.
+
+--prompt and a DOMAIN are two forms and are refused together, exit 2, as is
+--fill without --prompt or outside 0 to 100.
 Read-only.
 
 **Flags:**
 
 ```
+      --fill float      with --prompt, the share of the context window used, 0 to 100, which sets the context bracket shown; without it the fill is unknown
       --prompt string   show what this one prompt would bring back to a fresh session: the domains it matches and the memory notes and pages it recalls
 ```
 

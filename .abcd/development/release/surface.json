@@ -4061,6 +4061,13 @@
       "sentence": "Render the active rule set, or the one domain named: Writes nothing; refuses an unknown domain.",
       "flags": [
         {
+          "name": "fill",
+          "shorthand": "",
+          "type": "float64",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "prompt",
           "shorthand": "",
           "type": "string",

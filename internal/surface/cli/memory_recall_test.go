@@ -56,12 +56,14 @@ func addRaceNote(t *testing.T, session string, extra ...string) string {
 // the prompt router the host already runs — once, until a reset.
 func TestANoteComesBackOnAPromptAboutTests(t *testing.T) {
 	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
-	_, repo := memoryFixture(t)
+	home, repo := memoryFixture(t)
 
 	// Session one writes the note.
 	id := addRaceNote(t, "session-one")
 
-	// Session two asks about tests.
+	// Session two asks about tests, its window still fresh, so the note
+	// comes back in full.
+	setFill(t, home, "session-two", 10)
 	env, _ := recallRouterJSON(t, "session-two", repo, "why are the tests failing?")
 	if env.Recalled == nil || !slices.Equal(*env.Recalled, []string{id}) {
 		t.Fatalf("the note was not recalled: recalled = %v\n%s", env.Recalled, env.Text)
@@ -176,7 +178,7 @@ func TestRulesPromptShowsMatchedDomainsAndNotes(t *testing.T) {
 		t.Fatalf("the diagnostic prints a note's body; it names the note:\n%s", out)
 	}
 
-	jout, stderr, err := runCLISplit(t, "rules", "--prompt", "commit once the tests pass", "--json")
+	jout, stderr, err := runCLISplit(t, "rules", "--prompt", "commit once the tests pass", "--fill", "10", "--json")
 	if err != nil {
 		t.Fatalf("rules --prompt --json: %v\n%s", err, stderr)
 	}
@@ -322,11 +324,12 @@ func writeRecallPage(t *testing.T, dir, name, body string, mode os.FileMode, rec
 // recall the prompt router runs.
 func TestANoteAndAPageComeBackTogether(t *testing.T) {
 	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
-	_, repo := memoryFixture(t)
+	home, repo := memoryFixture(t)
 	id := addRaceNote(t, "session-one")
 	writeRecallPage(t, filepath.Join(repo, ".abcd", "memory"), "fact_eng_test-layout.md",
 		"# The tests live beside their package\n\nTable tests, one file per verb.\n", 0o644, "test")
 
+	setFill(t, home, "session-two", 10)
 	env, _ := recallRouterJSON(t, "session-two", repo, "why are the tests failing?")
 	if env.Recalled == nil || !slices.Equal(slices.Sorted(slices.Values(*env.Recalled)), []string{id, "page:fact_eng_test-layout.md"}) {
 		t.Fatalf("recalled = %v, want the note and the page\n%s", env.Recalled, env.Text)
@@ -368,7 +371,7 @@ func TestRulesPromptShowsMatchedPages(t *testing.T) {
 		}
 	}
 
-	jout, stderr, err := runCLISplit(t, "rules", "--prompt", "the auth login is broken", "--json")
+	jout, stderr, err := runCLISplit(t, "rules", "--prompt", "the auth login is broken", "--fill", "10", "--json")
 	if err != nil {
 		t.Fatalf("rules --prompt --json: %v\n%s", err, stderr)
 	}
@@ -492,11 +495,14 @@ func TestRulesPromptShowsEachTermsContribution(t *testing.T) {
 // `rules --prompt` gives it the form too-large.
 func TestAPageLargerThanTheBudgetIsNamedAndTheRestComeBack(t *testing.T) {
 	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
-	_, repo := memoryFixture(t)
+	home, repo := memoryFixture(t)
 	workspace := filepath.Join(repo, ".abcd", "memory")
 	huge := strings.Repeat("Every kerberos deploy ever written down.\n", 2000) // about 80 KiB
 	writeRecallPage(t, workspace, "fact_eng_huge.md", "# Every kerberos deploy\n\n"+huge, 0o644, "deploy", "kerberos")
 	writeRecallPage(t, workspace, "fact_eng_dry-run.md", "# Deploys need the dry-run flag\n\nPass it first.\n", 0o644, "deploy")
+	// A fresh session, whose bracket sends pages in full and has no lines
+	// to carry a page too large for any turn.
+	setFill(t, home, "too-large", 0)
 
 	env, errlog := recallRouterJSON(t, "too-large", repo, "deploy with kerberos")
 	if env.Recalled == nil || !slices.Equal(*env.Recalled, []string{"page:fact_eng_dry-run.md"}) {
@@ -506,7 +512,7 @@ func TestAPageLargerThanTheBudgetIsNamedAndTheRestComeBack(t *testing.T) {
 		t.Fatalf("stderr does not name the page too large to come back:\n%s", errlog)
 	}
 
-	jout, _, err := runCLISplit(t, "rules", "--prompt", "deploy with kerberos", "--json")
+	jout, _, err := runCLISplit(t, "rules", "--prompt", "deploy with kerberos", "--fill", "0", "--json")
 	if err != nil {
 		t.Fatalf("rules --prompt --json: %v", err)
 	}
@@ -526,7 +532,7 @@ func TestAPageLargerThanTheBudgetIsNamedAndTheRestComeBack(t *testing.T) {
 	if forms["page:fact_eng_huge.md"] != "too-large" || forms["page:fact_eng_dry-run.md"] != "full" {
 		t.Fatalf("forms = %v", forms)
 	}
-	out, _, _ := runCLISplit(t, "rules", "--prompt", "deploy with kerberos")
+	out, _, _ := runCLISplit(t, "rules", "--prompt", "deploy with kerberos", "--fill", "0")
 	if !strings.Contains(out, "larger than the whole per-turn budget") {
 		t.Fatalf("rules --prompt does not say the page is too large:\n%s", out)
 	}

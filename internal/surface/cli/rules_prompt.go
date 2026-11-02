@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
+	"github.com/intentdriven/abcd/internal/textwidth"
 )
 
 // rules_prompt.go — the memory recall's two front doors
@@ -38,7 +40,12 @@ import (
 // It runs after the rules are rendered, so a panic inside it is recovered
 // here: that prompt recalls nothing, the ledger is kept as it was, stderr
 // names the failure, and the rules already rendered still inject.
-func recallMemory(w io.Writer, rs rules.RuleSet, root, prompt string, ledger map[string]string, budget int, here recall.RootFunc) (res recall.Result) {
+//
+// bracket is the context bracket the session's fill put this prompt in
+// (rules.BracketFor), whose row says which candidates come back in full and
+// which as one line each.
+func recallMemory(w io.Writer, rs rules.RuleSet, root, prompt string, ledger map[string]string, budget int, here recall.RootFunc,
+	bracket rules.Bracket) (res recall.Result) {
 	defer func() {
 		if p := recover(); p != nil {
 			diagnosticLine(w, "abcd memory: the recall failed (%s); recalling no notes or pages this turn", fsutil.RedactHome(fmt.Sprint(p)))
@@ -52,7 +59,7 @@ func recallMemory(w io.Writer, rs rules.RuleSet, root, prompt string, ledger map
 	for _, r := range refused {
 		diagnosticLine(w, "abcd memory: %s; recalling %s from it", refusalText(r), refusalLoss(r))
 	}
-	res = recall.Recall(recall.Request{Items: items, Prompt: prompt, Ledger: ledger, Budget: budget, Root: here})
+	res = recall.Recall(recall.Request{Items: items, Prompt: prompt, Ledger: ledger, Budget: budget, Root: here, Bracket: bracket})
 	if res.RootErr != nil {
 		// git did not answer in time: the tied notes are left out, and,
 		// unrecorded, tried again on the next turn.
@@ -139,12 +146,62 @@ func refusalLoss(r recall.Refusal) string {
 	return "no notes"
 }
 
-// The forms the diagnostic gives a matched domain, note or page.
+// The forms the diagnostic gives a matched domain, note or page: in full,
+// shrunk to its heading and first rule (a domain, in a bracket that shrinks
+// rules), as one line (a note or page, in a bracket that has lines), not
+// fitting this turn's budget, or larger than the whole budget.
 const (
 	promptFormFull       = "full"
+	promptFormShrunk     = "shrunk"
+	promptFormLine       = "one-line"
 	promptFormOverBudget = "over-budget"
 	promptFormTooLarge   = "too-large"
 )
+
+// The sources of the diagnostic's bracket: the --fill flag, or none, which
+// is an unknown fill.
+const (
+	promptBracketFromFlag    = "flag"
+	promptBracketFromUnknown = rules.FillSourceUnknown
+)
+
+// rulesPromptBracket is the bracket the diagnostic rendered in and how it was
+// chosen: from --fill, the share of the window used, or, without it, unknown,
+// since the diagnostic has no session to read a fill for. Describe is the
+// bracket table's own words for the row.
+type rulesPromptBracket struct {
+	Name           string   `json:"name"`
+	Source         string   `json:"source"`
+	UsedPercentage *float64 `json:"used_percentage,omitempty"`
+	Describe       string   `json:"describe"`
+
+	bracket rules.Bracket
+}
+
+// promptBracket is the diagnostic's bracket: from used, the --fill value,
+// when it was given, and unknown otherwise.
+func promptBracket(used *float64) rulesPromptBracket {
+	b := rulesPromptBracket{Source: promptBracketFromUnknown, bracket: rules.BracketUnknown}
+	if used != nil {
+		u := *used
+		b = rulesPromptBracket{Source: promptBracketFromFlag, UsedPercentage: &u, bracket: rules.BracketForUsed(u)}
+	}
+	b.Name = b.bracket.String()
+	b.Describe = b.bracket.Row().Describe()
+	return b
+}
+
+// bracketHelp lists the bracket table's rows in its own words, for a help
+// text: one list item per row, wrapped to the help's measure, so the help
+// cannot state a threshold the table does not hold.
+func bracketHelp() string {
+	var items []string
+	for _, r := range rules.BracketTable() {
+		lines := textwidth.Greedy(strings.Fields(r.Bracket.String()+" ("+r.When()+"): "+r.Sends()+"."), 74)
+		items = append(items, "- "+strings.Join(lines, "\n  "))
+	}
+	return strings.Join(items, "\n")
+}
 
 // rulesPromptDomain is one matched domain in the diagnostic.
 type rulesPromptDomain struct {
@@ -188,6 +245,7 @@ type rulesPromptPage struct {
 // rulesPromptView is `rules --prompt`'s --json envelope.
 type rulesPromptView struct {
 	Disabled   bool                `json:"disabled"`
+	Bracket    rulesPromptBracket  `json:"bracket"`
 	Domains    []rulesPromptDomain `json:"domains"`
 	Notes      []rulesPromptNote   `json:"notes"`
 	Pages      []rulesPromptPage   `json:"pages"`
@@ -196,26 +254,35 @@ type rulesPromptView struct {
 
 // rulesPrompt answers `rules --prompt "<text>"`: what that one prompt brings
 // back to a fresh session. It runs the router's own path — rules.Inject on an
-// empty ledger, then the recall within what the rules left — and writes
-// nothing: no session state is loaded or saved. A root-commit lookup git did
-// not answer in time leaves the tied notes out of the view, and is named on
-// stderr, once, as the hook names it.
-func rulesPrompt(stderr io.Writer, rs rules.RuleSet, root, prompt string) rulesPromptView {
-	v := rulesPromptView{Disabled: rs.Disabled, Domains: []rulesPromptDomain{}, Notes: []rulesPromptNote{}, Pages: []rulesPromptPage{},
-		Unreadable: []recall.Refusal{}}
+// empty ledger, then the recall within what the rules left, both in the
+// bracket used (the --fill value, or nil for an unknown fill) puts it in —
+// and writes nothing: no session state is loaded or saved. A root-commit
+// lookup git did not answer in time leaves the tied notes out of the view,
+// and is named on stderr, once, as the hook names it.
+func rulesPrompt(stderr io.Writer, rs rules.RuleSet, root, prompt string, used *float64) rulesPromptView {
+	v := rulesPromptView{Disabled: rs.Disabled, Bracket: promptBracket(used), Domains: []rulesPromptDomain{}, Notes: []rulesPromptNote{},
+		Pages: []rulesPromptPage{}, Unreadable: []recall.Refusal{}}
 	if rs.Disabled {
 		return v
 	}
+	bracket := v.Bracket.bracket
 	// The hook's own cap, so a word past it matches here no more than there.
 	prompt = rules.CapPrompt(prompt)
-	res := rules.Inject(rs, prompt, rules.SessionState{}, 0)
+	res := rules.Inject(rs, prompt, rules.SessionState{}, 0, bracket)
 	injected := map[string]bool{}
 	for _, name := range res.Injected {
 		injected[name] = true
 	}
+	shrunk := map[string]bool{}
+	for _, name := range res.Shrunk {
+		shrunk[name] = true
+	}
 	for _, d := range rs.Match(prompt) {
 		form := promptFormOverBudget
-		if injected[d.Name] {
+		switch {
+		case shrunk[d.Name]:
+			form = promptFormShrunk
+		case injected[d.Name]:
 			form = promptFormFull
 		}
 		v.Domains = append(v.Domains, rulesPromptDomain{Name: d.Name, Label: rules.Label(d.Name, d.Source), Source: d.Source,
@@ -224,11 +291,7 @@ func rulesPrompt(stderr io.Writer, rs rules.RuleSet, root, prompt string) rulesP
 	items, refused := recall.ReadItems(rules.UserHome(), root)
 	v.Unreadable = append(v.Unreadable, refused...)
 	here := promptRoot(rootLookup{}, root)
-	mem := recall.Recall(recall.Request{Items: items, Prompt: prompt, Budget: rules.InjectionBudgetBytes - len(res.Text), Root: here})
-	recalled := map[string]bool{}
-	for _, key := range mem.Recalled {
-		recalled[key] = true
-	}
+	mem := recall.Recall(recall.Request{Items: items, Prompt: prompt, Budget: rules.InjectionBudgetBytes - len(res.Text), Root: here, Bracket: bracket})
 	tooLarge := map[string]bool{}
 	for _, key := range mem.TooLarge {
 		tooLarge[key] = true
@@ -242,8 +305,10 @@ func rulesPrompt(stderr io.Writer, rs rules.RuleSet, root, prompt string) rulesP
 	for i, c := range ranked {
 		form := promptFormOverBudget
 		switch {
-		case recalled[c.Item.Key]:
+		case mem.Form(c.Item.Key) == recall.FormFull:
 			form = promptFormFull
+		case mem.Form(c.Item.Key) == recall.FormLine:
+			form = promptFormLine
 		case tooLarge[c.Item.Key]:
 			form = promptFormTooLarge
 		}
@@ -269,6 +334,13 @@ func renderRulesPrompt(w io.Writer, rs rules.RuleSet, v rulesPromptView) {
 		return
 	}
 	fmt.Fprintln(w, "abcd rules --prompt — what this prompt brings back to a fresh session (nothing written)")
+	if v.Bracket.UsedPercentage != nil {
+		fmt.Fprintf(w, "Bracket: %s (--fill %s: %s%% of the window used) — %s\n", v.Bracket.Name, formatPercent(*v.Bracket.UsedPercentage),
+			formatPercent(*v.Bracket.UsedPercentage), v.Bracket.Describe)
+	} else {
+		fmt.Fprintf(w, "Bracket: %s (no --fill given, and with no session the fill is unknown), rendering the unknown-fill form: %s. --fill <percent-used> renders another bracket.\n",
+			v.Bracket.Name, v.Bracket.bracket.Row().Sends())
+	}
 	if len(v.Notes)+len(v.Pages) > 0 {
 		fmt.Fprintln(w, "Notes and pages share one ranked order (#1 first), by relevance score (BM25F); under each, every matched term, the fields it was found in and what it added.")
 	}
@@ -305,6 +377,12 @@ func renderRulesPrompt(w io.Writer, rs rules.RuleSet, v rulesPromptView) {
 	}
 }
 
+// formatPercent writes a share of the window as a person reads it: no
+// trailing zeros.
+func formatPercent(p float64) string {
+	return strconv.FormatFloat(p, 'f', -1, 64)
+}
+
 // renderTermScores writes, under a ranked note or page, each matched term
 // with the fields it was found in and what it contributed to the score.
 func renderTermScores(w io.Writer, terms []recall.TermScore) {
@@ -327,6 +405,10 @@ func promptFormWords(form string) string {
 	switch form {
 	case promptFormFull:
 		return "in full"
+	case promptFormShrunk:
+		return "as its heading and first rule, with the line naming the command that renders the rest"
+	case promptFormLine:
+		return "as one line: its key and title, without its body"
 	case promptFormTooLarge:
 		return "larger than the whole per-turn budget, so it does not come back in full"
 	}

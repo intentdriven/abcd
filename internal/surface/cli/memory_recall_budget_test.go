@@ -40,9 +40,11 @@ func writeProjectNotes(t *testing.T, repo string, notes ...[3]string) {
 // it back — and the whole text stays within the budget.
 func TestRulesAndNotesShareOneTurnBudget(t *testing.T) {
 	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
-	_, repo := memoryFixture(t)
+	home, repo := memoryFixture(t)
 	const prompt = "run the tests"
 	const room = 1500 // what the rules are sized to leave of the budget
+	// A fresh window, whose bracket sends notes in full.
+	setFill(t, home, "budget-session", 10)
 
 	// Size one domain's rule so the rules render to the budget less room.
 	rulesText := func(size int) string {
@@ -56,7 +58,7 @@ func TestRulesAndNotesShareOneTurnBudget(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return rules.Inject(rs, prompt, rules.SessionState{}, 0).Text
+		return rules.Inject(rs, prompt, rules.SessionState{}, 0, rules.BracketUnknown).Text
 	}
 	size := rules.InjectionBudgetBytes - room
 	size += rules.InjectionBudgetBytes - room - len(rulesText(size))

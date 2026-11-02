@@ -36,10 +36,12 @@ func writeProjectNote(t *testing.T, repo string) {
 // override)" (GHSA-22f8-qf5r-gjgq).
 func TestPromptRouterNamesEachNotesLayer(t *testing.T) {
 	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
-	_, repo := memoryFixture(t)
+	home, repo := memoryFixture(t)
 	writeProjectNote(t, repo)
 	mine := addRaceNote(t, "session-one")
 
+	// A fresh window, so each note comes back in full, its body fenced.
+	setFill(t, home, "session-two", 10)
 	env, errlog := recallRouterJSON(t, "session-two", repo, "why are the tests failing?")
 	// Both come back, in the ranking's order, which this test does not judge.
 	if env.Recalled == nil || !slices.Equal(slices.Sorted(slices.Values(*env.Recalled)), slices.Sorted(slices.Values([]string{projectNoteID, mine}))) {

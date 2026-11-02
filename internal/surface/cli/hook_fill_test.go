@@ -65,8 +65,9 @@ func itoa(n int) string {
 // TestHookEnvelopeNamesTheFillAndItsSource: the router's --json envelope
 // carries how full the session is and where that came from, on every
 // evaluated prompt: the status line's fill file first, the transcript's tail
-// without one, and unknown, with the reason, when neither tells. It changes
-// nothing injected: the text is the same whatever the fill.
+// without one, and unknown, with the reason, when neither tells. A fresh fill
+// and an unknown one both keep the rules in full (step 6's bracket table),
+// so with no note or page in reach the text is the same for both.
 func TestHookEnvelopeNamesTheFillAndItsSource(t *testing.T) {
 	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
 	home := t.TempDir()
@@ -113,24 +114,54 @@ func TestHookEnvelopeNamesTheFillAndItsSource(t *testing.T) {
 	}
 }
 
-// TestPlainRouterOutputIsUnchangedByTheFill: the plain form, which the host
-// injects, carries no trace of the fill.
-func TestPlainRouterOutputIsUnchangedByTheFill(t *testing.T) {
+// TestPlainRouterOutputFollowsTheTranscriptsFill: the plain form, which the
+// host injects, is sent in the bracket the fill puts the prompt in, the
+// transcript's fill included: a transcript whose last response used 95% of
+// its model's window shrinks a domain to its heading and first rule, and a
+// session with no fill keeps it whole (spc-2610111627213138 step 6).
+func TestPlainRouterOutputFollowsTheTranscriptsFill(t *testing.T) {
 	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	dir := t.TempDir()
-	writeRepoRules(t, dir, widgetsRules)
-	if err := rules.ResetFill(home, ""); err != nil {
-		t.Fatal(err)
-	}
-	if err := rules.WriteFill(home, "plain-a", 91, time.Now()); err != nil {
-		t.Fatal(err)
-	}
+	writeRepoRules(t, dir, threeRules)
 	with, _ := runHook(t, promptPayload(t, "plain-a", dir, "count the widget", fillTranscript(t, 190_000)), "hook", "prompt-router")
 	without, _ := runHook(t, promptPayload(t, "plain-b", dir, "count the widget", ""), "hook", "prompt-router")
-	if with != without || !strings.Contains(with, "## WIDGETS") {
-		t.Errorf("the fill changed the injected text:\n%q\n%q", with, without)
+	if !strings.Contains(with, "Count widgets twice.") || strings.Contains(with, "Ship widgets in pairs.") || !strings.Contains(with, "`abcd rules WIDGETS`") {
+		t.Errorf("a 95%% transcript fill did not shrink the domain:\n%s", with)
+	}
+	if !strings.Contains(without, "Ship widgets in pairs.") {
+		t.Errorf("an unknown fill shrank the domain:\n%s", without)
+	}
+}
+
+// TestRouterAfterACompactionKeepsTheRulesWhole: on the first prompt after a
+// compaction, the reset has deleted the fill file and the transcript's last
+// response is the one before the compaction boundary, which measured the
+// context the compaction replaced. The fill is unknown, so the rules come back
+// in full rather than shrunk by the old figure and then pinned in that form by
+// the ledger.
+func TestRouterAfterACompactionKeepsTheRulesWhole(t *testing.T) {
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := t.TempDir()
+	writeRepoRules(t, dir, threeRules)
+	p := filepath.Join(realPath(t, t.TempDir()), "session.jsonl")
+	body := `{"type":"user","message":{"role":"user","content":"hello"}}` + "\n" +
+		`{"type":"assistant","message":{"id":"msg_1","role":"assistant","model":"claude-opus-4-1-20250805","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":160000,"output_tokens":3}}}` + "\n" +
+		`{"parentUuid":null,"isSidechain":false,"type":"system","subtype":"compact_boundary","content":"Conversation compacted","isMeta":false,"level":"info","compactMetadata":{"trigger":"manual","preTokens":160000}}` + "\n" +
+		`{"type":"user","isSidechain":false,"isCompactSummary":true,"message":{"role":"user","content":"This session is being continued from a previous conversation."}}` + "\n"
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := fillRouterJSON(t, promptPayload(t, "compacted-a", dir, "count the widget", p))
+	if f := env.Fill; f == nil || f.Source != rules.FillSourceUnknown || !strings.Contains(f.Reason, "compaction") {
+		t.Fatalf("fill = %+v, want unknown past the compaction", f)
+	}
+	plain, _ := runHook(t, promptPayload(t, "compacted-b", dir, "count the widget", p), "hook", "prompt-router")
+	if !strings.Contains(plain, "Ship widgets in pairs.") {
+		t.Errorf("the pre-compaction figure shrank the domain:\n%s", plain)
 	}
 }
 
