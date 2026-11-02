@@ -117,27 +117,34 @@ waiter and the check:
 The queue already admits waiters in start order (`machineload.QueueAhead`,
 `WaitOnWaiter`). With one slot the first gate's hold keeps them one at a
 time. With more slots, several waiting on memory could all open at the one
-look that sees the pressure fall. So a waiter that has waited on memory at
-any look takes a memory settle before it opens:
+look that sees the pressure fall. So, for a bounded time after the pressure
+was last seen, the gate admits one run per settle:
 
 - The record is `~/.abcd.noindex/load-memory-admit.json`, written through
-  the same `os.Root` the holds use. It carries the pid, start and time of
-  the last admission of a waiter that waited on memory. The waiter
-  writes it before it opens and before its queue entry or hold lets any
-  later waiter look, so a waiter behind it can never find the pressure low
-  and no record in the same moment; a record it cannot write is named in
-  `MemoryNote` and the waiter opens as it would without the settle, so the
-  record never wedges a run.
-- Every waiter reads the record, whether or not it saw memory shut: while
-  the last admission is younger than `WaitMemorySettle` (2 minutes, the same
-  as `WaitSettle`) and its holder is not this waiter, `memory` stays shut. So
-  a run that reaches the gate after the pressure falls starts no sooner than
-  one that waited for it, and the queue keeps them in start order.
-- After the settle, memory is read again before the next waiter opens. So
-  the stage just admitted has had time to show its own memory use.
-
-Only a waiter that waited on memory writes the record. So a machine that never
-comes under pressure has no record, and behaves exactly as today.
+  the same `os.Root` the holds use. It carries `pressure_at`, the last time
+  any waiter read memory at or above the floor, and `admitted_at` with the
+  pid and start of the last waiter admitted while the episode lasted.
+- A waiter that reads memory at or above the floor writes `pressure_at`. So
+  an episode starts only when a waiter sees pressure, and a machine that
+  never comes under pressure has no record and behaves exactly as today.
+- The episode lasts while `pressure_at` is younger than `WaitMemoryEpisode`
+  (10 minutes). Outside it the record holds nothing back, and every reading
+  below the floor admits as it would with no floor (criterion 2).
+- Inside the episode every waiter reads the record, whether or not it saw
+  memory shut itself: while `admitted_at` is younger than `WaitMemorySettle`
+  (2 minutes, the same as `WaitSettle`) and its holder is not this waiter,
+  `memory` stays shut. A waiter that opens inside the episode writes
+  `admitted_at` first, before it opens and before its queue entry or hold
+  lets any later waiter look, so no two runs start within one settle of
+  each other while the episode lasts. The queue keeps them in start order.
+- After each settle, memory is read again before the next waiter opens. So
+  the stage just admitted has had time to show its own memory use, and a
+  pressure that returns renews the episode.
+- So the ramp after an episode is bounded: at most one admission per two
+  minutes, for at most ten minutes after the pressure was last seen; then
+  the gate admits as it does without a floor.
+- A record it cannot read or write is named in `MemoryNote`, and the waiter
+  judges as if there were none, so the record never wedges a run.
 
 ### The check (`load.go`)
 
@@ -197,7 +204,8 @@ Each criterion has a test, watched to fail before the change.
    writes the record; the second stays shut on `memory` until the settle
    passes, then re-reads. `TestWaitMemorySettleHoldsALatecomer`: a
    waiter that arrives after the pressure falls, inside the settle, waits
-   for it too. `TestWaitMemoryNoRecordWithoutPressure`.
+   for it too. `TestWaitMemoryEpisodeEnds`: ten minutes after the pressure
+   was last seen, arrivals open without a settle between them. `TestWaitMemoryNoRecordWithoutPressure`.
 8. **Linux.** `TestParsePressureMemory` (the `some`/`full` lines, malformed
    and missing fields). `TestWaitMemoryLinuxStall` (14.2 against 10 waits).
    `TestReadMemoryLinuxNoFile` (a missing file reads as not checked, naming
