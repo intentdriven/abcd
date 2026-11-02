@@ -16,7 +16,7 @@ func TestRecalledLedgerSurvivesTheRulesPrune(t *testing.T) {
 		Ledger:   map[string]string{"GONE": "0000000000000001"},
 		Recalled: map[string]string{"mem-2610111200001234": "00000000000000aa"},
 	}
-	res := Inject(rs, "paint a landscape in oils", prev, 0)
+	res := Inject(rs, "paint a landscape in oils", prev, 0, BracketUnknown)
 	if _, ok := res.State.Ledger["GONE"]; ok {
 		t.Fatalf("the rules ledger kept a name that is not an active domain: %v", res.State.Ledger)
 	}
@@ -57,7 +57,7 @@ func TestResetClearsBothLedgers(t *testing.T) {
 
 	// The backstop: the prompt whose count is a multiple of it clears both.
 	prev := SessionState{Count: 4, Ledger: map[string]string{"COMMITTING": "x"}, Recalled: map[string]string{"mem-2610111200001234": "cafe"}}
-	res := Inject(Defaults(), "paint a landscape in oils", prev, 5)
+	res := Inject(Defaults(), "paint a landscape in oils", prev, 5, BracketUnknown)
 	if len(res.State.Recalled) != 0 {
 		t.Fatalf("the backstop prompt kept the recalled ledger: %v", res.State.Recalled)
 	}

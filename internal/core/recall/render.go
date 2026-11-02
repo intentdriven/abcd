@@ -45,6 +45,26 @@ func layerLabel(kind, layer string) string {
 	return layer
 }
 
+// The forms an item comes back in (the bracket table's memory columns,
+// rules.BracketRow): in full, its head and its body, or as one line, its
+// head alone.
+const (
+	FormFull = "full"
+	FormLine = "one-line"
+)
+
+// renderLine renders one item as one line: the "- " bullet naming its key,
+// its layer and its title, and no body — a note's id and title, a page's
+// name and its index line's summary. It is the head renderItem opens with,
+// so an item's one line is exactly the first line of its full form. The
+// title takes the rule body's mask (rules.SanitizeRuleBody); a note's title
+// is one line by the write gate's schema, and a page's summary is one line
+// as the index derives it.
+func renderLine(it Item) string {
+	head := rules.SanitizeRuleBody(it.Key + " (" + layerLabel(it.Kind, it.Layer) + "): " + it.Title)
+	return "- " + head + "\n"
+}
+
 // renderItem renders one item in full: a "- " bullet naming its key, its
 // layer and its title, and the body under it inside a fence. The body is
 // another party's text — the project's file is the repository's — so it
@@ -55,11 +75,8 @@ func layerLabel(kind, layer string) string {
 // every line sits at the bullet's content column. The head line, a one-line
 // title, takes the rule body's mask (rules.SanitizeRuleBody).
 func renderItem(it Item) string {
-	head := rules.SanitizeRuleBody(it.Key + " (" + layerLabel(it.Kind, it.Layer) + "): " + it.Title)
 	var b strings.Builder
-	b.WriteString("- ")
-	b.WriteString(head)
-	b.WriteString("\n")
+	b.WriteString(renderLine(it))
 	if body := rules.FenceRuleBody(it.Body); body != "" {
 		b.WriteString("  ")
 		b.WriteString(body)

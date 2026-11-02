@@ -65,8 +65,9 @@ func itoa(n int) string {
 // TestHookEnvelopeNamesTheFillAndItsSource: the router's --json envelope
 // carries how full the session is and where that came from, on every
 // evaluated prompt: the status line's fill file first, the transcript's tail
-// without one, and unknown, with the reason, when neither tells. It changes
-// nothing injected: the text is the same whatever the fill.
+// without one, and unknown, with the reason, when neither tells. A fresh fill
+// and an unknown one both keep the rules in full (step 6's bracket table),
+// so with no note or page in reach the text is the same for both.
 func TestHookEnvelopeNamesTheFillAndItsSource(t *testing.T) {
 	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
 	home := t.TempDir()
@@ -113,24 +114,24 @@ func TestHookEnvelopeNamesTheFillAndItsSource(t *testing.T) {
 	}
 }
 
-// TestPlainRouterOutputIsUnchangedByTheFill: the plain form, which the host
-// injects, carries no trace of the fill.
-func TestPlainRouterOutputIsUnchangedByTheFill(t *testing.T) {
+// TestPlainRouterOutputFollowsTheTranscriptsFill: the plain form, which the
+// host injects, is sent in the bracket the fill puts the prompt in, the
+// transcript's fill included: a transcript whose last response used 95% of
+// its model's window shrinks a domain to its heading and first rule, and a
+// session with no fill keeps it whole (spc-2610111627213138 step 6).
+func TestPlainRouterOutputFollowsTheTranscriptsFill(t *testing.T) {
 	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	dir := t.TempDir()
-	writeRepoRules(t, dir, widgetsRules)
-	if err := rules.ResetFill(home, ""); err != nil {
-		t.Fatal(err)
-	}
-	if err := rules.WriteFill(home, "plain-a", 91, time.Now()); err != nil {
-		t.Fatal(err)
-	}
+	writeRepoRules(t, dir, threeRules)
 	with, _ := runHook(t, promptPayload(t, "plain-a", dir, "count the widget", fillTranscript(t, 190_000)), "hook", "prompt-router")
 	without, _ := runHook(t, promptPayload(t, "plain-b", dir, "count the widget", ""), "hook", "prompt-router")
-	if with != without || !strings.Contains(with, "## WIDGETS") {
-		t.Errorf("the fill changed the injected text:\n%q\n%q", with, without)
+	if !strings.Contains(with, "Count widgets twice.") || strings.Contains(with, "Ship widgets in pairs.") || !strings.Contains(with, "`abcd rules WIDGETS`") {
+		t.Errorf("a 95%% transcript fill did not shrink the domain:\n%s", with)
+	}
+	if !strings.Contains(without, "Ship widgets in pairs.") {
+		t.Errorf("an unknown fill shrank the domain:\n%s", without)
 	}
 }
 

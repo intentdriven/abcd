@@ -1717,13 +1717,17 @@ func hookSession(in hookInput) string {
 //
 // Fill says how full the session is and where that came from: the status
 // line's fill file, the transcript's tail, or unknown with the reason
-// (rules.ReadFill, spc-2610111627213138 step 5). It is present on every
-// evaluated prompt and absent when the prompt could not be evaluated.
+// (rules.ReadFill, spc-2610111627213138 step 5). Bracket names the context
+// bracket that fill put the prompt in (rules.BracketFor, step 6), which
+// decided the form the rules, notes and pages were sent in. Both are present
+// on every evaluated prompt and absent when the prompt could not be
+// evaluated.
 type routerView struct {
 	Text     string      `json:"text"`
 	Injected []string    `json:"injected"`
 	Recalled []string    `json:"recalled"`
 	Fill     *rules.Fill `json:"fill,omitempty"`
+	Bracket  string      `json:"bracket,omitempty"`
 	Active   *[]string   `json:"active,omitempty"`
 	Error    string      `json:"error,omitempty"`
 	// SessionTitle is the session's title when this prompt set it
@@ -1782,7 +1786,7 @@ func newHookCommand(asJSON *bool) *cobra.Command {
 on a turn with nothing new. With --json, stdout is one envelope in place of the
 generic machine-reader shape:
 
-  {"text": ..., "injected": [...], "recalled": [...], "fill": {...}, "active": [...], "error": ...}
+  {"text": ..., "injected": [...], "recalled": [...], "fill": {...}, "bracket": ..., "active": [...], "error": ...}
 
 text is byte for byte what the plain form writes; injected names the domains
 text carries, and recalled the notes and pages (a note by its id, a page as
@@ -1793,11 +1797,19 @@ percentage the status line recorded for this session in
 ` + rules.FillDirDisplay + `), "transcript" (the last response's input in the
 transcript the payload names, at most its last ` + fmt.Sprint(rules.TranscriptTailBytes/1024) + ` KiB read, over the window
 abcd's table holds for that response's model, with the model named), or
-"unknown" with the reason; used_percentage is absent when it is unknown. The
-fill is reported only, and changes nothing injected. error is present only
-when the prompt could not be evaluated, and then active and fill are absent:
-the set is unknown. A memory.json, page store or page that cannot be read is named on
-stderr and recalls nothing, and the rules still inject. Every outcome, an error included,
+"unknown" with the reason; used_percentage is absent when it is unknown.
+bracket names the context bracket the fill puts the prompt in, which decides
+the form the rules, notes and pages come back in:
+
+` + bracketHelp() + `
+
+A domain, note or page comes back once a session in whatever form its
+bracket gave it, and not again in a larger or smaller form when the bracket
+changes, until a reset. An unknown fill is said on stderr once a session.
+error is present only when the prompt could not be evaluated, and then
+active, fill and bracket are absent: the set is unknown. A memory.json,
+page store or page that cannot be read is named on stderr and recalls
+nothing, and the rules still inject. Every outcome, an error included,
 exits 0, so the hook can never wedge a session.
 
 After them comes a "## STATUS" block when the last fetch of the status
@@ -1914,14 +1926,30 @@ envelope carries it as system_message.`,
 				diagnosticLine(cmd.ErrOrStderr(), "abcd %s", note)
 			}
 			session := hookSession(in)
+			// How full the session is, and so the context bracket the rules
+			// and the recall are sent in (spc-2610111627213138 steps 5 and
+			// 6): the status line's fill file for the session, else the
+			// transcript's tail, else unknown, which keeps the rules in full
+			// and sends notes and pages as one line each.
+			fill := rules.ReadFill(rules.UserHome(), in.SessionID, in.TranscriptPath)
+			bracket := rules.BracketFor(fill)
 			// The fixed-N backstop comes from the repo's config (default 15 when
 			// unset); event-driven reset is the primary refresh (D1).
-			res := rules.Inject(rs, in.Prompt, rules.LoadState(session), rules.LoadBackstop(root))
+			res := rules.Inject(rs, in.Prompt, rules.LoadState(session), rules.LoadBackstop(root), bracket)
+			// An unknown fill is said once a session, on stderr; the state
+			// saved below records that it was. Under the kill switch nothing
+			// comes back, so there is nothing to say about its form.
+			if !rs.Disabled {
+				if line := rules.UnknownFillNotice(&res.State, fill); line != "" {
+					diagnosticLine(cmd.ErrOrStderr(), "abcd %s", line)
+				}
+			}
 			// The memory recall, after the rules and within what they left
-			// of the one per-turn budget (spc-2610111627213138). It shares
-			// the session's state file through its own ledger.
+			// of the one per-turn budget (spc-2610111627213138), in the same
+			// bracket. It shares the session's state file through its own
+			// ledger.
 			mem := recallMemory(cmd.ErrOrStderr(), rs, root, in.Prompt, res.State.Recalled, rules.InjectionBudgetBytes-len(res.Text),
-				promptRoot(drained, root))
+				promptRoot(drained, root), bracket)
 			res.State.Recalled = mem.Ledger
 			if err := rules.SaveState(session, res.State); err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: state save failed (%s)\n", termsafe.Sanitize(err.Error()))
@@ -1929,8 +1957,11 @@ envelope carries it as system_message.`,
 			// The names carry their layer ("PII (repo override)"), the same
 			// label the injected heading bears, so the out-of-band log says
 			// whose words went into the context (GHSA-22f8-qf5r-gjgq).
-			fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: turn %d, injected %d domain(s) %v, %d bytes\n",
-				res.State.Count, len(res.Injected), res.Labels(), len(res.Text))
+			fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: turn %d, injected %d domain(s) %v, %d bytes", res.State.Count, len(res.Injected), res.Labels(), len(res.Text))
+			if len(res.Shrunk) > 0 {
+				fmt.Fprintf(cmd.ErrOrStderr(), "; %d shrunk to heading and first rule %v (%s bracket)", len(res.Shrunk), res.Shrunk, bracket)
+			}
+			fmt.Fprintln(cmd.ErrOrStderr())
 			// Each item carries its layer ("mem-… (project)", "page:… (machine)"),
 			// as the rules line's names carry theirs, so the log says whether
 			// the words came from this repository's committed files or from
@@ -1938,6 +1969,9 @@ envelope carries it as system_message.`,
 			if len(mem.Recalled) > 0 || len(mem.Omitted) > 0 || len(mem.TooLarge) > 0 {
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd memory: recalled %d item(s) [%s], %d bytes", len(mem.Recalled),
 					strings.Join(mem.Labels(mem.Recalled), ", "), len(mem.Text))
+				if lines := mem.Lines(); len(lines) > 0 {
+					fmt.Fprintf(cmd.ErrOrStderr(), "; %d as one line [%s] (%s bracket)", len(lines), strings.Join(lines, ", "), bracket)
+				}
 				if len(mem.Omitted) > 0 {
 					fmt.Fprintf(cmd.ErrOrStderr(), "; %d matched item(s) [%s] did not fit this turn's budget and are tried again on the next",
 						len(mem.Omitted), strings.Join(mem.Labels(mem.Omitted), ", "))
@@ -1970,12 +2004,8 @@ envelope carries it as system_message.`,
 				if recalled == nil {
 					recalled = []string{}
 				}
-				// How full the session is, reported and not yet acted on
-				// (spc-2610111627213138 step 5): the brackets that act on it
-				// are step 6's. Read only for the envelope, so the plain
-				// form, which the host injects, reads nothing more than it did.
-				fill := rules.ReadFill(rules.UserHome(), in.SessionID, in.TranscriptPath)
-				return routerEmit(cmd, routerView{Text: text, Injected: injected, Recalled: recalled, Fill: &fill, Active: &res.Active, SessionTitle: title, SystemMessage: away.Message})
+				return routerEmit(cmd, routerView{Text: text, Injected: injected, Recalled: recalled, Fill: &fill, Bracket: bracket.String(),
+					Active: &res.Active, SessionTitle: title, SystemMessage: away.Message})
 			}
 			emitPrompt(cmd, text, title, away.Message)
 			return nil
@@ -2609,6 +2639,7 @@ type rulesView struct {
 // argument is the scope, per the bare-command-as-render discipline).
 func newRulesCommand(asJSON *bool) *cobra.Command {
 	var prompt string
+	var fillUsed float64
 	cmd := &cobra.Command{
 		Use: "rules [domain]",
 		Long: `Render the rule set the modular-rules loader injects: the bundled default
@@ -2654,20 +2685,41 @@ its .abcd/rules.json.
 session: each rule domain it matches, with the recall words that hit, and
 each memory note it recalls from ` + abcdhome.Display("memory.json") + ` and .abcd/memory.json,
 and each memory page from .abcd/memory/ and ` + abcdhome.Display("memory") + `/, with its
-layer and the recall words that hit, each in full or as not fitting the
+layer and the recall words that hit. Each comes back in the form the
+context bracket gives it — a domain in full or as its heading and first
+rule, a note or page in full or as one line — or as not fitting the
 per-turn budget, or as larger than the whole budget, which no turn can
 carry in full. Notes and pages share one ranked order, a BM25F relevance
 score that decides which of them fit the budget: each shows its rank and
 score and, under it, every matched term with the fields it was found in
 (recall words, title, body) and what it added to the score. It reads
 against an empty ledger and writes nothing.
---prompt and a DOMAIN are two forms and are refused together, exit 2.
+
+--fill <percent-used>, with --prompt, sets how full the context window is,
+and so the bracket shown; without it the diagnostic has no session, so the
+fill is unknown and it renders the unknown-fill form. The brackets, read as
+the share of the window still free, are the loader's one table:
+
+` + bracketHelp() + `
+
+--prompt and a DOMAIN are two forms and are refused together, exit 2, as is
+--fill without --prompt or outside 0 to 100.
 Read-only.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			byPrompt := cmd.Flags().Changed("prompt")
 			if byPrompt && len(args) == 1 {
 				return &exitError{Code: 2, Msg: `abcd rules: --prompt and a DOMAIN are two forms; run abcd rules <DOMAIN> to render one domain, or abcd rules --prompt "<text>" to see what one prompt brings back (nothing rendered)`}
+			}
+			var used *float64
+			if cmd.Flags().Changed("fill") {
+				if !byPrompt {
+					return &exitError{Code: 2, Msg: `abcd rules: --fill goes with --prompt; run abcd rules --prompt "<text>" --fill <percent-used> (nothing rendered)`}
+				}
+				if rules.BracketForUsed(fillUsed) == rules.BracketUnknown {
+					return &exitError{Code: 2, Msg: "abcd rules: --fill takes the share of the context window used, from 0 to 100 (nothing rendered)"}
+				}
+				used = &fillUsed
 			}
 			cwd, err := os.Getwd()
 			if err != nil {
@@ -2684,7 +2736,7 @@ Read-only.`,
 				diagnosticLine(cmd.ErrOrStderr(), "abcd %s", note)
 			}
 			if byPrompt {
-				v := rulesPrompt(cmd.ErrOrStderr(), rs, root, prompt)
+				v := rulesPrompt(cmd.ErrOrStderr(), rs, root, prompt, used)
 				return render(cmd.OutOrStdout(), *asJSON, v, func(w io.Writer) { renderRulesPrompt(w, rs, v) })
 			}
 			// Scoped: inspect one domain's configured content regardless of its
@@ -2719,6 +2771,7 @@ Read-only.`,
 		},
 	}
 	cmd.Flags().StringVar(&prompt, "prompt", "", "show what this one prompt would bring back to a fresh session: the domains it matches and the memory notes and pages it recalls")
+	cmd.Flags().Float64Var(&fillUsed, "fill", 0, "with --prompt, the share of the context window used, 0 to 100, which sets the context bracket shown; without it the fill is unknown")
 	return cmd
 }
 

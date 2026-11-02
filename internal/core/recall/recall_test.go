@@ -35,7 +35,7 @@ func rootIs(root string) RootFunc {
 }
 
 func recallText(items []Item, prompt string) Result {
-	return Recall(Request{Items: items, Prompt: prompt, Budget: rules.InjectionBudgetBytes, Root: rootIs(thisRoot)})
+	return Recall(Request{Items: items, Prompt: prompt, Budget: rules.InjectionBudgetBytes, Root: rootIs(thisRoot), Bracket: rules.BracketFresh})
 }
 
 // TestNoteRecallUsesTheRuleTermMatch: a note's recall word hits on exactly
@@ -111,7 +111,7 @@ func TestNoteTiedToAnotherRootIsNotRecalled(t *testing.T) {
 	// Outside a repository with commits there is no root, so no tied note is
 	// recalled at all.
 	tied := noteItems([]memnote.Note{note("mem-2610111200000002", "Here", "Lesson.", thisRoot, "test")}, nil)
-	if got := Recall(Request{Items: tied, Prompt: "run the tests", Budget: rules.InjectionBudgetBytes, Root: rootIs("")}); len(got.Recalled) != 0 {
+	if got := Recall(Request{Items: tied, Prompt: "run the tests", Budget: rules.InjectionBudgetBytes, Root: rootIs(""), Bracket: rules.BracketFresh}); len(got.Recalled) != 0 {
 		t.Fatalf("a tied note was recalled with no root: %+v", got)
 	}
 }
@@ -122,7 +122,7 @@ func TestNoteTiedToAnotherRootIsNotRecalled(t *testing.T) {
 func TestEverywhereNoteIsRecalledInAnyRepository(t *testing.T) {
 	n := note("mem-2610111200000003", "Everywhere", "A lesson for every project.", "", "test")
 	for _, root := range []string{thisRoot, otherRoot, ""} {
-		res := Recall(Request{Items: noteItems([]memnote.Note{n}, nil), Prompt: "the tests", Budget: rules.InjectionBudgetBytes, Root: rootIs(root)})
+		res := Recall(Request{Items: noteItems([]memnote.Note{n}, nil), Prompt: "the tests", Budget: rules.InjectionBudgetBytes, Root: rootIs(root), Bracket: rules.BracketFresh})
 		if !slices.Equal(res.Recalled, []string{"mem-2610111200000003"}) {
 			t.Errorf("root %q: recalled %v", root, res.Recalled)
 		}
@@ -136,7 +136,7 @@ func TestMemoryTakesOnlyWhatTheRulesLeaveOfTheBudget(t *testing.T) {
 	big := strings.Repeat("a lesson ", 200) // about 1.8 KiB
 	items := noteItems([]memnote.Note{note("mem-2610111200000001", "Big", strings.TrimSpace(big), "", "test")}, nil)
 	rulesText := strings.Repeat("r", rules.InjectionBudgetBytes-1024)
-	res := Recall(Request{Items: items, Prompt: "the tests", Budget: rules.InjectionBudgetBytes - len(rulesText)})
+	res := Recall(Request{Items: items, Prompt: "the tests", Budget: rules.InjectionBudgetBytes - len(rulesText), Bracket: rules.BracketFresh})
 	if res.Text != "" || len(res.Recalled) != 0 || len(res.Ledger) != 0 {
 		t.Fatalf("an item past the remaining budget came back or was recorded: %+v", res)
 	}
@@ -144,7 +144,7 @@ func TestMemoryTakesOnlyWhatTheRulesLeaveOfTheBudget(t *testing.T) {
 		t.Fatalf("omitted = %v", res.Omitted)
 	}
 	// The next turn, with the rules already sent, it fits and is recorded.
-	next := Recall(Request{Items: items, Prompt: "the tests", Budget: rules.InjectionBudgetBytes, Ledger: res.Ledger})
+	next := Recall(Request{Items: items, Prompt: "the tests", Budget: rules.InjectionBudgetBytes, Ledger: res.Ledger, Bracket: rules.BracketFresh})
 	if !slices.Equal(next.Recalled, []string{"mem-2610111200000001"}) || next.Ledger["mem-2610111200000001"] == "" {
 		t.Fatalf("the retried item did not come back: %+v", next)
 	}
@@ -152,7 +152,7 @@ func TestMemoryTakesOnlyWhatTheRulesLeaveOfTheBudget(t *testing.T) {
 		t.Fatalf("the block is over budget: %d", len(next.Text))
 	}
 	// And the turn after that, it is not sent again.
-	if again := Recall(Request{Items: items, Prompt: "the tests", Budget: rules.InjectionBudgetBytes, Ledger: next.Ledger}); again.Text != "" {
+	if again := Recall(Request{Items: items, Prompt: "the tests", Budget: rules.InjectionBudgetBytes, Ledger: next.Ledger, Bracket: rules.BracketFresh}); again.Text != "" {
 		t.Fatalf("an item already sent came back:\n%s", again.Text)
 	}
 }
@@ -173,7 +173,7 @@ func TestProjectNoteSuppressesTheMachineCopy(t *testing.T) {
 func TestRecallKeysTheLedgerOnContent(t *testing.T) {
 	first := recallText(noteItems([]memnote.Note{note("mem-2610111200000001", "Lesson", "Old words.", "", "test")}, nil), "the tests")
 	changed := noteItems([]memnote.Note{note("mem-2610111200000001", "Lesson", "New words.", "", "test")}, nil)
-	res := Recall(Request{Items: changed, Prompt: "the tests", Budget: rules.InjectionBudgetBytes, Ledger: first.Ledger})
+	res := Recall(Request{Items: changed, Prompt: "the tests", Budget: rules.InjectionBudgetBytes, Ledger: first.Ledger, Bracket: rules.BracketFresh})
 	if !strings.Contains(res.Text, "New words.") {
 		t.Fatalf("a changed note was not sent again:\n%s", res.Text)
 	}
@@ -183,7 +183,7 @@ func TestRecallKeysTheLedgerOnContent(t *testing.T) {
 // loader, silences the recall whatever matches.
 func TestRecallDisabledRecallsNothing(t *testing.T) {
 	items := noteItems([]memnote.Note{note("mem-2610111200000001", "Lesson", "Words.", "", "test")}, nil)
-	res := Recall(Request{Items: items, Prompt: "the tests", Budget: rules.InjectionBudgetBytes, Disabled: true})
+	res := Recall(Request{Items: items, Prompt: "the tests", Budget: rules.InjectionBudgetBytes, Disabled: true, Bracket: rules.BracketFresh})
 	if res.Text != "" || len(res.Recalled) != 0 {
 		t.Fatalf("a disabled recall recalled: %+v", res)
 	}
@@ -282,7 +282,7 @@ func TestRecalledNoteNamesItsLayer(t *testing.T) {
 func TestRecallKeysTheLedgerOnLayer(t *testing.T) {
 	n := note("mem-2610111200000001", "Lesson", "Words.", "", "test")
 	first := recallText(noteItems([]memnote.Note{n}, nil), "the tests")
-	promoted := Recall(Request{Items: noteItems(nil, []memnote.Note{n}), Prompt: "the tests", Budget: rules.InjectionBudgetBytes, Ledger: first.Ledger})
+	promoted := Recall(Request{Items: noteItems(nil, []memnote.Note{n}), Prompt: "the tests", Budget: rules.InjectionBudgetBytes, Ledger: first.Ledger, Bracket: rules.BracketFresh})
 	if !strings.Contains(promoted.Text, "(project file, committed in this repository)") {
 		t.Fatalf("a note that changed layer was not sent again:\n%q", promoted.Text)
 	}
@@ -302,7 +302,7 @@ func TestRootIsAskedOnlyForAMatchedTiedNote(t *testing.T) {
 	calls := 0
 	counting := func() (string, error) { calls++; return thisRoot, nil }
 	run := func(prompt string) Result {
-		return Recall(Request{Items: items, Prompt: prompt, Budget: rules.InjectionBudgetBytes, Root: counting})
+		return Recall(Request{Items: items, Prompt: prompt, Budget: rules.InjectionBudgetBytes, Root: counting, Bracket: rules.BracketFresh})
 	}
 
 	if res := run("paint a landscape in oils"); res.Text != "" || calls != 0 {

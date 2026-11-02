@@ -136,12 +136,12 @@ func TestRankingDecidesWhichItemsFitTheBudget(t *testing.T) {
 		item("mem-2610111200000002", []string{"deploy", "kerberos"}, "A kerberos deploy lesson", filler),
 	}
 	budget := len(headerLine) + len(renderItem(items[1])) + 10
-	res := Recall(Request{Items: items, Prompt: "deploy with kerberos", Budget: budget})
+	res := Recall(Request{Items: items, Prompt: "deploy with kerberos", Budget: budget, Bracket: rules.BracketFresh})
 	if !slices.Equal(res.Recalled, []string{"mem-2610111200000002"}) || !slices.Equal(res.Omitted, []string{"mem-2610111200000001"}) {
 		t.Fatalf("recalled %v omitted %v, want the higher-ranked item to fit", res.Recalled, res.Omitted)
 	}
 	// With room for both, they come back in ranked order.
-	all := Recall(Request{Items: items, Prompt: "deploy with kerberos", Budget: rules.InjectionBudgetBytes})
+	all := Recall(Request{Items: items, Prompt: "deploy with kerberos", Budget: rules.InjectionBudgetBytes, Bracket: rules.BracketFresh})
 	if !slices.Equal(all.Recalled, []string{"mem-2610111200000002", "mem-2610111200000001"}) {
 		t.Fatalf("recalled %v, want ranked order", all.Recalled)
 	}
@@ -266,7 +266,7 @@ func TestAnItemLargerThanTheWholeBudgetDoesNotBlockTheRest(t *testing.T) {
 	if ranked[0].Item.Key != "page:fact_eng_huge.md" {
 		t.Fatalf("the fixture does not rank the huge page first: %v", rankedKeys(ranked))
 	}
-	res := Recall(Request{Items: items, Prompt: "deploy with kerberos", Budget: rules.InjectionBudgetBytes})
+	res := Recall(Request{Items: items, Prompt: "deploy with kerberos", Budget: rules.InjectionBudgetBytes, Bracket: rules.BracketFresh})
 	if !slices.Equal(res.Recalled, []string{"mem-2610111200000002"}) || !slices.Equal(res.TooLarge, []string{"page:fact_eng_huge.md"}) ||
 		len(res.Omitted) != 0 {
 		t.Fatalf("recalled %v too large %v omitted %v", res.Recalled, res.TooLarge, res.Omitted)
@@ -279,7 +279,7 @@ func TestAnItemLargerThanTheWholeBudgetDoesNotBlockTheRest(t *testing.T) {
 	}
 	// With the rules leaving too little for the note this turn, the note is
 	// omitted and tried again, and the huge page is still only too large.
-	tight := Recall(Request{Items: items, Prompt: "deploy with kerberos", Budget: 10})
+	tight := Recall(Request{Items: items, Prompt: "deploy with kerberos", Budget: 10, Bracket: rules.BracketFresh})
 	if len(tight.Recalled) != 0 || !slices.Equal(tight.Omitted, []string{"mem-2610111200000002"}) || !slices.Equal(tight.TooLarge, []string{"page:fact_eng_huge.md"}) {
 		t.Fatalf("recalled %v too large %v omitted %v", tight.Recalled, tight.TooLarge, tight.Omitted)
 	}

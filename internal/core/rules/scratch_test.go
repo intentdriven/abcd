@@ -37,7 +37,7 @@ func TestScratchDomainRecallsTheHostScratchpad(t *testing.T) {
 			t.Errorf("%q does not recall %s: %v", prompt, scratchDomain, names(got))
 		}
 	}
-	res := Inject(rs, "write a helper script under /tmp", SessionState{}, 0)
+	res := Inject(rs, "write a helper script under /tmp", SessionState{}, 0, BracketUnknown)
 	if !slices.Contains(res.Injected, scratchDomain) {
 		t.Fatalf("a helper script under /tmp injected %v, want %s in it", res.Injected, scratchDomain)
 	}
@@ -158,7 +158,7 @@ func TestScratchRuleSendsAHelperToAbcdsCommandsFirst(t *testing.T) {
 		t.Errorf("the %s helper rule wraps make preflight in the waiter, which LOAD and commands/implement.md say it needs no wrapper for:\n%s", scratchDomain, helper)
 	}
 
-	res := Inject(Defaults(), "write a script to queue the preflight", SessionState{}, 0)
+	res := Inject(Defaults(), "write a script to queue the preflight", SessionState{}, 0, BracketUnknown)
 	if !slices.Contains(res.Injected, scratchDomain) {
 		t.Fatalf("a script to queue the preflight injected %v, want %s in it", res.Injected, scratchDomain)
 	}

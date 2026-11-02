@@ -108,7 +108,7 @@ func TestInjectEnforcesBudgetWithLoudNotice(t *testing.T) {
 		domains[n] = Domain{State: StateActive, Recall: []string{"flood"}, Rules: []string{big}}
 	}
 	rs := RuleSet{SchemaVersion: 1, Domains: domains}
-	res := Inject(rs, "a flood of rules", SessionState{}, 0)
+	res := Inject(rs, "a flood of rules", SessionState{}, 0, BracketUnknown)
 	if len(res.Text) > injectionBudgetBytes {
 		t.Fatalf("injected text %d bytes exceeds budget %d", len(res.Text), injectionBudgetBytes)
 	}
@@ -122,7 +122,7 @@ func TestInjectEnforcesBudgetWithLoudNotice(t *testing.T) {
 // bites on a flood, never on ordinary rule sets.
 func TestInjectNormalSetUntouched(t *testing.T) {
 	rs := Defaults()
-	res := Inject(rs, "commit and push and open the pull request", SessionState{}, 0)
+	res := Inject(rs, "commit and push and open the pull request", SessionState{}, 0, BracketUnknown)
 	if strings.Contains(res.Text, injectionTruncatedMarker) {
 		t.Fatalf("normal set wrongly truncated:\n%s", res.Text)
 	}

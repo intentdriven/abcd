@@ -962,14 +962,8 @@ func renderDomain(d ResolvedDomain) string {
 	// An override's bodies are another party's text: each is fenced, so no
 	// markdown construct inside it renders (iss-2609020219265817). Bundled
 	// bodies are abcd's own words and keep their structure.
-	fence := d.Source == SourceUser || d.Source == SourceRepo
 	for _, r := range d.Rules {
-		var body string
-		if fence {
-			body = FenceRuleBody(r)
-		} else {
-			body = sanitizeRuleBody(r)
-		}
+		body := renderedRuleBody(d, r)
 		// Defence behind Validate's loud refusal: a body that sanitises to
 		// nothing (empty or whitespace-only) never becomes a contentless "- "
 		// bullet, even on an unvalidated render path (iss-2608261550497978).
@@ -979,6 +973,43 @@ func renderDomain(d ResolvedDomain) string {
 		fmt.Fprintf(&b, "- %s\n", body)
 	}
 	return b.String()
+}
+
+// renderedRuleBody is one rule's body as renderDomain writes it under its
+// bullet: fenced for an override's, sanitised for a bundled one's, and ""
+// for one that renders to nothing, which renderDomain skips.
+func renderedRuleBody(d ResolvedDomain, r string) string {
+	if d.Source == SourceUser || d.Source == SourceRepo {
+		return FenceRuleBody(r)
+	}
+	return sanitizeRuleBody(r)
+}
+
+// renderShrunk renders a domain in a bracket that shrinks rules
+// (BracketRow.ShrinkRules, spc-2610111627213138 step 6): its heading, its
+// first rule — the first its author wrote, or for a generated domain the
+// first its generator yields, never reordered — and a line saying how many
+// rules it holds and that `abcd rules <DOMAIN>` renders the rest. The pointer
+// line keeps a shrunk guardrail domain from reading as complete, and keeps it
+// from ever being a heading alone. A domain of one rule is already its
+// heading and first rule, and renders as renderDomain does. ok is false when
+// it renders whole.
+func renderShrunk(d ResolvedDomain) (block string, ok bool) {
+	var bodies []string
+	for _, r := range d.Rules {
+		if body := renderedRuleBody(d, r); body != "" {
+			bodies = append(bodies, body)
+		}
+	}
+	if len(bodies) <= 1 {
+		return renderDomain(d), false
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "## %s\n", Label(d.Name, d.Source))
+	fmt.Fprintf(&b, "- %s\n", bodies[0])
+	fmt.Fprintf(&b, "- (The first of the %d rules %s holds, shortened because the session's context is filling; `abcd rules %s` renders all %d.)\n",
+		len(bodies), d.Name, d.Name, len(bodies))
+	return b.String(), true
 }
 
 // FenceRuleBody renders an override's rule body as a fenced code block inside

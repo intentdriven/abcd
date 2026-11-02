@@ -232,7 +232,7 @@ func TestUserCustomDomainInjectsInAnyRepo(t *testing.T) {
 		if len(got) != 1 || got[0].Name != "HOUSE" || got[0].Source != SourceUser {
 			t.Fatalf("the user custom domain did not recall-match: %+v", got)
 		}
-		res := Inject(rs, "rename the widget", SessionState{}, 0)
+		res := Inject(rs, "rename the widget", SessionState{}, 0, BracketUnknown)
 		if !strings.Contains(res.Text, "## HOUSE (user override)\n- ~~~\n  widgets are named in the singular\n  ~~~\n") {
 			t.Fatalf("injected text lacks the user domain:\n%s", res.Text)
 		}

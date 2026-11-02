@@ -76,7 +76,13 @@ type InjectResult struct {
 	Injected []string
 	Active   []string
 	Sources  map[string]string
-	State    SessionState
+	// Shrunk names, in order, each injected domain sent as its heading and
+	// first rule rather than in full (renderShrunk); empty in a bracket that
+	// keeps rules in full.
+	Shrunk []string
+	// Bracket is the bracket the rules were injected in.
+	Bracket Bracket
+	State   SessionState
 }
 
 // Labels returns the injected names in order, each labelled the way the
@@ -104,6 +110,30 @@ type SessionState struct {
 	Count    int               `json:"count"`
 	Ledger   map[string]string `json:"ledger"`             // domain name -> last-injected signature
 	Recalled map[string]string `json:"recalled,omitempty"` // memory item key -> content signature
+	// FillUnknownSaid records that the hook has said, once this session, that
+	// how full the session is is unknown (UnknownFillNotice). The resets
+	// clear it with the ledgers, since they remove the file; the fixed
+	// backstop does not, so it is said once a session and not once a cycle.
+	FillUnknownSaid bool `json:"fill_unknown_said,omitempty"`
+}
+
+// UnknownFillNotice is the one line the hook says when how full the session
+// is is unknown, and only the first time this session (the technical
+// facilitator's ruling of 2026-10-11, "Rules full, notes short": the hook
+// says the fill is unknown on stderr on the first prompt of each session).
+// It records in st that it was said, so a caller saves st after it. It is ""
+// when the fill is known or the line was already said this session. The
+// reason is the fill reader's, in abcd's own words.
+func UnknownFillNotice(st *SessionState, f Fill) string {
+	if f.Known() || st.FillUnknownSaid {
+		return ""
+	}
+	st.FillUnknownSaid = true
+	reason := f.Reason
+	if reason == "" {
+		reason = "no source told"
+	}
+	return "rules: how full this session is, is unknown (" + reason + "); rules come back in full and memory notes and pages as one line each while it stays unknown, and `abcd rules --prompt` shows any of them in full"
 }
 
 // Inject is the pure heart of the prompt-router hook: it recall-matches prompt,
@@ -116,7 +146,18 @@ type SessionState struct {
 // When the (incremented) prompt count is a multiple of the backstop, the ledger
 // is cleared first so always-relevant domains re-inject, and the recalled
 // ledger with it, so a recalled item comes back on the same prompt.
-func Inject(rs RuleSet, prompt string, prev SessionState, backstop int) InjectResult {
+//
+// bracket is the context bracket the session's fill puts the prompt in
+// (brackets.go, BracketFor). In a bracket whose row shrinks rules, each
+// matched domain is sent as its heading, its first rule and a line naming
+// how many rules it holds and the command that renders the rest
+// (renderShrunk); BracketUnknown, the zero value, a caller with no fill
+// passes, keeps every domain in full, as before the brackets. The ledger
+// keys on a domain's content, never on the form it was sent in (Signature
+// hashes the full block), so a domain sent shrunk is not sent again in full
+// when the bracket changes, nor the other way round, until a reset clears
+// the ledger.
+func Inject(rs RuleSet, prompt string, prev SessionState, backstop int, bracket Bracket) InjectResult {
 	if backstop <= 0 {
 		backstop = DefaultRefreshBackstop
 	}
@@ -157,15 +198,23 @@ func Inject(rs RuleSet, prompt string, prev SessionState, backstop int) InjectRe
 	// the per-file read cap (iss-2608261551077971). A domain that is truncated
 	// away is deliberately NOT recorded in the ledger, so it is retried next turn
 	// rather than silently dropped for the session.
-	text, kept := renderWithinBudget(fresh, rs.rulesFrom)
-	var injected []string
+	// The bracket's row decides each domain's form; the ledger records the
+	// domain's content signature whatever the form (Signature hashes the full
+	// block), so a change of bracket never sends a domain again.
+	text, kept := renderWithinBudget(fresh, rs.rulesFrom, domainRenderer(bracket))
+	shrinks := bracket.Row().ShrinkRules
+	var injected, shrunk []string
 	sources := make(map[string]string, len(kept))
 	for _, d := range kept {
 		ledger[d.Name] = Signature(d)
 		injected = append(injected, d.Name)
 		sources[d.Name] = d.Source
+		if _, ok := renderShrunk(d); shrinks && ok {
+			shrunk = append(shrunk, d.Name)
+		}
 	}
 	sort.Strings(injected)
+	sort.Strings(shrunk)
 
 	names := make([]string, 0, len(active))
 	for name := range active {
@@ -178,7 +227,9 @@ func Inject(rs RuleSet, prompt string, prev SessionState, backstop int) InjectRe
 		Injected: injected,
 		Active:   names,
 		Sources:  sources,
-		State:    SessionState{Count: count, Ledger: ledger, Recalled: recalled},
+		Shrunk:   shrunk,
+		Bracket:  bracket,
+		State:    SessionState{Count: count, Ledger: ledger, Recalled: recalled, FillUnknownSaid: prev.FillUnknownSaid},
 	}
 }
 
@@ -210,19 +261,28 @@ func activeNames(rs RuleSet, matched []ResolvedDomain) map[string]struct{} {
 	return out
 }
 
-// renderWithinBudget renders fresh under the per-repo injection budget. When the
-// full render fits it is returned byte-identical to Render (the common path is
-// untouched). When it overflows, whole domain blocks are kept greedily in order
-// until the next would exceed the budget, and a loud, unmistakable truncation
-// notice is appended — whole-block granularity keeps the "## NAME" injection
-// contract intact (never a half-rendered rule). It returns the text and the
-// domains actually kept, so the caller records only those in the dedup ledger.
+// renderWithinBudget renders fresh under the per-repo injection budget, each
+// domain through render (renderDomain in full, or a bracket's shrunk form,
+// domainRenderer). When the whole render fits it is returned — for the full
+// form byte-identical to Render (the common path is untouched). When it
+// overflows, whole domain blocks are kept greedily in order until the next
+// would exceed the budget, and a loud, unmistakable truncation notice is
+// appended — whole-block granularity keeps the "## NAME" injection contract
+// intact (never a half-rendered rule). It returns the text and the domains
+// actually kept, so the caller records only those in the dedup ledger.
 // rulesFrom maps a domain to the file its rules came from (RuleSet.rulesFrom);
 // the notice names those files as the likely cause.
-func renderWithinBudget(fresh []ResolvedDomain, rulesFrom map[string]string) (string, []ResolvedDomain) {
-	full := Render(fresh)
-	if len(full) <= injectionBudgetBytes {
-		return full, fresh
+func renderWithinBudget(fresh []ResolvedDomain, rulesFrom map[string]string, render func(ResolvedDomain) string) (string, []ResolvedDomain) {
+	if len(fresh) == 0 {
+		return "", nil
+	}
+	var whole strings.Builder
+	fmt.Fprintf(&whole, "# abcd rules — %d domain(s) active\n", len(fresh))
+	for _, d := range fresh {
+		whole.WriteString(render(d))
+	}
+	if whole.Len() <= injectionBudgetBytes {
+		return whole.String(), fresh
 	}
 
 	var kept []ResolvedDomain
@@ -231,7 +291,7 @@ func renderWithinBudget(fresh []ResolvedDomain, rulesFrom map[string]string) (st
 	// output is provably within the budget regardless of how many blocks fit.
 	const reserve = 512
 	for _, d := range fresh {
-		block := renderDomain(d)
+		block := render(d)
 		if size+len(block) > injectionBudgetBytes-reserve {
 			break
 		}
@@ -242,12 +302,25 @@ func renderWithinBudget(fresh []ResolvedDomain, rulesFrom map[string]string) (st
 	var b strings.Builder
 	fmt.Fprintf(&b, "# abcd rules — %d domain(s) active\n", len(kept))
 	for _, d := range kept {
-		b.WriteString(renderDomain(d))
+		b.WriteString(render(d))
 	}
 	fmt.Fprintf(&b,
 		"\n# abcd rules — %s: rendered rule set exceeds the %d-byte per-repo budget; %d of %d matched domain(s) omitted this turn. %s\n",
-		injectionTruncatedMarker, injectionBudgetBytes, len(fresh)-len(kept), len(fresh), budgetCause(fresh, rulesFrom))
+		injectionTruncatedMarker, injectionBudgetBytes, len(fresh)-len(kept), len(fresh), budgetCause(fresh, rulesFrom, render))
 	return b.String(), kept
+}
+
+// domainRenderer is the form a bracket gives each domain: shrunk to its
+// heading and first rule (renderShrunk) where the bracket's row shrinks
+// rules, in full (renderDomain) otherwise.
+func domainRenderer(bracket Bracket) func(ResolvedDomain) string {
+	if !bracket.Row().ShrinkRules {
+		return renderDomain
+	}
+	return func(d ResolvedDomain) string {
+		block, _ := renderShrunk(d)
+		return block
+	}
 }
 
 // budgetCause names the files whose words filled the budget, largest share
@@ -255,11 +328,11 @@ func renderWithinBudget(fresh []ResolvedDomain, rulesFrom map[string]string) (st
 // came from, and the bundled words are charged to no file. Naming one file
 // always — .abcd/rules.json — sent a reader to the wrong file when the
 // repository's guard.json or the user's rules.json held the bulk.
-func budgetCause(fresh []ResolvedDomain, rulesFrom map[string]string) string {
+func budgetCause(fresh []ResolvedDomain, rulesFrom map[string]string, render func(ResolvedDomain) string) string {
 	cost := map[string]int{}
 	for _, d := range fresh {
 		if file := rulesFrom[d.Name]; file != "" {
-			cost[file] += len(renderDomain(d))
+			cost[file] += len(render(d))
 		}
 	}
 	if len(cost) == 0 {

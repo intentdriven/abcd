@@ -187,7 +187,7 @@ func TestStateRefusesAFolderSomeoneElseCouldWrite(t *testing.T) {
 
 func TestInjectFirstTurnRenders(t *testing.T) {
 	rs := Defaults()
-	res := Inject(rs, "commit and push", SessionState{}, 0)
+	res := Inject(rs, "commit and push", SessionState{}, 0, BracketUnknown)
 	if res.Text == "" || !strings.Contains(res.Text, "COMMITTING") {
 		t.Fatalf("first turn did not inject COMMITTING:\n%s", res.Text)
 	}
@@ -201,8 +201,8 @@ func TestInjectFirstTurnRenders(t *testing.T) {
 
 func TestInjectDedupsWithinSession(t *testing.T) {
 	rs := Defaults()
-	first := Inject(rs, "commit and push", SessionState{}, 0)
-	second := Inject(rs, "commit and push again", first.State, 0)
+	first := Inject(rs, "commit and push", SessionState{}, 0, BracketUnknown)
+	second := Inject(rs, "commit and push again", first.State, 0, BracketUnknown)
 	if second.Text != "" {
 		t.Fatalf("second identical-domain turn re-injected:\n%s", second.Text)
 	}
@@ -213,18 +213,18 @@ func TestInjectDedupsWithinSession(t *testing.T) {
 
 func TestInjectReinjectsOnClearedLedger(t *testing.T) {
 	rs := Defaults()
-	first := Inject(rs, "commit", SessionState{}, 0)
+	first := Inject(rs, "commit", SessionState{}, 0, BracketUnknown)
 	if first.Text == "" {
 		t.Fatal("first turn injected nothing")
 	}
 	// Same session, threaded state: dedup suppresses.
-	second := Inject(rs, "commit", first.State, 0)
+	second := Inject(rs, "commit", first.State, 0, BracketUnknown)
 	if second.Text != "" {
 		t.Fatalf("dedup failed on threaded state:\n%s", second.Text)
 	}
 	// A cleared ledger (what a reset produces) re-injects, even though the prompt
 	// is unchanged — this is the reset/refresh contract at the unit level.
-	third := Inject(rs, "commit", SessionState{}, 0)
+	third := Inject(rs, "commit", SessionState{}, 0, BracketUnknown)
 	if third.Text == "" {
 		t.Fatal("cleared ledger did not re-inject")
 	}
@@ -286,13 +286,13 @@ func writeConfig(t *testing.T, dir, body string) {
 
 func TestInjectContentDriftReinjects(t *testing.T) {
 	rs := Defaults()
-	first := Inject(rs, "commit", SessionState{}, 0)
+	first := Inject(rs, "commit", SessionState{}, 0, BracketUnknown)
 	// Mutate COMMITTING's rules; the signature changes, so it must re-inject
 	// despite the ledger entry.
 	d := rs.Domains["COMMITTING"]
 	d.Rules = append([]string{"a brand new rule"}, d.Rules...)
 	rs.Domains["COMMITTING"] = d
-	second := Inject(rs, "commit", first.State, 0)
+	second := Inject(rs, "commit", first.State, 0, BracketUnknown)
 	if !strings.Contains(second.Text, "a brand new rule") {
 		t.Fatalf("content drift did not re-inject:\n%s", second.Text)
 	}
@@ -305,7 +305,7 @@ func TestInjectBackstopForcesRefresh(t *testing.T) {
 	// Backstop of 3: turns 1..2 dedup after the first inject; turn 3 (count%3==0)
 	// clears the ledger and re-injects.
 	for i := 0; i < 3; i++ {
-		res := Inject(rs, "commit", st, 3)
+		res := Inject(rs, "commit", st, 3, BracketUnknown)
 		st = res.State
 		lastText = res.Text
 	}
@@ -316,7 +316,7 @@ func TestInjectBackstopForcesRefresh(t *testing.T) {
 
 func TestInjectNoMatchZeroBytes(t *testing.T) {
 	rs := Defaults()
-	res := Inject(rs, "paint a landscape in oils", SessionState{}, 0)
+	res := Inject(rs, "paint a landscape in oils", SessionState{}, 0, BracketUnknown)
 	if res.Text != "" {
 		t.Fatalf("no-match must render zero bytes, got %q", res.Text)
 	}
@@ -325,7 +325,7 @@ func TestInjectNoMatchZeroBytes(t *testing.T) {
 func TestInjectNeverReflectsPromptBytes(t *testing.T) {
 	rs := Defaults()
 	marker := "ZZUNIQUEPROMPTMARKERZZ commit"
-	res := Inject(rs, marker, SessionState{}, 0)
+	res := Inject(rs, marker, SessionState{}, 0, BracketUnknown)
 	if strings.Contains(res.Text, "ZZUNIQUEPROMPTMARKERZZ") {
 		t.Fatalf("injected text reflected prompt bytes:\n%s", res.Text)
 	}
