@@ -44,8 +44,10 @@ own timeout.
 `ReadMemory() (Memory, error)` is one reading. `Memory` has these fields:
 
 - `Platform`: `darwin` or `linux`.
-- `Level`: on macOS, `normal`, `warn` or `critical`, mapped from the sysctl
-  values 1, 2 and 4. A value outside those three is an error, never a guess.
+- `Level`: on macOS, `normal`, `warn`, `urgent` or `critical`, mapped from
+  the sysctl values 1, 2, 3 and 4. Any other value above 1 reads as at least
+  `warn`, so a level abcd does not know holds the gate rather than opening it;
+  only a failed read is unreadable.
 - `StallPct`: on Linux, `avg10` of the `some` line, a percentage.
 - `Raw`: the raw value, for the report.
 
