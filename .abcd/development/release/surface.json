@@ -4401,6 +4401,13 @@
           "hidden": false
         },
         {
+          "name": "project",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "provider",
           "shorthand": "",
           "type": "string",

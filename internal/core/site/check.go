@@ -336,14 +336,11 @@ func Check(req CheckRequest) (CheckResult, error) {
 		res.Built = true
 	}
 
-	manifest, err := LoadManifest(repoRoot)
+	manifest, err := loadRoute(repoRoot, req.Project)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return CheckResult{}, ErrNoManifest
 		}
-		return CheckResult{}, err
-	}
-	if err := routeAgrees(manifest, req.Project); err != nil {
 		return CheckResult{}, err
 	}
 	// The content-policy gate judges a project site alone: a composed site's

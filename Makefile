@@ -255,7 +255,10 @@ site-render:
 	@go run ./cmd/abcd site build --out .abcd/.work.local/scratch/site-render-check >/dev/null
 	@go run ./cmd/abcd lint site --out .abcd/.work.local/scratch/site-render-check >/dev/null
 	@rm -rf .abcd/.work.local/scratch/site-render-check
-	@echo "site-render: the record and docs render and pass the site gates"
+	@go run ./cmd/abcd site build --project --base-path /abcd/ --out .abcd/.work.local/scratch/site-render-check >/dev/null
+	@go run ./cmd/abcd lint site --project --base-path /abcd/ --out .abcd/.work.local/scratch/site-render-check >/dev/null
+	@rm -rf .abcd/.work.local/scratch/site-render-check
+	@echo "site-render: the record and docs render and pass the site gates, and the record on the project route too"
 
 # Propagate the pinned action refs in the committed release workflows back into
 # the scaffold templates they were rendered from (iss-209). Dependabot only ever

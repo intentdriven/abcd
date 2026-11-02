@@ -1,4 +1,4 @@
-name: site
+name: <% .WorkflowName %>
 
 # Written by `abcd site setup` (itd-2609061543533170). Re-running the verb
 # rewrites nothing while this file is unchanged, and refuses a hand edit unless
@@ -17,7 +17,8 @@ name: site
 # A PROJECT SITE (`--project`): every page is built from what abcd already
 # writes to the repository (its identity block, brief, development record and
 # CHANGELOG.md), and its interface words, styles and scripts come from the
-# abcd binary. The repository carries no site sources.
+# abcd binary. <% if .Beside %>The repository's composed site, at <% .ComposedFile %>, has
+# a workflow of its own, and this site reads none of its sources.<% else %>The repository carries no site sources.<% end %>
 <% end %><% if .Switched %>#
 # THE SWITCH: the site publishes only while `"publish": true` stands in the
 # hosting block of <% .SwitchFile %> both at the released commit and at the
@@ -80,7 +81,7 @@ on:
 # One production target, so one queue. A deploy cancelled between uploading
 # assets and switching the route leaves the site half-moved.
 concurrency:
-  group: site-production
+  group: <% .WorkflowName %>-production
   cancel-in-progress: false
 
 permissions:
@@ -102,7 +103,7 @@ jobs:
       - name: Start this workflow on the default branch for the release's tag
         env:
           GH_TOKEN: ${{ github.token }}
-          WORKFLOW: site.yml
+          WORKFLOW: <% .WorkflowFile %>
           DEFAULT_BRANCH: '<% .DefaultBranch %>'
           TAG: ${{ github.event.release.tag_name }}
         run: |
