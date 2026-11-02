@@ -5,17 +5,193 @@ intent: itd-2611012048006057
 origin: researcher-authored
 production_mode: hand-written
 ---
-# macos-ran-out-of-application-memory-on-a
+# abcd's load gate waits for memory as it waits for load
 
 ## Summary
 
-_Draft: describe what spc-2611020732419632 delivers for itd-2611012048006057 — scope, approach, and how it satisfies the intent's Acceptance Criteria. This spec is the design record the fidelity review audits against._
+spc-2611020732419632 delivers itd-2611012048006057. The load gate gets a
+memory condition. While the system reports memory pressure at or above the
+person's floor, the gate stays shut and the waiter keeps waiting. The load
+check reports the same reading as a warning. The reading comes from the
+operating system's own pressure signal:
+
+- on macOS, the `kern.memorystatus_vm_pressure_level` sysctl, which reads 1
+  for normal, 2 for warning and 4 for critical, and which an ordinary account
+  can read;
+- on Linux, the `some avg10` share of `/proc/pressure/memory`, the kernel's
+  pressure stall information, available from 4.20.
+
+A platform that has neither reading, or a read that fails, admits the run as
+today and says once that memory was not checked.
+
+The disk floor (iss-2610281502581386, `load_disk.go`) is the precedent this
+follows in every respect but one. It is read only from the person's machine
+configuration, it is read again just before the gate opens, and the load
+check reports it without ever failing. The exception: the disk floor
+refuses, since nothing frees disk while a waiter sleeps, but memory pressure
+falls as other work finishes, so this condition waits, bounded by the gate's
+own timeout.
 
 ## Footprint
 
-- packages:
-- tests:
+- packages: internal/core/machineload, internal/core/implement, internal/surface/cli, internal/core/rules, commands, docs, .abcd/development/brief
+- tests: internal/core/machineload, internal/core/implement, internal/surface/cli
+
+## Design
+
+### The reading (`internal/core/machineload`)
+
+`ReadMemory() (Memory, error)` is one reading. `Memory` has these fields:
+
+- `Platform`: `darwin` or `linux`.
+- `Level`: on macOS, `normal`, `warn` or `critical`, mapped from the sysctl
+  values 1, 2 and 4. A value outside those three is an error, never a guess.
+- `StallPct`: on Linux, `avg10` of the `some` line, a percentage.
+- `Raw`: the raw value, for the report.
+
+Each platform's reader has its own file, as `read_*.go` and `disk_*.go` do:
+
+- `memory_darwin.go` makes one `syscall.SysctlUint32`;
+- `memory_linux.go` makes one bounded read of `/proc/pressure/memory`. A
+  missing file is an `ErrUnsupported`-shaped error naming the kernel
+  requirement;
+- `memory_other.go` returns `ErrUnsupported`.
+
+The parse is a pure function with its own test, as `parse.go` is for the
+load averages. The reader is injected through `WaitRequest.ReadMemory` and
+`LoadRequest.ReadMemory`, with nil meaning the real reader, so every test
+drives it without the machine.
+
+### The floor (`internal/core/implement/load_memory.go`)
+
+Two keys in the person's `~/.abcd.noindex/config.json`. Each is read through
+the same layered machine stack that `PreflightSlots` reads:
+
+- `load.memory_floor_macos`: `warn` (the default) or `critical`;
+- `load.memory_floor_linux`: a whole percentage from 1 to 100, default 10.
+
+A value outside its set stops the gate with a message naming the key, the
+file and the values it takes, as a bad `load.preflights` does. The gate does
+not guess a floor. Each key gets a `stack.Claim`, so an unknown key under
+`load` is still named.
+
+A repository cannot set the floor. `memoryFloorAt` also looks at the
+checkout's `.abcd/config.json` for either key. When one is present, the
+result carries a `MemoryNote`: the key is ignored, the floor is a machine
+setting, and here is the file that sets it. The note is printed once on
+stderr. The repository's value is never used.
+
+`memoryShut(m Memory, f Floor) bool` is the one judgement, shared by the
+waiter and the check:
+
+- macOS: `Level` is at or above the floor's level;
+- Linux: `StallPct` is at or above the floor's percentage.
+
+### The waiter (`load_wait.go`)
+
+- A new shut condition, `WaitOnMemory = "memory"`, joins `WaitOnLoad` and the
+  others in `waitLook`. It holds at both gates (the race gate's own stage is
+  the memory-heaviest), and at the race gate too once the one-slot shortcut
+  applies. With one slot today the race gate opens without a look, and in
+  that case memory is read once more before it opens.
+- Memory is read at every look and once more at the re-check before opening,
+  after the jitter, so a reading that has gone stale cannot open the gate
+  (criterion 1).
+- `WaitResult` gains `Memory` (the last reading: level or stall share, and
+  the floor) and `MemoryNote` (not checked and why, or a repository key
+  ignored). The wait line names the level and the floor, for example
+  `memory pressure warn (floor warn)` or
+  `memory stalled 14.2% over 10s (floor 10%)`.
+- When the timeout passes with memory still shut, the result is `WaitTimedOut`,
+  as for load, and `Still` names `memory` (criterion 3).
+- A reading that cannot be taken sets `MemoryNote` and shuts nothing
+  (criterion 4). This deliberately differs from `WaitOnUnreadable`, which
+  shuts the gate on an unreadable load or process table. An unread memory
+  floor must never wedge a run, and the person ruled the gate fails open on
+  it.
+
+### One at a time after the pressure falls (criterion 7)
+
+The queue already admits waiters in start order (`machineload.QueueAhead`,
+`WaitOnWaiter`). With one slot the first gate's hold keeps them one at a
+time. With more slots, several waiting on memory could all open at the one
+look that sees the pressure fall. So a waiter that has waited on memory at
+any look takes a memory settle before it opens:
+
+- The record is `~/.abcd.noindex/load-memory-admit.json`, written through
+  the same `os.Root` the holds use. It carries the pid, start and time of
+  the last admission of a waiter that waited on memory.
+- While that admission is younger than `WaitMemorySettle` (2 minutes,
+  the same as `WaitSettle`) and its holder is not this waiter,
+  `memory` stays shut.
+- After the settle, memory is read again before the next waiter opens. So
+  the stage just admitted has had time to show its own memory use.
+
+A waiter that never saw memory shut neither reads nor writes the record. So a
+machine that never comes under pressure behaves exactly as today.
+
+### The check (`load.go`)
+
+`CheckLoad` reads memory beside the disk. `LoadResult.Memory` carries the
+reading and whether it is at or above the floor. The text report prints a
+warning line when it is. The check's exit never changes (criterion 6).
+
+### Surfaces
+
+- `internal/surface/cli/implement_load.go` renders the wait line, the
+  timeout's cause, the not-checked note and the repository-ignored note, in
+  both text and JSON. The help names the two keys and their defaults.
+- `commands/implement.md`, `docs/reference/cli/commands.md` and
+  `.abcd/development/brief/04-surfaces/27-implement.md` describe the memory
+  condition beside the disk floor.
+- The `LOAD` domain in `internal/core/rules/defaults/rules.json` adds memory
+  pressure to what the load gate waits on. `internal/core/ahoy/defaults/
+  claude-md-marker-block.md` carries the same line where it describes the
+  gate.
+
+## Out of scope
+
+- Attributing a spike to a process, and sampling each preflight's peak
+  memory. Both belong to itd-2610262140595217, by the person's ruling.
+- Holding a test an agent runs outside the gate (iss-2610241130157455
+  settled that the gate holds only what passes it).
+- Lowering a running stage's parallelism under pressure. The gate decides
+  only whether a stage starts.
+
+## Acceptance-criteria satisfaction
+
+Each criterion has a test, watched to fail before the change.
+
+1. **Waits at or above the floor, re-reads, names the level.**
+   `TestWaitMemoryShutsAtFloor` (an injected `warn` reading against the
+   `warn` floor keeps the gate shut; the wait line names both).
+   `TestWaitMemoryRereadBeforeOpen` (a reading that rises during the jitter
+   keeps it shut).
+2. **Admits when the pressure falls.** `TestWaitMemoryOpensWhenItFalls`
+   (`warn`, then `normal`, opens as with no floor).
+3. **Times out naming memory.** `TestWaitMemoryTimeoutNamesMemory`
+   (`Status` `timeout`, `Still` `[memory]`).
+4. **Fails open with one not-checked line.**
+   `TestWaitMemoryUnreadableAdmits` (the reader errors; the gate opens;
+   `MemoryNote` is set once). `TestReadMemoryUnsupported` on the other-platform
+   reader.
+5. **Default floor; a repository key is ignored and named.**
+   `TestMemoryFloorDefaults` (`warn`, and 10 on Linux, with no key).
+   `TestMemoryFloorMachineKey` (`critical` and 25 honoured from the machine
+   file; out-of-range values refused naming the key).
+   `TestMemoryFloorRepoKeyIgnored` (a repository's key changes nothing, and
+   the note names it).
+6. **The check warns only.** `TestCheckLoadMemoryWarns` (exit unchanged; the
+   finding present). A CLI test renders the warning line.
+7. **One at a time with a settle.** `TestWaitMemorySettleSerialises`: two
+   waiters on memory at four slots; the pressure falls; the first opens and
+   writes the record; the second stays shut on `memory` until the settle
+   passes, then re-reads. `TestWaitMemoryNoRecordWithoutPressure`.
+8. **Linux.** `TestParsePressureMemory` (the `some`/`full` lines, malformed
+   and missing fields). `TestWaitMemoryLinuxStall` (14.2 against 10 waits).
+   `TestReadMemoryLinuxNoFile` (a missing file reads as not checked, naming
+   the kernel requirement).
 
 ## Steps
 
-_No steps listed: the spec is built as one step. To split it, list the steps in order as `1. <title>`, each with `- packages:` and `- tests:` indented beneath it; `- landed: <pull request or commit>` marks a step that has landed._
+_No steps listed: the spec is built as one step._
