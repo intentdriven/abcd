@@ -97,7 +97,7 @@ type RestartAside struct {
 	Receipt string `json:"receipt,omitempty"`
 }
 
-// RestartResult is what Restart returns: the lane's step result, re-telling
+// RestartResult is what restartLane returns: the lane's step result, re-telling
 // the implementer await, and the aside.
 type RestartResult struct {
 	StepResult
@@ -214,7 +214,7 @@ func snapshot(worktree, head, tmp string) ([]byte, []string, error) {
 	return patch, files, nil
 }
 
-// Restart restarts a lane whose implementer died, or yielded on a network
+// restartLane restarts a lane whose implementer died, or yielded on a network
 // failure (yielded is then its `NETWORK: <cmd>` line): what the agent left
 // uncommitted is saved aside under the lane's directory, the lane's worktree
 // is reset to its last commit and cleaned, the run record names the aside, and
@@ -228,18 +228,18 @@ func snapshot(worktree, head, tmp string) ([]byte, []string, error) {
 // neither an implementer out nor an await a rate limit kept, for a lane whose
 // worktree is not the one the loop derives for it, and when the saved patch
 // would not apply to the lane's head.
-func Restart(repoRoot, runID, laneID, yielded string, o Options) (RestartResult, error) {
+func restartLane(repoRoot, runID, laneID, yielded string, o Options) (RestartResult, error) {
 	res, _, err := restart(repoRoot, runID, laneID, yielded, o)
 	return res, err
 }
 
-// RestartDrive is Restart under the run's routes (iss-2611012047534449): a
+// RestartDrive is restartLane under the run's routes (iss-2611012047534449): a
 // re-told role routed to a runner, by the configuration or a --route, is
 // started on its runner at once, as a held role is retried
 // (runner_pause.go), rather than re-told to the host; one the runner fails
 // to start pauses the lane. A --route for a role the restart does not re-tell
 // is refused before anything is changed. With rs.Config nil, or in an
-// auto-plan run, it is Restart. The first routed role re-told is started; any
+// auto-plan run, it is restartLane. The first routed role re-told is started; any
 // other is retried by a later step.
 func RestartDrive(ctx context.Context, repoRoot, runID, laneID, yielded string, steps Stages, o Options, rs Runners) (RestartResult, error) {
 	if rs.Config != nil {
@@ -298,7 +298,7 @@ func RestartDrive(ctx context.Context, repoRoot, runID, laneID, yielded string, 
 	return res, nil
 }
 
-// restart is Restart, also returning the awaits it re-told.
+// restart is restartLane, also returning the awaits it re-told.
 func restart(repoRoot, runID, laneID, yielded string, o Options) (RestartResult, []Await, error) {
 	why, err := whyOf(yielded)
 	if err != nil {

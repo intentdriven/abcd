@@ -101,7 +101,7 @@ func TestARestartedLaneHoldsWhatTheGlobalFilterSmudges(t *testing.T) {
 	write("edited.bin", "agent edit\n")
 	write("notes.scratch", "the person's own scratch\n")
 
-	res, err := Restart(repo.Root(), runID, "lane-1", "", Options{})
+	res, err := restartLane(repo.Root(), runID, "lane-1", "", Options{})
 	if err != nil {
 		t.Fatal(err)
 	}

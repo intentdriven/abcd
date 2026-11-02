@@ -52,7 +52,7 @@ func TestARestartRefusesAReceiptOutsideTheLanesDirectory(t *testing.T) {
 				t.Fatal(err)
 			}
 			before := stateBytes(t, repo.Root(), runID)
-			_, err = Restart(repo.Root(), runID, "lane-1", "", Options{})
+			_, err = restartLane(repo.Root(), runID, "lane-1", "", Options{})
 			if r := mustRefusal(t, err); !strings.Contains(r.Reason, "lane's own directory") {
 				t.Fatalf("the restart refuses a receipt outside the lane's directory: %+v", r)
 			}
