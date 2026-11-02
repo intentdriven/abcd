@@ -15,7 +15,7 @@ production_mode: hand-written
 
 ## Press Release
 
-> In a private repository with one maintainer, the person can switch on self-attestation: abcd's local gates post their result under a name that says it was not independently verified, and the hosted run is skipped. Only the person can switch it on, by an act no agent can perform.
+> In a private repository with one maintainer, the person can switch on self-attestation: abcd's local gates post their result under a name that says it was not independently verified, and once that result is posted by an identity the agents cannot use, the hosted run is skipped. Only the person can switch it on, through abcd, by an act its agents cannot perform through abcd's own verbs.
 
 ## Why This Matters
 
@@ -35,7 +35,7 @@ production_mode: hand-written
 ## Acceptance Criteria
 
 - Given a private repository with one maintainer and a person technical facilitator, when the person turns self-attestation on, then abcd requires a touch of their security key or fingerprint, records the grant on the person's machine, and refuses the same change from any agent session.
-- Given self-attestation on, when the local gates pass for a change by the person or their agents, then abcd posts a status named for self-attestation (for example `self-attested/local-gates`), described as run on the person's machine and not independently verified, and the hosted pull-request run is skipped.
+- Given self-attestation on, when the local gates pass for a change by the person or their agents, then abcd posts a status named for self-attestation (for example `self-attested/local-gates`), described as run on the person's machine and not independently verified, and, once open question 1 rules that an identity the agents cannot use posts it, the hosted pull-request run is skipped; until then the hosted run still runs beside it.
 - Given self-attestation off, when abcd's own landing runs, then abcd posts no self-attested status; and the record states plainly that an agent holding the person's forge token can still post one by a direct API call, which the label and the landing report make visible but cannot prevent.
 - Given a pull request from anyone but the person and their agents, when it is opened, then the full hosted check runs and no self-attested status counts for it.
 - Given the landing report of itd-2611011325403127, when a change landed on self-attestation, then the report says so, so the product thinker can see which landings no independent check examined.

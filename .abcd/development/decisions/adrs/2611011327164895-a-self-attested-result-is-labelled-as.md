@@ -14,7 +14,7 @@ related_adrs: []
 
 ## Context
 
-A private repository pays hosted CI by the minute, and abcd's agents land work often, so re-running in hosted CI the gates the person's machine has just run is the largest avoidable cost a solo maintainer meets (itd-2611011325403127 measures it). The cheap alternative, posting the local result to the forge, is exactly what the forge cannot check: any person or integration with write access can set any commit status (GitHub's protected-branch documentation), artifact attestations are produced only inside GitHub Actions (and need Enterprise Cloud for a private repository), and SLSA v1.2 places a build run on the developer's own machine at Build L0, its provenance at L1 "trivial to bypass or forge". The agents run as the person's own account: the interactive guard does not protect the person's machine configuration from an agent's writes, and the agents' forge login holds admin rights (iss-2610170725144804). Two rulings already stand: no receipt minted in the cloud is trusted (adr-2610120937435856), and the person alone grants autonomy (adr-2610240850193281, proposed).
+A private repository pays hosted CI by the minute, and abcd's agents land work often, so re-running in hosted CI the gates the person's machine has just run is the largest avoidable cost a solo maintainer meets (itd-2611011325403127 measures it). The cheap alternative, posting the local result to the forge, is exactly what the forge cannot check: any person or integration with write access can set any commit status (GitHub's protected-branch documentation), artifact attestations are produced only inside GitHub Actions (and need Enterprise Cloud for a private repository), and SLSA v1.2 places a build run on the developer's own machine at Build L0, its provenance at L1 "trivial to bypass or forge". The agents run as the person's own account: the interactive guard does not protect the person's machine configuration from an agent's writes, and the agents' forge login holds admin rights (iss-2610170725144804). One ruling stands and one is proposed: no receipt minted in the cloud is trusted (adr-2610120937435856, accepted), and the person alone grants autonomy (adr-2610240850193281, proposed).
 
 ## Decision
 
@@ -29,7 +29,7 @@ We will let a repository's local gates be reported to the forge only as a self-a
 
 ## Consequences
 
-- A solo maintainer of a private repository can land with no hosted run, knowingly.
+- A solo maintainer of a private repository can land with no hosted run, knowingly, once the self-attested result is posted by an identity the agents cannot use; until then it is a label beside the hosted run.
 - abcd must guard the switch as far as an account it shares with its agents allows: the grant needs the person's touch, and since an agent with write access to the grant record or to abcd's code could still defeat it, the record says so wherever it shows a self-attested landing.
 - Every landing report distinguishes self-attested landings from independently checked ones, so the product thinker can see what no independent check examined.
 - The independent checker of itd-2611011325430933 is the upgrade path: the same person can move from self-attestation to a check no agent can fake without changing how they land.
