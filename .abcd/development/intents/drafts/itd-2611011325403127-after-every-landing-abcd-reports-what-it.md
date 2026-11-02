@@ -23,7 +23,7 @@ production_mode: hand-written
 
 ## Mechanism
 
-> We expect the figures to be exact enough to act on because each comes from a source that already records it: the forge's own job timings (the Actions jobs API gives each job's start, end and runner labels, from which minutes per operating system are derived; the run-timing endpoint is being withdrawn and reports nothing for a public repository, so it is at most a cross-check while it lasts), the per-launch cost and tokens every route records (itd-166), and and the preflight's own wait and run times, which nothing records today: they are what itd-2610262140595217 records, and this intent reads that record rather than measuring the gate itself. It would be shown wrong if the forge's figures and the provider's invoice disagreed by more than rounding, which the report names as the check to make.
+> We expect the figures to be exact enough to act on because each comes from a source that already records it: the forge's own job timings (the Actions jobs API gives each job's start, end and runner labels, from which minutes per operating system are derived; the run-timing endpoint is being withdrawn and reports nothing for a public repository, so it is at most a cross-check while it lasts), the per-launch cost and tokens every route records (itd-166), and the preflight's own wait and run times, which nothing records today and which itd-2610262140595217 will record; this intent reads that record rather than measuring the gate itself. It would be shown wrong if the forge's figures and the provider's invoice disagreed by more than rounding, which the report names as the check to make.
 
 ## Scope Conditions
 

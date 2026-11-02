@@ -7,7 +7,7 @@ supersedes: null
 superseded_by: null
 related_intents: [itd-2611011325428560, itd-2610261025516272]
 related_rfcs: []
-related_adrs: []
+related_adrs: [adr-2610120937435856, adr-2610240850193281]
 ---
 
 # ADR-2611011327164895: A self-attested result is labelled as such, and only the person switches it on, by an act abcd's own verbs refuse to its agents
