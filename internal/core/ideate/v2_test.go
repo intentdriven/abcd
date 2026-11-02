@@ -517,6 +517,9 @@ func TestCommandPageGivesEachReviewerOneIdeaPerContext(t *testing.T) {
 	if p.SchemaVersion != SchemaVersion {
 		t.Errorf("the page's example is schema_version %d, want %d", p.SchemaVersion, SchemaVersion)
 	}
+	if !p.CurrentState.Valid() {
+		t.Errorf("the page's example carries no valid current_state: %q", p.CurrentState)
+	}
 	if p.OriginSources == nil || len(p.Legs) != 3 || len(p.Legs[1].Searches) == 0 ||
 		len(p.Legs[2].Reviewers) < 2 || p.Legs[2].Ruling == nil {
 		t.Errorf("the page's example does not show origin_sources, searches, two reviewers and a ruling: %+v", p)

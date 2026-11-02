@@ -229,6 +229,12 @@ func renderIdeateResult(res ideate.Result) string {
 			res.GrillHits, res.CitedRecords, res.Searches)
 	}
 	out += fmt.Sprintf("  adversary: %d reviewer(s), %d kill attempt(s)\n", res.Reviewers, res.KillAttempts)
+	switch res.CurrentState {
+	case ideate.CurrentStateIgnore:
+		out += "  scope:     current state ignored — the idea was judged as an ambition; a delivery gap is what it implies building\n"
+	case ideate.CurrentStateConsider:
+		out += "  scope:     current state considered — what the product ships today was open as a kill\n"
+	}
 	if res.RejectedAlternatives == 0 {
 		out += "  rejected:  none, recorded explicitly\n"
 	} else {

@@ -420,6 +420,7 @@ type verdictDoc struct {
 	idea         string
 	verdict      Verdict
 	origins      []string
+	currentState CurrentState
 	claims       []Claim
 	hits         []GrillHit
 	searches     []Search
@@ -464,6 +465,13 @@ func validate(repoRoot, sourcesDir string, red *recordRedactor, p Payload) (verd
 			termsafe.DescribeRefused(string(p.Verdict)), VerdictSurvives, VerdictKilled, VerdictReframed)
 	}
 	v.verdict = p.Verdict
+	if !p.CurrentState.Valid() {
+		return v, fmt.Errorf("the verdict payload carries no valid current_state (%s); it is one of %s|%s, "+
+			"the product thinker's choice of whether the adversarial leg judged the idea against what the product ships today "+
+			"(the command page applies %s when they name neither)",
+			termsafe.DescribeRefused(string(p.CurrentState)), CurrentStateIgnore, CurrentStateConsider, CurrentStateIgnore)
+	}
+	v.currentState = p.CurrentState
 
 	if len(p.Legs) != len(legOrder) {
 		return v, fmt.Errorf("the verdict carries %d legs; the gauntlet is exactly %d, in order (%s)",
@@ -833,7 +841,15 @@ func validateAdversarial(red *recordRedactor, leg Leg) ([]Reviewer, *Ruling, int
 			}
 			sources = append(sources, src)
 		}
-		out = append(out, Reviewer{Label: label, KillAttempts: kills, Verdict: r.Verdict, Sources: sources})
+		var implies []string
+		if len(r.ImpliesBuilding) > 0 {
+			owner := fmt.Sprintf("reviewer %d's implies_building list", at)
+			if implies, n, err = cleanList(red, r.ImpliesBuilding, maxImpliesBuilding, owner, "entry"); err != nil {
+				return nil, nil, 0, err
+			}
+			redactions += n
+		}
+		out = append(out, Reviewer{Label: label, KillAttempts: kills, Verdict: r.Verdict, Sources: sources, ImpliesBuilding: implies})
 	}
 	ruling, n, err := validateRuling(red, leg.Ruling, out)
 	if err != nil {
@@ -1014,6 +1030,7 @@ func citationPlaces(v verdictDoc) []citedText {
 			add(adversarial, k.Attempt)
 		}
 		add(adversarial, r.Sources...)
+		add(adversarial, r.ImpliesBuilding...)
 	}
 	if v.ruling != nil {
 		add(adversarial, v.ruling.By, v.ruling.Reason)
@@ -1201,6 +1218,7 @@ func (v verdictDoc) result(slug, rel string) Result {
 		Slug:                 slug,
 		Idea:                 v.idea,
 		Verdict:              v.verdict,
+		CurrentState:         v.currentState,
 		Graduates:            v.verdict == VerdictSurvives,
 		Reframing:            v.reframing,
 		Path:                 rel,

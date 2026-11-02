@@ -62,6 +62,7 @@ func ideateVerdictJSONFrom(cited, primary string) string {
   "prompt_version": "1.0.0",
   "idea": "abcd should gate a new idea before it becomes a record entry",
   "origin_sources": [],
+  "current_state": "ignore",
   "legs": [
     {"kind": "research", "claims": [
       {"claim": "fresh-context evaluation is the measured debiasing effect",
