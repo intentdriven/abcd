@@ -54,7 +54,7 @@ Hand-run four-piece table, 2026-11-01, one of five drafts filed together from th
 | Part | Kind | Home |
 |---|---|---|
 | the labelled self-attested status, the switch, the conditions, the report flag | capability | this intent |
-| a self-attested result is labelled as such, never counted as independent verification, and only the person, by an act no agent can perform, turns it on | trust rule | adr-2611011327164895 (proposed), and a brief invariant when it is accepted |
+| a self-attested result is labelled as such, never counted as independent verification, and only the person, by an act abcd's own verbs refuse to its agents, turns it on | trust rule | adr-2611011327164895 (proposed), and a brief invariant when it is accepted |
 | posting the status, recording the grant, the touch | plumbing | the landing chapter |
 | (none) | stance | none |
 

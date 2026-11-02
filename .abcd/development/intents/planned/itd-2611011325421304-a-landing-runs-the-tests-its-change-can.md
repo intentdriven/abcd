@@ -56,7 +56,7 @@ impact: fix
 ## Open Questions
 
 1. resolved: reuse on the person's machine is this intent; restoring file times so hosted CI can reuse results is a follow-up intent of its own.
-3. open (2026-11-02, from the landing review): Go records each file a test opens by its absolute path, so a test that opens a file cannot be reused in a worktree at another path, whatever its file times. Keep criterion 1 for such tests by running the test stages from one fixed directory per checkout, or narrow criterion 1 to tests that open no tracked file?
+3. open (2026-11-02, from the landing reviews): Go hashes a file a test opens by a relative name joined to the package's absolute directory (cmd/go/internal/test/test.go, computeTestInputsID), so such a test misses the cache in a worktree at another path even when nothing it reads changed; a file opened by an absolute name outside the module root is not hashed at all, so a test that reads one can be reused with a stale result. Keep criterion 1 for tests that open files by running the test stages from one fixed directory per checkout, or narrow criterion 1 to tests that open no file?
 2. resolved: the tests that always rerun are named on a list kept on the default branch, so a change cannot declare its own tests away.
 
 ## Decomposition
