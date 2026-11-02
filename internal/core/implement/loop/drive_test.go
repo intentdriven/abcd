@@ -110,6 +110,14 @@ func loopFakeHarness(mode string) int {
 		fmt.Println(`{"type":"result","subtype":"success","is_error":true,"result":"limit reached","session_id":"fake-session-3"}`)
 		return 1
 	}
+	if mode == "notloggedin" {
+		// The claude CLI run with --bare and no API key in its environment
+		// (iss-2611012047534449): nothing on stdout, the cause on stderr's
+		// first line, and a non-zero exit.
+		fmt.Fprintln(os.Stderr, "Not logged in · Please run /login")
+		fmt.Fprintln(os.Stderr, "a second line the pause does not carry")
+		return 1
+	}
 	if mode == "hang" {
 		// A harness that does not finish, with a child of its own in its
 		// process group: both pids are logged, the child's first, so a test
@@ -428,11 +436,11 @@ func TestARoutedRoleRunsThroughItsRunner(t *testing.T) {
 	}
 }
 
-// TestARunnerThatCannotRunTheRoleFallsBackAndIsRecorded is criterion 3: an
-// absent runner, and a runner whose answer the stage's verifier refuses, each
-// hand the role to the host, which is told what to start as before, and each
-// leaves one fallback receipt naming the role, the runner, the reason and the
-// route that ran.
+// TestARunnerThatCannotRunTheRoleFallsBackAndIsRecorded is criterion 3, under
+// iss-2611012047534449: an absent runner, and a runner whose answer the
+// stage's verifier refuses, each pause the lane rather than handing the role
+// to the host, and each leaves one fallback receipt naming the role, the
+// runner, the reason and none as the route that ran.
 func TestARunnerThatCannotRunTheRoleFallsBackAndIsRecorded(t *testing.T) {
 	for _, tc := range []struct {
 		name, mode, route string
@@ -455,22 +463,23 @@ func TestARunnerThatCannotRunTheRoleFallsBackAndIsRecorded(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if res.Awaiting == nil || res.Awaiting.Role != RoleImplementer || res.PerformedStage != "" {
-				t.Fatalf("the host is handed the role: %+v", res)
+			if res.Awaiting != nil || res.Paused == nil || res.Paused.Role != RoleImplementer || res.PerformedStage != "" {
+				t.Fatalf("the role is paused, handed to no one: %+v", res)
 			}
-			fb := res.Fallback
-			if fb == nil || fb.Role != RoleImplementer || fb.Asked != tc.route || fb.Reason != tc.reason || fb.Ran != runner.Host {
-				t.Fatalf("the result names the fallback: %+v", fb)
+			p := res.Paused.Paused
+			if p == nil || p.Runner != tc.route || p.Reason != tc.reason {
+				t.Fatalf("the result names why the role is paused: %+v", p)
 			}
 			st, err := ReadState(root, id)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(st.Fallbacks) != 1 || st.Fallbacks[0] != *fb {
-				t.Fatalf("the state carries the one fallback receipt: %+v", st.Fallbacks)
+			fb := st.Fallbacks
+			if len(fb) != 1 || fb[0].Role != RoleImplementer || fb[0].Asked != tc.route || fb[0].Reason != tc.reason || fb[0].Ran != ranNone {
+				t.Fatalf("the state carries the one fallback receipt: %+v", fb)
 			}
-			if len(st.Lanes[0].Awaits) == 0 {
-				t.Fatal("the lane still awaits the host's receipt")
+			if len(st.Lanes[0].Awaits) == 0 || st.Lanes[0].Awaits[0].Paused == nil {
+				t.Fatal("the lane's await stays out, paused")
 			}
 			if len(st.Lanes[0].Receipts) != 0 {
 				t.Fatalf("a refused route verified no receipt: %+v", st.Lanes[0].Receipts)
@@ -618,10 +627,11 @@ func TestRoleToolsFollowTheAgentDefinitions(t *testing.T) {
 	}
 }
 
-// TestAStepThatReTellsAnAwaitStartsNoRunner: once a runner's fallback has
-// handed the host the role, stepping again re-tells the await; it neither
-// starts the runner again nor records a second fallback.
-func TestAStepThatReTellsAnAwaitStartsNoRunner(t *testing.T) {
+// TestAStepRetriesAPausedRoleOnceAndRecordsEachFailedStart: once a runner
+// has failed to start the role, each later step retries it exactly once
+// (iss-2611012047534449): two steps on an absent runner are two failed starts,
+// two fallback receipts and one pause whose tries count both.
+func TestAStepRetriesAPausedRoleOnceAndRecordsEachFailedStart(t *testing.T) {
 	root, id, steps, o := startToImplement(t)
 	newDriveEnv(t, "ok")
 	cfg := runnerConfig(t, `{"roles":{"implementer":{"runner":"opencode"}},"runner":{"opencode":{}}}`, "")
@@ -634,7 +644,10 @@ func TestAStepThatReTellsAnAwaitStartsNoRunner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(st.Fallbacks) != 1 {
-		t.Fatalf("one fallback for one hand-out, got %d", len(st.Fallbacks))
+	if len(st.Fallbacks) != 2 {
+		t.Fatalf("one fallback per failed start, got %d", len(st.Fallbacks))
+	}
+	if p := st.Lanes[0].Awaits[0].Paused; p == nil || p.Tries != 2 {
+		t.Fatalf("the pause counts both tries: %+v", p)
 	}
 }

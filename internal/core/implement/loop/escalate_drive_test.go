@@ -35,7 +35,14 @@ func driveRound(t *testing.T, o Options, rs Runners) (*gittest.Repo, string, Ste
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Awaiting == nil || res.Awaiting.Role != RoleRuthless {
+	// A runner that does not start the reviewer pauses it rather than
+	// handing it to the host (iss-2611012047534449): it was handed out
+	// either way, and the round's route is what is read.
+	out := res.Awaiting
+	if out == nil {
+		out = res.Paused
+	}
+	if out == nil || out.Role != RoleRuthless {
 		t.Fatalf("the step hands the ruthless reviewer out: %+v", res)
 	}
 	return repo, start.RunID, res, routeOfRole(t, repo, start.RunID, 1, RoleRuthless)

@@ -655,6 +655,7 @@ func redactAwaits(as []loop.Await) []loop.Await {
 // redactStep home-redacts the paths a step result carries.
 func redactStep(res loop.StepResult) loop.StepResult {
 	res.Awaiting = redactAwait(res.Awaiting)
+	res.Paused = redactAwait(res.Paused)
 	if res.Fallback != nil {
 		fb := *res.Fallback
 		fb.Detail = fsutil.RedactHome(fb.Detail)
@@ -906,11 +907,20 @@ func renderStepResult(w io.Writer, verb string, res loop.StepResult) {
 		}
 	case res.PerformedStage != "":
 		fmt.Fprintf(w, "%s: %s completed %s's %s stage\n", verb, res.RunID, res.Lane, res.PerformedStage)
+	case res.Paused != nil && res.Paused.Paused != nil:
+		p := res.Paused.Paused
+		fmt.Fprintf(w, "%s: PAUSED: %s's %s waits for the %s runner, which did not start it; it is not handed to the host\n",
+			verb, res.Lane, termsafe.Sanitize(res.Paused.Role), termsafe.Sanitize(p.Runner))
+		fmt.Fprintf(w, "  why:     %s\n", termsafe.Sanitize(fsutil.RedactHome(p.Why())))
 	case res.Awaiting != nil:
 		fmt.Fprintf(w, "%s: %s's %s stage awaits the %s's receipt\n", verb, res.Lane, res.Stage, termsafe.Sanitize(res.Awaiting.Role))
 		fmt.Fprintf(w, "  brief:   %s\n  receipt: %s\n", termsafe.Sanitize(res.Awaiting.Brief), termsafe.Sanitize(res.Awaiting.Receipt))
 	case res.Complete:
 		fmt.Fprintf(w, "%s: %s is complete\n", verb, res.RunID)
+	}
+	if r := res.Retried; r != nil {
+		fmt.Fprintf(w, "  retried: %s's %s on the %s runner (%s)\n", r.Lane, termsafe.Sanitize(r.Role), termsafe.Sanitize(r.Runner),
+			termsafe.Sanitize(fsutil.RedactHome(r.Why)))
 	}
 	if r := res.Route; r != nil {
 		fmt.Fprintf(w, "  ran on:  the %s runner (%s)\n", termsafe.Sanitize(r.Ran), routeDetail(r))
@@ -1013,7 +1023,11 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"proved to apply to that commit, the lane's worktree is reset and cleaned as your own git\n" +
 			"resets and cleans it (the repository's hooks run on the reset), the run record\n" +
 			"names the aside for review, and the implementer await is re-told; the brief never names\n" +
-			"the aside. An await a rate limit kept, because what its agent left could not be saved\n" +
+			"the aside. When a route is in force for the re-told role (roles.<role>.runner, or a\n" +
+			"--route given with --restart), the fresh agent is started on that runner at once instead,\n" +
+			"and one it fails to start pauses the lane as a step's does; a --route for a role the\n" +
+			"restart does not re-tell is refused before anything is changed. An await a rate limit\n" +
+			"kept, because what its agent left could not be saved\n" +
 			"aside, is marked in the run state, and --restart re-tells it the same way once that is\n" +
 			"settled, a validator's included: only a validator's partial return is saved aside, its\n" +
 			"worktree is not touched, and a validator of the round that is still out unmarked is left\n" +
@@ -1064,8 +1078,8 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"the runner's own runner.<name>.model, which every other role keeps; one per role. The\n" +
 			"runner must be one the machine enables and the model one its provider lists, or the step\n" +
 			"is refused before anything is written, naming the fix; a tier route, and a --route with\n" +
-			"--release, --discard, --restart or --accept-config-change (which writes its acceptance\n" +
-			"before the step is judged), are refused too. The model is held to the pins the machine\n" +
+			"--release, --discard or --accept-config-change (which writes its acceptance before the\n" +
+			"step is judged), are refused too. The model is held to the pins the machine\n" +
 			"sets for it, as the runner's own model is: opencode holds them, and a --route naming\n" +
 			"claude, which holds none, for a pinned model is refused before anything is written,\n" +
 			"naming runner.opencode.model. A step hands at most one role out, so\n" +
@@ -1078,11 +1092,18 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"for a role the --route replaces. The role's receipt in the run's state, and the run\n" +
 			"record, carry the --route verbatim.\n" +
 			"A runner that is absent, refuses, fails, runs past its time,\n" +
-			"or writes a receipt the verifier refuses leaves the lane awaiting and the host is handed\n" +
-			"the role as with no runner, and the call records one fallback naming the role, the runner\n" +
-			"asked for, the reason and the route that runs it. A role left unset is the host's, and\n" +
-			"the call is exactly the host-driven step. A step that re-tells an await starts nothing.\n" +
-			"An interrupt kills the runner's process group.\n\n" +
+			"or writes a receipt the verifier refuses pauses the lane: the role is handed to no one,\n" +
+			"the host included, the result names it as paused with why (the runner's reason and the\n" +
+			"first line it wrote to stderr, redacted), and the call records one fallback naming the\n" +
+			"role, the runner asked for, the reason and none as the route that ran it. Each later\n" +
+			"step that hands no agent out retries one held role once on its runner, the one waiting\n" +
+			"longest: a paused role, or one already with the host (from an earlier fallback, or a\n" +
+			"step before its route existed) whose receipt nothing has written; the run record names\n" +
+			"each retry. A --route for a held role retries it at once on that route, and is the\n" +
+			"step's one move; with --restart, and with any route in force, the restarted role starts\n" +
+			"on its runner at once. A role a runner is running is claimed in the run's state, so no\n" +
+			"second step starts another for it. A role left unset is the host's, and the call is\n" +
+			"exactly the host-driven step. An interrupt kills the runner's process group.\n\n" +
 			"With oracle.review set to rp (in .abcd/config.json or " + abcdhome.Display("config.json") + ", the\n" +
 			"MCP oracle's address, oracle.rp.url, in the latter alone), a ruthless or security review\n" +
 			"the step hands to the host is sent instead to that MCP oracle, with a request rendered\n" +
@@ -1161,7 +1182,9 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			// is decided or written, so its refusal leaves the run as it was.
 			var routed *runner.Config
 			if len(stepRoute.texts) > 0 {
-				for _, d := range []struct{ flag, v string }{{"--release", release}, {"--discard", discard}, {"--restart", restart}} {
+				// A --restart takes it: the restarted role starts on its
+				// route at once (iss-2611012047534449).
+				for _, d := range []struct{ flag, v string }{{"--release", release}, {"--discard", discard}} {
 					if d.v != "" {
 						return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: routeFlagName,
 							Reason: "--route routes a role this step hands to an agent, and " + d.flag + " hands none",
@@ -1204,7 +1227,23 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			case acceptConfig && !acceptConfigChange(cmd, root, id, &accepted, &err):
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			case restart != "":
-				return runRestart(cmd.OutOrStdout(), *asJSON, root, id, restart, yielded, accepted)
+				// A restart consults the routes in force, as a step does: a
+				// role routed to a runner starts there at once.
+				cfg := routed
+				if cfg == nil {
+					roots, notes := layered.RootsFor(root)
+					for _, n := range notes {
+						fmt.Fprintln(cmd.ErrOrStderr(), noteLine(n))
+					}
+					var lerr error
+					if cfg, lerr = loadRunners(cmd, roots); lerr != nil {
+						return loopFail(cmd.OutOrStdout(), *asJSON, prefix, lerr)
+					}
+				}
+				ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+				defer stop()
+				return runRestart(ctx, cmd, *asJSON, root, id, restart, yielded, accepted,
+					loop.Runners{Config: cfg, Transcripts: &lazyHistoryStore{cmd: cmd}})
 			case release != "":
 				res, err = loop.Release(root, id, release, loop.Options{})
 			case discard != "":

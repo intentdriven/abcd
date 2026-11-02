@@ -615,11 +615,19 @@ history store and its receipt is verified exactly as yours would be, so a
 verified one completes the stage in the same call, and the payload's `route`
 names the runner that ran it (`asked`, `ran`, `model`). Do not start an agent
 for it. When the runner is absent, refuses, fails, runs past its time or writes
-a receipt that does not verify, the payload still names `awaiting` as usual and
-adds `fallback` (the `role`, the runner `asked` for, the `reason` and the route
-that runs it): start the agent yourself as above. Every fallback is recorded;
-`implement status` and `implement record` count them per runner and per role.
-Tell the user each fallback's reason.
+a receipt that does not verify, the lane pauses: the payload names no
+`awaiting` for the role but `paused` (the role, its brief and receipt, and why:
+the runner, the `reason`, abcd's `detail` and the first line the runner wrote
+to `stderr`). Do not start an agent for a paused role, which would bill this
+session for work routed to the runner; tell the user the reason (a `Not logged
+in` asks for the runner's API key in the environment). Each later `implement
+step` that hands no agent out retries one held role once on its runner, and
+names it in `retried`; `implement step --route <role>=runner:<name>` retries
+it at once. A role already with you, from a step before its route existed,
+whose receipt you have not written is retried the same way, so do not start an
+agent for it once its role is routed. Every failed start is recorded as a
+fallback whose route that ran is `none`; `implement status` and `implement
+record` count them per runner and per role.
 
 A build lane's reviews can go to RepoPrompt over MCP instead of a reviewer you
 start. This is an opt-in: `oracle.review` set to `rp` in the repository's

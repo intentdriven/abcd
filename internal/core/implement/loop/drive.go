@@ -18,10 +18,13 @@ package loop
 //     names the route that ran it, and nothing else about it differs
 //     (criterion 7);
 //   - a runner that is absent, refuses, fails, answers unparsably or writes a
-//     receipt the verifier refuses leaves the lane awaiting, writes one
-//     fallback receipt into the run's state (Fallbacks) and the record, and
-//     hands the role to the host with the reason (criterion 3), which the run
-//     record counts per runner and per role (criterion 4);
+//     receipt the verifier refuses pauses the lane rather than handing the
+//     role to the host (iss-2611012047534449, dcn-2611012113432054;
+//     runner_pause.go): the await stays out, marked paused with the reason
+//     and the runner's first stderr line, one fallback receipt naming none as
+//     the route that ran is written into the run's state (Fallbacks) and the
+//     record, which counts them per runner and per role (criterion 4), and a
+//     later step retries the role on its runner;
 //   - a runner that answers with a rate-limit response is the one failure not
 //     handed to the host: every route spends the same budget, so the run's
 //     window ends early and every lane with work in flight is checkpointed to
@@ -93,10 +96,11 @@ func toolsFor(role string) []string {
 
 // Drive performs the next stage as advance does and, when the stage hands the
 // lane to an agent whose role is routed to a runner, starts that agent through
-// the runner and hands its receipt back through Receipt. A step that re-tells
-// an await an earlier call began starts nothing. A role on the host, or a runner
-// that did not run it, returns the await for the host to act on, as advance
-// returns it; the latter also names the fallback it recorded.
+// the runner and hands its receipt back through Receipt. A role on the host
+// returns the await for the host to act on, as advance returns it; a runner
+// that did not start its role pauses the lane, and the result names the role
+// as paused (runner_pause.go). A step that hands no agent out retries one held
+// role once on its runner, and a --route for a held role retries it at once.
 func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options, rs Runners) (StepResult, error) {
 	// An auto-plan run's reviews stay on the host (autoplan.go): its lane has
 	// no worktree a runner could be confined to, so no role of it is routed,
@@ -114,6 +118,13 @@ func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options,
 	if rs.Config != nil {
 		routed = func(role string) bool { return rs.Config.RouteFor(role).Runner != runner.Host }
 		overrides = rs.Config.FlagRoutes()
+		if len(overrides) > 0 {
+			// A --route for a held role (runner_pause.go) retries it at
+			// once, and is the step's one move.
+			if r, took, err := retryRouted(ctx, repoRoot, runID, steps, o, rs, overrides); took {
+				return r, err
+			}
+		}
 		o.runnerRoute = func(role string) (string, string) {
 			r := rs.Config.RouteFor(role)
 			if r.Runner == runner.Host {
@@ -123,83 +134,27 @@ func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options,
 		}
 	}
 	res, err := advanceWith(repoRoot, runID, steps, o, routed, overrides)
-	if err != nil || res.Awaiting == nil || !res.handed || rs.Config == nil {
-		// Nothing awaits, or the await is one an earlier call began: the
-		// host, or the runner that call started, is already on it.
+	if err != nil || rs.Config == nil {
 		return res, err
+	}
+	if res.Awaiting == nil || !res.handed {
+		// The step handed no agent out: a held role, paused or with the
+		// host with nothing received, is retried once on its runner.
+		return retryHeld(ctx, repoRoot, runID, steps, o, rs, res)
 	}
 	aw := *res.Awaiting
-	route := rs.Config.RouteFor(aw.Role)
-	if route.Runner == runner.Host {
+	if rs.Config.RouteFor(aw.Role).Runner == runner.Host {
 		return res, nil
 	}
-	st, err := ReadState(repoRoot, runID)
-	if err != nil {
-		return res, err
-	}
-	var worktree, base string
-	for _, l := range st.Lanes {
-		if l.ID == res.Lane {
-			worktree, base = l.Worktree, l.BaseSHA
-		}
-	}
-	req := runner.Request{
-		Role:     aw.Role,
-		Brief:    absIn(repoRoot, aw.Brief),
-		Receipt:  absIn(repoRoot, aw.Receipt),
-		Dir:      worktree,
-		Checkout: filepath.Clean(repoRoot),
-		Tools:    toolsFor(aw.Role),
-		// The approver of a shell launch judges against the registry the
-		// lane was cut from, never one the lane has since changed.
-		Base:      base,
-		SessionID: fmt.Sprintf("%s-%s-%s-%d", runID, res.Lane, aw.Role, o.now().Unix()),
-		Timeout:   rs.Timeout,
-	}
-	var done *StepResult
-	d := &runner.Dispatcher{
-		Config:      rs.Config,
-		HostSession: true,
-		Transcripts: rs.Transcripts,
-		Validate: func(ran string, _ runner.Request, ans runner.Answer) error {
-			rec := runner.RecordOf(route.Runner, ran, ans)
-			rec.Override = route.Override()
-			r, err := receipt(repoRoot, runID, aw.Receipt, steps, o, &rec)
-			if err != nil {
-				return err
-			}
-			done = &r
-			return nil
-		},
-		Record: func(fb runner.FallbackReceipt) error { return recordFallback(repoRoot, runID, res.Lane, "", fb, o) },
-		Now:    o.Now,
-	}
-	out, err := d.Dispatch(ctx, req)
-	if err != nil {
-		var fl *runner.Failure
-		if errors.As(err, &fl) && fl.Reason == runner.ReasonRateLimited {
-			// Not a fallback and not a refusal: the run's window ends
-			// early and every lane in flight is checkpointed.
-			return rateLimitWindow(repoRoot, runID, res.Lane, aw, fl, o)
-		}
-		return res, refuse(StageRunner, "", res.Lane, err.Error(),
-			"the lane still awaits its receipt: correct what the reason names and step again, or start the agent the step names by hand")
-	}
-	if out.Handoff {
-		res.Fallback = out.Fallback
-		if fb := out.Fallback; fb != nil {
-			res.Next = fmt.Sprintf("the %s runner did not run the %s (%s; recorded as a fallback), so the host runs it: %s",
-				fb.Asked, fb.Role, fb.Reason, res.Next)
-		}
+	r, err := dispatchAwait(ctx, repoRoot, runID, steps, o, rs, res.Lane, aw, "", res)
+	if errors.Is(err, errClaimed) {
+		// A peer's step retried the role in the moment between: its runner
+		// has it, so the host is handed nothing.
+		res.Awaiting = nil
+		res.Next = fmt.Sprintf("another `abcd implement step` started the runner for %s's %s; run `abcd implement step` once it has finished", res.Lane, aw.Role)
 		return res, nil
 	}
-	if done == nil {
-		return res, refuse(StageRunner, "", res.Lane, "the runner ran the "+aw.Role+" but no receipt was handed back",
-			"the lane still awaits its receipt; step again")
-	}
-	r := *done
-	r.Route = &out.Receipt.Route
-	return r, nil
+	return r, err
 }
 
 // LoadRunners reads the runner configuration (runner.Load) at the roots a lane

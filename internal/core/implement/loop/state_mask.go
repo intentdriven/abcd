@@ -74,6 +74,15 @@ func (l Lane) masked() Lane {
 			r.Route, r.SHA256 = line(r.Route), line(r.SHA256)
 			return r
 		})
+		a.Paused = maskPtr(a.Paused, func(p RunnerPause) RunnerPause {
+			p.Runner, p.Reason = line(p.Runner), runner.Reason(line(string(p.Reason)))
+			p.Detail, p.Stderr = free(p.Detail), free(p.Stderr)
+			return p
+		})
+		a.Running = maskPtr(a.Running, func(c RunnerClaim) RunnerClaim {
+			c.Runner, c.Session = line(c.Runner), line(c.Session)
+			return c
+		})
 		return a
 	})
 	l.Syncs = maskEach(l.Syncs, func(s Sync) Sync {

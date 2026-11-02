@@ -362,9 +362,16 @@ type StepResult struct {
 	// Route is the route that ran the agent when the process driver started
 	// it through a runner (Drive); absent when the host is to run it.
 	Route *runner.RouteRecord `json:"route,omitempty"`
-	// Fallback is the fallback receipt this call recorded when the runner a
-	// role is routed to did not run it and the host is handed the role.
+	// Fallback is the fallback receipt this call recorded when the reviewer
+	// route did not return a review and the host is handed it.
 	Fallback *runner.FallbackReceipt `json:"fallback,omitempty"`
+	// Paused is the lane's role its runner failed to start, with why
+	// (Await.Paused): it waits for the runner, and no agent is to be started
+	// for it (runner_pause.go). Awaiting is then empty.
+	Paused *Await `json:"paused,omitempty"`
+	// Retried is the held role this call retried on its runner, with why it
+	// was held and, when the runner did not start it again, its pause.
+	Retried *Retry `json:"retried,omitempty"`
 	// Outage is the run's lost connection while one is open: the lanes that
 	// reach the network or an agent wait on its shared probe (Blocked names
 	// them) while the others move.
@@ -1146,6 +1153,11 @@ func laneResult(st State, lane Lane, performed Stage, handed *Await) StepResult 
 		Slots: st.slotsInUse(), Ceiling: st.ceiling(), Alive: st.alive(), handed: handed != nil}
 	if res.Awaiting == nil {
 		res.Awaiting = lane.awaiting()
+		if a := res.Awaiting; a != nil && a.Paused != nil {
+			// A paused role is the runner's to retry: no agent is started
+			// for it, so it is named as paused, never as awaited.
+			res.Paused, res.Awaiting = a, nil
+		}
 	}
 	if st.Complete() {
 		res.Complete = true
@@ -1186,6 +1198,9 @@ func nextMove(st State, lane Lane) string {
 		return handBackMove(st, lane)
 	}
 	if a := lane.awaiting(); a != nil {
+		if a.Paused != nil {
+			return pausedRoleMove(lane, *a)
+		}
 		return handedMove(*a, roundTier(lane, *a))
 	}
 	if lane.Stage == StageHeld {

@@ -61,8 +61,9 @@ func onlyGitOnPath(t *testing.T) {
 // TestAStepsRouteHandsTheRoleToTheRunnerItNames is iss-2610161801358637 at the
 // front door: no file routes the implementer, and `implement step --route
 // implementer=runner:opencode@<provider>/<model>` hands it to opencode for
-// that step. The runner is not on PATH, so the step falls back to the host and
-// names opencode as the runner asked for, which only the --route made it.
+// that step. The runner is not on PATH, so the lane pauses rather than handing
+// the role to the host (iss-2611012047534449), naming opencode as the runner
+// asked for, which only the --route made it.
 func TestAStepsRouteHandsTheRoleToTheRunnerItNames(t *testing.T) {
 	runToImplement(t)
 	writeMachineConfig(t, routeStepMachine)
@@ -71,18 +72,41 @@ func TestAStepsRouteHandsTheRoleToTheRunnerItNames(t *testing.T) {
 		Awaiting *struct {
 			Role string `json:"role"`
 		} `json:"awaiting"`
-		Fallback *struct {
-			Asked  string `json:"asked"`
-			Reason string `json:"reason"`
-		} `json:"fallback"`
+		Paused *struct {
+			Role   string `json:"role"`
+			Paused struct {
+				Runner string `json:"runner"`
+				Reason string `json:"reason"`
+			} `json:"paused"`
+		} `json:"paused"`
 	}
 	out := mustImplement(t, "implement", "step", "--json", "--route", "implementer=runner:opencode@local/devstral")
 	if err := json.Unmarshal([]byte(out), &res); err != nil {
 		t.Fatal(err)
 	}
-	if res.Awaiting == nil || res.Awaiting.Role != "implementer" || res.Fallback == nil ||
-		res.Fallback.Asked != "opencode" || res.Fallback.Reason != "absent" {
-		t.Fatalf("the --route asked opencode for the implementer: %s", out)
+	if res.Awaiting != nil || res.Paused == nil || res.Paused.Role != "implementer" ||
+		res.Paused.Paused.Runner != "opencode" || res.Paused.Paused.Reason != "absent" {
+		t.Fatalf("the --route asked opencode for the implementer, and the lane paused: %s", out)
+	}
+}
+
+// TestARestartTakesARouteAndConsultsTheRunner (iss-2611012047534449): a
+// --route with --restart is no longer refused; the restarted implementer is
+// started on the route's runner at once, and, the runner absent, the lane
+// pauses with the restart's aside saved, named in the text.
+func TestARestartTakesARouteAndConsultsTheRunner(t *testing.T) {
+	runToImplement(t)
+	writeMachineConfig(t, routeStepMachine)
+	onlyGitOnPath(t)
+	// The implementer is handed to the host, as before any route existed.
+	if res := mustStep(t, "implement", "step", "--json"); res.Awaiting == nil || res.Awaiting.Role != "implementer" {
+		t.Fatalf("the host is handed the implementer: %+v", res)
+	}
+	text := mustImplement(t, "implement", "step", "--restart", "lane-1", "--route", "implementer=runner:opencode@local/devstral")
+	for _, want := range []string{"restart: lane-1", "PAUSED: lane-1's implementer waits for the opencode runner", "retried: lane-1's implementer on the opencode runner", "Do not start an agent"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("the text names %q:\n%s", want, text)
+		}
 	}
 }
 
@@ -195,17 +219,22 @@ func TestAStepsRouteForARoleTheStepDoesNotHandOutIsRefused(t *testing.T) {
 		}
 	}
 	refused("security-reviewer=runner:opencode", "security-reviewer", "lane-1's implementer")
-	if res := mustStep(t, "implement", "step", "--json"); res.Awaiting == nil || res.Awaiting.Role != "implementer" {
+	res := mustStep(t, "implement", "step", "--json")
+	if res.Awaiting == nil || res.Awaiting.Role != "implementer" {
 		t.Fatalf("the host is handed the implementer: %+v", res)
+	}
+	// The host's agent has written its receipt, so the role is the host's to
+	// hand back, and no --route retries it (iss-2611012047534449).
+	if err := os.WriteFile(res.Awaiting.Receipt, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
 	}
 	refused("implementer=runner:opencode", "hands no role", "lane-1's implementer")
 }
 
 // TestAStepsRouteHandsAReviewerToTheRunnerItNames: at the validators, a
 // --route for the reviewer the step hands out hands it to the runner it
-// names (absent from PATH here, so it falls back to the host naming
-// opencode); a route for the other reviewer is refused, naming the one the
-// step hands out.
+// names (absent from PATH here, so the lane pauses naming opencode); a route
+// for the other reviewer is refused, naming the one the step hands out.
 func TestAStepsRouteHandsAReviewerToTheRunnerItNames(t *testing.T) {
 	repo := buildRepo(t)
 	repo.Write("AGENTS.md", "# AGENTS.md\n\n- Run make check.\n")
@@ -218,20 +247,18 @@ func TestAStepsRouteHandsAReviewerToTheRunnerItNames(t *testing.T) {
 		t.Fatalf("the refusal names the reviewer the step hands out: %+v", ref)
 	}
 	var res struct {
-		Awaiting *struct {
-			Role string `json:"role"`
-		} `json:"awaiting"`
-		Fallback *struct {
-			Role  string `json:"role"`
-			Asked string `json:"asked"`
-		} `json:"fallback"`
+		Paused *struct {
+			Role   string `json:"role"`
+			Paused struct {
+				Runner string `json:"runner"`
+			} `json:"paused"`
+		} `json:"paused"`
 	}
 	out := mustImplement(t, "implement", "step", "--json", "--route", "ruthless-reviewer=runner:opencode@local/devstral")
 	if err := json.Unmarshal([]byte(out), &res); err != nil {
 		t.Fatal(err)
 	}
-	if res.Awaiting == nil || res.Awaiting.Role != "ruthless-reviewer" || res.Fallback == nil ||
-		res.Fallback.Role != "ruthless-reviewer" || res.Fallback.Asked != "opencode" {
+	if res.Paused == nil || res.Paused.Role != "ruthless-reviewer" || res.Paused.Paused.Runner != "opencode" {
 		t.Fatalf("the --route asked opencode for the ruthless reviewer: %s", out)
 	}
 }

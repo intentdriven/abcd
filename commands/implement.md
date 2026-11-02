@@ -312,14 +312,14 @@ and asks it for the model after `@` in place of `runner.<name>.model`, which
 every other role keeps; one `--route` per role. The runner must be one
 `~/.abcd.noindex/config.json` enables and the model one its provider lists, or
 the step is refused before anything is written, naming the fix; a tier route,
-or a `--route` with `--release`, `--discard`, `--restart` or
+or a `--route` with `--release`, `--discard` or
 `--accept-config-change` (which writes its acceptance before the step is
 judged), is refused too. The
 model is held to the pins the machine sets for it, as the machine's own model
 is, so a `--route` naming claude, which holds no pin, for a model the machine
 pins is refused before anything is written, naming `runner.opencode.model`; a
 machine route to claude for a pinned model is refused by claude at launch, and
-the role falls back. A step hands at
+the lane pauses. A step hands at
 most one role out, so a `--route` for a role it will not hand out (it performs a
 stage abcd runs itself, hands out another role, or re-tells an agent already
 out) is refused before anything is written, naming the role it hands out or that
@@ -330,16 +330,31 @@ whether the role is handed out is known only after the landing moves: a
 configured route (the repository keeping it on the host) is not printed for a
 role the `--route` replaces. The role's receipt in the run's state carries the
 `--route` verbatim as `route.override`, which is state schema version 16's.
-When the runner falls back to the host, the fallback receipt names the runner
+When the runner does not start the role, the fallback receipt names the runner
 asked and the `--route` text is not recorded.
 The runner's receipt is verified by the stage's own verifier: a verified one
 completes the stage in the same call, and the result's `route` names the runner
 that ran it. A runner that is absent, refuses, fails, runs past its time or
-writes a receipt that does not verify leaves the lane awaiting, and the result
-names `awaiting` as with no runner plus `fallback` (the role, the runner asked
-for, the reason, the route that runs it); start the agent as for any await. A
-`step` that re-tells an await starts no runner. The runner configuration is read
-on every `step`; a fault is refused at the `runner` stage before anything runs.
+writes a receipt that does not verify pauses the lane rather than handing the
+role to the host (dcn-2611012113432054): the result names no `awaiting` for it
+but `paused` (the await, its `paused` carrying the runner, the reason, abcd's
+detail and the first line the runner wrote to stderr, redacted, so `Not logged
+in` or a spending limit reads as the cause), and the run records one fallback
+receipt whose route that ran is `none` and a `paused` line. Do not start an
+agent for a paused role; tell the user the reason. Each later `step` that hands
+no agent out retries one held role once on its runner, the one waiting longest:
+a paused role, or one already with the host, from an earlier fallback or a step
+before its route existed, whose receipt nothing has written (a role whose
+receipt is written is yours to hand back, and is never retried). The result
+names the retry in `retried`, and the run record in a `retry` line. A `--route`
+for a held role retries it at once on that route, as the step's one move; a
+`--route` with `--restart`, or any route in force for the restarted role,
+starts the fresh agent on its runner at once rather than re-telling it to you.
+A role a runner is running is claimed in the run's state (an await's
+`running`, until the run's time bound has passed), so a second `step`, here or
+in a peer's checkout, never starts another for it. An await's `paused` and
+`running` are state schema version 18's. The runner configuration is read on
+every `step`; a fault is refused at the `runner` stage before anything runs.
 
 With `oracle.review` set to `rp` (the repository's `.abcd/config.json` or
 `~/.abcd.noindex/config.json`, the server's `oracle.rp.url` in the latter alone), a
