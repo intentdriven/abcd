@@ -1430,6 +1430,13 @@ func pusherKept(root, commit string) pusherVerdict {
 // says so.
 var pusherBudget = 10 * time.Second
 
+// pusherBudgetContext starts one fetch's pusherBudget (checkSenders): the
+// context it returns is done once the budget has passed. A test replaces it
+// to spend the budget at a point it chooses rather than on the clock.
+var pusherBudgetContext = func() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), pusherBudget)
+}
+
 // maxAskedBranches is the most status branches one fetch asks the forge
 // about, the one waiting longest first: the rest are counted and asked by a
 // later fetch.
@@ -1480,7 +1487,7 @@ func checkSenders(root string, now time.Time, lookup PusherLookup, held map[stri
 	if len(branches) == 0 {
 		return ""
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), pusherBudget)
+	ctx, cancel := pusherBudgetContext()
 	defer cancel()
 	var failed []string
 	// The tip this checkout holds of each branch, which a record read in
