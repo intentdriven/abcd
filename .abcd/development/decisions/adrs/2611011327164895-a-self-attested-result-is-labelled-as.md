@@ -30,6 +30,6 @@ We will let a repository's local gates be reported to the forge only as a self-a
 ## Consequences
 
 - A solo maintainer of a private repository can land with no hosted run, knowingly.
-- abcd must guard the switch: a setting an agent can write is not a switch under this rule, so the grant needs the touch and a record agents cannot forge.
+- abcd must guard the switch as far as an account it shares with its agents allows: the grant needs the person's touch, and since an agent with write access to the grant record or to abcd's code could still defeat it, the record says so wherever it shows a self-attested landing.
 - Every landing report distinguishes self-attested landings from independently checked ones, so the product thinker can see what no independent check examined.
 - The independent checker of itd-2611011325430933 is the upgrade path: the same person can move from self-attestation to a check no agent can fake without changing how they land.

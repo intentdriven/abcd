@@ -23,7 +23,7 @@ production_mode: hand-written
 
 ## Mechanism
 
-> We expect the option to stay honest because both halves rest on things an agent cannot do: the label is fixed by abcd and never reuses the name of an independent check, and the switch is set by an act that needs the person present (a touch of a security key or a fingerprint on a key the agents' processes cannot use without it, per OpenSSH's FIDO keys and Apple's user-presence access control). It would be shown wrong by any route through which an agent turns the option on, or posts the labelled status while it is off.
+> We expect the option to stay honest because both halves rest on things an agent cannot do: the label is fixed by abcd and never reuses the name of an independent check, and the switch is set by an act that needs the person present (a touch of a security key or a fingerprint on a key the agents' processes cannot use without it, per OpenSSH's FIDO keys and Apple's user-presence access control). It would be shown wrong by any route through which an agent turns the option on through abcd's own verbs, or posts the labelled status through abcd while it is off; an agent that edits abcd's code or the grant record directly is outside what the switch can stop, which the record states.
 
 ## Scope Conditions
 

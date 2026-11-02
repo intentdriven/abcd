@@ -61,7 +61,7 @@ _All resolved on 2026-11-01 by the product thinker; the rulings are in the Decis
 - 2026-11-01, the product thinker: a key route with no cap set refuses to start.
 - 2026-11-01, the product thinker: a cap is set or raised through a command abcd refuses to agents; a touch to raise it is a later intent.
 - 2026-11-01, the product thinker (dcn-2611012102280663, recorded by another session): every agent abcd hands out runs on the person's API key where the repository is set to the API route, the route being a per-repository choice of the person's with the subscription as the shipped default.
-- 2026-11-02, reading the two rulings together: spend is counted per key across sessions (the night's ruling), and reaching a key's cap pauses the sessions on that key while a session on another key carries on, which is what 'a limit stops only that session' means where each session names its own key. Flagged for the product thinker's review.
+- 2026-11-02, reading the two rulings together: spend is counted per key across sessions (the night's ruling), and reaching a key's cap pauses the sessions on that key while a session on another key carries on, which agrees with 'a limit stops only that session' only where each session names its own key; where two sessions share a key the two rulings conflict, since the per-key cap then pauses both. Flagged for the product thinker to rule.
 - 2026-11-01, the product thinker: this draft may be planned unattended overnight through `abcd build --auto-plan`, after its two plan reviews, and reviewed by them in the morning (recorded as a decision the same night).
 
 ## Evidence

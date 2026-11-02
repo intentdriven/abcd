@@ -50,14 +50,13 @@ impact: fix
 - 2026-11-01, the product thinker: hosted CI reuse (restoring file times in a fresh checkout) is left to a follow-up intent; this one covers the person's machine.
 - 2026-11-01, the product thinker: the always-rerun tests are named on a list on the default branch, never by a test or a change itself.
 - 2026-11-01, the product thinker: the press release, the mechanism claim, the four scope conditions and all six acceptance criteria were confirmed, the second worded to name the list on the default branch and its release-cut half confirmed separately; impact is fix.
-- 2026-11-02, after the interview, from the landing reviews: the press release's 'a test abcd cannot see the inputs of always runs too' was made precise as 'a test declared as reading what abcd cannot see always runs too', since only a declared test can be rerun on purpose; an undeclared test that reads a subprocess, the clock or the network is reused on the person's machine and caught only by the hosted full run. Flagged for the product thinker's review.
+- 2026-11-02, after the interview, from the landing reviews: the press release's 'a test abcd cannot see the inputs of always runs too' was made precise as 'a test declared as reading what abcd cannot see always runs too' (declared meaning named on the list kept on the default branch), since only a declared test can be rerun on purpose; an undeclared test that reads a subprocess, the clock or the network is reused on the person's machine and caught only by the hosted full run. Flagged for the product thinker's review.
 - 2026-11-01, the product thinker: reuse is planned alone and first. The drafts itd-2610110940216682 (every change checked in full once) and itd-2610262141001890 (how many checks run at once) are kept separate from it and are to be planned together later; itd-2610262141001890 waits on itd-2610262140595217, so bundling them with reuse would have held reuse back.
 
 ## Open Questions
 
-_All resolved on 2026-11-01 in the planning interview; the rulings are in the Decisions section._
-
 1. resolved: reuse on the person's machine is this intent; restoring file times so hosted CI can reuse results is a follow-up intent of its own.
+3. open (2026-11-02, from the landing review): Go records each file a test opens by its absolute path, so a test that opens a file cannot be reused in a worktree at another path, whatever its file times. Keep criterion 1 for such tests by running the test stages from one fixed directory per checkout, or narrow criterion 1 to tests that open no tracked file?
 2. resolved: the tests that always rerun are named on a list kept on the default branch, so a change cannot declare its own tests away.
 
 ## Decomposition

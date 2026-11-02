@@ -2781,7 +2781,9 @@ The proposal: after a private ideate verdict reframed the idea into an open ques
 | Part | Type | Home |
 | --- | --- | --- |
 | per-landing and weekly cost and time, the estimate before a run | capability | itd-2611011325403127 |
-| reuse of unchanged test results on the person's machine (affected-only race, inert changes in the queue, macOS off every entry and batching stay in itd-2610261025516272 or with itd-2610262141001890, as the interview ruled) | capability | itd-2611011325421304 |
+| reuse of unchanged test results on the person's machine | capability | itd-2611011325421304 |
+| macOS off every landing in a private repository; one landing check for a feature built in several steps | capability | already criteria of itd-2610261025516272 |
+| affected-only race, inert changes standing down in the merge queue, batching landings | capability | no home: dropped at the reviews (inert skipping contradicts dcn-2608160000000002; batching was not ruled on), not filed |
 | labelled self-attestation behind a switch only the person sets | capability | itd-2611011325428560 |
 | a self-attested result is labelled as such and only the person, by an act no agent can perform, switches it on | trust rule | adr-2611011327164895 (proposed) |
 | a pull-only checker on a machine the person owns, reporting as its own App | capability | itd-2611011325430933 |
