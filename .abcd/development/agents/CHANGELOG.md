@@ -12,6 +12,20 @@ over the brief's earlier `1.0.0`-at-close expectation). The four M6 synthesis
 agents below entered at `0.1.0`, wired to their `abcd disembark` verbs and
 unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
+## 2026-11-03 (iss-2611011402496418 — a refused question is redrafted, never the end)
+
+### planning-interviewer 0.3.0
+
+MINOR: the contract's last paragraph says what abcd does with a receipt its
+check refuses. A question that breaks an asking rule, or a `done` the outcome
+check refuses, is no longer the end of the interview: the next brief hands it
+back with every finding, up to the repository's `interview.redrafts` times in
+a row (three by default), and after that abcd shows the question as it stands,
+repaired where it can be, or ends on the `done` with a plain message. A
+question over the rows limit alone is shown, and the next brief asks for the
+next within it. Only a receipt of neither shape still stops the interview. No
+other rule or field changed. Unmeasured, in the `0.x` band.
+
 ## 2026-11-01 (itd-2610301346085246 — the filled-in inputs carry a schema version)
 
 ### intent-auditor 0.6.0

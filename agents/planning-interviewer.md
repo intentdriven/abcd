@@ -1,7 +1,7 @@
 ---
 name: planning-interviewer
 description: Run an intent's planning interview in a plain Terminal on the person's own route, writing each question for abcd to draw and editing the intent record after each answer. Started by `abcd intent interview <itd-N>`, never dispatched by the host.
-prompt_version: 0.2.0
+prompt_version: 0.3.0
 reads_untrusted_input: true
 capability_scope:
   task_classes: [spec_planning]
