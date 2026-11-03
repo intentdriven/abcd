@@ -13,3 +13,5 @@ remedy: "Say in land --help (internal/surface/cli/land.go) that the first non-bl
 ---
 
 abcd land --record-review refuses a return whose first line under ### Verdict does not begin with the verdict word (internal/core/landing/review.go reviewVerdict), so '**977fb39cd: SHIP**' is refused as 'not one a validator writes', yet land --help says only that each return names the head's first nine characters under one ### Verdict heading. A host that briefs its reviewers from the help, as happened on 2026-10-31, gets passing reviews refused and has to ask each reviewer to re-emit.
+
+2026-11-01, another occurrence (filed as iss-2611012124381670, closed as its duplicate): two reviewer returns whose ### Verdict section began "Head: 9d2749a96" and "Verdict: SHIP" were refused with "its verdict \"Head: 9d2749a96\" is not one a validator writes; nothing was written", and had to be rewritten by hand with the bare verdict word first.
