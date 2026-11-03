@@ -23,3 +23,5 @@ A sequencing impossibility (severity minor) found by the cross-document consiste
 05-intent says the impact is demanded at the close that ships the intent: a close with neither a recorded impact nor one given on the call is refused, and planning leaves the judgement owed when none is given. 34-build's landing runs the spec's close in the lane's worktree to ship the intent. Yet none of its start checks (key, ready, open questions, claim sections, hold, blocked, steps, peers) asks for an impact, and the landing passes none to the close. A READY intent planned without an impact therefore builds through every lane and is refused at its last landing. As written, the build cannot finish such an intent.
 
 Evidence: `.abcd/work/reviews/2026-10-26-consistency/00-summary.md`, finding 407.
+
+2026-11-03: hit on run-2611030127507347 (the memory floor). The land stage's spec close refused the intent for having no impact, its remedy said to settle it on the lane's branch, and a commit there was refused as moving the branch past the judged head. It went through only by leaving impact: as an uncommitted edit in the lane, which the records commit then folded in.
