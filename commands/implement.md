@@ -664,7 +664,10 @@ over each of the run's lanes' own diff.
    reports `CLEAN` yet outside the queue is queued, pinned to the pushed head,
    after the land fence holds as at the arming; where the forge refuses that,
    its auto-merge is withdrawn and armed again by the queue's method once the
-   arming is 30 minutes old, and the wait says when until then. One that left
+   arming is 30 minutes old, and the wait says when until then; a new arming
+   the forge refuses leaves the pull request disarmed, which is refused at
+   exit 2 saying so and naming the `gh pr merge` command that arms it again,
+   and a drain reads its lane as `dropped`. One that left
    the queue and its arming with it, as a failed merge-group check leaves it,
    is refused at exit 2 naming the forge's reason and the check that failed on
    its last merge group (from the queue's workflow runs and that commit's

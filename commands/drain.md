@@ -452,7 +452,12 @@ what it did in `next`:
   and one that left the queue disarmed, as a failed merge-group check leaves
   it, is read as `dropped`, `next` naming the forge's reason and the failed
   check; it is still renewed, never queued or armed again by the drain, and
-  waits for a person to re-arm it. One merged by
+  waits for a person to re-arm it. One the forge refused to queue whose
+  auto-merge the step toggled, and whose new arming the forge then refused,
+  is read as `dropped` too, `next` saying the loop left it disarmed and
+  naming the `gh pr merge` command that arms it again. One that merged
+  after the move fetched the default branch is finished by that step and
+  named among the finished lanes. One merged by
   a squash or rebase, its head not on the default branch, is named and no
   longer renewed. A pull request the listing does not show, or a listing that
   fails, keeps its lane held as before, and says so.

@@ -334,3 +334,87 @@ func TestADrainMoveWatchesItsParkedLanesInTheMergeQueue(t *testing.T) {
 		t.Fatalf("the dropped lane stays parked at land for a person: %+v", lane)
 	}
 }
+
+// TestADrainReportsAPullRequestItsToggleLeftDisarmed: where the forge refuses
+// the enqueue past the grace and then refuses the arming the toggle makes
+// again, the pull request is left disarmed by the loop itself. The step's
+// refusal says so, naming the command that re-arms it, and a drain move reads
+// the parked lane as dropped with that refusal as its note, not as still
+// armed from the listing it read before the toggle.
+func TestADrainReportsAPullRequestItsToggleLeftDisarmed(t *testing.T) {
+	f := drainLandFixture(t)
+	first := drainToLane(t, f.repo, Options{}, DrainOptions{})
+	if first.Start == nil || first.Lane.Issue != secondIssue {
+		t.Fatalf("the drain opens the documentation issue's lane: %+v", first)
+	}
+	f.runID, f.issue = first.Start.RunID, secondIssue
+	l := f.armIssueLane(t)
+	pushed := l.Landing.Pushed
+	f.writeGH(t, "pr.json", []any{map[string]any{"number": 7, "headRefName": l.Branch, "state": "OPEN", "mergeable": "MERGEABLE",
+		"mergeStateStatus": "CLEAN", "autoMergeRequest": map[string]any{"mergeMethod": "MERGE"}}})
+	f.queueAnswer(t, stubQueue{head: pushed, enabledAt: "2026-10-15T07:00:00Z", status: "CLEAN"})
+	for _, name := range []string{"refuse-enqueue", "refuse-rearm"} {
+		if err := os.WriteFile(filepath.Join(f.gh, name), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := f.ghLog(t)
+
+	res, err := Drain(f.repo.Root(), Options{}, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rearm := "gh pr merge 7 --auto --merge --match-head-commit=" + pushed
+	p := parkedOf(t, res, f.runID)
+	if p.State != ParkedDropped || !strings.Contains(p.Note, "now DISARMED") || !strings.Contains(p.Note, rearm) {
+		t.Fatalf("a pull request the drain's toggle left disarmed is read as dropped, naming the re-arming: %+v", p)
+	}
+	if strings.Contains(p.Note, "open and armed") {
+		t.Fatalf("the drain does not report as armed a pull request it disarmed: %+v", p)
+	}
+	if !strings.Contains(res.Next, "now DISARMED") {
+		t.Fatalf("next names the pull request the loop disarmed: %s", res.Next)
+	}
+	log := strings.TrimPrefix(f.ghLog(t), before)
+	if off, on := strings.Index(log, "pr merge 7 --disable-auto"), strings.LastIndex(log, "pr merge 7 --auto"); off < 0 || on < off {
+		t.Fatalf("the toggle withdrew the arming and tried to arm it again:\n%s", log)
+	}
+
+	// The step's own refusal is the same terminal report, not a wait.
+	f.queueAnswer(t, stubQueue{head: pushed, enabledAt: "2026-10-15T07:00:00Z", status: "CLEAN"})
+	_, err = advance(f.repo.Root(), f.runID, f.stages, Options{})
+	r := mustRefusal(t, err)
+	if r.Contention || !r.outOfQueue || !strings.Contains(r.Reason, "now DISARMED") || !strings.Contains(r.Remedy, rearm) {
+		t.Fatalf("a failed re-arm is refused out of the queue, naming the re-arming: %+v", r)
+	}
+}
+
+// TestAParkedLaneTheWatchFinishesIsReadAsFinished: a pull request that merged
+// after the drain move fetched the default branch is found merged by the
+// watch's own landing step, which finishes the lane; the watch says so, so
+// the move names it finished rather than parked and waiting.
+func TestAParkedLaneTheWatchFinishesIsReadAsFinished(t *testing.T) {
+	f := drainLandFixture(t)
+	first := drainToLane(t, f.repo, Options{}, DrainOptions{})
+	if first.Start == nil || first.Lane.Issue != secondIssue {
+		t.Fatalf("the drain opens the documentation issue's lane: %+v", first)
+	}
+	f.runID, f.issue = first.Start.RunID, secondIssue
+	l := f.armIssueLane(t)
+	f.merged(t, l.Landing.Pushed)
+
+	note, dropped, finished, err := watchParked(f.repo.Root(), f.runID, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !finished || dropped || note == "" {
+		t.Fatalf("the watch reports the lane its step finished: finished=%v dropped=%v note=%q", finished, dropped, note)
+	}
+	st, err := ReadState(f.repo.Root(), f.runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Lanes[0].Stage != StageDone || parkedAtLand(st) >= 0 {
+		t.Fatalf("the lane the watch finished is done, not parked: %+v", st.Lanes[0])
+	}
+}

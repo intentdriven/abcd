@@ -300,7 +300,9 @@ func enqueue(c Context, lane Lane, id string) (why string, err error) {
 // mirror's method at the lane's base and pinned to the pushed head, as the
 // arming made it: the toggle that queued #837 and #844 where the forge's
 // enqueue call failed. An arming the forge refuses to make again leaves the
-// pull request disarmed, which is refused, naming the command that re-arms it.
+// pull request disarmed, which is refused, naming the command that re-arms it,
+// and marked out of the queue, so a drain reads its parked lane as dropped
+// with that refusal as its note, not as still armed.
 func toggleArming(c Context, lane *Lane, def string, rule landing.MergeRule, why string) (*Outcome, string, error) {
 	ld := lane.Landing
 	n := strconv.Itoa(lane.PR)
@@ -316,11 +318,14 @@ func toggleArming(c Context, lane *Lane, def string, rule landing.MergeRule, why
 		if r := netFailure(StageLand, lane.ID, "gh pr merge", err); r != nil {
 			r.Reason = "pull request #" + n + " is now DISARMED: " + r.Reason
 			r.Remedy = "arm it again with `gh " + strings.Join(rearm, " ") + "` once the network is back; " + r.Remedy
+			r.outOfQueue = true
 			return nil, "", r
 		}
-		return nil, "", refuse(string(StageLand), "", lane.ID,
+		r := refuse(string(StageLand), "", lane.ID,
 			"pull request #"+n+" is now DISARMED: the loop withdrew its auto-merge to queue it again and the forge refused the new arming ("+forgeWhy(err)+")",
 			"arm it again yourself with `gh "+strings.Join(rearm, " ")+"`, then run `abcd implement step` again")
+		r.outOfQueue = true
+		return nil, "", r
 	}
 	return &Outcome{Stay: true, Note: fmt.Sprintf("pull request #%s sat armed and CLEAN outside %s's merge queue past the %d-minute grace, and the forge refused to queue it (%s), so the loop toggled its auto-merge once, re-armed by %s pinned to %s",
 		n, def, int(requeueGrace/time.Minute), why, strings.TrimPrefix(method, "--"), shortSHA(ld.Pushed))}, "", nil

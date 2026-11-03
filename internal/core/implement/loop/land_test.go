@@ -40,7 +40,8 @@ const noQueueRuleset = `{"bypass_actors":[],"conditions":{"ref_name":{"exclude":
 // body the forge holds), state (the pull request's state), mergeable.json (its
 // mergeability; MERGEABLE when absent), footer (a line the
 // "harness" appends to a body at creation), refuse-disarm (present, the forge
-// refuses to withdraw an armed merge), refuse-list (present, the forge's
+// refuses to withdraw an armed merge), refuse-rearm (present, the forge
+// refuses every arming, `pr merge --auto`), refuse-list (present, the forge's
 // listing of pull requests fails). It never reaches a network, and it
 // refuses a --json field the real forge client refuses (ghcontract).
 //
@@ -91,6 +92,7 @@ case "$1 $2" in
   "pr merge")
     case "$*" in
       *--disable-auto*) if [ -f "$d/refuse-disarm" ]; then echo "stub gh: the forge refused" >&2; exit 1; fi ;;
+      *--auto*) if [ -f "$d/refuse-rearm" ]; then echo "stub gh: the forge refused the arming" >&2; exit 1; fi ;;
     esac ;;
   "pr close") : ;;
   "api graphql")
