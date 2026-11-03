@@ -106,6 +106,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -411,9 +412,10 @@ type proseLine struct {
 	// illustrative and forwardLooking are the line escape as the gate reads it:
 	// the marker anywhere on the line.
 	illustrative, forwardLooking bool
-	// forwardMarker is a forward-looking marker outside every inline code span:
-	// a marker, not a sentence about the marker, which is what a report asking
-	// for the marker's removal must be about.
+	// forwardMarker is a forward-looking marker outside every inline code span
+	// (mdrecord.CodeSpanRanges, the one reading of a span): a marker, not a
+	// sentence about the marker, which is what a report asking for the marker's
+	// removal must be about.
 	forwardMarker bool
 }
 
@@ -450,8 +452,9 @@ func readProseLines(lines []string, skip []bool) []proseLine {
 				pl.forwardLooking = true
 			}
 		}
-		for _, m := range proseEscapeRe.FindAllStringSubmatch(inlineCodeRe.ReplaceAllString(line, ""), -1) {
-			if strings.EqualFold(m[1], "forward-looking") {
+		spans := mdrecord.CodeSpanRanges(line)
+		for _, m := range proseEscapeRe.FindAllStringSubmatchIndex(line, -1) {
+			if strings.EqualFold(line[m[2]:m[3]], "forward-looking") && !mdrecord.InAnyRange(spans, m[0]) {
 				pl.forwardMarker = true
 			}
 		}
@@ -459,10 +462,6 @@ func readProseLines(lines []string, skip []bool) []proseLine {
 	}
 	return out
 }
-
-// inlineCodeRe matches an inline code span, the shape a sentence ABOUT the
-// marker writes it in (`<!-- record-lint: forward-looking -->`).
-var inlineCodeRe = regexp.MustCompile("`+[^`]*`+")
 
 // DefaultRecordLintConfigPath is the repository's record-lint configuration,
 // repo-relative: the one a writer consults to learn what the gate will refuse.
