@@ -142,6 +142,16 @@ func TestABloblessCloneDoesNotMarkAPathTheAnchorHad(t *testing.T) {
 	}
 
 	set, err := ShippedSince(dir, "v0.1.0")
+	if ok, v := gitutil.GitAtLeast(2, 44); !ok {
+		// Below git 2.44 GIT_NO_LAZY_FETCH is ignored, so abcd reads no object
+		// in a partial clone at all, and the marking cannot be judged on this
+		// machine. What can be is that the read refuses, naming the floor,
+		// rather than fetching through the clone's transport.
+		if err == nil || !strings.Contains(err.Error(), "2.44") {
+			t.Fatalf("git %s is below the lazy-fetch floor, yet the blobless clone's read did not refuse naming 2.44: %v", v, err)
+		}
+		t.Skipf("git %s is below 2.44, so a blobless clone's objects are not read and its marking cannot be judged here", v)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
