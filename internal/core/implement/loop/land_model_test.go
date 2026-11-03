@@ -1,6 +1,7 @@
 package loop
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -146,4 +147,121 @@ func TestALandingReadsAnUnnameableModelAgain(t *testing.T) {
 	f.validated(t)
 	setModel(t, f, "unprefixed-model", nil, false)
 	landsWithModel(t, f, "from its file", "Assisted-by: Claude:claude-test-5")
+}
+
+// TestAFixBriefAsksForTheModel: a fix round's implementer writes a receipt
+// the same verifier reads, which refuses one with no model, so its brief asks
+// for the model as required rather than optional (iss-2611022247103872).
+func TestAFixBriefAsksForTheModel(t *testing.T) {
+	repo := briefRepo(t, agentsMarked)
+	start, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, stages := start.RunID, DefaultStages()
+	implemented(t, repo, id, stages, "one.txt")
+	passRound(t, repo, id, stages, RoleRuthless, RoleSecurity)
+	handBack(t, repo, id, stages, RoleAuditor, "INCONCLUSIVE")
+	res, err := advance(repo.Root(), id, stages, Options{})
+	if err != nil || res.Awaiting == nil || res.Awaiting.Role != RoleImplementer {
+		t.Fatalf("the failed round hands the lane to a fresh implementer: %+v %v", res, err)
+	}
+	brief, err := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(res.Awaiting.Brief)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.Join(strings.Fields(string(brief)), " ")
+	if strings.Contains(text, "optional `model`") || !strings.Contains(text, "`model`, the model id your harness reports (required") {
+		t.Fatalf("the fix brief asks for the model as required:\n%s", brief)
+	}
+}
+
+// An implementer a runner launched whose receipt names no model is not paused
+// for a person to edit the file (iss-2611022247103872): the runner reports the
+// model it ran, so the receipt verifies under that model and the record says
+// where it came from. A model the receipt does name is never replaced, and a
+// runner's report that differs from it is named beside it in the record.
+
+// driveReceiptOnClaude takes a landing fixture's lane to its implement stage,
+// commits its work, and drives the stage to the claude runner, whose agent
+// writes a lane receipt naming model (none when it is empty). It returns the
+// fixture, the step's result and its error.
+func driveReceiptOnClaude(t *testing.T, model string) (*landFixture, StepResult, error) {
+	t.Helper()
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	repo, id := f.repo, f.runID
+	l := stepTo(t, repo, id, f.stages, StageImplement)
+	dir := filepath.Join(repo.Root(), filepath.FromSlash(RunRelDir), id, l.ID)
+	sha := laneCommit(t, repo, l, "one.txt")
+	rc := goodReceipt(t, id, l, dir, sha)
+	body := map[string]any{
+		"schema_version": rc.SchemaVersion, "run_id": rc.RunID, "lane": rc.Lane, "branch": rc.Branch,
+		"commits": rc.Commits, "definition_of_done": rc.DefinitionOfDone, "report": rc.Report,
+		"resolves": []map[string]string{{"issue": f.issue, "commit": sha, "note": "a blank name reads as absent",
+			"impact": "fix", "grounds": "pursued: a blank name is accepted; shown wrong if the widget still refuses one"}},
+	}
+	if model != "" {
+		body["model"] = model
+	}
+	t.Setenv(loopFakeReceiptEnv, writeReceipt(t, t.TempDir(), body))
+	newDriveEnv(t, "receipt", "claude")
+	res, err := Drive(context.Background(), repo.Root(), id, f.stages, Options{},
+		Runners{Config: runnerConfig(t, claudeImplementer, ""), Transcripts: &memTranscripts{}})
+	return f, res, err
+}
+
+// TestARunnersImplementerReceiptWithNoModelTakesTheModelTheRunnerRan: the
+// receipt verifies, the lane records the model the claude runner reported,
+// the landing's trailer can name it, the record says it came from the runner,
+// and the receipt file stays the implementer's own words.
+func TestARunnersImplementerReceiptWithNoModelTakesTheModelTheRunnerRan(t *testing.T) {
+	f, res, err := driveReceiptOnClaude(t, "")
+	if err != nil {
+		t.Fatalf("a runner's receipt with no model is not refused: %v", err)
+	}
+	if res.PerformedStage != StageImplement || res.Stage != StageValidate {
+		t.Fatalf("the receipt verifies and the lane moves on: %+v", res)
+	}
+	l := currentLane(t, f.repo, f.runID)
+	if len(l.Receipts) != 1 || l.Receipts[0].Model != loopFakeReceiptModel {
+		t.Fatalf("the receipt is recorded with the model the runner ran: %+v", l.Receipts)
+	}
+	if r := l.Receipts[0].Route; r == nil || r.Ran != runner.Claude || r.Model != loopFakeReceiptModel {
+		t.Fatalf("the receipt names the route that ran it: %+v", r)
+	}
+	if got, gap := assistedByTrailers(l.Receipts); gap != "" || !slices.Equal(got, []string{"Assisted-by: Claude:" + loopFakeReceiptModel}) {
+		t.Fatalf("the landing's trailer names the model the runner ran: %v %q", got, gap)
+	}
+	if !recordSays(t, f.repo.Root(), f.runID, StageRunner, "names no model", loopFakeReceiptModel, "claude runner reported") {
+		st, _ := ReadState(f.repo.Root(), f.runID)
+		t.Fatalf("the record says the model came from the runner: %+v", st.Record)
+	}
+	raw, err := os.ReadFile(filepath.Join(f.repo.Root(), filepath.FromSlash(l.Receipts[0].Receipt)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), `"model"`) {
+		t.Fatalf("the receipt file is not rewritten: %s", raw)
+	}
+}
+
+// TestARunnersImplementerReceiptKeepsTheModelItNames: a receipt naming a model
+// keeps it, and a runner's report that differs is named beside it in the
+// record, never in its place.
+func TestARunnersImplementerReceiptKeepsTheModelItNames(t *testing.T) {
+	f, res, err := driveReceiptOnClaude(t, "claude-sonnet-5-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.PerformedStage != StageImplement {
+		t.Fatalf("the receipt verifies: %+v", res)
+	}
+	l := currentLane(t, f.repo, f.runID)
+	if len(l.Receipts) != 1 || l.Receipts[0].Model != "claude-sonnet-5-1" {
+		t.Fatalf("the receipt's own model is kept: %+v", l.Receipts)
+	}
+	if !recordSays(t, f.repo.Root(), f.runID, StageRunner, "claude-sonnet-5-1", loopFakeReceiptModel, "the receipt's is kept") {
+		st, _ := ReadState(f.repo.Root(), f.runID)
+		t.Fatalf("the record names the disagreement: %+v", st.Record)
+	}
 }

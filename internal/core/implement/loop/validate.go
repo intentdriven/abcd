@@ -515,7 +515,8 @@ func writeFixBrief(c Context, lane Lane, r ValidationRound, failing []ValidatorR
 	p("- the receipt, at `%s`: one JSON object with exactly the lane receipt's fields —\n", abs(c.RepoRoot, receipt))
 	p("  `schema_version` %d, `run_id` %q, `lane` %q, `branch` %q, `commits` (the full object names of\n", ReceiptSchemaVersion, c.State.RunID, lane.ID, lane.Branch)
 	p("  the commits you made; when you rejected every finding and made none, the branch's tip),\n")
-	p("  `definition_of_done` (`command`, `exit_code`, `output`), `report`, and an optional `model`.\n")
+	p("  `definition_of_done` (`command`, `exit_code`, `output`), `report`, and `model`, the model id\n")
+	p("  your harness reports (required: the landing's Assisted-by: trailer names it).\n")
 	p("  No verdict: a verdict is the loop's to record from a validator's return.\n")
 	if err := writeRoundFile(c.RepoRoot, brief, b.Bytes()); err != nil {
 		return "", "", err

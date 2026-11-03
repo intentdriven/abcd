@@ -378,6 +378,7 @@ func verifyLaneReceipt(c Context, lane *Lane, receiptRel, want string) error {
 	if err != nil {
 		return err
 	}
+	modelFromRoute(c, &rc)
 
 	var missing []string
 	if rc.SchemaVersion != ReceiptSchemaVersion {
@@ -454,6 +455,43 @@ func verifyLaneReceipt(c Context, lane *Lane, receiptRel, want string) error {
 	lane.HeadSHA = head
 	recordReceipt(lane, receiptRel, rc)
 	return nil
+}
+
+// maxNotedModel bounds a receipt's model the record quotes; a longer one is
+// described.
+const maxNotedModel = 128
+
+// modelFromRoute gives a receipt that names no model the model the runner
+// that launched its agent reported running (iss-2611022247103872): the agent
+// a runner starts may write its receipt without one, and the lane would
+// otherwise pause on the refusal until a person edited the file. Only a model
+// the runner itself reported is taken, never the one it asked for (itd-166),
+// and only one plain and nameable, so the landing's Assisted-by: trailer can
+// name it. A model the receipt names is the implementer's word and is never
+// replaced: a runner's report that differs is named beside it in the record,
+// as the landing keeps the receipt's over the route's (rereadModels). The
+// file is not rewritten; the lane's receipt record carries the model taken,
+// and its route the runner's report.
+func modelFromRoute(c Context, rc *LaneReceipt) {
+	r := c.Route
+	if r == nil || r.Model == "" || !plainWritten(r.Model) || !nameable(r.Model) {
+		return
+	}
+	var note string
+	switch {
+	case strings.TrimSpace(rc.Model) == "":
+		rc.Model = r.Model
+		note = fmt.Sprintf("the receipt names no model, so it is recorded with %s, the model the %s runner reported running", r.Model, r.Ran)
+	case rc.Model != r.Model && plainWritten(rc.Model):
+		named := termsafe.DescribeRefused(rc.Model)
+		if len(rc.Model) <= maxNotedModel && nameable(rc.Model) {
+			named = rc.Model
+		}
+		note = fmt.Sprintf("the receipt names model %s and the %s runner reported %s; the receipt's is kept", named, r.Ran, r.Model)
+	}
+	if note != "" && c.modelNote != nil {
+		*c.modelNote = note
+	}
 }
 
 // readReceipt reads a receipt through the guarded reader and decodes it

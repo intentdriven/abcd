@@ -48,6 +48,11 @@ import (
 const (
 	loopFakeEnv    = "ABCD_LOOP_FAKE_HARNESS"
 	loopFakeLogEnv = "ABCD_LOOP_FAKE_LOG"
+	// loopFakeReceiptEnv names the file the "receipt" mode writes as the
+	// implementer's receipt, and loopFakeReceiptModel the model its claude
+	// init event reports.
+	loopFakeReceiptEnv   = "ABCD_LOOP_FAKE_RECEIPT"
+	loopFakeReceiptModel = "claude-opus-5-5"
 )
 
 func TestMain(m *testing.M) {
@@ -176,6 +181,14 @@ func loopFakeHarness(mode string) int {
 		}
 		_ = os.WriteFile(field("Receipt: "), []byte(body), 0o600)
 	}
+	if mode == "receipt" {
+		// An implementer that writes the lane receipt the test prepared, in
+		// whatever shape the test gave it (iss-2611022247103872: one with no
+		// model), as the agent its runner launched would.
+		if body, err := os.ReadFile(os.Getenv(loopFakeReceiptEnv)); err == nil {
+			_ = os.WriteFile(field("Receipt: "), body, 0o600)
+		}
+	}
 	if name == "opencode" {
 		fmt.Println(`{"type":"step_start","sessionID":"ses_fake2","part":{"type":"step-start"}}`)
 		fmt.Println(`{"type":"text","sessionID":"ses_fake2","part":{"type":"text","text":"done"}}`)
@@ -188,6 +201,8 @@ func loopFakeHarness(mode string) int {
 		model = strings.Repeat("m", 5<<20)
 	case "model-ctrl":
 		model = "fake\x1b[2Jmodel\r\n"
+	case "receipt":
+		model = loopFakeReceiptModel
 	}
 	init, _ := json.Marshal(map[string]string{"type": "system", "subtype": "init", "session_id": "fake-session-2", "model": model})
 	if mode == "metered" {
