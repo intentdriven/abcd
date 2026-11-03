@@ -214,18 +214,23 @@ func TestTheForgeIsAskedOfABoundedNumberOfBranchesNewestFirst(t *testing.T) {
 
 // TestTheForgeIsNotAskedPastItsBudget: a forge that answers slowly uses up
 // the budget, and no further branch is asked about; the rest are counted.
+// The budget is spent by the first answer itself, not by the clock: on a
+// wall-clock budget the git work before the first ask can spend it on a
+// loaded machine, and then no branch is asked at all (iss-2611022331542403).
 func TestTheForgeIsNotAskedPastItsBudget(t *testing.T) {
 	w := newWorld(t)
 	pat := w.clone("9+pat@users.noreply.github.com", "")
 	w.pushStatus("aa", announcementMsg("merging", "#1", "aa", t0, 30*time.Minute), "")
 	w.pushStatus("bb", announcementMsg("merging", "#2", "bb", t0.Add(time.Second), 30*time.Minute), "")
-	old := pusherBudget
-	pusherBudget = 100 * time.Millisecond
-	t.Cleanup(func() { pusherBudget = old })
+	budget, spend := context.WithCancel(context.Background())
+	t.Cleanup(spend)
+	old := pusherBudgetContext
+	pusherBudgetContext = func() (context.Context, context.CancelFunc) { return budget, spend }
+	t.Cleanup(func() { pusherBudgetContext = old })
 	var asked []string
 	res := pat.status(func(_ context.Context, _, branch string) ([]Push, error) {
 		asked = append(asked, branch)
-		time.Sleep(2 * pusherBudget)
+		spend() // a slow answer: the budget has passed by the time it returns
 		return []Push{}, nil
 	})
 	if len(asked) != 1 || asked[0] != "bb" {
