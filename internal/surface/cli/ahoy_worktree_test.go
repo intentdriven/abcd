@@ -29,7 +29,7 @@ import (
 func worktreeFixture(t *testing.T) *gittest.Repo {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
-	repo := gittest.NewRepo(t)
+	repo := newRepo(t)
 	repo.Write("a.txt", "a\n")
 	repo.Commit("one")
 	t.Chdir(repo.Root())
@@ -490,7 +490,7 @@ func TestAhoyWorktreeAddRefusesAndWritesNothing(t *testing.T) {
 	}
 
 	t.Setenv("HOME", t.TempDir())
-	t.Chdir(gittest.NewRepo(t).Root())
+	t.Chdir(newRepo(t).Root())
 	home, _ = os.UserHomeDir()
 	if text, code := runWorktree(t, false, "add", "wt"); code != 2 || !strings.Contains(text, "no root commit") {
 		t.Fatalf("a repository with no commits: exit %d:\n%s", code, text)

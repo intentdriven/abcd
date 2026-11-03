@@ -2,7 +2,6 @@ package cli
 
 import (
 	"os"
-	"slices"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
@@ -13,6 +12,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/sessionname"
 	"github.com/intentdriven/abcd/internal/core/vintage"
 	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/surface/cli/testdata/interviewstub/stub"
 	"github.com/intentdriven/abcd/internal/testshard"
 )
 
@@ -64,11 +64,12 @@ func TestMain(m *testing.M) {
 	if actAsBinary(os.Getenv(cliTestAsBinaryEnv), os.Args[1:]) {
 		os.Exit(Run(os.Args[1:], os.Stdout, os.Stderr))
 	}
-	// The AI-written interviews' tests put this binary on PATH as the claude
-	// runner: with the script named and claude's own print flag, it plays
-	// the stub runner (written_interview_test.go) instead of the tests.
-	if dir := os.Getenv(interviewStubScriptEnv); dir != "" && slices.Contains(os.Args, "--print") {
-		os.Exit(interviewStubRunner(dir))
+	// The AI-written interviews' tests put a stub runner on PATH as claude:
+	// one built once from testdata/interviewstub, or, where no go is found
+	// to build it, this binary, which plays the same stub instead of the
+	// tests when started with the script named and claude's own print flag.
+	if dir := os.Getenv(interviewStubScriptEnv); stub.Runs(dir, os.Args) {
+		os.Exit(stub.Run(dir, os.Args, os.Stdout))
 	}
 	// The hidden key read's pseudo-terminal tests run `ahoy connect` as a
 	// child on the terminal end (ahoy_connect_pty_test.go).
@@ -153,6 +154,8 @@ func TestMain(m *testing.M) {
 	_ = os.RemoveAll(emptyHome)
 	showGHLogin()
 	builtAbcd.Remove()
+	removeFixtureTemplates()
+	removeInterviewStub()
 	os.Exit(code)
 }
 

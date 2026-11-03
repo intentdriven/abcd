@@ -53,14 +53,52 @@ func newPrePushCaseIn(t *testing.T, format string) *prePushCase {
 		}
 	}
 	root := prePushSourceRoot(t)
+	if format != "" {
+		base := t.TempDir()
+		c := &prePushCase{t: t, dir: filepath.Join(base, "work"), origin: filepath.Join(base, "origin.git"), env: gittest.Env(t)}
+		c.seed(root, format)
+		return c
+	}
+	return prePushCaseFromTemplate(t, "pre-push", gittest.Env(t), func(c *prePushCase) { c.seed(root, "") })
+}
 
-	base := t.TempDir()
-	c := &prePushCase{t: t, dir: filepath.Join(base, "work"), origin: filepath.Join(base, "origin.git"), env: gittest.Env(t)}
+// prePushCaseFromTemplate is a case under a new temporary directory, laid out
+// by seed: with git the first time key is asked for, and from then on copied
+// from that one (fixture_template_test.go), its clone's origin set to its own
+// origin and a fetch made again so git's note of it names that origin too.
+// With a stand-in git on PATH, or none, seed lays every case out itself.
+func prePushCaseFromTemplate(t *testing.T, key string, env []string, seed func(c *prePushCase)) *prePushCase {
+	t.Helper()
+	at := func(base string) *prePushCase {
+		return &prePushCase{t: t, dir: filepath.Join(base, "work"), origin: filepath.Join(base, "origin.git"), env: env}
+	}
+	c := at(t.TempDir())
+	if !templateGit() {
+		seed(c)
+		return c
+	}
+	tpl := fixtureTemplate(t, key, func(dir string) { seed(at(dir)) })
+	copyCheckout(t, filepath.Join(tpl, "work"), c.dir)
+	copyFixture(t, filepath.Join(tpl, "origin.git"), c.origin)
+	c.git("remote", "set-url", "origin", c.origin)
+	if _, err := os.Lstat(filepath.Join(c.dir, ".git", "FETCH_HEAD")); err == nil {
+		c.git("fetch", "-q", "origin")
+	}
+	return c
+}
+
+// seed lays the case out with git: the clone holding the committed hook and
+// scripts in one commit, pushed to its bare origin (cloned from it in the
+// object format named), and the feature branch checked out with the hooks on.
+func (c *prePushCase) seed(root, format string) {
+	t := c.t
+	t.Helper()
+	base := filepath.Dir(c.dir)
 	initArgs := []string{"init", "-q", "-b", "main"}
 	if format != "" {
 		initArgs = append(initArgs, "--object-format="+format)
 	} else {
-		gittest.InitBare(t, c.origin)
+		initBare(t, c.origin)
 	}
 	if out, err := c.run(base, "git", append(initArgs, c.dir)...); err != nil {
 		t.Fatalf("git init: %v\n%s", err, out)
@@ -92,7 +130,6 @@ func newPrePushCaseIn(t *testing.T, format string) *prePushCase {
 	}
 	c.git("config", "core.hooksPath", ".githooks")
 	c.git("checkout", "-q", "-b", "feature")
-	return c
 }
 
 // prePushSourceRoot is the root of the source tree this test file sits in
