@@ -125,6 +125,12 @@ const (
 	RefusalDeletedFinding RefusalKind = "deleted-finding"
 	// RefusalEmptyCut: nothing user-facing shipped, so there is no release.
 	RefusalEmptyCut RefusalKind = "empty-cut"
+	// RefusalUnlandedReference: a record's prose cites a record the tree being
+	// cut does not hold (iss-2611031731385043) — a pending reference record-lint
+	// accepted while its record was in review, or a forward-looking marker's,
+	// whose record has not landed. No release ships a citation to a record that
+	// never landed; the fix is to land that record or correct the reference.
+	RefusalUnlandedReference RefusalKind = "unlanded-reference"
 	// RefusalDocFidelity: the brief lags the binary being cut (itd-60) — a
 	// shipped surface no chapter names, whatever the cut ships, or, where an
 	// intent shipped since the tag, no saved docs review names the commit
@@ -195,6 +201,13 @@ type Cut struct {
 	// (iss-2610020718369838), and the ingest moves exactly this list, so the
 	// two cannot disagree. A refused cut derives no tag and moves nothing.
 	Moves []launch.TargetMove `json:"target_moves,omitempty"`
+	// References is the record's prose citations as the cut reads them
+	// (lint.AuditReferences): every citation of a record the tree being cut
+	// does not hold, each of which refuses the cut, and every forward-looking
+	// marker whose records have all arrived, reported for removal and never
+	// refused on. It travels on a ready cut and a refused one alike, so the
+	// markers to remove are named on the cut that ships.
+	References lint.ReferenceAudit `json:"references"`
 	// Refusals is every reason the cut cannot proceed, in the order they are
 	// checked. All of them are reported, not just the first: an operator fixing
 	// a release should see the whole list in one pass.
@@ -291,6 +304,19 @@ func Emit(root string, current surface.Snapshot) (Cut, error) {
 	if findings.Status != changelog.FindingGuardPassed &&
 		len(findings.Unfixed) == 0 && len(findings.Deleted) == 0 && len(findings.Uncommitted) == 0 {
 		cut.Refusals = append(cut.Refusals, Refusal{Kind: RefusalUnfixedFinding, Reason: findings.Reason})
+	}
+	// The cut is where a pending reference must have landed
+	// (iss-2611031731385043): record-lint accepts a citation of a record still
+	// in review, so the cut refuses while any reference names a record this
+	// tree does not hold, and reports each forward-looking marker whose
+	// records have arrived, for removal.
+	refs, err := lint.AuditReferences(root)
+	if err != nil {
+		return Cut{}, err
+	}
+	cut.References = refs
+	if len(refs.Unlanded) > 0 {
+		cut.Refusals = append(cut.Refusals, unlandedRefusal(refs))
 	}
 	// The doc-fidelity gate's second enforcement point (itd-60): the same
 	// judgement `spec close` runs for one intent, over every intent shipped
@@ -393,6 +419,30 @@ func deletedRefusal(g changelog.FindingGuard) Refusal {
 		ref.Records = append(ref.Records, f.ID)
 	}
 	return ref
+}
+
+// unlandedRefusal names every citation of a record the tree being cut does not
+// hold, one per line, and the cited ids in Records so a front door can act on
+// them without parsing the prose.
+func unlandedRefusal(a lint.ReferenceAudit) Refusal {
+	lines := []string{fmt.Sprintf("%d reference(s) in the record name a record the tree being cut does not hold, "+
+		"so this release would ship a citation to a record that never landed. Land each record (merge the pull "+
+		"request that carries it) or correct the reference, then cut again:", len(a.Unlanded))}
+	seen := map[string]bool{}
+	var ids []string
+	for _, u := range a.Unlanded {
+		line := fmt.Sprintf("%s:%d cites %s", u.File, u.Line, u.ID)
+		if u.Marked {
+			line += " (marked forward-looking)"
+		}
+		lines = append(lines, line)
+		if !seen[u.ID] {
+			seen[u.ID] = true
+			ids = append(ids, u.ID)
+		}
+	}
+	sort.Strings(ids)
+	return Refusal{Kind: RefusalUnlandedReference, Reason: strings.Join(lines, "\n"), Records: ids}
 }
 
 // staleIntent is one intent whose record contradicts its specs' lifecycle: it
