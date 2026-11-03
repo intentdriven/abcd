@@ -104,7 +104,10 @@ func TestAPendingHandBackOverAnUnreadDefaultBranchStaysPending(t *testing.T) {
 	st := DrainState{PendingHandBacks: []DrainPendingHandBack{pending},
 		HandBacks: []DrainRoute{{Issue: secondIssue, From: DrainFromJudgement, Wrote: "nothing: a flag in this summary"}}}
 
-	repo.Git("symbolic-ref", "--delete", "refs/remotes/origin/HEAD")
+	// The fetch made origin/HEAD only on git 2.48 or later, so it is removed
+	// where it is (--no-deref: the symbolic ref, not origin/main through it)
+	// and absent otherwise.
+	repo.Git("update-ref", "--no-deref", "-d", "refs/remotes/origin/HEAD")
 	repo.Git("update-ref", "-d", "refs/remotes/origin/main")
 	if out := publishPending(repo.Root(), &st, &view, now); len(out) != 0 {
 		t.Fatalf("the move ended the pending hand-back over an unread default branch: %q", out)
