@@ -29,11 +29,13 @@ func NeutralCaller(t *testing.T) string {
 
 // NeutralHomeIn makes the directory NeutralCaller points HOME at, inside dir,
 // for a TestMain that sets HOME for a whole package (it has no t to set it
-// through, and removes dir itself).
+// through, and removes dir itself). It is the account's folder, which HOME
+// names, not abcd's home inside it: the code under test makes that one, at
+// abcdhome.DirMode.
 func NeutralHomeIn(dir string) (string, error) {
-	home := filepath.Join(dir, NeutralAccount)
-	if err := os.Mkdir(home, 0o700); err != nil {
+	account := filepath.Join(dir, NeutralAccount)
+	if err := os.Mkdir(account, 0o700); err != nil {
 		return "", err
 	}
-	return home, nil
+	return account, nil
 }
