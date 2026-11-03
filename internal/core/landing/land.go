@@ -46,7 +46,11 @@ package landing
 //  7. enqueue (land.enqueue): the open pull request for the branch, armed by
 //     the merge gate (mergeGate), pinned to the head, and confirmed in the
 //     merge queue (PRStateQuery, asked of the repository the forge client
-//     named when origin was checked); with no pull request it composes the
+//     named when origin was checked). Before it arms, a branch that shares a
+//     commit not on the default branch with another pull request queued or
+//     armed into it (one cut from that one's branch) stops unarmed, naming
+//     it: the queue would remove this one as an invalid merge commit
+//     (stacked.go). With no pull request it composes the
 //     body from the branch's commits into the local tier, prints the
 //     `gh pr create` command naming it, and stops (prbody.go). It never opens a
 //     pull request, never overrides an arming someone else made, and never
@@ -1147,9 +1151,13 @@ const maxForgeErrorText = 512
 
 // errorText is the forge's messages in an answer's errors, sanitised and
 // bounded; an error with no message is shown as its raw JSON.
-func (a prStateAnswer) errorText() string {
+func (a prStateAnswer) errorText() string { return forgeErrorText(a.Errors) }
+
+// forgeErrorText is the messages in a GraphQL answer's errors, sanitised and
+// bounded; an error with no message is shown as its raw JSON.
+func forgeErrorText(errs []json.RawMessage) string {
 	var msgs []string
-	for _, raw := range a.Errors {
+	for _, raw := range errs {
 		var e struct {
 			Message string `json:"message"`
 		}
@@ -1356,6 +1364,17 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved 
 		note = "pull request #" + n + " is already armed (" + armedMethod(s) + ") by this account"
 		rearm = rearmArgs(s, n, res.Head)
 	default:
+		// A branch carrying another queued or armed pull request's commits
+		// (one cut from its branch) is removed by the merge queue as soon as
+		// it enters (stacked.go): the arming waits until that one merges.
+		on, err := stackedOn(o, dir, tracking, owner, name, res.Default, pr.Number, res.Head)
+		if err != nil {
+			return err
+		}
+		if len(on) > 0 {
+			res.add("enqueue", StatusStopped, stackedNote(n, res.Branch, res.Default, on), "")
+			return nil
+		}
 		if err := arm(); err != nil {
 			if rule.Method == "" {
 				// With no queue the arming is the forge's auto-merge, which a
