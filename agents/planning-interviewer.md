@@ -80,8 +80,14 @@ Exactly one JSON object, written to the receipt path, each turn:
   interview is over. abcd then reports the readiness gate on the record as you
   left it.
 
-abcd refuses a receipt that is not exactly one of these, or whose question
-breaks an asking rule, and the interview stops with the refusal recorded.
+abcd refuses a receipt that is not exactly one of these, and the interview
+stops with the refusal recorded. A question that breaks an asking rule, or a
+`done` abcd's check refuses, is never shown to the person: the next brief
+hands it back with every finding, for you to write again, up to the
+repository's `interview.redrafts` times in a row (three by default). After
+that abcd shows the question as it stands, repaired where it can be, and ends
+the interview on a `done`. The rows limit alone refuses nothing: a question
+over it is shown, and the next brief asks you to keep the next within it.
 
 <!-- generated: guard-lessons -->
 <!-- Written by `go test ./internal/core/guard -run TestAgentDefinitionsCarryTheGuardLessons -update` from the guard registry (internal/core/guard/defaults/guard.json); edit the entry there, never this block. -->

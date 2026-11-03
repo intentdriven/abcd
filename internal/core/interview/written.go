@@ -11,14 +11,16 @@ package interview
 // so far and the output contract) and dispatches the role through
 // runner.Dispatcher with no host session. The role's receipt is exactly one of
 // {"ask": <question.Ask>} or {"done": <outcome>}. The dispatcher's validator
-// reads it strictly, sanitises an ask (question.Safe) and holds it to the
-// structural check and the asking limits before anything is drawn, and holds
-// a done to the interview's own outcome check; a receipt that fails is the
-// dispatcher's ReasonInvalid, recorded as a fallback and, with no configured
-// host, refused. A valid ask is numbered by abcd (Q1, Q2, ... across the
-// interview, so an answers file replays a drawn run by ordinal), handed to the
-// front door, and its answers appended to the record; done ends the loop
-// through the interview's own writer.
+// reads it strictly; a receipt of neither shape is the dispatcher's
+// ReasonInvalid, recorded as a fallback and, with no configured host,
+// refused. An ask is sanitised (question.Safe) and held to the structural
+// check and the asking limits before anything is drawn, and a done to the
+// interview's own outcome check; one they refuse is handed back to the role to
+// redraft, never shown and never the runner's failure (redraft.go). A drawn
+// ask is numbered by abcd (Q1, Q2, ... across the interview, so an answers
+// file replays a drawn run by ordinal), handed to the front door, and its
+// answers appended to the record; done ends the loop through the interview's
+// own writer.
 
 import (
 	"context"
@@ -220,30 +222,20 @@ func sampleQuestion(n int) question.Question {
 	}
 }
 
-// receipt is a role's turn receipt: exactly one of ask and done.
+// receipt is a role's turn receipt: exactly one of ask and done. check is
+// what abcd's check made of an ask, its Ask the sanitised one; refused is why
+// the check refused the ask or the done, "" when it did not.
 type receipt struct {
-	Ask  *question.Ask    `json:"ask,omitempty"`
-	Done *json.RawMessage `json:"done,omitempty"`
+	Ask     *question.Ask    `json:"ask,omitempty"`
+	Done    *json.RawMessage `json:"done,omitempty"`
+	check   askCheck
+	refused string
 }
 
-// checkAsk holds an ask a role wrote to what abcd draws: sanitised first, so
-// what is measured is what is drawn, then the structural check and the
-// asking limits. It returns the sanitised ask, or every finding as one error.
-func checkAsk(a question.Ask, l question.Limits, verbs []string) (question.Ask, error) {
-	safe := question.Safe(a)
-	fs := question.Check(safe)
-	fs = append(fs, question.CheckLimits(safe.Fields(), l, question.Addressee{Verbs: verbs})...)
-	if len(fs) == 0 {
-		return safe, nil
-	}
-	parts := make([]string, len(fs))
-	for i, f := range fs {
-		parts[i] = f.String()
-	}
-	return question.Ask{}, fmt.Errorf("the question breaks %d rule(s): %s", len(fs), strings.Join(parts, "; "))
-}
-
-// readReceipt reads and checks the receipt rel under the turn's directory.
+// readReceipt reads and checks the receipt rel under the turn's directory. A
+// receipt not of the contract's shape is an error, the runner's invalid
+// answer; one whose ask or done abcd's check refuses is returned with the
+// refusal, to be handed back.
 func (w *Written) readReceipt(root *os.Root, rel string) (receipt, error) {
 	data, err := localtier.ReadInRoot(root, rel, MaxReceiptBytes)
 	if err != nil {
@@ -257,14 +249,14 @@ func (w *Written) readReceipt(root *os.Root, rel string) (receipt, error) {
 	case (r.Ask == nil) == (r.Done == nil):
 		return receipt{}, errors.New("the receipt carries neither or both of ask and done; it carries exactly one")
 	case r.Ask != nil:
-		safe, err := checkAsk(*r.Ask, w.Limits, w.Verbs)
-		if err != nil {
-			return receipt{}, err
+		r.check = checkAsk(*r.Ask, w.Limits, w.Verbs)
+		r.Ask = &r.check.safe
+		if err := r.check.err(); err != nil {
+			r.refused = err.Error()
 		}
-		r.Ask = &safe
 	default:
 		if err := w.CheckDone(*r.Done); err != nil {
-			return receipt{}, fmt.Errorf("the done outcome: %w", err)
+			r.refused = "the done outcome: " + err.Error()
 		}
 	}
 	return r, nil
@@ -291,6 +283,14 @@ func (w *Written) Run(ctx context.Context) (WrittenResult, error) {
 	}
 	if !ok {
 		return WrittenResult{}, ErrNoLocalTier
+	}
+	// The redrafts bound is the repository's alone, read from its own file:
+	// the machine layer is not read for it (HomeRefused), and the list's
+	// reader refuses the key there, so a personal setting never passes
+	// unannounced.
+	bound, err := layered.InterviewRedrafts(layered.Roots{Repo: w.Repo, HomeRefused: true})
+	if err != nil {
+		return WrittenResult{}, fmt.Errorf("interview: %w", err)
 	}
 	now := w.Now
 	if now == nil {
@@ -344,7 +344,11 @@ func (w *Written) Run(ctx context.Context) (WrittenResult, error) {
 	// shell launch with that reason.
 	base, _ := gitutil.ResolveCommit(w.Repo, "HEAD")
 	asked := 0
-	again := ""
+	// carry is what the next brief tells the role of its last receipt; again
+	// stays until a question is drawn, the rest only for the next turn.
+	// redrafts counts the receipts in a row abcd's check has handed back.
+	carry := carried{bound: bound.V}
+	redrafts := 0
 	for turn := 1; turn <= max; turn++ {
 		if turn > 1 {
 			if pre, err = readTreePinned(w.Repo, dirRel, pin); err != nil {
@@ -352,7 +356,7 @@ func (w *Written) Run(ctx context.Context) (WrittenResult, error) {
 			}
 		}
 		briefRel, receiptRel := fmt.Sprintf("turn-%d.brief.md", turn), fmt.Sprintf("turn-%d.receipt.json", turn)
-		if err := fsutil.CreateExclusiveIn(root, briefRel, []byte(w.brief(turn, asked, res.Answers, again)), 0o600); err != nil {
+		if err := fsutil.CreateExclusiveIn(root, briefRel, []byte(w.brief(turn, asked, res.Answers, carry)), 0o600); err != nil {
 			return end(fmt.Errorf("interview: the turn's brief was not written: %w", err))
 		}
 		dir := filepath.Join(w.Repo, filepath.FromSlash(dirRel))
@@ -412,21 +416,50 @@ func (w *Written) Run(ctx context.Context) (WrittenResult, error) {
 		if err != nil {
 			return end(err)
 		}
+		carry = carried{bound: bound.V, again: carry.again}
+		atBound := false
+		if got.refused != "" {
+			if redrafts < bound.V {
+				// Handed back unseen: the next brief carries the refusal.
+				redrafts++
+				carry.refused, carry.redraft = got.refused, redrafts
+				continue
+			}
+			if got.Done != nil {
+				return end(w.spent(true, redrafts, len(res.Answers)))
+			}
+			atBound = true
+		}
 		if got.Done != nil {
+			redrafts = 0
 			res.Done = *got.Done
 			retry, err := w.Finish(res.Done)
 			if err != nil || retry == "" {
 				return end(err)
 			}
-			again = retry
+			carry.again = retry
 			continue
 		}
-		again = ""
+		carry.again = ""
 		a := *got.Ask
-		for i := range a.Questions {
-			asked++
-			a.Questions[i].ID = fmt.Sprintf("Q%d", asked)
+		if atBound {
+			a = repair(a, w.Limits)
 		}
+		for i := range a.Questions {
+			a.Questions[i].ID = fmt.Sprintf("Q%d", asked+i+1)
+		}
+		if atBound {
+			// Shown as it stands, repaired, when it can be drawn at all.
+			if len(question.Check(a)) > 0 {
+				return end(w.spent(false, redrafts, len(res.Answers)))
+			}
+			carry.shown, carry.redraft = true, redrafts
+			carry.left = findingList(checkAsk(a, w.Limits, w.Verbs).all())
+		} else if len(got.check.warned) > 0 {
+			carry.warned = findingList(got.check.warned)
+		}
+		redrafts = 0
+		asked += len(a.Questions)
 		replies, err := w.Answer(a)
 		if err != nil {
 			return end(err)
@@ -581,9 +614,9 @@ type givenAnswer struct {
 	Note  string `json:"note,omitempty"`
 }
 
-// brief is turn's brief: the task, the contract, the asking rules, the seed
-// and the answers so far.
-func (w *Written) brief(turn, asked int, answers []Answer, again string) string {
+// brief is turn's brief: the task, the contract, the asking rules, the seed,
+// the answers so far, and what c carries of the last receipt.
+func (w *Written) brief(turn, asked int, answers []Answer, c carried) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# The %s interview, turn %d\n\n", w.Name, turn)
 	fmt.Fprintf(&b, "You are the %s agent, writing the questions of abcd's %s interview of %s in a plain Terminal. "+
@@ -596,7 +629,12 @@ func (w *Written) brief(turn, asked int, answers []Answer, again string) string 
 	fmt.Fprintf(&b, "- `{\"ask\": {\"questions\": [<question>]}}`: the next question. Give it the id \"Q%d\" (abcd numbers the questions in order across the interview).\n", asked+1)
 	b.WriteString("- `{\"done\": <outcome>}`: the interview is over. " + w.Done + "\n\n")
 	b.WriteString("A question is:\n\n" + fence + "json\n" + asJSON(sampleQuestion(asked+1)) + "\n" + fence + "\n\n")
-	b.WriteString("abcd refuses a receipt that is not exactly one of these shapes, or whose question breaks a rule below, and the interview stops.\n\n")
+	b.WriteString("abcd refuses a receipt that is not exactly one of these shapes, and the interview stops. ")
+	fmt.Fprintf(&b, "A question that breaks a rule below, or an outcome abcd's check refuses, is never shown to the person: "+
+		"the next brief hands it back to you with every finding, to write again, up to %d %s in a row. "+
+		"After that abcd shows the question as it stands, repaired where it can be, and ends the interview on an outcome. "+
+		"The rows limit alone refuses nothing: a question over it is shown, and the next brief asks you to keep the next within it.\n\n",
+		c.bound, plural(c.bound, "time", "times"))
 	b.WriteString("## How every question is asked\n\nabcd draws your question, so where a rule below says to ask through the host's question tool, or to set a mode, you write the question in your receipt instead and set no mode. The chip names whom the question is for.\n\n")
 	for _, r := range question.AskingRules(w.Limits) {
 		b.WriteString("- " + r + "\n")
@@ -620,8 +658,30 @@ func (w *Written) brief(turn, asked int, answers []Answer, again string) string 
 		given = append(given, g)
 	}
 	b.WriteString(fence + "json\n" + asJSON(given) + "\n" + fence + "\n")
-	if again != "" {
-		b.WriteString("\n## The writer refused your outcome\n\n" + again + "\nAsk what it names, one question at a time, then write done again with the answers it needs.\n")
+	if c.again != "" {
+		b.WriteString("\n## The writer refused your outcome\n\n" + c.again + "\nAsk what it names, one question at a time, then write done again with the answers it needs.\n")
+	}
+	if c.refused != "" {
+		fmt.Fprintf(&b, "\n## abcd's check refused your last receipt\n\nNothing of it was shown to the person. "+
+			"Write the receipt again, fixing every finding below; this is redraft %d of %d. "+
+			"After the last, abcd shows a question as it stands, repaired where it can be, and ends the interview on an outcome.\n\n%s\n",
+			c.redraft, c.bound, c.refused)
+	}
+	if c.warned != "" {
+		b.WriteString("\n## Your last question ran over the rows limit\n\nabcd showed it to the person, since the rows limit alone refuses nothing, " +
+			"but it took more of their screen than the limit allows: keep the next within it.\n\n" + c.warned + "\n")
+	}
+	if c.shown {
+		why := fmt.Sprintf("It was still refused after %d %s", c.redraft, plural(c.redraft, "redraft", "redrafts"))
+		if c.redraft == 0 {
+			why = "It was refused, and the repository allows no redraft"
+		}
+		fmt.Fprintf(&b, "\n## abcd showed your last question as it stood\n\n%s, so abcd showed it to the person "+
+			"as it stood, repaired where the rules allow it mechanically (the decide-later option, bold and recommendation marks, over-long labels). "+
+			"Keep the next question within every rule.\n", why)
+		if c.left != "" {
+			b.WriteString("\nAs shown, it still broke: " + c.left + "\n")
+		}
 	}
 	return b.String()
 }

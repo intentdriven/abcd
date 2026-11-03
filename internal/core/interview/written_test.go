@@ -204,37 +204,59 @@ func TestNoRouteIsRefusedBeforeAnythingIsWritten(t *testing.T) {
 	}
 }
 
-// TestAnAskFailingTheCheckIsAnInvalidFallback: an ask the check refuses (no
-// way to decide later) is the dispatcher's invalid answer: its fallback
-// receipt is recorded, and with no configured host the interview stops with
-// the dispatcher's refusal naming the runner and the reason, nothing drawn,
-// and the record holding the receipt.
-func TestAnAskFailingTheCheckIsAnInvalidFallback(t *testing.T) {
+// TestAnAskFailingTheCheckIsHandedBackToRedraft (iss-2611011402496418,
+// dcn-2611011402510346): an ask the structural check refuses (no way to
+// decide later) is never the runner's invalid answer and never stops the
+// interview. It is handed back: the next turn's brief carries the refusal,
+// nothing is drawn of it, the redraft is drawn as Q1, no fallback is
+// recorded, and the interview goes on to its outcome.
+func TestAnAskFailingTheCheckIsHandedBackToRedraft(t *testing.T) {
 	bad := strings.Replace(stubAsk("Product Q1", "Is that answer complete?"), `"value":"later"`, `"value":""`, 1)
-	stubOnPath(t, bad)
+	script := stubOnPath(t, bad, stubAsk("Product Q1", "Is that answer complete?"), stubDone)
 	r := newWrittenRun(t, routedToClaude)
 	res, err := r.w.Run(context.Background())
-	if err == nil || !strings.Contains(err.Error(), "claude") || !strings.Contains(err.Error(), string(runner.ReasonInvalid)) {
-		t.Fatalf("err = %v, want the dispatcher's refusal naming the runner and the reason", err)
+	if err != nil {
+		t.Fatalf("err = %v; a refused question stopped the interview", err)
 	}
-	if len(r.asked) != 0 {
-		t.Fatal("a refused question was drawn")
+	if len(r.asked) != 1 || r.asked[0].Questions[0].ID != "Q1" || r.asked[0].Questions[0].Later.Value != "later" {
+		t.Fatalf("asked %+v; want only the redraft, drawn as Q1", r.asked)
+	}
+	if len(r.finished) != 1 {
+		t.Fatalf("finished %d", len(r.finished))
 	}
 	rec := readRecord(t, res.Record)
-	if len(rec.Fallbacks) != 1 || rec.Fallbacks[0].Reason != runner.ReasonInvalid || rec.Fallbacks[0].Ran != "none" ||
-		rec.Fallbacks[0].Asked != runner.Claude || !strings.Contains(rec.Fallbacks[0].Detail, "later") {
-		t.Fatalf("fallbacks %+v", rec.Fallbacks)
+	if len(rec.Fallbacks) != 0 || len(rec.Answers) != 1 {
+		t.Fatalf("record %+v; want the one answer and no fallback", rec)
+	}
+	second := seenBrief(t, script, 2)
+	if !strings.Contains(second, "abcd's check refused your last receipt") || !strings.Contains(second, "later") ||
+		!strings.Contains(second, `the id "Q1"`) {
+		t.Fatalf("the refusal is not handed back in the next brief:\n%s", second)
+	}
+	if third := seenBrief(t, script, 3); strings.Contains(third, "abcd's check refused your last receipt") {
+		t.Fatalf("a refusal is carried past the redraft that answered it:\n%s", third)
 	}
 }
 
+// seenBrief is the brief the stub runner saw on turn n.
+func seenBrief(t *testing.T, script string, n int) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(script, fmt.Sprintf("turn-%d.brief.seen.md", n)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
 // TestAReceiptNeitherAskNorDoneIsInvalid: the receipt is exactly one of ask
-// and done, decoded strictly.
+// and done, decoded strictly. A receipt of either shape whose question or
+// outcome abcd's check refuses is not invalid: it is handed back to redraft
+// (TestADoneRefusedAtTheBoundEndsPlainly).
 func TestAReceiptNeitherAskNorDoneIsInvalid(t *testing.T) {
 	for name, body := range map[string]string{
 		"neither":     `{}`,
 		"both":        `{"ask":{"questions":[]},"done":{"summary":"x"}}`,
 		"unknown key": `{"done":{"summary":"x"},"extra":1}`,
-		"bad outcome": `{"done":{"summary":"x","verdict":"y"}}`,
 		"no receipt":  ``,
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -350,19 +372,236 @@ func TestAStopThatRecordsNothingLeavesNoRecord(t *testing.T) {
 	}
 }
 
-// TestAnAskBreakingTheAskingLimitsIsInvalid: a question that passes the
+// TestAnAskBreakingTheAskingLimitsIsRedrafted: a question that passes the
 // structural check but breaks an asking limit (a chip outside the chip
-// grammar) is refused before it is drawn, as the structural check's is.
-func TestAnAskBreakingTheAskingLimitsIsInvalid(t *testing.T) {
-	stubOnPath(t, stubAsk("Whoever Q1", "Is that answer complete?"))
+// grammar) is refused before it is drawn, as the structural check's is, and
+// handed back with the finding named, never recorded as a fallback.
+func TestAnAskBreakingTheAskingLimitsIsRedrafted(t *testing.T) {
+	script := stubOnPath(t, stubAsk("Whoever Q1", "Is that answer complete?"), stubAsk("Product Q1", "Is that answer complete?"), stubDone)
 	r := newWrittenRun(t, routedToClaude)
 	res, err := r.w.Run(context.Background())
-	if err == nil || len(r.asked) != 0 {
+	if err != nil || len(r.asked) != 1 || r.asked[0].Questions[0].Chip != "Product Q1" {
+		t.Fatalf("err = %v, asked %+v; want the redraft alone drawn", err, r.asked)
+	}
+	if rec := readRecord(t, res.Record); len(rec.Fallbacks) != 0 {
+		t.Fatalf("fallbacks %+v", rec.Fallbacks)
+	}
+	if second := seenBrief(t, script, 2); !strings.Contains(second, "header") || !strings.Contains(second, "Whoever Q1") {
+		t.Fatalf("the asking-limit finding is not handed back:\n%s", second)
+	}
+}
+
+// tallAsk is a question the rows limit alone refuses: its material is a list
+// of thirty items, every other rule kept.
+func tallAsk() string {
+	var a struct {
+		Ask question.Ask `json:"ask"`
+	}
+	if err := json.Unmarshal([]byte(stubAsk("Product Q1", "Is that answer complete?")), &a); err != nil {
+		panic(err)
+	}
+	items := make([]string, 30)
+	for i := range items {
+		items[i] = fmt.Sprintf("Item %d of the release", i+1)
+	}
+	a.Ask.Questions[0].Material = append(a.Ask.Questions[0].Material, question.Block{Kind: question.KindList, Items: items})
+	b, err := json.Marshal(a)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
+}
+
+// TestTheRowsLimitIsAWarning: a question over the rows limit and within every
+// other rule is drawn, as the host's question check admits it with a note
+// (question.RefusingFinding), and the next brief tells the role it ran over
+// and to keep the next within it.
+func TestTheRowsLimitIsAWarning(t *testing.T) {
+	var tall struct {
+		Ask question.Ask `json:"ask"`
+	}
+	if err := json.Unmarshal([]byte(tallAsk()), &tall); err != nil {
+		t.Fatal(err)
+	}
+	fs := question.CheckLimits(tall.Ask.Fields(), question.Default, question.Addressee{})
+	if len(fs) != 1 || fs[0].Rule != question.RuleRows {
+		t.Fatalf("the fixture breaks %v; want the rows limit alone", fs)
+	}
+	script := stubOnPath(t, tallAsk(), stubDone)
+	r := newWrittenRun(t, routedToClaude)
+	if _, err := r.w.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.asked) != 1 {
+		t.Fatalf("asked %d; a question over the rows limit alone was not drawn", len(r.asked))
+	}
+	second := seenBrief(t, script, 2)
+	if !strings.Contains(second, "ran over the rows limit") || !strings.Contains(second, string(question.RuleRows)) ||
+		!strings.Contains(second, "keep the next within it") {
+		t.Fatalf("the next brief does not warn of the rows:\n%s", second)
+	}
+	if strings.Contains(second, "abcd's check refused your last receipt") {
+		t.Fatalf("the rows limit is carried as a refusal:\n%s", second)
+	}
+}
+
+// writeRepoConfig writes the repository's .abcd/config.json.
+func writeRepoConfig(t *testing.T, repo, body string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(repo, ".abcd", "config.json"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// brokenAsk is a question every rule the bound repairs refuses: a bold and
+// recommended label, a label over the words limit, and no way to decide
+// later.
+func brokenAsk() string {
+	a := stubAsk("Product Q1", "Is that answer complete?")
+	a = strings.Replace(a, `"label":"Keep it as it is"`, `"label":"**Keep it** as it is (Recommended)"`, 1)
+	a = strings.Replace(a, `"label":"Add more to it"`, `"label":"Add more to it in the next few turns please"`, 1)
+	a = strings.Replace(a, `"later":{"value":"later","label":"Decide later","meaning":"Nothing is recorded for it now. The retrospective asks again."}`,
+		`"later":{"value":"","label":"","meaning":""}`, 1)
+	return a
+}
+
+// TestAtTheBoundTheQuestionIsShownRepaired (dcn-2611012123240576): redrafts
+// are bounded by the repository's interview.redrafts; a question still
+// refused when the bound is reached is shown as it stands, repaired where
+// the refusing rules allow it (the decide-later option, the bold and
+// recommendation marks, an over-long label), sanitised, and the interview
+// goes on, the next brief saying it was shown.
+func TestAtTheBoundTheQuestionIsShownRepaired(t *testing.T) {
+	broken := brokenAsk()
+	if !strings.Contains(broken, `"value":""`) || !strings.Contains(broken, "(Recommended)") || !strings.Contains(broken, "please") {
+		t.Fatalf("the fixture was not broken: %s", broken)
+	}
+	broken = strings.Replace(broken, "For example,", "For example"+jsonEscape("\x1b[31m")+",", 1)
+	script := stubOnPath(t, broken, broken, stubDone)
+	r := newWrittenRun(t, routedToClaude)
+	writeRepoConfig(t, r.repo, `{"interview": {"redrafts": 1}}`)
+	res, err := r.w.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.asked) != 1 || len(r.finished) != 1 {
+		t.Fatalf("asked %d, finished %d; want the repaired question drawn once and the outcome finished", len(r.asked), len(r.finished))
+	}
+	q := r.asked[0].Questions[0]
+	if q.ID != "Q1" || q.Options[0].Label != "Keep it as it is" || q.Options[1].Label != "Add more to it in" ||
+		q.Later.Value != "later" || q.Later.Label != "Decide later" || q.Later.Meaning == "" {
+		t.Fatalf("the question was not repaired: %+v", q)
+	}
+	if strings.ContainsRune(q.Material[0].Text, 0x1b) {
+		t.Fatalf("the shown question is not sanitised: %q", q.Material[0].Text)
+	}
+	for _, f := range question.CheckLimits(r.asked[0].Fields(), question.Default, question.Addressee{}) {
+		t.Errorf("the repaired question still breaks %s", f)
+	}
+	if rec := readRecord(t, res.Record); len(rec.Answers) != 1 || len(rec.Fallbacks) != 0 {
+		t.Fatalf("record %+v", rec)
+	}
+	if third := seenBrief(t, script, 3); !strings.Contains(third, "abcd showed your last question") {
+		t.Fatalf("the next brief does not say the question was shown at the bound:\n%s", third)
+	}
+}
+
+// TestTheBoundIsThreeByDefault: with no setting, a question refused four
+// times in a row is redrafted three times, then shown at the fourth.
+func TestTheBoundIsThreeByDefault(t *testing.T) {
+	broken := brokenAsk()
+	script := stubOnPath(t, broken, broken, broken, broken, stubDone)
+	r := newWrittenRun(t, routedToClaude)
+	if _, err := r.w.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.asked) != 1 || len(r.finished) != 1 {
+		t.Fatalf("asked %d, finished %d", len(r.asked), len(r.finished))
+	}
+	for turn := 2; turn <= 4; turn++ {
+		if b := seenBrief(t, script, turn); !strings.Contains(b, "abcd's check refused your last receipt") ||
+			!strings.Contains(b, fmt.Sprintf("redraft %d of 3", turn-1)) {
+			t.Fatalf("turn %d's brief does not hand back the refusal:\n%s", turn, b)
+		}
+	}
+}
+
+// TestADoneRefusedAtTheBoundEndsPlainly (dcn-2611011402510346): a done
+// outcome abcd's check refuses is handed back like a question; one still
+// refused at the bound ends the interview with a plain message naming what
+// happened and the command to run next, never the internal finding, the
+// answers given kept and nothing finished.
+func TestADoneRefusedAtTheBoundEndsPlainly(t *testing.T) {
+	const bad = `{"done":{"summary":"x","verdict":"y"}}`
+	t.Run("a redraft passes", func(t *testing.T) {
+		script := stubOnPath(t, bad, stubDone)
+		r := newWrittenRun(t, routedToClaude)
+		if _, err := r.w.Run(context.Background()); err != nil || len(r.finished) != 1 {
+			t.Fatalf("err = %v, finished %d", err, len(r.finished))
+		}
+		if b := seenBrief(t, script, 2); !strings.Contains(b, "abcd's check refused your last receipt") || !strings.Contains(b, "verdict") {
+			t.Fatalf("the outcome's refusal is not handed back:\n%s", b)
+		}
+	})
+	t.Run("still refused at the bound", func(t *testing.T) {
+		stubOnPath(t, stubAsk("Product Q1", "Is that answer complete?"), bad, bad)
+		r := newWrittenRun(t, routedToClaude)
+		writeRepoConfig(t, r.repo, `{"interview": {"redrafts": 1}}`)
+		res, err := r.w.Run(context.Background())
+		var spent *RedraftsSpentError
+		if !errors.As(err, &spent) || len(r.finished) != 0 {
+			t.Fatalf("err = %v, finished %d; want the plain end", err, len(r.finished))
+		}
+		msg := err.Error()
+		for _, want := range []string{"the retrospective interview has ended", "`abcd reflect interview v0.2.0`", "kept"} {
+			if !strings.Contains(msg, want) {
+				t.Errorf("the end does not say %q:\n%s", want, msg)
+			}
+		}
+		for _, internal := range []string{"verdict", "unknown field", "runner", "invalid", "rule"} {
+			if strings.Contains(msg, internal) {
+				t.Errorf("the end carries the internal %q:\n%s", internal, msg)
+			}
+		}
+		if rec := readRecord(t, res.Record); len(rec.Answers) != 1 || len(rec.Fallbacks) != 0 {
+			t.Fatalf("record %+v", rec)
+		}
+	})
+}
+
+// TestAQuestionNoRepairCanDrawEndsPlainly: a question still refused at the
+// bound that cannot be drawn even repaired (it offers no answer at all) ends
+// the interview with the plain message, nothing drawn.
+func TestAQuestionNoRepairCanDrawEndsPlainly(t *testing.T) {
+	a := stubAsk("Product Q1", "Is that answer complete?")
+	i, j := strings.Index(a, `"options":[`), strings.Index(a, `],"later"`)
+	empty := a[:i] + `"options":[` + a[j:]
+	stubOnPath(t, empty)
+	r := newWrittenRun(t, routedToClaude)
+	writeRepoConfig(t, r.repo, `{"interview": {"redrafts": 0}}`)
+	_, err := r.w.Run(context.Background())
+	var spent *RedraftsSpentError
+	if !errors.As(err, &spent) || len(r.asked) != 0 {
 		t.Fatalf("err = %v, asked %d", err, len(r.asked))
 	}
-	rec := readRecord(t, res.Record)
-	if len(rec.Fallbacks) != 1 || rec.Fallbacks[0].Reason != runner.ReasonInvalid || !strings.Contains(rec.Fallbacks[0].Detail, "header") {
-		t.Fatalf("fallbacks %+v", rec.Fallbacks)
+	if msg := err.Error(); !strings.Contains(msg, "next question") || strings.Contains(msg, "structure") {
+		t.Fatalf("the end is not plain: %s", msg)
+	}
+}
+
+// TestARefusedRedraftsSettingRunsNothing: a value of interview.redrafts the
+// reader refuses stops the interview before any runner starts, naming the key
+// and the file.
+func TestARefusedRedraftsSettingRunsNothing(t *testing.T) {
+	script := stubOnPath(t, stubDone)
+	r := newWrittenRun(t, routedToClaude)
+	writeRepoConfig(t, r.repo, `{"interview": {"redrafts": 11}}`)
+	_, err := r.w.Run(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "interview.redrafts") || !strings.Contains(err.Error(), ".abcd/config.json") {
+		t.Fatalf("err = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(script, "turn-1.brief.seen.md")); !os.IsNotExist(err) {
+		t.Fatal("the runner was started")
 	}
 }
 
@@ -478,7 +717,7 @@ func TestBackticksInTheSeedAndAnswersNeverCloseTheBriefsFences(t *testing.T) {
 		t.Fatal(err)
 	}
 	answers := []Answer{{ID: "Q1", Ask: rec.Ask, Value: "kept", Note: injection, AnsweredIn: Terminal}}
-	brief := r.w.brief(2, 1, answers, "")
+	brief := r.w.brief(2, 1, answers, carried{})
 	fences, inside := 0, false
 	for _, line := range strings.Split(brief, "\n") {
 		if strings.HasPrefix(line, "````") {
@@ -619,17 +858,17 @@ func TestTheInterviewMeasuresWithItsLimits(t *testing.T) {
 	q := sampleQuestion(1)
 	q.Options[0].Label = "Five words in this label"
 	a := question.Ask{Questions: []question.Question{q}}
-	if _, err := checkAsk(a, question.Default, nil); err != nil {
+	if err := checkAsk(a, question.Default, nil).err(); err != nil {
 		t.Fatalf("the defaults refused a five-word label: %v", err)
 	}
 	tight := question.Bounded(question.Default, 40, 4, 2)
-	_, err := checkAsk(a, tight, nil)
+	err := checkAsk(a, tight, nil).err()
 	if err == nil || !strings.Contains(err.Error(), string(question.RuleLabelWords)) {
 		t.Fatalf("err = %v, want a %s refusal at four label words", err, question.RuleLabelWords)
 	}
 	r := newWrittenRun(t, "")
 	r.w.Limits = tight
-	brief := r.w.brief(1, 0, nil, "")
+	brief := r.w.brief(1, 0, nil, carried{})
 	if !strings.Contains(brief, "fits forty rows at eighty columns") || !strings.Contains(brief, "at most four words") {
 		t.Errorf("the brief does not state the limits in force:\n%s", brief)
 	}
