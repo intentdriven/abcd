@@ -658,7 +658,21 @@ over each of the run's lanes' own diff.
    not computed yet, keeps it waiting. A pull request closed without merging,
    or merged in a way that rewrote the head, is refused and nothing is cleaned
    up. So is an open one the forge reports `CONFLICTING`, at exit 2, since it
-   never merges on its own. Once the lane that completes the run (no step
+   never merges on its own. While an armed pull request waits where a merge
+   queue gates the default branch, each step reads its place in the queue
+   (`gh api graphql`, as `abcd land` does) and names it. One the forge
+   reports `CLEAN` yet outside the queue is queued, pinned to the pushed head,
+   after the land fence holds as at the arming; where the forge refuses that,
+   its auto-merge is withdrawn and armed again by the queue's method once the
+   arming is 30 minutes old, and the wait says when until then. One that left
+   the queue and its arming with it, as a failed merge-group check leaves it,
+   is refused at exit 2 naming the forge's reason and the check that failed on
+   its last merge group (from the queue's workflow runs and that commit's
+   check runs), and is never queued or armed again into the same failure:
+   fix or re-run the check, re-arm it pinned to the pushed head, then `step`
+   again. While another session's release cut holds every merge, which
+   withdraws armed merges and re-arms them after, that is a wait (exit 3)
+   instead. Once the lane that completes the run (no step
    pending, every other lane done) has landed, a run holding a reservation
    pushes a tombstone over it while it is still this person's from this copy;
    another person's or another copy's is left as it stands and named in the

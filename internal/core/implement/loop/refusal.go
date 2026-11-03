@@ -67,6 +67,10 @@ type Refusal struct {
 	// (claim.CapError): the drain waits on it rather than refusing its move
 	// (drain_wait.go).
 	capped []string
+	// outOfQueue marks the merge-queue watch's report of an armed pull
+	// request that left the queue disarmed, or whose head moved under it
+	// (queue.go): a drain reads its parked lane as dropped.
+	outOfQueue bool
 }
 
 // Error renders the refusal as one line: stage, reason, remedy.

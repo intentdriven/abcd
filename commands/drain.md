@@ -444,7 +444,15 @@ what it did in `next`:
   with a tombstone marking it `closed`, and the drain routes it home to a
   person (`abcd implement step --run <run-id> --discard <lane-id>` removes the
   lane's worktree and branch); a conflicting one is no longer renewed, and
-  `next` names it; an open one is renewed and named as waiting. One merged by
+  `next` names it; an open one is renewed and named as waiting. An open one
+  the lane armed that the listing shows disarmed, or armed and `CLEAN` (the
+  listing names no queue entry), is watched in the merge queue by the lane's
+  own landing step, as `abcd implement step` watches it
+  (`commands/implement.md`): one left outside the queue at `CLEAN` is queued,
+  and one that left the queue disarmed, as a failed merge-group check leaves
+  it, is read as `dropped`, `next` naming the forge's reason and the failed
+  check; it is still renewed, never queued or armed again by the drain, and
+  waits for a person to re-arm it. One merged by
   a squash or rebase, its head not on the default branch, is named and no
   longer renewed. A pull request the listing does not show, or a listing that
   fails, keeps its lane held as before, and says so.
@@ -586,7 +594,7 @@ the landing's last step for (`issue`, `run_id`, `pr`, `done`, and a `note`:
 the landing's line, or why it did not finish the lane when `done` is `false`);
 `parked` reads every other lane parked at land from its pull request
 (`issue`, `run_id`, `pr`, `state`: `waiting`, `conflicting`, `syncing`,
-`closed`, `merged` or `unread`, and a `note`);
+`dropped`, `closed`, `merged` or `unread`, and a `note`);
 `waiting_until` and `waiting` (`cap` or `held`) say when a waiting drain looks
 again and on what; `next_eligible_at`, `stopped` (`cap`, `empty`,
 `outage` or `origin`) and `complete` say whether it paused or ended; `counts` totals the

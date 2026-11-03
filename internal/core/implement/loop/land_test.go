@@ -51,6 +51,12 @@ const noQueueRuleset = `{"bypass_actors":[],"conditions":{"ref_name":{"exclude":
 // the reviews (reviews.json; with approved present, an approval of each head
 // the bare origin holds, each by a maintainer of its own, since every lane's
 // pull request is #7 here; else none).
+//
+// It answers the merge-queue watch (queue.go): the queue state query from
+// queue.json (else the pull request armed and in the queue), the enqueue
+// call by leaving enqueued beside it (refuse-enqueue present, the forge
+// refuses it), the merge queue's runs from runs.json and a commit's check
+// runs from checkruns.json (else none of either).
 var stubGH = "#!/bin/sh\n" + ghcontract.Shell() + stubGHBody
 
 // stubGHBody is stubGH after the field check's definition.
@@ -87,6 +93,17 @@ case "$1 $2" in
       *--disable-auto*) if [ -f "$d/refuse-disarm" ]; then echo "stub gh: the forge refused" >&2; exit 1; fi ;;
     esac ;;
   "pr close") : ;;
+  "api graphql")
+    case "$*" in
+      *enqueuePullRequest*)
+        if [ -f "$d/refuse-enqueue" ]; then echo "stub gh: GraphQL: the forge could not enqueue the pull request" >&2; exit 1; fi
+        : > "$d/enqueued"
+        echo '{"data":{"enqueuePullRequest":{"clientMutationId":null}}}' ;;
+      *QUEUE_EVENT*)
+        if [ -f "$d/queue.json" ]; then cat "$d/queue.json"
+        else echo '{"data":{"repository":{"pullRequest":{"id":"PR_stub7","state":"OPEN","headRefOid":"","isInMergeQueue":true,"mergeQueueEntry":{"state":"QUEUED","position":1},"autoMergeRequest":{"mergeMethod":"MERGE","enabledAt":"2026-01-01T00:00:00Z"},"mergeStateStatus":"CLEAN","timelineItems":{"nodes":[]}}}}}'; fi ;;
+      *) echo "stub gh: unexpected call: $*" >&2; exit 1 ;;
+    esac ;;
   "api "*)
     if [ $# -ne 2 ]; then echo "stub gh: the merge gate reads with a plain GET" >&2; exit 1; fi
     case "$2" in
@@ -106,6 +123,10 @@ case "$1 $2" in
           maintainer-*) echo '{"permission":"write","role_name":"maintain"}' ;;
           *) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
         esac; fi ;;
+      "repos/{owner}/{repo}/actions/runs?event=merge_group&per_page=100")
+        if [ -f "$d/runs.json" ]; then cat "$d/runs.json"; else echo '{"workflow_runs":[]}'; fi ;;
+      "repos/{owner}/{repo}/commits/"*"/check-runs?per_page=100")
+        if [ -f "$d/checkruns.json" ]; then cat "$d/checkruns.json"; else echo '{"check_runs":[]}'; fi ;;
       *) echo "stub gh: unexpected call: $*" >&2; exit 1 ;;
     esac ;;
   *) echo "stub gh: unexpected call: $*" >&2; exit 1 ;;
