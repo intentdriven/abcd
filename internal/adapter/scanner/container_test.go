@@ -794,8 +794,14 @@ func TestPNGChunkCountBombIsBounded(t *testing.T) {
 	chunk := pngChunk("zTXt", append([]byte("k\x00\x00"), empty.Bytes()...))
 	base := pngBytes(t)
 	cut := len(base) - 12
-	body := append([]byte{}, base[:cut]...)
-	for len(body) < maxBinaryScanBytes-len(base)-len(chunk) {
+	// Eight times the bound: the chunk bound fires at maxDecodeEntries+1, so
+	// every chunk past that is only bytes for the raw scan to read, and an
+	// unbounded loop would still cost eight times what the count below allows.
+	// A bomb filling the whole maxBinaryScanBytes (about 180,000 chunks) proved
+	// nothing more and cost most of this package's race run in its raw scans.
+	const bombChunks = 8 * maxDecodeEntries
+	body := append(make([]byte, 0, len(base)+bombChunks*len(chunk)), base[:cut]...)
+	for range bombChunks {
 		body = append(body, chunk...)
 	}
 	body = append(body, base[cut:]...)
@@ -820,7 +826,7 @@ func TestPNGChunkCountBombIsBounded(t *testing.T) {
 	// So the same decode is run again on a budget the test holds, and the work
 	// it did is counted, not timed — a count is the same on a loaded machine
 	// and under the race detector, where a wall-clock ceiling reddened a run
-	// whose bound held (iss-2609232048579579). The bomb carries about 180,000
+	// whose bound held (iss-2609232048579579). The bomb carries bombChunks
 	// chunks; a working bound inflates at most maxDecodeEntries of them.
 	chunks := (len(body) - len(base)) / len(chunk)
 	b := &decodeBudget{bytesLeft: maxDecodedBytes, entriesLeft: maxDecodeEntries}

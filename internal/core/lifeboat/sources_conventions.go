@@ -716,6 +716,21 @@ var convMarkerRe = regexp.MustCompile(
 		`(?:(` + strings.Join(convDelimitedMarkers, "|") + `)(?::|\()` +
 		`|(` + strings.Join(convBareMarkers, "|") + `)(?::|\(|\s|$))`)
 
+// convMayCarryMarker reports whether s contains any marker name verbatim.
+// convMarkerRe is case-sensitive and every match spells one of the names in
+// full, so text without any of them cannot match, and the scan skips it
+// without running the pattern: a file first, then each of its lines. The
+// answer is the pattern's own; only the work is less, which on a whole
+// repository is most of a probe's time.
+func convMayCarryMarker(s string) bool {
+	for _, name := range convMarkerNames {
+		if strings.Contains(s, name) {
+			return true
+		}
+	}
+	return false
+}
+
 // convMarkerName returns the marker a convMarkerRe match captured. The pattern
 // puts a delimited marker in group 2 and a bare-allowed marker in group 3, and
 // exactly one is non-empty.
@@ -810,8 +825,15 @@ func (convOpenQuestionsSource) probeLimited(ctx *SourceContext, budget int) Evid
 		if convIsBinary(data) {
 			continue
 		}
+		text := string(data)
+		if !convMayCarryMarker(text) {
+			continue
+		}
 		hits := 0
-		for i, line := range strings.Split(string(data), "\n") {
+		for i, line := range strings.Split(text, "\n") {
+			if !convMayCarryMarker(line) {
+				continue
+			}
 			// One citation per line: the first recognised marker on it. A line
 			// carrying two markers is still one place to look.
 			m := convMarkerRe.FindStringSubmatch(line)

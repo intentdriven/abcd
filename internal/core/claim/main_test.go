@@ -24,6 +24,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	code := m.Run()
+	removeWorldTemplates()
 	cleanup()
 	os.Exit(code)
 }
