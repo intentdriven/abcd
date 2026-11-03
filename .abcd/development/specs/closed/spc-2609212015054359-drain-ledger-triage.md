@@ -110,6 +110,7 @@ ADR is minted in the first delivery and reviewed with the diff.
    - packages: internal/core/issueschema, internal/core/capture, internal/core/implement
    - tests: a trust-rule hand-back writes a `decision_needed:` field holding its question onto the open issue and changes nothing else in the record; the dry run and the next drain pass a marked issue over with the marker as its reason; invariant 19 and the drain page name the marker
    - needs: 1
+   - landed: 2e297483e687
 
 ## How the criteria are satisfied
 

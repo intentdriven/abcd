@@ -18,7 +18,7 @@ drain_remedy: required
 
 ## Context
 
-`abcd drain` ([itd-82](../../intents/planned/itd-82-drain-ledger-triage.md))
+`abcd drain` ([itd-82](../../intents/shipped/itd-82-drain-ledger-triage.md))
 works the open issue ledger unattended: it fixes what needs no decision and
 hands the rest back to a person. The load-bearing part is the sorting, which
 issue a machine may take alone. Its failure runs one way: a machine that
