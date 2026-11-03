@@ -253,7 +253,24 @@ const lockFileName = ".lock"
 // carrying it is not one its version wrote, and is refused naming it.
 // Releases that write version 18 refuse a version-19 file as a newer abcd's
 // before any strict decode.
-const SchemaVersion = 19
+//
+// Version 20 keyed a round by reviewer (itd-2610240922461281,
+// spc-2610240951109420 step 3): a validator's `reviewer` index among its
+// role's reviewers, the `class` the run's review set asked it for, the
+// `model` the class resolved to and its `model_status` (asked, or reported by
+// the runner that ran it); an await's `reviewer`, `class` and `model`; and a
+// round's `comparisons`, how each role's reviewers compared once all of them
+// returned. Version 19 is its strict subset, read as a run whose rounds each
+// ran one reviewer per role: that reviewer is index 0, at the path index 0
+// still takes, and asked for no class. It is written back at version 20; a
+// file of version 19 or lower carrying any of them is not one its version
+// wrote, and is refused naming it. Releases that write version 19 refuse a
+// version-20 file as a newer abcd's before any strict decode.
+const SchemaVersion = 20
+
+// schemaVersionUnkeyed is the last version before a round keyed by reviewer:
+// read, never written.
+const schemaVersionUnkeyed = 19
 
 // schemaVersionUnspent is the last version before a fallback receipt's
 // spend: read, never written.
@@ -641,6 +658,10 @@ type ValidationRound struct {
 	// AC 10): the validators, and the fresh implementer the round's findings
 	// went to. Empty for a round handed out with no routing read.
 	Routes []Round `json:"routes,omitempty"`
+	// Comparisons is how each reviewer role's reviewers compared, one per
+	// role, written as the last of the role's returns is recorded; empty for
+	// a round opened with no review set (reviewers.go).
+	Comparisons []Comparison `json:"comparisons,omitempty"`
 }
 
 // Round is the route one role of a lane's round ran at (spc-2609251028149555,
@@ -686,7 +707,52 @@ type ValidatorRun struct {
 	// when the host ran it. It is the one field a runner-run review's record
 	// differs in from a host-run one's (itd-2609201916056194 criterion 7).
 	Route *runner.RouteRecord `json:"route,omitempty"`
+	// Reviewer is the validator's index among its role's reviewers in the
+	// round, from 0 (reviewers.go): absent reads as 0, the role's first or
+	// only reviewer, which is how a round written before version 20 reads.
+	Reviewer int `json:"reviewer,omitempty"`
+	// Class is the model class the run's review set asked the reviewer for,
+	// and Model the <provider>/<model> route the class map resolved it to;
+	// both empty for a round opened with no review set and for the
+	// intent-auditor, which keeps its single run.
+	Class string `json:"class,omitempty"`
+	Model string `json:"model,omitempty"`
+	// ModelStatus says how far Model is known to be the model that ran, once
+	// the verdict is recorded: ModelReported when the runner that ran the
+	// reviewer reported a model (Route.Model, beside it), ModelAsked when
+	// only the asking is known, as for every host-run reviewer, whose model
+	// is asked for and never confirmed. Empty while the reviewer is out and
+	// wherever Model is.
+	ModelStatus string `json:"model_status,omitempty"`
 }
+
+// The statuses of a reviewer's model.
+const (
+	ModelAsked    = "asked"
+	ModelReported = "reported"
+)
+
+// Comparison is how one role's reviewers in a round compared once every one
+// of them had returned (reviewers.go): Outcome is ComparisonAgree,
+// ComparisonDisagree (one verdict passes and another fails), or
+// ComparisonNone when the role ran one reviewer, so no comparison was made.
+// The round's verdict does not hang on it: any failing reviewer fails the
+// round, which is the stricter verdict.
+type Comparison struct {
+	Role      string `json:"role"`
+	Reviewers int    `json:"reviewers"`
+	Outcome   string `json:"outcome"`
+	// Verdicts are the role's verdicts, in reviewer order, as the loop
+	// recorded them.
+	Verdicts []string `json:"verdicts"`
+}
+
+// The outcomes of a comparison.
+const (
+	ComparisonAgree    = "agree"
+	ComparisonDisagree = "disagree"
+	ComparisonNone     = "none"
+)
 
 // AuditRun is the fidelity audit the lane that closes the spec takes, once, over
 // the whole delivery (ruling AI): the receipt the close parks for the same
@@ -733,6 +799,14 @@ type Await struct {
 	// Running is the runner a step started for the role, claimed under the
 	// lock so no other step starts a second one; nil when none is running.
 	Running *RunnerClaim `json:"running,omitempty"`
+	// Reviewer, Class and Model name a review set's reviewer (reviewers.go):
+	// its index among its role's reviewers, the class it is asked for and the
+	// <provider>/<model> route the class resolves to, which a runner is
+	// handed as the request's model and a host is asked to start the agent
+	// on. Nil and empty for every other await.
+	Reviewer *int   `json:"reviewer,omitempty"`
+	Class    string `json:"class,omitempty"`
+	Model    string `json:"model,omitempty"`
 }
 
 // RouteAnswer is the answer a reviewer route placed at an await's return path:
@@ -1185,7 +1259,10 @@ func readListedState(root *os.Root, runID string) (State, error) {
 	case st.SchemaVersion <= schemaVersionUnspent && st.spent() != "":
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.spent(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnspent:
+	case st.SchemaVersion <= schemaVersionUnkeyed && st.keyed() != "":
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.keyed(), st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnkeyed:
 		// Read as the current version, its stages already carried over by
 		// decodeState when it named them `step`; the next write carries it, and
 		// this read writes nothing.
@@ -1217,6 +1294,13 @@ func readListedState(root *os.Root, runID string) (State, error) {
 	// A lane's stored hand-back carries only text the loop writes, so none
 	// reaches a --json stream raw; the refusal does not echo it
 	// (iss-2610121516559163).
+	// A reviewer's class and model are ones the review set writes, so a hand
+	// edit never reaches a runner's request or an awaiting payload.
+	if !st.reviewersWritten() {
+		return State{}, refuse("state", "", "", rel+" carries a reviewer the loop never writes: an index past the most reviewers a role runs, "+
+			"a class the class map does not name, a model that is not a <provider>/<model> route, or a model status other than asked or reported",
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	}
 	if !st.handBacksWritten() {
 		return State{}, refuse("state", "", "", rel+" carries a hand-back the loop never writes: a control, bidi or zero-width character in its text",
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))

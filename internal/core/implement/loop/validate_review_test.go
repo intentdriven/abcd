@@ -80,6 +80,8 @@ func verdictFor(request string) string {
 // written, with the route that ran it. The intent-auditor stays on the host.
 func TestTheReviewsGoToRepoPromptOverMCPAndTheLoopRecordsTheirVerdicts(t *testing.T) {
 	repo := briefRepo(t, agentsMarked)
+	// One reviewer per role, so the route is sent one request per role.
+	oneReviewerPerRole(t)
 	start, err := Start(repo.Root(), "itd-10", Options{})
 	if err != nil {
 		t.Fatal(err)

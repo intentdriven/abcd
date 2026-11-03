@@ -530,7 +530,12 @@ class the map does not carry, a list of none or more than two, a misspelt key
 under `review` or `models.classes`, and a route that is not
 `<provider>/<model>` are refused at the `review` stage with exit 2 before
 anything is written. Starting again keeps the run's review set, whatever the
-files say by then. A run started before review sets carries `review: null`.
+files say by then. A run started before review sets carries `review: null`,
+and its rounds run one reviewer per role. Each round of a run with a review
+set hands every reviewer role to each of its reviewers, in consecutive steps
+on the same head, and the stricter verdict decides: any reviewer that fails
+fails the round (`commands/implement.md` says how a round records each
+reviewer and how they compared).
 
 Last, once every other check passes, the budget check asks each runner a role
 of the run is routed to (below) for its remaining quota, in agent runs, and

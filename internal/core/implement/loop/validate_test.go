@@ -130,9 +130,26 @@ func auditorVerdict(t *testing.T, request, verdict string) string {
 	return string(b)
 }
 
-// handBack takes the validate stage's next hand-out, checks it names role, and
-// hands back body as that agent's return. It returns the receipt's result.
+// handBack hands back body as the return of every reviewer the run's review
+// set gives role in a round, one hand-out at a time (reviewers.go): the
+// bundled pair, or the one reviewer of a run started before review sets, or
+// of the intent-auditor. It returns the last receipt's result.
 func handBack(t *testing.T, repo *gittest.Repo, runID string, stages Stages, role, body string) StepResult {
+	t.Helper()
+	st, err := ReadState(repo.Root(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got StepResult
+	for range roundReviewers(st, role) {
+		got = handBackOne(t, repo, runID, stages, role, body)
+	}
+	return got
+}
+
+// handBackOne takes the validate stage's next hand-out, checks it names role,
+// and hands back body as that agent's return. It returns the receipt's result.
+func handBackOne(t *testing.T, repo *gittest.Repo, runID string, stages Stages, role, body string) StepResult {
 	t.Helper()
 	res, err := advance(repo.Root(), runID, stages, Options{})
 	if err != nil {
@@ -217,9 +234,11 @@ func TestTheValidatorsAreFreshAgentsAndOnlyTheLoopRecordsAVerdict(t *testing.T) 
 		t.Fatalf("a validator's return leaves the lane at validate for the next: %+v", got)
 	}
 	st, _ := ReadState(repo.Root(), id)
-	if v := st.Lanes[0].Validation; len(v) != 1 || len(v[0].Validators) != 3 || v[0].Validators[0].Verdict != "SHIP" || !v[0].Validators[0].Pass {
+	// The bundled review set's two reviewers per role, and the auditor.
+	if v := st.Lanes[0].Validation; len(v) != 1 || len(v[0].Validators) != 5 || v[0].Validators[0].Verdict != "SHIP" || !v[0].Validators[0].Pass {
 		t.Fatalf("the loop records the verdict it parsed from the return: %+v", v)
 	}
+	handBackOne(t, repo, id, stages, RoleRuthless, reviewerReturn("SHIP"))
 	handBack(t, repo, id, stages, RoleSecurity, reviewerReturn("APPROVE"))
 	handBack(t, repo, id, stages, RoleAuditor, "MET")
 
@@ -237,7 +256,7 @@ func TestTheValidatorsAreFreshAgentsAndOnlyTheLoopRecordsAVerdict(t *testing.T) 
 			t.Fatalf("the run record names %q:\n%s", want, record.String())
 		}
 	}
-	a := st.Lanes[0].Validation[0].Validators[2].Audit
+	a := st.Lanes[0].Validation[0].Validators[4].Audit
 	if a == nil || a.BaseSHA != l.BaseSHA || a.HeadSHA != l.HeadSHA || !strings.HasPrefix(a.ReceiptID, "rcp-") || a.Worst != "MET" {
 		t.Fatalf("the audit's receipt and range are the run's, for the close to consume: %+v", a)
 	}
@@ -272,8 +291,8 @@ func TestTheAuditRunsOnceOnTheClosingLaneOverTheWholeDelivery(t *testing.T) {
 		t.Fatalf("no audit request for a lane that does not close the spec: %v", got)
 	}
 	st, _ := ReadState(repo.Root(), id)
-	if v := st.Lanes[0].Validation[0].Validators; len(v) != 2 {
-		t.Fatalf("the non-closing lane's validators are the two reviewers: %+v", v)
+	if v := st.Lanes[0].Validation[0].Validators; len(v) != 4 || v[3].Role != RoleSecurity {
+		t.Fatalf("the non-closing lane's validators are the two reviewer roles' reviewers: %+v", v)
 	}
 	if _, err := advance(repo.Root(), id, stages, Options{}); err != nil {
 		t.Fatal(err)
@@ -299,7 +318,7 @@ func TestTheAuditRunsOnceOnTheClosingLaneOverTheWholeDelivery(t *testing.T) {
 			t.Fatalf("the audit request carries %q:\n%s", want, req)
 		}
 	}
-	a := st.Lanes[1].Validation[0].Validators[2].Audit
+	a := st.Lanes[1].Validation[0].Validators[4].Audit
 	if a == nil || a.BaseSHA != closing.BaseSHA || a.HeadSHA != closing.HeadSHA {
 		t.Fatalf("the audit's own range is the closing lane's diff: %+v", a)
 	}

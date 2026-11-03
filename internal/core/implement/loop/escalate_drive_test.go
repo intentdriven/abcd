@@ -187,7 +187,9 @@ func TestLoadTieringCarriesTheProviderDiagnostics(t *testing.T) {
 // configuration hands to a runner names a runner and a model, so the step asks
 // it for no tier and its round says it does not move.
 func TestAStepOnARunnerRecordsThatItDoesNotMove(t *testing.T) {
-	cfg := runnerConfig(t, `{"roles":{"ruthless-reviewer":{"runner":"opencode"}}}`, "")
+	// The reviewer runs at its class's model, which the runner admits
+	// against the provider the bundled class map names.
+	cfg := runnerConfig(t, `{"roles":{"ruthless-reviewer":{"runner":"opencode"}},`+bundledClassProvider+`}`, "")
 	repo := briefRepo(t, agentsMarked)
 	o := Options{Tiers: tiering(t, repo, `{"ruthless-reviewer":{"tier":"economy"}}`)}
 	_, _, res, r := driveRound(t, o, Runners{Config: cfg})

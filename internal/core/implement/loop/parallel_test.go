@@ -62,6 +62,10 @@ func newParFixtureRuleset(t *testing.T, steps string, o Options, ruleset string)
 	// The fixture's run holds no reservation: its tests are of the lanes,
 	// and the reservation's own are in reservation_test.go.
 	o.noReserve = true
+	// Its run reviews with one reviewer per role: its tests are of the lanes
+	// and their slots, which they count as one ruthless and one security
+	// reviewer a round, and the paired reviewers' own are in reviewers_test.go.
+	oneReviewerPerRole(t)
 	if o.Session != "" {
 		// A run started for a session claims its intent in the shared run
 		// state, which the session joins first.
