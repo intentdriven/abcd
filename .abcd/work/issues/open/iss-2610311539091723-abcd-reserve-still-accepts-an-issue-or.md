@@ -11,6 +11,8 @@ production_mode: hand-written
 found_at: "internal/surface/cli/reserve.go"
 remedy: "Once iss-2610311224444576's widening has shipped, refuse reserve --footprint for an iss-N or itd-N record (release reservations and --release stay), naming abcd build as the way to start the work, and rewrite the pages and rules that teach a hand reservation"
 blocked_by: [iss-2610311224444576]
+deferred_after: "v0.16.0"
+deferral_reason: "Deferred by the product thinker on 2026-11-03 for the v0.17.0 cut: its fix waits on iss-2610311224444576's widening, which has not shipped."
 ---
 
 abcd reserve still accepts an issue or an intent with a hand-named footprint of any width, though dcn-2610311539024848 rules that only a build or a drain reserves such a record; one hand hold of about 35 paths on 2026-10-31, for an issue whose found_at was one file, stalled nine of thirteen chosen builds for hours. The command pages, AGENTS.md's concurrent-sessions rule and every lane brief still tell a session to reserve each path by hand.
