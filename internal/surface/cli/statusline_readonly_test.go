@@ -349,7 +349,14 @@ func TestStatuslineWritesOnlyTheFillFile(t *testing.T) {
 			want:  "",
 		},
 	} {
-		t.Run(tc.name, func(t *testing.T) { runStatuslineWriteCase(t, tc) })
+		t.Run(tc.name, func(t *testing.T) {
+			// Each case wants the row with git's answers in it, so git gets a
+			// share a loaded race runner cannot outrun: at the 300ms default,
+			// git did not name the checkout in time and the row came back
+			// empty (iss-2611030857252735).
+			widenBudgets(t)
+			runStatuslineWriteCase(t, tc)
+		})
 	}
 }
 
@@ -435,7 +442,14 @@ func TestStatuslineWritesNothingWithoutASessionID(t *testing.T) {
 			want: "waiting on the product thinker",
 		},
 	} {
-		t.Run(tc.name, func(t *testing.T) { runStatuslineWriteCase(t, tc) })
+		t.Run(tc.name, func(t *testing.T) {
+			// Each case wants the row with git's answers in it, so git gets a
+			// share a loaded race runner cannot outrun: at the 300ms default,
+			// git did not name the checkout in time and the row came back
+			// empty (iss-2611030857252735).
+			widenBudgets(t)
+			runStatuslineWriteCase(t, tc)
+		})
 	}
 }
 
