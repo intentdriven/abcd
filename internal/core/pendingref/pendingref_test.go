@@ -98,7 +98,7 @@ func TestLookupFindsARecordOnAnOpenPullRequestsBranch(t *testing.T) {
 		pr(1381, "records-priorities", head, false),
 	}, &calls)
 
-	ans := LookupWith(context.Background(), forge, gitutil.RunCapped, root, []string{"dcn-2611031615094092", "dcn-2611039999999999"})
+	ans := lookupWith(context.Background(), forge, gitutil.RunCapped, root, []string{"dcn-2611031615094092", "dcn-2611039999999999"})
 
 	rec, ok := ans.Found["dcn-2611031615094092"]
 	if !ok {
@@ -123,7 +123,7 @@ func TestLookupFindsARecordOnAnOpenPullRequestsBranch(t *testing.T) {
 // network.
 func TestLookupAsksNothingWhenNothingIsMissing(t *testing.T) {
 	calls := 0
-	ans := LookupWith(context.Background(), fakeForge(t, nil, &calls), gitutil.RunCapped, t.TempDir(), nil)
+	ans := lookupWith(context.Background(), fakeForge(t, nil, &calls), gitutil.RunCapped, t.TempDir(), nil)
 	if calls != 0 || len(ans.Found) != 0 || ans.Unread != "" {
 		t.Errorf("asked nothing, the lookup read the forge %d times and answered %+v", calls, ans)
 	}
@@ -137,7 +137,7 @@ func TestLookupIgnoresAForksBranch(t *testing.T) {
 	forge := fakeForge(t, []pullRequest{
 		pr(9, "records-priorities", head, true),
 	}, &calls)
-	ans := LookupWith(context.Background(), forge, gitutil.RunCapped, root, []string{"dcn-2611031615094092"})
+	ans := lookupWith(context.Background(), forge, gitutil.RunCapped, root, []string{"dcn-2611031615094092"})
 	if len(ans.Found) != 0 {
 		t.Errorf("a fork's branch was read as origin's: %+v", ans.Found)
 	}
@@ -153,7 +153,7 @@ func TestLookupNamesAHeadThisCloneDoesNotHold(t *testing.T) {
 	forge := fakeForge(t, []pullRequest{
 		pr(1381, "records-priorities", absent, false),
 	}, &calls)
-	ans := LookupWith(context.Background(), forge, gitutil.RunCapped, root, []string{"dcn-2611031615094092"})
+	ans := lookupWith(context.Background(), forge, gitutil.RunCapped, root, []string{"dcn-2611031615094092"})
 	if len(ans.Found) != 0 {
 		t.Errorf("found %+v through a head the clone does not hold", ans.Found)
 	}
@@ -176,7 +176,7 @@ func TestLookupSaysWhyTheForgeWasNotRead(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			forge := func(context.Context, string, ...string) (string, error) { return "", tc.err }
-			ans := LookupWith(context.Background(), forge, gitutil.RunCapped, t.TempDir(), []string{"dcn-2611031615094092"})
+			ans := lookupWith(context.Background(), forge, gitutil.RunCapped, t.TempDir(), []string{"dcn-2611031615094092"})
 			if len(ans.Found) != 0 || !strings.Contains(ans.Unread, tc.want) {
 				t.Errorf("answer = %+v, want nothing found and Unread naming %q", ans, tc.want)
 			}
@@ -193,7 +193,7 @@ func TestLookupSaysWhenTheListingMayHaveLeftSomeOut(t *testing.T) {
 		page = append(page, pr(i+1, "fork-branch", strings.Repeat("cd", 20), true))
 	}
 	calls := 0
-	ans := LookupWith(context.Background(), fakeForge(t, page, &calls), gitutil.RunCapped, t.TempDir(), []string{"dcn-2611031615094092"})
+	ans := lookupWith(context.Background(), fakeForge(t, page, &calls), gitutil.RunCapped, t.TempDir(), []string{"dcn-2611031615094092"})
 	if calls != maxPages {
 		t.Errorf("the forge was asked %d times, want %d pages", calls, maxPages)
 	}
