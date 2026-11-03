@@ -394,6 +394,12 @@ func TestLoadDomainTeachesTheWaiter(t *testing.T) {
 		"a `config.json` that cannot be read for it is read past",
 		// A lone race run's waiter is a race run for both gates.
 		"counts as a race run to every race gate and every other such run",
+		// The memory floor (itd-2611012048006057): a machine setting the
+		// gates wait on, failing open on a reading they cannot take.
+		"memory pressure at or above your floor",
+		"`load.memory_floor_macos`",
+		"`load.memory_floor_linux`",
+		"a reading that cannot be taken shuts nothing",
 	} {
 		if !strings.Contains(all, want) {
 			t.Errorf("the LOAD rules do not carry %q", want)

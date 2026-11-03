@@ -83,7 +83,9 @@ and across accounts all but a narrow window (a race waiter gone before its race
 run shows, or, after a pid wrap, two waiters whose start and pid disagree: one
 running abcd v0.15.1, or two of the start order whose whole-second ages read a
 tie differently or the later of which stopped counting the earlier past its
-five-minute cap).
+five-minute cap), and no test stage started while the system reports memory
+pressure at or above the person's own floor (`load.memory_floor_macos` or
+`load.memory_floor_linux` in the same file, never set by a repository).
 `SHELL` is the teaching half of the shell-hazard guard: it is generated from the
 same hazard registry `abcd guard` enforces in the repository, one rule per entry
 (the command, why it is dangerous, and what to run instead; a rule from the

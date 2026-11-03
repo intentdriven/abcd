@@ -28,7 +28,10 @@ import (
 // every status is a report, and the front door exits 0 on each of them. It is a
 // sibling of `implement check` because it shares that verb's report-never-enforce
 // verdict and this package's single run-log writer; it is not a Run.Check step,
-// because a step can refuse and this check never can.
+// because a step can refuse and this check never can. Beside the load it
+// reports the free disk (load_disk.go) and the memory pressure against the
+// person's floor (load_memory.go), each a warning that never changes its
+// status.
 
 // The sites the check runs at.
 const (
@@ -104,6 +107,9 @@ type LoadRequest struct {
 	Now func() time.Time
 	// GOOS names the platform in the cannot-check reason; "" is runtime.GOOS.
 	GOOS string
+	// ReadMemory reads the machine's memory pressure; nil is ReadMemory, the
+	// package's reader (machineload.ReadMemory in the binary).
+	ReadMemory func() (machineload.Memory, error)
 }
 
 // LoadAverages are the three load averages.
@@ -181,6 +187,14 @@ type LoadResult struct {
 	// Disk is the low-disk finding (load_disk.go), nil when every volume read
 	// has room; it is a warning beside the load's status, never a failure.
 	Disk *DiskCheck `json:"disk,omitempty"`
+	// Memory is the memory reading judged against the floor (load_memory.go),
+	// nil when none could be taken; at or above the floor it is a warning
+	// beside the load's status, never a failure.
+	Memory *MemoryCheck `json:"memory,omitempty"`
+	// MemoryNote says why memory was not checked, that a repository's floor
+	// key was ignored, or that the machine configuration was read past for
+	// the floor; "" when there is nothing to say.
+	MemoryNote string `json:"memory_note,omitempty"`
 }
 
 // CheckLoad runs the load check once. It never returns an error: a machine it
@@ -201,6 +215,7 @@ func CheckLoad(req LoadRequest) LoadResult {
 		return res
 	}
 	res.Disk = ReadDisk(req.Home, diskFloorAt(getenv, req.Home)).Report()
+	res.Memory, res.MemoryNote = checkMemory(req.ReadMemory, req.Home, req.RepoRoot)
 
 	read := req.Read
 	if read == nil {

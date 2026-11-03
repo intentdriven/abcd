@@ -904,7 +904,11 @@ The check also reads the free space on the volume holding the Go build cache
 (`~/.abcd.noindex/worktrees`). Below the disk floor (see the next section) it
 prints a `LOW DISK WARNING` beside the load's status, which it does not change,
 and `--json` carries it as `disk`; a volume it cannot read is reported there
-too, and the check never fails for either.
+too, and the check never fails for either. It reads the memory pressure too
+(see the memory floor in the next section): at or above the floor it prints a
+`MEMORY PRESSURE WARNING` beside the load's status, which it does not change,
+`--json` carries the reading as `memory`, a reading it cannot take is one
+`memory check` line (`memory_note`), and the check never fails for either.
 
 ### Wait for capacity before a preflight or a race run
 
@@ -971,7 +975,7 @@ it starts waiting and one when
 it first finds the machine free, and nothing more until it opens, and gives up
 after `--timeout` (30 minutes by default; `make preflight` gives its first gate
 twelve hours and its race gate two), exiting 1 and naming what it still waited
-on (`still`: `load`, `race-run`, `preflight`, `waiter`, `lock` or
+on (`still`: `load`, `race-run`, `preflight`, `waiter`, `lock`, `memory` or
 `unreadable`). `--json` reports `status`
 (`open`, `timeout`, `skipped` on a CI runner, `unchecked` on an unsupported
 platform), `waited_on` and `waited_s`, with the `gate` it waited at
@@ -997,6 +1001,42 @@ itself. A disk it cannot read, on a platform other than macOS and Linux or
 through a read that fails, is never refused, in whole or in part: one line on
 stderr says it was not checked and why (`disk_note` in `--json`). CI runners
 skip the check with the rest of the gate.
+
+Both gates also wait, rather than refuse, while the system reports memory
+pressure at or above your floor: memory pressure falls as other work
+finishes, where nothing frees disk. On macOS the reading is the system's own
+pressure level (`kern.memorystatus_vm_pressure_level`: normal, warn, urgent or
+critical, a value abcd does not know reading as critical), judged against
+`load.memory_floor_macos` (`warn`, the default, or `critical`); on Linux it is
+the share of the last ten seconds in which some task stalled waiting for memory
+(the `some avg10` of `/proc/pressure/memory`, from Linux 4.20), judged against
+`load.memory_floor_linux` (a whole percentage from 1 to 100, 10 by default).
+Both keys live in `~/.abcd.noindex/config.json` and are never read from a
+repository: a repository's `.abcd/config.json` that sets either is named once
+on stderr as ignored, and its value is never used. A value outside its set
+refuses the wait, naming the key, the file and the values it takes. Memory is
+read at every look and again at the re-check just before the gate opens, and
+before the race gate at one preflight at a time opens at once; the waiting line
+names the reading and the floor (`memory pressure warn (floor warn)`, `memory
+stalled 14.2% over 10s (floor 10%)`), and a wait still shut at `--timeout`
+names `memory` in `still`. `--json` carries the last reading as `memory`. A
+reading it cannot take (another platform, a Linux kernel without
+`/proc/pressure/memory`, a read that fails) shuts nothing: the gate admits as
+it did before the floor existed and one line on stderr says the memory floor
+was not checked, and why (`memory_note` in `--json`).
+
+When the pressure falls, every waiter watching it would open at once. So once
+any waiter of your account has read the pressure at or above the floor, for ten
+minutes after it was last seen the gates admit one run per two minutes, in
+queue order: a waiter that opens writes itself into
+`~/.abcd.noindex/load-memory-admit.json` before it opens, every other waiter
+stays shut on `memory` until two minutes have passed (`memory settling after
+pid 4242 opened 30s ago (pressure normal, floor warn)`), and memory is read
+again before the next opens, so the stage just admitted shows its own memory
+use first. A waiter beneath the one admitted (the preflight's own gates under
+`--wait -- make preflight`) is not held by it. A machine never under pressure
+writes no record and waits exactly as before; a record that cannot be read or
+written is named on stderr and holds nothing back.
 
 Before its race stage `make preflight` waits again, at the race gate,
 `implement load --race-gate`. It takes no command: it gates the race stage

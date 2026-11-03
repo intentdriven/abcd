@@ -200,6 +200,26 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"two days. A disk it cannot read, in whole or in part, is never refused: one line\n" +
 			"on stderr says it was not checked, and why. The load check (`--site`) prints the\n" +
 			"same finding as a warning and never fails for it.\n\n" +
+			"Both gates also stay shut while the system reports memory pressure at or above\n" +
+			"your floor: on macOS its own pressure level (kern.memorystatus_vm_pressure_level)\n" +
+			"at `" + implement.MemoryFloorMacOSKey + "` (`warn`, the default, or `critical`), and on\n" +
+			"Linux the share of the last ten seconds some task stalled waiting for memory (the\n" +
+			"`some avg10` of /proc/pressure/memory, Linux 4.20 or later) at `" + implement.MemoryFloorLinuxKey + "`\n" +
+			"(a whole percentage from 1 to 100, " + strconv.Itoa(implement.DefaultMemoryFloorLinux) + " by default), each in `" + abcdhome.Display("config.json") + "`\n" +
+			"and never read from a repository file: a repository's key is named on stderr as\n" +
+			"ignored. A value outside its set refuses the wait, naming the key. Memory waits\n" +
+			"rather than refuses, since pressure falls as other work finishes: it is read at\n" +
+			"every look and again just before the gate opens (and before the race gate at one\n" +
+			"preflight at a time opens at once), the waiting line names the level or the\n" +
+			"stalled share and the floor, and a wait still shut at --timeout names memory. A\n" +
+			"reading it cannot take (another platform, a kernel without the file, a read\n" +
+			"that fails) shuts nothing: one line on stderr says memory was not checked, and why.\n" +
+			"After any waiter of your account saw the pressure at the floor, for " + implement.WaitMemoryEpisode.String() + " the gates\n" +
+			"admit one run per " + implement.WaitMemorySettle.String() + ", in queue order, reading memory again before each, so\n" +
+			"the stage just admitted shows its own memory use before the next starts\n" +
+			"(`" + abcdhome.Display(implement.WaitMemoryAdmitFileName) + "` records it; a record it cannot read or write\n" +
+			"is named on stderr and holds nothing back). The load check (`--site`) prints a\n" +
+			"reading at the floor as a warning and never fails for it.\n\n" +
 			"Within one account the waiter that opens also takes a hold,\n" +
 			"`" + abcdhome.Display(implement.WaitHoldFileName) + "` at the first gate and `" + abcdhome.Display(implement.WaitRaceHoldFileName) + "` at\n" +
 			"the race gate, and every other waiter of that account at the same gate stays\n" +
@@ -378,6 +398,9 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 	}
 	if res.DiskNote != "" {
 		fmt.Fprintf(errOut, "abcd implement load %s: %s\n", flag, res.DiskNote)
+	}
+	if res.MemoryNote != "" {
+		fmt.Fprintf(errOut, "abcd implement load %s: %s\n", flag, res.MemoryNote)
 	}
 	if err := render(out, asJSON, res, func(w io.Writer) { renderLoadWait(w, res) }); err != nil {
 		return err
@@ -764,6 +787,12 @@ func waitConditions(res implement.WaitResult) string {
 			} else {
 				parts = append(parts, "another waiter is taking the gate")
 			}
+		case implement.WaitOnMemory:
+			if m := res.Memory; m != nil {
+				parts = append(parts, m.WaitText())
+			} else {
+				parts = append(parts, "memory pressure is at or above the floor")
+			}
 		case implement.WaitOnUnreadable:
 			why := "the machine's load or process table could not be read"
 			if res.Reason != "" {
@@ -858,6 +887,10 @@ func renderLoad(w io.Writer, res implement.LoadResult) {
 		renderLoadWarning(w, res)
 	}
 	fmt.Fprint(w, res.Disk.WarningText(res.Site))
+	fmt.Fprint(w, res.Memory.WarningText(res.Site))
+	if res.MemoryNote != "" {
+		fmt.Fprintf(w, "memory check (%s): %s\n", res.Site, res.MemoryNote)
+	}
 	if res.RunLog.Error != "" {
 		fmt.Fprintf(w, "could not write the load warning to the run log: %s; the warning above stands\n", res.RunLog.Error)
 	}

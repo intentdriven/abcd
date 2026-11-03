@@ -2735,6 +2735,27 @@ two days. A disk it cannot read, in whole or in part, is never refused: one line
 on stderr says it was not checked, and why. The load check (`--site`) prints the
 same finding as a warning and never fails for it.
 
+Both gates also stay shut while the system reports memory pressure at or above
+your floor: on macOS its own pressure level (kern.memorystatus_vm_pressure_level)
+at `load.memory_floor_macos` (`warn`, the default, or `critical`), and on
+Linux the share of the last ten seconds some task stalled waiting for memory (the
+`some avg10` of /proc/pressure/memory, Linux 4.20 or later) at `load.memory_floor_linux`
+(a whole percentage from 1 to 100, 10 by default), each in `~/.abcd.noindex/config.json`
+and never read from a repository file: a repository's key is named on stderr as
+ignored. A value outside its set refuses the wait, naming the key. Memory waits
+rather than refuses, since pressure falls as other work finishes: it is read at
+every look and again just before the gate opens (and before the race gate at one
+preflight at a time opens at once), the waiting line names the level or the
+stalled share and the floor, and a wait still shut at --timeout names memory. A
+reading it cannot take (another platform, a kernel without the file, a read
+that fails) shuts nothing: one line on stderr says memory was not checked, and why.
+After any waiter of your account saw the pressure at the floor, for 10m0s the gates
+admit one run per 2m0s, in queue order, reading memory again before each, so
+the stage just admitted shows its own memory use before the next starts
+(`~/.abcd.noindex/load-memory-admit.json` records it; a record it cannot read or write
+is named on stderr and holds nothing back). The load check (`--site`) prints a
+reading at the floor as a warning and never fails for it.
+
 Within one account the waiter that opens also takes a hold,
 `~/.abcd.noindex/load-wait.json` at the first gate and `~/.abcd.noindex/load-wait-race.json` at
 the race gate, and every other waiter of that account at the same gate stays
