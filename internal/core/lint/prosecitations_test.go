@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // proseCfg builds a one-rule config over a fixture tree. The stores are named
@@ -311,6 +312,14 @@ func TestProseCitationsAreCleanOnTheLiveRecord(t *testing.T) {
 	if !ok || !rc.Enabled {
 		t.Fatal("the shipped configuration must arm prose_citation_resolves")
 	}
+	// A citation of a record still in review is a pending reference, which
+	// record-lint accepts by asking the forge (iss-2611031731385043). A unit
+	// test has no forge, so it asks the clone instead: an id a branch on origin
+	// carries, as this clone last fetched it, is accepted here. That is wider
+	// than record-lint's open pull requests, never narrower, so it still
+	// catches an id no branch carries, and it reads only when some id is
+	// missing from the tree.
+	withPendingLookup(t, originBranchesLookup(t, repoRootFromPackage))
 	fs, err := checkProseCitations(repoRootFromPackage, rc)
 	if err != nil {
 		t.Fatal(err)
@@ -323,6 +332,42 @@ func TestProseCitationsAreCleanOnTheLiveRecord(t *testing.T) {
 	}
 	if len(blockers) != 0 {
 		t.Fatalf("the live record must be green under the seeded baseline; %d blocker(s): %+v", len(blockers), blockers)
+	}
+}
+
+// originBranchesLookup finds an asked id on any branch this clone holds of
+// origin, read as the resolver reads a tree: the test's stand-in for the
+// forge's open pull requests.
+func originBranchesLookup(t *testing.T, root string) PendingLookup {
+	t.Helper()
+	return func(_ string, ids []string) (map[string]PendingRecord, string) {
+		found := map[string]PendingRecord{}
+		refs, err := gitutil.Run(root, "for-each-ref", "--format=%(objectname) %(refname:strip=3)", "refs/remotes/origin")
+		if err != nil {
+			return found, "this clone's branches of origin could not be listed: " + err.Error()
+		}
+		for _, ref := range strings.Split(refs, "\n") {
+			oid, branch, ok := strings.Cut(strings.TrimSpace(ref), " ")
+			if !ok || branch == "HEAD" {
+				continue
+			}
+			args := append([]string{"ls-tree", "-r", "-z", "--name-only", "--full-tree", oid, "--"}, recordid.FamilyRootDirs()...)
+			out, err := gitutil.RunCapped(root, 8<<20, args...)
+			if err != nil {
+				continue
+			}
+			r, err := recordid.NewResolverFromPaths(strings.Split(out, "\x00"))
+			if err != nil {
+				continue
+			}
+			for _, id := range ids {
+				if _, done := found[id]; !done && r.Has(id) {
+					p, _, _ := r.Lookup(id)
+					found[id] = PendingRecord{ID: id, Path: p, Branch: branch}
+				}
+			}
+		}
+		return found, ""
 	}
 }
 
