@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // TestCaptureFoundAtMustResolveInTheTree is the guard for iss-2609120511058115:
@@ -17,8 +18,11 @@ import (
 // being written to; a conceptual location (anything that is not a lone path
 // token) and an absent value stay legitimate. Both sides are asserted
 // (guards-prove-themselves): the refusals write nothing, and the permitted
-// values are written as given.
+// values are written as given. The caller is a neutral one: a home-relative
+// location names abcd's own store, which a caller whose account is `abcd`
+// would read as its login and redact.
 func TestCaptureFoundAtMustResolveInTheTree(t *testing.T) {
+	gittest.NeutralCaller(t)
 	refused := []struct{ name, foundAt string }{
 		{"missing file", "internal/core/ahoy/install.go"},
 		{"missing file with a line locator", "hooks/bootstrap.sh:12"},
