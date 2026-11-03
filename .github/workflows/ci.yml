@@ -295,6 +295,13 @@ jobs:
     # repeats the job's timeout-minutes, and the margin is the workflow's;
     # TestCheckJobTestStepsRunUnderTheJobClockWatchdog holds both, and every
     # go test step's shell.
+    # pull-requests: read is for the record-lint step alone, and reads only:
+    # prose_citation_resolves lists the open pull requests to tell a citation
+    # of a record still in review (a pending reference, reported) from one of
+    # a record that exists nowhere (refused), iss-2611031731385043.
+    permissions:
+      contents: read
+      pull-requests: read
     env:
       ABCD_CI_LEG: check (ubuntu-latest)
       ABCD_CI_JOB_CAP_MINUTES: 45
@@ -492,9 +499,19 @@ jobs:
       # changelog entry) runs either way. The fallback is loud, as a warning on
       # the two events that should always name a base and a notice on the ones
       # that never do: a downgrade nobody can see is a gate nobody knows is off.
+      #
+      # GH_TOKEN, this job's read-only token, lets prose_citation_resolves ask
+      # the forge which pull requests are open (iss-2611031731385043). It asks
+      # only when a record cites an id this tree does not resolve, then reads
+      # each open pull request's head from this full-history checkout, which
+      # holds every branch: an id one of them carries is a pending reference,
+      # reported and not refused, since the release cut is where it must have
+      # landed. Without the token the forge cannot be read, and the citation
+      # is refused as it always was, saying why.
       - name: Record-lint (drift gate)
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           if [ -n "${BASE_SHA:-}" ] &&

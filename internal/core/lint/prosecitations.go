@@ -21,7 +21,9 @@ package lint
 // know — where in a document a citation is, and which unresolvable ones the
 // record has already ruled on.
 //
-// THREE ways an id can legitimately fail to resolve, and each has its own door:
+// FOUR ways an id can legitimately fail to resolve, and each has its own door
+// (the fourth, a record still in review, is THE PENDING REFERENCE at the end of
+// this file):
 //
 //  1. A PLACEHOLDER is not a citation and needs nothing. `itd-N`, `spc-<id>`,
 //     `adr-NNNN` are not the cited-id grammar, so they never reach the lookup.
@@ -100,6 +102,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -249,48 +252,51 @@ type ProseBaseline struct {
 // armed gate could check nothing and still report clean: configured stores that
 // yield no record files, which looks exactly like a corpus with no faults.
 func checkProseCitations(repoRoot string, cfg RuleConfig) ([]Finding, error) {
-	if len(cfg.RecordStores) == 0 {
-		return nil, &configError{ruleProseCitationResolves +
-			": no record_stores configured; the rule would read no prose and report clean"}
-	}
-
-	files, err := proseRecordFiles(repoRoot, cfg.RecordStores)
+	in, err := proseInputs(repoRoot, cfg)
 	if err != nil {
 		return nil, err
 	}
-	if len(files) == 0 {
-		return nil, &configError{ruleProseCitationResolves +
-			": the configured record stores hold no record files; the gate would pass by not looking"}
-	}
+	files, resolver, baseline, baselinePath := in.files, in.resolver, in.baseline, in.baselinePath
 
-	extra, err := proseExtraRootFiles(repoRoot, cfg.ExtraRoots)
-	if err != nil {
-		return nil, err
+	// Every file is read before any finding is made, so the ids no file's tree
+	// resolves are asked of the pending lookup once, together: the forge is a
+	// network read, and one listing answers every citation in the corpus.
+	type fileCites struct {
+		rel   string
+		cites []ProseCitation
 	}
-	files = mergeFileLists(files, extra)
-
-	resolver, err := recordid.NewResolver(repoRoot)
-	if err != nil {
-		return nil, &configError{ruleProseCitationResolves + ": " + err.Error()}
-	}
-
-	baselinePath := cfg.Baseline
-	if baselinePath == "" {
-		baselinePath = DefaultProseBaselinePath
-	}
-	baseline, err := loadProseBaseline(repoRoot, baselinePath)
-	if err != nil {
-		return nil, err
-	}
-
-	var out []Finding
+	var all []fileCites
 	used := map[string]bool{}
 	for _, abs := range files {
-		fs, err := proseCitationsInFile(repoRoot, abs, resolver, baseline, used, cfg.Severity)
+		rel, cites, err := proseCitationsInFile(repoRoot, abs, resolver, baseline, used)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, fs...)
+		if len(cites) > 0 {
+			all = append(all, fileCites{rel: rel, cites: cites})
+		}
+	}
+	var missing []ProseCitation
+	for _, fc := range all {
+		missing = append(missing, fc.cites...)
+	}
+	pending := lookupPending(repoRoot, missing)
+
+	var out []Finding
+	for _, fc := range all {
+		for _, c := range fc.cites {
+			if rec, ok := pending.found[c.ID]; ok {
+				out = append(out, Finding{
+					File: fc.rel, Line: c.Line, RuleID: ruleProseCitationPending, Severity: severityInfo,
+					Message: pendingCitationMessage(rec),
+				})
+				continue
+			}
+			out = append(out, Finding{
+				File: fc.rel, Line: c.Line, RuleID: ruleProseCitationResolves, Severity: cfg.Severity,
+				Message: proseCitationMessage(c.ID) + pending.refusalNote(),
+			})
+		}
 	}
 
 	// The shrink half of the ratchet. An entry whose id now resolves, or that no
@@ -336,32 +342,33 @@ func mustLookup(r *recordid.Resolver, id string) string {
 	return "a record"
 }
 
-// proseCitationsInFile reads one record and reports every unresolvable handle its
-// BODY names. `used` accumulates which baseline entries were actually needed, so
-// the caller can report the spent ones.
-func proseCitationsInFile(repoRoot, abs string, resolver *recordid.Resolver, baseline map[string]ProseBaselineEntry, used map[string]bool, severity string) ([]Finding, error) {
+// proseCitationsInFile reads one record and returns its repo-relative path and
+// every unresolvable handle its prose names. `used` accumulates which baseline
+// entries were actually needed, so the caller can report the spent ones.
+func proseCitationsInFile(repoRoot, abs string, resolver *recordid.Resolver, baseline map[string]ProseBaselineEntry, used map[string]bool) (string, []ProseCitation, error) {
+	rel, lines, skip, err := readProseRecord(repoRoot, abs)
+	if err != nil || lines == nil {
+		return rel, nil, err
+	}
+	return rel, unresolvedProseCitations(lines, skip, resolver, baseline, used), nil
+}
+
+// readProseRecord reads one record the rule judges: its repo-relative path, its
+// lines and the frontmatter lines the rule does not read. A record that vanished
+// mid-walk (a checkout racing the gate) returns no lines and no error, since it
+// is not a finding about the record; every other fault is returned so the caller
+// fails closed rather than reporting a file it never read as clean.
+func readProseRecord(repoRoot, abs string) (string, []string, []bool, error) {
+	rel := repoRel(repoRoot, abs)
 	data, err := fsutil.ReadGuarded(abs, citationPageSizeLimit)
 	if err != nil {
-		// A record that vanished mid-walk (a checkout racing the gate) is not a
-		// finding about the record; every other fault is returned so the caller
-		// fails closed rather than reporting a file it never read as clean.
 		if os.IsNotExist(err) {
-			return nil, nil
+			return rel, nil, nil, nil
 		}
-		return nil, &configError{ruleProseCitationResolves + ": reading " + repoRel(repoRoot, abs) + ": " + err.Error()}
+		return rel, nil, nil, &configError{ruleProseCitationResolves + ": reading " + rel + ": " + err.Error()}
 	}
-	rel := repoRel(repoRoot, abs)
 	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
-	skip := proseFrontmatterSkip(lines, recordBodyStart(lines))
-
-	var out []Finding
-	for _, c := range unresolvedProseCitations(lines, skip, resolver, baseline, used) {
-		out = append(out, Finding{
-			File: rel, Line: c.Line, RuleID: ruleProseCitationResolves, Severity: severity,
-			Message: proseCitationMessage(c.ID),
-		})
-	}
-	return out, nil
+	return rel, lines, proseFrontmatterSkip(lines, recordBodyStart(lines)), nil
 }
 
 // ProseCitation is one record id a line of prose cites that the rule refuses:
@@ -377,21 +384,9 @@ type ProseCitation struct {
 // disagree about what the gate refuses. Fenced lines and the lines skip marks
 // are not read.
 func unresolvedProseCitations(lines []string, skip []bool, resolver *recordid.Resolver, baseline map[string]ProseBaselineEntry, used map[string]bool) []ProseCitation {
-	mask := fenceMask(lines)
 	var out []ProseCitation
-	for i := 0; i < len(lines); i++ {
-		if mask[i] || (i < len(skip) && skip[i]) {
-			continue
-		}
-		line := lines[i]
-		escaped := proseEscapeRe.MatchString(line)
-		seen := map[string]bool{}
-		for _, id := range proseCitedIDs(line) {
-			if seen[id] {
-				// A line naming one absent record twice is one defect.
-				continue
-			}
-			seen[id] = true
+	for _, pl := range readProseLines(lines, skip) {
+		for _, id := range pl.ids {
 			if resolver.Has(id) {
 				continue
 			}
@@ -399,14 +394,75 @@ func unresolvedProseCitations(lines []string, skip []bool, resolver *recordid.Re
 				used[id] = true
 				continue
 			}
-			if escaped {
+			if pl.illustrative || pl.forwardLooking {
 				continue
 			}
-			out = append(out, ProseCitation{Line: i + 1, ID: id})
+			out = append(out, ProseCitation{Line: pl.line, ID: id})
 		}
 	}
 	return out
 }
+
+// proseLine is one line of prose the rule reads and that cites at least one
+// id: the ids it cites, each once, in order, and the markers it carries.
+type proseLine struct {
+	line int // 1-based
+	ids  []string
+	// illustrative and forwardLooking are the line escape as the gate reads it:
+	// the marker anywhere on the line.
+	illustrative, forwardLooking bool
+	// forwardMarker is a forward-looking marker outside every inline code span:
+	// a marker, not a sentence about the marker, which is what a report asking
+	// for the marker's removal must be about.
+	forwardMarker bool
+}
+
+// readProseLines is the one reading of a record's lines that the gate, the
+// writer's question and the release cut's audit share, so the three cannot
+// disagree about what a line cites or which marker it carries. Fenced lines,
+// the lines skip marks, and lines that cite no id are not returned.
+func readProseLines(lines []string, skip []bool) []proseLine {
+	mask := fenceMask(lines)
+	var out []proseLine
+	for i := 0; i < len(lines); i++ {
+		if mask[i] || (i < len(skip) && skip[i]) {
+			continue
+		}
+		line := lines[i]
+		pl := proseLine{line: i + 1}
+		seen := map[string]bool{}
+		for _, id := range proseCitedIDs(line) {
+			if seen[id] {
+				// A line naming one record twice cites it once.
+				continue
+			}
+			seen[id] = true
+			pl.ids = append(pl.ids, id)
+		}
+		if len(pl.ids) == 0 {
+			continue
+		}
+		for _, m := range proseEscapeRe.FindAllStringSubmatch(line, -1) {
+			switch strings.ToLower(m[1]) {
+			case "illustrative":
+				pl.illustrative = true
+			case "forward-looking":
+				pl.forwardLooking = true
+			}
+		}
+		for _, m := range proseEscapeRe.FindAllStringSubmatch(inlineCodeRe.ReplaceAllString(line, ""), -1) {
+			if strings.EqualFold(m[1], "forward-looking") {
+				pl.forwardMarker = true
+			}
+		}
+		out = append(out, pl)
+	}
+	return out
+}
+
+// inlineCodeRe matches an inline code span, the shape a sentence ABOUT the
+// marker writes it in (`<!-- record-lint: forward-looking -->`).
+var inlineCodeRe = regexp.MustCompile("`+[^`]*`+")
 
 // DefaultRecordLintConfigPath is the repository's record-lint configuration,
 // repo-relative: the one a writer consults to learn what the gate will refuse.
@@ -454,7 +510,18 @@ func UnresolvedProseCitationsInText(cfg Config, repoRoot, rel, text string) ([]P
 		return nil, err
 	}
 	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
-	return unresolvedProseCitations(lines, nil, resolver, baseline, map[string]bool{}), nil
+	cites := unresolvedProseCitations(lines, nil, resolver, baseline, map[string]bool{})
+	// A record in review is cited by id here as in the gate: the writer asks
+	// the gate's own pending question, so it neither refuses what the gate
+	// accepts nor pushes the author to reword a citation the gate would take.
+	pending := lookupPending(repoRoot, cites)
+	out := cites[:0]
+	for _, c := range cites {
+		if _, ok := pending.found[c.ID]; !ok {
+			out = append(out, c)
+		}
+	}
+	return out, nil
 }
 
 // underAnyStore reports whether the repo-relative path rel lies inside one of
@@ -493,7 +560,20 @@ func proseCitationMessage(id string) string {
 		"`<!-- record-lint: forward-looking -->` (a record not minted yet) on the same line. " +
 		"A placeholder written with a letter — itd-N, spc-<id> — is not a citation and needs no marker, " +
 		"but a slug does not stop an id being an id: itd-N-some-slug.md cites itd-N. " +
+		"A record still in review is cited by id too, never in words: an id naming a record on an open pull request's " +
+		"branch on origin is accepted as a pending reference, and the release cut refuses until that record lands. " +
 		"The baseline at " + DefaultProseBaselinePath + " carries the ids that predate this gate; it ratchets down, never up."
+}
+
+// pendingCitationMessage is the report for a citation the tree does not resolve
+// that names a record in review. It says where the record is, and where it must
+// have landed: the cut, not this change, is the gate (iss-2611031731385043).
+func pendingCitationMessage(rec PendingRecord) string {
+	return "prose cites " + rec.ID + ", which is not in this tree yet: it names " + rec.Path +
+		" on open pull request #" + strconv.Itoa(rec.PR) + " (" + rec.Branch + "), still in review. " +
+		"It is accepted as a pending reference and holds nothing up now; the release cut refuses while any " +
+		"reference names a record that has not reached main, so land that pull request, or correct the reference, " +
+		"before the next release. Keep the citation by id, never in words."
 }
 
 // proseCitedIDs returns the canonical ids a line cites, in order. A candidate is
@@ -699,4 +779,233 @@ func proseClassList() string {
 	}
 	sort.Strings(names)
 	return strings.Join(names, ", ")
+}
+
+// THE PENDING REFERENCE (iss-2611031731385043). A fourth way an id can fail to
+// resolve here and still be a true citation: its record is minted and in review,
+// on another open pull request's branch, and has not reached this tree. The
+// product thinker's ruling is that records are cited by id, never in words, so
+// a decision resting on a ruling still in review carries that ruling's id from
+// the start; and that a pending reference holds nothing up when it is written,
+// nor while its record is in review, because the release cut is the gate.
+//
+// So the gate asks, for the ids it would otherwise refuse, whether an open pull
+// request's branch on origin carries them (SetPendingLookup; the front doors
+// register internal/core/pendingref). An id one does is reported under its own
+// rule id, prose_citation_pending, at info, naming the pull request; the cut
+// (AuditReferences) refuses while any reference names a record not in the tree
+// being cut. The lookup is asked only for what the tree lacks, once per run, so
+// a corpus whose every citation resolves never touches the network; and an
+// answer it could not give leaves the refusal standing, with the reason.
+
+// ruleProseCitationPending is the report for a pending reference. It is its own
+// rule id for the reason ruleProseCitationBaselineStale is: a reader of the
+// output must never mistake an accepted reference for the gate's refusal.
+const ruleProseCitationPending = "prose_citation_pending"
+
+// PendingRecord is a record an open pull request's branch on origin carries and
+// the tree being linted does not.
+type PendingRecord struct {
+	ID     string
+	Path   string // repo-relative, on that branch
+	PR     int
+	Branch string
+}
+
+// PendingLookup answers which of ids name a record on an open pull request's
+// branch on origin, and, as unread, why some branches were not read (empty when
+// every one was). It is internal/core/pendingref.Lookup in this package's
+// vocabulary, registered by the front doors (cmd/record-lint, and the CLI for
+// `abcd lint` and every host-prose ingest) for the reason issueReadRefusal is:
+// the forge client lives in core/landing, which imports this package.
+type PendingLookup func(repoRoot string, ids []string) (found map[string]PendingRecord, unread string)
+
+// pendingLookup is the registered lookup, nil when no front door registered
+// one: every unresolved id is then refused, as it was before the lookup
+// existed, which is the safe direction.
+var pendingLookup PendingLookup
+
+// SetPendingLookup registers the pending-reference lookup the gate and the
+// writer's question ask. Pass an adapter over pendingref.Lookup.
+func SetPendingLookup(fn PendingLookup) { pendingLookup = fn }
+
+// pendingAnswer is one run's answer from the lookup.
+type pendingAnswer struct {
+	asked  bool
+	found  map[string]PendingRecord
+	unread string
+}
+
+// lookupPending asks the registered lookup, once, about the distinct ids of
+// cites; it asks nothing when there is nothing to ask or no lookup.
+func lookupPending(repoRoot string, cites []ProseCitation) pendingAnswer {
+	if pendingLookup == nil || len(cites) == 0 {
+		return pendingAnswer{}
+	}
+	seen := map[string]bool{}
+	var ids []string
+	for _, c := range cites {
+		if !seen[c.ID] {
+			seen[c.ID] = true
+			ids = append(ids, c.ID)
+		}
+	}
+	sort.Strings(ids)
+	found, unread := pendingLookup(repoRoot, ids)
+	return pendingAnswer{asked: true, found: found, unread: unread}
+}
+
+// refusalNote is what a refusal adds once the pending lookup was asked: that no
+// open pull request carries the id, or why the lookup could not say.
+func (p pendingAnswer) refusalNote() string {
+	switch {
+	case !p.asked:
+		return ""
+	case p.unread != "":
+		return " It could not be looked for as a pending reference, a record in review on an open pull request's branch: " +
+			p.unread + "."
+	}
+	return " No open pull request's branch on origin carries it either, so it is not a pending reference."
+}
+
+// UnlandedReference is a prose citation of a record the tree being cut does not
+// hold: an id that resolves nowhere in it, that the baseline does not carry and
+// whose line no illustrative marker excuses.
+type UnlandedReference struct {
+	// File is the citing record, repo-relative; Line is 1-based.
+	File string `json:"file"`
+	Line int    `json:"line"`
+	// ID is the cited record's id.
+	ID string `json:"id"`
+	// Marked is a citation whose line carries the forward-looking marker; an
+	// unmarked one is a pending reference record-lint accepted, or one it
+	// refused and the tree carries anyway.
+	Marked bool `json:"marked_forward_looking"`
+}
+
+// StaleMarker is a forward-looking marker whose every cited record is now in the
+// tree: the marker says something no longer true and is reported for removal.
+type StaleMarker struct {
+	File string   `json:"file"`
+	Line int      `json:"line"`
+	IDs  []string `json:"ids"`
+}
+
+// ReferenceAudit is the release cut's reading of the record's prose citations
+// (iss-2611031731385043).
+type ReferenceAudit struct {
+	// Unlanded is every citation of a record the tree being cut does not hold.
+	// Each one refuses the cut.
+	Unlanded []UnlandedReference `json:"unlanded,omitempty"`
+	// StaleMarkers is every forward-looking marker whose records all arrived,
+	// reported for removal and never refused on.
+	StaleMarkers []StaleMarker `json:"stale_markers,omitempty"`
+}
+
+// AuditReferences reads the record's prose citations for the release cut, under
+// the repository's own record-lint configuration: the files, the frontmatter
+// lines skipped, the resolver, the baseline and the markers exactly as
+// prose_citation_resolves reads them, and no pending lookup. At the cut a record
+// in review is not yet in the release, so a citation of it is UNLANDED, whether
+// record-lint accepted it as pending or its line carries the forward-looking
+// marker: no release ships a citation to a record that never landed. The fix is
+// to land that record or correct the reference.
+//
+// What the cut does not refuse on, and why. An illustrative marker says the
+// number is not a citation. A baseline entry is the record's own ruling on one
+// id, with its class and reason, and the baseline is the standing backlog that
+// drains by its own ratchet: a cut that refused on it would refuse every release
+// until a separate ruling was made, which is how a gate gets disabled rather
+// than satisfied (the same reasoning as changelog.GuardFindings' standing
+// backlog).
+//
+// It reads the working tree, as the gate does; the ingest's dirty-tree refusal
+// is what keeps that the tree being cut. A repository with no record-lint
+// configuration, or one that does not arm the rule, gates no citation, and the
+// audit is empty.
+func AuditReferences(repoRoot string) (ReferenceAudit, error) {
+	cfg, err := LoadConfig(filepath.Join(repoRoot, filepath.FromSlash(DefaultRecordLintConfigPath)))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return ReferenceAudit{}, nil
+		}
+		return ReferenceAudit{}, fmt.Errorf("reading %s: %w", DefaultRecordLintConfigPath, err)
+	}
+	rc, on := cfg.Rules[ruleProseCitationResolves]
+	if !on || !rc.Enabled {
+		return ReferenceAudit{}, nil
+	}
+	in, err := proseInputs(repoRoot, rc)
+	if err != nil {
+		return ReferenceAudit{}, err
+	}
+	var audit ReferenceAudit
+	for _, abs := range in.files {
+		rel, lines, skip, err := readProseRecord(repoRoot, abs)
+		if err != nil {
+			return ReferenceAudit{}, err
+		}
+		for _, pl := range readProseLines(lines, skip) {
+			resolved := true
+			for _, id := range pl.ids {
+				if in.resolver.Has(id) {
+					continue
+				}
+				resolved = false
+				if _, carried := in.baseline[id]; carried || pl.illustrative {
+					continue
+				}
+				audit.Unlanded = append(audit.Unlanded, UnlandedReference{File: rel, Line: pl.line, ID: id, Marked: pl.forwardLooking})
+			}
+			if resolved && pl.forwardMarker {
+				audit.StaleMarkers = append(audit.StaleMarkers, StaleMarker{File: rel, Line: pl.line, IDs: pl.ids})
+			}
+		}
+	}
+	return audit, nil
+}
+
+// proseRuleInputs is what one reading of the record's prose needs: the files
+// under the stores and extra roots, the resolver over this tree, and the
+// baseline, keyed by id.
+type proseRuleInputs struct {
+	files        []string
+	resolver     *recordid.Resolver
+	baseline     map[string]ProseBaselineEntry
+	baselinePath string
+}
+
+// proseInputs gathers them under rc, failing closed as the gate does: no stores
+// configured, or stores that hold no record files, would be a reading that
+// looked at nothing and reported clean.
+func proseInputs(repoRoot string, rc RuleConfig) (proseRuleInputs, error) {
+	if len(rc.RecordStores) == 0 {
+		return proseRuleInputs{}, &configError{ruleProseCitationResolves +
+			": no record_stores configured; the rule would read no prose and report clean"}
+	}
+	files, err := proseRecordFiles(repoRoot, rc.RecordStores)
+	if err != nil {
+		return proseRuleInputs{}, err
+	}
+	if len(files) == 0 {
+		return proseRuleInputs{}, &configError{ruleProseCitationResolves +
+			": the configured record stores hold no record files; the gate would pass by not looking"}
+	}
+	extra, err := proseExtraRootFiles(repoRoot, rc.ExtraRoots)
+	if err != nil {
+		return proseRuleInputs{}, err
+	}
+	resolver, err := recordid.NewResolver(repoRoot)
+	if err != nil {
+		return proseRuleInputs{}, &configError{ruleProseCitationResolves + ": " + err.Error()}
+	}
+	baselinePath := rc.Baseline
+	if baselinePath == "" {
+		baselinePath = DefaultProseBaselinePath
+	}
+	baseline, err := loadProseBaseline(repoRoot, baselinePath)
+	if err != nil {
+		return proseRuleInputs{}, err
+	}
+	return proseRuleInputs{files: mergeFileLists(files, extra), resolver: resolver, baseline: baseline, baselinePath: baselinePath}, nil
 }

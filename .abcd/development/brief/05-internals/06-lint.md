@@ -24,6 +24,17 @@ The rule reads a record's free text, which is wider than its body and narrower t
 
 The committed baseline `.abcd/prose-citations-baseline.json` carries the ids that predate the rule, one entry per id with a class and a note, and it ratchets down: an entry whose id resolves or that nothing cites any more is reported as spent (`prose_citation_baseline_stale`, `info`). An entry is a GLOBAL licence for its id, so a mention that can carry a line marker takes the marker instead.
 
+### 1.2 A record still in review is cited by id
+
+A record is cited by id, never in words, even when the record it cites is still in review: a decision written in one change often rests on a ruling recorded in another change not yet merged, and naming that ruling in a sentence instead drops the trace (iss-2611031731385043). So before the rule refuses an id this tree does not resolve, it asks whether an open pull request's branch on origin carries a record of that id. One that does is a **pending reference**, reported under its own rule id (`prose_citation_pending`, `info`) with the pull request, the branch and the record's path, and never refused: a pending reference holds nothing up when it is written, nor while its record is in review. The release cut is the gate (see the launch chapter's `unlanded-reference` refusal), so no marker is needed and none should be added.
+
+- **How it asks.** `internal/core/pendingref` lists the open pull requests once per run, through the forge's REST pulls listing (`gh api`, which every forge token reads, where a proxy may refuse GraphQL), and reads the record stores in each head that is a branch of this repository (a fork's is not on origin) from the objects this clone already holds, by the resolver's own derivation (`recordid.NewResolverFromPaths`). It never fetches, so a lint has no side effect on the clone; CI's full-history checkout holds every branch, and its record-lint step carries the job's read-only token (`pull-requests: read`).
+- **When it asks.** Only for the ids the tree does not resolve, the baseline does not carry and no marker excuses, all of them in one listing. A corpus whose every citation resolves never touches the network.
+- **When it cannot answer.** No forge client, a forge that refuses or does not answer, a head this clone has not fetched, or a listing at its two-page limit: each is said in the refusal, which stands. An unread forge never turns a citation of nothing into an accepted one.
+- **Who asks.** `cmd/record-lint` registers the lookup (`lint.SetPendingLookup`), and a writer that asks before it writes host prose into a record (`lint.UnresolvedProseCitationsInText`) gets the same answer, so it neither refuses what the gate accepts nor pushes the author to reword. A front door that registers nothing refuses every unresolved id, as before.
+
+The forward-looking marker keeps its first meaning, a record not minted yet, and the cut reports every marker whose records have all reached the tree for removal (`stale_markers`), so the next reader can tell a pending citation from a dead one.
+
 ## 2. Severity model
 
 Three severities, resolved per rule:

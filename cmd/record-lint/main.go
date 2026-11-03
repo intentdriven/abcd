@@ -15,6 +15,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/docfidelity"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/lint"
+	"github.com/intentdriven/abcd/internal/core/pendingref"
 	"github.com/intentdriven/abcd/internal/core/site"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -25,12 +26,16 @@ import (
 // refuses and skips, and the bodies the site render refuses; and the intent
 // package's supersession chain reader, so stale_edge follows a chain the way
 // the build's blocked check does; and the doc-fidelity flags reader, so
-// brief_flag_landed reads the review flags through the package that writes them.
+// brief_flag_landed reads the review flags through the package that writes them;
+// and the pending-reference lookup, so prose_citation_resolves reports an id
+// naming a record on an open pull request's branch on origin as pending rather
+// than refusing it (iss-2611031731385043).
 func init() {
 	lint.SetIssueReader(capture.ReadRefusal)
 	lint.SetRecordBodyCheck(site.CheckRecordBody)
 	lint.SetSupersessionChain(intent.SupersessionChainOf)
 	lint.SetBriefFlagCheck(docfidelity.UnlandedFlags)
+	lint.SetPendingLookup(pendingref.ForLint)
 }
 
 func main() {
