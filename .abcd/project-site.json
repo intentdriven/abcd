@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "mode": "project",
+  "purpose": "This repository's project-site settings, written by `abcd site setup`. The site renders only what abcd already writes to the repository (the identity block, the brief, the development record and CHANGELOG.md), so this file holds settings and no content: `hosting` names where the site is published, and `hosting.publish` is the switch.",
+  "hosting": {
+    "provider": "github-pages",
+    "name": "abcd",
+    "publish": true
+  },
+  "record": {
+    "issue_ledger": true,
+    "decisions": true
+  }
+}

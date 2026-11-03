@@ -308,7 +308,7 @@ func publishedWord(on bool) string {
 // terminal or --replace-existing answers.
 func newSiteSetupCommand(asJSON *bool) *cobra.Command {
 	var name, domain, provider string
-	var confirm, yes, replaceExisting bool
+	var confirm, yes, replaceExisting, project bool
 	cmd := &cobra.Command{
 		Use:  "setup",
 		Args: cobra.NoArgs,
@@ -330,7 +330,7 @@ func newSiteSetupCommand(asJSON *bool) *cobra.Command {
 			}
 			res, err := site.Setup(site.SetupRequest{
 				RepoRoot: cwd, Name: name, Domain: domain, Provider: provider, Confirm: confirm, Asker: asker,
-				Unattended: yes, ReplaceExisting: replaceExisting,
+				Unattended: yes, ReplaceExisting: replaceExisting, Project: project,
 				ConfirmTool: confirmTool, Context: cmd.Context(),
 			})
 			if err != nil {
@@ -360,6 +360,8 @@ func newSiteSetupCommand(asJSON *bool) *cobra.Command {
 		"nor publishing over a site already live, which takes --replace-existing); without it an unanswered run declines them")
 	cmd.Flags().BoolVar(&replaceExisting, "replace-existing", false, "publish over a site the host already serves for this repository without asking; "+
 		"with --yes and no --replace-existing, setup refuses when such a site exists")
+	cmd.Flags().BoolVar(&project, "project", false, "set up a project site; where .abcd/site.json is a composition, its settings and workflow go beside it, in "+
+		site.ProjectSettingsRelPath+" and "+site.ProjectWorkflowRelPath+", and the composed site is left as it is")
 	return cmd
 }
 

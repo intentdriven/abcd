@@ -50,6 +50,7 @@ A failure at any step leaves the record where it was.
 2. abcd's repository switches its record on to the project route, and its README and docs link the record at the Pages address
    - packages: .abcd/, .github/workflows, docs/
    - tests: internal/core/site, internal/surface/cli
+   - landed: 8e75517b7a81
 3. abcdev.app's deploy narrows to the documentation and forwards the record's addresses, with the decision record amending adr-48
    - packages: internal/core/site, site-src, .github/workflows, docs/
    - tests: internal/core/site
