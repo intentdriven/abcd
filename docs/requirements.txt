@@ -3,4 +3,4 @@
 # …) resolve from PyPI at build time and are not frozen here, so two builds of the
 # same commit are not guaranteed byte-identical. Pin the full transitive set
 # (pip-compile --generate-hashes) if reproducible builds are needed.
-mkdocs-material==9.7.7
+mkdocs-material==9.8.0
