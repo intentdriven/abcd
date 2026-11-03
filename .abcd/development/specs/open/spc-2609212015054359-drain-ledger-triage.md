@@ -105,6 +105,7 @@ ADR is minted in the first delivery and reviewed with the diff.
    - packages: internal/core/implement/loop
    - tests: a landed pull request left unqueued at CLEAN is enqueued, and one dropped after a failed merge-group check is reported with the failed check
    - needs: none
+   - landed: 2b96ec1cca1d
 6. The decision-record marker on the issue (decision 10)
    - packages: internal/core/issueschema, internal/core/capture, internal/core/implement
    - tests: a trust-rule hand-back writes a `decision_needed:` field holding its question onto the open issue and changes nothing else in the record; the dry run and the next drain pass a marked issue over with the marker as its reason; invariant 19 and the drain page name the marker
