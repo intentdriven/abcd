@@ -152,11 +152,6 @@ func LookupWith(ctx context.Context, forge Forge, git Git, repoRoot string, ids 
 		ans.Unread = unread
 		return ans
 	}
-	var notes []string
-	if len(prs) >= pageSize*maxPages {
-		notes = append(notes, fmt.Sprintf("the forge listed %d open pull requests, the most this lookup reads, so a record on one it left out is not seen", len(prs)))
-	}
-
 	var missing []string
 	for _, pr := range prs {
 		if len(ans.Found) == len(want) {
@@ -197,10 +192,18 @@ func LookupWith(ctx context.Context, forge Forge, git Git, repoRoot string, ids 
 			ans.Found[id] = Record{ID: id, Path: p, PR: pr.Number, Branch: pr.Head.Ref}
 		}
 	}
-	if len(missing) > 0 && len(ans.Found) < len(want) {
-		notes = append(notes, "open pull request "+strings.Join(missing, "; open pull request "))
+	// What was not read matters only for an id still not found: an answer
+	// that found every id is complete, however much else went unread.
+	if len(ans.Found) < len(want) {
+		var notes []string
+		if len(prs) >= pageSize*maxPages {
+			notes = append(notes, fmt.Sprintf("the forge listed %d open pull requests, the most this lookup reads, so a record on one it left out is not seen", len(prs)))
+		}
+		if len(missing) > 0 {
+			notes = append(notes, "open pull request "+strings.Join(missing, "; open pull request "))
+		}
+		ans.Unread = strings.Join(notes, "; ")
 	}
-	ans.Unread = strings.Join(notes, "; ")
 	return ans
 }
 

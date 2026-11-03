@@ -183,3 +183,21 @@ func TestLookupSaysWhyTheForgeWasNotRead(t *testing.T) {
 		})
 	}
 }
+
+// TestLookupSaysWhenTheListingMayHaveLeftSomeOut: two full pages are the most
+// the lookup reads, so an id it did not find may be on a pull request it never
+// listed, and Unread says so rather than reading as a complete answer.
+func TestLookupSaysWhenTheListingMayHaveLeftSomeOut(t *testing.T) {
+	var page []pullRequest
+	for i := range pageSize {
+		page = append(page, pr(i+1, "fork-branch", strings.Repeat("cd", 20), true))
+	}
+	calls := 0
+	ans := LookupWith(context.Background(), fakeForge(t, page, &calls), gitutil.RunCapped, t.TempDir(), []string{"dcn-2611031615094092"})
+	if calls != maxPages {
+		t.Errorf("the forge was asked %d times, want %d pages", calls, maxPages)
+	}
+	if !strings.Contains(ans.Unread, "listed 200 open pull requests") {
+		t.Errorf("Unread = %q, want it to say the listing may have left some out", ans.Unread)
+	}
+}
