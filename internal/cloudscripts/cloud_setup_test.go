@@ -136,6 +136,12 @@ chmod +x gitleaks`)
 	c.fake("install", `echo "install $*" >>"$CALLS"
 cat "$1" >"$BIN_DIR/gitleaks"
 chmod +x "$BIN_DIR/gitleaks"`)
+	// No gitleaks until the setup installs one: the machine's own, which a
+	// cloud session's setup put in place, would otherwise answer first on
+	// PATH and the setup would find the pin already installed. install
+	// writes over this file, so a second run finds its gitleaks in place.
+	c.fake("gitleaks", `echo "gitleaks: command not found" >&2
+exit 127`)
 	c.fake("go", `echo "go $*" >>"$CALLS"
 case "$*" in
 "env GOVERSION") echo go0.0.0 ;;
