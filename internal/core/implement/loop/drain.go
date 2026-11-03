@@ -123,7 +123,9 @@ const (
 	// nothing else is written.
 	RoutePromoted = "promoted"
 	// RouteDecisionRecord: a rule about trust or safety, flagged as needing a
-	// decision record with the question stated; nothing is minted.
+	// decision record with the question stated, in the summary and as the
+	// `decision_needed:` marker on the open issue (itd-82 decision 10), which
+	// is the only write; nothing is minted.
 	RouteDecisionRecord = "decision-record"
 	// RouteRule: above the rule's severity, outside its categories, or held
 	// by another of its rules; flagged naming the rule.
@@ -1355,7 +1357,10 @@ func drainCounts(repoRoot string, st DrainState, flags []DrainRoute, passed []Ex
 // (decision 8: the classification is re-derived every run). An issue the
 // drain itself promoted, among routed, reads as promoted on every move after,
 // and that is the drain's own hand-back, counted once among routed's
-// promotions; it is not flagged as the rule's as well. A flag says which it
+// promotions; it is not flagged as the rule's as well. So, alike, is an issue
+// the drain marked decision_needed: on its own trust-rule hand-back, which
+// reads as decision-needed on every move after and is counted once among
+// routed's decision records (spc-2609212015054359 step 6). A flag says which it
 // is by its fields: `from` is "field" and `route` is "rule", with the rule in
 // `rule`, where a promotion the drain routed has `route` "promoted" and its
 // draft.
@@ -1370,6 +1375,11 @@ func fieldFlags(plan capture.DrainPlan, routed []DrainRoute) []DrainRoute {
 		}) {
 			continue
 		}
+		if v.Rule == capture.RuleDecisionNeeded && slices.ContainsFunc(routed, func(r DrainRoute) bool {
+			return r.Route == RouteDecisionRecord && r.Issue == v.ID
+		}) {
+			continue
+		}
 		out = append(out, DrainRoute{Issue: v.ID, From: "field", Kind: string(v.Rule), Route: RouteRule, Rule: string(v.Rule),
 			Reason: v.Reason, Wrote: "nothing: a flag in this summary"})
 	}
@@ -1379,13 +1389,16 @@ func fieldFlags(plan capture.DrainPlan, routed []DrainRoute) []DrainRoute {
 // routeHandBack routes a hand-back by its kind (scope 5), from a lane or from
 // the host judgement before one opened, and makes the one record change a
 // route makes: a user moment is promoted to an intent draft (`capture
-// promote`, which stamps the issue's related_intents and nothing else); every
-// other kind is a flag and writes nothing. A promotion a killed call already
-// made is found, not made twice.
+// promote`, which stamps the issue's related_intents and nothing else); a
+// trust rule is flagged and marked, `decision_needed:` holding its question
+// written onto the open issue and nothing else (markDecisionNeeded); every
+// other kind is a flag and writes nothing. A promotion or a marker a killed
+// call already made is found, not made twice.
 //
-// A move planned from origin (origin not nil) promotes only an issue this
-// checkout holds as origin's default branch does: one absent here, or held
-// here as another record, is not promoted here, and the route says why. The
+// A move planned from origin (origin not nil) promotes or marks only an issue
+// this checkout holds as origin's default branch does: one absent here, or
+// held here as another record, is not promoted or marked here, and the route
+// says why. The
 // hand-back is still published on origin by the release that follows
 // (spc-2610161044461448 step 3), so a person whose checkout holds the record
 // promotes it.
@@ -1425,6 +1438,11 @@ func routeHandBack(repoRoot, issue, from string, hb HandBack, origin *DrainOrigi
 		r.Wrote = "intent draft " + r.Draft + ", and " + issue + "'s related_intents names it"
 	case HandBackTrustRule:
 		r.Route, r.Question = RouteDecisionRecord, hb.Reason
+		wrote, err := markDecisionNeeded(repoRoot, issue, from, hb.Reason, origin)
+		if err != nil {
+			return DrainRoute{}, err
+		}
+		r.Wrote = wrote
 	case HandBackDesignFinding, HandBackSecondPackage:
 		r.Route, r.Home = RouteHome, hb.Home
 	case HandBackStuck, HandBackClosed:
@@ -1439,6 +1457,40 @@ func routeHandBack(repoRoot, issue, from string, hb HandBack, origin *DrainOrigi
 		r.Reason = handBackSummary(issue, hb)
 	}
 	return r, nil
+}
+
+// markDecisionNeeded writes the decision-record marker a trust-rule
+// hand-back leaves on the open issue (itd-82 decision 10;
+// spc-2609212015054359 step 6): `decision_needed:` holding the question, and
+// nothing else in the record changed; no decision record is minted. It
+// returns the route's Wrote. A marker a killed call already wrote is found,
+// not written twice. A move planned from origin marks only an issue this
+// checkout holds as origin's default branch does, as a promotion is made
+// only there; the hand-back is still flagged in the summary and published on
+// origin, and the route says why the marker is not written here.
+func markDecisionNeeded(repoRoot, issue, from, question string, origin *DrainOrigin) (string, error) {
+	written := "decision_needed: on " + issue + "'s open record, holding the question; no decision record is minted"
+	if held, err := capture.DecisionNeededHolds(repoRoot, issue, question); err == nil && held {
+		return written, nil
+	}
+	why, err := notHeldAsOrigin(repoRoot, issue, origin)
+	if err != nil {
+		return "", err
+	}
+	if why != "" {
+		return "nothing here: " + why + ", so the decision_needed: marker is not written here; a flag in this summary", nil
+	}
+	_, err = capture.MarkDecisionNeeded(capture.DecisionNeededRequest{RepoRoot: repoRoot, ID: issue, Question: question})
+	switch {
+	case errors.Is(err, capture.ErrUnknownIssueID) || errors.Is(err, capture.ErrTransitionConflict):
+		// Resolved, won't-fixed or gone here since the move planned: there
+		// is no open issue to mark, and the flag in the summary stands.
+		return "nothing: " + issue + " is no longer open in this checkout, so the decision_needed: marker is not written; a flag in this summary", nil
+	case err != nil:
+		return "", refuse(StageDrain, "", "", "writing the decision_needed: marker onto "+issue+" refused routing its "+from+"'s hand-back: "+fsutil.RedactHome(err.Error()),
+			"settle what the capture store names, then run `abcd drain` again; the hand-back is routed then")
+	}
+	return written, nil
 }
 
 // promotedDraft is the draft an already-promoted issue names.

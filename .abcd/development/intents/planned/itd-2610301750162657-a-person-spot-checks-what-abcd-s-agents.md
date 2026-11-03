@@ -25,7 +25,7 @@ _The product thinker's accepted text (2026-10-30, planning interview), replacing
 ## Why This Matters
 
 Typed links: `builds_on`
-[itd-82](itd-82-drain-ledger-triage.md) (the drain, whose taken
+[itd-82](../shipped/itd-82-drain-ledger-triage.md) (the drain, whose taken
 work is sampled and whose written rule,
 [adr-2609291342092738](../../decisions/adrs/2609291342092738-a-drain-takes-an-issue-alone-only-when.md),
 is what a finding about it amends) and
