@@ -76,7 +76,7 @@ func buildWorld(t *testing.T, format string) *world {
 // built, copied before its test touched it. Every world starts from the same
 // seeded history, and building one with git cost about seventeen processes,
 // near a tenth of what a typical test in this package spawns; a copy costs
-// none. Each copy is still a test's own seed and origin, in its own temporary
+// one, the git that points its seed at its own origin. Each copy is still a test's own seed and origin, in its own temporary
 // directories, its seed's origin naming its own bare repository. TestMain
 // removes the templates when the tests end.
 var worldTemplates struct {
@@ -85,10 +85,9 @@ var worldTemplates struct {
 	byFormat map[string]worldTemplate
 }
 
-// worldTemplate is one kept world: the seed's and the origin's copies, and the
-// origin path the seed's config named when it was built.
+// worldTemplate is one kept world: the seed's and the origin's copies.
 type worldTemplate struct {
-	seed, bare, url string
+	seed, bare string
 }
 
 // keepWorldTemplate copies w, just built, into the format's template.
@@ -102,7 +101,7 @@ func keepWorldTemplate(t *testing.T, format string, w *world) {
 		worldTemplates.root = dir
 	}
 	dir := filepath.Join(worldTemplates.root, "format-"+format)
-	tpl := worldTemplate{seed: filepath.Join(dir, "seed"), bare: filepath.Join(dir, "origin.git"), url: w.bare}
+	tpl := worldTemplate{seed: filepath.Join(dir, "seed"), bare: filepath.Join(dir, "origin.git")}
 	copyTree(t, w.seed.Root(), tpl.seed)
 	copyTree(t, w.bare, tpl.bare)
 	if worldTemplates.byFormat == nil {
@@ -119,19 +118,11 @@ func (tpl worldTemplate) copyFor(t *testing.T) *world {
 	copyTree(t, tpl.seed, seedDir)
 	bare := filepath.Join(t.TempDir(), "origin.git")
 	copyTree(t, tpl.bare, bare)
-	config := filepath.Join(seedDir, ".git", "config")
-	data, err := os.ReadFile(config)
-	if err != nil {
-		t.Fatal(err)
-	}
-	line := "\turl = " + tpl.url + "\n"
-	if strings.Count(string(data), line) != 1 {
-		t.Fatalf("the template seed's config does not name its origin once as %q:\n%s", line, data)
-	}
-	if err := os.WriteFile(config, []byte(strings.Replace(string(data), line, "\turl = "+bare+"\n", 1)), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	return &world{t: t, seed: gittest.OpenRepo(t, seedDir), bare: bare, now: t0}
+	// git writes the new origin itself, so a path it must quote (a '#' from a
+	// subtest's generated name, a space) is quoted as buildWorld's was.
+	seed := gittest.OpenRepo(t, seedDir)
+	seed.Git("remote", "set-url", "origin", bare)
+	return &world{t: t, seed: seed, bare: bare, now: t0}
 }
 
 // copyTree copies the directory src into dst, creating dst if need be.
@@ -762,4 +753,22 @@ func TestARejectedPushOverATakeableTipIsReportedAsItself(t *testing.T) {
 	if !strings.Contains(w.remoteMessage(w.remoteTip("iss-5")), "abcd reservation released: iss-5") {
 		t.Fatalf("origin's tip is not P's tombstone")
 	}
+}
+
+// TestACopiedWorldNamesItsOwnOriginThroughAPathGitQuotes: a world copied from
+// the template points its seed at its own origin even where that path holds a
+// '#', which git's config must quote (a subtest's generated name carries one),
+// and the seed can still reach it.
+func TestACopiedWorldNamesItsOwnOriginThroughAPathGitQuotes(t *testing.T) {
+	newWorld(t) // the format's template exists before the copy below
+	t.Run("a#name", func(t *testing.T) {
+		w := newWorld(t)
+		if !strings.Contains(w.bare, "#") {
+			t.Fatalf("the subtest's origin path carries no '#': %s", w.bare)
+		}
+		if got := strings.TrimSpace(w.seed.Git("remote", "get-url", "origin")); got != w.bare {
+			t.Fatalf("the copied seed's origin is %q, want %q", got, w.bare)
+		}
+		w.seed.Git("fetch", "-q", "origin")
+	})
 }
