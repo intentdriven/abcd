@@ -79,6 +79,7 @@ step 6; gate receipts untouched — step 7; Harbor/Inspect mapping — step 1.
    - packages: internal/core/matrix, internal/core/lab
    - tests: the matrix declaration parses and refuses unknown keys; the run record names commit, binary digest, hashes, template, machine, concurrency and cap; the trial record maps onto a Harbor trial result and an Inspect sample fixture
    - waits on: itd-166 (the asked and served sides)
+   - landed: 68079f06d8e3
 2. Plan, cost and consent
    - packages: internal/core/matrix, internal/surface/cli, commands
    - tests: the plan shows copies, cost by source against the cap, load cap, time and judges; nothing starts without consent; a metered run without a named cap is refused; a local- or host-only run needs no cap; a matrix refusal printed by the front door carries a control or direction character escaped, never raw; a scanner kind naming a repository's own rule id is printed sanitised; the role echoed in a pin refusal is quoted
@@ -92,6 +93,7 @@ step 6; gate receipts untouched — step 7; Harbor/Inspect mapping — step 1.
    - The plan's cost and time follow decisions 34-36: no copy starts past the
      cap's remainder, the time waits for the pilot, and the expected cost
      comes only from prices the person declares.
+   - landed: 845220bb3b14
 3. Trial mode, isolated clones and routing
    - packages: internal/core/implement/loop, internal/core/runner, internal/core/launch, internal/core/matrix
    - tests: trial mode takes no reservation and lands nothing; a runner failure in a cell is the cell's failure with no host fallback; an OpenRouter outage is retried on the same pin and not scored; each copy is a clone outside every working tree with no local tier; a provider-bound clone passes the secret scan or is refused; one local server at a time as an owned process group

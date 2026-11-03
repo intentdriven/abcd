@@ -163,6 +163,7 @@ An entry in the store lane that is neither a worktree nor a directory failing th
    - criteria: 1, 3, 5, 6, 7, 11
    - packages: internal/core/sweep/sweep.go, internal/core/sweep/rows.go, internal/core/sweep/liveness.go
    - tests: the dry run lists every kind and writes nothing; each keep reason (dirty, unmerged, locked naming its owner, live by each proof, the recent hint, the embargo store, a stray, unclassifiable); a worktree whose tip is the default branch with a live working directory kept; the probe missing, timing out or unreadable leaving the worktree as possibly live and saying so; exit codes. Waits on the store's list and merged judgement (itd-2609091014076309 steps 1 and 3).
+   - landed: 5ce7c0e882e8
 2. Worktree apply through the store's prune, and patch salvage
    - criteria: 2, 4
    - packages: internal/core/sweep/salvage.go, internal/core/sweep/sweep.go

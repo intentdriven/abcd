@@ -72,10 +72,12 @@ intent-auditor's fan-out.
    - packages: internal/core/implement/loop, internal/core/layered, internal/surface/cli, commands
    - tests: the bundled default resolves to two reviewers per role (middle, below); a repository list above the machine's ceiling is clamped with one stderr line naming both files; a repository class map is skipped with a warning; an unknown class and an uncalibrated judge are each refused at the `review` stage with nothing written; a running run keeps the set it started with; the payload names each value's layer
    - needs: none
+   - landed: a7ab8927bf0b
 2. A runner takes a model per request
    - packages: internal/core/runner
    - tests: a request's model is admitted against the provider allowlist and refused off it before the runner starts; the claude and opencode runners pass the request's model and record it as asked beside the model reported; a request without one keeps the route's model
    - needs: none
+   - landed: 9163555347f5
 3. Rounds keyed by reviewer, and the stricter verdict across them
    - packages: internal/core/implement/loop, commands
    - tests: two reviewers of one role get distinct round paths, briefs differing only in the return path, and receipts matched by index; an older run state migrates its reviewer to index 0 or is refused by version; both reviewers are handed out within the sub-agent ceiling; a host-run reviewer's model is recorded as asked, not confirmed; pass against fail is a disagreement, two failing verdicts are not, and any failing reviewer fails the round
