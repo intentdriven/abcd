@@ -519,7 +519,10 @@ naming both models or the pin, and nothing falls back. Each reviewer's record
 in the round carries its `reviewer`, `class`, `model` and, once its verdict is
 in, `model_status`: `reported` when the runner that ran it reported a model
 (beside it on its `route`), `asked` when only the asking is known, as for every
-reviewer the host runs, whose model nothing confirms. Once all of a role's
+reviewer the host runs, whose model nothing confirms, and `unsent` when the
+reviewer route (`oracle.review` set to the RP route) answered it: that route's
+request carries no model, so the class's model was never asked of what ran,
+and both reviewers of a role are sent the same request. Once all of a role's
 reviewers have returned, the round's `comparisons` records how they compared:
 `disagree` when one verdict passes and another fails, `agree` otherwise (two
 failing verdicts, `BLOCK` and `NEEDS-INPUT`, agree), and `none` when the role

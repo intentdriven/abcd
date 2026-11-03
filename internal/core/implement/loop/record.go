@@ -158,8 +158,9 @@ type RecordVerdict struct {
 	// Reviewer, Class, Model and ModelStatus are a review set's reviewer
 	// (reviewers.go): its index among its role's reviewers, the class it was
 	// asked for, the model the class resolved to, and whether that model was
-	// only asked for or its runner reported one (beside it on Route); absent
-	// for a validator no review set asked for a class.
+	// only asked for, its runner reported one (beside it on Route), or the
+	// reviewer route answered, which is sent no model (unsent); absent for a
+	// validator no review set asked for a class.
 	Reviewer    int    `json:"reviewer,omitempty"`
 	Class       string `json:"class,omitempty"`
 	Model       string `json:"model,omitempty"`

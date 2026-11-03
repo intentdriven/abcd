@@ -29,12 +29,17 @@ package loop
 // A host-run reviewer is asked for its class and model and never confirms it,
 // so its record says the model was asked (ModelAsked); one a runner ran and
 // that reported its model says so (ModelReported), with the reported model on
-// its route beside the one asked for.
+// its route beside the one asked for. One the reviewer route (oracle.review's
+// RP route) answered was never asked for its class's model at all, since that
+// route's request carries none, and its record says so (ModelUnsent).
 
 import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/core/oracle"
+	"github.com/intentdriven/abcd/internal/core/runner"
 )
 
 // roundReviewers are the validators a round hands role to, in reviewer
@@ -90,23 +95,38 @@ func reviewerPhrase(index int, class, model string) string {
 func (v ValidatorRun) phrase() string { return reviewerPhrase(v.Reviewer, v.Class, v.Model) }
 
 // recordModelStatus records, on a review set's reviewer whose verdict the
-// loop has just recorded, how far its model is known: reported when the
-// runner that ran it reported a model, else asked, as for every host-run
-// reviewer.
+// loop has just recorded, how far its model is known: unsent when the
+// reviewer route answered it (its route record names that route as the one
+// that ran), since that route's request carries no model and the class's
+// model was never asked of it; reported when the runner that ran it reported
+// a model; else asked, as for every host-run reviewer.
 func (v *ValidatorRun) recordModelStatus(reported string) {
 	if v.Class == "" {
 		return
 	}
-	v.ModelStatus = ModelAsked
-	if reported != "" {
+	switch {
+	case answeredByReviewRoute(v.Route):
+		v.ModelStatus = ModelUnsent
+	case reported != "":
 		v.ModelStatus = ModelReported
+	default:
+		v.ModelStatus = ModelAsked
 	}
+}
+
+// answeredByReviewRoute reports whether a validator's route record names the
+// reviewer route (oracle.review's RP route) as the one that ran it.
+func answeredByReviewRoute(r *runner.RouteRecord) bool {
+	return r != nil && r.Ran == oracle.ReviewRP
 }
 
 // modelStatusPhrase is the record's words for a reviewer's model status.
 func modelStatusPhrase(status string) string {
-	if status == ModelReported {
+	switch status {
+	case ModelReported:
 		return "the model its runner reported recorded beside it"
+	case ModelUnsent:
+		return "the reviewer route answered it, and that route is sent no model, so the class's model was never asked for"
 	}
 	return "the model asked for, not confirmed"
 }
@@ -186,17 +206,28 @@ func (s State) keyed() string {
 }
 
 // reviewersWritten reports whether every reviewer a state carries is one the
-// loop writes: an index below the most reviewers a role runs, a class the map
-// names on one of the review set's roles with a <provider>/<model> route, a
-// model status the verifier writes, an await's reviewer likewise, and each
-// comparison one of the outcomes over one or two reviewers. A validator with
-// no class carries no index and no model.
+// loop writes: on one of the review set's roles, at an index among the
+// reviewers the run's stored review set names for that role, with exactly
+// the class and model the set names at that index (the set is fixed when the
+// run starts and every round's reviewers are cut from it, roundReviewers); a
+// model status the verifier writes, unsent only where the reviewer route
+// answered; an await's reviewer likewise; and each comparison one of the
+// outcomes over one or two reviewers. A validator with no class carries no
+// index and no model.
 func (s State) reviewersWritten() bool {
 	reviewer := func(role string, index int, class, model string) bool {
 		if class == "" {
 			return index == 0 && model == ""
 		}
-		return slices.Contains(reviewRoles, role) && index >= 0 && index < maxReviewers &&
+		if s.Review == nil || !slices.Contains(reviewRoles, role) || index < 0 || index >= maxReviewers {
+			return false
+		}
+		set, ok := s.Review.Role(role)
+		if !ok || index >= len(set.Reviewers) {
+			return false
+		}
+		want := set.Reviewers[index]
+		return class == want.Class && model == want.Model &&
 			slices.Contains(Classes, class) && validRoute(model)
 	}
 	for _, l := range s.Lanes {
@@ -219,7 +250,11 @@ func (s State) reviewersWritten() bool {
 				switch v.ModelStatus {
 				case "":
 				case ModelAsked, ModelReported:
-					if v.Class == "" {
+					if v.Class == "" || answeredByReviewRoute(v.Route) {
+						return false
+					}
+				case ModelUnsent:
+					if v.Class == "" || !answeredByReviewRoute(v.Route) {
 						return false
 					}
 				default:

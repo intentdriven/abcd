@@ -429,13 +429,28 @@ func TestAStoredReviewerTheLoopNeverWritesIsRefused(t *testing.T) {
 	stepAwait(t, repo, id, stages, Options{})
 	path := filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(id)))
 	orig := stateBytes(t, repo.Root(), id)
-	model := BundledClasses[ClassMiddle]
+	middle, below := BundledClasses[ClassMiddle], BundledClasses[ClassBelow]
+	// Each edit is made to the last occurrence, a reviewer on the lane: the
+	// run's review set is written before its lanes, and an edit to the set
+	// is the set's own refusal, not the reviewer's.
 	for name, edit := range map[string]func(string) string{
-		"a class the map does not name": func(s string) string { return strings.Replace(s, `"class": "below"`, `"class": "huge"`, 1) },
-		"a model that is no route":      func(s string) string { return strings.Replace(s, `"model": "`+model+`"`, `"model": "no-slash"`, 1) },
-		"an index past the ceiling":     func(s string) string { return strings.Replace(s, `"reviewer": 1`, `"reviewer": 7`, 1) },
+		"a class the map does not name": func(s string) string { return replaceLast(s, `"class": "below"`, `"class": "huge"`) },
+		"a model that is no route":      func(s string) string { return replaceLast(s, `"model": "`+middle+`"`, `"model": "no-slash"`) },
+		"an index past the ceiling":     func(s string) string { return replaceLast(s, `"reviewer": 1`, `"reviewer": 7`) },
 		"a model status it never writes": func(s string) string {
-			return strings.Replace(s, `"class": "below"`, `"class": "below", "model_status": "confirmed"`, 1)
+			return replaceLast(s, `"class": "below"`, `"class": "below", "model_status": "confirmed"`)
+		},
+		// The run's review set holds below at the bundled model; an
+		// admitted-looking route of another provider is not the model the
+		// run resolved for the class, and never reaches a runner's request.
+		"a model other than its class's in the run's set": func(s string) string {
+			return replaceLast(s, `"model": "`+below+`"`, `"model": "openai/gpt-other"`)
+		},
+		"a class other than the set names at its index": func(s string) string {
+			return replaceLast(s, `"class": "below"`, `"class": "middle"`)
+		},
+		"unsent on a reviewer no route answered": func(s string) string {
+			return replaceLast(s, `"class": "below"`, `"class": "below", "model_status": "unsent"`)
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -446,11 +461,22 @@ func TestAStoredReviewerTheLoopNeverWritesIsRefused(t *testing.T) {
 			if err := os.WriteFile(path, []byte(edited), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if r := mustRefusal(t, func() error { _, err := ReadState(repo.Root(), id); return err }()); r.Stage != "state" {
-				t.Fatalf("want the state's refusal: %+v", r)
+			r := mustRefusal(t, func() error { _, err := ReadState(repo.Root(), id); return err }())
+			if r.Stage != "state" || !strings.Contains(r.Reason, "carries a reviewer the loop never writes") {
+				t.Fatalf("want the state's refusal of the reviewer: %+v", r)
 			}
 		})
 	}
+}
+
+// replaceLast replaces the last occurrence of old in s with new; s unchanged
+// when it holds none.
+func replaceLast(s, old, new string) string {
+	i := strings.LastIndex(s, old)
+	if i < 0 {
+		return s
+	}
+	return s[:i] + new + s[i+len(old):]
 }
 
 // TestARunnerRunReviewerIsHandedItsClassModel: a review set's reviewer routed
@@ -461,6 +487,9 @@ func TestARunnerRunReviewerIsHandedItsClassModel(t *testing.T) {
 	const model = "local/qwen3-small"
 	review := func(t *testing.T, routed bool) (ValidatorRun, driveEnv) {
 		repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+		// The run's review set holds the below class at the model the
+		// reviewer below is cut with, as every round's reviewers are.
+		machineConfig(t, `{"models":{"classes":{"below":"`+model+`"}}}`)
 		start, err := Start(repo.Root(), "itd-10", Options{})
 		if err != nil {
 			t.Fatal(err)

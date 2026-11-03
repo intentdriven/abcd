@@ -257,8 +257,9 @@ const lockFileName = ".lock"
 // Version 20 keyed a round by reviewer (itd-2610240922461281,
 // spc-2610240951109420 step 3): a validator's `reviewer` index among its
 // role's reviewers, the `class` the run's review set asked it for, the
-// `model` the class resolved to and its `model_status` (asked, or reported by
-// the runner that ran it); an await's `reviewer`, `class` and `model`; and a
+// `model` the class resolved to and its `model_status` (asked, reported by
+// the runner that ran it, or unsent when the reviewer route answered); an
+// await's `reviewer`, `class` and `model`; and a
 // round's `comparisons`, how each role's reviewers compared once all of them
 // returned. Version 19 is its strict subset, read as a run whose rounds each
 // ran one reviewer per role: that reviewer is index 0, at the path index 0
@@ -721,8 +722,10 @@ type ValidatorRun struct {
 	// the verdict is recorded: ModelReported when the runner that ran the
 	// reviewer reported a model (Route.Model, beside it), ModelAsked when
 	// only the asking is known, as for every host-run reviewer, whose model
-	// is asked for and never confirmed. Empty while the reviewer is out and
-	// wherever Model is.
+	// is asked for and never confirmed, and ModelUnsent when the reviewer
+	// route answered (Route.Ran is oracle.ReviewRP): that route is sent no
+	// model, so Model was never asked of what ran. Empty while the reviewer
+	// is out and wherever Model is.
 	ModelStatus string `json:"model_status,omitempty"`
 }
 
@@ -730,6 +733,7 @@ type ValidatorRun struct {
 const (
 	ModelAsked    = "asked"
 	ModelReported = "reported"
+	ModelUnsent   = "unsent"
 )
 
 // Comparison is how one role's reviewers in a round compared once every one
@@ -1294,11 +1298,14 @@ func readListedState(root *os.Root, runID string) (State, error) {
 	// A lane's stored hand-back carries only text the loop writes, so none
 	// reaches a --json stream raw; the refusal does not echo it
 	// (iss-2610121516559163).
-	// A reviewer's class and model are ones the review set writes, so a hand
-	// edit never reaches a runner's request or an awaiting payload.
+	// A reviewer's class and model are the ones the run's stored review set
+	// names for its role at its index, so a hand edit never reaches a
+	// runner's request or an awaiting payload with a model the run did not
+	// resolve for that class.
 	if !st.reviewersWritten() {
-		return State{}, refuse("state", "", "", rel+" carries a reviewer the loop never writes: an index past the most reviewers a role runs, "+
-			"a class the class map does not name, a model that is not a <provider>/<model> route, or a model status other than asked or reported",
+		return State{}, refuse("state", "", "", rel+" carries a reviewer the loop never writes: an index past its role's reviewers, "+
+			"a class or model other than the one the run's review set names for that reviewer, "+
+			"or a model status other than asked, reported, or unsent on a review the reviewer route answered",
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}
 	if !st.handBacksWritten() {
