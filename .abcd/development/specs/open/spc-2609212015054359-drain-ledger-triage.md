@@ -105,6 +105,7 @@ ADR is minted in the first delivery and reviewed with the diff.
    - packages: internal/core/implement/loop
    - tests: a landed pull request left unqueued at CLEAN is enqueued, and one dropped after a failed merge-group check is reported with the failed check
    - needs: none
+   - landed: 2b96ec1cca1d
 6. The decision-record marker on the issue (decision 10)
    - packages: internal/core/issueschema, internal/core/capture, internal/core/implement
    - tests: a trust-rule hand-back writes a `decision_needed:` field holding its question onto the open issue and changes nothing else in the record; the dry run and the next drain pass a marked issue over with the marker as its reason; invariant 19 and the drain page name the marker
@@ -201,5 +202,18 @@ until the run itself closes it.
   branch is fetched once per move, only while a lane is parked, and the forge
   is asked nothing about a lane not yet on it. A lane the landing refuses to
   finish is named in `finished` and `next`, and the move goes on.
+- **Landed (a pull request that leaves the merge queue is put back, step 5;
+  iss-2610090642376032).** While an armed lane waits where a merge queue
+  gates the default branch, each landing step reads its pull request's place
+  in the queue (`loop/queue.go`): one in the queue is waited on, its place
+  named; one the forge holds `CLEAN` outside it is queued, pinned to the
+  pushed head, after the land fence (the forge refusing, its auto-merge is
+  toggled once the arming is past `abcd land`'s 30-minute grace); one that
+  left the queue and its arming is refused for a person, naming the forge's
+  removal reason and the check that failed on its last merge group, and is
+  never queued or armed again, except that under another session's release
+  hold it is a wait. A drain's move takes the same watch for each parked lane
+  its listing shows armed and `CLEAN` or disarmed, reading a dropped one as
+  `dropped`.
 - **Remaining:** the decision-record marker on a trust-rule hand-back
-  (decision 10), and the plan's steps 4 and 5, from issues.
+  (decision 10), the plan's step 6.

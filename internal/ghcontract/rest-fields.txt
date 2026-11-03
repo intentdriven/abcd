@@ -25,3 +25,19 @@ pull-request.user.login
 pull-request.head
 pull-request.head.sha
 pull-request.head.ref
+# The landing's merge-queue watch (spc-2609212015054359 step 5,
+# iss-2610090642376032), naming the check that failed a dropped pull
+# request's merge group. Written 2026-11-03 from the forge's published REST
+# reference, NOT read by a live GET: the lane that added them had no forge to
+# ask. Refresh them by one live, read-only GET of each, as above:
+#   workflow-runs  GET repos/{owner}/{repo}/actions/runs?event=merge_group
+#   check-runs     GET repos/{owner}/{repo}/commits/{sha}/check-runs
+workflow-runs.workflow_runs
+workflow-runs.workflow_runs.name
+workflow-runs.workflow_runs.head_branch
+workflow-runs.workflow_runs.head_sha
+workflow-runs.workflow_runs.conclusion
+workflow-runs.workflow_runs.created_at
+check-runs.check_runs
+check-runs.check_runs.name
+check-runs.check_runs.conclusion

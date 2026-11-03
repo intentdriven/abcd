@@ -263,3 +263,15 @@ Query.node Node INTERFACE
 on Node IssueComment
 IssueComment.body String SCALAR
 IssueComment.id ID SCALAR
+# The landing's merge-queue watch (spc-2609212015054359 step 5,
+# iss-2610090642376032; internal/core/implement/loop/queue.go): the pull
+# request's timeline connection's nodes, the one type of its union the watch
+# spreads on, and the two fields it selects there. Written 2026-11-03 from the
+# forge's published GraphQL reference, NOT read by introspection: the lane
+# that added them had no forge to ask. Refresh them by the same __type queries
+# (PullRequestTimelineItemsConnection, RemovedFromMergeQueueEvent, and
+# possibleTypes of PullRequestTimelineItems) and correct any line that differs.
+PullRequestTimelineItemsConnection.nodes PullRequestTimelineItems UNION
+on PullRequestTimelineItems RemovedFromMergeQueueEvent
+RemovedFromMergeQueueEvent.createdAt DateTime SCALAR
+RemovedFromMergeQueueEvent.reason String SCALAR
