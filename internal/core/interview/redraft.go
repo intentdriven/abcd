@@ -223,14 +223,7 @@ func repairLater(q question.Question, l question.Limits) question.Option {
 // removed and cut to l.LabelWords words; a label left with no words is the
 // answer's value, when it has one.
 func repairLabel(label, value string, l question.Limits) string {
-	s := unbold(label)
-	for {
-		i := strings.Index(strings.ToLower(s), "(recommended)")
-		if i < 0 {
-			break
-		}
-		s = s[:i] + s[i+len("(recommended)"):]
-	}
+	s := cutRecommended(unbold(label))
 	s = strings.TrimFunc(s, func(r rune) bool {
 		switch r {
 		case ' ', '\t', '️', '*', '★', '☆', '⭐':
@@ -246,6 +239,48 @@ func repairLabel(label, value string, l question.Limits) string {
 		return termsafe.Sanitize(value)
 	}
 	return strings.Join(words, " ")
+}
+
+// recommendedMark is the mark rule 8 finds in a label, in any letter case.
+const recommendedMark = "(recommended)"
+
+// cutRecommended is s with every recommendedMark removed, matched without
+// regard to ASCII letter case. The match is made on s itself, never on a
+// lowercased copy: strings.ToLower changes the length in bytes of some runes
+// (U+023A grows, U+0130 shrinks), so an index into the copy is not an index
+// into s. The mark is ASCII and no byte of a multi-byte UTF-8 sequence is,
+// and no rune but an ASCII one lowercases to one of the mark's letters, so
+// this removes exactly what the check's strings.ToLower search detects.
+// A removal that joins two halves into a new mark is removed in turn.
+func cutRecommended(s string) string {
+	for {
+		i := indexASCIIFold(s, recommendedMark)
+		if i < 0 {
+			return s
+		}
+		s = s[:i] + s[i+len(recommendedMark):]
+	}
+}
+
+// indexASCIIFold is the byte index in s of the first match of the lowercase
+// ASCII pattern p, ASCII letters compared without case, or -1.
+func indexASCIIFold(s, p string) int {
+	for i := 0; i+len(p) <= len(s); i++ {
+		j := 0
+		for ; j < len(p); j++ {
+			c := s[i+j]
+			if 'A' <= c && c <= 'Z' {
+				c += 'a' - 'A'
+			}
+			if c != p[j] {
+				break
+			}
+		}
+		if j == len(p) {
+			return i
+		}
+	}
+	return -1
 }
 
 // unbold is s with the markers rule 7 refuses removed.

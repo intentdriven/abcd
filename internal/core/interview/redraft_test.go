@@ -5,6 +5,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/core/question"
 )
@@ -80,6 +82,40 @@ func TestTheRepairedQuestionIsSanitised(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, question.Safe(got)) {
 		t.Fatal("the repaired question is not what question.Safe leaves")
+	}
+}
+
+// TestRepairLabelCutsTheMarkFromTheLabelItself: the recommendation mark is
+// found and cut in the label it is cut from, so a rune whose lowercase has a
+// different length in bytes (U+023A grows, U+0130 shrinks) neither panics the
+// repair nor shifts the cut onto the wrong bytes.
+func TestRepairLabelCutsTheMarkFromTheLabelItself(t *testing.T) {
+	for label, want := range map[string]string{
+		"Ⱥ (Recommended)":              "Ⱥ",
+		"Ⱥ(Recommended)":               "Ⱥ",
+		"İzmir (Recommended)":          "İzmir",
+		"ẞ Ω K (RECOMMENDED) Ⱦ":        "ẞ Ω K Ⱦ",
+		"Ⱥ (recommended)(Recommended)": "Ⱥ",
+		"(Recommended":                 "(Recommended",
+	} {
+		got := repairLabel(label, "", question.Default)
+		if got != want {
+			t.Errorf("repairLabel(%q) = %q, want %q", label, got, want)
+		}
+		if f := question.CheckLimits(question.Ask{Questions: []question.Question{{Options: []question.Option{{Value: "a", Label: got}}}}}.Fields(), question.Default, question.Addressee{}); slices.ContainsFunc(f, func(f question.Finding) bool { return f.Rule == question.RuleNeverRecommended }) {
+			t.Errorf("repairLabel(%q) = %q still reads as recommended", label, got)
+		}
+	}
+}
+
+// TestOnlyASCIILowercasesToTheMark: no rune outside ASCII lowercases to a
+// letter of the recommendation mark, so the ASCII match cutRecommended makes
+// on the label finds every mark the check's strings.ToLower search finds.
+func TestOnlyASCIILowercasesToTheMark(t *testing.T) {
+	for r := rune(utf8.RuneSelf); r <= unicode.MaxRune; r++ {
+		if l := unicode.ToLower(r); l < utf8.RuneSelf && strings.ContainsRune(recommendedMark, l) {
+			t.Errorf("U+%04X lowercases to %q", r, l)
+		}
 	}
 }
 
