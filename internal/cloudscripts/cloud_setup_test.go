@@ -136,6 +136,11 @@ chmod +x gitleaks`)
 	c.fake("install", `echo "install $*" >>"$CALLS"
 cat "$1" >"$BIN_DIR/gitleaks"
 chmod +x "$BIN_DIR/gitleaks"`)
+	// No gitleaks answers until the fake install puts one in place. The
+	// machine's own sits later on PATH, and where it is the version ci.yml
+	// pins (as this repository's cloud setup installs it), it answered
+	// "already installed" and the setup fetched nothing.
+	c.fake("gitleaks", `exit 127`)
 	c.fake("go", `echo "go $*" >>"$CALLS"
 case "$*" in
 "env GOVERSION") echo go0.0.0 ;;
