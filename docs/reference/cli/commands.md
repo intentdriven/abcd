@@ -2685,12 +2685,13 @@ the race stage that follows it, and a race run of your own goes through
 older abcd reads any `implement load --wait` as a waiter at its first gate, and
 would count a preflight at its race gate as queued, not in its tests, so the two
 are refused together. At one preflight at a time, the default, it opens at once
-once the disk check below passes, without reading the load or the process table,
-taking a hold or waiting a jitter, so a preflight's race stage follows its tests
-as before. Above one it is shut only while
+once the disk check below passes and memory (below) does not hold it, without
+reading the load or the process table, taking a hold or waiting a jitter, so a
+preflight's race stage follows its tests as before. Above one it is shut while
 another `go test -race` run is live, a race waiter is ahead of it (by the same
-rule) or running its command, the load is at the wait limit, or the race gate's
-own hold is in force (each gate is shut only by its own gate's hold). That keeps
+rule) or running its command, the load is at the wait limit, memory holds it
+(below), or the race gate's own hold is in force (each gate is shut only by its
+own gate's hold). That keeps
 race stages apart among the preflights whose checkouts have the race gate: one
 at a time within an account, and across accounts all but a narrow window (a
 race waiter gone before its race run shows, or, after a pid wrap, two waiters
@@ -2734,6 +2735,28 @@ is low, the cache's size and a command that deletes its build entries unused for
 two days. A disk it cannot read, in whole or in part, is never refused: one line
 on stderr says it was not checked, and why. The load check (`--site`) prints the
 same finding as a warning and never fails for it.
+
+Both gates also stay shut while the system reports memory pressure at or above
+your floor: on macOS its own pressure level (kern.memorystatus_vm_pressure_level)
+at `load.memory_floor_macos` (`warn`, the default, or `critical`), and on
+Linux the share of the last ten seconds some task stalled waiting for memory (the
+`some avg10` of /proc/pressure/memory, Linux 4.20 or later) at `load.memory_floor_linux`
+(a whole percentage from 1 to 100, 10 by default), each in `~/.abcd.noindex/config.json`
+and never read from a repository file: a repository's key is named on stderr as
+ignored. A value outside its set refuses the wait, naming the key. Memory waits
+rather than refuses, since pressure falls as other work finishes: it is read at
+every look and again just before the gate opens (and before the race gate at one
+preflight at a time opens, which, once memory has held it, says it opened after
+its wait, not at once), the waiting line names the level or the
+stalled share and the floor, and a wait still shut at --timeout names memory. A
+reading it cannot take (another platform, a kernel without the file, a read
+that fails) shuts nothing: one line on stderr says memory was not checked, and why.
+After any waiter of your account saw the pressure at the floor, for 10m0s the gates
+admit one run per 2m0s, in queue order, reading memory again before each, so
+the stage just admitted shows its own memory use before the next starts
+(`~/.abcd.noindex/load-memory-admit.json` records it; a record it cannot read or write
+is named on stderr and holds nothing back). The load check (`--site`) prints a
+reading at the floor as a warning and never fails for it.
 
 Within one account the waiter that opens also takes a hold,
 `~/.abcd.noindex/load-wait.json` at the first gate and `~/.abcd.noindex/load-wait-race.json` at
@@ -2808,7 +2831,7 @@ child as its command: gate make or go, never git or gh itself.
 **Flags:**
 
 ```
-      --race-gate          wait at the race gate, before a race stage, instead of the first gate: open at once at one preflight at a time unless the disk is below the floor, and above that shut only by another go test -race run, a race waiter ahead, the load and the race gate's hold
+      --race-gate          wait at the race gate, before a race stage, instead of the first gate: open at once at one preflight at a time unless the disk is below the floor or memory pressure is at or above its floor, and above that shut by another go test -race run, a race waiter ahead, the load, memory pressure and the race gate's hold
       --site string        where the check runs: preflight | eval-harness
       --timeout duration   with --wait or --race-gate, give up after this long and exit 1 (default 30m0s)
       --wait               wait until the load is below the wait limit and no other go test -race run is live

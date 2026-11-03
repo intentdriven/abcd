@@ -151,6 +151,9 @@ func TestLoadWarningIsLoggedInALiveRun(t *testing.T) {
 	// The event carries the verdict's facts: read back, it is the same warning.
 	want := res
 	want.RunLog, want.Reason, want.Limits.Malformed = LoadRunLog{}, "", ""
+	// The memory reading is a finding beside the warning, as the disk's is,
+	// and the event carries neither.
+	want.Memory, want.MemoryNote = nil, ""
 	back.RunLog = LoadRunLog{}
 	if gotJ, wantJ := mustJSON(t, back), mustJSON(t, want); gotJ != wantJ {
 		t.Fatalf("event reads back as\n%s\nwant\n%s", gotJ, wantJ)

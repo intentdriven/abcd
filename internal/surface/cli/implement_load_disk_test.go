@@ -6,13 +6,21 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/implement"
+	"github.com/intentdriven/abcd/internal/core/machineload"
 )
 
-// No test in this package reads the real disk: every load check and wait sees
-// a disk with room, so a nearly full development machine or CI runner does not
-// turn the load verb's tests into disk tests (implement.ReadDisk).
+// No test in this package reads the real disk or the real memory pressure:
+// every load check and wait sees a disk with room and macOS at its normal
+// memory level, so a nearly full or memory-pressed development machine or CI
+// runner does not turn the load verb's tests into disk or memory tests
+// (implement.ReadDisk, implement.ReadMemory). It is the one init among this
+// package's tests: the plain-only guard scan (internal/core/lint) refuses a
+// function name a package declares twice.
 func init() {
 	implement.ReadDisk = func(string, uint64) implement.DiskCheck { return implement.DiskCheck{Status: implement.DiskOK} }
+	implement.ReadMemory = func() (machineload.Memory, error) {
+		return machineload.Memory{Platform: machineload.MemoryDarwin, Level: machineload.MemoryNormal, Raw: "1"}, nil
+	}
 }
 
 // TestLoadCheckRendersTheLowDiskWarning: the load check prints the low-disk

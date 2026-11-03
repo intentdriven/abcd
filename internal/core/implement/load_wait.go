@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"runtime"
 	"slices"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -365,8 +366,13 @@ type WaitRequest struct {
 	// goes quiet after it picked up.
 	OnQuiet func(WaitResult)
 	// Dir is the checkout the waiter runs in, recorded in its hold so a waiter
-	// behind it can name it; "" is the working directory.
+	// behind it can name it; "" is the working directory. Its
+	// .abcd/config.json is read only to name a memory floor key there as
+	// ignored (memoryFloorAt).
 	Dir string
+	// ReadMemory reads the machine's memory pressure; nil is ReadMemory, the
+	// package's reader (machineload.ReadMemory in the binary).
+	ReadMemory func() (machineload.Memory, error)
 }
 
 // WaitHolder is a hold: the record under ~/.abcd.noindex/ and what the report
@@ -437,6 +443,14 @@ type WaitResult struct {
 	// (DiskCheck.Note); "" when every volume was read. The front door prints
 	// it on stderr.
 	DiskNote string `json:"disk_note,omitempty"`
+	// Memory is the last memory reading, judged against the floor
+	// (load_memory.go); nil when no reading could be taken.
+	Memory *MemoryCheck `json:"memory,omitempty"`
+	// MemoryNote says, once each, that the memory floor was not checked and
+	// why, that a repository's floor key was ignored, or that the admission
+	// record could not be read or written; "" when there is nothing to say.
+	// The front door prints it on stderr.
+	MemoryNote string `json:"memory_note,omitempty"`
 	// Backoffs is how many times the waiter stood back from another that opened
 	// in the same moment (machineload.StandBackFrom).
 	Backoffs int `json:"backoffs,omitempty"`
@@ -462,13 +476,15 @@ type WaitResult struct {
 // WaitLoad waits until the gate opens or the timeout passes. Its error is a
 // refusal before any wait (a home it cannot resolve, a home inside a git
 // working tree that is not the account's own, a symlinked ~/.abcd.noindex, a
-// load.preflights it cannot use, a volume holding the Go build cache or the
-// worktree store below the disk floor (diskFloorFor), or a hold lock that is
-// not a regular file), a refusal at the last look before it opens when such
-// a volume has fallen below the floor while it waited, or a hold it could not
-// give up when standing back after a wait. A disk it cannot read, in whole or
-// in part, is never refused; WaitResult.DiskNote says so. A timeout is a
-// status, not an error.
+// load.preflights or a memory floor it cannot use, a volume holding the Go
+// build cache or the worktree store below the disk floor (diskFloorFor), or a
+// hold lock that is not a regular file), a refusal at the last look before it
+// opens when such a volume has fallen below the floor while it waited, or a
+// hold it could not give up when standing back after a wait. A disk it cannot
+// read, in whole or in part, is never refused; WaitResult.DiskNote says so.
+// Memory pressure at or above the floor is waited on, never refused, and a
+// memory reading it cannot take shuts nothing; WaitResult.MemoryNote says so
+// (load_memory.go). A timeout is a status, not an error.
 func WaitLoad(req WaitRequest) (WaitResult, error) {
 	getenv := req.Getenv
 	if getenv == nil {
@@ -546,16 +562,36 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 	// each time against the floor the count read at that same look sizes
 	// (diskFloorFor), so a gate and its floor never judge by different counts.
 	// No hold is taken yet, so a refusal leaves nothing behind.
+	//
+	// The memory floor (memoryFloorAt) is read at every look beside the count,
+	// and refuses as an unusable count does. Before the one-slot race shortcut
+	// opens, memory is read once more (memoryGate.look) and the admission
+	// judged (memoryGate.admit); held reports memory holding it shut, and the
+	// waiter polls again, as at any shut look, until memory lets it open or
+	// the timeout passes.
+	mem := &memoryGate{read: req.ReadMemory}
+	if mem.read == nil {
+		mem.read = ReadMemory
+	}
 	var firstFloor uint64
-	readSlots := func(atOpen bool) (open bool, err error) {
+	readSlots := func(atOpen bool) (open, held bool, err error) {
+		refuse := func(err error) (bool, bool, error) {
+			if res.Polls == 0 {
+				return false, false, fmt.Errorf("nothing was waited for: %w", err)
+			}
+			return false, false, fmt.Errorf("the wait stopped after %d looks: %w", res.Polls, err)
+		}
 		n, src, note, err := PreflightSlots(getenv, home)
 		if err != nil {
-			if res.Polls == 0 {
-				return false, fmt.Errorf("nothing was waited for: %w", err)
-			}
-			return false, fmt.Errorf("the wait stopped after %d looks: %w", res.Polls, err)
+			return refuse(err)
 		}
 		res.Slots, res.SlotsSource, res.SlotsNote = n, src, note
+		floor, memNote, err := memoryFloorAt(home, req.Dir)
+		mem.note(&res, memNote)
+		if err != nil {
+			return refuse(err)
+		}
+		mem.floor = floor
 		first, shortcut := res.Polls == 0, req.Race && n <= 1
 		if first || atOpen || shortcut {
 			disk := ReadDisk(home, diskFloorFor(n))
@@ -563,25 +599,42 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 			if first {
 				firstFloor = diskFloorFor(n)
 				if err := disk.Refusal(); err != nil {
-					return false, err
+					return false, false, err
 				}
 			} else if err := disk.RefusalAtOpen(firstFloor, n, slotsSetting(src)); err != nil {
 				res.WaitedS = now().Sub(start).Seconds()
-				return false, err
+				return false, false, err
 			}
 		}
 		if shortcut {
+			t := now()
+			self, ancestor := shortcutIdentity(req)
+			if mem.look(root, &res, t, self, ancestor) || mem.admit(root, &res, t, self, ancestor) {
+				// Held on memory alone: no look judged the rest, so nothing
+				// else is named.
+				res.lookedAt = t
+				res.Status, res.Reason = "", ""
+				res.RaceRuns, res.Holder = []int{}, nil
+				res.Holders, res.Quiet, res.HoldGates = nil, nil, nil
+				res.Preflights, res.Waiters, res.UngatedTests = nil, nil, nil
+				return false, true, nil
+			}
 			res.Status = WaitOpen
 			res.Reason = "one preflight runs at a time, so the race stage follows its tests at once"
+			if len(res.WaitedOn) > 0 {
+				// It did wait (on memory, or at looks taken while the
+				// count was above one), so it opens after, not at once.
+				res.Reason = "one preflight runs at a time, and what it waited on (" + strings.Join(res.WaitedOn, ", ") + ") no longer holds the race stage back"
+			}
 			// An open gate names nothing that held it shut; what an earlier
 			// look found is WaitedOn's.
 			res.Still, res.RaceRuns, res.Holder = nil, []int{}, nil
 			res.Holders, res.Quiet, res.HoldGates = nil, nil, nil
 			res.Preflights, res.Waiters, res.UngatedTests = nil, nil, nil
 			res.WaitedS = now().Sub(start).Seconds()
-			return true, nil
+			return true, false, nil
 		}
-		return false, nil
+		return false, false, nil
 	}
 	deadline := start.Add(req.Timeout)
 	announced, settled := false, false
@@ -634,16 +687,24 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 		crossedN = c.n
 	}
 	for {
-		if open, err := readSlots(false); err != nil || open {
+		open, held, err := readSlots(false)
+		if err != nil || open {
 			return res, err
 		}
 		res.Polls++
-		shut, done, only, err := waitLook(req, root, home, &res, now, false, pastCap(), &watch)
-		if err != nil {
-			return res, err
+		var shut []string
+		var done bool
+		var only crossedLook
+		if held {
+			shut = []string{WaitOnMemory}
+		} else {
+			shut, done, only, err = waitLook(req, root, home, &res, now, false, pastCap(), &watch, mem)
+			if err != nil {
+				return res, err
+			}
+			noteCrossed(only)
 		}
-		noteCrossed(only)
-		if !done && len(shut) == 0 {
+		if !held && !done && len(shut) == 0 {
 			// Free: wait the jitter, then check everything again, and open only
 			// if the machine is still free. The jitter never runs past the
 			// deadline; with no time left the re-check is immediate.
@@ -655,15 +716,20 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 				}
 			}
 			sleep(j)
-			if open, err := readSlots(true); err != nil || open {
+			open, held, err := readSlots(true)
+			if err != nil || open {
 				return res, err
 			}
 			res.Polls++
-			shut, done, only, err = waitLook(req, root, home, &res, now, true, pastCap(), &watch)
-			if err != nil {
-				return res, err
+			if held {
+				shut = []string{WaitOnMemory}
+			} else {
+				shut, done, only, err = waitLook(req, root, home, &res, now, true, pastCap(), &watch, mem)
+				if err != nil {
+					return res, err
+				}
+				noteCrossed(only)
 			}
-			noteCrossed(only)
 		}
 		if done && res.Status == WaitOpen && req.Command && res.Backoffs < WaitBackoffCap {
 			first, stop := openLook(req, sleep)
@@ -803,8 +869,10 @@ func sleepMark() (func(), error) {
 // done, and the caller re-checks after the jitter. With uncrossed set it does
 // not count crossed waiters (machineload.Ahead.Crossed, WaitCrossedCap).
 // crossedOnly says what crossedLook holds. watch follows the holders ahead
-// between looks (judgeHolder, measureHolders).
-func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now func() time.Time, take, uncrossed bool, watch *holderWatch) (shut []string, done bool, crossedOnly crossedLook, err error) {
+// between looks (judgeHolder, measureHolders). mem is the memory condition,
+// read at every look (memoryGate.look) and judged once more under the hold's
+// lock before a look that takes the hold opens (memoryGate.admit).
+func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now func() time.Time, take, uncrossed bool, watch *holderWatch, mem *memoryGate) (shut []string, done bool, crossedOnly crossedLook, err error) {
 	snap, readErr := req.Read()
 	if errors.Is(readErr, machineload.ErrUnsupported) {
 		res.Status = WaitUnchecked
@@ -910,6 +978,22 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 		}
 	}
 
+	// Memory holds both gates shut while the pressure is at or above the
+	// floor, or, after it was last seen, while another waiter's settle lasts
+	// (load_memory.go). A waiter's ancestor's admission admitted the work it
+	// is part of, so it neither shuts it nor is replaced by it.
+	self := admitID{pid: req.Self.PID}
+	if s, ok := procStart(snap, req.Self.PID, t); ok {
+		self.start = s
+	}
+	var ancestor func(int) bool
+	if snap.HasProcs {
+		ancestor = func(pid int) bool { return machineload.Descends(snap.Procs, req.Self.PID, pid) }
+	}
+	if mem.look(root, res, t, self, ancestor) {
+		shut = append(shut, WaitOnMemory)
+	}
+
 	// The hold is judged at every look, under the flock, so a command hold
 	// whose work has started its race run is retired by whichever waiter sees
 	// it, and two waiters opened by one load drop cannot both take it. A wait
@@ -963,6 +1047,13 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 			free = append(free, gate)
 		}
 		if len(shut) > 0 || !take || len(free) == 0 {
+			return nil
+		}
+		// The memory admission is written first, before the hold, so no later
+		// waiter can look past this one's open inside an episode without
+		// seeing it.
+		if mem.admit(root, res, t, self, ancestor) {
+			shut = append(shut, WaitOnMemory)
 			return nil
 		}
 		own := WaitHolder{PID: req.Self.PID, Opened: t, Until: t.Add(WaitSettle), Form: HoldSettle, Gate: res.Gate, Dir: req.Dir}

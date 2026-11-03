@@ -353,16 +353,31 @@ preflight at a race gate spelt with it as queued, not in its test stages, and
 open beside it. At one preflight at a
 time the race gate opens at once once the disk check passes, without reading
 the load or the process table, taking a hold, or waiting a jitter or a settle,
-so the race stage follows the tests as it did before the gate existed. Both
+so the race stage follows the tests as it did before the gate existed, unless
+memory holds it (below), when it says it opened after its wait. Both
 gates refuse, exiting 1 without waiting, while the volume holding the Go build
 cache or the worktree store has less free space than the disk floor: 4 GiB for
 each preflight the first gate admits at once, and 8 GiB at least; a disk that
 falls below the floor while a gate waits is refused before the gate
-opens. Above one the race gate is
+opens. Both gates also wait, never refuse, while the system reports memory
+pressure at or above the person's floor (itd-2611012048006057): macOS's own
+pressure level against `load.memory_floor_macos` (`warn` by default, or
+`critical`), or on Linux the share of the last ten seconds some task stalled
+waiting for memory (`/proc/pressure/memory`, from 4.20) against
+`load.memory_floor_linux` (10% by default), both read only from the machine
+configuration, a repository's key named as ignored. Memory is read at every
+look, at the re-check before a gate opens and before the one-slot race gate
+opens; a wait that times out on it names `memory`. A reading that
+cannot be taken shuts nothing and is said once. For ten minutes after any
+waiter of the account last saw the pressure at the floor, the gates admit one
+run per two-minute settle through a record under `~/.abcd.noindex/`, reading
+memory again before each, so a stage's memory use shows before the next
+starts; the load check reports a reading at the floor as a warning and never
+fails. Above one the race gate is
 shut only by another live `go test -race` run, a race waiter queued ahead of
 it by the same rule (started earlier, or within two seconds of it with the
-lower pid) or running its command, the load limit and
-the race gate's own hold, so race stages are kept apart among the preflights
+lower pid) or running its command, the load limit, memory pressure at or
+above the floor and the race gate's own hold, so race stages are kept apart among the preflights
 whose checkouts have the race gate, one at a time within an account and across
 accounts all but a narrow window: a race waiter exits as it opens, before its
 preflight's race run shows in the table, and after a pid wrap two race waiters

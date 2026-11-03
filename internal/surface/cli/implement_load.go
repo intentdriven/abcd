@@ -153,12 +153,13 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"older abcd reads any `implement load --wait` as a waiter at its first gate, and\n" +
 			"would count a preflight at its race gate as queued, not in its tests, so the two\n" +
 			"are refused together. At one preflight at a time, the default, it opens at once\n" +
-			"once the disk check below passes, without reading the load or the process table,\n" +
-			"taking a hold or waiting a jitter, so a preflight's race stage follows its tests\n" +
-			"as before. Above one it is shut only while\n" +
+			"once the disk check below passes and memory (below) does not hold it, without\n" +
+			"reading the load or the process table, taking a hold or waiting a jitter, so a\n" +
+			"preflight's race stage follows its tests as before. Above one it is shut while\n" +
 			"another `go test -race` run is live, a race waiter is ahead of it (by the same\n" +
-			"rule) or running its command, the load is at the wait limit, or the race gate's\n" +
-			"own hold is in force (each gate is shut only by its own gate's hold). That keeps\n" +
+			"rule) or running its command, the load is at the wait limit, memory holds it\n" +
+			"(below), or the race gate's own hold is in force (each gate is shut only by its\n" +
+			"own gate's hold). That keeps\n" +
 			"race stages apart among the preflights whose checkouts have the race gate: one\n" +
 			"at a time within an account, and across accounts all but a narrow window (a\n" +
 			"race waiter gone before its race run shows, or, after a pid wrap, two waiters\n" +
@@ -200,6 +201,27 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"two days. A disk it cannot read, in whole or in part, is never refused: one line\n" +
 			"on stderr says it was not checked, and why. The load check (`--site`) prints the\n" +
 			"same finding as a warning and never fails for it.\n\n" +
+			"Both gates also stay shut while the system reports memory pressure at or above\n" +
+			"your floor: on macOS its own pressure level (kern.memorystatus_vm_pressure_level)\n" +
+			"at `" + implement.MemoryFloorMacOSKey + "` (`warn`, the default, or `critical`), and on\n" +
+			"Linux the share of the last ten seconds some task stalled waiting for memory (the\n" +
+			"`some avg10` of /proc/pressure/memory, Linux 4.20 or later) at `" + implement.MemoryFloorLinuxKey + "`\n" +
+			"(a whole percentage from 1 to 100, " + strconv.Itoa(implement.DefaultMemoryFloorLinux) + " by default), each in `" + abcdhome.Display("config.json") + "`\n" +
+			"and never read from a repository file: a repository's key is named on stderr as\n" +
+			"ignored. A value outside its set refuses the wait, naming the key. Memory waits\n" +
+			"rather than refuses, since pressure falls as other work finishes: it is read at\n" +
+			"every look and again just before the gate opens (and before the race gate at one\n" +
+			"preflight at a time opens, which, once memory has held it, says it opened after\n" +
+			"its wait, not at once), the waiting line names the level or the\n" +
+			"stalled share and the floor, and a wait still shut at --timeout names memory. A\n" +
+			"reading it cannot take (another platform, a kernel without the file, a read\n" +
+			"that fails) shuts nothing: one line on stderr says memory was not checked, and why.\n" +
+			"After any waiter of your account saw the pressure at the floor, for " + implement.WaitMemoryEpisode.String() + " the gates\n" +
+			"admit one run per " + implement.WaitMemorySettle.String() + ", in queue order, reading memory again before each, so\n" +
+			"the stage just admitted shows its own memory use before the next starts\n" +
+			"(`" + abcdhome.Display(implement.WaitMemoryAdmitFileName) + "` records it; a record it cannot read or write\n" +
+			"is named on stderr and holds nothing back). The load check (`--site`) prints a\n" +
+			"reading at the floor as a warning and never fails for it.\n\n" +
 			"Within one account the waiter that opens also takes a hold,\n" +
 			"`" + abcdhome.Display(implement.WaitHoldFileName) + "` at the first gate and `" + abcdhome.Display(implement.WaitRaceHoldFileName) + "` at\n" +
 			"the race gate, and every other waiter of that account at the same gate stays\n" +
@@ -322,7 +344,7 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 	}
 	enumFlag(cmd.Flags(), &site, "site", "", "where the check runs: ", implement.LoadSites(), "")
 	cmd.Flags().BoolVar(&wait, "wait", false, "wait until the load is below the wait limit and no other go test -race run is live")
-	cmd.Flags().BoolVar(&race, "race-gate", false, "wait at the race gate, before a race stage, instead of the first gate: open at once at one preflight at a time unless the disk is below the floor, and above that shut only by another go test -race run, a race waiter ahead, the load and the race gate's hold")
+	cmd.Flags().BoolVar(&race, "race-gate", false, "wait at the race gate, before a race stage, instead of the first gate: open at once at one preflight at a time unless the disk is below the floor or memory pressure is at or above its floor, and above that shut by another go test -race run, a race waiter ahead, the load, memory pressure and the race gate's hold")
 	cmd.Flags().DurationVar(&timeout, "timeout", implement.WaitDefaultTimeout, "with --wait or --race-gate, give up after this long and exit 1")
 	return cmd
 }
@@ -378,6 +400,9 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 	}
 	if res.DiskNote != "" {
 		fmt.Fprintf(errOut, "abcd implement load %s: %s\n", flag, res.DiskNote)
+	}
+	if res.MemoryNote != "" {
+		fmt.Fprintf(errOut, "abcd implement load %s: %s\n", flag, res.MemoryNote)
 	}
 	if err := render(out, asJSON, res, func(w io.Writer) { renderLoadWait(w, res) }); err != nil {
 		return err
@@ -700,7 +725,11 @@ func renderLoadWait(w io.Writer, res implement.WaitResult) {
 		fmt.Fprintf(w, "load gate still shut after %s: %s\n", waited, waitConditions(res))
 	case implement.WaitOpen:
 		if res.Gate == implement.GateRace && res.Slots <= 1 {
-			fmt.Fprintf(w, "race gate open at once: %s\n", res.Reason)
+			if len(res.WaitedOn) == 0 {
+				fmt.Fprintf(w, "race gate open at once: %s\n", res.Reason)
+			} else {
+				fmt.Fprintf(w, "race gate open after %s: %s\n", waited, res.Reason)
+			}
 			break
 		}
 		hold := "the hold its own caller took stands"
@@ -763,6 +792,12 @@ func waitConditions(res implement.WaitResult) string {
 				parts = append(parts, part)
 			} else {
 				parts = append(parts, "another waiter is taking the gate")
+			}
+		case implement.WaitOnMemory:
+			if m := res.Memory; m != nil {
+				parts = append(parts, m.WaitText())
+			} else {
+				parts = append(parts, "memory pressure is at or above the floor")
 			}
 		case implement.WaitOnUnreadable:
 			why := "the machine's load or process table could not be read"
@@ -858,6 +893,10 @@ func renderLoad(w io.Writer, res implement.LoadResult) {
 		renderLoadWarning(w, res)
 	}
 	fmt.Fprint(w, res.Disk.WarningText(res.Site))
+	fmt.Fprint(w, res.Memory.WarningText(res.Site))
+	if res.MemoryNote != "" {
+		fmt.Fprintf(w, "memory check (%s): %s\n", res.Site, res.MemoryNote)
+	}
 	if res.RunLog.Error != "" {
 		fmt.Fprintf(w, "could not write the load warning to the run log: %s; the warning above stands\n", res.RunLog.Error)
 	}
