@@ -77,15 +77,10 @@ a re-checked handle and never by pattern, clean proven by what is running, and
 explicit consent with a cap below the core count on a live development machine;
 and the load gate a preflight waits at: whole runs admitted as many at once as
 the person's own `load.preflights` in `~/.abcd.noindex/config.json` allows (one
-by default and four at most, never set by a repository), and race stages kept
-apart among checkouts that have the race gate: one at a time within an account,
-and across accounts all but a narrow window (a race waiter gone before its race
-run shows, or, after a pid wrap, two waiters whose start and pid disagree: one
-running abcd v0.15.1, or two of the start order whose whole-second ages read a
-tie differently or the later of which stopped counting the earlier past its
-five-minute cap), and no test stage started while the system reports memory
-pressure at or above the person's own floor (`load.memory_floor_macos` or
-`load.memory_floor_linux` in the same file, never set by a repository).
+by default and four at most, never set by a repository), race stages kept apart
+among checkouts that have the race gate (one at a time within an account, and
+across accounts all but the narrow window the domain names), and no test stage
+started under memory pressure at or above the person's own floor.
 `SHELL` is the teaching half of the shell-hazard guard: it is generated from the
 same hazard registry `abcd guard` enforces in the repository, one rule per entry
 (the command, why it is dangerous, and what to run instead; a rule from the

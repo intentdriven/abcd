@@ -10,15 +10,9 @@ import (
 	"github.com/intentdriven/abcd/internal/core/machineload"
 )
 
-// No test in this package reads the real machine's memory pressure: every
-// load check and wait sees macOS at its normal level, so a development
-// machine under pressure does not turn the load verb's tests into memory
-// tests (implement.ReadMemory).
-func init() {
-	implement.ReadMemory = func() (machineload.Memory, error) {
-		return machineload.Memory{Platform: machineload.MemoryDarwin, Level: machineload.MemoryNormal, Raw: "1"}, nil
-	}
-}
+// No test in this package reads the real machine's memory pressure: the one
+// init among its tests, in implement_load_disk_test.go, stubs
+// implement.ReadMemory with macOS at its normal level.
 
 // withMemory makes every memory read return readings in turn, the last
 // repeating, for the test's length.

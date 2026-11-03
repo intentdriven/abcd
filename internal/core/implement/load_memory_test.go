@@ -16,12 +16,8 @@ import (
 )
 
 // No test in this package reads the real machine's memory pressure unless it
-// asks: every wait and every check sees macOS at its normal level, so a
-// development machine under pressure does not turn every gate test into a
-// memory test.
-func init() {
-	ReadMemory = func() (machineload.Memory, error) { return macMemory(machineload.MemoryNormal), nil }
-}
+// asks: the package's one init, in load_disk_test.go, stubs ReadMemory with
+// macOS at its normal level.
 
 // macMemory is a macOS reading at level.
 func macMemory(level string) machineload.Memory {
