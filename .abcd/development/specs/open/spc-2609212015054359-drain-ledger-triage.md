@@ -215,5 +215,18 @@ until the run itself closes it.
   hold it is a wait. A drain's move takes the same watch for each parked lane
   its listing shows armed and `CLEAN` or disarmed, reading a dropped one as
   `dropped`.
-- **Remaining:** the decision-record marker on a trust-rule hand-back
-  (decision 10), the plan's step 6.
+- **Landed (the decision-record marker on the issue, step 6; decision 10).**
+  A trust-rule hand-back, a lane's or the judgement's, writes
+  `decision_needed:` holding its question onto the open issue
+  (`capture.MarkDecisionNeeded`, `capture/decisionneeded.go`) and changes
+  nothing else in the record; nothing is minted. The issue schema knows the
+  key, and the reader carries it. It is written in the checkout, uncommitted,
+  as a promotion is, and only where the checkout holds the record as origin's
+  default branch does; a marker a killed move already wrote is found, not
+  written twice, and an issue no longer open is not marked. The field rule
+  hands a marked issue back under `decision-needed` (after the severity rule,
+  before `waits-on-ruling`) with the question as its reason, so the dry run
+  and every later drain pass it over until a person writes the decision record
+  and takes the field out; the drain that wrote it counts it once, as its own
+  decision-record hand-back. Invariant 19, the drain page and the drain and
+  capture brief chapters name the marker.

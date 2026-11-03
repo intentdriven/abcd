@@ -418,6 +418,7 @@ production_mode: hand-written|dictated-and-formatted|scribe-transcribed
 details: "<text>"          # optional structured detail
 remedy: "<text>"           # the proposed fix, one line; required of every new issue, "none (filed automatically)" from an automatic filer (itd-82)
 suggested_fix: "<text>"    # the older spelling of remedy, read as it where a record carries no remedy
+decision_needed: "<text>"  # the decision-record marker: the question a drain's trust-rule hand-back states; a drain hands the issue back until a person writes the record and removes the field (itd-82 decision 10)
 related_intents: [itd-N, ...]  # an intent naming this issue back in related_issues is the one it was promoted into
 related_specs: [spc-N, ...]
 related_issues: [iss-N, ...]

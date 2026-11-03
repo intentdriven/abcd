@@ -668,7 +668,7 @@ func TestAbcdsOwnDrainRuleIsTheStrictBaseline(t *testing.T) {
 	if !ok {
 		t.Fatal("the brief's invariants page carries no invariant 19")
 	}
-	for _, clause := range []string{promotedClause, consistencyClause} {
+	for _, clause := range []string{promotedClause, consistencyClause, decisionNeededClause} {
 		if !strings.Contains(inv19, clause) {
 			t.Errorf("invariant 19 does not state the clause %q", clause)
 		}
@@ -700,6 +700,45 @@ const promotedClause = "an issue whose `related_intents` names an intent is hand
 const consistencyClause = "a record the consistency pass files is not one, since the intents it names are the two its contradiction is between: " +
 	"it is judged by its other fields as if it named no intent, so it waits for a person's remedy as any automatic filer's record does, " +
 	"while an intent it was promoted into, which names it back in `related_issues`, owns it as any intent does"
+
+// decisionNeededClause is invariant 19's clause for the decision-record marker
+// (itd-82 decision 10; spc-2609212015054359 step 6): the one write a trust-rule
+// hand-back makes to the issue, and the rule that hands a marked issue back.
+const decisionNeededClause = "a hand-back that turns on a rule about trust or safety writes `decision_needed:` holding its question onto the open issue " +
+	"and changes nothing else in the record, minting no decision record (itd-82 decision 10); it is the hand-back's flag, not the classification, " +
+	"and an issue carrying `decision_needed:` is handed back by the rule `decision-needed` until a person writes the decision record and takes the field out"
+
+// TestTheDrainPageNamesTheDecisionRecordMarker: the command page names the
+// marker a trust-rule hand-back writes and the rule that hands a marked issue
+// back (spc-2609212015054359 step 6), so a person reading it learns both.
+func TestTheDrainPageNamesTheDecisionRecordMarker(t *testing.T) {
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			break
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatal("no go.mod above the package directory")
+		}
+		dir = parent
+	}
+	page, err := os.ReadFile(filepath.Join(dir, "commands", "drain.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"| `handback` | `" + string(RuleDecisionNeeded) + "` |",
+		"| `trust-rule` | `decision-record`: flagged, with the lane's reason as `question` | `decision_needed:` on the open issue, holding the question; nothing else; no record is minted |",
+	} {
+		if !strings.Contains(string(page), want) {
+			t.Errorf("commands/drain.md does not carry %q", want)
+		}
+	}
+}
 
 // TestADeferralIsHandedBackWhenTheCheckoutHoldsNoReleaseTag: a shallow clone
 // (fetch-depth 1, the unattended drain's likely checkout) fetches no tags, so

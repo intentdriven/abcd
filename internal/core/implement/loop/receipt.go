@@ -100,7 +100,7 @@ var laneHandBackKinds = []struct {
 	home        bool
 }{
 	{HandBackUserVisible, "the fix changes what a user sees, which the remedy did not name; the issue is promoted to an intent draft for a person to plan", false},
-	{HandBackTrustRule, "the fix turns on a rule about trust or safety; the issue is flagged as needing a decision record, with your reason as the question", false},
+	{HandBackTrustRule, "the fix turns on a rule about trust or safety; the issue is flagged as needing a decision record, with your reason as the question, which is also written onto the open issue as its decision_needed: field", false},
 	{HandBackDesignFinding, "a reviewer's finding, or your own, is a design decision; the issue is flagged with the home you name", true},
 	{HandBackSecondPackage, "the fix reaches a second package the remedy did not name; the issue is flagged with the home you name", true},
 }
