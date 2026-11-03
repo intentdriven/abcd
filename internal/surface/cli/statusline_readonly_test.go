@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -19,6 +20,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/mode"
 	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // The status line is the one thing abcd wires into the harness's user
@@ -355,6 +357,15 @@ func TestStatuslineWritesOnlyTheFillFile(t *testing.T) {
 // hook's to make, never the status line's. With no abcd home, or a home with
 // no fill directory, the verb renders its row, writes nothing, makes no
 // directory, and says nothing about the skipped write.
+//
+// "Says nothing" is judged line by line, and the one line it lets through is
+// the merging element dropped because its facilitator.mode read ran out of
+// git's share of the refresh (timedOutMergingRead). That read asks git about
+// the default branch with no path around it, so a loaded race runner can
+// outlast even the widened share, and its note is about a read, not a write:
+// it failed this test over a directory it never touched
+// (iss-2611020720003337). Every other line, the fill write's own notice
+// among them, still fails it.
 func TestStatuslineCreatesNoDirectory(t *testing.T) {
 	for _, tc := range []statuslineWriteCase{
 		{
@@ -372,11 +383,30 @@ func TestStatuslineCreatesNoDirectory(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if stderr := runStatuslineWriteCase(t, tc); stderr != "" {
-				t.Errorf("a skipped write was said: stderr %q", stderr)
+			// The row this case wants is the whole row with git's answers in
+			// it, so git gets a share a loaded machine cannot outrun.
+			widenBudgets(t)
+			stderr := runStatuslineWriteCase(t, tc)
+			for _, line := range strings.Split(strings.TrimSuffix(stderr, "\n"), "\n") {
+				if line != "" && !timedOutMergingRead(line) {
+					t.Errorf("a skipped write was said: stderr line %q (all of stderr %q)", line, stderr)
+				}
 			}
 		})
 	}
+}
+
+// timedOutMergingRead says whether one stderr line of the status verb is the
+// merging element dropped because git did not answer its facilitator.mode
+// read inside the refresh's git share: landing.AutonomousMerging's note, over
+// either deadline wording — its own check before the layered read
+// ("git did not answer in time ...") or a git the share ended inside that
+// read ("... context deadline exceeded"). A drop for any other reason is not
+// it.
+func timedOutMergingRead(line string) bool {
+	const drop = "abcd statusline: statusline: DROPPED the merging element — facilitator.mode could not be read ("
+	return strings.HasPrefix(line, drop) &&
+		(strings.Contains(line, gitutil.ErrGitTimedOut.Error()) || strings.Contains(line, context.DeadlineExceeded.Error()))
 }
 
 // TestStatuslineWritesNothingWithoutASessionID: a payload with no session id

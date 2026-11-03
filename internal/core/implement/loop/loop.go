@@ -151,6 +151,14 @@ type Context struct {
 	Now    time.Time
 	// Await is the await a verifier is handed the receipt of; nil for a body.
 	Await *Await
+	// Route is the route that ran the agent whose receipt a verifier is
+	// handed, when a runner ran it, with the model the runner reported; nil
+	// for a body, a host-run agent and a placed answer (iss-2611022247103872).
+	Route *runner.RouteRecord
+	// modelNote, when set, receives a verifier's line for the record about
+	// the receipt's model and the runner's: the runner's taken for a receipt
+	// that names none, or the receipt's kept over a runner's that differs.
+	modelNote *string
 	// router decides the tier each role a round hands out runs at
 	// (escalate.go); nil records no route.
 	router *roundRouter
@@ -1076,7 +1084,9 @@ func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *ru
 			return false, refusef("receipt", lane.ID, "use an abcd that carries the verifier; the lane still awaits the receipt",
 				"the %s stage's receipt verifier is not built in this abcd (piece %d of %s delivers it)", lane.Stage, def.Piece, specOf(*st))
 		}
-		c := Context{RepoRoot: repoRoot, RunDir: runRel(st.RunID), State: *st, Now: now, Await: &await}
+		modelNote := ""
+		c := Context{RepoRoot: repoRoot, RunDir: runRel(st.RunID), State: *st, Now: now, Await: &await,
+			Route: route, modelNote: &modelNote}
 		if err := def.Verify(c, &lane, await.Receipt); err != nil {
 			if _, ok := AsRefusal(err); ok {
 				return false, err
@@ -1096,7 +1106,11 @@ func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *ru
 		renewNote = renewReservation(repoRoot, st, now, nil)
 		if route != nil {
 			stampRoute(&lane, await.Receipt, route)
-			st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: StageRunner, Note: routeNote(await.Role, *route)})
+			note := routeNote(await.Role, *route)
+			if modelNote != "" {
+				note += "; " + modelNote
+			}
+			st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: StageRunner, Note: note})
 		}
 		if lane.HandBack != nil {
 			// The lane's own receipt handed the work back: the verifier has
