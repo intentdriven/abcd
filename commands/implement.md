@@ -1016,7 +1016,7 @@ repository: a repository's `.abcd/config.json` that sets either is named once
 on stderr as ignored, and its value is never used. A value outside its set
 refuses the wait, naming the key, the file and the values it takes. Memory is
 read at every look and again at the re-check just before the gate opens, and
-before the race gate at one preflight at a time opens at once; the waiting line
+before the race gate at one preflight at a time opens; the waiting line
 names the reading and the floor (`memory pressure warn (floor warn)`, `memory
 stalled 14.2% over 10s (floor 10%)`), and a wait still shut at `--timeout`
 names `memory` in `still`. `--json` carries the last reading as `memory`. A
@@ -1046,13 +1046,16 @@ and the two are refused together: an abcd released before the race gate reads an
 load --wait` as a waiter at its first gate, so a preflight waiting at a race
 gate spelt with it would read to that older waiter as queued, not in its test
 stages, and the older waiter would open beside it. At one preflight at a time,
-the default, the race gate opens at once once the disk check above passes,
-without reading the load or the process table, judging or taking a hold, or
-waiting a jitter, so the race stage follows the tests straight away, as it did
-before the gate existed (it prints `race gate open at once`). Above one it stays shut while another `go test -race` run is live, a
+the default, the race gate opens at once once the disk check above passes and
+memory does not hold it, without reading the load or the process table, judging
+or taking a hold, or waiting a jitter, so the race stage follows the tests
+straight away, as it did before the gate existed (it prints
+`race gate open at once`). Memory pressure at or above the floor holds it as it holds either gate,
+and a race gate that waited prints `race gate open after <time>` instead,
+naming what it waited on. Above one it stays shut while another `go test -race` run is live, a
 race waiter queued ahead of it (by the same rule: started earlier, or within
 two seconds of it with the lower pid) or running its command is, the load
-is at the wait limit, or the race gate's own hold is in force (another race
+is at the wait limit, memory pressure is at or above the floor, or the race gate's own hold is in force (another race
 waiter of the account opened within two minutes), so race stages are kept
 apart whatever the first gate admits: one at a time within an account, and
 across accounts all but the narrow windows below. Each gate is shut only by its own gate's

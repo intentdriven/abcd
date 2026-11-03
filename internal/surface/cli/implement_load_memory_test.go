@@ -50,6 +50,27 @@ func TestImplementLoadWaitNamesMemoryPressure(t *testing.T) {
 	}
 }
 
+// TestImplementLoadRaceGateAtOneSlotSaysItWaitedOnMemory: at one slot the
+// race gate is held by memory pressure like any gate, and once it falls the
+// closing line says the gate opened after its wait, naming memory, never
+// that it opened at once.
+func TestImplementLoadRaceGateAtOneSlotSaysItWaitedOnMemory(t *testing.T) {
+	waitFixture(t, machine(3, 3, 3))
+	warn := machineload.Memory{Platform: machineload.MemoryDarwin, Level: machineload.MemoryWarn, Raw: "2"}
+	normal := machineload.Memory{Platform: machineload.MemoryDarwin, Level: machineload.MemoryNormal, Raw: "1"}
+	withMemory(t, warn, normal)
+	code, out, errOut := implementCLI(t, "implement", "load", "--race-gate", "--timeout", "5m")
+	if code != 0 {
+		t.Fatalf("exit %d\n%s%s", code, out, errOut)
+	}
+	if !strings.Contains(out, "waiting for capacity: memory pressure warn (floor warn)") ||
+		!strings.Contains(out, "race gate open after ") ||
+		!strings.Contains(out, ": one preflight runs at a time, and what it waited on (memory) no longer holds the race stage back\n") ||
+		strings.Contains(out, "at once") {
+		t.Fatalf("stdout:\n%s", out)
+	}
+}
+
 // TestImplementLoadWaitTimesOutOnMemory: pressure that outlasts --timeout
 // ends the wait as a load wait ends, exiting 1 and naming memory, in text
 // and in JSON.

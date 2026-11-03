@@ -153,12 +153,13 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"older abcd reads any `implement load --wait` as a waiter at its first gate, and\n" +
 			"would count a preflight at its race gate as queued, not in its tests, so the two\n" +
 			"are refused together. At one preflight at a time, the default, it opens at once\n" +
-			"once the disk check below passes, without reading the load or the process table,\n" +
-			"taking a hold or waiting a jitter, so a preflight's race stage follows its tests\n" +
-			"as before. Above one it is shut only while\n" +
+			"once the disk check below passes and memory (below) does not hold it, without\n" +
+			"reading the load or the process table, taking a hold or waiting a jitter, so a\n" +
+			"preflight's race stage follows its tests as before. Above one it is shut while\n" +
 			"another `go test -race` run is live, a race waiter is ahead of it (by the same\n" +
-			"rule) or running its command, the load is at the wait limit, or the race gate's\n" +
-			"own hold is in force (each gate is shut only by its own gate's hold). That keeps\n" +
+			"rule) or running its command, the load is at the wait limit, memory holds it\n" +
+			"(below), or the race gate's own hold is in force (each gate is shut only by its\n" +
+			"own gate's hold). That keeps\n" +
 			"race stages apart among the preflights whose checkouts have the race gate: one\n" +
 			"at a time within an account, and across accounts all but a narrow window (a\n" +
 			"race waiter gone before its race run shows, or, after a pid wrap, two waiters\n" +
@@ -210,7 +211,8 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"ignored. A value outside its set refuses the wait, naming the key. Memory waits\n" +
 			"rather than refuses, since pressure falls as other work finishes: it is read at\n" +
 			"every look and again just before the gate opens (and before the race gate at one\n" +
-			"preflight at a time opens at once), the waiting line names the level or the\n" +
+			"preflight at a time opens, which, once memory has held it, says it opened after\n" +
+			"its wait, not at once), the waiting line names the level or the\n" +
 			"stalled share and the floor, and a wait still shut at --timeout names memory. A\n" +
 			"reading it cannot take (another platform, a kernel without the file, a read\n" +
 			"that fails) shuts nothing: one line on stderr says memory was not checked, and why.\n" +
@@ -342,7 +344,7 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 	}
 	enumFlag(cmd.Flags(), &site, "site", "", "where the check runs: ", implement.LoadSites(), "")
 	cmd.Flags().BoolVar(&wait, "wait", false, "wait until the load is below the wait limit and no other go test -race run is live")
-	cmd.Flags().BoolVar(&race, "race-gate", false, "wait at the race gate, before a race stage, instead of the first gate: open at once at one preflight at a time unless the disk is below the floor, and above that shut only by another go test -race run, a race waiter ahead, the load and the race gate's hold")
+	cmd.Flags().BoolVar(&race, "race-gate", false, "wait at the race gate, before a race stage, instead of the first gate: open at once at one preflight at a time unless the disk is below the floor or memory pressure is at or above its floor, and above that shut by another go test -race run, a race waiter ahead, the load, memory pressure and the race gate's hold")
 	cmd.Flags().DurationVar(&timeout, "timeout", implement.WaitDefaultTimeout, "with --wait or --race-gate, give up after this long and exit 1")
 	return cmd
 }
@@ -723,7 +725,11 @@ func renderLoadWait(w io.Writer, res implement.WaitResult) {
 		fmt.Fprintf(w, "load gate still shut after %s: %s\n", waited, waitConditions(res))
 	case implement.WaitOpen:
 		if res.Gate == implement.GateRace && res.Slots <= 1 {
-			fmt.Fprintf(w, "race gate open at once: %s\n", res.Reason)
+			if len(res.WaitedOn) == 0 {
+				fmt.Fprintf(w, "race gate open at once: %s\n", res.Reason)
+			} else {
+				fmt.Fprintf(w, "race gate open after %s: %s\n", waited, res.Reason)
+			}
 			break
 		}
 		hold := "the hold its own caller took stands"

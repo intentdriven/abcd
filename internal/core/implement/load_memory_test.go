@@ -301,8 +301,8 @@ func TestWaitMemoryRaceShortcutReadsMemory(t *testing.T) {
 	if reads() != 2 || said == nil || !slices.Equal(said.Still, []string{WaitOnMemory}) {
 		t.Fatalf("%d memory reads, waiting line %+v", reads(), said)
 	}
-	if !strings.Contains(res.Reason, "one preflight runs at a time") {
-		t.Fatalf("reason = %q", res.Reason)
+	if want := "one preflight runs at a time, and what it waited on (memory) no longer holds the race stage back"; res.Reason != want {
+		t.Fatalf("reason = %q, want %q: a gate that waited did not open at once", res.Reason, want)
 	}
 }
 

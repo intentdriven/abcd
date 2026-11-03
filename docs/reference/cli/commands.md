@@ -2685,12 +2685,13 @@ the race stage that follows it, and a race run of your own goes through
 older abcd reads any `implement load --wait` as a waiter at its first gate, and
 would count a preflight at its race gate as queued, not in its tests, so the two
 are refused together. At one preflight at a time, the default, it opens at once
-once the disk check below passes, without reading the load or the process table,
-taking a hold or waiting a jitter, so a preflight's race stage follows its tests
-as before. Above one it is shut only while
+once the disk check below passes and memory (below) does not hold it, without
+reading the load or the process table, taking a hold or waiting a jitter, so a
+preflight's race stage follows its tests as before. Above one it is shut while
 another `go test -race` run is live, a race waiter is ahead of it (by the same
-rule) or running its command, the load is at the wait limit, or the race gate's
-own hold is in force (each gate is shut only by its own gate's hold). That keeps
+rule) or running its command, the load is at the wait limit, memory holds it
+(below), or the race gate's own hold is in force (each gate is shut only by its
+own gate's hold). That keeps
 race stages apart among the preflights whose checkouts have the race gate: one
 at a time within an account, and across accounts all but a narrow window (a
 race waiter gone before its race run shows, or, after a pid wrap, two waiters
@@ -2745,7 +2746,8 @@ and never read from a repository file: a repository's key is named on stderr as
 ignored. A value outside its set refuses the wait, naming the key. Memory waits
 rather than refuses, since pressure falls as other work finishes: it is read at
 every look and again just before the gate opens (and before the race gate at one
-preflight at a time opens at once), the waiting line names the level or the
+preflight at a time opens, which, once memory has held it, says it opened after
+its wait, not at once), the waiting line names the level or the
 stalled share and the floor, and a wait still shut at --timeout names memory. A
 reading it cannot take (another platform, a kernel without the file, a read
 that fails) shuts nothing: one line on stderr says memory was not checked, and why.
@@ -2829,7 +2831,7 @@ child as its command: gate make or go, never git or gh itself.
 **Flags:**
 
 ```
-      --race-gate          wait at the race gate, before a race stage, instead of the first gate: open at once at one preflight at a time unless the disk is below the floor, and above that shut only by another go test -race run, a race waiter ahead, the load and the race gate's hold
+      --race-gate          wait at the race gate, before a race stage, instead of the first gate: open at once at one preflight at a time unless the disk is below the floor or memory pressure is at or above its floor, and above that shut by another go test -race run, a race waiter ahead, the load, memory pressure and the race gate's hold
       --site string        where the check runs: preflight | eval-harness
       --timeout duration   with --wait or --race-gate, give up after this long and exit 1 (default 30m0s)
       --wait               wait until the load is below the wait limit and no other go test -race run is live

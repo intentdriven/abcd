@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"runtime"
 	"slices"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -620,6 +621,11 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 			}
 			res.Status = WaitOpen
 			res.Reason = "one preflight runs at a time, so the race stage follows its tests at once"
+			if len(res.WaitedOn) > 0 {
+				// It did wait (on memory, or at looks taken while the
+				// count was above one), so it opens after, not at once.
+				res.Reason = "one preflight runs at a time, and what it waited on (" + strings.Join(res.WaitedOn, ", ") + ") no longer holds the race stage back"
+			}
 			// An open gate names nothing that held it shut; what an earlier
 			// look found is WaitedOn's.
 			res.Still, res.RaceRuns, res.Holder = nil, []int{}, nil
