@@ -94,12 +94,12 @@ type Forge func(ctx context.Context, dir string, args ...string) (string, error)
 // test's seam.
 type Git func(root string, maxBytes int, args ...string) (string, error)
 
-// Lookup answers which of ids name a record on an open pull request's branch
+// lookup answers which of ids name a record on an open pull request's branch
 // on origin, through the repository's own forge client and git.
-func Lookup(repoRoot string, ids []string) Answer {
+func lookup(repoRoot string, ids []string) Answer {
 	ctx, cancel := context.WithTimeout(context.Background(), Deadline)
 	defer cancel()
-	return LookupWith(ctx, landing.GHContext, gitutil.RunCapped, repoRoot, ids)
+	return lookupWith(ctx, landing.GHContext, gitutil.RunCapped, repoRoot, ids)
 }
 
 // pullRequest is one open pull request as the REST listing sends it, the
@@ -131,11 +131,11 @@ func (p pullRequest) sameRepository() bool {
 		strings.EqualFold(p.Head.Repo.FullName, p.Base.Repo.FullName)
 }
 
-// LookupWith is Lookup through the given forge client and git runner, under
+// lookupWith is lookup through the given forge client and git runner, under
 // ctx. Asked nothing, it reads nothing: the forge is consulted only for an id
 // the tree could not resolve, so a tree whose every citation resolves never
 // waits on the network.
-func LookupWith(ctx context.Context, forge Forge, git Git, repoRoot string, ids []string) Answer {
+func lookupWith(ctx context.Context, forge Forge, git Git, repoRoot string, ids []string) Answer {
 	ans := Answer{Found: map[string]Record{}}
 	want := map[string]bool{}
 	for _, id := range ids {
@@ -262,12 +262,12 @@ func headResolver(git Git, root, commit string) (*recordid.Resolver, error) {
 	return recordid.NewResolverFromPaths(paths)
 }
 
-// ForLint is Lookup in the lint package's vocabulary, the one adapter every
+// ForLint is lookup in the lint package's vocabulary, the one adapter every
 // front door registers (lint.SetPendingLookup): cmd/record-lint for the gate,
 // and the CLI for `abcd lint` and every host-prose ingest that asks the gate
 // before it writes, so the two can never answer the question differently.
 func ForLint(repoRoot string, ids []string) (map[string]lint.PendingRecord, string) {
-	ans := Lookup(repoRoot, ids)
+	ans := lookup(repoRoot, ids)
 	out := make(map[string]lint.PendingRecord, len(ans.Found))
 	for id, rec := range ans.Found {
 		out[id] = lint.PendingRecord(rec)
