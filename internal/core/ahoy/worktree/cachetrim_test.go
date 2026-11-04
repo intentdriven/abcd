@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy/worktree"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 const (
@@ -294,6 +295,9 @@ func TestTrimGoCacheSkipsWhatDoesNotLookLikeACache(t *testing.T) {
 		mine := cacheFile(t, home, "ab/cafe-d", "mine", oldTime)
 		t.Setenv("HOME", home)
 		t.Setenv("GOCACHE", home)
+		// The go this asks for GOCACHE starts a telemetry process that writes
+		// under HOME; pinning the mode off keeps it from racing the cleanup.
+		gittest.Env(t)
 		got := worktree.TrimGoCache(false, trimNow)
 		if got.Skipped == "" || got.EntriesRemoved != 0 || !exists(mine) {
 			t.Fatalf("skipped: %+v", got)
