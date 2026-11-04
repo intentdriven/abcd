@@ -111,23 +111,25 @@ func managedRepoWithOrigin(t *testing.T, origin string) string {
 	}
 	repo := t.TempDir()
 	env := gittest.Env(t)
-	git := func(args ...string) {
-		t.Helper()
-		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
-		cmd.Env = env
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %v: %v\n%s", args, err, out)
+	templatedInstall(t, repo, "managed, origin "+origin, func() {
+		git := func(args ...string) {
+			t.Helper()
+			cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+			cmd.Env = env
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git %v: %v\n%s", args, err, out)
+			}
 		}
-	}
-	git("init")
-	git("config", "user.name", "Alice Example")
-	git("config", "user.email", "alice@example.com")
-	if origin != "" {
-		git("remote", "add", "origin", origin)
-	}
-	if _, err := Install(repo, installOpts(), RefusingPrompter{}); err != nil {
-		t.Fatal(err)
-	}
+		git("init")
+		git("config", "user.name", "Alice Example")
+		git("config", "user.email", "alice@example.com")
+		if origin != "" {
+			git("remote", "add", "origin", origin)
+		}
+		if _, err := Install(repo, installOpts(), RefusingPrompter{}); err != nil {
+			t.Fatal(err)
+		}
+	})
 	return repo
 }
 

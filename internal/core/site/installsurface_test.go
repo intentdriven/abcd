@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/changelog"
 )
 
 // The installer exists in two committed forms: the script in
@@ -778,18 +779,19 @@ func TestDocumentedInstallCommandFetchesTheReleasedInstaller(t *testing.T) {
 	}
 }
 
-// TestTheHomePageShowsTheDocumentedInstallCommand renders this repository's
-// own site and holds its install chapter to the documented command: the page
-// builds its install tabs from the guide's headings under `## CLI`, and only a
-// tab whose section holds the command shows it, with the read-the-script link
-// beside it. A heading change in the guide that left no such tab would ship a
-// home page with no install command on it.
+// TestTheHomePageShowsTheDocumentedInstallCommand composes this repository's
+// own install chapter of the home page, as the build composes it from the
+// committed manifest, guide and changelog, and holds it to the documented
+// command: the page builds its install tabs from the guide's headings under
+// `## CLI`, and only a tab whose section holds the command shows it, with the
+// read-the-script link beside it. A heading change in the guide that left no
+// such tab would ship a home page with no install command on it.
+//
+// It renders the one chapter and not the whole site, a build of this repository
+// that spends minutes on every record's page to read this one panel: `make
+// site-render` builds the whole site, in preflight and in CI.
 func TestTheHomePageShowsTheDocumentedInstallCommand(t *testing.T) {
-	out := t.TempDir()
-	if _, err := Build(Request{RepoRoot: repoRoot(), OutDir: out, Stamp: fixtureStamp, LeaveUI: true}); err != nil {
-		t.Fatalf("build this repository's site: %v", err)
-	}
-	html := readFile(t, filepath.Join(out, "index.html"))
+	html := thisRepositorysInstallChapter(t)
 	start := strings.Index(html, `<div role="tabpanel" id="panel-macos-and-linux"`)
 	if start < 0 {
 		t.Fatal("the home page has no macOS and Linux install panel")
@@ -804,4 +806,49 @@ func TestTheHomePageShowsTheDocumentedInstallCommand(t *testing.T) {
 	if !strings.Contains(panel, `<a href="/`+installScriptName+`">`) {
 		t.Error("the macOS and Linux panel has no read-the-script link beside the command")
 	}
+}
+
+// thisRepositorysInstallChapter is the home page's install chapter, composed
+// from this repository's files the way build's composer composes it.
+func thisRepositorysInstallChapter(t *testing.T) string {
+	t.Helper()
+	root := repoRoot()
+	manifest, err := LoadManifest(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ui, err := LoadUI(root, manifest.UIStrings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo, err := loadRepoMetaFor(root, manifest.Project())
+	if err != nil {
+		t.Fatal(err)
+	}
+	releases, _, err := changelog.DatedReleases(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(releases) == 0 {
+		t.Fatal("this repository's changelog has no dated release")
+	}
+	src := mustOpenRoot(t, root)
+	c := &composer{
+		repoRoot: root, root: src, manifest: manifest, ui: ui, repo: repo,
+		assets: newAssetPipe(root, src, ""), stamp: fixtureStamp,
+		beta: isPreOne(releases[0].Version), version: releases[0].Version, releaseDate: releases[0].Date,
+		identityLoc: manifest.Identity,
+	}
+	for _, ch := range manifest.Home.Chapters {
+		if ch.Layout != LayoutInstall {
+			continue
+		}
+		html, err := c.chapter(ch)
+		if err != nil {
+			t.Fatalf("compose this repository's install chapter: %v", err)
+		}
+		return html
+	}
+	t.Fatal("this repository's home page has no install chapter")
+	return ""
 }

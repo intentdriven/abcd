@@ -98,16 +98,18 @@ func offerPrompter(consent bool, answers map[string]string) *scriptedPrompter {
 func installedRepo(t *testing.T) string {
 	t.Helper()
 	repo := t.TempDir()
-	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	res, err := Install(repo, installOpts(), RefusingPrompter{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.Status != "clean" {
-		t.Fatalf("baseline install status = %q (remaining=%v, notes=%v)", res.Status, res.Remaining, res.Notes)
-	}
+	templatedInstall(t, repo, "installed", func() {
+		if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		res, err := Install(repo, installOpts(), RefusingPrompter{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Status != "clean" {
+			t.Fatalf("baseline install status = %q (remaining=%v, notes=%v)", res.Status, res.Remaining, res.Notes)
+		}
+	})
 	return repo
 }
 

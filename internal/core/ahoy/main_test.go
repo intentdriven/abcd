@@ -42,5 +42,6 @@ func TestMain(m *testing.M) {
 		e.Shell, e.ZDotDir = "", ""
 		return e
 	}
+	defaultInstallSeams = installSeams()
 	os.Exit(m.Run())
 }

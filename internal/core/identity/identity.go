@@ -157,38 +157,95 @@ func effectiveCommitter(root string) (Effective, error) {
 	return effective(root, RoleCommitter)
 }
 
+// effective is one role's identity, read through a listing of its own.
+func effective(root string, role Role) (Effective, error) {
+	return (&identityConfig{root: root}).effective(role)
+}
+
 // effective resolves one role's identity field by field, with the precedence
 // git itself applies: GIT_<ROLE>_NAME / GIT_<ROLE>_EMAIL, then <role>.name /
 // <role>.email, then user.name / user.email. It deliberately does NOT ask
 // `git var GIT_<ROLE>_IDENT`, which fabricates an identity from the account's
 // gecos field and the hostname when none is configured and exits 0 — that would
 // collapse the distinct StatusUnset state the pre-commit hook blocks on.
-func effective(root string, role Role) (Effective, error) {
+func (c *identityConfig) effective(role Role) (Effective, error) {
 	env := "GIT_" + strings.ToUpper(string(role)) + "_"
-	name, err := resolveField(root, env+"NAME", string(role)+".name", "user.name")
+	name, err := c.resolveField(env+"NAME", string(role)+".name", "user.name")
 	if err != nil {
 		return Effective{}, err
 	}
-	email, err := resolveField(root, env+"EMAIL", string(role)+".email", "user.email")
+	email, err := c.resolveField(env+"EMAIL", string(role)+".email", "user.email")
 	if err != nil {
 		return Effective{}, err
 	}
 	return Effective{Name: name, Email: email}, nil
 }
 
-// resolveField returns the first non-blank of an environment override and then
-// each config key in turn. A blank override is treated as unset.
-func resolveField(root, envKey string, keys ...string) (string, error) {
+// resolveField returns the first non-blank of an environment override and each
+// config key in turn. A blank override is treated as unset.
+func (c *identityConfig) resolveField(envKey string, keys ...string) (string, error) {
 	if v := strings.TrimSpace(os.Getenv(envKey)); v != "" {
 		return v, nil
 	}
 	for _, key := range keys {
-		v, err := gitConfig(root, key)
+		v, err := c.get(key)
 		if err != nil || v != "" {
 			return v, err
 		}
 	}
 	return "", nil
+}
+
+// identityConfigKeys selects every key an identity is resolved from.
+const identityConfigKeys = `^(user|author|committer)\.(name|email)$`
+
+// identityConfig is the identity keys of root's git config, listed once, when
+// the first one is needed: one git process, where a read of each key took up to
+// eight for an author and a committer. A listing answers as a read of each key
+// does. Each key holds the last value git lists, as `--get` gives it, trimmed; no
+// key matching is exit 1 and leaves them all unset; and any other failure (git
+// absent, not a repository, a config git cannot parse) is the error a read of the
+// first key would have returned, named for that key. An identity wholly from the
+// environment runs no git at all.
+type identityConfig struct {
+	root   string
+	listed bool
+	values map[string]string
+	err    error
+}
+
+func (c *identityConfig) get(key string) (string, error) {
+	if !c.listed {
+		c.values, c.err = listIdentityConfig(c.root)
+		c.listed = true
+	}
+	if c.err != nil {
+		return "", fmt.Errorf("git config %s: %w", key, c.err)
+	}
+	return c.values[key], nil
+}
+
+// listIdentityConfig reads the keys. Under -z an entry is its key, a newline and
+// its value, ending in a NUL; a key given with no value has no newline.
+func listIdentityConfig(root string) (map[string]string, error) {
+	cmd := exec.Command("git", "-C", root, "config", "-z", "--get-regexp", identityConfigKeys)
+	cmd.Env = commitConfigEnv()
+	out, err := cmd.Output()
+	if err != nil {
+		if ee, ok := err.(*exec.ExitError); ok && ee.ExitCode() == 1 {
+			return nil, nil // no key set
+		}
+		return nil, err
+	}
+	values := map[string]string{}
+	for _, entry := range strings.Split(string(out), "\x00") {
+		if entry == "" {
+			continue
+		}
+		key, value, _ := strings.Cut(entry, "\n")
+		values[key] = strings.TrimSpace(value)
+	}
+	return values, nil
 }
 
 // gitConfig returns the trimmed value of a git config key, or "" when the key is
@@ -226,8 +283,10 @@ func gitConfig(root, key string) (string, error) {
 // scrub's other reason, that an injected value could forge the identity the
 // gate verifies, does not hold for this reader: it already honours
 // GIT_AUTHOR_*/GIT_COMMITTER_*, which any process able to set these variables
-// can set as well, and a `git config --get` read executes nothing a parameter
-// names. Every other ScrubbedEnv caller keeps the scrub. The redaction probe
+// can set as well, and these reads execute nothing a parameter names: `--get`
+// never pages, and the listing's `--get-regexp` runs a pager.config pager only at
+// a terminal, while its output here goes to a pipe. Every other ScrubbedEnv
+// caller keeps the scrub. The redaction probe
 // keeps it for the identity it resolves, because there a displacing value
 // hides the real identity instead of reporting it; it reads these variables
 // only for extra identities to redact (iss-2609261614450166).
@@ -255,11 +314,12 @@ func checkWithHome(root, home string) (Result, error) {
 	if !recorded {
 		ref = MachineRecordRef()
 	}
-	eff, err := EffectiveIdentity(root)
+	config := &identityConfig{root: root}
+	eff, err := config.effective(RoleAuthor)
 	if err != nil {
 		return Result{}, err
 	}
-	committer, err := effectiveCommitter(root)
+	committer, err := config.effective(RoleCommitter)
 	if err != nil {
 		return Result{}, err
 	}

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
@@ -197,14 +198,26 @@ func runInstallForm(t *testing.T, argv []string, gh ghBehaviour, prepare func(ho
 
 // installerPathWithout is PATH as one directory of symlinks to every command
 // on base except the named ones, so gh and curl are only ever the stubs,
-// wherever the machine keeps its own (/usr/bin on a Linux runner).
+// wherever the machine keeps its own (/usr/bin on a Linux runner). A machine has
+// thousands of commands, so the directory is made once for each base and list:
+// the installers only run what it holds, and it is read-only so one cannot do
+// otherwise.
 func installerPathWithout(t *testing.T, base string, names ...string) string {
 	t.Helper()
+	key := base + "\x00" + strings.Join(names, "\x00")
+	installerPaths.mu.Lock()
+	defer installerPaths.mu.Unlock()
+	if dir, ok := installerPaths.dirs[key]; ok {
+		return dir
+	}
+	dir, err := os.MkdirTemp("", "installer-path-")
+	if err != nil {
+		t.Fatal(err)
+	}
 	drop := map[string]bool{}
 	for _, n := range names {
 		drop[n] = true
 	}
-	dir := t.TempDir()
 	seen := map[string]bool{}
 	for _, d := range filepath.SplitList(base) {
 		entries, err := os.ReadDir(d)
@@ -227,7 +240,31 @@ func installerPathWithout(t *testing.T, base string, names ...string) string {
 			}
 		}
 	}
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	if installerPaths.dirs == nil {
+		installerPaths.dirs = map[string]string{}
+	}
+	installerPaths.dirs[key] = dir
 	return dir
+}
+
+// installerPaths holds the directories installerPathWithout made.
+var installerPaths struct {
+	mu   sync.Mutex
+	dirs map[string]string
+}
+
+// removeInstallerPaths deletes them; TestMain calls it once the tests have run.
+func removeInstallerPaths() {
+	installerPaths.mu.Lock()
+	defer installerPaths.mu.Unlock()
+	for _, dir := range installerPaths.dirs {
+		_ = os.Chmod(dir, 0o755)
+		_ = os.RemoveAll(dir)
+	}
+	installerPaths.dirs = nil
 }
 
 func (r installerRun) installed(t *testing.T) bool {
