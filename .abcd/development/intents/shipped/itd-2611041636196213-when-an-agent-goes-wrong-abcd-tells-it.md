@@ -124,7 +124,9 @@ None. The product thinker confirmed the reversal below at sign-off, 2026-11-04.
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-889ac8de461c -->
+Fidelity review OWED (receipt rcp-889ac8de461c).
+<!-- abcd-review-end receipt=rcp-889ac8de461c -->
 
 ## Grounds
 
