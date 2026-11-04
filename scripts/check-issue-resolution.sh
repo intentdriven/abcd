@@ -426,9 +426,11 @@ frontmatter_stamps() {
 				tab = index($0, "\t")
 				path = substr($0, length(prefix) + 1, tab - length(prefix) - 1)
 				rest = substr($0, tab + 1)
-				colon = index(rest, ":")
-				line = substr(rest, 1, colon - 1) + 0
-				text = substr(rest, colon + 1)
+				# git prints the line number after the path as "N:" or, with -z on
+				# a newer git, "N" and a NUL, which tr made a tab.
+				if (!match(rest, /^[0-9]+[\t:]/)) next
+				line = substr(rest, 1, RLENGTH - 1) + 0
+				text = substr(rest, RLENGTH + 1)
 				if (path != current) { current = path; finished = 0 }
 				if (finished) next
 				if (text == "---") { if (line > 1) finished = 1; next }

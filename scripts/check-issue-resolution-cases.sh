@@ -703,6 +703,20 @@ git -C "$d" add -A
 git -C "$d" commit -qm "chore: resolve and document the stamp shape"
 expect pass "$d" "RS003 ignores a commit: example in the prose body" -- ledger HEAD
 
+d="$(newrepo rs003-unstamped-body-example)"
+cat >"$d/$ISS_DIR/resolved/iss-996-unstamped.md" <<'EOF'
+---
+schema_version: 1
+id: "iss-996"
+---
+A record with no stamp, whose body shows the shape of one:
+
+  commit: deadbeef00
+EOF
+git -C "$d" add -A
+git -C "$d" commit -qm "chore: file a record with no stamp"
+expect pass "$d" "RS003 a body line is no stamp on a record with none" -- ledger HEAD
+
 d="$(newrepo rs003-names-the-record)"
 base="$(git -C "$d" rev-parse HEAD)"
 resolve_record "$d" "$base"
