@@ -34,12 +34,12 @@ type drainOutput struct {
 // `--dry-run` classifies every open issue by the eligibility rule and writes
 // nothing; the bare verb performs one move of the drain run (loop.Drain).
 func newDrainCommand(asJSON *bool) *cobra.Command {
-	var dryRun, takeOver bool
+	var dryRun, takeOver, drive, yes bool
 	var maxLanes int
 	var pace, subAgents, fixRounds, judgement, skipReason string
 	var skip, unskip []string
 	cmd := &cobra.Command{
-		Use: "drain [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>]",
+		Use: "drain [--drive [--yes]] [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>]",
 		Long: "Work the open issue ledger unattended: fix the issues that need no decision, and\n" +
 			"hand the rest back by kind. Which issues need no decision is this repository's own\n" +
 			"recorded decision: an accepted decision record whose frontmatter carries the four\n" +
@@ -86,6 +86,19 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"behind it, and which issues open in the checkout it has already finished. The host\n" +
 			"judgement over each eligible remedy does not run; it can only ever hand an issue\n" +
 			"back.\n\n" +
+			"--drive makes the moves itself, from a plain terminal with no host session: it refuses\n" +
+			"before anything is reserved when the claude runner is not enabled or admitted, when\n" +
+			"there is no one walled directory under ~/.abcd.noindex/profiles/ logged in, when a\n" +
+			"wall does not hold, when a credential variable the harness would bill through is set\n" +
+			"(a drive runs on this account's subscription alone, for now), when the judge is routed\n" +
+			"to opencode, when a role is pinned to the host, and when it is started from inside an\n" +
+			"agent's own session. It shows the cap (eight unless --max says otherwise), an estimate\n" +
+			"of the agent runs, the runner and the route, and asks once; --yes is the scripted\n" +
+			"answer, and with no terminal nothing else answers. It then judges each eligible issue,\n" +
+			"drives each lane to its landing, every role on the walled login, and runs each\n" +
+			"landing's preflight behind the load gate, printing one line per step and logging them\n" +
+			"under .abcd/.work.local/logs/. It ends at the cap, when nothing is eligible, or after\n" +
+			"eight hours of runner failures. Without --drive a drain is one move, as below.\n\n" +
 			"--take-over moves your own live reservation of an issue from another copy to this one\n" +
 			"as the move reaches it, as `abcd build --take-over` does: a hosted session that\n" +
 			"restarted lost its local tier, so its new copy reads its own reservations as another\n" +
@@ -217,12 +230,21 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"naming how to add it; `abcd ahoy install` offers it. A run that opens nothing or\n" +
 			"merges nothing exits 0 and says why. Exit 2 on a refusal, exit 3 when another\n" +
 			"drain or run holds the state lock.",
-		Example: "  abcd drain --dry-run\n  abcd drain --dry-run --json\n  abcd drain --max 3\n  abcd drain --json\n  abcd drain --judgement .abcd/.work.local/run/drain-judgement.json --json",
+		Example: "  abcd drain --drive\n  abcd drain --drive --yes --max 3\n  abcd drain --dry-run\n  abcd drain --dry-run --json\n  abcd drain --max 3\n  abcd drain --json\n  abcd drain --judgement .abcd/.work.local/run/drain-judgement.json --json",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			repoRoot, err := ledgerRootFor(cmd, "abcd drain")
 			if err != nil {
 				return err
+			}
+			switch {
+			case yes && !drive:
+				return &exitError{Code: 2, Msg: "abcd drain: --yes answers --drive's one question, and this is no drive; add --drive or leave it out (nothing written)"}
+			case drive && (dryRun || cmd.Flags().Changed("judgement")):
+				return &exitError{Code: 2, Msg: "abcd drain: --drive makes every move and judges through the runner itself, so it takes no --dry-run and no --judgement (nothing written)"}
+			case drive:
+				return runDrive(cmd, *asJSON, repoRoot, driveFlags{yes: yes, maxLanes: maxLanes, takeOver: takeOver,
+					skips: drainSkips{skip: skip, reason: skipReason, unskip: unskip}})
 			}
 			if !dryRun {
 				return runDrain(cmd, *asJSON, repoRoot, maxLanes, pace, subAgents, fixRounds, judgement, takeOver,
@@ -252,6 +274,8 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			})
 		},
 	}
+	cmd.Flags().BoolVar(&drive, "drive", false, "make every move from this terminal, starting each agent on the walled login, until the cap, an empty ledger or a stop")
+	cmd.Flags().BoolVar(&yes, "yes", false, "with --drive: the scripted yes to its one question")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show every open issue's disposition and the order a drain takes them; writes nothing")
 	cmd.Flags().IntVar(&maxLanes, "max", 0, "cap the lanes this drain opens; the default is all")
 	cmd.Flags().StringVar(&pace, "pace", "", "the drain's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer")
