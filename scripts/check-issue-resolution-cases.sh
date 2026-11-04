@@ -122,8 +122,22 @@ expect_refusal_not_naming() {
 }
 
 # newrepo makes a scratch repo with one baseline commit and an open issue.
+#
+# Seven git processes a repository, so it is built once and copied: every case
+# still gets its own repository, the same objects, refs and config. The copy's
+# index is refreshed, since a plumbing diff reads a new inode as an edit.
 newrepo() {
-	local d="$tmproot/$1"
+	local d="$tmproot/$1" template="$tmproot/.newrepo-template"
+	if [ ! -d "$template" ]; then
+		build_newrepo "$template"
+	fi
+	cp -Rp "$template" "$d"
+	git -C "$d" update-index -q --refresh
+	echo "$d"
+}
+
+build_newrepo() {
+	local d="$1"
 	mkdir -p "$d/$ISS_DIR/open" "$d/$ISS_DIR/resolved" "$d/$ISS_DIR/wontfix"
 	git -C "$d" init -q -b main
 	git -C "$d" config user.name t
@@ -144,7 +158,6 @@ EOF
 	# is empty and the gate correctly reports "nothing to check" — which a naive
 	# fixture reads as a pass.
 	git -C "$d" checkout -q -b work
-	echo "$d"
 }
 
 resolve_record() {
