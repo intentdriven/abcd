@@ -5714,6 +5714,7 @@ Take the website from this checkout to a live address: Writes its files, and the
       --confirm            replace a workflow or host configuration that differs from what setup writes
       --domain string      custom domain to route to the host when the composition names none
       --name string        host name when the composition names none (default: the repository's name)
+      --project            set up a project site; where .abcd/site.json is a composition, its settings and workflow go beside it, in .abcd/project-site.json and .github/workflows/project-site.yml, and the composed site is left as it is
       --provider string    hosting provider when the composition names none: cloudflare or github-pages (default cloudflare); github-pages asks whether to switch the project site on
       --replace-existing   publish over a site the host already serves for this repository without asking; with --yes and no --replace-existing, setup refuses when such a site exists
       --yes                confirm the forge and host changes without being asked (never the install of a missing gh, nor publishing over a site already live, which takes --replace-existing); without it an unanswered run declines them

@@ -419,7 +419,11 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		Tools:    toolsFor(aw.Role),
 		// The approver of a shell launch judges against the registry the
 		// lane was cut from, never one the lane has since changed.
-		Base:      base,
+		Base: base,
+		// A review set's reviewer runs at its class's model, over the
+		// runner's own (reviewers.go); the runner admits it against the
+		// provider's allowlist whoever stored it. "" keeps the route's.
+		Model:     aw.Model,
 		SessionID: session,
 		Timeout:   timeout,
 	}

@@ -533,10 +533,16 @@ jobs:
       # baseline, ...) are what release.yml's post-publish site job runs, so a
       # change that renders but trips a check gate must fail HERE, not after the
       # binaries ship. `lint site` excludes docs/, so no mkdocs step is needed.
+      # The record is also built on the project route, from .abcd/project-site.json,
+      # below the base path GitHub Pages serves it at (itd-2610142145236613): a
+      # repository has one Pages site, so the record has no preview, and this
+      # gate is where a change that would break its next release fails.
       - name: Site-render gate
         run: |
           go run ./cmd/abcd site build --out "$RUNNER_TEMP/site-render-check"
           go run ./cmd/abcd lint site --out "$RUNNER_TEMP/site-render-check"
+          go run ./cmd/abcd site build --project --base-path /abcd/ --out "$RUNNER_TEMP/project-site-render-check"
+          go run ./cmd/abcd lint site --project --base-path /abcd/ --out "$RUNNER_TEMP/project-site-render-check"
 
       # Warn before the cap cancels (ruling Z's cancel policy, 2026-09-28). A
       # check that runs past WARN_AFTER_MINUTES is ten minutes from its job's
