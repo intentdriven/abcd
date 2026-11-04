@@ -583,6 +583,32 @@ func (c *Config) runnerFor(name, role string) (rc RunnerConfig, where string, ok
 	return rc, where, ok
 }
 
+// holdRequestModel holds a request's model to the two rules of
+// dcn-2610292236161673, before anything is launched: a --route for the role
+// naming another model is refused naming both, since a role runs at one model
+// and either one run is a run nobody asked for (the same model runs, and the
+// pin check below vets that one model); and a model the machine pins, asked
+// of a runner that cannot hold a pin (every runner but opencode), is refused
+// with the words a --route to a pinned model on claude is refused with. The
+// dispatch ends there with no fallback, to the host or to any other runner.
+// target is the runner the request would launch on, Host for none.
+func (c *Config) holdRequestModel(route Route, target string, req Request) error {
+	if fm := c.flagModels[req.Role]; fm != "" && route.Override() != "" && fm != req.Model {
+		return fmt.Errorf("runner: the %s is asked for %s, and the step's --route for it asks %s for %s; a role runs at one model, "+
+			"so nothing is launched and nothing falls back: step again without that --route, or with one naming %s",
+			req.Role, layered.BoundKey(req.Model), route.Runner, layered.BoundKey(fm), layered.BoundKey(req.Model))
+	}
+	if target == Host || target == OpenCode {
+		return nil
+	}
+	if r := c.modelled(c.runners[target], req.Model); r.Pin != nil || r.LocalPin != nil {
+		return fmt.Errorf("runner: the %s asks %s for %s, which the machine pins, and %s can hold neither a "+
+			"provider pin nor a local pin, so nothing is launched and nothing falls back; route the role through opencode (runner.opencode.model), or remove the pin",
+			req.Role, target, layered.BoundKey(req.Model), target)
+	}
+	return nil
+}
+
 // RouteFor returns where role runs: its configured route, or the host from
 // the bundled default.
 func (c *Config) RouteFor(role string) Route {

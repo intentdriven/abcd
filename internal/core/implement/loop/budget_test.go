@@ -58,9 +58,10 @@ func budgetEntry(t *testing.T, st State) string {
 	return ""
 }
 
-// The run of three steps on the claude runner is estimated at six agent runs
-// there: an implementer and a ruthless reviewer per step. A quota of five is
-// under it: the start is refused naming both numbers, and nothing is written.
+// The run of three steps on the claude runner is estimated at nine agent runs
+// there: an implementer and the bundled review set's two ruthless reviewers
+// per step. A quota of five is under it: the start is refused naming both
+// numbers, and nothing is written.
 func TestAQuotaUnderTheEstimateRefusesTheStartNamingBoth(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(threeSteps))
 	cfg := runnerConfig(t, claudeImplements, "")
@@ -69,7 +70,7 @@ func TestAQuotaUnderTheEstimateRefusesTheStartNamingBoth(t *testing.T) {
 	if !ok || r.Stage != "check" || r.Check != CheckBudget {
 		t.Fatalf("err = %v, want the budget check's refusal", err)
 	}
-	for _, want := range []string{"claude", "5 agent run(s) left", "estimated to start 6"} {
+	for _, want := range []string{"claude", "5 agent run(s) left", "estimated to start 9", "2 ruthless-reviewers and 2 security-reviewers"} {
 		if !strings.Contains(r.Reason, want) {
 			t.Fatalf("the refusal names %q: %s", want, r.Reason)
 		}
@@ -101,11 +102,22 @@ func TestAQuotaOverTheEstimateStartsTheRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, text := range []string{row.Detail, budgetEntry(t, st)} {
-		for _, want := range []string{"claude runner reports 40 agent run(s) left", "estimated to start 6", "the host reports no quota"} {
+		for _, want := range []string{"claude runner reports 40 agent run(s) left", "estimated to start 9", "the host reports no quota"} {
 			if !strings.Contains(text, want) {
 				t.Fatalf("the budget names %q: %s", want, text)
 			}
 		}
+	}
+
+	// A review set of one reviewer per role estimates one per round.
+	repo = loopRepo(t, readyIntent("", settledQuestions), specWithSteps(threeSteps))
+	machineConfig(t, `{"review":{"reviewers":["middle"]}}`)
+	res, err = Start(repo.Root(), "itd-10", Options{Runners: cfg, Quota: quotaOf(map[string]int{runner.Claude: 40})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := budgetRow(t, res.Checks).Detail; !strings.Contains(d, "estimated to start 6") || !strings.Contains(d, "a ruthless-reviewer and a security-reviewer") {
+		t.Fatalf("one reviewer per role is estimated once per round: %s", d)
 	}
 }
 

@@ -108,6 +108,15 @@ func (d *Dispatcher) Dispatch(ctx context.Context, req Request) (Outcome, error)
 				runnerKey, fallbackKey)
 		}
 	}
+	if req.Model != "" {
+		target := route.Runner
+		if target == Host && !d.HostSession {
+			target = landing
+		}
+		if err := d.Config.holdRequestModel(route, target, req); err != nil {
+			return Outcome{}, err
+		}
+	}
 	out := Outcome{Receipt: newRoleReceipt(req, route.Runner)}
 	out.Receipt.Route.Override = route.Override()
 

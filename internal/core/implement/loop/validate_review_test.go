@@ -80,6 +80,8 @@ func verdictFor(request string) string {
 // written, with the route that ran it. The intent-auditor stays on the host.
 func TestTheReviewsGoToRepoPromptOverMCPAndTheLoopRecordsTheirVerdicts(t *testing.T) {
 	repo := briefRepo(t, agentsMarked)
+	// One reviewer per role, so the route is sent one request per role.
+	oneReviewerPerRole(t)
 	start, err := Start(repo.Root(), "itd-10", Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -134,12 +136,22 @@ func TestTheReviewsGoToRepoPromptOverMCPAndTheLoopRecordsTheirVerdicts(t *testin
 		if v.Route == nil || v.Route.Asked != "rp" || v.Route.Ran != "rp" {
 			t.Fatalf("each review names the route that ran it: %+v", v)
 		}
+		// The route's request carries no model, so the reviewer's class
+		// model was never asked of what ran: the record says so, and never
+		// that the model was asked for.
+		if v.Class != ClassMiddle || v.ModelStatus != ModelUnsent {
+			t.Fatalf("a review the route answered records its class's model as unsent, not asked: %+v", v)
+		}
 	}
 	var record strings.Builder
 	for _, e := range st.Record {
 		record.WriteString(e.Note + "\n")
 	}
-	for _, want := range []string{"ruthless-reviewer's verdict SHIP", "security-reviewer's verdict APPROVE", "the ruthless-reviewer ran on the rp"} {
+	if strings.Contains(record.String(), "the model asked for, not confirmed") {
+		t.Fatalf("the run record calls a model the route was never sent asked:\n%s", record.String())
+	}
+	for _, want := range []string{"ruthless-reviewer's verdict SHIP", "security-reviewer's verdict APPROVE", "the ruthless-reviewer ran on the rp",
+		"that route is sent no model, so the class's model was never asked for"} {
 		if !strings.Contains(record.String(), want) {
 			t.Fatalf("the run record names %q:\n%s", want, record.String())
 		}

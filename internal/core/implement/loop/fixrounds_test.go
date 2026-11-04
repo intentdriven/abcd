@@ -31,7 +31,8 @@ func TestAnUndecidedCriterionReopensTheWorkLikeANotMet(t *testing.T) {
 	handBack(t, repo, id, stages, RoleAuditor, "INCONCLUSIVE")
 
 	st, _ := ReadState(repo.Root(), id)
-	a := st.Lanes[0].Validation[0].Validators[2]
+	vs := st.Lanes[0].Validation[0].Validators
+	a := vs[len(vs)-1] // the auditor, after each reviewer role's reviewers
 	if a.Verdict != "INCONCLUSIVE" || a.Pass {
 		t.Fatalf("an undecided audit does not pass the round: %+v", a)
 	}

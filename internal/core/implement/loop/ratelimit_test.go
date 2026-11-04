@@ -15,7 +15,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -364,7 +364,7 @@ func TestARestartLeavesALiveValidatorOfTheSameRound(t *testing.T) {
 	if _, err := restartLane(f.repo.Root(), f.runID, "lane-1", "", f.opts()); err != nil {
 		t.Fatal(err)
 	}
-	if got := f.await(t, "lane-1", RoleSecurity); got != live {
+	if got := f.await(t, "lane-1", RoleSecurity); !reflect.DeepEqual(got, live) {
 		t.Fatalf("the live reviewer's await is untouched: %+v, was %+v", got, live)
 	}
 	if got, err := os.ReadFile(f.abs(live.Receipt)); err != nil || string(got) != "# Review\n\nunder way" {
@@ -409,7 +409,7 @@ func TestARestartOfTwoKeptAwaitsProvesBothBeforeSavingEither(t *testing.T) {
 	if got, err := os.ReadFile(f.abs(first.Receipt)); err != nil || string(got) != "# Review\n\nsettled" {
 		t.Fatalf("the first kept await's partial return stays at its path: %q %v", got, err)
 	}
-	if got := f.lane(t, "lane-1").Awaits; !slices.Equal(got, before.Lanes[0].Awaits) {
+	if got := f.lane(t, "lane-1").Awaits; !reflect.DeepEqual(got, before.Lanes[0].Awaits) {
 		t.Fatalf("the awaits are unchanged: %+v, was %+v", got, before.Lanes[0].Awaits)
 	}
 }

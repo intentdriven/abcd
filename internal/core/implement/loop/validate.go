@@ -40,6 +40,7 @@ package loop
 //
 //	validate/round-<n>/<role>/brief.md      the brief the loop renders for the validator
 //	validate/round-<n>/<role>/return.md     a reviewer's return
+//	validate/round-<n>/<role>.<i>/...       the same files of the role's reviewer i, from 1 (reviewers.go)
 //	validate/round-<n>/<role>/request.md    a reviewer's request, when the reviewer route takes it
 //	validate/round-<n>/<role>/rp-return.md  the route's answer, kept aside when a host's return stood first
 //	validate/round-<n>/intent-auditor/request.md   the fidelity request
@@ -184,8 +185,13 @@ func validateStage(c Context, lane *Lane) (Outcome, error) {
 		if err := writeValidatorBrief(c, *lane, *cur, v, route); err != nil {
 			return Outcome{}, err
 		}
-		return Outcome{Await: &Await{Role: v.Role, Brief: v.Brief, Receipt: v.Return},
-			Note: fmt.Sprintf("round %d: %s's head %s handed to a fresh %s; awaiting its return at %s%s", cur.Round, lane.ID, shortSHA(cur.HeadSHA), v.Role, v.Return, moved)}, nil
+		aw := v.await()
+		who := v.Role
+		if p := v.phrase(); p != "" {
+			who += " (" + p + ")"
+		}
+		return Outcome{Await: &aw,
+			Note: fmt.Sprintf("round %d: %s's head %s handed to a fresh %s; awaiting its return at %s%s", cur.Round, lane.ID, shortSHA(cur.HeadSHA), who, v.Return, moved)}, nil
 	}
 	for _, v := range cur.Validators {
 		if v.Verdict == "" {
@@ -193,6 +199,8 @@ func validateStage(c Context, lane *Lane) (Outcome, error) {
 				"hand back their returns with `abcd implement receipt <path>`")
 		}
 	}
+	// Any failing validator fails the round, two reviewers of one role
+	// included: where they disagree, the stricter verdict decides.
 	var failing []ValidatorRun
 	for _, v := range cur.Validators {
 		if !v.Pass {
@@ -228,8 +236,10 @@ func validateStage(c Context, lane *Lane) (Outcome, error) {
 	return Outcome{Note: fmt.Sprintf("round %d passed at %s (%s); the lane goes to its landing", cur.Round, shortSHA(cur.HeadSHA), verdictsLine(*cur))}, nil
 }
 
-// openRound is the lane's round n at its head: the two reviewers on every lane,
-// and the intent-auditor on the lane whose landing closes the spec.
+// openRound is the lane's round n at its head: the two reviewer roles on every
+// lane, each with the reviewers the run's review set names for it, in reviewer
+// order (reviewers.go), and the intent-auditor on the lane whose landing
+// closes the spec.
 func openRound(c Context, lane Lane, n int) (ValidationRound, error) {
 	roles := []string{RoleRuthless, RoleSecurity}
 	audits, err := auditsHere(c, lane)
@@ -241,15 +251,17 @@ func openRound(c Context, lane Lane, n int) (ValidationRound, error) {
 	}
 	r := ValidationRound{Round: n, HeadSHA: lane.HeadSHA}
 	for _, role := range roles {
-		dir, err := roundDir(c.State.RunID, lane.ID, n, role)
-		if err != nil {
-			return ValidationRound{}, err
+		for _, v := range roundReviewers(c.State, role) {
+			dir, err := reviewerDir(c.State.RunID, lane.ID, n, role, v.Reviewer)
+			if err != nil {
+				return ValidationRound{}, err
+			}
+			v.Brief, v.Return = dir+"/"+BriefFileName, dir+"/"+ReturnFileName
+			if role == RoleAuditor {
+				v.Return = dir + "/" + VerdictFileName
+			}
+			r.Validators = append(r.Validators, v)
 		}
-		ret := dir + "/" + ReturnFileName
-		if role == RoleAuditor {
-			ret = dir + "/" + VerdictFileName
-		}
-		r.Validators = append(r.Validators, ValidatorRun{Role: role, Brief: dir + "/" + BriefFileName, Return: ret})
 	}
 	return r, nil
 }
@@ -491,7 +503,11 @@ func writeFixBrief(c Context, lane Lane, r ValidationRound, failing []ValidatorR
 	p("You are a fresh implementer: you did not build this lane and did not review it. The round's\n")
 	p("validators judged the lane's head %s, and these did not pass:\n\n", r.HeadSHA)
 	for _, v := range failing {
-		p("- %s: %s — its return: `%s`\n", v.Role, v.Verdict, abs(c.RepoRoot, v.Return))
+		who := v.Role
+		if ph := v.phrase(); ph != "" {
+			who += " (" + ph + ")"
+		}
+		p("- %s: %s — its return: `%s`\n", who, v.Verdict, abs(c.RepoRoot, v.Return))
 		if v.Audit != nil {
 			if len(v.Audit.NotMet) > 0 {
 				p("  - criteria not met: %s\n", strings.Join(v.Audit.NotMet, ", "))
@@ -594,6 +610,12 @@ func verifyValidation(c Context, lane *Lane, receiptRel string) error {
 		if a := c.Await.Answered; a != nil && a.Route == oracle.ReviewRP && a.SHA256 == answerDigest(raw) {
 			v.Route = &runner.RouteRecord{Asked: a.Route, Ran: a.Route}
 		}
+		reported := ""
+		if c.Route != nil {
+			reported = c.Route.Model
+		}
+		v.recordModelStatus(reported)
+		compareRole(cur, v.Role)
 		return nil
 	}
 	return refuse("receipt", "", lane.ID, "no validator of round "+fmt.Sprint(cur.Round)+" awaits "+receiptRel,
@@ -789,7 +811,11 @@ func verdictsLine(r ValidationRound) string {
 		if verdict == "" {
 			verdict = "no verdict yet"
 		}
-		parts = append(parts, v.Role+" "+verdict)
+		part := v.Role + " " + verdict
+		if p := v.phrase(); p != "" {
+			part += " (" + p + ")"
+		}
+		parts = append(parts, part)
 	}
 	return strings.Join(parts, ", ")
 }
@@ -810,8 +836,16 @@ func validationNote(lane Lane, receipt string) string {
 			continue
 		}
 		note := fmt.Sprintf("the loop recorded %s's verdict %s from its return", v.Role, v.Verdict)
+		if p := v.phrase(); p != "" {
+			note += " (" + p + "; " + modelStatusPhrase(v.ModelStatus) + ")"
+		}
 		if v.Audit != nil {
 			note += fmt.Sprintf(" over the whole delivery %s..%s (receipt %s, for the close to consume)", shortSHA(v.Audit.BaseSHA), shortSHA(v.Audit.HeadSHA), v.Audit.ReceiptID)
+		}
+		if v.Class != "" {
+			if cmp, ok := compareRole(&r, v.Role); ok {
+				note += "; " + comparisonNote(cmp)
+			}
 		}
 		return note
 	}

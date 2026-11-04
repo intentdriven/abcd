@@ -503,7 +503,33 @@ not deleted: `receipt` refuses, naming that checkout and removing nothing.
 ceiling, and writes a fix brief only once every validator of the round has
 returned; it records each verdict from the validator's own return; the fidelity audit passes only
 when every criterion is met, so an undecided (`INCONCLUSIVE`) criterion sends
-the lane to a fresh implementer as a not-met one does. Each role a round hands
+the lane to a fresh implementer as a not-met one does. Each reviewer role runs
+the reviewers the run's review set names for it (`commands/build.md`, two by
+default), handed out in consecutive steps on the round's one head, each taking
+a slot: the role's reviewer 0 at `validate/round-<n>/<role>/` and reviewer 1 at
+`validate/round-<n>/<role>.1/`, each with its own brief and return, the two
+briefs differing only in their return path, and a return recorded on the
+reviewer whose path it is, whichever comes back first. The result's
+`awaiting` names a reviewer's `reviewer` index, its `class` and the `model` the
+class resolves to (`next` says "on <model>, the model of the <class> class"):
+start that agent on that model. A role routed to a runner is started at that
+model over the runner's own; a `--route` for the role naming another model, or
+claude asked for a model the machine pins, is refused before anything launches,
+naming both models or the pin, and nothing falls back. Each reviewer's record
+in the round carries its `reviewer`, `class`, `model` and, once its verdict is
+in, `model_status`: `reported` when the runner that ran it reported a model
+(beside it on its `route`), `asked` when only the asking is known, as for every
+reviewer the host runs, whose model nothing confirms, and `unsent` when the
+reviewer route (`oracle.review` set to the RP route) answered it: that route's
+request carries no model, so the class's model was never asked of what ran,
+and both reviewers of a role are sent the same request. Once all of a role's
+reviewers have returned, the round's `comparisons` records how they compared:
+`disagree` when one verdict passes and another fails, `agree` otherwise (two
+failing verdicts, `BLOCK` and `NEEDS-INPUT`, agree), and `none` when the role
+ran one reviewer, so no comparison was made. The comparison decides nothing: any
+failing reviewer fails the round, the stricter verdict. Keyed rounds are state
+schema version 20's; an older run's rounds read as one reviewer per role, index
+0, asked for no class. Each role a round hands
 out is asked for the model tier its routing row names, and a round that does
 not pass moves each role one step up for the next round (`local`, `economy`,
 `frontier`; `frontier` and `host-decides` stay), from the tier it ran at, never
