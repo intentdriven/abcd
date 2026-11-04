@@ -62,13 +62,7 @@ func holderJSON(login, noreply, source string) string {
 func newSetupCase(t *testing.T) *cloudCase {
 	t.Helper()
 	c := newCloudCase(t)
-	top := exec.Command("git", "rev-parse", "--show-toplevel")
-	top.Env = gittest.Env(t)
-	out, err := top.Output()
-	if err != nil {
-		t.Skip("not in a git checkout")
-	}
-	root := strings.TrimSpace(string(out))
+	root := checkoutRoot(t)
 	for _, rel := range []string{".github/workflows/ci.yml", "scripts/pinned-toolchain.sh"} {
 		c.copyFrom(root, rel)
 	}
