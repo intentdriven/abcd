@@ -2809,3 +2809,19 @@ The proposal: a day of lab work on the status line (lab-261103114820-bcba06f, 38
 Verdict at filing: SPLIT, two intents and a held stance, the product thinker choosing the split over folding the ledger into the views intent. Typed links: the views intent builds on itd-2611031342011261 (the ledger), itd-2610301750162657 (the review count) and itd-2610240850336695 (the mode badge's scope); its product-thinker view refines itd-2610032150577708 as interim evidence (advisory). Advisory reversal flags: none.
 
 Grade: pending planning.
+
+## 2026-11-04: unattended work runs on a named profile, one per agent subscription (product thinker, routing proposed)
+
+The proposal: after the subscription test of 2026-11-03 found that the drive's dedicated configuration directory has no home abcd knows (iss-2611032326573729), that a wall defined by denying connected services left built-in tools reaching the person's account, that a session's tools can change after its start, and that nothing refuses an unwalled start (iss-2611032327111678), the product thinker ruled that the directory is a profile under `~/.abcd.noindex/profiles/`, one per agent subscription, never described as a sandbox.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| profiles with random names, the readable registry, one creating command with the person's own login step, `ahoy` readiness, the per-tool live proof, the choice by role and window, abcd's hooks wired in, the refusal or warning for a session not on one | capability | itd-2611040344170206 |
+| an unattended agent holds only the tools one allow-list names, re-read before each stage; a tool that cannot carry the guard runs no stage; a profile is a login boundary, never an isolation boundary | trust rule | an ADR owed, extending adr-2610222222326104's wall clause; a brief invariant when accepted; held for confirmation |
+| a wall is defined by what it admits, never by what it denies | stance | a candidate principle or a bound in an existing one; held for confirmation |
+| the directory layout, the registry's shape, each tool's start flags, the allow-list's home, how the tool set is read back from the host | plumbing | the brief's runner and drain chapters, carried by the spec |
+| an operating-system user, a container or the host's own sandbox per profile | capability | the planned sandbox intent itd-2610161621364075 and the later step the remedy names; not filed again |
+
+Verdict at filing: FILE-AS-IS, with the trust rule and the stance held for the product thinker rather than filed. Typed links: the intent refines itd-2610222215485265 (the drive's wall becomes a profile among several); the two sandbox drafts itd-2610161710315026 and itd-2610161710316538 are proposed to build on it. Advisory reversal flag: the draft reverses in part the wall list of spc-2610230813348813 (abcd's own hooks kept where the spec disabled all hooks, an allow-list of named tools where it denied connected services), for the product thinker to confirm.
+
+Grade: pending confirmation of the routing and the planning interview.
