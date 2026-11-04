@@ -360,8 +360,9 @@ receipt a step reads itself is a routed implementer's, where the run shows its
 runner was started: one that verifies is collected, as the step's move, with no
 second runner and no retry, even if the runner then exited badly (a fix round's
 needs a commit past the round's head); its route names the runner asked for and
-leaves `ran` empty until that runner's report arrives. One that does not verify
-stays where it stands. While the runner's claim stands, `next` says to wait.
+leaves `ran` empty until that runner's report arrives. A receipt carrying a
+hand-back is not read this way: `receipt` takes it, or the runner's own hand-in as
+its agent ends. One that does not verify stays where it stands. While the runner's claim stands, `next` says to wait.
 After a runner that exited badly the role is retried and the file set aside. After
 a runner whose answer was refused the lane is stopped: no runner is started over
 the work, `next` names the ways out (correct the receipt and run `receipt`, which a

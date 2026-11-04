@@ -498,7 +498,9 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 			fb = *fell
 		}
 		if out.Failure != nil && errors.Is(out.Failure, runner.ErrKilled) && aw.Role == RoleImplementer {
-			if n, ok := workStands(repoRoot, worktree, base, aw); ok {
+			// With its receipt written too there is nothing to keep the lane
+			// for: the pause leaves it for the next step to read.
+			if n, ok := workStands(repoRoot, worktree, base, aw); ok && !received(repoRoot, aw.Receipt) {
 				r, err := keepKilled(repoRoot, runID, laneID, aw, session, fb, n, o)
 				return retry(r, nil), err
 			}
@@ -576,7 +578,9 @@ func pauseAwait(repoRoot, runID, laneID string, aw Await, session string, fb run
 		case stops:
 			res.Next = stoppedNote(lane.ID, aw.Receipt, p.Why())
 		case stands:
-			res.Next += "; a receipt stands at " + aw.Receipt + ": the next step reads it first, and retries only if it does not verify"
+			res.Next = fmt.Sprintf("%s's %s is paused: the %s runner, %s (%s), and it is not handed to the host. A receipt stands at %s: the next `abcd implement step` reads it, and retries the role on the runner only if it is not taken. "+
+				"Do not start an agent for it; tell the user the reason",
+				lane.ID, aw.Role, p.Runner, pauseCause(p), p.Why(), aw.Receipt)
 		}
 		return true, nil
 	})
@@ -584,13 +588,16 @@ func pauseAwait(repoRoot, runID, laneID string, aw Await, session string, fb run
 }
 
 // pauseCause says what the runner of a pause did: an answer the contract refused
-// came from a run that ended, and every other reason is a run that did not bring
-// the role back.
+// came from a run that ended, a runner that is absent did not start the role, and
+// every other reason covers both a run that never began and one that ended badly.
 func pauseCause(p RunnerPause) string {
-	if p.Reason == runner.ReasonInvalid {
+	switch p.Reason {
+	case runner.ReasonInvalid:
 		return "which ran it, and its answer was refused"
+	case runner.ReasonAbsent:
+		return "which did not start it"
 	}
-	return "which did not start it"
+	return "which did not bring it back"
 }
 
 // noteRunnerEnded records a runner's end when its await is gone, taken by a

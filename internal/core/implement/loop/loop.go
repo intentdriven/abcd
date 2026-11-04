@@ -1014,7 +1014,7 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 		} else if err == nil {
 			// The re-told move is false of a lane stopped on its receipt, so
 			// that lane's answer is the stop alone.
-			if len(stopped) == 1 && !stopped[0].retried && res.PerformedStage == "" && res.Lane == stopped[0].lane && res.Slots <= 1 {
+			if len(stopped) == 1 && res.PerformedStage == "" && res.Lane == stopped[0].lane && res.Slots <= 1 {
 				res.Next = standing
 			} else {
 				res.Next += "; " + standing
@@ -1149,6 +1149,10 @@ func handIn(repoRoot, runID, receipt string, steps Stages, o Options, route *run
 			Route: route, modelNote: &modelNote}
 		took := ""
 		if stood {
+			if standingHandBack(repoRoot, root, await.Receipt, lane.ID) {
+				return false, refuse("receipt", "", lane.ID, await.Receipt+" hands the lane back, which a step does not do on its own",
+					"to hand the lane back, run `abcd implement receipt "+await.Receipt+"`")
+			}
 			if gap := noWorkPastRound(c, lane, await); gap != "" {
 				return false, refuse("receipt", "", lane.ID, gap, "hand it back with `abcd implement receipt "+await.Receipt+"` if the round's findings needed no change")
 			}

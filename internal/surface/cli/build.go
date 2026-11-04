@@ -909,9 +909,12 @@ func renderStepResult(w io.Writer, verb string, res loop.StepResult) {
 		fmt.Fprintf(w, "%s: %s completed %s's %s stage\n", verb, res.RunID, res.Lane, res.PerformedStage)
 	case res.Paused != nil && res.Paused.Paused != nil:
 		p := res.Paused.Paused
-		cause := "which did not start it"
-		if p.Reason == runner.ReasonInvalid {
+		cause := "which did not bring it back"
+		switch p.Reason {
+		case runner.ReasonInvalid:
 			cause = "whose answer was refused"
+		case runner.ReasonAbsent:
+			cause = "which did not start it"
 		}
 		fmt.Fprintf(w, "%s: PAUSED: %s's %s waits for the %s runner, %s; it is not handed to the host\n",
 			verb, res.Lane, termsafe.Sanitize(res.Paused.Role), termsafe.Sanitize(p.Runner), cause)

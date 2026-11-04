@@ -12,7 +12,10 @@ package loop
 // receipt` would, through the same hand-in under the same lock. It does so only
 // for an implementer, whose verifier holds a receipt to the run, the lane, the
 // branch and commits on it, and only where the run's own state shows a runner was
-// started for exactly this await (startedRunner). That proof speaks for one
+// started for exactly this await (startedRunner). A receipt carrying a hand-back
+// claims no commits and discards the lane, which is a decision rather than a
+// report of work, so a step does not take it: `implement receipt` does, or the
+// runner's own hand-in as its agent ends. The proof speaks for one
 // attempt: whatever stands at an await's path is set aside unread as the await is
 // handed out and as a runner's claim is taken (setAsideForAgent), so a file there
 // came later. A fix round's receipt also needs a commit past the round's head,
@@ -57,10 +60,17 @@ import (
 
 // startedRunner is the runner the run's state shows was started for await a of
 // lane l, and whether it shows one: a claim taken under the lock just before the
-// launch, or a pause recording how that attempt ended: its answer refused, or its
-// harness exiting badly or printing what cannot be parsed. Since the claim cleared
-// the path, a file standing there is that attempt's. It holds only for an
-// implementer, at the implement stage or a validate round's fix or sync.
+// launch, or a pause recording how that attempt ended: its answer refused, its
+// harness reporting an error or exiting badly, or printing what cannot be parsed.
+// It holds only for an implementer, at the implement stage or a validate round's
+// fix or sync.
+//
+// What it proves has a limit. A claim was taken, not that an agent ran: a claim can
+// outlive a step killed before its launch, and a `failed` pause also covers a
+// harness that could not start. So a file at the path came after the claim, from
+// whatever could write there, not necessarily from an agent of that attempt. What
+// bounds it is the verifier, which is why a receipt that claims no commits is not
+// taken (standingHandBack) and why the route leaves what ran it empty.
 func startedRunner(l Lane, a Await) (string, bool) {
 	if a.Role != RoleImplementer || a.Kept != "" || (l.Stage != StageImplement && l.Stage != StageValidate) {
 		return "", false
@@ -70,7 +80,7 @@ func startedRunner(l Lane, a Await) (string, bool) {
 		return a.Running.Runner, true
 	case a.Paused != nil:
 		switch a.Paused.Reason {
-		case runner.ReasonInvalid, runner.ReasonFailed, runner.ReasonUnparsable:
+		case runner.ReasonInvalid, runner.ReasonFailed, runner.ReasonUnparsable, runner.ReasonRefused:
 			return a.Paused.Runner, true
 		}
 	}
@@ -117,7 +127,7 @@ func collectStanding(repoRoot, runID string, steps Stages, o Options) (StepResul
 			route := &runner.RouteRecord{Asked: name}
 			res, err := handIn(repoRoot, runID, a.Receipt, steps, o, route, true)
 			if err == nil {
-				res.Next = fmt.Sprintf("%s's %s, which the %s runner was started for, had written its receipt at %s, which verified, so no fresh agent is needed; %s",
+				res.Next = fmt.Sprintf("%s's %s was routed to the %s runner, and a receipt stood at %s and verified, so no fresh agent is needed; %s",
 					l.ID, a.Role, name, a.Receipt, res.Next)
 				res.Route = route
 				return res, true, nil
@@ -142,7 +152,8 @@ func collectStanding(repoRoot, runID string, steps Stages, o Options) (StepResul
 			}
 			if retriedOverReceipt(a) {
 				stopped = append(stopped, stoppedReceipt{lane: l.ID, retried: true,
-					note: fmt.Sprintf("a receipt stands at %s and does not verify (%s), so it is set aside when the role is retried on its runner", a.Receipt, refusalReason(rf))})
+					note: fmt.Sprintf("a receipt stands at %s and is not taken (%s); it is set aside if the role is retried on its runner, which the next `abcd implement step` does unless its route has moved to the host. Do not start an agent for it; tell the user the reason",
+						a.Receipt, refusalReason(rf))})
 				continue
 			}
 			stopped = append(stopped, stoppedReceipt{lane: l.ID, note: stoppedNote(l.ID, a.Receipt, refusalReason(rf)), refusal: rf})
@@ -207,6 +218,17 @@ func standingUnderRoute(repoRoot, runID string) string {
 		}
 	}
 	return strings.Join(notes, "; ")
+}
+
+// standingHandBack reports whether the receipt at path carries a hand-back. One
+// that does not parse does not: the verifier refuses it in its own words.
+func standingHandBack(repoRoot string, root *os.Root, path, laneID string) bool {
+	rel, err := filepath.Rel(repoRoot, absIn(repoRoot, path))
+	if err != nil {
+		return false
+	}
+	rc, err := readReceipt(repoRoot, root, filepath.ToSlash(rel), laneID)
+	return err == nil && rc.HandBack != nil
 }
 
 // noWorkPastRound is why a step cannot take a fix round's receipt as a fix, ""

@@ -394,7 +394,7 @@ func TestARetrysClaimDoesNotAdmitThePreviousAttemptsReceipt(t *testing.T) {
 // ends the pause with no second agent, naming the runner. A --route for the role
 // reads nothing and starts nothing, and the plain step after it collects.
 func TestAFinishedAgentWhoseRunnerExitedBadlyIsCollected(t *testing.T) {
-	for _, reason := range []runner.Reason{runner.ReasonFailed, runner.ReasonUnparsable} {
+	for _, reason := range []runner.Reason{runner.ReasonFailed, runner.ReasonUnparsable, runner.ReasonRefused} {
 		t.Run(string(reason), func(t *testing.T) {
 			setUp := func(t *testing.T) (string, string, Stages, Options, string) {
 				t.Helper()
@@ -490,8 +490,8 @@ func TestAReceiptAnExitedRunnerLeftThatDoesNotVerifyIsRetried(t *testing.T) {
 	if res.Stage != StageValidate {
 		t.Fatalf("the fresh agent's receipt is taken: %+v", res)
 	}
-	if !strings.Contains(res.Next, "set aside when") {
-		t.Fatalf("the answer says what became of the file: %s", res.Next)
+	if !strings.Contains(res.Next, "set aside if") {
+		t.Fatalf("the answer says what becomes of the file: %s", res.Next)
 	}
 	if !asideHolds(t, root, id, "lane-1", "half a receipt") {
 		t.Fatal("the file is kept aside")
@@ -503,6 +503,198 @@ func TestAReceiptAnExitedRunnerLeftThatDoesNotVerifyIsRetried(t *testing.T) {
 	if st.Lanes[0].Refused != nil {
 		t.Fatalf("nothing counts against the lane: %+v", st.Lanes[0].Refused)
 	}
+}
+
+// TestAnImplementerKilledWithItsReceiptWrittenIsCollected: an agent killed at its
+// bound after it wrote everything, its receipt included, is not one whose receipt
+// is missing. The kill pauses the role, and the next step reads the receipt.
+func TestAnImplementerKilledWithItsReceiptWrittenIsCollected(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+	start, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := start.RunID
+	if err := os.WriteFile(filepath.Join(repo.Root(), filepath.FromSlash(RunRelDir), "brief.md"), []byte("# brief\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	wt := gittest.NewRepo(t)
+	wt.Write("base.txt", "base\n")
+	wt.Commit("base")
+	base := strings.TrimSpace(wt.Git("rev-parse", "HEAD"))
+	wt.Write("work.txt", "work\n")
+	wt.Commit("work")
+	steps := driveSteps(wt.Root())
+	cut := steps[0].Run
+	steps[0].Run = func(c Context, l *Lane) (Outcome, error) {
+		out, err := cut(c, l)
+		l.BaseSHA = base
+		return out, err
+	}
+	// driveSteps' receipt is at the checkout's root, the report beside it.
+	if err := os.WriteFile(filepath.Join(repo.Root(), ReportFileName), []byte("# report\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	clock := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
+	o := Options{Now: func() time.Time { return clock }}
+	for range 2 {
+		if _, err := advance(repo.Root(), id, steps, o); err != nil {
+			t.Fatal(err)
+		}
+	}
+	env := newDriveEnv(t, "hang", "claude")
+	// The agent writes its receipt while its harness is still up, as the claim
+	// already stands.
+	stop := make(chan struct{})
+	defer close(stop)
+	go func() {
+		for {
+			select {
+			case <-stop:
+				return
+			case <-time.After(20 * time.Millisecond):
+			}
+			if _, err := os.Stat(filepath.Join(env.log, "claude.pid")); err == nil {
+				_ = os.WriteFile(filepath.Join(repo.Root(), "receipt-lane-1.json"), []byte("{}\n"), 0o600)
+				return
+			}
+		}
+	}()
+	rs := Runners{Config: runnerConfig(t, claudeImplementer, ""), Transcripts: &memTranscripts{}, Timeout: 2 * time.Second}
+	res, err := Drive(context.Background(), repo.Root(), id, steps, o, rs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Paused == nil {
+		t.Fatalf("the kill pauses the role for the next step to read: %+v", res)
+	}
+	if strings.Contains(res.Next, "only its receipt is missing") {
+		t.Fatalf("the step says what is false: %s", res.Next)
+	}
+	res, err = Drive(context.Background(), repo.Root(), id, steps, o, rs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Stage != StageValidate || res.PerformedStage != StageImplement {
+		t.Fatalf("the next step collects the receipt: %+v", res)
+	}
+	if n := env.launches(t, "claude"); n != 1 {
+		t.Fatalf("no second agent is paid for: %d launches", n)
+	}
+}
+
+// handBackReceipt is a receipt for lane l carrying a hand-back, with its report
+// in dir.
+func handBackReceipt(t *testing.T, id string, l Lane, dir string) LaneReceipt {
+	t.Helper()
+	rc := goodReceipt(t, id, l, dir)
+	rc.Commits, rc.DefinitionOfDone = nil, nil
+	rc.HandBack = &LaneHandBack{Kind: HandBackTrustRule, Reason: "the fix turns on a rule"}
+	return rc
+}
+
+// wantLaneKept fails unless lane l of the run keeps its worktree and branch and
+// is not handed back.
+func wantLaneKept(t *testing.T, repo *gittest.Repo, id string, l Lane) {
+	t.Helper()
+	if _, err := os.Stat(l.Worktree); err != nil {
+		t.Fatalf("the lane's worktree stands: %v", err)
+	}
+	if out := repo.Git("branch", "--list", l.Branch); !strings.Contains(out, l.Branch) {
+		t.Fatalf("the lane's branch stands: %q", out)
+	}
+	if got := currentLane(t, repo, id); got.HandBack != nil || got.Stage == StageHandedBack {
+		t.Fatalf("the lane is not handed back: %+v", got)
+	}
+}
+
+// TestAStepTakesNoHandBackFromAFileAtAPath: a hand-back discards the lane's
+// worktree and branch, so it is an act, made through `implement receipt` or by the
+// runner's own hand-in as its agent ends. A step leaves such a receipt to the path
+// any receipt it cannot take has, and the lane stands.
+func TestAStepTakesNoHandBackFromAFileAtAPath(t *testing.T) {
+	pauseAs := func(t *testing.T, repo *gittest.Repo, id string, reason runner.Reason) {
+		t.Helper()
+		if err := mutate(repo.Root(), id, func(_ *os.Root, st *State) (bool, error) {
+			now := time.Now()
+			st.Lanes[0].Awaits[0].Paused = &RunnerPause{Runner: runner.Claude, Reason: reason, Detail: "the last attempt", Since: now, At: now, Tries: 1}
+			return true, nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Run("after a bad exit it is retried over", func(t *testing.T) {
+		repo, id, l, dir := awaitingLane(t)
+		pauseAs(t, repo, id, runner.ReasonFailed)
+		rc := handBackReceipt(t, id, l, dir)
+		writeReceipt(t, dir, rc)
+		env := newDriveEnv(t, "noreceipt", "claude")
+		if _, err := Drive(context.Background(), repo.Root(), id, DefaultStages(), Options{},
+			Runners{Config: runnerConfig(t, claudeImplementer, ""), Transcripts: &memTranscripts{}}); err != nil {
+			t.Fatal(err)
+		}
+		wantLaneKept(t, repo, id, l)
+		if n := env.launches(t, "claude"); n != 1 {
+			t.Fatalf("the role is retried: %d launches", n)
+		}
+		if _, err := os.Stat(filepath.Join(dir, ReceiptFileName)); !os.IsNotExist(err) {
+			t.Fatalf("the file is set aside as the retry's claim is taken: %v", err)
+		}
+	})
+	t.Run("under a claim it waits", func(t *testing.T) {
+		repo, id, l, dir := awaitingLane(t)
+		claimAwait(t, repo.Root(), id, l.awaiting().Receipt, time.Now().Add(time.Hour))
+		writeReceipt(t, dir, handBackReceipt(t, id, l, dir))
+		res, err := advance(repo.Root(), id, DefaultStages(), Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantLaneKept(t, repo, id, l)
+		if !strings.Contains(res.Next, "may still be working") {
+			t.Fatalf("the step says to wait: %s", res.Next)
+		}
+	})
+	t.Run("after a refused answer implement receipt takes it", func(t *testing.T) {
+		repo, id, l, dir := awaitingLane(t)
+		pauseAs(t, repo, id, runner.ReasonInvalid)
+		path := writeReceipt(t, dir, handBackReceipt(t, id, l, dir))
+		res, err := advance(repo.Root(), id, DefaultStages(), Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantLaneKept(t, repo, id, l)
+		if !strings.Contains(res.Next, "abcd implement receipt") {
+			t.Fatalf("the step names the hand-in: %s", res.Next)
+		}
+		res, err = Receipt(repo.Root(), id, path, DefaultStages(), Options{})
+		if err != nil || res.HandBack == nil {
+			t.Fatalf("the hand-in hands the lane back: %+v %v", res, err)
+		}
+	})
+	t.Run("at a sync's receipt", func(t *testing.T) {
+		repo, id, stages := reviewedRun(t)
+		l := currentLane(t, repo, id)
+		rel := RunRelDir + "/" + id + "/" + l.ID + "/sync-1/" + ReceiptFileName
+		if err := mutate(repo.Root(), id, func(_ *os.Root, st *State) (bool, error) {
+			st.Lanes[0].Syncs = []Sync{{Merged: l.BaseSHA, Conflicted: true, Receipt: rel, Brief: l.Brief}}
+			st.Lanes[0].Awaits = []Await{{Role: RoleImplementer, Brief: l.Brief, Receipt: rel, Since: time.Now(),
+				Running: &RunnerClaim{Runner: runner.Claude, Session: "the-claim", Until: time.Now().Add(-time.Hour)}}}
+			return true, nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		dir := filepath.Join(repo.Root(), filepath.FromSlash(RunRelDir), id, l.ID)
+		rc := handBackReceipt(t, id, l, dir)
+		body, err := json.Marshal(rc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		standAt(t, repo.Root(), rel, string(body))
+		if _, err := advance(repo.Root(), id, stages, Options{}); err != nil {
+			t.Fatal(err)
+		}
+		wantLaneKept(t, repo, id, l)
+	})
 }
 
 // reviewedRun is a run whose lane has its implementer's receipt, at validate,
