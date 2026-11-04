@@ -571,10 +571,11 @@ func materialText(q question.Question) string {
 // heading, and a README of thousands of headings is read whole (up to the
 // 1 MiB cap), so cutting its example to the rows limit must not try every
 // length from the longest down: no more lines than the limit has rows can fit.
-// Building the view of a README of 6000 headings measures a bounded number of
+// Building the view of a README of 600 headings measures a bounded number of
 // candidate questions, as many as for a short README, where trying every
-// length measured one for each line and took 17 s. The count, not the time,
-// is asserted: a race-enabled run on a loaded machine is slow either way.
+// length measured one for each line, 600 against a bound of about 200, and took
+// 17 s at 6000. The count, not the time, is asserted: a race-enabled run on a
+// loaded machine is slow either way.
 func TestReadmeViewIsLinearInTheHeadings(t *testing.T) {
 	measured := func(headings int) int {
 		var readme strings.Builder
@@ -604,9 +605,9 @@ func TestReadmeViewIsLinearInTheHeadings(t *testing.T) {
 		t.Logf("%d headings: %d questions measured in %s", headings, calls, time.Since(start))
 		return calls
 	}
-	short, long := measured(60), measured(6000)
+	short, long := measured(60), measured(600)
 	if bound := len(readmePartOrder) * (question.Default.Rows + 2); long > bound || long != short {
-		t.Errorf("6000 headings measured %d candidate questions and 60 measured %d, want the same, at most %d", long, short, bound)
+		t.Errorf("600 headings measured %d candidate questions and 60 measured %d, want the same, at most %d", long, short, bound)
 	}
 }
 
