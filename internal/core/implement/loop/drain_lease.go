@@ -12,7 +12,6 @@ package loop
 // that moved anyway pushes nothing.
 
 import (
-	"os"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
@@ -50,7 +49,7 @@ func renewInProgress(repoRoot string, st DrainState, view *claim.Snapshot, now t
 			continue
 		}
 		note := ""
-		if err := mutate(repoRoot, l.RunID, func(_ *os.Root, st *State) (bool, error) {
+		if err := mutateReservation(repoRoot, l.RunID, func(st *State) (bool, error) {
 			if !renewable(*st) {
 				return false, nil
 			}

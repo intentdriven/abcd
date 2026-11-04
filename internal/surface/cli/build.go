@@ -909,8 +909,15 @@ func renderStepResult(w io.Writer, verb string, res loop.StepResult) {
 		fmt.Fprintf(w, "%s: %s completed %s's %s stage\n", verb, res.RunID, res.Lane, res.PerformedStage)
 	case res.Paused != nil && res.Paused.Paused != nil:
 		p := res.Paused.Paused
-		fmt.Fprintf(w, "%s: PAUSED: %s's %s waits for the %s runner, which did not start it; it is not handed to the host\n",
-			verb, res.Lane, termsafe.Sanitize(res.Paused.Role), termsafe.Sanitize(p.Runner))
+		cause := "which did not bring it back"
+		switch p.Reason {
+		case runner.ReasonInvalid:
+			cause = "whose answer was refused"
+		case runner.ReasonAbsent:
+			cause = "which did not start it"
+		}
+		fmt.Fprintf(w, "%s: PAUSED: %s's %s waits for the %s runner, %s; it is not handed to the host\n",
+			verb, res.Lane, termsafe.Sanitize(res.Paused.Role), termsafe.Sanitize(p.Runner), cause)
 		fmt.Fprintf(w, "  why:     %s\n", termsafe.Sanitize(fsutil.RedactHome(p.Why())))
 	case res.Awaiting != nil:
 		fmt.Fprintf(w, "%s: %s's %s stage awaits the %s's receipt\n", verb, res.Lane, res.Stage, termsafe.Sanitize(res.Awaiting.Role))
@@ -923,7 +930,11 @@ func renderStepResult(w io.Writer, verb string, res loop.StepResult) {
 			termsafe.Sanitize(fsutil.RedactHome(r.Why)))
 	}
 	if r := res.Route; r != nil {
-		fmt.Fprintf(w, "  ran on:  the %s runner (%s)\n", termsafe.Sanitize(r.Ran), routeDetail(r))
+		if r.Ran == "" {
+			fmt.Fprintf(w, "  routed to the %s runner, and no runner's report reached the loop (%s)\n", termsafe.Sanitize(r.Asked), routeDetail(r))
+		} else {
+			fmt.Fprintf(w, "  ran on:  the %s runner (%s)\n", termsafe.Sanitize(r.Ran), routeDetail(r))
+		}
 	}
 	if fb := res.Fallback; fb != nil {
 		fmt.Fprintf(w, "  fallback: %s was routed to %s, which was %s (%s); %s runs it\n", termsafe.Sanitize(fb.Role), termsafe.Sanitize(fb.Asked),
@@ -944,8 +955,11 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 		Use: "step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] [--accept-config-change] [--route <role>=runner:<name>[@<provider>/<model>]]...",
 		Long: "Perform the run's next move, write the state, and exit. At a stage that hands work to\n" +
 			"an agent, the result names the agent to start, the brief it is handed and the path its\n" +
-			"receipt goes to; that work advances only on `abcd implement receipt`. A lane lands one\n" +
-			"step of the spec; its stages are how it gets there. A complete run says so.\n\n" +
+			"receipt goes to; that work advances on `abcd implement receipt`. One thing is taken\n" +
+			"without it: a routed implementer the run started a runner for, whose receipt stands at\n" +
+			"the path it awaits and verifies, is collected by the step, so a refusal before its\n" +
+			"hand-in loses nothing. A lane lands one step of the spec; its stages are how it gets\n" +
+			"there. A complete run says so.\n\n" +
 			"A run works in parallel up to its ceiling (--sub-agents, pace.sub_agents): each agent\n" +
 			"handed work and not yet verified is a slot, implementers and validators alike. Each call\n" +
 			"first performs a stage the binary owns on any lane (the worktree, the brief, a round's\n" +
@@ -1349,7 +1363,8 @@ func newImplementReceiptCommand(asJSON *bool) *cobra.Command {
 		Long: "Hand back the receipt a lane of the run named when its stage handed work to an agent.\n" +
 			"The path is looked up among every outstanding await of the run, and the lane it belongs\n" +
 			"to advances; a path no await names is refused, naming the awaits there are, and frees\n" +
-			"nothing. The stage's verifier checks it; a verified receipt frees its slot, and a\n" +
+			"nothing. A path a step already collected is answered while the file is what the step\n" +
+			"took, and refused once it has changed. The stage's verifier checks it; a verified receipt frees its slot, and a\n" +
 			"receipt that verifies completes the stage and the lane moves to its next stage, and one\n" +
 			"that does not is refused naming what is missing, with the lane left where it was. A\n" +
 			"stage whose verifier this abcd does not carry is refused naming the spec piece that\n" +
@@ -1568,6 +1583,9 @@ func countList(m map[string]int) string {
 func routeSuffix(r *runner.RouteRecord) string {
 	if r == nil {
 		return ""
+	}
+	if r.Ran == "" {
+		return fmt.Sprintf(" — routed to the %s runner, and no runner's report reached the loop (%s)", termsafe.Sanitize(r.Asked), routeDetail(r))
 	}
 	return fmt.Sprintf(" — ran on the %s runner (%s)", termsafe.Sanitize(r.Ran), routeDetail(r))
 }
