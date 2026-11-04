@@ -207,9 +207,9 @@ jobs:
 }
 
 // TestRequiredChecksLeavesOutAFlowStyleTrigger pins that a pull-request
-// trigger written as a flow mapping, whose filters this line reader cannot
-// see, is left out and named rather than read as unfiltered: requiring a check
-// a path or branch filter skips would hold merges on it.
+// trigger written as a flow mapping has its filters seen, so it is left out and
+// named rather than read as unfiltered: requiring a check a path or branch filter
+// skips would hold merges on it.
 func TestRequiredChecksLeavesOutAFlowStyleTrigger(t *testing.T) {
 	repo := writeWorkflows(t, map[string]string{
 		"flow-on.yml": `on: {pull_request: {paths: [docs/**]}}
@@ -355,12 +355,11 @@ func TestRequiredChecksSeesThroughAnAnchor(t *testing.T) {
 	}
 }
 
-// TestRequiredChecksLeavesOutAnyTriggerShapeItDoesNotRead pins the fallback
-// the reader rests on: it reads a subset of YAML, so under a pull-request
-// trigger it accepts only GitHub's five filter keys written plainly, and at the
-// events' level only plain keys, and leaves out any other shape (a key behind
-// an anchor or a tag, a complex `?` key, a merge key, an unknown key) rather
-// than read it as unfiltered.
+// TestRequiredChecksLeavesOutAnyTriggerShapeItDoesNotRead pins the fallback the
+// read rests on: under a pull-request trigger it accepts only GitHub's five filter
+// keys, and at the events' level only plain keys. A key behind an anchor or a tag or
+// written with `?` is still that key, so its filter is seen, and any other shape (a
+// merge key, an unknown key) leaves the workflow out rather than read it as unfiltered.
 func TestRequiredChecksLeavesOutAnyTriggerShapeItDoesNotRead(t *testing.T) {
 	repo := writeWorkflows(t, map[string]string{
 		"anchor-key.yml":   "on:\n  pull_request:\n    &p paths: [x]\njobs:\n  a:\n    runs-on: x\n",

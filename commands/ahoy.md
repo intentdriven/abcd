@@ -1324,9 +1324,9 @@ mismatch is advisory: no command of abcd's changes a repository's visibility.
 Only checks that every pull request reports are required. A workflow that runs
 only when some paths change, one with a `branches-ignore` filter or a
 `branches` filter that leaves the default branch out, one whose `types:` filter
-leaves out a pull request's opening, its reopening or a push to it, one whose trigger is written in any form outside the plain YAML
-abcd reads (an inline `{...}` mapping, an alias, an anchor, a tag, a merge key,
-or a key that is not one of GitHub's five filters), and, under a merge queue,
+leaves out a pull request's opening, its reopening or a push to it, one whose trigger holds a form
+abcd does not read (a merge key, a key that is not plain or not one of GitHub's five
+filters, or a filter that is not a list), and, under a merge queue,
 one that does not run on the queue, are left out and named: a form abcd does
 not read leaves a check out, never makes it required. A required check that no workflow is known to report is
 named too, because a pull request waits on it until it reports. A repository
@@ -1334,8 +1334,9 @@ with no CI is given no required check. A matrix job abcd cannot tell every run
 reports is left out and named as well, since a skipped matrix job never reports
 the names its values give; if every pull request does report it, name it in
 `github.required_checks`. A workflow file abcd cannot read whole (one that does
-not parse, is too large or refused as a link, more files than abcd reads, or jobs
-GitHub would refuse) proposes no required check at all and reads as unknown,
+not parse, defines a key twice, is too large or refused as a link, past the limits
+on nodes, nesting and aliases abcd reads a file within, more files than abcd reads,
+or jobs GitHub would refuse) proposes no required check at all and reads as unknown,
 naming the file: a shorter list would read as the answer.
 
 Each required check is pinned to the app that reports it, so a status set by
