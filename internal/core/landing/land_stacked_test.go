@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
@@ -76,6 +77,30 @@ func TestABranchCarryingAQueuedOrArmedPullRequestsCommitsIsNotArmed(t *testing.T
 				t.Fatalf("origin holds feat/x at %q, want the push to stand at %s", f.onOrigin("feat/x"), f.head())
 			}
 		})
+	}
+}
+
+// With no merge queue gating the default branch there is no queue to remove the
+// branch: its arming is the forge's auto-merge, whatever it was cut from, so the
+// armed pull requests are not even listed.
+func TestWithNoMergeQueueABranchCarryingAnArmedPullRequestsCommitsIsArmed(t *testing.T) {
+	f := newFixture(t, noQueueRuleset)
+	base := f.stack()
+	f.forge.prs = f.prFor(f.head())
+	f.forge.views = []string{viewBlocked}
+	f.forge.armed = listed(listedPR(5, base, "feat/base", false, true))
+	res, err := f.land(f.options())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.forge.called("api", "graphql", "-f", "query="+claim.ArmedPullRequestsQuery) != 0 {
+		t.Fatalf("forge calls %v: want no listing of the armed pull requests", f.forge.calls)
+	}
+	if f.forge.called("pr", "merge", "7", "--auto", "--merge", "--match-head-commit="+f.head()) != 1 {
+		t.Fatalf("forge calls %v, want one arming", f.forge.calls)
+	}
+	if s := step(t, res, "enqueue"); s.Status != StatusDone || !strings.Contains(s.Note, "no merge queue gates main") {
+		t.Fatalf("enqueue step %+v, want armed with no queue to wait on", s)
 	}
 }
 

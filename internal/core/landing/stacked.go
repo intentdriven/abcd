@@ -6,11 +6,11 @@ package landing
 // armed. On 2026-11-03 land armed #1376, whose branch carried #1375's two
 // commits while #1375 was queued; the queue removed #1376 as
 // invalid_merge_commit 16 seconds after it entered, and it was armed again by
-// hand after #1375 merged. So before arming, land lists the open pull requests
-// into the default branch that are queued or armed, and defers the arming
-// while the branch shares a commit with one of them that is not on the default
-// branch: run land again once that one has merged, or rebase the branch onto
-// the default branch without its commits.
+// hand after #1375 merged. So where a merge queue gates the default branch,
+// land lists before arming the open pull requests into it that are queued or
+// armed, and defers the arming while the branch shares a commit with one of
+// them that is not on the default branch: run land again once that one has
+// merged, or rebase the branch onto the default branch without its commits.
 
 import (
 	"encoding/json"

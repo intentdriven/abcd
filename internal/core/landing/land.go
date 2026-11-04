@@ -1367,13 +1367,16 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved 
 		// A branch carrying another queued or armed pull request's commits
 		// (one cut from its branch) is removed by the merge queue as soon as
 		// it enters (stacked.go): the arming waits until that one merges.
-		on, err := stackedOn(o, dir, tracking, owner, name, res.Default, pr.Number, res.Head)
-		if err != nil {
-			return err
-		}
-		if len(on) > 0 {
-			res.add("enqueue", StatusStopped, stackedNote(n, res.Branch, res.Default, on), "")
-			return nil
+		// With no queue nothing removes it, and the forge's auto-merge arms.
+		if rule.Method != "" {
+			on, err := stackedOn(o, dir, tracking, owner, name, res.Default, pr.Number, res.Head)
+			if err != nil {
+				return err
+			}
+			if len(on) > 0 {
+				res.add("enqueue", StatusStopped, stackedNote(n, res.Branch, res.Default, on), "")
+				return nil
+			}
 		}
 		if err := arm(); err != nil {
 			if rule.Method == "" {

@@ -69,13 +69,14 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			"     gate allows it, pinned to the head: into the merge queue by its method where\n" +
 			"     one gates the default branch (then confirmed in the queue), otherwise as the\n" +
 			"     forge's auto-merge (a merge commit; a forge that refuses it is said). An\n" +
-			"     arming someone else made is left as it is. A branch that shares a commit not\n" +
-			"     on the default branch with another pull request queued or armed into it (a\n" +
-			"     branch cut from that one's) is not armed: the step stops naming it, since the\n" +
-			"     queue would remove this one; run abcd land again after that one merges, or\n" +
-			"     rebase onto the default branch without its commits. One whose head is not in\n" +
-			"     the checkout is fetched from origin by refs/pull/<n>/head to compare, and a\n" +
-			"     listing or head land cannot read arms nothing. With no pull request it composes\n" +
+			"     arming someone else made is left as it is. Where a merge queue gates the\n" +
+			"     default branch, a branch that shares a commit not on it with another pull\n" +
+			"     request queued or armed into it (a branch cut from that one's) is not armed:\n" +
+			"     the step stops naming it, since the queue would remove this one; run abcd land\n" +
+			"     again after that one merges, or rebase onto the default branch without its\n" +
+			"     commits. One whose head is not in the checkout is fetched from origin by\n" +
+			"     refs/pull/<n>/head to compare, and a listing or head land cannot read arms\n" +
+			"     nothing. With no pull request it composes\n" +
 			"     the body from the branch's commits (each subject, their Refs:, Resolves: and\n" +
 			"     Delivers: lines, abcd's own Assisted-by label and the models their\n" +
 			"     Assisted-by: lines name) into the checkout's .abcd/.work.local/ where it has\n" +
