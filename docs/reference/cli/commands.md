@@ -1362,7 +1362,7 @@ abcd docs fidelity record --verdict-json verdict.json
 
 Fix the issues needing no decision, one lane at a time, and hand the rest back: Writes its state and user-visible drafts; refuses without the rule's record.
 
-**Usage:** `abcd drain [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]`
+**Usage:** `abcd drain [--drive [--yes]] [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]`
 
 Work the open issue ledger unattended: fix the issues that need no decision, and
 hand the rest back by kind. Which issues need no decision is this repository's own
@@ -1412,6 +1412,20 @@ last fetched, and says how old that view is, how many commits the checkout is
 behind it, and which issues open in the checkout it has already finished. The host
 judgement over each eligible remedy does not run; it can only ever hand an issue
 back.
+
+--drive makes the moves itself, from a plain terminal with no host session: it refuses
+before anything is reserved when the claude runner is not enabled or admitted, when
+there is no one walled directory under ~/.abcd.noindex/profiles/ logged in, when a
+wall does not hold, when a credential variable the harness would bill through is set
+(a drive runs on this account's subscription alone, for now), when the judge is routed
+to opencode, when a role is pinned to the host, and when it is started from inside an
+agent's own session. It shows the cap (eight unless --max says otherwise), an estimate
+of the agent runs, the runner and the route, and asks once; --yes is the scripted
+answer, and with no terminal nothing else answers. It then judges each eligible issue,
+drives each lane to its landing, every role on the walled login, and runs each
+landing's preflight behind the load gate, printing one line per step and logging them
+under .abcd/.work.local/logs/. It ends at the cap, when nothing is eligible, or after
+eight hours of runner failures. Without --drive a drain is one move, as below.
 
 --take-over moves your own live reservation of an issue from another copy to this one
 as the move reaches it, as `abcd build --take-over` does: a hosted session that
@@ -1552,6 +1566,7 @@ drain or run holds the state lock.
 **Flags:**
 
 ```
+      --drive                make every move from this terminal, starting each agent on the walled login, until the cap, an empty ledger or a stop
       --dry-run              show every open issue's disposition and the order a drain takes them; writes nothing
       --fix-rounds string    the fix rounds a lane may take before it is handed back; wins over every configured layer
       --judgement string     the host's answer to the judgement the drain awaits, at the path its request names
@@ -1562,12 +1577,15 @@ drain or run holds the state lock.
       --sub-agents string    the ceiling on lanes and validators alive at once; wins over every configured layer
       --take-over            move your own live reservation of each issue this move reaches from another copy to this one; never another person's
       --unskip stringArray   take an issue or path off the drain's skip list
+      --yes                  with --drive: the scripted yes to its one question
 ```
 
 **Example:**
 
 ```
-abcd drain --dry-run
+abcd drain --drive
+  abcd drain --drive --yes --max 3
+  abcd drain --dry-run
   abcd drain --dry-run --json
   abcd drain --max 3
   abcd drain --json

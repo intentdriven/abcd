@@ -278,8 +278,9 @@ new session, so it holds only throwaway files for the turn at hand (the
   native/CLI/API/MCP oracles are opt-in adapters. The one written exception is
   a drain the person drives from a plain terminal, which starts agents itself
   on their own invocation
-  ([adr-2610222222326104](.abcd/development/decisions/adrs/2610222222326104-abcd-drives-agents-with-no-host-session.md));
-  it is not built until itd-2610222215485265 ships.
+  ([adr-2610222222326104](.abcd/development/decisions/adrs/2610222222326104-abcd-drives-agents-with-no-host-session.md)):
+  `abcd drain --drive`, built on this account's subscription, walled, while the
+  key route waits for its budget (itd-2611011230226453).
 - **Single repo, curated release.** `.abcd/**` stays in-tree and is present in
   every repository checkout — marketplace installs and release source archives
   included — never in the released binaries; the launch bundler denies the

@@ -1488,6 +1488,13 @@
       "sentence": "Fix the issues needing no decision, one lane at a time, and hand the rest back: Writes its state and user-visible drafts; refuses without the rule's record.",
       "flags": [
         {
+          "name": "drive",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "dry-run",
           "shorthand": "",
           "type": "bool",
@@ -1554,6 +1561,13 @@
           "name": "unskip",
           "shorthand": "",
           "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "yes",
+          "shorthand": "",
+          "type": "bool",
           "required": false,
           "hidden": false
         }

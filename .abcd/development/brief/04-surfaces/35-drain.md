@@ -188,6 +188,38 @@ exits. It reads the ledger afresh (the classification is re-derived at every mov
 that can read it and written nowhere, decision 8), then does the first of these
 that applies.
 
+The one exception is `abcd drain --drive` (itd-2610222215485265,
+[adr-2610222222326104](../../decisions/adrs/2610222222326104-abcd-drives-agents-with-no-host-session.md)):
+typed in a plain terminal, on the person's own yes, it makes these moves itself, on
+one walled login under `~/.abcd.noindex/profiles/`, this account's subscription and
+no other. Each iteration is one move under the drain's lock for that move alone; a
+lane is driven in-process through `loop.Drive` and `DriveReview`, every role on the
+walled launch; a landing that waits for its receipt has its preflight run behind the
+load gate; each wait a move names is slept to the earliest time it names, at least
+thirty seconds. Three runner failures in a row, or a judge's failure, enter the
+outage schedule (one minute, five, ten, then hourly), which hands nothing back and
+ends the drive at eight hours.
+
+Before the first move the drive writes the walled directory's settings, abcd's hooks
+as commands naming its own binary and nothing else, and proves each wall, refusing
+and naming the one that fails: the login state, the settings, and in one short live
+launch the tools the launch named, the approver as the only server, no plugin, no
+key, the guard refusing a command it is meant to refuse, and a settings file in the
+working tree having no effect, since the launch's setting sources name the walled
+directory alone. The settings are compared with what abcd wrote before each stage,
+and a difference stops the drive. A credential variable the harness would bill
+through refuses the start, naming itd-2611011230226453, and so does a start from
+inside an agent's own session.
+
+A stop takes two presses. The first interrupt, hang-up or termination leaves the
+drive's context live, so the agent in a call finishes that call and its receipt is
+recorded; the drive then releases the lane's reservation and its claims so a peer
+may take the issue up, leaves the lane on its branch, and names the run, the lane
+and the command that resumes it. The second signal ends the context, which kills the
+process group, and names when the reservation lapses. Nothing is handed back for a
+stop. A later drive on the same copy reserves the lane again and lands it; one that
+finds the issue held hands its lane back as stuck.
+
 In a checkout with a remote named `origin`, the ledger a move reads is origin's
 default branch, never the checkout's own, which may be behind it
 (spc-2610161044461448 step 1, dcn-2610161040350256): under the drain's lock,
@@ -798,6 +830,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--drive` | bool |
 | `--dry-run` | bool |
 | `--fix-rounds` | string |
 | `--judgement` | string |
@@ -808,5 +841,6 @@ Sub-verbs: none.
 | `--sub-agents` | string |
 | `--take-over` | bool |
 | `--unskip` | stringArray |
+| `--yes` | bool |
 
 <!-- surface-appendix:end -->

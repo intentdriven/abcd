@@ -26,6 +26,34 @@ Then run the drain, one move at a time:
 "${CLAUDE_PLUGIN_ROOT}/abcd" drain --max 3 --json    # at most three lanes
 ```
 
+## From a plain terminal
+
+This page always calls the drain one move at a time, and an agent never drives
+it any other way. `abcd drain --drive` is the person's own form of the verb, typed
+in a plain terminal with no host session; it refuses inside an agent's own session.
+
+It runs on this account's subscription alone, on one walled login: one directory
+under `~/.abcd.noindex/profiles/` that the person makes and logs the harness into
+once, in their own shell. abcd never reads, stores or forwards that login. The
+directory's `settings.json` is abcd's, rewritten at each start, and holds abcd's
+hooks and nothing else. A credential variable the harness would bill through,
+set in the environment, refuses the start, naming `itd-2611011230226453`.
+
+Before its first move it shows the cap (eight unless `--max` says otherwise), an
+estimate of the agent runs, the runner and the route, and asks once; `--yes` is
+the scripted answer, and with no terminal nothing else answers. One short live
+launch then proves the walls, naming any that does not hold. Each stage's agent
+holds only the file and shell tools its launch names, reads settings from the
+walled directory alone, and starts only while those settings are what abcd wrote.
+
+It prints one line per step and logs them under `.abcd/.work.local/logs/`. It ends
+at the cap, when nothing is eligible, or after eight hours of runner failures. The
+first interrupt, hang-up or termination is a stop: the agent in a call finishes
+that call, the lane's reservation is released, the lane stays on its branch, and
+the last lines name the run, the lane and `abcd drain --drive`, which resumes it.
+A second signal kills the running agent's process group and exits at once, naming
+when the reservation lapses.
+
 ## The rule
 
 Which issues a drain may take alone is **this repository's own decision**: an
