@@ -559,6 +559,12 @@ func OwnerUID(path string) (uint32, error) {
 	if err != nil {
 		return 0, err
 	}
+	return InfoOwnerUID(fi)
+}
+
+// InfoOwnerUID is the uid owning what fi describes, for a caller holding the
+// FileInfo of the file it means to judge rather than a path.
+func InfoOwnerUID(fi os.FileInfo) (uint32, error) {
 	st, ok := fi.Sys().(*syscall.Stat_t)
 	if !ok {
 		return 0, ErrOwnerUnknown

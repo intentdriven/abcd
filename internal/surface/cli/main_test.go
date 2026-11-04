@@ -4,8 +4,10 @@ import (
 	"os"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
+	"github.com/intentdriven/abcd/internal/core/ahoy/worktree"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
@@ -41,6 +43,14 @@ var builtAbcd gittest.Abcd
 // own, the user layer reads as absent, and a test that sets HOME to a fixture
 // gets that fixture's user layer (spc-23).
 func TestMain(m *testing.M) {
+	// No test here, nor a child of one acting as the binary, trims the
+	// machine's own Go build cache through `ahoy worktree prune`. The shipping
+	// value is kept so the wiring itself stays asserted, against a temporary
+	// GOCACHE (ahoy_worktree_test.go).
+	shippedWorktreeTrimCache = worktreeTrimCache
+	worktreeTrimCache = func(bool, time.Time) worktree.CacheTrim {
+		return worktree.CacheTrim{Skipped: "a test stands in for the trim"}
+	}
 	// No `ahoy install` here asks GitHub's attestations API or the Sigstore
 	// TUF repository: a cache the fixtures bind is promoted through a
 	// stand-in that accepts it, and the provenance tests put the shipping

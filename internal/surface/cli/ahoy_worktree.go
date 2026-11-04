@@ -34,6 +34,10 @@ var worktreeForge worktree.GH = landing.GH
 // and the notes archive is stamped with it. A test moves it on.
 var worktreeNow = time.Now
 
+// worktreeTrimCache is prune's trim of the Go build cache. TestMain stands in
+// for it across this package's tests, so none trims the machine's own cache.
+var worktreeTrimCache = worktree.TrimGoCache
+
 // worktreeAddTimeout bounds add's `git worktree add`: gitutil.CheckoutBound,
 // the bound the build loop's lane checkout has, since a checkout's time scales
 // with the tree and a Git LFS download. A var so a test can shorten it.
@@ -197,7 +201,8 @@ func branchTaken(root, name string) error {
 // the run completed and reclaimed nothing, and 2 on a refusal or a fault, a
 // quiet window the configuration refuses and a --yes name the lane does not
 // hold among them (decision 8); a dry run answers the code the real run
-// would.
+// would. When it removed a worktree it also trims the Go build cache and says
+// what went (worktree.TrimGoCache); what the trim finds never changes the code.
 func newAhoyWorktreePruneCommand(asJSON *bool) *cobra.Command {
 	var dryRun bool
 	var yes []string
@@ -224,7 +229,7 @@ func newAhoyWorktreePruneCommand(asJSON *bool) *cobra.Command {
 			}
 			got, err := worktree.Prune(root, worktree.PruneOptions{
 				DryRun: dryRun, Forge: worktreeForge, Held: loop.HeldWorktrees, Cwd: cwd, Now: worktreeNow,
-				QuietDays: days, Yes: yes,
+				QuietDays: days, Yes: yes, TrimCache: worktreeTrimCache,
 			})
 			if err != nil {
 				return worktreeFault("prune", err)
@@ -238,7 +243,7 @@ func newAhoyWorktreePruneCommand(asJSON *bool) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "archive and remove nothing; report what a real run would")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "archive, remove and trim nothing; report what a real run would")
 	cmd.Flags().StringArrayVar(&yes, "yes", nil, "reclaim this quiet candidate too (repeatable); a name not in the lane refuses the run")
 	return cmd
 }
@@ -272,6 +277,29 @@ func renderPruned(w io.Writer, got worktree.Pruned) {
 	if got.ForgeNote != "" {
 		fmt.Fprintf(w, "note: %s\n", got.ForgeNote)
 	}
+	if got.CacheTrim != nil {
+		fmt.Fprintln(w, cacheTrimLine(*got.CacheTrim, got.DryRun))
+	}
+}
+
+// cacheTrimLine is the one line saying what the Go build cache's trim did, or
+// would do under a dry run, or why it was skipped.
+func cacheTrimLine(t worktree.CacheTrim, dryRun bool) string {
+	if t.Skipped != "" {
+		return "go build cache not trimmed: " + t.Skipped
+	}
+	entries := fmt.Sprintf("%d entries", t.EntriesRemoved)
+	if t.EntriesRemoved == 1 {
+		entries = "1 entry"
+	}
+	line := fmt.Sprintf("go build cache %s: removed %s unused for %d days, %s freed", t.Path, entries, t.UnusedDays, humanBytes(int(t.BytesFreed)))
+	if dryRun {
+		line = fmt.Sprintf("go build cache %s: would remove %s unused for %d days, freeing %s", t.Path, entries, t.UnusedDays, humanBytes(int(t.BytesFreed)))
+	}
+	if t.Failed > 0 {
+		line += fmt.Sprintf("; %d could not be read or removed", t.Failed)
+	}
+	return line
 }
 
 // renderDossier lays out a quiet candidate's dossier under its row, in the
