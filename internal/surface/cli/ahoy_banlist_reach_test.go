@@ -9,7 +9,6 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/banlist"
-	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // TestAhoyStatusStatesThePrivateBanlistReach is spc-20 AC7 on the status board.
@@ -50,7 +49,7 @@ func TestAhoyStatusReportsEachScaffoldedArtefact(t *testing.T) {
 	hermeticEnv(t)
 	// A REAL repository: the stub write is gated on git's own ignore verdict, and a
 	// bare `.git` directory is a state the guard deliberately fails closed on.
-	repo := gittest.NewRepo(t).Root()
+	repo := newRepo(t).Root()
 	t.Chdir(repo)
 
 	bare := string(runCLI(t, "ahoy"))
@@ -91,7 +90,7 @@ func TestAhoyStatusNeverAdvisesOverridingAGlobalDispatcher(t *testing.T) {
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	global := filepath.Join(t.TempDir(), "gitconfig")
 	t.Setenv("GIT_CONFIG_GLOBAL", global)
-	repo := gittest.NewRepo(t).Root()
+	repo := newRepo(t).Root()
 	if err := os.MkdirAll(filepath.Join(repo, ".githooks"), 0o755); err != nil {
 		t.Fatal(err)
 	}

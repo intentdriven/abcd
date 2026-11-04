@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/landing"
-	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // The `abcd land` front door (iss-2610150524235929, iss-2610150524246898): it
@@ -27,7 +26,7 @@ func landWorld(t *testing.T) (dir, origin string) {
 	t.Setenv("ABCD_PLUGIN_ROOT", "")
 	t.Setenv("CLAUDE_PLUGIN_ROOT", "")
 	origin = filepath.Join(home, "origin.git")
-	gittest.InitBare(t, origin)
+	initBare(t, origin)
 	dir = filepath.Join(home, "work")
 	gitInitAt(t, dir)
 	for _, kv := range [][2]string{{"user.name", "Pat Example"}, {"user.email", "pat@example.com"}, {"commit.gpgsign", "false"}} {

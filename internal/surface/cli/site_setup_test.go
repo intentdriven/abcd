@@ -11,7 +11,6 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/launch/scaffold"
 	"github.com/intentdriven/abcd/internal/core/site"
-	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // TestSiteSetupIsWiredAndReachesNoNetwork runs the verb through the CLI on a
@@ -20,7 +19,7 @@ import (
 // stage stops at the missing credential, and nothing leaves the machine.
 func TestSiteSetupIsWiredAndReachesNoNetwork(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	r := gittest.NewRepo(t)
+	r := newRepo(t)
 	r.Write("AGENTS.md", "# Example\n\n<!-- BEGIN ABCD -->\nmanaged\n<!-- END ABCD -->\n")
 	r.Write(".abcd/positioning.json", `{"schema_version": 1, "block": {"file": ".abcd/development/IDENTITY.md", "heading": "Identity (canonical)"}, "severity": "warn", "surfaces": []}`+"\n")
 	r.Write(".abcd/development/IDENTITY.md", "# Identity\n\n## Identity (canonical)\n\n- **Title:** Example\n- **Tagline:** An example.\n")
@@ -74,7 +73,7 @@ func TestSiteSetupIsWiredAndReachesNoNetwork(t *testing.T) {
 
 func TestSiteSetupRefusesAnUnmanagedFolder(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	r := gittest.NewRepo(t)
+	r := newRepo(t)
 	r.Write("README.md", "# Unmanaged\n")
 	r.Commit("unmanaged")
 	t.Chdir(r.Root())
@@ -104,7 +103,7 @@ func TestSiteSetupNeverInstallsGhOnAScriptedYes(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())
-			r := gittest.NewRepo(t)
+			r := newRepo(t)
 			r.Write("AGENTS.md", "# Example\n\n<!-- BEGIN ABCD -->\nmanaged\n<!-- END ABCD -->\n")
 			r.Write(".abcd/positioning.json", `{"schema_version": 1, "block": {"file": ".abcd/development/IDENTITY.md", "heading": "Identity (canonical)"}, "severity": "warn", "surfaces": []}`+"\n")
 			r.Write(".abcd/development/IDENTITY.md", "# Identity\n\n## Identity (canonical)\n\n- **Title:** Example\n- **Tagline:** An example.\n")
@@ -196,7 +195,7 @@ func TestSiteSetupTextAlignsEveryStatus(t *testing.T) {
 // the same site as from the root (iss-2609251750202525).
 func TestSiteVerbsReadTheCheckoutFromASubdirectory(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	r := gittest.NewRepo(t)
+	r := newRepo(t)
 	r.Write("AGENTS.md", "# Example\n\n<!-- BEGIN ABCD -->\nmanaged\n<!-- END ABCD -->\n")
 	r.Write(".abcd/positioning.json", `{"schema_version": 1, "block": {"file": ".abcd/development/IDENTITY.md", "heading": "Identity (canonical)"}, "severity": "warn", "surfaces": []}`+"\n")
 	r.Write(".abcd/development/IDENTITY.md", "# Identity\n\n## Identity (canonical)\n\n- **Title:** Example\n- **Tagline:** An example.\n")
@@ -239,7 +238,7 @@ func TestSiteVerbsReadTheCheckoutFromASubdirectory(t *testing.T) {
 // and each says so on stderr, one line per label, leaving stdout to the result.
 func TestSiteVerbsSayWhichLabelsTheyAdded(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	r := gittest.NewRepo(t)
+	r := newRepo(t)
 	r.Write("AGENTS.md", "# Example\n\n<!-- BEGIN ABCD -->\nmanaged\n<!-- END ABCD -->\n")
 	r.Write(".abcd/positioning.json", `{"schema_version": 1, "block": {"file": ".abcd/development/IDENTITY.md", "heading": "Identity (canonical)"}, "severity": "warn", "surfaces": []}`+"\n")
 	r.Write(".abcd/development/IDENTITY.md", "# Identity\n\n## Identity (canonical)\n\n- **Title:** Example\n- **Tagline:** An example.\n")
@@ -320,7 +319,7 @@ func TestSiteVerbsSayWhichLabelsTheyAdded(t *testing.T) {
 // repositories only (itd-2610091010348892).
 func TestSiteSetupTakesTheGitHubPagesProvider(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	r := gittest.NewRepo(t)
+	r := newRepo(t)
 	r.Write("AGENTS.md", "# Example\n\n<!-- BEGIN ABCD -->\nmanaged\n<!-- END ABCD -->\n")
 	r.Write(".abcd/positioning.json", `{"schema_version": 1, "block": {"file": ".abcd/development/IDENTITY.md", "heading": "Identity (canonical)"}, "severity": "warn", "surfaces": []}`+"\n")
 	r.Write(".abcd/development/IDENTITY.md", "# Identity\n\n## Identity (canonical)\n\n- **Title:** Example\n- **Tagline:** An example.\n")

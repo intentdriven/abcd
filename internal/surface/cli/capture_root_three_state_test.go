@@ -4,8 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // TestCaptureRootBoundsARepositoryGitWillNotAnswerFor is iss-2609020224230967:
@@ -17,7 +15,7 @@ import (
 // marker names (through the rules root's plausibility and ownership gates),
 // else the working directory.
 func TestCaptureRootBoundsARepositoryGitWillNotAnswerFor(t *testing.T) {
-	repo := gittest.NewRepo(t).Root()
+	repo := newRepo(t).Root()
 	sub := filepath.Join(repo, "a", "b")
 	if err := os.MkdirAll(sub, 0o755); err != nil {
 		t.Fatal(err)
