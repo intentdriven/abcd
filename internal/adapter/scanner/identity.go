@@ -1094,8 +1094,16 @@ func standsAsAccountName(line string, start, end int, homes []string, toks *path
 		hi++
 	}
 	scanMeter.charge(stageIdentity, hi-end)
+	if strings.HasPrefix(line[start:], pluginSpec) {
+		return false
+	}
 	return hi+1 < len(line) && line[hi] == '@' && isAlnumByte(line[hi+1])
 }
+
+// pluginSpec is the plugin's own install line, which reads as user@host and
+// stands on the install pages of the payload a session under the cloud setup's
+// account scans.
+const pluginSpec = "abcd@abcd-marketplace"
 
 // bareHomeRoots are the home roots an archive listing or a relative path
 // writes without the leading separator ("Users/<login>/Desktop" in a tar

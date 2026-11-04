@@ -14,9 +14,8 @@ const NeutralAccount = "zzneutralcaller"
 // NeutralAccount and returns it, so a test that scans content judges the
 // content and not whoever runs the suite. The identity scanner takes the
 // caller's account name from HOME's last segment and flags every word-bounded
-// occurrence of it, so an account named for a word the content holds (the
-// cloud setup's `abcd`, which is this product's own name) fails a scan of a
-// clean tree. Env reuses this HOME, since it is inside the test's temp area.
+// occurrence of it, so an account named for a word the content holds fails a
+// scan of a clean tree. Env reuses this HOME, since it is inside the test's temp area.
 func NeutralCaller(t *testing.T) string {
 	t.Helper()
 	home, err := NeutralHomeIn(t.TempDir())

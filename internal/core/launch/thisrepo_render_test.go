@@ -85,9 +85,8 @@ func scanThisRepo(t *testing.T) scanner.ScanResult {
 
 // TestMain runs the package as a neutral caller (gittest.NeutralCaller): its
 // scans judge the payload, so they must not read whoever runs the suite into
-// it. Under an account named for a word the payload holds, a cloud
-// container's `abcd`, every scan of a clean tree hard-failed on that word as
-// the caller's username. A test that sets HOME itself still does so.
+// it. Under an account named for a word the payload holds, every scan of a
+// clean tree hard-fails on that word as the caller's username. A test that sets HOME itself still does so.
 func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "launch-caller-")
 	if err != nil {

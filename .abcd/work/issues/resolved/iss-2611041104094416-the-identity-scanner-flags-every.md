@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/adapter/scanner/identity.go"
 remedy: "Treat the account name as one that identifies no person, beside the other default accounts of hosted machines."
-resolution: "The account name joins the built-in list of names that identify no person."
+resolution: "The account name joins the built-in list of names that identify no person, and the plugin's own install line is spared where the name stands before an at sign."
 impact: fix
 ---
 

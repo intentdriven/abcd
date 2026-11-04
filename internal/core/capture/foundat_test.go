@@ -19,8 +19,8 @@ import (
 // token) and an absent value stay legitimate. Both sides are asserted
 // (guards-prove-themselves): the refusals write nothing, and the permitted
 // values are written as given. The caller is a neutral one: a home-relative
-// location names abcd's own store, which a caller whose account is `abcd`
-// would read as its login and redact.
+// location names abcd's own store, which a caller whose account name is that
+// word would read as its login and redact.
 func TestCaptureFoundAtMustResolveInTheTree(t *testing.T) {
 	gittest.NeutralCaller(t)
 	refused := []struct{ name, foundAt string }{

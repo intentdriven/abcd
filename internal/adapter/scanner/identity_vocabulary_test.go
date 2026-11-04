@@ -292,3 +292,16 @@ func TestLocalUsernameRootHomeSpareADeeperAbsoluteSegment(t *testing.T) {
 		}
 	}
 }
+
+// The plugin's own install line reads as user@host, and it stands on the install
+// pages of a payload that a session under the cloud setup's account scans.
+func TestLocalUsernameProductAccountSparesThePluginSpecOnly(t *testing.T) {
+	pats, sev := DefaultPatterns(), DefaultIdentitySeverities()
+	id := Identity{HomeUser: "abcd"}
+	if got := ScanText("/plugin install abcd@abcd-marketplace", id, pats, sev, "f"); hasKind(got, kindLocalUser) {
+		t.Errorf("the plugin install line reads as the caller's login: %v", got)
+	}
+	if got := ScanText("mail abcd@example.com", id, pats, sev, "f"); !hasKind(got, kindLocalUser) {
+		t.Error("an address under the account name no longer reads as the caller's login")
+	}
+}
