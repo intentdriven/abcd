@@ -137,7 +137,7 @@ func TestLocalUsernameFindingNamesItsIdentitySource(t *testing.T) {
 }
 
 func TestGenericAccountNameFloor(t *testing.T) {
-	for _, name := range []string{"dev", "DEV", "runner", "root", "ubuntu", "ec2-user", "me", "a"} {
+	for _, name := range []string{"abcd", "dev", "DEV", "runner", "root", "ubuntu", "ec2-user", "me", "a"} {
 		if !isGenericAccountName(name) {
 			t.Errorf("%q should be under the generic-account floor", name)
 		}

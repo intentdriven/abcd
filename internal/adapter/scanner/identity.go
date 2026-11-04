@@ -1011,7 +1011,8 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 
 // genericAccountNames are account names that identify no person: the default
 // accounts of hosted CI machines, container and cloud images and development
-// environments, and the role words a shared machine is named for. Each is also
+// environments (abcd's own cloud setup among them, whose account bears the
+// product's name), and the role words a shared machine is named for. Each is also
 // ordinary vocabulary — a documented flag, a noun in the docs — so treating
 // every bare occurrence as the caller's login hard-failed the launch payload
 // on a pristine tree and rewrote prose in committed records (iss-236,
@@ -1019,7 +1020,7 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 // per-repo pii.json is committed content, and a planted entry there would
 // disarm the username gate for a real person's login.
 var genericAccountNames = map[string]bool{
-	"admin": true, "administrator": true, "app": true, "build": true,
+	"abcd": true, "admin": true, "administrator": true, "app": true, "build": true,
 	"builder": true, "ci": true, "codespace": true, "debian": true,
 	"deploy": true, "dev": true, "developer": true, "docker": true,
 	"ec2-user": true, "git": true, "gitpod": true, "guest": true,
