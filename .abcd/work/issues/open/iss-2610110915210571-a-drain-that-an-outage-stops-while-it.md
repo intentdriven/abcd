@@ -10,6 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/implement/loop/drain.go"
 remedy: "clear st.Judging when the outage stop ends the drain, or keep it and let a later --judgement be taken, with a test that stops a judging drain on an outage"
+related_intents: [itd-2611041549461012]
 ---
 
 A drain that an outage stops while it waits on a host judgement keeps its judging entry: that move prints 'awaiting the host judgement' beside 'ended: the run gave up', and a --judgement given afterwards is refused. Nothing wrong is written, but the drain both claims to wait and refuses the answer.

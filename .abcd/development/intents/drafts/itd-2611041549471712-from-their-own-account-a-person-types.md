@@ -8,7 +8,7 @@ reclassification_history: []
 builds_on: [itd-2609201925079472, itd-2611031342011261, itd-2610180912189125]
 refines: [itd-2610222215485265]
 reverses: [dcn-2610222224054666]
-related_issues: [iss-2611022247128872, iss-2610121528179959]
+related_issues: [iss-2610121528179959]
 severity: major
 origin: researcher-authored
 production_mode: hand-written
