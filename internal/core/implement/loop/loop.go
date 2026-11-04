@@ -905,6 +905,22 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 		return StepResult{}, err
 	}
 	g.runner = routed
+	// A finished agent's receipt is read before anything asks for a fresh one
+	// (receipt_standing.go): collecting it is the step's move. A step carrying
+	// a --route is judged on that route alone, since one the step will not use
+	// is refused with nothing written (route_use.go); the next plain step
+	// collects.
+	var standing string
+	if len(overrides) == 0 {
+		var collected StepResult
+		var took bool
+		if collected, took, standing = collectStanding(repoRoot, runID, steps, o); took {
+			if !collected.Complete {
+				collected.Outage = g.info()
+			}
+			return collected, nil
+		}
+	}
 	var res StepResult
 	var wait error
 	err = mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
@@ -978,6 +994,13 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 	})
 	if err == nil && wait != nil {
 		err = wait
+	}
+	if standing != "" {
+		if r, ok := AsRefusal(err); ok {
+			r.Remedy += "; " + standing
+		} else if err == nil {
+			res.Next += "; " + standing
+		}
 	}
 	// The outage a stage met is recorded with the tier lock released, and the
 	// answer names it.
@@ -1068,6 +1091,15 @@ func Receipt(repoRoot, runID, receiptPath string, steps Stages, o Options) (Step
 // hand-back after the step could not verify it records the route; the host's
 // own receipt carries none.
 func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *runner.RouteRecord) (StepResult, error) {
+	return handIn(repoRoot, runID, receipt, steps, o, route, false)
+}
+
+// handIn is receipt; stood says a step found the receipt where it stood
+// (receipt_standing.go) rather than an agent's hand-in naming it, which the
+// record says. A receipt a lane has already verified is answered with where
+// the lane stands and changes nothing: a step can collect it before its
+// agent's own hand-in, or its runner's dispatch, arrives.
+func handIn(repoRoot, runID, receipt string, steps Stages, o Options, route *runner.RouteRecord, stood bool) (StepResult, error) {
 	var res StepResult
 	var noted *runner.RouteRecord
 	renewNote := ""
@@ -1075,6 +1107,10 @@ func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *ru
 		now := o.now()
 		i, k := st.findAwait(repoRoot, receipt)
 		if i < 0 {
+			if l, ok := st.laneThatTook(repoRoot, receipt); ok {
+				res = laneResult(*st, l, "", nil)
+				return false, nil
+			}
 			return false, unknownReceipt(*st)
 		}
 		lane := st.Lanes[i]
@@ -1131,6 +1167,9 @@ func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *ru
 			lane.Awaits = nil
 		}
 		note := "the " + string(performed) + " stage's receipt verified at " + verified
+		if stood {
+			note += "; it stood at the path the lane awaited, so a step collected it and no fresh agent was asked for"
+		}
 		if def.Repeats {
 			// The stage hands the lane to its next agent, or completes, on a
 			// later step; the lane's own receipt stays the implementer's.

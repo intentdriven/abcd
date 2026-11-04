@@ -15,8 +15,10 @@ package loop
 //     its runner, the one waiting longest. A held role is a paused one, or one
 //     already with the host, from an earlier fallback or a step before its
 //     route existed, whose receipt nothing has written: so lanes parked before
-//     this change move too. A role whose receipt is written is the host's to
-//     hand back, and is never retried.
+//     this change move too. A receipt that stands is read first, and one that
+//     verifies is collected whatever held the role (receipt_standing.go); one
+//     that does not, on a role not paused, is the host's to hand back, and is
+//     never retried.
 //   - `--route` for a held role retries it at once on that route, and a
 //     restart while a route is in force starts the fresh agent on its runner
 //     rather than re-telling it to the host.
@@ -180,7 +182,8 @@ func heldRole(repoRoot string, st State, cfg *runner.Config, now time.Time, only
 				h.why = fmt.Sprintf("paused since %s (%s)", a.Paused.Since.UTC().Format(time.RFC3339), a.Paused.Why())
 				h.last = a.Paused.At
 			case received(repoRoot, a.Receipt):
-				// The host's agent wrote it: `implement receipt` hands it back.
+				// It stands and did not verify when this step read it
+				// (collectStanding): `implement receipt` hands it back.
 				continue
 			case a.Running != nil:
 				h.why = fmt.Sprintf("the %s runner an earlier step started for it lapsed at %s, nothing received",
@@ -376,6 +379,20 @@ func retryRouted(ctx context.Context, repoRoot, runID string, steps Stages, o Op
 // end drops the claim. on is returned with any refusal, as the step's answer.
 func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o Options, rs Runners, laneID string, aw Await, why string, on StepResult) (StepResult, error) {
 	route := rs.Config.RouteFor(aw.Role)
+	// No runner starts over a receipt that verifies: a launch is paid for, and
+	// the work it would be paid to do stands (receipt_standing.go). One that
+	// does not verify is what the fresh agent replaces.
+	if received(repoRoot, aw.Receipt) {
+		if r, err := handIn(repoRoot, runID, aw.Receipt, steps, o, claimedRoute(aw), true); err == nil {
+			if why != "" {
+				r.Retried = &Retry{Lane: laneID, Role: aw.Role, Runner: route.Runner, Why: why}
+			}
+			if text := route.Override(); text != "" {
+				r.RouteUnused = append(r.RouteUnused, text)
+			}
+			return r, nil
+		}
+	}
 	timeout := rs.Timeout
 	if timeout <= 0 {
 		timeout = rs.Config.TimeoutFor(aw.Role)
