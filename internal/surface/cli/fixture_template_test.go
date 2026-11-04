@@ -153,7 +153,10 @@ func onlyGittestHome(t *testing.T, home string) bool {
 			return err
 		}
 		switch filepath.ToSlash(rel) {
-		case ".", ".config", ".config/go", ".config/go/telemetry", ".config/go/telemetry/mode":
+		case ".", ".config", ".config/go", ".config/go/telemetry", ".config/go/telemetry/mode",
+			// os.UserConfigDir on darwin, where the macOS race job this cut is for runs.
+			"Library", "Library/Application Support", "Library/Application Support/go",
+			"Library/Application Support/go/telemetry", "Library/Application Support/go/telemetry/mode":
 		default:
 			only = false
 		}
