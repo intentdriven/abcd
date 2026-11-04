@@ -47,7 +47,7 @@ We expect a successor to step on without starting anything twice because every f
 
 ## Open Questions
 
-_None open. Every question the scratch draft of 2026-11-04 put for this half had one answer on the record: a stop takes hold at a tool-call boundary, never within one (dcn-2611031722512037); every coordinating session is walled (dcn-2611031722512037); the run's account of its launches is the ledger (itd-2611031342011261, decisions 7 to 12); a gone agent restarts fresh from its last commit with its uncommitted work saved aside (iss-2610080620372731)._
+_None open. Every question the scratch draft of 2026-11-04 put for this half had one answer on the record: a stop takes hold at a tool-call boundary, never within one (dcn-2611031722512037); a coordinating session is walled where abcd starts it, and one the person starts off a profile is warned (dcn-2611031722512037, dcn-2611041550129278); the run's account of its launches is the ledger (itd-2611031342011261, decisions 7 to 12); a gone agent restarts fresh from its last commit with its uncommitted work saved aside (iss-2610080620372731)._
 
 ## Decisions
 

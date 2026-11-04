@@ -32,7 +32,7 @@ We expect the page to be right where the hand-written one was wrong because ever
 
 ## Scope Conditions
 
-- Holds for one machine's runs, composed by whichever abcd process first passes the day's boundary; a hosted run reports through its own summary.
+- Holds for one machine's runs, composed by whichever abcd process in the account that runs the work first passes the day's boundary, that account's ledger being the one that holds the launches; a move in another account composes nothing. A hosted run reports through its own summary.
 - Holds where the person chose the shared folder at setup, on a machine no other person shares (dcn-2611041550139264); without it no page is written and `abcd ahoy` says so.
 - The page is derived: every line names the record, run, ledger entry or pull request it rests on, and nothing on it is typed by an agent. A fact abcd cannot source is absent, not estimated.
 - Spend figures are the harness's estimates at its price table, as the ledger keeps them; the page says so, and a subscription stage shows no money.
@@ -41,7 +41,7 @@ We expect the page to be right where the hand-written one was wrong because ever
 
 ## Acceptance Criteria
 
-- **Given** the first abcd move after the day's boundary, **when** it runs, **then** one page for the previous day is composed and written to the shared folder, once; a second move the same day adds nothing, and a day with no run writes a page that says so.
+- **Given** the first abcd move after the day's boundary, **when** it runs, **then** one page for the previous day is composed from that account's records and written to the shared folder; a later move the same day in that account rewrites the page whole from the records, never appends to it; a move in any other account writes nothing; and a day with no run writes a page that says so.
 - **Given** the day's merges, **when** the page lists them, **then** each shows the pull request, the records its trailers resolved or delivered, and the release it reached if one was cut, read from the forge and the ledger, never from a session's notes.
 - **Given** a lane that stalled, **when** the page lists it, **then** it shows the run, the lane, the stage, the recorded reason (paused, handed back, outage, rate limit, stop) and what the lane left (a receipt uncollected, work saved aside, a pull request waiting), with the command that picks it up.
 - **Given** the named keys, **when** the page shows spend, **then** each key shows the month's spend against its cap, the day's spend, the stages it carried, and for each the window reading that sent the stage to the key; a key at its cap is marked, and a subscription stage is counted, never priced.
@@ -56,7 +56,7 @@ _None open. The question of place is decision 1 below; the two the interview did
 ## Decisions
 
 1. 2026-11-04, the product thinker (dcn-2611041550139264): the page is a dated file in the same shared folder as the stop switch, on a machine no other person shares; the scratch draft asked that one choice hold for both, and an unshared machine answers the privacy cost, so this followed from the stop's ruling and no question of its own was put. A page served over a private network is later work.
-2. **Who composes it**: any abcd move that first crosses the day's boundary, so a page appears whether or not a coordinator is alive. No question was put because the alternative, the coordinating session alone at a fixed hour, loses the page whenever the coordinator is what died, and a page that says the day was quiet is the signal that the run is alive; settled on the draft's proposal, with the standing stance that abcd ships a sensible default the person configures (dcn-2611041550129278) leaving the hour configurable.
+2. **Who composes it**: any abcd move in the account that runs the work that first crosses the day's boundary, so a page appears whether or not a coordinator is alive, and a later move in that account may rewrite the day's page; a move in the person's own account, whose ledger holds none of the launches, composes nothing. No question was put because the alternative, the coordinating session alone at a fixed hour, loses the page whenever the coordinator is what died, and a page that says the day was quiet is the signal that the run is alive; settled on the draft's proposal, with the standing stance that abcd ships a sensible default the person configures (dcn-2611041550129278) leaving the hour configurable.
 3. **A day with nothing to report** writes a page that says so, proving the run is alive. No question was put because the first criterion already needs a page per day for the stop and the queue to be reported; settled on the draft's proposal.
 
 ## Decomposition

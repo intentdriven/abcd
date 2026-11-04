@@ -299,7 +299,11 @@ per repository (dcn-2611041550129278); each takes the draft's proposed
 default, and none was put as a question of its own:
 
 14. **Retention: 30 days and 20,000 entries**, pruned by the next writer; a
-    machine or repository setting overrides both figures.
+    machine or repository setting overrides both figures, with one floor: the
+    retention is never shorter than the longest cap period of any key the
+    budget intent keeps (itd-2611011230226453) plus one day, so a calendar
+    month's totals are summed from entries still held, and a repository
+    setting below that floor is read as the floor and named as such.
 15. **The status line's cached read: 30 seconds**, the interval the
     prototype used; configurable the same way.
 16. **Token basis: every count the harness reports**, as the prototype
@@ -312,7 +316,8 @@ default, and none was put as a question of its own:
     verb audit as for any verb.
 18. **The budget intent's per-key totals are summed from this ledger**
     (itd-2611011230226453), not kept in a store of their own, so one record
-    holds every launch's spend.
+    holds every launch's spend; decision 14's floor is what makes the sum
+    whole for the longest period a cap counts.
 19. **A session's by-hand launches** (an agent started from a shell) are
     entered from their result file by a later intent, not this one.
 20. **"Today" on the row is the machine's local day**, configurable to UTC.
