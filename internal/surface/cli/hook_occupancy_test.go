@@ -27,7 +27,7 @@ func sharedCheckout(t *testing.T) (repo string, f *nameFixture) {
 		{PID: 7001, PPID: 1, Name: "claude", Age: time.Hour},
 		{PID: 7002, PPID: 1, Name: "claude", Age: time.Hour},
 	}
-	start := time.Now().Add(-time.Hour).Unix()
+	start := f.made.Add(-time.Hour).Unix()
 	tab, _ := f.machine().ReadTable()
 	for id, pid := range map[string]int{"s-one": 7001, "s-two": 7002} {
 		if err := occupancy.Note(f.home, id, repo, sessionname.Host{PID: pid, StartUnix: start}, tab); err != nil {
@@ -125,7 +125,7 @@ func TestCaptureWritesInALinkedWorktreeOfASharedCheckout(t *testing.T) {
 	// Both sessions name the worktree too, so only the main-tree test can be
 	// what lets this write through.
 	tab, _ := f.machine().ReadTable()
-	start := time.Now().Add(-time.Hour).Unix()
+	start := f.made.Add(-time.Hour).Unix()
 	for id, pid := range map[string]int{"s-one": 7001, "s-two": 7002} {
 		if err := occupancy.Note(f.home, id+"-wt", wt, sessionname.Host{PID: pid, StartUnix: start}, tab); err != nil {
 			t.Fatal(err)
