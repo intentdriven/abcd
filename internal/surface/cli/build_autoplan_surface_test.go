@@ -101,7 +101,7 @@ func TestAnAutoPlanStepRefusesASharedMainCheckoutBeforeItPlans(t *testing.T) {
 		{PID: 7001, PPID: 1, Name: "claude", Age: time.Hour},
 		{PID: 7002, PPID: 1, Name: "claude", Age: time.Hour},
 	}
-	started := time.Now().Add(-time.Hour).Unix()
+	started := f.made.Add(-time.Hour).Unix()
 	tab, _ := f.machine().ReadTable()
 	for id, pid := range map[string]int{"s-one": 7001, "s-two": 7002} {
 		if err := occupancy.Note(f.home, id, repo.Root(), sessionname.Host{PID: pid, StartUnix: started}, tab); err != nil {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -22,6 +23,7 @@ type nameFixture struct {
 	home, cwd string
 	procs     []machineload.Proc
 	tableErr  error
+	made      time.Time
 }
 
 func newNameFixture(t *testing.T) *nameFixture {
@@ -38,7 +40,7 @@ func newNameFixture(t *testing.T) *nameFixture {
 	if err := os.WriteFile(filepath.Join(inbox, "1234567890123456-"+strings.Repeat("a", 40)+".md"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	f := &nameFixture{home: home, cwd: t.TempDir()}
+	f := &nameFixture{home: home, cwd: t.TempDir(), made: time.Now()}
 	prev := sessionNameMachine
 	sessionNameMachine = func() (sessionname.Machine, bool) { return f.machine(), true }
 	t.Cleanup(func() { sessionNameMachine = prev })
@@ -64,7 +66,13 @@ func (f *nameFixture) machine() sessionname.Machine {
 			if f.tableErr != nil {
 				return sessionname.Table{}, f.tableErr
 			}
-			return sessionname.Table{Procs: f.procs, ReadAt: time.Now()}, nil
+			// A process grows older as the clock moves, or a slow machine
+			// reads a live host's start time as a different process's.
+			procs := slices.Clone(f.procs)
+			for i := range procs {
+				procs[i].Age += time.Since(f.made)
+			}
+			return sessionname.Table{Procs: procs, ReadAt: time.Now()}, nil
 		},
 		LockTimeout: 2 * time.Second,
 	}
