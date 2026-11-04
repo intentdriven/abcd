@@ -415,9 +415,10 @@ preflight:
 # reaches preflight with no second list (TestEveryLegRunsEveryPlainOnlyGuard
 # holds the workflow's list to the test files), the way preflight-scans.sh reads
 # its pins. Both of the workflow's copies are held to one list, so the first
-# serves. A workflow that stops matching stops the recipe rather than running
-# go test over no packages, which tests the working directory and passes.
-PLAIN_ONLY_GUARDS = $(or $(shell sed -n "s/^ *run: go test \(-run '^(.*)\$$' .*\)$$/\1/p" .github/workflows/ci.yml | sed -n 1p),$(error .github/workflows/ci.yml carries no plain-only guards step to read))
+# serves. A tree whose workflow stops matching names a package that does not
+# exist, so the stage fails there and names why, rather than running go test over
+# no packages, which tests the working directory and passes.
+PLAIN_ONLY_GUARDS = $(or $(shell sed -n "s/^ *run: go test \(-run '^(.*)\$$' .*\)$$/\1/p" .github/workflows/ci.yml 2>/dev/null | sed -n 1p),./ci.yml-carries-no-plain-only-guards-step)
 
 # The make the gate runs the stages with. It is named through this variable so
 # the gate's line is an ordinary recipe line: make runs a line that names MAKE
