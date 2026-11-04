@@ -301,7 +301,9 @@ func TestLocalUsernameProductAccountSparesThePluginSpecOnly(t *testing.T) {
 	if got := ScanText("/plugin install abcd@abcd-marketplace", id, pats, sev, "f"); hasKind(got, kindLocalUser) {
 		t.Errorf("the plugin install line reads as the caller's login: %v", got)
 	}
-	if got := ScanText("mail abcd@example.com", id, pats, sev, "f"); !hasKind(got, kindLocalUser) {
-		t.Error("an address under the account name no longer reads as the caller's login")
+	for _, line := range []string{"mail abcd@example.com", "mail abcd@abcd-marketplace.example.com", "mail abcd@abcd-marketplace2", "mail x-abcd@abcd-marketplace"} {
+		if got := ScanText(line, id, pats, sev, "f"); !hasKind(got, kindLocalUser) {
+			t.Errorf("%q no longer reads as the caller's login", line)
+		}
 	}
 }

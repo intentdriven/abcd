@@ -1094,7 +1094,8 @@ func standsAsAccountName(line string, start, end int, homes []string, toks *path
 		hi++
 	}
 	scanMeter.charge(stageIdentity, hi-end)
-	if strings.HasPrefix(line[start:], pluginSpec) {
+	if rest, ok := strings.CutPrefix(line[start:], pluginSpec); ok &&
+		(start == 0 || !isLocalPartByte(line[start-1])) && (rest == "" || !isLocalPartByte(rest[0])) {
 		return false
 	}
 	return hi+1 < len(line) && line[hi] == '@' && isAlnumByte(line[hi+1])
