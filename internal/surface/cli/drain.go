@@ -98,7 +98,12 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"drives each lane to its landing, every role on the walled login, and runs each\n" +
 			"landing's preflight behind the load gate, printing one line per step and logging them\n" +
 			"under .abcd/.work.local/logs/. It ends at the cap, when nothing is eligible, or after\n" +
-			"eight hours of runner failures. Without --drive a drain is one move, as below.\n\n" +
+			"eight hours of runner failures. The first interrupt, hang-up or termination is a\n" +
+			"stop: the agent in a call finishes that call, the lane's reservation is released, the\n" +
+			"lane stays on its branch, and the last lines name the run, the lane and the command\n" +
+			"that resumes it. A second kills the running agent's process group and exits at once\n" +
+			"(exit 130), naming when the reservation lapses. Without --drive a drain is one move,\n" +
+			"as below.\n\n" +
 			"--take-over moves your own live reservation of an issue from another copy to this one\n" +
 			"as the move reaches it, as `abcd build --take-over` does: a hosted session that\n" +
 			"restarted lost its local tier, so its new copy reads its own reservations as another\n" +

@@ -1425,7 +1425,12 @@ answer, and with no terminal nothing else answers. It then judges each eligible 
 drives each lane to its landing, every role on the walled login, and runs each
 landing's preflight behind the load gate, printing one line per step and logging them
 under .abcd/.work.local/logs/. It ends at the cap, when nothing is eligible, or after
-eight hours of runner failures. Without --drive a drain is one move, as below.
+eight hours of runner failures. The first interrupt, hang-up or termination is a
+stop: the agent in a call finishes that call, the lane's reservation is released, the
+lane stays on its branch, and the last lines name the run, the lane and the command
+that resumes it. A second kills the running agent's process group and exits at once
+(exit 130), naming when the reservation lapses. Without --drive a drain is one move,
+as below.
 
 --take-over moves your own live reservation of an issue from another copy to this one
 as the move reaches it, as `abcd build --take-over` does: a hosted session that
