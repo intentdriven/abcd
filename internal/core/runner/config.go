@@ -58,8 +58,12 @@ const (
 	rolesKey    = "roles"
 	runnerKey   = "runner"
 	fallbackKey = "fallback_host"
-	modelKey    = "model"
-	timeoutKey  = "timeout"
+	// ledgerKey is the launch ledger's namespace in the configuration.
+	ledgerKey         = "ledger"
+	retentionDaysKey  = "retention_days"
+	retentionCountKey = "retention_count"
+	modelKey          = "model"
+	timeoutKey        = "timeout"
 )
 
 // roleImplementer is the loop's implementer and roleDrainJudge the drain's
@@ -117,6 +121,9 @@ type Config struct {
 	flagModels map[string]string
 	fallback   string
 	api        *oracle.APIConfig
+	// ledger is the launch ledger under the home this configuration was read
+	// from: every launch dispatched on this configuration is written there.
+	ledger *Ledger
 	// Diagnostics are the non-fatal reports the read produced, one line each,
 	// for a front door to print on stderr.
 	Diagnostics []string
@@ -133,6 +140,9 @@ func Load(r layered.Roots) (*Config, error) {
 		return nil, fmt.Errorf("runner: %w", err)
 	}
 	if err := s.Claim(rolesKey+".*", runnerKey, timeoutKey); err != nil {
+		return nil, fmt.Errorf("runner: %w", err)
+	}
+	if err := s.Claim(ledgerKey, retentionDaysKey, retentionCountKey); err != nil {
 		return nil, fmt.Errorf("runner: %w", err)
 	}
 	if err := s.Claim(runnerKey, append([]string{fallbackKey}, runnerNames...)...); err != nil {
@@ -158,7 +168,8 @@ func Load(r layered.Roots) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("runner: the model routes are admitted against the provider configuration: %w", err)
 	}
-	c := &Config{roles: map[string]Route{}, timeouts: map[string]time.Duration{}, runners: map[string]RunnerConfig{}, api: api}
+	c := &Config{roles: map[string]Route{}, timeouts: map[string]time.Duration{}, runners: map[string]RunnerConfig{}, api: api,
+		ledger: NewLedger(r.Home)}
 	if err := c.readRunners(s); err != nil {
 		return nil, err
 	}
@@ -168,8 +179,56 @@ func Load(r layered.Roots) (*Config, error) {
 	if err := c.readRoles(s); err != nil {
 		return nil, err
 	}
+	if err := c.readLedger(s); err != nil {
+		return nil, err
+	}
 	return c, nil
 }
+
+// readLedger reads the launch ledger's retention (decision 14): a machine or
+// repository figure overrides the shipped one, and a days figure below the
+// floor is read as the floor and named as such. The count needs no floor of its
+// own, since the pruner never goes inside the floor's days whatever it says.
+func (c *Config) readLedger(s *layered.Stack) error {
+	r := DefaultRetention()
+	read := func(key string, set func(found layered.Found, n int)) error {
+		found, err := s.Lookup(ledgerKey + "." + key)
+		if err != nil {
+			return fmt.Errorf("runner: %w", err)
+		}
+		if len(found) == 0 {
+			return nil
+		}
+		f := found[0]
+		n, err := layered.Decode[int](f.Raw)
+		if err != nil {
+			return fmt.Errorf("runner: %s (%s.%s): %w", f.Origin, ledgerKey, key, err)
+		}
+		if n < 1 {
+			return fmt.Errorf("runner: %s (%s.%s) is %d; it is a whole number of at least 1", f.Origin, ledgerKey, key, n)
+		}
+		set(f, n)
+		return nil
+	}
+	if err := read(retentionDaysKey, func(f layered.Found, n int) {
+		r.Days = n
+		if n < RetentionFloorDays {
+			r.Days = RetentionFloorDays
+			c.diagnose("", fmt.Sprintf("runner: %s (%s.%s) is %d, below the longest period a key's budget counts, "+
+				"so it is read as the floor of %d days", f.Origin, ledgerKey, retentionDaysKey, n, RetentionFloorDays))
+		}
+	}); err != nil {
+		return err
+	}
+	if err := read(retentionCountKey, func(_ layered.Found, n int) { r.Count = n }); err != nil {
+		return err
+	}
+	c.ledger.retention = r
+	return nil
+}
+
+// Ledger is the launch ledger this configuration's launches are written to.
+func (c *Config) Ledger() *Ledger { return c.ledger }
 
 func (c *Config) readRunners(s *layered.Stack) error {
 	for _, n := range runnerNames {
