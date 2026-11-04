@@ -81,11 +81,15 @@ type Report struct {
 	// no toolchain its release resolves, so none is named.
 	GoVersion string `json:"go_version,omitempty"`
 	// CIChecks are the managed repo's own pull-request check names the
-	// scaffolded files were wired to (DeriveCIChecks); empty when none was found.
-	CIChecks []string      `json:"ci_checks"`
-	Files    []FileOutcome `json:"files"`
-	Wrote    int           `json:"wrote"`
-	Refused  int           `json:"refused"`
+	// scaffolded files were wired to (DeriveCIChecks); empty when none was found or
+	// the only workflows could not be read.
+	CIChecks []string `json:"ci_checks"`
+	// UnreadWorkflows names the workflow files the read could not take whole, so
+	// CIChecks may be short by whatever they report.
+	UnreadWorkflows []string      `json:"unread_workflows,omitempty"`
+	Files           []FileOutcome `json:"files"`
+	Wrote           int           `json:"wrote"`
+	Refused         int           `json:"refused"`
 	// NoOp is true when every file was already current (the idempotent re-run).
 	NoOp bool `json:"no_op"`
 	// DependencyReauthor reports whether the repository is opted in to the
@@ -141,7 +145,7 @@ func Scaffold(req Request) (Report, error) {
 	if !subs.GoModule {
 		goVersion = ""
 	}
-	subs.CIChecks = DeriveCIChecks(req.RepoRoot)
+	subs.CIChecks, subs.UnreadWorkflows = DeriveCIChecks(req.RepoRoot)
 	if subs.CIChecks == nil {
 		subs.CIChecks = []string{} // --json reports an empty list, never null
 	}
@@ -151,7 +155,7 @@ func Scaffold(req Request) (Report, error) {
 	}
 
 	report := Report{Substitutions: subs, Kind: art.Kind, CallStanza: subs.CallStanza,
-		DefaultBranch: branch, GoVersion: goVersion, CIChecks: subs.CIChecks}
+		DefaultBranch: branch, GoVersion: goVersion, CIChecks: subs.CIChecks, UnreadWorkflows: subs.UnreadWorkflows}
 	var planned []PlannedFile
 	var kept []FileOutcome
 	if art.IsPlugin() {

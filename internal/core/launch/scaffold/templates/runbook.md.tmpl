@@ -58,6 +58,15 @@ that otherwise surfaces only at the first real release.
 
 Merging the release pull request is the release decision, so the checks that
 gate that merge gate the release.
+<%- if .UnreadWorkflows %> `abcd launch scaffold` could not read these workflow
+files, so it cannot say which checks they report:
+<% range .UnreadWorkflows %>
+- `<% . %>`
+<%- end %>
+
+Fix them and re-run `abcd launch scaffold --confirm`. Until then, what follows is
+short by whatever those files report.
+<%- end %>
 <%- if .CIChecks %> `abcd launch scaffold` read this repository's
 pull-request workflows and found these checks. Require each of them on
 `<% .DefaultBranch %>` — in a branch ruleset or a branch protection rule — so the
@@ -71,7 +80,7 @@ by an expression, a call to a reusable workflow — is not listed; add its
 contexts by hand. When the CI changes, re-run `abcd launch scaffold`: it
 refuses the files this list no longer matches and names them, and `--confirm`
 rewrites them with the new list.
-<%- else %> `abcd launch scaffold` found no workflow in this repository
+<%- else if not .UnreadWorkflows %> `abcd launch scaffold` found no workflow in this repository
 triggered by `pull_request` or `merge_group`, so nothing but review gates the
 release roll's merge. Add a CI workflow for pull requests, require its checks on
 `<% .DefaultBranch %>`, and re-run `abcd launch scaffold --confirm` to record

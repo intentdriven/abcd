@@ -101,6 +101,10 @@ type Substitutions struct {
 	// an injection-safe allowlist before it gets here. abcd's own rendering
 	// leaves this empty; its merge gate is ci.yml, described in its own runbook.
 	CIChecks []string
+	// UnreadWorkflows names the workflow files DeriveCIChecks could not read, each
+	// fit to write, so the rendering names them and claims neither that CIChecks is
+	// whole nor that no workflow exists.
+	UnreadWorkflows []string
 }
 
 // RefusesPushedTag reports that the release workflow refuses a run started by

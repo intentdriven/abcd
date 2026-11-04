@@ -1335,7 +1335,10 @@ The check names come from the repo's workflows triggered by `pull_request` or
 reusable-workflow call) is left out rather than guessed. Relay `ci_checks` and tell
 the operator to require them on the default branch — the scaffold holds no token
 and sets no branch protection. An empty `ci_checks` means no pull-request CI was
-found, and the runbook says so.
+found, and the runbook says so, unless `unread_workflows` names files the scaffold
+could not read: then `ci_checks` is short by whatever those report, the runbook and
+`release.yml` name them, and neither claims no CI was found. Tell the operator to fix
+them and re-run.
 
 The workflows come from one embedded template that abcd's own release
 workflows are regenerated from (self-scaffold parity), so every abcd release

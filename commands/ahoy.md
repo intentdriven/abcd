@@ -1335,9 +1335,11 @@ reports is left out and named as well, since a skipped matrix job never reports
 the names its values give; if every pull request does report it, name it in
 `github.required_checks`. A workflow file abcd cannot read whole (one that does
 not parse, defines a key twice, is too large or refused as a link, past the limits
-on nodes, nesting and aliases abcd reads a file within, more files than abcd reads,
-or jobs GitHub would refuse) proposes no required check at all and reads as unknown,
-naming the file: a shorter list would read as the answer.
+abcd reads a file within, more files than abcd reads, or jobs GitHub would refuse)
+proposes no required check at all and reads as unknown, naming the file: a shorter
+list would read as the answer. A workflow named like a file `abcd launch scaffold`
+writes counts no check, and is named when it runs on a pull request, since it may be
+the repository's own CI.
 
 Each required check is pinned to the app that reports it, so a status set by
 anyone else does not satisfy it. abcd reads the check runs and commit statuses

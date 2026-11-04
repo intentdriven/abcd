@@ -184,7 +184,7 @@ func adoptSemanticProfile(t *testing.T, f *fakeForge, goEnv []string) {
 	t.Helper()
 	r := f.work
 	subs := BareSubstitutions("main")
-	subs.CIChecks = DeriveCIChecks(r.Root())
+	subs.CIChecks, _ = DeriveCIChecks(r.Root())
 	subs.SemanticGates = []string{"docs-currency-reviewer"}
 	rendered, err := Render(subs)
 	if err != nil {

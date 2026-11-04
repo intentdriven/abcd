@@ -98,10 +98,14 @@ func renderScaffold(w io.Writer, rep scaffold.Report, blocked bool) {
 	}
 	fmt.Fprintf(w, "abcd launch scaffold — %s (kind %s, branch %s%s)\n",
 		verdict, termsafe.Sanitize(string(rep.Kind)), termsafe.Sanitize(rep.DefaultBranch), toolchain)
+	if len(rep.UnreadWorkflows) > 0 {
+		fmt.Fprintf(w, "  merge gate: could not read %s, so any check those report is missing below (the runbook says what to do)\n",
+			termsafe.Sanitize(strings.Join(rep.UnreadWorkflows, ", ")))
+	}
 	if len(rep.CIChecks) > 0 {
 		fmt.Fprintf(w, "  merge gate: %s (require these on %s)\n",
 			termsafe.Sanitize(strings.Join(rep.CIChecks, ", ")), termsafe.Sanitize(rep.DefaultBranch))
-	} else {
+	} else if len(rep.UnreadWorkflows) == 0 {
 		fmt.Fprintln(w, "  merge gate: no pull-request CI workflow found (the runbook says how to add one)")
 	}
 	for _, f := range rep.Files {

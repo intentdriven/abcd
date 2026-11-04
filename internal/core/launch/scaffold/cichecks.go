@@ -30,6 +30,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"go.yaml.in/yaml/v3"
 
@@ -57,17 +58,38 @@ var jobIDRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]*$`)
 // its pull requests report, sorted and de-duplicated. Only workflows triggered
 // by `pull_request`, `pull_request_target` or `merge_group` gate a merge, and
 // the scaffold's own workflows (the release pair and the dependency
-// re-authoring) are never counted. An unreadable or
-// absent workflows directory yields nil: the runbook then says no merge gate
-// was found.
-func DeriveCIChecks(repoRoot string) []string {
+// re-authoring) are never counted. An absent workflows directory yields nil, and
+// the runbook then says no merge gate was found. What could not be read comes back in
+// unread, names fit to write (writableWorkflowName), so the runbook names it rather
+// than claim the list is whole or that no workflow exists.
+func DeriveCIChecks(repoRoot string) (checks, unread []string) {
 	seen := map[string]bool{}
-	forEachWorkflow(repoRoot, func(_, src string) {
-		for _, check := range workflowChecks(src) {
+	forEachWorkflow(repoRoot, func(name, src string) {
+		found, err := workflowChecks(src)
+		if err != nil {
+			unread = append(unread, writableWorkflowName(name))
+			return
+		}
+		for _, check := range found {
 			seen[check] = true
 		}
-	}, func(_, _ string) {})
-	return sortedKeys(seen)
+	}, func(name, _ string) {
+		unread = append(unread, writableWorkflowName(name))
+	}, nil)
+	return sortedKeys(seen), unread
+}
+
+// workflowNameRe is a workflow file's name that is safe in the YAML and markdown the
+// scaffold writes, with no metacharacter of either.
+var workflowNameRe = regexp.MustCompile(`^[A-Za-z0-9._/-]{1,100}$`)
+
+// writableWorkflowName is a file's name as the scaffold may write it, since a file
+// name can hold anything.
+func writableWorkflowName(name string) string {
+	if workflowNameRe.MatchString(name) {
+		return name
+	}
+	return "a file with a name abcd does not write here"
 }
 
 // forEachWorkflow calls fn with the name and contents of each of repoRoot's
@@ -76,8 +98,10 @@ func DeriveCIChecks(repoRoot string) []string {
 // scaffold's own workflows (the release pair and the dependency re-authoring)
 // are never passed: the re-authoring workflow runs on pull requests but judges
 // none, and counting it would change the release rendering the moment a
-// repository opted in. A file that cannot be read is skipped.
-func forEachWorkflow(repoRoot string, fn func(name, src string), unread func(name, why string)) {
+// repository opted in. reserved, when set, is called with each such file instead, or
+// with why it could not be read. A file that cannot be read is skipped.
+func forEachWorkflow(repoRoot string, fn func(name, src string), unread func(name, why string),
+	reserved func(name, src string, err error)) {
 	dir := filepath.Join(repoRoot, filepath.FromSlash(workflowsDir))
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -93,6 +117,10 @@ func forEachWorkflow(repoRoot string, fn func(name, src string), unread func(nam
 			continue
 		}
 		if rel := workflowsDir + "/" + name; rel == ReleaseYMLPath || rel == AutoReleaseYMLPath || rel == ReauthorYMLPath {
+			if reserved != nil {
+				data, err := fsutil.ReadGuarded(filepath.Join(dir, name), maxWorkflowBytes)
+				reserved(name, string(data), err)
+			}
 			continue
 		}
 		if files++; files > maxWorkflowFiles {
@@ -214,7 +242,17 @@ func RequiredChecks(repoRoot, defaultBranch string, mergeQueue bool) (checks, no
 			notes = append(notes, name+": job "+job.id+" reports a name only the run knows "+
 				"(a matrix, an expression or a reusable workflow), so it is not required")
 		}
-	}, refuse)
+	}, refuse, func(file, src string, err error) {
+		// One that runs on no pull request has nothing to require.
+		if err == nil {
+			if wf, err := readWorkflow(src); err == nil && !wf.on.gatesAMerge() && !wf.on.unread {
+				return
+			}
+		}
+		notes = append(notes, termsafe.EncodeHiddenRunes(file)+" has the name of a file `abcd launch scaffold` writes, "+
+			"so abcd counts no check from it. If it is this repository's own CI, rename it or name its checks in "+
+			"github.required_checks")
+	})
 	if len(refused) > 0 {
 		return nil, nil, errors.New("abcd cannot read every workflow, so it proposes no required checks: " +
 			strings.Join(refused, "; ") + ". Fix the file, or name the checks in github.required_checks")
@@ -251,14 +289,14 @@ func coversPushes(types []string) bool {
 // GitHub's filter globs: `**` matches any run of characters, `*` any run but
 // `/`, and `?` one character. A negated pattern (`!x`) is not interpreted, so a
 // list holding one is treated as not matching, the direction that requires
-// nothing.
+// nothing, and so is a pattern longer than maxGlobBytes.
 func branchListMatches(patterns []string, branch string) bool {
 	matched := false
 	for _, p := range patterns {
 		if strings.HasPrefix(p, "!") {
 			return false
 		}
-		if branchGlob(p).MatchString(branch) {
+		if len(p) <= maxGlobBytes && branchGlob(p).MatchString(branch) {
 			matched = true
 		}
 	}
@@ -286,12 +324,15 @@ func branchGlob(p string) *regexp.Regexp {
 	return regexp.MustCompile(b.String())
 }
 
-// workflowChecks returns the check names one workflow file reports, or nil
-// when the workflow does not gate a pull request or cannot be read.
-func workflowChecks(src string) []string {
+// workflowChecks returns the check names one workflow file reports, none when the
+// workflow does not gate a pull request, or why it could not be read.
+func workflowChecks(src string) ([]string, error) {
 	wf, err := readWorkflow(src)
-	if err != nil || !wf.on.gatesAMerge() {
-		return nil
+	if err != nil {
+		return nil, err
+	}
+	if !wf.on.gatesAMerge() {
+		return nil, nil
 	}
 	var out []string
 	for _, job := range wf.jobs {
@@ -299,32 +340,95 @@ func workflowChecks(src string) []string {
 			out = append(out, name)
 		}
 	}
-	return out
+	return out, nil
 }
 
-// The bounds on reading one workflow file. A parsed tree grows with the file, so
-// building it is linear in maxWorkflowBytes (measured over the shapes that cost the
-// parser most). What a hostile file can make expensive is what is done with the tree,
-// so nothing here decodes into a Go value, where the library's duplicate check is
+// The bounds on reading one workflow file. A parsed tree's memory grows with the file,
+// but the parse's time does not always: the library's scanner and parser walk their
+// comments and directives again for some shapes, and it offers no limit of its own, so
+// a scan of the raw bytes holds those shapes down before it runs (prescanWorkflow). Nothing
+// after the parse decodes into a Go value, where the library's duplicate check is
 // quadratic and allocates for each pair: the read walks nodes by hand, follows an
 // alias by pointer and never copies what it names. A file past a limit is refused
 // rather than read in part.
 const (
-	// maxWorkflowNodes bounds the nodes a file's tree may hold, and separately the
-	// nodes the read may visit through aliases. abcd's own largest workflow, at 68 KiB,
-	// holds under 700, so a full 1 MiB of ordinary workflow holds about a tenth of this.
+	// maxWorkflowNodes bounds the nodes a file's tree may hold, and separately what the
+	// read may visit: each node, each byte of text it reaches through an alias, and each
+	// byte of a glob it will compile. abcd's own largest workflow, at 68 KiB, holds under
+	// 700 nodes, so a full 1 MiB of ordinary workflow holds about a tenth of this.
 	maxWorkflowNodes = 100_000
 	// maxWorkflowDepth bounds how deeply a file's tree may nest. abcd's own workflows
 	// nest 7 levels.
 	maxWorkflowDepth = 64
-	// maxAliasFollows bounds how many times the read follows an alias to one anchor:
-	// more than one `if:` or `needs:` shared across the jobs of an ordinary workflow,
-	// and few enough that the walk's cost stays a small multiple of the file's.
-	maxAliasFollows = 64
 	// maxMatrixValues is GitHub's limit of jobs one matrix may start. A longer list
 	// is not one abcd expands.
 	maxMatrixValues = 256
+	// maxGlobBytes is as long as a branch name can be, so a longer pattern is not
+	// compiled and matches nothing.
+	maxGlobBytes = 255
+	// maxCommentLines bounds the lines that open with `#`, scripts' included. abcd's
+	// own most commented workflow holds about 700 in 68 KiB, so a full 1 MiB of the same
+	// holds about half of this.
+	maxCommentLines = 20_000
+	// maxDirectiveLines bounds the lines that open with `%`. A workflow has no use for
+	// more than a `%YAML` line.
+	maxDirectiveLines = 8
+	// maxLineLead bounds a line's opening run of spaces and block indicators, which is
+	// the most block levels the line can stand at. abcd's own workflows reach 14, and a
+	// script in one would have to indent past 256 spaces to meet it.
+	maxLineLead = 256
 )
+
+// prescanWorkflow holds a file's raw bytes to the limits the parser has no setting
+// for, in one pass, reading a line's end as YAML does. A UTF-16 file is refused, since
+// the parser would read what this scan cannot.
+func prescanWorkflow(src string) error {
+	if strings.HasPrefix(src, "\xff\xfe") || strings.HasPrefix(src, "\xfe\xff") {
+		return errors.New("it is not UTF-8")
+	}
+	src = strings.TrimPrefix(src, "\ufeff")
+	comments, directives := 0, 0
+	for len(src) > 0 {
+		lead, at := lineLead(src)
+		if lead > maxLineLead {
+			return fmt.Errorf("it indents deeper than the %d levels abcd reads", maxLineLead)
+		}
+		if at < len(src) && src[at] == '#' {
+			if comments++; comments > maxCommentLines {
+				return fmt.Errorf("it holds more than the %d comment lines abcd reads", maxCommentLines)
+			}
+		}
+		if src[0] == '%' {
+			if directives++; directives > maxDirectiveLines {
+				return fmt.Errorf("it holds more than the %d directive lines abcd reads", maxDirectiveLines)
+			}
+		}
+		next := strings.IndexAny(src[at:], "\n\r\u0085\u2028\u2029")
+		if next < 0 {
+			return nil
+		}
+		_, width := utf8.DecodeRuneInString(src[at+next:])
+		src = src[at+next+width:]
+	}
+	return nil
+}
+
+// lineLead counts the spaces and block indicators a line opens with, and says where
+// they end.
+func lineLead(line string) (lead, end int) {
+	for end < len(line) {
+		switch {
+		case line[end] == ' ':
+			end++
+		case strings.IndexByte("-?:", line[end]) >= 0 && end+1 < len(line) && line[end+1] == ' ':
+			end += 2
+		default:
+			return lead, end
+		}
+		lead++
+	}
+	return lead, end
+}
 
 // mergeTag is the tag the parser gives a merge key.
 const mergeTag = "!!merge"
@@ -380,6 +484,9 @@ func readWorkflow(src string) (wf workflowFile, err error) {
 			wf, err = workflowFile{}, errors.New("the YAML parser could not read it")
 		}
 	}()
+	if err := prescanWorkflow(src); err != nil {
+		return workflowFile{}, err
+	}
 	var doc yaml.Node
 	if err := yaml.Unmarshal([]byte(src), &doc); err != nil {
 		return workflowFile{}, err
@@ -391,7 +498,7 @@ func readWorkflow(src string) (wf workflowFile, err error) {
 	if err := checkTree(&doc, 0, &nodes); err != nil {
 		return workflowFile{}, err
 	}
-	r := &workflowRead{follows: map[*yaml.Node]int{}}
+	r := &workflowRead{}
 	root, err := r.follow(doc.Content[0])
 	if err != nil {
 		return workflowFile{}, err
@@ -462,10 +569,9 @@ func checkTree(n *yaml.Node, depth int, nodes *int) error {
 // for and never what is under a job's steps.
 type workflowRead struct {
 	visited int
-	follows map[*yaml.Node]int
 }
 
-// visit counts n nodes the walk is about to read.
+// visit counts n things the walk is about to read.
 func (r *workflowRead) visit(n int) error {
 	if r.visited += n; r.visited > maxWorkflowNodes {
 		return fmt.Errorf("reading it visits more than the %d YAML nodes abcd reads", maxWorkflowNodes)
@@ -473,17 +579,17 @@ func (r *workflowRead) visit(n int) error {
 	return nil
 }
 
-// follow is a node, or the node its alias names, counted against that anchor's limit.
-// An anchor cannot sit on an alias, so one step arrives.
+// follow is a node, or the node its alias names, with any text there counted, since
+// an alias can repeat long text at the price of a few bytes. An anchor cannot sit on an
+// alias, so one step arrives.
 func (r *workflowRead) follow(n *yaml.Node) (*yaml.Node, error) {
 	if n.Kind != yaml.AliasNode {
 		return n, nil
 	}
-	target := n.Alias
-	if r.follows[target]++; r.follows[target] > maxAliasFollows {
-		return nil, fmt.Errorf("it follows the anchor on line %d more than the %d times abcd reads", target.Line, maxAliasFollows)
+	if err := r.visit(1 + len(n.Alias.Value)); err != nil {
+		return nil, err
 	}
-	return target, nil
+	return n.Alias, nil
 }
 
 // isNull reports a key given no value.
@@ -563,6 +669,16 @@ func (r *workflowRead) readEventFilter(n *yaml.Node) (eventFilter, error) {
 		}
 		f.unread = f.unread || !ok
 		f.filters[key.Value] = list
+		if key.Value == "branches" {
+			// Each of these is compiled later, at a cost that follows its length.
+			for _, glob := range list {
+				if len(glob) <= maxGlobBytes {
+					if err := r.visit(len(glob)); err != nil {
+						return f, err
+					}
+				}
+			}
+		}
 	}
 	return f, nil
 }

@@ -85,7 +85,10 @@ func TestDeriveCIChecksReadsTheRepositorysOwnPullRequestChecks(t *testing.T) {
 	// The scaffold's own workflows are never counted as the merge gate.
 	mustWrite(t, filepath.Join(wf, "release.yml"), "on: [pull_request]\njobs:\n  verify:\n    runs-on: x\n")
 
-	got := DeriveCIChecks(dir)
+	got, unread := DeriveCIChecks(dir)
+	if len(unread) != 0 {
+		t.Errorf("DeriveCIChecks could not read %q", unread)
+	}
 	want := []string{"Unit tests (linux)", "lint", "queue-check"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("DeriveCIChecks = %q, want %q", got, want)
@@ -95,7 +98,7 @@ func TestDeriveCIChecksReadsTheRepositorysOwnPullRequestChecks(t *testing.T) {
 			t.Errorf("derived check %q escapes the allowlist", c)
 		}
 	}
-	if DeriveCIChecks(t.TempDir()) != nil {
+	if got, unread := DeriveCIChecks(t.TempDir()); got != nil || unread != nil {
 		t.Error("a repository with no workflows derives no checks")
 	}
 }
