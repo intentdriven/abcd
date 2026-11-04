@@ -8,7 +8,7 @@ source: "user-observation"
 found_during: "fixing iss-2611012202511008, 2026-11-02"
 origin: researcher-authored
 production_mode: hand-written
-found_at: "internal/core/implement/loop/runner_pause.go"
+found_at: "internal/core/runner/runner.go"
 remedy: "Pause the runner's clock while its process tree waits at abcd's load gate (the waiter's hold names the waiting pid), or extend the deadline by the time the gate reports waiting; on a kill, read the cost from the run's stored transcript or charge the launch's budget, never drop it; and when a killed role has commits on the lane's branch past its base and a report, keep the lane at its stage for a host or runner to write the receipt instead of counting a failed start."
 resolution: "A routed role's clock now stops while its process tree holds a waiter queued at the load gate (credited up to its bound again, the claim outlasting that). A killed launch keeps what its transcript shows it spent, or is charged one agent run, on its fallback receipt and in the run's tally (run state v19, drain state v3). An implementer killed with commits past its base and its report written keeps its lane at its stage for its receipt instead of counting a failed start."
 impact: fix
