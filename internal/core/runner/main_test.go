@@ -41,6 +41,9 @@ func TestMain(m *testing.M) {
 
 // fakeHarness plays the harness its own name says it is.
 func fakeHarness(mode string) int {
+	if strings.HasPrefix(mode, "wall-") {
+		return fakeWall(mode)
+	}
 	// The runner executes the resolved binary, so argv[0] names the test
 	// binary; which harness this is shows in the launch itself.
 	name := "claude"

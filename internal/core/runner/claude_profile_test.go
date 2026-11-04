@@ -22,6 +22,9 @@ func walledFake(t *testing.T, mode string) (fakeEnv, *ClaudeCLI, Profile) {
 	c := newClaude("")
 	c.profile = &p
 	c.approver = "/opt/abcd/bin/abcd"
+	if _, err := WriteWallSettings(p, c.approver); err != nil {
+		t.Fatal(err)
+	}
 	return f, c, p
 }
 

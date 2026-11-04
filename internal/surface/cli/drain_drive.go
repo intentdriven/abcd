@@ -49,13 +49,28 @@ type driveWallChecks struct {
 	live   func(ctx context.Context, p runner.Profile) error
 }
 
-// errWallsNotProved refuses until the wall checks are built.
-var errWallsNotProved = errors.New("no wall of the walled login has been proved, so nothing is started")
-
-// driveWalls is the one precondition the wall checks enter through.
+// driveWalls is the one precondition the wall checks enter through
+// (runner/wall.go). The settings are written at each start, so a new binary
+// re-wires them, and a file a person edited is replaced and said.
 var driveWalls = driveWallChecks{
-	static: func(context.Context, runner.Profile) ([]string, error) { return nil, errWallsNotProved },
-	live:   func(context.Context, runner.Profile) error { return errWallsNotProved },
+	static: func(ctx context.Context, p runner.Profile) ([]string, error) {
+		bin := runner.SelfBinary()
+		replaced, err := runner.WriteWallSettings(p, bin)
+		if err != nil {
+			return nil, err
+		}
+		var lines []string
+		if replaced {
+			lines = append(lines, "the walled directory's settings were edited, and were replaced with abcd's: a drive's agents hold abcd's hooks and nothing else")
+		}
+		if err := runner.CheckWallSettings(p, bin); err != nil {
+			return lines, err
+		}
+		return lines, runner.CheckLogin(ctx, p)
+	},
+	live: func(ctx context.Context, p runner.Profile) error {
+		return runner.ProveWall(ctx, p, runner.SelfBinary())
+	},
 }
 
 // driveTerminal is loop.RunTerminal, a seam the tests replace.
@@ -192,11 +207,11 @@ func runDrive(cmd *cobra.Command, asJSON bool, repoRoot string, f driveFlags) er
 			d.Max = 0
 		}
 	}
-	return driveRun(ctx, cmd, asJSON, repoRoot, roots, o, d)
+	return driveRun(ctx, cmd, asJSON, repoRoot, roots, p, o, d)
 }
 
 // driveRun runs the terminal loop and says how it ended.
-func driveRun(ctx context.Context, cmd *cobra.Command, asJSON bool, repoRoot string, roots layered.Roots, o loop.Options, d loop.DrainOptions) error {
+func driveRun(ctx context.Context, cmd *cobra.Command, asJSON bool, repoRoot string, roots layered.Roots, p runner.Profile, o loop.Options, d loop.DrainOptions) error {
 	review, err := loop.LoadReviewRoute(roots, agentPrompt)
 	if err != nil {
 		return loopFail(cmd.OutOrStdout(), asJSON, "abcd drain", err)
@@ -213,15 +228,18 @@ func driveRun(ctx context.Context, cmd *cobra.Command, asJSON bool, repoRoot str
 	if asJSON {
 		lines = cmd.ErrOrStderr()
 	}
-	say, closeLog := driveLog(repoRoot, lines)
+	say, detail, closeLog := driveLog(repoRoot, lines)
 	defer closeLog()
 	res, err := driveTerminal(ctx, repoRoot, loop.TerminalOptions{
 		Options:   o,
 		Drain:     d,
 		Runners:   loop.Runners{Config: o.Runners, Transcripts: d.Transcripts},
 		Review:    review,
-		Preflight: drivePreflight(lines),
+		Preflight: drivePreflight(detail),
 		Say:       say,
+		BeforeStage: func() error {
+			return runner.CheckWallSettings(p, runner.SelfBinary())
+		},
 	})
 	if err != nil {
 		return loopFail(cmd.OutOrStdout(), asJSON, "abcd drain", err)
@@ -231,9 +249,9 @@ func driveRun(ctx context.Context, cmd *cobra.Command, asJSON bool, repoRoot str
 }
 
 // driveLog is where a drive's lines go: the terminal, one line per step, and a
-// log under the local tier, stamped. A log that cannot be opened is said and
-// the lines still print.
-func driveLog(repoRoot string, w io.Writer) (func(string), func()) {
+// log under the local tier, stamped, which also takes the detail, a preflight's
+// output. A log that cannot be opened is said and the lines still print.
+func driveLog(repoRoot string, w io.Writer) (say func(string), detail io.Writer, closeLog func()) {
 	const dir = ".abcd/.work.local/logs"
 	var mu sync.Mutex
 	var log *os.File
@@ -243,6 +261,9 @@ func driveLog(repoRoot string, w io.Writer) (func(string), func()) {
 	}
 	if log == nil {
 		fmt.Fprintln(w, "abcd drain --drive: the drive's log could not be opened under "+dir+"; its lines print here alone")
+		detail = io.Discard
+	} else {
+		detail = log
 	}
 	return func(line string) {
 			mu.Lock()
@@ -251,7 +272,7 @@ func driveLog(repoRoot string, w io.Writer) (func(string), func()) {
 			if log != nil {
 				fmt.Fprintln(log, time.Now().UTC().Format(time.RFC3339)+" "+line)
 			}
-		}, func() {
+		}, detail, func() {
 			if log != nil {
 				_ = log.Close()
 			}
@@ -287,6 +308,7 @@ func renderDriveEnd(w io.Writer, res loop.TerminalResult) {
 		loop.DrainStoppedOrigin: "the drain gave up waiting on origin",
 		loop.TerminalOutage:     "eight hours of runner failures",
 		loop.TerminalStopped:    "stopped",
+		loop.TerminalWall:       "a wall no longer held",
 	}[res.Ended]
 	if why == "" {
 		why = res.Ended

@@ -1,0 +1,132 @@
+package cli
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/implement/loop"
+	"github.com/intentdriven/abcd/internal/core/runner"
+)
+
+// standInHarness is a claude on PATH whose login and live launch answer as the
+// body says.
+func standInHarness(t *testing.T, loggedIn bool, stream string) {
+	t.Helper()
+	state := "false"
+	if loggedIn {
+		state = "true"
+	}
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "stream"), []byte(stream), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	script := "#!/bin/sh\nif [ \"$1\" = auth ]; then echo '{\"loggedIn\":" + state + "}'; exit 0; fi\ncat '" + filepath.Join(bin, "stream") + "'\n"
+	if err := os.WriteFile(filepath.Join(bin, "claude"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+const (
+	wallInit    = `{"type":"system","subtype":"init","session_id":"s","model":"m","tools":["Read","Bash","mcp__abcd__approve"],"apiKeySource":"none","mcp_servers":[{"name":"abcd"}],"plugins":[]}` + "\n"
+	wallRefused = `{"type":"system","subtype":"hook_response","hook_event":"PreToolUse","stdout":"Blocked by the abcd guard (git-push-force)"}` + "\n"
+	wallResult  = `{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"s"}` + "\n"
+)
+
+// recordTerminal stands a recorder in for the loop.
+func (w *driveWorld) recordTerminal(t *testing.T) {
+	t.Helper()
+	term := driveTerminal
+	t.Cleanup(func() { driveTerminal = term })
+	driveTerminal = func(_ context.Context, _ string, o loop.TerminalOptions) (loop.TerminalResult, error) {
+		w.terminalCalls++
+		w.terminal = o
+		return loop.TerminalResult{Ended: loop.DrainStoppedEmpty}, nil
+	}
+}
+
+// TestADriveWritesTheSettingsProvesTheWallsAndThenStarts: every wall holding,
+// the walled directory's settings name this binary and the loop starts.
+func TestADriveWritesTheSettingsProvesTheWallsAndThenStarts(t *testing.T) {
+	w := newDriveWorld(t)
+	w.recordTerminal(t)
+	standInHarness(t, true, wallInit+wallRefused+wallResult)
+	var out, errb strings.Builder
+	if code := Run([]string{"drain", "--drive", "--yes"}, &out, &errb); code != 0 {
+		t.Fatalf("exit %d:\n%s%s", code, out.String(), errb.String())
+	}
+	if w.terminalCalls != 1 {
+		t.Fatalf("the loop starts once the walls hold: %d", w.terminalCalls)
+	}
+	raw, err := os.ReadFile(filepath.Join(w.profile, "settings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), runner.SelfBinary()) || !strings.Contains(string(raw), "guard hook") {
+		t.Fatalf("the settings name this binary:\n%s", raw)
+	}
+	if w.terminal.BeforeStage == nil {
+		t.Fatal("the loop compares the settings before each stage")
+	}
+	if err := w.terminal.BeforeStage(); err != nil {
+		t.Fatalf("what abcd wrote holds: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(w.profile, "settings.json"), []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.terminal.BeforeStage(); err == nil {
+		t.Fatal("a difference stops the drive")
+	}
+}
+
+// TestAWallThatDoesNotHoldRefusesNamingIt: each refused before the loop starts.
+func TestAWallThatDoesNotHoldRefusesNamingIt(t *testing.T) {
+	for _, c := range []struct {
+		name     string
+		loggedIn bool
+		stream   string
+		wall     string
+	}{
+		{"login", false, wallInit + wallRefused + wallResult, runner.WallLogin},
+		{"guard", true, wallInit + wallResult, runner.WallGuard},
+		{"tools", true, strings.Replace(wallInit, `"Read",`, `"Read","WebFetch",`, 1) + wallRefused + wallResult, runner.WallTools},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			w := newDriveWorld(t)
+			w.recordTerminal(t)
+			standInHarness(t, c.loggedIn, c.stream)
+			text := refusedDrive(t, "drain", "--drive", "--yes")
+			if !strings.Contains(text, c.wall) {
+				t.Fatalf("the refusal names the wall %q: %s", c.wall, text)
+			}
+			if w.terminalCalls != 0 {
+				t.Fatal("the loop does not start")
+			}
+			noDrainBegun(t, w.repo)
+		})
+	}
+}
+
+// TestASettingsFileAPersonEditedIsReplacedAndSaid.
+func TestASettingsFileAPersonEditedIsReplacedAndSaid(t *testing.T) {
+	w := newDriveWorld(t)
+	w.recordTerminal(t)
+	standInHarness(t, true, wallInit+wallRefused+wallResult)
+	if err := os.WriteFile(filepath.Join(w.profile, "settings.json"), []byte(`{"model":"mine"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out, errb strings.Builder
+	if code := Run([]string{"drain", "--drive", "--yes"}, &out, &errb); code != 0 {
+		t.Fatalf("exit %d:\n%s%s", code, out.String(), errb.String())
+	}
+	if !strings.Contains(errb.String(), "replaced") {
+		t.Fatalf("the replacement is said:\n%s", errb.String())
+	}
+	raw, _ := os.ReadFile(filepath.Join(w.profile, "settings.json"))
+	if strings.Contains(string(raw), "mine") {
+		t.Fatalf("the edit is gone:\n%s", raw)
+	}
+}

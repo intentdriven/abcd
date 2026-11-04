@@ -249,6 +249,12 @@ func (c *ClaudeCLI) run(ctx context.Context, req Request) (Answer, []byte, error
 	if err := req.check(); err != nil {
 		return Answer{}, nil, err
 	}
+	if c.profile != nil {
+		// A stage starts only on the settings abcd wrote.
+		if err := CheckWallSettings(*c.profile, c.approver); err != nil {
+			return Answer{}, nil, fail(Claude, ReasonRefused, "%s", err.Error())
+		}
+	}
 	if c.pinned {
 		return Answer{}, nil, fail(Claude, ReasonFailed,
 			"the machine pins %s, and the claude runner can hold neither a provider pin nor a local pin, so the run is "+

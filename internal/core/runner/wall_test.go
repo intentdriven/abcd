@@ -1,0 +1,231 @@
+package runner
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+)
+
+const wallBin = "/opt/abcd dev/bin/abcd"
+
+// fakeWall plays the harness the wall's checks launch: a mode names the one
+// wall the stand-in breaks; wall-ok breaks none.
+func fakeWall(mode string) int {
+	args := os.Args[1:]
+	if len(args) > 0 && args[0] == "auth" {
+		if mode == "wall-login" {
+			fmt.Println(`{"loggedIn":false,"email":"never-kept@example.invalid"}`)
+			return 1
+		}
+		fmt.Println(`{"loggedIn":true,"email":"never-kept@example.invalid"}`)
+		return 0
+	}
+	if log := os.Getenv(fakeLogEnv); log != "" {
+		raw, _ := json.Marshal(args)
+		_ = os.WriteFile(filepath.Join(log, "claude.argv.json"), raw, 0o600)
+	}
+	// A harness reads the working tree's settings unless the launch's setting
+	// sources leave them out, or the mode has it read them regardless.
+	if !slices.Contains(args, "--setting-sources=user") || mode == "wall-tree" {
+		var s struct {
+			Hooks map[string][]hookGroup `json:"hooks"`
+		}
+		raw, _ := os.ReadFile(filepath.Join(".claude", "settings.json"))
+		_ = json.Unmarshal(raw, &s)
+		for _, g := range s.Hooks["SessionStart"] {
+			for _, h := range g.Hooks {
+				_ = exec.Command("/bin/sh", "-c", h.Command).Run()
+			}
+		}
+	}
+	init := map[string]any{"type": "system", "subtype": "init", "session_id": "s", "model": "m",
+		"tools": []string{"Read", "Bash", ApproverTool}, "apiKeySource": "none",
+		"mcp_servers": []map[string]string{{"name": "abcd", "status": "connected"}}, "plugins": []string{}}
+	switch mode {
+	case "wall-tools":
+		init["tools"] = []string{"Read", "Bash", ApproverTool, "WebFetch"}
+	case "wall-servers":
+		init["mcp_servers"] = []map[string]string{{"name": "abcd"}, {"name": "persons-own"}}
+	case "wall-plugins":
+		init["plugins"] = []map[string]string{{"name": "persons-plugin"}}
+	case "wall-key":
+		init["apiKeySource"] = "ANTHROPIC_API_KEY"
+	}
+	raw, _ := json.Marshal(init)
+	fmt.Println(string(raw))
+	if mode != "wall-guard" {
+		ev, _ := json.Marshal(map[string]any{"type": "system", "subtype": "hook_response", "hook_event": "PreToolUse",
+			"stdout": `{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":"` + guardRefusalText + ` (git-push-force)"}}`})
+		fmt.Println(string(ev))
+	}
+	fmt.Println(`{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"s"}`)
+	return 0
+}
+
+func wallProfile(t *testing.T) Profile {
+	t.Helper()
+	p, err := DriveProfile(profileHome(t, "walled"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// TestTheWalledSettingsHoldAbcdsHooksAndNothingElse: each event's command names
+// the binary by absolute path, the guard's matcher is the plugin's, and no
+// other key stands beside hooks.
+func TestTheWalledSettingsHoldAbcdsHooksAndNothingElse(t *testing.T) {
+	var s map[string]map[string][]hookGroup
+	if err := json.Unmarshal(WallSettings(wallBin), &s); err != nil {
+		t.Fatal(err)
+	}
+	if len(s) != 1 || s["hooks"] == nil {
+		t.Fatalf("hooks and nothing else: %v", s)
+	}
+	pre := s["hooks"]["PreToolUse"]
+	if len(pre) != 1 || !strings.Contains(pre[0].Matcher, "Bash") || pre[0].Hooks[0].Command != "'"+wallBin+"' guard hook" {
+		t.Fatalf("the guard: %+v", pre)
+	}
+	for event, verb := range map[string]string{"UserPromptSubmit": "hook prompt-router", "SessionEnd": "hook session-end", "Stop": "hook stop"} {
+		if g := s["hooks"][event]; len(g) != 1 || g[0].Hooks[0].Command != "'"+wallBin+"' "+verb {
+			t.Errorf("%s: %+v", event, g)
+		}
+	}
+	if len(s["hooks"]["SessionStart"][0].Hooks) != 2 {
+		t.Errorf("the session start resets the rules loader and runs the session hook: %+v", s["hooks"]["SessionStart"])
+	}
+	if _, ok := s["hooks"]["PermissionRequest"]; ok {
+		t.Error("a walled launch's prompts are the approver's, so no hook answers them first")
+	}
+}
+
+// TestWritingTheSettingsReWiresANewBinaryAndSaysWhenItReplacedAnEdit: a file
+// abcd rendered for another binary is replaced quietly; one a person edited is
+// replaced and said; the login state beside them is untouched.
+func TestWritingTheSettingsReWiresANewBinaryAndSaysWhenItReplacedAnEdit(t *testing.T) {
+	p := wallProfile(t)
+	login := filepath.Join(p.Dir, ".credentials.json")
+	if err := os.WriteFile(login, []byte("login state"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if replaced, err := WriteWallSettings(p, "/old/abcd"); err != nil || replaced {
+		t.Fatalf("a first write replaces nothing: %v %v", replaced, err)
+	}
+	if replaced, err := WriteWallSettings(p, wallBin); err != nil || replaced {
+		t.Fatalf("a new binary re-wires quietly: %v %v", replaced, err)
+	}
+	if err := CheckWallSettings(p, wallBin); err != nil {
+		t.Fatalf("what was written holds: %v", err)
+	}
+	path := filepath.Join(p.Dir, wallSettingsName)
+	edited := strings.Replace(string(WallSettings(wallBin)), `"hooks": {`, `"apiKeyHelper": "x", "hooks": {`, 1)
+	if err := os.WriteFile(path, []byte(edited), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var we *WallError
+	if err := CheckWallSettings(p, wallBin); !errors.As(err, &we) || we.Wall != WallSettingsFile {
+		t.Fatalf("a difference is the settings wall: %v", err)
+	}
+	if replaced, err := WriteWallSettings(p, wallBin); err != nil || !replaced {
+		t.Fatalf("an edit is replaced and said: %v %v", replaced, err)
+	}
+	if err := CheckWallSettings(p, wallBin); err != nil {
+		t.Fatal(err)
+	}
+	if raw, _ := os.ReadFile(login); string(raw) != "login state" {
+		t.Fatal("the login state is never touched")
+	}
+}
+
+// TestAWalledLaunchRefusesSettingsThatDiffer: nothing is launched on settings
+// other than abcd's.
+func TestAWalledLaunchRefusesSettingsThatDiffer(t *testing.T) {
+	f, c, p := walledFake(t, "ok")
+	if err := os.WriteFile(filepath.Join(p.Dir, wallSettingsName), []byte(`{"hooks":{}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := c.Run(context.Background(), shellRequest(f))
+	if err == nil || !strings.Contains(err.Error(), "differ") {
+		t.Fatalf("the launch is refused: %v", err)
+	}
+	if f.launched(Claude) {
+		t.Fatal("no harness started")
+	}
+}
+
+// TestTheLoginWallAsksTheHarnessAndKeepsOnlyTheState: the harness's report is
+// read for the one state; no account identifier reaches a refusal.
+func TestTheLoginWallAsksTheHarnessAndKeepsOnlyTheState(t *testing.T) {
+	newFake(t, "wall-ok", Claude)
+	p := wallProfile(t)
+	if err := CheckLogin(context.Background(), p); err != nil {
+		t.Fatalf("a login holds: %v", err)
+	}
+	t.Setenv(fakeModeEnv, "wall-login")
+	err := CheckLogin(context.Background(), p)
+	var we *WallError
+	if !errors.As(err, &we) || we.Wall != WallLogin {
+		t.Fatalf("no login is the login wall: %v", err)
+	}
+	if strings.Contains(err.Error(), "never-kept") {
+		t.Fatalf("no account identifier is kept: %v", err)
+	}
+}
+
+// TestTheProofNamesEachWallThatDoesNotHold: the stand-in reports each wall held
+// or broken in turn.
+func TestTheProofNamesEachWallThatDoesNotHold(t *testing.T) {
+	for mode, wall := range map[string]string{
+		"wall-ok":      "",
+		"wall-tools":   WallTools,
+		"wall-servers": WallServers,
+		"wall-plugins": WallPlugins,
+		"wall-key":     WallKey,
+		"wall-guard":   WallGuard,
+		"wall-tree":    WallWorkingTree,
+	} {
+		t.Run(mode, func(t *testing.T) {
+			f := newFake(t, mode, Claude)
+			p := wallProfile(t)
+			err := ProveWall(context.Background(), p, wallBin)
+			if wall == "" {
+				if err != nil {
+					t.Fatalf("every wall holds: %v", err)
+				}
+				argv := f.argv(t, Claude)
+				for _, want := range []string{"--setting-sources=user", "--strict-mcp-config", "--tools=Read,Bash", "--include-hook-events"} {
+					if !slices.Contains(argv, want) {
+						t.Errorf("the proof's launch %q lacks %q", argv, want)
+					}
+				}
+				if !strings.Contains(argv[len(argv)-1], guardProofCommand) {
+					t.Errorf("the proof asks for the command the guard refuses: %q", argv[len(argv)-1])
+				}
+				return
+			}
+			var we *WallError
+			if !errors.As(err, &we) || we.Wall != wall {
+				t.Fatalf("the refusal names the wall %q: %v", wall, err)
+			}
+		})
+	}
+}
+
+// TestALaunchWithNoSettingSourcesIsCaughtByTheProof holds the proof's working
+// tree to what it is for: a harness that reads it runs the hook it holds.
+func TestALaunchWithNoSettingSourcesIsCaughtByTheProof(t *testing.T) {
+	newFake(t, "wall-ok", Claude)
+	p := wallProfile(t)
+	p.Args = slices.DeleteFunc(slices.Clone(p.Args), func(a string) bool { return strings.HasPrefix(a, "--setting-sources") })
+	var we *WallError
+	if err := ProveWall(context.Background(), p, wallBin); !errors.As(err, &we) || we.Wall != WallWorkingTree {
+		t.Fatalf("the working tree's hook ran: %v", err)
+	}
+}

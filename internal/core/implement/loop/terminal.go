@@ -26,6 +26,8 @@ const (
 	TerminalStopped = "stop"
 	// TerminalOutage: failures ran through the outage schedule to its limit.
 	TerminalOutage = "runner-outage"
+	// TerminalWall: a wall checked before a stage no longer held.
+	TerminalWall = "wall"
 )
 
 // TerminalOptions are one terminal run's inputs.
@@ -46,6 +48,9 @@ type TerminalOptions struct {
 	// Stop is closed when a stop is asked for. The context stays live, so a
 	// call in flight finishes.
 	Stop <-chan struct{}
+	// BeforeStage is called before each move and each step, so before any
+	// stage starts; an error ends the run, TerminalWall. Nil checks nothing.
+	BeforeStage func() error
 	// Say prints one line, already plain; nil says nothing.
 	Say func(string)
 	// Sleep waits; nil sleeps until the time passes or the stop or the
@@ -109,6 +114,18 @@ func (t *terminal) stopped() bool {
 
 func (t *terminal) now() time.Time { return t.o.Options.now() }
 
+// wallHeld runs the check before a stage, saying what stopped the run.
+func (t *terminal) wallHeld() bool {
+	if t.o.BeforeStage == nil {
+		return true
+	}
+	err := t.o.BeforeStage()
+	if err != nil {
+		t.say("stopping: %s", err.Error())
+	}
+	return err == nil
+}
+
 // sleep waits d, saying why.
 func (t *terminal) sleep(ctx context.Context, d time.Duration, why string) {
 	t.say("waiting %s: %s", d.Round(time.Second), why)
@@ -136,6 +153,9 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 	for {
 		if t.stopped() {
 			return t.ended(TerminalStopped), nil
+		}
+		if !t.wallHeld() {
+			return t.ended(TerminalWall), nil
 		}
 		res, err := Drain(t.repoRoot, t.o.Options, t.o.Drain)
 		if err != nil {
@@ -203,6 +223,9 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 	for {
 		if t.stopped() {
 			return TerminalStopped, nil
+		}
+		if !t.wallHeld() {
+			return TerminalWall, nil
 		}
 		run, err := ReadState(t.repoRoot, runID)
 		if err != nil {

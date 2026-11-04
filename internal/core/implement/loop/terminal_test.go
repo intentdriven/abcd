@@ -2,6 +2,7 @@ package loop
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -305,5 +306,30 @@ func TestAStopSetFromOutsideIsHonouredAtTheNextBoundary(t *testing.T) {
 	}
 	if res.Ended != TerminalStopped || w.launches(t) != 0 {
 		t.Fatalf("a stop is honoured at once: %+v, %d launches", res, w.launches(t))
+	}
+}
+
+// TestASettingsDifferenceStopsTheRunBeforeTheNextStage: the check runs before
+// each stage, and the first refusal ends the run with no further launch.
+func TestASettingsDifferenceStopsTheRunBeforeTheNextStage(t *testing.T) {
+	w := newTerminalWorld(t)
+	o := w.options(t)
+	calls := 0
+	o.BeforeStage = func() error {
+		calls++
+		if w.launches(t) >= 1 {
+			return errors.New("the walled directory's settings differ from what abcd wrote")
+		}
+		return nil
+	}
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Ended != TerminalWall || w.launches(t) != 1 {
+		t.Fatalf("the run stops after the one launch: %+v, %d launches", res, w.launches(t))
+	}
+	if calls < 2 || !strings.Contains(strings.Join(w.lines, "\n"), "differ") {
+		t.Fatalf("the check runs before each stage and says why: %d calls, %q", calls, w.lines)
 	}
 }
