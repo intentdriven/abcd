@@ -2772,7 +2772,7 @@ The proposal: after the first live run of the claude runner on the product think
 
 Verdict at filing: SPLIT, intent and ADR, the product thinker choosing both over folding the rule into the intent. Typed links: the intent builds on itd-166; the ADR refines decision 17 of itd-2610161733316518 (advisory, for the product thinker to confirm). Advisory reversal flags: none.
 
-Grade: pending the planning interview.
+Grade (2026-11-04, the planning interview, dcn-2611041550126639): the SPLIT survived; the ADR's refinement was confirmed and the ADR accepted with its four named residuals. Two routing edits the hand-run missed: the key's home was routed to the intent as a capability when it was already a trust rule in force (adr-2609221017021499, the credential store's three homes), which the design review caught and the interview settled against the draft's keychain-only wording; and a trust-rule line from a later scratch draft (a key at its cap never falls to a subscription, a subscription at its mark never opens a third route) landed in this intent's decisions rather than in an ADR. Over-flag: none. Missed part: the brief invariant the accepted ADR owes, still unfiled.
 
 ## 2026-11-01: cutting hosted CI and local compute for private repositories (product thinker, routing confirmed)
 
@@ -2824,4 +2824,27 @@ The proposal: after the subscription test of 2026-11-03 found that the drive's d
 
 Verdict at filing: FILE-AS-IS, with the trust rule and the stance held for the product thinker rather than filed. Typed links: the intent refines itd-2610222215485265 (the drive's wall becomes a profile among several); the two sandbox drafts itd-2610161710315026 and itd-2610161710316538 are proposed to build on it. Advisory reversal flag: the draft reverses in part the wall list of spc-2610230813348813 (abcd's own hooks kept where the spec disabled all hooks, an allow-list of named tools where it denied connected services), for the product thinker to confirm.
 
-Grade: pending confirmation of the routing and the planning interview.
+Grade (2026-11-04, the planning interview, dcn-2611041550129278 and dcn-2611041550135566): FILE-AS-IS survived, and the routing was confirmed with the capability widened: one profile per way of paying, keys included, so the key route's bare launch gives way for stages, which moves a clause of adr-2610222222326104 into the ADR owed. The capability's own text was wrong in one part the interview reversed (random names became memorable names from a themed list) and in one it decided (warn, never refuse). The switching half of a later scratch draft (01, HOLD) was folded in here as its routing proposed, confirmed. Over-flag: none. Missed part: none; the trust rule and the stance stay held.
+
+## 2026-11-04: the stop switch, the restart path and the daily digest (product thinker, routing confirmed)
+
+The proposal: three scratch drafts written for an experiment testing a two-week autonomous run, decomposed before filing: 01, the subscription switch (a run uses subscriptions first, moves a stage to a named key at 95 per cent of a window, and returns on reset); 02, the stop switch and the coordinator's restart path together; 03, the daily digest. The product thinker's planning interview confirmed every routing (dcn-2611041550139264, dcn-2611041550129278, dcn-2611041550135566).
+
+| Part | Type | Home |
+| --- | --- | --- |
+| choosing a route by window, the key as fallback, the return on reset | capability | already itd-2611040344170206 (criterion 7, decision 6); not refiled |
+| the window reading at hand-out, the coordinator's own-subscription case, the wait when both routes are out, the ledger line per switch | capability | an amendment to itd-2611040344170206 (folded in) |
+| a key's cap never falls to a subscription, and a subscription's mark never opens a third route | trust rule | one line in itd-2611011230226453's decisions; no ADR |
+| a rate limit waits on its own, and every route can report one | plumbing | iss-2610100602595553 and iss-2610100913095172, already open |
+| the resume listing, the live-driver record, collect-before-launch, saved-aside work, the drain's judging entry | capability | itd-2611041549461012, the restart path |
+| one command stops every run on the machine at its next move, lifted only by the person | capability | itd-2611041549471712, the stop switch |
+| a stop is a recorded state read at each move, never a signal to a terminal; an agent's session may never lift it; one shared folder on an unshared machine is the one file outside the owner-only rule | trust rule | an ADR owed, extending adr-2610240850193281 and dcn-2611031722512037; held, not filed |
+| a run's account of itself lives in abcd's files, never in a session's memory | stance | a candidate principle; held |
+| the daily page, its five sections, composed from records once a day | capability | itd-2611041549483696, the digest |
+| the run reports through a page the person opens, never through a channel that reaches them | trust rule | one line in the same ADR owed |
+| a report is derived from records or it is not written | stance | already abcd's; no new principle |
+| the stop file's place and shape, the digest's file shape and day boundary, the driver fields | plumbing | the brief's loop chapter, through each spec |
+
+Verdicts at filing: 01 HOLD (its rule already filed, its amendment folded into the profiles draft); 02 SPLIT into two intents; 03 FILE-AS-IS. Typed links: the restart path and the stop switch each refine itd-2610222215485265 and build on itd-2609201925079472, itd-2611031342011261 and itd-2610180912189125; the digest builds on itd-2611031342011261, itd-2610240850336695 and itd-2610032150577708. Advisory reversal flags: the stop switch narrows the autonomous mode's reading that only `abcd mode back` ends it; the digest's file home sets aside the dashboard spec's one-renderer rule for where the page lives, not how it is composed.
+
+Grade: all three verdicts survived confirmation (HOLD, SPLIT, FILE-AS-IS), and the one place choice both 02 and 03 held open was settled once for both, as 03 asked. Over-flag: none. Missed part: 02's trust rule did not name the store ownership exception the place choice needs; it was added at filing. Two of 03's technical questions (the composer, the quiet day) and two of 01's (the reading's source, the staleness bound) were not put and took the draft's proposal under the standing stance that abcd ships a sensible default the person configures; graded as proposals the record carries, not as confirmed rulings.
