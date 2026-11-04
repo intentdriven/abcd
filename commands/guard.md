@@ -578,7 +578,7 @@ command, so a commit message or a search naming one passes:
 - `git replace` that stands one object in for another (`-l` and `-d` pass);
 - `git reflog expire`, `delete` and `drop`, `git gc --prune`, and `git prune`
   (its `--dry-run` passes);
-- a force push by any route: `--force` and its relatives, a `+` refspec,
+- a force push by these routes: `--force` and its relatives, a `+` refspec,
   `git push --mirror`, `git send-pack --force`, `--mirror`, `--stdin` or a `+`
   ref, `git fast-import --force`, `gh repo sync --force`, and through the forge's
   API a PATCH of a ref with `force=true`, a value the line does not fix or
