@@ -85,6 +85,7 @@ type terminalWorld struct {
 func newTerminalWorld(t *testing.T, script ...string) *terminalWorld {
 	t.Helper()
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
+	repo.Write("commands/other.md", "# other\n")
 	fileIssueAt(t, repo, thirdIssue, capture.SeverityMinor, capture.Category("documentation"), "Name the other flag in the page.", "commands/other.md")
 	repo.Commit("the third issue")
 	repo.Git("push", "-q", "origin", "main")

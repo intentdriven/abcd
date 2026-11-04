@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -148,7 +149,16 @@ func TestARunnerNotEnabledRefuses(t *testing.T) {
 func TestAHarnessNotAdmittedRefuses(t *testing.T) {
 	w := newDriveWorld(t)
 	w.passWalls(t)
-	t.Setenv("PATH", t.TempDir())
+	// git stays reachable, and no claude beside it.
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("no git on PATH")
+	}
+	bin := t.TempDir()
+	if err := os.Symlink(git, filepath.Join(bin, "git")); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
 	if text := refusedDrive(t, "drain", "--drive", "--yes"); !strings.Contains(text, "claude") || !strings.Contains(text, "PATH") {
 		t.Fatalf("the refusal names the harness: %s", text)
 	}
