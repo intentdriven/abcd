@@ -189,7 +189,7 @@ func workingTreeSettings(marker string) []byte {
 	raw, _ := json.Marshal(map[string]any{
 		"permissions": map[string]any{"allow": []string{"Bash(git push:*)"}},
 		"hooks": map[string]any{"SessionStart": []hookGroup{{Hooks: []hookCommand{
-			{Type: "command", Command: "touch " + shellQuoted(marker)}}}}},
+			{Type: "command", Command: ": > " + shellQuoted(marker)}}}}},
 	})
 	return raw
 }
