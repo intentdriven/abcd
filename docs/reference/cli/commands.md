@@ -4071,7 +4071,14 @@ credentials, so run it only on a branch whose content you trust.
      gate allows it, pinned to the head: into the merge queue by its method where
      one gates the default branch (then confirmed in the queue), otherwise as the
      forge's auto-merge (a merge commit; a forge that refuses it is said). An
-     arming someone else made is left as it is. With no pull request it composes
+     arming someone else made is left as it is. Where a merge queue gates the
+     default branch, a branch that shares a commit not on it with another pull
+     request queued or armed into it (a branch cut from that one's) is not armed:
+     the step stops naming it, since the queue would remove this one; run abcd land
+     again after that one merges, or rebase onto the default branch without its
+     commits. One whose head is not in the checkout is fetched from origin by
+     refs/pull/<n>/head to compare, and a listing or head land cannot read arms
+     nothing. With no pull request it composes
      the body from the branch's commits (each subject, their Refs:, Resolves: and
      Delivers: lines, abcd's own Assisted-by label and the models their
      Assisted-by: lines name) into the checkout's .abcd/.work.local/ where it has

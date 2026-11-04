@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/ghcontract"
 	"github.com/intentdriven/abcd/internal/gittest"
@@ -82,6 +83,38 @@ type fakeForge struct {
 	author  string
 	roles   map[string]string
 	reviews string
+	// armed is the nodes of the one page the forge answers the listing of
+	// the open pull requests into the default branch with
+	// (claim.ArmedPullRequestsQuery); "" is none. armedErr fails that
+	// listing alone.
+	armed    string
+	armedErr error
+}
+
+// armedListing answers the listing of the open pull requests into main on
+// owner/name, as the forge does: one page, its nodes as given. It refuses any
+// other arguments, and a query the pinned schema does not have.
+func (f *fakeForge) armedListing(args []string) (string, error) {
+	owner, name, _ := strings.Cut(f.owner(), "/")
+	def := f.def
+	if def == "" {
+		def = "main"
+	}
+	want := []string{"api", "graphql", "-f", "query=" + claim.ArmedPullRequestsQuery, "-f", "o=" + owner, "-f", "r=" + name, "-f", "b=" + def}
+	if !slices.Equal(args, want) {
+		return "", fmt.Errorf("fake forge: unexpected listing %v", args)
+	}
+	if err := ghcontract.CheckGraphQL(claim.ArmedPullRequestsQuery); err != nil {
+		return "", err
+	}
+	if f.armedErr != nil {
+		return "", f.armedErr
+	}
+	nodes := f.armed
+	if nodes == "" {
+		nodes = "[]"
+	}
+	return `{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":` + nodes + `}}}}`, nil
 }
 
 // defaultRoles are the permissions the fake forge reports when a test sets
@@ -187,6 +220,9 @@ func (f *fakeForge) run(_ string, args ...string) (string, error) {
 		}
 		return f.prs, nil
 	case "api graphql":
+		if slices.Contains(args, "query="+claim.ArmedPullRequestsQuery) {
+			return f.armedListing(args)
+		}
 		// The pull request's state is asked of the repository the forge
 		// resolved (o/r), through the one pinned query.
 		n, ok := strings.CutPrefix(args[len(args)-1], "n=")
