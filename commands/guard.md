@@ -559,11 +559,41 @@ when it was allowed and when it was used, and never who.
 The trust model is a careless agent, not a hostile one, as for the guard's
 other hazards. What it does not cover, plainly: a file tool writing into the
 store is not a shell command, so the shell guard does not see it; `git push
---prune` and `--mirror`, which delete as a side effect, are not judged here; an
+--prune`, which deletes as a side effect, is not judged here (`--mirror` is
+refused outright, under history below); an
 allow is keyed on the line, not the directory, so a relative worktree path
 allowed in one directory of the repository is honoured from another; and a
 local branch pushed to origin but not yet merged is refused like any other
 unmerged branch.
+
+## History is not rewritten
+
+Every commit stays as it was made, so the guard refuses what rewrites history
+or removes the means of recovering from a rewrite. It reads each of these as a
+command, so a commit message or a search naming one passes:
+
+- `git filter-repo` and `git filter-branch`, any arguments;
+- `git update-ref`, every form: none of them only reads, and whether the ref
+  already exists cannot be told from the line;
+- `git replace` that stands one object in for another (`-l` and `-d` pass);
+- `git reflog expire`, `delete` and `drop`, `git gc --prune`, and `git prune`
+  (its `--dry-run` passes);
+- a force push by any route: `--force` and its relatives, a `+` refspec,
+  `git push --mirror`, `git send-pack --force`, `--mirror`, `--stdin` or a `+`
+  ref, `git fast-import --force`, `gh repo sync --force`, and through the forge's
+  API a PATCH of a ref with `force=true`, a value the line does not fix or
+  `--input`, or a GraphQL `updateRef` with `force`, in the query or in a field
+  beside it.
+
+A program git runs for a subcommand is read as that subcommand, wherever it
+lives: `git-push` in git's exec-path is `git push`, and `command -v` or `man` of
+one runs nothing and passes. A setting on the line is read as what it does:
+`git -c remote.origin.mirror=true push` is `git push --mirror`, and so with a
+`+` in `remote.<name>.push` and with `gc.pruneExpire` on a gc.
+
+Each refusal asks for a new commit instead: a revert, or a fix on top. A rebase
+or an amend is not on the list: on a commit not yet pushed it is ordinary work,
+and once the commit is pushed, the force push it would need is what is refused.
 
 ## Registry and overrides
 
