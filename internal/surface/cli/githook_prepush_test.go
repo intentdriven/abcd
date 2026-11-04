@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -95,17 +94,12 @@ func newPrePushCaseIn(t *testing.T, format string) *prePushCase {
 	return c
 }
 
-// prePushSourceRoot is the root of the source tree this test file sits in
-// (internal/surface/cli/, three levels down), found from the file's own
-// position rather than from git, so the suite runs, and never skips, in a tree
-// that is not a git checkout (an archive of one, say).
+// prePushSourceRoot is the root of the source tree this test runs in, found by
+// walking up to go.mod rather than from git, so the suite runs, and never skips,
+// in a tree that is not a git checkout (an archive of one, say).
 func prePushSourceRoot(t *testing.T) string {
 	t.Helper()
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller could not locate the test source file")
-	}
-	root := filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..", ".."))
+	root := repoRootFromTest(t)
 	if _, err := os.Stat(filepath.Join(root, ".githooks", "pre-push")); err != nil {
 		t.Fatalf("the committed pre-push hook is not where this file expects it: %v", err)
 	}
