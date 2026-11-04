@@ -116,8 +116,11 @@ func sortedKeys(set map[string]bool) []string {
 // `pull_request` or `pull_request_target` with no `paths`/`paths-ignore`
 // filter, no `branches-ignore` filter, and a `branches` filter (if any) that
 // matches defaultBranch; and, when mergeQueue is set, also on `merge_group`,
-// since a queue entry waits on the same contexts. Each workflow or job left
-// out is named in notes, so a person can see why a check is not required.
+// since a queue entry waits on the same contexts. A matrix job a run can skip is
+// left out as well (skippableJobs): skipped, it reports one check under its
+// unexpanded name, so the contexts its values name never arrive. A job with no
+// matrix still counts, since skipped it reports its one name, which a ruleset
+// reads as passed. Each workflow or job left out is named in notes, so a person can see why a check is not required.
 // The trigger is read as a subset of YAML (unreadShape): a trigger in any
 // other form is left out, never read as unfiltered.
 // Fails toward omission, like DeriveCIChecks: an empty answer requires nothing.
@@ -153,7 +156,14 @@ func RequiredChecks(repoRoot, defaultBranch string, mergeQueue bool) (checks, no
 			notes = append(notes, name+" "+why+", so its checks are not required")
 			return
 		}
-		for _, job := range splitJobs(topLevelBlock(lines, "jobs")) {
+		jobs := splitJobs(topLevelBlock(lines, "jobs"))
+		skippable := skippableJobs(jobs)
+		for _, job := range jobs {
+			if job.matrix && skippable[job.id] {
+				notes = append(notes, name+": job "+job.id+" is a matrix job a run can skip (by its `if:` or a job "+
+					"it needs), and a skipped matrix job reports only its unexpanded name, so it is not required")
+				continue
+			}
 			if cs, ok := job.checkNames(); ok {
 				for _, c := range cs {
 					seen[c] = true
@@ -575,16 +585,22 @@ type ciJob struct {
 	uses   bool
 	// matrixLines are the lines indented beneath the job's `matrix:` key.
 	matrixLines []string
+	// conditional says the job has an `if:`, and cond is its value as a scalar.
+	conditional bool
+	cond        string
+	// needs are the ids in the job's `needs:`.
+	needs []string
 }
 
 // splitJobs reads the jobs block into its jobs, recording each job's own
-// `name:`, whether it declares a matrix, and whether it calls a reusable
-// workflow. Job ids sit at the block's first indentation; a job's own keys at
+// `name:`, whether it declares a matrix, whether it calls a reusable workflow,
+// its `if:` and its `needs:`. Job ids sit at the block's first indentation; a job's own keys at
 // the next one.
 func splitJobs(block []string) []ciJob {
 	jobIndent := -1
 	keyIndent := -1
 	matrixIndent := -1
+	needsOpen := false
 	var jobs []ciJob
 	for _, l := range block {
 		t := strings.TrimSpace(l)
@@ -601,6 +617,15 @@ func splitJobs(block []string) []ciJob {
 		}
 		if jobIndent < 0 {
 			jobIndent = ind
+		}
+		// A `needs:` written as a block list: its items may sit at the key's own
+		// indentation, so they are taken before the line is read as a key.
+		if needsOpen {
+			if item, ok := strings.CutPrefix(t, "- "); ok && ind > jobIndent {
+				jobs[len(jobs)-1].needs = append(jobs[len(jobs)-1].needs, scalar(item))
+				continue
+			}
+			needsOpen = false
 		}
 		switch {
 		case ind == jobIndent:
@@ -623,6 +648,20 @@ func splitJobs(block []string) []ciJob {
 					job.name, job.named = scalar(v), true
 				case "uses":
 					job.uses = true
+				case "if":
+					job.conditional, job.cond = true, scalar(v)
+				case "needs":
+					needs := scalar(v)
+					switch {
+					case needs == "":
+						needsOpen = true
+					case strings.HasPrefix(needs, "[") && strings.HasSuffix(needs, "]"):
+						for _, id := range strings.Split(needs[1:len(needs)-1], ",") {
+							job.needs = append(job.needs, scalar(id))
+						}
+					default:
+						job.needs = append(job.needs, needs)
+					}
 				case "strategy":
 					// An inline strategy may hold a matrix this reader cannot
 					// expand, so the job's names are the run's to decide.
@@ -637,6 +676,61 @@ func splitJobs(block []string) []ciJob {
 		}
 	}
 	return jobs
+}
+
+// skippableJobs reports, by job id, the jobs a run going ahead can skip: one whose
+// `if:` is anything but a condition on the run's own state, and one with no `if:`
+// that needs a skippable job, since the implicit success() skips it with that job.
+// A need this reader cannot follow (no such job, a cycle) counts as skippable, so
+// the answer fails toward omission.
+func skippableJobs(jobs []ciJob) map[string]bool {
+	byID := make(map[string]ciJob, len(jobs))
+	for _, j := range jobs {
+		byID[j.id] = j
+	}
+	memo := make(map[string]bool, len(jobs))
+	var skippable func(id string) bool
+	skippable = func(id string) bool {
+		if v, ok := memo[id]; ok {
+			return v
+		}
+		// Set before descending: a cycle reaches this entry and reads it.
+		memo[id] = true
+		j, ok := byID[id]
+		if !ok {
+			return true
+		}
+		got := false
+		if j.conditional {
+			got = !runStateCondition(j.cond)
+		} else {
+			for _, need := range j.needs {
+				if skippable(need) {
+					got = true
+				}
+			}
+		}
+		memo[id] = got
+		return got
+	}
+	for _, j := range jobs {
+		skippable(j.id)
+	}
+	return memo
+}
+
+// runStateCondition reports whether an `if:` value only reads the run's own state,
+// so a run going ahead does not skip the job: always() or !cancelled(), bare or as
+// one expression. Any other value, a form this reader did not recognise included,
+// is a condition that may skip.
+func runStateCondition(cond string) bool {
+	if inner, ok := strings.CutPrefix(cond, "${{"); ok {
+		if cond, ok = strings.CutSuffix(inner, "}}"); !ok {
+			return false
+		}
+		cond = strings.TrimSpace(cond)
+	}
+	return cond == "always()" || cond == "!cancelled()"
 }
 
 // checkName is the check context GitHub reports for the job, when it is

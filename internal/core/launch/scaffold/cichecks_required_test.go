@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -367,5 +369,103 @@ func TestRequiredChecksLeavesOutAnyTriggerShapeItDoesNotRead(t *testing.T) {
 	checks, notes := RequiredChecks(repo, "main", false)
 	if !reflect.DeepEqual(checks, []string{"build"}) {
 		t.Errorf("checks = %v, want [build]; notes %v", checks, notes)
+	}
+}
+
+// TestRequiredChecksLeavesOutAMatrixJobThatCanBeSkipped: a matrix job skipped on
+// some run reports one check under its unexpanded name, so the `<name> (<value>)`
+// contexts never arrive there, and requiring them holds that pull request for ever.
+// A job can be skipped by its own `if:`, or, with no `if:` of its own, by the
+// implicit success() on a job it needs, directly or through others. A condition that
+// reads only the run's state, always() or !cancelled(), skips nothing on a run that
+// is going ahead. A job with no matrix still counts: skipped, it reports its one
+// name, which a ruleset reads as passed.
+func TestRequiredChecksLeavesOutAMatrixJobThatCanBeSkipped(t *testing.T) {
+	const matrix = `
+    strategy:
+      matrix:
+        os: [a, b]`
+	repo := writeWorkflows(t, map[string]string{
+		"ci.yml": `on: pull_request
+jobs:
+  plain:
+    runs-on: ubuntu-latest
+  gated:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+  through-gated:
+    needs: gated
+    runs-on: ubuntu-latest
+  own-if:
+    if: github.event_name != 'pull_request'` + matrix + `
+  folded-if:
+    if: >-
+      github.event_name != 'pull_request'` + matrix + `
+  needs-scalar:
+    needs: gated` + matrix + `
+  needs-flow:
+    needs: [plain, gated] # a comment` + matrix + `
+  needs-block:
+    needs:
+      - plain
+      - gated` + matrix + `
+  needs-block-level:
+    needs:
+    - plain
+    - gated` + matrix + `
+  needs-through:
+    needs: through-gated` + matrix + `
+  needs-unknown:
+    needs: nowhere` + matrix + `
+  cycle-a:
+    needs: cycle-b` + matrix + `
+  cycle-b:
+    needs: cycle-a` + matrix + `
+  keeps-always:
+    needs: gated
+    if: always()` + matrix + `
+  keeps-not-cancelled:
+    needs: gated
+    if: ${{ !cancelled() }}` + matrix + `
+  keeps-quoted:
+    if: "${{ always() }}"` + matrix + `
+  keeps-need-on-plain:
+    needs: [plain]` + matrix + `
+  keeps-need-on-always:
+    needs: keeps-always` + matrix + `
+`,
+	})
+	checks, notes := RequiredChecks(repo, "main", false)
+	want := []string{"gated", "plain", "through-gated"}
+	for _, job := range []string{"keeps-always", "keeps-need-on-always", "keeps-need-on-plain", "keeps-not-cancelled", "keeps-quoted"} {
+		want = append(want, job+" (a)", job+" (b)")
+	}
+	sort.Strings(want)
+	if !reflect.DeepEqual(checks, want) {
+		t.Errorf("checks = %q\nwant %q", checks, want)
+	}
+	joined := strings.Join(notes, "\n")
+	for _, job := range []string{"own-if", "folded-if", "needs-scalar", "needs-flow", "needs-block", "needs-block-level", "needs-through", "needs-unknown", "cycle-a", "cycle-b"} {
+		if !strings.Contains(joined, "job "+job+" ") {
+			t.Errorf("notes do not name %s:\n%s", job, joined)
+		}
+	}
+}
+
+// TestRequiredChecksReadsThisRepositorysShardedSuite: this repository's macOS suite
+// is a matrix a pull request skips, behind one job that reports the context the
+// ruleset requires. Only that job's name is a required check.
+func TestRequiredChecksReadsThisRepositorysShardedSuite(t *testing.T) {
+	root := filepath.Join("..", "..", "..", "..")
+	checks, _ := RequiredChecks(root, "main", true)
+	for _, want := range []string{"check (macos-latest)", "check (ubuntu-latest)"} {
+		if !slices.Contains(checks, want) {
+			t.Errorf("RequiredChecks = %q, which leaves out %q", checks, want)
+		}
+	}
+	for _, c := range checks {
+		if strings.HasPrefix(c, "macos-suite") {
+			t.Errorf("RequiredChecks names %q, which no pull request reports", c)
+		}
 	}
 }
