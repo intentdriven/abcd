@@ -930,8 +930,8 @@ until the last step.
    arms nothing, and so is a `facilitator.mode` that cannot be read. Before arming, the loop asks the
    forge whether the pull request merges (`gh pr view` for its `mergeable`
    and `mergeStateStatus` fields), and one the forge reports `CONFLICTING` is
-   refused at exit 2, unarmed, since the merge queue never takes it, unless an issue lane's conflict lies in declared generated files alone, or in no file when this checkout merges, when the lane enters its sync again
-   (iss-2610110908443341). Nothing is pushed to the lane after this step.
+   refused at exit 2, unarmed, since the merge queue never takes it, unless an issue lane's conflict lies in declared generated files alone, or in no file when this checkout merges, when the lane enters its sync again, or, its head already holding the default branch, waits at exit 3 for the forge's verdict
+   (iss-2610110908443341). Nothing is pushed to the lane while it is armed: an issue lane's sync withdraws the arming first.
 6. It fetches the default branch and waits, exiting 3, until the pushed head
    is an ancestor of it; only then does it remove the lane's worktree (never
    forced) and delete the lane's branch at a tip the same check proves landed,
@@ -940,7 +940,7 @@ until the last step.
    waiting. A pull request closed without merging, or merged in a way that
    rewrote the head, is refused and nothing is cleaned up, and so is an open
    one the forge reports `CONFLICTING`, at exit 2: it needs a person, so it is
-   not the merge's contention wait. An issue lane whose conflict lies in declared generated files alone, or in no file when this checkout merges, enters its sync again instead.
+   not the merge's contention wait. An issue lane whose conflict lies in declared generated files alone, or in no file when this checkout merges, enters its sync again instead, an armed merge withdrawn first. One whose head already holds the default branch keeps the exit-3 wait.
 
    Each wait of an armed lane whose default branch a merge queue gates also
    reads the pull request's place in the queue, since the forge can leave one

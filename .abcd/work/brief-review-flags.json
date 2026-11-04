@@ -452,7 +452,7 @@
     {
       "chapter": "35-drain.md",
       "sentence": "The host's answer is taken first of all, before the window clock and the",
-      "replacement": "Unless the move is waiting on origin, the host's answer is taken first of all, before the window clock and the",
+      "replacement": "Unless the move is waiting on origin, the host's answer is taken once the ledger is read, before the window clock and the",
       "evidence": "internal/core/implement/loop/drain.go:617-622 (a move that cannot read origin says the answer given was not taken, and to give it again)",
       "commit": "de140e4e0252fd055c66fe3a604ff21616eca2f7",
       "applied": "2026-11-04T02:13:51Z"
@@ -516,7 +516,7 @@
     {
       "chapter": "34-build.md",
       "sentence": "one the forge reports `CONFLICTING`, at exit 2: it needs a person, so it is",
-      "replacement": "not the merge's contention wait. An issue lane whose conflict lies in declared generated files alone, or in no file when this checkout merges, enters its sync again instead.",
+      "replacement": "not the merge's contention wait. An issue lane whose conflict lies in declared generated files alone, or in no file when this checkout merges, enters its sync again instead, an armed merge withdrawn first.",
       "evidence": "internal/core/implement/loop/land.go:1044-1049 and internal/core/implement/loop/sync.go:262-273",
       "commit": "de140e4e0252fd055c66fe3a604ff21616eca2f7",
       "applied": "2026-11-04T02:13:51Z"
@@ -544,6 +544,62 @@
       "evidence": "internal/core/landing/facilitator.go:351-352 (with no merge queue the gate arms: \"auto-merge armed (merge commit): no merge queue gates\"); internal/core/landing/facilitator.go:332-343 (the gate's reasons for not arming are the author's role, a missing approval and a missing review receipt, none about a queue); internal/core/implement/loop/land.go:946-947 (a lane is left open only on !d.Arm); internal/core/implement/loop/drain.go:1302 (the outcome read from Landing.Merge)",
       "commit": "cd4897e2a3d6b6f0a28719f16bf53b7a029456e2",
       "applied": "2026-11-04T02:46:32Z"
+    },
+    {
+      "chapter": "35-drain.md",
+      "sentence": "conflicting is refused before it is armed, so its lane stays in progress",
+      "replacement": "conflicting, where this checkout's merge names a file not declared generated or cannot be tried, is refused before it is armed, so its lane stays in progress",
+      "evidence": "internal/core/implement/loop/land.go:936-938 and internal/core/implement/loop/sync.go:268-273 (a drain's lane is always an issue lane, so a conflict in declared generated files or in no file goes to resyncLane and is not refused; only an undeclared file or an unreadable merge reaches conflictRefusal). The same chapter says so at line 426.",
+      "commit": "06d7bc6449d921cae128d0f1042e47f8708293ac",
+      "applied": "2026-11-04T03:04:22Z"
+    },
+    {
+      "chapter": "35-drain.md",
+      "sentence": "that turns conflicting after it was armed is refused by the run's own step,",
+      "replacement": "that turns conflicting in such a file after it was armed is refused by the run's own step,",
+      "evidence": "internal/core/implement/loop/land.go:1044-1049 and internal/core/implement/loop/sync.go:268-297 (an armed lane conflicting on declared generated files alone has its merge withdrawn and enters its sync; it is not refused); internal/core/implement/loop/drain_finish.go:285-300 reads such a lane as syncing.",
+      "commit": "06d7bc6449d921cae128d0f1042e47f8708293ac",
+      "applied": "2026-11-04T03:04:22Z"
+    },
+    {
+      "chapter": "35-drain.md",
+      "sentence": "- A **no** changes nothing: the issue's lane opens in that same move, as its",
+      "replacement": "- A **no** changes nothing: the issue's lane opens as its fields already allow, in that same move when the window is open and the order still reaches the issue first.",
+      "evidence": "internal/core/implement/loop/drain.go:811-831 (the window gate returns before the lane is opened, after the answer is taken at drain.go:696-708) and drain.go:944-1097 (the walk asks the first eligible issue in the order, so one now ahead of it is asked and the no waits). The chapter's own line 291 names a no answered once the window has elapsed as a judgement superseded, its hold released.",
+      "commit": "06d7bc6449d921cae128d0f1042e47f8708293ac",
+      "applied": "2026-11-04T03:04:22Z"
+    },
+    {
+      "chapter": "35-drain.md",
+      "sentence": "the lane's own change, opens one pull request and pushes nothing after arming.",
+      "replacement": "the lane's own change, opens one pull request and pushes nothing while it is armed, its sync withdrawing an armed merge first.",
+      "evidence": "internal/core/implement/loop/sync.go:285-305 (an armed lane whose pull request conflicts on generated files has its merge withdrawn, then merges the default branch with Pushed and Armed cleared, the push and the arming to be made again); the chapter's own line 426 describes that route.",
+      "commit": "06d7bc6449d921cae128d0f1042e47f8708293ac",
+      "applied": "2026-11-04T03:04:22Z"
+    },
+    {
+      "chapter": "34-build.md",
+      "sentence": "unless an issue lane's conflict lies in declared generated files alone, or in no file when this checkout merges, when the lane enters its sync again",
+      "replacement": "unless an issue lane's conflict lies in declared generated files alone, or in no file when this checkout merges, when the lane enters its sync again, or, its head already holding the default branch, waits at exit 3 for the forge's verdict",
+      "evidence": "internal/core/implement/loop/sync.go:275-284 (a conflict in no file with the lane's head already holding the default branch is the forge's stale verdict: a contention, exit 3, and no sync)",
+      "commit": "06d7bc6449d921cae128d0f1042e47f8708293ac",
+      "applied": "2026-11-04T03:04:22Z"
+    },
+    {
+      "chapter": "34-build.md",
+      "sentence": "(iss-2610110908443341). Nothing is pushed to the lane after this step.",
+      "replacement": "(iss-2610110908443341). Nothing is pushed to the lane while it is armed: an issue lane's sync withdraws the arming first.",
+      "evidence": "internal/core/implement/loop/sync.go:285-305 (an issue lane's armed merge is withdrawn and the lane syncs, pushes and arms again); step 6 of the same list says the lane enters its sync again. The runtime note at internal/core/implement/loop/land.go:1003 and the refusal at land.go:564 carry the same claim.",
+      "commit": "06d7bc6449d921cae128d0f1042e47f8708293ac",
+      "applied": "2026-11-04T03:04:22Z"
+    },
+    {
+      "chapter": "34-build.md",
+      "sentence": "in no file when this checkout merges, enters its sync again instead.",
+      "replacement": "in no file when this checkout merges, enters its sync again instead, an armed merge withdrawn first. One whose head already holds the default branch keeps the exit-3 wait.",
+      "evidence": "internal/core/implement/loop/sync.go:275-284 (reached from landMerged at internal/core/implement/loop/land.go:1044-1049: a head already holding the default branch waits at exit 3, its arming untouched)",
+      "commit": "06d7bc6449d921cae128d0f1042e47f8708293ac",
+      "applied": "2026-11-04T03:04:22Z"
     }
   ]
 }
