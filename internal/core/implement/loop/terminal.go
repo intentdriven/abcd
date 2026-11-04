@@ -201,12 +201,12 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 		if res.Stopped != "" {
 			return t.ended(res.Stopped), nil
 		}
+		if res.Judged != nil {
+			t.outage.succeed()
+		}
 		if d, ok := moveWait(res, t.now()); ok {
 			t.sleep(ctx, d, res.Next)
 			continue
-		}
-		if res.Judged != nil {
-			t.outage.succeed()
 		}
 		if res.Judging != nil {
 			if t.failed(ctx, true, "the judge did not judge "+res.Judging.Issue) {
