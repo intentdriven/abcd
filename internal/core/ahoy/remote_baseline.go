@@ -601,13 +601,19 @@ func ghBranchRules(in auditInput, priv bool) (findings []Finding, checks []strin
 	}
 	findings = append(findings, protect(settingBranchDeletion, deletion), protect(settingBranchForcePush, forcePush))
 
+	var unread error
 	if in.ov.requiredSet {
 		checks = in.ov.requiredChecks
 	} else {
-		checks, notes = scaffold.RequiredChecks(in.root, branch, queue)
+		checks, notes, unread = scaffold.RequiredChecks(in.root, branch, queue)
 	}
 	apps, sourceNotes := ghCheckApps(in.root, in.repo, branch, checks)
 	f, pinNotes := requiredChecksFinding(checks, current, apps)
+	if unread != nil {
+		// A shorter list would read as the baseline, and every check it lacks as
+		// stale: an unread set is an unknown, which the apply never writes.
+		f.State, f.Target, f.Note = findingUnknown, "none proposed", unread.Error()
+	}
 	findings = append(findings, f)
 	notes = append(append(notes, sourceNotes...), pinNotes...)
 

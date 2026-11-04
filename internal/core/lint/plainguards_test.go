@@ -24,19 +24,22 @@ import (
 // them: they are what catches a quadratic blow-up in CI rather than only in a
 // local preflight.
 //
-// The ubuntu leg's plain pass no longer reruns ./internal/... (the race lane
-// runs every internal test, as on the macOS leg since iss-2610110938293273),
+// The check job's plain pass no longer reruns ./internal/... (the race lane
+// runs every internal test, as on macOS since iss-2610110938293273),
 // so these tests run by name in their own step. The list is derived, not kept:
 // this test reads every test file under internal/ and requires the step to name
 // exactly the tests that reach a plain-only assertion and exactly the packages
 // that hold them, so a guard added, renamed or removed fails here until the
 // step says so.
 
-// plainGuardSteps name the steps that run the plain-only guards, one per leg:
-// the ubuntu leg's runs ahead of its race lane, so a guard fails fast, and
-// the macOS leg's after its one race pass (iss-2610180542030806), so that
-// pass still starts the leg's testing. Each must name the derived list.
-var plainGuardSteps = []string{"Test (plain-only guards)", "Test (plain-only guards, macOS)"}
+// plainGuardSteps name the steps that run the plain-only guards, one per
+// operating system: the check job's runs ahead of its race lane, so a guard fails
+// fast, and the macOS suite's runs in its first shard after that shard's race pass
+// (iss-2610180542030806). Each must name the derived list.
+var plainGuardSteps = []struct{ job, step string }{
+	{"check", "Test (plain-only guards)"},
+	{macOSSuiteJob, "Test (plain-only guards, macOS)"},
+}
 
 // raceFlag is the build constant the guards read, declared per package in a
 // race_on_test.go and a race_off_test.go pair.
@@ -372,10 +375,10 @@ func TestExternal(t *testing.T) { assertGrowth(t) }
 	}
 }
 
-// TestEveryLegRunsEveryPlainOnlyGuard: each leg's plain-only guard step
-// names exactly the tests under internal/ that assert something only without
-// -race, and exactly the packages that hold them, so none of them leaves CI
-// where a leg's only pass over internal/ is race-enabled.
+// TestEveryLegRunsEveryPlainOnlyGuard: each operating system's plain-only guard
+// step names exactly the tests under internal/ that assert something only without
+// -race, and exactly the packages that hold them, so none of them leaves CI where
+// a runner's only pass over internal/ is race-enabled.
 func TestEveryLegRunsEveryPlainOnlyGuard(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
 	wantTests := map[string]bool{}
@@ -416,16 +419,17 @@ func TestEveryLegRunsEveryPlainOnlyGuard(t *testing.T) {
 		t.Fatalf("no plain-only guard found under internal/; the scan or the tree changed shape")
 	}
 
-	const where = ".github/workflows/ci.yml job check"
-	check, ok := workflowJobBlock(readRepoFile(t, root, ".github/workflows/ci.yml"), "check")
-	if !ok {
-		t.Fatalf("%s: no such job; the parser or the workflow changed shape", where)
-	}
-	for _, name := range plainGuardSteps {
-		step, ok := workflowStepBlock(check, name)
+	ci := readRepoFile(t, root, ".github/workflows/ci.yml")
+	for _, guard := range plainGuardSteps {
+		where, name := ".github/workflows/ci.yml job "+guard.job, guard.step
+		job, ok := workflowJobBlock(ci, guard.job)
+		if !ok {
+			t.Fatalf("%s: no such job; the parser or the workflow changed shape", where)
+		}
+		step, ok := workflowStepBlock(job, name)
 		if !ok {
 			t.Errorf("%s: no %q step; the tests that assert only without -race (%d of them) run on "+
-				"that leg in no pass that asserts them", where, name, len(wantTests))
+				"that operating system in no pass that asserts them", where, name, len(wantTests))
 			continue
 		}
 		cmd := oneGoTest(t, where+" step "+name, step)

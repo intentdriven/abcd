@@ -20,29 +20,32 @@ import (
 // a merge-group run on a slow runner crossed 600s with no test hung and ejected
 // an unrelated pull request from the queue. The lane's ceiling was the default
 // rather than a budget anyone had sized, so it is written down here, in four
-// places that must agree: the merge gate (ci.yml's race lane on ubuntu and its
-// one race-enabled pass on macOS), the release gate (release.yml's verify job)
+// places that must agree: the merge gate (ci.yml's race lane on ubuntu and the
+// race pass of its macOS shards), the release gate (release.yml's verify job)
 // and the local pre-push gate (make preflight).
 //
 // The enclosing ceilings are the other half, and they differ by job.
 //
-// ci.yml's check job is a required context, and on a merge-group run the merge
-// queue fails the group when a required check has not concluded within the
-// ruleset's check_response_timeout_minutes. That cap is the outer ceiling on
-// the event the lane was ejected on, and a job ceiling above it is unreachable
-// there: the queue gives up first, with no job failure to read. So no leg of
-// the check job may carry a timeout-minutes above the cap the ruleset mirror
-// records. Ruling Z (2026-09-28, the technical facilitator) raised the macOS
-// leg, and every other leg carries 45 since 2026-10-28 (dcn-2610280635092222),
-// after a first spell at 45 from 2026-10-17 (dcn-2610171803056931) and 30
-// between (iss-2610171803053186); the job declares that as one matrix
-// expression, which checkLegTimeouts reads leg by leg. The queue's cap is 90
-// minutes since 2026-10-11 and the macOS leg's is 85 since 2026-10-28, below
-// it, so on that leg the job's own ceiling is the binding one. The step's -timeout still earns its place under that cap: it lifts the
-// ten-minute per-package default, so a slow package fails on the job's clock
-// rather than at ten minutes. Raising the queue's cap is an admin act on the
-// live ruleset, left to the technical facilitator; this test reads the mirror,
-// so a job ceiling can rise only after the mirror records the raise.
+// ci.yml's check and check-macos jobs report required contexts, and on a
+// merge-group run the merge queue fails the group when a required check has not
+// concluded within the ruleset's check_response_timeout_minutes. That cap is the
+// outer ceiling on the event the lane was ejected on, and a job ceiling above it
+// is unreachable there: the queue gives up first, with no job failure to read.
+// So the check job may not carry a timeout-minutes above the cap the ruleset
+// mirror records, and it carries 45 since 2026-10-28 (dcn-2610280635092222),
+// after a first spell at 45 from 2026-10-17 (dcn-2610171803056931) and 30 between
+// (iss-2610171803053186).
+//
+// The macOS context reports only after its shards end, so its budget is a sum
+// the queue's clock runs over whole: the wait for a macOS runner, a shard's
+// ceiling, and the aggregator's. A job's timeout-minutes starts when a runner
+// takes it, so it says nothing about the wait; the shards' ceiling is therefore
+// held low enough to leave macOSRunnerWait of the queue's cap for it. The queue's
+// cap is 90 minutes since 2026-10-11. Raising it is an admin act on the live
+// ruleset, left to the technical facilitator; this test reads the mirror, so a job
+// ceiling can rise only after the mirror records the raise. The step's -timeout
+// still earns its place under that cap: it lifts the ten-minute per-package
+// default, so a slow package fails on the job's clock rather than at ten minutes.
 //
 // release.yml's verify job is not a merge-queue job, so its own timeout-minutes
 // is its ceiling. A package timeout that reaches past it never fires: the
@@ -57,9 +60,9 @@ import (
 // with few cores, so the slowest packages are named ahead of the pattern and
 // start first instead of last (iss-2609281715083637). The order may change; the
 // set may not: go list must resolve the command's packages to exactly the ones
-// ./internal/... matches. The macOS pass is the one exception, by design
-// (iss-2610110938293273): it is that leg's only pass over the module, so the same
-// slowest-first list ends in ./... and resolves to the whole module.
+// ./internal/... matches. A macOS shard is the one exception, by design: it
+// tests what cmd/ci-shard assigns it, heaviest first, and the shards together
+// are the whole module (TestMacOSSuiteShardsCoverTheModule).
 func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
 
@@ -103,37 +106,50 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 		return block, pkg, ok
 	}
 
+	queue := mergeQueueResponseTimeout(t, root)
 	if check, _, ok := raceJob(".github/workflows/ci.yml", "check"); ok {
 		const where = ".github/workflows/ci.yml job check"
-		// The macOS leg's one pass: the same slowest-first list, ending in the
-		// whole module rather than ./internal/....
-		whole := append(slices.Clone(localPkgs[:len(localPkgs)-1]), modulePattern)
-		if _, ok := raceStep(where, check, macOSRaceStep, whole); ok {
-			step, _ := workflowStepBlock(check, macOSRaceStep)
-			sameRacePackageSet(t, root, where+" step "+macOSRaceStep, racePackages(t, where, step), modulePattern)
+		capMin := jobTimeoutMinutes(t, where, check)
+		if capMin > queue {
+			t.Errorf("%s: timeout-minutes is %s, above the merge queue's %s check response timeout in "+
+				"%s; on a merge-group run the queue fails the group first, so the job ceiling is "+
+				"unreachable there and any budget sized against it is false. Raise the live "+
+				"ruleset's cap (an admin act) before the job's", where, capMin, queue, rulesetMirror)
+		}
+		// It carries 45 since 2026-10-28 (dcn-2610280635092222).
+		if capMin != checkUbuntuCeilingMinutes*time.Minute {
+			t.Errorf("%s: timeout-minutes is %s; want %dm, the ubuntu job's ceiling", where, capMin, checkUbuntuCeilingMinutes)
+		}
+	}
+
+	ci := readRepoFile(t, root, ".github/workflows/ci.yml")
+	where := ".github/workflows/ci.yml job " + macOSSuiteJob
+	if suite, ok := workflowJobBlock(ci, macOSSuiteJob); !ok {
+		t.Errorf("%s: no such job; the parser or the workflow changed shape", where)
+	} else {
+		// A shard's race pass: the local gate's budget, over what cmd/ci-shard
+		// assigns it, and nothing but that.
+		if _, ok := raceStep(where, suite, macOSRaceStep, []string{macOSShardPackages}); ok {
+			step, _ := workflowStepBlock(suite, macOSRaceStep)
 			if !regexp.MustCompile(`(?m)^\s+ABCD_TEST_SKIP_FLUSH: "1"\s*$`).MatchString(step) {
 				t.Errorf("%s step %q does not set ABCD_TEST_SKIP_FLUSH; every synced write on the "+
 					"macOS runner is then an F_FULLFSYNC no test asserts anything about", where, macOSRaceStep)
 			}
 		}
-		queue := mergeQueueResponseTimeout(t, root)
-		for _, leg := range checkLegTimeouts(t, where, check) {
-			if leg.minutes > queue {
-				t.Errorf("%s: the %s leg's timeout-minutes is %s, above the merge queue's %s check "+
-					"response timeout in %s; on a merge-group run the queue fails the group first, "+
-					"so the job ceiling is unreachable there and any budget sized against it is "+
-					"false. Raise the live ruleset's cap (an admin act) before the job's",
-					where, leg.os, leg.minutes, queue, rulesetMirror)
-			}
-			if leg.os == "macos-latest" && leg.minutes != checkMacOSCeilingMinutes*time.Minute {
-				t.Errorf("%s: the macos-latest leg's timeout-minutes is %s; want %dm, the ceiling "+
-					"set on 2026-10-28 (dcn-2610282036219503)", where, leg.minutes, checkMacOSCeilingMinutes)
-			}
-			// Ruling Z raised the macOS leg; every other leg carries 45 since
-			// 2026-10-28 (dcn-2610280635092222).
-			if leg.os != "macos-latest" && leg.minutes != checkUbuntuCeilingMinutes*time.Minute {
-				t.Errorf("%s: the %s leg's timeout-minutes is %s; want %dm, the ceiling "+
-					"of every leg but macOS", where, leg.os, leg.minutes, checkUbuntuCeilingMinutes)
+		// The whole of the macOS context's time inside the queue's cap, with a
+		// declared allowance for the wait no job's timeout-minutes counts.
+		suiteCap := jobTimeoutMinutes(t, where, suite)
+		if suiteCap != checkMacOSCeilingMinutes*time.Minute {
+			t.Errorf("%s: timeout-minutes is %s; want %dm", where, suiteCap, checkMacOSCeilingMinutes)
+		}
+		if aggregator, ok := workflowJobBlock(ci, macOSCheckJob); !ok {
+			t.Errorf(".github/workflows/ci.yml job %s: no such job", macOSCheckJob)
+		} else {
+			aggCap := jobTimeoutMinutes(t, ".github/workflows/ci.yml job "+macOSCheckJob, aggregator)
+			if sum := macOSRunnerWait + suiteCap + aggCap; sum > queue {
+				t.Errorf("%s: a %s wait for a macOS runner, the shards' %s ceiling and the aggregator's %s "+
+					"come to %s, past the merge queue's %s cap in %s; `check (macos-latest)` reports only "+
+					"after all of them", where, macOSRunnerWait, suiteCap, aggCap, sum, queue, rulesetMirror)
 			}
 		}
 	}
@@ -154,18 +170,23 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 	}
 }
 
-// checkMacOSCeilingMinutes is the macOS leg's timeout-minutes in ci.yml's check
-// job: 45 under ruling Z (2026-09-28); 60 from 2026-10-15, when merge-queue
-// macOS runs had grown from 31-35 to 34-40 minutes; 70 from 2026-10-18, when
-// ten merge-group runs took 35.1 to 49.3 minutes on a leg whose race pass keeps
-// its three test slots full (dcn-2610181756328249); 85 since 2026-10-28, when
-// passing merge-group runs took 46 to 68 minutes and run 40752008734 was
-// cancelled at the cap after 71 (dcn-2610282036219503). It stays below the merge
-// queue's check response timeout, which the budget test reads from the mirror.
-const checkMacOSCeilingMinutes = 85
+// checkMacOSCeilingMinutes is the timeout-minutes of each shard of ci.yml's
+// macOS suite. The suite ran as one job until 2026-11-04, whose ceiling rose from
+// 45 to 85 as its runs grew (dcn-2610181756328249, dcn-2610282036219503) and which
+// still reached that ceiling on slow runners (iss-2610181757540736). A third of
+// the slowest passing run is about 30 minutes, so 50 is half as much again.
+const checkMacOSCeilingMinutes = 50
 
-// checkUbuntuCeilingMinutes is the check job's ceiling on every leg but
-// macOS: 30 under ruling Z; 45 from 2026-10-17, when the drain bundle
+// macOSRunnerWait is the part of the merge queue's cap left for the wait for a
+// macOS runner, which no job's timeout-minutes counts: a shard that waited this
+// long can still run to the end of its ceiling and report inside the cap. Three
+// shards over the queue's four building entries ask for twelve of five runners, so
+// a shard can wait longer than this, on runners that are finishing well inside
+// their ceiling; that sum is on the macos-suite job in ci.yml.
+const macOSRunnerWait = 35 * time.Minute
+
+// checkUbuntuCeilingMinutes is the check job's ceiling on the ubuntu runner: 30
+// under ruling Z; 45 from 2026-10-17, when the drain bundle
 // (spc-2610161044461448) grew the loop package's race run past 30
 // (dcn-2610171803056931); 30 when the plain pass stopped rerunning the race
 // lane's tests (iss-2610171803053186); 45 again since 2026-10-28, when
@@ -173,195 +194,128 @@ const checkMacOSCeilingMinutes = 85
 // its race tests passed (dcn-2610280635092222).
 const checkUbuntuCeilingMinutes = 45
 
-// checkWarnLeadMinutes is how far ahead of each leg's ceiling the warning step
-// fires: ruling Z's cancel policy (2026-09-28) set the line ten minutes under
+// checkWarnLeadMinutes is how far ahead of each test job's ceiling the warning
+// step fires: ruling Z's cancel policy (2026-09-28) set the line ten minutes under
 // the cap, so a speed lane opens before anything is cancelled.
 const checkWarnLeadMinutes = 10
 
-// checkWarnStep is the name of that warning step in the check job.
+// checkWarnStep is the name of that warning step in each test job.
 const checkWarnStep = "Warn when the check nears the queue's cap"
 
 // checkClockStep is the step that records the job's start for the warning.
 const checkClockStep = "Record the job's start"
 
-// Each leg warns before its cap cancels it (ruling Z's cancel policy,
-// 2026-09-28). A cancellation at the cap carries nothing but the
-// cancellation, and the rule for it is rerun once, then stop that pull request
-// and open a speed lane; the warning moves that signal ahead of the first
-// cancellation. It is a warning and nothing else: it may not fail the job, it
-// runs however the steps before it ended, and each leg's threshold sits below
-// that leg's ceiling, or it could never fire before the cancellation it
-// announces.
+// Each test job warns before its cap cancels it (ruling Z's cancel policy,
+// 2026-09-28). A cancellation at the cap carries nothing but the cancellation,
+// and the rule for it is rerun once, then stop that pull request and open a speed
+// lane; the warning moves that signal ahead of the first cancellation. It is a
+// warning and nothing else: it may not fail the job, it runs however the steps
+// before it ended, and each job's threshold sits below that job's ceiling, or it
+// could never fire before the cancellation it announces. The jobs carry one
+// script, so what the warning says cannot differ between them.
 func TestCheckJobWarnsBeforeTheQueueCap(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
-	const where = ".github/workflows/ci.yml job check"
-	job, ok := workflowJobBlock(readRepoFile(t, root, ".github/workflows/ci.yml"), "check")
-	if !ok {
-		t.Fatalf("%s: no such job; the parser or the workflow changed shape", where)
-	}
-	step, ok := workflowStepBlock(job, checkWarnStep)
-	if !ok {
-		t.Fatalf("%s: no %q step; a leg would reach its cap with no warning ahead of the "+
-			"cancellation", where, checkWarnStep)
-	}
-
-	legs := checkLegTimeouts(t, where, job)
-	var oses []string
-	for _, leg := range legs {
-		oses = append(oses, leg.os)
-	}
-	// stepEnv reads one of the step's env values per leg: a number every leg
-	// shares, or the matrix expression the job's timeout-minutes uses.
-	stepEnv := func(key string) (map[string]int, bool) {
-		m := regexp.MustCompile(`(?m)^\s+` + key + `: (.+?)\s*$`).FindStringSubmatch(step)
-		if m == nil {
-			return nil, false
-		}
-		return legValues(t, where+" step "+checkWarnStep, key, m[1], oses), true
-	}
-	warns, ok := stepEnv("WARN_AFTER_MINUTES")
-	if !ok {
-		t.Fatalf("%s step %q: no WARN_AFTER_MINUTES in its env", where, checkWarnStep)
-	}
-	// The cap the message names comes from the step's own env, held to each
-	// leg's ceiling here, so the message cannot name a cap the job no longer
-	// has (dcn-2610181756328249).
-	ceilings, ok := stepEnv("CEILING_MINUTES")
-	if !ok {
-		t.Errorf("%s step %q: no CEILING_MINUTES in its env; the message would name the cap from a "+
-			"number no test holds to the leg's ceiling", where, checkWarnStep)
-	}
+	ci := readRepoFile(t, root, ".github/workflows/ci.yml")
 	queue := mergeQueueResponseTimeout(t, root)
 	lead := time.Duration(checkWarnLeadMinutes) * time.Minute
-	for _, leg := range legs {
-		warnAfter := time.Duration(warns[leg.os]) * time.Minute
-		if leg.minutes-warnAfter != lead {
-			t.Errorf("%s step %q warns the %s leg after %s, %s before its %s ceiling; "+
-				"the cancel policy of ruling Z puts the line %s before it", where, checkWarnStep,
-				leg.os, warnAfter, leg.minutes-warnAfter, leg.minutes, lead)
+	var script string
+	for _, jobName := range ciTestJobs {
+		where := ".github/workflows/ci.yml job " + jobName
+		job, ok := workflowJobBlock(ci, jobName)
+		if !ok {
+			t.Fatalf("%s: no such job; the parser or the workflow changed shape", where)
+		}
+		step, ok := workflowStepBlock(job, checkWarnStep)
+		if !ok {
+			t.Fatalf("%s: no %q step; it would reach its cap with no warning ahead of the "+
+				"cancellation", where, checkWarnStep)
+		}
+		ceiling := jobTimeoutMinutes(t, where, job)
+		stepEnv := func(key string) (time.Duration, bool) {
+			m := regexp.MustCompile(`(?m)^\s+` + key + `: (\d+)\s*$`).FindStringSubmatch(step)
+			if m == nil {
+				return 0, false
+			}
+			n, err := strconv.Atoi(m[1])
+			if err != nil {
+				t.Fatalf("%s step %q: %s %q: %v", where, checkWarnStep, key, m[1], err)
+			}
+			return time.Duration(n) * time.Minute, true
+		}
+		warnAfter, ok := stepEnv("WARN_AFTER_MINUTES")
+		if !ok {
+			t.Fatalf("%s step %q: no WARN_AFTER_MINUTES of whole minutes in its env", where, checkWarnStep)
+		}
+		if ceiling-warnAfter != lead {
+			t.Errorf("%s step %q warns after %s, %s before the job's %s ceiling; the cancel policy of "+
+				"ruling Z puts the line %s before it", where, checkWarnStep, warnAfter, ceiling-warnAfter, ceiling, lead)
 		}
 		if warnAfter >= queue {
-			t.Errorf("%s step %q warns the %s leg after %s, not below the merge queue's %s cap in %s",
-				where, checkWarnStep, leg.os, warnAfter, queue, rulesetMirror)
+			t.Errorf("%s step %q warns after %s, not below the merge queue's %s cap in %s",
+				where, checkWarnStep, warnAfter, queue, rulesetMirror)
 		}
-		if ceilings != nil && time.Duration(ceilings[leg.os])*time.Minute != leg.minutes {
-			t.Errorf("%s step %q: CEILING_MINUTES is %dm on the %s leg; want %s, that leg's ceiling",
-				where, checkWarnStep, ceilings[leg.os], leg.os, leg.minutes)
+		// The cap the message names comes from the step's own env, held to the
+		// job's ceiling here, so the message cannot name a cap the job no longer
+		// has (dcn-2610181756328249).
+		if named, ok := stepEnv("CEILING_MINUTES"); !ok {
+			t.Errorf("%s step %q: no CEILING_MINUTES in its env; the message would name the cap from a "+
+				"number no test holds to the job's ceiling", where, checkWarnStep)
+		} else if named != ceiling {
+			t.Errorf("%s step %q: CEILING_MINUTES is %s; want %s, the job's ceiling", where, checkWarnStep, named, ceiling)
 		}
-	}
 
-	// Every leg warns; the macOS leg only off a pull request, where it runs
-	// nothing but its stand-in.
-	const wantIf = "always() && (matrix.os != 'macos-latest' || github.event_name != 'pull_request')"
-	ifLine := regexp.MustCompile(`(?m)^\s+if: (.*)$`).FindStringSubmatch(step)
-	if ifLine == nil || strings.TrimSpace(ifLine[1]) != wantIf {
-		t.Errorf("%s step %q: want `if: %s`, so it runs on every leg however the steps before "+
-			"it ended", where, checkWarnStep, wantIf)
-	}
-	// The warning reads its clock from the step that records the job's start,
-	// so that step runs on every leg the warning does; on a leg it skips, the
-	// warning has no start time and stays silent.
-	const wantClockIf = "matrix.os != 'macos-latest' || github.event_name != 'pull_request'"
-	if clock, ok := workflowStepBlock(job, checkClockStep); !ok {
-		t.Errorf("%s: no %q step; the warning has no clock", where, checkClockStep)
-	} else if m := regexp.MustCompile(`(?m)^\s+if: (.*)$`).FindStringSubmatch(clock); m == nil || strings.TrimSpace(m[1]) != wantClockIf {
-		t.Errorf("%s step %q: want `if: %s`, the legs the warning runs on; on any other leg the "+
-			"warning finds no start time and never fires", where, checkClockStep, wantClockIf)
-	}
-	if !regexp.MustCompile(`(?m)^\s+LEG: \$\{\{ matrix\.os \}\}\s*$`).MatchString(step) {
-		t.Errorf("%s step %q: want `LEG: ${{ matrix.os }}` in its env, so the warning names the leg "+
-			"it ran on", where, checkWarnStep)
-	}
-	if !regexp.MustCompile(`(?m)^\s+continue-on-error: true\s*$`).MatchString(step) {
-		t.Errorf("%s step %q: want `continue-on-error: true`; a warning may never fail the job", where, checkWarnStep)
-	}
-	at := strings.Index(step, "run:")
-	if at < 0 {
-		t.Fatalf("%s step %q has no run: script", where, checkWarnStep)
-	}
-	run := step[at:]
-	if !strings.Contains(run, "${CEILING_MINUTES}-minute cap") {
-		t.Errorf("%s step %q: its script does not name the cap as ${CEILING_MINUTES}-minute cap; a "+
-			"cap written any other way can drift from the ceiling", where, checkWarnStep)
-	}
-	if strings.Contains(run, "macos-latest") || strings.Contains(run, "ubuntu-latest") {
-		t.Errorf("%s step %q: its script names a leg; it names ${LEG}, the leg it ran on", where, checkWarnStep)
-	}
-	for _, want := range []string{"::warning", "GITHUB_STEP_SUMMARY", "rerun", "speed lane", "${LEG}"} {
-		if !strings.Contains(run, want) {
-			t.Errorf("%s step %q: its script never mentions %q; the warning names the rerun-once "+
-				"rule and the speed lane, in the log and the step summary", where, checkWarnStep, want)
+		// It runs however the steps before it ended, on every event the job runs on.
+		if ifLine := regexp.MustCompile(`(?m)^\s+if: (.*)$`).FindStringSubmatch(step); ifLine == nil || strings.TrimSpace(ifLine[1]) != "always()" {
+			t.Errorf("%s step %q: want `if: always()`, so it runs however the steps before it ended", where, checkWarnStep)
 		}
-	}
-	if strings.Contains(run, "${{") {
-		t.Errorf("%s step %q interpolates an expression inside run:; pass values through env", where, checkWarnStep)
+		// The warning reads its clock from the step that records the job's start,
+		// so that step runs wherever the warning does: on a skip the warning has
+		// no start time and stays silent.
+		if clock, ok := workflowStepBlock(job, checkClockStep); !ok {
+			t.Errorf("%s: no %q step; the warning has no clock", where, checkClockStep)
+		} else if m := regexp.MustCompile(`(?m)^\s+if: (.*)$`).FindStringSubmatch(clock); m != nil {
+			t.Errorf("%s step %q carries `if: %s`; the warning runs on every event the job does, so the "+
+				"clock must too, or the warning finds no start time and never fires", where, checkClockStep, m[1])
+		}
+		if !regexp.MustCompile(`(?m)^\s+continue-on-error: true\s*$`).MatchString(step) {
+			t.Errorf("%s step %q: want `continue-on-error: true`; a warning may never fail the job", where, checkWarnStep)
+		}
+		// Its own script, without the comments that follow it in the file.
+		run := ""
+		for _, s := range jobSteps(job) {
+			if s.label == checkWarnStep {
+				run = s.script()
+			}
+		}
+		if run == "" {
+			t.Fatalf("%s step %q has no run: script", where, checkWarnStep)
+		}
+		if !strings.Contains(run, "${CEILING_MINUTES}-minute cap") {
+			t.Errorf("%s step %q: its script does not name the cap as ${CEILING_MINUTES}-minute cap; a "+
+				"cap written any other way can drift from the ceiling", where, checkWarnStep)
+		}
+		if strings.Contains(run, "macos") || strings.Contains(run, "ubuntu") {
+			t.Errorf("%s step %q: its script names a job; it names ${%s}, the job it ran in", where, checkWarnStep, watchdogLegVar)
+		}
+		for _, want := range []string{"::warning", "GITHUB_STEP_SUMMARY", "rerun", "speed lane", "${" + watchdogLegVar + "}"} {
+			if !strings.Contains(run, want) {
+				t.Errorf("%s step %q: its script never mentions %q; the warning names the rerun-once "+
+					"rule and the speed lane, in the log and the step summary", where, checkWarnStep, want)
+			}
+		}
+		if strings.Contains(run, "${{") {
+			t.Errorf("%s step %q interpolates an expression inside run:; pass values through env", where, checkWarnStep)
+		}
+		if script == "" {
+			script = run
+		} else if run != script {
+			t.Errorf("%s step %q: its script differs from the other test job's; the jobs carry one warning", where, checkWarnStep)
+		}
 	}
 }
 
-// checkLeg is one matrix leg's job ceiling.
-type checkLeg struct {
-	os      string
-	minutes time.Duration
-}
-
-// checkLegTimeouts reads the check job's `timeout-minutes:` per matrix leg. The
-// value is a plain number, which every leg shares, or the one expression
-// `${{ matrix.os == '<os>' && <n> || <m> }}`, which gives <os> its own ceiling
-// and every other leg <m>. Legs come from the job's `os: [...]` matrix line.
-func checkLegTimeouts(t *testing.T, where, job string) []checkLeg {
-	t.Helper()
-	osLine := regexp.MustCompile(`(?m)^\s+os: \[([^\]]*)\]\s*$`).FindStringSubmatch(job)
-	if osLine == nil {
-		t.Fatalf("%s: no `os: [...]` matrix line", where)
-	}
-	var oses []string
-	for _, name := range strings.Split(osLine[1], ",") {
-		oses = append(oses, strings.TrimSpace(name))
-	}
-	m := regexp.MustCompile(`(?m)^    timeout-minutes: (.+?)\s*$`).FindStringSubmatch(job)
-	if m == nil {
-		t.Fatalf("%s: no job-level timeout-minutes", where)
-	}
-	vals := legValues(t, where, "timeout-minutes", m[1], oses)
-	var legs []checkLeg
-	for _, os := range oses {
-		legs = append(legs, checkLeg{os: os, minutes: time.Duration(vals[os]) * time.Minute})
-	}
-	return legs
-}
-
-// legValues reads raw, a workflow value given per matrix leg, for each of
-// oses: a plain number every leg shares, or the one expression
-// `${{ matrix.os == '<os>' && <n> || <m> }}`, which gives <os> its own value
-// and every other leg <m>.
-func legValues(t *testing.T, where, what, raw string, oses []string) map[string]int {
-	t.Helper()
-	raw = strings.Trim(raw, `"`)
-	vals := make(map[string]int, len(oses))
-	if n, err := strconv.Atoi(raw); err == nil {
-		for _, os := range oses {
-			vals[os] = n
-		}
-		return vals
-	}
-	m := regexp.MustCompile(`^\$\{\{ matrix\.os == '([a-z0-9.-]+)' && (\d+) \|\| (\d+) \}\}$`).FindStringSubmatch(raw)
-	if m == nil {
-		t.Fatalf("%s: %s is %q, neither a number nor `${{ matrix.os == '<os>' && <n> || <m> }}`", where, what, raw)
-	}
-	if !slices.Contains(oses, m[1]) {
-		t.Fatalf("%s: %s names %q, which is not a leg of the matrix", where, what, m[1])
-	}
-	named, _ := strconv.Atoi(m[2])
-	other, _ := strconv.Atoi(m[3])
-	for _, os := range oses {
-		if os == m[1] {
-			vals[os] = named
-		} else {
-			vals[os] = other
-		}
-	}
-	return vals
-}
+// ciTestJobs are the jobs of ci.yml that run go test.
+var ciTestJobs = []string{"check", macOSSuiteJob}
 
 // rulesetMirror is the tree's record of the live branch ruleset on main.
 const rulesetMirror = ".abcd/work/rulesets/main-protection.json"
@@ -440,12 +394,22 @@ func racePackages(t *testing.T, where, text string) []string {
 // with few cores, but it may neither add nor drop one.
 const raceLanePattern = "./internal/..."
 
-// modulePattern is the package set of the macOS leg's one race-enabled pass:
-// the whole module, since it is that leg's only pass over the module.
+// modulePattern is the whole module: what the check job's plain pass runs on an
+// inert change, and what the macOS suite's shards add up to.
 const modulePattern = "./..."
 
-// macOSRaceStep names that pass in ci.yml's check job.
-const macOSRaceStep = "Test (race, whole module)"
+// The jobs and step of ci.yml's macOS suite.
+const (
+	// macOSSuiteJob runs the suite, one matrix leg per shard.
+	macOSSuiteJob = "macos-suite"
+	// macOSCheckJob reports `check (macos-latest)` from the shards' result.
+	macOSCheckJob = "check-macos"
+	// macOSRaceStep is a shard's race pass.
+	macOSRaceStep = "Test (race, this shard)"
+	// macOSShardPackages is the word the race pass names its packages by, which
+	// the step assigns from cmd/ci-shard.
+	macOSShardPackages = "$pkgs"
+)
 
 // sameRacePackageSet holds a race pass's packages to exactly the ones pattern
 // matches, as go list resolves both: the slowest-first order
@@ -531,12 +495,12 @@ func jobTimeoutMinutes(t *testing.T, where, job string) time.Duration {
 	return time.Duration(n) * time.Minute
 }
 
-// outsideInternalPattern is the plain pass the ubuntu leg runs beside its race
+// outsideInternalPattern is the plain pass the check job runs beside its race
 // lane: every package ./... matches that ./internal/... does not.
 const outsideInternalPattern = "./cmd/..."
 
 // TestTheOutsideInternalStepRunsWhatTheRaceLaneDoesNot: where the race lane
-// runs, the ubuntu leg's plain pass covers only the packages it does not
+// runs, the check job's plain pass covers only the packages it does not
 // (iss-2610171803053186), and exactly those: go list resolves the step's
 // pattern to the module's packages less the race lane's.
 func TestTheOutsideInternalStepRunsWhatTheRaceLaneDoesNot(t *testing.T) {
@@ -576,8 +540,8 @@ func TestTheOutsideInternalStepRunsWhatTheRaceLaneDoesNot(t *testing.T) {
 	}
 }
 
-// TestPlainTestStepRunsTheWholeModule: the ubuntu leg's plain pass on an inert
-// change, where the race lane stands down and it is the leg's only test pass,
+// TestPlainTestStepRunsTheWholeModule: the check job's plain pass on an inert
+// change, where the race lane stands down and it is the job's only test pass,
 // names its slowest packages ahead of ./..., so they start with the step
 // instead of behind every faster package (a speed lane under the cancel policy
 // of 2026-09-28), and it still runs exactly the module: ./... last, no package

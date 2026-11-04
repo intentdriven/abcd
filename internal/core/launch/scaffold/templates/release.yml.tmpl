@@ -184,7 +184,12 @@ jobs:
 <%- range .CIChecks %>
   #   - <% . %>
 <%- else %>
+<%- if not .UnreadWorkflows %>
   #   (none found: no pull-request CI workflow existed; see the runbook)
+<%- end %>
+<%- end %>
+<%- range .UnreadWorkflows %>
+  #   (could not read <% . %>, so any check it reports is not here; see the runbook)
 <%- end %>
 <%- end %>
   verify:

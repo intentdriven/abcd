@@ -19,8 +19,10 @@ import (
 // same holds for -json, -cover, -shuffle and every other flag testshard does
 // not repeat, so the race steps' go test may carry -race and -timeout alone:
 // another flag would run each package as one process with the count still set.
-// The ubuntu leg's plain pass on an inert change, its only test pass there,
-// shards the same way: as one process internal/core/implement/loop crossed go
+// A macOS shard's race pass carries the count like the rest: splitting the suite
+// across runners does not make a package shorter on the runner it lands on. The
+// check job's plain pass on an inert change, its only test pass there, shards the
+// same way: as one process internal/core/implement/loop crossed go
 // test's ten-minute default with no test hung (iss-2610302058222905).
 func TestCIRacePassesShardLikePreflight(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
@@ -33,7 +35,7 @@ func TestCIRacePassesShardLikePreflight(t *testing.T) {
 	want := `ABCD_TEST_SHARDS: "` + m[1] + `"`
 
 	ci := readRepoFile(t, root, filepath.Join(".github", "workflows", "ci.yml"))
-	for _, name := range []string{"Test (race, internal)", "Test (race, whole module)", "Test"} {
+	for _, name := range []string{"Test (race, internal)", macOSRaceStep, "Test"} {
 		step, ok := workflowStepBlock(ci, name)
 		if !ok {
 			t.Errorf("ci.yml has no `%s` step", name)
@@ -42,7 +44,7 @@ func TestCIRacePassesShardLikePreflight(t *testing.T) {
 		if !strings.Contains(step, "\n          "+want+"\n") {
 			t.Errorf("ci.yml's `%s` step does not set %s in its env, the count preflight runs with:\n%s", name, want, step)
 		}
-		run := regexp.MustCompile(`(?m)^\s+run: go test (.*)$`).FindStringSubmatch(step)
+		run := regexp.MustCompile(`(?m)^\s+(?:run: )?go test (.*)$`).FindStringSubmatch(step)
 		if run == nil {
 			t.Errorf("ci.yml's `%s` step runs no `go test` line", name)
 			continue

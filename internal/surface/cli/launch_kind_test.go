@@ -1,11 +1,13 @@
 package cli
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/launch/scaffold"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -156,5 +158,21 @@ func TestLaunchScaffoldHeaderNamesNoGoToolchainWithoutGoMod(t *testing.T) {
 	header, _, _ := strings.Cut(string(out), "\n")
 	if !strings.Contains(header, "kind binary, branch ") || strings.Contains(header, "go ") {
 		t.Errorf("the scaffold header for a repository with no go.mod: %q, want the kind and branch and no go toolchain", header)
+	}
+}
+
+// TestLaunchScaffoldNamesAWorkflowItCouldNotRead: the summary names a file the
+// scaffold could not read, and does not say no CI was found, since it cannot know.
+func TestLaunchScaffoldNamesAWorkflowItCouldNotRead(t *testing.T) {
+	var out bytes.Buffer
+	renderScaffold(&out, scaffold.Report{UnreadWorkflows: []string{"broken.yml"}}, false)
+	if got := out.String(); !strings.Contains(got, "could not read broken.yml") ||
+		strings.Contains(got, "no pull-request CI workflow found") {
+		t.Errorf("the summary should name the file and claim nothing about CI:\n%s", got)
+	}
+	out.Reset()
+	renderScaffold(&out, scaffold.Report{}, false)
+	if got := out.String(); !strings.Contains(got, "no pull-request CI workflow found") || strings.Contains(got, "could not read") {
+		t.Errorf("with nothing unread the summary should say no CI was found:\n%s", got)
 	}
 }

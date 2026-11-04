@@ -442,6 +442,41 @@ func TestRemoteAuditRequiresTheConfiguredChecks(t *testing.T) {
 	}
 }
 
+// TestRemoteAuditProposesNoChecksFromAWorkflowItCannotRead: a workflow file that
+// does not parse could be hiding any number of checks, so the required checks read
+// as unknown, naming the file, with none proposed, and the apply writes none. A
+// repository's own github.required_checks needs no reading and stands.
+func TestRemoteAuditProposesNoChecksFromAWorkflowItCannotRead(t *testing.T) {
+	setupHermetic(t)
+	const broken = "on: pull_request\njobs:\n  a:\n\t\truns-on: x\n"
+	routes := dessauRoutes()
+	routes["GET repos/"+auditRepo+"/contents/.github/workflows?ref=main"] = workflowsRoute(map[string]string{"ci.yml": dessauWorkflow, "broken.yml": broken})
+	ghRoutedFake(t, routes)
+	repo := dessauRepo(t)
+	writeTreeFile(t, repo, ".github/workflows/broken.yml", broken)
+
+	res, err := RemoteRead(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := findingsBySetting(t, res)["required_status_checks"]
+	if f.State != "unknown" || !strings.Contains(f.Note, "broken.yml") || !strings.Contains(f.Note, "github.required_checks") {
+		t.Errorf("required_status_checks %+v, want unknown, naming the file and the way out", f)
+	}
+	if len(res.Audit.RequiredChecks) != 0 {
+		t.Errorf("required checks %q; a read that was refused proposes none", res.Audit.RequiredChecks)
+	}
+
+	setConfigValue(t, repo, "github", "required_checks", []any{"check", "gitleaks", "zizmor"})
+	res, err = RemoteRead(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := findingsBySetting(t, res)["required_status_checks"]; f.State != "ok" {
+		t.Errorf("required_status_checks %+v, want ok once the config names the checks", f)
+	}
+}
+
 // TestRemoteAuditOffersSHAPinningOnlyWhenEveryActionIsPinned: with every
 // `uses:` pinned to a commit, requiring SHA pinning breaks nothing, so it is a
 // difference the apply may make.

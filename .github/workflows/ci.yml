@@ -11,10 +11,11 @@ name: ci
 # databases) and saves its Go build cache (see the check job). The check job
 # builds, vets and tests on Linux on every event, with race-enabled internal
 # tests and the `make fmt-check` format gate, record-lint, the issue-drift check,
-# docs-lint and the site-render gate on that leg. The macOS leg runs the suite
-# on every event but a pull request: in the merge queue it tests exactly the
-# tree that lands, and on a pull request it reports its required context
-# without taking a macOS runner (see the check job). Separate jobs run full-history
+# docs-lint and the site-render gate in that job. The macOS suite runs as shard
+# jobs on every event but a pull request: in the merge queue it tests exactly the
+# tree that lands, and on a pull request its required context reports from an
+# ubuntu runner without taking a macOS one (see macos-suite and check-macos).
+# Separate jobs run full-history
 # secret scanning, a workflow audit, the reviews-charter and issue-resolution
 # gates (RS001-RS003), dependency review, govulncheck, the smoke harness, the
 # cold-reading evals, and the work-in-progress guard.
@@ -36,8 +37,8 @@ name: ci
 # What an inert change skips is the lanes that only a source change can move:
 # the race lane, the smoke harness, and the workflow audit (anything under
 # .github/ is not inert, so the audit still runs on every change it could be
-# auditing). The macOS leg runs no suite on any pull request, inert or not, so
-# the classifier has nothing to stand down there.
+# auditing). The macOS suite runs on no pull request, inert or not, so the
+# classifier has nothing to stand down there.
 #
 # What it does not skip, besides the ubuntu unit lane, is the cold-reading evals.
 # Their subject is the allowlist itself — the record and the docs are the material
@@ -104,6 +105,11 @@ concurrency:
 
 permissions:
   contents: read
+
+# The margin the job clock's watchdog leaves before a test job's cap
+# (cmd/ci-watchdog; see the check job), declared once for both jobs that run it.
+env:
+  ABCD_CI_WATCHDOG_MARGIN_MINUTES: 5
 
 jobs:
   # Classify the diff so the duplicated lanes can stand down on a change that
@@ -235,28 +241,10 @@ jobs:
           echo "verdict: inert=${inert}"
           printf '%s\n' "$reason" | sed 's/^/  /'
 
-  # Build + vet + test on both host OSes. Race-enabled unit tests catch data
-  # races the plain `go test` would miss. On an inert change the race lane
-  # stands down, while the ubuntu leg builds, vets, tests and runs the record
-  # gates as usual.
-  #
-  # The macOS leg is the scarcest runner this account has (five jobs at once)
-  # and the slowest leg, so it runs where its answer is about what lands: on a
-  # merge-queue entry, which tests the would-be merge, and on every event that
-  # is not a pull request (iss-2610110938282654). Every push to a pull request
-  # has already passed the local preflight (the pre-push hook refuses a commit
-  # without its receipt), so a pull-request macOS run repeated a local run, on
-  # the developer's machine, while queue entries waited for a slot. On a
-  # pull_request event the leg is a STAND-IN: `runs-on` sends it to an ubuntu
-  # runner and every step but the one that says so is gated off, so it takes no
-  # macOS runner and runs no suite. It is gated step by step rather than skipped
-  # at the job, because `check (macos-latest)` is a required context in the
-  # ruleset (.abcd/work/rulesets/main-protection.json): a job skipped at its
-  # `if:` or dropped from the matrix reports a skipped conclusion or nothing,
-  # and either can hold a required check pending. A job whose steps are all
-  # skipped concludes success under its own context name, which the matrix
-  # value keeps. TestMacOSLegRunsItsSuiteOnlyWhereItLands evaluates every
-  # step's condition and the runner expression per leg and event.
+  # Build + vet + test on Linux, on every event. Race-enabled unit tests catch
+  # data races the plain `go test` would miss. On an inert change the race lane
+  # stands down, while the job builds, vets, tests and runs the record gates as
+  # usual. macOS has jobs of its own below: macos-suite and check-macos.
   #
   # `!cancelled()` rather than the implicit `success()`: a classifier that fails
   # for its own reasons — a flaky checkout, the timeout — must not skip this job.
@@ -265,92 +253,59 @@ jobs:
   check:
     needs: changes
     if: ${{ !cancelled() }}
-    # The macOS leg's ceiling sits below the merge queue's check response
-    # timeout (90 minutes since 2026-10-11, recorded in
-    # .abcd/work/rulesets/main-protection.json), which is the outer ceiling on a
-    # merge-group run: the queue fails the group when this required check has
-    # not concluded by then, so a job ceiling above it would be unreachable
-    # there. Ruling Z (2026-09-28, the technical facilitator) raised the leg
-    # from 30 to 45 minutes, because a 30-minute cap cancelled passing macOS
-    # runs of 23 to 30 minutes (iss-2609281514435020). The technical
-    # facilitator raised it to 60 on 2026-10-15, when merge-queue macOS runs had
-    # grown from 31-35 to 34-40 minutes (iss-2610142326511964), so on this leg
-    # the job's own ceiling, not the queue's, is the binding one. The
-    # coordinating session raised it to 70 on 2026-10-18, on delegation from the
-    # technical facilitator (dcn-2610181756328249): ten merge-group runs took
-    # 35.1 to 49.3 minutes, one within a minute of the warning, on a leg whose
-    # race pass keeps its three test slots full, so its time is its total work
-    # and varies with the runner. The coordinating session raised it to 85 on
-    # 2026-10-28, on delegation from the technical facilitator
-    # (dcn-2610282036219503): that day's passing merge-group runs took 46 to 68
-    # minutes and run 40752008734 was cancelled at the cap after 71
-    # (iss-2610282035340363). Raising it again is the technical
-    # facilitator's call, and the remedy for a leg near the cap is a faster
-    # suite (iss-2610181711260494). The ubuntu leg's ceiling is 45. The drain
-    # bundle (spc-2610161044461448) grew the loop package's race run until the
-    # leg reached 31 minutes, and it spent from 2026-10-17 at 45
-    # (dcn-2610171803056931). It came back to 30 when the leg's plain pass
-    # stopped rerunning every internal test the race lane already runs
-    # (iss-2610171803053186): the worst of five merge-group runs had spent 9.3
-    # minutes on that rerun. The coordinating session raised it to 45 again on
-    # 2026-10-28, on delegation from the technical facilitator
+    # The name is the context the ruleset requires
+    # (.abcd/work/rulesets/main-protection.json), written out so it reads the
+    # same as check (macos-latest), the other half of the pair.
+    name: check (ubuntu-latest)
+    # The ceiling sits below the merge queue's check response timeout (90 minutes
+    # since 2026-10-11, recorded in .abcd/work/rulesets/main-protection.json),
+    # which is the outer ceiling on a merge-group run: the queue fails the group
+    # when this required check has not concluded by then, so a job ceiling above
+    # it would be unreachable there. The drain bundle (spc-2610161044461448) grew
+    # the loop package's race run until the job reached 31 minutes, and it spent
+    # from 2026-10-17 at 45 (dcn-2610171803056931). It came back to 30 when the
+    # job's plain pass stopped rerunning every internal test the race lane
+    # already runs (iss-2610171803053186): the worst of five merge-group runs had
+    # spent 9.3 minutes on that rerun. The coordinating session raised it to 45
+    # again on 2026-10-28, on delegation from the technical facilitator
     # (dcn-2610280635092222): merge-group runs took 29, 29 and 29 minutes and a
     # fourth was cancelled at 30, a second after its race tests passed, which
-    # rebuilt every group queued behind it. Its warning, ten minutes ahead, now
-    # fires at 35. The race step's -timeout lifts go test's 10m
-    # per-package default, so a slow package runs on to this ceiling instead of
-    # failing at ten minutes. The step names its slowest packages first, so they
-    # start with the step rather than behind every faster package; a hang in one
-    # of them fails at the package timeout, with a goroutine dump, before this
-    # ceiling cancels the job; a hang in a package that starts later meets the
-    # job clock's watchdog below first.
-    # TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds every leg at or below the
+    # rebuilt every group queued behind it. Its warning, ten minutes ahead, fires
+    # at 35. The race step's -timeout lifts go test's 10m per-package default, so a
+    # slow package runs on to this ceiling instead of failing at ten minutes. The
+    # step names its slowest packages first, so they start with the step rather
+    # than behind every faster package; a hang in one of them fails at the package
+    # timeout, with a goroutine dump, before this ceiling cancels the job; a hang
+    # in a package that starts later meets the job clock's watchdog below first.
+    # TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds the ceiling at or below the
     # cap, and TestCheckJobWarnsBeforeTheQueueCap holds the warning step at the
     # end of the job below it.
-    timeout-minutes: ${{ matrix.os == 'macos-latest' && 85 || 45 }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    # The macOS leg's stand-in on a pull request runs on ubuntu; every other
-    # leg and event runs on the matrix's own runner.
-    runs-on: ${{ (matrix.os == 'macos-latest' && github.event_name == 'pull_request') && 'ubuntu-latest' || matrix.os }}
+    timeout-minutes: 45
+    runs-on: ubuntu-latest
     # The job clock's watchdog (cmd/ci-watchdog). go test's -timeout counts
     # from each test binary's own start, so a package that starts late meets
     # this job's cap first and is cancelled with no goroutine dump: on a
-    # passing merge-group run the last package started 23.8 minutes into the
-    # ubuntu leg and 66.0 into the macOS leg, against a 40m -timeout and caps
-    # of 45 and 85. Every step that runs go test therefore runs under the
+    # passing merge-group run the last package started 23.8 minutes into this
+    # job, against a 40m -timeout and a cap of 45. Every step that runs go test,
+    # here and in macos-suite, therefore runs under the
     # watchdog, which sends the test binaries under go test SIGQUIT (each prints
     # its goroutines and fails) at the cap less the margin on the clock the
     # "Record the job's start" step exports, then the step SIGKILL after 30
     # seconds (dcn-2610311047146087). The cap here
-    # repeats the job's timeout-minutes, and the margin is declared only here;
+    # repeats the job's timeout-minutes, and the margin is the workflow's;
     # TestCheckJobTestStepsRunUnderTheJobClockWatchdog holds both, and every
     # go test step's shell.
     env:
-      ABCD_CI_LEG: check (${{ matrix.os }})
-      ABCD_CI_JOB_CAP_MINUTES: ${{ matrix.os == 'macos-latest' && 85 || 45 }}
-      ABCD_CI_WATCHDOG_MARGIN_MINUTES: 5
+      ABCD_CI_LEG: check (ubuntu-latest)
+      ABCD_CI_JOB_CAP_MINUTES: 45
     steps:
-      # The one step the macOS leg runs on a pull request. It runs nothing, and
-      # says where the macOS suite runs instead.
-      - name: Stand in for the macOS suite on a pull request
-        if: matrix.os == 'macos-latest' && github.event_name == 'pull_request'
-        run: |
-          msg="check (macos-latest) runs the macOS suite in the merge queue, on the tree that lands, and on every event that is not a pull request. On a pull request it reports this context without taking a macOS runner, so this run tested nothing on macOS."
-          echo "::notice title=macOS suite runs in the merge queue::${msg}"
-          printf '### macOS suite runs in the merge queue\n\n%s\n' "$msg" >>"$GITHUB_STEP_SUMMARY"
-
-      # The clock for the warning step at the end of the job, on every leg the
-      # warning runs on. It is the first step that runs there, so the time the
-      # runner spent before it (queueing, set-up) is not counted, and the
-      # elapsed time the warning reads is a lower bound on what the merge
-      # queue's clock shows. The same instant is the job clock's watchdog's
-      # (the job's env above).
+      # The clock for the warning step at the end of the job. It is the first step
+      # that runs, so the time the runner spent before it (queueing, set-up) is not
+      # counted, and the elapsed time the warning reads is a lower bound on what
+      # the merge queue's clock shows. The same instant is the job clock's
+      # watchdog's (the job's env above).
       - name: Record the job's start
         id: started
-        if: matrix.os != 'macos-latest' || github.event_name != 'pull_request'
         run: |
           epoch=$(date +%s)
           echo "epoch=${epoch}" >>"$GITHUB_OUTPUT"
@@ -361,24 +316,19 @@ jobs:
       # base, neither of which a depth-1 clone holds — with the default shallow
       # checkout the arm was unreachable and the step fell back in silence.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request'
         with:
           fetch-depth: 0
           persist-credentials: false
 
-      # The ubuntu leg always needs a toolchain, because it always builds and
-      # tests; the macOS leg needs one wherever it runs its suite.
-      #
       # setup-go caches the module and build caches by default, keyed on the
       # runner's OS and architecture, the toolchain and go.sum, and saves them
       # at the end of a run whose key missed. A pull-request or merge-queue run
       # can restore a cache saved on the default branch but not one saved on
       # another pull request's ref, so the default branch's cache is the one
-      # every leg starts warm from. With no push trigger, the nightly run is
+      # every job starts warm from. With no push trigger, the nightly run is
       # what saves it on the default branch, for both runners, after each change
       # to go.sum or the toolchain, and what keeps it from ageing out.
       - name: Set up Go
-        if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           # The go directive in go.mod is the ONLY place the toolchain is written,
@@ -395,20 +345,16 @@ jobs:
       # judged by the same binary; the inline copy that used to live here read
       # whichever gofmt was on PATH, and diverged from the developer's the moment
       # their machine moved ahead of the pin (iss-2609081953452204). Formatting is
-      # platform-independent, so run it once on the ubuntu leg to avoid duplicate
-      # work; any file it lists needs `make fmt` and fails the job.
+      # platform-independent, so it runs only in this job, not on macOS; any file
+      # it lists needs `make fmt` and fails the job.
       - name: Format (gofmt)
-        if: matrix.os == 'ubuntu-latest'
         run: make fmt-check
 
-      # Unconditional on ubuntu, because tests assert against the live record;
-      # on macOS it runs wherever the leg runs its suite.
+      # Unconditional, because tests assert against the live record.
       - name: Build
-        if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request'
         run: go build ./...
 
       - name: Vet
-        if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request'
         run: go vet ./...
 
       # ABCD_TEST_SKIP_FLUSH lets the test binaries skip the flush to stable
@@ -416,19 +362,17 @@ jobs:
       # synced write on macOS that no test asserts anything about. It needs a
       # test binary as well, so nothing built here stops flushing.
       #
-      # The ubuntu leg's plain pass runs what its race lane does not
+      # This job's plain pass runs what its race lane does not
       # (iss-2610171803053186). Where the race lane runs, it runs every test
       # under ./internal/..., so a plain rerun of them repeated it: 7 to 9.3
-      # minutes of a leg that had reached 31 against its 30-minute ceiling, on
+      # minutes of a job that had reached 31 against its 30-minute ceiling, on
       # a runner whose four cores both passes already kept busy. So the plain
       # pass covers the packages outside internal/, and, by name, the tests
       # that assert only without the race detector ("Test (plain-only
       # guards)", below). On an inert change the race lane stands down, and
-      # the plain pass runs the whole module, as the leg's only test pass. The
-      # macOS leg runs one race-enabled pass over the whole module instead,
-      # then the same plain-only guards (the last two steps of this group).
+      # the plain pass runs the whole module, as the job's only test pass.
       # TestMacOSLegRunsItsSuiteOnlyWhereItLands holds which passes run on
-      # which event.
+      # which event, here and in macos-suite.
       #
       # On an inert change, where it runs, the two packages named ahead of the
       # pattern are the slowest in this pass (126-187s and 110-147s on the
@@ -443,7 +387,7 @@ jobs:
       # TestCIRacePassesShardLikePreflight holds the count, and
       # TestPlainTestStepRunsTheWholeModule the timeout.
       - name: Test
-        if: matrix.os == 'ubuntu-latest' && needs.changes.outputs.inert == 'true'
+        if: needs.changes.outputs.inert == 'true'
         shell: go run ./cmd/ci-watchdog bash --noprofile --norc -eo pipefail {0}
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
@@ -453,7 +397,7 @@ jobs:
       # Every package ./... matches that ./internal/... does not;
       # TestTheOutsideInternalStepRunsWhatTheRaceLaneDoesNot holds the set.
       - name: Test (outside internal)
-        if: matrix.os == 'ubuntu-latest' && needs.changes.outputs.inert != 'true'
+        if: needs.changes.outputs.inert != 'true'
         shell: go run ./cmd/ci-watchdog bash --noprofile --norc -eo pipefail {0}
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
@@ -468,7 +412,7 @@ jobs:
       # under internal/ and fails until this step names exactly those tests and
       # their packages.
       - name: Test (plain-only guards)
-        if: matrix.os == 'ubuntu-latest' && needs.changes.outputs.inert != 'true'
+        if: needs.changes.outputs.inert != 'true'
         shell: go run ./cmd/ci-watchdog bash --noprofile --norc -eo pipefail {0}
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
@@ -484,10 +428,10 @@ jobs:
       # budget was first 20m, about twice the slowest passing run, and is 40m
       # since 2026-10-17, so a real hang still fails with
       # a goroutine dump where the enclosing ceiling leaves room for it: in
-      # release.yml's verify job it does, while this job's own ceiling, held
-      # below the merge queue's response cap, is the binding one on macOS (see
+      # release.yml's verify job it does, while on a late package this job's own
+      # ceiling, held below the merge queue's response cap, is the binding one (see
       # the job header). The Makefile's preflight recipe and release.yml's verify
-      # job carry the same flag, and so does the macOS step below;
+      # job carry the same flag, and so does a macOS shard's race pass;
       # TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds all four.
       #
       # The packages named ahead of the pattern are the slowest under -race
@@ -499,7 +443,7 @@ jobs:
       # internal/core/implement/loop and internal/core/interview joined the list
       # on 2026-10-15: 172-244s and 160s under -race on the ubuntu runner, they
       # started last in import-path order and were still running when two
-      # checks were cancelled at the leg's 30-minute ceiling.
+      # checks were cancelled at the job's 30-minute ceiling.
       #
       # ABCD_TEST_SHARDS runs each package that opts in through
       # internal/testshard (internal/core/implement/loop, internal/core/claim
@@ -507,48 +451,16 @@ jobs:
       # share of the tests under the same -timeout, as the preflight recipe does
       # (iss-2610290720087336). As one process implement/loop took 2244s of the
       # macOS pass's 40 minutes on a passing run, and a queue entry timed out on
-      # it with no test hung. This step and the macOS pass below carry the same
-      # count as the preflight recipe; TestCIRacePassesShardLikePreflight holds
-      # them, and the plain Test step above, to it.
+      # it with no test hung. This step and a macOS shard's race pass carry the
+      # same count as the preflight recipe; TestCIRacePassesShardLikePreflight
+      # holds them, and the plain Test step above, to it.
       - name: Test (race, internal)
-        if: matrix.os == 'ubuntu-latest' && needs.changes.outputs.inert != 'true'
+        if: needs.changes.outputs.inert != 'true'
         shell: go run ./cmd/ci-watchdog bash --noprofile --norc -eo pipefail {0}
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
           ABCD_TEST_SHARDS: "3"
         run: go test -race -timeout 40m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
-
-      # The macOS leg's one pass over the module (iss-2610110938293273): race-enabled, over
-      # the whole module, with the same slowest-first order and the same
-      # -timeout as the race lane above. Two passes cost a median 13.6 minutes
-      # plain plus 23.1 race of a 39.9-minute leg (8 queue runs, 2026-10-11),
-      # and the race pass already ran every internal test, so the plain pass
-      # added only the packages outside internal/ at a third of the leg's time.
-      # The race pass runs every test the plain pass would, but the ones that
-      # assert only without the detector assert nothing in it, so they run
-      # after it, plain and by name (the next step). It runs straight after
-      # vet, so the slowest packages start at the start of the leg's testing.
-      # TestMacOSLegRunsItsSuiteOnlyWhereItLands holds the leg to these two
-      # passes where it runs at all, and none on a pull request.
-      - name: Test (race, whole module)
-        if: matrix.os == 'macos-latest' && github.event_name != 'pull_request'
-        shell: go run ./cmd/ci-watchdog bash --noprofile --norc -eo pipefail {0}
-        env:
-          ABCD_TEST_SKIP_FLUSH: "1"
-          ABCD_TEST_SHARDS: "3"
-        run: go test -race -timeout 40m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./...
-
-      # The plain-only guards on the macOS leg (iss-2610180542030806): the same
-      # command as the ubuntu leg's "Test (plain-only guards)", after the race
-      # pass, about a minute when it was added on a leg that ran 36.5 minutes.
-      # TestEveryLegRunsEveryPlainOnlyGuard holds both
-      # steps to the list it derives from the test files.
-      - name: Test (plain-only guards, macOS)
-        if: matrix.os == 'macos-latest' && github.event_name != 'pull_request'
-        shell: go run ./cmd/ci-watchdog bash --noprofile --norc -eo pipefail {0}
-        env:
-          ABCD_TEST_SKIP_FLUSH: "1"
-        run: go test -run '^(TestAHereDocBodyFeedStaysLinear|TestAPatternPastTheStepBudgetIsNotGenerated|TestAVeryDeepPathIsJudgedQuickly|TestAdjacencyProbeStaysLinearOnLongLines|TestAdjacencyProbeWindowIsBounded|TestBacktickPrePassStaysLinear|TestBraceScanStaysLinear|TestClosedOverDocumentsStayLinear|TestClosingScansAreLinear|TestDoubleQuotedBraceExpansionStaysLinear|TestExpandedHeredocBodyStaysLinear|TestForgeTextWorkIsLinear|TestGallopingProbeCostIsLinearInLineLength|TestGallopingProbeStaysBoundedOnLongLines|TestGluedFixedOutputStaysLinear|TestGluedSweepWorkIsLinear|TestHereDocumentPayloadStaysLinear|TestHistoryCaptureAcceptsWhatTheHooksAccept|TestHomeSpellingsStayLinear|TestIFSSplitCheckStaysLinear|TestJunctionBacktrackIsBounded|TestKillFeedGroupsAndStringsStayLinear|TestKillFeedReadingStaysLinear|TestMakerNoteWorkIsLinear|TestMetadataViewsWorkIsLinear|TestNestedHereDocumentPayloadStaysLinear|TestParameterExpansionReadingStaysLinear|TestPatternShapesStayLinear|TestQuotedSubstitutionStaysLinear|TestRawHeadingScanStaysLinearInTheOpenerCount|TestScanLineWorkIsLinear|TestScriptReadingStaysLinearOnAdversarialLines|TestSpeculationIsBoundedAtTheStdinCap|TestSpellingSetsStayLinear|TestSurfaceChapterProseStatesNoShape|TestSweepCallerHomeWorkIsLinear|TestSynopsisScanIsLinearInThePage|TestTheBudgetBoundsWallTimeOverLongLiterals|TestTheBudgetBoundsWallTimeOverManyLines|TestTheHiddenHTMLReadersStayLinear|TestTheTagWalksStayLinear|TestUTF16ViewWorkIsLinear|TestUnknownWordWalksStayLinear)$' ./internal/adapter/scanner ./internal/core/claim ./internal/core/guard ./internal/core/reading ./internal/surface/cli
 
       # Drift gate for the .abcd/development design record. Blocking: a
       # blocker-severity finding exits non-zero and fails the job; warn-level
@@ -581,7 +493,6 @@ jobs:
       # the two events that should always name a base and a notice on the ones
       # that never do: a downgrade nobody can see is a gate nobody knows is off.
       - name: Record-lint (drift gate)
-        if: matrix.os == 'ubuntu-latest'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
@@ -605,20 +516,18 @@ jobs:
       # retired `promoted_to` / `promoted_from` key survives. `--strict` turns
       # the verb's warning into a failure; `make issue-drift` runs the same line.
       - name: Issue-drift (promote-join gate)
-        if: matrix.os == 'ubuntu-latest'
         run: go run ./cmd/abcd intent audit --issue-drift --strict
 
       # Docs-currency gate (itd-60): the internal/core/lint engine over docs/ and
       # the repo root, driven via the `abcd lint docs` verb. Blocking — a doc-body
       # change-narration, broken relative link, or stray root markdown fails CI.
       - name: Docs-lint (currency gate)
-        if: matrix.os == 'ubuntu-latest'
         run: go run ./cmd/abcd lint docs
 
       # Site-render gate (iss-2608241845109280): the site renders the record as
       # well as docs/, and the renderer refuses markdown outside its supported
-      # subset. This lane always runs — the changes classifier never stands the
-      # Linux leg down — so a records-only pull request is covered here, which
+      # subset. This lane always runs — the changes classifier never stands this
+      # job down — so a records-only pull request is covered here, which
       # site-screenshots.yml's path filter does not cover. Build, then `lint
       # site` the output: the publish gates (provenance, banned-tokens,
       # baseline, ...) are what release.yml's post-publish site job runs, so a
@@ -629,7 +538,6 @@ jobs:
       # repository has one Pages site, so the record has no preview, and this
       # gate is where a change that would break its next release fails.
       - name: Site-render gate
-        if: matrix.os == 'ubuntu-latest'
         run: |
           go run ./cmd/abcd site build --out "$RUNNER_TEMP/site-render-check"
           go run ./cmd/abcd lint site --out "$RUNNER_TEMP/site-render-check"
@@ -637,29 +545,26 @@ jobs:
           go run ./cmd/abcd lint site --project --base-path /abcd/ --out "$RUNNER_TEMP/project-site-render-check"
 
       # Warn before the cap cancels (ruling Z's cancel policy, 2026-09-28). A
-      # check that runs past WARN_AFTER_MINUTES is ten minutes from its leg's
-      # ceiling (85 minutes on macOS, 45 on ubuntu), and a cancellation there
-      # carries nothing but the cancellation. The rule for a cancelled check is
-      # to rerun it once; a second cancellation for the same reason stops that
-      # pull request and opens a speed lane, never another raise of the
-      # timeout. This warning moves that signal ahead of the first
-      # cancellation: it is emitted at the job's end, for a run that finished
-      # past the line, so a check that passed within ten minutes of its leg's
-      # cap says so before one is cancelled at the cap. It runs on every leg
-      # but the macOS one on a pull request, which runs only its stand-in. It
-      # never fails the job: `always()` runs it however the steps before it
-      # ended, and `continue-on-error` holds even a broken script to a warning.
-      # TestCheckJobWarnsBeforeTheQueueCap pins each leg's threshold ten
-      # minutes below that leg's ceiling, CEILING_MINUTES, the cap the message
-      # names, to that ceiling, and the clock step to every leg it warns on.
+      # check that runs past WARN_AFTER_MINUTES is ten minutes from its job's
+      # ceiling, and a cancellation there carries nothing but the cancellation.
+      # The rule for a cancelled check is to rerun it once; a second cancellation
+      # for the same reason stops that pull request and opens a speed lane, never
+      # another raise of the timeout. This warning moves that signal ahead of the
+      # first cancellation: it is emitted at the job's end, for a run that
+      # finished past the line, so a check that passed within ten minutes of its
+      # job's cap says so before one is cancelled at the cap. It never fails the
+      # job: `always()` runs it however the steps before it ended, and
+      # `continue-on-error` holds even a broken script to a warning. macos-suite
+      # carries the same script. TestCheckJobWarnsBeforeTheQueueCap pins each
+      # job's threshold ten minutes below that job's ceiling, CEILING_MINUTES, the
+      # cap the message names, to that ceiling, and the two scripts to one.
       - name: Warn when the check nears the queue's cap
-        if: always() && (matrix.os != 'macos-latest' || github.event_name != 'pull_request')
+        if: always()
         continue-on-error: true
         env:
           STARTED_AT: ${{ steps.started.outputs.epoch }}
-          LEG: ${{ matrix.os }}
-          WARN_AFTER_MINUTES: ${{ matrix.os == 'macos-latest' && 75 || 35 }}
-          CEILING_MINUTES: ${{ matrix.os == 'macos-latest' && 85 || 45 }}
+          WARN_AFTER_MINUTES: 35
+          CEILING_MINUTES: 45
         run: |
           case "${STARTED_AT:-}" in
             '' | *[!0-9]*)
@@ -669,11 +574,214 @@ jobs:
           esac
           elapsed=$(($(date +%s) - STARTED_AT))
           minutes=$((elapsed / 60))
-          echo "check (${LEG}) has run ${minutes}m $((elapsed % 60))s; the warning line is ${WARN_AFTER_MINUTES}m"
+          echo "${ABCD_CI_LEG} has run ${minutes}m $((elapsed % 60))s; the warning line is ${WARN_AFTER_MINUTES}m"
           if [ "$elapsed" -gt $((WARN_AFTER_MINUTES * 60)) ]; then
-            msg="check (${LEG}) ran ${minutes} minutes, past the ${WARN_AFTER_MINUTES}-minute warning line and close to the job's ${CEILING_MINUTES}-minute cap. If it is cancelled at the cap, rerun it once; a second cancellation for the same reason stops the pull request: open a speed lane to make the suite faster, and do not raise the timeout."
-            echo "::warning title=check (${LEG}) near its cap::${msg}"
-            printf '### check (%s) near its cap\n\n%s\n' "$LEG" "$msg" >>"$GITHUB_STEP_SUMMARY"
+            msg="${ABCD_CI_LEG} ran ${minutes} minutes, past the ${WARN_AFTER_MINUTES}-minute warning line and close to the job's ${CEILING_MINUTES}-minute cap. If it is cancelled at the cap, rerun it once; a second cancellation for the same reason stops the pull request: open a speed lane to make the suite faster, and do not raise the timeout."
+            echo "::warning title=${ABCD_CI_LEG} near its cap::${msg}"
+            printf '### %s near its cap\n\n%s\n' "$ABCD_CI_LEG" "$msg" >>"$GITHUB_STEP_SUMMARY"
+          fi
+
+  # The macOS suite, as shard jobs (iss-2610181757540736). It keeps its runner's
+  # three test slots full, so its time is its total work on that runner, and
+  # hosted macOS runners vary about twofold: one pass over the module took 32
+  # minutes on one and 77 on another with the same work and the same restored
+  # cache, and past its 80-minute deadline on others, dropping the entry from the
+  # queue and restarting every run behind it. Only several runners shorten what
+  # one runner has to do. Three shards bring the slowest passing run's 76.6 minutes
+  # to about 27 of testing in a shard, and about 30 with its set-up and the
+  # compiling a single job shared.
+  #
+  # Why three. macOS is the scarcest runner this account has, five jobs at once,
+  # and the queue builds up to four entries, so three shards can want twelve
+  # runners and two shards eight; a shard waits until one frees. With every runner
+  # at its slowest, the last shard ends at 30 minutes with one entry building, at
+  # 60 with two or three, and at 90 with four; two shards (41 minutes each) end at
+  # 41, 41, 82 and 82. So the worst case is about the same either way, and it is
+  # the one the queue's cap can still catch. Off that worst case, with runners as
+  # measured (about half of them take 33 minutes a pass), what decides is the last
+  # shard to get a runner, and three shards make it a third of the work rather
+  # than a half. A fourth shard would only ask for more of the same five runners.
+  #
+  # It runs where its answer is about what lands: on a merge-queue entry, which
+  # tests the would-be merge, and on every event that is not a pull request
+  # (iss-2610110938282654). Every push to a pull request has already passed the
+  # local preflight (the pre-push hook refuses a commit without its receipt), so a
+  # pull-request macOS run repeated a local run, on the developer's machine, while
+  # queue entries waited for a slot. A pull request skips this job at its `if:`,
+  # and check-macos below reports the required context all the same. It reads no
+  # classifier: no pull request reaches it, and every other event is never inert,
+  # so a need on `changes` would only add a way for the suite to be skipped.
+  #
+  # The packages come from cmd/ci-shard, computed from `go list` under the race
+  # build in every shard, so no list is kept by hand and a package added later is tested without
+  # anyone naming it. TestMacOSSuiteShardsCoverTheModule runs what this matrix asks
+  # for and holds the union to the module's packages and the shards to disjoint;
+  # the shard count comes from the matrix itself (strategy.job-total), so the two
+  # cannot drift. To add a shard, add it to the matrix and resize the sums above.
+  #
+  # fail-fast: a failed shard has decided the entry, and the rest would hold scarce
+  # runners and the queue, with every run behind it, for an answer already known.
+  # TestMacOSLegRunsItsSuiteOnlyWhereItLands holds all of this per event and shard.
+  macos-suite:
+    if: github.event_name != 'pull_request'
+    # A shard's ceiling. Its queue-side budget is a sum, since check-macos reports
+    # only after the shards end: the wait for a runner, this ceiling and check-macos's
+    # own, inside the merge queue's 90 minutes (.abcd/work/rulesets/main-protection.json).
+    # A job's timeout-minutes starts when a runner takes it, so it counts none of the
+    # wait; 50 is half as much again as the 30 a shard takes on a slow runner, and it
+    # leaves 35 minutes of the queue's clock for that wait. The single job before
+    # the split had reached 85 (dcn-2610282036219503); the remedy for a shard near
+    # this cap is a faster suite or a rebalance in cmd/ci-shard, because raising it
+    # takes from the wait's allowance. TestRaceLaneBudgetIsDeclaredAndFitsItsJob
+    # holds the sum.
+    timeout-minutes: 50
+    strategy:
+      fail-fast: true
+      matrix:
+        shard: [1, 2, 3]
+    runs-on: macos-latest
+    env:
+      ABCD_CI_LEG: macos-suite (${{ matrix.shard }})
+      ABCD_CI_JOB_CAP_MINUTES: 50
+    steps:
+      # The clock for the warning and the watchdog, as in the check job.
+      - name: Record the job's start
+        id: started
+        run: |
+          epoch=$(date +%s)
+          echo "epoch=${epoch}" >>"$GITHUB_OUTPUT"
+          echo "ABCD_CI_JOB_STARTED=${epoch}" >>"$GITHUB_ENV"
+
+      # Full history, as in the check job: the tests read the same repository.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # On a key miss every shard reaches the cache's save at its end, and the
+      # first to finish wins it, so the macOS cache the nightly run saves holds
+      # that shard's packages' builds, the standard library and third-party
+      # dependencies under -race among them. The check job has the rest of why.
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      # What the suite does once rather than per shard runs in the first shard,
+      # and cmd/ci-shard gives that shard a lighter share for it.
+      - name: Build
+        if: matrix.shard == 1
+        run: go build ./...
+
+      - name: Vet
+        if: matrix.shard == 1
+        run: go vet ./...
+
+      # One race-enabled pass over this shard's packages (iss-2610110938293273).
+      # Two passes cost a median 13.6 minutes plain plus 23.1 race of a 39.9-minute
+      # job (8 queue runs, 2026-10-11), and the race pass already runs every test
+      # the plain pass would; the ones that assert only without the detector run
+      # after it, by name (the next step). cmd/ci-shard prints the shard heaviest
+      # first, so its slowest packages start with the step.
+      #
+      # The assignment is its own line, under the shell's -e: a failure inside
+      # `$(...)` on go test's own line would leave go test with no packages, which
+      # tests the working directory and reports success.
+      # TestAShardThatCannotReadItsPackagesFails runs this script against a stub go.
+      #
+      # ABCD_TEST_SKIP_FLUSH and ABCD_TEST_SHARDS are the check job's, for the
+      # reasons given there. -timeout is the local gate's, and a package that starts
+      # late meets the job clock's watchdog first.
+      - name: Test (race, this shard)
+        shell: go run ./cmd/ci-watchdog bash --noprofile --norc -eo pipefail {0}
+        env:
+          ABCD_TEST_SKIP_FLUSH: "1"
+          ABCD_TEST_SHARDS: "3"
+          ABCD_CI_SHARD: ${{ matrix.shard }}
+          ABCD_CI_SHARDS: ${{ strategy.job-total }}
+        run: |
+          pkgs=$(go run ./cmd/ci-shard -shard "$ABCD_CI_SHARD" -of "$ABCD_CI_SHARDS")
+          go test -race -timeout 40m $pkgs
+
+      # The plain-only guards on macOS (iss-2610180542030806): the same command as
+      # the check job's "Test (plain-only guards)", about a minute, in the first
+      # shard after its race pass. TestEveryLegRunsEveryPlainOnlyGuard holds both
+      # steps to the list it derives from the test files.
+      - name: Test (plain-only guards, macOS)
+        if: matrix.shard == 1
+        shell: go run ./cmd/ci-watchdog bash --noprofile --norc -eo pipefail {0}
+        env:
+          ABCD_TEST_SKIP_FLUSH: "1"
+        run: go test -run '^(TestAHereDocBodyFeedStaysLinear|TestAPatternPastTheStepBudgetIsNotGenerated|TestAVeryDeepPathIsJudgedQuickly|TestAdjacencyProbeStaysLinearOnLongLines|TestAdjacencyProbeWindowIsBounded|TestBacktickPrePassStaysLinear|TestBraceScanStaysLinear|TestClosedOverDocumentsStayLinear|TestClosingScansAreLinear|TestDoubleQuotedBraceExpansionStaysLinear|TestExpandedHeredocBodyStaysLinear|TestForgeTextWorkIsLinear|TestGallopingProbeCostIsLinearInLineLength|TestGallopingProbeStaysBoundedOnLongLines|TestGluedFixedOutputStaysLinear|TestGluedSweepWorkIsLinear|TestHereDocumentPayloadStaysLinear|TestHistoryCaptureAcceptsWhatTheHooksAccept|TestHomeSpellingsStayLinear|TestIFSSplitCheckStaysLinear|TestJunctionBacktrackIsBounded|TestKillFeedGroupsAndStringsStayLinear|TestKillFeedReadingStaysLinear|TestMakerNoteWorkIsLinear|TestMetadataViewsWorkIsLinear|TestNestedHereDocumentPayloadStaysLinear|TestParameterExpansionReadingStaysLinear|TestPatternShapesStayLinear|TestQuotedSubstitutionStaysLinear|TestRawHeadingScanStaysLinearInTheOpenerCount|TestScanLineWorkIsLinear|TestScriptReadingStaysLinearOnAdversarialLines|TestSpeculationIsBoundedAtTheStdinCap|TestSpellingSetsStayLinear|TestSurfaceChapterProseStatesNoShape|TestSweepCallerHomeWorkIsLinear|TestSynopsisScanIsLinearInThePage|TestTheBudgetBoundsWallTimeOverLongLiterals|TestTheBudgetBoundsWallTimeOverManyLines|TestTheHiddenHTMLReadersStayLinear|TestTheTagWalksStayLinear|TestUTF16ViewWorkIsLinear|TestUnknownWordWalksStayLinear)$' ./internal/adapter/scanner ./internal/core/claim ./internal/core/guard ./internal/core/reading ./internal/surface/cli
+
+      # The check job's warning, against this job's ceiling.
+      - name: Warn when the check nears the queue's cap
+        if: always()
+        continue-on-error: true
+        env:
+          STARTED_AT: ${{ steps.started.outputs.epoch }}
+          WARN_AFTER_MINUTES: 40
+          CEILING_MINUTES: 50
+        run: |
+          case "${STARTED_AT:-}" in
+            '' | *[!0-9]*)
+              echo "::notice::no job start was recorded, so the elapsed-time warning did not run"
+              exit 0
+              ;;
+          esac
+          elapsed=$(($(date +%s) - STARTED_AT))
+          minutes=$((elapsed / 60))
+          echo "${ABCD_CI_LEG} has run ${minutes}m $((elapsed % 60))s; the warning line is ${WARN_AFTER_MINUTES}m"
+          if [ "$elapsed" -gt $((WARN_AFTER_MINUTES * 60)) ]; then
+            msg="${ABCD_CI_LEG} ran ${minutes} minutes, past the ${WARN_AFTER_MINUTES}-minute warning line and close to the job's ${CEILING_MINUTES}-minute cap. If it is cancelled at the cap, rerun it once; a second cancellation for the same reason stops the pull request: open a speed lane to make the suite faster, and do not raise the timeout."
+            echo "::warning title=${ABCD_CI_LEG} near its cap::${msg}"
+            printf '### %s near its cap\n\n%s\n' "$ABCD_CI_LEG" "$msg" >>"$GITHUB_STEP_SUMMARY"
+          fi
+
+  # The required context `check (macos-latest)`, reported from an ubuntu runner on
+  # every event: the ruleset requires that name
+  # (.abcd/work/rulesets/main-protection.json), and a shard must never read as the
+  # whole suite. It runs however the shards ended, and passes in exactly two cases:
+  # off a pull request when every shard succeeded (a matrix job's result is success
+  # only when every leg's is), and on a pull request when the shards were skipped
+  # as they should be. A shard failed or cancelled, or skipped anywhere else, fails
+  # it: a green here may only stand for work that happened. `always()` is on the
+  # step as well as on the job, because a step's implicit success() is false on a
+  # cancelled run, and a job whose steps are all skipped concludes success. So a run
+  # cancelled mid-suite reads as failed, which is how a queue-sweep of a dropped
+  # entry's run ends too. A cancelled or superseded pull-request run still reports
+  # the stand-in: there the context never tested anything and says so, the run's
+  # other required contexts hold that commit, and the queue entry decides.
+  # TestMacOSCheckFailsUnlessEveryShardSucceeded runs this script over every result
+  # per event.
+  check-macos:
+    name: check (macos-latest)
+    needs: macos-suite
+    if: always()
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Require every macOS shard's success
+        if: always()
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SUITE_RESULT: ${{ needs.macos-suite.result }}
+        run: |
+          echo "macos-suite concluded '${SUITE_RESULT}' on a ${EVENT_NAME} event"
+          if [ "$EVENT_NAME" = pull_request ]; then
+            if [ "$SUITE_RESULT" = skipped ]; then
+              msg="check (macos-latest) runs the macOS suite in the merge queue, on the tree that lands, and on every event that is not a pull request. On a pull request it reports this context without taking a macOS runner, so this run tested nothing on macOS."
+              echo "::notice title=macOS suite runs in the merge queue::${msg}"
+              printf '### macOS suite runs in the merge queue\n\n%s\n' "$msg" >>"$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "::error title=check (macos-latest)::the shards did not stand down on a pull request (result '${SUITE_RESULT}'), so this context cannot report as the stand-in it is there"
+            exit 1
+          fi
+          if [ "$SUITE_RESULT" != success ]; then
+            echo "::error title=check (macos-latest)::the macOS suite's result is '${SUITE_RESULT}', not success; read the macos-suite jobs of this run"
+            exit 1
           fi
 
   # Secrets never land in history: the history each run would land is scanned —

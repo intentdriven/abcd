@@ -12,22 +12,30 @@ package scaffold
 // workflow's verify-job header, which names them as the merge gate the release
 // job re-runs a subset of. Nothing is hard-coded to abcd's own check names.
 //
-// The derivation is a line reader over the GitHub Actions layout, not a YAML
-// parser (no dependency is added for it), and it fails toward omission: a job
-// whose check name GitHub computes at run time — a matrix job, a job named by an
-// expression, a reusable-workflow call — is left out rather than guessed, and
-// the runbook says a hand-added context may be needed. Every name that is kept
+// The trigger and the jobs come from the workflow's parsed YAML, read as a tree of
+// nodes and walked by hand within named limits (readWorkflow), since a workflow file
+// is text a hostile branch can choose. The derivation fails toward omission: a job whose check name GitHub computes at run
+// time — a matrix job, a job named by an expression, a reusable-workflow call — is
+// left out rather than guessed, and the runbook says a hand-added context may be
+// needed. Every name that is kept
 // is held to an allowlist before it is written anywhere, because the scaffold
 // writes it into YAML and a hostile workflow file must not be able to inject.
 
 import (
+	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf8"
+
+	"go.yaml.in/yaml/v3"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // workflowsDir is where GitHub Actions discovers workflows.
@@ -43,36 +51,63 @@ const maxWorkflowFiles = 64
 // backticks, newlines), so a name can only ever be inert text.
 var checkNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 ._()/+-]{0,99}$`)
 
-// jobKeyRe matches a job id line under `jobs:`; the capture is the id.
-var jobKeyRe = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_-]*):\s*(#.*)?$`)
+// jobIDRe is what GitHub accepts as a job id.
+var jobIDRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]*$`)
 
 // DeriveCIChecks reads repoRoot's own CI workflows and returns the check names
 // its pull requests report, sorted and de-duplicated. Only workflows triggered
 // by `pull_request`, `pull_request_target` or `merge_group` gate a merge, and
 // the scaffold's own workflows (the release pair and the dependency
-// re-authoring) are never counted. An unreadable or
-// absent workflows directory yields nil: the runbook then says no merge gate
-// was found.
-func DeriveCIChecks(repoRoot string) []string {
+// re-authoring) are never counted. An absent workflows directory yields nil, and
+// the runbook then says no merge gate was found. What could not be read comes back in
+// unread, names fit to write (writableWorkflowName), so the runbook names it rather
+// than claim the list is whole or that no workflow exists.
+func DeriveCIChecks(repoRoot string) (checks, unread []string) {
 	seen := map[string]bool{}
-	forEachWorkflow(repoRoot, func(_, src string) {
-		for _, check := range workflowChecks(src) {
+	forEachWorkflow(repoRoot, func(name, src string) {
+		found, err := workflowChecks(src)
+		if err != nil {
+			unread = append(unread, writableWorkflowName(name))
+			return
+		}
+		for _, check := range found {
 			seen[check] = true
 		}
-	})
-	return sortedKeys(seen)
+	}, func(name, _ string) {
+		unread = append(unread, writableWorkflowName(name))
+	}, nil)
+	return sortedKeys(seen), unread
+}
+
+// workflowNameRe is a workflow file's name that is safe in the YAML and markdown the
+// scaffold writes, with no metacharacter of either.
+var workflowNameRe = regexp.MustCompile(`^[A-Za-z0-9._/-]{1,100}$`)
+
+// writableWorkflowName is a file's name as the scaffold may write it, since a file
+// name can hold anything.
+func writableWorkflowName(name string) string {
+	if workflowNameRe.MatchString(name) {
+		return name
+	}
+	return "a file with a name abcd does not write here"
 }
 
 // forEachWorkflow calls fn with the name and contents of each of repoRoot's
-// own CI workflow files, in directory order, bounded by maxWorkflowFiles. The
+// own CI workflow files, in directory order, bounded by maxWorkflowFiles, and
+// unread with what it could not read and why; an absent directory is neither. The
 // scaffold's own workflows (the release pair and the dependency re-authoring)
 // are never passed: the re-authoring workflow runs on pull requests but judges
 // none, and counting it would change the release rendering the moment a
-// repository opted in. A file that cannot be read is skipped.
-func forEachWorkflow(repoRoot string, fn func(name, src string)) {
+// repository opted in. reserved, when set, is called with each such file instead, or
+// with why it could not be read. A file that cannot be read is skipped.
+func forEachWorkflow(repoRoot string, fn func(name, src string), unread func(name, why string),
+	reserved func(name, src string, err error)) {
 	dir := filepath.Join(repoRoot, filepath.FromSlash(workflowsDir))
 	entries, err := os.ReadDir(dir)
 	if err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			unread(workflowsDir, "cannot be listed")
+		}
 		return
 	}
 	files := 0
@@ -82,13 +117,19 @@ func forEachWorkflow(repoRoot string, fn func(name, src string)) {
 			continue
 		}
 		if rel := workflowsDir + "/" + name; rel == ReleaseYMLPath || rel == AutoReleaseYMLPath || rel == ReauthorYMLPath {
+			if reserved != nil {
+				data, err := fsutil.ReadGuarded(filepath.Join(dir, name), maxWorkflowBytes)
+				reserved(name, string(data), err)
+			}
 			continue
 		}
 		if files++; files > maxWorkflowFiles {
+			unread(workflowsDir, fmt.Sprintf("holds more than the %d workflow files abcd reads", maxWorkflowFiles))
 			return
 		}
 		data, err := fsutil.ReadGuarded(filepath.Join(dir, name), maxWorkflowBytes)
 		if err != nil {
+			unread(name, "cannot be read safely (a link, or larger than abcd reads)")
 			continue
 		}
 		fn(name, string(data))
@@ -116,44 +157,82 @@ func sortedKeys(set map[string]bool) []string {
 // `pull_request` or `pull_request_target` with no `paths`/`paths-ignore`
 // filter, no `branches-ignore` filter, and a `branches` filter (if any) that
 // matches defaultBranch; and, when mergeQueue is set, also on `merge_group`,
-// since a queue entry waits on the same contexts. Each workflow or job left
-// out is named in notes, so a person can see why a check is not required.
-// The trigger is read as a subset of YAML (unreadShape): a trigger in any
-// other form is left out, never read as unfiltered.
+// since a queue entry waits on the same contexts. A matrix job a run may skip is
+// left out as well (skippableJobs): skipped, it reports one check under its
+// unexpanded name, so the contexts its values name never arrive. A job with no
+// matrix still counts, since skipped it reports its one name, which a ruleset
+// reads as passed. Each workflow or job left out is named in notes, so a person can
+// see why a check is not required.
+// A trigger with a key abcd does not read is left out, never read as unfiltered.
 // Fails toward omission, like DeriveCIChecks: an empty answer requires nothing.
-func RequiredChecks(repoRoot, defaultBranch string, mergeQueue bool) (checks, notes []string) {
+//
+// A shorter list reads as an answer, so a workflow the read cannot take whole is
+// no omission: a file that does not parse or cannot be read, one past the read's
+// limits (readWorkflow), too many files, or a workflow whose jobs or needs GitHub
+// would refuse return an error naming each, and no checks at all. A file name and
+// a parser's words reach a JSON surface as well as the terminal, so hidden runes in
+// either are encoded here.
+func RequiredChecks(repoRoot, defaultBranch string, mergeQueue bool) (checks, notes []string, err error) {
 	seen := map[string]bool{}
-	forEachWorkflow(repoRoot, func(name, src string) {
-		lines := strings.Split(strings.ReplaceAll(src, "\r\n", "\n"), "\n")
-		on := topLevelBlock(lines, "on")
-		prBody, pr := eventBlock(on, "pull_request")
-		if !pr {
-			prBody, pr = eventBlock(on, "pull_request_target")
+	var refused []string
+	refuse := func(name, why string) {
+		refused = append(refused, termsafe.EncodeHiddenRunes(name+" "+why))
+	}
+	forEachWorkflow(repoRoot, func(file, src string) {
+		wf, err := readWorkflow(src)
+		if err != nil {
+			refuse(file, "does not read as a workflow: "+boundedError(err))
+			return
 		}
-		if !pr {
+		name := termsafe.EncodeHiddenRunes(file)
+		if !wf.on.present {
+			notes = append(notes, name+" names no `on:` key, so GitHub runs nothing from it and its checks are not required")
+			return
+		}
+		pr, ok := wf.on.events["pull_request"]
+		if !ok {
+			pr, ok = wf.on.events["pull_request_target"]
+		}
+		if !ok && !wf.on.unread {
 			return
 		}
 		why := ""
 		switch {
-		case flowMapping(on, "pull_request") || flowMapping(on, "pull_request_target") || unreadShape(on, prBody):
-			why = "writes its pull-request trigger in a form abcd does not read (a flow mapping, an alias, " +
-				"an anchor, a tag, a merge key or a key that is not one of GitHub's filters)"
-		case blockHasKey(prBody, "paths") || blockHasKey(prBody, "paths-ignore"):
+		case wf.on.unread || pr.unread:
+			why = "writes its trigger in a form abcd does not read (a merge key, a key that is not plain or not one " +
+				"of GitHub's filters, or a filter that is not a list)"
+		case pr.has("paths") || pr.has("paths-ignore"):
 			why = "runs only when some paths change"
-		case blockHasKey(prBody, "branches-ignore"):
+		case pr.has("branches-ignore"):
 			why = "has a branches-ignore filter on its pull-request trigger"
-		case blockHasKey(prBody, "branches") && !branchListMatches(blockList(prBody, "branches"), defaultBranch):
+		case pr.has("branches") && !branchListMatches(pr.filters["branches"], defaultBranch):
 			why = "its pull-request trigger leaves out the default branch"
-		case blockHasKey(prBody, "types") && !coversPushes(blockList(prBody, "types")):
+		case pr.has("types") && !coversPushes(pr.filters["types"]):
 			why = "runs only on some pull-request activities (its types filter leaves out opened, synchronize or reopened)"
-		case mergeQueue && !hasEvent(on, "merge_group"):
+		case mergeQueue && !wf.on.names("merge_group"):
 			why = "does not run on the merge queue, which is on"
 		}
 		if why != "" {
 			notes = append(notes, name+" "+why+", so its checks are not required")
 			return
 		}
-		for _, job := range splitJobs(topLevelBlock(lines, "jobs")) {
+		if len(wf.jobs) == 0 {
+			refuse(file, "names no jobs")
+			return
+		}
+		skippable, err := skippableJobs(wf.jobs)
+		if err != nil {
+			refuse(file, "does not read as a workflow: "+boundedError(err))
+			return
+		}
+		for _, job := range wf.jobs {
+			if job.matrix && skippable[job.id] {
+				notes = append(notes, name+": job "+job.id+" is a matrix job abcd cannot tell every run reports: its "+
+					"`if:` or a job it needs may skip it, and a skipped matrix job reports only its unexpanded name, so "+
+					"it is not required. If every pull request does report it, require it by hand or through "+
+					"github.required_checks")
+				continue
+			}
 			if cs, ok := job.checkNames(); ok {
 				for _, c := range cs {
 					seen[c] = true
@@ -163,144 +242,36 @@ func RequiredChecks(repoRoot, defaultBranch string, mergeQueue bool) (checks, no
 			notes = append(notes, name+": job "+job.id+" reports a name only the run knows "+
 				"(a matrix, an expression or a reusable workflow), so it is not required")
 		}
-	})
-	return sortedKeys(seen), notes
-}
-
-// flowMapping reports whether the `on:` block, or event's own entry in it, is
-// written as a flow mapping (`{...}`) or an alias (`*name`). Its filters are
-// then inline or elsewhere, where the line reader cannot see them, so such a
-// trigger is never read as unfiltered.
-func flowMapping(on []string, event string) bool {
-	re := eventRe(event)
-	level := onLevel(on)
-	for _, l := range on {
-		if ind := indentOf(l); ind != 0 && ind != level {
-			continue
-		}
-		t := strings.TrimSpace(l)
-		if i := strings.Index(t, " #"); i >= 0 {
-			t = t[:i]
-		}
-		if t = stripNodeProps(t); strings.HasPrefix(t, "{") && re.MatchString(t) {
-			return true
-		}
-		if k, v, ok := strings.Cut(t, ":"); ok && strings.Trim(strings.TrimSpace(k), `"'`) == event {
-			if v = stripNodeProps(v); strings.HasPrefix(v, "{") || strings.HasPrefix(v, "*") {
-				return true
+	}, refuse, func(file, src string, err error) {
+		// One that runs on no pull request has nothing to require.
+		if err == nil {
+			if wf, err := readWorkflow(src); err == nil && !wf.on.gatesAMerge() && !wf.on.unread {
+				return
 			}
 		}
+		notes = append(notes, termsafe.EncodeHiddenRunes(file)+" has the name of a file `abcd launch scaffold` writes, "+
+			"so abcd counts no check from it. If it is this repository's own CI, rename it or name its checks in "+
+			"github.required_checks")
+	})
+	if len(refused) > 0 {
+		return nil, nil, errors.New("abcd cannot read every workflow, so it proposes no required checks: " +
+			strings.Join(refused, "; ") + ". Fix the file, or name the checks in github.required_checks")
 	}
-	return false
+	return sortedKeys(seen), notes, nil
+}
+
+// boundedError is an error from reading a workflow file, short enough for a note.
+func boundedError(err error) string {
+	const limit = 200
+	if s := err.Error(); len(s) <= limit {
+		return s
+	}
+	return strings.ToValidUTF8(err.Error()[:limit], "") + "..."
 }
 
 // prFilterKeys are the filters GitHub reads under a pull-request trigger.
 var prFilterKeys = map[string]bool{
 	"branches": true, "branches-ignore": true, "paths": true, "paths-ignore": true, "types": true,
-}
-
-// plainKeyRe matches a key written plainly: a bare word, or one quoted whole.
-var plainKeyRe = regexp.MustCompile(`^(?:[A-Za-z_][A-Za-z0-9_-]*|"[A-Za-z_][A-Za-z0-9_-]*"|'[A-Za-z_][A-Za-z0-9_-]*')$`)
-
-// unreadShape reports whether the `on:` block's events or the pull-request
-// trigger's body leave the YAML subset this line reader parses. That subset is
-// the safety net under RequiredChecks: at the events' level only plain keys
-// and list items; under the trigger only GitHub's five filter keys, written
-// plainly, whose values are an inline list or `- item` lines, with no anchor,
-// alias or tag in front of a value or an item. Any other shape (a key behind
-// an anchor or a tag, a complex `?` key, a merge key, a flow mapping, an alias,
-// an unknown key) is unread, and the workflow is left out rather than read as
-// unfiltered, so a shape not foreseen here falls to omission, never to a
-// required check.
-func unreadShape(on, prBody []string) bool {
-	if level := onLevel(on); level > 0 {
-		for _, l := range on {
-			t := plainLine(l)
-			if t == "" || indentOf(l) != level || t == "-" || strings.HasPrefix(t, "- ") {
-				continue
-			}
-			if k, _, ok := strings.Cut(t, ":"); !ok || !plainKeyRe.MatchString(strings.TrimSpace(k)) {
-				return true
-			}
-		}
-	}
-	keyIndent := -1
-	for _, l := range prBody {
-		t := plainLine(l)
-		if t == "" {
-			continue
-		}
-		ind := indentOf(l)
-		if keyIndent < 0 {
-			keyIndent = ind
-		}
-		switch {
-		case ind < keyIndent:
-			return true
-		case ind > keyIndent:
-			// A filter's value: only a `- item` line.
-			if !strings.HasPrefix(t, "- ") || !plainValue(strings.TrimSpace(t[2:])) {
-				return true
-			}
-		default:
-			k, v, ok := strings.Cut(t, ":")
-			k = strings.TrimSpace(k)
-			if !ok || !plainKeyRe.MatchString(k) || !prFilterKeys[strings.Trim(k, `"'`)] {
-				return true
-			}
-			if v = strings.TrimSpace(v); v != "" && !plainValue(v) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// plainLine is a line trimmed of its indentation and trailing comment, or ""
-// for a blank or comment line.
-func plainLine(l string) string {
-	t := strings.TrimSpace(l)
-	if strings.HasPrefix(t, "#") {
-		return ""
-	}
-	if i := strings.Index(t, " #"); i >= 0 {
-		t = strings.TrimSpace(t[:i])
-	}
-	return t
-}
-
-// plainValue reports whether a filter's value, or one list item, is a plain
-// or quoted scalar or a one-line flow sequence of them: nothing a YAML node
-// property (`&` anchor, `*` alias, `!` tag), a block scalar or a nested
-// collection could change the meaning of.
-func plainValue(v string) bool {
-	if strings.HasPrefix(v, "[") {
-		if !strings.HasSuffix(v, "]") {
-			return false
-		}
-		for _, item := range strings.Split(v[1:len(v)-1], ",") {
-			if item = strings.TrimSpace(item); item == "" || !plainValue(item) {
-				return false
-			}
-		}
-		return true
-	}
-	return v != "" && !strings.ContainsAny(v[:1], "&*!|>{[?@`%")
-}
-
-// stripNodeProps drops the anchor (`&name`) and tag (`!tag`) properties a
-// YAML node may carry before its value, so a flow mapping or alias behind
-// them is seen for what it is; an anchor names a value, it never hides one.
-func stripNodeProps(t string) string {
-	t = strings.TrimSpace(t)
-	for strings.HasPrefix(t, "&") || strings.HasPrefix(t, "!") {
-		i := strings.IndexAny(t, " \t")
-		if i < 0 {
-			return ""
-		}
-		t = strings.TrimSpace(t[i:])
-	}
-	return t
 }
 
 // coversPushes reports whether a pull-request `types:` filter keeps the three
@@ -314,158 +285,18 @@ func coversPushes(types []string) bool {
 	return have["opened"] && have["synchronize"] && have["reopened"]
 }
 
-// eventRe matches one event name standing alone in an `on:` value.
-func eventRe(event string) *regexp.Regexp {
-	return regexp.MustCompile(`(^|[^A-Za-z_])` + regexp.QuoteMeta(event) + `([^A-Za-z_]|$)`)
-}
-
-// hasEvent reports whether an `on:` block names event, in any of its forms
-// (`on: event`, `on: [a, event]`, a list item, or a mapping key).
-func hasEvent(on []string, event string) bool {
-	re := eventRe(event)
-	level := onLevel(on)
-	for _, l := range on {
-		if ind := indentOf(l); ind != 0 && ind != level {
-			// Deeper than the event names: a filter or an input, never a trigger.
-			continue
-		}
-		t := strings.TrimSpace(l)
-		if strings.HasPrefix(t, "#") {
-			continue
-		}
-		if i := strings.Index(t, " #"); i >= 0 {
-			t = t[:i]
-		}
-		if k, _, ok := strings.Cut(t, ":"); ok && !strings.HasPrefix(t, "[") && !strings.HasPrefix(t, "-") {
-			// A mapping line names only its key; its value is a filter.
-			if re.MatchString(strings.Trim(strings.TrimSpace(k), `"'`)) {
-				return true
-			}
-			continue
-		}
-		if re.MatchString(t) {
-			return true
-		}
-	}
-	return false
-}
-
-// eventBlock returns whether an `on:` block names event and, when event is a
-// mapping key there, the lines indented beneath it (its filters).
-func eventBlock(on []string, event string) (body []string, present bool) {
-	if !hasEvent(on, event) {
-		return nil, false
-	}
-	keyIndent := -1
-	level := onLevel(on)
-	for _, l := range on {
-		t := strings.TrimSpace(l)
-		if t == "" || strings.HasPrefix(t, "#") {
-			continue
-		}
-		ind := len(l) - len(strings.TrimLeft(l, " "))
-		if keyIndent >= 0 {
-			if ind <= keyIndent {
-				break
-			}
-			body = append(body, l)
-			continue
-		}
-		if ind != 0 && ind != level {
-			continue
-		}
-		if k, _, ok := strings.Cut(t, ":"); ok && strings.Trim(strings.TrimSpace(k), `"'`) == event {
-			keyIndent = ind
-		}
-	}
-	return body, true
-}
-
-// onLevel is the indentation of the event names in an `on:` block: that of
-// its first indented line. The value written on the `on:` line itself is
-// held at indentation 0.
-func onLevel(on []string) int {
-	for _, l := range on {
-		t := strings.TrimSpace(l)
-		if t == "" || strings.HasPrefix(t, "#") {
-			continue
-		}
-		if ind := indentOf(l); ind > 0 {
-			return ind
-		}
-	}
-	return 0
-}
-
-// indentOf is a line's indentation in spaces.
-func indentOf(l string) int {
-	return len(l) - len(strings.TrimLeft(l, " "))
-}
-
-// blockHasKey reports whether one of body's lines is the key key.
-func blockHasKey(body []string, key string) bool {
-	for _, l := range body {
-		if k, _, ok := strings.Cut(strings.TrimSpace(l), ":"); ok && strings.Trim(strings.TrimSpace(k), `"'`) == key {
-			return true
-		}
-	}
-	return false
-}
-
-// blockList returns the items of key's list in body: an inline flow sequence
-// (`key: [a, 'b']`) or the `- item` lines indented beneath it.
-func blockList(body []string, key string) []string {
-	var out []string
-	keyIndent := -1
-	for _, l := range body {
-		t := strings.TrimSpace(l)
-		if t == "" || strings.HasPrefix(t, "#") {
-			continue
-		}
-		ind := len(l) - len(strings.TrimLeft(l, " "))
-		if keyIndent >= 0 {
-			if ind <= keyIndent && !strings.HasPrefix(t, "-") || ind < keyIndent {
-				break
-			}
-			if strings.HasPrefix(t, "-") {
-				out = append(out, scalar(strings.TrimPrefix(t, "-")))
-				continue
-			}
-			break
-		}
-		k, v, ok := strings.Cut(t, ":")
-		if !ok || strings.Trim(strings.TrimSpace(k), `"'`) != key {
-			continue
-		}
-		v = scalar(v)
-		if strings.HasPrefix(v, "[") && strings.HasSuffix(v, "]") {
-			for _, item := range strings.Split(v[1:len(v)-1], ",") {
-				if item = scalar(item); item != "" {
-					out = append(out, item)
-				}
-			}
-			return out
-		}
-		if v != "" {
-			return append(out, v)
-		}
-		keyIndent = ind
-	}
-	return out
-}
-
 // branchListMatches reports whether a `branches` filter covers branch, by
 // GitHub's filter globs: `**` matches any run of characters, `*` any run but
 // `/`, and `?` one character. A negated pattern (`!x`) is not interpreted, so a
 // list holding one is treated as not matching, the direction that requires
-// nothing.
+// nothing, and so is a pattern longer than maxGlobBytes.
 func branchListMatches(patterns []string, branch string) bool {
 	matched := false
 	for _, p := range patterns {
 		if strings.HasPrefix(p, "!") {
 			return false
 		}
-		if branchGlob(p).MatchString(branch) {
+		if len(p) <= maxGlobBytes && branchGlob(p).MatchString(branch) {
 			matched = true
 		}
 	}
@@ -493,150 +324,671 @@ func branchGlob(p string) *regexp.Regexp {
 	return regexp.MustCompile(b.String())
 }
 
-// workflowChecks returns the check names one workflow file reports, or nil
-// when the workflow does not gate a pull request.
-func workflowChecks(src string) []string {
-	lines := strings.Split(strings.ReplaceAll(src, "\r\n", "\n"), "\n")
-	if !gatesAMerge(topLevelBlock(lines, "on")) {
-		return nil
+// workflowChecks returns the check names one workflow file reports, none when the
+// workflow does not gate a pull request, or why it could not be read.
+func workflowChecks(src string) ([]string, error) {
+	wf, err := readWorkflow(src)
+	if err != nil {
+		return nil, err
 	}
-	jobs := topLevelBlock(lines, "jobs")
+	if wf.on.unread {
+		return nil, errors.New("its trigger holds a form abcd does not read")
+	}
+	if !wf.on.gatesAMerge() {
+		return nil, nil
+	}
 	var out []string
-	for _, job := range splitJobs(jobs) {
+	for _, job := range wf.jobs {
 		if name, ok := job.checkName(); ok {
 			out = append(out, name)
 		}
 	}
-	return out
+	return out, nil
 }
 
-// topLevelBlock returns the value of a top-level key: its inline remainder
-// followed by every indented line up to the next top-level key.
-func topLevelBlock(lines []string, key string) []string {
-	var out []string
-	in := false
-	for _, l := range lines {
-		if l == "" || strings.HasPrefix(strings.TrimSpace(l), "#") {
-			if in {
-				out = append(out, l)
+// The bounds on reading one workflow file. A parsed tree's memory grows with the file,
+// but the parse's time does not always, and the library offers no limit of its own, so
+// before it runs a scan of the raw bytes holds the file to limits on its `#` characters,
+// its byte order marks, its directive lines and how each line opens (prescanWorkflow).
+// Nothing after the parse decodes into a Go value, where the library's duplicate check is
+// quadratic and allocates for each pair: the read walks nodes by hand, follows an
+// alias by pointer and never copies what it names. A file past a limit is refused
+// rather than read in part.
+const (
+	// maxWorkflowNodes bounds the nodes a file's tree may hold, and separately what the
+	// read may visit: each node, each byte of text it reaches through an alias, and each
+	// byte of a glob it will compile. abcd's own largest workflow, at 68 KiB, holds under
+	// 700 nodes, so a full 1 MiB of ordinary workflow holds about a tenth of this.
+	maxWorkflowNodes = 100_000
+	// maxWorkflowDepth bounds how deeply a file's tree may nest. abcd's own workflows
+	// nest 7 levels.
+	maxWorkflowDepth = 64
+	// maxMatrixValues is GitHub's limit of jobs one matrix may start. A longer list
+	// is not one abcd expands.
+	maxMatrixValues = 256
+	// maxGlobBytes is as long as a branch name can be, so a longer pattern is not
+	// compiled and matches nothing.
+	maxGlobBytes = 255
+	// maxHashes bounds the `#` characters in a file, since any of them could open a
+	// comment. abcd's own most commented workflow holds 627 in 68 KiB, so a full 1 MiB
+	// of the same holds about half of this.
+	maxHashes = 20_000
+	// maxDirectiveLines bounds the lines that open with `%`. A workflow has no use for
+	// more than a `%YAML` line.
+	maxDirectiveLines = 8
+	// maxLineLead bounds a line's opening run of spaces and block indicators, which is
+	// the most block levels the line can stand at. abcd's own workflows reach 14, and a
+	// script in one would have to indent past 256 spaces to meet it.
+	maxLineLead = 256
+)
+
+// prescanWorkflow holds a file's raw bytes to the limits the parser has no setting
+// for, in one pass, reading a line's end as YAML does. A UTF-16 file is refused, since
+// the parser would read what this scan cannot, and so is a byte order mark anywhere but
+// at the start, since the scanner skips one where this scan sees a line's first byte.
+func prescanWorkflow(src string) error {
+	if strings.HasPrefix(src, "\xff\xfe") || strings.HasPrefix(src, "\xfe\xff") {
+		return errors.New("it is not UTF-8")
+	}
+	src = strings.TrimPrefix(src, "\ufeff")
+	if strings.Contains(src, "\ufeff") {
+		return errors.New("it holds a byte order mark past its start")
+	}
+	if strings.Count(src, "#") > maxHashes {
+		return fmt.Errorf("it holds more than the %d `#` characters abcd reads", maxHashes)
+	}
+	directives := 0
+	for line := 1; len(src) > 0; line++ {
+		lead, at := lineLead(src)
+		if lead > maxLineLead {
+			return fmt.Errorf("line %d opens with more than %d spaces and block indicators, which abcd takes for that many "+
+				"YAML levels, even in a script", line, maxLineLead)
+		}
+		if src[0] == '%' {
+			if directives++; directives > maxDirectiveLines {
+				return fmt.Errorf("it holds more than the %d directive lines abcd reads", maxDirectiveLines)
 			}
+		}
+		next := strings.IndexAny(src[at:], "\n\r\u0085\u2028\u2029")
+		if next < 0 {
+			return nil
+		}
+		_, width := utf8.DecodeRuneInString(src[at+next:])
+		if strings.HasPrefix(src[at+next:], "\r\n") {
+			width = 2
+		}
+		src = src[at+next+width:]
+	}
+	return nil
+}
+
+// lineLead counts the spaces and block indicators a line opens with, and says where
+// they end.
+func lineLead(line string) (lead, end int) {
+	for end < len(line) {
+		switch {
+		case line[end] == ' ':
+			end++
+		case strings.IndexByte("-?:", line[end]) >= 0 && end+1 < len(line) && line[end+1] == ' ':
+			end += 2
+		default:
+			return lead, end
+		}
+		lead++
+	}
+	return lead, end
+}
+
+// mergeTag is the tag the parser gives a merge key.
+const mergeTag = "!!merge"
+
+// trigger is a workflow's `on:` as far as a merge gate cares.
+type trigger struct {
+	present bool
+	// events holds each event named, with its filters read for the two pull-request
+	// events alone.
+	events map[string]eventFilter
+	// unread says the events hold a shape abcd does not read, which could name more.
+	unread bool
+}
+
+// eventFilter is one event's filters.
+type eventFilter struct {
+	filters map[string][]string
+	// unread says the event's value holds a shape abcd does not read, which could
+	// hold a filter.
+	unread bool
+}
+
+func (f eventFilter) has(key string) bool {
+	_, ok := f.filters[key]
+	return ok
+}
+
+// names reports whether the trigger names event.
+func (t trigger) names(event string) bool {
+	_, ok := t.events[event]
+	return ok
+}
+
+// gatesAMerge reports whether the trigger runs the workflow against a pull request
+// or its merge-queue entry.
+func (t trigger) gatesAMerge() bool {
+	return t.names("pull_request") || t.names("pull_request_target") || t.names("merge_group")
+}
+
+// workflowFile is what the read takes from one workflow file.
+type workflowFile struct {
+	on   trigger
+	jobs []ciJob
+}
+
+// readWorkflow reads a workflow's trigger and jobs from its parsed tree, refusing a
+// file that does not parse, one past the read's limits, one defining a key twice, and
+// a jobs block GitHub would refuse. A panic in the parser reads as a file it could not
+// parse, since the input is a file abcd did not write.
+func readWorkflow(src string) (wf workflowFile, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			wf, err = workflowFile{}, errors.New("the YAML parser could not read it")
+		}
+	}()
+	if err := prescanWorkflow(src); err != nil {
+		return workflowFile{}, err
+	}
+	var doc yaml.Node
+	if err := yaml.Unmarshal([]byte(src), &doc); err != nil {
+		return workflowFile{}, err
+	}
+	if doc.IsZero() || len(doc.Content) == 0 {
+		return workflowFile{}, nil
+	}
+	nodes := 0
+	if err := checkTree(&doc, 0, &nodes); err != nil {
+		return workflowFile{}, err
+	}
+	r := &workflowRead{}
+	root, err := r.follow(doc.Content[0])
+	if err != nil {
+		return workflowFile{}, err
+	}
+	if isNull(root) {
+		return workflowFile{}, nil
+	}
+	if root.Kind != yaml.MappingNode {
+		return workflowFile{}, errors.New("it is not a mapping")
+	}
+	if err := r.visit(len(root.Content)); err != nil {
+		return workflowFile{}, err
+	}
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		key, value := root.Content[i], root.Content[i+1]
+		if key.Tag == mergeTag {
+			return workflowFile{}, fmt.Errorf("line %d holds a merge key at the top, which abcd does not read", key.Line)
+		}
+		if key.Kind != yaml.ScalarNode {
 			continue
 		}
-		top := !strings.HasPrefix(l, " ") && !strings.HasPrefix(l, "\t")
-		if top {
-			if in {
-				break
+		switch key.Value {
+		case "on":
+			if wf.on, err = r.readOn(value); err != nil {
+				return workflowFile{}, err
 			}
-			k, rest, ok := strings.Cut(l, ":")
-			k = strings.Trim(strings.TrimSpace(k), `"'`)
-			if ok && k == key {
-				in = true
-				if r := strings.TrimSpace(rest); r != "" {
-					out = append(out, r)
-				}
+		case "jobs":
+			if wf.jobs, err = r.readJobs(value); err != nil {
+				return workflowFile{}, err
 			}
-			continue
-		}
-		if in {
-			out = append(out, l)
 		}
 	}
-	return out
+	return wf, nil
 }
 
-// mergeTriggerRe matches an event that runs a workflow against a pull request
-// or its merge-queue entry.
-var mergeTriggerRe = regexp.MustCompile(`(^|[^A-Za-z_])(pull_request|pull_request_target|merge_group)([^A-Za-z_]|$)`)
+// checkTree holds a parsed tree to the limits on its size and depth, and refuses a key
+// defined twice in any mapping, as GitHub does. It visits each node once and never
+// follows an alias, so its work is the tree's size.
+func checkTree(n *yaml.Node, depth int, nodes *int) error {
+	if *nodes++; *nodes > maxWorkflowNodes {
+		return fmt.Errorf("it holds more than the %d YAML nodes abcd reads", maxWorkflowNodes)
+	}
+	if depth > maxWorkflowDepth {
+		return fmt.Errorf("it nests deeper than the %d levels abcd reads", maxWorkflowDepth)
+	}
+	if n.Kind == yaml.MappingNode {
+		seen := make(map[string]bool, len(n.Content)/2)
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			key := n.Content[i]
+			if key.Kind != yaml.ScalarNode {
+				continue
+			}
+			if seen[key.Value] {
+				return fmt.Errorf("line %d defines a key its mapping already holds", key.Line)
+			}
+			seen[key.Value] = true
+		}
+	}
+	for _, child := range n.Content {
+		if err := checkTree(child, depth+1, nodes); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
-// gatesAMerge reports whether an `on:` block names a pull-request or
-// merge-queue event.
-func gatesAMerge(on []string) bool {
-	for _, l := range on {
-		t := strings.TrimSpace(l)
-		if strings.HasPrefix(t, "#") {
+// workflowRead counts the walk over one parsed file, which reads only the keys it asks
+// for and never what is under a job's steps.
+type workflowRead struct {
+	visited int
+}
+
+// visit counts n things the walk is about to read.
+func (r *workflowRead) visit(n int) error {
+	if r.visited += n; r.visited > maxWorkflowNodes {
+		return fmt.Errorf("reading it visits more than the %d YAML nodes abcd reads", maxWorkflowNodes)
+	}
+	return nil
+}
+
+// follow is a node, or the node its alias names, with any text there counted, since
+// an alias can repeat long text at the price of a few bytes. An anchor cannot sit on an
+// alias, so one step arrives.
+func (r *workflowRead) follow(n *yaml.Node) (*yaml.Node, error) {
+	if n.Kind != yaml.AliasNode {
+		return n, nil
+	}
+	if err := r.visit(1 + len(n.Alias.Value)); err != nil {
+		return nil, err
+	}
+	return n.Alias, nil
+}
+
+// isNull reports a key given no value.
+func isNull(n *yaml.Node) bool { return n.Kind == yaml.ScalarNode && n.Tag == "!!null" }
+
+// readOn reads `on:`: one event, a list of them, or a mapping of them to their filters.
+func (r *workflowRead) readOn(n *yaml.Node) (trigger, error) {
+	t := trigger{present: true, events: map[string]eventFilter{}}
+	n, err := r.follow(n)
+	if err != nil {
+		return t, err
+	}
+	switch {
+	case isNull(n):
+	case n.Kind == yaml.ScalarNode:
+		t.events[n.Value] = eventFilter{}
+	case n.Kind == yaml.SequenceNode:
+		events, ok, err := r.readList(n)
+		if err != nil {
+			return t, err
+		}
+		t.unread = !ok
+		for _, e := range events {
+			t.events[e] = eventFilter{}
+		}
+	case n.Kind == yaml.MappingNode:
+		if err := r.visit(len(n.Content)); err != nil {
+			return t, err
+		}
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			key := n.Content[i]
+			if key.Kind != yaml.ScalarNode || key.Tag == mergeTag {
+				t.unread = true
+				continue
+			}
+			f := eventFilter{}
+			if key.Value == "pull_request" || key.Value == "pull_request_target" {
+				if f, err = r.readEventFilter(n.Content[i+1]); err != nil {
+					return t, err
+				}
+			}
+			t.events[key.Value] = f
+		}
+	default:
+		t.unread = true
+	}
+	return t, nil
+}
+
+// readEventFilter reads a pull-request event's value: nothing, or a mapping of GitHub's
+// filters to their lists.
+func (r *workflowRead) readEventFilter(n *yaml.Node) (eventFilter, error) {
+	f := eventFilter{filters: map[string][]string{}}
+	n, err := r.follow(n)
+	if err != nil {
+		return f, err
+	}
+	if isNull(n) {
+		return f, nil
+	}
+	if n.Kind != yaml.MappingNode {
+		f.unread = true
+		return f, nil
+	}
+	if err := r.visit(len(n.Content)); err != nil {
+		return f, err
+	}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		key := n.Content[i]
+		if key.Kind != yaml.ScalarNode || key.Tag == mergeTag || !prFilterKeys[key.Value] {
+			f.unread = true
 			continue
 		}
-		if i := strings.Index(t, " #"); i >= 0 {
-			t = t[:i]
+		list, ok, err := r.readList(n.Content[i+1])
+		if err != nil {
+			return f, err
 		}
-		if mergeTriggerRe.MatchString(t) {
-			return true
+		f.unread = f.unread || !ok
+		f.filters[key.Value] = list
+		if key.Value == "branches" {
+			// Each of these is compiled later, at a cost that follows its length.
+			for _, glob := range list {
+				if len(glob) <= maxGlobBytes {
+					if err := r.visit(len(glob)); err != nil {
+						return f, err
+					}
+				}
+			}
 		}
+	}
+	return f, nil
+}
+
+// readList reads a value that is absent, one word, or a list of words; ok is false
+// when it holds anything else.
+func (r *workflowRead) readList(n *yaml.Node) (list []string, ok bool, err error) {
+	n, err = r.follow(n)
+	if err != nil {
+		return nil, false, err
+	}
+	switch {
+	case isNull(n):
+		return nil, true, nil
+	case n.Kind == yaml.ScalarNode:
+		return []string{n.Value}, true, nil
+	case n.Kind != yaml.SequenceNode:
+		return nil, false, nil
+	}
+	if err := r.visit(len(n.Content)); err != nil {
+		return nil, false, err
+	}
+	ok = true
+	for _, item := range n.Content {
+		if item, err = r.follow(item); err != nil {
+			return nil, false, err
+		}
+		switch {
+		case isNull(item):
+		case item.Kind == yaml.ScalarNode:
+			list = append(list, item.Value)
+		default:
+			ok = false
+		}
+	}
+	return list, ok, nil
+}
+
+// jobCondition is what a job's `if:` says about whether a run going ahead runs it.
+type jobCondition int
+
+const (
+	// condFollowsNeeds is no `if:`, or one that adds nothing to the implicit
+	// success(): the job runs unless an ancestor was skipped or failed.
+	condFollowsNeeds jobCondition = iota
+	// condAlwaysRuns reads only the run's own state, so the job runs whatever
+	// happened to its ancestors.
+	condAlwaysRuns
+	// condCannotTell is any other condition, which this reader does not evaluate.
+	condCannotTell
+)
+
+// ciJob is one job as its workflow's parsed YAML gives it.
+type ciJob struct {
+	id    string
+	name  string
+	named bool
+	uses  bool
+	// matrix says the job has a matrix, or a strategy too computed to look into.
+	matrix bool
+	// matrixValues are the values of a matrix with one key, listed, with no
+	// include or exclude, each of which GitHub reports as it is written. It is nil
+	// for any other matrix.
+	matrixValues []string
+	cond         jobCondition
+	needs        []string
+}
+
+// readJobs reads the jobs block in file order, refusing one GitHub would refuse.
+func (r *workflowRead) readJobs(n *yaml.Node) ([]ciJob, error) {
+	block, err := r.follow(n)
+	if err != nil {
+		return nil, err
+	}
+	if isNull(block) {
+		return nil, nil
+	}
+	if block.Kind != yaml.MappingNode {
+		return nil, errors.New("its jobs key is not a mapping")
+	}
+	if err := r.visit(len(block.Content)); err != nil {
+		return nil, err
+	}
+	jobs := make([]ciJob, 0, len(block.Content)/2)
+	for i := 0; i+1 < len(block.Content); i += 2 {
+		key := block.Content[i]
+		if key.Kind != yaml.ScalarNode || !jobIDRe.MatchString(key.Value) {
+			return nil, fmt.Errorf("line %d holds a job id GitHub would refuse", key.Line)
+		}
+		job, err := r.readJob(key.Value, block.Content[i+1])
+		if err != nil {
+			return nil, err
+		}
+		jobs = append(jobs, job)
+	}
+	return jobs, nil
+}
+
+// readJob reads one job's own keys; steps and everything under them are not its
+// keys, so nothing written there is read as one.
+func (r *workflowRead) readJob(id string, n *yaml.Node) (ciJob, error) {
+	job := ciJob{id: id}
+	n, err := r.follow(n)
+	if err != nil {
+		return job, err
+	}
+	if n.Kind != yaml.MappingNode {
+		return job, fmt.Errorf("job %s is not a mapping", id)
+	}
+	if err := r.visit(len(n.Content)); err != nil {
+		return job, err
+	}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		key, value := n.Content[i], n.Content[i+1]
+		if key.Kind != yaml.ScalarNode || key.Tag == mergeTag {
+			return job, fmt.Errorf("job %s holds a key abcd does not read, on line %d", id, key.Line)
+		}
+		switch key.Value {
+		case "name":
+			v, err := r.follow(value)
+			if err != nil {
+				return job, err
+			}
+			job.named, job.name = true, v.Value
+		case "uses":
+			job.uses = true
+		case "if":
+			if job.cond, err = r.readCondition(value); err != nil {
+				return job, err
+			}
+		case "needs":
+			needs, ok, err := r.readList(value)
+			if err != nil {
+				return job, err
+			}
+			if !ok {
+				return job, fmt.Errorf("job %s has a needs key that is neither a job id nor a list of them", id)
+			}
+			job.needs = needs
+		case "strategy":
+			if job.matrix, job.matrixValues, err = r.readMatrix(value); err != nil {
+				return job, err
+			}
+		}
+	}
+	return job, nil
+}
+
+// readCondition judges a job's `if:`, written bare or as one expression. It
+// evaluates nothing: only the conditions whose answer needs no context are known.
+func (r *workflowRead) readCondition(n *yaml.Node) (jobCondition, error) {
+	n, err := r.follow(n)
+	if err != nil {
+		return condCannotTell, err
+	}
+	if n.Kind != yaml.ScalarNode || (n.Tag != "!!str" && n.Tag != "!!bool") {
+		return condCannotTell, nil
+	}
+	cond := strings.TrimSpace(n.Value)
+	if inner, ok := strings.CutPrefix(cond, "${{"); ok {
+		inner, closed := strings.CutSuffix(inner, "}}")
+		if !closed || strings.Contains(inner, "${{") {
+			return condCannotTell, nil
+		}
+		cond = strings.TrimSpace(inner)
+	}
+	switch cond {
+	case "always()", "!cancelled()":
+		return condAlwaysRuns, nil
+	case "success()", "true":
+		return condFollowsNeeds, nil
+	}
+	return condCannotTell, nil
+}
+
+// readMatrix reads a job's `strategy:`: whether it has a matrix, and the values of
+// the one shape whose check names the file settles. A computed strategy or matrix, or
+// a key it does not read in either, reads as a matrix only the run can name.
+func (r *workflowRead) readMatrix(n *yaml.Node) (matrix bool, values []string, err error) {
+	if n, err = r.follow(n); err != nil {
+		return false, nil, err
+	}
+	if isNull(n) {
+		return false, nil, nil
+	}
+	if n.Kind != yaml.MappingNode {
+		return true, nil, nil
+	}
+	if err := r.visit(len(n.Content)); err != nil {
+		return false, nil, err
+	}
+	var m *yaml.Node
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		key := n.Content[i]
+		if key.Kind != yaml.ScalarNode || key.Tag == mergeTag {
+			return true, nil, nil
+		}
+		if key.Value == "matrix" {
+			m = n.Content[i+1]
+		}
+	}
+	if m == nil {
+		return false, nil, nil
+	}
+	if m, err = r.follow(m); err != nil {
+		return false, nil, err
+	}
+	if m.Kind != yaml.MappingNode || len(m.Content) != 2 {
+		return true, nil, nil
+	}
+	key := m.Content[0]
+	if key.Kind != yaml.ScalarNode || key.Tag == mergeTag || key.Value == "include" || key.Value == "exclude" {
+		return true, nil, nil
+	}
+	list, err := r.follow(m.Content[1])
+	if err != nil {
+		return false, nil, err
+	}
+	if list.Kind != yaml.SequenceNode || len(list.Content) > maxMatrixValues {
+		return true, nil, nil
+	}
+	if err := r.visit(len(list.Content)); err != nil {
+		return false, nil, err
+	}
+	for _, item := range list.Content {
+		if item, err = r.follow(item); err != nil {
+			return false, nil, err
+		}
+		if item.Kind != yaml.ScalarNode || !reportsAsWritten(item) {
+			return true, nil, nil
+		}
+		values = append(values, item.Value)
+	}
+	return true, values, nil
+}
+
+// plainIntRe is an integer written the one way GitHub reports it.
+var plainIntRe = regexp.MustCompile(`^(0|[1-9][0-9]*)$`)
+
+// reportsAsWritten reports whether GitHub names a matrix value as its text: a
+// string with no expression in it, a plain integer or a boolean. It reads a float
+// as a number, so an unquoted 1.10 reports as 1.1.
+func reportsAsWritten(item *yaml.Node) bool {
+	switch item.Tag {
+	case "!!str":
+		return item.Value != "" && !strings.Contains(item.Value, "${{")
+	case "!!int":
+		return plainIntRe.MatchString(item.Value)
+	case "!!bool":
+		return item.Value == "true" || item.Value == "false"
 	}
 	return false
 }
 
-// ciJob is one job's id and its own direct keys.
-type ciJob struct {
-	id     string
-	name   string
-	named  bool
-	matrix bool
-	uses   bool
-	// matrixLines are the lines indented beneath the job's `matrix:` key.
-	matrixLines []string
-}
-
-// splitJobs reads the jobs block into its jobs, recording each job's own
-// `name:`, whether it declares a matrix, and whether it calls a reusable
-// workflow. Job ids sit at the block's first indentation; a job's own keys at
-// the next one.
-func splitJobs(block []string) []ciJob {
-	jobIndent := -1
-	keyIndent := -1
-	matrixIndent := -1
-	var jobs []ciJob
-	for _, l := range block {
-		t := strings.TrimSpace(l)
-		if t == "" || strings.HasPrefix(t, "#") {
-			continue
-		}
-		ind := len(l) - len(strings.TrimLeft(l, " "))
-		if matrixIndent >= 0 {
-			if ind > matrixIndent {
-				jobs[len(jobs)-1].matrixLines = append(jobs[len(jobs)-1].matrixLines, l)
-				continue
-			}
-			matrixIndent = -1
-		}
-		if jobIndent < 0 {
-			jobIndent = ind
-		}
-		switch {
-		case ind == jobIndent:
-			m := jobKeyRe.FindStringSubmatch(t)
-			if m == nil {
-				// Not a job id (a flow mapping, an anchor): stop trusting the block.
-				return jobs
-			}
-			jobs = append(jobs, ciJob{id: m[1]})
-			keyIndent = -1
-		case ind > jobIndent && len(jobs) > 0:
-			if keyIndent < 0 {
-				keyIndent = ind
-			}
-			job := &jobs[len(jobs)-1]
-			if ind == keyIndent {
-				k, v, _ := strings.Cut(t, ":")
-				switch strings.TrimSpace(k) {
-				case "name":
-					job.name, job.named = scalar(v), true
-				case "uses":
-					job.uses = true
-				case "strategy":
-					// An inline strategy may hold a matrix this reader cannot
-					// expand, so the job's names are the run's to decide.
-					if strings.TrimSpace(v) != "" {
-						job.matrix = true
-					}
-				}
-			} else if strings.HasPrefix(t, "matrix:") {
-				job.matrix = true
-				matrixIndent = ind
-			}
-		}
+// skippableJobs reports, by job id, the jobs a run going ahead may skip. A job with
+// a condition this reader cannot judge may be skipped. So may one following the
+// implicit success() with such a job anywhere among its ancestors: success() reads
+// every ancestor, including through a job that ran under always()
+// (actions/runner#491). A job whose own condition is always() or !cancelled() runs.
+// A need that names no job, and a cycle, are refused, as GitHub refuses the file.
+func skippableJobs(jobs []ciJob) (map[string]bool, error) {
+	byID := make(map[string]ciJob, len(jobs))
+	for _, j := range jobs {
+		byID[j.id] = j
 	}
-	return jobs
+	const walking, walked = 1, 2
+	state := make(map[string]int, len(jobs))
+	behind := make(map[string]bool, len(jobs))
+	var walk func(j ciJob) error
+	walk = func(j ciJob) error {
+		state[j.id] = walking
+		for _, id := range j.needs {
+			need, ok := byID[id]
+			if !ok {
+				return fmt.Errorf("job %s needs %q, which is no job in the file", j.id, id)
+			}
+			switch state[id] {
+			case walking:
+				return fmt.Errorf("job %s needs itself through %s", j.id, id)
+			case 0:
+				if err := walk(need); err != nil {
+					return err
+				}
+			}
+			if need.cond == condCannotTell || behind[id] {
+				behind[j.id] = true
+			}
+		}
+		state[j.id] = walked
+		return nil
+	}
+	skippable := make(map[string]bool, len(jobs))
+	for _, j := range jobs {
+		if state[j.id] == 0 {
+			if err := walk(j); err != nil {
+				return nil, err
+			}
+		}
+		skippable[j.id] = j.cond == condCannotTell || (j.cond == condFollowsNeeds && behind[j.id])
+	}
+	return skippable, nil
 }
 
 // checkName is the check context GitHub reports for the job, when it is
@@ -657,9 +1009,8 @@ func (j ciJob) checkName() (string, bool) {
 	return name, true
 }
 
-// checkNames is checkName with one matrix shape expanded: a single key whose
-// values are listed inline (`os: [a, b]`), with no include or exclude, which
-// GitHub reports as one check per value, `<name> (<value>)`. Any other matrix
+// checkNames is checkName with one matrix shape expanded (ciJob.matrixValues),
+// which GitHub reports as one check per value, `<name> (<value>)`. Any other matrix
 // still reports names only the run knows.
 func (j ciJob) checkNames() ([]string, bool) {
 	if !j.matrix {
@@ -668,16 +1019,7 @@ func (j ciJob) checkNames() ([]string, bool) {
 		}
 		return nil, false
 	}
-	if j.uses || len(j.matrixLines) != 1 {
-		return nil, false
-	}
-	k, v, ok := strings.Cut(strings.TrimSpace(j.matrixLines[0]), ":")
-	k = strings.TrimSpace(k)
-	v = strings.TrimSpace(v)
-	if i := strings.Index(v, " #"); i >= 0 {
-		v = strings.TrimSpace(v[:i])
-	}
-	if !ok || k == "include" || k == "exclude" || !strings.HasPrefix(v, "[") || !strings.HasSuffix(v, "]") {
+	if j.uses {
 		return nil, false
 	}
 	base := j.id
@@ -685,29 +1027,12 @@ func (j ciJob) checkNames() ([]string, bool) {
 		base = j.name
 	}
 	var out []string
-	for _, item := range strings.Split(v[1:len(v)-1], ",") {
-		item = scalar(item)
-		name := base + " (" + item + ")"
-		if item == "" || strings.Contains(item, "${{") || !checkNameRe.MatchString(name) {
+	for _, value := range j.matrixValues {
+		name := base + " (" + value + ")"
+		if !checkNameRe.MatchString(name) {
 			return nil, false
 		}
 		out = append(out, name)
 	}
 	return out, len(out) > 0
-}
-
-// scalar reads a plain or quoted YAML scalar from the text after a key's colon,
-// dropping a trailing comment on an unquoted value.
-func scalar(v string) string {
-	v = strings.TrimSpace(v)
-	if len(v) >= 2 && (v[0] == '"' || v[0] == '\'') {
-		if end := strings.IndexByte(v[1:], v[0]); end >= 0 {
-			return v[1 : 1+end]
-		}
-		return v
-	}
-	if i := strings.Index(v, " #"); i >= 0 {
-		v = v[:i]
-	}
-	return strings.TrimSpace(v)
 }

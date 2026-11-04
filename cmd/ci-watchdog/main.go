@@ -5,8 +5,8 @@
 //
 // go test's -timeout counts from each test binary's own start, so a package
 // that starts late in a long step meets the job's timeout-minutes first, and a
-// cancellation at the cap carries nothing but the cancellation. The check job
-// in ci.yml therefore runs every step that runs go test with
+// cancellation at the cap carries nothing but the cancellation. The check and
+// macos-suite jobs in ci.yml therefore run every step that runs go test with
 //
 //	shell: go run ./cmd/ci-watchdog bash --noprofile --norc -eo pipefail {0}
 //
@@ -38,11 +38,12 @@
 // that took the same pid and joined the step's own group under the same parent,
 // which only the step's own processes can do.
 //
-// It reads the job's clock from the environment the check job sets:
+// It reads the job's clock from the environment those jobs set:
 // ABCD_CI_LEG (the leg it names), ABCD_CI_JOB_STARTED (the job's start in Unix
 // seconds, exported by the "Record the job's start" step),
 // ABCD_CI_JOB_CAP_MINUTES (the leg's timeout-minutes) and
-// ABCD_CI_WATCHDOG_MARGIN_MINUTES (the one place the margin is declared).
+// ABCD_CI_WATCHDOG_MARGIN_MINUTES (the workflow's, the one place the margin is
+// declared).
 // TestCheckJobTestStepsRunUnderTheJobClockWatchdog holds the workflow to them.
 //
 // It is developer tooling, never part of a release. A step that ends before
@@ -83,7 +84,7 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Getenv, time.Now, time.After, sigs, os.Stdout, os.Stderr, grace))
 }
 
-// clock is the job's clock as the check job declares it.
+// clock is the job's clock as its job declares it.
 type clock struct {
 	leg     string
 	started time.Time
@@ -113,7 +114,7 @@ func readClock(getenv func(string) string) (clock, error) {
 	secs, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil || secs <= 0 {
 		return clock{}, fmt.Errorf("ABCD_CI_JOB_STARTED is %q, not the job's start in Unix seconds "+
-			"(the check job's `Record the job's start` step exports it)", raw)
+			"(its job's `Record the job's start` step exports it)", raw)
 	}
 	c.started = time.Unix(secs, 0)
 	if c.cap, err = minutes("ABCD_CI_JOB_CAP_MINUTES", 1); err != nil {

@@ -20,6 +20,11 @@ func TestAPreflightPastItsBoundIsKilledWithItsGroup(t *testing.T) {
 	if _, err := exec.LookPath("make"); err != nil {
 		t.Skip("make is not installed")
 	}
+	// On a fresh macOS runner the first make goes through xcrun, which can take
+	// longer than the bound below; a sharded suite can run this test first.
+	if err := exec.Command("make", "--version").Run(); err != nil {
+		t.Skipf("make does not run: %v", err)
+	}
 	dir := t.TempDir()
 	mk := "preflight:\n\t@sleep 20 & echo $$! > child.pid; wait\n"
 	if err := os.WriteFile(filepath.Join(dir, "Makefile"), []byte(mk), 0o644); err != nil {
