@@ -506,8 +506,6 @@ type packageSource struct {
 	files map[string]*ast.File
 	// productionVars is every package-level variable of a non-test file.
 	productionVars map[string]bool
-	// funcs is every top-level function, by name, methods under their own name.
-	funcs map[string]*ast.FuncDecl
 }
 
 func parsePackageSource(t *testing.T) packageSource {
@@ -516,7 +514,7 @@ func parsePackageSource(t *testing.T) packageSource {
 	if err != nil || len(paths) == 0 {
 		t.Fatalf("listing this package's files: %v (%d)", err, len(paths))
 	}
-	src := packageSource{files: map[string]*ast.File{}, productionVars: map[string]bool{}, funcs: map[string]*ast.FuncDecl{}}
+	src := packageSource{files: map[string]*ast.File{}, productionVars: map[string]bool{}}
 	fset := token.NewFileSet()
 	for _, p := range paths {
 		f, err := parser.ParseFile(fset, p, nil, 0)
@@ -525,17 +523,13 @@ func parsePackageSource(t *testing.T) packageSource {
 		}
 		src.files[p] = f
 		for _, decl := range f.Decls {
-			switch d := decl.(type) {
-			case *ast.FuncDecl:
-				src.funcs[d.Name.Name] = d
-			case *ast.GenDecl:
-				if d.Tok != token.VAR || strings.HasSuffix(p, "_test.go") {
-					continue
-				}
-				for _, spec := range d.Specs {
-					for _, name := range spec.(*ast.ValueSpec).Names {
-						src.productionVars[name.Name] = true
-					}
+			d, ok := decl.(*ast.GenDecl)
+			if !ok || d.Tok != token.VAR || strings.HasSuffix(p, "_test.go") {
+				continue
+			}
+			for _, spec := range d.Specs {
+				for _, name := range spec.(*ast.ValueSpec).Names {
+					src.productionVars[name.Name] = true
 				}
 			}
 		}
@@ -645,47 +639,70 @@ func (src packageSource) swapsIn(file string, f *ast.File, node ast.Node, into m
 	})
 }
 
-// swaps is every swap in the package's function bodies and top-level
-// initialisers' functions, by name. A declaration's own initial value is no swap.
+// swaps is every swap in the package's declarations, by name: function bodies, and
+// closures in a package-level variable's initialiser, such as a table of cases. A
+// declaration's own initial value is no assignment, so it is no swap.
 func (src packageSource) swaps() map[string]string {
 	found := map[string]string{}
 	for file, f := range src.files {
 		for _, decl := range f.Decls {
-			if d, ok := decl.(*ast.FuncDecl); ok && d.Body != nil {
-				src.swapsIn(file, f, d.Body, found)
-			}
+			src.swapsIn(file, f, decl, found)
 		}
 	}
 	return found
 }
 
 // testReachingFixtureAndSwap names a Test function that reaches, through this
-// package's functions, both a swap of name and a kept install, or "". A function
-// is reached by being named at all, since tests pass fixtures around as values.
+// package's functions and package-level variables, both a swap of name and a kept
+// install, or "". A function is reached by being named at all, since tests pass
+// fixtures around as values, and a variable by the same rule, which reaches all
+// its initialiser names: a table of cases holds closures the test runs.
 func (src packageSource) testReachingFixtureAndSwap(name string) string {
-	mentions, swaps := map[string][]string{}, map[string]bool{}
-	var tests []string
+	type node struct {
+		file string
+		f    *ast.File
+		name string
+		body ast.Node
+	}
+	var nodes []node
+	known := map[string]bool{}
 	for file, f := range src.files {
 		for _, decl := range f.Decls {
-			d, ok := decl.(*ast.FuncDecl)
-			if !ok || d.Body == nil {
-				continue
-			}
-			fn := d.Name.Name
-			ast.Inspect(d.Body, func(n ast.Node) bool {
-				if id, ok := n.(*ast.Ident); ok && src.funcs[id.Name] != nil {
-					mentions[fn] = append(mentions[fn], id.Name)
+			switch d := decl.(type) {
+			case *ast.FuncDecl:
+				if d.Body != nil {
+					nodes = append(nodes, node{file, f, d.Name.Name, d.Body})
+					known[d.Name.Name] = true
 				}
-				return true
-			})
-			found := map[string]string{}
-			src.swapsIn(file, f, d.Body, found)
-			if _, ok := found[name]; ok {
-				swaps[fn] = true
+			case *ast.GenDecl:
+				if d.Tok != token.VAR {
+					continue
+				}
+				for _, spec := range d.Specs {
+					for _, id := range spec.(*ast.ValueSpec).Names {
+						nodes = append(nodes, node{file, f, id.Name, spec})
+						known[id.Name] = true
+					}
+				}
 			}
-			if strings.HasPrefix(fn, "Test") {
-				tests = append(tests, fn)
+		}
+	}
+	mentions, swaps := map[string][]string{}, map[string]bool{}
+	var tests []string
+	for _, n := range nodes {
+		ast.Inspect(n.body, func(c ast.Node) bool {
+			if id, ok := c.(*ast.Ident); ok && known[id.Name] && id.Name != n.name {
+				mentions[n.name] = append(mentions[n.name], id.Name)
 			}
+			return true
+		})
+		found := map[string]string{}
+		src.swapsIn(n.file, n.f, n.body, found)
+		if _, ok := found[name]; ok {
+			swaps[n.name] = true
+		}
+		if strings.HasPrefix(n.name, "Test") {
+			tests = append(tests, n.name)
 		}
 	}
 	sort.Strings(tests)
