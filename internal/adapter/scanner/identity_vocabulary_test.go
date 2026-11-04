@@ -298,8 +298,15 @@ func TestLocalUsernameRootHomeSpareADeeperAbsoluteSegment(t *testing.T) {
 func TestLocalUsernameProductAccountSparesThePluginSpecOnly(t *testing.T) {
 	pats, sev := DefaultPatterns(), DefaultIdentitySeverities()
 	id := Identity{HomeUser: "abcd"}
-	if got := ScanText("/plugin install abcd@abcd-marketplace", id, pats, sev, "f"); hasKind(got, kindLocalUser) {
-		t.Errorf("the plugin install line reads as the caller's login: %v", got)
+	for _, line := range []string{
+		"/plugin install abcd@abcd-marketplace",
+		"run /plugin install abcd@abcd-marketplace.",
+		"(abcd@abcd-marketplace)",
+		"`abcd@abcd-marketplace`",
+	} {
+		if got := ScanText(line, id, pats, sev, "f"); hasKind(got, kindLocalUser) {
+			t.Errorf("%q reads as the caller's login: %v", line, got)
+		}
 	}
 	for _, line := range []string{"mail abcd@example.com", "mail abcd@abcd-marketplace.example.com", "mail abcd@abcd-marketplace2", "mail x-abcd@abcd-marketplace"} {
 		if got := ScanText(line, id, pats, sev, "f"); !hasKind(got, kindLocalUser) {

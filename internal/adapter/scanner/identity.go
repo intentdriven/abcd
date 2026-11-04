@@ -1095,10 +1095,16 @@ func standsAsAccountName(line string, start, end int, homes []string, toks *path
 	}
 	scanMeter.charge(stageIdentity, hi-end)
 	if rest, ok := strings.CutPrefix(line[start:], pluginSpec); ok &&
-		(start == 0 || !isLocalPartByte(line[start-1])) && (rest == "" || !isLocalPartByte(rest[0])) {
+		(start == 0 || !isLocalPartByte(line[start-1])) && !startsLocalPart(strings.TrimLeft(rest, ".")) {
 		return false
 	}
 	return hi+1 < len(line) && line[hi] == '@' && isAlnumByte(line[hi+1])
+}
+
+// startsLocalPart reports whether s begins with a byte an address could carry
+// on with.
+func startsLocalPart(s string) bool {
+	return s != "" && isLocalPartByte(s[0])
 }
 
 // pluginSpec is the plugin's own install line, which reads as user@host and
