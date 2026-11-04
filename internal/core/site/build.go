@@ -666,7 +666,9 @@ func build(req Request, written *labelsAdded) (Result, error) {
 		if !fsutil.ValidRelPath(rel) {
 			return fmt.Errorf("site: refusing to write %q: not a relative path inside the output directory", rel)
 		}
-		if err := fsutil.WriteFileAtomicInRoot(root, rel, data, 0o644); err != nil {
+		// A build makes all of this again from the record, and one a power cut
+		// stopped is purged by the next, so no file here earns a flush.
+		if err := fsutil.WriteRebuildableInRoot(root, rel, data, 0o644); err != nil {
 			return err
 		}
 		res.Files = append(res.Files, rel)
