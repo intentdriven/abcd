@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
-	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // TestBareAhoyNamesAnUnlinkedStoreWorktree (iss-2610050728100598): the pages
@@ -20,7 +19,7 @@ import (
 func TestBareAhoyNamesAnUnlinkedStoreWorktree(t *testing.T) {
 	hermeticEnv(t)
 	home := os.Getenv("HOME")
-	repo := gittest.NewRepo(t)
+	repo := newRepo(t)
 	repo.Write("README.md", "fixture\n")
 	repo.Commit("init")
 	sha := repo.Git("rev-list", "--max-parents=0", "HEAD")

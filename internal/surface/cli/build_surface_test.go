@@ -33,7 +33,7 @@ func buildIntent() string {
 func buildRepo(t *testing.T) *gittest.Repo {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
-	repo := gittest.NewRepo(t)
+	repo := newRepo(t)
 	repo.Write(".gitignore", ".abcd/.work.local/\n")
 	repo.Write(buildPlanned, buildIntent())
 	repo.Write(buildSpec, "---\nid: spc-1\nslug: alpha\nintent: itd-10\n---\n# alpha\n\n## Summary\n\nA written design record.\n\n"+

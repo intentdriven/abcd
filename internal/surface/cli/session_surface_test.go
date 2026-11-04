@@ -190,14 +190,21 @@ func startServe(t *testing.T, args ...string) (*syncBuffer, func() error) {
 	root.SetArgs(append([]string{"session", "serve"}, args...))
 	done := make(chan error, 1)
 	go func() { done <- root.ExecuteContext(ctx) }()
+	// stop is called by the test and again by its cleanup. The run's result
+	// is read once, so the second call answers with it rather than waiting
+	// the whole bound on a channel the first call drained.
+	var once sync.Once
+	var stopped error
 	stop := func() error {
-		cancel()
-		select {
-		case err := <-done:
-			return err
-		case <-time.After(10 * time.Second):
-			return errors.New("serve did not stop")
-		}
+		once.Do(func() {
+			cancel()
+			select {
+			case stopped = <-done:
+			case <-time.After(10 * time.Second):
+				stopped = errors.New("serve did not stop")
+			}
+		})
+		return stopped
 	}
 	t.Cleanup(func() { _ = stop() })
 	deadline := time.Now().Add(5 * time.Second)
@@ -741,14 +748,21 @@ func startSession(t *testing.T, args ...string) (*syncBuffer, func() error) {
 	root.SetArgs(append([]string{"session", "start"}, args...))
 	done := make(chan error, 1)
 	go func() { done <- root.ExecuteContext(ctx) }()
+	// stop is called by the test and again by its cleanup. The run's result
+	// is read once, so the second call answers with it rather than waiting
+	// the whole bound on a channel the first call drained.
+	var once sync.Once
+	var stopped error
 	stop := func() error {
-		cancel()
-		select {
-		case err := <-done:
-			return err
-		case <-time.After(10 * time.Second):
-			return errors.New("start did not stop")
-		}
+		once.Do(func() {
+			cancel()
+			select {
+			case stopped = <-done:
+			case <-time.After(10 * time.Second):
+				stopped = errors.New("start did not stop")
+			}
+		})
+		return stopped
 	}
 	t.Cleanup(func() { _ = stop() })
 	deadline := time.Now().Add(5 * time.Second)

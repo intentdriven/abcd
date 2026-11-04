@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -26,14 +25,10 @@ var hookScriptRef = regexp.MustCompile(`^sh "\$\{CLAUDE_PLUGIN_ROOT\}/hooks/([a-
 // user-prompt-submit's, is 54).
 const maxHookCommand = 64
 
-// repoHooksDir is the committed hooks/ directory, located from this file.
+// repoHooksDir is the committed hooks/ directory at the repository root.
 func repoHooksDir(t *testing.T) string {
 	t.Helper()
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller failed to locate the test source file")
-	}
-	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..", "..", "hooks"))
+	return filepath.Join(repoRootFromTest(t), "hooks")
 }
 
 // resolveHookCommand returns the shell a manifest command runs: the body of the

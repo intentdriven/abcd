@@ -50,6 +50,16 @@ type Pattern struct {
 	// (`gh repo list` and `gh repo delete` share their first level, and only one
 	// of them is a hazard).
 	Subcommand2 string `json:"subcommand2,omitempty"`
+	// SubcommandNamed, when true, requires the line's own text to name
+	// Subcommand and Subcommand2: a word that is nothing but substitutions
+	// stands for neither. By default such a word is read as every subcommand,
+	// the safe reading for a warning or an entry that also asks for a flag. A
+	// blocker naming only a subcommand needs this, or it refuses `git "$@"` and
+	// `git $(echo status)`, and any other git entry loses a line to it. A word
+	// with text of its own (`filter-$(x)`) is still read as what it can become.
+	// It is a pointer, as AfterCD is, so a per-repo override can lift it as well
+	// as set it.
+	SubcommandNamed *bool `json:"subcommand_named,omitempty"`
 	// ValueFlags are flags of Command that consume the FOLLOWING token, so the
 	// scan for Subcommand steps over the value rather than reading it as the
 	// subcommand (`git -C /repo push`).
@@ -60,6 +70,12 @@ type Pattern struct {
 	// single-letter short alternative also matches inside a bundled cluster
 	// (-rf satisfies -r and -f).
 	Flags []string `json:"flags,omitempty"`
+	// NotFlags stand the entry down: when a typed argument after the subcommand
+	// is an alternative of any listed "a|b" group, the command is not the hazard
+	// (`git prune -n` only looks). They are read as Flags are, an abbreviation
+	// included. A line with a word a substitution helps to write among its
+	// arguments, or with `--no-<flag>` among them, is not stood down (standsDown).
+	NotFlags []string `json:"not_flags,omitempty"`
 	// FlagValues constrain what a flag is SET TO, not merely that it is present.
 	// `gh api -X DELETE repos/owner/repo` deletes the repository and
 	// `gh api -X GET repos/owner/repo` reads it, so an entry that could only ask
@@ -111,6 +127,10 @@ type Pattern struct {
 	// (`./build/$name`), or a bare `"$VAR"`, which empties to no path at all.
 	// `$HOME` and `$PWD` are not counted: the login and the shell set them,
 	// and the entries that name them own a delete of them.
+	//
+	// ShapeForgeRefPath is a forge API path to a git ref (`…/git/refs/…`), or a
+	// word a substitution helps to
+	// write that can still be one (forgeRefPathCouldBe).
 	ArgShapes []string `json:"arg_shapes,omitempty"`
 	// MinOperands, when set, requires at least that many non-flag arguments
 	// (value_flags stepped over). It is what separates a kill BY PATTERN —
@@ -155,6 +175,16 @@ type FlagValue struct {
 	// an HTTP method's case is not what makes it destructive, and a constraint a
 	// change of case walks past is not a constraint.
 	Values []string `json:"values"`
+	// ByLead, when true, reads a setting a substitution helps to write by the
+	// text before the substitution, so it is accepted only where that text can
+	// still become one of Values. By default such a word is any setting, the
+	// safe reading for a flag with few settings (`-X "$M"`). A flag whose
+	// settings are open text needs this: `-F force="$V"` can be `force=true`, and
+	// `-F sha="$SHA"` cannot.
+	ByLead bool `json:"by_lead,omitempty"`
+	// Shape, in place of Values, accepts a setting by a shape of the text the
+	// line fixes. The shapes are a closed set the matcher knows (flagValueShapes).
+	Shape string `json:"shape,omitempty"`
 }
 
 // PathArg is one operand constraint for a slash-separated resource path.
@@ -423,6 +453,9 @@ func validatePattern(id string, p Pattern) error {
 	// empty flag group, and as invisible in the file.
 	// A literal reading of no prefix constrains nothing: the field says the
 	// entry reads a prefix it does not have.
+	if p.SubcommandNamed != nil && *p.SubcommandNamed && p.Subcommand == "" {
+		return fmt.Errorf("%w: entry %s sets subcommand_named without a subcommand", ErrInvalidEntry, id)
+	}
 	if p.ArgPrefixesLiteral != nil && *p.ArgPrefixesLiteral && len(p.ArgPrefixes) == 0 {
 		return fmt.Errorf("%w: entry %s sets arg_prefixes_literal without any arg_prefixes", ErrInvalidEntry, id)
 	}
@@ -463,8 +496,16 @@ func validatePattern(id string, p Pattern) error {
 		if !hasAlternative(fv.Flag) {
 			return fmt.Errorf("%w: entry %s flag-value constraint %d names no flag and could never match", ErrInvalidEntry, id, i)
 		}
-		if !hasAnyValue(fv.Values) {
+		if fv.Shape != "" && !flagValueShapes[fv.Shape] {
+			return fmt.Errorf("%w: entry %s flag-value constraint %d has shape %q, which is not a shape the guard knows", ErrInvalidEntry, id, i, fv.Shape)
+		}
+		if fv.Shape == "" && !hasAnyValue(fv.Values) {
 			return fmt.Errorf("%w: entry %s flag-value constraint %d accepts no value and could never match", ErrInvalidEntry, id, i)
+		}
+	}
+	for i, group := range p.NotFlags {
+		if !hasAlternative(group) {
+			return fmt.Errorf("%w: entry %s not_flags group %d names no flag and could never stand the entry down", ErrInvalidEntry, id, i)
 		}
 	}
 	// A negative operand count describes nothing a command line can hold.
@@ -1026,6 +1067,7 @@ func clonePattern(p Pattern) Pattern {
 	out := p
 	out.ValueFlags = append([]string(nil), p.ValueFlags...)
 	out.Flags = append([]string(nil), p.Flags...)
+	out.NotFlags = append([]string(nil), p.NotFlags...)
 	out.ArgPrefixes = append([]string(nil), p.ArgPrefixes...)
 	out.ArgValues = append([]string(nil), p.ArgValues...)
 	out.ArgShapes = append([]string(nil), p.ArgShapes...)
@@ -1036,6 +1078,10 @@ func clonePattern(p Pattern) Pattern {
 	if p.ArgPrefixesLiteral != nil {
 		v := *p.ArgPrefixesLiteral
 		out.ArgPrefixesLiteral = &v
+	}
+	if p.SubcommandNamed != nil {
+		v := *p.SubcommandNamed
+		out.SubcommandNamed = &v
 	}
 	if p.AfterCD != nil {
 		v := *p.AfterCD
@@ -1064,7 +1110,7 @@ func cloneFlagValues(in []FlagValue) []FlagValue {
 	}
 	out := make([]FlagValue, len(in))
 	for i, fv := range in {
-		out[i] = FlagValue{Flag: fv.Flag, Values: append([]string(nil), fv.Values...)}
+		out[i] = FlagValue{Flag: fv.Flag, Values: append([]string(nil), fv.Values...), ByLead: fv.ByLead, Shape: fv.Shape}
 	}
 	return out
 }
