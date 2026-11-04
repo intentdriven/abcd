@@ -5303,7 +5303,7 @@ renders bare and carries "source": "bundled".
 
 A list an override sets replaces the one it would inherit, so an override can
 hold back an entry abcd ships or, in SHELL, one the repository's
-.abcd/guard.json teaches. For the guardrail domains (COMMITTING, LOAD, PII,
+.abcd/guard.json only warns about. For the guardrail domains (COMMITTING, LOAD, PII,
 SHELL), every such recall keyword, alias or rule that an override's list leaves
 out is named on stderr, with the file that set the list, here and on every hook
 prompt. To keep an entry, restate it in the list, or leave the field out to
@@ -5313,11 +5313,11 @@ SHELL is generated from the shell-hazard registry that "abcd guard" enforces
 in this repository, the bundled entries and the repository's own
 .abcd/guard.json entries alike, recalled by the commands the registry names.
 Only part of it is sent as shell work starts: a line saying a guard judges each
-command, and the rules for commands the guard only warns about, since a warned
-command still runs. The rules for what it refuses reach the agent at the
-refusal, and this command lists them after the rest; --json carries them as
+command, and the rules of the entries that only warn, since a warned command
+still runs; a delete the guard cannot prove safe is still refused. The rules for
+what it refuses reach the agent at the refusal, and this command lists them after the rest; --json carries them as
 "checked", with each list's size in "rules_bytes" and "checked_bytes". With the
-guard switched off, every rule is sent and no line claims a guard. A rule in the
+guard switched off, every rule is sent and the line about a guard is not. A rule in the
 repository's words is marked "(repo)" after its entry id. A guard.json the guard
 refuses is named on stderr and left out; SHELL then lists the registry the guard
 enforces in its place. A new rule a machine can catch in a shell command goes in
@@ -5339,8 +5339,9 @@ layer and the recall words that hit. Each comes back in the form the
 context bracket and the per-turn budget give it — a domain in full, as its
 heading and first rule, or as its heading and the command that renders it,
 a note or page in full or as one line — or as not fitting the per-turn
-budget. The budget is what the host keeps of one hook's output, so a domain
-that does not fit is sent short and never cut. Notes and pages share one ranked order, a BM25F relevance
+budget, or as too long for any turn even as one line. The budget sits just under
+what the host keeps of one hook's output, so a domain that does not fit is sent
+short and never cut. Notes and pages share one ranked order, a BM25F relevance
 score that decides which of them fit the budget: each shows its rank and
 score and, under it, every matched term with the fields it was found in
 (recall words, title, body) and what it added to the score. It reads

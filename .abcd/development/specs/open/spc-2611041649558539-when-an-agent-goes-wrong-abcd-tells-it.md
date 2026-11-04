@@ -43,7 +43,7 @@ declare (`json:"-"`), which only SHELL fills. With the guard on, `Rules` holds o
 line saying a guard judges each command, then the warned lessons; `Checked` holds the
 refused lessons and the three lessons with no entry of their own (script reading,
 variable-built `-c`, unprovable delete). With the guard off, every lesson stays in
-`Rules` as today and no line claims a guard. The signature and the injected block
+`Rules` as today and the steering line is not sent. The signature and the injected block
 read `Rules` only. `abcd rules`, bare or scoped, renders both lists, and `--json`
 adds `checked`, `rules_bytes` and `checked_bytes` for every domain.
 

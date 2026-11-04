@@ -1065,6 +1065,11 @@ func renderShrunk(d ResolvedDomain) (block string, ok bool) {
 	var b strings.Builder
 	fmt.Fprintf(&b, "## %s\n", Label(d.Name, d.Source))
 	fmt.Fprintf(&b, "- %s\n", bodies[0])
+	if len(d.Checked) > 0 {
+		fmt.Fprintf(&b, "- (The first of the %d rules %s sends; `abcd rules %s` renders them and the %d the guard carries.)\n",
+			len(bodies), d.Name, d.Name, len(d.Checked))
+		return b.String(), true
+	}
 	fmt.Fprintf(&b, "- (The first of the %d rules %s holds; `abcd rules %s` renders all %d.)\n",
 		len(bodies), d.Name, d.Name, len(bodies))
 	return b.String(), true

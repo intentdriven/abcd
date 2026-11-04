@@ -101,6 +101,24 @@ func TestGuardOffKeepsEveryShellRuleSteeringAndClaimsNoGuard(t *testing.T) {
 	}
 }
 
+// TestAShortenedDomainCountsWhatTheGuardCarries: the line under a shortened SHELL
+// must not say the command renders nine rules when it lists every hazard too.
+func TestAShortenedDomainCountsWhatTheGuardCarries(t *testing.T) {
+	reg := guard.Defaults()
+	d, ok := shellDomain(reg, reg)
+	if !ok {
+		t.Fatal("no domain from the bundled registry")
+	}
+	block, shortened := renderShrunk(ResolvedDomain{Name: "SHELL", Source: "bundled", Domain: d})
+	if !shortened {
+		t.Fatalf("SHELL did not shorten:\n%s", block)
+	}
+	want := fmt.Sprintf("renders them and the %d the guard carries", len(d.Checked))
+	if !strings.Contains(block, want) {
+		t.Fatalf("the shortened block does not count the guard's %d rules:\n%s", len(d.Checked), block)
+	}
+}
+
 // TestAShellPromptGetsNoTextForWhatIsRefused walks the whole path, the hook
 // and the listing: the injected block has no refused text and the listing has
 // it all.

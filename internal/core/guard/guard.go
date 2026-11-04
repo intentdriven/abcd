@@ -311,7 +311,7 @@ func parse(data []byte) (Registry, error) {
 // entry's lesson injects both into an agent's context word for word (teach.go), and
 // a refusal prints both, so an unbounded field is an unbounded injection that would
 // push other domains out of the rules loader's budget. The longest bundled why is
-// under 300 bytes and the longest successor under 270, so 1,024 bytes leaves a
+// under 330 bytes and the longest successor under 310, so 1,024 bytes leaves a
 // repository more than three times the room abcd's own entries use while
 // keeping one lesson to a few hundred tokens at most.
 const maxLessonFieldBytes = 1024

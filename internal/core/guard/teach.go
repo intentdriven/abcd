@@ -199,7 +199,6 @@ func isAlnum(r rune) bool {
 // ScriptLesson is the rule the teaching plane carries for the script reading
 // (adr-2610091150447054), which no registry entry describes: what the guard
 // reads before it judges a command, what blocks, and what it does not see. It
-// is written beside the reading (script.go) so the two change together, and
 // opens with the guard-off lead under a disabled registry, as every lesson does.
 func (r Registry) ScriptLesson() string {
 	lead := "Read by the guard (" + scriptHazardEntryID + ", " + scriptWrittenEntryID + ")"

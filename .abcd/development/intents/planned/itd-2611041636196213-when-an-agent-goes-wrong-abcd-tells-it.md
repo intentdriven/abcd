@@ -78,7 +78,10 @@ refused hazards go back into the steering line.
   commands the guard only warns about, none of the text for commands it refuses, and
   `abcd rules SHELL` still lists every hazard.
 - **Given** a repository that has switched its guard off, **when** the hook answers,
-  **then** every shell rule stays a steering rule and no line claims a guard is running.
+  **then** every shell rule stays a steering rule, each opens `Hazard (guard off)`, and the
+  line saying a guard judges each command is not sent. Eleven registry entries keep
+  wording that names the guard after that opening; rewording them belongs to the
+  rule-by-rule change.
 - **Given** the bundled registry, **when** its tests run, **then** every entry that refuses
   or warns says why and what to do instead, and every entry appears in exactly one of the
   two lists, so a hazard can never fall out of both.

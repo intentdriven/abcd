@@ -19,8 +19,8 @@ recall-matches the prompt against keyword triggers declared in the plugin-bundle
 default domains, the machine's `~/.abcd.noindex/rules.json` and `<repo>/.abcd/rules.json`,
 and injects only the matched domain rules into context — instead of
 force-loading the full ruleset every turn.
-A prompt that matches no domain injects nothing (zero added tokens). The output
-stays under the host's 10,000-character cap: a domain that does not fit goes as
+A prompt that matches no domain injects no rules (notes, status and an away block
+may still come back). The output stays under the host's 10,000-character cap: a domain that does not fit goes as
 its first rule and the command for the rest.
 
 - Inspect rules: `abcd rules` renders the active set; `abcd rules <DOMAIN>`
@@ -92,9 +92,9 @@ started under memory pressure at or above the person's own floor.
 `SHELL` is generated from the hazard registry `abcd guard` enforces in the
 repository, and recalls on the commands it names (`rm`, `git push`, `pkill`, …) and
 on shell work in general. Ahead of time it sends a line about the guard and the
-rules for commands the guard only warns about; what the guard refuses reaches the
-agent at the refusal, and `abcd rules SHELL` lists every rule. With the guard off,
-every rule is sent.
+rules of the entries that only warn; what the guard refuses, a delete it cannot
+prove safe included, reaches the agent at the refusal, and `abcd rules SHELL` lists
+every rule. With the guard off, every rule is sent.
 `GRILL` carries the asking rules every abcd interview follows (one thing at a
 time, the thing being decided quoted in full before the question, options that
 widen rather than recommend); it is generated from the same limits the question
@@ -117,8 +117,8 @@ job.
 
 `SessionStart` and `PreCompact` clear the per-session dedup ledger, so a matched
 domain re-injects on the next prompt (the event-driven refresh that recovers
-after compaction). Within a session a domain that stays in force is never
-re-injected unchanged; one that leaves the active set (deleted, renamed, made
+after compaction). Within a session a domain that stays in force is not
+re-injected unchanged, short of the refresh backstop; one that leaves the active set (deleted, renamed, made
 dormant, or a `*<DOMAIN>` activation the next prompt does not repeat) is
 injected again when it returns.
 

@@ -111,8 +111,9 @@ generated from the registry: one rule per entry, carrying the command it matches
 whether the guard refuses or warns, the why and the safe successor, recalled by the
 commands the registry names (`rm`, `git push`, `pkill`, …) and by shell work in
 general. A prompt about shell-heavy work sends one line saying a guard judges each
-command, and the rules for the commands it only warns about, since a warned command
-still runs. What it refuses is corrected at the refusal, which carries the why and
+command, and the rules of the entries that only warn, since a warned command still
+runs; a delete entry's command is still refused in a repository where the guard cannot
+prove its target safe, and that refusal carries its own reason. What it refuses is corrected at the refusal, which carries the why and
 the safe form, reaches sub-agents the prompt hook never does, and comes before the
 host's own permission prompt, so no person is asked (itd-2611041636196213, which
 narrows itd-103). Every rule stays listed by the rules verb, and a host without hook
@@ -136,14 +137,14 @@ RS004 before the push, in a repository that also sets
 (all but its `abcd-land-approve` entry), are enforced but not listed; the scripts the guard reads, and the variable-built `bash -c` or `sh -c`
 script that deletes, which the guard refuses as `shell-c-variable-delete`
 (iss-2610161612200864), are listed by two rules the generator adds after the
-entries', each written beside the code that reads it. The registry listed is the one the guard
+entries', the second written beside the code that reads it and the first with the generator. The registry listed is the one the guard
 enforces in the repository: an entry the repository adds in its
 `.abcd/guard.json` is rendered by the same generator as the bundled ones, its
 rule marked `(repo)` after its entry id, and a guard file the guard refuses is
 named on stderr and never listed. An entry's why and successor are each at most
 1,024 bytes, since both are shown word for word. Under a committed
 `"disabled": true` the guard refuses nothing, so every rule is sent, each opening
-`Hazard (guard off)`, and no line claims a guard. How the domain is recalled, overridden and
+`Hazard (guard off)`, and the line saying a guard judges each command is not sent. How the domain is recalled, overridden and
 silenced is the rules loader's
 ([`05-internals/03-configuration.md`](../05-internals/03-configuration.md)).
 

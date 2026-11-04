@@ -1399,7 +1399,7 @@ override written before a release added an entry keeps withholding that entry.
 For the four guardrail domains — `PII`, `COMMITTING`, `LOAD` and `SHELL` — the
 load compares every recall, alias and rule list an override set against the list
 the load built before any `rules.json` layer: the running binary's bundled list,
-and for `SHELL` the lessons of the repository's own `.abcd/guard.json` entries
+and for `SHELL` the line about the guard and the warned lessons, the repository's own `.abcd/guard.json` entries among them; a refused entry's lesson is in the second list, which no override replaces
 too. It names each entry left out, and the file whose list is in force, on
 stderr from `abcd rules` and from the hook on every prompt. The effective set is
 unchanged. Restating the entry keeps it; leaving the field out inherits the
@@ -1416,8 +1416,10 @@ gives those bytes back to the rules. When the matched domains do not all fit, ro
 goes up a ladder, the cheapest first at each step: every domain gets its heading and
 a line naming the command that renders it, then its first rule, then all of its rules,
 so one long domain never holds back the next. Every form sent is recorded as sent, since it names the command,
-and never one the host cut. Rules still come back in full whenever they fit
-(spc-2610111627213138). A note or page that does not fit comes back as one line where that line fits. A
+and never one the host cut. Where the context bracket keeps rules in full, they come
+back in full whenever they fit what the turn leaves them; a bracket that shrinks rules
+sends each domain at most as its heading and first rule, however much room is left
+(spc-2610111627213138). A note or page that does not fit comes back as one line where that line fits; a page over 128 KiB is never read for recall and is named on stderr. A
 domain with no room even for that line is left out and tried again next turn, with a
 notice where the notice itself fits.
 
@@ -1440,7 +1442,9 @@ merged with the repository's own `.abcd/guard.json` (ruling CK1). Each registry
 entry becomes one rule — whether the guard refuses or warns, the entry id, the
 command it matches, the plain-language why, and the safe successor — in entry-id
 order. What is sent is a line saying a guard judges each command, then the rules of
-the entries it only warns about, since a warned command still runs. The refused
+the entries that only warn, since a warned command still runs; a delete entry's
+command is still refused in a repository where the guard cannot prove its target safe,
+and that refusal carries its own reason. The refused
 entries' rules are the second list, with the rules for the scripts the guard reads,
 the variable-built `-c` script and the delete it cannot prove safe; the agent reads
 them at the refusal. The recall keywords are the command heads the registry matches (`rm`,
@@ -1464,23 +1468,24 @@ successor are each capped at 1,024 bytes, over three times the longest bundled
 one, so one rule is a few hundred tokens at most; a guard file carrying a longer
 one is refused like any invalid entry. When a domain is left out for want of
 room, the truncation notice names the file whose words took it, `.abcd/guard.json`
-for these lessons and the layer's `rules.json` for a list an override set. The block is paid once per session per
-signature, so dedup never injects it again while its rules are unchanged, and
-an edit to the guard file re-injects it once. A rule whose words are the
+for these lessons and the layer's `rules.json` for a list an override set. The block is paid once per signature between refreshes:
+dedup does not inject it again while what is sent is unchanged, until a reset or the
+refresh backstop clears the ledger, and an edit to the guard file that changes what is
+sent re-injects it once. A rule whose words are the
 repository's — an entry the file adds, or a bundled entry whose tier, pattern,
 why or successor it changes — carries `(repo)` after its entry id, so whose
 words an agent is taught is never invisible; a fixture-only change teaches
 the bundled words and is not marked. Under a committed `"disabled": true`
 the guard refuses nothing, so nothing corrects the agent later: every rule is sent,
 each opening `Hazard (guard off)` in place of `Refused by the guard` or `Warned by
-the guard`, and no line claims a guard. A `.abcd/guard.json` the guard refuses
+the guard`, and the line saying a guard judges each command is not sent. A `.abcd/guard.json` the guard refuses
 (unreadable, invalid, or an uncommitted edit that weakens it) is refused here
 too and never skipped in silence: `SHELL` is built from the registry the guard falls
 back to, none of the refused entries, and the load names the file and the
 reason on stderr, from `abcd rules` and from the hook on every prompt, while
 every other domain loads as usual. The switches stay independent: the guard
-file decides what is refused, and `rules.json` overrides, silences or kills the
-teaching of it.
+file decides what is refused, and `rules.json` overrides, silences or kills what is
+sent ahead of time; it never reaches the refusal.
 
 `GRILL` is the second (itd-201, spc-2610030944505997 "GRILL generated from one
 Go source"): the asking rules every abcd interview follows. Its rules are
@@ -1505,7 +1510,7 @@ session. It writes to two streams:
 
 | Stream | What it carries | Who reads it |
 |---|---|---|
-| **stdout** | the rendered block of the domains new this turn, followed by a `## MEMORY` block of the memory notes the prompt recalls that this session has not yet been given (from `.abcd/memory.json` and `~/.abcd.noindex/memory.json`, within what the rules leave of the turn's injection budget), then the status block, and nothing else. A prompt that matches no domain and recalls no note, or matches only domains and notes already injected unchanged this session, with no status to show, writes zero bytes. The one exception is the prompt that owes the session its name (itd-2610111707085098, usually its first): stdout is then one JSON object, `{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":<the block>,"sessionTitle":<the name>}}`, which the host reads as the same context plus the title, the status block included | the host, which adds it to the model's context |
+| **stdout** | the rendered block of the domains new this turn, followed by a `## MEMORY` block of the memory notes the prompt recalls that this session has not yet been given (from `.abcd/memory.json` and `~/.abcd.noindex/memory.json`, within what the rules leave of the turn's injection budget), then the status block and, while the away mode holds, the away block. A prompt that matches no domain and recalls no note, or matches only domains and notes already injected unchanged this session, with no status to show, writes zero bytes. The exceptions are the prompt that owes the session its name and a prompt carrying the away line (itd-2610111707085098, usually its first): stdout is then one JSON object, `{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":<the block>,"sessionTitle":<the name>}}`, which the host reads as the same context plus the title, the status block included | the host, which adds it to the model's context |
 | **stderr** | one diagnostic line per prompt — the turn, the labels of the injected domains, the byte count — and, on a turn that recalls or has to leave out a note, one line naming the notes recalled and any that did not fit the budget, plus the load's notes and refusals, a `memory.json` that cannot be read among them (it recalls nothing, and the rules still inject) | the operator, out of band |
 
 **The machine reader's envelope.** With `--json`, the flag every verb takes for
@@ -1569,7 +1574,7 @@ turn it leaves the active set, so if it comes back its text is injected again
 the next time a prompt matches it, even when its rules are unchanged. A client
 that pruned it gets it back, and a host that appends to a transcript pays one
 re-render of that domain for the round trip; a domain that stays in force is
-still never re-injected unchanged within a session. The plain path meets this
+not re-injected unchanged within a session, short of a reset or the refresh backstop. The plain path meets this
 in two cases:
 
 - a domain whose `rules.json` entry is deleted, renamed or made dormant and
