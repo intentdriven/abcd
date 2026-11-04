@@ -96,7 +96,7 @@ intent: an intent already owns it, so a machine never takes it alone, and a
 promotion one drain made is never judged or worked again by another that reads
 the promoted record. A record the consistency pass files is the one exception:
 the two intents it names are the ones its contradiction is between, not intents
-that took it on, so it is judged by its other fields, and is ineligible, as any
+that took it on, so it is judged by its other fields: one they do not hand back or skip first is ineligible, as any
 automatic filer's record is, until a person writes its remedy (ruling H12).
 An intent it was promoted into, one that names it back in `related_issues`,
 still owns it, and that intent is read from the same commit as the ledger: a
@@ -406,7 +406,7 @@ on origin's default branch backs off, with a tip or without one
    so a move that waits on the pace or a judgement renews too, whether or not a
    step of the lane ran
    (spc-2610161044461448 step 7, dcn-2610161040374343). Once an issue lane's
-   validators have passed and it is at its landing, its first renewal narrows
+   validators have passed and it is at its landing, its first renewal due at half its lease (a fence's renewal keeps the footprint) narrows
    its footprint to the files it changed within it, measured from its merge
    base with origin's default branch, a renewal that only ever narrows, so a
    lane that reserved a directory frees the rest of it for other accounts

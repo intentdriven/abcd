@@ -8,7 +8,7 @@ dividing work from the run log (itd-2609221656373558, spc-2609221657588816).
 
 It is also the family the implement loop is driven through (itd-2609201916151817,
 decision 8): `build` is what a person types, and the loop's status, step,
-receipt and record are sub-verbs of this verb, which a driving session calls. The loop's
+receipt, widen and record are sub-verbs of this verb, which a driving session calls. The loop's
 own state lives in the checkout's local tier, not in the shared run state below;
 [`34-build.md`](34-build.md) is its chapter. The pacing intent
 (itd-2609201925079472) reads the loop's window clock.
@@ -127,7 +127,7 @@ and in its refusal line alike.
 A session's own agent ceiling (criterion 5; for the second session, on top of
 the first's) is held against the agents the session declares. The session
 states it when it joins (1 to 64); the record and the `session_open` line carry
-it, and a resume cannot restate it. abcd runs no agent, so the count it holds
+it, and a resume cannot restate it. abcd does not run a session's agents, so the count it holds
 the ceiling against is the session's own lines: the agents its `agent_start`
 lines since it joined name, less those an `agent_end` of the same `agent` has
 ended. An `agent_start` that would take the count past the ceiling is refused at
@@ -233,7 +233,7 @@ of `make preflight`, and once in the eval harness's
 `TestMain`, never once per test package. It reads the machine through
 `internal/core/machineload`, a standard-library-only leaf (macOS: the
 `vm.loadavg` and `hw.activecpu` sysctls and one `/bin/ps` run; Linux: `/proc`
-and `/sys/devices/system/cpu/online`), and warns on two triggers: a process
+and `/sys/devices/system/cpu/online`), warns of low disk and memory pressure beside its status, and sets that status to a warning on two triggers: a process
 outside the check's own parent chain older than the stray limit that uses
 nearly all the CPU it could get, or a one-minute load average strictly above
 the extreme limit. What a process could get is its fair share of the machine as
@@ -368,7 +368,8 @@ waiting for memory (`/proc/pressure/memory`, from 4.20) against
 configuration, a repository's key named as ignored. Memory is read at every
 look, at the re-check before a gate opens and before the one-slot race gate
 opens; a wait that times out on it names `memory`. A reading that
-cannot be taken shuts nothing and is said once. For ten minutes after any
+cannot be taken shuts nothing and is said once: on stderr at a gate, and on
+stdout as the load check's `memory check` line. For ten minutes after any
 waiter of the account last saw the pressure at the floor, the gates admit one
 run per two-minute settle through a record under `~/.abcd.noindex/`, reading
 memory again before each, so a stage's memory use shows before the next
@@ -441,8 +442,8 @@ Deriving the count from the machine's resources is a later step
 
 ## The implement loop
 
-Four sub-verbs drive the loop a build starts, the status, step, receipt and
-record verbs, each over the run's state file in the checkout's local tier ([`34-build.md`](34-build.md) states the file, the
+Five sub-verbs drive the loop a build starts, the status, step, receipt, widen
+and record verbs, each over the run's state file in the checkout's local tier ([`34-build.md`](34-build.md) states the file, the
 checks and the step interface). The status render reads every run, or the one
 named, and writes only the renewal of a due reservation of each run it shows,
 logged in the run record as a step logs it: it names the slots in use out of the run's ceiling,
@@ -631,7 +632,7 @@ opens, then five and ten minutes after each failed probe, then hourly; the
 failed probe eight hours into the hourly stage gives up, stops the run and
 raises one notification for the product thinker, held until acknowledged. Each
 probe tests only what failed: the network by the git remote, the model service
-only by the verdict of a canary agent the lead runs, since abcd calls no model.
+only by the verdict of a canary agent the lead runs, since the probe calls no model.
 A usage or rate limit is not an outage. The report lists every outage with its
 minutes, its outcome and what was retried, so a short one nobody was told of
 still appears.
@@ -649,9 +650,9 @@ written for the refused act; `3` contention (the record is claimed by another
 session, or the run state is locked) — back off and take other work. The
 outage probe gives `3` a meaning of its own, wait: the probe is not due, another
 session holds it, or a service is still down; and it exits `2` once the run gave
-up. The load check's wait exits `1` when it gives up at its timeout or cannot
-wait at all, because the hold it keeps under the abcd home cannot be placed,
-judged or written; with a command to run, it exits with that command's code,
+up. The load check's wait exits `1` when it gives up at its timeout or refuses
+to wait at all: a disk below the floor, a setting it cannot use, or a hold under
+the abcd home that cannot be placed, judged or written; with a command to run, it exits with that command's code,
 `128+N` when signal N killed it, or `127` when the command could not be
 started. The JSON form holds on every path: a refusal is the `{"abcd":"error",…}` envelope on stdout.
 

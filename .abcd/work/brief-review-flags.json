@@ -632,6 +632,46 @@
       "evidence": "internal/core/capture/eligible.go:319-328: the order is a sha256 rendezvous weight, whose comment says two keys disagree on the head of a group as often as chance allows; nothing coordinates them, so two keys can draw the same head, and in a group of one always do",
       "commit": "1cfb3f6cb8dacd16c4f2083a039076bf08191056",
       "applied": "2026-11-04T03:38:33Z"
+    },
+    {
+      "chapter": "34-build.md",
+      "sentence": "under a run id it does not name. The state is schema version 16. Version 16",
+      "replacement": "under a run id it does not name. The state is schema version 20. Version 20 keyed a validation round by reviewer (a validator's `reviewer`, `class`, `model` and `model_status`, an await's `reviewer`, `class` and `model`, and a round's `comparisons`), version 19 added a fallback receipt's `spent`, version 18 an await's `paused` and `running`, and version 17 a lane's `auto_plan`; each version before them reads as the next one's strict subset, and a file of an earlier version carrying what only a later one writes is refused. Version 16",
+      "evidence": "internal/core/implement/loop/state.go:270 (`const SchemaVersion = 20`; versions 17 to 20 at state.go:228-269; commands/implement.md:531 already names version 20)",
+      "commit": "49301ccb097cd61b6e8bff9d64eb7c9dd5fa923f",
+      "applied": "2026-11-04T03:52:40Z"
+    },
+    {
+      "chapter": "34-build.md",
+      "sentence": "written back at version 16 by its next mutation; an earlier version carrying what",
+      "replacement": "written back at version 20 by its next mutation; an earlier version carrying what",
+      "evidence": "internal/core/implement/loop/state.go:1269-1273 (every version from 1 to 19 is read as `SchemaVersion`, 20, and the next write carries it); state.go:270; loop.go:571",
+      "commit": "49301ccb097cd61b6e8bff9d64eb7c9dd5fa923f",
+      "applied": "2026-11-04T03:52:40Z"
+    },
+    {
+      "chapter": "35-drain.md",
+      "sentence": "that took it on, so it is judged by its other fields, and is ineligible, as any",
+      "replacement": "that took it on, so it is judged by its other fields: one they do not hand back or skip first is ineligible, as any",
+      "evidence": "internal/core/capture/eligible.go:165 (severity hand-back) precedes eligible.go:203 (the machine remedy's ineligible); internal/core/capture/consistency.go:101 files the finding at `Severity(f.Severity)`, and internal/core/intent/consistency.go:1711 admits every issueschema severity, major and critical included",
+      "commit": "49301ccb097cd61b6e8bff9d64eb7c9dd5fa923f",
+      "applied": "2026-11-04T03:52:40Z"
+    },
+    {
+      "chapter": "35-drain.md",
+      "sentence": "validators have passed and it is at its landing, its first renewal narrows",
+      "replacement": "validators have passed and it is at its landing, its first renewal due at half its lease (a fence's renewal keeps the footprint) narrows",
+      "evidence": "internal/core/implement/loop/reservation.go:377 (the fence's renewal, made at the landing by land.go:606 and land.go:911, sets no Narrow) against reservation.go:101-114 (only renewReservation, once due at half the lease, narrows); reservation.go:245 (the arming's renewal lasts a day); dcn-2610170919040486 says \"the first due renewal\"",
+      "commit": "49301ccb097cd61b6e8bff9d64eb7c9dd5fa923f",
+      "applied": "2026-11-04T03:52:40Z"
+    },
+    {
+      "chapter": "27-implement.md",
+      "sentence": "`/sys/devices/system/cpu/online`), and warns on two triggers: a process",
+      "replacement": "`/sys/devices/system/cpu/online`), warns of low disk and memory pressure beside its status, and sets that status to a warning on two triggers: a process",
+      "evidence": "internal/core/implement/load.go:32-34 (\"Beside the load it reports the free disk ... and the memory pressure ..., each a warning that never changes its status\"); internal/surface/cli/implement_load.go:900-901 prints LOW DISK and MEMORY PRESSURE warnings; the chapter's own line 375 says the same of memory",
+      "commit": "49301ccb097cd61b6e8bff9d64eb7c9dd5fa923f",
+      "applied": "2026-11-04T03:52:40Z"
     }
   ]
 }

@@ -910,9 +910,9 @@ performed by a human and by CI.
   one the gate is bound to, the archive gate exits 1 and leaves no archive
   behind.
 - **Given** at least one additive intent and no breaking intent, **when** the cut
-  runs, **then** the tier is minor and the launch report names the intents that
-  drove it. **Given** any breaking intent, the tier is major and the report names
-  it.
+  runs, **then** the tier is minor (patch before `1.0.0`) and the launch report
+  names the intents that drove it. **Given** any breaking intent, the tier is major
+  (minor before `1.0.0`) and the report names it.
 - **Given** a command, flag or manifest surface removed or altered since the
   previous release with no breaking intent in the release, **when** the cut runs,
   **then** the surface guardrail fails the launch, the mislabel is reported, and

@@ -8,8 +8,10 @@ on with it; `ahoy install --attribution` writes one more key and `ahoy install
 never written. Beyond those twenty-two, the binary reads only keys a person
 opts into: the provider adapter's `oracle` keys (the reviewer route's
 `oracle.review` among them) and the interview's list style, both below, the
-implement loop's `pace`
-(`internal/core/implement/loop/pace.go`), the consistency pass's `consistency`
+implement loop's `pace` (`pace.work_minutes`, `pace.pause_minutes`,
+`pace.sub_agents` and `pace.fix_rounds`, and the drain's `pace.stuck_refusals`,
+1 to 64 and 3 by default, and `pace.stuck_minutes`, 1 to 10080 and 60 by default;
+`internal/core/implement/loop/pace.go`), the consistency pass's `consistency`
 keys (`internal/core/intent/consistency_config.go`), the reservation holder's
 `reservation.github_username`, read from the machine layer alone
 (`internal/core/claim/holder.go`), the reservation cap's `reservation.max_live`
@@ -21,15 +23,17 @@ from the machine layer alone (the person's `~/.abcd.noindex/config.json`), 1 to
 (`internal/core/implement/load_slots.go`), the load gate's memory floors
 `load.memory_floor_macos` (`warn` by default, or `critical`) and
 `load.memory_floor_linux` (a whole percentage from 1 to 100, 10 by default),
-each read from the machine layer alone, a repository's key named on stderr as
-ignored (`internal/core/implement/load_memory.go`), the quiet window of `ahoy worktree
+each read from the machine layer alone, a repository's key named as ignored
+(`internal/core/implement/load_memory.go`), the quiet window of `ahoy worktree
 prune`, `worktrees.quiet_days` (how many days without activity make an
 unmerged worktree with no open pull request quiet: 1 to 36500 and 14 by
 default; `internal/core/ahoy/worktree/quiet.go`), the matrix run's spending
 cap `matrix.spend_cap` (an amount in usd for a run with a metered cell, set
 in the machine layer alone, a repository's refused, and with no default: a
 run's own `spend_cap` overrides it, and a metered run with neither is refused;
-`internal/core/matrix/cap.go`), and the runner routes under `roles` and
+`internal/core/matrix/cap.go`), the build's review set under `review` and
+`models.classes` (`internal/core/implement/loop/reviewset.go`), the question limits
+under `question` (below), and the runner routes under `roles` and
 `runner` (`internal/core/runner/config.go`). Everything else on this page is either a
 store abcd lays out for itself, a policy that follows from one of those four
 answers, or an axis the design commits to and has not built.
@@ -217,15 +221,16 @@ machine's own file whatever origin is, so a misspelt key under `reservation`
 there refuses every reservation that reaches that lookup, on a fork or not.
 
 There is no separate `.abcd/meta.json` at repo scope: setup metadata is the `meta`
-block. This repository's own config carries eight of these blocks — `docs`,
-`facilitator`, `meta`, `oracle`, `outbound`, `release`, `repo` and `sessions`. All
+block. This repository's own config carries nine of these blocks — `docs`,
+`facilitator`, `meta`, `oracle`, `outbound`, `readme`, `release`, `repo` and `sessions`. All
 but `facilitator` and `release`, which this repository sets by hand for its own
 merging and release cuts, are what an unremarkable managed repo carries.
 
 ### The provider adapter's keys
 
 The OpenAI-compatible API adapter (itd-2609081951381895, adr-2609221009491186)
-reads four keys under `oracle` through the layered resolver, every one validated
+reads four keys under `oracle`, and the machine's
+`oracle.bundled_context_providers` below, through the layered resolver, every one validated
 when the configuration is read and refused loudly, naming the file and the key,
 rather than skipped:
 
@@ -714,7 +719,7 @@ belong in a drainer layer that does not exist.
 Schema versioning and cross-version migration come in a later phase: a
 configuration record carries `schema_version: 1`, and migrators are added if a
 later phase changes the shape (itd-9). The stamp is a convention rather than a
-held rule, and the tree is not uniform — nine of the fifteen committed records
+held rule, and the tree is not uniform — eleven of the seventeen committed records
 carry it (`config.json` in its `meta` block), and six do not, the record-lint
 and docs-lint configuration among them. Nothing refuses an unstamped record, so
 a migration that arrives before the stamps do has no version to read on those
@@ -1076,12 +1081,16 @@ that asked them), the copies of the harness's settings file in `backups/`
 (its readers are every key read through the layered reader,
 `internal/core/layered`: the provider adapter's `oracle` keys, the reviewer
 route's `oracle.review`, the filing-time match's `match`, the
-`land` switches, `consistency.max_request_bytes`, the implement loop's `pace`,
-the role routes under `roles` and `worktrees.quiet_days`, each read with the
-repo-scope `.abcd/config.json` above it, except `land`, whose layers are ANDed; the
+`land` switches, the `consistency` keys, the implement loop's `pace`,
+`reservation.fork_origin`, `facilitator.mode`, `review.reviewers`, `review.judge`,
+the `question` keys, the role routes under `roles` and `worktrees.quiet_days`, each
+read with the repo-scope `.abcd/config.json` above it, except `land`, whose layers
+are ANDed, `facilitator.mode`, where `human` from any layer wins, and `question`,
+where the machine's file may only lower a limit; the
 provider blocks, `oracle.rp`, `oracle.bundled_context_providers`, the whole
 `runner` namespace (`runner.fallback_host` and every `runner.<name>`),
 `interview.list`, `matrix.spend_cap` (a repository's figure refused),
+`review.max_reviewers` and `models.classes` (a repository's skipped with a warning),
 `reservation.github_username`, `reservation.max_live` (1 to
 100, 10 by default, read past to 10 when the file cannot be read, which the
 refusal at the cap says), `load.preflights` (how many preflights the first
@@ -1089,8 +1098,8 @@ gate admits at once, each a whole run, one race stage able to run beside
 them: 1 to 4, 1 by default, never read from a repository, and read past, with
 a stderr note, when the file cannot be read for it, so a file that holds other
 settings never stops the load gate) and `load.memory_floor_macos` and
-`load.memory_floor_linux` (the default floors applied, with a stderr note, when
-the file cannot be read for them, and a value outside its set refusing the wait,
+`load.memory_floor_linux` (the default floors applied, with a note, on stderr at a
+gate and on stdout at the load check, when the file cannot be read for them, and a value outside its set refusing the wait,
 since the gate does not guess a floor) are honoured from the machine layer alone,
 and only from a home outside every git working tree but the account's own
 (`layered.MachineRoots`, the rule `RootsFor` applies): under a home inside
@@ -1142,7 +1151,8 @@ session-name register in `sessions/names.json`, the rules loader's per-session
 ledgers in `rules-state/`, the dashboard's run file, seen devices and lock in
 `dashboard/`, this account's holder id in `holder-id`, the load gate's two
 holds in `load-wait.json` and `load-wait-race.json` (taken under
-`.load-wait.lock`), the record of the line install added to a shell startup
+`.load-wait.lock`), its memory admission in `load-memory-admit.json`, the context
+fill the status line leaves in `fill/`, the record of the line install added to a shell startup
 file in `shell-path.json`, the installed-tools record in `tools.json`, and the
 person's commit identity in `identity/<root-sha>.json` for one repository and
 `identity.json` everywhere else. It also holds the owned PATH entry and the

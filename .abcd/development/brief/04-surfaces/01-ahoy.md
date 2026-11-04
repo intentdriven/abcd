@@ -584,6 +584,9 @@ earlier version wrote wider is narrowed when abcd next writes it
   load-wait.json                 the load gate's hold for the test stages, taken by
                                  the waiter that opens, under .load-wait.lock
   load-wait-race.json            the race gate's hold, the same way
+  load-memory-admit.json         the load gates' memory admission: when a waiter last
+                                 saw the pressure at the floor and which it admitted
+                                 last, under load-memory-admit.lock
   shell-path.json                the record of the one line install added to a shell
                                  startup file, so removing it takes out that line
                                  alone (itd-2610240919030303)
