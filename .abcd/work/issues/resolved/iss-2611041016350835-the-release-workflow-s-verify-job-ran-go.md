@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".github/workflows/release.yml"
 remedy: "Give the Test step its own -timeout in release.yml and its scaffold template, and raise the job's timeout-minutes so every step's limit still fires first."
-resolution: "The Test step now sets -timeout 20m in release.yml and its scaffold template, and the job's limit is 75 minutes, so each step's own limit fires first."
+resolution: "The Test step now sets -timeout 20m in abcd's own release.yml and in its profile of the scaffold template, and that job's limit is 75 minutes, so each step's own limit fires first. A scaffolded repository's render keeps go's default limit, under its 15-minute job."
 impact: fix
 ---
 
