@@ -276,13 +276,15 @@ there is no flag that could set one. A missing operand, a positional argument,
 and every refusal below exit 2. The one other flag, `--route`, routes the agent
 the output came from and sets nothing the output carries.
 
-**Practise before it counts.** Add `--dry-run` to judge the output exactly as
-the ingest does and write nothing: no reading record, refusal record, stage,
-sweep or run metadata. It prints each file the ingest would write; an item's id
-is shown as `<id>`, because the ledger mints it when it records the item. A
-refusal is the real run's, with the same exit 2, except that one the real run
-would record says where it would be recorded. `--dry-run` with `--dispatch` is
-refused: practise with `--reading-json`.
+**Practise before it counts.** Add `--dry-run` to judge the output as the
+ingest does, short of the ledger writer's own matching, redaction and refusals,
+and write nothing: no reading record, refusal record, stage, sweep or run
+metadata. It prints each file the ingest would write; an item's id is shown as
+`<id>`, because the ledger mints it when it records the item. A refusal is the
+real run's, with the same exit 2, except that one the real run would record says
+where it would be recorded. The ledger writer's checks run only when it writes,
+so a practice run that passes can still be refused there. `--dry-run` with
+`--dispatch` is refused: practise with `--reading-json`.
 With `--json` the result carries the usual fields plus `"dry_run": true`,
 `would_write` and `would_do`.
 

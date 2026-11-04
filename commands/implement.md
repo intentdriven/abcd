@@ -1063,10 +1063,12 @@ before the race gate at one preflight at a time opens; the waiting line
 names the reading and the floor (`memory pressure warn (floor warn)`, `memory
 stalled 14.2% over 10s (floor 10%)`), and a wait still shut at `--timeout`
 names `memory` in `still`. `--json` carries the last reading as `memory`. A
-reading it cannot take (another platform, a Linux kernel without
-`/proc/pressure/memory`, a read that fails) shuts nothing: the gate admits as
-it did before the floor existed and one line on stderr says the memory floor
-was not checked, and why (`memory_note` in `--json`).
+reading it cannot take (a Linux kernel without `/proc/pressure/memory`, a read
+that fails, or another platform at the race gate at one preflight at a time)
+shuts nothing: the gate admits as it did before the floor
+existed and one line on stderr says the memory floor was not checked, and why
+(`memory_note` in `--json`). Any other gate on another platform opens as
+`unchecked` and reads no memory.
 
 When the pressure falls, every waiter watching it would open at once. So once
 any waiter of your account has read the pressure at or above the floor, for ten

@@ -49,17 +49,18 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"field. abcd's strict baseline takes tech-debt, documentation, inconsistency, drift,\n" +
 			"bug and ux at nitpick or minor, and hands every security issue to a person. A\n" +
 			"repository's record may loosen those floors (major, critical, security), and every\n" +
-			"floor it loosens is named. Three hand-backs hold whatever the record says. An issue\n" +
+			"floor it loosens is named. Four hand-backs hold whatever the record says. An issue\n" +
 			"whose related_intents names an intent is handed back as promoted, naming the\n" +
 			"intents: it goes through its intent (`abcd build <itd-N>`, or `abcd intent audit\n" +
 			"<itd-N>` for an audit's owed check), and a person's own `abcd build <iss-N>` still\n" +
 			"takes it; a record the consistency pass files is the exception, since the intents\n" +
 			"it names are the two it found contradicting: once a person has written its remedy,\n" +
 			"it is judged by its other fields as if it named no intent, and an intent it was\n" +
-			"promoted into still owns it. An issue whose remedy opens \"Waits on\", or whose\n" +
-			"deferral past the current release tag is live, or names a release tag this checkout\n" +
-			"lacks, is handed back too. Every other open issue is handed back, listed as\n" +
-			"ineligible, or skipped naming its blocker, by the rule that excluded it.\n\n" +
+			"promoted into still owns it. An issue carrying the decision_needed: marker a drain's\n" +
+			"trust-rule hand-back wrote, whose remedy opens \"Waits on\", or whose deferral past\n" +
+			"the current release tag is live, or names a release tag this checkout lacks, is\n" +
+			"handed back too. Every other open issue is handed back, listed as ineligible, or\n" +
+			"skipped naming its blocker, by the rule that excluded it.\n\n" +
 			"In a checkout with a remote named origin, the ledger is read from origin's default\n" +
 			"branch, never from the checkout, which may be behind it: each move fetches the\n" +
 			"reservations and that branch first, under the drain's lock and before any judgement\n" +
@@ -156,7 +157,10 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"request, in one listing of your latest pull requests (gh pr list): a closed one\n" +
 			"hands the lane back as closed, releasing its reservation with a tombstone marking\n" +
 			"it closed; a conflicting one is not renewed and is named; an open one is\n" +
-			"renewed and named as waiting (parked in --json). Before its records and push a\n" +
+			"renewed and named as waiting, or, once the merge-queue watch finds it will not merge\n" +
+			"on its own (it left the queue disarmed, or its head moved), as dropped, naming why\n" +
+			"(parked in --json); the watch queues one it finds armed and CLEAN outside the queue.\n" +
+			"Before its records and push a\n" +
 			"lane's sync fetches origin's default branch and merges it whenever it has moved, a\n" +
 			"fresh round judging the merge: a conflict confined to files origin declares\n" +
 			"linguist-generated goes back to an implementer to regenerate, any other hands the\n" +
@@ -165,11 +169,12 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"that finds a decision in its issue hands it back by kind, its work discarded: a\n" +
 			"user-visible change is promoted to an intent draft (`capture promote`, which\n" +
 			"stamps the issue's related_intents and nothing else); a trust or safety rule is\n" +
-			"flagged as needing a decision record, with the question; a design finding or a\n" +
-			"second package is flagged with the home the lane names. Every issue the rule\n" +
-			"hands back is flagged naming the rule, less one this drain promoted itself, which\n" +
-			"is counted once, as its promotion. Nothing but the promotion is written to the\n" +
-			"ledger, and every hand-back is in the summary.\n\n" +
+			"flagged as needing a decision record, with the question written onto the open issue\n" +
+			"as its decision_needed: marker; a design finding or a second package is flagged with\n" +
+			"the home the lane names. Every issue the rule hands back is flagged naming the rule,\n" +
+			"less one this drain promoted or marked itself, which is counted once, as its\n" +
+			"promotion or decision record. Nothing but the promotion and the decision_needed:\n" +
+			"marker is written to the ledger, and every hand-back is in the summary.\n\n" +
 			"The drain is paced as a run is: its window and pause are --pace, --sub-agents and\n" +
 			"--fix-rounds as `abcd build` reads them, resolved when the drain begins. At the window's\n" +
 			"end the drain's state (.abcd/.work.local/run/drain.json) takes next_eligible_at and\n" +

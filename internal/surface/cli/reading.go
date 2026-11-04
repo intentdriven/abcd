@@ -220,9 +220,11 @@ func newReadingCommand(asJSON *bool) *cobra.Command {
 			"compared with the open and resolved issues, the intents and every earlier reading item, never\n" +
 			"with another item of the same run, and a likely repeat is written onto the reading record as a\n" +
 			"duplicates: or refines: link and shown, printed and as matches in --json.\n\n" +
-			"With --dry-run the output is judged exactly as above and nothing is written: no reading\n" +
-			"record, no refusal record, no stage, no sweep and no run metadata. The report names each\n" +
-			"file the ingest would write; a refusal the ingest would record says where instead.",
+			"With --dry-run the output is judged as above, short of the ledger writer's own matching,\n" +
+			"redaction and refusals, which run only when it writes, so a practice run that passes can\n" +
+			"still be refused there. Nothing is written: no reading record, no refusal record, no stage,\n" +
+			"no sweep and no run metadata. The report names each file the ingest would write; a refusal\n" +
+			"the ingest would record says where instead.",
 		Example: "  abcd reading ingest --reading-json ./reading-output.json --json",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 0 {

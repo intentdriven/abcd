@@ -214,8 +214,10 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"preflight at a time opens, which, once memory has held it, says it opened after\n" +
 			"its wait, not at once), the waiting line names the level or the\n" +
 			"stalled share and the floor, and a wait still shut at --timeout names memory. A\n" +
-			"reading it cannot take (another platform, a kernel without the file, a read\n" +
-			"that fails) shuts nothing: one line on stderr says memory was not checked, and why.\n" +
+			"reading it cannot take (a kernel without the file, a read that fails, or another\n" +
+			"platform at the race gate at one preflight at a time) shuts nothing: one line on\n" +
+			"stderr says memory was not checked, and why. Any other gate on another platform\n" +
+			"opens unchecked, reading no memory.\n" +
 			"After any waiter of your account saw the pressure at the floor, for " + implement.WaitMemoryEpisode.String() + " the gates\n" +
 			"admit one run per " + implement.WaitMemorySettle.String() + ", in queue order, reading memory again before each, so\n" +
 			"the stage just admitted shows its own memory use before the next starts\n" +

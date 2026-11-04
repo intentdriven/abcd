@@ -1373,17 +1373,18 @@ related_intents; a category the rule takes; a severity it takes; and a remedy:
 field. abcd's strict baseline takes tech-debt, documentation, inconsistency, drift,
 bug and ux at nitpick or minor, and hands every security issue to a person. A
 repository's record may loosen those floors (major, critical, security), and every
-floor it loosens is named. Three hand-backs hold whatever the record says. An issue
+floor it loosens is named. Four hand-backs hold whatever the record says. An issue
 whose related_intents names an intent is handed back as promoted, naming the
 intents: it goes through its intent (`abcd build <itd-N>`, or `abcd intent audit
 <itd-N>` for an audit's owed check), and a person's own `abcd build <iss-N>` still
 takes it; a record the consistency pass files is the exception, since the intents
 it names are the two it found contradicting: once a person has written its remedy,
 it is judged by its other fields as if it named no intent, and an intent it was
-promoted into still owns it. An issue whose remedy opens "Waits on", or whose
-deferral past the current release tag is live, or names a release tag this checkout
-lacks, is handed back too. Every other open issue is handed back, listed as
-ineligible, or skipped naming its blocker, by the rule that excluded it.
+promoted into still owns it. An issue carrying the decision_needed: marker a drain's
+trust-rule hand-back wrote, whose remedy opens "Waits on", or whose deferral past
+the current release tag is live, or names a release tag this checkout lacks, is
+handed back too. Every other open issue is handed back, listed as ineligible, or
+skipped naming its blocker, by the rule that excluded it.
 
 In a checkout with a remote named origin, the ledger is read from origin's default
 branch, never from the checkout, which may be behind it: each move fetches the
@@ -1484,7 +1485,10 @@ back as stuck. A move that finds a lane parked at land reads it from its pull
 request, in one listing of your latest pull requests (gh pr list): a closed one
 hands the lane back as closed, releasing its reservation with a tombstone marking
 it closed; a conflicting one is not renewed and is named; an open one is
-renewed and named as waiting (parked in --json). Before its records and push a
+renewed and named as waiting, or, once the merge-queue watch finds it will not merge
+on its own (it left the queue disarmed, or its head moved), as dropped, naming why
+(parked in --json); the watch queues one it finds armed and CLEAN outside the queue.
+Before its records and push a
 lane's sync fetches origin's default branch and merges it whenever it has moved, a
 fresh round judging the merge: a conflict confined to files origin declares
 linguist-generated goes back to an implementer to regenerate, any other hands the
@@ -1493,11 +1497,12 @@ conflict on generated files alone enters the sync again. A lane
 that finds a decision in its issue hands it back by kind, its work discarded: a
 user-visible change is promoted to an intent draft (`capture promote`, which
 stamps the issue's related_intents and nothing else); a trust or safety rule is
-flagged as needing a decision record, with the question; a design finding or a
-second package is flagged with the home the lane names. Every issue the rule
-hands back is flagged naming the rule, less one this drain promoted itself, which
-is counted once, as its promotion. Nothing but the promotion is written to the
-ledger, and every hand-back is in the summary.
+flagged as needing a decision record, with the question written onto the open issue
+as its decision_needed: marker; a design finding or a second package is flagged with
+the home the lane names. Every issue the rule hands back is flagged naming the rule,
+less one this drain promoted or marked itself, which is counted once, as its
+promotion or decision record. Nothing but the promotion and the decision_needed:
+marker is written to the ledger, and every hand-back is in the summary.
 
 The drain is paced as a run is: its window and pause are --pace, --sub-agents and
 --fix-rounds as `abcd build` reads them, resolved when the drain begins. At the window's
@@ -2749,8 +2754,10 @@ every look and again just before the gate opens (and before the race gate at one
 preflight at a time opens, which, once memory has held it, says it opened after
 its wait, not at once), the waiting line names the level or the
 stalled share and the floor, and a wait still shut at --timeout names memory. A
-reading it cannot take (another platform, a kernel without the file, a read
-that fails) shuts nothing: one line on stderr says memory was not checked, and why.
+reading it cannot take (a kernel without the file, a read that fails, or another
+platform at the race gate at one preflight at a time) shuts nothing: one line on
+stderr says memory was not checked, and why. Any other gate on another platform
+opens unchecked, reading no memory.
 After any waiter of your account saw the pressure at the floor, for 10m0s the gates
 admit one run per 2m0s, in queue order, reading memory again before each, so
 the stage just admitted shows its own memory use before the next starts
@@ -4939,9 +4946,11 @@ compared with the open and resolved issues, the intents and every earlier readin
 with another item of the same run, and a likely repeat is written onto the reading record as a
 duplicates: or refines: link and shown, printed and as matches in --json.
 
-With --dry-run the output is judged exactly as above and nothing is written: no reading
-record, no refusal record, no stage, no sweep and no run metadata. The report names each
-file the ingest would write; a refusal the ingest would record says where instead.
+With --dry-run the output is judged as above, short of the ledger writer's own matching,
+redaction and refusals, which run only when it writes, so a practice run that passes can
+still be refused there. Nothing is written: no reading record, no refusal record, no stage,
+no sweep and no run metadata. The report names each file the ingest would write; a refusal
+the ingest would record says where instead.
 
 **Flags:**
 
