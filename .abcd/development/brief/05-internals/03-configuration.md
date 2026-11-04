@@ -1406,7 +1406,7 @@ unchanged. Restating the entry keeps it; leaving the field out inherits the
 list. The other bundled domains are conventions a
 repository restates in its own words, so a replacement there is not reported.
 
-**The hook's whole output fits the host's cap.** The status and away blocks are read first and are not trimmed; the status block is at most ten lines, and the rules and notes share what the two leave. The host keeps 10,000 characters
+**The hook's whole output fits the host's cap.** The status and away blocks are read first and are not trimmed; the status block shows at most ten lines and a count of the rest, between its heading and date line and its closing line, and the rules and notes share what the two leave. The host keeps 10,000 characters
 of one hook's output; above that it saves a file, shows a short preview and does not
 ask the agent to read the rest. So the rules, the memory notes and pages, the status
 block and the away block share one budget, 500 under the cap (iss-2611041419354106).

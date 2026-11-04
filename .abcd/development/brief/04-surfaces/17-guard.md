@@ -113,7 +113,7 @@ commands the registry names (`rm`, `git push`, `pkill`, …) and by shell work i
 general. A prompt about shell-heavy work sends one line saying a guard judges each
 command, and the rules of the entries that only warn, since a warned command still
 runs; a delete entry's command is still refused in a repository where the guard cannot
-prove its target safe, and that refusal carries its own reason. Where a bracket or a full turn shortens the domain, the line about the guard goes alone, with the command for the rest. What it refuses is corrected at the refusal, which carries the why and
+prove its target safe, and that refusal carries its own reason. Where a bracket or a full turn shortens the domain, the line about the guard goes alone, with the command for the rest, or the command goes alone where a full turn has no room for the line. What it refuses is corrected at the refusal, which carries the why and
 the safe form, reaches sub-agents the prompt hook never does, and comes before the
 host's own permission prompt, so no person is asked (itd-2611041636196213, which
 narrows itd-103). Every rule stays listed by the rules verb, and a host without hook
