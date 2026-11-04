@@ -21,7 +21,7 @@ import (
 func TestTheRecordsCommitTrailerIsTheReceiptsModel(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
 	f.model = "claude-test-7[1m]"
-	f.validated(t)
+	f.validatedOnce(t)
 	f.step(t)
 	f.step(t)
 	l := currentLane(t, f.repo, f.runID)
@@ -37,7 +37,7 @@ func TestTheRecordsCommitTrailerIsTheReceiptsModel(t *testing.T) {
 // in the lane's worktree; the refusal names the missing value.
 func TestALandingWhoseReceiptReportsNoModelIsRefused(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
-	l := f.validated(t)
+	l := f.validatedOnce(t)
 	setModel(t, f, "", nil, true)
 	head := l.HeadSHA
 	f.step(t) // prepare
@@ -119,7 +119,7 @@ func acceptHook(t *testing.T, f *landFixture) {
 // hook is satisfied.
 func TestARefusingCommitMsgHookStopsTheLanding(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
-	l := f.validated(t)
+	l := f.validatedOnce(t)
 	head := l.HeadSHA
 	seen := filepath.Join(t.TempDir(), "seen")
 	hook := installHook(t, f, "commit-msg", "#!/bin/sh\ncat \"$1\" > '"+seen+"'\necho 'commit-msg: refused by the test' >&2\nexit 1\n")
@@ -173,7 +173,7 @@ func TestTheLandedRangePassesTheAttributionGate(t *testing.T) {
 		t.Fatalf("building the outbound checker: %v\n%s", err, b)
 	}
 	f := newLandFixture(t, queueRuleset("MERGE"))
-	l := f.validated(t)
+	l := f.validatedOnce(t)
 	implHead := l.HeadSHA
 	f.step(t)
 	f.step(t)
@@ -266,7 +266,7 @@ func TestThePullRequestBodyEndsWithTheLabelAndTheModels(t *testing.T) {
 func TestAPullRequestWhoseReceiptsNameNoModelIsNotOpened(t *testing.T) {
 	for _, model := range []string{"", "abcd:dev"} {
 		f := newLandFixture(t, queueRuleset("MERGE"))
-		f.validated(t)
+		f.validatedOnce(t)
 		f.step(t)
 		f.step(t)
 		l := currentLane(t, f.repo, f.runID)
@@ -295,7 +295,7 @@ func TestTheRecordsCommitRunsHooksUnderTheRepositorysOwnSettings(t *testing.T) {
 	t.Setenv("GIT_SSH_COMMAND", "")
 	os.Unsetenv("GIT_SSH_COMMAND")
 	f := newLandFixture(t, queueRuleset("MERGE"))
-	l := f.validated(t)
+	l := f.validatedOnce(t)
 	head := l.HeadSHA
 	env := filepath.Join(t.TempDir(), "env")
 	installHook(t, f, "post-commit", "#!/bin/sh\n{ printf 'ssh=%s\\n' \"$GIT_SSH_COMMAND\"; printf 'params=%s\\n' \"$GIT_CONFIG_PARAMETERS\"; } > '"+env+"'\n")

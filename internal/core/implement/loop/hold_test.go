@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -21,7 +22,11 @@ import (
 // and every implementer is out before lane 2's receipt.
 func armedSibling(t *testing.T, third bool) *parFixture {
 	t.Helper()
-	return siblingAtArm(t, third, queueRuleset("MERGE"), func(ld *Landing) bool { return ld.Armed })
+	v, w := builtOnce(t, worldKey("armedSibling", strconv.FormatBool(third)), func(w *fixtureWorld) parWalked {
+		f := siblingAtArm(t, third, queueRuleset("MERGE"), func(ld *Landing) bool { return ld.Armed })
+		return parWalked{runID: f.runID, now: f.now}
+	})
+	return v.fixture(t, w)
 }
 
 // siblingAtArm is armedSibling over the ruleset mirror given, stepping lane 2

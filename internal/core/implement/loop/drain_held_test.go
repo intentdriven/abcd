@@ -121,7 +121,7 @@ func TestAHeldFootprintGetsNoPushAndNoJudgement(t *testing.T) {
 // pushes a tombstone over that reservation, and the route says so.
 func TestAJudgementYesReleasesTheReservationTakenBeforeIt(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
-	first, err := Drain(repo.Root(), Options{}, DrainOptions{})
+	first, err := drainedOnce(t, repo, DrainOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +148,7 @@ func TestAJudgementYesReleasesTheReservationTakenBeforeIt(t *testing.T) {
 // and the run records that reservation, so its steps renew and fence it.
 func TestAJudgementNoOpensTheLaneOnTheReservationTakenBeforeIt(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
-	first, err := Drain(repo.Root(), Options{}, DrainOptions{})
+	first, err := drainedOnce(t, repo, DrainOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func TestAJudgementNoOpensTheLaneOnTheReservationTakenBeforeIt(t *testing.T) {
 // fetch again, nor judged.
 func TestPassingOverHeldIssuesAddsNoFetch(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
-	first, err := Drain(repo.Root(), Options{}, DrainOptions{})
+	first, err := drainedOnce(t, repo, DrainOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -25,12 +25,12 @@ import (
 // request and advises waiting for a merge rather than releasing one.
 func TestADrainAtTheCapWaitsAndNamesThePullRequests(t *testing.T) {
 	f := drainLandFixture(t)
-	first := drainToLane(t, f.repo, Options{}, DrainOptions{})
+	first := f.firstMove(t)
 	if first.Start == nil || first.Lane.Issue != secondIssue {
 		t.Fatalf("the drain opens the documentation issue's lane: %+v", first)
 	}
 	f.runID, f.issue = first.Start.RunID, secondIssue
-	f.parkIssueLane(t)
+	f.parkIssueLaneOnce(t)
 	for i := 1; i <= claim.MaxLive-1; i++ {
 		id := fmt.Sprintf("iss-26093000000002%02d", i)
 		if _, err := claim.Reserve(f.repo.Root(), claim.Request{Record: id, Footprint: []string{fmt.Sprintf("other/f%d.go", i)}}, claim.Options{}); err != nil {

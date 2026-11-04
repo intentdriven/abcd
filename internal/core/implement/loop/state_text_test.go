@@ -119,7 +119,7 @@ func withHandBack(t *testing.T, state []byte, hb map[string]any, field, bad stri
 // drain's call that routes the lane's hand-back, none echoing the rune.
 func TestARunStateRefusesHandBackTextItNeverWrites(t *testing.T) {
 	repo := drainRepo(t)
-	first := drainToLane(t, repo, Options{}, DrainOptions{})
+	first := drainedToLaneOnce(t, repo, DrainOptions{})
 	id := first.Start.RunID
 	handBackLaneOf(t, repo, id, Options{}, LaneHandBack{Kind: HandBackDesignFinding, Reason: "the fix changes the record's shape", Home: "the parser's ADR"})
 	st, err := ReadState(repo.Root(), id)

@@ -26,7 +26,7 @@ import (
 // the checkout it is given.
 func TestTheWaiterRenewsARunWhoseLaneIsItsCheckout(t *testing.T) {
 	f := newNarrowFixture(t)
-	f.awaitImplementer(t)
+	f.awaitImplementerOnce(t)
 	l := currentLane(t, f.repo, f.runID)
 	before := f.tip(t)
 
@@ -67,7 +67,7 @@ func TestTheWaiterRenewsARunWhoseLaneIsItsCheckout(t *testing.T) {
 func TestTheWaiterPassesOverARunWhoseLockIsHeld(t *testing.T) {
 	shortLockTimeout(t)
 	f := newNarrowFixture(t)
-	f.awaitImplementer(t)
+	f.awaitImplementerOnce(t)
 	before := f.tip(t)
 	logged := recordStages(t, f.repo, f.runID)
 	held, release, done := make(chan struct{}), make(chan struct{}), make(chan error, 1)
@@ -114,7 +114,7 @@ func TestTheWaiterPassesOverARunWhoseLockIsHeld(t *testing.T) {
 // of docs/guide.md, a file the lane's branch did not change.
 func TestALapsedRevivalAtValidateAwaitingItsReviewersIsJudgedWhole(t *testing.T) {
 	f := newNarrowFixture(t)
-	f.implement(t, Options{}, "docs/page.md")
+	f.implementOnce(t, "docs/page.md")
 	if l := f.answerUntil(t, nil, func(l Lane) bool { return l.awaitsRole(RoleRuthless) }); l.Stage != StageValidate || len(l.Awaits) != 1 {
 		t.Fatalf("the lane awaits its reviewer alone: stage %s, awaits %+v", l.Stage, l.Awaits)
 	}
@@ -138,8 +138,8 @@ func TestALapsedRevivalAtValidateAwaitingItsReviewersIsJudgedWhole(t *testing.T)
 // landing's renewal narrows (narrowedFootprint), so that file is outside it.
 func TestALapsedRevivalAtLandIsJudgedOnTheLanesChangedFiles(t *testing.T) {
 	f := newNarrowFixture(t)
-	f.implement(t, Options{}, "docs/page.md")
-	f.toLand(t)
+	f.implementOnce(t, "docs/page.md")
+	f.toLandOnce(t)
 	st, err := ReadState(f.repo.Root(), f.runID)
 	if err != nil {
 		t.Fatal(err)
@@ -193,7 +193,7 @@ func TestALapsedRevivalAtLandIsJudgedOnTheLanesChangedFiles(t *testing.T) {
 // reservation it went past. Judged on the whole footprint, it would back off.
 func TestALapsedIntentRevivalAtLandGoesPastItsOtherCopyOnAnUnchangedFile(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
-	f.validated(t)
+	f.validatedOnce(t)
 	reserveRun(t, f.repo, f.runID, "itd-10", time.Now().UTC().Truncate(time.Second), "docs", "one.txt")
 	st, err := ReadState(f.repo.Root(), f.runID)
 	if err != nil {
@@ -232,7 +232,7 @@ func TestALapsedIntentRevivalAtLandGoesPastItsOtherCopyOnAnUnchangedFile(t *test
 // edit one file (dcn-2610291925508286).
 func TestALapsedRevivalWhileTheImplementerWorksIsJudgedWhole(t *testing.T) {
 	f := newNarrowFixture(t)
-	f.awaitImplementer(t)
+	f.awaitImplementerOnce(t)
 	l := currentLane(t, f.repo, f.runID)
 	if err := os.WriteFile(filepath.Join(l.Worktree, "docs", "page.md"), []byte("the page, half edited\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -289,7 +289,7 @@ func TestTheWaiterLeavesARunParkedAtLandToTheDrain(t *testing.T) {
 // just revived, and pushes and logs nothing.
 func TestALapseIsRevivedOnceThoughTheViewWasReadBeforeAnotherRevival(t *testing.T) {
 	f := newNarrowFixture(t)
-	f.awaitImplementer(t)
+	f.awaitImplementerOnce(t)
 	before := f.tip(t)
 	at := before.expires.Add(time.Minute)
 
@@ -395,7 +395,7 @@ func TestALapsedRevivalBeforeAFixRoundIsJudgedWhole(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := newNarrowFixture(t)
-			f.implement(t, Options{}, "docs/page.md")
+			f.implementOnce(t, "docs/page.md")
 			l := f.answerUntil(t, fixFirst, stop)
 			if l.Stage != StageValidate {
 				t.Fatalf("the fix round waits at validate: %s", l.Stage)
@@ -415,7 +415,7 @@ func TestALapsedRevivalBeforeAFixRoundIsJudgedWhole(t *testing.T) {
 // whole footprint and backs off.
 func TestALapsedRevivalWithASyncConflictPendingIsJudgedWhole(t *testing.T) {
 	f := newNarrowFixture(t)
-	f.implement(t, Options{}, "docs/page.md")
+	f.implementOnce(t, "docs/page.md")
 	l := currentLane(t, f.repo, f.runID)
 	editState(t, f.repo.Root(), f.runID, func(doc map[string]any) {
 		lane := doc["lanes"].([]any)[0].(map[string]any)
@@ -435,7 +435,7 @@ func TestALapsedRevivalWithASyncConflictPendingIsJudgedWhole(t *testing.T) {
 // lapsed revival is judged on the whole footprint and backs off.
 func TestALapsedRevivalWithAHeldLaneIsJudgedWhole(t *testing.T) {
 	f := newNarrowFixture(t)
-	f.implement(t, Options{}, "docs/page.md")
+	f.implementOnce(t, "docs/page.md")
 	editState(t, f.repo.Root(), f.runID, func(doc map[string]any) {
 		doc["lanes"].([]any)[0].(map[string]any)["stage"] = string(StageHeld)
 	})

@@ -86,7 +86,7 @@ func runCount(t *testing.T, repo *gittest.Repo) int {
 // question over the issue's remedy and names where the answer goes.
 func TestAnEligibleIssueIsJudgedBeforeItsLaneOpens(t *testing.T) {
 	repo := issueRepo(t)
-	res, err := Drain(repo.Root(), Options{}, DrainOptions{})
+	res, err := drainedOnce(t, repo, DrainOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestAnEligibleIssueIsJudgedBeforeItsLaneOpens(t *testing.T) {
 // issue's lane opens as its fields allow, and the judgement is recorded.
 func TestARemedyThatChangesNeitherOpensItsLane(t *testing.T) {
 	repo := issueRepo(t)
-	first, err := Drain(repo.Root(), Options{}, DrainOptions{})
+	first, err := drainedOnce(t, repo, DrainOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func TestARemedyThatChangesNeitherOpensItsLane(t *testing.T) {
 // promoted to an intent draft, and no lane opens for it.
 func TestAUserVisibleRemedyIsHandedBackBeforeAnyLaneOpens(t *testing.T) {
 	repo := drainRepo(t)
-	first, err := Drain(repo.Root(), Options{}, DrainOptions{})
+	first, err := drainedOnce(t, repo, DrainOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +197,7 @@ func TestATrustBoundaryRemedyIsFlaggedAndNothingIsMinted(t *testing.T) {
 // answer says.
 func TestTheJudgementNeverMakesAnIneligibleIssueEligible(t *testing.T) {
 	repo := issueRepo(t)
-	first, err := Drain(repo.Root(), Options{}, DrainOptions{})
+	first, err := drainedOnce(t, repo, DrainOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,7 +232,7 @@ func TestTheJudgementNeverMakesAnIneligibleIssueEligible(t *testing.T) {
 // not at the path the drain named, is refused, and the drain still awaits it.
 func TestAJudgementAnswerIsValidatedAndARefusalWritesNothing(t *testing.T) {
 	repo := issueRepo(t)
-	first, err := Drain(repo.Root(), Options{}, DrainOptions{})
+	first, err := drainedOnce(t, repo, DrainOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,7 +302,7 @@ func TestAJudgementIsRefusedWithoutADrainAwaitingOne(t *testing.T) {
 // and the next move asks again over the new remedy.
 func TestARemedyRewrittenWhileJudgedIsJudgedAgain(t *testing.T) {
 	repo := issueRepo(t)
-	first, err := Drain(repo.Root(), Options{}, DrainOptions{})
+	first, err := drainedOnce(t, repo, DrainOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

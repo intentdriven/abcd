@@ -64,6 +64,8 @@ type narrowFixture struct {
 	bare   string
 	runID  string
 	stages Stages
+	// world is where the fixture stands.
+	world *fixtureWorld
 }
 
 func newNarrowFixture(t *testing.T) *narrowFixture {
@@ -75,33 +77,30 @@ func newNarrowFixture(t *testing.T) *narrowFixture {
 // found_at, and the footprint its reservation names, given.
 func newNarrowFixtureAt(t *testing.T, foundAt, reserved string) *narrowFixture {
 	t.Helper()
-	repo := briefRepo(t, agentsMarked)
-	repo.Write("docs/guide.md", "the guide\n")
-	repo.Write("docs/page.md", "the page\n")
-	repo.Commit("the docs")
-	issueRepoRule(t, repo)
-	fileIssueAt(t, repo, eligibleIssue, capture.SeverityMinor, capture.Category("bug"), issueRemedy, "AGENTS.md")
-	fileIssueAt(t, repo, secondIssue, capture.SeverityMinor, capture.Category("documentation"), "Name the flag in the page.", foundAt)
-	repo.Commit("the ledger")
-	asPat(t, repo)
-	for _, k := range []string{"GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"} {
-		t.Setenv(k, "Pat Example")
-	}
-	for _, k := range []string{"GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"} {
-		t.Setenv(k, "pat@example.com")
-	}
-	bare := filepath.Join(t.TempDir(), "origin.git")
-	gittest.InitBare(t, bare)
-	repo.Git("remote", "add", "origin", bare)
-	repo.Git("push", "-q", "origin", "main")
-	repo.Git("fetch", "-q", "origin")
+	first, w := builtOnce(t, worldKey("newNarrowFixtureAt", foundAt, reserved), func(w *fixtureWorld) DrainResult {
+		repo := briefRepo(t, agentsMarked)
+		repo.Write("docs/guide.md", "the guide\n")
+		repo.Write("docs/page.md", "the page\n")
+		repo.Commit("the docs")
+		issueRepoRule(t, repo)
+		fileIssueAt(t, repo, eligibleIssue, capture.SeverityMinor, capture.Category("bug"), issueRemedy, "AGENTS.md")
+		fileIssueAt(t, repo, secondIssue, capture.SeverityMinor, capture.Category("documentation"), "Name the flag in the page.", foundAt)
+		repo.Commit("the ledger")
+		asPat(t, repo)
+		asPatInEnv(t)
+		gittest.InitBare(t, w.bare)
+		repo.Git("remote", "add", "origin", w.bare)
+		repo.Git("push", "-q", "origin", "main")
+		repo.Git("fetch", "-q", "origin")
 
-	pace := "480/10"
-	first := drainToLane(t, repo, Options{Pace: &pace}, DrainOptions{})
+		pace := "480/10"
+		return drainToLane(t, repo, Options{Pace: &pace}, DrainOptions{})
+	})
+	asPatInEnv(t)
 	if first.Start == nil || first.Lane.Issue != secondIssue {
 		t.Fatalf("the drain opens the documentation issue's lane: %+v", first)
 	}
-	f := &narrowFixture{repo: repo, bare: bare, runID: first.Start.RunID, stages: DefaultStages()}
+	f := &narrowFixture{repo: w.repo, bare: w.bare, runID: first.Start.RunID, stages: DefaultStages(), world: w}
 	if fp := f.footprint(t); !slices.Equal(fp, []string{reserved}) {
 		t.Fatalf("the lane reserves the path its found_at names: %q", fp)
 	}
@@ -166,6 +165,25 @@ func (f *narrowFixture) implement(t *testing.T, o Options, names ...string) {
 	}
 }
 
+// implementOnce is implement, on the real clock, of a fixture nothing has
+// touched.
+func (f *narrowFixture) implementOnce(t *testing.T, names ...string) {
+	t.Helper()
+	walkedOnce(t, f.world, worldKey("implement", strings.Join(names, "\x01")), func() struct{} {
+		f.implement(t, Options{}, names...)
+		return struct{}{}
+	})
+}
+
+// awaitImplementerOnce is awaitImplementer on a fixture nothing has touched.
+func (f *narrowFixture) awaitImplementerOnce(t *testing.T) {
+	t.Helper()
+	walkedOnce(t, f.world, "awaitImplementer", func() struct{} {
+		f.awaitImplementer(t)
+		return struct{}{}
+	})
+}
+
 // awaitImplementer drives the lane to its implement stage's await, once.
 func (f *narrowFixture) awaitImplementer(t *testing.T) {
 	t.Helper()
@@ -225,6 +243,15 @@ func (f *narrowFixture) toLand(t *testing.T) {
 		}
 	}
 	t.Fatal("the lane never reached its landing")
+}
+
+// toLandOnce is toLand straight after implementOnce.
+func (f *narrowFixture) toLandOnce(t *testing.T) {
+	t.Helper()
+	walkedOnce(t, f.world, "toLand", func() struct{} {
+		f.toLand(t)
+		return struct{}{}
+	})
 }
 
 // TestALanesDirectoryReservationNarrowsToItsChangedFiles: the drain reserves
@@ -320,7 +347,7 @@ func TestALanesDirectoryReservationNarrowsToItsChangedFiles(t *testing.T) {
 // the file the merge brought.
 func TestANarrowingLeavesOutWhatASyncMerged(t *testing.T) {
 	f := newNarrowFixture(t)
-	f.implement(t, Options{}, "docs/page.md")
+	f.implementOnce(t, "docs/page.md")
 
 	// Another account lands a change of docs/guide.md on origin's default
 	// branch.
@@ -355,8 +382,8 @@ func TestANarrowingWithAnUnwritablePathIsNotMade(t *testing.T) {
 	for _, odd := range []string{"docs/zero\u200bwidth.md", "docs/tab\there.md"} {
 		t.Run(odd, func(t *testing.T) {
 			f := newNarrowFixture(t)
-			f.implement(t, Options{}, "docs/page.md", odd)
-			f.toLand(t)
+			f.implementOnce(t, "docs/page.md", odd)
+			f.toLandOnce(t)
 			before := f.tip(t)
 			due := before.claimed.Add(61 * time.Minute)
 			f.stepAt(t, due)
@@ -395,7 +422,7 @@ func TestANarrowingWithAnUnwritablePathIsNotMade(t *testing.T) {
 // again (dcn-2610170919040486, refined).
 func TestALaneSentBackFromItsLandingReservesItsFootprintAgain(t *testing.T) {
 	f := newNarrowFixture(t)
-	f.implement(t, Options{}, "docs/page.md")
+	f.implementOnce(t, "docs/page.md")
 	f.moveDefault(t, "docs/guide.md")
 	f.toLand(t)
 	before := f.tip(t)
@@ -429,7 +456,7 @@ func TestALaneSentBackFromItsLandingReservesItsFootprintAgain(t *testing.T) {
 // and nothing of the lane is pushed.
 func TestALaneSentBackFromItsLandingIsRefusedWhenItsFootprintIsTaken(t *testing.T) {
 	f := newNarrowFixture(t)
-	f.implement(t, Options{}, "docs/page.md")
+	f.implementOnce(t, "docs/page.md")
 	f.moveDefault(t, "docs/guide.md")
 	f.toLand(t)
 	before := f.tip(t)
@@ -466,8 +493,8 @@ func TestALaneSentBackFromItsLandingIsRefusedWhenItsFootprintIsTaken(t *testing.
 // nothing merged or pushed.
 func TestALaneSentBackFromItsLandingJudgesItsOtherCopyAgain(t *testing.T) {
 	f := newNarrowFixture(t)
-	f.implement(t, Options{}, "docs/page.md")
-	f.toLand(t)
+	f.implementOnce(t, "docs/page.md")
+	f.toLandOnce(t)
 	f.reserveAs(t, "iss-77", heldBy(t, patEmail), "docs/guide.md", time.Now().UTC().Truncate(time.Second))
 	f.moveDefault(t, "other.txt")
 	judged := currentLane(t, f.repo, f.runID)
@@ -554,8 +581,8 @@ func (f *narrowFixture) leftAtLand(t *testing.T, judged Lane) {
 // merged or pushed and the lane stays at its landing.
 func TestALaneLeavingItsLandingWaitsOutALostNetworkAtTheReservations(t *testing.T) {
 	f := newNarrowFixture(t)
-	f.implement(t, Options{}, "docs/page.md")
-	f.toLand(t)
+	f.implementOnce(t, "docs/page.md")
+	f.toLandOnce(t)
 	f.moveDefault(t, "other.txt")
 	judged := currentLane(t, f.repo, f.runID)
 	f.dropNetworkAfter(t, 1)
@@ -579,8 +606,8 @@ func TestALaneLeavingItsLandingWaitsOutALostNetworkAtTheReservations(t *testing.
 // pushed and the lane stays at its landing.
 func TestALaneLeavingItsLandingIsRefusedWhenTheFetchedReservationsCannotBeRead(t *testing.T) {
 	f := newNarrowFixture(t)
-	f.implement(t, Options{}, "docs/page.md")
-	f.toLand(t)
+	f.implementOnce(t, "docs/page.md")
+	f.toLandOnce(t)
 	f.moveDefault(t, "other.txt")
 	judged := currentLane(t, f.repo, f.runID)
 	leavingView = func(string, time.Time) (claim.Snapshot, error) {
@@ -631,8 +658,8 @@ func TestALaneHeldAtItsLandingIsNotJudgedAgainstItsOtherCopy(t *testing.T) {
 // as a foreign move of the branch.
 func TestARefusedWideningLeavesTheLaneAsItWasThroughAMovedDefault(t *testing.T) {
 	f := newNarrowFixture(t)
-	f.implement(t, Options{}, "docs/page.md")
-	f.toLand(t)
+	f.implementOnce(t, "docs/page.md")
+	f.toLandOnce(t)
 	due := f.tip(t).claimed.Add(61 * time.Minute)
 	f.reserveAs(t, "iss-99", "quinn", "docs/guide.md", due.Add(-time.Minute))
 	f.moveDefault(t, "other.txt")
@@ -701,7 +728,7 @@ func TestAResumeDuringImplementPublishesAWidenedFoundAt(t *testing.T) {
 	for _, taken := range []bool{false, true} {
 		t.Run(map[bool]string{false: "free", true: "taken"}[taken], func(t *testing.T) {
 			f := newNarrowFixtureAt(t, "docs/page.md", "docs/page.md")
-			f.awaitImplementer(t)
+			f.awaitImplementerOnce(t)
 			widenFoundAt(t, f.repo, secondIssue, "docs/")
 			now := f.tip(t).claimed.Add(time.Minute)
 			if taken {

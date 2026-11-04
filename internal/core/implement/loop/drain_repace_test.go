@@ -59,7 +59,7 @@ func TestEveryLaneOfADrainRunsOnTheDrainsPace(t *testing.T) {
 // them for its next stage, and the next lane opens on them.
 func TestARunningDrainTakesANewPaceAndAppliesIt(t *testing.T) {
 	repo := drainRepo(t)
-	first := drainToLane(t, repo, Options{}, DrainOptions{})
+	first := drainedToLaneOnce(t, repo, DrainOptions{})
 	moved, err := Drain(repo.Root(), Options{Pace: strp("60/15"), SubAgents: strp("3")}, DrainOptions{})
 	if err != nil {
 		t.Fatalf("a running drain takes a new pace: %v", err)
@@ -269,7 +269,7 @@ func TestARecordReadWithNoRunNamedAddressesTheNewerRunOfAReadmittedIssue(t *test
 // one, and the drain keeps the pace it ran on.
 func TestARefusedMoveTakesNoNewPace(t *testing.T) {
 	repo := drainRepo(t)
-	first := drainToLane(t, repo, Options{}, DrainOptions{})
+	first := drainedToLaneOnce(t, repo, DrainOptions{})
 	if first.Start == nil {
 		t.Fatalf("the drain opens a lane: %+v", first)
 	}

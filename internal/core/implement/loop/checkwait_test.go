@@ -34,9 +34,7 @@ func checkWaits(st State, laneID string) int {
 // minted, the lane pushes and the wait is over.
 func TestALaneWithoutItsFullCheckWaitsWhileTheOthersCarryOn(t *testing.T) {
 	f := newParFixture(t, "1. One\n2. Two\n   - needs: none\n", Options{SubAgents: strp("3")})
-	f.stepUntil(t, "both implementers are out", func(st State) bool {
-		return len(st.Lanes) == 2 && len(st.Lanes[0].Awaits) == 1 && len(st.Lanes[1].Awaits) == 1
-	})
+	f.bothImplementersOut(t)
 	f.implement(t, "lane-1", "one.txt")
 	f.roundPassed(t, "lane-1")
 
@@ -136,9 +134,7 @@ func refusing(stages Stages, name Stage, laneID string) Stages {
 // the call opens are covered.
 func TestALaterRefusalInTheCallKeepsTheTimeTheCheckWaitBegan(t *testing.T) {
 	f := newParFixture(t, "1. One\n2. Two\n   - needs: none\n", Options{SubAgents: strp("3")})
-	f.stepUntil(t, "both implementers are out", func(st State) bool {
-		return len(st.Lanes) == 2 && len(st.Lanes[0].Awaits) == 1 && len(st.Lanes[1].Awaits) == 1
-	})
+	f.bothImplementersOut(t)
 	f.implement(t, "lane-1", "one.txt")
 	f.roundPassed(t, "lane-1")
 	for range 10 {

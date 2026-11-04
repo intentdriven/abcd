@@ -91,6 +91,19 @@ func heldStill(t *testing.T, bare, id, taken string) {
 func askFirst(t *testing.T, repo *gittest.Repo, bare string, o Options, d DrainOptions) (DrainResult, string) {
 	t.Helper()
 	res, err := Drain(repo.Root(), o, d)
+	return judgedFirst(t, bare, res, err)
+}
+
+// askFirstOnce is askFirst with no options, straight after the fixture.
+func askFirstOnce(t *testing.T, repo *gittest.Repo, bare string, d DrainOptions) (DrainResult, string) {
+	t.Helper()
+	res, err := drainedOnce(t, repo, d)
+	return judgedFirst(t, bare, res, err)
+}
+
+// judgedFirst is what askFirst holds a first move to.
+func judgedFirst(t *testing.T, bare string, res DrainResult, err error) (DrainResult, string) {
+	t.Helper()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +135,7 @@ func fileFirstOnOrigin(t *testing.T, bare, id string) {
 // asks over that issue instead, and X, which no lane opens on, is released.
 func TestANoWhileTheOrderNowStartsElsewhereReleasesTheJudgedIssue(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
-	first, taken := askFirst(t, repo, bare, Options{}, DrainOptions{})
+	first, taken := askFirstOnce(t, repo, bare, DrainOptions{})
 	fileFirstOnOrigin(t, bare, originIssue)
 	next := judge(t, repo, Options{}, first, JudgementNo, "", "the remedy changes neither")
 	if next.Judging == nil || next.Judging.Issue != originIssue {
@@ -168,7 +181,7 @@ func TestANoAnsweredOnceTheWindowHasElapsedReleasesTheIssue(t *testing.T) {
 // other issue; nothing eligible is left, the drain ends, and X is released.
 func TestAJudgedIssueThatLeavesTheEligibleSetUnansweredIsReleased(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
-	_, taken := askFirst(t, repo, bare, Options{}, DrainOptions{})
+	_, taken := askFirstOnce(t, repo, bare, DrainOptions{})
 	pushFromOtherCopy(t, bare, "raise both", func(dir string) {
 		setSeverity(t, dir, secondIssue, "major")
 		setSeverity(t, dir, eligibleIssue, "major")
@@ -205,7 +218,7 @@ func TestAnOutageStopReleasesTheJudgedIssue(t *testing.T) {
 // awaited stops, and the reservation taken for the judgement is released.
 func TestTheCapStopReleasesTheJudgedIssue(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
-	_, taken := askFirst(t, repo, bare, Options{}, DrainOptions{Max: 1})
+	_, taken := askFirstOnce(t, repo, bare, DrainOptions{Max: 1})
 	st, _, err := readDrain(repo.Root())
 	if err != nil {
 		t.Fatal(err)
@@ -284,7 +297,7 @@ func TestAFailedJudgementRequestReleasesTheReservationItTook(t *testing.T) {
 // the reservation the drain took for the judgement is released.
 func TestAStartErrorReleasesTheReservationTakenForTheJudgement(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
-	first, taken := askFirst(t, repo, bare, Options{}, DrainOptions{})
+	first, taken := askFirstOnce(t, repo, bare, DrainOptions{})
 	was := startLane
 	t.Cleanup(func() { startLane = was })
 	startLane = func(string, string, Options) (StartResult, error) {
@@ -302,7 +315,7 @@ func TestAStartErrorReleasesTheReservationTakenForTheJudgement(t *testing.T) {
 // releases the reservation the judgement records.
 func TestAnUnreadableViewIsNamedAndTheDrainsHoldStillReleased(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
-	first, taken := askFirst(t, repo, bare, Options{}, DrainOptions{})
+	first, taken := askFirstOnce(t, repo, bare, DrainOptions{})
 	was := drainView
 	t.Cleanup(func() { drainView = was })
 	drainView = func(string, time.Time) (claim.Snapshot, error) {
@@ -347,7 +360,7 @@ func TestAYesLeavesAReservationThisPersonMadeByHand(t *testing.T) {
 	})
 	t.Run("renewed after the drain took it", func(t *testing.T) {
 		repo, bare := reservingDrainRepo(t, "commands/drain.md")
-		first, _ := askFirst(t, repo, bare, Options{}, DrainOptions{})
+		first, _ := askFirstOnce(t, repo, bare, DrainOptions{})
 		if _, err := claim.Reserve(repo.Root(), claim.Request{Record: secondIssue, Footprint: []string{"commands"}}, claim.Options{}); err != nil {
 			t.Fatal(err)
 		}
@@ -371,7 +384,7 @@ func TestAYesLeavesAReservationThisPersonMadeByHand(t *testing.T) {
 // origin shows a live drain hold over the person's tombstone.
 func TestAPollAfterTheHoldWasReleasedByHandReservesAgainBeforeAsking(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
-	_, taken := askFirst(t, repo, bare, Options{}, DrainOptions{})
+	_, taken := askFirstOnce(t, repo, bare, DrainOptions{})
 	if _, err := claim.Reserve(repo.Root(), claim.Request{Record: secondIssue, Release: true}, claim.Options{}); err != nil {
 		t.Fatal(err)
 	}
@@ -395,7 +408,7 @@ func TestAPollAfterTheHoldWasReleasedByHandReservesAgainBeforeAsking(t *testing.
 // the way out.
 func TestAPanicReleasesTheReservationTakenForTheJudgement(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
-	first, taken := askFirst(t, repo, bare, Options{}, DrainOptions{})
+	first, taken := askFirstOnce(t, repo, bare, DrainOptions{})
 	was := startLane
 	t.Cleanup(func() { startLane = was })
 	startLane = func(string, string, Options) (StartResult, error) { panic("the start blew up") }

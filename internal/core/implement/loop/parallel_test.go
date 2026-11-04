@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -29,6 +30,7 @@ type parFixture struct {
 	runID  string
 	stages Stages
 	now    time.Time
+	world  *fixtureWorld
 }
 
 func newParFixture(t *testing.T, steps string, o Options) *parFixture {
@@ -39,44 +41,81 @@ func newParFixture(t *testing.T, steps string, o Options) *parFixture {
 // newParFixtureRuleset is newParFixture with the ruleset mirror given.
 func newParFixtureRuleset(t *testing.T, steps string, o Options, ruleset string) *parFixture {
 	t.Helper()
-	repo := loopRepo(t, readyIntent("impact: additive\n", settledQuestions), specWithSteps(steps))
-	for _, k := range []string{"GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"} {
-		t.Setenv(k, "Pat Example")
+	now := time.Date(2026, 9, 30, 9, 0, 0, 0, time.UTC)
+	// The world's key names steps, the ruleset and every option a caller sets.
+	named := o
+	named.Pace, named.SubAgents, named.FixRounds, named.Session = nil, nil, nil, ""
+	if !reflect.ValueOf(named).IsZero() {
+		t.Fatalf("name this option in the fixture's world key: %+v", o)
 	}
-	for _, k := range []string{"GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"} {
-		t.Setenv(k, "pat@example.com")
+	key := worldKey("newParFixtureRuleset", steps, ruleset, derefOr(o.Pace), derefOr(o.SubAgents), derefOr(o.FixRounds), o.Session)
+	runID, w := builtOnce(t, key, func(w *fixtureWorld) string {
+		repo := loopRepo(t, readyIntent("impact: additive\n", settledQuestions), specWithSteps(steps))
+		asPatInEnv(t)
+		repo.Write("AGENTS.md", agentsMarked)
+		repo.Write(".abcd/work/rulesets/main-protection.json", ruleset)
+		repo.Commit("the record")
+		gittest.InitBare(t, w.bare)
+		repo.Git("remote", "add", "origin", w.bare)
+		repo.Git("push", "-q", "origin", "main")
+		repo.Git("fetch", "-q", "origin")
+		installStubGH(t, w.gh, ruleset)
+		w.putGHFirst(t)
+		o.Now = func() time.Time { return now }
+		// The fixture's run holds no reservation: its tests are of the lanes,
+		// and the reservation's own are in reservation_test.go.
+		o.noReserve = true
+		// Its run reviews with one reviewer per role: its tests are of the lanes
+		// and their slots, which they count as one ruthless and one security
+		// reviewer a round, and the paired reviewers' own are in reviewers_test.go.
+		oneReviewerPerRole(t)
+		if o.Session != "" {
+			// A run started for a session claims its intent in the shared run
+			// state, which the session joins first.
+			sharedRun(t, repo.Root(), repo.Git("rev-list", "--max-parents=0", "HEAD"), o.Session)
+		}
+		start, err := Start(repo.Root(), "itd-10", o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return start.RunID
+	})
+	asPatInEnv(t)
+	w.putGHFirst(t)
+	return &parFixture{repo: w.repo, gh: w.gh, runID: runID, stages: DefaultStages(), now: now, world: w}
+}
+
+// bothImplementersOut steps a newParFixture of two or more lanes nothing has
+// touched until the first two have their implementers out.
+func (f *parFixture) bothImplementersOut(t *testing.T) StepResult {
+	t.Helper()
+	return walkedOnce(t, f.world, "bothImplementersOut", func() StepResult {
+		return f.stepUntil(t, "both implementers are out", func(st State) bool {
+			return len(st.Lanes) == 2 && len(st.Lanes[0].Awaits) == 1 && len(st.Lanes[1].Awaits) == 1
+		})
+	})
+}
+
+// parWalked is what a walk from newParFixture hands the tests after the first.
+type parWalked struct {
+	runID string
+	now   time.Time
+}
+
+// fixture is the parFixture standing in w after the walk.
+func (v parWalked) fixture(t *testing.T, w *fixtureWorld) *parFixture {
+	t.Helper()
+	asPatInEnv(t)
+	w.putGHFirst(t)
+	return &parFixture{repo: w.repo, gh: w.gh, runID: v.runID, stages: DefaultStages(), now: v.now, world: w}
+}
+
+// derefOr is what an optional option names, "" when it is not set.
+func derefOr(s *string) string {
+	if s == nil {
+		return ""
 	}
-	repo.Write("AGENTS.md", agentsMarked)
-	repo.Write(".abcd/work/rulesets/main-protection.json", ruleset)
-	repo.Commit("the record")
-	bare := filepath.Join(t.TempDir(), "origin.git")
-	gittest.InitBare(t, bare)
-	repo.Git("remote", "add", "origin", bare)
-	repo.Git("push", "-q", "origin", "main")
-	repo.Git("fetch", "-q", "origin")
-	gh := t.TempDir()
-	installStubGH(t, gh, ruleset)
-	t.Setenv("PATH", gh+string(os.PathListSeparator)+os.Getenv("PATH"))
-	f := &parFixture{repo: repo, gh: gh, stages: DefaultStages(), now: time.Date(2026, 9, 30, 9, 0, 0, 0, time.UTC)}
-	o.Now = f.clock
-	// The fixture's run holds no reservation: its tests are of the lanes,
-	// and the reservation's own are in reservation_test.go.
-	o.noReserve = true
-	// Its run reviews with one reviewer per role: its tests are of the lanes
-	// and their slots, which they count as one ruthless and one security
-	// reviewer a round, and the paired reviewers' own are in reviewers_test.go.
-	oneReviewerPerRole(t)
-	if o.Session != "" {
-		// A run started for a session claims its intent in the shared run
-		// state, which the session joins first.
-		sharedRun(t, repo.Root(), repo.Git("rev-list", "--max-parents=0", "HEAD"), o.Session)
-	}
-	start, err := Start(repo.Root(), "itd-10", o)
-	if err != nil {
-		t.Fatal(err)
-	}
-	f.runID = start.RunID
-	return f
+	return *s
 }
 
 func (f *parFixture) clock() time.Time { return f.now }
@@ -84,11 +123,7 @@ func (f *parFixture) opts() Options    { return Options{Now: f.clock} }
 
 func (f *parFixture) state(t *testing.T) State {
 	t.Helper()
-	st, err := ReadState(f.repo.Root(), f.runID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return st
+	return stateOnDisk(t, f.repo.Root(), f.runID)
 }
 
 func (f *parFixture) lane(t *testing.T, id string) Lane {
@@ -542,9 +577,7 @@ func TestAStepWithoutANeedsLineWaitsForEveryEarlierStep(t *testing.T) {
 // nothing.
 func TestAReceiptAdvancesOnlyTheLaneItBelongsTo(t *testing.T) {
 	f := newParFixture(t, "1. One\n2. Two\n   - needs: none\n", Options{SubAgents: strp("2")})
-	f.stepUntil(t, "both implementers are out", func(st State) bool {
-		return len(st.Lanes) == 2 && len(st.Lanes[0].Awaits) == 1 && len(st.Lanes[1].Awaits) == 1
-	})
+	f.bothImplementersOut(t)
 	one, _ := json.Marshal(f.lane(t, "lane-1"))
 	st := f.state(t)
 	if st.Lanes[0].Worktree == st.Lanes[1].Worktree || st.Lanes[0].Branch == st.Lanes[1].Branch {
@@ -577,9 +610,7 @@ func TestAReceiptAdvancesOnlyTheLaneItBelongsTo(t *testing.T) {
 // merge head before lane 2 arms; no fix round is counted.
 func TestASiblingLandingSyncsTheLaneBeforeItArms(t *testing.T) {
 	f := newParFixture(t, "1. One\n2. Two\n   - needs: none\n", Options{SubAgents: strp("4")})
-	f.stepUntil(t, "both implementers are out", func(st State) bool {
-		return len(st.Lanes) == 2 && len(st.Lanes[0].Awaits) == 1 && len(st.Lanes[1].Awaits) == 1
-	})
+	f.bothImplementersOut(t)
 	f.implement(t, "lane-1", "one.txt")
 	f.implement(t, "lane-2", "two.txt")
 	f.roundPassed(t, "lane-1")
@@ -660,9 +691,7 @@ func TestASiblingLandingSyncsTheLaneBeforeItArms(t *testing.T) {
 // round; no fix round is counted.
 func TestAConflictingSyncGoesToAFreshImplementer(t *testing.T) {
 	f := newParFixture(t, "1. One\n2. Two\n   - needs: none\n", Options{SubAgents: strp("4")})
-	f.stepUntil(t, "both implementers are out", func(st State) bool {
-		return len(st.Lanes) == 2 && len(st.Lanes[0].Awaits) == 1 && len(st.Lanes[1].Awaits) == 1
-	})
+	f.bothImplementersOut(t)
 	f.implement(t, "lane-1", "same.txt")
 	l2 := f.lane(t, "lane-2")
 	if err := os.WriteFile(filepath.Join(l2.Worktree, "same.txt"), []byte("lane two's words\n"), 0o600); err != nil {
@@ -747,9 +776,7 @@ func TestAConflictingSyncGoesToAFreshImplementer(t *testing.T) {
 // verified, and next_eligible_at is written once.
 func TestAnElapsedWindowStartsNothingOnAnyLane(t *testing.T) {
 	f := newParFixture(t, "1. One\n2. Two\n   - needs: none\n", Options{SubAgents: strp("2"), Pace: strp("30/60")})
-	f.stepUntil(t, "both implementers are out", func(st State) bool {
-		return len(st.Lanes) == 2 && len(st.Lanes[0].Awaits) == 1 && len(st.Lanes[1].Awaits) == 1
-	})
+	f.bothImplementersOut(t)
 	f.now = f.now.Add(31 * time.Minute)
 	res := f.step(t)
 	if res.NextEligibleAt == nil || res.Awaiting == nil {
@@ -781,35 +808,38 @@ func TestAnElapsedWindowStartsNothingOnAnyLane(t *testing.T) {
 // stepped until nothing moves.
 func heldRun(t *testing.T) *parFixture {
 	t.Helper()
-	f := newParFixture(t, "1. One\n2. Two\n   - needs: none\n3. Three\n   - needs: none\n", Options{SubAgents: strp("3"), FixRounds: strp("1")})
-	f.rewrite(t, func(st *State) { needs(st, []int{1}, 3) })
-	f.stepUntil(t, "both implementers are out", func(st State) bool {
-		return len(st.Lanes) == 2 && len(st.Lanes[0].Awaits) == 1 && len(st.Lanes[1].Awaits) == 1
+	v, w := builtOnce(t, worldKey("heldRun"), func(w *fixtureWorld) parWalked {
+		f := newParFixture(t, "1. One\n2. Two\n   - needs: none\n3. Three\n   - needs: none\n", Options{SubAgents: strp("3"), FixRounds: strp("1")})
+		f.rewrite(t, func(st *State) { needs(st, []int{1}, 3) })
+		f.stepUntil(t, "both implementers are out", func(st State) bool {
+			return len(st.Lanes) == 2 && len(st.Lanes[0].Awaits) == 1 && len(st.Lanes[1].Awaits) == 1
+		})
+		f.implement(t, "lane-1", "one.txt")
+		for round := 1; round <= 2; round++ {
+			f.stepUntil(t, "lane-1's reviewers are out", func(st State) bool { return len(st.Lanes[0].Awaits) == 2 })
+			f.ret(t, "lane-1", RoleRuthless, "FIX FIRST")
+			f.ret(t, "lane-1", RoleSecurity, "APPROVE")
+			if round == 1 {
+				f.stepUntil(t, "lane-1's fix implementer is out", func(st State) bool { return len(st.Lanes[0].Awaits) == 1 })
+				f.receipt(t, "lane-1", f.await(t, "lane-1", RoleImplementer), laneCommit(t, f.repo, f.lane(t, "lane-1"), "fix.txt"))
+			}
+		}
+		f.stepUntil(t, "lane-1 is handed back", func(st State) bool { return st.Lanes[0].Stage == StageHandedBack })
+		f.rewrite(t, func(st *State) { needs(st, []int{}, 3) })
+		if len(f.lane(t, "lane-2").Awaits) != 1 {
+			t.Fatal("lane 2's implementer is out at the hand-back")
+		}
+		f.implement(t, "lane-2", "two.txt")
+		f.roundPassed(t, "lane-2")
+		for range 10 {
+			if f.lane(t, "lane-2").Stage == StageHeld {
+				break
+			}
+			f.step(t)
+		}
+		return parWalked{runID: f.runID, now: f.now}
 	})
-	f.implement(t, "lane-1", "one.txt")
-	for round := 1; round <= 2; round++ {
-		f.stepUntil(t, "lane-1's reviewers are out", func(st State) bool { return len(st.Lanes[0].Awaits) == 2 })
-		f.ret(t, "lane-1", RoleRuthless, "FIX FIRST")
-		f.ret(t, "lane-1", RoleSecurity, "APPROVE")
-		if round == 1 {
-			f.stepUntil(t, "lane-1's fix implementer is out", func(st State) bool { return len(st.Lanes[0].Awaits) == 1 })
-			f.receipt(t, "lane-1", f.await(t, "lane-1", RoleImplementer), laneCommit(t, f.repo, f.lane(t, "lane-1"), "fix.txt"))
-		}
-	}
-	f.stepUntil(t, "lane-1 is handed back", func(st State) bool { return st.Lanes[0].Stage == StageHandedBack })
-	f.rewrite(t, func(st *State) { needs(st, []int{}, 3) })
-	if len(f.lane(t, "lane-2").Awaits) != 1 {
-		t.Fatal("lane 2's implementer is out at the hand-back")
-	}
-	f.implement(t, "lane-2", "two.txt")
-	f.roundPassed(t, "lane-2")
-	for range 10 {
-		if f.lane(t, "lane-2").Stage == StageHeld {
-			break
-		}
-		f.step(t)
-	}
-	return f
+	return v.fixture(t, w)
 }
 
 // C13, the hold and the person's decision (ruling DR6c), and C11's hand-back:

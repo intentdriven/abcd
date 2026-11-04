@@ -67,6 +67,18 @@ func TestAWaitingDrainMoveRenewsTheLaneInProgress(t *testing.T) {
 // committed and the preflight receipt minted for its head.
 func pushReadyLane(t *testing.T, f *landFixture) Lane {
 	t.Helper()
+	f.runID = walkedOnce(t, f.world, "pushReadyLane", func() string {
+		walkToPush(t, f)
+		return f.runID
+	})
+	f.issue = secondIssue
+	return currentLane(t, f.repo, f.runID)
+}
+
+// walkToPush is pushReadyLane's walk, from a drainLandFixture nothing has
+// touched.
+func walkToPush(t *testing.T, f *landFixture) {
+	t.Helper()
 	first := drainToLane(t, f.repo, Options{}, DrainOptions{})
 	if first.Start == nil || first.Lane.Issue != secondIssue {
 		t.Fatalf("the drain opens the documentation issue's lane: %+v", first)
@@ -96,7 +108,6 @@ func pushReadyLane(t *testing.T, f *landFixture) Lane {
 		t.Fatalf("the lane is at its push: %+v", l.Landing)
 	}
 	preflighted(t, l, l.HeadSHA)
-	return l
 }
 
 func TestALaneWhoseReservationIsAnothersPushesNothingAndIsHandedBack(t *testing.T) {

@@ -331,7 +331,7 @@ func TestAnElapsedWindowStartsNothingAndWritesNextEligibleAt(t *testing.T) {
 // a version-1 file carrying a pace is not one version 1 wrote, and is refused.
 func TestAVersionOneStateIsReadAsAnUnpacedRun(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}

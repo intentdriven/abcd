@@ -37,7 +37,7 @@ func plantWorktree(t *testing.T, f *landFixture, other string) {
 func TestALandingRefusesAWorktreeTheLoopDidNotDerive(t *testing.T) {
 	t.Run("with the landing recorded", func(t *testing.T) {
 		f := newLandFixture(t, queueRuleset("MERGE"))
-		f.validated(t)
+		f.validatedOnce(t)
 		if res := f.step(t); res.Stage != StageLand {
 			t.Fatalf("the landing's first step leaves the lane at land: %+v", res)
 		}
@@ -58,7 +58,7 @@ func TestALandingRefusesAWorktreeTheLoopDidNotDerive(t *testing.T) {
 	})
 	t.Run("before the landing is recorded", func(t *testing.T) {
 		f := newLandFixture(t, queueRuleset("MERGE"))
-		f.validated(t)
+		f.validatedOnce(t)
 		other := t.TempDir()
 		f.repo.Git("init", "-q", other)
 		plantWorktree(t, f, other)
@@ -179,7 +179,7 @@ func TestADiscardRefusesToDeleteABranchTheLoopDidNotMake(t *testing.T) {
 // the landing pushes, records or deletes anything.
 func TestALandingRefusesABranchTheLoopDidNotMake(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
-	f.validated(t)
+	f.validatedOnce(t)
 	mainTip := strings.TrimSpace(f.repo.Git("rev-parse", "refs/heads/main"))
 	err := mutate(f.repo.Root(), f.runID, func(_ *os.Root, st *State) (bool, error) {
 		i := st.current()

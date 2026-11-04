@@ -23,11 +23,11 @@ import (
 func driveRound(t *testing.T, o Options, rs Runners) (*gittest.Repo, string, StepResult, Round) {
 	t.Helper()
 	repo := briefRepo(t, agentsMarked)
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
-	implemented(t, repo, start.RunID, DefaultStages(), "one.txt")
+	implementedOnce(t, repo, start.RunID, "one.txt")
 	if rs.Transcripts == nil {
 		rs.Transcripts = &memTranscripts{}
 	}
