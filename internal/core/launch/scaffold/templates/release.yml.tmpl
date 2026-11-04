@@ -198,12 +198,11 @@ jobs:
     if: github.event_name != 'push' || github.ref_type != 'tag'
 <%- end %>
 <%- if .Abcd %>
-    # The race step's own -timeout (40m, sized in ci.yml) must fire before this
-    # does, or a hang reads as a cancelled job with no goroutine dump: 40m for
-    # the slowest package plus about 10m this job spends before it starts. The
-    # smoke step after it fits the same way: 40m, its own 8m, and three minutes
-    # for the untimed steps (evallanebudget_test.go).
-    timeout-minutes: 55
+    # Each go test step's own -timeout must fire before this does, or a hang
+    # reads as a cancelled job with no goroutine dump. The smoke step fits too:
+    # 20m for Test, 40m for the race step (sized in ci.yml), its own 8m, and
+    # three minutes for the untimed steps (evallanebudget_test.go).
+    timeout-minutes: 75
 <%- else %>
     timeout-minutes: 15
 <%- end %>
@@ -283,14 +282,19 @@ jobs:
 
       - name: Vet
         run: go vet ./...
-
-      - name: Test
-        run: go test ./...
 <%- if .Abcd %>
+
+      # Past go test's 10-minute default, a package fails with no test failing,
+      # after the merge queue passed it.
+      - name: Test
+        run: go test -timeout 20m ./...
 
       - name: Test (race, internal)
         run: go test -race -timeout 40m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
 <%- else %>
+
+      - name: Test
+        run: go test ./...
 
       # A generic module may have no internal tree, so the race leg runs over the
       # whole module; a package-scoped pattern would fail every run with a
