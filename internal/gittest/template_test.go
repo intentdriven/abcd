@@ -43,21 +43,18 @@ func TestTemplatesBuildOnceAndCopy(t *testing.T) {
 	}
 }
 
-// TestTemplatesKeepEachKeyApart: two keys are two builds, and Dir keeps a tree
-// that is not itself a repository.
+// TestTemplatesKeepEachKeyApart: two keys are two builds, whatever a key's text.
 func TestTemplatesKeepEachKeyApart(t *testing.T) {
 	var ts Templates
-	build := func(body string) func(t *testing.T) string {
-		return func(t *testing.T) string {
-			dir := t.TempDir()
-			if err := os.WriteFile(filepath.Join(dir, "f"), []byte(body), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			return dir
+	build := func(body string) func(t *testing.T) *Repo {
+		return func(t *testing.T) *Repo {
+			r := NewRepo(t)
+			r.Write("f", body)
+			return r
 		}
 	}
-	a, b := ts.Dir(t, "a/with a slash", build("a")), ts.Dir(t, "b", build("b"))
-	for dir, want := range map[string]string{a: "a", b: "b"} {
+	a, b := ts.Repo(t, "a/with a slash", build("a")), ts.Repo(t, "b", build("b"))
+	for dir, want := range map[string]string{a.Root(): "a", b.Root(): "b"} {
 		if raw, err := os.ReadFile(filepath.Join(dir, "f")); err != nil || string(raw) != want {
 			t.Errorf("%s holds %q (%v), want %q", dir, raw, err, want)
 		}
@@ -67,34 +64,32 @@ func TestTemplatesKeepEachKeyApart(t *testing.T) {
 // TestATemplateKeepsModesAndLinks: a hook stays runnable, a private file stays
 // private, a read-only folder stays read-only and a link stays a link.
 func TestATemplateKeepsModesAndLinks(t *testing.T) {
-	var ts Templates
-	got := ts.Dir(t, "k", func(t *testing.T) string {
-		src := t.TempDir()
-		for name, mode := range map[string]os.FileMode{"hook": 0o755, "private": 0o600, "read-only": 0o444} {
-			p := filepath.Join(src, name)
-			if err := os.WriteFile(p, []byte(name), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.Chmod(p, mode); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if err := os.Symlink("hook", filepath.Join(src, "link")); err != nil {
-			t.Skipf("no symlinks here: %v", err)
-		}
-		sealed := filepath.Join(src, "sealed")
-		if err := os.Mkdir(sealed, 0o755); err != nil {
+	src := t.TempDir()
+	for name, mode := range map[string]os.FileMode{"hook": 0o755, "private": 0o600, "read-only": 0o444} {
+		p := filepath.Join(src, name)
+		if err := os.WriteFile(p, []byte(name), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(sealed, "f"), []byte("f"), 0o644); err != nil {
+		if err := os.Chmod(p, mode); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.Chmod(sealed, 0o555); err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = os.Chmod(sealed, 0o755) })
-		return src
-	})
+	}
+	if err := os.Symlink("hook", filepath.Join(src, "link")); err != nil {
+		t.Skipf("no symlinks here: %v", err)
+	}
+	made := filepath.Join(src, "sealed")
+	if err := os.Mkdir(made, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(made, "f"), []byte("f"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(made, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(made, 0o755) })
+	got := filepath.Join(t.TempDir(), "copy")
+	readTree(t, src).write(t, got)
 	sealed := filepath.Join(got, "sealed")
 	t.Cleanup(func() { _ = os.Chmod(sealed, 0o755) })
 	for name, want := range map[string]os.FileMode{"hook": 0o755, "private": 0o600, "read-only": 0o444, "sealed": 0o555} {

@@ -39,16 +39,6 @@ func (ts *Templates) Repo(t *testing.T, key string, build func(t *testing.T) *Re
 	return OpenRepo(t, root)
 }
 
-// Dir is Repo for a tree that is not one fixture repository (a repository and
-// its bare origin side by side, a tree holding no repository at all): t's own
-// copy of the directory build returned the first time the key was asked for.
-func (ts *Templates) Dir(t *testing.T, key string, build func(t *testing.T) string) string {
-	t.Helper()
-	root := t.TempDir()
-	ts.tree(t, key, func() string { return build(t) }).write(t, root)
-	return root
-}
-
 // tree is the kept tree for key, read from what build returns the first time.
 // The lock is held across the build, so a second test waits for the template
 // rather than building its own.
