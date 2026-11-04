@@ -35,8 +35,9 @@ const (
 	refusedDuplicate = "already holds"
 	refusedRootMerge = "merge key at the top"
 	refusedJobKey    = "key abcd does not read"
-	refusedIndent    = "indents deeper"
-	refusedComments  = "comment lines"
+	refusedLead      = "opens with more than"
+	refusedHashes    = "characters abcd reads"
+	refusedByteOrder = "byte order mark"
 	refusedDirective = "directive lines"
 	refusedEncoding  = "not UTF-8"
 )
@@ -96,27 +97,30 @@ func hostileWorkflows() map[string]struct{ src, why string } {
 		"a glob longer than a branch name can be": {src: "on: {pull_request: {branches: [\"" +
 			repeat("?", hostileBytes) + "\"]}}\njobs: {a: {runs-on: x}}\n"},
 
-		"comments under a deep block": {why: refusedIndent, src: strings.Repeat("- ", 10_000) + "x\n" +
-			repeat("#\n #\n", hostileBytes-20_000) + "- y\n"},
+		"comments under a deep block": {why: refusedLead, src: strings.Repeat("- ", 10_000) + "x\n" +
+			strings.Repeat("#\n #\n", maxHashes/2) + "- y\n"},
 		"comments under a block as deep as the prescan takes": {why: refusedDepth, src: strings.Repeat("- ", maxLineLead) + "x\n" +
-			strings.Repeat("#\n #\n", maxCommentLines/2) + "- y\n"},
-		"a deep block written line by line": {why: refusedIndent, src: func() string {
+			strings.Repeat("#\n #\n", maxHashes/2) + "- y\n"},
+		"a deep block written line by line": {why: refusedLead, src: func() string {
 			var b strings.Builder
 			for i := 0; i <= maxLineLead+1; i++ {
 				b.WriteString(strings.Repeat(" ", i) + "a:\n")
 			}
 			return b.String()
 		}()},
-		"more comment lines than the read takes": {why: refusedComments, src: good +
-			strings.Repeat("#\n #\n", maxCommentLines/2+1)},
-		"comment lines ended by carriage returns": {why: refusedComments, src: good +
-			strings.Repeat("#\r #\r", maxCommentLines/2+1)},
-		"comment lines ended by line separators": {why: refusedComments, src: good +
-			strings.Repeat("#\u2028 #\u2028", maxCommentLines/2+1)},
-		"comment lines ended by next-line marks": {why: refusedComments, src: good +
-			strings.Repeat("#\u0085 #\u0085", maxCommentLines/2+1)},
-		"more directives than the read takes": {why: refusedDirective, src: lines(hostileBytes/20, "%%TAG !x%06d! b\n") + "---\n" + good},
-		"text in another encoding":            {why: refusedEncoding, src: "\xff\xfe" + repeat("#\x00\n\x00", 1024)},
+		"more comments than the read takes": {why: refusedHashes, src: good +
+			strings.Repeat("#\n #\n", maxHashes/2+1)},
+		"comments the lead of a line does not show": {why: refusedHashes, src: strings.Repeat("- ", maxLineLead) + "x\n#\n" +
+			strings.Repeat("\t#\n\t\t#\n", maxHashes)},
+		"a second byte order mark over deep comments": {why: refusedByteOrder, src: "\ufeff\ufeff" + strings.Repeat("- ", 9900) + "x\n#\n" +
+			strings.Repeat("\t#\n\t\t#\n", 146_000) + "- y\n"},
+		"a byte order mark further down":       {why: refusedByteOrder, src: good + "\ufeff#\n"},
+		"directives ended by carriage returns": {why: refusedDirective, src: strings.Repeat("%TAG !x! b\r", maxDirectiveLines+1) + "---\n" + good},
+		"directives ended by next-line marks":  {why: refusedDirective, src: strings.Repeat("%TAG !x! b\u0085", maxDirectiveLines+1) + "---\n" + good},
+		"directives ended by line separators":  {why: refusedDirective, src: strings.Repeat("%TAG !x! b\u2028", maxDirectiveLines+1) + "---\n" + good},
+		"directives ended by paragraph marks":  {why: refusedDirective, src: strings.Repeat("%TAG !x! b\u2029", maxDirectiveLines+1) + "---\n" + good},
+		"more directives than the read takes":  {why: refusedDirective, src: lines(hostileBytes/20, "%%TAG !x%06d! b\n") + "---\n" + good},
+		"text in another encoding":             {why: refusedEncoding, src: "\xff\xfe" + repeat("#\x00\n\x00", 1024)},
 
 		"an alias inside what it names": {src: "x-s: &s [*s]\non: pull_request\njobs:\n  build:\n    runs-on: x\n" +
 			"  loop:\n    strategy: &t {matrix: *t}\n"},
@@ -446,7 +450,7 @@ func TestALargeOrdinaryWorkflowIsRead(t *testing.T) {
 		fmt.Fprintf(&b, "%d,", i)
 		want = append(want, fmt.Sprintf("wide (%d)", i))
 	}
-	b.WriteString("]\n" + strings.Repeat("# a comment\n", maxCommentLines))
+	b.WriteString("]\n" + strings.Repeat("# a comment\n", maxHashes))
 	checks, notes := requiredChecksOf(t, writeWorkflows(t, map[string]string{"ci.yml": b.String()}), false)
 	slices.Sort(want)
 	if !slices.Equal(checks, want) {
@@ -485,4 +489,31 @@ func FuzzReadWorkflow(f *testing.F) {
 			t.Errorf("judged %d of %d jobs", len(skippable), len(wf.jobs))
 		}
 	})
+}
+
+// TestALineOpeningTooDeepIsNamed: the refusal names the line, counting a Windows line
+// end once, and says that a script's indent counts too, since the file's YAML may be
+// shallow and the line a script's.
+func TestALineOpeningTooDeepIsNamed(t *testing.T) {
+	body := "on: pull_request\r\njobs:\r\n  a:\r\n    steps:\r\n      - run: |\r\n" +
+		strings.Repeat(" ", maxLineLead+1) + "echo deep\r\n"
+	_, _, err := readRequired(writeWorkflows(t, map[string]string{"wide.yml": body}), false)
+	if err == nil {
+		t.Fatal("the read went ahead")
+	}
+	for _, say := range []string{"line 6", "wide.yml", "script"} {
+		if !strings.Contains(err.Error(), say) {
+			t.Errorf("the refusal does not say %q: %v", say, err)
+		}
+	}
+}
+
+// TestAScaffoldNamesATriggerItDoesNotRead: a trigger holding a form the read does not
+// take could name a pull request, so the scaffold names the file rather than count it
+// as no workflow.
+func TestAScaffoldNamesATriggerItDoesNotRead(t *testing.T) {
+	repo := writeWorkflows(t, map[string]string{"merged.yml": "x-t: &x {push: }\non: {<<: *x}\njobs:\n  a:\n    runs-on: x\n"})
+	if checks, unread := DeriveCIChecks(repo); len(checks) != 0 || !slices.Equal(unread, []string{"merged.yml"}) {
+		t.Errorf("checks %q, unread %q; want none, and the file named", checks, unread)
+	}
 }

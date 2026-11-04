@@ -331,6 +331,9 @@ func workflowChecks(src string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	if wf.on.unread {
+		return nil, errors.New("its trigger holds a form abcd does not read")
+	}
 	if !wf.on.gatesAMerge() {
 		return nil, nil
 	}
@@ -344,10 +347,10 @@ func workflowChecks(src string) ([]string, error) {
 }
 
 // The bounds on reading one workflow file. A parsed tree's memory grows with the file,
-// but the parse's time does not always: the library's scanner and parser walk their
-// comments and directives again for some shapes, and it offers no limit of its own, so
-// a scan of the raw bytes holds those shapes down before it runs (prescanWorkflow). Nothing
-// after the parse decodes into a Go value, where the library's duplicate check is
+// but the parse's time does not always, and the library offers no limit of its own, so
+// before it runs a scan of the raw bytes holds the file to limits on its `#` characters,
+// its byte order marks, its directive lines and how each line opens (prescanWorkflow).
+// Nothing after the parse decodes into a Go value, where the library's duplicate check is
 // quadratic and allocates for each pair: the read walks nodes by hand, follows an
 // alias by pointer and never copies what it names. A file past a limit is refused
 // rather than read in part.
@@ -366,10 +369,10 @@ const (
 	// maxGlobBytes is as long as a branch name can be, so a longer pattern is not
 	// compiled and matches nothing.
 	maxGlobBytes = 255
-	// maxCommentLines bounds the lines that open with `#`, scripts' included. abcd's
-	// own most commented workflow holds about 700 in 68 KiB, so a full 1 MiB of the same
-	// holds about half of this.
-	maxCommentLines = 20_000
+	// maxHashes bounds the `#` characters in a file, since any of them could open a
+	// comment. abcd's own most commented workflow holds 627 in 68 KiB, so a full 1 MiB
+	// of the same holds about half of this.
+	maxHashes = 20_000
 	// maxDirectiveLines bounds the lines that open with `%`. A workflow has no use for
 	// more than a `%YAML` line.
 	maxDirectiveLines = 8
@@ -381,22 +384,25 @@ const (
 
 // prescanWorkflow holds a file's raw bytes to the limits the parser has no setting
 // for, in one pass, reading a line's end as YAML does. A UTF-16 file is refused, since
-// the parser would read what this scan cannot.
+// the parser would read what this scan cannot, and so is a byte order mark anywhere but
+// at the start, since the scanner skips one where this scan sees a line's first byte.
 func prescanWorkflow(src string) error {
 	if strings.HasPrefix(src, "\xff\xfe") || strings.HasPrefix(src, "\xfe\xff") {
 		return errors.New("it is not UTF-8")
 	}
 	src = strings.TrimPrefix(src, "\ufeff")
-	comments, directives := 0, 0
-	for len(src) > 0 {
+	if strings.Contains(src, "\ufeff") {
+		return errors.New("it holds a byte order mark past its start")
+	}
+	if strings.Count(src, "#") > maxHashes {
+		return fmt.Errorf("it holds more than the %d `#` characters abcd reads", maxHashes)
+	}
+	directives := 0
+	for line := 1; len(src) > 0; line++ {
 		lead, at := lineLead(src)
 		if lead > maxLineLead {
-			return fmt.Errorf("it indents deeper than the %d levels abcd reads", maxLineLead)
-		}
-		if at < len(src) && src[at] == '#' {
-			if comments++; comments > maxCommentLines {
-				return fmt.Errorf("it holds more than the %d comment lines abcd reads", maxCommentLines)
-			}
+			return fmt.Errorf("line %d opens with more than %d spaces and block indicators, which abcd takes for that many "+
+				"YAML levels, even in a script", line, maxLineLead)
 		}
 		if src[0] == '%' {
 			if directives++; directives > maxDirectiveLines {
@@ -408,6 +414,9 @@ func prescanWorkflow(src string) error {
 			return nil
 		}
 		_, width := utf8.DecodeRuneInString(src[at+next:])
+		if strings.HasPrefix(src[at+next:], "\r\n") {
+			width = 2
+		}
 		src = src[at+next+width:]
 	}
 	return nil
