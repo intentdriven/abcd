@@ -749,8 +749,11 @@ jobs:
   # step as well as on the job, because a step's implicit success() is false on a
   # cancelled run, and a job whose steps are all skipped concludes success. So a run
   # cancelled mid-suite reads as failed, which is how a queue-sweep of a dropped
-  # entry's run ends too. TestMacOSCheckFailsUnlessEveryShardSucceeded runs this
-  # script over every result per event.
+  # entry's run ends too. A cancelled or superseded pull-request run still reports
+  # the stand-in: there the context never tested anything and says so, the run's
+  # other required contexts hold that commit, and the queue entry decides.
+  # TestMacOSCheckFailsUnlessEveryShardSucceeded runs this script over every result
+  # per event.
   check-macos:
     name: check (macos-latest)
     needs: macos-suite
