@@ -279,8 +279,10 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      # Past go test's 10-minute default, a package fails with no test failing,
+      # after the merge queue passed it. The race step below has the same budget.
       - name: Test
-        run: go test ./...
+        run: go test -timeout 40m ./...
 <%- if .Abcd %>
 
       - name: Test (race, internal)
