@@ -356,12 +356,17 @@ a paused role, or one already with the host, from an earlier fallback or a step
 before its route existed, whose receipt nothing has written (a role whose
 receipt is written is yours to hand back, and is never retried). The result
 names the retry in `retried`, and the run record in a `retry` line. The one
-receipt a step reads itself is a routed implementer's at the implement stage,
-where the run shows its runner was started: one that verifies is collected, as
-the step's move, with no second runner and no retry; its route names the runner
-asked for and leaves `ran` empty until that runner's report arrives. One that
-does not verify stays where it stands, no runner is started over it, and `next`
-says why; a `--route` for that role is refused. A `--route`
+receipt a step reads itself is a routed implementer's, where the run shows its
+runner was started: one that verifies is collected, as the step's move, with no
+second runner and no retry (a fix round's needs a commit past the round's head);
+its route names the runner asked for and leaves `ran` empty until that runner's
+report arrives. One that does not verify stays where it stands and no runner is
+started over it. While the runner's claim stands, `next` says to wait; after
+that the lane is stopped, `next` names the ways out (correct the receipt and run
+`receipt`, which a plain `step` also reads, or `step --restart`), and a drain
+hands the lane back as stuck at its bounds. A `--route` for that role is refused.
+What stands at an agent's path when it is handed out, or when a runner is claimed
+for it, is set aside unread under the lane's `aside/`. A `--route`
 for a held role retries it at once on that route, as the step's one move; a
 `--route` with `--restart`, or any route in force for the restarted role,
 starts the fresh agent on its runner at once rather than re-telling it to you.

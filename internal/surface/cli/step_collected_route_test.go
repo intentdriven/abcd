@@ -23,3 +23,19 @@ func TestARouteNoRunnerReportedIsNotShownAsARun(t *testing.T) {
 		t.Fatalf("the step's text = %q", got)
 	}
 }
+
+// TestAPausedRoleSaysWhatItsRunnerDid: a runner whose answer was refused ran the
+// role, so the text does not say it did not start it; every other pause does.
+func TestAPausedRoleSaysWhatItsRunnerDid(t *testing.T) {
+	for reason, want := range map[runner.Reason]string{
+		runner.ReasonInvalid: "whose answer was refused",
+		runner.ReasonFailed:  "which did not start it",
+	} {
+		var b bytes.Buffer
+		renderStepResult(&b, "step", loop.StepResult{RunID: "run-2611040000000001", Lane: "lane-1",
+			Paused: &loop.Await{Role: "implementer", Paused: &loop.RunnerPause{Runner: runner.Claude, Reason: reason, Detail: "d"}}})
+		if got := b.String(); !strings.Contains(got, want) {
+			t.Fatalf("%s: the step's text = %q; want %q", reason, got, want)
+		}
+	}
+}

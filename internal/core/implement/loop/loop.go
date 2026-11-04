@@ -914,16 +914,20 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 	// a --route is judged on that route alone, since one the step will not use
 	// is refused with nothing written (route_use.go); the next plain step
 	// collects.
-	var standing string
+	var stopped []stoppedReceipt
+	standing := ""
 	if len(overrides) == 0 {
-		var collected StepResult
-		var took bool
-		if collected, took, standing = collectStanding(repoRoot, runID, steps, o); took {
+		collected, took, found := collectStanding(repoRoot, runID, steps, o)
+		if took {
 			if !collected.Complete {
 				collected.Outage = g.info()
 			}
 			return collected, nil
 		}
+		stopped = found
+		standing = stoppedText(stopped)
+	} else {
+		standing = standingUnderRoute(repoRoot, runID)
 	}
 	var res StepResult
 	var wait error
@@ -969,6 +973,11 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 		logged := len(st.Record)
 		renewNote := renewReservation(repoRoot, st, now, nil)
 		renewed := len(st.Record) != logged
+		// A lane stopped on its receipt is no wait: it counts as a refused
+		// step does, and a drain hands it back at the bounds (stuck.go).
+		if noteStopped(st, stopped, now) {
+			renewed = true
+		}
 		r, moved, err := move(repoRoot, st, steps, now, g, newRoundRouter(o), o.PlanGuard)
 		if err != nil {
 			if rf, ok := AsRefusal(err); ok && renewNote != "" {
@@ -1003,7 +1012,13 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 		if r, ok := AsRefusal(err); ok {
 			r.Remedy += "; " + standing
 		} else if err == nil {
-			res.Next += "; " + standing
+			// The re-told move is false of a lane stopped on its receipt, so
+			// that lane's answer is the stop alone.
+			if len(stopped) == 1 && res.PerformedStage == "" && res.Lane == stopped[0].lane && res.Slots <= 1 {
+				res.Next = standing
+			} else {
+				res.Next += "; " + standing
+			}
 			res.standing = standing
 		}
 	}
@@ -1114,10 +1129,10 @@ func handIn(repoRoot, runID, receipt string, steps Stages, o Options, route *run
 		now := o.now()
 		i, k := st.findAwait(repoRoot, receipt)
 		if i < 0 {
-			if at, digest, ok := st.collectedAt(repoRoot, receipt); ok {
+			if at, taken, digest, ok := st.collectedAt(repoRoot, receipt); ok {
 				var changed bool
 				var err error
-				res, changed, err = answerCollected(repoRoot, root, st, at, digest, route, now)
+				res, changed, err = answerCollected(repoRoot, root, st, at, taken, digest, route, now)
 				return changed, err
 			}
 			return false, unknownReceipt(*st)
@@ -1134,6 +1149,9 @@ func handIn(repoRoot, runID, receipt string, steps Stages, o Options, route *run
 			Route: route, modelNote: &modelNote}
 		took := ""
 		if stood {
+			if gap := noWorkPastRound(c, lane, await); gap != "" {
+				return false, refuse("receipt", "", lane.ID, gap, "hand it back with `abcd implement receipt "+await.Receipt+"` if the round's findings needed no change")
+			}
 			var err error
 			if took, err = standingDigest(repoRoot, root, await.Receipt); err != nil {
 				return false, refuse("receipt", "", lane.ID, err.Error(), "correct what the reason names, then hand the receipt back")
@@ -1189,14 +1207,14 @@ func handIn(repoRoot, runID, receipt string, steps Stages, o Options, route *run
 			lane.Awaits = nil
 		}
 		note := "the " + string(performed) + " stage's receipt verified at " + verified
-		if stood {
-			note += collectedNote(took)
-		}
 		if def.Repeats {
 			// The stage hands the lane to its next agent, or completes, on a
 			// later step; the lane's own receipt stays the implementer's.
 			if n := validationNote(lane, verified); n != "" {
 				note += "; " + n
+			}
+			if stood {
+				note += collectedNote(took)
 			}
 			st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: "receipt", Note: note})
 			st.Lanes[i] = lane
@@ -1205,6 +1223,9 @@ func handIn(repoRoot, runID, receipt string, steps Stages, o Options, route *run
 			return true, nil
 		}
 		lane.Receipt = verified
+		if stood {
+			note += collectedNote(took)
+		}
 		st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: "receipt", Note: note})
 		lane.Stage = after(lane.Stage)
 		st.Lanes[i] = lane

@@ -589,12 +589,12 @@ func TestAFirstHandOutStartsItsAgentWhateverStandsAtItsPath(t *testing.T) {
 	})
 }
 
-// TestAStepCollectingWhileTheAgentWorksLandsNothingUnjudged: a peer step can
-// collect while the runner's agent is still working, since a claim names no
+// TestAStepCollectingWhileTheAgentWorksKeepsItsLaterWorkFromLanding: a peer step
+// can collect while the runner's agent is still working, since a claim names no
 // process to ask. The agent's later commit moves the branch past the head the
 // lane took, its rewritten receipt is refused rather than answered, and the
-// landing refuses the moved tip, so nothing the validators did not judge lands.
-func TestAStepCollectingWhileTheAgentWorksLandsNothingUnjudged(t *testing.T) {
+// landing refuses the moved tip.
+func TestAStepCollectingWhileTheAgentWorksKeepsItsLaterWorkFromLanding(t *testing.T) {
 	repo, id, l, dir := awaitingLane(t)
 	stages := DefaultStages()
 	claimAwait(t, repo.Root(), id, l.awaiting().Receipt, time.Now().Add(time.Hour))

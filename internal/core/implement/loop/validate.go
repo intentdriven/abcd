@@ -1229,7 +1229,7 @@ func (st *State) dropAnswer(repoRoot, rel string) bool {
 }
 
 // keptAside keeps the route's answer beside the review's return when a return
-// the host's agent wrote already stands there, records nothing for it, and
+// written since the review was handed out stands there, records nothing for it, and
 // reports where the lane stands now.
 func keptAside(repoRoot, runID string, res StepResult, aw Await, rr *ReviewRoute, ret string) (StepResult, error) {
 	aside, err := keepAside(repoRoot, aw, rr, ret)
@@ -1245,7 +1245,7 @@ func keptAside(repoRoot, runID string, res StepResult, aw Await, rr *ReviewRoute
 			res = laneResult(st, l, "", nil)
 		}
 	}
-	res.Next = fmt.Sprintf("a return the host's agent wrote already stands at %s, so the %s route's answer is kept aside at %s and recorded nowhere; %s",
+	res.Next = fmt.Sprintf("a return written since this review was handed out stands at %s, so the %s route's answer is kept aside at %s and recorded nowhere; %s",
 		aw.Receipt, rr.Name, aside, res.Next)
 	return res, nil
 }
