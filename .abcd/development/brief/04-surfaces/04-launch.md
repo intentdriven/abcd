@@ -19,8 +19,9 @@ plugin with no launch payload are refused, and a named baseline that is not a
 release tag exits 2. Its one write is its pre-flight
 report in the gitignored local tier. Beside the bundle report it renders the
 release cut the next ship would make, the deterministic emit with no prose
-(spc-2610100613109045, decision 5): the preview is the one way to see the cut
-without starting one, and there is no separate changelog verb. Bare
+(spc-2610100613109045, decision 5): the preview shows the cut with nothing
+composed and nothing started, the practice run below shows it against a composed
+changelog, and there is no separate changelog verb. Bare
 `abcd launch` refuses with a hint to ask for the preview. A repository that declares `kind: plugin` with no
 launch payload (`.abcd/config/launch-payload.json`) has nothing to preview, and
 the preview says so and names the release path a repository that ships no plugin
@@ -129,6 +130,31 @@ derived from records, up to its own, and can say what changed in an update
 without reading the network or the repository it runs in; a release it does not
 carry is named as one it cannot describe (spc-2610170635097509). A repository that declares nothing gets no digest. A refused payload returns every reason as data, and the host
 recomposes until it is valid, reporting each attempt (itd-2609231013154443).
+
+**A composed changelog can be practised before it counts**
+(itd-2610301428390406, spc-2610301431131636 step 2). The dry-run flag beside a
+composed changelog makes the ship a practice run, which goes through the ingest
+with every write held back: the cut is derived, the payload is judged against it
+by the code the real ingest judges it with, every write is composed, and the
+pre-flight gates run where the ship renders a payload. What it delivers is a
+report of each file the cut would write, in the order the cut writes them and
+with its size: any intent whose missed target moves to `next`, the outgoing
+page's archive, `RELEASE.md`, the digest, `CHANGELOG.md`, and, where the archive
+is pinned, the catalog and the surface snapshot. Beside them it names the report
+the gates would leave and what follows that the cut does not do itself: the tag,
+the push and the release the workflow makes once the heading reaches the default
+branch. A refused payload gives the real run's reasons and exit 2, so a host
+recomposes before anything counts, and a refused cut exits 1 as the real run's
+does. Nothing is written: no
+release record, pre-flight report, archive pin or staged payload, and neither the
+changelog's lock nor the intent store's is taken, since each is a file the lock
+lays. What only a written cut can settle stays open: the archive's render and its
+pin are named, not made, because the render needs the version a written heading
+carries, so a practice run that passes can still be refused there, where the real
+cut rolls its writes back. The practice run reads the parity baseline already in
+the checkout, so asking it to fetch one is refused, and it is refused with no
+composed changelog, since the emit step reads none and writes nothing already;
+that refusal names the preview.
 
 **The archive render is the release gate's half of the pin.** It renders the
 plugin archive of the release the newest dated CHANGELOG heading names, from the

@@ -18,7 +18,11 @@ keys (`internal/core/intent/consistency_config.go`), the reservation holder's
 (`internal/core/claim/maxlive.go`), the load gate's `load.preflights`, read
 from the machine layer alone (the person's `~/.abcd.noindex/config.json`), 1 to
 4 and 1 by default, never from a repository
-(`internal/core/implement/load_slots.go`), the quiet window of `ahoy worktree
+(`internal/core/implement/load_slots.go`), the load gate's memory floors
+`load.memory_floor_macos` (`warn` by default, or `critical`) and
+`load.memory_floor_linux` (a whole percentage from 1 to 100, 10 by default),
+each read from the machine layer alone, a repository's key named on stderr as
+ignored (`internal/core/implement/load_memory.go`), the quiet window of `ahoy worktree
 prune`, `worktrees.quiet_days` (how many days without activity make an
 unmerged worktree with no open pull request quiet: 1 to 36500 and 14 by
 default; `internal/core/ahoy/worktree/quiet.go`), the matrix run's spending
@@ -1080,11 +1084,14 @@ provider blocks, `oracle.rp`, `oracle.bundled_context_providers`, the whole
 `interview.list`, `matrix.spend_cap` (a repository's figure refused),
 `reservation.github_username`, `reservation.max_live` (1 to
 100, 10 by default, read past to 10 when the file cannot be read, which the
-refusal at the cap says) and `load.preflights` (how many preflights the first
+refusal at the cap says), `load.preflights` (how many preflights the first
 gate admits at once, each a whole run, one race stage able to run beside
 them: 1 to 4, 1 by default, never read from a repository, and read past, with
 a stderr note, when the file cannot be read for it, so a file that holds other
-settings never stops the load gate) are honoured from the machine layer alone,
+settings never stops the load gate) and `load.memory_floor_macos` and
+`load.memory_floor_linux` (the default floors applied, with a stderr note, when
+the file cannot be read for them, and a value outside its set refusing the wait,
+since the gate does not guess a floor) are honoured from the machine layer alone,
 and only from a home outside every git working tree but the account's own
 (`layered.MachineRoots`, the rule `RootsFor` applies): under a home inside
 one the machine layer reads as absent, so no holder is named from it and the

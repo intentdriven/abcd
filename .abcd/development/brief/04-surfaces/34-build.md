@@ -942,6 +942,24 @@ until the last step.
    one the forge reports `CONFLICTING`, at exit 2: it needs a person, so it is
    not the merge's contention wait.
 
+   Each wait of an armed lane whose default branch a merge queue gates also
+   reads the pull request's place in the queue, since the forge can leave one
+   there unseen (spc-2609212015054359 step 5, iss-2610090642376032). In the
+   queue, the wait names its place. Armed and `CLEAN` outside it, the land fence
+   is asked as at the arming and the pull request is queued, pinned to the
+   pushed head; where the forge refuses that, auto-merge is toggled once the
+   arming is thirty minutes old, since the forge may queue it by itself
+   meanwhile, and an arming the forge will not make again is refused, naming
+   the command that re-arms it. Open, outside the queue and no longer armed is
+   refused at exit 2, naming the forge's reason for the removal and the checks
+   that failed on its last merge group, and it is never queued again into the
+   same failure; while a release being cut holds merges the lane waits on the
+   hold instead, at exit 3, since the hold withdraws armed merges and re-arms
+   them after. A head on the forge other than the one pushed, outside the queue,
+   is refused and neither queued nor re-armed. A place that cannot be read leaves
+   the ordinary wait, saying so. A drain's move takes this step for a lane the
+   forge lists outside the queue ([`35-drain.md`](35-drain.md)).
+
    The forge computes mergeability without the merge drivers `.gitattributes`
    names, so a lane that appended to a `merge=union` file the default branch
    also appended to merges cleanly here and conflicts there. A conflict

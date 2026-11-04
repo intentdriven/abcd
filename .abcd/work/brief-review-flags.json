@@ -344,6 +344,86 @@
       "evidence": "internal/surface/cli/rules_prompt.go:51",
       "commit": "332aa6a2dfd2bdd4a4631188b528cd1002a8729f",
       "applied": "2026-10-23T06:27:37Z"
+    },
+    {
+      "chapter": "35-drain.md",
+      "sentence": "spc-2609212015054359, which stays open for the decision-record marker and",
+      "replacement": "spc-2609212015054359, closed having delivered the decision-record marker and",
+      "evidence": ".abcd/development/specs/closed/spc-2609212015054359-drain-ledger-triage.md:1",
+      "commit": "5dbb0fb0972171435f3be443ef60697f043e14d7",
+      "applied": "2026-11-04T01:37:49Z"
+    },
+    {
+      "chapter": "35-drain.md",
+      "sentence": "Three hand-backs hold whatever the repository's record says. An issue whose",
+      "replacement": "Four hand-backs hold whatever the repository's record says. An issue whose",
+      "evidence": "internal/core/capture/eligible.go:31",
+      "commit": "5dbb0fb0972171435f3be443ef60697f043e14d7",
+      "applied": "2026-11-04T01:37:49Z"
+    },
+    {
+      "chapter": "35-drain.md",
+      "sentence": "other two each mark a decision a person still owes. A",
+      "replacement": "other three each mark a decision a person still owes: the decision-record marker, stated under the hand-back by kind below, and these two. A",
+      "evidence": "internal/core/capture/eligible.go:130",
+      "commit": "5dbb0fb0972171435f3be443ef60697f043e14d7",
+      "applied": "2026-11-04T01:37:49Z"
+    },
+    {
+      "chapter": "35-drain.md",
+      "sentence": "- The two person-owed hand-backs, a remedy waiting on a ruling and a live",
+      "replacement": "- The three person-owed hand-backs, a decision-record marker, a remedy waiting on a ruling and a live",
+      "evidence": "internal/core/capture/eligible.go:168",
+      "commit": "5dbb0fb0972171435f3be443ef60697f043e14d7",
+      "applied": "2026-11-04T01:37:49Z"
+    },
+    {
+      "chapter": "35-drain.md",
+      "sentence": "and is named in `next`; an open one is renewed and named as waiting; one",
+      "replacement": "and is named in `next`; an open one is renewed and named as waiting, unless the listing shows it armed and `CLEAN` or disarmed, when the move takes the lane's own merge-queue watch: one left outside the queue is queued, and one that left it disarmed is read as `dropped`, naming the failed check, and still renewed; one",
+      "evidence": "internal/core/implement/loop/drain_finish.go:302",
+      "commit": "5dbb0fb0972171435f3be443ef60697f043e14d7",
+      "applied": "2026-11-04T01:37:49Z"
+    },
+    {
+      "chapter": "35-drain.md",
+      "sentence": "since the drain's part ends at the open pull request.",
+      "replacement": "and a later move reads it among the parked lanes (below).",
+      "evidence": "internal/core/implement/loop/drain_finish.go:289",
+      "commit": "5dbb0fb0972171435f3be443ef60697f043e14d7",
+      "applied": "2026-11-04T01:37:49Z"
+    },
+    {
+      "chapter": "35-drain.md",
+      "sentence": "untrack it. The state is at its second schema version, which added the",
+      "replacement": "untrack it. The state is at its third schema version; the second added the",
+      "evidence": "internal/core/implement/loop/drain.go:79",
+      "commit": "5dbb0fb0972171435f3be443ef60697f043e14d7",
+      "applied": "2026-11-04T01:37:49Z"
+    },
+    {
+      "chapter": "35-drain.md",
+      "sentence": "a first-version state is read as the second's strict subset and written back at",
+      "replacement": "the third added a judge fallback receipt's `spent`, and an earlier version's state carrying it is refused, naming it; a first- or second-version state is read as the third's strict subset and written back at",
+      "evidence": "internal/core/implement/loop/drain.go:1564",
+      "commit": "5dbb0fb0972171435f3be443ef60697f043e14d7",
+      "applied": "2026-11-04T01:37:49Z"
+    },
+    {
+      "chapter": "35-drain.md",
+      "sentence": "the second, and one that carries any of those fields is refused naming the",
+      "replacement": "the third, and a first-version one that carries any of the second's fields is refused naming the",
+      "evidence": "internal/core/implement/loop/drain.go:1550",
+      "commit": "5dbb0fb0972171435f3be443ef60697f043e14d7",
+      "applied": "2026-11-04T01:37:49Z"
+    },
+    {
+      "chapter": "35-drain.md",
+      "sentence": "`/abcd:drain` is the verb a person types to have the open issue ledger worked",
+      "replacement": "`/abcd:drain` is the verb an agent or host runs to have the open issue ledger worked",
+      "evidence": "internal/surface/cli/helpgroups.go:175",
+      "commit": "5dbb0fb0972171435f3be443ef60697f043e14d7",
+      "applied": "2026-11-04T01:37:49Z"
     }
   ]
 }
