@@ -123,11 +123,7 @@ func (f *parFixture) opts() Options    { return Options{Now: f.clock} }
 
 func (f *parFixture) state(t *testing.T) State {
 	t.Helper()
-	st, err := ReadState(f.repo.Root(), f.runID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return st
+	return stateOnDisk(t, f.repo.Root(), f.runID)
 }
 
 func (f *parFixture) lane(t *testing.T, id string) Lane {

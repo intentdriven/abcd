@@ -34,10 +34,7 @@ func withLanding(repo *gittest.Repo) Stages {
 func stepTo(t *testing.T, repo *gittest.Repo, runID string, stages Stages, want Stage) Lane {
 	t.Helper()
 	for range 4 * len(Sequence) {
-		st, err := ReadState(repo.Root(), runID)
-		if err != nil {
-			t.Fatal(err)
-		}
+		st := stateOnDisk(t, repo.Root(), runID)
 		if i := st.current(); i >= 0 && st.Lanes[i].Stage == want && st.Lanes[i].awaiting() == nil {
 			return st.Lanes[i]
 		}
@@ -52,10 +49,7 @@ func stepTo(t *testing.T, repo *gittest.Repo, runID string, stages Stages, want 
 // currentLane is the lane the loop works on.
 func currentLane(t *testing.T, repo *gittest.Repo, runID string) Lane {
 	t.Helper()
-	st, err := ReadState(repo.Root(), runID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := stateOnDisk(t, repo.Root(), runID)
 	i := st.current()
 	if i < 0 {
 		t.Fatal("no lane is in progress")
