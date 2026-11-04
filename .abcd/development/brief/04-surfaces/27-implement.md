@@ -444,7 +444,7 @@ A narrow run waits at a gate of its own (`internal/core/implement/load_narrow.go
 `internal/core/machineload/narrow.go`), because on 2026-11-04 about thirty builders
 queued one package's test each behind whole preflights, at a load of 12 on 16 cores
 with 96% of memory free, until the 30-minute wait ran out and no test ran. It is
-`--wait -- go test`, `go -C <dir>` allowed, read from the argv, with no shell in between: at most three
+a gated `go test`, `go -C <dir>` allowed, read from the argv, with no shell in between: at most three
 packages named outright, no wildcard or bare word, no flag beyond `-v`, `-short`,
 `-failfast`, `-json`, `-run`, `-skip`, `-timeout` and `-count=1`, and `GOFLAGS`
 unset. The reading fails closed, so its one mistake is a slower wait: `make`, a
@@ -476,7 +476,7 @@ alone keep a narrow run shut stop counting after two minutes, flat whatever thei
 number: a waiter of this code takes a free place in under one, and each that leaves
 starts the count again, so a queue that is moving never reaches it.
 
-A wait gives up after `--timeout`, six hours by default, the figure sessions came to
+A wait gives up after six hours by default, the figure sessions came to
 pass by hand once thirty minutes ended every gated test on a busy machine. It exits
 1 as ever, and its last line starts `LOAD GATE TIMED OUT`, naming how long it waited
 and that nothing ran, with the renewal stopped first so no message follows it, since
