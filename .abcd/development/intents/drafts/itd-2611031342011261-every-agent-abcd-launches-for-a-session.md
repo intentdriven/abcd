@@ -293,38 +293,37 @@ Settled by the record, so no question was put (2026-11-03):
 13. **Impact: additive.** A new record and a new reader; nothing existing
     changes shape.
 
-Proposed defaults, configurable, for the person to tune (open questions):
+Settled at the planning interview of 2026-11-04 by the product thinker's
+standing stance that abcd ships a sensible default and a person configures it
+per repository (dcn-2611041550129278); each takes the draft's proposed
+default, and none was put as a question of its own:
 
-14. **Retention: 30 days and 20,000 entries**, pruned by the next writer.
+14. **Retention: 30 days and 20,000 entries**, pruned by the next writer; a
+    machine or repository setting overrides both figures.
 15. **The status line's cached read: 30 seconds**, the interval the
-    prototype used.
+    prototype used; configurable the same way.
 16. **Token basis: every count the harness reports**, as the prototype
-    summed them; prompt and completion alone as the alternative.
+    summed them; prompt and completion alone as the configurable
+    alternative. The row shows one total naming its basis, and showing cache
+    reads apart is a setting, off by default.
 17. **The verb is `abcd agents`**, bare for this session, `--run <id>`,
     `--session <id>`, `--all`, `--json`; `launch` is the release verb and
-    `launches` would read as its plural.
+    `launches` would read as its plural. The naming rule is applied at the
+    verb audit as for any verb.
+18. **The budget intent's per-key totals are summed from this ledger**
+    (itd-2611011230226453), not kept in a store of their own, so one record
+    holds every launch's spend.
+19. **A session's by-hand launches** (an agent started from a shell) are
+    entered from their result file by a later intent, not this one.
+20. **"Today" on the row is the machine's local day**, configurable to UTC.
+21. **A role handed to the host session gets a placeholder entry** naming
+    the host as the route, with no figures, so a run's listing is complete.
 
 ## Open Questions
 
-For the person, each shipped as a default a machine or repository setting
-overrides:
-
-- The retention (decision 14): days and count.
-- The status line's cache interval (decision 15).
-- The token basis the row shows (decision 16), and whether cache reads
-  should be shown apart.
-- The verb's name (decision 17), under the naming rule.
-- Whether the budget intent's per-key totals (itd-2611011230226453) are
-  summed from this ledger rather than kept in a store of their own, so one
-  record holds every launch's spend; proposed yes.
-- Whether a session's by-hand launches (an agent started from a shell, as
-  the lab's coordinator did) can be entered into the ledger from their
-  result file, so the row covers them too; proposed as a later intent.
-- Whether "today" on the row is the UTC day or the machine's local day;
-  proposed local.
-- Whether a role handed to the host session gets a placeholder entry naming
-  the host as the route, so a run's listing is complete even where the
-  figures are the host's; proposed yes, with no figures.
+_None open. The eight questions this draft carried are decisions 14 to 21,
+each settled on its proposed default by the standing stance recorded in
+dcn-2611041550129278._
 
 ## Audit Notes
 
