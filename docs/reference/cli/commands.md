@@ -1368,22 +1368,25 @@ Work the open issue ledger unattended: fix the issues that need no decision, and
 hand the rest back by kind. Which issues need no decision is this repository's own
 recorded decision: an accepted decision record whose frontmatter carries the four
 fields drain_categories, drain_severities, drain_security and drain_remedy. The
-rule reads the issue's fields alone: nothing open in blocked_by; no intent in
+rule reads the issue's fields, and beyond them only the release tags and, for a
+consistency finding, the intent store: nothing open in blocked_by; no intent in
 related_intents; a category the rule takes; a severity it takes; and a remedy:
 field. abcd's strict baseline takes tech-debt, documentation, inconsistency, drift,
 bug and ux at nitpick or minor, and hands every security issue to a person. A
 repository's record may loosen those floors (major, critical, security), and every
-floor it loosens is named. Three hand-backs hold whatever the record says. An issue
+floor it loosens is named. Four hand-backs hold whatever the record says. An issue
 whose related_intents names an intent is handed back as promoted, naming the
 intents: it goes through its intent (`abcd build <itd-N>`, or `abcd intent audit
 <itd-N>` for an audit's owed check), and a person's own `abcd build <iss-N>` still
-takes it; a record the consistency pass files is the exception, since the intents
+takes it where no other rule would hand it back; a record the consistency pass files
+is the exception, since the intents
 it names are the two it found contradicting: once a person has written its remedy,
 it is judged by its other fields as if it named no intent, and an intent it was
-promoted into still owns it. An issue whose remedy opens "Waits on", or whose
-deferral past the current release tag is live, or names a release tag this checkout
-lacks, is handed back too. Every other open issue is handed back, listed as
-ineligible, or skipped naming its blocker, by the rule that excluded it.
+promoted into still owns it. An issue carrying the decision_needed: marker a drain's
+trust-rule hand-back wrote, whose remedy opens "Waits on", or whose deferral past
+the current release tag is live, or names a release tag this checkout lacks, is
+handed back too. Every other open issue is handed back, listed as ineligible or
+unreadable, or skipped naming its blocker, by the rule that excluded it.
 
 In a checkout with a remote named origin, the ledger is read from origin's default
 branch, never from the checkout, which may be behind it: each move fetches the
@@ -1393,6 +1396,8 @@ fetch fails, the default branch cannot be read, or none can be named: no origin/
 and no origin/main, master, trunk or develop) plans
 nothing: it records the failure in the drain's state and waits as for an outage,
 looking again after one minute, five, ten, then hourly, and exits 0 saying when.
+While it waits a move takes no answer given, saying to give it again, finishes no
+merged lane and renews no reservation, and one before the next look fetches nothing.
 A probe that fails eight hours into the hourly stage gives up, as the outage gate
 does: the drain ends (stopped "origin"), and the next abcd drain begins a new
 drain, waiting again if origin still cannot be read.
@@ -1459,8 +1464,8 @@ drain hands the next eligible issue, in that order, to the implement loop's issu
 lane (the run `abcd build <iss-N>` starts), one lane at a time, and names the run to
 drive with `abcd implement step`. Run it again once that lane is handed back or its
 pull request is open, and it routes the lane's outcome and opens the next. A lane
-that cannot finish does not hold the drain: each refused step of its run is logged
-on the lane (refused in the run's state: the stage, the check, the reason, a count
+that cannot finish does not hold the drain: each refused step of its run, until its
+pull request is armed or left open, is logged on the lane (refused in the run's state: the stage, the check, the reason, a count
 of the same refusal in a row, since when and when last it refused there, and why it
 cannot change), and once the step has been refused the same way three times, or has
 kept refusing at one stage for sixty minutes, from its first refusal there to its
@@ -1469,13 +1474,17 @@ last, a quiet of more than fifteen minutes starting the time afresh
 hands the lane back as stuck, releases its reservation with a tombstone marking it
 stuck, and takes up the next issue. A refusal that cannot change (the issue
 finished at the lane's base or on origin's default branch, the reservation now
-another person's) hands it back at once; the wait for a preflight receipt, an
-outage's wait, and a land fence that cannot read origin are never counted, and a
+another person's, the sync's merge conflicting in a file not declared generated)
+hands it back at once; the wait for a preflight receipt, an outage's wait, a land
+fence that cannot read origin and a release being cut that holds merges are never
+counted, and a
 step that succeeds as the move hands the lane back keeps it. `abcd implement step
 --discard` removes a stuck lane's worktree and branch and ends its run. Every move
-renews the reservation of the lane in progress at half its lease, waiting or not
+that neither waits on origin nor stops at a given-up outage renews the reservation
+of the lane in progress at half its lease, waiting on the pace or a judgement or not
 (a lane handed back is renewed by none); once the lane's validators pass and it is
-at its landing, the first renewal narrows its footprint to the files the lane changed
+at its landing, the first renewal due at half its lease, a fence's renewal keeping the
+footprint, narrows its footprint to the files the lane changed
 within it, never widening it, and a lane its sync sends back to a fresh round
 reserves its whole found_at again before it goes on, or is refused for you;
 and the landing checks it before its push,
@@ -1484,20 +1493,26 @@ back as stuck. A move that finds a lane parked at land reads it from its pull
 request, in one listing of your latest pull requests (gh pr list): a closed one
 hands the lane back as closed, releasing its reservation with a tombstone marking
 it closed; a conflicting one is not renewed and is named; an open one is
-renewed and named as waiting (parked in --json). Before its records and push a
+renewed and named as waiting, or, once the merge-queue watch finds it will not merge
+on its own (it left the queue disarmed, or its head moved), as dropped, naming why
+(parked in --json); the watch queues one it finds armed and CLEAN outside the queue.
+Before its records and push a
 lane's sync fetches origin's default branch and merges it whenever it has moved, a
 fresh round judging the merge: a conflict confined to files origin declares
 linguist-generated goes back to an implementer to regenerate, any other hands the
 lane back naming the files, nothing pushed, and a pull request that starts to
-conflict on generated files alone enters the sync again. A lane
+conflict on generated files alone, or in no file when this checkout merges, enters
+the sync again, an armed merge withdrawn first; one whose head already holds the
+default branch waits at exit 3. A lane
 that finds a decision in its issue hands it back by kind, its work discarded: a
 user-visible change is promoted to an intent draft (`capture promote`, which
 stamps the issue's related_intents and nothing else); a trust or safety rule is
-flagged as needing a decision record, with the question; a design finding or a
-second package is flagged with the home the lane names. Every issue the rule
-hands back is flagged naming the rule, less one this drain promoted itself, which
-is counted once, as its promotion. Nothing but the promotion is written to the
-ledger, and every hand-back is in the summary.
+flagged as needing a decision record, with the question written onto the open issue
+as its decision_needed: marker; a design finding or a second package is flagged with
+the home the lane names. Every issue the rule hands back is flagged naming the rule,
+less one this drain promoted or marked itself, which is counted once, as its
+promotion or decision record. Nothing but the promotion and the decision_needed:
+marker is written to the ledger, and every hand-back is in the summary.
 
 The drain is paced as a run is: its window and pause are --pace, --sub-agents and
 --fix-rounds as `abcd build` reads them, resolved when the drain begins. At the window's
@@ -1506,7 +1521,7 @@ the call opens nothing; before that time a drain opens nothing, and after it the
 next invocation continues. --max <n> caps the lanes the drain opens (the default
 is all); at the cap, or when nothing eligible is left, held or not, the drain reports
 and ends. When you hold your cap of live reservations (ten unless reservation.max_live
-in your machine's config.json raises it), or every
+in your machine's config.json sets another, from 1 to 100), or every
 eligible issue left is held by another, a move neither refuses nor ends: it reserves
 and asks nothing, writes waiting_until fifteen minutes on (apart from the pace
 window) and waiting, "cap" or "held", for which of the two it waits on, names the
@@ -1524,8 +1539,8 @@ opened; the next `abcd drain`, once the outage is cleared, begins a new one.
 
 --skip <iss-N|path> --reason <why> holds one issue, or every issue whose found_at
 lies in that path, back for now: the move adds it to the drain's skip list (beginning
-a drain when none is in progress) and every move passes it over before anything is
-pushed or asked, named in passed with check "skipped" and the reason. --skip may be
+a drain when none is in progress) and every move that takes up the eligible issues
+passes it over before anything is pushed or asked, named in passed with check "skipped" and the reason. --skip may be
 given more than once, all with the one --reason; --unskip takes an entry off. The
 list clears when the drain ends.
 
@@ -2550,7 +2565,7 @@ for the other role is refused. The role is the session's own statement, recorded
 here and read by every bound — never taken from the environment.
 
 --ceiling states the session's own agent ceiling: the most agents it runs at once (for
-the second session, on top of the first session's). abcd runs no agent: it counts the
+the second session, on top of the first session's). abcd does not run a session's agents: it counts the
 agents the session's own agent_start and agent_end lines declare alive, refuses an
 agent_start past the ceiling, and reports the count with every `check`. An agent the
 session never logs is invisible to it. A resume keeps the ceiling.
@@ -2686,7 +2701,9 @@ older abcd reads any `implement load --wait` as a waiter at its first gate, and
 would count a preflight at its race gate as queued, not in its tests, so the two
 are refused together. At one preflight at a time, the default, it opens at once
 once the disk check below passes and memory (below) does not hold it, without
-reading the load or the process table, taking a hold or waiting a jitter, so a
+reading the load or the process table (read, inside a memory episode, only to ask
+whether the waiter admitted last is its own ancestor), taking a hold or waiting a
+jitter, so a
 preflight's race stage follows its tests as before. Above one it is shut while
 another `go test -race` run is live, a race waiter is ahead of it (by the same
 rule) or running its command, the load is at the wait limit, memory holds it
@@ -2729,7 +2746,8 @@ build cache (`go env GOCACHE`) or the one holding the worktree store
 preflight the first gate admits at once (`load.preflights`), and 8 GiB at least, so
 8 GiB at the default and 16 GiB at four. The waiter reads the disk as it starts
 and again just before it opens (the race gate at one preflight at a time reads
-it once, as it starts), and refuses at either look. The refusal names
+it as it starts and at each look while memory holds it), and refuses at any such
+look. The refusal names
 each low volume, its free space and the floor, and, when the cache's own volume
 is low, the cache's size and a command that deletes its build entries unused for
 two days. A disk it cannot read, in whole or in part, is never refused: one line
@@ -2749,14 +2767,17 @@ every look and again just before the gate opens (and before the race gate at one
 preflight at a time opens, which, once memory has held it, says it opened after
 its wait, not at once), the waiting line names the level or the
 stalled share and the floor, and a wait still shut at --timeout names memory. A
-reading it cannot take (another platform, a kernel without the file, a read
-that fails) shuts nothing: one line on stderr says memory was not checked, and why.
+reading it cannot take (a kernel without the file, a read that fails, or another
+platform at the race gate at one preflight at a time) shuts nothing: one line on
+stderr says memory was not checked, and why. Any other gate on another platform
+opens unchecked, reading no memory.
 After any waiter of your account saw the pressure at the floor, for 10m0s the gates
 admit one run per 2m0s, in queue order, reading memory again before each, so
 the stage just admitted shows its own memory use before the next starts
 (`~/.abcd.noindex/load-memory-admit.json` records it; a record it cannot read or write
 is named on stderr and holds nothing back). The load check (`--site`) prints a
-reading at the floor as a warning and never fails for it.
+reading at the floor as a warning, and one it cannot take as a memory check line on
+stdout, and never fails for either.
 
 Within one account the waiter that opens also takes a hold,
 `~/.abcd.noindex/load-wait.json` at the first gate and `~/.abcd.noindex/load-wait-race.json` at
@@ -3260,7 +3281,7 @@ the hand-back and each held lane. --release <lane-id> lands a held lane as it is
 --discard <lane-id> removes its worktree and branch, then closes its pull request, and
 leaves its step unlanded. Either is refused, changing nothing,
 for a lane that is not held or while any lane still has work. --discard also takes
-an issue run's lane a drain handed back as stuck, and ends that run.
+an issue run's lane a drain handed back as stuck or closed, and ends that run.
 --restart <lane-id> restarts a lane whose implementer died, or yielded on a network
 failure (--yielded passes its `NETWORK: <cmd>` line), as a fresh agent from the lane's
 last commit: everything left uncommitted is saved aside under the lane's directory
@@ -3293,12 +3314,16 @@ skipped or forced); it opens the pull request through gh, with a body built from
 records and passed through the outbound scrub, then re-reads the body the forge holds and
 strips a session URL or tool footer; it arms auto-merge with the merge-queue method the
 ruleset mirror (.abcd/work/rulesets/) names at the lane's base, or leaves the pull request
-open where no merge queue gates the default branch, and pushes nothing after that; and
+open while the merge gate does not arm it (with no merge queue it arms with a merge
+commit), and pushes nothing while it is armed; and
 once the pushed head is an ancestor of the default branch on origin it removes the lane's
 worktree and branch and the lane is done. Until then the call exits 3 and waits. A pull
 request the forge reports CONFLICTING (gh pr view <n> --json mergeable,mergeStateStatus)
 is refused at exit 2 instead, before arming or at the merged check, naming the files a
-local merge with every merge driver off conflicts in and the hand merge that settles it.
+local merge with every merge driver off conflicts in and the hand merge that settles it;
+an issue lane whose conflict lies in declared generated files alone, or in no file when
+this checkout merges, enters its sync again instead, an armed merge withdrawn first,
+and one whose head already holds the default branch keeps the exit-3 wait.
 
 A stage whose body this abcd does not carry is refused naming the spec piece that
 delivers it, and the run is unchanged. A stage that fails leaves the state as it was,
@@ -3422,7 +3447,7 @@ refusal, exit 3 on a pause or a locked run state.
 
 ```
       --accept-config-change   accept, once you have looked, a change to the repository's git settings that the run tripwire stopped, then take the step
-      --discard string         discard a held lane (lane-<n>), or one a drain handed back as stuck: remove its worktree and branch, then close its pull request
+      --discard string         discard a held lane (lane-<n>), or one a drain handed back as stuck or closed: remove its worktree and branch, then close its pull request
       --release string         land a held lane as it is (lane-<n>), once no lane has work left
       --restart string         restart a lane whose implementer died (lane-<n>) as a fresh agent from its last commit, its uncommitted work saved aside
       --route stringArray      route one role this step hands to an agent to a runner, for this invocation alone: <role>=runner:<name>[@<provider>/<model>], the runner one this machine enables and the model one its provider lists (else the runner's own model); one per role (implementer, ruthless-reviewer, security-reviewer, intent-auditor); wins over every configured route for this step alone, and the role's receipt records it verbatim
@@ -4939,9 +4964,11 @@ compared with the open and resolved issues, the intents and every earlier readin
 with another item of the same run, and a likely repeat is written onto the reading record as a
 duplicates: or refines: link and shown, printed and as matches in --json.
 
-With --dry-run the output is judged exactly as above and nothing is written: no reading
-record, no refusal record, no stage, no sweep and no run metadata. The report names each
-file the ingest would write; a refusal the ingest would record says where instead.
+With --dry-run the output is judged as above, short of the ledger writer's own matching,
+redaction and refusals, which run only when it writes, so a practice run that passes can
+still be refused there. Nothing is written: no reading record, no refusal record, no stage,
+no sweep and no run metadata. The report names each file the ingest would write; a refusal
+the ingest would record says where instead.
 
 **Flags:**
 

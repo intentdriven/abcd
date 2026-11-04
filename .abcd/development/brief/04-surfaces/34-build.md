@@ -40,10 +40,10 @@ series (a run count above one, or a run until no candidate is left) continues un
 No run is created until every check passes, and each is a read (criteria 1 and 2):
 
 - **key** — the record is an intent, or an issue id by shape (the issue key,
-  decision 10). An issue takes two checks and no others: the repository's own
+  decision 10). An issue takes two of these checks and no others, beside the budget check every start runs last: the repository's own
   drain rule takes it, read as the drain reads it ([`35-drain.md`](35-drain.md)),
   and no peer holds it out of `open/` or claims it. One hand-back is let
-  through: an issue the drain hands back as `promoted`, linked to an intent, is
+  through: an issue the drain hands back as `promoted`, linked to an intent, that no other rule would hand back is
   taken by a person's own build, the row naming the intent. Its run has one lane, whose
   brief is the issue with its remedy as the work.
 - **ready** — the implement-readiness gate the intent verb reports: planned,
@@ -292,7 +292,7 @@ repository abcd manages has one, so a run is managed-only by construction. Each
 run directory is created one level at a time and proved real, the state file is
 replaced atomically inside an `os.Root`, and the reader decodes strictly,
 refusing an unknown field, a schema version it does not know, or a file stored
-under a run id it does not name. The state is schema version 16. Version 16
+under a run id it does not name. The state is schema version 20. Version 20 keyed a validation round by reviewer (a validator's `reviewer`, `class`, `model` and `model_status`, an await's `reviewer`, `class` and `model`, and a round's `comparisons`), version 19 added a fallback receipt's `spent`, version 18 an await's `paused` and `running`, and version 17 a lane's `auto_plan`; each version before them reads as the next one's strict subset, and a file of an earlier version carrying what only a later one writes is refused. Version 16
 added a route's pins: a pinned opencode run's `route` carries its pin and the
 SHA-256 of the sealed configuration that held it (`provider_pin`,
 `pin_config_sha256`, iss-2610161734413178), and a route to a model on this
@@ -380,7 +380,7 @@ added the fix-round cap (ruling DR1): the pace's `fix_rounds` and a lane's
 `validation`). Each earlier version is the next one's strict subset, read as a
 run that predates the addition (a version-5 run runs on the bundled cap, a
 version-7 run is one the host ran every agent of) and
-written back at version 16 by its next mutation; an earlier version carrying what
+written back at version 20 by its next mutation; an earlier version carrying what
 only a later one writes is refused. Version 4
 renamed the lane's stage (BU1, iss-2609291313276243): a lane's and a record
 line's `step` became `stage`, so "step" names only the spec's steps (`spec_step`,
@@ -580,7 +580,7 @@ verified by the stage's own verifier, so a verified one completes the stage in
 the same call. The verified receipt, or the validator's recorded return, names
 the route that ran it (asked, ran, the model the runner reported, and both
 sides of the run: the model it asked for, the token counts, the cost and the
-fields it could not pin), which is the only field a runner-run review's record differs in from a host-run one's; the
+fields it could not pin), which, with the `model_status` it sets, is all a runner-run review's record differs in from a host-run one's; the
 record's receipt or verdict line names the runner that ran it, with the model
 it asked for and the cost when the route carries them. A runner that is absent, refuses, fails, runs past
 its time, answers unparsably or writes a receipt the verifier refuses leaves the
@@ -755,12 +755,13 @@ the loop's to record (decision 9). A verified receipt moves the lane's head to
 its branch's tip and the lane to its validators.
 
 **The validators** (piece 8; criteria 5 and 12). The validate stage hands the
-lane's head to validators that did not implement it, one fresh agent at a
-time, each with a brief the loop renders into
-`.abcd/.work.local/run/<run-id>/<lane-id>/validate/round-<n>/<role>/`: a
-`ruthless-reviewer`, then a `security-reviewer`, each over the lane's diff from
-its base to its head, and, on the lane whose landing closes the spec, an
-`intent-auditor`. The fidelity audit runs once, on that lane, over the whole
+lane's head to validators that did not implement it, fresh agents side by side
+up to the run's ceiling, each with a brief the loop renders into
+`.abcd/.work.local/run/<run-id>/<lane-id>/validate/round-<n>/<role>/` (`<role>.<i>/`
+for a role's later reviewer): the reviewers the run's review set names (below)
+for the `ruthless-reviewer` and then the `security-reviewer`, each over the
+lane's diff from its base to its head, and, on the lane whose landing closes
+the spec, an `intent-auditor`. The fidelity audit runs once, on that lane, over the whole
 delivery (ruling AI, 2026-09-29): its request carries the range from the base of
 the run's first lane to the closing lane's head, each lane's own range, and
 every spec step landed before the run by what landed it. A lane that does not
@@ -787,6 +788,23 @@ implementer's is; the next round then hands the lane's head to every validator
 again, so no verdict stands over a head it did not read and a rejection is
 judged by the validator it answers. The state records every round with the head
 it judged, each verdict, and the audit's receipt and range.
+
+**The review set** (itd-2610240922461281, spc-2610240951109420). A new run reads
+once, through the layered reader, how many reviewers each code-review role runs
+and at which model class, and keeps what it read whatever the files say later:
+`review.reviewers`, one or two classes for both roles or a list per role, each
+role taking the highest layer that sets it, else the bundled `middle` and `below`;
+`review.max_reviewers`, the machine's ceiling, 1 or 2 and 2 when unset, which
+clamps a longer list with one line on stderr; and `models.classes`, the class
+map, read from the machine's file over the bundled map, a repository's map being
+skipped with a warning. `review.judge` names one class, and a set naming one is
+refused at the `review` stage until a judge's agent has cleared itd-81's
+calibration gate, as is any fault in the others, before anything is written. The
+`intent-auditor` keeps its single run. A round hands a role's reviewers out in
+consecutive steps on its one head, each taking a slot, and once they have all
+returned its `comparisons` records whether they disagree, one verdict passing
+and another failing. The comparison decides nothing: any reviewer that fails
+fails the round. A run started before review sets runs one reviewer per role.
 
 The audit passes a round only when it judges every criterion met: a criterion
 it could not decide (`INCONCLUSIVE`) fails the round exactly as a `NOT_MET` one
@@ -930,8 +948,8 @@ until the last step.
    arms nothing, and so is a `facilitator.mode` that cannot be read. Before arming, the loop asks the
    forge whether the pull request merges (`gh pr view` for its `mergeable`
    and `mergeStateStatus` fields), and one the forge reports `CONFLICTING` is
-   refused at exit 2, unarmed, since the merge queue never takes it
-   (iss-2610110908443341). Nothing is pushed to the lane after this step.
+   refused at exit 2, unarmed, since the merge queue never takes it, unless an issue lane's conflict lies in declared generated files alone, or in no file when this checkout merges, when the lane enters its sync again, or, its head already holding the default branch, waits at exit 3 for the forge's verdict
+   (iss-2610110908443341). Nothing is pushed to the lane while it is armed: an issue lane's sync withdraws the arming first.
 6. It fetches the default branch and waits, exiting 3, until the pushed head
    is an ancestor of it; only then does it remove the lane's worktree (never
    forced) and delete the lane's branch at a tip the same check proves landed,
@@ -940,7 +958,25 @@ until the last step.
    waiting. A pull request closed without merging, or merged in a way that
    rewrote the head, is refused and nothing is cleaned up, and so is an open
    one the forge reports `CONFLICTING`, at exit 2: it needs a person, so it is
-   not the merge's contention wait.
+   not the merge's contention wait. An issue lane whose conflict lies in declared generated files alone, or in no file when this checkout merges, enters its sync again instead, an armed merge withdrawn first. One whose head already holds the default branch keeps the exit-3 wait.
+
+   Each wait of an armed lane whose default branch a merge queue gates also
+   reads the pull request's place in the queue, since the forge can leave one
+   there unseen (spc-2609212015054359 step 5, iss-2610090642376032). In the
+   queue, the wait names its place. Armed and `CLEAN` outside it, the land fence
+   is asked as at the arming and the pull request is queued, pinned to the
+   pushed head; where the forge refuses that, auto-merge is toggled once the
+   arming is thirty minutes old, since the forge may queue it by itself
+   meanwhile, and an arming the forge will not make again is refused, naming
+   the command that re-arms it. Open, outside the queue and no longer armed is
+   refused at exit 2, naming the forge's reason for the removal and the checks
+   that failed on its last merge group, and it is never queued again into the
+   same failure; while a release being cut holds merges the lane waits on the
+   hold instead, at exit 3, since the hold withdraws armed merges and re-arms
+   them after. A head on the forge other than the one pushed, outside the queue,
+   is refused and neither queued nor re-armed. A place that cannot be read leaves
+   the ordinary wait, saying so. A drain's move takes this step for an armed lane the
+   forge lists outside the queue ([`35-drain.md`](35-drain.md)).
 
    The forge computes mergeability without the merge drivers `.gitattributes`
    names, so a lane that appended to a `merge=union` file the default branch
@@ -1063,10 +1099,12 @@ resume says nothing.
 
 `0` done, including a resumed start, a stage that re-tells an await, a call
 that closes an elapsed window, and a complete run; `2` refused, naming the stage, the reason and the remedy, with
-nothing written; `3` contention: a peer holds the intent, the run is paused, the
-run state is locked by another invocation, a landing waits for its pull
-request to merge, or a lane waits on the shared outage probe with nothing else
-to move. A refusal in the JSON form is its
+nothing written but, on an issue run, the refusal logged on its lane; `3`
+contention: a peer holds the intent, another copy its reservation, the run is
+paused, the run state is locked by another invocation, a landing waits for its
+pull request to merge, for the forge's verdict on a head already holding the
+default branch, or on a release being cut, or a lane waits on the shared outage
+probe with nothing else to move. A refusal in the JSON form is its
 own document before the error envelope, with the stage (`refusal.stage`), the check, the reason and
 the remedy as fields.
 

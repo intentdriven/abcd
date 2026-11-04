@@ -154,7 +154,9 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"would count a preflight at its race gate as queued, not in its tests, so the two\n" +
 			"are refused together. At one preflight at a time, the default, it opens at once\n" +
 			"once the disk check below passes and memory (below) does not hold it, without\n" +
-			"reading the load or the process table, taking a hold or waiting a jitter, so a\n" +
+			"reading the load or the process table (read, inside a memory episode, only to ask\n" +
+			"whether the waiter admitted last is its own ancestor), taking a hold or waiting a\n" +
+			"jitter, so a\n" +
 			"preflight's race stage follows its tests as before. Above one it is shut while\n" +
 			"another `go test -race` run is live, a race waiter is ahead of it (by the same\n" +
 			"rule) or running its command, the load is at the wait limit, memory holds it\n" +
@@ -195,7 +197,8 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"preflight the first gate admits at once (`" + implement.PreflightSlotsKey + "`), and 8 GiB at least, so\n" +
 			"8 GiB at the default and 16 GiB at four. The waiter reads the disk as it starts\n" +
 			"and again just before it opens (the race gate at one preflight at a time reads\n" +
-			"it once, as it starts), and refuses at either look. The refusal names\n" +
+			"it as it starts and at each look while memory holds it), and refuses at any such\n" +
+			"look. The refusal names\n" +
 			"each low volume, its free space and the floor, and, when the cache's own volume\n" +
 			"is low, the cache's size and a command that deletes its build entries unused for\n" +
 			"two days. A disk it cannot read, in whole or in part, is never refused: one line\n" +
@@ -214,14 +217,17 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"preflight at a time opens, which, once memory has held it, says it opened after\n" +
 			"its wait, not at once), the waiting line names the level or the\n" +
 			"stalled share and the floor, and a wait still shut at --timeout names memory. A\n" +
-			"reading it cannot take (another platform, a kernel without the file, a read\n" +
-			"that fails) shuts nothing: one line on stderr says memory was not checked, and why.\n" +
+			"reading it cannot take (a kernel without the file, a read that fails, or another\n" +
+			"platform at the race gate at one preflight at a time) shuts nothing: one line on\n" +
+			"stderr says memory was not checked, and why. Any other gate on another platform\n" +
+			"opens unchecked, reading no memory.\n" +
 			"After any waiter of your account saw the pressure at the floor, for " + implement.WaitMemoryEpisode.String() + " the gates\n" +
 			"admit one run per " + implement.WaitMemorySettle.String() + ", in queue order, reading memory again before each, so\n" +
 			"the stage just admitted shows its own memory use before the next starts\n" +
 			"(`" + abcdhome.Display(implement.WaitMemoryAdmitFileName) + "` records it; a record it cannot read or write\n" +
 			"is named on stderr and holds nothing back). The load check (`--site`) prints a\n" +
-			"reading at the floor as a warning and never fails for it.\n\n" +
+			"reading at the floor as a warning, and one it cannot take as a memory check line on\n" +
+			"stdout, and never fails for either.\n\n" +
 			"Within one account the waiter that opens also takes a hold,\n" +
 			"`" + abcdhome.Display(implement.WaitHoldFileName) + "` at the first gate and `" + abcdhome.Display(implement.WaitRaceHoldFileName) + "` at\n" +
 			"the race gate, and every other waiter of that account at the same gate stays\n" +

@@ -698,7 +698,7 @@ const promotedClause = "an issue whose `related_intents` names an intent is hand
 // intents the pass named do not hold the record, its other fields do, and an
 // intent it was promoted into still does.
 const consistencyClause = "a record the consistency pass files is not one, since the intents it names are the two its contradiction is between: " +
-	"it is judged by its other fields as if it named no intent, so it waits for a person's remedy as any automatic filer's record does, " +
+	"it is judged by its other fields as if it named no intent, so one its other fields do not hand back or skip waits for a person's remedy as any automatic filer's record does, " +
 	"while an intent it was promoted into, which names it back in `related_issues`, owns it as any intent does"
 
 // decisionNeededClause is invariant 19's clause for the decision-record marker

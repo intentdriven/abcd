@@ -257,7 +257,7 @@ func newImplementJoinCommand(asJSON *bool) *cobra.Command {
 			"for the other role is refused. The role is the session's own statement, recorded\n" +
 			"here and read by every bound — never taken from the environment.\n\n" +
 			"--ceiling states the session's own agent ceiling: the most agents it runs at once (for\n" +
-			"the second session, on top of the first session's). abcd runs no agent: it counts the\n" +
+			"the second session, on top of the first session's). abcd does not run a session's agents: it counts the\n" +
 			"agents the session's own agent_start and agent_end lines declare alive, refuses an\n" +
 			"agent_start past the ceiling, and reports the count with every `check`. An agent the\n" +
 			"session never logs is invisible to it. A resume keeps the ceiling.",

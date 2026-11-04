@@ -103,7 +103,8 @@ tree as on origin); then each
 part oldest first without `origin`, or, on `origin`, in this drain's own order:
 a rendezvous hash of the holder git's identity names with no network act, this
 copy's key and the issue id, so every account and copy keeps one order from
-move to move and two of them start a group at different issues. When git's
+move to move and two of them start a group at different issues as often as
+chance allows. When git's
 identity names no holder, the copy's key alone tells copies apart. The
 payload's `order` states the rule. Every other open issue follows, by id.
 
@@ -165,7 +166,7 @@ Each `abcd drain` without `--dry-run` performs one move and exits 0, saying
 what it did in `next`:
 
 - **It reads the ledger from origin.** In a checkout with a remote named
-  `origin`, every move first fetches the reservations and origin's default
+  `origin`, every move but one waiting out its next probe first fetches the reservations and origin's default
   branch, under the drain's lock, and plans from the ledger that branch holds,
   never from the checkout, which may be behind: an issue another account
   finished there is not taken, and one filed there and not yet in this
@@ -174,11 +175,13 @@ what it did in `next`:
   here it has finished. A move that cannot read origin (the fetch fails, the
   default branch cannot be read, or none can be named: no `origin/HEAD`, and no
   `origin/main`, `master`, `trunk` or `develop`) plans nothing:
-  it asks no judgement, reserves nothing, records the failure in the drain's
+  it asks no judgement, takes no answer given (`next` says to give it again
+  once origin answers), finishes no merged lane, renews no reservation,
+  reserves nothing, records the failure in the drain's
   state (`origin_wait`: `since`, `kind` — `fetch`, `default-branch` or
   `origin-head` — `probes`, `next_probe_at`, and `hourly_since` once the
   probes are hourly) and says in `next` when it looks again, one minute, five,
-  ten, then hourly; a move before then reads nothing. It gives up as the outage
+  ten, then hourly; a move before then reads nothing and does the same. It gives up as the outage
   gate does: a probe that fails eight hours into the hourly stage ends the
   drain with `stopped: "origin"` and `complete: true`, and `next` says what
   failed, since when, the probes made and the lanes the drain opened; the
@@ -198,11 +201,13 @@ what it did in `next`:
   it asks for to the answer's path,
   `.abcd/.work.local/run/drain-judgement.json`, then run
   `abcd drain --judgement .abcd/.work.local/run/drain-judgement.json --json`.
-  A `no` lets the lane open in that same move. A `yes` names its kind,
+  A `no` lets the lane open in that same move, unless the window has elapsed or
+  the order now asks another issue first: the answer is then kept, and a later
+  move opens the lane with no second question. A `yes` names its kind,
   `user-visible` or `trust-rule` (`trust-rule` when it is both), and hands the
   issue back before any lane opens, routed as a lane's hand-back of that kind
   (below), `from: "judgement"`; the drain then asks about the next eligible
-  issue. When the remedy does not let you tell, answer `yes` and say what you
+  issue, in that move unless its window gate or its cap stops it first. When the remedy does not let you tell, answer `yes` and say what you
   could not tell. Do not open the lane, edit the record or fix anything while
   judging.
 - **Its judge may be routed to a runner.** When the person's own
@@ -243,7 +248,7 @@ what it did in `next`:
   locator dropped) as the footprint, so every other person and computer sees it
   is taken: while it holds, no other account's drain reserves, judges or opens
   the issue. `judging.hold` records the reservation the drain took (`commit`,
-  `claimed_at`, `expires_at`), and the lane a `no` opens starts on it, with no
+  `claimed_at`, `expires_at`), and a lane a `no` opens while it holds starts on it, with no
   second push. The drain releases that reservation, and no other, whenever no
   lane will open on it: on a `yes`; on an answer over an issue that has left
   the eligible set; when the judgement is superseded (the order now asks another issue,
@@ -343,11 +348,12 @@ what it did in `next`:
   read as holding every issue, and the drain would pass each over and end.
   The lane's run then renews the reservation, fences its landing on it, before
   its push and again before arming, and tombstones it once it lands
-  (`commands/implement.md`). Every drain move also renews the lane in
-  progress at half its lease, waiting or not, though no step of the lane ran,
+  (`commands/implement.md`). Every drain move that neither waits on origin nor stops at a given-up outage also renews the lane in
+  progress at half its lease, waiting on the pace or a judgement or not, though no step of the lane ran,
   so a lane the host paused past its lease is not taken over (a lane handed
   back is renewed by no move). Once the lane's validators have passed and it
-  is at its landing, the first renewal narrows its footprint to the files its
+  is at its landing, the first renewal due at half its lease (a fence's renewal
+  keeps the footprint) narrows its footprint to the files its
   branch changed within it, measured from where it meets `origin`'s default
   branch, so what a sync merged in is left out (a `found_at` naming `docs/`
   becomes the files under `docs/` the lane changed), and other accounts can
@@ -389,7 +395,8 @@ what it did in `next`:
 - **It waits.** While that lane is in progress, a drain opens nothing and names
   the run again. One lane at a time.
 - **It hands a stuck lane back.** A lane that cannot finish does not hold the
-  drain. Each refused step of the lane's run is logged on the lane (`refused`
+  drain. Each refused step of the lane's run, until its pull request is armed or left
+  open, is logged on the lane (`refused`
   in its state: the stage, the check, the reason and how many times in a row
   the step was refused that way), and `next` says so while the lane is in
   progress. Once the step has been refused the same way three times, or has
@@ -400,12 +407,13 @@ what it did in `next`:
   back as `stuck`, naming the refusal, releases its reservation with a
   tombstone marking it `stuck`, and takes up the next issue in the same move.
   A refusal that cannot change hands the lane back at once: its issue finished
-  at the lane's base or on `origin`'s default branch, or its reservation now
-  another person's. A wait is not a refusal and is never counted: the
-  landing's wait for its preflight receipt, the wait through an outage, and a
-  land fence that cannot read `origin`.
+  at the lane's base or on `origin`'s default branch, its reservation now
+  another person's, or its sync's merge conflicting in a file not declared
+  generated. A wait is not a refusal and is never counted: the landing's wait
+  for its preflight receipt, the wait through an outage, a land fence that
+  cannot read `origin`, and a release being cut that holds merges.
   The bounds are `pace.stuck_refusals` and `pace.stuck_minutes` in
-  `.abcd/config.json` or `~/.abcd.noindex/config.json`, read at every move. A
+  `.abcd/config.json` or `~/.abcd.noindex/config.json`, read at every move that reads a lane in progress. A
   stuck lane keeps its worktree and branch:
   `abcd implement step --run <run-id> --discard <lane-id>` removes them, closes
   its pull request if it opened one, and ends the run. The run ended this way
@@ -421,15 +429,18 @@ what it did in `next`:
   regenerate them, and any other conflict refuses the step naming the files,
   nothing pushed, so the next drain hands the lane back as `stuck` at once. A
   pull request that starts to conflict at its arming, or while it waits
-  parked, on declared generated files alone enters the sync again (the
+  parked, on declared generated files alone or in no file when this checkout
+  merges enters the sync again (the
   drain's next move takes that step for a parked lane, withdrawing an armed
   merge in a step of its own, reads it as `syncing` and drives the lane
   again; a step that cannot enter the sync is named beside the lane's
-  reading); one that conflicts on any other file is never
-  armed, and `abcd implement step --run <run-id>` refuses at exit 2 naming the
+  reading); one whose head already holds the default branch waits at exit 3
+  for the forge's stale verdict; one that conflicts on any other file is not
+  armed, or stays as it is when it is armed already, and `abcd implement step --run <run-id>` refuses at exit 2 naming the
   conflicting files and the hand merge that settles it. That is a person's:
   report it, and do not push to the lane or merge it yourself.
-- **It finishes merged lanes.** Every move, before it reads the window clock,
+- **It finishes merged lanes.** Every move that neither waits on origin nor stops at a given-up outage,
+  before it reads the window clock,
   renews the reservation of each issue lane parked at land at half its lease,
   so a pull request waiting on a person's review stays held while the drain
   keeps moving, and takes the landing's last step for each issue lane in the checkout parked at
@@ -471,7 +482,7 @@ what it did in `next`:
   before that time a drain opens nothing. Run it again at or after that time.
 - **It waits at the cap and on held work.** When the user holds their cap of
   live reservations (ten unless `reservation.max_live` in their machine's
-  `~/.abcd.noindex/config.json` raises it), counted in the move's view
+  `~/.abcd.noindex/config.json` sets another, from 1 to 100), counted in the move's view
   before any reservation or judgement, or when every eligible issue left is
   held by another, the move neither refuses nor ends: it reserves and asks
   nothing, writes `waiting_until` fifteen minutes on (`waiting` says `cap` or
@@ -543,8 +554,8 @@ one path (a package a fix is in flight in), hold it back with a reason:
 ```
 
 The move adds the entry to the drain's skip list (beginning a drain when none
-is in progress) and then moves as usual; every move passes a held-back issue
-over before anything is pushed or asked, in `passed` with check `skipped` and
+is in progress) and then moves as usual; every move that takes up the eligible
+issues passes a held-back issue over before anything is pushed or asked, in `passed` with check `skipped` and
 the reason. `--skip` may be repeated, all with the one `--reason`; a target
 already listed takes the new reason; `--unskip` takes an entry off. The list
 lives in the drain's state, writes nothing onto the issue, and clears when the
@@ -564,11 +575,12 @@ branch and ends it. The drain routes it:
 | `design-finding`, `second-package` | `home`: flagged with the `home` the lane names | nothing |
 | (fix rounds exhausted) | `home`: flagged, the issue staying open | nothing |
 | `stuck` (the lane kept refusing) | `home`: flagged, the issue staying open, naming the discard of the lane's run | nothing |
+| `closed` (its pull request closed unmerged) | `home`: flagged, the issue staying open, naming the discard of the lane's run | nothing |
 
 Every issue the rule hands back is in `flags` with `from: "field"`,
 `route: "rule"` and the `rule` that excluded it; `flags` are re-derived at every
-move and written nowhere. An issue this drain promoted itself reads as
-`promoted` on every move after, and is not flagged again: it is counted once,
+move that plans and written nowhere. An issue this drain promoted itself reads as
+`promoted` at every plan after whose ledger carries the promotion, and is not flagged again: it is counted once,
 in `hand_backs` with `route: "promoted"` and its `draft`. So the rule
 `promoted` is always a flag's `rule` field, and the route `promoted` always a
 hand-back's `route` field.
@@ -580,9 +592,9 @@ person finds the decision it owes without this summary. It is written in this
 checkout, uncommitted, as a promotion is; a move planned from `origin` writes
 it only when this checkout holds the record as origin's default branch does,
 and otherwise the route's `wrote` says why it did not. The marked issue reads
-as `decision-needed` on every move after, and, as with a promotion, this
+as `decision-needed` at every plan after whose ledger carries the marker, and, as with a promotion, this
 drain counts it once, in `hand_backs` with `route: "decision-record"`; a later
-drain, and the dry run, flag it by the rule `decision-needed` with the
+drain, and the dry run, once the ledger they read carries it, flag it by the rule `decision-needed` with the
 question as its reason. Once the decision record is written, take the
 `decision_needed:` line out of the issue; the next drain judges it afresh.
 

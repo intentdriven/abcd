@@ -1015,7 +1015,7 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"--discard <lane-id> removes its worktree and branch, then closes its pull request, and\n" +
 			"leaves its step unlanded. Either is refused, changing nothing,\n" +
 			"for a lane that is not held or while any lane still has work. --discard also takes\n" +
-			"an issue run's lane a drain handed back as stuck, and ends that run.\n" +
+			"an issue run's lane a drain handed back as stuck or closed, and ends that run.\n" +
 			"--restart <lane-id> restarts a lane whose implementer died, or yielded on a network\n" +
 			"failure (--yielded passes its `NETWORK: <cmd>` line), as a fresh agent from the lane's\n" +
 			"last commit: everything left uncommitted is saved aside under the lane's directory\n" +
@@ -1048,12 +1048,16 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"records and passed through the outbound scrub, then re-reads the body the forge holds and\n" +
 			"strips a session URL or tool footer; it arms auto-merge with the merge-queue method the\n" +
 			"ruleset mirror (.abcd/work/rulesets/) names at the lane's base, or leaves the pull request\n" +
-			"open where no merge queue gates the default branch, and pushes nothing after that; and\n" +
+			"open while the merge gate does not arm it (with no merge queue it arms with a merge\n" +
+			"commit), and pushes nothing while it is armed; and\n" +
 			"once the pushed head is an ancestor of the default branch on origin it removes the lane's\n" +
 			"worktree and branch and the lane is done. Until then the call exits 3 and waits. A pull\n" +
 			"request the forge reports CONFLICTING (gh pr view <n> --json mergeable,mergeStateStatus)\n" +
 			"is refused at exit 2 instead, before arming or at the merged check, naming the files a\n" +
-			"local merge with every merge driver off conflicts in and the hand merge that settles it.\n\n" +
+			"local merge with every merge driver off conflicts in and the hand merge that settles it;\n" +
+			"an issue lane whose conflict lies in declared generated files alone, or in no file when\n" +
+			"this checkout merges, enters its sync again instead, an armed merge withdrawn first,\n" +
+			"and one whose head already holds the default branch keeps the exit-3 wait.\n\n" +
 			"A stage whose body this abcd does not carry is refused naming the spec piece that\n" +
 			"delivers it, and the run is unchanged. A stage that fails leaves the state as it was,\n" +
 			"so the next invocation performs it again; a completed stage is never repeated.\n\n" +
@@ -1313,7 +1317,7 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&runID, "run", "", "the run to step (run-<16 digits>); the one run in progress when omitted")
 	cmd.Flags().StringVar(&release, "release", "", "land a held lane as it is (lane-<n>), once no lane has work left")
-	cmd.Flags().StringVar(&discard, "discard", "", "discard a held lane (lane-<n>), or one a drain handed back as stuck: remove its worktree and branch, then close its pull request")
+	cmd.Flags().StringVar(&discard, "discard", "", "discard a held lane (lane-<n>), or one a drain handed back as stuck or closed: remove its worktree and branch, then close its pull request")
 	cmd.Flags().StringVar(&restart, "restart", "", "restart a lane whose implementer died (lane-<n>) as a fresh agent from its last commit, its uncommitted work saved aside")
 	cmd.Flags().StringVar(&yielded, "yielded", "", "with --restart: the line the agent yielded with, NETWORK: <cmd>, when a network failure stopped it rather than it dying")
 	cmd.Flags().BoolVar(&acceptConfig, "accept-config-change", false, "accept, once you have looked, a change to the repository's git settings that the run tripwire stopped, then take the step")

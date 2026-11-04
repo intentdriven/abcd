@@ -827,7 +827,8 @@ Write the agent's payload to a file and hand it back to the binary:
 cut exactly as the real ingest does: it prints each file the cut would write
 (the archived page, `RELEASE.md`, the digest, `CHANGELOG.md`, any intent whose
 target moves to `next`, and, where the archive is pinned, the catalog and the
-surface snapshot) with its size, then the tag, push and release the release
+surface snapshot, which say what they wait on in place of a size) with its size,
+then the tag, push and release the release
 workflow makes once the heading reaches the default branch. A refused payload
 gives the real run's refusal, its reasons and exit 2. Where the ship renders a
 payload the pre-flight gates run as well, and the report they would leave is
