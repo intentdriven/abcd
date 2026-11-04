@@ -28,7 +28,8 @@ import (
 // Which categories and severities a drain may take, and whether it takes
 // security issues, is the drained repository's own decision, read from its own
 // decision record by core/drainrule (rulings BX2 and H11); a repository without
-// one is refused. Three hand-backs hold whatever that record says: an issue
+// one is refused. The hand-backs that hold whatever that record says: the
+// decision-record marker a trust-rule hand-back wrote (itd-82 decision 10); an issue
 // whose related_intents names an intent (promoted; spc-2610161044461448 step
 // 4), which goes through that intent, a record the consistency pass files
 // aside (ruling H12, dcn-2610161425496537); a remedy that waits on a ruling;
@@ -51,7 +52,8 @@ const (
 	DrainEligible DrainOutcome = "eligible"
 	// DrainHandBack: the issue is not a drain's to take alone: it goes through
 	// the intent its related_intents names (promoted), or it is a person's, by
-	// category, severity, a remedy waiting on a ruling or a live deferral.
+	// category, severity, the decision record its marker awaits, a remedy
+	// waiting on a ruling or a live deferral.
 	DrainHandBack DrainOutcome = "handback"
 	// DrainIneligible: a field the rule reads is missing (the remedy), or holds
 	// the machine value an automatic filer writes in place of one.
@@ -80,6 +82,11 @@ const (
 	// RuleDeferred: the record's deferral past the current anchor tag is live,
 	// so a person carried it past this release.
 	RuleDeferred DrainRule = "deferred"
+	// RuleDecisionNeeded: the record carries the decision-record marker
+	// (`decision_needed:`, itd-82 decision 10), which a drain's trust-rule
+	// hand-back wrote onto it: the decision record its question asks for is
+	// a person's to write first.
+	RuleDecisionNeeded DrainRule = "decision-needed"
 	// RuleWaitsOnRuling: the remedy opens "Waits on", so the fix it proposes
 	// waits on a ruling a person has not given.
 	RuleWaitsOnRuling DrainRule = "waits-on-ruling"
@@ -108,8 +115,9 @@ type DrainVerdict struct {
 // blockers still in open/). The rules are asked in a fixed order, and the
 // first that excludes the issue decides: not open, blocked, promoted to an
 // intent, security, a category outside the rule's set, a severity outside it,
-// a remedy that waits on a ruling, a live deferral, no remedy, the automatic
-// filers' remedy. An issue no rule excludes is eligible.
+// the decision-record marker, a remedy that waits on a ruling, a live
+// deferral, no remedy, the automatic filers' remedy. An issue no rule
+// excludes is eligible.
 //
 // Blocked comes first because a blocked issue is not considered at all until
 // its blocker clears; promoted comes next because an issue an intent owns is
@@ -119,7 +127,10 @@ type DrainVerdict struct {
 // never takes the issue again); the severity and category hand-backs come before the
 // others because answering a ruling, waiting out a deferral or adding a remedy
 // would not make such an issue eligible, so naming them would send a reader to
-// the wrong fix. A remedy waiting on a ruling is named before a deferral
+// the wrong fix. The decision-record marker is named before a remedy waiting
+// on a ruling: both wait on a person's decision, and the marker states the
+// question a drain's own hand-back found (itd-82 decision 10), so it is the
+// more specific of the two. A remedy waiting on a ruling is named before a deferral
 // because it says which decision is owed; a record carrying both waits on
 // both. `capture defer` writes a deferral only onto a major or
 // critical record, but a hand-written one on a lighter record is read alike.
@@ -154,6 +165,12 @@ func eligibility(iss Issue, r drainrule.Rule, anchor deferralAnchor, opts ...eli
 	case !r.TakesSeverity(string(iss.Severity)):
 		return decide(DrainHandBack, RuleSeverity, fmt.Sprintf("severity %s is above the drain's (%s)",
 			iss.Severity, strings.Join(r.Severities, ", ")))
+	case strings.TrimSpace(iss.DecisionNeeded) != "":
+		// The question is the record's own text, unjudged here, so it is
+		// masked: the reason reaches `drain --json`.
+		return decide(DrainHandBack, RuleDecisionNeeded, fmt.Sprintf(
+			"decision_needed: a drain handed it back as turning on a rule about trust or safety, and the decision record it needs is a person's to write; the question: %s; once the record is written, take the decision_needed: field out of the issue",
+			termsafe.Sanitize(iss.DecisionNeeded)))
 	case waitsOnRuling(iss.Remedy):
 		return decide(DrainHandBack, RuleWaitsOnRuling,
 			"the remedy opens \"Waits on\": the fix waits on a person's ruling, so it is a person's until the ruling is given and the remedy rewritten")

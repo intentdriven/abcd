@@ -153,6 +153,12 @@ func TestSyncRepoPinsPropagatesABumpIntoTheTemplate(t *testing.T) {
 		copyInto(t, realRoot, root, pair.workflow)
 		copyInto(t, realRoot, root, pair.template)
 	}
+	for _, pair := range pinTokenPairs {
+		copyInto(t, realRoot, root, pair.workflow)
+		for _, target := range pair.targets {
+			copyInto(t, realRoot, root, target)
+		}
+	}
 
 	// Bump actions/attest in the workflow alone, the way dependabot would: every
 	// occurrence at once, since the workflow calls it more than once (iss-273).
@@ -254,4 +260,135 @@ func changedLineCount(t *testing.T, before, after string) int {
 		}
 	}
 	return n
+}
+
+// TestSyncPinTokensReachesPinsALineSyncCannot: the project site's pins stand
+// behind a template action on a `uses:` line and inside Go string constants,
+// neither of which the line-wise sync reads. The token rewrite carries the
+// workflow's ref into both, changes only the commit and its version comment,
+// and leaves a name the pinned one is a prefix of alone.
+func TestSyncPinTokensReachesPinsALineSyncCannot(t *testing.T) {
+	const (
+		oldSHA = "1111111111111111111111111111111111111111"
+		newSHA = "2222222222222222222222222222222222222222"
+		keep   = "3333333333333333333333333333333333333333"
+	)
+	workflow := strings.Join([]string{
+		"        uses: actions/upload-artifact@" + newSHA + " # v7.1.0",
+		"        uses: actions/upload-pages-artifact@" + newSHA + " # v6.0.0",
+		"",
+	}, "\n")
+	target := strings.Join([]string{
+		"<% .IfOn %>        uses: actions/upload-artifact@" + oldSHA + " # v7.0.2",
+		"\tuploadAction = \"actions/upload-pages-artifact@" + oldSHA + " # v5.0.0\"",
+		"        uses: actions/upload-artifact-extra@" + keep + " # v1.0.0",
+		"        uses: actions/checkout@" + keep + " # v7.0.1",
+		"",
+	}, "\n")
+	want := strings.Join([]string{
+		"<% .IfOn %>        uses: actions/upload-artifact@" + newSHA + " # v7.1.0",
+		"\tuploadAction = \"actions/upload-pages-artifact@" + newSHA + " # v6.0.0\"",
+		"        uses: actions/upload-artifact-extra@" + keep + " # v1.0.0",
+		"        uses: actions/checkout@" + keep + " # v7.0.1",
+		"",
+	}, "\n")
+
+	got, changed, err := syncPinTokens([]byte(workflow), []byte(target))
+	if err != nil {
+		t.Fatalf("syncPinTokens: %v", err)
+	}
+	if !changed {
+		t.Fatal("syncPinTokens reported no change; both pins differ and must be carried")
+	}
+	if string(got) != want {
+		t.Errorf("pins not carried:\ngot:\n%s\nwant:\n%s", got, want)
+	}
+	again, changed, err := syncPinTokens([]byte(workflow), got)
+	if err != nil || changed || string(again) != want {
+		t.Errorf("a second sync changed %v (err %v); the sync must converge in one pass", changed, err)
+	}
+}
+
+// TestSyncRepoPinsCarriesAProjectSiteBumpIntoItsSources runs against a COPY of
+// the real tree: bump a pin in the committed project-site.yml alone, the way
+// dependabot would, and show the sync carries it into the github-pages adapter
+// that renders it, and an actions/checkout bump into the site template and both
+// golden renders, touching only those pins.
+func TestSyncRepoPinsCarriesAProjectSiteBumpIntoItsSources(t *testing.T) {
+	root := t.TempDir()
+	realRoot := repoRoot(t)
+	for _, pair := range pinSyncPairs {
+		copyInto(t, realRoot, root, pair.workflow)
+		copyInto(t, realRoot, root, pair.template)
+	}
+	for _, pair := range pinTokenPairs {
+		copyInto(t, realRoot, root, pair.workflow)
+		for _, target := range pair.targets {
+			copyInto(t, realRoot, root, target)
+		}
+	}
+
+	wfPath := filepath.Join(root, filepath.FromSlash(projectSiteYMLRel))
+	before := readFile(t, wfPath)
+	bumped := before
+	// The pins are READ from the tree, never written here, so the next real bump
+	// does not break this test.
+	for _, action := range []string{"actions/upload-pages-artifact", "actions/checkout"} {
+		current := regexp.MustCompile(regexp.QuoteMeta(action) + `@\S+ # \S+`).FindString(before)
+		if current == "" {
+			t.Fatalf("project-site.yml no longer pins %s; pick another action for this test", action)
+		}
+		bumped = strings.ReplaceAll(bumped, current, action+"@4444444444444444444444444444444444444444 # v99.0.0")
+	}
+	if err := os.WriteFile(wfPath, []byte(bumped), 0o644); err != nil {
+		t.Fatalf("write bumped workflow: %v", err)
+	}
+
+	seen, err := SyncRepoPins(root, false)
+	if err != nil {
+		t.Fatalf("SyncRepoPins(dry): %v", err)
+	}
+	want := []string{siteTemplateRel, githubPagesAdapterRel, siteGoldenGitHubPagesRel, siteGoldenCloudflareRel}
+	if strings.Join(seen, ",") != strings.Join(want, ",") {
+		t.Fatalf("dry run reported %v; want %v", seen, want)
+	}
+	targetsBefore := map[string]string{}
+	for _, rel := range want {
+		targetsBefore[rel] = readFile(t, filepath.Join(root, filepath.FromSlash(rel)))
+		if strings.Contains(targetsBefore[rel], "4444444444") {
+			t.Fatalf("the dry run wrote to %s; it must only report", rel)
+		}
+	}
+
+	if _, err := SyncRepoPins(root, true); err != nil {
+		t.Fatalf("SyncRepoPins(write): %v", err)
+	}
+	for _, rel := range want {
+		now := readFile(t, filepath.Join(root, filepath.FromSlash(rel)))
+		if !strings.Contains(now, "@4444444444444444444444444444444444444444 # v99.0.0") {
+			t.Errorf("the bump was not carried into %s", rel)
+		}
+		// Only lines holding a bumped pin move.
+		bl, al := strings.Split(targetsBefore[rel], "\n"), strings.Split(now, "\n")
+		if len(bl) != len(al) {
+			t.Fatalf("%s changed its line count: %d -> %d", rel, len(bl), len(al))
+		}
+		for i := range bl {
+			if bl[i] != al[i] && !strings.Contains(al[i], "4444444444") {
+				t.Errorf("%s line %d changed without a bumped pin: %q -> %q", rel, i+1, bl[i], al[i])
+			}
+		}
+	}
+	adapter := readFile(t, filepath.Join(root, filepath.FromSlash(githubPagesAdapterRel)))
+	if !strings.Contains(adapter, `uploadAction = "actions/upload-pages-artifact@4444444444444444444444444444444444444444 # v99.0.0"`) {
+		t.Errorf("the adapter's upload pin was not carried:\n%s", adapter)
+	}
+
+	again, err := SyncRepoPins(root, true)
+	if err != nil {
+		t.Fatalf("SyncRepoPins(second): %v", err)
+	}
+	if len(again) != 0 {
+		t.Errorf("second run reported %v; the sync must converge in one pass", again)
+	}
 }

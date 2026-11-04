@@ -347,12 +347,17 @@ type ManifestGate struct {
 
 // LoadManifest reads and validates the composition manifest at repoRoot.
 func LoadManifest(repoRoot string) (Manifest, error) {
+	return loadManifestAt(repoRoot, ManifestRelPath)
+}
+
+// loadManifestAt reads and validates the composition or settings file at rel.
+func loadManifestAt(repoRoot, rel string) (Manifest, error) {
 	root, err := os.OpenRoot(repoRoot)
 	if err != nil {
 		return Manifest{}, err
 	}
 	defer root.Close()
-	data, err := fsutil.ReadGuardedInRoot(root, ManifestRelPath, maxManifestBytes)
+	data, err := fsutil.ReadGuardedInRoot(root, rel, maxManifestBytes)
 	if err != nil {
 		return Manifest{}, err
 	}
@@ -360,9 +365,9 @@ func LoadManifest(repoRoot string) (Manifest, error) {
 	dec := json.NewDecoder(strings.NewReader(string(data)))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&m); err != nil {
-		return Manifest{}, fmt.Errorf("%w: %s: %v", ErrManifestInvalid, ManifestRelPath, err)
+		return Manifest{}, fmt.Errorf("%w: %s: %v", ErrManifestInvalid, rel, err)
 	}
-	if err := m.validate(); err != nil {
+	if err := m.validateAt(rel); err != nil {
 		return Manifest{}, err
 	}
 	return m, nil
@@ -370,9 +375,12 @@ func LoadManifest(repoRoot string) (Manifest, error) {
 
 // validate refuses a manifest the composer cannot act on. Every refusal names
 // the key, because the reader's next move is an edit to this file.
-func (m Manifest) validate() error {
+func (m Manifest) validate() error { return m.validateAt(ManifestRelPath) }
+
+// validateAt is validate for the file at rel, which each refusal names.
+func (m Manifest) validateAt(rel string) error {
 	bad := func(format string, args ...any) error {
-		return fmt.Errorf("%w: %s: %s", ErrManifestInvalid, ManifestRelPath, fmt.Sprintf(format, args...))
+		return fmt.Errorf("%w: %s: %s", ErrManifestInvalid, rel, fmt.Sprintf(format, args...))
 	}
 	if m.SchemaVersion != 1 {
 		return bad("schema_version is %d, want 1", m.SchemaVersion)

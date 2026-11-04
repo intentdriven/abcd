@@ -1,6 +1,9 @@
 // Command scaffold-sync propagates the pinned action refs in the committed
 // release workflows back into the scaffold templates they were rendered from,
-// keeping TestSelfScaffoldParity satisfied after a dependency bump.
+// keeping TestSelfScaffoldParity satisfied after a dependency bump. It does the
+// same for the committed project-site.yml, whose pins live in the site
+// template, the github-pages adapter and the site package's golden renders,
+// keeping TestAbcdsRecordIsOnTheProjectRouteSetupWrites satisfied.
 //
 // It exists because the parity is one-directional in practice. Dependabot's
 // github-actions ecosystem discovers `.github/workflows/*` and composite action

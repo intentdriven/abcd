@@ -126,7 +126,113 @@ _All resolved: the decision-record flag's home by decision 10, and whether `majo
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: INGESTED receipt=rcp-e731cc8c71a1 -->
+Fidelity review — receipt rcp-e731cc8c71a1 (verifier intent-auditor claude (the harness exposed no model id)).
+
+Provenance: intent-auditor@claude (the harness exposed no model id) · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:b02e64727895ee1512b9bba5901a773d4dadf01b26bec31aad53e790df9ab744
+Input attestations: diff:e1f96e610526a5a14bf93e95f6632daa8bafa51e..2e297483e6873e9bcc65ce90dc43e775456cd465 (lane-2, spec step 6)@sha256:f3f411552cfb165d4a8847d8c5bd0daa7a3abc1682dc01586a21ab75782d19fb; diff:87a5dd1b41e3786b81ec24822dd25edee3a5e022..ade000d23d6078368df4d8babe9e1fc67e4fc889 (lane-1, spec step 5, PR #1370)@sha256:993dc3ba64deb9dd4a44ff6198f8301e2162dba01b9fcd80863cd1bd0496e97a; commit:80fa3da48 (spec step 1), 378348a14 (step 2), 91765d9c5 (step 3), 6594725b5953 (step 4); repository read at 2e297483e6873e9bcc65ce90dc43e775456cd465@-; intent:.abcd/development/intents/planned/itd-82-drain-ledger-triage.md@sha256:31a47f4b6c2da6e383395969302c8c4d03322a801c978755e9227eb2cb611064; spec:.abcd/development/specs/open/spc-2609212015054359-drain-ledger-triage.md@sha256:d13def14dda90a34d81a45e7ba6e0030004c318eed75ad91beb9707da9c8bd39;
+
+Acceptance rollup: MET 9 · MET_WITH_CONCERNS 2 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: The field rule asks blocked, security, category, severity and remedy in a fixed order, so each issue gets exactly one disposition. A fixture with the criterion's six issues gives one eligible, one ineligible (remedy), three hand-backs (severity, security, category naming process) and one skip naming its blocker. The test passed when I re-ran it at 2e297483e.
+  evidence: internal/core/capture/eligible_test.go:142 — "func TestDrainRoutesAMixedLedgerByField(t *testing.T) {"
+  evidence: internal/core/capture/eligible_test.go:153 — "want 6 dispositions (one per open issue)"
+  evidence: internal/core/capture/eligible.go:155 — "case len(iss.BlockedByOpen) > 0:"
+  evidence: internal/core/capture/eligible.go:200 — "case strings.TrimSpace(iss.Remedy) == "":"
+- ac-2 — MET: A host-judgement yes hands the issue back, before any lane opens, under its kind and with its reason. judgeAnswer records an answer over an issue that is no longer eligible and gives it no effect, so the judgement can never admit an issue. Tests cover the user-visible yes, the trust-boundary yes and the never-eligible case, and they passed when I re-ran them.
+  evidence: internal/core/implement/loop/judgement.go:377 — "if verdict == nil || verdict.Outcome != capture.DrainEligible {"
+  evidence: internal/core/implement/loop/judgement.go:384 — "out.Note = j.Issue + " is no longer eligible, so the judgement decides nothing: " + why"
+  evidence: internal/core/implement/loop/judgement_test.go:198 — "func TestTheJudgementNeverMakesAnIneligibleIssueEligible(t *testing.T) {"
+  evidence: internal/core/implement/loop/judgement_test.go:142 — "func TestAUserVisibleRemedyIsHandedBackBeforeAnyLaneOpens(t *testing.T) {"
+- ac-3 — MET_WITH_CONCERNS: The issue key opens one lane whose brief is the record and its remedy. The landing resolves the issue in the lane's own change, with a Resolves: trailer and the commit, and opens one pull request armed by the ruleset's method; nothing is pushed after arming. Concern: the reproduce-then-fix definition of done is an instruction in the brief, judged by the validators. Nothing in the loop checks that a detector failed before the fix and passed after, so 'holds' rests on the implementer and the reviewer. The intent accepts that (the reviewer stays the oracle), but the criterion's wording is stronger.
+  evidence: internal/core/implement/loop/issuebrief.go:154 — "Reproduce, then fix: write a detector (a test) that fails before the fix and passes after"
+  evidence: internal/core/implement/loop/land.go:389 — "if _, err := capture.Resolve(capture.ResolveRequest{RepoRoot: wt, ID: r.Issue, Resolution: r.Note, Impact: r.Impact,"
+  evidence: internal/core/implement/loop/issue_test.go:349 — "func TestAnIssueLaneLandsOnePullRequestThatResolvesItsIssue(t *testing.T) {"
+  evidence: internal/core/implement/loop/land.go:42 — "Nothing is pushed to the lane"
+  evidence: internal/core/implement/loop/land_test.go:460 — "func TestNothingIsPushedAfterArming(t *testing.T) {"
+- ac-4 — MET: A user-visible hand-back goes through capture promote and mints an intent draft. The drain test diffs the record line by line and finds exactly one added line, related_intents naming the draft, with nothing removed. Promote has no verdict path: I found no verdict or adoption write in promote.go.
+  evidence: internal/core/implement/loop/drain_test.go:137 — "if r.Route != RoutePromoted || !strings.HasPrefix(r.Draft, "itd-") {"
+  evidence: internal/core/implement/loop/drain_test.go:165 — "if len(removed) != 0 || len(added) != 1 || !strings.HasPrefix(added[0], "related_intents:") {"
+  evidence: commands/drain.md:562 — "| `user-visible` | `promoted`: an intent draft seeded from the issue (`capture promote`) | the draft, and the issue's `related_intents`; nothing else |"
+- ac-5 — MET_WITH_CONCERNS: Lane-2 delivers the marker. A trust-rule hand-back, from a lane or from the judgement, is flagged in the summary with its question, and markDecisionNeeded writes `decision_needed: <question>` onto the open record as the only changed line; no draft or decision record is minted. Tests check the one-line diff, the dry run and a later drain reading the marker, and no double write; they passed when I re-ran them. Concerns: first, a move planned from origin writes the marker only where this checkout holds the record as origin's default branch does; otherwise there is only the summary flag. Second, the marker is written uncommitted in the checkout, so no other clone sees it until a person commits it. Third, decision 10 says the marker names the decision record it needs; the marker holds only the question, because nothing is minted to name. Fourth, no verb clears the marker; a person edits the line out by hand.
+  evidence: internal/core/implement/loop/drain.go:1441 — "wrote, err := markDecisionNeeded(repoRoot, issue, from, hb.Reason, origin)"
+  evidence: internal/core/capture/decisionneeded.go:116 — "newContent, err := setScalarField(content, issueschema.DecisionNeededKey, question)"
+  evidence: internal/core/implement/loop/drain_marker_test.go:92 — "if len(removed) != 0 || len(added) != 1 || added[0] != "decision_needed: \""+question+"\"" {"
+  evidence: internal/core/implement/loop/drain.go:1481 — "return "nothing here: " + why + ", so the decision_needed: marker is not written here; a flag in this summary", nil"
+  evidence: commands/drain.md:580 — "checkout, uncommitted, as a promotion is; a move planned from `origin` writes"
+- ac-6 — MET: A receipt carrying handback ends the lane before its validators. The worktree and branch are removed, the discarded head is recorded, the lane is handed back with its kind and reason, and every later step refuses. The drain routes it by kind and counts it as its own outcome (handed-back, lanes_handed_back). The tests passed when I re-ran them.
+  evidence: internal/core/implement/loop/issue_test.go:289 — "func TestALaneReportHandBackStopsTheLaneAndDiscardsItsWork(t *testing.T) {"
+  evidence: internal/core/implement/loop/drain.go:114 — "DrainLaneHandedBack = "handed-back""
+  evidence: internal/core/implement/loop/drain.go:318 — "LanesHandedBack int `json:"lanes_handed_back"`"
+- ac-7 — MET: At the window's end the drain writes next_eligible_at to its state file and opens nothing. Before that time a drain opens nothing; after it, the next invocation opens the next lane. --max stops the drain at the cap, names it in next and refuses a negative value. The tests passed when I re-ran them.
+  evidence: internal/core/implement/loop/drain_test.go:225 — "func TestADrainPausesAtItsWindowsEnd(t *testing.T) {"
+  evidence: internal/core/implement/loop/drain_test.go:208 — "if capped.Stopped != DrainStoppedCap || !capped.Complete || capped.Start != nil || !strings.Contains(capped.Next, "--max 1") {"
+- ac-8 — MET: commands/drain.md states what the drain does, lists every flag in its argument hint and prose, and gives the category order, a rule table of hand-backs, a hand-back-by-kind table (now including the marker) and a Refusals section. A test holds the page to the marker rows.
+  evidence: commands/drain.md:4 — "argument-hint: "[--dry-run] [--max < n>] [--pace < work-minutes>/< pause-minutes>] [--sub-agents < n>] [--fix-rounds < n>] [--judgement < file>] [--take-over] [--skip < iss-N|path> --reason < why>] [--unskip < iss-N|path>]""
+  evidence: commands/drain.md:96 — "`tech-debt`, `documentation`, `inconsistency`, `drift`, `bug`, `ux`, then"
+  evidence: commands/drain.md:641 — "## Refusals"
+  evidence: internal/core/capture/eligible_test.go:714 — "func TestTheDrainPageNamesTheDecisionRecordMarker(t *testing.T) {"
+- ac-9 — MET: Without an accepted record of the eligibility rule, both the dry run and the bare drain refuse and write nothing. The refusal names 'drain eligibility record', its four fields and how to add it. The record exists for abcd itself (adr-2609291342092738). The rule moved to each repository's own record (rulings BX2/H11), so the refusal names the kind of record needed rather than one fixed ADR id.
+  evidence: internal/core/drainrule/drainrule.go:134 — "ErrUnrecorded = errors.New("this repository holds no drain eligibility record")"
+  evidence: internal/core/implement/loop/drain_test.go:263 — "if _, err := Drain(repo.Root(), Options{}, DrainOptions{}); err == nil || !strings.Contains(err.Error(), "drain eligibility record") {"
+  evidence: internal/core/capture/eligible_test.go:442 — "func TestADrainRefusesARepositoryWithoutItsOwnRule(t *testing.T) {"
+- ac-10 — MET: In text and --json, the summary carries every disposition, the routes (pull request number, draft, decision-record question, home), the passed issues with their blockers, the order rule and max, plus the counts and spend. A drain whose lanes all ended without a pull request says this is a normal ending, and each move exits 0. The tests passed when I re-ran them.
+  evidence: internal/core/implement/loop/drain.go:568 — "res.Next = joinNext(res.Next, "no lane ended in a pull request, which is a normal ending: every lane's outcome and hand-back is above")"
+  evidence: internal/core/implement/loop/drain.go:255 — "Order string `json:"order"`"
+  evidence: internal/core/implement/loop/drain_counts_test.go:87 — "func TestADrainWhoseLanesAllEndedWithoutAPullRequestSaysSo(t *testing.T) {"
+  evidence: commands/drain.md:164 — "Each `abcd drain` without `--dry-run` performs one move and exits 0, saying"
+- ac-11 — MET: Issue ids are checked against IssIDRe before anything is read. A traversal-shaped key such as iss-../../x is refused at the key check with no run tier written. The new marker writer checks the id shape and requireHeld before the preamble, and ledger writes are guarded against redirection outside the checkout.
+  evidence: internal/core/implement/loop/issue_test.go:158 — "for _, key := range []string{"iss-../../x", "iss-", "iss-12a", "iss-1/2", "iss-0", "iss-02609292352131344"} {"
+  evidence: internal/core/capture/decisionneeded.go:76 — "if !reIssID.MatchString(req.ID) {"
+  evidence: internal/core/capture/ledgerroot_test.go:80 — "func TestLedgerRecordWriteCannotBeRedirectedOutsideTheCheckout(t *testing.T) {"
+
+Gap audit:
+- honoured:
+  - Eligibility is rule-first, by field, and the host judgement can only hand back.
+    evidence: internal/core/capture/eligible.go:142 — "func eligibility(iss Issue, r drainrule.Rule, anchor deferralAnchor, opts ...eligibilityOption) DrainVerdict {"
+    evidence: internal/core/implement/loop/judgement.go:378 — "// The judgement never makes an issue eligible: it is recorded, and"
+  - Decision 10: a trust-rule hand-back marks the open issue with its question, changes nothing else and mints nothing. Invariant 19 names the marker as the hand-back's flag, not the classification, so decision 8 keeps re-deriving the classification every run.
+    evidence: internal/core/capture/decisionneeded.go:71 — "func MarkDecisionNeeded(req DecisionNeededRequest) (DecisionNeededResult, error) {"
+    evidence: .abcd/development/brief/02-constraints/03-invariants.md:218 — "The one write a hand-back makes to an issue it does not promote is the decision-record marker"
+  - The hand-back is routed by kind: a user moment is promoted, a trust rule gets a decision-record flag and marker, a design finding or second package is flagged with its home.
+    evidence: internal/core/implement/loop/drain.go:1439 — "case HandBackTrustRule:"
+    evidence: commands/drain.md:563 — "| `trust-rule` | `decision-record`: flagged, with the lane's reason as `question` | `decision_needed:` on the open issue, holding the question; nothing else; no record is minted |"
+  - The merge queue is the run's path to main: an armed pull request that leaves the queue is put back or reported with the failed check (lane-1, step 5).
+    evidence: internal/core/implement/loop/queue_test.go:77 — "func TestALandedPullRequestLeftUnqueuedAtCleanIsEnqueued(t *testing.T) {"
+    evidence: internal/core/implement/loop/queue_test.go:171 — "func TestAPullRequestDroppedAfterAFailedMergeGroupCheckIsReportedWithTheCheck(t *testing.T) {"
+  - 'No pull request, reason logged' is a normal terminal state.
+    evidence: internal/core/implement/loop/drain.go:568 — "no lane ended in a pull request, which is a normal ending"
+- diverged:
+  - The intent says the rules are the fields remedy, category, severity and blocked_by. The delivered rule also hands back on related_intents (promoted), the new decision_needed marker, a remedy opening 'Waits on', deferred_after, and the automatic filers' machine remedy. Each of these only narrows the set, so the safety direction holds, but the rule reads more than the four fields the intent names.
+    evidence: internal/core/capture/eligible.go:168 — "case strings.TrimSpace(iss.DecisionNeeded) != "":"
+    evidence: commands/drain.md:83 — "| `handback` | `waits-on-ruling` | its remedy opens "Waits on": the fix waits on a ruling a person has not given |"
+  - Decision 10 says the marker names the decision record it needs and states the question. The marker holds the question only: nothing is minted, so there is no record id to name. It is written uncommitted in the checkout, and on a move planned from origin only where the checkout holds the record as origin does.
+    evidence: internal/core/issueschema/issueschema.go:187 — "const DecisionNeededKey = "decision_needed""
+    evidence: internal/core/implement/loop/drain.go:1481 — "so the decision_needed: marker is not written here; a flag in this summary"
+  - The eligibility record is no longer one ADR this intent names as a prerequisite. It is each repository's own accepted record carrying four drain_ fields, which abcd ahoy install offers to write, and a repository's record may loosen the floors.
+    evidence: internal/core/drainrule/drainrule.go:146 — "const HowToAdd = "add it: run `abcd ahoy install` at a terminal and accept the drain rule it offers, " +"
+  - The detector-first definition of done is an instruction to the implementer that the validators judge. It is not a check the loop enforces.
+    evidence: internal/core/implement/loop/issuebrief.go:156 — "conventions below state it, in your worktree. The validators judge the fix with the detector as"
+- missing:
+  - No verb clears the decision-record marker once the decision record is written. A person removes the decision_needed: line by hand. The implementer judged a clearing verb to be out-of-scope schema surface.
+    evidence: commands/drain.md:586 — "question as its reason. Once the decision record is written, take the"
+
+Scope-condition dispositions:
+- cond-2609212015056112 — survived: The landing arms the merge through landing.DecideMerge and the ruleset mirror's queue method; where the gate does not allow it, the pull request is left open. Lane-1 adds a watch that re-queues or reports an armed pull request that leaves the queue. The default branch is still reached through a path the run does not control.
+  evidence: internal/core/implement/loop/land.go:968 — "d, err := landing.DecideMerge(landing.MergeQuery{RepoRoot: c.RepoRoot, Roots: roots, Tip: tip, TipName: Remote + "/" + def, Default: def,"
+  evidence: internal/core/implement/loop/queue.go:3 — "// queue.go is the landing's watch over the merge queue (spc-2609212015054359"
+- cond-2609212015051754 — survived: capture refuses a new issue without a remedy. A record without one, or carrying the automatic filers' machine value, gets the outcome ineligible under the remedy rule and is listed with how to add one.
+  evidence: internal/core/capture/capture.go:466 — "ErrRemedyRequired = errors.New("remedy required")"
+  evidence: internal/core/capture/eligible.go:200 — "case strings.TrimSpace(iss.Remedy) == "":"
+- cond-2609212015056014 — survived: No drain starts without an accepted record of the eligibility rule: both the dry run and the bare verb refuse and write nothing. abcd's own record, adr-2609291342092738, exists, so the condition holds in this repository. The record is now each repository's own rather than a single named ADR; that move is recorded under diverged.
+  evidence: internal/core/drainrule/drainrule.go:134 — "ErrUnrecorded = errors.New("this repository holds no drain eligibility record")"
+  evidence: internal/core/implement/loop/drain_test.go:261 — "func TestADrainRefusesWithoutTheRepositorysRule(t *testing.T) {"
+- cond-2609212015052582 — narrowed: Only the field rule can make an issue eligible. The judgement can only hand back, and it is recorded with the disposition in the drain's state and summary. But the delivered rule reads more than remedy, category, severity and blocked_by: lane-2 adds decision_needed, and the rule also reads related_intents, a 'Waits on' remedy, deferred_after and the machine remedy. So 'the rules are the fields' holds only in the admitting direction.
+  narrowing: The four named fields (remedy, category, severity, blocked_by) are the only fields that can make an issue eligible, and the host judgement only hands back. Further fields can also hand an issue back: related_intents, decision_needed (written by the drain's own trust-rule hand-back), a remedy opening 'Waits on', deferred_after and the machine remedy. So the four fields are necessary for eligibility, but they are not the whole rule.
+  evidence: internal/core/capture/eligible.go:168 — "case strings.TrimSpace(iss.DecisionNeeded) != "":"
+  evidence: internal/core/implement/loop/judgement.go:384 — "out.Note = j.Issue + " is no longer eligible, so the judgement decides nothing: " + why"
+<!-- abcd-review-end receipt=rcp-e731cc8c71a1 -->
 
 ## Grounds
 
