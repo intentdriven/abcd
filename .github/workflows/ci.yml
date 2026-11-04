@@ -612,8 +612,8 @@ jobs:
   # classifier: no pull request reaches it, and every other event is never inert,
   # so a need on `changes` would only add a way for the suite to be skipped.
   #
-  # The packages come from cmd/ci-shard, computed from `go list ./...` in every
-  # shard, so no list is kept by hand and a package added later is tested without
+  # The packages come from cmd/ci-shard, computed from `go list` under the race
+  # build in every shard, so no list is kept by hand and a package added later is tested without
   # anyone naming it. TestMacOSSuiteShardsCoverTheModule runs what this matrix asks
   # for and holds the union to the module's packages and the shards to disjoint;
   # the shard count comes from the matrix itself (strategy.job-total), so the two

@@ -1758,7 +1758,7 @@ abcd/
 │   ├── abcd-gen-cli-ref/               #   writes the generated CLI reference page
 │   ├── test-parallelism/               #   prints the go test -p `make preflight`'s test stages take
 │   ├── ci-watchdog/                    #   the shell CI's test jobs run go test under, stopping a hang with its dumps before the job's cap
-│   ├── ci-shard/                       #   prints the packages one shard of CI's macOS suite tests, computed from `go list ./...`
+│   ├── ci-shard/                       #   prints the packages one shard of CI's macOS suite tests, computed from `go list`
 │   └── record-slug-rename/             #   one-off: renames records minted before the 40-character slug cap (iss-2610100626320367)
 │                                       #   The ten are developer tooling, not user surface: they run
 │                                       #   from the Makefile, `go generate`, CI or by hand, and ship in no release

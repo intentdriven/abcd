@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -217,5 +218,35 @@ func TestRunRefusesLoudly(t *testing.T) {
 				t.Errorf("standard error %q does not mention %q", errw.String(), c.say)
 			}
 		})
+	}
+}
+
+// TestGoListReadsPackagesAsTheRaceStepBuildsThem: the list is read under the build
+// configuration the shard's go test -race compiles, so the two name the same
+// packages: one whose files all need the race build is listed, and one whose files
+// all exclude it is not.
+func TestGoListReadsPackagesAsTheRaceStepBuildsThem(t *testing.T) {
+	dir := t.TempDir()
+	for name, src := range map[string]string{
+		"go.mod":             "module probe\n\ngo 1.24\n",
+		"plain/p.go":         "package plain\n",
+		"raced/r.go":         "//go:build race\n\npackage raced\n",
+		"unraced/u.go":       "//go:build !race\n\npackage unraced\n",
+		"testonly/t_test.go": "//go:build race\n\npackage testonly\n",
+	} {
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := goList(dir)
+	if err != nil {
+		t.Fatalf("go list: %v", err)
+	}
+	if want := []string{"probe/plain", "probe/raced", "probe/testonly"}; !slices.Equal(got, want) {
+		t.Errorf("goList = %q; want %q, the packages go test -race ./... builds", got, want)
 	}
 }

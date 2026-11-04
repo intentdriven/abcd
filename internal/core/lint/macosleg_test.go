@@ -368,7 +368,8 @@ func TestMacOSSuiteShardsCoverTheModule(t *testing.T) {
 		t.Fatalf("step %q does not read %s:\n%s", macOSRaceStep, assign, step.script())
 	}
 
-	list := exec.Command("go", "list", modulePattern)
+	// The packages as a shard's go test -race resolves them.
+	list := exec.Command("go", "list", "-tags", "race", modulePattern)
 	list.Dir = root
 	out, err := list.Output()
 	if err != nil {

@@ -10,9 +10,9 @@
 // several runners shortens what one runner has to do.
 //
 // The module is read, never listed by hand: the assignment is computed from `go
-// list ./...` in every shard, so a package added later is tested without anyone
-// naming it, and a package cannot fall between two hand-kept lists. Each package
-// takes the lightest shard so far, heaviest package first, ties broken by import
+// list` in every shard, under the build the shard tests with, so a package added
+// later is tested without anyone naming it, and a package cannot fall between two
+// hand-kept lists. Each package takes the lightest shard so far, heaviest package first, ties broken by import
 // path, which makes it deterministic for one tree: every shard computes it on
 // its own runner and they all reach the same answer. TestShardsPartitionTheModule
 // holds the union to the module's packages and the shards to disjoint, and
@@ -166,10 +166,11 @@ func weightOf(pkg string) int {
 	return defaultWeight
 }
 
-// goList names the module's packages as `go test ./...` would resolve them, from
-// dir.
+// goList names the module's packages from dir as the shard's `go test -race ./...`
+// would resolve them. -tags race selects the same files as -race, which go list
+// refuses without cgo on Linux, where this package's own tests run plain.
 func goList(dir string) ([]string, error) {
-	cmd := exec.Command("go", "list", "./...")
+	cmd := exec.Command("go", "list", "-tags", "race", "./...")
 	cmd.Dir = dir
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
