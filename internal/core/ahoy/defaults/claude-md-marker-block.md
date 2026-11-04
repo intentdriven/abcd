@@ -15,7 +15,7 @@ and injects only the matched domain rules into context — instead of
 force-loading the full ruleset every turn.
 A prompt that matches no domain injects no rules (notes, status and an away block
 may still come back). The output stays under the host's 10,000-character cap: a domain that does not fit goes as
-its first rule and the command for the rest.
+its first rule and the command for the rest, or the command alone.
 
 - Inspect rules: `abcd rules` renders the active set; `abcd rules <DOMAIN>`
   (case-insensitive) scopes to one domain.

@@ -1399,14 +1399,14 @@ override written before a release added an entry keeps withholding that entry.
 For the four guardrail domains — `PII`, `COMMITTING`, `LOAD` and `SHELL` — the
 load compares every recall, alias and rule list an override set against the list
 the load built before any `rules.json` layer: the running binary's bundled list,
-and for `SHELL` the line about the guard and the warned lessons, the repository's own `.abcd/guard.json` entries among them; a refused entry's lesson is in the second list, which no override replaces
-too. It names each entry left out, and the file whose list is in force, on
+and for `SHELL` the line about the guard and the warned lessons, the repository's own `.abcd/guard.json` entries among them; a refused entry's lesson is in the second list, which no override replaces.
+It names each entry left out, and the file whose list is in force, on
 stderr from `abcd rules` and from the hook on every prompt. The effective set is
 unchanged. Restating the entry keeps it; leaving the field out inherits the
 list. The other bundled domains are conventions a
 repository restates in its own words, so a replacement there is not reported.
 
-**The hook's whole output fits the host's cap.** The host keeps 10,000 characters
+**The hook's whole output fits the host's cap.** The status and away blocks are read first and are not trimmed; the status block is at most ten lines, and the rules and notes share what the two leave. The host keeps 10,000 characters
 of one hook's output; above that it saves a file, shows a short preview and does not
 ask the agent to read the rest. So the rules, the memory notes and pages, the status
 block and the away block share one budget, 500 under the cap (iss-2611041419354106).
@@ -1510,7 +1510,7 @@ session. It writes to two streams:
 
 | Stream | What it carries | Who reads it |
 |---|---|---|
-| **stdout** | the rendered block of the domains new this turn, followed by a `## MEMORY` block of the memory notes the prompt recalls that this session has not yet been given (from `.abcd/memory.json` and `~/.abcd.noindex/memory.json`, within what the rules leave of the turn's injection budget), then the status block and, while the away mode holds, the away block. A prompt that matches no domain and recalls no note, or matches only domains and notes already injected unchanged this session, with no status to show, writes zero bytes. The exceptions are the prompt that owes the session its name and a prompt carrying the away line (itd-2610111707085098, usually its first): stdout is then one JSON object, `{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":<the block>,"sessionTitle":<the name>}}`, which the host reads as the same context plus the title, the status block included | the host, which adds it to the model's context |
+| **stdout** | the rendered block of the domains new this turn, followed by a `## MEMORY` block of the memory notes the prompt recalls that this session has not yet been given (from `.abcd/memory.json` and `~/.abcd.noindex/memory.json`, within what the rules leave of the turn's injection budget), then the status block and, while the away mode holds, the away block. A prompt that matches no domain and recalls no note, or matches only domains and notes already injected unchanged this session, with no status and no away block to show, writes zero bytes. The exceptions are the prompt that owes the session its name (itd-2610111707085098, usually its first) and a prompt carrying the away line: stdout is then one JSON object, `{"systemMessage":<the away line>,"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":<the block>,"sessionTitle":<the name>}}`, with `systemMessage` only for an away line and `sessionTitle` only when a title is owed, which the host reads as the same context plus the line and the title, the status block included | the host, which adds it to the model's context |
 | **stderr** | one diagnostic line per prompt — the turn, the labels of the injected domains, the byte count — and, on a turn that recalls or has to leave out a note, one line naming the notes recalled and any that did not fit the budget, plus the load's notes and refusals, a `memory.json` that cannot be read among them (it recalls nothing, and the rules still inject) | the operator, out of band |
 
 **The machine reader's envelope.** With `--json`, the flag every verb takes for
