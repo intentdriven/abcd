@@ -1048,7 +1048,8 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"records and passed through the outbound scrub, then re-reads the body the forge holds and\n" +
 			"strips a session URL or tool footer; it arms auto-merge with the merge-queue method the\n" +
 			"ruleset mirror (.abcd/work/rulesets/) names at the lane's base, or leaves the pull request\n" +
-			"open where no merge queue gates the default branch, and pushes nothing after that; and\n" +
+			"open while the merge gate does not arm it (with no merge queue it arms with a merge\n" +
+			"commit), and pushes nothing after that; and\n" +
 			"once the pushed head is an ancestor of the default branch on origin it removes the lane's\n" +
 			"worktree and branch and the lane is done. Until then the call exits 3 and waits. A pull\n" +
 			"request the forge reports CONFLICTING (gh pr view <n> --json mergeable,mergeStateStatus)\n" +

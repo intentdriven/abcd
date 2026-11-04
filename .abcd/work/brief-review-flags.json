@@ -536,6 +536,14 @@
       "evidence": "internal/surface/cli/ship.go:778-782 (both writes carry Pending and no Bytes), against the chapter's \"with its size\" on line 141",
       "commit": "de140e4e0252fd055c66fe3a604ff21616eca2f7",
       "applied": "2026-11-04T02:13:51Z"
+    },
+    {
+      "chapter": "35-drain.md",
+      "sentence": "open where the repository has no merge queue), the run complete, or the lane",
+      "replacement": "open while the merge gate does not arm it), the run complete, or the lane",
+      "evidence": "internal/core/landing/facilitator.go:351-352 (with no merge queue the gate arms: \"auto-merge armed (merge commit): no merge queue gates\"); internal/core/landing/facilitator.go:332-343 (the gate's reasons for not arming are the author's role, a missing approval and a missing review receipt, none about a queue); internal/core/implement/loop/land.go:946-947 (a lane is left open only on !d.Arm); internal/core/implement/loop/drain.go:1302 (the outcome read from Landing.Merge)",
+      "commit": "cd4897e2a3d6b6f0a28719f16bf53b7a029456e2",
+      "applied": "2026-11-04T02:46:32Z"
     }
   ]
 }

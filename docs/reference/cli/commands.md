@@ -3307,7 +3307,8 @@ skipped or forced); it opens the pull request through gh, with a body built from
 records and passed through the outbound scrub, then re-reads the body the forge holds and
 strips a session URL or tool footer; it arms auto-merge with the merge-queue method the
 ruleset mirror (.abcd/work/rulesets/) names at the lane's base, or leaves the pull request
-open where no merge queue gates the default branch, and pushes nothing after that; and
+open while the merge gate does not arm it (with no merge queue it arms with a merge
+commit), and pushes nothing after that; and
 once the pushed head is an ancestor of the default branch on origin it removes the lane's
 worktree and branch and the lane is done. Until then the call exits 3 and waits. A pull
 request the forge reports CONFLICTING (gh pr view <n> --json mergeable,mergeStateStatus)

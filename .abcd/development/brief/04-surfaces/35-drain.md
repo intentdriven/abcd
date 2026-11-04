@@ -251,7 +251,7 @@ on origin's default branch backs off, with a tip or without one
    run whose landing settles the issue, so once the record changes on origin
    the issue is re-admitted as any hand-back is.
 5. It reads what that lane has come to: its pull request opened (armed, or left
-   open where the repository has no merge queue), the run complete, or the lane
+   open while the merge gate does not arm it), the run complete, or the lane
    handed back, which it routes (below). A pull request the forge reports
    conflicting is refused before it is armed, so its lane stays in progress
    and the drain names its run to drive, whose step names the conflict; one
