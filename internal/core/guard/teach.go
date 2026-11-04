@@ -33,11 +33,18 @@ const RepoMark = "(repo)"
 // because a hook is read as data, and a refusal says the rest at the command.
 const SteeringLine = "A guard judges each shell command before it runs. It refuses or warns, says why and names the safe form. `abcd rules SHELL` lists its rules."
 
+// OffLine opens the shell rules where the guard is switched off. Every hazard is
+// then steering, which is more than one turn can carry, so the line a shortened
+// domain keeps says what an agent most needs: nothing will stop the command.
+const OffLine = "The shell guard is off in this repository, so nothing refuses or warns about a hazardous command. `abcd rules SHELL` lists the hazards."
+
 // SplitLessons renders r's lessons as LessonsOver does and divides them by what
 // the guard does with the command: a warned command still runs, so its lesson
 // is one an agent needs first, and a refused one is corrected at the refusal
-// (itd-2611041636196213). Under a disabled registry every lesson is steering,
-// since nothing refuses, and refused is empty.
+// (itd-2611041636196213). A delete entry warns only once its target is proven
+// safe or outside a repository, and is refused otherwise, so it counts as refused.
+// Under a disabled registry every lesson is steering, since nothing refuses, and
+// refused is empty.
 func (r Registry) SplitLessons(bundled Registry) (warned, refused []string) {
 	repo := overBundled(bundled)
 	ids := make([]string, 0, len(r.Entries))
@@ -49,7 +56,7 @@ func (r Registry) SplitLessons(bundled Registry) (warned, refused []string) {
 		e := r.Entries[id]
 		e.ID = id
 		l := e.lesson(repo(id, e), r.Disabled)
-		if e.Tier == TierWarn || r.Disabled {
+		if r.Disabled || (e.Tier == TierWarn && !deleteEntryIDs[id]) {
 			warned = append(warned, l)
 		} else {
 			refused = append(refused, l)

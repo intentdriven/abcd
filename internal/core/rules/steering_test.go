@@ -36,13 +36,35 @@ func TestShellDomainSendsOnlyWhatTheGuardCannotCorrectFirst(t *testing.T) {
 			t.Errorf("a steering rule is not a warned command: %q", r)
 		}
 	}
-	for _, r := range d.Checked {
-		if strings.HasPrefix(r, "Warned by the guard") {
-			t.Errorf("a warned command is carried as if refused: %q", r)
-		}
-	}
 	if len(d.Checked) == 0 {
 		t.Fatal("no rule is carried by the guard")
+	}
+}
+
+// TestADeleteTheGuardCanRefuseIsNotSentAsWarned: a delete entry sits in the warn
+// tier, but in a repository the guard refuses it unless it proves the target
+// safe, so its rule is read at the refusal and only a command that is sure to run
+// is sent ahead of time.
+func TestADeleteTheGuardCanRefuseIsNotSentAsWarned(t *testing.T) {
+	reg := guard.Defaults()
+	d, ok := shellDomain(reg, reg)
+	if !ok {
+		t.Fatal("no domain from the bundled registry")
+	}
+	for _, id := range []string{"git-push-delete", "git-push-delete-refspec", "git-branch-force-delete", "git-branch-delete-force", "git-worktree-remove"} {
+		mark := "(" + id + ")"
+		if slices.ContainsFunc(d.Rules, func(r string) bool { return strings.Contains(r, mark) }) {
+			t.Errorf("%s is sent ahead of time", id)
+		}
+		if !slices.ContainsFunc(d.Checked, func(r string) bool { return strings.Contains(r, mark) }) {
+			t.Errorf("%s is not in the guard's list", id)
+		}
+	}
+	for _, id := range []string{"rm-rf-working-directory", "git-reset-hard", "git-clean"} {
+		mark := "(" + id + ")"
+		if !slices.ContainsFunc(d.Rules, func(r string) bool { return strings.Contains(r, mark) }) {
+			t.Errorf("%s, sure to run, is not sent ahead of time", id)
+		}
 	}
 }
 
@@ -89,8 +111,11 @@ func TestGuardOffKeepsEveryShellRuleSteeringAndClaimsNoGuard(t *testing.T) {
 	if slices.Contains(d.Rules, guard.SteeringLine) {
 		t.Fatal("a line claims a guard is running")
 	}
-	if len(d.Rules) != len(everyLesson(off)) {
-		t.Fatalf("%d rules, want %d", len(d.Rules), len(everyLesson(off)))
+	if d.Rules[0] != guard.OffLine {
+		t.Fatalf("first rule = %q, want the line saying the guard is off", d.Rules[0])
+	}
+	if len(d.Rules) != len(everyLesson(off))+1 {
+		t.Fatalf("%d rules, want %d and the line", len(d.Rules), len(everyLesson(off)))
 	}
 	for _, l := range []string{off.ScriptLesson(), off.ShellCLesson(), off.DeleteLesson()} {
 		for _, claim := range []string{"refuse", "judge", "guard allow", "the guard ", "read before"} {

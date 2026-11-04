@@ -61,7 +61,7 @@ func shellDomain(reg, bundled guard.Registry) (Domain, bool) {
 		Aliases: append([]string(nil), shellAliases...),
 	}
 	if reg.Disabled {
-		d.Rules = append(warned, own...)
+		d.Rules = append(append([]string{guard.OffLine}, warned...), own...)
 		return d, true
 	}
 	d.Rules = append([]string{guard.SteeringLine}, warned...)

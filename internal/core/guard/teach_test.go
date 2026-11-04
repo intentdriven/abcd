@@ -286,7 +286,9 @@ func TestLessonsUnderADisabledRegistrySayTheGuardIsOff(t *testing.T) {
 }
 
 // TestLessonsSplitByWhatTheGuardDoes: each entry falls in exactly one half by
-// its tier, in id order, with the repository mark kept.
+// what the guard does with its command, in id order, with the repository mark
+// kept. A delete entry sits in the warn tier and in the refused half, since the
+// guard refuses it unless it proves the target safe.
 func TestLessonsSplitByWhatTheGuardDoes(t *testing.T) {
 	reg := Defaults()
 	warned, refused := reg.SplitLessons(reg)
@@ -298,10 +300,19 @@ func TestLessonsSplitByWhatTheGuardDoes(t *testing.T) {
 			t.Errorf("in the warned half: %q", l)
 		}
 	}
+	deletes := 0
 	for _, l := range refused {
-		if !strings.HasPrefix(l, "Refused by the guard") {
+		if strings.HasPrefix(l, "Refused by the guard") {
+			continue
+		}
+		id, _, _ := strings.Cut(strings.TrimPrefix(l, "Warned by the guard ("), ")")
+		if !deleteEntryIDs[id] {
 			t.Errorf("in the refused half: %q", l)
 		}
+		deletes++
+	}
+	if deletes != len(deleteEntryIDs) {
+		t.Errorf("%d delete entries in the refused half, want %d", deletes, len(deleteEntryIDs))
 	}
 	if len(warned) == 0 || len(refused) == 0 {
 		t.Fatalf("a half is empty: %d warned, %d refused", len(warned), len(refused))

@@ -487,7 +487,10 @@ func TestShellLessonsUnderACommittedDisabledGuardSayItIsOff(t *testing.T) {
 			if len(d.Rules) < len(Defaults().Domains[ShellDomain].Rules) {
 				t.Fatalf("a disabled guard stopped SHELL teaching: %d rules", len(d.Rules))
 			}
-			for _, r := range d.Rules {
+			if d.Rules[0] != guard.OffLine {
+				t.Errorf("a disabled guard's first rule = %q, want the line saying it is off", d.Rules[0])
+			}
+			for _, r := range d.Rules[1:] {
 				if !strings.HasPrefix(r, "Hazard (guard off) (") {
 					t.Errorf("a lesson under a disabled guard does not say the guard is off: %q", r)
 				}

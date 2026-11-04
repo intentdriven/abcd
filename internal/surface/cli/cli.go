@@ -2676,10 +2676,11 @@ in this repository, the bundled entries and the repository's own
 .abcd/guard.json entries alike, recalled by the commands the registry names.
 Only part of it is sent as shell work starts: a line saying a guard judges each
 command, and the rules of the entries that only warn, since a warned command
-still runs; a delete the guard cannot prove safe is still refused. The rules for
-what it refuses reach the agent at the refusal, and this command lists them after the rest; --json carries them as
+still runs. The rules for what it refuses, a delete it cannot prove safe
+included, reach the agent at the refusal, and this command lists them after the rest; --json carries them as
 "checked", with each list's size in "rules_bytes" and "checked_bytes". With the
-guard switched off, every rule is sent and the line about a guard is not. A rule in the
+guard switched off, every rule is steering, more than one turn holds, so a line
+saying the guard is off is sent and this command lists the rest. A rule in the
 repository's words is marked "(repo)" after its entry id. A guard.json the guard
 refuses is named on stderr and left out; SHELL then lists the registry the guard
 enforces in its place. A new rule a machine can catch in a shell command goes in

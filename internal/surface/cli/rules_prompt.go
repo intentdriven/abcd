@@ -26,16 +26,17 @@ import (
 
 // injectWithRecall is the turn's one use of the budget, the hook's and the
 // diagnostic's alike: the rules within what reserved leaves less the memory floor,
-// then the recall within what the rules left. A turn no note comes back on gives
-// the floor back and renders the rules again, since Inject writes nothing and
-// rules that fit are sent in full (spc-2610111627213138).
+// then the recall within what the rules left. Whatever of the floor the notes
+// leave unused goes back: the rules are rendered again within what the notes
+// really took, since Inject writes nothing and rules that fit are sent in full
+// (spc-2610111627213138).
 func injectWithRecall(rs rules.RuleSet, prompt string, prev rules.SessionState, backstop int, bracket rules.Bracket, reserved int,
 	recallWithin func(ledger map[string]string, budget int) recall.Result) (rules.InjectResult, recall.Result) {
 	res := rules.InjectWithin(rs, prompt, prev, backstop, bracket, rules.RulesBudget(reserved))
 	// The ledger Inject hands back, which its backstop may have cleared.
 	mem := recallWithin(res.State.Recalled, max(0, rules.InjectionBudgetBytes-reserved-len(res.Text)))
-	if mem.Text == "" {
-		res = rules.InjectWithin(rs, prompt, prev, backstop, bracket, max(0, rules.InjectionBudgetBytes-reserved))
+	if len(mem.Text) < rules.MemoryFloorBytes {
+		res = rules.InjectWithin(rs, prompt, prev, backstop, bracket, max(0, rules.InjectionBudgetBytes-reserved-len(mem.Text)))
 	}
 	return res, mem
 }

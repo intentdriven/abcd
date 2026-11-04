@@ -78,8 +78,9 @@ refused hazards go back into the steering line.
   commands the guard only warns about, none of the text for commands it refuses, and
   `abcd rules SHELL` still lists every hazard.
 - **Given** a repository that has switched its guard off, **when** the hook answers,
-  **then** every shell rule stays a steering rule, each opens `Hazard (guard off)`, and the
-  line saying a guard judges each command is not sent. Eleven registry entries keep
+  **then** every shell rule stays a steering rule, each opens `Hazard (guard off)` under a first
+  line saying the guard is off, and the line saying a guard judges each command is not
+  sent. Eleven registry entries keep
   wording that names the guard after that opening; rewording them belongs to the
   rule-by-rule change.
 - **Given** the bundled registry, **when** its tests run, **then** every entry that refuses
@@ -103,6 +104,14 @@ None. The product thinker confirmed the reversal below at sign-off, 2026-11-04.
 - itd-2609292109214516 stays separate: it makes injection a seam for another back end,
   and this intent changes what the native loader sends. Whichever lands second carries
   the budget and the two lists through its seam.
+- A delete entry counts as refused though it sits in the warn tier: the guard refuses it
+  in a repository unless it proves the target safe, so only what is sure to run is sent
+  ahead of time. Its lesson keeps its `Warned by the guard` opening until the
+  rule-by-rule change.
+- Whatever of the 2,500 bytes kept for notes they leave unused goes back to the rules,
+  so a short note does not shorten a domain that fits beside it.
+- With the guard off, the rules cannot all fit one turn, so the first rule says the guard
+  is off and the rest are read with `abcd rules SHELL`.
 - Refusal counts per hazard are out of scope: the mechanism's threshold reads the logs
   already kept, so a counter waits for a check that needs it.
 

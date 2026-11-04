@@ -112,8 +112,8 @@ whether the guard refuses or warns, the why and the safe successor, recalled by 
 commands the registry names (`rm`, `git push`, `pkill`, …) and by shell work in
 general. A prompt about shell-heavy work sends one line saying a guard judges each
 command, and the rules of the entries that only warn, since a warned command still
-runs; a delete entry's command is still refused in a repository where the guard cannot
-prove its target safe, and that refusal carries its own reason. Where a bracket or a full turn shortens the domain, the line about the guard goes alone, with the command for the rest, or the command goes alone where a full turn has no room for the line. What it refuses is corrected at the refusal, which carries the why and
+runs. A delete entry warns only outside a repository or once its target is proven safe
+and is refused otherwise, so its rule is read at the refusal too. Where a bracket or a full turn shortens the domain, the line about the guard goes alone, with the command for the rest, or the command goes alone where a full turn has no room for the line. What it refuses is corrected at the refusal, which carries the why and
 the safe form, reaches sub-agents the prompt hook never does, and comes before the
 host's own permission prompt, so no person is asked (itd-2611041636196213, which
 narrows itd-103). Every rule stays listed by the rules verb, and a host without hook
@@ -143,8 +143,10 @@ enforces in the repository: an entry the repository adds in its
 rule marked `(repo)` after its entry id, and a guard file the guard refuses is
 named on stderr and never listed. An entry's why and successor are each at most
 1,024 bytes, since both are shown word for word. Under a committed
-`"disabled": true` the guard refuses nothing, so every rule is sent, each opening
-`Hazard (guard off)`, and the line saying a guard judges each command is not sent. How the domain is recalled, overridden and
+`"disabled": true` the guard refuses nothing, so every rule is steering, each opening
+`Hazard (guard off)` under a first line saying the guard is off, in place of the line
+saying a guard judges each command. That is more than one turn holds, so the hook
+sends the first line and the command for the rest. How the domain is recalled, overridden and
 silenced is the rules loader's
 ([`05-internals/03-configuration.md`](../05-internals/03-configuration.md)).
 

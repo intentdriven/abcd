@@ -155,12 +155,14 @@ func TestTheHooksWholeOutputStaysUnderTheHostCap(t *testing.T) {
 }
 
 // TestAFloorNoNoteUsesGoesBackToTheRules: a domain that fits the turn is sent
-// whole when no note comes back, and shortened when one does.
+// whole when no note comes back or a short one does, and shortened when a note
+// takes the room.
 func TestAFloorNoNoteUsesGoesBackToTheRules(t *testing.T) {
 	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
 	home, repo := memoryFixture(t)
 	setFill(t, home, "floor", 10)
-	setFill(t, home, "floor-note", 10)
+	setFill(t, home, "floor-short-note", 10)
+	setFill(t, home, "floor-long-note", 10)
 	var list []string
 	for j := range 8 {
 		list = append(list, strings.Repeat(fmt.Sprintf("rule %d ", j), 150))
@@ -176,9 +178,14 @@ func TestAFloorNoNoteUsesGoesBackToTheRules(t *testing.T) {
 		t.Fatalf("a domain that fits the turn did not come back whole:\n%.400s\nstderr:\n%s", env.Text, errlog)
 	}
 	writeProjectNotes(t, repo, [3]string{"mem-2610111200000004", "A zebra lesson", "Zebra words."})
-	notes, errlog := recallRouterJSON(t, "floor-note", repo, "test a zebra")
-	if strings.Contains(notes.Text, "rule 7 ") || !strings.Contains(notes.Text, "Zebra words.") {
-		t.Fatalf("with a note the floor was not kept for it:\n%.400s\nstderr:\n%s", notes.Text, errlog)
+	short, errlog := recallRouterJSON(t, "floor-short-note", repo, "test a zebra")
+	if !strings.Contains(short.Text, "rule 7 ") || !strings.Contains(short.Text, "Zebra words.") {
+		t.Fatalf("a short note did not hand back the floor it left unused:\n%.400s\nstderr:\n%s", short.Text, errlog)
+	}
+	writeProjectNotes(t, repo, [3]string{"mem-2610111200000005", "A zebra lesson", "Zebra words. " + strings.Repeat("more words ", 170)})
+	long, errlog := recallRouterJSON(t, "floor-long-note", repo, "test a zebra")
+	if strings.Contains(long.Text, "rule 7 ") || !strings.Contains(long.Text, "Zebra words.") {
+		t.Fatalf("with a long note the floor was not kept for it:\n%.400s\nstderr:\n%s", long.Text, errlog)
 	}
 }
 

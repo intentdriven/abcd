@@ -94,7 +94,7 @@ repository, and recalls on the commands it names (`rm`, `git push`, `pkill`, …
 on shell work in general. Ahead of time it sends a line about the guard and the
 rules of the entries that only warn; what the guard refuses, a delete it cannot
 prove safe included, reaches the agent at the refusal, and `abcd rules SHELL` lists
-every rule. With the guard off, every rule is sent.
+every rule. With the guard off, it sends what fits.
 `GRILL` carries the asking rules every abcd interview follows (one thing at a
 time, the thing being decided quoted in full before the question, options that
 widen rather than recommend); it is generated from the same limits the question

@@ -1411,8 +1411,8 @@ of one hook's output; above that it saves a file, shows a short preview and does
 ask the agent to read the rest. So the rules, the memory notes and pages, the status
 block and the away block share one budget, 500 under the cap (iss-2611041419354106).
 The status and away blocks are read first, the rules leave at least 2,500 bytes for
-memory, memory takes what the rules actually left, and a turn no note comes back on
-gives those bytes back to the rules. When the matched domains do not all fit, room
+memory, memory takes what the rules actually left, and whatever of those bytes the
+notes leave unused goes back to the rules. When the matched domains do not all fit, room
 goes up a ladder, the cheapest first at each step: every domain gets its heading and
 a line naming the command that renders it, then its first rule, then all of its rules,
 so one long domain never holds back the next. Every form sent is recorded as sent, since it names the command,
@@ -1442,10 +1442,9 @@ merged with the repository's own `.abcd/guard.json` (ruling CK1). Each registry
 entry becomes one rule — whether the guard refuses or warns, the entry id, the
 command it matches, the plain-language why, and the safe successor — in entry-id
 order. What is sent is a line saying a guard judges each command, then the rules of
-the entries that only warn, since a warned command still runs; a delete entry's
-command is still refused in a repository where the guard cannot prove its target safe,
-and that refusal carries its own reason. The refused
-entries' rules are the second list, with the rules for the scripts the guard reads,
+the entries that only warn, since a warned command still runs. The refused
+entries' rules are the second list, the delete entries' among them, since a delete
+warns only outside a repository or once its target is proven safe, with the rules for the scripts the guard reads,
 the variable-built `-c` script and the delete it cannot prove safe; the agent reads
 them at the refusal. The recall keywords are the command heads the registry matches (`rm`,
 `git push`, `gh repo delete`, `pkill`, …), which carry their subcommands so
@@ -1461,7 +1460,7 @@ domain with no second edit, and a test fails the build if an entry falls out of 
 lists. To every other contract it is an ordinary bundled domain:
 a user or repo layer overrides it per field, `dormant` silences it, `*SHELL`
 activates it, the kill switch suppresses it, and dedup and provenance treat it
-like any other. Its injected block is about 4,300 bytes for the bundled registry,
+like any other. Its injected block is about 1,400 bytes for the bundled registry,
 and each warned entry a repository adds or rewords in its `.abcd/guard.json` adds its
 own rule; a refused one adds nothing to it. An entry's why and its
 successor are each capped at 1,024 bytes, over three times the longest bundled
@@ -1476,9 +1475,11 @@ repository's — an entry the file adds, or a bundled entry whose tier, pattern,
 why or successor it changes — carries `(repo)` after its entry id, so whose
 words an agent is taught is never invisible; a fixture-only change teaches
 the bundled words and is not marked. Under a committed `"disabled": true`
-the guard refuses nothing, so nothing corrects the agent later: every rule is sent,
+the guard refuses nothing, so nothing corrects the agent later: every rule is steering,
 each opening `Hazard (guard off)` in place of `Refused by the guard` or `Warned by
-the guard`, and the line saying a guard judges each command is not sent. A `.abcd/guard.json` the guard refuses
+the guard`, under a first line saying the guard is off in place of the line saying a
+guard judges each command. That is more than one turn holds, so the hook sends the
+first line and the command for the rest. A `.abcd/guard.json` the guard refuses
 (unreadable, invalid, or an uncommitted edit that weakens it) is refused here
 too and never skipped in silence: `SHELL` is built from the registry the guard falls
 back to, none of the refused entries, and the load names the file and the

@@ -596,8 +596,9 @@ reaches the agent at the refusal. An
 entry a repo adds in `.abcd/guard.json` joins the list too, its rule marked
 `(repo)`; a guard file this guard refuses is named on stderr and left out. An
 entry's `why` and `successor` are each at most 1,024 bytes, and a longer one refuses
-the file. With the guard switched off, every rule is sent, each opening
-`Hazard (guard off)` instead of `Refused by the guard`, and the line about a guard is not sent.
+the file. With the guard switched off, nothing refuses and every rule is steering, each
+opening `Hazard (guard off)`. That is more than one turn holds, so a prompt sends a line
+saying the guard is off and `abcd rules shell` lists the rest.
 
 ### What this guard is
 
