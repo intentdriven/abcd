@@ -128,8 +128,8 @@ deletes.
 
 ## Acceptance Criteria
 
-Each is a proposal for the product thinker to confirm at the planning
-interview, drafted from the lab's rulings of 2026-11-03.
+Drafted from the lab's rulings of 2026-11-03 and planned as drafted under
+dcn-2611031615094092, with decisions 14 to 21 settling every open question.
 
 - **Given** any agent abcd launches through a runner (a build or drain lane's
   implementer or reviewer, the drain's judge, the planning interviewer, a
