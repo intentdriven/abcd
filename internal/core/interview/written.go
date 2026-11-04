@@ -404,6 +404,7 @@ func (w *Written) Run(ctx context.Context) (WrittenResult, error) {
 			Base:      base,
 			SessionID: fmt.Sprintf("%s-%s-turn-%d", w.Name, start.Format(stampLayout), turn),
 			Timeout:   w.Timeout,
+			Work:      runner.LaunchWork{Run: fmt.Sprintf("%s-%s", w.Name, start.Format(stampLayout)), Await: fmt.Sprintf("turn-%d", turn)},
 		})
 		stopped := interrupted()
 		stop()

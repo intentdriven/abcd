@@ -149,6 +149,7 @@ func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options,
 	}
 	aw := *res.Awaiting
 	if rs.Config.RouteFor(aw.Role).Runner == runner.Host {
+		rs.Config.RecordHandoff(ctx, aw.Role, repoRoot, runner.LaunchWork{Run: runID, Lane: res.Lane, Await: aw.Receipt})
 		return res, nil
 	}
 	r, err := dispatchAwait(ctx, repoRoot, runID, steps, o, rs, res.Lane, aw, "", res)
