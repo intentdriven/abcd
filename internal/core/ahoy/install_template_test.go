@@ -17,8 +17,14 @@ package ahoy
 import (
 	"crypto/sha256"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io/fs"
+	"maps"
+	"net/http"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -30,6 +36,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/question"
 )
 
@@ -353,32 +360,320 @@ func (k *keptInstall) replay(t *testing.T, roots []installRoot) {
 	}
 }
 
-// defaultInstallSeams is every package seam as TestMain left it.
-var defaultInstallSeams []string
+// defaultInstallSeams is every listed seam as TestMain left it.
+var defaultInstallSeams map[string]string
 
-// seamsAtDefault reports whether every seam an install reaches is as TestMain
-// left it. A test that swapped one wants an install through its own.
+// seamsAtDefault reports whether every listed seam is as TestMain left it. A test
+// that swapped one wants an install through its own.
 func seamsAtDefault() bool {
-	return slices.Equal(installSeams(), defaultInstallSeams)
+	return maps.Equal(installSeams(), defaultInstallSeams)
 }
 
-// installSeams identifies each seam by the code it points at, and each value a
-// test may set by the value.
-func installSeams() []string {
-	funcs := []any{
-		downloadTag, newToolInstaller, afterCacheBound, readRootAgents, beforeToolFileRemove,
-		copyRelease, checkReleaseClaim, goRunModule, checkoutBuild, readClaudeVersion,
-		caseFoldingFS, shellSettingsAsks, measureFits, entryTrust, writeHarnessSettings,
-		shellEnv, shellApply, removeBackupCopy, gitInstalled, harnessInstalled, osExecutable,
-		afterHistoryReloadHook, beforeHistoryIndexCreateHook, currentVintage,
-		waitingRange, waitingDefaultChanges,
+// installSeams identifies each seam an install can reach, by name: a function by
+// the code it points at, anything else by its value.
+// TestEverySwappedSeamIsListedOrExempt fails on a seam a test or the package swaps
+// that is neither here nor in seamsNotInTheKey.
+func installSeams() map[string]string {
+	funcs := map[string]any{
+		"downloadTag": downloadTag, "newToolInstaller": newToolInstaller, "afterCacheBound": afterCacheBound,
+		"readRootAgents": readRootAgents, "beforeToolFileRemove": beforeToolFileRemove,
+		"copyRelease": copyRelease, "checkReleaseClaim": checkReleaseClaim, "goRunModule": goRunModule,
+		"checkoutBuild": checkoutBuild, "readClaudeVersion": readClaudeVersion, "caseFoldingFS": caseFoldingFS,
+		"shellSettingsAsks": shellSettingsAsks, "measureFits": measureFits, "entryTrust": entryTrust,
+		"writeHarnessSettings": writeHarnessSettings, "shellEnv": shellEnv, "shellApply": shellApply,
+		"removeBackupCopy": removeBackupCopy, "gitInstalled": gitInstalled, "harnessInstalled": harnessInstalled,
+		"osExecutable": osExecutable, "afterHistoryReloadHook": afterHistoryReloadHook,
+		"beforeHistoryIndexCreateHook": beforeHistoryIndexCreateHook, "currentVintage": currentVintage,
+		"waitingRange": waitingRange, "waitingDefaultChanges": waitingDefaultChanges,
 	}
-	seams := make([]string, 0, len(funcs)+4)
-	for _, f := range funcs {
-		seams = append(seams, fmt.Sprint(reflect.ValueOf(f).Pointer()))
+	seams := map[string]string{
+		"claudeCodeAgentsFloor": fmt.Sprint(claudeCodeAgentsFloor),
+		"core.Version":          core.Version,
+		"earlierShimSHA256":     fmt.Sprint(earlierShimSHA256),
+		"hostVersionTimeout":    hostVersionTimeout.String(),
+		"historyLockTimeout":    historyLockTimeout.String(),
+		"http.DefaultTransport": fmt.Sprintf("%p", http.DefaultTransport),
+		"oracleAdapterShipped":  fmt.Sprint(oracleAdapterShipped),
+		"rewriteLockTimeout":    rewriteLockTimeout.String(),
 	}
-	return append(seams, fmt.Sprint(claudeCodeAgentsFloor), hostVersionTimeout.String(),
-		historyLockTimeout.String(), rewriteLockTimeout.String())
+	for name, f := range funcs {
+		seams[name] = fmt.Sprint(reflect.ValueOf(f).Pointer())
+	}
+	return seams
+}
+
+// seamsNotInTheKey is every swapped seam installSeams does not list, with why. A
+// seam belongs here only when listing it is impossible or pointless: the test
+// below holds an entry marked neverBesideAFixture to that claim.
+var seamsNotInTheKey = map[string]string{
+	// Each swaps an unexported variable of fsutil, which this package cannot read.
+	"fsutil.SwapHomeScopeVettedForTest": neverBesideAFixture,
+	"fsutil.SwapOwnerUIDForTest":        neverBesideAFixture,
+	// These two read and change nothing: a test's way of looking at the record
+	// and the floors, named *ForTest because only a test wants to.
+	"identity.LoadRecordForTest": "reads a record, swaps nothing",
+	"question.FloorsForTest":     "reads the floors, swaps nothing",
+}
+
+// neverBesideAFixture marks a seam no test reaching a swap of it reaches a kept
+// install, so it cannot be kept under, or replayed to, a swapped state.
+const neverBesideAFixture = "never beside a fixture"
+
+// TestEverySwappedSeamIsListedOrExempt reads this package's source for every
+// swap: an assignment to a package-level variable of its non-test files or to an
+// exported variable of an imported package, or a call of an imported package's
+// *ForTest function. A swap neither in installSeams nor in seamsNotInTheKey could
+// be kept under the default key and replayed to later tests, whose result would
+// then depend on run order, so it fails here by name.
+//
+// A variable declared in a test file is not a seam: production code cannot read
+// it except through a seam, which is itself swapped. A swap made some other way,
+// through a pointer or a foreign setter not named *ForTest, is not seen.
+func TestEverySwappedSeamIsListedOrExempt(t *testing.T) {
+	src := parsePackageSource(t)
+	listed := installSeams()
+	swaps := src.swaps()
+	var names []string
+	for name := range swaps {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	if len(names) == 0 {
+		t.Fatal("the walk found no swap at all, so it is reading nothing")
+	}
+	for _, name := range names {
+		_, inList := listed[name]
+		why, exempt := seamsNotInTheKey[name]
+		switch {
+		case inList && exempt:
+			t.Errorf("%s is both listed and exempt", name)
+		case !inList && !exempt:
+			t.Errorf("%s is swapped (%s) and neither listed in installSeams nor exempt in seamsNotInTheKey: "+
+				"a fixture could keep an install under the default key with it swapped", name, swaps[name])
+		case exempt && why == neverBesideAFixture:
+			if test := src.testReachingFixtureAndSwap(name); test != "" {
+				t.Errorf("%s is exempt as %s, but %s reaches both a swap of it and a kept install", name, why, test)
+			}
+		case exempt && why == "":
+			t.Errorf("%s is exempt with no reason", name)
+		}
+	}
+	for name := range seamsNotInTheKey {
+		if _, ok := swaps[name]; !ok {
+			t.Errorf("%s is exempt but nothing swaps it any more", name)
+		}
+	}
+}
+
+// packageSource is this package's files, parsed.
+type packageSource struct {
+	files map[string]*ast.File
+	// productionVars is every package-level variable of a non-test file.
+	productionVars map[string]bool
+	// funcs is every top-level function, by name, methods under their own name.
+	funcs map[string]*ast.FuncDecl
+}
+
+func parsePackageSource(t *testing.T) packageSource {
+	t.Helper()
+	paths, err := filepath.Glob("*.go")
+	if err != nil || len(paths) == 0 {
+		t.Fatalf("listing this package's files: %v (%d)", err, len(paths))
+	}
+	src := packageSource{files: map[string]*ast.File{}, productionVars: map[string]bool{}, funcs: map[string]*ast.FuncDecl{}}
+	fset := token.NewFileSet()
+	for _, p := range paths {
+		f, err := parser.ParseFile(fset, p, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		src.files[p] = f
+		for _, decl := range f.Decls {
+			switch d := decl.(type) {
+			case *ast.FuncDecl:
+				src.funcs[d.Name.Name] = d
+			case *ast.GenDecl:
+				if d.Tok != token.VAR || strings.HasSuffix(p, "_test.go") {
+					continue
+				}
+				for _, spec := range d.Specs {
+					for _, name := range spec.(*ast.ValueSpec).Names {
+						src.productionVars[name.Name] = true
+					}
+				}
+			}
+		}
+	}
+	return src
+}
+
+// swappedBy names what one assignment target swaps, or "": x, x.f and x[k] of a
+// production variable x, and pkg.Name of an imported package.
+func (src packageSource) swappedBy(f *ast.File, target ast.Expr) string {
+	for {
+		switch e := target.(type) {
+		case *ast.ParenExpr:
+			target = e.X
+			continue
+		case *ast.IndexExpr:
+			target = e.X
+			continue
+		case *ast.StarExpr:
+			target = e.X
+			continue
+		case *ast.SelectorExpr:
+			if pkg, ok := e.X.(*ast.Ident); ok && pkg.Obj == nil && importsName(f, pkg.Name) {
+				return pkg.Name + "." + e.Sel.Name
+			}
+			target = e.X
+			continue
+		case *ast.Ident:
+			if !src.productionVars[e.Name] {
+				return ""
+			}
+			// Declared in a function, it shadows the variable. The parser
+			// resolves names within a file, so one from another file has no
+			// object, and one from this file's top level is a ValueSpec.
+			if e.Obj != nil {
+				if spec, ok := e.Obj.Decl.(*ast.ValueSpec); !ok || !topLevelSpec(f, spec) {
+					return ""
+				}
+			}
+			return e.Name
+		default:
+			return ""
+		}
+	}
+}
+
+// topLevelSpec reports whether spec is one of f's package-level declarations.
+func topLevelSpec(f *ast.File, spec *ast.ValueSpec) bool {
+	for _, decl := range f.Decls {
+		if d, ok := decl.(*ast.GenDecl); ok {
+			for _, s := range d.Specs {
+				if s == spec {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// importsName reports whether f imports a package under name.
+func importsName(f *ast.File, name string) bool {
+	for _, imp := range f.Imports {
+		path, err := strconv.Unquote(imp.Path.Value)
+		if err != nil {
+			continue
+		}
+		local := pathpkg.Base(path)
+		if imp.Name != nil {
+			local = imp.Name.Name
+		}
+		if local == name {
+			return true
+		}
+	}
+	return false
+}
+
+// swapsIn collects the swaps under node, by name, with where each one sits.
+func (src packageSource) swapsIn(file string, f *ast.File, node ast.Node, into map[string]string) {
+	note := func(name string) {
+		if name != "" {
+			if _, ok := into[name]; !ok {
+				into[name] = file
+			}
+		}
+	}
+	ast.Inspect(node, func(n ast.Node) bool {
+		switch s := n.(type) {
+		case *ast.AssignStmt:
+			if s.Tok == token.DEFINE {
+				return true
+			}
+			for _, lhs := range s.Lhs {
+				note(src.swappedBy(f, lhs))
+			}
+		case *ast.IncDecStmt:
+			note(src.swappedBy(f, s.X))
+		case *ast.CallExpr:
+			if sel, ok := s.Fun.(*ast.SelectorExpr); ok && strings.HasSuffix(sel.Sel.Name, "ForTest") {
+				if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Obj == nil && importsName(f, pkg.Name) {
+					note(pkg.Name + "." + sel.Sel.Name)
+				}
+			}
+		}
+		return true
+	})
+}
+
+// swaps is every swap in the package's function bodies and top-level
+// initialisers' functions, by name. A declaration's own initial value is no swap.
+func (src packageSource) swaps() map[string]string {
+	found := map[string]string{}
+	for file, f := range src.files {
+		for _, decl := range f.Decls {
+			if d, ok := decl.(*ast.FuncDecl); ok && d.Body != nil {
+				src.swapsIn(file, f, d.Body, found)
+			}
+		}
+	}
+	return found
+}
+
+// testReachingFixtureAndSwap names a Test function that reaches, through this
+// package's functions, both a swap of name and a kept install, or "". A function
+// is reached by being named at all, since tests pass fixtures around as values.
+func (src packageSource) testReachingFixtureAndSwap(name string) string {
+	mentions, swaps := map[string][]string{}, map[string]bool{}
+	var tests []string
+	for file, f := range src.files {
+		for _, decl := range f.Decls {
+			d, ok := decl.(*ast.FuncDecl)
+			if !ok || d.Body == nil {
+				continue
+			}
+			fn := d.Name.Name
+			ast.Inspect(d.Body, func(n ast.Node) bool {
+				if id, ok := n.(*ast.Ident); ok && src.funcs[id.Name] != nil {
+					mentions[fn] = append(mentions[fn], id.Name)
+				}
+				return true
+			})
+			found := map[string]string{}
+			src.swapsIn(file, f, d.Body, found)
+			if _, ok := found[name]; ok {
+				swaps[fn] = true
+			}
+			if strings.HasPrefix(fn, "Test") {
+				tests = append(tests, fn)
+			}
+		}
+	}
+	sort.Strings(tests)
+	for _, test := range tests {
+		seen := map[string]bool{}
+		var walk func(fn string)
+		walk = func(fn string) {
+			if !seen[fn] {
+				seen[fn] = true
+				for _, next := range mentions[fn] {
+					walk(next)
+				}
+			}
+		}
+		walk(test)
+		swapped := false
+		for fn := range swaps {
+			swapped = swapped || seen[fn]
+		}
+		if swapped && seen["templatedInstall"] {
+			return test
+		}
+	}
+	return ""
 }
 
 // TestAKeptInstallIsTheInstallItReplays: a fixture that replayed an install
@@ -496,6 +791,11 @@ func TestAStateTheKeyDoesNotKnowGetsItsOwnInstall(t *testing.T) {
 			swap := measureFits
 			t.Cleanup(func() { measureFits = swap })
 			measureFits = func(h PromptHelp, l question.Limits, def string) bool { return swap(h, l, def) }
+		},
+		"another package's seam": func(t *testing.T) {
+			was := core.Version
+			t.Cleanup(func() { core.Version = was })
+			core.Version = "v0.16.0"
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
