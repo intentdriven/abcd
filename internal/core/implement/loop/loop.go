@@ -1347,8 +1347,26 @@ func withLock(repoRoot string, fn func(root *os.Root) error) error {
 
 // mutate is every in-run mutation's frame: resolve nothing, check the tier,
 // take the lock, read the state, let fn change it, and write it only when fn
-// says it changed.
+// says it changed. The write takes the file to this abcd's own version, which
+// only the abcd driving the run may do: a writer that may be running a lane's
+// abcd uses mutateReservation (reservation_save.go).
 func mutate(repoRoot, runID string, fn func(root *os.Root, st *State) (bool, error)) error {
+	return withRun(repoRoot, runID, func(root *os.Root) error {
+		st, err := readStateIn(root, runID)
+		if err != nil {
+			return err
+		}
+		changed, err := fn(root, &st)
+		if err != nil || !changed {
+			return err
+		}
+		return writeState(root, st)
+	})
+}
+
+// withRun is a save's frame: resolve nothing, check the tier and the run, and
+// take the lock. mutate and mutateReservation are what is done under it.
+func withRun(repoRoot, runID string, fn func(root *os.Root) error) error {
 	if err := tierPresent(repoRoot); err != nil {
 		return err
 	}
@@ -1360,17 +1378,7 @@ func mutate(repoRoot, runID string, fn func(root *os.Root, st *State) (bool, err
 		return refuse("state", "", "", "no run "+runID+" in this checkout",
 			"name a run `abcd implement status` lists, or start one with `abcd build <itd-N>`")
 	}
-	return withLock(repoRoot, func(root *os.Root) error {
-		st, err := readStateIn(root, runID)
-		if err != nil {
-			return err
-		}
-		changed, err := fn(root, &st)
-		if err != nil || !changed {
-			return err
-		}
-		return writeState(root, st)
-	})
+	return withLock(repoRoot, fn)
 }
 
 // runIDDraws bounds the redraws freeRunID makes before it refuses.
