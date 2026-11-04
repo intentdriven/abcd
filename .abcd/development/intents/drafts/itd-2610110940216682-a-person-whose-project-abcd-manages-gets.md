@@ -24,7 +24,7 @@ abcd is built for people who know what they want and are not CI engineers, which
 
 ## Mechanism
 
-We expect total CI time per merged change to fall by about half, with no change landing untested on Linux, because the merge queue already runs the full suite there on the exact merge result, and macOS runs nightly and at each release cut: the pull-request run's full suite, the post-merge run and the second macOS test pass repeat work the queue run or the local preflight already did. Shown wrong if, after abcd's own CI takes this shape (iss-2610110938282654, iss-2610110938294826, iss-2610110938293273), runs per merged change do not fall, or platform defects reach the default branch that the old pull-request run would have caught. <!-- record-lint: forward-looking -->
+We expect total CI time per merged change to fall by about half, with no change ever landing untested on any supported platform, because the merge queue already runs the full suite on the exact merge result: the pull-request run's full suite, the post-merge run and the second macOS test pass repeat work the queue run or the local preflight already did. Shown wrong if, after abcd's own CI takes this shape (iss-2610110938282654, iss-2610110938294826, iss-2610110938293273), runs per merged change do not fall, or platform defects reach the default branch that the old pull-request run would have caught. <!-- record-lint: forward-looking -->
 
 ## Scope Conditions
 
