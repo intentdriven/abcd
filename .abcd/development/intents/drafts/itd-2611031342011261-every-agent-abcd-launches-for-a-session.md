@@ -39,7 +39,7 @@ spent). Related issues: the run-state schema trap
 which the ledger's own schema is shaped to avoid; the unattended build drive
 ([iss-2611031146255825](../../../work/issues/open/iss-2611031146255825-no-abcd-verb-drives-an-intent-build-to.md)),
 whose account of itself this ledger is; the stranded agent
-([iss-2611031337115764](../../../work/issues/open/iss-2611031337115764-a-finished-agent-is-stranded-when-the.md)),
+([iss-2611031337115764](../../../work/issues/resolved/iss-2611031337115764-a-finished-agent-is-stranded-when-the.md)),
 which the ledger shows as two launches for one await; and the run-start
 budget check that always skips
 ([iss-2610100913096346](../../../work/issues/open/iss-2610100913096346-the-run-start-budget-check-never.md)),
