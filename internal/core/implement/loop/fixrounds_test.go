@@ -21,12 +21,12 @@ import (
 // fresh implementer briefed on that criterion, and never to its landing.
 func TestAnUndecidedCriterionReopensTheWorkLikeANotMet(t *testing.T) {
 	repo := briefRepo(t, agentsMarked)
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
 	id, stages := start.RunID, DefaultStages()
-	implemented(t, repo, id, stages, "one.txt")
+	implementedOnce(t, repo, id, "one.txt")
 	passRound(t, repo, id, stages, RoleRuthless, RoleSecurity)
 	handBack(t, repo, id, stages, RoleAuditor, "INCONCLUSIVE")
 
@@ -59,7 +59,7 @@ func TestAnUndecidedCriterionReopensTheWorkLikeANotMet(t *testing.T) {
 func TestTheFixRoundCapIsSetBesideThePace(t *testing.T) {
 	t.Run("bundled", func(t *testing.T) {
 		repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-		res, err := Start(repo.Root(), "itd-10", Options{})
+		res, err := startedOnce(t, repo, "itd-10")
 		if err != nil {
 			t.Fatal(err)
 		}

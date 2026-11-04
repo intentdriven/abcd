@@ -581,9 +581,7 @@ func TestAStepWithoutANeedsLineWaitsForEveryEarlierStep(t *testing.T) {
 // nothing.
 func TestAReceiptAdvancesOnlyTheLaneItBelongsTo(t *testing.T) {
 	f := newParFixture(t, "1. One\n2. Two\n   - needs: none\n", Options{SubAgents: strp("2")})
-	f.stepUntil(t, "both implementers are out", func(st State) bool {
-		return len(st.Lanes) == 2 && len(st.Lanes[0].Awaits) == 1 && len(st.Lanes[1].Awaits) == 1
-	})
+	f.bothImplementersOut(t)
 	one, _ := json.Marshal(f.lane(t, "lane-1"))
 	st := f.state(t)
 	if st.Lanes[0].Worktree == st.Lanes[1].Worktree || st.Lanes[0].Branch == st.Lanes[1].Branch {
@@ -616,9 +614,7 @@ func TestAReceiptAdvancesOnlyTheLaneItBelongsTo(t *testing.T) {
 // merge head before lane 2 arms; no fix round is counted.
 func TestASiblingLandingSyncsTheLaneBeforeItArms(t *testing.T) {
 	f := newParFixture(t, "1. One\n2. Two\n   - needs: none\n", Options{SubAgents: strp("4")})
-	f.stepUntil(t, "both implementers are out", func(st State) bool {
-		return len(st.Lanes) == 2 && len(st.Lanes[0].Awaits) == 1 && len(st.Lanes[1].Awaits) == 1
-	})
+	f.bothImplementersOut(t)
 	f.implement(t, "lane-1", "one.txt")
 	f.implement(t, "lane-2", "two.txt")
 	f.roundPassed(t, "lane-1")
@@ -699,9 +695,7 @@ func TestASiblingLandingSyncsTheLaneBeforeItArms(t *testing.T) {
 // round; no fix round is counted.
 func TestAConflictingSyncGoesToAFreshImplementer(t *testing.T) {
 	f := newParFixture(t, "1. One\n2. Two\n   - needs: none\n", Options{SubAgents: strp("4")})
-	f.stepUntil(t, "both implementers are out", func(st State) bool {
-		return len(st.Lanes) == 2 && len(st.Lanes[0].Awaits) == 1 && len(st.Lanes[1].Awaits) == 1
-	})
+	f.bothImplementersOut(t)
 	f.implement(t, "lane-1", "same.txt")
 	l2 := f.lane(t, "lane-2")
 	if err := os.WriteFile(filepath.Join(l2.Worktree, "same.txt"), []byte("lane two's words\n"), 0o600); err != nil {
@@ -786,9 +780,7 @@ func TestAConflictingSyncGoesToAFreshImplementer(t *testing.T) {
 // verified, and next_eligible_at is written once.
 func TestAnElapsedWindowStartsNothingOnAnyLane(t *testing.T) {
 	f := newParFixture(t, "1. One\n2. Two\n   - needs: none\n", Options{SubAgents: strp("2"), Pace: strp("30/60")})
-	f.stepUntil(t, "both implementers are out", func(st State) bool {
-		return len(st.Lanes) == 2 && len(st.Lanes[0].Awaits) == 1 && len(st.Lanes[1].Awaits) == 1
-	})
+	f.bothImplementersOut(t)
 	f.now = f.now.Add(31 * time.Minute)
 	res := f.step(t)
 	if res.NextEligibleAt == nil || res.Awaiting == nil {

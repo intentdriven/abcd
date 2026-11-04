@@ -250,7 +250,7 @@ func TestThePeerRefusalNamesAWorktreeOutsideHomeByItsDirectoryName(t *testing.T)
 func TestStartAgainResumesTheRunItsOwnLaneChanged(t *testing.T) {
 	t.Run("its lane worktree ships the intent", func(t *testing.T) {
 		repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-		first, err := Start(repo.Root(), "itd-10", Options{})
+		first, err := startedOnce(t, repo, "itd-10")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -275,7 +275,7 @@ func TestStartAgainResumesTheRunItsOwnLaneChanged(t *testing.T) {
 	})
 	t.Run("its lane claims the intent", func(t *testing.T) {
 		repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-		first, err := Start(repo.Root(), "itd-10", Options{})
+		first, err := startedOnce(t, repo, "itd-10")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -444,7 +444,7 @@ func TestStartFollowsASupersededBlockerToItsShippedReplacement(t *testing.T) {
 // TestAnUnsteppedSpecIsOneLane: a spec listing no steps is built as one step.
 func TestAnUnsteppedSpecIsOneLane(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-	res, err := Start(repo.Root(), "itd-10", Options{})
+	res, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -509,7 +509,7 @@ func stateBytes(t *testing.T, root, runID string) []byte {
 // next spec step's lane when a lane is done, until the run is complete.
 func TestTheHostDrivesTheLoopEndToEnd(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps("1. The parser\n2. The loop\n"))
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -600,7 +600,7 @@ func TestTheHostDrivesTheLoopEndToEnd(t *testing.T) {
 // it again, and a step the state records as done is never performed twice.
 func TestAKilledStepRepeatsAndACompletedStepDoesNot(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -630,7 +630,7 @@ func TestAKilledStepRepeatsAndACompletedStepDoesNot(t *testing.T) {
 // refused with the piece that delivers it, and the run is unchanged.
 func TestAStepThisBuildDoesNotCarryIsRefusedByName(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -692,7 +692,7 @@ func TestAPauseRefusesUntilNextEligibleAt(t *testing.T) {
 // (iss-2609281204381700).
 func TestReadStateFailsClosed(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -747,7 +747,7 @@ func TestReadStateFailsClosed(t *testing.T) {
 func TestASymlinkedRunStateIsRefusedInTheRefusalShape(t *testing.T) {
 	t.Run("the state file", func(t *testing.T) {
 		repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-		start, err := Start(repo.Root(), "itd-10", Options{})
+		start, err := startedOnce(t, repo, "itd-10")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -771,7 +771,7 @@ func TestASymlinkedRunStateIsRefusedInTheRefusalShape(t *testing.T) {
 	})
 	t.Run("the run directory", func(t *testing.T) {
 		repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-		start, err := Start(repo.Root(), "itd-10", Options{})
+		start, err := startedOnce(t, repo, "itd-10")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -824,7 +824,7 @@ func TestRefusalRendersStepReasonAndRemedy(t *testing.T) {
 // taken rather than refused as "not at the path given" (iss-2609261534097255).
 func TestAReceiptNamedThroughASymlinkedPathIsTheReceiptAwaited(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -862,7 +862,7 @@ func TestAReceiptNamedThroughASymlinkedPathIsTheReceiptAwaited(t *testing.T) {
 // done.
 func TestTheRecordNamesEachLaneAsItOpens(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps("1. The parser\n2. The loop\n3. The page\n"))
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}

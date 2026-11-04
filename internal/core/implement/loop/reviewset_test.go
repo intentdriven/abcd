@@ -55,7 +55,7 @@ func reviewRecord(t *testing.T, st State) string {
 // and the payload, the state and the record name the bundled layer.
 func TestTheBundledReviewSetIsTwoReviewersPerRole(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-	res, err := Start(repo.Root(), "itd-10", Options{})
+	res, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +269,7 @@ func TestACalibratedJudgeJoinsTheSet(t *testing.T) {
 // then, and writes nothing.
 func TestARunningRunKeepsTheReviewSetItStartedWith(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-	first, err := Start(repo.Root(), "itd-10", Options{})
+	first, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +294,7 @@ func TestARunningRunKeepsTheReviewSetItStartedWith(t *testing.T) {
 // carrying one is not one its version wrote.
 func TestAStoredReviewSetTheLoopNeverWritesIsRefused(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-	res, err := Start(repo.Root(), "itd-10", Options{})
+	res, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}

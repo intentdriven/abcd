@@ -83,7 +83,7 @@ func routeOf(t *testing.T, rs []DrainRoute, issue string) DrainRoute {
 // the run to drive, and every field hand-back is flagged naming its rule.
 func TestADrainOpensOneIssueLaneAtATimeInTheDrainOrder(t *testing.T) {
 	repo := drainRepo(t)
-	first, err := Drain(repo.Root(), Options{}, DrainOptions{})
+	first, err := drainedOnce(t, repo, DrainOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestADrainOpensOneIssueLaneAtATimeInTheDrainOrder(t *testing.T) {
 // in the summary, and the drain opens the next issue's lane.
 func TestALaneHandedBackIsRoutedByKindAndTheDrainMovesOn(t *testing.T) {
 	repo := drainRepo(t)
-	first := drainToLane(t, repo, Options{}, DrainOptions{})
+	first := drainedToLaneOnce(t, repo, DrainOptions{})
 	handBackLaneOf(t, repo, first.Start.RunID, Options{}, LaneHandBack{Kind: HandBackUserVisible, Reason: "the page gains a flag users see"})
 	recordPath, _ := filepath.Glob(filepath.Join(repo.Root(), ".abcd", "work", "issues", "open", secondIssue+"-*.md"))
 	if len(recordPath) != 1 {
@@ -202,7 +202,7 @@ func TestALaneHandedBackIsRoutedByKindAndTheDrainMovesOn(t *testing.T) {
 // lanes a drain opens, and at the cap the run reports and exits.
 func TestADrainStopsAtItsMaxAndNamesTheCap(t *testing.T) {
 	repo := drainRepo(t)
-	first := drainToLane(t, repo, Options{}, DrainOptions{Max: 1})
+	first := drainedToLaneOnce(t, repo, DrainOptions{Max: 1})
 	handBackLaneOf(t, repo, first.Start.RunID, Options{}, LaneHandBack{Kind: HandBackDesignFinding, Reason: "the flag's name is a design choice", Home: "an intent for the flags page"})
 	capped, err := Drain(repo.Root(), Options{}, DrainOptions{})
 	if err != nil {

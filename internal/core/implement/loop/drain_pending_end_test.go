@@ -42,7 +42,7 @@ func editOnOrigin(t *testing.T, bare, id string) {
 // route that the hand-back was dropped, and why, never that it was published.
 func TestAPendingHandBackOverAChangedRecordIsDroppedNotPublished(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
-	first, err := Drain(repo.Root(), Options{}, DrainOptions{})
+	first, err := drainedOnce(t, repo, DrainOptions{})
 	if err != nil || first.Judging == nil || first.Judging.Issue != secondIssue {
 		t.Fatalf("the first move asks over %s: %+v %v", secondIssue, first.Judging, err)
 	}

@@ -75,7 +75,7 @@ func issueRepoAt(t *testing.T, foundAt string) *gittest.Repo {
 // definition of done a detector watched to fail before the fix and pass after.
 func TestAnIssueKeyOpensOneLaneWhoseBriefIsTheRecordAndItsRemedy(t *testing.T) {
 	repo := issueRepo(t)
-	start, err := Start(repo.Root(), eligibleIssue, Options{})
+	start, err := startedOnce(t, repo, eligibleIssue)
 	if err != nil {
 		t.Fatalf("an eligible issue starts a run: %v", err)
 	}

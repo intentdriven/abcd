@@ -21,9 +21,7 @@ func TestASyncMergeStoppedAtItsDeadlineIsUndone(t *testing.T) {
 		t.Skip("POSIX hook script")
 	}
 	f := newParFixture(t, "1. One\n2. Two\n   - needs: none\n", Options{SubAgents: strp("4")})
-	f.stepUntil(t, "both implementers are out", func(st State) bool {
-		return len(st.Lanes) == 2 && len(st.Lanes[0].Awaits) == 1 && len(st.Lanes[1].Awaits) == 1
-	})
+	f.bothImplementersOut(t)
 	f.implement(t, "lane-1", "one.txt")
 	f.implement(t, "lane-2", "two.txt")
 	f.roundPassed(t, "lane-1")
@@ -78,9 +76,7 @@ func TestASyncMergeStoppedAtItsDeadlineIsUndone(t *testing.T) {
 // change the loop did not make is never merged over or reset away.
 func TestASyncOverUncommittedWorkIsRefusedBeforeTheMerge(t *testing.T) {
 	f := newParFixture(t, "1. One\n2. Two\n   - needs: none\n", Options{SubAgents: strp("4")})
-	f.stepUntil(t, "both implementers are out", func(st State) bool {
-		return len(st.Lanes) == 2 && len(st.Lanes[0].Awaits) == 1 && len(st.Lanes[1].Awaits) == 1
-	})
+	f.bothImplementersOut(t)
 	f.implement(t, "lane-1", "one.txt")
 	f.implement(t, "lane-2", "two.txt")
 	f.roundPassed(t, "lane-1")

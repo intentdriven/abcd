@@ -105,7 +105,7 @@ func (f *landFixture) moveMain(t *testing.T, content string, names ...string) st
 // judges that head before anything is recorded or pushed.
 func TestAnIssueLaneMergesTheMovedDefaultBranchInItsSync(t *testing.T) {
 	f := syncFixture(t)
-	judged := f.passToLand(t, "fix.txt").HeadSHA
+	judged := f.passToLandOnce(t, "fix.txt").HeadSHA
 	tip := f.moveMain(t, "another account's file\n", "other.txt")
 
 	f.step(t)
@@ -142,7 +142,7 @@ func TestAnIssueLaneMergesTheMovedDefaultBranchInItsSync(t *testing.T) {
 // pushed.
 func TestAConflictOnADeclaredGeneratedFileGoesToTheImplementer(t *testing.T) {
 	f := syncFixture(t)
-	judged := f.passToLand(t, "fix.txt", "gen.txt").HeadSHA
+	judged := f.passToLandOnce(t, "fix.txt", "gen.txt").HeadSHA
 	f.moveMain(t, "generated again on main\n", "gen.txt")
 
 	f.step(t)
@@ -175,7 +175,7 @@ func TestAConflictOnADeclaredGeneratedFileGoesToTheImplementer(t *testing.T) {
 // into it cleanly, as a fast-forward, carrying the regenerated file.
 func TestARegeneratedFileIsPushedAsAPullRequestThatMergesCleanly(t *testing.T) {
 	f := syncFixture(t)
-	judged := f.passToLand(t, "fix.txt", "gen.txt").HeadSHA
+	judged := f.passToLandOnce(t, "fix.txt", "gen.txt").HeadSHA
 	tip := f.moveMain(t, "generated again on main\n", "gen.txt")
 
 	// The sync conflicts on the generated file and goes to an implementer.
@@ -292,7 +292,7 @@ func TestARegeneratedFileIsPushedAsAPullRequestThatMergesCleanly(t *testing.T) {
 // as stuck naming the file; nothing is pushed.
 func TestAConflictOnAnUndeclaredFileHandsBackAndPushesNothing(t *testing.T) {
 	f := syncFixture(t)
-	judged := f.passToLand(t, "fix.txt", "plain.txt").HeadSHA
+	judged := f.passToLandOnce(t, "fix.txt", "plain.txt").HeadSHA
 	f.moveMain(t, "rewritten on main\n", "plain.txt")
 
 	_, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
@@ -351,7 +351,7 @@ func TestAPullRequestThatStartsToConflictReentersTheSync(t *testing.T) {
 
 	t.Run("at its arming", func(t *testing.T) {
 		f := syncFixture(t)
-		f.passToLand(t, "fix.txt", "gen.txt")
+		f.passToLandOnce(t, "fix.txt", "gen.txt")
 		for range 4 {
 			f.step(t)
 			if l := currentLane(t, f.repo, f.runID); l.Landing != nil && l.Landing.Pushed == "" && l.Landing.RecordsDone {
@@ -375,7 +375,7 @@ func TestAPullRequestThatStartsToConflictReentersTheSync(t *testing.T) {
 
 	t.Run("and lands again once a fresh round judges the merge", func(t *testing.T) {
 		f := syncFixture(t)
-		f.passToLand(t, "fix.txt")
+		f.passToLandOnce(t, "fix.txt")
 		f.step(t)
 		f.step(t)
 		l := currentLane(t, f.repo, f.runID)
@@ -425,7 +425,7 @@ func TestAPullRequestThatStartsToConflictReentersTheSync(t *testing.T) {
 
 	t.Run("while it waits armed", func(t *testing.T) {
 		f := syncFixture(t)
-		f.passToLand(t, "fix.txt", "gen.txt")
+		f.passToLandOnce(t, "fix.txt", "gen.txt")
 		f.step(t)
 		f.step(t)
 		l := currentLane(t, f.repo, f.runID)
@@ -476,7 +476,7 @@ func TestAPullRequestThatStartsToConflictReentersTheSync(t *testing.T) {
 // the lane's next step merges the default branch.
 func TestADisarmedLaneWhoseSyncRefusesIsNotLeftArmed(t *testing.T) {
 	f := syncFixture(t)
-	f.passToLand(t, "fix.txt", "gen.txt")
+	f.passToLandOnce(t, "fix.txt", "gen.txt")
 	f.step(t)
 	f.step(t)
 	l := currentLane(t, f.repo, f.runID)
@@ -548,7 +548,7 @@ func TestADisarmedLaneWhoseSyncRefusesIsNotLeftArmed(t *testing.T) {
 // names the refusal beside the forge's reading rather than dropping it.
 func TestAParkedLaneWhoseSyncIsRefusedNamesTheRefusal(t *testing.T) {
 	f := syncFixtureWith(t, unreviewedQueueRuleset("MERGE"))
-	f.passToLand(t, "fix.txt", "gen.txt")
+	f.passToLandOnce(t, "fix.txt", "gen.txt")
 	for range 6 {
 		f.step(t)
 		l := currentLane(t, f.repo, f.runID)

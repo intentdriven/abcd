@@ -90,11 +90,11 @@ func advanceTo(t *testing.T, repo *gittest.Repo, runID string, want Stage) StepR
 // receipt go.
 func TestTheBriefNamesWhatItWasRenderedFrom(t *testing.T) {
 	repo := briefRepo(t, agentsMarked)
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
-	advanceTo(t, repo, start.RunID, StageBrief)
+	advancedToOnce(t, repo, start.RunID, StageBrief)
 	res, err := advance(repo.Root(), start.RunID, DefaultStages(), Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -210,11 +210,11 @@ func TestBriefQuotesDecisionsNamingTheIntent(t *testing.T) {
 // brief says so.
 func TestTheBriefCarriesAnUnmarkedAgentsFileWhole(t *testing.T) {
 	repo := briefRepo(t, "# AGENTS.md\n\n## Definition of done\n\n- make check is clean.\n")
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
-	advanceTo(t, repo, start.RunID, StageImplement)
+	advancedToOnce(t, repo, start.RunID, StageImplement)
 	st, _ := ReadState(repo.Root(), start.RunID)
 	raw, err := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(st.Lanes[0].Brief)))
 	if err != nil {
@@ -238,11 +238,11 @@ func TestTheBriefCarriesAnUnmarkedAgentsFileWhole(t *testing.T) {
 // instruction, outside every block it carries from the record.
 func TestTheBriefCarriesTheOutboundPolicy(t *testing.T) {
 	repo := briefRepo(t, agentsMarked)
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
-	advanceTo(t, repo, start.RunID, StageImplement)
+	advancedToOnce(t, repo, start.RunID, StageImplement)
 	st, err := ReadState(repo.Root(), start.RunID)
 	if err != nil {
 		t.Fatal(err)
@@ -274,11 +274,11 @@ func TestTheBriefCarriesTheOutboundPolicy(t *testing.T) {
 // the brief's own instruction, before the record it carries.
 func TestTheBriefTellsTheImplementerToYieldOnALostConnection(t *testing.T) {
 	repo := briefRepo(t, agentsMarked)
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
-	advanceTo(t, repo, start.RunID, StageImplement)
+	advancedToOnce(t, repo, start.RunID, StageImplement)
 	st, err := ReadState(repo.Root(), start.RunID)
 	if err != nil {
 		t.Fatal(err)
@@ -315,11 +315,11 @@ func TestTheBriefTellsTheImplementerToYieldOnALostConnection(t *testing.T) {
 func TestTheBriefIsRenderedFromTheLaneBase(t *testing.T) {
 	t.Run("no AGENTS.md at the base", func(t *testing.T) {
 		repo := briefRepo(t, "")
-		start, err := Start(repo.Root(), "itd-10", Options{})
+		start, err := startedOnce(t, repo, "itd-10")
 		if err != nil {
 			t.Fatal(err)
 		}
-		advanceTo(t, repo, start.RunID, StageBrief)
+		advancedToOnce(t, repo, start.RunID, StageBrief)
 		_, err = advance(repo.Root(), start.RunID, DefaultStages(), Options{})
 		if r := mustRefusal(t, err); r.Stage != string(StageBrief) || !strings.Contains(r.Reason, "AGENTS.md") {
 			t.Fatalf("want the missing conventions named: %+v", r)
@@ -355,11 +355,11 @@ func TestTheBriefIsRenderedFromTheLaneBase(t *testing.T) {
 // base's text, byte for byte the first rendering.
 func TestABriefRenderedAgainRendersTheBaseNotTheWorktree(t *testing.T) {
 	repo := briefRepo(t, agentsMarked)
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
-	advanceTo(t, repo, start.RunID, StageImplement)
+	advancedToOnce(t, repo, start.RunID, StageImplement)
 	st, err := ReadState(repo.Root(), start.RunID)
 	if err != nil {
 		t.Fatal(err)
@@ -442,11 +442,11 @@ func TestABriefSourceTheBaseHoldsAsASymlinkIsRefused(t *testing.T) {
 // (iss-2611012202511008). The receipt names the model it ran.
 func TestTheBriefScopesTheDefinitionOfDone(t *testing.T) {
 	repo := briefRepo(t, agentsMarked)
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
-	advanceTo(t, repo, start.RunID, StageImplement)
+	advancedToOnce(t, repo, start.RunID, StageImplement)
 	st, err := ReadState(repo.Root(), start.RunID)
 	if err != nil {
 		t.Fatal(err)

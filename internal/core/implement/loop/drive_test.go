@@ -345,7 +345,7 @@ const driveBase = "0123456789abcdef0123456789abcdef01234567"
 func startToImplement(t *testing.T) (root, id string, steps Stages, o Options) {
 	t.Helper()
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -536,7 +536,7 @@ func TestARunnerThatCannotRunTheRoleFallsBackAndIsRecorded(t *testing.T) {
 func TestAReviewThroughARunnerDiffersFromAHostReviewOnlyInItsRoute(t *testing.T) {
 	review := func(t *testing.T, routed bool) ValidatorRun {
 		repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-		start, err := Start(repo.Root(), "itd-10", Options{})
+		start, err := startedOnce(t, repo, "itd-10")
 		if err != nil {
 			t.Fatal(err)
 		}

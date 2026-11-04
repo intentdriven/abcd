@@ -347,7 +347,7 @@ func TestALanesDirectoryReservationNarrowsToItsChangedFiles(t *testing.T) {
 // the file the merge brought.
 func TestANarrowingLeavesOutWhatASyncMerged(t *testing.T) {
 	f := newNarrowFixture(t)
-	f.implement(t, Options{}, "docs/page.md")
+	f.implementOnce(t, "docs/page.md")
 
 	// Another account lands a change of docs/guide.md on origin's default
 	// branch.
@@ -382,8 +382,8 @@ func TestANarrowingWithAnUnwritablePathIsNotMade(t *testing.T) {
 	for _, odd := range []string{"docs/zero\u200bwidth.md", "docs/tab\there.md"} {
 		t.Run(odd, func(t *testing.T) {
 			f := newNarrowFixture(t)
-			f.implement(t, Options{}, "docs/page.md", odd)
-			f.toLand(t)
+			f.implementOnce(t, "docs/page.md", odd)
+			f.toLandOnce(t)
 			before := f.tip(t)
 			due := before.claimed.Add(61 * time.Minute)
 			f.stepAt(t, due)
@@ -422,7 +422,7 @@ func TestANarrowingWithAnUnwritablePathIsNotMade(t *testing.T) {
 // again (dcn-2610170919040486, refined).
 func TestALaneSentBackFromItsLandingReservesItsFootprintAgain(t *testing.T) {
 	f := newNarrowFixture(t)
-	f.implement(t, Options{}, "docs/page.md")
+	f.implementOnce(t, "docs/page.md")
 	f.moveDefault(t, "docs/guide.md")
 	f.toLand(t)
 	before := f.tip(t)
@@ -456,7 +456,7 @@ func TestALaneSentBackFromItsLandingReservesItsFootprintAgain(t *testing.T) {
 // and nothing of the lane is pushed.
 func TestALaneSentBackFromItsLandingIsRefusedWhenItsFootprintIsTaken(t *testing.T) {
 	f := newNarrowFixture(t)
-	f.implement(t, Options{}, "docs/page.md")
+	f.implementOnce(t, "docs/page.md")
 	f.moveDefault(t, "docs/guide.md")
 	f.toLand(t)
 	before := f.tip(t)
@@ -493,8 +493,8 @@ func TestALaneSentBackFromItsLandingIsRefusedWhenItsFootprintIsTaken(t *testing.
 // nothing merged or pushed.
 func TestALaneSentBackFromItsLandingJudgesItsOtherCopyAgain(t *testing.T) {
 	f := newNarrowFixture(t)
-	f.implement(t, Options{}, "docs/page.md")
-	f.toLand(t)
+	f.implementOnce(t, "docs/page.md")
+	f.toLandOnce(t)
 	f.reserveAs(t, "iss-77", heldBy(t, patEmail), "docs/guide.md", time.Now().UTC().Truncate(time.Second))
 	f.moveDefault(t, "other.txt")
 	judged := currentLane(t, f.repo, f.runID)
@@ -581,8 +581,8 @@ func (f *narrowFixture) leftAtLand(t *testing.T, judged Lane) {
 // merged or pushed and the lane stays at its landing.
 func TestALaneLeavingItsLandingWaitsOutALostNetworkAtTheReservations(t *testing.T) {
 	f := newNarrowFixture(t)
-	f.implement(t, Options{}, "docs/page.md")
-	f.toLand(t)
+	f.implementOnce(t, "docs/page.md")
+	f.toLandOnce(t)
 	f.moveDefault(t, "other.txt")
 	judged := currentLane(t, f.repo, f.runID)
 	f.dropNetworkAfter(t, 1)
@@ -606,8 +606,8 @@ func TestALaneLeavingItsLandingWaitsOutALostNetworkAtTheReservations(t *testing.
 // pushed and the lane stays at its landing.
 func TestALaneLeavingItsLandingIsRefusedWhenTheFetchedReservationsCannotBeRead(t *testing.T) {
 	f := newNarrowFixture(t)
-	f.implement(t, Options{}, "docs/page.md")
-	f.toLand(t)
+	f.implementOnce(t, "docs/page.md")
+	f.toLandOnce(t)
 	f.moveDefault(t, "other.txt")
 	judged := currentLane(t, f.repo, f.runID)
 	leavingView = func(string, time.Time) (claim.Snapshot, error) {
@@ -658,8 +658,8 @@ func TestALaneHeldAtItsLandingIsNotJudgedAgainstItsOtherCopy(t *testing.T) {
 // as a foreign move of the branch.
 func TestARefusedWideningLeavesTheLaneAsItWasThroughAMovedDefault(t *testing.T) {
 	f := newNarrowFixture(t)
-	f.implement(t, Options{}, "docs/page.md")
-	f.toLand(t)
+	f.implementOnce(t, "docs/page.md")
+	f.toLandOnce(t)
 	due := f.tip(t).claimed.Add(61 * time.Minute)
 	f.reserveAs(t, "iss-99", "quinn", "docs/guide.md", due.Add(-time.Minute))
 	f.moveDefault(t, "other.txt")
@@ -728,7 +728,7 @@ func TestAResumeDuringImplementPublishesAWidenedFoundAt(t *testing.T) {
 	for _, taken := range []bool{false, true} {
 		t.Run(map[bool]string{false: "free", true: "taken"}[taken], func(t *testing.T) {
 			f := newNarrowFixtureAt(t, "docs/page.md", "docs/page.md")
-			f.awaitImplementer(t)
+			f.awaitImplementerOnce(t)
 			widenFoundAt(t, f.repo, secondIssue, "docs/")
 			now := f.tip(t).claimed.Add(time.Minute)
 			if taken {

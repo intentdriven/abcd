@@ -79,14 +79,14 @@ func (f *landFixture) approve(t *testing.T) {
 // request open, saying it waits for the technical facilitator's approval.
 func TestHumanLeavesAPullRequestWithNoApprovalOpen(t *testing.T) {
 	f := newLandFixture(t, unreviewedQueueRuleset("MERGE"))
-	assertLeftOpen(t, f, f.landedToArmed(t))
+	assertLeftOpen(t, f, f.landedToArmedOnce(t))
 }
 
 // TestAMissingRulesetMirrorLeavesThePullRequestOpen: with no mirror at the
 // lane's base and no approval of the head, nothing is armed.
 func TestAMissingRulesetMirrorLeavesThePullRequestOpen(t *testing.T) {
 	f := newLandFixture(t, "")
-	l := f.landedToArmed(t)
+	l := f.landedToArmedOnce(t)
 	if strings.Contains(f.ghLog(t), "pr merge") || l.Landing == nil || l.Landing.Armed || l.Landing.Merge == "" {
 		t.Fatalf("a missing mirror leaves the pull request open: %+v\n%s", l.Landing, f.ghLog(t))
 	}
@@ -145,7 +145,7 @@ func TestTheRulesetsApprovalRuleNoLongerDecidesTheArming(t *testing.T) {
 // its head is given.
 func TestALaterApprovalArmsAParkedLane(t *testing.T) {
 	f := newLandFixture(t, unreviewedQueueRuleset("MERGE"))
-	l := f.landedToArmed(t)
+	l := f.landedToArmedOnce(t)
 	if l.Landing == nil || l.Landing.Armed {
 		t.Fatalf("the lane is left open with no approval: %+v", l.Landing)
 	}
@@ -167,7 +167,7 @@ func TestAutoArmsOnlyAHeadAReviewReceiptNames(t *testing.T) {
 		".abcd/work/rulesets/main-protection.json": unreviewedQueueRuleset("MERGE"),
 		".abcd/config.json":                        `{"facilitator":{"mode":"auto"}}` + "\n",
 	})
-	l := f.landedToArmed(t)
+	l := f.landedToArmedOnce(t)
 	if strings.Contains(f.ghLog(t), "pr merge") || l.Landing == nil || l.Landing.Armed ||
 		!strings.Contains(l.Landing.Merge, "no review receipt names "+l.Landing.Pushed) {
 		t.Fatalf("an unreviewed head is left open, naming it: %+v\n%s", l.Landing, f.ghLog(t))

@@ -202,7 +202,7 @@ func TestAWideningIsRefusedOutsideTheLanesEditingStages(t *testing.T) {
 // what each exit means.
 func TestAnIssueBriefNamesTheWideningStep(t *testing.T) {
 	f := newNarrowFixture(t)
-	f.awaitImplementer(t)
+	f.awaitImplementerOnce(t)
 	l := currentLane(t, f.repo, f.runID)
 	brief, err := os.ReadFile(filepath.Join(f.repo.Root(), filepath.FromSlash(l.Brief)))
 	if err != nil {
@@ -266,7 +266,7 @@ func TestAResumeOverALapsedHoldKeepsThePathsTheLaneWidenedTo(t *testing.T) {
 // since the widen step would refuse it, and the land fence settles the loss.
 func TestTheBackstopIgnoresAReleasedHold(t *testing.T) {
 	f := newNarrowFixture(t)
-	f.awaitImplementer(t)
+	f.awaitImplementerOnce(t)
 	releaseKey(f.repo.Root(), secondIssue, time.Now())
 	err := f.handBack(t, Options{}, "docs/page.md", "README.txt")
 	if r, ok := AsRefusal(err); ok && strings.Contains(r.Reason, "implement widen") {

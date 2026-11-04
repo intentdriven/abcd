@@ -157,12 +157,12 @@ func pauseBoth(t *testing.T, f *landFixture) time.Time {
 // next_eligible_at.
 func TestAMergedLaneParkedAtLandIsFinishedOnTheNextDrainMove(t *testing.T) {
 	f := drainLandFixture(t)
-	first := drainToLane(t, f.repo, Options{}, DrainOptions{})
+	first := f.firstMove(t)
 	if first.Start == nil || first.Lane.Issue != secondIssue {
 		t.Fatalf("the drain opens the documentation issue's lane: %+v", first)
 	}
 	f.runID, f.issue = first.Start.RunID, secondIssue
-	l := f.armIssueLane(t)
+	l := f.armIssueLaneOnce(t)
 
 	waiting, err := Drain(f.repo.Root(), Options{}, DrainOptions{})
 	if err != nil {
@@ -233,12 +233,12 @@ func TestAMergedLaneParkedAtLandIsFinishedOnTheNextDrainMove(t *testing.T) {
 // the cleanup reads the checkout's runs, not one drain's lanes.
 func TestAMergedLaneOfAnEndedDrainIsFinishedByTheNextDrain(t *testing.T) {
 	f := drainLandFixture(t)
-	start, err := Start(f.repo.Root(), secondIssue, Options{})
+	start, err := f.startOnce(t, secondIssue)
 	if err != nil {
 		t.Fatal(err)
 	}
 	f.runID, f.issue = start.RunID, secondIssue
-	l := f.armIssueLane(t)
+	l := f.armIssueLaneOnce(t)
 	f.merged(t, l.Landing.Pushed)
 
 	res, err := Drain(f.repo.Root(), Options{}, DrainOptions{})
@@ -258,12 +258,12 @@ func TestAMergedLaneOfAnEndedDrainIsFinishedByTheNextDrain(t *testing.T) {
 // move and goes on.
 func TestAMergedLaneTheLoopCannotProveIsNamedNotFatal(t *testing.T) {
 	f := drainLandFixture(t)
-	start, err := Start(f.repo.Root(), secondIssue, Options{})
+	start, err := f.startOnce(t, secondIssue)
 	if err != nil {
 		t.Fatal(err)
 	}
 	f.runID, f.issue = start.RunID, secondIssue
-	l := f.armIssueLane(t)
+	l := f.armIssueLaneOnce(t)
 	f.merged(t, l.Landing.Pushed)
 	laneCommit(t, f.repo, l, "late.txt")
 
@@ -308,12 +308,12 @@ func TestAMergedLaneCheckedOutElsewhereIsNotPulledFromUnderIt(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := drainLandFixture(t)
-			start, err := Start(f.repo.Root(), secondIssue, Options{})
+			start, err := f.startOnce(t, secondIssue)
 			if err != nil {
 				t.Fatal(err)
 			}
 			f.runID, f.issue = start.RunID, secondIssue
-			l := f.armIssueLane(t)
+			l := f.armIssueLaneOnce(t)
 			f.merged(t, l.Landing.Pushed)
 			other := tc.arrange(t, f, l)
 			want := filepath.Base(other)
@@ -360,12 +360,12 @@ func TestAMergedLaneCheckedOutElsewhereIsNotPulledFromUnderIt(t *testing.T) {
 // merged.
 func TestAMergedLaneWhoseHeadGitCannotPlaceIsNamed(t *testing.T) {
 	f := drainLandFixture(t)
-	start, err := Start(f.repo.Root(), secondIssue, Options{})
+	start, err := f.startOnce(t, secondIssue)
 	if err != nil {
 		t.Fatal(err)
 	}
 	f.runID, f.issue = start.RunID, secondIssue
-	l := f.armIssueLane(t)
+	l := f.armIssueLaneOnce(t)
 	f.merged(t, l.Landing.Pushed)
 	gone := strings.Repeat("d", 40)
 	if err := mutate(f.repo.Root(), f.runID, func(_ *os.Root, st *State) (bool, error) {

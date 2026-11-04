@@ -134,7 +134,7 @@ func TestAutoPlanRefusesAnythingLessThanTheSubstitute(t *testing.T) {
 // build of a draft refuses at the readiness gate, as it always has.
 func TestADraftWithoutAutoPlanIsStillRefused(t *testing.T) {
 	repo := draftRepo(t, draftIntent())
-	_, err := Start(repo.Root(), "itd-10", Options{})
+	_, err := startedOnce(t, repo, "itd-10")
 	if r := mustRefusal(t, err); r.Check != CheckReady || !strings.Contains(r.Reason, "draft") {
 		t.Fatalf("a draft built without --auto-plan is refused at ready: %+v", r)
 	}

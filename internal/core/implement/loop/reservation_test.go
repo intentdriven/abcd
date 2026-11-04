@@ -320,7 +320,7 @@ func (f *landFixture) fenced(t *testing.T) *Refusal {
 // Q and arms nothing.
 func TestTheFenceRefusesAReservationNowAnotherPersons(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
-	f.toArm(t)
+	f.toArmOnce(t)
 	now := time.Now().UTC().Truncate(time.Second)
 	reserveRun(t, f.repo, f.runID, "itd-10", now.Add(-130*time.Minute), "internal/widget")
 	q := otherCopy(t, f.bare, quinnEmail)
@@ -342,7 +342,7 @@ func TestTheFenceRefusesAReservationNowAnotherPersons(t *testing.T) {
 // took the reservation over; the lane on the first does not arm.
 func TestTheFenceRefusesAfterTheOtherCopyTookOver(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
-	f.toArm(t)
+	f.toArmOnce(t)
 	now := time.Now().UTC().Truncate(time.Second)
 	reserveRun(t, f.repo, f.runID, "itd-10", now.Add(-30*time.Minute), "internal/widget")
 	p2 := otherCopy(t, f.bare, patEmail)
@@ -361,7 +361,7 @@ func TestTheFenceRefusesAfterTheOtherCopyTookOver(t *testing.T) {
 func TestTheFenceRefusesAReleasedOrUnreadableReservation(t *testing.T) {
 	t.Run("released", func(t *testing.T) {
 		f := newLandFixture(t, queueRuleset("MERGE"))
-		f.toArm(t)
+		f.toArmOnce(t)
 		now := time.Now().UTC().Truncate(time.Second)
 		reserveRun(t, f.repo, f.runID, "itd-10", now.Add(-30*time.Minute), "internal/widget")
 		if _, err := claim.Reserve(f.repo.Root(), claim.Request{Record: "itd-10", Release: true}, clockAt(now.Add(-time.Minute))); err != nil {
@@ -375,7 +375,7 @@ func TestTheFenceRefusesAReleasedOrUnreadableReservation(t *testing.T) {
 	})
 	t.Run("fetch failed", func(t *testing.T) {
 		f := newLandFixture(t, queueRuleset("MERGE"))
-		f.toArm(t)
+		f.toArmOnce(t)
 		now := time.Now().UTC().Truncate(time.Second)
 		reserveRun(t, f.repo, f.runID, "itd-10", now.Add(-30*time.Minute), "internal/widget")
 		if err := os.Rename(f.bare, f.bare+".gone"); err != nil {
@@ -412,7 +412,7 @@ func TestTheFenceRenewsPastTheQueueTimeout(t *testing.T) {
 	} {
 		t.Run(tc.minutes, func(t *testing.T) {
 			f := newLandFixture(t, queueRulesetTimed(tc.minutes))
-			f.toArm(t)
+			f.toArmOnce(t)
 			now := time.Now().UTC().Truncate(time.Second)
 			reserveRun(t, f.repo, f.runID, "itd-10", now.Add(-30*time.Minute), "internal/widget")
 			before := originReservation(t, f.bare, reservedRef)
@@ -434,7 +434,7 @@ func TestTheFenceRenewsPastTheQueueTimeout(t *testing.T) {
 // the reservation prefix.
 func TestARunHoldingNoReservationIsNeitherRenewedNorFenced(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
-	l := f.landedToArmed(t)
+	l := f.landedToArmedOnce(t)
 	if l.Landing == nil || !l.Landing.Armed {
 		t.Fatalf("the merge is armed: %+v", l.Landing)
 	}
@@ -477,7 +477,7 @@ func TestAVersion10StateCarryingAReservationIsRefused(t *testing.T) {
 // P's reservation, renewed by the fence, and returns the lane.
 func (f *landFixture) armReserved(t *testing.T) Lane {
 	t.Helper()
-	f.toArm(t)
+	f.toArmOnce(t)
 	now := time.Now().UTC().Truncate(time.Second)
 	reserveRun(t, f.repo, f.runID, "itd-10", now.Add(-30*time.Minute), "internal/widget")
 	f.step(t)

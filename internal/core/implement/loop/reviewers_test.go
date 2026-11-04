@@ -79,12 +79,12 @@ func wantReviewer(t *testing.T, a Await, role string, index int, class string) {
 // so neither overwrites the other, whichever comes back first.
 func TestTwoReviewersOfOneRoleAreKeyedByIndex(t *testing.T) {
 	repo := briefRepo(t, agentsMarked)
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
 	id, stages := start.RunID, DefaultStages()
-	l := implemented(t, repo, id, stages, "one.txt")
+	l := implementedOnce(t, repo, id, "one.txt")
 
 	first := stepAwait(t, repo, id, stages, Options{})
 	second := stepAwait(t, repo, id, stages, Options{})
@@ -323,12 +323,12 @@ func TestBothReviewersAreHandedOutWithinTheSubAgentCeiling(t *testing.T) {
 // round's comparisons is not one its version wrote, and is refused naming it.
 func TestAnOlderStateMigratesItsReviewerToIndexZero(t *testing.T) {
 	repo := briefRepo(t, agentsMarked)
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
 	id, stages := start.RunID, DefaultStages()
-	implemented(t, repo, id, stages, "one.txt")
+	implementedOnce(t, repo, id, "one.txt")
 	first := stepAwait(t, repo, id, stages, Options{})
 	path := filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(id)))
 	keyed := stateBytes(t, repo.Root(), id)
@@ -420,12 +420,12 @@ func TestAnOlderStateMigratesItsReviewerToIndexZero(t *testing.T) {
 // writes, so a hand edit never reaches a runner's request or a payload.
 func TestAStoredReviewerTheLoopNeverWritesIsRefused(t *testing.T) {
 	repo := briefRepo(t, agentsMarked)
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
 	id, stages := start.RunID, DefaultStages()
-	implemented(t, repo, id, stages, "one.txt")
+	implementedOnce(t, repo, id, "one.txt")
 	stepAwait(t, repo, id, stages, Options{})
 	path := filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(id)))
 	orig := stateBytes(t, repo.Root(), id)

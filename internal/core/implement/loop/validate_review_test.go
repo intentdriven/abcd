@@ -240,12 +240,12 @@ func TestAReviewTheRouteDoesNotReturnFallsBackToTheHostWithAReceipt(t *testing.T
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			repo := briefRepo(t, agentsMarked)
-			start, err := Start(repo.Root(), "itd-10", Options{})
+			start, err := startedOnce(t, repo, "itd-10")
 			if err != nil {
 				t.Fatal(err)
 			}
 			id, stages := start.RunID, DefaultStages()
-			implemented(t, repo, id, stages, "one.txt")
+			implementedOnce(t, repo, id, "one.txt")
 			res := reviewOut(t, repo.Root(), id, stages, RoleRuthless)
 			aw := *res.Awaiting
 
@@ -399,7 +399,7 @@ func startAtValidate(t *testing.T, name, body string) (*gittest.Repo, string, St
 		return w.repo, id, DefaultStages(), currentLane(t, w.repo, id)
 	}
 	repo := briefRepo(t, agentsMarked)
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -821,7 +821,7 @@ func editState(t *testing.T, root, runID string, edit func(doc map[string]any)) 
 // TheRoutes says the same of the auditor).
 func TestOnlyAReviewersReturnIsReadAsTheRoutes(t *testing.T) {
 	repo := briefRepo(t, agentsMarked)
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}

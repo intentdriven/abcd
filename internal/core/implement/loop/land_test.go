@@ -328,7 +328,7 @@ func (f *landFixture) merged(t *testing.T, head string) {
 // up only once its commit is on the default branch.
 func TestTheLandingClosesTheSpecResolvesTheCapturesAndArmsTheMerge(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
-	l := f.validated(t)
+	l := f.validatedOnce(t)
 	implHead := l.HeadSHA
 
 	// The records: spec close and capture resolve, committed on the lane.
@@ -467,7 +467,7 @@ func (f *landFixture) landedToArmed(t *testing.T) Lane {
 // cleanup's ancestor check is made against what was pushed.
 func TestNothingIsPushedAfterArming(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
-	l := f.landedToArmed(t)
+	l := f.landedToArmedOnce(t)
 	pushed := f.remoteBranch(t, l.Branch)
 	if pushed != l.HeadSHA {
 		t.Fatalf("the lane was pushed before arming: remote %q, head %s", pushed, l.HeadSHA)
@@ -521,7 +521,7 @@ func TestAPullRequestBodyThatArrivesDirtyIsReReadAndStripped(t *testing.T) {
 // is armed as the forge's auto-merge (a merge commit).
 func TestWithoutAMergeQueueTheMergeIsAutoMerge(t *testing.T) {
 	f := newLandFixture(t, noQueueRuleset)
-	l := f.landedToArmed(t)
+	l := f.landedToArmedOnce(t)
 	if strings.Contains(f.ghLog(t), "pr merge") {
 		t.Fatalf("no merge is armed with no approval of the head:\n%s", f.ghLog(t))
 	}
@@ -542,7 +542,7 @@ func TestWithoutAMergeQueueTheMergeIsAutoMerge(t *testing.T) {
 // without merging is refused loudly, and the lane's worktree and branch stay.
 func TestAClosedPullRequestIsRefusedAndNothingIsCleanedUp(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
-	l := f.landedToArmed(t)
+	l := f.landedToArmedOnce(t)
 	if err := os.WriteFile(filepath.Join(f.gh, "state"), []byte("CLOSED\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}

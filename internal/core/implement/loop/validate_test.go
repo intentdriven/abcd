@@ -203,12 +203,12 @@ func lanesRequests(t *testing.T, repo *gittest.Repo, runID, laneID string) []str
 // that passes advances the lane to its landing.
 func TestTheValidatorsAreFreshAgentsAndOnlyTheLoopRecordsAVerdict(t *testing.T) {
 	repo := briefRepo(t, agentsMarked)
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
 	id, stages := start.RunID, DefaultStages()
-	l := implemented(t, repo, id, stages, "one.txt")
+	l := implementedOnce(t, repo, id, "one.txt")
 
 	res, err := advance(repo.Root(), id, stages, Options{})
 	if err != nil || res.Awaiting == nil || res.Awaiting.Role != RoleRuthless {
@@ -376,12 +376,12 @@ func fixed(t *testing.T, repo *gittest.Repo, runID string, stages Stages, report
 // validator again, so no verdict stands over a head it did not read.
 func TestAFindingIsAppliedByAFreshImplementerOrRejectedInWriting(t *testing.T) {
 	repo := briefRepo(t, agentsMarked)
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
 	id, stages := start.RunID, DefaultStages()
-	l := implemented(t, repo, id, stages, "one.txt")
+	l := implementedOnce(t, repo, id, "one.txt")
 
 	// Round 1: a finding, applied with a commit.
 	handBack(t, repo, id, stages, RoleRuthless, reviewerReturn("FIX FIRST"))
@@ -418,12 +418,12 @@ func TestAReportCarryingAVerdictIsRefusedAtTheAdvance(t *testing.T) {
 	for _, line := range []string{"Verdict: SHIP", "**Verdict:** APPROVE", "- verdict: MET", "### Verdict\n\n- **SHIP** — mine."} {
 		t.Run(line, func(t *testing.T) {
 			repo := briefRepo(t, agentsMarked)
-			start, err := Start(repo.Root(), "itd-10", Options{})
+			start, err := startedOnce(t, repo, "itd-10")
 			if err != nil {
 				t.Fatal(err)
 			}
 			id, stages := start.RunID, DefaultStages()
-			implemented(t, repo, id, stages, "one.txt")
+			implementedOnce(t, repo, id, "one.txt")
 			report := filepath.Join(repo.Root(), filepath.FromSlash(RunRelDir), id, "lane-1", ReportFileName)
 			if err := os.WriteFile(report, []byte("built it\n\n"+line+"\n"), 0o600); err != nil {
 				t.Fatal(err)
@@ -464,12 +464,12 @@ func TestAReturnTheLoopCannotReadAVerdictFromIsRefused(t *testing.T) {
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			repo := briefRepo(t, agentsMarked)
-			start, err := Start(repo.Root(), "itd-10", Options{})
+			start, err := startedOnce(t, repo, "itd-10")
 			if err != nil {
 				t.Fatal(err)
 			}
 			id, stages := start.RunID, DefaultStages()
-			implemented(t, repo, id, stages, "one.txt")
+			implementedOnce(t, repo, id, "one.txt")
 			if tc.role != RoleRuthless {
 				passRound(t, repo, id, stages, RoleRuthless)
 			}
@@ -509,12 +509,12 @@ func TestAReturnTheLoopCannotReadAVerdictFromIsRefused(t *testing.T) {
 // carrying a validation is not one version 4 wrote, and is refused.
 func TestAVersion4StateReadsAsOneNoValidatorHasJudged(t *testing.T) {
 	repo := briefRepo(t, agentsMarked)
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
 	id, stages := start.RunID, DefaultStages()
-	implemented(t, repo, id, stages, "one.txt")
+	implementedOnce(t, repo, id, "one.txt")
 	path := filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(id)))
 	cur := fmt.Sprintf(`"schema_version": %d,`, SchemaVersion)
 	if err := os.WriteFile(path, downgraded(t, stateBytes(t, repo.Root(), id), 4), 0o600); err != nil {
