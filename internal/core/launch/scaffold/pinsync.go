@@ -38,6 +38,67 @@ var pinSyncPairs = []struct{ workflow, template string }{
 	{ReauthorYMLPath, reauthorTemplateRel},
 }
 
+// The project site's committed workflow is rendered by `abcd site setup` from
+// the site template and the github-pages adapter's deploy step, and a test in
+// internal/core/site holds it byte-identical to that render
+// (spc-2610142146250176). Its pins live where a line-wise template sync cannot
+// reach them: behind a template action on a `uses:` line, and in Go string
+// constants. The golden renders the site package compares against carry the
+// same pins. So each is rewritten pin by pin rather than line by line.
+const (
+	projectSiteYMLRel        = ".github/workflows/project-site.yml"
+	siteTemplateRel          = "internal/core/site/setupsrc/site.yml.tmpl"
+	githubPagesAdapterRel    = "internal/adapter/hosting/githubpages/githubpages.go"
+	siteGoldenGitHubPagesRel = "internal/core/site/testdata/site-workflow-github-pages.yml"
+	siteGoldenCloudflareRel  = "internal/core/site/testdata/site-workflow-cloudflare.yml"
+)
+
+// pinTokenPairs maps a committed workflow to every file carrying the pins it
+// was rendered from.
+var pinTokenPairs = []struct {
+	workflow string
+	targets  []string
+}{
+	{projectSiteYMLRel, []string{siteTemplateRel, githubPagesAdapterRel, siteGoldenGitHubPagesRel, siteGoldenCloudflareRel}},
+}
+
+// pinTokenRe finds one SHA pin anywhere in a line: a boundary (kept as it
+// stands), the action name, its full commit, and an optional version comment.
+// The boundary keeps a longer name ending in a pinned one from matching, and
+// the `@` right after the name keeps a name a pinned one is a prefix of from
+// matching.
+var pinTokenRe = regexp.MustCompile("(^|[\\s\"'`])([A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9_./-]+)@([0-9a-f]{40}(?: # v[0-9A-Za-z.+-]+)?)")
+
+// pinRefRe is the shape of a workflow ref a pin token can carry: a full commit
+// and an optional version comment, and nothing after it.
+var pinRefRe = regexp.MustCompile(`^[0-9a-f]{40}(?: # v[0-9A-Za-z.+-]+)?$`)
+
+// syncPinTokens rewrites every SHA pin in target whose action the workflow
+// also pins, wherever on a line it stands, so the two carry the same ref. Only
+// the commit and its version comment change; every other byte stays. An action
+// the workflow does not pin, or pins in a shape a token cannot carry, is left
+// as it stands.
+func syncPinTokens(workflow, target []byte) ([]byte, bool, error) {
+	pins, err := collectPins(workflow)
+	if err != nil {
+		return nil, false, err
+	}
+	changed := false
+	out := pinTokenRe.ReplaceAllStringFunc(string(target), func(tok string) string {
+		m := pinTokenRe.FindStringSubmatch(tok)
+		want, ok := pins[m[2]]
+		if !ok || !pinRefRe.MatchString(want) || m[3] == want {
+			return tok
+		}
+		changed = true
+		return m[1] + m[2] + "@" + want
+	})
+	if !changed {
+		return target, false, nil
+	}
+	return []byte(out), true, nil
+}
+
 // usesLineRe splits a workflow `uses:` line into the parts the propagation must
 // preserve and the one part it replaces. Group 1 is everything up to and including
 // `uses: ` (indent and any `- ` list marker), group 2 the action name, group 3 the
@@ -57,7 +118,7 @@ var usesLineRe = regexp.MustCompile(`^(\s*(?:-\s+)?uses:\s+)([^@\s]+)@(\S+.*)$`)
 // tracked file underneath them.
 func SyncRepoPins(repoRoot string, write bool) ([]string, error) {
 	var changed []string
-	for _, pair := range pinSyncPairs {
+	for _, pair := range syncTargets() {
 		workflow, err := fsutil.ReadGuarded(filepath.Join(repoRoot, filepath.FromSlash(pair.workflow)), maxWorkflowBytes)
 		if err != nil {
 			return nil, fmt.Errorf("read %s: %w", pair.workflow, err)
@@ -67,7 +128,7 @@ func SyncRepoPins(repoRoot string, write bool) ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("read %s: %w", pair.template, err)
 		}
-		synced, differs, err := syncTemplatePins(workflow, tmpl)
+		synced, differs, err := pair.sync(workflow, tmpl)
 		if err != nil {
 			return nil, fmt.Errorf("%s -> %s: %w", pair.workflow, pair.template, err)
 		}
@@ -85,6 +146,28 @@ func SyncRepoPins(repoRoot string, write bool) ([]string, error) {
 		}
 	}
 	return changed, nil
+}
+
+// syncTarget is one file a committed workflow's pins are carried back into,
+// with the rewrite that fits its shape.
+type syncTarget struct {
+	workflow, template string
+	sync               func(workflow, target []byte) ([]byte, bool, error)
+}
+
+// syncTargets lists every file the sync rewrites: the scaffold templates line
+// by line, then the project site's sources pin by pin.
+func syncTargets() []syncTarget {
+	var out []syncTarget
+	for _, pair := range pinSyncPairs {
+		out = append(out, syncTarget{pair.workflow, pair.template, syncTemplatePins})
+	}
+	for _, pair := range pinTokenPairs {
+		for _, target := range pair.targets {
+			out = append(out, syncTarget{pair.workflow, target, syncPinTokens})
+		}
+	}
+	return out
 }
 
 // syncTemplatePins rewrites every `uses:` line in tmpl whose action the workflow

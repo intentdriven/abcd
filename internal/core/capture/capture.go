@@ -109,7 +109,12 @@ type Issue struct {
 	// Remedy is the proposed fix (itd-82 decision 6): the `remedy:` value, or
 	// the older `suggested_fix:` a record carries in its place
 	// (issueschema.RemedyOf). A drain takes no issue without one.
-	Remedy         string   `json:"remedy,omitempty"`
+	Remedy string `json:"remedy,omitempty"`
+	// DecisionNeeded is the decision-record marker (`decision_needed:`,
+	// itd-82 decision 10): the question a drain's trust-rule hand-back
+	// stated, written onto the open issue by MarkDecisionNeeded. A drain
+	// hands a record carrying it back by the rule decision-needed.
+	DecisionNeeded string   `json:"decision_needed,omitempty"`
 	RelatedIntents []string `json:"related_intents,omitempty"`
 	RelatedSpecs   []string `json:"related_specs,omitempty"`
 	RelatedIssues  []string `json:"related_issues,omitempty"`

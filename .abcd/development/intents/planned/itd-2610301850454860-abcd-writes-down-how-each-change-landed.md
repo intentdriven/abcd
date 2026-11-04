@@ -21,7 +21,7 @@ production_mode: hand-written
 ## Why This Matters
 
 Typed links: `builds_on`
-[itd-82](itd-82-drain-ledger-triage.md) (the drain, whose lane
+[itd-82](../shipped/itd-82-drain-ledger-triage.md) (the drain, whose lane
 this record names by the rule record it took the issue under) and
 [itd-2610150602547271](../shipped/itd-2610150602547271-a-repository-declares-whether-its.md)
 (the facilitator mode, shipped: In `auto` a maintainer's pull request is armed

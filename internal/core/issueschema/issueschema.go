@@ -71,6 +71,16 @@ var Known = map[string]bool{
 	// spelling: still KNOWN, so no record written with it is refused, and read
 	// as the remedy wherever a record carries no remedy (RemedyOf).
 	"remedy": true, "suggested_fix": true, "related_intents": true,
+	// decision_needed is the decision-record marker (itd-82 decision 10): the
+	// question a drain's trust-rule hand-back states, written onto the open
+	// issue so a person finds the decision it owes without the drain's
+	// summary. A drain hands a record carrying it back by the rule
+	// decision-needed until a person writes the decision record and removes
+	// the field. Optional, and written only by that hand-back, but KNOWN, or
+	// the reader would drop every marked record as malformed and the
+	// question would go invisible with it.
+	DecisionNeededKey: true,
+
 	"related_specs": true, "related_issues": true,
 	"synthesis_clusters": true, "wontfix_reason": true, "resolution": true,
 	"resolved_by": true, "blocked_by": true,
@@ -168,6 +178,13 @@ func RemedyOf(fm map[string]any) string {
 	s, _ := fm["suggested_fix"].(string)
 	return s
 }
+
+// DecisionNeededKey is the decision-record marker's frontmatter key (itd-82
+// decision 10; spc-2609212015054359 step 6): its value is the question a
+// drain's trust-rule hand-back states, one line. It is not the drain's
+// classification, which is re-derived every run (decision 8): it is the
+// hand-back's flag, kept on the record until a person answers it.
+const DecisionNeededKey = "decision_needed"
 
 // MachineRemedy is the one remedy an automatic filer writes when it has no fix
 // to propose (ruling H12 of 2026-09-29): every new issue carries a remedy

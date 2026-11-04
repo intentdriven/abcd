@@ -2793,3 +2793,19 @@ The proposal: after a private ideate verdict reframed the idea into an open ques
 Verdict at filing: SPLIT five ways plus one ADR, the product thinker choosing separate intents in this order over folding them into itd-2610261025516272. Typed links: the fewer-tests, self-attestation and checker drafts refine itd-2610261025516272 (advisory); the profiles draft refines itd-106; the measure builds on itd-166. Advisory reversal flags: none.
 
 Grade: pending the planning interviews. Watch for the bundling miss of earlier entries: itd-2611011325421304 carries six criteria; its interview kept it whole and handed macOS scheduling and batching back.
+
+## 2026-11-03: the status line's role views and the launch ledger (product thinker, routing confirmed)
+
+The proposal: a day of lab work on the status line (lab-261103114820-bcba06f, 38 findings; lab-261103115111-bcba06f, 12), with a live trial on the product thinker's own status line, settled what each role must see, how a narrow row sheds, how warnings read, and that the whole table ships as tunable defaults a repository adjusts.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| role views of the status line: elements, words, visibility, detail stages, dropping order, thresholds, the explain record, configurable throughout with shipped defaults | capability | itd-2611031342000215 |
+| a per-session ledger of every agent launch (route, key, model, spend, tokens, API time, outcome, running) | capability | itd-2611031342011261 |
+| manual facilitation is holding the major responsibility, not approving each decision | stance | held for the product thinker (dcn-2611031342020115) |
+| the facilitator's automatic mode widening to every decision but genuine trade-offs and wide-ranging ones | capability | already the autonomy-grant draft itd-2610240850336695; not filed again |
+| the row's width from COLUMNS, links for hover, a refresh interval, the default fonts' coverage | plumbing | the lab findings, for the views intent's spec to carry into the brief |
+
+Verdict at filing: SPLIT, two intents and a held stance, the product thinker choosing the split over folding the ledger into the views intent. Typed links: the views intent builds on itd-2611031342011261 (the ledger), itd-2610301750162657 (the review count) and itd-2610240850336695 (the mode badge's scope); its product-thinker view refines itd-2610032150577708 as interim evidence (advisory). Advisory reversal flags: none.
+
+Grade: pending planning.

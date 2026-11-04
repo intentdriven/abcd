@@ -513,7 +513,8 @@ way.
 - A **yes** hands the issue back before any lane opens, routed exactly as a
   lane's hand-back of the same kind (the table below): a user-visible change is
   promoted to an intent draft, and a trust rule is flagged as needing a
-  decision record with the host's reason as its question. The route is in the
+  decision record with the host's reason as its question, which is written
+  onto the open issue as its `decision_needed:` marker. The route is in the
   summary with `from` `judgement`, and the drain asks about the next issue.
 - **It never lets an issue through.** The question is asked only of an issue
   the field rule found eligible in the same move. An answer over an issue that
@@ -587,7 +588,7 @@ branch, records the discarded head, and ends the lane. The drain then routes it:
 | Kind | Route | What is written |
 | --- | --- | --- |
 | `user-visible` | the issue is promoted to an intent draft by the capture verb's promotion | the draft, and the issue's `related_intents` naming it; nothing else |
-| `trust-rule` | flagged as needing a decision record, the lane's reason as the question | nothing; no record is minted |
+| `trust-rule` | flagged as needing a decision record, the lane's reason as the question | `decision_needed:` on the open issue, holding the question; nothing else; no record is minted |
 | `design-finding`, `second-package` | flagged with the home the lane names | nothing |
 | a lane stopped after its fix rounds | flagged, the issue staying open with the last findings | nothing |
 | a lane handed back as stuck (`stuck`) | flagged, the issue staying open, naming the discard of its run | nothing |
@@ -597,8 +598,23 @@ publishes the hand-back on origin, naming its kind (a lane stopped after its
 fix rounds as `unachievable`, a stuck one as `stuck`) and the record's blob, which every drain passes
 over until a person changes the record (above).
 
+The decision-record marker (itd-82 decision 10) is the one write a trust-rule
+hand-back makes, a lane's or the judgement's: `decision_needed:` holding the
+question, added to the open issue's frontmatter with every other line of the
+record left as it was, so a person finds the decision it owes without the
+summary. It is the hand-back's flag, not the classification, which stays
+re-derived every run (decision 8). It is written in the checkout, uncommitted,
+as a promotion is, and only where the checkout holds the record as origin's
+default branch does; a marker a killed move already wrote is found, not
+written twice. The field rule hands an issue carrying it back under
+`decision-needed`, after the severity rule and before `waits-on-ruling`, with
+the question as its reason, so the dry run and every later drain pass it over
+until a person writes the decision record and takes the field out. The drain
+that wrote it counts it once, as its own decision-record hand-back, not again
+as the rule's flag.
+
 Every issue the rule itself hands back (by category, severity, security, a
-ruling or a deferral) is flagged in the summary naming the rule. Every route is
+decision-record marker, a ruling or a deferral) is flagged in the summary naming the rule. Every route is
 in the summary, in text and in the machine-readable payload, with the record
 change it made, so nothing is dropped silently.
 

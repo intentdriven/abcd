@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/implement/loop/budget.go"
 remedy: "implement QuotaReporter for a runner that can report a quota, and count fix rounds in the estimate"
-related_intents: [itd-2611011230226453]
+related_intents: [itd-2611011230226453, itd-2611031342011261]
 ---
 
 The run-start budget check never compares anything today: no shipped runner implements QuotaReporter, so every real run skips the check, and the estimate leaves out fix rounds, so it is a lower bound.

@@ -45,7 +45,11 @@ package loop
 //     branch as the remote holds it; until it is the step waits, and only then
 //     is the lane's worktree removed and its branch deleted, and the lane done.
 //     An open pull request the forge reports CONFLICTING never merges on its
-//     own, so it is refused for a person rather than waited on.
+//     own, so it is refused for a person rather than waited on. An armed one
+//     a merge queue gates is watched in the queue while it waits (queue.go,
+//     iss-2610090642376032): queued when it sits CLEAN outside it, and
+//     refused for a person, naming the failed merge-group check, when it
+//     left the queue and its arming with it.
 //
 // Every git and forge argument is derived from the state and the record: the
 // branch from the run and lane ids, the pull request from the forge's own
@@ -1061,8 +1065,28 @@ func landMerged(c Context, lane *Lane) (Outcome, error) {
 			}
 			ld.Merge = "left open: " + d.Why
 		}
+		// An armed pull request a merge queue gates is watched in the queue
+		// (queue.go): queued when it sits CLEAN outside it, and reported,
+		// naming the failed check, when it left it disarmed.
+		queued := ""
+		if ld.Armed {
+			rule, err := readMergeRule(c, *lane, def)
+			if err != nil {
+				return Outcome{}, err
+			}
+			if rule.Method != "" {
+				out, wait, err := watchQueue(c, lane, def, rule)
+				if err != nil {
+					return Outcome{}, err
+				}
+				if out != nil {
+					return *out, nil
+				}
+				queued = wait
+			}
+		}
 		return Outcome{}, contend(string(StageLand), "", lane.ID,
-			"pull request #"+n+" is not merged yet: "+shortSHA(ld.Pushed)+" is not on "+Remote+"/"+def+" ("+m.note()+")",
+			"pull request #"+n+" is not merged yet: "+shortSHA(ld.Pushed)+" is not on "+Remote+"/"+def+" ("+m.note()+")"+queued,
 			"run `abcd implement step` again once it has merged; "+ld.Merge)
 	}
 	merged, err := gitutil.Run(c.RepoRoot, "rev-parse", "--verify", "--quiet", tracking+"^{commit}", "--")

@@ -62,6 +62,14 @@ const (
 	// default branch declares generated, or not at all as this checkout
 	// merges, so the lane went back through its sync (step 13).
 	ParkedSyncing = "syncing"
+	// ParkedDropped: the armed pull request left the merge queue disarmed (a
+	// failed merge-group check, named in the note), or its head moved under
+	// it, or the loop's own toggle of its arming left it disarmed (the
+	// refusal, naming the command that re-arms it, is the note), so it will
+	// not merge on its own (iss-2610090642376032). It is still
+	// renewed: a person re-arms it, and a release's hold, which withdraws
+	// armed merges and re-arms them after, reads the same in the listing.
+	ParkedDropped = "dropped"
 )
 
 // parkedAtLand is the issue lane of run waiting on its pull request's merge:
@@ -166,8 +174,11 @@ func readParked(run State, lane Lane, listed map[int]listedPR, unread string) Dr
 }
 
 // held reports whether a parked lane read as p is still renewed: one waiting
-// on its merge, or one whose pull request could not be read.
-func (p DrainParked) held() bool { return p.State == ParkedWaiting || p.State == ParkedUnread }
+// on its merge, one dropped from the merge queue (ParkedDropped), or one
+// whose pull request could not be read.
+func (p DrainParked) held() bool {
+	return p.State == ParkedWaiting || p.State == ParkedUnread || p.State == ParkedDropped
+}
 
 // finishMerged takes the landing's last step for every issue lane in the
 // checkout parked at land whose pushed head is on the default branch as the
@@ -288,6 +299,31 @@ func finishMerged(repoRoot string, now time.Time) ([]DrainFinished, []DrainParke
 					p.Note += "; its sync was not entered: " + note
 				}
 			}
+			if p.State == ParkedWaiting && lane.Landing.Armed && outOfQueue(listed[lane.PR]) {
+				// An armed pull request the listing shows disarmed, or CLEAN
+				// where the listing cannot say whether it is queued, is
+				// watched in the merge queue by the lane's own landing step
+				// (queue.go): queued, or reported dropped with the failed
+				// check (iss-2610090642376032).
+				note, dropped, done, err := watchParked(repoRoot, run.RunID, now)
+				if err != nil {
+					return nil, nil, err
+				}
+				if done {
+					// The pull request merged after the move's fetch, and
+					// the watch's own step finished the lane: it is named
+					// in finished, as the merged lanes above are.
+					f.Done, f.Note = true, fsutil.RedactHome(note)
+					out = append(out, f)
+					continue
+				}
+				if dropped {
+					p.State = ParkedDropped
+				}
+				if note != "" {
+					p.Note = note
+				}
+			}
 			if p.State == ParkedClosed {
 				if p.Note, err = handBackClosed(repoRoot, run.RunID, now); err != nil {
 					return nil, nil, err
@@ -381,6 +417,53 @@ func resyncParked(repoRoot, runID string, now time.Time) (note string, moved boo
 		return fsutil.RedactHome(r.Reason + "; " + r.Remedy), false, nil
 	}
 	return note, moved, err
+}
+
+// outOfQueue reports whether the listing shows an open, unconflicted pull
+// request that may sit outside the merge queue: disarmed, or armed and CLEAN,
+// which is how one the forge never queued reads (the listing names no queue
+// entry, so the watch asks).
+func outOfQueue(pr listedPR) bool {
+	return pr.State == "OPEN" && pr.Mergeable != MergeableConflicting && (!pr.armed() || pr.MergeStateStatus == "CLEAN")
+}
+
+// watchParked takes the run's own landing step for its parked lane, under the
+// run's lock, whose wait watches the pull request in the merge queue
+// (watchQueue): it queues one left unqueued at CLEAN, toggling the arming
+// where the forge refuses that past the grace, and reports one dropped from
+// the queue, naming the failed check, or left disarmed by the loop's own
+// toggle. note is the record's line after an act, or the report; dropped is
+// set by the report. finished is set when the step itself took the landing's
+// last step, the pull request having merged since the move fetched the
+// default branch: the lane is then done, not parked. A wait, or a step that
+// refused for any other reason, leaves the listing's reading as it was.
+func watchParked(repoRoot, runID string, now time.Time) (note string, dropped, finished bool, err error) {
+	err = mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+		i := parkedAtLand(*st)
+		if i < 0 {
+			return false, nil
+		}
+		w := laneWant(*st, i)
+		if w.kind != wantBinary || w.hold {
+			return false, nil
+		}
+		logged := len(st.Record)
+		if _, err := performMove(repoRoot, st, DefaultStages(), w, now, nil, nil); err != nil {
+			return false, err
+		}
+		if n := len(st.Record); n > logged {
+			note = st.Record[n-1].Note
+		}
+		finished = st.Lanes[i].Stage == StageDone
+		return true, nil
+	})
+	if r, ok := AsRefusal(err); ok {
+		if r.outOfQueue {
+			return fsutil.RedactHome(r.Reason + "; " + r.Remedy), true, false, nil
+		}
+		return "", false, false, nil
+	}
+	return note, false, finished, err
 }
 
 // handBackClosed hands run's parked lane back as closed, its pull request

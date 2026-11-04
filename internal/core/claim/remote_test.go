@@ -43,8 +43,24 @@ func newWorld(t *testing.T) *world {
 }
 
 // newWorldFormat is newWorld in git's object format named ("sha256" for the
-// longer object names; "" is git's default).
+// longer object names; "" is git's default). The first world of a format in a
+// test process is built with git and kept as that format's template; every
+// later one is a copy of it (worldTemplates).
 func newWorldFormat(t *testing.T, format string) *world {
+	t.Helper()
+	worldTemplates.mu.Lock()
+	defer worldTemplates.mu.Unlock()
+	if tpl, ok := worldTemplates.byFormat[format]; ok {
+		return tpl.copyFor(t)
+	}
+	w := buildWorld(t, format)
+	keepWorldTemplate(t, format, w)
+	return w
+}
+
+// buildWorld seeds a world with git: a checkout holding one commit, pushed to
+// main on a fresh bare origin.
+func buildWorld(t *testing.T, format string) *world {
 	t.Helper()
 	seed := gittest.NewRepoFormat(t, format)
 	seed.Write("README.md", "seed\n")
@@ -54,6 +70,77 @@ func newWorldFormat(t *testing.T, format string) *world {
 	seed.Git("remote", "add", "origin", bare)
 	seed.Git("push", "-q", "origin", "main")
 	return &world{t: t, seed: seed, bare: bare, now: t0}
+}
+
+// worldTemplates holds, per object format, the first world this test process
+// built, copied before its test touched it. Every world starts from the same
+// seeded history, and building one with git cost about seventeen processes,
+// near a tenth of what a typical test in this package spawns; a copy costs
+// one, the git that points its seed at its own origin. Each copy is still a test's own seed and origin, in its own temporary
+// directories, its seed's origin naming its own bare repository. TestMain
+// removes the templates when the tests end.
+var worldTemplates struct {
+	mu       sync.Mutex
+	root     string
+	byFormat map[string]worldTemplate
+}
+
+// worldTemplate is one kept world: the seed's and the origin's copies.
+type worldTemplate struct {
+	seed, bare string
+}
+
+// keepWorldTemplate copies w, just built, into the format's template.
+func keepWorldTemplate(t *testing.T, format string, w *world) {
+	t.Helper()
+	if worldTemplates.root == "" {
+		dir, err := os.MkdirTemp("", "claim-worlds-")
+		if err != nil {
+			t.Fatal(err)
+		}
+		worldTemplates.root = dir
+	}
+	dir := filepath.Join(worldTemplates.root, "format-"+format)
+	tpl := worldTemplate{seed: filepath.Join(dir, "seed"), bare: filepath.Join(dir, "origin.git")}
+	copyTree(t, w.seed.Root(), tpl.seed)
+	copyTree(t, w.bare, tpl.bare)
+	if worldTemplates.byFormat == nil {
+		worldTemplates.byFormat = map[string]worldTemplate{}
+	}
+	worldTemplates.byFormat[format] = tpl
+}
+
+// copyFor is a new world for t copied from the template, laid out as
+// buildWorld lays one out.
+func (tpl worldTemplate) copyFor(t *testing.T) *world {
+	t.Helper()
+	seedDir := t.TempDir()
+	copyTree(t, tpl.seed, seedDir)
+	bare := filepath.Join(t.TempDir(), "origin.git")
+	copyTree(t, tpl.bare, bare)
+	// git writes the new origin itself, so a path it must quote (a '#' from a
+	// subtest's generated name, a space) is quoted as buildWorld's was.
+	seed := gittest.OpenRepo(t, seedDir)
+	seed.Git("remote", "set-url", "origin", bare)
+	return &world{t: t, seed: seed, bare: bare, now: t0}
+}
+
+// copyTree copies the directory src into dst, creating dst if need be.
+func copyTree(t *testing.T, src, dst string) {
+	t.Helper()
+	if err := os.CopyFS(dst, os.DirFS(src)); err != nil {
+		t.Fatalf("copying %s: %v", src, err)
+	}
+}
+
+// removeWorldTemplates deletes the kept templates; TestMain calls it once the
+// tests have run.
+func removeWorldTemplates() {
+	worldTemplates.mu.Lock()
+	defer worldTemplates.mu.Unlock()
+	if worldTemplates.root != "" {
+		_ = os.RemoveAll(worldTemplates.root)
+	}
 }
 
 func (w *world) clock() time.Time {
@@ -76,7 +163,14 @@ func (w *world) set(at time.Time) {
 func (w *world) clone(email, home string) *participant {
 	w.t.Helper()
 	dir := filepath.Join(w.t.TempDir(), "copy")
-	w.seed.Git("clone", "-q", w.bare, dir)
+	// The clone's own config is written by the clone itself (-c), one process
+	// where a `git config` apiece cost six more.
+	clone := []string{"clone", "-q"}
+	for _, kv := range [][2]string{{"user.name", "Pat Example"}, {"user.email", email}, {"gc.auto", "0"},
+		{"gc.autodetach", "false"}, {"maintenance.auto", "false"}, {"core.fsmonitor", "false"}} {
+		clone = append(clone, "-c", kv[0]+"="+kv[1])
+	}
+	w.seed.Git(append(clone, w.bare, dir)...)
 	p := &participant{w: w, dir: dir, home: home}
 	if p.home == "" {
 		key := strings.ToLower(email)
@@ -87,10 +181,6 @@ func (w *world) clone(email, home string) *participant {
 			w.homes[key] = w.t.TempDir()
 		}
 		p.home = w.homes[key]
-	}
-	for _, kv := range [][2]string{{"user.name", "Pat Example"}, {"user.email", email}, {"gc.auto", "0"},
-		{"gc.autodetach", "false"}, {"maintenance.auto", "false"}, {"core.fsmonitor", "false"}} {
-		p.git("config", kv[0], kv[1])
 	}
 	if err := os.MkdirAll(filepath.Join(dir, ".abcd", ".work.local"), 0o755); err != nil {
 		w.t.Fatal(err)
@@ -663,4 +753,22 @@ func TestARejectedPushOverATakeableTipIsReportedAsItself(t *testing.T) {
 	if !strings.Contains(w.remoteMessage(w.remoteTip("iss-5")), "abcd reservation released: iss-5") {
 		t.Fatalf("origin's tip is not P's tombstone")
 	}
+}
+
+// TestACopiedWorldNamesItsOwnOriginThroughAPathGitQuotes: a world copied from
+// the template points its seed at its own origin even where that path holds a
+// '#', which git's config must quote (a subtest's generated name carries one),
+// and the seed can still reach it.
+func TestACopiedWorldNamesItsOwnOriginThroughAPathGitQuotes(t *testing.T) {
+	newWorld(t) // the format's template exists before the copy below
+	t.Run("a#name", func(t *testing.T) {
+		w := newWorld(t)
+		if !strings.Contains(w.bare, "#") {
+			t.Fatalf("the subtest's origin path carries no '#': %s", w.bare)
+		}
+		if got := strings.TrimSpace(w.seed.Git("remote", "get-url", "origin")); got != w.bare {
+			t.Fatalf("the copied seed's origin is %q, want %q", got, w.bare)
+		}
+		w.seed.Git("fetch", "-q", "origin")
+	})
 }

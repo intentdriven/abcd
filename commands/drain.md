@@ -57,6 +57,8 @@ alone:
   promoted into, which names it back in `related_issues`, still owns it);
 - its category is one the rule takes;
 - its severity is one the rule takes;
+- it carries no `decision_needed:`, the marker a drain writes onto an issue it
+  hands back as turning on a rule about trust or safety (below);
 - it carries a `remedy:` (`abcd capture --remedy "<fix>"`, which every new
   issue carries, or `abcd capture remedy <iss-N> "<fix>"` onto an open one; a
   record carrying only the older `suggested_fix:` reads that as its remedy),
@@ -77,6 +79,7 @@ decides its one disposition:
 | `handback` | `security` | category `security`, a person's unless the rule sets `drain_security: take` |
 | `handback` | `category` | a category the rule does not take |
 | `handback` | `severity` | a severity the rule does not take (`major` and `critical` under the baseline) |
+| `handback` | `decision-needed` | it carries `decision_needed:`, written by a drain's trust-rule hand-back: the decision record its question asks for is a person's to write; the reason quotes the question, and the issue stays handed back until a person writes the record and takes the field out |
 | `handback` | `waits-on-ruling` | its remedy opens "Waits on": the fix waits on a ruling a person has not given |
 | `handback` | `deferred` | its `deferred_after` names the current anchor tag: a person carried it past this release; or the checkout holds no release tag (a shallow clone fetches none), so whether any deferral is live is unknown and the reason names `git fetch --tags`; or it names a release tag newer than the checkout's own, which the checkout lacks, so the reason says `anchor stale` and names that tag and `git fetch --tags`; or it is not a release tag at all |
 | `ineligible` | `remedy` | no remedy (a record filed before the remedy was required), or `none (filed automatically)` from an automatic filer; ineligible until a person writes one with `abcd capture remedy`, which the reason names |
@@ -150,6 +153,8 @@ order, then the others grouped by outcome with their reasons. For an
 `ineligible` issue, say that a person writing a remedy with
 `abcd capture remedy <iss-N> "<fix>"` is what makes it a candidate, and name the
 ones an automatic filer wrote apart, since their reason says so. For a
+`decision-needed` hand-back, state its question: the decision record a person
+owes. For a
 `waits-on-ruling` or `deferred` hand-back, say which ruling or release it waits
 on, and for a `promoted` one, which intent it goes through; a person's own
 `abcd build <iss-N>` still takes a `promoted` issue no other rule would hand back, naming the intent. Do not act on the list: a hand-back is a person's decision.
@@ -444,7 +449,20 @@ what it did in `next`:
   with a tombstone marking it `closed`, and the drain routes it home to a
   person (`abcd implement step --run <run-id> --discard <lane-id>` removes the
   lane's worktree and branch); a conflicting one is no longer renewed, and
-  `next` names it; an open one is renewed and named as waiting. One merged by
+  `next` names it; an open one is renewed and named as waiting. An open one
+  the lane armed that the listing shows disarmed, or armed and `CLEAN` (the
+  listing names no queue entry), is watched in the merge queue by the lane's
+  own landing step, as `abcd implement step` watches it
+  (`commands/implement.md`): one left outside the queue at `CLEAN` is queued,
+  and one that left the queue disarmed, as a failed merge-group check leaves
+  it, is read as `dropped`, `next` naming the forge's reason and the failed
+  check; it is still renewed, never queued or armed again by the drain, and
+  waits for a person to re-arm it. One the forge refused to queue whose
+  auto-merge the step toggled, and whose new arming the forge then refused,
+  is read as `dropped` too, `next` saying the loop left it disarmed and
+  naming the `gh pr merge` command that arms it again. One that merged
+  after the move fetched the default branch is finished by that step and
+  named among the finished lanes. One merged by
   a squash or rebase, its head not on the default branch, is named and no
   longer renewed. A pull request the listing does not show, or a listing that
   fails, keeps its lane held as before, and says so.
@@ -542,7 +560,7 @@ branch and ends it. The drain routes it:
 | `kind` | `route` | Written |
 | --- | --- | --- |
 | `user-visible` | `promoted`: an intent draft seeded from the issue (`capture promote`) | the draft, and the issue's `related_intents`; nothing else |
-| `trust-rule` | `decision-record`: flagged, with the lane's reason as `question` | nothing; no record is minted |
+| `trust-rule` | `decision-record`: flagged, with the lane's reason as `question` | `decision_needed:` on the open issue, holding the question; nothing else; no record is minted |
 | `design-finding`, `second-package` | `home`: flagged with the `home` the lane names | nothing |
 | (fix rounds exhausted) | `home`: flagged, the issue staying open | nothing |
 | `stuck` (the lane kept refusing) | `home`: flagged, the issue staying open, naming the discard of the lane's run | nothing |
@@ -554,6 +572,19 @@ move and written nowhere. An issue this drain promoted itself reads as
 in `hand_backs` with `route: "promoted"` and its `draft`. So the rule
 `promoted` is always a flag's `rule` field, and the route `promoted` always a
 hand-back's `route` field.
+
+The decision-record marker is the one write a trust-rule hand-back makes, the
+judgement's as a lane's: `decision_needed: <question>` added to the open
+issue's frontmatter, every other line of the record left as it was, so a
+person finds the decision it owes without this summary. It is written in this
+checkout, uncommitted, as a promotion is; a move planned from `origin` writes
+it only when this checkout holds the record as origin's default branch does,
+and otherwise the route's `wrote` says why it did not. The marked issue reads
+as `decision-needed` on every move after, and, as with a promotion, this
+drain counts it once, in `hand_backs` with `route: "decision-record"`; a later
+drain, and the dry run, flag it by the rule `decision-needed` with the
+question as its reason. Once the decision record is written, take the
+`decision_needed:` line out of the issue; the next drain judges it afresh.
 
 ### The run's payload
 
@@ -586,7 +617,7 @@ the landing's last step for (`issue`, `run_id`, `pr`, `done`, and a `note`:
 the landing's line, or why it did not finish the lane when `done` is `false`);
 `parked` reads every other lane parked at land from its pull request
 (`issue`, `run_id`, `pr`, `state`: `waiting`, `conflicting`, `syncing`,
-`closed`, `merged` or `unread`, and a `note`);
+`dropped`, `closed`, `merged` or `unread`, and a `note`);
 `waiting_until` and `waiting` (`cap` or `held`) say when a waiting drain looks
 again and on what; `next_eligible_at`, `stopped` (`cap`, `empty`,
 `outage` or `origin`) and `complete` say whether it paused or ended; `counts` totals the

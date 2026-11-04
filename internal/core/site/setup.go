@@ -142,6 +142,11 @@ type SetupRequest struct {
 	// none; empty is DefaultProvider. A provider with a switch (github-pages)
 	// is switched on only by a yes to the question setup asks.
 	Provider string
+	// Project declares the project route (--project): the run sets up a
+	// project site, and in a repository whose composition stands at
+	// ManifestRelPath it keeps that site's settings and workflow beside the
+	// composition (project.go) rather than touching the composed site.
+	Project bool
 	// Confirm replaces machinery that drifted from what setup writes.
 	Confirm bool
 	// Asker confirms each remote write; nil declines them all.
@@ -230,9 +235,13 @@ func Setup(req SetupRequest) (SetupResult, error) {
 		return SetupResult{}, ErrNotManaged
 	}
 
-	manifest, manifestBytes, err := setupComposition(root, req)
+	manifest, manifestBytes, paths, err := setupComposition(root, req)
 	if err != nil {
 		return SetupResult{}, err
+	}
+	if req.Project && !manifest.Project() {
+		return SetupResult{}, fmt.Errorf("site setup: --project sets up a project site, and %s declares a composed site on %q; "+
+			"name a provider that publishes a project site (--provider github-pages)", paths.settings, manifest.Hosting.Provider)
 	}
 	hostingBlock := *manifest.Hosting
 	adapter := req.Adapter
@@ -312,12 +321,12 @@ func Setup(req SetupRequest) (SetupResult, error) {
 		res.Notes = append(res.Notes, branchNote)
 	}
 	if switchedOff {
-		return setupSwitchedOff(root, branch, adapter, s, project, req, res)
+		return setupSwitchedOff(root, branch, adapter, s, project, req, res, paths)
 	}
 	// A provider that acts through the forge is read before anything is asked
 	// or written, so a host it would refuse is refused before the repository
 	// half is written for an address the site would not be served from.
-	_, wferr := os.Lstat(filepath.Join(root, filepath.FromSlash(SiteWorkflowRelPath)))
+	_, wferr := os.Lstat(filepath.Join(root, filepath.FromSlash(paths.workflow)))
 	noWorkflow := os.IsNotExist(wferr)
 	takeover := ""
 	if adapter.CredentialName() == "" && forge != nil && s.Repo != "" {
@@ -347,13 +356,13 @@ func Setup(req SetupRequest) (SetupResult, error) {
 			return SetupResult{}, fmt.Errorf("site setup: this repository already publishes a %s site, at %s, and --yes does not answer "+
 				"whether to publish over it; re-run at a terminal to be asked, or pass --replace-existing to replace it", adapter.Name(), takeover)
 		}
-		if !askSwitch && (req.Asker == nil || !req.Asker.Confirm(takeoverQuestion(adapter, takeover))) {
+		if !askSwitch && (req.Asker == nil || !req.Asker.Confirm(takeoverQuestion(adapter, takeover, paths))) {
 			return declinedBeforeWriting(res, "the existing "+adapter.Name()+" site at "+takeover+" was not published over",
 				"re-run `abcd site setup` and answer yes, or pass --replace-existing, to publish over the existing site"), nil
 		}
 	}
 	if askSwitch {
-		if req.Asker == nil || !req.Asker.Confirm(switchQuestion(adapter, prof, takeover, manifestBytes == nil, project)) {
+		if req.Asker == nil || !req.Asker.Confirm(switchQuestion(adapter, prof, takeover, manifestBytes == nil, project, paths)) {
 			return declinedBeforeWriting(res, "the project site was not switched on",
 				"re-run `abcd site setup --provider "+adapter.Name()+"` and answer yes, to switch the project site on"), nil
 		}
@@ -369,7 +378,7 @@ func Setup(req SetupRequest) (SetupResult, error) {
 	}
 
 	// Stage 1: the repository.
-	planned, err := plannedFiles(root, manifest, manifestBytes, branch, adapter, s)
+	planned, err := plannedFiles(root, manifest, manifestBytes, branch, adapter, s, paths)
 	if err != nil {
 		return SetupResult{}, err
 	}
@@ -498,7 +507,7 @@ func Setup(req SetupRequest) (SetupResult, error) {
 			strings.Join(paths, " ") + "`"}, res.Remaining...)
 	}
 	res.Notes = append(res.Notes, "the site renders and deploys on the next published release, whether a person or "+
-		"the release workflows publish it; `gh workflow run site.yml` deploys the latest one now")
+		"the release workflows publish it; `gh workflow run "+paths.workflowFile()+"` deploys the latest one now")
 
 	switch {
 	case refused:
@@ -558,8 +567,61 @@ func scrubRoot(err error, root string) string {
 
 // setupComposition returns the composition setup works from, and the bytes to
 // write when the repository has none yet (nil when it has one). For a provider
-// that publishes a project site, what it writes is that site's settings.
-func setupComposition(root string, req SetupRequest) (Manifest, []byte, error) {
+// that publishes a project site, what it writes is that site's settings. The
+// paths are where the site's settings and workflow live.
+//
+// A run that declares the project route (--project) in a repository whose
+// ManifestRelPath is a composition sets up a project site beside it, at
+// besidePaths (project.go), and leaves the composed site as it is. Every
+// other run is set up at the usual paths, as before: the route is declared,
+// never inferred, so a composition is never read as a request for a project
+// site beside it.
+func setupComposition(root string, req SetupRequest) (Manifest, []byte, sitePaths, error) {
+	if c, err := LoadManifest(root); !req.Project || err != nil || c.Project() {
+		m, raw, err := setupSettings(root, req)
+		return m, raw, usualPaths, err
+	}
+	m, err := loadManifestAt(root, ProjectSettingsRelPath)
+	switch {
+	case err == nil && !m.Project():
+		return Manifest{}, nil, sitePaths{}, fmt.Errorf("%w: %s: mode is not %q, and the file beside %s holds a project site's settings only",
+			ErrManifestInvalid, ProjectSettingsRelPath, ModeProject, ManifestRelPath)
+	case err == nil && req.Provider != "" && req.Provider != m.Hosting.Provider:
+		return Manifest{}, nil, sitePaths{}, fmt.Errorf("site setup: %s already names the provider %q; edit its hosting block to change it",
+			ProjectSettingsRelPath, m.Hosting.Provider)
+	case err == nil && ((req.Name != "" && req.Name != m.Hosting.Name) || (req.Domain != "" && req.Domain != m.Hosting.Domain)):
+		return Manifest{}, nil, sitePaths{}, fmt.Errorf("site setup: %s already names the host %q and domain %q; edit its hosting block to change them",
+			ProjectSettingsRelPath, m.Hosting.Name, m.Hosting.Domain)
+	case err == nil:
+		return m, nil, besidePaths, nil
+	case !os.IsNotExist(err):
+		return Manifest{}, nil, sitePaths{}, err
+	}
+	m, raw, err := newProjectSettings(root, req, ProjectSettingsRelPath)
+	return m, raw, besidePaths, err
+}
+
+// newProjectSettings is a new project site's settings, validated as the file
+// at rel, and the bytes setup writes there.
+func newProjectSettings(root string, req SetupRequest, rel string) (Manifest, []byte, error) {
+	name := req.Name
+	if name == "" {
+		name = defaultHostName(root)
+	}
+	m := Manifest{SchemaVersion: 1, Mode: ModeProject, Purpose: projectSettingsPurpose,
+		Hosting: &Hosting{Provider: providerOf(req), Name: name, Domain: req.Domain}}
+	if err := m.validateAt(rel); err != nil {
+		return Manifest{}, nil, err
+	}
+	raw, err := encodeSetupFile(m)
+	if err != nil {
+		return Manifest{}, nil, err
+	}
+	return m, raw, nil
+}
+
+// setupSettings is setupComposition at the usual paths.
+func setupSettings(root string, req SetupRequest) (Manifest, []byte, error) {
 	bad := func(format string, args ...any) error {
 		return fmt.Errorf("%w: %s", ErrManifestInvalid, fmt.Sprintf(format, args...))
 	}
@@ -614,20 +676,7 @@ func setupComposition(root string, req SetupRequest) (Manifest, []byte, error) {
 		a, _ = adapterNamed(providerOf(req))
 	}
 	if a != nil && a.Profile(hosting.Site{}).Project {
-		name := req.Name
-		if name == "" {
-			name = defaultHostName(root)
-		}
-		m = Manifest{SchemaVersion: 1, Mode: ModeProject, Purpose: projectSettingsPurpose,
-			Hosting: &Hosting{Provider: providerOf(req), Name: name, Domain: req.Domain}}
-		if err := m.validate(); err != nil {
-			return Manifest{}, nil, err
-		}
-		raw, err := encodeSetupFile(m)
-		if err != nil {
-			return Manifest{}, nil, err
-		}
-		return m, raw, nil
+		return newProjectSettings(root, req, ManifestRelPath)
 	}
 
 	cfg, ok, cerr := positioning.LoadConfig(root)
@@ -707,10 +756,10 @@ func defaultHostName(root string) string {
 }
 
 // plannedFiles is the repository half.
-func plannedFiles(root string, m Manifest, manifestBytes []byte, branch string, adapter hosting.Adapter, s hosting.Site) ([]scaffold.PlannedFile, error) {
+func plannedFiles(root string, m Manifest, manifestBytes []byte, branch string, adapter hosting.Adapter, s hosting.Site, paths sitePaths) ([]scaffold.PlannedFile, error) {
 	var planned []scaffold.PlannedFile
 	if manifestBytes != nil {
-		planned = append(planned, scaffold.PlannedFile{Path: ManifestRelPath, Data: manifestBytes, Seed: true})
+		planned = append(planned, scaffold.PlannedFile{Path: paths.settings, Data: manifestBytes, Seed: true})
 	}
 	for _, name := range seedNames {
 		// A project site is seeded with nothing: its interface words, styles
@@ -728,11 +777,11 @@ func plannedFiles(root string, m Manifest, manifestBytes []byte, branch string, 
 		}
 		planned = append(planned, scaffold.PlannedFile{Path: rel, Data: data, Seed: true})
 	}
-	wf, err := renderSiteWorkflow(branch, adapter, s, m.Project())
+	wf, err := renderSiteWorkflowAt(branch, adapter, s, m.Project(), paths)
 	if err != nil {
 		return nil, err
 	}
-	planned = append(planned, scaffold.PlannedFile{Path: SiteWorkflowRelPath, Data: wf})
+	planned = append(planned, scaffold.PlannedFile{Path: paths.workflow, Data: wf})
 	if rel, data := adapter.HostConfig(s); rel != "" {
 		planned = append(planned, scaffold.PlannedFile{Path: rel, Data: data})
 	}
@@ -768,10 +817,38 @@ func refuseSymlinkedAncestor(root, rel string) error {
 	return nil
 }
 
+// sitePaths are where setup keeps a site's settings and its workflow.
+type sitePaths struct {
+	settings, workflow string
+}
+
+// usualPaths serve every site but a project site kept beside a composition,
+// which besidePaths serve (project.go).
+var (
+	usualPaths  = sitePaths{settings: ManifestRelPath, workflow: SiteWorkflowRelPath}
+	besidePaths = sitePaths{settings: ProjectSettingsRelPath, workflow: ProjectWorkflowRelPath}
+)
+
+// beside reports whether these are the paths of a project site kept beside a
+// composition.
+func (p sitePaths) beside() bool { return p == besidePaths }
+
+// workflowFile is the workflow's file name, which the relay dispatches.
+func (p sitePaths) workflowFile() string { return filepath.Base(p.workflow) }
+
+// workflowName is the workflow's name, which also keys its production queue:
+// a project site beside a composed site queues apart from that site's deploy.
+func (p sitePaths) workflowName() string { return strings.TrimSuffix(p.workflowFile(), ".yml") }
+
 // renderSiteWorkflow renders the workflow for the repository's default branch,
 // the provider's deploy job and the site it publishes. project builds and
 // gates a project site (`--project`, project.go).
 func renderSiteWorkflow(branch string, adapter hosting.Adapter, s hosting.Site, project bool) ([]byte, error) {
+	return renderSiteWorkflowAt(branch, adapter, s, project, usualPaths)
+}
+
+// renderSiteWorkflowAt is renderSiteWorkflow for a site kept at paths.
+func renderSiteWorkflowAt(branch string, adapter hosting.Adapter, s hosting.Site, project bool, paths sitePaths) ([]byte, error) {
 	raw, err := setupSources.ReadFile("setupsrc/site.yml.tmpl")
 	if err != nil {
 		return nil, err
@@ -814,7 +891,11 @@ func renderSiteWorkflow(branch string, adapter hosting.Adapter, s hosting.Site, 
 		"DeployEnv":         prof.Environment,
 		"DeployPermissions": prof.Permissions,
 		"Switched":          prof.Switched,
-		"SwitchFile":        ManifestRelPath,
+		"SwitchFile":        paths.settings,
+		"WorkflowName":      paths.workflowName(),
+		"WorkflowFile":      paths.workflowFile(),
+		"Beside":            paths.beside(),
+		"ComposedFile":      ManifestRelPath,
 		"IfOn":              ifOn,
 		"BaseFlag":          baseFlag,
 		"Project":           project,
@@ -1102,28 +1183,28 @@ func firstLine(s string) string {
 //
 // recorded says the composition already holds the switch, written by hand, so
 // a yes leaves it as it is and adds what publishes.
-func switchQuestion(adapter hosting.Adapter, prof hosting.Profile, takeover string, recorded, project bool) string {
+func switchQuestion(adapter hosting.Adapter, prof hosting.Profile, takeover string, recorded, project bool, paths sitePaths) string {
 	where := adapter.Name()
 	if prof.Address != "" {
 		where = prof.Address + " (" + adapter.Name() + ")"
 	}
-	yes := "Yes records the switch in " + ManifestRelPath + ", writes the site's inputs under site-src/"
+	yes := "Yes records the switch in " + paths.settings + ", writes the site's inputs under site-src/"
 	if recorded {
-		yes = ManifestRelPath + " already holds the switch; yes leaves it as it is, writes the site's inputs under site-src/"
+		yes = paths.settings + " already holds the switch; yes leaves it as it is, writes the site's inputs under site-src/"
 	}
 	built := ""
 	if project {
 		// A project site writes no site inputs: its pages come from what abcd
 		// already writes, and its words, styles and scripts from the binary.
 		built = ", built from what abcd already writes to the repository (its identity block, brief, record and changelog)"
-		yes = "Yes records the switch in " + ManifestRelPath
+		yes = "Yes records the switch in " + paths.settings
 		if recorded {
-			yes = ManifestRelPath + " already holds the switch; yes leaves it as it is"
+			yes = paths.settings + " already holds the switch; yes leaves it as it is"
 		}
 	}
 	q := "Switch on the project site? At each release this repository's own workflow builds its about page and development record" + built +
 		" and publishes them at " + where + ". " + yes + " " +
-		"and adds " + SiteWorkflowRelPath + "; nothing else in the repository changes"
+		"and adds " + paths.workflow + "; nothing else in the repository changes"
 	if takeover != "" {
 		q += ". This repository already publishes a site there, at " + takeover + ", and yes replaces it at the next release"
 	}
@@ -1132,9 +1213,9 @@ func switchQuestion(adapter hosting.Adapter, prof hosting.Profile, takeover stri
 
 // takeoverQuestion asks before publishing over a site the host already
 // serves, when no switch question is asked to name it.
-func takeoverQuestion(adapter hosting.Adapter, takeover string) string {
+func takeoverQuestion(adapter hosting.Adapter, takeover string, paths sitePaths) string {
 	return "Publish over the existing " + adapter.Name() + " site? This repository already publishes one, at " + takeover +
-		", and abcd's release workflow (" + SiteWorkflowRelPath + ") replaces it at the next release"
+		", and abcd's release workflow (" + paths.workflow + ") replaces it at the next release"
 }
 
 // declinedBeforeWriting is a run declined before anything was written or
@@ -1152,28 +1233,28 @@ func declinedBeforeWriting(res SetupResult, why, step string) SetupResult {
 // release publishes nothing whatever happens here, and setup offers to remove
 // the release workflow it added. A workflow that differs from the one setup
 // writes is a person's, and is kept. Nothing remote is touched.
-func setupSwitchedOff(root, branch string, adapter hosting.Adapter, s hosting.Site, project bool, req SetupRequest, res SetupResult) (SetupResult, error) {
+func setupSwitchedOff(root, branch string, adapter hosting.Adapter, s hosting.Site, project bool, req SetupRequest, res SetupResult, paths sitePaths) (SetupResult, error) {
 	res.Files, res.Environments = []scaffold.FileOutcome{}, []EnvironmentOutcome{}
 	res.Host.Detail = "not reached: the project site is switched off"
-	res.Notes = append(res.Notes, "the project site is switched off in "+ManifestRelPath+" (hosting.publish is not true), so the next release "+
+	res.Notes = append(res.Notes, "the project site is switched off in "+paths.settings+" (hosting.publish is not true), so the next release "+
 		"publishes nothing; pages already published stay up until they are unpublished in the repository's settings")
 	res.Status = StatusNoChange
-	want, err := renderSiteWorkflow(branch, adapter, s, project)
+	want, err := renderSiteWorkflowAt(branch, adapter, s, project, paths)
 	if err != nil {
 		return SetupResult{}, err
 	}
-	if err := refuseSymlinkedAncestor(root, SiteWorkflowRelPath); err != nil {
+	if err := refuseSymlinkedAncestor(root, paths.workflow); err != nil {
 		return SetupResult{}, err
 	}
-	path := filepath.Join(root, filepath.FromSlash(SiteWorkflowRelPath))
+	path := filepath.Join(root, filepath.FromSlash(paths.workflow))
 	fi, err := os.Lstat(path)
 	switch {
 	case os.IsNotExist(err):
 		return res, nil
 	case err != nil:
-		return SetupResult{}, fmt.Errorf("site setup: %s could not be examined", SiteWorkflowRelPath)
+		return SetupResult{}, fmt.Errorf("site setup: %s could not be examined", paths.workflow)
 	case !fi.Mode().IsRegular():
-		res.Files = append(res.Files, scaffold.FileOutcome{Path: SiteWorkflowRelPath, Status: scaffold.StatusKept,
+		res.Files = append(res.Files, scaffold.FileOutcome{Path: paths.workflow, Status: scaffold.StatusKept,
 			Detail: "not a regular file, so setup leaves it"})
 		return res, nil
 	}
@@ -1185,28 +1266,28 @@ func setupSwitchedOff(root, branch string, adapter hosting.Adapter, s hosting.Si
 		have, err = nil, nil
 	}
 	if err != nil {
-		return SetupResult{}, fmt.Errorf("site setup: %s could not be read", SiteWorkflowRelPath)
+		return SetupResult{}, fmt.Errorf("site setup: %s could not be read", paths.workflow)
 	}
 	if !bytes.Equal(have, want) {
-		res.Files = append(res.Files, scaffold.FileOutcome{Path: SiteWorkflowRelPath, Status: scaffold.StatusKept,
+		res.Files = append(res.Files, scaffold.FileOutcome{Path: paths.workflow, Status: scaffold.StatusKept,
 			Detail: "differs from the workflow setup writes, so it was edited by hand and setup leaves it; remove it yourself if it is no longer wanted"})
 		return res, nil
 	}
-	if req.Asker == nil || !req.Asker.Confirm("Remove "+SiteWorkflowRelPath+", the release workflow abcd added? The project site is switched off in "+
-		ManifestRelPath+", so it has nothing to publish") {
-		res.Files = append(res.Files, scaffold.FileOutcome{Path: SiteWorkflowRelPath, Status: scaffold.StatusKept, Detail: "its removal was declined"})
+	if req.Asker == nil || !req.Asker.Confirm("Remove "+paths.workflow+", the release workflow abcd added? The project site is switched off in "+
+		paths.settings+", so it has nothing to publish") {
+		res.Files = append(res.Files, scaffold.FileOutcome{Path: paths.workflow, Status: scaffold.StatusKept, Detail: "its removal was declined"})
 		res.Status = StatusDeclined
-		res.Remaining = append(res.Remaining, "re-run `abcd site setup` and confirm, to remove "+SiteWorkflowRelPath)
+		res.Remaining = append(res.Remaining, "re-run `abcd site setup` and confirm, to remove "+paths.workflow)
 		return res, nil
 	}
 	if err := os.Remove(path); err != nil {
 		res.Status = StatusRefused
-		res.Files = append(res.Files, scaffold.FileOutcome{Path: SiteWorkflowRelPath, Status: scaffold.StatusRefused, Detail: "the removal failed"})
+		res.Files = append(res.Files, scaffold.FileOutcome{Path: paths.workflow, Status: scaffold.StatusRefused, Detail: "the removal failed"})
 		return res, nil
 	}
-	res.Files = append(res.Files, scaffold.FileOutcome{Path: SiteWorkflowRelPath, Status: FileRemoved})
+	res.Files = append(res.Files, scaffold.FileOutcome{Path: paths.workflow, Status: FileRemoved})
 	res.Status = StatusChanged
-	res.Remaining = append(res.Remaining, "commit the removal and push it to "+branch+": `git add "+SiteWorkflowRelPath+"`")
+	res.Remaining = append(res.Remaining, "commit the removal and push it to "+branch+": `git add "+paths.workflow+"`")
 	return res, nil
 }
 

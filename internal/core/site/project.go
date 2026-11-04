@@ -136,6 +136,55 @@ func abcdWrittenSource(rel string) bool {
 	return strings.HasPrefix(rel, ".abcd/") && !strings.HasPrefix(rel, ".abcd/.work.local/")
 }
 
+// A repository can keep a composed site and a project site at once: abcd's own
+// does (itd-2610142145236613), its documentation composed at ManifestRelPath
+// for its own host and its record built on the project route onto its GitHub
+// Pages. The two cannot share one file, so a repository whose ManifestRelPath
+// holds a composition keeps its project site's settings beside it, at
+// ProjectSettingsRelPath, and the workflow setup writes for that site at
+// ProjectWorkflowRelPath, beside the composed site's own. A repository with no
+// composition keeps both at the usual paths, as before. The route is still
+// declared by --project, never inferred: the file beside the composition is
+// read only on the project route, and the composed route never reads it.
+const (
+	// ProjectSettingsRelPath is a project site's settings file in a
+	// repository whose ManifestRelPath is a composition.
+	ProjectSettingsRelPath = ".abcd/project-site.json"
+	// ProjectWorkflowRelPath is the workflow setup writes for that site.
+	ProjectWorkflowRelPath = ".github/workflows/project-site.yml"
+)
+
+// loadRoute reads the settings file the declared route builds from: on the
+// project route, the settings beside a composition when the repository keeps
+// them there, and ManifestRelPath otherwise. It refuses a file of the other
+// route's shape, both ways.
+func loadRoute(repoRoot string, project bool) (Manifest, error) {
+	m, _, err := loadRouteFrom(repoRoot, project)
+	return m, err
+}
+
+// loadRouteFrom is loadRoute, also naming the settings file it read, so a
+// note about the settings names the file a person would edit.
+func loadRouteFrom(repoRoot string, project bool) (Manifest, string, error) {
+	if project {
+		m, err := loadManifestAt(repoRoot, ProjectSettingsRelPath)
+		switch {
+		case err == nil && !m.Project():
+			return Manifest{}, "", fmt.Errorf("%w: %s: mode is not %q, and the file beside a composition holds a project site's settings only",
+				ErrManifestInvalid, ProjectSettingsRelPath, ModeProject)
+		case err == nil:
+			return m, ProjectSettingsRelPath, nil
+		case !os.IsNotExist(err):
+			return Manifest{}, "", err
+		}
+	}
+	m, err := LoadManifest(repoRoot)
+	if err != nil {
+		return Manifest{}, "", err
+	}
+	return m, ManifestRelPath, routeAgrees(m, project)
+}
+
 // routeAgrees refuses a build or a gate whose --project flag and settings file
 // name different routes: the route is declared, never inferred.
 func routeAgrees(m Manifest, project bool) error {
