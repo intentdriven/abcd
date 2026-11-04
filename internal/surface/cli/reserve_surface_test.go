@@ -9,8 +9,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // The `abcd reserve` front door (spc-2610031753359849 step 5,
@@ -48,15 +46,33 @@ func newReserveWorld(t *testing.T) *reserveWorld {
 	w := &reserveWorld{home: home, origin: filepath.Join(home, "origin.git"), people: map[string]string{}}
 	worldHome = home
 	t.Cleanup(func() { worldHome = ""; clear(cloneHomes) })
-	gittest.InitBare(t, w.origin)
 	seed := filepath.Join(home, "seed")
+	if !templateGit() {
+		seedReserveWorld(t, seed, w.origin)
+		return w
+	}
+	// Every world starts from the same seeded history, so the seed and its
+	// origin are copied from the first world built (fixture_template_test.go)
+	// and the seed's origin set to this world's own.
+	tpl := fixtureTemplate(t, "reserve-world", func(dir string) {
+		seedReserveWorld(t, filepath.Join(dir, "seed"), filepath.Join(dir, "origin.git"))
+	})
+	copyFixture(t, tpl, home)
+	gitCmd(t, seed, "remote", "set-url", "origin", w.origin)
+	return w
+}
+
+// seedReserveWorld lays a world out with git: a bare origin, and a seed
+// checkout holding one commit pushed to its main.
+func seedReserveWorld(t *testing.T, seed, origin string) {
+	t.Helper()
+	initBare(t, origin)
 	gitInitAt(t, seed)
 	writeRel(t, seed, "README.md", "seed\n")
 	gitCmd(t, seed, "add", "-A")
 	gitCommit(t, seed, "commit", "-q", "-m", "seed")
-	gitCmd(t, seed, "remote", "add", "origin", w.origin)
+	gitCmd(t, seed, "remote", "add", "origin", origin)
 	gitCmd(t, seed, "push", "-q", "origin", "main")
-	return w
 }
 
 // clone is one working copy under HOME, with its git identity, its local tier
@@ -64,11 +80,14 @@ func newReserveWorld(t *testing.T) *reserveWorld {
 func (w *reserveWorld) clone(t *testing.T, name, email string) string {
 	t.Helper()
 	dir := filepath.Join(w.home, name)
-	gitCmd(t, w.home, "clone", "-q", w.origin, dir)
+	// The clone's own config is written by the clone itself (-c), one process
+	// where a `git config` apiece cost five more.
+	clone := []string{"clone", "-q"}
 	for _, kv := range [][2]string{{"user.name", "Pat Example"}, {"user.email", email}, {"gc.auto", "0"},
 		{"maintenance.auto", "false"}, {"commit.gpgsign", "false"}} {
-		gitCmd(t, dir, "config", kv[0], kv[1])
+		clone = append(clone, "-c", kv[0]+"="+kv[1])
 	}
+	gitCmd(t, w.home, append(clone, w.origin, dir)...)
 	if err := os.MkdirAll(filepath.Join(dir, ".abcd", ".work.local"), 0o755); err != nil {
 		t.Fatal(err)
 	}

@@ -213,7 +213,7 @@ func TestLaunchDryRunTaglessOrShallowCheckoutIsNotAFirstLaunch(t *testing.T) {
 
 	// A shallow clone refuses too, even when the listing it holds names a tag:
 	// the listing holds only what was fetched.
-	src := gittest.NewRepo(t)
+	src := newRepo(t)
 	dst := filepath.Join(t.TempDir(), "shallow")
 	clone := exec.Command("git", "clone", "--quiet", "--depth", "2", "file://"+shallowSrc, dst)
 	clone.Env = src.Env()

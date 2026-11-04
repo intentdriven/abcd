@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
-	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // TestFirstRunCreatesOnlyTheNoindexHome is D1 of itd-2610030720038073: on an
@@ -44,7 +43,7 @@ func TestFirstRunCreatesOnlyTheNoindexHome(t *testing.T) {
 	}
 	t.Setenv("PATH", strings.Join(kept, string(os.PathListSeparator)))
 
-	repo := gittest.NewRepo(t)
+	repo := newRepo(t)
 	repo.Write("README.md", "fixture\n")
 	repo.Commit("init")
 	sha := repo.Git("rev-list", "--max-parents=0", "HEAD")
