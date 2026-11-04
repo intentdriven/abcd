@@ -408,6 +408,9 @@ var sentences = map[string]string{
 	"abcd announce": "Post a fixed-form announcement on the shared remote: " +
 		"Writes one commit to your status branch; refuses free text, a record not yet public and an embargoed one.",
 
+	"abcd agents": "List the agents abcd started for this session and add them up: " +
+		"Writes nothing; refuses when no session can be named and no scope is given.",
+
 	"abcd land": "Push a branch whose preflight passed and queue its pull request: " +
 		"Writes a push to origin and arms a merge; refuses the default branch or a dirty tree.",
 

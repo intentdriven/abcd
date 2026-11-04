@@ -43,6 +43,34 @@ and staleness it reports are unchanged.
       --view string     the board's view: product (the default) or facilitator
 ```
 
+### `abcd agents`
+
+List the agents abcd started for this session and add them up: Writes nothing; refuses when no session can be named and no scope is given.
+
+**Usage:** `abcd agents [flags]`
+
+List the agents abcd started and add them up, from the launch ledger on this
+computer (`~/.abcd.noindex/agents/`): one line per launch naming the session or run that
+asked for it, the work, the billing route, the model, the tokens, the cost, the API
+time and how it ended.
+
+Bare, it lists this session's launches; --run <id> lists one run's, --session <id>
+one session's and --all every one. Money is counted for launches billed to a named
+key alone: a subscription's or an unplaced launch's cost is shown as an estimate,
+which is no money spent. Every cost is the harness's own estimate, and the
+provider's invoice is the final figure. An entry whose process is gone with no end
+written reads as lost. An entry it cannot read is named, never dropped.
+
+It reads only. Exit 2 on a refusal: no session to list, or two scopes at once.
+
+**Flags:**
+
+```
+      --all              list every launch the ledger holds
+      --run string       list the launches of this run
+      --session string   list the launches this session asked for
+```
+
 ### `abcd ahoy`
 
 Detect abcd's install state and list its gaps, or report one mode a flag names: Writes nothing; refuses any argument or two modes at once.

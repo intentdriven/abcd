@@ -51,6 +51,36 @@
       ]
     },
     {
+      "path": "abcd agents",
+      "hidden": false,
+      "group": "records",
+      "block": "people",
+      "sentence": "List the agents abcd started for this session and add them up: Writes nothing; refuses when no session can be named and no scope is given.",
+      "flags": [
+        {
+          "name": "all",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "run",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "session",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd ahoy",
       "hidden": false,
       "group": "set-up",
