@@ -29,6 +29,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/abcdrepo"
 	"github.com/intentdriven/abcd/internal/core/history"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -39,13 +40,25 @@ var NotesRel = abcdhome.Rel("notes")
 // tierRel is a checkout's local tier, the part of a worktree the archive keeps.
 const tierRel = ".abcd/.work.local"
 
-// buildProductRel is the tier's build output: scripts/abcd.sh builds the
-// checkout's binary to .abcd/.work.local/bin/abcd. It is rebuilt from the tree
-// on the next run and is no note, and the binary is past the per-file cap and
-// not text, so archiving it would keep every worktree that ever ran a verb
-// (iss-2611022247131866). The archive leaves it out, and prune removes it
-// with the worktree.
-const buildProductRel = "bin"
+// builtBinaryRel is the tier's build output, relative to the tier: the binary
+// scripts/abcd.sh builds. It is rebuilt from the tree on the next run and is no
+// note, and it is past the per-file cap and not text, so archiving it would keep
+// every worktree that ever ran a verb (iss-2611022247131866). The archive leaves
+// it out, and prune removes it with the worktree.
+var builtBinaryRel = strings.TrimPrefix(abcdrepo.CheckoutBuildRel, tierRel+"/")
+
+// isBuildProduct reports whether the tier-relative rel is the built binary or
+// the <binary>.<pid> file the script builds it through, which a killed build
+// leaves behind. Nothing else counts: every other file in the tier's bin/ is a
+// note, since removing the worktree would delete its only copy
+// (iss-2611041759314115).
+func isBuildProduct(rel string) bool {
+	pid, scratch := strings.CutPrefix(rel, builtBinaryRel+".")
+	if !scratch {
+		return rel == builtBinaryRel
+	}
+	return pid != "" && strings.Trim(pid, "0123456789") == ""
+}
 
 // manifestName is the manifest's name at the top of an archive entry.
 const manifestName = "manifest.json"
@@ -125,10 +138,7 @@ func collectNotes(repoRoot, wt string) ([]note, error) {
 		if err != nil {
 			return named(repoRoot, rel, causeOf(err))
 		}
-		if d.IsDir() {
-			if rel == buildProductRel {
-				return fs.SkipDir
-			}
+		if d.IsDir() || (d.Type().IsRegular() && isBuildProduct(rel)) {
 			return nil
 		}
 		if len(notes) == maxNoteFiles {
