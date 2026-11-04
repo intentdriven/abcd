@@ -500,6 +500,44 @@ func TestConvMarkerRePinsTheRecognisedSpellings(t *testing.T) {
 	}
 }
 
+// TestConvMayCarryMarkerAdmitsEveryLineThePatternMatches holds the scan's
+// literal pre-test to the pattern: the scan runs convMarkerRe only on text
+// convMayCarryMarker admits, so a line the pattern matches that the pre-test
+// turns away would be a marker the scan never counts. Every marker name and
+// near-miss spelling, in other case and cut short, is tried between the
+// boundaries the pattern distinguishes.
+func TestConvMayCarryMarkerAdmitsEveryLineThePatternMatches(t *testing.T) {
+	leads := []string{"", " ", "\t", "//", "#", "-", "_", "a", "(", ":", "* "}
+	tails := []string{"", ":", "(", " ", "\t", ": x", "s", "-", "_x", "1"}
+	var names []string
+	for _, n := range convMarkerNames {
+		names = append(names, n, strings.ToLower(n), strings.ToLower(n[:1])+n[1:], n[1:], n[:len(n)-1])
+	}
+	matched := 0
+	for _, name := range names {
+		for _, lead := range leads {
+			for _, tail := range tails {
+				line := lead + name + tail
+				if convMarkerRe.FindStringSubmatch(line) == nil {
+					continue
+				}
+				matched++
+				if !convMayCarryMarker(line) {
+					t.Errorf("convMarkerRe matches %q but the scan's pre-test turns it away", line)
+				}
+			}
+		}
+	}
+	if matched == 0 {
+		t.Fatal("no generated line matched convMarkerRe; the check above checked nothing")
+	}
+	for _, text := range []string{"", "plain prose\nwith lines", "todo: lower case", "TOD O:"} {
+		if convMayCarryMarker(text) {
+			t.Errorf("convMayCarryMarker admits %q, which names no marker", text)
+		}
+	}
+}
+
 // TestConvOpenQuestionsIgnoresSkippedTrees proves the adapter inherits the
 // walk's skip set: a dependency's or a generator's TODO is not this team's open
 // question, so it is never cited.

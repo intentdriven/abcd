@@ -199,8 +199,18 @@ func TestADropPastTheListingsSizeStillDeletes(t *testing.T) {
 	for i := range n {
 		entries = append(entries, fmt.Sprintf("%s %sX%s%06d", tip, StatusTrackingPrefix, pad, i))
 	}
-	ref := func(e string) string { f := strings.Fields(e); return f[1] }
-	sort.Slice(entries, func(i, j int) bool { return ref(entries[i]) < ref(entries[j]) })
+	// Sorted by ref, each entry's ref read once: a comparator that split both
+	// entries at every one of its million comparisons was most of this test's
+	// time under the race detector.
+	type keyed struct{ ref, entry string }
+	byRef := make([]keyed, len(entries))
+	for i, e := range entries {
+		byRef[i] = keyed{strings.Fields(e)[1], e}
+	}
+	sort.Slice(byRef, func(i, j int) bool { return byRef[i].ref < byRef[j].ref })
+	for i, k := range byRef {
+		entries[i] = k.entry
+	}
 	body := "# pack-refs with: peeled fully-peeled sorted \n" + strings.Join(entries, "\n") + "\n"
 	if len(body) <= 16<<20 {
 		t.Fatalf("the listing is %d bytes; want it past 16 MiB", len(body))

@@ -68,7 +68,16 @@ The following are non-negotiable invariants — any architectural choice that vi
    kind and the issue's record blob, and, in an issue run, the sync step's
    fetch of origin's default branch, at each sync: before the landing's
    records, and again when the open pull request starts to conflict at its
-   arming or its merge wait (spc-2610161044461448 step 13); the land fence's fetch is made before it
+   arming or its merge wait (spc-2610161044461448 step 13), and, while an
+   armed lane waits where a merge queue gates the default branch, one
+   GraphQL read of its pull request's place in the queue through the forge
+   client at each step, then, for one the forge holds `CLEAN` outside the
+   queue, the land fence and one enqueue call pinned to the pushed head (or,
+   refused past its grace, one withdrawal and one re-arming of its
+   auto-merge), and, for one that left the queue disarmed, the release holds'
+   fetch and two REST reads naming the merge group's failed check, a watch
+   a drain's move also takes for each parked lane its listing shows armed and
+   `CLEAN` or disarmed (spc-2609212015054359 step 5); the land fence's fetch is made before it
    judges a release hold whether or not the run holds a reservation
    (itd-2609151838312703 C7); and `land`, whose meaning includes one fetch of
    the reservations before it pushes, arms or queues anything, for the same

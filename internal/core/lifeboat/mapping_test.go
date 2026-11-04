@@ -38,8 +38,9 @@ func repoRoot(t *testing.T) string {
 // both are pure functions of the tree, and no test in this package writes to
 // this repository, so every one of those tests saw the same report. Under
 // -race each probe of this record cost about 40 seconds, nearly all of it the
-// open-questions marker scan over every file. A test that changes what it was
-// handed must plan or probe for itself.
+// open-questions marker scan over every file, until that scan stopped running
+// its pattern over text naming no marker; it still costs several seconds. A
+// test that changes what it was handed must plan or probe for itself.
 var thisRepoPlan struct {
 	once sync.Once
 	lb   Lifeboat
