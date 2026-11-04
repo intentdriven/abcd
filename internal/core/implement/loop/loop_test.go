@@ -46,16 +46,18 @@ func specWithSteps(steps string) string {
 // tier the run lives in, and a temporary HOME (the peer claims live there).
 func loopRepo(t *testing.T, intentBody, spec string) *gittest.Repo {
 	t.Helper()
-	t.Setenv("HOME", t.TempDir())
-	repo := gittest.NewRepo(t)
-	repo.Write(".gitignore", ".abcd/.work.local/\n")
-	repo.Write(plannedRel, intentBody)
-	repo.Write(specRel, spec)
-	repo.Commit("init")
-	if err := os.MkdirAll(filepath.Join(repo.Root(), ".abcd", ".work.local"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	return repo
+	_, w := builtOnce(t, worldKey("loopRepo", intentBody, spec), func(w *fixtureWorld) struct{} {
+		repo := w.newRepo(t)
+		repo.Write(".gitignore", ".abcd/.work.local/\n")
+		repo.Write(plannedRel, intentBody)
+		repo.Write(specRel, spec)
+		repo.Commit("init")
+		if err := os.MkdirAll(filepath.Join(repo.Root(), ".abcd", ".work.local"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return struct{}{}
+	})
+	return w.repo
 }
 
 func runTierAbsent(t *testing.T, root string) {

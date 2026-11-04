@@ -24,19 +24,21 @@ import (
 // docFoundAt is not "".
 func reservingDrainRepo(t *testing.T, docFoundAt string) (*gittest.Repo, string) {
 	t.Helper()
-	repo := briefRepo(t, agentsMarked)
-	issueRepoRule(t, repo)
-	repo.Write("commands/drain.md", "# drain\n")
-	fileIssueAt(t, repo, eligibleIssue, capture.SeverityMinor, capture.Category("bug"), issueRemedy, "AGENTS.md:3")
-	fileIssueAt(t, repo, secondIssue, capture.SeverityMinor, capture.Category("documentation"), "Name the flag in the page.", docFoundAt)
-	repo.Commit("the ledger")
-	bare := filepath.Join(t.TempDir(), "origin.git")
-	gittest.InitBare(t, bare)
-	repo.Git("remote", "add", "origin", bare)
-	repo.Git("push", "-q", "origin", "main")
-	repo.Git("fetch", "-q", "origin")
-	asPat(t, repo)
-	return repo, bare
+	_, w := builtOnce(t, worldKey("reservingDrainRepo", docFoundAt), func(w *fixtureWorld) struct{} {
+		repo := briefRepo(t, agentsMarked)
+		issueRepoRule(t, repo)
+		repo.Write("commands/drain.md", "# drain\n")
+		fileIssueAt(t, repo, eligibleIssue, capture.SeverityMinor, capture.Category("bug"), issueRemedy, "AGENTS.md:3")
+		fileIssueAt(t, repo, secondIssue, capture.SeverityMinor, capture.Category("documentation"), "Name the flag in the page.", docFoundAt)
+		repo.Commit("the ledger")
+		gittest.InitBare(t, w.bare)
+		repo.Git("remote", "add", "origin", w.bare)
+		repo.Git("push", "-q", "origin", "main")
+		repo.Git("fetch", "-q", "origin")
+		asPat(t, repo)
+		return struct{}{}
+	})
+	return w.repo, w.bare
 }
 
 // footprintOf is the footprint origin's reservation on id names.

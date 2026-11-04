@@ -36,14 +36,19 @@ func syncFixture(t *testing.T) *landFixture {
 // syncFixtureWith is syncFixture with the ruleset mirror given.
 func syncFixtureWith(t *testing.T, ruleset string) *landFixture {
 	t.Helper()
-	f := drainLandFixtureWith(t, ruleset)
-	f.repo.Write(".gitattributes", genAttributes)
-	f.repo.Write("gen.txt", "generated at the base\n")
-	f.repo.Write("plain.txt", "written at the base\n")
-	f.repo.Commit("a generated file and a plain one")
-	f.repo.Git("push", "-q", "origin", "main")
-	f.repo.Git("fetch", "-q", "origin")
-	first := drainToLane(t, f.repo, Options{}, DrainOptions{})
+	first, w := builtOnce(t, worldKey("syncFixtureWith", ruleset), func(w *fixtureWorld) DrainResult {
+		f := drainLandFixtureWith(t, ruleset)
+		f.repo.Write(".gitattributes", genAttributes)
+		f.repo.Write("gen.txt", "generated at the base\n")
+		f.repo.Write("plain.txt", "written at the base\n")
+		f.repo.Commit("a generated file and a plain one")
+		f.repo.Git("push", "-q", "origin", "main")
+		f.repo.Git("fetch", "-q", "origin")
+		return drainToLane(t, f.repo, Options{}, DrainOptions{})
+	})
+	asPatInEnv(t)
+	w.putGHFirst(t)
+	f := &landFixture{repo: w.repo, bare: w.bare, gh: w.gh, stages: DefaultStages(), world: w}
 	if first.Start == nil || first.Lane.Issue != secondIssue {
 		t.Fatalf("the drain opens the documentation issue's lane: %+v", first)
 	}
@@ -73,6 +78,12 @@ func (f *landFixture) passToLand(t *testing.T, names ...string) Lane {
 	}
 	passRound(t, repo, f.runID, f.stages, RoleRuthless, RoleSecurity)
 	return stepTo(t, repo, f.runID, f.stages, StageLand)
+}
+
+// passToLandOnce is passToLand on a syncFixture nothing has touched.
+func (f *landFixture) passToLandOnce(t *testing.T, names ...string) Lane {
+	t.Helper()
+	return f.walked(t, worldKey("passToLand", strings.Join(names, "\x01")), func(t *testing.T) Lane { return f.passToLand(t, names...) })
 }
 
 // moveMain lands another account's change of names on origin's default

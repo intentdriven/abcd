@@ -39,6 +39,17 @@ func asPat(t *testing.T, repo *gittest.Repo) {
 	repo.Git("config", "user.email", patEmail)
 }
 
+// asPatInEnv makes the environment's commit identity the fixtures' person's.
+func asPatInEnv(t *testing.T) {
+	t.Helper()
+	for _, k := range []string{"GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"} {
+		t.Setenv(k, "Pat Example")
+	}
+	for _, k := range []string{"GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"} {
+		t.Setenv(k, "pat@example.com")
+	}
+}
+
 // personHome is the home the person email names keeps their holder id in:
 // P, the fixture's own person, in HOME, as every copy of P's on this machine
 // does, and anyone else in a home of their own under it, as their own

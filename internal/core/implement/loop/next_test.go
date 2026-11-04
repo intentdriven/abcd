@@ -46,26 +46,26 @@ func pickRel(n string) (string, string) {
 // commit identity for the pick's record commit.
 func pickRepo(t *testing.T, records map[string][2]string) *gittest.Repo {
 	t.Helper()
-	t.Setenv("HOME", t.TempDir())
-	for _, k := range []string{"GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"} {
-		t.Setenv(k, "Pat Example")
-	}
-	for _, k := range []string{"GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"} {
-		t.Setenv(k, "pat@example.com")
-	}
-	repo := gittest.NewRepo(t)
-	repo.Write(".gitignore", ".abcd/.work.local/\n")
-	repo.Write("AGENTS.md", agentsMarked)
+	asPatInEnv(t)
+	files := map[string]string{}
 	for n, r := range records {
 		ir, sr := pickRel(n)
-		repo.Write(ir, r[0])
-		repo.Write(sr, r[1])
+		files[ir], files[sr] = r[0], r[1]
 	}
-	repo.Commit("init")
-	if err := os.MkdirAll(filepath.Join(repo.Root(), ".abcd", ".work.local"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	return repo
+	_, w := builtOnce(t, worldKey("pickRepo", sortedFiles(files)), func(w *fixtureWorld) struct{} {
+		repo := w.newRepo(t)
+		repo.Write(".gitignore", ".abcd/.work.local/\n")
+		repo.Write("AGENTS.md", agentsMarked)
+		for name, body := range files {
+			repo.Write(name, body)
+		}
+		repo.Commit("init")
+		if err := os.MkdirAll(filepath.Join(repo.Root(), ".abcd", ".work.local"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return struct{}{}
+	})
+	return w.repo
 }
 
 // TestNextCandidatesAreWhatTheBuildWouldStart is criterion 1: only the planned

@@ -91,6 +91,19 @@ func heldStill(t *testing.T, bare, id, taken string) {
 func askFirst(t *testing.T, repo *gittest.Repo, bare string, o Options, d DrainOptions) (DrainResult, string) {
 	t.Helper()
 	res, err := Drain(repo.Root(), o, d)
+	return judgedFirst(t, bare, res, err)
+}
+
+// askFirstOnce is askFirst with no options, straight after the fixture.
+func askFirstOnce(t *testing.T, repo *gittest.Repo, bare string, d DrainOptions) (DrainResult, string) {
+	t.Helper()
+	res, err := drainedOnce(t, repo, d)
+	return judgedFirst(t, bare, res, err)
+}
+
+// judgedFirst is what askFirst holds a first move to.
+func judgedFirst(t *testing.T, bare string, res DrainResult, err error) (DrainResult, string) {
+	t.Helper()
 	if err != nil {
 		t.Fatal(err)
 	}

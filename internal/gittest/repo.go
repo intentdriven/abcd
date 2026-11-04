@@ -57,6 +57,16 @@ func NewRepoFormat(t *testing.T, format string) *Repo {
 	return r
 }
 
+// OpenRepo is a Repo over the working tree at root, which the caller made: a
+// copy of a repository NewRepo built once, for a package whose every test
+// starts from the same seeded history and copies it rather than building it
+// again with git. The copy carries the config NewRepo wrote, maintenance off
+// among it. Every command runs under Env(t), as NewRepo's do.
+func OpenRepo(t *testing.T, root string) *Repo {
+	t.Helper()
+	return &Repo{t: t, root: root, env: Env(t)}
+}
+
 // maintenanceOff is the repository config every fixture repository carries.
 // Background maintenance is disabled in the REPO config, not per command,
 // because the code under test runs its own git against the repository: an

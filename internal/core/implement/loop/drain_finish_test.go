@@ -29,25 +29,53 @@ func drainLandFixture(t *testing.T) *landFixture {
 // drainLandFixtureWith is drainLandFixture with the ruleset mirror given.
 func drainLandFixtureWith(t *testing.T, ruleset string) *landFixture {
 	t.Helper()
-	repo := drainRepoAt(t, "AGENTS.md")
-	asPat(t, repo)
-	for _, k := range []string{"GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"} {
-		t.Setenv(k, "Pat Example")
-	}
-	for _, k := range []string{"GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"} {
-		t.Setenv(k, "pat@example.com")
-	}
-	repo.Write(".abcd/work/rulesets/main-protection.json", ruleset)
-	repo.Commit("the ruleset mirror")
-	bare := filepath.Join(t.TempDir(), "origin.git")
-	gittest.InitBare(t, bare)
-	repo.Git("remote", "add", "origin", bare)
-	repo.Git("push", "-q", "origin", "main")
-	repo.Git("fetch", "-q", "origin")
-	gh := t.TempDir()
-	installStubGH(t, gh, ruleset)
-	t.Setenv("PATH", gh+string(os.PathListSeparator)+os.Getenv("PATH"))
-	return &landFixture{repo: repo, bare: bare, gh: gh, stages: DefaultStages()}
+	_, w := builtOnce(t, worldKey("drainLandFixtureWith", ruleset), func(w *fixtureWorld) struct{} {
+		repo := drainRepoAt(t, "AGENTS.md")
+		asPat(t, repo)
+		asPatInEnv(t)
+		repo.Write(".abcd/work/rulesets/main-protection.json", ruleset)
+		repo.Commit("the ruleset mirror")
+		gittest.InitBare(t, w.bare)
+		repo.Git("remote", "add", "origin", w.bare)
+		repo.Git("push", "-q", "origin", "main")
+		repo.Git("fetch", "-q", "origin")
+		installStubGH(t, w.gh, ruleset)
+		w.putGHFirst(t)
+		return struct{}{}
+	})
+	asPatInEnv(t)
+	w.putGHFirst(t)
+	return &landFixture{repo: w.repo, bare: w.bare, gh: w.gh, stages: DefaultStages(), world: w}
+}
+
+// firstMove is the first drain move on a drainLandFixture nothing has touched.
+func (f *landFixture) firstMove(t *testing.T) DrainResult {
+	t.Helper()
+	return walkedOnce(t, f.world, "firstMove", func() DrainResult { return drainToLane(t, f.repo, Options{}, DrainOptions{}) })
+}
+
+// startOnce is Start of id on a drainLandFixture nothing has touched.
+func (f *landFixture) startOnce(t *testing.T, id string) (StartResult, error) {
+	t.Helper()
+	return walkedOnce(t, f.world, worldKey("start", id), func() StartResult {
+		start, err := Start(f.repo.Root(), id, Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return start
+	}), nil
+}
+
+// parkIssueLaneOnce is parkIssueLane straight after firstMove or startOnce.
+func (f *landFixture) parkIssueLaneOnce(t *testing.T) Lane {
+	t.Helper()
+	return f.walked(t, "parkIssueLane", f.parkIssueLane)
+}
+
+// armIssueLaneOnce is armIssueLane straight after firstMove or startOnce.
+func (f *landFixture) armIssueLaneOnce(t *testing.T) Lane {
+	t.Helper()
+	return f.walked(t, "armIssueLane", f.armIssueLane)
 }
 
 // armIssueLane drives the drain's issue lane from its implement await to an

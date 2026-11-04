@@ -73,6 +73,7 @@ func TestMain(m *testing.M) {
 	}
 	code := m.Run()
 	cleanup()
+	removeFixtureWorlds()
 	os.Exit(code)
 }
 

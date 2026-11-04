@@ -47,17 +47,20 @@ func decisionRecord(id, slug, date, text string) string {
 // the folder and a frozen decision log.
 func briefRepo(t *testing.T, agents string) *gittest.Repo {
 	t.Helper()
-	repo := loopRepo(t, readyIntent("", settledQuestions+"Refines adr-27, and adr-404 which does not exist.\n\n"), specWithSteps(""))
-	if agents != "" {
-		repo.Write("AGENTS.md", agents)
-	}
-	repo.Write(adrRel, adrBody)
-	repo.Write(decisions.FrozenLog, decisionsLog)
-	for name, body := range briefDecisionRecords {
-		repo.Write(decisions.RelDir+"/"+name, body)
-	}
-	repo.Commit("the record")
-	return repo
+	_, w := builtOnce(t, worldKey("briefRepo", agents), func(w *fixtureWorld) struct{} {
+		repo := loopRepo(t, readyIntent("", settledQuestions+"Refines adr-27, and adr-404 which does not exist.\n\n"), specWithSteps(""))
+		if agents != "" {
+			repo.Write("AGENTS.md", agents)
+		}
+		repo.Write(adrRel, adrBody)
+		repo.Write(decisions.FrozenLog, decisionsLog)
+		for name, body := range briefDecisionRecords {
+			repo.Write(decisions.RelDir+"/"+name, body)
+		}
+		repo.Commit("the record")
+		return struct{}{}
+	})
+	return w.repo
 }
 
 // advanceTo steps the run until its current lane's next step is want.

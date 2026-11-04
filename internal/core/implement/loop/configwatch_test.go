@@ -53,15 +53,18 @@ func absent(t *testing.T, path, what string) {
 // the tripwire has recorded its fingerprint.
 func startedRun(t *testing.T) (*gittest.Repo, string) {
 	t.Helper()
-	repo := briefRepo(t, agentsMarked)
-	start, err := Start(repo.Root(), "itd-10", Options{noReserve: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := advance(repo.Root(), start.RunID, DefaultStages(), Options{}); err != nil {
-		t.Fatal(err)
-	}
-	return repo, start.RunID
+	runID, w := builtOnce(t, "startedRun", func(w *fixtureWorld) string {
+		repo := briefRepo(t, agentsMarked)
+		start, err := Start(repo.Root(), "itd-10", Options{noReserve: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := advance(repo.Root(), start.RunID, DefaultStages(), Options{}); err != nil {
+			t.Fatal(err)
+		}
+		return start.RunID
+	})
+	return w.repo, runID
 }
 
 // TestARunWithoutAFingerprintRecordsOneAndProceeds: a run with no fingerprint

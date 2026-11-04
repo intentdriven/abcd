@@ -15,16 +15,24 @@ import (
 // the run id, the lane as the state holds it, and the lane's directory.
 func awaitingLane(t *testing.T) (*gittest.Repo, string, Lane, string) {
 	t.Helper()
-	repo := briefRepo(t, agentsMarked)
-	start, err := Start(repo.Root(), "itd-10", Options{})
-	if err != nil {
-		t.Fatal(err)
+	type walked struct {
+		start StartResult
+		res   StepResult
 	}
-	advanceTo(t, repo, start.RunID, StageImplement)
-	res, err := advance(repo.Root(), start.RunID, DefaultStages(), Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	v, w := builtOnce(t, "awaitingLane", func(w *fixtureWorld) walked {
+		repo := briefRepo(t, agentsMarked)
+		start, err := startedOnce(t, repo, "itd-10")
+		if err != nil {
+			t.Fatal(err)
+		}
+		advancedToOnce(t, repo, start.RunID, StageImplement)
+		res, err := advance(repo.Root(), start.RunID, DefaultStages(), Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return walked{start, res}
+	})
+	repo, start, res := w.repo, v.start, v.res
 	if res.Awaiting == nil || res.Awaiting.Role != RoleImplementer {
 		t.Fatalf("the implement stage awaits an implementer: %+v", res)
 	}

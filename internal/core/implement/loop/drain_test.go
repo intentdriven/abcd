@@ -26,10 +26,13 @@ func drainRepo(t *testing.T) *gittest.Repo {
 // drainRepoAt is drainRepo with every issue's found_at; "" names none.
 func drainRepoAt(t *testing.T, foundAt string) *gittest.Repo {
 	t.Helper()
-	repo := issueRepoAt(t, foundAt)
-	fileIssueAt(t, repo, secondIssue, capture.SeverityMinor, capture.Category("documentation"), "Name the flag in the page.", foundAt)
-	repo.Commit("a second eligible issue")
-	return repo
+	_, w := builtOnce(t, worldKey("drainRepoAt", foundAt), func(w *fixtureWorld) struct{} {
+		repo := issueRepoAt(t, foundAt)
+		fileIssueAt(t, repo, secondIssue, capture.SeverityMinor, capture.Category("documentation"), "Name the flag in the page.", foundAt)
+		repo.Commit("a second eligible issue")
+		return struct{}{}
+	})
+	return w.repo
 }
 
 // clock is a settable Options.Now.

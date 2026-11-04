@@ -42,15 +42,17 @@ func draftIntent(replace ...string) string {
 // local tier the run lives in, and a temporary HOME.
 func draftRepo(t *testing.T, draft string) *gittest.Repo {
 	t.Helper()
-	t.Setenv("HOME", t.TempDir())
-	repo := gittest.NewRepo(t)
-	repo.Write(".gitignore", ".abcd/.work.local/\n")
-	repo.Write(draftRel, draft)
-	repo.Commit("init")
-	if err := os.MkdirAll(filepath.Join(repo.Root(), ".abcd", ".work.local"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	return repo
+	_, w := builtOnce(t, worldKey("draftRepo", draft), func(w *fixtureWorld) struct{} {
+		repo := w.newRepo(t)
+		repo.Write(".gitignore", ".abcd/.work.local/\n")
+		repo.Write(draftRel, draft)
+		repo.Commit("init")
+		if err := os.MkdirAll(filepath.Join(repo.Root(), ".abcd", ".work.local"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return struct{}{}
+	})
+	return w.repo
 }
 
 // writeReturn writes a reviewer's return at the await's path.

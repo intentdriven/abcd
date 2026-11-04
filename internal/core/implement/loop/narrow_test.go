@@ -64,6 +64,8 @@ type narrowFixture struct {
 	bare   string
 	runID  string
 	stages Stages
+	// world is where the fixture stands.
+	world *fixtureWorld
 }
 
 func newNarrowFixture(t *testing.T) *narrowFixture {
@@ -75,33 +77,30 @@ func newNarrowFixture(t *testing.T) *narrowFixture {
 // found_at, and the footprint its reservation names, given.
 func newNarrowFixtureAt(t *testing.T, foundAt, reserved string) *narrowFixture {
 	t.Helper()
-	repo := briefRepo(t, agentsMarked)
-	repo.Write("docs/guide.md", "the guide\n")
-	repo.Write("docs/page.md", "the page\n")
-	repo.Commit("the docs")
-	issueRepoRule(t, repo)
-	fileIssueAt(t, repo, eligibleIssue, capture.SeverityMinor, capture.Category("bug"), issueRemedy, "AGENTS.md")
-	fileIssueAt(t, repo, secondIssue, capture.SeverityMinor, capture.Category("documentation"), "Name the flag in the page.", foundAt)
-	repo.Commit("the ledger")
-	asPat(t, repo)
-	for _, k := range []string{"GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"} {
-		t.Setenv(k, "Pat Example")
-	}
-	for _, k := range []string{"GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"} {
-		t.Setenv(k, "pat@example.com")
-	}
-	bare := filepath.Join(t.TempDir(), "origin.git")
-	gittest.InitBare(t, bare)
-	repo.Git("remote", "add", "origin", bare)
-	repo.Git("push", "-q", "origin", "main")
-	repo.Git("fetch", "-q", "origin")
+	first, w := builtOnce(t, worldKey("newNarrowFixtureAt", foundAt, reserved), func(w *fixtureWorld) DrainResult {
+		repo := briefRepo(t, agentsMarked)
+		repo.Write("docs/guide.md", "the guide\n")
+		repo.Write("docs/page.md", "the page\n")
+		repo.Commit("the docs")
+		issueRepoRule(t, repo)
+		fileIssueAt(t, repo, eligibleIssue, capture.SeverityMinor, capture.Category("bug"), issueRemedy, "AGENTS.md")
+		fileIssueAt(t, repo, secondIssue, capture.SeverityMinor, capture.Category("documentation"), "Name the flag in the page.", foundAt)
+		repo.Commit("the ledger")
+		asPat(t, repo)
+		asPatInEnv(t)
+		gittest.InitBare(t, w.bare)
+		repo.Git("remote", "add", "origin", w.bare)
+		repo.Git("push", "-q", "origin", "main")
+		repo.Git("fetch", "-q", "origin")
 
-	pace := "480/10"
-	first := drainToLane(t, repo, Options{Pace: &pace}, DrainOptions{})
+		pace := "480/10"
+		return drainToLane(t, repo, Options{Pace: &pace}, DrainOptions{})
+	})
+	asPatInEnv(t)
 	if first.Start == nil || first.Lane.Issue != secondIssue {
 		t.Fatalf("the drain opens the documentation issue's lane: %+v", first)
 	}
-	f := &narrowFixture{repo: repo, bare: bare, runID: first.Start.RunID, stages: DefaultStages()}
+	f := &narrowFixture{repo: w.repo, bare: w.bare, runID: first.Start.RunID, stages: DefaultStages(), world: w}
 	if fp := f.footprint(t); !slices.Equal(fp, []string{reserved}) {
 		t.Fatalf("the lane reserves the path its found_at names: %q", fp)
 	}
@@ -166,6 +165,25 @@ func (f *narrowFixture) implement(t *testing.T, o Options, names ...string) {
 	}
 }
 
+// implementOnce is implement, on the real clock, of a fixture nothing has
+// touched.
+func (f *narrowFixture) implementOnce(t *testing.T, names ...string) {
+	t.Helper()
+	walkedOnce(t, f.world, worldKey("implement", strings.Join(names, "\x01")), func() struct{} {
+		f.implement(t, Options{}, names...)
+		return struct{}{}
+	})
+}
+
+// awaitImplementerOnce is awaitImplementer on a fixture nothing has touched.
+func (f *narrowFixture) awaitImplementerOnce(t *testing.T) {
+	t.Helper()
+	walkedOnce(t, f.world, "awaitImplementer", func() struct{} {
+		f.awaitImplementer(t)
+		return struct{}{}
+	})
+}
+
 // awaitImplementer drives the lane to its implement stage's await, once.
 func (f *narrowFixture) awaitImplementer(t *testing.T) {
 	t.Helper()
@@ -225,6 +243,15 @@ func (f *narrowFixture) toLand(t *testing.T) {
 		}
 	}
 	t.Fatal("the lane never reached its landing")
+}
+
+// toLandOnce is toLand straight after implementOnce.
+func (f *narrowFixture) toLandOnce(t *testing.T) {
+	t.Helper()
+	walkedOnce(t, f.world, "toLand", func() struct{} {
+		f.toLand(t)
+		return struct{}{}
+	})
 }
 
 // TestALanesDirectoryReservationNarrowsToItsChangedFiles: the drain reserves

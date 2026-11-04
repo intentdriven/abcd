@@ -386,15 +386,24 @@ func TestAnUnconfiguredRouteLeavesTheReviewAndTheStateByteIdentical(t *testing.T
 // its validators, its implementer committing name with body.
 func startAtValidate(t *testing.T, name, body string) (*gittest.Repo, string, Stages, Lane) {
 	t.Helper()
+	if body == "" {
+		id, w := builtOnce(t, worldKey("startAtValidate", name), func(w *fixtureWorld) string {
+			repo := briefRepo(t, agentsMarked)
+			start, err := startedOnce(t, repo, "itd-10")
+			if err != nil {
+				t.Fatal(err)
+			}
+			implemented(t, repo, start.RunID, DefaultStages(), name)
+			return start.RunID
+		})
+		return w.repo, id, DefaultStages(), currentLane(t, w.repo, id)
+	}
 	repo := briefRepo(t, agentsMarked)
 	start, err := Start(repo.Root(), "itd-10", Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	id, stages := start.RunID, DefaultStages()
-	if body == "" {
-		return repo, id, stages, implemented(t, repo, id, stages, name)
-	}
 	stepTo(t, repo, id, stages, StageImplement)
 	if _, err := advance(repo.Root(), id, stages, Options{}); err != nil {
 		t.Fatal(err)

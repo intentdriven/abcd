@@ -146,6 +146,8 @@ type landFixture struct {
 	stages Stages
 	// model is the model the lane's receipt reports.
 	model string
+	// world is where the fixture stands.
+	world *fixtureWorld
 }
 
 func newLandFixture(t *testing.T, ruleset string) *landFixture {
@@ -161,47 +163,76 @@ func newLandFixture(t *testing.T, ruleset string) *landFixture {
 // mirror, a CODEOWNERS file) committed at the lane's base.
 func newLandFixtureWith(t *testing.T, files map[string]string) *landFixture {
 	t.Helper()
-	repo := loopRepo(t, readyIntent("impact: additive\n", settledQuestions), specWithSteps(""))
-	for _, k := range []string{"GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"} {
-		t.Setenv(k, "Pat Example")
-	}
-	for _, k := range []string{"GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"} {
-		t.Setenv(k, "pat@example.com")
-	}
-	repo.Write("AGENTS.md", agentsMarked)
-	for name, body := range files {
-		repo.Write(name, body)
-	}
-	c, err := capture.Capture(capture.CaptureRequest{RepoRoot: repo.Root(), Text: "The widget refuses a blank name.",
-		Severity: "minor", Category: "ux", Source: "agent-observation", FoundDuring: "a landing test",
-		Remedy: "accept a blank name as absent"})
-	if err != nil {
-		t.Fatalf("capturing the issue the lane fixes: %v", err)
-	}
-	repo.Commit("the record")
+	type built struct{ issue, runID string }
+	v, w := builtOnce(t, worldKey("newLandFixtureWith", sortedFiles(files)), func(w *fixtureWorld) built {
+		repo := loopRepo(t, readyIntent("impact: additive\n", settledQuestions), specWithSteps(""))
+		asPatInEnv(t)
+		repo.Write("AGENTS.md", agentsMarked)
+		for name, body := range files {
+			repo.Write(name, body)
+		}
+		c, err := capture.Capture(capture.CaptureRequest{RepoRoot: repo.Root(), Text: "The widget refuses a blank name.",
+			Severity: "minor", Category: "ux", Source: "agent-observation", FoundDuring: "a landing test",
+			Remedy: "accept a blank name as absent"})
+		if err != nil {
+			t.Fatalf("capturing the issue the lane fixes: %v", err)
+		}
+		repo.Commit("the record")
 
-	bare := filepath.Join(t.TempDir(), "origin.git")
-	gittest.InitBare(t, bare)
-	repo.Git("remote", "add", "origin", bare)
-	repo.Git("push", "-q", "origin", "main")
-	repo.Git("fetch", "-q", "origin")
+		gittest.InitBare(t, w.bare)
+		repo.Git("remote", "add", "origin", w.bare)
+		repo.Git("push", "-q", "origin", "main")
+		repo.Git("fetch", "-q", "origin")
 
-	gh := t.TempDir()
-	var rulesets []string
-	for _, body := range files {
-		rulesets = append(rulesets, body)
-	}
-	installStubGH(t, gh, rulesets...)
-	t.Setenv("PATH", gh+string(os.PathListSeparator)+os.Getenv("PATH"))
+		var rulesets []string
+		for _, body := range files {
+			rulesets = append(rulesets, body)
+		}
+		installStubGH(t, w.gh, rulesets...)
+		w.putGHFirst(t)
 
-	// The fixture's run holds no reservation: a test that wants one takes it
-	// (reserveRun), at the time it chooses.
-	start, err := Start(repo.Root(), "itd-10", Options{noReserve: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return &landFixture{repo: repo, bare: bare, gh: gh, issue: c.ID, runID: start.RunID, stages: DefaultStages(),
-		model: "claude-test-5"}
+		// The fixture's run holds no reservation: a test that wants one takes it
+		// (reserveRun), at the time it chooses.
+		start, err := Start(repo.Root(), "itd-10", Options{noReserve: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return built{issue: c.ID, runID: start.RunID}
+	})
+	asPatInEnv(t)
+	w.putGHFirst(t)
+	return &landFixture{repo: w.repo, bare: w.bare, gh: w.gh, issue: v.issue, runID: v.runID, stages: DefaultStages(),
+		model: "claude-test-5", world: w}
+}
+
+// walked is walk, from newLandFixture, once a process per fixture and model;
+// walkedOnce says when a test can use it.
+func (f *landFixture) walked(t *testing.T, name string, walk func(t *testing.T) Lane) Lane {
+	t.Helper()
+	walkedOnce(t, f.world, worldKey(name, f.model), func() struct{} {
+		walk(t)
+		return struct{}{}
+	})
+	return currentLane(t, f.repo, f.runID)
+}
+
+// validatedOnce is validated on a fixture nothing has touched but its model.
+func (f *landFixture) validatedOnce(t *testing.T) Lane {
+	t.Helper()
+	return f.walked(t, "validated", f.validated)
+}
+
+// toArmOnce is toArm on a fixture nothing has touched but its model.
+func (f *landFixture) toArmOnce(t *testing.T) Lane {
+	t.Helper()
+	return f.walked(t, "toArm", f.toArm)
+}
+
+// landedToArmedOnce is landedToArmed on a fixture nothing has touched but its
+// model.
+func (f *landFixture) landedToArmedOnce(t *testing.T) Lane {
+	t.Helper()
+	return f.walked(t, "landedToArmed", f.landedToArmed)
 }
 
 // validated drives the run's lane through its implement stage, with a receipt
