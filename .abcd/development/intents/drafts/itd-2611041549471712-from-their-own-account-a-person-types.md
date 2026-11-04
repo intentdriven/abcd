@@ -7,7 +7,8 @@ suggested_kind: null
 reclassification_history: []
 builds_on: [itd-2609201925079472, itd-2611031342011261, itd-2610180912189125]
 refines: [itd-2610222215485265]
-related_issues: [iss-2611022247128872, iss-2610121528179959]
+reverses: [dcn-2610222224054666]
+related_issues: [iss-2610121528179959]
 severity: major
 origin: researcher-authored
 production_mode: hand-written
@@ -42,7 +43,8 @@ We expect a stop to take hold on every run because each run already reads a reco
 
 - **Given** the person runs the stop from their own account, **when** any run on the machine takes its next move, **then** it opens no lane, hands out no stage, starts no agent, and writes a `stop` event naming who set it and when; an agent already running finishes its call and its receipt is collected, never acted on further; and only then, with no agent live in the lane, is each lane's uncommitted work saved aside as a restart does and its reservations released so a peer may take the work (dcn-2611041550139264).
 - **Given** the stop holds, **when** an agent's session, a driver or a hook tries to lift it, **then** it is refused; only the person's own command lifts it, and the lift is a recorded event.
-- **Given** the stop holds, **when** the daily digest is composed (itd-2611041549483696), **then** it names the stop, every run it halted and what each left.
+- **Given** a terminal run, **when** Ctrl-C or a hang-up reaches it, **then** the signal is a stop: the running agent's call finishes and its receipt is collected, then the lane's uncommitted work is saved aside and its claims released, and the drive prints the run and the lane; a second press kills the process group at once (dcn-2611041608057544). This reverses dcn-2610222224054666, under which the open lane kept its reservation for the next drive to resume.
+- **Given** the stop holds, **when** the last run in the account that runs the work ends under it, **then** the stop composes that day's digest page before it ends, in that account (itd-2611041549483696), naming the stop, every run it halted and what each left; a page already written for the day is rewritten whole.
 - **Given** setup, **when** the person is offered the shared folder, **then** the walkthrough says what it is for, that it is read by every account on the machine, and that it is meant for a machine no other person shares; declining leaves every other part of abcd working, and the stop then reaches only runs in the person's own account.
 - **Given** the stop file's home, **when** abcd reads it, **then** it accepts this one file outside its owner-only rule, written by the person's account, and refuses a stop file any other account wrote, naming it.
 
@@ -70,7 +72,7 @@ Hand-run four-piece table, 2026-11-04, from the scratch draft that held the stop
 | a run's account of itself lives in abcd's files, never in a session's memory | stance | a candidate principle, for the product thinker to confirm; not filed |
 | the stop file's shape, the setup walkthrough's wording, the digest's line | plumbing | the brief's loop chapter, through this intent's spec |
 
-Verdict: SPLIT, confirmed. Typed links: `refines` itd-2610222215485265 (a stop ends its drive the same way); `builds_on` itd-2609201925079472, itd-2611031342011261 and itd-2610180912189125; `related_issues` iss-2611022247128872 and iss-2610121528179959. Flagged, never auto-classified: this intent narrows the autonomous mode's reading that only `abcd mode back` ends it; a stop ends the work without ending the mode.
+Verdict: SPLIT, confirmed. Typed links: `refines` itd-2610222215485265 (a stop ends its drive the same way); `builds_on` itd-2609201925079472, itd-2611031342011261 and itd-2610180912189125; `related_issues` iss-2611022247128872 and iss-2610121528179959. `reverses` dcn-2610222224054666 (dcn-2611041608057544): a signal no longer leaves the lane's reservation held; the call finishes and the claims are released. Flagged, never auto-classified: this intent narrows the autonomous mode's reading that only `abcd mode back` ends it; a stop ends the work without ending the mode.
 
 ## Audit Notes
 

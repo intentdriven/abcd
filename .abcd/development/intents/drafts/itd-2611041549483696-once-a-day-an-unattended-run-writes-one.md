@@ -6,7 +6,7 @@ kind: null
 suggested_kind: null
 reclassification_history: []
 builds_on: [itd-2611031342011261, itd-2610240850336695, itd-2610032150577708]
-related_issues: [iss-2610121528179959, iss-2610130501353955, iss-2610100913096346]
+related_issues: [iss-2610130501353955]
 severity: major
 origin: researcher-authored
 production_mode: hand-written
@@ -41,7 +41,7 @@ We expect the page to be right where the hand-written one was wrong because ever
 
 ## Acceptance Criteria
 
-- **Given** the first abcd move after the day's boundary, **when** it runs, **then** one page for the previous day is composed from that account's records and written to the shared folder; a later move the same day in that account rewrites the page whole from the records, never appends to it; a move in any other account writes nothing; and a day with no run writes a page that says so.
+- **Given** the first abcd move after the day's boundary, **when** it runs, **then** one page for the previous day is composed from that account's records and written to the shared folder; a later move the same day in that account rewrites the page whole from the records, never appends to it; a move in any other account writes nothing; a day with no run writes a page that says so; and a stop (itd-2611041549471712) composes that day's page itself before the last run it halted ends, in the run account, so a stopped day is never without one.
 - **Given** the day's merges, **when** the page lists them, **then** each shows the pull request, the records its trailers resolved or delivered, and the release it reached if one was cut, read from the forge and the ledger, never from a session's notes.
 - **Given** a lane that stalled, **when** the page lists it, **then** it shows the run, the lane, the stage, the recorded reason (paused, handed back, outage, rate limit, stop) and what the lane left (a receipt uncollected, work saved aside, a pull request waiting), with the command that picks it up.
 - **Given** the named keys, **when** the page shows spend, **then** each key shows the month's spend against its cap, the day's spend, the stages it carried, and for each the window reading that sent the stage to the key; a key at its cap is marked, and a subscription stage is counted, never priced.

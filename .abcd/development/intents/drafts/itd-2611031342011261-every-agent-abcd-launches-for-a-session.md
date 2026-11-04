@@ -213,8 +213,10 @@ interview, drafted from the lab's rulings of 2026-11-03.
 - **Given** the ledger's bounds, **when** entries pass the retention the
   person configures (a number of days and a count, with shipped defaults),
   **then** the next writer prunes the oldest whole files past them and the
-  ledger never grows without bound; a pruned launch is gone from the ledger
-  and from nothing else.
+  ledger never grows without bound; whichever limit is set, days or count,
+  pruning never removes an entry inside the longest cap period any key's
+  budget counts (itd-2611011230226453), so a month's totals stay whole; a
+  pruned launch is gone from the ledger and from nothing else.
 - **Given** the run state, **when** this intent ships, **then** its schema
   version is unchanged: the ledger names the run, lane and await, and the
   run state names nothing of the ledger, so no driver on an older build
@@ -303,7 +305,8 @@ default, and none was put as a question of its own:
     retention is never shorter than the longest cap period of any key the
     budget intent keeps (itd-2611011230226453) plus one day, so a calendar
     month's totals are summed from entries still held, and a repository
-    setting below that floor is read as the floor and named as such.
+    setting below that floor is read as the floor and named as such; the
+    count limit keeps the same floor, never pruning inside that period.
 15. **The status line's cached read: 30 seconds**, the interval the
     prototype used; configurable the same way.
 16. **Token basis: every count the harness reports**, as the prototype
