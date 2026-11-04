@@ -18,8 +18,8 @@ it runs in the process, touching no network.
 | Verb | Bucket | Status |
 |---|---|---|
 
-Bare, the verb lists the launches of the session the command runs under; `--run
-<id>`, `--session <id>` and `--all` name another scope. With no session to name
+Bare, the verb lists the launches of the session the command runs under; a flag
+names one run, another session or every launch instead. With no session to name
 and no scope given it refuses at exit 2, as it does for two scopes at once.
 
 ## The record
