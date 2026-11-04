@@ -1,6 +1,10 @@
 package gitutil_test
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/gittest"
@@ -109,3 +113,167 @@ func TestTrackedDefaultBranchNamesOnlyTheRemotesRef(t *testing.T) {
 		t.Fatalf("TrackedDefaultBranch outside a repository = %q, want \"\"", got)
 	}
 }
+
+// oldDefaultRef is the resolution as a question per ref put it: the answer the
+// one listing must keep.
+func oldDefaultRef(root, remote string, local bool) string {
+	exists := func(ref string) bool {
+		_, err := gitutil.Run(root, "rev-parse", "--verify", "--quiet", ref+"^{commit}", "--")
+		return err == nil
+	}
+	prefix := "refs/remotes/" + remote + "/"
+	if out, err := gitutil.Run(root, "symbolic-ref", "--quiet", prefix+"HEAD"); err == nil && strings.HasPrefix(out, prefix) && exists(out) {
+		return out
+	}
+	names := []string{"main", "master", "trunk", "develop"}
+	for _, n := range names {
+		if exists(prefix + n) {
+			return prefix + n
+		}
+	}
+	if local {
+		for _, n := range names {
+			if exists("refs/heads/" + n) {
+				return "refs/heads/" + n
+			}
+		}
+	}
+	return ""
+}
+
+// TestTheListingAnswersAsAQuestionPerRefDid holds the one listing to the
+// question per ref it replaced, over the shapes a default branch's refs come in:
+// a tag, a tag of a tag, a tree, a HEAD that is no symref or points away, packed
+// refs, a ref below a conventional name, a branch spelt in another case, and
+// nothing at all.
+func TestTheListingAnswersAsAQuestionPerRefDid(t *testing.T) {
+	const origin, other = "refs/remotes/origin/", "refs/remotes/upstream/"
+	shapes := map[string]func(r *gittest.Repo){
+		"a local main": func(r *gittest.Repo) {},
+		"nothing": func(r *gittest.Repo) {
+			r.Git("branch", "-m", "main", "feature")
+		},
+		"a branch spelt in another case": func(r *gittest.Repo) {
+			r.Git("branch", "-m", "main", "spelt")
+			r.Git("branch", "-m", "spelt", "Main")
+		},
+		"the same, packed": func(r *gittest.Repo) {
+			r.Git("branch", "-m", "main", "spelt")
+			r.Git("branch", "-m", "spelt", "Main")
+			r.Git("pack-refs", "--all")
+		},
+		"a remote main": func(r *gittest.Repo) {
+			r.Git("update-ref", origin+"main", "HEAD")
+		},
+		"remote names in the wrong order": func(r *gittest.Repo) {
+			r.Git("update-ref", origin+"develop", "HEAD")
+			r.Git("update-ref", origin+"master", "HEAD")
+		},
+		"packed remote refs": func(r *gittest.Repo) {
+			r.Git("update-ref", origin+"trunk", "HEAD")
+			r.Git("symbolic-ref", origin+"HEAD", origin+"trunk")
+			r.Git("pack-refs", "--all")
+		},
+		"HEAD at an unconventional name": func(r *gittest.Repo) {
+			r.Git("update-ref", origin+"release", "HEAD")
+			r.Git("symbolic-ref", origin+"HEAD", origin+"release")
+		},
+		"a dangling HEAD": func(r *gittest.Repo) {
+			r.Git("update-ref", origin+"master", "HEAD")
+			r.Git("symbolic-ref", origin+"HEAD", origin+"gone")
+		},
+		"a HEAD that is no symref": func(r *gittest.Repo) {
+			r.Git("update-ref", origin+"HEAD", "HEAD")
+			r.Git("update-ref", origin+"trunk", "HEAD")
+		},
+		"a HEAD pointing off the remote": func(r *gittest.Repo) {
+			r.Git("symbolic-ref", origin+"HEAD", "refs/heads/main")
+			r.Git("update-ref", origin+"develop", "HEAD")
+		},
+		"a HEAD at a symref": func(r *gittest.Repo) {
+			r.Git("update-ref", origin+"release", "HEAD")
+			r.Git("symbolic-ref", origin+"next", origin+"release")
+			r.Git("symbolic-ref", origin+"HEAD", origin+"next")
+		},
+		"a remote name that is a tag of a commit": func(r *gittest.Repo) {
+			r.Git("tag", "-a", "-m", "t", "v1")
+			r.Git("update-ref", origin+"main", "refs/tags/v1")
+		},
+		"a remote name that is a tag of a tag": func(r *gittest.Repo) {
+			r.Git("tag", "-a", "-m", "t", "v1")
+			r.Git("tag", "-a", "-m", "t", "v2", "v1")
+			r.Git("update-ref", origin+"main", "refs/tags/v2")
+		},
+		"a remote name that is a tag of a tree": func(r *gittest.Repo) {
+			r.Git("tag", "-a", "-m", "t", "tree", "HEAD^{tree}")
+			r.Git("update-ref", origin+"main", "refs/tags/tree")
+			r.Git("update-ref", origin+"master", "HEAD")
+		},
+		"a remote name that is a tree": func(r *gittest.Repo) {
+			r.Git("update-ref", origin+"main", r.Git("rev-parse", "HEAD^{tree}"))
+		},
+		"a HEAD at a tree": func(r *gittest.Repo) {
+			r.Git("update-ref", origin+"release", r.Git("rev-parse", "HEAD^{tree}"))
+			r.Git("symbolic-ref", origin+"HEAD", origin+"release")
+			r.Git("update-ref", origin+"trunk", "HEAD")
+		},
+		"a ref below a conventional name": func(r *gittest.Repo) {
+			r.Git("update-ref", origin+"main/sub", "HEAD")
+			r.Git("branch", "-m", "main", "feature")
+		},
+		"another remote's refs": func(r *gittest.Repo) {
+			r.Git("update-ref", other+"main", "HEAD")
+			r.Git("branch", "-m", "main", "feature")
+		},
+	}
+	for name, setup := range shapes {
+		t.Run(name, func(t *testing.T) {
+			r := gittest.NewRepo(t)
+			r.Commit("c0")
+			setup(r)
+			if got, want := gitutil.DefaultRef(r.Root()), oldDefaultRef(r.Root(), "origin", true); got != want {
+				t.Errorf("DefaultRef = %q, a question per ref said %q", got, want)
+			}
+			if got, want := gitutil.TrackedDefaultBranch(r.Root(), "origin"), oldDefaultRef(r.Root(), "origin", false); got != want {
+				t.Errorf("TrackedDefaultBranch = %q, a question per ref said %q", got, want)
+			}
+		})
+	}
+	t.Run("an unborn branch", func(t *testing.T) {
+		r := gittest.NewRepo(t)
+		if got := gitutil.DefaultRef(r.Root()); got != "" {
+			t.Errorf("DefaultRef = %q with no commit at all", got)
+		}
+	})
+}
+
+// TestTheDefaultBranchIsOneListing: where a default branch resolves, the whole
+// resolution is one git process, whichever name answers.
+func TestTheDefaultBranchIsOneListing(t *testing.T) {
+	r := gittest.NewRepo(t)
+	r.Commit("c0")
+	r.Git("branch", "-m", "main", "develop")
+	real, err := gitPath()
+	if err != nil {
+		t.Skip(err)
+	}
+	dir := t.TempDir()
+	log := filepath.Join(dir, "calls")
+	shim := "#!/bin/sh\necho x >>'" + log + "'\nexec '" + real + "' \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "git"), []byte(shim), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	if got := gitutil.DefaultRef(r.Root()); got != "refs/heads/develop" {
+		t.Fatalf("DefaultRef = %q, want the local develop", got)
+	}
+	calls, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(string(calls), "x"); n != 1 {
+		t.Errorf("the resolution ran %d git processes, want one", n)
+	}
+}
+
+func gitPath() (string, error) { return exec.LookPath("git") }

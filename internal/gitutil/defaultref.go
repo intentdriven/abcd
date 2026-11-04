@@ -35,15 +35,7 @@ const refAnswerCap = 4096
 type gitAsk func(args ...string) (string, error)
 
 func defaultRef(ask gitAsk) string {
-	if ref := trackedDefaultBranch(ask, "origin"); ref != "" {
-		return ref
-	}
-	for _, n := range defaultNames {
-		if commitRefExists(ask, "refs/heads/"+n) {
-			return "refs/heads/" + n
-		}
-	}
-	return ""
+	return resolveDefault(ask, "origin", true)
 }
 
 // defaultNames are the conventional default-branch names, in the order a
@@ -65,13 +57,66 @@ func TrackedDefaultBranch(root, remote string) string {
 }
 
 func trackedDefaultBranch(ask gitAsk, remote string) string {
+	return resolveDefault(ask, remote, false)
+}
+
+// defaultRefFormat is one row of the default-branch listing. Refnames hold no
+// space, and the last field keeps a row's trailing empties through the answer's
+// trim.
+const defaultRefFormat = "--format=%(refname) %(symref) %(objecttype) %(*objecttype) ."
+
+// resolveDefault answers from one listing of every ref the resolution can name,
+// where a question per ref cost up to ten processes on every call, and most of
+// the git a repository with no origin/HEAD spends. The order is the remote's HEAD
+// target, the conventional names under the remote, then, when local says so, the
+// same names locally.
+//
+// A listing has no row for what a ref's own read could still find: on a file
+// system that folds case, refs/heads/main opens a loose ref spelt Main. So when
+// it names nothing it asks ref by ref, as every read before it did, and only a
+// repository with no default branch pays for that. A dangling HEAD has no row,
+// and falls through to the names as its failed read did.
+func resolveDefault(ask gitAsk, remote string, local bool) string {
 	prefix := "refs/remotes/" + remote + "/"
-	if out, err := ask("symbolic-ref", "--quiet", prefix+"HEAD"); err == nil && strings.HasPrefix(out, prefix) && commitRefExists(ask, out) {
-		return out
-	}
+	candidates := make([]string, 0, 2*len(defaultNames))
 	for _, n := range defaultNames {
-		if commitRefExists(ask, prefix+n) {
-			return prefix + n
+		candidates = append(candidates, prefix+n)
+	}
+	if local {
+		for _, n := range defaultNames {
+			candidates = append(candidates, "refs/heads/"+n)
+		}
+	}
+	rows := map[string][]string{}
+	args := append([]string{"for-each-ref", defaultRefFormat, prefix + "HEAD"}, candidates...)
+	if out, err := ask(args...); err == nil {
+		for _, line := range strings.Split(out, "\n") {
+			if f := strings.Split(line, " "); len(f) == 5 {
+				rows[f[0]] = f[1:4]
+			}
+		}
+	}
+	peelsToCommit := func(ref string, row []string) bool {
+		switch row[1] {
+		case "commit":
+			return true
+		case "tag":
+			// A tag of a tag peels on: older gits list only its first level.
+			return row[2] == "commit" || commitRefExists(ask, ref)
+		}
+		return false
+	}
+	if head, ok := rows[prefix+"HEAD"]; ok && strings.HasPrefix(head[0], prefix) && peelsToCommit(head[0], head) {
+		return head[0]
+	}
+	for _, ref := range candidates {
+		if row, ok := rows[ref]; ok && peelsToCommit(ref, row) {
+			return ref
+		}
+	}
+	for _, ref := range candidates {
+		if commitRefExists(ask, ref) {
+			return ref
 		}
 	}
 	return ""
