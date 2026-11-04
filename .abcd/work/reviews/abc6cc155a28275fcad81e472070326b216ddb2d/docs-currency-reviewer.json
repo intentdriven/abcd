@@ -1,0 +1,172 @@
+{
+ "subject": {
+  "digest": {
+   "gitCommit": "abc6cc155a28275fcad81e472070326b216ddb2d"
+  }
+ },
+ "verifier": {
+  "id": "docs-currency-reviewer@release"
+ },
+ "timeVerified": "2026-11-04T05:55:51Z",
+ "verificationResult": "PROMOTE",
+ "judgeModel": "claude-opus-5-5+claude-sonnet-5-5",
+ "tier": "full",
+ "manifestHash": "sha256:8b91303965bb81b8b9192de79f4f016b6759126089049e9c3d7f3b2cec6c69be",
+ "policy": {
+  "detector": "docs-currency-reviewer",
+  "version": "1",
+  "promptHash": "sha256:host-run-agent-harness-review-no-pinned-prompt",
+  "briefVersion": "0.16.1"
+ },
+ "categories": {
+  "misleading": 9,
+  "stale": 3,
+  "undocumented": 5
+ },
+ "failing": [
+  {
+   "id": "dc-1",
+   "category": "misleading",
+   "severity": "minor",
+   "where": "RELEASE.md:3",
+   "summary": "The release page led with abcd drain as what this release adds, though the verb is older.",
+   "disposition": "fixed"
+  },
+  {
+   "id": "dc-2",
+   "category": "misleading",
+   "severity": "minor",
+   "where": "CHANGELOG.md",
+   "summary": "A security line named more install paths than do what it says.",
+   "disposition": "fixed"
+  },
+  {
+   "id": "dc-3",
+   "category": "misleading",
+   "severity": "minor",
+   "where": "CHANGELOG.md",
+   "summary": "The drain line claimed every issue's disposition in a run's text.",
+   "disposition": "fixed"
+  },
+  {
+   "id": "dc-4",
+   "category": "misleading",
+   "severity": "minor",
+   "where": "RELEASE.md:3",
+   "summary": "The headline's three lists left out issues accounted for only in the summary.",
+   "disposition": "fixed"
+  },
+  {
+   "id": "dc-5",
+   "category": "misleading",
+   "severity": "minor",
+   "where": "RELEASE.md",
+   "summary": "The practice-run headline dropped the reading ingest and scribe ingest exception.",
+   "disposition": "fixed"
+  },
+  {
+   "id": "dc-6",
+   "category": "misleading",
+   "severity": "minor",
+   "where": "RELEASE.md:5",
+   "summary": "A persona quote read as testimony; it is removed.",
+   "disposition": "fixed"
+  },
+  {
+   "id": "dc-7",
+   "category": "misleading",
+   "severity": "minor",
+   "where": "CHANGELOG.md",
+   "summary": "The bash profile order is macOS only.",
+   "disposition": "fixed"
+  },
+  {
+   "id": "dc-8",
+   "category": "misleading",
+   "severity": "minor",
+   "where": "CHANGELOG.md",
+   "summary": "An interview line's opening contradicted its own later clause.",
+   "disposition": "fixed"
+  },
+  {
+   "id": "dc-9",
+   "category": "stale",
+   "severity": "minor",
+   "where": "CHANGELOG.md",
+   "summary": "A review step named a command form that refuses on a real corpus; it now names the listing form.",
+   "disposition": "fixed"
+  },
+  {
+   "id": "dc-10",
+   "category": "stale",
+   "severity": "minor",
+   "where": "CHANGELOG.md",
+   "summary": "A marker line claimed a later drain sees an uncommitted marker where there is an origin.",
+   "disposition": "fixed"
+  },
+  {
+   "id": "dc-11",
+   "category": "misleading",
+   "severity": "minor",
+   "where": "CHANGELOG.md",
+   "summary": "The load check was named without its required --site.",
+   "disposition": "fixed"
+  },
+  {
+   "id": "dc-12",
+   "category": "stale",
+   "severity": "minor",
+   "where": "README.md:59",
+   "summary": "Two README links answer 404 until the project site is set up.",
+   "disposition": "deferred",
+   "record": "iss-2611040555444858"
+  },
+  {
+   "id": "dc-13",
+   "category": "undocumented",
+   "severity": "minor",
+   "where": "CHANGELOG.md",
+   "summary": "abcd build --auto-plan has no line of its own.",
+   "disposition": "deferred",
+   "record": "iss-2611040555455335"
+  },
+  {
+   "id": "dc-14",
+   "category": "undocumented",
+   "severity": "minor",
+   "where": "CHANGELOG.md",
+   "summary": "The prompt hook's shrinking has no line of its own.",
+   "disposition": "deferred",
+   "record": "iss-2611040555462905"
+  },
+  {
+   "id": "dc-15",
+   "category": "undocumented",
+   "severity": "minor",
+   "where": "CHANGELOG.md",
+   "summary": "Two reviewers per role by default has no line of its own.",
+   "disposition": "deferred",
+   "record": "iss-2611040555482208"
+  },
+  {
+   "id": "dc-16",
+   "category": "undocumented",
+   "severity": "minor",
+   "where": "CHANGELOG.md",
+   "summary": "The question limits and abcd guard question have no line of their own.",
+   "disposition": "deferred",
+   "record": "iss-2611040555499163"
+  },
+  {
+   "id": "dc-17",
+   "category": "undocumented",
+   "severity": "minor",
+   "where": "CHANGELOG.md",
+   "summary": "interview.redrafts has no page.",
+   "disposition": "deferred",
+   "record": "iss-2611040555506702"
+  }
+ ],
+ "_reviewProvenance": "Host-run docs-currency-reviewer over exact exports with a built binary: every line of the 0.16.1 CHANGELOG section and RELEASE.md, and every user-facing page changed since v0.16.0. Two full passes by Opus 5.5 returned HOLD; the prose was recomposed by the changelog composer after each, and the roll committed again. Two passes by Sonnet 5.5 judged the remaining differences, each established by git diff, and returned PROMOTE on this commit.",
+ "provenanceExtra": "The content commit is the fourth roll on this branch; each earlier roll was reverted by a new commit, and no history was rewritten."
+}
