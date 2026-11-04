@@ -1384,8 +1384,8 @@ it is judged by its other fields as if it named no intent, and an intent it was
 promoted into still owns it. An issue carrying the decision_needed: marker a drain's
 trust-rule hand-back wrote, whose remedy opens "Waits on", or whose deferral past
 the current release tag is live, or names a release tag this checkout lacks, is
-handed back too. Every other open issue is handed back, listed as ineligible, or
-skipped naming its blocker, by the rule that excluded it.
+handed back too. Every other open issue is handed back, listed as ineligible or
+unreadable, or skipped naming its blocker, by the rule that excluded it.
 
 In a checkout with a remote named origin, the ledger is read from origin's default
 branch, never from the checkout, which may be behind it: each move fetches the
@@ -1463,8 +1463,8 @@ drain hands the next eligible issue, in that order, to the implement loop's issu
 lane (the run `abcd build <iss-N>` starts), one lane at a time, and names the run to
 drive with `abcd implement step`. Run it again once that lane is handed back or its
 pull request is open, and it routes the lane's outcome and opens the next. A lane
-that cannot finish does not hold the drain: each refused step of its run is logged
-on the lane (refused in the run's state: the stage, the check, the reason, a count
+that cannot finish does not hold the drain: each refused step of its run, until its
+pull request is armed or left open, is logged on the lane (refused in the run's state: the stage, the check, the reason, a count
 of the same refusal in a row, since when and when last it refused there, and why it
 cannot change), and once the step has been refused the same way three times, or has
 kept refusing at one stage for sixty minutes, from its first refusal there to its
@@ -1473,8 +1473,10 @@ last, a quiet of more than fifteen minutes starting the time afresh
 hands the lane back as stuck, releases its reservation with a tombstone marking it
 stuck, and takes up the next issue. A refusal that cannot change (the issue
 finished at the lane's base or on origin's default branch, the reservation now
-another person's) hands it back at once; the wait for a preflight receipt, an
-outage's wait, and a land fence that cannot read origin are never counted, and a
+another person's, the sync's merge conflicting in a file not declared generated)
+hands it back at once; the wait for a preflight receipt, an outage's wait, a land
+fence that cannot read origin and a release being cut that holds merges are never
+counted, and a
 step that succeeds as the move hands the lane back keeps it. `abcd implement step
 --discard` removes a stuck lane's worktree and branch and ends its run. Every move
 that neither waits on origin nor stops at a given-up outage renews the reservation
@@ -1497,7 +1499,9 @@ lane's sync fetches origin's default branch and merges it whenever it has moved,
 fresh round judging the merge: a conflict confined to files origin declares
 linguist-generated goes back to an implementer to regenerate, any other hands the
 lane back naming the files, nothing pushed, and a pull request that starts to
-conflict on generated files alone enters the sync again. A lane
+conflict on generated files alone, or in no file when this checkout merges, enters
+the sync again, an armed merge withdrawn first; one whose head already holds the
+default branch waits at exit 3. A lane
 that finds a decision in its issue hands it back by kind, its work discarded: a
 user-visible change is promoted to an intent draft (`capture promote`, which
 stamps the issue's related_intents and nothing else); a trust or safety rule is
@@ -3274,7 +3278,7 @@ the hand-back and each held lane. --release <lane-id> lands a held lane as it is
 --discard <lane-id> removes its worktree and branch, then closes its pull request, and
 leaves its step unlanded. Either is refused, changing nothing,
 for a lane that is not held or while any lane still has work. --discard also takes
-an issue run's lane a drain handed back as stuck, and ends that run.
+an issue run's lane a drain handed back as stuck or closed, and ends that run.
 --restart <lane-id> restarts a lane whose implementer died, or yielded on a network
 failure (--yielded passes its `NETWORK: <cmd>` line), as a fresh agent from the lane's
 last commit: everything left uncommitted is saved aside under the lane's directory
@@ -3308,14 +3312,15 @@ records and passed through the outbound scrub, then re-reads the body the forge 
 strips a session URL or tool footer; it arms auto-merge with the merge-queue method the
 ruleset mirror (.abcd/work/rulesets/) names at the lane's base, or leaves the pull request
 open while the merge gate does not arm it (with no merge queue it arms with a merge
-commit), and pushes nothing after that; and
+commit), and pushes nothing while it is armed; and
 once the pushed head is an ancestor of the default branch on origin it removes the lane's
 worktree and branch and the lane is done. Until then the call exits 3 and waits. A pull
 request the forge reports CONFLICTING (gh pr view <n> --json mergeable,mergeStateStatus)
 is refused at exit 2 instead, before arming or at the merged check, naming the files a
 local merge with every merge driver off conflicts in and the hand merge that settles it;
 an issue lane whose conflict lies in declared generated files alone, or in no file when
-this checkout merges, enters its sync again instead.
+this checkout merges, enters its sync again instead, an armed merge withdrawn first,
+and one whose head already holds the default branch keeps the exit-3 wait.
 
 A stage whose body this abcd does not carry is refused naming the spec piece that
 delivers it, and the run is unchanged. A stage that fails leaves the state as it was,
@@ -3439,7 +3444,7 @@ refusal, exit 3 on a pause or a locked run state.
 
 ```
       --accept-config-change   accept, once you have looked, a change to the repository's git settings that the run tripwire stopped, then take the step
-      --discard string         discard a held lane (lane-<n>), or one a drain handed back as stuck: remove its worktree and branch, then close its pull request
+      --discard string         discard a held lane (lane-<n>), or one a drain handed back as stuck or closed: remove its worktree and branch, then close its pull request
       --release string         land a held lane as it is (lane-<n>), once no lane has work left
       --restart string         restart a lane whose implementer died (lane-<n>) as a fresh agent from its last commit, its uncommitted work saved aside
       --route stringArray      route one role this step hands to an agent to a runner, for this invocation alone: <role>=runner:<name>[@<provider>/<model>], the runner one this machine enables and the model one its provider lists (else the runner's own model); one per role (implementer, ruthless-reviewer, security-reviewer, intent-auditor); wins over every configured route for this step alone, and the role's receipt records it verbatim

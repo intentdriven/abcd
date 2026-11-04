@@ -777,8 +777,8 @@ A lane's stages run in order:
    ruleset mirror's (`.abcd/work/rulesets/`) method, or as the forge's
    auto-merge where no queue gates the default branch. Otherwise the step's
    note and the run record say "left open: " and why, and each later step asks
-   the gate again, arming once it allows. It pushes nothing to the lane
-   afterwards. Before it arms or leaves anything open, the land fence fetches
+   the gate again, arming once it allows. Nothing is pushed to the lane while it
+   is armed: an issue lane's sync withdraws an armed merge first. Before it arms or leaves anything open, the land fence fetches
    the reservations from `origin` and, while another session holds a live
    release reservation (`rel-vX.Y.Z`, `/abcd:reserve`), arms nothing: `step`
    exits 3 naming the release and its holder (or "your copy on another
@@ -803,7 +803,9 @@ A lane's stages run in order:
    the lane's branch, with a disarm and re-arm when it is armed), and never
    push to the lane or merge it yourself. An issue lane whose conflict lies in
    declared generated files alone, or in no file when this checkout merges,
-   enters its sync again instead of being refused. `UNKNOWN`, a verdict the forge has not
+   enters its sync again instead of being refused, an armed merge withdrawn
+   first; one whose head already holds the default branch keeps the exit-3 wait.
+   `UNKNOWN`, a verdict the forge has not
    computed yet, keeps the exit-3 wait.
 
 ### When a connection is lost

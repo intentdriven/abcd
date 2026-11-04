@@ -576,10 +576,10 @@ has work left:
 
 Either is refused, changing nothing, for a lane that is not held or while a lane
 still has work. `--discard` also takes an issue run's lane a drain handed back
-as `stuck` (`/abcd:drain`): its worktree and branch are removed, its pull
+as `stuck` or `closed` (`/abcd:drain`): its worktree and branch are removed, its pull
 request closed if it opened one, and the run is over, so no run directory is
-removed by hand. An issue run logs each refused step on its lane (`refused` in
-its state: the stage, the check, the reason and a count), which the drain
+removed by hand. An issue run logs each refused step on its lane, until its pull
+request is armed or left open (`refused` in its state: the stage, the check, the reason and a count), which the drain
 reads; an intent's run refuses as before, writing nothing. The run stays in progress, so `build next` passes over its
 intent; no verb clears it, and the refusal names the way out: once the intent
 is replanned, remove the run's directory, `.abcd/.work.local/run/<run-id>`.
@@ -678,16 +678,17 @@ over each of the run's lanes' own diff.
    and one the forge reports `CONFLICTING` is refused (exit 2), not armed: the
    merge queue never takes a conflicting pull request. An issue lane whose
    conflict lies in declared generated files alone, or in no file when this
-   checkout merges, enters its sync again instead. Nothing is pushed to the
-   lane after this.
+   checkout merges, enters its sync again instead, an armed merge withdrawn
+   first, and one whose head already holds the default branch waits at exit 3
+   for the forge's stale verdict. Nothing is pushed to the lane while it is armed.
 6. It waits (exit 3) until the pushed head is an ancestor of the default branch
    on `origin`, then removes the lane's worktree and branch, and the lane is
    done. The wait names the forge's verdict; `UNKNOWN`, a verdict the forge has
    not computed yet, keeps it waiting. A pull request closed without merging,
    or merged in a way that rewrote the head, is refused and nothing is cleaned
    up. So is an open one the forge reports `CONFLICTING`, at exit 2, since it
-   never merges on its own, unless it is an issue lane's and enters its sync
-   again as above. While an armed pull request waits where a merge
+   never merges on its own, unless it is an issue lane's and takes one of those
+   two routes. While an armed pull request waits where a merge
    queue gates the default branch, each step reads its place in the queue
    (`gh api graphql`, as `abcd land` does) and names it. One the forge
    reports `CLEAN` yet outside the queue is queued, pinned to the pushed head,
@@ -712,7 +713,7 @@ over each of the run's lanes' own diff.
    undoes the landing. The branch removal touches only the lane's
    `build/<run>-<lane>`, never the reservation branch.
 
-A conflicting pull request is refused naming what this checkout can say about
+A conflicting pull request that is refused names what this checkout can say about
 it: the files a merge of `origin/<default>` and the pushed head conflicts in
 with every merge driver switched to git's built-in merge, as the forge merges,
 and the `merge=` driver each carries here ("GitHub reports a conflict; locally

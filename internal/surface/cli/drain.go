@@ -60,8 +60,8 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"promoted into still owns it. An issue carrying the decision_needed: marker a drain's\n" +
 			"trust-rule hand-back wrote, whose remedy opens \"Waits on\", or whose deferral past\n" +
 			"the current release tag is live, or names a release tag this checkout lacks, is\n" +
-			"handed back too. Every other open issue is handed back, listed as ineligible, or\n" +
-			"skipped naming its blocker, by the rule that excluded it.\n\n" +
+			"handed back too. Every other open issue is handed back, listed as ineligible or\n" +
+			"unreadable, or skipped naming its blocker, by the rule that excluded it.\n\n" +
 			"In a checkout with a remote named origin, the ledger is read from origin's default\n" +
 			"branch, never from the checkout, which may be behind it: each move fetches the\n" +
 			"reservations and that branch first, under the drain's lock and before any judgement\n" +
@@ -135,8 +135,8 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"lane (the run `abcd build <iss-N>` starts), one lane at a time, and names the run to\n" +
 			"drive with `abcd implement step`. Run it again once that lane is handed back or its\n" +
 			"pull request is open, and it routes the lane's outcome and opens the next. A lane\n" +
-			"that cannot finish does not hold the drain: each refused step of its run is logged\n" +
-			"on the lane (refused in the run's state: the stage, the check, the reason, a count\n" +
+			"that cannot finish does not hold the drain: each refused step of its run, until its\n" +
+			"pull request is armed or left open, is logged on the lane (refused in the run's state: the stage, the check, the reason, a count\n" +
 			"of the same refusal in a row, since when and when last it refused there, and why it\n" +
 			"cannot change), and once the step has been refused the same way three times, or has\n" +
 			"kept refusing at one stage for sixty minutes, from its first refusal there to its\n" +
@@ -145,8 +145,10 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"hands the lane back as stuck, releases its reservation with a tombstone marking it\n" +
 			"stuck, and takes up the next issue. A refusal that cannot change (the issue\n" +
 			"finished at the lane's base or on origin's default branch, the reservation now\n" +
-			"another person's) hands it back at once; the wait for a preflight receipt, an\n" +
-			"outage's wait, and a land fence that cannot read origin are never counted, and a\n" +
+			"another person's, the sync's merge conflicting in a file not declared generated)\n" +
+			"hands it back at once; the wait for a preflight receipt, an outage's wait, a land\n" +
+			"fence that cannot read origin and a release being cut that holds merges are never\n" +
+			"counted, and a\n" +
 			"step that succeeds as the move hands the lane back keeps it. `abcd implement step\n" +
 			"--discard` removes a stuck lane's worktree and branch and ends its run. Every move\n" +
 			"that neither waits on origin nor stops at a given-up outage renews the reservation\n" +
@@ -169,7 +171,9 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"fresh round judging the merge: a conflict confined to files origin declares\n" +
 			"linguist-generated goes back to an implementer to regenerate, any other hands the\n" +
 			"lane back naming the files, nothing pushed, and a pull request that starts to\n" +
-			"conflict on generated files alone enters the sync again. A lane\n" +
+			"conflict on generated files alone, or in no file when this checkout merges, enters\n" +
+			"the sync again, an armed merge withdrawn first; one whose head already holds the\n" +
+			"default branch waits at exit 3. A lane\n" +
 			"that finds a decision in its issue hands it back by kind, its work discarded: a\n" +
 			"user-visible change is promoted to an intent draft (`capture promote`, which\n" +
 			"stamps the issue's related_intents and nothing else); a trust or safety rule is\n" +
