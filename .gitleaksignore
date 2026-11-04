@@ -24,7 +24,9 @@
 
 # Commit fb6305133 added the launch ledger's key-name test
 # (itd-2611031342011261) with a list of plain names, and generic-api-key reads
-# `"build-key", "anthropic.main-2"` as a credential. Each is a made-up name, the
-# very thing an entry may keep in place of a value, and the list is one string
-# at the branch tip.
+# two of them, side by side, as a credential. Each is a made-up name, the very
+# thing an entry may keep in place of a value, and the list is one string at the
+# branch tip. Commit dc0ed2c62 quoted the pair in this comment, the same reading
+# of the same words, and the comment no longer quotes it.
 fb6305133391e3d9df22017372fdcbc84adf26f8:internal/core/runner/ledger_attack_test.go:generic-api-key:161
+dc0ed2c62fad1ed5fef836e4472c677ab3ac23d2:.gitleaksignore:generic-api-key:27
