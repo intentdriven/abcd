@@ -370,7 +370,7 @@ func (t *terminal) takeUp(runID string) bool {
 	if !ok {
 		r = refuse(StageReservation, "", "", err.Error(), "see the reason")
 	}
-	if r.final == "" && r.Contention {
+	if r.final == "" && r.Contention && r.capped == nil {
 		r.final = "another drive took the issue up after this lane stopped"
 	}
 	r.Contention = false
