@@ -51,9 +51,23 @@ func newFixture(t *testing.T) *fixture {
 	return newFixtureRootedAt(t, fixtureRootDate)
 }
 
+// fixtureTemplates holds the built repository per root date. The fixture is a
+// function of this file and the date, and building one takes some twenty git
+// commands, so each date is built once and every test edits its own copy.
+var fixtureTemplates gittest.Templates
+
 // newFixtureRootedAt is newFixture with the first commit at rootDate, for a
 // test that needs a second repository with a different identity.
 func newFixtureRootedAt(t *testing.T, rootDate string) *fixture {
+	t.Helper()
+	r := fixtureTemplates.Repo(t, rootDate, func(t *testing.T) *gittest.Repo {
+		return buildFixtureRepo(t, rootDate)
+	})
+	return &fixture{t: t, repo: r, root: r.Root()}
+}
+
+// buildFixtureRepo makes the fixture's repository with git.
+func buildFixtureRepo(t *testing.T, rootDate string) *gittest.Repo {
 	t.Helper()
 	r := gittest.NewRepo(t)
 	f := &fixture{t: t, repo: r, root: r.Root()}
@@ -65,7 +79,7 @@ func newFixtureRootedAt(t *testing.T, rootDate string) *fixture {
 	f.mergeInARecord()
 	// Shipped LAST, so a date-only derivation would pick it.
 	f.shipTheStub()
-	return f
+	return r
 }
 
 // shipTheStub files the placeholder intent as shipped, after everything else.
