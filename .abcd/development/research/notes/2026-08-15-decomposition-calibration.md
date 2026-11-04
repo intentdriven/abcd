@@ -2809,3 +2809,19 @@ The proposal: a day of lab work on the status line (lab-261103114820-bcba06f, 38
 Verdict at filing: SPLIT, two intents and a held stance, the product thinker choosing the split over folding the ledger into the views intent. Typed links: the views intent builds on itd-2611031342011261 (the ledger), itd-2610301750162657 (the review count) and itd-2610240850336695 (the mode badge's scope); its product-thinker view refines itd-2610032150577708 as interim evidence (advisory). Advisory reversal flags: none.
 
 Grade: pending planning.
+
+## 2026-11-04: where work waits, a promise's test coming back, and what stalled a run (product thinker, routing confirmed)
+
+The proposal: two ideas that came through ideation reframed, plus local telemetry on abcd's own runs, which the product thinker asked about afterwards.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| stage waits on an explicit ask, with a first place to look | capability | itd-2611041409531723 |
+| a promise's own stated test comes back when due, for a dated judgement | capability | itd-2611041410013155 |
+| where runs stalled and when a person stepped in, across runs, on this machine | capability | itd-2611041410025208 |
+| what each agent cost | capability | already the launch ledger itd-2611031342011261; not filed again |
+| usage sent back across people; use of the products built with abcd | capability | discussed and not filed |
+
+Verdict at filing: SPLIT, three intents, the product thinker choosing a draft of its own for the promise's test where the review had pointed at itd-170 and itd-175. Typed links: the promise draft refines itd-170 and itd-175; the wait draft builds on itd-2610301850454860; the runs draft builds on itd-2611031342011261. Advisory reversal flags: none, since nothing filed leaves the machine or needs adr-38 replaced.
+
+Grade: initial routing proposed the promise's test as additions to the two drafts; the product thinker changed that part, and the rest survived. The runs draft narrowed at filing on finding that the run log and its report already exist.
