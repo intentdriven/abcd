@@ -1,0 +1,22 @@
+{
+  "bypass_actors": [],
+  "conditions": {
+    "ref_name": {
+      "exclude": [
+        "refs/heads/dependabot/**",
+        "refs/heads/gh-readonly-queue/**"
+      ],
+      "include": [
+        "~ALL"
+      ]
+    }
+  },
+  "enforcement": "active",
+  "name": "no history rewriting",
+  "rules": [
+    {
+      "type": "non_fast_forward"
+    }
+  ],
+  "target": "branch"
+}
