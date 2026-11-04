@@ -65,6 +65,9 @@ type ClaudeCLI struct {
 	// approver is the absolute path of the abcd binary a shell launch starts
 	// as its permission prompt answerer.
 	approver string
+	// profile is the walled login a drive's launch runs on (profile.go), nil
+	// for the bare launch.
+	profile *Profile
 }
 
 // ApproverTool is the permission prompt tool a shell launch names.
@@ -127,6 +130,9 @@ func (c *ClaudeCLI) askedModel(req Request) string {
 
 // args is the launch's argv after the binary.
 func (c *ClaudeCLI) args(req Request) []string {
+	if c.profile != nil {
+		return append(c.walledFlags(req), "--", prompt(req))
+	}
 	shell := grantsShell(req.Tools)
 	mode := "dontAsk"
 	if shell {
@@ -169,8 +175,77 @@ func (c *ClaudeCLI) args(req Request) []string {
 	return append(a, "--", prompt(req))
 }
 
-// Run runs the role through the claude CLI.
+// walledFlags is the walled launch's flags (spc-2610230813348813): hooks on,
+// so no --bare; the tools the stage holds and no others; the shell answered by
+// the approver, the only server the launch may start; and the profile's own
+// arguments.
+func (c *ClaudeCLI) walledFlags(req Request) []string {
+	shell := grantsShell(req.Tools)
+	mode := "dontAsk"
+	if shell {
+		mode = "default"
+	}
+	a := []string{"--print", "--output-format", "stream-json", "--verbose", "--permission-mode", mode}
+	a = append(a, c.profile.Args...)
+	if len(req.Denied) > 0 {
+		a = append(a, "--disallowedTools="+strings.Join(req.Denied, ","))
+	}
+	dirs := []string{filepath.Dir(req.Brief)}
+	if d := filepath.Dir(req.Receipt); d != dirs[0] {
+		dirs = append(dirs, d)
+	}
+	a = append(a, "--tools="+strings.Join(heldTools(req.Tools), ","))
+	tools := req.Tools
+	if shell {
+		tools = slices.DeleteFunc(slices.Clone(tools), func(t string) bool { return t == "Bash" })
+		a = append(a, "--mcp-config="+c.approverConfig(req.Dir, req.Base, dirs), "--permission-prompt-tool="+ApproverTool)
+	} else {
+		a = append(a, `--mcp-config={"mcpServers":{}}`)
+	}
+	if len(tools) > 0 {
+		a = append(a, "--allowedTools="+strings.Join(tools, ","))
+	}
+	for _, d := range dirs {
+		a = append(a, "--add-dir="+d)
+	}
+	if m := c.askedModel(req); m != "" {
+		a = append(a, "--model="+m)
+	}
+	return a
+}
+
+// heldTools are the tools a launch holds for the grants it names: each grant's
+// tool, its path left to the allow-list. The harness judges a new file's write
+// against the Edit rules, so an edit grant holds Write as well.
+func heldTools(grants []string) []string {
+	var held []string
+	add := func(t string) {
+		if !slices.Contains(held, t) {
+			held = append(held, t)
+		}
+	}
+	for _, g := range grants {
+		name, _, _ := strings.Cut(g, "(")
+		add(name)
+		if name == "Edit" {
+			add("Write")
+		}
+	}
+	return held
+}
+
+// Run runs the role through the claude CLI. A walled launch's end is recorded,
+// whatever came of it.
 func (c *ClaudeCLI) Run(ctx context.Context, req Request) (Answer, []byte, error) {
+	ans, transcript, err := c.run(ctx, req)
+	if c.profile != nil {
+		recordLaunch(*c.profile, req, ans, err)
+	}
+	return ans, transcript, err
+}
+
+// run is Run's launch.
+func (c *ClaudeCLI) run(ctx context.Context, req Request) (Answer, []byte, error) {
 	if err := req.check(); err != nil {
 		return Answer{}, nil, err
 	}
@@ -196,7 +271,11 @@ func (c *ClaudeCLI) Run(ctx context.Context, req Request) (Answer, []byte, error
 	if err != nil {
 		return Answer{}, nil, err
 	}
-	res, err := c.launch.run(ctx, Claude, bin, c.args(req), nil, req.Dir, req.timeout())
+	var seal []string
+	if c.profile != nil {
+		seal = c.profile.Env
+	}
+	res, err := c.launch.run(ctx, Claude, bin, c.args(req), seal, req.Dir, req.timeout())
 	transcript := res.transcript()
 	if err != nil {
 		// A harness that stopped on a rate limit exits non-zero: what its

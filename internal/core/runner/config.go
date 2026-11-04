@@ -123,6 +123,12 @@ type Config struct {
 	// diagRoles is the role each of Diagnostics reports on, index for index,
 	// so Override can drop the lines about a route it replaces.
 	diagRoles []string
+	// profile is the walled login every claude launch runs on (Walled), nil
+	// for the bare launch.
+	profile *Profile
+	// judgeOpenCode says the machine routes the drain's judge to opencode, a
+	// route the read skips (readRoles).
+	judgeOpenCode bool
 }
 
 // Load reads and validates the runner configuration. A fault is an error
@@ -320,6 +326,7 @@ func (c *Config) readRoles(s *layered.Stack) error {
 				continue
 			}
 			if role == roleDrainJudge && name == OpenCode {
+				c.judgeOpenCode = true
 				// The drain's judge reads a record a stranger may have
 				// written, and is held to the tools it is granted; opencode
 				// runs under its own configuration's permissions instead.
@@ -659,5 +666,38 @@ func (c *Config) adapter(rc RunnerConfig) Runner {
 	}
 	cl := newClaude(rc.Model)
 	cl.local, cl.pinned = rc.Local, rc.Pin != nil || rc.LocalPin != nil
+	cl.profile = c.profile
 	return cl
+}
+
+// JudgeOnOpenCode reports whether the machine routes the drain's judge to
+// opencode.
+func (c *Config) JudgeOnOpenCode() bool { return c.judgeOpenCode }
+
+// PinnedToHost lists those of roles a configured layer keeps on the host.
+func (c *Config) PinnedToHost(roles []string) []string {
+	var pinned []string
+	for _, role := range roles {
+		if r, ok := c.roles[role]; ok && r.Runner == Host {
+			pinned = append(pinned, role)
+		}
+	}
+	return pinned
+}
+
+// walledRoute is where the person's yes puts a drive's roles (Walled): for
+// this drive alone, never a --route.
+var walledRoute = Route{Runner: Claude, Layer: layered.Machine, Origin: "the drive's yes, on the walled login"}
+
+// Walled is c for one drive: every role runs on the claude runner, on p, which
+// is the route the person's yes named (itd-2610222215485265 decision 5). c is
+// left as it was read.
+func (c *Config) Walled(p Profile) *Config {
+	w := *c
+	w.profile = &p
+	w.roles = map[string]Route{roleImplementer: walledRoute, roleDrainJudge: walledRoute}
+	for _, a := range oracle.Roster() {
+		w.roles[a] = walledRoute
+	}
+	return &w
 }

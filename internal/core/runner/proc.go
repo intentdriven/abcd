@@ -344,8 +344,9 @@ func Exec(ctx context.Context, c Command) (Output, error) {
 	return Output{Stdout: res.stdout, Stderr: res.stderr}, err
 }
 
-// sealedEnv is env with every key seal sets removed, then seal appended: one
-// entry per switch, the adapter's value.
+// sealedEnv is env with every key seal names removed, then each of seal's
+// KEY=value entries appended: one entry per switch, the adapter's value. A
+// bare name in seal takes the variable out and sets nothing.
 func sealedEnv(env, seal []string) []string {
 	if len(seal) == 0 {
 		return env
@@ -361,7 +362,12 @@ func sealedEnv(env, seal []string) []string {
 			out = append(out, kv)
 		}
 	}
-	return append(out, seal...)
+	for _, kv := range seal {
+		if strings.Contains(kv, "=") {
+			out = append(out, kv)
+		}
+	}
+	return out
 }
 
 func (l launcher) bound(stream string) int {
