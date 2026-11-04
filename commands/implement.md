@@ -52,7 +52,7 @@ other role is refused.
 A session states its own agent ceiling with `--ceiling`: the most agents it
 runs at once (for a second session, kept on top of the first session's, never
 instead of it). It is recorded and carried on the `session_open` line, and a
-resume cannot restate it. abcd runs no agent: it counts the agents the
+resume cannot restate it. abcd does not run a session's agents: it counts the agents the
 session's own `agent_start` and `agent_end` lines declare alive, since it
 joined, matched by their `agent` field. An `agent_start` past the ceiling is
 refused at exit 2 and the refusal logged (condition `agent_ceiling`); every

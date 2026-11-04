@@ -226,7 +226,8 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"the stage just admitted shows its own memory use before the next starts\n" +
 			"(`" + abcdhome.Display(implement.WaitMemoryAdmitFileName) + "` records it; a record it cannot read or write\n" +
 			"is named on stderr and holds nothing back). The load check (`--site`) prints a\n" +
-			"reading at the floor as a warning and never fails for it.\n\n" +
+			"reading at the floor as a warning, and one it cannot take as a memory check line on\n" +
+			"stdout, and never fails for either.\n\n" +
 			"Within one account the waiter that opens also takes a hold,\n" +
 			"`" + abcdhome.Display(implement.WaitHoldFileName) + "` at the first gate and `" + abcdhome.Display(implement.WaitRaceHoldFileName) + "` at\n" +
 			"the race gate, and every other waiter of that account at the same gate stays\n" +

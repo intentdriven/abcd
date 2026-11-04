@@ -1483,7 +1483,8 @@ step that succeeds as the move hands the lane back keeps it. `abcd implement ste
 that neither waits on origin nor stops at a given-up outage renews the reservation
 of the lane in progress at half its lease, waiting on the pace or a judgement or not
 (a lane handed back is renewed by none); once the lane's validators pass and it is
-at its landing, the first renewal narrows its footprint to the files the lane changed
+at its landing, the first renewal due at half its lease, a fence's renewal keeping the
+footprint, narrows its footprint to the files the lane changed
 within it, never widening it, and a lane its sync sends back to a fresh round
 reserves its whole found_at again before it goes on, or is refused for you;
 and the landing checks it before its push,
@@ -2564,7 +2565,7 @@ for the other role is refused. The role is the session's own statement, recorded
 here and read by every bound — never taken from the environment.
 
 --ceiling states the session's own agent ceiling: the most agents it runs at once (for
-the second session, on top of the first session's). abcd runs no agent: it counts the
+the second session, on top of the first session's). abcd does not run a session's agents: it counts the
 agents the session's own agent_start and agent_end lines declare alive, refuses an
 agent_start past the ceiling, and reports the count with every `check`. An agent the
 session never logs is invisible to it. A resume keeps the ceiling.
@@ -2775,7 +2776,8 @@ admit one run per 2m0s, in queue order, reading memory again before each, so
 the stage just admitted shows its own memory use before the next starts
 (`~/.abcd.noindex/load-memory-admit.json` records it; a record it cannot read or write
 is named on stderr and holds nothing back). The load check (`--site`) prints a
-reading at the floor as a warning and never fails for it.
+reading at the floor as a warning, and one it cannot take as a memory check line on
+stdout, and never fails for either.
 
 Within one account the waiter that opens also takes a hold,
 `~/.abcd.noindex/load-wait.json` at the first gate and `~/.abcd.noindex/load-wait-race.json` at

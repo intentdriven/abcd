@@ -352,7 +352,8 @@ what it did in `next`:
   progress at half its lease, waiting on the pace or a judgement or not, though no step of the lane ran,
   so a lane the host paused past its lease is not taken over (a lane handed
   back is renewed by no move). Once the lane's validators have passed and it
-  is at its landing, the first renewal narrows its footprint to the files its
+  is at its landing, the first renewal due at half its lease (a fence's renewal
+  keeps the footprint) narrows its footprint to the files its
   branch changed within it, measured from where it meets `origin`'s default
   branch, so what a sync merged in is left out (a `found_at` naming `docs/`
   becomes the files under `docs/` the lane changed), and other accounts can

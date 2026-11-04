@@ -155,7 +155,8 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"that neither waits on origin nor stops at a given-up outage renews the reservation\n" +
 			"of the lane in progress at half its lease, waiting on the pace or a judgement or not\n" +
 			"(a lane handed back is renewed by none); once the lane's validators pass and it is\n" +
-			"at its landing, the first renewal narrows its footprint to the files the lane changed\n" +
+			"at its landing, the first renewal due at half its lease, a fence's renewal keeping the\n" +
+			"footprint, narrows its footprint to the files the lane changed\n" +
 			"within it, never widening it, and a lane its sync sends back to a fresh round\n" +
 			"reserves its whole found_at again before it goes on, or is refused for you;\n" +
 			"and the landing checks it before its push,\n" +
