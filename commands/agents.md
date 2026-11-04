@@ -65,9 +65,11 @@ another machine keeps a ledger of its own.
 The next launch prunes the oldest whole files past 30 days and 20,000 entries,
 and never one inside 32 days, the longest calendar month a key's budget counts
 plus a day; the shipped 30 days therefore holds 32. `ledger.retention_days` and
-`ledger.retention_count`, in `~/.abcd.noindex/config.json` or the repository's
-`.abcd/config.json`, set either figure, and a days figure below the floor is read
-as the floor and named as such.
+`ledger.retention_count` in `~/.abcd.noindex/config.json` set either figure, up to
+36,500 days and 1,000,000 entries, and a days figure below the floor is read as the
+floor and named as such. The store holds every repository's launches, so the same
+keys in a repository's `.abcd/config.json` may lengthen what this computer keeps and
+never shorten it: a shorter figure is named and ignored.
 
 An entry that cannot be written refuses the launch, naming the store: no launch
 escapes the record.

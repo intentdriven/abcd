@@ -44,7 +44,15 @@ written.
 
 Retention is pruned by the next writer: 30 days and 20,000 entries unless
 `ledger.retention_days` or `ledger.retention_count` says otherwise, and never
-inside 32 days, the longest calendar month a key's budget counts plus a day.
+inside 32 days, the longest calendar month a key's budget counts plus a day. The
+store holds every repository's launches, so a repository's figure may lengthen
+what the machine keeps and never shorten it. The next writer also clears a
+temporary file a crash left more than a day ago.
+
+An entry holds no prompt, no answer and no credential. A key is named by its
+credential-store name, and a launch handed a name shaped like a value is refused;
+a failure's reason has every secret span sealed, and a validator's refusal, which
+quotes the answer, is recorded only as a refusal.
 
 The status line's row and an unattended run's summary read this ledger once they
 ship; they are the spec's remaining steps.
