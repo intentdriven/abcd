@@ -82,6 +82,9 @@ func (r Registry) expandGitAliases(segs []segment) ([]segment, []payloadSignal) 
 // expandGitAliasesAt is the pre-pass at one bang-body depth. seen is shared by
 // every depth of one Check, so a repeated body costs nothing twice.
 func (r Registry) expandGitAliasesAt(segs []segment, valueFlags []string, depth int, seen map[string]bool) ([]segment, []payloadSignal) {
+	// A `git-<sub>` program is read as `git <sub>` first, so its rewrite meets
+	// every reading below, in a `!` body too.
+	segs = r.expandDashedGit(segs, 0)
 	out := make([]segment, 0, len(segs))
 	var signals []payloadSignal
 	var bang []segment
@@ -113,16 +116,31 @@ func (r Registry) expandGitAliasesAt(segs []segment, valueFlags []string, depth 
 		for _, site := range sitesNamed(s, "git") {
 			ci := site.idx
 			args := s.tokens[ci+1:]
-			decls, unread := gitConfigDeclarations(s.tokens[:ci], args, valueFlags)
-			if unread && !unreadRaised {
+			read := readGitConfig(s.tokens[:ci], args, valueFlags)
+			if read.unread && !unreadRaised {
 				unreadRaised = true
 				signals = append(signals, gitConfigUnreadWarnSignal())
 			}
-			if len(decls) == 0 {
+			globs := s.globSlice(ci+1, len(s.tokens))
+			// What a setting on the line makes a push or a gc do is read as the
+			// flag or refspec it stands for (gitsettings.go).
+			keep := func(args []string, globs []bool) {
+				next := segment{
+					tokens: append(append([]string(nil), s.tokens[:ci+1]...), args...),
+					chain:  s.chain,
+				}
+				if lead := globAtRange(s.globbed, 0, ci+1); globs != nil || anyGlob(lead) {
+					next.globbed = append(lead, globs...)
+				}
+				out = append(out, next)
+			}
+			for _, rw := range rewriteGitSettings(args, globs, read.settings, valueFlags) {
+				keep(rw.args, rw.globs)
+			}
+			if len(read.aliases) == 0 {
 				continue
 			}
-			globs := s.globSlice(ci+1, len(s.tokens))
-			for _, rw := range rewriteGitAliases(args, globs, decls, valueFlags) {
+			for _, rw := range rewriteGitAliases(args, globs, read.aliases, valueFlags) {
 				if rw.shell != "" {
 					if seen[rw.shell] {
 						continue
@@ -171,20 +189,16 @@ func (r Registry) expandGitAliasesAt(segs []segment, valueFlags []string, depth 
 					bang = append(bang, psegs...)
 					continue
 				}
-				next := segment{
-					tokens: append(append([]string(nil), s.tokens[:ci+1]...), rw.args...),
-					chain:  s.chain,
-				}
 				// The glob record travels onto the rewrite from BOTH ends: from
 				// the alias body's own words, and from the leading tokens, which
 				// is where a glob-spelled `g?t` sits. Carrying only the body's
 				// record left the rewritten segment unglobbed, so matchSegment
 				// compared `g?t` with `git` literally and the rewrite this
 				// pre-pass had just built matched nothing.
-				if lead := globAtRange(s.globbed, 0, ci+1); rw.globs != nil || anyGlob(lead) {
-					next.globbed = append(lead, rw.globs...)
+				keep(rw.args, rw.globs)
+				for _, set := range rewriteGitSettings(rw.args, rw.globs, read.settings, valueFlags) {
+					keep(set.args, set.globs)
 				}
-				out = append(out, next)
 			}
 		}
 	}
@@ -272,6 +286,9 @@ type gitConfigRead struct {
 	// flagValues is the value of each key a `-c key=value` word sets, by
 	// its index in keys.
 	flagValues map[int]string
+	// settings is every key set with its value, folded, in the order read. A
+	// value the line does not fix is unknownText.
+	settings []gitSetting
 }
 
 // readGitConfig reads the configuration one git segment sets in its own text.
@@ -346,6 +363,9 @@ func readGitConfig(prefix, args, valueFlags []string) gitConfigRead {
 				case isUnknown(k):
 					// No `=` it spells, but its output may hold one.
 					c.add(k, "")
+				default:
+					// A key with no `=` is a boolean set to true.
+					c.settings = append(c.settings, gitSetting{strings.ToLower(strings.TrimSpace(k)), "true"})
 				}
 			}
 		case arg == "--config-env", strings.HasPrefix(arg, "--config-env="),
@@ -371,6 +391,7 @@ func readGitConfig(prefix, args, valueFlags []string) gitConfigRead {
 				// unreadable value. For the hooks path the directive is all
 				// that matters — any value moves the hooks.
 				c.keys = append(c.keys, strings.ToLower(strings.TrimSpace(k)))
+				c.settings = append(c.settings, gitSetting{strings.ToLower(strings.TrimSpace(k)), unknownText})
 				switch key := strings.ToLower(strings.TrimSpace(k)); {
 				case strings.HasPrefix(key, aliasPrefix):
 					c.unread = true
@@ -398,6 +419,7 @@ func (c *gitConfigRead) add(key, value string) {
 	}
 	k := strings.ToLower(strings.TrimSpace(key))
 	c.keys = append(c.keys, k)
+	c.settings = append(c.settings, gitSetting{k, value})
 	switch {
 	case strings.HasPrefix(k, aliasPrefix):
 		c.aliases[strings.TrimPrefix(k, aliasPrefix)] = value

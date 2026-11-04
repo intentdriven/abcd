@@ -211,6 +211,8 @@ func (r Registry) speculateSegment(before []segment, s segment, ids []string, bu
 			truncated = true
 		}
 
+		expanded = r.expandDashedGit(expanded, 1)
+
 		for _, id := range ids {
 			e := r.Entries[id]
 			for j, es := range expanded {
