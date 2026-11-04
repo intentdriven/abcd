@@ -44,16 +44,21 @@ func NewRepo(t *testing.T) *Repo {
 func NewRepoFormat(t *testing.T, format string) *Repo {
 	t.Helper()
 	r := &Repo{t: t, root: t.TempDir(), env: Env(t)}
-	args := []string{"-C", r.root, "init", "--initial-branch=main"}
-	if format != "" {
-		args = append(args, "--object-format="+format)
-	}
-	init := exec.Command("git", args...)
-	init.Env = r.env
-	if out, err := init.CombinedOutput(); err != nil {
-		t.Skipf("git init unavailable: %v (%s)", err, out)
-	}
-	disableMaintenance(t, r.env, r.root)
+	key := emptyRepositoryKey("work", format, r.env)
+	emptyRepositories.tree(t, key, func() string {
+		dir := t.TempDir()
+		args := []string{"-C", dir, "init", "--initial-branch=main"}
+		if format != "" {
+			args = append(args, "--object-format="+format)
+		}
+		init := exec.Command("git", args...)
+		init.Env = r.env
+		if out, err := init.CombinedOutput(); err != nil {
+			t.Skipf("git init unavailable: %v (%s)", err, out)
+		}
+		disableMaintenance(t, r.env, dir)
+		return dir
+	}).write(t, r.root)
 	return r
 }
 
@@ -187,6 +192,22 @@ func InitBare(t *testing.T, path string) {
 func InitBareFormat(t *testing.T, path, format string) {
 	t.Helper()
 	env := Env(t)
+	if held, err := os.ReadDir(path); err == nil && len(held) != 0 {
+		// git init over what is already there leaves it in place, which no
+		// template can stand in for.
+		initBare(t, env, path, format)
+		return
+	}
+	emptyRepositories.tree(t, emptyRepositoryKey("bare", format, env), func() string {
+		dir := filepath.Join(t.TempDir(), "bare.git")
+		initBare(t, env, dir, format)
+		return dir
+	}).write(t, path)
+}
+
+// initBare is the real git init --bare, with the maintenance config.
+func initBare(t *testing.T, env []string, path, format string) {
+	t.Helper()
 	args := []string{"init", "-q", "--bare", "--initial-branch=main"}
 	if format != "" {
 		args = append(args, "--object-format="+format)
