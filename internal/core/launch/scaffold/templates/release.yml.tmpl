@@ -277,16 +277,19 @@ jobs:
 
       - name: Vet
         run: go vet ./...
+<%- if .Abcd %>
 
       # Past go test's 10-minute default, a package fails with no test failing,
       # after the merge queue passed it.
       - name: Test
         run: go test -timeout 20m ./...
-<%- if .Abcd %>
 
       - name: Test (race, internal)
         run: go test -race -timeout 40m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
 <%- else %>
+
+      - name: Test
+        run: go test ./...
 
       # A generic module may have no internal tree, so the race leg runs over the
       # whole module; a package-scoped pattern would fail every run with a
