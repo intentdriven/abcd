@@ -236,40 +236,76 @@ func captureRoots(t *testing.T, roots []installRoot) map[string]keptEntry {
 }
 
 // environmentInKey is the environment with the test's own paths taken out: every
-// variable is state an install may read. A temporary directory named in a value
-// that is no root (a fake tool's folder on PATH) stands for what it holds at its
-// top level. A fake gh's own script is left out, since it names its test's log
-// and no install runs gh, as the replay's test checks.
+// variable is state an install may read. A path into a temporary directory that
+// is no root (a fake tool's folder on PATH) stands for what it holds (heldBy).
 func environmentInKey(roots []installRoot) []string {
 	tmp := strings.TrimRight(os.TempDir(), string(filepath.Separator))
-	tempDir := regexp.MustCompile(regexp.QuoteMeta(tmp) + `/[^/:]+/[0-9]+`)
+	tempPath := regexp.MustCompile(regexp.QuoteMeta(tmp) + `/[^/:]+/[0-9]+(/[^:]*)?`)
 	var env []string
 	for _, kv := range os.Environ() {
 		kv = string(tokenise([]byte(kv), roots))
-		kv = tempDir.ReplaceAllStringFunc(kv, heldBy)
+		kv = tempPath.ReplaceAllStringFunc(kv, func(path string) string {
+			return "@TEMP" + tempPath.FindStringSubmatch(path)[1] + "[" + heldBy(path) + "]@"
+		})
 		env = append(env, kv)
 	}
 	sort.Strings(env)
 	return env
 }
 
-// heldBy names what dir holds at its top level, with each file's digest.
-func heldBy(dir string) string {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return "@TEMP?@"
-	}
+// heldBy describes what is at path, so two tests' folders with the same contents
+// read the same wherever they sit: every entry under it at any depth with its
+// mode, a file by its digest, and a link by the digest of the file it reaches, or
+// by its target when it reaches none.
+//
+// A fake gh's own files are left out of a folder that holds one: its script names
+// its test's log, its routes are the test's answers, and no install runs gh
+// (TestNoInstallRunsGh).
+func heldBy(path string) string {
+	_, statErr := os.Lstat(filepath.Join(path, "gh"))
+	fakeGh := statErr == nil
 	var held []string
-	for _, e := range entries {
-		item := e.Name()
-		if e.Type().IsRegular() && e.Name() != "gh" {
-			if body, err := os.ReadFile(filepath.Join(dir, e.Name())); err == nil {
-				item += fmt.Sprintf(":%x", sha256.Sum256(body))
+	err := filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(path, p)
+		if err != nil {
+			return err
+		}
+		if fakeGh && d.IsDir() && rel == "routes" {
+			return fs.SkipDir
+		}
+		fi, err := d.Info()
+		if err != nil {
+			return err
+		}
+		item := rel + " " + fi.Mode().String()
+		switch {
+		case fakeGh && (rel == "gh" || rel == "gh.log"):
+		case fi.Mode().IsRegular():
+			body, err := os.ReadFile(p)
+			if err != nil {
+				return err
+			}
+			item += fmt.Sprintf(" %x", sha256.Sum256(body))
+		case fi.Mode()&os.ModeSymlink != 0:
+			body, err := os.ReadFile(p)
+			if err == nil {
+				target, _ := os.Stat(p)
+				item += fmt.Sprintf(" -> %v %x", target.Mode(), sha256.Sum256(body))
+			} else {
+				link, _ := os.Readlink(p)
+				item += " -> " + link
 			}
 		}
 		held = append(held, item)
+		return nil
+	})
+	if err != nil {
+		return "?"
 	}
-	return "@TEMP[" + strings.Join(held, ",") + "]@"
+	return strings.Join(held, ",")
 }
 
 // installKey is the fingerprint of the starting state.
@@ -842,5 +878,77 @@ func idMustMkdir(t *testing.T, dir string) {
 	t.Helper()
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestWhatATemporaryFolderOnPathHoldsReachesTheKey: Detect walks PATH, so a folder
+// named there is part of the starting state however it is laid out: a tool in a
+// nested folder, a tool behind a link and an executable bit all count, and the
+// same contents again replay, wherever the test's folders happen to be.
+func TestWhatATemporaryFolderOnPathHoldsReachesTheKey(t *testing.T) {
+	replays := func() int {
+		installTemplates.mu.Lock()
+		defer installTemplates.mu.Unlock()
+		return installTemplates.replays
+	}
+	write := func(t *testing.T, path, body string, mode os.FileMode) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A value no earlier run in this process kept (-count).
+	unique := strconv.FormatInt(time.Now().UnixNano(), 10)
+	for name, onPath := range map[string]func(t *testing.T, body string, mode os.FileMode) string{
+		"a tool in a named nested folder": func(t *testing.T, body string, mode os.FileMode) string {
+			dir := filepath.Join(t.TempDir(), "bin")
+			write(t, filepath.Join(dir, "sometool"), body, mode)
+			return dir
+		},
+		"a tool below the folder named": func(t *testing.T, body string, mode os.FileMode) string {
+			dir := t.TempDir()
+			write(t, filepath.Join(dir, "deeper", "sometool"), body, mode)
+			return dir
+		},
+		"a tool behind a link": func(t *testing.T, body string, mode os.FileMode) string {
+			dir, target := t.TempDir(), filepath.Join(t.TempDir(), "elsewhere")
+			write(t, target, body, mode)
+			if err := os.Symlink(target, filepath.Join(dir, "sometool")); err != nil {
+				t.Skipf("no symlinks here: %v", err)
+			}
+			return dir
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			fixture := func(body string, mode os.FileMode) func(t *testing.T) int {
+				return func(t *testing.T) int {
+					t.Helper()
+					setupHermetic(t)
+					t.Setenv("PATH", onPath(t, unique+body, mode)+string(os.PathListSeparator)+os.Getenv("PATH"))
+					was := replays()
+					installedRepo(t)
+					return replays() - was
+				}
+			}
+			for _, step := range []struct {
+				name string
+				run  func(t *testing.T) int
+				want int
+			}{
+				{"kept", fixture("a", 0o755), 0},
+				{"other contents", fixture("b", 0o755), 0},
+				{"another mode", fixture("a", 0o644), 0},
+				{"the same again", fixture("a", 0o755), 1},
+			} {
+				t.Run(step.name, func(t *testing.T) {
+					if got := step.run(t); got != step.want {
+						t.Errorf("%d replays, want %d", got, step.want)
+					}
+				})
+			}
+		})
 	}
 }
