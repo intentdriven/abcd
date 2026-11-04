@@ -61,7 +61,7 @@ not take, or writes a list as anything but an inline `[a, b]` refuses; so does a
 store with two accepted records carrying the fields. None of these falls back
 to the baseline or to a looser rule.
 
-The rule reads each issue's fields and nothing else: nothing open in
+The rule reads each issue's fields, and beyond them only the release tags a deferral is judged by and, for a consistency finding, the intent store (both below): nothing open in
 `blocked_by`, no intent in `related_intents` (a consistency finding's aside,
 below), a category the rule takes, a
 severity it takes, no `decision_needed:` marker, and a `remedy:` other than `none (filed automatically)`, the value an automatic filer writes
@@ -184,8 +184,9 @@ name them at every move.
 
 The run is driven by the host session, as the implement loop is (decision 5 on
 itd-2609201916151817): each invocation of the bare verb performs one move and
-exits. It reads the ledger afresh (the classification is re-derived every move
-and written nowhere, decision 8), then does the first of these that applies.
+exits. It reads the ledger afresh (the classification is re-derived at every move
+that can read it and written nowhere, decision 8), then does the first of these
+that applies.
 
 In a checkout with a remote named `origin`, the ledger a move reads is origin's
 default branch, never the checkout's own, which may be behind it
@@ -201,7 +202,11 @@ branch, or no default branch of origin can be named: no `origin/HEAD`, and no
 `origin/main`, `master`, `trunk` or `develop`) plans nothing: it records the failure in
 the drain's state as an origin probe and waits as the outage gate waits, on the
 shared schedule (one minute, five, ten, then hourly), a move before the next
-probe reading nothing. It gives up as that gate does: a probe failing eight
+probe reading nothing. Beyond taking any skip or pace it was given, a move waiting
+on origin does nothing else of the run: it takes no answer, drops no lapsed
+request, publishes no pending hand-back, lists no disposition or flag, finishes no
+merged lane and renews no reservation, so a lease runs on through the wait unless
+a step of the lane renews it. It gives up as that gate does: a probe failing eight
 hours into the hourly stage ends the drain with the stop reason `origin`,
 saying what failed, since when, and that the next invocation begins a new
 drain, which waits again if origin still cannot be read. It never plans from what the checkout last saw. The dry
@@ -231,7 +236,8 @@ on origin's default branch backs off, with a tip or without one
    being refused at one stage for sixty minutes, counted from its first
    refusal to its last, a quiet of more than fifteen minutes starting the time
    afresh (dcn-2610170118506273); both bounds are read from the
-   pace's layers (`pace.stuck_refusals`, `pace.stuck_minutes`) at every move.
+   pace's layers (`pace.stuck_refusals`, `pace.stuck_minutes`) at every move that
+   reads a lane in progress.
    A refusal that cannot change makes the lane stuck at once: the issue
    finished at the lane's base, or on origin's default branch as the land
    fence reads it, or the reservation now another person's. A wait by design
@@ -375,7 +381,7 @@ on origin's default branch backs off, with a tip or without one
    the hold it was asked on; a lane whose start renews a judgement's hold that
    lapsed before the no, and a judgement's reservation that renews this copy's
    own lapsed one, ask again, the push making the hold the drain's afresh
-   ([`37-reserve.md`](37-reserve.md), dcn-2610161827036320). A move refused
+   ([`37-reserve.md`](37-reserve.md), dcn-2610161827036320). A move of a drain already begun that is refused
    once it has done anything (the judgement block onward: the outage read, the
    merged lanes, a lane's routing, the run listing, the origin check, a
    judgement's reservation or request, a lane's start) writes what it did
@@ -387,11 +393,12 @@ on origin's default branch backs off, with a tip or without one
    never a removal (spc-2610161044461448 step 9, dcn-2610161040378713): what
    such a peer holds is unknown, so left to the peers check it would read as
    holding every issue. The run records the reservation, which its steps renew, fence
-   and tombstone ([`27-implement.md`](27-implement.md)); every drain move
+   and tombstone ([`27-implement.md`](27-implement.md)); every drain move that neither waits on origin nor stops at a given-up outage
    renews, at half its lease, the reservation of each issue lane parked at
    land, so a pull request waiting on a person stays held while the drain
    moves, and the reservation of the lane in progress, before its window gate,
-   so a move that waits renews too, whether or not a step of the lane ran
+   so a move that waits on the pace or a judgement renews too, whether or not a
+   step of the lane ran
    (spc-2610161044461448 step 7, dcn-2610161040374343). Once an issue lane's
    validators have passed and it is at its landing, its first renewal narrows
    its footprint to the files it changed within it, measured from its merge
@@ -407,7 +414,7 @@ on origin's default branch backs off, with a tip or without one
    dcn-2610161040380948): a lane whose pull request was closed unmerged is
    handed back as `closed`, its reservation released with a tombstone marking
    it so, and routed home to a person; a conflicting one is no longer renewed
-   and is named in `next`; an open one is renewed and named as waiting, unless the listing shows it armed and `CLEAN` or disarmed, when the move takes the lane's own merge-queue watch: one left outside the queue is queued, and one that left it disarmed is read as `dropped`, naming the failed check, and still renewed; one
+   and is named in `next`; an open one is renewed and named as waiting, unless its landing armed it and the listing shows it `CLEAN` or disarmed, when the move takes the lane's own step, whose merge-queue watch runs where a queue gates the default branch: one left outside the queue is queued, and one that left it disarmed is read as `dropped`, naming the failed check, and still renewed; one
    merged by a squash or rebase, its head not on the default branch, is named
    and not renewed; one the listing does not show stays held. A lane's sync
    fetches `origin`'s default branch and merges it whenever it has moved, before
@@ -435,7 +442,7 @@ on origin's default branch backs off, with a tip or without one
    hand-back the same way. Without `origin`
    nothing is reserved.
 
-Every move that step 1 above does not stop finishes the lanes that have merged
+Every move that step 1 above does not stop, and that is not waiting on origin, finishes the lanes that have merged
 (spc-2609212015054359 step 3, iss-2610090936460789), before the window clock of
 steps 2 and 3, since the cleanup does no new work and the pace has nothing to
 hold. For each issue lane in this checkout parked at land whose
@@ -448,9 +455,10 @@ branch moved past what landed, a worktree with changes), or a default branch the
 move cannot fetch, is named there with the reason and stops nothing; the next
 move looks again.
 
-The host's answer is taken first of all, before the window clock and the
+Unless the move is waiting on origin, the host's answer is taken first of all, before the window clock and the
 lane's routing: an invocation given the answer's path validates it and records
-it, routes a yes, and then moves as above.
+it, routes a yes, and then moves as above. A move waiting on origin takes none,
+and says to give it again once origin answers.
 
 The drain's state is one file beside the runs,
 `.abcd/.work.local/run/drain.json`: when it began, the rule's record, its cap
@@ -647,7 +655,7 @@ or contains it, back from the drain in progress, with a reason
 (iss-2610090642385898): a peer's fix in flight in one package, or an issue a
 person means to take themselves. The move adds the entry to the drain's skip
 list in its state, beginning a drain when none is in progress, and every move
-passes a held-back issue over before anything is pushed or asked over it,
+that takes up the eligible issues passes a held-back issue over before anything is pushed or asked over it,
 naming it among the passed issues with the check `skipped`, the entry and its
 reason. Several targets may be held back at once, all with the one reason; a
 target already on the list takes the new reason; an entry can be taken off
@@ -711,7 +719,7 @@ so that a later drain takes issues a person would have decided. What guards it:
   refused value is described, never echoed, and the reason it carries is
   capped and sanitised. Whatever it says, it can only hand an issue back.
 - A lane's hand-back is the implementer's word, read as untrusted input: its
-  kind is one of the four the loop routes, its reason and home are present,
+  kind is one of the four the loop routes, its reason, and its home where the kind needs one, are present,
   capped and sanitised, and a hand-back beside a resolution is refused. The
   loop discards only the worktree it made at the lane's path on the lane's own
   branch, and deletes the branch only at the tip it read.

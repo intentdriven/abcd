@@ -40,7 +40,8 @@ The following are non-negotiable invariants — any architectural choice that vi
    one push, the spec's footprint or the issue's `found_at` naming the files)
    and, with `--release`, a fetch and one tombstone push; `drain`, whose
    meaning includes one fetch of the reservations and origin's default branch
-   at the start of every move, which the move plans from (`--dry-run` fetches
+   at the start of every move but one waiting out its next probe of origin,
+   which the move plans from (`--dry-run` fetches
    nothing and reads that view as last fetched, with its age), reserving each
    issue before its judgement is asked (a fetch and one push; an issue or
    footprint another copy holds in the move's view is passed over with
@@ -56,7 +57,8 @@ The following are non-negotiable invariants — any architectural choice that vi
    tombstone a handed-back lane's step could not push (a fetch and one push,
    carrying the lane's hand-back kind), and renewing, at half its lease, the
    reservation of each lane parked at land and of the lane in progress, on
-   every move, waiting or not (a fetch and one push, spc-2610161044461448
+   every move that neither waits on origin nor stops at a given-up outage,
+   waiting on the pace or a judgement or not (a fetch and one push, spc-2610161044461448
    step 7), where a move that finds a lane parked at land also makes one
    listing of the person's latest pull requests through the forge client
    (`gh pr list`), which reads every parked lane's pull request (step 8); and

@@ -380,7 +380,7 @@
     {
       "chapter": "35-drain.md",
       "sentence": "and is named in `next`; an open one is renewed and named as waiting; one",
-      "replacement": "and is named in `next`; an open one is renewed and named as waiting, unless the listing shows it armed and `CLEAN` or disarmed, when the move takes the lane's own merge-queue watch: one left outside the queue is queued, and one that left it disarmed is read as `dropped`, naming the failed check, and still renewed; one",
+      "replacement": "and is named in `next`; an open one is renewed and named as waiting, unless its landing armed it and the listing shows it `CLEAN` or disarmed, when the move takes the lane's own step, whose merge-queue watch runs where a queue gates the default branch: one left outside the queue is queued, and one that left it disarmed is read as `dropped`, naming the failed check, and still renewed; one",
       "evidence": "internal/core/implement/loop/drain_finish.go:302",
       "commit": "5dbb0fb0972171435f3be443ef60697f043e14d7",
       "applied": "2026-11-04T01:37:49Z"
@@ -424,6 +424,118 @@
       "evidence": "internal/surface/cli/helpgroups.go:175",
       "commit": "5dbb0fb0972171435f3be443ef60697f043e14d7",
       "applied": "2026-11-04T01:37:49Z"
+    },
+    {
+      "chapter": "35-drain.md",
+      "sentence": "an open one is renewed and named as waiting, unless the listing shows it armed and `CLEAN` or disarmed, when the move takes the lane's own merge-queue watch:",
+      "replacement": "an open one is renewed and named as waiting, unless its landing armed it and the listing shows it `CLEAN` or disarmed, when the move takes the lane's own step, whose merge-queue watch runs where a queue gates the default branch:",
+      "evidence": "internal/core/implement/loop/drain_finish.go:302 (the watch needs lane.Landing.Armed); internal/core/implement/loop/land.go:947 (a lane left open is never armed, lists disarmed, and stays waiting); land.go:1077 (no queue, no watch)",
+      "commit": "de140e4e0252fd055c66fe3a604ff21616eca2f7",
+      "applied": "2026-11-04T02:13:51Z"
+    },
+    {
+      "chapter": "35-drain.md",
+      "sentence": "Every move that step 1 above does not stop finishes the lanes that have merged",
+      "replacement": "Every move that step 1 above does not stop, and that is not waiting on origin, finishes the lanes that have merged",
+      "evidence": "internal/core/implement/loop/drain.go:617 (a move waiting on origin returns here), before finishMerged at drain.go:749",
+      "commit": "de140e4e0252fd055c66fe3a604ff21616eca2f7",
+      "applied": "2026-11-04T02:13:51Z"
+    },
+    {
+      "chapter": "35-drain.md",
+      "sentence": "and tombstone ([`27-implement.md`](27-implement.md)); every drain move",
+      "replacement": "and tombstone ([`27-implement.md`](27-implement.md)); every drain move that neither waits on origin nor stops at a given-up outage",
+      "evidence": "internal/core/implement/loop/drain.go:617 returns before the renewals at drain.go:749 (finishMerged) and drain.go:754 (renewInProgress)",
+      "commit": "de140e4e0252fd055c66fe3a604ff21616eca2f7",
+      "applied": "2026-11-04T02:13:51Z"
+    },
+    {
+      "chapter": "35-drain.md",
+      "sentence": "The host's answer is taken first of all, before the window clock and the",
+      "replacement": "Unless the move is waiting on origin, the host's answer is taken first of all, before the window clock and the",
+      "evidence": "internal/core/implement/loop/drain.go:617-622 (a move that cannot read origin says the answer given was not taken, and to give it again)",
+      "commit": "de140e4e0252fd055c66fe3a604ff21616eca2f7",
+      "applied": "2026-11-04T02:13:51Z"
+    },
+    {
+      "chapter": "35-drain.md",
+      "sentence": "([`37-reserve.md`](37-reserve.md), dcn-2610161827036320). A move refused",
+      "replacement": "([`37-reserve.md`](37-reserve.md), dcn-2610161827036320). A move of a drain already begun that is refused",
+      "evidence": "internal/core/implement/loop/drain.go:582 (A drain this move began writes nothing) and drain.go:588 (refuseMoved writes only when live)",
+      "commit": "de140e4e0252fd055c66fe3a604ff21616eca2f7",
+      "applied": "2026-11-04T02:13:51Z"
+    },
+    {
+      "chapter": "35-drain.md",
+      "sentence": "kind is one of the four the loop routes, its reason and home are present,",
+      "replacement": "kind is one of the four the loop routes, its reason, and its home where the kind needs one, are present,",
+      "evidence": "internal/core/implement/loop/receipt.go:102-105 and receipt.go:140 (a home is required only of design-finding and second-package)",
+      "commit": "de140e4e0252fd055c66fe3a604ff21616eca2f7",
+      "applied": "2026-11-04T02:13:51Z"
+    },
+    {
+      "chapter": "35-drain.md",
+      "sentence": "The rule reads each issue's fields and nothing else: nothing open in",
+      "replacement": "The rule reads each issue's fields, and beyond them only the release tags a deferral is judged by and, for a consistency finding, the intent store (both below): nothing open in",
+      "evidence": "internal/core/capture/eligible.go:494 (liveDeferralAnchor reads the release tags) and eligible.go:498 (readBackLinks reads the intent store)",
+      "commit": "de140e4e0252fd055c66fe3a604ff21616eca2f7",
+      "applied": "2026-11-04T02:13:51Z"
+    },
+    {
+      "chapter": "27-implement.md",
+      "sentence": "above the floor and the race gate's own hold, so race stages are kept apart among the preflights",
+      "replacement": "above the floor or its settle after the pressure falls, and the race gate's own hold, so race stages are kept apart among the preflights",
+      "evidence": "internal/core/implement/load_wait.go:993 (mem.look shuts either gate) and internal/core/implement/load_memory.go:502-505 (the settle shuts it with the pressure below the floor)",
+      "commit": "de140e4e0252fd055c66fe3a604ff21616eca2f7",
+      "applied": "2026-11-04T02:13:51Z"
+    },
+    {
+      "chapter": "27-implement.md",
+      "sentence": "the load or the process table, taking a hold, or waiting a jitter or a settle,",
+      "replacement": "the load or the process table (read, inside a memory episode, only to ask whether the waiter admitted last is its own ancestor), taking a hold, or waiting a jitter or a settle,",
+      "evidence": "internal/core/implement/load_memory.go:565-576 (shortcutIdentity's ancestor test calls req.Read) and load_memory.go:513 (asked inside an episode while another waiter's settle lasts)",
+      "commit": "de140e4e0252fd055c66fe3a604ff21616eca2f7",
+      "applied": "2026-11-04T02:13:51Z"
+    },
+    {
+      "chapter": "27-implement.md",
+      "sentence": "each drain move for a drain lane parked at land or in progress, waiting or not",
+      "replacement": "each drain move for a drain lane parked at land or in progress, waiting on the pace or a judgement or not, unless it waits on origin or stops at a given-up outage",
+      "evidence": "internal/core/implement/loop/drain.go:617 returns before the renewals at drain.go:749 and drain.go:754",
+      "commit": "de140e4e0252fd055c66fe3a604ff21616eca2f7",
+      "applied": "2026-11-04T02:13:51Z"
+    },
+    {
+      "chapter": "34-build.md",
+      "sentence": "refused at exit 2, unarmed, since the merge queue never takes it",
+      "replacement": "refused at exit 2, unarmed, since the merge queue never takes it, unless an issue lane's conflict lies in declared generated files alone, or in no file when this checkout merges, when the lane enters its sync again",
+      "evidence": "internal/core/implement/loop/land.go:931-939 (an issue lane calls resyncLane) and internal/core/implement/loop/sync.go:262-273 (only a conflict outside declared generated files is refused)",
+      "commit": "de140e4e0252fd055c66fe3a604ff21616eca2f7",
+      "applied": "2026-11-04T02:13:51Z"
+    },
+    {
+      "chapter": "34-build.md",
+      "sentence": "one the forge reports `CONFLICTING`, at exit 2: it needs a person, so it is",
+      "replacement": "not the merge's contention wait. An issue lane whose conflict lies in declared generated files alone, or in no file when this checkout merges, enters its sync again instead.",
+      "evidence": "internal/core/implement/loop/land.go:1044-1049 and internal/core/implement/loop/sync.go:262-273",
+      "commit": "de140e4e0252fd055c66fe3a604ff21616eca2f7",
+      "applied": "2026-11-04T02:13:51Z"
+    },
+    {
+      "chapter": "34-build.md",
+      "sentence": "the ordinary wait, saying so. A drain's move takes this step for a lane the",
+      "replacement": "the ordinary wait, saying so. A drain's move takes this step for an armed lane the",
+      "evidence": "internal/core/implement/loop/drain_finish.go:302 (only a lane whose landing armed it; a lane left open takes no such step)",
+      "commit": "de140e4e0252fd055c66fe3a604ff21616eca2f7",
+      "applied": "2026-11-04T02:13:51Z"
+    },
+    {
+      "chapter": "04-launch.md",
+      "sentence": "is pinned, the catalog and the surface snapshot. Beside them it names the report",
+      "replacement": "is pinned, the catalog and the surface snapshot, which say what they wait on in place of a size. Beside them it names the report",
+      "evidence": "internal/surface/cli/ship.go:778-782 (both writes carry Pending and no Bytes), against the chapter's \"with its size\" on line 141",
+      "commit": "de140e4e0252fd055c66fe3a604ff21616eca2f7",
+      "applied": "2026-11-04T02:13:51Z"
     }
   ]
 }

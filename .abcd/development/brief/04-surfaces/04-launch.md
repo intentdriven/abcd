@@ -140,7 +140,7 @@ pre-flight gates run where the ship renders a payload. What it delivers is a
 report of each file the cut would write, in the order the cut writes them and
 with its size: any intent whose missed target moves to `next`, the outgoing
 page's archive, `RELEASE.md`, the digest, `CHANGELOG.md`, and, where the archive
-is pinned, the catalog and the surface snapshot. Beside them it names the report
+is pinned, the catalog and the surface snapshot, which say what they wait on in place of a size. Beside them it names the report
 the gates would leave and what follows that the cut does not do itself: the tag,
 the push and the release the workflow makes once the heading reaches the default
 branch. A refused payload gives the real run's reasons and exit 2, so a host

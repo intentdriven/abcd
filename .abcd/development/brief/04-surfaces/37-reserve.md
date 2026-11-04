@@ -308,7 +308,7 @@ fetch of that branch succeeds (dcn-2610161837009957).
 
 The act is then judged against the rest of the fetched view. A reservation
 that would take its holder past their cap of live reservations, ten unless
-their machine raises it, counted across every record by whose holds are
+their machine sets another from 1 to 100, counted across every record by whose holds are
 theirs (the holder id, the declared ids and, on older holds, the login), is
 refused naming the cap and the reservations, with the advice to wait for one of
 their pull requests to merge, which ends its reservation, rather than release

@@ -930,7 +930,7 @@ until the last step.
    arms nothing, and so is a `facilitator.mode` that cannot be read. Before arming, the loop asks the
    forge whether the pull request merges (`gh pr view` for its `mergeable`
    and `mergeStateStatus` fields), and one the forge reports `CONFLICTING` is
-   refused at exit 2, unarmed, since the merge queue never takes it
+   refused at exit 2, unarmed, since the merge queue never takes it, unless an issue lane's conflict lies in declared generated files alone, or in no file when this checkout merges, when the lane enters its sync again
    (iss-2610110908443341). Nothing is pushed to the lane after this step.
 6. It fetches the default branch and waits, exiting 3, until the pushed head
    is an ancestor of it; only then does it remove the lane's worktree (never
@@ -940,7 +940,7 @@ until the last step.
    waiting. A pull request closed without merging, or merged in a way that
    rewrote the head, is refused and nothing is cleaned up, and so is an open
    one the forge reports `CONFLICTING`, at exit 2: it needs a person, so it is
-   not the merge's contention wait.
+   not the merge's contention wait. An issue lane whose conflict lies in declared generated files alone, or in no file when this checkout merges, enters its sync again instead.
 
    Each wait of an armed lane whose default branch a merge queue gates also
    reads the pull request's place in the queue, since the forge can leave one
@@ -957,7 +957,7 @@ until the last step.
    hold instead, at exit 3, since the hold withdraws armed merges and re-arms
    them after. A head on the forge other than the one pushed, outside the queue,
    is refused and neither queued nor re-armed. A place that cannot be read leaves
-   the ordinary wait, saying so. A drain's move takes this step for a lane the
+   the ordinary wait, saying so. A drain's move takes this step for an armed lane the
    forge lists outside the queue ([`35-drain.md`](35-drain.md)).
 
    The forge computes mergeability without the merge drivers `.gitattributes`

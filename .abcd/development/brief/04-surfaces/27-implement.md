@@ -352,7 +352,7 @@ check carrying the wait flag as a first gate's waiter, so it would read a
 preflight at a race gate spelt with it as queued, not in its test stages, and
 open beside it. At one preflight at a
 time the race gate opens at once once the disk check passes, without reading
-the load or the process table, taking a hold, or waiting a jitter or a settle,
+the load or the process table (read, inside a memory episode, only to ask whether the waiter admitted last is its own ancestor), taking a hold, or waiting a jitter or a settle,
 so the race stage follows the tests as it did before the gate existed, unless
 memory holds it (below), when it says it opened after its wait. Both
 gates refuse, exiting 1 without waiting, while the volume holding the Go build
@@ -377,7 +377,7 @@ fails. Above one the race gate is
 shut only by another live `go test -race` run, a race waiter queued ahead of
 it by the same rule (started earlier, or within two seconds of it with the
 lower pid) or running its command, the load limit, memory pressure at or
-above the floor and the race gate's own hold, so race stages are kept apart among the preflights
+above the floor or its settle after the pressure falls, and the race gate's own hold, so race stages are kept apart among the preflights
 whose checkouts have the race gate, one at a time within an account and across
 accounts all but a narrow window: a race waiter exits as it opens, before its
 preflight's race run shows in the table, and after a pid wrap two race waiters
@@ -561,7 +561,7 @@ without one, its gate open, the waiter waits at most five seconds for a round
 in flight to finish and be said, and a renewal still pushing then goes
 unsaid, since a waiter lingering on a slow push reads as queued and holds
 every other gate shut), and
-each drain move for a drain lane parked at land or in progress, waiting or not
+each drain move for a drain lane parked at land or in progress, waiting on the pace or a judgement or not, unless it waits on origin or stops at a given-up outage
 (spc-2610161044461448 step 7). The landing checks the reservation before its
 push as the fence does before arming, renewing it with its own term, so a
 reservation that moved while the lane worked pushes nothing and opens no
