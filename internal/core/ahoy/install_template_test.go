@@ -7,12 +7,12 @@ package ahoy
 // every later one starting from the same state is written back from the record,
 // so the test meets the same files, modes and links in its own directories.
 //
-// The kept writes are safe to replay because the starting state is the key: the
-// fixture's name, the environment, and every file under the directories an
-// install reads and writes, each with the test's own paths taken out. A test
-// that changes any of them first gets an install of its own. So does a test that
-// has swapped a package seam, whose effect no fingerprint can see.
-// TestAKeptInstallIsTheInstallItReplays holds the replay to a real install.
+// The starting state is the key: the fixture's name, the environment, and every
+// file under the directories named in installRoots, each with the test's own
+// paths taken out. A test that changes any of them first gets an install of its
+// own. So does a test that has swapped a package seam, whose effect no fingerprint
+// can see. TestAKeptInstallIsTheInstallItReplays holds the replay to a real
+// install, and TestEverySwappedSeamIsListedOrExempt holds the list of seams.
 
 import (
 	"crypto/sha256"
@@ -677,11 +677,16 @@ func (src packageSource) testReachingFixtureAndSwap(name string) string {
 }
 
 // TestAKeptInstallIsTheInstallItReplays: a fixture that replayed an install
-// leaves exactly what a real install leaves, in the repository and in every
-// directory the install reaches, byte for byte, mode for mode and link for link,
-// with each test's own paths in place. It is what the fixtures' sharing rests on:
-// were an install to come to depend on anything the key does not see, or to write
-// outside the roots, this is the test that says so.
+// leaves what a real install from the same starting state leaves under the same
+// roots, byte for byte, mode for mode and link for link, with each test's own
+// paths, name and date in place. It catches a replay that gets a kept file wrong,
+// such as a path or a name left behind from the test that kept it.
+//
+// It compares inside installRoots, in one starting state, so it cannot see an
+// install that writes outside those roots, which a replay would lose, or one that
+// comes to depend on something the key leaves out. installRoots and installKey
+// are held to those by reading them, and by TestEverySwappedSeamIsListedOrExempt
+// for the seams.
 func TestAKeptInstallIsTheInstallItReplays(t *testing.T) {
 	const origin = "https://github.com/example-org/example-repo"
 	for _, tc := range []struct {
