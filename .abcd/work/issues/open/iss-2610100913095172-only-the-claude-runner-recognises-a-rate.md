@@ -10,6 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/runner/claude.go"
 remedy: "detect a rate limit in the opencode runner, and give the host a verb to report one a sub-agent met"
+related_intents: [itd-2611040344170206]
 ---
 
 Only the claude runner recognises a rate limit: an opencode limit is an ordinary failure that falls back to the next runner, and a limit met by a host-run sub-agent is never seen by the loop, since no verb lets the host report one.

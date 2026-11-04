@@ -221,6 +221,126 @@ func TestAhoyWorktreePruneExitCodes(t *testing.T) {
 	}
 }
 
+// shippedWorktreeTrimCache is the trim prune ships with; TestMain keeps it and
+// stands in for it, so only a test that sets a temporary GOCACHE runs it.
+var shippedWorktreeTrimCache func(bool, time.Time) worktree.CacheTrim
+
+// tempGoCacheEntries has `go env GOCACHE` name a temporary directory holding one
+// old entry of five bytes and one fresh entry, and restores the shipping trim
+// for this test. It answers the two entries' paths.
+func tempGoCacheEntries(t *testing.T) (cache, old, fresh string) {
+	t.Helper()
+	cache = t.TempDir()
+	t.Setenv("GOCACHE", cache)
+	prev := worktreeTrimCache
+	worktreeTrimCache = shippedWorktreeTrimCache
+	t.Cleanup(func() { worktreeTrimCache = prev })
+	if err := os.WriteFile(filepath.Join(cache, "README"), []byte("This directory holds cached build artifacts from the Go build system.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(cache, "ab"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old, fresh = filepath.Join(cache, "ab", "abc123-d"), filepath.Join(cache, "ab", "def456-a")
+	if err := os.WriteFile(old, []byte("12345"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fresh, []byte("fresh"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stale := time.Now().Add(-worktree.CacheTrimAge - 2*time.Hour)
+	if err := os.Chtimes(old, stale, stale); err != nil {
+		t.Fatal(err)
+	}
+	return cache, old, fresh
+}
+
+func fileExists(p string) bool { _, err := os.Lstat(p); return err == nil }
+
+// TestAhoyWorktreePruneTrimsTheGoCache: a removal trims and says so, in both
+// renderings; a dry run says the same and deletes nothing; a run that removes
+// nothing leaves the cache and says nothing of it.
+func TestAhoyWorktreePruneTrimsTheGoCache(t *testing.T) {
+	repo := worktreeFixture(t)
+	cache, old, fresh := tempGoCacheEntries(t)
+
+	if out, code := runWorktree(t, false, "prune"); code != 1 || strings.Contains(out, "go build cache") || !fileExists(old) {
+		t.Fatalf("no worktree went, so no trim: exit %d:\n%s", code, out)
+	}
+
+	mergedLaneWorktree(t, repo, "done")
+	dry, code := runWorktree(t, false, "prune", "--dry-run")
+	if code != 0 || !strings.Contains(dry, "would remove 1 entry unused for 2 days, freeing 5 B") {
+		t.Fatalf("the dry run says what would go: exit %d:\n%s", code, dry)
+	}
+	if !fileExists(old) || !fileExists(fresh) {
+		t.Fatal("a dry run deletes nothing")
+	}
+	js, code := runWorktree(t, true, "prune", "--dry-run")
+	var dryJSON worktree.Pruned
+	if err := json.Unmarshal([]byte(js), &dryJSON); err != nil || code != 0 || dryJSON.CacheTrim == nil || dryJSON.CacheTrim.EntriesRemoved != 1 {
+		t.Fatalf("the dry run's JSON (%v), exit %d:\n%s", err, code, js)
+	}
+
+	js, code = runWorktree(t, true, "prune")
+	var got worktree.Pruned
+	if err := json.Unmarshal([]byte(js), &got); err != nil || code != 0 {
+		t.Fatalf("the run's JSON (%v), exit %d:\n%s", err, code, js)
+	}
+	if tr := got.CacheTrim; tr == nil || tr.EntriesRemoved != 1 || tr.BytesFreed != 5 || tr.Path != cache || tr.UnusedDays != 2 {
+		t.Fatalf("the trim in the JSON: %+v\n%s", got.CacheTrim, js)
+	}
+	if fileExists(old) || !fileExists(fresh) {
+		t.Fatal("the old entry goes and the fresh one stays")
+	}
+}
+
+// TestAhoyWorktreePrunePrintsTheTrim: the line a real run prints, and a real
+// run's exit code when the trim has nothing to work on.
+func TestAhoyWorktreePrunePrintsTheTrim(t *testing.T) {
+	repo := worktreeFixture(t)
+	_, old, _ := tempGoCacheEntries(t)
+	mergedLaneWorktree(t, repo, "done")
+
+	out, code := runWorktree(t, false, "prune")
+
+	if code != 0 || !strings.Contains(out, "removed 1 entry unused for 2 days, 5 B freed") || fileExists(old) {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+}
+
+// TestAhoyWorktreePruneSkipsAMissingGoCache: one line, and the prune succeeds.
+func TestAhoyWorktreePruneSkipsAMissingGoCache(t *testing.T) {
+	repo := worktreeFixture(t)
+	tempGoCacheEntries(t)
+	t.Setenv("GOCACHE", filepath.Join(t.TempDir(), "nope"))
+	mergedLaneWorktree(t, repo, "done")
+
+	out, code := runWorktree(t, false, "prune")
+
+	if code != 0 || !strings.Contains(out, "reclaimed") || strings.Count(out, "go build cache not trimmed: ") != 1 {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+}
+
+// TestAhoyWorktreePruneSurvivesAFailingTrim: entries the trim could not remove
+// are named and the prune still answers 0.
+func TestAhoyWorktreePruneSurvivesAFailingTrim(t *testing.T) {
+	repo := worktreeFixture(t)
+	prev := worktreeTrimCache
+	worktreeTrimCache = func(bool, time.Time) worktree.CacheTrim {
+		return worktree.CacheTrim{Path: "cache", UnusedDays: 2, Failed: 3}
+	}
+	t.Cleanup(func() { worktreeTrimCache = prev })
+	mergedLaneWorktree(t, repo, "done")
+
+	out, code := runWorktree(t, false, "prune")
+
+	if code != 0 || !strings.Contains(out, "3 could not be read or removed") {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+}
+
 // TestAhoyWorktreePruneRefusesAStoreItCannotTrust is criterion 12 at the
 // door: exit 2, nothing removed.
 func TestAhoyWorktreePruneRefusesAStoreItCannotTrust(t *testing.T) {
