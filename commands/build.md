@@ -801,7 +801,9 @@ A lane's stages run in order:
    the forge ignores, or says no local merge reproduces it. It is a person's:
    report it with the remedy it names (a hand merge of the default branch into
    the lane's branch, with a disarm and re-arm when it is armed), and never
-   push to the lane or merge it yourself. `UNKNOWN`, a verdict the forge has not
+   push to the lane or merge it yourself. An issue lane whose conflict lies in
+   declared generated files alone, or in no file when this checkout merges,
+   enters its sync again instead of being refused. `UNKNOWN`, a verdict the forge has not
    computed yet, keeps the exit-3 wait.
 
 ### When a connection is lost

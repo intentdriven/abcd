@@ -154,7 +154,9 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"would count a preflight at its race gate as queued, not in its tests, so the two\n" +
 			"are refused together. At one preflight at a time, the default, it opens at once\n" +
 			"once the disk check below passes and memory (below) does not hold it, without\n" +
-			"reading the load or the process table, taking a hold or waiting a jitter, so a\n" +
+			"reading the load or the process table (read, inside a memory episode, only to ask\n" +
+			"whether the waiter admitted last is its own ancestor), taking a hold or waiting a\n" +
+			"jitter, so a\n" +
 			"preflight's race stage follows its tests as before. Above one it is shut while\n" +
 			"another `go test -race` run is live, a race waiter is ahead of it (by the same\n" +
 			"rule) or running its command, the load is at the wait limit, memory holds it\n" +
@@ -195,7 +197,8 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"preflight the first gate admits at once (`" + implement.PreflightSlotsKey + "`), and 8 GiB at least, so\n" +
 			"8 GiB at the default and 16 GiB at four. The waiter reads the disk as it starts\n" +
 			"and again just before it opens (the race gate at one preflight at a time reads\n" +
-			"it once, as it starts), and refuses at either look. The refusal names\n" +
+			"it as it starts and at each look while memory holds it), and refuses at any such\n" +
+			"look. The refusal names\n" +
 			"each low volume, its free space and the floor, and, when the cache's own volume\n" +
 			"is low, the cache's size and a command that deletes its build entries unused for\n" +
 			"two days. A disk it cannot read, in whole or in part, is never refused: one line\n" +

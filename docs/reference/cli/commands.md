@@ -1368,7 +1368,8 @@ Work the open issue ledger unattended: fix the issues that need no decision, and
 hand the rest back by kind. Which issues need no decision is this repository's own
 recorded decision: an accepted decision record whose frontmatter carries the four
 fields drain_categories, drain_severities, drain_security and drain_remedy. The
-rule reads the issue's fields alone: nothing open in blocked_by; no intent in
+rule reads the issue's fields, and beyond them only the release tags and, for a
+consistency finding, the intent store: nothing open in blocked_by; no intent in
 related_intents; a category the rule takes; a severity it takes; and a remedy:
 field. abcd's strict baseline takes tech-debt, documentation, inconsistency, drift,
 bug and ux at nitpick or minor, and hands every security issue to a person. A
@@ -1394,6 +1395,8 @@ fetch fails, the default branch cannot be read, or none can be named: no origin/
 and no origin/main, master, trunk or develop) plans
 nothing: it records the failure in the drain's state and waits as for an outage,
 looking again after one minute, five, ten, then hourly, and exits 0 saying when.
+While it waits a move takes no answer given, saying to give it again, finishes no
+merged lane and renews no reservation, and one before the next look fetches nothing.
 A probe that fails eight hours into the hourly stage gives up, as the outage gate
 does: the drain ends (stopped "origin"), and the next abcd drain begins a new
 drain, waiting again if origin still cannot be read.
@@ -1474,7 +1477,8 @@ another person's) hands it back at once; the wait for a preflight receipt, an
 outage's wait, and a land fence that cannot read origin are never counted, and a
 step that succeeds as the move hands the lane back keeps it. `abcd implement step
 --discard` removes a stuck lane's worktree and branch and ends its run. Every move
-renews the reservation of the lane in progress at half its lease, waiting or not
+that neither waits on origin nor stops at a given-up outage renews the reservation
+of the lane in progress at half its lease, waiting on the pace or a judgement or not
 (a lane handed back is renewed by none); once the lane's validators pass and it is
 at its landing, the first renewal narrows its footprint to the files the lane changed
 within it, never widening it, and a lane its sync sends back to a fresh round
@@ -1511,7 +1515,7 @@ the call opens nothing; before that time a drain opens nothing, and after it the
 next invocation continues. --max <n> caps the lanes the drain opens (the default
 is all); at the cap, or when nothing eligible is left, held or not, the drain reports
 and ends. When you hold your cap of live reservations (ten unless reservation.max_live
-in your machine's config.json raises it), or every
+in your machine's config.json sets another, from 1 to 100), or every
 eligible issue left is held by another, a move neither refuses nor ends: it reserves
 and asks nothing, writes waiting_until fifteen minutes on (apart from the pace
 window) and waiting, "cap" or "held", for which of the two it waits on, names the
@@ -1529,8 +1533,8 @@ opened; the next `abcd drain`, once the outage is cleared, begins a new one.
 
 --skip <iss-N|path> --reason <why> holds one issue, or every issue whose found_at
 lies in that path, back for now: the move adds it to the drain's skip list (beginning
-a drain when none is in progress) and every move passes it over before anything is
-pushed or asked, named in passed with check "skipped" and the reason. --skip may be
+a drain when none is in progress) and every move that takes up the eligible issues
+passes it over before anything is pushed or asked, named in passed with check "skipped" and the reason. --skip may be
 given more than once, all with the one --reason; --unskip takes an entry off. The
 list clears when the drain ends.
 
@@ -2691,7 +2695,9 @@ older abcd reads any `implement load --wait` as a waiter at its first gate, and
 would count a preflight at its race gate as queued, not in its tests, so the two
 are refused together. At one preflight at a time, the default, it opens at once
 once the disk check below passes and memory (below) does not hold it, without
-reading the load or the process table, taking a hold or waiting a jitter, so a
+reading the load or the process table (read, inside a memory episode, only to ask
+whether the waiter admitted last is its own ancestor), taking a hold or waiting a
+jitter, so a
 preflight's race stage follows its tests as before. Above one it is shut while
 another `go test -race` run is live, a race waiter is ahead of it (by the same
 rule) or running its command, the load is at the wait limit, memory holds it
@@ -2734,7 +2740,8 @@ build cache (`go env GOCACHE`) or the one holding the worktree store
 preflight the first gate admits at once (`load.preflights`), and 8 GiB at least, so
 8 GiB at the default and 16 GiB at four. The waiter reads the disk as it starts
 and again just before it opens (the race gate at one preflight at a time reads
-it once, as it starts), and refuses at either look. The refusal names
+it as it starts and at each look while memory holds it), and refuses at any such
+look. The refusal names
 each low volume, its free space and the floor, and, when the cache's own volume
 is low, the cache's size and a command that deletes its build entries unused for
 two days. A disk it cannot read, in whole or in part, is never refused: one line
@@ -3305,7 +3312,9 @@ once the pushed head is an ancestor of the default branch on origin it removes t
 worktree and branch and the lane is done. Until then the call exits 3 and waits. A pull
 request the forge reports CONFLICTING (gh pr view <n> --json mergeable,mergeStateStatus)
 is refused at exit 2 instead, before arming or at the merged check, naming the files a
-local merge with every merge driver off conflicts in and the hand merge that settles it.
+local merge with every merge driver off conflicts in and the hand merge that settles it;
+an issue lane whose conflict lies in declared generated files alone, or in no file when
+this checkout merges, enters its sync again instead.
 
 A stage whose body this abcd does not carry is refused naming the spec piece that
 delivers it, and the run is unchanged. A stage that fails leaves the state as it was,

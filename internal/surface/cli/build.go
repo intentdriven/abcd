@@ -1053,7 +1053,9 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"worktree and branch and the lane is done. Until then the call exits 3 and waits. A pull\n" +
 			"request the forge reports CONFLICTING (gh pr view <n> --json mergeable,mergeStateStatus)\n" +
 			"is refused at exit 2 instead, before arming or at the merged check, naming the files a\n" +
-			"local merge with every merge driver off conflicts in and the hand merge that settles it.\n\n" +
+			"local merge with every merge driver off conflicts in and the hand merge that settles it;\n" +
+			"an issue lane whose conflict lies in declared generated files alone, or in no file when\n" +
+			"this checkout merges, enters its sync again instead.\n\n" +
 			"A stage whose body this abcd does not carry is refused naming the spec piece that\n" +
 			"delivers it, and the run is unchanged. A stage that fails leaves the state as it was,\n" +
 			"so the next invocation performs it again; a completed stage is never repeated.\n\n" +

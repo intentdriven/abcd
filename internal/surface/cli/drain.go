@@ -44,7 +44,8 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"hand the rest back by kind. Which issues need no decision is this repository's own\n" +
 			"recorded decision: an accepted decision record whose frontmatter carries the four\n" +
 			"fields drain_categories, drain_severities, drain_security and drain_remedy. The\n" +
-			"rule reads the issue's fields alone: nothing open in blocked_by; no intent in\n" +
+			"rule reads the issue's fields, and beyond them only the release tags and, for a\n" +
+			"consistency finding, the intent store: nothing open in blocked_by; no intent in\n" +
 			"related_intents; a category the rule takes; a severity it takes; and a remedy:\n" +
 			"field. abcd's strict baseline takes tech-debt, documentation, inconsistency, drift,\n" +
 			"bug and ux at nitpick or minor, and hands every security issue to a person. A\n" +
@@ -69,6 +70,8 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"and no origin/main, master, trunk or develop) plans\n" +
 			"nothing: it records the failure in the drain's state and waits as for an outage,\n" +
 			"looking again after one minute, five, ten, then hourly, and exits 0 saying when.\n" +
+			"While it waits a move takes no answer given, saying to give it again, finishes no\n" +
+			"merged lane and renews no reservation, and one before the next look fetches nothing.\n" +
 			"A probe that fails eight hours into the hourly stage gives up, as the outage gate\n" +
 			"does: the drain ends (stopped \"origin\"), and the next abcd drain begins a new\n" +
 			"drain, waiting again if origin still cannot be read.\n\n" +
@@ -146,7 +149,8 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"outage's wait, and a land fence that cannot read origin are never counted, and a\n" +
 			"step that succeeds as the move hands the lane back keeps it. `abcd implement step\n" +
 			"--discard` removes a stuck lane's worktree and branch and ends its run. Every move\n" +
-			"renews the reservation of the lane in progress at half its lease, waiting or not\n" +
+			"that neither waits on origin nor stops at a given-up outage renews the reservation\n" +
+			"of the lane in progress at half its lease, waiting on the pace or a judgement or not\n" +
 			"(a lane handed back is renewed by none); once the lane's validators pass and it is\n" +
 			"at its landing, the first renewal narrows its footprint to the files the lane changed\n" +
 			"within it, never widening it, and a lane its sync sends back to a fresh round\n" +
@@ -182,7 +186,7 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"next invocation continues. --max <n> caps the lanes the drain opens (the default\n" +
 			"is all); at the cap, or when nothing eligible is left, held or not, the drain reports\n" +
 			"and ends. When you hold your cap of live reservations (ten unless reservation.max_live\n" +
-			"in your machine's config.json raises it), or every\n" +
+			"in your machine's config.json sets another, from 1 to 100), or every\n" +
 			"eligible issue left is held by another, a move neither refuses nor ends: it reserves\n" +
 			"and asks nothing, writes waiting_until fifteen minutes on (apart from the pace\n" +
 			"window) and waiting, \"cap\" or \"held\", for which of the two it waits on, names the\n" +
@@ -199,8 +203,8 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"opened; the next `abcd drain`, once the outage is cleared, begins a new one.\n\n" +
 			"--skip <iss-N|path> --reason <why> holds one issue, or every issue whose found_at\n" +
 			"lies in that path, back for now: the move adds it to the drain's skip list (beginning\n" +
-			"a drain when none is in progress) and every move passes it over before anything is\n" +
-			"pushed or asked, named in passed with check \"skipped\" and the reason. --skip may be\n" +
+			"a drain when none is in progress) and every move that takes up the eligible issues\n" +
+			"passes it over before anything is pushed or asked, named in passed with check \"skipped\" and the reason. --skip may be\n" +
 			"given more than once, all with the one --reason; --unskip takes an entry off. The\n" +
 			"list clears when the drain ends.\n\n" +
 			"Without the repository's record, the dry run and the run both refuse (exit 2),\n" +

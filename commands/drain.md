@@ -165,7 +165,7 @@ Each `abcd drain` without `--dry-run` performs one move and exits 0, saying
 what it did in `next`:
 
 - **It reads the ledger from origin.** In a checkout with a remote named
-  `origin`, every move first fetches the reservations and origin's default
+  `origin`, every move but one waiting out its next probe first fetches the reservations and origin's default
   branch, under the drain's lock, and plans from the ledger that branch holds,
   never from the checkout, which may be behind: an issue another account
   finished there is not taken, and one filed there and not yet in this
@@ -174,11 +174,13 @@ what it did in `next`:
   here it has finished. A move that cannot read origin (the fetch fails, the
   default branch cannot be read, or none can be named: no `origin/HEAD`, and no
   `origin/main`, `master`, `trunk` or `develop`) plans nothing:
-  it asks no judgement, reserves nothing, records the failure in the drain's
+  it asks no judgement, takes no answer given (`next` says to give it again
+  once origin answers), finishes no merged lane, renews no reservation,
+  reserves nothing, records the failure in the drain's
   state (`origin_wait`: `since`, `kind` — `fetch`, `default-branch` or
   `origin-head` — `probes`, `next_probe_at`, and `hourly_since` once the
   probes are hourly) and says in `next` when it looks again, one minute, five,
-  ten, then hourly; a move before then reads nothing. It gives up as the outage
+  ten, then hourly; a move before then reads nothing and does the same. It gives up as the outage
   gate does: a probe that fails eight hours into the hourly stage ends the
   drain with `stopped: "origin"` and `complete: true`, and `next` says what
   failed, since when, the probes made and the lanes the drain opened; the
@@ -343,8 +345,8 @@ what it did in `next`:
   read as holding every issue, and the drain would pass each over and end.
   The lane's run then renews the reservation, fences its landing on it, before
   its push and again before arming, and tombstones it once it lands
-  (`commands/implement.md`). Every drain move also renews the lane in
-  progress at half its lease, waiting or not, though no step of the lane ran,
+  (`commands/implement.md`). Every drain move that neither waits on origin nor stops at a given-up outage also renews the lane in
+  progress at half its lease, waiting on the pace or a judgement or not, though no step of the lane ran,
   so a lane the host paused past its lease is not taken over (a lane handed
   back is renewed by no move). Once the lane's validators have passed and it
   is at its landing, the first renewal narrows its footprint to the files its
@@ -405,7 +407,7 @@ what it did in `next`:
   landing's wait for its preflight receipt, the wait through an outage, and a
   land fence that cannot read `origin`.
   The bounds are `pace.stuck_refusals` and `pace.stuck_minutes` in
-  `.abcd/config.json` or `~/.abcd.noindex/config.json`, read at every move. A
+  `.abcd/config.json` or `~/.abcd.noindex/config.json`, read at every move that reads a lane in progress. A
   stuck lane keeps its worktree and branch:
   `abcd implement step --run <run-id> --discard <lane-id>` removes them, closes
   its pull request if it opened one, and ends the run. The run ended this way
@@ -429,7 +431,8 @@ what it did in `next`:
   armed, and `abcd implement step --run <run-id>` refuses at exit 2 naming the
   conflicting files and the hand merge that settles it. That is a person's:
   report it, and do not push to the lane or merge it yourself.
-- **It finishes merged lanes.** Every move, before it reads the window clock,
+- **It finishes merged lanes.** Every move that neither waits on origin nor stops at a given-up outage,
+  before it reads the window clock,
   renews the reservation of each issue lane parked at land at half its lease,
   so a pull request waiting on a person's review stays held while the drain
   keeps moving, and takes the landing's last step for each issue lane in the checkout parked at
@@ -471,7 +474,7 @@ what it did in `next`:
   before that time a drain opens nothing. Run it again at or after that time.
 - **It waits at the cap and on held work.** When the user holds their cap of
   live reservations (ten unless `reservation.max_live` in their machine's
-  `~/.abcd.noindex/config.json` raises it), counted in the move's view
+  `~/.abcd.noindex/config.json` sets another, from 1 to 100), counted in the move's view
   before any reservation or judgement, or when every eligible issue left is
   held by another, the move neither refuses nor ends: it reserves and asks
   nothing, writes `waiting_until` fifteen minutes on (`waiting` says `cap` or
@@ -543,8 +546,8 @@ one path (a package a fix is in flight in), hold it back with a reason:
 ```
 
 The move adds the entry to the drain's skip list (beginning a drain when none
-is in progress) and then moves as usual; every move passes a held-back issue
-over before anything is pushed or asked, in `passed` with check `skipped` and
+is in progress) and then moves as usual; every move that takes up the eligible
+issues passes a held-back issue over before anything is pushed or asked, in `passed` with check `skipped` and
 the reason. `--skip` may be repeated, all with the one `--reason`; a target
 already listed takes the new reason; `--unskip` takes an entry off. The list
 lives in the drain's state, writes nothing onto the issue, and clears when the
@@ -567,8 +570,8 @@ branch and ends it. The drain routes it:
 
 Every issue the rule hands back is in `flags` with `from: "field"`,
 `route: "rule"` and the `rule` that excluded it; `flags` are re-derived at every
-move and written nowhere. An issue this drain promoted itself reads as
-`promoted` on every move after, and is not flagged again: it is counted once,
+move that plans and written nowhere. An issue this drain promoted itself reads as
+`promoted` at every plan after, and is not flagged again: it is counted once,
 in `hand_backs` with `route: "promoted"` and its `draft`. So the rule
 `promoted` is always a flag's `rule` field, and the route `promoted` always a
 hand-back's `route` field.
@@ -580,7 +583,7 @@ person finds the decision it owes without this summary. It is written in this
 checkout, uncommitted, as a promotion is; a move planned from `origin` writes
 it only when this checkout holds the record as origin's default branch does,
 and otherwise the route's `wrote` says why it did not. The marked issue reads
-as `decision-needed` on every move after, and, as with a promotion, this
+as `decision-needed` at every plan after, and, as with a promotion, this
 drain counts it once, in `hand_backs` with `route: "decision-record"`; a later
 drain, and the dry run, flag it by the rule `decision-needed` with the
 question as its reason. Once the decision record is written, take the

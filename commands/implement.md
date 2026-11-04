@@ -676,7 +676,9 @@ over each of the run's lanes' own diff.
    later step asks again. Before arming it asks the forge whether
    the pull request merges (`gh pr view <n> --json mergeable,mergeStateStatus`),
    and one the forge reports `CONFLICTING` is refused (exit 2), not armed: the
-   merge queue never takes a conflicting pull request. Nothing is pushed to the
+   merge queue never takes a conflicting pull request. An issue lane whose
+   conflict lies in declared generated files alone, or in no file when this
+   checkout merges, enters its sync again instead. Nothing is pushed to the
    lane after this.
 6. It waits (exit 3) until the pushed head is an ancestor of the default branch
    on `origin`, then removes the lane's worktree and branch, and the lane is
@@ -684,7 +686,8 @@ over each of the run's lanes' own diff.
    not computed yet, keeps it waiting. A pull request closed without merging,
    or merged in a way that rewrote the head, is refused and nothing is cleaned
    up. So is an open one the forge reports `CONFLICTING`, at exit 2, since it
-   never merges on its own. While an armed pull request waits where a merge
+   never merges on its own, unless it is an issue lane's and enters its sync
+   again as above. While an armed pull request waits where a merge
    queue gates the default branch, each step reads its place in the queue
    (`gh api graphql`, as `abcd land` does) and names it. One the forge
    reports `CLEAN` yet outside the queue is queued, pinned to the pushed head,
@@ -802,7 +805,8 @@ agent's receipt back with `receipt`, so does `status`, so does the load gate's
 waiter (`implement load --wait` or `--race-gate`) an agent's `go test` or
 `make preflight` runs under, while it waits and while its command runs, and
 each `abcd drain` move does for a drain's lane parked at land and for its lane
-in progress, waiting or not.
+in progress, waiting on the pace or a judgement or not, unless it waits on origin
+or stops at a given-up outage.
 Before the push at step 3 the landing checks the reservation the same way,
 renewing it with its own term: one that is no longer this person's from this
 copy and live pushes nothing and opens no pull request, as contention, and a
@@ -1033,8 +1037,8 @@ once (`load.preflights`, below), and 8 GiB at least, so 8
 GiB at the default of one and 16 GiB at four. One cold preflight of this module
 writes about 4 GiB of build cache and test binaries. The waiter reads the disk
 as it starts and again just before it opens (the race gate at one preflight at
-a time reads it once, as it starts), since other work fills the disk
-while it waits, and refuses at either look rather than wait, since nothing
+a time reads it as it starts and at each look while memory holds it), since
+other work fills the disk while it waits, and refuses at any such look rather than wait, since nothing
 frees disk while it sleeps. The refusal names each low volume, its free space
 and the floor, and, when the cache's own volume is low, the cache's path and
 size and two ways to free it: a `find` line deleting the build entries unused
@@ -1092,15 +1096,17 @@ load --wait` as a waiter at its first gate, so a preflight waiting at a race
 gate spelt with it would read to that older waiter as queued, not in its test
 stages, and the older waiter would open beside it. At one preflight at a time,
 the default, the race gate opens at once once the disk check above passes and
-memory does not hold it, without reading the load or the process table, judging
-or taking a hold, or waiting a jitter, so the race stage follows the tests
+memory does not hold it, without reading the load or the process table (read,
+inside a memory episode, only to ask whether the waiter admitted last is its own
+ancestor), judging or taking a hold, or waiting a jitter, so the race stage follows the tests
 straight away, as it did before the gate existed (it prints
 `race gate open at once`). Memory pressure at or above the floor holds it as it holds either gate,
 and a race gate that waited prints `race gate open after <time>` instead,
 naming what it waited on. Above one it stays shut while another `go test -race` run is live, a
 race waiter queued ahead of it (by the same rule: started earlier, or within
 two seconds of it with the lower pid) or running its command is, the load
-is at the wait limit, memory pressure is at or above the floor, or the race gate's own hold is in force (another race
+is at the wait limit, memory pressure is at or above the floor or its settle after
+the pressure falls holds it, or the race gate's own hold is in force (another race
 waiter of the account opened within two minutes), so race stages are kept
 apart whatever the first gate admits: one at a time within an account, and
 across accounts all but the narrow windows below. Each gate is shut only by its own gate's
