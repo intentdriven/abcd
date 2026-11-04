@@ -210,8 +210,8 @@ site-render gate. Nightly and on demand three `macos-suite` shard jobs run the
 macOS suite under -race, over what `cmd/ci-shard` assigns each; the first also
 builds, vets and runs the plain-only tests. `check-macos` reports
 `check (macos-latest)` from ubuntu and fails unless every shard succeeded; on a
-pull request or a queue entry the shards stand down and it says so (every push
-passed `make preflight`). The queue entry tests on Linux the tree that lands.
+pull request or a queue entry the shards stand down and it says so (the pre-push
+hook holds a push to `make preflight`). The queue entry tests on Linux the tree that lands.
 The workflow triggers on pull requests, merge-queue entries, a nightly
 schedule and by hand, never on a push to `main`: every commit there is a
 merge result its queue entry already tested, and the nightly run checks the
