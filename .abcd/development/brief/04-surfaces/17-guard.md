@@ -507,7 +507,7 @@ History is not rewritten. The bundled blockers refuse `git filter-repo` and
 `git filter-branch` with any arguments, every form of `git update-ref` (none
 only reads, and a line cannot show whether the ref exists), `git replace` that
 stands one object in for another, `git reflog expire`, `delete` and `drop`,
-`git gc --prune`, `git prune` (its `--dry-run` passes), and a
+`git gc --prune`, `git prune` (a dry run passes), and a
 force push by these routes: its flags, a `+` refspec, `git push --mirror`,
 `git send-pack` forcing or reading its refs from `--stdin`,
 `git fast-import --force`, `gh repo sync --force`, and through the forge's API a
