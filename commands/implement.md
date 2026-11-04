@@ -385,12 +385,13 @@ the launch charged as one agent run of its runner's budget; the run record's
 `fallback_counts` sums them as `cost_usd` and `charged_runs`. A fallback
 receipt's `spent` is state schema version 19's, and the drain state's version
 3's for its judge. An implementer
-killed after it committed past the lane's base and wrote its report is no
-failed start: the lane stays at its stage, neither paused nor counted as a
+killed after it committed past the lane's base and wrote its report, and before
+it wrote its receipt, is no failed start: the lane stays at its stage, neither paused nor counted as a
 fallback, the result names the implementer's await with its receipt still to
 write from the branch and the report, and the run records a `killed` line with
 the commits and what the launch spent; write the receipt, or the next `step`
-retries the role on its runner.
+retries the role on its runner. One killed with its receipt written too pauses,
+with a fallback receipt as any bad exit has, and the next `step` reads the receipt.
 A role a runner is running is claimed in the run's state (an await's
 `running`, until the run's time bound, and as long again for the load gate,
 has passed), so a second `step`, here or

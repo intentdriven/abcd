@@ -176,8 +176,8 @@ func heldRole(repoRoot string, st State, cfg *runner.Config, now time.Time, only
 			if a.Running != nil && now.Before(a.Running.Until) {
 				continue
 			}
-			// A runner ran this role and its receipt stands: the step has read
-			// it (collectStanding) and said why it was not taken. A second
+			// The state shows a runner for this role and a receipt stands: the
+			// step has read it (collectStanding) and said why it was not taken. A second
 			// runner would pay again for work that is done, unless the first
 			// exited badly; a --route, whose step reads no receipt, starts
 			// none over it either way.
@@ -330,7 +330,7 @@ func retrySentence(r Retry, ran bool) string {
 		return fmt.Sprintf("this step also retried %s's %s on the %s runner, which ran it", r.Lane, r.Role, r.Runner)
 	}
 	if r.Paused != nil {
-		return fmt.Sprintf("this step also retried %s's %s on the %s runner, which did not start it (%s), so it stays paused", r.Lane, r.Role, r.Runner, r.Paused.Why())
+		return fmt.Sprintf("this step also retried %s's %s on the %s runner, %s (%s), so it stays paused", r.Lane, r.Role, r.Runner, pauseCause(*r.Paused), r.Paused.Why())
 	}
 	return fmt.Sprintf("this step also retried %s's %s on the %s runner", r.Lane, r.Role, r.Runner)
 }
@@ -557,8 +557,8 @@ func pauseAwait(repoRoot, runID, laneID string, aw Await, session string, fb run
 		lane.Awaits[k] = a
 		st.Lanes[i] = lane
 		paused = &p
-		// A receipt its own runner left stands, and a step reads it rather
-		// than starting another runner over it (heldRole, collectStanding).
+		// A receipt stands for this attempt, and a step reads it rather than
+		// starting another runner over it (heldRole, collectStanding).
 		_, ran := startedRunner(lane, a)
 		stands := ran && received(repoRoot, aw.Receipt)
 		stops := stands && !retriedOverReceipt(a)
@@ -723,7 +723,7 @@ func releaseClaim(repoRoot, runID, receipt, session string) error {
 func pausedRoleMove(lane Lane, a Await) string {
 	p := a.Paused
 	return fmt.Sprintf("%s's %s is paused: the %s runner, %s (%s), and it is not handed to the host. "+
-		"The next `abcd implement step` retries it on the runner once, or hands it to you if its route has since moved to the host; `abcd implement step --route %s=runner:<name>` retries it now. "+
+		"The next `abcd implement step` retries it on the runner once, or hands it to you if its route has since moved to the host; `abcd implement step --route %s=runner:<name>` retries it now, unless a receipt stands at its path, which a plain step reads first. "+
 		"Do not start an agent for it; tell the user the reason",
 		lane.ID, a.Role, p.Runner, pauseCause(*p), p.Why(), a.Role)
 }

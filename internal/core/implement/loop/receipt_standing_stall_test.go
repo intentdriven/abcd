@@ -490,8 +490,12 @@ func TestAReceiptAnExitedRunnerLeftThatDoesNotVerifyIsRetried(t *testing.T) {
 	if res.Stage != StageValidate {
 		t.Fatalf("the fresh agent's receipt is taken: %+v", res)
 	}
-	if !strings.Contains(res.Next, "set aside if") {
-		t.Fatalf("the answer says what becomes of the file: %s", res.Next)
+	// The retry has run, so nothing is left to say of what a later one would do.
+	if strings.Contains(res.Next, "is not taken") || strings.Contains(res.Next, "Do not start an agent") {
+		t.Fatalf("the answer speaks of a retry that has already run: %s", res.Next)
+	}
+	if !recordSays(t, root, id, StageRunner, "set aside", "unread") {
+		t.Fatal("the record says the file was set aside")
 	}
 	if !asideHolds(t, root, id, "lane-1", "half a receipt") {
 		t.Fatal("the file is kept aside")
@@ -502,6 +506,53 @@ func TestAReceiptAnExitedRunnerLeftThatDoesNotVerifyIsRetried(t *testing.T) {
 	}
 	if st.Lanes[0].Refused != nil {
 		t.Fatalf("nothing counts against the lane: %+v", st.Lanes[0].Refused)
+	}
+}
+
+// TestAStepThatCannotRetrySaysWhatBecomesOfTheFile: with no runner this step to
+// retry the role, the answer keeps the pause's own words and adds what becomes of
+// the file.
+func TestAStepThatCannotRetrySaysWhatBecomesOfTheFile(t *testing.T) {
+	root, id, steps, o := startToImplement(t)
+	res, err := advance(root, id, steps, o)
+	if err != nil || res.Awaiting == nil {
+		t.Fatalf("the implementer is handed out: %+v %v", res, err)
+	}
+	if err := mutate(root, id, func(_ *os.Root, st *State) (bool, error) {
+		st.Lanes[0].Awaits[0].Paused = &RunnerPause{Runner: runner.Claude, Reason: runner.ReasonFailed, Detail: "exited 1", Since: o.now(), At: o.now(), Tries: 1}
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(res.Awaiting.Receipt, []byte("half a receipt"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res, err = advance(root, id, steps, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"is paused", "set aside if", "Do not start an agent"} {
+		if !strings.Contains(res.Next, want) {
+			t.Fatalf("the answer says %q: %s", want, res.Next)
+		}
+	}
+}
+
+// TestThePausedWordsAreTrueWhateverHappened: a role a runner did not bring back
+// is said to be just that, and the --route a paused role is offered names the case
+// it does not cover.
+func TestThePausedWordsAreTrueWhateverHappened(t *testing.T) {
+	failed := &RunnerPause{Runner: runner.Claude, Reason: runner.ReasonFailed, Detail: "exited 1"}
+	absent := &RunnerPause{Runner: runner.Claude, Reason: runner.ReasonAbsent, Detail: "not on PATH"}
+	if got := retrySentence(Retry{Lane: "lane-1", Role: RoleImplementer, Runner: runner.Claude, Paused: failed}, false); strings.Contains(got, "did not start it") {
+		t.Fatalf("a runner that exited badly is not said not to have started: %s", got)
+	}
+	if got := retrySentence(Retry{Lane: "lane-1", Role: RoleImplementer, Runner: runner.Claude, Paused: absent}, false); !strings.Contains(got, "did not start it") {
+		t.Fatalf("an absent runner did not start it: %s", got)
+	}
+	got := pausedRoleMove(Lane{ID: "lane-1"}, Await{Role: RoleImplementer, Paused: failed})
+	if !strings.Contains(got, "--route implementer=runner:<name>") || !strings.Contains(got, "unless a receipt stands") {
+		t.Fatalf("the --route offered names what it does not cover: %s", got)
 	}
 }
 
@@ -581,6 +632,49 @@ func TestAnImplementerKilledWithItsReceiptWrittenIsCollected(t *testing.T) {
 	if n := env.launches(t, "claude"); n != 1 {
 		t.Fatalf("no second agent is paid for: %d launches", n)
 	}
+}
+
+// TestAStepVerifiesTheBytesItReadForAHandBack: the check on a hand-back and the
+// verifier work from one read of the file, so a file that changes while the step
+// holds the run acts on nothing. The lane takes what was read, and the record's
+// digest is of those bytes, which a later hand-in of the new file then meets.
+func TestAStepVerifiesTheBytesItReadForAHandBack(t *testing.T) {
+	repo, id, l, dir := awaitingLane(t)
+	c := laneCommit(t, repo, l, "one.txt")
+	if err := mutate(repo.Root(), id, func(_ *os.Root, st *State) (bool, error) {
+		now := time.Now()
+		st.Lanes[0].Awaits[0].Paused = &RunnerPause{Runner: runner.Claude, Reason: runner.ReasonFailed, Detail: "exited 1", Since: now, At: now, Tries: 1}
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	path := writeReceipt(t, dir, goodReceipt(t, id, l, dir, c))
+	stages := DefaultStages()
+	for i := range stages {
+		if stages[i].Name != StageImplement {
+			continue
+		}
+		verify := stages[i].Verify
+		stages[i].Verify = func(ctx Context, lane *Lane, receipt string) error {
+			writeReceipt(t, dir, handBackReceipt(t, id, l, dir))
+			return verify(ctx, lane, receipt)
+		}
+	}
+	res, err := advance(repo.Root(), id, stages, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantLaneKept(t, repo, id, l)
+	if res.Stage != StageValidate {
+		t.Fatalf("the lane takes the receipt the step read: %+v", res)
+	}
+	if got := currentLane(t, repo, id); got.HeadSHA != c {
+		t.Fatalf("the head is the one the read receipt verified at: %+v", got)
+	}
+	if _, err := Receipt(repo.Root(), id, path, DefaultStages(), Options{}); err == nil || !strings.Contains(err.Error(), "changed since") {
+		t.Fatalf("the file that replaced it is refused as changed: %v", err)
+	}
+	wantLaneKept(t, repo, id, l)
 }
 
 // handBackReceipt is a receipt for lane l carrying a hand-back, with its report
@@ -665,6 +759,9 @@ func TestAStepTakesNoHandBackFromAFileAtAPath(t *testing.T) {
 		wantLaneKept(t, repo, id, l)
 		if !strings.Contains(res.Next, "abcd implement receipt") {
 			t.Fatalf("the step names the hand-in: %s", res.Next)
+		}
+		if strings.Contains(res.Next, "a plain `abcd implement step` reads it") {
+			t.Fatalf("no step takes a hand-back, so none is offered: %s", res.Next)
 		}
 		res, err = Receipt(repo.Root(), id, path, DefaultStages(), Options{})
 		if err != nil || res.HandBack == nil {

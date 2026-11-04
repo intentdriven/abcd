@@ -159,6 +159,9 @@ type Context struct {
 	// the receipt's model and the runner's: the runner's taken for a receipt
 	// that names none, or the receipt's kept over a runner's that differs.
 	modelNote *string
+	// standingReceipt is the bytes of a receipt a step read itself, which the
+	// verifier decodes in place of reading the file again; nil for a hand-in.
+	standingReceipt []byte
 	// router decides the tier each role a round hands out runs at
 	// (escalate.go); nil records no route.
 	router *roundRouter
@@ -1014,12 +1017,12 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 		} else if err == nil {
 			// The re-told move is false of a lane stopped on its receipt, so
 			// that lane's answer is the stop alone.
-			if len(stopped) == 1 && res.PerformedStage == "" && res.Lane == stopped[0].lane && res.Slots <= 1 {
+			if len(stopped) == 1 && stopped[0].whole && res.PerformedStage == "" && res.Lane == stopped[0].lane && res.Slots <= 1 {
 				res.Next = standing
 			} else {
 				res.Next += "; " + standing
 			}
-			res.standing = standing
+			res.standing = carriedText(stopped)
 		}
 	}
 	// The outage a stage met is recorded with the tier lock released, and the
@@ -1149,29 +1152,29 @@ func handIn(repoRoot, runID, receipt string, steps Stages, o Options, route *run
 			Route: route, modelNote: &modelNote}
 		took := ""
 		if stood {
-			if standingHandBack(repoRoot, root, await.Receipt, lane.ID) {
-				return false, refuse("receipt", "", lane.ID, await.Receipt+" hands the lane back, which a step does not do on its own",
+			// One read: the check here and the verifier work from these bytes,
+			// and the record's digest names them.
+			data, err := standingBytes(repoRoot, root, await.Receipt)
+			if err != nil {
+				return false, refuse("receipt", "", lane.ID, err.Error(), "correct what the reason names, then hand the receipt back")
+			}
+			if rc, err := decodeReceipt(repoRoot, data, await.Receipt, lane.ID); err == nil && rc.HandBack != nil {
+				rf := refuse("receipt", "", lane.ID, await.Receipt+" hands the lane back, which a step does not do on its own",
 					"to hand the lane back, run `abcd implement receipt "+await.Receipt+"`")
+				rf.handBack = true
+				return false, rf
 			}
 			if gap := noWorkPastRound(c, lane, await); gap != "" {
 				return false, refuse("receipt", "", lane.ID, gap, "hand it back with `abcd implement receipt "+await.Receipt+"` if the round's findings needed no change")
 			}
-			var err error
-			if took, err = standingDigest(repoRoot, root, await.Receipt); err != nil {
-				return false, refuse("receipt", "", lane.ID, err.Error(), "correct what the reason names, then hand the receipt back")
-			}
+			took = answerDigest(data)
+			c.standingReceipt = data
 		}
 		if err := def.Verify(c, &lane, await.Receipt); err != nil {
 			if _, ok := AsRefusal(err); ok {
 				return false, err
 			}
 			return false, refuse("receipt", "", lane.ID, err.Error(), "correct what the reason names, then hand the receipt back")
-		}
-		if stood {
-			// What was verified is what the digest names, or nothing is taken.
-			if again, err := standingDigest(repoRoot, root, await.Receipt); err != nil || again != took {
-				return false, refuse("receipt", "", lane.ID, await.Receipt+" changed while it was read", "run `abcd implement step` again")
-			}
 		}
 		route := route
 		if route == nil && await.Answered != nil {

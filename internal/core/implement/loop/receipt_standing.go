@@ -44,8 +44,6 @@ package loop
 // retried as ever, and the file is set aside as the retry's claim is taken.
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -70,7 +68,7 @@ import (
 // harness that could not start. So a file at the path came after the claim, from
 // whatever could write there, not necessarily from an agent of that attempt. What
 // bounds it is the verifier, which is why a receipt that claims no commits is not
-// taken (standingHandBack) and why the route leaves what ran it empty.
+// taken (handIn) and why the route leaves what ran it empty.
 func startedRunner(l Lane, a Await) (string, bool) {
 	if a.Role != RoleImplementer || a.Kept != "" || (l.Stage != StageImplement && l.Stage != StageValidate) {
 		return "", false
@@ -97,12 +95,14 @@ func retriedOverReceipt(a Await) bool {
 // stoppedReceipt is a receipt a step read and could not take: the lane, what the
 // step says of it, the refusal to count against the lane, nil while a runner's
 // claim stands and its agent may still be working or when the role will be retried
-// over it, and whether it will be.
+// over it, and whether the note is the whole of what is true of the lane. One that
+// is not sits beside the lane's own move and is true only until the step's later
+// moves, so it is not carried past them.
 type stoppedReceipt struct {
 	lane    string
 	note    string
 	refusal error
-	retried bool
+	whole   bool
 }
 
 // collectStanding is a step's read of the receipts of the awaits startedRunner
@@ -145,18 +145,21 @@ func collectStanding(repoRoot, runID string, steps Stages, o Options) (StepResul
 				rf.Lane = l.ID
 			}
 			if a.Running != nil && o.now().Before(a.Running.Until) {
-				stopped = append(stopped, stoppedReceipt{lane: l.ID,
+				stopped = append(stopped, stoppedReceipt{lane: l.ID, whole: true,
 					note: fmt.Sprintf("a receipt stands at %s and does not verify yet (%s); the %s runner may still be working, until its claim lapses at %s, so wait, then step again",
 						a.Receipt, refusalReason(rf), a.Running.Runner, stamp(a.Running.Until))})
 				continue
 			}
 			if retriedOverReceipt(a) {
-				stopped = append(stopped, stoppedReceipt{lane: l.ID, retried: true,
-					note: fmt.Sprintf("a receipt stands at %s and is not taken (%s); it is set aside if the role is retried on its runner, which the next `abcd implement step` does unless its route has moved to the host. Do not start an agent for it; tell the user the reason",
-						a.Receipt, refusalReason(rf))})
+				stopped = append(stopped, stoppedReceipt{lane: l.ID,
+					note: fmt.Sprintf("a receipt stands at %s and is not taken (%s), and is set aside if the role is retried on its runner", a.Receipt, refusalReason(rf))})
 				continue
 			}
-			stopped = append(stopped, stoppedReceipt{lane: l.ID, note: stoppedNote(l.ID, a.Receipt, refusalReason(rf)), refusal: rf})
+			note := stoppedNote(l.ID, a.Receipt, refusalReason(rf))
+			if rf.handBack {
+				note = stoppedHandBackNote(l.ID, a.Receipt)
+			}
+			stopped = append(stopped, stoppedReceipt{lane: l.ID, note: note, refusal: rf, whole: true})
 		}
 	}
 	return StepResult{}, false, stopped
@@ -168,6 +171,25 @@ func stoppedNote(laneID, receipt, reason string) string {
 	return fmt.Sprintf("a receipt stands at %s and does not verify (%s); %s is stopped and no runner is started over it. "+
 		"Correct the receipt and run `abcd implement receipt %s`, or a plain `abcd implement step` reads it; or start over with `abcd implement step --restart %s`, which sets it aside",
 		receipt, reason, laneID, receipt, laneID)
+}
+
+// stoppedHandBackNote is stoppedNote for a receipt that hands its lane back, which
+// correcting does not cure and no step takes.
+func stoppedHandBackNote(laneID, receipt string) string {
+	return fmt.Sprintf("the receipt at %s hands %s back, which a step does not do on its own; %s is stopped and no runner is started over it. "+
+		"To hand it back, run `abcd implement receipt %s`; or start over with `abcd implement step --restart %s`, which sets the receipt aside",
+		receipt, laneID, laneID, receipt, laneID)
+}
+
+// carriedText is what a step's later moves in the same call keep saying.
+func carriedText(stopped []stoppedReceipt) string {
+	var notes []string
+	for _, s := range stopped {
+		if s.whole {
+			notes = append(notes, s.note)
+		}
+	}
+	return strings.Join(notes, "; ")
 }
 
 // stoppedText is what a step says of every receipt it could not take.
@@ -218,17 +240,6 @@ func standingUnderRoute(repoRoot, runID string) string {
 		}
 	}
 	return strings.Join(notes, "; ")
-}
-
-// standingHandBack reports whether the receipt at path carries a hand-back. One
-// that does not parse does not: the verifier refuses it in its own words.
-func standingHandBack(repoRoot string, root *os.Root, path, laneID string) bool {
-	rel, err := filepath.Rel(repoRoot, absIn(repoRoot, path))
-	if err != nil {
-		return false
-	}
-	rc, err := readReceipt(repoRoot, root, filepath.ToSlash(rel), laneID)
-	return err == nil && rc.HandBack != nil
 }
 
 // noWorkPastRound is why a step cannot take a fix round's receipt as a fix, ""
@@ -319,20 +330,14 @@ const collectedMark = "; it stood at the path the lane awaited, so a step collec
 // collectedNote is what the record adds for a receipt a step collected.
 func collectedNote(digest string) string { return collectedMark + digest }
 
-// standingDigest is the SHA-256, in hex, of the file at path through the guarded
-// reader inside the checkout's root. A path that is not the checkout's is an
-// error.
-func standingDigest(repoRoot string, root *os.Root, path string) (string, error) {
+// standingBytes reads the file at path through the guarded reader inside the
+// checkout's root. A path that is not the checkout's is an error.
+func standingBytes(repoRoot string, root *os.Root, path string) ([]byte, error) {
 	rel, err := filepath.Rel(repoRoot, absIn(repoRoot, path))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	data, err := localtier.ReadInRoot(root, filepath.ToSlash(rel), maxReceiptBytes)
-	if err != nil {
-		return "", err
-	}
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:]), nil
+	return localtier.ReadInRoot(root, filepath.ToSlash(rel), maxReceiptBytes)
 }
 
 // collectedAt names the lane whose implementer's receipt a step collected at
@@ -366,7 +371,7 @@ func (s State) collectedAt(repoRoot, path string) (int, string, string, bool) {
 // not know. It reports whether it changed the state.
 func answerCollected(repoRoot string, root *os.Root, st *State, i int, taken, digest string, route *runner.RouteRecord, now time.Time) (StepResult, bool, error) {
 	l := st.Lanes[i]
-	if got, err := standingDigest(repoRoot, root, taken); err != nil || got != digest {
+	if data, err := standingBytes(repoRoot, root, taken); err != nil || answerDigest(data) != digest {
 		return StepResult{}, false, refuse("receipt", "", l.ID,
 			fmt.Sprintf("%s has changed since a step collected it, and %s went on from head %s", taken, l.ID, shortSHA(l.HeadSHA)),
 			"nothing was taken from it: restore the branch to that head if it has moved, and leave the file as it was collected")
