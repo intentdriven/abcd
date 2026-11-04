@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -77,10 +78,11 @@ func TestARequestForAnUnpinnedModelCarriesNoRoutePin(t *testing.T) {
 	}
 }
 
-// TestClaudeRefusesARequestForAPinnedModel: claude's own model is unpinned, and
-// a request asks it for the pinned one: claude can hold no pin, so it refuses
-// at launch naming the request's model, before anything is launched or
-// probed, and the role falls back as a machine route to that model does.
+// TestClaudeRefusesARequestForAPinnedModel is dcn-2610292236161673 (a):
+// claude's own model is unpinned, and a request asks it for the pinned one:
+// claude can hold no pin, so the dispatch is refused before anything is
+// launched or probed, in the words a --route to a pinned model on claude is
+// refused with, and nothing falls back, to the host or to any other runner.
 func TestClaudeRefusesARequestForAPinnedModel(t *testing.T) {
 	o := newOllamaRunFake(t, true)
 	machine, name := overridePinMachine(o.srv.URL+"/v1", "devstral")
@@ -89,18 +91,66 @@ func TestClaudeRefusesARequestForAPinnedModel(t *testing.T) {
 	f := newFake(t, "ok", Claude, OpenCode)
 	req := f.request(roleImplementer)
 	req.Model = name + "/" + localRunModel
-	out, err := newHarness(t, c, true).d.Dispatch(context.Background(), req)
-	if err != nil {
+	h := newHarness(t, c, true)
+	out, err := h.d.Dispatch(context.Background(), req)
+	var fl *Failure
+	if err == nil || errors.As(err, &fl) || out.Handoff || out.Fallback != nil {
+		t.Fatalf("outcome = %+v, err %v; want a refusal that hands nothing to the host", out, err)
+	}
+	for _, want := range []string{"which the machine pins", layered.BoundKey(req.Model), "can hold neither a provider pin nor a local pin", "runner.opencode.model"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("err = %v, want it to say %q", err, want)
+		}
+	}
+	if len(h.receipts) != 0 {
+		t.Fatalf("a fallback receipt was written: %v", h.receipts)
+	}
+	if f.launched(Claude) || f.launched(OpenCode) || o.probes.Load() != 0 {
+		t.Fatal("a runner was launched, or the pinned model probed, for a pinned request model")
+	}
+
+	// With no host session and claude the configured host, a role on the
+	// host is refused the same way, and nothing else runs it.
+	noHost := mustLoad(t, strings.Replace(machine, `"runner":{`, `"runner":{"fallback_host":"claude",`, 1), "")
+	h = newHarness(t, noHost, false)
+	if _, err := h.d.Dispatch(context.Background(), req); err == nil || !strings.Contains(err.Error(), "which the machine pins") {
+		t.Fatalf("err = %v, want the configured host claude refused the pinned request model", err)
+	}
+	if f.launched(Claude) || len(h.receipts) != 0 {
+		t.Fatal("claude was launched as the configured host for a pinned request model")
+	}
+}
+
+// TestARequestModelAndADifferentRouteModelAreRefusedNamingBoth is
+// dcn-2610292236161673 (b): a request names a model and the step's --route
+// for the role names another, so the dispatch is refused before anything
+// launches, naming both, with no fallback; the same model on both runs.
+func TestARequestModelAndADifferentRouteModelAreRefusedNamingBoth(t *testing.T) {
+	c := mustLoad(t, perRequestMachine, "")
+	if err := c.Override(flagRoutes(t, "ruthless-reviewer=runner:opencode@local/qwen3-small")); err != nil {
 		t.Fatal(err)
 	}
-	if !out.Handoff || out.Answer != nil || out.Fallback == nil {
-		t.Fatalf("outcome = %+v, want the host handed the role after a fallback", out)
+	f := newFake(t, "ok", Claude, OpenCode)
+	h := newHarness(t, c, true)
+	req := f.request("ruthless-reviewer")
+	req.Model = "local/qwen3-coder"
+	out, err := h.d.Dispatch(context.Background(), req)
+	var fl *Failure
+	if err == nil || errors.As(err, &fl) || out.Handoff || out.Fallback != nil {
+		t.Fatalf("outcome = %+v, err %v; want a refusal that hands nothing to the host", out, err)
 	}
-	fb := out.Fallback
-	if fb.Asked != Claude || fb.Reason != ReasonFailed || !strings.Contains(fb.Detail, "the machine pins "+layered.BoundKey(req.Model)+",") {
-		t.Fatalf("fallback = %+v, want claude refusing the request's pinned model", fb)
+	for _, want := range []string{"local/qwen3-coder", "local/qwen3-small", "--route"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("err = %v, want it to name %q", err, want)
+		}
 	}
-	if f.launched(Claude) || o.probes.Load() != 0 {
-		t.Fatal("claude was launched, or the pinned model probed, for a pinned request model")
+	if f.launched(Claude) || f.launched(OpenCode) || len(h.receipts) != 0 {
+		t.Fatalf("a runner launched or a receipt was written: receipts %v", h.receipts)
+	}
+
+	req.Model = "local/qwen3-small"
+	out, err = h.d.Dispatch(context.Background(), req)
+	if err != nil || out.Answer == nil || out.Answer.ModelAsked != "local/qwen3-small" {
+		t.Fatalf("the same model on the request and the --route: outcome %+v, err %v; want it run at that model", out, err)
 	}
 }

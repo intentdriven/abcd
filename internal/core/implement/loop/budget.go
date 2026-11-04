@@ -9,7 +9,8 @@ package loop
 // in the start's checks and in the run record.
 //
 // The estimate is the least the spec's size makes the run start: per step to
-// build, one implementer and one round of the two reviewers, and the
+// build, one implementer and one round of the two reviewer roles, each as
+// many reviewers as the run's review set names for it (reviewers.go), and the
 // fidelity audit once for an intent (an issue has none). Fix rounds and syncs
 // are not foreseen, so an estimate under a quota is no promise the quota
 // holds; one over it is a run that cannot finish in the window. Quota and
@@ -40,19 +41,32 @@ type budgetShare struct {
 
 // estimateShares is the run's estimate per route, the routes in the order the
 // roles first name them: steps implementers and as many rounds of the two
-// reviewers, and, for an intent, the auditor once.
-func estimateShares(cfg *runner.Config, steps int, audits bool) []budgetShare {
-	return estimateSharesFor(cfg, steps, audits, false)
+// reviewer roles, each round as many reviewers of a role as the review set
+// names for it (one with none), and, for an intent, the auditor once.
+func estimateShares(cfg *runner.Config, steps int, audits bool, review *ReviewSet) []budgetShare {
+	return estimateSharesFor(cfg, steps, audits, false, review)
+}
+
+// reviewersOf is how many reviewers a round hands role to under review: the
+// review set's count for it, else one, as a run started before review sets
+// runs.
+func reviewersOf(review *ReviewSet, role string) int {
+	if review != nil {
+		if r, ok := review.Role(role); ok && len(r.Reviewers) > 0 {
+			return len(r.Reviewers)
+		}
+	}
+	return 1
 }
 
 // estimateSharesFor is estimateShares, or, for an auto-plan run
 // (autoplan.go), its two plan reviews alone, charged to the host: they run on
 // the host's agents whatever the ruthless reviewer is routed to (Drive).
-func estimateSharesFor(cfg *runner.Config, steps int, audits, autoPlan bool) []budgetShare {
+func estimateSharesFor(cfg *runner.Config, steps int, audits, autoPlan bool, review *ReviewSet) []budgetShare {
 	roles := []struct {
 		role string
 		runs int
-	}{{RoleImplementer, steps}, {RoleRuthless, steps}, {RoleSecurity, steps}}
+	}{{RoleImplementer, steps}, {RoleRuthless, steps * reviewersOf(review, RoleRuthless)}, {RoleSecurity, steps * reviewersOf(review, RoleSecurity)}}
 	if autoPlan {
 		roles = roles[1:2]
 		roles[0].runs, audits = 2, false
@@ -101,18 +115,27 @@ func (o Options) quota(name string) (runner.Quota, bool, error) {
 	return o.Runners.Quota(ctx, name)
 }
 
+// reviewerCount names how many reviewers of role a round runs: "a
+// ruthless-reviewer", or "2 ruthless-reviewers".
+func reviewerCount(review *ReviewSet, role string) string {
+	if n := reviewersOf(review, role); n > 1 {
+		return fmt.Sprintf("%d %ss", n, role)
+	}
+	return "a " + role
+}
+
 // budgetCheck is the budget row for a run of chk: the estimate on each route
 // against the quota its runner reports. It fails only when a runner reports a
 // quota the estimate on it exceeds.
-func budgetCheck(chk CheckResult, o Options) CheckRow {
+func budgetCheck(chk CheckResult, o Options, review *ReviewSet) CheckRow {
 	steps := len(chk.steps)
 	audits := chk.Intent != ""
-	shares := estimateSharesFor(o.Runners, steps, audits, chk.autoPlan != nil)
+	shares := estimateSharesFor(o.Runners, steps, audits, chk.autoPlan != nil, review)
 	total := 0
 	for _, s := range shares {
 		total += s.runs
 	}
-	each := "an implementer, a ruthless-reviewer and a security-reviewer"
+	each := fmt.Sprintf("an implementer, %s and %s", reviewerCount(review, RoleRuthless), reviewerCount(review, RoleSecurity))
 	if audits {
 		each += ", and the intent-auditor once"
 	}

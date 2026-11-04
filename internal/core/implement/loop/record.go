@@ -128,6 +128,9 @@ type RecordLane struct {
 	Receipts []ReceiptRecord `json:"receipts"`
 	// Verdicts are every verdict the loop recorded, round by round.
 	Verdicts []RecordVerdict `json:"verdicts"`
+	// Comparisons are how each reviewer role's reviewers compared, round by
+	// round, where a review set asked them for classes (reviewers.go).
+	Comparisons []RecordComparison `json:"comparisons,omitempty"`
 	// Resolves are the captures the lane fixed.
 	Resolves []string `json:"resolves"`
 	// PR is the lane's pull request, and Landing what its landing did.
@@ -152,6 +155,23 @@ type RecordVerdict struct {
 	// Route is the runner route that ran the validator; absent when the host
 	// ran it.
 	Route *runner.RouteRecord `json:"route,omitempty"`
+	// Reviewer, Class, Model and ModelStatus are a review set's reviewer
+	// (reviewers.go): its index among its role's reviewers, the class it was
+	// asked for, the model the class resolved to, and whether that model was
+	// only asked for, its runner reported one (beside it on Route), or the
+	// reviewer route answered, which is sent no model (unsent); absent for a
+	// validator no review set asked for a class.
+	Reviewer    int    `json:"reviewer,omitempty"`
+	Class       string `json:"class,omitempty"`
+	Model       string `json:"model,omitempty"`
+	ModelStatus string `json:"model_status,omitempty"`
+}
+
+// RecordComparison is how one role's reviewers compared in one round
+// (reviewers.go).
+type RecordComparison struct {
+	Round int `json:"round"`
+	Comparison
 }
 
 // recordOf renders a run's state as its record.
@@ -186,7 +206,11 @@ func recordOf(st State) RunRecord {
 					continue
 				}
 				rl.Verdicts = append(rl.Verdicts, RecordVerdict{Round: r.Round, HeadSHA: r.HeadSHA, Role: v.Role,
-					Verdict: v.Verdict, Pass: v.Pass, Return: v.Return, Route: v.Route})
+					Verdict: v.Verdict, Pass: v.Pass, Return: v.Return, Route: v.Route,
+					Reviewer: v.Reviewer, Class: v.Class, Model: v.Model, ModelStatus: v.ModelStatus})
+			}
+			for _, c := range r.Comparisons {
+				rl.Comparisons = append(rl.Comparisons, RecordComparison{Round: r.Round, Comparison: c})
 			}
 		}
 		if l.AutoPlan != nil {

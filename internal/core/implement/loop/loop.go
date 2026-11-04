@@ -507,7 +507,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 	}
 	// The budget check runs once the record may start, and writes nothing:
 	// a run its estimate exceeds is refused before the run directory exists.
-	budget := budgetCheck(chk, o)
+	budget := budgetCheck(chk, o, &review)
 	chk.Checks = append(chk.Checks, budget)
 	if !budget.OK {
 		chk.OK = false
@@ -1201,6 +1201,11 @@ func handedMove(a Await, tier oracle.Tier) string {
 	at := ""
 	if tier != "" {
 		at = " at model tier " + string(tier)
+	}
+	if a.Reviewer != nil {
+		// A review set's reviewer: the host is asked for the class's model,
+		// which nothing confirms (reviewers.go).
+		at += fmt.Sprintf(" on %s, the model of the %s class (reviewer %d of its role)", a.Model, a.Class, *a.Reviewer)
 	}
 	return fmt.Sprintf("start a fresh %s agent%s with the brief %s; when it has written its receipt, run `abcd implement receipt %s`",
 		a.Role, at, a.Brief, a.Receipt)

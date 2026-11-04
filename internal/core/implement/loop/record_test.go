@@ -68,7 +68,8 @@ func TestTheRunRecordNamesEveryLaneReceiptVerdictModelAndTranscript(t *testing.T
 	for _, v := range lane.Verdicts {
 		verdicts = append(verdicts, v.Role+" "+v.Verdict)
 	}
-	if got := strings.Join(verdicts, ", "); got != "ruthless-reviewer SHIP, security-reviewer APPROVE, intent-auditor MET" {
+	// Each reviewer of the bundled pair has its own verdict.
+	if got := strings.Join(verdicts, ", "); got != "ruthless-reviewer SHIP, ruthless-reviewer SHIP, security-reviewer APPROVE, security-reviewer APPROVE, intent-auditor MET" {
 		t.Fatalf("the record names every verdict the loop recorded: %s", got)
 	}
 	if len(lane.Resolves) != 1 || lane.Resolves[0] != f.issue || lane.PR != 7 || lane.Landing == nil || lane.Landing.Merged == "" {

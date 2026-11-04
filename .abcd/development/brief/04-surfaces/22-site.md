@@ -392,6 +392,7 @@ Sub-verbs: none.
 | `--confirm` | bool |
 | `--domain` | string |
 | `--name` | string |
+| `--project` | bool |
 | `--provider` | string |
 | `--replace-existing` | bool |
 | `--yes` | bool |

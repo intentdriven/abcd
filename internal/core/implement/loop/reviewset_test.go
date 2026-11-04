@@ -367,6 +367,68 @@ func unreviewOlder(doc map[string]any) {
 	if v <= schemaVersionUnreviewed {
 		delete(doc, "review")
 	}
+	if v <= schemaVersionUnkeyed {
+		unkeyOlder(doc)
+	}
+}
+
+// unkeyOlder rewrites a state document's rounds as a version before 20 wrote
+// them (reviewers.go): one reviewer per role, with no index, class, model or
+// model status, no await naming a reviewer, and no round's comparisons. A
+// later reviewer of a role is dropped with its await.
+func unkeyOlder(doc map[string]any) {
+	lanes, _ := doc["lanes"].([]any)
+	for _, l := range lanes {
+		lm, ok := l.(map[string]any)
+		if !ok {
+			continue
+		}
+		dropped := map[string]bool{}
+		rounds, _ := lm["validation"].([]any)
+		for _, r := range rounds {
+			rm, ok := r.(map[string]any)
+			if !ok {
+				continue
+			}
+			delete(rm, "comparisons")
+			vs, _ := rm["validators"].([]any)
+			kept := []any{}
+			for _, v := range vs {
+				vm, ok := v.(map[string]any)
+				if !ok {
+					continue
+				}
+				if _, later := vm["reviewer"]; later {
+					dropped[fmt.Sprint(vm["return"])] = true
+					continue
+				}
+				for _, k := range []string{"class", "model", "model_status"} {
+					delete(vm, k)
+				}
+				kept = append(kept, vm)
+			}
+			rm["validators"] = kept
+		}
+		awaits, _ := lm["awaits"].([]any)
+		var keptAwaits []any
+		for _, a := range awaits {
+			am, ok := a.(map[string]any)
+			if !ok || dropped[fmt.Sprint(am["receipt"])] {
+				continue
+			}
+			for _, k := range []string{"reviewer", "class", "model"} {
+				delete(am, k)
+			}
+			keptAwaits = append(keptAwaits, am)
+		}
+		if awaits != nil {
+			if len(keptAwaits) == 0 {
+				delete(lm, "awaits")
+			} else {
+				lm["awaits"] = keptAwaits
+			}
+		}
+	}
 }
 
 // olderState is a state file rewritten at version v, without the review set

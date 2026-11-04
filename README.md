@@ -56,12 +56,12 @@ In AI-assisted development, this (human) reasoning typically lives in transcript
 
 `abcd` is also an experiment for the team building it. As self-declared *enthusiastic dilettantes*, we learn best by doing stuff, and `abcd` demonstrates not only what it does, but also how we're learning AI-assisted development while building it.
 
-If you want to know more about `abcd`, you can interrogate its entire development record at [abcdev.app/record/](https://abcdev.app/record/), alongside more details on [who abcd is for](docs/explanation/rationale.md), the different [roles](docs/explanation/roles.md), [artefacts](docs/explanation/artefacts.md), and [process](docs/explanation/process.md). If you want to get involved, watch the repository or open a [discussion](https://github.com/intentdriven/abcd/discussions).
+If you want to know more about `abcd`, you can interrogate its entire development record at [intentdriven.github.io/abcd/record/](https://intentdriven.github.io/abcd/record/), alongside more details on [who abcd is for](docs/explanation/rationale.md), the different [roles](docs/explanation/roles.md), [artefacts](docs/explanation/artefacts.md), and [process](docs/explanation/process.md). If you want to get involved, watch the repository or open a [discussion](https://github.com/intentdriven/abcd/discussions).
 
 
 ## Key principles
 
-`abcd` is founded on several [principles](https://abcdev.app/record/foundations/), some of which guide its design while others guide how development artefacts are recorded.
+`abcd` is founded on several [principles](https://intentdriven.github.io/abcd/record/foundations/), some of which guide its design while others guide how development artefacts are recorded.
 
 
 ### Design principles

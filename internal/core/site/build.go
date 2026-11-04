@@ -454,14 +454,11 @@ func build(req Request, written *labelsAdded) (Result, error) {
 		}
 	}
 
-	manifest, err := LoadManifest(repoRoot)
+	manifest, err := loadRoute(repoRoot, req.Project)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return Result{}, ErrNoManifest
 		}
-		return Result{}, err
-	}
-	if err := routeAgrees(manifest, req.Project); err != nil {
 		return Result{}, err
 	}
 	// A ui.json written before a label existed gains that label with its

@@ -107,6 +107,8 @@ func TestAReviewTheReviewerRouteTakesRecordsNoTierAtTheFrontDoor(t *testing.T) {
 	repo.Commit("conventions")
 	t.Setenv("ABCD_PLUGIN_ROOT", pluginRoot)
 	t.Setenv("CLAUDE_PLUGIN_ROOT", "")
+	// One reviewer per role, so each role's review goes to the route once.
+	writeMachineConfig(t, `{"review":{"reviewers":["middle"]}}`)
 	laneAtValidate(t, repo)
 
 	srv := &mcptest.Server{Tools: map[string][]string{repoprompt.DefaultTool: {"message", "new_chat"}},

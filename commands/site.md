@@ -101,7 +101,9 @@ the links a site served at the root of its domain needs.
 
 `--project` builds a project site instead, from a `.abcd/site.json` that holds
 the site's settings only (`"mode": "project"`, the `hosting` block and its
-switch; `abcd site setup --provider github-pages` writes it, below). Nothing is
+switch; `abcd site setup --provider github-pages` writes it, below), or from
+`.abcd/project-site.json` in a repository that keeps a composed site at
+`.abcd/site.json` as well (below). Nothing is
 composed and nothing is read from `site-src/`: every page is built from what
 abcd already writes to the repository, and the interface words, the
 stylesheet and the scripts come from the binary. GitHub Pages reads no
@@ -263,6 +265,18 @@ provider, and these things differ:
   names the block to add, and once it is added the next run still asks the
   switch before it adds the workflow (that repository keeps its composed
   site).
+- **Beside a composed site.** A repository can keep both: its documentation
+  composed at `.abcd/site.json` for its own host, and its about page and record
+  on the project route. `abcd site setup --project --provider github-pages`
+  declares the project route, and where `.abcd/site.json` is a composition it
+  writes the project site's settings to `.abcd/project-site.json` and its
+  workflow to `.github/workflows/project-site.yml`, beside the composed site's
+  own, and leaves the composed site as it is. The workflow is the same one,
+  reading its switch from `.abcd/project-site.json` and queued apart from the
+  composed site's deploy. `site build --project` and `lint site --project`
+  read `.abcd/project-site.json` when it exists; the composed route never
+  reads it. Without `--project`, setup works on the composed site, as above.
+  abcd's own repository is set up this way.
 - **An existing Pages site.** Setup reads the repository's Pages site before it
   asks or writes. One the repository already publishes, built by a workflow, is
   named by its address and build type in the switch question and in the host

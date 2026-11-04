@@ -37,6 +37,27 @@ func tiering(t *testing.T, repo *gittest.Repo, agents string) *Tiering {
 // handed the role out.
 func tieredHandBack(t *testing.T, repo *gittest.Repo, runID string, o Options, role, body string) StepResult {
 	t.Helper()
+	// Every reviewer the review set gives the role is asked for the role's
+	// tier and hands back body; the first hand-out is the one returned.
+	st, err := ReadState(repo.Root(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var first StepResult
+	for i := range roundReviewers(st, role) {
+		res := tieredHandBackOne(t, repo, runID, o, role, body)
+		if i == 0 {
+			first = res
+		} else if res.Tier != first.Tier {
+			t.Fatalf("the role's reviewers are asked for one tier: %q and %q", first.Tier, res.Tier)
+		}
+	}
+	return first
+}
+
+// tieredHandBackOne is tieredHandBack for the role's next reviewer alone.
+func tieredHandBackOne(t *testing.T, repo *gittest.Repo, runID string, o Options, role, body string) StepResult {
+	t.Helper()
 	res, err := advance(repo.Root(), runID, DefaultStages(), o)
 	if err != nil {
 		t.Fatal(err)

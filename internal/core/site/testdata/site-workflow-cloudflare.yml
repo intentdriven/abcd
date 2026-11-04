@@ -53,7 +53,12 @@ name: site
 on:
   release:
     types: [published]
-  workflow_run:
+  # zizmor flags every workflow_run trigger (dangerous-triggers): a run it
+  # starts holds this repository's context. Nothing from the triggering run
+  # reaches this one. The render job admits only a successful run of this
+  # repository's own release workflows that no pull request started, and it
+  # resolves the tag from the published releases.
+  workflow_run: # zizmor: ignore[dangerous-triggers]
     workflows: [release, auto-release]
     types: [completed]
   workflow_dispatch:
