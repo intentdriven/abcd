@@ -392,6 +392,10 @@ type StepResult struct {
 	// accepted (`implement step --accept-config-change`) before its step:
 	// names alone, a URL subsection hidden, never a value (configwatch.go).
 	AcceptedConfigChange []string `json:"accepted_config_change,omitempty"`
+	// standing is what the step said of a receipt it read and did not take,
+	// carried to whatever answer a later move of the same call gives
+	// (carryStanding).
+	standing string
 	// RouteUnused is each `implement step --route` the step did not use: a
 	// landing ahead of its role moved first (route_use.go). Every other
 	// --route the step would not use is refused before anything is written.
@@ -905,8 +909,8 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 		return StepResult{}, err
 	}
 	g.runner = routed
-	// A finished agent's receipt is read before anything asks for a fresh one
-	// (receipt_standing.go): collecting it is the step's move. A step carrying
+	// A routed implementer's receipt is read before anything asks for a fresh
+	// one (receipt_standing.go): collecting it is the step's move. A step carrying
 	// a --route is judged on that route alone, since one the step will not use
 	// is refused with nothing written (route_use.go); the next plain step
 	// collects.
@@ -1000,6 +1004,7 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 			r.Remedy += "; " + standing
 		} else if err == nil {
 			res.Next += "; " + standing
+			res.standing = standing
 		}
 	}
 	// The outage a stage met is recorded with the tier lock released, and the
@@ -1078,7 +1083,8 @@ func pausedMove(st State, until time.Time) string {
 // its slot, which the next `implement step` fills. It is refused when no await
 // names the path, when this build carries no verifier for the stage, and when
 // the verifier refuses it; in every refusal the run stays where it was and the
-// agent's slot stays taken.
+// agent's slot stays taken. A path a step already collected is the one exception
+// to the first (answerCollected).
 func Receipt(repoRoot, runID, receiptPath string, steps Stages, o Options) (StepResult, error) {
 	return receipt(repoRoot, runID, receiptPath, steps, o, nil)
 }
@@ -1096,9 +1102,10 @@ func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *ru
 
 // handIn is receipt; stood says a step found the receipt where it stood
 // (receipt_standing.go) rather than an agent's hand-in naming it, which the
-// record says. A receipt a lane has already verified is answered with where
-// the lane stands and changes nothing: a step can collect it before its
-// agent's own hand-in, or its runner's dispatch, arrives.
+// record says, with the digest of the bytes it took. A later hand-in at that
+// path is read, and answered only while the file is those bytes
+// (answerCollected): a step can collect a receipt before its agent's own
+// hand-in, or its runner's dispatch, arrives.
 func handIn(repoRoot, runID, receipt string, steps Stages, o Options, route *runner.RouteRecord, stood bool) (StepResult, error) {
 	var res StepResult
 	var noted *runner.RouteRecord
@@ -1107,9 +1114,11 @@ func handIn(repoRoot, runID, receipt string, steps Stages, o Options, route *run
 		now := o.now()
 		i, k := st.findAwait(repoRoot, receipt)
 		if i < 0 {
-			if l, ok := st.laneThatTook(repoRoot, receipt); ok {
-				res = laneResult(*st, l, "", nil)
-				return false, nil
+			if at, digest, ok := st.collectedAt(repoRoot, receipt); ok {
+				var changed bool
+				var err error
+				res, changed, err = answerCollected(repoRoot, root, st, at, digest, route, now)
+				return changed, err
 			}
 			return false, unknownReceipt(*st)
 		}
@@ -1123,11 +1132,24 @@ func handIn(repoRoot, runID, receipt string, steps Stages, o Options, route *run
 		modelNote := ""
 		c := Context{RepoRoot: repoRoot, RunDir: runRel(st.RunID), State: *st, Now: now, Await: &await,
 			Route: route, modelNote: &modelNote}
+		took := ""
+		if stood {
+			var err error
+			if took, err = standingDigest(repoRoot, root, await.Receipt); err != nil {
+				return false, refuse("receipt", "", lane.ID, err.Error(), "correct what the reason names, then hand the receipt back")
+			}
+		}
 		if err := def.Verify(c, &lane, await.Receipt); err != nil {
 			if _, ok := AsRefusal(err); ok {
 				return false, err
 			}
 			return false, refuse("receipt", "", lane.ID, err.Error(), "correct what the reason names, then hand the receipt back")
+		}
+		if stood {
+			// What was verified is what the digest names, or nothing is taken.
+			if again, err := standingDigest(repoRoot, root, await.Receipt); err != nil || again != took {
+				return false, refuse("receipt", "", lane.ID, await.Receipt+" changed while it was read", "run `abcd implement step` again")
+			}
 		}
 		route := route
 		if route == nil && await.Answered != nil {
@@ -1168,7 +1190,7 @@ func handIn(repoRoot, runID, receipt string, steps Stages, o Options, route *run
 		}
 		note := "the " + string(performed) + " stage's receipt verified at " + verified
 		if stood {
-			note += "; it stood at the path the lane awaited, so a step collected it and no fresh agent was asked for"
+			note += collectedNote(took)
 		}
 		if def.Repeats {
 			// The stage hands the lane to its next agent, or completes, on a

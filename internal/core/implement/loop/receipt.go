@@ -328,10 +328,7 @@ type DoDRun struct {
 
 // implementStage is the implement stage's body: it hands the lane to a fresh
 // implementer with the lane's brief and awaits its receipt. It makes nothing,
-// so running it twice is running it once. A receipt the lane has not taken
-// already, standing at the path it would await, is read first: one that
-// verifies is the implementer's work, and none is asked for
-// (receipt_standing.go).
+// so running it twice is running it once.
 func implementStage(c Context, lane *Lane) (Outcome, error) {
 	if lane.Brief == "" || lane.Worktree == "" {
 		return Outcome{}, refuse(string(StageImplement), "", lane.ID, "the lane has no brief or no worktree to hand an implementer",
@@ -344,17 +341,7 @@ func implementStage(c Context, lane *Lane) (Outcome, error) {
 	if err != nil {
 		return Outcome{}, err
 	}
-	await := &Await{Role: RoleImplementer, Brief: lane.Brief, Receipt: rel}
-	note := ""
-	if lane.Receipt == "" && received(c.RepoRoot, rel) {
-		out, why := takeStanding(c, lane, await)
-		if why == "" {
-			return out, nil
-		}
-		note = fmt.Sprintf("awaiting the %s's receipt at %s; the receipt standing there did not verify (%s), so a fresh %s takes the brief",
-			RoleImplementer, rel, why, RoleImplementer)
-	}
-	return Outcome{Await: await, Note: note}, nil
+	return Outcome{Await: &Await{Role: RoleImplementer, Brief: lane.Brief, Receipt: rel}}, nil
 }
 
 // verifyReceipt is the implement stage's receipt verifier. It reads the receipt

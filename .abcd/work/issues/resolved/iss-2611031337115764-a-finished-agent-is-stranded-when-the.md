@@ -11,7 +11,7 @@ production_mode: hand-written
 found_at: "internal/core/implement/loop"
 remedy: "Before the implement stage asks for a fresh agent, it reads the receipt path it awaits and verifies a receipt already there (as implement receipt would), so a refusal between an agent's finish and its collection loses nothing; a test refuses the collecting step once and then steps the run to validate without a new launch."
 related_intents: [itd-2611031342011261]
-resolution: "Before anything asks for a fresh agent, a step reads the receipt path each await names and hands in what stands there through the verifier and lock implement receipt uses; the implement stage and a runner's launch do the same, so a refusal between an agent's finish and its collection loses nothing and pays for no second launch. A receipt that does not verify is left in place and the step says why."
+resolution: "A later step reads the receipt of a routed implementer at the implement stage, where the run's state shows a runner was started for that await, and hands in what verifies through the verifier and lock implement receipt uses, so a refusal between that agent's finish and its collection loses nothing and no second runner is started over it. A receipt that does not verify is left in place and the step says why. Every other await keeps the path it had: a host hands its agent's receipt back, a reviewer's return and a fix round's receipt come back from their runner or by hand, and a hand-out starts its agent."
 impact: fix
 resolved_by:
   commit: "ada307e2db836473671d65f7f61f274f8f9d005a"

@@ -3035,7 +3035,8 @@ Hand back the receipt an agent stage of a loop run awaits: Writes the run's stat
 Hand back the receipt a lane of the run named when its stage handed work to an agent.
 The path is looked up among every outstanding await of the run, and the lane it belongs
 to advances; a path no await names is refused, naming the awaits there are, and frees
-nothing. The stage's verifier checks it; a verified receipt frees its slot, and a
+nothing. A path a step already collected is answered while the file is what the step
+took, and refused once it has changed. The stage's verifier checks it; a verified receipt frees its slot, and a
 receipt that verifies completes the stage and the lane moves to its next stage, and one
 that does not is refused naming what is missing, with the lane left where it was. A
 stage whose verifier this abcd does not carry is refused naming the spec piece that
@@ -3187,8 +3188,11 @@ Perform the next stage of an implement loop run's lane and exit: Writes the run'
 
 Perform the run's next move, write the state, and exit. At a stage that hands work to
 an agent, the result names the agent to start, the brief it is handed and the path its
-receipt goes to; that work advances only on `abcd implement receipt`. A lane lands one
-step of the spec; its stages are how it gets there. A complete run says so.
+receipt goes to; that work advances on `abcd implement receipt`. One thing is taken
+without it: a routed implementer the run started a runner for, whose receipt stands at
+the path it awaits and verifies, is collected by the step, so a refusal before its
+hand-in loses nothing. A lane lands one step of the spec; its stages are how it gets
+there. A complete run says so.
 
 A run works in parallel up to its ceiling (--sub-agents, pace.sub_agents): each agent
 handed work and not yet verified is a slot, implementers and validators alike. Each call

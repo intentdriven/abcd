@@ -272,7 +272,8 @@ a stage the binary performs is the call's answer, and no other lane moves.
 
 `receipt` looks the path up among every outstanding await of the run and
 advances the lane it belongs to; a path no await names is refused, naming the
-awaits there are, and frees nothing.
+awaits there are, and frees nothing. A path a step already collected (below) is
+answered while the file is what the step took, and refused once it has changed.
 
 `widen` is an issue lane implementer's, run from the checkout the run lives in
 before its first edit of a path beyond the lane's reservation; the lane's brief
@@ -354,7 +355,13 @@ no agent out retries one held role once on its runner, the one waiting longest:
 a paused role, or one already with the host, from an earlier fallback or a step
 before its route existed, whose receipt nothing has written (a role whose
 receipt is written is yours to hand back, and is never retried). The result
-names the retry in `retried`, and the run record in a `retry` line. A `--route`
+names the retry in `retried`, and the run record in a `retry` line. The one
+receipt a step reads itself is a routed implementer's at the implement stage,
+where the run shows its runner was started: one that verifies is collected, as
+the step's move, with no second runner and no retry; its route names the runner
+asked for and leaves `ran` empty until that runner's report arrives. One that
+does not verify stays where it stands, no runner is started over it, and `next`
+says why; a `--route` for that role is refused. A `--route`
 for a held role retries it at once on that route, as the step's one move; a
 `--route` with `--restart`, or any route in force for the restarted role,
 starts the fresh agent on its runner at once rather than re-telling it to you.
