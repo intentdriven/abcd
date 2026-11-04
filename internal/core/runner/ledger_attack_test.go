@@ -158,7 +158,7 @@ func TestAKeyShapedLikeAValueIsRefused(t *testing.T) {
 			}
 		})
 	}
-	for _, name := range []string{"build-key", "anthropic.main-2", "team_a", "nightly-2026-11", "k"} {
+	for _, name := range strings.Fields("build-key anthropic.main-2 team_a nightly-2026-11 k") {
 		t.Run(name, func(t *testing.T) {
 			start := ledgerStart()
 			start.Key = name
