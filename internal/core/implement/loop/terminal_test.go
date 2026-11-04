@@ -51,6 +51,8 @@ func terminalFakeTurn(role string) string {
 		return "hang"
 	case "none":
 		return "notloggedin"
+	case "slow":
+		time.Sleep(time.Second)
 	}
 	if strings.HasPrefix(role, RoleDrainJudge) {
 		return "judge-" + JudgementNo

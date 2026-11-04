@@ -156,10 +156,11 @@ func driveConsent(cmd *cobra.Command, f driveFlags, lanes, runs int, p runner.Pr
 	return a == "y" || a == "yes", nil
 }
 
-// runDrive is the verb.
+// runDrive is the verb. Before the yes a signal ends the process, with nothing
+// started; from the yes on it is a stop (drain_drive_signal.go).
 func runDrive(cmd *cobra.Command, asJSON bool, repoRoot string, f driveFlags) error {
-	ctx, stop := drainSignalContext()
-	defer stop()
+	ctx, stopAsking := drainSignalContext()
+	defer stopAsking()
 	roots, notes := layered.RootsFor(repoRoot)
 	for _, n := range notes {
 		fmt.Fprintln(cmd.ErrOrStderr(), noteLine(n))
@@ -193,7 +194,15 @@ func runDrive(cmd *cobra.Command, asJSON bool, repoRoot string, f driveFlags) er
 		fmt.Fprintln(cmd.OutOrStdout(), "abcd drain --drive: nothing started, nothing reserved")
 		return nil
 	}
-	if err := driveWalls.live(ctx, p); err != nil {
+	stopAsking()
+	errw := cmd.ErrOrStderr()
+	sig := watchDriveSignals(func() {
+		fmt.Fprintln(errw, "abcd drain --drive: stopping: the agent in a call finishes that call, then the lane's reservation is released; press again to kill it and exit at once")
+	}, func() {
+		fmt.Fprintln(errw, "abcd drain --drive: killing the running agent's process group and exiting")
+	})
+	defer sig.close()
+	if err := driveWalls.live(sig.ctx, p); err != nil {
 		return driveRefusal("%s", err.Error())
 	}
 	d := loop.DrainOptions{Max: lanes, Transcripts: &lazyHistoryStore{cmd: cmd},
@@ -207,11 +216,11 @@ func runDrive(cmd *cobra.Command, asJSON bool, repoRoot string, f driveFlags) er
 			d.Max = 0
 		}
 	}
-	return driveRun(ctx, cmd, asJSON, repoRoot, roots, p, o, d)
+	return driveRun(sig, cmd, asJSON, repoRoot, roots, p, o, d)
 }
 
 // driveRun runs the terminal loop and says how it ended.
-func driveRun(ctx context.Context, cmd *cobra.Command, asJSON bool, repoRoot string, roots layered.Roots, p runner.Profile, o loop.Options, d loop.DrainOptions) error {
+func driveRun(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot string, roots layered.Roots, p runner.Profile, o loop.Options, d loop.DrainOptions) error {
 	review, err := loop.LoadReviewRoute(roots, agentPrompt)
 	if err != nil {
 		return loopFail(cmd.OutOrStdout(), asJSON, "abcd drain", err)
@@ -230,13 +239,15 @@ func driveRun(ctx context.Context, cmd *cobra.Command, asJSON bool, repoRoot str
 	}
 	say, detail, closeLog := driveLog(repoRoot, lines)
 	defer closeLog()
-	res, err := driveTerminal(ctx, repoRoot, loop.TerminalOptions{
+	noticeUnattended(cmd, "abcd drain")
+	res, err := driveTerminal(sig.ctx, repoRoot, loop.TerminalOptions{
 		Options:   o,
 		Drain:     d,
 		Runners:   loop.Runners{Config: o.Runners, Transcripts: d.Transcripts},
 		Review:    review,
 		Preflight: drivePreflight(detail),
 		Say:       say,
+		Stop:      sig.stop,
 		BeforeStage: func() error {
 			return runner.CheckWallSettings(p, runner.SelfBinary())
 		},
@@ -244,8 +255,13 @@ func driveRun(ctx context.Context, cmd *cobra.Command, asJSON bool, repoRoot str
 	if err != nil {
 		return loopFail(cmd.OutOrStdout(), asJSON, "abcd drain", err)
 	}
-	noticeUnattended(cmd, "abcd drain")
-	return render(cmd.OutOrStdout(), asJSON, res, func(w io.Writer) { renderDriveEnd(w, res) })
+	if rerr := render(cmd.OutOrStdout(), asJSON, res, func(w io.Writer) { renderDriveEnd(w, res) }); rerr != nil {
+		return rerr
+	}
+	if res.Ended == loop.TerminalKilled {
+		return &exitError{Code: driveKilledExit, Msg: "abcd drain --drive: killed"}
+	}
+	return nil
 }
 
 // driveLog is where a drive's lines go: the terminal, one line per step, and a
@@ -309,6 +325,8 @@ func renderDriveEnd(w io.Writer, res loop.TerminalResult) {
 		loop.TerminalOutage:     "eight hours of runner failures",
 		loop.TerminalStopped:    "stopped",
 		loop.TerminalWall:       "a wall no longer held",
+		loop.TerminalRefused:    "a move was refused",
+		loop.TerminalKilled:     "killed",
 	}[res.Ended]
 	if why == "" {
 		why = res.Ended
@@ -319,6 +337,11 @@ func renderDriveEnd(w io.Writer, res loop.TerminalResult) {
 		c.LanesOpened, c.PullRequests, c.LanesHandedBack, c.Spend.AgentRuns)
 	if res.Run != "" {
 		fmt.Fprintf(w, "  left on its branch: %s, run %s, %s\n", termsafe.Sanitize(res.Issue), termsafe.Sanitize(res.Run), termsafe.Sanitize(res.Lane))
-		fmt.Fprintln(w, "  to resume: abcd drain --drive")
+		if res.Resume != "" {
+			fmt.Fprintf(w, "  to resume: %s\n", res.Resume)
+		}
+		if res.Lapses != nil {
+			fmt.Fprintf(w, "  its reservation lapses at %s\n", res.Lapses.UTC().Format(time.RFC3339))
+		}
 	}
 }
