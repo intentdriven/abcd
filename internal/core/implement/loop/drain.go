@@ -237,6 +237,10 @@ type DrainOptions struct {
 	// Context ends the move's routed judge: the front door ends it on an
 	// interrupt or a termination. context.Background when nil.
 	Context context.Context
+	// AskJudgeAgain asks the routed judge once per move rather than once per
+	// request: a terminal drive has no host for the request to fall to, so a
+	// judge that did not answer is asked again (terminal.go).
+	AskJudgeAgain bool
 	// Skip are --skip's targets, issue ids or paths, held back for now with
 	// SkipReason, --reason; Unskip are --unskip's, taken off the list
 	// (drain_skip.go).
@@ -1117,7 +1121,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 				}
 			}
 			if taken == nil {
-				if judging.RoutedAsked {
+				if judging.RoutedAsked && !d.AskJudgeAgain {
 					clause = joinNext(clause, judgeAskedClause(v.ID))
 				} else {
 					var routed string

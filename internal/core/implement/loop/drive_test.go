@@ -105,6 +105,12 @@ func loopFakeHarness(mode string) int {
 		}
 		return ""
 	}
+	if mode == terminalFakeMode {
+		mode = terminalFakeTurn(field("You are the "))
+	}
+	if mode == "noshape" {
+		_ = os.WriteFile(field("Receipt: "), []byte("not a receipt\n"), 0o600)
+	}
 	if mode == "ratelimit" {
 		// The claude CLI cut off by a rate limit mid-work: an edit left
 		// uncommitted in the worktree it runs in, a partial receipt, and the
