@@ -406,15 +406,45 @@ status_of() {
 	printf '%s\n' "${path%%/*}"
 }
 
-# frontmatter_commit prints a record's resolved_by.commit sha at ref, reading the
-# frontmatter ONLY: a sha quoted in the prose body is narrative, not provenance,
-# so the scan stops at the closing delimiter. RS002 and RS003 share this so the
-# two rules cannot drift apart on where a stamp lives.
+# frontmatter_stamps prints "<path><tab><sha>" for each record under the given
+# paths at ref that carries a resolved_by.commit stamp, reading the frontmatter
+# ONLY: a sha quoted in the prose body is narrative, not provenance, so a record's
+# scan stops at its closing delimiter. RS002 and RS003 share this so the two rules
+# cannot drift apart on where a stamp lives. One git grep reads every record, where
+# a git show per record cost RS003 about a minute over a ledger of thousands. The
+# flags pin what a person's grep.* configuration could otherwise change, --text
+# keeps a record holding a NUL from reading as a binary match, and -z prints each
+# path verbatim. It exits as git grep does: 1 when no line matched anywhere.
+frontmatter_stamps() {
+	local ref="$1"
+	shift
+	git --literal-pathspecs grep --no-color --no-column --text --full-name -n -z -E \
+		-e '^---$' -e '^[[:space:]]+commit:' "$ref" -- "$@" 2>/dev/null |
+		LC_ALL=C tr '\0' '\t' |
+		LC_ALL=C awk -v prefix="$ref:" '
+			{
+				tab = index($0, "\t")
+				path = substr($0, length(prefix) + 1, tab - length(prefix) - 1)
+				rest = substr($0, tab + 1)
+				colon = index(rest, ":")
+				line = substr(rest, 1, colon - 1) + 0
+				text = substr(rest, colon + 1)
+				if (path != current) { current = path; finished = 0 }
+				if (finished) next
+				if (text == "---") { if (line > 1) finished = 1; next }
+				# Seven to 64 hex digits, spelt without an interval, which not
+				# every awk reads.
+				if (match(text, /[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]+/)) {
+					print path "\t" substr(text, RSTART, RLENGTH > 64 ? 64 : RLENGTH)
+					finished = 1
+				}
+			}'
+}
+
+# frontmatter_commit prints one record's resolved_by.commit sha at ref.
 frontmatter_commit() {
 	local ref="$1" path="$2"
-	git show "$ref:$path" 2>/dev/null |
-		awk 'NR>1 && /^---$/{exit} /^[[:space:]]+commit:/{print}' |
-		grep -oE '[0-9a-f]{7,64}' | head -1 || true
+	frontmatter_stamps "$ref" "$path" | cut -f2 || true
 }
 
 # landed_while_waiting prints the base-side commit ("<sha> <subject>") that put
@@ -1139,22 +1169,50 @@ check_ledger() {
 		echo "check-issue-resolution: no ledger records at $ref — nothing to check"
 		return 0
 	}
-	while IFS= read -r f; do
-		[ -n "$f" ] || continue
-		# Only the frontmatter's resolved_by block carries a stamp; a sha quoted in
-		# the prose body is narrative, not provenance, so the scan stops at the
-		# closing delimiter (frontmatter_commit).
-		local sha
-		sha="$(frontmatter_commit "$ref" "$f")"
-		[ -n "$sha" ] || continue
-		checked=$((checked + 1))
-		local rc=0
-		reachable "$sha" "$ref" || rc=$?
-		case "$rc" in
+	# Only the frontmatter's resolved_by block carries a stamp (frontmatter_stamps).
+	# Exit 1 is git grep finding no line at all; anything above it is a git failure.
+	local stamps
+	rc=0
+	stamps="$(frontmatter_stamps "$ref" "${STATUS_PATHSPECS[@]}")" || rc=$?
+	if [ "$rc" -gt 1 ]; then
+		echo "check-issue-resolution: git grep failed at $ref (exit $rc) — refusing rather than reporting a vacuous pass" >&2
+		exit 2
+	fi
+	stamps="$(printf '%s\n' "$stamps" | LC_ALL=C awk -F'\t' '$1 ~ /\.md$/')"
+	[ -n "$stamps" ] || {
+		echo "check-issue-resolution: RS003 checked 0 stamped record(s) at $ref"
+		return 0
+	}
+	# The whole ledger answers from two git processes: every stamp resolved by one
+	# cat-file, and every commit ref can reach listed once, which is what a
+	# merge-base --is-ancestor per stamp asked. The two faults stay apart, as
+	# reachable() keeps them: 2 names no commit, 1 is unreachable.
+	local resolved history faults
+	rc=0
+	resolved="$(printf '%s\n' "$stamps" | LC_ALL=C awk -F'\t' '{print $2 "^{commit}"}' | git cat-file --batch-check)" || rc=$?
+	if [ "$rc" -eq 0 ]; then
+		history="$(git rev-list "$ref")" || rc=$?
+	fi
+	if [ "$rc" -ne 0 ]; then
+		echo "check-issue-resolution: git failed resolving the stamps at $ref (exit $rc) — refusing rather than reporting a vacuous pass" >&2
+		exit 2
+	fi
+	faults="$(LC_ALL=C awk -F'\t' '
+		FILENAME == ARGV[1] { held[$0] = 1; next }
+		FILENAME == ARGV[2] { answer[FNR] = $0; next }
+		{
+			split(answer[FNR], word, " ")
+			if (word[2] != "commit") print "2\t" $0
+			else if (!(word[1] in held)) print "1\t" $0
+		}' <(printf '%s\n' "$history") <(printf '%s\n' "$resolved") <(printf '%s\n' "$stamps"))"
+	checked="$(printf '%s\n' "$stamps" | wc -l | tr -d ' ')"
+	local kind f sha
+	while IFS=$'\t' read -r kind f sha; do
+		case "$kind" in
 		2) fail "RS003 $f stamps resolved_by.commit '$sha', which names no commit in this repository." ;;
 		1) fail "RS003 $f stamps resolved_by.commit '$sha', which is no longer reachable from $ref — a squash or rebase merge rewrote it." ;;
 		esac
-	done <<<"$files"
+	done <<<"$faults"
 	echo "check-issue-resolution: RS003 checked $checked stamped record(s) at $ref"
 }
 
