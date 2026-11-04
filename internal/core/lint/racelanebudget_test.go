@@ -116,7 +116,7 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 				"unreachable there and any budget sized against it is false. Raise the live "+
 				"ruleset's cap (an admin act) before the job's", where, capMin, queue, rulesetMirror)
 		}
-		// Every leg but macOS carries 45 since 2026-10-28 (dcn-2610280635092222).
+		// It carries 45 since 2026-10-28 (dcn-2610280635092222).
 		if capMin != checkUbuntuCeilingMinutes*time.Minute {
 			t.Errorf("%s: timeout-minutes is %s; want %dm, the ubuntu job's ceiling", where, capMin, checkUbuntuCeilingMinutes)
 		}
@@ -495,12 +495,12 @@ func jobTimeoutMinutes(t *testing.T, where, job string) time.Duration {
 	return time.Duration(n) * time.Minute
 }
 
-// outsideInternalPattern is the plain pass the ubuntu leg runs beside its race
+// outsideInternalPattern is the plain pass the check job runs beside its race
 // lane: every package ./... matches that ./internal/... does not.
 const outsideInternalPattern = "./cmd/..."
 
 // TestTheOutsideInternalStepRunsWhatTheRaceLaneDoesNot: where the race lane
-// runs, the ubuntu leg's plain pass covers only the packages it does not
+// runs, the check job's plain pass covers only the packages it does not
 // (iss-2610171803053186), and exactly those: go list resolves the step's
 // pattern to the module's packages less the race lane's.
 func TestTheOutsideInternalStepRunsWhatTheRaceLaneDoesNot(t *testing.T) {
@@ -540,8 +540,8 @@ func TestTheOutsideInternalStepRunsWhatTheRaceLaneDoesNot(t *testing.T) {
 	}
 }
 
-// TestPlainTestStepRunsTheWholeModule: the ubuntu leg's plain pass on an inert
-// change, where the race lane stands down and it is the leg's only test pass,
+// TestPlainTestStepRunsTheWholeModule: the check job's plain pass on an inert
+// change, where the race lane stands down and it is the job's only test pass,
 // names its slowest packages ahead of ./..., so they start with the step
 // instead of behind every faster package (a speed lane under the cancel policy
 // of 2026-09-28), and it still runs exactly the module: ./... last, no package

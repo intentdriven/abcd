@@ -24,8 +24,8 @@ import (
 // them: they are what catches a quadratic blow-up in CI rather than only in a
 // local preflight.
 //
-// The ubuntu leg's plain pass no longer reruns ./internal/... (the race lane
-// runs every internal test, as on the macOS leg since iss-2610110938293273),
+// The check job's plain pass no longer reruns ./internal/... (the race lane
+// runs every internal test, as on macOS since iss-2610110938293273),
 // so these tests run by name in their own step. The list is derived, not kept:
 // this test reads every test file under internal/ and requires the step to name
 // exactly the tests that reach a plain-only assertion and exactly the packages
