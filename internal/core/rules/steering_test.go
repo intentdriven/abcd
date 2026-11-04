@@ -43,7 +43,7 @@ func TestShellDomainSendsOnlyWhatTheGuardCannotCorrectFirst(t *testing.T) {
 
 // TestADeleteTheGuardCanRefuseIsNotSentAsWarned: a delete entry sits in the warn
 // tier, but in a repository the guard refuses it unless it proves the target
-// safe, so its rule is read at the refusal and only a command that is sure to run
+// safe, so the refusal answers for it and only a command that is sure to run
 // is sent ahead of time.
 func TestADeleteTheGuardCanRefuseIsNotSentAsWarned(t *testing.T) {
 	reg := guard.Defaults()

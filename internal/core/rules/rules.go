@@ -972,7 +972,7 @@ func Render(domains []ResolvedDomain) string {
 }
 
 // checkedLead introduces the second list in the listing.
-const checkedLead = "Carried by the guard, read at the refusal and not sent ahead of time:\n"
+const checkedLead = "Carried by the guard, answered when the command is judged and not sent ahead of time:\n"
 
 // RenderListing renders domains as a reader of `abcd rules` wants them: what
 // the hook sends for each, then what a check carries. Only a domain with a

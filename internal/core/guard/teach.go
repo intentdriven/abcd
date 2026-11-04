@@ -44,7 +44,7 @@ const OffLine = "The shell guard is off in this repository, so nothing refuses o
 // (itd-2611041636196213). A delete entry warns only once its target is proven
 // safe and is refused otherwise, so it counts as refused, unless a repository
 // worded it: the refusal shows the proof's words and not the entry's, so a
-// repository's would otherwise reach no agent. Under a disabled registry every
+// repository's would otherwise show only once a delete is proven. Under a disabled registry every
 // lesson is steering, since nothing refuses, and refused is empty.
 func (r Registry) SplitLessons(bundled Registry) (warned, refused []string) {
 	repo := overBundled(bundled)
