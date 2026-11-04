@@ -56,9 +56,11 @@ const NarrowRunsKey = "load.narrow_runs"
 // bound the machine, so it only catches a slip of the keyboard.
 const MaxNarrowRuns = 32
 
-// NarrowRunCores is what one narrow run takes, in cores, on the machine it was
-// measured on, a 16-core Mac Studio: a one-package go test there averaged about
-// two across the build and the tests.
+// NarrowRunCores is what one narrow run is budgeted, in cores: a ceiling on what
+// they took as measured on a 16-core Mac Studio on 2026-11-04, from about 0.2 for a
+// three-package run mostly waiting on git to under 2 for internal/core/implement,
+// 14.5 seconds on at most 27 seconds of CPU. A build it has to recompile takes
+// more for a moment, which the load limit bounds.
 const NarrowRunCores = 2
 
 // WaitNarrowHoldFileName is the narrow gate's hold record under ~/.abcd.noindex/.

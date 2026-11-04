@@ -455,8 +455,8 @@ hold; a whole run counts it through the load figure alone. It is shut by the loa
 limit, the memory floor, its account's 5-second hold (`load-wait-narrow.json`) and
 its own limit, the person's `load.narrow_runs` (1 to 32, read from the machine layer
 alone, with no environment variable, since a repository's Makefile can set one; by
-default half the online cores divided by 2, which is what one takes as measured on
-16 cores). Its jitter is 1 to 5 seconds, and it takes no open look: nothing waits on
+default half the online cores divided by 2, a ceiling on what narrow runs took as
+measured on 16 cores, from about 0.2 of a core to under 2). Its jitter is 1 to 5 seconds, and it takes no open look: nothing waits on
 it, so two accounts opening together overshoot by one for those runs and no more.
 
 A whole run keeps its place honestly: sharing the load limit, narrow runs could take

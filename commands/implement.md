@@ -1214,8 +1214,8 @@ reaching `load.narrow_runs` in `~/.abcd.noindex/config.json`. That is a whole
 number from 1 to 32, read through the same guarded read, with no environment
 variable and never from a repository; a value outside it refuses a narrow run's
 wait, naming the key. With none set the limit is half the online cores divided
-by 2, which is what one narrow run takes as measured on a 16-core machine, and
-one at the least, so 16 cores admit four. Its jitter is 1 to 5 seconds, and its
+by 2, a ceiling on what narrow runs took as measured on a 16-core machine (from
+about 0.2 of a core to under 2), and one at the least, so 16 cores admit four. Its jitter is 1 to 5 seconds, and its
 hold `~/.abcd.noindex/load-wait-narrow.json` lasts 5 seconds, enough for its go
 test to show in the table. It takes no last look, so across accounts two opening
 in one moment can pass the limit by one for those runs.
