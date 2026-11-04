@@ -35,7 +35,7 @@ on the run state today),
 (the key a session names and the budget it keeps; this ledger is where each
 launch's key and spend are written, so the two share one record of what was
 spent). Related issues: the run-state schema trap
-([iss-2611020719494343](../../../work/issues/open/iss-2611020719494343-a-lane-whose-change-raises-the-run-state.md)),
+([iss-2611020719494343](../../../work/issues/resolved/iss-2611020719494343-a-lane-whose-change-raises-the-run-state.md)),
 which the ledger's own schema is shaped to avoid; the unattended build drive
 ([iss-2611031146255825](../../../work/issues/open/iss-2611031146255825-no-abcd-verb-drives-an-intent-build-to.md)),
 whose account of itself this ledger is; the stranded agent
