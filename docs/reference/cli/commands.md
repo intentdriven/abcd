@@ -2690,7 +2690,7 @@ command line, and the waiter's own process and ancestors are never one: a
 hand-written `pgrep -f "go test -race"` matched its own shell and never opened.
 It reads the machine every 15s, prints one line when it starts waiting and
 one when it first finds the machine free, and nothing more until it opens, and
-gives up after --timeout (30m0s by default), exiting 1 and naming what it
+gives up after --timeout (6h0m0s by default), exiting 1 and naming what it
 was still waiting on. --json reports what it waited on and for how long.
 
 With --race-gate in place of --wait it waits at the race gate, which `make
@@ -2849,12 +2849,34 @@ since a waiter lingering on a slow push reads as queued and holds every other ga
 Since it runs through git and gh, no waiter counts another's git or gh
 child as its command: gate make or go, never git or gh itself.
 
+A narrow run waits at a gate of its own. It is `--wait -- go test` read from the
+command's own words, with no shell between: at most 3 packages named outright
+(no `...` and no bare word such as `all`), carrying no flag but -v, -short,
+-failfast, -json, -run, -skip, -timeout and -count=1, with GOFLAGS unset. Anything
+else is a whole run, -race, a `make` and a shell included, so race runs stay apart
+as above. A narrow run takes no whole-run slot and no place in the whole-run queue,
+and a whole run counts it through the load figure alone. It is shut by the load limit,
+memory, its account's 5s hold (`~/.abcd.noindex/load-wait-narrow.json`), and its own limit:
+narrow runs running, of any account, and those queued ahead reaching
+`load.narrow_runs` in `~/.abcd.noindex/config.json`, a whole number from 1 to 32, by default half
+the online cores divided by 2, and never read from a repository file or the
+environment. Its jitter is 1s to 5s, and it takes no open look, so across
+accounts two opening at once can pass the limit by one. So that it cannot starve a
+whole run, while a whole-run waiter that started earlier has waited 5m0s with a
+whole slot free, it stands aside, at most 5m0s in a wait. Waiters queued ahead
+that alone keep it shut stop counting after 2m0s, since an older abcd's waiter
+on the same command queues as a whole run and may not open.
+
+A wait that gives up exits 1 and ends with a line starting `LOAD GATE TIMED OUT`,
+naming how long it waited and that nothing ran, so a pipe that loses the exit
+code still shows it.
+
 **Flags:**
 
 ```
       --race-gate          wait at the race gate, before a race stage, instead of the first gate: open at once at one preflight at a time unless the disk is below the floor or memory pressure is at or above its floor, and above that shut by another go test -race run, a race waiter ahead, the load, memory pressure and the race gate's hold
       --site string        where the check runs: preflight | eval-harness
-      --timeout duration   with --wait or --race-gate, give up after this long and exit 1 (default 30m0s)
+      --timeout duration   with --wait or --race-gate, give up after this long and exit 1 (default 6h0m0s)
       --wait               wait until the load is below the wait limit and no other go test -race run is live
 ```
 

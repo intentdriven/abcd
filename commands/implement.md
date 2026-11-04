@@ -1021,13 +1021,13 @@ cache key holds the timeout), so a package slowed by the load is not killed
 with no test hung. It reads the machine every 15 seconds, prints one line when
 it starts waiting and one when
 it first finds the machine free, and nothing more until it opens, and gives up
-after `--timeout` (30 minutes by default; `make preflight` gives its first gate
+after `--timeout` (6 hours by default; `make preflight` gives its first gate
 twelve hours and its race gate two), exiting 1 and naming what it still waited
-on (`still`: `load`, `race-run`, `preflight`, `waiter`, `lock`, `memory` or
-`unreadable`). `--json` reports `status`
+on (`still`: `load`, `race-run`, `preflight`, `waiter`, `lock`, `memory`,
+`whole-run` or `unreadable`). `--json` reports `status`
 (`open`, `timeout`, `skipped` on a CI runner, `unchecked` on an unsupported
 platform), `waited_on` and `waited_s`, with the `gate` it waited at
-(`tests` or `race`), `slots` and `slots_source`, and `backoffs` when it stood
+(`tests`, `race` or `narrow`), `slots` and `slots_source`, `narrow_runs` and `narrow_source` at a narrow gate, and `backoffs` when it stood
 back.
 
 Both gates also refuse, exiting 1 without waiting, while the volume holding
@@ -1187,13 +1187,61 @@ whose `load` is not an object is read past, one preflight at a time applies,
 and the waiter prints one line on stderr naming the file, the cause and how to
 fix it: keep it a regular file you own that nobody else can write (`chmod go-w
 ~/.abcd.noindex/config.json`), holding one valid JSON object whose `load` names
-no key but `preflights`. A key under `load` other than `preflights` is named on
+no key but those above. Any other key under `load` is named on
 that line too, and a usable `load.preflights` beside it still counts. The gate
 never read that file before the setting existed, so a file that holds other
 settings never stops a `make preflight` of someone who did not set the count.
 Only a `load.preflights` that is there and unusable (out of range, or not a
 whole number) refuses the wait, as an unusable `ABCD_LOAD_PREFLIGHTS` does;
 the environment is read first, and with it set the file is not read.
+
+A narrow run waits at a gate of its own, so a package's tests never queue behind
+whole preflights. It is `--wait -- go test` (or `go -C <dir> test`), read from the command's own words
+with no shell in between: at most three packages named outright (`./internal/foo`,
+`.`, or a path holding a slash, never a `...` wildcard or a bare word such as
+`all`), no flag but `-v`, `-short`, `-failfast`, `-json`, `-run`, `-skip`,
+`-timeout` and `-count=1`, and `GOFLAGS` unset. Three is a change's usual reach:
+its package, the caller that exercises it and the surface over that. Everything
+else is a whole run: `make`, `sh -c`, a wildcard, a repeat count, and `-race`,
+whatever its size, so race runs stay where the rule that keeps race stages apart
+can see them.
+
+A narrow run takes no whole-run slot and no place in the whole-run queue, and it
+reads no race run; a whole run counts it through the load figure alone. The load
+limit and the memory floor shut it as they shut every gate, and so does its own
+limit: narrow runs running, of any account, and those queued ahead of it,
+reaching `load.narrow_runs` in `~/.abcd.noindex/config.json`. That is a whole
+number from 1 to 32, read through the same guarded read, with no environment
+variable and never from a repository; a value outside it refuses a narrow run's
+wait, naming the key. With none set the limit is half the online cores divided
+by 2, which is what one narrow run takes as measured on a 16-core machine, and
+one at the least, so 16 cores admit four. Its jitter is 1 to 5 seconds, and its
+hold `~/.abcd.noindex/load-wait-narrow.json` lasts 5 seconds, enough for its go
+test to show in the table. It takes no last look, so across accounts two opening
+in one moment can pass the limit by one for those runs.
+
+A narrow run cannot starve a whole run. While a whole-run waiter that started
+earlier has waited five minutes with a whole slot free, a narrow run stands
+aside, and the waiting line says so: admissions stop, the running ones finish,
+the load falls and the whole run opens. One wait stands aside for at most five
+minutes, so a whole run shut by something else, such as its own account's stricter
+wait limit, costs a narrow run minutes and not its wait. It never stands aside for
+a whole run with no slot free, which no narrow run is holding up.
+
+Accounts can run different abcd versions. An abcd built before narrow runs reads
+one as a waiter like any other: it queues behind one that started earlier and
+counts one running against its slots, which is more cautious, never less, and it
+reads no `load-wait-narrow.json`. With `load.narrow_runs` in a `config.json` it
+names the key on stderr as one nothing reads, and goes on. This code counts that
+abcd's whole runs in full, so none passes its limit, and every wait points at an
+earlier start or a command already running, so no two wait on each other. Its
+waiter on a narrow-shaped command still queues as a whole run and may not open, so
+waiters queued ahead that alone keep a narrow run shut stop counting after two
+minutes.
+
+A wait that gives up exits 1 and ends with a line starting `LOAD GATE TIMED OUT`,
+naming how long it waited and that nothing ran, after anything else the wait has
+to say, so a pipe that loses the exit code still shows it.
 
 Within one account the waiter that opens also writes a hold,
 `~/.abcd.noindex/load-wait.json` at the first gate and

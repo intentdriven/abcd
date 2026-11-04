@@ -295,7 +295,27 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"for a round in flight to finish and be said, so a renewal still pushing then may go unsaid,\n" +
 			"since a waiter lingering on a slow push reads as queued and holds every other gate shut.\n" +
 			"Since it runs through git and gh, no waiter counts another's git or gh\n" +
-			"child as its command: gate make or go, never git or gh itself.",
+			"child as its command: gate make or go, never git or gh itself.\n\n" +
+			"A narrow run waits at a gate of its own. It is `--wait -- go test` read from the\n" +
+			"command's own words, with no shell between: at most " + strconv.Itoa(machineload.MaxNarrowPackages) + " packages named outright\n" +
+			"(no `...` and no bare word such as `all`), carrying no flag but -v, -short,\n" +
+			"-failfast, -json, -run, -skip, -timeout and -count=1, with GOFLAGS unset. Anything\n" +
+			"else is a whole run, -race, a `make` and a shell included, so race runs stay apart\n" +
+			"as above. A narrow run takes no whole-run slot and no place in the whole-run queue,\n" +
+			"and a whole run counts it through the load figure alone. It is shut by the load limit,\n" +
+			"memory, its account's " + implement.WaitNarrowSettle.String() + " hold (`" + abcdhome.Display(implement.WaitNarrowHoldFileName) + "`), and its own limit:\n" +
+			"narrow runs running, of any account, and those queued ahead reaching\n" +
+			"`" + implement.NarrowRunsKey + "` in `" + abcdhome.Display("config.json") + "`, a whole number from 1 to " + strconv.Itoa(implement.MaxNarrowRuns) + ", by default half\n" +
+			"the online cores divided by " + strconv.Itoa(implement.NarrowRunCores) + ", and never read from a repository file or the\n" +
+			"environment. Its jitter is " + implement.WaitNarrowJitterMin.String() + " to " + implement.WaitNarrowJitterMax.String() + ", and it takes no open look, so across\n" +
+			"accounts two opening at once can pass the limit by one. So that it cannot starve a\n" +
+			"whole run, while a whole-run waiter that started earlier has waited " + implement.WaitNarrowYieldAfter.String() + " with a\n" +
+			"whole slot free, it stands aside, at most " + implement.WaitNarrowYieldCap.String() + " in a wait. Waiters queued ahead\n" +
+			"that alone keep it shut stop counting after " + implement.WaitNarrowQueueCap.String() + ", since an older abcd's waiter\n" +
+			"on the same command queues as a whole run and may not open.\n\n" +
+			"A wait that gives up exits 1 and ends with a line starting `LOAD GATE TIMED OUT`,\n" +
+			"naming how long it waited and that nothing ran, so a pipe that loses the exit\n" +
+			"code still shows it.",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				return nil
@@ -364,6 +384,8 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 		Read: loadReader, ReadArgs: loadArgsReader, Self: loadSelf(),
 		Now: loadNow, Sleep: loadSleep, Timeout: timeout, Command: len(command) > 0, Race: race, Jitter: loadJitter,
 		Mark: loadMark, RaceCommand: machineload.IsRaceCommand(command),
+		// GOFLAGS can carry -race or widen a run where the argv cannot show it.
+		Narrow: !race && machineload.IsNarrowCommand(command) && os.Getenv("GOFLAGS") == "",
 	}
 	// The hold names the checkout it was taken in, so a waiter behind a
 	// quiet holder can say where it runs.
@@ -409,6 +431,11 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 	}
 	if res.MemoryNote != "" {
 		fmt.Fprintf(errOut, "abcd implement load %s: %s\n", flag, res.MemoryNote)
+	}
+	// A timeout's closing line is the last the wait says, so a renewal's message
+	// on a standard error sent to the same pipe cannot land after it.
+	if res.Status == implement.WaitTimedOut {
+		stopRenewal()
 	}
 	if err := render(out, asJSON, res, func(w io.Writer) { renderLoadWait(w, res) }); err != nil {
 		return err
@@ -728,7 +755,13 @@ func renderLoadWait(w io.Writer, res implement.WaitResult) {
 	case implement.WaitSkipped, implement.WaitUnchecked:
 		fmt.Fprintf(w, "load gate open without waiting: %s\n", res.Reason)
 	case implement.WaitTimedOut:
-		fmt.Fprintf(w, "load gate still shut after %s: %s\n", waited, waitConditions(res))
+		// The last line, in words a pipe cannot lose: on 2026-11-04 builders'
+		// `| tail` hid the exit code and they read this as still running.
+		if res.Malformed != "" {
+			fmt.Fprintf(w, "LOAD CHECK SETTINGS UNUSABLE: %s: %s; the wait limit took its default\n", implement.LimitsFileDisplay, res.Malformed)
+		}
+		fmt.Fprintf(w, "LOAD GATE TIMED OUT after %s: exit 1, nothing ran: %s\n", waited, waitConditions(res))
+		return
 	case implement.WaitOpen:
 		if res.Gate == implement.GateRace && res.Slots <= 1 {
 			if len(res.WaitedOn) == 0 {
@@ -750,6 +783,8 @@ func renderLoadWait(w io.Writer, res implement.WaitResult) {
 		switch {
 		case res.Gate == implement.GateRace:
 			gate, clear = "race gate", "no other go test -race run or race waiter ahead is live"
+		case res.Gate == implement.GateNarrow:
+			gate, clear = "narrow gate", fmt.Sprintf("fewer than %d narrow runs are running or queued ahead", res.NarrowRuns)
 		case res.Slots > 1:
 			clear = fmt.Sprintf("fewer than %d other preflights or gated commands are running (%s) and no waiter is queued ahead", res.Slots, slotsText(res))
 		}
@@ -786,8 +821,16 @@ func waitConditions(res implement.WaitResult) string {
 		case implement.WaitOnPreflight:
 			parts = append(parts, pidsText(res.Preflights, "another make preflight is running", "make preflights are running"))
 		case implement.WaitOnWaiter:
+			if res.Gate == implement.GateNarrow {
+				parts = append(parts, fmt.Sprintf("the narrow runs' limit of %d is taken: %s", res.NarrowRuns,
+					pidsText(res.Waiters, "a narrow run is running or queued ahead", "narrow runs are running or queued ahead")))
+				break
+			}
 			parts = append(parts, pidsText(res.Waiters, "another waiter is ahead in the queue or running its command",
 				"waiters are ahead in the queue or running their commands"))
+		case implement.WaitOnWholeRun:
+			parts = append(parts, pidsText(res.Overdue, "a whole run has waited past its turn with a slot free", "whole runs have waited past their turn with a slot free")+
+				fmt.Sprintf(", so this narrow run stands aside, at most %s", implement.WaitNarrowYieldCap))
 		case implement.WaitOnLock:
 			if h := res.Holder; h != nil {
 				part := fmt.Sprintf("another waiter holds the gate (pid %d, until %s at the latest)", h.PID, h.Until.Local().Format("15:04:05"))

@@ -440,6 +440,48 @@ one-minute load a second stage starts under lags the first stage's demand.
 Deriving the count from the machine's resources is a later step
 (iss-2610161756384596). <!-- record-lint: forward-looking -->
 
+A narrow run waits at a gate of its own (`internal/core/implement/load_narrow.go`,
+`internal/core/machineload/narrow.go`), because on 2026-11-04 about thirty builders
+queued one package's test each behind whole preflights, at a load of 12 on 16 cores
+with 96% of memory free, until the 30-minute wait ran out and no test ran. It is
+`--wait -- go test`, `go -C <dir>` allowed, read from the argv, with no shell in between: at most three
+packages named outright, no wildcard or bare word, no flag beyond `-v`, `-short`,
+`-failfast`, `-json`, `-run`, `-skip`, `-timeout` and `-count=1`, and `GOFLAGS`
+unset. The reading fails closed, so its one mistake is a slower wait: `make`, a
+shell, a wildcard and `-race` are whole runs, the last so race runs stay where the
+rule keeping race stages apart can see them. A narrow run takes no whole-run slot,
+no place in the whole-run queue, and neither judges nor takes the first gate's
+hold; a whole run counts it through the load figure alone. It is shut by the load
+limit, the memory floor, its account's 5-second hold (`load-wait-narrow.json`) and
+its own limit, the person's `load.narrow_runs` (1 to 32, read from the machine layer
+alone, with no environment variable, since a repository's Makefile can set one; by
+default half the online cores divided by 2, which is what one takes as measured on
+16 cores). Its jitter is 1 to 5 seconds, and it takes no open look: nothing waits on
+it, so two accounts opening together overshoot by one for those runs and no more.
+
+A whole run keeps its place honestly: sharing the load limit, narrow runs could take
+every dip it waits for, and an older abcd counts them in its slots. So while a
+whole-run waiter that started earlier has waited five minutes with a whole slot free
+(`machineload.OverdueWhole`), a narrow run stands aside, for at most five minutes in
+one wait. That gap in admissions lets the running ones finish and the load fall. The
+waiter must have started earlier because an older abcd counts a narrow waiter that
+started before it as ahead: standing aside for a later start would have each wait on
+the other until a timeout. Every wait points at an earlier start or a command already
+running, so no cycle forms across versions. An older abcd reads a narrow waiter as a
+waiter like any other, the cautious direction, reads no narrow hold, and names
+`load.narrow_runs` as a key nothing reads while `load.preflights` beside it counts;
+this code counts its whole runs in full, so none passes its limit. Its waiter on a
+narrow-shaped command queues as a whole run and may not open, so waiters ahead that
+alone keep a narrow run shut stop counting after two minutes, flat whatever their
+number: a waiter of this code takes a free place in under one, and each that leaves
+starts the count again, so a queue that is moving never reaches it.
+
+A wait gives up after `--timeout`, six hours by default, the figure sessions came to
+pass by hand once thirty minutes ended every gated test on a busy machine. It exits
+1 as ever, and its last line starts `LOAD GATE TIMED OUT`, naming how long it waited
+and that nothing ran, with the renewal stopped first so no message follows it, since
+builders' pipes hid the exit code that day and they read the gate as still running.
+
 ## The implement loop
 
 Five sub-verbs drive the loop a build starts, the status, step, receipt, widen
