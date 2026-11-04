@@ -314,16 +314,9 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	if tip != lane.HeadSHA {
 		parent, _ := gitutil.Run(c.RepoRoot, "rev-parse", "--verify", "--quiet", tip+"^1^{commit}", "--")
 		subject, _ := gitutil.Run(c.RepoRoot, "log", "-1", "--format=%s", tip, "--")
-		why := ""
-		if parent == lane.HeadSHA && subject == landSubject(st, *lane) {
-			why = recordsCommitGap(c.RepoRoot, st, *lane, tip)
-		}
-		if parent != lane.HeadSHA || subject != landSubject(st, *lane) || why != "" {
-			reason := fmt.Sprintf("%s moved to %s, which is not the landing's records commit on the judged head %s", lane.Branch, shortSHA(tip), shortSHA(lane.HeadSHA))
-			if why != "" {
-				reason += ": " + why
-			}
-			return Outcome{}, refuse(string(StageLand), "", lane.ID, reason,
+		if parent != lane.HeadSHA || subject != landSubject(st, *lane) {
+			return Outcome{}, refuse(string(StageLand), "", lane.ID,
+				fmt.Sprintf("%s moved to %s, which is not the landing's records commit on the judged head %s", lane.Branch, shortSHA(tip), shortSHA(lane.HeadSHA)),
 				"restore the branch to the judged head, then run `abcd implement step` again")
 		}
 		// A call killed after its commit and before its state write: found.
