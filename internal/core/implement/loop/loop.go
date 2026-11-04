@@ -1014,7 +1014,7 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 		} else if err == nil {
 			// The re-told move is false of a lane stopped on its receipt, so
 			// that lane's answer is the stop alone.
-			if len(stopped) == 1 && res.PerformedStage == "" && res.Lane == stopped[0].lane && res.Slots <= 1 {
+			if len(stopped) == 1 && !stopped[0].retried && res.PerformedStage == "" && res.Lane == stopped[0].lane && res.Slots <= 1 {
 				res.Next = standing
 			} else {
 				res.Next += "; " + standing

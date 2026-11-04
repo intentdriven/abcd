@@ -176,10 +176,12 @@ func heldRole(repoRoot string, st State, cfg *runner.Config, now time.Time, only
 			if a.Running != nil && now.Before(a.Running.Until) {
 				continue
 			}
-			// A runner finished this role and its receipt stands: the step
-			// has read it (collectStanding) and said why it was not taken, and
-			// a second runner would pay again for work that is done.
-			if _, ran := startedRunner(l, a); ran && received(repoRoot, a.Receipt) {
+			// A runner ran this role and its receipt stands: the step has read
+			// it (collectStanding) and said why it was not taken. A second
+			// runner would pay again for work that is done, unless the first
+			// exited badly; a --route, whose step reads no receipt, starts
+			// none over it either way.
+			if _, ran := startedRunner(l, a); ran && received(repoRoot, a.Receipt) && (only != nil || !retriedOverReceipt(a)) {
 				continue
 			}
 			h := held{lane: l.ID, await: a, last: a.Since}
@@ -556,18 +558,25 @@ func pauseAwait(repoRoot, runID, laneID string, aw Await, session string, fb run
 		// A receipt its own runner left stands, and a step reads it rather
 		// than starting another runner over it (heldRole, collectStanding).
 		_, ran := startedRunner(lane, a)
-		stops := ran && received(repoRoot, aw.Receipt)
+		stands := ran && received(repoRoot, aw.Receipt)
+		stops := stands && !retriedOverReceipt(a)
 		then := fmt.Sprintf("the next step retries it on the runner (try %d)", p.Tries)
-		if stops {
+		switch {
+		case stops:
 			then = "no runner is started over the receipt that stands at " + aw.Receipt
+		case stands:
+			then = "the next step reads the receipt that stands at " + aw.Receipt + ", and retries the role on the runner if it does not verify"
 		}
 		st.Record = append(st.Record, Entry{At: now, Lane: laneID, Stage: StagePaused,
 			Note: fmt.Sprintf("the %s was routed to %s, %s (%s); the lane is paused rather than handed to the host, and %s",
 				aw.Role, fb.Asked, pauseCause(p), p.Why(), then)})
 		st.UpdatedAt = now
 		res = laneResult(*st, lane, "", nil)
-		if stops {
+		switch {
+		case stops:
 			res.Next = stoppedNote(lane.ID, aw.Receipt, p.Why())
+		case stands:
+			res.Next += "; a receipt stands at " + aw.Receipt + ": the next step reads it first, and retries only if it does not verify"
 		}
 		return true, nil
 	})

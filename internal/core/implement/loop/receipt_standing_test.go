@@ -589,12 +589,12 @@ func TestAFirstHandOutStartsItsAgentWhateverStandsAtItsPath(t *testing.T) {
 	})
 }
 
-// TestAStepCollectingWhileTheAgentWorksKeepsItsLaterWorkFromLanding: a peer step
-// can collect while the runner's agent is still working, since a claim names no
+// TestAStepCollectingWhileTheAgentWorksMeetsTheMovedTipRefusal: a peer step can
+// collect while the runner's agent is still working, since a claim names no
 // process to ask. The agent's later commit moves the branch past the head the
 // lane took, its rewritten receipt is refused rather than answered, and the
-// landing refuses the moved tip.
-func TestAStepCollectingWhileTheAgentWorksKeepsItsLaterWorkFromLanding(t *testing.T) {
+// landing's first step refuses the moved tip.
+func TestAStepCollectingWhileTheAgentWorksMeetsTheMovedTipRefusal(t *testing.T) {
 	repo, id, l, dir := awaitingLane(t)
 	stages := DefaultStages()
 	claimAwait(t, repo.Root(), id, l.awaiting().Receipt, time.Now().Add(time.Hour))

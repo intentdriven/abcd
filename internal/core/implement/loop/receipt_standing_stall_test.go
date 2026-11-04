@@ -337,9 +337,133 @@ func TestARunnersRewrittenReceiptIsNamedAndNoPauseIsRecorded(t *testing.T) {
 }
 
 // TestARetrysClaimDoesNotAdmitThePreviousAttemptsReceipt: a claim speaks for its
-// own attempt. What the last attempt left at the path is set aside as the claim
-// is taken, so a peer's step during the retry finds nothing of it to collect.
+// own attempt. What the last attempt left at the path, when no step took it, is
+// set aside as the claim is taken, so a peer's step during the retry finds nothing
+// of it to collect.
 func TestARetrysClaimDoesNotAdmitThePreviousAttemptsReceipt(t *testing.T) {
+	for name, c := range map[string]struct {
+		reason runner.Reason
+		body   string
+	}{
+		"a runner that never ran, and a file that would verify": {runner.ReasonAbsent, "{}\n"},
+		"a runner that exited badly, and a file that does not":  {runner.ReasonFailed, "half a receipt"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			root, id, steps, o := startToImplement(t)
+			res, err := advance(root, id, steps, o)
+			if err != nil || res.Awaiting == nil {
+				t.Fatalf("the implementer is handed out: %+v %v", res, err)
+			}
+			path := res.Awaiting.Receipt
+			if err := mutate(root, id, func(_ *os.Root, st *State) (bool, error) {
+				st.Lanes[0].Awaits[0].Paused = &RunnerPause{Runner: runner.Claude, Reason: c.reason, Detail: "the last attempt", Since: o.now(), At: o.now(), Tries: 1}
+				return true, nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(c.body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			env := newDriveEnv(t, "noreceipt", "claude")
+			store := &duringRun{}
+			store.fn = func() {
+				if _, err := os.Stat(path); !os.IsNotExist(err) {
+					t.Errorf("the last attempt's file is off the path during the retry: %v", err)
+				}
+				if res, err := advance(root, id, steps, o); err != nil || res.Stage != StageImplement {
+					t.Errorf("a peer's step during the retry collects nothing: %+v %v", res, err)
+				}
+			}
+			if _, err := Drive(context.Background(), root, id, steps, o, Runners{Config: runnerConfig(t, claudeImplementer, ""), Transcripts: store}); err != nil {
+				t.Fatal(err)
+			}
+			if n := env.launches(t, "claude"); n != 1 {
+				t.Fatalf("the retry starts its runner: %d launches", n)
+			}
+			if !asideHolds(t, root, id, "lane-1", c.body) {
+				t.Fatal("the last attempt's file is kept aside")
+			}
+		})
+	}
+}
+
+// TestAFinishedAgentWhoseRunnerExitedBadlyIsCollected: an agent can commit and
+// write its receipt, and its harness then exit non-zero or print what cannot be
+// parsed, so no hand-in ever ran. The attempt's claim cleared the path, so the
+// file is that attempt's: the next step reads it, and a receipt that verifies
+// ends the pause with no second agent, naming the runner. A --route for the role
+// reads nothing and starts nothing, and the plain step after it collects.
+func TestAFinishedAgentWhoseRunnerExitedBadlyIsCollected(t *testing.T) {
+	for _, reason := range []runner.Reason{runner.ReasonFailed, runner.ReasonUnparsable} {
+		t.Run(string(reason), func(t *testing.T) {
+			setUp := func(t *testing.T) (string, string, Stages, Options, string) {
+				t.Helper()
+				root, id, steps, o := startToImplement(t)
+				res, err := advance(root, id, steps, o)
+				if err != nil || res.Awaiting == nil {
+					t.Fatalf("the implementer is handed out: %+v %v", res, err)
+				}
+				path := res.Awaiting.Receipt
+				if err := mutate(root, id, func(_ *os.Root, st *State) (bool, error) {
+					st.Lanes[0].Awaits[0].Paused = &RunnerPause{Runner: runner.Claude, Reason: reason, Detail: "exited 1", Since: o.now(), At: o.now(), Tries: 1}
+					return true, nil
+				}); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte("{}\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				return root, id, steps, o, path
+			}
+			t.Run("a plain step", func(t *testing.T) {
+				root, id, steps, o, path := setUp(t)
+				env := newDriveEnv(t, "ok", "claude")
+				res, err := Drive(context.Background(), root, id, steps, o, Runners{Config: runnerConfig(t, claudeImplementer, ""), Transcripts: &memTranscripts{}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if res.Stage != StageValidate || res.PerformedStage != StageImplement || res.Retried != nil {
+					t.Fatalf("the step collects the receipt: %+v", res)
+				}
+				if n := env.launches(t, "claude"); n != 0 {
+					t.Fatalf("no second agent is paid for: %d launches", n)
+				}
+				if body, err := os.ReadFile(path); err != nil || string(body) != "{}\n" {
+					t.Fatalf("the receipt stays where it stood: %q %v", body, err)
+				}
+				st, err := ReadState(root, id)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if r := st.Lanes[0].Receipts[0].Route; r == nil || r.Asked != runner.Claude || r.Ran != "" {
+					t.Fatalf("the receipt names the runner its pause recorded: %+v", r)
+				}
+			})
+			t.Run("a route first", func(t *testing.T) {
+				root, id, steps, o, _ := setUp(t)
+				env := newDriveEnv(t, "ok", "claude")
+				cfg := runnerConfig(t, claudeImplementer, "")
+				overrideRoute(t, cfg, "implementer=runner:claude")
+				if _, err := Drive(context.Background(), root, id, steps, o, Runners{Config: cfg, Transcripts: &memTranscripts{}}); err == nil {
+					t.Fatal("a --route the step will not use is refused")
+				}
+				res, err := Drive(context.Background(), root, id, steps, o, Runners{Config: runnerConfig(t, claudeImplementer, ""), Transcripts: &memTranscripts{}})
+				if err != nil || res.Stage != StageValidate {
+					t.Fatalf("the plain step collects: %+v %v", res, err)
+				}
+				if n := env.launches(t, "claude"); n != 0 {
+					t.Fatalf("no second agent is paid for: %d launches", n)
+				}
+			})
+		})
+	}
+}
+
+// TestAReceiptAnExitedRunnerLeftThatDoesNotVerifyIsRetried: a run that ended badly
+// may have stopped anywhere, so its unfinished receipt is no finished work to stop
+// for. The role is retried as it always was, the step's answer says what became of
+// the file, and nothing counts against the lane.
+func TestAReceiptAnExitedRunnerLeftThatDoesNotVerifyIsRetried(t *testing.T) {
 	root, id, steps, o := startToImplement(t)
 	res, err := advance(root, id, steps, o)
 	if err != nil || res.Awaiting == nil {
@@ -352,24 +476,32 @@ func TestARetrysClaimDoesNotAdmitThePreviousAttemptsReceipt(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte("{}\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("half a receipt"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	env := newDriveEnv(t, "noreceipt", "claude")
-	store := &duringRun{}
-	store.fn = func() {
-		if res, err := advance(root, id, steps, o); err != nil || res.Stage != StageImplement {
-			t.Errorf("a peer's step during the retry collects nothing: %+v %v", res, err)
-		}
-	}
-	if _, err := Drive(context.Background(), root, id, steps, o, Runners{Config: runnerConfig(t, claudeImplementer, ""), Transcripts: store}); err != nil {
+	env := newDriveEnv(t, "ok", "claude")
+	res, err = Drive(context.Background(), root, id, steps, o, Runners{Config: runnerConfig(t, claudeImplementer, ""), Transcripts: &memTranscripts{}})
+	if err != nil {
 		t.Fatal(err)
 	}
 	if n := env.launches(t, "claude"); n != 1 {
-		t.Fatalf("the retry starts its runner: %d launches", n)
+		t.Fatalf("the role is retried: %d launches", n)
 	}
-	if !asideHolds(t, root, id, "lane-1", "{}\n") {
-		t.Fatal("the last attempt's file is kept aside")
+	if res.Stage != StageValidate {
+		t.Fatalf("the fresh agent's receipt is taken: %+v", res)
+	}
+	if !strings.Contains(res.Next, "set aside when") {
+		t.Fatalf("the answer says what became of the file: %s", res.Next)
+	}
+	if !asideHolds(t, root, id, "lane-1", "half a receipt") {
+		t.Fatal("the file is kept aside")
+	}
+	st, err := ReadState(root, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Lanes[0].Refused != nil {
+		t.Fatalf("nothing counts against the lane: %+v", st.Lanes[0].Refused)
 	}
 }
 

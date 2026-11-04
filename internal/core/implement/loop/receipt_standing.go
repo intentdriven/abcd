@@ -25,19 +25,20 @@ package loop
 // A receipt that verifies is taken, over a runner's claim still standing if need
 // be: a refused step could not drop its claim, and the claim names no process to
 // ask. The lane takes the head the receipt verified at, so if the agent was in
-// fact still working, its later commits move the branch past that head and the
-// landing refuses them, adopting a commit on the head only for the records it
-// moves (recordsCommitGap). Its later hand-in is read (answerCollected): the same
-// bytes are answered, and a changed file is refused.
+// fact still working, its later commits move the branch past that head, which the
+// landing's checks of a moved tip then meet. Its later hand-in is read
+// (answerCollected): the same bytes are answered, and a changed file is refused.
 //
 // The route records what is known. The state names the runner that was asked; no
 // report from it arrived, so what ran the agent is left empty until a report does.
 //
-// A receipt that does not verify is left where it stands, and no second runner is
-// started over it. While the claim stands the agent may still be working, so the
-// step says to wait. After that the lane is stopped: the step's answer names the
-// ways out alone, and each such step counts as a refused one, so a drain hands the
-// lane back at the stuck bounds (stuck.go).
+// A receipt that does not verify is left where it stands. While the claim stands
+// the agent may still be working, so the step says to wait. After a runner that
+// ended and had its answer refused the lane is stopped, with no second runner over
+// the work: the step's answer names the ways out alone, and each such step counts
+// as a refused one, so a drain hands the lane back at the stuck bounds (stuck.go).
+// After a runner that exited badly it may be unfinished anywhere, so the role is
+// retried as ever, and the file is set aside as the retry's claim is taken.
 
 import (
 	"crypto/sha256"
@@ -56,9 +57,10 @@ import (
 
 // startedRunner is the runner the run's state shows was started for await a of
 // lane l, and whether it shows one: a claim taken under the lock just before the
-// launch, or a pause recording that the runner's answer was refused, which only
-// a run that ended gives. It holds only for an implementer, at the implement
-// stage or a validate round's fix or sync.
+// launch, or a pause recording how that attempt ended: its answer refused, or its
+// harness exiting badly or printing what cannot be parsed. Since the claim cleared
+// the path, a file standing there is that attempt's. It holds only for an
+// implementer, at the implement stage or a validate round's fix or sync.
 func startedRunner(l Lane, a Await) (string, bool) {
 	if a.Role != RoleImplementer || a.Kept != "" || (l.Stage != StageImplement && l.Stage != StageValidate) {
 		return "", false
@@ -66,19 +68,31 @@ func startedRunner(l Lane, a Await) (string, bool) {
 	switch {
 	case a.Running != nil:
 		return a.Running.Runner, true
-	case a.Paused != nil && a.Paused.Reason == runner.ReasonInvalid:
-		return a.Paused.Runner, true
+	case a.Paused != nil:
+		switch a.Paused.Reason {
+		case runner.ReasonInvalid, runner.ReasonFailed, runner.ReasonUnparsable:
+			return a.Paused.Runner, true
+		}
 	}
 	return "", false
 }
 
+// retriedOverReceipt reports whether a receipt standing for await a that does not
+// verify leaves the role to be retried: its runner exited badly, so the file is no
+// finished work to stop for. An answer that was refused is.
+func retriedOverReceipt(a Await) bool {
+	return a.Paused != nil && a.Paused.Reason != runner.ReasonInvalid
+}
+
 // stoppedReceipt is a receipt a step read and could not take: the lane, what the
-// step says of it, and the refusal to count against the lane, nil while a runner's
-// claim stands and its agent may still be working.
+// step says of it, the refusal to count against the lane, nil while a runner's
+// claim stands and its agent may still be working or when the role will be retried
+// over it, and whether it will be.
 type stoppedReceipt struct {
 	lane    string
 	note    string
 	refusal error
+	retried bool
 }
 
 // collectStanding is a step's read of the receipts of the awaits startedRunner
@@ -124,6 +138,11 @@ func collectStanding(repoRoot, runID string, steps Stages, o Options) (StepResul
 				stopped = append(stopped, stoppedReceipt{lane: l.ID,
 					note: fmt.Sprintf("a receipt stands at %s and does not verify yet (%s); the %s runner may still be working, until its claim lapses at %s, so wait, then step again",
 						a.Receipt, refusalReason(rf), a.Running.Runner, stamp(a.Running.Until))})
+				continue
+			}
+			if retriedOverReceipt(a) {
+				stopped = append(stopped, stoppedReceipt{lane: l.ID, retried: true,
+					note: fmt.Sprintf("a receipt stands at %s and does not verify (%s), so it is set aside when the role is retried on its runner", a.Receipt, refusalReason(rf))})
 				continue
 			}
 			stopped = append(stopped, stoppedReceipt{lane: l.ID, note: stoppedNote(l.ID, a.Receipt, refusalReason(rf)), refusal: rf})
@@ -328,7 +347,7 @@ func answerCollected(repoRoot string, root *os.Root, st *State, i int, taken, di
 	if got, err := standingDigest(repoRoot, root, taken); err != nil || got != digest {
 		return StepResult{}, false, refuse("receipt", "", l.ID,
 			fmt.Sprintf("%s has changed since a step collected it, and %s went on from head %s", taken, l.ID, shortSHA(l.HeadSHA)),
-			"nothing was taken from it, and the landing lands nothing past that head: restore the branch to it if it has moved, and leave the file as it was collected")
+			"nothing was taken from it: restore the branch to that head if it has moved, and leave the file as it was collected")
 	}
 	changed := false
 	if route != nil && route.Ran != "" {
