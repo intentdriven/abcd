@@ -66,8 +66,9 @@ _Steps 1 and 2 start together; 3 waits for both; 4 and 5 run beside each other o
    - needs: 1, 2
    - packages: internal/surface/cli/drain.go, internal/surface/cli/drain_drive.go, .abcd/development/release/surface.json, docs/reference/cli/commands.md
    - tests: internal/surface/cli/drain_drive_test.go
-   `--drive` and `--yes` on `abcd drain`, regenerated into the surface record and the command reference. Each precondition of the Summary refuses before anything is reserved, naming what is missing: the key route and a set key refuse naming the budget intent; no profile, or several, refuse naming the directory to make or the profiles intent. The consent names the cap, the estimate, the runner and the route; `--drive` with no terminal and no `--yes` refuses; no reservation exists before the yes. Without `--drive` the drain does exactly one move, as today (story 6). The wall checks of step 4 enter here through one precondition the step declares and step 4 fills.
+   `--drive` and `--yes` on `abcd drain`, regenerated into the surface record and the command reference. Each precondition of the Summary refuses before anything is reserved, naming what is missing: the key route refuses naming the budget intent, and so does any credential variable the harness would bill through set in the environment; no profile, or several, refuse naming the directory to make or the profiles intent; a wall not yet proved refuses naming it, until step 4 fills that precondition; and a drive started from inside an agent's own session refuses. The consent names the cap, the estimate, the runner and the route; `--drive` with no terminal and no `--yes` refuses; no reservation exists before the yes. Without `--drive` the drain does exactly one move, as today (story 6). The wall checks of step 4 enter here through one precondition the step declares and step 4 fills.
 4. **The walled directory's settings and the proof before the first move** (MUST)
+   A stage reads settings from the walled directory alone, never from a settings file in the working tree, and the walled settings are checked against what abcd wrote before each stage starts; a difference stops the drive.
    - priority: MUST, Friday
    - login: none
    - needs: 1, 3
@@ -75,6 +76,7 @@ _Steps 1 and 2 start together; 3 waits for both; 4 and 5 run beside each other o
    - tests: internal/core/runner/wall_test.go, internal/surface/cli/drain_drive_wall_test.go
    The drive writes the walled directory's `settings.json`, abcd's hooks as absolute commands naming its own binary and nothing else, rewriting it at each start so a new binary re-wires it, and never touching the login state beside it. Then the checks of the Summary, each a wall named in the refusal: the directory present and alone, the login state present, the settings holding abcd's hooks and nothing else, no key in the environment, and the one short live launch showing the tool list the launch named and the guard refusing a command it is meant to refuse. Tested with a stand-in harness that reports each wall held or broken in turn; a settings file the person has edited is replaced and said so.
 5. **Stop and resume** (MUST)
+   The drive's calls take a context the first signal does not cancel, so the first press lets the call finish; only the second cancels it.
    - priority: MUST, Friday
    - login: none
    - needs: 2, 3
