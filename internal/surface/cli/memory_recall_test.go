@@ -490,9 +490,8 @@ func TestRulesPromptShowsEachTermsContribution(t *testing.T) {
 }
 
 // TestAPageLargerThanTheBudgetIsNamedAndTheRestComeBack: a page whose block
-// is larger than the whole per-turn budget is named on stderr as never
-// coming back in full, and does not hold back the page ranked below it;
-// `rules --prompt` gives it the form too-large.
+// is larger than the whole per-turn budget comes back as one line, does not
+// hold back the page ranked below it, and `rules --prompt` says so.
 func TestAPageLargerThanTheBudgetIsNamedAndTheRestComeBack(t *testing.T) {
 	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
 	home, repo := memoryFixture(t)
@@ -500,16 +499,17 @@ func TestAPageLargerThanTheBudgetIsNamedAndTheRestComeBack(t *testing.T) {
 	huge := strings.Repeat("Every kerberos deploy ever written down.\n", 2000) // about 80 KiB
 	writeRecallPage(t, workspace, "fact_eng_huge.md", "# Every kerberos deploy\n\n"+huge, 0o644, "deploy", "kerberos")
 	writeRecallPage(t, workspace, "fact_eng_dry-run.md", "# Deploys need the dry-run flag\n\nPass it first.\n", 0o644, "deploy")
-	// A fresh session, whose bracket sends pages in full and has no lines
-	// to carry a page too large for any turn.
 	setFill(t, home, "too-large", 0)
 
 	env, errlog := recallRouterJSON(t, "too-large", repo, "deploy with kerberos")
-	if env.Recalled == nil || !slices.Equal(*env.Recalled, []string{"page:fact_eng_dry-run.md"}) {
+	if env.Recalled == nil || !slices.Contains(*env.Recalled, "page:fact_eng_dry-run.md") || !slices.Contains(*env.Recalled, "page:fact_eng_huge.md") {
 		t.Fatalf("recalled %v:\n%s\nstderr:\n%s", env.Recalled, env.Text, errlog)
 	}
-	if !strings.Contains(errlog, "[page:fact_eng_huge.md (project)] are larger than the whole per-turn budget") {
-		t.Fatalf("stderr does not name the page too large to come back:\n%s", errlog)
+	if strings.Contains(env.Text, "ever written down") {
+		t.Fatalf("the huge page's body came back:\n%.300s", env.Text)
+	}
+	if !strings.Contains(errlog, "page:fact_eng_huge.md") || !strings.Contains(errlog, "as one line") {
+		t.Fatalf("stderr does not name the page sent as one line:\n%s", errlog)
 	}
 
 	jout, _, err := runCLISplit(t, "rules", "--prompt", "deploy with kerberos", "--fill", "0", "--json")
@@ -529,11 +529,11 @@ func TestAPageLargerThanTheBudgetIsNamedAndTheRestComeBack(t *testing.T) {
 	for _, p := range v.Pages {
 		forms[p.Key] = p.Form
 	}
-	if forms["page:fact_eng_huge.md"] != "too-large" || forms["page:fact_eng_dry-run.md"] != "full" {
+	if forms["page:fact_eng_huge.md"] != "one-line" || forms["page:fact_eng_dry-run.md"] != "full" {
 		t.Fatalf("forms = %v", forms)
 	}
 	out, _, _ := runCLISplit(t, "rules", "--prompt", "deploy with kerberos", "--fill", "0")
-	if !strings.Contains(out, "larger than the whole per-turn budget") {
-		t.Fatalf("rules --prompt does not say the page is too large:\n%s", out)
+	if !strings.Contains(out, "as one line") {
+		t.Fatalf("rules --prompt does not say the page comes back as one line:\n%s", out)
 	}
 }

@@ -586,15 +586,17 @@ UNGUARDED warning naming the file, so the state cannot pass unnoticed.
 **Never write `.abcd/guard.json` on your own initiative.** Disabling or
 retiering a hazard is the user's decision to make and to review.
 
-The hazards are also taught before any command runs: the rules loader's `SHELL`
-domain is generated from the registry this guard enforces, one rule per entry,
-then one rule for the scripts the guard reads and one for the variable-built
-`-c` script it refuses, and is injected when a prompt is about shell work (`abcd rules shell` renders
-it). An entry a repo adds in `.abcd/guard.json` is taught there as well, its
-rule marked `(repo)`; a guard file this guard refuses is named on stderr and
-not taught. An entry's `why` and `successor` are each at most 1,024 bytes, and
-a longer one refuses the file. With the guard switched off, each rule opens
-`Hazard (guard off)` instead of `Refused by the guard`.
+The rules loader's `SHELL` domain is generated from the registry this guard
+enforces, one rule per entry, then one rule for the scripts the guard reads and
+one for the variable-built `-c` script it refuses, and `abcd rules shell` lists
+them all. When a prompt is about shell work only part of it is sent: a line saying
+a guard judges each command, and the rules for commands it only warns about, since
+a warned command still runs. What it refuses reaches the agent at the refusal. An
+entry a repo adds in `.abcd/guard.json` joins the list too, its rule marked
+`(repo)`; a guard file this guard refuses is named on stderr and left out. An
+entry's `why` and `successor` are each at most 1,024 bytes, and a longer one refuses
+the file. With the guard switched off, every rule is sent, each opening
+`Hazard (guard off)` instead of `Refused by the guard`, and no line claims a guard.
 
 ### What this guard is
 
@@ -1093,7 +1095,7 @@ replacement, a substring or a case change (`"${DIR%/}"/x`), or `$HOME` and
 `$PWD`, whose deletes the two entries above name. The guard never rewrites the
 command itself. The same rule is restated in every agent definition that can
 run a shell, in a block generated from this entry, because a sub-agent is
-handed none of the `SHELL` rules the session is taught; the scribe's is the
+handed none of the `SHELL` rules the session is sent; the scribe's is the
 one exception, its definition being held to ledger content alone.
 
 What an allow still does not see is a hazard that never reaches command position

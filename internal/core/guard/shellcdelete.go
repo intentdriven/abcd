@@ -122,7 +122,11 @@ func (r Registry) leadsOver(blockers []string) bool {
 func (r Registry) ShellCLesson() string {
 	lead := "Refused by the guard"
 	if r.Disabled {
-		lead = guardOffLead
+		return guardOffLead + " (" + shellCDeleteEntryID + "): a `bash -c` or `sh -c` script built from variables that runs " +
+			orList(quoteAll(deleteCommands)) + " names what it deletes only when it runs, and a host that cannot read the " +
+			"script stops to ask a person, where an agent working alone waits. Instead: write the script to a file in one " +
+			"command and run it in the next, or delete on the line itself with literal paths or a variable guarded as " +
+			"`\"${VAR:?}\"`."
 	}
 	sig := shellCDeleteSignal()
 	return lead + " (" + shellCDeleteEntryID + "): a `bash -c` or `sh -c` script built from variables that runs " +

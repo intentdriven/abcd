@@ -95,7 +95,8 @@ names it `page:<file>` and says which store it came from:
 - `(machine page, this account's memory store)` is a page from this machine's
   `~/.abcd.noindex/memory/`.
 
-A page too large to come back in full is named on stderr rather than sent. To
+A page that does not fit comes back as one line, its key and title, where
+that line fits. To
 see what one prompt would bring back, and why each note or page ranks where it
 does, run `"${CLAUDE_PLUGIN_ROOT}/abcd" rules --prompt "<the prompt>"`; it
 writes nothing.

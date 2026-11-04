@@ -2,12 +2,15 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/autonomy"
+	"github.com/intentdriven/abcd/internal/core/recall"
 	"github.com/intentdriven/abcd/internal/core/rules"
 )
 
@@ -33,69 +36,204 @@ func writeProjectNotes(t *testing.T, repo string, notes ...[3]string) {
 }
 
 // TestRulesAndNotesShareOneTurnBudget (F4): the rules and the memory recall
-// share the loader's one per-turn budget. With the rules taking most of it,
-// the router injects the rules block and a ## MEMORY block in one output,
-// the note that fits what the rules left comes back, the note that does not
-// is omitted — named on stderr and left unrecorded, so the next turn brings
-// it back — and the whole text stays within the budget.
+// share the loader's one per-turn budget. With the rules taking most of it, the
+// router injects the rules block and a ## MEMORY block in one output, the note
+// that fits what the rules left comes back in full, the one that does not comes
+// back as one line, and the whole text stays within the budget.
 func TestRulesAndNotesShareOneTurnBudget(t *testing.T) {
 	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
 	home, repo := memoryFixture(t)
 	const prompt = "run the tests"
-	const room = 1500 // what the rules are sized to leave of the budget
+	room := rules.MemoryFloorBytes // what the rules are sized to leave of the budget
 	// A fresh window, whose bracket sends notes in full.
 	setFill(t, home, "budget-session", 10)
 
-	// Size one domain's rule so the rules render to the budget less room.
-	rulesText := func(size int) string {
-		body, err := json.Marshal(map[string]any{"schema_version": 1, "domains": map[string]any{
-			"BULK": map[string]any{"recall": []string{"test"}, "rules": []string{strings.Repeat("bulk words ", size/11)}}}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		writeRepoRules(t, repo, string(body))
-		rs, err := rules.Load(repo)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return rules.Inject(rs, prompt, rules.SessionState{}, 0, rules.BracketUnknown).Text
+	body, err := json.Marshal(map[string]any{"schema_version": 1, "domains": map[string]any{
+		"BULK": map[string]any{"recall": []string{"test"}, "rules": []string{strings.Repeat("bulk words ", (rules.InjectionBudgetBytes-room-200)/11)}}}})
+	if err != nil {
+		t.Fatal(err)
 	}
-	size := rules.InjectionBudgetBytes - room
-	size += rules.InjectionBudgetBytes - room - len(rulesText(size))
-	rendered := rulesText(size)
-	left := rules.InjectionBudgetBytes - len(rendered)
-	if left < room-20 || left > room+20 {
-		t.Fatalf("the rules left %d bytes, want about %d", left, room)
-	}
+	writeRepoRules(t, repo, string(body))
 
-	const small, big = "mem-2610111200000001", "mem-2610111200000002"
-	writeProjectNotes(t, repo,
-		[3]string{small, "A short lesson", "Short words."},
-		[3]string{big, "A long lesson", strings.TrimSpace(strings.Repeat("long words ", room/11))})
+	bodyOf := func(word string) string { return strings.TrimSpace(strings.Repeat(word+" words ", 2000/(len(word)+7))) }
+	notes := map[string]string{"mem-2610111200000001": "alpha", "mem-2610111200000002": "bravo", "mem-2610111200000003": "charlie"}
+	var list [][3]string
+	for id, word := range notes {
+		list = append(list, [3]string{id, "A lesson on " + word, bodyOf(word)})
+	}
+	writeProjectNotes(t, repo, list...)
 
 	env, errlog := recallRouterJSON(t, "budget-session", repo, prompt)
-	if !slices.Contains(env.Injected, "BULK") || !strings.Contains(env.Text, "## BULK") {
+	if !slices.Contains(env.Injected, "BULK") || !strings.Contains(env.Text, "bulk words") {
 		t.Fatalf("the rules block is missing: injected %v\nstderr:\n%s", env.Injected, errlog)
 	}
-	if !strings.Contains(env.Text, "## MEMORY") || env.Recalled == nil || !slices.Equal(*env.Recalled, []string{small}) {
-		t.Fatalf("recalled %v, want only %s, in a ## MEMORY block:\n%s", env.Recalled, small, errlog)
+	if !strings.Contains(env.Text, "## MEMORY") || env.Recalled == nil || len(*env.Recalled) != len(notes) {
+		t.Fatalf("recalled %v, want every note, in a ## MEMORY block:\n%s", env.Recalled, errlog)
 	}
-	if strings.Contains(env.Text, "A long lesson") {
-		t.Fatalf("the note past the remaining budget was injected")
+	full := 0
+	for _, word := range notes {
+		if !strings.Contains(env.Text, "A lesson on "+word) {
+			t.Fatalf("the note on %s has no line:\n%s", word, errlog)
+		}
+		if strings.Contains(env.Text, word+" words") {
+			full++
+		}
+	}
+	if full != 1 {
+		t.Fatalf("%d notes came back in full, want the one that fits", full)
 	}
 	if len(env.Text) > rules.InjectionBudgetBytes {
 		t.Fatalf("the turn injected %d bytes, over the %d budget", len(env.Text), rules.InjectionBudgetBytes)
 	}
-	if !strings.Contains(errlog, "did not fit this turn's budget") || !strings.Contains(errlog, big) {
-		t.Fatalf("stderr does not name the omitted note:\n%s", errlog)
+	if !strings.Contains(errlog, "as one line") {
+		t.Fatalf("stderr does not name the notes sent as one line:\n%s", errlog)
+	}
+}
+
+// hookContext is what the host would read of the hook's plain output: the
+// additional context where it wrote an object, otherwise the whole of it.
+func hookContext(t *testing.T, out string) string {
+	t.Helper()
+	if !strings.HasPrefix(out, "{") {
+		return out
+	}
+	var o struct {
+		HookSpecificOutput struct {
+			AdditionalContext string `json:"additionalContext"`
+		} `json:"hookSpecificOutput"`
+	}
+	if err := json.Unmarshal([]byte(out), &o); err != nil {
+		t.Fatalf("not one object: %v\n%.300s", err, out)
+	}
+	return o.HookSpecificOutput.AdditionalContext
+}
+
+// TestTheHooksWholeOutputStaysUnderTheHostCap: rules, notes and away together,
+// on the worst prompt a repository can write, come in under what the host keeps,
+// each domain as a whole form. Status has no origin to read here; its block is
+// bounded by its ten validated lines and is reserved as the away block is.
+func TestTheHooksWholeOutputStaysUnderTheHostCap(t *testing.T) {
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	home, repo := memoryFixture(t)
+	setFill(t, home, "capped", 10)
+
+	domains := map[string]any{}
+	for i := range 30 {
+		var list []string
+		for j := range 8 {
+			list = append(list, strings.Repeat(fmt.Sprintf("d%d rule %d ", i, j), 40))
+		}
+		domains[fmt.Sprintf("D%02d", i)] = map[string]any{"recall": []string{"test"}, "rules": list}
+	}
+	body, err := json.Marshal(map[string]any{"schema_version": 1, "domains": domains})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeRepoRules(t, repo, string(body))
+	writeProjectNotes(t, repo, [3]string{"mem-2610111200000003", "A lesson", strings.TrimSpace(strings.Repeat("note words ", 180))})
+	if err := os.MkdirAll(filepath.Join(repo, ".abcd", ".work.local"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := autonomy.SetAway(repo, "", false, autonomy.Options{Home: home}); err != nil {
+		t.Fatal(err)
 	}
 
-	// Next turn the rules are already sent, so the omitted note, never
-	// recorded, now fits and comes back.
-	next, _ := recallRouterJSON(t, "budget-session", repo, prompt)
-	if next.Recalled == nil || !slices.Equal(*next.Recalled, []string{big}) {
-		t.Fatalf("the omitted note was recorded on the turn it was left out: recalled %v", next.Recalled)
+	out, errlog := runHook(t, hookInputJSON(t, "capped", repo, "run the tests"), "hook", "prompt-router")
+	ctx := hookContext(t, out)
+	if len(ctx) > rules.HostOutputCap {
+		t.Fatalf("the hook wrote %d bytes, over the host's cap of %d\nstderr:\n%s", len(ctx), rules.HostOutputCap, errlog)
 	}
+	if !strings.Contains(ctx, "## AWAY") {
+		t.Fatalf("the away block is missing:\n%.400s\nstderr:\n%s", ctx, errlog)
+	}
+	if !strings.Contains(ctx, "A lesson") {
+		t.Fatalf("the note has no room:\n%s\nstderr:\n%s", ctx, errlog)
+	}
+	if !strings.Contains(ctx, "abcd rules D00") {
+		t.Fatalf("a shortened domain names no command:\n%.600s", ctx)
+	}
+}
+
+// TestAFloorNoNoteUsesGoesBackToTheRules: a domain that fits the turn is sent
+// whole when no note comes back, and shortened when one does.
+func TestAFloorNoNoteUsesGoesBackToTheRules(t *testing.T) {
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	home, repo := memoryFixture(t)
+	setFill(t, home, "floor", 10)
+	setFill(t, home, "floor-note", 10)
+	var list []string
+	for j := range 8 {
+		list = append(list, strings.Repeat(fmt.Sprintf("rule %d ", j), 150))
+	}
+	body, err := json.Marshal(map[string]any{"schema_version": 1, "domains": map[string]any{
+		"LONG": map[string]any{"recall": []string{"zebra"}, "rules": list}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeRepoRules(t, repo, string(body))
+	env, errlog := recallRouterJSON(t, "floor", repo, "a zebra")
+	if !strings.Contains(env.Text, "rule 7 ") {
+		t.Fatalf("a domain that fits the turn did not come back whole:\n%.400s\nstderr:\n%s", env.Text, errlog)
+	}
+	writeProjectNotes(t, repo, [3]string{"mem-2610111200000004", "A zebra lesson", "Zebra words."})
+	notes, errlog := recallRouterJSON(t, "floor-note", repo, "test a zebra")
+	if strings.Contains(notes.Text, "rule 7 ") || !strings.Contains(notes.Text, "Zebra words.") {
+		t.Fatalf("with a note the floor was not kept for it:\n%.400s\nstderr:\n%s", notes.Text, errlog)
+	}
+}
+
+// TestGivingTheFloorBackStaysWithinWhatTheBlocksLeft: with the blocks read first
+// taking nearly all of the turn, a turn with no note hands the rules what those
+// blocks left and no more.
+func TestGivingTheFloorBackStaysWithinWhatTheBlocksLeft(t *testing.T) {
+	rs := rules.RuleSet{SchemaVersion: 1, Domains: map[string]rules.Domain{}}
+	for i := range 20 {
+		rs.Domains[fmt.Sprintf("D%02d", i)] = rules.Domain{Recall: []string{"zebra"}, Rules: []string{strings.Repeat("words ", 60), strings.Repeat("more ", 60)}}
+	}
+	const reserved = 7_400
+	res, _ := injectWithRecall(rs, "zebra", rules.SessionState{}, 0, rules.BracketUnknown, reserved, func(map[string]string, int) recall.Result { return recall.Result{} })
+	if room := rules.InjectionBudgetBytes - reserved; len(res.Text) > room {
+		t.Fatalf("the rules took %d bytes of the %d the blocks left", len(res.Text), room)
+	}
+}
+
+// TestRulesPromptReportsAShortenedDomainTruthfully: the diagnostic says what
+// the hook would send, never in full for a domain that goes short.
+func TestRulesPromptReportsAShortenedDomainTruthfully(t *testing.T) {
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	_, repo := memoryFixture(t)
+	var list []string
+	for j := range 8 {
+		list = append(list, strings.Repeat(fmt.Sprintf("rule %d ", j), 200))
+	}
+	body, err := json.Marshal(map[string]any{"schema_version": 1, "domains": map[string]any{
+		"LONG": map[string]any{"recall": []string{"zebra"}, "rules": list}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeRepoRules(t, repo, string(body))
+	jout, stderr, err := runCLISplit(t, "rules", "--prompt", "zebra", "--json")
+	if err != nil {
+		t.Fatalf("rules --prompt --json: %v\n%s", err, stderr)
+	}
+	var env struct {
+		Domains []struct {
+			Name string `json:"name"`
+			Form string `json:"form"`
+		} `json:"domains"`
+	}
+	if err := json.Unmarshal([]byte(jout), &env); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range env.Domains {
+		if d.Name == "LONG" {
+			if d.Form != promptFormShrunk {
+				t.Fatalf("form = %q, want %q", d.Form, promptFormShrunk)
+			}
+			return
+		}
+	}
+	t.Fatalf("LONG did not match: %+v", env.Domains)
 }
 
 // TestRulesPromptCapsThePromptLikeTheHook (F5): `rules --prompt` scans the

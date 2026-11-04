@@ -284,3 +284,39 @@ func TestLessonsUnderADisabledRegistrySayTheGuardIsOff(t *testing.T) {
 		t.Errorf("a disabled registry taught %d lessons for %d entries: the hazards are still taught", n, len(off.Entries))
 	}
 }
+
+// TestLessonsSplitByWhatTheGuardDoes: each entry falls in exactly one half by
+// its tier, in id order, with the repository mark kept.
+func TestLessonsSplitByWhatTheGuardDoes(t *testing.T) {
+	reg := Defaults()
+	warned, refused := reg.SplitLessons(reg)
+	if len(warned)+len(refused) != len(reg.Entries) {
+		t.Fatalf("%d warned + %d refused, for %d entries", len(warned), len(refused), len(reg.Entries))
+	}
+	for _, l := range warned {
+		if !strings.HasPrefix(l, "Warned by the guard") {
+			t.Errorf("in the warned half: %q", l)
+		}
+	}
+	for _, l := range refused {
+		if !strings.HasPrefix(l, "Refused by the guard") {
+			t.Errorf("in the refused half: %q", l)
+		}
+	}
+	if len(warned) == 0 || len(refused) == 0 {
+		t.Fatalf("a half is empty: %d warned, %d refused", len(warned), len(refused))
+	}
+}
+
+// TestEveryBundledEntryCorrectsWithWhyAndWhatInstead: a refusal or warning is
+// only worth carrying a rule if it says why and what to run.
+func TestEveryBundledEntryCorrectsWithWhyAndWhatInstead(t *testing.T) {
+	for id, e := range Defaults().Entries {
+		if strings.TrimSpace(e.Why) == "" {
+			t.Errorf("%s says no why", id)
+		}
+		if strings.TrimSpace(e.Successor) == "" {
+			t.Errorf("%s says nothing to run instead", id)
+		}
+	}
+}

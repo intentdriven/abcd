@@ -28,6 +28,36 @@ const maxTaughtValues = 6
 // (GHSA-22f8-qf5r-gjgq).
 const RepoMark = "(repo)"
 
+// SteeringLine is the one rule sent ahead of shell work while the guard is on:
+// what the guard does and where the rest can be read. It is worded as a fact,
+// because a hook is read as data, and a refusal says the rest at the command.
+const SteeringLine = "A guard judges each shell command before it runs. It refuses or warns, says why and names the safe form. `abcd rules SHELL` lists its rules."
+
+// SplitLessons renders r's lessons as LessonsOver does and divides them by what
+// the guard does with the command: a warned command still runs, so its lesson
+// is one an agent needs first, and a refused one is corrected at the refusal
+// (itd-2611041636196213). Under a disabled registry every lesson is steering,
+// since nothing refuses, and refused is empty.
+func (r Registry) SplitLessons(bundled Registry) (warned, refused []string) {
+	repo := overBundled(bundled)
+	ids := make([]string, 0, len(r.Entries))
+	for id := range r.Entries {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		e := r.Entries[id]
+		e.ID = id
+		l := e.lesson(repo(id, e), r.Disabled)
+		if e.Tier == TierWarn || r.Disabled {
+			warned = append(warned, l)
+		} else {
+			refused = append(refused, l)
+		}
+	}
+	return warned, refused
+}
+
 // Lessons renders every entry's Lesson in entry-id order: the rules of the
 // teaching plane, one per registry entry.
 func (r Registry) Lessons() []string {
@@ -42,14 +72,19 @@ func (r Registry) Lessons() []string {
 // abcd's. The registry is the guard's registry in force for the repository, so
 // the plane teaches exactly what the guard enforces there.
 func (r Registry) LessonsOver(bundled Registry) []string {
-	return r.lessons(func(id string, e Entry) bool {
+	return r.lessons(overBundled(bundled))
+}
+
+// overBundled reports whether an entry's lesson is not bundled's word for word.
+func overBundled(bundled Registry) func(id string, e Entry) bool {
+	return func(id string, e Entry) bool {
 		b, ok := bundled.Entries[id]
 		if !ok {
 			return true
 		}
 		b.ID = id
 		return b.Lesson() != e.Lesson()
-	})
+	}
 }
 
 // lessons renders every entry in id order, marking those repo reports true for.
@@ -169,7 +204,9 @@ func isAlnum(r rune) bool {
 func (r Registry) ScriptLesson() string {
 	lead := "Read by the guard (" + scriptHazardEntryID + ", " + scriptWrittenEntryID + ")"
 	if r.Disabled {
-		lead = guardOffLead + " (" + scriptHazardEntryID + ", " + scriptWrittenEntryID + ")"
+		return guardOffLead + " (" + scriptHazardEntryID + ", " + scriptWrittenEntryID + "): a script a shell runs can " +
+			"do anything the command beside it could, and one written earlier on the same line is the file that runs, " +
+			"unread. Instead: write a script in one command, read it, and run it in the next."
 	}
 	return lead + ": a script a shell runs — `bash f`, `source f`, `bash < f`, a direct `./f.sh`, " +
 		"and the startup files `BASH_ENV`, `ENV`, `--rcfile`/`--init-file` or an assigned `ZDOTDIR`/`HOME` select — " +

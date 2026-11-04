@@ -325,8 +325,8 @@ func renderStatus(w io.Writer, out statusOutput) {
 }
 
 // hookBudget is the prompt hook's whole budget (C12), counted from the hook's
-// start: the status read takes what the drain, the rules and the memory notes
-// leave of it, at most 600 ms (claim.PromptNotes), and leaves the hook time to
+// start: the status read takes what the drain leaves of it, before the rules
+// and the memory notes, at most 600 ms (claim.PromptNotes), and leaves the hook time to
 // write the block and mark it shown. A test lowers it.
 var hookBudget = time.Second
 

@@ -1406,16 +1406,44 @@ unchanged. Restating the entry keeps it; leaving the field out inherits the
 list. The other bundled domains are conventions a
 repository restates in its own words, so a replacement there is not reported.
 
+**The hook's whole output fits the host's cap.** The host keeps 10,000 characters
+of one hook's output; above that it saves a file, shows a short preview and does not
+ask the agent to read the rest. So the rules, the memory notes and pages, the status
+block and the away block share one budget, 500 under the cap (iss-2611041419354106).
+The status and away blocks are read first, the rules leave at least 2,500 bytes for
+memory, memory takes what the rules actually left, and a turn no note comes back on
+gives those bytes back to the rules. When the matched domains do not all fit, room
+goes up a ladder, the cheapest first at each step: every domain gets its heading and
+a line naming the command that renders it, then its first rule, then all of its rules,
+so one long domain never holds back the next. Every form sent is recorded as sent, since it names the command,
+and never one the host cut. Rules still come back in full whenever they fit
+(spc-2610111627213138). A note or page that does not fit comes back as one line where that line fits. A
+domain with no room even for that line is left out and tried again next turn, with a
+notice where the notice itself fits.
+
+**A rule says which job it does.** A rule exists to correct an agent that has gone
+wrong or to steer it where no check reaches (itd-2611041636196213). The two lists
+follow from that: a hazard a machine can catch in a shell command is declared in
+`.abcd/guard.json`, and corrects at the refusal; anything else is a rule in
+`rules.json`, and steers as the work starts. No format changes for this. A domain's
+second list, the rules a check carries, is generated, so no file can declare it; only
+`SHELL` has one. Both lists and their sizes are in the rules verb's machine output,
+so the review of the rule set can be run again as rules change.
+
 **Two bundled domains are generated.** `SHELL` is the teaching plane of the
-shell-hazard guard (itd-103, spc-16 "Two planes, one registry"): its rules and
-recall keywords are built from the same hazard registry `abcd guard` enforces,
+shell-hazard guard (itd-103, spc-16 "Two planes, one registry", narrowed by
+itd-2611041636196213): its rules and recall keywords are built from the same hazard registry `abcd guard` enforces,
 never written in the bundled `rules.json`. The bundled set carries it built from
 the bundled registry; every load rebuilds it, by the same generator, from the
 registry the guard enforces in the repository, which is the bundled entries
 merged with the repository's own `.abcd/guard.json` (ruling CK1). Each registry
 entry becomes one rule — whether the guard refuses or warns, the entry id, the
 command it matches, the plain-language why, and the safe successor — in entry-id
-order. The recall keywords are the command heads the registry matches (`rm`,
+order. What is sent is a line saying a guard judges each command, then the rules of
+the entries it only warns about, since a warned command still runs. The refused
+entries' rules are the second list, with the rules for the scripts the guard reads,
+the variable-built `-c` script and the delete it cannot prove safe; the agent reads
+them at the refusal. The recall keywords are the command heads the registry matches (`rm`,
 `git push`, `gh repo delete`, `pkill`, …), which carry their subcommands so
 the bare words "push" or "reset" never recall the domain. A head that is an
 everyday English verb is marked so in the registry itself (`everyday_verb` on
@@ -1425,30 +1453,29 @@ its pids from, `pgrep` or `pidof`, bare), so "kill the feature flag" does not
 recall the domain while `kill -9 $(pgrep make)` does (iss-2609300123431381). The keywords end with
 a short fixed list for shell work in general (`shell`, `bash`, `zsh`,
 `command line`, `force push`). An entry added to or removed from the registry changes the
-domain with no second edit, and a test fails the build if the domain and the
-registry ever part. To every other contract it is an ordinary bundled domain:
+domain with no second edit, and a test fails the build if an entry falls out of both
+lists. To every other contract it is an ordinary bundled domain:
 a user or repo layer overrides it per field, `dormant` silences it, `*SHELL`
 activates it, the kill switch suppresses it, and dedup and provenance treat it
-like any other. Its injected block costs about 2k tokens for the bundled
-registry, one rule per registry entry, and each entry a repository adds or
-rewords in its `.abcd/guard.json` adds its own rule. An entry's why and its
+like any other. Its injected block is about 4,300 bytes for the bundled registry,
+and each warned entry a repository adds or rewords in its `.abcd/guard.json` adds its
+own rule; a refused one adds nothing to it. An entry's why and its
 successor are each capped at 1,024 bytes, over three times the longest bundled
 one, so one rule is a few hundred tokens at most; a guard file carrying a longer
-one is refused like any invalid entry. When the matched rules still overflow
-the 64 KiB injection budget, the truncation notice names the file whose words
-filled it, `.abcd/guard.json` for these lessons and the layer's `rules.json`
-for a list an override set. The block is paid once per session per
+one is refused like any invalid entry. When a domain is left out for want of
+room, the truncation notice names the file whose words took it, `.abcd/guard.json`
+for these lessons and the layer's `rules.json` for a list an override set. The block is paid once per session per
 signature, so dedup never injects it again while its rules are unchanged, and
 an edit to the guard file re-injects it once. A rule whose words are the
 repository's — an entry the file adds, or a bundled entry whose tier, pattern,
 why or successor it changes — carries `(repo)` after its entry id, so whose
 words an agent is taught is never invisible; a fixture-only change teaches
 the bundled words and is not marked. Under a committed `"disabled": true`
-the guard refuses nothing, so every rule opens `Hazard (guard off)` in place of
-`Refused by the guard` or `Warned by the guard`: the hazard is still taught, and
-the sentence stays true. A `.abcd/guard.json` the guard refuses
+the guard refuses nothing, so nothing corrects the agent later: every rule is sent,
+each opening `Hazard (guard off)` in place of `Refused by the guard` or `Warned by
+the guard`, and no line claims a guard. A `.abcd/guard.json` the guard refuses
 (unreadable, invalid, or an uncommitted edit that weakens it) is refused here
-too and never skipped in silence: `SHELL` teaches the registry the guard falls
+too and never skipped in silence: `SHELL` is built from the registry the guard falls
 back to, none of the refused entries, and the load names the file and the
 reason on stderr, from `abcd rules` and from the hook on every prompt, while
 every other domain loads as usual. The switches stay independent: the guard

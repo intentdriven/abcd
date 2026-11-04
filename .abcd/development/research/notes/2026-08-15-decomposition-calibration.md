@@ -2825,3 +2825,16 @@ The proposal: after the subscription test of 2026-11-03 found that the drive's d
 Verdict at filing: FILE-AS-IS, with the trust rule and the stance held for the product thinker rather than filed. Typed links: the intent refines itd-2610222215485265 (the drive's wall becomes a profile among several); the two sandbox drafts itd-2610161710315026 and itd-2610161710316538 are proposed to build on it. Advisory reversal flag: the draft reverses in part the wall list of spc-2610230813348813 (abcd's own hooks kept where the spec disabled all hooks, an allow-list of named tools where it denied connected services), for the product thinker to confirm.
 
 Grade: pending confirmation of the routing and the planning interview.
+
+## itd-2611041636196213 (agents corrected and steered), filed 2026-11-04
+
+| Part | Kind | Home |
+| --- | --- | --- |
+| the prompt hook held under the host cap, and an honest session record | capability | the intent, resolving iss-2611041419354106 |
+| refused shell hazards carried by the guard, warned ones steered | capability | the intent, refining itd-103 |
+| rule-by-rule rewording of the snapshot of 129 | plumbing | a later change, once the product thinker has marked up the review page |
+| refusal counts per hazard | capability | not filed: the mechanism reads logs already kept |
+
+Verdict at filing: ONE, the two capabilities kept together because both change what one hook sends and each alone leaves the other overflowing. Typed links: builds on itd-3 and itd-103. Advisory reversal flags: the teaching plane of itd-103 (rulings J10, CK1), confirmed by the product thinker at sign-off.
+
+Grade: ONE held at planning; the design review removed the only part that wanted a second home, a state for sending the rest of an overflowing domain later.

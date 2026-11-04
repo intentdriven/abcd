@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"github.com/intentdriven/abcd/internal/core/guard"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,15 +35,19 @@ func TestRulesRendersTheShellDomain(t *testing.T) {
 }
 
 // TestHookPromptRouterTeachesShellHazards: a shell-heavy prompt injects the
-// SHELL domain before the agent acts, and the same prompt again in the same
-// session injects nothing (the per-session dedup).
+// SHELL domain's steering rules before the agent acts, with none of the text
+// for what the guard refuses, and the same prompt again in the same session
+// injects nothing (the per-session dedup).
 func TestHookPromptRouterTeachesShellHazards(t *testing.T) {
 	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
 	cwd := t.TempDir()
 	prompt := "cd into scratch and rm -rf the old output"
 	out, errlog := runHook(t, hookInputJSON(t, "teach", cwd, prompt), "hook", "prompt-router")
-	if !strings.Contains(out, "## SHELL\n") || !strings.Contains(out, "(rm-rf-after-cd-chain)") {
-		t.Fatalf("a shell-heavy prompt did not inject the SHELL lessons:\n%s\nstderr:\n%s", out, errlog)
+	if !strings.Contains(out, "## SHELL\n") || !strings.Contains(out, guard.SteeringLine) || !strings.Contains(out, "(git-reset-hard)") {
+		t.Fatalf("a shell-heavy prompt did not inject the SHELL steering rules:\n%s\nstderr:\n%s", out, errlog)
+	}
+	if strings.Contains(out, "(rm-rf-after-cd-chain)") {
+		t.Fatalf("the text for a refused command was sent ahead of time:\n%s", out)
 	}
 	again, _ := runHook(t, hookInputJSON(t, "teach", cwd, prompt), "hook", "prompt-router")
 	if strings.Contains(again, "## SHELL") {
@@ -62,9 +67,10 @@ func writeGuardFile(t *testing.T, dir, body string) {
 }
 
 // TestRulesTeachesTheRepositorysOwnGuardEntries (ruling CK1): an entry a
-// repository adds in its .abcd/guard.json is taught through both front doors,
-// marked as the repository's; a guard.json the guard refuses is named on
-// stderr from both, and SHELL still teaches the bundled lessons.
+// repository adds in its .abcd/guard.json recalls SHELL and is listed, marked as
+// the repository's, and a refused one reaches the agent at the refusal; a
+// guard.json the guard refuses is named on stderr from both front doors, and
+// SHELL still lists the bundled lessons.
 func TestRulesTeachesTheRepositorysOwnGuardEntries(t *testing.T) {
 	const entry = `{"schema_version":1,"entries":{"deploy-prod":{
 		"tier":"blocker",
@@ -78,8 +84,8 @@ func TestRulesTeachesTheRepositorysOwnGuardEntries(t *testing.T) {
 		cwd := t.TempDir()
 		writeGuardFile(t, cwd, entry)
 		out, errlog := runHook(t, hookInputJSON(t, "teach-repo", cwd, "make deploy the docs site"), "hook", "prompt-router")
-		if !strings.Contains(out, "## SHELL\n") || !strings.Contains(out, lesson) {
-			t.Fatalf("the repository's own hazard was not taught by the hook:\n%s\nstderr:\n%s", out, errlog)
+		if !strings.Contains(out, "## SHELL\n") || strings.Contains(out, lesson) {
+			t.Fatalf("the repository's own hazard did not recall SHELL without its refused text:\n%s\nstderr:\n%s", out, errlog)
 		}
 		t.Chdir(cwd)
 		so, se, err := runCLISplit(t, "rules", "shell")
@@ -93,7 +99,7 @@ func TestRulesTeachesTheRepositorysOwnGuardEntries(t *testing.T) {
 		cwd := t.TempDir()
 		writeGuardFile(t, cwd, strings.Replace(entry, `"why":"It deploys to production from a laptop.",`, "", 1))
 		out, errlog := runHook(t, hookInputJSON(t, "teach-repo-bad", cwd, "rm -rf the old build output"), "hook", "prompt-router")
-		if !strings.Contains(out, "(rm-rf-root-or-home)") || strings.Contains(out, "deploy-prod") {
+		if !strings.Contains(out, "## SHELL\n") || strings.Contains(out, "deploy-prod") {
 			t.Fatalf("a refused guard.json changed the bundled lessons:\n%s", out)
 		}
 		for _, want := range []string{"SHELL", ".abcd/guard.json", "deploy-prod has no why", "refused and not taught"} {
@@ -102,9 +108,12 @@ func TestRulesTeachesTheRepositorysOwnGuardEntries(t *testing.T) {
 			}
 		}
 		t.Chdir(cwd)
-		_, se, err := runCLISplit(t, "rules", "shell")
+		so, se, err := runCLISplit(t, "rules", "shell")
 		if err != nil || !strings.Contains(se, "refused and not taught") {
 			t.Fatalf("abcd rules shell did not name the refused guard.json: err=%v\nstderr:\n%s", err, se)
+		}
+		if !strings.Contains(so, "(rm-rf-root-or-home)") || strings.Contains(so, "deploy-prod") {
+			t.Fatalf("abcd rules shell does not list the bundled lessons alone:\n%s", so)
 		}
 	})
 }

@@ -301,7 +301,7 @@ the checkout from the root the loader resolves for the working directory.
   to a fresh session, running the prompt router's own path: the domains its
   words match, then the memory notes and pages it would recall, ranked together
   with each one's rank, score and the terms that scored it, and the form each
-  would take (`full`, `over-budget` or `too-large`), with any layer or page that
+  would take (a domain `full`, `shrunk`, `pointer` or `over-budget`, a note or page `full`, `one-line`, `over-budget` or `too-large`), with any layer or page that
   could not be read. It writes nothing: no session state is loaded or saved.
 - **Diagnostics go to stderr, never stdout**, so the JSON form stays one
   document: a refused root, a domain skipped for carrying no rules, and each

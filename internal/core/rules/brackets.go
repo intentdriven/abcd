@@ -78,7 +78,7 @@ type BracketRow struct {
 // the first whose MinFreePercent the free share reaches holds, then the
 // unknown row.
 var bracketTable = [...]BracketRow{
-	{Bracket: BracketFresh, MinFreePercent: 70, ShrinkRules: false, MemoryFullBytes: MemoryAll, MemoryLineBytes: 0},
+	{Bracket: BracketFresh, MinFreePercent: 70, ShrinkRules: false, MemoryFullBytes: MemoryAll, MemoryLineBytes: 2 * 1024},
 	{Bracket: BracketModerate, MinFreePercent: 40, ShrinkRules: true, MemoryFullBytes: 8 * 1024, MemoryLineBytes: MemoryAll},
 	{Bracket: BracketDepleted, MinFreePercent: 0, ShrinkRules: true, MemoryFullBytes: 0, MemoryLineBytes: 2 * 1024},
 	{Bracket: BracketUnknown, ShrinkRules: false, MemoryFullBytes: 0, MemoryLineBytes: 2 * 1024},
@@ -159,7 +159,7 @@ func (r BracketRow) Sends() string {
 	var mem string
 	switch {
 	case r.MemoryFullBytes == MemoryAll:
-		mem = "notes and pages in full, in ranked order, within the per-turn budget"
+		mem = fmt.Sprintf("notes and pages in full, in ranked order, within the per-turn budget, and one line each within %s for those that do not fit", kib(r.MemoryLineBytes))
 	case r.MemoryFullBytes > 0 && r.MemoryLineBytes == MemoryAll:
 		mem = fmt.Sprintf("the top-ranked notes and pages in full within %s, the rest as one line each", kib(r.MemoryFullBytes))
 	case r.MemoryFullBytes > 0:
