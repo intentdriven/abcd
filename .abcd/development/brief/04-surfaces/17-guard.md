@@ -112,8 +112,10 @@ whether the guard refuses or warns, the why and the safe successor, recalled by 
 commands the registry names (`rm`, `git push`, `pkill`, …) and by shell work in
 general. A prompt about shell-heavy work sends one line saying a guard judges each
 command, and the rules of the entries that only warn, since a warned command still
-runs. A delete entry warns only outside a repository or once its target is proven safe
-and is refused otherwise, so its rule is read at the refusal too. Where a bracket or a full turn shortens the domain, the line about the guard goes alone, with the command for the rest, or the command goes alone where a full turn has no room for the line. What it refuses is corrected at the refusal, which carries the why and
+runs. A delete entry warns only once its target is proven safe and is refused otherwise,
+so it is not sent: the refusal gives the proof's reason, the warning gives the entry's
+own words, and only a repository's rewording of one goes ahead of time, since no refusal
+shows it. Where a bracket or a full turn shortens the domain, the line about the guard goes alone, with the command for the rest, or the command goes alone where a full turn has no room for the line. What it refuses is corrected at the refusal, which carries the why and
 the safe form, reaches sub-agents the prompt hook never does, and comes before the
 host's own permission prompt, so no person is asked (itd-2611041636196213, which
 narrows itd-103). Every rule stays listed by the rules verb, and a host without hook

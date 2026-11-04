@@ -285,6 +285,23 @@ func TestLessonsUnderADisabledRegistrySayTheGuardIsOff(t *testing.T) {
 	}
 }
 
+// TestARepositorysWordsOnADeleteAreSentAheadOfTime: a refused delete shows the
+// proof's words and not the entry's, so a repository's own words on a delete
+// would reach no agent if they waited for the refusal.
+func TestARepositorysWordsOnADeleteAreSentAheadOfTime(t *testing.T) {
+	reg := Defaults()
+	e := reg.Entries["git-worktree-remove"]
+	e.Successor = "Run scripts/wt-retire.sh <path>; it archives the local tier first."
+	reg.Entries["git-worktree-remove"] = e
+	warned, refused := reg.SplitLessons(Defaults())
+	has := func(lessons []string) bool {
+		return slices.ContainsFunc(lessons, func(l string) bool { return strings.Contains(l, "wt-retire.sh") })
+	}
+	if !has(warned) || has(refused) {
+		t.Fatalf("the repository's words: sent ahead of time %v, held for the refusal %v", has(warned), has(refused))
+	}
+}
+
 // TestLessonsSplitByWhatTheGuardDoes: each entry falls in exactly one half by
 // what the guard does with its command, in id order, with the repository mark
 // kept. A delete entry sits in the warn tier and in the refused half, since the

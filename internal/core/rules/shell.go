@@ -12,10 +12,10 @@ import (
 // lists. Rules is what is sent as shell work starts: one line saying a guard
 // judges each command, then the lessons of the commands it only warns about,
 // since a warned command still runs. Checked is what the guard carries: the
-// lessons of what it refuses, which the agent reads at the refusal, in the
-// main session and in a sub-agent alike, and `abcd rules SHELL` lists. With the
-// guard switched off nothing refuses, so every lesson stays in Rules and no
-// line claims a guard.
+// lessons of what it refuses, the delete entries' among them (SplitLessons), which
+// the refusal answers for in the main session and in a sub-agent alike, and
+// `abcd rules SHELL` lists. With the guard switched off nothing refuses, so every
+// lesson stays in Rules, under a first line saying the guard is off.
 //
 // The domain is GENERATED, never written in defaults/rules.json: an entry added
 // to or removed from the registry changes the domain with no second edit, and

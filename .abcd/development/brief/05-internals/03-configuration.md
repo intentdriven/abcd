@@ -1443,10 +1443,12 @@ entry becomes one rule — whether the guard refuses or warns, the entry id, the
 command it matches, the plain-language why, and the safe successor — in entry-id
 order. What is sent is a line saying a guard judges each command, then the rules of
 the entries that only warn, since a warned command still runs. The refused
-entries' rules are the second list, the delete entries' among them, since a delete
-warns only outside a repository or once its target is proven safe, with the rules for the scripts the guard reads,
-the variable-built `-c` script and the delete it cannot prove safe; the agent reads
-them at the refusal. The recall keywords are the command heads the registry matches (`rm`,
+entries' rules are the second list, with the rules for the scripts the guard reads,
+the variable-built `-c` script and the delete it cannot prove safe; the refusal answers
+for them. The delete entries' rules are there too, since a delete warns only once its
+target is proven safe: a refused delete shows the proof's reason and a proven one the
+entry's words, and a delete entry a repository rewords goes in the first list, since no
+refusal shows it. The recall keywords are the command heads the registry matches (`rm`,
 `git push`, `gh repo delete`, `pkill`, …), which carry their subcommands so
 the bare words "push" or "reset" never recall the domain. A head that is an
 everyday English verb is marked so in the registry itself (`everyday_verb` on
@@ -1461,8 +1463,8 @@ lists. To every other contract it is an ordinary bundled domain:
 a user or repo layer overrides it per field, `dormant` silences it, `*SHELL`
 activates it, the kill switch suppresses it, and dedup and provenance treat it
 like any other. Its injected block is about 1,400 bytes for the bundled registry,
-and each warned entry a repository adds or rewords in its `.abcd/guard.json` adds its
-own rule; a refused one adds nothing to it. An entry's why and its
+and each warned entry a repository adds or rewords in its `.abcd/guard.json`, a delete
+entry among them, adds its own rule; a refused one adds nothing to it. An entry's why and its
 successor are each capped at 1,024 bytes, over three times the longest bundled
 one, so one rule is a few hundred tokens at most; a guard file carrying a longer
 one is refused like any invalid entry. When a domain is left out for want of

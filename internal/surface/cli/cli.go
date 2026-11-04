@@ -1968,7 +1968,7 @@ envelope carries it as system_message.`,
 			fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: turn %d, injected %d domain(s) %v, %d bytes", res.State.Count, len(res.Injected), res.Labels(), len(res.Text))
 			if len(res.Shrunk) > 0 {
 				fmt.Fprintf(cmd.ErrOrStderr(), "; %d shrunk to heading and first rule %v (%s bracket, %d bytes left of the turn)", len(res.Shrunk), res.Shrunk, bracket,
-					max(0, rules.InjectionBudgetBytes-reserved-len(res.Text)))
+					max(0, rules.InjectionBudgetBytes-reserved-len(res.Text)-len(mem.Text)))
 			}
 			if len(res.Pointed) > 0 {
 				fmt.Fprintf(cmd.ErrOrStderr(), "; %d sent as heading and command alone %v, no room for a rule", len(res.Pointed), res.Pointed)
@@ -2676,8 +2676,8 @@ in this repository, the bundled entries and the repository's own
 .abcd/guard.json entries alike, recalled by the commands the registry names.
 Only part of it is sent as shell work starts: a line saying a guard judges each
 command, and the rules of the entries that only warn, since a warned command
-still runs. The rules for what it refuses, a delete it cannot prove safe
-included, reach the agent at the refusal, and this command lists them after the rest; --json carries them as
+still runs. What it refuses, a delete it cannot prove safe included, is
+explained at the refusal, and this command lists those rules after the rest; --json carries them as
 "checked", with each list's size in "rules_bytes" and "checked_bytes". With the
 guard switched off, every rule is steering, more than one turn holds, so a line
 saying the guard is off is sent and this command lists the rest. A rule in the

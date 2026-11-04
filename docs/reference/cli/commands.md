@@ -5314,8 +5314,8 @@ in this repository, the bundled entries and the repository's own
 .abcd/guard.json entries alike, recalled by the commands the registry names.
 Only part of it is sent as shell work starts: a line saying a guard judges each
 command, and the rules of the entries that only warn, since a warned command
-still runs. The rules for what it refuses, a delete it cannot prove safe
-included, reach the agent at the refusal, and this command lists them after the rest; --json carries them as
+still runs. What it refuses, a delete it cannot prove safe included, is
+explained at the refusal, and this command lists those rules after the rest; --json carries them as
 "checked", with each list's size in "rules_bytes" and "checked_bytes". With the
 guard switched off, every rule is steering, more than one turn holds, so a line
 saying the guard is off is sent and this command lists the rest. A rule in the

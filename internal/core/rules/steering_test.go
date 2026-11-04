@@ -96,8 +96,9 @@ func TestEveryLessonIsInExactlyOneList(t *testing.T) {
 }
 
 // TestGuardOffKeepsEveryShellRuleSteeringAndClaimsNoGuard: where the guard
-// refuses nothing, nothing corrects the agent later, so every rule stays one
-// that is sent, and no line says a guard is running.
+// refuses nothing, nothing corrects the agent later, so every rule stays
+// steering, under a first line saying the guard is off, and no line says a guard
+// is running.
 func TestGuardOffKeepsEveryShellRuleSteeringAndClaimsNoGuard(t *testing.T) {
 	off := guard.Defaults()
 	off.Disabled = true

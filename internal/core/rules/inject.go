@@ -50,7 +50,7 @@ const InjectionBudgetBytes = HostOutputCap - hostOutputMargin
 // many domains match, so a long rule set never silences what was learned. It
 // holds a note at the longest body a note may have, on lines of ordinary length,
 // with its header and line.
-// A turn no note comes back on gives it back to the rules (cli.injectWithRecall).
+// What the notes leave of it goes back to the rules (cli.injectWithRecall).
 const MemoryFloorBytes = 2_500
 
 // RulesBudget is what the rules may take of the turn once reserved bytes have

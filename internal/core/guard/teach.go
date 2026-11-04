@@ -42,9 +42,10 @@ const OffLine = "The shell guard is off in this repository, so nothing refuses o
 // the guard does with the command: a warned command still runs, so its lesson
 // is one an agent needs first, and a refused one is corrected at the refusal
 // (itd-2611041636196213). A delete entry warns only once its target is proven
-// safe or outside a repository, and is refused otherwise, so it counts as refused.
-// Under a disabled registry every lesson is steering, since nothing refuses, and
-// refused is empty.
+// safe and is refused otherwise, so it counts as refused, unless a repository
+// worded it: the refusal shows the proof's words and not the entry's, so a
+// repository's would otherwise reach no agent. Under a disabled registry every
+// lesson is steering, since nothing refuses, and refused is empty.
 func (r Registry) SplitLessons(bundled Registry) (warned, refused []string) {
 	repo := overBundled(bundled)
 	ids := make([]string, 0, len(r.Entries))
@@ -55,8 +56,9 @@ func (r Registry) SplitLessons(bundled Registry) (warned, refused []string) {
 	for _, id := range ids {
 		e := r.Entries[id]
 		e.ID = id
-		l := e.lesson(repo(id, e), r.Disabled)
-		if r.Disabled || (e.Tier == TierWarn && !deleteEntryIDs[id]) {
+		own := repo(id, e)
+		l := e.lesson(own, r.Disabled)
+		if r.Disabled || (e.Tier == TierWarn && (!deleteEntryIDs[id] || own)) {
 			warned = append(warned, l)
 		} else {
 			refused = append(refused, l)

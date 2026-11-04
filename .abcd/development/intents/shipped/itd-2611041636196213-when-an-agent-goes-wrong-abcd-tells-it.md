@@ -105,9 +105,10 @@ None. The product thinker confirmed the reversal below at sign-off, 2026-11-04.
   and this intent changes what the native loader sends. Whichever lands second carries
   the budget and the two lists through its seam.
 - A delete entry counts as refused though it sits in the warn tier: the guard refuses it
-  in a repository unless it proves the target safe, so only what is sure to run is sent
-  ahead of time. Its lesson keeps its `Warned by the guard` opening until the
-  rule-by-rule change.
+  unless it proves the target safe, so only what is sure to run is sent ahead of time. A
+  repository's rewording of one is still sent, since a refused delete shows the proof's
+  words. Its lesson keeps its `Warned by the guard` opening until the rule-by-rule
+  change.
 - Whatever of the 2,500 bytes kept for notes they leave unused goes back to the rules,
   so a short note does not shorten a domain that fits beside it.
 - With the guard off, the rules cannot all fit one turn, so the first rule says the guard
