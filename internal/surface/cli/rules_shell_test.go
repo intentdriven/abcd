@@ -3,6 +3,8 @@ package cli
 import (
 	"encoding/json"
 	"github.com/intentdriven/abcd/internal/core/guard"
+	"github.com/intentdriven/abcd/internal/core/rules"
+	"github.com/intentdriven/abcd/internal/gittest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -52,6 +54,29 @@ func TestHookPromptRouterTeachesShellHazards(t *testing.T) {
 	again, _ := runHook(t, hookInputJSON(t, "teach", cwd, prompt), "hook", "prompt-router")
 	if strings.Contains(again, "## SHELL") {
 		t.Fatalf("the unchanged SHELL domain re-injected within one session:\n%s", again)
+	}
+}
+
+// TestHookWithTheGuardOffSaysSo: every hazard is more than one turn holds, so a
+// repository that switched the guard off gets the line saying nothing will stop
+// the command, and the command that lists the hazards, and no line claiming a guard.
+func TestHookWithTheGuardOffSaysSo(t *testing.T) {
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	repo := gittest.NewRepo(t)
+	repo.Write(guard.RepoRelPath, `{"schema_version":1,"disabled":true}`)
+	repo.Commit("disable the guard")
+	out, errlog := runHook(t, hookInputJSON(t, "guard-off", repo.Root(), "cd into scratch and rm -rf the old output"), "hook", "prompt-router")
+	if !strings.Contains(out, "## SHELL\n") || !strings.Contains(out, guard.OffLine) {
+		t.Fatalf("the hook did not say the guard is off:\n%s\nstderr:\n%s", out, errlog)
+	}
+	if strings.Contains(out, guard.SteeringLine) {
+		t.Fatalf("a line claims a guard is running:\n%s", out)
+	}
+	if !strings.Contains(out, "`abcd rules SHELL`") {
+		t.Fatalf("no command for the rest:\n%s", out)
+	}
+	if len(out) >= rules.HostOutputCap {
+		t.Fatalf("the hook wrote %d bytes, at or over the host's %d", len(out), rules.HostOutputCap)
 	}
 }
 

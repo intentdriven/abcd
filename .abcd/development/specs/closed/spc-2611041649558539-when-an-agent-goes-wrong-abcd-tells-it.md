@@ -19,8 +19,8 @@ host cap of 10,000 characters less a 500 margin, the figures the session-start h
 already uses (bytes never undercount characters). The router reads the status and
 away blocks first, so the rules and notes get what those leave. Rules leave a 2,500
 byte floor for notes, one note at the longest body a note may have; notes take what
-the rules actually left, and a turn no note comes back on gives the floor back to the
-rules. `rules --prompt` runs the same path with nothing reserved.
+the rules actually left, and whatever of the floor the notes leave unused goes back to
+the rules. `rules --prompt` runs the same path with nothing reserved.
 
 **Overflow.** `renderWithinBudget` no longer stops at the first domain that does not
 fit. Room goes up a ladder: every matched domain gets its pointer (heading and a line
@@ -41,9 +41,10 @@ being left out or set aside as too large.
 **The two lists.** `Domain` gains `Checked`, a generated list no rule file can
 declare (`json:"-"`), which only SHELL fills. With the guard on, `Rules` holds one
 line saying a guard judges each command, then the warned lessons; `Checked` holds the
-refused lessons and the three lessons with no entry of their own (script reading,
-variable-built `-c`, unprovable delete). With the guard off, every lesson stays in
-`Rules` as today and the steering line is not sent. The signature and the injected block
+refused lessons, the bundled delete entries' among them, and the three lessons with no
+entry of their own (script reading, variable-built `-c`, unprovable delete). With the
+guard off, every lesson is in `Rules`, under a first line saying the guard is off in
+place of the steering line. The signature and the injected block
 read `Rules` only. `abcd rules`, bare or scoped, renders both lists, and `--json`
 adds `checked`, `rules_bytes` and `checked_bytes` for every domain.
 
