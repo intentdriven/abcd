@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/lifeboat"
+	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/spf13/cobra"
 )
 
@@ -215,6 +216,7 @@ func TestDisembarkPrinciplesUnknownFieldExit2(t *testing.T) {
 // TestDisembarkPressReleaseDeterministic: no flag → deterministic press-release.json
 // composed from the packed brief, exit 0.
 func TestDisembarkPressReleaseDeterministic(t *testing.T) {
+	gittest.NeutralCaller(t) // its scan judges the lifeboat, not the account that runs the test
 	dir := buildSynthLifeboat(t, synthOpts{briefPR: true})
 	out := runCLI(t, "disembark", "press-release", dir, "--json")
 	var res lifeboat.PressReleaseResult
@@ -249,6 +251,7 @@ func TestDisembarkPressReleaseDelegated(t *testing.T) {
 // resolves to nothing is the whole-document refusal — exit 2, and the previously
 // derived press-release.json is left byte-for-byte untouched.
 func TestDisembarkPressReleaseUncitedExit2(t *testing.T) {
+	gittest.NeutralCaller(t) // its scan judges the lifeboat, not the account that runs the test
 	dir := buildSynthLifeboat(t, synthOpts{briefPR: true})
 	// Establish the deterministic derived file first.
 	runCLI(t, "disembark", "press-release", dir)

@@ -1011,7 +1011,8 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 
 // genericAccountNames are account names that identify no person: the default
 // accounts of hosted CI machines, container and cloud images and development
-// environments, and the role words a shared machine is named for. Each is also
+// environments (abcd's own cloud setup among them, whose account bears the
+// product's name), and the role words a shared machine is named for. Each is also
 // ordinary vocabulary — a documented flag, a noun in the docs — so treating
 // every bare occurrence as the caller's login hard-failed the launch payload
 // on a pristine tree and rewrote prose in committed records (iss-236,
@@ -1019,7 +1020,7 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 // per-repo pii.json is committed content, and a planted entry there would
 // disarm the username gate for a real person's login.
 var genericAccountNames = map[string]bool{
-	"admin": true, "administrator": true, "app": true, "build": true,
+	"abcd": true, "admin": true, "administrator": true, "app": true, "build": true,
 	"builder": true, "ci": true, "codespace": true, "debian": true,
 	"deploy": true, "dev": true, "developer": true, "docker": true,
 	"ec2-user": true, "git": true, "gitpod": true, "guest": true,
@@ -1093,8 +1094,26 @@ func standsAsAccountName(line string, start, end int, homes []string, toks *path
 		hi++
 	}
 	scanMeter.charge(stageIdentity, hi-end)
+	if rest, ok := strings.CutPrefix(line[start:], pluginSpec); ok &&
+		(start == 0 || isSpecBoundary(line[start-1])) {
+		if rest = strings.TrimLeft(rest, "."); rest == "" || isSpecBoundary(rest[0]) {
+			return false
+		}
+	}
 	return hi+1 < len(line) && line[hi] == '@' && isAlnumByte(line[hi+1])
 }
+
+// isSpecBoundary reports whether b can stand beside pluginSpec in prose. The set
+// is closed rather than "not an address byte": a byte it does not name, such as
+// a multibyte letter's, leaves the line a finding.
+func isSpecBoundary(b byte) bool {
+	return strings.IndexByte(" \t()[]<>`'\",;:", b) >= 0
+}
+
+// pluginSpec is the plugin's own install line, which reads as user@host and
+// stands on the install pages of the payload a session under the cloud setup's
+// account scans.
+const pluginSpec = "abcd@abcd-marketplace"
 
 // bareHomeRoots are the home roots an archive listing or a relative path
 // writes without the leading separator ("Users/<login>/Desktop" in a tar
