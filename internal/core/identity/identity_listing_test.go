@@ -126,9 +126,15 @@ func TestTheListingAnswersAsAReadOfEachKeyDoes(t *testing.T) {
 			home, xdg, inc := t.TempDir(), filepath.Join(t.TempDir(), "xdg"), t.TempDir()
 			t.Setenv("HOME", home)
 			t.Setenv("XDG_CONFIG_HOME", xdg)
-			unsetEnv(t, "GIT_CONFIG_GLOBAL")
+			// Only what the shape sets may answer, whatever the shell exports.
+			for _, key := range []string{
+				"GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL",
+				"GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0",
+				"GIT_CONFIG", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM",
+			} {
+				unsetEnv(t, key)
+			}
 			t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
-			unsetEnv(t, "GIT_CONFIG_SYSTEM")
 			// git matches gitdir: against the physical path; a temporary directory
 			// can sit behind a link.
 			physical, err := filepath.EvalSymlinks(r.Root())
