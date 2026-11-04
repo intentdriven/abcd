@@ -109,9 +109,9 @@ func TestPruningLeavesAFileItCannotDate(t *testing.T) {
 	}
 }
 
-// Decision 14: 30 days and 20,000 entries by default; a machine or repository
-// setting overrides them; a figure below the floor is read as the floor and
-// named as such.
+// Decision 14: 30 days and 20,000 entries by default; a machine setting
+// overrides them and a repository's lengthens them; a figure below the floor is
+// read as the floor and named as such.
 func TestRetentionIsReadFromTheConfiguration(t *testing.T) {
 	if r := mustLoad(t, "", "").Ledger().retention; r != (Retention{Days: 32, Count: 20000}) {
 		t.Errorf("default = %+v", r)
@@ -119,7 +119,7 @@ func TestRetentionIsReadFromTheConfiguration(t *testing.T) {
 	if r := mustLoad(t, `{"ledger":{"retention_days":90,"retention_count":500}}`, "").Ledger().retention; r != (Retention{Days: 90, Count: 500}) {
 		t.Errorf("machine = %+v", r)
 	}
-	if r := mustLoad(t, `{"ledger":{"retention_days":90}}`, `{"ledger":{"retention_days":120,"retention_count":7}}`).Ledger().retention; r != (Retention{Days: 120, Count: 7}) {
+	if r := mustLoad(t, `{"ledger":{"retention_days":90}}`, `{"ledger":{"retention_days":120,"retention_count":30000}}`).Ledger().retention; r != (Retention{Days: 120, Count: 30000}) {
 		t.Errorf("repository over machine = %+v", r)
 	}
 	c := mustLoad(t, "", `{"ledger":{"retention_days":10}}`)

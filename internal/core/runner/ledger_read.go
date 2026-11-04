@@ -92,12 +92,12 @@ type LedgerListing struct {
 	LivenessUnread bool `json:"liveness_unread,omitempty"`
 }
 
-// tempFilePrefix opens the atomic writer's temporary files, passed over.
+// tempFilePrefix opens the atomic writer's temporary files, passed over by a
+// reader and cleared by the pruner once a crash has left them.
 const tempFilePrefix = ".abcd-tmp-"
 
-// procTable says whether a process is running: pid, and the start an entry
-// recorded for it, zero when it recorded none.
-type procTable func(pid int, startUnix int64) bool
+// procTable says whether the process an entry names is the one running.
+type procTable func(e LedgerEntry) bool
 
 // liveProcTable reads this machine's process table once.
 func liveProcTable() (procTable, error) {
@@ -109,14 +109,20 @@ func liveProcTable() (procTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	return func(pid int, startUnix int64) bool {
-		if pid <= 0 {
+	return func(e LedgerEntry) bool {
+		if e.PID <= 0 {
 			return false
 		}
-		if startUnix != 0 {
-			return t.Alive(sessionname.Host{PID: pid, StartUnix: startUnix})
+		if e.PIDStartUnix != 0 {
+			return t.Alive(sessionname.Host{PID: e.PID, StartUnix: e.PIDStartUnix})
 		}
-		return slices.ContainsFunc(t.Procs, func(p machineload.Proc) bool { return p.PID == pid })
+		// The launcher's id, with no start of its own: the launcher was running
+		// when it wrote the entry, so a process that started later holds the id
+		// since. An entry that says no time cannot be judged that way.
+		if e.StartedAt.IsZero() {
+			return slices.ContainsFunc(t.Procs, func(p machineload.Proc) bool { return p.PID == e.PID })
+		}
+		return t.HeldSince(e.PID, e.StartedAt)
 	}, nil
 }
 
@@ -190,12 +196,22 @@ func readLedgerFile(root *os.Root, name string, out *LedgerListing) (LedgerEntry
 		return bad("its name is not a launch entry's")
 	}
 	raw, err := fsutil.ReadGuardedInRoot(root, name, maxLedgerEntry)
+	if errors.Is(err, os.ErrNotExist) {
+		// Pruned since the folder was listed: no fault, and no launch to name.
+		return LedgerEntry{}, false
+	}
 	if err != nil {
 		return bad("it could not be read as a regular file of at most 64 KiB")
 	}
 	var e LedgerEntry
-	if err := json.Unmarshal(raw, &e); err != nil {
+	var shape *json.UnmarshalTypeError
+	if err := json.Unmarshal(raw, &e); err != nil && !(errors.As(err, &shape) && e.Schema > LedgerSchema) {
+		// A later abcd may reshape a field: the decoder fills the rest, and the
+		// entry is named as newer. At this version a bad field is a bad entry.
 		return bad("it is not an entry's JSON")
+	}
+	if e.Schema < 1 {
+		return bad("it names no schema version, so it is no launch's entry")
 	}
 	e.ID = strings.TrimSuffix(name, ledgerExt)
 	return e, true
@@ -229,7 +245,7 @@ func judgeRunning(out *LedgerListing, table func() (procTable, error)) {
 			}
 			alive = t
 		}
-		if alive != nil && !alive(e.PID, e.PIDStartUnix) {
+		if alive != nil && !alive(*e) {
 			e.Outcome = OutcomeLost
 		}
 	}

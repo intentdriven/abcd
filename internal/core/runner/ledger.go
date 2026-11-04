@@ -33,6 +33,8 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/adapter/scanner"
+	"github.com/intentdriven/abcd/internal/core/credential"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/sessionname"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -167,6 +169,13 @@ const (
 	DefaultRetentionCount = 20000
 )
 
+// The most a figure may say: past them a figure is no retention at all, and the
+// ledger never grows without bound.
+const (
+	maxRetentionDays  = 36500
+	maxRetentionCount = 1000000
+)
+
 // RetentionFloorDays is the shortest the store ever keeps an entry: the longest
 // cap period a key's budget counts, a calendar month of 31 days
 // (itd-2611011230226453), plus one day, so a month's totals are always summed
@@ -191,16 +200,36 @@ func NewLedger(home string) *Ledger {
 	return &Ledger{home: home, now: func() time.Time { return time.Now().UTC() }, retention: DefaultRetention()}
 }
 
-// keyNameRe is a key's configured name. A value does not fit it (too long, or
-// the shape keyValuePrefix refuses), so a caller's mistake cannot reach the
-// store.
-var keyNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
-
 // keyValuePrefix opens a provider's key value, never a name someone chose.
 const keyValuePrefix = "sk-"
 
+// keyValueRunRe is an unbroken run of letters and digits long enough to be a
+// token: what a value holds and a name someone chose does not.
+var keyValueRunRe = regexp.MustCompile(`[a-z0-9]{20,}`)
+
+// keyNameOK reports whether s can be a key's configured name: the credential
+// store's own name, and nothing shaped like a value. A name is all an entry
+// keeps of a key, so a caller's mistake stops here rather than in the store.
+func keyNameOK(s string) bool {
+	if !credential.ValidName(s) || strings.HasPrefix(s, keyValuePrefix) {
+		return false
+	}
+	return !slices.ContainsFunc(keyValueRunRe.FindAllString(s, -1), func(run string) bool {
+		return strings.ContainsAny(run, "0123456789")
+	}) && len(secretFindings(s)) == 0
+}
+
 // maxLedgerReason bounds a reason as an entry carries it.
 const maxLedgerReason = 300
+
+// reasonValidator is all an entry says of a validator's refusal. The refusal's
+// own words quote the answer, which the agent wrote and which can repeat its
+// brief, so they stay on the run's record and off this one.
+const reasonValidator = "the contract's validator refused its answer"
+
+// staleLedgerTemp is how old the atomic writer's temporary file must be before
+// the pruner takes it for one a crash left: a racing launch's lasts a moment.
+const staleLedgerTemp = 24 * time.Hour
 
 type startedKey struct{}
 
@@ -212,6 +241,11 @@ func LaunchStarted(ctx context.Context, pid int) {
 		f(pid)
 	}
 }
+
+// LaunchExited tells the launch ctx belongs to that its process has gone and the
+// launcher still holds it: validating an answer takes time, and an entry whose
+// launch is still being finished is not lost.
+func LaunchExited(ctx context.Context) { LaunchStarted(ctx, 0) }
 
 // RecordLaunch is the one way an entry is written. It writes the entry marked
 // running, runs run with a context LaunchStarted answers on, and completes the
@@ -227,7 +261,7 @@ func RecordLaunch(ctx context.Context, l *Ledger, s LaunchStart, run func(contex
 	if l == nil {
 		return LaunchEnd{}, errors.New("runner: no launch ledger was opened, so nothing is started")
 	}
-	if s.Key != "" && (!keyNameRe.MatchString(s.Key) || strings.HasPrefix(s.Key, keyValuePrefix)) {
+	if s.Key != "" && !keyNameOK(s.Key) {
 		return LaunchEnd{}, errors.New("runner: the key handed to this launch is not named by its configured name, " +
 			"so nothing is started and nothing is written to the ledger")
 	}
@@ -311,9 +345,17 @@ func (l *Ledger) prune() {
 	if err != nil {
 		return
 	}
+	now := l.now()
+	for _, n := range names {
+		if !strings.HasPrefix(n, tempFilePrefix) {
+			continue
+		}
+		if fi, err := root.Lstat(n); err == nil && fi.Mode().IsRegular() && now.Sub(fi.ModTime()) > staleLedgerTemp {
+			_ = root.Remove(n)
+		}
+	}
 	names = slices.DeleteFunc(names, func(n string) bool { return !launchFileRe.MatchString(n) })
 	slices.Sort(names)
-	now := l.now()
 	floor := now.AddDate(0, 0, -RetentionFloorDays)
 	oldest := now.AddDate(0, 0, -l.retention.Days)
 	for i, name := range names {
@@ -375,6 +417,10 @@ func (h *launchHandle) write() error {
 	if err != nil {
 		return err
 	}
+	// An entry the reader would refuse records nothing.
+	if len(line) >= maxLedgerEntry {
+		return fmt.Errorf("the entry is %d bytes, past the %d a reader takes", len(line), maxLedgerEntry)
+	}
 	root, err := h.l.openStore()
 	if err != nil {
 		return err
@@ -383,12 +429,17 @@ func (h *launchHandle) write() error {
 	return fsutil.WriteFileAtomicInRoot(root, h.entry.ID+ledgerExt, append(line, '\n'), abcdhome.FileMode)
 }
 
-// started moves the entry onto the process that runs the launch. A write that
-// fails leaves it judged by the launcher, which waits on that process.
+// started moves the entry onto the process that runs the launch, or back onto
+// the launcher when pid is 0. A write that fails leaves it judged by the
+// launcher, which waits on that process.
 func (h *launchHandle) started(pid int) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.entry.PID, h.entry.PIDStartUnix = pid, h.l.now().Unix()
+	if pid == 0 {
+		h.entry.PID, h.entry.PIDStartUnix = os.Getpid(), 0
+	} else {
+		h.entry.PID, h.entry.PIDStartUnix = pid, h.l.now().Unix()
+	}
 	_ = h.write()
 }
 
@@ -441,6 +492,9 @@ func (h *launchHandle) end(end LaunchEnd) {
 		var fl *Failure
 		if errors.As(end.Err, &fl) {
 			e.Reason = ledgerReason(errors.New(fl.Detail))
+			if fl.Reason == ReasonInvalid {
+				e.Reason = reasonValidator
+			}
 			if errors.Is(end.Err, ErrKilled) {
 				e.Outcome = OutcomeStopped
 			}
@@ -452,14 +506,29 @@ func (h *launchHandle) end(end LaunchEnd) {
 	_ = h.write()
 }
 
-// ledgerReason is an error as an entry carries it: plain, bounded and with the
-// person's home written as ~.
+// ledgerReason is an error as an entry carries it: every secret span sealed,
+// plain, bounded and with the person's home written as ~. Reasons are abcd's
+// own words, but a word can quote what it failed on. It fails closed: text the
+// seal leaves a secret in is described rather than kept.
 func ledgerReason(err error) string {
-	s := termsafe.Sanitize(fsutil.RedactHome(err.Error()))
+	s := err.Error()
+	sealed, _ := scanner.Redact(s, secretFindings(s))
+	if len(secretFindings(sealed)) > 0 {
+		sealed = termsafe.DescribeRefused(s)
+	}
+	s = termsafe.Sanitize(fsutil.RedactHome(sealed))
 	if len(s) > maxLedgerReason {
 		s = strings.ToValidUTF8(s[:maxLedgerReason], "") + "..."
 	}
 	return s
+}
+
+// secretFindings is every token the bundled patterns find in s. It reads no
+// repository's configuration: a store shared by every repository is not one
+// repository's to widen a hole in.
+func secretFindings(s string) []scanner.Finding {
+	found := scanner.ScanText(s, scanner.Identity{}, scanner.DefaultPatterns(), nil, ledgerFolder)
+	return slices.DeleteFunc(found, func(f scanner.Finding) bool { return scanner.IsIdentityKind(f.Kind) })
 }
 
 // ledgerExt is an entry file's extension. The atomic writer's temporary files

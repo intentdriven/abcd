@@ -1,6 +1,10 @@
 package sessionname
 
-import "github.com/intentdriven/abcd/internal/core/machineload"
+import (
+	"time"
+
+	"github.com/intentdriven/abcd/internal/core/machineload"
+)
 
 // lookup.go reads the register on behalf of the launch ledger
 // (itd-2611031342011261), which names a launch's session by id and persona
@@ -22,6 +26,22 @@ func NameOf(m Machine, sessionID string) string {
 		}
 	}
 	return ""
+}
+
+// HeldSince reports whether pid is running and started no later than at, within
+// the tolerance two readings of one start time are allowed. A process that
+// started after at is not the one that was running at at, whatever its id.
+func (t Table) HeldSince(pid int, at time.Time) bool {
+	if pid <= 1 {
+		return false
+	}
+	for _, p := range t.Procs {
+		if p.PID == pid {
+			h := t.host(p)
+			return h.StartUnix <= at.Unix()+startTolerance+slackSecs(h.Slack)
+		}
+	}
+	return false
 }
 
 // SessionAbove is the session whose host process m.From descends from, and its

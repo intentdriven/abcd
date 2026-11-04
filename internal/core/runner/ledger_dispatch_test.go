@@ -47,17 +47,17 @@ func oneEntry(t *testing.T, c *Config) LedgerEntry {
 }
 
 // A launch on the subscription: the whole record, from the stream alone. The
-// figures sit where a reader sums them, and while the harness was alive its
-// entry was judged by the harness's process, not the launcher's.
+// figures sit where a reader sums them, and while its answer is validated, with
+// the harness gone, the entry is the launcher's and reads as running, never lost.
 func TestADispatchedLaunchIsRecordedWithItsFigures(t *testing.T) {
 	f := newFake(t, "stream", Claude)
 	answering(t, streamInit+streamWindow+streamResult)
 	c := mustLoad(t, claudeRoute, "")
 	h := newHarness(t, c, true)
-	var mid LedgerEntry
+	var mid LedgerListing
 	valid := h.d.Validate
 	h.d.Validate = func(ran string, req Request, ans Answer) error {
-		mid = oneEntry(t, c)
+		mid = readAll(t, c.Ledger().home, LedgerQuery{All: true})
 		return valid(ran, req, ans)
 	}
 	req := f.request("ruthless-reviewer")
@@ -66,8 +66,8 @@ func TestADispatchedLaunchIsRecordedWithItsFigures(t *testing.T) {
 	if _, err := h.d.Dispatch(context.Background(), req); err != nil {
 		t.Fatal(err)
 	}
-	if mid.Outcome != OutcomeRunning || mid.PID <= 0 || mid.PID == os.Getpid() || mid.PIDStartUnix == 0 {
-		t.Errorf("while running: %+v", mid)
+	if mid.Totals.Running != 1 || mid.Totals.Lost != 0 {
+		t.Errorf("while its answer was validated: %+v", mid.Totals)
 	}
 	e := oneEntry(t, c)
 	if e.Outcome != OutcomeFinished || e.Role != "ruthless-reviewer" || e.Runner != Claude || e.Repo != f.repo ||

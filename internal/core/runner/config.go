@@ -44,6 +44,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -185,42 +186,53 @@ func Load(r layered.Roots) (*Config, error) {
 	return c, nil
 }
 
-// readLedger reads the launch ledger's retention (decision 14): a machine or
-// repository figure overrides the shipped one, and a days figure below the
-// floor is read as the floor and named as such. The count needs no floor of its
-// own, since the pruner never goes inside the floor's days whatever it says.
+// readLedger reads the launch ledger's retention (decision 14): a machine figure
+// overrides the shipped one, and a days figure below the floor is read as the
+// floor and named as such. The count needs no floor of its own, since the pruner
+// never goes inside the floor's days whatever it says.
+//
+// The store holds every repository's launches, and a repository's file is
+// whatever its last committer wrote, so a repository's figure may lengthen what
+// this machine keeps and may not shorten it: one below is named and ignored.
 func (c *Config) readLedger(s *layered.Stack) error {
 	r := DefaultRetention()
-	read := func(key string, set func(found layered.Found, n int)) error {
+	read := func(key string, ceiling int, at *int, floor func(layered.Found, int) int) error {
 		found, err := s.Lookup(ledgerKey + "." + key)
 		if err != nil {
 			return fmt.Errorf("runner: %w", err)
 		}
-		if len(found) == 0 {
-			return nil
+		// Lowest precedence first: the machine's figure is what a repository's
+		// is held against.
+		for _, f := range slices.Backward(found) {
+			n, err := layered.Decode[int](f.Raw)
+			if err != nil {
+				return fmt.Errorf("runner: %s (%s.%s): %w", f.Origin, ledgerKey, key, err)
+			}
+			if n < 1 || n > ceiling {
+				return fmt.Errorf("runner: %s (%s.%s) is %d; it is a whole number from 1 to %d", f.Origin, ledgerKey, key, n, ceiling)
+			}
+			n = floor(f, n)
+			if f.Layer == layered.Repo && n < *at {
+				c.diagnose("", fmt.Sprintf("runner: %s (%s.%s) is %d, below the %d this machine keeps; the launch ledger holds "+
+					"every repository's launches, so a repository's figure may only lengthen it and this one is ignored",
+					f.Origin, ledgerKey, key, n, *at))
+				continue
+			}
+			*at = n
 		}
-		f := found[0]
-		n, err := layered.Decode[int](f.Raw)
-		if err != nil {
-			return fmt.Errorf("runner: %s (%s.%s): %w", f.Origin, ledgerKey, key, err)
-		}
-		if n < 1 {
-			return fmt.Errorf("runner: %s (%s.%s) is %d; it is a whole number of at least 1", f.Origin, ledgerKey, key, n)
-		}
-		set(f, n)
 		return nil
 	}
-	if err := read(retentionDaysKey, func(f layered.Found, n int) {
-		r.Days = n
-		if n < RetentionFloorDays {
-			r.Days = RetentionFloorDays
-			c.diagnose("", fmt.Sprintf("runner: %s (%s.%s) is %d, below the longest period a key's budget counts, "+
-				"so it is read as the floor of %d days", f.Origin, ledgerKey, retentionDaysKey, n, RetentionFloorDays))
+	if err := read(retentionDaysKey, maxRetentionDays, &r.Days, func(f layered.Found, n int) int {
+		if n >= RetentionFloorDays {
+			return n
 		}
+		c.diagnose("", fmt.Sprintf("runner: %s (%s.%s) is %d, below the longest period a key's budget counts, "+
+			"so it is read as the floor of %d days", f.Origin, ledgerKey, retentionDaysKey, n, RetentionFloorDays))
+		return RetentionFloorDays
 	}); err != nil {
 		return err
 	}
-	if err := read(retentionCountKey, func(_ layered.Found, n int) { r.Count = n }); err != nil {
+	if err := read(retentionCountKey, maxRetentionCount, &r.Count, func(_ layered.Found, n int) int { return n }); err != nil {
 		return err
 	}
 	c.ledger.retention = r
