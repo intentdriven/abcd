@@ -1,6 +1,8 @@
 package gitutil_test
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -221,6 +223,17 @@ func TestTheListingAnswersAsAQuestionPerRefDid(t *testing.T) {
 			r.Git("update-ref", origin+"main/sub", "HEAD")
 			r.Git("branch", "-m", "main", "feature")
 		},
+		"a symlinked HEAD": func(r *gittest.Repo) {
+			r.Git("update-ref", origin+"release", "HEAD")
+			r.Git("update-ref", origin+"main", "HEAD")
+			r.Git("-c", "core.preferSymlinkRefs=true", "symbolic-ref", origin+"HEAD", origin+"release")
+		},
+		"a ref below a name whose object is missing": func(r *gittest.Repo) {
+			r.Git("update-ref", origin+"release", "HEAD")
+			r.Git("update-ref", origin+"main", "HEAD")
+			r.Git("symbolic-ref", origin+"HEAD", origin+"release")
+			writeLooseRef(t, r, "refs/heads/develop/lost", strings.Repeat("d", 40))
+		},
 		"another remote's refs": func(r *gittest.Repo) {
 			r.Git("update-ref", other+"main", "HEAD")
 			r.Git("branch", "-m", "main", "feature")
@@ -247,9 +260,58 @@ func TestTheListingAnswersAsAQuestionPerRefDid(t *testing.T) {
 	})
 }
 
-// TestTheDefaultBranchIsOneListing: where a default branch resolves, the whole
-// resolution is one git process, whichever name answers.
-func TestTheDefaultBranchIsOneListing(t *testing.T) {
+// writeLooseRef writes a ref's file directly, which is what lets a test hold a
+// ref git would refuse to make, or thousands of them without a process each.
+func writeLooseRef(t *testing.T, r *gittest.Repo, ref, sha string) {
+	t.Helper()
+	path := filepath.Join(r.Root(), ".git", filepath.FromSlash(ref))
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(sha+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestABoundedListingNeverAnswersFromPartOfItself: a pattern for a conventional
+// name also lists every ref below it, and local refs sort first, so branches
+// under refs/heads/trunk/ can fill a bounded read before the remote's rows. The
+// answer must stay what a question per ref gives, not what the part read says.
+func TestABoundedListingNeverAnswersFromPartOfItself(t *testing.T) {
+	const origin = "refs/remotes/origin/"
+	shapes := map[string]struct {
+		setup func(r *gittest.Repo)
+		want  string
+	}{
+		"HEAD at an unconventional name": {func(r *gittest.Repo) {
+			r.Git("update-ref", origin+"release", "HEAD")
+			r.Git("update-ref", origin+"main", "HEAD")
+			r.Git("symbolic-ref", origin+"HEAD", origin+"release")
+		}, origin + "release"},
+		"no HEAD, the remote's main": {func(r *gittest.Repo) {
+			r.Git("update-ref", origin+"main", "HEAD")
+		}, origin + "main"},
+	}
+	for name, c := range shapes {
+		t.Run(name, func(t *testing.T) {
+			r := gittest.NewRepo(t)
+			r.Commit("c0")
+			c.setup(r)
+			sha := r.Git("rev-parse", "HEAD")
+			for i := range 2000 {
+				writeLooseRef(t, r, fmt.Sprintf("refs/heads/trunk/b%04d", i), sha)
+			}
+			if got := gitutil.DefaultRefContext(context.Background(), r.Root()); got != c.want {
+				t.Errorf("DefaultRefContext = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+// TestTheDefaultBranchIsAListingAndOneQuestion: where a default branch resolves,
+// the resolution is one git process with origin/HEAD in the listing, and two
+// without it, since only symbolic-ref can see a HEAD the listing does not show.
+func TestTheDefaultBranchIsAListingAndOneQuestion(t *testing.T) {
 	r := gittest.NewRepo(t)
 	r.Commit("c0")
 	r.Git("branch", "-m", "main", "develop")
@@ -271,8 +333,24 @@ func TestTheDefaultBranchIsOneListing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if n := strings.Count(string(calls), "x"); n != 2 {
+		t.Errorf("the resolution ran %d git processes with no origin/HEAD, want two", n)
+	}
+
+	r.Git("update-ref", "refs/remotes/origin/release", "HEAD")
+	r.Git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/release")
+	if err := os.Remove(log); err != nil {
+		t.Fatal(err)
+	}
+	if got := gitutil.DefaultRef(r.Root()); got != "refs/remotes/origin/release" {
+		t.Fatalf("DefaultRef = %q, want origin/HEAD's target", got)
+	}
+	calls, err = os.ReadFile(log)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if n := strings.Count(string(calls), "x"); n != 1 {
-		t.Errorf("the resolution ran %d git processes, want one", n)
+		t.Errorf("the resolution ran %d git processes with origin/HEAD, want one", n)
 	}
 }
 

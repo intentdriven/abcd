@@ -2,6 +2,7 @@ package gitutil
 
 import (
 	"context"
+	"errors"
 	"strings"
 )
 
@@ -23,13 +24,21 @@ func DefaultRef(root string) string {
 // answer in time" checks ctx.Err() after it.
 func DefaultRefContext(ctx context.Context, root string) string {
 	return defaultRef(func(args ...string) (string, error) {
-		out, err := RunLimitedContext(ctx, root, refAnswerCap, args...)
+		out, overflowed, err := runLimitedOverflow(ctx, root, refAnswerCap, false, args)
+		if err == nil && overflowed {
+			return "", errRefAnswerCut
+		}
 		return strings.TrimSpace(out), err
 	})
 }
 
-// refAnswerCap bounds one ref question's answer: a ref name or an object name.
-const refAnswerCap = 4096
+// refAnswerCap bounds one ref question's answer: a ref name, an object name, or
+// the listing, which also holds every ref below a conventional name. An answer
+// past it is refused whole, so the resolution asks ref by ref rather than reading
+// the part it got as the whole.
+const refAnswerCap = 64 << 10
+
+var errRefAnswerCut = errors.New("git's ref answer ran past its bound")
 
 // gitAsk is one read-only git question, its answer trimmed.
 type gitAsk func(args ...string) (string, error)
@@ -71,11 +80,15 @@ const defaultRefFormat = "--format=%(refname) %(symref) %(objecttype) %(*objectt
 // target, the conventional names under the remote, then, when local says so, the
 // same names locally.
 //
-// A listing has no row for what a ref's own read could still find: on a file
-// system that folds case, refs/heads/main opens a loose ref spelt Main. So when
-// it names nothing it asks ref by ref, as every read before it did, and only a
-// repository with no default branch pays for that. A dangling HEAD has no row,
-// and falls through to the names as its failed read did.
+// A listing has no row for what a ref's own read could still find. It shows no
+// HEAD that is a symlink, and it fails whole on one ref with a missing object, so
+// with no HEAD row symbolic-ref asks. On a file system that folds case,
+// refs/heads/main opens a loose ref spelt Main, so when the listing names nothing
+// it asks ref by ref, as every read before it did, and only a repository with no
+// default branch pays for that. A dangling HEAD has no row, and falls through to
+// the names as its failed read did. One answer differs from a question per ref:
+// a loose origin/Main beside origin/master on such a file system now answers
+// master, which is the branch that exists under that name.
 func resolveDefault(ask gitAsk, remote string, local bool) string {
 	prefix := "refs/remotes/" + remote + "/"
 	candidates := make([]string, 0, 2*len(defaultNames))
@@ -108,6 +121,12 @@ func resolveDefault(ask gitAsk, remote string, local bool) string {
 	}
 	if head, ok := rows[prefix+"HEAD"]; ok && strings.HasPrefix(head[0], prefix) && peelsToCommit(head[0], head) {
 		return head[0]
+	}
+	if _, ok := rows[prefix+"HEAD"]; !ok {
+		target, err := ask("symbolic-ref", "--quiet", prefix+"HEAD")
+		if err == nil && strings.HasPrefix(target, prefix) && commitRefExists(ask, target) {
+			return target
+		}
 	}
 	for _, ref := range candidates {
 		if row, ok := rows[ref]; ok && peelsToCommit(ref, row) {
