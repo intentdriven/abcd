@@ -423,7 +423,7 @@
     {
       "path": "abcd ahoy worktree prune",
       "hidden": false,
-      "sentence": "Reclaim this lane's merged, clean worktrees, archiving their notes first: Writes the notes archive and removes the worktrees; refuses a store it cannot trust.",
+      "sentence": "Reclaim this lane's merged, clean worktrees and stale Go cache entries: Writes the notes archive and removes both; refuses a store it cannot trust.",
       "flags": [
         {
           "name": "dry-run",

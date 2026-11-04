@@ -38,3 +38,18 @@ func SwapIgnoredForTest(fn func(root, rel string) ([]string, error)) (restore fu
 	ignoredUnder = fn
 	return func() { ignoredUnder = prev }
 }
+
+// SwapOpenCacheRootForTest replaces how the trim opens the cache for one test.
+func SwapOpenCacheRootForTest(fn func(string) (*os.Root, error)) (restore func()) {
+	prev := openCacheRoot
+	openCacheRoot = fn
+	return func() { openCacheRoot = prev }
+}
+
+// SwapRootOwnerForTest replaces how the trim reads the opened cache's owner for
+// one test.
+func SwapRootOwnerForTest(fn func(os.FileInfo) (uint32, error)) (restore func()) {
+	prev := rootOwnerOf
+	rootOwnerOf = fn
+	return func() { rootOwnerOf = prev }
+}

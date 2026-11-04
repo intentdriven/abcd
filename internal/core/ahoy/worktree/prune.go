@@ -84,6 +84,11 @@ type PruneOptions struct {
 	// the run is refused before anything is removed; a named worktree that is
 	// not a quiet candidate this run is kept, saying why.
 	Yes []string
+	// TrimCache trims the Go build cache (TrimGoCache) after Prune has removed
+	// at least one worktree, or, under a dry run, would have. nil trims
+	// nothing, and PruneOne never does: a caller walking the lane one name at
+	// a time would walk the whole cache once a name.
+	TrimCache func(dryRun bool, now time.Time) CacheTrim
 }
 
 // PruneRow is one worktree's outcome.
@@ -111,6 +116,9 @@ type Pruned struct {
 	DryRun    bool       `json:"dry_run"`
 	Rows      []PruneRow `json:"rows"`
 	ForgeNote string     `json:"forge_note,omitempty"`
+	// CacheTrim is what the Go build cache's trim did; nil when none was asked
+	// for or no worktree was removed.
+	CacheTrim *CacheTrim `json:"cache_trim,omitempty"`
 }
 
 // Reclaimed counts the rows reclaimed, or that a dry run would reclaim.
@@ -128,9 +136,20 @@ func (p Pruned) Reclaimed() int {
 // lane. A store refusal (a symlinked level, one another account owns or
 // others can write) is returned before anything is judged, and so is a
 // failure to read what the build loop holds; otherwise every worktree is a
-// row.
+// row. After it removes a worktree it trims the Go build cache, if opts asks;
+// what the trim finds is reported and never fails the run.
 func Prune(repoRoot string, opts PruneOptions) (Pruned, error) {
-	return prune(repoRoot, "", opts)
+	got, err := prune(repoRoot, "", opts)
+	if err != nil || opts.TrimCache == nil || got.Reclaimed() == 0 {
+		return got, err
+	}
+	now := time.Now
+	if opts.Now != nil {
+		now = opts.Now
+	}
+	trim := opts.TrimCache(opts.DryRun, now())
+	got.CacheTrim = &trim
+	return got, nil
 }
 
 // PruneOne is Prune for the one worktree called name in the repository's
