@@ -188,7 +188,7 @@ exits. It reads the ledger afresh (the classification is re-derived at every mov
 that can read it and written nowhere, decision 8), then does the first of these
 that applies.
 
-The one exception is `abcd drain --drive` (itd-2610222215485265,
+The one exception is the drive (itd-2610222215485265,
 [adr-2610222222326104](../../decisions/adrs/2610222222326104-abcd-drives-agents-with-no-host-session.md)):
 typed in a plain terminal, on the person's own yes, it makes these moves itself, on
 one walled login under `~/.abcd.noindex/profiles/`, this account's subscription and
