@@ -328,6 +328,13 @@ ifneq ($(PREFLIGHT_RECORDS_ONLY),yes)
 # steps and its format gate on. Host-native `go build` (not the
 # cross-compiling build target) because it mirrors CI.
 #
+# The unit stage runs what the race stage cannot assert, the same two plain
+# passes as CI's check job (iss-2610171803053186): the packages outside
+# internal/, and by name the tests that assert only without the race detector.
+# The race stage runs every other test under internal/, so a plain rerun of them
+# was about nine minutes of a preflight for a verdict CI does not hold a change
+# to. TestPreflightUnitStageRunsWhatCIPlainPassRuns holds the two passes to CI's.
+#
 # The eval lanes are prerequisites because the untagged `go test ./...` step
 # below cannot reach them: every eval file carries a build tag, so a defect in
 # the read-block eval — the only component capable of falsifying the assembler's
@@ -402,6 +409,16 @@ preflight:
 	go run ./cmd/abcd implement load --wait --timeout 12h -- $(PREFLIGHT_STAGES_MAKE)
 	@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)"
 
+# The flags of CI's "Test (plain-only guards)" step: the -run naming the tests
+# that assert only without the race detector, and the packages that hold them.
+# Read from the workflow rather than spelled again, so a guard added there
+# reaches preflight with no second list (TestEveryLegRunsEveryPlainOnlyGuard
+# holds the workflow's list to the test files), the way preflight-scans.sh reads
+# its pins. Both of the workflow's copies are held to one list, so the first
+# serves. A workflow that stops matching stops the recipe rather than running
+# go test over no packages, which tests the working directory and passes.
+PLAIN_ONLY_GUARDS = $(or $(shell sed -n "s/^ *run: go test \(-run '^(.*)\$$' .*\)$$/\1/p" .github/workflows/ci.yml | sed -n 1p),$(error .github/workflows/ci.yml carries no plain-only guards step to read))
+
 # The make the gate runs the stages with. It is named through this variable so
 # the gate's line is an ordinary recipe line: make runs a line that names MAKE
 # directly even under -n, -q and -t, and a dry run would then queue at the gate
@@ -426,7 +443,8 @@ preflight-stages: load-check fmt-check lint-reviews lint-issues record-lint issu
 	go vet ./...
 	p=$$(go run ./cmd/test-parallelism) && \
 	t=$$(go run ./cmd/test-parallelism -timeout 40m) && \
-	go test -p "$$p" -timeout "$$t" ./...
+	go test -p "$$p" -timeout "$$t" ./cmd/... && \
+	go test -p "$$p" -timeout "$$t" $(PLAIN_ONLY_GUARDS)
 	go run ./cmd/abcd implement load --race-gate --timeout 2h
 	p=$$(go run ./cmd/test-parallelism) && \
 	t=$$(go run ./cmd/test-parallelism -timeout 40m) && \
@@ -495,8 +513,8 @@ endif
 preflight: export ABCD_LOAD_CHECKED := preflight
 
 # The three longest packages (internal/core/implement/loop, internal/core/claim
-# and internal/surface/cli) run their tests as three processes each in both
-# test stages, each process under the stage's package budget: as one process
+# and internal/surface/cli) run their tests as three processes each in the
+# race stage, each process under the stage's package budget: as one process
 # implement/loop took 60 minutes alone at a load of about 13 on a 10-core Mac
 # (2026-10-25) and was killed at 40 with no test hung, and its tests cannot run
 # in parallel, since nearly every one sets HOME through t.Setenv. Each opts in
