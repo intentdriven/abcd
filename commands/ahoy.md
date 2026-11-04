@@ -1330,7 +1330,13 @@ or a key that is not one of GitHub's five filters), and, under a merge queue,
 one that does not run on the queue, are left out and named: a form abcd does
 not read leaves a check out, never makes it required. A required check that no workflow is known to report is
 named too, because a pull request waits on it until it reports. A repository
-with no CI is given no required check.
+with no CI is given no required check. A matrix job abcd cannot tell every run
+reports is left out and named as well, since a skipped matrix job never reports
+the names its values give; if every pull request does report it, name it in
+`github.required_checks`. A workflow file abcd cannot read whole (one that does
+not parse, is too large or refused as a link, more files than abcd reads, or jobs
+GitHub would refuse) proposes no required check at all and reads as unknown,
+naming the file: a shorter list would read as the answer.
 
 Each required check is pinned to the app that reports it, so a status set by
 anyone else does not satisfy it. abcd reads the check runs and commit statuses

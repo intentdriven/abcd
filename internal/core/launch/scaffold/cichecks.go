@@ -12,20 +12,26 @@ package scaffold
 // workflow's verify-job header, which names them as the merge gate the release
 // job re-runs a subset of. Nothing is hard-coded to abcd's own check names.
 //
-// The derivation is a line reader over the GitHub Actions layout, not a YAML
-// parser (no dependency is added for it), and it fails toward omission: a job
-// whose check name GitHub computes at run time — a matrix job, a job named by an
-// expression, a reusable-workflow call — is left out rather than guessed, and
-// the runbook says a hand-added context may be needed. Every name that is kept
+// The jobs come from the workflow's parsed YAML. The triggers are read as a subset
+// of YAML by a line reader, which refuses any other shape (unreadShape). The
+// derivation fails toward omission: a job whose check name GitHub computes at run
+// time — a matrix job, a job named by an expression, a reusable-workflow call — is
+// left out rather than guessed, and the runbook says a hand-added context may be
+// needed. Every name that is kept
 // is held to an allowlist before it is written anywhere, because the scaffold
 // writes it into YAML and a hostile workflow file must not be able to inject.
 
 import (
+	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+
+	"go.yaml.in/yaml/v3"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -43,8 +49,8 @@ const maxWorkflowFiles = 64
 // backticks, newlines), so a name can only ever be inert text.
 var checkNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 ._()/+-]{0,99}$`)
 
-// jobKeyRe matches a job id line under `jobs:`; the capture is the id.
-var jobKeyRe = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_-]*):\s*(#.*)?$`)
+// jobIDRe is what GitHub accepts as a job id.
+var jobIDRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]*$`)
 
 // DeriveCIChecks reads repoRoot's own CI workflows and returns the check names
 // its pull requests report, sorted and de-duplicated. Only workflows triggered
@@ -59,20 +65,24 @@ func DeriveCIChecks(repoRoot string) []string {
 		for _, check := range workflowChecks(src) {
 			seen[check] = true
 		}
-	})
+	}, func(_, _ string) {})
 	return sortedKeys(seen)
 }
 
 // forEachWorkflow calls fn with the name and contents of each of repoRoot's
-// own CI workflow files, in directory order, bounded by maxWorkflowFiles. The
+// own CI workflow files, in directory order, bounded by maxWorkflowFiles, and
+// unread with what it could not read and why; an absent directory is neither. The
 // scaffold's own workflows (the release pair and the dependency re-authoring)
 // are never passed: the re-authoring workflow runs on pull requests but judges
 // none, and counting it would change the release rendering the moment a
 // repository opted in. A file that cannot be read is skipped.
-func forEachWorkflow(repoRoot string, fn func(name, src string)) {
+func forEachWorkflow(repoRoot string, fn func(name, src string), unread func(name, why string)) {
 	dir := filepath.Join(repoRoot, filepath.FromSlash(workflowsDir))
 	entries, err := os.ReadDir(dir)
 	if err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			unread(workflowsDir, "cannot be listed")
+		}
 		return
 	}
 	files := 0
@@ -85,10 +95,12 @@ func forEachWorkflow(repoRoot string, fn func(name, src string)) {
 			continue
 		}
 		if files++; files > maxWorkflowFiles {
+			unread(workflowsDir, fmt.Sprintf("holds more than the %d workflow files abcd reads", maxWorkflowFiles))
 			return
 		}
 		data, err := fsutil.ReadGuarded(filepath.Join(dir, name), maxWorkflowBytes)
 		if err != nil {
+			unread(name, "cannot be read safely (a link, or larger than abcd reads)")
 			continue
 		}
 		fn(name, string(data))
@@ -116,17 +128,30 @@ func sortedKeys(set map[string]bool) []string {
 // `pull_request` or `pull_request_target` with no `paths`/`paths-ignore`
 // filter, no `branches-ignore` filter, and a `branches` filter (if any) that
 // matches defaultBranch; and, when mergeQueue is set, also on `merge_group`,
-// since a queue entry waits on the same contexts. A matrix job a run can skip is
+// since a queue entry waits on the same contexts. A matrix job a run may skip is
 // left out as well (skippableJobs): skipped, it reports one check under its
 // unexpanded name, so the contexts its values name never arrive. A job with no
 // matrix still counts, since skipped it reports its one name, which a ruleset
-// reads as passed. Each workflow or job left out is named in notes, so a person can see why a check is not required.
+// reads as passed. Each workflow or job left out is named in notes, so a person can
+// see why a check is not required.
 // The trigger is read as a subset of YAML (unreadShape): a trigger in any
 // other form is left out, never read as unfiltered.
 // Fails toward omission, like DeriveCIChecks: an empty answer requires nothing.
-func RequiredChecks(repoRoot, defaultBranch string, mergeQueue bool) (checks, notes []string) {
+//
+// A shorter list reads as an answer, so a workflow the read cannot take whole is
+// no omission: a file that does not parse or cannot be read, too many files, or a
+// counted workflow whose jobs or needs GitHub would refuse return an error naming
+// each, and no checks at all.
+func RequiredChecks(repoRoot, defaultBranch string, mergeQueue bool) (checks, notes []string, err error) {
 	seen := map[string]bool{}
+	var refused []string
+	refuse := func(name, why string) { refused = append(refused, name+" "+why) }
 	forEachWorkflow(repoRoot, func(name, src string) {
+		jobs, err := readJobs(src)
+		if err != nil {
+			refuse(name, "does not read as a workflow: "+boundedError(err))
+			return
+		}
 		lines := strings.Split(strings.ReplaceAll(src, "\r\n", "\n"), "\n")
 		on := topLevelBlock(lines, "on")
 		prBody, pr := eventBlock(on, "pull_request")
@@ -156,12 +181,21 @@ func RequiredChecks(repoRoot, defaultBranch string, mergeQueue bool) (checks, no
 			notes = append(notes, name+" "+why+", so its checks are not required")
 			return
 		}
-		jobs := splitJobs(topLevelBlock(lines, "jobs"))
-		skippable := skippableJobs(jobs)
+		if len(jobs) == 0 {
+			refuse(name, "names no jobs")
+			return
+		}
+		skippable, err := skippableJobs(jobs)
+		if err != nil {
+			refuse(name, "does not read as a workflow: "+boundedError(err))
+			return
+		}
 		for _, job := range jobs {
 			if job.matrix && skippable[job.id] {
-				notes = append(notes, name+": job "+job.id+" is a matrix job a run can skip (by its `if:` or a job "+
-					"it needs), and a skipped matrix job reports only its unexpanded name, so it is not required")
+				notes = append(notes, name+": job "+job.id+" is a matrix job abcd cannot tell every run reports: its "+
+					"`if:` or a job it needs may skip it, and a skipped matrix job reports only its unexpanded name, so "+
+					"it is not required. If every pull request does report it, require it by hand or through "+
+					"github.required_checks")
 				continue
 			}
 			if cs, ok := job.checkNames(); ok {
@@ -173,8 +207,22 @@ func RequiredChecks(repoRoot, defaultBranch string, mergeQueue bool) (checks, no
 			notes = append(notes, name+": job "+job.id+" reports a name only the run knows "+
 				"(a matrix, an expression or a reusable workflow), so it is not required")
 		}
-	})
-	return sortedKeys(seen), notes
+	}, refuse)
+	if len(refused) > 0 {
+		return nil, nil, errors.New("abcd cannot read every workflow, so it proposes no required checks: " +
+			strings.Join(refused, "; ") + ". Fix the file, or name the checks in github.required_checks")
+	}
+	return sortedKeys(seen), notes, nil
+}
+
+// boundedError is an error from reading a workflow file, short enough for a note:
+// the parser can quote the file.
+func boundedError(err error) string {
+	const limit = 200
+	if s := err.Error(); len(s) <= limit {
+		return s
+	}
+	return strings.ToValidUTF8(err.Error()[:limit], "") + "..."
 }
 
 // flowMapping reports whether the `on:` block, or event's own entry in it, is
@@ -510,9 +558,12 @@ func workflowChecks(src string) []string {
 	if !gatesAMerge(topLevelBlock(lines, "on")) {
 		return nil
 	}
-	jobs := topLevelBlock(lines, "jobs")
+	jobs, err := readJobs(src)
+	if err != nil {
+		return nil
+	}
 	var out []string
-	for _, job := range splitJobs(jobs) {
+	for _, job := range jobs {
 		if name, ok := job.checkName(); ok {
 			out = append(out, name)
 		}
@@ -576,161 +627,272 @@ func gatesAMerge(on []string) bool {
 	return false
 }
 
-// ciJob is one job's id and its own direct keys.
+// jobCondition is what a job's `if:` says about whether a run going ahead runs it.
+type jobCondition int
+
+const (
+	// condFollowsNeeds is no `if:`, or one that adds nothing to the implicit
+	// success(): the job runs unless an ancestor was skipped or failed.
+	condFollowsNeeds jobCondition = iota
+	// condAlwaysRuns reads only the run's own state, so the job runs whatever
+	// happened to its ancestors.
+	condAlwaysRuns
+	// condCannotTell is any other condition, which this reader does not evaluate.
+	condCannotTell
+)
+
+// ciJob is one job as its workflow's parsed YAML gives it.
 type ciJob struct {
-	id     string
-	name   string
-	named  bool
+	id    string
+	name  string
+	named bool
+	uses  bool
+	// matrix says the job has a matrix, or a strategy too computed to look into.
 	matrix bool
-	uses   bool
-	// matrixLines are the lines indented beneath the job's `matrix:` key.
-	matrixLines []string
-	// conditional says the job has an `if:`, and cond is its value as a scalar.
-	conditional bool
-	cond        string
-	// needs are the ids in the job's `needs:`.
-	needs []string
+	// matrixValues are the values of a matrix with one key, listed, with no
+	// include or exclude, each of which GitHub reports as it is written. It is nil
+	// for any other matrix.
+	matrixValues []string
+	cond         jobCondition
+	needs        []string
 }
 
-// splitJobs reads the jobs block into its jobs, recording each job's own
-// `name:`, whether it declares a matrix, whether it calls a reusable workflow,
-// its `if:` and its `needs:`. Job ids sit at the block's first indentation; a job's own keys at
-// the next one.
-func splitJobs(block []string) []ciJob {
-	jobIndent := -1
-	keyIndent := -1
-	matrixIndent := -1
-	needsOpen := false
+// readJobs reads a workflow's jobs in file order from its parsed YAML; a workflow
+// with no `jobs:` key has none. It refuses a file that does not parse, and a jobs
+// block GitHub would refuse.
+func readJobs(src string) ([]ciJob, error) {
+	var doc struct {
+		Jobs yaml.Node `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal([]byte(src), &doc); err != nil {
+		return nil, err
+	}
+	if doc.Jobs.IsZero() {
+		return nil, nil
+	}
+	block := resolved(&doc.Jobs)
+	if block.Kind != yaml.MappingNode {
+		return nil, errors.New("its jobs key is not a mapping")
+	}
 	var jobs []ciJob
-	for _, l := range block {
-		t := strings.TrimSpace(l)
-		if t == "" || strings.HasPrefix(t, "#") {
+	seen := map[string]bool{}
+	for i := 0; i+1 < len(block.Content); i += 2 {
+		key := block.Content[i]
+		if key.Kind != yaml.ScalarNode || !jobIDRe.MatchString(key.Value) {
+			return nil, fmt.Errorf("line %d holds a job id GitHub would refuse", key.Line)
+		}
+		if seen[key.Value] {
+			return nil, fmt.Errorf("it defines job %s twice", key.Value)
+		}
+		seen[key.Value] = true
+		job, err := readJob(key.Value, resolved(block.Content[i+1]))
+		if err != nil {
+			return nil, err
+		}
+		jobs = append(jobs, job)
+	}
+	return jobs, nil
+}
+
+// readJob reads one job's own keys; steps and everything under them are not its
+// keys, so nothing written there is read as one.
+func readJob(id string, node *yaml.Node) (ciJob, error) {
+	if node.Kind != yaml.MappingNode {
+		return ciJob{}, fmt.Errorf("job %s is not a mapping", id)
+	}
+	var raw struct {
+		Name     yaml.Node `yaml:"name"`
+		If       yaml.Node `yaml:"if"`
+		Needs    yaml.Node `yaml:"needs"`
+		Uses     yaml.Node `yaml:"uses"`
+		Strategy yaml.Node `yaml:"strategy"`
+	}
+	if err := node.Decode(&raw); err != nil {
+		return ciJob{}, fmt.Errorf("job %s: %w", id, err)
+	}
+	needs, err := readNeeds(&raw.Needs)
+	if err != nil {
+		return ciJob{}, fmt.Errorf("job %s: %w", id, err)
+	}
+	job := ciJob{id: id, needs: needs, uses: !raw.Uses.IsZero(), cond: readCondition(&raw.If)}
+	if !raw.Name.IsZero() {
+		job.named, job.name = true, resolved(&raw.Name).Value
+	}
+	job.matrix, job.matrixValues = readMatrix(&raw.Strategy)
+	return job, nil
+}
+
+// resolved is a node, or what it aliases.
+func resolved(n *yaml.Node) *yaml.Node {
+	for n.Kind == yaml.AliasNode {
+		n = n.Alias
+	}
+	return n
+}
+
+// isNull reports a key given no value.
+func isNull(n *yaml.Node) bool { return n.Kind == yaml.ScalarNode && n.Tag == "!!null" }
+
+// readNeeds reads `needs:`: absent or null, one id, or a list of ids.
+func readNeeds(n *yaml.Node) ([]string, error) {
+	if n.IsZero() {
+		return nil, nil
+	}
+	n = resolved(n)
+	switch {
+	case isNull(n):
+		return nil, nil
+	case n.Kind == yaml.ScalarNode:
+		return []string{n.Value}, nil
+	case n.Kind != yaml.SequenceNode:
+		return nil, errors.New("its needs key is neither a job id nor a list of them")
+	}
+	var needs []string
+	for _, item := range n.Content {
+		item = resolved(item)
+		if isNull(item) {
 			continue
 		}
-		ind := len(l) - len(strings.TrimLeft(l, " "))
-		if matrixIndent >= 0 {
-			if ind > matrixIndent {
-				jobs[len(jobs)-1].matrixLines = append(jobs[len(jobs)-1].matrixLines, l)
-				continue
-			}
-			matrixIndent = -1
+		if item.Kind != yaml.ScalarNode {
+			return nil, errors.New("its needs list holds something other than a job id")
 		}
-		if jobIndent < 0 {
-			jobIndent = ind
-		}
-		// A `needs:` written as a block list: its items may sit at the key's own
-		// indentation, so they are taken before the line is read as a key.
-		if needsOpen {
-			if item, ok := strings.CutPrefix(t, "- "); ok && ind > jobIndent {
-				jobs[len(jobs)-1].needs = append(jobs[len(jobs)-1].needs, scalar(item))
-				continue
-			}
-			needsOpen = false
-		}
-		switch {
-		case ind == jobIndent:
-			m := jobKeyRe.FindStringSubmatch(t)
-			if m == nil {
-				// Not a job id (a flow mapping, an anchor): stop trusting the block.
-				return jobs
-			}
-			jobs = append(jobs, ciJob{id: m[1]})
-			keyIndent = -1
-		case ind > jobIndent && len(jobs) > 0:
-			if keyIndent < 0 {
-				keyIndent = ind
-			}
-			job := &jobs[len(jobs)-1]
-			if ind == keyIndent {
-				k, v, _ := strings.Cut(t, ":")
-				switch strings.TrimSpace(k) {
-				case "name":
-					job.name, job.named = scalar(v), true
-				case "uses":
-					job.uses = true
-				case "if":
-					job.conditional, job.cond = true, scalar(v)
-				case "needs":
-					needs := scalar(v)
-					switch {
-					case needs == "":
-						needsOpen = true
-					case strings.HasPrefix(needs, "[") && strings.HasSuffix(needs, "]"):
-						for _, id := range strings.Split(needs[1:len(needs)-1], ",") {
-							job.needs = append(job.needs, scalar(id))
-						}
-					default:
-						job.needs = append(job.needs, needs)
-					}
-				case "strategy":
-					// An inline strategy may hold a matrix this reader cannot
-					// expand, so the job's names are the run's to decide.
-					if strings.TrimSpace(v) != "" {
-						job.matrix = true
-					}
-				}
-			} else if strings.HasPrefix(t, "matrix:") {
-				job.matrix = true
-				matrixIndent = ind
-			}
-		}
+		needs = append(needs, item.Value)
 	}
-	return jobs
+	return needs, nil
 }
 
-// skippableJobs reports, by job id, the jobs a run going ahead can skip: one whose
-// `if:` is anything but a condition on the run's own state, and one with no `if:`
-// that needs a skippable job, since the implicit success() skips it with that job.
-// A need this reader cannot follow (no such job, a cycle) counts as skippable, so
-// the answer fails toward omission.
-func skippableJobs(jobs []ciJob) map[string]bool {
+// readCondition judges a job's `if:`, written bare or as one expression. It
+// evaluates nothing: only the conditions whose answer needs no context are known.
+func readCondition(n *yaml.Node) jobCondition {
+	if n.IsZero() {
+		return condFollowsNeeds
+	}
+	n = resolved(n)
+	if n.Kind != yaml.ScalarNode || (n.Tag != "!!str" && n.Tag != "!!bool") {
+		return condCannotTell
+	}
+	cond := strings.TrimSpace(n.Value)
+	if inner, ok := strings.CutPrefix(cond, "${{"); ok {
+		inner, closed := strings.CutSuffix(inner, "}}")
+		if !closed || strings.Contains(inner, "${{") {
+			return condCannotTell
+		}
+		cond = strings.TrimSpace(inner)
+	}
+	switch cond {
+	case "always()", "!cancelled()":
+		return condAlwaysRuns
+	case "success()", "true":
+		return condFollowsNeeds
+	}
+	return condCannotTell
+}
+
+// readMatrix reads a job's `strategy:`: whether it has a matrix, and the values of
+// the one shape whose check names the file settles.
+func readMatrix(n *yaml.Node) (matrix bool, values []string) {
+	if n.IsZero() {
+		return false, nil
+	}
+	n = resolved(n)
+	if isNull(n) {
+		return false, nil
+	}
+	if n.Kind != yaml.MappingNode {
+		return true, nil
+	}
+	var strategy struct {
+		Matrix yaml.Node `yaml:"matrix"`
+	}
+	if err := n.Decode(&strategy); err != nil {
+		return true, nil
+	}
+	if strategy.Matrix.IsZero() {
+		return false, nil
+	}
+	m := resolved(&strategy.Matrix)
+	if m.Kind != yaml.MappingNode || len(m.Content) != 2 {
+		return true, nil
+	}
+	key, list := m.Content[0].Value, resolved(m.Content[1])
+	if key == "include" || key == "exclude" || key == "<<" || list.Kind != yaml.SequenceNode {
+		return true, nil
+	}
+	for _, item := range list.Content {
+		item = resolved(item)
+		if item.Kind != yaml.ScalarNode || !reportsAsWritten(item) {
+			return true, nil
+		}
+		values = append(values, item.Value)
+	}
+	return true, values
+}
+
+// plainIntRe is an integer written the one way GitHub reports it.
+var plainIntRe = regexp.MustCompile(`^(0|[1-9][0-9]*)$`)
+
+// reportsAsWritten reports whether GitHub names a matrix value as its text: a
+// string with no expression in it, a plain integer or a boolean. It reads a float
+// as a number, so an unquoted 1.10 reports as 1.1.
+func reportsAsWritten(item *yaml.Node) bool {
+	switch item.Tag {
+	case "!!str":
+		return item.Value != "" && !strings.Contains(item.Value, "${{")
+	case "!!int":
+		return plainIntRe.MatchString(item.Value)
+	case "!!bool":
+		return item.Value == "true" || item.Value == "false"
+	}
+	return false
+}
+
+// skippableJobs reports, by job id, the jobs a run going ahead may skip. A job with
+// a condition this reader cannot judge may be skipped. So may one following the
+// implicit success() with such a job anywhere among its ancestors: success() reads
+// every ancestor, including through a job that ran under always()
+// (actions/runner#491). A job whose own condition is always() or !cancelled() runs.
+// A need that names no job, and a cycle, are refused, as GitHub refuses the file.
+func skippableJobs(jobs []ciJob) (map[string]bool, error) {
 	byID := make(map[string]ciJob, len(jobs))
 	for _, j := range jobs {
 		byID[j.id] = j
 	}
-	memo := make(map[string]bool, len(jobs))
-	var skippable func(id string) bool
-	skippable = func(id string) bool {
-		if v, ok := memo[id]; ok {
-			return v
-		}
-		// Set before descending: a cycle reaches this entry and reads it.
-		memo[id] = true
-		j, ok := byID[id]
-		if !ok {
-			return true
-		}
-		got := false
-		if j.conditional {
-			got = !runStateCondition(j.cond)
-		} else {
-			for _, need := range j.needs {
-				if skippable(need) {
-					got = true
+	const walking, walked = 1, 2
+	state := make(map[string]int, len(jobs))
+	behind := make(map[string]bool, len(jobs))
+	var walk func(j ciJob) error
+	walk = func(j ciJob) error {
+		state[j.id] = walking
+		for _, id := range j.needs {
+			need, ok := byID[id]
+			if !ok {
+				return fmt.Errorf("job %s needs %q, which is no job in the file", j.id, id)
+			}
+			switch state[id] {
+			case walking:
+				return fmt.Errorf("job %s needs itself through %s", j.id, id)
+			case 0:
+				if err := walk(need); err != nil {
+					return err
 				}
 			}
+			if need.cond == condCannotTell || behind[id] {
+				behind[j.id] = true
+			}
 		}
-		memo[id] = got
-		return got
+		state[j.id] = walked
+		return nil
 	}
+	skippable := make(map[string]bool, len(jobs))
 	for _, j := range jobs {
-		skippable(j.id)
-	}
-	return memo
-}
-
-// runStateCondition reports whether an `if:` value only reads the run's own state,
-// so a run going ahead does not skip the job: always() or !cancelled(), bare or as
-// one expression. Any other value, a form this reader did not recognise included,
-// is a condition that may skip.
-func runStateCondition(cond string) bool {
-	if inner, ok := strings.CutPrefix(cond, "${{"); ok {
-		if cond, ok = strings.CutSuffix(inner, "}}"); !ok {
-			return false
+		if state[j.id] == 0 {
+			if err := walk(j); err != nil {
+				return nil, err
+			}
 		}
-		cond = strings.TrimSpace(cond)
+		skippable[j.id] = j.cond == condCannotTell || (j.cond == condFollowsNeeds && behind[j.id])
 	}
-	return cond == "always()" || cond == "!cancelled()"
+	return skippable, nil
 }
 
 // checkName is the check context GitHub reports for the job, when it is
@@ -751,9 +913,8 @@ func (j ciJob) checkName() (string, bool) {
 	return name, true
 }
 
-// checkNames is checkName with one matrix shape expanded: a single key whose
-// values are listed inline (`os: [a, b]`), with no include or exclude, which
-// GitHub reports as one check per value, `<name> (<value>)`. Any other matrix
+// checkNames is checkName with one matrix shape expanded (ciJob.matrixValues),
+// which GitHub reports as one check per value, `<name> (<value>)`. Any other matrix
 // still reports names only the run knows.
 func (j ciJob) checkNames() ([]string, bool) {
 	if !j.matrix {
@@ -762,16 +923,7 @@ func (j ciJob) checkNames() ([]string, bool) {
 		}
 		return nil, false
 	}
-	if j.uses || len(j.matrixLines) != 1 {
-		return nil, false
-	}
-	k, v, ok := strings.Cut(strings.TrimSpace(j.matrixLines[0]), ":")
-	k = strings.TrimSpace(k)
-	v = strings.TrimSpace(v)
-	if i := strings.Index(v, " #"); i >= 0 {
-		v = strings.TrimSpace(v[:i])
-	}
-	if !ok || k == "include" || k == "exclude" || !strings.HasPrefix(v, "[") || !strings.HasSuffix(v, "]") {
+	if j.uses {
 		return nil, false
 	}
 	base := j.id
@@ -779,10 +931,9 @@ func (j ciJob) checkNames() ([]string, bool) {
 		base = j.name
 	}
 	var out []string
-	for _, item := range strings.Split(v[1:len(v)-1], ",") {
-		item = scalar(item)
-		name := base + " (" + item + ")"
-		if item == "" || strings.Contains(item, "${{") || !checkNameRe.MatchString(name) {
+	for _, value := range j.matrixValues {
+		name := base + " (" + value + ")"
+		if !checkNameRe.MatchString(name) {
 			return nil, false
 		}
 		out = append(out, name)

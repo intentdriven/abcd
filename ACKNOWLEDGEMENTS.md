@@ -394,6 +394,11 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   dashboard's writes pass through: over plain HTTP it judges a request's
   Origin against its Host, with no token to keep.
   <https://pkg.go.dev/net/http#CrossOriginProtection>
+- **go.yaml.in/yaml (The YAML Project, MIT and Apache-2.0,
+  <https://github.com/yaml/go-yaml>)** — the parser the scaffold reads a
+  workflow's jobs with (`internal/core/launch/scaffold`). The release binary
+  already held it through its signature-verification dependencies, so importing
+  it directly adds no module.
 - **coder/websocket (Coder, ISC, <https://github.com/coder/websocket>)** —
   the WebSocket library the brief session's relay speaks through
   (`internal/surface/session`, spc-2610141709430146 step 1): one module with

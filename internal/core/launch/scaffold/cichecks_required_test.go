@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -80,7 +81,7 @@ jobs:
 `,
 	})
 
-	checks, notes := RequiredChecks(repo, "main", true)
+	checks, notes := requiredChecksOf(t, repo, true)
 	if want := []string{"build", "lint"}; !reflect.DeepEqual(checks, want) {
 		t.Errorf("checks = %v, want %v", checks, want)
 	}
@@ -95,7 +96,7 @@ jobs:
 	}
 
 	// Without a merge queue, the pull-request-only workflow gates every merge.
-	checks, _ = RequiredChecks(repo, "main", false)
+	checks, _ = requiredChecksOf(t, repo, false)
 	if want := []string{"build", "lint", "pr-only"}; !reflect.DeepEqual(checks, want) {
 		t.Errorf("without a merge queue, checks = %v, want %v", checks, want)
 	}
@@ -104,7 +105,7 @@ jobs:
 // TestRequiredChecksWithNoWorkflowsIsEmpty: a repository with no CI is given
 // no required check, so nothing can block its merges.
 func TestRequiredChecksWithNoWorkflowsIsEmpty(t *testing.T) {
-	checks, notes := RequiredChecks(t.TempDir(), "main", false)
+	checks, notes := requiredChecksOf(t, t.TempDir(), false)
 	if len(checks) != 0 || len(notes) != 0 {
 		t.Errorf("checks %v, notes %v; want none", checks, notes)
 	}
@@ -119,7 +120,7 @@ func TestRequiredChecksAcceptsAGlobBaseFilterThatMatchesTheDefaultBranch(t *test
 		"c.yml": "on:\n  pull_request:\n    branches-ignore: [main]\njobs:\n  c:\n    runs-on: x\n",
 		"d.yml": "on:\n  pull_request:\n    branches: [release/**]\njobs:\n  d:\n    runs-on: x\n",
 	})
-	checks, _ := RequiredChecks(repo, "main", false)
+	checks, _ := requiredChecksOf(t, repo, false)
 	if want := []string{"a", "b"}; !reflect.DeepEqual(checks, want) {
 		t.Errorf("checks = %v, want %v", checks, want)
 	}
@@ -156,7 +157,7 @@ jobs:
           - os: b
 `,
 	})
-	checks, notes := RequiredChecks(repo, "main", false)
+	checks, notes := requiredChecksOf(t, repo, false)
 	want := []string{"check (macos-latest)", "check (ubuntu-latest)", "unit (1.25)", "unit (1.26)"}
 	if !reflect.DeepEqual(checks, want) {
 		t.Errorf("checks = %v, want %v", checks, want)
@@ -196,7 +197,7 @@ jobs:
     runs-on: ubuntu-latest
 `,
 	})
-	checks, notes := RequiredChecks(repo, "main", false)
+	checks, notes := requiredChecksOf(t, repo, false)
 	if !reflect.DeepEqual(checks, []string{"build"}) {
 		t.Errorf("checks = %v, want [build]", checks)
 	}
@@ -228,7 +229,7 @@ jobs:
     runs-on: ubuntu-latest
 `,
 	})
-	checks, notes := RequiredChecks(repo, "main", false)
+	checks, notes := requiredChecksOf(t, repo, false)
 	if !reflect.DeepEqual(checks, []string{"build"}) {
 		t.Errorf("checks = %v, want [build]", checks)
 	}
@@ -240,11 +241,12 @@ jobs:
 	}
 }
 
-// TestRequiredChecksLeavesOutAnInlineStrategy pins that a job whose strategy
-// is written inline (`strategy: {matrix: …}`) is read as a matrix whose names
-// only the run knows, never as the bare job id: GitHub reports one check per
-// matrix entry, so requiring the bare id would wait for ever.
-func TestRequiredChecksLeavesOutAnInlineStrategy(t *testing.T) {
+// TestRequiredChecksNeverReadsAStrategyAsTheBareJob pins that a job with a matrix
+// is never read as its bare id, however its strategy is written: GitHub reports
+// one check per matrix entry, so requiring the bare id would wait for ever. Written
+// inline, the values are as readable as on their own lines; computed, only the run
+// knows them, and the job is named.
+func TestRequiredChecksNeverReadsAStrategyAsTheBareJob(t *testing.T) {
 	repo := writeWorkflows(t, map[string]string{
 		"ci.yml": `on:
   pull_request:
@@ -252,16 +254,19 @@ jobs:
   build:
     strategy: {matrix: {os: [a, b]}}
     runs-on: ubuntu-latest
+  computed:
+    strategy: ${{ fromJSON(x) }}
+    runs-on: ubuntu-latest
   lint:
     runs-on: ubuntu-latest
 `,
 	})
-	checks, notes := RequiredChecks(repo, "main", false)
-	if !reflect.DeepEqual(checks, []string{"lint"}) {
-		t.Errorf("checks = %v, want [lint]", checks)
+	checks, notes := requiredChecksOf(t, repo, false)
+	if want := []string{"build (a)", "build (b)", "lint"}; !reflect.DeepEqual(checks, want) {
+		t.Errorf("checks = %v, want %v", checks, want)
 	}
-	if !strings.Contains(strings.Join(notes, "\n"), "job build") {
-		t.Errorf("the inline-strategy job is not named: %v", notes)
+	if !strings.Contains(strings.Join(notes, "\n"), "job computed") {
+		t.Errorf("the computed-strategy job is not named: %v", notes)
 	}
 }
 
@@ -304,7 +309,7 @@ jobs:
     runs-on: ubuntu-latest
 `,
 	})
-	checks, _ := RequiredChecks(repo, "main", false)
+	checks, _ := requiredChecksOf(t, repo, false)
 	if !reflect.DeepEqual(checks, []string{"build", "test"}) {
 		t.Errorf("checks = %v, want [build test]", checks)
 	}
@@ -317,11 +322,11 @@ func TestRequiredChecksSeesTheFiltersInEveryForm(t *testing.T) {
 	repo := writeWorkflows(t, map[string]string{
 		"quoted.yml":    "on:\n  pull_request:\n    \"paths\": [\"docs/**\"]\njobs:\n  docs:\n    runs-on: x\n",
 		"next-line.yml": "on:\n  pull_request:\n    {paths: [docs/**]}\njobs:\n  docs2:\n    runs-on: x\n",
-		"alias.yml":     "on:\n  pull_request: *pr\njobs:\n  aliased:\n    runs-on: x\n",
-		"merge-key.yml": "on:\n  pull_request:\n    <<: *filters\njobs:\n  merged:\n    runs-on: x\n",
+		"alias.yml":     "x-pr: &pr\n  paths: [x]\non:\n  pull_request: *pr\njobs:\n  aliased:\n    runs-on: x\n",
+		"merge-key.yml": "x-filters: &filters\n  paths: [x]\non:\n  pull_request:\n    <<: *filters\njobs:\n  merged:\n    runs-on: x\n",
 		"ci.yml":        "on:\n  pull_request:\njobs:\n  build:\n    runs-on: x\n",
 	})
-	checks, notes := RequiredChecks(repo, "main", false)
+	checks, notes := requiredChecksOf(t, repo, false)
 	if !reflect.DeepEqual(checks, []string{"build"}) {
 		t.Errorf("checks = %v, want [build]; notes %v", checks, notes)
 	}
@@ -339,12 +344,12 @@ func TestRequiredChecksSeesThroughAnAnchor(t *testing.T) {
 		"anchored-on.yml":    "on: &t {pull_request: {paths: [x]}}\njobs:\n  docs2:\n    runs-on: x\n",
 		"anchored-next.yml":  "on:\n  pull_request:\n    &f {paths: [x]}\njobs:\n  docs3:\n    runs-on: x\n",
 		"anchored-block.yml": "on:\n  pull_request: &f\n    paths: [x]\njobs:\n  docs4:\n    runs-on: x\n",
-		"merge-after.yml":    "on:\n  pull_request:\n    types: [opened, synchronize, reopened]\n    <<: *filters\njobs:\n  merged:\n    runs-on: x\n",
-		"alias-next.yml":     "on:\n  pull_request:\n    *pr\njobs:\n  aliased:\n    runs-on: x\n",
+		"merge-after.yml":    "x-filters: &filters\n  paths: [x]\non:\n  pull_request:\n    types: [opened, synchronize, reopened]\n    <<: *filters\njobs:\n  merged:\n    runs-on: x\n",
+		"alias-next.yml":     "x-pr: &pr\n  paths: [x]\non:\n  pull_request:\n    *pr\njobs:\n  aliased:\n    runs-on: x\n",
 		"anchored-bare.yml":  "on:\n  pull_request: &f\njobs:\n  plain:\n    runs-on: x\n",
 		"ci.yml":             "on:\n  pull_request:\njobs:\n  build:\n    runs-on: x\n",
 	})
-	checks, notes := RequiredChecks(repo, "main", false)
+	checks, notes := requiredChecksOf(t, repo, false)
 	if !reflect.DeepEqual(checks, []string{"build", "plain"}) {
 		t.Errorf("checks = %v, want [build plain]; notes %v", checks, notes)
 	}
@@ -362,11 +367,11 @@ func TestRequiredChecksLeavesOutAnyTriggerShapeItDoesNotRead(t *testing.T) {
 		"tag-key.yml":      "on:\n  pull_request:\n    !!str paths: [x]\njobs:\n  b:\n    runs-on: x\n",
 		"complex-key.yml":  "on:\n  pull_request:\n    ? paths\n    : [x]\njobs:\n  c:\n    runs-on: x\n",
 		"tagged-event.yml": "on:\n  !!str pull_request:\n    paths: [x]\njobs:\n  d:\n    runs-on: x\n",
-		"merge-on.yml":     "on:\n  <<: *triggers\n  pull_request:\njobs:\n  e:\n    runs-on: x\n",
+		"merge-on.yml":     "x-triggers: &triggers\n  push:\non:\n  <<: *triggers\n  pull_request:\njobs:\n  e:\n    runs-on: x\n",
 		"unknown-key.yml":  "on:\n  pull_request:\n    pathz: [x]\njobs:\n  f:\n    runs-on: x\n",
 		"filters.yml":      "on:\n  pull_request:\n    # all five, plainly\n    'branches': [main]\n    types: [opened, synchronize, reopened]\n  push:\n    branches: [main]\njobs:\n  build:\n    runs-on: x\n",
 	})
-	checks, notes := RequiredChecks(repo, "main", false)
+	checks, notes := requiredChecksOf(t, repo, false)
 	if !reflect.DeepEqual(checks, []string{"build"}) {
 		t.Errorf("checks = %v, want [build]; notes %v", checks, notes)
 	}
@@ -376,10 +381,10 @@ func TestRequiredChecksLeavesOutAnyTriggerShapeItDoesNotRead(t *testing.T) {
 // some run reports one check under its unexpanded name, so the `<name> (<value>)`
 // contexts never arrive there, and requiring them holds that pull request for ever.
 // A job can be skipped by its own `if:`, or, with no `if:` of its own, by the
-// implicit success() on a job it needs, directly or through others. A condition that
-// reads only the run's state, always() or !cancelled(), skips nothing on a run that
-// is going ahead. A job with no matrix still counts: skipped, it reports its one
-// name, which a ruleset reads as passed.
+// implicit success() on any of its ancestors. A job whose own condition reads only
+// the run's state, always() or !cancelled(), runs on a run that is going ahead. A
+// job with no matrix still counts: skipped, it reports its one name, which a ruleset
+// reads as passed.
 func TestRequiredChecksLeavesOutAMatrixJobThatCanBeSkipped(t *testing.T) {
 	const matrix = `
     strategy:
@@ -415,12 +420,6 @@ jobs:
     - gated` + matrix + `
   needs-through:
     needs: through-gated` + matrix + `
-  needs-unknown:
-    needs: nowhere` + matrix + `
-  cycle-a:
-    needs: cycle-b` + matrix + `
-  cycle-b:
-    needs: cycle-a` + matrix + `
   keeps-always:
     needs: gated
     if: always()` + matrix + `
@@ -431,13 +430,13 @@ jobs:
     if: "${{ always() }}"` + matrix + `
   keeps-need-on-plain:
     needs: [plain]` + matrix + `
-  keeps-need-on-always:
+  behind-always:
     needs: keeps-always` + matrix + `
 `,
 	})
-	checks, notes := RequiredChecks(repo, "main", false)
+	checks, notes := requiredChecksOf(t, repo, false)
 	want := []string{"gated", "plain", "through-gated"}
-	for _, job := range []string{"keeps-always", "keeps-need-on-always", "keeps-need-on-plain", "keeps-not-cancelled", "keeps-quoted"} {
+	for _, job := range []string{"keeps-always", "keeps-need-on-plain", "keeps-not-cancelled", "keeps-quoted"} {
 		want = append(want, job+" (a)", job+" (b)")
 	}
 	sort.Strings(want)
@@ -445,7 +444,7 @@ jobs:
 		t.Errorf("checks = %q\nwant %q", checks, want)
 	}
 	joined := strings.Join(notes, "\n")
-	for _, job := range []string{"own-if", "folded-if", "needs-scalar", "needs-flow", "needs-block", "needs-block-level", "needs-through", "needs-unknown", "cycle-a", "cycle-b"} {
+	for _, job := range []string{"own-if", "folded-if", "needs-scalar", "needs-flow", "needs-block", "needs-block-level", "needs-through", "behind-always"} {
 		if !strings.Contains(joined, "job "+job+" ") {
 			t.Errorf("notes do not name %s:\n%s", job, joined)
 		}
@@ -454,13 +453,22 @@ jobs:
 
 // TestRequiredChecksReadsThisRepositorysShardedSuite: this repository's macOS suite
 // is a matrix a pull request skips, behind one job that reports the context the
-// ruleset requires. Only that job's name is a required check.
+// ruleset requires. Only that job's name is a required check, and every context the
+// ruleset mirror requires is one the read proposes.
 func TestRequiredChecksReadsThisRepositorysShardedSuite(t *testing.T) {
 	root := filepath.Join("..", "..", "..", "..")
-	checks, _ := RequiredChecks(root, "main", true)
-	for _, want := range []string{"check (macos-latest)", "check (ubuntu-latest)"} {
-		if !slices.Contains(checks, want) {
-			t.Errorf("RequiredChecks = %q, which leaves out %q", checks, want)
+	checks, _ := requiredChecksOf(t, root, true)
+	mirror, err := os.ReadFile(filepath.Join(root, ".abcd", "work", "rulesets", "main-protection.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	contexts := regexp.MustCompile(`"context": "([^"]+)"`).FindAllStringSubmatch(string(mirror), -1)
+	if len(contexts) < 2 {
+		t.Fatalf("the ruleset mirror names %d contexts; the test or the mirror changed shape", len(contexts))
+	}
+	for _, m := range contexts {
+		if !slices.Contains(checks, m[1]) {
+			t.Errorf("RequiredChecks = %q, which leaves out %q", checks, m[1])
 		}
 	}
 	for _, c := range checks {
