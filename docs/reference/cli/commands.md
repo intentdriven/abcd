@@ -233,14 +233,14 @@ List this repository's worktrees and its lane, or every lane with --all: Writes 
 
 ##### `abcd ahoy worktree prune`
 
-Reclaim this lane's merged, clean worktrees, archiving their notes first: Writes the notes archive and removes the worktrees; refuses a store it cannot trust.
+Reclaim this lane's merged, clean worktrees and stale Go cache entries: Writes the notes archive and removes both; refuses a store it cannot trust.
 
 **Usage:** `abcd ahoy worktree prune [flags]`
 
 **Flags:**
 
 ```
-      --dry-run           archive and remove nothing; report what a real run would
+      --dry-run           archive, remove and trim nothing; report what a real run would
       --yes stringArray   reclaim this quiet candidate too (repeatable); a name not in the lane refuses the run
 ```
 

@@ -899,6 +899,24 @@ loop's lanes are made through it, so a worktree enters the store one way. Before
 beside a manifest, redacted on write by the transcript store's pass; nothing
 reclaims the archive.
 
+**Removing a worktree also trims the Go build cache.** Go trims only entries
+unused for five days, and every store worktree adds entries, so a machine running
+many of them fills its disk until the load gate stands everything still. So when
+`prune` removes at least one worktree it deletes the entries of the cache unused
+for two days, a fixed age (`CacheTrimAge`, `internal/core/ahoy/worktree/cachetrim.go`),
+and reports the entries removed and the bytes freed; a dry run reports the same
+and deletes nothing. Since these are another tool's files, the trim acts only on
+the directory `go env GOCACHE` reports, and only when that is a real directory
+the caller owns, has a Go build cache's shape and is not the home directory or
+above it, the guards the load gate holds to before it offers a trim. The owner,
+the directory and the shape are read from the directory as opened, which must be
+the one the path named. Otherwise one line says why it was skipped. Inside it, it touches
+only regular files named `<hex>-a` or `<hex>-d` in a subdirectory named by two hex
+digits, and follows no symbolic link. It unlinks each file and removes no
+directory, so a build running beside it finds a miss and rebuilds. A trim that
+fails never fails the prune, and the one-at-a-time removal the sweep uses does
+not trim.
+
 **Invariant: the store deletes only what passes its proof of belonging.** A
 directory leaves the lane only when git lists it as a worktree of this
 repository, its real path lies inside this repository's lane, and its own common
