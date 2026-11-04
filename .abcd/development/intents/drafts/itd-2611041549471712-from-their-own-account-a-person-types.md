@@ -56,6 +56,7 @@ _None open. The three questions the scratch draft of 2026-11-04 put are the firs
 - 2026-11-04, the product thinker (dcn-2611041550139264): a stop lets an agent in a call finish that call, then stops.
 - 2026-11-04, the product thinker (dcn-2611041550139264): a stop releases the run's claims on its work.
 - 2026-11-04, the product thinker (dcn-2611041550139264): the stop switch and the restart path are two records; the routing is confirmed.
+- 2026-11-04, the product thinker (dcn-2611041608057544): Ctrl-C in a terminal run is a stop: the call finishes and claims are released; a second press kills at once.
 
 ## Decomposition
 

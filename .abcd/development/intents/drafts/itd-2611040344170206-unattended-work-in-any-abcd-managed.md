@@ -97,6 +97,7 @@ Settled on the draft's proposal, no question put, since each is a technical choi
 
 18. **Where the window reading comes from when no status line fires.** The coordinating session writes a timestamped heartbeat of its windows at each step, which the hand-out reads; the runner's event stream (`rate_limit_event`) is the second source for a launch that has one. No question was put because the heartbeat is the only source that covers a host-routed stage with no stream, which is the case the subscription test ran.
 19. **The staleness bound's default.** The status line's own refresh cadence, in minutes, configurable by the person. No question was put because the bound is a default a person tunes, not a trade-off.
+20. **One subscription per account for the first run** (dcn-2611041608057544). An account at 95 per cent of a window waits for its reset rather than moving onto another account's subscription; profiles and switching between them hold within one account.
 
 ## Evidence
 
