@@ -103,7 +103,8 @@ tree as on origin); then each
 part oldest first without `origin`, or, on `origin`, in this drain's own order:
 a rendezvous hash of the holder git's identity names with no network act, this
 copy's key and the issue id, so every account and copy keeps one order from
-move to move and two of them start a group at different issues. When git's
+move to move and two of them start a group at different issues as often as
+chance allows. When git's
 identity names no holder, the copy's key alone tells copies apart. The
 payload's `order` states the rule. Every other open issue follows, by id.
 

@@ -1378,7 +1378,8 @@ floor it loosens is named. Four hand-backs hold whatever the record says. An iss
 whose related_intents names an intent is handed back as promoted, naming the
 intents: it goes through its intent (`abcd build <itd-N>`, or `abcd intent audit
 <itd-N>` for an audit's owed check), and a person's own `abcd build <iss-N>` still
-takes it; a record the consistency pass files is the exception, since the intents
+takes it where no other rule would hand it back; a record the consistency pass files
+is the exception, since the intents
 it names are the two it found contradicting: once a person has written its remedy,
 it is judged by its other fields as if it named no intent, and an intent it was
 promoted into still owns it. An issue carrying the decision_needed: marker a drain's

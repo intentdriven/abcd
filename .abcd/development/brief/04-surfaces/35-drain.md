@@ -160,7 +160,7 @@ as a number, heaviest first (`spreadWeight` in
 `internal/core/capture/eligible.go`; dcn-2610161040368890). When git's identity
 names no holder, that part of the key is empty and the copy's key alone tells
 copies apart. Each account, and each of one person's copies, keeps one order
-from move to move, and two of them start a group at different issues, so drains
+from move to move, and two of them start a group at different issues as often as chance allows, so drains
 on several accounts spread across it with no coordinator. The copy's key is
 minted at its first move, before that move plans, so the order the first move
 asks a judgement in is the one the next keeps. The record's lists are sets: the
@@ -610,7 +610,7 @@ the runner reaches over the network is its own, not a network act of abcd's.
 ### The lane
 
 Each lane is the run `abcd build <iss-N>` starts (decision 10 on
-itd-2609201916151817). Its checks are the rule above, read the same way, and the
+itd-2609201916151817). Its checks are the budget check every start runs, the rule above, read the same way, and the
 peers check; the key is an issue id by shape before any path is built from it.
 Its brief is the issue's record, read at the lane's base, with its remedy as the
 work and the repository's definition of done: a detector watched to fail before

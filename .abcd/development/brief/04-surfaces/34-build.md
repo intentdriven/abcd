@@ -40,10 +40,10 @@ series (a run count above one, or a run until no candidate is left) continues un
 No run is created until every check passes, and each is a read (criteria 1 and 2):
 
 - **key** — the record is an intent, or an issue id by shape (the issue key,
-  decision 10). An issue takes two checks and no others: the repository's own
+  decision 10). An issue takes two of these checks and no others, beside the budget check every start runs last: the repository's own
   drain rule takes it, read as the drain reads it ([`35-drain.md`](35-drain.md)),
   and no peer holds it out of `open/` or claims it. One hand-back is let
-  through: an issue the drain hands back as `promoted`, linked to an intent, is
+  through: an issue the drain hands back as `promoted`, linked to an intent, that no other rule would hand back is
   taken by a person's own build, the row naming the intent. Its run has one lane, whose
   brief is the issue with its remedy as the work.
 - **ready** — the implement-readiness gate the intent verb reports: planned,

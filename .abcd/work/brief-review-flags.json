@@ -600,6 +600,38 @@
       "evidence": "internal/core/implement/loop/sync.go:275-284 (reached from landMerged at internal/core/implement/loop/land.go:1044-1049: a head already holding the default branch waits at exit 3, its arming untouched)",
       "commit": "06d7bc6449d921cae128d0f1042e47f8708293ac",
       "applied": "2026-11-04T03:04:22Z"
+    },
+    {
+      "chapter": "34-build.md",
+      "sentence": "An issue takes two checks and no others: the repository's own",
+      "replacement": "An issue takes two of these checks and no others, beside the budget check every start runs last: the repository's own",
+      "evidence": "internal/core/implement/loop/loop.go:510 runs budgetCheck on every new start and appends it to the checks, refusing the start when it fails, with no branch for an issue key; internal/core/implement/loop/budget.go:12-14 sizes the estimate for an issue; internal/core/implement/loop/drain.go:1216 passes a lane over naming the refusing check; 34-build.md:270 itself says the budget check runs last of the start's checks",
+      "commit": "1cfb3f6cb8dacd16c4f2083a039076bf08191056",
+      "applied": "2026-11-04T03:38:33Z"
+    },
+    {
+      "chapter": "34-build.md",
+      "sentence": "through: an issue the drain hands back as `promoted`, linked to an intent, is",
+      "replacement": "through: an issue the drain hands back as `promoted`, linked to an intent, that no other rule would hand back is",
+      "evidence": "internal/core/implement/loop/check.go:256-267 asks the rule again with promoted set aside and refuses when another rule holds the issue; commands/build.md:134-139 and 35-drain.md:86-89 state the limit; 35-drain.md:88 names a failed audit's major issue as refused on its severity",
+      "commit": "1cfb3f6cb8dacd16c4f2083a039076bf08191056",
+      "applied": "2026-11-04T03:38:33Z"
+    },
+    {
+      "chapter": "35-drain.md",
+      "sentence": "itd-2609201916151817). Its checks are the rule above, read the same way, and the",
+      "replacement": "itd-2609201916151817). Its checks are the budget check every start runs, the rule above, read the same way, and the",
+      "evidence": "internal/core/implement/loop/loop.go:510 runs budgetCheck in Start, which internal/core/implement/loop/drain.go:1184 calls for each lane; drain.go:1216 passes the issue over naming the refusing check; internal/surface/cli/drain.go:357 renders the start's budget row",
+      "commit": "1cfb3f6cb8dacd16c4f2083a039076bf08191056",
+      "applied": "2026-11-04T03:38:33Z"
+    },
+    {
+      "chapter": "35-drain.md",
+      "sentence": "from move to move, and two of them start a group at different issues, so drains",
+      "replacement": "from move to move, and two of them start a group at different issues as often as chance allows, so drains",
+      "evidence": "internal/core/capture/eligible.go:319-328: the order is a sha256 rendezvous weight, whose comment says two keys disagree on the head of a group as often as chance allows; nothing coordinates them, so two keys can draw the same head, and in a group of one always do",
+      "commit": "1cfb3f6cb8dacd16c4f2083a039076bf08191056",
+      "applied": "2026-11-04T03:38:33Z"
     }
   ]
 }
