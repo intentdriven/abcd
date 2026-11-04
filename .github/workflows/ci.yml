@@ -3,18 +3,18 @@ name: ci
 # Checks on every pull request, on every merge-queue entry, nightly on the
 # default branch, and on demand. Branch work is covered by the pull_request
 # trigger alone, so a PR push runs the matrix once, and the merge-queue entry
-# runs the full gate on exactly the tree that lands. There is no push trigger:
+# runs the Linux gate on exactly the tree that lands. There is no push trigger:
 # with the queue, every commit on the default branch is a merge result its
 # queue entry already tested, so a push run repeated that run in full
 # (iss-2610110938294826). The nightly run keeps the default branch itself
-# checked against what changes outside the tree (runner images, the advisory
-# databases) and saves its Go build cache (see the check job). The check job
+# checked on macOS and against what changes outside the tree (runner images, the
+# advisory databases) and saves its Go build cache (see the check job). The check job
 # builds, vets and tests on Linux on every event, with race-enabled internal
 # tests and the `make fmt-check` format gate, record-lint, the issue-drift check,
 # docs-lint and the site-render gate in that job. The macOS suite runs as shard
-# jobs on every event but a pull request: in the merge queue it tests exactly the
-# tree that lands, and on a pull request its required context reports from an
-# ubuntu runner without taking a macOS one (see macos-suite and check-macos).
+# jobs nightly and on demand: on a pull request and on a merge-queue entry its
+# required context reports from an ubuntu runner without taking a macOS one, and
+# says so (see macos-suite and check-macos).
 # Separate jobs run full-history
 # secret scanning, a workflow audit, the reviews-charter and issue-resolution
 # gates (RS001-RS003), dependency review, govulncheck, the smoke harness, the
@@ -53,9 +53,10 @@ name: ci
 # module, so a record-only change compiles most of the module either way.
 on:
   pull_request:
-  # Merge-queue entries run the full gate on the would-be merge result. The
+  # Merge-queue entries run the Linux gate on the would-be merge result. The
   # changes classifier below treats any non-pull_request event as never inert,
-  # so a merge_group run executes everything; so do the two below.
+  # so a merge_group run executes every job but the macOS suite's shards, which
+  # stand down there (see macos-suite); the two below run everything.
   merge_group:
   # Nightly on the default branch, at an off-peak minute (02:41 UTC) that is
   # not the top of an hour, when scheduled runs pile up. A scheduled run carries
@@ -278,7 +279,7 @@ jobs:
     # timeout, with a goroutine dump, before this ceiling cancels the job; a hang
     # in a package that starts later meets the job clock's watchdog below first.
     # TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds the ceiling at or below the
-    # cap, and TestCheckJobWarnsBeforeTheQueueCap holds the warning step at the
+    # cap, and TestEachTestJobWarnsBeforeItsCap holds the warning step at the
     # end of the job below it.
     timeout-minutes: 45
     runs-on: ubuntu-latest
@@ -371,7 +372,7 @@ jobs:
       # that assert only without the race detector ("Test (plain-only
       # guards)", below). On an inert change the race lane stands down, and
       # the plain pass runs the whole module, as the job's only test pass.
-      # TestMacOSLegRunsItsSuiteOnlyWhereItLands holds which passes run on
+      # TestMacOSLegRunsItsSuiteOnlyNightlyAndOnDemand holds which passes run on
       # which event, here and in macos-suite.
       #
       # On an inert change, where it runs, the two packages named ahead of the
@@ -548,17 +549,17 @@ jobs:
       # check that runs past WARN_AFTER_MINUTES is ten minutes from its job's
       # ceiling, and a cancellation there carries nothing but the cancellation.
       # The rule for a cancelled check is to rerun it once; a second cancellation
-      # for the same reason stops that pull request and opens a speed lane, never
-      # another raise of the timeout. This warning moves that signal ahead of the
+      # for the same reason stops any pull request it gates and opens a speed lane,
+      # never another raise of the timeout. This warning moves that signal ahead of the
       # first cancellation: it is emitted at the job's end, for a run that
       # finished past the line, so a check that passed within ten minutes of its
       # job's cap says so before one is cancelled at the cap. It never fails the
       # job: `always()` runs it however the steps before it ended, and
       # `continue-on-error` holds even a broken script to a warning. macos-suite
-      # carries the same script. TestCheckJobWarnsBeforeTheQueueCap pins each
+      # carries the same script. TestEachTestJobWarnsBeforeItsCap pins each
       # job's threshold ten minutes below that job's ceiling, CEILING_MINUTES, the
       # cap the message names, to that ceiling, and the two scripts to one.
-      - name: Warn when the check nears the queue's cap
+      - name: Warn when the check nears its job's cap
         if: always()
         continue-on-error: true
         env:
@@ -576,7 +577,7 @@ jobs:
           minutes=$((elapsed / 60))
           echo "${ABCD_CI_LEG} has run ${minutes}m $((elapsed % 60))s; the warning line is ${WARN_AFTER_MINUTES}m"
           if [ "$elapsed" -gt $((WARN_AFTER_MINUTES * 60)) ]; then
-            msg="${ABCD_CI_LEG} ran ${minutes} minutes, past the ${WARN_AFTER_MINUTES}-minute warning line and close to the job's ${CEILING_MINUTES}-minute cap. If it is cancelled at the cap, rerun it once; a second cancellation for the same reason stops the pull request: open a speed lane to make the suite faster, and do not raise the timeout."
+            msg="${ABCD_CI_LEG} ran ${minutes} minutes, past the ${WARN_AFTER_MINUTES}-minute warning line and close to the job's ${CEILING_MINUTES}-minute cap. If it is cancelled at the cap, rerun it once; a second cancellation for the same reason stops any pull request it gates: open a speed lane to make the suite faster, and do not raise the timeout."
             echo "::warning title=${ABCD_CI_LEG} near its cap::${msg}"
             printf '### %s near its cap\n\n%s\n' "$ABCD_CI_LEG" "$msg" >>"$GITHUB_STEP_SUMMARY"
           fi
@@ -585,32 +586,28 @@ jobs:
   # three test slots full, so its time is its total work on that runner, and
   # hosted macOS runners vary about twofold: one pass over the module took 32
   # minutes on one and 77 on another with the same work and the same restored
-  # cache, and past its 80-minute deadline on others, dropping the entry from the
-  # queue and restarting every run behind it. Only several runners shorten what
-  # one runner has to do. Three shards bring the slowest passing run's 76.6 minutes
-  # to about 27 of testing in a shard, and about 30 with its set-up and the
+  # cache, and past its 80-minute deadline on others. Only several runners shorten
+  # what one runner has to do. Three shards bring the slowest passing run's 76.6
+  # minutes to about 27 of testing in a shard, and about 30 with its set-up and the
   # compiling a single job shared.
   #
   # Why three. macOS is the scarcest runner this account has, five jobs at once,
-  # and the queue builds up to four entries, so three shards can want twelve
-  # runners and two shards eight; a shard waits until one frees. With every runner
-  # at its slowest, the last shard ends at 30 minutes with one entry building, at
-  # 60 with two or three, and at 90 with four; two shards (41 minutes each) end at
-  # 41, 41, 82 and 82. So the worst case is about the same either way, and it is
-  # the one the queue's cap can still catch. Off that worst case, with runners as
-  # measured (about half of them take 33 minutes a pass), what decides is the last
-  # shard to get a runner, and three shards make it a third of the work rather
-  # than a half. A fourth shard would only ask for more of the same five runners.
+  # and one run's three shards fit inside that. Two shards take 41 minutes each on
+  # the slowest runners, and what decides a run is the last shard to get a runner,
+  # so three make that a third of the work rather than a half. A fourth shard would
+  # only ask for more of the same five runners.
   #
-  # It runs where its answer is about what lands: on a merge-queue entry, which
-  # tests the would-be merge, and on every event that is not a pull request
-  # (iss-2610110938282654). Every push to a pull request has already passed the
+  # It runs nightly and by hand: on every event that is neither a pull request nor
+  # a merge-queue entry (dcn-2611042202509334). Every push has already passed the
   # local preflight (the pre-push hook refuses a commit without its receipt), so a
-  # pull-request macOS run repeated a local run, on the developer's machine, while
-  # queue entries waited for a slot. A pull request skips this job at its `if:`,
-  # and check-macos below reports the required context all the same. It reads no
-  # classifier: no pull request reaches it, and every other event is never inert,
-  # so a need on `changes` would only add a way for the suite to be skipped.
+  # pull-request macOS run repeated a local run, on the developer's machine
+  # (iss-2610110938282654), and in the queue a shard's wait for a runner ran on the
+  # queue's clock: on 2026-11-04 entries kept dropping because GitHub had no macOS
+  # runner to give, with no test failing. A pull request and a queue entry skip this
+  # job at its `if:`, and check-macos below reports the required context all the
+  # same. It reads no classifier: no pull request reaches it, and every other event
+  # is never inert, so a need on `changes` would only add a way for the suite to be
+  # skipped.
   #
   # The packages come from cmd/ci-shard, computed from `go list` under the race
   # build in every shard, so no list is kept by hand and a package added later is tested without
@@ -619,21 +616,17 @@ jobs:
   # the shard count comes from the matrix itself (strategy.job-total), so the two
   # cannot drift. To add a shard, add it to the matrix and resize the sums above.
   #
-  # fail-fast: a failed shard has decided the entry, and the rest would hold scarce
-  # runners and the queue, with every run behind it, for an answer already known.
-  # TestMacOSLegRunsItsSuiteOnlyWhereItLands holds all of this per event and shard.
+  # fail-fast: a failed shard has decided the run, and the rest would hold scarce
+  # runners for an answer already known.
+  # TestMacOSLegRunsItsSuiteOnlyNightlyAndOnDemand holds all of this per event and shard.
   macos-suite:
-    if: github.event_name != 'pull_request'
-    # A shard's ceiling. Its queue-side budget is a sum, since check-macos reports
-    # only after the shards end: the wait for a runner, this ceiling and check-macos's
-    # own, inside the merge queue's 90 minutes (.abcd/work/rulesets/main-protection.json).
-    # A job's timeout-minutes starts when a runner takes it, so it counts none of the
-    # wait; 50 is half as much again as the 30 a shard takes on a slow runner, and it
-    # leaves 35 minutes of the queue's clock for that wait. The single job before
-    # the split had reached 85 (dcn-2610282036219503); the remedy for a shard near
-    # this cap is a faster suite or a rebalance in cmd/ci-shard, because raising it
-    # takes from the wait's allowance. TestRaceLaneBudgetIsDeclaredAndFitsItsJob
-    # holds the sum.
+    if: github.event_name != 'pull_request' && github.event_name != 'merge_group'
+    # A shard's ceiling. A job's timeout-minutes starts when a runner takes it, so it
+    # counts none of the wait for one, and no shard runs on the merge queue's clock.
+    # 50 is half as much again as the 30 a shard takes on a slow runner. The single
+    # job before the split had reached 85 (dcn-2610282036219503); the remedy for a
+    # shard near this cap is a faster suite or a rebalance in cmd/ci-shard.
+    # TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds it.
     timeout-minutes: 50
     strategy:
       fail-fast: true
@@ -715,7 +708,7 @@ jobs:
         run: go test -run '^(TestAHereDocBodyFeedStaysLinear|TestAPatternPastTheStepBudgetIsNotGenerated|TestAVeryDeepPathIsJudgedQuickly|TestAdjacencyProbeStaysLinearOnLongLines|TestAdjacencyProbeWindowIsBounded|TestBacktickPrePassStaysLinear|TestBraceScanStaysLinear|TestClosedOverDocumentsStayLinear|TestClosingScansAreLinear|TestDoubleQuotedBraceExpansionStaysLinear|TestExpandedHeredocBodyStaysLinear|TestForgeTextWorkIsLinear|TestGallopingProbeCostIsLinearInLineLength|TestGallopingProbeStaysBoundedOnLongLines|TestGluedFixedOutputStaysLinear|TestGluedSweepWorkIsLinear|TestHereDocumentPayloadStaysLinear|TestHistoryCaptureAcceptsWhatTheHooksAccept|TestHomeSpellingsStayLinear|TestIFSSplitCheckStaysLinear|TestJunctionBacktrackIsBounded|TestKillFeedGroupsAndStringsStayLinear|TestKillFeedReadingStaysLinear|TestMakerNoteWorkIsLinear|TestMetadataViewsWorkIsLinear|TestNestedHereDocumentPayloadStaysLinear|TestParameterExpansionReadingStaysLinear|TestPatternShapesStayLinear|TestQuotedSubstitutionStaysLinear|TestRawHeadingScanStaysLinearInTheOpenerCount|TestScanLineWorkIsLinear|TestScriptReadingStaysLinearOnAdversarialLines|TestSpeculationIsBoundedAtTheStdinCap|TestSpellingSetsStayLinear|TestSurfaceChapterProseStatesNoShape|TestSweepCallerHomeWorkIsLinear|TestSynopsisScanIsLinearInThePage|TestTheBudgetBoundsWallTimeOverLongLiterals|TestTheBudgetBoundsWallTimeOverManyLines|TestTheHiddenHTMLReadersStayLinear|TestTheTagWalksStayLinear|TestUTF16ViewWorkIsLinear|TestUnknownWordWalksStayLinear)$' ./internal/adapter/scanner ./internal/core/claim ./internal/core/guard ./internal/core/reading ./internal/surface/cli
 
       # The check job's warning, against this job's ceiling.
-      - name: Warn when the check nears the queue's cap
+      - name: Warn when the check nears its job's cap
         if: always()
         continue-on-error: true
         env:
@@ -733,7 +726,7 @@ jobs:
           minutes=$((elapsed / 60))
           echo "${ABCD_CI_LEG} has run ${minutes}m $((elapsed % 60))s; the warning line is ${WARN_AFTER_MINUTES}m"
           if [ "$elapsed" -gt $((WARN_AFTER_MINUTES * 60)) ]; then
-            msg="${ABCD_CI_LEG} ran ${minutes} minutes, past the ${WARN_AFTER_MINUTES}-minute warning line and close to the job's ${CEILING_MINUTES}-minute cap. If it is cancelled at the cap, rerun it once; a second cancellation for the same reason stops the pull request: open a speed lane to make the suite faster, and do not raise the timeout."
+            msg="${ABCD_CI_LEG} ran ${minutes} minutes, past the ${WARN_AFTER_MINUTES}-minute warning line and close to the job's ${CEILING_MINUTES}-minute cap. If it is cancelled at the cap, rerun it once; a second cancellation for the same reason stops any pull request it gates: open a speed lane to make the suite faster, and do not raise the timeout."
             echo "::warning title=${ABCD_CI_LEG} near its cap::${msg}"
             printf '### %s near its cap\n\n%s\n' "$ABCD_CI_LEG" "$msg" >>"$GITHUB_STEP_SUMMARY"
           fi
@@ -742,16 +735,17 @@ jobs:
   # every event: the ruleset requires that name
   # (.abcd/work/rulesets/main-protection.json), and a shard must never read as the
   # whole suite. It runs however the shards ended, and passes in exactly two cases:
-  # off a pull request when every shard succeeded (a matrix job's result is success
-  # only when every leg's is), and on a pull request when the shards were skipped
-  # as they should be. A shard failed or cancelled, or skipped anywhere else, fails
-  # it: a green here may only stand for work that happened. `always()` is on the
-  # step as well as on the job, because a step's implicit success() is false on a
-  # cancelled run, and a job whose steps are all skipped concludes success. So a run
-  # cancelled mid-suite reads as failed, which is how a queue-sweep of a dropped
-  # entry's run ends too. A cancelled or superseded pull-request run still reports
-  # the stand-in: there the context never tested anything and says so, the run's
-  # other required contexts hold that commit, and the queue entry decides.
+  # on an event the suite runs on when every shard succeeded (a matrix job's result
+  # is success only when every leg's is), and on a pull request or a merge-queue
+  # entry when the shards were skipped as they should be, each with its own notice
+  # that no macOS suite ran. A shard failed, cancelled or abandoned (what a shard
+  # that never got a runner reads as, run 41901793293), or skipped anywhere else,
+  # fails it: a green here may only stand for work that happened. `always()` is on
+  # the step as well as on the job, because a step's implicit success() is false on
+  # a cancelled run, and a job whose steps are all skipped concludes success. So a
+  # run cancelled mid-suite reads as failed. A cancelled or superseded pull-request
+  # or queue run still reports the stand-in: there the context never tested anything
+  # and says so, and the run's other required contexts hold that commit.
   # TestMacOSCheckFailsUnlessEveryShardSucceeded runs this script over every result
   # per event.
   check-macos:
@@ -769,14 +763,24 @@ jobs:
           SUITE_RESULT: ${{ needs.macos-suite.result }}
         run: |
           echo "macos-suite concluded '${SUITE_RESULT}' on a ${EVENT_NAME} event"
-          if [ "$EVENT_NAME" = pull_request ]; then
+          case "$EVENT_NAME" in
+            pull_request)
+              msg="On a pull request check (macos-latest) reports without taking a macOS runner, so this run tested nothing on macOS. The macOS suite runs nightly on the default branch and on demand."
+              ;;
+            merge_group)
+              msg="No macOS suite ran on this entry: the merge queue tests on Linux, and this context reports without taking a macOS runner. The nightly run covers the default branch."
+              ;;
+            *)
+              msg=""
+              ;;
+          esac
+          if [ -n "$msg" ]; then
             if [ "$SUITE_RESULT" = skipped ]; then
-              msg="check (macos-latest) runs the macOS suite in the merge queue, on the tree that lands, and on every event that is not a pull request. On a pull request it reports this context without taking a macOS runner, so this run tested nothing on macOS."
-              echo "::notice title=macOS suite runs in the merge queue::${msg}"
-              printf '### macOS suite runs in the merge queue\n\n%s\n' "$msg" >>"$GITHUB_STEP_SUMMARY"
+              echo "::notice title=macOS suite runs nightly::${msg}"
+              printf '### macOS suite runs nightly\n\n%s\n' "$msg" >>"$GITHUB_STEP_SUMMARY"
               exit 0
             fi
-            echo "::error title=check (macos-latest)::the shards did not stand down on a pull request (result '${SUITE_RESULT}'), so this context cannot report as the stand-in it is there"
+            echo "::error title=check (macos-latest)::the shards did not stand down on a ${EVENT_NAME} event (result '${SUITE_RESULT}'), so this context cannot report as the stand-in it is there"
             exit 1
           fi
           if [ "$SUITE_RESULT" != success ]; then
