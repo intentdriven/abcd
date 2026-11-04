@@ -407,8 +407,10 @@ func letGoByDrive(run State) bool {
 func (t *terminal) letGo() {
 	now := t.now()
 	err := fsutil.WithFileLock(filepath.Join(t.repoRoot, filepath.FromSlash(drainLockRel)), lockTimeout, func() error {
+		// A drain that ended on an outage can have a lane still in progress, so
+		// its lanes are read whether it is live or not.
 		st, live, err := readDrain(t.repoRoot)
-		if err != nil || !live {
+		if err != nil {
 			return err
 		}
 		for _, l := range st.Lanes {
@@ -427,7 +429,7 @@ func (t *terminal) letGo() {
 				return true, nil
 			})
 		}
-		if j := st.Judging; j != nil {
+		if j := st.Judging; j != nil && live {
 			if j.Hold != nil {
 				clause, _ := releaseReservation(t.repoRoot, j.Issue, "", now)
 				t.say("%s: %s", j.Issue, clause)
@@ -452,8 +454,8 @@ func (t *terminal) ended(why string) TerminalResult {
 		t.letGo()
 	}
 	res := TerminalResult{Ended: why, Last: t.last}
-	st, live, err := readDrain(t.repoRoot)
-	if err != nil || !live {
+	st, _, err := readDrain(t.repoRoot)
+	if err != nil {
 		return res
 	}
 	for _, l := range st.Lanes {
