@@ -68,10 +68,7 @@ var credentialVars = []string{
 	"CLAUDE_CODE_USE_VERTEX",
 }
 
-// CredentialVars names the variables a walled launch never carries.
-func CredentialVars() []string { return append([]string(nil), credentialVars...) }
-
-// HeldCredentials names each of CredentialVars set in this process's
+// HeldCredentials names each of credentialVars set in this process's
 // environment. It reports the names alone and keeps no value.
 func HeldCredentials() []string {
 	var held []string

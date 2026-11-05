@@ -9,6 +9,7 @@ package runner
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -26,6 +27,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/shellquote"
 	"os/exec"
 )
 
@@ -49,8 +51,9 @@ const (
 )
 
 // PinPrograms fixes what each program name means for the rest of this process and
-// what it starts: the directory each resolves into goes first on PATH, so one
-// placed earlier on PATH later is not what runs. A name not on PATH is left.
+// what it starts: the directory each resolves into goes first on PATH, in PATH's
+// own order, so each name keeps its first match and one placed earlier on PATH
+// later is not what runs. A name not on PATH is left.
 func PinPrograms(names ...string) {
 	var dirs []string
 	for _, name := range names {
@@ -59,12 +62,20 @@ func PinPrograms(names ...string) {
 		}
 	}
 	if len(dirs) > 0 {
+		entries := filepath.SplitList(os.Getenv("PATH"))
+		for i, entry := range entries {
+			entries[i] = filepath.Clean(entry)
+		}
+		slices.SortStableFunc(dirs, func(a, b string) int {
+			return cmp.Compare(slices.Index(entries, a), slices.Index(entries, b))
+		})
 		_ = os.Setenv("PATH", strings.Join(append(dirs, os.Getenv("PATH")), string(os.PathListSeparator)))
 	}
 }
 
 // HookedEnv is the environment a hook the driver's own git runs gets: what a stage
-// carries, under its home, with git's own settings kept.
+// carries, under its home, with git's own settings kept and the configuration the
+// drive wrote in place of whatever a stage left in that home.
 func HookedEnv(p Profile) func([]string) []string {
 	return func(env []string) []string {
 		carried := stageEnv(env)
@@ -73,7 +84,7 @@ func HookedEnv(p Profile) func([]string) []string {
 				carried = append(carried, kv)
 			}
 		}
-		return sealedEnv(carried, stageSeal(p))
+		return sealedEnv(carried, append(stageSeal(p), "GIT_CONFIG_GLOBAL="+stageGitFile(p)))
 	}
 }
 
@@ -96,9 +107,9 @@ const (
 	wallEnvCommand  = "awk 'BEGIN { for (name in ENVIRON) { print \"" + wallEnvMarker + "\" name; if (ENVIRON[name] ~ /@/ && ENVIRON[name] !~ /^\\//) print \"" + wallAtMarker + "\" name } }'"
 )
 
-// WallProofCommands are the shell commands the proof asks for, in order: the one
+// wallProofCommands are the shell commands the proof asks for, in order: the one
 // the guard is meant to refuse, then the two that show the stage's shell.
-func WallProofCommands() []string {
+func wallProofCommands() []string {
 	return []string{guardProofCommand, wallHomeCommand, wallEnvCommand}
 }
 
@@ -163,16 +174,11 @@ type hookGroup struct {
 	Hooks   []hookCommand `json:"hooks"`
 }
 
-// shellQuoted is p as one word of a shell line.
-func shellQuoted(p string) string {
-	return "'" + strings.ReplaceAll(p, "'", `'\''`) + "'"
-}
-
-// WallSettings renders the walled settings for bin, the abcd binary whose hooks
+// wallSettings renders the walled settings for bin, the abcd binary whose hooks
 // they name: the guard, the rules loader and the session hooks.
-func WallSettings(bin string) []byte {
+func wallSettings(bin string) []byte {
 	cmd := func(verb string) hookCommand {
-		return hookCommand{Type: "command", Command: shellQuoted(bin) + " " + verb}
+		return hookCommand{Type: "command", Command: shellquote.Single(bin) + " " + verb}
 	}
 	one := func(verbs ...string) []hookGroup {
 		g := hookGroup{}
@@ -212,7 +218,7 @@ func renderedByAbcd(raw []byte) bool {
 	if json.Unmarshal(append(append([]byte{'"'}, m[1]...), '"'), &bin) != nil {
 		return false
 	}
-	return bytes.Equal(raw, WallSettings(bin))
+	return bytes.Equal(raw, wallSettings(bin))
 }
 
 // WriteWallSettings writes the walled settings at each start, so a new binary
@@ -225,7 +231,7 @@ func WriteWallSettings(p Profile, bin string) (replaced bool, _ error) {
 		return false, &WallError{WallSettingsFile, "the file could not be read"}
 	}
 	replaced = err == nil && !renderedByAbcd(raw)
-	if err := fsutil.WriteFileAtomic(path, WallSettings(bin), 0o600); err != nil {
+	if err := fsutil.WriteFileAtomic(path, wallSettings(bin), 0o600); err != nil {
 		return false, &WallError{WallSettingsFile, "the file could not be written"}
 	}
 	if err := writeStageFiles(p, bin); err != nil {
@@ -270,6 +276,10 @@ func declaredNow(p Profile) map[string][sha256.Size]byte {
 	return out
 }
 
+// stageGitFile is the git configuration the driver's own hooked commands read. It
+// lies beside the stage's home, outside what a stage writes.
+func stageGitFile(p Profile) string { return filepath.Join(p.StageRoot, "gitconfig") }
+
 // writeStageFiles lays out a stage's shell: the file it sources, which names its
 // home and keeps the person's Go caches, and the home itself, holding the person's
 // git identity and filters and no other git configuration. A start with no git
@@ -286,6 +296,9 @@ func writeStageFiles(p Profile, bin string) error {
 	written := &stageWritten{env: stageEnvFile(p, exports), gitConfig: gitConfig, declared: declaredNow(p), exports: exports, binaries: binariesNow(p, bin)}
 	if err := fsutil.WriteFileAtomic(p.EnvFile, written.env, 0o600); err != nil {
 		return &WallError{WallSettingsFile, "the stage's shell file could not be written"}
+	}
+	if err := fsutil.WriteFileAtomic(stageGitFile(p), gitConfig, 0o600); err != nil {
+		return &WallError{WallSettingsFile, "the stage's git configuration could not be written"}
 	}
 	stagesWritten.Store(p.ShellHome, written)
 	return ResetStageHome(p)
@@ -346,12 +359,12 @@ func stageGoExports(p Profile) []string {
 // records, the Go caches, and no walled directory for a further harness to find.
 func stageEnvFile(p Profile, exports []string) []byte {
 	var b bytes.Buffer
-	fmt.Fprintf(&b, "export HOME=%s\n", shellQuoted(p.ShellHome))
-	fmt.Fprintf(&b, "export %s=%s\n", StageHomeEnv, shellQuoted(p.ShellHome))
-	fmt.Fprintf(&b, "export %s=%s\n", abcdhome.PersonHomeEnv, shellQuoted(p.PersonHome))
+	fmt.Fprintf(&b, "export HOME=%s\n", shellquote.Single(p.ShellHome))
+	fmt.Fprintf(&b, "export %s=%s\n", StageHomeEnv, shellquote.Single(p.ShellHome))
+	fmt.Fprintf(&b, "export %s=%s\n", abcdhome.PersonHomeEnv, shellquote.Single(p.PersonHome))
 	for _, kv := range exports {
 		k, v, _ := strings.Cut(kv, "=")
-		fmt.Fprintf(&b, "export %s=%s\n", k, shellQuoted(v))
+		fmt.Fprintf(&b, "export %s=%s\n", k, shellquote.Single(v))
 	}
 	b.WriteString("unset CLAUDE_CONFIG_DIR\n")
 	return b.Bytes()
@@ -461,6 +474,7 @@ func checkStageFiles(p Profile) error {
 	}{
 		{p.EnvFile, written.env, "the stage's shell file"},
 		{filepath.Join(p.ShellHome, ".gitconfig"), written.gitConfig, "the stage's git configuration"},
+		{stageGitFile(p), written.gitConfig, "the driver's git configuration"},
 	} {
 		if raw, err := os.ReadFile(f.path); err != nil || !bytes.Equal(raw, f.want) {
 			return &WallError{WallSettingsFile, f.name + " differs from what abcd wrote"}
@@ -485,7 +499,7 @@ func CheckWallSettings(p Profile, bin string) error {
 	if err != nil {
 		return &WallError{WallSettingsFile, "the profile directory's settings could not be read"}
 	}
-	if !bytes.Equal(raw, WallSettings(bin)) {
+	if !bytes.Equal(raw, wallSettings(bin)) {
 		return &WallError{WallSettingsFile, "the profile directory's settings differ from what abcd wrote"}
 	}
 	return checkStageFiles(p)
@@ -523,7 +537,7 @@ func workingTreeSettings(marker string) []byte {
 	raw, _ := json.Marshal(map[string]any{
 		"permissions": map[string]any{"allow": []string{"Bash(git push:*)"}},
 		"hooks": map[string]any{"SessionStart": []hookGroup{{Hooks: []hookCommand{
-			{Type: "command", Command: ": > " + shellQuoted(marker)}}}}},
+			{Type: "command", Command: ": > " + shellquote.Single(marker)}}}}},
 	})
 	return raw
 }
@@ -608,7 +622,7 @@ func ProveWall(ctx context.Context, p Profile, bin string) error {
 
 // wallProofPrompt is the live launch's one instruction.
 var wallProofPrompt = "This is abcd's check of its own guard. Use the Bash tool three times, once for each of these commands, exactly as written, and do nothing else:\n" +
-	strings.Join(WallProofCommands(), "\n") + "\nWhatever the tool answers, then reply with the single word: done\n"
+	strings.Join(wallProofCommands(), "\n") + "\nWhatever the tool answers, then reply with the single word: done\n"
 
 // outsideStageEnv is the first variable name a proof's output line shows that a
 // stage's shell should not hold, "" for none. It keeps names alone.

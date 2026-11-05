@@ -127,14 +127,14 @@ func TestAWalledDirectoryOnlyItsOwnerCanChangeIsAdmitted(t *testing.T) {
 // TestHeldCredentialsNamesEachVariableAndNoValue: what the harness would bill
 // through is reported by name.
 func TestHeldCredentialsNamesEachVariableAndNoValue(t *testing.T) {
-	for _, k := range CredentialVars() {
+	for _, k := range credentialVars {
 		t.Setenv(k, "")
 	}
 	if got := HeldCredentials(); len(got) != 0 {
 		t.Fatalf("nothing set holds nothing: %q", got)
 	}
 	for _, k := range []string{"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"} {
-		if !slices.Contains(CredentialVars(), k) {
+		if !slices.Contains(credentialVars, k) {
 			t.Fatalf("%s is a variable the harness bills through", k)
 		}
 	}

@@ -298,12 +298,14 @@ hooks, the Makefile, abcd's configuration or a preflight receipt; other records 
 is not held to this. The hooks read the rules and the guard's registry as the lane's base
 holds them, and the away mode, the checklist and recall stand aside on a stage.
 
-The driver's own git commands run the repository's hooks, with the same variables and
-home as a stage; only the push keeps the person's credentials. So does a preflight, and
-only a receipt from a preflight the drive ran itself lands a lane. A lane at its landing
-that changes the Makefile, `scripts/` or the active hooks is handed back unless the person
-agreed when they started the drive, and an issue that names one is passed over before a
-lane opens. What the driver wrote of a run is compared after each agent's call, and a
+The driver's commit, merge and reset hooks get the same variables and home as a stage, and
+read the git configuration the drive wrote rather than any a stage left in that home; its
+network commands, filters and forge calls keep the person's environment. A preflight runs
+with what a stage carries too, and only a receipt from a preflight the drive ran itself
+lands a lane. A lane at its landing that changes the Makefile, `scripts/` or the active
+hooks, measured from what it last merged of the default branch, is handed back, and an
+issue that names one is passed over before a lane opens: that change needs a person's own
+session, and the drive's last lines name each one. What the driver wrote of a run is compared after each agent's call, and a
 difference stops the drive. One drive holds a checkout at a time, and each checkout has
 its stage's home to itself. A credential variable the harness would bill
 through refuses the start, naming itd-2611011230226453, and so does a start from
@@ -950,7 +952,6 @@ Sub-verbs: none.
 | `--skip` | stringArray |
 | `--sub-agents` | string |
 | `--take-over` | bool |
-| `--trust-lane-gates` | bool |
 | `--unskip` | stringArray |
 | `--until` | string |
 | `--yes` | bool |

@@ -118,7 +118,7 @@ func TestTheWalledLaunchsEnvironmentNamesTheDirectoryAndHoldsNoCredential(t *tes
 	f, c, p := walledFake(t, "ok")
 	t.Setenv("CLAUDE_CONFIG_DIR", "/the/persons/own")
 	t.Setenv("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "0")
-	for _, k := range CredentialVars() {
+	for _, k := range credentialVars {
 		t.Setenv(k, "a-value-never-passed")
 	}
 	if _, _, err := c.Run(context.Background(), shellRequest(f)); err != nil {
@@ -137,7 +137,7 @@ func TestTheWalledLaunchsEnvironmentNamesTheDirectoryAndHoldsNoCredential(t *tes
 	if strings.Contains(string(raw), "a-value-never-passed") {
 		t.Fatalf("a credential reached the harness:\n%s", raw)
 	}
-	for _, k := range CredentialVars() {
+	for _, k := range credentialVars {
 		for _, kv := range env {
 			if strings.HasPrefix(kv, k+"=") {
 				t.Errorf("%s is sealed out, not set empty: %q", k, kv)

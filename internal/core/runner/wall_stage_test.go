@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -14,6 +15,9 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/guard"
+	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/shellquote"
 )
 
 // realGitRead has this test read the git configuration as a drive does.
@@ -190,7 +194,9 @@ func gitIdentityWorld(t *testing.T, global string) (Profile, string) {
 	if err := os.MkdirAll(repo, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := exec.Command("git", "-C", repo, "init", "-q").CombinedOutput(); err != nil {
+	init := exec.Command("git", "-C", repo, "init", "-q")
+	init.Env = gittest.Env(t)
+	if out, err := init.CombinedOutput(); err != nil {
 		t.Fatalf("%v: %s", err, out)
 	}
 	p.Repo = repo
@@ -264,7 +270,7 @@ func TestTheProofCatchesACredentialUnderAHarnessPrefix(t *testing.T) {
 	if !stageShellAllowed("CLAUDE_CODE_ENTRYPOINT") {
 		t.Fatal("the harness's own variable is expected")
 	}
-	for _, name := range CredentialVars() {
+	for _, name := range credentialVars {
 		if stageShellAllowed(name) {
 			t.Errorf("%s is allowed in a stage's shell", name)
 		}
@@ -355,7 +361,7 @@ func TestGoInstallsLandUnderTheStagesHome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(raw), "export GOBIN="+shellQuoted(filepath.Join(p.ShellHome, "bin"))) {
+	if !strings.Contains(string(raw), "export GOBIN="+shellquote.Single(filepath.Join(p.ShellHome, "bin"))) {
 		t.Fatalf("the shell file:\n%s", raw)
 	}
 	env := stageEnv([]string{"GOPROXY=https://someone:a-value-never-passed@proxy.example.invalid,direct"})
@@ -420,6 +426,79 @@ func TestHookedGitHoldsNoCredential(t *testing.T) {
 	for _, want := range []string{"PATH=/bin", "GIT_CONFIG_COUNT=1", "GIT_TERMINAL_PROMPT=0", "HOME=" + p.ShellHome} {
 		if !slices.Contains(got, want) {
 			t.Errorf("a hook's environment lacks %q: %q", want, got)
+		}
+	}
+}
+
+// TestPinningKeepsEachNamesFirstMatch: a program that stands ahead of the system's
+// stays what its name means, whatever order the names are asked in.
+func TestPinningKeepsEachNamesFirstMatch(t *testing.T) {
+	gnu, system := t.TempDir(), t.TempDir()
+	for _, p := range []string{filepath.Join(gnu, "make"), filepath.Join(system, "make"), filepath.Join(system, "git")} {
+		if err := os.WriteFile(p, []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", gnu+string(os.PathListSeparator)+system)
+	PinPrograms("git", "make")
+	if got, err := exec.LookPath("make"); err != nil || got != filepath.Join(gnu, "make") {
+		t.Fatalf("make resolves to %q %v", got, err)
+	}
+}
+
+// TestAPlantedGitConfigDoesNotReachTheDriversGit: the driver's hooked git reads the
+// configuration the drive wrote, not what a stage left in its home.
+func TestAPlantedGitConfigDoesNotReachTheDriversGit(t *testing.T) {
+	p := wallProfile(t)
+	if _, err := WriteWallSettings(p, wallBin); err != nil {
+		t.Fatal(err)
+	}
+	planted := filepath.Join(p.ShellHome, ".config", "git", "config")
+	if err := os.MkdirAll(filepath.Dir(planted), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(planted, []byte("[user]\n\tname = planted\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(p.ShellHome, ".gitconfig"), []byte("[user]\n\tname = planted\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("git", "config", "--global", "user.name")
+	// Not gittest.Env: what this reads is what the driver's own git is told.
+	cmd.Env = HookedEnv(p)([]string{"PATH=" + os.Getenv("PATH")})
+	out, _ := cmd.CombinedOutput()
+	if strings.Contains(string(out), "planted") {
+		t.Fatalf("the driver's git read what a stage left: %q", out)
+	}
+	if err := os.WriteFile(stageGitFile(p), []byte("[user]\n\tname = planted\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckWallSettings(p, wallBin); err == nil {
+		t.Fatal("a changed configuration for the driver's git goes unseen")
+	}
+}
+
+// TestTheProofsCommandsAreOnesTheApproverPasses: the first is the one the guard
+// refuses; the rest must reach the shell, or the proof can never hold.
+func TestTheProofsCommandsAreOnesTheApproverPasses(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	f := guard.NewFiles(t.TempDir()).WithStage(abcdhome.Path(home, "stage-homes", "walled"), []string{abcdhome.Path(home, "profiles", "walled")}, nil)
+	approve := func(line string) guard.Approval {
+		raw, _ := json.Marshal(map[string]string{"command": line})
+		a, _ := guard.ApprovePrompt(guard.Loaded{Registry: guard.Defaults()}, f, "Bash", raw)
+		return a
+	}
+	cmds := wallProofCommands()
+	if len(cmds) != 3 {
+		t.Fatalf("three commands: %q", cmds)
+	}
+	if a := approve(cmds[0]); a.Allow {
+		t.Fatalf("the first is meant to be refused: %q", cmds[0])
+	}
+	for _, c := range cmds[1:] {
+		if a := approve(c); !a.Allow {
+			t.Errorf("%q was refused: %s", c, a.Reason)
 		}
 	}
 }

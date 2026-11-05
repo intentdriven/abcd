@@ -17,12 +17,14 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sync"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -151,6 +153,10 @@ type TerminalResult struct {
 	Last DrainResult `json:"last"`
 	// HeldBack names each issue the run held back.
 	HeldBack []string `json:"held_back,omitempty"`
+	// PassedOver names each issue the run did not open, with why.
+	PassedOver []Excluded `json:"passed_over,omitempty"`
+	// Why is what stopped the run when a check did.
+	Why string `json:"why,omitempty"`
 }
 
 // terminal is one run in progress.
@@ -191,6 +197,10 @@ type terminal struct {
 	// answer; heldBack names each issue the run held back for that.
 	unanswered map[string]int
 	heldBack   []string
+	// passedOver are the issues said to need a person, each once.
+	passedOver []Excluded
+	// why is what stopped the run, when a check did.
+	why string
 	// judge is what the last move's routed judgement came to.
 	judge JudgeOutcome
 	// minted names each head a preflight this run ran exited 0 on, and bases each
@@ -327,9 +337,15 @@ func (t *terminal) wallHeld() bool {
 	}
 	err := t.o.BeforeStage()
 	if err != nil {
-		t.say("stopping: %s", err.Error())
+		t.stoppedBy(err)
 	}
 	return err == nil
+}
+
+// stoppedBy says what stopped the run and keeps it for the end.
+func (t *terminal) stoppedBy(err error) {
+	t.why = err.Error()
+	t.say("stopping: %s", t.why)
 }
 
 // haltedBy reports whether err is a stop set from outside this terminal, saying
@@ -557,17 +573,31 @@ func (t *terminal) holdBack(issue string) bool {
 	t.say("holding %s back: its judge did not answer %d times", issue, terminalJudgeAsks)
 	t.o.Drain.Skip, t.o.Drain.SkipReason = []string{issue}, "its judge did not answer"
 	t.heldBack = append(t.heldBack, issue)
-	clause, _ := releaseReservation(t.repoRoot, issue, "", t.now())
-	t.say("%s: %s", issue, clause)
 	t.keepHeldBack(issue)
 	return true
+}
+
+// heldBackRoot is the main checkout of repoRoot, so what a drive held back
+// outlives a linked worktree's removal. A repository whose git directory lies
+// elsewhere keeps it in repoRoot.
+func heldBackRoot(repoRoot string) string {
+	common, err := gitutil.RevParseAbsPath(repoRoot, "--git-common-dir")
+	if err != nil || filepath.Base(common) != ".git" {
+		return repoRoot
+	}
+	return filepath.Dir(common)
+}
+
+// heldBackFile is where a checkout's held-back issues are kept.
+func heldBackFile(repoRoot string) string {
+	return filepath.Join(heldBackRoot(repoRoot), filepath.FromSlash(HeldBackRel))
 }
 
 // keepHeldBack appends the fact to a file of its own.
 func (t *terminal) keepHeldBack(issue string) {
 	line := t.now().UTC().Format(time.RFC3339) + " " + issue + " its judge did not answer\n"
-	if err := fsutil.EnsureRealDirAll(t.repoRoot, filepath.ToSlash(filepath.Dir(HeldBackRel)), 0o700); err == nil {
-		f, err := os.OpenFile(filepath.Join(t.repoRoot, filepath.FromSlash(HeldBackRel)), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err := fsutil.EnsureRealDirAll(heldBackRoot(t.repoRoot), filepath.ToSlash(filepath.Dir(HeldBackRel)), 0o700); err == nil {
+		f, err := os.OpenFile(heldBackFile(t.repoRoot), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 		if err == nil {
 			_, _ = f.WriteString(line)
 			_ = f.Close()
@@ -584,6 +614,12 @@ func (t *terminal) sayMove(res DrainResult) {
 	}
 	for _, r := range res.Routed {
 		t.say("handed back: %s", DrainSummaryLine(r))
+	}
+	for _, p := range res.Passed {
+		if p.Check == CheckNeedsPerson && !slices.ContainsFunc(t.passedOver, func(e Excluded) bool { return e.ID == p.ID }) {
+			t.passedOver = append(t.passedOver, p)
+			t.say("passed over %s: %s", p.ID, p.Reason)
+		}
 	}
 	for _, f := range res.Finished {
 		t.say("finished %s", f.Issue)
@@ -632,13 +668,13 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 				case !seen:
 					t.bases[key] = lane.BaseSHA
 				case base != lane.BaseSHA:
-					t.say("stopping: %s", errRunStateChanged.Error())
+					t.stoppedBy(errRunStateChanged)
 					return TerminalWall, nil
 				}
 			}
 			if lane.Stage == StageLand && t.o.PreflightAllowed != nil {
 				var refused *PreflightRefused
-				if perr := t.o.PreflightAllowed(lane.Worktree, t.bases[key]); errors.As(perr, &refused) {
+				if perr := t.o.PreflightAllowed(lane.Worktree, diffBase(lane)); errors.As(perr, &refused) {
 					_, ended, err := t.laneRefused(ctx, runID, lane.ID, refused.Reason, refused.Reason)
 					return ended, err
 				} else if perr != nil {
@@ -657,7 +693,7 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 			return TerminalKilled, nil
 		}
 		if errors.Is(err, errRunStateChanged) {
-			t.say("stopping: %s", err.Error())
+			t.stoppedBy(err)
 			return TerminalWall, nil
 		}
 		if t.poisoned(ctx, runID) {
@@ -1243,7 +1279,7 @@ func (t *terminal) letGo() {
 		}
 		if j := st.Judging; j != nil && live {
 			if j.Hold != nil {
-				clause, _ := releaseReservation(t.repoRoot, j.Issue, "", now)
+				clause, _ := releaseReservationAt(t.repoRoot, j.Issue, j.Hold.Commit, "", now)
 				t.say("%s: %s", j.Issue, clause)
 			}
 			st.Judging = nil
@@ -1265,7 +1301,10 @@ func (t *terminal) ended(why string) TerminalResult {
 	if why != TerminalKilled && why != TerminalHalted {
 		t.letGo()
 	}
-	res := TerminalResult{Ended: why, Last: t.last, HeldBack: t.heldBack}
+	res := TerminalResult{Ended: why, Last: t.last, HeldBack: t.heldBack, PassedOver: t.passedOver}
+	if why == TerminalWall {
+		res.Why = t.why
+	}
 	st, _, err := readDrain(t.repoRoot)
 	if err != nil {
 		return res

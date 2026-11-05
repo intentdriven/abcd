@@ -1588,13 +1588,6 @@
           "hidden": false
         },
         {
-          "name": "trust-lane-gates",
-          "shorthand": "",
-          "type": "bool",
-          "required": false,
-          "hidden": false
-        },
-        {
           "name": "unskip",
           "shorthand": "",
           "type": "stringArray",

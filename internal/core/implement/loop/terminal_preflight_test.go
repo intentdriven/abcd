@@ -286,7 +286,7 @@ func TestAnIssueTheDriveWouldRefuseIsPassedOver(t *testing.T) {
 	seen := []string{}
 	o.Drain.PassOver = func(id, _ string) string {
 		seen = append(seen, id)
-		return "its path is a gate file; --trust-lane-gates opens it"
+		return "it needs a person's own session, since it changes a gate file"
 	}
 	w.guardSleeps(t, &o)
 	res, err := RunTerminal(context.Background(), w.repo.Root(), o)

@@ -142,13 +142,10 @@ func driveHooksPath(dir string) string {
 }
 
 // driveGateCheck says whether a lane's landing may go on: not over a lane that
-// changes what judges it, unless the person agreed with --trust-lane-gates, and
-// not when what the lane changed cannot be read.
-func driveGateCheck(trust bool) func(worktree, base string) error {
+// changes what judges it, which a person's own session handles, and not when what
+// the lane changed cannot be read.
+func driveGateCheck() func(worktree, base string) error {
 	return func(worktree, base string) error {
-		if trust {
-			return nil
-		}
 		out, err := gitutil.Run(worktree, "diff", "--name-only", "-z", "--no-renames", base, "HEAD", "--")
 		if err != nil {
 			return &loop.PreflightRefused{Reason: "what the lane changed could not be read, so its landing does not go on"}
@@ -156,7 +153,7 @@ func driveGateCheck(trust bool) func(worktree, base string) error {
 		hooks := driveHooksPath(worktree)
 		for _, path := range strings.Split(out, "\x00") {
 			if driveGate(path, hooks) {
-				return &loop.PreflightRefused{Reason: "the lane changes " + strconv.Quote(termsafe.Sanitize(path)) + ", which judges it, so its landing does not go on and it is handed back: review the branch yourself, and to drive the issue again change its record and start a new drive that trusts the lane's gates"}
+				return &loop.PreflightRefused{Reason: "the lane changes " + strconv.Quote(termsafe.Sanitize(path)) + ", a gate file, so it needs a person's own session and its landing does not go on: review the branch there"}
 			}
 		}
 		return nil
@@ -165,17 +162,17 @@ func driveGateCheck(trust bool) func(worktree, base string) error {
 
 // drivePassOver says why an issue is passed over rather than opened: its own path
 // is one of the gates, so a lane on it could only be handed back.
-func drivePassOver(repoRoot string, trust bool) func(id, foundAt string) string {
+func drivePassOver(repoRoot string) func(id, foundAt string) string {
 	hooks := driveHooksPath(repoRoot)
 	return func(_, foundAt string) string {
 		path, ok := capture.FoundAtPath(foundAt)
 		if !ok {
 			path, _, _ = strings.Cut(foundAt, ":")
 		}
-		if trust || !driveGate(path, hooks) {
+		if !driveGate(path, hooks) {
 			return ""
 		}
-		return "it names " + strconv.Quote(termsafe.Sanitize(path)) + ", which judges a lane, so no lane is opened on it; --trust-lane-gates opens it"
+		return "it needs a person's own session, since it changes a gate file: " + strconv.Quote(termsafe.Sanitize(path))
 	}
 }
 
@@ -187,8 +184,6 @@ type driveFlags struct {
 	skips    drainSkips
 	// pace, subAgents and fixRounds are the flags as given, nil for one not.
 	pace, subAgents, fixRounds *string
-	// trustGates is --trust-lane-gates.
-	trustGates bool
 	// until is the run's bound; zero leaves each wait its eight hours.
 	until time.Time
 }
@@ -274,11 +269,7 @@ func driveConsent(cmd *cobra.Command, w io.Writer, f driveFlags, lanes, runs int
 	fmt.Fprintf(w, "  runner: claude\n")
 	fmt.Fprintf(w, "  route:    this account's subscription, on the separate login %s\n", abcdhome.Display("profiles", filepath.Base(p.Dir)))
 	fmt.Fprintln(w, "  profile:  a separate login and settings on this one account; a stage's shell reads what this account can")
-	if f.trustGates {
-		fmt.Fprintln(w, "  gates:    trusted: a lane may change the Makefile, scripts/ or the hooks that judge it")
-	} else {
-		fmt.Fprintln(w, "  gates:    a lane that changes the Makefile, scripts/ or the hooks is handed back; --trust-lane-gates runs it")
-	}
+	fmt.Fprintln(w, "  gates:    a change to the Makefile, scripts/ or the hooks is not a drive's: it needs a person's own session")
 	fmt.Fprintln(w, "  first:    one short live launch checks the tools, the guard and the shell, on the same subscription")
 	if f.yes {
 		return true, nil
@@ -311,7 +302,7 @@ func runDrive(cmd *cobra.Command, asJSON bool, repoRoot string, f driveFlags) er
 	// One drive per checkout, from before it writes anything to its end: one
 	// stopping after a hang-up must not release a claim under the next.
 	err = fsutil.WithFileLock(filepath.Join(repoRoot, filepath.FromSlash(driveLockRel)), driveLockWait, func() error {
-		return runDriveLocked(ctx, cmd, asJSON, repoRoot, roots, cfg, p, f, stopAsking)
+		return runDriveLocked(cmd, asJSON, repoRoot, roots, cfg, p, f, stopAsking)
 	})
 	if errors.Is(err, fsutil.ErrLockContention) {
 		return &exitError{Code: 3, Msg: "abcd drain --drive: another drive holds this checkout; nothing started, nothing reserved"}
@@ -320,14 +311,7 @@ func runDrive(cmd *cobra.Command, asJSON bool, repoRoot string, f driveFlags) er
 }
 
 // runDriveLocked is the drive holding the checkout's drive lock, up to its yes.
-func runDriveLocked(ctx context.Context, cmd *cobra.Command, asJSON bool, repoRoot string, roots layered.Roots, cfg *runner.Config, p runner.Profile, f driveFlags, stopAsking func()) error {
-	lines, err := driveWalls.static(ctx, p)
-	if err != nil {
-		return driveRefusal("%s", err.Error())
-	}
-	for _, l := range lines {
-		fmt.Fprintln(cmd.ErrOrStderr(), "abcd drain --drive: "+termsafe.Sanitize(fsutil.RedactHome(l)))
-	}
+func runDriveLocked(cmd *cobra.Command, asJSON bool, repoRoot string, roots layered.Roots, cfg *runner.Config, p runner.Profile, f driveFlags, stopAsking func()) error {
 	walled := cfg.Walled(p)
 	o := loop.Options{Roots: &roots, Runners: walled, TakeOver: f.takeOver, Pace: f.pace, SubAgents: f.subAgents, FixRounds: f.fixRounds}
 	progress, err := loop.ReadDrainProgress(repoRoot)
@@ -366,13 +350,26 @@ func runDriveLocked(ctx context.Context, cmd *cobra.Command, asJSON bool, repoRo
 	runner.PinPrograms("git", "make", "gh", "claude")
 	gitutil.SetHookedEnv(runner.HookedEnv(p))
 	defer gitutil.SetHookedEnv(nil)
-	errw := cmd.ErrOrStderr()
+	// The signal handling says what each signal did while the drive writes.
+	errw := sharedStderr(cmd.ErrOrStderr())
+	cmd.SetErr(errw)
 	sig := watchDriveSignals(func() {
 		fmt.Fprintln(errw, "abcd drain --drive: stopping: the agent in a call finishes that call, then the lane's reservation is released; press again to kill it and exit at once")
 	}, func() {
 		fmt.Fprintln(errw, "abcd drain --drive: killing the running agent's process group and exiting")
 	})
 	defer sig.close()
+	// Only a yes writes anything: another drive on this login reads these files.
+	lines, err := driveWalls.static(sig.ctx, p)
+	for _, l := range lines {
+		fmt.Fprintln(errw, "abcd drain --drive: "+termsafe.Sanitize(fsutil.RedactHome(l)))
+	}
+	if err != nil {
+		if sig.ctx.Err() != nil {
+			return &exitError{Code: driveKilledExit, Msg: "abcd drain --drive: killed during the proof (nothing started, nothing reserved)"}
+		}
+		return driveRefusal("%s", err.Error())
+	}
 	ended, err := driveProve(sig, cmd, asJSON, repoRoot, p, o, f)
 	if err != nil {
 		return err
@@ -380,7 +377,7 @@ func runDriveLocked(ctx context.Context, cmd *cobra.Command, asJSON bool, repoRo
 	if ended {
 		return nil
 	}
-	d := loop.DrainOptions{Max: lanes, Transcripts: &lazyHistoryStore{cmd: cmd}, PassOver: drivePassOver(repoRoot, f.trustGates),
+	d := loop.DrainOptions{Max: lanes, Transcripts: &lazyHistoryStore{cmd: cmd}, PassOver: drivePassOver(repoRoot),
 		Skip: f.skips.skip, SkipReason: f.skips.reason, Unskip: f.skips.unskip}
 	if progress.Live {
 		d.Max = f.maxLanes
@@ -391,7 +388,7 @@ func runDriveLocked(ctx context.Context, cmd *cobra.Command, asJSON bool, repoRo
 			d.Max = 0
 		}
 	}
-	return driveRun(sig, cmd, asJSON, repoRoot, roots, p, o, d, f.trustGates, f.until)
+	return driveRun(sig, cmd, asJSON, repoRoot, roots, p, o, d, f.until)
 }
 
 // driveProve runs the live proof. A limit it meets is no failed check, and nor is a
@@ -448,7 +445,7 @@ func driveProve(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot str
 }
 
 // driveRun runs the terminal loop and says how it ended.
-func driveRun(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot string, roots layered.Roots, p runner.Profile, o loop.Options, d loop.DrainOptions, trustGates bool, until time.Time) error {
+func driveRun(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot string, roots layered.Roots, p runner.Profile, o loop.Options, d loop.DrainOptions, until time.Time) error {
 	review, err := loop.LoadReviewRoute(roots, agentPrompt)
 	if err != nil {
 		return loopFail(cmd.OutOrStdout(), asJSON, "abcd drain", err)
@@ -479,7 +476,7 @@ func driveRun(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot strin
 		Runners:          loop.Runners{Config: o.Runners, Transcripts: d.Transcripts},
 		Review:           review,
 		Preflight:        drivePreflight(detail, p),
-		PreflightAllowed: driveGateCheck(trustGates),
+		PreflightAllowed: driveGateCheck(),
 		Say:              say,
 		Stop:             sig.stop,
 		Until:            until,
@@ -504,7 +501,7 @@ func driveRun(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot strin
 	case loop.TerminalKilled:
 		return &exitError{Code: driveKilledExit, Msg: "abcd drain --drive: killed"}
 	case loop.TerminalWall:
-		return &exitError{Code: 2, Msg: "abcd drain --drive: a wall no longer held"}
+		return &exitError{Code: 2, Msg: "abcd drain --drive: " + driveEndWords(res.Ended) + driveWhy(res)}
 	case loop.TerminalStopped, loop.TerminalOutage, loop.TerminalLimited, loop.TerminalWaited, loop.TerminalHalted, loop.DrainStoppedOutage, loop.DrainStoppedOrigin:
 		return &exitError{Code: 3, Msg: "abcd drain --drive: stopped short: " + driveEndWords(res.Ended)}
 	}
@@ -562,18 +559,31 @@ func drivePreflight(w io.Writer, p runner.Profile) func(ctx context.Context, wor
 		cmd.Stdout, cmd.Stderr = w, w
 		procgroup.Lead(cmd)
 		cmd.Cancel = func() error { return procgroup.Kill(cmd) }
-		return cmd.Run()
+		err = cmd.Run()
+		procgroup.KillLeft(cmd)
+		return err
 	}
+}
+
+// driveWhy is what stopped a drive, as a clause to follow its end words.
+func driveWhy(res loop.TerminalResult) string {
+	if res.Why == "" {
+		return ""
+	}
+	return ": " + termsafe.Sanitize(fsutil.RedactHome(res.Why))
 }
 
 // renderDriveEnd is how the drive ended and what it left.
 func renderDriveEnd(w io.Writer, res loop.TerminalResult) {
-	fmt.Fprintf(w, "abcd drain --drive: ended: %s\n", driveEndWords(res.Ended))
+	fmt.Fprintf(w, "abcd drain --drive: ended: %s%s\n", driveEndWords(res.Ended), driveWhy(res))
 	c := res.Last.Counts
 	fmt.Fprintf(w, "  lanes: %d opened, %d pull request(s), %d handed back; about %d agent run(s) spent\n",
 		c.LanesOpened, c.PullRequests, c.LanesHandedBack, c.Spend.AgentRuns)
 	for _, id := range res.HeldBack {
-		fmt.Fprintf(w, "  held back: %s: its judge ran and did not answer (kept in %s)\n", termsafe.Sanitize(id), loop.HeldBackRel)
+		fmt.Fprintf(w, "  held back: %s: its judge ran and did not answer (kept in the main checkout's %s)\n", termsafe.Sanitize(id), loop.HeldBackRel)
+	}
+	for _, p := range res.PassedOver {
+		fmt.Fprintf(w, "  passed over: %s: %s\n", termsafe.Sanitize(p.ID), termsafe.Sanitize(p.Reason))
 	}
 	if res.Run != "" {
 		fmt.Fprintf(w, "  left on its branch: %s, run %s, %s\n", termsafe.Sanitize(res.Issue), termsafe.Sanitize(res.Run), termsafe.Sanitize(res.Lane))
@@ -599,7 +609,7 @@ func driveEndWords(ended string) string {
 		loop.TerminalLimited:    "the account's rate limit outlasts what a drive waits",
 		loop.TerminalWaited:     "nothing moved for eight hours",
 		loop.TerminalUntil:      "the time --until named has passed",
-		loop.TerminalWall:       "a wall no longer held",
+		loop.TerminalWall:       "a check before a stage no longer holds",
 		loop.TerminalRefused:    "a move was refused",
 		loop.TerminalKilled:     "killed",
 	}[ended]
