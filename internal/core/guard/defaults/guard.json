@@ -279,6 +279,487 @@
         ]
       }
     },
+    "git-filter-repo": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "git",
+        "subcommand": "filter-repo",
+        "subcommand_named": true,
+        "value_flags": ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix", "--config-env", "--attr-source", "--shallow-file"]
+      },
+      "why": "`git filter-repo` rewrites every commit it touches, so each one gets a new id: the history other people and every pull request hold no longer matches, and the tool removes the remote and the reflog that would have shown what changed. This repository does not rewrite history.",
+      "successor": "Leave the history as it is and make a new commit: `git revert <sha>` to undo a commit, or a fix on top. For a secret that reached a commit, rotate the secret and tell the person who owns the repository.",
+      "fixtures": {
+        "known_bad": [
+          "git filter-repo --path secret.txt --invert-paths",
+          "git -C /repo filter-repo --force",
+          "sh -c 'git filter-repo --force'"
+        ],
+        "known_good": [
+          "git log --grep=filter-repo",
+          "git commit -m \"docs: say why git filter-repo is refused\"",
+          "abcd capture \"an agent ran git filter-repo on main\"",
+          "command -v git-filter-repo"
+        ]
+      }
+    },
+    "git-filter-branch": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "git",
+        "subcommand": "filter-branch",
+        "subcommand_named": true,
+        "value_flags": ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix", "--config-env", "--attr-source", "--shallow-file"]
+      },
+      "why": "`git filter-branch` rewrites every commit it touches, so each one gets a new id and the history other people and every pull request hold no longer matches. This repository does not rewrite history.",
+      "successor": "Leave the history as it is and make a new commit: `git revert <sha>` to undo a commit, or a fix on top. For a secret that reached a commit, rotate the secret and tell the person who owns the repository.",
+      "fixtures": {
+        "known_bad": [
+          "git filter-branch --tree-filter 'rm x' HEAD",
+          "git -C /repo filter-branch -f HEAD",
+          "env FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch HEAD",
+          "\"$(git --exec-path)\"/git-filter-branch HEAD"
+        ],
+        "known_good": [
+          "git log --grep=filter-branch",
+          "git commit -m \"docs: say why git filter-branch is refused\"",
+          "abcd capture \"an agent ran git filter-branch on main\"",
+          "man git-filter-branch"
+        ]
+      }
+    },
+    "git-update-ref": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "git",
+        "subcommand": "update-ref",
+        "subcommand_named": true,
+        "value_flags": ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix", "--config-env", "--attr-source", "--shallow-file"]
+      },
+      "why": "`git update-ref` moves or deletes a ref directly, past every check `git branch`, `git merge` and `git push` make, so it can point a branch at any commit or drop it without a word. Moved back, a branch has lost its later commits. No form of the command only reads, and whether the ref already exists cannot be told from the line.",
+      "successor": "Leave the ref where it is and make a new commit: `git revert <sha>` to undo a commit, or a fix on top. To read a ref use `git rev-parse <ref>` or `git show-ref`; to start a branch use `git branch <name> <sha>`.",
+      "fixtures": {
+        "known_bad": [
+          "git update-ref refs/heads/main abc1234",
+          "git update-ref -d refs/heads/main",
+          "git update-ref --stdin",
+          "git -C /repo update-ref refs/heads/main abc1234",
+          "sh -c 'git update-ref -d refs/heads/main'"
+        ],
+        "known_good": [
+          "git rev-parse refs/heads/main",
+          "git show-ref --verify refs/heads/main",
+          "git for-each-ref refs/heads/",
+          "git help update-ref",
+          "abcd capture \"git update-ref -d moved the branch\""
+        ]
+      }
+    },
+    "git-replace": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "git",
+        "subcommand": "replace",
+        "subcommand_named": true,
+        "value_flags": ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix", "--config-env", "--attr-source", "--shallow-file"],
+        "min_operands": 3,
+        "not_flags": ["-d|--delete|-l|--list"]
+      },
+      "why": "`git replace <object> <replacement>` makes git show one object in place of another, so `git log` and `git show` report a history other than the one committed, with no commit to say so.",
+      "successor": "Leave the history as it is and make a new commit: `git revert <sha>` to undo a commit, or a fix on top. `git replace -l` lists the stand-ins there are, and `git replace -d <object>` takes one away.",
+      "fixtures": {
+        "known_bad": [
+          "git replace abc1234 def5678",
+          "git -C /repo replace abc1234 def5678"
+        ],
+        "known_good": [
+          "git replace -l",
+          "git replace --list 'abc*'",
+          "git replace -d abc1234",
+          "git replace -d abc def"
+        ]
+      }
+    },
+    "git-replace-rewrite": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "git",
+        "subcommand": "replace",
+        "subcommand_named": true,
+        "value_flags": ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix", "--config-env", "--attr-source", "--shallow-file"],
+        "flags": ["--graft|-g|--edit|-e|--convert-graft-file|--force|-f"]
+      },
+      "why": "`git replace --graft`, `--edit` and `--force` give a commit other parents or other contents in every later read, so `git log` and `git show` report a history other than the one committed, and a `filter-repo` afterwards makes the change permanent.",
+      "successor": "Leave the history as it is and make a new commit: `git revert <sha>` to undo a commit, or a fix on top. `git replace -l` lists the stand-ins there are, and `git replace -d <object>` takes one away.",
+      "fixtures": {
+        "known_bad": [
+          "git replace --graft abc1234",
+          "git replace --edit abc1234",
+          "git replace -f abc1234 def5678"
+        ],
+        "known_good": [
+          "git replace",
+          "git replace --format=short -l",
+          "abcd capture \"an agent ran git replace --graft\""
+        ]
+      }
+    },
+    "git-reflog-expire": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "git",
+        "subcommand": "reflog",
+        "subcommand2": "expire",
+        "subcommand_named": true,
+        "value_flags": ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix", "--config-env", "--attr-source", "--shallow-file"]
+      },
+      "why": "`git reflog expire` throws away the record of where each ref has been, the one place a commit a ref no longer reaches can be found again. It is the step that makes a rewrite impossible to undo.",
+      "successor": "Leave the reflog alone; git expires it on its own schedule. To undo a commit make a new commit: `git revert <sha>`, or a fix on top. `git reflog` and `git reflog show <ref>` read it.",
+      "fixtures": {
+        "known_bad": [
+          "git reflog expire --expire=now --all",
+          "git -C /repo reflog expire --all"
+        ],
+        "known_good": [
+          "git reflog",
+          "git reflog show main",
+          "abcd capture \"an agent ran git reflog expire --all\""
+        ]
+      }
+    },
+    "git-reflog-delete": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "git",
+        "subcommand": "reflog",
+        "subcommand2": "delete",
+        "subcommand_named": true,
+        "value_flags": ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix", "--config-env", "--attr-source", "--shallow-file"]
+      },
+      "why": "`git reflog delete` removes entries from the record of where a ref has been, the one place a commit a ref no longer reaches can be found again.",
+      "successor": "Leave the reflog alone; git expires it on its own schedule. To undo a commit make a new commit: `git revert <sha>`, or a fix on top. `git reflog` and `git reflog show <ref>` read it.",
+      "fixtures": {
+        "known_bad": [
+          "git reflog delete HEAD@{1}",
+          "git -C /repo reflog delete main@{2}"
+        ],
+        "known_good": [
+          "git reflog exists refs/heads/main",
+          "git log -g",
+          "abcd capture \"an agent ran git reflog delete\""
+        ]
+      }
+    },
+    "git-reflog-drop": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "git",
+        "subcommand": "reflog",
+        "subcommand2": "drop",
+        "subcommand_named": true,
+        "value_flags": ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix", "--config-env", "--attr-source", "--shallow-file"]
+      },
+      "why": "`git reflog drop` removes a ref's whole reflog, the one place a commit that ref no longer reaches can be found again.",
+      "successor": "Leave the reflog alone; git expires it on its own schedule. To undo a commit make a new commit: `git revert <sha>`, or a fix on top. `git reflog` and `git reflog show <ref>` read it.",
+      "fixtures": {
+        "known_bad": [
+          "git reflog drop main",
+          "git -C /repo reflog drop main"
+        ],
+        "known_good": [
+          "git reflog --all",
+          "git reflog show main",
+          "abcd capture \"an agent ran git reflog drop\""
+        ]
+      }
+    },
+    "git-gc-prune": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "git",
+        "subcommand": "gc",
+        "subcommand_named": true,
+        "value_flags": ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix", "--config-env", "--attr-source", "--shallow-file"],
+        "flags": ["--prune"]
+      },
+      "why": "`git gc --prune=now` deletes every object nothing reaches, past the grace period git keeps them for, so a commit a rewrite or a moved ref left behind is gone from this copy for good. It is the step that makes a rewrite impossible to undo.",
+      "successor": "Run a plain `git gc`, which keeps its grace period. To undo a commit make a new commit: `git revert <sha>`, or a fix on top.",
+      "fixtures": {
+        "known_bad": [
+          "git gc --prune=now",
+          "git gc --prune=all --aggressive",
+          "git -C /repo gc --prune=now"
+        ],
+        "known_good": [
+          "git gc",
+          "git gc --auto",
+          "git gc --no-prune"
+        ]
+      }
+    },
+    "git-prune": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "git",
+        "subcommand": "prune",
+        "subcommand_named": true,
+        "value_flags": ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix", "--config-env", "--attr-source", "--shallow-file"],
+        "not_flags": ["-n|--dry-run"]
+      },
+      "why": "`git prune` deletes every loose object nothing reaches, with no grace period unless it is given one, so a commit a rewrite or a moved ref left behind is gone from this copy for good.",
+      "successor": "Run a plain `git gc`, which keeps its grace period; `git fsck --unreachable` shows what nothing reaches. To undo a commit make a new commit: `git revert <sha>`, or a fix on top.",
+      "fixtures": {
+        "known_bad": [
+          "git prune",
+          "git prune --expire=now"
+        ],
+        "known_good": [
+          "git worktree prune",
+          "git remote prune origin",
+          "git fetch --prune",
+          "git prune-packed",
+          "git prune -n",
+          "git prune --dry-run"
+        ]
+      }
+    },
+    "git-push-mirror": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "git",
+        "subcommand": "push",
+        "subcommand_named": true,
+        "value_flags": ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix", "--config-env", "--attr-source", "--shallow-file"],
+        "flags": ["--mirror"]
+      },
+      "why": "`git push --mirror` makes the remote match this copy exactly: it force-updates every ref and deletes each one this copy lacks, so commits and branches other people already have can disappear with no copy left anywhere. It is a force push of everything, spelled without the flag anyone reviews for.",
+      "successor": "Push the one branch, without a force (`git push origin <branch>`). To undo a commit that is already pushed make a new commit: `git revert <sha>`, or a fix on top.",
+      "fixtures": {
+        "known_bad": [
+          "git push --mirror",
+          "git push --mirror git@example.com:o/r.git",
+          "git -C /repo push --mirror origin"
+        ],
+        "known_good": [
+          "git push origin main",
+          "git clone --mirror https://example.com/o/r.git",
+          "abcd capture \"an agent ran git push --mirror\""
+        ]
+      }
+    },
+    "git-send-pack-force": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "git",
+        "subcommand": "send-pack",
+        "subcommand_named": true,
+        "value_flags": ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix", "--config-env", "--attr-source", "--shallow-file"],
+        "flags": ["--force|-f|--force-with-lease|--force-if-includes|--mirror|--stdin"]
+      },
+      "why": "`git send-pack` is the plumbing beneath `git push`, and its `--force` and `--mirror` overwrite remote refs just as a force push does, so commits other people already have can disappear with no copy left anywhere. `--stdin` takes its refs from a stream the line does not show, and one written with a leading `+` is forced.",
+      "successor": "Push without a force (`git push origin <branch>`). To undo a commit that is already pushed make a new commit: `git revert <sha>`, or a fix on top.",
+      "fixtures": {
+        "known_bad": [
+          "git send-pack --force origin main",
+          "git send-pack -f origin main",
+          "git send-pack --mirror origin",
+          "git send-pack --stdin ../r.git"
+        ],
+        "known_good": [
+          "git send-pack origin main",
+          "git send-pack --dry-run origin main",
+          "abcd capture \"an agent ran git send-pack --force\""
+        ]
+      }
+    },
+    "git-send-pack-force-refspec": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "git",
+        "subcommand": "send-pack",
+        "subcommand_named": true,
+        "value_flags": ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix", "--config-env", "--attr-source", "--shallow-file"],
+        "arg_prefixes": ["+"]
+      },
+      "why": "A ref written with a leading `+` is a force push through the plumbing beneath `git push`: it overwrites the remote ref, so commits other people already have can disappear with no copy left anywhere.",
+      "successor": "Push without a force (`git push origin <branch>`). To undo a commit that is already pushed make a new commit: `git revert <sha>`, or a fix on top.",
+      "fixtures": {
+        "known_bad": [
+          "git send-pack origin +main:main",
+          "git -C /repo send-pack origin +main"
+        ],
+        "known_good": [
+          "git send-pack origin main:main",
+          "abcd capture \"an agent ran git send-pack origin +main\""
+        ]
+      }
+    },
+    "git-fast-import-force": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "git",
+        "subcommand": "fast-import",
+        "subcommand_named": true,
+        "value_flags": ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix", "--config-env", "--attr-source", "--shallow-file"],
+        "flags": ["--force"]
+      },
+      "why": "`git fast-import --force` lets an import stream move an existing branch to a commit that does not descend from it, so the branch loses its later commits. It is how history is rewritten by hand, and how the rewriting tools do it.",
+      "successor": "Import without `--force`, which refuses to move a branch that way, or make a new commit: `git revert <sha>` to undo a commit, or a fix on top.",
+      "fixtures": {
+        "known_bad": [
+          "git fast-import --force",
+          "git fast-export --all | git fast-import --force"
+        ],
+        "known_good": [
+          "git fast-import --quiet",
+          "git fast-export --all",
+          "abcd capture \"an agent ran git fast-import --force\""
+        ]
+      }
+    },
+    "gh-api-ref-force": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "gh",
+        "subcommand": "api",
+        "value_flags": ["-X", "--method", "-f", "--field", "-F", "--raw-field", "-H", "--header", "-q", "--jq", "-t", "--template", "--cache", "--hostname", "--input"],
+        "flag_values": [
+          {"flag": "-X|--method", "values": ["PATCH"]},
+          {"flag": "-F|--field|-f|--raw-field", "values": ["force=true"], "by_lead": true}
+        ],
+        "arg_shapes": ["forge-git-ref-path"]
+      },
+      "why": "PATCH on a ref with `force=true` is a force push through the forge's API: it moves the branch to a commit that does not descend from it, past every hook on this machine, so commits other people already have can disappear with no copy left anywhere. A value the line does not fix is read as true.",
+      "successor": "Move the ref without the field, which refuses anything but a fast-forward, or make a new commit: `git revert <sha>` to undo a commit, or a fix on top.",
+      "fixtures": {
+        "known_bad": [
+          "gh api -X PATCH repos/o/r/git/refs/heads/main -f sha=abc1234 -F force=true",
+          "gh api --method PATCH repos/o/r/git/refs/heads/main --field force=true",
+          "gh api -X PATCH repos/o/r/git/refs/heads/main -F force=\"$V\""
+        ],
+        "known_good": [
+          "gh api repos/o/r/git/refs/heads/main",
+          "gh api -X PATCH repos/o/r/git/refs/heads/feat -f sha=abc1234",
+          "gh api -X PATCH repos/o/r/git/refs/heads/feat -F sha=\"$SHA\"",
+          "gh api -X PATCH repos/o/r/pulls/1 -f body=\"$(cat body.md)\"",
+          "gh api -X \"$METHOD\" repos/o/r/pulls/1"
+        ]
+      }
+    },
+    "gh-api-ref-input": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "gh",
+        "subcommand": "api",
+        "value_flags": ["-X", "--method", "-f", "--field", "-F", "--raw-field", "-H", "--header", "-q", "--jq", "-t", "--template", "--cache", "--hostname", "--input"],
+        "flag_values": [
+          {"flag": "-X|--method", "values": ["PATCH"]}
+        ],
+        "flags": ["--input"],
+        "arg_shapes": ["forge-git-ref-path"]
+      },
+      "why": "PATCH on a ref with `--input` takes its fields from a file or a stream the line does not show, and one of them can be `force: true`: a force push through the forge's API, past every hook on this machine, so commits other people already have can disappear with no copy left anywhere.",
+      "successor": "Spell the fields on the line (`-f sha=<sha>`), and the path too if a variable holds it, so the move can be seen to be a fast-forward; or make a new commit: `git revert <sha>` to undo a commit, or a fix on top.",
+      "fixtures": {
+        "known_bad": [
+          "gh api -X PATCH repos/o/r/git/refs/heads/main --input body.json",
+          "gh api -X PATCH repos/o/r/git/refs/heads/main --input -"
+        ],
+        "known_good": [
+          "gh api -X PATCH repos/o/r --input body.json",
+          "gh api -X PATCH repos/o/r/pulls/1 --input -",
+          "gh api repos/o/r/git/refs --input body.json"
+        ]
+      }
+    },
+    "gh-api-graphql-ref-force": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "gh",
+        "subcommand": "api",
+        "flag_values": [
+          {"flag": "-f|-F|--raw-field|--field", "values": [], "shape": "graphql-forced-ref-update"}
+        ]
+      },
+      "why": "A GraphQL `updateRef` with `force: true` is a force push through the forge's API: it moves the branch to a commit that does not descend from it, past every hook on this machine, so commits other people already have can disappear with no copy left anywhere.",
+      "successor": "Run the mutation without `force`, which refuses anything but a fast-forward, or make a new commit: `git revert <sha>` to undo a commit, or a fix on top.",
+      "fixtures": {
+        "known_bad": [
+          "gh api graphql -f query='mutation{updateRef(input:{refId:\"x\",oid:\"y\",force:true}){clientMutationId}}'"
+        ],
+        "known_good": [
+          "gh api graphql -f query='query{repository(owner:\"o\",name:\"r\"){name}}'",
+          "gh api graphql -f query='mutation{updateRef(input:{refId:\"x\",oid:\"y\"}){clientMutationId}}'"
+        ]
+      }
+    },
+    "gh-api-graphql-any-key-ref-force": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "gh",
+        "subcommand": "api",
+        "subcommand2": "graphql",
+        "value_flags": ["-X", "--method", "-f", "--field", "-F", "--raw-field", "-H", "--header", "-q", "--jq", "-t", "--template", "--cache", "--hostname", "--input"],
+        "flag_values": [
+          {"flag": "-f|-F|--raw-field|--field", "values": [], "shape": "graphql-forced-ref-update-any-key"}
+        ]
+      },
+      "why": "On a GraphQL call a field whose key the line does not fix can be the query, and this one's value runs `updateRef` with `force`: a force push through the forge's API, past every hook on this machine, so commits other people already have can disappear with no copy left anywhere.",
+      "successor": "Run the mutation without `force`, which refuses anything but a fast-forward, or make a new commit: `git revert <sha>` to undo a commit, or a fix on top.",
+      "fixtures": {
+        "known_bad": [
+          "gh api graphql -f \"$K=mutation{updateRef(input:{refId:\\\"x\\\",oid:\\\"y\\\",force:true}){clientMutationId}}\""
+        ],
+        "known_good": [
+          "gh api graphql -f \"$K=query{viewer{login}}\"",
+          "gh api repos/o/r/issues/1/comments -f \"$K=updateRef with force: true\""
+        ]
+      }
+    },
+    "gh-api-graphql-ref-force-field": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "gh",
+        "subcommand": "api",
+        "flag_values": [
+          {"flag": "-f|-F|--raw-field|--field", "values": [], "shape": "graphql-ref-update"},
+          {"flag": "-f|-F|--raw-field|--field", "values": [], "shape": "graphql-force-field"}
+        ]
+      },
+      "why": "A GraphQL `updateRef` handed `force: true` in a field beside the query is a force push through the forge's API: it moves the branch to a commit that does not descend from it, past every hook on this machine, so commits other people already have can disappear with no copy left anywhere.",
+      "successor": "Run the mutation without `force`, which refuses anything but a fast-forward, or make a new commit: `git revert <sha>` to undo a commit, or a fix on top.",
+      "fixtures": {
+        "known_bad": [
+          "gh api graphql -f query='mutation($i:UpdateRefInput!){updateRef(input:$i){clientMutationId}}' -F 'i[force]=true'"
+        ],
+        "known_good": [
+          "gh api graphql -f query='mutation($i:UpdateRefInput!){updateRef(input:$i){clientMutationId}}' -F 'i[force]=false'",
+          "gh api graphql -f query='query{viewer{login}}' -F 'i[force]=true'"
+        ]
+      }
+    },
+    "gh-repo-sync-force": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "gh",
+        "subcommand": "repo",
+        "subcommand2": "sync",
+        "flags": ["--force"]
+      },
+      "why": "`gh repo sync --force` hard-resets the destination branch to match the source, so commits only that branch held can disappear with no copy left anywhere. It is a force push under another name.",
+      "successor": "Sync without `--force`, which refuses anything but a fast-forward, or make a new commit: `git revert <sha>` to undo a commit, or a fix on top.",
+      "fixtures": {
+        "known_bad": [
+          "gh repo sync --force",
+          "gh repo sync o/fork --source o/r --force"
+        ],
+        "known_good": [
+          "gh repo sync",
+          "gh repo sync o/fork --source o/r",
+          "abcd capture \"gh repo sync --force moved the branch\""
+        ]
+      }
+    },
     "gh-repo-delete": {
       "tier": "blocker",
       "pattern": {

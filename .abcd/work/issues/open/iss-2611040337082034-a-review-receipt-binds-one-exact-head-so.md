@@ -13,3 +13,5 @@ remedy: "Let a review receipt name the head it read and the earlier receipted he
 ---
 
 A review receipt binds one exact head, so a one-line fix after a review means the whole review pair again, and a preflight already running is thrown away: on 2026-11-03 and 04 the CI split went through four rounds and its preflight was stopped three times. Reviewing a small delta costs little, but the receipt has no way to say that a delta was what was read.
+
+2026-11-04: the same cost when only comments move. The change that followed #1401 took four review rounds, three of them for wording, and each read the whole branch again.

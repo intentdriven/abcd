@@ -25,8 +25,8 @@ import (
 // every event but pull_request, and on 2026-11-04 queue entries kept dropping
 // because GitHub had no macOS runner to give, with no test failing. So it stands
 // down on a merge-queue entry too, and runs as shard jobs (iss-2610181757540736)
-// on the nightly schedule and by hand; every pushed commit has already passed
-// `make preflight` locally. `check (macos-latest)` is an aggregator on an ubuntu
+// on the nightly schedule and by hand; the pre-push hook holds a pushed commit
+// to `make preflight` locally. `check (macos-latest)` is an aggregator on an ubuntu
 // runner: on a pull request and on a queue entry it reports with no shard having
 // run, and says so. Where the suite runs, every shard makes one race-enabled pass
 // over its packages (iss-2610110938293273), and the build, vet and the tests that

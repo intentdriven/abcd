@@ -10,6 +10,10 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/implement/loop/queue.go"
 remedy: "Pass the queue's merge method down from watchQueue and quote the same full command toggleArming runs; a test asserts the quoted command carries the method."
+resolution: "Fixed: watchQueue passes the queue's rule to droppedRefusal, which quotes the same re-arm command toggleArming runs (rearmArgs builds both), carrying --merge, --squash or --rebase; TestADroppedPullRequestsReArmingIsQuotedWithTheQueuesMethod."
+impact: fix
+resolved_by:
+  commit: "a39b57657a4ecc5aa3f7c80503d444038192e210"
 ---
 
 The queue watch's terminal report of a dropped pull request quotes a re-arm command gh refuses non-interactively: droppedRefusal in internal/core/implement/loop/queue.go gives 'gh pr merge N --auto --match-head-commit=<sha>' with no merge method, while toggleArming builds the full command (with --merge, --squash or --rebase from the queue's rule) that watchQueue has in hand. Found as a note in #1370's landing review (2026-11-03).

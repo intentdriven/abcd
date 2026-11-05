@@ -65,7 +65,7 @@ func TestTheQueueStateIsAskedOfTheForgesOwnRepository(t *testing.T) {
 	if _, err := f.land(f.options()); err != nil {
 		t.Fatal(err)
 	}
-	if f.forge.called("api", "graphql") != 2 || f.forge.called("pr", "view") != 0 {
+	if f.forge.called("api", "graphql", "-f", "query="+PRStateQuery) != 2 || f.forge.called("pr", "view") != 0 {
 		t.Fatalf("forge calls %v: want the state asked through the API twice, never through pr view", f.forge.calls)
 	}
 

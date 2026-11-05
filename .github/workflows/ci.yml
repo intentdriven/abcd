@@ -599,9 +599,9 @@ jobs:
   # only ask for more of the same five runners.
   #
   # It runs nightly and by hand: on every event that is neither a pull request nor
-  # a merge-queue entry (dcn-2611042202509334). Every push has already passed the
-  # local preflight (the pre-push hook refuses a commit without its receipt), so a
-  # pull-request macOS run repeated a local run, on the developer's machine
+  # a merge-queue entry (dcn-2611042202509334). The pre-push hook refuses a
+  # commit without its local preflight receipt, a client-side check that a
+  # --no-verify push skips, so a pull-request macOS run repeated a local run, on the developer's machine
   # (iss-2610110938282654), and in the queue a shard's wait for a runner ran on the
   # queue's clock: on 2026-11-04 entries kept dropping because GitHub had no macOS
   # runner to give, with no test failing. A pull request and a queue entry skip this

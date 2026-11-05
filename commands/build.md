@@ -628,7 +628,15 @@ session for work routed to the runner; tell the user the reason (a `Not logged
 in` asks for the runner's API key in the environment). Each later `implement
 step` that hands no agent out retries one held role once on its runner, and
 names it in `retried`; `implement step --route <role>=runner:<name>` retries
-it at once. A role already with you, from a step before its route existed,
+it at once. An implementer whose runner left a receipt at its path is the
+exception: the step reads the receipt first and a `--route` retries nothing. One
+that verifies is collected, even if the runner then exited badly. One whose
+runner exited badly and that does not verify is set aside as the role is retried.
+One the verifier refused after its runner ended stops the lane: no runner is
+started over that work, `next` names the ways out, correcting the receipt (then
+`implement receipt`, or a plain `implement step` reads it) or
+`implement step --restart <lane>`, and a drain hands the lane back as stuck at
+its bounds. A role already with you, from a step before its route existed,
 whose receipt you have not written is retried the same way, so do not start an
 agent for it once its role is routed. A paused role whose route has since
 moved to the host is handed to you by the next step that hands no other agent
