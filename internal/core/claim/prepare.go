@@ -20,6 +20,13 @@ type Options struct {
 	// Home is the home directory the machine layer of the configuration is
 	// read under; "" means the process's own.
 	Home string
+	// Session names the host session a prompt's block is shown to, so a line
+	// every session must be told, a red scheduled workflow, is kept shown per
+	// session; "" keeps it shown per checkout, as every other line is.
+	Session string
+	// RootCommit answers the repository's root commit for a caller that already
+	// looked it up, since finding it walks the whole history; nil finds it.
+	RootCommit func() (string, error)
 	// Version is the binary's version the Assisted-by label names; "" means
 	// the running binary's (core.Version).
 	Version string

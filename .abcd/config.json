@@ -36,5 +36,8 @@
   },
   "sessions": {
     "live": "local"
+  },
+  "status": {
+    "scheduled_workflow": "ci.yml"
   }
 }

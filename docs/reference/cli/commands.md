@@ -5917,6 +5917,27 @@ someone else, and claimed when the forge cannot say or an app pushed it. A
 branch named by a holder id names no account the forge's record could
 match, so it is not asked about and its senders stay claimed.
 
+A repository that names a workflow a schedule runs on its default branch
+(status.scheduled_workflow in the .abcd/config.json at that branch's tip, the
+file's name, such as nightly.yml) has that workflow's latest scheduled verdict
+read too: after a fetch that succeeded it asks the forge (gh api) within five
+seconds for the latest completed scheduled runs and keeps what they say in the
+machine's store for the repository, which every checkout of it reads; the
+prompt hook does the same in the background when that answer is an hour old. A
+run that concluded failure, timed_out or startup_failure is named in one line
+with its URL and age, here and once to each session at a prompt, until a run
+that succeeds replaces it. A latest run that concluded cancelled, skipped or
+neutral, which is how a job past its time limit arrives, is not called a failure:
+it has a line of its own naming it and the last verdict, until a verdict
+replaces it. A green is silent while it is recent for the workflow's own cycle,
+and past that one line says no verdict has been reached. An answer that is
+missing or more than two days old, or due after a refresh that failed or, some
+hours on, kept nothing, says the state is unknown, naming the last successful
+ask; an answer that only aged through an idle night says nothing, and the next
+prompt carries what the refresh found. None of this changes an exit. With no
+such key nothing is asked, kept or shown; a key that could not name a workflow's
+file, and a config that could not be read here, each say so.
+
 An announcement stands for its life from when this checkout first fetched it,
 not by the sender's clock. One whose sender is not its branch's owner, one
 that does not read as an announcement (never shown but by its branch and the
