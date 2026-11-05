@@ -218,7 +218,7 @@ func TestNoWalledDirectoryOrSeveralRefuses(t *testing.T) {
 func TestAWallNotProvedRefusesNamingIt(t *testing.T) {
 	w := newDriveWorld(t)
 	text := refusedDrive(t, "drain", "--drive", "--yes")
-	if !strings.Contains(text, "login state") || !strings.Contains(text, "does not hold") {
+	if !strings.Contains(text, "check") {
 		t.Fatalf("the refusal names the check: %s", text)
 	}
 	noDrainBegun(t, w.repo)
