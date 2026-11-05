@@ -525,6 +525,17 @@ func TestAListingWithMoreBehindItStopsThePush(t *testing.T) {
 	noWithdrawal(t, f)
 }
 
+// With auto-merge off and the dequeue failed, the refusal says what came off.
+func TestARefusedDequeueSaysAutoMergeCameOff(t *testing.T) {
+	f, old := moving(t)
+	f.reviewed(t)
+	f.forge.armings = []string{armingBy(old, true, true, "alice")}
+	f.forge.dequeueErr = errors.New("fake forge: the dequeue failed")
+	_, err := f.land(f.options())
+	wantRefusal(t, err, "auto-merge came off")
+	wantRefusal(t, err, "the dequeue failed")
+}
+
 // A refusal after a withdrawal says what came off: the arming is gone whatever
 // the rest of the step found.
 func TestARefusalAfterAWithdrawalRecordsTheWithdrawal(t *testing.T) {

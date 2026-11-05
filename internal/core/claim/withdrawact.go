@@ -203,6 +203,12 @@ func SettledLine(subject string, w Withdrawal) string {
 		return fmt.Sprintf("#%d re-armed (%s, at %s) after %s", w.Number, w.Form, w.Head[:12], subject)
 	case WithdrawnFoundArmed:
 		return fmt.Sprintf("#%d was already armed or queued again after %s, which counts as re-armed", w.Number, subject)
+	case WithdrawnStanding:
+		at := ""
+		if h := w.armedHead(); h != "" {
+			at = " at " + h
+		}
+		return fmt.Sprintf("#%d stays armed%s after %s, by another account, at a head the merge gate here does not arm; to withdraw it: gh pr merge %d --disable-auto, and take it out of the merge queue on its page if it is queued", w.Number, at, subject, w.Number)
 	case WithdrawnMoved:
 		return fmt.Sprintf("#%d was not re-armed after %s: its head moved since it was withdrawn at %s, so its owner re-arms it", w.Number, subject, w.Head[:12])
 	case WithdrawnClosed:
@@ -722,10 +728,15 @@ func rearmMine(a actor, ws []Withdrawal, vouched map[Withdrawal]bool) (out, sett
 		state, err := releaseForge.inspect(a.root, owner, name, w)
 		if err != nil {
 			fails = append(fails, ForgeFailure{Number: w.Number, Act: ForgeRearm, Reason: err.Error()})
-			if ff := sayHeld(a.root, a.subject, w, err, held); ff != nil {
-				fails = append(fails, *ff)
-			}
 			continue
+		}
+		if state == WithdrawnMoved && w.State == WithdrawnAdmitted {
+			at := ""
+			if state, at, err = releaseForge.settleMoved(a.root, owner, name, w); err != nil {
+				fails = append(fails, ForgeFailure{Number: w.Number, Act: ForgeRearm, Reason: err.Error()})
+				continue
+			}
+			out[i].ArmedAt = at
 		}
 		if state == "" {
 			if state, err = releaseForge.arm(a.root, w); err != nil {
@@ -775,10 +786,11 @@ func rearmMine(a actor, ws []Withdrawal, vouched map[Withdrawal]bool) (out, sett
 // comment.
 const heldDir = stateRelDir + "/rearm-held"
 
-// sayHeld posts, once for each pull request and head, that the merge gate holds
-// its re-arm: it stays withdrawn, and what re-arms it. A gate that could not answer
-// says nothing, since a later act asks it again. The note is made only when the
-// comment was posted.
+// sayHeld posts, once for each pull request and head in this worktree, that the
+// merge gate holds its re-arm: it stays withdrawn, and what re-arms it. A gate that
+// could not answer says nothing, since a later act asks it again. The note is made
+// once the forge took the comment, so a comment posted but read back otherwise is
+// reported once and not posted again.
 func sayHeld(root, subject string, w Withdrawal, err error, held map[string]int) *ForgeFailure {
 	var ae *armError
 	if !errors.As(err, &ae) || !ae.gated || ae.unread {
@@ -788,11 +800,11 @@ func sayHeld(root, subject string, w Withdrawal, err error, held map[string]int)
 	if held[k] > 0 {
 		return nil
 	}
-	if ff := releaseForge.postComment(root, w, heldBody(subject, w)); ff != nil {
-		return ff
+	taken, ff := releaseForge.postCommentOnce(root, w, heldBody(subject, w))
+	if taken {
+		held[k] = 1
 	}
-	held[k] = 1
-	return nil
+	return ff
 }
 
 // maxRearmRefusals is how many times the forge may refuse one withdrawal's

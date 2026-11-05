@@ -262,7 +262,7 @@ func watchQueue(c Context, lane *Lane, def string, rule landing.MergeRule) (*Out
 		// step asks the gate again rather than read it as dropped from the queue.
 		still, err := landing.StillArmed(gateForge(c, *lane), lane.Branch, lane.PR)
 		if err == nil && still {
-			return nil, "", stillArmedRefusal(*lane)
+			return nil, "", stillArmedRefusal(*lane, StageLand)
 		}
 		note := "the loop withdrew pull request #" + n + "'s arming and neither queues nor toggles it: " + d.Why + "; the loop asks again on each step"
 		if err != nil {
@@ -347,7 +347,7 @@ func movedHeadRefusal(c Context, lane Lane, v queueView) error {
 			r.outOfQueue = true
 			return r
 		}
-		if err := confirmWithdrawn(c, lane); err != nil {
+		if err := confirmWithdrawn(c, lane, StageLand); err != nil {
 			return err
 		}
 		reason = head + ", so the loop withdrew its arming and neither queues nor re-arms it"
@@ -360,27 +360,27 @@ func movedHeadRefusal(c Context, lane Lane, v queueView) error {
 // confirmWithdrawn reads back a withdrawal, as land does: the lane records nothing
 // withdrawn until the forge stops reporting the arming. A read the network refuses
 // waits on the shared probe.
-func confirmWithdrawn(c Context, lane Lane) error {
+func confirmWithdrawn(c Context, lane Lane, stage Stage) error {
 	n := strconv.Itoa(lane.PR)
 	still, err := landing.StillArmed(gateForge(c, lane), lane.Branch, lane.PR)
 	if err != nil {
-		if r := netFailure(StageLand, lane.ID, "gh api graphql", err); r != nil {
+		if r := netFailure(stage, lane.ID, "gh api graphql", err); r != nil {
 			return r
 		}
-		return refuse(string(StageLand), "", lane.ID, "the loop withdrew pull request #"+n+"'s arming and could not read it back: "+forgeWhy(err),
+		return refuse(string(stage), "", lane.ID, "the loop withdrew pull request #"+n+"'s arming and could not read it back: "+forgeWhy(err),
 			"check it (`gh pr view "+n+"`), then run `abcd implement step` again")
 	}
 	if still {
-		return stillArmedRefusal(lane)
+		return stillArmedRefusal(lane, stage)
 	}
 	return nil
 }
 
 // stillArmedRefusal is the refusal of a withdrawal the forge took and goes on
 // reporting armed or queued.
-func stillArmedRefusal(lane Lane) error {
+func stillArmedRefusal(lane Lane, stage Stage) error {
 	n := strconv.Itoa(lane.PR)
-	return refuse(string(StageLand), "", lane.ID, "the loop withdrew pull request #"+n+"'s arming, but the forge still reports it armed or queued",
+	return refuse(string(stage), "", lane.ID, "the loop withdrew pull request #"+n+"'s arming, but the forge still reports it armed or queued",
 		"check it (`gh pr view "+n+"`), then run `abcd implement step` again")
 }
 

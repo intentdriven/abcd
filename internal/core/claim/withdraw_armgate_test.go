@@ -162,8 +162,9 @@ func TestAnAdmittedMergeFoundArmedIsAskedOfTheGateAtItsHead(t *testing.T) {
 			return true, "", nil
 		}
 	}
-	t.Run("moved to a head the gate refuses", func(t *testing.T) {
+	t.Run("moved to a head the gate refuses, its own arming", func(t *testing.T) {
 		w, f, p := admitted(t)
+		releaseForge.comments = f
 		f.prs[11].head = headC
 		releaseForge.armGate = refusing(headC)
 		if _, err := p.do(Request{Record: "rel-v0.16.0", Release: true}); err != nil {
@@ -171,6 +172,73 @@ func TestAnAdmittedMergeFoundArmedIsAskedOfTheGateAtItsHead(t *testing.T) {
 		}
 		if _, ws := w.tipWithdrawals("rel-v0.16.0"); stateOf(ws, 11) != WithdrawnMoved {
 			t.Fatalf("#11 recorded %q; want it left for its owner", stateOf(ws, 11))
+		}
+		if f.pr(11).method != "" || !slices.Contains(f.mutations(), "disablePullRequestAutoMerge #11") {
+			t.Fatalf("#11 = %+v, mutations %v; want its arming withdrawn, so it is not re-armed as the comment says", f.pr(11), f.mutations())
+		}
+		said := strings.Join(f.posted(), "\n")
+		if !strings.Contains(said, "#11 abcd release hold: the merge of #11 is not re-armed") {
+			t.Fatalf("comments %v", f.posted())
+		}
+	})
+	t.Run("moved to a head the gate refuses, its own arming stays on the forge", func(t *testing.T) {
+		w, f, p := admitted(t)
+		releaseForge.comments = f
+		f.prs[11].head = headC
+		f.prs[11].stuck = true
+		releaseForge.armGate = refusing(headC)
+		rel, err := p.do(Request{Record: "rel-v0.16.0", Release: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ws := w.tipWithdrawals("rel-v0.16.0"); stateOf(ws, 11) == WithdrawnMoved {
+			t.Fatalf("#11 recorded moved while the forge still reports it armed")
+		}
+		said := ""
+		for _, s := range rel.Settles {
+			for _, ff := range s.Failures {
+				if ff.Number == 11 {
+					said += ff.Reason
+				}
+			}
+		}
+		if !strings.Contains(said, "still reports") || strings.Contains(strings.Join(f.posted(), "\n"), "#11 is not re-armed") {
+			t.Fatalf("failures %q, comments %v", said, f.posted())
+		}
+	})
+	t.Run("moved to a head the gate refuses, another account's arming", func(t *testing.T) {
+		w, f, p := admitted(t)
+		releaseForge.comments = f
+		f.prs[11].head = headC
+		f.prs[11].by = "quinn"
+		releaseForge.armGate = refusing(headC)
+		rel, err := p.do(Request{Record: "rel-v0.16.0", Release: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ws := w.tipWithdrawals("rel-v0.16.0"); stateOf(ws, 11) != WithdrawnStanding {
+			t.Fatalf("#11 recorded %q; want it standing", stateOf(ws, 11))
+		}
+		if f.pr(11).method == "" || slices.Contains(f.mutations(), "disablePullRequestAutoMerge #11") {
+			t.Fatalf("#11 = %+v, mutations %v; another account's arming is left", f.pr(11), f.mutations())
+		}
+		said := strings.Join(f.posted(), "\n")
+		for _, want := range []string{"#11 abcd release hold: the merge of #11 stays armed at " + headC[:12], "does not arm", "gh pr merge 11 --disable-auto"} {
+			if !strings.Contains(said, want) {
+				t.Fatalf("comments do not say %q: %v", want, f.posted())
+			}
+		}
+		if strings.Contains(said, "#11 is not re-armed") || strings.Contains(said, "needs to re-arm") {
+			t.Fatalf("comments say it needs re-arming: %v", f.posted())
+		}
+		lines := ""
+		for _, s := range rel.Settles {
+			for _, wd := range s.Settled {
+				lines += SettledLine(s.Subject, wd) + "\n"
+			}
+		}
+		if !strings.Contains(lines, "#11 stays armed") || !strings.Contains(lines, "gh pr merge 11 --disable-auto") || strings.Contains(lines, "#11 was not re-armed") {
+			t.Fatalf("the person's line says %q", lines)
 		}
 	})
 	t.Run("moved to a head the gate arms", func(t *testing.T) {
@@ -276,5 +344,72 @@ func TestAReArmTheGateCouldNotAnswerPostsNothing(t *testing.T) {
 		if strings.Contains(c, "stays withdrawn") {
 			t.Fatalf("a comment went out on no answer: %q", c)
 		}
+	}
+}
+
+// A pull request armed at its recorded head is not withdrawn, so the gate's
+// refusal there posts no sentence saying it is; the person is told.
+func TestAnArmedPullRequestTheGateRefusesPostsNoStaysWithdrawn(t *testing.T) {
+	w := newWorld(t)
+	f := armedForge(t)
+	releaseForge.comments = f
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	if _, err := p.do(Request{Record: "rel-v0.16.0"}); err != nil {
+		t.Fatal(err)
+	}
+	f.comments = nil
+	f.prs[11].method = "SQUASH"
+	releaseForge.armGate = noReceipt
+	rel, err := p.do(Request{Record: "rel-v0.16.0", Release: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range f.posted() {
+		if strings.HasPrefix(c, "#11 ") {
+			t.Fatalf("a comment went to #11, which is armed: %q", c)
+		}
+	}
+	said := ""
+	for _, s := range rel.Settles {
+		for _, ff := range s.Failures {
+			if ff.Number == 11 {
+				said = ff.Reason
+			}
+		}
+	}
+	if !strings.Contains(said, "no review receipt names") {
+		t.Fatalf("the failure for #11 says %q", said)
+	}
+}
+
+// A comment the forge took counts as told, whatever its read-back said.
+func TestAHeldCommentPostedButNotAsSentIsNotPostedAgain(t *testing.T) {
+	w := newWorld(t)
+	f := armedForge(t)
+	releaseForge.comments = f
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	if _, err := p.do(Request{Record: "rel-v0.16.0"}); err != nil {
+		t.Fatal(err)
+	}
+	f.comments = nil
+	f.commentEcho = func(body string) string { return body + "\nA footer" }
+	releaseForge.armGate = noReceipt
+	if _, err := p.do(Request{Record: "rel-v0.16.0", Release: true}); err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		w.set(w.clock().Add(time.Minute))
+		if _, err := p.reserve("iss-3", "a.go"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	held := 0
+	for _, c := range f.posted() {
+		if strings.HasPrefix(c, "#11 ") {
+			held++
+		}
+	}
+	if held != 1 {
+		t.Fatalf("#11 was told %d times: %v", held, f.posted())
 	}
 }

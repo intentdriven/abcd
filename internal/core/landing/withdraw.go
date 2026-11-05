@@ -158,7 +158,8 @@ func StillArmed(forge ForgeCall, branch string, number int) (bool, error) {
 // WithdrawArming takes pull request n, node id id, off the forge's merge path:
 // auto-merge off first, so the forge cannot queue it again between the two
 // calls, then out of the queue. `gh pr merge --disable-auto` does not dequeue,
-// so the queue entry takes the forge's own mutation.
+// so the queue entry takes the forge's own mutation. A dequeue that fails after
+// auto-merge came off says so.
 func WithdrawArming(forge ForgeCall, n, id string, auto, queued bool) error {
 	if auto {
 		if _, err := forge("pr", "merge", n, "--disable-auto"); err != nil {
@@ -168,6 +169,15 @@ func WithdrawArming(forge ForgeCall, n, id string, auto, queued bool) error {
 	if !queued {
 		return nil
 	}
+	err := dequeue(forge, id)
+	if err != nil && auto {
+		return fmt.Errorf("its auto-merge came off, and taking it out of the merge queue failed: %w", err)
+	}
+	return err
+}
+
+// dequeue takes the pull request with node id id out of the merge queue.
+func dequeue(forge ForgeCall, id string) error {
 	raw, err := forge("api", "graphql", "-f", "query="+claim.DequeueMutation, "-f", "id="+id)
 	if err != nil {
 		return err

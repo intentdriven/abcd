@@ -768,9 +768,12 @@ withdrawing nothing, and an admission or a release is refused.
   id is never acted on). It uses the form its withdrawer recorded
   (`enablePullRequestAutoMerge` with its method, or `enqueuePullRequest`),
   always with `expectedHeadOid` set to the withdrawn head, so it merges
-  exactly the commits its author armed. One already armed or queued counts as
-  done, and an admitted one found armed counts as done whatever its head,
-  since the forge keeps an arming across pushes; one whose head moved, or that was closed or merged, is skipped and
+  exactly the commits its author armed, and only where the merge gate arms that
+  head. One already armed or queued counts as done at a head the merge gate arms.
+  An admitted one armed at a head the gate refuses is withdrawn and read back,
+  then recorded `moved`, where the arming is the re-armer's account's; another
+  account's is left and recorded `standing`, with the command that withdraws it.
+  One whose head moved, or that was closed or merged, is skipped and
   named on the tombstone and in `abcd peers` for its owner. One the forge
   refuses because it can merge now and the repository has no merge queue
   ("clean status") settles as `manual`, for its owner to merge: abcd never
@@ -903,7 +906,8 @@ withdrawing nothing, and an admission or a release is refused.
   it by hand. abcd's own correction after a refused withdrawal keeps the
   entry (`kept`), so it never reads as lost.
 - **A comment on each pull request acted on** (dcn-2610230712084099,
-  superseding dcn-2610230328230097; the sentences dcn-2610230833367984). abcd
+  superseding dcn-2610230328230097; the sentences dcn-2610230833367984, and
+  dcn-2611050959161600 for what it changed). abcd
   posts one fixed sentence naming the release's tag, through `gh`'s
   `addComment` (pinned in ghcontract's `graphql-fields.txt`), on a pull
   request it withdraws whole ("the merge of #N is withdrawn by HOLDER while
@@ -914,8 +918,18 @@ withdrawing nothing, and an admission or a release is refused.
   re-armed; the hold for release vX has ended."), finds armed already ("is
   armed; the hold for release vX has ended.") or leaves for its owner ("is not
   re-armed; the hold for release vX has ended." and one clause from a closed
-  set: head moved, no merge queue, refused five times, closed, merged), each
-  prefixed "abcd release hold: ". Every real disarm is posted, a live
+  set: "Its head changed while it was held, so its owner needs to re-arm it.",
+  "It can merge now and there is no merge queue, so its owner can merge it.",
+  "GitHub refused to re-arm it five times, so its owner needs to re-arm it.",
+  "It was closed.", "It was merged."), finds armed by another account at a head
+  the gate does not arm ("the merge of #N stays armed at HEAD, which the merge
+  gate in this checkout does not arm; the hold for release vX has ended. To
+  withdraw it: gh pr merge N --disable-auto, and take it out of the merge queue
+  on its page if it is queued."), or holds at the gate ("the merge of #N stays
+  withdrawn after release vX: no review or approval in this checkout names its
+  head HEAD. abcd land from a checkout holding the review re-arms it.", once for
+  each pull request and head in each acting worktree, with no push to wait on),
+  each prefixed "abcd release hold: ". Every real disarm is posted, a live
   renewal's withdrawal again included; nothing is posted for a refused (`kept`)
   or partial withdrawal, a `mismatch`, any other state, an admission run
   again, or a second copy whose settle does not land. Every value in it is

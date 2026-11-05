@@ -182,9 +182,15 @@ func TestTheWaitWithdrawsAnAutoMergeWhoseHeadMovedWithNoQueue(t *testing.T) {
 // stillArmed makes the stub forge go on reporting the pull request armed.
 func stillArmed(t *testing.T, f *landFixture) {
 	t.Helper()
+	stillArmedIn(t, f.gh)
+}
+
+// stillArmedIn is stillArmed for the stub forge in the directory gh.
+func stillArmedIn(t *testing.T, gh string) {
+	t.Helper()
 	body := `{"data":{"viewer":{"login":"author-a"},"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false},"nodes":[` +
 		`{"number":7,"id":"PR_kwDOstub7","headRefOid":"` + strings.Repeat("c", 40) + `","isCrossRepository":false,"isInMergeQueue":false,"mergeQueueEntry":null,"autoMergeRequest":{"mergeMethod":"MERGE","enabledBy":{"login":"author-a"}}}]}}}}`
-	if err := os.WriteFile(filepath.Join(f.gh, "armings.json"), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(gh, "armings.json"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

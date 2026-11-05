@@ -34,8 +34,11 @@ interval=${PR_KEEP_CURRENT_INTERVAL:-120}
 settle=${PR_KEEP_CURRENT_SETTLE:-30}
 watch=false
 [ "${1:-}" = "--watch" ] && watch=true
-# The pull requests whose update the forge refused at a head, as " number:head ".
+# The pull requests whose update the forge refused at a head, as " number:head ",
+# and of those, the ones whose arming went back on and the ones it did not.
 refused=" "
+rearmed=""
+unarmed=""
 
 # moved_head waits up to $settle seconds for pull request $1's head to leave $2
 # (the forge's update is asynchronous), and prints the head it then reads.
@@ -92,8 +95,10 @@ pass() {
         *"HTTP 4"[0-9][0-9]*)
           refused="$refused$n:$head "
           if gh pr merge "$n" --auto "$flag" "--match-head-commit=$head" >/dev/null 2>&1; then
+            rearmed="$rearmed #$n"
             printf '%s PR #%s was BEHIND and the forge refused the update (%s); its head is still %s, and its arming is re-armed there\n' "$(date +%H:%M)" "$n" "$msg" "${head:0:12}"
           else
+            unarmed="$unarmed #$n"
             printf '%s PR #%s was BEHIND and the forge refused the update (%s); its arming could NOT be put back; arm it with: %s\n' "$(date +%H:%M)" "$n" "$msg" "$rearm"
           fi
           ;;
@@ -113,9 +118,8 @@ if $watch; then
   if [ "$refused" = " " ]; then
     echo "no open pull request has auto-merge armed; done"
   else
-    left=""
-    for entry in $refused; do left="$left #${entry%%:*}"; done
-    echo "done; the forge refused the update of$left, which stays armed at its head"
+    [ -z "$rearmed" ] || echo "done; the forge refused the update of$rearmed, which stays armed at its head"
+    [ -z "$unarmed" ] || echo "done; the forge refused the update of$unarmed, which is unarmed: its line above gives the command that arms it"
   fi
 else
   pass || true

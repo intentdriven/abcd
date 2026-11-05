@@ -9,9 +9,9 @@ found_during: "a landing fix"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/landing/withdraw.go"
-remedy: "abcd land withdraws the arming before its push and arms the new head once the merge gate does; the committed pre-push hook refuses a push that moves an armed pull request's head"
+remedy: "abcd land withdraws the arming before a push that moves an armed pull request's head, and arms the new head only where the merge gate does; the committed pre-push hook refuses a fast-forward it reads as moving that head"
 refines: [iss-2611011943357182, iss-2608241347321757, iss-2610110012045504]
-resolution: "abcd land withdraws the arming before a push that moves the head, and the pre-push hook refuses such a push"
+resolution: "abcd land withdraws the arming before a push that moves the head, and the committed pre-push hook refuses a fast-forward it reads as moving it"
 impact: fix
 resolved_by:
   commit: "49de3c1a656c"
@@ -21,4 +21,4 @@ abcd land withdraws the arming before a push that moves an armed pull request's 
 
 ## Grounds
 
-- pursued: an arming stays on the head a review named; shown wrong if a push that moves an armed head goes ahead through abcd land or the committed hook with the arming still on
+- pursued: abcd land keeps an arming to a head the merge gate arms; shown wrong if abcd land pushes over an arming it read and leaves that arming on

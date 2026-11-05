@@ -1,11 +1,13 @@
 package cli
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // scripts/pr-keep-current.sh updates a pull request that fell behind its base,
@@ -13,6 +15,9 @@ import (
 // update that fails leaves the head where it was, so the arming goes back on at
 // that head; one that moves the head leaves it unarmed for abcd land; and each
 // line says what happened.
+
+// keepCurrentDeadline bounds one run of the script on a loaded machine.
+const keepCurrentDeadline = 2 * time.Minute
 
 const keepCurrentHead = "1111111111111111111111111111111111111111"
 
@@ -60,10 +65,17 @@ func keepCurrent(t *testing.T, head string, files map[string]string, args ...str
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("bash", append([]string{filepath.Join(prePushSourceRoot(t), "scripts", "pr-keep-current.sh")}, args...)...)
+	// A deadline of its own, so a --watch that does not stop fails here.
+	ctx, cancel := context.WithTimeout(context.Background(), keepCurrentDeadline)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "bash", append([]string{filepath.Join(prePushSourceRoot(t), "scripts", "pr-keep-current.sh")}, args...)...)
+	cmd.WaitDelay = 5 * time.Second
 	cmd.Dir = t.TempDir()
 	cmd.Env = append(os.Environ(), "PATH="+gh+string(os.PathListSeparator)+os.Getenv("PATH"), "PR_KEEP_CURRENT_SETTLE=0", "PR_KEEP_CURRENT_INTERVAL=0")
 	raw, err := cmd.CombinedOutput()
+	if ctx.Err() != nil {
+		t.Fatalf("the script did not finish within %v\n%s", keepCurrentDeadline, raw)
+	}
 	if err != nil {
 		t.Fatalf("the script failed: %v\n%s", err, raw)
 	}
@@ -111,7 +123,7 @@ func TestKeepCurrentPutsTheArmingBackWhenTheForgeRefusesTheUpdate(t *testing.T) 
 	if !strings.Contains(log, "pr merge 7 --auto --squash --match-head-commit="+keepCurrentHead) {
 		t.Fatalf("the arming is not back, by its method, at the unmoved head:\n%s", log)
 	}
-	if strings.Contains(out, "new head") || !strings.Contains(out, "HTTP 422") || !strings.Contains(out, "re-armed") {
+	if strings.Contains(out, "is updated to") || !strings.Contains(out, "HTTP 422") || !strings.Contains(out, "re-armed") {
 		t.Fatalf("the script does not say the update was refused and the arming is back:\n%s", out)
 	}
 }
@@ -171,6 +183,14 @@ func TestKeepCurrentWatchStopsOnAnUpdateTheForgeRefuses(t *testing.T) {
 	}
 }
 
+// The closing line says "stays armed" only of an arming the script put back.
+func TestKeepCurrentWatchDoesNotCallAFailedReArmArmed(t *testing.T) {
+	out, _ := keepCurrent(t, keepCurrentHead, map[string]string{"refuse-update": refused422, "refuse-rearm": ""}, "--watch")
+	if strings.Contains(out, "stays armed") || !strings.Contains(out, "unarmed") || !strings.Contains(out, "#7") {
+		t.Fatalf("the closing line does not say #7 is unarmed:\n%s", out)
+	}
+}
+
 // An update the forge accepted but has not made is not armed under: it may still
 // land. The line says the head has not moved yet.
 func TestKeepCurrentDoesNotArmAnUpdateStillPending(t *testing.T) {
@@ -178,7 +198,7 @@ func TestKeepCurrentDoesNotArmAnUpdateStillPending(t *testing.T) {
 	if strings.Contains(log, "pr merge 7 --auto") {
 		t.Fatalf("an arming was made under a pending update:\n%s", log)
 	}
-	if !strings.Contains(out, "not moved") || strings.Contains(out, "new head") {
+	if !strings.Contains(out, "not moved") || strings.Contains(out, "is updated to") {
 		t.Fatalf("the script does not say the head has not moved:\n%s", out)
 	}
 }

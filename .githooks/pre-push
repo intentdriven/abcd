@@ -116,8 +116,7 @@
 #      naming `abcd land` and the command that withdraws the arming. The hook
 #      changes nothing on the forge: it stops and says so.
 #
-# `git push --no-verify` skips this hook, as it skips every hook; CI re-runs
-# every preflight gate on the pushed commit and is the authority on those.
+# CI re-runs the preflight's gates on the pushed commit.
 set -euo pipefail
 # Every read below sees objects as stored, as the push sends them: a local
 # refs/replace/* ref can stand one commit in for another, so a commit carrying
@@ -469,8 +468,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   commit="$(git rev-parse --verify --quiet "$local_sha^{commit}" 2>/dev/null || true)"
   [ -n "$commit" ] || continue
 
-  # A branch this push fast-forwards from a tip this clone holds, for the arming
-  # check once the gates have passed.
+  # A branch this push moves, for the arming check once the gates have passed.
   case "$remote_ref" in
   refs/heads/*)
     if ! is_null_id "$remote_sha" && [ "$remote_sha" != "$commit" ] &&

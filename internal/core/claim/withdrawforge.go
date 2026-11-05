@@ -36,7 +36,7 @@ const (
 	ArmedPullRequestsQuery = `query($o:String!,$r:String!,$b:String!,$c:String){repository(owner:$o,name:$r){pullRequests(states:OPEN,baseRefName:$b,first:100,after:$c){pageInfo{hasNextPage endCursor} nodes{number id headRefOid headRefName isCrossRepository isInMergeQueue autoMergeRequest{mergeMethod}}}}}`
 	// PullRequestQuery reads one pull request's way to the merge, for a
 	// re-arm to judge it by.
-	PullRequestQuery = `query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){number id state headRefOid isInMergeQueue autoMergeRequest{mergeMethod}}}}`
+	PullRequestQuery = `query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){number id state headRefOid isInMergeQueue mergeQueueEntry{enqueuer{login}} autoMergeRequest{mergeMethod enabledBy{login}}}}}`
 
 	DisableAutoMergeMutation = `mutation($id:ID!){disablePullRequestAutoMerge(input:{pullRequestId:$id}){clientMutationId}}`
 	DequeueMutation          = `mutation($id:ID!){dequeuePullRequest(input:{id:$id}){clientMutationId}}`
@@ -308,12 +308,34 @@ type prNode struct {
 	HeadRefName       string `json:"headRefName"`
 	IsCrossRepository bool   `json:"isCrossRepository"`
 	IsInMergeQueue    bool   `json:"isInMergeQueue"`
-	AutoMergeRequest  *struct {
-		MergeMethod string `json:"mergeMethod"`
+	MergeQueueEntry   *struct {
+		Enqueuer *prActor `json:"enqueuer"`
+	} `json:"mergeQueueEntry"`
+	AutoMergeRequest *struct {
+		MergeMethod string   `json:"mergeMethod"`
+		EnabledBy   *prActor `json:"enabledBy"`
 	} `json:"autoMergeRequest"`
 }
 
+// prActor is an account as PullRequestQuery reads it.
+type prActor struct {
+	Login string `json:"login"`
+}
+
 func (n prNode) armed() bool { return n.IsInMergeQueue || n.AutoMergeRequest != nil }
+
+// armedBy reports whether the forge says login made every arming on it, as
+// `abcd land` reads one. One it attributes to no one counts as another account's.
+func (n prNode) armedBy(login string) bool {
+	by := func(who *prActor) bool { return login != "" && who != nil && strings.EqualFold(who.Login, login) }
+	if n.AutoMergeRequest != nil && !by(n.AutoMergeRequest.EnabledBy) {
+		return false
+	}
+	if n.IsInMergeQueue && (n.MergeQueueEntry == nil || !by(n.MergeQueueEntry.Enqueuer)) {
+		return false
+	}
+	return true
+}
 
 // armedPullRequests lists every open pull request into base on owner/name
 // that is armed or queued. A page the forge answers wrongly, a node that is
@@ -467,6 +489,40 @@ func (f mergeForge) inspect(root, owner, name string, w Withdrawal) (string, err
 	return WithdrawnFoundArmed, nil
 }
 
+// settleMoved is what a re-arm does with an admitted withdrawal inspect settled as
+// moved, so that what it records is true. Not armed, it is moved. Armed at a head
+// the gate refuses by this account (the holder's own --admit, usually), the arming
+// comes off and is read back before it is moved. Armed by another account, it is
+// left, and is standing; at names the head it stands at.
+func (f mergeForge) settleMoved(root, owner, name string, w Withdrawal) (state, at string, err error) {
+	n, err := f.pullRequest(root, owner, name, w.Number)
+	if err != nil {
+		return "", "", errors.New(forgeReason(err))
+	}
+	if !n.armed() {
+		return WithdrawnMoved, "", nil
+	}
+	login, err := f.login(root)
+	if err != nil {
+		return "", "", fmt.Errorf("whose arming it stands under cannot be read: %s", forgeReason(err))
+	}
+	if !n.armedBy(login) {
+		return WithdrawnStanding, n.HeadRefOid, nil
+	}
+	pr := ArmedPR{Number: n.Number, ID: n.ID, Head: n.HeadRefOid, Queued: n.IsInMergeQueue, AutoMerge: n.AutoMergeRequest != nil}
+	if _, _, err := f.withdraw(root, pr, w.By); err != nil {
+		return "", "", fmt.Errorf("its arming at %s could not be withdrawn: %s", n.HeadRefOid[:12], err.Error())
+	}
+	back, err := f.pullRequest(root, owner, name, w.Number)
+	if err != nil {
+		return "", "", fmt.Errorf("its arming at %s was withdrawn and could not be read back: %s", n.HeadRefOid[:12], forgeReason(err))
+	}
+	if back.armed() {
+		return "", "", fmt.Errorf("its arming at %s was withdrawn, but the forge still reports it armed or queued", n.HeadRefOid[:12])
+	}
+	return WithdrawnMoved, "", nil
+}
+
 // cleanStatus is the forge's refusal of an arming when the pull request can
 // merge now and the repository has no merge queue to put it in: auto-merge
 // has nothing to wait for.
@@ -524,6 +580,15 @@ func (f mergeForge) gateHeadAt(root string, number int, head string) error {
 	return nil
 }
 
+// armedHead is the head a standing withdrawal's sentences name, as twelve
+// characters, "" when this act did not read it (a line read from a tombstone).
+func (w Withdrawal) armedHead() string {
+	if len(w.ArmedAt) < 12 {
+		return ""
+	}
+	return w.ArmedAt[:12]
+}
+
 // heldBody is the one fixed sentence on a pull request whose re-arm the merge gate
 // holds. Every value in it is validated data, as commentBody's are.
 func heldBody(subject string, w Withdrawal) string {
@@ -558,6 +623,12 @@ func commentBody(subject string, w Withdrawal, by string, lapsed bool) string {
 		return fmt.Sprintf("abcd release hold: the merge of #%d is re-armed; %s.", w.Number, ended)
 	case WithdrawnFoundArmed:
 		return fmt.Sprintf("abcd release hold: the merge of #%d is armed; %s.", w.Number, ended)
+	case WithdrawnStanding:
+		at := "a head"
+		if h := w.armedHead(); h != "" {
+			at = h
+		}
+		return fmt.Sprintf("abcd release hold: the merge of #%d stays armed at %s, which the merge gate in this checkout does not arm; %s. To withdraw it: gh pr merge %d --disable-auto, and take it out of the merge queue on its page if it is queued.", w.Number, at, ended, w.Number)
 	}
 	clause, ok := map[string]string{
 		WithdrawnMoved:   "Its head changed while it was held, so its owner needs to re-arm it.",
@@ -604,8 +675,15 @@ func (f mergeForge) comment(root, subject string, w Withdrawal, by string, lapse
 // by pull request and reason; it never holds up or undoes the act the
 // comment reports. nil when it was posted as sent, or no writer is set.
 func (f mergeForge) postComment(root string, w Withdrawal, body string) *ForgeFailure {
+	_, ff := f.postCommentOnce(root, w, body)
+	return ff
+}
+
+// postCommentOnce is postComment, also saying whether the forge took the comment,
+// which a failure to read it back does not undo.
+func (f mergeForge) postCommentOnce(root string, w Withdrawal, body string) (taken bool, _ *ForgeFailure) {
 	if f.comments == nil {
-		return nil
+		return false, nil
 	}
 	fail := func(reason string) *ForgeFailure {
 		return &ForgeFailure{Number: w.Number, Act: ForgeComment, Reason: reason}
@@ -614,9 +692,9 @@ func (f mergeForge) postComment(root string, w Withdrawal, body string) *ForgeFa
 	findings, err := scanner.CheckOutbound(root, body, commentFamily.name)
 	switch {
 	case len(findings) > 0:
-		return fail(what + " was not posted: it carries " + findings[0].Kind + ", which public text may not carry")
+		return false, fail(what + " was not posted: it carries " + findings[0].Kind + ", which public text may not carry")
 	case err != nil:
-		return fail(what + " was not posted: it could not be judged against the outbound policy (" + redacted(err) + ")")
+		return false, fail(what + " was not posted: it could not be judged against the outbound policy (" + redacted(err) + ")")
 	}
 	posted, read, err := f.comments.Comment(root, w.ID, body)
 	switch {
@@ -625,14 +703,14 @@ func (f mergeForge) postComment(root string, w Withdrawal, body string) *ForgeFa
 		if err != nil {
 			reason = forgeReason(err)
 		}
-		return fail(what + " was not posted: " + reason)
+		return false, fail(what + " was not posted: " + reason)
 	case err != nil:
-		return fail(what + " was posted, but could not be read back from the forge to check it (" + forgeReason(err) + "); read it on the pull request")
+		return true, fail(what + " was posted, but could not be read back from the forge to check it (" + forgeReason(err) + "); read it on the pull request")
 	case read != body:
-		return fail(fmt.Sprintf("%s was posted, but the forge reads it back as %d bytes that are not the %d abcd sent: something changed it after it was posted "+
+		return true, fail(fmt.Sprintf("%s was posted, but the forge reads it back as %d bytes that are not the %d abcd sent: something changed it after it was posted "+
 			"(a footer appended, say); abcd does not edit it, so read it on the pull request and correct it there", what, len(read), len(body)))
 	}
-	return nil
+	return true, nil
 }
 
 // commentWord is a state as a comment's failure names it.
@@ -646,6 +724,8 @@ func commentWord(state string) string {
 		return "re-armed"
 	case WithdrawnFoundArmed:
 		return "armed"
+	case WithdrawnStanding:
+		return "still armed"
 	}
 	return "not re-armed (" + state + ")"
 }

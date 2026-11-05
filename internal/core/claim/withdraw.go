@@ -95,16 +95,20 @@ const (
 	// lost. This person's own renewals carry it, and a live one withdraws it
 	// again when the forge still has it armed; a tombstone ends it.
 	WithdrawnKept = "kept"
+	// WithdrawnStanding: an admitted one armed by another account at a head the
+	// merge gate here does not arm. That arming is left as it is, and its owner
+	// is told what withdraws it.
+	WithdrawnStanding = "standing"
 )
 
 // WithdrawalStates is the closed vocabulary of states.
 var WithdrawalStates = []string{WithdrawnPending, WithdrawnAdmitted, WithdrawnRearmed, WithdrawnFoundArmed,
-	WithdrawnMoved, WithdrawnClosed, WithdrawnMerged, WithdrawnMismatch, WithdrawnManual, WithdrawnRefused, WithdrawnKept}
+	WithdrawnMoved, WithdrawnClosed, WithdrawnMerged, WithdrawnMismatch, WithdrawnManual, WithdrawnRefused, WithdrawnKept, WithdrawnStanding}
 
 // skippedForOwner reports whether state is one a re-arm settles a withdrawal in
 // without re-arming it, for its owner to act on.
 func skippedForOwner(state string) bool {
-	return slices.Contains([]string{WithdrawnMoved, WithdrawnClosed, WithdrawnMerged, WithdrawnMismatch, WithdrawnManual, WithdrawnRefused}, state)
+	return slices.Contains([]string{WithdrawnMoved, WithdrawnClosed, WithdrawnMerged, WithdrawnMismatch, WithdrawnManual, WithdrawnRefused, WithdrawnStanding}, state)
 }
 
 // maxWithdrawals bounds the withdrawals one release tip records: a writer
@@ -132,6 +136,9 @@ type Withdrawal struct {
 	By string `json:"by"`
 	// State is where it stands, one of WithdrawalStates.
 	State string `json:"state"`
+	// ArmedAt is the head a standing one stands armed at, as this act read it. It
+	// is not recorded on the trailer.
+	ArmedAt string `json:"armed_at,omitempty"`
 }
 
 // preID reports whether the withdrawal names its holder by preIDMarker.

@@ -307,7 +307,7 @@ func resyncLane(c Context, lane *Lane, def, tracking string, m mergeability) (Ou
 			return Outcome{}, refuse(string(StageLand), "", lane.ID, "pull request #"+n+" started to conflict with "+def+", and the loop could not withdraw its arming: "+forgeWhy(err),
 				"withdraw it yourself (`gh pr merge "+n+" --disable-auto`, and take it out of the merge queue on its page), then run `abcd implement step` again")
 		}
-		if err := confirmWithdrawn(c, *lane); err != nil {
+		if err := confirmWithdrawn(c, *lane, StageLand); err != nil {
 			return Outcome{}, err
 		}
 		ld.Merge, ld.Armed = "", false

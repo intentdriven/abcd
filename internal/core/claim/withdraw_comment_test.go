@@ -107,6 +107,7 @@ func TestEachCommentSentenceIsTheOneApproved(t *testing.T) {
 		WithdrawnRefused:    pre + "not re-armed" + ended + " GitHub refused to re-arm it five times, so its owner needs to re-arm it.",
 		WithdrawnClosed:     pre + "not re-armed" + ended + " It was closed.",
 		WithdrawnMerged:     pre + "not re-armed" + ended + " It was merged.",
+		WithdrawnStanding:   "abcd release hold: the merge of #11 stays armed at " + headA[:12] + ", which the merge gate in this checkout does not arm; the hold for release v0.16.0 has ended. To withdraw it: gh pr merge 11 --disable-auto, and take it out of the merge queue on its page if it is queued.",
 		WithdrawnMismatch:   "",
 		WithdrawnKept:       "",
 	}
@@ -118,7 +119,7 @@ func TestEachCommentSentenceIsTheOneApproved(t *testing.T) {
 		if state == WithdrawnAdmitted {
 			by = "bob" // the admitter is passed, never read from the withdrawal
 		}
-		if got := commentBody("rel-v0.16.0", Withdrawal{Number: 11, By: "octo", State: state}, by, false); got != want[state] {
+		if got := commentBody("rel-v0.16.0", Withdrawal{Number: 11, By: "octo", State: state, ArmedAt: headA}, by, false); got != want[state] {
 			t.Errorf("the comment for %s is\n%q\nwant\n%q", state, got, want[state])
 		}
 	}

@@ -194,13 +194,13 @@ func TestPrePushPassesOnceTheArmingIsGone(t *testing.T) {
 	}
 }
 
-// The hook asks about a fast-forward it can see in this clone.
+// The hook asks about a push that fast-forwards a branch.
 func TestPrePushAsksOnlyAboutAFastForward(t *testing.T) {
 	zero := strings.Repeat("0", 40)
 	h := newArmingHook(t)
 	h.armings(t, armingAt(h.old, true, false))
 	for _, c := range []struct{ name, line string }{
-		{"a remote tip this clone does not hold", "refs/heads/feature " + h.head + " refs/heads/feature " + strings.Repeat("b", 40)},
+		{"an update git rejects", "refs/heads/feature " + h.head + " refs/heads/feature " + strings.Repeat("b", 40)},
 		{"a branch already at the commit", "refs/heads/feature " + h.head + " refs/heads/feature " + h.head},
 		{"a branch the remote does not have", "refs/heads/feature " + h.head + " refs/heads/feature " + zero},
 		{"a tag", "refs/tags/v1 " + h.head + " refs/tags/v1 " + zero},
