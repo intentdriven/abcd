@@ -173,10 +173,31 @@ func (t *terminal) haltedBy(err error) bool {
 	return true
 }
 
-// sleep waits d, saying why.
+// sleep waits d, saying why, in stretches no longer than half a lease, renewing
+// what the run's lanes hold between them, so a long wait keeps their claims. A
+// stop or a kill ends it.
 func (t *terminal) sleep(ctx context.Context, d time.Duration, why string) {
 	t.say("waiting %s: %s", d.Round(time.Second), why)
-	t.o.Sleep(ctx, d)
+	t.renewHeld()
+	for d > 0 {
+		step := min(d, terminalRenewEvery)
+		t.o.Sleep(ctx, step)
+		d -= step
+		if ctx.Err() != nil || t.stopped() {
+			return
+		}
+		t.renewHeld()
+	}
+}
+
+// renewHeld renews each due reservation of a run in progress, but one a drive
+// let go, and says what failed.
+func (t *terminal) renewHeld() {
+	for _, r := range renewRunsAt(t.repoRoot, "", func(st State) bool { return !letGoByDrive(st) }, t.now()) {
+		if !r.Renewed {
+			t.say("%s: %s", r.Key, r.Note)
+		}
+	}
 }
 
 // idle waits d on something someone else must do, reporting true when nothing

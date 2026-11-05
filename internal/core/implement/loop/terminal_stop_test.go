@@ -376,3 +376,32 @@ func TestAStopFromElsewhereEndsTheDriveAndLeavesItsClaimsToTheStop(t *testing.T)
 		t.Fatalf("the drive releases nothing the stop holds: %+v", r)
 	}
 }
+
+// TestALongWaitKeepsTheLanesReservation: a wait past the lease, the lane in
+// progress, renews what the lane holds rather than leaving it to lapse.
+func TestALongWaitKeepsTheLanesReservation(t *testing.T) {
+	w := newTerminalWorld(t, "shape", "late")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	o := w.options(t)
+	o.Runners.Timeout = 40 * time.Second
+	done := make(chan TerminalResult, 1)
+	go func() {
+		res, _ := RunTerminal(ctx, w.repo.Root(), o)
+		done <- res
+	}()
+	waitPid(t, w.env, "claude.pid")
+	cancel()
+	killed := <-done
+	again := w.options(t)
+	waiting := &terminal{repoRoot: w.repo.Root(), o: again}
+	waiting.sleep(context.Background(), 5*time.Hour, "a long wait")
+	if r := reservationOf(t, w.repo.Root(), killed.Issue, w.clock.t); r.State != claim.StateLive {
+		t.Fatalf("the reservation stays live across the wait: %+v", r)
+	}
+	for _, d := range w.sleeps {
+		if d > time.Hour {
+			t.Fatalf("no stretch of a wait outlasts half a lease: %v", w.sleeps)
+		}
+	}
+}

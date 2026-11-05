@@ -22,6 +22,10 @@ const terminalFailuresToOutage = 3
 // run ends.
 const terminalOutageLimit = 8 * time.Hour
 
+// terminalRenewEvery is the longest a wait goes without renewing what the run
+// holds: half the bundled lease, the point a renewal falls due.
+const terminalRenewEvery = time.Hour
+
 // moveWait is how long the loop sleeps after a move that returned a wait: until
 // the earliest time the move named, at least the floor. ok is false when it
 // named none.
