@@ -213,8 +213,9 @@ func TestSignalsThroughARealDriveAndARealProcessGroup(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "go"), nil, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if err := cmd.Wait(); err != nil {
-			t.Fatalf("the drive stops cleanly: %v\n%s", err, output(dir))
+		var stopped *exec.ExitError
+		if err := cmd.Wait(); !errors.As(err, &stopped) || stopped.ExitCode() != 3 {
+			t.Fatalf("a stop exits 3: %v\n%s", err, output(dir))
 		}
 		if _, err := os.Stat(filepath.Join(dir, "finished")); err != nil {
 			t.Fatalf("the agent finished its call: %v\n%s", err, output(dir))

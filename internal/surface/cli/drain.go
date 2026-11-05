@@ -100,11 +100,13 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"can. It then judges each eligible issue,\n" +
 			"drives each lane to its landing, every role on that separate login, and runs each\n" +
 			"landing's preflight behind the load gate, printing one line per step and logging them\n" +
-			"under .abcd/.work.local/logs/. A lane that changes the Makefile or scripts/ is handed\n" +
-			"back before its preflight unless --trust-lane-gates says the person agrees. It ends at\n" +
+			"under .abcd/.work.local/logs/. A lane that changes the Makefile, scripts/ or the active\n" +
+			"hooks is handed back at its landing, and an issue that names one is passed over, unless\n" +
+			"--trust-lane-gates says the person agrees. The driver's own git commands run the\n" +
+			"repository's hooks with what a stage carries; only the push keeps credentials. It ends at\n" +
 			"the cap, when nothing is eligible, or after eight hours of runner failures. One drive\n" +
-			"holds a checkout at a time; a second exits 3. A drive that stops short exits 3, and one\n" +
-			"a broken wall stopped exits 2. The first interrupt, hang-up or termination is a\n" +
+			"holds a checkout at a time; a second exits 3. A drive that is stopped, stops short or\n" +
+			"holds an issue back exits 3, and one a failed check stopped exits 2. The first interrupt, hang-up or termination is a\n" +
 			"stop: the agent in a call finishes that call, the lane's reservation is released, the\n" +
 			"lane stays on its branch, and the last lines name the run, the lane and the command\n" +
 			"that resumes it. A second kills the running agent's process group and exits at once\n" +
