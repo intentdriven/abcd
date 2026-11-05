@@ -40,6 +40,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 )
 
 // ErrNotRegular and ErrTooBig are the guarded-read sentinels: a non-regular leaf
@@ -472,6 +473,45 @@ func WriteFileAtomic(path string, data []byte, perm os.FileMode) error {
 		return err
 	}
 	syncParent(dir)
+	return nil
+}
+
+// WriteRebuildable is WriteFileAtomic for a file a later run can make again,
+// with no flush and with its modification time set before the name appears: a
+// reader, or a crash, sees the old file or the complete new one with its final
+// time, and never the new content under another time. A check directory writes
+// thousands of these at once, where a flush each would cost minutes on macOS
+// (flush.go) to protect nothing its next sync cannot repair.
+func WriteRebuildable(path string, data []byte, perm os.FileMode, at time.Time) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, ".abcd-tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	fail := func(err error) error {
+		tmp.Close()
+		os.Remove(tmpName)
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		return fail(err)
+	}
+	if err := tmp.Chmod(perm); err != nil {
+		return fail(err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fail(err)
+	}
+	if err := os.Chtimes(tmpName, at, at); err != nil {
+		return fail(err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return fail(err)
+	}
 	return nil
 }
 

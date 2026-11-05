@@ -427,7 +427,7 @@ preflight:
 # to be reused run under one fixed -timeout, the larger of the two the budget
 # below takes, because go test's cache key holds the timeout and a result must
 # not stop being reusable when the load crosses the line.
-CHECK_TESTS = go run ./cmd/check-tests -cached-timeout 1h20m$(if $(PREFLIGHT_FRESH), -fresh,)
+CHECK_TESTS_FLAGS = -cached-timeout 1h20m$(if $(PREFLIGHT_FRESH), -fresh,)
 
 # The make the gate runs the stages with. It is named through this variable so
 # the gate's line is an ordinary recipe line: make runs a line that names MAKE
@@ -453,11 +453,11 @@ preflight-stages: load-check fmt-check lint-reviews lint-issues record-lint issu
 	go vet ./...
 	p=$$(go run ./cmd/test-parallelism) && \
 	t=$$(go run ./cmd/test-parallelism -timeout 40m) && \
-	$(CHECK_TESTS) unit go test -p "$$p" -timeout "$$t" ./...
+	go run ./cmd/check-tests $(CHECK_TESTS_FLAGS) unit go test -p "$$p" -timeout "$$t" ./...
 	go run ./cmd/abcd implement load --race-gate --timeout 2h
 	p=$$(go run ./cmd/test-parallelism) && \
 	t=$$(go run ./cmd/test-parallelism -timeout 40m) && \
-	$(CHECK_TESTS) race go test -race -p "$$p" -timeout "$$t" ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
+	go run ./cmd/check-tests $(CHECK_TESTS_FLAGS) race go test -race -p "$$p" -timeout "$$t" ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
 
 else
 preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution secrets-check vulncheck site-render smoke evals-cold-reading

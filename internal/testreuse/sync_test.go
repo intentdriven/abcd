@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // gitRepo is a small repository for the sync's tests.
@@ -31,9 +33,14 @@ func (r *gitRepo) git(args ...string) string {
 
 func runGit(t *testing.T, dir string, args ...string) string {
 	t.Helper()
-	cmd := exec.Command("git", append([]string{"-c", "user.name=Quinn", "-c", "user.email=quinn@example.invalid", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null"}, args...)...)
+	cmd := exec.Command("git", append([]string{"-c", "user.name=Quinn", "-c", "user.email=quinn@example.invalid", "-c", "commit.gpgsign=false"}, args...)...)
 	cmd.Dir = dir
-	cmd.Env = append(gitEnv(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
+	cmd.Env = gittest.Env(t)
+	for _, name := range []string{"GIT_AUTHOR_DATE", "GIT_COMMITTER_DATE"} {
+		if at := os.Getenv(name); at != "" {
+			cmd.Env = append(cmd.Env, name+"="+at)
+		}
+	}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
@@ -253,7 +260,7 @@ func TestASyncRecoversADirectoryACrashLeft(t *testing.T) {
 	// a file where a directory goes and a directory where a file goes, a
 	// directory a test made unreadable, and a directory's time moved.
 	writeFile(t, filepath.Join(tree, "a", "file.txt"), "whole", 0o644)
-	writeFile(t, filepath.Join(dir, "incoming-12345"), "partial", 0o600)
+	writeFile(t, filepath.Join(dir, ".abcd-tmp-12345"), "partial", 0o600)
 	writeFile(t, filepath.Join(dir, timesName), "{\"cut", 0o600)
 	writeFile(t, filepath.Join(tree, "a", "left-behind.txt"), "x", 0o644)
 	writeFile(t, filepath.Join(tree, "stray", "deep", "x.txt"), "x", 0o644)

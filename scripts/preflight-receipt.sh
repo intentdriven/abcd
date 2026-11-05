@@ -181,8 +181,7 @@ mint() {
 	if [ "$scope" = records-only ]; then
 		printf 'commit %s\nminted %s\nscope records-only\nverdict %s\nbase %s\n' "$now_head" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$verdict" "$base" >"$receipts_rel/$now_head"
 	else
-		printf 'commit %s\nminted %s\nscope full\nreuse unit %s of %s\nreuse race %s of %s\n' "$now_head" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-			"${unit% *}" "${unit#* }" "${race% *}" "${race#* }" >"$receipts_rel/$now_head"
+		printf 'commit %s\nminted %s\nscope full\nreuse unit %s of %s\nreuse race %s of %s\n' "$now_head" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${unit% *}" "${unit#* }" "${race% *}" "${race#* }" >"$receipts_rel/$now_head"
 	fi
 	# Keep the newest $keep receipts. The names are full commit ids, so a plain
 	# listing is safe to word-split.

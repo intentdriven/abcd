@@ -19,6 +19,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // The check directory's own files, beside the tree so nothing a test reads of
@@ -28,7 +30,7 @@ const (
 	timesName    = "times.json"
 	lockName     = "lock"
 	holderName   = "holder"
-	incomingGlob = "incoming-*"
+	incomingGlob = ".abcd-tmp-*"
 )
 
 // A file's time is timeBase plus 64 bits of the SHA-256 of its content reduced
@@ -208,20 +210,7 @@ func saveTimes(dir string, times map[string]int64) error {
 	if err != nil {
 		return err
 	}
-	f, err := os.CreateTemp(dir, incomingGlob)
-	if err != nil {
-		return err
-	}
-	if _, err := f.Write(raw); err != nil {
-		_ = f.Close()
-		_ = os.Remove(f.Name())
-		return err
-	}
-	if err := f.Close(); err != nil {
-		_ = os.Remove(f.Name())
-		return err
-	}
-	return os.Rename(f.Name(), filepath.Join(dir, timesName))
+	return fsutil.WriteRebuildable(filepath.Join(dir, timesName), raw, 0o600, time.Now())
 }
 
 // Sync makes dir's tree exactly the commit's: every tracked file with its mode
@@ -317,7 +306,7 @@ func syncTree(ctx context.Context, repo, commit, dir string) (SyncStats, *snapsh
 			stats.Kept++
 			continue
 		}
-		if err := place(dir, abs, e, body, sec); err != nil {
+		if err := place(abs, e, body, sec); err != nil {
 			return stats, nil, err
 		}
 		stats.Written++
@@ -396,54 +385,25 @@ func (e entry) matches(info fs.FileInfo, sec int64, abs string) bool {
 		info.ModTime().Unix() == sec && info.ModTime().Nanosecond() == 0
 }
 
-// place puts one entry at abs. The file is finished under a temporary name
-// beside the tree, so a crash leaves the old file or the new one and never a
-// part of one with the time that would pass it as whole.
-func place(dir, abs string, e entry, body []byte, sec int64) error {
-	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
-		return err
+// place puts one entry at abs, a file with its time already set, so a crash
+// leaves the old file or the new one and never a part of one with the time that
+// would pass it as whole.
+func place(abs string, e entry, body []byte, sec int64) error {
+	if info, err := os.Lstat(abs); err == nil && info.IsDir() {
+		if err := forceRemove(abs); err != nil {
+			return err
+		}
 	}
 	if e.mode == "120000" {
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			return err
+		}
 		if err := os.RemoveAll(abs); err != nil {
 			return err
 		}
 		return os.Symlink(string(body), abs)
 	}
-	f, err := os.CreateTemp(dir, incomingGlob)
-	if err != nil {
-		return err
-	}
-	name := f.Name()
-	fail := func(err error) error {
-		_ = f.Close()
-		_ = os.Remove(name)
-		return err
-	}
-	if _, err := f.Write(body); err != nil {
-		return fail(err)
-	}
-	if err := f.Chmod(e.perm()); err != nil {
-		return fail(err)
-	}
-	if err := f.Close(); err != nil {
-		return fail(err)
-	}
-	at := time.Unix(sec, 0)
-	if err := os.Chtimes(name, at, at); err != nil {
-		_ = os.Remove(name)
-		return err
-	}
-	if info, err := os.Lstat(abs); err == nil && info.IsDir() {
-		if err := forceRemove(abs); err != nil {
-			_ = os.Remove(name)
-			return err
-		}
-	}
-	if err := os.Rename(name, abs); err != nil {
-		_ = os.Remove(name)
-		return err
-	}
-	return nil
+	return fsutil.WriteRebuildable(abs, body, e.perm(), time.Unix(sec, 0))
 }
 
 // removeExtras removes everything under dir the commit does not hold.

@@ -12,6 +12,8 @@ import (
 	"slices"
 	"strings"
 	"sync"
+
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // outcome is what go test said of one package across a stage's lines.
@@ -144,9 +146,5 @@ func (r StageReport) write(worktree string, selects []string) error {
 	body := fmt.Sprintf("commit %s\ntree %s\nstage %s\nmode %s\nreused %d\npackages %d\nresult %s\n",
 		r.Commit, r.Tree, r.Stage, r.Mode, r.Counts.Reused, r.Counts.Packages, result)
 	name := r.Stage + "-" + hex.EncodeToString(sum[:6])
-	tmp := filepath.Join(dir, "."+name+".tmp")
-	if err := os.WriteFile(tmp, []byte(body), 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, filepath.Join(dir, name))
+	return fsutil.WriteFileAtomic(filepath.Join(dir, name), []byte(body), 0o644)
 }

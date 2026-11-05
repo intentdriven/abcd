@@ -649,7 +649,7 @@ func bareGofmtInvocation(text string) string {
 
 // checkTestsPrefix is what a test stage's recipe line starts with: cmd/check-tests
 // and the stage's name, before the go test command written out whole.
-var checkTestsPrefix = regexp.MustCompile(`^(\s*)\$\(CHECK_TESTS\) (?:unit|race) `)
+var checkTestsPrefix = regexp.MustCompile(`^(\s*)go run \./cmd/check-tests \$\(CHECK_TESTS_FLAGS\) (?:unit|race) `)
 
 // makeRecipe returns one Makefile target's recipe: every tab-indented line under
 // `<target>:`, each test stage's line as the go test command it runs

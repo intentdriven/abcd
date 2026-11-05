@@ -47,7 +47,7 @@ func TestBothTestStagesRunThroughTheCheck(t *testing.T) {
 		if !strings.Contains(l, "go test ") {
 			continue
 		}
-		m := regexp.MustCompile(`^\$\(CHECK_TESTS\) (unit|race) go test `).FindStringSubmatch(l)
+		m := regexp.MustCompile(`^go run \./cmd/check-tests \$\(CHECK_TESTS_FLAGS\) (unit|race) go test `).FindStringSubmatch(l)
 		if m == nil {
 			t.Errorf("a test line runs around the check: %s", l)
 			continue
@@ -60,11 +60,8 @@ func TestBothTestStagesRunThroughTheCheck(t *testing.T) {
 	if stages["unit"] == 0 || stages["race"] == 0 {
 		t.Fatalf("the recipe has stages %v; want unit and race", stages)
 	}
-	if !regexp.MustCompile(`(?m)^CHECK_TESTS = go run \./cmd/check-tests `).MatchString(makefile) {
-		t.Error("CHECK_TESTS is not cmd/check-tests")
-	}
 	if !strings.Contains(makefile, "$(if $(PREFLIGHT_FRESH), -fresh,)") {
-		t.Error("a release cut has no way to reuse nothing: CHECK_TESTS does not read PREFLIGHT_FRESH")
+		t.Error("a release cut has no way to reuse nothing: CHECK_TESTS_FLAGS does not read PREFLIGHT_FRESH")
 	}
 }
 
@@ -74,9 +71,9 @@ func TestBothTestStagesRunThroughTheCheck(t *testing.T) {
 // slowed by the load is killed with no test hung (iss-2610241911052191).
 func TestTheReusedLinesTimeoutIsTheStagesLargest(t *testing.T) {
 	makefile := readRepoFile(t, filepath.Join("..", "..", ".."), "Makefile")
-	m := regexp.MustCompile(`(?m)^CHECK_TESTS = .* -cached-timeout (\S+?)(\$|\s|$)`).FindStringSubmatch(makefile)
+	m := regexp.MustCompile(`(?m)^CHECK_TESTS_FLAGS = -cached-timeout (\S+?)(\$|\s|$)`).FindStringSubmatch(makefile)
 	if m == nil {
-		t.Fatal("CHECK_TESTS sets no -cached-timeout")
+		t.Fatal("CHECK_TESTS_FLAGS sets no -cached-timeout")
 	}
 	fixed, err := time.ParseDuration(m[1])
 	if err != nil {
@@ -123,7 +120,7 @@ func TestARecordsOnlyPreflightStillTakesItsOwnRoute(t *testing.T) {
 		t.Fatal("the Makefile has no records-only preflight rule")
 	}
 	rule, _, _ := strings.Cut(records, "\nendif")
-	if strings.Contains(rule, "CHECK_TESTS") {
+	if strings.Contains(rule, "check-tests") {
 		t.Errorf("the records-only rule runs through the check:\n%s", rule)
 	}
 	if !strings.Contains(rule, "go test ") {

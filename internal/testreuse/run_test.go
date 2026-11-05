@@ -15,6 +15,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // world is one repository with an origin, its fixture packages, and the home
@@ -25,6 +26,21 @@ type world struct {
 	repo   string
 	home   string
 	origin string
+}
+
+// goCaches are the build cache, module cache and path the test binary started
+// with, read before any test moves HOME.
+var goCaches []string
+
+func init() {
+	out, err := exec.Command("go", "env", "GOCACHE", "GOMODCACHE", "GOPATH").Output()
+	if err != nil {
+		return
+	}
+	vals := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(vals) == 3 {
+		goCaches = []string{"GOCACHE=" + vals[0], "GOMODCACHE=" + vals[1], "GOPATH=" + vals[2]}
+	}
 }
 
 const fixtureGoMod = "module example.com/fixture\n\ngo 1.21\n"
@@ -76,6 +92,13 @@ func newWorld(t *testing.T) *world {
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go unavailable")
 	}
+	// A fixture's git runs under a home of its own, and go test must keep the
+	// person's build cache and toolchain, not a cold one under that home.
+	gittest.Env(t)
+	for _, kv := range goCaches {
+		name, value, _ := strings.Cut(kv, "=")
+		t.Setenv(name, value)
+	}
 	base := t.TempDir()
 	// macOS's temp directory is reached through a symlink, and git and go
 	// report the resolved path.
@@ -90,7 +113,7 @@ func newWorld(t *testing.T) *world {
 	if err := os.MkdirAll(w.home, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	runGit(t, base, "init", "-q", "--bare", "-b", "main", w.origin)
+	gittest.InitBare(t, w.origin)
 	runGit(t, w.repo, "init", "-q", "-b", "main")
 	runGit(t, w.repo, "remote", "add", "origin", w.origin)
 
@@ -508,7 +531,7 @@ func TestACrashedCheckRecovers(t *testing.T) {
 	tree := filepath.Join(dir, treeDirName)
 	writeFile(t, filepath.Join(tree, "reads", "data.txt"), "evil\n", 0o644)
 	writeFile(t, filepath.Join(tree, "stray_test.go"), "package nothing\n", 0o644)
-	writeFile(t, filepath.Join(dir, "incoming-1"), "cut", 0o600)
+	writeFile(t, filepath.Join(dir, ".abcd-tmp-1"), "cut", 0o600)
 	writeFile(t, filepath.Join(dir, timesName), "{", 0o600)
 
 	r := w.stage(w.repo, nil, allPackages...)

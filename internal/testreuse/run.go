@@ -152,11 +152,10 @@ func Run(ctx context.Context, cfg Config) int {
 		fmt.Fprintf(cfg.Stderr, "check-tests: %v\n", err)
 		return ExitUsage
 	}
-	top, err := gitOutput(ctx, cfg.Worktree, "rev-parse", "--show-toplevel")
+	worktree, err := gitutil.Toplevel(cfg.Worktree)
 	if err != nil {
 		return runFresh(ctx, cfg, g, "this is not a git checkout", "", "")
 	}
-	worktree := strings.TrimSpace(string(top))
 	cfg.Worktree = worktree
 	head, tree := headAndTree(ctx, worktree)
 	if cfg.Fresh {
