@@ -222,7 +222,7 @@ func TestARoleOnTheHostGetsAPlaceholder(t *testing.T) {
 func TestADispatchThatCannotRecordStartsNothing(t *testing.T) {
 	f := newFake(t, "ok", Claude)
 	c := mustLoad(t, claudeRoute, "")
-	c.ledger = NewLedger("")
+	c.ledger = newLedger("")
 	h := newHarness(t, c, true)
 	_, err := h.d.Dispatch(context.Background(), f.request("ruthless-reviewer"))
 	if err == nil || !strings.Contains(err.Error(), "ledger") {

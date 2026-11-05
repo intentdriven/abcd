@@ -41,7 +41,7 @@ func TestAFailureReasonCarriesNoSecret(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			home := t.TempDir()
-			if _, err := RecordLaunch(context.Background(), NewLedger(home), ledgerStart(), func(context.Context) LaunchEnd {
+			if _, err := RecordLaunch(context.Background(), newLedger(home), ledgerStart(), func(context.Context) LaunchEnd {
 				return LaunchEnd{Err: failure}
 			}); err != nil {
 				t.Fatal(err)
@@ -146,7 +146,7 @@ func TestAKeyShapedLikeAValueIsRefused(t *testing.T) {
 			home := t.TempDir()
 			start := ledgerStart()
 			start.Key = value
-			_, err := RecordLaunch(context.Background(), NewLedger(home), start, func(context.Context) LaunchEnd {
+			_, err := RecordLaunch(context.Background(), newLedger(home), start, func(context.Context) LaunchEnd {
 				t.Errorf("launched with %q", value)
 				return LaunchEnd{}
 			})
@@ -162,7 +162,7 @@ func TestAKeyShapedLikeAValueIsRefused(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			start := ledgerStart()
 			start.Key = name
-			if _, err := RecordLaunch(context.Background(), NewLedger(t.TempDir()), start, func(context.Context) LaunchEnd { return LaunchEnd{} }); err != nil {
+			if _, err := RecordLaunch(context.Background(), newLedger(t.TempDir()), start, func(context.Context) LaunchEnd { return LaunchEnd{} }); err != nil {
 				t.Errorf("a plain name was refused: %v", err)
 			}
 		})
@@ -236,7 +236,7 @@ func TestAnEntryOnAnIdReusedSinceItsLaunchIsLost(t *testing.T) {
 // no launch will ever finish. The next writer clears one that old, and leaves
 // one a racing launch may still be writing.
 func TestTemporaryFilesACrashLeftArePruned(t *testing.T) {
-	l, names := agedEntries(t, DefaultRetention(), 1)
+	l, names := agedEntries(t, defaultRetention(), 1)
 	dir := abcdhome.Path(l.home, ledgerFolder)
 	stale, fresh := filepath.Join(dir, tempFilePrefix+"aaaa"), filepath.Join(dir, tempFilePrefix+"bbbb")
 	for _, p := range []string{stale, fresh} {
@@ -304,7 +304,7 @@ func TestANewerEntryWithAFieldOfAnotherShapeIsStillRead(t *testing.T) {
 // A torn file and an oversized one are named on every read and left alone, and
 // pruning takes them by name when their time comes, so neither stays for ever.
 func TestATornOrOversizedFileIsNamedThenPrunedByName(t *testing.T) {
-	l, names := agedEntries(t, DefaultRetention(), 90, 91, 1)
+	l, names := agedEntries(t, defaultRetention(), 90, 91, 1)
 	dir := abcdhome.Path(l.home, ledgerFolder)
 	if err := os.WriteFile(filepath.Join(dir, names[90]), []byte(`{"schema_version":1,"rou`), 0o600); err != nil {
 		t.Fatal(err)
@@ -324,7 +324,7 @@ func TestATornOrOversizedFileIsNamedThenPrunedByName(t *testing.T) {
 // A directory or a link wearing an entry's name is never followed: the pruner
 // removes the name, and what a link points at is untouched.
 func TestPruningALinkRemovesTheLinkAlone(t *testing.T) {
-	l, names := agedEntries(t, DefaultRetention(), 90)
+	l, names := agedEntries(t, defaultRetention(), 90)
 	dir := abcdhome.Path(l.home, ledgerFolder)
 	target := filepath.Join(t.TempDir(), "precious")
 	if err := os.WriteFile(target, []byte("keep"), 0o600); err != nil {
@@ -351,7 +351,7 @@ func TestAnEntryTooLargeToReadBackRefusesTheLaunch(t *testing.T) {
 	home := t.TempDir()
 	start := ledgerStart()
 	start.Repo = "/" + strings.Repeat("r", maxLedgerEntry)
-	_, err := RecordLaunch(context.Background(), NewLedger(home), start, func(context.Context) LaunchEnd {
+	_, err := RecordLaunch(context.Background(), newLedger(home), start, func(context.Context) LaunchEnd {
 		t.Error("the launch ran with an entry no reader can read")
 		return LaunchEnd{}
 	})
@@ -374,7 +374,7 @@ func TestLaunchesRacingOnAFreshStoreEachKeepTheirOwnFile(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			l := NewLedger(home)
+			l := newLedger(home)
 			l.retention = Retention{Days: 1, Count: 1}
 			start := ledgerStart()
 			start.Work.Await = fmt.Sprintf("receipt-%d", i)
@@ -412,14 +412,14 @@ func TestLaunchesRacingOnAFreshStoreEachKeepTheirOwnFile(t *testing.T) {
 // start that tells it from a later process given the same id.
 func TestAStartedLaunchIsJudgedOnItsHarness(t *testing.T) {
 	home := t.TempDir()
-	if _, err := RecordLaunch(context.Background(), NewLedger(home), ledgerStart(), func(ctx context.Context) LaunchEnd {
+	if _, err := RecordLaunch(context.Background(), newLedger(home), ledgerStart(), func(ctx context.Context) LaunchEnd {
 		at := time.Now().Add(-time.Minute)
-		LaunchStarted(ctx, 4242, at)
+		launchStarted(ctx, 4242, at)
 		e := ledgerFiles(t, home)[0]
 		if e.PID != 4242 || e.PIDStartUnix != at.Unix() {
 			t.Errorf("after the start: %+v", e)
 		}
-		LaunchExited(ctx)
+		launchExited(ctx)
 		e = ledgerFiles(t, home)[0]
 		if e.PID != os.Getpid() || e.PIDStartUnix != 0 {
 			t.Errorf("after the exit: %+v", e)
@@ -503,7 +503,7 @@ func TestARepositorysLongerFigureBindsOnlyItsOwnLaunches(t *testing.T) {
 // the harness's process: running while that lives and lost once it is gone.
 func TestALaunchDyingBeforeItsEndIsRecordedRunningThenLost(t *testing.T) {
 	home := t.TempDir()
-	l := NewLedger(home)
+	l := newLedger(home)
 	h, err := l.begin(ledgerStart())
 	if err != nil {
 		t.Fatal(err)

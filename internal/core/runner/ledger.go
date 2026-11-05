@@ -182,8 +182,8 @@ const (
 // from entries still held.
 const RetentionFloorDays = 32
 
-// DefaultRetention is the shipped retention as the floor leaves it.
-func DefaultRetention() Retention {
+// defaultRetention is the shipped retention as the floor leaves it.
+func defaultRetention() Retention {
 	return Retention{Days: max(DefaultRetentionDays, RetentionFloorDays), Count: DefaultRetentionCount}
 }
 
@@ -194,10 +194,10 @@ type Ledger struct {
 	retention Retention
 }
 
-// NewLedger is the ledger under home's abcd folder, at the shipped retention.
+// newLedger is the ledger under home's abcd folder, at the shipped retention.
 // "" names no home, and a launch recorded there is refused.
-func NewLedger(home string) *Ledger {
-	return &Ledger{home: home, now: func() time.Time { return time.Now().UTC() }, retention: DefaultRetention()}
+func newLedger(home string) *Ledger {
+	return &Ledger{home: home, now: func() time.Time { return time.Now().UTC() }, retention: defaultRetention()}
 }
 
 // keyValuePrefix opens a provider's key value, never a name someone chose.
@@ -233,24 +233,24 @@ const staleLedgerTemp = 24 * time.Hour
 
 type startedKey struct{}
 
-// LaunchStarted tells the launch ctx belongs to the process it started, so its
+// launchStarted tells the launch ctx belongs to the process it started, so its
 // entry is judged by that process. at is read just before the start, since a
 // process's start time is when it forked and exec can take seconds after that.
 // The runners' launcher calls it; a launcher that starts its own process inside
 // RecordLaunch calls it too.
-func LaunchStarted(ctx context.Context, pid int, at time.Time) {
+func launchStarted(ctx context.Context, pid int, at time.Time) {
 	if f, ok := ctx.Value(startedKey{}).(func(int, time.Time)); ok {
 		f(pid, at)
 	}
 }
 
-// LaunchExited tells the launch ctx belongs to that its process has gone and the
+// launchExited tells the launch ctx belongs to that its process has gone and the
 // launcher still holds it: validating an answer takes time, and an entry whose
 // launch is still being finished is not lost.
-func LaunchExited(ctx context.Context) { LaunchStarted(ctx, 0, time.Time{}) }
+func launchExited(ctx context.Context) { launchStarted(ctx, 0, time.Time{}) }
 
 // RecordLaunch is the one way an entry is written. It writes the entry marked
-// running, runs run with a context LaunchStarted answers on, and completes the
+// running, runs run with a context launchStarted answers on, and completes the
 // entry from what run returned; a nil run is a role handed to the host, which
 // gets a placeholder with no figures (decision 21).
 //
@@ -279,14 +279,6 @@ func RecordLaunch(ctx context.Context, l *Ledger, s LaunchStart, run func(contex
 	end := run(context.WithValue(ctx, startedKey{}, h.started))
 	h.end(end)
 	return end, nil
-}
-
-// RecordHandoff writes the placeholder for a role handed to the host session
-// by a caller the dispatcher did not hand it for. The host counts its own
-// agent, and the placeholder only keeps the run's listing whole, so one that
-// cannot be written holds nothing up.
-func (c *Config) RecordHandoff(ctx context.Context, role, repo string, work LaunchWork) {
-	_, _ = RecordLaunch(ctx, c.ledger, LaunchStart{Role: role, Runner: Host, Repo: repo, Work: work}, nil)
 }
 
 // openStore is the store, made if it is missing, held so a link swapped in
@@ -361,7 +353,7 @@ func (l *Ledger) prune() {
 	floor := now.AddDate(0, 0, -RetentionFloorDays)
 	oldest := now.AddDate(0, 0, -l.retention.Days)
 	for i, name := range names {
-		at, err := launchStarted(name)
+		at, err := launchFileStarted(name)
 		if err != nil {
 			continue
 		}
@@ -374,9 +366,9 @@ func (l *Ledger) prune() {
 	}
 }
 
-// launchStarted is when the launch a file name belongs to started, to the
+// launchFileStarted is when the launch a file name belongs to started, to the
 // second.
-func launchStarted(name string) (time.Time, error) {
+func launchFileStarted(name string) (time.Time, error) {
 	return time.Parse(launchIDTime, strings.TrimPrefix(name, "lch-")[:len(launchIDTime)])
 }
 

@@ -233,7 +233,7 @@ func (d *Dispatcher) runOn(ctx context.Context, name string, req Request) (Answe
 	// ledger: a launch it cannot record is not started.
 	end, err := RecordLaunch(ctx, d.Config.Ledger(), launchStartOf(name, rc.Model, req), func(ctx context.Context) LaunchEnd {
 		ans, transcript, err := d.Config.adapter(rc).Run(ctx, req)
-		LaunchExited(ctx)
+		launchExited(ctx)
 		end := LaunchEnd{Answer: ans, Transcript: transcript, Err: err}
 		if len(transcript) > 0 {
 			if serr := d.Transcripts.Store(name, req, ans, transcript); serr != nil {

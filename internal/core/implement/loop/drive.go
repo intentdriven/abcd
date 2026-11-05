@@ -150,7 +150,7 @@ func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options,
 	}
 	aw := *res.Awaiting
 	if rs.Config.RouteFor(aw.Role).Runner == runner.Host {
-		// Not listed yet: a reviewer route can still answer it (DriveStep).
+		// Not listed yet: a reviewer route can still answer it (ListHostRole).
 		return res, nil
 	}
 	r, err := dispatchAwait(ctx, repoRoot, runID, steps, o, rs, res.Lane, aw, "", res)
@@ -164,23 +164,21 @@ func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options,
 	return carryStanding(r, res), err
 }
 
-// DriveStep is one driven step: Drive, then DriveReview, which sends a review
-// handed to the host to rr instead, and only then the launch ledger's placeholder
-// for a role still with the host, so the ledger never names a host that did not
-// see the role. A route's answer returns with the route named on it; a fallback
-// returns the result Drive handed out, with none.
-func DriveStep(ctx context.Context, repoRoot, runID string, steps Stages, o Options, rs Runners, rr *ReviewRoute) (StepResult, error) {
-	res, err := Drive(ctx, repoRoot, runID, steps, o, rs)
-	if err != nil {
-		return res, err
+// ListHostRole writes the launch ledger's placeholder for the role res leaves
+// with the host, once DriveReview has had its turn, so the ledger never names a
+// host that did not see the role. A route's answer comes back with the route
+// named on it, and a fallback as the result Drive handed out, with none.
+func ListHostRole(ctx context.Context, repoRoot, runID string, res StepResult, cfg *runner.Config) {
+	if cfg != nil && res.handed && res.Route == nil && res.Awaiting != nil && cfg.RouteFor(res.Awaiting.Role).Runner == runner.Host {
+		listWithHost(ctx, cfg, res.Awaiting.Role, repoRoot, runner.LaunchWork{Run: runID, Lane: res.Lane, Await: res.Awaiting.Receipt})
 	}
-	if res, err = DriveReview(ctx, repoRoot, runID, res, steps, Options{}, rr); err != nil {
-		return res, err
-	}
-	if rs.Config != nil && res.handed && res.Route == nil && res.Awaiting != nil && rs.Config.RouteFor(res.Awaiting.Role).Runner == runner.Host {
-		rs.Config.RecordHandoff(ctx, res.Awaiting.Role, repoRoot, runner.LaunchWork{Run: runID, Lane: res.Lane, Await: res.Awaiting.Receipt})
-	}
-	return res, nil
+}
+
+// listWithHost writes the placeholder for a role handed to the host session.
+// The host counts its own agent, and the placeholder only keeps the run's
+// listing whole, so one that cannot be written holds nothing up.
+func listWithHost(ctx context.Context, cfg *runner.Config, role, repo string, work runner.LaunchWork) {
+	_, _ = runner.RecordLaunch(ctx, cfg.Ledger(), runner.LaunchStart{Role: role, Runner: runner.Host, Repo: repo, Work: work}, nil)
 }
 
 // LoadRunners reads the runner configuration (runner.Load) at the roots a lane

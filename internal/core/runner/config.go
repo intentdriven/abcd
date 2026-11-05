@@ -170,7 +170,7 @@ func Load(r layered.Roots) (*Config, error) {
 		return nil, fmt.Errorf("runner: the model routes are admitted against the provider configuration: %w", err)
 	}
 	c := &Config{roles: map[string]Route{}, timeouts: map[string]time.Duration{}, runners: map[string]RunnerConfig{}, api: api,
-		ledger: NewLedger(r.Home)}
+		ledger: newLedger(r.Home)}
 	if err := c.readRunners(s); err != nil {
 		return nil, err
 	}
@@ -196,7 +196,7 @@ func Load(r layered.Roots) (*Config, error) {
 // this launch keeps and may not shorten it: one below is named and ignored. It
 // binds this launch's prune and no other's; only the machine's binds them all.
 func (c *Config) readLedger(s *layered.Stack) error {
-	r := DefaultRetention()
+	r := defaultRetention()
 	read := func(key string, ceiling int, at *int, floor func(layered.Found, int) int) error {
 		found, err := s.Lookup(ledgerKey + "." + key)
 		if err != nil {

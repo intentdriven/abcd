@@ -35,7 +35,7 @@ func TestARoleOnTheHostIsListedByItsPlaceholder(t *testing.T) {
 	root, id, steps, o := startToImplement(t)
 	newDriveEnv(t, "ok", "claude")
 	cfg := runnerConfig(t, "", "")
-	res, err := DriveStep(context.Background(), root, id, steps, o, Runners{Config: cfg, Transcripts: &memTranscripts{}}, nil)
+	res, err := driveStep(context.Background(), root, id, steps, o, Runners{Config: cfg, Transcripts: &memTranscripts{}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,6 +50,19 @@ func TestARoleOnTheHostIsListedByItsPlaceholder(t *testing.T) {
 		got.Entries[0].Lane != res.Lane {
 		t.Fatalf("listing = %+v", got)
 	}
+}
+
+// driveStep is what `abcd implement step` does: Drive, DriveReview, ListHostRole.
+func driveStep(ctx context.Context, root, id string, steps Stages, o Options, rs Runners, rr *ReviewRoute) (StepResult, error) {
+	res, err := Drive(ctx, root, id, steps, o, rs)
+	if err != nil {
+		return res, err
+	}
+	if res, err = DriveReview(ctx, root, id, res, steps, Options{}, rr); err != nil {
+		return res, err
+	}
+	ListHostRole(ctx, root, id, res, rs.Config)
+	return res, nil
 }
 
 // A reviewer on the host route that oracle.review then answers never reached
@@ -75,7 +88,7 @@ func TestAReviewTheRouteAnswersIsNotListedAsTheHosts(t *testing.T) {
 		return got.Entries
 	}
 
-	res, err := DriveStep(context.Background(), repo.Root(), id, stages, Options{}, rs, rpRoute(t, rpServer(verdictFor)))
+	res, err := driveStep(context.Background(), repo.Root(), id, stages, Options{}, rs, rpRoute(t, rpServer(verdictFor)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +100,7 @@ func TestAReviewTheRouteAnswersIsNotListedAsTheHosts(t *testing.T) {
 	}
 
 	// The next review finds no server, so the host's agent has it.
-	res, err = DriveStep(context.Background(), repo.Root(), id, stages, Options{}, rs, &ReviewRoute{Name: "rp", Absent: "no server on this machine"})
+	res, err = driveStep(context.Background(), repo.Root(), id, stages, Options{}, rs, &ReviewRoute{Name: "rp", Absent: "no server on this machine"})
 	if err != nil {
 		t.Fatal(err)
 	}

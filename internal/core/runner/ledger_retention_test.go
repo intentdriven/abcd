@@ -34,7 +34,7 @@ func agedEntries(t *testing.T, r Retention, days ...int) (*Ledger, map[int]strin
 			t.Fatal(err)
 		}
 	}
-	l := NewLedger(home)
+	l := newLedger(home)
 	l.retention = r
 	l.now = func() time.Time { return retentionNow }
 	return l, names
@@ -61,7 +61,7 @@ func survivors(t *testing.T, l *Ledger, names map[int]string) []int {
 // holds 31 as well and an entry 33 days old goes.
 func TestPruningNeverDropsAnEntryInsideTheLongestCapPeriod(t *testing.T) {
 	for name, r := range map[string]Retention{
-		"the shipped default": DefaultRetention(),
+		"the shipped default": defaultRetention(),
 		"one day":             {Days: 1, Count: DefaultRetentionCount},
 		"one entry":           {Days: DefaultRetentionDays, Count: 1},
 		"both at their least": {Days: 1, Count: 1},

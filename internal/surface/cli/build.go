@@ -1305,10 +1305,17 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 				// started in is refused, exit 3 (iss-2610240859590333). The
 				// loop calls it under the run's lock, just before the plan.
 				guard := func() error { return refuseSharedMainCheckout(cmd, prefix, root) }
-				// A review the step handed to the host goes to the reviewer route
-				// instead when oracle.review selects one (itd-6).
-				res, err = loop.DriveStep(ctx, root, id, loop.DefaultStages(), loop.Options{Tiers: tiers, PlanGuard: guard},
-					loop.Runners{Config: cfg, Transcripts: &lazyHistoryStore{cmd: cmd}}, review)
+				res, err = loop.Drive(ctx, root, id, loop.DefaultStages(), loop.Options{Tiers: tiers, PlanGuard: guard},
+					loop.Runners{Config: cfg, Transcripts: &lazyHistoryStore{cmd: cmd}})
+				if err == nil {
+					// A review the step handed to the host goes to the reviewer
+					// route instead when oracle.review selects one (itd-6).
+					res, err = loop.DriveReview(ctx, root, id, res, loop.DefaultStages(), loop.Options{}, review)
+				}
+				if err == nil {
+					// Only now is a role with the host known to stay there.
+					loop.ListHostRole(ctx, root, id, res, cfg)
+				}
 			}
 			var backOff *exitError
 			if errors.As(err, &backOff) {

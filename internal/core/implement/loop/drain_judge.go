@@ -223,7 +223,7 @@ func routedJudgement(repoRoot string, iss capture.Issue, v capture.DrainVerdict,
 		return nil, "the drain judge's runner did not judge " + iss.ID + " (" + termsafe.Sanitize(fsutil.RedactHome(err.Error())) +
 			"), so the request is the host's", true, nil
 	case out.Handoff:
-		o.Runners.RecordHandoff(ctx, RoleDrainJudge, filepath.Clean(repoRoot), req.Work)
+		listWithHost(ctx, o.Runners, RoleDrainJudge, filepath.Clean(repoRoot), req.Work)
 		why := "it handed the role back"
 		if fb := out.Fallback; fb != nil {
 			why = fmt.Sprintf("the %s runner was %s, recorded as a fallback", fb.Asked, fb.Reason)

@@ -51,7 +51,7 @@ func ledgerFiles(t *testing.T, home string) []LedgerEntry {
 // reported, and nothing else was written.
 func TestRecordLaunchWritesTheEntryBeforeTheLaunchAndCompletesItAfter(t *testing.T) {
 	home := t.TempDir()
-	l := NewLedger(home)
+	l := newLedger(home)
 	cost := &oracle.Cost{Amount: 1.25, Unit: oracle.CostUSD}
 	usage := &oracle.Usage{PromptTokens: 10, CompletionTokens: 20, CacheReadTokens: 30, CacheWriteTokens: 40}
 	ran := false
@@ -106,7 +106,7 @@ func TestRecordLaunchWritesTheEntryBeforeTheLaunchAndCompletesItAfter(t *testing
 // swallow, so the caller still sees it.
 func TestRecordLaunchRecordsAFailureAndAKill(t *testing.T) {
 	home := t.TempDir()
-	l := NewLedger(home)
+	l := newLedger(home)
 	failed := fail(Claude, ReasonFailed, "claude exited with status 1")
 	end, err := RecordLaunch(context.Background(), l, ledgerStart(), func(context.Context) LaunchEnd {
 		return LaunchEnd{Err: failed}
@@ -142,7 +142,7 @@ func TestRecordLaunchWithNoLaunchWritesTheHostsPlaceholder(t *testing.T) {
 	home := t.TempDir()
 	start := ledgerStart()
 	start.Runner = Host
-	if _, err := RecordLaunch(context.Background(), NewLedger(home), start, nil); err != nil {
+	if _, err := RecordLaunch(context.Background(), newLedger(home), start, nil); err != nil {
 		t.Fatal(err)
 	}
 	got := ledgerFiles(t, home)
@@ -165,7 +165,7 @@ func TestRecordLaunchRefusesALaunchItCannotRecord(t *testing.T) {
 	if err := os.WriteFile(abcdhome.Path(blocked, ledgerFolder), []byte("not a folder"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	for name, l := range map[string]*Ledger{"no ledger": nil, "no home": NewLedger(""), "no folder": NewLedger(blocked)} {
+	for name, l := range map[string]*Ledger{"no ledger": nil, "no home": newLedger(""), "no folder": newLedger(blocked)} {
 		t.Run(name, func(t *testing.T) {
 			_, err := RecordLaunch(context.Background(), l, ledgerStart(), func(context.Context) LaunchEnd {
 				t.Error("the launch ran with no entry written")
@@ -183,7 +183,7 @@ func TestRecordLaunchRefusesALaunchItCannotRecord(t *testing.T) {
 func TestRecordLaunchKeepsTheAnswerWhenItCannotCompleteTheEntry(t *testing.T) {
 	home := t.TempDir()
 	dir := abcdhome.Path(home, ledgerFolder)
-	end, err := RecordLaunch(context.Background(), NewLedger(home), ledgerStart(), func(context.Context) LaunchEnd {
+	end, err := RecordLaunch(context.Background(), newLedger(home), ledgerStart(), func(context.Context) LaunchEnd {
 		if err := os.Chmod(dir, 0o500); err != nil {
 			t.Fatal(err)
 		}
@@ -206,7 +206,7 @@ func TestRecordLaunchRefusesAKeyNameThatIsNotAName(t *testing.T) {
 	for _, bad := range []string{"sk-ant-api03-abcdef", strings.Repeat("a", 200), "two words", "a/b"} {
 		start := ledgerStart()
 		start.Key = bad
-		_, err := RecordLaunch(context.Background(), NewLedger(home), start, func(context.Context) LaunchEnd {
+		_, err := RecordLaunch(context.Background(), newLedger(home), start, func(context.Context) LaunchEnd {
 			t.Errorf("launched with key name %q", bad)
 			return LaunchEnd{}
 		})
@@ -219,7 +219,7 @@ func TestRecordLaunchRefusesAKeyNameThatIsNotAName(t *testing.T) {
 	}
 	start := ledgerStart()
 	start.Key = "build-key"
-	if _, err := RecordLaunch(context.Background(), NewLedger(home), start, func(context.Context) LaunchEnd {
+	if _, err := RecordLaunch(context.Background(), newLedger(home), start, func(context.Context) LaunchEnd {
 		return LaunchEnd{}
 	}); err != nil {
 		t.Fatal(err)
@@ -233,7 +233,7 @@ func TestRecordLaunchRefusesAKeyNameThatIsNotAName(t *testing.T) {
 // A store folder and its files are the person's alone.
 func TestLedgerStoreIsPrivate(t *testing.T) {
 	home := t.TempDir()
-	if _, err := RecordLaunch(context.Background(), NewLedger(home), ledgerStart(), func(context.Context) LaunchEnd {
+	if _, err := RecordLaunch(context.Background(), newLedger(home), ledgerStart(), func(context.Context) LaunchEnd {
 		return LaunchEnd{}
 	}); err != nil {
 		t.Fatal(err)
@@ -277,7 +277,7 @@ func TestAnEntryNamesItsOrchestrator(t *testing.T) {
 		for _, e := range ledgerFiles(t, home) {
 			before[e.ID] = true
 		}
-		if _, err := RecordLaunch(context.Background(), NewLedger(home), ledgerStart(), func(context.Context) LaunchEnd {
+		if _, err := RecordLaunch(context.Background(), newLedger(home), ledgerStart(), func(context.Context) LaunchEnd {
 			return LaunchEnd{}
 		}); err != nil {
 			t.Fatal(err)
@@ -305,7 +305,7 @@ func TestAnEntryNamesItsOrchestrator(t *testing.T) {
 	t.Setenv(HostSessionEnv, "")
 	start := ledgerStart()
 	start.Work.Run, start.Fallback = "", "interview-1-turn-2"
-	if _, err := RecordLaunch(context.Background(), NewLedger(t.TempDir()), start, func(context.Context) LaunchEnd {
+	if _, err := RecordLaunch(context.Background(), newLedger(t.TempDir()), start, func(context.Context) LaunchEnd {
 		return LaunchEnd{}
 	}); err != nil {
 		t.Fatal(err)
