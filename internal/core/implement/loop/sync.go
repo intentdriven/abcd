@@ -36,6 +36,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -290,7 +291,23 @@ func resyncLane(c Context, lane *Lane, def, tracking string, m mergeability) (Ou
 		// the forge holds nothing armed, its merge wait for ever. The next
 		// step reaches the arming, finds the conflict again and enters the
 		// sync with nothing armed.
-		if _, err := forge(c, *lane, "pr", "merge", n, "--disable-auto"); err != nil {
+		v, unread, err := readQueue(c, *lane)
+		if err != nil {
+			return Outcome{}, err
+		}
+		if unread != "" {
+			return Outcome{}, contend(string(StageLand), "", lane.ID,
+				"pull request #"+n+" started to conflict with "+def+", and its arming could not be read ("+unread+"), so it is left as it is",
+				"run `abcd implement step` again")
+		}
+		if err := landing.WithdrawArming(gateForge(c, *lane), n, v.ID, v.AutoMergeRequest != nil, v.queued()); err != nil {
+			if r := netFailure(StageLand, lane.ID, "gh pr merge", err); r != nil {
+				return Outcome{}, r
+			}
+			return Outcome{}, refuse(string(StageLand), "", lane.ID, "pull request #"+n+" started to conflict with "+def+", and the loop could not withdraw its arming: "+forgeWhy(err),
+				"withdraw it yourself (`gh pr merge "+n+" --disable-auto`, and take it out of the merge queue on its page), then run `abcd implement step` again")
+		}
+		if err := confirmWithdrawn(c, *lane); err != nil {
 			return Outcome{}, err
 		}
 		ld.Merge, ld.Armed = "", false
@@ -298,7 +315,7 @@ func resyncLane(c Context, lane *Lane, def, tracking string, m mergeability) (Ou
 			"), so its armed merge is withdrawn, and armed again once the lane's sync is pushed; the next step enters the sync"}, nil
 	}
 	again := *ld
-	again.Pushed, again.PreflightReceipt, again.CheckWaitSince, again.Merge, again.Armed = "", "", nil, "", false
+	again.Pushed, again.PreflightReceipt, again.CheckWaitSince, again.Merge, again.Armed, again.Toggles = "", "", nil, "", false, 0
 	lane.Landing = &again
 	out, _, err := mergeDefault(c, lane, def, tracking, nil)
 	if err != nil {

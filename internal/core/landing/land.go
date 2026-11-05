@@ -39,8 +39,9 @@ package landing
 //     push waits until each is on origin, and one that cannot be published
 //     refuses the landing, nothing pushed.
 //  6. withdraw (withdraw.go): an arming at the head the push will move is
-//     withdrawn and read back. One that cannot be, or a forge that cannot be
-//     asked, stops the landing, nothing pushed.
+//     withdrawn and read back, as is this account's at a local head the merge
+//     gate refuses. One that cannot be, another account's at such a head, or a
+//     forge that cannot be asked, stops the landing, nothing pushed.
 //  7. push (land.push): a plain `git push --porcelain origin
 //     <head>:refs/heads/B` from the branch's checkout, so the commit pushed is
 //     the one the gate checked whatever the branch names by then, the
@@ -359,7 +360,7 @@ func Land(cwd string, o Options) (Result, error) {
 	if err := announceStep(&res, o, root, dir, tracking); err != nil {
 		return res, err
 	}
-	atHead, err := withdrawBeforePush(&res, o, dir, origin.repo.NameWithOwner)
+	atHead, err := withdrawBeforePush(&res, o, dir, tracking, origin.repo.NameWithOwner)
 	if err != nil {
 		return res, err
 	}
@@ -1301,7 +1302,11 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved,
 	d, err := DecideMerge(MergeQuery{RepoRoot: dir, Roots: o.Roots, Tip: tip, TipName: Remote + "/" + res.Default, Default: res.Default,
 		Rule: rule, Repo: nameWithOwner, PR: n, Head: res.Head, Forge: func(args ...string) (string, error) { return o.Forge(dir, args...) }})
 	if err != nil {
-		return refuse(fsutil.RedactHome(err.Error())+" at "+Remote+"/"+res.Default+", so nothing was armed", "correct the file it names, then run abcd land again")
+		left := ", so nothing was armed"
+		if atHead {
+			left = ", and the arming already at " + short(res.Head) + " is left as it is"
+		}
+		return refuse(fsutil.RedactHome(err.Error())+" at "+Remote+"/"+res.Default+left, "correct the file it names, then run abcd land again")
 	}
 	if !d.Arm {
 		note := "pull request #" + n + ": " + d.Why

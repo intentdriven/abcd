@@ -17,7 +17,8 @@ package loop
 //   - armed, CLEAN and outside the queue: the landing's fence and the merge
 //     gate are asked, as at the arming, and the pull request is queued, pinned
 //     to the pushed head; when the forge refuses that, auto-merge is toggled
-//     once its arming is past requeueGrace, and otherwise the wait says when.
+//     once its arming is past requeueGrace, at most maxToggles times at one head,
+//     and otherwise the wait says when.
 //     A head the gate refuses has its arming withdrawn and is left open, for
 //     the gate to be asked again on the next step; a gate it could not read is a
 //     wait, the arming left as it is;
@@ -82,6 +83,10 @@ func checkRunsPath(sha string) string {
 // 15-minute pickup on #1018), which a toggle would only churn. It is
 // `abcd land`'s own grace (landing's toggleGrace), counted from the arming.
 const requeueGrace = 30 * time.Minute
+
+// maxToggles bounds how many times the watch toggles one lane's arming at one
+// pushed head: an enqueue the forge goes on refusing is not asked for without end.
+const maxToggles = 3
 
 // The bounds on forge text a refusal or a note carries.
 const (
@@ -239,6 +244,9 @@ func watchQueue(c Context, lane *Lane, def string, rule landing.MergeRule) (*Out
 	// So is the merge gate: a queue entry and a toggle both make the arming
 	// again, and neither is made at a head the gate would not arm now.
 	d, err := askMergeGate(c, *lane, def, rule)
+	if r, ok := AsRefusal(err); ok && r.modeUnread {
+		return nil, "; it is armed and CLEAN outside the merge queue, and facilitator.mode could not be read at " + Remote + "/" + def + ", so its arming is left as it is and the loop neither queues nor toggles it", nil
+	}
 	if err != nil {
 		return nil, "", err
 	}
@@ -279,6 +287,9 @@ func watchQueue(c Context, lane *Lane, def string, rule landing.MergeRule) (*Out
 		}
 		return nil, "; it is armed and CLEAN outside the merge queue, and the forge refused to queue it (" + why +
 			"); the forge may still queue it by itself, and the loop toggles its auto-merge " + after, nil
+	}
+	if ld.Toggles >= maxToggles {
+		return nil, fmt.Sprintf("; it is armed and CLEAN outside the merge queue, and the forge refused to queue it (%s); the loop toggled its auto-merge %d times at this head and no longer toggles it, so the forge queues it by itself or a person settles it", why, ld.Toggles), nil
 	}
 	return toggleArming(c, lane, def, rule, why)
 }
@@ -448,8 +459,9 @@ func toggleArming(c Context, lane *Lane, def string, rule landing.MergeRule, why
 		r.outOfQueue = true
 		return nil, "", r
 	}
-	return &Outcome{Stay: true, Note: fmt.Sprintf("pull request #%s sat armed and CLEAN outside %s's merge queue past the %d-minute grace, and the forge refused to queue it (%s), so the loop toggled its auto-merge once, re-armed by %s pinned to %s",
-		n, def, int(requeueGrace/time.Minute), why, strings.TrimPrefix(method, "--"), shortSHA(ld.Pushed))}, "", nil
+	ld.Toggles++
+	return &Outcome{Stay: true, Note: fmt.Sprintf("pull request #%s sat armed and CLEAN outside %s's merge queue past the %d-minute grace, and the forge refused to queue it (%s), so the loop toggled its auto-merge, toggle %d of %d, re-armed by %s pinned to %s",
+		n, def, int(requeueGrace/time.Minute), why, ld.Toggles, maxToggles, strings.TrimPrefix(method, "--"), shortSHA(ld.Pushed))}, "", nil
 }
 
 // rearmArgs is the forge client's command that arms pull request n again by

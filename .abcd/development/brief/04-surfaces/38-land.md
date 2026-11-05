@@ -98,9 +98,11 @@ bound: the refusal says so and gives the push to run by hand.
 4. **Withdraw** (before the push). Where the push will move the head of an armed
    or queued pull request from this repository (`landing.ArmingsQuery`), the verb
    withdraws the arming, reads it back and says so, and the enqueue step arms the
-   new head where the merge gate allows. Where it cannot make that withdrawal, it
-   refuses, nothing pushed, and the refusal says what to do. The committed pre-push
-   hook refuses a push that moves an armed pull request's head, naming this verb.
+   new head where the merge gate allows. Where the gate refuses the local head, the
+   verb withdraws this account's arming at it, and refuses over another account's.
+   Where it cannot make a withdrawal, it refuses, nothing pushed, and the refusal
+   says what to do. The committed pre-push hook refuses a fast-forward it reads as
+   moving an armed pull request's head, naming this verb.
 5. **Enqueue** (`land.enqueue`). The branch's one open pull request from this
    repository is armed where the merge gate (below) allows, pinned to the head
    (`--match-head-commit`), and, where a queue gates the default branch,

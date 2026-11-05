@@ -714,6 +714,7 @@ func rearmMine(a actor, ws []Withdrawal, vouched map[Withdrawal]bool) (out, sett
 		return out, nil, false, nil, why
 	}
 	refusals := readRefusals(a.root, a.subject)
+	held := readCounts(a.root, heldDir, a.subject)
 	for i, w := range out {
 		if !mine(w) {
 			continue
@@ -721,6 +722,9 @@ func rearmMine(a actor, ws []Withdrawal, vouched map[Withdrawal]bool) (out, sett
 		state, err := releaseForge.inspect(a.root, owner, name, w)
 		if err != nil {
 			fails = append(fails, ForgeFailure{Number: w.Number, Act: ForgeRearm, Reason: err.Error()})
+			if ff := sayHeld(a.root, a.subject, w, err, held); ff != nil {
+				fails = append(fails, *ff)
+			}
 			continue
 		}
 		if state == "" {
@@ -733,6 +737,9 @@ func rearmMine(a actor, ws []Withdrawal, vouched map[Withdrawal]bool) (out, sett
 					// Nothing went to the forge: it stays withdrawn, and a later
 					// act asks the gate again.
 					fails = append(fails, ForgeFailure{Number: w.Number, Act: ForgeRearm, Reason: err.Error()})
+					if ff := sayHeld(a.root, a.subject, w, err, held); ff != nil {
+						fails = append(fails, *ff)
+					}
 					continue
 				}
 				if !errors.As(err, &ae) || !ae.refused {
@@ -759,7 +766,33 @@ func rearmMine(a actor, ws []Withdrawal, vouched map[Withdrawal]bool) (out, sett
 		settled = append(settled, out[i])
 	}
 	keepRefusals(a.root, a.subject, refusals)
+	keepCounts(a.root, heldDir, a.subject, held)
 	return out, settled, changed, fails, ""
+}
+
+// heldDir is where each release's re-arms the merge gate holds are noted once
+// told on their pull requests, in the local tier: a note lost costs one more
+// comment.
+const heldDir = stateRelDir + "/rearm-held"
+
+// sayHeld posts, once for each pull request and head, that the merge gate holds
+// its re-arm: it stays withdrawn, and what re-arms it. A gate that could not answer
+// says nothing, since a later act asks it again. The note is made only when the
+// comment was posted.
+func sayHeld(root, subject string, w Withdrawal, err error, held map[string]int) *ForgeFailure {
+	var ae *armError
+	if !errors.As(err, &ae) || !ae.gated || ae.unread {
+		return nil
+	}
+	k := refusalKey(w)
+	if held[k] > 0 {
+		return nil
+	}
+	if ff := releaseForge.postComment(root, w, heldBody(subject, w)); ff != nil {
+		return ff
+	}
+	held[k] = 1
+	return nil
 }
 
 // maxRearmRefusals is how many times the forge may refuse one withdrawal's
@@ -782,14 +815,17 @@ func refusalKey(w Withdrawal) string { return strconv.Itoa(w.Number) + " " + w.H
 
 // readRefusals is the refusal counts kept for release id; empty when none is
 // kept or it does not read. A line that does not read is passed over.
-func readRefusals(root, id string) map[string]int {
+func readRefusals(root, id string) map[string]int { return readCounts(root, refusalsDir, id) }
+
+// readCounts reads the counts kept under dir for release id, as readRefusals.
+func readCounts(root, dir, id string) map[string]int {
 	out := map[string]int{}
 	r, err := os.OpenRoot(root)
 	if err != nil || !isRelease(id) {
 		return out
 	}
 	defer r.Close()
-	data, err := fsutil.ReadGuardedInRoot(r, refusalsDir+"/"+id, maxRefusalsBytes)
+	data, err := fsutil.ReadGuardedInRoot(r, dir+"/"+id, maxRefusalsBytes)
 	if err != nil {
 		return out
 	}
@@ -807,7 +843,10 @@ func readRefusals(root, id string) map[string]int {
 
 // keepRefusals keeps counts for release id, best effort: a count lost costs
 // only a few more tries.
-func keepRefusals(root, id string, counts map[string]int) {
+func keepRefusals(root, id string, counts map[string]int) { keepCounts(root, refusalsDir, id, counts) }
+
+// keepCounts keeps counts under dir for release id, as keepRefusals.
+func keepCounts(root, dir, id string, counts map[string]int) {
 	if len(counts) == 0 || !isRelease(id) {
 		return
 	}
@@ -820,7 +859,7 @@ func keepRefusals(root, id string, counts map[string]int) {
 	for _, k := range keys {
 		b.WriteString(k + " " + strconv.Itoa(counts[k]) + "\n")
 	}
-	_ = writeUnflushedIn(root, refusalsDir, id, []byte(b.String()))
+	_ = writeUnflushedIn(root, dir, id, []byte(b.String()))
 }
 
 // shownDirRel is where the tip at which each release's commits not read, and
@@ -1197,6 +1236,9 @@ func (p *prepared) admitCheck(w Withdrawal) (state string, err error) {
 	state, err = releaseForge.inspect(p.root, owner, name, w)
 	switch {
 	case err != nil:
+		if ae := (*armError)(nil); errors.As(err, &ae) && ae.gated {
+			return "", refuse("#%d was not admitted: %s, so it stays withdrawn; %s", n, err.Error(), nothingPushed)
+		}
 		return "", refuse("#%d was not admitted: the forge could not be read for it (%s), so it stays withdrawn; %s", n, err.Error(), nothingPushed)
 	case state == WithdrawnMoved:
 		return "", refuse("#%d was not admitted: its head moved since it was withdrawn at %s, and an admission re-arms only the commits withdrawn; "+

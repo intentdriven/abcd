@@ -583,3 +583,57 @@ func TestAParkedLaneWhoseSyncIsRefusedNamesTheRefusal(t *testing.T) {
 		t.Fatalf("the refused step changes nothing: %+v", ld)
 	}
 }
+
+// armedConflicting is a lane armed, then conflicting with the default branch.
+func armedConflicting(t *testing.T) *landFixture {
+	t.Helper()
+	f := syncFixture(t)
+	f.passToLandOnce(t, "fix.txt", "gen.txt")
+	f.step(t)
+	f.step(t)
+	l := currentLane(t, f.repo, f.runID)
+	preflighted(t, l, l.HeadSHA)
+	f.step(t)
+	f.step(t)
+	f.step(t)
+	if l = currentLane(t, f.repo, f.runID); !l.Landing.Armed || l.PR != 7 {
+		t.Fatalf("the pull request is armed: %+v", l.Landing)
+	}
+	f.moveMain(t, "generated again on main\n", "gen.txt")
+	if err := os.WriteFile(filepath.Join(f.gh, "mergeable.json"), []byte(`{"mergeable":"CONFLICTING","mergeStateStatus":"DIRTY"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return f
+}
+
+// The sync's withdrawal takes the pull request out of the queue too, and reads
+// the arming back before it records nothing armed.
+func TestTheSyncsWithdrawalDequeuesAndReadsBack(t *testing.T) {
+	f := armedConflicting(t)
+	l := currentLane(t, f.repo, f.runID)
+	f.queueAnswer(t, stubQueue{head: l.Landing.Pushed, queued: true, enabledAt: "2026-10-15T07:00:00Z", status: "DIRTY"})
+	stillArmed(t, f)
+	before := f.ghLog(t)
+	_, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
+	r := mustRefusal(t, err)
+	if !strings.Contains(r.Reason, "still reports") {
+		t.Fatalf("an arming the forge still reports is refused: %+v", r)
+	}
+	log := strings.TrimPrefix(f.ghLog(t), before)
+	off, out := strings.Index(log, "pr merge 7 --disable-auto"), strings.Index(log, "dequeuePullRequest")
+	if off < 0 || out < off {
+		t.Fatalf("auto-merge goes off, then it leaves the queue:\n%s", log)
+	}
+	if !currentLane(t, f.repo, f.runID).Landing.Armed {
+		t.Fatalf("the lane no longer records the arming the forge still reports")
+	}
+	if err := os.Remove(filepath.Join(f.gh, "armings.json")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := advance(f.repo.Root(), f.runID, f.stages, Options{}); err != nil {
+		t.Fatalf("the withdrawal read back is recorded: %v", err)
+	}
+	if currentLane(t, f.repo, f.runID).Landing.Armed {
+		t.Fatalf("the lane still records the arming the forge no longer reports")
+	}
+}

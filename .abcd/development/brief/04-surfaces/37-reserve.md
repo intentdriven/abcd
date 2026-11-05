@@ -907,7 +907,7 @@ withdrawing nothing, and an admission or a release is refused.
   posts one fixed sentence naming the release's tag, through `gh`'s
   `addComment` (pinned in ghcontract's `graphql-fields.txt`), on a pull
   request it withdraws whole ("the merge of #N is withdrawn by HOLDER while
-  release vX is cut, and is re-armed after it."), admits ("is admitted into
+  release vX is cut, and is re-armed after it where the merge gate arms its head."), admits ("is admitted into
   release vX by HOLDER.", the admitter, who is the withdrawer; HOLDER is
   their holder id, and the comment's author, as on any comment, is the
   account gh posts it as), re-arms ("is

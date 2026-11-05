@@ -15,12 +15,12 @@ import (
 // The committed pre-push hook refuses a push that would fast-forward the head of
 // an armed pull request, naming what to run. It changes nothing on the forge: a
 // hook cannot tell a dry run from a push, so it asks and stops, and the person's
-// next push asks again. The hook is run directly with a stand-in forge client,
-// and no network is touched.
+// next push asks again. It asks of the repository the push's own URL names. The
+// hook is run directly with a stand-in forge client, and no network is touched.
 
 // armingForge is a stand-in forge client. It answers the arming read by applying
 // the hook's own --jq to the file armings.json, as the real client does, and logs
-// every call. The repository comes from `gh repo view`, whatever URL the push uses.
+// every call. Only acme/widgets holds the pull requests armings.json lists.
 const armingForge = `#!/bin/sh
 d="$(cd "$(dirname "$0")" && pwd)"
 printf '%s\n' "$*" >> "$d/gh.log"
@@ -31,12 +31,12 @@ for a in "$@"; do
   prev="$a"
 done
 case "$1 $2" in
-  "repo view")
-    if [ -f "$d/refuse-repo" ]; then echo "stand-in: no repository here" >&2; exit 1; fi
-    echo "acme/widgets https://github.com/acme/widgets" ;;
   "api graphql")
     if [ -f "$d/refuse-read" ]; then echo "stand-in: the forge could not be read" >&2; exit 1; fi
-    jq -r "$jq_expr" "$d/armings.json" ;;
+    case "$(printf '%s' "$*" | tr '[:upper:]' '[:lower:]')" in
+      *"o=acme"*"r=widgets"*) jq -r "$jq_expr" "$d/armings.json" ;;
+      *) echo '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' | jq -r "$jq_expr" ;;
+    esac ;;
   *) echo "stand-in: unexpected call: $*" >&2; exit 1 ;;
 esac
 `
@@ -194,9 +194,7 @@ func TestPrePushPassesOnceTheArmingIsGone(t *testing.T) {
 	}
 }
 
-// git hands the hook the refs of a push it will not make whole: one whose remote
-// tip it does not hold (fetch first), and one with nothing to move. Neither is
-// asked about.
+// The hook asks about a fast-forward it can see in this clone.
 func TestPrePushAsksOnlyAboutAFastForward(t *testing.T) {
 	zero := strings.Repeat("0", 40)
 	h := newArmingHook(t)
@@ -234,23 +232,41 @@ func TestPrePushLeavesAForksPullRequestAndAnUnarmedOne(t *testing.T) {
 	}
 }
 
-// A push to a repository other than the forge's moves none of its heads, whatever
-// the remote is called and whatever its branch is called. A push is judged by its
-// URL, never by the remote's name.
-func TestPrePushPassesAPushToAnotherRepository(t *testing.T) {
+// The push's own URL names the repository asked about, whatever the remote is
+// called and whatever repository gh would answer for here.
+func TestPrePushAsksTheRepositoryThePushReaches(t *testing.T) {
+	h := newArmingHook(t)
+	h.armings(t, armingAt(h.old, true, false))
+	if out, err := h.runAs(t, "origin", "git@github.com:me/widgets.git", h.update(), ""); err != nil {
+		t.Fatalf("a push to a fork with nothing armed was refused: %v\n%s", err, out)
+	}
+	if log := h.log(t); !strings.Contains(log, "o=me") || strings.Contains(log, "repo view") {
+		t.Fatalf("the hook did not ask the fork:\n%s", log)
+	}
+}
+
+// A push that reaches no repository on the forge is said in one line, and passes.
+func TestPrePushSaysWhereTheCheckDoesNotApply(t *testing.T) {
 	for _, c := range []struct{ name, remote, url string }{
-		{"origin is a fork", "origin", "git@github.com:me/widgets.git"},
 		{"a mirror on another host", "mirror", "git@gitlab.example.com:acme/widgets.git"},
 		{"a mirror over https", "origin", "https://gitlab.example.com/acme/widgets.git"},
 		{"an alias for another host", "origin", "mirror-alias:acme/widgets.git"},
 		{"a local path", "origin", "/srv/git/acme/widgets.git"},
 		{"a file URL", "origin", "file:///srv/git/acme/widgets.git"},
+		{"a credentialed URL on another host", "origin", "https://user:secret@gitlab.example.com/acme/widgets.git"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			h := newArmingHook(t)
 			h.armings(t, armingAt(h.old, true, false))
-			if out, err := h.runAs(t, c.remote, c.url, h.update(), ""); err != nil {
-				t.Fatalf("a push to another repository was refused: %v\n%s", err, out)
+			out, err := h.runAs(t, c.remote, c.url, h.update(), "")
+			if err != nil {
+				t.Fatalf("the push was refused: %v\n%s", err, out)
+			}
+			if strings.Count(out, "github.com") != 1 || strings.Contains(out, "secret") {
+				t.Fatalf("want one line naming where the check applies, and no credential:\n%s", out)
+			}
+			if log := h.log(t); log != "" {
+				t.Fatalf("the forge was asked:\n%s", log)
 			}
 		})
 	}
@@ -297,19 +313,17 @@ func TestPrePushChecksTheReceiptBeforeTheArming(t *testing.T) {
 
 // The hook reports the forge client's answer, and the push goes on.
 func TestPrePushSaysWhenTheForgeClientGivesNoAnswer(t *testing.T) {
-	for _, flag := range []string{"refuse-read", "refuse-repo"} {
-		t.Run(flag, func(t *testing.T) {
-			h := newArmingHook(t)
-			h.armings(t, armingAt(h.old, true, false))
-			if err := os.WriteFile(filepath.Join(h.gh, flag), nil, 0o644); err != nil {
-				t.Fatal(err)
-			}
-			out, err := h.run(t, armedURL, h.update(), "")
-			if err != nil || !strings.Contains(out, "no answer") {
-				t.Fatalf("err %v:\n%s", err, out)
-			}
-		})
-	}
+	t.Run("the forge cannot be read", func(t *testing.T) {
+		h := newArmingHook(t)
+		h.armings(t, armingAt(h.old, true, false))
+		if err := os.WriteFile(filepath.Join(h.gh, "refuse-read"), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		out, err := h.run(t, armedURL, h.update(), "")
+		if err != nil || !strings.Contains(out, "no answer") {
+			t.Fatalf("err %v:\n%s", err, out)
+		}
+	})
 	t.Run("no forge client", func(t *testing.T) {
 		h := newArmingHook(t)
 		tools := t.TempDir()
@@ -327,9 +341,8 @@ func TestPrePushSaysWhenTheForgeClientGivesNoAnswer(t *testing.T) {
 	})
 }
 
-// The forge client names the repository, as land asks it to, whatever form the
-// push's URL takes.
-func TestPrePushAsksTheForgeClientWhichRepositoryThisIs(t *testing.T) {
+// Each form of a github.com URL names its repository, an ssh alias included.
+func TestPrePushReadsEachFormOfTheForgesURL(t *testing.T) {
 	for _, url := range []string{
 		"git@github.com:acme/widgets.git",
 		"git@github.com:ACME/Widgets.git",
@@ -345,9 +358,9 @@ func TestPrePushAsksTheForgeClientWhichRepositoryThisIs(t *testing.T) {
 		if err == nil {
 			t.Fatalf("%s: the push went ahead:\n%s", url, out)
 		}
-		log := h.log(t)
-		if !strings.Contains(log, "repo view") || !strings.Contains(log, "o=acme") || !strings.Contains(log, "r=widgets") {
-			t.Fatalf("%s did not resolve through the forge client:\n%s", url, log)
+		log := strings.ToLower(h.log(t))
+		if !strings.Contains(log, "o=acme") || !strings.Contains(log, "r=widgets") || strings.Contains(log, "secret") {
+			t.Fatalf("%s did not name acme/widgets:\n%s", url, log)
 		}
 	}
 }

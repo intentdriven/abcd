@@ -137,3 +137,144 @@ func TestAnAdmissionAsksTheMergeGateForItsHead(t *testing.T) {
 		t.Fatalf("#11 recorded %q; want it withdrawn", stateOf(ws, 11))
 	}
 }
+
+// An admitted pull request found armed counts as done only at a head the gate
+// arms. Past a head it refuses it is left for its owner, nothing sent.
+func TestAnAdmittedMergeFoundArmedIsAskedOfTheGateAtItsHead(t *testing.T) {
+	admitted := func(t *testing.T) (*world, *fakeForge, *participant) {
+		w := newWorld(t)
+		f := armedForge(t)
+		p := w.clone("1234+octo@users.noreply.github.com", "")
+		if _, err := p.do(Request{Record: "rel-v0.16.0"}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := p.do(Request{Record: "rel-v0.16.0", Admit: 11}); err != nil {
+			t.Fatal(err)
+		}
+		f.reset()
+		return w, f, p
+	}
+	refusing := func(head string) ArmGate {
+		return func(_, _, _, h string) (bool, string, error) {
+			if h == head {
+				return false, "no review receipt names " + h, nil
+			}
+			return true, "", nil
+		}
+	}
+	t.Run("moved to a head the gate refuses", func(t *testing.T) {
+		w, f, p := admitted(t)
+		f.prs[11].head = headC
+		releaseForge.armGate = refusing(headC)
+		if _, err := p.do(Request{Record: "rel-v0.16.0", Release: true}); err != nil {
+			t.Fatal(err)
+		}
+		if _, ws := w.tipWithdrawals("rel-v0.16.0"); stateOf(ws, 11) != WithdrawnMoved {
+			t.Fatalf("#11 recorded %q; want it left for its owner", stateOf(ws, 11))
+		}
+	})
+	t.Run("moved to a head the gate arms", func(t *testing.T) {
+		w, f, p := admitted(t)
+		f.prs[11].head = headC
+		releaseForge.armGate = refusing("")
+		if _, err := p.do(Request{Record: "rel-v0.16.0", Release: true}); err != nil {
+			t.Fatal(err)
+		}
+		if _, ws := w.tipWithdrawals("rel-v0.16.0"); stateOf(ws, 11) != WithdrawnFoundArmed {
+			t.Fatalf("#11 recorded %q; want it done", stateOf(ws, 11))
+		}
+	})
+	t.Run("at its head, the gate refuses", func(t *testing.T) {
+		w, f, p := admitted(t)
+		releaseForge.armGate = refusing(f.prs[11].head)
+		rel, err := p.do(Request{Record: "rel-v0.16.0", Release: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ws := w.tipWithdrawals("rel-v0.16.0"); stateOf(ws, 11) == WithdrawnFoundArmed {
+			t.Fatalf("#11 recorded as done at a head the gate refuses: %v", ws)
+		}
+		said := ""
+		for _, s := range rel.Settles {
+			for _, ff := range s.Failures {
+				if ff.Number == 11 {
+					said = ff.Reason
+				}
+			}
+		}
+		if !strings.Contains(said, "no review receipt names") {
+			t.Fatalf("the failure for #11 says %q", said)
+		}
+	})
+	t.Run("the gate cannot answer", func(t *testing.T) {
+		w, f, p := admitted(t)
+		f.prs[11].head = headC
+		releaseForge.armGate = func(_, _, _, _ string) (bool, string, error) { return false, "", errors.New("a read failed") }
+		if _, err := p.do(Request{Record: "rel-v0.16.0", Release: true}); err != nil {
+			t.Fatal(err)
+		}
+		if _, ws := w.tipWithdrawals("rel-v0.16.0"); stateOf(ws, 11) == WithdrawnFoundArmed || stateOf(ws, 11) == WithdrawnMoved {
+			t.Fatalf("#11 settled %q on no answer", stateOf(ws, 11))
+		}
+	})
+}
+
+// A re-arm the gate holds tells the pull request once: it stays withdrawn, why,
+// and what re-arms it. An answer the gate could not read posts nothing.
+func TestAHeldReArmIsSaidOnThePullRequestOnce(t *testing.T) {
+	w := newWorld(t)
+	f := armedForge(t)
+	releaseForge.comments = f
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	if _, err := p.do(Request{Record: "rel-v0.16.0"}); err != nil {
+		t.Fatal(err)
+	}
+	f.comments = nil
+	releaseForge.armGate = noReceipt
+	if _, err := p.do(Request{Record: "rel-v0.16.0", Release: true}); err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		w.set(w.clock().Add(time.Minute))
+		if _, err := p.reserve("iss-3", "a.go"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	held := 0
+	for _, c := range f.posted() {
+		if strings.HasPrefix(c, "#11 ") {
+			held++
+			for _, want := range []string{"stays withdrawn", "no review or approval", "abcd land"} {
+				if !strings.Contains(c, want) {
+					t.Fatalf("comment %q does not say %q", c, want)
+				}
+			}
+			if strings.Contains(c, "http") || strings.Contains(c, "@") {
+				t.Fatalf("comment %q carries a URL or a mention", c)
+			}
+		}
+	}
+	if held != 1 {
+		t.Fatalf("#11 was told %d times: %v", held, f.posted())
+	}
+}
+
+func TestAReArmTheGateCouldNotAnswerPostsNothing(t *testing.T) {
+	w := newWorld(t)
+	f := armedForge(t)
+	releaseForge.comments = f
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	if _, err := p.do(Request{Record: "rel-v0.16.0"}); err != nil {
+		t.Fatal(err)
+	}
+	f.comments = nil
+	releaseForge.armGate = func(_, _, _, _ string) (bool, string, error) { return false, "", errors.New("a read failed") }
+	if _, err := p.do(Request{Record: "rel-v0.16.0", Release: true}); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range f.posted() {
+		if strings.Contains(c, "stays withdrawn") {
+			t.Fatalf("a comment went out on no answer: %q", c)
+		}
+	}
+}

@@ -3,8 +3,10 @@ package landing
 // withdraw.go is the step before land's push. Where the push will move the head
 // of an armed or queued pull request of the branch, the arming comes off first and
 // is read back, and the enqueue step arms the new head where the merge gate allows,
-// pinned to it. Land withdraws when it is sure the push moves that head and the
-// arming is its to take off; where it cannot, it refuses and pushes nothing.
+// pinned to it. So does this account's arming at a local head the gate refuses;
+// another account's there refuses the landing. Land withdraws when it is sure the
+// head moves or the gate refuses it, and the arming is its to take off; where it
+// cannot, it refuses and pushes nothing.
 
 import (
 	"encoding/json"
@@ -197,9 +199,11 @@ func RemoteTip(git GitFunc, dir, branch string) (string, error) {
 	return "", nil
 }
 
-// withdrawBeforePush is the step before the push. It reports an arming left at
+// withdrawBeforePush is the step before the push. An arming at the head the push
+// moves comes off, as does this account's at a local head the merge gate refuses;
+// another account's at such a head stops the landing. It reports an arming left at
 // the local head, which the enqueue step names when the gate would not make it.
-func withdrawBeforePush(res *Result, o Options, dir, nameWithOwner string) (atHead bool, err error) {
+func withdrawBeforePush(res *Result, o Options, dir, tracking, nameWithOwner string) (atHead bool, err error) {
 	owner, name, ok := splitRepo(nameWithOwner)
 	if !ok {
 		return false, refuse(fmt.Sprintf("the forge client names the repository %q, not owner/name, so land cannot ask whether a pull request for %s is armed", nameWithOwner, res.Branch),
@@ -209,75 +213,122 @@ func withdrawBeforePush(res *Result, o Options, dir, nameWithOwner string) (atHe
 	if err != nil {
 		return false, err
 	}
-	var off []branchArming
+	ask := func(args ...string) (string, error) { return o.Forge(dir, args...) }
+	type withdrawal struct {
+		a   branchArming
+		why string
+	}
+	var off []withdrawal
 	tip, tipRead := "", false
 	for _, a := range armed {
 		n := fmt.Sprint(a.Number)
+		if a.HeadRefOid != res.Head {
+			if !res.Push.On {
+				res.add("withdraw", StatusLeft, "pull request #"+n+" is armed at "+short(a.HeadRefOid)+", and "+res.Push.offText()+", so land moves no head: its arming is left as it is", "")
+				continue
+			}
+			if !tipRead {
+				if tip, err = RemoteTip(o.Git, dir, res.Branch); err != nil {
+					return atHead, refuse("land could not ask "+Remote+" where "+res.Branch+" is ("+fsutil.RedactHome(err.Error())+"), so it cannot say its push would move pull request #"+n+"'s head; its arming is left as it is",
+						"settle what git reports, then run abcd land again; nothing was pushed")
+				}
+				tipRead = true
+			}
+			if tip != res.Head {
+				if err := movedByPush(res, dir, n, a.HeadRefOid, tip); err != nil {
+					return atHead, err
+				}
+				if !a.own(viewer) {
+					vouched, err := headVouched(dir, a.HeadRefOid)
+					if err != nil {
+						return atHead, refuse("the receipts for "+short(a.HeadRefOid)+" cannot be read ("+fsutil.RedactHome(err.Error())+"), so land leaves pull request #"+n+"'s arming by another account as it is",
+							"settle it, then run abcd land again; nothing was pushed")
+					}
+					if !vouched {
+						return atHead, refuse("pull request #"+n+" is armed at "+short(a.HeadRefOid)+" by another account (or one the forge does not attribute), and no receipt here names that head, so land leaves the arming as it is and does not push over it",
+							"ask whoever armed it, or withdraw it yourself (gh pr merge "+n+" --disable-auto, and take it out of the merge queue on its page), then run abcd land again; nothing was pushed")
+					}
+				}
+				off = append(off, withdrawal{a, "armed at " + short(a.HeadRefOid) + ", and this push moves its head to " + short(res.Head)})
+				continue
+			}
+		}
+		// The arming stands at the local head (the forge's reading of its head
+		// can lag origin's), so the push moves nothing and the gate decides.
+		refused, unread := gateAtLocalHead(res, o, dir, tracking, nameWithOwner, n, ask)
 		switch {
-		case a.HeadRefOid == res.Head:
+		case unread != "":
 			atHead = true
-			continue
-		case !res.Push.On:
-			res.add("withdraw", StatusLeft, "pull request #"+n+" is armed at "+short(a.HeadRefOid)+", and "+res.Push.offText()+", so land moves no head: its arming is left as it is", "")
-			continue
-		}
-		if !tipRead {
-			if tip, err = RemoteTip(o.Git, dir, res.Branch); err != nil {
-				return atHead, refuse("land could not ask "+Remote+" where "+res.Branch+" is ("+fsutil.RedactHome(err.Error())+"), so it cannot say its push would move pull request #"+n+"'s head; its arming is left as it is",
-					"settle what git reports, then run abcd land again; nothing was pushed")
+			res.add("withdraw", StatusLeft, "the merge gate could not be read for "+short(res.Head)+" ("+unread+"), so pull request #"+n+"'s arming is left as it is", "")
+		case refused == "":
+			atHead = true
+			if a.HeadRefOid != res.Head {
+				res.add("withdraw", StatusLeft, Remote+" already holds "+res.Branch+" at "+short(res.Head)+", so the push moves no head: pull request #"+n+"'s arming, which the forge reads at "+short(a.HeadRefOid)+", is left as it is", "")
 			}
-			tipRead = true
+		case a.own(viewer):
+			off = append(off, withdrawal{a, "armed at " + short(res.Head) + ": " + refused})
+		default:
+			return atHead, refuse("pull request #"+n+" is armed at "+short(res.Head)+" by another account (or one the forge does not attribute), and land leaves that arming as it is: "+refused,
+				"ask whoever armed it, or withdraw it yourself (gh pr merge "+n+" --disable-auto, and take it out of the merge queue on its page), then run abcd land again; nothing was pushed")
 		}
-		if tip == res.Head {
-			res.add("withdraw", StatusLeft, Remote+" already holds "+res.Branch+" at "+short(res.Head)+", so the push moves no head: pull request #"+n+"'s arming, which the forge reads at "+short(a.HeadRefOid)+", is left as it is", "")
-			continue
-		}
-		if err := movedByPush(res, dir, n, a.HeadRefOid, tip); err != nil {
-			return atHead, err
-		}
-		if !a.own(viewer) {
-			vouched, err := headVouched(dir, a.HeadRefOid)
-			if err != nil {
-				return atHead, refuse("the receipts for "+short(a.HeadRefOid)+" cannot be read ("+fsutil.RedactHome(err.Error())+"), so land leaves pull request #"+n+"'s arming by another account as it is",
-					"settle it, then run abcd land again; nothing was pushed")
-			}
-			if !vouched {
-				return atHead, refuse("pull request #"+n+" is armed at "+short(a.HeadRefOid)+" by another account (or one the forge does not attribute), and no receipt here names that head, so land leaves the arming as it is and does not push over it",
-					"ask whoever armed it, or withdraw it yourself (gh pr merge "+n+" --disable-auto, and take it out of the merge queue on its page), then run abcd land again; nothing was pushed")
-			}
-		}
-		off = append(off, a)
 	}
 	if len(off) == 0 {
 		return atHead, nil
 	}
-	ask := func(args ...string) (string, error) { return o.Forge(dir, args...) }
 	var did []string
-	for _, a := range off {
-		n := fmt.Sprint(a.Number)
-		if err := WithdrawArming(ask, n, a.ID, a.auto(), a.IsInMergeQueue); err != nil {
+	// Every return from here says what came off.
+	record := func() {
+		if len(did) > 0 {
+			res.add("withdraw", StatusDone, "land withdrew the arming of "+strings.Join(did, "; ")+"; land arms only a head the merge gate arms, pinned to it", "")
+		}
+	}
+	for _, w := range off {
+		n := fmt.Sprint(w.a.Number)
+		if err := WithdrawArming(ask, n, w.a.ID, w.a.auto(), w.a.IsInMergeQueue); err != nil {
+			record()
 			if errors.Is(err, ErrNoForgeClient) {
 				return atHead, noForgeClient()
 			}
-			return atHead, refuse("this push moves pull request #"+n+"'s head from "+short(a.HeadRefOid)+", and land could not withdraw its arming: "+forgeWhy(err),
+			return atHead, refuse("pull request #"+n+" is "+w.why+", and land could not withdraw its arming: "+forgeWhy(err),
 				"settle what the forge reports, or withdraw it yourself (gh pr merge "+n+" --disable-auto, and take it out of the merge queue on its page), then run abcd land again; nothing was pushed")
 		}
-		did = append(did, "pull request #"+n+" (armed at "+short(a.HeadRefOid)+")")
+		did = append(did, "pull request #"+n+" ("+w.why+")")
 	}
+	record()
 	// The forge's word for it, not the call's: gh exits 0 on some failures.
 	again, _, err := armings(o, dir, owner, name, res.Branch)
 	if err != nil {
 		return atHead, err
 	}
-	for _, a := range off {
-		if armedIn(again, a.Number) {
-			n := fmt.Sprint(a.Number)
+	for _, w := range off {
+		if armedIn(again, w.a.Number) {
+			n := fmt.Sprint(w.a.Number)
 			return atHead, refuse("land withdrew the arming of pull request #"+n+", but the forge still reports it armed or queued",
 				"check it (gh pr view "+n+"), then run abcd land again; nothing was pushed")
 		}
 	}
-	res.add("withdraw", StatusDone, "land withdrew the arming of "+strings.Join(did, "; ")+", since this push moves the head to "+short(res.Head)+"; land arms only a head the merge gate arms, pinned to it", "")
 	return atHead, nil
+}
+
+// gateAtLocalHead asks the merge gate about the local head. refused is its reason
+// when it definitely does not arm that head, unread why it could not say; both ""
+// is an arming it would make.
+func gateAtLocalHead(res *Result, o Options, dir, tracking, nameWithOwner, n string, ask ForgeCall) (refused, unread string) {
+	tip, err := gitutil.Run(dir, "rev-parse", "--verify", "--quiet", tracking+"^{commit}", "--")
+	if err != nil || !gitutil.IsFullSHA(tip) {
+		return "", Remote + "/" + res.Default + " cannot be read"
+	}
+	d, err := DecideMerge(MergeQuery{RepoRoot: dir, Roots: o.Roots, Tip: tip, TipName: Remote + "/" + res.Default, Default: res.Default,
+		Repo: nameWithOwner, PR: n, Head: res.Head, Forge: ask})
+	switch {
+	case err != nil:
+		return "", fsutil.RedactHome(err.Error())
+	case d.Unread:
+		return "", d.Why
+	case d.Arm:
+		return "", ""
+	}
+	return d.Why, ""
 }
 
 // movedByPush refuses unless the push will fast-forward: the forge's head and
@@ -320,7 +371,8 @@ func splitRepo(nameWithOwner string) (owner, name string, ok bool) {
 // that arms without landing a branch (the release hold's re-arm and admission):
 // the mode at the default branch as last fetched, the author's role, the
 // approvals and the receipts, in any worktree of root. The rule is left empty
-// since it decides only the method, which the arming already carries.
+// since it decides only the method, which the arming already carries. An answer
+// the gate could not read is an error, never a refusal.
 func rearmGate(ask ForgeCall, root, repo, pr, head string) (bool, string, error) {
 	def := trackedDefault(root)
 	if def == "" {
@@ -335,6 +387,9 @@ func rearmGate(ask ForgeCall, root, repo, pr, head string) (bool, string, error)
 	d, err := DecideMerge(MergeQuery{RepoRoot: root, Roots: roots, Tip: tip, TipName: tipName, Default: def, Repo: repo, PR: pr, Head: head, Forge: ask})
 	if err != nil {
 		return false, "", err
+	}
+	if d.Unread {
+		return false, "", errors.New(d.Why)
 	}
 	return d.Arm, d.Why, nil
 }

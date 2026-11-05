@@ -22,11 +22,19 @@ printf '%s\n' "$*" >> "$d/gh.log"
 case "$1 $2" in
   "repo view") echo acme/widgets ;;
   "pr list") echo 7 ;;
-  "api graphql") echo "BEHIND none ` + keepCurrentHead + ` SQUASH" ;;
+  "api graphql")
+    if [ -f "$d/no-arming" ]; then echo "BEHIND none ` + keepCurrentHead + ` none"
+    else echo "BEHIND none ` + keepCurrentHead + ` SQUASH"; fi ;;
   "api -X")
-    if [ -f "$d/refuse-update" ]; then echo "HTTP 502: Bad Gateway" >&2; exit 1; fi
+    if [ -f "$d/refuse-update" ]; then cat "$d/refuse-update" >&2; exit 1; fi
     echo "Updating pull request branch." ;;
-  "pr view") cat "$d/head" ;;
+  "pr view")
+    case "$*" in
+      *autoMergeRequest*)
+        if [ -f "$d/refuse-readback" ]; then echo "stand-in: no read" >&2; exit 1; fi
+        if [ -f "$d/still-armed" ]; then echo true; else echo false; fi ;;
+      *) cat "$d/head" ;;
+    esac ;;
   "pr merge")
     case "$*" in
       *--disable-auto*) if [ -f "$d/refuse-disarm" ]; then echo "stand-in: refused" >&2; exit 1; fi ;;
@@ -36,7 +44,9 @@ case "$1 $2" in
 esac
 `
 
-func runKeepCurrent(t *testing.T, head string, flags ...string) (out, log string) {
+// keepCurrent runs the script with the stand-in holding head and the files given
+// (name to content), with args.
+func keepCurrent(t *testing.T, head string, files map[string]string, args ...string) (out, log string) {
 	t.Helper()
 	gh := t.TempDir()
 	if err := os.WriteFile(filepath.Join(gh, "gh"), []byte(keepCurrentForge), 0o755); err != nil {
@@ -45,14 +55,14 @@ func runKeepCurrent(t *testing.T, head string, flags ...string) (out, log string
 	if err := os.WriteFile(filepath.Join(gh, "head"), []byte(head+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range flags {
-		if err := os.WriteFile(filepath.Join(gh, f), nil, 0o644); err != nil {
+	for f, body := range files {
+		if err := os.WriteFile(filepath.Join(gh, f), []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("bash", filepath.Join(prePushSourceRoot(t), "scripts", "pr-keep-current.sh"))
+	cmd := exec.Command("bash", append([]string{filepath.Join(prePushSourceRoot(t), "scripts", "pr-keep-current.sh")}, args...)...)
 	cmd.Dir = t.TempDir()
-	cmd.Env = append(os.Environ(), "PATH="+gh+string(os.PathListSeparator)+os.Getenv("PATH"), "PR_KEEP_CURRENT_SETTLE=0")
+	cmd.Env = append(os.Environ(), "PATH="+gh+string(os.PathListSeparator)+os.Getenv("PATH"), "PR_KEEP_CURRENT_SETTLE=0", "PR_KEEP_CURRENT_INTERVAL=0")
 	raw, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("the script failed: %v\n%s", err, raw)
@@ -63,6 +73,20 @@ func runKeepCurrent(t *testing.T, head string, flags ...string) (out, log string
 	}
 	return string(raw), string(logged)
 }
+
+func runKeepCurrent(t *testing.T, head string, flags ...string) (out, log string) {
+	t.Helper()
+	files := map[string]string{}
+	for _, f := range flags {
+		files[f] = ""
+	}
+	return keepCurrent(t, head, files)
+}
+
+const (
+	refused422 = "gh: Validation Failed (HTTP 422)\n"
+	failed502  = "gh: Bad Gateway (HTTP 502)\n"
+)
 
 func TestKeepCurrentLeavesAnUpdatedPullRequestUnarmedAtItsNewHead(t *testing.T) {
 	newHead := strings.Repeat("2", 40)
@@ -82,20 +106,68 @@ func TestKeepCurrentLeavesAnUpdatedPullRequestUnarmedAtItsNewHead(t *testing.T) 
 	}
 }
 
-func TestKeepCurrentPutsTheArmingBackWhenTheUpdateFails(t *testing.T) {
-	out, log := runKeepCurrent(t, keepCurrentHead, "refuse-update")
+func TestKeepCurrentPutsTheArmingBackWhenTheForgeRefusesTheUpdate(t *testing.T) {
+	out, log := keepCurrent(t, keepCurrentHead, map[string]string{"refuse-update": refused422})
 	if !strings.Contains(log, "pr merge 7 --auto --squash --match-head-commit="+keepCurrentHead) {
 		t.Fatalf("the arming is not back, by its method, at the unmoved head:\n%s", log)
 	}
-	if strings.Contains(out, "new head") || !strings.Contains(out, "HTTP 502") || !strings.Contains(out, "re-armed") {
-		t.Fatalf("the script does not say the update failed and the arming is back:\n%s", out)
+	if strings.Contains(out, "new head") || !strings.Contains(out, "HTTP 422") || !strings.Contains(out, "re-armed") {
+		t.Fatalf("the script does not say the update was refused and the arming is back:\n%s", out)
+	}
+}
+
+// A 5xx or a timeout says nothing of whether the update landed, so nothing is
+// armed and the line gives the command that arms it.
+func TestKeepCurrentLeavesItUnarmedWhenTheUpdateMayHaveLanded(t *testing.T) {
+	for _, msg := range []string{failed502, "gh: i/o timeout\n"} {
+		out, log := keepCurrent(t, keepCurrentHead, map[string]string{"refuse-update": msg})
+		if strings.Contains(log, "pr merge 7 --auto") {
+			t.Fatalf("armed on %q:\n%s", msg, log)
+		}
+		if !strings.Contains(out, "gh pr merge 7 --auto --squash --match-head-commit="+keepCurrentHead) || !strings.Contains(out, "unarmed") {
+			t.Fatalf("the script does not name the command that arms it:\n%s", out)
+		}
 	}
 }
 
 func TestKeepCurrentSaysWhenItCannotPutTheArmingBack(t *testing.T) {
-	out, _ := runKeepCurrent(t, keepCurrentHead, "refuse-update", "refuse-rearm")
+	out, _ := keepCurrent(t, keepCurrentHead, map[string]string{"refuse-update": refused422, "refuse-rearm": ""})
 	if !strings.Contains(out, "could NOT") || !strings.Contains(out, "gh pr merge 7 --auto --squash --match-head-commit="+keepCurrentHead) {
 		t.Fatalf("the script does not name the command that arms it:\n%s", out)
+	}
+}
+
+// An arming the second read does not find is not withdrawn, updated under or
+// made again.
+func TestKeepCurrentSkipsAPullRequestWhoseArmingIsGone(t *testing.T) {
+	_, log := keepCurrent(t, keepCurrentHead, map[string]string{"no-arming": ""})
+	if strings.Contains(log, "pr merge") || strings.Contains(log, "update-branch") {
+		t.Fatalf("an arming that is gone was acted on:\n%s", log)
+	}
+}
+
+// gh can exit 0 without withdrawing, so the arming is read back before the update.
+func TestKeepCurrentReadsTheArmingBackBeforeItUpdates(t *testing.T) {
+	for _, flag := range []string{"still-armed", "refuse-readback"} {
+		out, log := keepCurrent(t, keepCurrentHead, map[string]string{flag: ""})
+		if strings.Contains(log, "update-branch") {
+			t.Fatalf("%s: the update went ahead:\n%s", flag, log)
+		}
+		if !strings.Contains(out, "could NOT") {
+			t.Fatalf("%s: the script does not say so:\n%s", flag, out)
+		}
+	}
+}
+
+// Under --watch an update the forge refuses is not asked for again at that head,
+// so the arming is not withdrawn and made again on every pass.
+func TestKeepCurrentWatchStopsOnAnUpdateTheForgeRefuses(t *testing.T) {
+	out, log := keepCurrent(t, keepCurrentHead, map[string]string{"refuse-update": refused422}, "--watch")
+	if got := strings.Count(log, "update-branch"); got != 1 {
+		t.Fatalf("asked %d times, want once:\n%s", got, log)
+	}
+	if !strings.Contains(out, "#7") || strings.Contains(out, "no open pull request has auto-merge armed") {
+		t.Fatalf("the watch does not say what it left:\n%s", out)
 	}
 }
 

@@ -95,9 +95,13 @@ type fakeForge struct {
 	armings       []string
 	armingsErr    error
 	armingsAnswer string
+	// armingsErrAt fails the arming read with this ordinal (1 is the first).
+	armingsErrAt int
+	armingReads  int
 	// failDisarm fails `pr merge --disable-auto`; dequeueErr fails the
 	// dequeue, and dequeueAnswer replaces its answer.
 	failDisarm    bool
+	failDisarmOf  string
 	dequeueErr    error
 	dequeueAnswer string
 	// pullErr fails the read of the pull request's author, reviewsErr the read
@@ -287,7 +291,7 @@ func (f *fakeForge) run(_ string, args ...string) (string, error) {
 		}
 		return `{"data":{"repository":{"pullRequest":` + strings.ReplaceAll(v, "@HEAD@", f.head) + `}}}`, nil
 	case "pr merge":
-		if slices.Contains(args, "--disable-auto") && f.failDisarm {
+		if slices.Contains(args, "--disable-auto") && (f.failDisarm || (f.failDisarmOf != "" && slices.Contains(args, f.failDisarmOf))) {
 			return "", errors.New("fake forge: the disarm failed")
 		}
 		if slices.Contains(args, "--auto") {
@@ -310,6 +314,9 @@ func (f *fakeForge) armingsAnswered(args []string) (string, error) {
 	}
 	if err := ghcontract.CheckGraphQL(ArmingsQuery); err != nil {
 		return "", err
+	}
+	if f.armingReads++; f.armingReads == f.armingsErrAt {
+		return "", errors.New("fake forge: the arming read failed")
 	}
 	if f.armingsErr != nil {
 		return "", f.armingsErr

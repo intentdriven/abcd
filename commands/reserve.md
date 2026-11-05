@@ -265,8 +265,10 @@ Each is re-armed in the form its withdrawer recorded, pinned to the head it
 had, as the withdrawer's own newest push records it, and only where the merge
 gate arms that head (`abcd land` says when: in `auto`, a review receipt in this
 checkout's worktrees naming it). Where it does not, nothing goes to the forge,
-the failure says why and the pull request stays withdrawn, and a later act asks
-the gate again, so recording the review re-arms it. An admission is held to
+the failure says why and the pull request stays withdrawn, one comment on it says
+so where the gate refuses the head, and a later act asks the gate again, so
+recording the review re-arms it; `abcd land` from a checkout holding the review
+arms it too. An admission is held to
 the same gate. One
 already armed or queued again counts as done (`armed`); an admitted one found
 armed counts as done whatever its head, since the forge keeps an arming across
@@ -336,7 +338,7 @@ the push recording it has landed:
 
 - withdraws it whole (auto-merge off, and out of the queue): "abcd release
   hold: the merge of #1234 is withdrawn by octo while release v0.16.0 is cut,
-  and is re-armed after it." Every such disarm is posted, a live renewal's
+  and is re-armed after it where the merge gate arms its head." Every such disarm is posted, a live renewal's
   withdrawal again included (after a run cut off before the forge, or after
   its owner re-armed it by hand);
 - admits it: "abcd release hold: the merge of #1234 is admitted into release

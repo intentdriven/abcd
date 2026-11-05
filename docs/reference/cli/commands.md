@@ -4105,7 +4105,8 @@ credentials, so run it only on a branch whose content you trust.
      gate allows it, pinned to the head: into the merge queue by its method where
      one gates the default branch (then confirmed in the queue), otherwise as the
      forge's auto-merge (a merge commit; a forge that refuses it is said). An
-     arming someone else made is left as it is. Where a merge queue gates the
+     arming someone else made at a head the gate arms is left as it is. Where a merge
+     queue gates the
      default branch, a branch that shares a commit not on it with another pull
      request queued or armed into it (a branch cut from that one's) is not armed:
      the step stops naming it, since the queue would remove this one; run abcd land
@@ -4157,8 +4158,9 @@ keep that sighting for (no .abcd/.work.local/) is not counted, and a notice
 line on stderr names it.
 
 Before a push that will move the head of the branch's armed or queued pull request,
-land withdraws the arming, reads it back and says so. Where it cannot, it refuses,
-nothing pushed.
+land withdraws the arming, reads it back and says so. Where the merge gate refuses
+the local head, land withdraws this account's arming at it and refuses over another
+account's. Where it cannot make a withdrawal, it refuses, nothing pushed.
 
 Exit 0 when every step did its act or said why it stopped. Exit 2 on a refusal,
 which names what was done before it; reservations that cannot be fetched are

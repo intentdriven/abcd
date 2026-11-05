@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // The watch over an armed lane queues or toggles only a head the merge gate
@@ -268,5 +269,57 @@ func TestAWithdrawalAtARefusedHeadIsRecordedWhenItsReadBackFails(t *testing.T) {
 	}
 	if log := strings.TrimPrefix(f.ghLog(t), before); strings.Contains(log, "pr merge 7 --auto") {
 		t.Fatalf("a head the gate refuses was armed:\n%s", log)
+	}
+}
+
+// An enqueue the forge goes on refusing is toggled a bounded number of times,
+// and then the wait says the loop has stopped.
+func TestTheWatchStopsTogglingAfterItsBound(t *testing.T) {
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	l := f.landedToArmed(t)
+	f.queueAnswer(t, stubQueue{head: l.Landing.Pushed, enabledAt: "2026-10-15T07:00:00Z", status: "CLEAN"})
+	if err := os.WriteFile(filepath.Join(f.gh, "refuse-enqueue"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	before := f.ghLog(t)
+	late := Options{Now: func() time.Time { return time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC) }}
+	var last error
+	for range maxToggles + 3 {
+		_, last = advance(f.repo.Root(), f.runID, f.stages, late)
+	}
+	log := strings.TrimPrefix(f.ghLog(t), before)
+	if got := strings.Count(log, "pr merge 7 --disable-auto"); got != maxToggles {
+		t.Fatalf("toggled %d times, want %d:\n%s", got, maxToggles, log)
+	}
+	if r := mustRefusal(t, last); !r.Contention || !strings.Contains(r.Reason, "no longer toggles") {
+		t.Fatalf("the wait says the loop stopped: %+v", r)
+	}
+}
+
+// A facilitator.mode that does not read is a wait for an armed lane: the arming
+// stands, and the wait says so rather than that nothing was armed.
+func TestTheWatchWaitsWhenTheModeDoesNotRead(t *testing.T) {
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	l := f.landedToArmed(t)
+	f.queueAnswer(t, stubQueue{head: l.Landing.Pushed, enabledAt: "2026-10-15T07:00:00Z", status: "CLEAN"})
+	dir := t.TempDir()
+	f.repo.Git("clone", "-q", f.bare, dir)
+	if err := os.MkdirAll(filepath.Join(dir, ".abcd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".abcd", "config.json"), []byte(`{"facilitator":{"mode":"sometimes"}}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f.repo.Git("-C", dir, "add", ".abcd/config.json")
+	f.repo.Git("-C", dir, "-c", "user.name=A Person", "-c", "user.email=a@example.com", "-c", "core.hooksPath=/dev/null", "commit", "-q", "-m", "a mode that does not read")
+	f.repo.Git("-C", dir, "-c", "core.hooksPath=/dev/null", "push", "-q", "origin", "main")
+	before := f.ghLog(t)
+	_, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
+	r := mustRefusal(t, err)
+	if !r.Contention || !strings.Contains(r.Reason, "left as it is") || strings.Contains(r.Reason, "nothing was armed") {
+		t.Fatalf("a mode that does not read is a wait that says the arming stays: %+v", r)
+	}
+	if log := strings.TrimPrefix(f.ghLog(t), before); strings.Contains(log, "--disable-auto") || strings.Contains(log, "enqueuePullRequest") {
+		t.Fatalf("the arming was touched:\n%s", log)
 	}
 }

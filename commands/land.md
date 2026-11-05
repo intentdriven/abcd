@@ -100,8 +100,10 @@ that name with none at this head, since the proof may lie past the bound.
 3. **withdraw**: where the push will move the head of an armed or queued pull
    request from this repository, land withdraws the arming first, reads it back
    and says so in this step's note, and the enqueue step arms the new head where
-   the merge gate allows. Where land cannot make that withdrawal, it refuses,
-   nothing pushed, and the refusal says what to do. Relay the note.
+   the merge gate allows. Where the gate refuses the local head, land withdraws
+   this account's arming at it, and refuses over another account's. Where land
+   cannot make a withdrawal, it refuses, nothing pushed, and the refusal says
+   what to do. Relay the note.
 4. **push** (`land.push`): the plain push above, of the gated commit whatever
    the branch names by then. A push git refuses carries git's own per-ref
    report.

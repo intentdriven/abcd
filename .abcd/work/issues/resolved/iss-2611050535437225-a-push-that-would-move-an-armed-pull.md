@@ -17,7 +17,7 @@ resolved_by:
   commit: "49de3c1a656c"
 ---
 
-A push that would move an armed pull request past its reviewed head is refused until it is re-reviewed.
+abcd land withdraws the arming before a push that moves an armed pull request's head, and arms the new head only where the merge gate does; the committed pre-push hook refuses a fast-forward it reads as moving that head.
 
 ## Grounds
 

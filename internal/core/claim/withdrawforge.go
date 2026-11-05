@@ -270,11 +270,13 @@ func forgeTransient(msg string) bool {
 
 // armError is a re-arm the forge did not take: why, and whether the forge
 // refused it (forgeRefused), which alone counts toward maxRearmRefusals, or the
-// merge gate held it back (gated) with nothing sent to the forge.
+// merge gate held it back (gated) with nothing sent to the forge, unread saying
+// the gate could not answer rather than that it refused.
 type armError struct {
 	reason  string
 	refused bool
 	gated   bool
+	unread  bool
 }
 
 func (e *armError) Error() string { return e.reason }
@@ -431,11 +433,10 @@ func (f mergeForge) rearm(root, owner, name string, w Withdrawal) (string, error
 // The forge's node id for the number must be the one recorded: every
 // mutation names the pull request by node id, and node ids are global, so a
 // record pairing one pull request's number with another's id (in this
-// repository or any other) is never acted on (mismatch). An admitted one
-// found armed or queued counts as done whatever its head: the forge keeps an
-// arming across pushes to the head, so its owner's push during the cut left
-// it armed, and nothing is left for its owner to re-arm. A withdrawn one whose
-// head moved is its owner's to re-arm (dcn-2610222219297487).
+// repository or any other) is never acted on (mismatch). One found armed or
+// queued counts as done where the merge gate arms the head it stands at. An
+// admitted one past a head the gate refuses, and a withdrawn one whose head
+// moved, is its owner's to re-arm (dcn-2610222219297487).
 func (f mergeForge) inspect(root, owner, name string, w Withdrawal) (string, error) {
 	n, err := f.pullRequest(root, owner, name, w.Number)
 	if err != nil {
@@ -448,14 +449,22 @@ func (f mergeForge) inspect(root, owner, name string, w Withdrawal) (string, err
 		return WithdrawnMerged, nil
 	case n.State == "CLOSED":
 		return WithdrawnClosed, nil
-	case w.State == WithdrawnAdmitted && n.armed():
-		return WithdrawnFoundArmed, nil
-	case n.HeadRefOid != w.Head:
+	case n.HeadRefOid != w.Head && (w.State != WithdrawnAdmitted || !n.armed()):
 		return WithdrawnMoved, nil
-	case n.armed():
-		return WithdrawnFoundArmed, nil
+	case !n.armed():
+		return "", nil
 	}
-	return "", nil
+	// Found armed counts as done only at a head the merge gate arms. An admitted
+	// one past a head it refuses is its owner's; any other refusal goes the way
+	// of an arming the gate holds.
+	if err := f.gateHeadAt(root, w.Number, n.HeadRefOid); err != nil {
+		var ae *armError
+		if n.HeadRefOid != w.Head && errors.As(err, &ae) && !ae.unread {
+			return WithdrawnMoved, nil
+		}
+		return "", err
+	}
+	return WithdrawnFoundArmed, nil
 }
 
 // cleanStatus is the forge's refusal of an arming when the pull request can
@@ -492,22 +501,34 @@ func (f mergeForge) arm(root string, w Withdrawal) (string, error) {
 // Its refusal is a *armError marked gated: nothing went to the forge, nothing is
 // settled, and a later act asks again, so a receipt recorded since arms it.
 func (f mergeForge) gateHead(root string, w Withdrawal) error {
-	held := func(why string) error { return &armError{reason: why, gated: true} }
+	return f.gateHeadAt(root, w.Number, w.Head)
+}
+
+// gateHeadAt is gateHead for the head a pull request stands at.
+func (f mergeForge) gateHeadAt(root string, number int, head string) error {
+	unread := func(why string) error { return &armError{reason: why, gated: true, unread: true} }
 	if f.armGate == nil {
-		return held("no merge gate is wired in this binary, so its head " + w.Head[:12] + " is not armed")
+		return unread("no merge gate is wired in this binary, so its head " + head[:12] + " is not armed")
 	}
 	owner, name, err := f.repo(root)
 	if err != nil {
-		return held("the merge gate cannot be asked about its head " + w.Head[:12] + ": " + err.Error())
+		return unread("the merge gate cannot be asked about its head " + head[:12] + ": " + err.Error())
 	}
-	arm, why, err := f.armGate(root, owner+"/"+name, strconv.Itoa(w.Number), w.Head)
+	arm, why, err := f.armGate(root, owner+"/"+name, strconv.Itoa(number), head)
 	switch {
 	case err != nil:
-		return held("the merge gate cannot be asked about its head " + w.Head[:12] + ": " + err.Error())
+		return unread("the merge gate cannot be asked about its head " + head[:12] + ": " + err.Error())
 	case !arm:
-		return held("the merge gate does not arm its head " + w.Head[:12] + ": " + why)
+		return &armError{reason: "the merge gate does not arm its head " + head[:12] + ": " + why, gated: true}
 	}
 	return nil
+}
+
+// heldBody is the one fixed sentence on a pull request whose re-arm the merge gate
+// holds. Every value in it is validated data, as commentBody's are.
+func heldBody(subject string, w Withdrawal) string {
+	return fmt.Sprintf("abcd release hold: the merge of #%d stays withdrawn after release %s: no review or approval in this checkout names its head %s. abcd land from a checkout holding the review re-arms it.",
+		w.Number, strings.TrimPrefix(subject, releasePrefix), w.Head[:12])
 }
 
 // commentBody is the one fixed sentence the writer posts on w's pull request
@@ -530,7 +551,7 @@ func commentBody(subject string, w Withdrawal, by string, lapsed bool) string {
 	}
 	switch w.State {
 	case WithdrawnPending:
-		return fmt.Sprintf("abcd release hold: the merge of #%d is withdrawn by %s while release %s is cut, and is re-armed after it.", w.Number, by, tag)
+		return fmt.Sprintf("abcd release hold: the merge of #%d is withdrawn by %s while release %s is cut, and is re-armed after it where the merge gate arms its head.", w.Number, by, tag)
 	case WithdrawnAdmitted:
 		return fmt.Sprintf("abcd release hold: the merge of #%d is admitted into release %s by %s.", w.Number, tag, by)
 	case WithdrawnRearmed:

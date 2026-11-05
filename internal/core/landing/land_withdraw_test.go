@@ -137,23 +137,90 @@ func TestLandTurnsAutoMergeOffBeforeItDequeues(t *testing.T) {
 	}
 }
 
-// The enqueue step reports an arming already at the local head.
-func TestLandReportsAnArmingAtTheLocalHead(t *testing.T) {
-	cases := []struct {
+// At the local head, a refusal by the merge gate takes this account's arming off.
+func TestLandWithdrawsItsOwnArmingAtAHeadTheGateRefuses(t *testing.T) {
+	for _, c := range []struct {
+		name, config string
+		set          func(f *fixture)
+		says         string
+	}{
+		{"auto, no receipt", autoConfig, nil, "no review receipt names"},
+		{"human, no approval", humanConfig, func(f *fixture) { f.forge.reviews = "[]" }, "waits for the technical facilitator's approval"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": c.config})
+			f.forge.prs = f.prFor(f.head())
+			f.forge.armings = []string{armingBy(f.head(), true, false, "alice"), "[]"}
+			if c.set != nil {
+				c.set(f)
+			}
+			seen := withdrawnAtPush(f, "pr", "merge", "7", "--disable-auto")
+			res, err := f.land(f.options())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if *seen != 1 {
+				t.Fatalf("withdrawals at the push %d; calls %v", *seen, f.forge.calls)
+			}
+			if s := step(t, res, "withdraw"); s.Status != StatusDone || !strings.Contains(s.Note, c.says) {
+				t.Fatalf("withdraw step %+v does not say %q", s, c.says)
+			}
+			if f.forge.called("pr", "merge", "7", "--auto") != 0 || step(t, res, "enqueue").Status != StatusLeft {
+				t.Fatalf("calls %v, steps %+v: want nothing armed again", f.forge.calls, res.Steps)
+			}
+		})
+	}
+}
+
+// At the local head, a refusal by the merge gate over another account's arming
+// stops the landing: the arming is theirs, and land says so with a failing exit.
+func TestLandRefusesOverAnotherAccountsArmingAtAHeadTheGateRefuses(t *testing.T) {
+	for _, c := range []struct {
 		name, config, by string
 		set              func(f *fixture)
 		says             string
 	}{
-		{"its own, with no receipt", autoConfig, "alice", nil, "no review receipt names"},
-		{"another account's, unapproved in human mode", humanConfig, "someone-else", func(f *fixture) { f.forge.reviews = "[]" }, "waits for the technical facilitator's approval"},
+		{"auto, no receipt", autoConfig, "someone-else", nil, "no review receipt names"},
+		{"human, no approval", humanConfig, "someone-else", func(f *fixture) { f.forge.reviews = "[]" }, "waits for the technical facilitator's approval"},
+		{"unattributed", autoConfig, "", nil, "no review receipt names"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": c.config})
+			f.forge.prs = f.prFor(f.head())
+			f.forge.armings = []string{armingBy(f.head(), true, false, c.by)}
+			if c.set != nil {
+				c.set(f)
+			}
+			_, err := f.land(f.options())
+			wantRefusal(t, err, c.says)
+			wantRefusal(t, err, "gh pr merge 7 --disable-auto")
+			wantRefusal(t, err, "nothing was pushed")
+			noWithdrawal(t, f)
+			if len(f.pushes()) != 0 {
+				t.Fatalf("pushes %v", f.pushes())
+			}
+		})
+	}
+}
+
+// An answer the gate could not read refuses nothing, and the enqueue step says
+// the arming stays.
+func TestLandLeavesAnArmingWhenItCannotReadTheGate(t *testing.T) {
+	for _, c := range []struct {
+		name, config, by string
+		set              func(f *fixture)
+		says             string
+	}{
 		{"the author's permission read fails", autoConfig, "alice", func(f *fixture) {
 			f.forge.roles = map[string]string{"author-a": "!gh: HTTP 502: Bad Gateway"}
 		}, "unverified"},
-		{"the pull request read fails", humanConfig, "alice", func(f *fixture) {
+		{"the pull request read fails", humanConfig, "someone-else", func(f *fixture) {
 			f.forge.pullErr = errors.New("gh: HTTP 502: Bad Gateway")
 		}, "unverified"},
-	}
-	for _, c := range cases {
+		{"the reviews read fails", humanConfig, "alice", func(f *fixture) {
+			f.forge.reviewsErr = errors.New("gh: HTTP 502: Bad Gateway")
+		}, "could not be asked"},
+	} {
 		t.Run(c.name, func(t *testing.T) {
 			f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": c.config})
 			f.forge.prs = f.prFor(f.head())
@@ -166,12 +233,22 @@ func TestLandReportsAnArmingAtTheLocalHead(t *testing.T) {
 				t.Fatal(err)
 			}
 			noWithdrawal(t, f)
-			s := step(t, res, "enqueue")
-			if !strings.Contains(s.Note, c.says) || !strings.Contains(s.Note, "is left as it is") {
+			if s := step(t, res, "enqueue"); !strings.Contains(s.Note, c.says) || !strings.Contains(s.Note, "is left as it is") {
 				t.Fatalf("enqueue step %+v: want %q and the arming said left", s, c.says)
+			}
+			if s := step(t, res, "withdraw"); s.Status != StatusLeft || !strings.Contains(s.Note, "left as it is") {
+				t.Fatalf("withdraw step %+v", s)
 			}
 		})
 	}
+	t.Run("the mode does not read", func(t *testing.T) {
+		f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": `{"facilitator":{"mode":"sometimes"}}` + "\n"})
+		f.forge.prs = f.prFor(f.head())
+		f.forge.armings = []string{armingBy(f.head(), true, false, "alice")}
+		_, err := f.land(f.options())
+		wantRefusal(t, err, "is left as it is")
+		noWithdrawal(t, f)
+	})
 }
 
 func TestLandLeavesAnArmingAtAReviewedLocalHead(t *testing.T) {
@@ -248,22 +325,49 @@ func TestLandLeavesAnArmingAtAHeadItsLocalHeadDoesNotDescendFrom(t *testing.T) {
 	})
 }
 
-// The forge's reading can lag origin's: a push that changes nothing moves no
-// head, so a good arming is not taken off for it.
-func TestLandLeavesAnArmingWhenOriginAlreadyHoldsTheLocalHead(t *testing.T) {
-	f, old := moving(t)
-	f.reviewed(t)
-	f.repo.Git("push", "-q", "origin", "feat/x")
-	f.forge.prs = f.prFor(old)
-	f.forge.armings = []string{armingBy(old, true, false, "alice")}
-	res, err := f.land(f.options())
-	if err != nil {
-		t.Fatal(err)
+// With origin already at the local head the push moves nothing, so the gate's
+// answer for that head decides, as for an arming the forge reads there.
+func TestLandAsksTheGateWhenOriginAlreadyHoldsTheLocalHead(t *testing.T) {
+	holding := func(t *testing.T) (*fixture, string) {
+		f, old := moving(t)
+		f.repo.Git("push", "-q", "origin", "feat/x")
+		f.forge.prs = f.prFor(old)
+		return f, old
 	}
-	noWithdrawal(t, f)
-	if s := step(t, res, "withdraw"); s.Status != StatusLeft || !strings.Contains(s.Note, "left as it is") {
-		t.Fatalf("withdraw step %+v", s)
-	}
+	t.Run("a receipt names it", func(t *testing.T) {
+		f, old := holding(t)
+		f.reviewed(t)
+		f.forge.armings = []string{armingBy(old, true, false, "alice")}
+		res, err := f.land(f.options())
+		if err != nil {
+			t.Fatal(err)
+		}
+		noWithdrawal(t, f)
+		if s := step(t, res, "withdraw"); s.Status != StatusLeft || !strings.Contains(s.Note, "left as it is") {
+			t.Fatalf("withdraw step %+v", s)
+		}
+	})
+	t.Run("no receipt, its own arming", func(t *testing.T) {
+		f, old := holding(t)
+		f.forge.armings = []string{armingBy(old, true, false, "alice"), "[]"}
+		res, err := f.land(f.options())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if f.forge.called("pr", "merge", "7", "--disable-auto") != 1 {
+			t.Fatalf("calls %v: want its arming withdrawn", f.forge.calls)
+		}
+		if s := step(t, res, "withdraw"); s.Status != StatusDone || !strings.Contains(s.Note, "no review receipt names") {
+			t.Fatalf("withdraw step %+v", s)
+		}
+	})
+	t.Run("no receipt, another account's", func(t *testing.T) {
+		f, old := holding(t)
+		f.forge.armings = []string{armingBy(old, true, false, "someone-else")}
+		_, err := f.land(f.options())
+		wantRefusal(t, err, "no review receipt names")
+		noWithdrawal(t, f)
+	})
 }
 
 func TestLandLeavesAnArmingWhenOriginCannotSayWhereTheBranchIs(t *testing.T) {
@@ -421,6 +525,48 @@ func TestAListingWithMoreBehindItStopsThePush(t *testing.T) {
 	noWithdrawal(t, f)
 }
 
+// A refusal after a withdrawal says what came off: the arming is gone whatever
+// the rest of the step found.
+func TestARefusalAfterAWithdrawalRecordsTheWithdrawal(t *testing.T) {
+	t.Run("the read-back fails", func(t *testing.T) {
+		f, old := moving(t)
+		f.reviewed(t)
+		f.forge.armings = []string{armingBy(old, true, false, "alice")}
+		f.forge.armingsErrAt = 2
+		res, err := f.land(f.options())
+		wantRefusal(t, err, "the arming read failed")
+		if s := step(t, res, "withdraw"); !strings.Contains(s.Note, "#7") || !strings.Contains(s.Note, "withdrew") {
+			t.Fatalf("withdraw step %+v", s)
+		}
+		if len(f.pushes()) != 0 {
+			t.Fatalf("pushes %v", f.pushes())
+		}
+	})
+	t.Run("the forge still reports it", func(t *testing.T) {
+		f, old := moving(t)
+		f.reviewed(t)
+		f.forge.armings = []string{armingBy(old, true, false, "alice")}
+		res, err := f.land(f.options())
+		wantRefusal(t, err, "still reports")
+		if s := step(t, res, "withdraw"); !strings.Contains(s.Note, "#7") {
+			t.Fatalf("withdraw step %+v", s)
+		}
+	})
+	t.Run("a second withdrawal fails", func(t *testing.T) {
+		f, old := moving(t)
+		f.reviewed(t)
+		two := strings.TrimSuffix(armingBy(old, true, false, "alice"), "]") + "," +
+			`{"number":8,"id":"PR_8","headRefOid":"` + old + `","isCrossRepository":false,"isInMergeQueue":false,"mergeQueueEntry":null,"autoMergeRequest":{"mergeMethod":"MERGE","enabledBy":{"login":"alice"}}}]`
+		f.forge.armings = []string{two}
+		f.forge.failDisarmOf = "8"
+		res, err := f.land(f.options())
+		wantRefusal(t, err, "#8")
+		if s := step(t, res, "withdraw"); !strings.Contains(s.Note, "#7") || strings.Contains(s.Note, "#8") {
+			t.Fatalf("withdraw step %+v", s)
+		}
+	})
+}
+
 // DecideMerge tells a refusal of the head from an answer it could not read.
 func TestTheMergeGateMarksAnAnswerItCouldNotRead(t *testing.T) {
 	for _, c := range []struct {
@@ -479,6 +625,11 @@ func TestTheGateARearmAsksIsTheMergeGate(t *testing.T) {
 	f.reviewed(t)
 	if arm, why, err := rearmGate(ask, f.repo.Root(), "o/r", "7", f.head()); err != nil || !arm {
 		t.Fatalf("arm %v, why %q, err %v: want the arming at a reviewed head", arm, why, err)
+	}
+	f.forge.pullErr = errors.New("gh: HTTP 502")
+	g := f.head()
+	if arm, _, err := rearmGate(ask, f.repo.Root(), "o/r", "7", g); err == nil || arm {
+		t.Fatalf("arm %v, err %v: a read that failed is no answer, and no refusal", arm, err)
 	}
 	if !claim.ArmGateWired() {
 		t.Fatal("linking this package leaves no merge gate wired for a re-arm")
