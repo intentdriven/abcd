@@ -1463,7 +1463,8 @@ unreadable through its schedule end it too. --until <date>, a date (the end of t
 here) or an RFC 3339 instant, replaces those with one bound the yes names: the run waits
 through limits, outages and stuck queues at a capped interval, says what it waits on,
 keeps renewing what it holds, and at that time ends with the lane on its branch, an
-agent in a call finishing that call first. The first limit a run meets leaves its
+agent in a call finishing that call first. The bound is a time, not a limit on what the
+run spends. The first limit a run meets leaves its
 evidence under the same logs. One drive holds a checkout at a time; a second exits 3. A
 drive that stops short exits 3, and one a broken wall stopped exits 2. The first
 interrupt, hang-up or termination is a

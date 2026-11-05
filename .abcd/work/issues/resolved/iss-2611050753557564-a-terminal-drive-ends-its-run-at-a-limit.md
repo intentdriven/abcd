@@ -14,4 +14,4 @@ resolution: "A drive now takes --until: under that bound a limit's reset is wait
 impact: additive
 ---
 
-A terminal drive ends its run at a limit resetting past eight hours and after eight hours of outage or no movement, so an unattended run stops at the first weekly limit.
+A terminal drive ends its run at a limit resetting past eight hours and after eight hours of outage or no movement, so an unattended run stops at a limit whose reset lies past eight hours.

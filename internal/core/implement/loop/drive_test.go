@@ -126,6 +126,11 @@ func loopFakeHarness(mode string) int {
 		fmt.Println(`{"type":"result","subtype":"success","is_error":true,"result":"limit reached","session_id":"fake-session-3"}`)
 		return 1
 	}
+	if mode == "startedcrash" {
+		// A launch that reached its init event and then failed.
+		fmt.Println(`{"type":"system","subtype":"init","session_id":"fake-session-4","model":"fake-model"}`)
+		return 1
+	}
 	if mode == "notloggedin" {
 		// The claude CLI run with --bare and no API key in its environment
 		// (iss-2611012047534449): nothing on stdout, the cause on stderr's

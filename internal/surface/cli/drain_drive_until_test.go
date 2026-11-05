@@ -1,11 +1,13 @@
 package cli
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
+	"github.com/intentdriven/abcd/internal/core/runner"
 )
 
 // The bound a person sets on a drive (iss-2611050753557564): --until reaches the
@@ -103,18 +105,130 @@ func TestADriveCanAskForHundredsOfLanes(t *testing.T) {
 	}
 }
 
-// TestADriveHandsTheLoopItsProbe: a limit with no reset is probed on the walled
-// login.
-func TestADriveHandsTheLoopItsProbe(t *testing.T) {
+// TestADriveHandsTheLoopItsProbeOnlyUnderABound: the yes of a drive with no bound
+// never mentioned a probe.
+func TestADriveHandsTheLoopItsProbeOnlyUnderABound(t *testing.T) {
 	w := newDriveWorld(t)
 	w.passWalls(t)
+	at := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
 	var out, errb strings.Builder
-	if code := Run([]string{"drain", "--drive", "--yes"}, &out, &errb); code != 0 {
+	if code := Run([]string{"drain", "--drive", "--yes", "--until", at}, &out, &errb); code != 0 {
 		t.Fatalf("exit %d:\n%s%s", code, out.String(), errb.String())
 	}
 	if w.terminal.Probe == nil {
-		t.Fatal("the loop has no probe")
+		t.Fatal("under a bound the loop has its probe")
 	}
+	if code := Run([]string{"drain", "--drive", "--yes"}, &out, &errb); code != 0 {
+		t.Fatalf("exit %d:\n%s%s", code, out.String(), errb.String())
+	}
+	if w.terminal.Probe != nil {
+		t.Fatal("with no bound the loop has no probe")
+	}
+}
+
+// TestAnEmptyUntilIsRefused: not read as no bound.
+func TestAnEmptyUntilIsRefused(t *testing.T) {
+	w := newDriveWorld(t)
+	w.passWalls(t)
+	text := refusedDrive(t, "drain", "--drive", "--yes", "--until", "")
+	if !strings.Contains(text, "--until") || w.terminalCalls != 0 {
+		t.Fatalf("the refusal names the flag and nothing runs: %d calls: %s", w.terminalCalls, text)
+	}
+}
+
+// TestUnderABoundTheEstimateSaysItIsNoCeiling: retries through limits and outages can
+// pass it, and the bound is a time, not a limit on what is spent.
+func TestUnderABoundTheEstimateSaysItIsNoCeiling(t *testing.T) {
+	at := time.Now().Add(14 * 24 * time.Hour).UTC().Format(time.RFC3339)
+	w := newDriveWorld(t)
+	w.passWalls(t)
+	withTerminal(t)
+	out, err := runCLIPipedStdin(t, "n\n", "drain", "--drive", "--until", at)
+	if err != nil {
+		t.Fatalf("a no is no failure: %v\n%s", err, out)
+	}
+	if strings.Contains(string(out), "at most") || !strings.Contains(string(out), "not a limit on what it spends") {
+		t.Fatalf("the consent says the estimate holds no longer:\n%s", out)
+	}
+	out, err = runCLIPipedStdin(t, "n\n", "drain", "--drive")
+	if err != nil {
+		t.Fatalf("a no is no failure: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "at most") {
+		t.Fatalf("with no bound the estimate reads as it did:\n%s", out)
+	}
+}
+
+// limitedProof has the live proof meet a limit calls times, then hold, on an injected
+// clock, and reports how many proofs ran.
+func limitedProof(t *testing.T, calls int, reset func(now time.Time) time.Time) (*int, *time.Time) {
+	t.Helper()
+	clock := time.Now().UTC().Truncate(time.Second)
+	wait := driveProofWait
+	t.Cleanup(func() { driveProofWait = wait })
+	driveProofWait.now = func() time.Time { return clock }
+	driveProofWait.sleep = func(_ context.Context, d time.Duration) { clock = clock.Add(d) }
+	proofs := 0
+	driveWalls.live = func(context.Context, runner.Profile) error {
+		proofs++
+		if proofs <= calls {
+			return &runner.LimitError{ResetsAt: reset(clock)}
+		}
+		return nil
+	}
+	return &proofs, &clock
+}
+
+// TestALimitAtTheLiveProofIsWaitedOutUnderABound: a restart during a limit waits for
+// its reset, proves again, and goes on.
+func TestALimitAtTheLiveProofIsWaitedOutUnderABound(t *testing.T) {
+	w := newDriveWorld(t)
+	w.passWalls(t)
+	proofs, _ := limitedProof(t, 1, func(now time.Time) time.Time { return now.Add(3 * time.Hour) })
+	at := time.Now().Add(30 * 24 * time.Hour).UTC().Format(time.RFC3339)
+	var out, errb strings.Builder
+	if code := Run([]string{"drain", "--drive", "--yes", "--until", at}, &out, &errb); code != 0 {
+		t.Fatalf("exit %d:\n%s%s", code, out.String(), errb.String())
+	}
+	if *proofs != 2 || w.terminalCalls != 1 {
+		t.Fatalf("the proof runs again and the loop starts: %d proofs, %d calls", *proofs, w.terminalCalls)
+	}
+	if !strings.Contains(out.String()+errb.String(), "rate limit") {
+		t.Fatalf("the wait names the limit:\n%s%s", out.String(), errb.String())
+	}
+}
+
+// TestALimitAtTheLiveProofWithNoBoundIsRefusedAsALimit: it says so, and blames no
+// wall.
+func TestALimitAtTheLiveProofWithNoBoundIsRefusedAsALimit(t *testing.T) {
+	w := newDriveWorld(t)
+	w.passWalls(t)
+	limitedProof(t, 1, func(now time.Time) time.Time { return now.Add(3 * time.Hour) })
+	var out, errb strings.Builder
+	code := Run([]string{"drain", "--drive", "--yes"}, &out, &errb)
+	text := out.String() + errb.String()
+	if code != 3 || !strings.Contains(text, "rate limit") || strings.Contains(text, "does not hold") {
+		t.Fatalf("exit %d, naming the limit:\n%s", code, text)
+	}
+	if !strings.Contains(text, "--until") || w.terminalCalls != 0 {
+		t.Fatalf("it names the way to wait, and nothing runs: %d calls:\n%s", w.terminalCalls, text)
+	}
+	noDrainBegun(t, w.repo)
+}
+
+// TestABoundPassingAtTheLiveProofEndsCleanly: nothing starts, and that is no failure.
+func TestABoundPassingAtTheLiveProofEndsCleanly(t *testing.T) {
+	w := newDriveWorld(t)
+	w.passWalls(t)
+	limitedProof(t, 1000, func(now time.Time) time.Time { return now.Add(30 * 24 * time.Hour) })
+	at := time.Now().Add(6 * time.Hour).UTC().Format(time.RFC3339)
+	var out, errb strings.Builder
+	code := Run([]string{"drain", "--drive", "--yes", "--until", at}, &out, &errb)
+	text := out.String() + errb.String()
+	if code != 0 || w.terminalCalls != 0 || !strings.Contains(text, "nothing started") {
+		t.Fatalf("exit %d, %d calls:\n%s", code, w.terminalCalls, text)
+	}
+	noDrainBegun(t, w.repo)
 }
 
 func TestTheEndSaysTheBoundEndedIt(t *testing.T) {

@@ -37,11 +37,24 @@ const (
 	// terminalProbeMisses is how many probes in a row may get no answer before
 	// the lane's own launch finds out instead.
 	terminalProbeMisses = 3
-	// terminalResetSane is the furthest a reset may be and be read as one: past
-	// any usage window, so a field in another unit reads as no reset rather
-	// than a wait until the bound.
+	// terminalResetSane is the furthest a reset may be and be read as one, so a
+	// field in another unit reads as no reset rather than a wait until the bound.
 	terminalResetSane = 35 * 24 * time.Hour
+	// terminalNamedProbeEvery is how often a wait for a named reset asks whether
+	// the limit still holds. A real limit is expected to reject the asking.
+	terminalNamedProbeEvery = 4 * time.Hour
+	// terminalFarReset is how far off a named reset is worth doubting sooner, and
+	// terminalFarResetFirstLook how soon. The figure encodes no host's window.
+	terminalFarReset          = 8 * 24 * time.Hour
+	terminalFarResetFirstLook = 30 * time.Minute
+	// terminalPoisonLaunches is how many launches of one role in a row may reach
+	// the model and fail before the lane goes back.
+	terminalPoisonLaunches = 3
 )
+
+// terminalCallSayEvery is how often an agent's call or a preflight says it is still
+// going.
+const terminalCallSayEvery = 30 * time.Minute
 
 // terminalSayEvery is how often a wait that has not changed says it still stands.
 const terminalSayEvery = 30 * time.Minute

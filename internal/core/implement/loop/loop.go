@@ -55,6 +55,9 @@ type Options struct {
 	// RunnerFailed is told of each launch that failed, with what it showed; nil
 	// tells no one. A terminal run reads a limit and keeps its evidence from it.
 	RunnerFailed func(role string, fl *runner.Failure)
+	// RunnerStarting is told of each agent about to start, by role; nil tells no
+	// one. A terminal run says so on its screen and in its log.
+	RunnerStarting func(role string)
 	// Runners is the runner configuration read before a run is created
 	// (LoadRunners). A new run's budget check (budget.go) asks each runner a
 	// role of the run is routed to for its remaining quota; nil leaves every
@@ -135,6 +138,13 @@ func (o Options) roots(repoRoot string) layered.Roots {
 	}
 	r, _ := layered.RootsFor(repoRoot)
 	return r
+}
+
+// startingLaunch tells RunnerStarting of an agent about to start.
+func (o Options) startingLaunch(role string) {
+	if o.RunnerStarting != nil {
+		o.RunnerStarting(role)
+	}
 }
 
 // failedLaunch tells RunnerFailed of what a dispatch ended on, an error or a

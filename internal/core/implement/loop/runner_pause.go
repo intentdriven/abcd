@@ -480,6 +480,7 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		Record: func(fb runner.FallbackReceipt) error { fell = &fb; return nil },
 		Now:    o.Now,
 	}
+	o.startingLaunch(aw.Role)
 	out, err := d.Dispatch(ctx, req)
 	o.failedLaunch(aw.Role, err, out.Failure)
 	retry := func(r StepResult, p *RunnerPause) StepResult {

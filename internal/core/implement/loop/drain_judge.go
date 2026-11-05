@@ -214,6 +214,7 @@ func routedJudgement(repoRoot string, iss capture.Issue, v capture.DrainVerdict,
 		},
 		Now: func() time.Time { return now },
 	}
+	o.startingLaunch(RoleDrainJudge)
 	out, err := dsp.Dispatch(ctx, req)
 	if ctx.Err() != nil {
 		return nil, "", true, judgeStopped(iss.ID)
@@ -231,6 +232,7 @@ func routedJudgement(repoRoot string, iss capture.Issue, v capture.DrainVerdict,
 		}
 		return nil, "the drain judge did not judge " + iss.ID + " (" + why + "), so the request is the host's", true, nil
 	case taken == nil:
+		o.failedLaunch(RoleDrainJudge, nil, &runner.Failure{Runner: out.Receipt.Route.Ran, Reason: runner.ReasonInvalid, Detail: "it handed no answer back"})
 		return nil, "the drain judge ran but handed no answer back, so the request is the host's", true, nil
 	}
 	route := out.Receipt.Route

@@ -57,6 +57,8 @@ func terminalFakeTurn(role string) string {
 		return "notloggedin"
 	case "limited":
 		return "ratelimit"
+	case "crashes":
+		return "startedcrash"
 	case "dies":
 		// The harness killed mid-call: no result, no receipt.
 		_ = syscall.Kill(os.Getpid(), syscall.SIGKILL)

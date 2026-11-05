@@ -66,38 +66,63 @@ since that is what was asked. An agent in a call finishes that call first, and
 long unattended run needs `--until`, and `--max` too, since the cap stays eight
 lanes unless it says otherwise.
 
-Under a bound nothing but the bound, the cap, an empty ledger or a stop ends the run:
+The bound is a time, not a limit on what the run spends: the yes's estimate is what
+the work costs if nothing fails, and retries and probes add to it. Under a bound
+nothing but the bound, the cap, an empty ledger or a stop ends the run:
 
+- **A limit at the live check.** A limit met by the check before the first move is no
+  failed check. It waits as any limit does and the check runs again, so a restart
+  during a limit picks the run up. With no `--until`, the drive refuses, exit 3,
+  naming the limit.
 - **A limit with a reset.** No agent starts, the judge included, until the time the
   harness named, however far off. A wait counts both the time slept and the wall
   clock, so a machine that sleeps through part of it wakes at the right time and a
-  clock set back does not stretch it. A reset more than 35 days off reads as a
-  misread field and is treated as no reset.
-- **A limit with no reset.** One short launch on the profile, holding no tool
-  and naming no brief, asks whether the limit has lifted, one, five and ten minutes
-  on and then every thirty. When it has, the lane's own agent starts. A probe that
-  gets no answer says nothing about the limit, and the run keeps asking.
+  clock set back does not stretch it. Every four hours a short probe asks whether the
+  limit still holds, and half an hour in for a reset more than eight days off: a
+  rejected probe changes nothing, and the first probe answered ends the wait, since
+  the reset was read wrongly. A reset more than 35 days off reads as a misread field
+  and is treated as no reset.
+- **A limit with no reset.** One short launch on the profile, asking for no tools and
+  naming no brief, on the model of the launch that met the limit, asks whether the
+  limit has lifted, one, five and ten minutes on and then every thirty. When it has,
+  the lane's own agent starts. Only the word it asked for counts as an answer. A probe
+  that gets none says nothing about the limit: after three in a row the lane's own
+  agent starts and finds out, and meets the limit again if it still holds.
 - **An agent that goes silent.** Silence cannot be told from a hang yet, so it is
   treated as one: the role's own deadline kills it, what it left stays in the lane's
   worktree, and the role is retried on the outage schedule. A stream that reported
-  a limit before its silence reads as that limit when the deadline falls.
+  a limit before its silence, and has not reported it lifted, reads as that limit when
+  the deadline falls. A silent launch is never counted against its lane.
 - **An outage or a stuck queue.** Runner failures keep the outage schedule, at most an
-  hour apart. Work held by someone else, the reservation cap and a contended lock are
-  looked at again at most fifteen minutes apart. Origin keeps its schedule and is
-  never given up on. An outage another session gave up on holds the run until
-  `abcd implement outage clear` or the bound.
+  hour apart. Work held by someone else, the reservation cap, a contended lock and a
+  push or fetch origin refused while reserving are looked at again at most fifteen
+  minutes apart. Origin keeps its schedule and is never given up on. An outage another
+  session gave up on holds the run until `abcd implement outage clear` or the bound. A
+  judge that could not run holds its issue back no more than any other waits: only one
+  that ran and answered badly is held back.
+- **Work that keeps failing.** Three launches of one role in a row that reached the
+  model and failed, an init event on a launch that ended by itself or something spent,
+  hand the lane back as stuck, and the run goes on to other issues.
 
 Each wait says what it waits on when it begins, when its reason changes, and at least
-hourly while it lasts. Through every wait the run renews what it holds. A claim that
-lapsed anyway, a machine asleep past its lease, is reserved again on waking; a peer
-who took the issue meanwhile keeps it, and the lane goes back as stuck.
+hourly while it lasts, and an agent's call or a preflight says when it starts and every
+half hour while it runs, on the screen and in the log. Through every wait the run renews
+what it holds, a lane parked at its open pull request included, read from the forge first
+and only when its renewal is due. A claim that lapsed anyway, a machine asleep past its
+lease, is reserved again on waking; a peer who took the issue meanwhile keeps it, and the
+lane goes back as stuck, as it does when its reservation was released during the wait.
+A judge's hold is the one thing left to lapse in a wait that long: the next move drops the
+request and asks again, after the drain's other eligible work.
+
+With no `--until` no probe runs: the lane's own launch finds out, as the yes said.
 
 The first limit a run meets leaves `drive-limit-<time>.jsonl` under
 `.abcd/.work.local/logs/`, the first other failure that may be one, a kill or a
 failed exit, `drive-suspect-<time>.jsonl`. Each holds the exit, the end of the event
 stream with every identifier dropped and free text reduced to its length, the first
 stderr line through the scanner's redactor, the reset read, what the loop decided,
-each probe's answer and when the run resumed.
+each probe's answer and when the run resumed. A file stops taking the stream's detail at
+64 KiB and goes on taking the answers, and the newest twenty of a kind are kept.
 
 The first interrupt, hang-up or termination is a stop: the agent in a call finishes
 that call, the lane's reservation is released, the lane stays on its branch, and

@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
@@ -96,7 +97,7 @@ type TerminalOptions struct {
 	// the cheapest launch that can tell. It reports true when it has; otherwise
 	// the failure says what came back. Nil leaves the lane's next launch to find
 	// out.
-	Probe func(ctx context.Context, role string) (bool, *runner.Failure)
+	Probe func(ctx context.Context, role, model string) (bool, *runner.Failure)
 }
 
 // PreflightRefused is why a lane's preflight is not run.
@@ -141,11 +142,28 @@ type terminal struct {
 	// lastWhy and lastSaid are the wait a line last named, and when.
 	lastWhy  string
 	lastSaid time.Time
-	// longWait says a wait since the last look was long enough for a claim to
-	// have lapsed, a machine asleep included.
-	longWait bool
+	// waited adds up the waits since whose holds were last read, short ones
+	// included and a machine asleep too, towards a check on the lane's claim.
+	waited time.Duration
+	// judgeAnswered says this move's judge ran and answered badly, which is the
+	// issue's fault; one that could not run says nothing of it.
+	judgeAnswered bool
+	// limitModel is the model of the launch that last met a limit.
+	limitModel string
+	// reached counts, by role, launches of the lane in hand that reached the
+	// model and failed, in a row.
+	reached map[string]int
+	// call is the agent's call or preflight in flight, what its lines say.
+	call terminalCall
 	// unanswered counts, by issue, the judgements asked and not answered.
 	unanswered map[string]int
+}
+
+// terminalCall is what is in flight, as the line that says so reads it.
+type terminalCall struct {
+	mu          sync.Mutex
+	what        string
+	since, said time.Time
 }
 
 // RunTerminal drives the drain from here until its cap, an empty ledger, the
@@ -170,6 +188,7 @@ func newTerminal(repoRoot string, o TerminalOptions) *terminal {
 	t := &terminal{repoRoot: repoRoot, o: o}
 	t.evidence = newDriveEvidence(repoRoot, func(line string) { t.say("%s", line) })
 	t.o.Options.RunnerFailed = t.noteFailure
+	t.o.Options.RunnerStarting = func(role string) { t.startCall("the " + role) }
 	if t.bounded() {
 		t.o.Drain.KeepWaiting = true
 		t.outage.noLimit, t.limit.noLimit = true, true
@@ -197,11 +216,21 @@ func (t *terminal) noteFailure(role string, fl *runner.Failure) {
 	}
 	entry := evidenceEntry{Event: "failure", Role: role, Runner: fl.Runner, Response: fl.Detail, Seen: fl.Seen}
 	if fl.Reason != runner.ReasonRateLimited {
+		switch {
+		case role == RoleDrainJudge:
+			t.judgeAnswered = fl.Reason == runner.ReasonInvalid || fl.Reason == runner.ReasonRefused || fl.Reason == runner.ReasonUnparsable
+		case t.bounded() && fl.ReachedModel():
+			if t.reached == nil {
+				t.reached = map[string]int{}
+			}
+			t.reached[role]++
+		}
 		if fl.Seen != nil {
 			t.evidence.begin("suspect", entry, t.now())
 		}
 		return
 	}
+	t.limitModel = fl.Model
 	if role == RoleDrainJudge {
 		t.judgeLimit = fl
 	}
@@ -267,6 +296,7 @@ func (t *terminal) sleep(ctx context.Context, d time.Duration, why string) {
 	}
 	end := now.Add(d)
 	asked := d
+	defer func() { t.waited += max(asked-d, t.now().Sub(now)) }()
 	t.sayWait(d, why)
 	t.renewHeld()
 	for d > 0 {
@@ -282,9 +312,6 @@ func (t *terminal) sleep(ctx context.Context, d time.Duration, why string) {
 		}
 		t.sayWait(d, why)
 	}
-	if asked >= terminalRenewEvery || t.now().Sub(end) >= terminalRenewEvery {
-		t.longWait = true
-	}
 }
 
 // sayWait prints a wait's line when its reason changed and every so often while it
@@ -299,12 +326,16 @@ func (t *terminal) sayWait(d time.Duration, why string) {
 }
 
 // renewHeld renews each due reservation of a run in progress, but one a drive
-// let go, and says what failed.
+// let go, and of a lane parked at its pull request, and says what failed.
 func (t *terminal) renewHeld() {
-	for _, r := range renewRunsAt(t.repoRoot, "", func(st State) bool { return !letGoByDrive(st) }, t.now()) {
+	now := t.now()
+	for _, r := range renewRunsAt(t.repoRoot, "", func(st State) bool { return !letGoByDrive(st) }, now) {
 		if !r.Renewed {
 			t.say("%s: %s", r.Key, r.Note)
 		}
+	}
+	for _, note := range renewParkedDue(t.repoRoot, now) {
+		t.say("%s", note)
 	}
 }
 
@@ -361,8 +392,9 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 		if !t.wallHeld() {
 			return t.ended(TerminalWall), nil
 		}
-		t.judgeLimit = nil
+		t.judgeLimit, t.judgeAnswered = nil, false
 		res, err := Drain(t.repoRoot, t.o.Options, t.o.Drain)
+		t.endCall()
 		if err != nil {
 			if ctx.Err() != nil {
 				return t.ended(TerminalKilled), nil
@@ -374,7 +406,9 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 			if t.haltedBy(err) {
 				return t.ended(TerminalHalted), nil
 			}
-			if r, ok := AsRefusal(err); ok && r.Contention {
+			// A push or fetch origin refused while reserving may pass; under a
+			// bound that is waited out, as a peer's hold is.
+			if r, ok := AsRefusal(err); ok && (r.Contention || (t.bounded() && r.originUnread)) {
 				if t.idle(ctx, TerminalWaitFloor, r.Reason) {
 					return t.ended(TerminalWaited), nil
 				}
@@ -413,7 +447,9 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 			continue
 		}
 		if res.Judging != nil {
-			if t.holdBack(res.Judging.Issue) {
+			// Under a bound only a judge that ran is counted against its issue:
+			// holding issues back for one that cannot run would empty the drain.
+			if (!t.bounded() || t.judgeAnswered) && t.holdBack(res.Judging.Issue) {
 				continue
 			}
 			if t.failed(ctx, true, "the judge did not judge "+res.Judging.Issue) {
@@ -473,6 +509,7 @@ func (t *terminal) sayMove(res DrainResult) {
 // next move has something to say about it. It returns why the run ends, "" to
 // go on to the next move.
 func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) {
+	t.reached = nil
 	if done, ended := t.takeUp(ctx, runID); done {
 		return ended, nil
 	}
@@ -508,6 +545,9 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 		})
 		if ctx.Err() != nil {
 			return TerminalKilled, nil
+		}
+		if t.poisoned(runID) {
+			return "", nil
 		}
 		if err != nil {
 			// The terminal's interrupt reaches the git a step was running.
@@ -557,7 +597,30 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 func (t *terminal) moved() {
 	t.outage.succeed()
 	t.limit.succeed()
+	t.reached = nil
 	t.evidence.resumed(t.now())
+}
+
+// poisoned hands a lane back when one role's launches have reached the model and
+// failed too many times in a row, under a bound, where nothing else would end it:
+// the fault is then the lane's, and the run goes on to other issues. Launches that
+// never got that far say nothing of the lane and stay on the outage's wait.
+func (t *terminal) poisoned(runID string) bool {
+	for role, n := range t.reached {
+		if n < terminalPoisonLaunches {
+			continue
+		}
+		run, err := ReadState(t.repoRoot, runID)
+		if err != nil {
+			return false
+		}
+		r := refuse(StageRunner, "", "", fmt.Sprintf("the %s reached the model and failed %d times in a row", role, n), "see the reason")
+		r.final = "launches of the same work failed the same way, so the lane goes back and the run goes on"
+		t.stayAsItIs(runID, run.Key, r)
+		t.reached = nil
+		return true
+	}
+	return false
 }
 
 // limited waits out the account's rate limit, role's agent having met it, and says
@@ -565,12 +628,19 @@ func (t *terminal) moved() {
 // judge's included. A reset the harness named is waited for, however far off under
 // the person's bound; beyond what a drive waits with no bound, the run ends now,
 // saying when it is. With none named the wait runs on the outage's schedule, capped
-// under a bound, and a probe asks at each turn whether the limit has lifted, so the
-// lane is not disturbed by asking. A probe that names a reset turns the wait into
-// that one; a few that get no answer say nothing of the limit, and the lane's own
-// launch finds out, which also serves a harness whose probe can never answer.
+// under a bound.
+//
+// Under a bound a probe asks too, so the lane is not disturbed by asking: at each
+// turn of that schedule, and at a low rate during a named wait, since a reset read
+// from a stream can be wrong and a limit that lets a probe through is over. A
+// probe that names a reset turns the wait into that one, and one rejected naming
+// none leaves the wait as it was. Probes with no answer say nothing of the limit: a
+// named wait goes on, and with none named a few in a row leave it to the lane's own
+// launch, which also serves a harness whose probe can never answer.
 func (t *terminal) limited(ctx context.Context, role string, at time.Time) string {
-	misses := 0
+	misses, firstLook := 0, true
+	model := t.limitModel
+	probing := t.o.Probe != nil && t.bounded()
 	for {
 		now := t.now()
 		d, up := t.limit.fail(now, true)
@@ -583,31 +653,44 @@ func (t *terminal) limited(ctx context.Context, role string, at time.Time) strin
 				t.say("stopping: the account's rate limit resets at %s, later than a drive waits; run %s then", at.UTC().Format(time.RFC3339), TerminalResumeCommand)
 				return TerminalLimited
 			}
-			t.evidence.add(evidenceEntry{Event: "decided", Decided: "wait until the reset named", NextLook: at.UTC().Format(time.RFC3339)}, now)
-			t.sleep(ctx, max(at.Sub(now), TerminalWaitFloor), fmt.Sprintf("the account's rate limit resets at %s", at.UTC().Format(time.RFC3339)))
-			return ""
+			left, look := at.Sub(now), terminalNamedProbeEvery
+			if firstLook && left > terminalFarReset {
+				look = terminalFarResetFirstLook
+			}
+			firstLook = false
+			why := fmt.Sprintf("the account's rate limit resets at %s", at.UTC().Format(time.RFC3339))
+			if !probing || left <= look {
+				t.evidence.add(evidenceEntry{Event: "decided", Decided: "wait until the reset named", NextLook: at.UTC().Format(time.RFC3339)}, now)
+				t.sleep(ctx, max(left, TerminalWaitFloor), why)
+				return ""
+			}
+			t.evidence.add(evidenceEntry{Event: "decided", Decided: "wait for the reset named, asking at a low rate", NextLook: now.Add(look).UTC().Format(time.RFC3339)}, now)
+			t.sleep(ctx, look, why+"; it is asked again after this wait")
+		} else {
+			if up {
+				t.say("stopping: the account has met its rate limit for eight hours and nothing says when it resets; run %s later", TerminalResumeCommand)
+				return TerminalLimited
+			}
+			if t.bounded() {
+				d = min(d, terminalProbeCap)
+			}
+			t.evidence.add(evidenceEntry{Event: "decided", Decided: "probe, since nothing says when it resets", NextLook: now.Add(d).UTC().Format(time.RFC3339)}, now)
+			t.sleep(ctx, d, "the account has met its rate limit, and nothing says when it resets; it is asked again after this wait")
+			if !probing {
+				return ""
+			}
 		}
-		if up {
-			t.say("stopping: the account has met its rate limit for eight hours and nothing says when it resets; run %s later", TerminalResumeCommand)
-			return TerminalLimited
-		}
-		if t.bounded() {
-			d = min(d, terminalProbeCap)
-		}
-		t.evidence.add(evidenceEntry{Event: "decided", Decided: "probe, since nothing says when it resets", NextLook: now.Add(d).UTC().Format(time.RFC3339)}, now)
-		t.sleep(ctx, d, "the account has met its rate limit, and nothing says when it resets; it is asked again after this wait")
-		if t.o.Probe == nil || ctx.Err() != nil || t.stopped() || (t.bounded() && !t.now().Before(t.o.Until)) {
+		if ctx.Err() != nil || t.stopped() || !t.now().Before(t.o.Until) {
 			return ""
 		}
 		if !t.wallHeld() {
 			return TerminalWall
 		}
-		renewed, fl := t.o.Probe(ctx, role)
+		renewed, fl := t.o.Probe(ctx, role, model)
 		entry := evidenceEntry{Event: "probe", Answer: "no answer"}
 		if fl != nil {
 			entry.Seen = fl.Seen
 		}
-		at = time.Time{}
 		switch {
 		case ctx.Err() != nil:
 			return ""
@@ -618,32 +701,76 @@ func (t *terminal) limited(ctx context.Context, role string, at time.Time) strin
 			return ""
 		case fl != nil && fl.Reason == runner.ReasonRateLimited:
 			entry.Answer = "limited"
-			at, misses = fl.ResetsAt, 0
-			if !at.IsZero() {
+			misses = 0
+			if !fl.ResetsAt.IsZero() {
+				at = fl.ResetsAt
 				entry.ResetRead = at.UTC().Format(time.RFC3339)
 			}
 			t.evidence.add(entry, t.now())
 		default:
 			t.evidence.add(entry, t.now())
-			if misses++; misses >= terminalProbeMisses {
-				t.say("the probe got no answer %d times running; the lane's own agent finds out instead", misses)
-				return ""
+			if !at.After(t.now()) {
+				if misses++; misses >= terminalProbeMisses {
+					t.say("the probe got no answer %d times running; the lane's own agent finds out instead", misses)
+					return ""
+				}
 			}
 		}
 	}
 }
 
-// peerTook reports whether someone else now holds the lane's issue, after a wait
-// long enough for its claim to have lapsed. What the run renewed through the wait it
-// still holds, and a lapse with no peer is revived as it wakes; a peer who took the
-// issue keeps it, so the lane stops spending on it and goes back as stuck.
+// WaitOutProof waits out a limit the drive's live proof met, on the schedule any
+// agent's limit waits on, proving again each time it lets the run go on. It returns
+// why the wait ended the run, "" when prove has run clean or failed for itself, and
+// then what prove said. Nothing has started: what it may renew is what an earlier
+// run left held.
+func WaitOutProof(ctx context.Context, repoRoot string, o TerminalOptions, first *runner.LimitError, prove func(context.Context) error) (string, error) {
+	if o.Sleep == nil {
+		o.Sleep = func(ctx context.Context, d time.Duration) { sleepOr(ctx, d, o.Stop) }
+	}
+	t := newTerminal(repoRoot, o)
+	t.ctx = ctx
+	limit := first
+	for {
+		entry := evidenceEntry{Event: "limit", Role: "live proof", Seen: limit.Seen}
+		if !limit.ResetsAt.IsZero() {
+			entry.ResetRead = limit.ResetsAt.UTC().Format(time.RFC3339)
+		}
+		t.evidence.begin("limit", entry, t.now())
+		if ended := t.limited(ctx, RoleImplementer, limit.ResetsAt); ended != "" {
+			return ended, nil
+		}
+		switch {
+		case ctx.Err() != nil:
+			return TerminalKilled, nil
+		case t.stopped():
+			return TerminalStopped, nil
+		case t.pastBound():
+			return TerminalUntil, nil
+		}
+		err := prove(ctx)
+		if !errors.As(err, &limit) {
+			return "", err
+		}
+	}
+}
+
+// peerTook reports whether the lane's claim has gone from under it, after waits that
+// add up to long enough for that: a peer who took the issue keeps it, and one
+// released while the lane waited says what it was held for has changed, so either
+// way the lane stops spending and goes back as stuck. What the run renewed through
+// the wait it still holds, and a lapse with no peer is revived as it wakes. A check
+// that could not be made stays owed.
 func (t *terminal) peerTook(runID string) bool {
-	if !t.longWait {
+	if t.waited < terminalRenewEvery {
 		return false
 	}
-	t.longWait = false
 	run, err := ReadState(t.repoRoot, runID)
-	if err != nil || run.ReservedAt == nil || letGoByDrive(run) {
+	if err != nil {
+		return false
+	}
+	if run.ReservedAt == nil || letGoByDrive(run) {
+		t.waited = 0
 		return false
 	}
 	now := t.now()
@@ -654,12 +781,16 @@ func (t *terminal) peerTook(runID string) bool {
 	if err != nil {
 		return false
 	}
-	_, _, lost := renewalDue(run, snap, now)
+	t.waited = 0
+	own, _, lost := renewalDue(run, snap, now)
+	if lost == "" && own != nil && own.State == claim.StateReleased {
+		lost = "the reservation on " + run.Key + " was released while this lane waited"
+	}
 	if lost == "" {
 		return false
 	}
 	r := refuse(StageReservation, "", "", lost, "see the reason")
-	r.final = "someone else took the issue up while this lane waited"
+	r.final = "the issue is no longer this lane's to work on"
 	t.stayAsItIs(runID, run.Key, r)
 	return true
 }
@@ -677,6 +808,7 @@ func (t *terminal) renewing(work func()) {
 			select {
 			case <-tick.C:
 				t.renewHeld()
+				t.sayCallStill()
 			case <-stop:
 				return
 			}
@@ -685,6 +817,44 @@ func (t *terminal) renewing(work func()) {
 	work()
 	close(stop)
 	<-done
+	t.endCall()
+}
+
+// startCall says something is starting that may take a long while, which from
+// outside looks just like a hang unless it says so.
+func (t *terminal) startCall(what string) {
+	t.beginCall(what)
+	t.say("starting %s", what)
+}
+
+// beginCall notes what is in flight, with no line of its own.
+func (t *terminal) beginCall(what string) {
+	now := t.now()
+	t.call.mu.Lock()
+	defer t.call.mu.Unlock()
+	t.call.what, t.call.since, t.call.said = what, now, now
+}
+
+// sayCallStill says what is in flight is still going, every so often.
+func (t *terminal) sayCallStill() {
+	now := t.now()
+	t.call.mu.Lock()
+	what, since := t.call.what, t.call.since
+	due := what != "" && now.Sub(t.call.said) >= terminalCallSayEvery
+	if due {
+		t.call.said = now
+	}
+	t.call.mu.Unlock()
+	if due {
+		t.say("%s is still running, %s so far", what, now.Sub(since).Round(time.Minute))
+	}
+}
+
+// endCall notes nothing is in flight.
+func (t *terminal) endCall() {
+	t.call.mu.Lock()
+	defer t.call.mu.Unlock()
+	t.call.what = ""
 }
 
 // pauseWhy is a paused await's reason.
@@ -771,6 +941,7 @@ func (t *terminal) preflight(ctx context.Context, worktree string) error {
 		}
 	}()
 	var err error
+	t.beginCall("the preflight")
 	t.renewing(func() { err = t.o.Preflight(pctx, worktree) })
 	return err
 }

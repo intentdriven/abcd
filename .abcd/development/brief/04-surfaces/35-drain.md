@@ -209,35 +209,53 @@ the lane then goes to the stuck check.
 
 Those eight hours are the default, for a run someone is watching. A date the person
 names on the command line replaces each of them with one bound of their own (adr-2610222222326104's amendment
-of 2026-11-05, dcn-2611050815115904): the yes names it, the run ends at that time with
-the lane on its branch and its reservation released, an agent in a call finishing that
-call first, and until then no limit, outage or stuck queue ends the run. A reset is
-waited for however far off, up to the bound; one more than 35 days off reads as a
-misread field and as none. A limit with no reset is probed by `runner.ProbeLimit`, one
-launch on the profile holding no tool, at one, five and ten minutes and then
-every thirty, so a probe never disturbs the lane; the lane's own agent starts when one
-answers. Failures keep the outage schedule, at most an hour apart; a contended wait
-backs off to fifteen minutes; origin is never given up on (`DrainOptions.KeepWaiting`);
-and a shared outage another session gave up on holds the run until it is cleared.
+of 2026-11-05, dcn-2611050815115904): the yes names it, as a time and not a limit on what
+is spent, the run ends at that time with the lane on its branch and its reservation
+released, an agent in a call finishing that call first, and until then no limit, outage
+or stuck queue ends the run. A reset is waited for however far off, up to the bound; one
+more than 35 days off reads as a misread field and as none. `runner.ProbeLimit` runs only
+under a bound, since a yes with none never mentioned it: one launch on the profile asking
+for no tools, on the model of the launch that met the limit, counting only the word it
+asked for from a launch that held no tool. With no reset named it runs at one, five and
+ten minutes and then every thirty, so a probe never disturbs the lane, and the lane's own
+agent starts when one answers, or after three in a row that get no answer, when that
+launch finds out instead. During a named wait it runs every four hours, or half an hour
+in for a reset more than eight days off: a rejection changes nothing, and an answer ends
+the wait. Failures keep the outage schedule, at most an hour apart; a contended wait
+backs off to fifteen minutes, as does a push or fetch origin refused while reserving;
+origin is never given up on (`DrainOptions.KeepWaiting`); and a shared outage another
+session gave up on holds the run until it is cleared. A limit the live check meets is
+waited out the same way and the check run again (`loop.WaitOutProof`, `runner.LimitError`);
+with no bound the drive refuses, naming the limit. Under a bound a judge is counted
+against its issue only if it ran and answered badly, and three launches of one role in a
+row that reached the model and failed (`Failure.ReachedModel`) hand the lane back as
+stuck, the run going on to other issues.
 
 A wait is measured twice: by the time slept and by the wall clock, whichever ends it
 first. The production sleep also looks at the wall clock each minute, since a timer
 stops while the machine sleeps, so a long wait wakes on time and renews at once; a
-clock set back cannot stretch it. A claim that lapsed is revived on waking, and a peer
-who took the issue keeps it, the lane going back as stuck. A repeated wait prints on a
-change of reason and every half hour.
+clock set back cannot stretch it. A wait renews what the run holds, lanes parked at their
+open pull requests included, the forge read first and only when one is due. After waits
+that add up to an hour, short ones included, the lane's claim is read again from origin: a
+claim that lapsed is revived on waking, and a peer who took the issue keeps it, the lane
+going back as stuck, as it does when its reservation was released. A check that could not
+be made stays owed. A repeated wait prints on a change of reason and every half hour, and
+an agent's call or a preflight says when it starts and every half hour while it runs.
 
 An agent that goes silent cannot be told from a hung one on what is known today. It
 is treated as a hang: its role's deadline kills its process group, its worktree is left
-as it stood, and the role is retried. A stream that reported a rejected limit before
-falling silent reads as that limit at the deadline. The harness's limit shapes the
+as it stood, and the role is retried, and it is not counted against its lane. A stream
+that reported a rejected limit before falling silent, and has not reported it lifted,
+reads as that limit at the deadline. The harness's limit shapes the
 runner reads are a rejected `rate_limit_event`, an assistant message whose error is
-`rate_limit`, and a failed result naming the API's limit status; which of them a
-headless agent really emits is unobserved, so the first limit a run meets, and the
-first kill or failed exit that may be one, leave a `drive-limit-` or `drive-suspect-`
-evidence file in the local tier's logs: the exit, the stream's shape with identifiers
-dropped and free text reduced to its length, the redacted first stderr line, the reset
-read, the loop's decision, each probe's answer and when the run resumed.
+`rate_limit`, and a failed result naming the API's limit status, the stream's latest state
+standing; which of them a headless agent really emits is unobserved, so the first limit a
+run meets, and the first kill or failed exit that may be one, leave a `drive-limit-` or
+`drive-suspect-` evidence file in the local tier's logs: the exit, the stream's shape with
+identifiers dropped and free text reduced to its length, the redacted first stderr line,
+the reset read, the loop's decision, each probe's answer and when the run resumed. What the
+harness wrote is redacted before it is cut; a file stops taking that detail at 64 KiB and
+goes on taking the answers; the newest twenty of a kind are kept.
 
 Before the first move the drive writes the profile directory's settings, abcd's hooks
 as commands naming its own binary and nothing else, and checks each wall, refusing

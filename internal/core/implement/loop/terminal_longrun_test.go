@@ -19,6 +19,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/runner"
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // bounded is the options with the bound d away.
@@ -114,7 +115,7 @@ func TestALimitWithNoResetIsProbedOnACappedBackoff(t *testing.T) {
 	w.realWorktree()
 	o := w.bounded(t, 30*24*time.Hour)
 	probes := 0
-	o.Probe = func(_ context.Context, role string) (bool, *runner.Failure) {
+	o.Probe = func(_ context.Context, role, _ string) (bool, *runner.Failure) {
 		if role != RoleImplementer {
 			t.Errorf("the probe asks for the role that met the limit, got %q", role)
 		}
@@ -154,7 +155,7 @@ func TestAProbeThatNamesAResetWaitsForIt(t *testing.T) {
 	o := w.bounded(t, 30*24*time.Hour)
 	reset := w.clock.t.Add(48 * time.Hour)
 	probes := 0
-	o.Probe = func(context.Context, string) (bool, *runner.Failure) {
+	o.Probe = func(context.Context, string, string) (bool, *runner.Failure) {
 		probes++
 		fl := limitedNoReset()
 		fl.ResetsAt = reset
@@ -164,11 +165,14 @@ func TestAProbeThatNamesAResetWaitsForIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Ended != DrainStoppedCap || probes != 1 {
-		t.Fatalf("one probe, then the wait: %+v, %d probes\n%s", res, probes, w.said())
+	if res.Ended != DrainStoppedCap {
+		t.Fatalf("the lane lands after the reset: %+v, %d probes\n%s", res, probes, w.said())
 	}
 	if got := slept(w.sleeps); got < 48*time.Hour-time.Minute {
 		t.Fatalf("the run waits for the reset the probe named: %v", got)
+	}
+	if probes > 1+int(48*time.Hour/terminalNamedProbeEvery) {
+		t.Fatalf("a named reset is asked about at a low rate: %d probes", probes)
 	}
 }
 
@@ -181,7 +185,7 @@ func TestAProbeThatGetsNoAnswerLeavesItToTheLane(t *testing.T) {
 	w.realWorktree()
 	o := w.bounded(t, 30*24*time.Hour)
 	probes := 0
-	o.Probe = func(context.Context, string) (bool, *runner.Failure) {
+	o.Probe = func(context.Context, string, string) (bool, *runner.Failure) {
 		probes++
 		return false, &runner.Failure{Runner: runner.Claude, Reason: runner.ReasonFailed, Detail: "no answer"}
 	}
@@ -194,16 +198,17 @@ func TestAProbeThatGetsNoAnswerLeavesItToTheLane(t *testing.T) {
 	}
 }
 
-// TestWithNoBoundAProbedLimitStillEndsAtEightHours: an attended run behaves as
-// it did, and its waits grow as they did.
-func TestWithNoBoundAProbedLimitStillEndsAtEightHours(t *testing.T) {
-	w := newTerminalWorld(t, "shape", "limited")
+// TestWithNoBoundNoProbeRuns: the yes of a drive with no bound never mentioned a
+// probe, so none runs: the lane's own launch finds out, as it did, the waits grow
+// as they did, and the run ends at eight hours.
+func TestWithNoBoundNoProbeRuns(t *testing.T) {
+	w := newTerminalWorld(t, append([]string{"shape"}, repeated("limited", 60)...)...)
 	w.realWorktree()
 	o := w.options(t)
 	o.Drain.Max = 1
 	w.guardSleeps(t, &o)
 	probes := 0
-	o.Probe = func(context.Context, string) (bool, *runner.Failure) {
+	o.Probe = func(context.Context, string, string) (bool, *runner.Failure) {
 		probes++
 		return false, limitedNoReset()
 	}
@@ -211,18 +216,12 @@ func TestWithNoBoundAProbedLimitStillEndsAtEightHours(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Ended != TerminalLimited || w.launches(t) != 2 {
-		t.Fatalf("the run ends on the limit: %+v, %d launches\n%s", res, w.launches(t), w.said())
+	if res.Ended != TerminalLimited || probes != 0 || w.launches(t) < 4 {
+		t.Fatalf("the lane's launches find out, and no probe runs: %+v, %d probes, %d launches\n%s", res, probes, w.launches(t), w.said())
 	}
 	want := []time.Duration{time.Minute, 5 * time.Minute, 10 * time.Minute, time.Hour}
 	if !slices.Equal(w.sleeps[:len(want)], want) {
 		t.Fatalf("the waits are as they were: %v", w.sleeps)
-	}
-	if got := slept(w.sleeps); got < 8*time.Hour || got > 9*time.Hour {
-		t.Fatalf("eight hours: %v", got)
-	}
-	if probes == 0 {
-		t.Fatal("the probe stands in for the lane's launch there too")
 	}
 }
 
@@ -233,7 +232,7 @@ func TestAnImplausibleResetIsTreatedAsNone(t *testing.T) {
 	w.realWorktree()
 	w.resetIn(t, 400*24*time.Hour)
 	o := w.bounded(t, 30*24*time.Hour)
-	o.Probe = func(context.Context, string) (bool, *runner.Failure) { return true, nil }
+	o.Probe = func(context.Context, string, string) (bool, *runner.Failure) { return true, nil }
 	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
 	if err != nil || res.Ended != DrainStoppedCap {
 		t.Fatalf("the run goes on: %+v %v\n%s", res, err, w.said())
@@ -705,7 +704,7 @@ func TestTheFirstLimitLeavesItsEvidence(t *testing.T) {
 	w.realWorktree()
 	reset := w.resetIn(t, 3*time.Hour)
 	o := w.bounded(t, 30*24*time.Hour)
-	o.Probe = func(context.Context, string) (bool, *runner.Failure) { return true, nil }
+	o.Probe = func(context.Context, string, string) (bool, *runner.Failure) { return true, nil }
 	if _, err := RunTerminal(context.Background(), w.repo.Root(), o); err != nil {
 		t.Fatal(err)
 	}
@@ -742,7 +741,7 @@ func TestAProbeIsAddedToTheEvidence(t *testing.T) {
 	w.realWorktree()
 	o := w.bounded(t, 30*24*time.Hour)
 	probes := 0
-	o.Probe = func(context.Context, string) (bool, *runner.Failure) {
+	o.Probe = func(context.Context, string, string) (bool, *runner.Failure) {
 		probes++
 		return probes > 1, limitedNoReset()
 	}
@@ -844,14 +843,35 @@ func TestEvidenceHoldsNoSecretOrPath(t *testing.T) {
 	}
 }
 
-// TestAHundredsOfLanesDrainFitsItsState: the state a drain keeps stays well within
-// what it may read back, at a size a long run can ask for.
+// TestAHundredsOfLanesDrainFitsItsState: a drain of five hundred lanes, each judged
+// and handed back at length, goes through the state's own writer and reader, inside
+// what a read allows.
 func TestAHundredsOfLanesDrainFitsItsState(t *testing.T) {
-	st := DrainState{SchemaVersion: 1, Max: 500}
+	repo, _ := reservingDrainRepo(t, "commands/drain.md")
+	drainToLane(t, repo, Options{}, DrainOptions{})
+	st, _, err := readDrain(repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := st.UpdatedAt
+	st.Max = 500
+	st.Lanes, st.HandBacks, st.Judgements = nil, nil, nil
+	reason := strings.Repeat("a reason of some length ", 40)
 	for i := range 500 {
-		id := "iss-26110500000" + strconv.Itoa(10000+i)
-		st.Lanes = append(st.Lanes, DrainLane{Issue: id, RunID: "run-" + id, Outcome: DrainLaneHandedBack})
-		st.HandBacks = append(st.HandBacks, DrainRoute{Issue: id, Kind: HandBackStuck, Reason: strings.Repeat("a reason of some length ", 40)})
+		id := "iss-" + strconv.Itoa(2611050000000000+i)
+		st.Lanes = append(st.Lanes, DrainLane{Issue: id, RunID: "run-" + strconv.Itoa(2611050000000000+i), OpenedAt: now, Outcome: DrainLaneHandedBack})
+		st.HandBacks = append(st.HandBacks, DrainRoute{Issue: id, From: "lane", Kind: HandBackStuck, Route: RouteHome, Home: "a home", Reason: reason, Wrote: "nothing", At: &now})
+		st.Judgements = append(st.Judgements, DrainJudgement{Issue: id, RemedySHA256: strings.Repeat("a", 64), Answer: JudgementNo, Reason: reason, Applied: true, At: now})
+	}
+	if err := writeDrain(repo.Root(), st); err != nil {
+		t.Fatal(err)
+	}
+	got, _, err := readDrain(repo.Root())
+	if err != nil {
+		t.Fatalf("five hundred lanes do not read back: %v", err)
+	}
+	if len(got.Lanes) != 500 || len(got.Judgements) != 500 || len(got.HandBacks) != 500 {
+		t.Fatalf("what was written is what is read: %d lanes, %d judgements, %d hand-backs", len(got.Lanes), len(got.Judgements), len(got.HandBacks))
 	}
 	raw, err := json.Marshal(st)
 	if err != nil {
@@ -859,5 +879,556 @@ func TestAHundredsOfLanesDrainFitsItsState(t *testing.T) {
 	}
 	if len(raw) > maxDrainStateBytes/2 {
 		t.Fatalf("five hundred lanes take %d bytes of the %d a read allows", len(raw), maxDrainStateBytes)
+	}
+}
+
+// TestAJudgeThatCannotRunHoldsNothingBackUnderABound: a judge whose launch failed,
+// or was killed, says nothing of the issue, so under a bound nothing is held back,
+// the ledger is not emptied, and the run waits on the outage's schedule.
+func TestAJudgeThatCannotRunHoldsNothingBackUnderABound(t *testing.T) {
+	for _, bad := range []string{"none", "late"} {
+		t.Run(bad, func(t *testing.T) {
+			w := newTerminalWorld(t, repeated(bad, 60)...)
+			o := w.bounded(t, 10*time.Hour)
+			o.Drain.JudgeTimeout = 200 * time.Millisecond
+			res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.Ended != TerminalUntil || strings.Contains(w.said(), "holding") {
+				t.Fatalf("the outage waits to the bound and holds nothing back: %+v\n%s", res, w.said())
+			}
+			st, _, _ := readDrain(w.repo.Root())
+			if len(st.Skips) != 0 || st.Stopped != "" {
+				t.Fatalf("the drain is left as it was: %+v", st)
+			}
+		})
+	}
+}
+
+// TestAJudgeThatRanAndAnsweredBadlyIsStillHeldBackUnderABound: it ran, so the fault
+// is the issue's, and the run goes on to other work.
+func TestAJudgeThatRanAndAnsweredBadlyIsStillHeldBackUnderABound(t *testing.T) {
+	w := newTerminalWorld(t, repeated("noshape", terminalJudgeAsks)...)
+	o := w.bounded(t, 10*time.Hour)
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Ended != DrainStoppedCap || !strings.Contains(w.said(), "holding") {
+		t.Fatalf("the issue is held back and the run goes on: %+v\n%s", res, w.said())
+	}
+}
+
+// TestAFailedPushWhileReservingWaitsUnderABound: origin refusing a push mid-move may
+// pass, so under a bound the run waits and carries on when it does; with no bound it
+// refuses, as it did.
+func TestAFailedPushWhileReservingWaitsUnderABound(t *testing.T) {
+	gone := func(w *terminalWorld) {
+		w.repo.Git("remote", "set-url", "--push", "origin", filepath.Join(t.TempDir(), "gone"))
+	}
+	w := newTerminalWorld(t)
+	gone(w)
+	o := w.bounded(t, 30*24*time.Hour)
+	waited := time.Duration(0)
+	w.onSleep = func(d time.Duration) {
+		if waited += d; waited >= 2*time.Hour {
+			w.repo.Git("remote", "set-url", "--push", "origin", w.bare)
+		}
+	}
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil {
+		t.Fatalf("a failed push is waited out: %v\n%s", err, w.said())
+	}
+	if res.Ended != DrainStoppedCap || waited < 2*time.Hour {
+		t.Fatalf("the run carries on once the push goes through: %+v, waited %v\n%s", res, waited, w.said())
+	}
+
+	w = newTerminalWorld(t)
+	gone(w)
+	o = w.options(t)
+	res, err = RunTerminal(context.Background(), w.repo.Root(), o)
+	if err == nil || res.Ended != TerminalRefused {
+		t.Fatalf("with no bound the move refuses, as it did: %+v %v", res, err)
+	}
+}
+
+// TestAPoisonLaneGoesBackAndTheRunGoesOn: launches of one role that reach the model
+// and fail each time say the fault is the lane's, so under a bound it goes back as
+// stuck after a few, and the next lane lands.
+func TestAPoisonLaneGoesBackAndTheRunGoesOn(t *testing.T) {
+	script := append([]string{"shape"}, repeated("crashes", terminalPoisonLaunches)...)
+	w := newTerminalWorld(t, script...)
+	o := w.bounded(t, 30*24*time.Hour)
+	o.Drain.Max = 2
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, _, _ := readDrain(w.repo.Root())
+	if len(st.HandBacks) != 1 || st.HandBacks[0].Kind != HandBackStuck {
+		t.Fatalf("the lane goes back as stuck: %+v\n%s", st.HandBacks, w.said())
+	}
+	if res.Ended != DrainStoppedCap || len(lanesDone(t, w.repo)) != 1 {
+		t.Fatalf("the next lane lands: %+v\n%s", res, w.said())
+	}
+	if n := w.launches(t); n != 1+terminalPoisonLaunches+2 {
+		t.Fatalf("no launch past the limit: %d\n%s", n, w.said())
+	}
+}
+
+// TestLaunchesThatNeverReachTheModelStayOnTheOutageWait: and those that never got
+// that far say nothing of the lane.
+func TestLaunchesThatNeverReachTheModelStayOnTheOutageWait(t *testing.T) {
+	w := newTerminalWorld(t, append([]string{"shape"}, repeated("none", 2*terminalPoisonLaunches)...)...)
+	o := w.bounded(t, 30*24*time.Hour)
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, _, _ := readDrain(w.repo.Root())
+	if res.Ended != DrainStoppedCap || len(st.HandBacks) != 0 {
+		t.Fatalf("the lane stays and lands: %+v %+v\n%s", res, st.HandBacks, w.said())
+	}
+}
+
+// TestASilentLaunchIsNoPoison: one that went silent with nothing spent is the hang
+// the page describes, which may be a limit waited out inside it, so it is never
+// counted against the lane.
+func TestASilentLaunchIsNoPoison(t *testing.T) {
+	w := newTerminalWorld(t, append([]string{"shape"}, repeated("late", 2*terminalPoisonLaunches)...)...)
+	o := w.bounded(t, 30*24*time.Hour)
+	o.Runners.Timeout = 500 * time.Millisecond
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, _, _ := readDrain(w.repo.Root())
+	if len(st.HandBacks) != 0 || len(lanesDone(t, w.repo)) != 1 {
+		t.Fatalf("the lane stays and lands: %+v %+v\n%s", res, st.HandBacks, w.said())
+	}
+}
+
+// TestWithNoBoundNothingIsCountedAgainstALane: an attended run behaves as it did.
+func TestWithNoBoundNothingIsCountedAgainstALane(t *testing.T) {
+	w := newTerminalWorld(t, append([]string{"shape"}, repeated("crashes", 2*terminalPoisonLaunches)...)...)
+	o := w.options(t)
+	o.Drain.Max = 1
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, _, _ := readDrain(w.repo.Root())
+	if res.Ended != DrainStoppedCap || len(st.HandBacks) != 0 {
+		t.Fatalf("the lane stays and lands: %+v %+v\n%s", res, st.HandBacks, w.said())
+	}
+}
+
+// TestAParkedLaneIsRenewedThroughALongWait: the wait renews a lane parked at its open
+// pull request at half its lease, having read the forge; one whose pull request is
+// closed it leaves alone; and one not yet due costs no forge call.
+func TestAParkedLaneIsRenewedThroughALongWait(t *testing.T) {
+	f, l := parkDrainLane(t)
+	ref := claim.RefPrefix + secondIssue
+	fenced := originReservation(t, f.bare, ref)
+	at := fenced.claimed
+	o := TerminalOptions{Options: Options{Now: func() time.Time { return at }}}
+	tm := newTerminal(f.repo.Root(), o)
+
+	listings := f.parkedListings(t)
+	tm.renewHeld()
+	if f.parkedListings(t) != listings {
+		t.Fatal("a lane not yet due costs no forge call")
+	}
+
+	f.listPRs(t, stubPR{Number: 7, HeadRefName: l.Branch, State: "CLOSED"})
+	at = fenced.claimed.Add(12*time.Hour + 30*time.Minute)
+	tm.renewHeld()
+	if tip := originReservation(t, f.bare, ref); tip.commit != fenced.commit {
+		t.Fatalf("a closed pull request's lane is not renewed: %+v", tip)
+	}
+
+	f.listPRs(t, stubPR{Number: 7, HeadRefName: l.Branch, State: "OPEN", Mergeable: "MERGEABLE", MergeStateStatus: "BLOCKED"})
+	tm.renewHeld()
+	if tip := originReservation(t, f.bare, ref); tip.parent != fenced.commit || tip.released {
+		t.Fatalf("an open pull request's lane is renewed: fenced %+v, now %+v", fenced, tip)
+	}
+}
+
+// laneForPeerCheck opens one lane on a real remote, for the check after a wait.
+func laneForPeerCheck(t *testing.T) (root, bare, runID string, c *clock) {
+	t.Helper()
+	repo, bare := reservingDrainRepo(t, "commands/drain.md")
+	c = &clock{t: time.Now().UTC().Truncate(time.Second)}
+	first := drainToLane(t, repo, Options{Now: c.now}, DrainOptions{})
+	if first.Lane == nil {
+		t.Fatalf("the drain opens a lane: %+v", first)
+	}
+	return repo.Root(), bare, first.Lane.RunID, c
+}
+
+// TestAPeerCheckNotMadeIsStillOwed: a failed fetch leaves it owed; one that reads the
+// view clears it.
+func TestAPeerCheckNotMadeIsStillOwed(t *testing.T) {
+	root, bare, runID, c := laneForPeerCheck(t)
+	tm := newTerminal(root, TerminalOptions{Options: Options{Now: c.now}})
+	tm.waited = 2 * time.Hour
+	gitIn(t, root, "remote", "set-url", "origin", filepath.Join(t.TempDir(), "gone"))
+	if tm.peerTook(runID) || tm.waited != 2*time.Hour {
+		t.Fatalf("a check that could not be made stays owed: %v", tm.waited)
+	}
+	gitIn(t, root, "remote", "set-url", "origin", bare)
+	if tm.peerTook(runID) || tm.waited != 0 {
+		t.Fatalf("a check that was made is settled: %v", tm.waited)
+	}
+}
+
+// TestAReleasedTipStopsTheLane: someone released the lane's reservation during the
+// wait, so what it was held for has changed, and the lane goes no further.
+func TestAReleasedTipStopsTheLane(t *testing.T) {
+	root, _, runID, c := laneForPeerCheck(t)
+	run, err := ReadState(root, runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReleaseReservation(root, run.Key, Options{Now: c.now}); err != nil {
+		t.Fatal(err)
+	}
+	tm := newTerminal(root, TerminalOptions{Options: Options{Now: c.now}})
+	tm.waited = 2 * time.Hour
+	if !tm.peerTook(runID) {
+		t.Fatal("a released tip stops the lane")
+	}
+	run, err = ReadState(root, runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if i := run.current(); i < 0 || run.Lanes[i].Refused == nil || run.Lanes[i].Refused.Final == "" {
+		t.Fatalf("the refusal cannot change, so the next move hands it back: %+v", run.Lanes)
+	}
+}
+
+// TestShortWaitsAddUpToAPeerCheck: many short waits are as long as one long one.
+func TestShortWaitsAddUpToAPeerCheck(t *testing.T) {
+	c := &clock{t: time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)}
+	tm, _, _ := bareTerminal(t, c, time.Time{})
+	for range 120 {
+		tm.sleep(context.Background(), TerminalWaitFloor, "a short wait")
+	}
+	if tm.waited != time.Hour {
+		t.Fatalf("an hour of short waits is an hour: %v", tm.waited)
+	}
+}
+
+// TestANamedResetIsAskedAboutAtALowRate: the limit holds, so each probe is rejected;
+// the run asks every few hours, starts no lane's agent, and lands after the reset.
+func TestANamedResetIsAskedAboutAtALowRate(t *testing.T) {
+	w := newTerminalWorld(t, "shape", "limited")
+	w.realWorktree()
+	reset := w.resetIn(t, 72*time.Hour)
+	o := w.bounded(t, 30*24*time.Hour)
+	probes := 0
+	o.Probe = func(context.Context, string, string) (bool, *runner.Failure) {
+		probes++
+		fl := limitedNoReset()
+		fl.ResetsAt = reset
+		return false, fl
+	}
+	w.onSleep = func(time.Duration) {
+		if n := w.launches(t); w.clock.t.Before(reset) && n != 2 {
+			t.Fatalf("an agent started during the wait: %d", n)
+		}
+	}
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil || res.Ended != DrainStoppedCap {
+		t.Fatalf("the lane lands after the reset: %+v %v\n%s", res, err, w.said())
+	}
+	if want := int(72*time.Hour/terminalNamedProbeEvery) - 1; probes < want-1 || probes > want+1 {
+		t.Fatalf("about %d probes, got %d", want, probes)
+	}
+	if got := slept(w.sleeps); got < 72*time.Hour-time.Minute {
+		t.Fatalf("the run waits for the reset: %v", got)
+	}
+}
+
+// TestAFalseLimitEndsAtTheFirstAnswer: a limit a probe gets past was no limit, so the
+// run does not sit out the reset it named.
+func TestAFalseLimitEndsAtTheFirstAnswer(t *testing.T) {
+	w := newTerminalWorld(t, "shape", "limited")
+	w.realWorktree()
+	reset := w.resetIn(t, 72*time.Hour)
+	o := w.bounded(t, 30*24*time.Hour)
+	probes := 0
+	o.Probe = func(context.Context, string, string) (bool, *runner.Failure) {
+		probes++
+		if probes == 1 {
+			fl := limitedNoReset()
+			fl.ResetsAt = reset
+			return false, fl
+		}
+		return true, nil
+	}
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil || res.Ended != DrainStoppedCap {
+		t.Fatalf("the lane lands: %+v %v\n%s", res, err, w.said())
+	}
+	if got := slept(w.sleeps); got > 2*terminalNamedProbeEvery+time.Hour {
+		t.Fatalf("the run does not sit the reset out: %v", got)
+	}
+}
+
+// TestAFarResetIsDoubtedSooner: the first look at a reset this far off comes early.
+func TestAFarResetIsDoubtedSooner(t *testing.T) {
+	w := newTerminalWorld(t, "shape", "limited")
+	w.realWorktree()
+	w.resetIn(t, terminalFarReset+24*time.Hour)
+	o := w.bounded(t, 30*24*time.Hour)
+	o.Probe = func(context.Context, string, string) (bool, *runner.Failure) { return true, nil }
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil || res.Ended != DrainStoppedCap {
+		t.Fatalf("the lane lands: %+v %v\n%s", res, err, w.said())
+	}
+	if got := slept(w.sleeps); got > terminalFarResetFirstLook+time.Minute {
+		t.Fatalf("the first look comes early: %v", got)
+	}
+}
+
+// TestAProbeThatSaysLittleLeavesTheNamedResetStanding: a rejection naming no reset,
+// and a probe with no answer, each leave the run waiting for the time it was told,
+// with no lane launched to find out.
+func TestAProbeThatSaysLittleLeavesTheNamedResetStanding(t *testing.T) {
+	for name, fl := range map[string]*runner.Failure{
+		"rejected":  limitedNoReset(),
+		"no answer": {Runner: runner.Claude, Reason: runner.ReasonFailed, Detail: "no answer"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := newTerminalWorld(t, "shape", "limited")
+			w.realWorktree()
+			reset := w.resetIn(t, 24*time.Hour)
+			o := w.bounded(t, 30*24*time.Hour)
+			o.Probe = func(context.Context, string, string) (bool, *runner.Failure) { return false, fl }
+			w.onSleep = func(time.Duration) {
+				if n := w.launches(t); w.clock.t.Before(reset) && n != 2 {
+					t.Fatalf("an agent started during the wait: %d", n)
+				}
+			}
+			res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+			if err != nil || res.Ended != DrainStoppedCap {
+				t.Fatalf("the lane lands: %+v %v\n%s", res, err, w.said())
+			}
+			if got := slept(w.sleeps); got < 24*time.Hour-time.Minute {
+				t.Fatalf("the named reset stands: %v", got)
+			}
+		})
+	}
+}
+
+// TestTheProbeAsksWithTheLaunchesModel: a limit may be one model's, so the probe asks
+// on the model of the launch that met it.
+func TestTheProbeAsksWithTheLaunchesModel(t *testing.T) {
+	c := &clock{t: time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)}
+	tm, _, _ := bareTerminal(t, c, c.t.Add(48*time.Hour))
+	asked := ""
+	tm.o.Probe = func(_ context.Context, _, model string) (bool, *runner.Failure) {
+		asked = model
+		return true, nil
+	}
+	fl := limitedNoReset()
+	fl.Model = "anthropic/a-model"
+	tm.noteFailure(RoleImplementer, fl)
+	if ended := tm.limited(context.Background(), RoleImplementer, time.Time{}); ended != "" {
+		t.Fatalf("the run goes on: %q", ended)
+	}
+	if asked != "anthropic/a-model" {
+		t.Fatalf("the probe asked on %q", asked)
+	}
+}
+
+// TestALimitAtTheProofIsWaitedOutAndProvedAgain: the proof's own limit waits as any
+// agent's does, the run proving again when it has passed.
+func TestALimitAtTheProofIsWaitedOutAndProvedAgain(t *testing.T) {
+	c := &clock{t: time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)}
+	var slept []time.Duration
+	o := TerminalOptions{Options: Options{Now: c.now}, Until: c.t.Add(30 * 24 * time.Hour), Stop: make(chan struct{}),
+		Sleep: func(_ context.Context, d time.Duration) { slept = append(slept, d); c.t = c.t.Add(d) }}
+	root := t.TempDir()
+	reset := c.t.Add(3 * time.Hour)
+	proofs := 0
+	ended, err := WaitOutProof(context.Background(), root, o, &runner.LimitError{ResetsAt: reset}, func(context.Context) error {
+		proofs++
+		if c.t.Before(reset) {
+			t.Fatalf("a proof ran before the reset: %v", c.t)
+		}
+		return nil
+	})
+	if err != nil || ended != "" || proofs != 1 {
+		t.Fatalf("one proof after the reset: %q %v, %d proofs", ended, err, proofs)
+	}
+}
+
+// TestABoundPassingAtTheProofEndsTheWait: nothing starts.
+func TestABoundPassingAtTheProofEndsTheWait(t *testing.T) {
+	c := &clock{t: time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)}
+	o := TerminalOptions{Options: Options{Now: c.now}, Until: c.t.Add(time.Hour), Stop: make(chan struct{}),
+		Sleep: func(_ context.Context, d time.Duration) { c.t = c.t.Add(d) }}
+	ended, err := WaitOutProof(context.Background(), t.TempDir(), o, &runner.LimitError{ResetsAt: c.t.Add(3 * time.Hour)}, func(context.Context) error {
+		t.Fatal("no proof runs past the bound")
+		return nil
+	})
+	if err != nil || ended != TerminalUntil {
+		t.Fatalf("the bound ends it: %q %v", ended, err)
+	}
+}
+
+// TestAnAgentsCallSaysItStartedAndStillRuns: a long stage and a hang look alike from
+// outside, so a call says it began and, at least hourly, that it is still going.
+func TestAnAgentsCallSaysItStartedAndStillRuns(t *testing.T) {
+	c := &clock{t: time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)}
+	tm, _, lines := bareTerminal(t, c, time.Time{})
+	tm.startCall("the implementer")
+	if !strings.Contains(strings.Join(*lines, "\n"), "the implementer") {
+		t.Fatalf("the start says so: %q", *lines)
+	}
+	said := len(*lines)
+	tm.sayCallStill()
+	if len(*lines) != said {
+		t.Fatalf("nothing new to say yet: %q", *lines)
+	}
+	c.t = c.t.Add(terminalCallSayEvery)
+	tm.sayCallStill()
+	if len(*lines) != said+1 || !strings.Contains((*lines)[said], "30m") {
+		t.Fatalf("it says it is still going, and for how long: %q", *lines)
+	}
+	tm.endCall()
+	c.t = c.t.Add(2 * terminalCallSayEvery)
+	tm.sayCallStill()
+	if len(*lines) != said+1 {
+		t.Fatalf("a call over says nothing more: %q", *lines)
+	}
+}
+
+// TestARunSaysWhenAnAgentStarts: through a real drive, the judge's and the
+// implementer's both.
+func TestARunSaysWhenAnAgentStarts(t *testing.T) {
+	w := newTerminalWorld(t)
+	o := w.options(t)
+	o.Drain.Max = 1
+	if _, err := RunTerminal(context.Background(), w.repo.Root(), o); err != nil {
+		t.Fatal(err)
+	}
+	for _, role := range []string{RoleDrainJudge, RoleImplementer} {
+		if !strings.Contains(w.said(), "starting the "+role) {
+			t.Errorf("no line says the %s started:\n%s", role, w.said())
+		}
+	}
+}
+
+// TestEvidenceIsRedactedBeforeItIsCut: a token across the place a line is cut is seen
+// whole by the redactor, and what is kept stays within its bounds.
+func TestEvidenceIsRedactedBeforeItIsCut(t *testing.T) {
+	root := t.TempDir()
+	token := "ghp_" + strings.Repeat("a1B2c3D4e5", 4)[:36]
+	long := strings.Repeat("x", evidenceMaxLine-10) + " " + token + " " + strings.Repeat("y", 500)
+	e := newDriveEvidence(root, func(string) {})
+	e.begin("limit", evidenceEntry{Event: "limit", Seen: &runner.HarnessSeen{ExitCode: 1, Shape: []string{long},
+		Stderr: strings.Repeat("z", evidenceMaxStderr-10) + " " + token + " " + strings.Repeat("w", 500)}}, time.Unix(1791000000, 0).UTC())
+	files := evidenceFiles(t, root, "limit")
+	if len(files) != 1 {
+		t.Fatalf("one file: %v", files)
+	}
+	lines := evidenceLines(t, files[0])
+	shape, _ := lines[0]["shape"].([]any)
+	if len(shape) != 1 || len(shape[0].(string)) > evidenceMaxLine+3 {
+		t.Fatalf("the line is cut: %d", len(shape[0].(string)))
+	}
+	if stderr, _ := lines[0]["stderr"].(string); len(stderr) > evidenceMaxStderr+3 {
+		t.Fatalf("the stderr line is cut: %d", len(stderr))
+	}
+	raw, _ := os.ReadFile(files[0])
+	if strings.Contains(string(raw), token[:12]) {
+		t.Fatalf("part of the token survived the cut:\n%s", raw)
+	}
+}
+
+// TestEvidenceStopsItsDetailPastItsSizeAndKeepsItsAnswers: two weeks of probes stay
+// small, and each still says what it got.
+func TestEvidenceStopsItsDetailPastItsSizeAndKeepsItsAnswers(t *testing.T) {
+	root := t.TempDir()
+	now := time.Unix(1791000000, 0).UTC()
+	e := newDriveEvidence(root, func(string) {})
+	seen := &runner.HarnessSeen{ExitCode: 1, Shape: []string{strings.Repeat("s", evidenceMaxLine)}}
+	e.begin("limit", evidenceEntry{Event: "limit", Seen: seen}, now)
+	const probes = 700
+	for range probes {
+		e.add(evidenceEntry{Event: "probe", Answer: "limited", Seen: seen}, now)
+	}
+	files := evidenceFiles(t, root, "limit")
+	fi, err := os.Stat(files[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Size() > 2*evidenceMaxBytes {
+		t.Fatalf("the file grew to %d bytes", fi.Size())
+	}
+	lines := evidenceLines(t, files[0])
+	if len(lines) != probes+1 || lines[len(lines)-1]["answer"] != "limited" || lines[len(lines)-1]["shape"] != nil {
+		t.Fatalf("every answer stays, without its detail: %d lines, last %+v", len(lines), lines[len(lines)-1])
+	}
+}
+
+// TestEvidenceIsPrunedAcrossRuns: the newest are kept, of each kind, and nothing else
+// in the folder is touched.
+func TestEvidenceIsPrunedAcrossRuns(t *testing.T) {
+	root := t.TempDir()
+	if err := fsutil.EnsureRealDirAll(root, evidenceDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(root, filepath.FromSlash(evidenceDir))
+	old := time.Unix(1700000000, 0).UTC()
+	for i := range evidenceKeepFiles + 5 {
+		name := "drive-limit-" + old.Add(time.Duration(i)*time.Hour).Format("20060102T150405Z") + ".jsonl"
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("{}\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	other := filepath.Join(dir, "drain-drive-20200101T000000Z.log")
+	if err := os.WriteFile(other, []byte("log\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	e := newDriveEvidence(root, func(string) {})
+	e.begin("limit", evidenceEntry{Event: "limit"}, time.Unix(1791000000, 0).UTC())
+	files := evidenceFiles(t, root, "limit")
+	if len(files) != evidenceKeepFiles {
+		t.Fatalf("%d files kept", len(files))
+	}
+	if !strings.Contains(files[len(files)-1], time.Unix(1791000000, 0).UTC().Format("20060102T150405Z")) {
+		t.Fatalf("the newest stays: %v", files)
+	}
+	if _, err := os.Stat(other); err != nil {
+		t.Fatalf("nothing else is touched: %v", err)
+	}
+}
+
+// TestEvidenceWritesThroughNoLinkOutOfItsFolder: a file swapped for a link does not
+// carry a write elsewhere.
+func TestEvidenceWritesThroughNoLinkOutOfItsFolder(t *testing.T) {
+	root := t.TempDir()
+	e := newDriveEvidence(root, func(string) {})
+	now := time.Unix(1791000000, 0).UTC()
+	e.begin("limit", evidenceEntry{Event: "limit"}, now)
+	files := evidenceFiles(t, root, "limit")
+	outside := filepath.Join(t.TempDir(), "outside")
+	if err := os.WriteFile(outside, []byte("mine\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(files[0]); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, files[0]); err != nil {
+		t.Fatal(err)
+	}
+	e.add(evidenceEntry{Event: "probe", Answer: "limited"}, now)
+	if raw, _ := os.ReadFile(outside); string(raw) != "mine\n" {
+		t.Fatalf("a write went through the link: %s", raw)
 	}
 }

@@ -668,7 +668,9 @@ func reservedNote(res claim.Result, err error, now time.Time) (reserved, error) 
 			r.capped = slices.Clone(ce.Held)
 			return reserved{}, r
 		}
-		return reserved{}, refuse(StageReservation, "", "", err.Error(), "settle what it names, then run the verb again")
+		r := refuse(StageReservation, "", "", err.Error(), "settle what it names, then run the verb again")
+		r.originUnread = isPushFailure(err)
+		return reserved{}, r
 	}
 	verb := map[claim.Act]string{claim.ActReserved: "reserved", claim.ActRenewed: "renewed the reservation on",
 		claim.ActTakenOver: "took over the reservation on"}[res.Act]

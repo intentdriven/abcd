@@ -108,7 +108,8 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"here) or an RFC 3339 instant, replaces those with one bound the yes names: the run waits\n" +
 			"through limits, outages and stuck queues at a capped interval, says what it waits on,\n" +
 			"keeps renewing what it holds, and at that time ends with the lane on its branch, an\n" +
-			"agent in a call finishing that call first. The first limit a run meets leaves its\n" +
+			"agent in a call finishing that call first. The bound is a time, not a limit on what the\n" +
+			"run spends. The first limit a run meets leaves its\n" +
 			"evidence under the same logs. One drive holds a checkout at a time; a second exits 3. A\n" +
 			"drive that stops short exits 3, and one a broken wall stopped exits 2. The first\n" +
 			"interrupt, hang-up or termination is a\n" +
@@ -260,6 +261,8 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "abcd drain: --yes answers --drive's one question, and this is no drive; add --drive or leave it out (nothing written)"}
 			case cmd.Flags().Changed("until") && !drive:
 				return &exitError{Code: 2, Msg: "abcd drain: --until bounds a run that waits, and only --drive waits; add --drive or leave it out (nothing written)"}
+			case cmd.Flags().Changed("until") && until == "":
+				return driveRefusal("--until is empty, which is no time to end at; give a date or leave the flag out")
 			case drive && (dryRun || cmd.Flags().Changed("judgement")):
 				return &exitError{Code: 2, Msg: "abcd drain: --drive makes every move and judges through the runner itself, so it takes no --dry-run and no --judgement (nothing written)"}
 			case trustGates && !drive:
