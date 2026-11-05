@@ -14,3 +14,5 @@ related_intents: [itd-2610120738075547]
 ---
 
 A cloud session whose preflight cannot pass has no way to hand its commits back: the pre-push hook refuses a push without a preflight receipt, and skipping that hook is forbidden, so on 2026-10-12 a finished fix (two commits and a resolved record) stayed trapped in the cloud container and had to be redone locally.
+
+2026-11-03: the same trap. A cloud session's finished work sat unpushed for 16 hours because its preflight could not pass there (iss-2610120724251698), the session offered skipping the hook as a way out, and the work reached the forge only as a patch a local session applied (#1398).
