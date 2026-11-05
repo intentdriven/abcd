@@ -787,7 +787,7 @@ func TestASilentAgentIsAHangWithRecovery(t *testing.T) {
 		}
 	}
 	o := w.bounded(t, 30*24*time.Hour)
-	o.Runners.Timeout = time.Second
+	o.Runners.Timeout = 5 * time.Second
 	var worktree string
 	o.BeforeStage = func() error {
 		if st, _, err := readDrain(w.repo.Root()); err == nil && len(st.Lanes) > 0 {
@@ -896,7 +896,10 @@ func TestAJudgeThatCannotRunHoldsNothingBackUnderABound(t *testing.T) {
 		t.Run(bad, func(t *testing.T) {
 			w := newTerminalWorld(t, repeated(bad, 60)...)
 			o := w.bounded(t, 10*time.Hour)
-			o.Drain.JudgeTimeout = 200 * time.Millisecond
+			o.Drain.JudgeTimeout = ordinaryLaunchLimit
+			if bad == "late" {
+				o.Drain.JudgeTimeout = hangLimit
+			}
 			res, err := RunTerminal(context.Background(), w.repo.Root(), o)
 			if err != nil {
 				t.Fatal(err)
@@ -982,7 +985,7 @@ func poisonRun(t *testing.T, turn string, n int, probe func(*int) func(context.C
 	w := newTerminalWorld(t, append([]string{"shape"}, repeated(turn, n)...)...)
 	o := w.bounded(t, 30*24*time.Hour)
 	o.Drain.Max = 2
-	o.Runners.Timeout = time.Second
+	o.Runners.Timeout, o.Drain.JudgeTimeout = ordinaryLaunchLimit, ordinaryLaunchLimit
 	probes := 0
 	if probe != nil {
 		o.Probe = probe(&probes)
@@ -992,6 +995,32 @@ func poisonRun(t *testing.T, turn string, n int, probe func(*int) func(context.C
 	}
 	st, _, _ := readDrain(w.repo.Root())
 	return w, st.HandBacks, probes
+}
+
+// ordinaryLaunchLimit is the limit on a stand-in's launch that ends by itself, which a
+// loaded machine may slow by any amount: it is never what ends one.
+const ordinaryLaunchLimit = 5 * time.Minute
+
+// hangLimit is the limit on a launch that hangs: only it can end one, so its length
+// races nothing.
+const hangLimit = 200 * time.Millisecond
+
+// silentRun drives one lane whose every implementer hangs, under a bound, so the one
+// short limit in the run bears on no launch that could have finished; it answers what
+// came of it.
+func silentRun(t *testing.T, probe func(*int) func(context.Context, string, string) (bool, *runner.Failure)) (*terminalWorld, TerminalResult, []DrainRoute, int) {
+	t.Helper()
+	w := newTerminalWorld(t, append([]string{"shape"}, repeated("late", 200)...)...)
+	o := w.bounded(t, 10*time.Hour)
+	o.Runners.Timeout, o.Drain.JudgeTimeout = hangLimit, ordinaryLaunchLimit
+	probes := 0
+	o.Probe = probe(&probes)
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, _, _ := readDrain(w.repo.Root())
+	return w, res, st.HandBacks, probes
 }
 
 // TestAPoisonLaneGoesBackAndTheRunGoesOn: launches that spend and fail, with the
@@ -1093,13 +1122,13 @@ func TestLaunchesThatNeverReachTheModelStayOnTheOutageWait(t *testing.T) {
 // or a limit waited out inside it: while the account answers nothing it is the
 // outage's, and when the account answers the work is what hangs.
 func TestASilentLaunchCountsOnlyIfAProbeAnswers(t *testing.T) {
-	w, back, probes := poisonRun(t, "late", 2*terminalPoisonLaunches, noProbeAnswers)
-	if len(back) != 0 || probes == 0 {
-		t.Fatalf("a silent launch with no answer counts nothing: %+v, %d probes\n%s", back, probes, w.said())
+	w, res, back, probes := silentRun(t, noProbeAnswers)
+	if res.Ended != TerminalUntil || len(back) != 0 || probes == 0 {
+		t.Fatalf("a silent launch with no answer counts nothing: %+v %+v, %d probes\n%s", res, back, probes, w.said())
 	}
-	w, back, probes = poisonRun(t, "late", terminalPoisonLaunches, probeAnswers)
-	if len(back) != 1 || probes != terminalPoisonLaunches {
-		t.Fatalf("with the account alive it goes back: %+v, %d probes\n%s", back, probes, w.said())
+	w, res, back, probes = silentRun(t, probeAnswers)
+	if res.Ended == TerminalUntil || len(back) != 1 || probes != terminalPoisonLaunches {
+		t.Fatalf("with the account alive it goes back: %+v %+v, %d probes\n%s", res, back, probes, w.said())
 	}
 }
 
@@ -1108,7 +1137,7 @@ func judgeRun(t *testing.T, turn string, probe func(*int) func(context.Context, 
 	t.Helper()
 	w := newTerminalWorld(t, repeated(turn, 40)...)
 	o := w.bounded(t, 10*time.Hour)
-	o.Drain.JudgeTimeout = 500 * time.Millisecond
+	o.Drain.JudgeTimeout = ordinaryLaunchLimit
 	probes := 0
 	if probe != nil {
 		o.Probe = probe(&probes)
@@ -2119,6 +2148,9 @@ func TestAForge5xxThroughTheClientWaitsAsALostNetwork(t *testing.T) {
 // TestACanaryThatCannotLandSpendsNothing: a probe's result that could not be written
 // would otherwise cost one short launch per turn of the loop until the bound.
 func TestACanaryThatCannotLandSpendsNothing(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("a directory's mode does not hold against root")
+	}
 	root, _, _, c := laneForPeerCheck(t)
 	run := joinShared(t, root, c.now)
 	if _, err := run.Outage().Record("host-a", implement.ServiceModel, implement.OutageHost, "lane-9", "a turn"); err != nil {
