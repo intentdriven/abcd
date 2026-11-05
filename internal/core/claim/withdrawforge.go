@@ -88,11 +88,12 @@ type ArmGate func(root, repo, pr, head string) (arm bool, why string, err error)
 // wiredArmGate is the gate SetArmGate registered.
 var wiredArmGate ArmGate
 
-// SetArmGate registers the merge gate every path to a re-arm is held to.
-func SetArmGate(g ArmGate) { wiredArmGate = g }
-
-// ArmGateWired reports whether a merge gate is registered.
-func ArmGateWired() bool { return wiredArmGate != nil }
+// SetArmGate registers the merge gate every path to a re-arm is held to, and
+// returns the one it replaces.
+func SetArmGate(g ArmGate) (prev ArmGate) {
+	prev, wiredArmGate = wiredArmGate, g
+	return prev
+}
 
 // PRCommenter posts one comment on the pull request whose node id is
 // subject, and reads it back from the forge: posted reports whether the

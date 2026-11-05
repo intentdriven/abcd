@@ -642,7 +642,9 @@ func TestTheGateARearmAsksIsTheMergeGate(t *testing.T) {
 	if arm, _, err := rearmGate(ask, f.repo.Root(), "o/r", "7", g); err == nil || arm {
 		t.Fatalf("arm %v, err %v: a read that failed is no answer, and no refusal", arm, err)
 	}
-	if !claim.ArmGateWired() {
+	prev := claim.SetArmGate(nil)
+	claim.SetArmGate(prev)
+	if prev == nil {
 		t.Fatal("linking this package leaves no merge gate wired for a re-arm")
 	}
 }
