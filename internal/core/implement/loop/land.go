@@ -111,6 +111,9 @@ type Landing struct {
 	// was armed by it. Nothing is pushed to the lane once Merge is set.
 	Merge string `json:"merge,omitempty"`
 	Armed bool   `json:"armed"`
+	// Toggles counts how many times the watch toggled the arming at the pushed
+	// head, which maxToggles bounds.
+	Toggles int `json:"toggles,omitempty"`
 	// Merged is the default branch's tip, as the remote held it, that carried
 	// the pushed head when the landing cleaned the lane up.
 	Merged string `json:"merged,omitempty"`
@@ -968,8 +971,10 @@ func askMergeGate(c Context, lane Lane, def string, rule landing.MergeRule) (lan
 	d, err := landing.DecideMerge(landing.MergeQuery{RepoRoot: c.RepoRoot, Roots: roots, Tip: tip, TipName: Remote + "/" + def, Default: def,
 		Rule: rule, Repo: "{owner}/{repo}", PR: strconv.Itoa(lane.PR), Head: lane.Landing.Pushed, Forge: gateForge(c, lane)})
 	if err != nil {
-		return landing.MergeDecision{}, refuse(string(StageLand), "", lane.ID, termsafe.Sanitize(fsutil.RedactHome(err.Error()))+" at "+Remote+"/"+def+", so nothing was armed",
+		r := refuse(string(StageLand), "", lane.ID, termsafe.Sanitize(fsutil.RedactHome(err.Error()))+" at "+Remote+"/"+def+", so nothing was armed",
 			"correct the file it names, then run `abcd implement step` again")
+		r.modeUnread = true
+		return landing.MergeDecision{}, r
 	}
 	return d, nil
 }
@@ -1081,6 +1086,12 @@ func landMerged(c Context, lane *Lane) (Outcome, error) {
 				}
 				if out != nil {
 					return *out, nil
+				}
+				queued = wait
+			} else {
+				wait, err := watchAutoMerge(c, *lane)
+				if err != nil {
+					return Outcome{}, err
 				}
 				queued = wait
 			}

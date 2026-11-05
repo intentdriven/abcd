@@ -97,6 +97,13 @@ case "$1 $2" in
   "pr close") : ;;
   "api graphql")
     case "$*" in
+      *headRefName*)
+        if [ -f "$d/refuse-armings" ]; then echo "stub gh: the forge could not list the armings" >&2; exit 1; fi
+        if [ -f "$d/armings.json" ]; then cat "$d/armings.json"
+        else echo '{"data":{"viewer":{"login":"author-a"},"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}'; fi ;;
+      *dequeuePullRequest*)
+        if [ -f "$d/refuse-dequeue" ]; then echo "stub gh: the forge could not dequeue the pull request" >&2; exit 1; fi
+        echo '{"data":{"dequeuePullRequest":{"clientMutationId":null}}}' ;;
       *enqueuePullRequest*)
         if [ -f "$d/refuse-enqueue" ]; then echo "stub gh: GraphQL: the forge could not enqueue the pull request" >&2; exit 1; fi
         : > "$d/enqueued"

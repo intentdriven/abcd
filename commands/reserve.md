@@ -262,10 +262,21 @@ person: `reserve rel-vX.Y.Z --take-over`, which carries the withdrawals, then
 `reserve rel-vX.Y.Z --release`, which re-arms them.
 
 Each is re-armed in the form its withdrawer recorded, pinned to the head it
-had, as the withdrawer's own newest push records it. One
-already armed or queued again counts as done (`armed`); an admitted one found
-armed counts as done whatever its head, since the forge keeps an arming across
-pushes. One is skipped and
+had, as the withdrawer's own newest push records it, and only where the merge
+gate arms that head (`abcd land` says when: in `auto`, a review receipt in this
+checkout's worktrees naming it). Where it does not, nothing goes to the forge,
+the failure says why and the pull request stays withdrawn, one comment on it from
+each acting worktree says so where the gate refuses the head, and a later act asks
+the gate again, so recording the review re-arms it; `abcd land` from a checkout
+holding the review arms it too. An admission is held to
+the same gate. One
+already armed or queued again counts as done (`armed`) at a head the merge gate
+arms. One armed at another head the gate refuses is taken off the merge path and
+read back, then recorded `moved`, where the arming is your account's; another
+account's is left as it is and recorded `standing`, named with the command that
+withdraws it. One armed at its recorded head the gate refuses stays recorded as it
+was, and each act names it as standing armed, with that command, so a listing's
+"not re-armed yet" covers it too until the forge is read. One is skipped and
 named for its owner to act on: its head moved (`moved`), it was closed or
 merged (`closed`, `merged`), the node id recorded for it is not the forge's for
 its number (`mismatch`, never acted on), or it can merge now and the repository
@@ -327,11 +338,12 @@ instead, so it is never reported lost.
 
 **A comment on each pull request it acts on.** abcd posts one fixed sentence
 on a pull request, naming the release's tag, when it does one of these, once
-the push recording it has landed:
+the push recording it has landed (the sentences dcn-2610230833367984, and
+dcn-2611050959161600 for what it changed):
 
 - withdraws it whole (auto-merge off, and out of the queue): "abcd release
   hold: the merge of #1234 is withdrawn by octo while release v0.16.0 is cut,
-  and is re-armed after it." Every such disarm is posted, a live renewal's
+  and is re-armed after it where the merge gate arms its head." Every such disarm is posted, a live renewal's
   withdrawal again included (after a run cut off before the forge, or after
   its owner re-armed it by hand);
 - admits it: "abcd release hold: the merge of #1234 is admitted into release
@@ -341,9 +353,20 @@ the push recording it has landed:
   the merge of #1234 is armed; the hold for release v0.16.0 has ended.";
 - leaves it for its owner: "abcd release hold: the merge of #1234 is not
   re-armed; the hold for release v0.16.0 has ended." and one clause saying
-  why: its head changed while it was held (`moved`), it can merge now and
-  there is no merge queue (`manual`), GitHub refused to re-arm it five times
-  (`refused`), or it was closed or merged.
+  why: "Its head changed while it was held, so its owner needs to re-arm it."
+  (`moved`), "It can merge now and there is no merge queue, so its owner can
+  merge it." (`manual`), "GitHub refused to re-arm it five times, so its owner
+  needs to re-arm it." (`refused`), "It was closed." or "It was merged.";
+- finds it armed by another account at a head the merge gate does not arm
+  (`standing`): "abcd release hold: the merge of #1234 stays armed at
+  0123456789ab, which the merge gate in this checkout does not arm; the hold for
+  release v0.16.0 has ended. To withdraw it: gh pr merge 1234 --disable-auto, and
+  take it out of the merge queue on its page if it is queued.";
+- holds its re-arm at the merge gate: "abcd release hold: the merge of #1234 stays
+  withdrawn after release v0.16.0: no review or approval in this checkout names
+  its head 0123456789ab. abcd land from a checkout holding the review re-arms
+  it." This one is posted when the gate refuses, once for each pull request and
+  head in each acting worktree, with no push to wait on.
 
 Nothing is posted for a withdrawal the forge refused (`kept`), a partial one
 (auto-merge off but still queued, which `forge_failures` names), a node id

@@ -37,9 +37,10 @@ inbound = outbound statement is the whole of it.
   by two checkouts), and auto-merge only enqueues a pull request whose checks
   count. So when `main` moves under an armed pull request it sits `BEHIND`
   outside the queue until its branch is updated. `scripts/pr-keep-current.sh`
-  performs that update for every armed pull request (`--watch` repeats until
-  none is armed); run it after arming auto-merge, and after every merge that
-  moves `main`. A pull request confined to `docs/`, `.abcd/development/`,
+  performs that update for every armed pull request, withdrawing its arming
+  first. An update the forge refuses, as the script reads it, puts the arming back
+  at the same head; one that moves the head leaves it for `abcd land` to arm once a
+  review receipt names the new head (`--watch` repeats until none is armed). Run it after arming auto-merge, and after every merge that moves `main`. A pull request confined to `docs/`, `.abcd/development/`,
   `.abcd/work/`, the root prose files, and this guide and the security policy
   beside it in `.github/` stands the race lane and the `zizmor`, `govulncheck`
   and smoke lanes down while it is in review; the queue run is not
