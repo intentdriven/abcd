@@ -165,6 +165,10 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"An unknown class or a malformed set is refused at the review stage and writes nothing.\n" +
 			"The result's review and the run record name each class with its model and each layer.\n\n" +
 			"The run then moves one step per `abcd implement step`, driven by the host session.\n\n" +
+			"While the away mode holds (`abcd mode autonomous`), or its record cannot be read, starting or resuming a\n" +
+			"run from a session whose setting reads as off a profile prints one line on stderr opening WARNING:,\n" +
+			"after the move, naming what abcd cannot check and addressed to the person; it never refuses and the exit\n" +
+			"code does not change. In the managed mode nothing prints. " + offProfileHelp + "\n\n" +
 			"The runner configuration is read before the run is created: roles.<role>.runner (host,\n" +
 			"the default, or a runner) and the runners this machine enables under runner.<name> in\n" +
 			abcdhome.Display("config.json") + ", each model route admitted against its provider's allowlist. A fault,\n" +
@@ -258,6 +262,7 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			if !res.Resumed {
 				noticeUnattended(cmd, prefix)
 			}
+			warnOffProfileWhileAway(cmd, prefix, root)
 			if err := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				verb := "started"
 				if res.Resumed {
@@ -429,6 +434,9 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 			// already told the person about.
 			if res.Start != nil && !res.Start.Resumed && (res.Series == nil || res.Series.Started) {
 				noticeUnattended(cmd, prefix)
+			}
+			if res.Start != nil {
+				warnOffProfileWhileAway(cmd, prefix, root)
 			}
 			for i := range res.Excluded {
 				res.Excluded[i].Reason = fsutil.RedactHome(res.Excluded[i].Reason)
