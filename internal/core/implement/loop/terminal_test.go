@@ -295,7 +295,7 @@ func TestARoleAnsweredBadlyPausesAndALaterStepRetriesIt(t *testing.T) {
 			o := w.options(t)
 			o.Drain.Max = 1
 			if bad == "late" {
-				o.Runners.Timeout = 300 * time.Millisecond
+				o.Runners.Timeout = 5 * time.Second
 			}
 			res, err := RunTerminal(context.Background(), w.repo.Root(), o)
 			if err != nil {
