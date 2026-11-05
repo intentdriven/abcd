@@ -14,8 +14,9 @@ Design of record: [`../plans/2026-07-11-iss35-semantic-release-gate.md`](../plan
 
 The [`release.yml`](../../../.github/workflows/release.yml) `verify` job runs
 these, in order, on Linux (`ubuntu-latest`); `ci.yml`'s `check` job gates the
-merge on Linux as well, and its macOS suite runs nightly and on demand.
-`release.yml` is authoritative; this list is the human-readable mirror.
+merge on Linux as well. `release.yml` is authoritative; this list is the
+human-readable mirror. The macOS suite runs beside `verify` on the same commit
+(see *The macOS gate* below).
 
 1. Format (gofmt)
 2. Build
@@ -63,6 +64,35 @@ This list is machine-checked: the `gate_lockstep` `record-lint` rule blocks if i
 diverges from `release.yml`'s `verify` job steps (setup steps excepted). Edit both
 together — the mirror cannot silently drift.
 
+## The macOS gate
+
+Each release cut runs its own macOS suite on the commit it is about to tag,
+whatever the nightly run said
+([dcn-2611042202509334](../../work/decisions/dcn-2611042202509334-the-product-thinker-ruled-on-2026-11-04.md)).
+The merge queue tests on Linux, so nothing else tests that commit on macOS before
+it ships. `release.yml` runs three jobs, `macos-suite-1` to `macos-suite-3`, beside
+`verify`. Each calls `macos-suite.yml`, the workflow `ci.yml`'s nightly suite calls,
+so a shard runs the same steps, over what `cmd/ci-shard` assigns it, under the same
+50-minute ceiling, except that the release path restores and saves no Go cache. The
+jobs hold `contents: read` and no secret.
+
+The `macos-gate` job reads each shard's result, and `tag`, `release` and `site` all
+need it. A shard that failed, was cancelled or never got a runner (result
+`abandoned`, the job's annotation reading "not acquired by Runner") fails the gate,
+which names the shard and what became of it. The run has tagged nothing at that
+point, and on a fresh cut the version stays free. **Re-run the failed jobs of that run** (`gh run rerun
+<run-id> --failed`): the green jobs keep their results, and the tag and publish jobs
+run once the gate passes. If a test fails again, land its fix; the push that lands
+it starts the release again.
+
+A job's `timeout-minutes` starts when a runner takes it, so the wait for a macOS
+runner has no ceiling of its own. While a run waits, a later push to `main` queues
+behind it in `auto-release`'s concurrency group, and the window in which the catalog
+on `main` names a zip that is not there yet stays open. A rehearsal
+runs the suite as well, so a green rehearsal has exercised the gate. A scaffolded
+repository's workflows carry none of this: it asked for no macOS jobs, and a private
+repository pays for each macOS minute.
+
 ## Enforced at merge only
 
 `verify` is a subset of what CI enforces at merge, not a substitute for it: the
@@ -70,7 +100,8 @@ merge gate additionally runs the issue-resolution gate (RS001-RS003 plus its
 cases), the site-render gate, secret scanning, the workflow audit, dependency
 review, `govulncheck`, the attribution gate and the external review. The macOS
 suite is not among them: `ci.yml` runs it nightly on the default branch and on
-demand, and `check (macos-latest)` on a queue entry says that none ran. The
+demand, `check (macos-latest)` on a queue entry says that none ran, and the release
+path runs its own (above). The
 normal release path (`auto-release` tagging the main tip) re-checks
 nothing those gates have not already passed on the exact tagged commit; a
 hand-pushed tag on a commit outside `main` forgoes them, which is one more

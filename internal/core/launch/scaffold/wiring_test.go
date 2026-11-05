@@ -264,10 +264,12 @@ func TestScaffoldedWorkflowsPassTheWorkflowAudit(t *testing.T) {
 var trustedContext = map[string]any{
 	"inputs.tag": "v1.2.3", "inputs.ref": "", "inputs.create_tag": true, "inputs.publish": true,
 	"github.sha": strings.Repeat("a", 40), "github.ref_name": "v1.2.3", "github.token": "t",
-	"github.event_name": "push", "github.repository": "example/fixture",
+	"github.event_name": "push", "github.ref_type": "branch", "github.repository": "example/fixture",
 	"github.event.repository.default_branch": "main", "github.event.repository.private": false,
 	"secrets.GITHUB_TOKEN": "t",
 	"needs.verify.result":  "success", "needs.tag.result": "success", "needs.release.result": "success",
+	"needs.macos-gate.result": "success", "needs.macos-suite-1.result": "success",
+	"needs.macos-suite-2.result": "success", "needs.macos-suite-3.result": "success",
 	"needs.verify.outputs.content_sha":   strings.Repeat("b", 40),
 	"needs.build.result":                 "success",
 	"needs.build.outputs.assets":         "false",
