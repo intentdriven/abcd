@@ -5894,10 +5894,12 @@ neutral, which is how a job past its time limit arrives, is not called a failure
 it has a line of its own naming it and the last verdict, until a verdict
 replaces it. A green is silent while it is recent for the workflow's own cycle,
 and past that one line says no verdict has been reached. An answer that is
-missing, more than two days old, some hours past due, or due after a refresh
-that failed says the state is unknown, naming the last successful ask. None of
-this changes an exit. With no such key nothing is asked, kept or shown; a key
-that could not name a workflow's file says so.
+missing or more than two days old, or due after a refresh that failed or, some
+hours on, kept nothing, says the state is unknown, naming the last successful
+ask; an answer that only aged through an idle night says nothing, and the next
+prompt carries what the refresh found. None of this changes an exit. With no
+such key nothing is asked, kept or shown; a key that could not name a workflow's
+file, and a config that could not be read here, each say so.
 
 An announcement stands for its life from when this checkout first fetched it,
 not by the sender's clock. One whose sender is not its branch's owner, one

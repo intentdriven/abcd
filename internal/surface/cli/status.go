@@ -185,10 +185,12 @@ func newStatusCommand(asJSON *bool) *cobra.Command {
 			"it has a line of its own naming it and the last verdict, until a verdict\n" +
 			"replaces it. A green is silent while it is recent for the workflow's own cycle,\n" +
 			"and past that one line says no verdict has been reached. An answer that is\n" +
-			"missing, more than two days old, some hours past due, or due after a refresh\n" +
-			"that failed says the state is unknown, naming the last successful ask. None of\n" +
-			"this changes an exit. With no such key nothing is asked, kept or shown; a key\n" +
-			"that could not name a workflow's file says so.\n\n" +
+			"missing or more than two days old, or due after a refresh that failed or, some\n" +
+			"hours on, kept nothing, says the state is unknown, naming the last successful\n" +
+			"ask; an answer that only aged through an idle night says nothing, and the next\n" +
+			"prompt carries what the refresh found. None of this changes an exit. With no\n" +
+			"such key nothing is asked, kept or shown; a key that could not name a workflow's\n" +
+			"file, and a config that could not be read here, each say so.\n\n" +
 			"An announcement stands for its life from when this checkout first fetched it,\n" +
 			"not by the sender's clock. One whose sender is not its branch's owner, one\n" +
 			"that does not read as an announcement (never shown but by its branch and the\n" +
@@ -426,7 +428,7 @@ func routerStatus(cmd *cobra.Command, root, session string, rootCommit func() (s
 		fmt.Fprintf(cmd.ErrOrStderr(), "abcd status: %s\n", termsafe.Sanitize(fsutil.RedactHome(err.Error())))
 	}
 	if n.RefreshDue {
-		startDueRefresh(ctx, cmd, root, o, deadline)
+		startDueRefresh(cmd, n, root, now, deadline)
 	}
 	return n
 }

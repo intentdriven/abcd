@@ -44,6 +44,7 @@ type Notes struct {
 	// workflow has aged enough for the hook to start a refresh in the
 	// background; the block itself never touches the network.
 	RefreshDue bool
+	refresh    *scheduledPathSet
 	// by is when MarkShown may last start a write: the hook's deadline less
 	// promptWriteReserve. Zero when the hook set no deadline.
 	by time.Time
@@ -191,7 +192,7 @@ func PromptNotes(ctx context.Context, root string, now time.Time, o Options) (No
 			var n Notes
 			if err == nil {
 				n, err = notesFor(rctx, root, v, now)
-				n.RefreshDue = v.ScheduledRefreshDue
+				n.RefreshDue, n.refresh = v.ScheduledRefreshDue, v.scheduledPaths
 			}
 			done <- answer{n, err}
 		}
@@ -538,4 +539,16 @@ func unreadLine(what string, u Unread, reason string) string {
 		return termsafe.Sanitize(fmt.Sprintf("%s never read here: the fetch at %s UTC failed: %s", what, u.FailedAt.Format("15:04"), reason))
 	}
 	return termsafe.Sanitize(fmt.Sprintf("%s unread since %s UTC: %s", what, since.Format("15:04"), reason))
+}
+
+// StampRefresh keeps that the hook is starting the refresh this block asked for, so
+// no other starts inside the cooldown. It uses where the block's read found the store,
+// so it makes no git call and needs no deadline left. A block that asked for none, or a
+// stamp that cannot be kept, is an error, and the hook then starts nothing: every
+// prompt would otherwise start one.
+func (n Notes) StampRefresh(now time.Time) error {
+	if !n.RefreshDue || n.refresh == nil {
+		return errors.New("this block asked for no refresh")
+	}
+	return n.refresh.stampAttempt(now)
 }

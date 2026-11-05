@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -58,11 +57,11 @@ var spawnScheduledRefresh = func(dir string) error {
 	return cmd.Process.Release()
 }
 
-// startDueRefresh starts the refresh the block asked for, when the hook's deadline
-// leaves room: stamped first, so a refresh that cannot be stamped is not started
-// on every prompt.
-func startDueRefresh(ctx context.Context, cmd *cobra.Command, root string, o claim.Options, deadline time.Time) {
-	if time.Now().After(deadline.Add(-scheduledSpawnMargin)) || claim.NoteScheduledRefresh(ctx, root, o) != nil {
+// startDueRefresh starts the refresh the block n asked for, when the hook's deadline
+// leaves room: stamped first, so a refresh that cannot be stamped is not started on
+// every prompt.
+func startDueRefresh(cmd *cobra.Command, n claim.Notes, root string, now, deadline time.Time) {
+	if time.Now().After(deadline.Add(-scheduledSpawnMargin)) || n.StampRefresh(now) != nil {
 		return
 	}
 	if err := spawnScheduledRefresh(root); err != nil {

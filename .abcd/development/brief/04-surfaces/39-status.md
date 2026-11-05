@@ -89,20 +89,29 @@ could hide a real fault. A green is silent while it is recent, and past three da
 three of the workflow's own cycles (the median gap between the runs read) when that is
 longer, one line says no verdict has been reached, so a weekly workflow is not called
 overdue between its runs. The state reads as unknown, naming the last successful ask
-and the last verdict kept, once a due refresh has failed; when the answer is six hours
-past due with no failure kept, a margin of some two dozen tries at the cooldown, of the
-age of the ask and not of the run, so a nightly's start slipping by hours moves nothing;
-when it was asked for more than two days ago or is dated ahead of now; and when it is
-missing, names another workflow or does not read back. Each stale answer has one line
-per session. The age is of the asking, so a fresh answer that the last verdict failed a
+and the last verdict kept, once a due refresh has failed; when a refresh started over a
+minute ago has kept nothing and the answer is six hours past due, as when the process
+died; when it was asked for more than two days ago or is dated ahead of now; and when it is
+missing, names another workflow or does not read back. An answer that only aged through
+an idle night says nothing, since saying so each morning would teach people to skip the
+line: the first prompt starts the refresh and the next carries what it found. The age is
+of the last successful ask and not of the run, so a nightly's start slipping by hours moves
+nothing. Each stale answer has one line per session. The age is of the asking, so a fresh answer that the last verdict failed a
 week ago is still named, with its age. A failure to ask (no `gh`, no login, an origin on
 another forge, no answer inside the five seconds) is said by the verb in one line,
 changes no exit, and leaves what was kept as it was.
 
 **Off, and what is trusted.** The key is read from the `.abcd/config.json` at the tip
 of `origin`'s default branch as last fetched, never a working tree, so another branch
-can neither switch the alert off nor point it elsewhere. A repository that names no
-workflow is off: nothing is asked, kept, read or said, so every managed repository,
+can neither switch the alert off nor point it elsewhere, and only `origin/HEAD` says
+which branch that is, so a branch that happens to be called `main` says nothing of it.
+Naming no workflow differs from not being able to tell: the tip is listed first, with
+its size and no blob read, so a config that cannot be read here, as in a partial clone
+that does not hold it, or that is over 1 MiB, says the state is unknown. With no
+`origin/HEAD`, which is every repository started locally and pushed, a checkout whose own
+config names a workflow is told how to set it, and any other reads as off, since a line
+in every such repository would say nothing to most of them; in such a checkout a branch
+whose config drops the key does read as off. A repository that names no workflow is off: nothing is asked, kept, read or said, so every managed repository,
 whatever its workflow is called, and one with none, reads alike. A value that is not a
 plain file name of at most 64 characters ending `.yml` or `.yaml` is said by the verb
 and at the prompt, in words that do not repeat it, and never reaches the forge. A kept

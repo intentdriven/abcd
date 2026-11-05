@@ -65,10 +65,18 @@ cycles when that is longer, one line says no verdict has been reached.
 
 An answer that could not be read leaves what was kept as it was, and the failure's
 time and a fixed class of reason are kept beside it. The state reads as unknown,
-naming the last successful ask, once a due refresh has failed, when the answer is six
-hours past due, when it was asked for more than two days ago, or when it is missing,
-names another workflow or does not read back: it never reads as a failure, and never
-as a green.
+naming the last successful ask, once a due refresh has failed; when a refresh started
+over a minute ago has kept nothing and the answer is six hours past due, as when the
+process died; when it was asked for more than two days ago; or when it is missing,
+names another workflow or does not read back. It never reads as a failure, and never
+as a green. An answer that only aged through an idle night says nothing: the first
+prompt starts the refresh, and the next carries what it found.
+
+Whether a key is set is read at the default branch's tip, and only `origin/HEAD` says
+which branch that is. A config at that tip that cannot be read here, as in a partial
+clone that does not hold it, or that is over 1 MiB, says the state is unknown rather
+than read as off. With no `origin/HEAD`, a checkout whose own config names a workflow
+is told `git remote set-head origin --auto`; any other reads as off.
 
 ## Read the status
 

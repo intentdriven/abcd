@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"regexp"
 	"slices"
 	"strconv"
@@ -67,14 +68,20 @@ const (
 	scheduledRefreshCooldown = 15 * time.Minute
 )
 
-// scheduledPastDue is how far past scheduledRefreshEvery an answer goes before the
-// prompt says so with no failure kept, as when a refresh died before it could keep
-// one. The refresh retries each cooldown, so this is some two dozen tries, and it
-// is the age of the last successful ask, not of the run: the nightly's own start
-// can slip by hours (a 02:41 cron started at 09:48 on 2026-11-04) and that moves
-// nothing here. It is short enough that a whole night's result is not missed
-// unsaid. A failure that was kept is said as soon as the answer is due.
-const scheduledPastDue = 6 * time.Hour
+// scheduledPastDue and scheduledRefreshDeath decide when a refresh that kept nothing
+// is said, as when the process died before it could keep a failure. An answer goes
+// old every night nobody is working, and that is no news: the first prompt says
+// nothing, starts a refresh, and the next carries what it found. So age alone never
+// speaks. It takes a refresh started since the answer, more than scheduledRefreshDeath
+// ago, which is well past the five seconds it may take, on an answer more than
+// scheduledPastDue past due, so one refresh lost to a closed laptop is not news
+// either. The age is of the last successful ask, not of the run: the nightly's own
+// start can slip by hours (a 02:41 cron started at 09:48 on 2026-11-04) and that moves
+// nothing here. A failure that was kept is said as soon as the answer is due.
+const (
+	scheduledPastDue      = 6 * time.Hour
+	scheduledRefreshDeath = time.Minute
+)
 
 // scheduledMinOverdue is the least time a green stands with no verdict since
 // before that is said; scheduledCycles is how many of the workflow's own cycles
@@ -87,6 +94,9 @@ const (
 
 // scheduledBudget is the most the forge is given to answer. A test lowers it.
 var scheduledBudget = 5 * time.Second
+
+// scheduledConfigPath is where the key lives.
+const scheduledConfigPath = ".abcd/config.json"
 
 // maxWorkflowName bounds the name of a workflow's file, a value a branch's config
 // chooses and a line prints; maxScheduledConfig caps the config this reads, and
@@ -207,36 +217,118 @@ func greenConclusion(c string) bool { return c == "success" }
 // the kept answer, which vets what it reads: the forge's words alone reach a line.
 var noVerdictConclusions = []string{"cancelled", "skipped", "neutral", "stale", "action_required"}
 
-// scheduledWorkflow is the workflow the repository at root names, read from the
-// config at the tip of origin's default branch as this checkout last fetched it,
-// never the working tree, so another branch can neither switch the alert off nor
-// point it elsewhere. It answers "" with no complaint when it names none (no such
-// tip, no config, no key, an empty key, a config that does not parse, which every
-// other reader of it speaks about), and "" with a complaint when the key holds
-// what could not name a workflow's file. The complaint does not repeat the value.
-func scheduledWorkflow(ctx context.Context, root string) (name, complaint string) {
-	ref := originDefault(root)
-	if ref == "" {
-		return "", ""
+// scheduledKey is what the repository at root says of the key: the workflow it
+// names and the ref it read that from; a complaint when the key holds what could not
+// name a workflow's file; unread, in fixed words, when whether it names one could not
+// be told. All empty is a repository that names none, which is off.
+type scheduledKey struct{ workflow, complaint, unread, ref string }
+
+// unreadText is the line a key that could not be read is said by, at the prompt and
+// by the verb. There is no workflow to name.
+func (k scheduledKey) unreadText() string {
+	return "the state of this repository's scheduled workflow is unknown: " + k.unread
+}
+
+// The fixed words of scheduledKey.unread.
+const (
+	keyNotRead      = "the config at the default branch's tip could not be read here"
+	keyTooLarge     = "the config at the default branch's tip is too large to read"
+	keyNoOriginHead = "origin/HEAD is not set here, so the default branch is not known; `git remote set-head origin --auto` sets it"
+)
+
+// scheduledKeyAt reads the key from the config at the tip of origin's default branch
+// as this checkout last fetched it, never the working tree, so another branch can
+// neither switch the alert off nor point it elsewhere. Only origin/HEAD says which
+// branch that is: a branch that happens to be called main says nothing of it. With
+// none set, which is every repository started locally and pushed, the working tree's
+// config is asked only whether to speak: one naming a workflow is told how to set it,
+// and any other reads as off, since a line in every such repository would say nothing
+// to most of them.
+//
+// A listing asks for the path and its size together, reading no blob, so a path the
+// tip does not hold is off, while one that cannot be read (a partial clone's missing
+// object, a deadline) is not: whether it names a workflow is unknown, which is said. A
+// file past the cap is refused before git is asked to stream it. A config that does
+// not parse reads as off, which every other reader of it speaks about, and an invalid
+// value is a complaint that does not repeat it.
+func scheduledKeyAt(ctx context.Context, root string) scheduledKey {
+	head, err := storedGitCtx(ctx, root, 4096, "symbolic-ref", "--quiet", "refs/remotes/"+Remote+"/HEAD")
+	if ctx.Err() != nil {
+		return scheduledKey{unread: keyNotRead}
 	}
-	data, err := storedGitCtx(ctx, root, maxScheduledConfig, "cat-file", "blob", ref+":.abcd/config.json")
 	if err != nil {
-		return "", ""
+		if workingTreeNamesWorkflow(root) {
+			return scheduledKey{unread: keyNoOriginHead}
+		}
+		return scheduledKey{}
 	}
+	ref := strings.TrimSpace(head)
+	if !strings.HasPrefix(ref, "refs/remotes/"+Remote+"/") {
+		return scheduledKey{unread: keyNotRead}
+	}
+	listed, err := storedGitCtx(ctx, root, 4096, "ls-tree", "-l", ref, "--", scheduledConfigPath)
+	if err != nil {
+		return scheduledKey{unread: keyNotRead}
+	}
+	if strings.TrimSpace(listed) == "" {
+		return scheduledKey{}
+	}
+	// "100644 blob <sha>    8\t.abcd/config.json"; a missing blob's size reads BAD.
+	fields := strings.Fields(listed)
+	if len(fields) < 4 || (fields[0] != "100644" && fields[0] != "100755") || fields[1] != "blob" {
+		return scheduledKey{unread: keyNotRead}
+	}
+	size, err := strconv.ParseInt(fields[3], 10, 64)
+	if err != nil {
+		return scheduledKey{unread: keyNotRead}
+	}
+	if size > maxScheduledConfig {
+		return scheduledKey{unread: keyTooLarge}
+	}
+	data, err := storedGitCtx(ctx, root, maxScheduledConfig, "cat-file", "blob", fields[2])
+	if err != nil {
+		return scheduledKey{unread: keyNotRead}
+	}
+	value := workflowValue([]byte(data))
+	if value == nil || value == "" {
+		return scheduledKey{}
+	}
+	name, ok := value.(string)
+	if !ok || !validWorkflowName(name) {
+		return scheduledKey{complaint: fmt.Sprintf("%s in %s on the default branch is not the file name of a workflow, such as nightly.yml, of at most %d characters, so no scheduled run is asked about",
+			ScheduledWorkflowKey, scheduledConfigPath, maxWorkflowName)}
+	}
+	return scheduledKey{workflow: name, ref: ref}
+}
+
+// workflowValue is the key's value in a config, nil when it is absent or the config
+// does not parse.
+func workflowValue(data []byte) any {
 	var cfg struct {
 		Status struct {
 			Workflow any `json:"scheduled_workflow"`
 		} `json:"status"`
 	}
-	if json.Unmarshal([]byte(data), &cfg) != nil || cfg.Status.Workflow == nil || cfg.Status.Workflow == "" {
-		return "", ""
+	if json.Unmarshal(data, &cfg) != nil {
+		return nil
 	}
-	s, ok := cfg.Status.Workflow.(string)
-	if !ok || !validWorkflowName(s) {
-		return "", fmt.Sprintf("%s in .abcd/config.json on the default branch is not the file name of a workflow, such as nightly.yml, of at most %d characters, so no scheduled run is asked about",
-			ScheduledWorkflowKey, maxWorkflowName)
+	return cfg.Status.Workflow
+}
+
+// workingTreeNamesWorkflow reports whether the working tree's config sets the key,
+// valid or not. It only ever decides whether a missing origin/HEAD is worth a line.
+func workingTreeNamesWorkflow(root string) bool {
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return false
 	}
-	return s, ""
+	defer r.Close()
+	data, err := fsutil.ReadGuardedInRoot(r, scheduledConfigPath, maxScheduledConfig)
+	if err != nil {
+		return false
+	}
+	value := workflowValue(data)
+	return value != nil && value != ""
 }
 
 // scheduledPathSet is where this repository's kept answer lives: the home, the
@@ -392,13 +484,16 @@ type keptFailure struct {
 // one that succeeded, and the prompt hook's background refresh calls it with the
 // refs it has.
 func RefreshScheduledRun(root string, lookup ScheduledRunLookup, o Options) string {
-	workflow, complaint := scheduledWorkflow(context.Background(), root)
-	if complaint != "" {
-		return complaint
-	}
-	if workflow == "" || lookup == nil {
+	key := scheduledKeyAt(context.Background(), root)
+	switch {
+	case key.complaint != "":
+		return key.complaint
+	case key.unread != "":
+		return key.unreadText()
+	case key.workflow == "" || lookup == nil:
 		return ""
 	}
+	workflow := key.workflow
 	notRead := func(why string) string {
 		why = strings.Join(strings.Fields(why), " ")
 		if r := []rune(why); len(r) > maxScheduledReason {
@@ -416,7 +511,7 @@ func RefreshScheduledRun(root string, lookup ScheduledRunLookup, o Options) stri
 			_ = paths.keep(paths.failed, data)
 		}
 	}
-	branch, ok := strings.CutPrefix(originDefault(root), "refs/remotes/"+Remote+"/")
+	branch, ok := strings.CutPrefix(key.ref, "refs/remotes/"+Remote+"/")
 	if !ok || !defaultBranchRe.MatchString(branch) {
 		failed(failedBranch)
 		return notRead(failedWords(failedBranch))
@@ -449,16 +544,10 @@ func RefreshScheduledRun(root string, lookup ScheduledRunLookup, o Options) stri
 	return ""
 }
 
-// NoteScheduledRefresh stamps that the prompt hook is starting a refresh, so no
-// other starts inside the cooldown. A stamp that cannot be kept is an error, and
-// the hook starts none: every prompt would otherwise start one.
-func NoteScheduledRefresh(ctx context.Context, root string, o Options) error {
-	workflow, _ := scheduledWorkflow(ctx, root)
-	paths, err := scheduledPaths(ctx, root, workflow, o)
-	if err != nil {
-		return err
-	}
-	return paths.keep(paths.attempt, []byte(strconv.FormatInt(o.now().Unix(), 10)+"\n"))
+// stampAttempt keeps that the prompt hook is starting a refresh, so no other starts inside
+// the cooldown (Notes.StampRefresh).
+func (p scheduledPathSet) stampAttempt(now time.Time) error {
+	return p.keep(p.attempt, []byte(strconv.FormatInt(now.Unix(), 10)+"\n"))
 }
 
 // scheduledReading is what the store says for one read of the view.
@@ -466,6 +555,9 @@ type scheduledReading struct {
 	failure *ScheduledFailure
 	doubt   *ScheduledDoubt
 	due     bool
+	// paths is where a refresh that is due stamps its cooldown: found by this read,
+	// so starting one needs no second git call.
+	paths *scheduledPathSet
 }
 
 // readScheduled is what the store holds for the workflow the repository names,
@@ -474,26 +566,32 @@ type scheduledReading struct {
 // read like a green. A repository that names no workflow reads as nothing at all,
 // and one whose key is invalid says so.
 func readScheduled(ctx context.Context, root string, now time.Time, o Options) scheduledReading {
-	workflow, complaint := scheduledWorkflow(ctx, root)
-	if complaint != "" {
-		return scheduledReading{doubt: &ScheduledDoubt{Kind: ScheduledInvalidName, Text: complaint, key: hashedKey("scheduled-invalid\x00" + o.Session)}}
-	}
-	if workflow == "" {
+	key := scheduledKeyAt(ctx, root)
+	switch {
+	case key.complaint != "":
+		return scheduledReading{doubt: &ScheduledDoubt{Kind: ScheduledInvalidName, Text: key.complaint, key: hashedKey("scheduled-invalid\x00" + o.Session)}}
+	case key.unread != "":
+		return scheduledReading{doubt: &ScheduledDoubt{Kind: ScheduledUnknown, Text: key.unreadText(), key: hashedKey("scheduled-key-unread\x00" + o.Session + "\x00" + key.unread)}}
+	case key.workflow == "":
 		return scheduledReading{}
 	}
+	workflow := key.workflow
 	paths, err := scheduledPaths(ctx, root, workflow, o)
 	if err != nil {
-		return scheduledReading{doubt: unknownScheduled(workflow, "no answer can be kept here", nil, nil,
+		return scheduledReading{doubt: unknownScheduled(workflow, "no answer can be kept here", nil, "",
 			hashedKey("scheduled-unknown\x00"+o.Session+"\x00"+workflow))}
 	}
-	read := scheduledReading{}
+	read := scheduledReading{paths: &paths}
 	kept, age, usable := readKept(paths, workflow, now)
+	attempted := readAttempt(paths)
 	if !usable || age > scheduledRefreshEvery {
-		read.due = refreshAllowed(paths, now)
+		// A stamp ahead of now has no cooldown left to wait for.
+		d := now.Sub(attempted)
+		read.due = attempted.IsZero() || d < 0 || d >= scheduledRefreshCooldown
 	}
 	lastTry := readFailure(paths)
 	if !usable {
-		read.doubt = unknownScheduled(workflow, "no answer from the forge is kept on this machine", nil, lastTry,
+		read.doubt = unknownScheduled(workflow, "no answer from the forge is kept on this machine", nil, failureWords(lastTry),
 			hashedKey("scheduled-unknown\x00"+o.Session+"\x00"+workflow))
 		return read
 	}
@@ -505,7 +603,7 @@ func readScheduled(ctx context.Context, root string, now time.Time, o Options) s
 	// a later answer going the same way is.
 	asked := "\x00" + o.Session + "\x00" + workflow + "\x00" + stamp(kept.CheckedAt)
 	if age > scheduledStale {
-		read.doubt = unknownScheduled(workflow, lastAsk, kept.Verdict, lastTry, hashedKey("scheduled-unknown"+asked))
+		read.doubt = unknownScheduled(workflow, lastAsk, kept.Verdict, failureWords(lastTry), hashedKey("scheduled-unknown"+asked))
 		return read
 	}
 	v, newest := kept.Verdict, kept.Newest
@@ -513,9 +611,12 @@ func readScheduled(ctx context.Context, root string, now time.Time, o Options) s
 		read.failure = &ScheduledFailure{Workflow: workflow, Branch: kept.Branch, Conclusion: v.Conclusion, URL: v.URL,
 			CompletedAt: v.CompletedAt, RunsSince: kept.Since, session: o.Session}
 	}
+	keptNothing := age > scheduledRefreshEvery+scheduledPastDue && attempted.After(kept.CheckedAt) && now.Sub(attempted) > scheduledRefreshDeath
 	switch {
-	case age > scheduledRefreshEvery && (lastTry != nil || age > scheduledRefreshEvery+scheduledPastDue):
-		read.doubt = unknownScheduled(workflow, lastAsk, v, lastTry, hashedKey("scheduled-unread"+asked))
+	case age > scheduledRefreshEvery && lastTry != nil:
+		read.doubt = unknownScheduled(workflow, lastAsk, v, failureWords(lastTry), hashedKey("scheduled-unread"+asked))
+	case keptNothing:
+		read.doubt = unknownScheduled(workflow, lastAsk, v, "a refresh started since kept nothing", hashedKey("scheduled-unread"+asked))
 	case newest != nil && !redConclusion(newest.Conclusion) && !greenConclusion(newest.Conclusion):
 		text := fmt.Sprintf("the forge's latest scheduled %s run on the default branch ended %s %s, which is no verdict: %s; ",
 			workflow, newest.Conclusion, ranAgo(now.Sub(newest.CompletedAt)), newest.URL)
@@ -570,25 +671,28 @@ func readKept(paths scheduledPathSet, workflow string, now time.Time) (kept kept
 	return kept, age, true
 }
 
-// refreshAllowed reports whether the cooldown since the last refresh the prompt
-// started has passed; a stamp ahead of now has none left to wait for.
-func refreshAllowed(paths scheduledPathSet, now time.Time) bool {
-	data := paths.read(paths.attempt)
-	if data == nil {
-		return true
-	}
-	at, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
+// readAttempt is when the prompt last started a refresh, zero when it has not or the
+// stamp does not read.
+func readAttempt(paths scheduledPathSet) time.Time {
+	at, err := strconv.ParseInt(strings.TrimSpace(string(paths.read(paths.attempt))), 10, 64)
 	if err != nil {
-		return true
+		return time.Time{}
 	}
-	d := now.Sub(time.Unix(at, 0))
-	return d < 0 || d >= scheduledRefreshCooldown
+	return time.Unix(at, 0).UTC()
+}
+
+// failureWords says a kept failure, "" for none.
+func failureWords(f *keptFailure) string {
+	if f == nil {
+		return ""
+	}
+	return "the last try failed: " + failedWords(f.Class)
 }
 
 // unknownScheduled is the line saying nothing recent is known, with the verdict the
-// last answer held and why the last try failed, when each is known. It is kept shown
-// by key, so its age moving on does not repeat it inside a session.
-func unknownScheduled(workflow, why string, last *keptRun, lastTry *keptFailure, key string) *ScheduledDoubt {
+// last answer held and what became of the last try, when each is known. It is kept
+// shown by key, so its age moving on does not repeat it inside a session.
+func unknownScheduled(workflow, why string, last *keptRun, since, key string) *ScheduledDoubt {
 	text := "the state of scheduled " + workflow + " is unknown: " + why
 	if last != nil {
 		verdict := "it had passed"
@@ -597,8 +701,8 @@ func unknownScheduled(workflow, why string, last *keptRun, lastTry *keptFailure,
 		}
 		text += ", when " + verdict + ": " + last.URL
 	}
-	if lastTry != nil {
-		text += "; the last try failed: " + failedWords(lastTry.Class)
+	if since != "" {
+		text += "; " + since
 	}
 	return &ScheduledDoubt{Kind: ScheduledUnknown, Text: termsafe.Sanitize(text + "; `abcd status` asks now"), key: key}
 }

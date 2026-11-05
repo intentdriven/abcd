@@ -259,6 +259,7 @@ type StatusView struct {
 	ScheduledFailure    *ScheduledFailure
 	ScheduledDoubt      *ScheduledDoubt
 	ScheduledRefreshDue bool
+	scheduledPaths      *scheduledPathSet
 }
 
 // StatusFetch is what `abcd status`'s fetch could not read: Gap is why
@@ -443,7 +444,7 @@ func ReadStatus(ctx context.Context, root string, now time.Time, o Options) (Sta
 		holdsErr = &holdsUnreadError{err}
 	}
 	scheduled := readScheduled(ctx, root, now, o)
-	v.ScheduledFailure, v.ScheduledDoubt, v.ScheduledRefreshDue = scheduled.failure, scheduled.doubt, scheduled.due
+	v.ScheduledFailure, v.ScheduledDoubt, v.ScheduledRefreshDue, v.scheduledPaths = scheduled.failure, scheduled.doubt, scheduled.due, scheduled.paths
 	in, err := takeIn(ctx, root, now)
 	if err != nil {
 		return v, errors.Join(holdsErr, err)

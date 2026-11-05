@@ -663,9 +663,7 @@ func TestARefreshIsDueWhenTheAnswerAgesAndNotMoreOftenThanItsCooldown(t *testing
 	if !p.read().ScheduledRefreshDue {
 		t.Fatal("no answer kept: a refresh is not due")
 	}
-	if err := NoteScheduledRefresh(context.Background(), p.dir, p.opts()); err != nil {
-		t.Fatalf("NoteScheduledRefresh: %v", err)
-	}
+	stampAttempt(t, p)
 	if p.read().ScheduledRefreshDue {
 		t.Fatal("a refresh just started: another is due")
 	}
@@ -819,27 +817,247 @@ func TestWhyARefreshFailedIsAFixedClass(t *testing.T) {
 	}
 }
 
-// TestAnAnswerFarPastDueIsSaid: with no failure kept at all, an answer several
-// hours past due is said, naming the last successful ask; one inside that margin
-// is not, since the hook's refresh has its cooldown and a nightly's own start
-// slips by hours.
-func TestAnAnswerFarPastDueIsSaid(t *testing.T) {
+// stampAttempt keeps a refresh as started at the world's time, as the hook does.
+func stampAttempt(t *testing.T, p *participant) {
+	t.Helper()
+	paths, err := scheduledPaths(context.Background(), p.dir, exampleWorkflow, p.opts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := paths.keep(paths.attempt, []byte(strconv.FormatInt(p.w.clock().Unix(), 10)+"\n")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestAnIdleNightIsSilentAndARefreshThatKeptNothingSpeaks: an answer goes old every
+// night nobody is working, and saying so each morning would teach people to skip the
+// line. So with no refresh started since, the first prompt says nothing and starts
+// one, and the next carries the real answer. Only a refresh that started and kept
+// nothing, as one that died does, is said, in its own words; a kept red is named
+// throughout.
+func TestAnIdleNightIsSilentAndARefreshThatKeptNothingSpeaks(t *testing.T) {
 	w := newWorld(t)
 	p := w.clone("9+pat@users.noreply.github.com", "")
 	nameWorkflow(t, p, exampleWorkflow)
 	asked := w.clock()
 	RefreshScheduledRun(p.dir, answering(t, exampleWorkflow, ranAt(w, "success", exampleRunURL, time.Hour)), p.opts())
-	w.now = asked.Add(scheduledRefreshEvery + scheduledPastDue - time.Minute)
+
+	w.now = asked.Add(scheduledRefreshEvery + scheduledPastDue + time.Hour)
+	v := p.read()
+	if v.ScheduledDoubt != nil {
+		t.Fatalf("idle with no refresh started: doubt %+v; want nothing said", *v.ScheduledDoubt)
+	}
+	if !v.ScheduledRefreshDue {
+		t.Fatal("idle with no refresh started: none is due")
+	}
+	stampAttempt(t, p)
+	if d := p.read().ScheduledDoubt; d != nil {
+		t.Fatalf("a refresh just started: doubt %+v; it has had no time", *d)
+	}
+	w.now = w.now.Add(scheduledRefreshDeath + time.Second)
+	d := p.read().ScheduledDoubt
+	if d == nil || d.Kind != ScheduledUnknown {
+		t.Fatalf("a refresh that started and kept nothing: the doubt = %+v; want unknown", d)
+	}
+	for _, want := range []string{"the last successful ask was 8 hours ago", "kept nothing"} {
+		if !strings.Contains(d.Text, want) {
+			t.Errorf("the line %q lacks %q", d.Text, want)
+		}
+	}
+	if strings.Contains(d.Text, "could not be asked") {
+		t.Errorf("the line reads as a failure the forge gave: %q", d.Text)
+	}
+	// An answer since then ends it: the stamp is older than the answer.
+	RefreshScheduledRun(p.dir, answering(t, exampleWorkflow, ranAt(w, "success", exampleRunURL, time.Hour)), p.opts())
+	w.now = w.now.Add(scheduledRefreshEvery + scheduledPastDue + time.Hour)
+	if d := p.read().ScheduledDoubt; d != nil {
+		t.Fatalf("a stamp older than the answer: doubt %+v", *d)
+	}
+	// A refresh that kept nothing inside the margin is not yet news.
+	asked = w.clock()
+	RefreshScheduledRun(p.dir, answering(t, exampleWorkflow, ranAt(w, "success", exampleRunURL, time.Hour)), p.opts())
+	w.now = asked.Add(scheduledRefreshEvery + time.Minute)
+	stampAttempt(t, p)
+	w.now = w.now.Add(scheduledRefreshDeath + time.Second)
 	if d := p.read().ScheduledDoubt; d != nil {
 		t.Fatalf("inside the margin: doubt %+v", *d)
 	}
-	w.now = asked.Add(scheduledRefreshEvery + scheduledPastDue + time.Minute)
-	d := p.read().ScheduledDoubt
-	if d == nil || d.Kind != ScheduledUnknown || !strings.Contains(d.Text, "the last successful ask was 7 hours ago") {
-		t.Fatalf("past the margin: the doubt = %+v", d)
+	// A kept red is named whichever of these holds.
+	asked = w.clock()
+	RefreshScheduledRun(p.dir, answering(t, exampleWorkflow, ranAt(w, "failure", exampleRunURL, time.Hour)), p.opts())
+	w.now = asked.Add(scheduledRefreshEvery + scheduledPastDue + time.Hour)
+	if v := p.read(); v.ScheduledFailure == nil || v.ScheduledDoubt != nil {
+		t.Fatalf("a kept red after an idle night: failure %+v, doubt %+v", v.ScheduledFailure, v.ScheduledDoubt)
 	}
-	if scheduledPastDue < 4*scheduledRefreshCooldown {
-		t.Fatalf("the margin %s leaves the refresh too few tries at its cooldown of %s", scheduledPastDue, scheduledRefreshCooldown)
+	if scheduledRefreshDeath < 2*scheduledBudget {
+		t.Fatalf("%s leaves a refresh too little of its budget of %s", scheduledRefreshDeath, scheduledBudget)
+	}
+}
+
+// TestAStampGoesWhereTheReadFoundIt: starting a refresh carries what the block's
+// read found, so a prompt whose deadline has passed by then still stamps the cooldown
+// of the right workflow, and with no git call to make. A block that asked for no
+// refresh stamps nothing, so nothing starts from it.
+func TestAStampGoesWhereTheReadFoundIt(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("9+pat@users.noreply.github.com", "")
+	nameWorkflow(t, p, exampleWorkflow)
+	stretchPromptBudget(t)
+	ctx, cancel := context.WithTimeout(context.Background(), slack(5*time.Second))
+	n, err := PromptNotes(ctx, p.dir, w.clock(), p.opts())
+	if err != nil || !n.RefreshDue {
+		t.Fatalf("the block: refresh due %v, %v", n.RefreshDue, err)
+	}
+	cancel()
+	calls := traced(t)
+	if err := n.StampRefresh(w.clock()); err != nil {
+		t.Fatalf("StampRefresh after the deadline: %v", err)
+	}
+	if got := calls.subcommands(); len(got) != 0 {
+		t.Fatalf("the stamp ran git: %v", got)
+	}
+	if p.read().ScheduledRefreshDue {
+		t.Fatal("after the stamp, another refresh is due: the cooldown went elsewhere")
+	}
+	if err := (Notes{}).StampRefresh(w.clock()); err == nil {
+		t.Fatal("a block that asked for no refresh stamped one")
+	}
+}
+
+// TestAnExpiredDeadlineIsNotAWorkflowNamedOff: a read with no time left cannot say
+// the repository names nothing.
+func TestAnExpiredDeadlineIsNotAWorkflowNamedOff(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("9+pat@users.noreply.github.com", "")
+	nameWorkflow(t, p, exampleWorkflow)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if k := scheduledKeyAt(ctx, p.dir); k.unread != keyNotRead || k.workflow != "" {
+		t.Fatalf("with no time left: %+v; want it unread, as %q", k, keyNotRead)
+	}
+	if k := scheduledKeyAt(context.Background(), p.dir); k.workflow != exampleWorkflow || k.unread != "" {
+		t.Fatalf("with time: %+v", k)
+	}
+}
+
+// looseObject is the file of a loose object at p.
+func looseObject(t *testing.T, p *participant, rev string) string {
+	t.Helper()
+	sha := strings.TrimSpace(runGit(t, p.dir, "rev-parse", rev))
+	path := filepath.Join(p.dir, ".git", "objects", sha[:2], sha[2:])
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("%s is not loose here: %v", rev, err)
+	}
+	return path
+}
+
+// TestAConfigThatCouldNotBeReadIsNotOff: naming no workflow is off; a config at the
+// tip that cannot be read here, as in a partial clone that does not hold the blob or
+// its folder, is not known to name none, so it says so and asks nothing.
+func TestAConfigThatCouldNotBeReadIsNotOff(t *testing.T) {
+	never := func(context.Context, string, string, string) ([]ScheduledRun, error) {
+		t.Error("the forge was asked with no workflow read")
+		return nil, nil
+	}
+	for name, rev := range map[string]string{
+		"the blob":   "origin/main:.abcd/config.json",
+		"the folder": "origin/main:.abcd",
+	} {
+		w := newWorld(t)
+		p := w.clone("9+pat@users.noreply.github.com", "")
+		nameWorkflow(t, p, exampleWorkflow)
+		if err := os.Remove(looseObject(t, p, rev)); err != nil {
+			t.Fatal(err)
+		}
+		v := p.read()
+		if v.ScheduledFailure != nil || v.ScheduledRefreshDue {
+			t.Errorf("%s missing: failure %+v, refresh due %v", name, v.ScheduledFailure, v.ScheduledRefreshDue)
+		}
+		if v.ScheduledDoubt == nil || v.ScheduledDoubt.Kind != ScheduledUnknown || !strings.Contains(v.ScheduledDoubt.Text, "could not be read") {
+			t.Errorf("%s missing: the doubt = %+v; want unknown, saying it could not be read", name, v.ScheduledDoubt)
+		}
+		if why := RefreshScheduledRun(p.dir, never, p.opts()); why == "" {
+			t.Errorf("%s missing: the refresh says nothing", name)
+		}
+	}
+}
+
+// TestAConfigPathThatIsNoFileIsNotOff: a folder or a link at the config's path holds
+// no key that can be read, which is not the same as naming none.
+func TestAConfigPathThatIsNoFileIsNotOff(t *testing.T) {
+	for name, lay := range map[string]func(path string) error{
+		"a folder": func(path string) error {
+			if err := os.MkdirAll(path, 0o755); err != nil {
+				return err
+			}
+			return os.WriteFile(filepath.Join(path, "x"), []byte("x"), 0o644)
+		},
+		"a link": func(path string) error { return os.Symlink("elsewhere.json", path) },
+	} {
+		w := newWorld(t)
+		p := w.clone("9+pat@users.noreply.github.com", "")
+		if err := lay(filepath.Join(p.dir, ".abcd", "config.json")); err != nil {
+			t.Fatal(err)
+		}
+		landConfig(t, p, "add", "--", ".abcd/config.json")
+		if d := p.read().ScheduledDoubt; d == nil || d.Kind != ScheduledUnknown || !strings.Contains(d.Text, "could not be read") {
+			t.Errorf("%s at the path: the doubt = %+v", name, d)
+		}
+	}
+}
+
+// TestAMissingOriginHeadIsNotGuessed: with no origin/HEAD the default branch is not
+// known, and a branch that happens to be called main says nothing of it. Where this
+// checkout's own config names a workflow that is said. Where it names none, as in
+// every repository started locally and pushed that uses no such thing, nothing is
+// said at all.
+func TestAMissingOriginHeadIsNotGuessed(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("9+pat@users.noreply.github.com", "")
+	before := strings.TrimSpace(runGit(t, p.dir, "rev-parse", "HEAD"))
+	nameWorkflow(t, p, exampleWorkflow)
+	// The real default is trunk, and a pushed main holds no config.
+	runGit(t, p.dir, "update-ref", "refs/remotes/origin/trunk", "HEAD")
+	runGit(t, p.dir, "update-ref", "refs/remotes/origin/main", before)
+	runGit(t, p.dir, "symbolic-ref", "--delete", "refs/remotes/origin/HEAD")
+	never := func(context.Context, string, string, string) ([]ScheduledRun, error) {
+		t.Error("the forge was asked with no default branch known")
+		return nil, nil
+	}
+	d := p.read().ScheduledDoubt
+	if d == nil || d.Kind != ScheduledUnknown || !strings.Contains(d.Text, "git remote set-head origin --auto") {
+		t.Fatalf("a named workflow and no origin/HEAD: the doubt = %+v; want unknown, saying how to set it", d)
+	}
+	if why := RefreshScheduledRun(p.dir, never, p.opts()); why == "" {
+		t.Fatal("no origin/HEAD: the refresh says nothing")
+	}
+	bare := w.clone("7+sam@users.noreply.github.com", "")
+	runGit(t, bare.dir, "update-ref", "-d", "refs/remotes/origin/main")
+	runGit(t, bare.dir, "symbolic-ref", "--delete", "refs/remotes/origin/HEAD")
+	if err := os.Remove(filepath.Join(bare.dir, ".abcd", "config.json")); err != nil {
+		t.Fatal(err)
+	}
+	if v := bare.read(); v.ScheduledDoubt != nil || v.ScheduledFailure != nil || v.ScheduledRefreshDue {
+		t.Fatalf("no key here and no origin/HEAD: doubt %+v, failure %+v, due %v; want nothing", v.ScheduledDoubt, v.ScheduledFailure, v.ScheduledRefreshDue)
+	}
+}
+
+// TestAnOversizedConfigIsRefusedWithoutReadingIt: the size is asked first, so git
+// never streams a file past the cap; it is refused, and that is said.
+func TestAnOversizedConfigIsRefusedWithoutReadingIt(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("9+pat@users.noreply.github.com", "")
+	writeConfigAt(t, p, `{"status":{"scheduled_workflow":"`+exampleWorkflow+`"},"pad":"`+strings.Repeat("a", maxScheduledConfig)+`"}`)
+	calls := traced(t)
+	v := p.read()
+	if calls.anyArgContains("blob") {
+		t.Fatalf("git was asked for the blob: %v", calls.subcommands())
+	}
+	if v.ScheduledFailure != nil || v.ScheduledRefreshDue {
+		t.Fatalf("an oversized config: failure %+v, due %v", v.ScheduledFailure, v.ScheduledRefreshDue)
+	}
+	if v.ScheduledDoubt == nil || v.ScheduledDoubt.Kind != ScheduledUnknown || !strings.Contains(v.ScheduledDoubt.Text, "too large") {
+		t.Fatalf("an oversized config: the doubt = %+v", v.ScheduledDoubt)
 	}
 }
 
@@ -916,9 +1134,7 @@ func TestAWorkflowsAnswerIsItsOwn(t *testing.T) {
 	p := w.clone("9+pat@users.noreply.github.com", "")
 	nameWorkflow(t, p, exampleWorkflow)
 	RefreshScheduledRun(p.dir, answering(t, exampleWorkflow, ranAt(w, "failure", exampleRunURL, time.Hour)), p.opts())
-	if err := NoteScheduledRefresh(context.Background(), p.dir, p.opts()); err != nil {
-		t.Fatal(err)
-	}
+	stampAttempt(t, p)
 	nameWorkflow(t, p, "other.yml")
 	if !p.read().ScheduledRefreshDue {
 		t.Fatal("another workflow's stamp held this one's refresh back")
