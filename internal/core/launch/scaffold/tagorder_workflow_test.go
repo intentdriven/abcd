@@ -66,7 +66,12 @@ func TestTheTagWaitsOnTheVerifyGate(t *testing.T) {
 				t.Errorf("verify must not run %q (Abcd=%v)", verb, subs.Abcd)
 			}
 		}
-		if !strings.Contains(tag, "needs: verify\n") || !strings.Contains(tag, "if: inputs.create_tag\n") {
+		// abcd's own tag job also waits on its macOS gate (iss-2611042224527148).
+		tagNeeds := "needs: verify\n"
+		if subs.Abcd {
+			tagNeeds = "needs: [verify, macos-gate]\n"
+		}
+		if !strings.Contains(tag, tagNeeds) || !strings.Contains(tag, "if: inputs.create_tag\n") {
 			t.Errorf("the tag job must need verify and run only when create_tag is set (Abcd=%v):\n%s", subs.Abcd, tag)
 		}
 		if !strings.Contains(tag, "COMMIT: ${{ inputs.ref || github.sha }}") ||
@@ -75,7 +80,7 @@ func TestTheTagWaitsOnTheVerifyGate(t *testing.T) {
 		}
 		// A managed profile publishes what its named build job built, so its
 		// publish job needs that job too (iss-2608270559310755).
-		needs := "needs: [verify, tag]\n"
+		needs := "needs: [verify, macos-gate, tag]\n"
 		if !subs.Abcd {
 			needs = "needs: [verify, tag, build]\n"
 		}
@@ -149,11 +154,14 @@ func TestThePublishConditionNeedsAGreenVerify(t *testing.T) {
 									"github.event_name":   event,
 									"needs.verify.result": verify,
 									"needs.tag.result":    tag,
-									"needs.build.result":  build,
-									"inputs.publish":      publish,
-									"cancelled()":         cancelled,
-									"success()":           !cancelled && verify == "success" && tag == "success",
-									"failure()":           verify == "failure" || tag == "failure",
+									// Green here: TestEveryPublishingJobNeedsTheMacOSGate
+									// (internal/core/lint) walks its results.
+									"needs.macos-gate.result": "success",
+									"needs.build.result":      build,
+									"inputs.publish":          publish,
+									"cancelled()":             cancelled,
+									"success()":               !cancelled && verify == "success" && tag == "success",
+									"failure()":               verify == "failure" || tag == "failure",
 								}
 								got, err := actionsexpr.EvalIf(cond, ctx)
 								if err != nil {
