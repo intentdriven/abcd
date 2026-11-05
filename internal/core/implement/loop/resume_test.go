@@ -401,6 +401,22 @@ func TestATakeOverBacksOffWhenAPeerTookTheWork(t *testing.T) {
 	}
 }
 
+// TestATakeOverRefusedAtTheEndSaysWhatItDid: a lane it could not restart refuses after
+// the driver was claimed, and says so.
+func TestATakeOverRefusedAtTheEndSaysWhatItDid(t *testing.T) {
+	repo, runID, _, _, _ := deadLane(t)
+	home, _ := stopWorld(t, false)
+	driverGone(t, repo.Root(), runID, home)
+	old := checkAsidePatch
+	checkAsidePatch = func(string, string) error { return errors.New("will not apply") }
+	t.Cleanup(func() { checkAsidePatch = old })
+	_, err := TakeRun(repo.Root(), runID, Options{stopHome: home})
+	r, ok := AsRefusal(err)
+	if !ok || !strings.Contains(r.Wrote, "driver") {
+		t.Fatalf("the refusal: %+v, %v", r, err)
+	}
+}
+
 // TestTheListingNamesAJudgement: a drain awaiting a judgement is named with the
 // move that gives it, so the entry a stopped session left is never a dead end.
 func TestTheListingNamesAJudgement(t *testing.T) {
@@ -691,6 +707,31 @@ func TestAHaltedRunIsNotHeldByItsIdleDriver(t *testing.T) {
 	if _, err := TakeRun(repo.Root(), runID, o); err != nil {
 		t.Fatalf("the take-over: %v", err)
 	}
+	st, err := ReadState(repo.Root(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range st.Record {
+		if e.Stage == StageDriver && strings.Contains(e.Note, "is gone") {
+			t.Fatalf("the record calls a live driver gone: %q", e.Note)
+		}
+	}
+}
+
+// TestAClaimGivesWayOnlyOverAHaltedRun: what lets an idle driver give way is read under
+// the lock, so a run no stop has halted keeps its driver.
+func TestAClaimGivesWayOnlyOverAHaltedRun(t *testing.T) {
+	repo, runID, _, _ := awaitingLane(t)
+	home, _ := stopWorld(t, false)
+	procsOf(t, hostOne, hostOne, hostTwo)
+	if err := ClaimDriver(repo.Root(), runID, Options{stopHome: home}); err != nil {
+		t.Fatal(err)
+	}
+	procsOf(t, hostTwo, hostOne, hostTwo)
+	err := claimDriver(repo.Root(), runID, Options{stopHome: home}, true)
+	if r, ok := AsRefusal(err); !ok || r.Stage != StageDriver {
+		t.Fatalf("over a run no stop has halted: %v", err)
+	}
 }
 
 // TestTheListingSanitisesWhatItReads: a control record's text is made safe before it is
@@ -702,9 +743,16 @@ func TestTheListingSanitisesWhatItReads(t *testing.T) {
 		at := time.Now()
 		return false, writeControl(r, runID, control{
 			Driver: &LiveDriver{Session: "s\x1b[31m", PID: 1, At: at},
-			Stop:   &RunStop{SetBy: "p\x1b[31m", SetAt: at, NotedAt: at, Released: "r\x1b[31m", Left: []StopLeft{{Lane: "l", Note: "n\x1b[31m"}}},
+			Stop:   &RunStop{SetBy: "p\x1b[31m", SetAt: at, NotedAt: at, Released: "r\x1b[31m", Left: []StopLeft{{Lane: "l\x1b[31m", Stage: "s\x1b[31m", Note: "n\x1b[31m"}}},
 		})
 	}); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := laneRel(runID, "lane-1", stageRestart)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(repo.Root(), filepath.FromSlash(dir), AsideDirName, "a\x1b[31m"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	l, err := ListRuns(repo.Root(), runID, Options{stopHome: home})
@@ -712,7 +760,10 @@ func TestTheListingSanitisesWhatItReads(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := theRun(t, l, runID)
-	for _, got := range []string{r.Driver.Session, r.Stop.SetBy, r.Stop.Released, r.Stop.Left[0].Note} {
+	if len(r.Lanes) == 0 || len(r.Lanes[0].Asides) != 1 {
+		t.Fatalf("the listing's lanes: %+v", r.Lanes)
+	}
+	for _, got := range []string{r.Driver.Session, r.Stop.SetBy, r.Stop.Released, r.Stop.Left[0].Note, r.Stop.Left[0].Lane, string(r.Stop.Left[0].Stage), r.Lanes[0].Asides[0]} {
 		if strings.ContainsRune(got, 0x1b) {
 			t.Fatalf("%q went out as it was read", got)
 		}

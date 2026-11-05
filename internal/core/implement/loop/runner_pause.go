@@ -307,7 +307,7 @@ func retryHeld(ctx context.Context, repoRoot, runID string, steps Stages, o Opti
 	if !ok {
 		return res, nil
 	}
-	r, err := dispatchAwait(ctx, repoRoot, runID, steps, o, rs, h.lane, h.await, h.why, res)
+	r, err := dispatchAwait(ctx, repoRoot, runID, steps, o, rs, h.lane, h.await, h.why, res, false)
 	if errors.Is(err, errClaimed) {
 		return res, nil
 	}
@@ -371,7 +371,7 @@ func retryRouted(ctx context.Context, repoRoot, runID string, steps Stages, o Op
 		return StepResult{}, true, err
 	}
 	why := h.why + ", under --route " + overrides[h.await.Role]
-	r, err := dispatchAwait(ctx, repoRoot, runID, steps, o, rs, h.lane, h.await, why, StepResult{})
+	r, err := dispatchAwait(ctx, repoRoot, runID, steps, o, rs, h.lane, h.await, why, StepResult{}, false)
 	if errors.Is(err, errClaimed) {
 		return StepResult{}, true, contend(StageRetry, "", h.lane, "another step's runner took "+h.lane+"'s "+h.await.Role+" first",
 			"run `abcd implement step` once it has finished; nothing was written")
@@ -384,12 +384,17 @@ func retryRouted(ctx context.Context, repoRoot, runID string, steps Stages, o Op
 // await this step handed out, and otherwise why the held role is retried,
 // which the record names. The await is claimed first, under the lock; a
 // runner that does not start the role pauses it (pauseAwait), and every other
-// end drops the claim. on is returned with any refusal, as the step's answer.
-func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o Options, rs Runners, laneID string, aw Await, why string, on StepResult) (StepResult, error) {
+// end drops the claim. on is returned with any refusal, as the step's answer. told
+// says this call itself handed the await out or re-told it, so no agent can have it
+// yet, which is what lets a stop refused here mark it as not started.
+func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o Options, rs Runners, laneID string, aw Await, why string, on StepResult, told bool) (StepResult, error) {
 	// The last moment before an agent starts: a stop set since the step began
 	// starts nothing (stop.go).
 	if _, err := stopCheck(repoRoot, runID, steps, o); err != nil {
-		return StepResult{}, notStartedUnderStop(repoRoot, runID, aw.Receipt, steps, o, err)
+		if told {
+			return StepResult{}, notStartedUnderStop(repoRoot, runID, aw.Receipt, steps, o, err)
+		}
+		return StepResult{}, err
 	}
 	afterStopCheck()
 	route := rs.Config.RouteFor(aw.Role)
@@ -435,7 +440,10 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		return true, nil
 	})
 	if rf, ok := AsRefusal(err); ok && rf.Stage == StageStop {
-		return StepResult{}, notStartedUnderStop(repoRoot, runID, aw.Receipt, steps, o, err)
+		if told {
+			return StepResult{}, notStartedUnderStop(repoRoot, runID, aw.Receipt, steps, o, err)
+		}
+		return StepResult{}, err
 	}
 	if err != nil {
 		return on, err

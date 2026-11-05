@@ -970,7 +970,8 @@ func DriveReview(ctx context.Context, repoRoot, runID string, res StepResult, st
 	// The last moment before the route is asked: a stop set since the step began
 	// sends it nothing (stop.go).
 	if _, err := stopCheck(repoRoot, runID, steps, o); err != nil {
-		return StepResult{}, err
+		// res.handed: this step handed the review out, so nothing has it yet.
+		return StepResult{}, notStartedUnderStop(repoRoot, runID, aw.Receipt, steps, o, err)
 	}
 	ret, err := sendReview(ctx, repoRoot, runID, res.Lane, aw, rr)
 	switch {

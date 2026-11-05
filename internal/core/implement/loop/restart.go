@@ -289,7 +289,7 @@ func RestartDrive(ctx context.Context, repoRoot, runID, laneID, yielded string, 
 		if text := route.Override(); text != "" {
 			why += " (--route " + text + ")"
 		}
-		r, err := dispatchAwait(ctx, repoRoot, runID, steps, o, rs, laneID, aw, why, res.StepResult)
+		r, err := dispatchAwait(ctx, repoRoot, runID, steps, o, rs, laneID, aw, why, res.StepResult, true)
 		if errors.Is(err, errClaimed) {
 			// A peer's step retried the role between the restart's write
 			// and this claim: its runner has it, so the host is handed
@@ -319,9 +319,16 @@ func restart(repoRoot, runID, laneID, yielded string, o Options) (RestartResult,
 	if _, err := stopCheck(repoRoot, runID, DefaultStages(), o); err != nil {
 		return RestartResult{}, nil, err
 	}
+	afterStopCheck()
 	var res RestartResult
 	var retold []Await
 	err = mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+		// A stop may have come since the check: under the lock it re-tells no one.
+		if c, err := readControl(root, runID); err != nil {
+			return false, err
+		} else if c.Stop != nil {
+			return false, stopRefusal(runID, *c.Stop)
+		}
 		i := slices.IndexFunc(st.Lanes, func(l Lane) bool { return l.ID == laneID })
 		if i < 0 {
 			return false, refuse(stageRestart, "", "", fmt.Sprintf("%s has no lane of the name given (%s)", st.RunID, termsafe.DescribeRefused(laneID)),

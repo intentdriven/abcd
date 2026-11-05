@@ -192,7 +192,7 @@ func listDrain(checkout string, d DrainState) ListedDrain {
 
 // listRun is one run's whole account.
 func listRun(checkout string, o Options, root *os.Root, st State, tab *sessionname.Table, stopHolds bool, now time.Time) ListedRun {
-	out := ListedRun{Checkout: fsutil.RedactHome(checkout), RunID: st.RunID, Key: st.Key, Reserved: st.ReservedAt != nil, Lanes: []ListedLane{}}
+	out := ListedRun{Checkout: termsafe.Sanitize(fsutil.RedactHome(checkout)), RunID: termsafe.Sanitize(st.RunID), Key: termsafe.Sanitize(st.Key), Reserved: st.ReservedAt != nil, Lanes: []ListedLane{}}
 	c, err := readControl(root, st.RunID)
 	if err != nil {
 		c = control{}
@@ -241,17 +241,18 @@ func safeStop(s *RunStop) *RunStop {
 	out.SetBy, out.Released = termsafe.Sanitize(s.SetBy), termsafe.Sanitize(s.Released)
 	out.Left = slices.Clone(s.Left)
 	for i, l := range out.Left {
+		out.Left[i].Lane, out.Left[i].Stage = termsafe.Sanitize(l.Lane), Stage(termsafe.Sanitize(string(l.Stage)))
 		out.Left[i].Note, out.Left[i].Aside = termsafe.Sanitize(l.Note), termsafe.Sanitize(l.Aside)
 	}
 	return &out
 }
 
 func listLane(checkout string, root *os.Root, runID string, lane Lane, c control, tab *sessionname.Table, view originView, now time.Time) ListedLane {
-	out := ListedLane{ID: lane.ID, Stage: lane.Stage, Branch: lane.Branch, PR: lane.PR, Agents: []ListedAgent{}}
+	out := ListedLane{ID: termsafe.Sanitize(lane.ID), Stage: Stage(termsafe.Sanitize(string(lane.Stage))), Branch: termsafe.Sanitize(lane.Branch), PR: lane.PR, Agents: []ListedAgent{}}
 	for _, a := range lane.Awaits {
-		la := ListedAgent{Role: a.Role, State: agentState(a, c, tab, now), Receipt: a.Receipt, ReceiptArrived: receiptArrived(checkout, runID, lane.ID, root, a)}
+		la := ListedAgent{Role: termsafe.Sanitize(a.Role), State: agentState(a, c, tab, now), Receipt: termsafe.Sanitize(a.Receipt), ReceiptArrived: receiptArrived(checkout, runID, lane.ID, root, a)}
 		if r := a.Running; r != nil {
-			la.Route = r.Runner
+			la.Route = termsafe.Sanitize(r.Runner)
 		}
 		out.Agents = append(out.Agents, la)
 	}
@@ -290,7 +291,7 @@ func listLane(checkout string, root *os.Root, runID string, lane Lane, c control
 			f.Close()
 			slices.Sort(names)
 			for _, n := range names {
-				out.Asides = append(out.Asides, path.Join(dir, AsideDirName, n))
+				out.Asides = append(out.Asides, termsafe.Sanitize(path.Join(dir, AsideDirName, n)))
 			}
 		}
 	}
@@ -330,6 +331,12 @@ func tookFirst(err error, res TakeResult) error {
 	slices.Sort(lanes)
 	for _, lane := range lanes {
 		said += "; " + lane + ": " + res.Collected[lane]
+	}
+	for _, a := range res.Saved {
+		said += fmt.Sprintf("; %s: %d file(s) saved aside at %s", a.Lane, len(a.Files), a.Path)
+	}
+	for _, r := range res.Restarted {
+		said += "; " + r.Lane + " was restarted"
 	}
 	out := *rf
 	out.Wrote = termsafe.Sanitize(said)
@@ -393,7 +400,7 @@ func TakeRun(repoRoot, runID string, o Options) (TakeResult, error) {
 		return TakeResult{}, contend(StageDriver, "", "", fmt.Sprintf("the process table cannot be read, so whether %s still drives %s cannot be told, and nothing was changed",
 			driverName(*prev.Driver), runID), "run `abcd implement resume --take "+runID+"` again")
 	}
-	if err := claimDriver(repoRoot, runID, o, prev.Stop != nil && prev.Stop.HaltedAt != nil); err != nil {
+	if err := claimDriver(repoRoot, runID, o, true); err != nil {
 		return TakeResult{}, err
 	}
 	res := TakeResult{RunID: runID}
@@ -487,7 +494,7 @@ func TakeRun(repoRoot, runID string, o Options) (TakeResult, error) {
 		return changed, nil
 	})
 	if err != nil {
-		return res, err
+		return res, tookFirst(err, res)
 	}
 	for _, laneID := range lost {
 		r, err := restartLane(repoRoot, runID, laneID, "", o)
@@ -500,8 +507,8 @@ func TakeRun(repoRoot, runID string, o Options) (TakeResult, error) {
 	// Work saved nowhere is never stepped over: the take-over says so rather than
 	// naming a step that would build on it.
 	if len(failed) > 0 {
-		return res, refuse(StageResume, "", "", strings.Join(failed, "; "),
-			"settle what the reason names, then run `abcd implement resume --take "+runID+"` again; do not step the run")
+		return res, tookFirst(refuse(StageResume, "", "", strings.Join(failed, "; "),
+			"settle what the reason names, then run `abcd implement resume --take "+runID+"` again; do not step the run"), res)
 	}
 	res.Next = "run `abcd implement step --run " + runID + "`"
 	if listed, err := ListRuns(repoRoot, runID, o); err == nil && len(listed.Runs) == 1 {

@@ -527,6 +527,12 @@ func TestALiftBeforeTheHaltReTellsWhatItSettled(t *testing.T) {
 	if c := controlOf(t, repo.Root(), runID); c.Stop == nil || c.Stop.HaltedAt != nil {
 		t.Fatalf("the run should still wait on lane-2: %+v", c.Stop)
 	}
+	if err := mutate(repo.Root(), runID, func(_ *os.Root, st *State) (bool, error) {
+		st.Lanes[0].Awaits[0].Running = &RunnerClaim{Session: "gone", Until: later.Add(-time.Hour)}
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := runstop.Lift(home, later); err != nil {
 		t.Fatal(err)
 	}
@@ -537,7 +543,7 @@ func TestALiftBeforeTheHaltReTellsWhatItSettled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a := st.Lanes[0].Awaits[0]; a.Kept != "" || a.Since.Sub(later).Abs() > time.Second {
+	if a := st.Lanes[0].Awaits[0]; a.Kept != "" || a.Running != nil || a.Since.Sub(later).Abs() > time.Second {
 		t.Fatalf("the settled lane's await is not told again: %+v", a)
 	}
 }
@@ -1030,7 +1036,7 @@ func TestARoutedAwaitRereadsTheStopUnderTheLock(t *testing.T) {
 	}
 	aStopArrivesAfterTheCheck(t, repo.Root(), runID)
 	_, err = dispatchAwait(context.Background(), repo.Root(), runID, DefaultStages(), Options{stopHome: home},
-		Runners{Config: &runner.Config{}}, l.ID, st.Lanes[0].Awaits[0], "", StepResult{})
+		Runners{Config: &runner.Config{}}, l.ID, st.Lanes[0].Awaits[0], "", StepResult{}, true)
 	wantStopRefusal(t, err)
 }
 
@@ -1044,7 +1050,7 @@ func TestARoutedAwaitThatNeverStartedHoldsNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = dispatchAwait(context.Background(), repo.Root(), runID, DefaultStages(), o,
-		Runners{Config: &runner.Config{}}, l.ID, st.Lanes[0].Awaits[0], "", StepResult{})
+		Runners{Config: &runner.Config{}}, l.ID, st.Lanes[0].Awaits[0], "", StepResult{}, true)
 	wantStopRefusal(t, err)
 	c := controlOf(t, repo.Root(), runID)
 	if c.Stop == nil || c.Stop.HaltedAt == nil {
@@ -1179,4 +1185,56 @@ func TestThePageNamesNoReleaseClause(t *testing.T) {
 	if strings.Contains(string(page), c.Stop.Released) {
 		t.Fatalf("the page carries the release clause:\n%s", page)
 	}
+}
+
+// TestAnOlderAwaitIsNotMarkedAsNeverStarted: a retry's refusal says nothing of whether
+// a host's agent has the await, so only one this call told is marked.
+func TestAnOlderAwaitIsNotMarkedAsNeverStarted(t *testing.T) {
+	repo, runID, l, _, _ := deadLane(t)
+	o, _, _ := stopped(t)
+	st, err := ReadState(repo.Root(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = dispatchAwait(context.Background(), repo.Root(), runID, DefaultStages(), o,
+		Runners{Config: &runner.Config{}}, l.ID, st.Lanes[0].Awaits[0], "", StepResult{}, false)
+	wantStopRefusal(t, err)
+	st, err = ReadState(repo.Root(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a := st.Lanes[0].Awaits[0]; a.Kept != "" {
+		t.Fatalf("an older await was marked: %+v", a)
+	}
+	editsIntact(t, repo, l)
+	if c := controlOf(t, repo.Root(), runID); c.Stop == nil || c.Stop.HaltedAt != nil {
+		t.Fatalf("the run: %+v", c.Stop)
+	}
+}
+
+// TestAReviewAwaitNeverSentHoldsNothing: a review handed out this step and refused
+// before the route was asked is no agent in its call.
+func TestAReviewAwaitNeverSentHoldsNothing(t *testing.T) {
+	repo, id, res, stages, srv, rr := handedReview(t)
+	o, _, _ := stopped(t)
+	_, err := DriveReview(context.Background(), repo.Root(), id, res, stages, o, rr)
+	wantStopRefusal(t, err)
+	if len(srv.Calls()) != 0 {
+		t.Fatal("the route was asked")
+	}
+	c := controlOf(t, repo.Root(), id)
+	if c.Stop == nil || c.Stop.HaltedAt == nil {
+		t.Fatalf("a review never sent holds the stop: %+v", c.Stop)
+	}
+}
+
+// TestARestartRereadsTheStopUnderTheLock: a restart that passed its check tells no one
+// over a stop that came since.
+func TestARestartRereadsTheStopUnderTheLock(t *testing.T) {
+	repo, runID, _, dir, _ := deadLane(t)
+	home, _ := stopWorld(t, false)
+	aStopArrivesAfterTheCheck(t, repo.Root(), runID)
+	_, err := restartLane(repo.Root(), runID, "lane-1", "", Options{stopHome: home})
+	wantStopRefusal(t, err)
+	noAside(t, dir)
 }

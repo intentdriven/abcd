@@ -227,7 +227,8 @@ func goOnAfterLift(repoRoot, runID string, o Options) error {
 			lane.Awaits = slices.Clone(lane.Awaits)
 			for k, a := range lane.Awaits {
 				if strings.HasPrefix(a.Kept, stopKeptPrefix) {
-					a.Kept, a.Since = "", now
+					// What a restart clears: the fresh agent's return is its own.
+					a.Since, a.Kept, a.Answered, a.Paused, a.Running = now, "", nil, nil, nil
 					lane.Awaits[k] = a
 					retold = true
 				}
@@ -667,9 +668,11 @@ func stopEndsRenewal(repoRoot string, st State, now time.Time) bool {
 // lapses if that check does not come first.
 func settlesHere(st State) bool { return st.SchemaVersion == SchemaVersion }
 
-// notStartedUnderStop answers a routed await a stop refused before it began: no agent
-// is out for it, so it is marked as not started and takes the stop as one that was
-// lost, which a take-over re-tells. It returns the refusal the run now gives.
+// notStartedUnderStop answers an await this very call handed out or re-told, which a
+// stop refused before it began: no agent can have it yet, so it is marked as not
+// started and takes the stop as one that was lost, which a take-over re-tells. It
+// returns the refusal the run now gives. An older await, which a host's agent may be
+// working on, never comes here.
 func notStartedUnderStop(repoRoot, runID, receiptPath string, steps Stages, o Options, refused error) error {
 	if rf, ok := AsRefusal(refused); !ok || rf.Stage != StageStop {
 		return refused

@@ -157,7 +157,7 @@ func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options,
 		// Not listed yet: a reviewer route can still answer it (ListHostRole).
 		return res, nil
 	}
-	r, err := dispatchAwait(ctx, repoRoot, runID, steps, o, rs, res.Lane, aw, "", res)
+	r, err := dispatchAwait(ctx, repoRoot, runID, steps, o, rs, res.Lane, aw, "", res, true)
 	if errors.Is(err, errClaimed) {
 		// A peer's step retried the role in the moment between: its runner
 		// has it, so the host is handed nothing.

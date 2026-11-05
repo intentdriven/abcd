@@ -215,10 +215,11 @@ func driverOf(tab sessionname.Table, from int, home string) (sessionname.Host, s
 	return h, "", err
 }
 
-// claimDriver is ClaimDriver's claim, which a take-over makes directly. over says a
-// live driver gives way: a run every lane of which has settled has no agent in its
-// call, and an idle session does not hold it from being taken over.
-func claimDriver(repoRoot, runID string, o Options, over bool) error {
+// claimDriver is ClaimDriver's claim, which a take-over makes directly. overHalted
+// lets a live driver give way where the run, as read under the lock, is halted: every
+// lane has settled, so no agent is in its call, and an idle session does not hold it
+// from being taken over.
+func claimDriver(repoRoot, runID string, o Options, overHalted bool) error {
 	tab, err := readProcs()
 	if err != nil {
 		return nil
@@ -253,6 +254,7 @@ func claimDriver(repoRoot, runID string, o Options, over bool) error {
 				}
 				alive = fresh.Alive(d.host())
 			}
+			over := alive && overHalted && c.Stop != nil && c.Stop.HaltedAt != nil
 			if alive && !over {
 				return false, contend(StageDriver, "", "", fmt.Sprintf("%s is driven by %s, which has been alive since it took the run at %s",
 					st.RunID, driverName(*d), d.At.UTC().Format(time.RFC3339)),
@@ -261,8 +263,12 @@ func claimDriver(repoRoot, runID string, o Options, over bool) error {
 			if hostErr != nil {
 				return false, nil
 			}
+			said := fmt.Sprintf("the driver %s is gone", driverName(*d))
+			if over {
+				said = fmt.Sprintf("a stop halted the run, so its idle driver %s gave way", driverName(*d))
+			}
 			st.Record = append(st.Record, Entry{At: now, Stage: StageDriver,
-				Note: fmt.Sprintf("the driver %s is gone; %s took the run", driverName(*d), driverName(LiveDriver{Session: session, PID: here.PID}))})
+				Note: fmt.Sprintf("%s; %s took the run", said, driverName(LiveDriver{Session: session, PID: here.PID}))})
 			st.UpdatedAt = now
 			changed = true
 		}
