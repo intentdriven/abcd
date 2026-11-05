@@ -20,7 +20,8 @@ var stageGateFiles = []string{".githooks", "hooks", "Makefile", "GNUmakefile", "
 
 // stageAbcdGates are the files under .abcd that do the same, by path below the
 // tree: each, and all below each.
-var stageAbcdGates = []string{".abcd/rules.json", ".abcd/guard.json", ".abcd/config.json", ".abcd/config", ".abcd/.work.local/preflight-receipts"}
+var stageAbcdGates = []string{".abcd/rules.json", ".abcd/guard.json", ".abcd/config.json", ".abcd/config",
+	".abcd/.work.local/preflight-receipts", ".abcd/.work.local/approvals", ".abcd/.work.local/review-receipts"}
 
 // stageLocalTier is the one place under .abcd a stage writes freely, and
 // stageAbcd the rest of it, which it writes where its work declares.
@@ -42,13 +43,16 @@ func stageLineRefused(line string) string {
 }
 
 // startsAnAgent reports whether the command at tokens[idx] starts a further
-// harness or a drive, or reads the keychain.
+// harness or a drive, lands a branch, or reads the keychain.
 func startsAnAgent(tokens []string, idx int) bool {
 	switch filepath.Base(tokens[idx]) {
 	case "claude", "security":
 		return true
-	case "abcd":
+	case "abcd", "abcd.sh":
 		rest := tokens[idx+1:]
+		if i := slices.IndexFunc(rest, func(w string) bool { return !strings.HasPrefix(w, "-") }); i >= 0 && rest[i] == "land" {
+			return true
+		}
 		return slices.Contains(rest, "drain") && slices.ContainsFunc(rest, func(w string) bool {
 			return w == "--drive" || strings.HasPrefix(w, "--drive=")
 		})
@@ -77,6 +81,9 @@ func stageGateFile(tree, path string, declared []string, fold bool) string {
 	if name := firstOf(stageAbcdGates, below); name != "" {
 		return name
 	}
+	if name := nestedLocalGate(rel, fold); name != "" {
+		return name
+	}
 	if name := firstOf(stageGateFiles, below); name != "" {
 		return name
 	}
@@ -89,6 +96,24 @@ func stageGateFile(tree, path string, declared []string, fold bool) string {
 		}
 	}
 	return stageAbcd
+}
+
+// nestedLocalGate is the local tier's gate rel lands in deeper in the tree, judged
+// the same as the tier at the top.
+func nestedLocalGate(rel string, fold bool) string {
+	if fold {
+		rel = strings.ToLower(rel)
+	}
+	return firstOf(stageAbcdGates, func(gate string) bool {
+		if !strings.HasPrefix(gate, stageLocalTier+"/") {
+			return false
+		}
+		g := "/" + gate
+		if fold {
+			g = strings.ToLower(g)
+		}
+		return strings.Contains(rel+"/", g+"/")
+	})
 }
 
 // firstOf is the first of names that holds.

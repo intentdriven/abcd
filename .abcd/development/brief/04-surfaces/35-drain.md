@@ -297,10 +297,11 @@ stage's shell reads what this account can. A launch starts from an allow-list of
 variables, a proxy's credentials taken out. Its shell's home is emptied at each launch
 and holds the person's git identity and filters; Go's caches and the person's home for
 abcd's shared records are named, and any other toolchain's cache starts empty. The guard
-reads a shell line against that home and refuses a further agent, a moved home and the
-keychain tool. A file tool, and a shell line the guard can read, write only in the
+reads a shell line against that home and refuses a further agent, a moved home, the
+keychain tool and the land verb. A file tool, and a shell line the guard can read, write only in the
 stage's working tree and run directories, its home and temporary files, and never the
-hooks, the Makefile, abcd's configuration or a preflight receipt; other records under
+hooks, the Makefile, abcd's configuration, a preflight or review receipt or an approval;
+other records under
 `.abcd/` are written only where the work declares them. A program the guard cannot read
 is not held to this. The hooks read the rules and the guard's registry as the lane's base
 holds them, and the away mode, the checklist and recall stand aside on a stage.
