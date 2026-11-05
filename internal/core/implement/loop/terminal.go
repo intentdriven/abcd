@@ -301,7 +301,11 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 			t.outage.succeed()
 			t.sayStep(runID, res)
 		default:
-			t.sleep(ctx, TerminalWaitFloor, res.Next)
+			// No agent ran and no stage moved. Every wait has a deadline
+			// (adr-2610222222326104), so this one runs on the outage's.
+			if t.failed(ctx, false, fmt.Sprintf("%s did not move: %s", runID, res.Next)) {
+				return TerminalOutage, nil
+			}
 		}
 	}
 }

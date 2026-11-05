@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -32,7 +33,9 @@ const (
 // terminalFakeTurn takes the next line of the launch's script, one behaviour
 // per launch, and answers the fake harness's mode for it: shape (the default
 // past the script's end) answers as the role's contract asks; noshape writes a
-// receipt no verifier takes; late does not finish; none exits with no answer.
+// receipt no verifier takes; late does not finish; none exits with no answer;
+// dies is killed in its call; yes is a judge answering that the issue needs a
+// decision.
 func terminalFakeTurn(role string) string {
 	path := os.Getenv(terminalScriptEnv)
 	raw, _ := os.ReadFile(path)
@@ -51,6 +54,11 @@ func terminalFakeTurn(role string) string {
 		return "hang"
 	case "none":
 		return "notloggedin"
+	case "dies":
+		// The harness killed mid-call: no result, no receipt.
+		_ = syscall.Kill(os.Getpid(), syscall.SIGKILL)
+	case "yes":
+		return "judge-" + JudgementYes
 	case "slow":
 		time.Sleep(time.Second)
 	}
@@ -247,10 +255,10 @@ func TestAnEmptyLedgerEndsTheRun(t *testing.T) {
 }
 
 // TestARoleAnsweredBadlyPausesAndALaterStepRetriesIt is the stand-in out of
-// shape, late and not at all: each pauses the lane, nothing is handed back,
+// shape, late, not at all and killed in its call: each pauses the lane, nothing is handed back,
 // and the retry lands it.
 func TestARoleAnsweredBadlyPausesAndALaterStepRetriesIt(t *testing.T) {
-	for _, bad := range []string{"noshape", "late", "none"} {
+	for _, bad := range []string{"noshape", "late", "none", "dies"} {
 		t.Run(bad, func(t *testing.T) {
 			w := newTerminalWorld(t, "shape", bad)
 			o := w.options(t)
@@ -334,5 +342,41 @@ func TestASettingsDifferenceStopsTheRunBeforeTheNextStage(t *testing.T) {
 	}
 	if calls < 2 || !strings.Contains(strings.Join(w.lines, "\n"), "differ") {
 		t.Fatalf("the check runs before each stage and says why: %d calls, %q", calls, w.lines)
+	}
+}
+
+// TestALaneThatDoesNotMoveHasADeadline: a step that starts no agent and moves no
+// stage, here a role with nowhere to run, is waited through on the outage's
+// schedule rather than at the floor for ever (adr-2610222222326104 condition
+// 3), and nothing is handed back.
+func TestALaneThatDoesNotMoveHasADeadline(t *testing.T) {
+	w := newTerminalWorld(t)
+	for i := range w.stages {
+		if w.stages[i].Name == StageImplement {
+			w.stages[i].Run = func(c Context, l *Lane) (Outcome, error) {
+				return Outcome{Await: &Await{Role: RoleAuditor, Brief: filepath.Join(c.RepoRoot, l.Brief),
+					Receipt: filepath.Join(c.RepoRoot, RunRelDir, "receipt-held.json")}}, nil
+			}
+		}
+	}
+	o := w.options(t)
+	o.Drain.Max = 1
+	sleep := o.Sleep
+	o.Sleep = func(ctx context.Context, d time.Duration) {
+		if len(w.sleeps) > 100 {
+			t.Fatalf("the lane waits with no deadline: %v", w.sleeps[:8])
+		}
+		sleep(ctx, d)
+	}
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Ended != TerminalOutage || res.Run == "" {
+		t.Fatalf("the run ends at the outage's limit, naming the lane: %+v\n%s", res, strings.Join(w.lines, "\n"))
+	}
+	st, _, _ := readDrain(w.repo.Root())
+	if len(st.HandBacks) != 0 {
+		t.Fatalf("nothing is handed back: %+v", st.HandBacks)
 	}
 }
