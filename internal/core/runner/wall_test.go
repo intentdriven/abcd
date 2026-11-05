@@ -72,7 +72,7 @@ func fakeWall(mode string) int {
 	}
 	raw, _ := json.Marshal(init)
 	fmt.Println(string(raw))
-	shellHome := filepath.Join(os.Getenv("CLAUDE_CONFIG_DIR"), "home")
+	shellHome := os.Getenv(StageHomeEnv)
 	if mode == "wall-home" {
 		shellHome = "/the/persons/own/home"
 	}

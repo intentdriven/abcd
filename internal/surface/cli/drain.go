@@ -12,6 +12,7 @@ import (
 
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/drainrule"
@@ -88,7 +89,7 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"back.\n\n" +
 			"--drive makes the moves itself, from a plain terminal with no host session: it refuses\n" +
 			"before anything is reserved when the claude runner is not enabled or admitted, when\n" +
-			"there is no one walled directory under ~/.abcd.noindex/profiles/ logged in, when a\n" +
+			"there is no one walled directory under " + abcdhome.Display("profiles") + "/ logged in, when a\n" +
 			"wall does not hold or no git identity resolves, when a credential variable the harness would bill through is set\n" +
 			"(a drive runs on this account's subscription alone, for now), when the judge is routed\n" +
 			"to opencode, when a role is pinned to the host, and when it is started from inside an\n" +

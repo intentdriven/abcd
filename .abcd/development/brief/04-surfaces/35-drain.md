@@ -227,7 +227,7 @@ only in the stage's working tree and run directories, and neither it nor a shell
 the guard can read writes `.abcd/`, the hooks or the Makefile unless the work declares
 them. The hooks read the rules and the guard's registry as the lane's base holds them. A
 preflight runs with the same variables, and is not run over a lane that changes the
-Makefile or `scripts/` unless the drive was started with `--trust-lane-gates`; one drive
+Makefile or `scripts/` unless the person agreed when they started the drive; one drive
 holds a checkout at a time. A credential variable the harness would bill
 through refuses the start, naming itd-2611011230226453, and so does a start from
 inside an agent's own session.

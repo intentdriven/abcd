@@ -262,7 +262,7 @@ func ResetStageHome(p Profile) error {
 			return &WallError{WallSettingsFile, "the stage's home could not be emptied"}
 		}
 	}
-	if err := os.MkdirAll(p.ShellHome, 0o700); err != nil {
+	if err := os.MkdirAll(p.ShellHome, abcdhome.DirMode); err != nil {
 		return &WallError{WallSettingsFile, "the stage's home could not be made"}
 	}
 	if err := fsutil.WriteFileAtomic(filepath.Join(p.ShellHome, ".gitconfig"), v.(*stageWritten).gitConfig, 0o600); err != nil {
