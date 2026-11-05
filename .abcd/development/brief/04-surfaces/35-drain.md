@@ -198,7 +198,8 @@ walled launch; a landing that waits for its receipt has its preflight run behind
 load gate; each wait a move names is slept to the earliest time it names, at least
 thirty seconds. Three runner failures in a row, or a judge's failure, enter the
 outage schedule (one minute, five, ten, then hourly), which hands nothing back and
-ends the drive at eight hours.
+ends the drive at eight hours. A step that starts no agent and moves no stage waits
+on that same schedule, so no wait in a drive goes without a deadline.
 
 Before the first move the drive writes the walled directory's settings, abcd's hooks
 as commands naming its own binary and nothing else, and proves each wall, refusing
@@ -218,7 +219,8 @@ may take the issue up, leaves the lane on its branch, and names the run, the lan
 and the command that resumes it. The second signal ends the context, which kills the
 process group, and names when the reservation lapses. Nothing is handed back for a
 stop. A later drive on the same copy reserves the lane again and lands it; one that
-finds the issue held hands its lane back as stuck.
+finds the issue held hands its lane back as stuck, and one at the person's own cap
+waits on the outage schedule for a reservation to end, handing nothing back.
 
 In a checkout with a remote named `origin`, the ledger a move reads is origin's
 default branch, never the checkout's own, which may be behind it
