@@ -139,7 +139,7 @@ func decidable(st State, laneID, flag string) (int, error) {
 		return -1, refuse(string(StageHeld), "", "", fmt.Sprintf("%s has no lane of the name given (%s)", st.RunID, termsafe.DescribeRefused(laneID)),
 			"name a held lane `abcd implement status` lists")
 	}
-	if l := st.Lanes[i]; flag == "--discard" && stuckLane(l) {
+	if l := st.Lanes[i]; flag == "--discard" && (stuckLane(l) || driveStopped(st.RunID)) {
 		return i, nil
 	}
 	if l := st.Lanes[i]; l.Stage != StageHeld || l.Hold == nil {
@@ -158,6 +158,9 @@ func decidable(st State, laneID, flag string) (int, error) {
 // step it stopped before, synced first when a sibling landed since its base.
 // It changes nothing when the lane is not held or any lane is still at work.
 func Release(repoRoot, runID, laneID string, o Options) (StepResult, error) {
+	if err := driveStopRefusal(runID); err != nil {
+		return StepResult{}, err
+	}
 	var res StepResult
 	err := mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		i, err := decidable(*st, laneID, "--release")
@@ -212,6 +215,17 @@ func stuckLane(l Lane) bool {
 // shared probe, changing nothing, and a close the network refuses is recorded
 // as the run's outage (outage.go).
 func Discard(repoRoot, runID, laneID string, o Options) (StepResult, error) {
+	res, err := discardHeld(repoRoot, runID, laneID, o)
+	if err == nil && driveStopped(runID) {
+		if st, rerr := ReadState(repoRoot, runID); rerr == nil {
+			liftDriveStop(st)
+		}
+	}
+	return res, err
+}
+
+// discardHeld is Discard's move on the lane.
+func discardHeld(repoRoot, runID, laneID string, o Options) (StepResult, error) {
 	if err := configTripwire(repoRoot, runID); err != nil {
 		return StepResult{}, err
 	}

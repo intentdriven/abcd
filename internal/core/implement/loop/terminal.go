@@ -230,6 +230,15 @@ func (t *terminal) stoppedBy(err error) {
 	t.say("stopping: %s", t.why)
 }
 
+// stoppedOnChange stops the run over its changed state, keeping that where a later drive
+// and a later step read it, so neither goes on from what it now says.
+func (t *terminal) stoppedOnChange(runID string) {
+	if err := recordDriveStop(runID); err != nil {
+		t.say("%s: the stop could not be kept, so do not start another drive on it: %s", runID, err.Error())
+	}
+	t.stoppedBy(fmt.Errorf("%w; nothing goes on from %s until you %s", errRunStateChanged, runID, driveStopRemedy(runID)))
+}
+
 // haltedBy reports whether err is a stop set from outside this terminal, saying
 // what holds and what lifts it. Sleeping through it, as through another
 // contention, would keep the drive alive for ever under a stop.
@@ -465,6 +474,10 @@ func (t *terminal) sayMove(res DrainResult) {
 // next move has something to say about it. It returns why the run ends, "" to
 // go on to the next move.
 func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) {
+	if err := driveStopRefusal(runID); err != nil {
+		t.stoppedBy(err)
+		return TerminalWall, nil
+	}
 	if done, ended := t.takeUp(ctx, runID); done {
 		return ended, nil
 	}
@@ -493,7 +506,7 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 				case !seen:
 					t.bases[key] = lane.BaseSHA
 				case base != lane.BaseSHA:
-					t.stoppedBy(errRunStateChanged)
+					t.stoppedOnChange(runID)
 					return TerminalWall, nil
 				}
 			}
@@ -518,7 +531,7 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 			return TerminalKilled, nil
 		}
 		if errors.Is(err, errRunStateChanged) {
-			t.stoppedBy(err)
+			t.stoppedOnChange(runID)
 			return TerminalWall, nil
 		}
 		if err != nil {

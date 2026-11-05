@@ -223,7 +223,7 @@ variables, a proxy's credentials taken out. Its shell's home is emptied at each 
 and holds the person's git identity and filters; Go's caches and the person's home for
 abcd's shared records are named, and any other toolchain's cache starts empty. The guard
 reads a shell line against that home and refuses a further agent, a moved home, the
-keychain tool and the land verb. A file tool, and a shell line the guard can read, write only in the
+keychain tool, the land verb and every implement verb but the load gate's. A file tool, and a shell line the guard can read, write only in the
 stage's working tree and run directories, its home and temporary files, and never the
 hooks, the Makefile, abcd's configuration, a preflight or review receipt or an approval;
 other records under
@@ -240,7 +240,8 @@ lands a lane. A lane at its landing that changes the Makefile, `scripts/` or the
 hooks, measured from what it last merged of the default branch, is handed back, and an
 issue that names one is passed over before a lane opens: that change needs a person's own
 session, and the drive's last lines name each one. What the driver wrote of a run is compared after each agent's call, and a
-difference stops the drive. One drive holds a checkout at a time, and each checkout has
+difference stops the drive, and a later drive, step or hand-in refuses that run until a
+person discards its lanes or restores its state. One drive holds a checkout at a time, and each checkout has
 its stage's home to itself. A credential variable the harness would bill
 through refuses the start, naming itd-2611011230226453, and so does a start from
 inside an agent's own session.

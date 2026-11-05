@@ -311,6 +311,9 @@ var restartGap = func(repoRoot, runID string) {}
 
 // restart is restartLane, also returning the awaits it re-told.
 func restart(repoRoot, runID, laneID, yielded string, o Options) (RestartResult, []Await, error) {
+	if err := driveStopRefusal(runID); err != nil {
+		return RestartResult{}, nil, err
+	}
 	why, err := whyOf(yielded)
 	if err != nil {
 		return RestartResult{}, nil, err

@@ -371,7 +371,7 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int) Approval
 			}
 			if files.stageHome != "" && startsAnAgent(s.tokens, a.idx) {
 				return refusal(stageAgentEntryID,
-					"a drive's stage starts no further agent and no drive, and lands nothing: its work is the brief it was given, and the loop lands.",
+					"a drive's stage starts no further agent and no drive, moves no run and lands nothing: its work is the brief it was given, and the loop does the rest.",
 					"do the work in this stage, or say in the receipt that the task needs another agent.")
 			}
 			if name, ok := inlineCode(s.tokens, a.idx); ok {

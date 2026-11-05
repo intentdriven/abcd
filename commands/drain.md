@@ -57,7 +57,10 @@ needs a person's own session, and the drive's last lines name each one. Where
 and a lane whose reviewers passed it arms its own merge, as `abcd build`'s and any drain's
 lane does. One that moves an issue's record its full round was not told of, or holds more
 than plain markdown, parks before any round; one the gate leaves open says why, keeps its
-reservation and is passed over for the next.
+reservation and is passed over for the next. A drive that stops because a run's state
+changed while an agent was in its call does not carry on from it: a later drive, step or
+hand-in refuses that run until you discard its lanes (`abcd implement step --run <run-id>
+--discard <lane>`) or restore its state and remove the stop the message names.
 
 It prints one line per step and logs them under `.abcd/.work.local/logs/`. It ends
 at the cap, when nothing is eligible, or after eight hours of runner failures. The

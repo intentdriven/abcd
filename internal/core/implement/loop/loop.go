@@ -911,6 +911,9 @@ func advance(repoRoot, runID string, steps Stages, o Options) (StepResult, error
 // advanceWith is advance; routed reports whether a role is started through a
 // runner (Drive), which a network outage holds as well as a model one.
 func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(role string) bool, overrides map[string]string) (StepResult, error) {
+	if err := driveStopRefusal(runID); err != nil {
+		return StepResult{}, err
+	}
 	// The run tripwire (configwatch.go) comes before anything that may start
 	// git: a program-naming setting changed during the run stops the call.
 	if err := configTripwire(repoRoot, runID); err != nil {
@@ -1124,6 +1127,9 @@ func Receipt(repoRoot, runID, receiptPath string, steps Stages, o Options) (Step
 // hand-back after the step could not verify it records the route; the host's
 // own receipt carries none.
 func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *runner.RouteRecord) (StepResult, error) {
+	if err := driveStopRefusal(runID); err != nil {
+		return StepResult{}, err
+	}
 	return handIn(repoRoot, runID, receipt, steps, o, route, false)
 }
 

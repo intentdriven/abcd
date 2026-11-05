@@ -1167,6 +1167,9 @@ func recordOwnReview(c Context, lane Lane, roots layered.Roots, tip, tipName str
 	if !landing.AutoAt(roots, c.RepoRoot, tip, tipName) {
 		return ""
 	}
+	if driveStopped(c.State.RunID) {
+		return "a drive stopped on this run because its state changed in an agent's call"
+	}
 	n := len(lane.Validation)
 	if n == 0 {
 		return "the lane records no review round"
