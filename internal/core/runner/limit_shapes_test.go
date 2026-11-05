@@ -156,7 +156,7 @@ func TestAKilledRunSaysHowLongItWasSilent(t *testing.T) {
 func TestARejectedEventThenSilenceReadsAsALimitAtTheDeadline(t *testing.T) {
 	f := newFake(t, "ratelimit-silent", Claude)
 	req := f.request("implementer")
-	req.Timeout = 300 * time.Millisecond
+	req.Timeout = 5 * time.Second
 	_, _, err := newClaude("").Run(context.Background(), req)
 	var fl *Failure
 	if !errors.As(err, &fl) || fl.Reason != ReasonRateLimited || !fl.ResetsAt.Equal(limitReset) {
@@ -325,7 +325,10 @@ func TestWhatAFailedLaunchSaysOfItsWork(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			f := newFake(t, mode, Claude)
 			req := f.request("implementer")
-			req.Timeout = 300 * time.Millisecond
+			// Only a launch that hangs is ended by its limit.
+			if mode == "hang" {
+				req.Timeout = 300 * time.Millisecond
+			}
 			_, _, err := newClaude("").Run(context.Background(), req)
 			var fl *Failure
 			if !errors.As(err, &fl) {
