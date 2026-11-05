@@ -141,7 +141,7 @@ echo $$ > '%[1]s/leader.tmp'; mv '%[1]s/leader.tmp' '%[1]s/leader'
 while [ ! -e '%[1]s/go' ]; do /bin/sleep 0.05; done
 : > '%[1]s/finished'
 kill $! 2>/dev/null
-cat '%[2]s'
+`+strings.ReplaceAll(wallHomeLine, "%", "%%")+`cat '%[2]s'
 `, dir, stream)
 	if err := os.WriteFile(filepath.Join(bin, "claude"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)

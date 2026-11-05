@@ -14,6 +14,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 const wallBin = "/opt/abcd dev/bin/abcd"
@@ -69,6 +72,15 @@ func fakeWall(mode string) int {
 	}
 	raw, _ := json.Marshal(init)
 	fmt.Println(string(raw))
+	shellHome := filepath.Join(os.Getenv("CLAUDE_CONFIG_DIR"), "home")
+	if mode == "wall-home" {
+		shellHome = "/the/persons/own/home"
+	}
+	if mode != "wall-home-unsaid" {
+		ev, _ := json.Marshal(map[string]any{"type": "user", "message": map[string]any{"content": []map[string]any{
+			{"type": "tool_result", "content": wallHomeMarker + shellHome + "\n"}}}})
+		fmt.Println(string(ev))
+	}
 	if mode != "wall-guard" {
 		ev, _ := json.Marshal(map[string]any{"type": "system", "subtype": "hook_response", "hook_event": "PreToolUse",
 			"stdout": `{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":"` + guardRefusalText + ` (git-push-force)"}}`})
@@ -226,14 +238,16 @@ func TestEveryWalledLaunchEndsThroughTheOneSeam(t *testing.T) {
 // or broken in turn.
 func TestTheProofNamesEachWallThatDoesNotHold(t *testing.T) {
 	for mode, wall := range map[string]string{
-		"wall-ok":         "",
-		"wall-tools":      WallTools,
-		"wall-servers":    WallServers,
-		"wall-plugins":    WallPlugins,
-		"wall-key":        WallKey,
-		"wall-key-unsaid": WallKey,
-		"wall-guard":      WallGuard,
-		"wall-tree":       WallWorkingTree,
+		"wall-ok":          "",
+		"wall-tools":       WallTools,
+		"wall-servers":     WallServers,
+		"wall-plugins":     WallPlugins,
+		"wall-key":         WallKey,
+		"wall-key-unsaid":  WallKey,
+		"wall-guard":       WallGuard,
+		"wall-tree":        WallWorkingTree,
+		"wall-home":        WallHome,
+		"wall-home-unsaid": WallHome,
 	} {
 		t.Run(mode, func(t *testing.T) {
 			f := newFake(t, mode, Claude)
@@ -363,6 +377,112 @@ func TestTheLedgerCannotLandWithoutTheProof(t *testing.T) {
 	}
 	if err := ledgerWrapsTheProof(files); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestAStagesShellHasItsOwnHomeAndWhatItNeeds: sourcing the file the launch
+// names moves the shell's home under the profile, and git and the Go caches
+// still work there: identity and filters carry over, credential helpers do not.
+func TestAStagesShellHasItsOwnHomeAndWhatItNeeds(t *testing.T) {
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("no go")
+	}
+	gittest.Env(t) // go's telemetry stays off, and out of this test's cleanup
+	home := os.Getenv("HOME")
+	cfg := "[user]\n\tname = Pat Example\n\temail = pat@example.invalid\n" +
+		"[filter \"lfs\"]\n\tclean = git-lfs clean -- %f\n\trequired = true\n" +
+		"[credential]\n\thelper = a-helper-never-passed\n"
+	if err := os.WriteFile(filepath.Join(home, ".gitconfig"), []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(abcdhome.Path(home, "profiles", "walled"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("GIT_CONFIG_GLOBAL", "")
+	if err := os.Unsetenv("GIT_CONFIG_GLOBAL"); err != nil {
+		t.Fatal(err)
+	}
+	goCache, err := exec.Command("go", "env", "GOCACHE", "GOMODCACHE").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := DriveProfile(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := WriteWallSettings(p, wallBin); err != nil {
+		t.Fatal(err)
+	}
+	run := func(script string) string {
+		cmd := exec.Command("/bin/sh", "-c", `. "$F"; `+script)
+		cmd.Env = append(os.Environ(), "F="+filepath.Join(p.Dir, stageEnvName))
+		out, _ := cmd.CombinedOutput()
+		return strings.TrimSpace(string(out))
+	}
+	if got := run(`printf %s "$HOME"`); got != p.ShellHome {
+		t.Fatalf("the shell's home is %q, want %q", got, p.ShellHome)
+	}
+	if got := run(`git config --global user.email`); got != "pat@example.invalid" {
+		t.Errorf("the identity does not carry over: %q", got)
+	}
+	if got := run(`git config --global filter.lfs.clean`); got != "git-lfs clean -- %f" {
+		t.Errorf("the filter does not carry over: %q", got)
+	}
+	if got := run(`git config --global credential.helper`); got != "" {
+		t.Errorf("a credential helper carried over: %q", got)
+	}
+	if got := run(`go env GOCACHE GOMODCACHE`); got != strings.TrimSpace(string(goCache)) {
+		t.Errorf("the Go caches moved: %q, want %q", got, goCache)
+	}
+	if err := CheckWallSettings(p, wallBin); err != nil {
+		t.Fatalf("what was written holds: %v", err)
+	}
+}
+
+// TestTheCheckComparesWhatALaunchReads: beside the settings, what a stage's shell
+// sources, the home's git configuration, anything else a launch would load from
+// the walled directory, and the person's machine declarations.
+func TestTheCheckComparesWhatALaunchReads(t *testing.T) {
+	for name, change := range map[string]func(t *testing.T, p Profile){
+		"the shell's file": func(t *testing.T, p Profile) {
+			if err := os.WriteFile(filepath.Join(p.Dir, stageEnvName), []byte("export X=1\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"the home's git configuration": func(t *testing.T, p Profile) {
+			if err := os.WriteFile(filepath.Join(p.ShellHome, ".gitconfig"), []byte("[core]\n\tpager = x\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"a file the launch would load": func(t *testing.T, p Profile) {
+			if err := os.MkdirAll(filepath.Join(p.Dir, "agents"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(p.Dir, "agents", "x.md"), []byte("x"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"a machine declaration": func(t *testing.T, p Profile) {
+			if err := os.WriteFile(abcdhome.Path(p.PersonHome, "config.json"), []byte(`{"x":1}`), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			p := wallProfile(t)
+			if _, err := WriteWallSettings(p, wallBin); err != nil {
+				t.Fatal(err)
+			}
+			if err := CheckWallSettings(p, wallBin); err != nil {
+				t.Fatalf("what was written holds: %v", err)
+			}
+			change(t, p)
+			var we *WallError
+			if err := CheckWallSettings(p, wallBin); !errors.As(err, &we) || we.Wall != WallSettingsFile {
+				t.Fatalf("a difference is the settings wall: %v", err)
+			}
+		})
 	}
 }
 

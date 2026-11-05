@@ -23,12 +23,15 @@ func standInHarness(t *testing.T, loggedIn bool, stream string) {
 	if err := os.WriteFile(filepath.Join(bin, "stream"), []byte(stream), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	script := "#!/bin/sh\nif [ \"$1\" = auth ]; then echo '{\"loggedIn\":" + state + "}'; exit 0; fi\ncat '" + filepath.Join(bin, "stream") + "'\n"
+	script := "#!/bin/sh\nif [ \"$1\" = auth ]; then echo '{\"loggedIn\":" + state + "}'; exit 0; fi\n" + wallHomeLine + "cat '" + filepath.Join(bin, "stream") + "'\n"
 	if err := os.WriteFile(filepath.Join(bin, "claude"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
+
+// wallHomeLine has a stand-in report the shell's home the proof asks about.
+const wallHomeLine = `printf '{"type":"user","message":{"content":[{"type":"tool_result","content":"abcd-home:%s/home"}]}}\n' "$CLAUDE_CONFIG_DIR"` + "\n"
 
 const (
 	wallInit    = `{"type":"system","subtype":"init","session_id":"s","model":"m","tools":["Read","Bash","mcp__abcd__approve"],"apiKeySource":"none","mcp_servers":[{"name":"abcd"}],"plugins":[]}` + "\n"

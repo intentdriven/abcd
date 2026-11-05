@@ -126,11 +126,14 @@ func DriveProfile(home string) (Profile, error) {
 		return Profile{}, fmt.Errorf("%s%s is one group or other can write; chmod go-w it", shown, names[0])
 	}
 	return Profile{
-		Dir: dir,
+		Dir:        dir,
+		ShellHome:  filepath.Join(dir, stageHomeName),
+		PersonHome: home,
 		Env: append([]string{
 			"CLAUDE_CONFIG_DIR=" + dir,
 			"CLAUDE_CODE_DISABLE_CLAUDE_MDS=1",
 			"CLAUDE_CODE_DISABLE_AUTO_MEMORY=1",
+			"CLAUDE_ENV_FILE=" + filepath.Join(dir, stageEnvName),
 		}, credentialVars...),
 		// The user layer is the file under CLAUDE_CONFIG_DIR: naming it alone
 		// leaves out the project and local layers of the working tree.
