@@ -10,8 +10,8 @@
 #   internal/core/example # a subprocess reads the tree by a path its source builds
 #   internal/core/example TestOne TestTwo # compares the clock with a date it links
 #
-# Most tests never need a line: the check also reads every test's source and
-# reruns what it finds reading past the cache, naming it undeclared in its report.
+# The check also reads every test's source and reruns what it finds reading past
+# the cache, naming it undeclared in its report, and the hosted run is the backstop.
 # A line that does not read, or that names a package or test that does not exist,
 # turns all reuse off.
 

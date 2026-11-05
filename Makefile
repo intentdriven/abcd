@@ -49,7 +49,7 @@ override EVAL_TIMEOUT := 20m
 endif
 
 smoke:
-	go test -tags smoke -timeout $(EVAL_TIMEOUT) ./evals/...
+	go test -tags smoke -count=1 -timeout $(EVAL_TIMEOUT) ./evals/...
 
 # The cold-reading evals alone (evals/coldreading_*_test.go): the read-block eval
 # that falsifies the assembler's blindfold by planting sentinel warm content in a
@@ -75,7 +75,7 @@ smoke:
 # second cold-reading eval joins the lane by carrying that constraint, with no
 # edit to this target or to the workflow.
 evals-cold-reading:
-	go test -tags coldreading -timeout $(EVAL_TIMEOUT) ./evals/...
+	go test -tags coldreading -count=1 -timeout $(EVAL_TIMEOUT) ./evals/...
 
 # Format gate, resolved through the toolchain go.mod declares
 # (iss-2609081953452204). Not `gofmt` off PATH: gofmt's rules move between
@@ -410,36 +410,36 @@ preflight:
 	@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)"
 
 # Both test stages run through cmd/check-tests (internal/testreuse,
-# itd-2611011325421304), which reuses every result whose inputs cannot have
-# changed, reruns the rest and reports `reused N of M` for each stage, and the
-# receipt records both counts and how the stage ran. A stage's reused lines run
-# from one fixed check directory per repository and account,
-# ~/.abcd.noindex/tests/<root-sha>/, whose tree the sync reads back against the
-# commit, byte for byte, before the lines run and after, writing only the files
-# that differ, with file times derived from file content and -trimpath keeping
+# itd-2611011325421304), which replays what Go's test cache holds for unchanged
+# inputs, reruns what is declared or found reading past that cache, and reports
+# `reused N of M` for each stage, and the receipt records both counts and how the
+# stage ran. A stage's reused lines run from one fixed check directory per repository
+# and account, ~/.abcd.noindex/tests/<root-sha>/, whose tree the sync reads back
+# against the commit, byte for byte, before the lines run and after, writing only the
+# files that differ, with file times derived from file content and -trimpath keeping
 # the worktree's path out of the binary. So a fresh worktree replays what another
 # worktree's check of the same inputs passed.
 #
-# A test that reads what the cache cannot see reruns on every check, in the
-# worktree: named on .abcd/work/always-rerun-tests.txt on origin's default branch,
-# or found by the classifier reading the test's source, which names it undeclared.
-# A race stage reuses race results only, since its binary is another build. A
-# working tree that differs from HEAD, and a list that is missing, does not read or
-# names what does not exist, run in the worktree reusing nothing, and every test
-# step CI runs passes -count=1.
+# A test named on .abcd/work/always-rerun-tests.txt on origin's default branch, or
+# that the classifier finds reading what the cache cannot see, reruns on every check,
+# in the worktree, and the report names a found one undeclared. The hosted run, whose
+# every test step passes -count=1, is the backstop. A race stage reuses race results
+# only, since its binary is another build. A working tree that differs from HEAD, and
+# a list that is missing, does not read or names what the tree does not hold, run in
+# the worktree reusing nothing.
 #
 # One check at a time holds the lock, for its reused lines and no longer, so under
 # load.preflights above one a second run's reused lines wait for the first's while
 # each run's rerun lines run side by side. A stage that waited takes its -p and
 # -timeout again from -budget, and a race stage goes back through the race gate,
-# since the recipe's reading of both is as old as the wait.
+# holding nothing, since the recipe's reading of both is as old as the wait.
 #
-# A release cut reuses nothing: `make preflight PREFLIGHT_FRESH=1`, which takes the
-# full rule whatever the change, a records-only one included, and the receipt says
-# `tests cut`, which `launch ship` refuses a commit without. The results to be reused
-# run under one fixed -timeout, the larger of
-# the two the budget below takes, because go test's cache key holds the timeout and
-# a result must not stop being reusable when the load crosses the line.
+# `make preflight PREFLIGHT_FRESH=1` reuses nothing, for a person who wants that: it
+# takes the full rule whatever the change, a records-only one included, and the
+# receipt says `tests cut`. No cut requires it; the hosted release run reuses nothing.
+# The results to be reused run under one fixed -timeout, the larger of the two the
+# budget below takes, because go test's cache key holds the timeout and a result must
+# not stop being reusable when the load crosses the line.
 CHECK_TESTS_FLAGS = -cached-timeout 1h20m -budget 40m$(if $(PREFLIGHT_FRESH), -fresh,)
 
 # The flags of CI's "Test (plain-only guards)" step: the -run naming the tests

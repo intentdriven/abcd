@@ -55,9 +55,6 @@
 #                                       each reused
 #   preflight-receipt.sh check <commit> exit 0 when a receipt for <commit> exists
 #                                       in any worktree of this repository
-#   preflight-receipt.sh tests <commit> print how the tests ran for each receipt
-#                                       of <commit> in any worktree (reuse, cut,
-#                                       fallback or mixed), one a line
 #
 # Exit 0 on success; `check` exits 1 when there is no receipt; 2 on a usage fault.
 set -euo pipefail
@@ -275,27 +272,6 @@ check() {
 	return 1
 }
 
-# tests_of: how each receipt of $commit says its tests ran, from this checkout and
-# every worktree git lists, by the same test of whose a receipt is as check.
-tests_of() {
-	local commit="$1" wt
-	case "$commit" in
-	*[!0-9a-f]* | "") return 2 ;;
-	esac
-	if own_receipt .; then
-		sed -n 's/^tests //p' "$receipts_rel/$commit"
-	fi
-	while IFS= read -r wt; do
-		case "$wt" in
-		"worktree "*) wt="${wt#worktree }" ;;
-		*) continue ;;
-		esac
-		if own_receipt "$wt"; then
-			sed -n 's/^tests //p' "$wt/$receipts_rel/$commit"
-		fi
-	done <<<"$(git worktree list --porcelain 2>/dev/null || true)"
-}
-
 case "${1:-}" in
 state)
 	[ $# -eq 1 ] || exit 2
@@ -312,12 +288,8 @@ check)
 	[ $# -eq 2 ] || exit 2
 	check "$2"
 	;;
-tests)
-	[ $# -eq 2 ] || exit 2
-	tests_of "$2"
-	;;
 *)
-	echo "usage: preflight-receipt.sh state | mint \"<state>\" [records-only] | check <commit> | tests <commit>" >&2
+	echo "usage: preflight-receipt.sh state | mint \"<state>\" [records-only] | check <commit>" >&2
 	exit 2
 	;;
 esac

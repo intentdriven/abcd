@@ -968,7 +968,7 @@ reused lines wait for the first's, and each run's always-rerun lines run side by
 as they would without a lock. A waiter gives up after four hours or when cancelled,
 exiting 3 having run nothing. A stage that waited takes its `-p` and `-timeout` again,
 since the recipe read them before the wait, and a race stage goes back through the
-race gate, since another may have started meanwhile.
+race gate, holding nothing, since another may have started meanwhile.
 
 **What is reused.** Go's cache sees the test binary, the cacheable flags, and the
 files and environment variables a test reads, at the value the go command itself
@@ -986,13 +986,14 @@ no tree and mints nothing. A file a test leaves in the tree moves its directory'
 time, so a test that walks the tree does not replay; the stage names the file.
 
 **What is not.** The cache sees nothing a subprocess reads, a binary a test builds,
-the clock or the network, so a test reading those reruns on every check:
+the clock or the network. What reruns on every check is what is declared or found:
 
 - `.abcd/work/always-rerun-tests.txt` names a package or a test, with why, and is
   read from origin's default branch at check time, never from the working tree. A
   line lands like any other change and takes effect once on the default branch. A
-  list that is missing, does not read, or names a package or test that does not exist
-  turns all reuse off.
+  list that is missing, does not read, or names a package or test the tree does not
+  hold turns all reuse off, and the stage says that merging the default branch clears
+  it on a branch behind it.
 - The classifier reads every test's source on every check, following what it names
   through the package's test files and the module's test-helper packages, and reruns
   a test it finds running a program through go, make or a shell, reaching the
@@ -1005,13 +1006,13 @@ the clock or the network, so a test reading those reruns on every check:
 - The check directory holds no `.git`, and `GIT_CEILING_DIRECTORIES` stops git
   walking above it.
 
-Every hosted test step passes `-count=1`, on every pull request and merge-queue entry
-and in each release cut's gates. A working tree that differs from HEAD runs in the
-worktree reusing nothing, since its edits are what to test, and so does a directory
-refused or a list unread. `make preflight PREFLIGHT_FRESH=1` is a release cut's run on
-the person's machine: the full rule whatever the change, a records-only one included,
-reusing nothing, with `tests cut` on the receipt, and `launch ship` refuses a commit
-with no such receipt.
+The hosted run is the backstop: every hosted test step, the eval lanes' included,
+passes `-count=1`, on every pull request and merge-queue entry and in each release
+cut's gates. A working tree that differs from HEAD runs in the worktree reusing
+nothing, since its edits are what to test, and so does a directory refused or a list
+unread. `make preflight PREFLIGHT_FRESH=1` reuses nothing, for a person who wants that:
+the full rule whatever the change, a records-only one included, with `tests cut` on
+the receipt. No cut requires it; the hosted release run reuses nothing.
 
 ## The dogfood store
 
@@ -1887,7 +1888,7 @@ abcd/
 │   ├── abcd-gen-surface/               #   writes the command-surface snapshot and the surface chapters' appendices
 │   ├── abcd-gen-cli-ref/               #   writes the generated CLI reference page
 │   ├── test-parallelism/               #   prints the go test -p `make preflight`'s test stages take
-│   ├── check-tests/                    #   runs `make preflight`'s test stages from the check directory, reusing what cannot have changed
+│   ├── check-tests/                    #   runs `make preflight`'s test stages from the check directory, replaying what the test cache holds
 │   ├── ci-watchdog/                    #   the shell CI's test jobs run go test under, stopping a hang with its dumps before the job's cap
 │   ├── ci-shard/                       #   prints the packages one shard of CI's macOS suite tests, computed from `go list`
 │   └── record-slug-rename/             #   one-off: renames records minted before the 40-character slug cap (iss-2610100626320367)

@@ -704,75 +704,149 @@ func TestCancellingEndsTheWait(t *testing.T) {
 	}
 }
 
+// holdLock holds the check directory's lock until the returned function is called.
+func holdLock(t *testing.T, lock string) (release func()) {
+	t.Helper()
+	held, stop, done := make(chan struct{}), make(chan struct{}), make(chan error)
+	go func() {
+		done <- fsutil.WithFileLock(lock, time.Minute, func() error {
+			close(held)
+			<-stop
+			return nil
+		})
+	}()
+	<-held
+	return func() {
+		close(stop)
+		if err := <-done; err != nil {
+			t.Error(err)
+		}
+	}
+}
+
 // TestAWaitTakesTheBudgetAgain: -p and -timeout are derived before a wait that can
-// last hours, so what follows one takes them afresh, and the hook says which stage
-// it follows so a race stage can go back through its gate. No wait, no hook.
+// last hours, so what follows one takes them afresh. No wait, no hook.
 func TestAWaitTakesTheBudgetAgain(t *testing.T) {
 	w := newWorld(t)
-	var called []bool
+	calls := 0
 	hook := func(c *Config) {
-		c.AfterWait = func(race bool) (string, string, error) {
-			called = append(called, race)
+		c.AfterWait = func() (string, string, error) {
+			calls++
 			return "3", "7m", nil
 		}
 	}
 	if r := w.stage(w.repo, hook, allPackages...); r.code != 0 {
 		t.Fatalf("the check failed: %s", r)
 	}
-	if len(called) != 0 {
-		t.Fatalf("a check that waited for nothing took the budget again: %v", called)
+	if calls != 0 {
+		t.Fatalf("a check that waited for nothing took the budget again %d times", calls)
 	}
 	root := runGit(t, w.repo, "rev-list", "--max-parents=0", "HEAD")
 	dir, err := checkDir(w.home, root, os.Geteuid())
 	if err != nil {
 		t.Fatal(err)
 	}
-	held, release, done := make(chan struct{}), make(chan struct{}), make(chan error)
-	go func() {
-		done <- fsutil.WithFileLock(filepath.Join(dir, lockName), time.Minute, func() error {
-			close(held)
-			<-release
-			return nil
-		})
-	}()
-	<-held
+	lock := filepath.Join(dir, lockName)
+	release := holdLock(t, lock)
 	got := make(chan result)
-	go func() { got <- w.stage(w.repo, hook, "-race", "-timeout", "5m", "./...") }()
+	go func() { got <- w.stage(w.repo, hook, allPackages...) }()
 	time.Sleep(1500 * time.Millisecond)
-	close(release)
-	if err := <-done; err != nil {
-		t.Fatal(err)
-	}
+	release()
 	if r := <-got; r.code != 0 {
 		t.Fatalf("the check failed: %s", r)
 	}
-	if len(called) != 1 || !called[0] {
-		t.Errorf("a race stage's wait called the hook %v", called)
+	if calls != 1 {
+		t.Errorf("a wait took the budget again %d times", calls)
 	}
 
-	// A hook that refuses, as a race gate past its bound does, stops the stage.
-	held2, release2, done2 := make(chan struct{}), make(chan struct{}), make(chan error)
-	go func() {
-		done2 <- fsutil.WithFileLock(filepath.Join(dir, lockName), time.Minute, func() error {
-			close(held2)
-			<-release2
-			return nil
-		})
-	}()
-	<-held2
+	// A hook that refuses stops the stage.
+	release = holdLock(t, lock)
 	refusing := func(c *Config) {
-		c.AfterWait = func(bool) (string, string, error) { return "", "", errors.New("the gate stayed shut") }
+		c.AfterWait = func() (string, string, error) { return "", "", errors.New("no budget") }
 	}
-	got2 := make(chan result)
-	go func() { got2 <- w.stage(w.repo, refusing, allPackages...) }()
+	got = make(chan result)
+	go func() { got <- w.stage(w.repo, refusing, allPackages...) }()
 	time.Sleep(1500 * time.Millisecond)
-	close(release2)
-	if err := <-done2; err != nil {
+	release()
+	r := <-got
+	if r.code == 0 || !strings.Contains(r.String(), "no budget") || strings.Contains(r.out, "ok  \t") {
+		t.Errorf("a refusing hook did not stop the stage:\n%s", r)
+	}
+}
+
+// TestARaceStageThatWaitedGoesBackThroughItsGateWithoutTheLock: another race stage
+// can start during a wait, so a race stage passes its gate again, and that gate can
+// wait for hours, so it does so holding nothing: every other stage of the repository
+// stays free to run. Losing the lock meanwhile means the gate again. A stage that
+// waited for nothing, and a unit stage, ask nothing of the gate.
+func TestARaceStageThatWaitedGoesBackThroughItsGateWithoutTheLock(t *testing.T) {
+	w := newWorld(t)
+	race := []string{"-race", "-timeout", "5m", "./..."}
+	root := runGit(t, w.repo, "rev-list", "--max-parents=0", "HEAD")
+	dir, err := checkDir(w.home, root, os.Geteuid())
+	if err != nil {
 		t.Fatal(err)
 	}
-	r := <-got2
+	lock := filepath.Join(dir, lockName)
+	calls := 0
+	lockFree := true
+	hook := func(c *Config) {
+		c.Stage = "race"
+		c.RaceGate = func() error {
+			calls++
+			if err := fsutil.WithFileLock(lock, 200*time.Millisecond, func() error { return nil }); err != nil {
+				lockFree = false
+			}
+			return nil
+		}
+	}
+	if r := w.stage(w.repo, hook, race...); r.code != 0 {
+		t.Fatalf("the check failed: %s", r)
+	}
+	if calls != 0 {
+		t.Fatalf("a stage that waited for nothing went back through the gate %d times", calls)
+	}
+
+	release := holdLock(t, lock)
+	got := make(chan result)
+	go func() { got <- w.stage(w.repo, hook, race...) }()
+	time.Sleep(1500 * time.Millisecond)
+	release()
+	if r := <-got; r.code != 0 {
+		t.Fatalf("the check failed: %s", r)
+	}
+	if calls != 1 {
+		t.Errorf("a race stage's wait went through the gate %d times", calls)
+	}
+	if !lockFree {
+		t.Error("the stage held the lock across the gate")
+	}
+
+	calls = 0
+	release = holdLock(t, lock)
+	got = make(chan result)
+	go func() { got <- w.stage(w.repo, func(c *Config) { hook(c); c.Stage = "unit" }, allPackages...) }()
+	time.Sleep(1500 * time.Millisecond)
+	release()
+	if r := <-got; r.code != 0 {
+		t.Fatalf("the check failed: %s", r)
+	}
+	if calls != 0 {
+		t.Errorf("a unit stage went through the race gate %d times", calls)
+	}
+
+	// A gate that refuses stops the stage, having run nothing.
+	release = holdLock(t, lock)
+	got = make(chan result)
+	refusing := func(c *Config) {
+		c.RaceGate = func() error { return errors.New("the gate stayed shut") }
+	}
+	go func() { got <- w.stage(w.repo, refusing, race...) }()
+	time.Sleep(1500 * time.Millisecond)
+	release()
+	r := <-got
 	if r.code == 0 || !strings.Contains(r.String(), "the gate stayed shut") || strings.Contains(r.out, "ok  \t") {
-		t.Errorf("a refusing hook did not stop the stage:\n%s", r)
+		t.Errorf("a refusing gate did not stop the stage:\n%s", r)
 	}
 }
 
@@ -851,6 +925,9 @@ func TestAListLineThatResolvesToNothingReusesNothing(t *testing.T) {
 			}
 			if !r.ran("pure") || !r.ran("reads") || !strings.Contains(r.out, "reuses nothing") {
 				t.Errorf("a line naming nothing left reuse on:\n%s", r)
+			}
+			if !strings.Contains(r.out, "merging origin's default branch") {
+				t.Errorf("the stage does not say what clears it on a branch behind the default:\n%s", r)
 			}
 		})
 	}

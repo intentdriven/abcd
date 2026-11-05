@@ -1,5 +1,5 @@
-// Package testreuse runs one of make preflight's test stages so that a test
-// whose inputs have not changed is not run again (itd-2611011325421304).
+// Package testreuse runs one of make preflight's test stages so that what Go's
+// test cache holds for unchanged inputs is replayed (itd-2611011325421304).
 //
 // Go's test cache keys a package's result on its test binary, its cacheable
 // flags and the files and environment variables its tests read. A fresh
@@ -10,7 +10,7 @@
 // whose file times derive from file content, under -trimpath and one lock.
 //
 // The cache cannot see what a test reads through a subprocess, a binary it
-// builds, the clock or the network, so a result is not reused for those:
+// builds, the clock or the network. What reruns on every check:
 //
 //   - The always-rerun list on the default branch (ReadList) names a package or
 //     a test. It is read from the branch, so a change's own diff does not move
@@ -22,8 +22,8 @@
 //   - The check directory holds no .git and git may not walk above it. An
 //     always-rerun test runs in the worktree, where git answers, with -count=1.
 //
-// The hosted run passes -count=1 on every test step, on every pull request and
-// merge-queue entry.
+// The hosted run is the backstop: it passes -count=1 on every test step, on every
+// pull request and merge-queue entry.
 //
 // The sync reads every file of the tree back against the commit before a line
 // runs and again after, and a receipt is minted only from a stage's record of that
@@ -81,9 +81,11 @@ type Config struct {
 	LockWait time.Duration
 	// Uid is the account that must own the check directory.
 	Uid int
-	// AfterWait, when a check has waited for the lock, takes -p and -timeout again
-	// and, for a race stage, passes its gate again. An error stops the stage.
-	AfterWait func(race bool) (p, timeout string, err error)
+	// AfterWait, when a check has waited for the lock, takes -p and -timeout again.
+	// An error stops the stage.
+	AfterWait func() (p, timeout string, err error)
+	// RaceGate is the race gate, which a race stage that waited passes again.
+	RaceGate func() error
 }
 
 // goTestArgs is a recipe's go test command, read closely: a flag the check does
@@ -183,6 +185,8 @@ func Run(ctx context.Context, cfg Config) int {
 
 	var (
 		waited   bool
+		toGate   bool // a race stage that waited owes the gate before it runs
+		atGate   bool // set when it found that holding the lock, to go and pass it
 		plan     Plan
 		ran      bool
 		failed   bool
@@ -191,9 +195,13 @@ func Run(ctx context.Context, cfg Config) int {
 		tally    Tally
 	)
 	locked := func() error {
+		if toGate {
+			atGate = true
+			return nil
+		}
 		noteHolder(dir, worktree)
 		if waited && cfg.AfterWait != nil {
-			p, timeout, err := cfg.AfterWait(g.race)
+			p, timeout, err := cfg.AfterWait()
 			if err != nil {
 				refused = err
 				return nil
@@ -208,6 +216,17 @@ func Run(ctx context.Context, cfg Config) int {
 	deadline := time.Now().Add(cfg.LockWait)
 	for {
 		err = fsutil.WithFileLock(lock, lockSlice, locked)
+		// The race gate can wait for hours, so a stage passes it holding nothing,
+		// and every other stage of the repository stays free to run. Losing the
+		// lock to one meanwhile means the gate again.
+		if atGate {
+			atGate, toGate = false, false
+			if err := cfg.RaceGate(); err != nil {
+				fmt.Fprintf(cfg.Stderr, "check-tests: after the wait: %v. Nothing ran.\n", err)
+				return 1
+			}
+			continue
+		}
 		if !errors.Is(err, fsutil.ErrLockContention) {
 			break
 		}
@@ -215,6 +234,7 @@ func Run(ctx context.Context, cfg Config) int {
 			waited = true
 			fmt.Fprintf(cfg.Stdout, "check-tests: waiting for another check of this repository on this account to finish: %s\n", holder(dir))
 		}
+		toGate = g.race && cfg.RaceGate != nil
 		if ctx.Err() != nil {
 			fmt.Fprintf(cfg.Stderr, "check-tests: cancelled while waiting for %s. Nothing ran.\n", dir)
 			return ExitBusy
@@ -387,7 +407,8 @@ func runReusedLines(ctx context.Context, cfg Config, g goTestArgs, dir string, l
 		known[filepath.ToSlash(rel)] = testNames(p)
 	}
 	if bad := unresolved(list, known); len(bad) > 0 {
-		return Plan{}, false, ListPath + " names what does not exist: " + strings.Join(firstFew(bad), ", ")
+		return Plan{}, false, ListPath + " on the default branch names what this tree does not hold: " + strings.Join(firstFew(bad), ", ") +
+			"; merging origin's default branch clears it when this branch is behind it"
 	}
 	pkgs := make([]string, len(named))
 	for i, p := range named {

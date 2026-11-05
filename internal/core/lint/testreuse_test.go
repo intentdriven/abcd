@@ -181,16 +181,41 @@ func TestEveryHostedTestStepReusesNothing(t *testing.T) {
 		rels = append(rels, filepath.ToSlash(rel))
 	}
 	found := 0
+	check := func(rel, l string) {
+		t.Helper()
+		if !strings.HasPrefix(l, "go test ") {
+			return
+		}
+		found++
+		if !strings.Contains(l, " -count=1 ") {
+			t.Errorf("%s: a hosted test step can reuse a result: %s", rel, l)
+		}
+	}
+	makefile := readRepoFile(t, root, "Makefile")
+	targets := map[string]bool{}
 	for _, rel := range rels {
 		for _, l := range strings.Split(readRepoFile(t, root, rel), "\n") {
 			l = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(l), "run:"))
-			if !strings.HasPrefix(l, "go test ") {
-				continue
+			check(rel, l)
+			// A step that runs a make target runs that target's go test lines.
+			if m := regexp.MustCompile(`^make ([a-z][a-z-]*)`).FindStringSubmatch(l); m != nil {
+				targets[m[1]] = true
 			}
-			found++
-			if !strings.Contains(l, " -count=1 ") {
-				t.Errorf("%s: a hosted test step can reuse a result: %s", rel, l)
-			}
+		}
+	}
+	for _, target := range []string{"smoke", "evals-cold-reading"} {
+		if !targets[target] {
+			t.Errorf("no workflow runs make %s; the parser or the workflows changed shape", target)
+		}
+	}
+	for target := range targets {
+		recipe, ok := makeRecipe(makefile, target)
+		if !ok {
+			t.Errorf("a workflow runs make %s, which the Makefile does not declare", target)
+			continue
+		}
+		for _, l := range strings.Split(recipe, "\n") {
+			check("Makefile "+target, strings.TrimLeft(strings.TrimSpace(l), "@-"))
 		}
 	}
 	if found < 8 {

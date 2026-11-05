@@ -170,6 +170,7 @@ func buildGraph(files []*ast.File, helpers map[string]map[string]reached) *graph
 				r.read(d.Body, n)
 				if d.Recv == nil && key == "TestMain" {
 					r.readMainAssignments(d.Body, get)
+					r.readPointerArgs(d.Body, get)
 					continue
 				}
 				if d.Recv == nil && isTestName(key) {
@@ -185,13 +186,19 @@ func buildGraph(files []*ast.File, helpers map[string]map[string]reached) *graph
 						return true
 					}
 					for _, l := range as.Lhs {
-						if id, ok := l.(*ast.Ident); ok && r.global(id) && id.Name != key {
+						if id := rootIdent(l); id != nil && r.global(id) && id.Name != key {
 							get(id.Name).refs[key] = true
 						}
 					}
 					return true
 				})
+				r.readPointerArgs(d.Body, get)
 			case *ast.GenDecl:
+				if d.Tok == token.CONST {
+					for name := range climbingConsts(d) {
+						get(name).direct.tree = true
+					}
+				}
 				if d.Tok != token.VAR {
 					continue
 				}
@@ -201,6 +208,9 @@ func buildGraph(files []*ast.File, helpers map[string]map[string]reached) *graph
 						n := get(id.Name)
 						if vs.Type != nil {
 							r.read(vs.Type, n)
+							if r.isCmd(vs.Type) {
+								n.direct.program = true
+							}
 						}
 						for _, v := range vs.Values {
 							r.read(v, n)
@@ -331,6 +341,11 @@ func declaredNames(files []*ast.File) (top, methods map[string]bool) {
 					top[d.Name.Name] = true
 				}
 			case *ast.GenDecl:
+				if d.Tok == token.CONST {
+					for name := range climbingConsts(d) {
+						top[name] = true
+					}
+				}
 				if d.Tok != token.VAR {
 					continue
 				}
@@ -394,6 +409,82 @@ func (r reader) global(id *ast.Ident) bool {
 	return id.Obj == nil || r.file.Scope.Lookup(id.Name) == id.Obj
 }
 
+// rootIdent is the variable an assignment's target belongs to: stub.bin is stub's.
+func rootIdent(e ast.Expr) *ast.Ident {
+	for {
+		switch x := e.(type) {
+		case *ast.Ident:
+			return x
+		case *ast.SelectorExpr:
+			e = x.X
+		default:
+			return nil
+		}
+	}
+}
+
+// callee is the declaration a call names, by the key it has in the graph.
+func (r reader) callee(call *ast.CallExpr) string {
+	switch f := call.Fun.(type) {
+	case *ast.Ident:
+		if r.global(f) {
+			return f.Name
+		}
+	case *ast.SelectorExpr:
+		if r.methods[f.Sel.Name] {
+			return "." + f.Sel.Name
+		}
+	}
+	return ""
+}
+
+// readPointerArgs gives a package variable handed to a function by its address
+// what that function does: build(&bin) fills bin the way bin = build() does.
+func (r reader) readPointerArgs(body *ast.BlockStmt, get func(string) *node) {
+	ast.Inspect(body, func(x ast.Node) bool {
+		call, ok := x.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		callee := r.callee(call)
+		if callee == "" {
+			return true
+		}
+		for _, a := range call.Args {
+			if addr, ok := a.(*ast.UnaryExpr); ok && addr.Op == token.AND {
+				if id := rootIdent(addr.X); id != nil && r.global(id) {
+					get(id.Name).refs[callee] = true
+				}
+			}
+		}
+		return true
+	})
+}
+
+// climbingConsts is the names of a constant declaration whose values climb out of
+// the working directory: a root held in a const is a walk to the repository.
+func climbingConsts(d *ast.GenDecl) map[string]bool {
+	out := map[string]bool{}
+	for _, s := range d.Specs {
+		vs := s.(*ast.ValueSpec)
+		for i, id := range vs.Names {
+			if i < len(vs.Values) {
+				if v, ok := stringArg(vs.Values[i]); ok && upward(v) {
+					out[id.Name] = true
+				}
+			}
+		}
+	}
+	return out
+}
+
+// isCmd reports whether e is the type exec.Cmd itself, a command made here rather
+// than one held from exec.Command.
+func (r reader) isCmd(e ast.Expr) bool {
+	pkg, name, ok := stdRef(e, r.imports)
+	return ok && pkg == "os/exec" && name == "Cmd"
+}
+
 // readMainAssignments gives a package variable TestMain assigns what its value
 // came from: the expression assigned, and every function TestMain hands the
 // variable to, which is how a helper binary is built before the tests that run it.
@@ -407,8 +498,8 @@ func (r reader) readMainAssignments(body *ast.BlockStmt, get func(string) *node)
 			return true
 		}
 		for i, l := range as.Lhs {
-			id, ok := l.(*ast.Ident)
-			if !ok || !r.global(id) {
+			id := rootIdent(l)
+			if id == nil || !r.global(id) {
 				continue
 			}
 			assigned[id.Name] = true
@@ -425,17 +516,7 @@ func (r reader) readMainAssignments(body *ast.BlockStmt, get func(string) *node)
 		if !ok {
 			return true
 		}
-		callee := ""
-		switch f := call.Fun.(type) {
-		case *ast.Ident:
-			if r.global(f) {
-				callee = f.Name
-			}
-		case *ast.SelectorExpr:
-			if r.methods[f.Sel.Name] {
-				callee = "." + f.Sel.Name
-			}
-		}
+		callee := r.callee(call)
 		for _, a := range call.Args {
 			if id, ok := a.(*ast.Ident); ok && assigned[id.Name] && r.global(id) && callee != "" {
 				get(id.Name).refs[callee] = true
@@ -479,10 +560,21 @@ func (r reader) read(body ast.Node, n *node) {
 				readCall(pkg, fn, x, &n.direct)
 			}
 			readSkip(x, &n.direct)
+			if id, ok := x.Fun.(*ast.Ident); ok && id.Name == "new" && len(x.Args) == 1 && r.isCmd(x.Args[0]) {
+				n.direct.program = true
+			}
 		case *ast.CompositeLit:
 			// A command built by hand names its program however it likes.
-			if pkg, name, ok := stdRef(x.Type, r.imports); ok && pkg == "os/exec" && name == "Cmd" {
+			if r.isCmd(x.Type) {
 				n.direct.program = true
+			}
+		case *ast.ValueSpec:
+			if x.Type != nil && r.isCmd(x.Type) {
+				n.direct.program = true
+			}
+		case *ast.GenDecl:
+			if x.Tok == token.CONST && len(climbingConsts(x)) > 0 {
+				n.direct.tree = true
 			}
 		}
 		return true

@@ -904,8 +904,9 @@ make preflight   # the pre-push gate: it waits its turn at the load gate
                  # site-render, smoke and
                  # evals-cold-reading, then
                  # build, vet, test and race, all on the toolchain go.mod declares;
-                 # the test and race stages reuse every result whose inputs
-                 # cannot have changed and report how many
+                 # the test and race stages replay what Go's test cache holds
+                 # for unchanged inputs, rerun what is declared or found reading
+                 # past it, and report how many; CI's test steps reuse nothing
 go run ./cmd/abcd            # bare status board for the current directory
 go run ./cmd/abcd --version  # print the version
 make build                   # cross-compile bin/abcd-<goos>-<arch>

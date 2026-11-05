@@ -1,7 +1,7 @@
 // Command check-tests runs one of make preflight's test stages from the
-// repository's fixed check directory, reusing every result whose inputs cannot
-// have changed and reporting how many it reused (internal/testreuse,
-// itd-2611011325421304).
+// repository's fixed check directory, replaying what Go's test cache holds for
+// unchanged inputs, rerunning what is declared or found reading past it, and
+// reporting how many it reused (internal/testreuse, itd-2611011325421304).
 //
 // Usage: check-tests [-fresh] [-cached-timeout <d>] [-budget <d>] [-lock-wait <d>] <stage> go test <flags> <packages>
 //
@@ -11,7 +11,7 @@
 // was cancelled waiting, having run nothing. A stage that waited takes its -p and
 // -timeout again from -budget, as cmd/test-parallelism prints them, since the
 // recipe derived them before the wait, and a race stage goes back through the race
-// gate, since another may have started meanwhile. It is developer tooling, never
+// gate, holding nothing, since another may have started meanwhile. It is developer tooling, never
 // part of a release.
 package main
 
@@ -57,22 +57,24 @@ func run(ctx context.Context, args []string, wd, home string, stdout, stderr io.
 		fmt.Fprintln(stderr, "usage: check-tests [-fresh] [-cached-timeout <d>] [-budget <d>] [-lock-wait <d>] <stage> go test <flags> <packages>")
 		return testreuse.ExitUsage
 	}
-	var afterWait func(bool) (string, string, error)
+	var afterWait func() (string, string, error)
+	var raceGate func() error
 	if *budget > 0 {
-		afterWait = func(race bool) (string, string, error) {
-			if race {
-				gate := exec.CommandContext(ctx, "go", "run", "./cmd/abcd", "implement", "load", "--race-gate", "--timeout", "2h")
-				gate.Dir, gate.Stdout, gate.Stderr = wd, stdout, stderr
-				if err := gate.Run(); err != nil {
-					return "", "", fmt.Errorf("the race gate: %w", err)
-				}
-			}
+		afterWait = func() (string, string, error) {
 			slots, _, _, err := implement.PreflightSlots(os.Getenv, home)
 			if err != nil {
 				slots = 1
 			}
 			p := implement.PreflightParallelism(os.Getenv, machineload.Read, slots)
 			return strconv.Itoa(p), implement.PreflightTimeout(os.Getenv, machineload.Read, *budget).String(), nil
+		}
+		raceGate = func() error {
+			gate := exec.CommandContext(ctx, "go", "run", "./cmd/abcd", "implement", "load", "--race-gate", "--timeout", "2h")
+			gate.Dir, gate.Stdout, gate.Stderr = wd, stdout, stderr
+			if err := gate.Run(); err != nil {
+				return fmt.Errorf("the race gate: %w", err)
+			}
+			return nil
 		}
 	}
 	return testreuse.Run(ctx, testreuse.Config{
@@ -86,6 +88,7 @@ func run(ctx context.Context, args []string, wd, home string, stdout, stderr io.
 		CachedTimeout: *cachedTimeout,
 		LockWait:      *lockWait,
 		AfterWait:     afterWait,
+		RaceGate:      raceGate,
 		Uid:           os.Geteuid(),
 	})
 }
