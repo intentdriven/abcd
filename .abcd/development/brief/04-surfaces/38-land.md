@@ -202,9 +202,12 @@ Its inputs:
   and never through a stage, and only from a pair that read the head it pushes. The
   landing's records commit moves that head, so the commit takes a review round of its
   own before anything is pushed, scoped to that commit, and the round's returns are
-  the receipt. A round that does not pass takes no fix round: the lane goes on to its
-  pull request and is left open, naming the finding, for a person, and a drive passes
-  it over. In `human` no such round runs and the loop records nothing.
+  the receipt. The lane parks before any round, naming which, when the commit moves an
+  issue's record the lane's full round was not told of or holds more than plain
+  markdown of mode 100644, since that full round is told each resolution and judges it.
+  A round that does not pass takes no fix round: the lane goes on to its pull request
+  and is left open, naming the finding, for a person, and a drive passes it over. In
+  `human` no such round runs and the loop records nothing.
 - **A delta review**, a receipt for a later head that rests on an earlier full
   pair: a delta pair reviews a wording fix after a full pair, so a corrected
   sentence costs a pair over that fix and not a pair over the branch. The review act names the base

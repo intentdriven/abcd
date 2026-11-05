@@ -694,11 +694,15 @@ over each of the run's lanes' own diff.
    names it, and a contributor's pull request in either mode only once an
    approval by someone with write access counts. In `auto` the loop records that
    receipt itself, in its own process, only from a pair that read the pushed
-   head: the records commit goes to a review round of its own before anything is
-   pushed, scoped to that commit, and the round's returns are the receipt. A
-   records round that does not pass takes no fix round: the lane goes on to its
-   pull request and is left open, naming the finding, for a person. A gate that
-   could not read what it asks leaves the lane at this step, to ask again. An armed merge goes into the
+   head. The full round is told each resolution the lane declares and judges it.
+   The records commit then goes to a review round of its own before anything is
+   pushed, scoped to that commit, and the round's returns are the receipt, unless
+   it moves an issue's record the full round was not told of or holds more than
+   plain markdown of mode 100644: then no round runs and the lane parks, naming
+   which. A records round that does not pass takes no fix round: the lane goes on
+   to its pull request and is left open, naming the finding, for a person. A gate
+   that could not read what it asks leaves the lane at this step for 30 minutes,
+   asking again, then leaves it open saying why. An armed merge goes into the
    merge queue by the ruleset mirror's (`.abcd/work/rulesets/`) method, or as
    the forge's auto-merge where no queue gates the default branch. Otherwise
    `implement status` shows the landing as "left open: " and why, and each
@@ -708,7 +712,8 @@ over each of the run's lanes' own diff.
    merge queue never takes a conflicting pull request. An issue lane whose
    conflict lies in declared generated files alone, or in no file when this
    checkout merges, enters its sync again instead, an armed merge withdrawn
-   first, and one whose head already holds the default branch waits at exit 3
+   first, unless the lane failed or parked over its records commit, which is refused
+   for a person, and one whose head already holds the default branch waits at exit 3
    for the forge's stale verdict. Nothing is pushed to the lane while it is armed.
 6. It waits (exit 3) until the pushed head is an ancestor of the default branch
    on `origin`, then removes the lane's worktree and branch, and the lane is

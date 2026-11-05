@@ -265,6 +265,12 @@ func resyncLane(c Context, lane *Lane, def, tracking string, m mergeability) (Ou
 		return Outcome{}, refuse(string(StageLand), "", lane.ID, "pull request #"+strconv.Itoa(lane.PR)+" conflicts with "+def+", and "+why+"; a sync's fresh round would not hear of it",
 			"settle the finding yourself on the lane's branch, or hand the lane back; the loop does not sync over it")
 	}
+	if due, err := recordsRoundWanted(c, *lane); err != nil {
+		return Outcome{}, err
+	} else if why := recordsParked(c, *lane); due && why != "" {
+		return Outcome{}, refuse(string(StageLand), "", lane.ID, "pull request #"+strconv.Itoa(lane.PR)+" conflicts with "+def+", and its records commit went to a person before any round: "+why+"; a sync's fresh round would not hear of it",
+			"settle it yourself on the lane's branch, or hand the lane back; the loop does not sync over it")
+	}
 	ld := lane.Landing
 	f := localConflict(c.RepoRoot, tracking, ld.Pushed)
 	if f.err != nil {

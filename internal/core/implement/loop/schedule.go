@@ -864,6 +864,15 @@ func (l Lane) CheckWait() string {
 // check, with a record entry naming it, and reports whether it wrote.
 func beganCheckWait(st *State, i int, r *Refusal, now time.Time) bool {
 	l := st.Lanes[i]
+	if r.gateUnread && l.Landing != nil && l.Landing.GateUnreadSince == nil {
+		ld := *l.Landing
+		ld.GateUnreadSince = &now
+		l.Landing = &ld
+		st.Lanes[i] = l
+		st.Record = append(st.Record, Entry{At: now, Lane: l.ID, Stage: string(StageLand), Note: "waiting on the merge gate, which could not read what it asks: " + r.Reason})
+		st.UpdatedAt = now
+		return true
+	}
 	if r.checkWait.IsZero() || l.Landing == nil || l.Landing.CheckWaitSince != nil {
 		return false
 	}

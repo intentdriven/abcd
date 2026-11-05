@@ -948,11 +948,15 @@ mode is `auto`, back at `validate`, and a sync.
    counts (a review by someone else with write access, or the technical
    facilitator's approval recorded through `abcd land`); `auto` arms one only
    when a review receipt names its head. In `auto` the loop records a
-   review receipt itself only from a pair that read the pushed head: its records
-   commit takes a review round of its own before anything is pushed, scoped to
-   that commit. A round that does not pass takes no fix round: the lane goes on
+   review receipt itself only from a pair that read the pushed head: its full
+   round judges each resolution the lane declares, and its records commit takes a
+   review round of its own before anything is pushed, scoped to that commit,
+   unless the commit moves an issue's record that round was not told of or holds
+   more than plain markdown of mode 100644, when the lane parks before any round,
+   naming which. A round that does not pass takes no fix round: the lane goes on
    to its pull request and is left open, naming the finding, for a person. A gate
-   that could not read what it asks leaves the lane at its arming, to ask again. An armed pull request goes into the merge
+   that could not read what it asks leaves the lane at its arming for 30 minutes,
+   asking again, then leaves it open saying why. An armed pull request goes into the merge
    queue by its method, or, where no queue gates the default branch, is armed
    as the forge's auto-merge with a merge commit; a forge that refuses
    auto-merge is refused at exit 2, saying so. A pull request the gate does
@@ -964,7 +968,7 @@ mode is `auto`, back at `validate`, and a sync.
    arms nothing, and so is a `facilitator.mode` that cannot be read. Before arming, the loop asks the
    forge whether the pull request merges (`gh pr view` for its `mergeable`
    and `mergeStateStatus` fields), and one the forge reports `CONFLICTING` is
-   refused at exit 2, unarmed, since the merge queue never takes it, unless an issue lane's conflict lies in declared generated files alone, or in no file when this checkout merges, when the lane enters its sync again, or, its head already holding the default branch, waits at exit 3 for the forge's verdict
+   refused at exit 2, unarmed, since the merge queue never takes it, unless an issue lane's conflict lies in declared generated files alone, or in no file when this checkout merges, when the lane enters its sync again unless it failed or parked over its records commit, which stays refused for a person, or, its head already holding the default branch, waits at exit 3 for the forge's verdict
    (iss-2610110908443341). Nothing is pushed to the lane while it is armed: an issue lane's sync withdraws the arming first.
 6. It fetches the default branch and waits, exiting 3, until the pushed head
    is an ancestor of it; only then does it remove the lane's worktree (never
@@ -974,7 +978,7 @@ mode is `auto`, back at `validate`, and a sync.
    waiting. A pull request closed without merging, or merged in a way that
    rewrote the head, is refused and nothing is cleaned up, and so is an open
    one the forge reports `CONFLICTING`, at exit 2: it needs a person, so it is
-   not the merge's contention wait. An issue lane whose conflict lies in declared generated files alone, or in no file when this checkout merges, enters its sync again instead, an armed merge withdrawn first. One whose head already holds the default branch keeps the exit-3 wait.
+   not the merge's contention wait. An issue lane whose conflict lies in declared generated files alone, or in no file when this checkout merges, enters its sync again instead, an armed merge withdrawn first, unless it failed or parked over its records commit, which stays refused for a person. One whose head already holds the default branch keeps the exit-3 wait.
 
    Each wait of an armed lane whose default branch a merge queue gates also
    reads the pull request's place in the queue, since the forge can leave one

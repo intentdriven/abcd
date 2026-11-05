@@ -259,6 +259,9 @@ func openRound(c Context, lane Lane, n int) (ValidationRound, error) {
 		}
 	}
 	r := ValidationRound{Round: n, HeadSHA: lane.HeadSHA}
+	for _, res := range lane.Resolves {
+		r.ResolvesShown = append(r.ResolvesShown, res.Issue)
+	}
 	for _, role := range roles {
 		for _, v := range roundReviewers(c.State, role) {
 			dir, err := reviewerDir(c.State.RunID, lane.ID, n, role, v.Reviewer)
@@ -363,6 +366,9 @@ func writeValidatorBrief(c Context, lane Lane, r ValidationRound, v *ValidatorRu
 	}
 	if lane.readsRecords(r) {
 		p("\n%s", recordsRoundScope(lane.recordsBase(r), r.HeadSHA))
+	}
+	if s := resolutionsSection(lane, r); s != "" {
+		p("\n%s", s)
 	}
 	p("\nRead only; change nothing in the worktree or on the branch.\n\n")
 	p("%s", routingSection(route))
@@ -1579,6 +1585,7 @@ func reviewRequest(repoRoot, runID, laneID string, aw Await, agentPrompt func(st
 	if lane.readsRecords(r) {
 		p("%s", recordsRoundScope(base, r.HeadSHA))
 	}
+	p("%s", resolutionsSection(lane, r))
 	p("## The record: the lane's brief\n\n%s\n\n", fenced("markdown", string(brief)))
 	for _, rp := range reports {
 		p("## %s\n\n%s\n\n", rp.title, fenced("markdown", rp.body))

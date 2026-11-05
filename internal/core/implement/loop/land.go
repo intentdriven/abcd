@@ -74,7 +74,6 @@ import (
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/embargo"
-	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/core/layered"
@@ -120,6 +119,9 @@ type Landing struct {
 	// Merged is the default branch's tip, as the remote held it, that carried
 	// the pushed head when the landing cleaned the lane up.
 	Merged string `json:"merged,omitempty"`
+	// GateUnreadSince is when the merge gate first could not read what it asks at
+	// the arming; set by the call that finds it, and cleared once it reads.
+	GateUnreadSince *time.Time `json:"gate_unread_since,omitempty"`
 	// CheckWaitSince is when the landing began waiting for its full check: the
 	// preflight receipt naming the head it pushes (ruling DR6d-2). It is set
 	// by the first call that finds no receipt, kept until the push, and
@@ -508,62 +510,22 @@ func recordsRoundWanted(c Context, lane Lane) (bool, error) {
 }
 
 // recordsParked says why the lane's records commit goes to a person rather than to a
-// round, "" when it does not: it resolves more than the run names, as the loop's own
-// state and the intent at the lane's base derive that, so no round has read the fix;
-// or it holds more than records. It holds only on the lane's head.
+// round, "" when it does not: it moves an issue's record the full round was not told of,
+// as that round's own state keeps what it was shown, or it holds more than records
+// (landing.RecordsCommitShape). It holds only on the lane's head.
 func recordsParked(c Context, lane Lane) string {
 	if lane.Landing == nil || lane.Landing.Records == "" || lane.Landing.Records != lane.HeadSHA || len(lane.Validation) == 0 {
 		return ""
 	}
-	allowed := relatedIssuesAt(c.RepoRoot, lane.BaseSHA, c.State.Intent)
-	if iss := c.State.Issue(); iss != "" {
-		allowed = append(allowed, iss)
-	}
-	var extra []string
-	for _, r := range lane.Resolves {
-		if !slices.Contains(allowed, r.Issue) {
-			extra = append(extra, r.Issue)
-		}
-	}
-	if len(extra) > 0 {
-		return "it resolves " + strings.Join(extra, ", ") + ", beyond the lane's own issue and its intent's related issues"
-	}
-	judged := lane.Validation[len(lane.Validation)-1].HeadSHA
-	if judged == lane.HeadSHA {
+	last := lane.Validation[len(lane.Validation)-1]
+	if last.HeadSHA == lane.HeadSHA {
 		return ""
 	}
-	why, err := landing.RecordsCommitShape(c.RepoRoot, judged, lane.HeadSHA)
+	why, err := landing.RecordsCommitShape(c.RepoRoot, last.HeadSHA, lane.HeadSHA, last.ResolvesShown)
 	if err != nil {
 		return termsafe.Sanitize(fsutil.RedactHome(err.Error()))
 	}
 	return termsafe.Sanitize(why)
-}
-
-// relatedIssuesAt is the related_issues of the intent as commit holds it, nil when it
-// holds none or cannot be read: a lane's own change does not widen them.
-func relatedIssuesAt(repoRoot, commit, id string) []string {
-	if id == "" || !gitutil.IsFullSHA(commit) {
-		return nil
-	}
-	out, err := gitutil.Run(repoRoot, "ls-tree", "-r", "--name-only", commit, "--", ".abcd/development/intents/")
-	if err != nil {
-		return nil
-	}
-	for _, path := range strings.Split(out, "\n") {
-		if name := filepath.Base(path); !strings.HasPrefix(name, id+"-") && name != id+".md" {
-			continue
-		}
-		raw, err := gitutil.RunCappedBytes(repoRoot, maxRecordBytes, "cat-file", "blob", commit+":"+path)
-		if err != nil {
-			return nil
-		}
-		f, ok := frontmatter.Fields(strings.Split(string(raw), "\n"))[intent.RelatedIssuesKey]
-		if !ok || frontmatter.IsNull(f.Value) {
-			return nil
-		}
-		return frontmatter.StringList(f.Value)
-	}
-	return nil
 }
 
 // recordsRoundDue reports whether the lane's head is the landing's records commit and
@@ -588,10 +550,24 @@ func (l Lane) recordsBase(r ValidationRound) string {
 	return diffBase(l)
 }
 
+// resolutionsSection lists what a full round's brief asks it to judge: each issue the
+// lane's receipts declare fixed, by which commit and in what words, which the landing
+// then records as resolved. "" for a lane that declares none, and for the records round.
+func resolutionsSection(lane Lane, r ValidationRound) string {
+	if len(lane.Resolves) == 0 || lane.readsRecords(r) {
+		return ""
+	}
+	var b strings.Builder
+	for _, res := range lane.Resolves {
+		fmt.Fprintf(&b, "- %s, by %s: %s\n", res.Issue, shortSHA(res.Commit), termsafe.Sanitize(res.Note))
+	}
+	return "## What the landing will record as resolved\n\nThe lane's receipts declare each of these fixed, and the landing may resolve these and no others. Judge each: a commit that does not fix its issue is a finding, whoever's record it is.\n\n" + fenced("text", b.String()) + "\n\n"
+}
+
 // recordsRoundScope is what a round over the records commit is told to read.
 func recordsRoundScope(base, head string) string {
 	return fmt.Sprintf("## This round reads the landing's records commit alone\n\n"+
-		"The lane's own change passed its full round at `%s`, which judged the fix against its issue. Read only `%s..%s`, the commit the landing added on it; this should take a couple of minutes, so do not read the lane again or judge the fix again. "+
+		"The lane's own change passed its full round at `%s`, which judged each resolution its receipt declared. Read only `%s..%s`, the commit the landing added on it; this should take a couple of minutes, so do not read the lane again or judge the fix again. "+
 		"Judge the records' text against what the lane says it did: each resolution's note, impact and grounds, and the folder each record lands in. "+
 		"This commit normally holds records and link rewrites, and anything else in it is a finding. "+
 		"A verdict that does not pass parks the lane for a person; no fix round follows.\n\n", base, base, head)
@@ -1062,6 +1038,10 @@ func readMergeRule(c Context, lane Lane, def string) (landing.MergeRule, error) 
 	return r, nil
 }
 
+// gateUnreadBound is how long a merge gate that cannot read what it asks is asked
+// again before its lane is left open.
+const gateUnreadBound = 30 * time.Minute
+
 // landArm asks the merge gate (landing.DecideMerge, the one decision `abcd
 // land` asks too, spc-2610161609350616 step 4) whether to arm the lane's pull
 // request, and arms it by the method the gate names, or leaves it open with
@@ -1121,15 +1101,17 @@ func landArm(c Context, lane *Lane) (Outcome, error) {
 	if err != nil {
 		return Outcome{}, err
 	}
-	if d.Unread {
+	if d.Unread && (ld.GateUnreadSince == nil || c.Now.Sub(*ld.GateUnreadSince) < gateUnreadBound) {
 		// What the gate could not read says nothing of the lane: it stays at this
 		// step, and a later turn asks again, where a left-open lane would be
-		// stepped only when a person acts.
+		// stepped only when a person acts. An answer that cannot change is passed
+		// over once the bound has run out, as a lane left open.
 		r := contend(string(StageLand), "", lane.ID,
 			"the merge gate could not read what it asks of pull request #"+n+": "+d.Why, "run `abcd implement step` again once the forge answers")
 		r.gateUnread = true
 		return Outcome{}, r
 	}
+	ld.GateUnreadSince = nil
 	if !d.Arm {
 		ld.Merge = "left open: " + d.Why
 		return Outcome{Stay: true, Note: "pull request #" + n + " " + ld.Merge + "; the loop asks again on each step, and it lands when it is armed or a person merges it" + held}, nil

@@ -5,8 +5,10 @@ import (
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // land_approval_test.go is the build loop's half of the merge gate
@@ -166,7 +168,6 @@ func autoFixture(t *testing.T) *landFixture {
 	return newLandFixtureWith(t, map[string]string{
 		".abcd/work/rulesets/main-protection.json": unreviewedQueueRuleset("MERGE"),
 		".abcd/config.json":                        `{"facilitator":{"mode":"auto"}}` + "\n",
-		relateLaneIssue:                            "",
 	})
 }
 
@@ -371,27 +372,75 @@ func TestAStaleRoundDoesNotServe(t *testing.T) {
 	}
 }
 
-// TestAnExtraResolutionParksSayingWhich: a receipt that resolves an issue beyond the
-// lane's own and its intent's related ones goes to a person before any round.
-func TestAnExtraResolutionParksSayingWhich(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	f := newLandFixtureWith(t, map[string]string{
-		".abcd/work/rulesets/main-protection.json": unreviewedQueueRuleset("MERGE"),
-		".abcd/config.json":                        `{"facilitator":{"mode":"auto"}}` + "\n",
-	})
-	f.validated(t)
-	before := len(currentLane(t, f.repo, f.runID).Validation)
+// tellRoundOfNothing has the state say the lane's full round was shown no resolution.
+func (f *landFixture) tellRoundOfNothing(t *testing.T) {
+	t.Helper()
+	if err := mutate(f.repo.Root(), f.runID, func(_ *os.Root, st *State) (bool, error) {
+		lane := &st.Lanes[st.current()]
+		lane.Validation = slices.Clone(lane.Validation)
+		lane.Validation[len(lane.Validation)-1].ResolvesShown = nil
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestARecordNoRoundWasToldOfParksSayingWhich: what the commit actually moves is
+// compared with what the full round was shown, so a list edited since widens nothing.
+func TestARecordNoRoundWasToldOfParksSayingWhich(t *testing.T) {
+	f := autoFixture(t)
+	v := f.validated(t)
+	if got := v.Validation[len(v.Validation)-1].ResolvesShown; len(got) != 1 || got[0] != f.issue {
+		t.Fatalf("the round keeps what it was shown: %v", got)
+	}
+	f.tellRoundOfNothing(t)
+	before := len(v.Validation)
 	f.step(t)
 	f.step(t)
 	l := f.pushToArm(t)
 	if strings.Contains(f.ghLog(t), "pr merge") || l.Landing == nil || l.Landing.Armed || !strings.Contains(l.Landing.Merge, f.issue) {
-		t.Fatalf("the lane parks naming the issue: %+v\n%s", l.Landing, f.ghLog(t))
+		t.Fatalf("the lane parks naming the record: %+v\n%s", l.Landing, f.ghLog(t))
 	}
 	if len(l.Validation) != before {
 		t.Fatalf("no round read it: %+v", l.Validation)
 	}
 	if body := f.prBodyOf(t, l); !strings.Contains(body, "parked at this pull request for a person") {
 		t.Fatalf("the public body says it is parked:\n%s", body)
+	}
+}
+
+// TestAParkedLaneIsNotSyncedIntoARound: a pull request parked before any round, that
+// then conflicts, is refused for a person rather than merged to a head a round passes.
+func TestAParkedLaneIsNotSyncedIntoARound(t *testing.T) {
+	f := autoFixture(t)
+	f.validated(t)
+	f.tellRoundOfNothing(t)
+	f.step(t)
+	f.step(t)
+	l := f.pushToArm(t)
+	st, err := ReadState(f.repo.Root(), f.runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = resyncLane(Context{RepoRoot: f.repo.Root(), State: st}, &l, "main", "origin/main", mergeability{})
+	if r, ok := AsRefusal(err); !ok || r.Contention || !strings.Contains(r.Reason, "went to a person") {
+		t.Fatalf("the sync is refused: %v", err)
+	}
+}
+
+// TestAFullRoundsBriefListsWhatTheLandingWillResolve: the round judges each resolution,
+// so the records round's premise is true.
+func TestAFullRoundsBriefListsWhatTheLandingWillResolve(t *testing.T) {
+	f := autoFixture(t)
+	l := f.validated(t)
+	raw, err := os.ReadFile(filepath.Join(f.repo.Root(), filepath.FromSlash(l.Validation[0].Validators[0].Brief)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"What the landing will record as resolved", f.issue, shortSHA(l.Resolves[0].Commit), l.Resolves[0].Note, "Judge each", "these and no others"} {
+		if !strings.Contains(string(raw), want) {
+			t.Fatalf("the brief says %q:\n%s", want, raw)
+		}
 	}
 }
 
@@ -443,6 +492,37 @@ func TestACommitFoundOnTheJudgedHeadIsReadLikeAnyOther(t *testing.T) {
 	}
 	if strings.Contains(f.ghLog(t), "pr create") {
 		t.Fatalf("it is not pushed first:\n%s", f.ghLog(t))
+	}
+}
+
+// TestAnUnreadGateIsPassedOverOnceItsBoundRunsOut: an answer that cannot change must not
+// hold the whole run: past the bound the lane is left open, saying why.
+func TestAnUnreadGateIsPassedOverOnceItsBoundRunsOut(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	f := newLandFixture(t, unreviewedQueueRuleset("MERGE"))
+	f.validated(t)
+	f.step(t)
+	f.step(t)
+	l := currentLane(t, f.repo, f.runID)
+	preflighted(t, l, l.HeadSHA)
+	f.step(t)
+	f.step(t)
+	if err := os.WriteFile(filepath.Join(f.gh, "role-author-a"), []byte("not json\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	at := func(d time.Duration) Options { return Options{Now: func() time.Time { return now.Add(d) }} }
+	if _, err := advance(f.repo.Root(), f.runID, f.stages, at(0)); err == nil {
+		t.Fatal("the first read waits")
+	}
+	if _, err := advance(f.repo.Root(), f.runID, f.stages, at(gateUnreadBound-time.Minute)); err == nil {
+		t.Fatal("within the bound it still waits")
+	}
+	if _, err := advance(f.repo.Root(), f.runID, f.stages, at(gateUnreadBound)); err != nil {
+		t.Fatalf("past the bound it is left open: %v", err)
+	}
+	if l := currentLane(t, f.repo, f.runID); l.Landing.Merge == "" || l.Landing.Armed {
+		t.Fatalf("the lane is parked, saying why: %+v", l.Landing)
 	}
 }
 
@@ -506,6 +586,9 @@ func TestAnUnreadGateAsksAgain(t *testing.T) {
 	if st, err := ReadState(f.repo.Root(), f.runID); err != nil || st.Lanes[0].Refused != nil {
 		t.Fatalf("the wait does not count toward stuck: %+v %v", st.Lanes[0].Refused, err)
 	}
+	if l := currentLane(t, f.repo, f.runID); l.Landing.GateUnreadSince == nil {
+		t.Fatalf("the wait's start is kept: %+v", l.Landing)
+	}
 	if err := os.Remove(role); err != nil {
 		t.Fatal(err)
 	}
@@ -557,7 +640,6 @@ func TestThisRepositorysOwnMirrorAndConfigArm(t *testing.T) {
 			t.Fatalf("reading this repository's %s: %v", rel, err)
 		}
 	}
-	files[relateLaneIssue] = ""
 	f := newLandFixtureWith(t, files)
 	f.approve(t)
 	f.validated(t)

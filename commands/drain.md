@@ -55,8 +55,9 @@ hooks is handed back at its landing, and an issue that names one is passed over:
 needs a person's own session, and the drive's last lines name each one. Where
 `facilitator.mode` is `auto`, a lane's records commit takes a short review round of its own
 and a lane whose reviewers passed it arms its own merge, as `abcd build`'s and any drain's
-lane does; one the gate leaves open says why, keeps its reservation and is passed over for
-the next.
+lane does. One that moves an issue's record its full round was not told of, or holds more
+than plain markdown, parks before any round; one the gate leaves open says why, keeps its
+reservation and is passed over for the next.
 
 It prints one line per step and logs them under `.abcd/.work.local/logs/`. It ends
 at the cap, when nothing is eligible, or after eight hours of runner failures. The
