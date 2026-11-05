@@ -247,6 +247,9 @@ type stageWritten struct {
 	declared       map[string][sha256.Size]byte
 	// exports are what the shell file sets beside its home, as KEY=value.
 	exports []string
+	// goNote says why a Go on PATH left the Go caches out of exports, "" when it
+	// did not.
+	goNote string
 	// binaries are abcd's binary and the harness, by content.
 	binaries map[string][sha256.Size]byte
 }
@@ -292,8 +295,8 @@ func writeStageFiles(p Profile, bin string) error {
 	if err := os.MkdirAll(p.StageRoot, abcdhome.DirMode); err != nil {
 		return &WallError{WallSettingsFile, "the stage's files could not be made"}
 	}
-	exports := stageGoExports(p)
-	written := &stageWritten{env: stageEnvFile(p, exports), gitConfig: gitConfig, declared: declaredNow(p), exports: exports, binaries: binariesNow(p, bin)}
+	exports, goNote := stageGoExports(p)
+	written := &stageWritten{env: stageEnvFile(p, exports), gitConfig: gitConfig, declared: declaredNow(p), exports: exports, goNote: goNote, binaries: binariesNow(p, bin)}
 	if err := fsutil.WriteFileAtomic(p.EnvFile, written.env, 0o600); err != nil {
 		return &WallError{WallSettingsFile, "the stage's shell file could not be written"}
 	}
@@ -337,22 +340,50 @@ func PreflightEnv(p Profile) []string {
 }
 
 // stageGoExports are the Go caches as they stand in the person's own environment,
-// as KEY=value, when there is a Go to ask.
-func stageGoExports(p Profile) []string {
+// as KEY=value. With no Go on PATH there is nothing to keep and nothing to say; a Go
+// that is there and does not answer leaves a cache out, and note says which and why.
+func stageGoExports(p Profile) (exports []string, note string) {
 	// What a stage installs lands under its home, so it shadows no program.
-	exports := []string{"GOBIN=" + filepath.Join(p.ShellHome, "bin")}
+	exports = []string{"GOBIN=" + filepath.Join(p.ShellHome, "bin")}
 	names := []string{"GOCACHE", "GOMODCACHE", "GOPATH"}
 	out, err := Exec(context.Background(), Command{Name: "go", Args: append([]string{"env"}, names...), Dir: p.Dir, Timeout: stageProbeTimeout})
+	if errors.Is(err, ErrNotOnPath) {
+		return exports, ""
+	}
 	if err != nil {
-		return exports
+		var fl *Failure
+		if errors.As(err, &fl) {
+			return exports, stageColdNote(fl.Detail)
+		}
+		return exports, stageColdNote("go did not answer")
 	}
 	values := strings.Split(strings.TrimSpace(string(out.Stdout)), "\n")
+	var missed []string
 	for i, name := range names {
 		if i < len(values) && filepath.IsAbs(values[i]) {
 			exports = append(exports, name+"="+values[i])
+		} else {
+			missed = append(missed, name)
 		}
 	}
-	return exports
+	if len(missed) > 0 {
+		return exports, stageColdNote("go names no absolute path for " + strings.Join(missed, ", "))
+	}
+	return exports, ""
+}
+
+// stageColdNote is what a drive says at its start of a Go cache it could not keep.
+func stageColdNote(why string) string {
+	return "a stage's Go caches stay in its own home, which is emptied at each launch, so each launch's Go builds from cold: " + why
+}
+
+// StageCachesNote says why the stages on p's shell home will not use the person's
+// Go caches, "" when they will or there is no Go: what WriteWallSettings found.
+func StageCachesNote(p Profile) string {
+	if v, ok := stagesWritten.Load(p.ShellHome); ok {
+		return v.(*stageWritten).goNote
+	}
+	return ""
 }
 
 // stageEnvFile is the shell file: the home, the person's home for abcd's shared
