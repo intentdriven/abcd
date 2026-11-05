@@ -34,17 +34,20 @@ type driveSignals struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	ch     chan os.Signal
-	once   sync.Once
+	// pipes takes SIGPIPE and is never read.
+	pipes chan os.Signal
+	once  sync.Once
 }
 
 // watchDriveSignals starts the handling. first and second say what each signal
 // did.
 func watchDriveSignals(first, second func()) *driveSignals {
 	ctx, cancel := context.WithCancel(context.Background())
-	s := &driveSignals{stop: make(chan struct{}), ctx: ctx, cancel: cancel, ch: make(chan os.Signal, 2)}
+	s := &driveSignals{stop: make(chan struct{}), ctx: ctx, cancel: cancel, ch: make(chan os.Signal, 2), pipes: make(chan os.Signal, 1)}
 	// The drive outlives a terminal that closed, so a write to it is no reason
-	// to die.
-	signal.Ignore(syscall.SIGPIPE)
+	// to die. SIGPIPE is caught, not ignored: an ignored signal stays ignored
+	// across exec, and an agent's or a preflight's pipeline needs its own.
+	signal.Notify(s.pipes, syscall.SIGPIPE)
 	signal.Notify(s.ch, os.Interrupt, syscall.SIGHUP, syscall.SIGTERM)
 	go func() {
 		if _, ok := <-s.ch; !ok {
@@ -66,6 +69,7 @@ func watchDriveSignals(first, second func()) *driveSignals {
 func (s *driveSignals) close() {
 	s.once.Do(func() {
 		signal.Stop(s.ch)
+		signal.Stop(s.pipes)
 		close(s.ch)
 		s.cancel()
 	})

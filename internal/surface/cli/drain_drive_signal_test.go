@@ -262,3 +262,28 @@ func (w *driveWorld) recordTerminalStopped(t *testing.T) {
 		}
 	}
 }
+
+const driveSigpipeChildEnv = "ABCD_DRIVE_SIGPIPE_CHILD"
+
+// TestADrivesAgentsKeepTheDefaultSigpipe: a drive keeps writing after its
+// terminal closes, but what it starts inherits an ignored signal across exec, so
+// an agent's `yes | head` must still end on SIGPIPE, not spin on EPIPE.
+func TestADrivesAgentsKeepTheDefaultSigpipe(t *testing.T) {
+	if os.Getenv(driveSigpipeChildEnv) != "" {
+		s := watchDriveSignals(func() {}, func() {})
+		defer s.close()
+		cmd := exec.Command("/bin/sh", "-c", `{ yes 2>/dev/null; echo "status $?" >&2; } | head -c 1 >/dev/null`)
+		out, _ := cmd.CombinedOutput()
+		fmt.Printf("%s\n", out)
+		os.Exit(0)
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestADrivesAgentsKeepTheDefaultSigpipe$", "-test.count=1")
+	cmd.Env = append(os.Environ(), driveSigpipeChildEnv+"=1")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "status 141") {
+		t.Fatalf("yes did not end on SIGPIPE:\n%s", out)
+	}
+}
