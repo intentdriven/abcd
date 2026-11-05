@@ -405,3 +405,45 @@ func TestALongWaitKeepsTheLanesReservation(t *testing.T) {
 		}
 	}
 }
+
+// TestAPushThatFailsAtTakeUpBacksOff: a push that fails while a stopped lane is
+// taken up is passing trouble: the lane waits and goes on, and three quick
+// refusals do not hand it back.
+func TestAPushThatFailsAtTakeUpBacksOff(t *testing.T) {
+	w, res := stoppedLane(t)
+	hook := filepath.Join(w.bare, "hooks", "pre-receive")
+	if err := os.MkdirAll(filepath.Dir(hook), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\nexit 1\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	waits := 0
+	w.onSleep = func(time.Duration) {
+		if waits++; waits == 2 {
+			if err := os.Remove(hook); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	o := w.options(t)
+	o.Stop = make(chan struct{})
+	o.Drain.Max = 0
+	for _, id := range []string{eligibleIssue, secondIssue, thirdIssue} {
+		if id != res.Issue {
+			o.Drain.Skip = append(o.Drain.Skip, id)
+		}
+	}
+	o.Drain.SkipReason = "the stopped lane's alone"
+	w.guardSleeps(t, &o)
+	if _, err := RunTerminal(context.Background(), w.repo.Root(), o); err != nil {
+		t.Fatalf("%v\n%s", err, strings.Join(w.lines, "\n"))
+	}
+	back, _, err := readDrain(w.repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(back.HandBacks) != 0 || waits < 2 {
+		t.Fatalf("the failure is waited out: %d waits, %+v\n%s", waits, back.HandBacks, strings.Join(w.lines, "\n"))
+	}
+}
