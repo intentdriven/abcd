@@ -124,6 +124,9 @@ func (d *Dispatcher) Dispatch(ctx context.Context, req Request) (Outcome, error)
 		if d.HostSession {
 			out.Handoff = true
 			out.Receipt.Route.Ran = Host
+			// The host counts its own agent; the placeholder keeps the run's
+			// listing whole, so one that cannot be written holds nothing up.
+			_, _ = RecordLaunch(ctx, d.Config.Ledger(), launchStartOf(Host, "", req), nil)
 			return out, nil
 		}
 		ans, err := d.runOn(ctx, landing, req)
@@ -226,21 +229,44 @@ func (d *Dispatcher) runOn(ctx context.Context, name string, req Request) (Answe
 			return Answer{}, err
 		}
 	}
-	ans, transcript, err := d.Config.adapter(rc).Run(ctx, req)
-	if len(transcript) > 0 {
-		if serr := d.Transcripts.Store(name, req, ans, transcript); serr != nil {
-			return Answer{}, fmt.Errorf("runner: the %s transcript for %s was not stored: %w", name, req.Role, serr)
+	// Every launch passes through here, and so through the one door to the
+	// ledger: a launch it cannot record is not started.
+	end, err := RecordLaunch(ctx, d.Config.Ledger(), launchStartOf(name, rc.Model, req), func(ctx context.Context) LaunchEnd {
+		ans, transcript, err := d.Config.adapter(rc).Run(ctx, req)
+		launchExited(ctx)
+		end := LaunchEnd{Answer: ans, Transcript: transcript, Err: err}
+		if len(transcript) > 0 {
+			if serr := d.Transcripts.Store(name, req, ans, transcript); serr != nil {
+				end.Err = fmt.Errorf("runner: the %s transcript for %s was not stored: %w", name, req.Role, serr)
+				return end
+			}
 		}
-	}
+		if err != nil {
+			return end
+		}
+		if verr := d.Validate(name, req, ans); verr != nil {
+			detail := termsafe.Sanitize(verr.Error())
+			if len(detail) > maxDetail {
+				detail = strings.ToValidUTF8(detail[:maxDetail], "") + "..."
+			}
+			end.Err = fail(name, ReasonInvalid, "%s: %s", reasonValidator, detail)
+		}
+		return end
+	})
 	if err != nil {
 		return Answer{}, err
 	}
-	if verr := d.Validate(name, req, ans); verr != nil {
-		detail := termsafe.Sanitize(verr.Error())
-		if len(detail) > maxDetail {
-			detail = strings.ToValidUTF8(detail[:maxDetail], "") + "..."
-		}
-		return Answer{}, fail(name, ReasonInvalid, "the contract's validator refused its answer: %s", detail)
+	if end.Err != nil {
+		return Answer{}, end.Err
 	}
-	return ans, nil
+	return end.Answer, nil
+}
+
+// launchStartOf is what the ledger is told of req before runner starts it.
+func launchStartOf(runner, model string, req Request) LaunchStart {
+	repo := req.Checkout
+	if repo == "" {
+		repo = req.Dir
+	}
+	return LaunchStart{Role: req.Role, Runner: runner, ModelAsked: model, Repo: repo, Work: req.Work, Fallback: req.SessionID, Key: req.Key}
 }
