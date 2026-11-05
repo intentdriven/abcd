@@ -33,7 +33,7 @@ const surfaceGHSA = "GHSA-xxxx-xxxx-xxxx"
 func embargoSurfaceRepo(t *testing.T) *gittest.Repo {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
-	r := gittest.NewRepo(t)
+	r := newRepo(t)
 	r.Write(".abcd/work/issues/open/.gitkeep", "")
 	r.Write("README.md", "a project\n")
 	r.Commit("initial")
@@ -208,7 +208,7 @@ func TestEmbargoJSONShapes(t *testing.T) {
 	// A release counts once origin holds its tag: origin becomes a bare
 	// repository once intake has read the repository from its URL.
 	bare := filepath.Join(t.TempDir(), "origin.git")
-	gittest.InitBare(t, bare)
+	initBare(t, bare)
 	r.Git("config", "remote.origin.url", bare)
 	// A local origin names no github.com repository: the plan reads it as
 	// the one intake recorded.

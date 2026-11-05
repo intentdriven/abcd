@@ -29,7 +29,7 @@ type attrCase struct {
 	// want is abcd's answer for each path: generated or not.
 	want map[string]bool
 	// minGit, when set, is the oldest git whose check-attr the row is
-	// compared with ("2.42"); an older git skips the row, saying so.
+	// compared with ("2.44"); an older git skips the row, saying so.
 	minGit string
 	// skipped is true for a declaration the reader does not understand (a
 	// macro, a C-quoted pattern, a POSIX class, an unclosed class): abcd
@@ -98,8 +98,10 @@ var attrCorpus = []attrCase{
 
 	{name: "an invalid attribute name voids the line", attrs: "*.md linguist-generated\nb.md -linguist-generated bad^name\nc.txt linguist-generated bad^name\n",
 		want: map[string]bool{"a.md": true, "b.md": true, "c.txt": false}},
-	// git refuses a builtin_ name as reserved from 2.42 on.
-	{name: "a reserved attribute name voids the line", attrs: "*.md linguist-generated\nd.md builtin_x -linguist-generated\n", minGit: "2.42",
+	// git refuses a builtin_ name as reserved from 2.44 on (attr.c's
+	// attr_name_reserved, which came with builtin_objectmode); 2.43 reads
+	// builtin_x as an ordinary attribute and keeps the line.
+	{name: "a reserved attribute name voids the line", attrs: "*.md linguist-generated\nd.md builtin_x -linguist-generated\n", minGit: "2.44",
 		want: map[string]bool{"a.md": true, "d.md": true}},
 
 	{name: "a bare [attr] defines no macro", attrs: "*.md linguist-generated\n[attr] nogen linguist-generated\nx.md nogen\n",

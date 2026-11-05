@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/drainrule"
-	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // TestDrainDryRunNamesWhatOriginFinished is spc-2610161044461448 step 1 at the
@@ -24,7 +23,7 @@ func TestDrainDryRunNamesWhatOriginFinished(t *testing.T) {
 	gitCmd(t, repo, "add", "-A")
 	gitCommit(t, repo, "commit", "-q", "-m", "the ledger")
 	bare := filepath.Join(t.TempDir(), "origin.git")
-	gittest.InitBare(t, bare)
+	initBare(t, bare)
 	gitCmd(t, repo, "remote", "add", "origin", bare)
 	gitCmd(t, repo, "push", "-q", "origin", "main")
 

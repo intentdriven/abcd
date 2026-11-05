@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -26,10 +27,57 @@ import (
 // captureLedgerFixture builds a git working tree with a seeded ledger and a
 // package-shaped subdirectory two levels down, and returns both plus the ids it
 // seeded. HOME is redirected so nothing consults the developer's own home.
+//
+// The seeded checkout is the same for every test that asks for n records, so
+// the first one built of each n is kept and every later one is a copy of it
+// (fixture_template_test.go): seeding it ran capture n times, a few dozen git
+// processes.
 func captureLedgerFixture(t *testing.T, n int) (repo, sub string, ids []string) {
 	t.Helper()
-	t.Setenv("HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
 	repo = t.TempDir()
+	if !templateGit() {
+		return seedCaptureLedger(t, repo, n)
+	}
+	key := "capture-ledger-" + strconv.Itoa(n)
+	fixtureTemplates.mu.Lock()
+	tpl, kept := fixtureTemplates.byKey[key]
+	fixtureTemplates.mu.Unlock()
+	if !kept {
+		repo, sub, ids = seedCaptureLedger(t, repo, n)
+		// Only the checkout is kept: the seeding leaves nothing in the home
+		// but what gittest.Env lays there, which each copy's Env lays again.
+		// A seeding that wrote more keeps no template, and the next test
+		// seeds its own.
+		if onlyGittestHome(t, home) {
+			fixtureTemplate(t, key, func(dir string) {
+				copyFixture(t, repo, filepath.Join(dir, "repo"))
+				if err := os.WriteFile(filepath.Join(dir, "ids"), []byte(strings.Join(ids, "\n")), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			})
+		}
+		return repo, sub, ids
+	}
+	copyCheckout(t, filepath.Join(tpl, "repo"), repo)
+	raw, err := os.ReadFile(filepath.Join(tpl, "ids"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n > 0 {
+		ids = strings.Split(string(raw), "\n")
+	}
+	repo = realPath(t, repo)
+	sub = filepath.Join(repo, "internal", "core")
+	t.Chdir(repo)
+	return repo, sub, ids
+}
+
+// seedCaptureLedger lays captureLedgerFixture's checkout out at repo with git
+// and n captures.
+func seedCaptureLedger(t *testing.T, repo string, n int) (_, sub string, ids []string) {
+	t.Helper()
 	gitInitAt(t, repo)
 	// One empty root commit, so the tree is a checkout with a history rather than
 	// an unborn branch. A read-only verb that walks history (`capture mentions`)

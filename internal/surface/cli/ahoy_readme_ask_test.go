@@ -8,7 +8,6 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/question"
-	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/surface/cli/ask"
 )
 
@@ -129,7 +128,7 @@ func TestDrawnPrompterAsksAReadmePartWithItsExample(t *testing.T) {
 // setting and its change-later line, never a preview.
 func TestAhoyDetectionCarriesTheReadmeQuestions(t *testing.T) {
 	hermeticEnv(t)
-	repo := gittest.NewRepo(t).Root()
+	repo := newRepo(t).Root()
 	t.Chdir(repo)
 	if _, err := runCLIStdinErr(t, "", "ahoy", "install", "--yes", "--adopt", "--visibility", "private",
 		"--docs-target", "skip", "--scan-deep", "false", "--json"); err != nil {

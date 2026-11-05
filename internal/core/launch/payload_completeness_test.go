@@ -3,8 +3,9 @@ package launch
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // pluginSurfaceDirs are the directory names an agent harness auto-discovers as
@@ -20,17 +21,17 @@ var pluginSurfaceDirs = []string{"commands", "agents", "hooks", "skills"}
 // an explicit include-or-exclude decision rather than a silent drop.
 var surfaceExcludeReasons = map[string]string{}
 
-// repoRootForTest returns the abcd-cli repo root, derived from this test file's
-// own on-disk location (internal/core/launch/ → three levels up), so the
+// repoRootForTest returns the abcd-cli repo root, found by walking up from the
+// test's working directory (its package directory) to go.mod, so the
 // completeness check runs against the committed launch-payload config and the
 // real surface directories rather than a synthetic fixture.
 func repoRootForTest(t *testing.T) string {
 	t.Helper()
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller failed to locate the test source file")
+	root, err := fsutil.ModuleRoot(".")
+	if err != nil {
+		t.Fatal(err)
 	}
-	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..", ".."))
+	return root
 }
 
 // TestBundleShipsEveryPluginSurface is the bundle-completeness detector: every

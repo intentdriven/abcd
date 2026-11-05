@@ -233,6 +233,10 @@ func (p Pattern) Describe() string {
 		with = append(with, orList(alternatives(group)))
 	}
 	for _, fv := range p.FlagValues {
+		if text, ok := flagValueShapeTaught[fv.Shape]; ok {
+			with = append(with, orList(alternatives(fv.Flag))+" set to "+text)
+			continue
+		}
 		with = append(with, orList(alternatives(fv.Flag))+" set to "+orList(quoteAll(fv.Values)))
 	}
 	for _, pre := range p.ArgPrefixes {
@@ -241,6 +245,9 @@ func (p Pattern) Describe() string {
 	for _, shape := range p.ArgShapes {
 		if shape == ShapeUnguardedVariablePath {
 			with = append(with, "an operand that starts with a variable that can be empty followed by `/` (`\"$VAR\"/…`, `$VAR/…`, `\"${VAR}\"/…`, `${VAR}/…`)")
+		}
+		if shape == ShapeForgeRefPath {
+			with = append(with, "a `…/git/refs/…` path")
 		}
 	}
 	switch {
@@ -251,6 +258,10 @@ func (p Pattern) Describe() string {
 	}
 	if len(with) > 0 {
 		b.WriteString(" with " + strings.Join(with, " and "))
+	}
+
+	for _, group := range p.NotFlags {
+		b.WriteString(", unless it carries " + orList(alternatives(group)))
 	}
 
 	if len(p.ArgsFrom) > 0 {
@@ -313,4 +324,12 @@ func orList(words []string) string {
 		return words[0]
 	}
 	return strings.Join(words[:len(words)-1], ", ") + " or " + words[len(words)-1]
+}
+
+// flagValueShapeTaught is how a lesson says each flag-value shape.
+var flagValueShapeTaught = map[string]string{
+	ShapeForcedRefMutation:       "a query that force-moves a ref",
+	ShapeForcedRefMutationAnyKey: "a value that force-moves a ref",
+	ShapeRefUpdateQuery:          "a query naming a ref update",
+	ShapeForceField:              "a field setting force",
 }

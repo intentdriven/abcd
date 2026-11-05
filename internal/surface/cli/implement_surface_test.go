@@ -20,7 +20,7 @@ func implementRepo(t *testing.T) (home, runDir string) {
 	t.Helper()
 	home = t.TempDir()
 	t.Setenv("HOME", home)
-	repo := gittest.NewRepo(t)
+	repo := newRepo(t)
 	repo.Write("README.md", "fixture\n")
 	// This repository's own preset file, so the second session's reading-corpus
 	// bound is derived as the live run derives it.
