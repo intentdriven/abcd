@@ -113,9 +113,7 @@ Setting the away mode warns; so does a build or a drain move while the mode
 holds ([`34-build.md`](34-build.md), [`35-drain.md`](35-drain.md)), a first
 session's join in any mode ([`27-implement.md`](27-implement.md)), and any of
 those moves when the away state cannot be read. A managed build or drain move
-whose away state can be read prints nothing. A terminal drive starts agents of its
-own from a plain terminal, so it is not a session starting work under the person's
-own setup, and it takes no line (dcn-2611050931219213).
+whose away state can be read prints nothing.
 
 The warning is one line on stderr whatever the output form, printed after the
 move, opening `WARNING:`, worded as the setting's reading, naming what abcd cannot

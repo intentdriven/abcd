@@ -40,9 +40,9 @@ func warnOffProfile(cmd *cobra.Command, prefix string) bool {
 // offProfileLine is the warning, worded as the setting's reading because a
 // reading is all abcd has. It opens in capitals to stand out among a verb's other
 // lines, and asks to be passed on (dcn-2611050931229356). It carries no local path,
-// no variable and no location for the setting, and it prints no step: a bare new
-// configuration directory holds none of abcd's hooks. It holds for a first join in
-// the managed mode too, which is why it says what the verb can start, not that it
+// no variable and no location for the setting, and it prints no step, since no abcd
+// command starts a session on a profile yet. It holds for a first join in the
+// managed mode too, which is why it says what the verb can start, not that it
 // started.
 func offProfileLine(prefix, why string) string {
 	return "WARNING: " + prefix + " \u2014 THIS SESSION'S CONFIGURATION DIRECTORY SETTING READS AS OFF A PROFILE (it " + why + "), " +

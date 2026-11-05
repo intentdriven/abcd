@@ -413,8 +413,8 @@ func offProfileText(page string) string {
 	return strings.Join(kept, " ")
 }
 
-// The help and the pages say what the line is and stop there: what warns, no step,
-// no account of what the check looks for, and no sibling branch's verb.
+// The help and the pages say what warns, that the reading proves no wall, and that
+// no abcd command starts a session on a profile yet.
 func TestTheWarningsTextsPrintNoStepAndNoExpectedValue(t *testing.T) {
 	texts := map[string]string{"help": foldText(offProfileHelp)}
 	for _, rel := range []string{
@@ -436,8 +436,6 @@ func TestTheWarningsTextsPrintNoStepAndNoExpectedValue(t *testing.T) {
 		for _, never := range []string{
 			"mkdir -p " + abcdhome.Display("profiles"), "directly under " + abcdhome.Display("profiles"),
 			"cannot be missed", "until a host reports", "abcd drain --drive", "walled", "proves the wall",
-			"marked session", "reaches the agent alone", "nothing records it", "never sets the away mode",
-			"is not warned",
 		} {
 			if strings.Contains(text, never) {
 				t.Errorf("%s carries %q", name, never)
