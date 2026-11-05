@@ -11,6 +11,7 @@ import (
 func TestMachineHomeIsThePersonsWhereOneIsNamed(t *testing.T) {
 	stage, person := t.TempDir(), t.TempDir()
 	t.Setenv("HOME", stage)
+	t.Setenv(StageHomeEnv, stage)
 	t.Setenv(PersonHomeEnv, person)
 	if got, err := MachineHome(); err != nil || got != person {
 		t.Fatalf("MachineHome = %q %v, want %q", got, err, person)
@@ -19,6 +20,15 @@ func TestMachineHomeIsThePersonsWhereOneIsNamed(t *testing.T) {
 	if got, _ := MachineHome(); got != stage {
 		t.Fatalf("a relative value is ignored: %q", got)
 	}
+	// A process that has since moved its home, as a test's fixture does, is no
+	// longer under the stage's, and keeps to its own.
+	t.Setenv(PersonHomeEnv, person)
+	other := t.TempDir()
+	t.Setenv("HOME", other)
+	if got, _ := MachineHome(); got != other {
+		t.Fatalf("a home moved off the stage's is its own: %q", got)
+	}
+	t.Setenv("HOME", stage)
 	if err := os.Unsetenv(PersonHomeEnv); err != nil {
 		t.Fatal(err)
 	}

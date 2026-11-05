@@ -46,15 +46,23 @@ const oldName = ".abcd"
 // as a walled stage's shell does. MachineHome reads it.
 const PersonHomeEnv = "ABCD_PERSON_HOME"
 
+// StageHomeEnv names the home a walled stage's shell runs under.
+const StageHomeEnv = "ABCD_STAGE_HOME"
+
 // MachineHome is the home the machine's shared records are kept under: the load
 // gate's holds and limits among them, which every process on the account must
-// read alike. It is the person's own where PersonHomeEnv names one, else the
-// process's.
+// read alike. It is the person's own while the process's home is the stage's that
+// StageHomeEnv names and PersonHomeEnv names one, else the process's: a process
+// that moved its home since, as a test's fixture does, keeps to the one it chose.
 func MachineHome() (string, error) {
-	if h := os.Getenv(PersonHomeEnv); filepath.IsAbs(h) {
-		return filepath.Clean(h), nil
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return home, err
 	}
-	return os.UserHomeDir()
+	if person := os.Getenv(PersonHomeEnv); filepath.IsAbs(person) && os.Getenv(StageHomeEnv) == home {
+		return filepath.Clean(person), nil
+	}
+	return home, nil
 }
 
 // RenameCommand is the one command the stop names: the person's own act,

@@ -244,7 +244,7 @@ func TestAPreflightsEnvironmentIsTheStagesAndKeepsTheMachinesGate(t *testing.T) 
 	if strings.Contains(strings.Join(env, "\n"), "a-value-never-passed") {
 		t.Fatalf("something outside the list reached the preflight: %q", env)
 	}
-	for _, want := range []string{"HOME=" + p.ShellHome, abcdhome.PersonHomeEnv + "=" + p.PersonHome, "GOFLAGS=-p=1"} {
+	for _, want := range []string{"HOME=" + p.ShellHome, StageHomeEnv + "=" + p.ShellHome, abcdhome.PersonHomeEnv + "=" + p.PersonHome, "GOFLAGS=-p=1"} {
 		if !slices.Contains(env, want) {
 			t.Errorf("the preflight's environment lacks %q: %q", want, env)
 		}

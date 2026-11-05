@@ -197,6 +197,7 @@ func TestTheGateReadsThePersonsHomeUnderAStagesHome(t *testing.T) {
 	person, _ := os.UserHomeDir()
 	stage := t.TempDir()
 	t.Setenv(abcdhome.PersonHomeEnv, person)
+	t.Setenv(abcdhome.StageHomeEnv, stage)
 	t.Setenv("HOME", stage)
 	if code, out, errOut := implementCLI(t, "implement", "load", "--wait", "--timeout", "1m"); code != 0 {
 		t.Fatalf("exit %d\n%s%s", code, out, errOut)

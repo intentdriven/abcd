@@ -275,7 +275,7 @@ func ResetStageHome(p Profile) error {
 // carries, under its home, with the person's home named for the load gate and the
 // Go caches kept. Nothing else of the parent's passes.
 func PreflightEnv(p Profile) []string {
-	seal := []string{"HOME=" + p.ShellHome, abcdhome.PersonHomeEnv + "=" + p.PersonHome}
+	seal := []string{"HOME=" + p.ShellHome, StageHomeEnv + "=" + p.ShellHome, abcdhome.PersonHomeEnv + "=" + p.PersonHome}
 	if v, ok := stagesWritten.Load(p.Dir); ok {
 		seal = append(seal, v.(*stageWritten).exports...)
 	}
@@ -305,6 +305,7 @@ func stageGoExports(p Profile) []string {
 func stageEnvFile(p Profile, exports []string) []byte {
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "export HOME=%s\n", shellQuoted(p.ShellHome))
+	fmt.Fprintf(&b, "export %s=%s\n", StageHomeEnv, shellQuoted(p.ShellHome))
 	fmt.Fprintf(&b, "export %s=%s\n", abcdhome.PersonHomeEnv, shellQuoted(p.PersonHome))
 	for _, kv := range exports {
 		k, v, _ := strings.Cut(kv, "=")

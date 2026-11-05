@@ -29,7 +29,7 @@ const StageWritesEnv = "ABCD_STAGE_WRITES"
 // protected from the stage, what its work declares it changes, and the commit
 // its lane was cut from.
 const (
-	StageHomeEnv     = "ABCD_STAGE_HOME"
+	StageHomeEnv     = abcdhome.StageHomeEnv
 	StageProtectEnv  = "ABCD_STAGE_PROTECT"
 	StageDeclaredEnv = "ABCD_STAGE_DECLARED"
 	StageBaseEnv     = "ABCD_STAGE_BASE"
