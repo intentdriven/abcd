@@ -192,9 +192,13 @@ func (l launcher) run(ctx context.Context, runner, bin string, args, seal []stri
 	cmd.Stderr = ew
 	procgroup.Lead(cmd)
 	cmd.WaitDelay = pipeGrace
+	// Read before the start returns: a process's start is when it forked, and
+	// Start returns only once exec has, which can take seconds.
+	forked := time.Now()
 	if err := cmd.Start(); err != nil {
 		return procResult{}, failAt(ErrNotStarted, runner, ReasonFailed, "%s could not be started", filepath.Base(bin))
 	}
+	launchStarted(ctx, cmd.Process.Pid, forked)
 	// The clock stands still while the harness's tree waits at the load gate
 	// (gatewait.go): each look that finds a waiter queued moves the deadline
 	// by the time since the last look, up to gateCredit.
@@ -469,6 +473,9 @@ func (b *bounded) Write(p []byte) (int, error) {
 	return n, nil
 }
 
+// stderrMarker is the line a transcript's stderr follows.
+const stderrMarker = "== abcd runner: the harness's stderr =="
+
 // transcript is what a run's record keeps: the event stream, then the
 // harness's stderr under a marker line when it wrote any. The store redacts it
 // on write.
@@ -483,7 +490,7 @@ func (r procResult) transcript() []byte {
 	}
 	// The marker opens with "==", never a "---" run, so no frontmatter reader
 	// takes it for a block delimiter.
-	b.WriteString("== abcd runner: the harness's stderr ==\n")
+	b.WriteString(stderrMarker + "\n")
 	b.Write(r.stderr)
 	return b.Bytes()
 }

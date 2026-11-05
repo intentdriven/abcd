@@ -492,6 +492,51 @@ func meterClaude(ans *Answer, line []byte) {
 	}
 }
 
+// claudeFacts is what the ledger reads from a claude launch's stream beyond
+// what the run's record keeps.
+type claudeFacts struct {
+	// window is true when the stream carries a rate-limit event.
+	window bool
+	// apiMillis is the result event's duration_api_ms, nil when it has none.
+	apiMillis *int64
+	// model is the init event's model, "" when it names none readably.
+	model string
+}
+
+// claudeLaunchFacts reads a stream line by line, leniently, and stops at the
+// harness's stderr, which is not its event stream.
+func claudeLaunchFacts(transcript []byte) claudeFacts {
+	var f claudeFacts
+	for _, line := range bytes.Split(transcript, []byte("\n")) {
+		line = bytes.TrimSpace(line)
+		if string(line) == stderrMarker {
+			break
+		}
+		var ev struct {
+			Type    string `json:"type"`
+			Subtype string `json:"subtype"`
+			Model   string `json:"model"`
+			APIMs   *int64 `json:"duration_api_ms"`
+		}
+		if len(line) == 0 || json.Unmarshal(line, &ev) != nil {
+			continue
+		}
+		switch ev.Type {
+		case "rate_limit_event":
+			f.window = true
+		case "result":
+			if ev.APIMs != nil && *ev.APIMs >= 0 {
+				f.apiMillis = ev.APIMs
+			}
+		case "system":
+			if ev.Subtype == "init" && modelRe.MatchString(ev.Model) {
+				f.model = ev.Model
+			}
+		}
+	}
+	return f
+}
+
 // claudeSpent reads what a killed claude run spent from the stream it wrote
 // (iss-2611021751406429): the result event's usage and cost when one came
 // before the kill, else the usage its assistant messages carry, summed once
