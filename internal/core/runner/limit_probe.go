@@ -4,11 +4,11 @@ package runner
 // short launch that asks whether a limit has lifted, and the shape of what a
 // failed launch showed, for the run's evidence file.
 //
-// Nothing here is read to decide anything but the probe's answer. The harness has
-// no check that says whether a subscription limit has lifted without asking it
-// something (its auth status names the login alone), so the probe asks the least
-// that can tell: one word, no tools, the role's route, on the walled login. A limit
-// answers as a rejected launch does; a lifted one costs that one short message.
+// Nothing here is read to decide anything but the probe's answer. The probe asks
+// the least abcd knows to ask: one word, asking for no tools, on the model of the
+// launch that met the limit, on the same profile. That this tells a lifted limit
+// from a held one is what a run's evidence file is there to show. Only the word it
+// asked for, from a launch that held no tool, counts as an answer.
 
 import (
 	"bytes"
@@ -29,13 +29,14 @@ const limitProbeTimeout = 3 * time.Minute
 // limitProbePrompt is all a probe asks.
 const limitProbePrompt = "Reply with the single word: ok"
 
-// ProbeLimit asks whether a limit has lifted for role, with one short launch on
-// the walled login. It reports true when the launch answers; otherwise the failure
-// says what came back: a rate-limited one with the reset it named, if any, or any
-// other, which says nothing about the limit.
-func (c *Config) ProbeLimit(ctx context.Context, role string) (bool, *Failure) {
+// ProbeLimit asks whether a limit has lifted for role, with one short launch on the
+// profile, on model, a model route, or the runner's own for "". It reports true when
+// the launch answers what it was asked; otherwise the failure says what came back: a
+// rate-limited one with the reset it named, if any, or any other, which says nothing
+// about the limit.
+func (c *Config) ProbeLimit(ctx context.Context, role, model string) (bool, *Failure) {
 	if c.profile == nil {
-		return false, fail(Claude, ReasonFailed, "the probe has no walled login to run on")
+		return false, fail(Claude, ReasonFailed, "the probe has no profile to run on")
 	}
 	rc, ok := c.Runner(c.RouteFor(role).Runner)
 	if !ok || rc.Name != Claude {
@@ -45,11 +46,11 @@ func (c *Config) ProbeLimit(ctx context.Context, role string) (bool, *Failure) {
 	if !ok {
 		return false, fail(Claude, ReasonFailed, "the probe has no claude route for the %s", role)
 	}
-	return cl.probeLimit(ctx, c.ledger)
+	return cl.probeLimit(ctx, c.ledger, model)
 }
 
-// probeLimit is ProbeLimit's launch, a directory of its own and no tools.
-func (c *ClaudeCLI) probeLimit(ctx context.Context, ledger *Ledger) (bool, *Failure) {
+// probeLimit is ProbeLimit's launch, in a directory of its own, asking for no tools.
+func (c *ClaudeCLI) probeLimit(ctx context.Context, ledger *Ledger, model string) (bool, *Failure) {
 	dir, err := os.MkdirTemp("", "abcd-limit-probe-")
 	if err != nil {
 		return false, fail(Claude, ReasonFailed, "the probe's working directory could not be made")
@@ -61,12 +62,12 @@ func (c *ClaudeCLI) probeLimit(ctx context.Context, ledger *Ledger) (bool, *Fail
 	p := *c.profile
 	c.launch.gateWaiting = nil
 	c.launch.carry = stageEnv
-	bin, err := c.launch.admit(Claude, "claude", p.Dir)
+	bin, err := c.launch.admit(Claude, "claude", p.Dir, p.Repo)
 	if err != nil {
 		return false, fail(Claude, ReasonFailed, "the harness could not be run for the probe")
 	}
 	req := Request{Role: "limit-probe", Brief: filepath.Join(dir, "brief.md"), Receipt: filepath.Join(dir, "receipt.json"),
-		Dir: dir, SessionID: "limit-probe", Timeout: limitProbeTimeout}
+		Dir: dir, SessionID: "limit-probe", Timeout: limitProbeTimeout, Model: model}
 	args := append(c.walledFlags(req), "--", limitProbePrompt)
 	// The probe spends the same subscription as a stage, so its launch is written
 	// to the same ledger, and one the ledger cannot hold is not started.
@@ -83,35 +84,75 @@ func (c *ClaudeCLI) probeLimit(ctx context.Context, ledger *Ledger) (bool, *Fail
 	if lerr != nil {
 		return false, fail(Claude, ReasonFailed, "the probe could not be written to the launch ledger")
 	}
-	err = end.Err
-	if err == nil {
-		return true, nil
-	}
 	if what := claudeRateLimit(res.stdout); what != "" {
 		fl := limitFailure(what, res.stdout)
 		fl.Seen = claudeSeen(res)
 		return false, fl
 	}
 	var fl *Failure
-	if !errors.As(err, &fl) {
-		return false, fail(Claude, ReasonFailed, "the probe did not complete")
+	switch {
+	case errors.As(end.Err, &fl):
+	case end.Err != nil:
+		fl = fail(Claude, ReasonFailed, "the probe did not complete")
+	case claudeInitHeldTools(res.stdout):
+		fl = fail(Claude, ReasonFailed, "the probe's launch held tools it did not ask for, so its answer says nothing")
+	case !probeAnswered(end.Answer.Text):
+		fl = fail(Claude, ReasonFailed, "the probe's launch did not answer the word it was asked for")
+	default:
+		return true, nil
 	}
 	fl.Seen = claudeSeen(res)
 	return false, fl
 }
 
+// probeAnswered reports whether text is the word the probe asked for.
+func probeAnswered(text string) bool {
+	return strings.EqualFold(strings.Trim(strings.TrimSpace(text), ".!\"'`"), "ok")
+}
+
+// claudeInitHeldTools reports whether the stream's init event names a tool.
+func claudeInitHeldTools(out []byte) bool {
+	for _, line := range bytes.Split(out, []byte("\n")) {
+		var ev struct {
+			Type    string   `json:"type"`
+			Subtype string   `json:"subtype"`
+			Tools   []string `json:"tools"`
+		}
+		if json.Unmarshal(bytes.TrimSpace(line), &ev) == nil && ev.Type == "system" && ev.Subtype == "init" && len(ev.Tools) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// claudeStarted reports whether the stream carries an init event.
+func claudeStarted(out []byte) bool {
+	for _, line := range bytes.Split(out, []byte("\n")) {
+		var ev struct {
+			Type    string `json:"type"`
+			Subtype string `json:"subtype"`
+		}
+		if json.Unmarshal(bytes.TrimSpace(line), &ev) == nil && ev.Type == "system" && ev.Subtype == "init" {
+			return true
+		}
+	}
+	return false
+}
+
 // claudeSeen is what a failed launch showed.
 func claudeSeen(res procResult) *HarnessSeen {
 	first, _, _ := strings.Cut(string(bytes.TrimSpace(res.stderr)), "\n")
-	return &HarnessSeen{ExitCode: res.exit, Shape: claudeShape(res.stdout), Stderr: first, SilentFor: res.silent}
+	return &HarnessSeen{ExitCode: res.exit, Shape: claudeShape(res.stdout), Stderr: first, SilentFor: res.silent, Started: claudeStarted(res.stdout)}
 }
 
-// Limits on the shape a failed launch keeps.
+// Limits on the shape a failed launch keeps. Nothing is cut here: whoever keeps it
+// redacts first, so the redactor sees a whole token, and cuts afterwards.
 const (
 	maxShapeLines = 12
-	maxShapeLine  = 2000
-	maxResultText = 300
 	maxShapeDepth = 4
+	// maxShapeText is the longest failed result kept to be read at all; a longer
+	// one reduces to its length.
+	maxShapeText = 256 << 10
 )
 
 // shapeWords are the keys whose string values are kept as they are: each names a
@@ -125,8 +166,8 @@ var shapeDropped = []string{"session", "uuid", "email", "account", "org", "user"
 // claudeShape is the end of the event stream, the events a limit shows in and the
 // stream's last, one line each, the harness's version kept: keys that name a session, a person or a place
 // dropped, a string reduced to its length unless its key names a state, numbers
-// and booleans kept. A failed result's text is kept, bounded, since it is where a
-// harness says what it met; the caller passes it through the scanner.
+// and booleans kept. A failed result's text is kept, since it is where a harness
+// says what it met; the caller passes it through the scanner.
 func claudeShape(out []byte) []string {
 	var keep []string
 	lines := bytes.Split(out, []byte("\n"))
@@ -151,9 +192,6 @@ func claudeShape(out []byte) []string {
 			continue
 		}
 		s := string(raw)
-		if len(s) > maxShapeLine {
-			s = s[:maxShapeLine] + "..."
-		}
 		// A status repeated turn after turn says it once.
 		if n := len(keep); n == 0 || keep[n-1] != s {
 			keep = append(keep, s)
@@ -200,10 +238,7 @@ func shapeValue(key string, v any, depth int, failed bool) any {
 			return x
 		case key == "claude_code_version":
 			return cleanHarness(x)
-		case key == "result" && failed:
-			if len(x) > maxResultText {
-				x = x[:maxResultText] + "..."
-			}
+		case key == "result" && failed && len(x) <= maxShapeText:
 			return x
 		}
 		return fmt.Sprintf("[text, %d bytes]", len(x))

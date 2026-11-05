@@ -170,6 +170,30 @@ func fakeHarness(mode string) int {
 			return 0
 		}
 		return 1
+	case "probe-ok", "probe-tools", "probe-word":
+		// What a limit probe may be answered with: the word it asked for, the
+		// word from a launch that held a tool, and some other answer.
+		init := `{"type":"system","subtype":"init","session_id":"fake-session-1","model":"fake-model","tools":[]}`
+		answer := "ok"
+		switch mode {
+		case "probe-tools":
+			init = `{"type":"system","subtype":"init","session_id":"fake-session-1","model":"fake-model","tools":["Read"]}`
+		case "probe-word":
+			answer = "I cannot help with that"
+		}
+		fmt.Fprintln(os.Stdout, init)
+		fmt.Fprintln(os.Stdout, `{"type":"result","subtype":"success","is_error":false,"result":"`+answer+`","session_id":"fake-session-1"}`)
+		return 0
+	case "started-exit":
+		// A launch that got as far as its init event and then failed.
+		fmt.Fprintln(os.Stdout, `{"type":"system","subtype":"init","session_id":"fake-session-1","model":"fake-model"}`)
+		return 1
+	case "ratelimit-recovered":
+		// A limit the stream goes on to report lifted, in a launch that fails
+		// for some other reason.
+		fmt.Fprintln(os.Stdout, `{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","resetsAt":1791000000,"rateLimitType":"five_hour"},"session_id":"fake-session-1"}`)
+		fmt.Fprintln(os.Stdout, `{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","rateLimitType":"five_hour"},"session_id":"fake-session-1"}`)
+		return 1
 	case "ratelimit-apierror", "ratelimit-apierror-zero", "ratelimit-apistatus":
 		// A failed result naming the API's limit in its own fields, with no
 		// rate_limit_event before it: on a non-zero exit, on a zero one, and

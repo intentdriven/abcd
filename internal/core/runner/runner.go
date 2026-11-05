@@ -235,6 +235,9 @@ type Failure struct {
 	// Seen is what the harness showed of its failure, for a run's evidence
 	// file; nil when no launch ran. It stays out of Detail, which is abcd's.
 	Seen *HarnessSeen
+	// Model is the model route the failed launch asked for, "" for the
+	// harness's own default.
+	Model string
 	// cause is the launch stage that failed (ErrNotOnPath, ErrRefused,
 	// ErrNotStarted), nil for every other failure; errors.Is reads it.
 	cause error
@@ -254,6 +257,33 @@ type HarnessSeen struct {
 	Stderr string
 	// SilentFor is how long it had written nothing when it ended.
 	SilentFor time.Duration
+	// Started says its stream carried an init event.
+	Started bool
+}
+
+// LimitError is a limit a launch met before it could show anything else: a
+// limit, never the thing it was launched to check.
+type LimitError struct {
+	// ResetsAt is the reset the launch named, zero when it named none.
+	ResetsAt time.Time
+	// Seen is what the launch showed.
+	Seen *HarnessSeen
+}
+
+func (e *LimitError) Error() string { return "the account has met its rate limit" }
+
+// ReachedModel reports whether this launch showed it got as far as the model: an
+// answer the contract refused, something spent, or an init event on a launch that
+// ended by itself. One killed having spent nothing shows nothing of the kind: it
+// may have hung, or waited out a limit inside its process.
+func (f *Failure) ReachedModel() bool {
+	if f.Reason == ReasonInvalid {
+		return true
+	}
+	if f.Spent != nil && (f.Spent.Usage != nil || f.Spent.Cost != nil) {
+		return true
+	}
+	return f.Seen != nil && f.Seen.Started && !errors.Is(f, ErrKilled)
 }
 
 func (f *Failure) Error() string {

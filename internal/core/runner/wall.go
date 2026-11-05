@@ -528,6 +528,10 @@ func ProveWall(ctx context.Context, p Profile, bin string) error {
 	if lerr != nil {
 		return &WallError{WallLaunch, lerr.Error()}
 	}
+	// A limit met here says nothing about any wall, on whichever exit it came.
+	if claudeRateLimit(res.stdout) != "" {
+		return &LimitError{ResetsAt: claudeRateLimitReset(res.stdout), Seen: claudeSeen(res)}
+	}
 	if err := end.Err; err != nil {
 		var fl *Failure
 		if errors.As(err, &fl) {
