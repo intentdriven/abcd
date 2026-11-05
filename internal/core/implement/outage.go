@@ -791,7 +791,7 @@ func outageFieldText(v any) string {
 
 // IsNetworkFailure reports whether a git or gh command's stderr says the
 // network failed it: a name that did not resolve, a connection refused, timed
-// out, reset or cut off. A refusal by the other end — an authentication
+// out, reset or cut off, or a forge or remote answering 5xx. A refusal by the other end — an authentication
 // failure, a hook's refusal, a rejected push — or a merge conflict is not one,
 // even when its text also quotes a network-sounding line, because waiting does
 // not fix it.
@@ -838,6 +838,10 @@ var networkMarkers = []string{
 	"operation too slow",
 	"early eof",
 	"broken pipe",
+	// The service answering that it failed, in gh's words (HTTP 502: Bad Gateway)
+	// and git's (The requested URL returned error: 503). Waiting may fix it.
+	"http 5",
+	"returned error: 5",
 }
 
 // notNetworkMarkers are the other end's refusals and the local conflicts.

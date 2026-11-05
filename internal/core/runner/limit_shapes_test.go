@@ -314,8 +314,8 @@ func TestALaunchThatRecoveredAndFailedIsAnOrdinaryFailure(t *testing.T) {
 func TestWhatAFailedLaunchSaysOfItsWork(t *testing.T) {
 	for mode, want := range map[string]Blame{
 		"started-exit": BlameAsk,
-		"spent-exit":   BlameWork,
-		"spent-zero":   BlameWork,
+		"spent-exit":   BlameAsk,
+		"spent-zero":   BlameAsk,
 		"retry-exit":   BlameNone,
 		"api503-exit":  BlameNone,
 		"api404-exit":  BlameAsk,
@@ -343,18 +343,22 @@ func TestWhatAFailedLaunchSaysOfItsWork(t *testing.T) {
 		t.Error("a launch that never ran says nothing")
 	}
 	for _, status := range []string{"401", "403", "429", "500", "503", "599"} {
-		f := &Failure{Reason: ReasonFailed, Seen: &HarnessSeen{APIStatus: status, Spent: true}}
+		f := &Failure{Reason: ReasonFailed, Seen: &HarnessSeen{APIStatus: status}}
 		if f.Blame() != BlameNone {
-			t.Errorf("status %s says nothing of the work, spent or not", status)
+			t.Errorf("status %s with nothing spent says nothing of the work", status)
+		}
+		f.Seen.Spent = true
+		if f.Blame() != BlameAsk {
+			t.Errorf("status %s after spending is the probe's to settle: a poison lane may end on one", status)
 		}
 	}
-	retrying := &Failure{Reason: ReasonFailed, Seen: &HarnessSeen{Retries: 3, Retrying: true, Spent: true}}
-	if retrying.Blame() != BlameNone {
-		t.Error("a launch that ended retrying is the outage's, whatever it spent first")
+	for _, s := range []*HarnessSeen{{Retries: 3, Retrying: true, Spent: true}, {Retries: 3, Spent: true}} {
+		if (&Failure{Reason: ReasonFailed, Seen: s}).Blame() != BlameAsk {
+			t.Errorf("having spent, it is the probe's to settle: %+v", s)
+		}
 	}
-	recovered := &Failure{Reason: ReasonFailed, Seen: &HarnessSeen{Retries: 3, Spent: true}}
-	if recovered.Blame() != BlameWork {
-		t.Error("a retry it came through, then spend, is the work's")
+	if (&Failure{Reason: ReasonFailed, Seen: &HarnessSeen{Retries: 3, Retrying: true}}).Blame() != BlameNone {
+		t.Error("retrying with nothing spent says nothing of the work")
 	}
 }
 
@@ -382,7 +386,7 @@ func TestTheRecordedOutageReadsAsAnOutage(t *testing.T) {
 		t.Fatal("an outage is no limit")
 	}
 	seen := claudeSeen(procResult{stdout: raw, exit: 1})
-	if seen.Retries == 0 || seen.Spent {
+	if seen.Retries == 0 || seen.Spent || !seen.Retrying {
 		t.Fatalf("seen = %+v", seen)
 	}
 	if (&Failure{Reason: ReasonFailed, Seen: seen}).Blame() != BlameNone {
@@ -392,6 +396,46 @@ func TestTheRecordedOutageReadsAsAnOutage(t *testing.T) {
 		if strings.Contains(string(raw), never) {
 			t.Errorf("the fixture holds %q", never)
 		}
+	}
+}
+
+// TestALaunchThatSpentThenLostTheConnectionIsTheProbes: the recorded outage's closing
+// pair does not read as the launch having moved on, and what it spent before does not
+// blame the work: a live account answers the probe, and a service that is down does not.
+func TestALaunchThatSpentThenLostTheConnectionIsTheProbes(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("testdata", "claude-stream-outage-2.1.318.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	spent := `{"type":"system","subtype":"init","tools":[]}
+{"type":"assistant","message":{"id":"m1","usage":{"input_tokens":100,"output_tokens":40}}}
+`
+	seen := claudeSeen(procResult{stdout: append([]byte(spent), raw...), exit: 1})
+	if !seen.Spent || !seen.Retrying || seen.Retries == 0 {
+		t.Fatalf("seen = %+v", seen)
+	}
+	fl := &Failure{Reason: ReasonFailed, Seen: seen}
+	if !fl.Outage() || fl.Blame() != BlameAsk {
+		t.Fatalf("outage %v, blame %v", fl.Outage(), fl.Blame())
+	}
+}
+
+// TestAFailedLaunchNamesTheAPIStatusItsResultNamed: an expired login reads as what it
+// is, in abcd's words and with nothing but a plain status repeated.
+func TestAFailedLaunchNamesTheAPIStatusItsResultNamed(t *testing.T) {
+	f := newFake(t, "api401-exit", Claude)
+	_, _, err := newClaude("").Run(context.Background(), f.request("implementer"))
+	var fl *Failure
+	if !errors.As(err, &fl) || !strings.Contains(fl.Detail, "API status 401") {
+		t.Fatalf("err = %v", err)
+	}
+	if strings.Contains(fl.Detail, "please log in") {
+		t.Fatalf("the detail is abcd's: %q", fl.Detail)
+	}
+	odd := &Failure{Reason: ReasonFailed, Detail: "exited"}
+	keepSeen(odd, procResult{stdout: []byte(`{"type":"result","is_error":true,"api_error_status":"<not a status>"}`), exit: 1}, "")
+	if strings.Contains(odd.Detail, "<not") {
+		t.Fatalf("a status that is no status is not repeated: %q", odd.Detail)
 	}
 }
 

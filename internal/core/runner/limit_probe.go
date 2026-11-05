@@ -145,18 +145,14 @@ func claudeResultFailed(out []byte) bool {
 func claudeSeen(res procResult) *HarnessSeen {
 	first, _, _ := strings.Cut(string(bytes.TrimSpace(res.stderr)), "\n")
 	s := &HarnessSeen{ExitCode: res.exit, Shape: claudeShape(res.stdout), Stderr: first, SilentFor: res.silent}
-	spent := claudeSpent(res.stdout)
-	if u := spent.Usage; u != nil && u.PromptTokens+u.CompletionTokens+u.CacheReadTokens+u.CacheWriteTokens > 0 {
-		s.Spent = true
-	}
-	if spent.Cost != nil && spent.Cost.Amount > 0 {
-		s.Spent = true
-	}
+	s.Spent = claudeMeasuredSpend(res.stdout)
 	for _, line := range bytes.Split(res.stdout, []byte("\n")) {
 		var ev struct {
-			Type    string `json:"type"`
-			Subtype string `json:"subtype"`
-			Status  any    `json:"api_error_status"`
+			Type    string          `json:"type"`
+			Subtype string          `json:"subtype"`
+			Status  any             `json:"api_error_status"`
+			IsError bool            `json:"is_error"`
+			Error   json.RawMessage `json:"error"`
 		}
 		if json.Unmarshal(bytes.TrimSpace(line), &ev) != nil || ev.Type == "" {
 			continue
@@ -168,12 +164,59 @@ func claudeSeen(res procResult) *HarnessSeen {
 			s.Retries++
 			s.Retrying = true
 			continue
-		case ev.Type == "result" && ev.Status != nil:
-			s.APIStatus = fmt.Sprint(ev.Status)
+		case ev.Type == "assistant" && len(ev.Error) > 0:
+			// How running out of retries closes, as 2.1.318 was seen to: an
+			// assistant event carrying the error, then a failed result. It has
+			// not moved on from retrying.
+			continue
+		case ev.Type == "result":
+			if ev.Status != nil {
+				s.APIStatus = fmt.Sprint(ev.Status)
+			}
+			if ev.IsError {
+				continue
+			}
 		}
 		s.Retrying = false
 	}
 	return s
+}
+
+// claudeMeasuredSpend reports whether any event of the stream shows tokens or a cost
+// above zero. A closing result of nothing, which a launch that lost the service writes,
+// takes nothing back from what its assistant messages showed.
+func claudeMeasuredSpend(out []byte) bool {
+	type usage struct {
+		Input      int `json:"input_tokens"`
+		Output     int `json:"output_tokens"`
+		CacheRead  int `json:"cache_read_input_tokens"`
+		CacheWrite int `json:"cache_creation_input_tokens"`
+	}
+	some := func(u usage) bool { return u.Input > 0 || u.Output > 0 || u.CacheRead > 0 || u.CacheWrite > 0 }
+	for _, line := range bytes.Split(out, []byte("\n")) {
+		var ev struct {
+			Type    string  `json:"type"`
+			Cost    float64 `json:"total_cost_usd"`
+			Usage   usage   `json:"usage"`
+			Message struct {
+				Usage usage `json:"usage"`
+			} `json:"message"`
+		}
+		if json.Unmarshal(bytes.TrimSpace(line), &ev) != nil {
+			continue
+		}
+		switch ev.Type {
+		case "assistant":
+			if some(ev.Message.Usage) {
+				return true
+			}
+		case "result":
+			if some(ev.Usage) || ev.Cost > 0 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // keepSeen puts what a failed launch showed on its failure, saying in abcd's words
@@ -182,6 +225,10 @@ func keepSeen(fl *Failure, res procResult, model string) {
 	fl.Seen, fl.Model = claudeSeen(res), model
 	if fl.Outage() {
 		fl.Detail += fmt.Sprintf("; it was retrying the model service (%d attempts), which reads as an outage", fl.Seen.Retries)
+	}
+	// So an expired login says so, rather than an exit status under "outage".
+	if status := fl.Seen.APIStatus; status != "" && safeWord(status) == status {
+		fl.Detail += "; its result names API status " + status
 	}
 }
 

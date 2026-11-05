@@ -277,12 +277,12 @@ const (
 	// BlameAsk: it does not say; a probe answering shows the account is alive,
 	// which leaves the work.
 	BlameAsk
-	// BlameWork: it shows the model was reached, and the work is what failed.
+	// BlameWork: its answer was refused, so the work is what failed.
 	BlameWork
 )
 
 // NoVerdictError is the live proof's launch ending with no verdict on any check:
-// an outage, say, or a limit waited out inside it. It reads as the launch's own
+// which an outage may look like, or a limit waited out inside it. It reads as the launch's own
 // failure, wrapped.
 type NoVerdictError struct {
 	// Detail is abcd's own words for how it ended.
@@ -309,22 +309,26 @@ type LimitError struct {
 
 func (e *LimitError) Error() string { return "the account has met its rate limit" }
 
-// Blame is what this launch says of the work it was launched for. Only measured
-// spend or an answer the contract refused shows the work is what failed. An init
-// event shows nothing: it comes before any contact with the model. A launch that
-// was retrying the model service, or a result naming a status that is the account's
-// or the service's, says nothing of the work, whatever came before. Anything else
-// does not say, so the caller may ask a probe.
+// Blame is what this launch says of the work it was launched for. Only an answer the
+// contract refused shows that by itself. A launch that spent may have lost the service
+// afterwards, so that is the probe's to settle: a live account answers, and a service
+// that is down does not. With nothing spent, a launch that was retrying the model
+// service, or a result naming a status that is the account's or the service's, says
+// nothing of the work. An init event shows nothing either: on 2.1.318 it was seen to
+// come before any contact with the model. Anything else does not say, so the caller
+// may ask a probe.
 func (f *Failure) Blame() Blame {
 	if f.Reason == ReasonInvalid {
 		return BlameWork
 	}
 	s := f.Seen
 	switch {
-	case s == nil, serviceStatus(s.APIStatus), f.Outage():
+	case s == nil:
 		return BlameNone
 	case s.Spent:
-		return BlameWork
+		return BlameAsk
+	case serviceStatus(s.APIStatus), f.Outage():
+		return BlameNone
 	}
 	return BlameAsk
 }

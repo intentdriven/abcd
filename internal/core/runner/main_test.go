@@ -200,6 +200,11 @@ func fakeHarness(mode string) int {
 	case "probe-noinit":
 		fmt.Fprintln(os.Stdout, `{"type":"result","subtype":"success","is_error":false,"result":"ok","session_id":"fake-session-1"}`)
 		return 0
+	case "api401-exit":
+		// An expired login: its failed result names the status.
+		fmt.Fprintln(os.Stdout, `{"type":"system","subtype":"init","session_id":"fake-session-1","model":"fake-model","tools":[]}`)
+		fmt.Fprintln(os.Stdout, `{"type":"result","subtype":"success","is_error":true,"api_error_status":401,"result":"please log in","usage":{"input_tokens":0,"output_tokens":0},"total_cost_usd":0}`)
+		return 1
 	case "retry-exit", "spent-exit", "api503-exit", "api404-exit", "spent-zero":
 		// A launch that got to its init event and failed: having retried the
 		// model service, having spent, naming an API status, or on a zero exit.

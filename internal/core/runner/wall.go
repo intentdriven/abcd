@@ -584,7 +584,7 @@ func ProveWall(ctx context.Context, p Profile, bin string) error {
 		return &LimitError{ResetsAt: claudeRateLimitReset(res.stdout), Seen: claudeSeen(res)}
 	}
 	// A launch that failed came to no verdict on any check: an outage, or a limit
-	// waited out inside it, looks just like this. Only what readWallProof reads
+	// waited out inside it, may look just like this. Only what readWallProof reads
 	// from a launch that finished is a verdict.
 	if err := end.Err; err != nil {
 		detail := "it did not complete"

@@ -230,14 +230,19 @@ launch that came to no verdict on any check (`runner.LimitError`, `runner.NoVerd
 are waited out the same way, the settings checked before each probe, and the check run
 again (`loop.WaitOutProof`); only a verdict, or no harness to run, is refused then, and
 with no bound the drive refuses either way. Under a bound `Failure.Blame` says what a
-failed launch shows of its work. Measured spend, read on every exit, or an answer the
-contract refused is the work's. A launch that was retrying the model service, or a result
-naming 401, 403, 429 or 5xx, is not. An init event says nothing, since version 2.1.318 was
-seen to write one before any contact with the model. Any other failure is put to a probe,
-one short launch per failure: an answer shows the account is alive, which leaves the work,
-and a rejection or no answer counts nothing. Three in a row that are the work's hand the
-lane back as stuck, the run going on to other issues, and the same test decides whether a
-failed judge counts against its issue, beside the count of judgements that gave no answer.
+failed launch shows of its work. An answer the contract refused is the work's. A launch
+that spent, read on every exit, may have lost the service afterwards, so spend decides
+nothing by itself. With nothing spent, a launch that was retrying the model service, or a
+result naming 401, 403, 429 or 5xx, says nothing of the work. An init event says nothing,
+since version 2.1.318 was seen to write one before any contact with the model. Any other
+failure is put to a probe, one short launch per failure: an answer shows the account is
+alive, which leaves the work, and a rejection or no answer counts nothing. Three in a row
+that are the work's hand the lane back as stuck, the run going on to other issues, and the
+same test decides whether a failed judge counts against its issue, beside the count of
+judgements that gave no answer. Six steps of one lane in a row that start no agent and move
+no stage hand it back too, worktree and branch in place, unless the shared outage holds it
+or a claim on one of its agents has yet to lapse. A forge or remote answering 5xx waits as
+a lost network does (`implement.IsNetworkFailure`).
 
 A wait is measured twice: by the time slept and by the wall clock, whichever ends it
 first. The production sleep also looks at the wall clock each minute, since a timer
@@ -262,8 +267,8 @@ reads as that limit at the deadline. The harness's limit shapes the
 runner reads are a rejected `rate_limit_event`, an assistant message whose error is
 `rate_limit`, and a failed result naming the API's limit status, the stream's latest state
 standing; which of them a headless agent really emits is unobserved, so the first limit a
-run meets, and the first kill or failed exit that may be one, leave a `drive-limit-` or
-`drive-suspect-` evidence file in the local tier's logs: the exit, the stream's shape with
+run meets, and the first of each other kind of failure that may be one, leave a
+`drive-limit-` or `drive-suspect-<kind>-` evidence file in the local tier's logs: the exit, the stream's shape with
 identifiers dropped and free text reduced to its length, the redacted first stderr line,
 the reset read, the loop's decision, each probe's answer and when the run resumed. What the
 harness wrote is redacted before it is cut; a file stops taking that detail at 64 KiB and

@@ -745,3 +745,22 @@ func TestOutageEndKeepsTheRecordWhenTheLogFails(t *testing.T) {
 		t.Fatalf("Current after the logged end = %+v, %v; want none", cur, err)
 	}
 }
+
+// TestAForgeOrRemote5xxIsALostConnection: in gh's and git's own wording, a service that
+// answered 5xx is waited out as a lost network, and a 4xx, which waiting will not
+// change, is not.
+func TestAForgeOrRemote5xxIsALostConnection(t *testing.T) {
+	for text, want := range map[string]bool{
+		"HTTP 502: Bad Gateway (https://api.github.com/repos/o/r/pulls)":                               true,
+		"HTTP 503: Service Unavailable (https://api.github.com/graphql)":                               true,
+		"fatal: unable to access 'https://github.com/o/r.git/': The requested URL returned error: 503": true,
+		"fatal: unable to access 'https://github.com/o/r.git/': The requested URL returned error: 500": true,
+		"HTTP 404: Not Found (https://api.github.com/repos/o/r/pulls)":                                 false,
+		"HTTP 422: Validation Failed (https://api.github.com/repos/o/r/pulls)":                         false,
+		"fatal: unable to access 'https://github.com/o/r.git/': The requested URL returned error: 403": false,
+	} {
+		if got := IsNetworkFailure(text); got != want {
+			t.Errorf("IsNetworkFailure(%q) = %v, want %v", text, got, want)
+		}
+	}
+}

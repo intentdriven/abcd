@@ -47,9 +47,13 @@ const (
 	// terminalFarResetFirstLook how soon. The figure encodes no host's window.
 	terminalFarReset          = 8 * 24 * time.Hour
 	terminalFarResetFirstLook = 30 * time.Minute
-	// terminalPoisonLaunches is how many launches of one role in a row may reach
-	// the model and fail before the lane goes back.
+	// terminalPoisonLaunches is how many launches of one role in a row may fail in a
+	// way that is the work's before the lane goes back.
 	terminalPoisonLaunches = 3
+	// terminalNoMoveLimit is how many steps of one lane in a row may start no agent
+	// and move no stage before it goes back: about an hour and a quarter, on the
+	// outage's schedule.
+	terminalNoMoveLimit = 6
 )
 
 // terminalCallSayEvery is how often an agent's call or a preflight says it is still

@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sync"
 	"time"
 
@@ -177,10 +178,13 @@ type terminal struct {
 	// limitModel is the model of the launch that last met a limit.
 	limitModel string
 	// reached counts, by role, launches of the lane in hand in a row whose failure
-	// was the work's: measured spend, or a probe showing the account alive.
+	// was the work's: an answer refused, or a probe showing the account alive.
 	reached map[string]int
 	// blames are what the launches of this step or move said, not yet settled.
 	blames []launchBlame
+	// stalled counts the lane in hand's steps in a row that started no agent and
+	// moved no stage.
+	stalled int
 	// call is the agent's call or preflight in flight, what its lines say.
 	call terminalCall
 	// unanswered counts, by issue, the judgements a runner ran and that gave no
@@ -269,7 +273,7 @@ func (t *terminal) noteFailure(role string, fl *runner.Failure) {
 			t.blames = append(t.blames, launchBlame{role: role, model: fl.Model, blame: fl.Blame()})
 		}
 		if fl.Seen != nil {
-			t.evidence.begin("suspect", entry, t.now())
+			t.evidence.begin("suspect-"+failureKind(fl), entry, t.now())
 		}
 		return
 	}
@@ -280,6 +284,23 @@ func (t *terminal) noteFailure(role string, fl *runner.Failure) {
 	}
 	t.evidence.begin("limit", entry, t.now())
 }
+
+// failureKind names what sort of failure a launch's was, for its evidence file: the
+// first of each is kept, so an outage early on hides no later expired login.
+func failureKind(fl *runner.Failure) string {
+	switch {
+	case fl.Seen != nil && fl.Seen.APIStatus != "" && statusWord.MatchString(fl.Seen.APIStatus):
+		return "api-" + fl.Seen.APIStatus
+	case fl.Outage():
+		return "outage"
+	case errors.Is(fl, runner.ErrKilled):
+		return "killed"
+	}
+	return string(fl.Reason)
+}
+
+// statusWord is an API status plain enough to name a file by.
+var statusWord = regexp.MustCompile(`^[0-9]{3}$`)
 
 // say prints one line.
 func (t *terminal) say(format string, args ...any) {
@@ -489,9 +510,9 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 		}
 		if res.Judging != nil {
 			// The count is the engine's, of judgements a runner ran that gave no
-			// answer. A bound adds this: a launch that failed counts too, if it
-			// shows the work failed, so a judge at its deadline having spent is
-			// the issue's fault and an account-wide failure is not.
+			// answer. A bound adds this: a launch that failed counts too if a
+			// probe shows the account alive, so a judge at its deadline having
+			// spent is the issue's fault and an account-wide failure is not.
 			counts := t.judge.Kind == JudgeNoAnswer
 			if t.judge.Kind == JudgeRunnerFailed && t.settleBlames(ctx) > 0 {
 				counts = true
@@ -576,7 +597,7 @@ func (t *terminal) sayMove(res DrainResult) {
 // next move has something to say about it. It returns why the run ends, "" to
 // go on to the next move.
 func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) {
-	t.reached = nil
+	t.reached, t.stalled = nil, 0
 	if done, ended := t.takeUp(ctx, runID); done {
 		return ended, nil
 	}
@@ -677,7 +698,12 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 			t.sayStep(runID, res)
 		default:
 			// No agent ran and no stage moved. Every wait has a deadline
-			// (adr-2610222222326104), so this one runs on the outage's.
+			// (adr-2610222222326104), so this one runs on the outage's. Under a
+			// bound that schedule never ends, so a lane that keeps doing this goes
+			// back, rather than hold every other issue until the bound.
+			if t.cannotMove(runID, res) {
+				return "", nil
+			}
 			if t.failed(ctx, false, fmt.Sprintf("%s did not move: %s", runID, res.Next)) {
 				return TerminalOutage, nil
 			}
@@ -690,8 +716,38 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 func (t *terminal) moved() {
 	t.outage.succeed()
 	t.limit.succeed()
-	t.reached = nil
+	t.reached, t.stalled = nil, 0
 	t.evidence.resumed(t.now())
+}
+
+// cannotMove counts one step that started no agent and moved no stage, under a bound,
+// and hands the lane back at the limit, its worktree and branch left in place. A wait
+// the shared outage holds it to, or a claim on one of its agents that has yet to lapse,
+// a killed run's say, is no fault of the lane's and is not counted.
+func (t *terminal) cannotMove(runID string, res StepResult) bool {
+	if !t.bounded() || res.Outage != nil {
+		return false
+	}
+	run, err := ReadState(t.repoRoot, runID)
+	if err != nil {
+		return false
+	}
+	now := t.now()
+	for _, l := range run.Lanes {
+		for _, a := range l.Awaits {
+			if a.Running != nil && now.Before(a.Running.Until) {
+				return false
+			}
+		}
+	}
+	if t.stalled++; t.stalled < terminalNoMoveLimit {
+		return false
+	}
+	t.stalled = 0
+	r := refuse(StageRunner, "", "", fmt.Sprintf("%d steps in a row started no agent and moved no stage: %s", terminalNoMoveLimit, res.Next), "see the reason")
+	r.final = "the lane cannot move, so it goes back and the run goes on"
+	t.stayAsItIs(runID, run.Key, r)
+	return true
 }
 
 // settleBlames counts, by role, what the launches since the last settling said of
@@ -743,7 +799,7 @@ func (t *terminal) poisoned(ctx context.Context, runID string) bool {
 		if err != nil {
 			return false
 		}
-		r := refuse(StageRunner, "", "", fmt.Sprintf("the %s failed %d times in a row with the account alive or having spent", role, n), "see the reason")
+		r := refuse(StageRunner, "", "", fmt.Sprintf("the %s failed %d times in a row with the account alive", role, n), "see the reason")
 		r.final = "launches of the same work failed the same way, so the lane goes back and the run goes on"
 		t.stayAsItIs(runID, run.Key, r)
 		t.reached = nil
@@ -874,7 +930,7 @@ func WaitOutProof(ctx context.Context, repoRoot string, o TerminalOptions, first
 				return ended, nil
 			}
 		case errors.As(err, &none):
-			t.evidence.begin("suspect", evidenceEntry{Event: "failure", Role: "live proof", Response: none.Detail, Seen: none.Seen}, t.now())
+			t.evidence.begin("suspect-live-proof", evidenceEntry{Event: "failure", Role: "live proof", Response: none.Detail, Seen: none.Seen}, t.now())
 			if t.failed(ctx, false, "the live check came to no verdict: "+none.Detail) {
 				return TerminalOutage, nil
 			}

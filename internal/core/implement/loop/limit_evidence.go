@@ -2,8 +2,8 @@ package loop
 
 // limit_evidence.go is what a drive leaves behind about a limit (iss-2611050753557564).
 // How a headless agent behaves at a limit has not been observed, so the first limit
-// a run meets, and the first other failure that may be one, each leave a file in the
-// local tier: what the harness showed, its exit, the reset read, what the loop
+// a run meets, and the first of each other kind of failure that may be one, each leave
+// a file in the local tier: what the harness showed, its exit, the reset read, what the loop
 // decided, each probe's answer and when the run resumed. The file is how the person
 // learns what really happens. Nothing reads it back, and a failure to keep it never
 // stops the run: it says so and goes on.

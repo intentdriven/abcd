@@ -989,19 +989,25 @@ func poisonRun(t *testing.T, turn string, n int, probe func(*int) func(context.C
 	return w, st.HandBacks, probes
 }
 
-// TestAPoisonLaneGoesBackAndTheRunGoesOn: launches that spent and failed show the
-// model was reached and the work is what failed, with no probe to ask; after a few
-// the lane goes back as stuck, and the next lane lands.
+// TestAPoisonLaneGoesBackAndTheRunGoesOn: launches that spend and fail, with the
+// account alive to answer a probe, are the work's; after a few the lane goes back as
+// stuck, and the next lane lands.
 func TestAPoisonLaneGoesBackAndTheRunGoesOn(t *testing.T) {
-	w, back, probes := poisonRun(t, "spends", terminalPoisonLaunches, noProbeAnswers)
-	if len(back) != 1 || back[0].Kind != HandBackStuck {
-		t.Fatalf("the lane goes back as stuck: %+v\n%s", back, w.said())
-	}
-	if probes != 0 {
-		t.Fatalf("what was spent says enough: %d probes", probes)
+	w, back, probes := poisonRun(t, "spends", terminalPoisonLaunches, probeAnswers)
+	if len(back) != 1 || back[0].Kind != HandBackStuck || probes != terminalPoisonLaunches {
+		t.Fatalf("the lane goes back as stuck: %+v, %d probes\n%s", back, probes, w.said())
 	}
 	if len(lanesDone(t, w.repo)) != 1 {
 		t.Fatalf("the next lane lands:\n%s", w.said())
+	}
+}
+
+// TestSpendWithADownServiceCountsNothing: having spent and then lost the service says
+// nothing of the work while nothing answers.
+func TestSpendWithADownServiceCountsNothing(t *testing.T) {
+	w, back, probes := poisonRun(t, "spends", 2*terminalPoisonLaunches, noProbeAnswers)
+	if len(back) != 0 || probes == 0 {
+		t.Fatalf("%+v, %d probes\n%s", back, probes, w.said())
 	}
 }
 
@@ -1096,12 +1102,15 @@ func judgeRun(t *testing.T, turn string, probe func(*int) func(context.Context, 
 	return w, res, probes
 }
 
-// TestAJudgeThatSpentCountsAgainstItsIssueUnderABound: it was working, on either kind
-// of ending.
-func TestAJudgeThatSpentCountsAgainstItsIssueUnderABound(t *testing.T) {
-	w, _, probes := judgeRun(t, "spends", noProbeAnswers)
-	if !strings.Contains(w.said(), "holding") || probes != 0 {
-		t.Fatalf("it holds the issue back and asks nothing: %d probes\n%s", probes, w.said())
+// TestAJudgeThatSpentCountsOnlyIfAProbeAnswers: as a lane's launch does.
+func TestAJudgeThatSpentCountsOnlyIfAProbeAnswers(t *testing.T) {
+	w, _, probes := judgeRun(t, "spends", probeAnswers)
+	if !strings.Contains(w.said(), "holding") || probes == 0 {
+		t.Fatalf("it holds the issue back: %d probes\n%s", probes, w.said())
+	}
+	w, res, _ := judgeRun(t, "spends", noProbeAnswers)
+	if res.Ended != TerminalUntil || strings.Contains(w.said(), "holding") {
+		t.Fatalf("it holds nothing back: %+v\n%s", res, w.said())
 	}
 }
 
@@ -1621,5 +1630,152 @@ func TestEvidenceWritesThroughNoLinkOutOfItsFolder(t *testing.T) {
 	e.add(evidenceEntry{Event: "probe", Answer: "limited"}, now)
 	if raw, _ := os.ReadFile(outside); string(raw) != "mine\n" {
 		t.Fatalf("a write went through the link: %s", raw)
+	}
+}
+
+// stalledStages has the first lane's implement stage hand out await, and every later
+// lane's the ordinary one.
+func (w *terminalWorld) stalledStages(await func(c Context, l *Lane) *Await) {
+	for i := range w.stages {
+		if w.stages[i].Name != StageImplement {
+			continue
+		}
+		run := w.stages[i].Run
+		first := true
+		w.stages[i].Run = func(c Context, l *Lane) (Outcome, error) {
+			if first {
+				first = false
+				return Outcome{Await: await(c, l)}, nil
+			}
+			return run(c, l)
+		}
+	}
+}
+
+// TestALaneThatCannotMoveGoesBackUnderABound: a step that starts no agent and moves no
+// stage, for ever, would hold every other issue until the bound, so after a few the
+// lane goes back as stuck, and the next lands.
+func TestALaneThatCannotMoveGoesBackUnderABound(t *testing.T) {
+	w := newTerminalWorld(t)
+	w.stalledStages(func(c Context, l *Lane) *Await {
+		return &Await{Role: RoleAuditor, Brief: filepath.Join(c.RepoRoot, l.Brief), Receipt: filepath.Join(c.RepoRoot, RunRelDir, "receipt-stalled.json")}
+	})
+	w.assertStallGoesBack(t)
+}
+
+// TestAKeptAwaitGoesBackUnderABound: a limit whose checkpoint could not save the agent's
+// work aside keeps the await for a person, here with a worktree that is no checkout, and
+// no step takes it up, so the run goes on to other issues.
+func TestAKeptAwaitGoesBackUnderABound(t *testing.T) {
+	w := newTerminalWorld(t, "shape", "limited")
+	w.assertStallGoesBack(t)
+	if !strings.Contains(w.said(), "did not move") {
+		t.Fatalf("the steps say they did not move:\n%s", w.said())
+	}
+}
+
+// assertStallGoesBack runs two lanes under a bound: the first goes back as stuck, soon,
+// and the next lands.
+func (w *terminalWorld) assertStallGoesBack(t *testing.T) {
+	t.Helper()
+	o := w.bounded(t, 30*24*time.Hour)
+	o.Drain.Max = 2
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, _, _ := readDrain(w.repo.Root())
+	if len(st.HandBacks) != 1 || st.HandBacks[0].Kind != HandBackStuck {
+		t.Fatalf("the lane goes back as stuck: %+v %+v\n%s", res, st.HandBacks, w.said())
+	}
+	if len(lanesDone(t, w.repo)) != 1 {
+		t.Fatalf("the next lane lands: %+v\n%s", res, w.said())
+	}
+	if got := slept(w.sleeps); got > 4*time.Hour {
+		t.Fatalf("it holds the rest up for %v", got)
+	}
+}
+
+// TestALaneWhoseAgentIsStillClaimedIsNoStall: a claim left by a killed run lapses on
+// its own, and a restart waits for it rather than count it against the lane.
+func TestALaneWhoseAgentIsStillClaimedIsNoStall(t *testing.T) {
+	w := newTerminalWorld(t)
+	until := w.clock.t.Add(100 * time.Hour)
+	w.stalledStages(func(c Context, l *Lane) *Await {
+		return &Await{Role: RoleImplementer, Brief: filepath.Join(c.RepoRoot, l.Brief), Receipt: filepath.Join(c.RepoRoot, RunRelDir, "receipt-claimed.json"),
+			Running: &RunnerClaim{Runner: runner.Claude, Session: "a-killed-run", Until: until}}
+	})
+	o := w.bounded(t, 10*time.Hour)
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, _, _ := readDrain(w.repo.Root())
+	if res.Ended != TerminalUntil || len(st.HandBacks) != 0 {
+		t.Fatalf("the wait lasts to the bound and hands nothing back: %+v %+v\n%s", res, st.HandBacks, w.said())
+	}
+}
+
+// TestWithNoBoundALaneThatCannotMoveStaysOnTheOutagesDeadline: an attended run behaves
+// as it did.
+func TestWithNoBoundALaneThatCannotMoveStaysOnTheOutagesDeadline(t *testing.T) {
+	w := newTerminalWorld(t)
+	w.stalledStages(func(c Context, l *Lane) *Await {
+		return &Await{Role: RoleAuditor, Brief: filepath.Join(c.RepoRoot, l.Brief), Receipt: filepath.Join(c.RepoRoot, RunRelDir, "receipt-held.json")}
+	})
+	o := w.options(t)
+	o.Drain.Max = 1
+	w.guardSleeps(t, &o)
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, _, _ := readDrain(w.repo.Root())
+	if res.Ended != TerminalOutage || len(st.HandBacks) != 0 {
+		t.Fatalf("%+v %+v", res, st.HandBacks)
+	}
+}
+
+// TestAMoveEndsTheStallCount: only no-moves in a row count.
+func TestAMoveEndsTheStallCount(t *testing.T) {
+	c := &clock{t: time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)}
+	tm, _, _ := bareTerminal(t, c, c.t.Add(time.Hour))
+	tm.stalled = terminalNoMoveLimit - 1
+	tm.moved()
+	if tm.stalled != 0 {
+		t.Fatalf("a move ends the count: %d", tm.stalled)
+	}
+}
+
+// TestAForge5xxWaitsAsALostNetwork: the landing's reading of gh's and git's words: a
+// contention naming the shared probe, not a refusal three of which hand it back.
+func TestAForge5xxWaitsAsALostNetwork(t *testing.T) {
+	for _, text := range []string{
+		"HTTP 502: Bad Gateway (https://api.github.com/repos/o/r/pulls)",
+		"fatal: unable to access 'https://github.com/o/r.git/': The requested URL returned error: 503",
+	} {
+		r := netFailure(StageLand, "lane-1", "gh pr create", errors.New(text))
+		if r == nil || !r.Contention || r.outage == nil {
+			t.Errorf("%q reads as %+v", text, r)
+		}
+	}
+}
+
+// TestEachKindOfFailureLeavesItsEvidence: the first of each, not only the run's first.
+func TestEachKindOfFailureLeavesItsEvidence(t *testing.T) {
+	w := newTerminalWorld(t, "shape", "none", "retries", "apifails", "none")
+	o := w.bounded(t, 30*24*time.Hour)
+	if _, err := RunTerminal(context.Background(), w.repo.Root(), o); err != nil {
+		t.Fatal(err)
+	}
+	files := evidenceFiles(t, w.repo.Root(), "suspect")
+	if len(files) != 3 {
+		t.Fatalf("one file for each of the three kinds: %v\n%s", files, w.said())
+	}
+	joined := strings.Join(files, "\n")
+	for _, want := range []string{"suspect-failed-", "suspect-outage-", "suspect-api-503-"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("no file names %s: %v", want, files)
+		}
 	}
 }

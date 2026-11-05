@@ -101,20 +101,26 @@ nothing but the bound, the cap, an empty ledger or a stop ends the run:
 - **An outage or a stuck queue.** Runner failures keep the outage schedule, at most an
   hour apart. Work held by someone else, the reservation cap, a contended lock and a
   push or fetch origin refused while reserving are looked at again at most fifteen
-  minutes apart. Origin keeps its schedule and is never given up on. An outage another
+  minutes apart. A forge or remote answering 5xx waits as a lost network does, here and
+  in a drain with no drive. Origin keeps its schedule and is never given up on. An outage another
   session gave up on holds the run until `abcd implement outage clear` or the bound. A
   launch that was retrying the model service when it ended, or ran out of retries with
   nothing spent, reads as an outage, says so, and counts against nothing. Version
   2.1.318 of the harness was seen to do this with the service unreachable: ten retries
   over about three minutes, then a failed result, with the init event before any of it.
 - **Work that keeps failing.** Three failures of one role in a row that are the work's
-  hand the lane back as stuck, and the run goes on to other issues. A failure is the
-  work's when the launch shows measured spend or gave an answer the contract refused; a
-  result naming an API status of 401, 403, 429 or 5xx never is; and for any other a
-  short probe asks whether the account is alive, an answer making it the work's and a
-  rejection or no answer counting nothing. A judge is judged the same way against its
-  issue, so one at its deadline having spent is held back, and an account-wide failure
-  does not empty the drain.
+  hand the lane back as stuck, and the run goes on to other issues. An answer the
+  contract refused is the work's. With nothing spent, a result naming an API status of
+  401, 403, 429 or 5xx, or a launch that ran out of retries, says nothing of the work.
+  Any other failure, one that spent included, since the service may have gone after
+  the spending, is put to a short probe: an answer shows the account is alive, which
+  makes it the work's, and a rejection or no answer counts nothing. A judge is judged
+  the same way against its issue, so one at its deadline having spent is held back while
+  the account answers, and an account-wide failure does not empty the drain.
+- **A lane that cannot move.** Six steps of one lane in a row that start no agent and
+  move no stage hand it back as stuck, its worktree and branch left in place, so it
+  does not hold every other issue until the bound. A wait on the shared outage, or on a
+  claim that has yet to lapse from a killed run, is not counted.
 
 Each wait says what it waits on when it begins, when its reason changes, and at least
 hourly while it lasts, and an agent's call or a preflight says when it starts and every
@@ -129,8 +135,9 @@ request and asks again, after the drain's other eligible work.
 With no `--until` no probe runs: the lane's own launch finds out, as the yes said.
 
 The first limit a run meets leaves `drive-limit-<time>.jsonl` under
-`.abcd/.work.local/logs/`, the first other failure that may be one, a kill or a
-failed exit, `drive-suspect-<time>.jsonl`. Each holds the exit, the end of the event
+`.abcd/.work.local/logs/`, and the first of each other kind of failure that may be one
+leaves `drive-suspect-<kind>-<time>.jsonl`: a kill, an outage, a failed exit, an API
+status. A failure that names an API status says it on screen too. Each holds the exit, the end of the event
 stream with every identifier dropped and free text reduced to its length, the first
 stderr line through the scanner's redactor, the reset read, what the loop decided,
 each probe's answer and when the run resumed. A file stops taking the stream's detail at
