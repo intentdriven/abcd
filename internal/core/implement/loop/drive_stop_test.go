@@ -41,7 +41,7 @@ func stoppedDrive(t *testing.T) (*terminalWorld, TerminalOptions, string) {
 	if res.Ended != TerminalWall || res.Resume != "" {
 		t.Fatalf("the run stops, and offers no resume: %+v", res)
 	}
-	for _, want := range []string{"your own", "remove", "--discard", "deletes its branch and worktree and closes its pull request"} {
+	for _, want := range []string{"a person's call, never an agent's", "your own", "remove", "--discard", "deletes its branch and worktree and closes its pull request"} {
 		if !strings.Contains(res.Why, want) {
 			t.Fatalf("the way out says %q: %s", want, res.Why)
 		}

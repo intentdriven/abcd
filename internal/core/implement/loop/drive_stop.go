@@ -68,7 +68,7 @@ func driveStopped(runID string) bool {
 func driveStopRemedy(runID string) string {
 	path, _ := driveStopPath(runID)
 	where := fsutil.RedactHome(path)
-	return fmt.Sprintf("If you know what caused it, such as your own `abcd implement step`, remove %s. Otherwise discard each lane with `abcd implement step --run %s --discard <lane>`, which deletes its branch and worktree and closes its pull request, or restore the run's state yourself and remove that file", where, runID)
+	return fmt.Sprintf("Lifting this is a person's call, never an agent's, since a forged run looks the same as a person's own step. If you know what caused it, such as your own `abcd implement step`, remove %s. Otherwise discard each lane with `abcd implement step --run %s --discard <lane>`, which deletes its branch and worktree and closes its pull request, or restore the run's state yourself and remove that file", where, runID)
 }
 
 // driveStopRefusal is the refusal of a move on a run a drive stopped on, or whose stop
