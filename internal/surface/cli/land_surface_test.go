@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -176,7 +177,7 @@ func TestLandTakesAtMostOneBranch(t *testing.T) {
 // writeReturn lays one review return naming head and stating verdict.
 func writeReturn(t *testing.T, path, head, verdict string) {
 	t.Helper()
-	if err := os.WriteFile(path, []byte("# return\n\nReviewed lane head "+head[:9]+".\n\n### Verdict\n\n"+verdict+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("Reviewed head: "+head[:9]+"\n\n# return\n\n### Verdict\n\n"+verdict+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -239,6 +240,101 @@ func TestLandRefusesAReviewThatDoesNotPass(t *testing.T) {
 	writeReturn(t, b, head, "APPROVE")
 	if code, _, stderr := reserveRun(t, dir, "land", "--record-review", a, "--record-review", b, "--no-push"); code != 2 || !strings.Contains(stderr, "--no-push") {
 		t.Fatalf("exit %d, stderr %q: want --record-review with --no-push refused", code, stderr)
+	}
+}
+
+// A delta review at the front door: --rests-on makes --record-review a delta
+// resting on the base head's full pair, over a path the closed list covers, and
+// outside the list it is refused with exit 2.
+func TestLandRecordsADeltaReviewRestingOnAFullPair(t *testing.T) {
+	dir, origin := landWorld(t)
+	if err := os.MkdirAll(filepath.Join(dir, filepath.FromSlash(landing.TierRelDir)), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	writeRel(t, dir, "docs/how-to/change.md", "a change\n")
+	gitCmd(t, dir, "add", "-A")
+	gitCommit(t, dir, "commit", "-q", "-m", "the change")
+	base := strings.TrimSpace(gitCmd(t, dir, "rev-parse", "HEAD"))
+	tmp := t.TempDir()
+	a, b := filepath.Join(tmp, "ruthless.md"), filepath.Join(tmp, "security.md")
+	writeReturn(t, a, base, "SHIP")
+	writeReturn(t, b, base, "APPROVE")
+	if code, _, stderr := reserveRun(t, dir, "land", "--record-review", a, "--record-review", b); code != 0 {
+		t.Fatalf("the full pair: exit %d, stderr %q", code, stderr)
+	}
+	writeRel(t, dir, "docs/how-to/change.md", "a change, fixed\n")
+	gitCmd(t, dir, "add", "-A")
+	gitCommit(t, dir, "commit", "-q", "-m", "a one-line fix")
+	head := strings.TrimSpace(gitCmd(t, dir, "rev-parse", "HEAD"))
+	delta := func(path, verdict string) {
+		t.Helper()
+		body := "Reviewed delta: " + base + ".." + head + "\n\n" + filepath.Base(path) + " found nothing.\n\n### Verdict\n\n" + verdict + "\n"
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// A return that states no delta is refused, and so is a pair naming no base.
+	writeReturn(t, a, head, "SHIP")
+	writeReturn(t, b, head, "APPROVE")
+	if code, _, stderr := reserveRun(t, dir, "land", "--record-review", a, "--record-review", b, "--rests-on", base); code != 2 || !strings.Contains(stderr, "Reviewed delta") {
+		t.Fatalf("exit %d, stderr %q: want 2 naming the missing line", code, stderr)
+	}
+	if code, _, stderr := reserveRun(t, dir, "land", "--rests-on", base); code != 2 || !strings.Contains(stderr, "--record-review") {
+		t.Fatalf("exit %d, stderr %q: want --rests-on alone refused", code, stderr)
+	}
+
+	delta(a, "SHIP")
+	delta(b, "APPROVE")
+	code, stdout, stderr := reserveRun(t, dir, "land", "--record-review", a, "--record-review", b, "--rests-on", base, "--json")
+	if code != 0 {
+		t.Fatalf("exit %d, stderr %q", code, stderr)
+	}
+	var got struct {
+		Commit  string `json:"commit"`
+		Receipt string `json:"receipt"`
+		RestsOn string `json:"rests_on"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("%v in %q", err, stdout)
+	}
+	if got.Commit != head || got.RestsOn != base || !strings.HasSuffix(got.Receipt, landing.ReviewReceiptsRelDir+"/"+head) {
+		t.Fatalf("--json = %+v; want the delta's receipt for %s resting on %s", got, head, base)
+	}
+	if strings.Contains(gitCmd(t, origin, "branch", "--list", "feat/x"), "feat/x") {
+		t.Fatal("recording a delta pushed the branch")
+	}
+
+	writeRel(t, dir, "scripts/x.sh", "#!/bin/sh\n")
+	gitCmd(t, dir, "add", "-A")
+	gitCommit(t, dir, "commit", "-q", "-m", "a path off the list")
+	head = strings.TrimSpace(gitCmd(t, dir, "rev-parse", "HEAD"))
+	delta(a, "SHIP")
+	delta(b, "APPROVE")
+	if code, _, stderr := reserveRun(t, dir, "land", "--record-review", a, "--record-review", b, "--rests-on", base); code != 2 || !strings.Contains(stderr, "outside what a delta review covers") {
+		t.Fatalf("exit %d, stderr %q: want 2 naming the path off the list", code, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(landing.ReviewReceiptsRelDir), head)); err == nil {
+		t.Fatal("a refused delta left a receipt")
+	}
+}
+
+// The command page and the brief state the bound in figures, so a change to the
+// constants has to change them too.
+func TestLandDocsStateTheDeltaBound(t *testing.T) {
+	want := fmt.Sprintf("%d lines", landing.MaxDeltaLines)
+	files := fmt.Sprintf("%d files", landing.MaxDeltaFiles)
+	for _, rel := range []string{"commands/land.md", ".abcd/development/brief/04-surfaces/38-land.md"} {
+		data, err := os.ReadFile(filepath.Join("..", "..", "..", filepath.FromSlash(rel)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Collapsed, since a figure and its noun can fall either side of a line.
+		text := strings.Join(strings.Fields(string(data)), " ")
+		if !strings.Contains(text, want) || !strings.Contains(text, files) {
+			t.Errorf("%s does not state the delta bound (%s, %s)", rel, want, files)
+		}
 	}
 }
 

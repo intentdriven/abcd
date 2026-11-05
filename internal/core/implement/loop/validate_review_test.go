@@ -117,7 +117,7 @@ func TestTheReviewsGoToRepoPromptOverMCPAndTheLoopRecordsTheirVerdicts(t *testin
 			t.Fatal(err)
 		}
 		for _, want := range []string{"# The " + role + " agent definition", "fresh " + role, l.BaseSHA + ".." + l.HeadSHA,
-			"+one.txt", strings.TrimSpace(string(brief)), "### Verdict", strings.Join(wordsOf(role), ", ")} {
+			"+one.txt", strings.TrimSpace(string(brief)), "### Verdict", strings.Join(wordsOf(role), ", "), "first line reads exactly `Reviewed head: " + l.HeadSHA + "`", "A return has one `### Verdict` section and no other line opening with the word Verdict."} {
 			if !strings.Contains(sent[i], want) {
 				t.Fatalf("the %s's request carries %q:\n%s", role, want, sent[i])
 			}
