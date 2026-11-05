@@ -168,8 +168,14 @@ const (
 // The waiter's intervals. They are variables only so the front door can read
 // them into its help; nothing reassigns them.
 var (
-	// WaitDefaultTimeout is the front door's --timeout default.
-	WaitDefaultTimeout = 30 * time.Minute
+	// WaitDefaultTimeout is the front door's --timeout default. Thirty minutes
+	// ended every gated test of 2026-11-04's thirty builders with no test run. A
+	// whole run may wait behind many others, each an hour on a busy machine, and
+	// six hours is what those sessions came to pass by hand. A wait costs a poll
+	// every WaitPollInterval, and a waiter ahead whose own account's limit keeps
+	// it shut delays the whole-run queue behind it until this passes, which
+	// WaitCrossedCap's rule bounds only for a crossed one.
+	WaitDefaultTimeout = 6 * time.Hour
 	// WaitPollInterval is how often the machine is read while waiting.
 	WaitPollInterval = 15 * time.Second
 	// WaitSettle is how long the plain form's hold lasts.
@@ -290,8 +296,11 @@ func HoldFileName(gate string) string { return holdFileName(gate) }
 
 // holdFileName is gate's hold record.
 func holdFileName(gate string) string {
-	if gate == GateRace {
+	switch gate {
+	case GateRace:
 		return WaitRaceHoldFileName
+	case GateNarrow:
+		return WaitNarrowHoldFileName
 	}
 	return WaitHoldFileName
 }
@@ -343,6 +352,9 @@ type WaitRequest struct {
 	// RaceCommand says the command form's command is a race run
 	// (machineload.IsRaceCommand).
 	RaceCommand bool
+	// Narrow says the command form's command is a narrow run
+	// (machineload.IsNarrowCommand), which waits at its own gate (load_narrow.go).
+	Narrow bool
 	// OnWait is called once, at the first look that finds the gate shut.
 	OnWait func(WaitResult)
 	// OnSettle is called once, at the first look that finds the machine free,
@@ -428,7 +440,7 @@ type WaitResult struct {
 	// (machineload.UngatedTests), named beside the load they add to; they
 	// shut nothing (iss-2610241130157455).
 	UngatedTests []int `json:"ungated_tests,omitempty"`
-	// Gate is the gate waited at, GateTests or GateRace.
+	// Gate is the gate waited at, GateTests, GateRace or GateNarrow.
 	Gate string `json:"gate"`
 	// Slots is how many preflights the first gate admits at once, and
 	// SlotsSource where that came from (PreflightSlots). With one, the race
@@ -439,6 +451,13 @@ type WaitResult struct {
 	// count, when it was (PreflightSlots); the front door prints it once per
 	// waiter, so a preflight, which waits at both gates, shows it twice.
 	SlotsNote string `json:"slots_note,omitempty"`
+	// NarrowRuns is how many narrow runs may run at once, at the narrow gate
+	// (load_narrow.go), and NarrowSource where that came from.
+	NarrowRuns   int    `json:"narrow_runs,omitempty"`
+	NarrowSource string `json:"narrow_source,omitempty"`
+	// Overdue is the whole-run waiters a narrow run stands aside for at the last
+	// look, by pid (machineload.OverdueWhole).
+	Overdue []int `json:"-"`
 	// DiskNote says the disk went unchecked, in whole or in part, and why
 	// (DiskCheck.Note); "" when every volume was read. The front door prints
 	// it on stderr.
@@ -520,6 +539,13 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 	res := WaitResult{WaitedOn: []string{}, RaceRuns: []int{}, Gate: GateTests}
 	if req.Race {
 		res.Gate = GateRace
+		req.Narrow = false
+	}
+	if req.Narrow {
+		res.Gate = GateNarrow
+		if req.Jitter == nil {
+			jitter = narrowJitter
+		}
 	}
 	if reason, ci := cienv.Runner(getenv); ci {
 		res.Status = WaitSkipped
@@ -586,6 +612,13 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 			return refuse(err)
 		}
 		res.Slots, res.SlotsSource, res.SlotsNote = n, src, note
+		if req.Narrow {
+			runs, src, err := narrowRuns(home)
+			if err != nil {
+				return refuse(err)
+			}
+			res.NarrowRuns, res.NarrowSource = runs, src
+		}
 		floor, memNote, err := memoryFloorAt(home, req.Dir)
 		mem.note(&res, memNote)
 		if err != nil {
@@ -652,7 +685,13 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 	var watch holderWatch
 	quietSaid := false
 	var announcedAt time.Time
-	pastCap := func() bool { return !crossedSince.IsZero() && now().Sub(crossedSince) >= crossedCapFor(crossedN) }
+	pastCap := func() bool {
+		limit := crossedCapFor(crossedN)
+		if req.Narrow {
+			limit = WaitNarrowQueueCap
+		}
+		return !crossedSince.IsZero() && now().Sub(crossedSince) >= limit
+	}
 	// A crossed waiter that has left the queue (exited, or opened) starts the
 	// count again: a waiter it held back may now open, and a count kept
 	// against the smaller cap would already have run out, re-opening this one
@@ -731,7 +770,9 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 				noteCrossed(only)
 			}
 		}
-		if done && res.Status == WaitOpen && req.Command && res.Backoffs < WaitBackoffCap {
+		// A narrow run takes no open look: one opening beside another overshoots its
+		// limit by one for one run, and no gate waits on it.
+		if done && res.Status == WaitOpen && req.Command && !req.Narrow && res.Backoffs < WaitBackoffCap {
 			first, stop := openLook(req, sleep)
 			if len(first) > 0 {
 				// Stand back: another opened in the same moment, and it goes
@@ -882,7 +923,7 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 	t := now()
 	res.lookedAt = t
 	res.Holder, res.RaceRuns, res.Reason = nil, []int{}, ""
-	res.Preflights, res.Waiters, res.UngatedTests = nil, nil, nil
+	res.Preflights, res.Waiters, res.UngatedTests, res.Overdue = nil, nil, nil, nil
 	if readErr != nil {
 		res.Reason = termsafe.Sanitize(readErr.Error())
 	}
@@ -904,6 +945,7 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 	var runs, racing []int
 	var ahead machineload.Ahead
 	var raceAhead, crossed, queued []int
+	var narrowRunning []int
 	var args map[int][]string
 	if procsOK {
 		var err error
@@ -933,19 +975,45 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 				crossed = raceCrossed
 			}
 			queued = machineload.QueuedAt(snap, req.Self, args, req.Race)
+			if req.Narrow {
+				// Waiters ahead that may never open are this gate's crossed
+				// waiters: an older abcd's narrow-shaped waiter queues behind
+				// whole runs, and its words do not tell it from this code's.
+				narrowRunning, crossed, queued = machineload.NarrowAhead(snap, req.Self, args)
+			}
 		}
 	}
 	notCrossed := func(pids []int) []int {
 		return slices.DeleteFunc(slices.Clone(pids), func(pid int) bool { return slices.Contains(crossed, pid) })
 	}
+	narrowAhead := crossed
 	if uncrossed {
 		ahead, raceAhead = ahead.Uncrossed(), notCrossed(raceAhead)
+		narrowAhead = nil
 	}
 	// crossedShut is the waiter condition resting on crossed waiters alone.
 	crossedShut := false
 	if !procsOK {
 		if !slices.Contains(shut, WaitOnUnreadable) {
 			shut = append(shut, WaitOnUnreadable)
+		}
+	} else if req.Narrow {
+		// A narrow run's own limit, and whole runs it stands aside for; a race
+		// run, a slot and a queue of whole runs are no business of its.
+		room := narrowRoom(narrowLimit(res.NarrowRuns, snap.Cores), snap.Cores, snap.Load1, len(ahead.TakingSlots(res.Slots).Busy), res.Slots)
+		res.NarrowRuns = room
+		counted := narrowCount(snap, req.Self, narrowRunning, room)
+		if counted+len(narrowAhead) >= room {
+			shut = append(shut, WaitOnWaiter)
+			res.Waiters = append(slices.Clone(narrowRunning), narrowAhead...)
+			slices.Sort(res.Waiters)
+			crossedShut = counted < room
+		}
+		if overdue := machineload.OverdueWhole(snap, ahead, res.Slots, WaitNarrowYieldAfter); len(overdue) == 0 {
+			watch.asideLast = time.Time{}
+		} else if watch.standAside(t) {
+			shut = append(shut, WaitOnWholeRun)
+			res.Overdue = overdue
 		}
 	} else {
 		// A live race run shuts the race gate always, and the first gate
@@ -1003,6 +1071,29 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 	// that preflight's own race waiter queued behind the earlier one, and
 	// neither would move until its timeout.
 	err = fsutil.WithFileLockIn(root, waitLockFileName, waitLockTimeout, func() error {
+		// What a whole run just admitted has not shown in the load or in memory yet,
+		// so a narrow run waits out its settle, at either gate, however long the
+		// hold itself lasts: the whole run's length must not shut a narrow run.
+		if req.Narrow {
+			for _, gate := range []string{GateTests, GateRace} {
+				h, ok := readHoldIn(root, gate)
+				if !ok || (procsOK && machineload.Descends(snap.Procs, req.Self.PID, h.PID)) {
+					continue
+				}
+				h.Form = HoldSettle
+				if settled := h.Opened.Add(WaitSettle); settled.Before(h.Until) {
+					h.Until = settled
+				}
+				if t.Before(h.Until) {
+					if res.Holder == nil {
+						res.Holder = &h
+					}
+					if !slices.Contains(shut, WaitOnLock) {
+						shut = append(shut, WaitOnLock)
+					}
+				}
+			}
+		}
 		var free []string
 		for _, gate := range holdGates(req, res) {
 			name := holdFileName(gate)
@@ -1057,6 +1148,9 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 			return nil
 		}
 		own := WaitHolder{PID: req.Self.PID, Opened: t, Until: t.Add(WaitSettle), Form: HoldSettle, Gate: res.Gate, Dir: req.Dir}
+		if req.Narrow {
+			own.Until = t.Add(WaitNarrowSettle)
+		}
 		if s, ok := procStart(snap, req.Self.PID, t); ok {
 			own.StartUnix = s
 			// The command form rests on its holder's life, so it needs the
@@ -1067,7 +1161,7 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 			// did: the units running past the gate are counted from the process
 			// table (machineload.Ahead.Shut), and a command hold would keep the
 			// account's next slot shut until this run reached its race stage.
-			if req.Command && (res.Slots <= 1 || raceCmd) {
+			if req.Command && !req.Narrow && (res.Slots <= 1 || raceCmd) {
 				own.Until, own.Form = t.Add(WaitCommandCap), HoldCommand
 			}
 		}
@@ -1115,6 +1209,9 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 		slots := ahead.TakingSlots(res.Slots).Busy
 		if req.Race {
 			slots = racing
+		}
+		if req.Narrow {
+			slots = narrowRunning
 		}
 		res.Holders = measureHolders(watch, res.Holder, slots, snap, req.Self, args, t)
 	}

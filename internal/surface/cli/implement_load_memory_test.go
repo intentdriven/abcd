@@ -72,7 +72,7 @@ func TestImplementLoadWaitTimesOutOnMemory(t *testing.T) {
 	waitFixture(t, machine(3, 3, 3))
 	withMemory(t, machineload.Memory{Platform: machineload.MemoryLinux, StallPct: 14.2, Raw: "some avg10=14.20"})
 	code, out, errOut := implementCLI(t, "implement", "load", "--wait", "--timeout", "1m")
-	if code != 1 || !strings.Contains(out, "load gate still shut after 1m0s: memory stalled 14.2% over 10s (floor 10%)") {
+	if code != 1 || !strings.Contains(out, "LOAD GATE TIMED OUT after 1m0s: exit 1, nothing ran: memory stalled 14.2% over 10s (floor 10%)") {
 		t.Fatalf("exit %d\n%s%s", code, out, errOut)
 	}
 	code, out, _ = implementCLI(t, "--json", "implement", "load", "--wait", "--timeout", "1m")
