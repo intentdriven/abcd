@@ -770,9 +770,11 @@ withdrawing nothing, and an admission or a release is refused.
   always with `expectedHeadOid` set to the withdrawn head, so it merges
   exactly the commits its author armed, and only where the merge gate arms that
   head. One already armed or queued counts as done at a head the merge gate arms.
-  An admitted one armed at a head the gate refuses is withdrawn and read back,
-  then recorded `moved`, where the arming is the re-armer's account's; another
+  One armed at another head the gate refuses is withdrawn and read back, then
+  recorded `moved`, where the arming is the re-armer's account's; another
   account's is left and recorded `standing`, with the command that withdraws it.
+  One armed at its recorded head the gate refuses stays recorded as it was, and
+  each act names it as standing armed, with that command (`stands-armed`).
   One whose head moved, or that was closed or merged, is skipped and
   named on the tombstone and in `abcd peers` for its owner. One the forge
   refuses because it can merge now and the repository has no merge queue

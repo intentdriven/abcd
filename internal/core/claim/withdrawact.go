@@ -56,10 +56,14 @@ const (
 	ForgeRearm    = "re-arm"
 	ForgeRecord   = "record"
 	ForgeComment  = "comment"
+	// ForgeStandsArmed: a pull request abcd meant to leave off the merge path that
+	// the forge reports armed or queued.
+	ForgeStandsArmed = "stands-armed"
 )
 
 // ForgeFailure is one pull request the forge, or the record of it, failed
-// on: the act (ForgeWithdraw, ForgeRearm, ForgeRecord, ForgeComment) and the reason.
+// on: the act (ForgeWithdraw, ForgeRearm, ForgeRecord, ForgeComment,
+// ForgeStandsArmed) and the reason.
 type ForgeFailure struct {
 	Number int    `json:"number"`
 	Act    string `json:"act"`
@@ -73,6 +77,8 @@ func (f ForgeFailure) Line() string {
 		return fmt.Sprintf("#%d was not withdrawn: %s; it may still merge, and the launch check refuses the cut while it is armed", f.Number, f.Reason)
 	case ForgeRecord, ForgeComment:
 		return fmt.Sprintf("#%d: %s", f.Number, f.Reason)
+	case ForgeStandsArmed:
+		return fmt.Sprintf("#%d stands armed and may merge: %s; to withdraw it: gh pr merge %d --disable-auto, and take it out of the merge queue on its page if it is queued", f.Number, f.Reason, f.Number)
 	}
 	return fmt.Sprintf("#%d was not re-armed: %s; it stays withdrawn, and the next act of a copy of its holder tries again", f.Number, f.Reason)
 }
@@ -204,11 +210,13 @@ func SettledLine(subject string, w Withdrawal) string {
 	case WithdrawnFoundArmed:
 		return fmt.Sprintf("#%d was already armed or queued again after %s, which counts as re-armed", w.Number, subject)
 	case WithdrawnStanding:
-		at := ""
-		if h := w.armedHead(); h != "" {
-			at = " at " + h
+		// Only the act that read the forge knows it stands armed now; a line read
+		// back from the tombstone is what was so when the release settled.
+		h := w.armedHead()
+		if h == "" {
+			return fmt.Sprintf("#%d was left armed when %s settled, by another account, at a head the merge gate there did not arm; check gh pr view %d before acting on it", w.Number, subject, w.Number)
 		}
-		return fmt.Sprintf("#%d stays armed%s after %s, by another account, at a head the merge gate here does not arm; to withdraw it: gh pr merge %d --disable-auto, and take it out of the merge queue on its page if it is queued", w.Number, at, subject, w.Number)
+		return fmt.Sprintf("#%d stays armed at %s after %s, by another account, at a head the merge gate here does not arm; to withdraw it: gh pr merge %d --disable-auto, and take it out of the merge queue on its page if it is queued", w.Number, h, subject, w.Number)
 	case WithdrawnMoved:
 		return fmt.Sprintf("#%d was not re-armed after %s: its head moved since it was withdrawn at %s, so its owner re-arms it", w.Number, subject, w.Head[:12])
 	case WithdrawnClosed:
@@ -727,13 +735,13 @@ func rearmMine(a actor, ws []Withdrawal, vouched map[Withdrawal]bool) (out, sett
 		}
 		state, err := releaseForge.inspect(a.root, owner, name, w)
 		if err != nil {
-			fails = append(fails, ForgeFailure{Number: w.Number, Act: ForgeRearm, Reason: err.Error()})
+			fails = append(fails, rearmFailure(w.Number, ForgeRearm, err))
 			continue
 		}
-		if state == WithdrawnMoved && w.State == WithdrawnAdmitted {
+		if state == WithdrawnMoved {
 			at := ""
 			if state, at, err = releaseForge.settleMoved(a.root, owner, name, w); err != nil {
-				fails = append(fails, ForgeFailure{Number: w.Number, Act: ForgeRearm, Reason: err.Error()})
+				fails = append(fails, rearmFailure(w.Number, ForgeRecord, err))
 				continue
 			}
 			out[i].ArmedAt = at
@@ -779,6 +787,16 @@ func rearmMine(a actor, ws []Withdrawal, vouched map[Withdrawal]bool) (out, sett
 	keepRefusals(a.root, a.subject, refusals)
 	keepCounts(a.root, heldDir, a.subject, held)
 	return out, settled, changed, fails, ""
+}
+
+// rearmFailure is err as a failure of pull request n under act, or under
+// ForgeStandsArmed where the forge reported it armed or queued, which no other line
+// says.
+func rearmFailure(n int, act string, err error) ForgeFailure {
+	if ae := (*armError)(nil); errors.As(err, &ae) && ae.standsArmed {
+		act = ForgeStandsArmed
+	}
+	return ForgeFailure{Number: n, Act: act, Reason: err.Error()}
 }
 
 // heldDir is where each release's re-arms the merge gate holds are noted once
@@ -1246,6 +1264,17 @@ func (p *prepared) admitCheck(w Withdrawal) (state string, err error) {
 		return "", refuse("#%d was not admitted: %s; %s", n, why, nothingPushed)
 	}
 	state, err = releaseForge.inspect(p.root, owner, name, w)
+	// An admission names the commits withdrawn, so one armed since at another head
+	// is not what it admits, even at a head the gate arms.
+	if err == nil && state == WithdrawnFoundArmed && w.Pending() {
+		n, rerr := releaseForge.pullRequest(p.root, owner, name, w.Number)
+		switch {
+		case rerr != nil:
+			err = errors.New(forgeReason(rerr))
+		case n.HeadRefOid != w.Head:
+			state = WithdrawnMoved
+		}
+	}
 	switch {
 	case err != nil:
 		if ae := (*armError)(nil); errors.As(err, &ae) && ae.gated {
@@ -1552,7 +1581,7 @@ func (r ReleaseWithdrawals) Lines() []string {
 			"until your next reservation or announcement; a reservation re-arms them as it keeps your holder id, and after an announcement your next listing does",
 			r.Subject, strings.Join(numbers(r.Due), ", ")))
 	case len(r.Due) > 0:
-		out = append(out, fmt.Sprintf("%s has ended, and %s you withdrew for it are not re-armed yet: your next abcd act that fetches the reservations re-arms them",
+		out = append(out, fmt.Sprintf("%s has ended, and %s you withdrew for it are not re-armed yet: your next abcd act that fetches the reservations re-arms them where the merge gate arms their heads, and names any the forge reports armed",
 			r.Subject, strings.Join(numbers(r.Due), ", ")))
 	}
 	if len(r.Stranded) > 0 {

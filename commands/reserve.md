@@ -271,10 +271,12 @@ the gate again, so recording the review re-arms it; `abcd land` from a checkout
 holding the review arms it too. An admission is held to
 the same gate. One
 already armed or queued again counts as done (`armed`) at a head the merge gate
-arms. An admitted one armed at a head the gate refuses is taken off the merge path
-and read back, then recorded `moved`, where the arming is your account's; another
+arms. One armed at another head the gate refuses is taken off the merge path and
+read back, then recorded `moved`, where the arming is your account's; another
 account's is left as it is and recorded `standing`, named with the command that
-withdraws it. One is skipped and
+withdraws it. One armed at its recorded head the gate refuses stays recorded as it
+was, and each act names it as standing armed, with that command, so a listing's
+"not re-armed yet" covers it too until the forge is read. One is skipped and
 named for its owner to act on: its head moved (`moved`), it was closed or
 merged (`closed`, `merged`), the node id recorded for it is not the forge's for
 its number (`mismatch`, never acted on), or it can merge now and the repository

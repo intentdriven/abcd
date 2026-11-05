@@ -2,6 +2,7 @@ package claim
 
 import (
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -205,6 +206,38 @@ func TestAnAdmittedMergeFoundArmedIsAskedOfTheGateAtItsHead(t *testing.T) {
 		if !strings.Contains(said, "still reports") || strings.Contains(strings.Join(f.posted(), "\n"), "#11 is not re-armed") {
 			t.Fatalf("failures %q, comments %v", said, f.posted())
 		}
+		wantStandsArmed(t, rel, 11)
+	})
+	t.Run("moved to a head the gate refuses, the forge refuses the withdrawal", func(t *testing.T) {
+		w, f, p := admitted(t)
+		f.prs[11].head = headC
+		f.refuse["disablePullRequestAutoMerge #11"] = "GraphQL: not permitted"
+		releaseForge.armGate = refusing(headC)
+		rel, err := p.do(Request{Record: "rel-v0.16.0", Release: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ws := w.tipWithdrawals("rel-v0.16.0"); stateOf(ws, 11) == WithdrawnMoved {
+			t.Fatalf("#11 recorded moved while it stands armed")
+		}
+		wantStandsArmed(t, rel, 11)
+	})
+	t.Run("moved to a head the gate refuses, the read-back fails", func(t *testing.T) {
+		w, f, p := admitted(t)
+		f.prs[11].head = headC
+		f.prs[11].noReadBack = true
+		releaseForge.armGate = refusing(headC)
+		rel, err := p.do(Request{Record: "rel-v0.16.0", Release: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ws := w.tipWithdrawals("rel-v0.16.0"); stateOf(ws, 11) == WithdrawnMoved {
+			t.Fatalf("#11 recorded moved with no read-back")
+		}
+		line := failureLine(rel, 11)
+		if !strings.Contains(line, "could not be read back") || strings.Contains(line, "stays withdrawn") {
+			t.Fatalf("the line for #11 is %q", line)
+		}
 	})
 	t.Run("moved to a head the gate refuses, another account's arming", func(t *testing.T) {
 		w, f, p := admitted(t)
@@ -380,6 +413,35 @@ func TestAnArmedPullRequestTheGateRefusesPostsNoStaysWithdrawn(t *testing.T) {
 	if !strings.Contains(said, "no review receipt names") {
 		t.Fatalf("the failure for #11 says %q", said)
 	}
+	wantStandsArmed(t, rel, 11)
+}
+
+// wantStandsArmed holds the failure for pull request n to what is true of it: it
+// stands armed and may merge, with the command that withdraws it.
+func wantStandsArmed(t *testing.T, res Result, n int) {
+	t.Helper()
+	line := failureLine(res, n)
+	for _, want := range []string{"stands armed", "may merge", fmt.Sprintf("gh pr merge %d --disable-auto", n)} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("the line for #%d is %q; want %q", n, line, want)
+		}
+	}
+	if strings.Contains(line, "stays withdrawn") || strings.Contains(line, "was not re-armed") {
+		t.Fatalf("the line for #%d says it is withdrawn: %q", n, line)
+	}
+}
+
+// failureLine is the surface's line for pull request n's failure.
+func failureLine(res Result, n int) string {
+	line := ""
+	for _, s := range res.Settles {
+		for _, ff := range s.Failures {
+			if ff.Number == n {
+				line = ff.Line()
+			}
+		}
+	}
+	return line
 }
 
 // A comment the forge took counts as told, whatever its read-back said.
@@ -411,5 +473,105 @@ func TestAHeldCommentPostedButNotAsSentIsNotPostedAgain(t *testing.T) {
 	}
 	if held != 1 {
 		t.Fatalf("#11 was told %d times: %v", held, f.posted())
+	}
+}
+
+// A withdrawn pull request armed by hand at a moved head is asked of the gate like
+// an admitted one, and settles by what is true of it.
+func TestAWithdrawnMergeArmedAtAMovedHeadIsAskedOfTheGate(t *testing.T) {
+	withdrawn := func(t *testing.T) (*world, *fakeForge, *participant) {
+		w := newWorld(t)
+		f := armedForge(t)
+		releaseForge.comments = f
+		p := w.clone("1234+octo@users.noreply.github.com", "")
+		if _, err := p.do(Request{Record: "rel-v0.16.0"}); err != nil {
+			t.Fatal(err)
+		}
+		f.comments = nil
+		f.prs[11].head, f.prs[11].method = headC, "SQUASH"
+		f.reset()
+		return w, f, p
+	}
+	refuseC := func(_, _, _, h string) (bool, string, error) {
+		if h == headC {
+			return false, "no review receipt names " + h, nil
+		}
+		return true, "", nil
+	}
+	for _, c := range []struct {
+		name  string
+		gate  ArmGate
+		by    string
+		state string
+		says  string
+	}{
+		{"the gate arms it", func(_, _, _, _ string) (bool, string, error) { return true, "", nil }, "", WithdrawnFoundArmed, "is armed"},
+		{"the gate refuses, its own arming", refuseC, "", WithdrawnMoved, "needs to re-arm"},
+		{"the gate refuses, another account's", refuseC, "quinn", WithdrawnStanding, "stays armed"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			w, f, p := withdrawn(t)
+			f.prs[11].by = c.by
+			releaseForge.armGate = c.gate
+			if _, err := p.do(Request{Record: "rel-v0.16.0", Release: true}); err != nil {
+				t.Fatal(err)
+			}
+			if _, ws := w.tipWithdrawals("rel-v0.16.0"); stateOf(ws, 11) != c.state {
+				t.Fatalf("#11 recorded %q; want %q", stateOf(ws, 11), c.state)
+			}
+			told := ""
+			for _, m := range f.posted() {
+				if strings.HasPrefix(m, "#11 ") {
+					told = m
+				}
+			}
+			if !strings.Contains(told, c.says) {
+				t.Fatalf("#11 was told %q; want %q", told, c.says)
+			}
+			if c.state == WithdrawnMoved && f.pr(11).method != "" {
+				t.Fatalf("#11 = %+v; moved while it stands armed", f.pr(11))
+			}
+		})
+	}
+}
+
+// An admission names the commits withdrawn, so one armed at a moved head is refused
+// even at a head the gate arms.
+func TestAnAdmissionOfAMergeArmedAtAMovedHeadIsRefused(t *testing.T) {
+	w := newWorld(t)
+	f := armedForge(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	if _, err := p.do(Request{Record: "rel-v0.16.0"}); err != nil {
+		t.Fatal(err)
+	}
+	f.prs[11].head, f.prs[11].method = headC, "SQUASH"
+	if _, err := p.do(Request{Record: "rel-v0.16.0", Admit: 11}); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "its head moved") {
+		t.Fatalf("admit = %v; want refused", err)
+	}
+}
+
+// A standing line the act just read is present tense, with the command. One read
+// back from the tombstone is history: nothing retires it, so it says when it was
+// true and to check before acting.
+func TestAStandingLineFromTheTombstoneIsInThePastTense(t *testing.T) {
+	now := SettledLine("rel-v0.16.0", Withdrawal{Number: 11, Head: headA, State: WithdrawnStanding, ArmedAt: headC})
+	if !strings.Contains(now, "stays armed at "+headC[:12]) || !strings.Contains(now, "gh pr merge 11 --disable-auto") {
+		t.Fatalf("the line from the act is %q", now)
+	}
+	then := SettledLine("rel-v0.16.0", Withdrawal{Number: 11, Head: headA, State: WithdrawnStanding})
+	if !strings.Contains(then, "was left armed when") || !strings.Contains(then, "gh pr view 11") {
+		t.Fatalf("the line from the tombstone is %q", then)
+	}
+	if strings.Contains(then, "--disable-auto") || strings.Contains(then, "stays armed") {
+		t.Fatalf("the line from the tombstone reads as present: %q", then)
+	}
+}
+
+// The listing reads no forge, so it does not promise a re-arm the gate may hold.
+func TestTheListingOfDueWithdrawalsPromisesOnlyWhatTheGateAllows(t *testing.T) {
+	r := ReleaseWithdrawals{Subject: "rel-v0.16.0", Ended: true, Due: []Withdrawal{{Number: 11, Head: headA, State: WithdrawnPending}}}
+	line := strings.Join(r.Lines(), "\n")
+	if !strings.Contains(line, "where the merge gate arms") || strings.Contains(line, "re-arms them\n") || strings.HasSuffix(line, "re-arms them") {
+		t.Fatalf("the listing says %q", line)
 	}
 }

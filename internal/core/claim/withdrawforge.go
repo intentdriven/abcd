@@ -277,6 +277,8 @@ type armError struct {
 	refused bool
 	gated   bool
 	unread  bool
+	// standsArmed says the forge reports the pull request armed or queued.
+	standsArmed bool
 }
 
 func (e *armError) Error() string { return e.reason }
@@ -456,9 +458,9 @@ func (f mergeForge) rearm(root, owner, name string, w Withdrawal) (string, error
 // mutation names the pull request by node id, and node ids are global, so a
 // record pairing one pull request's number with another's id (in this
 // repository or any other) is never acted on (mismatch). One found armed or
-// queued counts as done where the merge gate arms the head it stands at. An
-// admitted one past a head the gate refuses, and a withdrawn one whose head
-// moved, is its owner's to re-arm (dcn-2610222219297487).
+// queued counts as done where the merge gate arms the head it stands at. One whose
+// head moved, past a head the gate refuses if it is armed, is its owner's to re-arm
+// (dcn-2610222219297487).
 func (f mergeForge) inspect(root, owner, name string, w Withdrawal) (string, error) {
 	n, err := f.pullRequest(root, owner, name, w.Number)
 	if err != nil {
@@ -471,26 +473,29 @@ func (f mergeForge) inspect(root, owner, name string, w Withdrawal) (string, err
 		return WithdrawnMerged, nil
 	case n.State == "CLOSED":
 		return WithdrawnClosed, nil
-	case n.HeadRefOid != w.Head && (w.State != WithdrawnAdmitted || !n.armed()):
+	case n.HeadRefOid != w.Head && !n.armed():
 		return WithdrawnMoved, nil
 	case !n.armed():
 		return "", nil
 	}
-	// Found armed counts as done only at a head the merge gate arms. An admitted
-	// one past a head it refuses is its owner's; any other refusal goes the way
-	// of an arming the gate holds.
+	// Found armed counts as done only at a head the merge gate arms. Past a head it
+	// refuses, it is its owner's (settleMoved); any other refusal goes the way of an
+	// arming the gate holds, and the pull request stands armed under it.
 	if err := f.gateHeadAt(root, w.Number, n.HeadRefOid); err != nil {
 		var ae *armError
-		if n.HeadRefOid != w.Head && errors.As(err, &ae) && !ae.unread {
-			return WithdrawnMoved, nil
+		if errors.As(err, &ae) {
+			ae.standsArmed = true
+			if n.HeadRefOid != w.Head && !ae.unread {
+				return WithdrawnMoved, nil
+			}
 		}
 		return "", err
 	}
 	return WithdrawnFoundArmed, nil
 }
 
-// settleMoved is what a re-arm does with an admitted withdrawal inspect settled as
-// moved, so that what it records is true. Not armed, it is moved. Armed at a head
+// settleMoved is what a re-arm does with a withdrawal inspect settled as moved, so
+// that what it records is true. Not armed, it is moved. Armed at a head
 // the gate refuses by this account (the holder's own --admit, usually), the arming
 // comes off and is read back before it is moved. Armed by another account, it is
 // left, and is standing; at names the head it stands at.
@@ -504,21 +509,21 @@ func (f mergeForge) settleMoved(root, owner, name string, w Withdrawal) (state, 
 	}
 	login, err := f.login(root)
 	if err != nil {
-		return "", "", fmt.Errorf("whose arming it stands under cannot be read: %s", forgeReason(err))
+		return "", "", &armError{reason: "whose arming it stands under cannot be read: " + forgeReason(err), standsArmed: true}
 	}
 	if !n.armedBy(login) {
 		return WithdrawnStanding, n.HeadRefOid, nil
 	}
 	pr := ArmedPR{Number: n.Number, ID: n.ID, Head: n.HeadRefOid, Queued: n.IsInMergeQueue, AutoMerge: n.AutoMergeRequest != nil}
 	if _, _, err := f.withdraw(root, pr, w.By); err != nil {
-		return "", "", fmt.Errorf("its arming at %s could not be withdrawn: %s", n.HeadRefOid[:12], err.Error())
+		return "", "", &armError{reason: fmt.Sprintf("its arming at %s could not be withdrawn: %s", n.HeadRefOid[:12], err.Error()), standsArmed: true}
 	}
 	back, err := f.pullRequest(root, owner, name, w.Number)
 	if err != nil {
 		return "", "", fmt.Errorf("its arming at %s was withdrawn and could not be read back: %s", n.HeadRefOid[:12], forgeReason(err))
 	}
 	if back.armed() {
-		return "", "", fmt.Errorf("its arming at %s was withdrawn, but the forge still reports it armed or queued", n.HeadRefOid[:12])
+		return "", "", &armError{reason: fmt.Sprintf("its arming at %s was withdrawn, but the forge still reports it armed or queued", n.HeadRefOid[:12]), standsArmed: true}
 	}
 	return WithdrawnMoved, "", nil
 }
