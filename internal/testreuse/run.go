@@ -440,14 +440,27 @@ var outputMu sync.Mutex
 // buffered runs one line of several at once, writing its output whole when it
 // ends so two packages' output never interleave.
 func (r lineRunner) buffered(l goLine) bool {
-	var out bytes.Buffer
-	w := &lineWriter{tally: r.tally, out: &out}
-	failed := r.exec(l, w, &out)
+	out := &lockedBuffer{}
+	w := &lineWriter{tally: r.tally, out: out}
+	failed := r.exec(l, w, out)
 	w.flush()
 	outputMu.Lock()
 	defer outputMu.Unlock()
-	_, _ = r.cfg.Stdout.Write(out.Bytes())
+	_, _ = r.cfg.Stdout.Write(out.buf.Bytes())
 	return failed
+}
+
+// lockedBuffer takes a command's standard output and error at once, each of
+// which go copies on a goroutine of its own.
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
 }
 
 func (r lineRunner) exec(l goLine, stdout, stderr io.Writer) bool {
