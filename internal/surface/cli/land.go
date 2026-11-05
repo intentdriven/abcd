@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
@@ -30,10 +31,11 @@ var landSeams landing.Options
 func newLandCommand(asJSON *bool) *cobra.Command {
 	var noPush, noEnqueue, approve bool
 	var reviews []string
+	var restsOn string
 	cmd := &cobra.Command{
 		Use: "land [<branch>]",
 		Long: "abcd land [<branch>] [--no-push] [--no-enqueue]\n" +
-			"abcd land [<branch>] --record-review <return> --record-review <return> [...]\n" +
+			"abcd land [<branch>] --record-review <return> --record-review <return> [...] [--rests-on <base>]\n" +
 			"abcd land [<branch>] --approve\n\n" +
 			"Land a branch whose work is committed: the checkout's current branch, or the one\n" +
 			"named, from the worktree that has it checked out. Each step can be resumed by\n" +
@@ -122,12 +124,33 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			"landing: it names the release, its holder and until when.\n\n" +
 			"--record-review records the review pair's verdicts for the branch's head and\n" +
 			"lands nothing: given once per reviewer's return (at least two, no two the\n" +
-			"same), each naming the head's first nine characters under one ### Verdict\n" +
-			"heading, it writes the head's review receipt in\n" +
+			"same), each with a first line reading Reviewed head: <name>, naming the head by at\n" +
+			"least its first nine characters, and one ### Verdict heading and no other line opening as a Verdict, fenced or not, it writes the head's\n" +
+			"review receipt in\n" +
 			".abcd/.work.local/review-receipts/ when every verdict passes the stop rule\n" +
 			"(SHIP or APPROVE: no critical or major finding). A return that does not pass is\n" +
 			"refused naming it, exit 2, and nothing is written. It takes no --no-push or\n" +
 			"--no-enqueue.\n\n" +
+			"--rests-on <base> makes that a delta review, of a wording fix after a full pair: the\n" +
+			"head's receipt rests on the full pair recorded for <base>, a\n" +
+			"full object name, and each return's first line reads exactly Reviewed delta:\n" +
+			"<base>..<head> in place of the head's, with no line stating a head. It is refused, and the head needs a full pair, unless the base\n" +
+			"has a full pair (a delta's receipt is not one), the head descends from it, and the\n" +
+			"branch's own commits since it change only plain text markdown files of mode 100644\n" +
+			"under docs/explanation/, docs/how-to/, docs/tutorials/, .abcd/development/plans/,\n" +
+			".abcd/development/roadmap/, .abcd/work/issues/resolved/ or .abcd/work/issues/wontfix/,\n" +
+			"at most " + strconv.Itoa(landing.MaxDeltaLines) + "\n" +
+			"lines, " + strconv.Itoa(landing.MaxDeltaFiles) + " files and 64 KiB of patch. Every changed line is wording alone: letters,\n" +
+			"digits and a sentence's punctuation, naming no record and no file, holding no code\n" +
+			"or tool's marker and no invisible character, outside any code fence and any ledger\n" +
+			"record's grounds. No part of such a path may start with a dot or begin as an instruction file's\n" +
+			"name does, every file keeps its frontmatter byte for byte, and no file is added,\n" +
+			"removed or moved. Any other path needs a full pair, as code, open issues, decisions,\n" +
+			"intents, specs, the brief and the ADRs always do, and so does a corrected id. A merge\n" +
+			"of a default-branch commit counts for nothing when it is exactly\n" +
+			"the merge git makes of its parents with no conflict; any other merge is\n" +
+			"refused. The merge gate asks all of this again at landing. Without --rests-on, a\n" +
+			"return carrying a Reviewed delta line is refused.\n\n" +
 			"--approve records the technical facilitator's approval of the branch's head and\n" +
 			"lands nothing: it writes .abcd/.work.local/approvals/<head>, which the merge\n" +
 			"gate counts as an approval of that commit, and of no other. It is the\n" +
@@ -144,6 +167,9 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if cmd.Flags().Changed("rests-on") && len(reviews) == 0 {
+				return &exitError{Code: 2, Msg: "abcd land: --rests-on names the full pair a delta review rests on, so it takes --record-review; nothing was written"}
+			}
 			if approve {
 				if noPush || noEnqueue || len(reviews) > 0 {
 					return &exitError{Code: 2, Msg: "abcd land: --approve lands nothing, so it takes no --no-push, --no-enqueue or --record-review; nothing was written"}
@@ -154,7 +180,7 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 				if noPush || noEnqueue {
 					return &exitError{Code: 2, Msg: "abcd land: --record-review lands nothing, so it takes no --no-push or --no-enqueue; nothing was written"}
 				}
-				return recordReview(cmd, *asJSON, cwd, args, reviews)
+				return recordReview(cmd, *asJSON, cwd, args, reviews, restsOn)
 			}
 			roots, notes := layered.RootsFor(cwd)
 			for _, n := range notes {
@@ -180,13 +206,15 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().BoolVar(&noEnqueue, "no-enqueue", false, "do not arm or queue the pull request this run")
 	cmd.Flags().BoolVar(&approve, "approve", false, "record the technical facilitator's approval of the branch's head, a person's act the shell guard refuses to an agent; lands nothing")
 	cmd.Flags().StringArrayVar(&reviews, "record-review", nil, "record the review pair's verdicts for the branch's head from this reviewer's return (give it once per return, at least two); lands nothing")
+	cmd.Flags().StringVar(&restsOn, "rests-on", "", "make --record-review a delta review resting on the full pair recorded for this commit, given by its full object name; each return also states Reviewed delta: <base>..<head>")
 	return cmd
 }
 
 // recordReview is `abcd land --record-review`: it reads each return, bounded,
 // and records the review receipt for the head of the branch named (or the
 // checkout's current branch), refusing with exit 2 when the pair does not pass.
-func recordReview(cmd *cobra.Command, asJSON bool, cwd string, args, paths []string) error {
+// With restsOn, a base head, the receipt is a delta's.
+func recordReview(cmd *cobra.Command, asJSON bool, cwd string, args, paths []string, restsOn string) error {
 	rev := "HEAD"
 	if len(args) == 1 {
 		rev = "refs/heads/" + args[0]
@@ -207,15 +235,25 @@ func recordReview(cmd *cobra.Command, asJSON bool, cwd string, args, paths []str
 		}
 		returns = append(returns, landing.ReviewReturn{Name: filepath.Base(p), Text: string(data)})
 	}
-	receipt, err := landing.RecordReview(root, sha, returns)
+	var receipt string
+	if cmd.Flags().Changed("rests-on") {
+		receipt, err = landing.RecordDeltaReview(root, sha, restsOn, returns)
+	} else {
+		receipt, err = landing.RecordReview(root, sha, returns)
+	}
 	if err != nil {
 		return &exitError{Code: 2, Msg: "abcd land: " + termsafe.Sanitize(fsutil.RedactHome(err.Error())) + "; nothing was written"}
 	}
 	view := struct {
 		Commit  string `json:"commit"`
 		Receipt string `json:"receipt"`
-	}{sha, receipt}
+		RestsOn string `json:"rests_on,omitempty"`
+	}{sha, receipt, restsOn}
 	return render(cmd.OutOrStdout(), asJSON, view, func(w io.Writer) {
+		if restsOn != "" {
+			fmt.Fprintf(w, "abcd land: recorded the delta review receipt for %s, resting on the full pair at %s (%s)\n", sha, restsOn, termsafe.Sanitize(fsutil.RedactHome(receipt)))
+			return
+		}
 		fmt.Fprintf(w, "abcd land: recorded the review receipt for %s (%s)\n", sha, termsafe.Sanitize(fsutil.RedactHome(receipt)))
 	})
 }

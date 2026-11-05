@@ -3159,6 +3159,13 @@
           "type": "stringArray",
           "required": false,
           "hidden": false
+        },
+        {
+          "name": "rests-on",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
         }
       ]
     },

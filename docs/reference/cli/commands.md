@@ -4095,7 +4095,7 @@ Push a branch whose preflight passed and queue its pull request: Writes a push t
 **Usage:** `abcd land [<branch>] [flags]`
 
 abcd land [<branch>] [--no-push] [--no-enqueue]
-abcd land [<branch>] --record-review <return> --record-review <return> [...]
+abcd land [<branch>] --record-review <return> --record-review <return> [...] [--rests-on <base>]
 abcd land [<branch>] --approve
 
 Land a branch whose work is committed: the checkout's current branch, or the one
@@ -4193,12 +4193,34 @@ landing: it names the release, its holder and until when.
 
 --record-review records the review pair's verdicts for the branch's head and
 lands nothing: given once per reviewer's return (at least two, no two the
-same), each naming the head's first nine characters under one ### Verdict
-heading, it writes the head's review receipt in
+same), each with a first line reading Reviewed head: <name>, naming the head by at
+least its first nine characters, and one ### Verdict heading and no other line opening as a Verdict, fenced or not, it writes the head's
+review receipt in
 .abcd/.work.local/review-receipts/ when every verdict passes the stop rule
 (SHIP or APPROVE: no critical or major finding). A return that does not pass is
 refused naming it, exit 2, and nothing is written. It takes no --no-push or
 --no-enqueue.
+
+--rests-on <base> makes that a delta review, of a wording fix after a full pair: the
+head's receipt rests on the full pair recorded for <base>, a
+full object name, and each return's first line reads exactly Reviewed delta:
+<base>..<head> in place of the head's, with no line stating a head. It is refused, and the head needs a full pair, unless the base
+has a full pair (a delta's receipt is not one), the head descends from it, and the
+branch's own commits since it change only plain text markdown files of mode 100644
+under docs/explanation/, docs/how-to/, docs/tutorials/, .abcd/development/plans/,
+.abcd/development/roadmap/, .abcd/work/issues/resolved/ or .abcd/work/issues/wontfix/,
+at most 30
+lines, 3 files and 64 KiB of patch. Every changed line is wording alone: letters,
+digits and a sentence's punctuation, naming no record and no file, holding no code
+or tool's marker and no invisible character, outside any code fence and any ledger
+record's grounds. No part of such a path may start with a dot or begin as an instruction file's
+name does, every file keeps its frontmatter byte for byte, and no file is added,
+removed or moved. Any other path needs a full pair, as code, open issues, decisions,
+intents, specs, the brief and the ADRs always do, and so does a corrected id. A merge
+of a default-branch commit counts for nothing when it is exactly
+the merge git makes of its parents with no conflict; any other merge is
+refused. The merge gate asks all of this again at landing. Without --rests-on, a
+return carrying a Reviewed delta line is refused.
 
 --approve records the technical facilitator's approval of the branch's head and
 lands nothing: it writes .abcd/.work.local/approvals/<head>, which the merge
@@ -4213,6 +4235,7 @@ author's approval of their own): the shell guard refuses it to an agent.
       --no-enqueue                  do not arm or queue the pull request this run
       --no-push                     do not push the branch this run; print the push command instead
       --record-review stringArray   record the review pair's verdicts for the branch's head from this reviewer's return (give it once per return, at least two); lands nothing
+      --rests-on string             make --record-review a delta review resting on the full pair recorded for this commit, given by its full object name; each return also states Reviewed delta: <base>..<head>
 ```
 
 ### `abcd launch`

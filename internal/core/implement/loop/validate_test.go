@@ -212,7 +212,7 @@ func TestTheValidatorsAreFreshAgentsAndOnlyTheLoopRecordsAVerdict(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"fresh", "did not implement", l.BaseSHA + ".." + l.HeadSHA, l.Branch, "### Verdict", "SHIP", "FIX FIRST",
+	for _, want := range []string{"fresh", "did not implement", l.BaseSHA + ".." + l.HeadSHA, l.Branch, "### Verdict", "first line reads exactly `Reviewed head: " + l.HeadSHA + "`", "SHIP", "FIX FIRST",
 		filepath.Join(repo.Root(), filepath.FromSlash(res.Awaiting.Receipt))} {
 		if !strings.Contains(string(brief), want) {
 			t.Fatalf("the reviewer's brief names %q:\n%s", want, brief)
@@ -442,6 +442,55 @@ func TestAReportCarryingAVerdictIsRefusedAtTheAdvance(t *testing.T) {
 	}
 }
 
+// A verdict word ends its line or is followed by a commit's name or a separator, so
+// a word that opens another statement is no verdict.
+func TestAVerdictWordEndsItsLineOrMeetsASeparator(t *testing.T) {
+	words := reviewerVerdicts[RoleSecurity]
+	for _, line := range []string{"APPROVE", "**APPROVE**", "- **APPROVE**", "`APPROVE`", "APPROVE \u2014 nothing survived.", "**APPROVE** \u2014 nothing survived.", "APPROVE: nothing survived.", "APPROVE. Nothing survived.", "APPROVE (nothing survived)", "APPROVE - nothing", "APPROVE 9f0c4e7bb \u2014 one file"} {
+		if w, ok := leadingVerdict(line, words); !ok || w.word != "APPROVE" {
+			t.Errorf("leadingVerdict(%q) = %+v, %v; want APPROVE", line, w, ok)
+		}
+	}
+	for _, line := range []string{"APPROVE BLOCKER", "APPROVE/BLOCK", "APPROVE? No", "APPROVE-BLOCKED", "**APPROVE** but block", "APPROVED", "APPROVE:BLOCK"} {
+		if w, ok := leadingVerdict(line, words); ok {
+			t.Errorf("leadingVerdict(%q) = %+v; want no verdict", line, w)
+		}
+	}
+}
+
+// Every line shaped as a verdict counts, and only the exact heading is read, so a
+// return with a second such line, or with no exact heading, states no verdict.
+func TestEveryVerdictShapedLineCounts(t *testing.T) {
+	words := reviewerVerdicts[RoleSecurity]
+	for name, text := range map[string]string{
+		"a fenced pass above a heading with its verdict": "```\n### Verdict\nAPPROVE\n```\n\n### Verdict: BLOCK\n",
+		"a fenced pass above a bold verdict":             "```\n### Verdict\nAPPROVE\n```\n\n**Verdict:** BLOCK\n",
+		"a heading then a bold verdict in capitals":      "### Verdict\n\nAPPROVE\n\n  **VERDICT** BLOCK\n",
+		"a plain verdict":                                "### Verdict\n\nAPPROVE\n\nVerdict: BLOCK\n",
+		"a bulleted bold verdict":                        "### Verdict\n\nAPPROVE\n\n- **Verdict:** BLOCK\n",
+		"a quoted bold verdict":                          "### Verdict\n\nAPPROVE\n\n> **Verdict:** BLOCK\n",
+		"an underscored verdict":                         "### Verdict\n\nAPPROVE\n\n__Verdict:__ BLOCK\n",
+		"only a heading with its verdict":                "### Verdict: APPROVE\n",
+		"only a bold verdict":                            "**Verdict:** APPROVE\n",
+	} {
+		if w, err := parseVerdict(text, words); err == nil {
+			t.Errorf("%s: parseVerdict = %+v; want a refusal", name, w)
+		}
+	}
+	if w, err := parseVerdict("### Analysis\n\nThe verdict is plain, and **a verdict** in a sentence is none.\n\n### Verdict\n\nAPPROVE\n", words); err != nil || w.word != "APPROVE" {
+		t.Errorf("a return with one heading: %+v, %v", w, err)
+	}
+}
+
+// A report states no verdict at all, so its check reads more widely than a return's.
+func TestAReportsVerdictReadsWiderThanAReturns(t *testing.T) {
+	for _, text := range []string{"### Verdict\n\nSHIP BLOCKER\n", "### Verdict\n\nAPPROVE/BLOCK\n"} {
+		if _, ok := reportVerdict(text); !ok {
+			t.Errorf("reportVerdict(%q) found none", text)
+		}
+	}
+}
+
 // TestAReturnTheLoopCannotReadAVerdictFromIsRefused: a return with no verdict,
 // two, a word outside its role's vocabulary, or an audit verdict echoing a hash
 // the request did not issue is refused at the receipt, and the lane still
@@ -452,6 +501,8 @@ func TestAReturnTheLoopCannotReadAVerdictFromIsRefused(t *testing.T) {
 		"two verdicts":       {RoleRuthless, reviewerReturn("SHIP") + "\n### Verdict\n\n- **FIX FIRST**\n", "Verdict"},
 		"another role's":     {RoleRuthless, reviewerReturn("APPROVE"), "SHIP"},
 		"no word":            {RoleSecurity, "### Verdict\n\nLGTM\n", "APPROVE"},
+		"more words":         {RoleRuthless, reviewerReturn("SHIP BLOCKER"), "SHIP"},
+		"a slash":            {RoleSecurity, "### Verdict\n\nAPPROVE/BLOCK\n", "APPROVE"},
 		"a foreign hash":     {RoleAuditor, "", "prompt_hash"},
 		"not a verdict JSON": {RoleAuditor, "{}", "verdict"},
 	}

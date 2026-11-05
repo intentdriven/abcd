@@ -176,7 +176,7 @@ func TestAutoArmsOnlyAHeadAReviewReceiptNames(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(rcp), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(rcp, []byte("{}\n"), 0o600); err != nil {
+	if err := os.WriteFile(rcp, reviewPairReceipt(l.Landing.Pushed), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	f.step(t)
@@ -220,7 +220,7 @@ func TestThisRepositorysOwnMirrorAndConfigArm(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(rcp), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(rcp, []byte("{}\n"), 0o600); err != nil {
+	if err := os.WriteFile(rcp, reviewPairReceipt(l.HeadSHA), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	f.step(t)
@@ -230,4 +230,10 @@ func TestThisRepositorysOwnMirrorAndConfigArm(t *testing.T) {
 	if !strings.Contains(f.ghLog(t), "pr merge 7 --auto --merge") || l.Landing == nil || !l.Landing.Armed {
 		t.Fatalf("this repository's own mirror and config arm the merge: %+v\n%s", l.Landing, f.ghLog(t))
 	}
+}
+
+// reviewPairReceipt is a review receipt for sha holding a passing pair, as
+// abcd land --record-review writes one.
+func reviewPairReceipt(sha string) []byte {
+	return []byte(`{"commit":"` + sha + `","reviews":[{"name":"a","verdict":"SHIP","sha256":"x"},{"name":"b","verdict":"APPROVE","sha256":"y"}]}` + "\n")
 }

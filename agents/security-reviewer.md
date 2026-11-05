@@ -3,7 +3,7 @@ name: security-reviewer
 description: Adversarial security review of a diff or design. Use PROACTIVELY before presenting any change that touches a trust boundary — auth, secrets, network exposure, input parsing, file/DB access, subprocess execution — or any invariant declared in the project's AGENTS.md. Authorized defensive review of the user's own code only.
 tools: Read, Grep, Glob, Bash
 model: opus
-prompt_version: 0.4.0
+prompt_version: 0.4.1
 reads_untrusted_input: true
 capability_scope:
   task_classes: [oracle_review]
@@ -75,6 +75,13 @@ could not find, a runtime behaviour you could not observe). That is
 NEEDS-INPUT. Do not launder it into a BLOCK to be safe.
 
 ## Output
+
+When your brief says this return is recorded with `abcd land --record-review`, open
+it with one line before these sections: its first line reads exactly
+`Reviewed head: <name>`, where `<name>` is the head you read, by at least its first
+nine characters. When the brief says it is a delta review (`--rests-on`), its first line reads exactly
+`Reviewed delta: <base>..<head>` instead, each end named the same way, and no line
+states a head.
 
 Reason first, format second.
 

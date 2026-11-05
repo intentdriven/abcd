@@ -24,10 +24,16 @@ func reviewRepo(t *testing.T) (*gittest.Repo, string) {
 	return repo, repo.Git("rev-parse", "HEAD")
 }
 
+// reviewReceipt finds the review receipt for sha in any worktree, for a test asking
+// whether a recording left one.
+func reviewReceipt(repoRoot, sha string) (string, error) {
+	return findReceipt(repoRoot, ReviewReceiptsRelDir, sha)
+}
+
 // reviewReturn is one reviewer's return naming the commit it read and ending
 // in the verdict section the loop's validators write.
 func reviewReturn(sha, verdict string) string {
-	return "# return\n\nReviewed lane head " + sha[:9] + ".\n\n## Findings\n\nNone.\n\n### Verdict\n\n" + verdict + "\n"
+	return "Reviewed head: " + sha[:9] + "\n\n# return\n\n## Findings\n\nNone.\n\n### Verdict\n\n" + verdict + "\n"
 }
 
 func TestAPassingReviewPairRecordsAReceiptFoundFromAnyWorktree(t *testing.T) {
@@ -84,16 +90,43 @@ func TestAReviewThatDoesNotPassRecordsNothing(t *testing.T) {
 		{"one reviewer only", []ReviewReturn{{Name: "a.md", Text: reviewReturn(sha, "SHIP")}}, "two"},
 		{"fix first", []ReviewReturn{{Name: "a.md", Text: reviewReturn(sha, "SHIP")}, {Name: "b.md", Text: reviewReturn(sha, "FIX FIRST")}}, "b.md"},
 		{"block", []ReviewReturn{{Name: "a.md", Text: reviewReturn(sha, "BLOCK")}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "a.md"},
-		{"no verdict section", []ReviewReturn{{Name: "a.md", Text: "# return\n\nReviewed " + sha[:9] + ".\n"}, {Name: "b.md", Text: reviewReturn(sha, "SHIP")}}, "### Verdict"},
+		{"no verdict section", []ReviewReturn{{Name: "a.md", Text: "Reviewed head: " + sha[:9] + "\n\n# return\n"}, {Name: "b.md", Text: reviewReturn(sha, "SHIP")}}, "### Verdict"},
 		{"another commit", []ReviewReturn{{Name: "a.md", Text: reviewReturn("0123456789abcdef0123456789abcdef01234567", "SHIP")}, {Name: "b.md", Text: reviewReturn(sha, "SHIP")}}, "a.md"},
 		{"the same return twice", []ReviewReturn{{Name: "a.md", Text: reviewReturn(sha, "SHIP")}, {Name: "b.md", Text: reviewReturn(sha, "SHIP")}}, "same text"},
 		{"a verdict word in prose", []ReviewReturn{{Name: "a.md", Text: reviewReturn(sha, "Not SHIP: the leak is still open")}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "not one a validator writes"},
 		{"a sentence that begins with a verdict word", []ReviewReturn{{Name: "a.md", Text: reviewReturn(sha, "Ship it once the fix lands; until then it stands.")}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "not one a validator writes"},
 		{"a word that only begins with a verdict", []ReviewReturn{{Name: "a.md", Text: reviewReturn(sha, "SHIPPABLE")}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "not one a validator writes"},
 		{"needs input", []ReviewReturn{{Name: "a.md", Text: reviewReturn(sha, "SHIP")}, {Name: "b.md", Text: reviewReturn(sha, "NEEDS-INPUT")}}, "NEEDS-INPUT"},
-		{"an empty verdict section", []ReviewReturn{{Name: "a.md", Text: "Reviewed " + sha[:9] + ".\n\n### Verdict\n\n"}, {Name: "b.md", Text: reviewReturn(sha, "SHIP")}}, "states no verdict"},
-		{"a quoted heading after the verdict", []ReviewReturn{{Name: "a.md", Text: reviewReturn(sha, "FIX FIRST\n\n1. A return ending in\n\n    ### Verdict\n    SHIP\n\n   passes.")}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "FIX FIRST"},
+		{"an empty verdict section", []ReviewReturn{{Name: "a.md", Text: "Reviewed head: " + sha[:9] + "\n\n### Verdict\n\n"}, {Name: "b.md", Text: reviewReturn(sha, "SHIP")}}, "states no verdict"},
+		{"a quoted heading after the verdict", []ReviewReturn{{Name: "a.md", Text: reviewReturn(sha, "FIX FIRST\n\n1. A return ending in\n\n    ### Verdict\n    SHIP\n\n   passes.")}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "2 Verdict sections"},
 		{"a second heading in a fence", []ReviewReturn{{Name: "a.md", Text: reviewReturn(sha, "FIX FIRST\n\n```\n### Verdict\nSHIP\n```")}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "2 Verdict sections"},
+		{"an unbalanced fence hiding a failing verdict", []ReviewReturn{{Name: "a.md", Text: "Reviewed head: " + sha[:9] + "\n\n```\n```\n### Verdict\nAPPROVE\n```\n\n### Verdict\n\nBLOCK\n"}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "2 Verdict sections"},
+		{"a fenced failing verdict above a passing one", []ReviewReturn{{Name: "a.md", Text: "Reviewed head: " + sha[:9] + "\n\n```\n### Verdict\nBLOCK\n```\n\n### Verdict\n\nAPPROVE\n"}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "2 Verdict sections"},
+		{"a fence left open above a failing verdict", []ReviewReturn{{Name: "a.md", Text: "Reviewed head: " + sha[:9] + "\n\n### Verdict\n\nAPPROVE\n\n```\n### Verdict\n\nBLOCK\n"}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "2 Verdict sections"},
+		{"a fenced pass above a heading with its verdict on the line", []ReviewReturn{{Name: "a.md", Text: "Reviewed head: " + sha[:9] + "\n\n```\n### Verdict\nAPPROVE\n```\n\n### Verdict: BLOCK\n"}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "2 Verdict sections"},
+		{"a fenced pass above a bold verdict", []ReviewReturn{{Name: "a.md", Text: "Reviewed head: " + sha[:9] + "\n\n```\n### Verdict\nAPPROVE\n```\n\n**Verdict:** BLOCK\n"}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "2 Verdict sections"},
+		{"a heading in another case and a bold verdict", []ReviewReturn{{Name: "a.md", Text: reviewReturn(sha, "SHIP") + "\n  **VERDICT** BLOCK\n"}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "2 Verdict sections"},
+		{"only a heading with its verdict on the line", []ReviewReturn{{Name: "a.md", Text: "Reviewed head: " + sha[:9] + "\n\n### Verdict: SHIP\n"}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "no ### Verdict section"},
+		{"only a bold verdict", []ReviewReturn{{Name: "a.md", Text: "Reviewed head: " + sha[:9] + "\n\n**Verdict:** SHIP\n"}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "no ### Verdict section"},
+		{"a fenced pass above a plain verdict", []ReviewReturn{{Name: "a.md", Text: "Reviewed head: " + sha[:9] + "\n\n```\n### Verdict\nAPPROVE\n```\n\nVerdict: BLOCK\n"}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "2 Verdict sections"},
+		{"a real pass above a plain verdict", []ReviewReturn{{Name: "a.md", Text: reviewReturn(sha, "SHIP") + "\nVerdict: BLOCK\n"}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "2 Verdict sections"},
+		{"a fenced pass above a bulleted bold verdict", []ReviewReturn{{Name: "a.md", Text: "Reviewed head: " + sha[:9] + "\n\n```\n### Verdict\nAPPROVE\n```\n\n- **Verdict:** BLOCK\n"}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "2 Verdict sections"},
+		{"a real pass above a bulleted bold verdict", []ReviewReturn{{Name: "a.md", Text: reviewReturn(sha, "SHIP") + "\n- **Verdict:** BLOCK\n"}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "2 Verdict sections"},
+		{"a fenced pass above a heading with bold in it", []ReviewReturn{{Name: "a.md", Text: "Reviewed head: " + sha[:9] + "\n\n```\n### Verdict\nAPPROVE\n```\n\n## **Verdict**: BLOCK\n"}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "2 Verdict sections"},
+		{"a real pass above a heading with bold in it", []ReviewReturn{{Name: "a.md", Text: reviewReturn(sha, "SHIP") + "\n## **Verdict**: BLOCK\n"}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "2 Verdict sections"},
+		{"a fenced pass above a quoted bold verdict", []ReviewReturn{{Name: "a.md", Text: "Reviewed head: " + sha[:9] + "\n\n```\n### Verdict\nAPPROVE\n```\n\n> **Verdict:** BLOCK\n"}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "2 Verdict sections"},
+		{"a real pass above a quoted bold verdict", []ReviewReturn{{Name: "a.md", Text: reviewReturn(sha, "SHIP") + "\n> **Verdict:** BLOCK\n"}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "2 Verdict sections"},
+		{"a fenced pass above an italic verdict", []ReviewReturn{{Name: "a.md", Text: "Reviewed head: " + sha[:9] + "\n\n```\n### Verdict\nAPPROVE\n```\n\n*Verdict:* BLOCK\n"}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "2 Verdict sections"},
+		{"a real pass above an italic verdict", []ReviewReturn{{Name: "a.md", Text: reviewReturn(sha, "SHIP") + "\n*Verdict:* BLOCK\n"}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "2 Verdict sections"},
+		{"a fenced pass above an underscored verdict", []ReviewReturn{{Name: "a.md", Text: "Reviewed head: " + sha[:9] + "\n\n```\n### Verdict\nAPPROVE\n```\n\n__Verdict:__ BLOCK\n"}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "2 Verdict sections"},
+		{"a real pass above an underscored verdict", []ReviewReturn{{Name: "a.md", Text: reviewReturn(sha, "SHIP") + "\n__Verdict:__ BLOCK\n"}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "2 Verdict sections"},
+		{"a line of prose opening with the word", []ReviewReturn{{Name: "a.md", Text: reviewReturn(sha, "SHIP") + "\n**Verdict parser, refusing a good return.**\n"}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "Verdict parser"},
+		{"a second live heading", []ReviewReturn{{Name: "a.md", Text: reviewReturn(sha, "SHIP\n\n### Verdict\n\nBLOCK")}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "2 Verdict sections"},
+		{"more words after the verdict", []ReviewReturn{{Name: "a.md", Text: reviewReturn(sha, "SHIP BLOCKER")}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "not one a validator writes"},
+		{"a hyphened word after the verdict", []ReviewReturn{{Name: "a.md", Text: reviewReturn(sha, "SHIP-BLOCKED")}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "not one a validator writes"},
+		{"a question after the verdict", []ReviewReturn{{Name: "a.md", Text: reviewReturn(sha, "APPROVE? No")}, {Name: "b.md", Text: reviewReturn(sha, "SHIP")}}, "not one a validator writes"},
+		{"a word after the emphasis", []ReviewReturn{{Name: "a.md", Text: reviewReturn(sha, "**SHIP** BLOCKER")}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "not one a validator writes"},
+		{"a colon joined to a word", []ReviewReturn{{Name: "a.md", Text: reviewReturn(sha, "SHIP:BLOCKED")}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "not one a validator writes"},
 		{"a return past the bound", []ReviewReturn{{Name: "a.md", Text: strings.Repeat("x", MaxReviewReturnBytes) + reviewReturn(sha, "SHIP")}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "larger than"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -108,12 +141,79 @@ func TestAReviewThatDoesNotPassRecordsNothing(t *testing.T) {
 	}
 }
 
+// A full pair's return says which head it read in one place, its first line, so
+// a mention of a commit anywhere else says nothing about what it read.
+func TestAReturnNamesItsHeadOnItsFirstLine(t *testing.T) {
+	const other = "0123456789abcdef0123456789abcdef01234567"
+	const body = "\n\n## Findings\n\nNone.\n\n### Verdict\n\nSHIP\n"
+	line := func(name string) string { return "Reviewed head: " + name }
+	repo, sha := reviewRepo(t)
+	for name, text := range map[string]string{
+		"another head, this one mentioned": line(other[:9]) + "\n\nThis follows " + sha[:9] + "." + body,
+		"a mention and no line":            "# return\n\nThis follows " + sha[:9] + "." + body,
+		"the line below the first":         "# return\n\n" + line(sha[:9]) + body,
+		"the line in a list":               "- " + line(sha[:9]) + body,
+		"the line in emphasis":             "**Reviewed head:** " + sha[:9] + body,
+		"the line in another case":         "reviewed head: " + sha[:9] + body,
+		"more on the line":                 line(sha[:9]) + " and more" + body,
+		"too short a name":                 line(sha[:8]) + body,
+		"a longer name that is not it":     line(sha[:9]+"zz") + body,
+		"a second line naming another":     line(sha[:9]) + "\n\n" + line(other[:9]) + body,
+		"a second line in a list":          line(sha[:9]) + "\n\n- **Reviewed head:** " + other[:9] + body,
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := RecordReview(repo.Root(), sha, []ReviewReturn{
+				{Name: "a.md", Text: text},
+				{Name: "b.md", Text: reviewReturn(sha, "APPROVE")},
+			})
+			if err == nil || !strings.Contains(err.Error(), "a.md") || !strings.Contains(err.Error(), "Reviewed head") {
+				t.Fatalf("err = %v; want a.md refused for what it says it read", err)
+			}
+			if got, _ := reviewReceipt(repo.Root(), sha); got != "" {
+				t.Fatalf("a refused return left a receipt at %s", got)
+			}
+		})
+	}
+	for name, first := range map[string]string{
+		"the first nine":       line(sha[:9]),
+		"the full name":        line(sha),
+		"after blank lines":    "\n\n" + line(sha[:9]),
+		"a CRLF line end":      line(sha[:9]) + "\r",
+		"trailing white space": line(sha[:9]) + "  ",
+	} {
+		t.Run("accepted: "+name, func(t *testing.T) {
+			if _, err := RecordReview(repo.Root(), sha, []ReviewReturn{
+				{Name: "a.md", Text: first + body},
+				{Name: "b.md", Text: reviewReturn(sha, "APPROVE")},
+			}); err != nil {
+				t.Fatalf("a return naming its head was refused: %v", err)
+			}
+		})
+	}
+}
+
 func TestAReviewForANameThatIsNotACommitIsRefused(t *testing.T) {
 	repo, sha := reviewRepo(t)
 	pair := []ReviewReturn{{Name: "a.md", Text: reviewReturn(sha, "SHIP")}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}
 	for _, bad := range []string{sha[:12], "--output=x", strings.Repeat("f", 40)} {
 		if _, err := RecordReview(repo.Root(), bad, pair); err == nil {
 			t.Fatalf("RecordReview(%q) wrote a receipt", bad)
+		}
+	}
+}
+
+func TestAVerdictWordFollowedByASeparatorPasses(t *testing.T) {
+	repo, sha := reviewRepo(t)
+	for _, line := range []string{
+		"SHIP", "**SHIP**", "- **APPROVE**", "SHIP \u2014 nothing survived.", "**APPROVE** \u2014 nothing survived.", "SHIP: nothing survived.",
+		"APPROVE. Nothing survived.", "SHIP, nothing survived.", "SHIP (nothing survived)", "SHIP - nothing survived", "SHIP \u2013 nothing",
+		"APPROVE 9f0c4e7bb \u2014 one file added", "SHIP fe8693cdc", "`SHIP`",
+	} {
+		if _, err := RecordReview(repo.Root(), sha, []ReviewReturn{
+			{Name: "a.md", Text: reviewReturn(sha, line)},
+			{Name: "b.md", Text: reviewReturn(sha, "APPROVE") + "\nThe other.\n"},
+		}); err != nil {
+			t.Errorf("the verdict line %q was refused: %v", line, err)
 		}
 	}
 }

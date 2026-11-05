@@ -231,7 +231,8 @@ func (f *fixture) reviewed(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(p, []byte("{}\n"), 0o600); err != nil {
+	body := `{"commit":"` + f.head() + `","reviews":[{"name":"a","verdict":"SHIP","sha256":"x"},{"name":"b","verdict":"APPROVE","sha256":"y"}]}`
+	if err := os.WriteFile(p, []byte(body+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }

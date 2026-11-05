@@ -22,7 +22,9 @@ package landing
 //   - human arms a maintainer's pull request only once an approval of its head
 //     counts, and until then says it waits for the technical facilitator's;
 //   - auto arms a maintainer's pull request only when a review receipt names
-//     its head, and otherwise names the commit with no recorded review pair.
+//     its head, and otherwise names the commit with no recorded review pair. A
+//     delta's receipt names the head only while the delta stands (delta.go);
+//     one that does not stand says why, and that the head needs a full pair.
 //
 // An armed merge goes by the mirror's method: the merge queue's where one
 // gates the default branch, auto-merge (a merge commit) where none does. abcd
@@ -243,8 +245,8 @@ func countedApproval(forge ForgeCall, repoRoot, repo, n, head, author string) (b
 }
 
 // approvalRecord finds the technical facilitator's recorded approval of sha in
-// any worktree git lists for the repository at repoRoot, as reviewReceipt
-// finds a review receipt, and returns its path, or "" when none names sha.
+// any worktree git lists for the repository at repoRoot, as findReceipts finds
+// a review receipt, and returns its path, or "" when none names sha.
 func approvalRecord(repoRoot, sha string) (string, error) {
 	return findReceipt(repoRoot, ApprovalsRelDir, sha)
 }
@@ -304,10 +306,13 @@ type gateFacts struct {
 	// approvedBy names the approval of head that counts, "" for none, and
 	// approvalWhy why none does.
 	approvedBy, approvalWhy string
-	// reviewed is whether a review receipt names head, and reviewWhy why
-	// the receipts could not be read, "" when they were.
+	// reviewed is whether a review receipt that stands names head, and
+	// reviewWhy why the receipts could not be read, "" when they were.
 	reviewed  bool
 	reviewWhy string
+	// deltaWhy is why the delta receipt naming head does not stand, "" when
+	// there is none or it does; reviewNote says what a standing one rests on.
+	deltaWhy, reviewNote string
 }
 
 // gateDecision is the merge gate's answer: whether to arm the merge and with
@@ -338,6 +343,8 @@ func mergeGate(f gateFacts) gateDecision {
 			" (a forge review approving that commit by someone with write access other than its author, or abcd land --approve run by the facilitator): " + f.approvalWhy}
 	case f.mode.Mode == ModeAuto && f.reviewWhy != "":
 		return gateDecision{why: modeText(f.mode) + ", but the review receipts cannot be read (" + f.reviewWhy + "), so whether a review pair passed " + head + " is unknown and nothing is armed"}
+	case f.mode.Mode == ModeAuto && f.deltaWhy != "":
+		return gateDecision{why: modeText(f.mode) + ", but the delta review recorded for " + head + " does not stand (" + f.deltaWhy + "), so it needs a full review pair (record it with abcd land --record-review), and nothing is armed"}
 	case f.mode.Mode == ModeAuto && !f.reviewed:
 		return gateDecision{why: modeText(f.mode) + ", but no review receipt names " + f.head + ": the head has no recorded review pair (record it with abcd land --record-review), so nothing is armed"}
 	}
@@ -347,6 +354,9 @@ func mergeGate(f gateFacts) gateDecision {
 	}
 	if f.mode.Mode == ModeAuto {
 		why += "; a review receipt names " + head
+		if f.reviewNote != "" {
+			why += " (" + f.reviewNote + ")"
+		}
 	}
 	if f.rule.Method == "" {
 		return gateDecision{arm: true, method: "--merge", why: why + "; auto-merge armed (merge commit): no merge queue gates " + f.def + " (per the ruleset mirror)"}
@@ -404,11 +414,8 @@ func DecideMerge(q MergeQuery) (MergeDecision, error) {
 		f.approvedBy, f.approvalWhy = countedApproval(q.Forge, q.RepoRoot, q.Repo, q.PR, q.Head, f.author)
 	}
 	if mode.Mode == ModeAuto {
-		p, err := reviewReceipt(q.RepoRoot, q.Head)
-		f.reviewed = err == nil && p != ""
-		if err != nil {
-			f.reviewWhy = termsafe.Sanitize(fsutil.RedactHome(err.Error()))
-		}
+		proof := readReviewProof(q.RepoRoot, q.Head, q.Tip)
+		f.reviewed, f.reviewNote, f.deltaWhy, f.reviewWhy = proof.reviewed, proof.note, proof.deltaWhy, proof.unreadable
 	}
 	d := mergeGate(f)
 	return MergeDecision{Arm: d.arm, Method: d.method, Why: d.why}, nil

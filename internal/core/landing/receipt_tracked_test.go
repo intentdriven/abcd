@@ -36,3 +36,27 @@ func TestAReceiptACommitCarriesIsRefused(t *testing.T) {
 		})
 	}
 }
+
+// The merge gate reads a review receipt through every worktree's reading, so a
+// receipt a commit carries counts for nothing there, or as a base's full pair,
+// however well it reads.
+func TestTheGateRefusesAReviewReceiptACommitCarries(t *testing.T) {
+	repo, sha := reviewRepo(t)
+	rel := ReviewReceiptsRelDir + "/" + sha
+	body := `{"commit":"` + sha + `","reviews":[{"name":"a","verdict":"SHIP","sha256":"x"},{"name":"b","verdict":"APPROVE","sha256":"y"}]}`
+	repo.Write(rel, body+"\n")
+	if p := readReviewProof(repo.Root(), sha, ""); !p.reviewed {
+		t.Fatalf("this checkout's own receipt read as %+v", p)
+	}
+	if err := hasFullPair(repo.Root(), sha); err != nil {
+		t.Fatalf("this checkout's own receipt: %v", err)
+	}
+	repo.Git("add", "-f", "--", rel)
+	repo.Git("commit", "-q", "-m", "an unrelated change")
+	if p := readReviewProof(repo.Root(), sha, ""); p.reviewed || !strings.Contains(p.unreadable, "git tracks "+rel) {
+		t.Fatalf("a receipt a commit carries read as %+v; want it refused as tracked", p)
+	}
+	if err := hasFullPair(repo.Root(), sha); err == nil || !strings.Contains(err.Error(), "git tracks "+rel) {
+		t.Fatalf("err = %v; want a base's tracked receipt refused", err)
+	}
+}
