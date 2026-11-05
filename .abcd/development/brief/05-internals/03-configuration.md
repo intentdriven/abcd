@@ -30,7 +30,14 @@ each read from the machine layer alone, a repository's key named as ignored
 (`internal/core/implement/load_memory.go`), the quiet window of `ahoy worktree
 prune`, `worktrees.quiet_days` (how many days without activity make an
 unmerged worktree with no open pull request quiet: 1 to 36500 and 14 by
-default; `internal/core/ahoy/worktree/quiet.go`), the matrix run's spending
+default; `internal/core/ahoy/worktree/quiet.go`), the launch ledger's retention
+`ledger.retention_days` and `ledger.retention_count` (whole numbers from 1 to
+36500 and from 1 to 1000000, 30 and 20000 by default, from the machine layer, a
+days figure below the floor of 32 read as the floor and named as such, and a
+repository's figure standing only where it is longer, for that repository's
+launches alone, one below named as ignored, since each launch prunes the store
+every repository shares by the figures it read;
+`internal/core/runner/config.go`), the matrix run's spending
 cap `matrix.spend_cap` (an amount in usd for a run with a metered cell, set
 in the machine layer alone, a repository's refused, and with no default: a
 run's own `spend_cap` overrides it, and a metered run with neither is refused;
