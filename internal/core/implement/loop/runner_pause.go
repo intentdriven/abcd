@@ -385,6 +385,11 @@ func retryRouted(ctx context.Context, repoRoot, runID string, steps Stages, o Op
 // runner that does not start the role pauses it (pauseAwait), and every other
 // end drops the claim. on is returned with any refusal, as the step's answer.
 func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o Options, rs Runners, laneID string, aw Await, why string, on StepResult) (StepResult, error) {
+	// The last moment before an agent starts: a stop set since the step began
+	// starts nothing (stop.go).
+	if _, err := stopCheck(repoRoot, runID, steps, o); err != nil {
+		return StepResult{}, err
+	}
 	route := rs.Config.RouteFor(aw.Role)
 	timeout := rs.Timeout
 	if timeout <= 0 {
@@ -392,7 +397,7 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 	}
 	session := fmt.Sprintf("%s-%s-%s-%d", runID, laneID, aw.Role, o.now().Unix())
 	var worktree, base string
-	err := mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+	err := mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		now := o.now()
 		i, k := st.findAwait(repoRoot, aw.Receipt)
 		if i < 0 || st.Lanes[i].ID != laneID {
@@ -413,6 +418,7 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		lane.Awaits[k] = a
 		st.Lanes[i] = lane
 		worktree, base = lane.Worktree, lane.BaseSHA
+		recordLaunch(root, st, Launch{Lane: laneID, Role: aw.Role, Runner: route.Runner, Route: route.Override(), Session: session, At: now})
 		if why != "" {
 			st.Record = append(st.Record, Entry{At: now, Lane: laneID, Stage: StageRetry,
 				Note: fmt.Sprintf("retried %s's %s on the %s runner: %s", laneID, aw.Role, route.Runner, why)})

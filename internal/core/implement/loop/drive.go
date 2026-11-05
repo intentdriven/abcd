@@ -119,6 +119,10 @@ func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options,
 		routed = func(role string) bool { return rs.Config.RouteFor(role).Runner != runner.Host }
 		overrides = rs.Config.FlagRoutes()
 		if len(overrides) > 0 {
+			// A stop starts nothing, a retried role included (stop.go).
+			if _, err := stopCheck(repoRoot, runID, steps, o); err != nil {
+				return StepResult{}, err
+			}
 			// A --route for a held role (runner_pause.go) retries it at
 			// once, and is the step's one move.
 			if r, took, err := retryRouted(ctx, repoRoot, runID, steps, o, rs, overrides); took {

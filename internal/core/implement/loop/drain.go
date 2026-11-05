@@ -418,6 +418,12 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			panic(r)
 		}
 	}()
+	// A stop comes before the plan is read: the lanes take it and the move
+	// opens nothing (stop.go). A judgement awaited is let go with its hold.
+	if err := drainStop(repoRoot, &st, o); err != nil {
+		persisted = st.Judging
+		return DrainResult{}, err
+	}
 	started := false
 	// repaced is what this move's new pace came to, "" when it took none;
 	// repace is the new pace the lanes in progress take once the move's

@@ -88,7 +88,7 @@ func claimOptions(now time.Time) claim.Options {
 // run's keeps its whole footprint (dcn-2610300615451659). While any lane may yet hold uncommitted work, or where those files
 // cannot be read, the whole footprint is judged, as before.
 func renewReservation(repoRoot string, st *State, now time.Time, snap *claim.Snapshot) string {
-	if st.ReservedAt == nil {
+	if st.ReservedAt == nil || stopEndsRenewal(repoRoot, *st, now) {
 		return ""
 	}
 	if snap == nil {

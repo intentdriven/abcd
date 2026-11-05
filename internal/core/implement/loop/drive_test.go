@@ -41,6 +41,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/runner"
+	"github.com/intentdriven/abcd/internal/core/runstop"
 	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/testshard"
 )
@@ -60,6 +61,11 @@ func TestMain(m *testing.M) {
 		os.Exit(loopFakeHarness(mode))
 	}
 	announceBeforePush = noAnnouncement
+	// A stop on the machine running the tests stops no test: a test of the stop
+	// names its own fixture home (stop_test.go).
+	defaultStopHome = func() string { return "" }
+	stopReadingOff = true
+	runstop.WellKnownFolder = func() string { return "" }
 	// The package is too long for one test process under the preflight's
 	// package budget (iss-2610251004378066).
 	if code, ok := testshard.Shard(); ok {

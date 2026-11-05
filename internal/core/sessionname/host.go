@@ -102,6 +102,27 @@ func FindHost(t Table, from int) (Host, error) {
 	return Host{}, errors.New("no host process was found above the hook: its parent links do not end")
 }
 
+// Lineage is every process from from upward in the table, nearest first: a program
+// standing between a host and its child is no shell, so FindHost stops at it and
+// a question about any ancestor asks here.
+func Lineage(t Table, from int) []Host {
+	byPID := make(map[int]machineload.Proc, len(t.Procs))
+	for _, p := range t.Procs {
+		byPID[p.PID] = p
+	}
+	var out []Host
+	pid := from
+	for range maxWalk {
+		p, ok := byPID[pid]
+		if pid <= 1 || !ok {
+			break
+		}
+		out = append(out, t.host(p))
+		pid = p.PPID
+	}
+	return out
+}
+
 // passOver reports whether the walk passes over a process of this name: a
 // shell (a login shell's name carries a leading dash) or abcd itself, under
 // its plain name or a release asset's (abcd-darwin-arm64).
@@ -131,6 +152,10 @@ func (t Table) Alive(h Host) bool {
 	}
 	return false
 }
+
+// SameHost reports whether two readings name one process, each read a second or
+// so apart from the other: sameHost, for a reader outside this package.
+func SameHost(a, b Host) bool { return sameHost(a, b) }
 
 // sameHost reports whether two readings name one process: the same id, and
 // start times within startTolerance of each other, widened by each reading's

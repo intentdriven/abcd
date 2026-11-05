@@ -24,15 +24,20 @@ import (
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/runner"
+	"github.com/intentdriven/abcd/internal/core/runstop"
 	"github.com/intentdriven/abcd/internal/core/statusblock"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // Options are the seams tests set; the zero value is production.
 type Options struct {
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
+	// stopHome is the home a stop is read from; "" is the account's own
+	// (defaultStopHome). A test names a fixture home.
+	stopHome string
 	// Minter mints the run id; the zero value is production.
 	Minter recordid.Minter
 	// Session is the joined session of the shared run state
@@ -446,6 +451,14 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 	if row, ok := keyCheck(key); !ok {
 		return StartResult{}, CheckResult{Key: key, Checks: []CheckRow{row}}.refusal()
 	}
+	// A stop opens no run, a resumed one included (stop.go).
+	if r := o.stopRead(nil); r.Stop != nil {
+		return StartResult{}, contend(StageStop, "", "", fmt.Sprintf("a stop set by %s at %s holds, so no run starts",
+			termsafe.Sanitize(r.Stop.SetBy), r.Stop.SetAt.UTC().Format(time.RFC3339)),
+			"the person's own `abcd implement stop --lift` lifts it")
+	} else if r.Held != "" {
+		return StartResult{}, heldRefusal(r.Held)
+	}
 	if o.AutoPlan && validIssueKey(key) {
 		return StartResult{}, refuse("check", CheckKey, "", key+" is an issue, and --auto-plan plans a draft intent; an issue has nothing to plan",
 			"build the issue without --auto-plan: `abcd build "+key+"`")
@@ -629,6 +642,13 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 				_, _ = shared.Release(o.Session, chk.record())
 			}
 			return err
+		}
+		// The shared folder is the run's for its life from its start (stop.go). A
+		// write that fails leaves the pin to the run's first check.
+		if home := o.stopHomeOf(); home != "" {
+			if pin := runstop.PinOf(home); pin != nil {
+				_ = writeControl(root, st.RunID, control{Shared: pin})
+			}
 		}
 		res = startResult(st, chk.Checks, false)
 		res.Diagnostics = reviewNotes
@@ -902,6 +922,13 @@ func advance(repoRoot, runID string, steps Stages, o Options) (StepResult, error
 // advanceWith is advance; routed reports whether a role is started through a
 // runner (Drive), which a network outage holds as well as a model one.
 func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(role string) bool, overrides map[string]string) (StepResult, error) {
+	// A stop comes before everything: the run takes it and the call moves
+	// nothing (stop.go). A stop file the read refused is no stop, and the
+	// answer names it.
+	stopNote, err := stopCheck(repoRoot, runID, steps, o)
+	if err != nil {
+		return StepResult{}, err
+	}
 	// The run tripwire (configwatch.go) comes before anything that may start
 	// git: a program-naming setting changed during the run stops the call.
 	if err := configTripwire(repoRoot, runID); err != nil {
@@ -1041,6 +1068,9 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 	if !res.Complete {
 		res.Outage = g.info()
 	}
+	if stopNote != "" {
+		res.Next = joinNext(res.Next, stopNote)
+	}
 	return res, nil
 }
 
@@ -1104,7 +1134,21 @@ func pausedMove(st State, until time.Time) string {
 // agent's slot stays taken. A path a step already collected is the one exception
 // to the first (answerCollected).
 func Receipt(repoRoot, runID, receiptPath string, steps Stages, o Options) (StepResult, error) {
-	return receipt(repoRoot, runID, receiptPath, steps, o, nil)
+	res, err := receipt(repoRoot, runID, receiptPath, steps, o, nil)
+	if err != nil {
+		return res, err
+	}
+	// An agent's receipt is collected under a stop, and the lane goes no
+	// further: the same call takes the stop as far as it now can.
+	if _, serr := stopCheck(repoRoot, runID, steps, o); serr != nil {
+		if rf, ok := AsRefusal(serr); ok && rf.Stage == StageStop {
+			res.Awaiting = nil
+			res.Next = rf.Reason + "; " + rf.Remedy
+			return res, nil
+		}
+		return res, serr
+	}
+	return res, nil
 }
 
 // receipt is Receipt. A route that is not nil is the runner that ran the
