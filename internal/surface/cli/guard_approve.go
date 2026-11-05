@@ -44,6 +44,8 @@ var protocolRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 func newGuardApproveCommand() *cobra.Command {
 	var dir, base string
 	var runDirs []string
+	var stageHome string
+	var protect, declared []string
 	cmd := &cobra.Command{
 		Use: "approve --dir <working-tree> --base <commit> [--run-dir <dir>]...",
 		Long: "Answers the permission prompts of an agent abcd started without a terminal,\n" +
@@ -129,8 +131,8 @@ func newGuardApproveCommand() *cobra.Command {
 			"nobody is there to approve it.\n\n" +
 			"The file tools the role is granted (--allowedTools on the launch) write\n" +
 			"without asking the approver, and the abcd binary that answers is not among\n" +
-			"the paths it protects; the OS sandbox for launched agents\n" +
-			"(spc-2610161751056096) is what bounds those writes.\n\n" +
+			"the paths it protects. The OS sandbox for launched agents\n" +
+			"(spc-2610161751056096) that would bound those writes is planned, not in force.\n\n" +
 			"The guard is a mistake filter, not a security boundary (see `abcd guard\n" +
 			"check --help` for what an allow does not see), and this adds no sandbox.\n" +
 			"It never touches the person's host settings, and interactive sessions never\n" +
@@ -155,12 +157,16 @@ func newGuardApproveCommand() *cobra.Command {
 				root := rulesRoot(dir, cmd.ErrOrStderr())
 				ld := guard.LoadRepoAt(root, base)
 				ld.Registry = ld.Registry.WithMergeMode(guardMergeMode(root))
-				return guard.ApprovePrompt(ld, guard.NewFiles(dir).WithRunDirs(runDirs...), tool, input)
+				files := guard.NewFiles(dir).WithRunDirs(runDirs...).WithStage(stageHome, protect, declared)
+				return guard.ApprovePrompt(ld, files, tool, input)
 			})
 		},
 	}
 	cmd.Flags().StringVar(&dir, "dir", "", "the working tree the agent runs in, as an absolute path")
 	cmd.Flags().StringVar(&base, "base", "", "the commit the run started on, by its full object name")
+	cmd.Flags().StringVar(&stageHome, "stage-home", "", "on a drive's stage, the home its shell runs under, as an absolute path")
+	cmd.Flags().StringArrayVar(&protect, "protect", nil, "on a drive's stage, a directory it may not write, as an absolute path; repeatable")
+	cmd.Flags().StringArrayVar(&declared, "declared", nil, "on a drive's stage, a path its work declares it changes, relative to --dir; repeatable")
 	cmd.Flags().StringArrayVar(&runDirs, "run-dir", nil, "a directory the run keeps its own files in (its brief, its receipt), as an absolute path; repeatable")
 	return cmd
 }

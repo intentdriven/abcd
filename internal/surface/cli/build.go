@@ -1046,7 +1046,8 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"--discard <lane-id> removes its worktree and branch, then closes its pull request, and\n" +
 			"leaves its step unlanded. Either is refused, changing nothing,\n" +
 			"for a lane that is not held or while any lane still has work. --discard also takes\n" +
-			"an issue run's lane a drain handed back as stuck or closed, and ends that run.\n" +
+			"an issue run's lane a drain handed back as stuck or closed, and ends that run, and\n" +
+			"any lane of a run a drive stopped on because its state changed or could not be read.\n" +
 			"--restart <lane-id> restarts a lane whose implementer died, or yielded on a network\n" +
 			"failure (--yielded passes its `NETWORK: <cmd>` line), as a fresh agent from the lane's\n" +
 			"last commit: everything left uncommitted is saved aside under the lane's directory\n" +

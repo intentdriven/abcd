@@ -56,10 +56,13 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"crypto/sha256"
+	"encoding/json"
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 )
 
 // StageRetry is the record's stage for a held role retried on its runner, and
@@ -450,7 +453,17 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 	}
 	release := func() error { return releaseClaim(repoRoot, runID, aw.Receipt, session) }
 
+	if aw.Paused != nil && aw.Paused.Reason == runner.ReasonInvalid {
+		noteRefusedReturn(repoRoot, runID, laneID, aw)
+	}
+	var declared []string
+	if rs.Config.OnWalledLogin() {
+		if st, err := ReadState(repoRoot, runID); err == nil {
+			declared, _ = runFootprint(repoRoot, st.Key, st.Spec, runID+" is unchanged")
+		}
+	}
 	req := runner.Request{
+		Declared: declared,
 		Role:     aw.Role,
 		Brief:    absIn(repoRoot, aw.Brief),
 		Receipt:  absIn(repoRoot, aw.Receipt),
@@ -468,6 +481,29 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		Timeout:   timeout,
 		Work:      runner.LaunchWork{Run: runID, Lane: laneID, Await: aw.Receipt},
 	}
+	// A drive holds what it wrote, so a line that rewrites the run in the agent's
+	// call is seen before anything is done on what the line wrote.
+	var watched [sha256.Size]byte
+	var watchErr error
+	if o.RunStateWatch {
+		if watched, err = runFingerprint(repoRoot, runID); err != nil {
+			watchErr = err
+		}
+	}
+	validating := false
+	changed := func() error {
+		if watchErr != nil || !o.RunStateWatch || validating {
+			return watchErr
+		}
+		now, err := runFingerprint(repoRoot, runID)
+		switch {
+		case err != nil:
+			watchErr = err
+		case now != watched:
+			watchErr = errRunStateChanged
+		}
+		return watchErr
+	}
 	var done *StepResult
 	var refusedHandIn error
 	var fell *runner.FallbackReceipt
@@ -482,6 +518,11 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		HostSession: true,
 		Transcripts: transcripts,
 		Validate: func(ran string, _ runner.Request, ans runner.Answer) error {
+			if err := changed(); err != nil {
+				return err
+			}
+			// From here the driver writes the run itself.
+			validating = true
 			rec := runner.RecordOf(route.Runner, ran, ans)
 			rec.Override = route.Override()
 			r, err := receipt(repoRoot, runID, aw.Receipt, steps, o, &rec)
@@ -497,7 +538,15 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		Record: func(fb runner.FallbackReceipt) error { fell = &fb; return nil },
 		Now:    o.Now,
 	}
+	o.startingLaunch(aw.Role)
 	out, err := d.Dispatch(ctx, req)
+	o.failedLaunch(aw.Role, err, out.Failure)
+	if cerr := changed(); cerr != nil {
+		if rerr := release(); rerr != nil {
+			return on, errors.Join(cerr, rerr)
+		}
+		return on, cerr
+	}
 	retry := func(r StepResult, p *RunnerPause) StepResult {
 		if why != "" {
 			r.Retried = &Retry{Lane: laneID, Role: aw.Role, Runner: route.Runner, Why: why, Paused: p}
@@ -611,6 +660,40 @@ func pauseAwait(repoRoot, runID, laneID string, aw Await, session string, fb run
 		return true, nil
 	})
 	return res, paused, err
+}
+
+// retryHeading opens what a reviewer's brief says of its last return.
+const retryHeading = "## Your last return was refused"
+
+// noteRefusedReturn tells the fresh reviewer a retry starts why the last return did
+// not count: the first line the hand-in reads, spelled out, and what it refused. A
+// brief it cannot read or write is left as it was: the hand-in refuses the same way.
+func noteRefusedReturn(repoRoot, runID, laneID string, aw Await) {
+	if _, ok := reviewerVerdicts[aw.Role]; !ok {
+		return
+	}
+	st, err := ReadState(repoRoot, runID)
+	if err != nil {
+		return
+	}
+	i := slices.IndexFunc(st.Lanes, func(l Lane) bool { return l.ID == laneID })
+	if i < 0 || len(st.Lanes[i].Validation) == 0 {
+		return
+	}
+	root, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return
+	}
+	defer root.Close()
+	raw, err := localtier.ReadInRoot(root, aw.Brief, maxReturnBytes)
+	if err != nil {
+		return
+	}
+	brief, _, _ := strings.Cut(string(raw), "\n"+retryHeading)
+	head := st.Lanes[i].Validation[len(st.Lanes[i].Validation)-1].HeadSHA
+	note := fmt.Sprintf("%s\n\n%s\n\nThe loop refused the last one: %s\n\nIts first line reads exactly `Reviewed head: %s`.\n",
+		brief+"\n"+retryHeading, "Write the return again, whole.", aw.Paused.Detail, head)
+	_ = writeRoundFile(repoRoot, aw.Brief, []byte(note))
 }
 
 // pauseCause says what the runner of a pause did: an answer the contract refused
@@ -802,3 +885,35 @@ func redactStderr(repoRoot, line string) string {
 	}
 	return s
 }
+
+// runFingerprint is a run's state by hash, without what a renewal may write while
+// its call runs: its record, its time and its reservation's. A read that fails is
+// tried again, since one failure is no evidence of a change, and an error is what is
+// left when it still cannot be read.
+func runFingerprint(repoRoot, runID string) ([sha256.Size]byte, error) {
+	var st State
+	var err error
+	for try := range fingerprintTries {
+		if try > 0 {
+			time.Sleep(fingerprintWait)
+		}
+		if st, err = ReadState(repoRoot, runID); err == nil {
+			break
+		}
+	}
+	if err != nil {
+		return [sha256.Size]byte{}, fmt.Errorf("%w: %s", errRunStateUnread, fsutil.RedactHome(err.Error()))
+	}
+	st.Record, st.UpdatedAt, st.ReservedAt = nil, time.Time{}, nil
+	raw, err := json.Marshal(st)
+	if err != nil {
+		return [sha256.Size]byte{}, fmt.Errorf("%w: %s", errRunStateUnread, err.Error())
+	}
+	return sha256.Sum256(raw), nil
+}
+
+// How often, and how far apart, a run's state is read before it counts as unreadable.
+const (
+	fingerprintTries = 5
+	fingerprintWait  = 200 * time.Millisecond
+)

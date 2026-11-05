@@ -3,7 +3,6 @@ package implement
 import (
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -68,7 +67,7 @@ func diskFloorFor(slots int) uint64 {
 // for) reads as the default of one.
 func diskFloorAt(getenv func(string) string, home string) uint64 {
 	if home == "" {
-		h, err := os.UserHomeDir()
+		h, err := abcdhome.MachineHome()
 		if err != nil || h == "" {
 			return diskFloorFor(1)
 		}
@@ -178,7 +177,7 @@ func realDiskProbe(floor uint64) diskProbe {
 func checkDisk(home string, p diskProbe) DiskCheck {
 	out := DiskCheck{Status: DiskOK, FloorBytes: p.floor, Volumes: []DiskVolume{}}
 	if home == "" {
-		if h, err := os.UserHomeDir(); err == nil {
+		if h, err := abcdhome.MachineHome(); err == nil {
 			home = h
 		}
 	}

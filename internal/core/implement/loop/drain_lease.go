@@ -12,6 +12,7 @@ package loop
 // that moved anyway pushes nothing.
 
 import (
+	"os"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
@@ -55,6 +56,61 @@ func renewInProgress(repoRoot string, st DrainState, view *claim.Snapshot, now t
 			}
 			logged, updated := len(st.Record), st.UpdatedAt
 			note = renewReservation(repoRoot, st, now, view)
+			return len(st.Record) != logged || !st.UpdatedAt.Equal(updated), nil
+		}); err != nil {
+			continue
+		}
+		if note != "" {
+			notes = append(notes, note)
+		}
+	}
+	return notes
+}
+
+// renewParkedDue renews each lane parked at land whose reservation is at half its
+// lease, or read as another's, as a drain's move does (finishMerged), for a wait
+// long enough that no move comes: otherwise a peer could redo work that only awaits
+// its merge, and the land fence would not arm. The forge is read first, and only
+// when one is due, so a closed or conflicting pull request's lane is left to lapse.
+// It returns what a renewal that did not go through said.
+func renewParkedDue(repoRoot string, now time.Time) []string {
+	runs, err := Runs(repoRoot)
+	if err != nil {
+		return nil
+	}
+	var snap claim.Snapshot
+	var due []State
+	read := false
+	for _, run := range runs {
+		if parkedAtLand(run) < 0 || run.ReservedAt == nil {
+			continue
+		}
+		if !read {
+			if snap, err = claim.View(repoRoot, now); err != nil {
+				return nil
+			}
+			read = true
+		}
+		if _, d, lost := renewalDue(run, snap, now); d || lost != "" {
+			due = append(due, run)
+		}
+	}
+	if len(due) == 0 {
+		return nil
+	}
+	listed, unread := listParked(repoRoot)
+	var notes []string
+	for _, run := range due {
+		if !readParked(run, run.Lanes[parkedAtLand(run)], listed, unread).held() {
+			continue
+		}
+		note := ""
+		if err := mutate(repoRoot, run.RunID, func(_ *os.Root, st *State) (bool, error) {
+			if parkedAtLand(*st) < 0 {
+				return false, nil
+			}
+			logged, updated := len(st.Record), st.UpdatedAt
+			note = renewReservation(repoRoot, st, now, &snap)
 			return len(st.Record) != logged || !st.UpdatedAt.Equal(updated), nil
 		}); err != nil {
 			continue

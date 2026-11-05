@@ -140,6 +140,7 @@ func (l Lane) masked() Lane {
 // masked is State.masked for one validation round.
 func (r ValidationRound) masked() ValidationRound {
 	r.HeadSHA, r.Fix = line(r.HeadSHA), line(r.Fix)
+	r.ResolvesShown = maskEach(r.ResolvesShown, line)
 	r.Validators = maskEach(r.Validators, func(v ValidatorRun) ValidatorRun {
 		v.Role, v.Brief, v.Return, v.Verdict = line(v.Role), line(v.Brief), line(v.Return), line(v.Verdict)
 		v.Class, v.Model, v.ModelStatus = line(v.Class), line(v.Model), line(v.ModelStatus)

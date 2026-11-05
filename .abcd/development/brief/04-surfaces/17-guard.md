@@ -1099,8 +1099,11 @@ Sub-verbs: none.
 | Flag | Type |
 |---|---|
 | `--base` | string |
+| `--declared` | stringArray |
 | `--dir` | string |
+| `--protect` | stringArray |
 | `--run-dir` | stringArray |
+| `--stage-home` | string |
 
 ### `abcd guard check`
 

@@ -12,6 +12,7 @@ package worktree
 
 import (
 	"errors"
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -133,7 +134,7 @@ func cachePathInfo(dir, shown string) (checked fs.FileInfo, skip string) {
 	case !fi.IsDir():
 		return nil, shown + " is not a directory"
 	}
-	home, err := os.UserHomeDir()
+	home, err := abcdhome.MachineHome()
 	switch {
 	case err != nil || home == "":
 		return nil, "the home directory could not be read, so " + shown + " cannot be told from it"

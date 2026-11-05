@@ -235,7 +235,7 @@ func (f *parFixture) receipt(t *testing.T, laneID string, a Await, commits ...st
 func (f *parFixture) ret(t *testing.T, laneID, role, verdict string) StepResult {
 	t.Helper()
 	a := f.await(t, laneID, role)
-	body := reviewerReturn(verdict)
+	body := statingHeadAt(t, f.repo.Root(), f.runID, a.Receipt, reviewerReturn(verdict))
 	if role == RoleAuditor {
 		body = auditorVerdict(t, filepath.Join(filepath.Dir(f.abs(a.Receipt)), AuditRequestFileName), verdict)
 	}
@@ -600,6 +600,29 @@ func TestAReceiptAdvancesOnlyTheLaneItBelongsTo(t *testing.T) {
 	}
 	if n := f.state(t).SlotsInUse(); n != 1 {
 		t.Fatalf("lane 2's verified receipt frees its slot: %d in use", n)
+	}
+}
+
+// TestASiblingsRecordsRoundHoldsALandingNotYetBegun: where the mode is auto, a lane away
+// at its records round still holds a sibling that has not begun landing, and the first
+// lane's landing never waits on it.
+func TestASiblingsRecordsRoundHoldsALandingNotYetBegun(t *testing.T) {
+	st := State{Lanes: []Lane{
+		{ID: "lane-1", Stage: StageValidate, HeadSHA: "b", Landing: &Landing{Records: "b", RecordsDone: true},
+			Validation: []ValidationRound{{Round: 1, HeadSHA: "a"}}},
+		{ID: "lane-2", Stage: StageLand, HeadSHA: "c", Validation: []ValidationRound{{Round: 1, HeadSHA: "c"}}},
+	}}
+	if w := laneWant(st, 1); w.kind != wantNone {
+		t.Fatalf("a landing not yet begun waits: %+v", w)
+	}
+	if w := laneWant(st, 0); w.kind != wantAgent || w.role != RoleRuthless {
+		t.Fatalf("the records round is an agent's move: %+v", w)
+	}
+	st.Lanes[0].Stage = StageLand
+	st.Lanes[0].Validation = append(st.Lanes[0].Validation, ValidationRound{Round: 2, HeadSHA: "b"})
+	st.Lanes[1].Landing = &Landing{}
+	if w := laneWant(st, 1); w.kind != wantBinary {
+		t.Fatalf("a landing begun never waits: %+v", w)
 	}
 }
 

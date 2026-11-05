@@ -289,7 +289,11 @@ func TestTheHostDrivesALaneThroughTheCLI(t *testing.T) {
 		t.Fatalf("the validate stage hands the lane to a fresh ruthless reviewer: %+v", review)
 	}
 	ret := filepath.Join(repo.Root(), filepath.FromSlash(review.Awaiting.Receipt))
-	if err := os.WriteFile(ret, []byte("### Verdict\n\n- **SHIP** — nothing survived.\n"), 0o600); err != nil {
+	reviewBrief, err := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(review.Awaiting.Brief)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ret, []byte(reviewedHeadLine(string(reviewBrief))+"### Verdict\n\n- **SHIP** — nothing survived.\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if res := mustStep(t, "implement", "receipt", review.Awaiting.Receipt, "--json"); res.PerformedStage != "" || res.Stage != "validate" {

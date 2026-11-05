@@ -83,7 +83,7 @@ func LaneFor(repoRoot string) (Lane, error) {
 		return Lane{}, refuse("the repository has no root commit to key the worktree store on",
 			"commit to the repository first; the store is keyed on its root commit")
 	}
-	home, err := os.UserHomeDir()
+	home, err := abcdhome.MachineHome()
 	if err != nil || home == "" {
 		return Lane{}, fmt.Errorf("cannot resolve the caller's home directory for the worktree store: %v", err)
 	}

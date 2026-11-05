@@ -237,6 +237,19 @@ type DrainOptions struct {
 	// Context ends the move's routed judge: the front door ends it on an
 	// interrupt or a termination. context.Background when nil.
 	Context context.Context
+	// PassOver says why an issue, given its id and found_at, is passed over
+	// rather than opened; "" opens it. Nil passes nothing over.
+	PassOver func(id, foundAt string) string
+	// JudgeOutcome, when set, receives what became of a routed judgement.
+	JudgeOutcome *JudgeOutcome
+	// AskJudgeAgain asks the routed judge once per move rather than once per
+	// request: a terminal drive has no host for the request to fall to, so a
+	// judge that did not answer is asked again (terminal.go).
+	AskJudgeAgain bool
+	// KeepWaiting keeps waiting on origin, and on an outage the shared run gave
+	// up on, for as long as the caller lasts: a drive under --until has a bound
+	// of its own, so neither ends the drain (terminal.go).
+	KeepWaiting bool
 	// Skip are --skip's targets, issue ids or paths, held back for now with
 	// SkipReason, --reason; Unskip are --unskip's, taken off the list
 	// (drain_skip.go).
@@ -468,7 +481,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	// The ledger as origin's default branch holds it, fetched now, before any
 	// judgement or reservation: a move that cannot read it plans nothing and
 	// waits (drain_origin.go).
-	plan, origin, wait, recovered, probed, err := movePlan(repoRoot, &st, rule, now)
+	plan, origin, wait, recovered, probed, err := movePlan(repoRoot, &st, rule, now, d.KeepWaiting)
 	if err != nil {
 		return DrainResult{}, err
 	}
@@ -748,6 +761,10 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	if cur, err := CurrentOutage(repoRoot); err != nil {
 		return refuseMoved(outageUnreadable(err))
 	} else if cur != nil && cur.Status == implement.OutageGaveUp {
+		if d.KeepWaiting {
+			return refuseMoved(contend(StageOutage, "", "", fmt.Sprintf("the run gave up on the %s outage open since %s, so the drain opens nothing until its probes answer or a person closes it with `abcd implement outage clear --session <id> --reason <why>`",
+				strings.Join(cur.Services, " and "), cur.StartedAt.UTC().Format(time.RFC3339)), "close the outage once the connection is back"))
+		}
 		st.Stopped, st.EndedAt = DrainStoppedOutage, &now
 		res.Next = fmt.Sprintf("the run gave up on the %s outage open since %s after %d probe(s), so the drain stops here with %d lane(s) opened; once the connection is back, close the outage with `abcd implement outage clear --session <id> --reason <why>`, then `abcd drain` begins a new drain",
 			strings.Join(cur.Services, " and "), cur.StartedAt.UTC().Format(time.RFC3339), len(cur.Probes), len(st.Lanes))
@@ -968,6 +985,12 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 				res.Passed = append(res.Passed, skipPassed(v.ID, s))
 				continue
 			}
+			if d.PassOver != nil {
+				if why := d.PassOver(v.ID, iss.FoundAt); why != "" {
+					res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckNeedsPerson, Reason: termsafe.Sanitize(why)})
+					continue
+				}
+			}
 		}
 		if l, ok := lapseOf(st, v.ID); ok && now.Before(l.coolDownEnds()) {
 			ends := l.coolDownEnds()
@@ -1127,7 +1150,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 				}
 			}
 			if taken == nil {
-				if judging.RoutedAsked {
+				if judging.RoutedAsked && !d.AskJudgeAgain {
 					clause = joinNext(clause, judgeAskedClause(v.ID))
 				} else {
 					var routed string

@@ -299,7 +299,7 @@ func readLimits(home string, cores int) (machineload.Limits, LoadLimits) {
 			StrayFromFile: l.StrayFromFile, ExtremeFromFile: l.ExtremeFromFile, Malformed: malformed}
 	}
 	if home == "" {
-		h, err := os.UserHomeDir()
+		h, err := abcdhome.MachineHome()
 		if err != nil || h == "" {
 			return out(def, LimitsDefault, "")
 		}

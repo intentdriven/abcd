@@ -1,7 +1,7 @@
 ---
 name: land
 description: "Push a branch whose preflight passed and queue its pull request: Writes a push to origin and arms a merge; refuses the default branch or a dirty tree."
-argument-hint: "[<branch>] [--no-push] [--no-enqueue] [--record-review <return>...] [--approve]"
+argument-hint: "[<branch>] [--no-push] [--no-enqueue] [--record-review <return>...] [--rests-on <base>] [--approve]"
 block: people
 ---
 
@@ -221,8 +221,11 @@ recorded it with `--approve` (below). Then:
   facilitator's approval. The product thinker never approves a merge.
 - **`auto`**: the pull request of an author with write access is armed with
   no one asked, but
-  only when a review receipt (`--record-review`, below) names its head; until
-  then the note names the commit that has no recorded review pair.
+  only when a review receipt (`--record-review`, below, or the build loop's own from
+  a pair that read that head) names its head; until
+  then the note names the commit that has no recorded review pair. A delta
+  review's receipt names the head only while its delta stands, and when it does
+  not the note says why and that the head needs a full pair.
 
 abcd adds no approval rule or code-owner file to the forge: the forge lets a
 pull request merge with no approval, so abcd enforces this itself, and the
@@ -260,20 +263,96 @@ approval and let them run it. It takes no `--no-push`, `--no-enqueue` or
 "${CLAUDE_PLUGIN_ROOT}/abcd" land [<branch>] --record-review <return> --record-review <return> [--json]
 ```
 
-`--record-review` records that the review pair passed the branch's head and
-lands nothing: it pushes, gates and arms nothing. Give it once per reviewer's
-return, at least two. Each return must name the head's first nine characters
-(as the build loop's briefs abbreviate it) and carry one `### Verdict` heading
-whose first line begins with the verdict, as the build loop reads a return
+`--record-review` records that the review pair's returns passed the stop rule for
+the branch's head, as judged by the build of abcd that runs it, and lands nothing:
+it pushes, gates and arms nothing. Give it once per reviewer's return, at least
+two. Ask each reviewer in its brief to open its return with this line, since a
+reviewer's stock return opens with its analysis. Each return's first line must read
+exactly `Reviewed head: <name>`, naming
+the head by at least its first nine characters (as the build loop's briefs
+abbreviate it), with no other line stating a head, and it must carry one
+`### Verdict` heading and no other line opening as a Verdict, each counted fenced or
+not, whose first line begins with the verdict,
+which ends the line or is followed by the commit's name or a separator
 (`**SHIP** — nothing survived.` states `SHIP`). When every verdict passes the
 stop rule, `SHIP` or `APPROVE` (no critical or major finding), the head's review receipt is written to
 `.abcd/.work.local/review-receipts/<full sha>`, beside the preflight receipts
 and found from any worktree the same way, and `--json` carries the `commit` and
-the `receipt` path. A return that names another commit, has no verdict or more
+the `receipt` path. A return whose first line does not state this head, has no verdict or more
 than one Verdict heading, says `FIX FIRST`, `BLOCK` or `NEEDS-INPUT`, or is the
 same text as another return is refused with exit 2, naming the return, and
 nothing is written. The receipt is written only inside the checkout.
 `--record-review` takes no `--no-push` or `--no-enqueue`.
+
+## Record a delta review
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" land [<branch>] --record-review <return> --record-review <return> --rests-on <base> [--json]
+```
+
+A delta pair reviews a wording fix after a full pair. A receipt binds one head, so
+a corrected sentence would otherwise mean the whole pair again. `--rests-on` makes
+the review a delta review: the two reviewers read only what the branch's own commits changed since
+`<base>`, the head the last full pair passed, given by its full object name, and
+the new head's receipt rests on that pair. Give the reviewers the branch's own
+commits, with `git log -p --no-merges <base>..<head> --not origin/<default>`.
+
+Each return meets every rule above but the head's line, and no line of it states a
+head. Ask each reviewer in its brief to open its return with this line instead. Each
+return's first line must read exactly `Reviewed delta: <base>..<head>`, naming each
+end by at least its first nine characters, with no other line stating a delta.
+Without `--rests-on`, a return carrying that line, in this or
+any near form, is refused: it read a delta, not the head. The receipt is written to the same path, and adds
+a `delta` object holding the base, the files, lines and patch bytes counted, and
+the merges passed over; `--json` adds `rests_on`.
+
+The delta applies only when all of these hold, and otherwise it is refused with
+exit 2, nothing is written, and the head needs a full pair:
+
+- `<base>` has a full pair's receipt. A delta's receipt is not one, so a later
+  change rests on the same full pair and its reviewers read from that base again.
+- The head descends from `<base>`.
+- Every path the branch's own commits change since `<base>` is a markdown file
+  (`.md`) under one of a closed list in the build of abcd that runs land:
+  `docs/explanation/`, `docs/how-to/`, `docs/tutorials/`,
+  `.abcd/development/plans/`, `.abcd/development/roadmap/`,
+  `.abcd/work/issues/resolved/` or `.abcd/work/issues/wontfix/`. Everything else needs
+  a full pair: code and tests always; `commands/`, `agents/`, `.claude*`, workflows
+  and `.abcd/*.json`, which carry behaviour; the release record and gate; the rest of
+  `docs/`; open issues and decisions, whose bodies later steps read; and
+  the intents, specs, brief, principles, research and ADRs.
+- No part of such a path below the listed directory starts with a dot or, in any
+  case, begins as the name of a host's instruction file does (`CLAUDE`, `AGENTS`,
+  `GEMINI`, `SKILL` and their like).
+- Every line changed, added or removed, is wording alone: letters, digits, spaces
+  and a sentence's punctuation, outside any code fence on its side of the change and
+  outside a ledger record's grounds section. A line that names a record of any family
+  or a file, holds code, a tool's line marker, an invisible character, a quotation
+  block, a link or markup, or cannot be classed as wording, needs a full pair, so a
+  corrected id or path does too.
+- Every file keeps its frontmatter byte for byte: a delta neither changes, adds nor
+  removes a block, and a ledger record holds one on both sides.
+- Every file is already there: a delta adds, removes and moves no file, so a new page
+  needs a full pair.
+- Each is a regular file of mode `100644` on both sides of every change, and is
+  plain text on either side: UTF-8, with no NUL byte or other control character
+  and no line break but LF and CRLF.
+- Together they change at most 30 lines (added and removed, summed commit by
+  commit) and 3 files. Their patches, with no context lines, also stay within 64 KiB.
+
+A merge from the default branch does not count against any of this, so merging it
+up costs a delta pair at most, whatever it brought. Each merge since `<base>` must
+take a commit already on the default branch as its second parent and hold exactly
+the tree git makes of its two parents with no conflict. Any other merge is refused,
+and so is any commit neither on the default branch nor on the first-parent line
+from the head to `<base>`.
+
+The merge gate asks all of this again at landing, against the default branch as
+just fetched and in the build of abcd that runs the gate, and the note says why
+when a delta no longer stands. It reads the receipts for the head in every worktree:
+a full pair in any of them counts. It counts a
+receipt with no delta only when it holds a passing pair for the head it names.
+`--rests-on` without `--record-review` is refused with exit 2.
 
 ## Turning an act off
 

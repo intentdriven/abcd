@@ -33,14 +33,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/procgroup"
@@ -69,6 +72,8 @@ type launcher struct {
 	// asked; zero is gatePollInterval.
 	gateWaiting func(pid int) bool
 	gatePoll    time.Duration
+	// carry, when set, is all a launch carries of the parent's environment.
+	carry func(env []string) []string
 }
 
 // defaultLauncher is a harness's launcher: its clock stops while the role
@@ -83,6 +88,10 @@ type procResult struct {
 	stdout, stderr []byte
 	// overflow names the stream that passed its bound, "" when neither did.
 	overflow string
+	// exit is the process's status, -1 when it was killed or did not exit.
+	exit int
+	// silent is how long it had written nothing when it ended.
+	silent time.Duration
 }
 
 // admit resolves name on PATH and refuses a result that is not absolute or
@@ -174,7 +183,11 @@ func (l launcher) run(ctx context.Context, runner, bin string, args, seal []stri
 	// shell line.
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = dir
-	cmd.Env = sealedEnv(gitutil.ScrubbedEnv(), seal)
+	env := gitutil.ScrubbedEnv()
+	if l.carry != nil {
+		env = l.carry(env)
+	}
+	cmd.Env = sealedEnv(env, seal)
 	cmd.Stdin = nil
 	var out, errb bytes.Buffer
 	ow := &bounded{w: &out, remaining: l.maxStdout}
@@ -243,8 +256,20 @@ wait:
 		// holds; the leader is not yet reaped, so the group id is still its.
 		_ = procgroup.Kill(cmd)
 		<-done
+	} else {
+		// Nothing the harness started outlives it, however it ended.
+		procgroup.KillLeft(cmd)
 	}
-	res := procResult{stdout: out.Bytes(), stderr: errb.Bytes()}
+	res := procResult{stdout: out.Bytes(), stderr: errb.Bytes(), exit: -1,
+		silent: time.Since(latest(forked, ow.last, ew.last))}
+	var ee *exec.ExitError
+	switch {
+	case killed != "":
+	case werr == nil:
+		res.exit = 0
+	case errors.As(werr, &ee):
+		res.exit = ee.ExitCode()
+	}
 	switch {
 	case ow.overflowed:
 		res.overflow = "stdout"
@@ -261,7 +286,6 @@ wait:
 	case errors.Is(werr, exec.ErrWaitDelay):
 		return res, fail(runner, ReasonFailed, "%s exited, but a process it started left its group and held its output", name)
 	case werr != nil:
-		var ee *exec.ExitError
 		if errors.As(werr, &ee) {
 			return res, fail(runner, ReasonFailed, "%s exited with status %d", name, ee.ExitCode())
 		}
@@ -348,8 +372,96 @@ func Exec(ctx context.Context, c Command) (Output, error) {
 	return Output{Stdout: res.stdout, Stderr: res.stderr}, err
 }
 
-// sealedEnv is env with every key seal sets removed, then seal appended: one
-// entry per switch, the adapter's value.
+// stageEnvExtra are further variables a walled launch carries: only a test's
+// stand-in harness needs any.
+var stageEnvExtra []string
+
+// stageEnvNames are what a walled launch carries of the parent's environment:
+// the harness's own needs, a shell's, and a build's. Nothing else passes.
+var stageEnvNames = []string{
+	"PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "TERM", "TZ", "LANG",
+	"LC_ALL", "LC_COLLATE", "LC_CTYPE", "LC_MESSAGES", "LC_MONETARY", "LC_NUMERIC", "LC_TIME",
+	"NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR",
+	"GOROOT", "GOFLAGS", "GOPRIVATE", "GONOSUMDB", "GONOPROXY", "GOTOOLCHAIN", "GOMAXPROCS",
+}
+
+// stageProxyNames are carried with any credentials in their URLs taken out.
+var stageProxyNames = []string{"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy"}
+
+// stageEnv is what a walled launch carries of env.
+func stageEnv(env []string) []string {
+	var out []string
+	for _, kv := range env {
+		k, v, _ := strings.Cut(kv, "=")
+		switch {
+		case slices.Contains(stageProxyNames, k):
+			if clean, ok := proxyWithoutCredentials(v); ok {
+				out = append(out, k+"="+clean)
+			}
+		case k == "GOPROXY":
+			if clean, ok := proxyListWithoutCredentials(v); ok {
+				out = append(out, k+"="+clean)
+			}
+		case slices.Contains(stageEnvNames, k) || slices.Contains(stageEnvExtra, k):
+			out = append(out, kv)
+		}
+	}
+	return out
+}
+
+// proxyWithoutCredentials is a proxy value with its URL's credentials removed; ok
+// is false for a value that holds some in a shape that cannot be taken apart.
+func proxyWithoutCredentials(v string) (string, bool) {
+	if !strings.Contains(v, "@") {
+		return v, true
+	}
+	u, err := url.Parse(v)
+	if err != nil || u.User == nil {
+		return "", false
+	}
+	u.User = nil
+	return u.String(), true
+}
+
+// proxyListWithoutCredentials is a Go proxy list, whose entries a comma or a bar
+// separates, with each entry's credentials taken out.
+func proxyListWithoutCredentials(v string) (string, bool) {
+	var b strings.Builder
+	start := 0
+	for i := 0; i <= len(v); i++ {
+		if i < len(v) && v[i] != ',' && v[i] != '|' {
+			continue
+		}
+		clean, ok := proxyWithoutCredentials(v[start:i])
+		if !ok {
+			return "", false
+		}
+		b.WriteString(clean)
+		if i < len(v) {
+			b.WriteByte(v[i])
+		}
+		start = i + 1
+	}
+	return b.String(), true
+}
+
+// stageShellNames are what the harness and the shell itself add to a stage's
+// shell, beside what it carries.
+var stageShellNames = []string{"PWD", "OLDPWD", "SHLVL", "_", "CLAUDECODE", "GIT_EDITOR", "COREPACK_ENABLE_AUTO_PIN",
+	"__CF_USER_TEXT_ENCODING", "GOCACHE", "GOMODCACHE", "GOPATH", "GOBIN", "GOPROXY", abcdhome.PersonHomeEnv}
+
+// stageShellAllowed reports whether a stage's shell may hold the variable name.
+func stageShellAllowed(name string) bool {
+	if slices.Contains(credentialVars, name) {
+		return false
+	}
+	return slices.Contains(stageEnvNames, name) || slices.Contains(stageProxyNames, name) || slices.Contains(stageShellNames, name) ||
+		strings.HasPrefix(name, "CLAUDE_") || strings.HasPrefix(name, "ABCD_STAGE_")
+}
+
+// sealedEnv is env with every key seal names removed, then each of seal's
+// KEY=value entries appended: one entry per switch, the adapter's value. A
+// bare name in seal takes the variable out and sets nothing.
 func sealedEnv(env, seal []string) []string {
 	if len(seal) == 0 {
 		return env
@@ -365,7 +477,12 @@ func sealedEnv(env, seal []string) []string {
 			out = append(out, kv)
 		}
 	}
-	return append(out, seal...)
+	for _, kv := range seal {
+		if strings.Contains(kv, "=") {
+			out = append(out, kv)
+		}
+	}
+	return out
 }
 
 func (l launcher) bound(stream string) int {
@@ -381,9 +498,23 @@ type bounded struct {
 	w          *bytes.Buffer
 	remaining  int
 	overflowed bool
+	// last is when anything was last written, the zero time for nothing yet.
+	last time.Time
+}
+
+// latest is the latest of times.
+func latest(times ...time.Time) time.Time {
+	var at time.Time
+	for _, t := range times {
+		if t.After(at) {
+			at = t
+		}
+	}
+	return at
 }
 
 func (b *bounded) Write(p []byte) (int, error) {
+	b.last = time.Now()
 	n := len(p)
 	k := n
 	if k > b.remaining {

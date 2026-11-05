@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/testreuse"
 )
 
@@ -29,5 +30,17 @@ func TestARecipeThatIsNotAGoTestIsRefused(t *testing.T) {
 		if !strings.Contains(errb.String(), "check-tests") && !strings.Contains(errb.String(), "flag") {
 			t.Errorf("%q says nothing useful: %s", args, errb.String())
 		}
+	}
+}
+
+// TestTheCheckDirectoryIsThePersonsUnderAStagesHome: a drive's preflight keeps the
+// check directory its results are reused from, which a stage's home would lose.
+func TestTheCheckDirectoryIsThePersonsUnderAStagesHome(t *testing.T) {
+	stage, person := t.TempDir(), t.TempDir()
+	t.Setenv("HOME", stage)
+	t.Setenv(abcdhome.StageHomeEnv, stage)
+	t.Setenv(abcdhome.PersonHomeEnv, person)
+	if got := checkHome(); got != person {
+		t.Fatalf("the check directory is kept under %q, want %q", got, person)
 	}
 }

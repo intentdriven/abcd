@@ -98,8 +98,7 @@ func withShellDomain(rs RuleSet) RuleSet {
 // on every load. Failing the whole rule set instead would take PII, COMMITTING
 // and every other domain down with one broken guard file; skipping it silently
 // would leave a repository believing its own hazard is taught.
-func withRepoShellDomain(rs RuleSet, repoRoot string) RuleSet {
-	ld := guard.LoadRepo(repoRoot)
+func withRepoShellDomain(rs RuleSet, ld guard.Loaded) RuleSet {
 	if ld.Err != nil {
 		rs.notes = append(rs.notes, fmt.Sprintf(
 			"rules: %s: the repository's own guard entries are refused and not taught (%v); %s teaches the registry the guard enforces in their place",

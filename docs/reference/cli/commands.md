@@ -503,6 +503,7 @@ code does not change. In the managed mode nothing prints. abcd reads one setting
 reporting no such setting included. This reads one setting and proves no wall, and the setting's value
 changes nothing the session holds. No abcd command starts a session on a profile yet. A profile is a
 separate login and settings on one operating-system account, and a stage's shell reads what the account can.
+abcd drain --drive is the unattended start: it runs agents of its own on a separate login, with named tools, checked at its start.
 
 The runner configuration is read before the run is created: roles.<role>.runner (host,
 the default, or a runner) and the runners this machine enables under runner.<name> in
@@ -1442,7 +1443,7 @@ abcd docs fidelity record --verdict-json verdict.json
 
 Fix the issues needing no decision, one lane at a time, and hand the rest back: Writes its state and user-visible drafts; refuses without the rule's record.
 
-**Usage:** `abcd drain [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]`
+**Usage:** `abcd drain [--drive [--yes] [--until <date>]] [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]`
 
 Work the open issue ledger unattended: fix the issues that need no decision, and
 hand the rest back by kind. Which issues need no decision is this repository's own
@@ -1492,6 +1493,40 @@ last fetched, and says how old that view is, how many commits the checkout is
 behind it, and which issues open in the checkout it has already finished. The host
 judgement over each eligible remedy does not run; it can only ever hand an issue
 back.
+
+--drive makes the moves itself, from a plain terminal with no host session: it refuses
+before anything is reserved when the claude runner is not enabled or admitted, when
+there is no one profile directory under ~/.abcd.noindex/profiles/ logged in, when a
+wall does not hold or no git identity resolves, when a credential variable the harness would bill through is set
+(a drive runs on this account's subscription alone, for now), when the judge is routed
+to opencode, when a role is pinned to the host, and when it is started from inside an
+agent's own session. It shows the cap (eight unless --max says otherwise), an estimate
+of the agent runs, the runner and the route, and asks once; --yes is the scripted
+answer, and with no terminal nothing else answers. A profile is a separate login and
+settings on this one account, not a boundary: a stage's shell reads what this account
+can. It then judges each eligible issue,
+drives each lane to its landing, every role on that separate login, and runs each
+landing's preflight behind the load gate, printing one line per step and logging them
+under .abcd/.work.local/logs/. A lane that changes the Makefile, scripts/ or the active
+hooks is handed back at its landing, and an issue that names one is passed over: that
+change needs a person's own session. The driver's commit, merge and reset hooks, and any
+filter run inside those commands, get the stage's variables, while its network commands,
+its other filters and its forge calls keep the person's environment. It ends at the cap,
+when nothing is eligible, or on a stop. With no --until, eight hours of runner failures
+or of nothing moving, a rate limit that outlasts eight hours, and origin unreadable
+through its schedule end it too. --until <date>, a date (the end of that day here) or an
+RFC 3339 instant, replaces those with one bound the yes names: the run waits through
+limits, outages and stuck queues at a capped interval, says what it waits on, keeps
+renewing what it holds, and at that time ends with the lane on its branch, an agent in a
+call finishing that call first. The bound is a time, not a limit on what the run spends.
+The first limit a run meets leaves its evidence under the same logs. One drive
+holds a checkout at a time; a second exits 3. A drive that is stopped, stops short or
+holds an issue back exits 3, and one a failed check stopped exits 2. The first interrupt, hang-up or termination is a
+stop: the agent in a call finishes that call, the lane's reservation is released, the
+lane stays on its branch, and the last lines name the run, the lane and the command
+that resumes it. A second kills the running agent's process group and exits at once
+(exit 130), naming when the reservation lapses. Without --drive a drain is one move,
+as below.
 
 --take-over moves your own live reservation of an issue from another copy to this one
 as the move reaches it, as `abcd build --take-over` does: a hosted session that
@@ -1631,6 +1666,7 @@ change. In the managed mode and on --dry-run nothing prints. abcd reads one sett
 reporting no such setting included. This reads one setting and proves no wall, and the setting's value
 changes nothing the session holds. No abcd command starts a session on a profile yet. A profile is a
 separate login and settings on one operating-system account, and a stage's shell reads what the account can.
+abcd drain --drive is the unattended start: it runs agents of its own on a separate login, with named tools, checked at its start.
 
 Without the repository's record, the dry run and the run both refuse (exit 2),
 naming how to add it; `abcd ahoy install` offers it. A run that opens nothing or
@@ -1640,6 +1676,7 @@ drain or run holds the state lock.
 **Flags:**
 
 ```
+      --drive                make every move from this terminal, starting each agent on a separate login, until the cap, an empty ledger or a stop
       --dry-run              show every open issue's disposition and the order a drain takes them; writes nothing
       --fix-rounds string    the fix rounds a lane may take before it is handed back; wins over every configured layer
       --judgement string     the host's answer to the judgement the drain awaits, at the path its request names
@@ -1650,12 +1687,16 @@ drain or run holds the state lock.
       --sub-agents string    the ceiling on lanes and validators alive at once; wins over every configured layer
       --take-over            move your own live reservation of each issue this move reaches from another copy to this one; never another person's
       --unskip stringArray   take an issue or path off the drain's skip list
+      --until string         with --drive: end the run at this time, a date or an RFC 3339 instant, and wait through limits, outages and stuck queues until then; the default is eight hours on each wait
+      --yes                  with --drive: the scripted yes to its one question
 ```
 
 **Example:**
 
 ```
-abcd drain --dry-run
+abcd drain --drive
+  abcd drain --drive --yes --max 3
+  abcd drain --dry-run
   abcd drain --dry-run --json
   abcd drain --max 3
   abcd drain --json
@@ -2052,8 +2093,8 @@ nobody is there to approve it.
 
 The file tools the role is granted (--allowedTools on the launch) write
 without asking the approver, and the abcd binary that answers is not among
-the paths it protects; the OS sandbox for launched agents
-(spc-2610161751056096) is what bounds those writes.
+the paths it protects. The OS sandbox for launched agents
+(spc-2610161751056096) that would bound those writes is planned, not in force.
 
 The guard is a mistake filter, not a security boundary (see `abcd guard
 check --help` for what an allow does not see), and this adds no sandbox.
@@ -2063,9 +2104,12 @@ start it. It exits 0 when its input ends.
 **Flags:**
 
 ```
-      --base string           the commit the run started on, by its full object name
-      --dir string            the working tree the agent runs in, as an absolute path
-      --run-dir stringArray   a directory the run keeps its own files in (its brief, its receipt), as an absolute path; repeatable
+      --base string            the commit the run started on, by its full object name
+      --declared stringArray   on a drive's stage, a path its work declares it changes, relative to --dir; repeatable
+      --dir string             the working tree the agent runs in, as an absolute path
+      --protect stringArray    on a drive's stage, a directory it may not write, as an absolute path; repeatable
+      --run-dir stringArray    a directory the run keeps its own files in (its brief, its receipt), as an absolute path; repeatable
+      --stage-home string      on a drive's stage, the home its shell runs under, as an absolute path
 ```
 
 **Example:**
@@ -2667,6 +2711,7 @@ the exit code does not change. abcd reads one setting in the session's environme
 reporting no such setting included. This reads one setting and proves no wall, and the setting's value
 changes nothing the session holds. No abcd command starts a session on a profile yet. A profile is a
 separate login and settings on one operating-system account, and a stage's shell reads what the account can.
+abcd drain --drive is the unattended start: it runs agents of its own on a separate login, with named tools, checked at its start.
 
 **Flags:**
 
@@ -3449,7 +3494,8 @@ the hand-back and each held lane. --release <lane-id> lands a held lane as it is
 --discard <lane-id> removes its worktree and branch, then closes its pull request, and
 leaves its step unlanded. Either is refused, changing nothing,
 for a lane that is not held or while any lane still has work. --discard also takes
-an issue run's lane a drain handed back as stuck or closed, and ends that run.
+an issue run's lane a drain handed back as stuck or closed, and ends that run, and
+any lane of a run a drive stopped on because its state changed or could not be read.
 --restart <lane-id> restarts a lane whose implementer died, or yielded on a network
 failure (--yielded passes its `NETWORK: <cmd>` line), as a fresh agent from the lane's
 last commit: everything left uncommitted is saved aside under the lane's directory
@@ -4243,7 +4289,7 @@ Push a branch whose preflight passed and queue its pull request: Writes a push t
 **Usage:** `abcd land [<branch>] [flags]`
 
 abcd land [<branch>] [--no-push] [--no-enqueue]
-abcd land [<branch>] --record-review <return> --record-review <return> [...]
+abcd land [<branch>] --record-review <return> --record-review <return> [...] [--rests-on <base>]
 abcd land [<branch>] --approve
 
 Land a branch whose work is committed: the checkout's current branch, or the one
@@ -4347,12 +4393,34 @@ landing: it names the release, its holder and until when.
 
 --record-review records the review pair's verdicts for the branch's head and
 lands nothing: given once per reviewer's return (at least two, no two the
-same), each naming the head's first nine characters under one ### Verdict
-heading, it writes the head's review receipt in
+same), each with a first line reading Reviewed head: <name>, naming the head by at
+least its first nine characters, and one ### Verdict heading and no other line opening as a Verdict, fenced or not, it writes the head's
+review receipt in
 .abcd/.work.local/review-receipts/ when every verdict passes the stop rule
 (SHIP or APPROVE: no critical or major finding). A return that does not pass is
 refused naming it, exit 2, and nothing is written. It takes no --no-push or
 --no-enqueue.
+
+--rests-on <base> makes that a delta review, of a wording fix after a full pair: the
+head's receipt rests on the full pair recorded for <base>, a
+full object name, and each return's first line reads exactly Reviewed delta:
+<base>..<head> in place of the head's, with no line stating a head. It is refused, and the head needs a full pair, unless the base
+has a full pair (a delta's receipt is not one), the head descends from it, and the
+branch's own commits since it change only plain text markdown files of mode 100644
+under docs/explanation/, docs/how-to/, docs/tutorials/, .abcd/development/plans/,
+.abcd/development/roadmap/, .abcd/work/issues/resolved/ or .abcd/work/issues/wontfix/,
+at most 30
+lines, 3 files and 64 KiB of patch. Every changed line is wording alone: letters,
+digits and a sentence's punctuation, naming no record and no file, holding no code
+or tool's marker and no invisible character, outside any code fence and any ledger
+record's grounds. No part of such a path may start with a dot or begin as an instruction file's
+name does, every file keeps its frontmatter byte for byte, and no file is added,
+removed or moved. Any other path needs a full pair, as code, open issues, decisions,
+intents, specs, the brief and the ADRs always do, and so does a corrected id. A merge
+of a default-branch commit counts for nothing when it is exactly
+the merge git makes of its parents with no conflict; any other merge is
+refused. The merge gate asks all of this again at landing. Without --rests-on, a
+return carrying a Reviewed delta line is refused.
 
 --approve records the technical facilitator's approval of the branch's head and
 lands nothing: it writes .abcd/.work.local/approvals/<head>, which the merge
@@ -4367,6 +4435,7 @@ author's approval of their own): the shell guard refuses it to an agent.
       --no-enqueue                  do not arm or queue the pull request this run
       --no-push                     do not push the branch this run; print the push command instead
       --record-review stringArray   record the review pair's verdicts for the branch's head from this reviewer's return (give it once per return, at least two); lands nothing
+      --rests-on string             make --record-review a delta review resting on the full pair recorded for this commit, given by its full object name; each return also states Reviewed delta: <base>..<head>
 ```
 
 ### `abcd launch`
@@ -4969,6 +5038,7 @@ the exit code is the same either way: it warns and never refuses. abcd reads one
 reporting no such setting included. This reads one setting and proves no wall, and the setting's value
 changes nothing the session holds. No abcd command starts a session on a profile yet. A profile is a
 separate login and settings on one operating-system account, and a stage's shell reads what the account can.
+abcd drain --drive is the unattended start: it runs agents of its own on a separate login, with named tools, checked at its start.
 
 The record lives in ~/.abcd.noindex/away/<root-sha>/record.json, keyed on the repository's
 root commit, and is changed under its lock, which only `abcd mode back` goes

@@ -40,6 +40,10 @@ type approveFacts struct {
 	// launched working tree and the run's own directories, which stay
 	// writable inside it.
 	userLayer, own []string
+	// stage says the line is a walled stage's, and declared the paths its work
+	// declares it changes (Files.WithStage).
+	stage    bool
+	declared []string
 	// tree is the launched working tree, each spelling.
 	tree []string
 	// removable is where a removal may reach: the launched working tree, the
@@ -152,6 +156,17 @@ func factsFor(f *Files) approveFacts {
 	}
 	for _, d := range f.runDirs {
 		facts.own = append(facts.own, both(d)...)
+	}
+	if f.stageHome != "" {
+		facts.stage, facts.declared = true, f.stageDeclared
+		facts.own = append(facts.own, both(f.stageHome)...)
+		facts.trees = append(facts.trees, both(f.stageHome)...)
+		for _, p := range f.stageProtect {
+			add(p)
+		}
+		for _, rel := range append(append([]string(nil), homeStartupFiles...), ".gitconfig", ".config/git") {
+			add(filepath.Join(f.stageHome, filepath.FromSlash(rel)))
+		}
 	}
 	facts.removable = append(facts.removable, facts.own...)
 	for _, d := range approveTempDirs() {
@@ -500,6 +515,16 @@ func (f approveFacts) protects(u pathUse) (string, bool) {
 		}
 		if name, ok := f.protectedName(c); ok {
 			return name, true
+		}
+		if f.stage {
+			if !f.within(c, f.removable) && !strings.HasPrefix(c, "/dev/") {
+				return c, true
+			}
+			for _, t := range f.tree {
+				if name := stageGateFile(t, c, f.declared, f.fold); name != "" {
+					return name, true
+				}
+			}
 		}
 	}
 	return "", false

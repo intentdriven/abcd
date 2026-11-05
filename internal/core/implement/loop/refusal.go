@@ -58,6 +58,9 @@ type Refusal struct {
 	// modeUnread marks a merge gate whose facilitator.mode could not be read: for
 	// an armed lane's watch that is a wait, the arming left as it is.
 	modeUnread bool
+	// gateUnread marks a merge gate that could not read what it asks at the
+	// arming: a wait by design, asked again on a later turn (stuck.go).
+	gateUnread bool
 	// originUnread marks a land fence that could not read the reservation
 	// from origin: a wait by design, never logged on a drain's lane
 	// (stuck.go).

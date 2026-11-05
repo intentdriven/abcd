@@ -33,6 +33,12 @@ import (
 
 // Options are the seams tests set; the zero value is production.
 type Options struct {
+	// ReceiptOwn, on a drive, says whether a preflight receipt for a head is one
+	// the driver's own preflight minted; nil takes any.
+	ReceiptOwn func(sha string) bool
+	// RunStateWatch has a walled launch compare what the driver wrote with what
+	// stands after the launch.
+	RunStateWatch bool
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
 	// stopHome is the home a stop is read from; "" is the account's own
@@ -57,6 +63,17 @@ type Options struct {
 	// NetworkProbe proves the network back for the shared outage probe a
 	// step runs when it is due; nil is implement.RemoteProbe at the checkout.
 	NetworkProbe func() (bool, string)
+	// OutageSession is the session the shared outage is recorded and probed for
+	// when no other is known, and it keeps probing past the schedule's give-up: a
+	// terminal drive's under a bound, which has a bound of its own. Unlike Session
+	// it claims nothing in the shared run.
+	OutageSession string
+	// RunnerFailed is told of each launch that failed, with what it showed; nil
+	// tells no one. A terminal run reads a limit and keeps its evidence from it.
+	RunnerFailed func(role string, fl *runner.Failure)
+	// RunnerStarting is told of each agent about to start, by role; nil tells no
+	// one. A terminal run says so on its screen and in its log.
+	RunnerStarting func(role string)
 	// Runners is the runner configuration read before a run is created
 	// (LoadRunners). A new run's budget check (budget.go) asks each runner a
 	// role of the run is routed to for its remaining quota; nil leaves every
@@ -139,6 +156,31 @@ func (o Options) roots(repoRoot string) layered.Roots {
 	return r
 }
 
+// startingLaunch tells RunnerStarting of an agent about to start.
+func (o Options) startingLaunch(role string) {
+	if o.RunnerStarting != nil {
+		o.RunnerStarting(role)
+	}
+}
+
+// failedLaunch tells RunnerFailed of what a dispatch ended on, an error or a
+// failure it fell back from.
+func (o Options) failedLaunch(role string, err error, fl *runner.Failure) {
+	if o.RunnerFailed == nil {
+		return
+	}
+	if err != nil {
+		var f *runner.Failure
+		if !errors.As(err, &f) {
+			return
+		}
+		fl = f
+	}
+	if fl != nil {
+		o.RunnerFailed(role, fl)
+	}
+}
+
 func (o Options) now() time.Time {
 	if o.Now != nil {
 		return o.Now().UTC().Truncate(time.Second)
@@ -149,7 +191,9 @@ func (o Options) now() time.Time {
 // Context is what a stage's body is handed: where the checkout and the run
 // live, the run as it stood before the stage, and the clock.
 type Context struct {
-	RepoRoot string
+	// receiptOwn, on a drive, says whether a receipt is one its own preflight minted.
+	receiptOwn func(sha string) bool
+	RepoRoot   string
 	// RunDir is the run's directory, relative to RepoRoot.
 	RunDir string
 	State  State
@@ -191,10 +235,11 @@ type Outcome struct {
 	// Goto sends the lane back to an earlier stage (the landing's sync sends
 	// it to a fresh round); set only with no Await, HandBack or Stay.
 	Goto Stage
-	// LandLeft is set by a landing body that sends the lane back (the sync)
+	// LandLeft is set by a landing body that sends the lane back: the sync,
 	// once it has reserved an issue's whole found_at again, before it changed
 	// anything locally (reserveOnLeavingLand), so the move does not judge
-	// the reservation a second time; Reservation is the run record's line for
+	// the reservation a second time; and a records round, which takes no fix
+	// round and so needs no wider reservation. Reservation is the run record's line for
 	// a widening it made, "" when the reservation already covered the found_at.
 	LandLeft    bool
 	Reservation string
@@ -342,8 +387,11 @@ type StartResult struct {
 
 // StepResult is what advance and Receipt return.
 type StepResult struct {
-	RunID string `json:"run_id"`
-	Lane  string `json:"lane,omitempty"`
+	// stepNote is what a step of a stage that takes several invocations did, the
+	// landing's among them: it moved the lane with no stage finished.
+	stepNote string
+	RunID    string `json:"run_id"`
+	Lane     string `json:"lane,omitempty"`
 	// PerformedStage is the stage this call completed; empty when it completed none
 	// (the lane awaits a receipt, or the run is complete).
 	PerformedStage Stage `json:"performed_stage,omitempty"`
@@ -932,7 +980,12 @@ func advance(repoRoot, runID string, steps Stages, o Options) (StepResult, error
 // advanceWith is advance; routed reports whether a role is started through a
 // runner (Drive), which a network outage holds as well as a model one.
 func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(role string) bool, overrides map[string]string) (StepResult, error) {
-	// A stop comes first: the run takes it and the call moves nothing, and what
+	// A run a drive stopped on goes nowhere, and is not settled either: what it now
+	// says is not known to be the driver's (drive_stop.go).
+	if err := driveStopRefusal(runID); err != nil {
+		return StepResult{}, err
+	}
+	// A stop comes next: the run takes it and the call moves nothing, and what
 	// it does in git it does only past the run tripwire (stop.go). A stop file the
 	// read refused is no stop, and the answer names it.
 	stopNote, err := stopCheck(repoRoot, runID, steps, o)
@@ -1026,7 +1079,7 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 		if noteStopped(st, stopped, now) {
 			renewed = true
 		}
-		r, moved, err := move(repoRoot, st, steps, now, g, newRoundRouter(o), o.PlanGuard)
+		r, moved, err := move(repoRoot, st, steps.takingReceipts(o.ReceiptOwn), now, g, newRoundRouter(o), o.PlanGuard)
 		if err != nil {
 			if rf, ok := AsRefusal(err); ok && renewNote != "" {
 				rf.Remedy += "; " + renewNote
@@ -1179,6 +1232,9 @@ func Receipt(repoRoot, runID, receiptPath string, steps Stages, o Options) (Step
 // hand-back after the step could not verify it records the route; the host's
 // own receipt carries none.
 func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *runner.RouteRecord) (StepResult, error) {
+	if err := driveStopRefusal(runID); err != nil {
+		return StepResult{}, err
+	}
 	return handIn(repoRoot, runID, receipt, steps, o, route, false)
 }
 
@@ -1620,4 +1676,23 @@ func StatusPeers(repoRoot string) (statusblock.HeldBy, error) {
 		}
 		return ""
 	}, nil
+}
+
+// takingReceipts is s with its landing told which preflight receipts it takes; s
+// as it is for nil, which takes any.
+func (s Stages) takingReceipts(own func(sha string) bool) Stages {
+	if own == nil {
+		return s
+	}
+	out := slices.Clone(s)
+	for i := range out {
+		if out[i].Name == StageLand {
+			run := out[i].Run
+			out[i].Run = func(c Context, l *Lane) (Outcome, error) {
+				c.receiptOwn = own
+				return run(c, l)
+			}
+		}
+	}
+	return out
 }

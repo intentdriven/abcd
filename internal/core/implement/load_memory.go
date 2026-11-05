@@ -155,7 +155,7 @@ func memoryFloorAt(home, repo string) (MemoryFloor, string, error) {
 	}
 	note := func() string { return strings.Join(notes, "; ") }
 	if home == "" {
-		h, err := os.UserHomeDir()
+		h, err := abcdhome.MachineHome()
 		if err != nil || h == "" {
 			return floor, note(), nil
 		}

@@ -57,7 +57,7 @@ type awayView struct {
 // safely is named on stderr and adds nothing; with no root commit (outside a
 // checkout, or git not answering in time) it adds nothing silently.
 func readPromptAway(stderr io.Writer, drained rootLookup, root string) awayView {
-	if !autonomy.Managed(root) || !drained.asked || drained.err != nil || drained.sha == "" {
+	if stageActive() || !autonomy.Managed(root) || !drained.asked || drained.err != nil || drained.sha == "" {
 		return awayView{}
 	}
 	home, err := os.UserHomeDir()
@@ -134,6 +134,9 @@ func managedRoot(cwd string) (string, bool) {
 // `.abcd/` at its root), and the note only the first time for a session, so a
 // compaction or resume run from a worktree the session made keeps the start.
 func sessionStartAway(stderr io.Writer, in hookInput, cwd string) string {
+	if stageActive() {
+		return ""
+	}
 	root, ok := managedRoot(cwd)
 	if !ok {
 		return ""

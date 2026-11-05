@@ -141,6 +141,41 @@ func handBack(t *testing.T, repo *gittest.Repo, runID string, stages Stages, rol
 	return got
 }
 
+// statingHead is a reviewer's return as a reviewer's brief asks for it: opening with
+// the round's head, unless the test's own return says otherwise.
+func statingHead(t *testing.T, root, runID, body string) string {
+	t.Helper()
+	return statingHeadAt(t, root, runID, "", body)
+}
+
+// statingHeadAt is statingHead for the round whose reviewer writes at rel, the current
+// lane's latest round when rel is "" or names none.
+func statingHeadAt(t *testing.T, root, runID, rel, body string) string {
+	t.Helper()
+	if strings.HasPrefix(body, "Reviewed ") {
+		return body
+	}
+	st, err := ReadState(root, runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range st.Lanes {
+		for _, r := range l.Validation {
+			for _, v := range r.Validators {
+				if rel != "" && v.Return == rel {
+					return "Reviewed head: " + r.HeadSHA + "\n\n" + body
+				}
+			}
+		}
+	}
+	i := st.current()
+	if i < 0 || len(st.Lanes[i].Validation) == 0 {
+		return body
+	}
+	v := st.Lanes[i].Validation
+	return "Reviewed head: " + v[len(v)-1].HeadSHA + "\n\n" + body
+}
+
 // handBackOne takes the validate stage's next hand-out, checks it names role,
 // and hands back body as that agent's return. It returns the receipt's result.
 func handBackOne(t *testing.T, repo *gittest.Repo, runID string, stages Stages, role, body string) StepResult {
@@ -153,6 +188,9 @@ func handBackOne(t *testing.T, repo *gittest.Repo, runID string, stages Stages, 
 		t.Fatalf("the validate stage hands the lane to a fresh %s: %+v", role, res)
 	}
 	path := filepath.Join(repo.Root(), filepath.FromSlash(res.Awaiting.Receipt))
+	if role != RoleAuditor {
+		body = statingHead(t, repo.Root(), runID, body)
+	}
 	if role == RoleAuditor {
 		body = auditorVerdict(t, filepath.Join(filepath.Dir(path), AuditRequestFileName), body)
 	}
@@ -212,7 +250,7 @@ func TestTheValidatorsAreFreshAgentsAndOnlyTheLoopRecordsAVerdict(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"fresh", "did not implement", l.BaseSHA + ".." + l.HeadSHA, l.Branch, "### Verdict", "SHIP", "FIX FIRST",
+	for _, want := range []string{"fresh", "did not implement", l.BaseSHA + ".." + l.HeadSHA, l.Branch, "### Verdict", "first line reads exactly `Reviewed head: " + l.HeadSHA + "`", "A return has one `### Verdict` section and no other line opening with the word Verdict.", "SHIP", "FIX FIRST",
 		filepath.Join(repo.Root(), filepath.FromSlash(res.Awaiting.Receipt))} {
 		if !strings.Contains(string(brief), want) {
 			t.Fatalf("the reviewer's brief names %q:\n%s", want, brief)
@@ -220,7 +258,7 @@ func TestTheValidatorsAreFreshAgentsAndOnlyTheLoopRecordsAVerdict(t *testing.T) 
 	}
 	// The ruthless reviewer is out; its return is handed back before the next
 	// step, which would otherwise hand the security reviewer out beside it.
-	if err := os.WriteFile(filepath.Join(repo.Root(), filepath.FromSlash(res.Awaiting.Receipt)), []byte(reviewerReturn("SHIP")), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(repo.Root(), filepath.FromSlash(res.Awaiting.Receipt)), []byte(statingHead(t, repo.Root(), id, reviewerReturn("SHIP"))), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	got, err := Receipt(repo.Root(), id, filepath.Join(repo.Root(), filepath.FromSlash(res.Awaiting.Receipt)), stages, Options{})
@@ -442,6 +480,55 @@ func TestAReportCarryingAVerdictIsRefusedAtTheAdvance(t *testing.T) {
 	}
 }
 
+// A verdict word ends its line or is followed by a commit's name or a separator, so
+// a word that opens another statement is no verdict.
+func TestAVerdictWordEndsItsLineOrMeetsASeparator(t *testing.T) {
+	words := reviewerVerdicts[RoleSecurity]
+	for _, line := range []string{"APPROVE", "**APPROVE**", "- **APPROVE**", "`APPROVE`", "APPROVE \u2014 nothing survived.", "**APPROVE** \u2014 nothing survived.", "APPROVE: nothing survived.", "APPROVE. Nothing survived.", "APPROVE (nothing survived)", "APPROVE - nothing", "APPROVE 9f0c4e7bb \u2014 one file"} {
+		if w, ok := leadingVerdict(line, words); !ok || w.word != "APPROVE" {
+			t.Errorf("leadingVerdict(%q) = %+v, %v; want APPROVE", line, w, ok)
+		}
+	}
+	for _, line := range []string{"APPROVE BLOCKER", "APPROVE/BLOCK", "APPROVE? No", "APPROVE-BLOCKED", "**APPROVE** but block", "APPROVED", "APPROVE:BLOCK"} {
+		if w, ok := leadingVerdict(line, words); ok {
+			t.Errorf("leadingVerdict(%q) = %+v; want no verdict", line, w)
+		}
+	}
+}
+
+// Every line shaped as a verdict counts, and only the exact heading is read, so a
+// return with a second such line, or with no exact heading, states no verdict.
+func TestEveryVerdictShapedLineCounts(t *testing.T) {
+	words := reviewerVerdicts[RoleSecurity]
+	for name, text := range map[string]string{
+		"a fenced pass above a heading with its verdict": "```\n### Verdict\nAPPROVE\n```\n\n### Verdict: BLOCK\n",
+		"a fenced pass above a bold verdict":             "```\n### Verdict\nAPPROVE\n```\n\n**Verdict:** BLOCK\n",
+		"a heading then a bold verdict in capitals":      "### Verdict\n\nAPPROVE\n\n  **VERDICT** BLOCK\n",
+		"a plain verdict":                                "### Verdict\n\nAPPROVE\n\nVerdict: BLOCK\n",
+		"a bulleted bold verdict":                        "### Verdict\n\nAPPROVE\n\n- **Verdict:** BLOCK\n",
+		"a quoted bold verdict":                          "### Verdict\n\nAPPROVE\n\n> **Verdict:** BLOCK\n",
+		"an underscored verdict":                         "### Verdict\n\nAPPROVE\n\n__Verdict:__ BLOCK\n",
+		"only a heading with its verdict":                "### Verdict: APPROVE\n",
+		"only a bold verdict":                            "**Verdict:** APPROVE\n",
+	} {
+		if w, err := parseVerdict(text, words); err == nil {
+			t.Errorf("%s: parseVerdict = %+v; want a refusal", name, w)
+		}
+	}
+	if w, err := parseVerdict("### Analysis\n\nThe verdict is plain, and **a verdict** in a sentence is none.\n\n### Verdict\n\nAPPROVE\n", words); err != nil || w.word != "APPROVE" {
+		t.Errorf("a return with one heading: %+v, %v", w, err)
+	}
+}
+
+// A report states no verdict at all, so its check reads more widely than a return's.
+func TestAReportsVerdictReadsWiderThanAReturns(t *testing.T) {
+	for _, text := range []string{"### Verdict\n\nSHIP BLOCKER\n", "### Verdict\n\nAPPROVE/BLOCK\n"} {
+		if _, ok := reportVerdict(text); !ok {
+			t.Errorf("reportVerdict(%q) found none", text)
+		}
+	}
+}
+
 // TestAReturnTheLoopCannotReadAVerdictFromIsRefused: a return with no verdict,
 // two, a word outside its role's vocabulary, or an audit verdict echoing a hash
 // the request did not issue is refused at the receipt, and the lane still
@@ -452,6 +539,8 @@ func TestAReturnTheLoopCannotReadAVerdictFromIsRefused(t *testing.T) {
 		"two verdicts":       {RoleRuthless, reviewerReturn("SHIP") + "\n### Verdict\n\n- **FIX FIRST**\n", "Verdict"},
 		"another role's":     {RoleRuthless, reviewerReturn("APPROVE"), "SHIP"},
 		"no word":            {RoleSecurity, "### Verdict\n\nLGTM\n", "APPROVE"},
+		"more words":         {RoleRuthless, reviewerReturn("SHIP BLOCKER"), "SHIP"},
+		"a slash":            {RoleSecurity, "### Verdict\n\nAPPROVE/BLOCK\n", "APPROVE"},
 		"a foreign hash":     {RoleAuditor, "", "prompt_hash"},
 		"not a verdict JSON": {RoleAuditor, "{}", "verdict"},
 	}
@@ -543,6 +632,24 @@ func downgraded(t *testing.T, data []byte, v int) []byte {
 	unreviewOlder(m)
 	if p, ok := m["pace"].(map[string]any); ok && v <= schemaVersionUncapped {
 		delete(p, "fix_rounds")
+	}
+	if v <= schemaVersionUnshown {
+		for _, l := range m["lanes"].([]any) {
+			lm, ok := l.(map[string]any)
+			if !ok {
+				continue
+			}
+			if rounds, ok := lm["validation"].([]any); ok {
+				for _, r := range rounds {
+					if rm, ok := r.(map[string]any); ok {
+						delete(rm, "resolves_shown")
+					}
+				}
+			}
+			if ld, ok := lm["landing"].(map[string]any); ok {
+				delete(ld, "gate_unread_since")
+			}
+		}
 	}
 	if v <= schemaVersionUnlanded {
 		delete(m, "transcripts")
