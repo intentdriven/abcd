@@ -2,6 +2,7 @@ package landing
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -44,6 +45,9 @@ func numberedLines(n int) string {
 func newDeltaWorld(t *testing.T) *deltaWorld {
 	t.Helper()
 	repo := gittest.NewRepo(t)
+	// No identity comes from the host: a host that can guess one must not hide a
+	// git command here that has none, as a host that cannot guess one refuses it.
+	repo.Git("config", "user.useConfigOnly", "true")
 	repo.Write(".gitignore", ".abcd/.work.local/\n")
 	repo.Write("docs/how-to/a.md", numberedLines(60))
 	repo.Write("docs/how-to/run.md", "#!/bin/sh\n")
@@ -138,12 +142,19 @@ func (w *deltaWorld) fixLines(first, n int) {
 }
 
 // merge starts a merge that may stop for a conflict, git's verdict being the
-// test's to read.
+// test's to read: exit 1 is returned, and any other failure, git refusing to run the
+// merge at all, fails the test with git's own words.
 func (w *deltaWorld) merge(args ...string) error {
 	w.t.Helper()
-	cmd := exec.Command("git", append([]string{"-C", w.repo.Root(), "merge", "-q"}, args...)...)
+	full := append([]string{"-C", w.repo.Root(), "-c", "user.email=fixture@example.invalid", "-c", "user.name=Fixture", "-c", "commit.gpgsign=false", "merge", "-q"}, args...)
+	cmd := exec.Command("git", full...)
 	cmd.Env = w.repo.Env()
-	return cmd.Run()
+	out, err := cmd.CombinedOutput()
+	var exit *exec.ExitError
+	if err != nil && (!errors.As(err, &exit) || exit.ExitCode() != 1) {
+		w.t.Fatalf("git merge %v: %v\n%s", args, err, out)
+	}
+	return err
 }
 
 func (w *deltaWorld) record() error {
