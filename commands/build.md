@@ -789,9 +789,12 @@ A lane's stages run in order:
    reading `facilitator.mode` from the default branch's committed
    `.abcd/config.json` and `~/.abcd.noindex/config.json`, never the lane's
    checkout: in `human`, once an approval of the pushed head counts; in
-   `auto`, once a review receipt names it (`abcd land --record-review`); and a
-   contributor's pull request in either mode only once an approval by someone
-   with write access counts. An armed merge goes into the merge queue by the
+   `auto`, once a review receipt names it, which the loop records itself from
+   the passing pair of the lane's latest round, the pushed head resting on that
+   pair while the one commit after the head it judged holds only the landing's
+   records (a round that falls short is left open, saying why, for
+   `abcd land --record-review`); and a contributor's pull request in either mode
+   only once an approval by someone with write access counts. An armed merge goes into the merge queue by the
    ruleset mirror's (`.abcd/work/rulesets/`) method, or as the forge's
    auto-merge where no queue gates the default branch. Otherwise the step's
    note and the run record say "left open: " and why, and each later step asks

@@ -692,7 +692,12 @@ over each of the run's lanes' own diff.
    `.abcd/config.json` and `~/.abcd.noindex/config.json`: in `human` it arms
    once an approval of the pushed head counts, in `auto` once a review receipt
    names it, and a contributor's pull request in either mode only once an
-   approval by someone with write access counts. An armed merge goes into the
+   approval by someone with write access counts. In `auto` the loop records that
+   receipt itself, in its own process, from the returns of the lane's latest
+   round: the pair that passed for the head the round judged, and, for the head
+   the landing's records commit pushed, a receipt resting on that pair while the
+   one commit between them holds only records. A round that falls short, or a
+   head holding more than records, is left open, saying why. An armed merge goes into the
    merge queue by the ruleset mirror's (`.abcd/work/rulesets/`) method, or as
    the forge's auto-merge where no queue gates the default branch. Otherwise
    `implement status` shows the landing as "left open: " and why, and each

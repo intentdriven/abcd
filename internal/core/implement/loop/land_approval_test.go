@@ -157,11 +157,38 @@ func TestALaterApprovalArmsAParkedLane(t *testing.T) {
 	}
 }
 
-// TestAutoArmsOnlyAHeadAReviewReceiptNames: with facilitator.mode auto on the
-// default branch, the loop arms a maintainer's pull request with no approval
-// only once a review receipt names its pushed head, and says which commit has
-// none until then.
-func TestAutoArmsOnlyAHeadAReviewReceiptNames(t *testing.T) {
+// TestAutoArmsALaneWhosePairPassed: with facilitator.mode auto on the default branch
+// a lane whose latest round passed needs nobody to record that: the loop records its
+// pair and arms, the pushed head resting on the pair at the head it judged.
+func TestAutoArmsALaneWhosePairPassed(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	f := newLandFixtureWith(t, map[string]string{
+		".abcd/work/rulesets/main-protection.json": unreviewedQueueRuleset("MERGE"),
+		".abcd/config.json":                        `{"facilitator":{"mode":"auto"}}` + "\n",
+	})
+	f.pairStatesHead = true
+	l := f.landedToArmed(t)
+	if !strings.Contains(f.ghLog(t), "pr merge 7 --auto --merge") || l.Landing == nil || !l.Landing.Armed {
+		t.Fatalf("a lane that passed its pair arms itself: %+v\n%s", l.Landing, f.ghLog(t))
+	}
+	judged := l.Validation[len(l.Validation)-1].HeadSHA
+	if judged == l.Landing.Pushed {
+		t.Fatalf("the landing's records commit moved the head: %+v", l.Landing)
+	}
+	if !strings.Contains(l.Landing.Merge, "the landing's records on the full pair at "+judged[:9]) {
+		t.Fatalf("the gate says what the receipt rests on: %q", l.Landing.Merge)
+	}
+	for _, sha := range []string{judged, l.Landing.Pushed} {
+		if _, err := os.Stat(filepath.Join(f.repo.Root(), ".abcd", ".work.local", "review-receipts", sha)); err != nil {
+			t.Errorf("no receipt names %s: %v", sha, err)
+		}
+	}
+}
+
+// TestAutoLeavesOpenAHeadWithNoPassingPair: a round whose returns do not state the head
+// they read is no pair the loop can record, so the lane stays open, saying why, and a
+// receipt a person records later still arms it.
+func TestAutoLeavesOpenAHeadWithNoPassingPair(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	f := newLandFixtureWith(t, map[string]string{
 		".abcd/work/rulesets/main-protection.json": unreviewedQueueRuleset("MERGE"),
@@ -169,8 +196,10 @@ func TestAutoArmsOnlyAHeadAReviewReceiptNames(t *testing.T) {
 	})
 	l := f.landedToArmedOnce(t)
 	if strings.Contains(f.ghLog(t), "pr merge") || l.Landing == nil || l.Landing.Armed ||
-		!strings.Contains(l.Landing.Merge, "no review receipt names "+l.Landing.Pushed) {
-		t.Fatalf("an unreviewed head is left open, naming it: %+v\n%s", l.Landing, f.ghLog(t))
+		!strings.Contains(l.Landing.Merge, "no review receipt names "+l.Landing.Pushed) ||
+		!strings.Contains(l.Landing.Merge, "the loop did not record its own review") ||
+		!strings.Contains(l.Landing.Merge, "Reviewed head") {
+		t.Fatalf("an unreviewed head is left open, naming it and why: %+v\n%s", l.Landing, f.ghLog(t))
 	}
 	rcp := filepath.Join(f.repo.Root(), ".abcd", ".work.local", "review-receipts", l.Landing.Pushed)
 	if err := os.MkdirAll(filepath.Dir(rcp), 0o700); err != nil {
@@ -182,6 +211,55 @@ func TestAutoArmsOnlyAHeadAReviewReceiptNames(t *testing.T) {
 	f.step(t)
 	if l = currentLane(t, f.repo, f.runID); !l.Landing.Armed || !strings.Contains(f.ghLog(t), "pr merge 7 --auto --merge") {
 		t.Fatalf("a review receipt naming the head arms it: %+v\n%s", l.Landing, f.ghLog(t))
+	}
+}
+
+// TestAStaleRoundDoesNotServe: a round whose head is not the one the pushed head stands
+// on is no pair for it, whatever it passed, so the lane stays open saying why.
+func TestAStaleRoundDoesNotServe(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	f := newLandFixtureWith(t, map[string]string{
+		".abcd/work/rulesets/main-protection.json": unreviewedQueueRuleset("MERGE"),
+		".abcd/config.json":                        `{"facilitator":{"mode":"auto"}}` + "\n",
+	})
+	f.pairStatesHead = true
+	f.validated(t)
+	f.step(t)
+	f.step(t)
+	l := currentLane(t, f.repo, f.runID)
+	preflighted(t, l, l.HeadSHA)
+	f.step(t)
+	f.step(t)
+	if err := mutate(f.repo.Root(), f.runID, func(_ *os.Root, st *State) (bool, error) {
+		lane := &st.Lanes[st.current()]
+		lane.Validation[len(lane.Validation)-1].HeadSHA = lane.BaseSHA
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	f.step(t)
+	l = currentLane(t, f.repo, f.runID)
+	if strings.Contains(f.ghLog(t), "pr merge") || l.Landing == nil || l.Landing.Armed ||
+		!strings.Contains(l.Landing.Merge, "the loop did not record its own review") {
+		t.Fatalf("a stale round arms nothing: %+v\n%s", l.Landing, f.ghLog(t))
+	}
+}
+
+// TestHumanModeRecordsNoReviewOfTheLoops: only auto takes the loop's own pair; in human
+// the lane waits for the facilitator's approval and no receipt appears.
+func TestHumanModeRecordsNoReviewOfTheLoops(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	f := newLandFixtureWith(t, map[string]string{
+		".abcd/work/rulesets/main-protection.json": unreviewedQueueRuleset("MERGE"),
+		".abcd/config.json":                        `{"facilitator":{"mode":"human"}}` + "\n",
+	})
+	f.pairStatesHead = true
+	l := f.landedToArmed(t)
+	if strings.Contains(f.ghLog(t), "pr merge") || l.Landing == nil || l.Landing.Armed {
+		t.Fatalf("human mode waits for an approval: %+v\n%s", l.Landing, f.ghLog(t))
+	}
+	if entries, err := os.ReadDir(filepath.Join(f.repo.Root(), ".abcd", ".work.local", "review-receipts")); err == nil && len(entries) > 0 {
+		t.Fatalf("human mode wrote a receipt: %v", entries)
 	}
 }
 

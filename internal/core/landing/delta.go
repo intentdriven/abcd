@@ -147,6 +147,9 @@ type deltaRecord struct {
 	Lines  int    `json:"lines"`
 	Bytes  int    `json:"bytes"`
 	Merges int    `json:"merges"`
+	// Records marks the build loop's receipt for its own records commit on the
+	// head its pair judged (loopreview.go), judged by judgeRecords.
+	Records bool `json:"records,omitempty"`
 }
 
 const restsOnItself = "a head cannot rest on itself"
@@ -468,6 +471,12 @@ func receiptProof(repoRoot, head, tip string, r reviewReceiptRead) reviewProof {
 	}
 	if !fullSHA.MatchString(rec.Delta.Base) {
 		return why(fmt.Errorf("its receipt names %s as its base, which is not a commit's full object name", clip(rec.Delta.Base)))
+	}
+	if rec.Delta.Records {
+		if _, err := judgeRecords(repoRoot, rec.Delta.Base, head); err != nil {
+			return why(err)
+		}
+		return reviewProof{reviewed: true, note: "the landing's records on the full pair at " + short(rec.Delta.Base)}
 	}
 	if _, err := judgeDelta(repoRoot, rec.Delta.Base, head, tip); err != nil {
 		return why(err)

@@ -221,7 +221,8 @@ recorded it with `--approve` (below). Then:
   facilitator's approval. The product thinker never approves a merge.
 - **`auto`**: the pull request of an author with write access is armed with
   no one asked, but
-  only when a review receipt (`--record-review`, below) names its head; until
+  only when a review receipt (`--record-review`, below, or the build loop's own for
+  a lane whose reviewers passed) names its head; until
   then the note names the commit that has no recorded review pair. A delta
   review's receipt names the head only while its delta stands, and when it does
   not the note says why and that the head needs a full pair.

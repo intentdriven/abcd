@@ -35,7 +35,8 @@ package loop
 //  5. arm: the merge gate `abcd land` asks (landing.DecideMerge, which
 //     replaced ruling AM1): the facilitator mode at the default branch's
 //     fetched tip, the author's permission, the approvals of the pushed head
-//     and, in auto, a review receipt naming it. Where it allows, the merge is
+//     and, in auto, a review receipt naming it, which the loop records itself
+//     from the latest round's passing pair (recordOwnReview). Where it allows, the merge is
 //     armed by the ruleset mirror's queue method, or as auto-merge with no
 //     queue; otherwise the pull request is left open, saying why, and each
 //     later step asks again. A pull request the forge reports CONFLICTING
@@ -897,7 +898,8 @@ func readMergeRule(c Context, lane Lane, def string) (landing.MergeRule, error) 
 // request, and arms it by the method the gate names, or leaves it open with
 // the gate's reason: a contributor's pull request until a maintainer's
 // approval of its head counts, a maintainer's in human mode until the
-// technical facilitator's does, and in auto until a review receipt names it.
+// technical facilitator's does, and in auto until a review receipt names it,
+// which the loop records from a round that passed (recordOwnReview).
 // A lane left open is parked: landMerged asks the gate again on each step, so
 // an approval given later arms it. A pull request the forge reports
 // conflicting is refused, unarmed.
@@ -971,6 +973,7 @@ func askMergeGate(c Context, lane Lane, def string, rule landing.MergeRule) (lan
 		return landing.MergeDecision{}, fmt.Errorf("resolving %s: %v", tracking, err)
 	}
 	roots, _ := layered.RootsFor(c.RepoRoot)
+	unrecorded := recordOwnReview(c, lane, roots, tip, Remote+"/"+def)
 	d, err := landing.DecideMerge(landing.MergeQuery{RepoRoot: c.RepoRoot, Roots: roots, Tip: tip, TipName: Remote + "/" + def, Default: def,
 		Rule: rule, Repo: "{owner}/{repo}", PR: strconv.Itoa(lane.PR), Head: lane.Landing.Pushed, Forge: gateForge(c, lane)})
 	if err != nil {
@@ -979,7 +982,43 @@ func askMergeGate(c Context, lane Lane, def string, rule landing.MergeRule) (lan
 		r.modeUnread = true
 		return landing.MergeDecision{}, r
 	}
+	if !d.Arm && unrecorded != "" {
+		d.Why += "; the loop did not record its own review: " + unrecorded
+	}
 	return d, nil
+}
+
+// recordOwnReview records the review pair of the lane's latest round, where the mode
+// at the default branch's tip is auto, so a lane that passed needs nobody to say so:
+// in process, from the returns that round read, against the head they name. It says
+// why when it did not; the merge gate then reads the receipts as it finds them.
+func recordOwnReview(c Context, lane Lane, roots layered.Roots, tip, tipName string) string {
+	if !landing.AutoAt(roots, c.RepoRoot, tip, tipName) {
+		return ""
+	}
+	n := len(lane.Validation)
+	if n == 0 {
+		return "the lane records no review round"
+	}
+	round := lane.Validation[n-1]
+	var returns []landing.ReviewReturn
+	for _, v := range round.Validators {
+		if v.Role == RoleAuditor {
+			continue
+		}
+		if !v.Pass {
+			return fmt.Sprintf("round %d's %s did not pass", round.Round, v.Role)
+		}
+		text, err := readReturn(c.RepoRoot, v.Return, lane.ID)
+		if err != nil {
+			return termsafe.Sanitize(fsutil.RedactHome(err.Error()))
+		}
+		returns = append(returns, landing.ReviewReturn{Name: v.Return, Text: string(text)})
+	}
+	if _, err := landing.RecordLoopReview(c.RepoRoot, tip, round.HeadSHA, lane.Landing.Pushed, returns); err != nil {
+		return termsafe.Sanitize(fsutil.RedactHome(err.Error()))
+	}
+	return ""
 }
 
 // gateForge is the forge client as the merge gate reads through it: run from

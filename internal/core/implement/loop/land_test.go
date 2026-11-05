@@ -2,6 +2,7 @@ package loop
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -168,12 +169,15 @@ var approvingReview = regexp.MustCompile(`"required_approving_review_count":\s*[
 // remote, with a stub forge client first on PATH, an open capture the lane
 // will fix, and the ruleset mirror given.
 type landFixture struct {
-	repo   *gittest.Repo
-	bare   string
-	gh     string
-	issue  string
-	runID  string
-	stages Stages
+	// pairStatesHead has the round's returns state the head they read, as a
+	// reviewer's brief asks; the rest of the fixture's returns state none.
+	pairStatesHead bool
+	repo           *gittest.Repo
+	bare           string
+	gh             string
+	issue          string
+	runID          string
+	stages         Stages
 	// model is the model the lane's receipt reports.
 	model string
 	// world is where the fixture stands.
@@ -288,7 +292,21 @@ func (f *landFixture) validated(t *testing.T) Lane {
 	if _, err := Receipt(repo.Root(), id, path, f.stages, Options{}); err != nil {
 		t.Fatalf("a receipt declaring a fixed capture verifies: %v", err)
 	}
-	passRound(t, repo, id, f.stages, RoleRuthless, RoleSecurity, RoleAuditor)
+	if f.pairStatesHead {
+		head := "Reviewed head: " + currentLane(t, repo, id).HeadSHA + "\n\n"
+		st, err := ReadState(repo.Root(), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range []struct{ role, verdict string }{{RoleRuthless, "SHIP"}, {RoleSecurity, "APPROVE"}} {
+			for i := range roundReviewers(st, r.role) {
+				handBackOne(t, repo, id, f.stages, r.role, fmt.Sprintf("%sReader %d.\n\n%s", head, i, reviewerReturn(r.verdict)))
+			}
+		}
+		handBack(t, repo, id, f.stages, RoleAuditor, "MET")
+	} else {
+		passRound(t, repo, id, f.stages, RoleRuthless, RoleSecurity, RoleAuditor)
+	}
 	return stepTo(t, repo, id, f.stages, StageLand)
 }
 
