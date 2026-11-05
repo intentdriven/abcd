@@ -254,7 +254,8 @@ func TestAStageDoesNotLand(t *testing.T) {
 	}
 }
 
-// TestAStageMovesNoRun: `implement load` is how its tests run and stays open; every other
+// TestAStageMovesNoRun: `implement load` is how its tests run and `implement widen` how an
+// issue lane holds a file its brief lets it reach, so both stay open; every other
 // `implement` verb is the loop's, and outside a stage nothing changes.
 func TestAStageMovesNoRun(t *testing.T) {
 	home := t.TempDir()
@@ -272,7 +273,9 @@ func TestAStageMovesNoRun(t *testing.T) {
 			t.Errorf("a stage may run %q", line)
 		}
 	}
-	for _, line := range []string{`abcd implement load --wait --narrow -- go test ./x`, `scripts/abcd.sh implement load --wait -- make check`, `abcd rules implement`} {
+	for _, line := range []string{`abcd implement load --wait --narrow -- go test ./x`, `scripts/abcd.sh implement load --wait -- make check`, `abcd rules implement`,
+		`abcd implement widen --run run-1 --lane lane-1 docs/page.md`, `/opt/bin/abcd implement widen --run run-1 --lane lane-1 docs/page.md`,
+		`scripts/abcd.sh implement widen --run run-1 --lane lane-1 docs/page.md`} {
 		if a := approveShell(clean(), stage, line); !a.Allow {
 			t.Errorf("%q is refused: %s", line, a.Reason)
 		}

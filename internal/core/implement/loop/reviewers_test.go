@@ -501,7 +501,7 @@ func TestARunnerRunReviewerIsHandedItsClassModel(t *testing.T) {
 		if err := os.MkdirAll(filepath.Join(repo.Root(), "review"), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(repo.Root(), "review", "brief.md"), []byte("# review\n"), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(repo.Root(), "review", "brief.md"), []byte("# review\n\n`Reviewed head: "+strings.Repeat("a", 40)+"`\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		v := ValidatorRun{Role: RoleRuthless, Brief: briefRel, Return: returnRel, Reviewer: 1, Class: ClassBelow, Model: model}
@@ -537,7 +537,7 @@ func TestARunnerRunReviewerIsHandedItsClassModel(t *testing.T) {
 			if err != nil || res.Awaiting == nil || res.Awaiting.Model != model || !strings.Contains(res.Next, model) {
 				t.Fatalf("the host is handed the review with its class's model: %+v %v", res, err)
 			}
-			if err := os.WriteFile(filepath.Join(repo.Root(), returnRel), []byte(reviewReturn), 0o600); err != nil {
+			if err := os.WriteFile(filepath.Join(repo.Root(), returnRel), []byte("Reviewed head: "+strings.Repeat("a", 40)+"\n\n"+reviewReturn), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := Receipt(repo.Root(), start.RunID, returnRel, steps, o); err != nil {

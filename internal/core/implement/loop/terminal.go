@@ -91,7 +91,11 @@ type TerminalOptions struct {
 
 // errRunStateChanged is a run whose state changed while nothing of the driver's
 // was writing it.
-var errRunStateChanged = errors.New("the run's state changed while an agent was in its call, and only the driver writes it")
+var errRunStateChanged = errors.New("the run's state changed while an agent was in its call")
+
+// errRunStateUnread is a run whose state could not be read after an agent's call. That
+// says nothing of a change, so the drive stops with nothing kept against the run.
+var errRunStateUnread = errors.New("the run's state could not be read, which says nothing of a change; start the drive again once it reads")
 
 // HeldBackRel is the file that keeps what a drive held back.
 const HeldBackRel = ".abcd/.work.local/logs/drive-held-back.log"
@@ -236,7 +240,7 @@ func (t *terminal) stoppedOnChange(runID string) {
 	if err := recordDriveStop(runID); err != nil {
 		t.say("%s: the stop could not be kept, so do not start another drive on it: %s", runID, err.Error())
 	}
-	t.stoppedBy(fmt.Errorf("%w; nothing goes on from %s until you %s", errRunStateChanged, runID, driveStopRemedy(runID)))
+	t.stoppedBy(fmt.Errorf("%w; nothing goes on from %s. %s", errRunStateChanged, runID, driveStopRemedy(runID)))
 }
 
 // haltedBy reports whether err is a stop set from outside this terminal, saying
@@ -532,6 +536,10 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 		}
 		if errors.Is(err, errRunStateChanged) {
 			t.stoppedOnChange(runID)
+			return TerminalWall, nil
+		}
+		if errors.Is(err, errRunStateUnread) {
+			t.stoppedBy(err)
 			return TerminalWall, nil
 		}
 		if err != nil {
@@ -842,7 +850,7 @@ func (t *terminal) ended(why string) TerminalResult {
 			continue
 		}
 		res.Run, res.Issue = l.RunID, l.Issue
-		if why != TerminalHalted {
+		if why != TerminalHalted && !driveStopped(l.RunID) {
 			res.Resume = TerminalResumeCommand
 		}
 		if run, err := ReadState(t.repoRoot, l.RunID); err == nil {

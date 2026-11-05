@@ -66,6 +66,12 @@ func terminalFakeTurn(role string) string {
 			}
 		}
 		return "ok"
+	case "unreadstate":
+		// The run's state goes unreadable while the agent is in its call.
+		if p := os.Getenv(terminalTamperEnv); p != "" {
+			_ = os.Chmod(p, 0)
+		}
+		return "ok"
 	case "dies":
 		// The harness killed mid-call: no result, no receipt.
 		_ = syscall.Kill(os.Getpid(), syscall.SIGKILL)

@@ -460,13 +460,25 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 	// A drive holds what it wrote, so a line that rewrites the run in the agent's
 	// call is seen before anything is done on what the line wrote.
 	var watched [sha256.Size]byte
+	var watchErr error
 	if o.RunStateWatch {
-		watched = runFingerprint(repoRoot, runID)
+		if watched, err = runFingerprint(repoRoot, runID); err != nil {
+			watchErr = err
+		}
 	}
-	seen, validating := false, false
-	changed := func() bool {
-		seen = seen || (o.RunStateWatch && !validating && runFingerprint(repoRoot, runID) != watched)
-		return seen
+	validating := false
+	changed := func() error {
+		if watchErr != nil || !o.RunStateWatch || validating {
+			return watchErr
+		}
+		now, err := runFingerprint(repoRoot, runID)
+		switch {
+		case err != nil:
+			watchErr = err
+		case now != watched:
+			watchErr = errRunStateChanged
+		}
+		return watchErr
 	}
 	var done *StepResult
 	var refusedHandIn error
@@ -482,8 +494,8 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		HostSession: true,
 		Transcripts: transcripts,
 		Validate: func(ran string, _ runner.Request, ans runner.Answer) error {
-			if changed() {
-				return errRunStateChanged
+			if err := changed(); err != nil {
+				return err
 			}
 			// From here the driver writes the run itself.
 			validating = true
@@ -503,11 +515,11 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		Now:    o.Now,
 	}
 	out, err := d.Dispatch(ctx, req)
-	if changed() {
+	if cerr := changed(); cerr != nil {
 		if rerr := release(); rerr != nil {
-			return on, errors.Join(errRunStateChanged, rerr)
+			return on, errors.Join(cerr, rerr)
 		}
-		return on, errRunStateChanged
+		return on, cerr
 	}
 	retry := func(r StepResult, p *RunnerPause) StepResult {
 		if why != "" {
@@ -849,16 +861,33 @@ func redactStderr(repoRoot, line string) string {
 }
 
 // runFingerprint is a run's state by hash, without what a renewal may write while
-// an agent waits at the load gate: its record, its time and its reservation's.
-func runFingerprint(repoRoot, runID string) [sha256.Size]byte {
-	st, err := ReadState(repoRoot, runID)
+// its call runs: its record, its time and its reservation's. A read that fails is
+// tried again, since one failure is no evidence of a change, and an error is what is
+// left when it still cannot be read.
+func runFingerprint(repoRoot, runID string) ([sha256.Size]byte, error) {
+	var st State
+	var err error
+	for try := range fingerprintTries {
+		if try > 0 {
+			time.Sleep(fingerprintWait)
+		}
+		if st, err = ReadState(repoRoot, runID); err == nil {
+			break
+		}
+	}
 	if err != nil {
-		return sha256.Sum256([]byte(err.Error()))
+		return [sha256.Size]byte{}, fmt.Errorf("%w: %s", errRunStateUnread, fsutil.RedactHome(err.Error()))
 	}
 	st.Record, st.UpdatedAt, st.ReservedAt = nil, time.Time{}, nil
 	raw, err := json.Marshal(st)
 	if err != nil {
-		return sha256.Sum256([]byte(err.Error()))
+		return [sha256.Size]byte{}, fmt.Errorf("%w: %s", errRunStateUnread, err.Error())
 	}
-	return sha256.Sum256(raw)
+	return sha256.Sum256(raw), nil
 }
+
+// How often, and how far apart, a run's state is read before it counts as unreadable.
+const (
+	fingerprintTries = 5
+	fingerprintWait  = 200 * time.Millisecond
+)

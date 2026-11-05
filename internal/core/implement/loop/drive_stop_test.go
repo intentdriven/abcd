@@ -6,6 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // stoppedDrive is a drive stopped because its run's state changed in an agent's call.
@@ -35,8 +38,16 @@ func stoppedDrive(t *testing.T) (*terminalWorld, TerminalOptions, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Ended != TerminalWall || !strings.Contains(res.Why, "--discard") {
-		t.Fatalf("the run stops, saying how to discard it: %+v", res)
+	if res.Ended != TerminalWall || res.Resume != "" {
+		t.Fatalf("the run stops, and offers no resume: %+v", res)
+	}
+	for _, want := range []string{"your own", "remove", "--discard", "deletes its branch and worktree and closes its pull request"} {
+		if !strings.Contains(res.Why, want) {
+			t.Fatalf("the way out says %q: %s", want, res.Why)
+		}
+	}
+	if strings.Contains(res.Why, "only the driver") {
+		t.Fatalf("it blames no one: %s", res.Why)
 	}
 	t.Setenv(terminalTamperEnv, "")
 	st, _, err := readDrain(w.repo.Root())
@@ -105,5 +116,113 @@ func TestDiscardingTheRunLiftsTheStop(t *testing.T) {
 	}
 	if err := driveStopRefusal("run-2611051955085311"); err != nil {
 		t.Fatalf("another run is not refused: %v", err)
+	}
+}
+
+// TestAnUnreadStateStopsTheDriveWithNoMark: a failed read says nothing of a change.
+func TestAnUnreadStateStopsTheDriveWithNoMark(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	w := newTerminalWorld(t, "shape", "unreadstate")
+	var path string
+	o := oneLane(t, w)
+	for i := range w.stages {
+		if w.stages[i].Name == StageBrief {
+			run := w.stages[i].Run
+			w.stages[i].Run = func(c Context, l *Lane) (Outcome, error) {
+				path = filepath.Join(w.repo.Root(), filepath.FromSlash(StateRelPath(c.State.RunID)))
+				t.Setenv(terminalTamperEnv, path)
+				return run(c, l)
+			}
+		}
+	}
+	o.Options.RunStateWatch = true
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if path != "" {
+		_ = os.Chmod(path, 0o600)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Ended != TerminalWall || !strings.Contains(res.Why, "could not be read") {
+		t.Fatalf("the drive stops, saying so: %+v", res)
+	}
+	st, _, err := readDrain(w.repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if driveStopped(st.Lanes[0].RunID) {
+		t.Fatal("a failed read is kept against the run")
+	}
+}
+
+// TestAStateReadRetriesThroughAPassingFailure: one failure is not a change.
+func TestAStateReadRetriesThroughAPassingFailure(t *testing.T) {
+	root, id, _, _ := startToImplement(t)
+	before, err := runFingerprint(root, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, filepath.FromSlash(StateRelPath(id)))
+	if err := os.Chmod(path, 0); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		time.Sleep(fingerprintWait / 2)
+		_ = os.Chmod(path, 0o600)
+	}()
+	after, err := runFingerprint(root, id)
+	<-done
+	if err != nil || after != before {
+		t.Fatalf("the read recovers to the same state: %v", err)
+	}
+}
+
+// TestALookThatFailsRefusesTheRun: only a stop known to be absent reads as none.
+func TestALookThatFailsRefusesTheRun(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	// A file where the stops' folder goes answers with something other than not-found
+	// once a looked-for name lies below a directory no one may search.
+	dir := abcdhome.Path(home, driveStopsDir)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+	if !driveStopped("run-2611051955085311") {
+		t.Fatal("a look that failed reads as no stop")
+	}
+}
+
+// TestDiscardAsksTheForgeWhichPullRequest: the stop says the state cannot be trusted, so
+// the pull request closed is the one the lane's branch has.
+func TestDiscardAsksTheForgeWhichPullRequest(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	f := newLandFixture(t, unreviewedQueueRuleset("MERGE"))
+	f.validated(t)
+	f.step(t)
+	f.step(t)
+	l := currentLane(t, f.repo, f.runID)
+	preflighted(t, l, l.HeadSHA)
+	f.step(t)
+	f.step(t)
+	if err := mutate(f.repo.Root(), f.runID, func(_ *os.Root, st *State) (bool, error) {
+		st.Lanes[st.current()].PR = 99
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := recordDriveStop(f.runID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Discard(f.repo.Root(), f.runID, l.ID, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if log := f.ghLog(t); !strings.Contains(log, "pr close 7") || strings.Contains(log, "pr close 99") {
+		t.Fatalf("the forge's own pull request is closed:\n%s", log)
 	}
 }

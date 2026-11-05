@@ -7,6 +7,7 @@ package loop
 // verdict or a stage is not known to be the driver's.
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -39,20 +40,22 @@ func recordDriveStop(runID string) error {
 	return fsutil.WriteFileAtomic(path, []byte(errRunStateChanged.Error()+"\n"), 0o600)
 }
 
-// driveStopped reports whether a drive stopped on run runID stands.
+// driveStopped reports whether a drive stopped on run runID stands. Only a stop known to
+// be absent reads as none: any other failure to look refuses the run.
 func driveStopped(runID string) bool {
 	path, err := driveStopPath(runID)
 	if err != nil {
-		return false
+		return true
 	}
 	_, err = os.Lstat(path)
-	return err == nil
+	return !errors.Is(err, os.ErrNotExist)
 }
 
 // driveStopRemedy says how a person lifts the stop on run runID.
 func driveStopRemedy(runID string) string {
 	path, _ := driveStopPath(runID)
-	return fmt.Sprintf("discard each of its lanes with `abcd implement step --run %s --discard <lane>`, or restore the run's state yourself and remove %s", runID, fsutil.RedactHome(path))
+	where := fsutil.RedactHome(path)
+	return fmt.Sprintf("If it was your own `abcd implement step`, remove %s. Otherwise discard each lane with `abcd implement step --run %s --discard <lane>`, which deletes its branch and worktree and closes its pull request, or restore the run's state yourself and remove that file", where, runID)
 }
 
 // driveStopRefusal is the refusal of a move on a run a drive stopped on, nil for any other.

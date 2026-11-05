@@ -277,8 +277,26 @@ func discardHeld(repoRoot, runID, laneID string, o Options) (StepResult, error) 
 			}
 		}
 		// A lane handed back as closed has a pull request already closed.
-		if lane.PR > 0 && (lane.HandBack == nil || lane.HandBack.Kind != HandBackClosed) {
-			n := strconv.Itoa(lane.PR)
+		pr := lane.PR
+		if driveStopped(st.RunID) {
+			// The stop says the state cannot be trusted: the forge says which pull
+			// request the lane's branch has.
+			pr = 0
+			if lane.Branch != "" {
+				found, err := findPR(c, lane)
+				if err != nil {
+					if r, ok := AsRefusal(err); ok {
+						g.take(r)
+					}
+					return false, err
+				}
+				if found != nil {
+					pr = found.Number
+				}
+			}
+		}
+		if pr > 0 && (lane.HandBack == nil || lane.HandBack.Kind != HandBackClosed) {
+			n := strconv.Itoa(pr)
 			if _, err := forge(c, lane, "pr", "close", n); err != nil {
 				if r, ok := AsRefusal(err); ok {
 					g.take(r)
