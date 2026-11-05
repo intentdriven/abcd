@@ -309,7 +309,7 @@ func runReusing(ctx context.Context, cfg Config, g goTestArgs, dir string, list 
 	fmt.Fprintf(cfg.Stdout, "check-tests: %s stage from %s at %.12s: %d files written, %d removed, %d directories retimed, %d files already right, in %s\n",
 		cfg.Stage, snap.tree, head, stats.Written, stats.Removed, stats.Retimed, stats.Kept, stats.Took.Round(time.Millisecond))
 
-	env := append(gitEnv(), "GIT_CEILING_DIRECTORIES="+dir)
+	env := reusedLineEnv(dir, snap.tree)
 	all, err := listPackages(ctx, snap.tree, env, g.race, "./...")
 	if err != nil {
 		return 0, err.Error()
@@ -344,6 +344,22 @@ func runReusing(ctx context.Context, cfg Config, g goTestArgs, dir string, list 
 		fmt.Fprintf(cfg.Stdout, "check-tests: a test left files in the check directory, so a test that walks the tree will not replay: %s\n", strings.Join(firstFew(left), ", "))
 	}
 	return finish(cfg, g, &tally, "reuse", head, tree, &plan, failed), ""
+}
+
+// reusedLineEnv is the environment of a line whose results are to be reused. It
+// says nothing of the worktree the check started in: go test's key holds a
+// variable a test reads, at the value the go command itself was given, so PWD and
+// OLDPWD would tie a result to one worktree. Git may not walk above the check
+// directory, so a test asking about the repository gets no answer.
+func reusedLineEnv(dir, tree string) []string {
+	var env []string
+	for _, kv := range gitEnv() {
+		name, _, _ := strings.Cut(kv, "=")
+		if name != "PWD" && name != "OLDPWD" {
+			env = append(env, kv)
+		}
+	}
+	return append(env, "PWD="+tree, "GIT_CEILING_DIRECTORIES="+dir)
 }
 
 func firstFew(names []string) []string {

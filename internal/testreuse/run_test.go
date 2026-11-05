@@ -228,6 +228,37 @@ func TestAFreshWorktreeReusesWhatAnotherWorktreeChecked(t *testing.T) {
 	}
 }
 
+// TestAResultDoesNotHangOnTheWorktreesDirectory: a test that reads the working
+// directory's variable has its value in go test's key, and go hashes the value
+// it was started with, not the one it gave the test. Started from the worktree,
+// every such package misses in another worktree: on this repository, most of what
+// links the guard, the CLI's 670 seconds among them.
+func TestAResultDoesNotHangOnTheWorktreesDirectory(t *testing.T) {
+	w := newWorld(t)
+	w.write("readspwd/readspwd_test.go", `package readspwd
+import (
+	"os"
+	"testing"
+)
+func TestReadsTheDirectoryVariables(t *testing.T) {
+	t.Log(os.Getenv("PWD"), os.Getenv("OLDPWD"))
+}
+`)
+	w.commit("a test that reads the working directory's variables")
+	t.Setenv("OLDPWD", "/first")
+	t.Setenv("PWD", w.repo)
+	if r := w.stage(w.repo, nil, allPackages...); r.code != 0 || !r.ran("readspwd") {
+		t.Fatalf("the first check: %s", r)
+	}
+	second := w.worktree("fresh", "HEAD")
+	t.Setenv("OLDPWD", "/second")
+	t.Setenv("PWD", second)
+	r := w.stage(second, nil, allPackages...)
+	if !r.cached("readspwd") {
+		t.Errorf("a test reading PWD and OLDPWD missed in another worktree:\n%s", r)
+	}
+}
+
 // TestASameSizeEditFailsTheTestThatReadsIt: the hazard itself. A same-size edit
 // to a file a test opens, amended into the commit or committed after it, within
 // the same second by every date git records, must not replay the pass: the test
