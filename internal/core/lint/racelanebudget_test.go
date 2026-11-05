@@ -637,6 +637,7 @@ func TestPreflightUnitStageRunsWhatCIPlainPassRuns(t *testing.T) {
 	var plain []string
 	for _, l := range strings.Split(string(out), "\n") {
 		l = strings.TrimSuffix(strings.TrimSpace(l), " && \\")
+		l = expandedCheckTests.ReplaceAllString(l, "")
 		if strings.HasPrefix(l, flags) {
 			plain = append(plain, strings.TrimPrefix(l, flags))
 		}
@@ -654,6 +655,10 @@ func TestPreflightUnitStageRunsWhatCIPlainPassRuns(t *testing.T) {
 		t.Errorf("preflight's unit stage runs %q; want the check job's two plain passes %q, under its derived -p and -timeout:\n%s", plain, want, recipe)
 	}
 }
+
+// expandedCheckTests is cmd/check-tests before a stage's go test, as make -n
+// prints it with its flags filled in.
+var expandedCheckTests = regexp.MustCompile(`^go run \./cmd/check-tests .*?(?:unit|race) `)
 
 // unitStageTimeout is the base -timeout make preflight's unit stage scales
 // from: the `t=$$(go run ./cmd/test-parallelism -timeout <base>)` line last
