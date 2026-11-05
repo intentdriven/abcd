@@ -103,6 +103,8 @@ this warns and never refuses. This reads one setting and proves no wall, and the
 the session holds. No abcd command starts
 a session on a profile yet. A profile is a separate login and settings on one
 operating-system account, and a stage's shell reads what the account can.
+`abcd drain --drive` is the unattended start: it runs agents of its own on a separate
+login, with named tools, checked at its start.
 
 While it holds, an act only the person may approve is queued for their
 return instead of asked, and you carry on with other work:

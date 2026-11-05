@@ -61,6 +61,7 @@ func wantOffProfile(t *testing.T, prefix, stdout, stderr string) {
 		"cannot check what the session holds", "reads that one setting and proves no wall",
 		"the setting's value changes nothing the session holds",
 		"No abcd command starts a session on a profile yet",
+		offProfilePointer,
 		"nothing was refused",
 	} {
 		if !strings.Contains(l, want) {
@@ -69,7 +70,7 @@ func wantOffProfile(t *testing.T, prefix, stdout, stderr string) {
 	}
 	for _, never := range []string{
 		"NOT ON A PROFILE", "mkdir", "login step", runner.ConfigDirEnv, abcdhome.Display("profiles"),
-		"directly under", "profiles folder", "drain --drive", "walled", "proves the wall",
+		"directly under", "profiles folder", "walled", "proves the wall",
 		"sandbox", "isolat", os.Getenv("HOME"),
 	} {
 		// HOME is empty where a test takes the home away, and every line holds "".
@@ -413,8 +414,9 @@ func offProfileText(page string) string {
 	return strings.Join(kept, " ")
 }
 
-// The help and the pages say what warns, that the reading proves no wall, and that
-// no abcd command starts a session on a profile yet.
+// The pages carry none of the banned wording; the help carries the two statements
+// and points at the drive; and the pages that say a drain move warns say a drive's
+// moves do not.
 func TestTheWarningsTextsPrintNoStepAndNoExpectedValue(t *testing.T) {
 	texts := map[string]string{"help": foldText(offProfileHelp)}
 	for _, rel := range []string{
@@ -435,16 +437,31 @@ func TestTheWarningsTextsPrintNoStepAndNoExpectedValue(t *testing.T) {
 	for name, text := range texts {
 		for _, never := range []string{
 			"mkdir -p " + abcdhome.Display("profiles"), "directly under " + abcdhome.Display("profiles"),
-			"cannot be missed", "until a host reports", "abcd drain --drive", "walled", "proves the wall",
+			"cannot be missed", "until a host reports", "walled", "proves the wall",
 		} {
 			if strings.Contains(text, never) {
 				t.Errorf("%s carries %q", name, never)
 			}
 		}
 	}
-	for _, want := range []string{"reads one setting and proves no wall", "No abcd command starts a session on a profile yet"} {
+	for _, want := range []string{"reads one setting and proves no wall", "No abcd command starts a session on a profile yet", offProfilePointer} {
 		if !strings.Contains(texts["help"], want) {
 			t.Errorf("the help misses %q", want)
+		}
+	}
+	if !strings.Contains(texts["commands/mode.md"], offProfilePointer) {
+		t.Errorf("the mode's page misses the pointer")
+	}
+	if !strings.Contains(texts[".abcd/development/brief/04-surfaces/26-mode.md"], "is the unattended start") {
+		t.Errorf("the mode's chapter misses the pointer")
+	}
+	for _, rel := range []string{"commands/drain.md", ".abcd/development/brief/04-surfaces/26-mode.md", ".abcd/development/brief/04-surfaces/35-drain.md"} {
+		raw, err := os.ReadFile(filepath.Join(testRepoRoot(), filepath.FromSlash(rel)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(foldText(string(raw)), "A drive's moves print no such line") {
+			t.Errorf("%s does not exclude a drive's moves", rel)
 		}
 	}
 }
@@ -503,4 +520,23 @@ func TestARefusedJoinDoesNotWarn(t *testing.T) {
 		t.Fatalf("a change of role exited %d, want 2\n%s%s", code, out, errOut)
 	}
 	wantNoOffProfile(t, out, errOut)
+}
+
+// A drive's own stage is no session the person started: under a stage's home the
+// verbs that warn stay quiet, whatever its setting reads.
+func TestAStagesOwnVerbsStayQuiet(t *testing.T) {
+	implementRepo(t)
+	offProfile(t)
+	t.Setenv(abcdhome.StageHomeEnv, os.Getenv("HOME"))
+	code, out, errOut := implementCLI(t, "implement", "join", "--session", "alpha", "--role", "first", "--json")
+	if code != 0 {
+		t.Fatalf("join exited %d\n%s%s", code, out, errOut)
+	}
+	if lines := offProfileLines(errOut); len(lines) != 0 {
+		t.Fatalf("a stage's join warned: %q", lines)
+	}
+	t.Setenv(abcdhome.StageHomeEnv, "/a/home/this/process/is/not/under")
+	if _, _, errOut := implementCLI(t, "implement", "join", "--session", "beta", "--role", "first", "--json"); len(offProfileLines(errOut)) != 1 {
+		t.Fatalf("a process whose home is not the stage's warns: %q", errOut)
+	}
 }

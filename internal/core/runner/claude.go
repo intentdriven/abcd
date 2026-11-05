@@ -43,6 +43,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
@@ -65,6 +66,9 @@ type ClaudeCLI struct {
 	// approver is the absolute path of the abcd binary a shell launch starts
 	// as its permission prompt answerer.
 	approver string
+	// profile is the walled login a drive's launch runs on (profile.go), nil
+	// for the bare launch.
+	profile *Profile
 }
 
 // ApproverTool is the permission prompt tool a shell launch names.
@@ -98,7 +102,7 @@ func grantsShell(tools []string) bool { return slices.Contains(tools, "Bash") }
 // the working tree the role runs in, as it stood at base, the commit the run
 // started on, with runDirs, the run's own directories, named so a removal
 // may reach them.
-func (c *ClaudeCLI) approverConfig(dir, base string, runDirs []string) string {
+func (c *ClaudeCLI) approverConfig(dir, base string, runDirs, declared []string) string {
 	type server struct {
 		Type    string   `json:"type"`
 		Command string   `json:"command"`
@@ -107,6 +111,12 @@ func (c *ClaudeCLI) approverConfig(dir, base string, runDirs []string) string {
 	args := []string{"guard", "approve", "--dir=" + dir, "--base=" + base}
 	for _, d := range runDirs {
 		args = append(args, "--run-dir="+d)
+	}
+	if c.profile != nil {
+		args = append(args, "--stage-home="+c.profile.ShellHome, "--protect="+c.profile.Dir)
+		for _, d := range declared {
+			args = append(args, "--declared="+d)
+		}
 	}
 	raw, _ := json.Marshal(map[string]map[string]server{"mcpServers": {"abcd": {
 		Type: "stdio", Command: c.approver, Args: args,
@@ -127,6 +137,9 @@ func (c *ClaudeCLI) askedModel(req Request) string {
 
 // args is the launch's argv after the binary.
 func (c *ClaudeCLI) args(req Request) []string {
+	if c.profile != nil {
+		return append(c.walledFlags(req), "--", prompt(req))
+	}
 	shell := grantsShell(req.Tools)
 	mode := "dontAsk"
 	if shell {
@@ -154,7 +167,7 @@ func (c *ClaudeCLI) args(req Request) []string {
 		// The guard answers for the shell, so the harness asks it rather
 		// than running every command unasked.
 		tools = slices.DeleteFunc(slices.Clone(tools), func(t string) bool { return t == "Bash" })
-		a = append(a, "--mcp-config="+c.approverConfig(req.Dir, req.Base, dirs), "--strict-mcp-config",
+		a = append(a, "--mcp-config="+c.approverConfig(req.Dir, req.Base, dirs, req.Declared), "--strict-mcp-config",
 			"--permission-prompt-tool="+ApproverTool)
 	}
 	if len(tools) > 0 {
@@ -169,10 +182,88 @@ func (c *ClaudeCLI) args(req Request) []string {
 	return append(a, "--", prompt(req))
 }
 
-// Run runs the role through the claude CLI.
+// walledFlags is the walled launch's flags (spc-2610230813348813): hooks on,
+// so no --bare; the tools the stage holds and no others; the shell answered by
+// the approver, the only server the launch may start; and the profile's own
+// arguments.
+func (c *ClaudeCLI) walledFlags(req Request) []string {
+	shell := grantsShell(req.Tools)
+	mode := "dontAsk"
+	if shell {
+		mode = "default"
+	}
+	a := []string{"--print", "--output-format", "stream-json", "--verbose", "--permission-mode", mode}
+	a = append(a, c.profile.Args...)
+	if len(req.Denied) > 0 {
+		a = append(a, "--disallowedTools="+strings.Join(req.Denied, ","))
+	}
+	dirs := []string{filepath.Dir(req.Brief)}
+	if d := filepath.Dir(req.Receipt); d != dirs[0] {
+		dirs = append(dirs, d)
+	}
+	a = append(a, "--tools="+strings.Join(heldTools(req.Tools), ","))
+	tools := req.Tools
+	if shell {
+		tools = slices.DeleteFunc(slices.Clone(tools), func(t string) bool { return t == "Bash" })
+		a = append(a, "--mcp-config="+c.approverConfig(req.Dir, req.Base, dirs, req.Declared), "--permission-prompt-tool="+ApproverTool)
+	} else {
+		a = append(a, `--mcp-config={"mcpServers":{}}`)
+	}
+	if len(tools) > 0 {
+		a = append(a, "--allowedTools="+strings.Join(tools, ","))
+	}
+	for _, d := range dirs {
+		a = append(a, "--add-dir="+d)
+	}
+	if m := c.askedModel(req); m != "" {
+		a = append(a, "--model="+m)
+	}
+	return a
+}
+
+// stageWriteDirs are where a walled launch's file tools write: its working tree
+// and the directories of its brief and receipt.
+func stageWriteDirs(req Request) []string {
+	dirs := []string{req.Dir}
+	for _, d := range []string{filepath.Dir(req.Brief), filepath.Dir(req.Receipt)} {
+		if !slices.Contains(dirs, d) {
+			dirs = append(dirs, d)
+		}
+	}
+	return dirs
+}
+
+// heldTools are the tools a launch holds for the grants it names: each grant's
+// tool, its path left to the allow-list. The harness judges a new file's write
+// against the Edit rules, so an edit grant holds Write as well.
+func heldTools(grants []string) []string {
+	var held []string
+	add := func(t string) {
+		if !slices.Contains(held, t) {
+			held = append(held, t)
+		}
+	}
+	for _, g := range grants {
+		name, _, _ := strings.Cut(g, "(")
+		add(name)
+		if name == "Edit" {
+			add("Write")
+		}
+	}
+	return held
+}
+
+// Run runs the role through the claude CLI. A launch reaches the ledger through
+// the dispatcher that called it (RecordLaunch).
 func (c *ClaudeCLI) Run(ctx context.Context, req Request) (Answer, []byte, error) {
 	if err := req.check(); err != nil {
 		return Answer{}, nil, err
+	}
+	if c.profile != nil {
+		// A stage starts only on the settings abcd wrote.
+		if err := CheckWallSettings(*c.profile, c.approver); err != nil {
+			return Answer{}, nil, fail(Claude, ReasonRefused, "%s", err.Error())
+		}
 	}
 	if c.pinned {
 		return Answer{}, nil, fail(Claude, ReasonFailed,
@@ -196,13 +287,26 @@ func (c *ClaudeCLI) Run(ctx context.Context, req Request) (Answer, []byte, error
 	if err != nil {
 		return Answer{}, nil, err
 	}
-	res, err := c.launch.run(ctx, Claude, bin, c.args(req), nil, req.Dir, req.timeout())
+	var seal []string
+	launch := c.launch
+	if c.profile != nil {
+		if err := ResetStageHome(*c.profile); err != nil {
+			return Answer{}, nil, fail(Claude, ReasonRefused, "%s", err.Error())
+		}
+		list := string(os.PathListSeparator)
+		seal = append(slices.Clone(c.profile.Env), StageWritesEnv+"="+strings.Join(stageWriteDirs(req), list),
+			StageDeclaredEnv+"="+strings.Join(req.Declared, list), StageBaseEnv+"="+req.Base)
+		launch.carry = stageEnv
+	}
+	res, err := launch.run(ctx, Claude, bin, c.args(req), seal, req.Dir, req.timeout())
 	transcript := res.transcript()
 	if err != nil {
 		// A harness that stopped on a rate limit exits non-zero: what its
 		// events say is the reason, not the exit.
 		if what := claudeRateLimit(res.stdout); what != "" {
-			return Answer{}, transcript, rateLimited(what)
+			fl := rateLimited(what)
+			fl.ResetsAt = claudeRateLimitReset(res.stdout)
+			return Answer{}, transcript, fl
 		}
 		var fl *Failure
 		if errors.Is(err, ErrKilled) && errors.As(err, &fl) {
@@ -226,6 +330,27 @@ func (c *ClaudeCLI) Run(ctx context.Context, req Request) (Answer, []byte, error
 // response in abcd's own words.
 func rateLimited(what string) *Failure {
 	return fail(Claude, ReasonRateLimited, "its event stream reports %s and the run did not finish", what)
+}
+
+// claudeRateLimitReset is when the rejected limit the event stream reports
+// resets, the zero time when it says none. Each line is read leniently, as
+// claudeRateLimit reads it.
+func claudeRateLimitReset(out []byte) time.Time {
+	var at time.Time
+	for _, line := range bytes.Split(out, []byte("\n")) {
+		var ev struct {
+			Type string `json:"type"`
+			Info struct {
+				Status   string `json:"status"`
+				ResetsAt int64  `json:"resetsAt"`
+			} `json:"rate_limit_info"`
+		}
+		if json.Unmarshal(bytes.TrimSpace(line), &ev) != nil || ev.Type != "rate_limit_event" || ev.Info.Status != "rejected" || ev.Info.ResetsAt <= 0 {
+			continue
+		}
+		at = time.Unix(ev.Info.ResetsAt, 0).UTC()
+	}
+	return at
 }
 
 // claudeRateLimit names the rate-limit response the event stream carries, ""

@@ -188,6 +188,75 @@ exits. It reads the ledger afresh (the classification is re-derived at every mov
 that can read it and written nowhere, decision 8), then does the first of these
 that applies.
 
+The one exception is the drive (itd-2610222215485265,
+[adr-2610222222326104](../../decisions/adrs/2610222222326104-abcd-drives-agents-with-no-host-session.md)):
+typed in a plain terminal, on the person's own yes, it makes these moves itself, on
+one separate login under `~/.abcd.noindex/profiles/`, this account's subscription and
+no other. Each iteration is one move under the drain's lock for that move alone; a
+lane is driven in-process through `loop.Drive` and `DriveReview`, every role on the
+launch on that login; a landing that waits for its receipt has its preflight run behind the
+load gate; each wait a move names is slept to the earliest time it names, at least
+thirty seconds. Three runner failures in a row, or a judge's failure, enter the
+outage schedule (one minute, five, ten, then hourly), which hands nothing back and
+ends the drive at eight hours. A step that starts no agent and moves no stage waits
+on that same schedule. A rate limit starts no agent until the reset the harness
+reports, or, with none reported, waits on that schedule; a limit that outlasts eight
+hours ends the drive, saying when it resets. A wait on work someone else holds, or on
+a contended lock, ends the drive after eight hours with nothing moved, so no wait goes
+without a deadline, and a long wait renews what the lanes hold. A preflight that exits
+0 and leaves no receipt runs once for a head, and the lane then goes to the stuck check.
+
+Before the first move the drive writes the profile directory's settings, abcd's hooks
+as commands naming its own binary and nothing else, and checks each wall, refusing
+and naming the one that fails: the login state, the settings, a git identity for the
+checkout, and in one short live launch the tools the launch named, the approver as the
+only server, no plugin, no key, the guard refusing a command it is meant to refuse, the
+home and the variable names a stage's shell shows, and a settings file in the working
+tree having no effect, since the launch's setting sources name the profile directory
+alone. Before each stage and each preflight the settings, the files a stage's shell
+reads, the machine declarations, abcd's binary and the harness are compared with the
+start, and a difference stops the drive.
+
+A profile is a separate login and settings on this one account, not a boundary: a
+stage's shell reads what this account can. A launch starts from an allow-list of
+variables, a proxy's credentials taken out. Its shell's home is emptied at each launch
+and holds the person's git identity and filters; Go's caches and the person's home for
+abcd's shared records are named, and any other toolchain's cache starts empty. A Go on
+PATH that abcd will not run or that gives no answer leaves its caches in that home, and
+the drive says so at its start. The guard
+reads a shell line against that home and refuses a further agent, a moved home, the
+keychain tool and the land verb. A file tool, and a shell line the guard can read, write only in the
+stage's working tree and run directories, its home and temporary files, and never the
+hooks, the Makefile, abcd's configuration, a preflight or review receipt or an approval;
+other records under
+`.abcd/` are written only where the work declares them. A program the guard cannot read
+is not held to this. The hooks read the rules and the guard's registry as the lane's base
+holds them, and the away mode, the checklist and recall stand aside on a stage.
+
+The driver's commit, merge and reset hooks, and any filter run inside those commands, get
+the same variables and home as a stage, and read the git configuration the drive wrote
+rather than any a stage left in that home; its network commands, its other filters and its
+forge calls keep the person's environment. A preflight runs
+with what a stage carries too, and only a receipt from a preflight the drive ran itself
+lands a lane. A lane at its landing that changes the Makefile, `scripts/` or the active
+hooks, measured from what it last merged of the default branch, is handed back, and an
+issue that names one is passed over before a lane opens: that change needs a person's own
+session, and the drive's last lines name each one. What the driver wrote of a run is compared after each agent's call, and a
+difference stops the drive. One drive holds a checkout at a time, and each checkout has
+its stage's home to itself. A credential variable the harness would bill
+through refuses the start, naming itd-2611011230226453, and so does a start from
+inside an agent's own session.
+
+A stop takes two presses. The first interrupt, hang-up or termination leaves the
+drive's context live, so the agent in a call finishes that call and its receipt is
+recorded; the drive then releases the lane's reservation and its claims so a peer
+may take the issue up, leaves the lane on its branch, and names the run, the lane
+and the command that resumes it. The second signal ends the context, which kills the
+process group, and names when the reservation lapses. Nothing is handed back for a
+stop. A later drive on the same copy reserves the lane again and lands it; one that
+finds the issue held hands its lane back as stuck, and one at the person's own cap
+waits on the outage schedule for a reservation to end, handing nothing back.
+
 In a checkout with a remote named `origin`, the ledger a move reads is origin's
 default branch, never the checkout's own, which may be behind it
 (spc-2610161044461448 step 1, dcn-2610161040350256): under the drain's lock,
@@ -755,6 +824,9 @@ says so once, on stderr.
 
 ## A session off a profile
 
+A drive's moves print no such line: it starts from a plain terminal, not from a session
+of the person's (dcn-2611050931219213). Otherwise:
+
 While the away mode holds, every move of a drain prints the off-profile line after
 the move, on the terms [`26-mode.md`](26-mode.md#a-session-off-a-profile) sets out
 (dcn-2611041550129278). Every move, rather than the first as with the approval
@@ -806,6 +878,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--drive` | bool |
 | `--dry-run` | bool |
 | `--fix-rounds` | string |
 | `--judgement` | string |
@@ -816,5 +889,6 @@ Sub-verbs: none.
 | `--sub-agents` | string |
 | `--take-over` | bool |
 | `--unskip` | stringArray |
+| `--yes` | bool |
 
 <!-- surface-appendix:end -->

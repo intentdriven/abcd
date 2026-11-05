@@ -460,6 +460,7 @@ code does not change. In the managed mode nothing prints. abcd reads one setting
 reporting no such setting included. This reads one setting and proves no wall, and the setting's value
 changes nothing the session holds. No abcd command starts a session on a profile yet. A profile is a
 separate login and settings on one operating-system account, and a stage's shell reads what the account can.
+abcd drain --drive is the unattended start: it runs agents of its own on a separate login, with named tools, checked at its start.
 
 The runner configuration is read before the run is created: roles.<role>.runner (host,
 the default, or a runner) and the runners this machine enables under runner.<name> in
@@ -1399,7 +1400,7 @@ abcd docs fidelity record --verdict-json verdict.json
 
 Fix the issues needing no decision, one lane at a time, and hand the rest back: Writes its state and user-visible drafts; refuses without the rule's record.
 
-**Usage:** `abcd drain [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]`
+**Usage:** `abcd drain [--drive [--yes]] [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]`
 
 Work the open issue ledger unattended: fix the issues that need no decision, and
 hand the rest back by kind. Which issues need no decision is this repository's own
@@ -1449,6 +1450,33 @@ last fetched, and says how old that view is, how many commits the checkout is
 behind it, and which issues open in the checkout it has already finished. The host
 judgement over each eligible remedy does not run; it can only ever hand an issue
 back.
+
+--drive makes the moves itself, from a plain terminal with no host session: it refuses
+before anything is reserved when the claude runner is not enabled or admitted, when
+there is no one profile directory under ~/.abcd.noindex/profiles/ logged in, when a
+wall does not hold or no git identity resolves, when a credential variable the harness would bill through is set
+(a drive runs on this account's subscription alone, for now), when the judge is routed
+to opencode, when a role is pinned to the host, and when it is started from inside an
+agent's own session. It shows the cap (eight unless --max says otherwise), an estimate
+of the agent runs, the runner and the route, and asks once; --yes is the scripted
+answer, and with no terminal nothing else answers. A profile is a separate login and
+settings on this one account, not a boundary: a stage's shell reads what this account
+can. It then judges each eligible issue,
+drives each lane to its landing, every role on that separate login, and runs each
+landing's preflight behind the load gate, printing one line per step and logging them
+under .abcd/.work.local/logs/. A lane that changes the Makefile, scripts/ or the active
+hooks is handed back at its landing, and an issue that names one is passed over: that
+change needs a person's own session. The driver's commit, merge and reset hooks, and any
+filter run inside those commands, get the stage's variables, while its network commands,
+its other filters and its forge calls keep the person's environment. It ends at
+the cap, when nothing is eligible, or after eight hours of runner failures. One drive
+holds a checkout at a time; a second exits 3. A drive that is stopped, stops short or
+holds an issue back exits 3, and one a failed check stopped exits 2. The first interrupt, hang-up or termination is a
+stop: the agent in a call finishes that call, the lane's reservation is released, the
+lane stays on its branch, and the last lines name the run, the lane and the command
+that resumes it. A second kills the running agent's process group and exits at once
+(exit 130), naming when the reservation lapses. Without --drive a drain is one move,
+as below.
 
 --take-over moves your own live reservation of an issue from another copy to this one
 as the move reaches it, as `abcd build --take-over` does: a hosted session that
@@ -1588,6 +1616,7 @@ change. In the managed mode and on --dry-run nothing prints. abcd reads one sett
 reporting no such setting included. This reads one setting and proves no wall, and the setting's value
 changes nothing the session holds. No abcd command starts a session on a profile yet. A profile is a
 separate login and settings on one operating-system account, and a stage's shell reads what the account can.
+abcd drain --drive is the unattended start: it runs agents of its own on a separate login, with named tools, checked at its start.
 
 Without the repository's record, the dry run and the run both refuse (exit 2),
 naming how to add it; `abcd ahoy install` offers it. A run that opens nothing or
@@ -1597,6 +1626,7 @@ drain or run holds the state lock.
 **Flags:**
 
 ```
+      --drive                make every move from this terminal, starting each agent on a separate login, until the cap, an empty ledger or a stop
       --dry-run              show every open issue's disposition and the order a drain takes them; writes nothing
       --fix-rounds string    the fix rounds a lane may take before it is handed back; wins over every configured layer
       --judgement string     the host's answer to the judgement the drain awaits, at the path its request names
@@ -1607,12 +1637,15 @@ drain or run holds the state lock.
       --sub-agents string    the ceiling on lanes and validators alive at once; wins over every configured layer
       --take-over            move your own live reservation of each issue this move reaches from another copy to this one; never another person's
       --unskip stringArray   take an issue or path off the drain's skip list
+      --yes                  with --drive: the scripted yes to its one question
 ```
 
 **Example:**
 
 ```
-abcd drain --dry-run
+abcd drain --drive
+  abcd drain --drive --yes --max 3
+  abcd drain --dry-run
   abcd drain --dry-run --json
   abcd drain --max 3
   abcd drain --json
@@ -2009,8 +2042,8 @@ nobody is there to approve it.
 
 The file tools the role is granted (--allowedTools on the launch) write
 without asking the approver, and the abcd binary that answers is not among
-the paths it protects; the OS sandbox for launched agents
-(spc-2610161751056096) is what bounds those writes.
+the paths it protects. The OS sandbox for launched agents
+(spc-2610161751056096) that would bound those writes is planned, not in force.
 
 The guard is a mistake filter, not a security boundary (see `abcd guard
 check --help` for what an allow does not see), and this adds no sandbox.
@@ -2020,9 +2053,12 @@ start it. It exits 0 when its input ends.
 **Flags:**
 
 ```
-      --base string           the commit the run started on, by its full object name
-      --dir string            the working tree the agent runs in, as an absolute path
-      --run-dir stringArray   a directory the run keeps its own files in (its brief, its receipt), as an absolute path; repeatable
+      --base string            the commit the run started on, by its full object name
+      --declared stringArray   on a drive's stage, a path its work declares it changes, relative to --dir; repeatable
+      --dir string             the working tree the agent runs in, as an absolute path
+      --protect stringArray    on a drive's stage, a directory it may not write, as an absolute path; repeatable
+      --run-dir stringArray    a directory the run keeps its own files in (its brief, its receipt), as an absolute path; repeatable
+      --stage-home string      on a drive's stage, the home its shell runs under, as an absolute path
 ```
 
 **Example:**
@@ -2622,6 +2658,7 @@ the exit code does not change. abcd reads one setting in the session's environme
 reporting no such setting included. This reads one setting and proves no wall, and the setting's value
 changes nothing the session holds. No abcd command starts a session on a profile yet. A profile is a
 separate login and settings on one operating-system account, and a stage's shell reads what the account can.
+abcd drain --drive is the unattended start: it runs agents of its own on a separate login, with named tools, checked at its start.
 
 **Flags:**
 
@@ -4868,6 +4905,7 @@ the exit code is the same either way: it warns and never refuses. abcd reads one
 reporting no such setting included. This reads one setting and proves no wall, and the setting's value
 changes nothing the session holds. No abcd command starts a session on a profile yet. A profile is a
 separate login and settings on one operating-system account, and a stage's shell reads what the account can.
+abcd drain --drive is the unattended start: it runs agents of its own on a separate login, with named tools, checked at its start.
 
 The record lives in ~/.abcd.noindex/away/<root-sha>/record.json, keyed on the repository's
 root commit, and is changed under its lock, which only `abcd mode back` goes

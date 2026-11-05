@@ -19,6 +19,8 @@ import (
 // decision someone writes down, never a bypass nobody saw (review3-guard). An
 // entry that is not "exempt:" must also call something unknown.go defines.
 var wordReaders = map[string]string{
+	"startsAnAgent": "exempt: reads the word commandSites places as the program, after a word no line fixes is refused",
+	"FileAtCommit":  "exempt: reads git's listing of a commit, not a word of the line",
 	// unknown.go: the rule and the walks that apply it.
 	"unknownFlagCouldBe": "the rule itself",
 	"flagCouldBe":        "the rule itself",

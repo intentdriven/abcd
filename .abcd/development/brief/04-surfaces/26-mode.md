@@ -113,7 +113,9 @@ Setting the away mode warns; so does a build or a drain move while the mode
 holds ([`34-build.md`](34-build.md), [`35-drain.md`](35-drain.md)), a first
 session's join in any mode ([`27-implement.md`](27-implement.md)), and any of
 those moves when the away state cannot be read. A managed build or drain move
-whose away state can be read prints nothing.
+whose away state can be read prints nothing. A drive's moves print no such line: it
+starts from a plain terminal, not from a session of the person's
+(dcn-2611050931219213).
 
 The warning is one line on stderr whatever the output form, printed after the
 move, opening `WARNING:`, worded as the setting's reading, naming what abcd cannot
@@ -134,7 +136,9 @@ hold other tools, and abcd has no way to see them. A host's report of a session'
 tools would show the tools and still not bound its shell; what the account cannot
 reach is a later step (itd-2610161621364075). A profile is a separate login and
 settings on one operating-system account, and a stage's shell reads what the account
-can. No abcd command starts a session on a profile yet.
+can. No abcd command starts a session on a profile yet. The drain's drive
+([`35-drain.md`](35-drain.md)) is the unattended start: it runs agents of its own on a
+separate login, with named tools, checked at its start.
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 

@@ -28,6 +28,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/machineload"
 	"github.com/intentdriven/abcd/internal/testreuse"
@@ -35,11 +36,17 @@ import (
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	home, _ := os.UserHomeDir()
 	wd, _ := os.Getwd()
-	code := run(ctx, os.Args[1:], wd, home, os.Stdout, os.Stderr)
+	code := run(ctx, os.Args[1:], wd, checkHome(), os.Stdout, os.Stderr)
 	stop()
 	os.Exit(code)
+}
+
+// checkHome is the home the check directory lies under: the person's under a
+// stage's, whose home is emptied before each preflight.
+func checkHome() string {
+	home, _ := abcdhome.MachineHome()
+	return home
 }
 
 func run(ctx context.Context, args []string, wd, home string, stdout, stderr io.Writer) int {

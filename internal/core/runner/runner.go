@@ -93,6 +93,8 @@ type Request struct {
 	// that grants the shell needs it, since the approver judges every
 	// command against the hazard registry at that commit.
 	Base string
+	// Declared are the paths the work declares it changes, relative to Dir.
+	Declared []string
 	// Denied are the tools the role is refused outright, whatever else would
 	// grant them: a harness that keeps a deny list takes them there, ahead of
 	// every grant.
@@ -227,6 +229,9 @@ type Failure struct {
 	// Spent is what a killed launch spent, read from its transcript
 	// (ErrKilled, Spend); nil for every other failure.
 	Spent *Spend
+	// ResetsAt is when a rate limit resets, as the harness reported it; zero
+	// when it reported none or the failure is no limit.
+	ResetsAt time.Time
 	// cause is the launch stage that failed (ErrNotOnPath, ErrRefused,
 	// ErrNotStarted), nil for every other failure; errors.Is reads it.
 	cause error

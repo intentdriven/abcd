@@ -14,6 +14,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/guard"
 	"github.com/intentdriven/abcd/internal/core/landing"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
 )
@@ -344,6 +345,9 @@ func guardHookDecide(cmd *cobra.Command) error {
 	// the command run and puts the warning in front of a human. Only a
 	// deny stops anything.
 	failOpen := func(format string, a ...any) error {
+		if stageActive() {
+			return stageUncheckedDeny()
+		}
 		diagnosticLine(cmd.ErrOrStderr(),
 			"abcd guard: NOT CHECKED — "+format+". This command runs UNGUARDED.", a...)
 		return &exitError{Code: 1}
@@ -369,6 +373,8 @@ func guardHookDecide(cmd *cobra.Command) error {
 			return questionFailOpen(cmd.ErrOrStderr(), "the question tool's hook payload could not be read (%s)", errUnreadableQuestionPayload)
 		case known && isFileWriteTool(tool):
 			return fileWriteFailOpen(cmd.ErrOrStderr(), "the %s tool's hook payload is not readable JSON", termsafe.Sanitize(tool))
+		case stageActive():
+			return stageUncheckedDeny()
 		case !known:
 			diagnosticLine(cmd.ErrOrStderr(),
 				"abcd guard: NOT CHECKED — the hook payload is not readable JSON, so the tool it calls is unknown. The call runs UNGUARDED.")
@@ -459,7 +465,7 @@ func guardHookDecide(cmd *cobra.Command) error {
 	if wd.Exists {
 		runDir = wd.Path
 	}
-	files := guard.NewFiles(runDir)
+	files := stageFilesFromEnv(guard.NewFiles(runDir))
 	// Both registries prove a delete's targets with one prover, so a
 	// delete the line makes is refused unless it is proven safe
 	// (iss-2610241239492159).
@@ -679,7 +685,12 @@ func loadGuardRegistry(w io.Writer) (guard.Loaded, error) {
 // read, origin unreachable included, counts as human, and the refusal says
 // why, its text masked as every other facilitator.mode refusal is.
 func loadRepoGuard(root string) guard.Loaded {
-	ld := guard.LoadRepo(root)
+	var ld guard.Loaded
+	if base := os.Getenv(runner.StageBaseEnv); base != "" {
+		ld = guard.LoadRepoAt(root, base)
+	} else {
+		ld = guard.LoadRepo(root)
+	}
 	ld.Registry = ld.Registry.WithMergeMode(guardMergeMode(root))
 	return ld
 }

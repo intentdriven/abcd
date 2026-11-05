@@ -33,6 +33,10 @@ const (
 )
 
 func TestMain(m *testing.M) {
+	stageEnvExtra = []string{fakeModeEnv, fakeLogEnv}
+	stageGitRead = func(Profile) ([]byte, error) {
+		return []byte("[user]\n\tname = \"Pat Example\"\n\temail = \"pat@example.invalid\"\n"), nil
+	}
 	if mode := os.Getenv(fakeModeEnv); mode != "" {
 		os.Exit(fakeHarness(mode))
 	}
@@ -41,6 +45,9 @@ func TestMain(m *testing.M) {
 
 // fakeHarness plays the harness its own name says it is.
 func fakeHarness(mode string) int {
+	if strings.HasPrefix(mode, "wall-") {
+		return fakeWall(mode)
+	}
 	// The runner executes the resolved binary, so argv[0] names the test
 	// binary; which harness this is shows in the launch itself.
 	name := "claude"
@@ -91,6 +98,14 @@ func fakeHarness(mode string) int {
 	switch mode {
 	case "sleeper":
 		time.Sleep(60 * time.Second)
+		return 0
+	case "leave-child":
+		// A harness that leaves a process in its group as it exits, one that
+		// does not hold its output.
+		child := exec.Command("/bin/sleep", "60")
+		if child.Start() == nil && logDir != "" {
+			_ = os.WriteFile(filepath.Join(logDir, "left.pid"), []byte(strconv.Itoa(child.Process.Pid)), 0o600)
+		}
 		return 0
 	case "spend-hang":
 		// A run that works, spends, and is killed before its closing event

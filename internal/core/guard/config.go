@@ -106,6 +106,26 @@ func load(repoRoot string) (Registry, error) {
 // not load — is the bundled defaults alone, the registry that needs no review.
 func committedRegistry(repoRoot string) Registry { return registryAt(repoRoot, "HEAD") }
 
+// RegistryAt is the registry a repository's file held at commit.
+func RegistryAt(repoRoot, commit string) Registry { return registryAt(repoRoot, commit) }
+
+// FileAtCommit reads the repository file rel as commit holds it, within limit; ok
+// is false when commit holds no such file.
+func FileAtCommit(repoRoot, commit, rel string, limit int64) (data []byte, ok bool, err error) {
+	listed, err := gitutil.Run(repoRoot, storedObjects, "ls-tree", "-z", "--name-only", commit, "--", rel)
+	if err != nil {
+		return nil, false, err
+	}
+	if strings.Trim(listed, "\x00") == "" {
+		return nil, false, nil
+	}
+	blob, err := gitutil.RunLimited(repoRoot, int(limit), storedObjects, "cat-file", "blob", commit+":./"+rel)
+	if err != nil {
+		return nil, false, err
+	}
+	return []byte(blob), true, nil
+}
+
 // storedObjects is the git global option the registry is read under:
 // objects as git stores them, never through a refs/replace/* ref, which
 // would stand another blob in for the committed file, or another commit in

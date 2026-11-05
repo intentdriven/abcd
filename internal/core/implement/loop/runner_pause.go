@@ -56,6 +56,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"crypto/sha256"
+	"encoding/json"
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -426,7 +428,14 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 	}
 	release := func() error { return releaseClaim(repoRoot, runID, aw.Receipt, session) }
 
+	var declared []string
+	if rs.Config.OnWalledLogin() {
+		if st, err := ReadState(repoRoot, runID); err == nil {
+			declared, _ = runFootprint(repoRoot, st.Key, st.Spec, runID+" is unchanged")
+		}
+	}
 	req := runner.Request{
+		Declared: declared,
 		Role:     aw.Role,
 		Brief:    absIn(repoRoot, aw.Brief),
 		Receipt:  absIn(repoRoot, aw.Receipt),
@@ -444,6 +453,17 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		Timeout:   timeout,
 		Work:      runner.LaunchWork{Run: runID, Lane: laneID, Await: aw.Receipt},
 	}
+	// A drive holds what it wrote, so a line that rewrites the run in the agent's
+	// call is seen before anything is done on what the line wrote.
+	var watched [sha256.Size]byte
+	if o.RunStateWatch {
+		watched = runFingerprint(repoRoot, runID)
+	}
+	seen, validating := false, false
+	changed := func() bool {
+		seen = seen || (o.RunStateWatch && !validating && runFingerprint(repoRoot, runID) != watched)
+		return seen
+	}
 	var done *StepResult
 	var refusedHandIn error
 	var fell *runner.FallbackReceipt
@@ -458,6 +478,11 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		HostSession: true,
 		Transcripts: transcripts,
 		Validate: func(ran string, _ runner.Request, ans runner.Answer) error {
+			if changed() {
+				return errRunStateChanged
+			}
+			// From here the driver writes the run itself.
+			validating = true
 			rec := runner.RecordOf(route.Runner, ran, ans)
 			rec.Override = route.Override()
 			r, err := receipt(repoRoot, runID, aw.Receipt, steps, o, &rec)
@@ -474,6 +499,12 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		Now:    o.Now,
 	}
 	out, err := d.Dispatch(ctx, req)
+	if changed() {
+		if rerr := release(); rerr != nil {
+			return on, errors.Join(errRunStateChanged, rerr)
+		}
+		return on, errRunStateChanged
+	}
 	retry := func(r StepResult, p *RunnerPause) StepResult {
 		if why != "" {
 			r.Retried = &Retry{Lane: laneID, Role: aw.Role, Runner: route.Runner, Why: why, Paused: p}
@@ -777,4 +808,19 @@ func redactStderr(repoRoot, line string) string {
 		s = s[:cut] + "..."
 	}
 	return s
+}
+
+// runFingerprint is a run's state by hash, without what a renewal may write while
+// an agent waits at the load gate: its record, its time and its reservation's.
+func runFingerprint(repoRoot, runID string) [sha256.Size]byte {
+	st, err := ReadState(repoRoot, runID)
+	if err != nil {
+		return sha256.Sum256([]byte(err.Error()))
+	}
+	st.Record, st.UpdatedAt, st.ReservedAt = nil, time.Time{}, nil
+	raw, err := json.Marshal(st)
+	if err != nil {
+		return sha256.Sum256([]byte(err.Error()))
+	}
+	return sha256.Sum256(raw)
 }

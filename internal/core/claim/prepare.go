@@ -1,11 +1,11 @@
 package claim
 
 import (
-	"os"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/assistedby"
@@ -56,7 +56,7 @@ func (o Options) home() string {
 	if o.Home != "" {
 		return o.Home
 	}
-	h, err := os.UserHomeDir()
+	h, err := abcdhome.MachineHome()
 	if err != nil {
 		return ""
 	}

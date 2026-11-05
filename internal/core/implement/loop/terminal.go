@@ -1,0 +1,895 @@
+package loop
+
+// terminal.go is the terminal loop (spc-2610230813348813 step 2;
+// adr-2610222222326104): `abcd drain --drive`'s core, the moves a host would
+// make between the drain's steps made here instead. Each iteration is one move
+// of the drain, under the drain's lock for that move alone; a lane in progress
+// is driven in-process as `abcd implement step` drives it, through Drive and
+// DriveReview, its receipts recorded as they record them; a landing that waits
+// for its receipt has its preflight run; a wait a move names is slept out with
+// the lock free. The runners are whatever Runners holds, so the walled launch
+// is one value the front door hands in.
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"slices"
+	"time"
+
+	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
+)
+
+// Why a terminal run ended that the drain's own Stopped does not say.
+const (
+	// TerminalStopped: a stop was asked for.
+	TerminalStopped = "stop"
+	// TerminalOutage: failures ran through the outage schedule to its limit.
+	TerminalOutage = "runner-outage"
+	// TerminalWall: a wall checked before a stage no longer held.
+	TerminalWall = "wall"
+	// TerminalRefused: a move refused in a way the run cannot go past.
+	TerminalRefused = "refused"
+	// TerminalHalted: a stop set from outside this terminal holds
+	// (itd-2611041549471712). What the run holds is that stop's to let go.
+	TerminalHalted = "halted"
+	// TerminalLimited: the account's rate limit outlasts what a drive waits.
+	TerminalLimited = "rate-limited"
+	// TerminalWaited: nothing moved for as long as a drive waits.
+	TerminalWaited = "waited"
+	// TerminalKilled: the context ended, a second signal: the agent's process
+	// group was killed, and what it held lapses on its own.
+	TerminalKilled = "killed"
+)
+
+// terminalHaltStage is the stage a move or a step refuses at while a stop set
+// from outside this terminal holds.
+const terminalHaltStage = "stop"
+
+// TerminalResumeCommand resumes a run that left a lane.
+const TerminalResumeCommand = "abcd drain --drive"
+
+// StageDriveReleased is the run record's stage for a reservation a drive let
+// go as it ended, which the drive that takes the lane up reserves again.
+const StageDriveReleased = "drive_released"
+
+// TerminalOptions are one terminal run's inputs.
+type TerminalOptions struct {
+	// Options are the loop's seams and configuration, Runners among them.
+	Options Options
+	// Drain are the drain's own flags; Context is set to the run's.
+	Drain DrainOptions
+	// Runners starts each role.
+	Runners Runners
+	// Stages are the lane's stages; DefaultStages when nil.
+	Stages Stages
+	// Review is the reviewer route, as `implement step` hands it.
+	Review *ReviewRoute
+	// Preflight runs the repository's preflight in a lane's worktree, behind
+	// the load gate.
+	Preflight func(ctx context.Context, worktree string) error
+	// PreflightAllowed says whether a lane's preflight may run, given its
+	// worktree and base; a *PreflightRefused hands the lane back. Nil allows all.
+	PreflightAllowed func(worktree, base string) error
+	// Stop is closed when a stop is asked for. The context stays live, so a
+	// call in flight finishes.
+	Stop <-chan struct{}
+	// BeforeStage is called before each move and each step, so before any
+	// stage starts; an error ends the run, TerminalWall. Nil checks nothing.
+	BeforeStage func() error
+	// Say prints one line, already plain; nil says nothing.
+	Say func(string)
+	// Sleep waits; nil sleeps until the time passes or the stop or the
+	// context ends it.
+	Sleep func(ctx context.Context, d time.Duration)
+}
+
+// errRunStateChanged is a run whose state changed while nothing of the driver's
+// was writing it.
+var errRunStateChanged = errors.New("the run's state changed while an agent was in its call, and only the driver writes it")
+
+// HeldBackRel is the file that keeps what a drive held back.
+const HeldBackRel = ".abcd/.work.local/logs/drive-held-back.log"
+
+// JudgeKind is what became of a routed judgement.
+type JudgeKind int
+
+// The ends a routed judgement comes to that give no answer.
+const (
+	// JudgeNoOutcome: no routed judge was asked.
+	JudgeNoOutcome JudgeKind = iota
+	// JudgeNoAnswer: its runner ran it and it answered nothing usable.
+	JudgeNoAnswer
+	// JudgeRunnerFailed: its runner did not run it.
+	JudgeRunnerFailed
+	// JudgeLimited: the account's rate limit stopped it.
+	JudgeLimited
+)
+
+// JudgeOutcome is what became of a routed judgement.
+type JudgeOutcome struct {
+	Kind JudgeKind
+	// ResetsAt is when a limit resets, zero when none was reported.
+	ResetsAt time.Time
+}
+
+// PreflightRefused is why a lane's preflight is not run.
+type PreflightRefused struct{ Reason string }
+
+func (e *PreflightRefused) Error() string { return e.Reason }
+
+// TerminalResult is how one terminal run ended.
+type TerminalResult struct {
+	// Ended is why: the drain's Stopped, TerminalStopped or TerminalOutage.
+	Ended string `json:"ended"`
+	// Run, Issue and Lane name the lane left on its branch, when one is.
+	Run   string `json:"run,omitempty"`
+	Issue string `json:"issue,omitempty"`
+	Lane  string `json:"lane,omitempty"`
+	// Resume is the command that takes the lane up, when one is left.
+	Resume string `json:"resume,omitempty"`
+	// Lapses is when the lane's reservation lapses, when a kill left it held.
+	Lapses *time.Time `json:"lapses,omitempty"`
+	// Last is the last move's result.
+	Last DrainResult `json:"last"`
+	// HeldBack names each issue the run held back.
+	HeldBack []string `json:"held_back,omitempty"`
+	// PassedOver names each issue the run did not open, with why.
+	PassedOver []Excluded `json:"passed_over,omitempty"`
+	// Why is what stopped the run when a check did.
+	Why string `json:"why,omitempty"`
+}
+
+// terminal is one run in progress.
+type terminal struct {
+	repoRoot string
+	o        TerminalOptions
+	outage   terminalOutageClock
+	// limit is the outage's schedule run for a rate limit.
+	limit terminalOutageClock
+	last  DrainResult
+	// idleSince is when the run last stopped moving, zero while it moves.
+	idleSince time.Time
+	// ranClean names the lane and head a preflight last exited 0 on.
+	ranClean string
+	// unanswered counts, by issue, the judgements a runner ran and that gave no
+	// answer; heldBack names each issue the run held back for that.
+	unanswered map[string]int
+	heldBack   []string
+	// passedOver are the issues said to need a person, each once.
+	passedOver []Excluded
+	// why is what stopped the run, when a check did.
+	why string
+	// judge is what the last move's routed judgement came to.
+	judge JudgeOutcome
+	// minted names each head a preflight this run ran exited 0 on, and bases each
+	// lane's base as the run first read it.
+	minted map[string]bool
+	bases  map[string]string
+}
+
+// RunTerminal drives the drain from here until its cap, an empty ledger, the
+// outage limit or a stop. An error is a refusal the run cannot go past.
+func RunTerminal(ctx context.Context, repoRoot string, o TerminalOptions) (TerminalResult, error) {
+	if o.Stages == nil {
+		o.Stages = DefaultStages()
+	}
+	if o.Sleep == nil {
+		o.Sleep = func(ctx context.Context, d time.Duration) { sleepOr(ctx, d, o.Stop) }
+	}
+	o.Drain.Context = ctx
+	o.Drain.AskJudgeAgain = true
+	if o.Drain.Transcripts == nil {
+		o.Drain.Transcripts = o.Runners.Transcripts
+	}
+	t := &terminal{repoRoot: repoRoot, o: o, minted: map[string]bool{}, bases: map[string]string{}}
+	t.o.Drain.JudgeOutcome = &t.judge
+	t.o.Options.RunStateWatch = true
+	t.o.Options.ReceiptOwn = func(sha string) bool { return t.minted[sha] }
+	return t.run(ctx)
+}
+
+// say prints one line.
+func (t *terminal) say(format string, args ...any) {
+	if t.o.Say != nil {
+		t.o.Say(termsafe.Sanitize(fsutil.RedactHome(fmt.Sprintf(format, args...))))
+	}
+}
+
+func (t *terminal) stopped() bool {
+	select {
+	case <-t.o.Stop:
+		return true
+	default:
+		return false
+	}
+}
+
+func (t *terminal) now() time.Time { return t.o.Options.now() }
+
+// wallHeld runs the check before a stage, saying what stopped the run.
+func (t *terminal) wallHeld() bool {
+	if t.o.BeforeStage == nil {
+		return true
+	}
+	err := t.o.BeforeStage()
+	if err != nil {
+		t.stoppedBy(err)
+	}
+	return err == nil
+}
+
+// stoppedBy says what stopped the run and keeps it for the end.
+func (t *terminal) stoppedBy(err error) {
+	t.why = err.Error()
+	t.say("stopping: %s", t.why)
+}
+
+// haltedBy reports whether err is a stop set from outside this terminal, saying
+// what holds and what lifts it. Sleeping through it, as through another
+// contention, would keep the drive alive for ever under a stop.
+func (t *terminal) haltedBy(err error) bool {
+	r, ok := AsRefusal(err)
+	if !ok || r.Stage != terminalHaltStage {
+		return false
+	}
+	t.say("stopping: %s; %s", r.Reason, r.Remedy)
+	return true
+}
+
+// sleep waits d, saying why, in stretches no longer than half a lease, renewing
+// what the run's lanes hold between them, so a long wait keeps their claims. A
+// stop or a kill ends it.
+func (t *terminal) sleep(ctx context.Context, d time.Duration, why string) {
+	t.say("waiting %s: %s", d.Round(time.Second), why)
+	t.renewHeld()
+	for d > 0 {
+		step := min(d, terminalRenewEvery)
+		t.o.Sleep(ctx, step)
+		d -= step
+		if ctx.Err() != nil || t.stopped() {
+			return
+		}
+		t.renewHeld()
+	}
+}
+
+// renewHeld renews each due reservation of a run in progress, but one a drive
+// let go, and says what failed.
+func (t *terminal) renewHeld() {
+	for _, r := range renewRunsAt(t.repoRoot, "", func(st State) bool { return !letGoByDrive(st) }, t.now()) {
+		if !r.Renewed {
+			t.say("%s: %s", r.Key, r.Note)
+		}
+	}
+}
+
+// idle waits d on something someone else must do, reporting true when nothing
+// has moved for as long as a drive waits (adr-2610222222326104 condition 3): the
+// run then ends, saying so.
+func (t *terminal) idle(ctx context.Context, d time.Duration, why string) bool {
+	now := t.now()
+	if t.idleSince.IsZero() {
+		t.idleSince = now
+	}
+	if now.Sub(t.idleSince) >= terminalOutageLimit {
+		t.say("stopping: nothing has moved for eight hours, as long as a drive waits: %s", why)
+		return true
+	}
+	t.sleep(ctx, d, why)
+	return false
+}
+
+// failed counts one failure and waits it out; it reports whether the outage
+// has run its limit.
+func (t *terminal) failed(ctx context.Context, judge bool, what string) bool {
+	d, up := t.outage.fail(t.now(), judge)
+	if up {
+		t.say("outage: %s; eight hours of failures, so the run ends and nothing is handed back", what)
+		return true
+	}
+	why := what + "; trying again"
+	if t.outage.inOutage() {
+		why = "outage: " + what + "; nothing is handed back"
+	}
+	t.sleep(ctx, d, why)
+	return false
+}
+
+// run is the loop.
+func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
+	for {
+		if ctx.Err() != nil {
+			return t.ended(TerminalKilled), nil
+		}
+		if t.stopped() {
+			return t.ended(TerminalStopped), nil
+		}
+		if !t.wallHeld() {
+			return t.ended(TerminalWall), nil
+		}
+		t.judge = JudgeOutcome{}
+		res, err := Drain(t.repoRoot, t.o.Options, t.o.Drain)
+		if err != nil {
+			if ctx.Err() != nil {
+				return t.ended(TerminalKilled), nil
+			}
+			// The terminal's interrupt reaches the git a move was running.
+			if t.stopped() {
+				return t.ended(TerminalStopped), nil
+			}
+			if t.haltedBy(err) {
+				return t.ended(TerminalHalted), nil
+			}
+			if r, ok := AsRefusal(err); ok && r.Contention {
+				if t.idle(ctx, TerminalWaitFloor, r.Reason) {
+					return t.ended(TerminalWaited), nil
+				}
+				continue
+			}
+			return t.ended(TerminalRefused), err
+		}
+		t.last = res
+		// What was given once is taken once: the pace, the skips.
+		t.o.Options.Pace, t.o.Options.SubAgents, t.o.Options.FixRounds = nil, nil, nil
+		t.o.Drain.Skip, t.o.Drain.SkipReason, t.o.Drain.Unskip = nil, "", nil
+		t.sayMove(res)
+		if res.Stopped != "" {
+			return t.ended(res.Stopped), nil
+		}
+		if res.Judged != nil {
+			t.outage.succeed()
+		}
+		if res.Judged != nil || len(res.Routed) > 0 || len(res.Finished) > 0 || res.Start != nil {
+			t.idleSince = time.Time{}
+		}
+		if d, ok := moveWait(res, t.now()); ok {
+			if res.WaitingUntil == nil {
+				t.sleep(ctx, d, res.Next)
+			} else if t.idle(ctx, d, res.Next) {
+				return t.ended(TerminalWaited), nil
+			}
+			continue
+		}
+		if res.Judging != nil {
+			switch t.judge.Kind {
+			case JudgeLimited:
+				if t.rateLimited(ctx, &RateLimit{resetsAt: t.judge.ResetsAt}) {
+					return t.ended(TerminalLimited), nil
+				}
+				continue
+			case JudgeNoAnswer:
+				if t.holdBack(res.Judging.Issue) {
+					continue
+				}
+			}
+			if t.failed(ctx, true, "the judge did not judge "+res.Judging.Issue) {
+				return t.ended(TerminalOutage), nil
+			}
+			continue
+		}
+		if res.Lane == nil {
+			if t.idle(ctx, TerminalWaitFloor, res.Next) {
+				return t.ended(TerminalWaited), nil
+			}
+			continue
+		}
+		ended, err := t.driveLane(ctx, res.Lane.RunID)
+		if err != nil {
+			return t.ended(TerminalRefused), err
+		}
+		if ended != "" {
+			return t.ended(ended), nil
+		}
+	}
+}
+
+// holdBack counts one judgement of issue a runner ran that gave no answer, and at
+// the limit has the next move hold it back so the run goes on to other work,
+// releasing its claim and keeping the fact, since the skip list ends with the
+// drain.
+func (t *terminal) holdBack(issue string) bool {
+	if t.unanswered == nil {
+		t.unanswered = map[string]int{}
+	}
+	t.unanswered[issue]++
+	if t.unanswered[issue] < terminalJudgeAsks {
+		return false
+	}
+	delete(t.unanswered, issue)
+	t.say("holding %s back: its judge did not answer %d times", issue, terminalJudgeAsks)
+	t.o.Drain.Skip, t.o.Drain.SkipReason = []string{issue}, "its judge did not answer"
+	t.heldBack = append(t.heldBack, issue)
+	t.keepHeldBack(issue)
+	return true
+}
+
+// heldBackRoot is the main checkout of repoRoot, so what a drive held back
+// outlives a linked worktree's removal. A repository whose git directory lies
+// elsewhere keeps it in repoRoot.
+func heldBackRoot(repoRoot string) string {
+	common, err := gitutil.RevParseAbsPath(repoRoot, "--git-common-dir")
+	if err != nil || filepath.Base(common) != ".git" {
+		return repoRoot
+	}
+	return filepath.Dir(common)
+}
+
+// heldBackFile is where a checkout's held-back issues are kept.
+func heldBackFile(repoRoot string) string {
+	return filepath.Join(heldBackRoot(repoRoot), filepath.FromSlash(HeldBackRel))
+}
+
+// keepHeldBack appends the fact to a file of its own.
+func (t *terminal) keepHeldBack(issue string) {
+	line := t.now().UTC().Format(time.RFC3339) + " " + issue + " its judge did not answer\n"
+	if err := fsutil.EnsureRealDirAll(heldBackRoot(t.repoRoot), filepath.ToSlash(filepath.Dir(HeldBackRel)), 0o700); err == nil {
+		f, err := os.OpenFile(heldBackFile(t.repoRoot), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+		if err == nil {
+			_, _ = f.WriteString(line)
+			_ = f.Close()
+			return
+		}
+	}
+	t.say("%s was held back, and that could not be kept in %s", issue, HeldBackRel)
+}
+
+// sayMove prints what a move did, one line for each thing.
+func (t *terminal) sayMove(res DrainResult) {
+	if j := res.Judged; j != nil {
+		t.say("judged %s: %s", j.Issue, JudgementSummary(*j))
+	}
+	for _, r := range res.Routed {
+		t.say("handed back: %s", DrainSummaryLine(r))
+	}
+	for _, p := range res.Passed {
+		if p.Check == CheckNeedsPerson && !slices.ContainsFunc(t.passedOver, func(e Excluded) bool { return e.ID == p.ID }) {
+			t.passedOver = append(t.passedOver, p)
+			t.say("passed over %s: %s", p.ID, p.Reason)
+		}
+	}
+	for _, f := range res.Finished {
+		t.say("finished %s", f.Issue)
+	}
+	if res.Start != nil && res.Lane != nil {
+		t.say("opened the lane of %s: run %s", res.Lane.Issue, res.Lane.RunID)
+	}
+}
+
+// driveLane steps one lane until it has landed or been handed back, or the
+// next move has something to say about it. It returns why the run ends, "" to
+// go on to the next move.
+func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) {
+	if done, ended := t.takeUp(ctx, runID); done {
+		return ended, nil
+	}
+	for {
+		if ctx.Err() != nil {
+			return TerminalKilled, nil
+		}
+		if t.stopped() {
+			return TerminalStopped, nil
+		}
+		if !t.wallHeld() {
+			return TerminalWall, nil
+		}
+		run, err := ReadState(t.repoRoot, runID)
+		if err != nil {
+			return "", err
+		}
+		if outcome, _, _ := laneOutcome(run); outcome != DrainLaneInProgress {
+			return "", nil
+		}
+		if i := run.current(); i >= 0 {
+			lane := run.Lanes[i]
+			key := runID + " " + lane.ID
+			if base, seen := t.bases[key]; lane.BaseSHA != "" {
+				switch {
+				case !seen:
+					t.bases[key] = lane.BaseSHA
+				case base != lane.BaseSHA:
+					t.stoppedBy(errRunStateChanged)
+					return TerminalWall, nil
+				}
+			}
+			if lane.Stage == StageLand && t.o.PreflightAllowed != nil {
+				var refused *PreflightRefused
+				if perr := t.o.PreflightAllowed(lane.Worktree, diffBase(lane)); errors.As(perr, &refused) {
+					_, ended, err := t.laneRefused(ctx, runID, lane.ID, refused.Reason, refused.Reason)
+					return ended, err
+				} else if perr != nil {
+					return "", perr
+				}
+			}
+		}
+		var res StepResult
+		t.renewing(func() {
+			res, err = Drive(ctx, t.repoRoot, runID, t.o.Stages, t.o.Options, t.o.Runners)
+			if err == nil {
+				res, err = DriveReview(ctx, t.repoRoot, runID, res, t.o.Stages, t.o.Options, t.o.Review)
+			}
+		})
+		if ctx.Err() != nil {
+			return TerminalKilled, nil
+		}
+		if errors.Is(err, errRunStateChanged) {
+			t.stoppedBy(err)
+			return TerminalWall, nil
+		}
+		if err != nil {
+			// The terminal's interrupt reaches the git a step was running.
+			if t.stopped() {
+				return TerminalStopped, nil
+			}
+			if t.haltedBy(err) {
+				return TerminalHalted, nil
+			}
+			again, ended, err := t.stepRefused(ctx, runID, err)
+			if err != nil || ended != "" || !again {
+				return ended, err
+			}
+			continue
+		}
+		switch {
+		case res.Paused != nil:
+			if t.failed(ctx, false, fmt.Sprintf("the %s of %s did not run: %s", res.Paused.Role, runID, pauseWhy(res.Paused))) {
+				return TerminalOutage, nil
+			}
+		case res.Retried != nil && res.Retried.Paused != nil:
+			if t.failed(ctx, false, fmt.Sprintf("the %s of %s did not run: %s", res.Retried.Role, runID, res.Retried.Paused.Why())) {
+				return TerminalOutage, nil
+			}
+		case res.RateLimit != nil:
+			if t.rateLimited(ctx, res.RateLimit) {
+				return TerminalLimited, nil
+			}
+		case res.NextEligibleAt != nil:
+			t.sleep(ctx, max(res.NextEligibleAt.Sub(t.now()), TerminalWaitFloor), res.Next)
+		case res.Route != nil || res.PerformedStage != "":
+			t.idleSince = time.Time{}
+			t.outage.succeed()
+			t.limit.succeed()
+			t.sayStep(runID, res)
+		default:
+			// No agent ran and no stage moved. Every wait has a deadline
+			// (adr-2610222222326104), so this one runs on the outage's.
+			if t.failed(ctx, false, fmt.Sprintf("%s did not move: %s", runID, res.Next)) {
+				return TerminalOutage, nil
+			}
+		}
+	}
+}
+
+// rateLimited waits out the account's rate limit, reporting true when the run
+// should end instead. No agent starts during the wait: it lasts until the reset
+// the harness reported, or, with none reported, as long as the outage's schedule
+// says. A reset beyond what a drive waits ends the run now, saying when it is.
+func (t *terminal) rateLimited(ctx context.Context, rl *RateLimit) bool {
+	now := t.now()
+	d, up := t.limit.fail(now, true)
+	if at := rl.resetsAt; at.After(now) {
+		if at.Sub(t.limit.since) > terminalOutageLimit {
+			t.say("stopping: the account's rate limit resets at %s, later than a drive waits; run %s then", at.UTC().Format(time.RFC3339), TerminalResumeCommand)
+			return true
+		}
+		t.sleep(ctx, max(at.Sub(now), TerminalWaitFloor), fmt.Sprintf("the account's rate limit resets at %s", at.UTC().Format(time.RFC3339)))
+		return false
+	}
+	if up {
+		t.say("stopping: the account has met its rate limit for eight hours and nothing says when it resets; run %s later", TerminalResumeCommand)
+		return true
+	}
+	t.sleep(ctx, d, "the account has met its rate limit, and nothing says when it resets")
+	return false
+}
+
+// renewing runs work that can outlast the lease, an agent's call or a preflight,
+// renewing what the run's lanes hold while it does. The renewals have stopped when
+// it returns.
+func (t *terminal) renewing(work func()) {
+	stop, done := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(done)
+		tick := time.NewTicker(terminalRenewTick)
+		defer tick.Stop()
+		for {
+			select {
+			case <-tick.C:
+				t.renewHeld()
+			case <-stop:
+				return
+			}
+		}
+	}()
+	work()
+	close(stop)
+	<-done
+}
+
+// pauseWhy is a paused await's reason.
+func pauseWhy(a *Await) string {
+	if a.Paused == nil {
+		return "no reason recorded"
+	}
+	return a.Paused.Why()
+}
+
+// sayStep prints what one step did.
+func (t *terminal) sayStep(runID string, res StepResult) {
+	if res.Route != nil {
+		t.say("%s %s: an agent ran on %s", runID, res.Lane, res.Route.Ran)
+	}
+	if res.PerformedStage != "" {
+		t.say("%s %s: %s done", runID, res.Lane, res.PerformedStage)
+	}
+}
+
+// stepRefused answers a refused step: a landing waiting for its receipt has
+// its preflight run and is stepped again (again); another step's hold is
+// waited out; any other refusal goes back to the next move, which reads the
+// count the step logged and hands back a lane that is stuck.
+func (t *terminal) stepRefused(ctx context.Context, runID string, err error) (again bool, ended string, _ error) {
+	r, ok := AsRefusal(err)
+	if !ok || ctx.Err() != nil {
+		return false, "", err
+	}
+	if r.checkWait.IsZero() {
+		if t.idle(ctx, TerminalWaitFloor, r.Reason) {
+			return false, TerminalWaited, nil
+		}
+		return false, "", nil
+	}
+	run, rerr := ReadState(t.repoRoot, runID)
+	if rerr != nil {
+		return false, "", rerr
+	}
+	i := run.current()
+	if i < 0 {
+		return false, "", nil
+	}
+	lane := run.Lanes[i]
+	head := runID + " " + lane.ID + " " + lane.HeadSHA
+	if t.ranClean == head {
+		// It exited 0 and the receipt is still not there, which running it again
+		// would not change: the lane goes to the stuck check.
+		return t.laneRefused(ctx, runID, lane.ID, "its preflight exits 0 and leaves no receipt naming the lane's head", "")
+	}
+	if !t.wallHeld() {
+		return false, TerminalWall, nil
+	}
+	t.say("%s %s: running the preflight", runID, lane.ID)
+	switch perr := t.preflight(ctx, lane.Worktree); {
+	case perr == nil:
+		t.ranClean = head
+		t.minted[lane.HeadSHA] = true
+		return true, "", nil
+	case ctx.Err() != nil || t.stopped():
+		return false, "", nil
+	default:
+		return t.laneRefused(ctx, runID, lane.ID, "its preflight failed: "+perr.Error(), "")
+	}
+}
+
+// preflight runs a lane's preflight on a context a stop also ends, so one queued
+// at the load gate or running does not outlast it.
+func (t *terminal) preflight(ctx context.Context, worktree string) error {
+	pctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go func() {
+		select {
+		case <-t.o.Stop:
+			cancel()
+		case <-pctx.Done():
+		}
+	}()
+	var err error
+	t.renewing(func() { err = t.o.Preflight(pctx, worktree) })
+	return err
+}
+
+// laneRefused logs a refusal on the lane for the next move's stuck check, final
+// saying why it cannot change, and waits at the floor.
+func (t *terminal) laneRefused(ctx context.Context, runID, laneID, reason, final string) (bool, string, error) {
+	why := refuse(string(StageLand), "", laneID, reason, "see the reason")
+	why.final = final
+	now := t.now()
+	if err := mutate(t.repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+		return noteRefusal(st, why, now), nil
+	}); err != nil {
+		return false, "", err
+	}
+	t.sleep(ctx, TerminalWaitFloor, reason)
+	return false, "", nil
+}
+
+// takeUp reserves again a lane a drive let go as it ended. It reports true when
+// the lane cannot go on here yet, with why the run ends, if it does. Someone
+// else holding its issue now is recorded as a refusal that cannot change, so the
+// next move hands the lane back as stuck and moves on. Anything else may pass, a
+// failed push or the person's own cap among them, so the lane waits on the
+// outage's deadline with nothing logged against it.
+func (t *terminal) takeUp(ctx context.Context, runID string) (bool, string) {
+	run, err := ReadState(t.repoRoot, runID)
+	if err != nil || !letGoByDrive(run) {
+		return false, ""
+	}
+	err = reserveResumed(t.repoRoot, &StartResult{RunID: runID}, t.o.Options)
+	if err == nil {
+		t.say("took up %s, run %s: its reservation is held again", run.Key, runID)
+		return false, ""
+	}
+	r, ok := AsRefusal(err)
+	if !ok {
+		r = refuse(StageReservation, "", "", err.Error(), "see the reason")
+	}
+	if r.final == "" && r.Contention {
+		r.final = "another drive took the issue up after this lane stopped"
+	}
+	if r.final == "" {
+		if t.failed(ctx, false, fmt.Sprintf("%s, run %s, is not taken up yet: %s", run.Key, runID, r.Reason)) {
+			return true, TerminalOutage
+		}
+		return true, ""
+	}
+	r.Contention = false
+	t.say("%s, run %s, stays as it is: %s", run.Key, runID, r.Reason)
+	now := t.now()
+	_ = mutate(t.repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+		i := st.current()
+		if i < 0 {
+			return false, nil
+		}
+		r.Lane = st.Lanes[i].ID
+		return noteRefusal(st, r, now), nil
+	})
+	return true, ""
+}
+
+// letGoByDrive reports whether the run's latest reservation entry is a drive
+// letting it go.
+func letGoByDrive(run State) bool {
+	for i := len(run.Record) - 1; i >= 0; i-- {
+		switch run.Record[i].Stage {
+		case StageDriveReleased:
+			return true
+		case StageReservation, StageReservationRenewed:
+			return false
+		}
+	}
+	return false
+}
+
+// letGo releases what the run holds and no lane is working on: each lane in
+// progress, left on its branch, and a judgement's hold no lane opened on. A
+// lane parked at its pull request keeps its own.
+func (t *terminal) letGo() {
+	now := t.now()
+	err := fsutil.WithFileLock(filepath.Join(t.repoRoot, filepath.FromSlash(drainLockRel)), lockTimeout, func() error {
+		// A drain that ended on an outage can have a lane still in progress, so
+		// its lanes are read whether it is live or not.
+		st, live, err := readDrain(t.repoRoot)
+		if err != nil {
+			return err
+		}
+		for _, l := range st.Lanes {
+			if l.Outcome != DrainLaneInProgress {
+				continue
+			}
+			run, err := ReadState(t.repoRoot, l.RunID)
+			if err != nil || run.ReservedAt == nil || letGoByDrive(run) {
+				continue
+			}
+			clause, _ := releaseReservation(t.repoRoot, run.Key, "", now)
+			t.say("%s: %s", run.Key, clause)
+			_ = mutate(t.repoRoot, l.RunID, func(_ *os.Root, st *State) (bool, error) {
+				st.Record = append(st.Record, Entry{At: now, Stage: StageDriveReleased, Note: clause})
+				st.UpdatedAt = now
+				return true, nil
+			})
+		}
+		if j := st.Judging; j != nil && live {
+			if j.Hold != nil {
+				clause, _ := releaseReservationAt(t.repoRoot, j.Issue, j.Hold.Commit, "", now)
+				t.say("%s: %s", j.Issue, clause)
+			}
+			st.Judging = nil
+			st.UpdatedAt = now
+			return writeDrain(t.repoRoot, st)
+		}
+		return nil
+	})
+	if err != nil {
+		t.say("what this run holds was not released, and lapses with its lease: %s", err.Error())
+	}
+}
+
+// ended is the run's result as it ends: unless a kill or a stop from elsewhere
+// ended it, what no lane is working on is released, so a peer may take it up; the
+// lane left in progress is named, with the command that resumes it, or, after a
+// kill, when its reservation lapses. A stop from elsewhere names its own remedy.
+func (t *terminal) ended(why string) TerminalResult {
+	if why != TerminalKilled && why != TerminalHalted {
+		t.letGo()
+	}
+	res := TerminalResult{Ended: why, Last: t.last, HeldBack: t.heldBack, PassedOver: t.passedOver}
+	if why == TerminalWall {
+		res.Why = t.why
+	}
+	st, _, err := readDrain(t.repoRoot)
+	if err != nil {
+		return res
+	}
+	for _, l := range st.Lanes {
+		if l.Outcome != DrainLaneInProgress {
+			continue
+		}
+		res.Run, res.Issue = l.RunID, l.Issue
+		if why != TerminalHalted {
+			res.Resume = TerminalResumeCommand
+		}
+		if run, err := ReadState(t.repoRoot, l.RunID); err == nil {
+			if i := run.current(); i >= 0 {
+				res.Lane = run.Lanes[i].ID
+			}
+		}
+		if why == TerminalKilled {
+			if snap, err := claim.View(t.repoRoot, t.now()); err == nil {
+				if r, ok := snap.Lookup(l.Issue); ok && r.State == claim.StateLive {
+					at := r.EffectiveExpiry
+					res.Lapses = &at
+				}
+			}
+		}
+	}
+	return res
+}
+
+// DrainProgress is the drain in progress in this checkout, as a drive reads it
+// before its yes.
+type DrainProgress struct {
+	Live  bool
+	Max   int
+	Lanes int
+}
+
+// ReadDrainProgress reads the drain in progress, if any.
+func ReadDrainProgress(repoRoot string) (DrainProgress, error) {
+	st, live, err := readDrain(repoRoot)
+	if err != nil {
+		return DrainProgress{}, err
+	}
+	return DrainProgress{Live: live, Max: st.Max, Lanes: len(st.Lanes)}, nil
+}
+
+// CapDrainInProgress gives a drain in progress that has no cap one: lanes more
+// than it has opened. A drive is always bounded (adr-2610222222326104), and a
+// cap is otherwise set only when a drain starts.
+func CapDrainInProgress(repoRoot string, lanes int) error {
+	return fsutil.WithFileLock(filepath.Join(repoRoot, filepath.FromSlash(drainLockRel)), lockTimeout, func() error {
+		st, live, err := readDrain(repoRoot)
+		if err != nil || !live || st.Max != 0 {
+			return err
+		}
+		st.Max = len(st.Lanes) + lanes
+		return writeDrain(repoRoot, st)
+	})
+}
+
+// EstimateRuns is the agent runs a drive of lanes lanes may start, by the
+// budget check's estimate.
+func EstimateRuns(o Options, repoRoot string, lanes int) (int, error) {
+	review, _, err := resolveReviewSet(o.roots(repoRoot), o)
+	if err != nil {
+		return 0, err
+	}
+	total := 0
+	for _, s := range estimateShares(o.Runners, lanes, false, &review) {
+		total += s.runs
+	}
+	return total, nil
+}
