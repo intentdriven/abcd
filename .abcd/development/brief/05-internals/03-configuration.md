@@ -88,7 +88,7 @@ repository adopts, so no install sets it), who merges (`facilitator.mode`,
 guard at the default branch's tip, where `human` from any layer wins), the
 file a release cut appends its digest to (`release.digest`, read from the
 repository layer alone) and the workflow `abcd status` watches
-(`status.scheduled_workflow`, read from the repository's own file) — are
+(`status.scheduled_workflow`, read at the default branch's tip) — are
 hand-set: the binary reads them and never writes them.
 
 ```json
@@ -158,9 +158,9 @@ hand-set: the binary reads them and never writes them.
   },
   "status": {                           // `abcd status` (04-surfaces/39-status.md)
     "scheduled_workflow": "nightly.yml" // the file name of the workflow a schedule runs on the default branch,
-                                        //   at most 64 characters; a red verdict is named by the verb and the
-                                        //   prompt's block until a green replaces it. Absent is off: the forge
-                                        //   is not asked
+                                        //   at most 64 characters, read at the default branch's tip; a red
+                                        //   verdict is named by the verb and the prompt's block until a green
+                                        //   replaces it. Absent is off: the forge is not asked
   },
   "land": {                             // `abcd land` (04-surfaces/38-land.md)
     "push": true,                       // push the branch once a preflight receipt names its head

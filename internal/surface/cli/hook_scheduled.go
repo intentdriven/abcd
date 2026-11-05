@@ -76,13 +76,14 @@ func newScheduledRefreshCommand() *cobra.Command {
 		Use:   "scheduled-refresh",
 		Short: "Ask the forge for the repository's latest scheduled runs and keep the answer, now",
 		Long: `Asks the forge (gh api), within five seconds, for the latest completed scheduled
-runs of the workflow this repository names as ` + claim.ScheduledWorkflowKey + ` in its
-.abcd/config.json, on origin's default branch, and keeps what they say in the
+runs of the workflow this repository names as ` + claim.ScheduledWorkflowKey + ` in the
+.abcd/config.json at the tip of origin's default branch, on that branch, and keeps what they say in the
 machine's store for the repository, which every checkout of it reads. The prompt
 hook starts this in the background when the answer it reads has aged, so a session
 that never runs ` + "`abcd status`" + ` still learns of a red; run it by hand to refresh ahead
 of the next prompt. It fetches nothing. Why the runs could not be read is said on
-stderr; the exit is 0 whatever happens, since nothing waits on it.`,
+stderr, and the failure's time and class are kept in the store, so a prompt can say
+so; the exit is 0 whatever happens, since nothing waits on it.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()

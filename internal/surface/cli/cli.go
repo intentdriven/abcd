@@ -1897,7 +1897,7 @@ envelope carries it as system_message.`,
 				// The status block is the status reader's, not the rules':
 				// a rules.json that will not load does not switch it off
 				// (spc-2610150728396006 step 3).
-				status := routerStatus(cmd, root, hookSession(in), deadline)
+				status := routerStatus(cmd, root, hookSession(in), promptRoot(drained, root), deadline)
 				defer status.MarkShown()
 				// Nor does it switch off the away block and line.
 				text := joinBlocks(status.Text, away.Block)
@@ -1989,7 +1989,7 @@ envelope carries it as system_message.`,
 			// this checkout has not shown, from disk alone, inside its own
 			// budget, after the rules and the memory notes. It joins text
 			// before the title is read, so both emit paths below carry it.
-			status := routerStatus(cmd, root, session, deadline)
+			status := routerStatus(cmd, root, session, promptRoot(drained, root), deadline)
 			defer status.MarkShown()
 			text = joinBlocks(text, status.Text)
 			text = joinBlocks(text, away.Block)
@@ -2448,8 +2448,8 @@ var livePromptDrainBudget = history.DrainBudget{MaxEntries: 1, MaxBytes: 512 << 
 // failure to drain is never a failure of the prompt: the hook exits 0
 // whatever happened here, because a transcript backlog must not be able to
 // wedge a session. What it returns is only the root-commit lookup it made,
-// for the memory recall to reuse (promptRoot), so one prompt spawns that
-// full-history rev-list once. That lookup is bounded (boundedRootCommit): a
+// for the memory recall and the status block to reuse (promptRoot), so one prompt
+// spawns that full-history rev-list once. That lookup is bounded (boundedRootCommit): a
 // git that does not answer in time drains nothing this turn, says so on
 // stderr, and leaves the recall's tied notes out.
 func drainWhileLive(cmd *cobra.Command, cwd string) rootLookup {

@@ -146,6 +146,9 @@ func TestAPromptStartsTheRefreshThatTellsTheNextPrompt(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(pat, ".abcd", "config.json"), []byte(`{"status":{"scheduled_workflow":"nightly.yaml"}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	w.git(pat, "add", "--", ".abcd/config.json")
+	w.git(pat, "commit", "-q", "-m", "name the scheduled workflow")
+	w.git(pat, "update-ref", "refs/remotes/origin/main", "HEAD")
 	bin := t.TempDir()
 	answer := filepath.Join(bin, "answer.json")
 	listing := `{"total_count":1,"workflow_runs":[{"id":101,"head_branch":"main","event":"schedule","status":"completed","conclusion":"failure",` +

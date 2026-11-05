@@ -112,7 +112,8 @@ func askGitHubFrom(t *testing.T) {
 	t.Cleanup(func() { statusScheduledRun = real })
 }
 
-// nameScheduledWorkflow writes the checkout's config naming the workflow.
+// nameScheduledWorkflow lands the config naming the workflow on the default
+// branch, the tree the alert reads the key from.
 func nameScheduledWorkflow(t *testing.T, root string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Join(root, ".abcd"), 0o755); err != nil {
@@ -121,6 +122,44 @@ func nameScheduledWorkflow(t *testing.T, root string) {
 	body := `{"status":{"scheduled_workflow":"` + scheduledWorkflowName + `"}}`
 	if err := os.WriteFile(filepath.Join(root, ".abcd", "config.json"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
+	}
+	gitCmd(t, root, "add", "--", ".abcd/config.json")
+	gitCmd(t, root, "commit", "-q", "-m", "name the scheduled workflow")
+	gitCmd(t, root, "push", "-q", "origin", "HEAD:refs/heads/main")
+}
+
+// ageKeptAnswer dates every answer kept under home d earlier than it was.
+func ageKeptAnswer(t *testing.T, home string, d time.Duration) {
+	t.Helper()
+	files, err := filepath.Glob(filepath.Join(home, ".abcd.noindex", "scheduled-runs", "*", "*.json"))
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no answer kept under %s: %v", home, err)
+	}
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var kept map[string]any
+		if err := json.Unmarshal(b, &kept); err != nil {
+			t.Fatal(err)
+		}
+		at, ok := kept["checked_at"].(string)
+		if !ok {
+			continue
+		}
+		when, err := time.Parse(time.RFC3339, at)
+		if err != nil {
+			t.Fatal(err)
+		}
+		kept["checked_at"] = when.Add(-d).UTC().Format(time.RFC3339)
+		out, err := json.Marshal(kept)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(f, out, 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -162,7 +201,7 @@ func TestStatusNamesAFailedLatestScheduledRun(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("status: exit %d, %s", code, stderr)
 	}
-	want := "the forge's latest scheduled " + scheduledWorkflowName + " run on main failed 3 hours ago: " + scheduledRunURL
+	want := "the forge's latest scheduled " + scheduledWorkflowName + " run on the default branch failed 3 hours ago: " + scheduledRunURL
 	if !strings.Contains(stdout, "  "+want+"\n") {
 		t.Fatalf("status:\n%s\nwant the line %q", stdout, want)
 	}
@@ -241,8 +280,8 @@ func TestStatusSaysANoVerdictNightly(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Failure != nil || got.Doubt == nil || got.Doubt.Kind != claim.ScheduledNoVerdict {
-		t.Fatalf("--json: failure %+v, doubt %+v; want no failure and a no_verdict doubt", got.Failure, got.Doubt)
+	if got.Failure != nil || got.Doubt == nil || got.Doubt.Kind != claim.ScheduledEndedWithoutVerdict {
+		t.Fatalf("--json: failure %+v, doubt %+v; want no failure and the run's own line", got.Failure, got.Doubt)
 	}
 	_, text, _ := reserveRun(t, pat, "status")
 	if !strings.Contains(text, "  "+got.Doubt.Text+"\n") {
@@ -366,7 +405,7 @@ func TestThePromptBlockReadsTheFailureFromDiskAlone(t *testing.T) {
 	touched := hangOriginKeepingItsName(t, pat, w.origin)
 
 	out, _ := runHook(t, hookInputJSON(t, "s-sched", pat, "hello there"), "hook", "prompt-router")
-	want := "- the forge's latest scheduled " + scheduledWorkflowName + " run on main failed 3 hours ago: " + scheduledRunURL + "\n"
+	want := "- the forge's latest scheduled " + scheduledWorkflowName + " run on the default branch failed 3 hours ago: " + scheduledRunURL + "\n"
 	if !strings.Contains(out, want) {
 		t.Fatalf("the hook's text:\n%s\nwant it to carry %q", out, want)
 	}
@@ -441,12 +480,11 @@ func TestTheRefreshVerbTellsASessionThatNeverRanStatus(t *testing.T) {
 	if h, ok := cloneHomes[pat]; ok {
 		cloneHomes[lane] = h
 	}
-	nameScheduledWorkflow(t, lane)
 	if err := os.MkdirAll(filepath.Join(lane, ".abcd", ".work.local"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := runHook(t, hookInputJSON(t, "s-lane", lane, "hello"), "hook", "prompt-router")
-	want := "the forge's latest scheduled " + scheduledWorkflowName + " run on main failed 3 hours ago: " + scheduledRunURL
+	want := "the forge's latest scheduled " + scheduledWorkflowName + " run on the default branch failed 3 hours ago: " + scheduledRunURL
 	if !strings.Contains(out, want) {
 		t.Fatalf("a fresh worktree's first prompt:\n%s\nwant it to carry %q", out, want)
 	}
@@ -463,5 +501,88 @@ func TestTheRefreshVerbFailsOpen(t *testing.T) {
 	code, _, stderr := reserveRun(t, pat, "hook", "scheduled-refresh")
 	if code != 0 || !strings.Contains(stderr, "was not read") {
 		t.Fatalf("hook scheduled-refresh: exit %d, stderr %q; want 0 and the reason", code, stderr)
+	}
+}
+
+// TestAStaleRedStaysInTheVerbsTextWhenTheAskFails: the forge cannot be asked and
+// the kept red is old: the text must still carry that red, its URL and why this
+// ask failed, since a person reads this view to find out.
+func TestAStaleRedStaysInTheVerbsTextWhenTheAskFails(t *testing.T) {
+	w := newReserveWorld(t)
+	pat := w.clone(t, "pat", "5+pat@users.noreply.github.com")
+	nameScheduledWorkflow(t, pat)
+	askGitHubFrom(t)
+	standInForge(t, runListing("failure", time.Now().Add(-3*time.Hour)), false)
+	if code, _, stderr := reserveRun(t, pat, "status"); code != 0 {
+		t.Fatalf("status: exit %d, %s", code, stderr)
+	}
+	ageKeptAnswer(t, os.Getenv("HOME"), 72*time.Hour)
+	standInForge(t, "HTTP 401: Bad credentials", true)
+	code, stdout, stderr := reserveRun(t, pat, "status")
+	if code != 0 {
+		t.Fatalf("status: exit %d, %s", code, stderr)
+	}
+	for _, want := range []string{scheduledRunURL, "it had failed", "run was not read"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("status:\n%s\nwant it to carry %q", stdout, want)
+		}
+	}
+}
+
+// TestAFailedRefreshReachesThePrompt: a kept green, a refresh in the background that
+// fails, whose stderr nobody reads, and the prompt says the state is unknown,
+// naming the last successful ask, rather than read as healthy.
+func TestAFailedRefreshReachesThePrompt(t *testing.T) {
+	ownHookBudgets(t, 10*time.Second)
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	w := newReserveWorld(t)
+	pat := w.clone(t, "pat", "5+pat@users.noreply.github.com")
+	t.Cleanup(claim.WaitPromptReadsForTest)
+	nameScheduledWorkflow(t, pat)
+	askGitHubFrom(t)
+	spawnsRefreshes(t)
+	standInForge(t, runListing("success", time.Now().Add(-time.Hour)), false)
+	if code, _, stderr := reserveRun(t, pat, "hook", "scheduled-refresh"); code != 0 {
+		t.Fatalf("the first refresh: exit %d, %s", code, stderr)
+	}
+	ageKeptAnswer(t, os.Getenv("HOME"), 2*time.Hour)
+	standInForge(t, "HTTP 401: Bad credentials", true)
+	if code, _, stderr := reserveRun(t, pat, "hook", "scheduled-refresh"); code != 0 {
+		t.Fatalf("the failing refresh: exit %d, %s", code, stderr)
+	}
+	out, _ := runHook(t, hookInputJSON(t, "s-sched", pat, "hello"), "hook", "prompt-router")
+	for _, want := range []string{"the state of scheduled " + scheduledWorkflowName + " is unknown", "the last successful ask was 2 hours ago"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("the prompt:\n%s\nwant it to carry %q", out, want)
+		}
+	}
+	if strings.Contains(out, "Bad credentials") {
+		t.Fatalf("the prompt carries the forge's words:\n%s", out)
+	}
+}
+
+// TestThePromptDoesNotWalkHistoryAgainForTheStore: the store is keyed on the root
+// commit the prompt already looked up once: what the hook keeps sits under that
+// answer, so no second full-history walk is made for it.
+func TestThePromptDoesNotWalkHistoryAgainForTheStore(t *testing.T) {
+	const handed = "abcdef0123456789abcdef0123456789abcdef01"
+	ownHookBudgets(t, 10*time.Second)
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	w := newReserveWorld(t)
+	pat := w.clone(t, "pat", "5+pat@users.noreply.github.com")
+	t.Cleanup(claim.WaitPromptReadsForTest)
+	nameScheduledWorkflow(t, pat)
+	spawned := spawnsRefreshes(t)
+	t.Setenv("HOME", w.home)
+	prev := routerRootCommit
+	t.Cleanup(func() { routerRootCommit = prev })
+	routerRootCommit = func(context.Context, string) (string, error) { return handed, nil }
+	runHook(t, hookInputJSON(t, "s-sched", pat, "hello"), "hook", "prompt-router")
+	if spawned.count() != 1 {
+		t.Fatalf("the prompt started %d refreshes; want 1", spawned.count())
+	}
+	stamps, err := filepath.Glob(filepath.Join(w.home, ".abcd.noindex", "scheduled-runs", handed, "*.attempt"))
+	if err != nil || len(stamps) != 1 {
+		t.Fatalf("the stamp is not under the root commit the prompt looked up: %v, %v", stamps, err)
 	}
 }

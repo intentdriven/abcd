@@ -40,26 +40,34 @@ writes only the remote-tracking branches and what it read, in the local tier
 (`.abcd/.work.local/status/`).
 
 **The latest scheduled verdict.** A repository names the workflow a schedule
-runs on its default branch, by its file name, as `status.scheduled_workflow` in
-its own `.abcd/config.json` (`{"status": {"scheduled_workflow": "nightly.yml"}}`),
-at most 64 characters. With that key set, a fetch that succeeded asks GitHub,
-through `gh api`, for that workflow's latest 30 completed scheduled runs on
-`origin`'s default branch, within five seconds, and keeps what they say in the
-machine's store for the repository
-(`~/.abcd.noindex/scheduled-runs/<root-sha>/`, one answer per origin), which every
-checkout of it reads. The prompt hook starts the same ask in the background
-(`abcd hook scheduled-refresh`) when the answer is missing or an hour old, at most
-once in 15 minutes, so a session that never runs this command still learns of a
-red. Where the key is not set, nothing is asked, kept or shown.
+runs on its default branch, by its file name, as `status.scheduled_workflow` in the
+`.abcd/config.json` at that branch's tip
+(`{"status": {"scheduled_workflow": "nightly.yml"}}`), at most 64 characters: a key
+on any other branch, or in a working tree, changes nothing. With that key set, a
+fetch that succeeded asks GitHub, through `gh api`, for that workflow's latest 30
+completed scheduled runs on `origin`'s default branch, within five seconds, and keeps
+what they say in the machine's store for the repository
+(`~/.abcd.noindex/scheduled-runs/<root-sha>/`, one answer per origin and workflow),
+which every checkout of it reads. The prompt hook starts the same ask in the
+background (`abcd hook scheduled-refresh`) when the answer is missing or an hour old,
+at most once in 15 minutes, so a session that never runs this command still learns
+of a red. Where the key is not set, nothing is asked, kept or shown; a value that
+could not name a workflow's file says so, here and at the prompt.
 
 A run whose conclusion is `failure`, `timed_out` or `startup_failure` is a red
-verdict and `success` a green one; any other, a cancelled or skipped run included,
-is no verdict, and is read back past. So a red is named until a green replaces it.
-A green says nothing while it is recent, and past three days, or three of the
-workflow's own cycles when that is longer, one line says no verdict has been
-reached. An answer that could not be read leaves what was kept as it was. One that
-is missing, was asked for more than two days ago, names another workflow or does
-not read back says the state is unknown: it never reads as a failure, and never
+verdict and `success` a green one; any other is no verdict, and is read back past, so
+a red is named until a green replaces it. A latest run that ended with no verdict has
+a line of its own naming it and the last verdict, and is not called a failure: a job
+that hits its `timeout-minutes` arrives as `cancelled`, so reading past one in silence
+could hide a real fault. A green that replaces it clears the line. A green says
+nothing while it is recent, and past three days, or three of the workflow's own
+cycles when that is longer, one line says no verdict has been reached.
+
+An answer that could not be read leaves what was kept as it was, and the failure's
+time and a fixed class of reason are kept beside it. The state reads as unknown,
+naming the last successful ask, once a due refresh has failed, when the answer is six
+hours past due, when it was asked for more than two days ago, or when it is missing,
+names another workflow or does not read back: it never reads as a failure, and never
 as a green.
 
 ## Read the status
@@ -109,8 +117,8 @@ The payload carries:
   `workflow`, `branch`, `conclusion`, `url`, `completed_at`, `age_seconds`,
   `runs_since` (how many later runs reached no verdict, when any did), and `text`,
   the line it is shown by;
-- `scheduled_doubt`, present only when there is no verdict to name and silence
-  would read like a green: `kind` (`no_verdict` or `unknown`) and `text`;
+- `scheduled_doubt`, present only when silence would read like a green: `kind`
+  (`ended_without_verdict`, `no_verdict`, `unknown` or `invalid_name`) and `text`;
 - `scheduled_unread`, present only when this fetch's ask could not be read: why,
   on one line. It says nothing of how the runs ended;
 - `reservations`, `live_by_holder`, `hand_backs_by_holder`, `release_holds`,
@@ -166,16 +174,19 @@ Without `--json`, the verb prints, in order:
 - `not checked against the forge, so shown as claimed: <reason>` when GitHub
   could not be asked, or when branches were left for the next fetch to ask
   about;
-- `the forge's latest scheduled nightly.yml run on main failed 3 hours ago:
-  https://github.com/example-org/example-app/actions/runs/101` when the last
+- `the forge's latest scheduled nightly.yml run on the default branch failed 3 hours
+  ago: https://github.com/example-org/example-app/actions/runs/101` when the last
   verdict was red (`failed (timed_out)` for a conclusion other than `failure`, and
-  `to reach a verdict failed 2 days ago, and 1 run since reached none` when later
-  runs reached none), and nothing on a recent green; `scheduled nightly.yml on main
-  has reached no verdict since it last passed 4 days ago: <url>` past the green's
-  time; ``the state of scheduled nightly.yml is unknown: <why>; `abcd status` asks
-  now`` when nothing recent is known; and `the latest scheduled nightly.yml run was
-  not read, so nothing is said of it: <reason>` when this fetch's ask failed, which
-  stands in place of the unknown line;
+  `to reach a verdict failed 2 days ago, and 1 run since reached none` when later runs
+  reached none), and nothing on a recent green; `the forge's latest scheduled
+  nightly.yml run on the default branch ended cancelled 3 hours ago, which is no
+  verdict: <url>; its last verdict was success 24 hours ago: <url>` when the latest run
+  reached none; `scheduled nightly.yml on the default branch has reached no verdict
+  since it last passed 4 days ago: <url>` past the green's time; ``the state of
+  scheduled nightly.yml is unknown: the last successful ask was 2 days ago, when it had
+  failed: <url>; `abcd status` asks now`` when nothing recent is known; and `the
+  latest scheduled nightly.yml run was not read, so nothing is said of it: <reason>`
+  when this fetch's ask failed, beside whichever of those stands;
 - the reservations block `/abcd:peers` prints, release holds included
   (`release v0.16.0 being cut by h_0123456789abcdef0123456789abcdef (claimed):
   merges are held; the hold lapses at <time> unless the cut renews it`) and
@@ -243,9 +254,11 @@ An announcement informs and grants nothing: it is data another session posted, n
   session on the checkout, since one session reading it tells no other; it does
   not repeat after a compaction inside a session. It reads the kept answer alone
   and never asks the forge: when that answer is missing or an hour old, the hook
-  starts a refresh in the background and a later prompt reads it. The no-verdict
-  and unknown lines are shown the same way. A recent green, and a repository that
-  names no workflow, show nothing.
+  starts a refresh in the background and a later prompt reads it. The other lines
+  are shown the same way, and an unknown state once per kept answer, so a later
+  answer going stale in its turn is said again. A recent green, and a repository that
+  names no workflow, show nothing. Like the rest of the block, these need the local
+  tier, which keeps what was shown: a checkout without one shows none of them.
 - **Shows nothing** in a checkout with no remote named `origin`, or without
   its local tier.
 

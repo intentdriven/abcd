@@ -98,8 +98,8 @@ type scheduledFailureRow struct {
 	Text        string `json:"text"`
 }
 
-// scheduledDoubtRow says why no verdict is named: its kind (no_verdict or
-// unknown) and the line it is shown by.
+// scheduledDoubtRow is what is said beside or in place of a verdict: its kind
+// (ended_without_verdict, no_verdict, unknown or invalid_name) and its line.
 type scheduledDoubtRow struct {
 	Kind string `json:"kind"`
 	Text string `json:"text"`
@@ -172,19 +172,23 @@ func newStatusCommand(asJSON *bool) *cobra.Command {
 			"branch named by a holder id names no account the forge's record could\n" +
 			"match, so it is not asked about and its senders stay claimed.\n\n" +
 			"A repository that names a workflow a schedule runs on its default branch\n" +
-			"(status.scheduled_workflow in its .abcd/config.json, the file's name, such as\n" +
-			"nightly.yml) has that workflow's latest scheduled verdict read too: after a\n" +
-			"fetch that succeeded it asks the forge (gh api) within five seconds for the\n" +
-			"latest completed scheduled runs and keeps what they say in the machine's store\n" +
-			"for the repository, which every checkout of it reads; the prompt hook does the\n" +
-			"same in the background when that answer is an hour old. A run that failed,\n" +
-			"timed out or could not start is named in one line with its URL and age, here\n" +
-			"and once to each session at a prompt, until a run that succeeds replaces it:\n" +
-			"a cancelled or skipped run replaces nothing. A green is silent while it is\n" +
-			"recent for the workflow's own cycle, and past that one line says no verdict has\n" +
-			"been reached. An answer that is missing, more than two days old or unreadable\n" +
-			"says the state is unknown. None of this changes an exit, and with no such key\n" +
-			"nothing is asked, kept or shown.\n\n" +
+			"(status.scheduled_workflow in the .abcd/config.json at that branch's tip, the\n" +
+			"file's name, such as nightly.yml) has that workflow's latest scheduled verdict\n" +
+			"read too: after a fetch that succeeded it asks the forge (gh api) within five\n" +
+			"seconds for the latest completed scheduled runs and keeps what they say in the\n" +
+			"machine's store for the repository, which every checkout of it reads; the\n" +
+			"prompt hook does the same in the background when that answer is an hour old. A\n" +
+			"run that concluded failure, timed_out or startup_failure is named in one line\n" +
+			"with its URL and age, here and once to each session at a prompt, until a run\n" +
+			"that succeeds replaces it. A latest run that concluded cancelled, skipped or\n" +
+			"neutral, which is how a job past its time limit arrives, is not called a failure:\n" +
+			"it has a line of its own naming it and the last verdict, until a verdict\n" +
+			"replaces it. A green is silent while it is recent for the workflow's own cycle,\n" +
+			"and past that one line says no verdict has been reached. An answer that is\n" +
+			"missing, more than two days old, some hours past due, or due after a refresh\n" +
+			"that failed says the state is unknown, naming the last successful ask. None of\n" +
+			"this changes an exit. With no such key nothing is asked, kept or shown; a key\n" +
+			"that could not name a workflow's file says so.\n\n" +
 			"An announcement stands for its life from when this checkout first fetched it,\n" +
 			"not by the sender's clock. One whose sender is not its branch's owner, one\n" +
 			"that does not read as an announcement (never shown but by its branch and the\n" +
@@ -386,12 +390,11 @@ func renderStatus(w io.Writer, out statusOutput) {
 	if out.ScheduledFailure != nil {
 		fmt.Fprintln(w, "  "+out.ScheduledFailure.Text)
 	}
-	// A line saying why the runs could not be read says all an unknown state
-	// would, and more.
-	if d := out.ScheduledDoubt; d != nil && (d.Kind != claim.ScheduledUnknown || out.ScheduledUnread == "") {
+	if d := out.ScheduledDoubt; d != nil {
 		fmt.Fprintln(w, "  "+d.Text)
 	}
-	if out.ScheduledUnread != "" {
+	// An invalid key is one fact, said by both.
+	if out.ScheduledUnread != "" && (out.ScheduledDoubt == nil || out.ScheduledUnread != out.ScheduledDoubt.Text) {
 		fmt.Fprintln(w, "  "+out.ScheduledUnread)
 	}
 	renderReservations(w, out.reservationsBlock)
@@ -410,14 +413,14 @@ var hookBudget = time.Second
 // its block says the status is unavailable. The caller marks the block shown
 // once it has written it. A refresh the block says is due is started here, in
 // the background, and never waited for.
-func routerStatus(cmd *cobra.Command, root, session string, deadline time.Time) claim.Notes {
+func routerStatus(cmd *cobra.Command, root, session string, rootCommit func() (string, error), deadline time.Time) claim.Notes {
 	if root == "" {
 		return claim.Notes{}
 	}
 	ctx, cancel := context.WithDeadline(context.Background(), deadline)
 	defer cancel()
 	now := time.Now().UTC().Truncate(time.Second)
-	o := claim.Options{Now: func() time.Time { return now }, Session: session}
+	o := claim.Options{Now: func() time.Time { return now }, Session: session, RootCommit: rootCommit}
 	n, err := claim.PromptNotes(ctx, root, now, o)
 	if err != nil {
 		fmt.Fprintf(cmd.ErrOrStderr(), "abcd status: %s\n", termsafe.Sanitize(fsutil.RedactHome(err.Error())))
