@@ -71,6 +71,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/intent"
+	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/recordid"
@@ -378,6 +379,8 @@ func writeValidatorBrief(c Context, lane Lane, r ValidationRound, v *ValidatorRu
 		}
 		p("## What you hand back\n\n")
 		p("Write your whole return, in your agent definition's shape, to:\n\n`%s`\n\n", abs(c.RepoRoot, v.Return))
+		p("Its first line reads exactly `Reviewed head: %s`, so that `abcd land --record-review` can record it.\n", r.HeadSHA)
+		p("%s\n", oneVerdictLine)
 		p("It ends with one `### Verdict` section stating exactly one of: %s. The loop reads that\n", strings.Join(words, ", "))
 		p("section and records the verdict itself; a verdict written anywhere else is nobody's.\n")
 	}
@@ -668,6 +671,10 @@ func readReturn(repoRoot, rel, laneID string) ([]byte, error) {
 	return data, nil
 }
 
+// oneVerdictLine is what a validator's brief and a routed request say of a return's
+// verdict, as the reviewers' own pages say it (landing.OneVerdictLine).
+const oneVerdictLine = "A return has one `### Verdict` section and no other line opening with the word Verdict."
+
 // parseVerdict reads the one verdict a return states: the first line under its
 // one Verdict heading, list marker and emphasis stripped, must begin with one
 // of words.
@@ -677,6 +684,9 @@ func parseVerdict(text string, words []verdictWord) (verdictWord, error) {
 		names = append(names, w.word)
 	}
 	want := strings.Join(names, " or ")
+	if err := landing.OneVerdictLine(text); err != nil {
+		return verdictWord{}, err
+	}
 	heads := verdictHeadingRe.FindAllStringIndex(text, -1)
 	switch len(heads) {
 	case 0:
@@ -704,14 +714,21 @@ func firstLine(s string) string {
 
 // leadingVerdict reports the verdict line begins with, its list marker and
 // emphasis stripped, spelled with a space, a hyphen or an underscore between its
-// words, and ended by anything but a letter.
+// words, and ending its line or followed by a commit's name or a separator
+// (landing.VerdictEnds).
 func leadingVerdict(line string, words []verdictWord) (verdictWord, bool) {
+	return verdictAtStart(line, words, landing.VerdictEnds)
+}
+
+// verdictAtStart reports the verdict line begins with, with ends judging what
+// follows the word.
+func verdictAtStart(line string, words []verdictWord, ends func(rest string) bool) (verdictWord, bool) {
 	t := strings.TrimLeft(line, "-*+ \t")
 	t = strings.TrimLeft(t, "*_`")
 	norm := strings.NewReplacer("-", " ", "_", " ").Replace(t)
 	for _, w := range longestFirst(words) {
 		ww := strings.NewReplacer("-", " ", "_", " ").Replace(w.word)
-		if rest, ok := strings.CutPrefix(norm, ww); ok && (rest == "" || !isLetter(rest[0])) {
+		if strings.HasPrefix(norm, ww) && ends(t[len(ww):]) {
 			return w, true
 		}
 	}
@@ -781,13 +798,15 @@ func reportsCarryNoVerdict(c Context, lane Lane) error {
 }
 
 // reportVerdict finds a verdict a report states: as a field on a line, or as
-// the first line under a Verdict heading.
+// the first line under a Verdict heading, beginning with a verdict word followed by
+// anything but a letter. A report states none, so this reads wider than a return.
 func reportVerdict(text string) (string, bool) {
 	if m := reportVerdictRe.FindStringSubmatch(text); m != nil {
 		return m[1], true
 	}
 	for _, h := range verdictHeadingRe.FindAllStringIndex(text, -1) {
-		if w, ok := leadingVerdict(firstLine(text[h[1]:]), allVerdicts); ok {
+		notALetter := func(rest string) bool { return rest == "" || !isLetter(rest[0]) }
+		if w, ok := verdictAtStart(firstLine(text[h[1]:]), allVerdicts, notALetter); ok {
 			return w.word, true
 		}
 	}
@@ -1541,7 +1560,10 @@ func reviewRequest(repoRoot, runID, laneID string, aw Await, agentPrompt func(st
 		words = append(words, w.word)
 	}
 	p("## What you answer\n\n")
-	p("Answer with your whole return, in your agent definition's shape. It ends with one `### Verdict`\n")
+	p("Answer with your whole return, in your agent definition's shape.\n")
+	p("Its first line reads exactly `Reviewed head: %s`, so that `abcd land --record-review` can record it.\n", r.HeadSHA)
+	p("%s\n", oneVerdictLine)
+	p("It ends with one `### Verdict`\n")
 	p("section stating exactly one of: %s. The loop writes your answer to the review's return and\n", strings.Join(words, ", "))
 	p("records the verdict itself; a verdict written anywhere else is nobody's.\n")
 	return b.String(), nil

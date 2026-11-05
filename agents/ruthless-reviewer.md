@@ -3,7 +3,7 @@ name: ruthless-reviewer
 description: Demanding senior code review at a Linus/Carmack bar. Use PROACTIVELY on any non-trivial diff before presenting it to the user — correctness, resource handling, error paths, API misuse, dead code.
 tools: Read, Grep, Glob, Bash
 model: opus
-prompt_version: 0.3.0
+prompt_version: 0.3.1
 reads_untrusted_input: true
 capability_scope:
   task_classes: [oracle_review]
@@ -77,6 +77,13 @@ what would have to be true for this code to be correct as written? Check that
 thing. Findings that survive their own refutation are the report.
 
 ## Output
+
+When your brief says this return is recorded with `abcd land --record-review`, open
+it with one line before these sections: its first line reads exactly
+`Reviewed head: <name>`, where `<name>` is the head you read, by at least its first
+nine characters. When the brief says it is a delta review (`--rests-on`), its first line reads exactly
+`Reviewed delta: <base>..<head>` instead, each end named the same way, and no line
+states a head. A return has one `### Verdict` section and no other line opening with the word Verdict.
 
 Two sections, in this order. Reason first, format second — do not try to think
 inside the structure.
