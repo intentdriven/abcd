@@ -921,6 +921,74 @@ removal is forced. It is the reclaim half of
 [adr-2609091248200336](../../decisions/adrs/2609091248200336-a-tool-never-creates-directories-in-user.md):
 a tool that must not create in the user's space must not delete there either.
 
+## The check directory
+
+`make preflight` runs its two test stages through `cmd/check-tests`
+(`internal/testreuse`), from one directory per repository and account:
+`~/.abcd.noindex/tests/<root-sha>/`, keyed on the root commit like the worktree
+store, outside every working tree, and one check at a time under a lock in it. A
+fresh worktree defeats Go's test cache three ways: its paths change the test
+binary, its checkout gives every file a new time, and a file a test opens is
+hashed under its absolute path. So a stage runs with `-trimpath` from the
+directory's `tree/`, which holds the commit's files, with no `.git`, each with a
+time derived from its content: 2001-01-01T00:00:00Z plus 64 bits of the SHA-256
+of the file reduced modulo twenty years of whole seconds. Go keys an opened file
+on its size and time, so a file's time moves when its content does and is the same
+in every worktree, and a same-size edit is reused by accident about one time in
+630 million. A directory's time derives from the names in it the same way. A
+result one worktree's check passed is replayed in any other.
+
+A sync writes only what differs from the commit, so a commit that changes one file
+writes one file; the thousands of file events of a whole tree happen once, when
+the directory is made. A file is finished under a temporary name and renamed into
+place with its time already set, what a test or a crash left is removed, and a
+directory's time is set last, so the next sync repairs whatever a killed check
+left. `times.json` is a memo of each blob's derived time, and one that does not
+read costs one read of every blob. Each account has its own directory under its
+own home, and a check refuses one it does not own, that another account can write,
+or that is a symlink. A second check waits for the lock, four hours by default,
+and then exits 3 having run nothing.
+
+**What is reused.** Go's cache sees the test binary, the cacheable flags, and the
+files and environment variables a test reads. A stage's results run under one fixed
+`-timeout`, since the cache key holds it and a stage's own budget takes two values
+with the load. A race build is another binary, so the race stage reuses race
+results only and the unit stage's serve it nothing. A stage reports `reused N of M`
+and names each package that ran and why; its record under the local tier's
+`preflight-reuse/` names the commit and tree, and `scripts/preflight-receipt.sh`
+mints a full receipt only from both stages' passing records for that exact tree,
+and copies the counts into the receipt.
+
+**What is not.** Three things keep a passing result from standing in for a test
+whose real inputs changed, since the cache sees nothing a subprocess reads, a binary
+a test builds, the clock or the network:
+
+- `.abcd/work/always-rerun-tests.txt` names a package or a test, with why, and is
+  read from origin's default branch at check time, never from the working tree, so
+  a change cannot take its own tests off it. A line lands like any other change and
+  takes effect once on the default branch. A list that is missing or does not read
+  turns all reuse off.
+- The classifier reads every test's source on every check, following what it names
+  through the package's test files and the module's test-helper packages, and
+  reruns a test it finds running a program through go, make or a shell, reaching the
+  repository from a package whose import closure can start a subprocess, reading the
+  network with no local server, or comparing the clock with a fixed date. So a test
+  nobody declared reruns anyway, and the report names it undeclared. A test file that
+  does not parse reruns its package. A rerun test runs in the worktree with
+  `-count=1`, where git can answer; the rest of its package is reused under a `-skip`
+  of it.
+- The check directory holds no `.git`, and `GIT_CEILING_DIRECTORIES` stops git
+  walking above it, so a test that asks git about the repository, and that the
+  classifier missed, gets no answer rather than state the cache cannot see.
+
+A test the classifier finds no evidence against, whose subprocess reads the tree by
+a path its source does not spell, or that compares the clock with a date in code it
+links, is still reused here; the hosted full run, which reuses nothing, catches it on
+every pull request and merge-queue entry. A working tree that differs from HEAD runs
+in the worktree reusing nothing, since its edits are what to test, and so does a
+directory refused or a list unread. A release cut's hosted gates pass `-count=1`, and
+`make preflight PREFLIGHT_FRESH=1` is the same run on the person's machine.
+
 ## The dogfood store
 
 In abcd's own source checkout the installed release guards the session, so a
@@ -1783,7 +1851,7 @@ A Go binary plus the markdown plugin surface that shells to it:
 ```
 abcd/
 ├── .claude-plugin/                     # plugin.json + marketplace.json
-├── cmd/                                # the shipped entrypoint plus nine build-time binaries
+├── cmd/                                # the shipped entrypoint plus eleven build-time binaries
 │   ├── abcd/main.go                    #   entrypoint — wires the CLI front door to the core
 │   ├── record-lint/                    #   the record gate `make preflight` runs (06-lint.md)
 │   ├── scaffold-sync/                  #   keeps the scaffolded release workflows in step
@@ -1792,10 +1860,11 @@ abcd/
 │   ├── abcd-gen-surface/               #   writes the command-surface snapshot and the surface chapters' appendices
 │   ├── abcd-gen-cli-ref/               #   writes the generated CLI reference page
 │   ├── test-parallelism/               #   prints the go test -p `make preflight`'s test stages take
+│   ├── check-tests/                    #   runs `make preflight`'s test stages from the check directory, reusing what cannot have changed
 │   ├── ci-watchdog/                    #   the shell CI's test jobs run go test under, stopping a hang with its dumps before the job's cap
 │   ├── ci-shard/                       #   prints the packages one shard of CI's macOS suite tests, computed from `go list`
 │   └── record-slug-rename/             #   one-off: renames records minted before the 40-character slug cap (iss-2610100626320367)
-│                                       #   The ten are developer tooling, not user surface: they run
+│                                       #   The eleven are developer tooling, not user surface: they run
 │                                       #   from the Makefile, `go generate`, CI or by hand, and ship in no release
 ├── internal/
 │   ├── core/                           # transport-agnostic core, one package per capability

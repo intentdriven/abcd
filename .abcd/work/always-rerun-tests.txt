@@ -1,0 +1,19 @@
+# The tests make preflight never reuses, read from origin's default branch at
+# check time, never from the working tree, so a change cannot take its own tests
+# off it (internal/testreuse, itd-2611011325421304). A line added here takes
+# effect once it is on the default branch.
+#
+# A line names a package by its path from the module root, every package under
+# one with /..., or named tests in one, and then says after # what the test reads
+# that Go's test cache cannot see:
+#
+#   internal/core/example # a subprocess reads the tree by a path its source builds
+#   internal/core/example TestOne TestTwo # compares the clock with a date it links
+#
+# Most tests never need a line. The check reads every test's source and reruns one
+# it finds running a program through go, make or a shell, reaching the repository
+# from a package that starts subprocesses, reading the network, or comparing the
+# clock with a fixed date, naming it undeclared in its report. This list is for
+# what that reading cannot see. A line that does not read turns all reuse off.
+
+cmd/record-lint TestResolveRootIgnoresInjectedWorkTree # the code it calls asks git for the top of the tree it runs in, and the test's source does not spell that

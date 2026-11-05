@@ -402,6 +402,33 @@ preflight:
 	go run ./cmd/abcd implement load --wait --timeout 12h -- $(PREFLIGHT_STAGES_MAKE)
 	@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)"
 
+# Both test stages run through cmd/check-tests (internal/testreuse,
+# itd-2611011325421304), which reuses every result whose inputs cannot have
+# changed, reruns the rest and reports `reused N of M` for each stage, and the
+# receipt records both counts. A stage runs from one fixed check directory per
+# repository and account, ~/.abcd.noindex/tests/<root-sha>/, one check at a time
+# under a lock, so a fresh worktree replays what another worktree's check of the
+# same inputs passed: the tree there is the commit's, with file times derived
+# from file content, a sync writes only the files that changed, and -trimpath
+# keeps the worktree's path out of the binary.
+#
+# A test that reads what the cache cannot see (a subprocess, a binary it builds,
+# the clock, the network) reruns on every check, in the worktree: named on
+# .abcd/work/always-rerun-tests.txt on origin's default branch, or found by the
+# classifier reading the test's source, which reruns it and names it undeclared.
+# The check directory holds no .git, so a test neither finds that asks git about
+# the repository fails rather than passing on what the cache cannot see. A race
+# stage reuses race results only, since its binary is another build. A working
+# tree that differs from HEAD, a list that is missing or does not read, and a
+# directory another account owns all run in the worktree, reusing nothing. The
+# hosted full run reuses nothing, on every pull request and queue entry.
+#
+# A release cut reuses nothing: `make preflight PREFLIGHT_FRESH=1`. The results
+# to be reused run under one fixed -timeout, the larger of the two the budget
+# below takes, because go test's cache key holds the timeout and a result must
+# not stop being reusable when the load crosses the line.
+CHECK_TESTS = go run ./cmd/check-tests -cached-timeout 1h20m$(if $(PREFLIGHT_FRESH), -fresh,)
+
 # The make the gate runs the stages with. It is named through this variable so
 # the gate's line is an ordinary recipe line: make runs a line that names MAKE
 # directly even under -n, -q and -t, and a dry run would then queue at the gate
@@ -426,11 +453,11 @@ preflight-stages: load-check fmt-check lint-reviews lint-issues record-lint issu
 	go vet ./...
 	p=$$(go run ./cmd/test-parallelism) && \
 	t=$$(go run ./cmd/test-parallelism -timeout 40m) && \
-	go test -p "$$p" -timeout "$$t" ./...
+	$(CHECK_TESTS) unit go test -p "$$p" -timeout "$$t" ./...
 	go run ./cmd/abcd implement load --race-gate --timeout 2h
 	p=$$(go run ./cmd/test-parallelism) && \
 	t=$$(go run ./cmd/test-parallelism -timeout 40m) && \
-	go test -race -p "$$p" -timeout "$$t" ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
+	$(CHECK_TESTS) race go test -race -p "$$p" -timeout "$$t" ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
 
 else
 preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution secrets-check vulncheck site-render smoke evals-cold-reading

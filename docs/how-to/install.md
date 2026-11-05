@@ -903,7 +903,9 @@ make preflight   # the pre-push gate: it waits its turn at the load gate
                  # docs-lint, check-attribution, secrets-check, vulncheck,
                  # site-render, smoke and
                  # evals-cold-reading, then
-                 # build, vet, test and race, all on the toolchain go.mod declares
+                 # build, vet, test and race, all on the toolchain go.mod declares;
+                 # the test and race stages reuse every result whose inputs
+                 # cannot have changed and report how many
 go run ./cmd/abcd            # bare status board for the current directory
 go run ./cmd/abcd --version  # print the version
 make build                   # cross-compile bin/abcd-<goos>-<arch>

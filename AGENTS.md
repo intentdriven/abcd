@@ -162,7 +162,7 @@ go test ./internal/core/                 # a single package
 go test -run TestStatus ./internal/core/ # a single test
 ```
 
-**A push is gated before it connects.** The committed `.githooks/pre-push` hook
+**A push is gated before it connects.** Its test stages reuse unchanged results (`internal/testreuse`). The committed `.githooks/pre-push` hook
 never runs the preflight: git opens a push's connection before it runs the hook,
 and a preflight inside it outlasted the transport's idle timeout, so the push
 reported success and moved nothing. `make preflight` ends by minting a receipt

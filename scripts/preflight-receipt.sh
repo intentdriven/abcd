@@ -46,7 +46,12 @@
 #                                       skipped, iss-2610251555094324), which
 #                                       scripts/records-only.sh must confirm again
 #                                       here, and whose receipt carries that
-#                                       verdict and the merge base it was taken at
+#                                       verdict and the merge base it was taken at.
+#                                       A full receipt needs both test stages'
+#                                       passing reports for this commit's tree,
+#                                       a reused result counting for that exact
+#                                       tree, and records how many packages each
+#                                       stage reused
 #   preflight-receipt.sh check <commit> exit 0 when a receipt for <commit> exists
 #                                       in any worktree of this repository
 #
@@ -56,6 +61,10 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 receipts_rel=".abcd/.work.local/preflight-receipts"
+# Each test stage's report, one file per go test command it ran, by commit
+# (internal/testreuse): what a full receipt reads its reuse counts from, and how
+# it knows the stages checked this exact tree.
+reuse_rel=".abcd/.work.local/preflight-reuse"
 # How many receipts a checkout keeps. Each is a few bytes; the cap only stops the
 # directory growing without bound across months of preflights.
 keep=50
@@ -85,8 +94,33 @@ state() {
 	fi
 }
 
+# stage_counts <commit> <tree> <stage>: print "<reused> <packages>" summed over
+# the stage's reports, each of which must be a pass on this exact tree; print
+# nothing, and return 1, when there is none or one is not.
+stage_counts() {
+	local commit="$1" tree="$2" stage="$3" report reused=0 total=0 found=false r_tree r_result r_reused r_packages
+	for report in "$reuse_rel/$commit/$stage-"*; do
+		[ -f "$report" ] || continue
+		found=true
+		r_tree="$(sed -n 's/^tree //p' "$report")"
+		r_result="$(sed -n 's/^result //p' "$report")"
+		r_reused="$(sed -n 's/^reused //p' "$report")"
+		r_packages="$(sed -n 's/^packages //p' "$report")"
+		if [ "$r_tree" != "$tree" ] || [ "$r_result" != pass ]; then
+			return 1
+		fi
+		case "$r_reused$r_packages" in
+		"" | *[!0-9]*) return 1 ;;
+		esac
+		reused=$((reused + r_reused))
+		total=$((total + r_packages))
+	done
+	[ "$found" = true ] || return 1
+	echo "$reused $total"
+}
+
 mint() {
-	local began="$1" scope="$2" began_head began_tree now now_head now_tree verdict base
+	local began="$1" scope="$2" began_head began_tree now now_head now_tree verdict base tree unit race
 	began_head="${began%% *}"
 	began_tree="${began##* }"
 	now="$(state)"
@@ -134,11 +168,21 @@ mint() {
 			return 0
 		fi
 	fi
+	if [ "$scope" != records-only ]; then
+		tree="$(git rev-parse 'HEAD^{tree}')"
+		if ! unit="$(stage_counts "$now_head" "$tree" unit)" || ! race="$(stage_counts "$now_head" "$tree" race)"; then
+			echo "preflight: no push receipt minted — the test stages left no passing report for this commit's"
+			echo "           exact tree (${tree:0:12}), so nothing shows they checked what a push ships."
+			echo "           Run \`make preflight\` again."
+			return 0
+		fi
+	fi
 	mkdir -p "$receipts_rel"
 	if [ "$scope" = records-only ]; then
 		printf 'commit %s\nminted %s\nscope records-only\nverdict %s\nbase %s\n' "$now_head" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$verdict" "$base" >"$receipts_rel/$now_head"
 	else
-		printf 'commit %s\nminted %s\nscope full\n' "$now_head" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$receipts_rel/$now_head"
+		printf 'commit %s\nminted %s\nscope full\nreuse unit %s of %s\nreuse race %s of %s\n' "$now_head" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+			"${unit% *}" "${unit#* }" "${race% *}" "${race#* }" >"$receipts_rel/$now_head"
 	fi
 	# Keep the newest $keep receipts. The names are full commit ids, so a plain
 	# listing is safe to word-split.
@@ -146,12 +190,19 @@ mint() {
 	ls -t "$receipts_rel" | tail -n +"$((keep + 1))" | while IFS= read -r old; do
 		rm -f "${receipts_rel:?}/$old"
 	done
+	if [ -d "$reuse_rel" ]; then
+		# shellcheck disable=SC2012
+		ls -t "$reuse_rel" | tail -n +"$((keep + 1))" | while IFS= read -r old; do
+			rm -rf "${reuse_rel:?}/$old"
+		done
+	fi
 	if [ "$scope" = records-only ]; then
 		echo "preflight: push receipt minted for ${now_head:0:12}, records-only (the unit and race stages were skipped)"
 		echo "           — a push of that commit passes the pre-push gate."
 		return 0
 	fi
 	echo "preflight: push receipt minted for ${now_head:0:12} — a push of that commit passes the pre-push gate."
+	echo "           the unit stage reused ${unit% *} of ${unit#* } packages and the race stage ${race% *} of ${race#* }."
 }
 
 # own_receipt <dir>: the worktree at dir holds a receipt for $commit that is
