@@ -4,6 +4,7 @@ package loop
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -204,5 +205,77 @@ func TestASecondSignalKillsTheProcessGroupAndNamesWhenTheReservationLapses(t *te
 	}
 	if r := reservationOf(t, w.repo.Root(), got.res.Issue, w.clock.t); r.State != claim.StateLive {
 		t.Fatalf("a kill releases nothing: %+v", r)
+	}
+}
+
+// TestAStopThatBreaksAStepEndsAsAStop: the terminal's interrupt also reaches the
+// git a step was running, which fails the step; the run still ends as the stop
+// it is, releasing the lane, and not as a refusal.
+func TestAStopThatBreaksAStepEndsAsAStop(t *testing.T) {
+	w := newTerminalWorld(t)
+	for i := range w.stages {
+		if w.stages[i].Name == StageBrief {
+			w.stages[i].Run = func(Context, *Lane) (Outcome, error) {
+				close(w.stop)
+				return Outcome{}, errors.New("git: signal: interrupt")
+			}
+		}
+	}
+	res, err := RunTerminal(context.Background(), w.repo.Root(), w.options(t))
+	if err != nil {
+		t.Fatalf("a stop is no refusal: %v", err)
+	}
+	if res.Ended != TerminalStopped || res.Run == "" {
+		t.Fatalf("the run ends on the stop, naming the lane: %+v", res)
+	}
+	if r := reservationOf(t, w.repo.Root(), res.Issue, w.clock.t); r.State != claim.StateReleased {
+		t.Fatalf("the reservation is released: %+v", r)
+	}
+}
+
+// TestALaneADrainLeftInProgressAsItEndedIsLetGoAndNamed: a drain that ended
+// with a lane in progress, as a lost connection ends one, is no longer live; the
+// lane's reservation is still released and the lane still named.
+func TestALaneADrainLeftInProgressAsItEndedIsLetGoAndNamed(t *testing.T) {
+	w := newTerminalWorld(t, "shape", "late")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	o := w.options(t)
+	o.Runners.Timeout = 40 * time.Second
+	done := make(chan TerminalResult, 1)
+	go func() {
+		res, _ := RunTerminal(ctx, w.repo.Root(), o)
+		done <- res
+	}()
+	waitPid(t, w.env, "claude.pid")
+	cancel()
+	killed := <-done
+	if killed.Run == "" {
+		t.Fatalf("the kill names the lane: %+v", killed)
+	}
+	st, _, err := readDrain(w.repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ended := w.clock.t
+	st.Stopped, st.EndedAt = DrainStoppedOutage, &ended
+	if err := writeDrain(w.repo.Root(), st); err != nil {
+		t.Fatal(err)
+	}
+	if _, live, _ := readDrain(w.repo.Root()); live {
+		t.Fatal("the drain has ended")
+	}
+	again := w.options(t)
+	close(w.stop)
+	again.Stop = w.stop
+	res, err := RunTerminal(context.Background(), w.repo.Root(), again)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Run != killed.Run || res.Resume == "" {
+		t.Fatalf("the lane is named: %+v", res)
+	}
+	if r := reservationOf(t, w.repo.Root(), killed.Issue, w.clock.t); r.State != claim.StateReleased {
+		t.Fatalf("the reservation is released: %+v", r)
 	}
 }

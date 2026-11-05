@@ -276,6 +276,10 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 			return TerminalKilled, nil
 		}
 		if err != nil {
+			// The terminal's interrupt reaches the git a step was running.
+			if t.stopped() {
+				return TerminalStopped, nil
+			}
 			again, ended, err := t.stepRefused(ctx, runID, err)
 			if err != nil || ended != "" || !again {
 				return ended, err
