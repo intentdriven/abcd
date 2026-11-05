@@ -142,8 +142,8 @@ func TestAPreflightRunsInTheStagesEnvironment(t *testing.T) {
 	}
 }
 
-// TestADriveSaysWhenAStagesGoCachesAreNotKept: an unattended run that would build
-// from cold at each launch says so at its start. Both programs stand where others
+// TestADriveSaysWhenAStagesGoCachesAreNotKept: an unattended run whose stages keep Go's
+// caches in a home emptied at each launch says so at its start. Both programs stand where others
 // can write, so neither is run.
 func TestADriveSaysWhenAStagesGoCachesAreNotKept(t *testing.T) {
 	w := newDriveWorld(t)
@@ -165,7 +165,7 @@ func TestADriveSaysWhenAStagesGoCachesAreNotKept(t *testing.T) {
 	// The login is what the refused harness fails; the lines come before it.
 	lines, _ := driveWalls.static(context.Background(), p)
 	if !slices.ContainsFunc(lines, func(l string) bool {
-		return strings.Contains(l, "Go caches") && strings.Contains(l, "one group or other can write")
+		return strings.Contains(l, "did not ask that Go where its caches are") && strings.Contains(l, "one group or other can write")
 	}) {
 		t.Fatalf("the drive did not say: %q", lines)
 	}
@@ -663,5 +663,33 @@ func TestADriveThatHeldAnIssueBackIsNoCleanFinish(t *testing.T) {
 	code := Run([]string{"drain", "--drive", "--yes"}, &out, &errb)
 	if code != 3 || !strings.Contains(out.String(), "iss-7") {
 		t.Fatalf("exit %d:\n%s", code, out.String())
+	}
+}
+
+// TestADrivesLogKeepsItsStartLines: someone reading the log later sees what the start said.
+func TestADrivesLogKeepsItsStartLines(t *testing.T) {
+	w := newDriveWorld(t)
+	w.passWalls(t)
+	const line = "a line the start says about this drive"
+	driveWalls.static = func(context.Context, runner.Profile) ([]string, error) { return []string{line}, nil }
+	was := driveTerminal
+	t.Cleanup(func() { driveTerminal = was })
+	driveTerminal = func(context.Context, string, loop.TerminalOptions) (loop.TerminalResult, error) {
+		return loop.TerminalResult{Ended: loop.DrainStoppedEmpty}, nil
+	}
+	var out, errb strings.Builder
+	if code := Run([]string{"drain", "--drive", "--yes"}, &out, &errb); code != 0 {
+		t.Fatalf("exit %d: %s", code, errb.String())
+	}
+	logs, err := filepath.Glob(filepath.Join(w.repo, ".abcd", ".work.local", "logs", "drain-drive-*.log"))
+	if err != nil || len(logs) != 1 {
+		t.Fatalf("the drive's log: %v %v", logs, err)
+	}
+	raw, err := os.ReadFile(logs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), line) {
+		t.Fatalf("the log keeps the line:\n%s", raw)
 	}
 }

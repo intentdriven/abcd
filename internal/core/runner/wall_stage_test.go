@@ -534,3 +534,69 @@ func TestAResetLeavesThePersonsCheckDirectory(t *testing.T) {
 		t.Fatal("a stage's file tool may write in the check directory")
 	}
 }
+
+// TestAResetEmptiesAReadOnlyTreeAndFollowsNoLink: Go leaves its module directories read-only,
+// and a stage can leave any; neither stops the next launch, and a link out is not walked.
+func TestAResetEmptiesAReadOnlyTreeAndFollowsNoLink(t *testing.T) {
+	p := wallProfile(t)
+	if _, err := WriteWallSettings(p, wallBin); err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	if err := os.Chmod(outside, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(outside, 0o700) })
+	mod := filepath.Join(p.ShellHome, "go", "pkg", "mod", "example.com", "a@v1")
+	if err := os.MkdirAll(mod, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(mod, "a.go"), []byte("package a\n"), 0o400); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(mod, "out")); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range []string{mod, filepath.Dir(mod), filepath.Dir(filepath.Dir(mod))} {
+		if err := os.Chmod(d, 0o500); err != nil {
+			t.Fatal(err)
+		}
+	}
+	shut := filepath.Join(p.ShellHome, "shut")
+	if err := os.Mkdir(shut, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := ResetStageHome(p); err != nil {
+		t.Fatalf("the home is emptied: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(p.ShellHome, "go")); !os.IsNotExist(err) {
+		t.Fatalf("the tree stands: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(p.ShellHome, ".gitconfig")); err != nil {
+		t.Fatalf("the git configuration is laid out again: %v", err)
+	}
+	fi, err := os.Stat(outside)
+	if err != nil || fi.Mode().Perm() != 0o500 {
+		t.Fatalf("a link out was followed: %v %v", fi, err)
+	}
+}
+
+// TestAColdNoteNamesWhatIsMissedAndWhyTheGoStillRuns: a stage's shell and the preflight run
+// that Go whatever abcd asked of it.
+func TestAColdNoteNamesWhatIsMissedAndWhyTheGoStillRuns(t *testing.T) {
+	refused := goRefusedNote([]string{"GOCACHE", "GOMODCACHE", "GOPATH"}, "go, or a directory it is reached through, is one group or other can write, so it is never run; chmod go-w it")
+	for _, want := range []string{"did not ask that Go where its caches are", "one group or other can write", "a stage's shell and the preflight still run it", "chmod go-w it", "GOCACHE, GOMODCACHE, GOPATH"} {
+		if !strings.Contains(refused, want) {
+			t.Errorf("the note says %q: %s", want, refused)
+		}
+	}
+	for _, never := range []string{"never run", "from cold"} {
+		if strings.Contains(refused, never) {
+			t.Errorf("the note says %q: %s", never, refused)
+		}
+	}
+	partial := stageColdNote([]string{"GOPATH"}, "go names no absolute path for it")
+	if !strings.Contains(partial, "GOPATH") || strings.Contains(partial, "GOCACHE") || strings.Contains(partial, "from cold") {
+		t.Errorf("a partial miss is named as one: %s", partial)
+	}
+}

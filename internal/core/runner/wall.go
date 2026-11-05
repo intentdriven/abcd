@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -319,6 +320,7 @@ func ResetStageHome(p Profile) error {
 		if !fi.IsDir() {
 			return &WallError{WallSettingsFile, "the stage's home is no real directory"}
 		}
+		restoreOwnerAccess(p.ShellHome)
 		if err := os.RemoveAll(p.ShellHome); err != nil {
 			return &WallError{WallSettingsFile, "the stage's home could not be emptied"}
 		}
@@ -332,6 +334,21 @@ func ResetStageHome(p Profile) error {
 	return nil
 }
 
+// restoreOwnerAccess gives the owner each directory under root back, so it can be
+// emptied: Go makes its module directories read-only, and a stage can leave any. The walk
+// follows no link. What it cannot reach, the removal that follows answers for.
+func restoreOwnerAccess(root string) {
+	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || !d.IsDir() {
+			return nil
+		}
+		if info, err := d.Info(); err == nil {
+			_ = os.Chmod(path, info.Mode().Perm()|0o700)
+		}
+		return nil
+	})
+}
+
 // PreflightEnv is the environment a lane's preflight runs in: what a stage
 // carries, under its home, with the person's home named for the load gate and the
 // Go caches kept. Nothing else of the parent's passes.
@@ -341,7 +358,7 @@ func PreflightEnv(p Profile) []string {
 
 // stageGoExports are the Go caches as they stand in the person's own environment,
 // as KEY=value. With no Go on PATH there is nothing to keep and nothing to say; a Go
-// that is there and does not answer leaves a cache out, and note says which and why.
+// abcd will not ask, or that does not answer, leaves a cache out, and note says which and why.
 func stageGoExports(p Profile) (exports []string, note string) {
 	// What a stage installs lands under its home, so it shadows no program.
 	exports = []string{"GOBIN=" + filepath.Join(p.ShellHome, "bin")}
@@ -353,9 +370,12 @@ func stageGoExports(p Profile) (exports []string, note string) {
 	if err != nil {
 		var fl *Failure
 		if errors.As(err, &fl) {
-			return exports, stageColdNote(fl.Detail)
+			if errors.Is(err, ErrRefused) {
+				return exports, goRefusedNote(names, fl.Detail)
+			}
+			return exports, stageColdNote(names, "that Go did not say where its caches are: "+fl.Detail)
 		}
-		return exports, stageColdNote("go did not answer")
+		return exports, stageColdNote(names, "that Go did not say where its caches are")
 	}
 	values := strings.Split(strings.TrimSpace(string(out.Stdout)), "\n")
 	var missed []string
@@ -367,14 +387,25 @@ func stageGoExports(p Profile) (exports []string, note string) {
 		}
 	}
 	if len(missed) > 0 {
-		return exports, stageColdNote("go names no absolute path for " + strings.Join(missed, ", "))
+		return exports, stageColdNote(missed, "that Go names no absolute path for "+strings.Join(missed, ", "))
 	}
 	return exports, ""
 }
 
-// stageColdNote is what a drive says at its start of a Go cache it could not keep.
-func stageColdNote(why string) string {
-	return "a stage's Go caches stay in its own home, which is emptied at each launch, so each launch's Go builds from cold: " + why
+// stageColdNote is what a drive says at its start of the Go caches it could not keep.
+func stageColdNote(missed []string, why string) string {
+	return why + ", so a stage keeps " + strings.Join(missed, ", ") + " in its own home, which is emptied at each launch"
+}
+
+// goRefusedNote is stageColdNote for a Go abcd would not ask: a stage's shell and the
+// preflight run it all the same, so what abcd refused is the question alone.
+func goRefusedNote(missed []string, detail string) string {
+	cause, remedy, ok := strings.Cut(detail, ", so it is never run; ")
+	note := stageColdNote(missed, "abcd did not ask that Go where its caches are, since "+cause+", and a stage's shell and the preflight still run it")
+	if ok {
+		note += "; " + remedy
+	}
+	return note
 }
 
 // StageCachesNote says why the stages on p's shell home will not use the person's

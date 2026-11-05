@@ -353,11 +353,11 @@ func runDriveLocked(cmd *cobra.Command, asJSON bool, repoRoot string, roots laye
 			d.Max = 0
 		}
 	}
-	return driveRun(sig, cmd, asJSON, repoRoot, roots, p, o, d)
+	return driveRun(sig, cmd, asJSON, repoRoot, roots, p, o, d, lines)
 }
 
 // driveRun runs the terminal loop and says how it ended.
-func driveRun(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot string, roots layered.Roots, p runner.Profile, o loop.Options, d loop.DrainOptions) error {
+func driveRun(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot string, roots layered.Roots, p runner.Profile, o loop.Options, d loop.DrainOptions, startLines []string) error {
 	review, err := loop.LoadReviewRoute(roots, agentPrompt)
 	if err != nil {
 		return loopFail(cmd.OutOrStdout(), asJSON, "abcd drain", err)
@@ -376,6 +376,10 @@ func driveRun(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot strin
 	}
 	say, detail, closeLog := driveLog(repoRoot, lines)
 	defer closeLog()
+	// What the start said came before the log opened; someone reading it later needs it.
+	for _, l := range startLines {
+		fmt.Fprintln(detail, time.Now().UTC().Format(time.RFC3339)+" abcd drain --drive: "+termsafe.Sanitize(fsutil.RedactHome(l)))
+	}
 	noticeUnattended(cmd, "abcd drain")
 	res, err := driveTerminal(sig.ctx, repoRoot, loop.TerminalOptions{
 		Options:          o,

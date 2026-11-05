@@ -126,6 +126,9 @@ func TestDiscardingTheRunLiftsTheStop(t *testing.T) {
 // TestAStateStillUnreadStopsTheDriveWithAMark: a changed state can hide behind a read that
 // keeps failing, so it is kept against the run as a change is.
 func TestAStateStillUnreadStopsTheDriveWithAMark(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads what a mode denies")
+	}
 	t.Setenv("HOME", t.TempDir())
 	w := newTerminalWorld(t, "shape", "unreadstate")
 	var path string
@@ -189,6 +192,9 @@ func TestAStateReadRetriesThroughAPassingFailure(t *testing.T) {
 
 // TestALookThatFailsRefusesTheRun: only a stop known to be absent reads as none.
 func TestALookThatFailsRefusesTheRun(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads what a mode denies")
+	}
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	// A file where the stops' folder goes answers with something other than not-found
