@@ -94,6 +94,48 @@ func TestEveryDurableWriteFlushesUnlessTheTestOptedIn(t *testing.T) {
 	}
 }
 
+// TestARebuildableWriteFlushesNothing: with the opt-in cleared, so a durable
+// write would flush twice, the rebuildable write flushes neither the file nor
+// its directory, and still lands the whole file at its mode and stays inside the
+// root.
+func TestARebuildableWriteFlushesNothing(t *testing.T) {
+	t.Setenv(SkipFlushEnv, "")
+	n := countFlushes(t)
+	dir := t.TempDir()
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	if err := WriteRebuildableInRoot(root, "sub/a", []byte("x"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if *n != 0 {
+		t.Errorf("WriteRebuildableInRoot flushed %d time(s), want none", *n)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "sub", "a"))
+	if err != nil || string(got) != "x" {
+		t.Fatalf("the file holds %q (%v), want x", got, err)
+	}
+	fi, err := os.Stat(filepath.Join(dir, "sub", "a"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Mode().Perm() != 0o640 {
+		t.Errorf("the file's mode is %v, want 0640", fi.Mode().Perm())
+	}
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(dir, "away")); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteRebuildableInRoot(root, "away/a", []byte("x"), 0o644); err == nil {
+		t.Error("a write through a symlink out of the root succeeded")
+	}
+	if _, err := os.Stat(filepath.Join(outside, "a")); err == nil {
+		t.Error("the write landed outside the root")
+	}
+}
+
 // flushOutcome reports whether Flush reached the flush, observed by its error:
 // a flush of a closed file fails with os.ErrClosed, a skipped one returns nil.
 func flushOutcome(t *testing.T) string {

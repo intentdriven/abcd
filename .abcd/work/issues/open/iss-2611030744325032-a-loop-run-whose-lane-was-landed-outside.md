@@ -13,3 +13,5 @@ remedy: "Have the land stage accept a lane whose pull request merged with a head
 ---
 
 A loop run whose lane was landed outside the loop can never be finished: run-2611030127507347's lane merged as #1367 at 85ed321d2 after a hand landing, and implement step now refuses on every call because the branch is not at the records commit 0c466ccb1 the landing pinned, with a remedy to restore the branch, which would rewind a merged branch. Nothing else ends the run, so it keeps its lane worktree (prune keeps it as held by the run) and held its reservation until it was released by hand. iss-2610142233473049 covers the unmerged case.
+
+2026-11-04: the same hold from a run left at its land stage. run-2611031131030791 kept its reservation on whole directories (internal/surface/cli and internal/core/implement/loop) until 15:08 on 2026-11-04, about fourteen hours after its pull request merged, with nothing running, and two cloud sessions worked around it.

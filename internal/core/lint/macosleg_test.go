@@ -14,21 +14,24 @@ import (
 	"github.com/intentdriven/abcd/internal/actionsexpr"
 )
 
-// TestMacOSLegRunsItsSuiteOnlyWhereItLands holds ci.yml to where it spends a
+// TestMacOSLegRunsItsSuiteOnlyNightlyAndOnDemand holds ci.yml to where it spends a
 // macOS runner, and to what each of its test jobs runs (iss-2610110938282654).
 //
-// macOS is the account's scarcest runner, five jobs at once, and its suite was the
+// macOS is the account's scarcest runner, five jobs at once, and its suite is the
 // slowest thing in the workflow. It ran on every pull request as well as on every
 // merge-queue entry, so on 2026-10-11 queue entries waited for a slot behind
 // pull-request runs that repeated a local `make preflight`, passed the queue's
-// timeout and were removed, and nothing merged for five hours. The suite now runs
-// on every event but pull_request, as shard jobs (iss-2610181757540736), and
-// `check (macos-latest)` is an aggregator on an ubuntu runner: on a pull request
-// it reports with no shard having run, and says so. Where the suite runs, every
-// shard makes one race-enabled pass over its packages (iss-2610110938293273), and
-// the build, vet and the tests that assert nothing under -race
-// (iss-2610180542030806) run once, in the first shard. The ubuntu job keeps its
-// plain pass and its race lane.
+// timeout and were removed, and nothing merged for five hours. It then ran on
+// every event but pull_request, and on 2026-11-04 queue entries kept dropping
+// because GitHub had no macOS runner to give, with no test failing. So it stands
+// down on a merge-queue entry too, and runs as shard jobs (iss-2610181757540736)
+// on the nightly schedule and by hand; the pre-push hook holds a pushed commit
+// to `make preflight` locally. `check (macos-latest)` is an aggregator on an ubuntu
+// runner: on a pull request and on a queue entry it reports with no shard having
+// run, and says so. Where the suite runs, every shard makes one race-enabled pass
+// over its packages (iss-2610110938293273), and the build, vet and the tests that
+// assert nothing under -race (iss-2610180542030806) run once, in the first shard.
+// The ubuntu job keeps its plain pass and its race lane.
 //
 // The check is SEMANTIC, like the concurrency and range-base contracts beside
 // it: every step's own `if:` and each job's `if:` are evaluated per shard, per
@@ -38,7 +41,7 @@ import (
 // the job does not have fails the test, which is what catches a step left reading
 // `matrix.os` in a job with no such matrix: GitHub would read it as empty and skip
 // the step in silence.
-func TestMacOSLegRunsItsSuiteOnlyWhereItLands(t *testing.T) {
+func TestMacOSLegRunsItsSuiteOnlyNightlyAndOnDemand(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
 	const rel = ".github/workflows/ci.yml"
 	workflow := readRepoFile(t, root, rel)
@@ -46,6 +49,10 @@ func TestMacOSLegRunsItsSuiteOnlyWhereItLands(t *testing.T) {
 	if !slices.Contains(events, "pull_request") || !slices.Contains(events, "merge_group") {
 		t.Fatalf("%s triggers on %q; the trigger parser has lost its shape, or the workflow no "+
 			"longer gates pull requests and the merge queue", rel, events)
+	}
+	// The two events the suite exists for: without them it runs nowhere at all.
+	if !slices.Contains(events, "schedule") || !slices.Contains(events, "workflow_dispatch") {
+		t.Errorf("%s triggers on %q; the macOS suite runs on the schedule and by hand, so it needs both", rel, events)
 	}
 
 	t.Run("contexts", func(t *testing.T) { checkRequiredTestContexts(t, root, workflow) })
@@ -169,8 +176,16 @@ func checkUbuntuJobPasses(t *testing.T, workflow string, events []string) {
 	}
 }
 
+// macOSStandsDown reports whether the suite takes no macOS runner on event. Every
+// other event runs it, an event added later included, so a new trigger cannot read
+// as a green for a suite nobody ran.
+func macOSStandsDown(event string) bool {
+	return event == "pull_request" || event == "merge_group"
+}
+
 // checkMacOSSuitePasses evaluates the macOS suite per event and shard: no runner
-// on a pull request, and otherwise every shard's race pass and each one-off once.
+// on a pull request or a queue entry, and otherwise every shard's race pass and
+// each one-off once.
 func checkMacOSSuitePasses(t *testing.T, workflow string, events []string) {
 	t.Helper()
 	job, ok := workflowJobBlock(workflow, macOSSuiteJob)
@@ -182,17 +197,17 @@ func checkMacOSSuitePasses(t *testing.T, workflow string, events []string) {
 	}
 	// The classifier has no say here: no pull request reaches a shard, and every
 	// other event is never inert. A need on it would only add a way to skip a
-	// shard, on the classifier's failure, on the one run that gates the merge.
+	// shard, on the classifier's failure, on the only runs the suite has.
 	if _, ok := jobKey(job, "needs"); ok {
 		t.Errorf("the %s job carries a needs; a failed dependency would skip the suite", macOSSuiteJob)
 	}
 	if f, _ := regexpFirst(job, `(?m)^      fail-fast: (\S+)\s*$`); f != "true" {
-		t.Errorf("the %s job's fail-fast is %q; want true: a shard that failed has decided the entry, and "+
-			"the rest would hold scarce runners and the queue for an answer already known", macOSSuiteJob, f)
+		t.Errorf("the %s job's fail-fast is %q; want true: a shard that failed has decided the run, and "+
+			"the rest would hold scarce runners for an answer already known", macOSSuiteJob, f)
 	}
 	jobIf, ok := jobKey(job, "if")
 	if !ok {
-		t.Fatalf("the %s job carries no if, so a pull request would take macOS runners", macOSSuiteJob)
+		t.Fatalf("the %s job carries no if, so a pull request and a queue entry would take macOS runners", macOSSuiteJob)
 	}
 	shards := macOSShards(t, job)
 	items := jobSteps(job)
@@ -208,7 +223,7 @@ func checkMacOSSuitePasses(t *testing.T, workflow string, events []string) {
 			if err != nil {
 				t.Fatalf("cannot evaluate the job's if %q: %v", jobIf, err)
 			}
-			if want := event != "pull_request"; run != want {
+			if want := !macOSStandsDown(event); run != want {
 				t.Fatalf("the %s job's if %q reads %v on a %s event; want %v", macOSSuiteJob, jobIf, run, event, want)
 			}
 			if !run {
@@ -321,9 +336,9 @@ func macOSShards(t *testing.T, suite string) []int {
 }
 
 // macOSShardCount is how many shards the suite runs: a third of the slowest
-// passing run fits a slow runner comfortably, and five macOS runners over four
-// building entries serve three shards each about as well as two
-// (the comment on the macos-suite job in ci.yml has the sums).
+// passing run fits a slow runner comfortably, and one run's three shards fit the
+// account's five macOS runners (the comment on the macos-suite job in ci.yml has
+// the sums).
 const macOSShardCount = 3
 
 // macOSRaceStepScript returns the shard race step's job step, its env values held
@@ -448,10 +463,12 @@ func TestAShardThatCannotReadItsPackagesFails(t *testing.T) {
 // TestMacOSCheckFailsUnlessEveryShardSucceeded runs the aggregator's own script
 // over every result its need can read, per event (loud staging: a green may only
 // stand for work that happened). It passes in exactly two cases: every shard
-// succeeded off a pull request, and the shards were deliberately skipped on one.
-// A shard skipped anywhere else, failed or cancelled, or a result that reads as
-// nothing at all, fails it. needs.<job>.result is a matrix's result as a whole:
-// GitHub reads it as success only when every leg succeeded.
+// succeeded on an event the suite runs on, and the shards were deliberately skipped
+// on a pull request or a queue entry, where it says that no macOS suite ran and
+// where one does. A shard skipped anywhere else, failed, cancelled or abandoned, or
+// a result that reads as nothing at all, fails it. needs.<job>.result is a matrix's
+// result as a whole: GitHub reads it as success only when every leg succeeded, and
+// as abandoned when a shard never got a runner (run 41901793293).
 //
 // It must also report whatever happened to the shards and the run, so the job and
 // its step both read always(): a job's step with the implicit success() is skipped
@@ -502,12 +519,18 @@ func TestMacOSCheckFailsUnlessEveryShardSucceeded(t *testing.T) {
 		}
 	}
 
-	results := []string{"success", "failure", "cancelled", "skipped", "", "neutral"}
+	results := []string{"success", "failure", "cancelled", "skipped", "abandoned", "", "neutral"}
+	// What each stand-in has to say, in the log and the step summary: a green here
+	// tested nothing on macOS, and the reader is told where the suite does run.
+	standIn := map[string][]string{
+		"pull_request": {"this run tested nothing on macOS", "nightly", "on demand"},
+		"merge_group":  {"No macOS suite ran on this entry", "The nightly run covers the default branch"},
+	}
 	for _, event := range append(workflowTriggers(workflow), "an-event-added-later") {
 		for _, result := range results {
 			t.Run(fmt.Sprintf("%s/%s", event, result), func(t *testing.T) {
 				want := result == "success"
-				if event == "pull_request" {
+				if macOSStandsDown(event) {
 					want = result == "skipped"
 				}
 				summary := filepath.Join(t.TempDir(), "summary")
@@ -521,8 +544,21 @@ func TestMacOSCheckFailsUnlessEveryShardSucceeded(t *testing.T) {
 				if !want && !strings.Contains(string(out), "::error") {
 					t.Errorf("a refusal says nothing on the log:\n%s", out)
 				}
-				if event == "pull_request" && want && !strings.Contains(string(out), "::notice") {
-					t.Errorf("the pull-request stand-in does not say in the log that it tested nothing on macOS:\n%s", out)
+				if !macOSStandsDown(event) || !want {
+					return
+				}
+				if !strings.Contains(string(out), "::notice") {
+					t.Errorf("the %s stand-in raises no notice in the log:\n%s", event, out)
+				}
+				written, err := os.ReadFile(summary)
+				if err != nil {
+					t.Errorf("the %s stand-in writes no step summary: %v", event, err)
+				}
+				for _, says := range standIn[event] {
+					if !strings.Contains(string(out), says) || !strings.Contains(string(written), says) {
+						t.Errorf("the %s stand-in does not say %q in both the log and the summary:\n%s\nsummary:\n%s",
+							event, says, out, written)
+					}
 				}
 			})
 		}

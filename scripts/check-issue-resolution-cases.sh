@@ -122,8 +122,22 @@ expect_refusal_not_naming() {
 }
 
 # newrepo makes a scratch repo with one baseline commit and an open issue.
+#
+# Seven git processes a repository, so it is built once and copied: every case
+# still gets its own repository, the same objects, refs and config. The copy's
+# index is refreshed, since a plumbing diff reads a new inode as an edit.
 newrepo() {
-	local d="$tmproot/$1"
+	local d="$tmproot/$1" template="$tmproot/.newrepo-template"
+	if [ ! -d "$template" ]; then
+		build_newrepo "$template"
+	fi
+	cp -Rp "$template" "$d"
+	git -C "$d" update-index -q --refresh
+	echo "$d"
+}
+
+build_newrepo() {
+	local d="$1"
 	mkdir -p "$d/$ISS_DIR/open" "$d/$ISS_DIR/resolved" "$d/$ISS_DIR/wontfix"
 	git -C "$d" init -q -b main
 	git -C "$d" config user.name t
@@ -144,7 +158,6 @@ EOF
 	# is empty and the gate correctly reports "nothing to check" — which a naive
 	# fixture reads as a pass.
 	git -C "$d" checkout -q -b work
-	echo "$d"
 }
 
 resolve_record() {
@@ -654,6 +667,81 @@ resolve_record "$d" "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
 git -C "$d" add -A
 git -C "$d" commit -qm "chore: resolve"
 expect fail "$d" "RS003 stamp naming a nonexistent commit" -- ledger HEAD
+
+# The ledger is read in one pass, so each shape a record's own read saw must
+# still come out the same: the stamp that fails is the one named, an abbreviated
+# stamp resolves, a commit that exists on no ancestor of the ref is a different
+# fault from one that does not exist, and a sha in the prose body or past the
+# frontmatter's closing delimiter is no stamp.
+d="$(newrepo rs003-unreachable)"
+git -C "$d" checkout -qb elsewhere
+git -C "$d" commit -q --allow-empty -m "a commit only this branch holds"
+stray="$(git -C "$d" rev-parse HEAD)"
+git -C "$d" checkout -q main
+resolve_record "$d" "$stray"
+git -C "$d" add -A
+git -C "$d" commit -qm "chore: resolve"
+expect_refusal_naming "$d" "RS003 a commit that exists but is unreachable" \
+	"RS003 .*iss-999-a-fixture.md stamps resolved_by.commit '$stray', which is no longer reachable from HEAD" -- ledger HEAD
+
+d="$(newrepo rs003-abbreviated)"
+base="$(git -C "$d" rev-parse HEAD)"
+resolve_record "$d" "${base:0:7}"
+git -C "$d" add -A
+git -C "$d" commit -qm "chore: resolve"
+expect pass "$d" "RS003 an abbreviated stamp resolves" -- ledger HEAD
+
+d="$(newrepo rs003-body-example)"
+base="$(git -C "$d" rev-parse HEAD)"
+resolve_record "$d" "$base"
+cat >>"$d/$ISS_DIR/resolved/iss-999-a-fixture.md" <<'EOF'
+
+    resolved_by:
+      commit: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+EOF
+git -C "$d" add -A
+git -C "$d" commit -qm "chore: resolve and document the stamp shape"
+expect pass "$d" "RS003 ignores a commit: example in the prose body" -- ledger HEAD
+
+d="$(newrepo rs003-unstamped-body-example)"
+cat >"$d/$ISS_DIR/resolved/iss-996-unstamped.md" <<'EOF'
+---
+schema_version: 1
+id: "iss-996"
+---
+A record with no stamp, whose body shows the shape of one:
+
+  commit: deadbeef00
+EOF
+git -C "$d" add -A
+git -C "$d" commit -qm "chore: file a record with no stamp"
+expect pass "$d" "RS003 a body line is no stamp on a record with none" -- ledger HEAD
+
+d="$(newrepo rs003-names-the-record)"
+base="$(git -C "$d" rev-parse HEAD)"
+resolve_record "$d" "$base"
+cat >"$d/$ISS_DIR/resolved/iss-998-another.md" <<'EOF'
+---
+schema_version: 1
+id: "iss-998"
+resolved_by:
+  commit: "feedfacefeedfacefeedfacefeedfacefeedface"
+---
+A second record, whose stamp names nothing.
+EOF
+cat >"$d/$ISS_DIR/open/iss-997-unstamped.md" <<'EOF'
+---
+schema_version: 1
+id: "iss-997"
+---
+An open record with no stamp at all.
+EOF
+git -C "$d" add -A
+git -C "$d" commit -qm "chore: resolve two, leave one open"
+expect_refusal_naming "$d" "RS003 names the record whose stamp fails, among others" \
+	"RS003 .*iss-998-another.md stamps resolved_by.commit 'feedfacefeedfacefeedfacefeedfacefeedface', which names no commit" -- ledger HEAD
+expect_refusal_not_naming "$d" "RS003 does not name the records whose stamps hold" \
+	"iss-999-a-fixture.md|iss-997-unstamped.md" -- ledger HEAD
 
 # --- boundary/robustness regressions ----------------------------------------
 
