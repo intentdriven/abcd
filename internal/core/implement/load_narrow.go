@@ -108,12 +108,12 @@ func narrowJitter() time.Duration {
 	return WaitNarrowJitterMin + rand.N(WaitNarrowJitterMax-WaitNarrowJitterMin+1)
 }
 
-// DefaultNarrowRuns is the limit with none set: half the online cores divided by
+// defaultNarrowRuns is the limit with none set: half the online cores divided by
 // what one narrow run is bound to, and one at the least, so an account's look admits
 // up to half the machine on four cores or more. Each other account can add one run over that, since a look
 // always keeps its own account one place (narrowCount). Sixteen cores admit four,
 // eight cores in all; how much of that a look grants beside whole runs is narrowRoom's.
-func DefaultNarrowRuns(cores int) int {
+func defaultNarrowRuns(cores int) int {
 	return max(1, cores/2/NarrowRunCores)
 }
 
@@ -181,7 +181,7 @@ func narrowLimit(set, cores int) int {
 	if cores < 1 {
 		cores = runtime.NumCPU()
 	}
-	return DefaultNarrowRuns(cores)
+	return defaultNarrowRuns(cores)
 }
 
 // NarrowRuns reads load.narrow_runs from the machine configuration alone
@@ -190,7 +190,7 @@ func narrowLimit(set, cores int) int {
 // cores (narrowLimit). A value outside one to MaxNarrowRuns is refused naming the
 // key. A config.json it cannot read is read past: PreflightSlots, read at the same
 // look, names the file.
-func NarrowRuns(home string) (int, string, error) {
+func narrowRuns(home string) (int, string, error) {
 	roots, _ := layered.MachineRoots(home)
 	if roots.HomeRefused {
 		return 0, SlotsDefault, nil

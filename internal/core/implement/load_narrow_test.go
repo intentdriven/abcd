@@ -478,11 +478,11 @@ func TestAWholeRunCountsNarrowRunsThroughTheLoadOnly(t *testing.T) {
 // one at the least.
 func TestDefaultNarrowRuns(t *testing.T) {
 	for cores, want := range map[int]int{16: 16 / 2 / NarrowRunCores, 8: 8 / 2 / NarrowRunCores, 2: 1, 1: 1} {
-		if got := DefaultNarrowRuns(cores); got != max(want, 1) {
-			t.Errorf("DefaultNarrowRuns(%d) = %d, want %d", cores, got, max(want, 1))
+		if got := defaultNarrowRuns(cores); got != max(want, 1) {
+			t.Errorf("defaultNarrowRuns(%d) = %d, want %d", cores, got, max(want, 1))
 		}
 	}
-	if DefaultNarrowRuns(16) < 2 {
+	if defaultNarrowRuns(16) < 2 {
 		t.Error("a 16-core machine admits fewer than two narrow runs")
 	}
 }
@@ -493,23 +493,23 @@ func TestDefaultNarrowRuns(t *testing.T) {
 // is read past, as for load.preflights.
 func TestNarrowRunsSetting(t *testing.T) {
 	home := t.TempDir()
-	if n, src, err := NarrowRuns(home); err != nil || n != 0 || src != SlotsDefault {
+	if n, src, err := narrowRuns(home); err != nil || n != 0 || src != SlotsDefault {
 		t.Fatalf("unset: %d, %q, %v", n, src, err)
 	}
 	writeMachineConfig(t, home, `{"load": {"narrow_runs": 7}}`)
-	if n, src, err := NarrowRuns(home); err != nil || n != 7 || src != SlotsMachine {
+	if n, src, err := narrowRuns(home); err != nil || n != 7 || src != SlotsMachine {
 		t.Fatalf("set: %d, %q, %v", n, src, err)
 	}
 	for _, body := range []string{`{"load": {"narrow_runs": 0}}`, `{"load": {"narrow_runs": 33}}`, `{"load": {"narrow_runs": "4"}}`, `{"load": {"narrow_runs": 1.5}}`} {
 		h := t.TempDir()
 		writeMachineConfig(t, h, body)
-		if _, _, err := NarrowRuns(h); err == nil || !strings.Contains(err.Error(), NarrowRunsKey) {
+		if _, _, err := narrowRuns(h); err == nil || !strings.Contains(err.Error(), NarrowRunsKey) {
 			t.Errorf("%s: err = %v, want a refusal naming the key", body, err)
 		}
 	}
 	h := t.TempDir()
 	writeMachineConfig(t, h, `{"load": `)
-	if n, _, err := NarrowRuns(h); err != nil || n != 0 {
+	if n, _, err := narrowRuns(h); err != nil || n != 0 {
 		t.Errorf("a config it cannot read: %d, %v; want the default", n, err)
 	}
 
@@ -527,7 +527,7 @@ func TestNarrowRunsSetting(t *testing.T) {
 	req := narrowReq(t.TempDir(), 60000, clock, p)
 	req.Dir = repo
 	res, err := WaitLoad(req)
-	if err != nil || res.Status != WaitOpen || res.NarrowRuns != DefaultNarrowRuns(16) {
+	if err != nil || res.Status != WaitOpen || res.NarrowRuns != defaultNarrowRuns(16) {
 		t.Fatalf("a repository's limit of one was heeded: %+v, %v", res, err)
 	}
 }

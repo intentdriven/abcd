@@ -613,7 +613,7 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 		}
 		res.Slots, res.SlotsSource, res.SlotsNote = n, src, note
 		if req.Narrow {
-			runs, src, err := NarrowRuns(home)
+			runs, src, err := narrowRuns(home)
 			if err != nil {
 				return refuse(err)
 			}
