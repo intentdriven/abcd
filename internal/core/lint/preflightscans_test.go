@@ -1,6 +1,7 @@
 package lint_test
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -273,15 +274,35 @@ echo 'go: cannot load the module' >&2; exit 1`)
 	r.noCopyLeft()
 }
 
+// interruptHangGuard turns a scan that never ends into this test's failure
+// rather than the whole test binary's timeout. It says nothing about how fast
+// an interrupt is: nothing but the interrupt can end the scan the test blocks,
+// so no length of this guard lets a scan that ignored it pass, and it races
+// nothing on a slow machine. A healthy run reaches the scan in under a second
+// and ends milliseconds after the signal.
+const interruptHangGuard = 5 * time.Minute
+
 // TestVulncheckInterruptedLeavesNoCopyBehind: an interrupt while the fork
 // point's copy is being scanned, as a terminal's Ctrl-C sends it to the whole
-// process group, still removes the copy.
+// process group, ends the script through its INT trap and still removes the
+// copy.
+//
+// The stub's scan is a cat of a FIFO this test holds open, so it cannot finish
+// by itself: the script ending at all is the interrupt's doing. The signal
+// waits for a reader on the FIFO, which only a process past its exec can be.
+// A marker the stub's shell wrote before starting the process it blocks on left
+// a window (iss-2611011153130169): the process it was meant to stop was seen to
+// run on, orphaned, holding the pipe of the script's command substitution, whose
+// read defers the INT trap. The likely cause, read from how shells work rather
+// than observed, is a signal landing between that shell's fork and its exec.
 func TestVulncheckInterruptedLeavesNoCopyBehind(t *testing.T) {
 	r := newScanRepo(t, false)
-	started := filepath.Join(r.stubs, "fork-scan-started")
+	blocker := filepath.Join(r.stubs, "fork-scan-blocks-here")
+	if err := syscall.Mkfifo(blocker, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	r.stub("go", `if [ -f feature.txt ]; then echo 'Vulnerability #1: GO-2026-0001'; exit 3; fi
-: >"`+started+`"
-sleep 30`)
+exec cat "`+blocker+`"`)
 	cmd := r.command("vulncheck")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
@@ -289,25 +310,42 @@ sleep 30`)
 	}
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
-	deadline := time.Now().Add(20 * time.Second)
-	for {
-		if _, err := os.Stat(started); err == nil {
+	hung := time.After(interruptHangGuard)
+	// A write-only, non-blocking open of a FIFO fails with ENXIO until it has a
+	// reader. Once it succeeds, holding it keeps the reader blocked; closing it
+	// when the test returns ends any reader still there.
+	var held *os.File
+	for held == nil {
+		f, err := os.OpenFile(blocker, os.O_WRONLY|syscall.O_NONBLOCK, 0)
+		if err == nil {
+			held = f
 			break
 		}
-		if time.Now().After(deadline) {
+		if !errors.Is(err, syscall.ENXIO) {
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			t.Fatal(err)
+		}
+		select {
+		case err := <-done:
+			t.Fatalf("the script ended before the fork point's scan started: %v", err)
+		case <-hung:
 			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 			t.Fatal("the fork point's scan never started")
+		case <-time.After(5 * time.Millisecond):
 		}
-		time.Sleep(50 * time.Millisecond)
 	}
+	defer held.Close()
 	if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGINT); err != nil {
 		t.Fatal(err)
 	}
 	select {
 	case <-done:
-	case <-time.After(20 * time.Second):
+	case <-hung:
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 		t.Fatal("the interrupted scan did not end")
+	}
+	if code := cmd.ProcessState.ExitCode(); code != 130 {
+		t.Errorf("the interrupted scan exited %d, want 130, its INT trap's", code)
 	}
 	r.noCopyLeft()
 }
