@@ -31,7 +31,7 @@ What spc-2610230813348813 did not deliver for itd-2610222215485265: the live pro
    - needs: none
    - packages: internal/core/runner/profile.go, internal/surface/cli/drain_drive.go
    - tests: internal/core/runner/profile_test.go, internal/surface/cli/drain_drive_test.go
-   Not before itd-2611011230226453 and itd-2611040344170206 ship: a drive whose configuration names a key runs on a key profile with abcd's hooks on, the key reaching the harness by a channel the agent's shell cannot read, under the budget's caps and its composing rule (dcn-2611041550126639, dcn-2611041550129278). Until then the refusal of step 3 stands.
+   Not before itd-2611011230226453 and itd-2611040344170206 ship: a drive whose configuration names a key runs on a key profile with abcd's hooks on, the key reaching the harness by a channel the agent's shell cannot read, under the budget's caps and its composing rule (dcn-2611041550126639, dcn-2611041550129278). Until then the refusal of spc-2610230813348813's step 3 stands.
 3. **A lane paused past the outage** (AFTER)
    - priority: AFTER
    - login: none

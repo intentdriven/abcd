@@ -502,3 +502,35 @@ func TestTheProofsCommandsAreOnesTheApproverPasses(t *testing.T) {
 		}
 	}
 }
+
+// TestAResetLeavesThePersonsCheckDirectory: what a preflight reuses survives the
+// emptying of a stage's home, a preflight's environment names it, and a stage's
+// file tool does not write there.
+func TestAResetLeavesThePersonsCheckDirectory(t *testing.T) {
+	p := wallProfile(t)
+	if _, err := WriteWallSettings(p, wallBin); err != nil {
+		t.Fatal(err)
+	}
+	check := abcdhome.Path(p.PersonHome, "tests", "root")
+	if err := os.MkdirAll(check, abcdhome.DirMode); err != nil {
+		t.Fatal(err)
+	}
+	kept := filepath.Join(check, "kept")
+	if err := os.WriteFile(kept, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := ResetStageHome(p); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(kept); err != nil {
+		t.Fatalf("a reset reached the check directory: %v", err)
+	}
+	for _, want := range []string{"HOME=" + p.ShellHome, abcdhome.StageHomeEnv + "=" + p.ShellHome, abcdhome.PersonHomeEnv + "=" + p.PersonHome} {
+		if !slices.Contains(PreflightEnv(p), want) {
+			t.Errorf("a preflight is not told %s", want)
+		}
+	}
+	if guard.StageWriteRefusal([]string{filepath.Join(p.PersonHome, "work")}, nil, kept) == "" {
+		t.Fatal("a stage's file tool may write in the check directory")
+	}
+}

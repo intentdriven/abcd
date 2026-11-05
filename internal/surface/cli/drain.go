@@ -102,9 +102,9 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"landing's preflight behind the load gate, printing one line per step and logging them\n" +
 			"under .abcd/.work.local/logs/. A lane that changes the Makefile, scripts/ or the active\n" +
 			"hooks is handed back at its landing, and an issue that names one is passed over: that\n" +
-			"change needs a person's own session. The driver's commit, merge and reset hooks get the\n" +
-			"stage's variables, while its network commands, filters and forge calls keep the person's\n" +
-			"environment. It ends at\n" +
+			"change needs a person's own session. The driver's commit, merge and reset hooks, and any\n" +
+			"filter run inside those commands, get the stage's variables, while its network commands,\n" +
+			"its other filters and its forge calls keep the person's environment. It ends at\n" +
 			"the cap, when nothing is eligible, or after eight hours of runner failures. One drive\n" +
 			"holds a checkout at a time; a second exits 3. A drive that is stopped, stops short or\n" +
 			"holds an issue back exits 3, and one a failed check stopped exits 2. The first interrupt, hang-up or termination is a\n" +

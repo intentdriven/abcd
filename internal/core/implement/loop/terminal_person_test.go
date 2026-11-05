@@ -123,3 +123,43 @@ func TestAWallsReasonReachesTheEnd(t *testing.T) {
 		t.Fatalf("the end names the cause: %+v", res.Why)
 	}
 }
+
+// TestLettingGoIsFencedOnTheHold: at a drive's end the hold a judgement waited on
+// is released while it is still the drain's, and left when it has been renewed.
+func TestLettingGoIsFencedOnTheHold(t *testing.T) {
+	letGo := func(root string) {
+		(&terminal{repoRoot: root}).letGo()
+	}
+	t.Run("the tip is still the hold", func(t *testing.T) {
+		repo, bare := reservingDrainRepo(t, "commands/drain.md")
+		_, taken := askFirstOnce(t, repo, bare, DrainOptions{})
+		letGo(repo.Root())
+		if refOf(t, bare, secondIssue) == taken {
+			t.Fatal("the hold was not released")
+		}
+		snap, err := claim.View(repo.Root(), time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r, ok := snap.Lookup(secondIssue); ok && r.State == claim.StateLive {
+			t.Fatalf("the hold stays live: %+v", r)
+		}
+	})
+	t.Run("the tip moved through a renewal", func(t *testing.T) {
+		repo, bare := reservingDrainRepo(t, "commands/drain.md")
+		askFirstOnce(t, repo, bare, DrainOptions{})
+		if _, err := claim.Reserve(repo.Root(), claim.Request{Record: secondIssue, Footprint: []string{"commands"}}, claim.Options{}); err != nil {
+			t.Fatal(err)
+		}
+		mine := refOf(t, bare, secondIssue)
+		letGo(repo.Root())
+		heldStill(t, bare, secondIssue, mine)
+		snap, err := claim.View(repo.Root(), time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r, ok := snap.Lookup(secondIssue); !ok || r.State != claim.StateLive {
+			t.Fatalf("the renewed reservation does not stay live: %+v", r)
+		}
+	})
+}
