@@ -142,6 +142,35 @@ func TestAPreflightRunsInTheStagesEnvironment(t *testing.T) {
 	}
 }
 
+// TestADriveSaysWhenAStagesGoCachesAreNotKept: an unattended run that would build
+// from cold at each launch says so at its start. Both programs stand where others
+// can write, so neither is run.
+func TestADriveSaysWhenAStagesGoCachesAreNotKept(t *testing.T) {
+	w := newDriveWorld(t)
+	p, err := runner.DriveProfile(w.home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Repo = w.repo
+	bin := t.TempDir()
+	for _, name := range []string{"go", "claude"} {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Chmod(bin, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	// The login is what the refused harness fails; the lines come before it.
+	lines, _ := driveWalls.static(context.Background(), p)
+	if !slices.ContainsFunc(lines, func(l string) bool {
+		return strings.Contains(l, "Go caches") && strings.Contains(l, "one group or other can write")
+	}) {
+		t.Fatalf("the drive did not say: %q", lines)
+	}
+}
+
 // TestALaneThatChangesItsGatesIsRefused: no flag opens it; a person's own session
 // handles such a change.
 func TestALaneThatChangesItsGatesIsRefused(t *testing.T) {

@@ -14,6 +14,12 @@ import (
 // hooks on a drive give them only what the drive allows.
 func TestAHookRunsInTheNarrowedEnvironment(t *testing.T) {
 	repo := gittest.NewRepo(t)
+	// The commits below are made by the commands under test, not the fixture, so
+	// they read this repository's identity. No identity comes from the host: one
+	// that can guess one must not hide a commit that has none.
+	repo.Git("config", "user.useConfigOnly", "true")
+	repo.Git("config", "user.name", "Fixture")
+	repo.Git("config", "user.email", "fixture@example.invalid")
 	log := filepath.Join(t.TempDir(), "env")
 	hook := filepath.Join(repo.Root(), ".git", "hooks", "pre-commit")
 	if err := os.MkdirAll(filepath.Dir(hook), 0o700); err != nil {

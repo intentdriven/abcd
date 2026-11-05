@@ -65,6 +65,9 @@ var driveWalls = driveWallChecks{
 		if replaced {
 			lines = append(lines, "the profile directory's settings were edited, and were replaced with abcd's: a drive's agents hold abcd's hooks and nothing else")
 		}
+		if note := runner.StageCachesNote(p); note != "" {
+			lines = append(lines, note)
+		}
 		if err := runner.CheckWallSettings(p, bin); err != nil {
 			return lines, err
 		}

@@ -221,7 +221,9 @@ A profile is a separate login and settings on this one account, not a boundary: 
 stage's shell reads what this account can. A launch starts from an allow-list of
 variables, a proxy's credentials taken out. Its shell's home is emptied at each launch
 and holds the person's git identity and filters; Go's caches and the person's home for
-abcd's shared records are named, and any other toolchain's cache starts empty. The guard
+abcd's shared records are named, and any other toolchain's cache starts empty. A Go on
+PATH that abcd will not run or that gives no answer leaves its caches in that home, and
+the drive says so at its start. The guard
 reads a shell line against that home and refuses a further agent, a moved home, the
 keychain tool, the land verb and every implement verb but the load gate and widening a hold. A file tool, and a shell line the guard can read, write only in the
 stage's working tree and run directories, its home and temporary files, and never the
