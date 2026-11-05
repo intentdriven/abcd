@@ -80,12 +80,14 @@ func slotsSetting(src string) string {
 	return PreflightSlotsKey
 }
 
-// The two gates a waiter waits at.
+// The gates a waiter waits at.
 const (
 	// GateTests is the first gate, before any of a preflight's stages.
 	GateTests = "tests"
 	// GateRace is the race gate, before the race stage (--race-gate).
 	GateRace = "race"
+	// GateNarrow is a narrow run's own gate (load_narrow.go).
+	GateNarrow = "narrow"
 )
 
 // PreflightSlots resolves how many preflights the first gate admits at once,
@@ -150,6 +152,6 @@ func PreflightSlots(getenv func(string) string, home string) (int, string, strin
 func machineConfigNote(err error) string {
 	file := layered.Config.MachineOrigin()
 	return fmt.Sprintf("the machine configuration %s cannot be read for %s (%v), so one preflight at a time applies; "+
-		"to set it, keep %s a regular file you own that nobody else can write (chmod go-w %s), holding one valid JSON object whose \"load\" names no key but \"preflights\" (a whole number from 1 to %d), \"memory_floor_macos\" and \"memory_floor_linux\"",
+		"to set it, keep %s a regular file you own that nobody else can write (chmod go-w %s), holding one valid JSON object whose \"load\" names no key but \"preflights\" (a whole number from 1 to %d), \"narrow_runs\", \"memory_floor_macos\" and \"memory_floor_linux\"",
 		file, PreflightSlotsKey, err, file, file, MaxPreflightSlots)
 }

@@ -164,7 +164,7 @@ func TestPreflightSlotsReadsPastAnUnreadableFile(t *testing.T) {
 			c.cause,
 			"so one preflight at a time applies",
 			"keep " + file + " a regular file you own that nobody else can write (chmod go-w " + file + ")",
-			`whose "load" names no key but "preflights" (a whole number from 1 to 4), "memory_floor_macos" and "memory_floor_linux"`,
+			`whose "load" names no key but "preflights" (a whole number from 1 to 4), "narrow_runs", "memory_floor_macos" and "memory_floor_linux"`,
 		} {
 			if !strings.Contains(note, want) {
 				t.Errorf("%s: note lacks %q:\n%s", c.name, want, note)
