@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -341,7 +342,7 @@ func TestAPullRequestThatStartsToConflictReentersTheSync(t *testing.T) {
 			l.Stage != StageValidate || l.pendingSync() == nil {
 			t.Fatalf("the lane re-enters its sync, the generated file's conflict going to an implementer: %+v", l)
 		}
-		if ld := l.Landing; ld == nil || ld.Pushed != "" || ld.Merge != "" || ld.Armed || l.PR != 7 || !ld.RecordsDone {
+		if ld := l.Landing; ld == nil || ld.Pushed != "" || ld.Merge != "" || ld.Armed || l.PR != 7 || !ld.RecordsDone || ld.GateUnreadSince != nil {
 			t.Fatalf("the push and the arming are to be made again, the records and the pull request kept: %+v", l.Landing)
 		}
 		if got := f.remoteBranch(t, l.Branch); got != pushed {
@@ -364,6 +365,16 @@ func TestAPullRequestThatStartsToConflictReentersTheSync(t *testing.T) {
 		l := currentLane(t, f.repo, f.runID)
 		if l.PR != 7 || l.Landing.Merge != "" {
 			t.Fatalf("the pull request is open and not yet armed: %+v", l.Landing)
+		}
+		if err := mutate(f.repo.Root(), f.runID, func(_ *os.Root, st *State) (bool, error) {
+			lane := &st.Lanes[st.current()]
+			ld := *lane.Landing
+			at := time.Now().UTC()
+			ld.GateUnreadSince = &at
+			lane.Landing = &ld
+			return true, nil
+		}); err != nil {
+			t.Fatal(err)
 		}
 		conflicting(t, f)
 		f.step(t)

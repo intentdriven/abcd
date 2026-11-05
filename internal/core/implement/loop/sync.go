@@ -326,6 +326,7 @@ func resyncLane(c Context, lane *Lane, def, tracking string, m mergeability) (Ou
 	}
 	again := *ld
 	again.Pushed, again.PreflightReceipt, again.CheckWaitSince, again.Merge, again.Armed, again.Toggles = "", "", nil, "", false, 0
+	again.GateUnreadSince = nil
 	lane.Landing = &again
 	out, _, err := mergeDefault(c, lane, def, tracking, nil)
 	if err != nil {
