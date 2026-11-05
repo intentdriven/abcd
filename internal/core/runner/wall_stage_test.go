@@ -263,3 +263,51 @@ func TestTheProofCatchesACredentialUnderAHarnessPrefix(t *testing.T) {
 		}
 	}
 }
+
+// TestAWalledLaunchAndTheProofEachWriteOneLedgerEntry: a stage reaches the ledger
+// through the dispatcher and the proof through the same one function, so neither
+// goes unrecorded.
+func TestAWalledLaunchAndTheProofEachWriteOneLedgerEntry(t *testing.T) {
+	f := newFake(t, "wall-ok", Claude)
+	c := mustLoad(t, claudeRoute, "")
+	p, err := DriveProfile(profileHome(t, "walled"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Ledger = c.Ledger()
+	if _, err := WriteWallSettings(p, selfBinary()); err != nil {
+		t.Fatal(err)
+	}
+	h := newHarness(t, c.Walled(p), true)
+	if _, err := h.d.Dispatch(context.Background(), shellRequest(f)); err != nil {
+		t.Fatal(err)
+	}
+	if got := ledgerFiles(t, c.Ledger().home); len(got) != 1 || got[0].Role != shellRequest(f).Role {
+		t.Fatalf("the stage's one entry: %+v", got)
+	}
+	if err := ProveWall(context.Background(), p, selfBinary()); err != nil {
+		t.Fatal(err)
+	}
+	got := ledgerFiles(t, c.Ledger().home)
+	roles := []string{}
+	for _, e := range got {
+		roles = append(roles, e.Role)
+	}
+	if len(got) != 2 || !slices.Contains(roles, "wall-proof") {
+		t.Fatalf("the proof's one entry beside it: %q", roles)
+	}
+}
+
+// TestAProofThatCannotBeRecordedIsNotStarted: as a stage, nothing starts that the
+// ledger cannot hold.
+func TestAProofThatCannotBeRecordedIsNotStarted(t *testing.T) {
+	f := newFake(t, "wall-ok", Claude)
+	p := wallProfile(t)
+	p.Ledger = newLedger("")
+	if err := ProveWall(context.Background(), p, wallBin); err == nil {
+		t.Fatal("a proof the ledger cannot hold is refused")
+	}
+	if f.launched(Claude) {
+		t.Fatal("nothing started")
+	}
+}

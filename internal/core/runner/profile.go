@@ -91,6 +91,8 @@ type Profile struct {
 	// Repo is the checkout the drive runs in, whose git configuration names the
 	// identity a stage commits under.
 	Repo string
+	// Ledger is the launch ledger the proof's launch is written to.
+	Ledger *Ledger
 	// Env is the launch's environment switches (sealedEnv): each KEY=value is
 	// set over the parent's, and each bare name taken out.
 	Env []string
@@ -162,8 +164,3 @@ func AdmitClaude(repoRoot string) error {
 	_, err := defaultLauncher().admit(Claude, "claude", repoRoot)
 	return err
 }
-
-// recordLaunch is the one call a walled launch makes when it ends, whatever
-// came of it, for the launch ledger (itd-2611031342011261) to fill. It records
-// nothing yet.
-var recordLaunch = func(Profile, Request, Answer, error) {}

@@ -253,18 +253,9 @@ func heldTools(grants []string) []string {
 	return held
 }
 
-// Run runs the role through the claude CLI. A walled launch's end is recorded,
-// whatever came of it.
+// Run runs the role through the claude CLI. A launch reaches the ledger through
+// the dispatcher that called it (RecordLaunch).
 func (c *ClaudeCLI) Run(ctx context.Context, req Request) (Answer, []byte, error) {
-	ans, transcript, err := c.run(ctx, req)
-	if c.profile != nil {
-		recordLaunch(*c.profile, req, ans, err)
-	}
-	return ans, transcript, err
-}
-
-// run is Run's launch.
-func (c *ClaudeCLI) run(ctx context.Context, req Request) (Answer, []byte, error) {
 	if err := req.check(); err != nil {
 		return Answer{}, nil, err
 	}

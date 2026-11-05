@@ -105,10 +105,12 @@ func fakeWall(mode string) int {
 
 func wallProfile(t *testing.T) Profile {
 	t.Helper()
-	p, err := DriveProfile(profileHome(t, "walled"))
+	home := profileHome(t, "walled")
+	p, err := DriveProfile(home)
 	if err != nil {
 		t.Fatal(err)
 	}
+	p.Ledger = newLedger(home)
 	return p
 }
 
@@ -214,36 +216,6 @@ func TestTheLoginWallAsksTheHarnessAndKeepsOnlyTheState(t *testing.T) {
 	t.Setenv(fakeModeEnv, "wall-login-exit")
 	if err := CheckLogin(context.Background(), p); !errors.As(err, &we) || we.Wall != WallLogin {
 		t.Fatalf("a harness that failed proves no login, whatever it printed: %v", err)
-	}
-}
-
-// TestEveryWalledLaunchEndsThroughTheOneSeam: a stage's launch, a stage refused
-// before it starts and the proof's launch each call the ledger's one function
-// once (itd-2611031342011261), since the proof spends the same subscription.
-func TestEveryWalledLaunchEndsThroughTheOneSeam(t *testing.T) {
-	var ended []string
-	was := recordLaunch
-	t.Cleanup(func() { recordLaunch = was })
-	recordLaunch = func(_ Profile, req Request, _ Answer, err error) {
-		ended = append(ended, fmt.Sprintf("%s %t", req.Role, err == nil))
-	}
-	f, c, p := walledFake(t, "wall-ok")
-	if _, _, err := c.Run(context.Background(), shellRequest(f)); err != nil {
-		t.Fatal(err)
-	}
-	role := shellRequest(f).Role
-	if err := os.WriteFile(filepath.Join(p.Dir, wallSettingsName), []byte(`{}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := c.Run(context.Background(), shellRequest(f)); err == nil {
-		t.Fatal("settings that differ refuse the launch")
-	}
-	if err := ProveWall(context.Background(), p, wallBin); err != nil {
-		t.Fatal(err)
-	}
-	want := []string{role + " true", role + " false", "wall-proof true"}
-	if !slices.Equal(ended, want) {
-		t.Fatalf("the seam saw %q, want %q", ended, want)
 	}
 }
 

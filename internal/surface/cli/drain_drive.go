@@ -169,6 +169,7 @@ func drivePreconditions(ctx context.Context, cmd *cobra.Command, repoRoot string
 	if p, err = runner.DriveProfile(roots.Home); err != nil {
 		return nil, p, driveRefusal("%s", err.Error())
 	}
+	p.Repo, p.Ledger = repoRoot, cfg.Ledger()
 	lines, err := driveWalls.static(ctx, p)
 	if err != nil {
 		return nil, p, driveRefusal("%s", err.Error())

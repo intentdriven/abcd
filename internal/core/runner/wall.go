@@ -515,12 +515,19 @@ func ProveWall(ctx context.Context, p Profile, bin string) error {
 	req := Request{Role: "wall-proof", Brief: filepath.Join(dir, "brief.md"), Receipt: filepath.Join(dir, "receipt.json"),
 		Dir: dir, Tools: named, Base: strings.Repeat("0", 40), SessionID: "wall-proof", Timeout: wallProofTimeout}
 	args := append(c.walledFlags(req), "--include-hook-events", "--", wallProofPrompt)
-	res, err := c.launch.run(ctx, Claude, claudeBin, args, p.Env, dir, wallProofTimeout)
-	// The proof spends the same subscription as a stage, so its launch ends
-	// through the same seam.
-	ans, _ := parseClaude(res.stdout)
-	recordLaunch(p, req, ans, err)
-	if err != nil {
+	// The proof spends the same subscription as a stage, so its launch is written
+	// to the same ledger, and one the ledger cannot hold is not started.
+	var res procResult
+	end, lerr := RecordLaunch(ctx, p.Ledger, LaunchStart{Role: req.Role, Runner: Claude, Repo: p.Repo, Fallback: req.SessionID}, func(ctx context.Context) LaunchEnd {
+		var runErr error
+		res, runErr = c.launch.run(ctx, Claude, claudeBin, args, p.Env, dir, wallProofTimeout)
+		ans, _ := parseClaude(res.stdout)
+		return LaunchEnd{Answer: ans, Transcript: res.transcript(), Err: runErr}
+	})
+	if lerr != nil {
+		return &WallError{WallLaunch, lerr.Error()}
+	}
+	if err := end.Err; err != nil {
 		var fl *Failure
 		if errors.As(err, &fl) {
 			return &WallError{WallLaunch, fl.Detail}
