@@ -17,6 +17,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/shellquote"
 )
 
 const wallBin = "/opt/abcd dev/bin/abcd"
@@ -409,6 +410,7 @@ func TestAStagesShellHasItsOwnHomeAndWhatItNeeds(t *testing.T) {
 	}
 	gittest.Env(t) // go's telemetry stays off, and out of this test's cleanup
 	realGitRead(t)
+	admittedGo(t)
 	home := os.Getenv("HOME")
 	cfg := "[user]\n\tname = Pat Example\n\temail = pat@example.invalid\n" +
 		"[filter \"lfs\"]\n\tclean = git-lfs clean -- %f\n\trequired = true\n" +
@@ -468,6 +470,88 @@ func TestAStagesShellHasItsOwnHomeAndWhatItNeeds(t *testing.T) {
 	if err := CheckWallSettings(p, wallBin); err != nil {
 		t.Fatalf("what was written holds: %v", err)
 	}
+}
+
+// admittedGo puts ahead on PATH a go that a launch admits and that runs the one this
+// test found: a host may keep its toolchain where others can write, a hosted
+// runner's tool cache among them, and such a Go is refused, as
+// TestAGoThatDoesNotAnswerIsSaid holds.
+func admittedGo(t *testing.T) {
+	t.Helper()
+	real, err := exec.LookPath("go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stubGo(t, 0o755, "exec "+shellquote.Single(real)+` "$@"`)
+}
+
+// stubGo puts ahead on PATH a go running body, in a directory of the given mode.
+func stubGo(t *testing.T, mode os.FileMode, body string) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "go"), []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, mode); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+// TestAGoThatDoesNotAnswerIsSaid: a Go on PATH that leaves a stage's caches in its
+// emptied home is named, with why and with what it kept; no Go at all is no news.
+func TestAGoThatDoesNotAnswerIsSaid(t *testing.T) {
+	const answers = `printf '%s\n' /caches/build /caches/mod /caches/path`
+	for name, c := range map[string]struct {
+		mode      os.FileMode
+		body      string
+		note      string
+		kept, not []string
+	}{
+		"one others can write": {mode: 0o777, body: answers, note: "one group or other can write",
+			not: []string{"GOCACHE", "GOMODCACHE", "GOPATH"}},
+		"one that fails": {mode: 0o755, body: "exit 3", note: "exited with status 3",
+			not: []string{"GOCACHE", "GOMODCACHE", "GOPATH"}},
+		"one with no cache": {mode: 0o755, body: `printf '%s\n' off /caches/mod /caches/path`, note: "no absolute path for GOCACHE",
+			kept: []string{"GOMODCACHE", "GOPATH"}, not: []string{"GOCACHE"}},
+		"one that answers": {mode: 0o755, body: answers, kept: []string{"GOCACHE", "GOMODCACHE", "GOPATH"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			p := wallProfile(t)
+			stubGo(t, c.mode, c.body)
+			if _, err := WriteWallSettings(p, wallBin); err != nil {
+				t.Fatal(err)
+			}
+			got := StageCachesNote(p)
+			if (c.note == "") != (got == "") || !strings.Contains(got, c.note) {
+				t.Errorf("the note: %q, want it to hold %q", got, c.note)
+			}
+			raw, err := os.ReadFile(p.EnvFile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, v := range c.kept {
+				if !strings.Contains(string(raw), "export "+v+"=") {
+					t.Errorf("%s was not kept:\n%s", v, raw)
+				}
+			}
+			for _, v := range c.not {
+				if strings.Contains(string(raw), "export "+v+"=") {
+					t.Errorf("%s was kept:\n%s", v, raw)
+				}
+			}
+		})
+	}
+	t.Run("no go at all", func(t *testing.T) {
+		p := wallProfile(t)
+		t.Setenv("PATH", t.TempDir())
+		if _, err := WriteWallSettings(p, wallBin); err != nil {
+			t.Fatal(err)
+		}
+		if got := StageCachesNote(p); got != "" {
+			t.Errorf("a repository with no Go hears of its caches: %q", got)
+		}
+	})
 }
 
 // TestTheCheckComparesWhatALaunchReads: beside the settings, what a stage's shell

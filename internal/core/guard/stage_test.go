@@ -138,21 +138,32 @@ func TestAStageNeverMovesItsHomeOrReachesTheKeychain(t *testing.T) {
 }
 
 // TestAStageWritesOnlyWhereItWorks: its tree, its run directories, its home and
-// temporary files, and nowhere else, another checkout's run state among them.
+// temporary files, and nowhere else, another checkout's run state among them. A
+// test's own directory lies in the temporary directory on every system, /tmp being
+// open whatever TMPDIR says, so each place here is named outside it; none need
+// exist, since a write is judged by where its path lies.
 func TestAStageWritesOnlyWhereItWorks(t *testing.T) {
-	f, _, _ := stageFiles(t)
-	run, other := t.TempDir(), t.TempDir()
-	f = f.WithRunDirs(run)
-	// The temporary directory is the stage's to write, and this test's own
-	// directories stand in it, so it is named elsewhere for the judgement.
-	t.Setenv("TMPDIR", "/nonexistent-temporary")
+	const (
+		tree      = "/nonexistent-stage/tree"
+		run       = "/nonexistent-stage/run"
+		shellHome = "/nonexistent-stage/home"
+		temporary = "/nonexistent-stage/temporary"
+		other     = "/nonexistent-stage/other-checkout"
+	)
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("TMPDIR", temporary)
+	f := NewFiles(tree).WithStage(shellHome, nil, nil).WithRunDirs(run)
 	for _, c := range []struct {
 		line    string
 		allowed bool
 	}{
-		{`printf x > ` + filepath.Join(run, "receipt.json"), true},
-		{`printf x > /dev/null`, true},
 		{`printf x > a.go`, true},
+		{`printf x > ` + filepath.Join(tree, "a.go"), true},
+		{`printf x > ` + filepath.Join(run, "receipt.json"), true},
+		{`printf x > ~/notes.txt`, true},
+		{`printf x > ` + filepath.Join(temporary, "scratch"), true},
+		{`printf x > /tmp/scratch`, true},
+		{`printf x > /dev/null`, true},
 		{`printf x > ` + filepath.Join(other, ".abcd", ".work.local", "run", "state.json"), false},
 		{`printf x > ` + filepath.Join(other, "a.go"), false},
 	} {
