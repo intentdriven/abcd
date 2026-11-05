@@ -23,9 +23,6 @@ import (
 // a profile.
 const ConfigDirEnv = "CLAUDE_CONFIG_DIR"
 
-// sessionProfilesLeaf is the profiles' folder below abcd's home.
-const sessionProfilesLeaf = "profiles"
-
 // SessionOnProfile reports whether configDir, the value of ConfigDirEnv in the
 // session's environment, names a profile of the person whose home directory is
 // home. When it does not, why says how the setting reads, naming neither the
@@ -59,7 +56,7 @@ func SessionOnProfile(home, configDir string) (on bool, why string) {
 	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
 		return false, "names no directory"
 	}
-	rel, err := filepath.Rel(abcdhome.Path(realHome, sessionProfilesLeaf), dir)
+	rel, err := filepath.Rel(abcdhome.Path(realHome, profilesLeaf), dir)
 	if err != nil || rel == "." || rel == ".." || strings.ContainsRune(rel, filepath.Separator) {
 		return false, "names no profile"
 	}

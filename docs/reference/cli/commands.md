@@ -460,6 +460,7 @@ code does not change. In the managed mode nothing prints. abcd reads one setting
 reporting no such setting included. This reads one setting and proves no wall, and the setting's value
 changes nothing the session holds. No abcd command starts a session on a profile yet. A profile is a
 separate login and settings on one operating-system account, and a stage's shell reads what the account can.
+abcd drain --drive is the unattended start: it runs agents of its own on a separate login, with named tools, checked at its start.
 
 The runner configuration is read before the run is created: roles.<role>.runner (host,
 the default, or a runner) and the runners this machine enables under runner.<name> in
@@ -1614,6 +1615,7 @@ change. In the managed mode and on --dry-run nothing prints. abcd reads one sett
 reporting no such setting included. This reads one setting and proves no wall, and the setting's value
 changes nothing the session holds. No abcd command starts a session on a profile yet. A profile is a
 separate login and settings on one operating-system account, and a stage's shell reads what the account can.
+abcd drain --drive is the unattended start: it runs agents of its own on a separate login, with named tools, checked at its start.
 
 Without the repository's record, the dry run and the run both refuse (exit 2),
 naming how to add it; `abcd ahoy install` offers it. A run that opens nothing or
@@ -2656,6 +2658,7 @@ the exit code does not change. abcd reads one setting in the session's environme
 reporting no such setting included. This reads one setting and proves no wall, and the setting's value
 changes nothing the session holds. No abcd command starts a session on a profile yet. A profile is a
 separate login and settings on one operating-system account, and a stage's shell reads what the account can.
+abcd drain --drive is the unattended start: it runs agents of its own on a separate login, with named tools, checked at its start.
 
 **Flags:**
 
@@ -4873,6 +4876,7 @@ the exit code is the same either way: it warns and never refuses. abcd reads one
 reporting no such setting included. This reads one setting and proves no wall, and the setting's value
 changes nothing the session holds. No abcd command starts a session on a profile yet. A profile is a
 separate login and settings on one operating-system account, and a stage's shell reads what the account can.
+abcd drain --drive is the unattended start: it runs agents of its own on a separate login, with named tools, checked at its start.
 
 The record lives in ~/.abcd.noindex/away/<root-sha>/record.json, keyed on the repository's
 root commit, and is changed under its lock, which only `abcd mode back` goes
