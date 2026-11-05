@@ -233,6 +233,10 @@ func ProveWall(ctx context.Context, p Profile, bin string) error {
 		Dir: dir, Tools: named, Base: strings.Repeat("0", 40), SessionID: "wall-proof", Timeout: wallProofTimeout}
 	args := append(c.walledFlags(req), "--include-hook-events", "--", wallProofPrompt)
 	res, err := c.launch.run(ctx, Claude, claudeBin, args, p.Env, dir, wallProofTimeout)
+	// The proof spends the same subscription as a stage, so its launch ends
+	// through the same seam.
+	ans, _ := parseClaude(res.stdout)
+	recordLaunch(p, req, ans, err)
 	if err != nil {
 		var fl *Failure
 		if errors.As(err, &fl) {

@@ -141,4 +141,4 @@ func AdmitClaude(repoRoot string) error {
 // recordLaunch is the one call a walled launch makes when it ends, whatever
 // came of it, for the launch ledger (itd-2611031342011261) to fill. It records
 // nothing yet.
-func recordLaunch(Profile, Request, Answer, error) {}
+var recordLaunch = func(Profile, Request, Answer, error) {}
