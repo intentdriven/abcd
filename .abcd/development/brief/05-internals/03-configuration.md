@@ -20,7 +20,10 @@ keys (`internal/core/intent/consistency_config.go`), the reservation holder's
 (`internal/core/claim/maxlive.go`), the load gate's `load.preflights`, read
 from the machine layer alone (the person's `~/.abcd.noindex/config.json`), 1 to
 4 and 1 by default, never from a repository
-(`internal/core/implement/load_slots.go`), the load gate's memory floors
+(`internal/core/implement/load_slots.go`), the load gate's
+`load.narrow_runs`, read from the machine layer alone, 1 to 32 and by default half
+the online cores divided by 2, never from a repository, with no environment variable
+(`internal/core/implement/load_narrow.go`), the load gate's memory floors
 `load.memory_floor_macos` (`warn` by default, or `critical`) and
 `load.memory_floor_linux` (a whole percentage from 1 to 100, 10 by default),
 each read from the machine layer alone, a repository's key named as ignored
@@ -1183,7 +1186,10 @@ refusal at the cap says), `load.preflights` (how many preflights the first
 gate admits at once, each a whole run, one race stage able to run beside
 them: 1 to 4, 1 by default, never read from a repository, and read past, with
 a stderr note, when the file cannot be read for it, so a file that holds other
-settings never stops the load gate) and `load.memory_floor_macos` and
+settings never stops the load gate), `load.narrow_runs` (how many narrow test runs
+the load gate admits at once beside them: 1 to 32, by default half the online cores
+divided by 2, never read from a repository, with no environment variable, read past when the
+file cannot be read for it, and a value out of range refusing a narrow run's wait) and `load.memory_floor_macos` and
 `load.memory_floor_linux` (the default floors applied, with a note, on stderr at a
 gate and on stdout at the load check, when the file cannot be read for them, and a value outside its set refusing the wait,
 since the gate does not guess a floor) are honoured from the machine layer alone,
@@ -1235,8 +1241,8 @@ the offer after an update and the newest release whose news was shown in
 `after-update/`, one marker per running host session in `occupancy/`, the
 session-name register in `sessions/names.json`, the rules loader's per-session
 ledgers in `rules-state/`, the dashboard's run file, seen devices and lock in
-`dashboard/`, this account's holder id in `holder-id`, the load gate's two
-holds in `load-wait.json` and `load-wait-race.json` (taken under
+`dashboard/`, this account's holder id in `holder-id`, the load gate's three
+holds in `load-wait.json`, `load-wait-race.json` and `load-wait-narrow.json` (taken under
 `.load-wait.lock`), its memory admission in `load-memory-admit.json`, the context
 fill the status line leaves in `fill/`, the record of the line install added to a shell startup
 file in `shell-path.json`, the installed-tools record in `tools.json`, and the

@@ -10,6 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/machineload/queue.go"
 remedy: "give the gate a size class for the command it runs, after a state-of-the-art check (Bazel's test size classes small, medium, large and enormous, each with its own timeout and resource share): a declared small command (a named package set, a short --timeout) is admitted beside the running work while the load is under its limit, without taking a preflight's slot, and only medium and larger commands queue for a slot"
+resolution: "The same fix as iss-2610260845422800: a seconds-long go test naming a few packages no longer queues for a whole run's slot"
+impact: fix
 ---
 
 The load gate queues a seconds-long command behind whole preflights: on 2026-10-24 'abcd implement load --wait --timeout 1h -- go test ./internal/core/spec/ ./internal/reachaudit/', two packages that run in about five seconds, waited the full hour behind four to five waiters and timed out without running, because the gate admits one command at a time in start order whatever its size. With the rule that day of no go test outside the gate, a session had no gated way to check a small change before re-queuing a full preflight, so it either skips the check or breaks the rule.

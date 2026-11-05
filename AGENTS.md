@@ -81,12 +81,13 @@ in the abcd binary; a repo overrides them per-field via `.abcd/rules.json`.
 trust rule for load experiments: one owned process group killed together through
 a re-checked handle and never by pattern, clean proven by what is running, and
 explicit consent with a cap below the core count on a live development machine;
-and the load gate a preflight waits at: whole runs admitted as many at once as
-the person's own `load.preflights` in `~/.abcd.noindex/config.json` allows (one
-by default and four at most, never set by a repository), race stages kept apart
-among checkouts that have the race gate (one at a time within an account, and
-across accounts all but the narrow window the domain names), and no test stage
-started under memory pressure at or above the person's own floor.
+and the load gate a preflight waits at: as many whole runs at once as the
+person's own `load.preflights` in `~/.abcd.noindex/config.json` allows (one by
+default, four at most, never a repository's), a test of a few named
+packages on its own limit behind no whole run, race stages kept apart among
+checkouts with the race gate (one at a time within an account, and across accounts
+all but the window the domain names), and no test stage started under memory
+pressure at or above the person's own floor.
 `SHELL` is the teaching half of the shell-hazard guard: it is generated from the
 same hazard registry `abcd guard` enforces in the repository, one rule per entry
 (the command, why it is dangerous, and what to run instead; a rule from the
@@ -206,19 +207,18 @@ For this repository the line is
 CI (`.github/workflows/ci.yml`) runs its `check` job on Linux on every event —
 build, vet, test and the race-enabled internal tests, with the `make fmt-check`
 format gate, the record-lint, issue-drift and docs-lint steps and the
-site-render gate. Nightly and on demand three `macos-suite` shard jobs run the
-macOS suite under -race, over what `cmd/ci-shard` assigns each; the first also
-builds, vets and runs the plain-only tests. `check-macos` reports
+site-render gate. Nightly and on demand the macOS suite runs in three
+`macos-suite` shards. `check-macos` reports
 `check (macos-latest)` from ubuntu and fails unless every shard succeeded; on a
 pull request or a queue entry the shards stand down and it says so (the pre-push
 hook holds a push to `make preflight`). The queue entry tests on Linux the tree that lands.
+Each release cut runs that suite too: `release.yml`'s tag and publish jobs need `macos-gate`.
 The workflow triggers on pull requests, merge-queue entries, a nightly
 schedule and by hand, never on a push to `main`: every commit there is a
 merge result its queue entry already tested, and the nightly run checks the
 default branch and saves its Go build cache for the runs that follow. On
 every merge-queue event `.github/workflows/queue-sweep.yml` cancels the runs
-of entries the queue has already dropped, and only those whose queue ref is
-gone; it is not a required check.
+of entries the queue has dropped; it is not a required check.
 Separate jobs run the reviews-charter check
 (`scripts/check-reviews.sh`) together with the issue-resolution gates
 (RS001–RS006), full-history secret scanning (`gitleaks`), a workflow audit
