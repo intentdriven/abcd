@@ -58,12 +58,28 @@ func terminalFakeTurn(role string) string {
 		return "notloggedin"
 	case "limited":
 		return "ratelimit"
+	case "crashes":
+		return "startedcrash"
+	case "spends":
+		return "spentcrash"
+	case "retries":
+		return "retrycrash"
+	case "apifails":
+		return "apicrash"
+	case "accountfails":
+		return "accountzero"
 	case "tamper":
 		// A stage's line rewriting the driver's own run state.
 		if p := os.Getenv(terminalTamperEnv); p != "" {
 			if raw, err := os.ReadFile(p); err == nil {
 				_ = os.WriteFile(p, []byte(strings.ReplaceAll(string(raw), `"stage": "implement"`, `"stage": "land"`)), 0o600)
 			}
+		}
+		return "ok"
+	case "unreadstate":
+		// The run's state goes unreadable while the agent is in its call.
+		if p := os.Getenv(terminalTamperEnv); p != "" {
+			_ = os.Chmod(p, 0)
 		}
 		return "ok"
 	case "dies":
@@ -279,7 +295,7 @@ func TestARoleAnsweredBadlyPausesAndALaterStepRetriesIt(t *testing.T) {
 			o := w.options(t)
 			o.Drain.Max = 1
 			if bad == "late" {
-				o.Runners.Timeout = 300 * time.Millisecond
+				o.Runners.Timeout = 5 * time.Second
 			}
 			res, err := RunTerminal(context.Background(), w.repo.Root(), o)
 			if err != nil {

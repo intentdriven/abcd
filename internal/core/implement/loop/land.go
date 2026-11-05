@@ -35,7 +35,9 @@ package loop
 //  5. arm: the merge gate `abcd land` asks (landing.DecideMerge, which
 //     replaced ruling AM1): the facilitator mode at the default branch's
 //     fetched tip, the author's permission, the approvals of the pushed head
-//     and, in auto, a review receipt naming it. Where it allows, the merge is
+//     and, in auto, a review receipt naming it, which the loop records itself
+//     from a pair that read that head (recordOwnReview): in auto a records commit
+//     goes to a round of its own (recordsRoundWanted) before the push. Where it allows, the merge is
 //     armed by the ruleset mirror's queue method, or as auto-merge with no
 //     queue; otherwise the pull request is left open, saying why, and each
 //     later step asks again. A pull request the forge reports CONFLICTING
@@ -117,6 +119,9 @@ type Landing struct {
 	// Merged is the default branch's tip, as the remote held it, that carried
 	// the pushed head when the landing cleaned the lane up.
 	Merged string `json:"merged,omitempty"`
+	// GateUnreadSince is when the merge gate first could not read what it asks at
+	// the arming; set by the call that finds it, and cleared once it reads.
+	GateUnreadSince *time.Time `json:"gate_unread_since,omitempty"`
 	// CheckWaitSince is when the landing began waiting for its full check: the
 	// preflight receipt naming the head it pushes (ruling DR6d-2). It is set
 	// by the first call that finds no receipt, kept until the push, and
@@ -174,6 +179,16 @@ func landStage(c Context, lane *Lane) (Outcome, error) {
 	case !ld.RecordsDone:
 		return landRecords(c, lane)
 	case ld.Pushed == "":
+		due, err := recordsRoundWanted(c, *lane)
+		if err != nil {
+			return Outcome{}, err
+		}
+		if due {
+			if recordsParked(c, *lane) == "" {
+				// The round can take no fix round, so it needs no wider reservation.
+				return Outcome{Goto: StageValidate, LandLeft: true, Note: "the landing's records commit " + shortSHA(lane.HeadSHA) + " goes to a review round of its own, before anything is pushed"}, nil
+			}
+		}
 		return landPush(c, lane)
 	case lane.PR == 0 || !ld.BodyChecked:
 		return landPullRequest(c, lane)
@@ -327,6 +342,13 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{Stay: true, Note: "found the landing's records commit " + shortSHA(tip) + " on " + lane.Branch}, nil
 	}
 
+	if why, err := strayChanges(lane.Worktree); err != nil {
+		return Outcome{}, fmt.Errorf("reading the lane's worktree: %w", err)
+	} else if why != "" {
+		return Outcome{}, refuse(string(StageLand), "", lane.ID, "the lane's worktree holds "+why+", and the landing commits only what it writes",
+			"commit or remove it in the lane's worktree (a change the validators did not judge goes back through a fix round), then run `abcd implement step` again")
+	}
+
 	// The disclosure is settled before any record is written, so a lane with
 	// no model to disclose is refused with its worktree untouched. A records
 	// commit that only marks the step carries no model's prose, only the mark
@@ -442,6 +464,113 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	}
 	ld.Records, ld.RecordsDone, lane.HeadSHA = head, true, head
 	return Outcome{Stay: true, Note: "committed the landing's records as " + shortSHA(head) + ": " + strings.Join(done, "; ")}, nil
+}
+
+// strayChanges names a change in the lane's worktree that cannot be the landing's own,
+// "" when there is none. A commit a repository hook refused leaves the landing's
+// records staged for the next call, and its relink reaches any markdown, so a markdown
+// change and the local tier are let through; one a stray process made joins the records
+// commit, for the round to read.
+func strayChanges(worktree string) (string, error) {
+	out, err := pickGit(worktree, "status", "--porcelain", "-z", "--untracked-files=all", "--no-renames")
+	if err != nil {
+		return "", err
+	}
+	for _, entry := range strings.Split(out, "\x00") {
+		if len(entry) < 4 {
+			continue
+		}
+		path := entry[3:]
+		if !strings.HasSuffix(path, ".md") && !strings.HasPrefix(path, TierRelDir+"/") {
+			return "the uncommitted " + strconv.Quote(termsafe.Sanitize(path)), nil
+		}
+	}
+	return "", nil
+}
+
+// recordsRoundWanted reports whether the lane's head is a records commit no round has
+// read and the mode is auto, where the receipt that arms a head rests on a pair that
+// read it. It reads the default branch as last fetched and opens no connection: the
+// push's own fence says what a lost origin means, and a mode changed since is read at
+// the arming, where a head no pair read is left open.
+func recordsRoundWanted(c Context, lane Lane) (bool, error) {
+	if !lane.recordsRoundDue() {
+		return false, nil
+	}
+	def, err := defaultBranch(c, lane)
+	if err != nil {
+		return false, err
+	}
+	tip, err := gitutil.Run(c.RepoRoot, "rev-parse", "--verify", "--quiet", Remote+"/"+def+"^{commit}", "--")
+	if err != nil || !gitutil.IsFullSHA(tip) {
+		return false, nil
+	}
+	roots, _ := layered.RootsFor(c.RepoRoot)
+	return landing.AutoAt(roots, c.RepoRoot, tip, Remote+"/"+def), nil
+}
+
+// recordsParked says why the lane's records commit goes to a person rather than to a
+// round, "" when it does not: it moves an issue's record the full round was not told of,
+// as that round's own state keeps what it was shown, or it holds more than records
+// (landing.RecordsCommitShape). It holds only on the lane's head.
+func recordsParked(c Context, lane Lane) string {
+	if lane.Landing == nil || lane.Landing.Records == "" || lane.Landing.Records != lane.HeadSHA || len(lane.Validation) == 0 {
+		return ""
+	}
+	last := lane.Validation[len(lane.Validation)-1]
+	if last.HeadSHA == lane.HeadSHA {
+		return ""
+	}
+	why, err := landing.RecordsCommitShape(c.RepoRoot, last.HeadSHA, lane.HeadSHA, last.ResolvesShown)
+	if err != nil {
+		return termsafe.Sanitize(fsutil.RedactHome(err.Error()))
+	}
+	return termsafe.Sanitize(why)
+}
+
+// recordsRoundDue reports whether the lane's head is the landing's records commit and
+// its latest round read another head.
+func (l Lane) recordsRoundDue() bool {
+	n := len(l.Validation)
+	return n > 0 && l.Landing != nil && l.Landing.Records != "" && l.Landing.Records == l.HeadSHA && l.Validation[n-1].HeadSHA != l.HeadSHA
+}
+
+// readsRecords reports whether r is the round that reads the landing's records commit.
+func (l Lane) readsRecords(r ValidationRound) bool {
+	return l.Landing != nil && l.Landing.Records != "" && r.HeadSHA == l.Landing.Records
+}
+
+// recordsBase is the head the round before the records commit judged.
+func (l Lane) recordsBase(r ValidationRound) string {
+	for i := len(l.Validation) - 1; i >= 0; i-- {
+		if h := l.Validation[i].HeadSHA; h != r.HeadSHA {
+			return h
+		}
+	}
+	return diffBase(l)
+}
+
+// resolutionsSection lists what a full round's brief asks it to judge: each issue the
+// lane's receipts declare fixed, by which commit and in what words, which the landing
+// then records as resolved. "" for a lane that declares none, and for the records round.
+func resolutionsSection(lane Lane, r ValidationRound) string {
+	if len(lane.Resolves) == 0 || lane.readsRecords(r) {
+		return ""
+	}
+	var b strings.Builder
+	for _, res := range lane.Resolves {
+		fmt.Fprintf(&b, "- %s, by %s: %s\n", res.Issue, shortSHA(res.Commit), termsafe.Sanitize(res.Note))
+	}
+	return "## What the landing will record as resolved\n\nThe lane's receipts declare each of these fixed, and the landing may resolve these and no others. Judge each: a commit that does not fix its issue is a finding, whoever's record it is.\n\n" + fenced("text", b.String()) + "\n\n"
+}
+
+// recordsRoundScope is what a round over the records commit is told to read.
+func recordsRoundScope(base, head string) string {
+	return fmt.Sprintf("## This round reads the landing's records commit alone\n\n"+
+		"The lane's own change passed its full round at `%s`, which judged each resolution its receipt declared. Read only `%s..%s`, the commit the landing added on it; this should take a couple of minutes, so do not read the lane again or judge the fix again. "+
+		"Judge the records' text against what the lane says it did: each resolution's note, impact and grounds, and the folder each record lands in. "+
+		"This commit normally holds records and link rewrites, and anything else in it is a finding. "+
+		"A verdict that does not pass parks the lane for a person; no fix round follows.\n\n", base, base, head)
 }
 
 // bareClaudeRe is a bare Claude model id, which takes the Claude vendor prefix.
@@ -736,6 +865,12 @@ func prTitle(st State, lane Lane) string {
 }
 
 func prBody(st State, lane Lane, assisted []string) string {
+	return prBodyParked(st, lane, assisted, false)
+}
+
+// prBodyParked is prBody, saying the lane is parked for a person when no round read its
+// records commit. What it was parked over stays in the run's own record.
+func prBodyParked(st State, lane Lane, assisted []string, parked bool) string {
 	var b strings.Builder
 	p := func(format string, a ...any) { fmt.Fprintf(&b, format, a...) }
 	if iss := st.Issue(); iss != "" {
@@ -748,7 +883,14 @@ func prBody(st State, lane Lane, assisted []string) string {
 	p("- Branch `%s`, from %s to %s.\n", lane.Branch, shortSHA(lane.BaseSHA), shortSHA(lane.HeadSHA))
 	if n := len(lane.Validation); n > 0 {
 		r := lane.Validation[n-1]
-		p("- Validation round %d at %s passed: %s.\n", r.Round, shortSHA(r.HeadSHA), verdictsLine(r))
+		if slices.ContainsFunc(r.Validators, func(v ValidatorRun) bool { return !v.Pass }) {
+			p("- Validation round %d at %s did not pass (%s), so the lane is parked at this pull request for a person.\n", r.Round, shortSHA(r.HeadSHA), verdictsLine(r))
+		} else {
+			p("- Validation round %d at %s passed: %s.\n", r.Round, shortSHA(r.HeadSHA), verdictsLine(r))
+		}
+		if parked {
+			p("- No round read its records commit %s, so the lane is parked at this pull request for a person.\n", shortSHA(lane.HeadSHA))
+		}
 	}
 	var trailers []string
 	if lane.Landing != nil && lane.Landing.Closes {
@@ -788,7 +930,11 @@ func landPullRequest(c Context, lane *Lane) (Outcome, error) {
 		if gap != "" {
 			return Outcome{}, modelGap(*lane, "the pull request's body describes a change carrying text the lane's implementer composed", gap)
 		}
-		body, _, err := scanner.ScrubOutbound(c.RepoRoot, prBody(c.State, *lane, assisted), "the pull request's body")
+		due, err := recordsRoundWanted(c, *lane)
+		if err != nil {
+			return Outcome{}, err
+		}
+		body, _, err := scanner.ScrubOutbound(c.RepoRoot, prBodyParked(c.State, *lane, assisted, due && recordsParked(c, *lane) != ""), "the pull request's body")
 		if err != nil {
 			return Outcome{}, refuse(string(StageLand), "", lane.ID, fsutil.RedactHome(err.Error()), "settle what the scrub names, then run `abcd implement step` again")
 		}
@@ -892,12 +1038,18 @@ func readMergeRule(c Context, lane Lane, def string) (landing.MergeRule, error) 
 	return r, nil
 }
 
+// gateUnreadBound is how long a merge gate that cannot read what it asks is asked
+// again before its lane is left open.
+const gateUnreadBound = 30 * time.Minute
+
 // landArm asks the merge gate (landing.DecideMerge, the one decision `abcd
 // land` asks too, spc-2610161609350616 step 4) whether to arm the lane's pull
 // request, and arms it by the method the gate names, or leaves it open with
 // the gate's reason: a contributor's pull request until a maintainer's
 // approval of its head counts, a maintainer's in human mode until the
-// technical facilitator's does, and in auto until a review receipt names it.
+// technical facilitator's does, and in auto until a review receipt names it,
+// which the loop records from a pair that read that head (recordOwnReview). A gate
+// that could not read what it asks leaves the lane at this step, to ask again.
 // A lane left open is parked: landMerged asks the gate again on each step, so
 // an approval given later arms it. A pull request the forge reports
 // conflicting is refused, unarmed.
@@ -949,6 +1101,17 @@ func landArm(c Context, lane *Lane) (Outcome, error) {
 	if err != nil {
 		return Outcome{}, err
 	}
+	if d.Unread && (ld.GateUnreadSince == nil || c.Now.Sub(*ld.GateUnreadSince) < gateUnreadBound) {
+		// What the gate could not read says nothing of the lane: it stays at this
+		// step, and a later turn asks again, where a left-open lane would be
+		// stepped only when a person acts. An answer that cannot change is passed
+		// over once the bound has run out, as a lane left open.
+		r := contend(string(StageLand), "", lane.ID,
+			"the merge gate could not read what it asks of pull request #"+n+": "+d.Why, "run `abcd implement step` again once the forge answers")
+		r.gateUnread = true
+		return Outcome{}, r
+	}
+	ld.GateUnreadSince = nil
 	if !d.Arm {
 		ld.Merge = "left open: " + d.Why
 		return Outcome{Stay: true, Note: "pull request #" + n + " " + ld.Merge + "; the loop asks again on each step, and it lands when it is armed or a person merges it" + held}, nil
@@ -962,15 +1125,12 @@ func landArm(c Context, lane *Lane) (Outcome, error) {
 // rule at the lane's base. A mode that cannot be read is refused, masked,
 // and nothing is armed.
 func askMergeGate(c Context, lane Lane, def string, rule landing.MergeRule) (landing.MergeDecision, error) {
-	tracking, err := fetchDefault(c, lane, def)
+	tip, err := defaultTip(c, lane, def)
 	if err != nil {
 		return landing.MergeDecision{}, err
 	}
-	tip, err := gitutil.Run(c.RepoRoot, "rev-parse", "--verify", "--quiet", tracking+"^{commit}", "--")
-	if err != nil || !gitutil.IsFullSHA(tip) {
-		return landing.MergeDecision{}, fmt.Errorf("resolving %s: %v", tracking, err)
-	}
 	roots, _ := layered.RootsFor(c.RepoRoot)
+	unrecorded := recordOwnReview(c, lane, roots, tip, Remote+"/"+def)
 	d, err := landing.DecideMerge(landing.MergeQuery{RepoRoot: c.RepoRoot, Roots: roots, Tip: tip, TipName: Remote + "/" + def, Default: def,
 		Rule: rule, Repo: "{owner}/{repo}", PR: strconv.Itoa(lane.PR), Head: lane.Landing.Pushed, Forge: gateForge(c, lane)})
 	if err != nil {
@@ -979,8 +1139,116 @@ func askMergeGate(c Context, lane Lane, def string, rule landing.MergeRule) (lan
 		r.modeUnread = true
 		return landing.MergeDecision{}, r
 	}
+	if !d.Arm && unrecorded != "" {
+		d.Why += "; the loop did not record its own review: " + unrecorded
+	}
 	return d, nil
 }
+
+// defaultTip is the default branch's tip, just fetched.
+func defaultTip(c Context, lane Lane, def string) (string, error) {
+	tracking, err := fetchDefault(c, lane, def)
+	if err != nil {
+		return "", err
+	}
+	tip, err := gitutil.Run(c.RepoRoot, "rev-parse", "--verify", "--quiet", tracking+"^{commit}", "--")
+	if err != nil || !gitutil.IsFullSHA(tip) {
+		return "", fmt.Errorf("resolving %s: %v", tracking, err)
+	}
+	return tip, nil
+}
+
+// recordOwnReview writes the review receipt of a pair that read the pushed head,
+// where the mode at the default branch's tip is auto, so a lane whose reviewers passed
+// needs nobody to say so: in process, by RecordReview's rule, from the returns of the
+// lane's latest round. It says why when it does not; the merge gate then reads the
+// receipts as it finds them, a person's among them.
+func recordOwnReview(c Context, lane Lane, roots layered.Roots, tip, tipName string) string {
+	if !landing.AutoAt(roots, c.RepoRoot, tip, tipName) {
+		return ""
+	}
+	if driveStopped(c.State.RunID) {
+		return "a drive stopped on this run because its state changed in an agent's call"
+	}
+	n := len(lane.Validation)
+	if n == 0 {
+		return "the lane records no review round"
+	}
+	round := lane.Validation[n-1]
+	head := lane.Landing.Pushed
+	if round.HeadSHA != head {
+		if why := recordsParked(c, lane); why != "" {
+			return "the records commit goes to a person before any round: " + why
+		}
+		return fmt.Sprintf("its latest round read %s, not the pushed head %s", shortSHA(round.HeadSHA), shortSHA(head))
+	}
+	var returns []landing.ReviewReturn
+	for _, v := range round.Validators {
+		if v.Role == RoleAuditor {
+			continue
+		}
+		text, err := readReturn(c.RepoRoot, v.Return, lane.ID)
+		if err != nil {
+			return termsafe.Sanitize(fsutil.RedactHome(err.Error()))
+		}
+		if !v.Pass {
+			return fmt.Sprintf("round %d's %s said %s at %s (%s)%s", round.Round, v.Role, v.Verdict, shortSHA(head), v.Return, firstFinding(string(text)))
+		}
+		returns = append(returns, landing.ReviewReturn{Name: v.Return, Text: string(text)})
+	}
+	if _, err := landing.RecordReview(c.RepoRoot, head, returns); err != nil {
+		return termsafe.Sanitize(fsutil.RedactHome(err.Error()))
+	}
+	return ""
+}
+
+// failedRecordsRound says which verdict the round that read the lane's records commit
+// gave, "" when that round passed or there was none.
+func failedRecordsRound(c Context, lane Lane) string {
+	n := len(lane.Validation)
+	if n == 0 || !lane.readsRecords(lane.Validation[n-1]) {
+		return ""
+	}
+	r := lane.Validation[n-1]
+	for _, v := range r.Validators {
+		if !v.Pass {
+			text, err := readReturn(c.RepoRoot, v.Return, lane.ID)
+			finding := ""
+			if err == nil {
+				finding = firstFinding(string(text))
+			}
+			return fmt.Sprintf("round %d's %s said %s of the landing's records (%s)%s", r.Round, v.Role, v.Verdict, v.Return, finding)
+		}
+	}
+	return ""
+}
+
+// firstFinding is the first item of a return's findings, as a clause for a note, ""
+// when it lists none the loop can read.
+func firstFinding(text string) string {
+	at := findingsHeading.FindStringIndex(text)
+	if at == nil {
+		return ""
+	}
+	for _, line := range strings.Split(text[at[1]:], "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			return ""
+		}
+		if item, ok := strings.CutPrefix(strings.TrimSpace(line), "- "); ok {
+			if r := []rune(item); len(r) > maxFindingRunes {
+				item = string(r[:maxFindingRunes]) + "..."
+			}
+			return ": " + termsafe.Sanitize(fsutil.RedactHome(item))
+		}
+	}
+	return ""
+}
+
+// findingsHeading is a return's Findings heading, at any depth.
+var findingsHeading = regexp.MustCompile(`(?m)^[ \t]{0,3}#{1,6}[ \t]+Findings[ \t]*\r?$`)
+
+// maxFindingRunes bounds what a note quotes of a finding.
+const maxFindingRunes = 200
 
 // gateForge is the forge client as the merge gate reads through it: run from
 // the checkout the run lives in (gh resolves {owner}/{repo} there, as it does

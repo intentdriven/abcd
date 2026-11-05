@@ -264,3 +264,34 @@ func TestAStageDoesNotLand(t *testing.T) {
 		t.Errorf("outside a stage the verb is the person's: %s", a.Reason)
 	}
 }
+
+// TestAStageMovesNoRun: `implement load` is how its tests run and `implement widen` how an
+// issue lane holds a file its brief lets it reach, so both stay open; every other
+// `implement` verb is the loop's, and outside a stage nothing changes.
+func TestAStageMovesNoRun(t *testing.T) {
+	home := t.TempDir()
+	stage := NewFiles(t.TempDir()).WithStage(filepath.Join(home, "stage"), nil, nil)
+	for _, line := range []string{
+		`abcd implement receipt return.md`,
+		`abcd implement step`,
+		`abcd implement step --run run-1 --discard lane-1`,
+		`abcd --json implement status`,
+		`abcd implement`,
+		`scripts/abcd.sh implement receipt return.md`,
+		`true && abcd implement step`,
+	} {
+		if a := approveShell(clean(), stage, line); a.Allow {
+			t.Errorf("a stage may run %q", line)
+		}
+	}
+	for _, line := range []string{`abcd implement load --wait --narrow -- go test ./x`, `scripts/abcd.sh implement load --wait -- make check`, `abcd rules implement`,
+		`abcd implement widen --run run-1 --lane lane-1 docs/page.md`, `/opt/bin/abcd implement widen --run run-1 --lane lane-1 docs/page.md`,
+		`scripts/abcd.sh implement widen --run run-1 --lane lane-1 docs/page.md`} {
+		if a := approveShell(clean(), stage, line); !a.Allow {
+			t.Errorf("%q is refused: %s", line, a.Reason)
+		}
+	}
+	if a := approveShell(clean(), NewFiles(t.TempDir()), `abcd implement receipt return.md`); !a.Allow {
+		t.Errorf("a host session's stage hands back as it did: %s", a.Reason)
+	}
+}

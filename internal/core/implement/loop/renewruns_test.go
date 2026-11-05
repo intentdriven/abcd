@@ -333,7 +333,7 @@ func (f *narrowFixture) answerUntil(t *testing.T, returns map[string]string, sto
 		}
 		if a := l.awaiting(); a != nil && returns[a.Role] != "" {
 			path := filepath.Join(f.repo.Root(), filepath.FromSlash(a.Receipt))
-			if err := os.WriteFile(path, []byte(returns[a.Role]), 0o600); err != nil {
+			if err := os.WriteFile(path, []byte(statingHeadAt(t, f.repo.Root(), f.runID, a.Receipt, returns[a.Role])), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := Receipt(f.repo.Root(), f.runID, path, f.stages, Options{}); err != nil {

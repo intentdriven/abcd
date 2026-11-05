@@ -218,6 +218,10 @@ func statesFullPair(text, head string) error {
 	return statesHead(text, head)
 }
 
+// StatesFullPair reports why a build-loop reviewer's return does not state, on its
+// first line, that it read head as a whole, by the rule a receipt reads it.
+func StatesFullPair(text, head string) error { return statesFullPair(text, head) }
+
 // RecordDeltaReview writes the review receipt for the commit head, resting on
 // the full pair base has: a review pair as RecordReview takes one, each return
 // also stating that it read base..head, over a delta that stands (judgeDelta).

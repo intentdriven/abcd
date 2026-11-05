@@ -199,12 +199,91 @@ load gate; each wait a move names is slept to the earliest time it names, at lea
 thirty seconds. Three runner failures in a row, or a judge's failure, enter the
 outage schedule (one minute, five, ten, then hourly), which hands nothing back and
 ends the drive at eight hours. A step that starts no agent and moves no stage waits
-on that same schedule. A rate limit starts no agent until the reset the harness
-reports, or, with none reported, waits on that schedule; a limit that outlasts eight
-hours ends the drive, saying when it resets. A wait on work someone else holds, or on
-a contended lock, ends the drive after eight hours with nothing moved, so no wait goes
-without a deadline, and a long wait renews what the lanes hold. A preflight that exits
-0 and leaves no receipt runs once for a head, and the lane then goes to the stuck check.
+on that same schedule. A rate limit starts no agent, the judge included, until the
+reset the harness reports, or, with none reported, waits on that schedule; a limit
+that outlasts eight hours ends the drive, saying when it resets. A wait on work
+someone else holds, or on a contended lock, ends the drive after eight hours with
+nothing moved, so no wait goes without a deadline, and a long wait renews what the
+lanes hold. A preflight that exits 0 and leaves no receipt runs once for a head, and
+the lane then goes to the stuck check.
+
+Those eight hours are the default, for a run someone is watching. A date the person
+names on the command line replaces each of them with one bound of their own (adr-2610222222326104's amendment
+of 2026-11-05, dcn-2611050815115904): the yes names it, as a time and not a limit on what
+is spent, the run ends at that time with the lane on its branch and its reservation
+released, an agent in a call finishing that call first, and until then no limit, outage
+or stuck queue ends the run. A reset is waited for however far off, up to the bound; one
+more than 35 days off reads as a misread field and as none. `runner.ProbeLimit` runs only
+under a bound, since a yes with none never mentioned it: one launch on the profile asking
+for no tools, on the model of the launch that met the limit, counting only the word it
+asked for from a launch whose init event names an empty tool list, as version 2.1.318 of
+the harness was seen to, and failing closed on any other. With no reset named it runs at one, five and
+ten minutes and then every thirty, so a probe never disturbs the lane, and the lane's own
+agent starts when one answers, or after three in a row that get no answer, when that
+launch finds out instead. During a named wait it runs every four hours, or half an hour
+in for a reset more than eight days off: a rejection changes nothing, and an answer ends
+the wait, which is read as the reset having been wrong. Failures keep the outage schedule, at most an hour apart; a contended wait
+backs off to fifteen minutes, as does a push or fetch origin refused while reserving;
+origin is never given up on (`DrainOptions.KeepWaiting`); and a shared outage another
+session gave up on holds the run until it is cleared. A limit the live check meets, and a
+launch that came to no verdict on any check (`runner.LimitError`, `runner.NoVerdictError`),
+are waited out the same way, the settings checked before each probe, and the check run
+again (`loop.WaitOutProof`); only a verdict, or no harness to run, is refused then, and
+with no bound the drive refuses either way. Under a bound `Failure.Blame` says what a
+failed launch shows of its work. An answer the contract refused is the work's. A launch
+that spent, read on every exit, may have lost the service afterwards, so spend decides
+nothing by itself. With nothing spent, a launch that was retrying the model service, or a
+result naming 401, 403, 429 or 5xx, says nothing of the work. An init event says nothing,
+since version 2.1.318 was seen to write one before any contact with the model. Any other
+failure is put to a probe, one short launch per failure: an answer shows the account is
+alive, which leaves the work, and a rejection or no answer counts nothing. Three in a row
+that are the work's hand the lane back as stuck, the run going on to other issues, and the
+same test decides whether a failed judge counts against its issue, beside the count of
+judgements that gave no answer. Six launches in a row that spend and fail with no probe
+answered hand the lane back too, or hold the issue back for a judge; a launch started with
+the service unreachable was seen to spend nothing on 2.1.318, so an outage of that kind does
+not get there, while one that spends and then loses the service does count. Six steps of one lane in a row that start no agent and move no stage hand it back,
+worktree and branch in place, unless the shared outage holds an agent it wants or a claim
+on one of its agents has yet to lapse; a step that started an agent ends the count. A forge
+or remote answering 5xx in gh's or git's own form waits as a lost network does
+(`implement.IsNetworkFailure`). One act read that way for two hours, from the first reading
+with origin answering, sends the lane back, keyed on the act and not on what it printed;
+another act, or a step that worked, restarts the clock. A drive under a bound joins the
+shared run under a session of its own for its outages alone (`Options.OutageSession`),
+claiming nothing there: an open record is then probed when due, its own probes never giving
+up on it, and a probe answering stands in for the model service's canary. A record another
+session gave up on is looked at hourly and cleared when the probes of every service down
+answer.
+
+A wait is measured twice: by the time slept and by the wall clock, whichever ends it
+first. The production sleep also looks at the wall clock each minute, since a timer
+stops while the machine sleeps, so a long wait wakes on time and renews at once; a
+clock set back cannot stretch it. A wait renews what the run holds, lanes parked at their
+open pull requests included, the forge read first and only when one is due. After waits
+that add up to an hour, short ones included, the lane's claim is read again from origin: a
+claim that lapsed is revived on waking, and a peer who took the issue keeps it, the lane
+going back as stuck, as it does when its reservation was released. A check that could not
+be made stays owed. A repeated wait prints on a change of reason and every half hour, and
+an agent's call or a preflight says when it starts and every half hour while it runs.
+
+An agent that goes silent cannot be told from a hung one on what is known today. It
+is treated as a hang: its role's deadline kills its process group, its worktree is left
+as it stood, and the role is retried; it counts against its lane only if a probe answers.
+A launch that keeps retrying the model service is not silent: its stream names an
+`api_retry` event each time, which version 2.1.318 was seen to write ten times over about
+three minutes with the service unreachable before a failed result, and that reads as an
+outage and, with nothing spent, counts against nothing. A stream
+that reported a rejected limit before falling silent, and has not reported it lifted,
+reads as that limit at the deadline. The harness's limit shapes the
+runner reads are a rejected `rate_limit_event`, an assistant message whose error is
+`rate_limit`, and a failed result naming the API's limit status, the stream's latest state
+standing; which of them a headless agent really emits is unobserved, so the first limit a
+run meets, and the first of each other kind of failure that may be one, leave a
+`drive-limit-` or `drive-suspect-<kind>-` evidence file in the local tier's logs: the exit, the stream's shape with
+identifiers dropped and free text reduced to its length, the redacted first stderr line,
+the reset read, the loop's decision, each probe's answer and when the run resumed. What the
+harness wrote is redacted before it is cut; a file stops taking that detail at 64 KiB and
+goes on taking the answers; the newest twenty of a kind are kept.
 
 Before the first move the drive writes the profile directory's settings, abcd's hooks
 as commands naming its own binary and nothing else, and checks each wall, refusing
@@ -222,10 +301,11 @@ stage's shell reads what this account can. A launch starts from an allow-list of
 variables, a proxy's credentials taken out. Its shell's home is emptied at each launch
 and holds the person's git identity and filters; Go's caches and the person's home for
 abcd's shared records are named, and any other toolchain's cache starts empty. A Go on
-PATH that abcd will not run or that gives no answer leaves its caches in that home, and
-the drive says so at its start. The guard
+PATH that abcd will not ask, or that names no cache, leaves the caches it did not name in
+that home, and the drive says which at its start; a stage's shell and the preflight still
+run that Go. The guard
 reads a shell line against that home and refuses a further agent, a moved home, the
-keychain tool and the land verb. A file tool, and a shell line the guard can read, write only in the
+keychain tool, the land verb and every implement verb but the load gate and widening a hold. A file tool, and a shell line the guard can read, write only in the
 stage's working tree and run directories, its home and temporary files, and never the
 hooks, the Makefile, abcd's configuration, a preflight or review receipt or an approval;
 other records under
@@ -242,7 +322,8 @@ lands a lane. A lane at its landing that changes the Makefile, `scripts/` or the
 hooks, measured from what it last merged of the default branch, is handed back, and an
 issue that names one is passed over before a lane opens: that change needs a person's own
 session, and the drive's last lines name each one. What the driver wrote of a run is compared after each agent's call, and a
-difference stops the drive. One drive holds a checkout at a time, and each checkout has
+difference, or a read that keeps failing, stops the drive, and a later drive, step or
+hand-in refuses that run until a person discards its lanes or restores its state. One drive holds a checkout at a time, and each checkout has
 its stage's home to itself. A credential variable the harness would bill
 through refuses the start, naming itd-2611011230226453, and so does a start from
 inside an agent's own session.
@@ -889,6 +970,7 @@ Sub-verbs: none.
 | `--sub-agents` | string |
 | `--take-over` | bool |
 | `--unskip` | stringArray |
+| `--until` | string |
 | `--yes` | bool |
 
 <!-- surface-appendix:end -->

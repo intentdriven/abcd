@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -308,28 +309,71 @@ func writeStageFiles(p Profile, bin string) error {
 }
 
 // ResetStageHome makes a stage's home empty but for its git configuration, so
-// nothing one stage leaves there reaches the next or a preflight. A home that is
-// no real directory is refused, not followed.
+// nothing one stage leaves there reaches the next or a preflight. Every step goes
+// through a root on the home's parent, so it stays inside: no link, however it came
+// to be there, carries a change of mode, a removal or a write out of the tree. A home
+// that is no real directory is refused, not followed.
 func ResetStageHome(p Profile) error {
 	v, ok := stagesWritten.Load(p.ShellHome)
 	if !ok {
 		return &WallError{WallSettingsFile, "the stage's home was not laid out"}
 	}
-	if fi, err := os.Lstat(p.ShellHome); err == nil {
+	parent, home := filepath.Dir(p.ShellHome), filepath.Base(p.ShellHome)
+	if err := os.MkdirAll(parent, abcdhome.DirMode); err != nil {
+		return &WallError{WallSettingsFile, "the stage's home could not be made"}
+	}
+	root, err := os.OpenRoot(parent)
+	if err != nil {
+		return &WallError{WallSettingsFile, "the stage's home could not be made"}
+	}
+	defer root.Close()
+	if fi, err := root.Lstat(home); err == nil {
 		if !fi.IsDir() {
 			return &WallError{WallSettingsFile, "the stage's home is no real directory"}
 		}
-		if err := os.RemoveAll(p.ShellHome); err != nil {
+		restoreOwnerAccess(root, home)
+		if err := root.RemoveAll(home); err != nil {
 			return &WallError{WallSettingsFile, "the stage's home could not be emptied"}
 		}
 	}
-	if err := os.MkdirAll(p.ShellHome, abcdhome.DirMode); err != nil {
+	if err := root.Mkdir(home, abcdhome.DirMode); err != nil {
 		return &WallError{WallSettingsFile, "the stage's home could not be made"}
 	}
-	if err := fsutil.WriteFileAtomic(filepath.Join(p.ShellHome, ".gitconfig"), v.(*stageWritten).gitConfig, 0o600); err != nil {
+	if err := fsutil.WriteFileAtomicInRoot(root, home+"/.gitconfig", v.(*stageWritten).gitConfig, 0o600); err != nil {
 		return &WallError{WallSettingsFile, "the stage's git configuration could not be written"}
 	}
 	return nil
+}
+
+// restoreOwnerAccess gives the owner each directory at and below rel in root back, so
+// it can be emptied: Go makes its module directories read-only, and a stage can leave
+// any. Only a directory lacking owner access changes. What it cannot reach, the removal
+// that follows answers for.
+func restoreOwnerAccess(root *os.Root, rel string) {
+	fi, err := root.Lstat(rel)
+	if err != nil || !fi.IsDir() {
+		return
+	}
+	ownerAccess(root, rel, fi)
+	f, err := root.Open(rel)
+	if err != nil {
+		return
+	}
+	entries, _ := f.ReadDir(-1)
+	_ = f.Close()
+	for _, e := range entries {
+		if e.IsDir() {
+			restoreOwnerAccess(root, rel+"/"+e.Name())
+		}
+	}
+}
+
+// ownerAccess adds owner access to the directory at rel whose mode fi read, if it lacks
+// any. A directory swapped since fi was read, for a link out of root, is refused by root.
+func ownerAccess(root *os.Root, rel string, fi fs.FileInfo) {
+	if perm := fi.Mode().Perm(); perm&0o700 != 0o700 {
+		_ = root.Chmod(rel, perm|0o700)
+	}
 }
 
 // PreflightEnv is the environment a lane's preflight runs in: what a stage
@@ -341,7 +385,7 @@ func PreflightEnv(p Profile) []string {
 
 // stageGoExports are the Go caches as they stand in the person's own environment,
 // as KEY=value. With no Go on PATH there is nothing to keep and nothing to say; a Go
-// that is there and does not answer leaves a cache out, and note says which and why.
+// abcd will not ask, or that does not answer, leaves a cache out, and note says which and why.
 func stageGoExports(p Profile) (exports []string, note string) {
 	// What a stage installs lands under its home, so it shadows no program.
 	exports = []string{"GOBIN=" + filepath.Join(p.ShellHome, "bin")}
@@ -353,9 +397,12 @@ func stageGoExports(p Profile) (exports []string, note string) {
 	if err != nil {
 		var fl *Failure
 		if errors.As(err, &fl) {
-			return exports, stageColdNote(fl.Detail)
+			if errors.Is(err, ErrRefused) {
+				return exports, goRefusedNote(names, fl.Detail)
+			}
+			return exports, stageColdNote(names, "that Go did not say where its caches are: "+fl.Detail)
 		}
-		return exports, stageColdNote("go did not answer")
+		return exports, stageColdNote(names, "that Go did not say where its caches are")
 	}
 	values := strings.Split(strings.TrimSpace(string(out.Stdout)), "\n")
 	var missed []string
@@ -367,14 +414,25 @@ func stageGoExports(p Profile) (exports []string, note string) {
 		}
 	}
 	if len(missed) > 0 {
-		return exports, stageColdNote("go names no absolute path for " + strings.Join(missed, ", "))
+		return exports, stageColdNote(missed, "that Go names no absolute path for "+strings.Join(missed, ", "))
 	}
 	return exports, ""
 }
 
-// stageColdNote is what a drive says at its start of a Go cache it could not keep.
-func stageColdNote(why string) string {
-	return "a stage's Go caches stay in its own home, which is emptied at each launch, so each launch's Go builds from cold: " + why
+// stageColdNote is what a drive says at its start of the Go caches it could not keep.
+func stageColdNote(missed []string, why string) string {
+	return why + ", so a stage keeps " + strings.Join(missed, ", ") + " in its own home, which is emptied at each launch"
+}
+
+// goRefusedNote is stageColdNote for a Go abcd would not ask: a stage's shell and the
+// preflight run it all the same, so what abcd refused is the question alone.
+func goRefusedNote(missed []string, detail string) string {
+	cause, remedy, ok := strings.Cut(detail, ", so it is never run; ")
+	note := stageColdNote(missed, "abcd did not ask that Go where its caches are, since "+cause+", and a stage's shell and the preflight still run it")
+	if ok {
+		note += "; " + remedy
+	}
+	return note
 }
 
 // StageCachesNote says why the stages on p's shell home will not use the person's
@@ -624,12 +682,23 @@ func ProveWall(ctx context.Context, p Profile, bin string) error {
 	if lerr != nil {
 		return &WallError{WallLaunch, lerr.Error()}
 	}
+	// A limit met here says nothing about any wall, on whichever exit it came.
+	if claudeRateLimit(res.stdout) != "" {
+		return &LimitError{ResetsAt: claudeRateLimitReset(res.stdout), Seen: claudeSeen(res)}
+	}
+	// A launch that failed came to no verdict on any check: an outage, or a limit
+	// waited out inside it, may look just like this. Only what readWallProof reads
+	// from a launch that finished is a verdict.
 	if err := end.Err; err != nil {
+		detail := "it did not complete"
 		var fl *Failure
 		if errors.As(err, &fl) {
-			return &WallError{WallLaunch, fl.Detail}
+			detail = fl.Detail
 		}
-		return &WallError{WallLaunch, "it did not complete"}
+		return &NoVerdictError{Detail: detail, Seen: claudeSeen(res)}
+	}
+	if claudeResultFailed(res.stdout) {
+		return &NoVerdictError{Detail: "its result reports an error", Seen: claudeSeen(res)}
 	}
 	if err := readWallProof(res.stdout, named, p.ShellHome); err != nil {
 		return err

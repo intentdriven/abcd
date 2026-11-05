@@ -214,10 +214,12 @@ func routedJudgement(repoRoot string, iss capture.Issue, v capture.DrainVerdict,
 		},
 		Now: func() time.Time { return now },
 	}
+	o.startingLaunch(RoleDrainJudge)
 	out, err := dsp.Dispatch(ctx, req)
 	if ctx.Err() != nil {
 		return nil, "", true, judgeStopped(iss.ID)
 	}
+	o.failedLaunch(RoleDrainJudge, err, out.Failure)
 	noteJudgeOutcome(d, out, err, taken)
 	switch {
 	case err != nil:

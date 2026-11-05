@@ -146,6 +146,9 @@ func outageFor(repoRoot, runID string, o Options) (*outageGate, error) {
 			}
 		}
 	}
+	if g.session == "" {
+		g.session = o.OutageSession
+	}
 	if g.cur, err = run.Outage().Current(); err != nil {
 		return nil, outageUnreadable(err)
 	}
@@ -161,12 +164,25 @@ func outageFor(repoRoot, runID string, o Options) (*outageGate, error) {
 		}
 		// A probe another session holds, or one that is refused, leaves the
 		// outage as it was: the lanes keep waiting on it.
-		_, _ = run.Outage().ProbeIfDue(g.session, implement.Prober{Network: probe})
+		probing := run.Outage()
+		if o.OutageSession != "" && g.session == o.OutageSession {
+			probing = keepProbing(probing)
+		}
+		_, _ = probing.ProbeIfDue(g.session, implement.Prober{Network: probe})
 		if g.cur, err = run.Outage().Current(); err != nil {
 			return nil, outageUnreadable(err)
 		}
 	}
 	return g, nil
+}
+
+// keepProbing is the outage's schedule with no give-up: under a person's bound the
+// bound is the deadline, and a record that gave up would wait for a person to clear it.
+func keepProbing(o *implement.Outages) *implement.Outages {
+	s := implement.DefaultSchedule
+	s.HourlyFor = 100 * 365 * 24 * time.Hour
+	o.Schedule = s
+	return o
 }
 
 // outageUnreadable refuses a call whose outage record cannot be read: the

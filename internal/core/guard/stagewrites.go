@@ -43,14 +43,22 @@ func stageLineRefused(line string) string {
 }
 
 // startsAnAgent reports whether the command at tokens[idx] starts a further
-// harness or a drive, lands a branch, or reads the keychain.
+// harness or a drive, lands a branch, moves a run, or reads the keychain. A stage's
+// tests go behind the load gate and an issue lane's brief has it widen its own hold, so
+// `implement load` and `implement widen` stay open.
 func startsAnAgent(tokens []string, idx int) bool {
 	switch filepath.Base(tokens[idx]) {
 	case "claude", "security":
 		return true
 	case "abcd", "abcd.sh":
 		rest := tokens[idx+1:]
-		if i := slices.IndexFunc(rest, func(w string) bool { return !strings.HasPrefix(w, "-") }); i >= 0 && rest[i] == "land" {
+		var words []string
+		for _, w := range rest {
+			if !strings.HasPrefix(w, "-") {
+				words = append(words, w)
+			}
+		}
+		if len(words) > 0 && (words[0] == "land" || (words[0] == "implement" && (len(words) < 2 || (words[1] != "load" && words[1] != "widen")))) {
 			return true
 		}
 		return slices.Contains(rest, "drain") && slices.ContainsFunc(rest, func(w string) bool {

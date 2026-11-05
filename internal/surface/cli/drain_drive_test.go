@@ -77,8 +77,9 @@ func (w *driveWorld) passWalls(t *testing.T) {
 	walls, term := driveWalls, driveTerminal
 	t.Cleanup(func() { driveWalls, driveTerminal = walls, term })
 	driveWalls = driveWallChecks{
-		static: func(context.Context, runner.Profile) ([]string, error) { return nil, nil },
-		live:   func(context.Context, runner.Profile) error { return nil },
+		static:   func(context.Context, runner.Profile) ([]string, error) { return nil, nil },
+		live:     func(context.Context, runner.Profile) error { return nil },
+		settings: func(runner.Profile) error { return nil },
 	}
 	driveTerminal = func(_ context.Context, _ string, o loop.TerminalOptions) (loop.TerminalResult, error) {
 		w.terminalCalls++

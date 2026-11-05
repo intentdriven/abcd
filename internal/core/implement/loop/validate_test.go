@@ -141,6 +141,41 @@ func handBack(t *testing.T, repo *gittest.Repo, runID string, stages Stages, rol
 	return got
 }
 
+// statingHead is a reviewer's return as a reviewer's brief asks for it: opening with
+// the round's head, unless the test's own return says otherwise.
+func statingHead(t *testing.T, root, runID, body string) string {
+	t.Helper()
+	return statingHeadAt(t, root, runID, "", body)
+}
+
+// statingHeadAt is statingHead for the round whose reviewer writes at rel, the current
+// lane's latest round when rel is "" or names none.
+func statingHeadAt(t *testing.T, root, runID, rel, body string) string {
+	t.Helper()
+	if strings.HasPrefix(body, "Reviewed ") {
+		return body
+	}
+	st, err := ReadState(root, runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range st.Lanes {
+		for _, r := range l.Validation {
+			for _, v := range r.Validators {
+				if rel != "" && v.Return == rel {
+					return "Reviewed head: " + r.HeadSHA + "\n\n" + body
+				}
+			}
+		}
+	}
+	i := st.current()
+	if i < 0 || len(st.Lanes[i].Validation) == 0 {
+		return body
+	}
+	v := st.Lanes[i].Validation
+	return "Reviewed head: " + v[len(v)-1].HeadSHA + "\n\n" + body
+}
+
 // handBackOne takes the validate stage's next hand-out, checks it names role,
 // and hands back body as that agent's return. It returns the receipt's result.
 func handBackOne(t *testing.T, repo *gittest.Repo, runID string, stages Stages, role, body string) StepResult {
@@ -153,6 +188,9 @@ func handBackOne(t *testing.T, repo *gittest.Repo, runID string, stages Stages, 
 		t.Fatalf("the validate stage hands the lane to a fresh %s: %+v", role, res)
 	}
 	path := filepath.Join(repo.Root(), filepath.FromSlash(res.Awaiting.Receipt))
+	if role != RoleAuditor {
+		body = statingHead(t, repo.Root(), runID, body)
+	}
 	if role == RoleAuditor {
 		body = auditorVerdict(t, filepath.Join(filepath.Dir(path), AuditRequestFileName), body)
 	}
@@ -220,7 +258,7 @@ func TestTheValidatorsAreFreshAgentsAndOnlyTheLoopRecordsAVerdict(t *testing.T) 
 	}
 	// The ruthless reviewer is out; its return is handed back before the next
 	// step, which would otherwise hand the security reviewer out beside it.
-	if err := os.WriteFile(filepath.Join(repo.Root(), filepath.FromSlash(res.Awaiting.Receipt)), []byte(reviewerReturn("SHIP")), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(repo.Root(), filepath.FromSlash(res.Awaiting.Receipt)), []byte(statingHead(t, repo.Root(), id, reviewerReturn("SHIP"))), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	got, err := Receipt(repo.Root(), id, filepath.Join(repo.Root(), filepath.FromSlash(res.Awaiting.Receipt)), stages, Options{})
@@ -594,6 +632,24 @@ func downgraded(t *testing.T, data []byte, v int) []byte {
 	unreviewOlder(m)
 	if p, ok := m["pace"].(map[string]any); ok && v <= schemaVersionUncapped {
 		delete(p, "fix_rounds")
+	}
+	if v <= schemaVersionUnshown {
+		for _, l := range m["lanes"].([]any) {
+			lm, ok := l.(map[string]any)
+			if !ok {
+				continue
+			}
+			if rounds, ok := lm["validation"].([]any); ok {
+				for _, r := range rounds {
+					if rm, ok := r.(map[string]any); ok {
+						delete(rm, "resolves_shown")
+					}
+				}
+			}
+			if ld, ok := lm["landing"].(map[string]any); ok {
+				delete(ld, "gate_unread_since")
+			}
+		}
 	}
 	if v <= schemaVersionUnlanded {
 		delete(m, "transcripts")

@@ -42,6 +42,29 @@ func fakeWall(mode string) int {
 		raw, _ := json.Marshal(args)
 		_ = os.WriteFile(filepath.Join(log, "claude.argv.json"), raw, 0o600)
 	}
+	// The proof's launch meeting a limit: on a non-zero exit, on a zero one, and
+	// naming no reset.
+	switch mode {
+	case "wall-limit-exit", "wall-limit-zero":
+		fmt.Println(`{"type":"system","subtype":"init","session_id":"s","model":"fake-model"}`)
+		fmt.Println(`{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","resetsAt":1791000000,"rateLimitType":"seven_day"},"session_id":"s"}`)
+		fmt.Println(`{"type":"result","subtype":"success","is_error":true,"result":"limit","session_id":"s"}`)
+		if mode == "wall-limit-exit" {
+			return 1
+		}
+		return 0
+	case "wall-noverdict-exit":
+		fmt.Println(`{"type":"system","subtype":"init","session_id":"s","model":"fake-model","tools":["Read","Bash"]}`)
+		fmt.Println(`{"type":"system","subtype":"api_retry","attempt":1,"max_retries":10,"retry_delay_ms":500,"error_status":null,"error":"unknown"}`)
+		return 1
+	case "wall-noverdict-zero":
+		fmt.Println(`{"type":"system","subtype":"init","session_id":"s","model":"fake-model","tools":["Read","Bash"]}`)
+		fmt.Println(`{"type":"result","subtype":"error_during_execution","is_error":true,"result":"gave up","session_id":"s"}`)
+		return 0
+	case "wall-limit-none":
+		fmt.Println(`{"type":"result","subtype":"success","is_error":true,"api_error_status":429,"result":"limit","session_id":"s"}`)
+		return 1
+	}
 	// A harness reads the working tree's settings unless the launch's setting
 	// sources leave them out, or the mode has it read them regardless.
 	if !slices.Contains(args, "--setting-sources=user") || mode == "wall-tree" {

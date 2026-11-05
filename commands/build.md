@@ -789,9 +789,14 @@ A lane's stages run in order:
    reading `facilitator.mode` from the default branch's committed
    `.abcd/config.json` and `~/.abcd.noindex/config.json`, never the lane's
    checkout: in `human`, once an approval of the pushed head counts; in
-   `auto`, once a review receipt names it (`abcd land --record-review`); and a
-   contributor's pull request in either mode only once an approval by someone
-   with write access counts. An armed merge goes into the merge queue by the
+   `auto`, once a review receipt names it, which the loop records itself from a
+   pair that read that head: its full round judges each resolution the lane
+   declares, and its records commit takes a review round of its own before
+   anything is pushed, unless it moves an issue's record that round was not told
+   of or holds more than plain markdown, when the lane parks before any round,
+   naming which; a round that does not pass is left open, naming the finding, for
+   `abcd land --record-review`; and a contributor's pull request
+   in either mode only once an approval by someone with write access counts. An armed merge goes into the merge queue by the
    ruleset mirror's (`.abcd/work/rulesets/`) method, or as the forge's
    auto-merge where no queue gates the default branch. Otherwise the step's
    note and the run record say "left open: " and why, and each later step asks
@@ -822,7 +827,7 @@ A lane's stages run in order:
    push to the lane or merge it yourself. An issue lane whose conflict lies in
    declared generated files alone, or in no file when this checkout merges,
    enters its sync again instead of being refused, an armed merge withdrawn
-   first; one whose head already holds the default branch keeps the exit-3 wait.
+   first, unless it failed or parked over its records commit, which stays refused for a person; one whose head already holds the default branch keeps the exit-3 wait.
    `UNKNOWN`, a verdict the forge has not
    computed yet, keeps the exit-3 wait.
 

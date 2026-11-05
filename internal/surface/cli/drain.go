@@ -37,10 +37,10 @@ type drainOutput struct {
 func newDrainCommand(asJSON *bool) *cobra.Command {
 	var dryRun, takeOver, drive, yes bool
 	var maxLanes int
-	var pace, subAgents, fixRounds, judgement, skipReason string
+	var pace, subAgents, fixRounds, judgement, skipReason, until string
 	var skip, unskip []string
 	cmd := &cobra.Command{
-		Use: "drain [--drive [--yes]] [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>]",
+		Use: "drain [--drive [--yes] [--until <date>]] [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>]",
 		Long: "Work the open issue ledger unattended: fix the issues that need no decision, and\n" +
 			"hand the rest back by kind. Which issues need no decision is this repository's own\n" +
 			"recorded decision: an accepted decision record whose frontmatter carries the four\n" +
@@ -104,8 +104,15 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"hooks is handed back at its landing, and an issue that names one is passed over: that\n" +
 			"change needs a person's own session. The driver's commit, merge and reset hooks, and any\n" +
 			"filter run inside those commands, get the stage's variables, while its network commands,\n" +
-			"its other filters and its forge calls keep the person's environment. It ends at\n" +
-			"the cap, when nothing is eligible, or after eight hours of runner failures. One drive\n" +
+			"its other filters and its forge calls keep the person's environment. It ends at the cap,\n" +
+			"when nothing is eligible, or on a stop. With no --until, eight hours of runner failures\n" +
+			"or of nothing moving, a rate limit that outlasts eight hours, and origin unreadable\n" +
+			"through its schedule end it too. --until <date>, a date (the end of that day here) or an\n" +
+			"RFC 3339 instant, replaces those with one bound the yes names: the run waits through\n" +
+			"limits, outages and stuck queues at a capped interval, says what it waits on, keeps\n" +
+			"renewing what it holds, and at that time ends with the lane on its branch, an agent in a\n" +
+			"call finishing that call first. The bound is a time, not a limit on what the run spends.\n" +
+			"The first limit a run meets leaves its evidence under the same logs. One drive\n" +
 			"holds a checkout at a time; a second exits 3. A drive that is stopped, stops short or\n" +
 			"holds an issue back exits 3, and one a failed check stopped exits 2. The first interrupt, hang-up or termination is a\n" +
 			"stop: the agent in a call finishes that call, the lane's reservation is released, the\n" +
@@ -258,10 +265,18 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			switch {
 			case yes && !drive:
 				return &exitError{Code: 2, Msg: "abcd drain: --yes answers --drive's one question, and this is no drive; add --drive or leave it out (nothing written)"}
+			case cmd.Flags().Changed("until") && !drive:
+				return &exitError{Code: 2, Msg: "abcd drain: --until bounds a run that waits, and only --drive waits; add --drive or leave it out (nothing written)"}
+			case cmd.Flags().Changed("until") && until == "":
+				return driveRefusal("--until is empty, which is no time to end at; give a date or leave the flag out")
 			case drive && (dryRun || cmd.Flags().Changed("judgement")):
 				return &exitError{Code: 2, Msg: "abcd drain: --drive makes every move and judges through the runner itself, so it takes no --dry-run and no --judgement (nothing written)"}
 			case drive:
-				f := driveFlags{yes: yes, maxLanes: maxLanes, takeOver: takeOver,
+				bound, err := parseDriveUntil(until, time.Now())
+				if err != nil {
+					return err
+				}
+				f := driveFlags{yes: yes, maxLanes: maxLanes, takeOver: takeOver, until: bound,
 					skips: drainSkips{skip: skip, reason: skipReason, unskip: unskip}}
 				if cmd.Flags().Changed("pace") {
 					f.pace = &pace
@@ -304,6 +319,7 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&drive, "drive", false, "make every move from this terminal, starting each agent on a separate login, until the cap, an empty ledger or a stop")
 	cmd.Flags().BoolVar(&yes, "yes", false, "with --drive: the scripted yes to its one question")
+	cmd.Flags().StringVar(&until, "until", "", "with --drive: end the run at this time, a date or an RFC 3339 instant, and wait through limits, outages and stuck queues until then; the default is eight hours on each wait")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show every open issue's disposition and the order a drain takes them; writes nothing")
 	cmd.Flags().IntVar(&maxLanes, "max", 0, "cap the lanes this drain opens; the default is all")
 	cmd.Flags().StringVar(&pace, "pace", "", "the drain's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer")

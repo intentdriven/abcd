@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -791,7 +792,7 @@ func outageFieldText(v any) string {
 
 // IsNetworkFailure reports whether a git or gh command's stderr says the
 // network failed it: a name that did not resolve, a connection refused, timed
-// out, reset or cut off. A refusal by the other end — an authentication
+// out, reset or cut off, or a forge or remote answering 5xx. A refusal by the other end — an authentication
 // failure, a hook's refusal, a rejected push — or a merge conflict is not one,
 // even when its text also quotes a network-sounding line, because waiting does
 // not fix it.
@@ -807,7 +808,7 @@ func IsNetworkFailure(stderr string) bool {
 			return true
 		}
 	}
-	return false
+	return networkStatus.MatchString(s)
 }
 
 // networkMarkers are the lower-cased phrases git, curl, ssh and gh print when
@@ -839,6 +840,12 @@ var networkMarkers = []string{
 	"early eof",
 	"broken pipe",
 }
+
+// networkStatus is a forge or remote answering that it failed, in the forms gh (HTTP
+// 502: Bad Gateway, which its runner wraps in parentheses), git (The requested URL
+// returned error: 503) and a GraphQL client (non-200 OK status code: 502) print. A bare
+// status with no colon after it may be a hook's own words, so it is not one.
+var networkStatus = regexp.MustCompile(`http 5[0-9][0-9]:|the requested url returned error: 5[0-9][0-9]|non-200 ok status code: 5[0-9][0-9]`)
 
 // notNetworkMarkers are the other end's refusals and the local conflicts.
 var notNetworkMarkers = []string{
