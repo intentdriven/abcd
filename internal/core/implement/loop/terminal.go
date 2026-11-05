@@ -107,6 +107,8 @@ type terminal struct {
 	// limit is the outage's schedule run for a rate limit.
 	limit terminalOutageClock
 	last  DrainResult
+	// idleSince is when the run last stopped moving, zero while it moves.
+	idleSince time.Time
 	// ranClean names the lane and head a preflight last exited 0 on.
 	ranClean string
 }
@@ -177,6 +179,22 @@ func (t *terminal) sleep(ctx context.Context, d time.Duration, why string) {
 	t.o.Sleep(ctx, d)
 }
 
+// idle waits d on something someone else must do, reporting true when nothing
+// has moved for as long as a drive waits (adr-2610222222326104 condition 3): the
+// run then ends, saying so.
+func (t *terminal) idle(ctx context.Context, d time.Duration, why string) bool {
+	now := t.now()
+	if t.idleSince.IsZero() {
+		t.idleSince = now
+	}
+	if now.Sub(t.idleSince) >= terminalOutageLimit {
+		t.say("stopping: nothing has moved for eight hours, as long as a drive waits: %s", why)
+		return true
+	}
+	t.sleep(ctx, d, why)
+	return false
+}
+
 // failed counts one failure and waits it out; it reports whether the outage
 // has run its limit.
 func (t *terminal) failed(ctx context.Context, judge bool, what string) bool {
@@ -218,7 +236,9 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 				return t.ended(TerminalHalted), nil
 			}
 			if r, ok := AsRefusal(err); ok && r.Contention {
-				t.sleep(ctx, TerminalWaitFloor, r.Reason)
+				if t.idle(ctx, TerminalWaitFloor, r.Reason) {
+					return t.ended(TerminalWaited), nil
+				}
 				continue
 			}
 			return t.ended(TerminalRefused), err
@@ -234,8 +254,15 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 		if res.Judged != nil {
 			t.outage.succeed()
 		}
+		if res.Judged != nil || len(res.Routed) > 0 || len(res.Finished) > 0 || res.Start != nil {
+			t.idleSince = time.Time{}
+		}
 		if d, ok := moveWait(res, t.now()); ok {
-			t.sleep(ctx, d, res.Next)
+			if res.WaitingUntil == nil {
+				t.sleep(ctx, d, res.Next)
+			} else if t.idle(ctx, d, res.Next) {
+				return t.ended(TerminalWaited), nil
+			}
 			continue
 		}
 		if res.Judging != nil {
@@ -245,7 +272,9 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 			continue
 		}
 		if res.Lane == nil {
-			t.sleep(ctx, TerminalWaitFloor, res.Next)
+			if t.idle(ctx, TerminalWaitFloor, res.Next) {
+				return t.ended(TerminalWaited), nil
+			}
 			continue
 		}
 		ended, err := t.driveLane(ctx, res.Lane.RunID)
@@ -335,6 +364,7 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 		case res.NextEligibleAt != nil:
 			t.sleep(ctx, max(res.NextEligibleAt.Sub(t.now()), TerminalWaitFloor), res.Next)
 		case res.Route != nil || res.PerformedStage != "":
+			t.idleSince = time.Time{}
 			t.outage.succeed()
 			t.limit.succeed()
 			t.sayStep(runID, res)
@@ -431,6 +461,12 @@ func (t *terminal) stepRefused(ctx context.Context, runID string, err error) (ag
 		}
 		t.ranClean = head
 		return true, "", nil
+	}
+	if r.Contention {
+		if t.idle(ctx, TerminalWaitFloor, r.Reason) {
+			return false, TerminalWaited, nil
+		}
+		return false, "", nil
 	}
 	t.sleep(ctx, TerminalWaitFloor, r.Reason)
 	return false, "", nil

@@ -322,3 +322,43 @@ func TestAPreflightThatMintsNoReceiptCountsTowardStuck(t *testing.T) {
 		t.Fatalf("the lane is handed back as stuck: %+v\n%s", st.HandBacks, strings.Join(w.lines, "\n"))
 	}
 }
+
+// TestAWaitOnHeldWorkHasADeadline: everything stays held by someone else, so the
+// move names one wait after another; the run ends at the deadline, saying so,
+// and hands nothing back.
+func TestAWaitOnHeldWorkHasADeadline(t *testing.T) {
+	w := newTerminalWorld(t)
+	q := otherCopy(t, w.bare, quinnEmail)
+	held := map[string]string{eligibleIssue: "AGENTS.md", secondIssue: "commands/drain.md", thirdIssue: "commands/other.md"}
+	opts := func() claim.Options { return as(t, q, claim.Options{Now: w.clock.now}) }
+	for id, path := range held {
+		if _, err := claim.Reserve(q, claim.Request{Record: id, Footprint: []string{path}}, opts()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w.onSleep = func(d time.Duration) {
+		now := w.clock.t
+		w.clock.t = now.Add(d)
+		for id := range held {
+			if _, err := claim.Reserve(q, claim.Request{Record: id, Renew: true}, opts()); err != nil {
+				t.Fatal(err)
+			}
+		}
+		w.clock.t = now
+	}
+	o := w.options(t)
+	w.guardSleeps(t, &o)
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Ended != TerminalWaited {
+		t.Fatalf("the wait ends the run: %+v\n%s", res, strings.Join(w.lines, "\n"))
+	}
+	if got := slept(w.sleeps); got < terminalOutageLimit || got > terminalOutageLimit+time.Hour {
+		t.Fatalf("the run waits as long as a drive waits: %v", got)
+	}
+	if !strings.Contains(w.lines[len(w.lines)-1], "stopping") {
+		t.Fatalf("the last line says so: %q", w.lines[len(w.lines)-1])
+	}
+}
