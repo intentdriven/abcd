@@ -65,6 +65,7 @@ func TestMain(m *testing.M) {
 	// A stop on the machine running the tests stops no test: a test of the stop
 	// names its own fixture home (stop_test.go).
 	defaultStopHome = func() string { return "" }
+	accountStopHome = func() string { return "" }
 	stopReadingOff = true
 	runstop.WellKnownFolder = func() string { return "" }
 	// The package is too long for one test process under the preflight's

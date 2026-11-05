@@ -892,7 +892,7 @@ every refusal as it is.
 **`abcd implement stop` is the person's, typed from their own account: leave it to
 them.** The guard and the verbs hold against an agent acting by mistake; a stop binds an agent only where an operating-system account separates them. The guard's rule refuses it, its `--lift`, and writes, moves and removals of the stop's
 files; the verb itself refuses a caller with no
-terminal or under a host session, and a lift or a choice of folder where it cannot tell whether one is above it. Tell the person why you
+terminal or under a host session, and a lift or a choice of folder where it cannot tell whether one is above it. A stop is not the stop a drive keeps on a run whose state changed: a run can have both, nothing is settled while both stand, and neither's end answers for the other. Tell the person why you
 believe the runs should stop or go on, and leave the command to them. A stop reads
 as a refusal at the stage `stop`, exit 3, from `implement step`, `abcd build` and
 `abcd drain`: stop working when you meet it. `implement receipt` is not refused, so

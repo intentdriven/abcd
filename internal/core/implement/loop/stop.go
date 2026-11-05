@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/lease"
 	"github.com/intentdriven/abcd/internal/core/runstop"
@@ -47,11 +48,24 @@ const stopKeptPrefix = "stopped: a stop set by "
 
 // defaultStopHome is the home a stop is read from; TestMain empties it, which
 // reads as no stop, so a stop on the developer's machine stops no test.
-var defaultStopHome = accountStopHome
+var defaultStopHome = machineStopHome
 
-// accountStopHome is the production home a stop is read from: the account's own
-// (runstop.AccountHome), so the variable a process inherits does not move it.
-func accountStopHome() string {
+// machineStopHome is the production home a stop is read from: the machine's shared
+// records' (abcdhome.MachineHome), the person's own under a walled stage.
+func machineStopHome() string {
+	home, err := abcdhome.MachineHome()
+	if err != nil || !filepath.IsAbs(home) {
+		return ""
+	}
+	return home
+}
+
+// accountStopHome is the account's own home (runstop.AccountHome), which is where the
+// verb writes a stop and which the variable a process inherits does not move. A test
+// names a fixture.
+var accountStopHome = theAccountsHome
+
+func theAccountsHome() string {
 	home, err := runstop.AccountHome()
 	if err != nil || !filepath.IsAbs(home) {
 		return ""
@@ -71,7 +85,13 @@ func (o Options) stopRead(pin *runstop.Pin) runstop.Reading {
 	if stopReadingOff && o.stopHome == "" {
 		return runstop.Reading{}
 	}
-	return runstop.ReadPinned(o.stopHomeOf(), pin)
+	home := o.stopHomeOf()
+	r := runstop.ReadPinned(home, pin)
+	// A stop stands in the account's home whatever this process was told its home is.
+	if account := accountStopHome(); r.Stop == nil && o.stopHome == "" && account != "" && account != home {
+		r.Stop = runstop.ReadPinned(account, pin).Stop
+	}
+	return r
 }
 
 // stopHomeOf is the home this call reads a stop from.
@@ -96,6 +116,9 @@ func stopCheck(repoRoot, runID string, steps Stages, o Options) (string, error) 
 	r := o.stopRead(c.Shared)
 	note := readingNote(r)
 	settle := func(s runstop.Stop) (string, error) {
+		if driveStopped(runID) {
+			return note, stopOverDriveStop(runID, s)
+		}
 		rec, err := haltRun(repoRoot, runID, s, steps, o)
 		if err != nil || rec == nil {
 			return note, err
@@ -259,6 +282,18 @@ func stopRefusal(runID string, rec RunStop) error {
 	}
 	return contend(StageStop, "", "", fmt.Sprintf("a stop set by %s at %s holds: %s is halted %s, and nothing further starts",
 		termsafe.Sanitize(rec.SetBy), rec.SetAt.UTC().Format(time.RFC3339), runID, state), remedy)
+}
+
+// stopOverDriveStop is the refusal where both a stop and a drive's own stop stand on a
+// run (drive_stop.go). They are two things, and neither answers for the other. Nothing
+// is settled while both stand, since what the run says is not known to be the driver's:
+// its work is not saved aside and its reservation is not released, which lapses with its
+// lease. Lifting the stop leaves the drive's stop, and removing that leaves the stop, which
+// the run then takes in its order.
+func stopOverDriveStop(runID string, s runstop.Stop) error {
+	return contend(StageStop, "", "", fmt.Sprintf("a stop set by %s at %s holds, and a drive stopped on %s because its state changed, so nothing is settled from what it now says",
+		termsafe.Sanitize(s.SetBy), s.SetAt.UTC().Format(time.RFC3339), runID),
+		"the person's own `abcd implement stop --lift` lifts the stop and leaves the other standing. "+driveStopRemedy(runID))
 }
 
 // haltRun applies a stop in its order, one read from the file or one that did not
@@ -849,6 +884,9 @@ func drainStop(repoRoot string, st *DrainState, o Options) (string, error) {
 	}
 	for _, run := range runs {
 		if run.Complete() {
+			continue
+		}
+		if driveStopped(run.RunID) {
 			continue
 		}
 		if _, err := haltRun(repoRoot, run.RunID, *r.Stop, DefaultStages(), o); err != nil {

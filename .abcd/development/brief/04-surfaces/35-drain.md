@@ -330,13 +330,23 @@ inside an agent's own session.
 
 A stop takes two presses. The first interrupt, hang-up or termination leaves the
 drive's context live, so the agent in a call finishes that call and its receipt is
-recorded; the drive then releases the lane's reservation and its claims so a peer
-may take the issue up, leaves the lane on its branch, and names the run, the lane
-and the command that resumes it. The second signal ends the context, which kills the
-process group, and names when the reservation lapses. Nothing is handed back for a
-stop. A later drive on the same copy reserves the lane again and lands it; one that
-finds the issue held hands its lane back as stuck, and one at the person's own cap
-waits on the outage schedule for a reservation to end, handing nothing back.
+recorded; the run then takes the stop in its order, saving the lane's uncommitted work
+aside and releasing its reservation and claims so a peer may take the issue up, leaves
+the lane on its branch, and names the run, the lane and the command that resumes it. The
+second signal ends the context, which kills the process group, and names when the
+reservation lapses. Nothing is handed back for a stop. A later drive on the same copy
+takes the run over, reserving it again before the signal's mark goes, and lands it; one
+that finds the issue held hands its lane back as stuck, and one at the person's own cap
+waits on the outage schedule for a reservation to end, handing nothing back. A drive claims
+its run with its own process, so the driver a listing names ends with it.
+
+The person's stop (`abcd implement stop`) reaches a drive at its next move and through any
+wait: each wait looks for it every minute, under a bound as without one, and the drive ends
+saying what holds it. A drive's stop on a run whose state changed is another thing, and a
+run can have both. While both stand the run is not settled, since what it says is not known
+to be the driver's: its work is not saved aside and its reservation lapses with its lease.
+Lifting the stop leaves the drive's stop, and a take-over is refused until it is removed;
+removing that leaves the stop, which the run then takes in its order.
 
 In a checkout with a remote named `origin`, the ledger a move reads is origin's
 default branch, never the checkout's own, which may be behind it

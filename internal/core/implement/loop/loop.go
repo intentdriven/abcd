@@ -41,6 +41,9 @@ type Options struct {
 	RunStateWatch bool
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
+	// driverIsSelf has a claim on the run name this process, where a drive runs the
+	// run itself, rather than the session above it.
+	driverIsSelf bool
 	// stopHome is the home a stop is read from; "" is the account's own
 	// (defaultStopHome). A test names a fixture home.
 	stopHome string

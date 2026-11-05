@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"os/exec"
@@ -309,5 +310,20 @@ func TestTheDrivesFlagsRefuseWhatTheyCannotTake(t *testing.T) {
 		{"drain", "--drive", "--judgement", "x.json"},
 	} {
 		refusedDrive(t, args...)
+	}
+}
+
+// TestADriveEndHaltedSaysWhatHolds: the end words carry the refusal's own reason, so a
+// lifted stop, a signal's mark and a held read each say what is true of them.
+func TestADriveEndHaltedSaysWhatHolds(t *testing.T) {
+	const why = "run-1 was halted by a stop; the stop has lifted; run the take-over"
+	var b bytes.Buffer
+	res := loop.TerminalResult{Ended: loop.TerminalHalted, Why: why}
+	renderDriveEnd(&b, res)
+	if !strings.Contains(b.String(), why) {
+		t.Fatalf("the end: %q", b.String())
+	}
+	if strings.Contains(driveEndWords(res.Ended), "elsewhere") {
+		t.Fatalf("the words claim what may not be so: %q", driveEndWords(res.Ended))
 	}
 }

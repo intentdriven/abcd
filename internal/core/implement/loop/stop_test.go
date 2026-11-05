@@ -715,17 +715,17 @@ func TestTheStopHomeIsTheAccounts(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", filepath.Join(t.TempDir(), "elsewhere"))
-	if got := accountStopHome(); got != want {
-		t.Fatalf("accountStopHome = %q, want %q", got, want)
+	if got := theAccountsHome(); got != want {
+		t.Fatalf("theAccountsHome = %q, want %q", got, want)
 	}
 }
 
 // stopHomeIs makes home the one every call with no home of its own reads.
 func stopHomeIs(t *testing.T, home string) {
 	t.Helper()
-	oldHome, oldOff := defaultStopHome, stopReadingOff
-	defaultStopHome, stopReadingOff = func() string { return home }, false
-	t.Cleanup(func() { defaultStopHome, stopReadingOff = oldHome, oldOff })
+	oldHome, oldAccount, oldOff := defaultStopHome, accountStopHome, stopReadingOff
+	defaultStopHome, accountStopHome, stopReadingOff = func() string { return home }, func() string { return "" }, false
+	t.Cleanup(func() { defaultStopHome, accountStopHome, stopReadingOff = oldHome, oldAccount, oldOff })
 }
 
 // TestALaterSettleLeavesAHaltAsItStands: two checks that race settle once. What the

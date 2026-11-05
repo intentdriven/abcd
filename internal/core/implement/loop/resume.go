@@ -217,9 +217,14 @@ func listRun(checkout string, o Options, root *os.Root, st State, tab *sessionna
 		}
 		out.Lanes = append(out.Lanes, listLane(checkout, root, st.RunID, lane, c, tab, view, now))
 	}
+	marked := driveStopped(st.RunID)
 	switch {
+	case stopHolds && marked:
+		out.Next = "a stop holds, and a drive stopped on it because its state changed: lifting the stop leaves the other standing, and nothing moves until both have gone. " + driveStopRemedy(out.RunID)
 	case stopHolds:
 		out.Next = "a stop holds: nothing moves until the person lifts it"
+	case marked:
+		out.Next = "a drive stopped on it because its state changed, so nothing goes on from what it now says. " + driveStopRemedy(out.RunID)
 	case held != "":
 		out.Next = termsafe.Sanitize(held) + ": nothing moves until the person puts it back"
 	case alive && c.Stop != nil && c.Stop.HaltedAt != nil && c.Driver.At.After(*c.Stop.HaltedAt):
@@ -420,6 +425,11 @@ func takeRun(repoRoot, runID string, o Options) (TakeResult, error) {
 	} else if len(r.Refused) > 0 {
 		// Only a read that saw clearly and found no stop lets a run be taken over.
 		return TakeResult{}, heldRefusal(strings.Join(r.Refused, "; "))
+	}
+	// A take-over reserves and steps on what the run says, which a drive's stop says is
+	// not known to be the driver's: a person settles that first.
+	if err := driveStopRefusal(runID); err != nil {
+		return TakeResult{}, err
 	}
 	root, err := os.OpenRoot(repoRoot)
 	if err != nil {

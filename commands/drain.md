@@ -166,10 +166,17 @@ each probe's answer and when the run resumed. A file stops taking the stream's d
 64 KiB and goes on taking the answers, and the newest twenty of a kind are kept.
 
 The first interrupt, hang-up or termination is a stop: the agent in a call finishes
-that call, the lane's reservation is released, the lane stays on its branch, and
-the last lines name the run, the lane and `abcd drain --drive`, which resumes it.
+that call, the lane's uncommitted work is saved aside, its reservation is released, the
+lane stays on its branch, and the last lines name the run, the lane and
+`abcd drain --drive`, which takes the run over and resumes it.
 A second signal kills the running agent's process group and exits at once, naming
 when the reservation lapses.
+
+The person's own `abcd implement stop` ends a drive too, at its next move, and any wait
+within about a minute, a wait on a limit or an outage included. The drive then says what
+holds it. A stop and a drive's stop on a run whose state changed are two things: while both
+stand the run is not settled, its work is not saved aside and its reservation lapses with
+its lease. Lifting the stop leaves the other, and removing the other leaves the stop.
 
 ## The rule
 

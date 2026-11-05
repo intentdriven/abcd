@@ -35,10 +35,11 @@ func procsOf(t *testing.T, here int, hosts ...int) {
 			machineload.Proc{PID: h, PPID: 1, Name: "host", Age: time.Duration(h) * time.Second},
 			machineload.Proc{PID: h + shellOf, PPID: h, Name: "zsh", Age: time.Second})
 	}
-	oldProcs, oldFrom := readProcs, hereFrom
+	oldProcs, oldFrom, oldSelf := readProcs, hereFrom, hereSelf
 	readProcs = func() (sessionname.Table, error) { return tab, nil }
 	hereFrom = func() int { return here + shellOf }
-	t.Cleanup(func() { readProcs, hereFrom = oldProcs, oldFrom })
+	hereSelf = func() int { return here + shellOf }
+	t.Cleanup(func() { readProcs, hereFrom, hereSelf = oldProcs, oldFrom, oldSelf })
 }
 
 // TestAClaimRecordsTheDriverAndRefusesASecond: the state of the run names the

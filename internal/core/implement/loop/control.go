@@ -185,11 +185,15 @@ func procOf(tab sessionname.Table, pid int) (sessionname.Host, bool) {
 // Under a stop it claims nothing either: the stop is settled by the driver the run's
 // agents ran under, and the move that follows gets the stop's refusal. Nor does it claim
 // a run a stop halted, after the lift as before it: a step cannot move that run, and a
-// session that tried must not stand in the way of the take-over the run waits for.
+// session that tried must not stand in the way of the take-over the run waits for. The
+// same holds of a run a drive stopped on (drive_stop.go), which no step moves either.
 func ClaimDriver(repoRoot, runID string, o Options) error {
 	c, err := runControl(repoRoot, runID)
 	if err != nil {
 		return err
+	}
+	if driveStopped(runID) {
+		return nil
 	}
 	if o.stopRead(c.Shared).Stop != nil || (c.Stop != nil && (!c.Stop.FromFile || c.Stop.HaltedAt != nil)) {
 		if _, err := stopCheck(repoRoot, runID, DefaultStages(), o); err != nil {
@@ -200,6 +204,18 @@ func ClaimDriver(repoRoot, runID string, o Options) error {
 		return nil
 	}
 	return claimDriver(repoRoot, runID, o, false)
+}
+
+// hereSelf is this process; a test stands one in.
+var hereSelf = os.Getpid
+
+// selfDriver is a drive as its run's driver: its own process, since one walked up to
+// from its parent would be a terminal that outlives it, or the first process under nohup.
+func selfDriver(tab sessionname.Table) (sessionname.Host, string, error) {
+	if h, ok := procOf(tab, hereSelf()); ok {
+		return h, "", nil
+	}
+	return sessionname.Host{}, "", errors.New("this process is not in the process table")
 }
 
 // driverOf is the process a step's run is driven by: the nearest one above it that
@@ -229,6 +245,9 @@ func claimDriver(repoRoot, runID string, o Options, overHalted bool) error {
 	}
 	home := o.stopHomeOf()
 	here, marked, hostErr := driverOf(tab, hereFrom(), home)
+	if o.driverIsSelf {
+		here, marked, hostErr = selfDriver(tab)
+	}
 	session := o.Session
 	if session == "" {
 		session = marked
