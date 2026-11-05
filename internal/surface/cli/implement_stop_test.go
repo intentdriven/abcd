@@ -117,8 +117,7 @@ func TestImplementStopSaysWhenItDidNotTakeHold(t *testing.T) {
 	}
 }
 
-// TestAHostSessionIsNoPerson: a terminal a wrapper lent is not enough where the
-// process runs under a host session.
+// TestAHostSessionIsNoPerson: a process under a host session is no person.
 func TestAHostSessionIsNoPerson(t *testing.T) {
 	t.Setenv(hostSessionIDEnv, "a-session")
 	if !underHostSession() {
@@ -126,10 +125,9 @@ func TestAHostSessionIsNoPerson(t *testing.T) {
 	}
 }
 
-// TestAWrapperDoesNotHideTheHostSession: a program that lends an agent a terminal
-// stands between it and its host, and each reading of the host's start differs by
-// a second; neither makes the agent a person.
-func TestAWrapperDoesNotHideTheHostSession(t *testing.T) {
+// TestAnyAncestorsHostSessionCounts: every process above this one is asked about a
+// host session, and each reading of a host's start may differ by a second.
+func TestAnyAncestorsHostSessionCounts(t *testing.T) {
 	home := t.TempDir()
 	now := time.Now()
 	tab := sessionname.Table{ReadAt: now, Procs: []machineload.Proc{
@@ -142,7 +140,7 @@ func TestAWrapperDoesNotHideTheHostSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !hostSessionAbove(home, tab, 700) {
-		t.Fatal("an agent behind a wrapper reads as a person")
+		t.Fatal("a process with a host session above it reads as a person")
 	}
 	later := tab
 	later.ReadAt = now.Add(1100 * time.Millisecond)
