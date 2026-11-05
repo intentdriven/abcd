@@ -42,6 +42,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -251,6 +252,9 @@ func RecordDeltaReview(repoRoot, head, base string, returns []ReviewReturn) (str
 	}
 	delta, err := judgeDelta(repoRoot, base, head, tip)
 	if err != nil {
+		if couldNotJudge(err) {
+			return "", err
+		}
 		return "", fmt.Errorf("%w; the head needs a full review pair (abcd land --record-review)", err)
 	}
 	return writeReviewRecord(repoRoot, newReviewRecord(head, entries, &delta))
@@ -278,14 +282,21 @@ func judgeDelta(repoRoot, base, head, tip string) (deltaRecord, error) {
 
 // storedBytes reads git's answer verbatim, with history as stored.
 func storedBytes(repoRoot string, maxBytes int, args ...string) ([]byte, error) {
-	return gitutil.RunCappedBytesAsStoredContext(context.Background(), repoRoot, "", maxBytes, args...)
+	out, err := gitutil.RunCappedBytesAsStoredContext(context.Background(), repoRoot, "", maxBytes, args...)
+	if err != nil {
+		return nil, notJudged{err}
+	}
+	return out, nil
 }
 
 // storedAncestor reports whether a commit is an ancestor of another, with history
 // as stored.
 func storedAncestor(repoRoot, ancestor, descendant string) (bool, error) {
 	_, off, err := gitutil.RunCappedExitOneAsStored(repoRoot, maxDeltaGitOutput, "merge-base", "--is-ancestor", ancestor, descendant)
-	return !off, err
+	if err != nil {
+		return false, notJudged{err}
+	}
+	return !off, nil
 }
 
 // hasFullPair reports why base has no full pair's receipt: none in any
@@ -304,6 +315,11 @@ func hasFullPair(repoRoot, base string) error {
 			return nil
 		}
 	}
+	for _, r := range reads {
+		if couldNotJudge(r.err) {
+			return fmt.Errorf("%s that can be read: %w", none, r.err)
+		}
+	}
 	switch first := reads[0]; {
 	case first.err != nil:
 		return fmt.Errorf("%s that can be read: %w", none, first.err)
@@ -311,6 +327,20 @@ func hasFullPair(repoRoot, base string) error {
 		return fmt.Errorf("%s: its receipt rests on %s, and a delta rests on a full pair directly", none, short(first.rec.Delta.Base))
 	}
 	return fmt.Errorf("%s: its receipt holds no passing pair for it", none)
+}
+
+// notJudged marks a failure that leaves the gate unable to judge a receipt or a
+// delta: a listing, a read or a git command that gave no answer. A valid receipt may
+// lie behind it, so it is no refusal of the head. A receipt read and found wanting
+// carries no such mark.
+type notJudged struct{ error }
+
+func (e notJudged) Unwrap() error { return e.error }
+
+// couldNotJudge reports whether a failure carries the mark, however it was wrapped.
+func couldNotJudge(err error) bool {
+	var n notJudged
+	return errors.As(err, &n)
 }
 
 // reviewReceiptRead is one worktree's review receipt as read, or why it cannot be.
@@ -323,11 +353,16 @@ type reviewReceiptRead struct {
 func readReviewReceipts(repoRoot, sha string) ([]reviewReceiptRead, error) {
 	found, err := findReceipts(repoRoot, ReviewReceiptsRelDir, sha)
 	if err != nil {
-		return nil, err
+		return nil, notJudged{err}
 	}
 	reads := make([]reviewReceiptRead, 0, len(found))
 	for _, f := range found {
 		if f.err != nil {
+			// git said it tracks the receipt, or could not be asked.
+			var refused *localtier.Refused
+			if errors.As(f.err, &refused) && refused.Cause != nil {
+				f.err = notJudged{f.err}
+			}
 			reads = append(reads, reviewReceiptRead{err: f.err})
 			continue
 		}
@@ -358,7 +393,10 @@ func holdsPair(rec reviewRecord) bool {
 func readReviewRecord(path string) (reviewRecord, error) {
 	data, err := fsutil.ReadGuarded(path, maxReceiptBytes)
 	if err != nil {
-		return reviewRecord{}, err
+		if errors.Is(err, fsutil.ErrTooBig) || errors.Is(err, fsutil.ErrNotRegular) {
+			return reviewRecord{}, err
+		}
+		return reviewRecord{}, notJudged{err}
 	}
 	var rec reviewRecord
 	if err := json.Unmarshal(data, &rec); err != nil {
@@ -376,17 +414,18 @@ type reviewProof struct {
 	deltaWhy string
 	// unreadable says why the receipts could not be read.
 	unreadable string
-	// unlisted says they could not even be listed, so no answer rests on them.
-	unlisted bool
+	// unread says the gate could not judge them, so no answer rests on them.
+	unread bool
 }
 
 // readReviewProof reads every worktree's review receipt naming head. A full pair
 // in any of them is the answer; failing that, a delta that stands against the
-// default branch's tip; failing that, what is wrong with the first.
+// default branch's tip; failing that, the first the gate could not judge, or what is
+// wrong with the first.
 func readReviewProof(repoRoot, head, tip string) reviewProof {
 	reads, err := readReviewReceipts(repoRoot, head)
 	if err != nil {
-		return reviewProof{unreadable: termsafe.Sanitize(fsutil.RedactHome(err.Error())), unlisted: true}
+		return reviewProof{unreadable: termsafe.Sanitize(fsutil.RedactHome(err.Error())), unread: true}
 	}
 	for _, r := range reads {
 		if r.err == nil && isFullPair(r.rec, head) {
@@ -399,7 +438,9 @@ func readReviewProof(repoRoot, head, tip string) reviewProof {
 		if proof.reviewed {
 			return proof
 		}
-		if i == 0 {
+		// A receipt the gate could not judge outweighs one it found wanting: what
+		// it could not read may be the one that stands.
+		if i == 0 || (proof.unread && !first.unread) {
 			first = proof
 		}
 	}
@@ -410,7 +451,7 @@ func readReviewProof(repoRoot, head, tip string) reviewProof {
 // holds no passing pair for head, proves nothing.
 func receiptProof(repoRoot, head, tip string, r reviewReceiptRead) reviewProof {
 	if r.err != nil {
-		return reviewProof{unreadable: termsafe.Sanitize(fsutil.RedactHome(r.err.Error()))}
+		return reviewProof{unreadable: termsafe.Sanitize(fsutil.RedactHome(r.err.Error())), unread: couldNotJudge(r.err)}
 	}
 	rec := r.rec
 	if rec.Delta == nil {
@@ -420,7 +461,7 @@ func receiptProof(repoRoot, head, tip string, r reviewReceiptRead) reviewProof {
 		return reviewProof{reviewed: true}
 	}
 	why := func(err error) reviewProof {
-		return reviewProof{deltaWhy: termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
+		return reviewProof{deltaWhy: termsafe.Sanitize(fsutil.RedactHome(err.Error())), unread: couldNotJudge(err)}
 	}
 	if rec.Commit != head || !holdsPair(rec) {
 		return why(fmt.Errorf("its receipt holds no passing pair for %s", short(head)))
@@ -884,13 +925,13 @@ func provesCleanMerge(repoRoot, commit, first, second, tip string) error {
 	}
 	overrides, err := gitutil.MergeDriverOverrides(repoRoot)
 	if err != nil {
-		return fmt.Errorf("the merge %s cannot be recomputed: %w", short(commit), err)
+		return fmt.Errorf("the merge %s cannot be recomputed: %w", short(commit), notJudged{err})
 	}
 	args := append(overrides, "-c", "merge.union.driver="+gitutil.BuiltinMergeDriver(), "-c", "merge.renormalize=false",
 		"merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", first, second)
 	out, conflicted, err := gitutil.RunCappedExitOneAsStored(repoRoot, maxDeltaGitOutput, args...)
 	if err != nil {
-		return fmt.Errorf("the merge %s cannot be recomputed: %w", short(commit), err)
+		return fmt.Errorf("the merge %s cannot be recomputed: %w", short(commit), notJudged{err})
 	}
 	made, _, _ := strings.Cut(string(out), "\x00")
 	if !gitutil.IsFullSHA(made) {
@@ -901,7 +942,7 @@ func provesCleanMerge(repoRoot, commit, first, second, tip string) error {
 	}
 	has, err := gitutil.RunCappedAsStored(repoRoot, maxDeltaGitOutput, "rev-parse", "--verify", commit+"^{tree}")
 	if err != nil {
-		return fmt.Errorf("the merge %s's tree cannot be read: %w", short(commit), err)
+		return fmt.Errorf("the merge %s's tree cannot be read: %w", short(commit), notJudged{err})
 	}
 	if has != made {
 		return fmt.Errorf("the merge %s holds a tree no clean merge makes of its parents", short(commit))

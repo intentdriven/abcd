@@ -1706,6 +1706,162 @@ func TestAReceiptThatProvesNothingIsARefusalOfTheHead(t *testing.T) {
 	}
 }
 
+// gateAt asks the merge gate about a fixture's head.
+func gateAt(t *testing.T, f *fixture) MergeDecision {
+	t.Helper()
+	d, err := DecideMerge(MergeQuery{RepoRoot: f.repo.Root(), Roots: f.options().Roots, Tip: f.repo.Git("rev-parse", "origin/main"), TipName: "origin/main", Default: "main",
+		Repo: "o/r", PR: "7", Head: f.head(), Forge: func(args ...string) (string, error) { return f.forge.run("", args...) }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return d
+}
+
+// A receipt written where the gate looks, at a mode this account can read or not.
+func writeReceiptAt(t *testing.T, root, sha, body string, mode os.FileMode) string {
+	t.Helper()
+	p := filepath.Join(root, filepath.FromSlash(ReviewReceiptsRelDir), sha)
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(p, mode); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(p, 0o600) })
+	return p
+}
+
+func fullPairBody(sha string) string {
+	return `{"commit":"` + sha + `","reviews":[{"name":"a","verdict":"SHIP","sha256":"x"},{"name":"b","verdict":"APPROVE","sha256":"y"}]}`
+}
+
+// Reading a file at mode 000 fails only for an account that is not root, so a test
+// that needs the read to fail says so and stands down under root.
+func needsUnreadableFiles(t *testing.T) {
+	t.Helper()
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a file at mode 000")
+	}
+}
+
+// When the gate could not judge a receipt, a valid one may lie behind the failure, so
+// the answer is unread: nothing is armed, and nothing is withdrawn on it.
+func TestAReceiptTheGateCouldNotJudgeIsAnUnreadAnswer(t *testing.T) {
+	world := func(t *testing.T) *fixture {
+		t.Helper()
+		f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": autoConfig})
+		f.forge.head = f.head()
+		return f
+	}
+	wantUnread := func(t *testing.T, f *fixture) {
+		t.Helper()
+		if d := gateAt(t, f); d.Arm || !d.Unread {
+			t.Fatalf("decision %+v: want nothing armed, and an unread answer", d)
+		}
+	}
+	t.Run("a valid receipt that cannot be read", func(t *testing.T) {
+		needsUnreadableFiles(t)
+		f := world(t)
+		writeReceiptAt(t, f.repo.Root(), f.head(), fullPairBody(f.head()), 0)
+		wantUnread(t, f)
+		if d := gateAt(t, f); !strings.Contains(d.Why, "review receipts cannot be read") {
+			t.Fatalf("why = %q; want it to say the receipts could not be read", d.Why)
+		}
+	})
+	t.Run("git cannot say whether a receipt is tracked", func(t *testing.T) {
+		f := world(t)
+		writeReceiptAt(t, f.repo.Root(), f.head(), fullPairBody(f.head()), 0o600)
+		if err := os.WriteFile(filepath.Join(f.repo.Root(), ".git", "index"), []byte("not an index"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		wantUnread(t, f)
+	})
+	t.Run("git cannot answer for a delta", func(t *testing.T) {
+		f := world(t)
+		const base = "0123456789abcdef0123456789abcdef01234567"
+		writeReceiptAt(t, f.repo.Root(), base, fullPairBody(base), 0o600)
+		writeReceiptAt(t, f.repo.Root(), f.head(), `{"commit":"`+f.head()+`","delta":{"base":"`+base+`"},"reviews":[{"name":"a","verdict":"SHIP","sha256":"x"},{"name":"b","verdict":"APPROVE","sha256":"y"}]}`, 0o600)
+		wantUnread(t, f)
+		if d := gateAt(t, f); strings.Contains(d.Why, "does not stand") {
+			t.Fatalf("why = %q; a delta git could not judge is not one that does not stand", d.Why)
+		}
+	})
+	t.Run("a delta whose base's receipt cannot be read", func(t *testing.T) {
+		needsUnreadableFiles(t)
+		f := world(t)
+		base := f.head()
+		writeReceiptAt(t, f.repo.Root(), base, fullPairBody(base), 0)
+		f.repo.Write("docs/how-to/feature.md", "the change\n")
+		f.repo.Commit("a fix")
+		f.forge.head = f.head()
+		writeReceiptAt(t, f.repo.Root(), f.head(), `{"commit":"`+f.head()+`","delta":{"base":"`+base+`"},"reviews":[{"name":"a","verdict":"SHIP","sha256":"x"},{"name":"b","verdict":"APPROVE","sha256":"y"}]}`, 0o600)
+		wantUnread(t, f)
+	})
+	t.Run("a receipt found wanting beside one that cannot be read", func(t *testing.T) {
+		needsUnreadableFiles(t)
+		f := world(t)
+		writeReceiptAt(t, f.repo.Root(), f.head(), "not a receipt", 0o600)
+		other := filepath.Join(t.TempDir(), "lane")
+		f.repo.Git("worktree", "add", "-q", "--detach", other, "HEAD")
+		writeReceiptAt(t, other, f.head(), fullPairBody(f.head()), 0)
+		wantUnread(t, f)
+	})
+	t.Run("a failed listing", func(t *testing.T) {
+		proof := readReviewProof(t.TempDir(), "0123456789abcdef0123456789abcdef01234567", "")
+		if proof.reviewed || !proof.unread || proof.unreadable == "" {
+			t.Fatalf("proof = %+v; want the listing's failure read as unread", proof)
+		}
+	})
+	// A valid receipt behind a failed read keeps its arming, and comes back when the
+	// read does.
+	t.Run("the arming is left, and the receipt counts once it can be read", func(t *testing.T) {
+		needsUnreadableFiles(t)
+		f := world(t)
+		p := writeReceiptAt(t, f.repo.Root(), f.head(), fullPairBody(f.head()), 0)
+		if refused, unread := gateAtLocalHead(&Result{Default: "main", Head: f.head()}, f.options(), f.repo.Root(), "refs/remotes/origin/main", "o/r", "7", func(args ...string) (string, error) { return f.forge.run("", args...) }); refused != "" || unread == "" {
+			t.Fatalf("refused %q, unread %q: want the gate unread, so nothing is withdrawn", refused, unread)
+		}
+		if err := os.Chmod(p, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if d := gateAt(t, f); !d.Arm || d.Unread {
+			t.Fatalf("decision %+v: want the head armed once its receipt can be read", d)
+		}
+	})
+}
+
+// A receipt read and found wanting is the gate refusing the head, and it says what is
+// wrong rather than that it could not read one.
+func TestAReceiptFoundWantingSaysWhatIsWrong(t *testing.T) {
+	f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": autoConfig})
+	f.forge.head = f.head()
+	for body, reason := range map[string]string{
+		"not a receipt":                        "does not parse",
+		"{}\n":                                 "holds no passing pair",
+		strings.Repeat("x", maxReceiptBytes+1): "exceeds size cap",
+	} {
+		writeReceiptAt(t, f.repo.Root(), f.head(), body, 0o600)
+		d := gateAt(t, f)
+		if d.Arm || d.Unread || !strings.Contains(d.Why, "no review receipt for "+short(f.head())+" stands") || !strings.Contains(d.Why, reason) || strings.Contains(d.Why, "cannot be read") {
+			t.Fatalf("decision %+v: want the head refused, naming %q", d, reason)
+		}
+	}
+	// A receipt a commit carries is refused for that, with git having answered.
+	rel := ReviewReceiptsRelDir + "/" + f.head()
+	f2 := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": autoConfig})
+	head := f2.head()
+	writeReceiptAt(t, f2.repo.Root(), head, fullPairBody(head), 0o600)
+	f2.repo.Git("add", "-f", "--", ReviewReceiptsRelDir+"/"+head)
+	f2.repo.Git("commit", "-q", "-m", "an unrelated change")
+	proof := readReviewProof(f2.repo.Root(), head, "")
+	if proof.reviewed || proof.unread || !strings.Contains(proof.unreadable, "git tracks") {
+		t.Fatalf("a tracked receipt read as %+v; want it refused, not unread (%s)", proof, rel)
+	}
+}
+
 func TestTheGateNamesADeltaThatDoesNotStand(t *testing.T) {
 	d := mergeGate(gateFacts{mode: Facilitator{Mode: ModeAuto, Layer: "repo", Origin: "x"}, head: "0123456789abcdef", role: RoleMaintainer, roleWhy: "write", deltaWhy: "past the bound"})
 	if d.arm || !strings.Contains(d.why, "past the bound") || !strings.Contains(d.why, "full review pair") {
