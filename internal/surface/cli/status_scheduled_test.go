@@ -23,10 +23,6 @@ const (
 	scheduledRunURL       = "https://github.com/example-org/example-app/actions/runs/101"
 )
 
-// A test binary is no abcd: started by the hook, it would run this package's
-// tests. Every test starts none unless it says so (spawnsRefreshes).
-func init() { spawnScheduledRefresh = func(string) error { return nil } }
-
 // spawnsRefreshes records each background refresh the hook asks for, and runs
 // none, for the rest of the test.
 func spawnsRefreshes(t *testing.T) *refreshLog {
