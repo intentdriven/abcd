@@ -275,7 +275,7 @@ func TestARefusedWithdrawalIsNotCommentedOn(t *testing.T) {
 	if _, err := p.do(Request{Record: "rel-v0.16.0"}); err != nil {
 		t.Fatal(err)
 	}
-	want := "#11 abcd release hold: the merge of #11 is withdrawn by " + p.holderID() + " while release v0.16.0 is cut, and is re-armed after it."
+	want := "#11 abcd release hold: the merge of #11 is withdrawn by " + p.holderID() + " while release v0.16.0 is cut, and is re-armed after it where the merge gate arms its head."
 	if got := f.posted(); len(got) != 3 || got[2] != want {
 		t.Fatalf("comments = %q; want the retried withdrawal commented on once", got)
 	}

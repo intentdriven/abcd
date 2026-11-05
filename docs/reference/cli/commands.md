@@ -4196,7 +4196,8 @@ credentials, so run it only on a branch whose content you trust.
      gate allows it, pinned to the head: into the merge queue by its method where
      one gates the default branch (then confirmed in the queue), otherwise as the
      forge's auto-merge (a merge commit; a forge that refuses it is said). An
-     arming someone else made is left as it is. Where a merge queue gates the
+     arming someone else made at a head the gate arms is left as it is. Where a merge
+     queue gates the
      default branch, a branch that shares a commit not on it with another pull
      request queued or armed into it (a branch cut from that one's) is not armed:
      the step stops naming it, since the queue would remove this one; run abcd land
@@ -4246,6 +4247,11 @@ its own hold. A release reserved with a date more than five minutes ahead of
 this clock holds from when this checkout first saw it; one this checkout cannot
 keep that sighting for (no .abcd/.work.local/) is not counted, and a notice
 line on stderr names it.
+
+Before a push that will move the head of the branch's armed or queued pull request,
+land withdraws the arming, reads it back and says so. Where the merge gate refuses
+the local head, land withdraws this account's arming at it and refuses over another
+account's. Where it cannot make a withdrawal, it refuses, nothing pushed.
 
 Exit 0 when every step did its act or said why it stopped. Exit 2 on a refusal,
 which names what was done before it; reservations that cannot be fetched are
@@ -5949,6 +5955,27 @@ verified when the forge names the branch's owner, doubtful when it names
 someone else, and claimed when the forge cannot say or an app pushed it. A
 branch named by a holder id names no account the forge's record could
 match, so it is not asked about and its senders stay claimed.
+
+A repository that names a workflow a schedule runs on its default branch
+(status.scheduled_workflow in the .abcd/config.json at that branch's tip, the
+file's name, such as nightly.yml) has that workflow's latest scheduled verdict
+read too: after a fetch that succeeded it asks the forge (gh api) within five
+seconds for the latest completed scheduled runs and keeps what they say in the
+machine's store for the repository, which every checkout of it reads; the
+prompt hook does the same in the background when that answer is an hour old. A
+run that concluded failure, timed_out or startup_failure is named in one line
+with its URL and age, here and once to each session at a prompt, until a run
+that succeeds replaces it. A latest run that concluded cancelled, skipped or
+neutral, which is how a job past its time limit arrives, is not called a failure:
+it has a line of its own naming it and the last verdict, until a verdict
+replaces it. A green is silent while it is recent for the workflow's own cycle,
+and past that one line says no verdict has been reached. An answer that is
+missing or more than two days old, or due after a refresh that failed or, some
+hours on, kept nothing, says the state is unknown, naming the last successful
+ask; an answer that only aged through an idle night says nothing, and the next
+prompt carries what the refresh found. None of this changes an exit. With no
+such key nothing is asked, kept or shown; a key that could not name a workflow's
+file, and a config that could not be read here, each say so.
 
 An announcement stands for its life from when this checkout first fetched it,
 not by the sender's clock. One whose sender is not its branch's owner, one

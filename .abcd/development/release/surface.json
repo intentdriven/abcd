@@ -2114,6 +2114,11 @@
       "flags": []
     },
     {
+      "path": "abcd hook scheduled-refresh",
+      "hidden": false,
+      "flags": []
+    },
+    {
       "path": "abcd hook session-end",
       "hidden": false,
       "flags": []
