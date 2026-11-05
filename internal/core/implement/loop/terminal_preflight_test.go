@@ -5,9 +5,12 @@ package loop
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/core/claim"
 )
 
 // oneLane is a world held to one issue's lane.
@@ -174,5 +177,21 @@ func TestAnIssueItsJudgeNeverAnswersIsHeldBack(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(w.lines, "\n"), "holding") {
 		t.Fatalf("the run says it held the issue back: %q", w.lines)
+	}
+	st, _, err := readDrain(w.repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{eligibleIssue, secondIssue, thirdIssue} {
+		if !slices.ContainsFunc(st.Skips, func(s DrainSkip) bool { return s.Target == id }) {
+			continue
+		}
+		snap, err := claim.View(w.repo.Root(), w.clock.t)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r, ok := snap.Lookup(id); ok && r.State == claim.StateLive {
+			t.Fatalf("the issue held back keeps its claim: %+v", r)
+		}
 	}
 }
