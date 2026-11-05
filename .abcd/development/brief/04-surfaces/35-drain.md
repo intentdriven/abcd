@@ -222,13 +222,22 @@ stage's shell reads what this account can. A launch starts from an allow-list of
 variables, a proxy's credentials taken out. Its shell's home is emptied at each launch
 and holds the person's git identity and filters; Go's caches and the person's home for
 abcd's shared records are named, and any other toolchain's cache starts empty. The guard
-reads a shell line against that home and refuses a further agent. A file tool writes
-only in the stage's working tree and run directories, and neither it nor a shell line
-the guard can read writes `.abcd/`, the hooks or the Makefile unless the work declares
-them. The hooks read the rules and the guard's registry as the lane's base holds them. A
-preflight runs with the same variables, and is not run over a lane that changes the
-Makefile or `scripts/` unless the person agreed when they started the drive; one drive
-holds a checkout at a time. A credential variable the harness would bill
+reads a shell line against that home and refuses a further agent, a moved home and the
+keychain tool. A file tool, and a shell line the guard can read, write only in the
+stage's working tree and run directories, its home and temporary files, and never the
+hooks, the Makefile, abcd's configuration or a preflight receipt; other records under
+`.abcd/` are written only where the work declares them. A program the guard cannot read
+is not held to this. The hooks read the rules and the guard's registry as the lane's base
+holds them, and the away mode, the checklist and recall stand aside on a stage.
+
+The driver's own git commands run the repository's hooks, with the same variables and
+home as a stage; only the push keeps the person's credentials. So does a preflight, and
+only a receipt from a preflight the drive ran itself lands a lane. A lane at its landing
+that changes the Makefile, `scripts/` or the active hooks is handed back unless the person
+agreed when they started the drive, and an issue that names one is passed over before a
+lane opens. What the driver wrote of a run is compared after each agent's call, and a
+difference stops the drive. One drive holds a checkout at a time, and each checkout has
+its stage's home to itself. A credential variable the harness would bill
 through refuses the start, naming itd-2611011230226453, and so does a start from
 inside an agent's own session.
 
