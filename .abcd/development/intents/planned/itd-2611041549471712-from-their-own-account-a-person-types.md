@@ -1,8 +1,8 @@
 ---
 id: itd-2611041549471712
 slug: from-their-own-account-a-person-types
-spec_id: null
-kind: null
+spec_id: spc-2611041705580524
+kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: [itd-2609201925079472, itd-2611031342011261, itd-2610180912189125]
@@ -12,6 +12,8 @@ related_issues: [iss-2610121528179959]
 severity: major
 origin: researcher-authored
 production_mode: hand-written
+impact: additive
+target_release: next
 ---
 
 # A person stops every unattended run on the machine with one command
@@ -32,12 +34,12 @@ We expect a stop to take hold on every run because each run already reads a reco
 
 ## Scope Conditions
 
-- Holds for runs abcd drives on one machine: build runs, drain lanes and the terminal drive (itd-2610222215485265); a hosted runner's run is stopped by its host.
-- Holds where the person chose the shared folder at setup; a machine without one has no stop that crosses accounts, and `abcd ahoy` says so. The folder is one option of setup, never a requirement.
-- Holds on a machine no other person shares: the folder is readable by every account on it, and the ruling that admits it rests on the machine being the person's alone.
-- A stop takes hold at the next move of each run; an agent mid-call finishes that call. A process killed outright is outside the promise, and the restart path (itd-2611041549461012) treats its agents as lost.
-- The stop is the person's act from their own account; an agent's session is refused the command. Lifting it is the same person's act.
-- Holds on macOS and Linux; there is no Windows target.
+- Holds for runs abcd drives on one machine: build runs, drain lanes and the terminal drive (itd-2610222215485265); a hosted runner's run is stopped by its host. <!-- cond: cond-2611041705583688 -->
+- Holds where the person chose the shared folder at setup; a machine without one has no stop that crosses accounts, and `abcd ahoy` says so. The folder is one option of setup, never a requirement. <!-- cond: cond-2611041705589732 -->
+- Holds on a machine no other person shares: the folder is readable by every account on it, and the ruling that admits it rests on the machine being the person's alone. <!-- cond: cond-2611041705586060 -->
+- A stop takes hold at the next move of each run; an agent mid-call finishes that call. A process killed outright is outside the promise, and the restart path (itd-2611041549461012) treats its agents as lost. <!-- cond: cond-2611041705583744 -->
+- The stop is the person's act from their own account; an agent's session is refused the command. Lifting it is the same person's act. <!-- cond: cond-2611041705584558 -->
+- Holds on macOS and Linux; there is no Windows target. <!-- cond: cond-2611041705581125 -->
 
 ## Acceptance Criteria
 
