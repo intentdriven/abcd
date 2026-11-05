@@ -691,7 +691,7 @@ terminal, because a stop can only take hold at a tool-call boundary
 the same command lifts it, and the lift is recorded; the guard refuses both to an agent.
 The account's home is the account database's, whatever the environment says. With a shared folder chosen at setup in each account
 ([`01-ahoy.md`](01-ahoy.md)) the stop is
-`<folder>/abcd-stop/abcd-stop.json`, in a directory of the person's own, on a machine no other person shares
+`<folder>/abcd-stop-<number>/abcd-stop.json`, in a directory of the person's own, named by their account's number, on a machine no other person shares
 (dcn-2611041550139264); without one it is `~/.abcd.noindex/stop.json`, which reaches
 only that account's runs. The file in the folder is the one file outside abcd's
 owner-only rule. It is a request to stop and nothing more: judged on one descriptor,
@@ -713,10 +713,11 @@ settled, a save that failed holding its lane, the run's reservation is released 
 A run fixes the shared folder and the person at its start, in its control record, and
 reads that folder, the one the setting names and the platform's shared folder before each
 move, the last only for this account, the one the setting names or the one the run started
-under: what any other account leaves there is neither a stop nor a refusal, and a lift names
-a stop it cannot reach. A step under a stop claims no driver, so the agents are judged by the
+under: what any other account leaves there is not honoured and is said, on each step's answer, the
+listing and the setup board, and a lift names a stop it cannot reach. A step under a stop claims no driver, so the agents are judged by the
 driver they ran under. A setting that
-cannot be read, or that has gone or changed during the run, holds the run: it moves
+cannot be read, that has gone or changed during the run, or a folder the run should read
+whose stop cannot be looked at, holds the run: it moves
 nothing and lets nothing go until the setting is put back, and only a read that saw
 clearly and found no stop counts as a lift, or lets a run be taken over. A home that
 cannot be found holds the run the same way. The chosen folder does not move while a stop

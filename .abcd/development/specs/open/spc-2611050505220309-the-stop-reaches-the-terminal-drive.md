@@ -24,7 +24,7 @@ production_mode: hand-written
    - needs: none
    - packages: .abcd/development/decisions/adrs
    - tests: none
-   The decomposition routes the rule (a stop is a recorded state; an agent's session may never lift it; one folder is the one file outside the owner-only rule) to an ADR and a brief invariant, whose acceptance is the person's act. The code holds the rule; adr-2611050740453233 records it, proposed, and what remains of this step is its acceptance and the invariant.
+   The decomposition routes the rule (a stop is a recorded state; lifting it is the person's, by rule; one folder is the one file outside the owner-only rule) to an ADR and a brief invariant, whose acceptance is the person's act. The code holds the rule; adr-2611050740453233 records it, proposed, and what remains of this step is its acceptance and the invariant.
 2. **A stop over a private network or a cloud adapter** (AFTER)
    - priority: AFTER
    - login: none

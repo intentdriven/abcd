@@ -1489,8 +1489,10 @@ from: `abcd ahoy shared-folder /Users/Shared --person <account>`.
 The folder must be a real directory owned by root or the person, and one other
 accounts can write must carry the sticky bit; each parent above it is held to the same
 rule. The choice does not move while a stop stands in the folder: lift it first. `/Users/Shared` on macOS and `/var/tmp`
-on Linux both qualify. In the person's own account the verb makes the `abcd-stop`
-directory the stop lives in.
+on Linux both qualify. In the person's own account the verb makes the directory
+the stop lives in, named by their account's number. On Linux an age cleaner may remove
+what has stood in a temporary tree for weeks, a stop included (`systemd-tmpfiles` ages
+`/var/tmp` by default); a folder an administrator makes elsewhere avoids that.
 
 ## `--providers` and `connect` — the optional model provider
 

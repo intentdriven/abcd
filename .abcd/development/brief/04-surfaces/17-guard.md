@@ -204,13 +204,9 @@ program name the same way: allowing one delete (`abcd-guard-allow-any-program`),
 flipping a source-ledger line (`abcd-source-ledger-flip-any-program`, and
 `abcd-source-ledger-flip-retired-any-program` in the retired spelling), setting
 or lifting a stop (`abcd-implement-stop-any-program`) and choosing the folder a
-stop is read from (`abcd-ahoy-shared-folder-any-program`). A shell write, move or
-removal of the stop file or that setting is refused as
-`implement-stop-store-write`, since removing a stop is lifting it, and so is a
-removal of the whole of abcd's home folder, a glob in it that reaches either file,
-or a removal or glob over the folder that holds the stop's directory; the host's
-file tools are denied the same two files. Names are matched as a case-folding volume
-resolves them. An
+stop is read from (`abcd-ahoy-shared-folder-any-program`). Writes, moves and
+removals of the stop's files are refused as `implement-stop-store-write`, since
+removing a stop is lifting it. The guard and the verbs hold against an agent acting by mistake; a stop binds an agent only where an operating-system account separates them. An
 approving review posted on the forge,
 which the gate also counts as an approval, is refused the same way in every
 mode, as `forge-review-approve`: an approving `gh pr review`; a `gh api` call to the

@@ -26,16 +26,16 @@ We will make a stop recorded state that a person sets, and we will admit one sha
 
 **A stop is recorded state.** The person's own command writes a stop file, and every run reads it before each move: no lane opens, no stage is handed out and no agent starts. An agent in a call finishes it and its receipt is collected. With no agent left in a lane, the lane's uncommitted work is saved aside. Only then are the run's claims released and the run marked halted. A save that fails holds the lane and its claims.
 
-**The person's command sets and lifts it.** Setting a stop, lifting it and choosing the folder are the person's acts. The guard refuses each to an agent under any program name, refuses a write to the stop file or the setting through the shell or the host's file tools, and the verbs refuse a caller with no terminal or under a host session. An agent's part in a stop is to finish its call, hand back its receipt and end. A lift is recorded. A run that let its claims go stays halted after the lift until a take-over reserves the work again.
+**The person's command sets and lifts it.** Setting a stop, lifting it and choosing the folder are the person's acts. The rule is that an agent does not take them: the guard refuses each, and refuses writes, moves and removals of the stop's files, and the verbs refuse a caller with no terminal or under a host session. The guard and the verbs hold against an agent acting by mistake; a stop binds an agent only where an operating-system account separates them. An agent's part in a stop is to finish its call, hand back its receipt and end. A lift is recorded. A run that let its claims go stays halted after the lift until a take-over reserves the work again.
 
 **One folder is the exception to the owner-only rule.** The reason is the two seats: the stop has to cross from one account to another on one machine, and a local file is the one carrier that needs no network and no service. The exception is as narrow as that reason:
 
 - The folder is chosen at setup, in each account that takes part, and declining leaves every other part of abcd working. Without it a stop lives in the account's own home and reaches only that account's runs.
-- The folder is a real directory owned by root or the person, and so is each parent above it; one others can write carries the sticky bit. The stop sits in a directory of the person's own inside it.
+- The folder is a real directory owned by root or the person, and so is each parent above it; one others can write carries the sticky bit. The stop sits in a directory of the person's own inside it, named by their account's number. A stop any other account leaves there is not honoured, and each step's answer, the listing and the setup board say so.
 - The file is a request to stop and nothing more. It is judged on one descriptor: a regular file, within a small bound, owned by the account named at setup. No byte of it is read, and who set it and when come from the descriptor.
 - Every other store keeps the owner-only rule.
 
-**A run holds to what it started under.** A run fixes the folder and the person at its start and reads that folder before each move. A setting that has gone or changed during the run, or a home that cannot be found, holds the run with nothing let go. Only a read that saw clearly and found no stop counts as a lift.
+**A run holds to what it started under.** A run fixes the folder and the person at its start and reads that folder before each move. A setting that has gone or changed during the run, a home that cannot be found, or a folder the run should read whose stop cannot be looked at holds the run with nothing let go. Only a read that saw clearly and found no stop counts as a lift.
 
 ## Alternatives Considered
 
@@ -51,4 +51,5 @@ We will make a stop recorded state that a person sets, and we will admit one sha
 - A run that took a stop needs a take-over before it steps again, so nothing resumes by itself when a stop lifts.
 - A person who moves the shared folder lifts the stop first, since the choice does not move while a stop stands in it.
 - Setup gains one option, and the folder's rule is checked on every read.
+- A folder under an age cleaner's care can lose a long-standing stop, so the setup's page says which folders those are.
 - A brief invariant states this rule once this record is accepted, which is the person's act.

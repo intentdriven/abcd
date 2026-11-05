@@ -869,8 +869,8 @@ every refusal as it is.
 
 ## Stop every run, and take a run over
 
-**`abcd implement stop` is the person's, typed from their own account, and an agent
-never runs it.** The guard refuses it, its `--lift`, and any write to the stop file,
+**`abcd implement stop` is the person's, typed from their own account: leave it to
+them.** The guard and the verbs hold against an agent acting by mistake; a stop binds an agent only where an operating-system account separates them. The guard refuses it, its `--lift`, and any write to the stop file,
 through the shell or the host's file tools; the verb itself refuses a caller with no
 terminal or under a host session. Tell the person why you
 believe the runs should stop or go on, and leave the command to them. A stop reads
@@ -883,15 +883,17 @@ is released, so a peer may take the work, and the day's page is written to the
 shared folder. A save that fails holds the lane and the claims. A stop file any
 other account wrote, a symlink or an oversized file is no stop, and each step's answer names it.
 A run fixes the shared folder at its start and reads it before each move, with the
-platform's shared folder for the account it expects. A setting that cannot be read, or that has gone or changed during the run,
+platform's shared folder for the account it expects. A setting that cannot be read, that has gone or changed during the run, or a folder the run
+should read whose stop cannot be looked at,
 holds the run at the stage `stop`, exit 3, with nothing let go: tell the person, who puts it back.
 A home that cannot be found holds it the same way. A take-over needs a read that saw clearly.
 A renewal that falls due under a stop settles the run first; with no agent left in its call
 and its work saved it no longer renews, and work a save could not take keeps the claim. A
-lift names any stop it cannot reach.
+lift names any stop it cannot reach. A stop another account left is not honoured, and each
+step's answer and the listing name it.
 
-The person's two lines, never yours to run: `abcd implement stop` stops every run this
-account's stop reaches, and `abcd implement stop --lift` lifts it.
+The person's two lines, to leave to them: `abcd implement stop` stops the runs of each
+account that chose this folder, and `abcd implement stop --lift` lifts it.
 
 Every entry to a move makes the one check, so a driver that steps through the loop
 takes the stop without asking for it.

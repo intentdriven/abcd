@@ -65,7 +65,7 @@ Hand-run four-piece table, 2026-11-04, from the scratch draft that held the stop
 |---|---|---|
 | the resume listing, the live-driver record, collect-before-launch, saved-aside work, the drain's judging entry | capability | this intent |
 | one command stops every run on the machine at its next move, lifted only by the person | capability | itd-2611041549471712, the stop switch |
-| a stop is a recorded state read at each move, never a signal to a terminal; an agent's session may never lift it | trust rule | an ADR owed with the stop switch, extending adr-2610240850193281 (the grant permits, this withdraws) and dcn-2611031722512037; a brief invariant when accepted; not filed here |
+| a stop is a recorded state read at each move, never a signal to a terminal; lifting it is the person's, by rule | trust rule | an ADR owed with the stop switch, extending adr-2610240850193281 (the grant permits, this withdraws) and dcn-2611031722512037; a brief invariant when accepted; not filed here |
 | a run's account of itself lives in abcd's files, never in a session's memory | stance | a candidate principle, for the product thinker to confirm; not filed |
 | the driver fields, the resume's output | plumbing | the brief's loop chapter, through this intent's spec |
 
