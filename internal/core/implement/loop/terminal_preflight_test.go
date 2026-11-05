@@ -25,7 +25,7 @@ func oneLane(t *testing.T, w *terminalWorld) TerminalOptions {
 // ledger goes on.
 func TestAFailingPreflightGoesToTheStuckCheck(t *testing.T) {
 	w := newTerminalWorld(t)
-	w.needsPreflight = true
+	w.noReceipt = true
 	w.preflight = errors.New("exit status 2")
 	o := oneLane(t, w)
 	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
@@ -143,6 +143,12 @@ func TestARefusalNothingLogsHasADeadline(t *testing.T) {
 		}
 	}
 	o := oneLane(t, w)
+	// Each wait moves the clock on, so the deadline comes within a few moves.
+	sleep := o.Sleep
+	o.Sleep = func(ctx context.Context, d time.Duration) {
+		sleep(ctx, d)
+		w.clock.t = w.clock.t.Add(30 * time.Minute)
+	}
 	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
 	if err != nil {
 		t.Fatal(err)
