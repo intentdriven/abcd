@@ -579,6 +579,8 @@ hand-back and moves on to the next issue unattended. No verb ends a drain
 early, so a person who interrupts a drain and carries on by
 hand sees the prompts again two hours after it last moved.
 
+A drive's moves print no such line: it starts from a plain terminal. Otherwise:
+
 **A session whose setting reads as off a profile is warned while the away mode
 holds.** While `abcd mode autonomous` holds, or its record cannot be read, every
 move of a drain, not only the first, prints, after the move, one line on stderr

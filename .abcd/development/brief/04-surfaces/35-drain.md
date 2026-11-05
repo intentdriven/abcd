@@ -818,6 +818,9 @@ says so once, on stderr.
 
 ## A session off a profile
 
+A drive's moves print no such line: it starts from a plain terminal, not from a session
+of the person's (dcn-2611050931219213). Otherwise:
+
 While the away mode holds, every move of a drain prints the off-profile line after
 the move, on the terms [`26-mode.md`](26-mode.md#a-session-off-a-profile) sets out
 (dcn-2611041550129278). Every move, rather than the first as with the approval
