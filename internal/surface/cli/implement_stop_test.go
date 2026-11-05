@@ -23,10 +23,9 @@ import (
 func stopCLI(t *testing.T, home string, terminal bool, args ...string) (string, string, int) {
 	t.Helper()
 	t.Setenv("HOME", home)
-	old, oldReading := personAtTerminal, hostSessionReading
-	personAtTerminal = func() bool { return terminal }
-	hostSessionReading = func() hostReading { return noHostSession }
-	t.Cleanup(func() { personAtTerminal, hostSessionReading = old, oldReading })
+	old := readCaller
+	readCaller = func() caller { return caller{terminal: terminal} }
+	defer func() { readCaller = old }()
 	var out, errb bytes.Buffer
 	code := Run(args, &out, &errb)
 	return out.String(), errb.String(), code
@@ -125,23 +124,130 @@ func TestImplementStopSaysWhenItDidNotTakeHold(t *testing.T) {
 // TestAHostSessionIsNoPerson: a process under a host session is no person.
 func TestAHostSessionIsNoPerson(t *testing.T) {
 	t.Setenv(hostSessionIDEnv, "a-session")
-	if hostSessionReading() != hostSessionFound {
+	if hostSessionReading().state != hostSessionFound {
 		t.Fatal("a process with a host session's id reads as a person")
 	}
+}
+
+// lookedCLI runs a verb at a terminal with each look for a host session answered in turn,
+// the last answer standing; it returns how many looks were taken.
+func lookedCLI(t *testing.T, home string, looks []hostLook, args ...string) (string, int, int) {
+	t.Helper()
+	t.Setenv("HOME", home)
+	oldTerminal, oldReading := stdinIsTerminal, hostSessionReading
+	taken := 0
+	stdinIsTerminal = func() bool { return true }
+	hostSessionReading = func() hostLook {
+		l := looks[min(taken, len(looks)-1)]
+		taken++
+		return l
+	}
+	t.Cleanup(func() { stdinIsTerminal, hostSessionReading = oldTerminal, oldReading })
+	var out, errb bytes.Buffer
+	code := Run(args, &out, &errb)
+	return errb.String(), code, taken
 }
 
 // cannotTellCLI runs a verb at a terminal where the look for a host session cannot be
 // finished.
 func cannotTellCLI(t *testing.T, home string, args ...string) (string, int) {
 	t.Helper()
-	t.Setenv("HOME", home)
-	oldTerminal, oldReading := stdinIsTerminal, hostSessionReading
-	stdinIsTerminal = func() bool { return true }
-	hostSessionReading = func() hostReading { return hostSessionUnknown }
-	t.Cleanup(func() { stdinIsTerminal, hostSessionReading = oldTerminal, oldReading })
-	var out, errb bytes.Buffer
-	code := Run(args, &out, &errb)
-	return errb.String(), code
+	stderr, code, _ := lookedCLI(t, home, []hostLook{{state: hostSessionUnknown, why: "a reason: run it again"}}, args...)
+	return stderr, code
+}
+
+// TestAnActStandsOnOneReading: a loaded machine can answer one look and not the next, so
+// an act is judged by a single look, and a later one cannot let it through.
+func TestAnActStandsOnOneReading(t *testing.T) {
+	unknownThenFound := []hostLook{{state: hostSessionUnknown, why: "a reason: run it again"}, {state: hostSessionFound}}
+	home := t.TempDir()
+	if _, stderr, code := stopCLI(t, home, true, "implement", "stop"); code != 0 {
+		t.Fatalf("the stop: %d %q", code, stderr)
+	}
+	stderr, code, taken := lookedCLI(t, home, unknownThenFound, "implement", "stop", "--lift")
+	if code != 2 || taken != 1 || !strings.Contains(stderr, "could not be told") {
+		t.Fatalf("the lift: %d, %d looks, %q", code, taken, stderr)
+	}
+	if r := runstop.ReadPinned(home, nil); r.Stop == nil {
+		t.Fatalf("the refused lift took the stop away: %+v", r)
+	}
+	stderr, code, taken = lookedCLI(t, home, unknownThenFound, "ahoy", "shared-folder", t.TempDir())
+	if code != 2 || taken != 1 || !strings.Contains(stderr, "could not be told") {
+		t.Fatalf("the choice: %d, %d looks, %q", code, taken, stderr)
+	}
+	stderr, code, taken = lookedCLI(t, t.TempDir(), []hostLook{{state: noHostSession}}, "implement", "stop")
+	if code != 0 || taken != 1 {
+		t.Fatalf("the stop: %d, %d looks, %q", code, taken, stderr)
+	}
+}
+
+// TestAMarkersFolderThatCannotBeUsedIsNamed: running it again clears nothing there, so the
+// refusal says which folder to fix.
+func TestAMarkersFolderThatCannotBeUsedIsNamed(t *testing.T) {
+	home := t.TempDir()
+	if _, stderr, code := stopCLI(t, home, true, "implement", "stop"); code != 0 {
+		t.Fatalf("the stop: %d %q", code, stderr)
+	}
+	p := abcdhome.Path(home, "occupancy")
+	if err := os.WriteFile(p, []byte("not a folder\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tab := sessionname.Table{ReadAt: time.Now(), Procs: []machineload.Proc{{PID: 500, PPID: 1, Name: "zsh", Age: time.Hour}}}
+	look := hostSessionAbove(home, tab, 500)
+	stderr, code, _ := lookedCLI(t, home, []hostLook{look}, "implement", "stop", "--lift")
+	if code != 2 || !strings.Contains(stderr, abcdhome.Display("occupancy")) || !strings.Contains(stderr, "fix that folder") {
+		t.Fatalf("the lift: %d %q", code, stderr)
+	}
+}
+
+// TestAWalkCutShortIsReadOnce: a parent gone while the table was read leaves a gap that
+// moves, which tells nothing; a gap in one place is a process hidden from this account,
+// which must not hold a person's lift for ever. A real chain lifts.
+func TestAWalkCutShortIsReadOnce(t *testing.T) {
+	proc := func(pid, ppid int, name string) machineload.Proc {
+		return machineload.Proc{PID: pid, PPID: ppid, Name: name, Age: time.Hour}
+	}
+	table := func(procs ...machineload.Proc) sessionname.Table {
+		return sessionname.Table{ReadAt: time.Now(), Procs: procs}
+	}
+	host := proc(500, 1, "host")
+	for _, c := range []struct {
+		name   string
+		from   int
+		tables []sessionname.Table
+		want   hostReading
+		reads  int
+	}{
+		{"through a root-owned login", 700, []sessionname.Table{table(proc(700, 600, "zsh"), proc(600, 500, "login"), proc(500, 1, "terminal"))}, noHostSession, 1},
+		{"through a tmux server", 700, []sessionname.Table{table(proc(700, 600, "zsh"), proc(600, 1, "tmux"))}, noHostSession, 1},
+		{"a container's first process", 1, []sessionname.Table{table(proc(1, 0, "bash"))}, noHostSession, 1},
+		{"a parent outside the namespace", 700, []sessionname.Table{table(proc(700, 0, "bash"))}, noHostSession, 1},
+		{"a hidden ancestor", 700, []sessionname.Table{table(proc(700, 600, "zsh")), table(proc(700, 600, "zsh"))}, noHostSession, 2},
+		{"a parent that ended under the read", 700, []sessionname.Table{table(proc(700, 600, "zsh"), host), table(proc(700, 1, "zsh"), host)}, hostSessionUnknown, 2},
+		{"a gap that moved", 700, []sessionname.Table{table(proc(700, 600, "zsh")), table(proc(700, 650, "zsh"))}, hostSessionUnknown, 2},
+		{"a from the table lacks", 700, []sessionname.Table{table(host)}, hostSessionUnknown, 1},
+		{"a chain with no end", 700, []sessionname.Table{table(proc(700, 600, "zsh"), proc(600, 700, "zsh"))}, hostSessionUnknown, 1},
+	} {
+		reads := 0
+		look := hostSessionLook(t.TempDir(), func() (sessionname.Table, error) {
+			tab := c.tables[min(reads, len(c.tables)-1)]
+			reads++
+			return tab, nil
+		}, c.from)
+		if look.state != c.want || reads != c.reads {
+			t.Errorf("%s: %v after %d reads, want %v after %d (%q)", c.name, look.state, reads, c.want, c.reads, look.why)
+		}
+		if look.state == hostSessionUnknown && !strings.Contains(look.why, "run it again") {
+			t.Errorf("%s: the reason %q names no way on", c.name, look.why)
+		}
+	}
+	reads := 0
+	if look := hostSessionLook(t.TempDir(), func() (sessionname.Table, error) {
+		reads++
+		return sessionname.Table{}, errors.New("no table")
+	}, 700); look.state != hostSessionUnknown || reads != 1 {
+		t.Errorf("no table: %v after %d reads", look.state, reads)
+	}
 }
 
 // TestAStopIsSetWhereASessionCannotBeTold: a stop has to work on a machine too loaded to
@@ -192,10 +298,10 @@ func TestAFolderIsNotChosenWhereASessionCannotBeTold(t *testing.T) {
 // markers that cannot be read, tell nothing; markers no one has written yet say none.
 func TestAHostSessionLookThatCannotFinishSaysSo(t *testing.T) {
 	tab := sessionname.Table{ReadAt: time.Now(), Procs: []machineload.Proc{{PID: 500, PPID: 1, Name: "zsh", Age: time.Hour}}}
-	if got := hostSessionAbove(t.TempDir(), tab, 500); got != noHostSession {
+	if got := hostSessionAbove(t.TempDir(), tab, 500); got.state != noHostSession {
 		t.Fatalf("no markers yet: %v", got)
 	}
-	if got := hostSessionAbove(t.TempDir(), tab, 999); got != hostSessionUnknown {
+	if got := hostSessionAbove(t.TempDir(), tab, 999); got.state != hostSessionUnknown {
 		t.Fatalf("a process the table lacks: %v", got)
 	}
 	home := t.TempDir()
@@ -206,7 +312,7 @@ func TestAHostSessionLookThatCannotFinishSaysSo(t *testing.T) {
 	if err := os.WriteFile(p, []byte("not a folder\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got := hostSessionAbove(home, tab, 500); got != hostSessionUnknown {
+	if got := hostSessionAbove(home, tab, 500); got.state != hostSessionUnknown {
 		t.Fatalf("markers that cannot be read: %v", got)
 	}
 }
@@ -225,16 +331,16 @@ func TestAnyAncestorsHostSessionCounts(t *testing.T) {
 	if err := occupancy.Note(home, "s-one", t.TempDir(), host, tab); err != nil {
 		t.Fatal(err)
 	}
-	if hostSessionAbove(home, tab, 700) != hostSessionFound {
+	if hostSessionAbove(home, tab, 700).state != hostSessionFound {
 		t.Fatal("a process with a host session above it reads as a person")
 	}
 	later := tab
 	later.ReadAt = now.Add(1100 * time.Millisecond)
 	later.Procs = later.Procs[:1]
-	if hostSessionAbove(home, later, 500) != hostSessionFound {
+	if hostSessionAbove(home, later, 500).state != hostSessionFound {
 		t.Fatal("a later reading of the host's start reads as no session")
 	}
-	if hostSessionAbove(t.TempDir(), tab, 700) != noHostSession {
+	if hostSessionAbove(t.TempDir(), tab, 700).state != noHostSession {
 		t.Fatal("a terminal with no session above it reads as a host session")
 	}
 }
@@ -317,12 +423,12 @@ func TestAPersonAtTheTerminalIsNoHostSession(t *testing.T) {
 	t.Cleanup(func() { stdinIsTerminal = old })
 	stdinIsTerminal = func() bool { return true }
 	t.Setenv(hostSessionIDEnv, "a-session")
-	if personAtTerminal() {
+	if readCaller().person() {
 		t.Fatal("a terminal under a host session reads as a person")
 	}
 	stdinIsTerminal = func() bool { return false }
 	t.Setenv(hostSessionIDEnv, "")
-	if personAtTerminal() {
+	if readCaller().person() {
 		t.Fatal("no terminal reads as a person")
 	}
 }

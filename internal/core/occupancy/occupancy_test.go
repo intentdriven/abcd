@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -440,7 +441,8 @@ func TestReadingASessionTellsNoneFromUnreadable(t *testing.T) {
 	if err := os.WriteFile(p, []byte("not a folder\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if s, err := ReadSessionOn(home, host); s != "" || err == nil {
+	s, err := ReadSessionOn(home, host)
+	if s != "" || err == nil || !strings.Contains(err.Error(), abcdhome.Display(dirLeaf)) {
 		t.Fatalf("a folder that cannot be read: %q, %v", s, err)
 	}
 	if s := SessionOn(home, host); s != "" {

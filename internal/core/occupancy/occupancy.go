@@ -187,14 +187,20 @@ func SessionOn(home string, host sessionname.Host) string {
 // ReadSessionOn is SessionOn for a caller that must know the difference: an error says
 // the markers cannot be read, and "" with none says no marker names host.
 func ReadSessionOn(home string, host sessionname.Host) (string, error) {
+	cannot := func(err error) error {
+		return fmt.Errorf("the session markers in %s cannot be read: %w", abcdhome.Display(dirLeaf), err)
+	}
 	dir, err := open(home, false)
-	if err != nil || dir == nil {
-		return "", err
+	if err != nil {
+		return "", cannot(err)
+	}
+	if dir == nil {
+		return "", nil
 	}
 	defer dir.Close()
 	all, err := readAll(dir, home)
 	if err != nil {
-		return "", err
+		return "", cannot(err)
 	}
 	for _, f := range all {
 		if sessionname.SameHost(f.m.host(), host) {

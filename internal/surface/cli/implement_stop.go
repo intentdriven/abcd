@@ -23,10 +23,6 @@ import (
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
-// personAtTerminal reports whether a person could be typing this command: a
-// terminal, and no host session found above it. A test stands it in.
-var personAtTerminal = func() bool { return stdinIsTerminal() && hostSessionReading() != hostSessionFound }
-
 // stdinIsTerminal reports whether standard input is a terminal; a test stands it in.
 var stdinIsTerminal = func() bool { return term.IsTerminal(os.Stdin) }
 
@@ -34,7 +30,7 @@ var stdinIsTerminal = func() bool { return term.IsTerminal(os.Stdin) }
 type hostReading int
 
 const (
-	// noHostSession: every process above was read, and none is a host session.
+	// noHostSession: the processes above were read, and none is a host session.
 	noHostSession hostReading = iota
 	// hostSessionFound: this process runs under a host session.
 	hostSessionFound
@@ -42,51 +38,109 @@ const (
 	hostSessionUnknown
 )
 
-// cannotTellHostSession is the refusal of an act that opens what a stop or its folder
-// closes, where the look above it could not be finished.
-const cannotTellHostSession = "whether this runs under a host session could not be told, on a machine that may be too loaded to read its processes"
+// hostLook is one look above this process: what it says, why it could not tell, with
+// what clears that, and the process the walk stopped at where the table did not hold one.
+type hostLook struct {
+	state hostReading
+	why   string
+	gap   int
+}
+
+// caller is who runs a person's act, read once for that act: a second read could say
+// something else, and an act must stand on the reading it was judged by.
+type caller struct {
+	terminal bool
+	look     hostLook
+}
+
+// person reports whether a person could be typing this command: a terminal, and no host
+// session found above it. Each act decides what an unknown means: setting a stop goes
+// ahead, since it has to work on a machine too loaded to read its processes and costs
+// only pace; a lift and choosing the folder are refused (cannotTell).
+func (c caller) person() bool { return c.terminal && c.look.state != hostSessionFound }
+
+// readCaller reads the caller for one act; a test stands it in.
+var readCaller = func() caller {
+	if !stdinIsTerminal() {
+		return caller{}
+	}
+	return caller{terminal: true, look: hostSessionReading()}
+}
+
+// cannotTell is the refusal of an act that opens what a stop or its folder closes, where
+// the look above it could not be finished.
+func cannotTell(prefix string, look hostLook, nothing string) error {
+	return &exitError{Code: 2, Msg: prefix + ": whether this runs under a host session could not be told: " +
+		termsafe.Sanitize(fsutil.RedactHome(look.why)) + ": " + nothing}
+}
 
 // hostSessionReading reads whether this process runs under a host session, by its
-// environment or by the marker its host's session-start hook wrote. Each act decides
-// what an unknown means: setting a stop goes ahead, since it has to work on a machine
-// too loaded to read its processes and costs only pace; a lift and choosing the folder
-// are refused. A test stands it in.
-var hostSessionReading = func() hostReading {
+// environment or by the marker its host's session-start hook wrote. A test stands it in.
+var hostSessionReading = func() hostLook {
 	if os.Getenv(hostSessionIDEnv) != "" {
-		return hostSessionFound
+		return hostLook{state: hostSessionFound}
 	}
 	m := sessionname.Live()
 	home, err := runstop.AccountHome()
 	if err != nil || home == "" {
-		return hostSessionUnknown
+		return hostLook{state: hostSessionUnknown, why: "this account's home cannot be found"}
 	}
-	tab, err := m.ReadTable()
-	if err != nil {
-		return hostSessionUnknown
-	}
-	return hostSessionAbove(home, tab, m.From)
+	return hostSessionLook(home, m.ReadTable, m.From)
 }
 
-// hostSessionAbove says whether any process above from is a host session: every ancestor
-// is asked. A process the table does not hold, or markers that cannot be read, tell
-// nothing, unless another ancestor is found to be one.
-func hostSessionAbove(home string, tab sessionname.Table, from int) hostReading {
-	hosts := sessionname.Lineage(tab, from)
-	reading := noHostSession
-	if len(hosts) == 0 {
-		reading = hostSessionUnknown
+// hostSessionLook looks above from. A walk the table cut short has it read once more: a
+// process that ended has its children moved to another parent at once, so a gap in the
+// same place twice is a process hidden from this account, as a root-owned one can be, and
+// the walk reads as far as it can see. A stop no one could ever lift is worse than what
+// stands above a hidden process. A gap that moved is a chain that changed under the read,
+// and tells nothing until it settles.
+func hostSessionLook(home string, read func() (sessionname.Table, error), from int) hostLook {
+	const unreadable = "the process table could not be read, as on a machine too loaded to run it: run it again"
+	tab, err := read()
+	if err != nil {
+		return hostLook{state: hostSessionUnknown, why: unreadable}
 	}
-	for _, h := range hosts {
+	first := hostSessionAbove(home, tab, from)
+	if first.gap == 0 || first.state == hostSessionFound {
+		return first
+	}
+	tab, err = read()
+	if err != nil {
+		return hostLook{state: hostSessionUnknown, why: unreadable}
+	}
+	again := hostSessionAbove(home, tab, from)
+	if again.state != hostSessionFound && again.gap != first.gap {
+		return hostLook{state: hostSessionUnknown, why: "the processes above this one changed while they were read: run it again"}
+	}
+	return again
+}
+
+// hostSessionAbove says whether any process above from in this table is a host session:
+// every ancestor is asked. Only a walk that went all the way up, or started at the first
+// process, as a container's shell does, can say none outright. A from the table does not
+// hold, or a chain with no end, tells nothing; nor do markers that cannot be read, unless
+// another ancestor is found to be one.
+func hostSessionAbove(home string, tab sessionname.Table, from int) hostLook {
+	walk := sessionname.Ancestors(tab, from)
+	look := hostLook{gap: walk.Missing}
+	switch {
+	case walk.Finished:
+	case walk.Missing == 0:
+		look = hostLook{state: hostSessionUnknown, why: "the processes above this one do not end at the machine's first process: run it again"}
+	case len(walk.Hosts) == 0:
+		look = hostLook{state: hostSessionUnknown, why: "this command's parent is not in the process table: run it again"}
+	}
+	for _, h := range walk.Hosts {
 		s, err := occupancy.ReadSessionOn(home, h)
 		if err != nil {
-			reading = hostSessionUnknown
+			look.state, look.why = hostSessionUnknown, err.Error()+"; fix that folder, then run it again"
 			continue
 		}
 		if s != "" {
-			return hostSessionFound
+			return hostLook{state: hostSessionFound}
 		}
 	}
-	return reading
+	return look
 }
 
 // stopOutput is the --json shape of `implement stop`.
@@ -140,7 +194,8 @@ func newImplementStopCommand(asJSON *bool) *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			const prefix = "abcd implement stop"
-			if !personAtTerminal() {
+			c := readCaller()
+			if !c.person() {
 				return &exitError{Code: 2, Msg: prefix + ": this is the person's own act, typed at a terminal, and this caller has none: nothing was changed"}
 			}
 			home, err := stopHome(prefix)
@@ -149,8 +204,8 @@ func newImplementStopCommand(asJSON *bool) *cobra.Command {
 			}
 			now := time.Now()
 			if lift {
-				if hostSessionReading() == hostSessionUnknown {
-					return &exitError{Code: 2, Msg: prefix + ": " + cannotTellHostSession + ": nothing was changed; run it again"}
+				if c.look.state == hostSessionUnknown {
+					return cannotTell(prefix, c.look, "nothing was changed")
 				}
 				lifted, err := runstop.Lift(home, now)
 				if err != nil {
@@ -237,11 +292,12 @@ func newAhoySharedFolderCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			if len(args) == 1 {
-				if !personAtTerminal() {
+				c := readCaller()
+				if !c.person() {
 					return &exitError{Code: 2, Msg: prefix + ": choosing the folder is the person's own act, typed at a terminal, and this caller has none: nothing was written"}
 				}
-				if hostSessionReading() == hostSessionUnknown {
-					return &exitError{Code: 2, Msg: prefix + ": " + cannotTellHostSession + ": nothing was written; run it again"}
+				if c.look.state == hostSessionUnknown {
+					return cannotTell(prefix, c.look, "nothing was written")
 				}
 				if _, err := runstop.WriteSetting(home, args[0], person); err != nil {
 					return &exitError{Code: 2, Msg: prefix + ": " + termsafe.Sanitize(fsutil.RedactHome(err.Error())) + ": nothing was written"}
