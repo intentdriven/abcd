@@ -3406,7 +3406,7 @@ the hand-back and each held lane. --release <lane-id> lands a held lane as it is
 leaves its step unlanded. Either is refused, changing nothing,
 for a lane that is not held or while any lane still has work. --discard also takes
 an issue run's lane a drain handed back as stuck or closed, and ends that run, and
-any lane of a run a drive stopped on because its state changed.
+any lane of a run a drive stopped on because its state changed or could not be read.
 --restart <lane-id> restarts a lane whose implementer died, or yielded on a network
 failure (--yielded passes its `NETWORK: <cmd>` line), as a fresh agent from the lane's
 last commit: everything left uncommitted is saved aside under the lane's directory

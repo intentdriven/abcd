@@ -602,7 +602,7 @@ still has work. `--discard` also takes an issue run's lane a drain handed back
 as `stuck` or `closed` (`/abcd:drain`): its worktree and branch are removed, its pull
 request closed if it opened one, and the run is over, so no run directory is
 removed by hand. It takes any lane of a run a drive stopped on because its state
-changed too, finding the pull request by the lane's branch; if your own
+changed or could not be read too, finding the pull request by the lane's branch; if your own
 `implement step` caused that stop, remove the file the message names instead. An issue run logs each refused step on its lane, until its pull
 request is armed or left open (`refused` in its state: the stage, the check, the reason and a count), which the drain
 reads; an intent's run refuses as before, writing nothing. The run stays in progress, so `build next` passes over its

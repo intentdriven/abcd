@@ -123,8 +123,9 @@ func TestDiscardingTheRunLiftsTheStop(t *testing.T) {
 	}
 }
 
-// TestAnUnreadStateStopsTheDriveWithNoMark: a failed read says nothing of a change.
-func TestAnUnreadStateStopsTheDriveWithNoMark(t *testing.T) {
+// TestAStateStillUnreadStopsTheDriveWithAMark: a changed state can hide behind a read that
+// keeps failing, so it is kept against the run as a change is.
+func TestAStateStillUnreadStopsTheDriveWithAMark(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	w := newTerminalWorld(t, "shape", "unreadstate")
 	var path string
@@ -147,15 +148,15 @@ func TestAnUnreadStateStopsTheDriveWithNoMark(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Ended != TerminalWall || !strings.Contains(res.Why, "could not be read") {
-		t.Fatalf("the drive stops, saying so: %+v", res)
+	if res.Ended != TerminalWall || !strings.Contains(res.Why, "could not be read") || !strings.Contains(res.Why, "If you know what caused it") {
+		t.Fatalf("the drive stops, saying so and how to clear it: %+v", res)
 	}
 	st, _, err := readDrain(w.repo.Root())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if driveStopped(st.Lanes[0].RunID) {
-		t.Fatal("a failed read is kept against the run")
+	if !driveStopped(st.Lanes[0].RunID) {
+		t.Fatal("what the read could not show is not kept against the run")
 	}
 }
 
@@ -181,6 +182,9 @@ func TestAStateReadRetriesThroughAPassingFailure(t *testing.T) {
 	if err != nil || after != before {
 		t.Fatalf("the read recovers to the same state: %v", err)
 	}
+	if driveStopped(id) {
+		t.Fatal("a failure that passed is kept against the run")
+	}
 }
 
 // TestALookThatFailsRefusesTheRun: only a stop known to be absent reads as none.
@@ -199,6 +203,10 @@ func TestALookThatFailsRefusesTheRun(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
 	if !driveStopped("run-2611051955085311") {
 		t.Fatal("a look that failed reads as no stop")
+	}
+	err := driveStopRefusal("run-2611051955085311")
+	if err == nil || !strings.Contains(err.Error(), "could not check") || strings.Contains(err.Error(), "state changed") {
+		t.Fatalf("the refusal says it could not check: %v", err)
 	}
 }
 

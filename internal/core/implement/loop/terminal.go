@@ -93,9 +93,10 @@ type TerminalOptions struct {
 // was writing it.
 var errRunStateChanged = errors.New("the run's state changed while an agent was in its call")
 
-// errRunStateUnread is a run whose state could not be read after an agent's call. That
-// says nothing of a change, so the drive stops with nothing kept against the run.
-var errRunStateUnread = errors.New("the run's state could not be read, which says nothing of a change; start the drive again once it reads")
+// errRunStateUnread is a run whose state still could not be read after the retries that
+// absorb a passing failure. A changed state can hide behind it, so it stops the drive as
+// a change does.
+var errRunStateUnread = errors.New("the run's state could not be read after an agent's call")
 
 // HeldBackRel is the file that keeps what a drive held back.
 const HeldBackRel = ".abcd/.work.local/logs/drive-held-back.log"
@@ -234,13 +235,13 @@ func (t *terminal) stoppedBy(err error) {
 	t.say("stopping: %s", t.why)
 }
 
-// stoppedOnChange stops the run over its changed state, keeping that where a later drive
-// and a later step read it, so neither goes on from what it now says.
-func (t *terminal) stoppedOnChange(runID string) {
+// stoppedOnChange stops the run over a state changed or unreadable, keeping that where a
+// later drive and a later step read it, so neither goes on from what it now says.
+func (t *terminal) stoppedOnChange(runID string, cause error) {
 	if err := recordDriveStop(runID); err != nil {
 		t.say("%s: the stop could not be kept, so do not start another drive on it: %s", runID, err.Error())
 	}
-	t.stoppedBy(fmt.Errorf("%w; nothing goes on from %s. %s", errRunStateChanged, runID, driveStopRemedy(runID)))
+	t.stoppedBy(fmt.Errorf("%w; nothing goes on from %s. %s", cause, runID, driveStopRemedy(runID)))
 }
 
 // haltedBy reports whether err is a stop set from outside this terminal, saying
@@ -510,7 +511,7 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 				case !seen:
 					t.bases[key] = lane.BaseSHA
 				case base != lane.BaseSHA:
-					t.stoppedOnChange(runID)
+					t.stoppedOnChange(runID, errRunStateChanged)
 					return TerminalWall, nil
 				}
 			}
@@ -535,11 +536,11 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 			return TerminalKilled, nil
 		}
 		if errors.Is(err, errRunStateChanged) {
-			t.stoppedOnChange(runID)
+			t.stoppedOnChange(runID, errRunStateChanged)
 			return TerminalWall, nil
 		}
 		if errors.Is(err, errRunStateUnread) {
-			t.stoppedBy(err)
+			t.stoppedOnChange(runID, err)
 			return TerminalWall, nil
 		}
 		if err != nil {

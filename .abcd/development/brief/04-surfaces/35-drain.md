@@ -240,8 +240,8 @@ lands a lane. A lane at its landing that changes the Makefile, `scripts/` or the
 hooks, measured from what it last merged of the default branch, is handed back, and an
 issue that names one is passed over before a lane opens: that change needs a person's own
 session, and the drive's last lines name each one. What the driver wrote of a run is compared after each agent's call, and a
-difference stops the drive, and a later drive, step or hand-in refuses that run until a
-person discards its lanes or restores its state. One drive holds a checkout at a time, and each checkout has
+difference, or a read that keeps failing, stops the drive, and a later drive, step or
+hand-in refuses that run until a person discards its lanes or restores its state. One drive holds a checkout at a time, and each checkout has
 its stage's home to itself. A credential variable the harness would bill
 through refuses the start, naming itd-2611011230226453, and so does a start from
 inside an agent's own session.
