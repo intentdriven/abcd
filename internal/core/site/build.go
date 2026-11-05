@@ -666,7 +666,10 @@ func build(req Request, written *labelsAdded) (Result, error) {
 		if !fsutil.ValidRelPath(rel) {
 			return fmt.Errorf("site: refusing to write %q: not a relative path inside the output directory", rel)
 		}
-		if err := fsutil.WriteFileAtomicInRoot(root, rel, data, 0o644); err != nil {
+		// A build makes all of this again from the record, and one a power cut
+		// stopped is purged by the next, as long as the marker survives. So the
+		// marker earns a flush, below, and nothing written here does.
+		if err := fsutil.WriteRebuildableInRoot(root, rel, data, 0o644); err != nil {
 			return err
 		}
 		res.Files = append(res.Files, rel)
@@ -681,9 +684,15 @@ func build(req Request, written *labelsAdded) (Result, error) {
 	// by hand. A tree with no root commit is freed by hand regardless: it has
 	// no identity for the marker to name, and the next build refuses its
 	// non-empty output by design.
-	if err := write(siteMarkerName, siteMarker(rootCommit)); err != nil {
+	//
+	// Durably, because a marker emptied by a power cut beside surviving files
+	// reads as a directory this build does not own, and that also needs a hand.
+	marker := siteMarker(rootCommit)
+	if err := writeDurable(root, siteMarkerName, marker, 0o644); err != nil {
 		return Result{}, err
 	}
+	res.Files = append(res.Files, siteMarkerName)
+	res.Bytes += int64(len(marker))
 	if err := write("index.html", []byte(html)); err != nil {
 		return Result{}, err
 	}
@@ -859,3 +868,7 @@ func Describe(repoRoot, outDir string) (Status, error) {
 	}
 	return st, nil
 }
+
+// writeDurable is the write the marker takes, a seam for the test that holds it
+// to the marker alone.
+var writeDurable = fsutil.WriteFileAtomicInRoot

@@ -24,6 +24,9 @@ type cloudCase struct {
 	bin    string // the fakes, first on PATH
 	calls  string // the fakes' call log
 	env    []string
+	// realGit is git itself: what a test runs for its own fixture and checks,
+	// so only what a script runs goes through the logging fake.
+	realGit string
 }
 
 // cloudFixtureFiles are the committed files the cloud scripts read, besides
@@ -52,24 +55,25 @@ var cloudScrubbed = []string{
 
 func newCloudCase(t *testing.T) *cloudCase {
 	t.Helper()
+	c := newEmptyCase(t)
+	c.standUp()
+	return c
+}
+
+// newEmptyCase is a case's paths and environment, with nothing in its directory.
+func newEmptyCase(t *testing.T) *cloudCase {
+	t.Helper()
 	for _, tool := range []string{"bash", "git"} {
 		if _, err := exec.LookPath(tool); err != nil {
 			t.Skipf("%s unavailable", tool)
 		}
 	}
 	realGit, _ := exec.LookPath("git")
-	top := exec.Command("git", "rev-parse", "--show-toplevel")
-	top.Env = gittest.Env(t)
-	out, err := top.Output()
-	if err != nil {
-		t.Skip("not in a git checkout")
-	}
-	root := strings.TrimSpace(string(out))
 
 	base := t.TempDir()
 	c := &cloudCase{
 		t: t, dir: filepath.Join(base, "work"), origin: filepath.Join(base, "origin.git"),
-		bin: filepath.Join(base, "bin"), calls: filepath.Join(base, "calls.log"),
+		bin: filepath.Join(base, "bin"), calls: filepath.Join(base, "calls.log"), realGit: realGit,
 	}
 	for _, kv := range gittest.Env(t) {
 		keep := true
@@ -89,7 +93,22 @@ func newCloudCase(t *testing.T) *cloudCase {
 	// the guard gitutil keeps for one does not reach it, and its networked
 	// runner keeps this variable where it strips GIT_CONFIG_*.
 	c.env = append(c.env, "PATH="+c.bin+string(os.PathListSeparator)+os.Getenv("PATH"), "CALLS="+c.calls, "GIT_ALLOW_PROTOCOL=file")
+	return c
+}
 
+// cloudCaseKey is the plain case's template (cloud_template_test.go).
+const cloudCaseKey = "cloud"
+
+// standUp fills the case's directory with the clone, its remote and the fakes.
+func (c *cloudCase) standUp() {
+	c.t.Helper()
+	t := c.t
+	if c.restore(cloudCaseKey) {
+		return
+	}
+	root := checkoutRoot(t)
+	realGit := c.realGit
+	base := c.base()
 	gittest.InitBare(t, c.origin)
 	if out, err := c.run(base, "git", "init", "-q", "-b", "main", c.dir); err != nil {
 		t.Fatalf("git init: %v\n%s", err, out)
@@ -132,7 +151,7 @@ esac`)
 	c.fake("git", `echo "git $*" >>"$CALLS"
 exec '`+realGit+`' "$@"`)
 	c.resetCalls()
-	return c
+	c.keep(cloudCaseKey)
 }
 
 func (c *cloudCase) run(dir string, name string, args ...string) (string, error) {
@@ -170,7 +189,7 @@ func cloudExitCode(t *testing.T, err error) int {
 
 func (c *cloudCase) git(args ...string) string {
 	c.t.Helper()
-	out, err := c.run(c.dir, "git", args...)
+	out, err := c.run(c.dir, c.realGit, args...)
 	if err != nil {
 		c.t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
