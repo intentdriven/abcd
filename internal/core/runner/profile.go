@@ -22,6 +22,9 @@ import (
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
+// StageWritesEnv names where a walled launch's file tools may write.
+const StageWritesEnv = "ABCD_STAGE_WRITES"
+
 // The intents a drive's refusals name.
 const (
 	// ProfilesIntent admits several named profiles.
@@ -71,6 +74,10 @@ func HeldCredentials() []string {
 type Profile struct {
 	// Dir is the walled directory's absolute path.
 	Dir string
+	// ShellHome is the home a stage's shell runs under.
+	ShellHome string
+	// PersonHome is the person's own home directory.
+	PersonHome string
 	// Env is the launch's environment switches (sealedEnv): each KEY=value is
 	// set over the parent's, and each bare name taken out.
 	Env []string

@@ -26,6 +26,12 @@ import (
 // wallSettingsName is the settings file under the walled directory.
 const wallSettingsName = "settings.json"
 
+// stageEnvName is the file a stage's shell sources before each command.
+const stageEnvName = "stage-env.sh"
+
+// wallHomeMarker opens the line the proof's second command prints.
+const wallHomeMarker = "abcd-home:"
+
 // The walls a drive names when one does not hold.
 const (
 	WallLogin        = "login state"
@@ -37,6 +43,7 @@ const (
 	WallKey          = "no key"
 	WallGuard        = "guard"
 	WallWorkingTree  = "working tree's settings"
+	WallHome         = "shell's home"
 )
 
 // WallError is one wall that does not hold.

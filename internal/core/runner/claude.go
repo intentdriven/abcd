@@ -43,6 +43,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
@@ -287,7 +288,9 @@ func (c *ClaudeCLI) run(ctx context.Context, req Request) (Answer, []byte, error
 		// A harness that stopped on a rate limit exits non-zero: what its
 		// events say is the reason, not the exit.
 		if what := claudeRateLimit(res.stdout); what != "" {
-			return Answer{}, transcript, rateLimited(what)
+			fl := rateLimited(what)
+			fl.ResetsAt = claudeRateLimitReset(res.stdout)
+			return Answer{}, transcript, fl
 		}
 		var fl *Failure
 		if errors.Is(err, ErrKilled) && errors.As(err, &fl) {
@@ -311,6 +314,27 @@ func (c *ClaudeCLI) run(ctx context.Context, req Request) (Answer, []byte, error
 // response in abcd's own words.
 func rateLimited(what string) *Failure {
 	return fail(Claude, ReasonRateLimited, "its event stream reports %s and the run did not finish", what)
+}
+
+// claudeRateLimitReset is when the rejected limit the event stream reports
+// resets, the zero time when it says none. Each line is read leniently, as
+// claudeRateLimit reads it.
+func claudeRateLimitReset(out []byte) time.Time {
+	var at time.Time
+	for _, line := range bytes.Split(out, []byte("\n")) {
+		var ev struct {
+			Type string `json:"type"`
+			Info struct {
+				Status   string `json:"status"`
+				ResetsAt int64  `json:"resetsAt"`
+			} `json:"rate_limit_info"`
+		}
+		if json.Unmarshal(bytes.TrimSpace(line), &ev) != nil || ev.Type != "rate_limit_event" || ev.Info.Status != "rejected" || ev.Info.ResetsAt <= 0 {
+			continue
+		}
+		at = time.Unix(ev.Info.ResetsAt, 0).UTC()
+	}
+	return at
 }
 
 // claudeRateLimit names the rate-limit response the event stream carries, ""

@@ -222,6 +222,9 @@ type Failure struct {
 	// Spent is what a killed launch spent, read from its transcript
 	// (ErrKilled, Spend); nil for every other failure.
 	Spent *Spend
+	// ResetsAt is when a rate limit resets, as the harness reported it; zero
+	// when it reported none or the failure is no limit.
+	ResetsAt time.Time
 	// cause is the launch stage that failed (ErrNotOnPath, ErrRefused,
 	// ErrNotStarted), nil for every other failure; errors.Is reads it.
 	cause error

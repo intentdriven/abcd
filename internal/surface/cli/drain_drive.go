@@ -330,6 +330,8 @@ func renderDriveEnd(w io.Writer, res loop.TerminalResult) {
 		loop.TerminalOutage:     "eight hours of runner failures",
 		loop.TerminalStopped:    "stopped",
 		loop.TerminalHalted:     "a stop set from elsewhere holds",
+		loop.TerminalLimited:    "the account's rate limit outlasts what a drive waits",
+		loop.TerminalWaited:     "nothing moved for eight hours",
 		loop.TerminalWall:       "a wall no longer held",
 		loop.TerminalRefused:    "a move was refused",
 		loop.TerminalKilled:     "killed",

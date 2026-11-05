@@ -365,3 +365,19 @@ func TestTheLedgerCannotLandWithoutTheProof(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestARejectedLimitsResetIsRead: only a rejected limit's reset counts, in
+// seconds, and an event with none reports none.
+func TestARejectedLimitsResetIsRead(t *testing.T) {
+	const rejected = `{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","resetsAt":1791000000}}`
+	const warned = `{"type":"rate_limit_event","rate_limit_info":{"status":"allowed_warning","resetsAt":1791000001}}`
+	if got := claudeRateLimitReset([]byte(warned + "\n" + rejected + "\n")); got.Unix() != 1791000000 {
+		t.Fatalf("the rejected event's reset: %v", got)
+	}
+	if got := claudeRateLimitReset([]byte(warned + "\n")); !got.IsZero() {
+		t.Fatalf("a warning is no limit: %v", got)
+	}
+	if got := claudeRateLimitReset([]byte(`{"type":"rate_limit_event","rate_limit_info":{"status":"rejected"}}`)); !got.IsZero() {
+		t.Fatalf("no reset reported: %v", got)
+	}
+}

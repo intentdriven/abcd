@@ -25,6 +25,7 @@ import (
 const (
 	terminalFakeMode  = "terminal"
 	terminalScriptEnv = "ABCD_LOOP_FAKE_SCRIPT"
+	terminalResetEnv  = "ABCD_LOOP_FAKE_RESET"
 	thirdIssue        = "iss-2609230000000003"
 	// terminalRoutes is every role a lane starts, on the claude runner.
 	terminalRoutes = `{"roles":{"drain-judge":{"runner":"claude"},"implementer":{"runner":"claude"}},"runner":{"claude":{}}}`
@@ -34,7 +35,7 @@ const (
 // per launch, and answers the fake harness's mode for it: shape (the default
 // past the script's end) answers as the role's contract asks; noshape writes a
 // receipt no verifier takes; late does not finish; none exits with no answer;
-// dies is killed in its call; yes is a judge answering that the issue needs a
+// limited meets the account's rate limit; dies is killed in its call; yes is a judge answering that the issue needs a
 // decision.
 func terminalFakeTurn(role string) string {
 	path := os.Getenv(terminalScriptEnv)
@@ -54,6 +55,8 @@ func terminalFakeTurn(role string) string {
 		return "hang"
 	case "none":
 		return "notloggedin"
+	case "limited":
+		return "ratelimit"
 	case "dies":
 		// The harness killed mid-call: no result, no receipt.
 		_ = syscall.Kill(os.Getpid(), syscall.SIGKILL)
@@ -88,6 +91,9 @@ type terminalWorld struct {
 	// needsPreflight makes a land stage wait for its receipt until the
 	// preflight has run.
 	needsPreflight bool
+	// noReceipt makes a land stage wait for its receipt however often the
+	// preflight has run.
+	noReceipt bool
 }
 
 func newTerminalWorld(t *testing.T, script ...string) *terminalWorld {
@@ -139,7 +145,7 @@ func (w *terminalWorld) fakeStages(t *testing.T) Stages {
 			}},
 		{Name: StageValidate, Piece: 8, Run: func(Context, *Lane) (Outcome, error) { return Outcome{Note: "validate done"}, nil }},
 		{Name: StageLand, Piece: 9, Run: func(c Context, l *Lane) (Outcome, error) {
-			if w.needsPreflight && len(w.preflights) == 0 {
+			if w.noReceipt || w.needsPreflight && len(w.preflights) == 0 {
 				r := contend(string(StageLand), "", l.ID, "no preflight receipt names the lane's head", "run the preflight")
 				r.checkWait = c.Now
 				return Outcome{}, r

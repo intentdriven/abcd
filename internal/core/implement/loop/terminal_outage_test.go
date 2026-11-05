@@ -3,7 +3,11 @@ package loop
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -160,5 +164,139 @@ func TestAJudgedMoveThatThenWaitsEndsTheCount(t *testing.T) {
 	want := []time.Duration{time.Minute, drainWaitMinutes * time.Minute, time.Minute}
 	if len(w.sleeps) < len(want) || !slices.Equal(w.sleeps[:len(want)], want) {
 		t.Fatalf("the waits are %v, want %v first\n%s", w.sleeps, want, strings.Join(w.lines, "\n"))
+	}
+}
+
+// sleptBefore fails a run that waits on and on, which would otherwise hang.
+func (w *terminalWorld) guardSleeps(t *testing.T, o *TerminalOptions) {
+	t.Helper()
+	sleep := o.Sleep
+	o.Sleep = func(ctx context.Context, d time.Duration) {
+		if len(w.sleeps) > 300 {
+			t.Fatalf("the run waits with no deadline: first waits %v\n%s", w.sleeps[:8], strings.Join(w.lines, "\n"))
+		}
+		sleep(ctx, d)
+	}
+}
+
+// realWorktree has lanes cut a real worktree and write their receipts in their
+// own directories, so a rate limit can save the work aside.
+func (w *terminalWorld) realWorktree() {
+	for _, s := range DefaultStages() {
+		if s.Name == StageWorktree {
+			w.stages[0] = s
+		}
+	}
+	n := 0
+	for i := range w.stages {
+		if w.stages[i].Name == StageImplement {
+			w.stages[i].Run = func(c Context, l *Lane) (Outcome, error) {
+				n++
+				dir := filepath.Join(c.RepoRoot, c.RunDir, l.ID)
+				if err := os.MkdirAll(dir, 0o700); err != nil {
+					return Outcome{}, err
+				}
+				return Outcome{Await: &Await{Role: RoleImplementer, Brief: filepath.Join(c.RepoRoot, l.Brief),
+					Receipt: filepath.Join(c.RunDir, l.ID, fmt.Sprintf("receipt-%d.json", n))}}, nil
+			}
+			verify := w.stages[i].Verify
+			w.stages[i].Verify = func(c Context, l *Lane, receipt string) error {
+				return verify(c, l, absIn(c.RepoRoot, receipt))
+			}
+		}
+	}
+}
+
+// slept adds the waits up.
+func slept(ds []time.Duration) time.Duration {
+	var total time.Duration
+	for _, d := range ds {
+		total += d
+	}
+	return total
+}
+
+// TestARateLimitWaitsForTheResetItReports: no agent starts until the time the
+// harness said the limit resets.
+func TestARateLimitWaitsForTheResetItReports(t *testing.T) {
+	w := newTerminalWorld(t, "shape", "limited")
+	w.realWorktree()
+	reset := w.clock.t.Add(3 * time.Hour)
+	t.Setenv(terminalResetEnv, strconv.FormatInt(reset.Unix(), 10))
+	o := w.options(t)
+	o.Drain.Max = 1
+	w.guardSleeps(t, &o)
+	launchesAtReset := -1
+	w.onSleep = func(time.Duration) {
+		if launchesAtReset < 0 {
+			launchesAtReset = w.launches(t)
+		}
+	}
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Ended != DrainStoppedCap {
+		t.Fatalf("the lane lands after the reset: %+v\n%s", res, strings.Join(w.lines, "\n"))
+	}
+	if got := slept(w.sleeps); got < 3*time.Hour-time.Minute || got > 4*time.Hour {
+		t.Fatalf("the run waits for the reset: %v, waits %v\n%s", got, w.sleeps, strings.Join(w.lines, "\n"))
+	}
+	if w.launches(t) != 3 {
+		t.Fatalf("one agent starts after the reset, %d launches\n%s", w.launches(t), strings.Join(w.lines, "\n"))
+	}
+}
+
+// TestARateLimitThatReportsNoResetWaitsLongerEachTimeThenStops: every launch
+// meets the limit and nothing says when it ends: the waits grow, few agents
+// start, and the run ends saying so, handing nothing back.
+func TestARateLimitThatReportsNoResetWaitsLongerEachTimeThenStops(t *testing.T) {
+	w := newTerminalWorld(t, append([]string{"shape"}, repeated("limited", 60)...)...)
+	w.realWorktree()
+	o := w.options(t)
+	o.Drain.Max = 1
+	w.guardSleeps(t, &o)
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Ended != TerminalLimited {
+		t.Fatalf("the run ends on the limit: %+v\n%s", res, strings.Join(w.lines, "\n"))
+	}
+	want := []time.Duration{time.Minute, 5 * time.Minute, 10 * time.Minute, time.Hour}
+	if len(w.sleeps) < len(want) || !slices.Equal(w.sleeps[:len(want)], want) {
+		t.Fatalf("the waits grow: %v", w.sleeps)
+	}
+	if n := w.launches(t); n > 15 {
+		t.Fatalf("few agents start against a limit: %d", n)
+	}
+	if !strings.Contains(strings.Join(w.lines, "\n"), "rate limit") {
+		t.Fatalf("the run says why it ended: %q", w.lines)
+	}
+	st, _, _ := readDrain(w.repo.Root())
+	if len(st.HandBacks) != 0 {
+		t.Fatalf("a limit hands nothing back: %+v", st.HandBacks)
+	}
+}
+
+// TestAResetPastTheDeadlineEndsTheRunNamingIt: a reset days away is not slept
+// towards; the run ends at once and says when it is.
+func TestAResetPastTheDeadlineEndsTheRunNamingIt(t *testing.T) {
+	w := newTerminalWorld(t, "shape", "limited")
+	w.realWorktree()
+	reset := w.clock.t.Add(72 * time.Hour).UTC().Truncate(time.Second)
+	t.Setenv(terminalResetEnv, strconv.FormatInt(reset.Unix(), 10))
+	o := w.options(t)
+	o.Drain.Max = 1
+	w.guardSleeps(t, &o)
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Ended != TerminalLimited || len(w.sleeps) != 0 {
+		t.Fatalf("the run ends at once: %+v, waits %v", res, w.sleeps)
+	}
+	if !strings.Contains(strings.Join(w.lines, "\n"), reset.Format(time.RFC3339)) {
+		t.Fatalf("the run names the reset: %q", w.lines)
 	}
 }

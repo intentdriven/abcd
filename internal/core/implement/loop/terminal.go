@@ -35,6 +35,10 @@ const (
 	// TerminalHalted: a stop set from outside this terminal holds
 	// (itd-2611041549471712). What the run holds is that stop's to let go.
 	TerminalHalted = "halted"
+	// TerminalLimited: the account's rate limit outlasts what a drive waits.
+	TerminalLimited = "rate-limited"
+	// TerminalWaited: nothing moved for as long as a drive waits.
+	TerminalWaited = "waited"
 	// TerminalKilled: the context ended, a second signal: the agent's process
 	// group was killed, and what it held lapses on its own.
 	TerminalKilled = "killed"
@@ -100,7 +104,9 @@ type terminal struct {
 	repoRoot string
 	o        TerminalOptions
 	outage   terminalOutageClock
-	last     DrainResult
+	// limit is the outage's schedule run for a rate limit.
+	limit terminalOutageClock
+	last  DrainResult
 }
 
 // RunTerminal drives the drain from here until its cap, an empty ledger, the
@@ -320,10 +326,15 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 			if t.failed(ctx, false, fmt.Sprintf("the %s of %s did not run: %s", res.Retried.Role, runID, res.Retried.Paused.Why())) {
 				return TerminalOutage, nil
 			}
+		case res.RateLimit != nil:
+			if t.rateLimited(ctx, res.RateLimit) {
+				return TerminalLimited, nil
+			}
 		case res.NextEligibleAt != nil:
 			t.sleep(ctx, max(res.NextEligibleAt.Sub(t.now()), TerminalWaitFloor), res.Next)
 		case res.Route != nil || res.PerformedStage != "":
 			t.outage.succeed()
+			t.limit.succeed()
 			t.sayStep(runID, res)
 		default:
 			// No agent ran and no stage moved. Every wait has a deadline
@@ -333,6 +344,29 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 			}
 		}
 	}
+}
+
+// rateLimited waits out the account's rate limit, reporting true when the run
+// should end instead. No agent starts during the wait: it lasts until the reset
+// the harness reported, or, with none reported, as long as the outage's schedule
+// says. A reset beyond what a drive waits ends the run now, saying when it is.
+func (t *terminal) rateLimited(ctx context.Context, rl *RateLimit) bool {
+	now := t.now()
+	d, up := t.limit.fail(now, true)
+	if at := rl.resetsAt; at.After(now) {
+		if at.Sub(t.limit.since) > terminalOutageLimit {
+			t.say("stopping: the account's rate limit resets at %s, later than a drive waits; run %s then", at.UTC().Format(time.RFC3339), TerminalResumeCommand)
+			return true
+		}
+		t.sleep(ctx, max(at.Sub(now), TerminalWaitFloor), fmt.Sprintf("the account's rate limit resets at %s", at.UTC().Format(time.RFC3339)))
+		return false
+	}
+	if up {
+		t.say("stopping: the account has met its rate limit for eight hours and nothing says when it resets; run %s later", TerminalResumeCommand)
+		return true
+	}
+	t.sleep(ctx, d, "the account has met its rate limit, and nothing says when it resets")
+	return false
 }
 
 // pauseWhy is a paused await's reason.

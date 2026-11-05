@@ -344,6 +344,10 @@ func Exec(ctx context.Context, c Command) (Output, error) {
 	return Output{Stdout: res.stdout, Stderr: res.stderr}, err
 }
 
+// stageEnvExtra are further variables a walled launch carries: only a test's
+// stand-in harness needs any.
+var stageEnvExtra []string
+
 // sealedEnv is env with every key seal names removed, then each of seal's
 // KEY=value entries appended: one entry per switch, the adapter's value. A
 // bare name in seal takes the variable out and sets nothing.
