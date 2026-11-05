@@ -969,7 +969,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			}
 			if d.PassOver != nil {
 				if why := d.PassOver(v.ID, iss.FoundAt); why != "" {
-					res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckSkipped, Reason: termsafe.Sanitize(why)})
+					res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckNeedsPerson, Reason: termsafe.Sanitize(why)})
 					continue
 				}
 			}
