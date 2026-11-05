@@ -265,6 +265,14 @@ func TestEverySubstitutionPositionKeepsTheVerdict(t *testing.T) {
 					// (`../..` is `..`) as it does for one it names exactly.
 					subs = []string{`"$(true)"` + w}
 				}
+				if e.Pattern.SubcommandNamed != nil && *e.Pattern.SubcommandNamed && (w == e.Pattern.Subcommand || w == e.Pattern.Subcommand2) {
+					// The subcommand_named residual: a word that is nothing but
+					// a substitution is every subcommand there is, so the entry
+					// does not read it as its own (`git "$@"` is no filter-repo).
+					// Only the glued spelling keeps the verdict; the line still
+					// warns through the entries that read such a word.
+					subs = []string{`"$(true)"` + w}
+				}
 				if e.Pattern.ArgPrefixesLiteral != nil && *e.Pattern.ArgPrefixesLiteral && argPrefixMatchesAny(e.Pattern.ArgPrefixes, w) {
 					// The arg_prefixes_literal residual: the entry reads its
 					// prefix only as typed, before any substitution, so a

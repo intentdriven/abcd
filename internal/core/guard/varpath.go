@@ -1,6 +1,7 @@
 package guard
 
 import (
+	"path"
 	"slices"
 	"strings"
 )
@@ -25,6 +26,7 @@ const ShapeUnguardedVariablePath = "unguarded-variable-path"
 // argShapes are the shapes arg_shapes may name; Validate refuses any other.
 var argShapes = map[string]bool{
 	ShapeUnguardedVariablePath: true,
+	ShapeForgeRefPath:          true,
 }
 
 // guardedValues is the texts of the variables' own values, as spellParameter
@@ -377,4 +379,150 @@ func leadSpelling(src leadSource) []string {
 		}
 	}
 	return spellWritten(src.word, lead, nil)
+}
+
+// ShapeForgeRefPath names the shape in an entry's arg_shapes for a forge API
+// path to one git ref.
+const ShapeForgeRefPath = "forge-git-ref-path"
+
+// forgeRefPathCouldBe reports whether an operand is a forge API path to a git
+// ref (`…/git/refs/…`), a host in front of it or not, or, written partly by a
+// substitution, can still be one. Only fixed text naming a REST route that is not
+// a ref rules such a path out: `repos/$O/$R/pulls/$N` and `repos/o/r/pulls/$N`
+// cannot be one, and `"$BASE/refs/heads/$B"` and `"$URL"` can.
+func forgeRefPathCouldBe(op string) bool {
+	p := strings.ToLower(pathOf(op))
+	p = strings.Trim(path.Clean("/"+strings.ReplaceAll(p, "%2f", "/")), "/")
+	if !isUnknown(p) {
+		return strings.Contains("/"+p+"/", "/git/refs/")
+	}
+	if strings.Contains(knownText(p), "git/refs") {
+		return true
+	}
+	segs := strings.Split(p, "/")
+	first := -1
+	ruledOut := false
+	for i, seg := range segs {
+		switch {
+		case isUnknown(seg):
+			if first < 0 {
+				first = i
+			}
+		case first >= 0 && forgeRefWords[seg]:
+			return true
+		case first >= 0 && forgeOtherRoutes[seg]:
+			ruledOut = true
+		}
+	}
+	if ruledOut {
+		return false
+	}
+	lead := append(append([]string(nil), segs[:first]...), knownLead(segs[first]))
+	return forgeRefLeadCouldBe(lead)
+}
+
+// forgeRefWords are the words a path to a ref holds, whichever of them a
+// substitution leaves fixed.
+var forgeRefWords = map[string]bool{"git": true, "refs": true, "heads": true, "tags": true}
+
+// forgeOtherRoutes are the REST routes under a repository that are not its refs.
+var forgeOtherRoutes = map[string]bool{
+	"actions": true, "branches": true, "check-runs": true, "check-suites": true,
+	"code-scanning": true, "collaborators": true, "comments": true, "commits": true,
+	"compare": true, "contents": true, "dependabot": true, "deployments": true,
+	"discussions": true, "environments": true, "forks": true, "hooks": true,
+	"invitations": true, "issues": true, "keys": true, "labels": true, "merges": true,
+	"milestones": true, "notifications": true, "pages": true, "projects": true,
+	"pulls": true, "releases": true, "rulesets": true, "secret-scanning": true,
+	"stargazers": true, "statuses": true, "subscribers": true, "teams": true,
+	"topics": true, "traffic": true,
+}
+
+// forgeRefLeadCouldBe reports whether a path's leading segments, the last of
+// them cut short by a substitution, can still run on to a repository's git refs.
+func forgeRefLeadCouldBe(lead []string) bool {
+	if len(lead) > 2 && lead[0] == "api" && lead[1] == "v3" {
+		lead = lead[2:]
+	}
+	fits := func(i int, want string) bool {
+		if i >= len(lead) {
+			return true
+		}
+		if i == len(lead)-1 {
+			return strings.HasPrefix(want, lead[i])
+		}
+		return lead[i] == want
+	}
+	switch {
+	case len(lead) == 1:
+		return strings.HasPrefix("repos", lead[0]) || strings.HasPrefix("repositories", lead[0]) || strings.HasPrefix("api", lead[0])
+	case lead[0] == "repos":
+		return fits(3, "git") && fits(4, "refs")
+	case lead[0] == "repositories":
+		return fits(2, "git") && fits(3, "refs")
+	case lead[0] == "api":
+		return fits(1, "v3")
+	}
+	return false
+}
+
+// The shapes a flag-value constraint may name for a GraphQL call through the
+// forge's API: a query that force-moves a ref in its own text, the same in a
+// field whose key the line does not fix, a query that names a ref update, and a
+// field beside it that sets force.
+const (
+	ShapeForcedRefMutation       = "graphql-forced-ref-update"
+	ShapeForcedRefMutationAnyKey = "graphql-forced-ref-update-any-key"
+	ShapeRefUpdateQuery          = "graphql-ref-update"
+	ShapeForceField              = "graphql-force-field"
+)
+
+// flagValueShapes are the shapes a flag-value constraint may name; Validate
+// refuses any other.
+var flagValueShapes = map[string]bool{
+	ShapeForcedRefMutation:       true,
+	ShapeForcedRefMutationAnyKey: true,
+	ShapeRefUpdateQuery:          true,
+	ShapeForceField:              true,
+}
+
+// flagValueShapeHolds reports whether a setting's fixed text has the shape. The
+// setting comes as the word holds it, since one shape asks what is not fixed.
+func flagValueShapeHolds(shape, got string) bool {
+	text := knownText(got)
+	switch shape {
+	case ShapeForcedRefMutation:
+		query, ok := strings.CutPrefix(text, "query=")
+		return ok && forcesRefUpdate(query)
+	case ShapeForcedRefMutationAnyKey:
+		key, value, ok := strings.Cut(got, "=")
+		return ok && isUnknown(key) && forcesRefUpdate(knownText(value))
+	case ShapeRefUpdateQuery:
+		query, ok := strings.CutPrefix(text, "query=")
+		return ok && strings.Contains(query, "updateRef")
+	case ShapeForceField:
+		key, value, ok := strings.Cut(text, "=")
+		key = strings.ToLower(key)
+		return ok && (key == "force" || strings.HasSuffix(key, "[force]")) && !gitBoolFalse(value)
+	}
+	return false
+}
+
+// forcesRefUpdate reports whether a query names updateRef or updateRefs and sets
+// force to anything but false: true, or a variable.
+func forcesRefUpdate(query string) bool {
+	q := strings.Join(strings.Fields(query), "")
+	if !strings.Contains(q, "updateRef") {
+		return false
+	}
+	for rest := q; ; {
+		_, after, ok := strings.Cut(rest, "force:")
+		if !ok {
+			return false
+		}
+		if !strings.HasPrefix(after, "false") {
+			return true
+		}
+		rest = after
+	}
 }

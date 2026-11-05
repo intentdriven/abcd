@@ -4,8 +4,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // TestSiteVerbsTakeABasePath: `site build` and `lint site` both take the path
@@ -13,7 +11,7 @@ import (
 // not plain path segments before reading anything else.
 func TestSiteVerbsTakeABasePath(t *testing.T) {
 	hermeticEnv(t)
-	repo := gittest.NewRepo(t)
+	repo := newRepo(t)
 	t.Chdir(repo.Root())
 	for _, verb := range [][]string{{"site", "build"}, {"lint", "site"}} {
 		out := filepath.Join(t.TempDir(), "site")
@@ -35,7 +33,7 @@ func TestSiteVerbsTakeABasePath(t *testing.T) {
 // site's settings without it: the route is declared, never inferred.
 func TestSiteVerbsTakeProject(t *testing.T) {
 	hermeticEnv(t)
-	repo := gittest.NewRepo(t)
+	repo := newRepo(t)
 	repo.Write(".abcd/site.json", `{"schema_version": 1, "mode": "project", "purpose": "x", `+
 		`"hosting": {"provider": "github-pages", "name": "widgets", "publish": true}}`+"\n")
 	repo.Write("CHANGELOG.md", "# Changelog\n\n## [Unreleased]\n\n## [0.1.0] - 2026-01-02\n\n- The first cut.\n")

@@ -118,7 +118,18 @@ that name with none at this head, since the proof may lie past the bound.
    that leaves it off) leaves the step `left`, saying so. The note gives the
    forge's review decision too: held for a person's approval, approved, or no
    review required for this pull request. A pull request another account already
-   armed is left as it is and its queue state reported. After arming it
+   armed is left as it is and its queue state reported. Where a merge queue
+   gates the default branch, land lists before arming the open pull requests
+   into it that are queued or armed, and a branch that shares a commit not on
+   the default branch with one of them (a branch cut from that one's branch)
+   is not armed: the step is `stopped`, naming each such pull request and
+   whether it is queued or armed, because the merge queue removes a pull
+   request whose branch carries another queued or armed one's commits. Relay
+   it: run `abcd land` again once that one has merged, or rebase the branch
+   onto the default branch without its commits. A head that is not in the
+   checkout is fetched from `origin` by its `refs/pull/<n>/head` to compare,
+   and a listing or a head land cannot read arms nothing and is refused. After
+   arming it
    confirms the pull request is in the queue at the head it armed, and
    otherwise names what holds it: required checks that have not passed first
    (at most eight), then the forge's merge state, where BEHIND alone holds

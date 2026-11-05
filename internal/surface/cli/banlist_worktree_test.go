@@ -31,7 +31,7 @@ func linkedWorktree(t *testing.T, repo *gittest.Repo) string {
 // what is protected.
 func TestBanlistRendersTheLayerALinkedWorktreeInherits(t *testing.T) {
 	hermeticEnv(t)
-	repo := gittest.NewRepo(t)
+	repo := newRepo(t)
 	// The tier's fence first: the private store is only written where git already
 	// ignores it, and the linked worktree inherits the fence through the commit.
 	repo.Write(".gitignore", ".abcd/.work.local/\n")
@@ -66,7 +66,7 @@ func TestBanlistRendersTheLayerALinkedWorktreeInherits(t *testing.T) {
 // not present-and-null, so no consumer has to learn a new shape it will never see.
 func TestBanlistJSONCarriesTheInheritedLayerOnlyInAWorktree(t *testing.T) {
 	hermeticEnv(t)
-	repo := gittest.NewRepo(t)
+	repo := newRepo(t)
 	// The tier's fence first: the private store is only written where git already
 	// ignores it, and the linked worktree inherits the fence through the commit.
 	repo.Write(".gitignore", ".abcd/.work.local/\n")

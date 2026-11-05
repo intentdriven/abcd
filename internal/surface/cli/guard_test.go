@@ -27,7 +27,7 @@ type guardFixture struct {
 
 func newGuardFixture(t *testing.T) *guardFixture {
 	t.Helper()
-	r := gittest.NewRepo(t)
+	r := newRepo(t)
 	return &guardFixture{Repo: r, t: t, root: r.Root()}
 }
 

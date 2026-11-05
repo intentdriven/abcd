@@ -1,6 +1,7 @@
 package changelog
 
 import (
+	"errors"
 	"os/exec"
 	"path/filepath"
 	"slices"
@@ -107,7 +108,9 @@ func TestTheGuardNamesTheCommandsNewSinceTheAnchor(t *testing.T) {
 // fetched no blobs, the anchor's copy of a file edited since is not in the
 // object store, and a read that needs the blob would take the path for one the
 // anchor lacked. Presence is read from the trees, which the clone holds, so a
-// fix to that file is not marked new.
+// fix to that file is not marked new. Below git 2.44, which ignores
+// GIT_NO_LAZY_FETCH, abcd reads no objects in a partial clone at all, so there
+// the cut is refused at the lazy-fetch floor instead of marked.
 func TestABloblessCloneDoesNotMarkAPathTheAnchorHad(t *testing.T) {
 	src := baseRepo(t)
 	src.write("old.sh", "old\n")
@@ -142,6 +145,12 @@ func TestABloblessCloneDoesNotMarkAPathTheAnchorHad(t *testing.T) {
 	}
 
 	set, err := ShippedSince(dir, "v0.1.0")
+	if ok, version := gitutil.GitAtLeast(2, 44); !ok {
+		if !errors.Is(err, gitutil.ErrLazyFetchFloor) {
+			t.Fatalf("on git %s, below the lazy-fetch floor, a blobless clone's cut is refused at the floor, not read: %v", version, err)
+		}
+		return
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -303,11 +303,18 @@ func mergePattern(base, over Pattern) Pattern {
 	if over.Subcommand2 != "" {
 		r.Subcommand2 = over.Subcommand2
 	}
+	if over.SubcommandNamed != nil {
+		v := *over.SubcommandNamed
+		r.SubcommandNamed = &v
+	}
 	if over.ValueFlags != nil {
 		r.ValueFlags = append([]string(nil), over.ValueFlags...)
 	}
 	if over.Flags != nil {
 		r.Flags = append([]string(nil), over.Flags...)
+	}
+	if over.NotFlags != nil {
+		r.NotFlags = append([]string(nil), over.NotFlags...)
 	}
 	if over.ArgPrefixes != nil {
 		r.ArgPrefixes = append([]string(nil), over.ArgPrefixes...)

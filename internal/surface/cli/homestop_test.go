@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
-	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // homestop_test.go — D2 of itd-2610030720038073: with an old ~/.abcd standing,
@@ -41,7 +40,7 @@ func stoppedHome(t *testing.T, both bool) (home, repo, transcript string) {
 			t.Fatal(err)
 		}
 	}
-	r := gittest.NewRepo(t)
+	r := newRepo(t)
 	r.Write("README.md", "fixture\n")
 	r.Commit("init")
 	t.Chdir(r.Root())

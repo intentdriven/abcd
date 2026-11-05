@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/reading"
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // readingRepo lays out the minimum an `abcd reading assemble` run needs, so the
@@ -146,23 +147,23 @@ func TestReadingVerbReachesBothPlanes(t *testing.T) {
 	}
 }
 
-// repoRootFromTest walks up to the directory holding go.mod.
+// testStartDir is the directory the test binary started in, which go test sets
+// to this package's own. It is read as the package initialises, before any test
+// can move: this package's tests chdir into fixtures constantly.
+var testStartDir, testStartDirErr = os.Getwd()
+
+// repoRootFromTest walks up from the directory the test binary started in to
+// the one holding go.mod, whichever directory the calling test has moved to.
 func repoRootFromTest(t *testing.T) string {
 	t.Helper()
-	dir, err := os.Getwd()
+	if testStartDirErr != nil {
+		t.Fatal(testStartDirErr)
+	}
+	root, err := fsutil.ModuleRoot(testStartDir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			t.Fatal("go.mod not found above the test working directory")
-		}
-		dir = parent
-	}
+	return root
 }
 
 // TestAssembleRefusesFreeTextOperands is the invocation interface's whole claim:
@@ -1242,5 +1243,22 @@ func TestRenderSizeReportStatesTheMechanismLine(t *testing.T) {
 		"6 state none; 15 carry neither"
 	if !strings.Contains(buf.String(), want) {
 		t.Errorf("the mechanism line is not %q:\n%s", want, buf.String())
+	}
+}
+
+// repoRootFromTest answers from where the test binary started, so a test may
+// call it after it has moved into a fixture, even one with a go.mod of its own.
+func TestRepoRootFromTestIgnoresAMoveIntoAFixture(t *testing.T) {
+	want := repoRootFromTest(t)
+	if _, err := os.Stat(filepath.Join(want, "internal", "surface", "cli")); err != nil {
+		t.Fatalf("repoRootFromTest = %s, which does not hold this package: %v", want, err)
+	}
+	fixture := t.TempDir()
+	if err := os.WriteFile(filepath.Join(fixture, "go.mod"), []byte("module fixture\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(fixture)
+	if got := repoRootFromTest(t); got != want {
+		t.Errorf("repoRootFromTest after a move into a fixture = %s, want %s", got, want)
 	}
 }

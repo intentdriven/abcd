@@ -58,18 +58,13 @@ const (
 	bootstrapProxyScrub = "unset HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy CURL_HOME"
 )
 
-// bootstrapScript locates the committed hooks/bootstrap.sh from this test file's
-// own on-disk position (internal/surface/cli/ -> three levels up), so the tests
-// derive from the script that actually ships rather than from a hand-written
-// stand-in. Callers that need to RUN it against a fixture go through
-// bootstrapFixtureScript.
+// bootstrapScript locates the committed hooks/bootstrap.sh at the repository
+// root, so the tests derive from the script that actually ships rather than from
+// a hand-written stand-in. Callers that need to RUN it against a fixture go
+// through bootstrapFixtureScript.
 func bootstrapScript(t *testing.T) string {
 	t.Helper()
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller failed to locate the test source file")
-	}
-	script := filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..", "..", "hooks", "bootstrap.sh"))
+	script := filepath.Join(repoRootFromTest(t), "hooks", "bootstrap.sh")
 	if _, err := os.Stat(script); err != nil {
 		t.Fatalf("the committed bootstrap script must exist: %v", err)
 	}
@@ -521,16 +516,12 @@ func TestBootstrapInstallsVerifiedBinary(t *testing.T) {
 	}
 }
 
-// bootstrapRepoFile locates a committed file at the repository root from this
-// test file's own on-disk position, the same way bootstrapScript does, so the
-// assertions below read the bytes that actually ship.
+// bootstrapRepoFile locates a committed file at the repository root, the same
+// way bootstrapScript does, so the assertions below read the bytes that actually
+// ship.
 func bootstrapRepoFile(t *testing.T, rel string) string {
 	t.Helper()
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller failed to locate the test source file")
-	}
-	path := filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..", "..", rel))
+	path := filepath.Join(repoRootFromTest(t), filepath.FromSlash(rel))
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("the committed %s must exist: %v", rel, err)
 	}

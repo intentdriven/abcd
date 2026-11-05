@@ -503,6 +503,27 @@ they had is worse than being told the registry is broken.
 
 ## Turning it off is a diff
 
+History is not rewritten. The bundled blockers refuse `git filter-repo` and
+`git filter-branch` with any arguments, every form of `git update-ref` (none
+only reads, and a line cannot show whether the ref exists), `git replace` that
+stands one object in for another, `git reflog expire`, `delete` and `drop`,
+`git gc --prune`, `git prune` (a dry run passes), and a
+force push by these routes: its flags, a `+` refspec, `git push --mirror`,
+`git send-pack` forcing or reading its refs from `--stdin`,
+`git fast-import --force`, `gh repo sync --force`, and through the forge's API a
+PATCH of a ref with `force=true`, a value the line does not fix or `--input`, or
+a GraphQL `updateRef` with `force`, in the query or in a field beside it. Each asks for a new commit instead. A rebase
+or an amend stays allowed: a line cannot show whether its commits were pushed,
+and the force push a pushed one would need is refused. Each git entry here sets
+`subcommand_named`, so a word that is only a substitution (`git "$@"`) is not read
+as its subcommand and falls to the warning such a word already carries.
+
+Two pre-passes bring other spellings to those entries, as the alias pre-pass
+does. A `git-<sub>` program in command position, at any path, is also read as
+`git <sub>`. A setting on the line is also read as the flag or refspec it stands
+for: `remote.<name>.push`, `remote.<name>.mirror`, and on a gc `gc.pruneExpire`
+and the reflog expiries.
+
 The hazard entries are bundled in the binary and merged with a repo's
 `.abcd/guard.json`. That file is dedicated rather than a rules-loader domain, so
 a rules kill switch can never silently disable a safety guard, and it must
