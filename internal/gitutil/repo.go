@@ -237,7 +237,9 @@ func WorkingTreeCommand(root string, args ...string) *exec.Cmd {
 // context's error even when git then exited 0, so a caller that needs to know
 // whether git's work was made checks ProcessState.
 func WorkingTreeCommitCommand(ctx context.Context, root string, args ...string) *exec.Cmd {
-	return workingTreeCommand(ctx, root, commitPins(), args)
+	cmd := workingTreeCommand(ctx, root, commitPins(), args)
+	cmd.Env = narrowHooked(cmd.Env)
+	return cmd
 }
 
 // repositoryCommitKnobs are the ExecPins a commit abcd makes leaves to the

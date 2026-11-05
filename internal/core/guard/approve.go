@@ -204,6 +204,11 @@ func runFrom(dir, command string) string {
 // approveShell answers a prompt for one shell command line, read against ld's
 // registry with files as the directory it runs in.
 func approveShell(ld Loaded, files *Files, command string) Approval {
+	if files != nil && files.stageHome != "" {
+		if why := stageLineRefused(command); why != "" {
+			return refusal(stageAgentEntryID, why, "the same command without setting or naming the home.")
+		}
+	}
 	// The arithmetic scan reads the whole text, every string a deeper
 	// judgement would read included, so it runs once here.
 	if why := arithmeticUnfixed(command); why != "" {

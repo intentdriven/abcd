@@ -517,6 +517,9 @@ func (f approveFacts) protects(u pathUse) (string, bool) {
 			return name, true
 		}
 		if f.stage {
+			if !f.within(c, f.removable) && !strings.HasPrefix(c, "/dev/") {
+				return c, true
+			}
 			for _, t := range f.tree {
 				if name := stageGateFile(t, c, f.declared, f.fold); name != "" {
 					return name, true

@@ -31,6 +31,12 @@ import (
 
 // Options are the seams tests set; the zero value is production.
 type Options struct {
+	// ReceiptOwn, on a drive, says whether a preflight receipt for a head is one
+	// the driver's own preflight minted; nil takes any.
+	ReceiptOwn func(sha string) bool
+	// RunStateWatch has a walled launch compare what the driver wrote with what
+	// stands after the launch.
+	RunStateWatch bool
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
 	// Minter mints the run id; the zero value is production.
@@ -175,7 +181,9 @@ func (o Options) now() time.Time {
 // Context is what a stage's body is handed: where the checkout and the run
 // live, the run as it stood before the stage, and the clock.
 type Context struct {
-	RepoRoot string
+	// receiptOwn, on a drive, says whether a receipt is one its own preflight minted.
+	receiptOwn func(sha string) bool
+	RepoRoot   string
 	// RunDir is the run's directory, relative to RepoRoot.
 	RunDir string
 	State  State
@@ -1012,7 +1020,7 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 		if noteStopped(st, stopped, now) {
 			renewed = true
 		}
-		r, moved, err := move(repoRoot, st, steps, now, g, newRoundRouter(o), o.PlanGuard)
+		r, moved, err := move(repoRoot, st, steps.takingReceipts(o.ReceiptOwn), now, g, newRoundRouter(o), o.PlanGuard)
 		if err != nil {
 			if rf, ok := AsRefusal(err); ok && renewNote != "" {
 				rf.Remedy += "; " + renewNote
@@ -1587,4 +1595,23 @@ func StatusPeers(repoRoot string) (statusblock.HeldBy, error) {
 		}
 		return ""
 	}, nil
+}
+
+// takingReceipts is s with its landing told which preflight receipts it takes; s
+// as it is for nil, which takes any.
+func (s Stages) takingReceipts(own func(sha string) bool) Stages {
+	if own == nil {
+		return s
+	}
+	out := slices.Clone(s)
+	for i := range out {
+		if out[i].Name == StageLand {
+			run := out[i].Run
+			out[i].Run = func(c Context, l *Lane) (Outcome, error) {
+				c.receiptOwn = own
+				return run(c, l)
+			}
+		}
+	}
+	return out
 }

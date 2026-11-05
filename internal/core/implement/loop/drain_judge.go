@@ -220,6 +220,7 @@ func routedJudgement(repoRoot string, iss capture.Issue, v capture.DrainVerdict,
 		return nil, "", true, judgeStopped(iss.ID)
 	}
 	o.failedLaunch(RoleDrainJudge, err, out.Failure)
+	noteJudgeOutcome(d, out, err, taken)
 	switch {
 	case err != nil:
 		return nil, "the drain judge's runner did not judge " + iss.ID + " (" + termsafe.Sanitize(fsutil.RedactHome(err.Error())) +
@@ -238,6 +239,24 @@ func routedJudgement(repoRoot string, iss capture.Issue, v capture.DrainVerdict,
 	route := out.Receipt.Route
 	taken.Route = &route
 	return taken, "", true, nil
+}
+
+// noteJudgeOutcome tells the caller who asked what a judgement came to.
+func noteJudgeOutcome(d DrainOptions, out runner.Outcome, err error, taken *DrainJudgement) {
+	if d.JudgeOutcome == nil || taken != nil {
+		return
+	}
+	var fl *runner.Failure
+	switch {
+	case errors.As(err, &fl) && fl.Reason == runner.ReasonRateLimited:
+		*d.JudgeOutcome = JudgeOutcome{Kind: JudgeLimited, ResetsAt: fl.ResetsAt}
+	case err != nil:
+		*d.JudgeOutcome = JudgeOutcome{Kind: JudgeRunnerFailed}
+	case out.Failure != nil && out.Failure.Reason != runner.ReasonInvalid:
+		*d.JudgeOutcome = JudgeOutcome{Kind: JudgeRunnerFailed}
+	default:
+		*d.JudgeOutcome = JudgeOutcome{Kind: JudgeNoAnswer}
+	}
 }
 
 // keepJudgeFallback records fb in st, keeping the latest maxJudgeFallbacks.

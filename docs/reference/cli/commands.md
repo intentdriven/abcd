@@ -1455,19 +1455,13 @@ settings on this one account, not a boundary: a stage's shell reads what this ac
 can. It then judges each eligible issue,
 drives each lane to its landing, every role on that separate login, and runs each
 landing's preflight behind the load gate, printing one line per step and logging them
-under .abcd/.work.local/logs/. A lane that changes the Makefile or scripts/ is handed
-back before its preflight unless --trust-lane-gates says the person agrees. It ends at
-the cap, when nothing is eligible, or on a stop. With no --until, eight hours of runner
-failures or of nothing moving, a rate limit that outlasts eight hours, and origin
-unreadable through its schedule end it too. --until <date>, a date (the end of that day
-here) or an RFC 3339 instant, replaces those with one bound the yes names: the run waits
-through limits, outages and stuck queues at a capped interval, says what it waits on,
-keeps renewing what it holds, and at that time ends with the lane on its branch, an
-agent in a call finishing that call first. The bound is a time, not a limit on what the
-run spends. The first limit a run meets leaves its
-evidence under the same logs. One drive holds a checkout at a time; a second exits 3. A
-drive that stops short exits 3, and one a broken wall stopped exits 2. The first
-interrupt, hang-up or termination is a
+under .abcd/.work.local/logs/. A lane that changes the Makefile, scripts/ or the active
+hooks is handed back at its landing, and an issue that names one is passed over, unless
+--trust-lane-gates says the person agrees. The driver's own git commands run the
+repository's hooks with what a stage carries; only the push keeps credentials. It ends at
+the cap, when nothing is eligible, or after eight hours of runner failures. One drive
+holds a checkout at a time; a second exits 3. A drive that is stopped, stops short or
+holds an issue back exits 3, and one a failed check stopped exits 2. The first interrupt, hang-up or termination is a
 stop: the agent in a call finishes that call, the lane's reservation is released, the
 lane stays on its branch, and the last lines name the run, the lane and the command
 that resumes it. A second kills the running agent's process group and exits at once

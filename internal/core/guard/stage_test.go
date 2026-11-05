@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // stageFiles is a walled stage's reading: the person's home, a walled directory,
@@ -107,5 +108,99 @@ func TestAStageWritesNoGateFileItDoesNotDeclare(t *testing.T) {
 		if (why == "") != c.ok {
 			t.Errorf("%s: %q", c.path, why)
 		}
+	}
+}
+
+// TestAStageNeverMovesItsHomeOrReachesTheKeychain: a line that sets HOME or names
+// the person's home is refused, as is the keychain tool, and a path spelled with
+// $HOME is refused as unfixed rather than judged.
+func TestAStageNeverMovesItsHomeOrReachesTheKeychain(t *testing.T) {
+	f, _, _ := stageFiles(t)
+	for _, line := range []string{
+		`HOME=/x git status`,
+		`export HOME=/x`,
+		`env HOME=/x git status`,
+		`printf %s "$ABCD_PERSON_HOME"`,
+		`security find-generic-password -s x`,
+		`/usr/bin/security list-keychains`,
+		`printf x > "$HOME/notes.txt"`,
+	} {
+		if a := approveShell(clean(), f, line); a.Allow {
+			t.Errorf("%q was approved on a stage", line)
+		}
+	}
+	if a := approveShell(clean(), f, `MY_HOME=/x git status`); !a.Allow {
+		t.Errorf("another variable is no home: %s", a.Reason)
+	}
+	if a := approveShell(clean(), NewFiles(t.TempDir()), `HOME=/x git status`); !a.Allow {
+		t.Errorf("another session is not judged this way: %s", a.Reason)
+	}
+}
+
+// TestAStageWritesOnlyWhereItWorks: its tree, its run directories, its home and
+// temporary files, and nowhere else, another checkout's run state among them.
+func TestAStageWritesOnlyWhereItWorks(t *testing.T) {
+	f, _, _ := stageFiles(t)
+	run, other := t.TempDir(), t.TempDir()
+	f = f.WithRunDirs(run)
+	// The temporary directory is the stage's to write, and this test's own
+	// directories stand in it, so it is named elsewhere for the judgement.
+	t.Setenv("TMPDIR", "/nonexistent-temporary")
+	for _, c := range []struct {
+		line    string
+		allowed bool
+	}{
+		{`printf x > ` + filepath.Join(run, "receipt.json"), true},
+		{`printf x > /dev/null`, true},
+		{`printf x > a.go`, true},
+		{`printf x > ` + filepath.Join(other, ".abcd", ".work.local", "run", "state.json"), false},
+		{`printf x > ` + filepath.Join(other, "a.go"), false},
+	} {
+		if a := approveShell(clean(), f, c.line); a.Allow != c.allowed {
+			t.Errorf("%q: allowed %v, want %v (%s)", c.line, a.Allow, c.allowed, a.Reason)
+		}
+	}
+}
+
+// TestAWorksFootprintNeverOpensAGateFile: what a record's found_at names is
+// declared, and that opens records under .abcd, never what judges a lane.
+func TestAWorksFootprintNeverOpensAGateFile(t *testing.T) {
+	dir := t.TempDir()
+	for _, c := range []struct {
+		path string
+		ok   bool
+	}{
+		{".githooks/commit-msg", false},
+		{"hooks/pre-push", false},
+		{"Makefile", false},
+		{".abcd/rules.json", false},
+		{".abcd/guard.json", false},
+		{".abcd/config.json", false},
+		{".abcd/.work.local/preflight-receipts/abc", false},
+		{".abcd/work/issues/open/a.md", true},
+	} {
+		why := StageWriteRefusal([]string{dir}, []string{c.path}, filepath.Join(dir, c.path))
+		if (why == "") != c.ok {
+			t.Errorf("%s declared: %q", c.path, why)
+		}
+	}
+	if why := StageWriteRefusal([]string{dir}, nil, filepath.Join(dir, ".abcd/work/issues/open/a.md")); why == "" {
+		t.Error("a record its work does not declare stays refused")
+	}
+}
+
+// TestAConfiguredHooksPathIsProtectedFromAStage: both ways of writing, whatever
+// the repository calls its hooks.
+func TestAConfiguredHooksPathIsProtectedFromAStage(t *testing.T) {
+	repo := gittest.NewRepo(t)
+	repo.Git("config", "core.hooksPath", "tools/hooks")
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	f := NewFiles(repo.Root()).WithStage(abcdhome.Path(home, "stage-homes", "walled", "none", "home"), nil, nil)
+	if a := approveShell(clean(), f, `printf x > tools/hooks/commit-msg`); a.Allow {
+		t.Error("a line wrote the configured hooks")
+	}
+	if why := StageWriteRefusal([]string{repo.Root()}, nil, filepath.Join(repo.Root(), "tools", "hooks", "commit-msg")); why == "" {
+		t.Error("a file tool wrote the configured hooks")
 	}
 }

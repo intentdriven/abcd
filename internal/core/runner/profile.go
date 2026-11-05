@@ -18,8 +18,11 @@ import (
 	"strings"
 	"syscall"
 
+	"crypto/sha256"
+	"encoding/hex"
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"slices"
 )
 
 // StageWritesEnv names where a walled launch's file tools may write.
@@ -84,8 +87,11 @@ func HeldCredentials() []string {
 type Profile struct {
 	// Dir is the walled directory's absolute path.
 	Dir string
-	// ShellHome is the home a stage's shell runs under.
+	// StageRoot holds what a stage's shell reads: ShellHome is the home it runs
+	// under, and EnvFile the file it sources before each command.
+	StageRoot string
 	ShellHome string
+	EnvFile   string
 	// PersonHome is the person's own home directory.
 	PersonHome string
 	// Repo is the checkout the drive runs in, whose git configuration names the
@@ -142,20 +148,35 @@ func DriveProfile(home string) (Profile, error) {
 	}
 	return Profile{
 		Dir:        dir,
-		ShellHome:  abcdhome.Path(home, stageHomesLeaf, names[0]),
 		PersonHome: home,
 		Env: append([]string{
 			"CLAUDE_CONFIG_DIR=" + dir,
 			"CLAUDE_CODE_DISABLE_CLAUDE_MDS=1",
 			"CLAUDE_CODE_DISABLE_AUTO_MEMORY=1",
-			"CLAUDE_ENV_FILE=" + filepath.Join(dir, stageEnvName),
-			StageHomeEnv + "=" + abcdhome.Path(home, stageHomesLeaf, names[0]),
 			StageProtectEnv + "=" + dir,
 		}, credentialVars...),
 		// The user layer is the file under CLAUDE_CONFIG_DIR: naming it alone
 		// leaves out the project and local layers of the working tree.
 		Args: []string{"--no-session-persistence", "--strict-mcp-config", "--setting-sources=user"},
-	}, nil
+	}.withStageRoot(abcdhome.Path(home, stageHomesLeaf, names[0], "no-checkout")), nil
+}
+
+// ForCheckout is p for a drive in the checkout at repo: its stage's home and shell
+// file are that checkout's own, so a drive in another deletes nothing of this one.
+func (p Profile) ForCheckout(repo string) Profile {
+	p.Repo = repo
+	sum := sha256.Sum256([]byte(filepath.Clean(repo)))
+	return p.withStageRoot(abcdhome.Path(p.PersonHome, stageHomesLeaf, filepath.Base(p.Dir), hex.EncodeToString(sum[:8])))
+}
+
+// withStageRoot is p with its stage's files under root.
+func (p Profile) withStageRoot(root string) Profile {
+	p.StageRoot, p.ShellHome, p.EnvFile = root, filepath.Join(root, "home"), filepath.Join(root, stageEnvName)
+	p.Env = slices.DeleteFunc(slices.Clone(p.Env), func(kv string) bool {
+		return strings.HasPrefix(kv, "CLAUDE_ENV_FILE=") || strings.HasPrefix(kv, StageHomeEnv+"=")
+	})
+	p.Env = append(p.Env, "CLAUDE_ENV_FILE="+p.EnvFile, StageHomeEnv+"="+p.ShellHome)
+	return p
 }
 
 // AdmitClaude reports why the claude harness would not be run from the checkout

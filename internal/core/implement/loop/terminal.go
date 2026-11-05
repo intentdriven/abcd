@@ -100,6 +100,35 @@ type TerminalOptions struct {
 	Probe func(ctx context.Context, role, model string) (bool, *runner.Failure)
 }
 
+// errRunStateChanged is a run whose state changed while nothing of the driver's
+// was writing it.
+var errRunStateChanged = errors.New("the run's state changed while an agent was in its call, and only the driver writes it")
+
+// HeldBackRel is the file that keeps what a drive held back.
+const HeldBackRel = ".abcd/.work.local/logs/drive-held-back.log"
+
+// JudgeKind is what became of a routed judgement.
+type JudgeKind int
+
+// The ends a routed judgement comes to that give no answer.
+const (
+	// JudgeNoOutcome: no routed judge was asked.
+	JudgeNoOutcome JudgeKind = iota
+	// JudgeNoAnswer: its runner ran it and it answered nothing usable.
+	JudgeNoAnswer
+	// JudgeRunnerFailed: its runner did not run it.
+	JudgeRunnerFailed
+	// JudgeLimited: the account's rate limit stopped it.
+	JudgeLimited
+)
+
+// JudgeOutcome is what became of a routed judgement.
+type JudgeOutcome struct {
+	Kind JudgeKind
+	// ResetsAt is when a limit resets, zero when none was reported.
+	ResetsAt time.Time
+}
+
 // PreflightRefused is why a lane's preflight is not run.
 type PreflightRefused struct{ Reason string }
 
@@ -119,6 +148,8 @@ type TerminalResult struct {
 	Lapses *time.Time `json:"lapses,omitempty"`
 	// Last is the last move's result.
 	Last DrainResult `json:"last"`
+	// HeldBack names each issue the run held back.
+	HeldBack []string `json:"held_back,omitempty"`
 }
 
 // terminal is one run in progress.
@@ -137,17 +168,12 @@ type terminal struct {
 	ctx context.Context
 	// evidence keeps what the run's first limit showed (limit_evidence.go).
 	evidence *driveEvidence
-	// judgeLimit is the limit this move's judge met, nil when it met none.
-	judgeLimit *runner.Failure
 	// lastWhy and lastSaid are the wait a line last named, and when.
 	lastWhy  string
 	lastSaid time.Time
 	// waited adds up the waits since whose holds were last read, short ones
 	// included and a machine asleep too, towards a check on the lane's claim.
 	waited time.Duration
-	// judgeAnswered says this move's judge ran and answered badly, which is the
-	// issue's fault; one that could not run says nothing of it.
-	judgeAnswered bool
 	// limitModel is the model of the launch that last met a limit.
 	limitModel string
 	// reached counts, by role, launches of the lane in hand that reached the
@@ -155,8 +181,16 @@ type terminal struct {
 	reached map[string]int
 	// call is the agent's call or preflight in flight, what its lines say.
 	call terminalCall
-	// unanswered counts, by issue, the judgements asked and not answered.
+	// unanswered counts, by issue, the judgements a runner ran and that gave no
+	// answer; heldBack names each issue the run held back for that.
 	unanswered map[string]int
+	heldBack   []string
+	// judge is what the last move's routed judgement came to.
+	judge JudgeOutcome
+	// minted names each head a preflight this run ran exited 0 on, and bases each
+	// lane's base as the run first read it.
+	minted map[string]bool
+	bases  map[string]string
 }
 
 // terminalCall is what is in flight, as the line that says so reads it.
@@ -185,7 +219,10 @@ func RunTerminal(ctx context.Context, repoRoot string, o TerminalOptions) (Termi
 
 // newTerminal is one run, not yet started.
 func newTerminal(repoRoot string, o TerminalOptions) *terminal {
-	t := &terminal{repoRoot: repoRoot, o: o}
+	t := &terminal{repoRoot: repoRoot, o: o, minted: map[string]bool{}, bases: map[string]string{}}
+	t.o.Drain.JudgeOutcome = &t.judge
+	t.o.Options.RunStateWatch = true
+	t.o.Options.ReceiptOwn = func(sha string) bool { return t.minted[sha] }
 	t.evidence = newDriveEvidence(repoRoot, func(line string) { t.say("%s", line) })
 	t.o.Options.RunnerFailed = t.noteFailure
 	t.o.Options.RunnerStarting = func(role string) { t.startCall("the " + role) }
@@ -218,7 +255,6 @@ func (t *terminal) noteFailure(role string, fl *runner.Failure) {
 	if fl.Reason != runner.ReasonRateLimited {
 		switch {
 		case role == RoleDrainJudge:
-			t.judgeAnswered = fl.Reason == runner.ReasonInvalid || fl.Reason == runner.ReasonRefused || fl.Reason == runner.ReasonUnparsable
 		case t.bounded() && fl.ReachedModel():
 			if t.reached == nil {
 				t.reached = map[string]int{}
@@ -231,9 +267,6 @@ func (t *terminal) noteFailure(role string, fl *runner.Failure) {
 		return
 	}
 	t.limitModel = fl.Model
-	if role == RoleDrainJudge {
-		t.judgeLimit = fl
-	}
 	entry.Event = "limit"
 	if !fl.ResetsAt.IsZero() {
 		entry.ResetRead = fl.ResetsAt.UTC().Format(time.RFC3339)
@@ -392,7 +425,7 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 		if !t.wallHeld() {
 			return t.ended(TerminalWall), nil
 		}
-		t.judgeLimit, t.judgeAnswered = nil, false
+		t.judge = JudgeOutcome{}
 		res, err := Drain(t.repoRoot, t.o.Options, t.o.Drain)
 		t.endCall()
 		if err != nil {
@@ -432,8 +465,8 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 		}
 		// A judge that met a limit is an agent like any other: none starts,
 		// this one included, before the limit lets it.
-		if fl := t.judgeLimit; fl != nil && res.Judging != nil {
-			if ended := t.limited(ctx, RoleDrainJudge, fl.ResetsAt); ended != "" {
+		if t.judge.Kind == JudgeLimited && res.Judging != nil {
+			if ended := t.limited(ctx, RoleDrainJudge, t.judge.ResetsAt); ended != "" {
 				return t.ended(ended), nil
 			}
 			continue
@@ -447,9 +480,7 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 			continue
 		}
 		if res.Judging != nil {
-			// Under a bound only a judge that ran is counted against its issue:
-			// holding issues back for one that cannot run would empty the drain.
-			if (!t.bounded() || t.judgeAnswered) && t.holdBack(res.Judging.Issue) {
+			if t.judge.Kind == JudgeNoAnswer && t.holdBack(res.Judging.Issue) {
 				continue
 			}
 			if t.failed(ctx, true, "the judge did not judge "+res.Judging.Issue) {
@@ -473,8 +504,10 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 	}
 }
 
-// holdBack counts one unanswered judgement of issue, and at the limit has the
-// next move hold it back so the run goes on to other work.
+// holdBack counts one judgement of issue a runner ran that gave no answer, and at
+// the limit has the next move hold it back so the run goes on to other work,
+// releasing its claim and keeping the fact, since the skip list ends with the
+// drain.
 func (t *terminal) holdBack(issue string) bool {
 	if t.unanswered == nil {
 		t.unanswered = map[string]int{}
@@ -486,7 +519,25 @@ func (t *terminal) holdBack(issue string) bool {
 	delete(t.unanswered, issue)
 	t.say("holding %s back: its judge did not answer %d times", issue, terminalJudgeAsks)
 	t.o.Drain.Skip, t.o.Drain.SkipReason = []string{issue}, "its judge did not answer"
+	t.heldBack = append(t.heldBack, issue)
+	clause, _ := releaseReservation(t.repoRoot, issue, "", t.now())
+	t.say("%s: %s", issue, clause)
+	t.keepHeldBack(issue)
 	return true
+}
+
+// keepHeldBack appends the fact to a file of its own.
+func (t *terminal) keepHeldBack(issue string) {
+	line := t.now().UTC().Format(time.RFC3339) + " " + issue + " its judge did not answer\n"
+	if err := fsutil.EnsureRealDirAll(t.repoRoot, filepath.ToSlash(filepath.Dir(HeldBackRel)), 0o700); err == nil {
+		f, err := os.OpenFile(filepath.Join(t.repoRoot, filepath.FromSlash(HeldBackRel)), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+		if err == nil {
+			_, _ = f.WriteString(line)
+			_ = f.Close()
+			return
+		}
+	}
+	t.say("%s was held back, and that could not be kept in %s", issue, HeldBackRel)
 }
 
 // sayMove prints what a move did, one line for each thing.
@@ -536,6 +587,28 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 		if outcome, _, _ := laneOutcome(run); outcome != DrainLaneInProgress {
 			return "", nil
 		}
+		if i := run.current(); i >= 0 {
+			lane := run.Lanes[i]
+			key := runID + " " + lane.ID
+			if base, seen := t.bases[key]; lane.BaseSHA != "" {
+				switch {
+				case !seen:
+					t.bases[key] = lane.BaseSHA
+				case base != lane.BaseSHA:
+					t.say("stopping: %s", errRunStateChanged.Error())
+					return TerminalWall, nil
+				}
+			}
+			if lane.Stage == StageLand && t.o.PreflightAllowed != nil {
+				var refused *PreflightRefused
+				if perr := t.o.PreflightAllowed(lane.Worktree, t.bases[key]); errors.As(perr, &refused) {
+					_, ended, err := t.laneRefused(ctx, runID, lane.ID, refused.Reason, refused.Reason)
+					return ended, err
+				} else if perr != nil {
+					return "", perr
+				}
+			}
+		}
 		var res StepResult
 		t.renewing(func() {
 			res, err = Drive(ctx, t.repoRoot, runID, t.o.Stages, t.o.Options, t.o.Runners)
@@ -545,6 +618,10 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 		})
 		if ctx.Err() != nil {
 			return TerminalKilled, nil
+		}
+		if errors.Is(err, errRunStateChanged) {
+			t.say("stopping: %s", err.Error())
+			return TerminalWall, nil
 		}
 		if t.poisoned(runID) {
 			return "", nil
@@ -908,18 +985,11 @@ func (t *terminal) stepRefused(ctx context.Context, runID string, err error) (ag
 	if !t.wallHeld() {
 		return false, TerminalWall, nil
 	}
-	if t.o.PreflightAllowed != nil {
-		var refused *PreflightRefused
-		if perr := t.o.PreflightAllowed(lane.Worktree, lane.BaseSHA); errors.As(perr, &refused) {
-			return t.laneRefused(ctx, runID, lane.ID, refused.Reason, refused.Reason)
-		} else if perr != nil {
-			return false, "", perr
-		}
-	}
 	t.say("%s %s: running the preflight", runID, lane.ID)
 	switch perr := t.preflight(ctx, lane.Worktree); {
 	case perr == nil:
 		t.ranClean = head
+		t.minted[lane.HeadSHA] = true
 		return true, "", nil
 	case ctx.Err() != nil || t.stopped():
 		return false, "", nil
@@ -1076,7 +1146,7 @@ func (t *terminal) ended(why string) TerminalResult {
 	if why != TerminalKilled && why != TerminalHalted {
 		t.letGo()
 	}
-	res := TerminalResult{Ended: why, Last: t.last}
+	res := TerminalResult{Ended: why, Last: t.last, HeldBack: t.heldBack}
 	st, _, err := readDrain(t.repoRoot)
 	if err != nil {
 		return res

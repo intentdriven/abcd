@@ -6,14 +6,18 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/autonomy"
 	"github.com/intentdriven/abcd/internal/core/guard"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
+	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gittest"
@@ -311,7 +315,7 @@ func TestHowADriveEndsIsInItsExit(t *testing.T) {
 	for ended, want := range map[string]int{
 		loop.DrainStoppedCap:   0,
 		loop.DrainStoppedEmpty: 0,
-		loop.TerminalStopped:   0,
+		loop.TerminalStopped:   3,
 		loop.TerminalWall:      2,
 		loop.TerminalOutage:    3,
 		loop.TerminalLimited:   3,
@@ -384,5 +388,187 @@ func TestThePublicTextSaysWhatAProfileIs(t *testing.T) {
 				t.Errorf("the %s says %q", name, never)
 			}
 		}
+	}
+}
+
+// TestTheHooksStandAsideOnAStage: the away mode, the stop hook, the checklist and
+// recall do not steer an agent of the drive's. Each first shows it speaks to any
+// other session.
+func TestTheHooksStandAsideOnAStage(t *testing.T) {
+	t.Run("away", func(t *testing.T) {
+		root := awayCheckout(t)
+		setAway(t, "--until", "09:00")
+		start := func() string {
+			so, _, err := runSplit(t, awayStartPayload("s-start", root, "startup"), "hook", "session-start")
+			if err != nil {
+				t.Fatal(err)
+			}
+			return so
+		}
+		if !strings.Contains(start(), "## AWAY") {
+			t.Fatal("another session is told it is away")
+		}
+		t.Setenv(runner.StageWritesEnv, root)
+		if so := start(); strings.Contains(so, "## AWAY") {
+			t.Fatalf("the away block reached a stage:\n%s", so)
+		}
+	})
+	t.Run("stop", func(t *testing.T) {
+		root := awayCheckout(t)
+		pinStopClock(t, stopTestNow, time.UTC)
+		owed := autonomy.Owed{Items: []autonomy.OwedItem{behindItem}}
+		fakeOwed(t, &owed)
+		setAwayAt(t, root, stopTestNow, false)
+		out, _, _ := runStop(t, stopHookPayload(t, "s1", root, false, "Done.", "*/10 * * * *"))
+		if out.Decision != "block" {
+			t.Fatal("another session's stop is blocked")
+		}
+		t.Setenv(runner.StageWritesEnv, root)
+		if _, so, _ := runStop(t, stopHookPayload(t, "s2", root, false, "Done.", "*/10 * * * *")); so != "" {
+			t.Fatalf("the stop hook steered a stage: %q", so)
+		}
+	})
+	t.Run("recall", func(t *testing.T) {
+		t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+		_, repo := memoryFixture(t)
+		id := addRaceNote(t, "session-one")
+		rs, err := rules.Load(repo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		recalled := func() []string {
+			var w strings.Builder
+			return recallMemory(&w, rs, repo, "why are the tests failing?", nil, rules.InjectionBudgetBytes, promptRoot(rootLookup{}, repo), rules.BracketFresh).Recalled
+		}
+		if got := recalled(); !slices.Contains(got, id) {
+			t.Fatalf("another session recalls its notes: %v", got)
+		}
+		t.Setenv(runner.StageWritesEnv, repo)
+		if got := recalled(); len(got) != 0 {
+			t.Fatalf("recall reached a stage: %v", got)
+		}
+	})
+	t.Run("checklist", func(t *testing.T) {
+		root := checklistCheckout(t)
+		mustChecklist(t, "add", "Fix the parser's error path")
+		if sessionStartChecklist(root, 4000) == "" {
+			t.Fatal("another session is shown its checklist")
+		}
+		t.Setenv(runner.StageWritesEnv, root)
+		if got := sessionStartChecklist(root, 4000); got != "" {
+			t.Fatalf("the checklist reached a stage: %q", got)
+		}
+	})
+}
+
+// TestAGateChangeIsReadExactly: odd names and renames are read as they are, the
+// configured hooks count, and the path is quoted as data.
+func TestAGateChangeIsReadExactly(t *testing.T) {
+	repo := gittest.NewRepo(t)
+	repo.Write("scripts/old.sh", "x\n")
+	repo.Git("config", "core.hooksPath", "tools/hooks")
+	repo.Commit("base")
+	base := strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
+	repo.Git("mv", "scripts/old.sh", "elsewhere.sh")
+	repo.Commit("rename out of the gate")
+	var refused *loop.PreflightRefused
+	if err := driveGateCheck(false)(repo.Root(), base); !errors.As(err, &refused) {
+		t.Fatalf("a rename out of a gate path is a change to it: %v", err)
+	}
+	base = strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
+	repo.Write("tools/hooks/commit-msg", "x\n")
+	repo.Commit("the configured hooks")
+	if err := driveGateCheck(false)(repo.Root(), base); !errors.As(err, &refused) {
+		t.Fatalf("the configured hooks are gates: %v", err)
+	}
+	if !strings.Contains(refused.Reason, strconv.Quote("tools/hooks/commit-msg")) {
+		t.Fatalf("the path is quoted: %s", refused.Reason)
+	}
+	if strings.Contains(refused.Reason, "a drive started with --trust-lane-gates runs it") {
+		t.Fatalf("the remedy names the real steps: %s", refused.Reason)
+	}
+}
+
+// TestAGateIssueIsPassedOverNamingTheFlag.
+func TestAGateIssueIsPassedOverNamingTheFlag(t *testing.T) {
+	repo := gittest.NewRepo(t)
+	repo.Git("config", "core.hooksPath", "tools/hooks")
+	pass := drivePassOver(repo.Root(), false)
+	for _, found := range []string{"Makefile", "scripts/check.sh:12", "tools/hooks/pre-push", ".githooks/commit-msg"} {
+		if why := pass("iss-1", found); !strings.Contains(why, "--trust-lane-gates") {
+			t.Errorf("%s: %q", found, why)
+		}
+	}
+	if why := pass("iss-1", "internal/a.go"); why != "" {
+		t.Errorf("code is opened: %q", why)
+	}
+	if why := drivePassOver(repo.Root(), true)("iss-1", "Makefile"); why != "" {
+		t.Errorf("the person agreed: %q", why)
+	}
+}
+
+// TestTheConsentNamesTheGateFlag.
+func TestTheConsentNamesTheGateFlag(t *testing.T) {
+	w := newDriveWorld(t)
+	w.passWalls(t)
+	var out, errb strings.Builder
+	if code := Run([]string{"drain", "--drive", "--yes"}, &out, &errb); code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	if !strings.Contains(out.String(), "--trust-lane-gates") {
+		t.Fatalf("the consent does not name the flag:\n%s", out.String())
+	}
+	out.Reset()
+	Run([]string{"drain", "--drive", "--yes", "--trust-lane-gates"}, &out, &errb)
+	if !strings.Contains(out.String(), "trusted") {
+		t.Fatalf("the consent says the gates are trusted:\n%s", out.String())
+	}
+}
+
+// TestASecondDriveTouchesNothing: the lock comes before anything is written.
+func TestASecondDriveTouchesNothing(t *testing.T) {
+	w := newDriveWorld(t)
+	w.passWalls(t)
+	wrote := false
+	driveWalls.static = func(context.Context, runner.Profile) ([]string, error) {
+		wrote = true
+		return nil, nil
+	}
+	lock := filepath.Join(w.repo, filepath.FromSlash(driveLockRel))
+	if err := os.MkdirAll(filepath.Dir(lock), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	held, release := make(chan struct{}), make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		done <- fsutil.WithFileLock(lock, time.Second, func() error {
+			close(held)
+			<-release
+			return nil
+		})
+	}()
+	<-held
+	var out, errb strings.Builder
+	code := Run([]string{"drain", "--drive", "--yes"}, &out, &errb)
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if code != 3 || wrote {
+		t.Fatalf("exit %d, wrote %v", code, wrote)
+	}
+}
+
+// TestADriveThatHeldAnIssueBackIsNoCleanFinish.
+func TestADriveThatHeldAnIssueBackIsNoCleanFinish(t *testing.T) {
+	w := newDriveWorld(t)
+	w.passWalls(t)
+	driveTerminal = func(context.Context, string, loop.TerminalOptions) (loop.TerminalResult, error) {
+		return loop.TerminalResult{Ended: loop.DrainStoppedEmpty, HeldBack: []string{"iss-7"}}, nil
+	}
+	var out, errb strings.Builder
+	code := Run([]string{"drain", "--drive", "--yes"}, &out, &errb)
+	if code != 3 || !strings.Contains(out.String(), "iss-7") {
+		t.Fatalf("exit %d:\n%s", code, out.String())
 	}
 }
