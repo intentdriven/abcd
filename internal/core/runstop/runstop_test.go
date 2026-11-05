@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"strconv"
 )
@@ -82,7 +83,7 @@ func TestSetIsReadAndLifted(t *testing.T) {
 	if got := readNoPin(home); got.Stop != nil {
 		t.Fatalf("after the lift Read = %+v", got)
 	}
-	log, err := os.ReadFile(filepath.Join(home, ".abcd.noindex", LiftLogFile))
+	log, err := os.ReadFile(abcdhome.Path(home, LiftLogFile))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +103,7 @@ func TestNoFolderStaysInTheHome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := filepath.Join(home, ".abcd.noindex", HomeStopFile); set.Path != want {
+	if want := abcdhome.Path(home, HomeStopFile); set.Path != want {
 		t.Fatalf("set at %q, want %q", set.Path, want)
 	}
 	if got := readNoPin(home); got.Stop == nil {
@@ -304,7 +305,7 @@ func TestSetOverARefusedFileSaysSo(t *testing.T) {
 // folder.
 func TestSettingIsTheAccountsOwn(t *testing.T) {
 	home, _ := world(t)
-	p := filepath.Join(home, ".abcd.noindex", SettingFile)
+	p := abcdhome.Path(home, SettingFile)
 	if err := os.Chmod(p, 0o666); err != nil {
 		t.Fatal(err)
 	}
@@ -432,7 +433,7 @@ func TestAPinnedReadSeesTheStopWhateverTheSettingSays(t *testing.T) {
 	if _, err := Set(home, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	setting := filepath.Join(home, ".abcd.noindex", SettingFile)
+	setting := abcdhome.Path(home, SettingFile)
 	if err := os.Remove(setting); err != nil {
 		t.Fatal(err)
 	}
@@ -469,7 +470,7 @@ func TestAChangedSettingHoldsAPinnedRead(t *testing.T) {
 // to be reached this read cannot honour, pinned or not.
 func TestAnUnreadableSettingHoldsARead(t *testing.T) {
 	home, _ := world(t)
-	if err := os.Chmod(filepath.Join(home, ".abcd.noindex", SettingFile), 0o666); err != nil {
+	if err := os.Chmod(abcdhome.Path(home, SettingFile), 0o666); err != nil {
 		t.Fatal(err)
 	}
 	if got := readNoPin(home); got.Held == "" {
@@ -530,7 +531,7 @@ func TestLiftReachesTheWellKnownStopWithNoSetting(t *testing.T) {
 	if _, err := Set(home, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Remove(filepath.Join(home, ".abcd.noindex", SettingFile)); err != nil {
+	if err := os.Remove(abcdhome.Path(home, SettingFile)); err != nil {
 		t.Fatal(err)
 	}
 	if lifted, err := Lift(home, time.Now()); err != nil || !lifted {

@@ -112,22 +112,29 @@ func TestEachPersonsActSaysWhatItsRegistryEntrySays(t *testing.T) {
 	}
 }
 
+// homeDir and upperHomeDir spell abcd's home folder as a line does, the second as a
+// volume that folds case resolves it.
+var (
+	homeDir      = abcdhome.Display()
+	upperHomeDir = "~/" + strings.ToUpper(abcdhome.Rel())
+)
+
 // TestStopStorePathNamesWhatTheFileToolsMayNotWrite: the file tools are held to
 // the same names a shell line is, wherever the shared folder stands.
 func TestStopStorePathNamesWhatTheFileToolsMayNotWrite(t *testing.T) {
 	for p, want := range map[string]bool{
-		"/Users/Shared/abcd-stop/abcd-stop.json":        true,
-		"/home/x/.abcd.noindex/stop.json":               true,
-		"/home/x/.abcd.noindex/shared-folder.json":      true,
-		"/home/x/.abcd.noindex/sub/../stop.json":        true,
-		"/home/x/.abcd.noindex/STOP.JSON":               true,
-		"/home/x/.ABCD.NOINDEX/Shared-Folder.json":      true,
-		"/Users/Shared/ABCD-STOP/ABCD-STOP.JSON":        true,
-		"/home/x/.abcd.noindex/\u017ftop.json":          true,
-		"/home/x/.abcd.noindex/\u017fhared-folder.json": true,
-		"/home/x/project/stop.json":                     false,
-		"/home/x/.abcd.noindex/rules.json":              false,
-		"/home/x/.abcd.noindex/worktrees/a/stop.json":   false,
+		"/Users/Shared/abcd-stop/abcd-stop.json":                             true,
+		abcdhome.Path("/home/x", "stop.json"):                                true,
+		abcdhome.Path("/home/x", "shared-folder.json"):                       true,
+		"/home/x/" + abcdhome.Rel("sub") + "/../stop.json":                   true,
+		abcdhome.Path("/home/x", "STOP.JSON"):                                true,
+		"/home/x/" + strings.ToUpper(abcdhome.Rel()) + "/Shared-Folder.json": true,
+		"/Users/Shared/ABCD-STOP/ABCD-STOP.JSON":                             true,
+		abcdhome.Path("/home/x", "\u017ftop.json"):                           true,
+		abcdhome.Path("/home/x", "\u017fhared-folder.json"):                  true,
+		"/home/x/project/stop.json":                                          false,
+		abcdhome.Path("/home/x", "rules.json"):                               false,
+		abcdhome.Path("/home/x", "worktrees/a/stop.json"):                    false,
 	} {
 		if got := StopStorePath(p); got != want {
 			t.Errorf("StopStorePath(%q) = %v, want %v", p, got, want)
@@ -160,34 +167,34 @@ func TestTheStopIsThePersonsAct(t *testing.T) {
 		{`rm -r /Users/Shared/ABCD-STOP-501`, stopStoreEntryID},
 		{`rm /Users/Shared/abcd-stop/abcd-stop.json`, stopStoreEntryID},
 		{`rm -r /Users/Shared/abcd-stop`, stopStoreEntryID},
-		{`cd ~/.abcd.noindex && mv stop.json x`, stopStoreEntryID},
-		{`rm -f ~/.abcd.noindex/stop.json`, stopStoreEntryID},
+		{`cd ` + homeDir + ` && mv stop.json x`, stopStoreEntryID},
+		{`rm -f ` + homeDir + `/stop.json`, stopStoreEntryID},
 		{`mv /Users/Shared/abcd-stop/abcd-stop.json /tmp/x`, stopStoreEntryID},
 		{`echo '{}' > /Users/Shared/abcd-stop/abcd-stop.json`, stopStoreEntryID},
-		{`echo '{}' > ~/.abcd.noindex/shared-folder.json`, stopStoreEntryID},
+		{`echo '{}' > ` + homeDir + `/shared-folder.json`, stopStoreEntryID},
 		{`rm "$F" # abcd-stop.json`, stopStoreEntryID},
-		{`rm ~/.abcd.noindex/stop.*`, stopStoreEntryID},
-		{`rm ~/.abcd.noindex/shared-*`, stopStoreEntryID},
-		{`cd ~/.abcd.noindex && rm -- *.json`, stopStoreEntryID},
-		{`rm -rf ~/.abcd.noindex`, stopStoreEntryID},
-		{`rm -rf ~/.abcd.noindex/`, stopStoreEntryID},
-		{`mv ~/.abcd.noindex ~/.old`, stopStoreEntryID},
-		{`find ~/.abcd.noindex -name stop.json -delete`, stopStoreEntryID},
-		{`mv /tmp/x ~/.abcd.noindex/stop.json`, stopStoreEntryID},
+		{`rm ` + homeDir + `/stop.*`, stopStoreEntryID},
+		{`rm ` + homeDir + `/shared-*`, stopStoreEntryID},
+		{`cd ` + homeDir + ` && rm -- *.json`, stopStoreEntryID},
+		{`rm -rf ` + homeDir, stopStoreEntryID},
+		{`rm -rf ` + homeDir + `/`, stopStoreEntryID},
+		{`mv ` + homeDir + ` ~/.old`, stopStoreEntryID},
+		{`find ` + homeDir + ` -name stop.json -delete`, stopStoreEntryID},
+		{`mv /tmp/x ` + homeDir + `/stop.json`, stopStoreEntryID},
 		{`cd "$D" && rm stop.json`, stopStoreEntryID},
 		{`rm /Users/Shared/abcd-st*/abcd-stop.json`, stopStoreEntryID},
 		{`find /Users/Shared -name 'abcd-stop*' -delete`, stopStoreEntryID},
-		{`rm ~/.abcd.noindex/STOP.JSON`, stopStoreEntryID},
-		{`echo x > ~/.ABCD.NOINDEX/SHARED-FOLDER.JSON`, stopStoreEntryID},
+		{`rm ` + homeDir + `/STOP.JSON`, stopStoreEntryID},
+		{`echo x > ` + upperHomeDir + `/SHARED-FOLDER.JSON`, stopStoreEntryID},
 		{`rm /Users/Shared/ABCD-STOP/ABCD-STOP.JSON`, stopStoreEntryID},
 		{`mv /Users/Shared/Abcd-Stop /tmp/x`, stopStoreEntryID},
-		{`rm -rf ~/.ABCD.NOINDEX`, stopStoreEntryID},
-		{`rm ~/.abcd.noindex/STOP.*`, stopStoreEntryID},
-		{`rm ~/.ABCD.NOINDEX/Shared-*`, stopStoreEntryID},
-		{"rm ~/.abcd.noindex/\u017ftop.json", stopStoreEntryID},
-		{"echo x > ~/.abcd.noindex/\u017fhared-folder.json", stopStoreEntryID},
+		{`rm -rf ` + upperHomeDir, stopStoreEntryID},
+		{`rm ` + homeDir + `/STOP.*`, stopStoreEntryID},
+		{`rm ` + upperHomeDir + `/Shared-*`, stopStoreEntryID},
+		{"rm " + homeDir + "/\u017ftop.json", stopStoreEntryID},
+		{"echo x > " + homeDir + "/\u017fhared-folder.json", stopStoreEntryID},
 		{"rm /Users/Shared/abcd-\u017ftop/abcd-\u017ftop.json", stopStoreEntryID},
-		{"rm ~/.abcd.noindex/\ufb06op.json", stopStoreEntryID},
+		{"rm " + homeDir + "/\ufb06op.json", stopStoreEntryID},
 	} {
 		d, err := reg.Check(c.cmd)
 		if err != nil || d.Verdict != VerdictBlock || d.EntryID != c.entry {
@@ -203,12 +210,12 @@ func TestTheStopIsThePersonsAct(t *testing.T) {
 		`rm build/stop.json`,
 		`ls /Users/Shared/abcd-digest`,
 		`cd "$D" && rm build/stop.json`,
-		`rm -rf ~/.abcd.noindex/review-x/copy`,
-		`rm ~/.abcd.noindex/review-*`,
-		`rm ~/.abcd.noindex/review-x/*`,
-		`mkdir -p ~/.abcd.noindex`,
-		`printf x >> ~/.abcd.noindex/trusted-roots`,
-		`find ~/.abcd.noindex/worktrees -name x -delete`,
+		`rm -rf ` + homeDir + `/review-x/copy`,
+		`rm ` + homeDir + `/review-*`,
+		`rm ` + homeDir + `/review-x/*`,
+		`mkdir -p ` + homeDir,
+		`printf x >> ` + homeDir + `/trusted-roots`,
+		`find ` + homeDir + `/worktrees -name x -delete`,
 	} {
 		if d, err := reg.Check(cmd); err != nil || d.Verdict == VerdictBlock {
 			t.Errorf("Check(%q) = %+v, %v; want it allowed", cmd, d, err)
@@ -232,7 +239,7 @@ func TestTheAllowStoreFoldsCaseToo(t *testing.T) {
 	for _, line := range []string{
 		"echo '{}' > " + store + "/allow-x.json",
 		"cp /tmp/a.json " + store + "/allow-x.json",
-		"cat a > ~/.ABCD.NOINDEX/Guard-Allow/x.json",
+		"cat a > " + upperHomeDir + "/Guard-Allow/x.json",
 	} {
 		d, err := r.Check(line)
 		if err != nil || d.Verdict != VerdictBlock || d.EntryID != allowStoreEntryID {

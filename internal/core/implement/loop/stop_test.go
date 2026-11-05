@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"context"
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/adapter/repoprompt/mcptest"
 	"github.com/intentdriven/abcd/internal/core/machineload"
 	"github.com/intentdriven/abcd/internal/core/runner"
@@ -560,7 +561,7 @@ func TestAStopTakesNoGitStepOverAChangedConfiguration(t *testing.T) {
 	}
 }
 
-func settingOf(home string) string { return filepath.Join(home, ".abcd.noindex", runstop.SettingFile) }
+func settingOf(home string) string { return abcdhome.Path(home, runstop.SettingFile) }
 
 // TestAPinnedRunTakesTheStopWithTheSettingGone: the folder a run started under is
 // read whatever has become of the setting.

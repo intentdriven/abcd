@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"errors"
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/machineload"
 	"github.com/intentdriven/abcd/internal/core/occupancy"
@@ -35,7 +36,7 @@ func stopCLI(t *testing.T, home string, terminal bool, args ...string) (string, 
 // this account where no folder was chosen.
 func TestImplementStopIsThePersonsAct(t *testing.T) {
 	home := t.TempDir()
-	p := filepath.Join(home, ".abcd.noindex", runstop.HomeStopFile)
+	p := abcdhome.Path(home, runstop.HomeStopFile)
 	_, stderr, code := stopCLI(t, home, false, "implement", "stop")
 	if code != 2 || !strings.Contains(stderr, "person's own act") {
 		t.Fatalf("no terminal: %d %q", code, stderr)
@@ -164,12 +165,12 @@ func TestGuardHookDeniesTheFileToolsTheStop(t *testing.T) {
 	t.Setenv("HOME", home)
 	cwd := t.TempDir()
 	for _, tc := range []struct{ tool, path string }{
-		{"Write", filepath.Join(home, ".abcd.noindex", "stop.json")},
-		{"Edit", filepath.Join(home, ".abcd.noindex", "shared-folder.json")},
-		{"MultiEdit", filepath.Join(home, ".abcd.noindex", "shared-folder.json")},
+		{"Write", abcdhome.Path(home, "stop.json")},
+		{"Edit", abcdhome.Path(home, "shared-folder.json")},
+		{"MultiEdit", abcdhome.Path(home, "shared-folder.json")},
 		{"Write", "/Users/Shared/abcd-stop/abcd-stop.json"},
-		{"Write", filepath.Join(home, ".abcd.noindex", "STOP.JSON")},
-		{"Edit", filepath.Join(home, ".ABCD.NOINDEX", "SHARED-FOLDER.JSON")},
+		{"Write", abcdhome.Path(home, "STOP.JSON")},
+		{"Edit", filepath.Join(home, strings.ToUpper(abcdhome.Rel()), "SHARED-FOLDER.JSON")},
 	} {
 		stdout, stderr, code := runGuard(fileToolPayload(t, tc.tool, cwd, tc.path), "guard", "hook")
 		if reason := mustDeny(t, stdout, stderr, code); !strings.Contains(reason, "person") {
