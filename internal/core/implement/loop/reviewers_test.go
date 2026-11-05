@@ -52,6 +52,8 @@ func returnAt(t *testing.T, repo *gittest.Repo, runID string, stages Stages, a A
 	path := filepath.Join(repo.Root(), filepath.FromSlash(a.Receipt))
 	if a.Role == RoleAuditor {
 		body = auditorVerdict(t, filepath.Join(filepath.Dir(path), AuditRequestFileName), body)
+	} else {
+		body = statingHeadAt(t, repo.Root(), runID, a.Receipt, body)
 	}
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)

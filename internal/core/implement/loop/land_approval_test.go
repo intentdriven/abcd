@@ -166,7 +166,18 @@ func autoFixture(t *testing.T) *landFixture {
 	return newLandFixtureWith(t, map[string]string{
 		".abcd/work/rulesets/main-protection.json": unreviewedQueueRuleset("MERGE"),
 		".abcd/config.json":                        `{"facilitator":{"mode":"auto"}}` + "\n",
+		relateLaneIssue:                            "",
 	})
+}
+
+// prBodyOf is the pull request's body as the loop composed it.
+func (f *landFixture) prBodyOf(t *testing.T, l Lane) string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(f.repo.Root(), filepath.FromSlash(l.Landing.Body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
 }
 
 // recordsRound takes the step that sends the records commit to its round, and hands
@@ -223,7 +234,7 @@ func TestAPairReadsTheRecordsCommitBeforeAnythingIsPushed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{judged + ".." + records.HeadSHA, "couple of minutes", "resolution's note, impact and grounds", "`Reviewed head: " + records.HeadSHA + "`"} {
+	for _, want := range []string{judged + ".." + records.HeadSHA, "couple of minutes", "resolution's note, impact and grounds", "records and link rewrites", "`Reviewed head: " + records.HeadSHA + "`"} {
 		if !strings.Contains(string(raw), want) {
 			t.Fatalf("the brief says %q:\n%s", want, raw)
 		}
@@ -285,6 +296,9 @@ func TestARecordsRoundThatFailsParksNamingTheFinding(t *testing.T) {
 	if len(l.Validation) != before || len(l.Awaits) != 0 {
 		t.Fatalf("no fix round follows: %+v %+v", l.Validation, l.Awaits)
 	}
+	if body := f.prBodyOf(t, l); !strings.Contains(body, "did not pass") || !strings.Contains(body, "parked at this pull request for a person") {
+		t.Fatalf("the public body states the round's outcome:\n%s", body)
+	}
 	rcp := filepath.Join(f.repo.Root(), ".abcd", ".work.local", "review-receipts", l.Landing.Pushed)
 	if err := os.MkdirAll(filepath.Dir(rcp), 0o700); err != nil {
 		t.Fatal(err)
@@ -295,6 +309,37 @@ func TestARecordsRoundThatFailsParksNamingTheFinding(t *testing.T) {
 	f.step(t)
 	if l = currentLane(t, f.repo, f.runID); !l.Landing.Armed {
 		t.Fatalf("a person's pair arms it: %+v\n%s", l.Landing, f.ghLog(t))
+	}
+}
+
+// TestAResyncDoesNotEraseAFailedRecordsRound: a lane parked over its records is refused
+// for a person, naming the finding, rather than merged to a head a fresh round passes.
+func TestAResyncDoesNotEraseAFailedRecordsRound(t *testing.T) {
+	root := t.TempDir()
+	const rel = "return.md"
+	if err := os.WriteFile(filepath.Join(root, rel), []byte("### Analysis\n\n- not this one\n\n### Findings\n\n- the impact is wrong\n\n### Verdict\n\nBLOCK\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	head := strings.Repeat("a", 40)
+	lane := Lane{ID: "lane-1", PR: 7, Landing: &Landing{Records: head, Pushed: head},
+		Validation: []ValidationRound{{Round: 2, HeadSHA: head, Validators: []ValidatorRun{{Role: RoleSecurity, Verdict: "BLOCK", Return: rel}}}}}
+	_, err := resyncLane(Context{RepoRoot: root}, &lane, "main", "origin/main", mergeability{})
+	r, ok := AsRefusal(err)
+	if !ok || r.Contention || !strings.Contains(r.Reason, "the impact is wrong") || strings.Contains(r.Reason, "not this one") {
+		t.Fatalf("the sync is refused naming the finding: %v", err)
+	}
+}
+
+// TestFirstFindingIsTheHeadingsFirstItem: the word elsewhere is no heading.
+func TestFirstFindingIsTheHeadingsFirstItem(t *testing.T) {
+	for text, want := range map[string]string{
+		"### Analysis\n\nFindings below.\n- refuted\n\n### Findings\n\n- real\n": ": real",
+		"### Analysis\n\nFindings below.\n- refuted\n":                           "",
+		"## Findings\n\nNone.\n\n### Verdict\n\n- SHIP\n":                        "",
+	} {
+		if got := firstFinding(text); got != want {
+			t.Errorf("%q: got %q, want %q", text, got, want)
+		}
 	}
 }
 
@@ -321,8 +366,58 @@ func TestAStaleRoundDoesNotServe(t *testing.T) {
 	f.step(t)
 	l = currentLane(t, f.repo, f.runID)
 	if strings.Contains(f.ghLog(t), "pr merge") || l.Landing == nil || l.Landing.Armed ||
-		!strings.Contains(l.Landing.Merge, "its latest round read") {
+		!strings.Contains(l.Landing.Merge, "the loop did not record its own review") {
 		t.Fatalf("a stale round arms nothing: %+v\n%s", l.Landing, f.ghLog(t))
+	}
+}
+
+// TestAnExtraResolutionParksSayingWhich: a receipt that resolves an issue beyond the
+// lane's own and its intent's related ones goes to a person before any round.
+func TestAnExtraResolutionParksSayingWhich(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	f := newLandFixtureWith(t, map[string]string{
+		".abcd/work/rulesets/main-protection.json": unreviewedQueueRuleset("MERGE"),
+		".abcd/config.json":                        `{"facilitator":{"mode":"auto"}}` + "\n",
+	})
+	f.validated(t)
+	before := len(currentLane(t, f.repo, f.runID).Validation)
+	f.step(t)
+	f.step(t)
+	l := f.pushToArm(t)
+	if strings.Contains(f.ghLog(t), "pr merge") || l.Landing == nil || l.Landing.Armed || !strings.Contains(l.Landing.Merge, f.issue) {
+		t.Fatalf("the lane parks naming the issue: %+v\n%s", l.Landing, f.ghLog(t))
+	}
+	if len(l.Validation) != before {
+		t.Fatalf("no round read it: %+v", l.Validation)
+	}
+	if body := f.prBodyOf(t, l); !strings.Contains(body, "parked at this pull request for a person") {
+		t.Fatalf("the public body says it is parked:\n%s", body)
+	}
+}
+
+// TestACommitHoldingMoreThanRecordsParks: what is no markdown record goes to a person.
+func TestACommitHoldingMoreThanRecordsParks(t *testing.T) {
+	f := autoFixture(t)
+	f.validated(t)
+	f.step(t)
+	l := currentLane(t, f.repo, f.runID)
+	st, err := ReadState(f.repo.Root(), f.runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(l.Worktree, "code.txt"), []byte("x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gitutil.LocalGit(l.Worktree, "add", "code.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := gitutil.LocalGit(l.Worktree, "commit", "-q", "-m", landSubject(st, l)); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	f.step(t)
+	l = f.pushToArm(t)
+	if strings.Contains(f.ghLog(t), "pr merge") || l.Landing == nil || l.Landing.Armed || !strings.Contains(l.Landing.Merge, "code.txt") {
+		t.Fatalf("the lane parks naming the path: %+v\n%s", l.Landing, f.ghLog(t))
 	}
 }
 
@@ -348,6 +443,22 @@ func TestACommitFoundOnTheJudgedHeadIsReadLikeAnyOther(t *testing.T) {
 	}
 	if strings.Contains(f.ghLog(t), "pr create") {
 		t.Fatalf("it is not pushed first:\n%s", f.ghLog(t))
+	}
+}
+
+// TestALandingOverARefusedHookKeepsItsOwnEdits: a markdown change, as a relink leaves,
+// is not called stray.
+func TestALandingOverARefusedHookKeepsItsOwnEdits(t *testing.T) {
+	f := autoFixture(t)
+	f.validated(t)
+	f.step(t)
+	l := currentLane(t, f.repo, f.runID)
+	if err := os.WriteFile(filepath.Join(l.Worktree, "relinked.md"), []byte("x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f.step(t)
+	if l := currentLane(t, f.repo, f.runID); !l.Landing.RecordsDone {
+		t.Fatalf("the records commit is made: %+v", l.Landing)
 	}
 }
 
@@ -391,6 +502,9 @@ func TestAnUnreadGateAsksAgain(t *testing.T) {
 	}
 	if l := currentLane(t, f.repo, f.runID); l.Landing.Merge != "" {
 		t.Fatalf("a read that failed left the lane open: %+v", l.Landing)
+	}
+	if st, err := ReadState(f.repo.Root(), f.runID); err != nil || st.Lanes[0].Refused != nil {
+		t.Fatalf("the wait does not count toward stuck: %+v %v", st.Lanes[0].Refused, err)
 	}
 	if err := os.Remove(role); err != nil {
 		t.Fatal(err)
@@ -443,6 +557,7 @@ func TestThisRepositorysOwnMirrorAndConfigArm(t *testing.T) {
 			t.Fatalf("reading this repository's %s: %v", rel, err)
 		}
 	}
+	files[relateLaneIssue] = ""
 	f := newLandFixtureWith(t, files)
 	f.approve(t)
 	f.validated(t)

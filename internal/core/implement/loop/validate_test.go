@@ -145,12 +145,28 @@ func handBack(t *testing.T, repo *gittest.Repo, runID string, stages Stages, rol
 // the round's head, unless the test's own return says otherwise.
 func statingHead(t *testing.T, root, runID, body string) string {
 	t.Helper()
+	return statingHeadAt(t, root, runID, "", body)
+}
+
+// statingHeadAt is statingHead for the round whose reviewer writes at rel, the current
+// lane's latest round when rel is "" or names none.
+func statingHeadAt(t *testing.T, root, runID, rel, body string) string {
+	t.Helper()
 	if strings.HasPrefix(body, "Reviewed ") {
 		return body
 	}
 	st, err := ReadState(root, runID)
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, l := range st.Lanes {
+		for _, r := range l.Validation {
+			for _, v := range r.Validators {
+				if rel != "" && v.Return == rel {
+					return "Reviewed head: " + r.HeadSHA + "\n\n" + body
+				}
+			}
+		}
 	}
 	i := st.current()
 	if i < 0 || len(st.Lanes[i].Validation) == 0 {
@@ -242,7 +258,7 @@ func TestTheValidatorsAreFreshAgentsAndOnlyTheLoopRecordsAVerdict(t *testing.T) 
 	}
 	// The ruthless reviewer is out; its return is handed back before the next
 	// step, which would otherwise hand the security reviewer out beside it.
-	if err := os.WriteFile(filepath.Join(repo.Root(), filepath.FromSlash(res.Awaiting.Receipt)), []byte(reviewerReturn("SHIP")), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(repo.Root(), filepath.FromSlash(res.Awaiting.Receipt)), []byte(statingHead(t, repo.Root(), id, reviewerReturn("SHIP"))), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	got, err := Receipt(repo.Root(), id, filepath.Join(repo.Root(), filepath.FromSlash(res.Awaiting.Receipt)), stages, Options{})

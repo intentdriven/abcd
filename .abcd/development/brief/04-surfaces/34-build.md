@@ -461,7 +461,8 @@ shows "waiting for its full check (since HH:MM)", the time the wait began kept
 on its landing across moves. Any other refusal of a stage the binary performs is
 the move's answer, and no other lane moves.
 
-Landing is one lane at a time, the lower spec step first. A lane whose sibling
+Landing is one lane at a time, the lower spec step first; a lane away at its
+records round still holds a sibling that has not begun landing. A lane whose sibling
 landed since its base is synced before its landing begins: the default branch is
 merged into its branch with a merge commit, never a rebase, whose computed
 message carries the same abcd label as the pick's commit, and a fresh round
@@ -794,7 +795,10 @@ goes to a fresh implementer, who applies each finding with a commit or rejects
 it in writing in its report, and hands back a receipt verified as the
 implementer's is; the next round then hands the lane's head to every validator
 again, so no verdict stands over a head it did not read and a rejection is
-judged by the validator it answers. The state records every round with the head
+judged by the validator it answers. The one exception is the round that reads the
+landing's records commit where the mode is `auto`: it takes the two reviewers alone,
+and one that does not pass takes no fix round, the lane going on to its pull request
+to park, named for a person. The state records every round with the head
 it judged, each verdict, and the audit's receipt and range.
 
 **The review set** (itd-2610240922461281, spc-2610240951109420). A new run reads
@@ -875,7 +879,8 @@ version 16's, so a file of version 15 or lower carrying it is refused.
 default branch one step per invocation, each recorded in the lane's `landing`
 as it completes, so a killed invocation repeats the step that did not complete
 and finds what it made rather than making it twice. The lane stays at `land`
-until the last step.
+until the last step, but for the review round its records commit takes where the
+mode is `auto`, back at `validate`, and a sync.
 
 1. It checks the lane's worktree is clean and its branch is at the head the
    validators judged, and decides whether the landing closes the spec: the

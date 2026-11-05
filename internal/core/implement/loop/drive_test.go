@@ -245,8 +245,14 @@ func briefHeadLine(path string) string {
 	if err != nil {
 		return ""
 	}
-	if m := regexp.MustCompile("`(Reviewed head: [0-9a-f]+)`").FindSubmatch(raw); m != nil {
-		return string(m[1]) + "\n\n"
+	return briefHeadLineIn(string(raw))
+}
+
+// briefHeadLineIn is the first line a brief's or a request's text asks a return to open
+// with, "" when it asks for none.
+func briefHeadLineIn(text string) string {
+	if m := regexp.MustCompile("`(Reviewed head: [0-9a-f]+)`").FindStringSubmatch(text); m != nil {
+		return m[1] + "\n\n"
 	}
 	return ""
 }

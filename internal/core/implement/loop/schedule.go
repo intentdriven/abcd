@@ -370,7 +370,7 @@ func laneWant(st State, i int) want {
 			return w
 		}
 		n := len(l.Validation)
-		if n == 0 || l.Validation[n-1].Fix != "" || l.syncRoundDue() {
+		if n == 0 || l.Validation[n-1].Fix != "" || l.syncRoundDue() || l.recordsRoundDue() {
 			w.kind, w.role = wantAgent, RoleRuthless
 			return w
 		}
@@ -391,7 +391,7 @@ func laneWant(st State, i int) want {
 		}
 		for _, v := range cur.Validators {
 			if !v.Pass {
-				if l.fixRoundsTaken() >= st.FixRoundCap() {
+				if l.fixRoundsTaken() >= st.FixRoundCap() || l.readsRecords(cur) {
 					w.kind = wantBinary
 				} else {
 					w.kind, w.role = wantAgent, RoleImplementer
@@ -426,9 +426,10 @@ func laneWant(st State, i int) want {
 			w.kind, w.hold = wantBinary, true
 			return w
 		}
-		// One landing at a time: a sibling's landing under way holds this one.
+		// One landing at a time: a sibling's landing under way holds one not yet
+		// begun, its records round included; a landing begun never waits.
 		for j, o := range st.Lanes {
-			if j != i && o.Stage == StageLand && o.Landing != nil && o.Landing.Merged == "" {
+			if j != i && l.Landing == nil && (o.Stage == StageLand || o.Stage == StageValidate) && o.Landing != nil && o.Landing.Merged == "" {
 				return w
 			}
 		}

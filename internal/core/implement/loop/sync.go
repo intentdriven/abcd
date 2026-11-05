@@ -261,6 +261,10 @@ func undeclaredConflict(lane Lane, def, merged string, paths []string, unread st
 // records and the pull request are kept. Any other conflict is refused for a
 // person, as before (conflictRefusal).
 func resyncLane(c Context, lane *Lane, def, tracking string, m mergeability) (Outcome, error) {
+	if why := failedRecordsRound(c, *lane); why != "" {
+		return Outcome{}, refuse(string(StageLand), "", lane.ID, "pull request #"+strconv.Itoa(lane.PR)+" conflicts with "+def+", and "+why+"; a sync's fresh round would not hear of it",
+			"settle the finding yourself on the lane's branch, or hand the lane back; the loop does not sync over it")
+	}
 	ld := lane.Landing
 	f := localConflict(c.RepoRoot, tracking, ld.Pushed)
 	if f.err != nil {

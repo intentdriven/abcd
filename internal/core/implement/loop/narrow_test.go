@@ -230,7 +230,7 @@ func (f *narrowFixture) toLand(t *testing.T) {
 		}
 		if a := l.awaiting(); a != nil && pass[a.Role] != "" {
 			path := filepath.Join(f.repo.Root(), filepath.FromSlash(a.Receipt))
-			if err := os.WriteFile(path, []byte(pass[a.Role]), 0o600); err != nil {
+			if err := os.WriteFile(path, []byte(statingHeadAt(t, f.repo.Root(), f.runID, a.Receipt, pass[a.Role])), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := Receipt(f.repo.Root(), f.runID, path, f.stages, Options{}); err != nil {

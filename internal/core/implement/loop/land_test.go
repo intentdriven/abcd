@@ -191,6 +191,10 @@ func newLandFixture(t *testing.T, ruleset string) *landFixture {
 
 // newLandFixtureWith is newLandFixture with the files given (the ruleset
 // mirror, a CODEOWNERS file) committed at the lane's base.
+// relateLaneIssue, among a fixture's files, is no file: it has the intent's record name
+// the issue the lane resolves among its related issues.
+const relateLaneIssue = "relate-the-lane's-issue"
+
 func newLandFixtureWith(t *testing.T, files map[string]string) *landFixture {
 	t.Helper()
 	type built struct{ issue, runID string }
@@ -199,13 +203,28 @@ func newLandFixtureWith(t *testing.T, files map[string]string) *landFixture {
 		asPatInEnv(t)
 		repo.Write("AGENTS.md", agentsMarked)
 		for name, body := range files {
-			repo.Write(name, body)
+			if name != relateLaneIssue {
+				repo.Write(name, body)
+			}
 		}
 		c, err := capture.Capture(capture.CaptureRequest{RepoRoot: repo.Root(), Text: "The widget refuses a blank name.",
 			Severity: "minor", Category: "ux", Source: "agent-observation", FoundDuring: "a landing test",
 			Remedy: "accept a blank name as absent"})
 		if err != nil {
 			t.Fatalf("capturing the issue the lane fixes: %v", err)
+		}
+		if _, ok := files[relateLaneIssue]; ok {
+			paths, err := filepath.Glob(filepath.Join(repo.Root(), ".abcd", "development", "intents", "planned", "itd-10-*.md"))
+			if err != nil || len(paths) != 1 {
+				t.Fatalf("the intent's record: %v %v", paths, err)
+			}
+			raw, err := os.ReadFile(paths[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(paths[0], []byte(strings.Replace(string(raw), "---\n", "---\nrelated_issues: ["+c.ID+"]\n", 1)), 0o600); err != nil {
+				t.Fatal(err)
+			}
 		}
 		repo.Commit("the record")
 
@@ -215,8 +234,10 @@ func newLandFixtureWith(t *testing.T, files map[string]string) *landFixture {
 		repo.Git("fetch", "-q", "origin")
 
 		var rulesets []string
-		for _, body := range files {
-			rulesets = append(rulesets, body)
+		for name, body := range files {
+			if name != relateLaneIssue {
+				rulesets = append(rulesets, body)
+			}
 		}
 		installStubGH(t, w.gh, rulesets...)
 		w.putGHFirst(t)

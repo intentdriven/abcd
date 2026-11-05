@@ -74,6 +74,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/embargo"
+	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/core/layered"
@@ -181,7 +182,10 @@ func landStage(c Context, lane *Lane) (Outcome, error) {
 			return Outcome{}, err
 		}
 		if due {
-			return Outcome{Goto: StageValidate, Note: "the landing's records commit " + shortSHA(lane.HeadSHA) + " goes to a review round of its own, before anything is pushed"}, nil
+			if recordsParked(c, *lane) == "" {
+				// The round can take no fix round, so it needs no wider reservation.
+				return Outcome{Goto: StageValidate, LandLeft: true, Note: "the landing's records commit " + shortSHA(lane.HeadSHA) + " goes to a review round of its own, before anything is pushed"}, nil
+			}
 		}
 		return landPush(c, lane)
 	case lane.PR == 0 || !ld.BodyChecked:
@@ -460,10 +464,11 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	return Outcome{Stay: true, Note: "committed the landing's records as " + shortSHA(head) + ": " + strings.Join(done, "; ")}, nil
 }
 
-// strayChanges names a change in the lane's worktree the landing did not write, ""
-// when there is none. A commit a repository hook refused leaves the landing's records
-// staged for the next call, so changes in the record folders and the local tier are
-// its own; what the records commit holds is the round's to read.
+// strayChanges names a change in the lane's worktree that cannot be the landing's own,
+// "" when there is none. A commit a repository hook refused leaves the landing's
+// records staged for the next call, and its relink reaches any markdown, so a markdown
+// change and the local tier are let through; one a stray process made joins the records
+// commit, for the round to read.
 func strayChanges(worktree string) (string, error) {
 	out, err := pickGit(worktree, "status", "--porcelain", "-z", "--untracked-files=all", "--no-renames")
 	if err != nil {
@@ -474,19 +479,18 @@ func strayChanges(worktree string) (string, error) {
 			continue
 		}
 		path := entry[3:]
-		if !slices.ContainsFunc(landingWrites, func(dir string) bool { return strings.HasPrefix(path, dir) }) {
+		if !strings.HasSuffix(path, ".md") && !strings.HasPrefix(path, TierRelDir+"/") {
 			return "the uncommitted " + strconv.Quote(termsafe.Sanitize(path)), nil
 		}
 	}
 	return "", nil
 }
 
-// landingWrites are the folders the landing's records are written in.
-var landingWrites = []string{".abcd/development/specs/", ".abcd/development/intents/", ".abcd/work/issues/", TierRelDir + "/"}
-
 // recordsRoundWanted reports whether the lane's head is a records commit no round has
 // read and the mode is auto, where the receipt that arms a head rests on a pair that
-// read it.
+// read it. It reads the default branch as last fetched and opens no connection: the
+// push's own fence says what a lost origin means, and a mode changed since is read at
+// the arming, where a head no pair read is left open.
 func recordsRoundWanted(c Context, lane Lane) (bool, error) {
 	if !lane.recordsRoundDue() {
 		return false, nil
@@ -495,12 +499,71 @@ func recordsRoundWanted(c Context, lane Lane) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	tip, err := defaultTip(c, lane, def)
-	if err != nil {
-		return false, err
+	tip, err := gitutil.Run(c.RepoRoot, "rev-parse", "--verify", "--quiet", Remote+"/"+def+"^{commit}", "--")
+	if err != nil || !gitutil.IsFullSHA(tip) {
+		return false, nil
 	}
 	roots, _ := layered.RootsFor(c.RepoRoot)
 	return landing.AutoAt(roots, c.RepoRoot, tip, Remote+"/"+def), nil
+}
+
+// recordsParked says why the lane's records commit goes to a person rather than to a
+// round, "" when it does not: it resolves more than the run names, as the loop's own
+// state and the intent at the lane's base derive that, so no round has read the fix;
+// or it holds more than records. It holds only on the lane's head.
+func recordsParked(c Context, lane Lane) string {
+	if lane.Landing == nil || lane.Landing.Records == "" || lane.Landing.Records != lane.HeadSHA || len(lane.Validation) == 0 {
+		return ""
+	}
+	allowed := relatedIssuesAt(c.RepoRoot, lane.BaseSHA, c.State.Intent)
+	if iss := c.State.Issue(); iss != "" {
+		allowed = append(allowed, iss)
+	}
+	var extra []string
+	for _, r := range lane.Resolves {
+		if !slices.Contains(allowed, r.Issue) {
+			extra = append(extra, r.Issue)
+		}
+	}
+	if len(extra) > 0 {
+		return "it resolves " + strings.Join(extra, ", ") + ", beyond the lane's own issue and its intent's related issues"
+	}
+	judged := lane.Validation[len(lane.Validation)-1].HeadSHA
+	if judged == lane.HeadSHA {
+		return ""
+	}
+	why, err := landing.RecordsCommitShape(c.RepoRoot, judged, lane.HeadSHA)
+	if err != nil {
+		return termsafe.Sanitize(fsutil.RedactHome(err.Error()))
+	}
+	return termsafe.Sanitize(why)
+}
+
+// relatedIssuesAt is the related_issues of the intent as commit holds it, nil when it
+// holds none or cannot be read: a lane's own change does not widen them.
+func relatedIssuesAt(repoRoot, commit, id string) []string {
+	if id == "" || !gitutil.IsFullSHA(commit) {
+		return nil
+	}
+	out, err := gitutil.Run(repoRoot, "ls-tree", "-r", "--name-only", commit, "--", ".abcd/development/intents/")
+	if err != nil {
+		return nil
+	}
+	for _, path := range strings.Split(out, "\n") {
+		if name := filepath.Base(path); !strings.HasPrefix(name, id+"-") && name != id+".md" {
+			continue
+		}
+		raw, err := gitutil.RunCappedBytes(repoRoot, maxRecordBytes, "cat-file", "blob", commit+":"+path)
+		if err != nil {
+			return nil
+		}
+		f, ok := frontmatter.Fields(strings.Split(string(raw), "\n"))[intent.RelatedIssuesKey]
+		if !ok || frontmatter.IsNull(f.Value) {
+			return nil
+		}
+		return frontmatter.StringList(f.Value)
+	}
+	return nil
 }
 
 // recordsRoundDue reports whether the lane's head is the landing's records commit and
@@ -528,8 +591,9 @@ func (l Lane) recordsBase(r ValidationRound) string {
 // recordsRoundScope is what a round over the records commit is told to read.
 func recordsRoundScope(base, head string) string {
 	return fmt.Sprintf("## This round reads the landing's records commit alone\n\n"+
-		"The lane's own change passed its full round at `%s`. Read only `%s..%s`, the commit the landing added on it; this should take a couple of minutes, so do not read the lane again. "+
-		"Judge which issues it resolves and whether the lane's diff actually fixes them, each resolution's note, impact and grounds, and any record outside what the lane touches. "+
+		"The lane's own change passed its full round at `%s`, which judged the fix against its issue. Read only `%s..%s`, the commit the landing added on it; this should take a couple of minutes, so do not read the lane again or judge the fix again. "+
+		"Judge the records' text against what the lane says it did: each resolution's note, impact and grounds, and the folder each record lands in. "+
+		"This commit normally holds records and link rewrites, and anything else in it is a finding. "+
 		"A verdict that does not pass parks the lane for a person; no fix round follows.\n\n", base, base, head)
 }
 
@@ -825,6 +889,12 @@ func prTitle(st State, lane Lane) string {
 }
 
 func prBody(st State, lane Lane, assisted []string) string {
+	return prBodyParked(st, lane, assisted, false)
+}
+
+// prBodyParked is prBody, saying the lane is parked for a person when no round read its
+// records commit. What it was parked over stays in the run's own record.
+func prBodyParked(st State, lane Lane, assisted []string, parked bool) string {
 	var b strings.Builder
 	p := func(format string, a ...any) { fmt.Fprintf(&b, format, a...) }
 	if iss := st.Issue(); iss != "" {
@@ -837,7 +907,14 @@ func prBody(st State, lane Lane, assisted []string) string {
 	p("- Branch `%s`, from %s to %s.\n", lane.Branch, shortSHA(lane.BaseSHA), shortSHA(lane.HeadSHA))
 	if n := len(lane.Validation); n > 0 {
 		r := lane.Validation[n-1]
-		p("- Validation round %d at %s passed: %s.\n", r.Round, shortSHA(r.HeadSHA), verdictsLine(r))
+		if slices.ContainsFunc(r.Validators, func(v ValidatorRun) bool { return !v.Pass }) {
+			p("- Validation round %d at %s did not pass (%s), so the lane is parked at this pull request for a person.\n", r.Round, shortSHA(r.HeadSHA), verdictsLine(r))
+		} else {
+			p("- Validation round %d at %s passed: %s.\n", r.Round, shortSHA(r.HeadSHA), verdictsLine(r))
+		}
+		if parked {
+			p("- No round read its records commit %s, so the lane is parked at this pull request for a person.\n", shortSHA(lane.HeadSHA))
+		}
 	}
 	var trailers []string
 	if lane.Landing != nil && lane.Landing.Closes {
@@ -877,7 +954,11 @@ func landPullRequest(c Context, lane *Lane) (Outcome, error) {
 		if gap != "" {
 			return Outcome{}, modelGap(*lane, "the pull request's body describes a change carrying text the lane's implementer composed", gap)
 		}
-		body, _, err := scanner.ScrubOutbound(c.RepoRoot, prBody(c.State, *lane, assisted), "the pull request's body")
+		due, err := recordsRoundWanted(c, *lane)
+		if err != nil {
+			return Outcome{}, err
+		}
+		body, _, err := scanner.ScrubOutbound(c.RepoRoot, prBodyParked(c.State, *lane, assisted, due && recordsParked(c, *lane) != ""), "the pull request's body")
 		if err != nil {
 			return Outcome{}, refuse(string(StageLand), "", lane.ID, fsutil.RedactHome(err.Error()), "settle what the scrub names, then run `abcd implement step` again")
 		}
@@ -1044,8 +1125,10 @@ func landArm(c Context, lane *Lane) (Outcome, error) {
 		// What the gate could not read says nothing of the lane: it stays at this
 		// step, and a later turn asks again, where a left-open lane would be
 		// stepped only when a person acts.
-		return Outcome{}, contend(string(StageLand), "", lane.ID,
+		r := contend(string(StageLand), "", lane.ID,
 			"the merge gate could not read what it asks of pull request #"+n+": "+d.Why, "run `abcd implement step` again once the forge answers")
+		r.gateUnread = true
+		return Outcome{}, r
 	}
 	if !d.Arm {
 		ld.Merge = "left open: " + d.Why
@@ -1109,6 +1192,9 @@ func recordOwnReview(c Context, lane Lane, roots layered.Roots, tip, tipName str
 	round := lane.Validation[n-1]
 	head := lane.Landing.Pushed
 	if round.HeadSHA != head {
+		if why := recordsParked(c, lane); why != "" {
+			return "the records commit goes to a person before any round: " + why
+		}
 		return fmt.Sprintf("its latest round read %s, not the pushed head %s", shortSHA(round.HeadSHA), shortSHA(head))
 	}
 	var returns []landing.ReviewReturn
@@ -1131,14 +1217,38 @@ func recordOwnReview(c Context, lane Lane, roots layered.Roots, tip, tipName str
 	return ""
 }
 
+// failedRecordsRound says which verdict the round that read the lane's records commit
+// gave, "" when that round passed or there was none.
+func failedRecordsRound(c Context, lane Lane) string {
+	n := len(lane.Validation)
+	if n == 0 || !lane.readsRecords(lane.Validation[n-1]) {
+		return ""
+	}
+	r := lane.Validation[n-1]
+	for _, v := range r.Validators {
+		if !v.Pass {
+			text, err := readReturn(c.RepoRoot, v.Return, lane.ID)
+			finding := ""
+			if err == nil {
+				finding = firstFinding(string(text))
+			}
+			return fmt.Sprintf("round %d's %s said %s of the landing's records (%s)%s", r.Round, v.Role, v.Verdict, v.Return, finding)
+		}
+	}
+	return ""
+}
+
 // firstFinding is the first item of a return's findings, as a clause for a note, ""
 // when it lists none the loop can read.
 func firstFinding(text string) string {
-	_, rest, ok := strings.Cut(text, "Findings")
-	if !ok {
+	at := findingsHeading.FindStringIndex(text)
+	if at == nil {
 		return ""
 	}
-	for _, line := range strings.Split(rest, "\n") {
+	for _, line := range strings.Split(text[at[1]:], "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			return ""
+		}
 		if item, ok := strings.CutPrefix(strings.TrimSpace(line), "- "); ok {
 			if r := []rune(item); len(r) > maxFindingRunes {
 				item = string(r[:maxFindingRunes]) + "..."
@@ -1148,6 +1258,9 @@ func firstFinding(text string) string {
 	}
 	return ""
 }
+
+// findingsHeading is a return's Findings heading, at any depth.
+var findingsHeading = regexp.MustCompile(`(?m)^[ \t]{0,3}#{1,6}[ \t]+Findings[ \t]*\r?$`)
 
 // maxFindingRunes bounds what a note quotes of a finding.
 const maxFindingRunes = 200

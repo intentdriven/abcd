@@ -49,7 +49,7 @@ func rpServer(answer func(request string) string) *mcptest.Server {
 	return &mcptest.Server{Tools: map[string][]string{repoprompt.DefaultTool: {"message", "new_chat"}},
 		Answer: func(args map[string]any) any {
 			msg, _ := args["message"].(string)
-			return mcptest.TextResult(answer(msg))
+			return mcptest.TextResult(briefHeadLineIn(msg) + answer(msg))
 		}}
 }
 
