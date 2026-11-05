@@ -222,6 +222,8 @@ func listRun(checkout string, o Options, root *os.Root, st State, tab *sessionna
 		out.Next = "a stop holds: nothing moves until the person lifts it"
 	case held != "":
 		out.Next = termsafe.Sanitize(held) + ": nothing moves until the person puts it back"
+	case alive && c.Stop != nil && c.Stop.HaltedAt != nil && c.Driver.At.After(*c.Stop.HaltedAt):
+		out.Next = "a take-over from " + driverName(*c.Driver) + " holds it: if that take-over was refused, run `abcd implement resume --take " + out.RunID + "` again from that session, or end that session and take the run over from another, in " + out.Checkout
 	case c.Stop != nil && c.Stop.HaltedAt != nil:
 		out.Next = "a stop halted it, every lane has settled, and no agent is in its call: take it over with `abcd implement resume --take " + out.RunID + "`, in " + out.Checkout
 	case alive:
@@ -351,6 +353,13 @@ func safeTake(res TakeResult) TakeResult {
 		res.Restarted[i] = r
 	}
 	return res
+}
+
+// takeFailed is the refusal of a take-over that left work saved nowhere: its reason goes
+// out as written, under --json too, and a state's lane ids are not validated when read.
+func takeFailed(runID string, failed []string) error {
+	return refuse(StageResume, "", "", termsafe.Sanitize(strings.Join(failed, "; ")),
+		"settle what the reason names, then run `abcd implement resume --take "+termsafe.Sanitize(runID)+"` again; do not step the run")
 }
 
 // tookFirst says, on a refusal after the take-over began, what it did first.
@@ -548,8 +557,7 @@ func takeRun(repoRoot, runID string, o Options) (TakeResult, error) {
 	// Work saved nowhere is never stepped over: the take-over says so rather than
 	// naming a step that would build on it.
 	if len(failed) > 0 {
-		return res, tookFirst(refuse(StageResume, "", "", strings.Join(failed, "; "),
-			"settle what the reason names, then run `abcd implement resume --take "+runID+"` again; do not step the run"), res)
+		return res, tookFirst(takeFailed(runID, failed), res)
 	}
 	res.Next = "run `abcd implement step --run " + runID + "`"
 	if listed, err := ListRuns(repoRoot, runID, o); err == nil && len(listed.Runs) == 1 {

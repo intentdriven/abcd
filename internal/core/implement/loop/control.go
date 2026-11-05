@@ -183,13 +183,15 @@ func procOf(tab sessionname.Table, pid int) (sessionname.Host, bool) {
 // process listing. A walk that names no host is a loop its session left behind
 // (iss-2611022247128872): it claims nothing, and backs off from a live driver.
 // Under a stop it claims nothing either: the stop is settled by the driver the run's
-// agents ran under, and the move that follows gets the stop's refusal.
+// agents ran under, and the move that follows gets the stop's refusal. Nor does it claim
+// a run a stop halted, after the lift as before it: a step cannot move that run, and a
+// session that tried must not stand in the way of the take-over the run waits for.
 func ClaimDriver(repoRoot, runID string, o Options) error {
 	c, err := runControl(repoRoot, runID)
 	if err != nil {
 		return err
 	}
-	if o.stopRead(c.Shared).Stop != nil || (c.Stop != nil && !c.Stop.FromFile) {
+	if o.stopRead(c.Shared).Stop != nil || (c.Stop != nil && (!c.Stop.FromFile || c.Stop.HaltedAt != nil)) {
 		if _, err := stopCheck(repoRoot, runID, DefaultStages(), o); err != nil {
 			if _, refused := AsRefusal(err); !refused {
 				return err

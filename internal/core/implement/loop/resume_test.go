@@ -827,6 +827,80 @@ func TestASecondTakerDoesNotDisplaceTheFirst(t *testing.T) {
 	}
 }
 
+// TestAStepAfterTheLiftLeavesTheTakeOverOpen: a step cannot move a run a stop halted, so
+// the session that tried claims nothing and another may take the run over.
+func TestAStepAfterTheLiftLeavesTheTakeOverOpen(t *testing.T) {
+	repo, runID, _, _, _ := deadLane(t)
+	o, home, _ := stopped(t)
+	later := time.Now().Add(3 * time.Hour)
+	o.Now = func() time.Time { return later }
+	wantStopRefusal(t, checkOnce(repo.Root(), runID, o))
+	if c := controlOf(t, repo.Root(), runID); c.Stop == nil || c.Stop.HaltedAt == nil {
+		t.Fatalf("the run did not halt: %+v", c.Stop)
+	}
+	if _, err := runstop.Lift(home, later); err != nil {
+		t.Fatal(err)
+	}
+	procsOf(t, hostOne, hostOne, hostTwo)
+	step := Options{stopHome: home, Session: "stepping", Now: func() time.Time { return later.Add(time.Minute) }}
+	if err := ClaimDriver(repo.Root(), runID, step); err != nil {
+		t.Fatalf("the step's claim: %v", err)
+	}
+	_, err := advance(repo.Root(), runID, DefaultStages(), step)
+	if r := wantStopRefusal(t, err); !strings.Contains(r.Remedy, "implement resume --take") {
+		t.Fatalf("the step's refusal names %q", r.Remedy)
+	}
+	if c := controlOf(t, repo.Root(), runID); c.Driver != nil && c.Driver.Session == "stepping" {
+		t.Fatalf("the step claimed a run it cannot move: %+v", c.Driver)
+	}
+	procsOf(t, hostTwo, hostOne, hostTwo)
+	take := Options{stopHome: home, Session: "taking", Now: func() time.Time { return later.Add(2 * time.Minute) }}
+	if _, err := TakeRun(repo.Root(), runID, take); err != nil {
+		t.Fatalf("the take-over: %v", err)
+	}
+	if c := controlOf(t, repo.Root(), runID); c.Driver == nil || c.Driver.Session != "taking" {
+		t.Fatalf("the driver: %+v", c.Driver)
+	}
+}
+
+// TestATakerThatWasRefusedIsTheOneToRetryFrom: it holds others out, so the listing names
+// it rather than sending them to a take-over they would be refused; it can retry.
+func TestATakerThatWasRefusedIsTheOneToRetryFrom(t *testing.T) {
+	repo, runID, _, _ := awaitingLane(t)
+	home, _ := stopWorld(t, false)
+	halted := time.Now().UTC().Truncate(time.Second)
+	if err := mutate(repo.Root(), runID, func(r *os.Root, _ *State) (bool, error) {
+		c, err := readControl(r, runID)
+		if err != nil {
+			return false, err
+		}
+		c.Stop = &RunStop{SetBy: "a person", SetAt: halted, NotedAt: halted, HaltedAt: &halted, FromFile: true}
+		return false, writeControl(r, runID, c)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	procsOf(t, hostOne, hostOne, hostTwo)
+	first := Options{stopHome: home, Session: "first", Now: func() time.Time { return halted.Add(time.Minute) }}
+	if err := claimDriver(repo.Root(), runID, first, true); err != nil {
+		t.Fatal(err)
+	}
+	procsOf(t, hostTwo, hostOne, hostTwo)
+	l, err := ListRuns(repo.Root(), runID, Options{stopHome: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	next := theRun(t, l, runID).Next
+	for _, want := range []string{"session first", "again from that session", "end that session"} {
+		if !strings.Contains(next, want) {
+			t.Fatalf("the listing says %q, lacking %q", next, want)
+		}
+	}
+	procsOf(t, hostOne, hostOne, hostTwo)
+	if err := claimDriver(repo.Root(), runID, first, true); err != nil {
+		t.Fatalf("its retry: %v", err)
+	}
+}
+
 // TestWhatARunFileNamesIsMadeSafe: lane ids and roles are not validated when a state is
 // read, so what a listing and a take-over say of them is made safe first.
 func TestWhatARunFileNamesIsMadeSafe(t *testing.T) {
@@ -838,7 +912,11 @@ func TestWhatARunFileNamesIsMadeSafe(t *testing.T) {
 		Saved:     []RestartAside{{Lane: bad, Path: bad}},
 		Restarted: []RestartResult{{StepResult: StepResult{Lane: bad}, Aside: RestartAside{Lane: bad, Path: bad}}},
 	})
-	said := []string{d.Checkout, d.Judging, d.Next, res.Left[0], res.Saved[0].Lane, res.Saved[0].Path, res.Restarted[0].Lane, res.Restarted[0].Aside.Path}
+	refused, ok := AsRefusal(takeFailed(bad, []string{bad + "'s work could not be saved"}))
+	if !ok {
+		t.Fatal("no refusal")
+	}
+	said := []string{d.Checkout, d.Judging, d.Next, res.Left[0], res.Saved[0].Lane, res.Saved[0].Path, res.Restarted[0].Lane, res.Restarted[0].Aside.Path, refused.Reason, refused.Remedy}
 	for k, v := range res.Collected {
 		said = append(said, k, v)
 	}
