@@ -151,6 +151,9 @@ func TestLandRefusalNamesTheStepsBeforeIt(t *testing.T) {
 		if slices.Contains(args, "--state=merged") {
 			return "[]", nil // no pull request merged at the head
 		}
+		if slices.Contains(args, "query="+landing.ArmingsQuery) {
+			return `{"data":{"repository":{"pullRequests":{"nodes":[]}}}}`, nil // nothing armed
+		}
 		return "", errors.New("no other forge call in this test")
 	}
 	writeRel(t, dir, ".git/hooks/pre-push", "#!/bin/sh\necho the hook refuses >&2\nexit 1\n")

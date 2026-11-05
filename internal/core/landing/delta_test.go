@@ -1670,6 +1670,42 @@ func TestLandArmsOnADeltaOnlyWhileItStands(t *testing.T) {
 	})
 }
 
+// A receipt that holds no standing review is the gate refusing the head, not a read
+// that failed: only receipts the gate could not list leave an arming as it is.
+func TestAReceiptThatProvesNothingIsARefusalOfTheHead(t *testing.T) {
+	for name, body := range map[string]func(head string) string{
+		"does not parse": func(string) string { return "not a receipt" },
+		"holds no pair":  func(string) string { return "{}\n" },
+		"names another": func(string) string {
+			return `{"commit":"0123456789abcdef0123456789abcdef01234567","reviews":[{"name":"a","verdict":"SHIP","sha256":"x"},{"name":"b","verdict":"APPROVE","sha256":"y"}]}`
+		},
+		"a delta refused": func(head string) string {
+			return `{"commit":"` + head + `","delta":{"base":"0123456789abcdef0123456789abcdef01234567"},"reviews":[{"name":"a","verdict":"SHIP","sha256":"x"},{"name":"b","verdict":"APPROVE","sha256":"y"}]}`
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": autoConfig})
+			f.forge.head = f.head()
+			p := filepath.Join(f.repo.Root(), filepath.FromSlash(ReviewReceiptsRelDir), f.head())
+			if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(p, []byte(body(f.head())), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			tip := f.repo.Git("rev-parse", "origin/main")
+			d, err := DecideMerge(MergeQuery{RepoRoot: f.repo.Root(), Roots: f.options().Roots, Tip: tip, TipName: "origin/main", Default: "main",
+				Repo: "o/r", PR: "7", Head: f.head(), Forge: func(args ...string) (string, error) { return f.forge.run("", args...) }})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if d.Arm || d.Unread {
+				t.Fatalf("decision %+v: want the head refused, and no unread answer", d)
+			}
+		})
+	}
+}
+
 func TestTheGateNamesADeltaThatDoesNotStand(t *testing.T) {
 	d := mergeGate(gateFacts{mode: Facilitator{Mode: ModeAuto, Layer: "repo", Origin: "x"}, head: "0123456789abcdef", role: RoleMaintainer, roleWhy: "write", deltaWhy: "past the bound"})
 	if d.arm || !strings.Contains(d.why, "past the bound") || !strings.Contains(d.why, "full review pair") {

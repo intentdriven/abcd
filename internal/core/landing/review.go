@@ -240,6 +240,13 @@ func writeReviewRecord(repoRoot string, rec reviewRecord) (string, error) {
 	return filepath.Join(repoRoot, filepath.FromSlash(rel)), nil
 }
 
+// reviewReceipt finds the review receipt for sha in any worktree git lists
+// for the repository at repoRoot, as Receipt finds a preflight receipt, and
+// returns its path, or "" when none names sha.
+func reviewReceipt(repoRoot, sha string) (string, error) {
+	return findReceipt(repoRoot, ReviewReceiptsRelDir, sha)
+}
+
 // clip bounds and quotes a value a refusal echoes, cut on a character
 // boundary.
 func clip(s string) string {

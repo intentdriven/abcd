@@ -376,6 +376,8 @@ type reviewProof struct {
 	deltaWhy string
 	// unreadable says why the receipts could not be read.
 	unreadable string
+	// unlisted says they could not even be listed, so no answer rests on them.
+	unlisted bool
 }
 
 // readReviewProof reads every worktree's review receipt naming head. A full pair
@@ -384,7 +386,7 @@ type reviewProof struct {
 func readReviewProof(repoRoot, head, tip string) reviewProof {
 	reads, err := readReviewReceipts(repoRoot, head)
 	if err != nil {
-		return reviewProof{unreadable: termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
+		return reviewProof{unreadable: termsafe.Sanitize(fsutil.RedactHome(err.Error())), unlisted: true}
 	}
 	for _, r := range reads {
 		if r.err == nil && isFullPair(r.rec, head) {

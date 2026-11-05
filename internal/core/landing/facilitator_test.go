@@ -186,7 +186,7 @@ func TestOnlyTheLatestApprovalOfTheHeadByAnotherMaintainerCounts(t *testing.T) {
 		{"an answer that does not parse", "{", false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			by, why := countedApproval(reviewsForge(c.reviews, roles), f.repo.Root(), "o/r", "7", head, "author-a")
+			by, why, _ := countedApproval(reviewsForge(c.reviews, roles), f.repo.Root(), "o/r", "7", head, "author-a")
 			if (by != "") != c.counts || (by == "" && why == "") {
 				t.Fatalf("countedApproval = %q, %q; want counted %v", by, why, c.counts)
 			}
@@ -200,10 +200,10 @@ func TestOnlyTheLatestApprovalOfTheHeadByAnotherMaintainerCounts(t *testing.T) {
 	if _, err := RecordApproval(f.repo.Root(), head); err != nil {
 		t.Fatal(err)
 	}
-	if by, _ := countedApproval(reviewsForge("[]", roles), f.repo.Root(), "o/r", "7", head, "author-a"); !strings.Contains(by, "recorded approval") {
+	if by, _, _ := countedApproval(reviewsForge("[]", roles), f.repo.Root(), "o/r", "7", head, "author-a"); !strings.Contains(by, "recorded approval") {
 		t.Fatalf("the recorded approval counts: %q", by)
 	}
-	if by, _ := countedApproval(reviewsForge("[]", roles), f.repo.Root(), "o/r", "7", earlier, "author-a"); by != "" {
+	if by, _, _ := countedApproval(reviewsForge("[]", roles), f.repo.Root(), "o/r", "7", earlier, "author-a"); by != "" {
 		t.Fatalf("an approval recorded for another commit counts for nothing: %q", by)
 	}
 }

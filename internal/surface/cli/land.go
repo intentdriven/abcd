@@ -71,7 +71,8 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			"     gate allows it, pinned to the head: into the merge queue by its method where\n" +
 			"     one gates the default branch (then confirmed in the queue), otherwise as the\n" +
 			"     forge's auto-merge (a merge commit; a forge that refuses it is said). An\n" +
-			"     arming someone else made is left as it is. Where a merge queue gates the\n" +
+			"     arming someone else made at a head the gate arms is left as it is. Where a merge\n" +
+			"     queue gates the\n" +
 			"     default branch, a branch that shares a commit not on it with another pull\n" +
 			"     request queued or armed into it (a branch cut from that one's) is not armed:\n" +
 			"     the step stops naming it, since the queue would remove this one; run abcd land\n" +
@@ -117,6 +118,10 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			"this clock holds from when this checkout first saw it; one this checkout cannot\n" +
 			"keep that sighting for (no .abcd/.work.local/) is not counted, and a notice\n" +
 			"line on stderr names it.\n\n" +
+			"Before a push that will move the head of the branch's armed or queued pull request,\n" +
+			"land withdraws the arming, reads it back and says so. Where the merge gate refuses\n" +
+			"the local head, land withdraws this account's arming at it and refuses over another\n" +
+			"account's. Where it cannot make a withdrawal, it refuses, nothing pushed.\n\n" +
 			"Exit 0 when every step did its act or said why it stopped. Exit 2 on a refusal,\n" +
 			"which names what was done before it; reservations that cannot be fetched are\n" +
 			"one, and so is an announcement that cannot be published, each made before\n" +

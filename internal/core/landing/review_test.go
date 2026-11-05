@@ -24,12 +24,6 @@ func reviewRepo(t *testing.T) (*gittest.Repo, string) {
 	return repo, repo.Git("rev-parse", "HEAD")
 }
 
-// reviewReceipt finds the review receipt for sha in any worktree, for a test asking
-// whether a recording left one.
-func reviewReceipt(repoRoot, sha string) (string, error) {
-	return findReceipt(repoRoot, ReviewReceiptsRelDir, sha)
-}
-
 // reviewReturn is one reviewer's return naming the commit it read and ending
 // in the verdict section the loop's validators write.
 func reviewReturn(sha, verdict string) string {

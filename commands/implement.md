@@ -71,6 +71,13 @@ The first session opens each window by naming its mode — `single`, `claim`,
 
 The second session cannot set the mode.
 
+A session that joins as `first` is how abcd knows a session coordinates a run, so
+when the setting `/abcd:mode` describes reads as off a profile, each such join prints,
+after the join and in any mode, one line on stderr opening `WARNING:`. Pass the line
+on to the person, as it asks. The join stands and the exit code does not change.
+This reads one setting and proves no wall, and the setting's value changes nothing
+the session holds.
+
 ## Claim a record before opening its lane
 
 ```bash

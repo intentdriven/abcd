@@ -65,6 +65,9 @@ func newModeAutonomousCommand(asJSON *bool) *cobra.Command {
 			"what is committed, pushed, and opened or merged as a pull request. It ends at its\n" +
 			"time or with `abcd mode back`; a prompt never ends it. Setting it again keeps\n" +
 			"whatever is queued or recorded and not yet read.\n\n" +
+			"Setting it from a session whose setting reads as off a profile prints one line on stderr opening\n" +
+			"WARNING:, after the set, naming what abcd cannot check and addressed to the person. The mode is set and\n" +
+			"the exit code is the same either way: it warns and never refuses. " + offProfileHelp + "\n\n" +
 			"The record lives in " + abcdhome.Display(autonomy.StoreDir, "<root-sha>", autonomy.RecordFile) + ", keyed on the repository's\n" +
 			"root commit, and is changed under its lock, which only `abcd mode back` goes\n" +
 			"around. A record merely past its 64 KiB is carried, its oldest lines let go.\n" +
@@ -81,6 +84,7 @@ func newModeAutonomousCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return awayRefusal("autonomous", err)
 			}
+			warnOffProfile(cmd, "abcd mode autonomous")
 			out := awayOutput{
 				Away: true, SetBy: rec.SetBy, SetFrom: fsutil.DisplayPath(rec.SetFrom),
 				Start: rec.Start, Until: rec.Ends(), OpenEnded: rec.OpenEnded, HoldPushes: rec.HoldPushes,
