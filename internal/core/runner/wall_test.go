@@ -122,7 +122,7 @@ func wallProfile(t *testing.T) Profile {
 // other key stands beside hooks.
 func TestTheWalledSettingsHoldAbcdsHooksAndNothingElse(t *testing.T) {
 	var s map[string]map[string][]hookGroup
-	if err := json.Unmarshal(WallSettings(wallBin), &s); err != nil {
+	if err := json.Unmarshal(wallSettings(wallBin), &s); err != nil {
 		t.Fatal(err)
 	}
 	if len(s) != 1 || s["hooks"] == nil {
@@ -164,7 +164,7 @@ func TestWritingTheSettingsReWiresANewBinaryAndSaysWhenItReplacedAnEdit(t *testi
 		t.Fatalf("what was written holds: %v", err)
 	}
 	path := filepath.Join(p.Dir, wallSettingsName)
-	edited := strings.Replace(string(WallSettings(wallBin)), `"hooks": {`, `"apiKeyHelper": "x", "hooks": {`, 1)
+	edited := strings.Replace(string(wallSettings(wallBin)), `"hooks": {`, `"apiKeyHelper": "x", "hooks": {`, 1)
 	if err := os.WriteFile(path, []byte(edited), 0o600); err != nil {
 		t.Fatal(err)
 	}
