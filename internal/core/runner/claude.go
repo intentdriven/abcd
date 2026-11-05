@@ -102,7 +102,7 @@ func grantsShell(tools []string) bool { return slices.Contains(tools, "Bash") }
 // the working tree the role runs in, as it stood at base, the commit the run
 // started on, with runDirs, the run's own directories, named so a removal
 // may reach them.
-func (c *ClaudeCLI) approverConfig(dir, base string, runDirs []string) string {
+func (c *ClaudeCLI) approverConfig(dir, base string, runDirs, declared []string) string {
 	type server struct {
 		Type    string   `json:"type"`
 		Command string   `json:"command"`
@@ -111,6 +111,12 @@ func (c *ClaudeCLI) approverConfig(dir, base string, runDirs []string) string {
 	args := []string{"guard", "approve", "--dir=" + dir, "--base=" + base}
 	for _, d := range runDirs {
 		args = append(args, "--run-dir="+d)
+	}
+	if c.profile != nil {
+		args = append(args, "--stage-home="+c.profile.ShellHome, "--protect="+c.profile.Dir)
+		for _, d := range declared {
+			args = append(args, "--declared="+d)
+		}
 	}
 	raw, _ := json.Marshal(map[string]map[string]server{"mcpServers": {"abcd": {
 		Type: "stdio", Command: c.approver, Args: args,
@@ -161,7 +167,7 @@ func (c *ClaudeCLI) args(req Request) []string {
 		// The guard answers for the shell, so the harness asks it rather
 		// than running every command unasked.
 		tools = slices.DeleteFunc(slices.Clone(tools), func(t string) bool { return t == "Bash" })
-		a = append(a, "--mcp-config="+c.approverConfig(req.Dir, req.Base, dirs), "--strict-mcp-config",
+		a = append(a, "--mcp-config="+c.approverConfig(req.Dir, req.Base, dirs, req.Declared), "--strict-mcp-config",
 			"--permission-prompt-tool="+ApproverTool)
 	}
 	if len(tools) > 0 {
@@ -199,7 +205,7 @@ func (c *ClaudeCLI) walledFlags(req Request) []string {
 	tools := req.Tools
 	if shell {
 		tools = slices.DeleteFunc(slices.Clone(tools), func(t string) bool { return t == "Bash" })
-		a = append(a, "--mcp-config="+c.approverConfig(req.Dir, req.Base, dirs), "--permission-prompt-tool="+ApproverTool)
+		a = append(a, "--mcp-config="+c.approverConfig(req.Dir, req.Base, dirs, req.Declared), "--permission-prompt-tool="+ApproverTool)
 	} else {
 		a = append(a, `--mcp-config={"mcpServers":{}}`)
 	}
@@ -293,8 +299,13 @@ func (c *ClaudeCLI) run(ctx context.Context, req Request) (Answer, []byte, error
 	var seal []string
 	launch := c.launch
 	if c.profile != nil {
-		seal = append(slices.Clone(c.profile.Env), StageWritesEnv+"="+strings.Join(stageWriteDirs(req), string(os.PathListSeparator)))
-		launch.allow = stageEnvAllowed
+		if err := ResetStageHome(*c.profile); err != nil {
+			return Answer{}, nil, fail(Claude, ReasonRefused, "%s", err.Error())
+		}
+		list := string(os.PathListSeparator)
+		seal = append(slices.Clone(c.profile.Env), StageWritesEnv+"="+strings.Join(stageWriteDirs(req), list),
+			StageDeclaredEnv+"="+strings.Join(req.Declared, list), StageBaseEnv+"="+req.Base)
+		launch.carry = stageEnv
 	}
 	res, err := launch.run(ctx, Claude, bin, c.args(req), seal, req.Dir, req.timeout())
 	transcript := res.transcript()

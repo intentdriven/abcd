@@ -364,6 +364,11 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int) Approval
 					"a variable, a substitution or a glob stands where the program's name goes, so the guard cannot say which program runs.",
 					"the same command with the program's name spelled out.")
 			}
+			if files.stageHome != "" && startsAnAgent(s.tokens, a.idx) {
+				return refusal(stageAgentEntryID,
+					"a walled stage starts no further agent and no drive: its work is the brief it was given.",
+					"do the work in this stage, or say in the receipt that the task needs another agent.")
+			}
 			if name, ok := inlineCode(s.tokens, a.idx); ok {
 				return refusal(inlineCodeEntryID,
 					"this hands "+termsafe.Sanitize(name)+" inline code, which the guard does not read, so it has not checked what runs.",

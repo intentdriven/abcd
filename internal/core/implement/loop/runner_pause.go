@@ -425,7 +425,14 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 	}
 	release := func() error { return releaseClaim(repoRoot, runID, aw.Receipt, session) }
 
+	var declared []string
+	if rs.Config.OnWalledLogin() {
+		if st, err := ReadState(repoRoot, runID); err == nil {
+			declared, _ = runFootprint(repoRoot, st.Key, st.Spec, runID+" is unchanged")
+		}
+	}
 	req := runner.Request{
+		Declared: declared,
 		Role:     aw.Role,
 		Brief:    absIn(repoRoot, aw.Brief),
 		Receipt:  absIn(repoRoot, aw.Receipt),

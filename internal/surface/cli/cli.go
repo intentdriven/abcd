@@ -47,6 +47,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/record"
 	"github.com/intentdriven/abcd/internal/core/record/match"
 	"github.com/intentdriven/abcd/internal/core/rules"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/core/surface"
 	"github.com/intentdriven/abcd/internal/core/tools"
@@ -1614,6 +1615,16 @@ func readGuardedOperand(spec string, cap int64) ([]byte, error) {
 	return data, nil
 }
 
+// rulesForHook is the rules a hook injects: on a walled launch, as they stood at
+// the commit its lane was cut from, since what the lane writes is not what the
+// agents reading its work are told.
+func rulesForHook(root string) (rules.RuleSet, error) {
+	if base := os.Getenv(runner.StageBaseEnv); base != "" {
+		return rules.LoadAt(root, base)
+	}
+	return rules.Load(root)
+}
+
 // maxHookStdinBytes caps the hook payload read from stdin (trust boundary).
 const maxHookStdinBytes = 1 << 20 // 1 MiB
 
@@ -1887,7 +1898,7 @@ envelope carries it as system_message.`,
 			// hook's one deadline: the status read below takes what it leaves.
 			root := rulesRoot(cwd, cmd.ErrOrStderr())
 			away := readPromptAway(cmd.ErrOrStderr(), drained, root)
-			rs, err := rules.Load(root)
+			rs, err := rulesForHook(root)
 			if err != nil {
 				// rules.Load errors already carry their own "rules:" prefix, so
 				// wrap with a bare "abcd" to avoid "abcd rules: rules: …"

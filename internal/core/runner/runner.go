@@ -93,6 +93,8 @@ type Request struct {
 	// that grants the shell needs it, since the approver judges every
 	// command against the hazard registry at that commit.
 	Base string
+	// Declared are the paths the work declares it changes, relative to Dir.
+	Declared []string
 	// Denied are the tools the role is refused outright, whatever else would
 	// grant them: a harness that keeps a deny list takes them there, ahead of
 	// every grant.

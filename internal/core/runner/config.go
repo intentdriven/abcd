@@ -670,6 +670,9 @@ func (c *Config) adapter(rc RunnerConfig) Runner {
 	return cl
 }
 
+// OnWalledLogin reports whether every launch runs on a walled login (Walled).
+func (c *Config) OnWalledLogin() bool { return c.profile != nil }
+
 // JudgeOnOpenCode reports whether the machine routes the drain's judge to
 // opencode.
 func (c *Config) JudgeOnOpenCode() bool { return c.judgeOpenCode }
