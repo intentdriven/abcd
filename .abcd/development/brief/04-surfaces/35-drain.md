@@ -214,7 +214,7 @@ the lane on its branch and its reservation released, an agent in a call finishin
 call first, and until then no limit, outage or stuck queue ends the run. A reset is
 waited for however far off, up to the bound; one more than 35 days off reads as a
 misread field and as none. A limit with no reset is probed by `runner.ProbeLimit`, one
-launch on the walled login holding no tool, at one, five and ten minutes and then
+launch on the profile holding no tool, at one, five and ten minutes and then
 every thirty, so a probe never disturbs the lane; the lane's own agent starts when one
 answers. Failures keep the outage schedule, at most an hour apart; a contended wait
 backs off to fifteen minutes; origin is never given up on (`DrainOptions.KeepWaiting`);

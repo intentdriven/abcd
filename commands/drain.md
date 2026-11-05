@@ -73,7 +73,7 @@ Under a bound nothing but the bound, the cap, an empty ledger or a stop ends the
   clock, so a machine that sleeps through part of it wakes at the right time and a
   clock set back does not stretch it. A reset more than 35 days off reads as a
   misread field and is treated as no reset.
-- **A limit with no reset.** One short launch on the walled login, holding no tool
+- **A limit with no reset.** One short launch on the profile, holding no tool
   and naming no brief, asks whether the limit has lifted, one, five and ten minutes
   on and then every thirty. When it has, the lane's own agent starts. A probe that
   gets no answer says nothing about the limit, and the run keeps asking.
