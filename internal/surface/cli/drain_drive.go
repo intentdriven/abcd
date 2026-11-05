@@ -203,6 +203,11 @@ func runDrive(cmd *cobra.Command, asJSON bool, repoRoot string, f driveFlags) er
 	})
 	defer sig.close()
 	if err := driveWalls.live(sig.ctx, p); err != nil {
+		if sig.ctx.Err() != nil {
+			// The second signal killed the proof's launch, which says nothing
+			// about the wall it was proving.
+			return &exitError{Code: driveKilledExit, Msg: "abcd drain --drive: killed during the proof (nothing started, nothing reserved)"}
+		}
 		return driveRefusal("%s", err.Error())
 	}
 	d := loop.DrainOptions{Max: lanes, Transcripts: &lazyHistoryStore{cmd: cmd},

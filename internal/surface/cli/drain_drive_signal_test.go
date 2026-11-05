@@ -4,8 +4,12 @@ package cli
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -114,5 +118,147 @@ func TestAKillExitsWithItsOwnCode(t *testing.T) {
 	var out, errb strings.Builder
 	if code := Run([]string{"drain", "--drive", "--yes"}, &out, &errb); code != driveKilledExit {
 		t.Fatalf("exit %d:\n%s%s", code, out.String(), errb.String())
+	}
+}
+
+const driveProofChildEnv = "ABCD_DRIVE_PROOF_CHILD"
+
+// proofHarness is a claude on PATH whose live launch records its pid and its
+// child's in dir, waits for dir/go, says so in dir/finished, and answers with
+// every wall holding.
+func proofHarness(t *testing.T, dir string) {
+	t.Helper()
+	bin := t.TempDir()
+	stream := filepath.Join(bin, "stream")
+	if err := os.WriteFile(stream, []byte(wallInit+wallRefused+wallResult), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	script := fmt.Sprintf(`#!/bin/sh
+if [ "$1" = auth ]; then echo '{"loggedIn":true}'; exit 0; fi
+/bin/sleep 60 >/dev/null 2>&1 &
+echo $! > '%[1]s/child.tmp'; mv '%[1]s/child.tmp' '%[1]s/child'
+echo $$ > '%[1]s/leader.tmp'; mv '%[1]s/leader.tmp' '%[1]s/leader'
+while [ ! -e '%[1]s/go' ]; do /bin/sleep 0.05; done
+: > '%[1]s/finished'
+kill $! 2>/dev/null
+cat '%[2]s'
+`, dir, stream)
+	if err := os.WriteFile(filepath.Join(bin, "claude"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+// waitPidFile reads a pid the harness wrote.
+func waitPidFile(t *testing.T, path string) int {
+	t.Helper()
+	for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if raw, err := os.ReadFile(path); err == nil {
+			if pid, err := strconv.Atoi(strings.TrimSpace(string(raw))); err == nil {
+				t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
+				return pid
+			}
+		}
+	}
+	t.Fatalf("the harness wrote no %s", path)
+	return 0
+}
+
+func pidGone(pid int, wait time.Duration) bool {
+	for deadline := time.Now().Add(wait); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if errors.Is(syscall.Kill(pid, 0), syscall.ESRCH) {
+			return true
+		}
+	}
+	return false
+}
+
+// TestSignalsThroughARealDriveAndARealProcessGroup runs the whole front door in
+// a child, on real signals, with the launcher's real process group around a
+// stand-in harness in its proof: the first signal leaves the harness to finish
+// and ends the drive with nothing moved; the second kills the harness and its
+// child and exits 130.
+func TestSignalsThroughARealDriveAndARealProcessGroup(t *testing.T) {
+	if dir := os.Getenv(driveProofChildEnv); dir != "" {
+		w := newDriveWorld(t)
+		w.recordTerminalStopped(t)
+		proofHarness(t, dir)
+		var out, errb strings.Builder
+		code := Run([]string{"drain", "--drive", "--yes"}, &out, &errb)
+		_ = os.WriteFile(filepath.Join(dir, "output"), []byte(out.String()+errb.String()), 0o600)
+		os.Exit(code)
+	}
+	start := func(t *testing.T) (*exec.Cmd, string) {
+		dir := t.TempDir()
+		cmd := exec.Command(os.Args[0], "-test.run=^TestSignalsThroughARealDriveAndARealProcessGroup$", "-test.count=1")
+		cmd.Env = append(os.Environ(), driveProofChildEnv+"="+dir)
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = cmd.Process.Kill() })
+		return cmd, dir
+	}
+	output := func(dir string) string {
+		raw, _ := os.ReadFile(filepath.Join(dir, "output"))
+		return string(raw)
+	}
+	t.Run("first", func(t *testing.T) {
+		cmd, dir := start(t)
+		leader := waitPidFile(t, filepath.Join(dir, "leader"))
+		_ = cmd.Process.Signal(syscall.SIGINT)
+		time.Sleep(300 * time.Millisecond)
+		if err := syscall.Kill(leader, 0); err != nil {
+			t.Fatalf("the first signal does not reach the agent: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "go"), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := cmd.Wait(); err != nil {
+			t.Fatalf("the drive stops cleanly: %v\n%s", err, output(dir))
+		}
+		if _, err := os.Stat(filepath.Join(dir, "finished")); err != nil {
+			t.Fatalf("the agent finished its call: %v\n%s", err, output(dir))
+		}
+		if !strings.Contains(output(dir), "ended: stopped") {
+			t.Fatalf("the drive says it stopped:\n%s", output(dir))
+		}
+	})
+	t.Run("second", func(t *testing.T) {
+		cmd, dir := start(t)
+		child := waitPidFile(t, filepath.Join(dir, "child"))
+		leader := waitPidFile(t, filepath.Join(dir, "leader"))
+		_ = cmd.Process.Signal(syscall.SIGINT)
+		time.Sleep(300 * time.Millisecond)
+		_ = cmd.Process.Signal(syscall.SIGINT)
+		err := cmd.Wait()
+		var ee *exec.ExitError
+		if !errors.As(err, &ee) || ee.ExitCode() != driveKilledExit {
+			t.Fatalf("the second signal exits %d: %v\n%s", driveKilledExit, err, output(dir))
+		}
+		if !pidGone(leader, 5*time.Second) || !pidGone(child, 5*time.Second) {
+			t.Fatal("the agent's process group outlived the signal")
+		}
+		if _, err := os.Stat(filepath.Join(dir, "finished")); err == nil {
+			t.Fatal("the agent was killed before it finished")
+		}
+		if strings.Contains(output(dir), "does not hold") {
+			t.Fatalf("a kill is no wall refusing:\n%s", output(dir))
+		}
+	})
+}
+
+// recordTerminalStopped stands in for the loop as a stop finds it: asked to stop
+// before its first move.
+func (w *driveWorld) recordTerminalStopped(t *testing.T) {
+	t.Helper()
+	term := driveTerminal
+	t.Cleanup(func() { driveTerminal = term })
+	driveTerminal = func(_ context.Context, _ string, o loop.TerminalOptions) (loop.TerminalResult, error) {
+		select {
+		case <-o.Stop:
+			return loop.TerminalResult{Ended: loop.TerminalStopped}, nil
+		default:
+			return loop.TerminalResult{Ended: loop.DrainStoppedEmpty}, nil
+		}
 	}
 }
