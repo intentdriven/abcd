@@ -84,7 +84,10 @@ func loopFail(w io.Writer, asJSON bool, prefix string, err error) error {
 			}
 		}
 		written := " (nothing written)"
-		if red.Stage == loop.StageStop || red.Stage == loop.StageResume {
+		switch {
+		case red.Wrote != "":
+			written = " (" + termsafe.Sanitize(red.Wrote) + ")"
+		case red.Stage == loop.StageStop || red.Stage == loop.StageResume:
 			// A stop's refusal records the stop and what it settled, and a
 			// take-over's what it did before it refused.
 			written = ""

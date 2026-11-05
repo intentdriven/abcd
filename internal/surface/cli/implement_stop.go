@@ -3,9 +3,8 @@ package cli
 // implement_stop.go is the front door of the stop (itd-2611041549471712):
 // `abcd implement stop`, which a person types from their own account, and
 // `abcd ahoy shared-folder`, the option of setup that lets it cross accounts. Each
-// write is the person's own act: the guard refuses it to an agent under any
-// program name, and the verb refuses a caller with no terminal, which a hook, a
-// driver and a host's shell tool each are.
+// write is the person's own act: the guard's rule refuses it to an agent, and the
+// verb refuses a caller with no terminal or under a host session.
 
 import (
 	"fmt"
@@ -27,7 +26,10 @@ import (
 // personAtTerminal reports whether a person could be typing this command: a
 // terminal, in no host session, read from every process above this one. A test
 // stands it in.
-var personAtTerminal = func() bool { return term.IsTerminal(os.Stdin) && !underHostSession() }
+var personAtTerminal = func() bool { return stdinIsTerminal() && !underHostSession() }
+
+// stdinIsTerminal reports whether standard input is a terminal; a test stands it in.
+var stdinIsTerminal = func() bool { return term.IsTerminal(os.Stdin) }
 
 // underHostSession reports whether this process runs under a host session, by its
 // environment or by the marker its host's session-start hook wrote.
@@ -85,7 +87,7 @@ func newImplementStopCommand(asJSON *bool) *cobra.Command {
 	var lift bool
 	cmd := &cobra.Command{
 		Use: "stop [--lift]",
-		Long: "Stop every unattended run on this machine, from your own account, or with --lift\n" +
+		Long: "Stop the unattended runs of each account that chose this shared folder, or with --lift\n" +
 			"lift the stop. Every run reads the stop before its next move: it opens no lane,\n" +
 			"hands out no stage and starts no agent. An agent in a call finishes that call and\n" +
 			"its receipt is collected. Then each lane's uncommitted work is saved aside, the\n" +
@@ -100,7 +102,7 @@ func newImplementStopCommand(asJSON *bool) *cobra.Command {
 			"holds that run until it is put back. A stop this lift cannot reach is named.\n" +
 			"A run that let its claims go stays halted after the lift until a session runs\n" +
 			"`abcd implement resume --take <run-id>`, which reserves the work again first.\n\n" +
-			"It is the person's own act: the guard refuses it to an agent, and it refuses a\n" +
+			"It is the person's own act: the guard's rule refuses it to an agent, and it refuses a\n" +
 			"caller with no terminal or under a host session. Exit 2 on a refusal, with nothing changed: no terminal, a\n" +
 			"file at the stop's path no run would honour, or a folder the stop cannot rest on.\n" +
 			"No network request.",
@@ -137,7 +139,7 @@ func newImplementStopCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return &exitError{Code: 2, Msg: prefix + ": no stop was set: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
 			}
-			reach := "every run on this machine in an account that chose this shared folder"
+			reach := "the runs of each account that chose this shared folder; abcd cannot tell from here which accounts chose it"
 			if _, chosen, _ := runstop.ReadSetting(home); !chosen {
 				reach = "this account's runs only: no shared folder was chosen (`abcd ahoy shared-folder`)"
 			}
@@ -157,7 +159,8 @@ func newImplementStopCommand(asJSON *bool) *cobra.Command {
 func sharedFolderWalkthrough() string {
 	return "The shared folder is one option of setup, for a person who runs abcd unattended on a\n" +
 		"second account of this computer. It holds what the two accounts pass between them: the\n" +
-		"stop you set from your own account, which every run reads before its next move, and each\n" +
+		"stop you set from your own account, which the runs of each account that chose it read before\n" +
+		"their next move, and each\n" +
 		"day's digest page. Every account on this machine can read what is in it, so it is meant\n" +
 		"for a machine no other person shares. Declining leaves every other part of abcd working,\n" +
 		"and a stop then reaches only runs in your own account. To decline, do nothing.\n"
@@ -184,10 +187,12 @@ func newAhoySharedFolderCommand(asJSON *bool) *cobra.Command {
 			sharedFolderWalkthrough() + "\n" +
 			"The folder must be a real directory, and one other accounts can write must carry\n" +
 			"the sticky bit, and it must be owned by root or by you, each parent above it held\n" +
-			"to the same rule, so no account can remove what you wrote there or move it away.\n" +
+			"to the same rule, which keeps what you wrote there from other accounts' removal or moving.\n" +
 			"/Users/Shared on macOS and /var/tmp on Linux both qualify. In\n" +
-			"your own account this also makes the abcd-stop directory the stop lives in. The choice is written to " + abcdhome.Display(runstop.SettingFile) + ".\n\n" +
-			"Choosing is the person's own act: the guard refuses it to an agent, and it refuses\n" +
+			"your own account this also makes the directory the stop lives in, named by your account's\n" +
+			"number. On Linux an age cleaner may remove what has stood in a temporary tree for weeks, a\n" +
+			"stop included; a folder an administrator makes elsewhere avoids that. The choice is written to " + abcdhome.Display(runstop.SettingFile) + ".\n\n" +
+			"Choosing is the person's own act: the guard's rule refuses it to an agent, and it refuses\n" +
 			"a caller with no terminal or under a host session. Exit 2 on a refusal, with nothing written. No network\n" +
 			"request.",
 		Args: cobra.MaximumNArgs(1),

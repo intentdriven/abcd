@@ -70,6 +70,9 @@ func renderListing(w io.Writer, l loop.Listing) {
 	for _, r := range l.Refused {
 		fmt.Fprintf(w, "refused: %s\n", termsafe.Sanitize(r))
 	}
+	for _, n := range l.Notices {
+		fmt.Fprintf(w, "notice: %s\n", termsafe.Sanitize(n))
+	}
 	for _, u := range l.Unreadable {
 		fmt.Fprintf(w, "unreadable: %s\n", termsafe.Sanitize(u))
 	}

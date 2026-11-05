@@ -9,10 +9,13 @@ import (
 	"testing"
 	"time"
 
+	"errors"
+	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/machineload"
 	"github.com/intentdriven/abcd/internal/core/occupancy"
 	"github.com/intentdriven/abcd/internal/core/runstop"
 	"github.com/intentdriven/abcd/internal/core/sessionname"
+	"strconv"
 )
 
 // stopCLI runs a verb with HOME at a fixture home and a terminal, or none.
@@ -93,10 +96,10 @@ func TestSharedFolderSaysWhatItIsAndChooses(t *testing.T) {
 	if out, stderr, code := stopCLI(t, home, true, "ahoy", "shared-folder", folder); code != 0 || !strings.Contains(out, "chosen:") {
 		t.Fatalf("choosing: %d %q %q", code, out, stderr)
 	}
-	if out, stderr, code := stopCLI(t, home, true, "implement", "stop"); code != 0 || !strings.Contains(out, "every run on this machine") {
+	if out, stderr, code := stopCLI(t, home, true, "implement", "stop"); code != 0 || !strings.Contains(out, "each account that chose this shared folder") {
 		t.Fatalf("the stop: %d %q %q", code, out, stderr)
 	}
-	if _, err := os.Lstat(filepath.Join(folder, runstop.StopDirName, runstop.StopFileName)); err != nil {
+	if _, err := os.Lstat(filepath.Join(folder, runstop.StopDirName+"-"+strconv.Itoa(os.Getuid()), runstop.StopFileName)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -109,7 +112,7 @@ func TestImplementStopSaysWhenItDidNotTakeHold(t *testing.T) {
 	if _, _, code := stopCLI(t, home, true, "ahoy", "shared-folder", folder); code != 0 {
 		t.Fatal("choosing failed")
 	}
-	if err := os.Symlink("/nonexistent", filepath.Join(folder, runstop.StopDirName, runstop.StopFileName)); err != nil {
+	if err := os.Symlink("/nonexistent", filepath.Join(folder, runstop.StopDirName+"-"+strconv.Itoa(os.Getuid()), runstop.StopFileName)); err != nil {
 		t.Fatal(err)
 	}
 	if _, stderr, code := stopCLI(t, home, true, "implement", "stop"); code != 2 || !strings.Contains(stderr, "no stop was set") {
@@ -208,7 +211,7 @@ func TestTheStopVerbsActOnTheAccountsHome(t *testing.T) {
 // stands where another account left it.
 func TestLiftNamesTheStopItCannotReach(t *testing.T) {
 	folder := t.TempDir()
-	dir := filepath.Join(folder, runstop.StopDirName)
+	dir := filepath.Join(folder, runstop.StopDirName+"-"+strconv.Itoa(os.Getuid()+1))
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -218,9 +221,55 @@ func TestLiftNamesTheStopItCannotReach(t *testing.T) {
 	old := runstop.WellKnownFolder
 	runstop.WellKnownFolder = func() string { return folder }
 	t.Cleanup(func() { runstop.WellKnownFolder = old })
-	t.Cleanup(runstop.SwapStopDirOwnerForTest(func(string) (int, bool) { return os.Getuid() + 1, true }))
 	out, stderr, code := stopCLI(t, t.TempDir(), true, "implement", "stop", "--lift")
 	if code != 0 || strings.Contains(out, "no stop was set") || !strings.Contains(out, "cannot reach") {
 		t.Fatalf("exit %d, %q, %q", code, out, stderr)
+	}
+}
+
+// TestAPersonAtTheTerminalIsNoHostSession: both halves count: a terminal under a host
+// session is no person, and neither is a caller with no terminal.
+func TestAPersonAtTheTerminalIsNoHostSession(t *testing.T) {
+	old := stdinIsTerminal
+	t.Cleanup(func() { stdinIsTerminal = old })
+	stdinIsTerminal = func() bool { return true }
+	t.Setenv(hostSessionIDEnv, "a-session")
+	if personAtTerminal() {
+		t.Fatal("a terminal under a host session reads as a person")
+	}
+	stdinIsTerminal = func() bool { return false }
+	t.Setenv(hostSessionIDEnv, "")
+	if personAtTerminal() {
+		t.Fatal("no terminal reads as a person")
+	}
+}
+
+// TestTheStopSaysItsReach: its answer names the accounts it reaches and that it cannot
+// tell which of them chose the folder.
+func TestTheStopSaysItsReach(t *testing.T) {
+	home := t.TempDir()
+	folder := filepath.Join(t.TempDir(), "shared")
+	if err := os.Mkdir(folder, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old := runstop.AccountHome
+	runstop.AccountHome = func() (string, error) { return home, nil }
+	t.Cleanup(func() { runstop.AccountHome = old })
+	if _, err := runstop.WriteSetting(home, folder, ""); err != nil {
+		t.Fatal(err)
+	}
+	out, stderr, code := stopCLI(t, home, true, "implement", "stop")
+	if code != 0 || !strings.Contains(out, "cannot tell") || strings.Contains(out, "every run on this machine") {
+		t.Fatalf("exit %d, %q, %q", code, out, stderr)
+	}
+}
+
+// TestARefusalNamesWhatItWrote: a refusal after a call acted does not say nothing was
+// written.
+func TestARefusalNamesWhatItWrote(t *testing.T) {
+	err := loopFail(&bytes.Buffer{}, false, "abcd x", &loop.Refusal{Stage: "reservation", Reason: "r", Remedy: "m", Wrote: "claimed the driver"})
+	var ee *exitError
+	if !errors.As(err, &ee) || strings.Contains(ee.Msg, "nothing written") || !strings.Contains(ee.Msg, "claimed the driver") {
+		t.Fatalf("%v", err)
 	}
 }

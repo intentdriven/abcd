@@ -2682,7 +2682,7 @@
     {
       "path": "abcd implement stop",
       "hidden": false,
-      "sentence": "Stop every unattended run on this machine, or lift the stop: Writes the stop file; refuses a caller with no terminal, and a file no run would honour.",
+      "sentence": "Stop the unattended runs of each account that chose this folder, or lift it: Writes the stop file; refuses no terminal, and a file no run would honour.",
       "flags": [
         {
           "name": "lift",

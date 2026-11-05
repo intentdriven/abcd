@@ -245,8 +245,8 @@ var sentences = map[string]string{
 		"Writes the reservation and a run record line; refuses another copy's live hold, with exit 3.",
 	"abcd implement status": "Render the implement loop's runs in this checkout, lane by lane: " +
 		"Writes a due renewal to origin, its outcome to the run record; refuses a --run naming no run.",
-	"abcd implement stop": "Stop every unattended run on this machine, or lift the stop: " +
-		"Writes the stop file; refuses a caller with no terminal, and a file no run would honour.",
+	"abcd implement stop": "Stop the unattended runs of each account that chose this folder, or lift it: " +
+		"Writes the stop file; refuses no terminal, and a file no run would honour.",
 	"abcd implement resume": "List every unfinished run on the machine, or take one over: " +
 		"Writes nothing bare; refuses a take-over while a stop holds or another driver is alive.",
 	"abcd implement step": "Perform the next stage of an implement loop run's lane and exit: " +

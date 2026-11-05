@@ -197,18 +197,21 @@ a stop only from that account.
 
 The shared folder is one option of setup, for a person who runs abcd unattended on a
 second account of this computer. It holds what the two accounts pass between them: the
-stop you set from your own account, which every run reads before its next move, and each
+stop you set from your own account, which the runs of each account that chose it read before
+their next move, and each
 day's digest page. Every account on this machine can read what is in it, so it is meant
 for a machine no other person shares. Declining leaves every other part of abcd working,
 and a stop then reaches only runs in your own account. To decline, do nothing.
 
 The folder must be a real directory, and one other accounts can write must carry
 the sticky bit, and it must be owned by root or by you, each parent above it held
-to the same rule, so no account can remove what you wrote there or move it away.
+to the same rule, which keeps what you wrote there from other accounts' removal or moving.
 /Users/Shared on macOS and /var/tmp on Linux both qualify. In
-your own account this also makes the abcd-stop directory the stop lives in. The choice is written to ~/.abcd.noindex/shared-folder.json.
+your own account this also makes the directory the stop lives in, named by your account's
+number. On Linux an age cleaner may remove what has stood in a temporary tree for weeks, a
+stop included; a folder an administrator makes elsewhere avoids that. The choice is written to ~/.abcd.noindex/shared-folder.json.
 
-Choosing is the person's own act: the guard refuses it to an agent, and it refuses
+Choosing is the person's own act: the guard's rule refuses it to an agent, and it refuses
 a caller with no terminal or under a host session. Exit 2 on a refusal, with nothing written. No network
 request.
 
@@ -3598,11 +3601,11 @@ refusal, exit 3 on a pause or a locked run state.
 
 #### `abcd implement stop`
 
-Stop every unattended run on this machine, or lift the stop: Writes the stop file; refuses a caller with no terminal, and a file no run would honour.
+Stop the unattended runs of each account that chose this folder, or lift it: Writes the stop file; refuses no terminal, and a file no run would honour.
 
 **Usage:** `abcd implement stop [--lift] [flags]`
 
-Stop every unattended run on this machine, from your own account, or with --lift
+Stop the unattended runs of each account that chose this shared folder, or with --lift
 lift the stop. Every run reads the stop before its next move: it opens no lane,
 hands out no stage and starts no agent. An agent in a call finishes that call and
 its receipt is collected. Then each lane's uncommitted work is saved aside, the
@@ -3620,7 +3623,7 @@ holds that run until it is put back. A stop this lift cannot reach is named.
 A run that let its claims go stays halted after the lift until a session runs
 `abcd implement resume --take <run-id>`, which reserves the work again first.
 
-It is the person's own act: the guard refuses it to an agent, and it refuses a
+It is the person's own act: the guard's rule refuses it to an agent, and it refuses a
 caller with no terminal or under a host session. Exit 2 on a refusal, with nothing changed: no terminal, a
 file at the stop's path no run would honour, or a folder the stop cannot rest on.
 No network request.

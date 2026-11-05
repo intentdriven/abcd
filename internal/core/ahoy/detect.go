@@ -1284,12 +1284,18 @@ func detectSharedFolder() string {
 	if err != nil {
 		return ""
 	}
+	line := ""
 	s, chosen, err := runstop.ReadSetting(home)
 	switch {
 	case err != nil:
-		return "unreadable: a stop from another account is not honoured here: " + fsutil.RedactHome(err.Error())
+		line = "unreadable: a stop from another account is not honoured here: " + fsutil.RedactHome(err.Error())
 	case !chosen:
-		return "none chosen: a stop reaches only this account's runs (`abcd ahoy shared-folder`)"
+		line = "none chosen: a stop reaches only this account's runs (`abcd ahoy shared-folder`)"
+	default:
+		line = s.Folder + ": a stop from the account " + s.Person + " reaches this account's runs"
 	}
-	return s.Folder + ": a stop from the account " + s.Person + " reaches this account's runs"
+	for _, foreign := range runstop.ReadPinned(home, nil).Foreign {
+		line += "; " + foreign
+	}
+	return line
 }
