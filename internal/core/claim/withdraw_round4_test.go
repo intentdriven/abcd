@@ -382,11 +382,10 @@ func TestForgeRefusedIsOnlyTheForgesAnswer(t *testing.T) {
 	}
 }
 
-// TestAnAdmittedMergeFoundArmedAtANewHeadCountsAsDone: the forge keeps an
-// arming across pushes to the head, so an admitted pull request its owner
-// pushed to during the cut is still armed after it: the settle counts it
-// done, touches nothing, and never names it for its owner to re-arm.
-func TestAnAdmittedMergeFoundArmedAtANewHeadCountsAsDone(t *testing.T) {
+// TestAnAdmittedMergeFoundArmedAtAHeadTheGateArmsCountsAsDone: an admitted pull
+// request found armed at a head the merge gate arms counts as done: the settle
+// touches nothing, and never names it for its owner to re-arm.
+func TestAnAdmittedMergeFoundArmedAtAHeadTheGateArmsCountsAsDone(t *testing.T) {
 	w := newWorld(t)
 	f := armedForge(t)
 	p := w.clone("1234+octo@users.noreply.github.com", "")
@@ -397,7 +396,7 @@ func TestAnAdmittedMergeFoundArmedAtANewHeadCountsAsDone(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.mu.Lock()
-	f.prs[11].head = headB // its owner pushed; auto-merge stays on
+	f.prs[11].head = headB
 	f.mu.Unlock()
 	f.reset()
 	res, err := p.do(Request{Record: "rel-v0.16.0", Release: true})

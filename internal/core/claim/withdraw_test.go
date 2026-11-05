@@ -98,6 +98,14 @@ type fakePR struct {
 	queued          bool
 	// method is the auto-merge arming's method, "" when auto-merge is off.
 	method string
+	// by is the account that armed or queued it, "" being octo; stuck makes a
+	// withdrawal the forge answers as done and does not make.
+	by    string
+	stuck bool
+	// noReadBack fails the read of the pull request once it is not armed.
+	noReadBack bool
+	// failViewAt fails the read of it with this ordinal, counted in views.
+	failViewAt, views int
 }
 
 // fakeForge stands for GitHub's GraphQL endpoint: it refuses a query
@@ -142,7 +150,8 @@ func newFakeForge(t *testing.T, prs map[int]*fakePR) *fakeForge {
 	t.Helper()
 	f := &fakeForge{t: t, prs: prs, refuse: map[string]string{}, answer: map[string]string{}, logins: map[string]string{}, pusherOf: map[string]string{}}
 	prev := releaseForge
-	releaseForge = mergeForge{repo: func(string) (string, string, error) { return "acme", "widgets", nil }, graphql: f.graphql, login: f.login, pushers: f.pushers}
+	releaseForge = mergeForge{repo: func(string) (string, string, error) { return "acme", "widgets", nil }, graphql: f.graphql, login: f.login, pushers: f.pushers,
+		armGate: func(_, _, _, _ string) (bool, string, error) { return true, "", nil }}
 	t.Cleanup(func() { releaseForge = prev })
 	return f
 }
@@ -289,9 +298,13 @@ func (f *fakeForge) graphql(_, doc string, vars map[string]string, ints map[stri
 		}
 		switch name {
 		case "disablePullRequestAutoMerge":
-			p.method = ""
+			if !p.stuck {
+				p.method = ""
+			}
 		case "dequeuePullRequest":
-			p.queued = false
+			if !p.stuck {
+				p.queued = false
+			}
 		case "enablePullRequestAutoMerge", "enqueuePullRequest":
 			// The pin is in the document itself, not only in the variables:
 			// a variable the document does not use pins nothing.
@@ -315,16 +328,23 @@ func (f *fakeForge) graphql(_, doc string, vars map[string]string, ints map[stri
 		return nil, err
 	}
 	node := func(n int, p *fakePR) map[string]any {
-		var am any
+		by := p.by
+		if by == "" {
+			by = "octo"
+		}
+		var am, entry any
 		if p.method != "" {
-			am = map[string]any{"mergeMethod": p.method}
+			am = map[string]any{"mergeMethod": p.method, "enabledBy": map[string]any{"login": by}}
+		}
+		if p.queued {
+			entry = map[string]any{"enqueuer": map[string]any{"login": by}}
 		}
 		state := p.state
 		if state == "" {
 			state = "OPEN"
 		}
 		return map[string]any{"number": n, "id": p.id, "state": state, "headRefOid": p.head, "headRefName": fmt.Sprintf("b%d", n),
-			"isCrossRepository": false, "isInMergeQueue": p.queued, "autoMergeRequest": am}
+			"isCrossRepository": false, "isInMergeQueue": p.queued, "mergeQueueEntry": entry, "autoMergeRequest": am}
 	}
 	switch doc {
 	case ArmedPullRequestsQuery:
@@ -343,6 +363,12 @@ func (f *fakeForge) graphql(_, doc string, vars map[string]string, ints map[stri
 		p := f.prs[n]
 		if p == nil {
 			return []byte(`{"data":{"repository":{"pullRequest":null}},"errors":[{"message":"Could not resolve"}]}`), nil
+		}
+		if p.noReadBack && !p.queued && p.method == "" {
+			return nil, errors.New("fake forge: the read failed")
+		}
+		if p.views++; p.views == p.failViewAt {
+			return nil, errors.New("HTTP 502")
 		}
 		return json.Marshal(map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequest": node(n, p)}}})
 	}

@@ -45,6 +45,9 @@ func landHoldWorld(t *testing.T) (dir, origin string) {
 		if slices.Contains(args, "--state=merged") {
 			return "[]", nil
 		}
+		if slices.Contains(args, "query="+landing.ArmingsQuery) {
+			return `{"data":{"repository":{"pullRequests":{"nodes":[]}}}}`, nil // nothing armed
+		}
 		return "", errors.New("no other forge call in this test")
 	}
 	return dir, origin
