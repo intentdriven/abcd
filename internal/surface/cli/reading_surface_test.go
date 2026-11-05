@@ -504,6 +504,9 @@ func TestIngestReachesBothPlanes(t *testing.T) {
 // direction of travel -- how abcd renders its own result, against a path to
 // what a reader returned -- and the verb's own example puts both on one line.
 func TestIngestPayloadFlagNamesItsContent(t *testing.T) {
+	// The verb takes its stage lock under the repository it runs in, so it runs
+	// in a directory of the test's own, never in the checkout under test.
+	t.Chdir(t.TempDir())
 	// Registered and reaching the core: a path that resolves to nothing is a
 	// refusal from the verb, not a cobra "unknown flag".
 	out, err := runCLIErr(t, "reading", "ingest", "--reading-json", "absent.json")

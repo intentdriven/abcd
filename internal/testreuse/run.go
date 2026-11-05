@@ -340,6 +340,9 @@ func runReusing(ctx context.Context, cfg Config, g goTestArgs, dir string, list 
 		failed = true
 		fmt.Fprintf(cfg.Stdout, "check-tests: a test rewrote tracked files in the check directory, so what ran after it was not the commit: %s\n", strings.Join(firstFew(changed), ", "))
 	}
+	if left := snap.leftBehind(); len(left) > 0 {
+		fmt.Fprintf(cfg.Stdout, "check-tests: a test left files in the check directory, so a test that walks the tree will not replay: %s\n", strings.Join(firstFew(left), ", "))
+	}
 	return finish(cfg, g, &tally, "reuse", head, tree, &plan, failed), ""
 }
 

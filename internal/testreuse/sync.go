@@ -450,6 +450,27 @@ func forceRemove(p string) error {
 	return os.RemoveAll(p)
 }
 
+// leftBehind names what is in the tree that the commit does not hold: what a test
+// left there. Each moved the time of the directory that holds it, so a test that
+// walks the tree hashes that time and does not replay on the next check.
+func (s *snapshot) leftBehind() []string {
+	tracked := make(map[string]bool, len(s.entries))
+	for _, e := range s.entries {
+		tracked[e.path] = true
+	}
+	var extra []string
+	_ = filepath.WalkDir(s.tree, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		if rel, err := filepath.Rel(s.tree, p); err == nil && !tracked[filepath.ToSlash(rel)] {
+			extra = append(extra, filepath.ToSlash(rel))
+		}
+		return nil
+	})
+	return extra
+}
+
 // changedTracked names the tracked files that no longer match the commit: what
 // a test run rewrote in place, which leaves what it read no longer the commit.
 func (s *snapshot) changedTracked() []string {

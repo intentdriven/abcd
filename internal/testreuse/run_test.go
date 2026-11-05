@@ -570,6 +570,33 @@ func TestRewrites(t *testing.T) {
 	}
 }
 
+// TestAStageNamesWhatATestLeftInTheTree: a file a test leaves in the check
+// directory moves the time of the directory that holds it, so every test that
+// walks the tree hashes that time and never replays. The stage still passes, and
+// it names the file, so the loss of reuse has a cause anyone can read.
+func TestAStageNamesWhatATestLeftInTheTree(t *testing.T) {
+	w := newWorld(t)
+	w.write("leaves/leaves_test.go", `package leaves
+import (
+	"os"
+	"testing"
+)
+func TestLeaves(t *testing.T) {
+	if err := os.WriteFile("left-behind.lock", []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+`)
+	w.commit("a test that leaves a file")
+	r := w.stage(w.repo, nil, allPackages...)
+	if r.code != 0 {
+		t.Fatalf("the stage failed: %s", r)
+	}
+	if !strings.Contains(r.out, "leaves/left-behind.lock") {
+		t.Errorf("the report does not name what the test left:\n%s", r)
+	}
+}
+
 // TestATestAskingGitAboutTheRepositoryGetsNoAnswer: the check directory has no
 // .git, and git may not walk above it, even when the home is itself a repository,
 // so a test reading the repository through git cannot pass on state the cache
