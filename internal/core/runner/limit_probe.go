@@ -60,7 +60,7 @@ func (c *ClaudeCLI) probeLimit(ctx context.Context) (bool, *Failure) {
 	}
 	p := *c.profile
 	c.launch.gateWaiting = nil
-	c.launch.allow = stageEnvAllowed
+	c.launch.carry = stageEnv
 	bin, err := c.launch.admit(Claude, "claude", p.Dir)
 	if err != nil {
 		return false, fail(Claude, ReasonFailed, "the harness could not be run for the probe")
@@ -68,14 +68,22 @@ func (c *ClaudeCLI) probeLimit(ctx context.Context) (bool, *Failure) {
 	req := Request{Role: "limit-probe", Brief: filepath.Join(dir, "brief.md"), Receipt: filepath.Join(dir, "receipt.json"),
 		Dir: dir, SessionID: "limit-probe", Timeout: limitProbeTimeout}
 	args := append(c.walledFlags(req), "--", limitProbePrompt)
-	res, err := c.launch.run(ctx, Claude, bin, args, p.Env, dir, limitProbeTimeout)
-	var ans Answer
-	if err == nil {
-		ans, err = parseClaude(res.stdout)
+	// The probe spends the same subscription as a stage, so its launch is written
+	// to the same ledger, and one the ledger cannot hold is not started.
+	var res procResult
+	end, lerr := RecordLaunch(ctx, p.Ledger, LaunchStart{Role: req.Role, Runner: Claude, Repo: p.Repo, Fallback: req.SessionID}, func(ctx context.Context) LaunchEnd {
+		var runErr error
+		res, runErr = c.launch.run(ctx, Claude, bin, args, p.Env, dir, limitProbeTimeout)
+		var ans Answer
+		if runErr == nil {
+			ans, runErr = parseClaude(res.stdout)
+		}
+		return LaunchEnd{Answer: ans, Transcript: res.transcript(), Err: runErr}
+	})
+	if lerr != nil {
+		return false, fail(Claude, ReasonFailed, "the probe could not be written to the launch ledger")
 	}
-	// The probe spends the same subscription as a stage, so its launch ends
-	// through the same seam.
-	recordLaunch(p, req, ans, err)
+	err = end.Err
 	if err == nil {
 		return true, nil
 	}

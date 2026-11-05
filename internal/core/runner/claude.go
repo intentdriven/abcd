@@ -103,7 +103,7 @@ func grantsShell(tools []string) bool { return slices.Contains(tools, "Bash") }
 // the working tree the role runs in, as it stood at base, the commit the run
 // started on, with runDirs, the run's own directories, named so a removal
 // may reach them.
-func (c *ClaudeCLI) approverConfig(dir, base string, runDirs []string) string {
+func (c *ClaudeCLI) approverConfig(dir, base string, runDirs, declared []string) string {
 	type server struct {
 		Type    string   `json:"type"`
 		Command string   `json:"command"`
@@ -112,6 +112,12 @@ func (c *ClaudeCLI) approverConfig(dir, base string, runDirs []string) string {
 	args := []string{"guard", "approve", "--dir=" + dir, "--base=" + base}
 	for _, d := range runDirs {
 		args = append(args, "--run-dir="+d)
+	}
+	if c.profile != nil {
+		args = append(args, "--stage-home="+c.profile.ShellHome, "--protect="+c.profile.Dir)
+		for _, d := range declared {
+			args = append(args, "--declared="+d)
+		}
 	}
 	raw, _ := json.Marshal(map[string]map[string]server{"mcpServers": {"abcd": {
 		Type: "stdio", Command: c.approver, Args: args,
@@ -162,7 +168,7 @@ func (c *ClaudeCLI) args(req Request) []string {
 		// The guard answers for the shell, so the harness asks it rather
 		// than running every command unasked.
 		tools = slices.DeleteFunc(slices.Clone(tools), func(t string) bool { return t == "Bash" })
-		a = append(a, "--mcp-config="+c.approverConfig(req.Dir, req.Base, dirs), "--strict-mcp-config",
+		a = append(a, "--mcp-config="+c.approverConfig(req.Dir, req.Base, dirs, req.Declared), "--strict-mcp-config",
 			"--permission-prompt-tool="+ApproverTool)
 	}
 	if len(tools) > 0 {
@@ -200,7 +206,7 @@ func (c *ClaudeCLI) walledFlags(req Request) []string {
 	tools := req.Tools
 	if shell {
 		tools = slices.DeleteFunc(slices.Clone(tools), func(t string) bool { return t == "Bash" })
-		a = append(a, "--mcp-config="+c.approverConfig(req.Dir, req.Base, dirs), "--permission-prompt-tool="+ApproverTool)
+		a = append(a, "--mcp-config="+c.approverConfig(req.Dir, req.Base, dirs, req.Declared), "--permission-prompt-tool="+ApproverTool)
 	} else {
 		a = append(a, `--mcp-config={"mcpServers":{}}`)
 	}
@@ -248,18 +254,9 @@ func heldTools(grants []string) []string {
 	return held
 }
 
-// Run runs the role through the claude CLI. A walled launch's end is recorded,
-// whatever came of it.
+// Run runs the role through the claude CLI. A launch reaches the ledger through
+// the dispatcher that called it (RecordLaunch).
 func (c *ClaudeCLI) Run(ctx context.Context, req Request) (Answer, []byte, error) {
-	ans, transcript, err := c.run(ctx, req)
-	if c.profile != nil {
-		recordLaunch(*c.profile, req, ans, err)
-	}
-	return ans, transcript, err
-}
-
-// run is Run's launch.
-func (c *ClaudeCLI) run(ctx context.Context, req Request) (Answer, []byte, error) {
 	if err := req.check(); err != nil {
 		return Answer{}, nil, err
 	}
@@ -294,8 +291,13 @@ func (c *ClaudeCLI) run(ctx context.Context, req Request) (Answer, []byte, error
 	var seal []string
 	launch := c.launch
 	if c.profile != nil {
-		seal = append(slices.Clone(c.profile.Env), StageWritesEnv+"="+strings.Join(stageWriteDirs(req), string(os.PathListSeparator)))
-		launch.allow = stageEnvAllowed
+		if err := ResetStageHome(*c.profile); err != nil {
+			return Answer{}, nil, fail(Claude, ReasonRefused, "%s", err.Error())
+		}
+		list := string(os.PathListSeparator)
+		seal = append(slices.Clone(c.profile.Env), StageWritesEnv+"="+strings.Join(stageWriteDirs(req), list),
+			StageDeclaredEnv+"="+strings.Join(req.Declared, list), StageBaseEnv+"="+req.Base)
+		launch.carry = stageEnv
 	}
 	res, err := launch.run(ctx, Claude, bin, c.args(req), seal, req.Dir, req.timeout())
 	transcript := res.transcript()
@@ -508,6 +510,51 @@ func meterClaude(ans *Answer, line []byte) {
 		}
 		ans.ServedModels = append(ans.ServedModels, cleanHarness(k))
 	}
+}
+
+// claudeFacts is what the ledger reads from a claude launch's stream beyond
+// what the run's record keeps.
+type claudeFacts struct {
+	// window is true when the stream carries a rate-limit event.
+	window bool
+	// apiMillis is the result event's duration_api_ms, nil when it has none.
+	apiMillis *int64
+	// model is the init event's model, "" when it names none readably.
+	model string
+}
+
+// claudeLaunchFacts reads a stream line by line, leniently, and stops at the
+// harness's stderr, which is not its event stream.
+func claudeLaunchFacts(transcript []byte) claudeFacts {
+	var f claudeFacts
+	for _, line := range bytes.Split(transcript, []byte("\n")) {
+		line = bytes.TrimSpace(line)
+		if string(line) == stderrMarker {
+			break
+		}
+		var ev struct {
+			Type    string `json:"type"`
+			Subtype string `json:"subtype"`
+			Model   string `json:"model"`
+			APIMs   *int64 `json:"duration_api_ms"`
+		}
+		if len(line) == 0 || json.Unmarshal(line, &ev) != nil {
+			continue
+		}
+		switch ev.Type {
+		case "rate_limit_event":
+			f.window = true
+		case "result":
+			if ev.APIMs != nil && *ev.APIMs >= 0 {
+				f.apiMillis = ev.APIMs
+			}
+		case "system":
+			if ev.Subtype == "init" && modelRe.MatchString(ev.Model) {
+				f.model = ev.Model
+			}
+		}
+	}
+	return f
 }
 
 // claudeSpent reads what a killed claude run spent from the stream it wrote

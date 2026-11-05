@@ -34,6 +34,9 @@ const (
 
 func TestMain(m *testing.M) {
 	stageEnvExtra = []string{fakeModeEnv, fakeLogEnv}
+	stageGitRead = func(Profile) ([]byte, error) {
+		return []byte("[user]\n\tname = \"Pat Example\"\n\temail = \"pat@example.invalid\"\n"), nil
+	}
 	if mode := os.Getenv(fakeModeEnv); mode != "" {
 		os.Exit(fakeHarness(mode))
 	}

@@ -43,6 +43,35 @@ and staleness it reports are unchanged.
       --view string     the board's view: product (the default) or facilitator
 ```
 
+### `abcd agents`
+
+List the agents abcd started for this session and add them up: Writes nothing; refuses when launches are on record and no session or scope says whose.
+
+**Usage:** `abcd agents [flags]`
+
+List the agents abcd started and add them up, from the launch ledger on this
+computer (`~/.abcd.noindex/agents/`): one line per launch naming the session or run that
+asked for it, the work, the billing route, the model, the tokens, the cost, the API
+time and how it ended.
+
+Bare, it lists this session's launches; --run <id> lists one run's, --session <id>
+one session's and --all every one. Money is counted for launches billed to a named
+key alone: a subscription's or an unplaced launch's cost is shown as an estimate,
+which is no money spent. Every cost is the harness's own estimate, and the
+provider's invoice is the final figure. An entry whose process is gone with no end
+written reads as lost. An entry it cannot read is named, never dropped.
+
+With nothing on record it says so, session or no session. It reads only. Exit 2 on a
+refusal: launches on record and no session or scope to say whose, or two scopes at once.
+
+**Flags:**
+
+```
+      --all              list every launch the ledger holds
+      --run string       list the launches of this run
+      --session string   list the launches this session asked for
+```
+
 ### `abcd ahoy`
 
 Detect abcd's install state and list its gaps, or report one mode a flag names: Writes nothing; refuses any argument or two modes at once.
@@ -1362,7 +1391,7 @@ abcd docs fidelity record --verdict-json verdict.json
 
 Fix the issues needing no decision, one lane at a time, and hand the rest back: Writes its state and user-visible drafts; refuses without the rule's record.
 
-**Usage:** `abcd drain [--drive [--yes]] [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]`
+**Usage:** `abcd drain [--drive [--yes] [--trust-lane-gates]] [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]`
 
 Work the open issue ledger unattended: fix the issues that need no decision, and
 hand the rest back by kind. Which issues need no decision is this repository's own
@@ -1416,16 +1445,21 @@ back.
 --drive makes the moves itself, from a plain terminal with no host session: it refuses
 before anything is reserved when the claude runner is not enabled or admitted, when
 there is no one walled directory under ~/.abcd.noindex/profiles/ logged in, when a
-wall does not hold, when a credential variable the harness would bill through is set
+wall does not hold or no git identity resolves, when a credential variable the harness would bill through is set
 (a drive runs on this account's subscription alone, for now), when the judge is routed
 to opencode, when a role is pinned to the host, and when it is started from inside an
 agent's own session. It shows the cap (eight unless --max says otherwise), an estimate
 of the agent runs, the runner and the route, and asks once; --yes is the scripted
-answer, and with no terminal nothing else answers. It then judges each eligible issue,
+answer, and with no terminal nothing else answers. A profile is a separate login and
+settings on this one account, not a boundary: a stage's shell reads what this account
+can. It then judges each eligible issue,
 drives each lane to its landing, every role on the walled login, and runs each
 landing's preflight behind the load gate, printing one line per step and logging them
-under .abcd/.work.local/logs/. It ends at the cap, when nothing is eligible, or after
-eight hours of runner failures. The first interrupt, hang-up or termination is a
+under .abcd/.work.local/logs/. A lane that changes the Makefile or scripts/ is handed
+back before its preflight unless --trust-lane-gates says the person agrees. It ends at
+the cap, when nothing is eligible, or after eight hours of runner failures. One drive
+holds a checkout at a time; a second exits 3. A drive that stops short exits 3, and one
+a broken wall stopped exits 2. The first interrupt, hang-up or termination is a
 stop: the agent in a call finishes that call, the lane's reservation is released, the
 lane stays on its branch, and the last lines name the run, the lane and the command
 that resumes it. A second kills the running agent's process group and exits at once
@@ -1581,6 +1615,7 @@ drain or run holds the state lock.
       --skip stringArray     hold an issue (iss-N), or every issue whose found_at lies in a path, back for now; needs --reason; cleared when the drain ends
       --sub-agents string    the ceiling on lanes and validators alive at once; wins over every configured layer
       --take-over            move your own live reservation of each issue this move reaches from another copy to this one; never another person's
+      --trust-lane-gates     with --drive: run a lane's preflight even when the lane changes the Makefile or scripts/ it runs
       --unskip stringArray   take an issue or path off the drain's skip list
       --yes                  with --drive: the scripted yes to its one question
 ```
@@ -1987,8 +2022,8 @@ nobody is there to approve it.
 
 The file tools the role is granted (--allowedTools on the launch) write
 without asking the approver, and the abcd binary that answers is not among
-the paths it protects; the OS sandbox for launched agents
-(spc-2610161751056096) is what bounds those writes.
+the paths it protects. The OS sandbox for launched agents
+(spc-2610161751056096) that would bound those writes is planned, not in force.
 
 The guard is a mistake filter, not a security boundary (see `abcd guard
 check --help` for what an allow does not see), and this adds no sandbox.
@@ -1998,9 +2033,12 @@ start it. It exits 0 when its input ends.
 **Flags:**
 
 ```
-      --base string           the commit the run started on, by its full object name
-      --dir string            the working tree the agent runs in, as an absolute path
-      --run-dir stringArray   a directory the run keeps its own files in (its brief, its receipt), as an absolute path; repeatable
+      --base string            the commit the run started on, by its full object name
+      --declared stringArray   on a walled stage, a path its work declares it changes, relative to --dir; repeatable
+      --dir string             the working tree the agent runs in, as an absolute path
+      --protect stringArray    on a walled stage, a directory it may not write, as an absolute path; repeatable
+      --run-dir stringArray    a directory the run keeps its own files in (its brief, its receipt), as an absolute path; repeatable
+      --stage-home string      on a walled stage, the home its shell runs under, as an absolute path
 ```
 
 **Example:**

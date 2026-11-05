@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -24,20 +25,44 @@ import (
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // wallSettingsName is the settings file under the walled directory.
 const wallSettingsName = "settings.json"
 
 // stageEnvName is the file a stage's shell sources before each command, and
-// stageHomeName the directory that file makes the shell's home.
+// stageHomesLeaf the folder below abcd's home that holds the home that file names,
+// apart from the walled directory and the login in it.
 const (
-	stageEnvName  = "stage-env.sh"
-	stageHomeName = "home"
+	stageEnvName   = "stage-env.sh"
+	stageHomesLeaf = "stage-homes"
 )
 
-// wallHomeMarker opens the line the proof's second command prints.
-const wallHomeMarker = "abcd-home:"
+// wallHomeMarker opens the line the proof's second command prints, and
+// wallEnvMarker each line its third prints: a variable's name, never its value.
+const (
+	wallHomeMarker = "abcd-home:"
+	wallEnvMarker  = "abcd-env:"
+)
+
+// wallHomeCommand and wallEnvCommand are the proof's other two commands: the first
+// shows the home a stage's shell runs under, the second each variable's name in
+// its environment and never a value.
+const (
+	wallHomeCommand = "printf '" + wallHomeMarker + "%s\\n' \"$HOME\""
+	wallEnvCommand  = "awk 'BEGIN { for (name in ENVIRON) print \"" + wallEnvMarker + "\" name }'"
+)
+
+// WallProofCommands are the shell commands the proof asks for, in order: the one
+// the guard is meant to refuse, then the two that show the stage's shell.
+func WallProofCommands() []string {
+	return []string{guardProofCommand, wallHomeCommand, wallEnvCommand}
+}
+
+// stageGitRead reads the git configuration a stage's home carries; a variable so
+// a stand-in world needs no identity of its own.
+var stageGitRead = readStageGit
 
 // The walls a drive names when one does not hold.
 const (
@@ -51,6 +76,8 @@ const (
 	WallGuard        = "guard"
 	WallWorkingTree  = "working tree's settings"
 	WallHome         = "shell's home"
+	WallEnv          = "shell's environment"
+	WallIdentity     = "git identity"
 )
 
 // WallError is one wall that does not hold.
@@ -159,7 +186,7 @@ func WriteWallSettings(p Profile, bin string) (replaced bool, _ error) {
 	if err := fsutil.WriteFileAtomic(path, WallSettings(bin), 0o600); err != nil {
 		return false, &WallError{WallSettingsFile, "the file could not be written"}
 	}
-	if err := writeStageFiles(p); err != nil {
+	if err := writeStageFiles(p, bin); err != nil {
 		return false, err
 	}
 	return replaced, nil
@@ -170,6 +197,10 @@ func WriteWallSettings(p Profile, bin string) (replaced bool, _ error) {
 type stageWritten struct {
 	env, gitConfig []byte
 	declared       map[string][sha256.Size]byte
+	// exports are what the shell file sets beside its home, as KEY=value.
+	exports []string
+	// binaries are abcd's binary and the harness, by content.
+	binaries map[string][sha256.Size]byte
 }
 
 // stagesWritten holds this process's stageWritten, by walled directory.
@@ -177,7 +208,7 @@ var stagesWritten sync.Map
 
 // personDeclarations are the machine files that decide what abcd runs. A person
 // who edits one stops a drive running: the next start reads the edit.
-var personDeclarations = []string{"config.json", "rules.json", "dogfood-roots", "trusted-roots", "local-transcript-roots"}
+var personDeclarations = []string{"config.json", "rules.json", "oracle-routing.json", "dogfood-roots", "trusted-roots", "local-transcript-roots"}
 
 // wallLoaded are what a launch would load from the walled directory beside its
 // settings. Each must stay absent or empty.
@@ -197,54 +228,134 @@ func declaredNow(p Profile) map[string][sha256.Size]byte {
 	return out
 }
 
-// writeStageFiles lays out a stage's shell: its own home under the walled
-// directory, holding the person's git identity and filters and no other git
-// configuration, and the file the shell sources, which names that home and keeps
-// the person's Go caches.
-func writeStageFiles(p Profile) error {
-	if err := os.MkdirAll(p.ShellHome, 0o700); err != nil {
-		return &WallError{WallSettingsFile, "the stage's home could not be made"}
+// writeStageFiles lays out a stage's shell: the file it sources, which names its
+// home and keeps the person's Go caches, and the home itself, holding the person's
+// git identity and filters and no other git configuration. A start with no git
+// identity is refused: a commit would otherwise read as one git made up.
+func writeStageFiles(p Profile, bin string) error {
+	gitConfig, err := stageGitRead(p)
+	if err != nil {
+		return err
 	}
-	written := &stageWritten{env: stageEnvFile(p), gitConfig: stageGitConfig(p), declared: declaredNow(p)}
+	exports := stageGoExports(p)
+	written := &stageWritten{env: stageEnvFile(p, exports), gitConfig: gitConfig, declared: declaredNow(p), exports: exports, binaries: binariesNow(p, bin)}
 	if err := fsutil.WriteFileAtomic(filepath.Join(p.Dir, stageEnvName), written.env, 0o600); err != nil {
 		return &WallError{WallSettingsFile, "the stage's shell file could not be written"}
 	}
-	if err := fsutil.WriteFileAtomic(filepath.Join(p.ShellHome, ".gitconfig"), written.gitConfig, 0o600); err != nil {
+	stagesWritten.Store(p.Dir, written)
+	return ResetStageHome(p)
+}
+
+// ResetStageHome makes a stage's home empty but for its git configuration, so
+// nothing one stage leaves there reaches the next or a preflight. A home that is
+// no real directory is refused, not followed.
+func ResetStageHome(p Profile) error {
+	v, ok := stagesWritten.Load(p.Dir)
+	if !ok {
+		return &WallError{WallSettingsFile, "the stage's home was not laid out"}
+	}
+	if fi, err := os.Lstat(p.ShellHome); err == nil {
+		if !fi.IsDir() {
+			return &WallError{WallSettingsFile, "the stage's home is no real directory"}
+		}
+		if err := os.RemoveAll(p.ShellHome); err != nil {
+			return &WallError{WallSettingsFile, "the stage's home could not be emptied"}
+		}
+	}
+	if err := os.MkdirAll(p.ShellHome, abcdhome.DirMode); err != nil {
+		return &WallError{WallSettingsFile, "the stage's home could not be made"}
+	}
+	if err := fsutil.WriteFileAtomic(filepath.Join(p.ShellHome, ".gitconfig"), v.(*stageWritten).gitConfig, 0o600); err != nil {
 		return &WallError{WallSettingsFile, "the stage's git configuration could not be written"}
 	}
-	stagesWritten.Store(p.Dir, written)
 	return nil
 }
 
-// stageEnvFile is the shell file: the home, and the Go caches as they stand in
-// the person's own environment, when there is a Go to ask.
-func stageEnvFile(p Profile) []byte {
-	var b bytes.Buffer
-	fmt.Fprintf(&b, "export HOME=%s\n", shellQuoted(p.ShellHome))
+// PreflightEnv is the environment a lane's preflight runs in: what a stage
+// carries, under its home, with the person's home named for the load gate and the
+// Go caches kept. Nothing else of the parent's passes.
+func PreflightEnv(p Profile) []string {
+	seal := []string{"HOME=" + p.ShellHome, StageHomeEnv + "=" + p.ShellHome, abcdhome.PersonHomeEnv + "=" + p.PersonHome}
+	if v, ok := stagesWritten.Load(p.Dir); ok {
+		seal = append(seal, v.(*stageWritten).exports...)
+	}
+	return sealedEnv(stageEnv(gitutil.ScrubbedEnv()), seal)
+}
+
+// stageGoExports are the Go caches as they stand in the person's own environment,
+// as KEY=value, when there is a Go to ask.
+func stageGoExports(p Profile) []string {
 	names := []string{"GOCACHE", "GOMODCACHE", "GOPATH"}
 	out, err := Exec(context.Background(), Command{Name: "go", Args: append([]string{"env"}, names...), Dir: p.Dir, Timeout: stageProbeTimeout})
-	if err == nil {
-		values := strings.Split(strings.TrimSpace(string(out.Stdout)), "\n")
-		for i, name := range names {
-			if i < len(values) && filepath.IsAbs(values[i]) {
-				fmt.Fprintf(&b, "export %s=%s\n", name, shellQuoted(values[i]))
-			}
+	if err != nil {
+		return nil
+	}
+	var exports []string
+	values := strings.Split(strings.TrimSpace(string(out.Stdout)), "\n")
+	for i, name := range names {
+		if i < len(values) && filepath.IsAbs(values[i]) {
+			exports = append(exports, name+"="+values[i])
 		}
 	}
+	return exports
+}
+
+// stageEnvFile is the shell file: the home, the person's home for abcd's shared
+// records, the Go caches, and no walled directory for a further harness to find.
+func stageEnvFile(p Profile, exports []string) []byte {
+	var b bytes.Buffer
+	fmt.Fprintf(&b, "export HOME=%s\n", shellQuoted(p.ShellHome))
+	fmt.Fprintf(&b, "export %s=%s\n", StageHomeEnv, shellQuoted(p.ShellHome))
+	fmt.Fprintf(&b, "export %s=%s\n", abcdhome.PersonHomeEnv, shellQuoted(p.PersonHome))
+	for _, kv := range exports {
+		k, v, _ := strings.Cut(kv, "=")
+		fmt.Fprintf(&b, "export %s=%s\n", k, shellQuoted(v))
+	}
+	b.WriteString("unset CLAUDE_CONFIG_DIR\n")
 	return b.Bytes()
 }
 
-// stageGitConfig is the person's git identity and content filters, rendered for
-// the stage's home: a commit there reads as theirs and a filtered file stays
-// filtered, and nothing else of their git configuration comes along.
-func stageGitConfig(p Profile) []byte {
-	out, err := Exec(context.Background(), Command{Name: "git", Dir: p.Dir, Timeout: stageProbeTimeout,
-		Args: []string{"config", "--global", "--null", "--get-regexp", `^(user\.(name|email)|filter\..*)$`}})
+// binariesNow reads abcd's binary and the harness a launch would run, by content;
+// one that cannot be read is the zero hash.
+func binariesNow(p Profile, bin string) map[string][sha256.Size]byte {
+	paths := []string{bin}
+	if resolved, err := defaultLauncher().admit(Claude, "claude", p.Dir); err == nil {
+		paths = append(paths, resolved)
+	}
+	out := map[string][sha256.Size]byte{}
+	for _, path := range paths {
+		var sum [sha256.Size]byte
+		if f, err := os.Open(path); err == nil {
+			h := sha256.New()
+			if _, err := io.Copy(h, f); err == nil {
+				copy(sum[:], h.Sum(nil))
+			}
+			_ = f.Close()
+		}
+		out[path] = sum
+	}
+	return out
+}
+
+// readStageGit is the person's git identity and content filters, rendered for the
+// stage's home: a commit there reads as theirs and a filtered file stays filtered,
+// and nothing else of their git configuration comes along. It reads from the
+// checkout, following includes, so a conditional identity resolves as it does for
+// a commit there, and it is an error when no identity does.
+func readStageGit(p Profile) ([]byte, error) {
+	dir := p.Repo
+	if dir == "" {
+		dir = p.Dir
+	}
+	out, err := Exec(context.Background(), Command{Name: "git", Dir: dir, Timeout: stageProbeTimeout,
+		Args: []string{"config", "--includes", "--null", "--get-regexp", `^(user\.(name|email)|filter\..*)$`}})
+	noIdentity := &WallError{WallIdentity, "git names no user.name and user.email for this checkout, so a stage's commits would read as an invented author; set them"}
 	if err != nil {
-		return []byte{}
+		return nil, noIdentity
 	}
 	var b bytes.Buffer
 	quoted := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`)
+	var name, email bool
 	for _, entry := range strings.Split(string(out.Stdout), "\x00") {
 		key, value, hasValue := strings.Cut(entry, "\n")
 		first, last := strings.Index(key, "."), strings.LastIndex(key, ".")
@@ -254,6 +365,8 @@ func stageGitConfig(p Profile) []byte {
 		if !hasValue {
 			value = "true"
 		}
+		name = name || (key == "user.name" && strings.TrimSpace(value) != "")
+		email = email || (key == "user.email" && strings.TrimSpace(value) != "")
 		if first == last {
 			fmt.Fprintf(&b, "[%s]\n", key[:first])
 		} else {
@@ -261,7 +374,11 @@ func stageGitConfig(p Profile) []byte {
 		}
 		fmt.Fprintf(&b, "\t%s = \"%s\"\n", key[last+1:], quoted.Replace(value))
 	}
-	return b.Bytes()
+	if !name || !email {
+		return nil, noIdentity
+	}
+	b.WriteString("[user]\n\tuseConfigOnly = true\n")
+	return b.Bytes(), nil
 }
 
 // checkStageFiles compares what a launch reads beside its settings with what this
@@ -302,6 +419,12 @@ func checkStageFiles(p Profile) error {
 			return &WallError{WallSettingsFile, abcdhome.Display(name) + " changed while the drive ran"}
 		}
 	}
+	for path, sum := range written.binaries {
+		now := binariesNow(p, path)[path]
+		if now != sum {
+			return &WallError{WallSettingsFile, filepath.Base(path) + "'s binary changed while the drive ran"}
+		}
+	}
 	return nil
 }
 
@@ -326,7 +449,7 @@ func SelfBinary() string { return selfBinary() }
 func CheckLogin(ctx context.Context, p Profile) error {
 	l := defaultLauncher()
 	l.gateWaiting = nil
-	l.allow = stageEnvAllowed
+	l.carry = stageEnv
 	bin, err := l.admit(Claude, "claude", p.Dir)
 	if err != nil {
 		return &WallError{WallLogin, "the harness could not be run"}
@@ -381,7 +504,7 @@ func ProveWall(ctx context.Context, p Profile, bin string) error {
 	c := newClaude("")
 	c.profile, c.approver = &p, bin
 	c.launch.gateWaiting = nil
-	c.launch.allow = stageEnvAllowed
+	c.launch.carry = stageEnv
 	if c.approver == "" {
 		return &WallError{WallLaunch, "abcd cannot name its own binary to answer the launch's permission prompts"}
 	}
@@ -393,12 +516,19 @@ func ProveWall(ctx context.Context, p Profile, bin string) error {
 	req := Request{Role: "wall-proof", Brief: filepath.Join(dir, "brief.md"), Receipt: filepath.Join(dir, "receipt.json"),
 		Dir: dir, Tools: named, Base: strings.Repeat("0", 40), SessionID: "wall-proof", Timeout: wallProofTimeout}
 	args := append(c.walledFlags(req), "--include-hook-events", "--", wallProofPrompt)
-	res, err := c.launch.run(ctx, Claude, claudeBin, args, p.Env, dir, wallProofTimeout)
-	// The proof spends the same subscription as a stage, so its launch ends
-	// through the same seam.
-	ans, _ := parseClaude(res.stdout)
-	recordLaunch(p, req, ans, err)
-	if err != nil {
+	// The proof spends the same subscription as a stage, so its launch is written
+	// to the same ledger, and one the ledger cannot hold is not started.
+	var res procResult
+	end, lerr := RecordLaunch(ctx, p.Ledger, LaunchStart{Role: req.Role, Runner: Claude, Repo: p.Repo, Fallback: req.SessionID}, func(ctx context.Context) LaunchEnd {
+		var runErr error
+		res, runErr = c.launch.run(ctx, Claude, claudeBin, args, p.Env, dir, wallProofTimeout)
+		ans, _ := parseClaude(res.stdout)
+		return LaunchEnd{Answer: ans, Transcript: res.transcript(), Err: runErr}
+	})
+	if lerr != nil {
+		return &WallError{WallLaunch, lerr.Error()}
+	}
+	if err := end.Err; err != nil {
 		var fl *Failure
 		if errors.As(err, &fl) {
 			return &WallError{WallLaunch, fl.Detail}
@@ -415,14 +545,35 @@ func ProveWall(ctx context.Context, p Profile, bin string) error {
 }
 
 // wallProofPrompt is the live launch's one instruction.
-const wallProofPrompt = "This is abcd's check of its own guard. Use the Bash tool twice, once for each of these commands, exactly as written, and do nothing else:\n" +
-	guardProofCommand + "\nprintf '" + wallHomeMarker + "%s\\n' \"$HOME\"\nWhatever the tool answers, then reply with the single word: done\n"
+var wallProofPrompt = "This is abcd's check of its own guard. Use the Bash tool three times, once for each of these commands, exactly as written, and do nothing else:\n" +
+	strings.Join(WallProofCommands(), "\n") + "\nWhatever the tool answers, then reply with the single word: done\n"
+
+// outsideStageEnv is the first variable name a proof's output line shows that a
+// stage's shell should not hold, "" for none. It keeps names alone.
+func outsideStageEnv(line []byte) string {
+	text := string(line)
+	for {
+		_, rest, ok := strings.Cut(text, wallEnvMarker)
+		if !ok {
+			return ""
+		}
+		end := strings.IndexAny(rest, "\\\"\n")
+		if end < 0 {
+			end = len(rest)
+		}
+		if name := rest[:end]; !stageShellAllowed(name) {
+			return name
+		}
+		text = rest[end:]
+	}
+}
 
 // readWallProof reads each wall from the launch's event stream. Every line is
 // read leniently, and only the fields named here are kept.
 func readWallProof(out []byte, named []string, shellHome string) error {
 	var sawInit, refused, homeSeen bool
-	var homeSaid bool
+	var homeSaid, envSaid bool
+	var envOutside string
 	quotedHome, _ := json.Marshal(wallHomeMarker + shellHome)
 	wantHome := bytes.Trim(quotedHome, `"`)
 	for _, line := range bytes.Split(out, []byte("\n")) {
@@ -446,6 +597,12 @@ func readWallProof(out []byte, named []string, shellHome string) error {
 		if ev.Type == "user" && bytes.Contains(line, []byte(wallHomeMarker)) {
 			homeSaid = true
 			homeSeen = homeSeen || bytes.Contains(line, wantHome)
+		}
+		if ev.Type == "user" && bytes.Contains(line, []byte(wallEnvMarker)) {
+			envSaid = true
+			if name := outsideStageEnv(line); name != "" && envOutside == "" {
+				envOutside = name
+			}
 		}
 		if ev.Type != "system" {
 			continue
@@ -490,6 +647,12 @@ func readWallProof(out []byte, named []string, shellHome string) error {
 	}
 	if !homeSaid {
 		return &WallError{WallHome, "the launch did not show the home its shell runs under"}
+	}
+	if !envSaid {
+		return &WallError{WallEnv, "the launch did not show the names of its shell's variables"}
+	}
+	if envOutside != "" {
+		return &WallError{WallEnv, "a stage's shell holds " + safeWord(envOutside) + ", which is not on the list it carries"}
 	}
 	if !refused {
 		return &WallError{WallGuard, "the guard hook did not refuse the command it is meant to refuse (" + guardProofCommand + ")"}

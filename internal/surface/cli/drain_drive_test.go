@@ -194,7 +194,7 @@ func TestNoWalledDirectoryOrSeveralRefuses(t *testing.T) {
 	if err := os.Remove(w.profile); err != nil {
 		t.Fatal(err)
 	}
-	if text := refusedDrive(t, "drain", "--drive", "--yes"); !strings.Contains(text, "~/.abcd.noindex/profiles/") {
+	if text := refusedDrive(t, "drain", "--drive", "--yes"); !strings.Contains(text, abcdhome.Display("profiles")+"/") {
 		t.Fatalf("the refusal names the directory to make: %s", text)
 	}
 	for _, n := range []string{"one", "two"} {
@@ -248,7 +248,7 @@ func TestTheConsentNamesTheCapTheEstimateTheRunnerAndTheRoute(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a no is no failure: %v\n%s", err, out)
 	}
-	for _, want := range []string{"cap:", "8 lane", "agent run", "runner: claude", "subscription", "~/.abcd.noindex/profiles/walled", "Start?"} {
+	for _, want := range []string{"cap:", "8 lane", "agent run", "runner: claude", "subscription", abcdhome.Display("profiles", "walled"), "Start?"} {
 		if !strings.Contains(string(out), want) {
 			t.Errorf("the consent does not name %q:\n%s", want, out)
 		}

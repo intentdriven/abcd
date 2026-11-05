@@ -33,7 +33,7 @@ func standInHarness(t *testing.T, loggedIn bool, stream string) {
 }
 
 // wallHomeLine has a stand-in report the shell's home the proof asks about.
-const wallHomeLine = `printf '{"type":"user","message":{"content":[{"type":"tool_result","content":"abcd-home:%s/home"}]}}\n' "$CLAUDE_CONFIG_DIR"` + "\n"
+const wallHomeLine = `printf '{"type":"user","message":{"content":[{"type":"tool_result","content":"abcd-home:%s"}]}}\n' "$ABCD_STAGE_HOME"` + "\n"
 
 const (
 	wallInit    = `{"type":"system","subtype":"init","session_id":"s","model":"m","tools":["Read","Bash","mcp__abcd__approve"],"apiKeySource":"none","mcp_servers":[{"name":"abcd"}],"plugins":[]}` + "\n"

@@ -93,6 +93,8 @@ type Request struct {
 	// that grants the shell needs it, since the approver judges every
 	// command against the hazard registry at that commit.
 	Base string
+	// Declared are the paths the work declares it changes, relative to Dir.
+	Declared []string
 	// Denied are the tools the role is refused outright, whatever else would
 	// grant them: a harness that keeps a deny list takes them there, ahead of
 	// every grant.
@@ -109,6 +111,11 @@ type Request struct {
 	SessionID string
 	// Timeout bounds the run; DefaultTimeout when zero.
 	Timeout time.Duration
+	// Work is the piece of work the launch is for, as the ledger lists it.
+	Work LaunchWork
+	// Key is the configured name of the key abcd hands this launch, never its
+	// value, which the ledger's route reads; "" when it hands none.
+	Key string
 }
 
 // Answer is the one answer shape every adapter parses its harness's events

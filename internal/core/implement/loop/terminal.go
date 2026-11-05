@@ -12,6 +12,7 @@ package loop
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -73,6 +74,9 @@ type TerminalOptions struct {
 	// Preflight runs the repository's preflight in a lane's worktree, behind
 	// the load gate.
 	Preflight func(ctx context.Context, worktree string) error
+	// PreflightAllowed says whether a lane's preflight may run, given its
+	// worktree and base; a *PreflightRefused hands the lane back. Nil allows all.
+	PreflightAllowed func(worktree, base string) error
 	// Stop is closed when a stop is asked for. The context stays live, so a
 	// call in flight finishes.
 	Stop <-chan struct{}
@@ -94,6 +98,11 @@ type TerminalOptions struct {
 	// out.
 	Probe func(ctx context.Context, role string) (bool, *runner.Failure)
 }
+
+// PreflightRefused is why a lane's preflight is not run.
+type PreflightRefused struct{ Reason string }
+
+func (e *PreflightRefused) Error() string { return e.Reason }
 
 // TerminalResult is how one terminal run ended.
 type TerminalResult struct {
@@ -135,6 +144,8 @@ type terminal struct {
 	// longWait says a wait since the last look was long enough for a claim to
 	// have lapsed, a machine asleep included.
 	longWait bool
+	// unanswered counts, by issue, the judgements asked and not answered.
+	unanswered map[string]int
 }
 
 // RunTerminal drives the drain from here until its cap, an empty ledger, the
@@ -402,6 +413,9 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 			continue
 		}
 		if res.Judging != nil {
+			if t.holdBack(res.Judging.Issue) {
+				continue
+			}
 			if t.failed(ctx, true, "the judge did not judge "+res.Judging.Issue) {
 				return t.ended(TerminalOutage), nil
 			}
@@ -421,6 +435,22 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 			return t.ended(ended), nil
 		}
 	}
+}
+
+// holdBack counts one unanswered judgement of issue, and at the limit has the
+// next move hold it back so the run goes on to other work.
+func (t *terminal) holdBack(issue string) bool {
+	if t.unanswered == nil {
+		t.unanswered = map[string]int{}
+	}
+	t.unanswered[issue]++
+	if t.unanswered[issue] < terminalJudgeAsks {
+		return false
+	}
+	delete(t.unanswered, issue)
+	t.say("holding %s back: its judge did not answer %d times", issue, terminalJudgeAsks)
+	t.o.Drain.Skip, t.o.Drain.SkipReason = []string{issue}, "its judge did not answer"
+	return true
 }
 
 // sayMove prints what a move did, one line for each thing.
@@ -469,10 +499,13 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 		if outcome, _, _ := laneOutcome(run); outcome != DrainLaneInProgress {
 			return "", nil
 		}
-		res, err := Drive(ctx, t.repoRoot, runID, t.o.Stages, t.o.Options, t.o.Runners)
-		if err == nil {
-			res, err = DriveReview(ctx, t.repoRoot, runID, res, t.o.Stages, t.o.Options, t.o.Review)
-		}
+		var res StepResult
+		t.renewing(func() {
+			res, err = Drive(ctx, t.repoRoot, runID, t.o.Stages, t.o.Options, t.o.Runners)
+			if err == nil {
+				res, err = DriveReview(ctx, t.repoRoot, runID, res, t.o.Stages, t.o.Options, t.o.Review)
+			}
+		})
 		if ctx.Err() != nil {
 			return TerminalKilled, nil
 		}
@@ -631,6 +664,29 @@ func (t *terminal) peerTook(runID string) bool {
 	return true
 }
 
+// renewing runs work that can outlast the lease, an agent's call or a preflight,
+// renewing what the run's lanes hold while it does. The renewals have stopped when
+// it returns.
+func (t *terminal) renewing(work func()) {
+	stop, done := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(done)
+		tick := time.NewTicker(terminalRenewTick)
+		defer tick.Stop()
+		for {
+			select {
+			case <-tick.C:
+				t.renewHeld()
+			case <-stop:
+				return
+			}
+		}
+	}()
+	work()
+	close(stop)
+	<-done
+}
+
 // pauseWhy is a paused await's reason.
 func pauseWhy(a *Await) string {
 	if a.Paused == nil {
@@ -658,47 +714,79 @@ func (t *terminal) stepRefused(ctx context.Context, runID string, err error) (ag
 	if !ok || ctx.Err() != nil {
 		return false, "", err
 	}
-	if !r.checkWait.IsZero() {
-		run, rerr := ReadState(t.repoRoot, runID)
-		if rerr != nil {
-			return false, "", rerr
-		}
-		i := run.current()
-		if i < 0 {
-			return false, "", nil
-		}
-		lane := run.Lanes[i]
-		head := runID + " " + lane.ID + " " + lane.HeadSHA
-		if t.ranClean == head {
-			// It exited 0 and the receipt is still not there, which running it
-			// again would not change: the lane goes to the stuck check.
-			why := refuse(string(StageLand), "", lane.ID, "its preflight exits 0 and leaves no receipt naming the lane's head", "see why `make preflight` mints no receipt")
-			now := t.now()
-			if err := mutate(t.repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
-				return noteRefusal(st, why, now), nil
-			}); err != nil {
-				return false, "", err
-			}
-			t.sleep(ctx, TerminalWaitFloor, why.Reason)
-			return false, "", nil
-		}
-		t.say("%s %s: running the preflight", runID, lane.ID)
-		if perr := t.o.Preflight(ctx, lane.Worktree); perr != nil {
-			if t.failed(ctx, false, "the preflight of "+runID+" did not mint its receipt: "+perr.Error()) {
-				return false, TerminalOutage, nil
-			}
-			return true, "", nil
-		}
-		t.ranClean = head
-		return true, "", nil
-	}
-	if r.Contention {
+	if r.checkWait.IsZero() {
 		if t.idle(ctx, TerminalWaitFloor, r.Reason) {
 			return false, TerminalWaited, nil
 		}
 		return false, "", nil
 	}
-	t.sleep(ctx, TerminalWaitFloor, r.Reason)
+	run, rerr := ReadState(t.repoRoot, runID)
+	if rerr != nil {
+		return false, "", rerr
+	}
+	i := run.current()
+	if i < 0 {
+		return false, "", nil
+	}
+	lane := run.Lanes[i]
+	head := runID + " " + lane.ID + " " + lane.HeadSHA
+	if t.ranClean == head {
+		// It exited 0 and the receipt is still not there, which running it again
+		// would not change: the lane goes to the stuck check.
+		return t.laneRefused(ctx, runID, lane.ID, "its preflight exits 0 and leaves no receipt naming the lane's head", "")
+	}
+	if !t.wallHeld() {
+		return false, TerminalWall, nil
+	}
+	if t.o.PreflightAllowed != nil {
+		var refused *PreflightRefused
+		if perr := t.o.PreflightAllowed(lane.Worktree, lane.BaseSHA); errors.As(perr, &refused) {
+			return t.laneRefused(ctx, runID, lane.ID, refused.Reason, refused.Reason)
+		} else if perr != nil {
+			return false, "", perr
+		}
+	}
+	t.say("%s %s: running the preflight", runID, lane.ID)
+	switch perr := t.preflight(ctx, lane.Worktree); {
+	case perr == nil:
+		t.ranClean = head
+		return true, "", nil
+	case ctx.Err() != nil || t.stopped():
+		return false, "", nil
+	default:
+		return t.laneRefused(ctx, runID, lane.ID, "its preflight failed: "+perr.Error(), "")
+	}
+}
+
+// preflight runs a lane's preflight on a context a stop also ends, so one queued
+// at the load gate or running does not outlast it.
+func (t *terminal) preflight(ctx context.Context, worktree string) error {
+	pctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go func() {
+		select {
+		case <-t.o.Stop:
+			cancel()
+		case <-pctx.Done():
+		}
+	}()
+	var err error
+	t.renewing(func() { err = t.o.Preflight(pctx, worktree) })
+	return err
+}
+
+// laneRefused logs a refusal on the lane for the next move's stuck check, final
+// saying why it cannot change, and waits at the floor.
+func (t *terminal) laneRefused(ctx context.Context, runID, laneID, reason, final string) (bool, string, error) {
+	why := refuse(string(StageLand), "", laneID, reason, "see the reason")
+	why.final = final
+	now := t.now()
+	if err := mutate(t.repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+		return noteRefusal(st, why, now), nil
+	}); err != nil {
+		return false, "", err
+	}
+	t.sleep(ctx, TerminalWaitFloor, reason)
 	return false, "", nil
 }
 

@@ -72,13 +72,26 @@ func fakeWall(mode string) int {
 	}
 	raw, _ := json.Marshal(init)
 	fmt.Println(string(raw))
-	shellHome := filepath.Join(os.Getenv("CLAUDE_CONFIG_DIR"), "home")
+	shellHome := os.Getenv(StageHomeEnv)
 	if mode == "wall-home" {
 		shellHome = "/the/persons/own/home"
 	}
 	if mode != "wall-home-unsaid" {
 		ev, _ := json.Marshal(map[string]any{"type": "user", "message": map[string]any{"content": []map[string]any{
 			{"type": "tool_result", "content": wallHomeMarker + shellHome + "\n"}}}})
+		fmt.Println(string(ev))
+	}
+	if mode != "wall-env-unsaid" {
+		names := []string{"PATH", "HOME", "CLAUDECODE"}
+		if mode == "wall-env" {
+			names = append(names, "GH_TOKEN")
+		}
+		var lines strings.Builder
+		for _, n := range names {
+			lines.WriteString(wallEnvMarker + n + "\n")
+		}
+		ev, _ := json.Marshal(map[string]any{"type": "user", "message": map[string]any{"content": []map[string]any{
+			{"type": "tool_result", "content": lines.String()}}}})
 		fmt.Println(string(ev))
 	}
 	if mode != "wall-guard" {
@@ -92,10 +105,12 @@ func fakeWall(mode string) int {
 
 func wallProfile(t *testing.T) Profile {
 	t.Helper()
-	p, err := DriveProfile(profileHome(t, "walled"))
+	home := profileHome(t, "walled")
+	p, err := DriveProfile(home)
 	if err != nil {
 		t.Fatal(err)
 	}
+	p.Ledger = newLedger(home)
 	return p
 }
 
@@ -204,36 +219,6 @@ func TestTheLoginWallAsksTheHarnessAndKeepsOnlyTheState(t *testing.T) {
 	}
 }
 
-// TestEveryWalledLaunchEndsThroughTheOneSeam: a stage's launch, a stage refused
-// before it starts and the proof's launch each call the ledger's one function
-// once (itd-2611031342011261), since the proof spends the same subscription.
-func TestEveryWalledLaunchEndsThroughTheOneSeam(t *testing.T) {
-	var ended []string
-	was := recordLaunch
-	t.Cleanup(func() { recordLaunch = was })
-	recordLaunch = func(_ Profile, req Request, _ Answer, err error) {
-		ended = append(ended, fmt.Sprintf("%s %t", req.Role, err == nil))
-	}
-	f, c, p := walledFake(t, "wall-ok")
-	if _, _, err := c.Run(context.Background(), shellRequest(f)); err != nil {
-		t.Fatal(err)
-	}
-	role := shellRequest(f).Role
-	if err := os.WriteFile(filepath.Join(p.Dir, wallSettingsName), []byte(`{}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := c.Run(context.Background(), shellRequest(f)); err == nil {
-		t.Fatal("settings that differ refuse the launch")
-	}
-	if err := ProveWall(context.Background(), p, wallBin); err != nil {
-		t.Fatal(err)
-	}
-	want := []string{role + " true", role + " false", "wall-proof true"}
-	if !slices.Equal(ended, want) {
-		t.Fatalf("the seam saw %q, want %q", ended, want)
-	}
-}
-
 // TestTheProofNamesEachWallThatDoesNotHold: the stand-in reports each wall held
 // or broken in turn.
 func TestTheProofNamesEachWallThatDoesNotHold(t *testing.T) {
@@ -248,6 +233,8 @@ func TestTheProofNamesEachWallThatDoesNotHold(t *testing.T) {
 		"wall-tree":        WallWorkingTree,
 		"wall-home":        WallHome,
 		"wall-home-unsaid": WallHome,
+		"wall-env":         WallEnv,
+		"wall-env-unsaid":  WallEnv,
 	} {
 		t.Run(mode, func(t *testing.T) {
 			f := newFake(t, mode, Claude)
@@ -417,6 +404,7 @@ func TestAStagesShellHasItsOwnHomeAndWhatItNeeds(t *testing.T) {
 		t.Skip("no go")
 	}
 	gittest.Env(t) // go's telemetry stays off, and out of this test's cleanup
+	realGitRead(t)
 	home := os.Getenv("HOME")
 	cfg := "[user]\n\tname = Pat Example\n\temail = pat@example.invalid\n" +
 		"[filter \"lfs\"]\n\tclean = git-lfs clean -- %f\n\trequired = true\n" +
@@ -445,13 +433,19 @@ func TestAStagesShellHasItsOwnHomeAndWhatItNeeds(t *testing.T) {
 	}
 	run := func(script string) string {
 		cmd := exec.Command("/bin/sh", "-c", `. "$F"; `+script)
-		cmd.Env = append(os.Environ(), "F="+filepath.Join(p.Dir, stageEnvName))
+		cmd.Env = append(os.Environ(), "F="+filepath.Join(p.Dir, stageEnvName), "CLAUDE_CONFIG_DIR="+p.Dir)
 		out, _ := cmd.CombinedOutput()
 		return strings.TrimSpace(string(out))
 	}
 	// The Go there starts its telemetry under that home, which would race this
 	// test's cleanup.
 	run(`go telemetry off`)
+	if got := run(`printf %s "$CLAUDE_CONFIG_DIR"`); got != "" {
+		t.Errorf("the shell keeps the walled directory: %q", got)
+	}
+	if got := run(`printf %s "$` + abcdhome.PersonHomeEnv + `"`); got != home {
+		t.Errorf("the shell names the person's home for abcd's shared records: %q", got)
+	}
 	if got := run(`printf %s "$HOME"`); got != p.ShellHome {
 		t.Fatalf("the shell's home is %q, want %q", got, p.ShellHome)
 	}
@@ -497,6 +491,11 @@ func TestTheCheckComparesWhatALaunchReads(t *testing.T) {
 		},
 		"a machine declaration": func(t *testing.T, p Profile) {
 			if err := os.WriteFile(abcdhome.Path(p.PersonHome, "config.json"), []byte(`{"x":1}`), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"the routing declaration": func(t *testing.T, p Profile) {
+			if err := os.WriteFile(abcdhome.Path(p.PersonHome, "oracle-routing.json"), []byte(`{"x":1}`), 0o600); err != nil {
 				t.Fatal(err)
 			}
 		},

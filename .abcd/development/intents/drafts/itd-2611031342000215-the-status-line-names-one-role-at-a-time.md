@@ -16,7 +16,7 @@ production_mode: hand-written
 # The status line shows each role what it needs, in a table a repository can tune
 
 Typed links: `builds_on`
-[itd-2611031342011261](itd-2611031342011261-every-agent-abcd-launches-for-a-session.md)
+[itd-2611031342011261](../planned/itd-2611031342011261-every-agent-abcd-launches-for-a-session.md)
 (the per-session launch ledger, which supplies the agents, spend, API-time and
 token figures the row sums),
 [itd-2610301750162657](../planned/itd-2610301750162657-a-person-spot-checks-what-abcd-s-agents.md)

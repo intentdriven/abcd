@@ -1,8 +1,8 @@
 ---
 id: itd-2611031342011261
 slug: every-agent-abcd-launches-for-a-session
-spec_id: null
-kind: null
+spec_id: spc-2611041701500441
+kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: [itd-2609201916056194, itd-166, itd-2610111707085098, itd-2611011230226453]
@@ -31,7 +31,7 @@ sides of a run: the model asked for and served, the tokens and the cost, kept
 on the run state today),
 [itd-2610111707085098](../shipped/itd-2610111707085098-the-status-line-should-show-which.md)
 (each session's persona name, which the ledger names a session by) and
-[itd-2611011230226453](itd-2611011230226453-when-abcd-starts-agents-on-your-own-api.md)
+[itd-2611011230226453](../drafts/itd-2611011230226453-when-abcd-starts-agents-on-your-own-api.md)
 (the key a session names and the budget it keeps; this ledger is where each
 launch's key and spend are written, so the two share one record of what was
 spent). Related issues: the run-state schema trap
@@ -45,7 +45,7 @@ budget check that always skips
 ([iss-2610100913096346](../../../work/issues/open/iss-2610100913096346-the-run-start-budget-check-never.md)),
 which a per-key sum of recorded launches answers. The status line's own
 elements, words and dropping order are the sibling draft's,
-[itd-2611031342000215](itd-2611031342000215-the-status-line-names-one-role-at-a-time.md);
+[itd-2611031342000215](../drafts/itd-2611031342000215-the-status-line-names-one-role-at-a-time.md);
 this intent supplies the figures that draft's agents and API elements show.
 
 abcd starts agents on a person's behalf and keeps no account of them as a
@@ -102,25 +102,25 @@ deletes.
 
 ## Scope Conditions
 
-- Agents abcd launches itself through a runner (the claude and opencode
+- Agents abcd launches itself through a runner (the claude and opencode <!-- cond: cond-2611041701504513 -->
   runners, and a configured fallback host): a build or drain lane's
   implementer and reviewers, the drain's judge, the planning interviewer, a
   review abcd starts. A role handed to the host session is the host's own
   agent, counted by the host, and gets no figures of its own; an agent a
   person or a session starts by hand in a shell is not abcd's launch and
   gets no entry.
-- The orchestrating session's own figures (its cost, API time and tokens)
+- The orchestrating session's own figures (its cost, API time and tokens) <!-- cond: cond-2611041701501159 -->
   are the host's payload's and its transcript's, not the ledger's; the ledger
   is the agents' side, and a status line adds the session's own cost to the
   bill only when the session itself bills a key.
-- One machine: the ledger lives under abcd's home on the machine that
+- One machine: the ledger lives under abcd's home on the machine that <!-- cond: cond-2611041701509352 -->
   launched, and the same session or key on a second machine has a ledger of
   its own there. A hosted runner's home is as ephemeral as the runner, so
   there the run's own summary is the account that survives.
-- Cost figures are the harness's own estimate at its price table; the
+- Cost figures are the harness's own estimate at its price table; the <!-- cond: cond-2611041701500924 -->
   provider's invoice is the final figure, and every render that shows spend
   says so. A harness that reports no API time leaves that field absent.
-- Which route billed a launch is what abcd handed it or what the harness's
+- Which route billed a launch is what abcd handed it or what the harness's <!-- cond: cond-2611041701508825 -->
   event stream shows, never an account abcd looked up: a launch abcd handed
   a named key is key-billed; one whose stream reports rate-limit windows is
   the subscription's; one abcd can place in neither is recorded as unknown
@@ -128,8 +128,8 @@ deletes.
 
 ## Acceptance Criteria
 
-Each is a proposal for the product thinker to confirm at the planning
-interview, drafted from the lab's rulings of 2026-11-03.
+Drafted from the lab's rulings of 2026-11-03 and planned as drafted under
+dcn-2611031615094092, with decisions 14 to 21 settling every open question.
 
 - **Given** any agent abcd launches through a runner (a build or drain lane's
   implementer or reviewer, the drain's judge, the planning interviewer, a
@@ -306,7 +306,10 @@ default, and none was put as a question of its own:
     budget intent keeps (itd-2611011230226453) plus one day, so a calendar
     month's totals are summed from entries still held, and a repository
     setting below that floor is read as the floor and named as such; the
-    count limit keeps the same floor, never pruning inside that period.
+    count limit keeps the same floor, never pruning inside that period. The
+    store holds every repository's launches, so dcn-2611042248450089 narrows the
+    repository's half: its figure stands only where it is longer, and binds
+    that repository's own launches alone.
 15. **The status line's cached read: 30 seconds**, the interval the
     prototype used; configurable the same way.
 16. **Token basis: every count the harness reports**, as the prototype

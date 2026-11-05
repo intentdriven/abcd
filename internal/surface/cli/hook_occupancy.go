@@ -93,6 +93,22 @@ func refuseSharedMainCheckout(cmd *cobra.Command, verb, root string) error {
 	return nil
 }
 
+// stageFilesFromEnv is f reading a line as this hook's walled stage runs it; f as
+// it is for any other session.
+func stageFilesFromEnv(f *guard.Files) *guard.Files {
+	return f.WithStage(os.Getenv(runner.StageHomeEnv), filepath.SplitList(os.Getenv(runner.StageProtectEnv)),
+		filepath.SplitList(os.Getenv(runner.StageDeclaredEnv)))
+}
+
+// stageActive reports whether this hook runs for a walled stage, where whatever
+// the guard cannot judge is denied rather than let through with a warning.
+func stageActive() bool { return os.Getenv(runner.StageWritesEnv) != "" }
+
+// stageUncheckedDeny is that denial.
+func stageUncheckedDeny() error {
+	return denyCall("Blocked by the abcd guard (unchecked on a walled stage): the guard could not judge this call, so it does not run. Run instead: the same call with a plain command, or a file named by its full path.")
+}
+
 // fileWriteTools are the host tool names that write a file. The hook
 // manifest's PreToolUse matcher names exactly these beside the shell and
 // question tools (TestGuardHookIsInstalledForBashCalls holds the two
@@ -112,6 +128,9 @@ func isFileWriteTool(name string) bool {
 // fileWriteFailOpen is the guard's fail-open-loud contract on a file tool's
 // call: the write runs, and exit 1 keeps the warning in front of a human.
 func fileWriteFailOpen(w io.Writer, format string, a ...any) error {
+	if stageActive() {
+		return stageUncheckedDeny()
+	}
 	diagnosticLine(w, "abcd guard: NOT CHECKED — "+format+". This file write runs UNGUARDED.", a...)
 	return &exitError{Code: 1}
 }
@@ -133,6 +152,11 @@ func fileWriteGate(cmd *cobra.Command, tool, cwd, filePath, notebookPath string)
 	if strings.TrimSpace(path) == "" {
 		return fileWriteFailOpen(cmd.ErrOrStderr(), "the %s call names no file to check", termsafe.Sanitize(tool))
 	}
+	if stageActive() {
+		if why := guard.StageWriteRefusal(filepath.SplitList(os.Getenv(runner.StageWritesEnv)), filepath.SplitList(os.Getenv(runner.StageDeclaredEnv)), path); why != "" {
+			return denyCall("Blocked by the abcd guard (" + termsafe.Sanitize(tool) + "): " + why)
+		}
+	}
 	if !filepath.IsAbs(path) {
 		base := cwd
 		if base == "" {
@@ -147,11 +171,6 @@ func fileWriteGate(cmd *cobra.Command, tool, cwd, filePath, notebookPath string)
 		path = base + string(filepath.Separator) + path
 		if !filepath.IsAbs(path) {
 			return fileWriteFailOpen(cmd.ErrOrStderr(), "the %s call names a relative path and a session directory that is not absolute", termsafe.Sanitize(tool))
-		}
-	}
-	if dirs := os.Getenv(runner.StageWritesEnv); dirs != "" {
-		if why := guard.StageWriteRefusal(filepath.SplitList(dirs), path); why != "" {
-			return denyCall("Blocked by the abcd guard (" + termsafe.Sanitize(tool) + "): " + why)
 		}
 	}
 	m, ok := sessionNameMachine()

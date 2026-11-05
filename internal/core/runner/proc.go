@@ -33,6 +33,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -42,6 +43,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/procgroup"
@@ -70,8 +72,8 @@ type launcher struct {
 	// asked; zero is gatePollInterval.
 	gateWaiting func(pid int) bool
 	gatePoll    time.Duration
-	// allow, when set, is all a launch carries of the parent's environment.
-	allow func(key string) bool
+	// carry, when set, is all a launch carries of the parent's environment.
+	carry func(env []string) []string
 }
 
 // defaultLauncher is a harness's launcher: its clock stops while the role
@@ -181,7 +183,11 @@ func (l launcher) run(ctx context.Context, runner, bin string, args, seal []stri
 	// shell line.
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = dir
-	cmd.Env = sealedEnv(onlyAllowed(gitutil.ScrubbedEnv(), l.allow), seal)
+	env := gitutil.ScrubbedEnv()
+	if l.carry != nil {
+		env = l.carry(env)
+	}
+	cmd.Env = sealedEnv(env, seal)
 	cmd.Stdin = nil
 	var out, errb bytes.Buffer
 	ow := &bounded{w: &out, remaining: l.maxStdout}
@@ -190,10 +196,13 @@ func (l launcher) run(ctx context.Context, runner, bin string, args, seal []stri
 	cmd.Stderr = ew
 	procgroup.Lead(cmd)
 	cmd.WaitDelay = pipeGrace
-	started := time.Now()
+	// Read before the start returns: a process's start is when it forked, and
+	// Start returns only once exec has, which can take seconds.
+	forked := time.Now()
 	if err := cmd.Start(); err != nil {
 		return procResult{}, failAt(ErrNotStarted, runner, ReasonFailed, "%s could not be started", filepath.Base(bin))
 	}
+	launchStarted(ctx, cmd.Process.Pid, forked)
 	// The clock stands still while the harness's tree waits at the load gate
 	// (gatewait.go): each look that finds a waiter queued moves the deadline
 	// by the time since the last look, up to gateCredit.
@@ -249,7 +258,7 @@ wait:
 		<-done
 	}
 	res := procResult{stdout: out.Bytes(), stderr: errb.Bytes(), exit: -1,
-		silent: time.Since(latest(started, ow.last, ew.last))}
+		silent: time.Since(latest(forked, ow.last, ew.last))}
 	var ee *exec.ExitError
 	switch {
 	case killed != "":
@@ -368,25 +377,57 @@ var stageEnvExtra []string
 // the harness's own needs, a shell's, and a build's. Nothing else passes.
 var stageEnvNames = []string{
 	"PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "TERM", "TZ", "LANG",
-	"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy",
+	"LC_ALL", "LC_COLLATE", "LC_CTYPE", "LC_MESSAGES", "LC_MONETARY", "LC_NUMERIC", "LC_TIME",
 	"NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR",
 	"GOROOT", "GOFLAGS", "GOPROXY", "GOPRIVATE", "GONOSUMDB", "GONOPROXY", "GOTOOLCHAIN", "GOMAXPROCS",
 }
 
-// stageEnvAllowed reports whether a walled launch carries the variable key.
-func stageEnvAllowed(key string) bool {
-	return strings.HasPrefix(key, "LC_") || slices.Contains(stageEnvNames, key) || slices.Contains(stageEnvExtra, key)
+// stageProxyNames are carried with any credentials in their URLs taken out.
+var stageProxyNames = []string{"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy"}
+
+// stageEnv is what a walled launch carries of env.
+func stageEnv(env []string) []string {
+	var out []string
+	for _, kv := range env {
+		k, v, _ := strings.Cut(kv, "=")
+		switch {
+		case slices.Contains(stageProxyNames, k):
+			if clean, ok := proxyWithoutCredentials(v); ok {
+				out = append(out, k+"="+clean)
+			}
+		case slices.Contains(stageEnvNames, k) || slices.Contains(stageEnvExtra, k):
+			out = append(out, kv)
+		}
+	}
+	return out
 }
 
-// onlyAllowed is env with only the variables allow admits; all of it for nil.
-func onlyAllowed(env []string, allow func(string) bool) []string {
-	if allow == nil {
-		return env
+// proxyWithoutCredentials is a proxy value with its URL's credentials removed; ok
+// is false for a value that holds some in a shape that cannot be taken apart.
+func proxyWithoutCredentials(v string) (string, bool) {
+	if !strings.Contains(v, "@") {
+		return v, true
 	}
-	return slices.DeleteFunc(slices.Clone(env), func(kv string) bool {
-		k, _, _ := strings.Cut(kv, "=")
-		return !allow(k)
-	})
+	u, err := url.Parse(v)
+	if err != nil || u.User == nil {
+		return "", false
+	}
+	u.User = nil
+	return u.String(), true
+}
+
+// stageShellNames are what the harness and the shell itself add to a stage's
+// shell, beside what it carries.
+var stageShellNames = []string{"PWD", "OLDPWD", "SHLVL", "_", "CLAUDECODE", "GIT_EDITOR", "COREPACK_ENABLE_AUTO_PIN",
+	"__CF_USER_TEXT_ENCODING", "GOCACHE", "GOMODCACHE", "GOPATH", abcdhome.PersonHomeEnv}
+
+// stageShellAllowed reports whether a stage's shell may hold the variable name.
+func stageShellAllowed(name string) bool {
+	if slices.Contains(credentialVars, name) {
+		return false
+	}
+	return slices.Contains(stageEnvNames, name) || slices.Contains(stageProxyNames, name) || slices.Contains(stageShellNames, name) ||
+		strings.HasPrefix(name, "CLAUDE_") || strings.HasPrefix(name, "ABCD_STAGE_")
 }
 
 // sealedEnv is env with every key seal names removed, then each of seal's
@@ -458,6 +499,9 @@ func (b *bounded) Write(p []byte) (int, error) {
 	return n, nil
 }
 
+// stderrMarker is the line a transcript's stderr follows.
+const stderrMarker = "== abcd runner: the harness's stderr =="
+
 // transcript is what a run's record keeps: the event stream, then the
 // harness's stderr under a marker line when it wrote any. The store redacts it
 // on write.
@@ -472,7 +516,7 @@ func (r procResult) transcript() []byte {
 	}
 	// The marker opens with "==", never a "---" run, so no frontmatter reader
 	// takes it for a block delimiter.
-	b.WriteString("== abcd runner: the harness's stderr ==\n")
+	b.WriteString(stderrMarker + "\n")
 	b.Write(r.stderr)
 	return b.Bytes()
 }

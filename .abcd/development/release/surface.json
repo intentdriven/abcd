@@ -51,6 +51,36 @@
       ]
     },
     {
+      "path": "abcd agents",
+      "hidden": false,
+      "group": "records",
+      "block": "people",
+      "sentence": "List the agents abcd started for this session and add them up: Writes nothing; refuses when launches are on record and no session or scope says whose.",
+      "flags": [
+        {
+          "name": "all",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "run",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "session",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd ahoy",
       "hidden": false,
       "group": "set-up",
@@ -1558,6 +1588,13 @@
           "hidden": false
         },
         {
+          "name": "trust-lane-gates",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "unskip",
           "shorthand": "",
           "type": "stringArray",
@@ -1769,6 +1806,13 @@
           "hidden": false
         },
         {
+          "name": "declared",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "dir",
           "shorthand": "",
           "type": "string",
@@ -1776,9 +1820,23 @@
           "hidden": false
         },
         {
+          "name": "protect",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "run-dir",
           "shorthand": "",
           "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "stage-home",
+          "shorthand": "",
+          "type": "string",
           "required": false,
           "hidden": false
         }

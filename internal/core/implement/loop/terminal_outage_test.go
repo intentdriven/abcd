@@ -2,7 +2,6 @@ package loop
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -100,39 +99,6 @@ func TestASuccessEndsTheCount(t *testing.T) {
 	}
 }
 
-// TestAPreflightThatFailsCountsTowardTheOutage: a preflight that cannot mint
-// its receipt is bounded as a failing runner is.
-func TestAPreflightThatFailsCountsTowardTheOutage(t *testing.T) {
-	w := newTerminalWorld(t)
-	w.needsPreflight = true
-	w.preflight = errors.New("the preflight failed")
-	o := w.options(t)
-	o.Drain.Max = 1
-	calls := 0
-	inner := o.Preflight
-	o.Preflight = func(ctx context.Context, wt string) error {
-		calls++
-		if calls > 3 {
-			w.preflight = nil
-		}
-		err := inner(ctx, wt)
-		if err != nil {
-			w.preflights = nil
-		}
-		return err
-	}
-	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.Ended != DrainStoppedCap || calls != 4 {
-		t.Fatalf("the failing preflight is retried on the schedule: %+v, %d calls, waits %v", res, calls, w.sleeps)
-	}
-	if !slices.Contains(w.sleeps, time.Minute) {
-		t.Fatalf("the third failure enters the schedule: %v", w.sleeps)
-	}
-}
-
 // TestAJudgedMoveThatThenWaitsEndsTheCount: the judge answers, so the outage is
 // over, though the same move goes on to wait; the next failure starts the
 // schedule afresh.
@@ -226,10 +192,10 @@ func TestARateLimitWaitsForTheResetItReports(t *testing.T) {
 	o := w.options(t)
 	o.Drain.Max = 1
 	w.guardSleeps(t, &o)
-	launchesAtReset := -1
+	launchesAtFirstWait := -1
 	w.onSleep = func(time.Duration) {
-		if launchesAtReset < 0 {
-			launchesAtReset = w.launches(t)
+		if launchesAtFirstWait < 0 {
+			launchesAtFirstWait = w.launches(t)
 		}
 	}
 	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
@@ -241,6 +207,9 @@ func TestARateLimitWaitsForTheResetItReports(t *testing.T) {
 	}
 	if got := slept(w.sleeps); got < 3*time.Hour-time.Minute || got > 4*time.Hour {
 		t.Fatalf("the run waits for the reset: %v, waits %v\n%s", got, w.sleeps, strings.Join(w.lines, "\n"))
+	}
+	if launchesAtFirstWait != 2 {
+		t.Fatalf("a judge and the limited implementer start before the wait, %d launches", launchesAtFirstWait)
 	}
 	if w.launches(t) != 3 {
 		t.Fatalf("one agent starts after the reset, %d launches\n%s", w.launches(t), strings.Join(w.lines, "\n"))

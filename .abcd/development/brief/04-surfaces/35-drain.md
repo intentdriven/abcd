@@ -240,17 +240,28 @@ dropped and free text reduced to its length, the redacted first stderr line, the
 read, the loop's decision, each probe's answer and when the run resumed.
 
 Before the first move the drive writes the walled directory's settings, abcd's hooks
-as commands naming its own binary and nothing else, and proves each wall, refusing
-and naming the one that fails: the login state, the settings, and in one short live
-launch the tools the launch named, the approver as the only server, no plugin, no
-key, the guard refusing a command it is meant to refuse, and a settings file in the
-working tree having no effect, since the launch's setting sources name the walled
-directory alone. The settings are compared with what abcd wrote before each stage,
-and a difference stops the drive; so does a changed machine declaration or anything
-else in that directory a launch would load. A stage carries only the variables it
-needs. Its shell runs under a home of its own in the walled directory, holding the
-person's git identity and filters and keeping their Go caches, and its file tools write
-only in its working tree and run directories. A credential variable the harness would bill
+as commands naming its own binary and nothing else, and checks each wall, refusing
+and naming the one that fails: the login state, the settings, a git identity for the
+checkout, and in one short live launch the tools the launch named, the approver as the
+only server, no plugin, no key, the guard refusing a command it is meant to refuse, the
+home and the variable names a stage's shell shows, and a settings file in the working
+tree having no effect, since the launch's setting sources name the walled directory
+alone. Before each stage and each preflight the settings, the files a stage's shell
+reads, the machine declarations, abcd's binary and the harness are compared with the
+start, and a difference stops the drive.
+
+A profile is a separate login and settings on this one account, not a boundary: a
+stage's shell reads what this account can. A launch starts from an allow-list of
+variables, a proxy's credentials taken out. Its shell's home is emptied at each launch
+and holds the person's git identity and filters; Go's caches and the person's home for
+abcd's shared records are named, and any other toolchain's cache starts empty. The guard
+reads a shell line against that home and refuses a further agent. A file tool writes
+only in the stage's working tree and run directories, and neither it nor a shell line
+the guard can read writes `.abcd/`, the hooks or the Makefile unless the work declares
+them. The hooks read the rules and the guard's registry as the lane's base holds them. A
+preflight runs with the same variables, and is not run over a lane that changes the
+Makefile or `scripts/` unless the person agreed when they started the drive; one drive
+holds a checkout at a time. A credential variable the harness would bill
 through refuses the start, naming itd-2611011230226453, and so does a start from
 inside an agent's own session.
 
@@ -885,6 +896,7 @@ Sub-verbs: none.
 | `--sub-agents` | string |
 | `--until` | string |
 | `--take-over` | bool |
+| `--trust-lane-gates` | bool |
 | `--unskip` | stringArray |
 | `--yes` | bool |
 

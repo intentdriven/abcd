@@ -554,7 +554,7 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 	}
 	home := req.Home
 	if home == "" {
-		h, err := os.UserHomeDir()
+		h, err := abcdhome.MachineHome()
 		if err != nil || h == "" {
 			return res, errors.New("the home directory could not be resolved, so there is nowhere to keep the hold; nothing was waited for")
 		}

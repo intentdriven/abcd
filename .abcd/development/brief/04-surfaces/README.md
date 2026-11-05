@@ -52,6 +52,7 @@ are wiring rather than user-facing surface are listed separately under
 | 38 | `/abcd:land` | shipped | Push a branch once its preflight passed and queue its pull request where the merge gate allows, resumable by running it again | [`38-land.md`](38-land.md) |
 | 39 | `/abcd:status` | shipped | Read everyone's status on the shared remote: the announcements every session posted, who holds which reservation and each release being cut | [`39-status.md`](39-status.md) |
 | 40 | `/abcd:checklist` | shipped | Keep this working copy's checklist on disk, so what a session is doing survives a compaction or a crash | [`40-checklist.md`](40-checklist.md) |
+| 41 | `/abcd:agents` | shipped | List the agents abcd started for a session or a run and add up their tokens, cost and API time, from the launch ledger on this computer | [`41-agents.md`](41-agents.md) |
 
 ## How much of this table a machine keeps honest
 
@@ -147,7 +148,7 @@ the command's sentence (the section below).
 | Block | Group | Verbs |
 |---|---|---|
 | people | set-up | `ahoy`, `dashboard`, `session`, `update`, and the framework's `help` and `completion` |
-| people | records | `build`, `capture`, `decide`, `ideate`, `intent`, `land`, `library`, `status` |
+| people | records | `agents`, `build`, `capture`, `decide`, `ideate`, `intent`, `land`, `library`, `status` |
 | people | checks | `lab`, `reading` |
 | people | portability | `disembark`, `embark` |
 | people | release | `embargo`, `launch` |
@@ -364,11 +365,12 @@ documents is then an unknown command (iss-161). One file per verb, directly unde
 `commands/`:
 
 <!-- index: commands -->
-`abcd`, `ahoy`, `announce`, `banlist`, `build`, `capture`, `checklist`,
-`dashboard`, `decide`, `disembark`, `docs`, `drain`, `embargo`, `embark`,
-`guard`, `history`, `ideate`, `identity`, `implement`, `inbox`, `intent`, `lab`,
-`land`, `launch`, `library`, `lint`, `memory`, `mode`, `peers`, `reading`,
-`reflect`, `report`, `reserve`, `scribe`, `session`, `site`, `status`, `update`.
+`abcd`, `agents`, `ahoy`, `announce`, `banlist`, `build`, `capture`,
+`checklist`, `dashboard`, `decide`, `disembark`, `docs`, `drain`, `embargo`,
+`embark`, `guard`, `history`, `ideate`, `identity`, `implement`, `inbox`,
+`intent`, `lab`, `land`, `launch`, `library`, `lint`, `memory`, `mode`, `peers`,
+`reading`, `reflect`, `report`, `reserve`, `scribe`, `session`, `site`,
+`status`, `update`.
 <!-- /index -->
 
 `abcd.md` is the bare `/abcd` status board; every other file is `/abcd:<verb>`.

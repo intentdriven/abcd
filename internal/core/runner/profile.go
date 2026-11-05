@@ -25,6 +25,16 @@ import (
 // StageWritesEnv names where a walled launch's file tools may write.
 const StageWritesEnv = "ABCD_STAGE_WRITES"
 
+// The rest of what a walled launch's guard reads: the shell's home, what is
+// protected from the stage, what its work declares it changes, and the commit
+// its lane was cut from.
+const (
+	StageHomeEnv     = abcdhome.StageHomeEnv
+	StageProtectEnv  = "ABCD_STAGE_PROTECT"
+	StageDeclaredEnv = "ABCD_STAGE_DECLARED"
+	StageBaseEnv     = "ABCD_STAGE_BASE"
+)
+
 // The intents a drive's refusals name.
 const (
 	// ProfilesIntent admits several named profiles.
@@ -78,6 +88,11 @@ type Profile struct {
 	ShellHome string
 	// PersonHome is the person's own home directory.
 	PersonHome string
+	// Repo is the checkout the drive runs in, whose git configuration names the
+	// identity a stage commits under.
+	Repo string
+	// Ledger is the launch ledger the proof's launch is written to.
+	Ledger *Ledger
 	// Env is the launch's environment switches (sealedEnv): each KEY=value is
 	// set over the parent's, and each bare name taken out.
 	Env []string
@@ -127,13 +142,15 @@ func DriveProfile(home string) (Profile, error) {
 	}
 	return Profile{
 		Dir:        dir,
-		ShellHome:  filepath.Join(dir, stageHomeName),
+		ShellHome:  abcdhome.Path(home, stageHomesLeaf, names[0]),
 		PersonHome: home,
 		Env: append([]string{
 			"CLAUDE_CONFIG_DIR=" + dir,
 			"CLAUDE_CODE_DISABLE_CLAUDE_MDS=1",
 			"CLAUDE_CODE_DISABLE_AUTO_MEMORY=1",
 			"CLAUDE_ENV_FILE=" + filepath.Join(dir, stageEnvName),
+			StageHomeEnv + "=" + abcdhome.Path(home, stageHomesLeaf, names[0]),
+			StageProtectEnv + "=" + dir,
 		}, credentialVars...),
 		// The user layer is the file under CLAUDE_CONFIG_DIR: naming it alone
 		// leaves out the project and local layers of the working tree.
@@ -147,8 +164,3 @@ func AdmitClaude(repoRoot string) error {
 	_, err := defaultLauncher().admit(Claude, "claude", repoRoot)
 	return err
 }
-
-// recordLaunch is the one call a walled launch makes when it ends, whatever
-// came of it, for the launch ledger (itd-2611031342011261) to fill. It records
-// nothing yet.
-var recordLaunch = func(Profile, Request, Answer, error) {}

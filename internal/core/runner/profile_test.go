@@ -61,7 +61,7 @@ func TestNoWalledDirectoryRefusesNamingTheOneToMake(t *testing.T) {
 		if !errors.Is(err, ErrNoProfile) {
 			t.Fatalf("no directory is ErrNoProfile: %v", err)
 		}
-		for _, want := range []string{"~/.abcd.noindex/profiles/", "CLAUDE_CONFIG_DIR="} {
+		for _, want := range []string{abcdhome.Display("profiles") + "/", "CLAUDE_CONFIG_DIR="} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("the refusal %q does not name %q", err, want)
 			}
