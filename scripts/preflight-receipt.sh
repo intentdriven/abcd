@@ -115,10 +115,11 @@ stage_counts() {
 		if [ "$r_tree" != "$tree" ] || [ "$r_result" != pass ] || [ "$r_mode" = dirty ]; then
 			return 1
 		fi
-		case "$mode" in
-		"" | "$r_mode") mode="$r_mode" ;;
-		*) mode=mixed ;;
-		esac
+		if [ -z "$mode" ]; then
+			mode="$r_mode"
+		elif [ "$mode" != "$r_mode" ]; then
+			mode=mixed
+		fi
 		case "$r_reused$r_packages" in
 		"" | *[!0-9]*) return 1 ;;
 		esac
@@ -186,8 +187,14 @@ mint() {
 			echo "           Run \`make preflight\` again."
 			return 0
 		fi
-		read -r unit_reused unit_total unit_mode <<<"$unit"
-		read -r race_reused race_total race_mode <<<"$race"
+		unit_reused="${unit%% *}"
+		unit_mode="${unit##* }"
+		unit_total="${unit#* }"
+		unit_total="${unit_total% *}"
+		race_reused="${race%% *}"
+		race_mode="${race##* }"
+		race_total="${race#* }"
+		race_total="${race_total% *}"
 		tests="$unit_mode"
 		[ "$unit_mode" = "$race_mode" ] || tests=mixed
 	fi
