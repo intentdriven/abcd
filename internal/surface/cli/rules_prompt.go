@@ -52,7 +52,7 @@ func recallMemory(w io.Writer, rs rules.RuleSet, root, prompt string, ledger map
 			res = recall.Result{Ledger: ledger}
 		}
 	}()
-	if rs.Disabled {
+	if rs.Disabled || stageActive() {
 		return recall.Result{Ledger: ledger}
 	}
 	items, refused := recall.ReadItems(rules.UserHome(), root)

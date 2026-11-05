@@ -126,6 +126,10 @@ at its root, nor at its main worktree's) it reads nothing and prints
 nothing.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) (ret error) {
+			// An agent of a drive's ends its turn when its stage does.
+			if stageActive() {
+				return nil
+			}
 			// A panic allows the stop: exit 2 is the host's block on this
 			// event, and a stop is never blocked on abcd's own fault.
 			defer func() {
