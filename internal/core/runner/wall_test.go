@@ -449,6 +449,9 @@ func TestAStagesShellHasItsOwnHomeAndWhatItNeeds(t *testing.T) {
 		out, _ := cmd.CombinedOutput()
 		return strings.TrimSpace(string(out))
 	}
+	// The Go there starts its telemetry under that home, which would race this
+	// test's cleanup.
+	run(`go telemetry off`)
 	if got := run(`printf %s "$HOME"`); got != p.ShellHome {
 		t.Fatalf("the shell's home is %q, want %q", got, p.ShellHome)
 	}
