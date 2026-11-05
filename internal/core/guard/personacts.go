@@ -1,6 +1,9 @@
 package guard
 
-import "strings"
+import (
+	"path"
+	"strings"
+)
 
 // The acts only the person takes are refused through the binary their
 // registry entries name, and abcd also runs under other names: go run of the
@@ -104,42 +107,18 @@ func (a personAct) actOf(s segment) bool {
 		if commandNamed(s, site, "abcd") {
 			continue
 		}
+		if a.adjacent {
+			if a.adjacentAct(s, site) {
+				return true
+			}
+			continue
+		}
 		next := 0
 		on := make([]bool, len(a.flags))
 		valued := make([]bool, len(a.valueFlags))
-		skip := false
 		for j, w := range literalWords(s, site.idx+1) {
-			if a.adjacent {
-				// The words the command line's parser passes over on its way to a
-				// sub-command: --x=y alone, and --x with the word after it, but for
-				// the flags that take no word. A "--" ends its way.
-				if skip {
-					skip = false
-					continue
-				}
-				if w == "--" {
-					break
-				}
-				// The token as written, so a flag whose value the line does not fix
-				// is still a flag, and a word it does not fix at all breaks nothing.
-				known := knownText(s.tokens[site.idx+1+j])
-				if strings.HasPrefix(known, "-") && known != "-" {
-					skip = !strings.Contains(known, "=") && known != "--json" && known != "--help" && known != "-h"
-					continue
-				}
-				if w == "" {
-					continue
-				}
-			}
-			switch {
-			case next < len(a.verbs) && w == a.verbs[next]:
+			if next < len(a.verbs) && w == a.verbs[next] {
 				next++
-			case a.adjacent && next > 0 && next < len(a.verbs):
-				// The run is broken: the verbs must start again.
-				next = 0
-				if w == a.verbs[0] {
-					next = 1
-				}
 			}
 			for i, f := range a.flags {
 				on[i] = on[i] || boolFlagOn(w, f)
@@ -152,6 +131,117 @@ func (a personAct) actOf(s segment) bool {
 		}
 		if next == len(a.verbs) && allTrue(on) && allTrue(valued) {
 			return true
+		}
+	}
+	return false
+}
+
+// actWord is one word a site is handed: as the line fixes it, or unfixed with its
+// variable parts read as substitutions.
+type actWord struct {
+	text    string
+	unfixed bool
+}
+
+// actWordsOf is the words after a site, a word the line assigned read as what it holds.
+func actWordsOf(s segment, from int) []actWord {
+	var out []actWord
+	for i := from; i < len(s.tokens); i++ {
+		tok := s.tokens[i]
+		if !isUnknown(tok) && !strings.ContainsRune(tok, varMark) {
+			out = append(out, actWord{text: tok})
+			continue
+		}
+		if lit, has := s.literal[i]; has {
+			if lit.split {
+				for _, w := range lit.words {
+					out = append(out, actWord{text: w})
+				}
+			} else {
+				out = append(out, actWord{text: lit.text})
+			}
+			continue
+		}
+		out = append(out, actWord{text: strings.ReplaceAll(tok, string(varMark), unknownText), unfixed: true})
+	}
+	return out
+}
+
+// carriesAbcd reports whether a program's name, as far as the line fixes it, is abcd's.
+func carriesAbcd(tok string) bool {
+	return strings.Contains(strings.ToLower(path.Base(tok)), "abcd")
+}
+
+// adjacentAct reads an act's words as the command line's parser reads them on its way
+// to a sub-command. It passes over --x=y alone and a fixed --x with the word after it,
+// but for the flags that take no word; a "--" ends its way. A word the line does not
+// fix may be a flag or a flag's value: the word after it passes, breaking nothing, and
+// counts if it is the next verb. On a program named for abcd, or one the line does not
+// fix, an unfixed word that can print the next verb counts as that verb where a verb
+// is due: the sub-command's own place, or straight after the verb before it.
+func (a personAct) adjacentAct(s segment, site arrival) bool {
+	named := carriesAbcd(s.tokens[site.idx]) || isUnknown(s.tokens[site.idx])
+	next := 0
+	opening, soft, skip := true, false, false
+	for _, w := range actWordsOf(s, site.idx+1) {
+		if skip {
+			skip = false
+			continue
+		}
+		if !w.unfixed && w.text == "--" {
+			break
+		}
+		known := knownText(w.text)
+		if strings.HasPrefix(known, "-") && known != "-" {
+			switch {
+			case strings.Contains(known, "="):
+			case w.unfixed:
+				soft = true
+			default:
+				skip = known != "--json" && known != "--help" && known != "-h"
+			}
+			continue
+		}
+		if w.unfixed {
+			if named && (next > 0 || opening) && unknownCouldBe(w.text, a.verbs[next]) {
+				next++
+				opening, soft = false, false
+				if next == len(a.verbs) {
+					return true
+				}
+				continue
+			}
+			if known == "" {
+				soft = true
+				continue
+			}
+		}
+		// A value the line assigned may split into the words still due.
+		if named && (next > 0 || opening) && strings.Join(strings.Fields(w.text), " ") == strings.Join(a.verbs[next:], " ") {
+			return true
+		}
+		switch {
+		case !w.unfixed && w.text == a.verbs[next]:
+			next++
+			opening, soft = false, false
+			if next == len(a.verbs) {
+				return true
+			}
+		case soft:
+			soft = false
+		default:
+			if next > 0 {
+				next = 0
+				if w.text == a.verbs[0] {
+					next = 1
+				}
+			}
+			// A script named for abcd handed to a shell is the program itself.
+			if !named && strings.Contains(w.text, "/") && carriesAbcd(w.text) {
+				named = true
+				continue
+			}
+			opening = false
 		}
 	}
 	return false
