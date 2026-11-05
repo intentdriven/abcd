@@ -14,7 +14,7 @@ import (
 )
 
 // narrowCmd is the words of a narrow waiter's command.
-var narrowCmd = []string{"implement", "load", "--wait", "--timeout", "6h", "--", "go", "test", "-count=1", "./internal/core/spec"}
+var narrowCmd = []string{"implement", "load", "--wait", "--narrow", "--timeout", "6h", "--", "go", "test", "-count=1", "./internal/core/spec"}
 
 // narrowReq is a narrow waiter's request at pid: its own words read as a narrow
 // run's, and its jitter the fixtures' own.
@@ -35,6 +35,16 @@ func narrowRun(p *poll, pid int, age time.Duration, running bool) {
 	if running {
 		p.procs = append(p.procs, machineload.Proc{PID: pid + 1, PPID: pid, PGID: pid, UID: 502, Age: age, Name: "go"})
 		p.args[pid+1] = []string{"test", "-count=1", "./internal/core/spec"}
+	}
+}
+
+// ownNarrowRun is this account's narrow run at pid, running.
+func ownNarrowRun(p *poll, pid int) {
+	narrowRun(p, pid, time.Minute, true)
+	for i := range p.procs {
+		if p.procs[i].PID == pid || p.procs[i].PID == pid+1 {
+			p.procs[i].UID = 501
+		}
 	}
 }
 
@@ -135,9 +145,9 @@ func TestNarrowRunsHaveTheirOwnLimit(t *testing.T) {
 	home := t.TempDir()
 	writeMachineConfig(t, home, `{"load": {"preflights": 1, "narrow_runs": 2}}`)
 	full, oneAndAhead, one := poll{load: 3}, poll{load: 3}, poll{load: 3}
-	narrowRun(&full, 51000, time.Minute, true)
+	ownNarrowRun(&full, 51000)
 	narrowRun(&full, 52000, time.Minute, true)
-	narrowRun(&oneAndAhead, 51000, time.Minute, true)
+	ownNarrowRun(&oneAndAhead, 51000)
 	narrowRun(&oneAndAhead, 53000, time.Hour, false)
 	narrowRun(&one, 51000, time.Minute, true)
 
@@ -182,15 +192,143 @@ func TestANarrowRunTakesTheShortHold(t *testing.T) {
 	if res, err := WaitLoad(whole); err != nil || res.Status != WaitOpen || slices.Contains(res.WaitedOn, WaitOnLock) {
 		t.Fatalf("whole beside the narrow hold: %+v, %v", res, err)
 	}
-	clock.Sleep(WaitNarrowSettle)
-	if res, err := WaitLoad(narrowReq(home, 63000, clock, poll{load: 3})); err != nil || res.Status != WaitOpen || slices.Contains(res.WaitedOn, WaitOnLock) {
-		t.Fatalf("narrow beside the whole hold: %+v, %v", res, err)
+	if WaitNarrowSettle != 30*time.Second {
+		t.Errorf("a narrow run's hold is %s, too short for the load to show the one before", WaitNarrowSettle)
 	}
 }
 
-// TestANarrowRunStopsCountingAStuckQueue: an older abcd's waiter gating a
-// narrow-shaped command queues behind whole runs and cannot be told from this
-// code's by its words. So waiters queued ahead that alone hold a narrow run shut
+// TestANarrowRunJudgesAWholeRunsSettle: what a whole run just admitted has not yet
+// shown in the load or in memory, so an account's narrow runs wait out its settle,
+// at either gate. A command hold is judged as that settle, so a whole run's length
+// shuts no narrow run, and the record is left for the whole-run gate to judge.
+func TestANarrowRunJudgesAWholeRunsSettle(t *testing.T) {
+	for name, h := range map[string]struct {
+		file string
+		rec  WaitHolder
+	}{
+		"a command hold": {WaitHoldFileName, WaitHolder{PID: 70000, StartUnix: waitT0.Unix(), Opened: waitT0, Until: waitT0.Add(WaitCommandCap), Form: HoldCommand}},
+		"a settle hold":  {WaitHoldFileName, WaitHolder{PID: 70000, Opened: waitT0, Until: waitT0.Add(WaitSettle), Form: HoldSettle}},
+		"the race gate":  {WaitRaceHoldFileName, WaitHolder{PID: 70000, Opened: waitT0, Until: waitT0.Add(WaitSettle), Form: HoldSettle}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			home := t.TempDir()
+			writeHold(t, home, h.rec)
+			if h.file != WaitHoldFileName {
+				if err := os.Rename(abcdhome.Path(home, WaitHoldFileName), abcdhome.Path(home, h.file)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			p := poll{load: 3}
+			p.procs = append(p.procs, machineload.Proc{PID: 70000, PPID: 1, PGID: 70000, UID: 501, Age: time.Second, Name: "abcd"})
+			p.args = map[int][]string{70000: {"implement", "load", "--wait", "--", "make", "preflight"}}
+			clock := &fakeClock{now: waitT0}
+			req := narrowReq(home, 60000, clock, p)
+			req.Timeout = time.Hour
+			res, err := WaitLoad(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.Status != WaitOpen || !slices.Contains(res.WaitedOn, WaitOnLock) || clock.Now().Before(waitT0.Add(WaitSettle)) {
+				t.Fatalf("result = %+v at %s, want open once the settle has passed", res, clock.Now().Sub(waitT0))
+			}
+			if clock.Now().After(waitT0.Add(WaitSettle + time.Minute)) {
+				t.Fatalf("still shut at %s: a whole run's length shut it", clock.Now().Sub(waitT0))
+			}
+			if _, err := os.Stat(abcdhome.Path(home, h.file)); err != nil {
+				t.Errorf("the hold went: %v", err)
+			}
+		})
+	}
+}
+
+// TestNarrowRoom: two classes share one budget. Narrow runs never pass half the
+// cores in all, and on a machine the load shows busy they get only what the whole
+// runs in their slots leave, and one place at least, so a test is never behind them.
+func TestNarrowRoom(t *testing.T) {
+	for _, c := range []struct {
+		limit, cores int
+		load         float64
+		busy, slots  int
+		want         int
+	}{
+		{4, 16, 20, 0, 4, 4},
+		{4, 16, 20, 1, 4, 4},
+		{4, 16, 20, 2, 4, 4},
+		{4, 16, 20, 3, 4, 2},
+		{4, 16, 20, 4, 4, 1},
+		{4, 16, 20, 1, 2, 4},
+		{4, 16, 20, 2, 2, 1},
+		{4, 16, 20, 1, 1, 1},
+		{4, 16, 14, 4, 4, 1},
+		// The load shows the room the whole runs in their slots are not using.
+		{4, 16, 13.9, 4, 4, 4},
+		{4, 16, 12, 2, 2, 4},
+		// A setting is the top of the range, not a floor under it.
+		{8, 16, 20, 2, 4, 4},
+		{2, 16, 3, 0, 1, 2},
+		{1, 2, 9, 1, 1, 1},
+	} {
+		if got := narrowRoom(c.limit, c.cores, c.load, c.busy, c.slots); got != c.want {
+			t.Errorf("narrowRoom(%d, %d cores, load %v, %d busy of %d) = %d, want %d", c.limit, c.cores, c.load, c.busy, c.slots, got, c.want)
+		}
+	}
+}
+
+// TestANarrowRunShrinksBesideWholeRuns: the budget reaches a look: with every whole
+// slot taken and the load showing it, one narrow run running shuts the next.
+func TestANarrowRunShrinksBesideWholeRuns(t *testing.T) {
+	home := t.TempDir()
+	writeMachineConfig(t, home, `{"load": {"preflights": 2}}`)
+	p := poll{load: 20}
+	runningPreflight(&p, 80000)
+	runningPreflight(&p, 81000)
+	ownNarrowRun(&p, 51000)
+	clock := &fakeClock{now: waitT0}
+	req := narrowReq(home, 60000, clock, p)
+	req.Timeout = time.Minute
+	res, err := WaitLoad(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != WaitTimedOut || !slices.Equal(res.Still, []string{WaitOnWaiter}) || res.NarrowRuns != 1 {
+		t.Fatalf("result = %+v, want shut on a room of one", res)
+	}
+}
+
+// TestAnotherAccountCannotTakeTheLastPlace: this account always keeps one place, so
+// no number of another account's narrow runs shuts its gate by the count alone.
+func TestAnotherAccountCannotTakeTheLastPlace(t *testing.T) {
+	home := t.TempDir()
+	writeMachineConfig(t, home, `{"load": {"narrow_runs": 2}}`)
+	p := poll{load: 3}
+	for i := range 5 {
+		narrowRun(&p, 51000+i*10, time.Minute, true)
+	}
+	clock := &fakeClock{now: waitT0}
+	res, err := WaitLoad(narrowReq(home, 60000, clock, p))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != WaitOpen {
+		t.Fatalf("five of another account's runs shut it: %+v", res)
+	}
+	ownNarrowRun(&p, 52000)
+	clock = &fakeClock{now: waitT0}
+	req := narrowReq(t.TempDir(), 60000, clock, p)
+	writeMachineConfig(t, req.Home, `{"load": {"narrow_runs": 2}}`)
+	req.Timeout = time.Minute
+	res, err = WaitLoad(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != WaitTimedOut || !slices.Equal(res.Still, []string{WaitOnWaiter}) {
+		t.Fatalf("its own place taken: %+v, want shut", res)
+	}
+}
+
+// TestANarrowRunStopsCountingAStuckQueue: a narrow waiter queued ahead can be shut by
+// its own account's stricter settings, which no other account can see. So waiters
+// queued ahead that alone hold a narrow run shut
 // stop counting after WaitNarrowQueueCap, flat whatever their number: a stuck queue
 // costs minutes, never the wait.
 func TestANarrowRunStopsCountingAStuckQueue(t *testing.T) {
@@ -384,7 +522,7 @@ func TestNarrowRunsSetting(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := poll{load: 3}
-	narrowRun(&p, 51000, time.Minute, true)
+	ownNarrowRun(&p, 51000)
 	clock := &fakeClock{now: waitT0}
 	req := narrowReq(t.TempDir(), 60000, clock, p)
 	req.Dir = repo

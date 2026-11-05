@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -62,7 +63,75 @@ var (
 	// shut. A renewal pushed past the bound goes unsaid, and the next round,
 	// any waiter's or step's, reads the fresh tip.
 	loadRenewStopWait = 5 * time.Second
+	// loadGoFlags reads the effective GOFLAGS a narrow command would run under, and
+	// loadReexec replaces this process, keeping its pid and start time, with argv.
+	loadGoFlags = effectiveGoFlags
+	loadReexec  = func(argv []string) error {
+		exe, err := os.Executable()
+		if err != nil {
+			return err
+		}
+		return syscall.Exec(exe, argv, os.Environ())
+	}
 )
+
+// effectiveGoFlags is go's own answer to what GOFLAGS is for the command cmd, from
+// the environment, GOENV's file or `go env -w` alike, from the same directory.
+func effectiveGoFlags(cmd []string) (string, error) {
+	var prefix []string
+	for _, a := range cmd[1:] {
+		if a == "test" {
+			break
+		}
+		prefix = append(prefix, a)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	raw, err := exec.CommandContext(ctx, cmd[0], append(prefix, "env", "GOFLAGS")...).Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(raw)), nil
+}
+
+// narrowRefused says why a narrow command cannot be honoured under what it would
+// run with, "" when it can: only an empty GOFLAGS is known to be harmless, since it
+// can carry -race, -p or anything else into a run every reader of the table counts
+// as narrow.
+func narrowRefused(command []string) string {
+	flags, err := loadGoFlags(command)
+	if err != nil {
+		return "go env GOFLAGS could not be read (" + termsafe.Sanitize(err.Error()) + ")"
+	}
+	if flags != "" {
+		return "the effective GOFLAGS is " + strconv.Quote(termsafe.Sanitize(flags))
+	}
+	return ""
+}
+
+// fallBackToWhole makes a waiter that cannot honour its mark a whole run. The argv
+// is what every reader of the table judges, so it is the argv that changes: the
+// process replaces itself without the mark, keeping its pid and its start, so its
+// place in the queue. Only a failure returns.
+func fallBackToWhole(w io.Writer, why string) error {
+	fmt.Fprintf(w, "abcd implement load --wait: %s, so this waits as a whole run, without %s\n", why, machineload.NarrowMark)
+	err := loadReexec(withoutNarrow(os.Args))
+	return &exitError{Code: 2, Msg: fmt.Sprintf("abcd implement load --wait: could not take %s off this waiter (%v); nothing ran, so run it again without it", machineload.NarrowMark, err)}
+}
+
+// withoutNarrow is args without the mark, which only counts before `--`.
+func withoutNarrow(args []string) []string {
+	out := make([]string, 0, len(args))
+	for i, a := range args {
+		if a == "--" {
+			return append(out, args[i:]...)
+		}
+		if a != machineload.NarrowMark && !strings.HasPrefix(a, machineload.NarrowMark+"=") {
+			out = append(out, a)
+		}
+	}
+	return out
+}
 
 // newImplementLoadCommand builds `implement load`, the load check that runs once
 // at the start of `make preflight` and of the eval harness
@@ -70,10 +139,10 @@ var (
 // logic of its own. It exits 0 on every status: it warns, never refuses.
 func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 	var site string
-	var wait, race bool
+	var wait, race, narrowMark bool
 	var timeout time.Duration
 	cmd := &cobra.Command{
-		Use: "load --site preflight|eval-harness | --wait [--timeout <duration>] [-- <command>...] | --race-gate [--timeout <duration>]",
+		Use: "load --site preflight|eval-harness | --wait [--narrow] [--timeout <duration>] [-- <command>...] | --race-gate [--timeout <duration>]",
 		Long: "Read the machine's load averages and process table once and warn when a program\n" +
 			"outside the running work has used nearly all the CPU it could get for longer than\n" +
 			"the stray limit, or when the one-minute load average is above the extreme limit.\n" +
@@ -296,26 +365,33 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"since a waiter lingering on a slow push reads as queued and holds every other gate shut.\n" +
 			"Since it runs through git and gh, no waiter counts another's git or gh\n" +
 			"child as its command: gate make or go, never git or gh itself.\n\n" +
-			"A narrow run waits at a gate of its own. It is `--wait -- go test` read from the\n" +
-			"command's own words, with no shell between: at most " + strconv.Itoa(machineload.MaxNarrowPackages) + " packages named outright\n" +
-			"(no `...` and no bare word such as `all`), carrying no flag but -v, -short,\n" +
-			"-failfast, -json, -run, -skip, -timeout and -count=1, with GOFLAGS unset. Anything\n" +
-			"else is a whole run, -race, a `make` and a shell included, so race runs stay apart\n" +
-			"as above. A narrow run takes no whole-run slot and no place in the whole-run queue,\n" +
-			"and a whole run counts it through the load figure alone. It is shut by the load limit,\n" +
-			"memory, its account's " + implement.WaitNarrowSettle.String() + " hold (`" + abcdhome.Display(implement.WaitNarrowHoldFileName) + "`), and its own limit:\n" +
-			"narrow runs running, of any account, and those queued ahead reaching\n" +
+			"A narrow run waits at a gate of its own. It is `--wait " + machineload.NarrowMark + " -- go test`: the mark asks for\n" +
+			"the gate, and every waiter reads it and the command from the waiter's own words, so\n" +
+			"without it the same command is a whole run. The command is go by that exact name, with no\n" +
+			"shell between, `test` after `-C <dir>` at most, at most " + strconv.Itoa(machineload.MaxNarrowPackages) + " packages named outright\n" +
+			"(no `...` and no bare word such as `all`), and no flag but -v, -short, -failfast, -json,\n" +
+			"-run, -skip, -timeout and -count=1. Anything else is a whole run, -race, a `make` and a\n" +
+			"shell included, so race runs stay apart as above. The effective GOFLAGS must be empty, as\n" +
+			"`go env GOFLAGS` reads it when the wait starts and again as it opens; otherwise the waiter\n" +
+			"says why on stderr and carries on as a whole run, with the same pid and start, without\n" +
+			"the mark. The command runs with GOFLAGS=-p=1 and GOMAXPROCS=" + strconv.Itoa(implement.NarrowRunCores) + ", or a lower GOMAXPROCS of\n" +
+			"your own. A narrow run takes no whole-run slot and no place in the whole-run queue, and a\n" +
+			"whole run counts it through the load figure alone. It is shut by the load limit, memory,\n" +
+			"your account's last narrow run for " + implement.WaitNarrowSettle.String() + " (`" + abcdhome.Display(implement.WaitNarrowHoldFileName) + "`), your account's\n" +
+			"last whole run or race stage for " + implement.WaitSettle.String() + ", and its own room. That room is\n" +
 			"`" + implement.NarrowRunsKey + "` in `" + abcdhome.Display("config.json") + "`, a whole number from 1 to " + strconv.Itoa(implement.MaxNarrowRuns) + ", by default half\n" +
 			"the online cores divided by " + strconv.Itoa(implement.NarrowRunCores) + ", and never read from a repository file or the\n" +
-			"environment. Its jitter is " + implement.WaitNarrowJitterMin.String() + " to " + implement.WaitNarrowJitterMax.String() + ", and it takes no open look, so across\n" +
-			"accounts two opening at once can pass the limit by one. So that it cannot starve a\n" +
-			"whole run, while a whole-run waiter that started earlier has waited " + implement.WaitNarrowYieldAfter.String() + " with a\n" +
-			"whole slot free, it stands aside, at most " + implement.WaitNarrowYieldCap.String() + " in a wait. Waiters queued ahead\n" +
-			"that alone keep it shut stop counting after " + implement.WaitNarrowQueueCap.String() + ", since an older abcd's waiter\n" +
-			"on the same command queues as a whole run and may not open.\n\n" +
+			"environment; once the load is within " + strconv.Itoa(implement.NarrowRunCores) + " of the online cores it is only what the whole runs in\n" +
+			"their slots leave of the cores, at each slot's share, and one at the least. Narrow runs\n" +
+			"running and those queued ahead count against it; another account's never take your last\n" +
+			"place. Its jitter is " + implement.WaitNarrowJitterMin.String() + " to " + implement.WaitNarrowJitterMax.String() + ", and it takes no open look, so across accounts two\n" +
+			"opening at once can pass the limit by one. So that it cannot starve a whole run, while a\n" +
+			"whole-run waiter that started earlier has waited " + implement.WaitNarrowYieldAfter.String() + " with a whole slot free, it\n" +
+			"stands aside, at most " + implement.WaitNarrowYieldCap.String() + " in a wait. Waiters queued ahead that alone keep it shut stop\n" +
+			"counting after " + implement.WaitNarrowQueueCap.String() + ".\n\n" +
 			"A wait that gives up exits 1 and ends with a line starting `LOAD GATE TIMED OUT`,\n" +
 			"naming how long it waited and that nothing ran, so a pipe that loses the exit\n" +
-			"code still shows it.",
+			"code still shows it; with --json that line is the last on stderr.",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				return nil
@@ -335,6 +411,9 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if narrowMark && (!wait || race) {
+				return &exitError{Code: 2, Msg: "abcd implement load: " + machineload.NarrowMark + " asks for the narrow gate, so it goes with --wait and no --race-gate (nothing waited for)"}
+			}
 			if wait && race {
 				return &exitError{Code: 2, Msg: "abcd implement load: --race-gate waits on its own, so it takes no --wait: an older abcd reads any --wait as a waiter at its first gate (nothing waited for)"}
 			}
@@ -349,7 +428,7 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 				if timeout < 0 {
 					return &exitError{Code: 2, Msg: "abcd implement load: --timeout must not be negative (nothing waited for)"}
 				}
-				return runLoadWait(cmd, *asJSON, timeout, race, args)
+				return runLoadWait(cmd, *asJSON, timeout, race, narrowMark, args)
 			}
 			if cmd.Flags().Changed("timeout") {
 				return &exitError{Code: 2, Msg: "abcd implement load: --timeout is for --wait or --race-gate (nothing checked)"}
@@ -371,6 +450,7 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 	enumFlag(cmd.Flags(), &site, "site", "", "where the check runs: ", implement.LoadSites(), "")
 	cmd.Flags().BoolVar(&wait, "wait", false, "wait until the load is below the wait limit and no other go test -race run is live")
 	cmd.Flags().BoolVar(&race, "race-gate", false, "wait at the race gate, before a race stage, instead of the first gate: open at once at one preflight at a time unless the disk is below the floor or memory pressure is at or above its floor, and above that shut by another go test -race run, a race waiter ahead, the load, memory pressure and the race gate's hold")
+	cmd.Flags().BoolVar(&narrowMark, "narrow", false, "with --wait and a go test naming at most three packages, wait at the narrow gate instead of behind whole runs")
 	cmd.Flags().DurationVar(&timeout, "timeout", implement.WaitDefaultTimeout, "with --wait or --race-gate, give up after this long and exit 1")
 	return cmd
 }
@@ -378,14 +458,24 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 // runLoadWait is `implement load --wait`: it formats implement.WaitLoad's
 // result, and in the command form runs the command once the gate opens and
 // releases the hold when it exits.
-func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bool, command []string) error {
+func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race, marked bool, command []string) error {
 	out := cmd.OutOrStdout()
+	// The same judgement every other reader of this waiter's argv makes, so a mark
+	// it cannot honour comes off the argv before it waits.
+	narrow := marked && machineload.IsNarrowCommand(command)
+	if marked && !narrow {
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd implement load --wait: this command is not a narrow run, so %s marks nothing and it waits as a whole run\n", machineload.NarrowMark)
+	}
+	if narrow {
+		if why := narrowRefused(command); why != "" {
+			return fallBackToWhole(cmd.ErrOrStderr(), why)
+		}
+	}
 	req := implement.WaitRequest{
 		Read: loadReader, ReadArgs: loadArgsReader, Self: loadSelf(),
 		Now: loadNow, Sleep: loadSleep, Timeout: timeout, Command: len(command) > 0, Race: race, Jitter: loadJitter,
 		Mark: loadMark, RaceCommand: machineload.IsRaceCommand(command),
-		// GOFLAGS can carry -race or widen a run where the argv cannot show it.
-		Narrow: !race && machineload.IsNarrowCommand(command) && os.Getenv("GOFLAGS") == "",
+		Narrow: narrow,
 	}
 	// The hold names the checkout it was taken in, so a waiter behind a
 	// quiet holder can say where it runs.
@@ -437,10 +527,22 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 	if res.Status == implement.WaitTimedOut {
 		stopRenewal()
 	}
+	// A wait can last hours, and go env -w can change what the command would read.
+	if narrow && res.Status == implement.WaitOpen {
+		if why := narrowRefused(command); why != "" {
+			stopRenewal()
+			return fallBackToWhole(errOut, why)
+		}
+	}
 	if err := render(out, asJSON, res, func(w io.Writer) { renderLoadWait(w, res) }); err != nil {
 		return err
 	}
 	if res.Status == implement.WaitTimedOut {
+		// Standard output stays one document under --json, so its closing line goes
+		// to standard error there.
+		if asJSON {
+			fmt.Fprintln(errOut, timedOutLine(res))
+		}
 		return &exitError{Code: 1}
 	}
 	if len(command) == 0 {
@@ -454,7 +556,11 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 	if res.Hold != nil && res.Hold.Form == implement.HoldCommand {
 		stopWatch = startQuietWatch(errOut, *res.Hold, res.HoldGates)
 	}
-	code, runErr := runGated(cmd, command, errOut, unmark)
+	var env []string
+	if narrow {
+		env = implement.NarrowEnv(os.Environ())
+	}
+	code, runErr := runGated(cmd, command, env, errOut, unmark)
 	unmark()
 	if res.Hold != nil && res.Hold.Form == implement.HoldCommand {
 		home, _ := os.UserHomeDir()
@@ -709,8 +815,9 @@ func (l *lockedWriter) Write(p []byte) (int, error) {
 // with 1. started is called once the command has started, to stop the
 // waiter's mark (implement.WaitResult.Unmark). The caller releases the hold
 // once this returns.
-func runGated(cmd *cobra.Command, command []string, stderr io.Writer, started func()) (int, error) {
+func runGated(cmd *cobra.Command, command, env []string, stderr io.Writer, started func()) (int, error) {
 	c := exec.Command(command[0], command[1:]...)
+	c.Env = env
 	c.Stdin, c.Stdout, c.Stderr = cmd.InOrStdin(), cmd.OutOrStdout(), stderr
 	sigs := make(chan os.Signal, 2)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
@@ -760,7 +867,7 @@ func renderLoadWait(w io.Writer, res implement.WaitResult) {
 		if res.Malformed != "" {
 			fmt.Fprintf(w, "LOAD CHECK SETTINGS UNUSABLE: %s: %s; the wait limit took its default\n", implement.LimitsFileDisplay, res.Malformed)
 		}
-		fmt.Fprintf(w, "LOAD GATE TIMED OUT after %s: exit 1, nothing ran: %s\n", waited, waitConditions(res))
+		fmt.Fprintln(w, timedOutLine(res))
 		return
 	case implement.WaitOpen:
 		if res.Gate == implement.GateRace && res.Slots <= 1 {
@@ -794,6 +901,12 @@ func renderLoadWait(w io.Writer, res implement.WaitResult) {
 	if res.Malformed != "" {
 		fmt.Fprintf(w, "LOAD CHECK SETTINGS UNUSABLE: %s: %s; the wait limit took its default\n", implement.LimitsFileDisplay, res.Malformed)
 	}
+}
+
+// timedOutLine is a timed-out wait's closing line.
+func timedOutLine(res implement.WaitResult) string {
+	waited := seconds(res.WaitedS).Round(time.Second)
+	return fmt.Sprintf("LOAD GATE TIMED OUT after %s: exit 1, nothing ran: %s", waited, waitConditions(res))
 }
 
 // waitConditions names what holds the gate shut.

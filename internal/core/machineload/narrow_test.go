@@ -21,7 +21,8 @@ func TestIsNarrowCommand(t *testing.T) {
 		{"go test -run=TestX -skip TestY -short -failfast -json -timeout 10m .", true},
 		{"go test ../sibling", true},
 		{"go test github.com/intentdriven/abcd/internal/core/spec", true},
-		{"/usr/local/go/bin/go test ./a", true},
+		{"go test ./all", true},
+		{"go test ./x/../all", true},
 		{"go test ./a -run TestX", true},
 		{"go test -v=true ./a", true},
 		{"go test --count=1 ./a", true},
@@ -35,6 +36,17 @@ func TestIsNarrowCommand(t *testing.T) {
 		{"go test ./a/...", false},
 		{"go test ./a ./b/...", false},
 		{"go test all", false},
+		{"go test all/", false},
+		{"go test std/", false},
+		{"go test cmd/", false},
+		{"go test work/", false},
+		{"go test tool/", false},
+		{"go test x/../all", false},
+		{"go test ./a\\b", false},
+		{"go test all\\", false},
+		{"go test x/@v1", false},
+		{"./tools/go test ./a", false},
+		{"/usr/local/go/bin/go test ./a", false},
 		{"go test std", false},
 		{"go test fmt", false},
 		{"go test ./a/*", false},
@@ -90,7 +102,7 @@ func TestIsNarrowCommand(t *testing.T) {
 // package; running gives it its go test child. Its age is how long it has
 // waited or run.
 func narrowWaiter(pid int, age time.Duration, running bool) ([]Proc, map[int][]string) {
-	cmd := []string{"implement", "load", "--wait", "--timeout", "6h", "--", "go", "test", "-count=1", "./internal/core/spec"}
+	cmd := []string{"implement", "load", "--wait", "--narrow", "--timeout", "6h", "--", "go", "test", "-count=1", "./internal/core/spec"}
 	procs := []Proc{{PID: pid, PPID: 1, PGID: pid, UID: otherUID, Age: age, Name: "abcd"}}
 	args := map[int][]string{pid: cmd}
 	if running {
@@ -129,6 +141,7 @@ func TestWholeRunsCountNoNarrowRun(t *testing.T) {
 // anything else, is counted as ever.
 func TestAWholeShapedCommandStaysAWholeRun(t *testing.T) {
 	for _, cmd := range [][]string{
+		{"go", "test", "./a"},
 		{"go", "test", "./..."},
 		{"go", "test", "-race", "./a"},
 		{"make", "test"},
@@ -141,6 +154,34 @@ func TestAWholeShapedCommandStaysAWholeRun(t *testing.T) {
 		got := QueueAhead(snap, waiter, merge(args, busyArgs))
 		if !reflect.DeepEqual(got.Busy, []int{51000}) {
 			t.Errorf("%v: busy = %v, want it counted as a whole run", cmd, got.Busy)
+		}
+	}
+}
+
+// TestOnlyTheMarkMakesANarrowWaiter: the argv is the one truth every reader of
+// the table shares, the waiter itself included, so only a waiter whose argv carries
+// the mark and whose command is narrow counts as narrow, and a mark after `--` is
+// the command's word.
+func TestOnlyTheMarkMakesANarrowWaiter(t *testing.T) {
+	for _, c := range []struct {
+		args string
+		want bool
+	}{
+		{"implement load --wait --narrow -- go test ./a", true},
+		{"implement load --narrow --wait --timeout 6h -- go test ./a", true},
+		{"implement load --wait --narrow=true -- go test ./a", true},
+		{"--json implement load --wait --narrow -- go test ./a", true},
+		{"implement load --wait -- go test ./a", false},
+		{"implement load --wait --narrow=false -- go test ./a", false},
+		{"implement load --wait -- go test --narrow ./a", false},
+		{"implement load --wait --narrow -- go test ./...", false},
+		{"implement load --wait --narrow -- make preflight", false},
+		{"implement load --wait --narrow", false},
+		{"implement load --race-gate --narrow -- go test ./a", false},
+		{"implement status --wait --narrow -- go test ./a", false},
+	} {
+		if got := isNarrowWaiter(strings.Fields(c.args)); got != c.want {
+			t.Errorf("isNarrowWaiter(%q) = %v, want %v", c.args, got, c.want)
 		}
 	}
 }
@@ -161,8 +202,8 @@ func TestAnOlderAbcdStillReadsANarrowRunAsAWaiter(t *testing.T) {
 // preflights and self's own chain.
 func TestNarrowAhead(t *testing.T) {
 	procs, args := waiterChain()
-	args[60000] = []string{"implement", "load", "--wait", "--", "go", "test", "./a"}
-	args[59990] = []string{"run", "./cmd/abcd", "implement", "load", "--wait", "--", "go", "test", "./a"}
+	args[60000] = []string{"implement", "load", "--wait", "--narrow", "--", "go", "test", "./a"}
+	args[59990] = []string{"run", "./cmd/abcd", "implement", "load", "--wait", "--narrow", "--", "go", "test", "./a"}
 	run, runArgs := narrowWaiter(51000, time.Minute, true)
 	ahead, aheadArgs := narrowWaiter(52000, time.Hour, false)
 	later, laterArgs := narrowWaiter(61000, time.Second, false)

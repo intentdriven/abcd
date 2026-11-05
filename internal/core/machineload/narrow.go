@@ -17,9 +17,19 @@ import (
 // JustOpened), and a whole run counts it through the load figure alone. Its own
 // limit, load and memory still shut it (implement/load_narrow.go).
 //
-// Every waiter classifies every other from its arguments, and the classification
-// fails closed: what it cannot read as narrow is a whole run, so the mistake it
-// can make is a slower wait, never a whole run admitted past its limit.
+// Every waiter classifies every other from its arguments, itself included, so the
+// argv is the one truth: a waiter is narrow only if it carries NarrowMark and its
+// command is a narrow run. What the words after `--` run under is not in the argv,
+// and only the waiter can read it, so a waiter that cannot honour its mark takes
+// the mark off its argv before it waits (the front door's fallback). The
+// classification fails closed: what it cannot read as narrow is a whole run, so the
+// mistake it can make is a slower wait, never a whole run admitted past its limit.
+
+// NarrowMark is the flag, before `--`, that asks for the narrow gate. An abcd
+// built before it skips any flag it does not know when it reads a waiter's words,
+// so to that abcd a marked waiter is an ordinary one, and that abcd cannot itself
+// be started with the mark.
+const NarrowMark = "--narrow"
 
 // MaxNarrowPackages is the most packages a narrow run names. Three is a change's
 // usual reach, its package, the caller that exercises it and the surface over
@@ -40,7 +50,8 @@ var (
 )
 
 // IsNarrowCommand reports whether cmd, a command a waiter gates (the words after
-// `--`, its program first), is a narrow run: its program is go, its go command
+// `--`, its program first), is a narrow run: its program is the exact word go, as
+// PATH finds it for everyone, its go command
 // `test`, after `-C <dir>` at most, which a verifier's copy uses, every flag one of
 // the few above (-count only as 1, since a repeat count is a soak), and at least one and at most
 // MaxNarrowPackages explicit package paths, with no wildcard. Anything else is a
@@ -48,7 +59,7 @@ var (
 // a word holding whitespace, which another account's reading of the table on
 // macOS would split differently.
 func IsNarrowCommand(cmd []string) bool {
-	if len(cmd) < 3 || path.Base(cmd[0]) != GoProgram {
+	if len(cmd) < 3 || cmd[0] != GoProgram {
 		return false
 	}
 	rest := cmd[1:]
@@ -101,25 +112,48 @@ func IsNarrowCommand(cmd []string) bool {
 	return packages >= 1 && packages <= MaxNarrowPackages
 }
 
-// isExplicitPackage reports whether word names one package outright: `.`, `..`,
-// a path holding a slash, and nothing that expands. A bare word is refused, so
-// `all`, `std`, `cmd` and the other meta-packages are never read as one package;
-// so is a file list.
+// isExplicitPackage reports whether word names one package outright, judged as go
+// judges it (search.CleanPatterns): a local path, `.`, `..` or one starting `./` or
+// `../`, or any other path that still holds a slash once cleaned, and nothing that
+// expands. So a bare word is refused however it is spelt (`all`, `all/`, `x/../all`),
+// and `all`, `std`, `cmd`, `work` and `tool` are never read as one package; so is a
+// file list, a version, and a backslash, which go rewrites to a slash.
 func isExplicitPackage(word string) bool {
-	if strings.Contains(word, "...") || strings.ContainsAny(word, "*?[]{}$~") || strings.HasSuffix(word, ".go") {
+	if strings.Contains(word, "...") || strings.ContainsAny(word, "*?[]{}$~\\@") || strings.HasSuffix(word, ".go") {
 		return false
 	}
-	return word == "." || word == ".." || strings.Contains(word, "/")
+	if word == "." || word == ".." || strings.HasPrefix(word, "./") || strings.HasPrefix(word, "../") {
+		return true
+	}
+	return strings.Contains(path.Clean(word), "/")
+}
+
+// hasNarrowMark reports whether args carry NarrowMark before any `--`.
+func hasNarrowMark(args []string) bool {
+	marked := false
+	for _, a := range args {
+		if a == "--" {
+			break
+		}
+		if a == NarrowMark {
+			marked = true
+		}
+		if v, ok := strings.CutPrefix(a, NarrowMark+"="); ok {
+			b, err := strconv.ParseBool(v)
+			marked = err == nil && b
+		}
+	}
+	return marked
 }
 
 // isNarrowWaiter reports whether args, abcd's arguments after the program name,
-// run a first gate's waiter whose command is a narrow run. Its words are a
-// waiter's like any other, so an abcd built before the class reads it as one: it
-// queues behind one that started earlier and counts one running in a slot, the
-// safe direction.
+// run a first gate's waiter carrying NarrowMark whose command is a narrow run. Its
+// words are a waiter's like any other, so an abcd built before the class reads it as
+// one: it queues behind one that started earlier and counts one running in a slot,
+// the safe direction.
 func isNarrowWaiter(args []string) bool {
 	wait, race := waiterFlags(args)
-	return wait && !race && IsNarrowCommand(gatedCommand(args))
+	return wait && !race && hasNarrowMark(args) && IsNarrowCommand(gatedCommand(args))
 }
 
 // NarrowAhead reads the narrow runs from one snapshot and the candidates'

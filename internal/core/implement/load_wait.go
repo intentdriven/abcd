@@ -1000,13 +1000,14 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 	} else if req.Narrow {
 		// A narrow run's own limit, and whole runs it stands aside for; a race
 		// run, a slot and a queue of whole runs are no business of its.
-		limit := narrowLimit(res.NarrowRuns, snap.Cores)
-		res.NarrowRuns = limit
-		if len(narrowRunning)+len(narrowAhead) >= limit {
+		room := narrowRoom(narrowLimit(res.NarrowRuns, snap.Cores), snap.Cores, snap.Load1, len(ahead.TakingSlots(res.Slots).Busy), res.Slots)
+		res.NarrowRuns = room
+		counted := narrowCount(snap, req.Self, narrowRunning, room)
+		if counted+len(narrowAhead) >= room {
 			shut = append(shut, WaitOnWaiter)
 			res.Waiters = append(slices.Clone(narrowRunning), narrowAhead...)
 			slices.Sort(res.Waiters)
-			crossedShut = len(narrowRunning) < limit
+			crossedShut = counted < room
 		}
 		if overdue := machineload.OverdueWhole(snap, ahead, res.Slots, WaitNarrowYieldAfter); len(overdue) > 0 && watch.standAside(t) {
 			shut = append(shut, WaitOnWholeRun)
@@ -1068,6 +1069,29 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 	// that preflight's own race waiter queued behind the earlier one, and
 	// neither would move until its timeout.
 	err = fsutil.WithFileLockIn(root, waitLockFileName, waitLockTimeout, func() error {
+		// What a whole run just admitted has not shown in the load or in memory yet,
+		// so a narrow run waits out its settle, at either gate, however long the
+		// hold itself lasts: the whole run's length must not shut a narrow run.
+		if req.Narrow {
+			for _, gate := range []string{GateTests, GateRace} {
+				h, ok := readHoldIn(root, gate)
+				if !ok || (procsOK && machineload.Descends(snap.Procs, req.Self.PID, h.PID)) {
+					continue
+				}
+				h.Form = HoldSettle
+				if settled := h.Opened.Add(WaitSettle); settled.Before(h.Until) {
+					h.Until = settled
+				}
+				if t.Before(h.Until) {
+					if res.Holder == nil {
+						res.Holder = &h
+					}
+					if !slices.Contains(shut, WaitOnLock) {
+						shut = append(shut, WaitOnLock)
+					}
+				}
+			}
+		}
 		var free []string
 		for _, gate := range holdGates(req, res) {
 			name := holdFileName(gate)
