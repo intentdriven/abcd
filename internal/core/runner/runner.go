@@ -257,9 +257,46 @@ type HarnessSeen struct {
 	Stderr string
 	// SilentFor is how long it had written nothing when it ended.
 	SilentFor time.Duration
-	// Started says its stream carried an init event.
-	Started bool
+	// Spent says its stream shows tokens or a cost above zero.
+	Spent bool
+	// APIStatus is the status a failed result names, "" for none.
+	APIStatus string
+	// Retries counts the retries of the model service its stream reports, and
+	// Retrying says the stream ended on one.
+	Retries  int
+	Retrying bool
 }
+
+// Blame is what a failed launch says of the work it was launched for.
+type Blame int
+
+// What a failed launch says.
+const (
+	// BlameNone: nothing: it shows an outage, or no launch ran.
+	BlameNone Blame = iota
+	// BlameAsk: it does not say; a probe answering shows the account is alive,
+	// which leaves the work.
+	BlameAsk
+	// BlameWork: it shows the model was reached, and the work is what failed.
+	BlameWork
+)
+
+// NoVerdictError is the live proof's launch ending with no verdict on any check:
+// an outage, say, or a limit waited out inside it. It reads as the launch's own
+// failure, wrapped.
+type NoVerdictError struct {
+	// Detail is abcd's own words for how it ended.
+	Detail string
+	// Seen is what the launch showed.
+	Seen *HarnessSeen
+}
+
+func (e *NoVerdictError) Error() string { return e.wall().Error() }
+
+// Unwrap reads as the failed launch to whoever does not ask for this type.
+func (e *NoVerdictError) Unwrap() error { return e.wall() }
+
+func (e *NoVerdictError) wall() *WallError { return &WallError{WallLaunch, e.Detail} }
 
 // LimitError is a limit a launch met before it could show anything else: a
 // limit, never the thing it was launched to check.
@@ -272,18 +309,37 @@ type LimitError struct {
 
 func (e *LimitError) Error() string { return "the account has met its rate limit" }
 
-// ReachedModel reports whether this launch showed it got as far as the model: an
-// answer the contract refused, something spent, or an init event on a launch that
-// ended by itself. One killed having spent nothing shows nothing of the kind: it
-// may have hung, or waited out a limit inside its process.
-func (f *Failure) ReachedModel() bool {
+// Blame is what this launch says of the work it was launched for. Only measured
+// spend or an answer the contract refused shows the work is what failed. An init
+// event shows nothing: it comes before any contact with the model. A launch that
+// was retrying the model service, or a result naming a status that is the account's
+// or the service's, says nothing of the work, whatever came before. Anything else
+// does not say, so the caller may ask a probe.
+func (f *Failure) Blame() Blame {
 	if f.Reason == ReasonInvalid {
-		return true
+		return BlameWork
 	}
-	if f.Spent != nil && (f.Spent.Usage != nil || f.Spent.Cost != nil) {
-		return true
+	s := f.Seen
+	switch {
+	case s == nil, serviceStatus(s.APIStatus), f.Outage():
+		return BlameNone
+	case s.Spent:
+		return BlameWork
 	}
-	return f.Seen != nil && f.Seen.Started && !errors.Is(f, ErrKilled)
+	return BlameAsk
+}
+
+// Outage reports whether this launch was retrying the model service when it ended,
+// or ran out of retries having spent nothing.
+func (f *Failure) Outage() bool {
+	s := f.Seen
+	return s != nil && (s.Retrying || (s.Retries > 0 && !s.Spent))
+}
+
+// serviceStatus reports whether an API status is the account's or the service's,
+// never the work's: 401, 403, 429 and any 5xx.
+func serviceStatus(status string) bool {
+	return status == "401" || status == "403" || status == "429" || (len(status) == 3 && status[0] == '5')
 }
 
 func (f *Failure) Error() string {

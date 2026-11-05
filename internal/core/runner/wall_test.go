@@ -52,6 +52,14 @@ func fakeWall(mode string) int {
 			return 1
 		}
 		return 0
+	case "wall-noverdict-exit":
+		fmt.Println(`{"type":"system","subtype":"init","session_id":"s","model":"fake-model","tools":["Read","Bash"]}`)
+		fmt.Println(`{"type":"system","subtype":"api_retry","attempt":1,"max_retries":10,"retry_delay_ms":500,"error_status":null,"error":"unknown"}`)
+		return 1
+	case "wall-noverdict-zero":
+		fmt.Println(`{"type":"system","subtype":"init","session_id":"s","model":"fake-model","tools":["Read","Bash"]}`)
+		fmt.Println(`{"type":"result","subtype":"error_during_execution","is_error":true,"result":"gave up","session_id":"s"}`)
+		return 0
 	case "wall-limit-none":
 		fmt.Println(`{"type":"result","subtype":"success","is_error":true,"api_error_status":429,"result":"limit","session_id":"s"}`)
 		return 1

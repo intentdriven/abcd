@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -214,6 +215,70 @@ func TestALimitAtTheLiveProofWithNoBoundIsRefusedAsALimit(t *testing.T) {
 		t.Fatalf("it names the way to wait, and nothing runs: %d calls:\n%s", w.terminalCalls, text)
 	}
 	noDrainBegun(t, w.repo)
+}
+
+// TestAnOutageAtTheLiveProofIsWaitedOutUnderABound: a restart during an outage waits,
+// proves again, and goes on.
+func TestAnOutageAtTheLiveProofIsWaitedOutUnderABound(t *testing.T) {
+	w := newDriveWorld(t)
+	w.passWalls(t)
+	proofs, _ := limitedProof(t, 0, nil)
+	driveWalls.live = func(context.Context, runner.Profile) error {
+		if *proofs++; *proofs < 3 {
+			return &runner.NoVerdictError{Detail: "the launch came to no verdict"}
+		}
+		return nil
+	}
+	at := time.Now().Add(30 * 24 * time.Hour).UTC().Format(time.RFC3339)
+	var out, errb strings.Builder
+	if code := Run([]string{"drain", "--drive", "--yes", "--until", at}, &out, &errb); code != 0 {
+		t.Fatalf("exit %d:\n%s%s", code, out.String(), errb.String())
+	}
+	if *proofs != 3 || w.terminalCalls != 1 {
+		t.Fatalf("the proof runs again and the loop starts: %d proofs, %d calls", *proofs, w.terminalCalls)
+	}
+}
+
+// TestAnOutageAtTheLiveProofWithNoBoundIsRefused: nothing there to wait with.
+func TestAnOutageAtTheLiveProofWithNoBoundIsRefused(t *testing.T) {
+	w := newDriveWorld(t)
+	w.passWalls(t)
+	driveWalls.live = func(context.Context, runner.Profile) error {
+		return &runner.NoVerdictError{Detail: "the launch came to no verdict"}
+	}
+	text := refusedDrive(t, "drain", "--drive", "--yes")
+	if !strings.Contains(text, "no verdict") || w.terminalCalls != 0 {
+		t.Fatalf("%d calls: %s", w.terminalCalls, text)
+	}
+}
+
+// TestAVerdictAtTheLiveProofIsRefusedUnderABound: a check that does not hold is not
+// waited out.
+func TestAVerdictAtTheLiveProofIsRefusedUnderABound(t *testing.T) {
+	w := newDriveWorld(t)
+	w.passWalls(t)
+	driveWalls.live = func(context.Context, runner.Profile) error {
+		return &runner.WallError{Wall: runner.WallTools, Detail: "it held a tool it was not given"}
+	}
+	at := time.Now().Add(30 * 24 * time.Hour).UTC().Format(time.RFC3339)
+	text := refusedDrive(t, "drain", "--drive", "--yes", "--until", at)
+	if !strings.Contains(text, "held a tool") || w.terminalCalls != 0 {
+		t.Fatalf("%d calls: %s", w.terminalCalls, text)
+	}
+}
+
+// TestAWaitAtTheLiveProofHoldsToTheSettings: settings that changed during the wait stop
+// the probes it would make, and the drive.
+func TestAWaitAtTheLiveProofHoldsToTheSettings(t *testing.T) {
+	w := newDriveWorld(t)
+	w.passWalls(t)
+	limitedProof(t, 1000, func(now time.Time) time.Time { return now.Add(24 * time.Hour) })
+	driveWalls.settings = func(runner.Profile) error { return errors.New("the settings differ") }
+	at := time.Now().Add(30 * 24 * time.Hour).UTC().Format(time.RFC3339)
+	var out, errb strings.Builder
+	if code := Run([]string{"drain", "--drive", "--yes", "--until", at}, &out, &errb); code != 2 || w.terminalCalls != 0 {
+		t.Fatalf("exit %d, %d calls:\n%s%s", code, w.terminalCalls, out.String(), errb.String())
+	}
 }
 
 // TestABoundPassingAtTheLiveProofEndsCleanly: nothing starts, and that is no failure.

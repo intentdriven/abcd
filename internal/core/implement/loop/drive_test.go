@@ -126,6 +126,23 @@ func loopFakeHarness(mode string) int {
 		fmt.Println(`{"type":"result","subtype":"success","is_error":true,"result":"limit reached","session_id":"fake-session-3"}`)
 		return 1
 	}
+	if mode == "spentcrash" || mode == "retrycrash" || mode == "apicrash" || mode == "accountzero" {
+		// A launch past its init event that failed: having spent, stuck
+		// retrying, naming an API status, or on a zero exit with nothing spent.
+		fmt.Println(`{"type":"system","subtype":"init","session_id":"fake-session-5","model":"fake-model","tools":[]}`)
+		switch mode {
+		case "spentcrash":
+			fmt.Println(`{"type":"assistant","message":{"id":"m1","usage":{"input_tokens":10,"output_tokens":4}}}`)
+		case "retrycrash":
+			fmt.Println(`{"type":"system","subtype":"api_retry","attempt":1,"max_retries":10,"retry_delay_ms":500,"error_status":null,"error":"unknown"}`)
+		case "apicrash":
+			fmt.Println(`{"type":"result","subtype":"success","is_error":true,"api_error_status":503,"result":"unavailable"}`)
+		case "accountzero":
+			fmt.Println(`{"type":"result","subtype":"error_during_execution","is_error":true,"result":"gave up"}`)
+			return 0
+		}
+		return 1
+	}
 	if mode == "startedcrash" {
 		// A launch that reached its init event and then failed.
 		fmt.Println(`{"type":"system","subtype":"init","session_id":"fake-session-4","model":"fake-model"}`)

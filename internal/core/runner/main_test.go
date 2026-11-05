@@ -192,6 +192,33 @@ func fakeHarness(mode string) int {
 		fmt.Fprintln(os.Stdout, init)
 		fmt.Fprintln(os.Stdout, `{"type":"result","subtype":"success","is_error":false,"result":"`+answer+`","session_id":"fake-session-1"}`)
 		return 0
+	case "probe-notools":
+		// A launch whose init event names no tool list at all.
+		fmt.Fprintln(os.Stdout, `{"type":"system","subtype":"init","session_id":"fake-session-1","model":"fake-model"}`)
+		fmt.Fprintln(os.Stdout, `{"type":"result","subtype":"success","is_error":false,"result":"ok","session_id":"fake-session-1"}`)
+		return 0
+	case "probe-noinit":
+		fmt.Fprintln(os.Stdout, `{"type":"result","subtype":"success","is_error":false,"result":"ok","session_id":"fake-session-1"}`)
+		return 0
+	case "retry-exit", "spent-exit", "api503-exit", "api404-exit", "spent-zero":
+		// A launch that got to its init event and failed: having retried the
+		// model service, having spent, naming an API status, or on a zero exit.
+		fmt.Fprintln(os.Stdout, `{"type":"system","subtype":"init","session_id":"fake-session-1","model":"fake-model","tools":[]}`)
+		switch mode {
+		case "retry-exit":
+			fmt.Fprintln(os.Stdout, `{"type":"system","subtype":"api_retry","attempt":1,"max_retries":10,"retry_delay_ms":500,"error_status":null,"error":"unknown"}`)
+			fmt.Fprintln(os.Stdout, `{"type":"system","subtype":"api_retry","attempt":2,"max_retries":10,"retry_delay_ms":900,"error_status":null,"error":"unknown"}`)
+		case "spent-exit":
+			fmt.Fprintln(os.Stdout, `{"type":"assistant","message":{"id":"m1","usage":{"input_tokens":10,"output_tokens":4}}}`)
+		case "api503-exit":
+			fmt.Fprintln(os.Stdout, `{"type":"result","subtype":"success","is_error":true,"api_error_status":503,"result":"unavailable","usage":{"input_tokens":0,"output_tokens":0},"total_cost_usd":0}`)
+		case "api404-exit":
+			fmt.Fprintln(os.Stdout, `{"type":"result","subtype":"success","is_error":true,"api_error_status":404,"result":"no such model","usage":{"input_tokens":0,"output_tokens":0},"total_cost_usd":0}`)
+		case "spent-zero":
+			fmt.Fprintln(os.Stdout, `{"type":"result","subtype":"error_during_execution","is_error":true,"result":"gave up","usage":{"input_tokens":10,"output_tokens":4},"total_cost_usd":0.01}`)
+			return 0
+		}
+		return 1
 	case "started-exit":
 		// A launch that got as far as its init event and then failed.
 		fmt.Fprintln(os.Stdout, `{"type":"system","subtype":"init","session_id":"fake-session-1","model":"fake-model"}`)

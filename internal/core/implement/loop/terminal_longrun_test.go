@@ -8,6 +8,7 @@ package loop
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -953,59 +954,248 @@ func TestAFailedPushWhileReservingWaitsUnderABound(t *testing.T) {
 	}
 }
 
-// TestAPoisonLaneGoesBackAndTheRunGoesOn: launches of one role that reach the model
-// and fail each time say the fault is the lane's, so under a bound it goes back as
-// stuck after a few, and the next lane lands.
-func TestAPoisonLaneGoesBackAndTheRunGoesOn(t *testing.T) {
-	script := append([]string{"shape"}, repeated("crashes", terminalPoisonLaunches)...)
-	w := newTerminalWorld(t, script...)
+// noProbeAnswers is a probe that gets nothing back.
+func noProbeAnswers(n *int) func(context.Context, string, string) (bool, *runner.Failure) {
+	return func(context.Context, string, string) (bool, *runner.Failure) {
+		*n++
+		return false, &runner.Failure{Runner: runner.Claude, Reason: runner.ReasonFailed, Detail: "no answer"}
+	}
+}
+
+// probeAnswers is a probe that shows the account is alive.
+func probeAnswers(n *int) func(context.Context, string, string) (bool, *runner.Failure) {
+	return func(context.Context, string, string) (bool, *runner.Failure) {
+		*n++
+		return true, nil
+	}
+}
+
+// poisonRun drives one lane through bad launches of turn, then good ones, under a
+// bound, and answers what came of it.
+func poisonRun(t *testing.T, turn string, n int, probe func(*int) func(context.Context, string, string) (bool, *runner.Failure)) (*terminalWorld, []DrainRoute, int) {
+	t.Helper()
+	w := newTerminalWorld(t, append([]string{"shape"}, repeated(turn, n)...)...)
 	o := w.bounded(t, 30*24*time.Hour)
 	o.Drain.Max = 2
-	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
-	if err != nil {
+	o.Runners.Timeout = time.Second
+	probes := 0
+	if probe != nil {
+		o.Probe = probe(&probes)
+	}
+	if _, err := RunTerminal(context.Background(), w.repo.Root(), o); err != nil {
 		t.Fatal(err)
 	}
 	st, _, _ := readDrain(w.repo.Root())
-	if len(st.HandBacks) != 1 || st.HandBacks[0].Kind != HandBackStuck {
-		t.Fatalf("the lane goes back as stuck: %+v\n%s", st.HandBacks, w.said())
+	return w, st.HandBacks, probes
+}
+
+// TestAPoisonLaneGoesBackAndTheRunGoesOn: launches that spent and failed show the
+// model was reached and the work is what failed, with no probe to ask; after a few
+// the lane goes back as stuck, and the next lane lands.
+func TestAPoisonLaneGoesBackAndTheRunGoesOn(t *testing.T) {
+	w, back, probes := poisonRun(t, "spends", terminalPoisonLaunches, noProbeAnswers)
+	if len(back) != 1 || back[0].Kind != HandBackStuck {
+		t.Fatalf("the lane goes back as stuck: %+v\n%s", back, w.said())
 	}
-	if res.Ended != DrainStoppedCap || len(lanesDone(t, w.repo)) != 1 {
-		t.Fatalf("the next lane lands: %+v\n%s", res, w.said())
+	if probes != 0 {
+		t.Fatalf("what was spent says enough: %d probes", probes)
 	}
-	if n := w.launches(t); n != 1+terminalPoisonLaunches+2 {
-		t.Fatalf("no launch past the limit: %d\n%s", n, w.said())
+	if len(lanesDone(t, w.repo)) != 1 {
+		t.Fatalf("the next lane lands:\n%s", w.said())
 	}
 }
 
-// TestLaunchesThatNeverReachTheModelStayOnTheOutageWait: and those that never got
-// that far say nothing of the lane.
+// TestACrashAfterInitCountsOnlyIfAProbeAnswers: the init event comes before any
+// contact with the model, so a launch that got that far and failed says nothing; a
+// probe answering shows the account is alive, which leaves the work.
+func TestACrashAfterInitCountsOnlyIfAProbeAnswers(t *testing.T) {
+	w, back, probes := poisonRun(t, "crashes", terminalPoisonLaunches, probeAnswers)
+	if len(back) != 1 || back[0].Kind != HandBackStuck || probes != terminalPoisonLaunches {
+		t.Fatalf("a probe answering counts each: %+v, %d probes\n%s", back, probes, w.said())
+	}
+	w, back, probes = poisonRun(t, "crashes", 2*terminalPoisonLaunches, noProbeAnswers)
+	if len(back) != 0 || probes == 0 {
+		t.Fatalf("a probe unanswered counts nothing: %+v, %d probes\n%s", back, probes, w.said())
+	}
+	if w, back, _ = poisonRun(t, "crashes", 2*terminalPoisonLaunches, nil); len(back) != 0 {
+		t.Fatalf("with no probe nothing is counted: %+v\n%s", back, w.said())
+	}
+}
+
+// TestARejectedProbeCountsNothing: the same limit that may have failed the launch.
+func TestARejectedProbeCountsNothing(t *testing.T) {
+	w, back, probes := poisonRun(t, "crashes", 2*terminalPoisonLaunches, func(n *int) func(context.Context, string, string) (bool, *runner.Failure) {
+		return func(context.Context, string, string) (bool, *runner.Failure) {
+			*n++
+			return false, limitedNoReset()
+		}
+	})
+	if len(back) != 0 || probes == 0 {
+		t.Fatalf("%+v, %d probes\n%s", back, probes, w.said())
+	}
+}
+
+// TestALaunchStuckRetryingIsAnOutage: it says so, costs no probe, and is never counted
+// against its lane, a probe that would answer included.
+func TestALaunchStuckRetryingIsAnOutage(t *testing.T) {
+	w, back, probes := poisonRun(t, "retries", 2*terminalPoisonLaunches, probeAnswers)
+	if len(back) != 0 || probes != 0 {
+		t.Fatalf("nothing counts, and nothing is asked: %+v, %d probes\n%s", back, probes, w.said())
+	}
+	if !strings.Contains(w.said(), "retrying the model service") {
+		t.Fatalf("the wait names it:\n%s", w.said())
+	}
+}
+
+// TestAnAPIStatusThatIsTheAccountsCountsNothing: a result naming the service's own
+// failure says nothing of the work.
+func TestAnAPIStatusThatIsTheAccountsCountsNothing(t *testing.T) {
+	w, back, probes := poisonRun(t, "apifails", 2*terminalPoisonLaunches, probeAnswers)
+	if len(back) != 0 || probes != 0 {
+		t.Fatalf("%+v, %d probes\n%s", back, probes, w.said())
+	}
+}
+
+// TestLaunchesThatNeverReachTheModelStayOnTheOutageWait: no stream at all, and no
+// account alive to say otherwise.
 func TestLaunchesThatNeverReachTheModelStayOnTheOutageWait(t *testing.T) {
-	w := newTerminalWorld(t, append([]string{"shape"}, repeated("none", 2*terminalPoisonLaunches)...)...)
-	o := w.bounded(t, 30*24*time.Hour)
-	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
-	if err != nil {
-		t.Fatal(err)
-	}
-	st, _, _ := readDrain(w.repo.Root())
-	if res.Ended != DrainStoppedCap || len(st.HandBacks) != 0 {
-		t.Fatalf("the lane stays and lands: %+v %+v\n%s", res, st.HandBacks, w.said())
+	w, back, _ := poisonRun(t, "none", 2*terminalPoisonLaunches, noProbeAnswers)
+	if len(back) != 0 || len(lanesDone(t, w.repo)) == 0 {
+		t.Fatalf("the lane stays and lands: %+v\n%s", back, w.said())
 	}
 }
 
-// TestASilentLaunchIsNoPoison: one that went silent with nothing spent is the hang
-// the page describes, which may be a limit waited out inside it, so it is never
-// counted against the lane.
-func TestASilentLaunchIsNoPoison(t *testing.T) {
-	w := newTerminalWorld(t, append([]string{"shape"}, repeated("late", 2*terminalPoisonLaunches)...)...)
-	o := w.bounded(t, 30*24*time.Hour)
-	o.Runners.Timeout = 500 * time.Millisecond
+// TestASilentLaunchCountsOnlyIfAProbeAnswers: a kill with nothing spent may be a hang
+// or a limit waited out inside it: while the account answers nothing it is the
+// outage's, and when the account answers the work is what hangs.
+func TestASilentLaunchCountsOnlyIfAProbeAnswers(t *testing.T) {
+	w, back, probes := poisonRun(t, "late", 2*terminalPoisonLaunches, noProbeAnswers)
+	if len(back) != 0 || probes == 0 {
+		t.Fatalf("a silent launch with no answer counts nothing: %+v, %d probes\n%s", back, probes, w.said())
+	}
+	w, back, probes = poisonRun(t, "late", terminalPoisonLaunches, probeAnswers)
+	if len(back) != 1 || probes != terminalPoisonLaunches {
+		t.Fatalf("with the account alive it goes back: %+v, %d probes\n%s", back, probes, w.said())
+	}
+}
+
+// judgeRun drives judges of turn under a bound, and answers what came of it.
+func judgeRun(t *testing.T, turn string, probe func(*int) func(context.Context, string, string) (bool, *runner.Failure)) (*terminalWorld, TerminalResult, int) {
+	t.Helper()
+	w := newTerminalWorld(t, repeated(turn, 40)...)
+	o := w.bounded(t, 10*time.Hour)
+	o.Drain.JudgeTimeout = 500 * time.Millisecond
+	probes := 0
+	if probe != nil {
+		o.Probe = probe(&probes)
+	}
 	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
 	if err != nil {
 		t.Fatal(err)
 	}
-	st, _, _ := readDrain(w.repo.Root())
-	if len(st.HandBacks) != 0 || len(lanesDone(t, w.repo)) != 1 {
-		t.Fatalf("the lane stays and lands: %+v %+v\n%s", res, st.HandBacks, w.said())
+	return w, res, probes
+}
+
+// TestAJudgeThatSpentCountsAgainstItsIssueUnderABound: it was working, on either kind
+// of ending.
+func TestAJudgeThatSpentCountsAgainstItsIssueUnderABound(t *testing.T) {
+	w, _, probes := judgeRun(t, "spends", noProbeAnswers)
+	if !strings.Contains(w.said(), "holding") || probes != 0 {
+		t.Fatalf("it holds the issue back and asks nothing: %d probes\n%s", probes, w.said())
+	}
+}
+
+// TestAnAccountWideJudgeFailureDoesNotEmptyTheDrain: exit 0 and nothing spent: while
+// no probe answers nothing is held back, and when one does the fault is the issue's.
+func TestAnAccountWideJudgeFailureDoesNotEmptyTheDrain(t *testing.T) {
+	w, res, _ := judgeRun(t, "accountfails", noProbeAnswers)
+	if res.Ended != TerminalUntil || strings.Contains(w.said(), "holding") {
+		t.Fatalf("the drain waits and holds nothing back: %+v\n%s", res, w.said())
+	}
+	w, _, probes := judgeRun(t, "accountfails", probeAnswers)
+	if !strings.Contains(w.said(), "holding") || probes == 0 {
+		t.Fatalf("a probe answering holds it back: %d probes\n%s", probes, w.said())
+	}
+}
+
+// TestAJudgeStuckRetryingHoldsNothingBack: an outage, with nothing to ask.
+func TestAJudgeStuckRetryingHoldsNothingBack(t *testing.T) {
+	w, res, probes := judgeRun(t, "retries", probeAnswers)
+	if res.Ended != TerminalUntil || strings.Contains(w.said(), "holding") || probes != 0 {
+		t.Fatalf("%+v, %d probes\n%s", res, probes, w.said())
+	}
+}
+
+// TestARunsFirstLaneStepChecksTheClaim: a restart has waited for as long as it was
+// down, so the check is owed from the start.
+func TestARunsFirstLaneStepChecksTheClaim(t *testing.T) {
+	root, bare, runID, c := laneForPeerCheck(t)
+	c.t = c.t.Add(3 * time.Hour)
+	q := otherCopy(t, bare, quinnEmail)
+	run, err := ReadState(root, runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := claim.Reserve(q, claim.Request{Record: run.Key, Footprint: []string{"elsewhere.md"}, Lease: 24 * time.Hour}, as(t, q, claim.Options{Now: c.now})); err != nil {
+		t.Fatal(err)
+	}
+	if tm := newTerminal(root, TerminalOptions{Options: Options{Now: c.now}}); !tm.peerTook(runID) {
+		t.Fatal("the first step finds the peer")
+	}
+}
+
+// TestAnOutageAtTheProofWaitsOnTheScheduleAndProvesAgain: a launch that came to no
+// verdict on any check is waited through, not refused.
+func TestAnOutageAtTheProofWaitsOnTheScheduleAndProvesAgain(t *testing.T) {
+	c := &clock{t: time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)}
+	var slept []time.Duration
+	o := TerminalOptions{Options: Options{Now: c.now}, Until: c.t.Add(30 * 24 * time.Hour), Stop: make(chan struct{}),
+		Sleep: func(_ context.Context, d time.Duration) { slept = append(slept, d); c.t = c.t.Add(d) }}
+	proofs := 0
+	ended, err := WaitOutProof(context.Background(), t.TempDir(), o, &runner.NoVerdictError{Detail: "no verdict"}, func(context.Context) error {
+		if proofs++; proofs < 4 {
+			return &runner.NoVerdictError{Detail: "no verdict"}
+		}
+		return nil
+	})
+	if err != nil || ended != "" || proofs != 4 {
+		t.Fatalf("it proves again until it can: %q %v, %d proofs", ended, err, proofs)
+	}
+	want := []time.Duration{TerminalWaitFloor, TerminalWaitFloor, time.Minute, 5 * time.Minute}
+	if !slices.Equal(slept, want) {
+		t.Fatalf("the waits are the outage's: %v", slept)
+	}
+}
+
+// TestAVerdictAtTheProofEndsTheWait: a check that does not hold is refused at once.
+func TestAVerdictAtTheProofEndsTheWait(t *testing.T) {
+	c := &clock{t: time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)}
+	o := TerminalOptions{Options: Options{Now: c.now}, Until: c.t.Add(30 * 24 * time.Hour), Stop: make(chan struct{}),
+		Sleep: func(_ context.Context, d time.Duration) { c.t = c.t.Add(d) }}
+	verdict := errors.New("a check does not hold")
+	ended, err := WaitOutProof(context.Background(), t.TempDir(), o, &runner.NoVerdictError{Detail: "no verdict"}, func(context.Context) error { return verdict })
+	if !errors.Is(err, verdict) || ended != "" {
+		t.Fatalf("%q %v", ended, err)
+	}
+}
+
+// TestAProbeAtTheProofHoldsToTheSettings: probing during a wait at the proof is a
+// launch like any other, so the check before a stage comes first.
+func TestAProbeAtTheProofHoldsToTheSettings(t *testing.T) {
+	c := &clock{t: time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)}
+	o := TerminalOptions{Options: Options{Now: c.now}, Until: c.t.Add(30 * 24 * time.Hour), Stop: make(chan struct{}),
+		Sleep:       func(_ context.Context, d time.Duration) { c.t = c.t.Add(d) },
+		BeforeStage: func() error { return errors.New("the settings differ") },
+		Probe: func(context.Context, string, string) (bool, *runner.Failure) {
+			t.Fatal("no probe starts on settings that differ")
+			return false, nil
+		}}
+	ended, err := WaitOutProof(context.Background(), t.TempDir(), o, &runner.LimitError{}, func(context.Context) error {
+		t.Fatal("no proof runs either")
+		return nil
+	})
+	if err != nil || ended != TerminalWall {
+		t.Fatalf("the settings end it: %q %v", ended, err)
 	}
 }
 
@@ -1112,6 +1302,7 @@ func TestAReleasedTipStopsTheLane(t *testing.T) {
 func TestShortWaitsAddUpToAPeerCheck(t *testing.T) {
 	c := &clock{t: time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)}
 	tm, _, _ := bareTerminal(t, c, time.Time{})
+	tm.waited = 0
 	for range 120 {
 		tm.sleep(context.Background(), TerminalWaitFloor, "a short wait")
 	}
@@ -1350,7 +1541,7 @@ func TestEvidenceIsRedactedBeforeItIsCut(t *testing.T) {
 	}
 }
 
-// TestEvidenceStopsItsDetailPastItsSizeAndKeepsItsAnswers: two weeks of probes stay
+// TestEvidenceStopsItsDetailPastItsSizeAndKeepsItsAnswers: a long wait's probes stay
 // small, and each still says what it got.
 func TestEvidenceStopsItsDetailPastItsSizeAndKeepsItsAnswers(t *testing.T) {
 	root := t.TempDir()

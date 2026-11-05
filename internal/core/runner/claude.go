@@ -312,7 +312,7 @@ func (c *ClaudeCLI) Run(ctx context.Context, req Request) (Answer, []byte, error
 		}
 		var fl *Failure
 		if errors.As(err, &fl) {
-			fl.Seen, fl.Model = claudeSeen(res), req.modelOr(c.model)
+			keepSeen(fl, res, req.modelOr(c.model))
 			if errors.Is(err, ErrKilled) {
 				// Killed, it wrote no result event: what it spent is read
 				// from the stream it did write (iss-2611021751406429).
@@ -325,7 +325,7 @@ func (c *ClaudeCLI) Run(ctx context.Context, req Request) (Answer, []byte, error
 	if err != nil {
 		var fl *Failure
 		if errors.As(err, &fl) {
-			fl.Seen, fl.Model = claudeSeen(res), req.modelOr(c.model)
+			keepSeen(fl, res, req.modelOr(c.model))
 		}
 		return ans, transcript, err
 	}

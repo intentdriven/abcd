@@ -94,8 +94,8 @@ func (c *ClaudeCLI) probeLimit(ctx context.Context, ledger *Ledger, model string
 	case errors.As(end.Err, &fl):
 	case end.Err != nil:
 		fl = fail(Claude, ReasonFailed, "the probe did not complete")
-	case claudeInitHeldTools(res.stdout):
-		fl = fail(Claude, ReasonFailed, "the probe's launch held tools it did not ask for, so its answer says nothing")
+	case !claudeInitHeldNoTools(res.stdout):
+		fl = fail(Claude, ReasonFailed, "the probe's launch did not show it held no tool, so its answer says nothing")
 	case !probeAnswered(end.Answer.Text):
 		fl = fail(Claude, ReasonFailed, "the probe's launch did not answer the word it was asked for")
 	default:
@@ -110,39 +110,79 @@ func probeAnswered(text string) bool {
 	return strings.EqualFold(strings.Trim(strings.TrimSpace(text), ".!\"'`"), "ok")
 }
 
-// claudeInitHeldTools reports whether the stream's init event names a tool.
-func claudeInitHeldTools(out []byte) bool {
+// claudeInitHeldNoTools reports whether the stream's init event names a tool list and
+// it is empty, which is how version 2.1.318 was seen to answer a launch asking for
+// none. Anything else fails closed: such a launch cannot show what it held.
+func claudeInitHeldNoTools(out []byte) bool {
 	for _, line := range bytes.Split(out, []byte("\n")) {
 		var ev struct {
-			Type    string   `json:"type"`
-			Subtype string   `json:"subtype"`
-			Tools   []string `json:"tools"`
+			Type    string    `json:"type"`
+			Subtype string    `json:"subtype"`
+			Tools   *[]string `json:"tools"`
 		}
-		if json.Unmarshal(bytes.TrimSpace(line), &ev) == nil && ev.Type == "system" && ev.Subtype == "init" && len(ev.Tools) > 0 {
-			return true
+		if json.Unmarshal(bytes.TrimSpace(line), &ev) == nil && ev.Type == "system" && ev.Subtype == "init" {
+			return ev.Tools != nil && len(*ev.Tools) == 0
 		}
 	}
 	return false
 }
 
-// claudeStarted reports whether the stream carries an init event.
-func claudeStarted(out []byte) bool {
+// claudeResultFailed reports whether the stream's result reports an error.
+func claudeResultFailed(out []byte) bool {
 	for _, line := range bytes.Split(out, []byte("\n")) {
 		var ev struct {
 			Type    string `json:"type"`
-			Subtype string `json:"subtype"`
+			IsError bool   `json:"is_error"`
 		}
-		if json.Unmarshal(bytes.TrimSpace(line), &ev) == nil && ev.Type == "system" && ev.Subtype == "init" {
+		if json.Unmarshal(bytes.TrimSpace(line), &ev) == nil && ev.Type == "result" && ev.IsError {
 			return true
 		}
 	}
 	return false
 }
 
-// claudeSeen is what a failed launch showed.
+// claudeSeen is what a failed launch showed, spend read on whichever exit it took.
 func claudeSeen(res procResult) *HarnessSeen {
 	first, _, _ := strings.Cut(string(bytes.TrimSpace(res.stderr)), "\n")
-	return &HarnessSeen{ExitCode: res.exit, Shape: claudeShape(res.stdout), Stderr: first, SilentFor: res.silent, Started: claudeStarted(res.stdout)}
+	s := &HarnessSeen{ExitCode: res.exit, Shape: claudeShape(res.stdout), Stderr: first, SilentFor: res.silent}
+	spent := claudeSpent(res.stdout)
+	if u := spent.Usage; u != nil && u.PromptTokens+u.CompletionTokens+u.CacheReadTokens+u.CacheWriteTokens > 0 {
+		s.Spent = true
+	}
+	if spent.Cost != nil && spent.Cost.Amount > 0 {
+		s.Spent = true
+	}
+	for _, line := range bytes.Split(res.stdout, []byte("\n")) {
+		var ev struct {
+			Type    string `json:"type"`
+			Subtype string `json:"subtype"`
+			Status  any    `json:"api_error_status"`
+		}
+		if json.Unmarshal(bytes.TrimSpace(line), &ev) != nil || ev.Type == "" {
+			continue
+		}
+		switch {
+		case ev.Type == "system" && ev.Subtype == "thinking_tokens":
+			continue
+		case ev.Type == "system" && ev.Subtype == "api_retry":
+			s.Retries++
+			s.Retrying = true
+			continue
+		case ev.Type == "result" && ev.Status != nil:
+			s.APIStatus = fmt.Sprint(ev.Status)
+		}
+		s.Retrying = false
+	}
+	return s
+}
+
+// keepSeen puts what a failed launch showed on its failure, saying in abcd's words
+// when that was the model service being retried: the outage is then what is named.
+func keepSeen(fl *Failure, res procResult, model string) {
+	fl.Seen, fl.Model = claudeSeen(res), model
+	if fl.Outage() {
+		fl.Detail += fmt.Sprintf("; it was retrying the model service (%d attempts), which reads as an outage", fl.Seen.Retries)
+	}
 }
 
 // Limits on the shape a failed launch keeps. Nothing is cut here: whoever keeps it

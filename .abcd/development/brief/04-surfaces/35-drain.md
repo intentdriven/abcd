@@ -216,20 +216,28 @@ or stuck queue ends the run. A reset is waited for however far off, up to the bo
 more than 35 days off reads as a misread field and as none. `runner.ProbeLimit` runs only
 under a bound, since a yes with none never mentioned it: one launch on the profile asking
 for no tools, on the model of the launch that met the limit, counting only the word it
-asked for from a launch that held no tool. With no reset named it runs at one, five and
+asked for from a launch whose init event names an empty tool list, as version 2.1.318 of
+the harness was seen to, and failing closed on any other. With no reset named it runs at one, five and
 ten minutes and then every thirty, so a probe never disturbs the lane, and the lane's own
 agent starts when one answers, or after three in a row that get no answer, when that
 launch finds out instead. During a named wait it runs every four hours, or half an hour
 in for a reset more than eight days off: a rejection changes nothing, and an answer ends
-the wait. Failures keep the outage schedule, at most an hour apart; a contended wait
+the wait, which is read as the reset having been wrong. Failures keep the outage schedule, at most an hour apart; a contended wait
 backs off to fifteen minutes, as does a push or fetch origin refused while reserving;
 origin is never given up on (`DrainOptions.KeepWaiting`); and a shared outage another
-session gave up on holds the run until it is cleared. A limit the live check meets is
-waited out the same way and the check run again (`loop.WaitOutProof`, `runner.LimitError`);
-with no bound the drive refuses, naming the limit. Under a bound a judge is counted
-against its issue only if it ran and answered badly, and three launches of one role in a
-row that reached the model and failed (`Failure.ReachedModel`) hand the lane back as
-stuck, the run going on to other issues.
+session gave up on holds the run until it is cleared. A limit the live check meets, and a
+launch that came to no verdict on any check (`runner.LimitError`, `runner.NoVerdictError`),
+are waited out the same way, the settings checked before each probe, and the check run
+again (`loop.WaitOutProof`); only a verdict, or no harness to run, is refused then, and
+with no bound the drive refuses either way. Under a bound `Failure.Blame` says what a
+failed launch shows of its work. Measured spend, read on every exit, or an answer the
+contract refused is the work's. A launch that was retrying the model service, or a result
+naming 401, 403, 429 or 5xx, is not. An init event says nothing, since version 2.1.318 was
+seen to write one before any contact with the model. Any other failure is put to a probe,
+one short launch per failure: an answer shows the account is alive, which leaves the work,
+and a rejection or no answer counts nothing. Three in a row that are the work's hand the
+lane back as stuck, the run going on to other issues, and the same test decides whether a
+failed judge counts against its issue, beside the count of judgements that gave no answer.
 
 A wait is measured twice: by the time slept and by the wall clock, whichever ends it
 first. The production sleep also looks at the wall clock each minute, since a timer
@@ -244,7 +252,11 @@ an agent's call or a preflight says when it starts and every half hour while it 
 
 An agent that goes silent cannot be told from a hung one on what is known today. It
 is treated as a hang: its role's deadline kills its process group, its worktree is left
-as it stood, and the role is retried, and it is not counted against its lane. A stream
+as it stood, and the role is retried; it counts against its lane only if a probe answers.
+A launch that keeps retrying the model service is not silent: its stream names an
+`api_retry` event each time, which version 2.1.318 was seen to write ten times over about
+three minutes with the service unreachable before a failed result, and that reads as an
+outage and counts against nothing. A stream
 that reported a rejected limit before falling silent, and has not reported it lifted,
 reads as that limit at the deadline. The harness's limit shapes the
 runner reads are a rejected `rate_limit_event`, an assistant message whose error is

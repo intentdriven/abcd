@@ -60,6 +60,14 @@ func terminalFakeTurn(role string) string {
 		return "ratelimit"
 	case "crashes":
 		return "startedcrash"
+	case "spends":
+		return "spentcrash"
+	case "retries":
+		return "retrycrash"
+	case "apifails":
+		return "apicrash"
+	case "accountfails":
+		return "accountzero"
 	case "tamper":
 		// A stage's line rewriting the driver's own run state.
 		if p := os.Getenv(terminalTamperEnv); p != "" {

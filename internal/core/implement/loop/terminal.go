@@ -176,9 +176,11 @@ type terminal struct {
 	waited time.Duration
 	// limitModel is the model of the launch that last met a limit.
 	limitModel string
-	// reached counts, by role, launches of the lane in hand that reached the
-	// model and failed, in a row.
+	// reached counts, by role, launches of the lane in hand in a row whose failure
+	// was the work's: measured spend, or a probe showing the account alive.
 	reached map[string]int
+	// blames are what the launches of this step or move said, not yet settled.
+	blames []launchBlame
 	// call is the agent's call or preflight in flight, what its lines say.
 	call terminalCall
 	// unanswered counts, by issue, the judgements a runner ran and that gave no
@@ -191,6 +193,12 @@ type terminal struct {
 	// lane's base as the run first read it.
 	minted map[string]bool
 	bases  map[string]string
+}
+
+// launchBlame is what one failed launch said of its work.
+type launchBlame struct {
+	role, model string
+	blame       runner.Blame
 }
 
 // terminalCall is what is in flight, as the line that says so reads it.
@@ -226,6 +234,7 @@ func newTerminal(repoRoot string, o TerminalOptions) *terminal {
 	t.evidence = newDriveEvidence(repoRoot, func(line string) { t.say("%s", line) })
 	t.o.Options.RunnerFailed = t.noteFailure
 	t.o.Options.RunnerStarting = func(role string) { t.startCall("the " + role) }
+	t.waited = terminalRenewEvery
 	if t.bounded() {
 		t.o.Drain.KeepWaiting = true
 		t.outage.noLimit, t.limit.noLimit = true, true
@@ -253,13 +262,11 @@ func (t *terminal) noteFailure(role string, fl *runner.Failure) {
 	}
 	entry := evidenceEntry{Event: "failure", Role: role, Runner: fl.Runner, Response: fl.Detail, Seen: fl.Seen}
 	if fl.Reason != runner.ReasonRateLimited {
-		switch {
-		case role == RoleDrainJudge:
-		case t.bounded() && fl.ReachedModel():
-			if t.reached == nil {
-				t.reached = map[string]int{}
-			}
-			t.reached[role]++
+		if fl.Outage() {
+			t.say("the %s's launch was retrying the model service when it ended, which reads as an outage, not the work's fault", role)
+		}
+		if t.bounded() {
+			t.blames = append(t.blames, launchBlame{role: role, model: fl.Model, blame: fl.Blame()})
 		}
 		if fl.Seen != nil {
 			t.evidence.begin("suspect", entry, t.now())
@@ -426,6 +433,7 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 			return t.ended(TerminalWall), nil
 		}
 		t.judge = JudgeOutcome{}
+		t.blames = nil
 		res, err := Drain(t.repoRoot, t.o.Options, t.o.Drain)
 		t.endCall()
 		if err != nil {
@@ -480,7 +488,15 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 			continue
 		}
 		if res.Judging != nil {
-			if t.judge.Kind == JudgeNoAnswer && t.holdBack(res.Judging.Issue) {
+			// The count is the engine's, of judgements a runner ran that gave no
+			// answer. A bound adds this: a launch that failed counts too, if it
+			// shows the work failed, so a judge at its deadline having spent is
+			// the issue's fault and an account-wide failure is not.
+			counts := t.judge.Kind == JudgeNoAnswer
+			if t.judge.Kind == JudgeRunnerFailed && t.settleBlames(ctx) > 0 {
+				counts = true
+			}
+			if counts && t.holdBack(res.Judging.Issue) {
 				continue
 			}
 			if t.failed(ctx, true, "the judge did not judge "+res.Judging.Issue) {
@@ -623,7 +639,7 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 			t.say("stopping: %s", err.Error())
 			return TerminalWall, nil
 		}
-		if t.poisoned(runID) {
+		if t.poisoned(ctx, runID) {
 			return "", nil
 		}
 		if err != nil {
@@ -678,11 +694,47 @@ func (t *terminal) moved() {
 	t.evidence.resumed(t.now())
 }
 
-// poisoned hands a lane back when one role's launches have reached the model and
-// failed too many times in a row, under a bound, where nothing else would end it:
-// the fault is then the lane's, and the run goes on to other issues. Launches that
-// never got that far say nothing of the lane and stay on the outage's wait.
-func (t *terminal) poisoned(runID string) bool {
+// settleBlames counts, by role, what the launches since the last settling said of
+// their work, asking a probe of those that do not say: one short launch per such
+// failure, after the step and with no lock held. A probe answered shows the account
+// is alive, which leaves the work; rejected or unanswered, it counts nothing. It
+// returns how many counted.
+func (t *terminal) settleBlames(ctx context.Context) int {
+	counted := 0
+	for _, b := range t.blames {
+		count := b.blame == runner.BlameWork
+		if b.blame == runner.BlameAsk && t.o.Probe != nil && t.bounded() && ctx.Err() == nil && !t.stopped() && t.wallHeld() {
+			t.say("nothing shows what failed the %s, so a probe asks whether the account is alive", b.role)
+			renewed, fl := t.o.Probe(ctx, b.role, b.model)
+			entry := evidenceEntry{Event: "probe", Role: b.role, Answer: "no answer"}
+			if fl != nil {
+				entry.Seen = fl.Seen
+			}
+			if renewed {
+				entry.Answer = "answered"
+			}
+			t.evidence.add(entry, t.now())
+			count = renewed
+		}
+		if !count {
+			continue
+		}
+		counted++
+		if t.reached == nil {
+			t.reached = map[string]int{}
+		}
+		t.reached[b.role]++
+	}
+	t.blames = nil
+	return counted
+}
+
+// poisoned hands a lane back when one role's launches have failed in a row in a way
+// that is the work's, under a bound, where nothing else would end it: the run then
+// goes on to other issues. A launch that says nothing of the work stays on the
+// outage's wait.
+func (t *terminal) poisoned(ctx context.Context, runID string) bool {
+	t.settleBlames(ctx)
 	for role, n := range t.reached {
 		if n < terminalPoisonLaunches {
 			continue
@@ -691,7 +743,7 @@ func (t *terminal) poisoned(runID string) bool {
 		if err != nil {
 			return false
 		}
-		r := refuse(StageRunner, "", "", fmt.Sprintf("the %s reached the model and failed %d times in a row", role, n), "see the reason")
+		r := refuse(StageRunner, "", "", fmt.Sprintf("the %s failed %d times in a row with the account alive or having spent", role, n), "see the reason")
 		r.final = "launches of the same work failed the same way, so the lane goes back and the run goes on"
 		t.stayAsItIs(runID, run.Key, r)
 		t.reached = nil
@@ -709,7 +761,7 @@ func (t *terminal) poisoned(runID string) bool {
 //
 // Under a bound a probe asks too, so the lane is not disturbed by asking: at each
 // turn of that schedule, and at a low rate during a named wait, since a reset read
-// from a stream can be wrong and a limit that lets a probe through is over. A
+// from a stream can be wrong and a limit that lets a probe through is read as over. A
 // probe that names a reset turns the wait into that one, and one rejected naming
 // none leaves the wait as it was. Probes with no answer say nothing of the limit: a
 // named wait goes on, and with none named a few in a row leave it to the lane's own
@@ -796,26 +848,38 @@ func (t *terminal) limited(ctx context.Context, role string, at time.Time) strin
 	}
 }
 
-// WaitOutProof waits out a limit the drive's live proof met, on the schedule any
-// agent's limit waits on, proving again each time it lets the run go on. It returns
-// why the wait ended the run, "" when prove has run clean or failed for itself, and
-// then what prove said. Nothing has started: what it may renew is what an earlier
-// run left held.
-func WaitOutProof(ctx context.Context, repoRoot string, o TerminalOptions, first *runner.LimitError, prove func(context.Context) error) (string, error) {
+// WaitOutProof waits out what stopped the drive's live proof short of a verdict: a
+// limit, on the schedule any agent's limit waits on, or a launch that came to none,
+// on the outage's. Each time it may go on it proves again. It returns why the wait
+// ended the run, "" when prove has run clean or come to a verdict, and then what
+// prove said. Nothing has started: what it may renew is what an earlier run left held.
+func WaitOutProof(ctx context.Context, repoRoot string, o TerminalOptions, first error, prove func(context.Context) error) (string, error) {
 	if o.Sleep == nil {
 		o.Sleep = func(ctx context.Context, d time.Duration) { sleepOr(ctx, d, o.Stop) }
 	}
 	t := newTerminal(repoRoot, o)
 	t.ctx = ctx
-	limit := first
+	err := first
 	for {
-		entry := evidenceEntry{Event: "limit", Role: "live proof", Seen: limit.Seen}
-		if !limit.ResetsAt.IsZero() {
-			entry.ResetRead = limit.ResetsAt.UTC().Format(time.RFC3339)
-		}
-		t.evidence.begin("limit", entry, t.now())
-		if ended := t.limited(ctx, RoleImplementer, limit.ResetsAt); ended != "" {
-			return ended, nil
+		var limit *runner.LimitError
+		var none *runner.NoVerdictError
+		switch {
+		case errors.As(err, &limit):
+			entry := evidenceEntry{Event: "limit", Role: "live proof", Seen: limit.Seen}
+			if !limit.ResetsAt.IsZero() {
+				entry.ResetRead = limit.ResetsAt.UTC().Format(time.RFC3339)
+			}
+			t.evidence.begin("limit", entry, t.now())
+			if ended := t.limited(ctx, RoleImplementer, limit.ResetsAt); ended != "" {
+				return ended, nil
+			}
+		case errors.As(err, &none):
+			t.evidence.begin("suspect", evidenceEntry{Event: "failure", Role: "live proof", Response: none.Detail, Seen: none.Seen}, t.now())
+			if t.failed(ctx, false, "the live check came to no verdict: "+none.Detail) {
+				return TerminalOutage, nil
+			}
+		default:
+			return "", err
 		}
 		switch {
 		case ctx.Err() != nil:
@@ -824,11 +888,10 @@ func WaitOutProof(ctx context.Context, repoRoot string, o TerminalOptions, first
 			return TerminalStopped, nil
 		case t.pastBound():
 			return TerminalUntil, nil
+		case !t.wallHeld():
+			return TerminalWall, nil
 		}
-		err := prove(ctx)
-		if !errors.As(err, &limit) {
-			return "", err
-		}
+		err = prove(ctx)
 	}
 }
 

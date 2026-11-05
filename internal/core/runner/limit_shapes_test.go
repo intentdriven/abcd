@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -306,33 +307,136 @@ func TestALaunchThatRecoveredAndFailedIsAnOrdinaryFailure(t *testing.T) {
 	}
 }
 
-// TestAFailureSaysWhetherItReachedTheModel: an init event on a launch that ended by
-// itself, or something spent; never a launch that started nothing, and never one
-// killed having spent nothing, which may be a limit waited out inside it.
-func TestAFailureSaysWhetherItReachedTheModel(t *testing.T) {
-	run := func(t *testing.T, mode string, timeout time.Duration) *Failure {
-		t.Helper()
-		f := newFake(t, mode, Claude)
-		req := f.request("implementer")
-		req.Timeout = timeout
-		_, _, err := newClaude("").Run(context.Background(), req)
-		var fl *Failure
-		if !errors.As(err, &fl) {
-			t.Fatalf("err = %v", err)
-		}
-		return fl
+// TestWhatAFailedLaunchSaysOfItsWork: measured spend and an answer the contract
+// refused show the work failed. An init event shows nothing, since it comes before
+// any contact with the model: such a launch is the probe's to settle. A launch stuck
+// retrying, a service or account status, and no launch at all say nothing.
+func TestWhatAFailedLaunchSaysOfItsWork(t *testing.T) {
+	for mode, want := range map[string]Blame{
+		"started-exit": BlameAsk,
+		"spent-exit":   BlameWork,
+		"spent-zero":   BlameWork,
+		"retry-exit":   BlameNone,
+		"api503-exit":  BlameNone,
+		"api404-exit":  BlameAsk,
+		"notloggedin":  BlameAsk,
+		"hang":         BlameAsk,
+	} {
+		t.Run(mode, func(t *testing.T) {
+			f := newFake(t, mode, Claude)
+			req := f.request("implementer")
+			req.Timeout = 300 * time.Millisecond
+			_, _, err := newClaude("").Run(context.Background(), req)
+			var fl *Failure
+			if !errors.As(err, &fl) {
+				t.Fatalf("err = %v", err)
+			}
+			if got := fl.Blame(); got != want {
+				t.Fatalf("blame = %v, want %v: %+v %+v", got, want, fl, fl.Seen)
+			}
+		})
 	}
-	if fl := run(t, "started-exit", 0); !fl.Seen.Started || !fl.ReachedModel() {
-		t.Errorf("an init event, then a failed exit: %+v %+v", fl, fl.Seen)
-	}
-	if fl := run(t, "notloggedin", 0); fl.ReachedModel() {
-		t.Errorf("no event at all: %+v", fl)
-	}
-	if fl := run(t, "hang", 300*time.Millisecond); fl.ReachedModel() {
-		t.Errorf("killed, nothing spent: %+v", fl)
-	}
-	if !(&Failure{Reason: ReasonInvalid}).ReachedModel() {
+	if (&Failure{Reason: ReasonInvalid}).Blame() != BlameWork {
 		t.Error("an answer the contract refused came from the model")
+	}
+	if (&Failure{Reason: ReasonFailed}).Blame() != BlameNone {
+		t.Error("a launch that never ran says nothing")
+	}
+	for _, status := range []string{"401", "403", "429", "500", "503", "599"} {
+		f := &Failure{Reason: ReasonFailed, Seen: &HarnessSeen{APIStatus: status, Spent: true}}
+		if f.Blame() != BlameNone {
+			t.Errorf("status %s says nothing of the work, spent or not", status)
+		}
+	}
+	retrying := &Failure{Reason: ReasonFailed, Seen: &HarnessSeen{Retries: 3, Retrying: true, Spent: true}}
+	if retrying.Blame() != BlameNone {
+		t.Error("a launch that ended retrying is the outage's, whatever it spent first")
+	}
+	recovered := &Failure{Reason: ReasonFailed, Seen: &HarnessSeen{Retries: 3, Spent: true}}
+	if recovered.Blame() != BlameWork {
+		t.Error("a retry it came through, then spend, is the work's")
+	}
+}
+
+// TestAStuckLaunchSaysItWasRetrying: the failure reads as the outage it is.
+func TestAStuckLaunchSaysItWasRetrying(t *testing.T) {
+	f := newFake(t, "retry-exit", Claude)
+	_, _, err := newClaude("").Run(context.Background(), f.request("implementer"))
+	var fl *Failure
+	if !errors.As(err, &fl) || !strings.Contains(fl.Detail, "retrying the model service") {
+		t.Fatalf("err = %v", err)
+	}
+	if fl.Seen.Retries != 2 || !fl.Seen.Retrying {
+		t.Fatalf("seen = %+v", fl.Seen)
+	}
+}
+
+// TestTheRecordedOutageReadsAsAnOutage: the stream the harness really wrote through a
+// dead proxy, sanitised: an outage, no limit, nothing spent.
+func TestTheRecordedOutageReadsAsAnOutage(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("testdata", "claude-stream-outage-2.1.318.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claudeRateLimit(raw) != "" {
+		t.Fatal("an outage is no limit")
+	}
+	seen := claudeSeen(procResult{stdout: raw, exit: 1})
+	if seen.Retries == 0 || seen.Spent {
+		t.Fatalf("seen = %+v", seen)
+	}
+	if (&Failure{Reason: ReasonFailed, Seen: seen}).Blame() != BlameNone {
+		t.Fatal("it says nothing of the work")
+	}
+	for _, never := range []string{"session_id", "uuid", "cwd", "/Users/", "/home/"} {
+		if strings.Contains(string(raw), never) {
+			t.Errorf("the fixture holds %q", never)
+		}
+	}
+}
+
+// TestProveWallSaysWhenItCameToNoVerdict: a launch that failed, on either exit, reached
+// no verdict on any check; it still reads as the failed launch to whoever does not ask.
+func TestProveWallSaysWhenItCameToNoVerdict(t *testing.T) {
+	for _, mode := range []string{"wall-noverdict-exit", "wall-noverdict-zero"} {
+		t.Run(mode, func(t *testing.T) {
+			newFake(t, mode, Claude)
+			err := ProveWall(context.Background(), wallProfile(t), wallBin)
+			var nv *NoVerdictError
+			if !errors.As(err, &nv) || nv.Seen == nil {
+				t.Fatalf("err = %#v, want no verdict", err)
+			}
+		})
+	}
+}
+
+// TestAVerdictOrAnAbsentHarnessIsNoLackOfOne: both are refusals.
+func TestAVerdictOrAnAbsentHarnessIsNoLackOfOne(t *testing.T) {
+	newFake(t, "wall-tools", Claude)
+	var nv *NoVerdictError
+	var we *WallError
+	err := ProveWall(context.Background(), wallProfile(t), wallBin)
+	if errors.As(err, &nv) || !errors.As(err, &we) {
+		t.Fatalf("a check that does not hold: %#v", err)
+	}
+	p := wallProfile(t)
+	t.Setenv("PATH", t.TempDir())
+	err = ProveWall(context.Background(), p, wallBin)
+	if errors.As(err, &nv) || !errors.As(err, &we) {
+		t.Fatalf("no harness: %#v", err)
+	}
+}
+
+// TestAProbeNamesNoAnswerUnlessItsInitShowsNoTools: failing closed: a launch whose init
+// names no tool list, or that has no init, cannot show what it held.
+func TestAProbeNamesNoAnswerUnlessItsInitShowsNoTools(t *testing.T) {
+	for _, mode := range []string{"probe-notools", "probe-noinit"} {
+		t.Run(mode, func(t *testing.T) {
+			_, c := walledConfig(t, mode)
+			if renewed, fl := c.ProbeLimit(context.Background(), "implementer", ""); renewed || fl == nil {
+				t.Fatalf("this is no answer: %v %+v", renewed, fl)
+			}
+		})
 	}
 }
 
