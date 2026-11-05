@@ -17,8 +17,9 @@ import (
 // shard, and a step that names its tests with -run is left as one process: the
 // plain-only guard steps carry no count, since it would do nothing there. The
 // same holds for -json, -cover, -shuffle and every other flag testshard does
-// not repeat, so the race steps' go test may carry -race and -timeout alone:
-// another flag would run each package as one process with the count still set.
+// not repeat, so the race steps' go test may carry -race, -timeout and the
+// -count=1 every hosted test step passes, which testshard does repeat: another
+// flag would run each package as one process with the count still set.
 // A macOS shard's race pass carries the count like the rest: splitting the suite
 // across runners does not make a package shorter on the runner it lands on. The
 // check job's plain pass on an inert change, its only test pass there, shards the
@@ -55,7 +56,7 @@ func TestCIRacePassesShardLikePreflight(t *testing.T) {
 			continue
 		}
 		for _, f := range strings.Fields(run[1]) {
-			if strings.HasPrefix(f, "-") && f != "-race" && f != "-timeout" {
+			if strings.HasPrefix(f, "-") && f != "-race" && f != "-timeout" && f != "-count=1" {
 				t.Errorf("%s's `%s` step passes %s, which runs each package as one process whatever the shard count", file, name, f)
 			}
 		}

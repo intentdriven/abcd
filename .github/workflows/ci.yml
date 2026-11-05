@@ -394,7 +394,7 @@ jobs:
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
           ABCD_TEST_SHARDS: "3"
-        run: go test -timeout 40m ./internal/core/implement/loop ./internal/surface/cli ./...
+        run: go test -count=1 -timeout 40m ./internal/core/implement/loop ./internal/surface/cli ./...
 
       # Every package ./... matches that ./internal/... does not;
       # TestTheOutsideInternalStepRunsWhatTheRaceLaneDoesNot holds the set.
@@ -403,7 +403,7 @@ jobs:
         shell: go run ./cmd/ci-watchdog bash --noprofile --norc -eo pipefail {0}
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
-        run: go test ./cmd/...
+        run: go test -count=1 ./cmd/...
 
       # The tests that assert only without the race detector: cost guards that
       # count work or bound CPU time, which under -race measure the
@@ -418,7 +418,7 @@ jobs:
         shell: go run ./cmd/ci-watchdog bash --noprofile --norc -eo pipefail {0}
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
-        run: go test -run '^(TestAHereDocBodyFeedStaysLinear|TestAPatternPastTheStepBudgetIsNotGenerated|TestAVeryDeepPathIsJudgedQuickly|TestAdjacencyProbeStaysLinearOnLongLines|TestAdjacencyProbeWindowIsBounded|TestBacktickPrePassStaysLinear|TestBraceScanStaysLinear|TestClosedOverDocumentsStayLinear|TestClosingScansAreLinear|TestDoubleQuotedBraceExpansionStaysLinear|TestExpandedHeredocBodyStaysLinear|TestForgeTextWorkIsLinear|TestGallopingProbeCostIsLinearInLineLength|TestGallopingProbeStaysBoundedOnLongLines|TestGluedFixedOutputStaysLinear|TestGluedSweepWorkIsLinear|TestHereDocumentPayloadStaysLinear|TestHistoryCaptureAcceptsWhatTheHooksAccept|TestHomeSpellingsStayLinear|TestIFSSplitCheckStaysLinear|TestJunctionBacktrackIsBounded|TestKillFeedGroupsAndStringsStayLinear|TestKillFeedReadingStaysLinear|TestMakerNoteWorkIsLinear|TestMetadataViewsWorkIsLinear|TestNestedHereDocumentPayloadStaysLinear|TestParameterExpansionReadingStaysLinear|TestPatternShapesStayLinear|TestQuotedSubstitutionStaysLinear|TestRawHeadingScanStaysLinearInTheOpenerCount|TestScanLineWorkIsLinear|TestScriptReadingStaysLinearOnAdversarialLines|TestSpeculationIsBoundedAtTheStdinCap|TestSpellingSetsStayLinear|TestSurfaceChapterProseStatesNoShape|TestSweepCallerHomeWorkIsLinear|TestSynopsisScanIsLinearInThePage|TestTheBudgetBoundsWallTimeOverLongLiterals|TestTheBudgetBoundsWallTimeOverManyLines|TestTheHiddenHTMLReadersStayLinear|TestTheTagWalksStayLinear|TestUTF16ViewWorkIsLinear|TestUnknownWordWalksStayLinear)$' ./internal/adapter/scanner ./internal/core/claim ./internal/core/guard ./internal/core/reading ./internal/surface/cli
+        run: go test -count=1 -run '^(TestAHereDocBodyFeedStaysLinear|TestAPatternPastTheStepBudgetIsNotGenerated|TestAVeryDeepPathIsJudgedQuickly|TestAdjacencyProbeStaysLinearOnLongLines|TestAdjacencyProbeWindowIsBounded|TestBacktickPrePassStaysLinear|TestBraceScanStaysLinear|TestClosedOverDocumentsStayLinear|TestClosingScansAreLinear|TestDoubleQuotedBraceExpansionStaysLinear|TestExpandedHeredocBodyStaysLinear|TestForgeTextWorkIsLinear|TestGallopingProbeCostIsLinearInLineLength|TestGallopingProbeStaysBoundedOnLongLines|TestGluedFixedOutputStaysLinear|TestGluedSweepWorkIsLinear|TestHereDocumentPayloadStaysLinear|TestHistoryCaptureAcceptsWhatTheHooksAccept|TestHomeSpellingsStayLinear|TestIFSSplitCheckStaysLinear|TestJunctionBacktrackIsBounded|TestKillFeedGroupsAndStringsStayLinear|TestKillFeedReadingStaysLinear|TestMakerNoteWorkIsLinear|TestMetadataViewsWorkIsLinear|TestNestedHereDocumentPayloadStaysLinear|TestParameterExpansionReadingStaysLinear|TestPatternShapesStayLinear|TestQuotedSubstitutionStaysLinear|TestRawHeadingScanStaysLinearInTheOpenerCount|TestScanLineWorkIsLinear|TestScriptReadingStaysLinearOnAdversarialLines|TestSpeculationIsBoundedAtTheStdinCap|TestSpellingSetsStayLinear|TestSurfaceChapterProseStatesNoShape|TestSweepCallerHomeWorkIsLinear|TestSynopsisScanIsLinearInThePage|TestTheBudgetBoundsWallTimeOverLongLiterals|TestTheBudgetBoundsWallTimeOverManyLines|TestTheHiddenHTMLReadersStayLinear|TestTheTagWalksStayLinear|TestUTF16ViewWorkIsLinear|TestUnknownWordWalksStayLinear)$' ./internal/adapter/scanner ./internal/core/claim ./internal/core/guard ./internal/core/reading ./internal/surface/cli
 
       # Only a source change can introduce a data race. On an inert change the
       # plain pass above runs the whole module in this lane's place.
@@ -462,7 +462,7 @@ jobs:
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
           ABCD_TEST_SHARDS: "3"
-        run: go test -race -timeout 40m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
+        run: go test -race -count=1 -timeout 40m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
 
       # Drift gate for the .abcd/development design record. Blocking: a
       # blocker-severity finding exits non-zero and fails the job; warn-level
