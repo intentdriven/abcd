@@ -36,6 +36,18 @@ var wordReaders = map[string]string{
 	"firstOperands":      "the rule itself",
 	"firstOperandLimit":  "the rule itself",
 
+	// dashedgit.go: a `git-<sub>` program read as `git <sub>`.
+	"expandDashedGit":      "commandSites: every place a command can sit",
+	"dashedGitSubcommands": "isUnknown: only the text after the word's last substitution is fixed",
+	"lookupOnly":           "isUnknown: a word nothing fixes stands no command down",
+	// gitsettings.go: a setting on a git line read as the flag it stands for.
+	"rewriteGitSettings": "firstOperands",
+	"pushSettingWords":   "exempt: reads a configuration key, not a word of the line",
+	"gcSettingWords":     "exempt: reads a configuration key, not a word of the line",
+	// match.go: the words that stand an entry down.
+	"standsDown":    "isUnknown and readWord: a word a substitution helps to write stands nothing down",
+	"notFlagUndone": "exempt: standsDown hands it only typed words",
+
 	// branchacts.go: the away mode's created-branch recorder, which records
 	// and refuses nothing.
 	"branchActsIn": "isUnknown on every word: a command with a word nothing fixes is read as no branch act",

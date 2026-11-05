@@ -12,12 +12,15 @@ package loop
 // renders. Each renews a due reservation through the loop's own renewal
 // (renewReservation), from the run's own checkout, which is what makes it this
 // copy's, and under the run's lock, so a lapsed one is revived as a step
-// revives it and logged in the run record as a step logs it.
+// revives it and logged in the run record as a step logs it. The waiter may be
+// running a lane's newer abcd, so the save is the reservation's alone and the
+// run stays at its version (mutateReservation, iss-2611020719494343).
 
 import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
@@ -44,9 +47,10 @@ type RunRenewal struct {
 // the gated waiter in waiterRoot serves: each that lives in waiterRoot, and
 // each that lives in another worktree of the repository (git worktree list)
 // with a lane, not yet done, whose worktree is waiterRoot, compared by real
-// path. A worktree whose runs cannot be read, and a listing git refuses,
-// renew nothing. It never refuses: the waiter's wait and its command go on
-// whatever it finds.
+// path. A run that cannot be read is named in the result and not renewed, and
+// the others in its worktree still are; a worktree that cannot be listed, and
+// a listing git refuses, renew nothing. It never refuses: the waiter's wait and
+// its command go on whatever it finds.
 func RenewRuns(waiterRoot string, now time.Time) []RunRenewal {
 	out := renewRunsAt(waiterRoot, "", nil, now)
 	wts, err := gitutil.ListWorktrees(waiterRoot, gitutil.MaxWorktreeListing)
@@ -94,12 +98,8 @@ var runsView = claim.View
 // record changed. While another invocation holds the checkout's run lock the
 // run is skipped, and the next round renews it.
 func renewRunsAt(root, runID string, serves func(State) bool, now time.Time) []RunRenewal {
-	runs, err := Runs(root)
-	if err != nil {
-		return nil
-	}
+	runs, out := renewalRuns(root, runID)
 	var view *claim.Snapshot
-	var out []RunRenewal
 	for _, st := range runs {
 		if (runID != "" && st.RunID != runID) || !renewsWhereItWaits(st) || (serves != nil && !serves(st)) {
 			continue
@@ -115,7 +115,7 @@ func renewRunsAt(root, runID string, serves func(State) bool, now time.Time) []R
 			continue
 		}
 		r := RunRenewal{Root: root, RunID: st.RunID, Key: st.Key}
-		err := mutate(root, st.RunID, func(_ *os.Root, st *State) (bool, error) {
+		err := mutateReservation(root, st.RunID, func(st *State) (bool, error) {
 			if !renewsWhereItWaits(*st) {
 				return false, nil
 			}
@@ -140,6 +140,39 @@ func renewRunsAt(root, runID string, serves func(State) bool, now time.Time) []R
 		}
 	}
 	return out
+}
+
+// renewalRuns reads the runs in root that a renewal may look at (the one runID
+// names, or every one for ""), oldest first as Runs orders them, and a note for
+// each it cannot read. One a newer abcd wrote is the case that matters: it is
+// not this abcd's to rewrite, so it is said rather than passed over in silence,
+// and it holds no other run's renewal back. A checkout whose runs cannot even
+// be listed gives nothing, as it always has.
+func renewalRuns(root, runID string) ([]State, []RunRenewal) {
+	dir, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, nil
+	}
+	defer dir.Close()
+	ids, err := runIDs(dir)
+	if err != nil {
+		return nil, nil
+	}
+	var runs []State
+	var notes []RunRenewal
+	for _, id := range ids {
+		if runID != "" && id != runID {
+			continue
+		}
+		st, err := readListedState(dir, id)
+		if err != nil {
+			notes = append(notes, RunRenewal{Root: root, RunID: id, Note: "could not read the run to renew its reservation: " + err.Error()})
+			continue
+		}
+		runs = append(runs, st)
+	}
+	slices.SortStableFunc(runs, func(a, b State) int { return a.CreatedAt.Compare(b.CreatedAt) })
+	return runs, notes
 }
 
 // renewsWhereItWaits reports whether a run's reservation is renewed where its
