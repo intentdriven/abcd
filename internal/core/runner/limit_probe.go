@@ -45,11 +45,11 @@ func (c *Config) ProbeLimit(ctx context.Context, role string) (bool, *Failure) {
 	if !ok {
 		return false, fail(Claude, ReasonFailed, "the probe has no claude route for the %s", role)
 	}
-	return cl.probeLimit(ctx)
+	return cl.probeLimit(ctx, c.ledger)
 }
 
 // probeLimit is ProbeLimit's launch, a directory of its own and no tools.
-func (c *ClaudeCLI) probeLimit(ctx context.Context) (bool, *Failure) {
+func (c *ClaudeCLI) probeLimit(ctx context.Context, ledger *Ledger) (bool, *Failure) {
 	dir, err := os.MkdirTemp("", "abcd-limit-probe-")
 	if err != nil {
 		return false, fail(Claude, ReasonFailed, "the probe's working directory could not be made")
@@ -71,7 +71,7 @@ func (c *ClaudeCLI) probeLimit(ctx context.Context) (bool, *Failure) {
 	// The probe spends the same subscription as a stage, so its launch is written
 	// to the same ledger, and one the ledger cannot hold is not started.
 	var res procResult
-	end, lerr := RecordLaunch(ctx, p.Ledger, LaunchStart{Role: req.Role, Runner: Claude, Repo: p.Repo, Fallback: req.SessionID}, func(ctx context.Context) LaunchEnd {
+	end, lerr := RecordLaunch(ctx, ledger, LaunchStart{Role: req.Role, Runner: Claude, Repo: p.Repo, Fallback: req.SessionID}, func(ctx context.Context) LaunchEnd {
 		var runErr error
 		res, runErr = c.launch.run(ctx, Claude, bin, args, p.Env, dir, limitProbeTimeout)
 		var ans Answer

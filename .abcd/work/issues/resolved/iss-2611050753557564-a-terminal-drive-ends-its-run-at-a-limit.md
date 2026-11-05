@@ -10,6 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/implement/loop/terminal.go"
 remedy: "Wait out a limit for as long as its reset is away, keep probing a limit with no reset on a capped backoff, keep waiting through outages and stuck queues at a capped interval, and end at a bound the person sets with --until, eight hours when none is given."
+resolution: "A drive now takes --until: under that bound a limit's reset is waited for however far off, a limit with no reset is probed on a capped backoff, and outages and stuck queues are waited through at a capped interval, with no eight-hour end. With no flag each wait keeps its eight hours."
+impact: additive
 ---
 
 A terminal drive ends its run at a limit resetting past eight hours and after eight hours of outage or no movement, so an unattended run stops at the first weekly limit.

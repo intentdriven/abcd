@@ -60,8 +60,9 @@ failures, eight hours with nothing moving, a rate limit that outlasts eight hour
 origin unreadable through its schedule each end the run. `--until <date>` replaces
 those with one bound of the person's own, either a date, read as the end of that day
 on this machine's clock, or an RFC 3339 instant: the yes names it, and at that time
-the run ends with the lane on its branch and its reservation released. An agent in a
-call finishes that call first, and `abcd drain --drive` takes the lane up later. A
+the run ends with the lane on its branch and its reservation released, and exits 0,
+since that is what was asked. An agent in a call finishes that call first, and
+`abcd drain --drive` takes the lane up later. A
 long unattended run needs `--until`, and `--max` too, since the cap stays eight
 lanes unless it says otherwise.
 

@@ -894,10 +894,10 @@ Sub-verbs: none.
 | `--reason` | string |
 | `--skip` | stringArray |
 | `--sub-agents` | string |
-| `--until` | string |
 | `--take-over` | bool |
 | `--trust-lane-gates` | bool |
 | `--unskip` | stringArray |
+| `--until` | string |
 | `--yes` | bool |
 
 <!-- surface-appendix:end -->

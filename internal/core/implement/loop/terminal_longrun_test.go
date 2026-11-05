@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -64,16 +65,11 @@ func letGoAtTheEnd(t *testing.T, w *terminalWorld) State {
 func TestAResetDaysAwayIsWaitedOutUnderABound(t *testing.T) {
 	w := newTerminalWorld(t, "shape", "limited")
 	w.realWorktree()
-	w.resetIn(t, 72*time.Hour)
+	reset := w.resetIn(t, 72*time.Hour)
 	o := w.bounded(t, 30*24*time.Hour)
-	started := -1
 	w.onSleep = func(time.Duration) {
-		n := w.launches(t)
-		if started < 0 {
-			started = n
-		}
-		if n != started {
-			t.Fatalf("an agent started during the wait: %d, then %d", started, n)
+		if n := w.launches(t); w.clock.t.Before(reset) && n != 2 {
+			t.Fatalf("an agent started during the wait: %d launches", n)
 		}
 	}
 	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
@@ -493,7 +489,7 @@ func TestAMachineAsleepCutsTheWaitAndRevivesTheClaim(t *testing.T) {
 			once = true
 			w.clock.t = w.clock.t.Add(48 * time.Hour)
 		}
-		if n := w.launches(t); n != 2 {
+		if n := w.launches(t); w.clock.t.Before(reset) && n != 2 {
 			t.Fatalf("an agent started during the wait: %d", n)
 		}
 	}
@@ -651,21 +647,25 @@ func TestAContendedWaitBacksOffToItsCap(t *testing.T) {
 // clock, so a machine that slept past the end wakes the wait at once.
 func TestASleepThatOverrunsEndsOnTheWallClock(t *testing.T) {
 	start := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
-	now := start
+	var offset atomic.Int64
+	now := func() time.Time { return start.Add(time.Duration(offset.Load())) }
 	looks := make(chan time.Time)
 	done := make(chan struct{})
 	go func() {
-		wallSleep(context.Background(), time.Hour, nil, func() time.Time { return now }, looks)
+		wallSleep(context.Background(), time.Hour, nil, now, looks)
 		close(done)
 	}()
 	looks <- start // not yet: a second send proves it is still looking
 	looks <- start
-	now = start.Add(2 * time.Hour)
-	looks <- start
-	select {
-	case <-done:
-	case <-time.After(10 * time.Second):
-		t.Fatal("the sleep did not end when the wall clock passed its end")
+	offset.Store(int64(2 * time.Hour))
+	for {
+		select {
+		case looks <- start:
+		case <-done:
+			return
+		case <-time.After(10 * time.Second):
+			t.Fatal("the sleep did not end when the wall clock passed its end")
+		}
 	}
 }
 
