@@ -2864,14 +2864,14 @@ whole run counts it through the load figure alone. It is shut by the load limit,
 your account's last narrow run for 30s (`~/.abcd.noindex/load-wait-narrow.json`), your account's
 last whole run or race stage for 2m0s, and its own room. That room is
 `load.narrow_runs` in `~/.abcd.noindex/config.json`, a whole number from 1 to 32, by default half
-the online cores divided by 2, and never read from a repository file or the
-environment; once the load is within 2 of the online cores it is only what the whole runs in
+the online cores divided by 2. It follows your home as load.preflights does, is
+never read from a repository file and has no environment variable of its own; once the load is within 2 of the online cores it is only what the whole runs in
 their slots leave of the cores, at each slot's share, and one at the least. Narrow runs
 running and those queued ahead count against it; another account's never take your last
 place. Its jitter is 1s to 5s, and it takes no open look, so across accounts two
 opening at once can pass the limit by one. So that it cannot starve a whole run, while a
 whole-run waiter that started earlier has waited 5m0s with a whole slot free, it
-stands aside, at most 5m0s in a wait. Waiters queued ahead that alone keep it shut stop
+stands aside, spending at most 5m0s of a wait so. Waiters queued ahead that alone keep it shut stop
 counting after 2m0s.
 
 A wait that gives up exits 1 and ends with a line starting `LOAD GATE TIMED OUT`,

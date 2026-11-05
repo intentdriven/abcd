@@ -467,9 +467,10 @@ counts it through the load figure alone. It is shut by the load limit, the memor
 floor, its account's 30-second hold (`load-wait-narrow.json`), its account's whole run
 or race stage for that hold's two-minute settle, however long the hold itself lasts, and
 its room. The room is the person's `load.narrow_runs` (1 to 32, read from the machine
-layer alone, with no environment variable, since a repository's Makefile can set one; by
-default half the online cores divided by 2, so narrow runs hold at most half the machine,
-two being a ceiling on what they took as measured on 16 cores, from about 0.2 of a core to
+layer alone, under the process's home as `load.preflights` is, with no environment variable
+of its own; by default half the online cores divided by 2, so an account admits up to half
+the machine, and each other account can add one run over that, since every account keeps a
+place, two being a ceiling on what they took as measured on 16 cores, from about 0.2 of a core to
 under 2). On a machine the load shows within two of the online cores, the two classes share
 one budget: the room is what the whole runs in their slots leave of the cores, each at its
 stage's `-p`, and one at the least. Running narrow runs and those queued ahead count against
@@ -480,8 +481,8 @@ overshoot by one for those runs and no more.
 A whole run keeps its place honestly: sharing the load limit, narrow runs could take
 every dip it waits for, and an older abcd counts them in its slots. So while a
 whole-run waiter that started earlier has waited five minutes with a whole slot free
-(`machineload.OverdueWhole`), a narrow run stands aside, for at most five minutes in
-one wait. That gap in admissions lets the running ones finish and the load fall. The
+(`machineload.OverdueWhole`), a narrow run stands aside, spending at most five minutes
+of one wait so. That gap in admissions lets the running ones finish and the load fall. The
 waiter must have started earlier because an older abcd counts a narrow waiter that
 started before it as ahead: standing aside for a later start would have each wait on
 the other until a timeout. Every wait points at an earlier start or a command already

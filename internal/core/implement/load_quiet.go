@@ -200,9 +200,11 @@ func treeCPU(procs []machineload.Proc, pid int) map[int]time.Duration {
 type holderWatch struct {
 	quiet  quietWatch
 	meters map[int]*cpuMeter
-	// asideSince is when this wait, a narrow run's, first stood aside for an
-	// overdue whole run (standAside), zero until it has.
-	asideSince time.Time
+	// asideLast is the last look at which this wait, a narrow run's, found a whole
+	// run overdue, zero when the last look did not, and asideSpent the time spent
+	// standing aside so far (standAside).
+	asideLast  time.Time
+	asideSpent time.Duration
 }
 
 // cpuMeter follows one holder's tree between a waiter's looks: when it was

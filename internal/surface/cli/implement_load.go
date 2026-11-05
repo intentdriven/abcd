@@ -380,14 +380,14 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"your account's last narrow run for " + implement.WaitNarrowSettle.String() + " (`" + abcdhome.Display(implement.WaitNarrowHoldFileName) + "`), your account's\n" +
 			"last whole run or race stage for " + implement.WaitSettle.String() + ", and its own room. That room is\n" +
 			"`" + implement.NarrowRunsKey + "` in `" + abcdhome.Display("config.json") + "`, a whole number from 1 to " + strconv.Itoa(implement.MaxNarrowRuns) + ", by default half\n" +
-			"the online cores divided by " + strconv.Itoa(implement.NarrowRunCores) + ", and never read from a repository file or the\n" +
-			"environment; once the load is within " + strconv.Itoa(implement.NarrowRunCores) + " of the online cores it is only what the whole runs in\n" +
+			"the online cores divided by " + strconv.Itoa(implement.NarrowRunCores) + ". It follows your home as " + implement.PreflightSlotsKey + " does, is\n" +
+			"never read from a repository file and has no environment variable of its own; once the load is within " + strconv.Itoa(implement.NarrowRunCores) + " of the online cores it is only what the whole runs in\n" +
 			"their slots leave of the cores, at each slot's share, and one at the least. Narrow runs\n" +
 			"running and those queued ahead count against it; another account's never take your last\n" +
 			"place. Its jitter is " + implement.WaitNarrowJitterMin.String() + " to " + implement.WaitNarrowJitterMax.String() + ", and it takes no open look, so across accounts two\n" +
 			"opening at once can pass the limit by one. So that it cannot starve a whole run, while a\n" +
 			"whole-run waiter that started earlier has waited " + implement.WaitNarrowYieldAfter.String() + " with a whole slot free, it\n" +
-			"stands aside, at most " + implement.WaitNarrowYieldCap.String() + " in a wait. Waiters queued ahead that alone keep it shut stop\n" +
+			"stands aside, spending at most " + implement.WaitNarrowYieldCap.String() + " of a wait so. Waiters queued ahead that alone keep it shut stop\n" +
 			"counting after " + implement.WaitNarrowQueueCap.String() + ".\n\n" +
 			"A wait that gives up exits 1 and ends with a line starting `LOAD GATE TIMED OUT`,\n" +
 			"naming how long it waited and that nothing ran, so a pipe that loses the exit\n" +

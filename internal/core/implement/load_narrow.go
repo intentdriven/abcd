@@ -38,7 +38,7 @@ import (
 // otherwise take every dip the whole run waits for, and an older abcd also counts
 // them in its slots. So while a whole-run waiter that started earlier has waited
 // WaitNarrowYieldAfter with a whole slot free, narrow runs stop being admitted, for
-// at most WaitNarrowYieldCap in any one wait. The gap in admissions lets the
+// at most WaitNarrowYieldCap spent in any one wait. The gap in admissions lets the
 // running ones finish and the load fall, which opens that whole run; one still
 // shut after the cap is shut by something no narrow run does, such as its own
 // account's stricter limit, and costs a narrow run minutes, not the wait.
@@ -55,9 +55,9 @@ import (
 // by its own account's stricter settings, which no other account can see, so waiters
 // ahead that alone keep a narrow run shut are passed after WaitNarrowQueueCap.
 
-// NarrowRunsKey is the machine configuration key of the narrow runs' limit. It
-// has no environment variable: a repository's Makefile can set one, and the limit
-// is the person's own, as a repository file never sets it.
+// NarrowRunsKey is the machine configuration key of the narrow runs' limit. It has
+// no environment variable of its own, and no repository file sets it; like
+// load.preflights it follows the process's home.
 const NarrowRunsKey = "load.narrow_runs"
 
 // MaxNarrowRuns bounds the limit. The load limit and the memory floor are what
@@ -109,9 +109,10 @@ func narrowJitter() time.Duration {
 }
 
 // DefaultNarrowRuns is the limit with none set: half the online cores divided by
-// what one narrow run is bound to, and one at the least, so narrow runs never hold
-// more than half the machine. Sixteen cores admit four, eight cores in all; how much
-// of that a look grants beside whole runs is narrowRoom's.
+// what one narrow run is bound to, and one at the least, so an account's look admits
+// up to half the machine. Each other account can add one run over that, since a look
+// always keeps its own account one place (narrowCount). Sixteen cores admit four,
+// eight cores in all; how much of that a look grants beside whole runs is narrowRoom's.
 func DefaultNarrowRuns(cores int) int {
 	return max(1, cores/2/NarrowRunCores)
 }
@@ -222,11 +223,14 @@ func NarrowRuns(home string) (int, string, error) {
 const WaitOnWholeRun = "whole-run"
 
 // standAside reports whether this wait, at t, still stands aside for an overdue
-// whole run: from the first look that finds one, until WaitNarrowYieldCap passes,
-// once in a wait.
+// whole run, having spent less than WaitNarrowYieldCap of the wait doing so. Only the
+// time between looks that each found one is spent: a whole waiter's age says how long
+// it has queued, not how long a slot has been free for it, so one reads overdue the
+// moment a slot frees and opens about a minute later, and that minute is all it costs.
 func (w *holderWatch) standAside(t time.Time) bool {
-	if w.asideSince.IsZero() {
-		w.asideSince = t
+	if !w.asideLast.IsZero() {
+		w.asideSpent += t.Sub(w.asideLast)
 	}
-	return t.Sub(w.asideSince) < WaitNarrowYieldCap
+	w.asideLast = t
+	return w.asideSpent < WaitNarrowYieldCap
 }

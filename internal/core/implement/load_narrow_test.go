@@ -542,3 +542,30 @@ func TestPreflightSlotsClaimsNarrowRuns(t *testing.T) {
 		t.Fatalf("PreflightSlots = %d, %q, note %q, %v", n, src, note, err)
 	}
 }
+
+// TestAShortStandAsideKeepsTheRestOfTheCap: a long-queued whole waiter reads overdue
+// the moment a slot frees and opens within about a minute, so a narrow run that stood
+// aside for it has spent only that minute of its cap, and stands aside for the next.
+func TestAShortStandAsideKeepsTheRestOfTheCap(t *testing.T) {
+	overdue := poll{load: 3}
+	wholeWaiter(&overdue, 50001, WaitNarrowYieldAfter+time.Minute)
+	loaded := poll{load: 40}
+	var polls []poll
+	for range 8 { // two minutes aside, from the first look
+		polls = append(polls, overdue)
+	}
+	for range 24 { // six minutes shut on the load, nothing overdue
+		polls = append(polls, loaded)
+	}
+	polls = append(polls, overdue)
+	clock := &fakeClock{now: waitT0}
+	req := narrowReq(t.TempDir(), 60000, clock, polls...)
+	req.Timeout = 9 * time.Minute
+	res, err := WaitLoad(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != WaitTimedOut || !slices.Equal(res.Still, []string{WaitOnWholeRun}) {
+		t.Fatalf("result = %+v at %s, want it still standing aside: under two of its five minutes are spent", res, clock.Now().Sub(waitT0))
+	}
+}

@@ -1230,11 +1230,12 @@ your account's last whole run or race stage for two minutes, each long enough fo
 the load to show the run before; and by its own room. It takes no last look, so
 across accounts two opening in one moment can pass the room by one for those runs.
 
-Its room is `load.narrow_runs` in `~/.abcd.noindex/config.json`, a whole number from
-1 to 32, read through the same guarded read, with no environment variable and never
-from a repository; a value outside it refuses a narrow run's wait, naming the key.
+Its room is `load.narrow_runs` in `~/.abcd.noindex/config.json` under the process's
+home, as `load.preflights` is, a whole number from 1 to 32, read through the same
+guarded read, with no environment variable of its own and never from a repository; a value outside it refuses a narrow run's wait, naming the key.
 With none set it is half the online cores divided by 2, and one at the least, so
-narrow runs hold at most half the machine: 16 cores admit four, eight cores in all.
+an account admits up to half the machine: 16 cores admit four, eight cores in all,
+and each other account can add one run over that, since every account keeps a place.
 Two is a ceiling on what narrow runs took as measured on a 16-core machine (from
 about 0.2 of a core to under 2). On a machine the load shows busy, within two of the
 online cores, the two classes share one budget: the room is what the whole runs in
@@ -1245,8 +1246,8 @@ count against it, and another account's never take your last place.
 A narrow run cannot starve a whole run. While a whole-run waiter that started
 earlier has waited five minutes with a whole slot free, a narrow run stands
 aside, and the waiting line says so: admissions stop, the running ones finish,
-the load falls and the whole run opens. One wait stands aside for at most five
-minutes, so a whole run shut by something else, such as its own account's stricter
+the load falls and the whole run opens. One wait spends at most five minutes in all
+standing aside, so a whole run shut by something else, such as its own account's stricter
 wait limit, costs a narrow run minutes and not its wait. It never stands aside for
 a whole run with no slot free, which no narrow run is holding up. Waiters queued
 ahead that alone keep a narrow run shut stop counting after two minutes, since one

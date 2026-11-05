@@ -22,7 +22,7 @@ from the machine layer alone (the person's `~/.abcd.noindex/config.json`), 1 to
 4 and 1 by default, never from a repository
 (`internal/core/implement/load_slots.go`), the load gate's
 `load.narrow_runs`, read from the machine layer alone, 1 to 32 and by default half
-the online cores divided by 2, never from a repository or the environment
+the online cores divided by 2, never from a repository, with no environment variable
 (`internal/core/implement/load_narrow.go`), the load gate's memory floors
 `load.memory_floor_macos` (`warn` by default, or `critical`) and
 `load.memory_floor_linux` (a whole percentage from 1 to 100, 10 by default),
@@ -1120,7 +1120,7 @@ them: 1 to 4, 1 by default, never read from a repository, and read past, with
 a stderr note, when the file cannot be read for it, so a file that holds other
 settings never stops the load gate), `load.narrow_runs` (how many narrow test runs
 the load gate admits at once beside them: 1 to 32, by default half the online cores
-divided by 2, never read from a repository or the environment, read past when the
+divided by 2, never read from a repository, with no environment variable, read past when the
 file cannot be read for it, and a value out of range refusing a narrow run's wait) and `load.memory_floor_macos` and
 `load.memory_floor_linux` (the default floors applied, with a note, on stderr at a
 gate and on stdout at the load check, when the file cannot be read for them, and a value outside its set refusing the wait,

@@ -1009,7 +1009,9 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 			slices.Sort(res.Waiters)
 			crossedShut = counted < room
 		}
-		if overdue := machineload.OverdueWhole(snap, ahead, res.Slots, WaitNarrowYieldAfter); len(overdue) > 0 && watch.standAside(t) {
+		if overdue := machineload.OverdueWhole(snap, ahead, res.Slots, WaitNarrowYieldAfter); len(overdue) == 0 {
+			watch.asideLast = time.Time{}
+		} else if watch.standAside(t) {
 			shut = append(shut, WaitOnWholeRun)
 			res.Overdue = overdue
 		}
