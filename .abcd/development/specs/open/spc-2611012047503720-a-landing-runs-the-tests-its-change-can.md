@@ -39,6 +39,7 @@ Delivers itd-2611011325421304: on the person's machine, the pre-push check reuse
    - packages: Makefile, scripts, internal/core/lint, internal/abcdhome
    - tests: internal/core/lint (the preflight gate and Makefile tests), a preflight in a fresh worktree reporting reused packages, a test that reads a tracked file reused in a second worktree, and a same-size edit, amended or committed within the same second, rerun
    - needs: 1
+   - landed: 5795e213f668
 3. The saving is measured over ten landings
    - packages: .abcd/development/research/notes
    - tests: the research note's ten recorded reports against the 2026-11-01 baseline

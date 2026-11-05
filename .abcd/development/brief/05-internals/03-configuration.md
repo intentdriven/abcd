@@ -960,14 +960,18 @@ or that is a symlink. A second check waits for the lock, four hours by default,
 and then exits 3 having run nothing.
 
 **What is reused.** Go's cache sees the test binary, the cacheable flags, and the
-files and environment variables a test reads. A stage's results run under one fixed
+files and environment variables a test reads, at the value the go command itself
+was given, so a reused line runs with `PWD` set to the tree and no `OLDPWD`, and
+nothing in its key names the worktree. A stage's results run under one fixed
 `-timeout`, since the cache key holds it and a stage's own budget takes two values
 with the load. A race build is another binary, so the race stage reuses race
 results only and the unit stage's serve it nothing. A stage reports `reused N of M`
 and names each package that ran and why; its record under the local tier's
 `preflight-reuse/` names the commit and tree, and `scripts/preflight-receipt.sh`
 mints a full receipt only from both stages' passing records for that exact tree,
-and copies the counts into the receipt.
+and copies the counts into the receipt. A file a test leaves in the tree moves its
+directory's time, so a test that walks the tree does not replay; the stage names the
+file.
 
 **What is not.** Three things keep a passing result from standing in for a test
 whose real inputs changed, since the cache sees nothing a subprocess reads, a binary
