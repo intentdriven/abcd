@@ -199,7 +199,12 @@ load gate; each wait a move names is slept to the earliest time it names, at lea
 thirty seconds. Three runner failures in a row, or a judge's failure, enter the
 outage schedule (one minute, five, ten, then hourly), which hands nothing back and
 ends the drive at eight hours. A step that starts no agent and moves no stage waits
-on that same schedule, so no wait in a drive goes without a deadline.
+on that same schedule. A rate limit starts no agent until the reset the harness
+reports, or, with none reported, waits on that schedule; a limit that outlasts eight
+hours ends the drive, saying when it resets. A wait on work someone else holds, or on
+a contended lock, ends the drive after eight hours with nothing moved, so no wait goes
+without a deadline, and a long wait renews what the lanes hold. A preflight that exits
+0 and leaves no receipt runs once for a head, and the lane then goes to the stuck check.
 
 Before the first move the drive writes the walled directory's settings, abcd's hooks
 as commands naming its own binary and nothing else, and proves each wall, refusing
@@ -208,7 +213,11 @@ launch the tools the launch named, the approver as the only server, no plugin, n
 key, the guard refusing a command it is meant to refuse, and a settings file in the
 working tree having no effect, since the launch's setting sources name the walled
 directory alone. The settings are compared with what abcd wrote before each stage,
-and a difference stops the drive. A credential variable the harness would bill
+and a difference stops the drive; so does a changed machine declaration or anything
+else in that directory a launch would load. A stage carries only the variables it
+needs. Its shell runs under a home of its own in the walled directory, holding the
+person's git identity and filters and keeping their Go caches, and its file tools write
+only in its working tree and run directories. A credential variable the harness would bill
 through refuses the start, naming itd-2611011230226453, and so does a start from
 inside an agent's own session.
 

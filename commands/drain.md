@@ -43,8 +43,9 @@ Before its first move it shows the cap (eight unless `--max` says otherwise), an
 estimate of the agent runs, the runner and the route, and asks once; `--yes` is
 the scripted answer, and with no terminal nothing else answers. One short live
 launch then proves the walls, naming any that does not hold. Each stage's agent
-holds only the file and shell tools its launch names, reads settings from the
-walled directory alone, and starts only while those settings are what abcd wrote.
+holds only the file and shell tools its launch names, carries only the variables
+it needs, reads settings from the walled directory alone, and starts only while those
+settings are what abcd wrote. Its shell has a home of its own in that directory.
 
 It prints one line per step and logs them under `.abcd/.work.local/logs/`. It ends
 at the cap, when nothing is eligible, or after eight hours of runner failures. The
