@@ -48,8 +48,8 @@ const profilesLeaf = "profiles"
 
 // The refusals DriveProfile names, through errors.Is.
 var (
-	ErrNoProfile       = errors.New("no walled directory")
-	ErrSeveralProfiles = errors.New("more than one walled directory")
+	ErrNoProfile       = errors.New("no profile directory")
+	ErrSeveralProfiles = errors.New("more than one profile directory")
 )
 
 // credentialVars are the variables the harness would bill through or sign in

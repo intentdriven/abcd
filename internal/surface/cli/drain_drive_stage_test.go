@@ -377,7 +377,7 @@ func TestThePublicTextSaysWhatAProfileIs(t *testing.T) {
 				t.Errorf("the %s does not say %q", name, want)
 			}
 		}
-		for _, never := range []string{"sandboxed", "isolated", "proves the walls", "carries only the variables"} {
+		for _, never := range []string{"sandboxed", "isolated", "walled", "proves the wall", "carries only the variables"} {
 			if strings.Contains(flat, never) {
 				t.Errorf("the %s says %q", name, never)
 			}

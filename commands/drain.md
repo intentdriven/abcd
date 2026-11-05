@@ -32,7 +32,7 @@ This page always calls the drain one move at a time, and an agent never drives
 it any other way. `abcd drain --drive` is the person's own form of the verb, typed
 in a plain terminal with no host session; it refuses inside an agent's own session.
 
-It runs on this account's subscription alone, on one walled login: one directory
+It runs on this account's subscription alone, on one separate login: one directory
 under `~/.abcd.noindex/profiles/` that the person makes and logs the harness into
 once, in their own shell. abcd never reads, stores or forwards that login. The
 directory's `settings.json` is abcd's, rewritten at each start, and holds abcd's
@@ -46,7 +46,7 @@ launch then checks the tools, the guard and the shell, naming any wall that does
 hold. A profile is a separate login and settings on this one account, not a boundary: a
 stage's shell reads what this account can. Each stage's agent holds only the file and
 shell tools its launch names, starts from an allow-list of variables, reads settings
-from the walled directory alone, and starts only while those settings and abcd's binary
+from that directory alone, and starts only while those settings and abcd's binary
 are as they were at the start. Its shell's home is emptied at each launch. A file tool
 writes only in the stage's working tree and run directories, and a lane that changes the
 Makefile or `scripts/` is handed back before its preflight unless the drive was started

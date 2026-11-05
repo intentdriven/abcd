@@ -61,7 +61,7 @@ var driveWalls = driveWallChecks{
 		}
 		var lines []string
 		if replaced {
-			lines = append(lines, "the walled directory's settings were edited, and were replaced with abcd's: a drive's agents hold abcd's hooks and nothing else")
+			lines = append(lines, "the profile directory's settings were edited, and were replaced with abcd's: a drive's agents hold abcd's hooks and nothing else")
 		}
 		if err := runner.CheckWallSettings(p, bin); err != nil {
 			return lines, err
@@ -190,7 +190,7 @@ func driveConsent(cmd *cobra.Command, w io.Writer, f driveFlags, lanes, runs int
 	fmt.Fprintf(w, "  cap:      %d lane(s)\n", lanes)
 	fmt.Fprintf(w, "  estimate: about %d agent run(s) at most\n", runs)
 	fmt.Fprintf(w, "  runner: claude\n")
-	fmt.Fprintf(w, "  route:    this account's subscription, on the walled login %s\n", abcdhome.Display("profiles", filepath.Base(p.Dir)))
+	fmt.Fprintf(w, "  route:    this account's subscription, on the separate login %s\n", abcdhome.Display("profiles", filepath.Base(p.Dir)))
 	fmt.Fprintln(w, "  profile:  a separate login and settings on this one account; a stage's shell reads what this account can")
 	fmt.Fprintln(w, "  first:    one short live launch checks the tools, the guard and the shell, on the same subscription")
 	if f.yes {
