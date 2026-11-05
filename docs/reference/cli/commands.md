@@ -4156,6 +4156,10 @@ this clock holds from when this checkout first saw it; one this checkout cannot
 keep that sighting for (no .abcd/.work.local/) is not counted, and a notice
 line on stderr names it.
 
+Before a push that will move the head of the branch's armed or queued pull request,
+land withdraws the arming, reads it back and says so. Where it cannot, it refuses,
+nothing pushed.
+
 Exit 0 when every step did its act or said why it stopped. Exit 2 on a refusal,
 which names what was done before it; reservations that cannot be fetched are
 one, and so is an announcement that cannot be published, each made before

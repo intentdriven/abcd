@@ -38,12 +38,15 @@ package landing
 //     through claim.AnnounceBeforePush, the code `abcd announce` runs; the
 //     push waits until each is on origin, and one that cannot be published
 //     refuses the landing, nothing pushed.
-//  6. push (land.push): a plain `git push --porcelain origin
+//  6. withdraw (withdraw.go): an arming at the head the push will move is
+//     withdrawn and read back. One that cannot be, or a forge that cannot be
+//     asked, stops the landing, nothing pushed.
+//  7. push (land.push): a plain `git push --porcelain origin
 //     <head>:refs/heads/B` from the branch's checkout, so the commit pushed is
 //     the one the gate checked whatever the branch names by then, the
 //     repository's hooks running, never forced, never the default branch.
 //     Off, it prints the command and names the layer that turned it off.
-//  7. enqueue (land.enqueue): the open pull request for the branch, armed by
+//  8. enqueue (land.enqueue): the open pull request for the branch, armed by
 //     the merge gate (mergeGate), pinned to the head, and confirmed in the
 //     merge queue (PRStateQuery, asked of the repository the forge client
 //     named when origin was checked). Before it arms, a branch that shares a
@@ -53,8 +56,8 @@ package landing
 //     (stacked.go). With no pull request it composes the
 //     body from the branch's commits into the local tier, prints the
 //     `gh pr create` command naming it, and stops (prbody.go). It never opens a
-//     pull request, never overrides an arming someone else made, and never
-//     edits the repository's settings.
+//     pull request, never overrides an arming someone else made at a head the
+//     push does not move, and never edits the repository's settings.
 //
 // The trust boundaries: the remote is `origin` only, and its every fetch and
 // push URL must be the repository the forge client resolves here; a pull
@@ -356,11 +359,15 @@ func Land(cwd string, o Options) (Result, error) {
 	if err := announceStep(&res, o, root, dir, tracking); err != nil {
 		return res, err
 	}
+	atHead, err := withdrawBeforePush(&res, o, dir, origin.repo.NameWithOwner)
+	if err != nil {
+		return res, err
+	}
 	moved, err := push(&res, o, dir)
 	if err != nil {
 		return res, err
 	}
-	return res, enqueue(&res, o, dir, tracking, origin.repo.NameWithOwner, moved)
+	return res, enqueue(&res, o, dir, tracking, origin.repo.NameWithOwner, moved, atHead)
 }
 
 // branchRepoRoot is the repository layer's root for the landed branch's own
@@ -1227,8 +1234,9 @@ func listOwnPR(res *Result, o Options, dir, tracking string) (openPR, bool, erro
 
 // enqueue is step 6. tracking is origin's default branch as just fetched;
 // nameWithOwner is the repository as the forge client resolved it when origin
-// was checked, the one the pull request's state is asked of.
-func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved bool) error {
+// was checked, the one the pull request's state is asked of. atHead says an
+// arming is already at the local head, which land left as it is.
+func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved, atHead bool) error {
 	if !res.Enqueue.On {
 		res.add("enqueue", StatusOff, res.Enqueue.offText()+": nothing was armed or queued", "")
 		return nil
@@ -1281,8 +1289,8 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved 
 	case err != nil:
 		return err
 	}
-	owner, name, ok := strings.Cut(nameWithOwner, "/")
-	if !ok || owner == "" || name == "" || strings.Contains(name, "/") || !ownerName(owner) || !repoName(name) {
+	owner, name, ok := splitRepo(nameWithOwner)
+	if !ok {
 		return refuse("the forge client names the repository "+strconv.Quote(nameWithOwner)+", not owner/name, so land cannot ask the forge for pull request #"+n+"'s state, and nothing was armed",
 			"check the forge client (gh repo view), then run abcd land again")
 	}
@@ -1296,7 +1304,11 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved 
 		return refuse(fsutil.RedactHome(err.Error())+" at "+Remote+"/"+res.Default+", so nothing was armed", "correct the file it names, then run abcd land again")
 	}
 	if !d.Arm {
-		res.add("enqueue", StatusLeft, "pull request #"+n+": "+d.Why, "")
+		note := "pull request #" + n + ": " + d.Why
+		if atHead {
+			note += "; the arming already at " + short(res.Head) + " is left as it is"
+		}
+		res.add("enqueue", StatusLeft, note, "")
 		return nil
 	}
 	view := func() (prState, error) {

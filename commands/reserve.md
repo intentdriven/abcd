@@ -262,7 +262,12 @@ person: `reserve rel-vX.Y.Z --take-over`, which carries the withdrawals, then
 `reserve rel-vX.Y.Z --release`, which re-arms them.
 
 Each is re-armed in the form its withdrawer recorded, pinned to the head it
-had, as the withdrawer's own newest push records it. One
+had, as the withdrawer's own newest push records it, and only where the merge
+gate arms that head (`abcd land` says when: in `auto`, a review receipt in this
+checkout's worktrees naming it). Where it does not, nothing goes to the forge,
+the failure says why and the pull request stays withdrawn, and a later act asks
+the gate again, so recording the review re-arms it. An admission is held to
+the same gate. One
 already armed or queued again counts as done (`armed`); an admitted one found
 armed counts as done whatever its head, since the forge keeps an arming across
 pushes. One is skipped and

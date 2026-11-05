@@ -95,7 +95,13 @@ bound: the refusal says so and gives the push to run by hand.
    gate checked, never the branch's ref and never its configured upstream, so a
    branch that moves after the gate cannot change what is pushed. The push of a branch other
    than the default is not a merge, so it does not wait on the facilitator.
-4. **Enqueue** (`land.enqueue`). The branch's one open pull request from this
+4. **Withdraw** (before the push). Where the push will move the head of an armed
+   or queued pull request from this repository (`landing.ArmingsQuery`), the verb
+   withdraws the arming, reads it back and says so, and the enqueue step arms the
+   new head where the merge gate allows. Where it cannot make that withdrawal, it
+   refuses, nothing pushed, and the refusal says what to do. The committed pre-push
+   hook refuses a push that moves an armed pull request's head, naming this verb.
+5. **Enqueue** (`land.enqueue`). The branch's one open pull request from this
    repository is armed where the merge gate (below) allows, pinned to the head
    (`--match-head-commit`), and, where a queue gates the default branch,
    confirmed in the merge queue at that head, through the forge's GraphQL API (the forge client's pull-request

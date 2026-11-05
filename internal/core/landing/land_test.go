@@ -89,6 +89,21 @@ type fakeForge struct {
 	// listing alone.
 	armed    string
 	armedErr error
+	// armings are the nodes the forge answers ArmingsQuery with, one a call,
+	// the last repeated; none is no arming. armingsErr fails that read, and
+	// armingsAnswer replaces its whole answer.
+	armings       []string
+	armingsErr    error
+	armingsAnswer string
+	// failDisarm fails `pr merge --disable-auto`; dequeueErr fails the
+	// dequeue, and dequeueAnswer replaces its answer.
+	failDisarm    bool
+	dequeueErr    error
+	dequeueAnswer string
+	// pullErr fails the read of the pull request's author, reviewsErr the read
+	// of its reviews.
+	pullErr    error
+	reviewsErr error
 }
 
 // armedListing answers the listing of the open pull requests into main on
@@ -154,11 +169,17 @@ func (f *fakeForge) rest(args []string) (string, error) {
 		}
 		return a, nil
 	case path == "pulls/7/reviews?per_page=100":
+		if f.reviewsErr != nil {
+			return "", f.reviewsErr
+		}
 		if f.reviews == "" {
 			return approvedBy("maintainer-b", f.head), nil
 		}
 		return strings.ReplaceAll(f.reviews, "@HEAD@", f.head), nil
 	case path == "pulls/7":
+		if f.pullErr != nil {
+			return "", f.pullErr
+		}
 		author := f.author
 		if author == "" {
 			author = "author-a"
@@ -223,6 +244,18 @@ func (f *fakeForge) run(_ string, args ...string) (string, error) {
 		if slices.Contains(args, "query="+claim.ArmedPullRequestsQuery) {
 			return f.armedListing(args)
 		}
+		if slices.Contains(args, "query="+ArmingsQuery) {
+			return f.armingsAnswered(args)
+		}
+		if slices.Contains(args, "query="+claim.DequeueMutation) {
+			if f.dequeueErr != nil {
+				return "", f.dequeueErr
+			}
+			if f.dequeueAnswer != "" {
+				return f.dequeueAnswer, nil
+			}
+			return `{"data":{"dequeuePullRequest":{"clientMutationId":null}}}`, nil
+		}
 		// The pull request's state is asked of the repository the forge
 		// resolved (o/r), through the one pinned query.
 		n, ok := strings.CutPrefix(args[len(args)-1], "n=")
@@ -254,6 +287,9 @@ func (f *fakeForge) run(_ string, args ...string) (string, error) {
 		}
 		return `{"data":{"repository":{"pullRequest":` + strings.ReplaceAll(v, "@HEAD@", f.head) + `}}}`, nil
 	case "pr merge":
+		if slices.Contains(args, "--disable-auto") && f.failDisarm {
+			return "", errors.New("fake forge: the disarm failed")
+		}
 		if slices.Contains(args, "--auto") {
 			if f.arms++; f.arms == f.failArm {
 				return "", errors.New("fake forge: the arm failed")
@@ -262,6 +298,33 @@ func (f *fakeForge) run(_ string, args ...string) (string, error) {
 		return "", nil
 	}
 	return "", fmt.Errorf("fake forge: unexpected call %v", args)
+}
+
+// armingsAnswered answers ArmingsQuery on a branch of owner/name, and refuses
+// any other arguments and a query the pinned schema does not have.
+func (f *fakeForge) armingsAnswered(args []string) (string, error) {
+	owner, name, _ := strings.Cut(f.owner(), "/")
+	want := []string{"api", "graphql", "-f", "query=" + ArmingsQuery, "-f", "o=" + owner, "-f", "r=" + name}
+	if len(args) != len(want)+2 || !slices.Equal(args[:len(want)], want) || args[len(want)] != "-f" || !strings.HasPrefix(args[len(want)+1], "b=") {
+		return "", fmt.Errorf("fake forge: unexpected arming read %v", args)
+	}
+	if err := ghcontract.CheckGraphQL(ArmingsQuery); err != nil {
+		return "", err
+	}
+	if f.armingsErr != nil {
+		return "", f.armingsErr
+	}
+	if f.armingsAnswer != "" {
+		return f.armingsAnswer, nil
+	}
+	nodes := "[]"
+	if len(f.armings) > 0 {
+		nodes = f.armings[0]
+		if len(f.armings) > 1 {
+			f.armings = f.armings[1:]
+		}
+	}
+	return `{"data":{"viewer":{"login":"alice"},"repository":{"pullRequests":{"nodes":` + nodes + `}}}}`, nil
 }
 
 // owner is the forge's owner/name for the repository.

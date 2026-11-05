@@ -1083,6 +1083,12 @@ func landMerged(c Context, lane *Lane) (Outcome, error) {
 					return *out, nil
 				}
 				queued = wait
+			} else {
+				wait, err := watchAutoMerge(c, *lane)
+				if err != nil {
+					return Outcome{}, err
+				}
+				queued = wait
 			}
 		}
 		return Outcome{}, contend(string(StageLand), "", lane.ID,

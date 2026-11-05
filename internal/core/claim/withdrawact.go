@@ -696,7 +696,8 @@ func withoutWithdrawal(ws []Withdrawal, n int) []Withdrawal {
 // that merged in the cut changes state without being named as settled. A
 // re-arm the forge refuses is counted in the local tier; at the
 // maxRearmRefusals-th it is settled as refused, for its owner, and no copy
-// tries again. why is set, and nothing is touched, when the forge cannot be
+// tries again. One the merge gate does not arm goes nowhere near the forge and
+// stays to settle, for a later act to ask the gate again. why is set, and nothing is touched, when the forge cannot be
 // named or gh acts as another account than a's holder.
 func rearmMine(a actor, ws []Withdrawal, vouched map[Withdrawal]bool) (out, settled []Withdrawal, changed bool, fails []ForgeFailure, why string) {
 	out = slices.Clone(ws)
@@ -728,6 +729,12 @@ func rearmMine(a actor, ws []Withdrawal, vouched map[Withdrawal]bool) (out, sett
 				// a failure on the way to it (the network, a 5xx, gh out of
 				// time) says nothing of whether it would be taken.
 				var ae *armError
+				if errors.As(err, &ae) && ae.gated {
+					// Nothing went to the forge: it stays withdrawn, and a later
+					// act asks the gate again.
+					fails = append(fails, ForgeFailure{Number: w.Number, Act: ForgeRearm, Reason: err.Error()})
+					continue
+				}
 				if !errors.As(err, &ae) || !ae.refused {
 					fails = append(fails, ForgeFailure{Number: w.Number, Act: ForgeRearm,
 						Reason: err.Error() + " (the forge did not answer the arming, so it is not counted as a refusal)"})
@@ -1374,7 +1381,9 @@ func (p *prepared) admitAfter(tree, sha string, m message, w Withdrawal, state s
 		return sha, nil
 	}
 	reason := "the forge needs it merged by hand (it can merge now, and there is no merge queue to put it in)"
-	if err != nil {
+	if ae := (*armError)(nil); errors.As(err, &ae) && ae.gated {
+		reason = err.Error()
+	} else if err != nil {
 		reason = "the forge refused its re-arm (" + err.Error() + ")"
 	}
 	back := m

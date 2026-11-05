@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Pre-push gate, run on every clone via the global ~/.githooks dispatcher
-# (core.hooksPath). Two jobs, and neither runs the preflight:
+# (core.hooksPath). Three jobs, and none runs the preflight:
 #
 #   1. Local branch protection — a fast local echo of the server-side rulesets
 #      (applied and mirrored under .abcd/work/rulesets/), so a bad push fails
@@ -110,6 +110,11 @@
 #      A ref under one was pushed without a receipt, so it vouches for nothing:
 #      counting it would let a commit pushed to <prefix><id> first reach any
 #      other branch with none.
+#
+#   3. Once the two jobs above pass, a push that moves the head of an armed or
+#      queued pull request of the repository it reaches is refused, naming
+#      `abcd land` and the command that withdraws the arming. The hook changes
+#      nothing on the forge: it stops and says so.
 #
 # `git push --no-verify` skips this hook, as it skips every hook; CI re-runs
 # every gate on the pushed commit and is the authority either way.
@@ -395,6 +400,7 @@ on_a_remote() {
 }
 
 missing=""
+moves=""
 while read -r local_ref local_sha remote_ref remote_sha; do
   branch="${remote_ref#refs/heads/}"
 
@@ -463,6 +469,18 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   commit="$(git rev-parse --verify --quiet "$local_sha^{commit}" 2>/dev/null || true)"
   [ -n "$commit" ] || continue
 
+  # A branch this push fast-forwards, for the arming check once the gates have
+  # passed. git hands the hook a ref it will reject when it does not hold the
+  # remote's tip, so only an ancestor this clone holds counts.
+  case "$remote_ref" in
+  refs/heads/*)
+    if ! is_null_id "$remote_sha" && [ "$remote_sha" != "$commit" ] &&
+      git merge-base --is-ancestor "$remote_sha" "$commit" 2>/dev/null; then
+      moves="$moves$branch $commit"$'\n'
+    fi
+    ;;
+  esac
+
   # Already on a remote: pushing it moves no new commit off this machine. Only
   # a ref outside every receipt-less prefix counts (on_a_remote).
   if on_a_remote "$commit"; then
@@ -483,4 +501,99 @@ if [ -n "$missing" ]; then
   echo "          (staged, unstaged and untracked changes all withhold the receipt), then push" >&2
   echo "          again${remote_name:+ to $remote_name}." >&2
   exit 1
+fi
+
+# bounded runs a forge call under a time limit: git holds the push's connection
+# open while this hook runs, and a stalled call must not outlast it.
+bounded() {
+  local pid dog rc=0
+  GH_PROMPT_DISABLED=1 "$@" </dev/null &
+  pid=$!
+  (
+    sleep 20
+    kill "$pid" 2>/dev/null
+  ) >/dev/null 2>&1 &
+  dog=$!
+  wait "$pid" || rc=$?
+  kill "$dog" 2>/dev/null || true
+  wait "$dog" 2>/dev/null || true
+  return "$rc"
+}
+
+# The question the landing asks (landing.ArmingsQuery).
+arming_query='query($o:String!,$r:String!,$b:String!){viewer{login} repository(owner:$o,name:$r){pullRequests(states:OPEN,headRefName:$b,first:100){pageInfo{hasNextPage} nodes{number id headRefOid isCrossRepository isInMergeQueue mergeQueueEntry{enqueuer{login}} autoMergeRequest{mergeMethod enabledBy{login}}}}}}'
+arming_nodes='.data.repository.pullRequests | (if .pageInfo.hasNextPage then "more" else empty end), (.nodes[] | select((.isCrossRepository | not) and (.isInMergeQueue or .autoMergeRequest != null)) | [.number, .headRefOid, .isInMergeQueue] | @tsv)'
+
+# push_reaches succeeds when the URL this push goes to, which git hands the hook,
+# is the forge's repository: the owner and name match, on the forge's host or an
+# ssh alias that resolves to it.
+push_reaches() {
+  local url="${1%/}" repo="$2" forge_host host path rest real
+  forge_host="$(lower "$3")"
+  url="${url%.git}"
+  case "$url" in
+  *://*)
+    rest="${url#*://}"
+    rest="${rest##*@}"
+    host="${rest%%/*}"
+    host="${host%%:*}"
+    path="${rest#*/}"
+    ;;
+  /* | ./* | ../*) return 1 ;;
+  *:*)
+    host="${url%%:*}"
+    host="${host##*@}"
+    path="${url#*:}"
+    path="${path#/}"
+    ;;
+  *) return 1 ;;
+  esac
+  [ "$(lower "$path")" = "$(lower "$repo")" ] || return 1
+  host="$(lower "$host")"
+  case "$host" in
+  "" | -*) return 1 ;;
+  esac
+  if [ "$host" = "$forge_host" ] || [ "$host" = "ssh.$forge_host" ]; then
+    return 0
+  fi
+  command -v ssh >/dev/null 2>&1 || return 1
+  real="$(ssh -G "$host" 2>/dev/null | sed -n '/^hostname /{s///p;q;}' || true)"
+  real="$(lower "$real")"
+  [ "$real" = "$forge_host" ] || [ "$real" = "ssh.$forge_host" ]
+}
+
+if [ -n "$moves" ]; then
+  if ! command -v gh >/dev/null 2>&1; then
+    echo "pre-push: gh is not installed, so this push's branches were not read for an arming." >&2
+  elif ! forge_answer="$(bounded gh repo view --json nameWithOwner,url --jq '.nameWithOwner + " " + .url')" || [ -z "$forge_answer" ]; then
+    echo "pre-push: gh gave no answer naming this repository, so this push's branches were not read for an arming." >&2
+  else
+    read -r forge_repo forge_url <<<"$forge_answer"
+    forge_host="${forge_url#*://}"
+    forge_host="${forge_host%%/*}"
+    if push_reaches "${2:-}" "$forge_repo" "$forge_host"; then
+      while read -r branch commit; do
+        [ -n "$branch" ] || continue
+        if ! armed="$(bounded gh api graphql -f query="$arming_query" -f o="${forge_repo%%/*}" -f r="${forge_repo#*/}" -f b="$branch" --jq "$arming_nodes")"; then
+          echo "pre-push: gh gave no answer on whether a pull request for '$branch' is armed." >&2
+          continue
+        fi
+        while IFS=$'\t' read -r n head queued; do
+          if [ "$n" = "more" ]; then
+            echo "pre-push: read the first 100 open pull requests from a branch named '$branch'." >&2
+            continue
+          fi
+          [ -n "$n" ] && [ "$head" != "$commit" ] || continue
+          echo "pre-push: refusing the push to '$branch': pull request #$n is armed at ${head:0:12}, and this push moves its head to ${commit:0:12}." >&2
+          echo "          Land it with \`abcd land\`, which withdraws the arming and arms a head the merge gate arms, or withdraw it yourself, then push again:" >&2
+          if [ "$queued" = "true" ]; then
+            echo "          take it out of the merge queue on its page, and turn its auto-merge off (gh pr merge $n --disable-auto) if it is on." >&2
+          else
+            echo "          gh pr merge $n --disable-auto" >&2
+          fi
+          exit 1
+        done <<<"$armed"
+      done <<<"$moves"
+    fi
+  fi
 fi

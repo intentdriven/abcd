@@ -142,7 +142,8 @@ func newFakeForge(t *testing.T, prs map[int]*fakePR) *fakeForge {
 	t.Helper()
 	f := &fakeForge{t: t, prs: prs, refuse: map[string]string{}, answer: map[string]string{}, logins: map[string]string{}, pusherOf: map[string]string{}}
 	prev := releaseForge
-	releaseForge = mergeForge{repo: func(string) (string, string, error) { return "acme", "widgets", nil }, graphql: f.graphql, login: f.login, pushers: f.pushers}
+	releaseForge = mergeForge{repo: func(string) (string, string, error) { return "acme", "widgets", nil }, graphql: f.graphql, login: f.login, pushers: f.pushers,
+		armGate: func(_, _, _, _ string) (bool, string, error) { return true, "", nil }}
 	t.Cleanup(func() { releaseForge = prev })
 	return f
 }

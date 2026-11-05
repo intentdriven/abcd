@@ -115,6 +115,9 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			"this clock holds from when this checkout first saw it; one this checkout cannot\n" +
 			"keep that sighting for (no .abcd/.work.local/) is not counted, and a notice\n" +
 			"line on stderr names it.\n\n" +
+			"Before a push that will move the head of the branch's armed or queued pull request,\n" +
+			"land withdraws the arming, reads it back and says so. Where it cannot, it refuses,\n" +
+			"nothing pushed.\n\n" +
 			"Exit 0 when every step did its act or said why it stopped. Exit 2 on a refusal,\n" +
 			"which names what was done before it; reservations that cannot be fetched are\n" +
 			"one, and so is an announcement that cannot be published, each made before\n" +

@@ -97,10 +97,15 @@ that name with none at this head, since the proof may lie past the bound.
    note says that (status `skipped`). It needs the local tier
    (`.abcd/.work.local/`) and your GitHub username, worked out as
    `/abcd:announce` works it out; a branch that names no item needs neither.
-3. **push** (`land.push`): the plain push above, of the gated commit whatever
+3. **withdraw**: where the push will move the head of an armed or queued pull
+   request from this repository, land withdraws the arming first, reads it back
+   and says so in this step's note, and the enqueue step arms the new head where
+   the merge gate allows. Where land cannot make that withdrawal, it refuses,
+   nothing pushed, and the refusal says what to do. Relay the note.
+4. **push** (`land.push`): the plain push above, of the gated commit whatever
    the branch names by then. A push git refuses carries git's own per-ref
    report.
-4. **enqueue** (`land.enqueue`): the branch's one open pull request from this
+5. **enqueue** (`land.enqueue`): the branch's one open pull request from this
    repository (a fork's pull request from a branch of the same name is set
    aside, and refused only when it is the only one), whose head on the forge
    is the pushed head. Right after a push that moved the branch the forge can

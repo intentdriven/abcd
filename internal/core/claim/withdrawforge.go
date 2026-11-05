@@ -75,7 +75,24 @@ type mergeForge struct {
 	// reservation branch, asked by its full ref (withdrawpush.go): what a
 	// re-arm and the launch check's exemption are held to.
 	pushers PusherLookup
+	// armGate is the merge gate (ArmGate): every arming of a withdrawn merge
+	// is held to it. nil arms nothing.
+	armGate ArmGate
 }
+
+// ArmGate says whether the merge gate arms pull request pr of repo
+// ("owner/name") at head, and why not; an error is a gate that could not
+// answer. It is the landing package's, which this one cannot import.
+type ArmGate func(root, repo, pr, head string) (arm bool, why string, err error)
+
+// wiredArmGate is the gate SetArmGate registered.
+var wiredArmGate ArmGate
+
+// SetArmGate registers the merge gate every path to a re-arm is held to.
+func SetArmGate(g ArmGate) { wiredArmGate = g }
+
+// ArmGateWired reports whether a merge gate is registered.
+func ArmGateWired() bool { return wiredArmGate != nil }
 
 // PRCommenter posts one comment on the pull request whose node id is
 // subject, and reads it back from the forge: posted reports whether the
@@ -95,7 +112,13 @@ var releaseForge = productionForge()
 // productionForge is the forge as abcd runs it: gh for every call.
 func productionForge() mergeForge {
 	return mergeForge{repo: originRepo, graphql: ghGraphQL, login: ghLogin, pushers: reservationPushers,
-		comments: ghCommenter{graphql: ghGraphQL}}
+		comments: ghCommenter{graphql: ghGraphQL},
+		armGate: func(root, repo, pr, head string) (bool, string, error) {
+			if wiredArmGate == nil {
+				return false, "", errors.New("no merge gate is wired in this binary")
+			}
+			return wiredArmGate(root, repo, pr, head)
+		}}
 }
 
 // ghLogin is the login the session's gh token answers the user endpoint
@@ -111,7 +134,7 @@ func ghLogin(root string) (string, error) {
 func SetMergeForgeForTest(repo func(root string) (string, string, error),
 	graphql func(root, doc string, vars map[string]string, ints map[string]int) ([]byte, error)) (restore func()) {
 	prev := releaseForge
-	releaseForge = mergeForge{repo: repo, graphql: graphql, login: prev.login, pushers: prev.pushers}
+	releaseForge = mergeForge{repo: repo, graphql: graphql, login: prev.login, pushers: prev.pushers, armGate: prev.armGate}
 	return func() { releaseForge = prev }
 }
 
@@ -246,10 +269,12 @@ func forgeTransient(msg string) bool {
 }
 
 // armError is a re-arm the forge did not take: why, and whether the forge
-// refused it (forgeRefused), which alone counts toward maxRearmRefusals.
+// refused it (forgeRefused), which alone counts toward maxRearmRefusals, or the
+// merge gate held it back (gated) with nothing sent to the forge.
 type armError struct {
 	reason  string
 	refused bool
+	gated   bool
 }
 
 func (e *armError) Error() string { return e.reason }
@@ -438,11 +463,15 @@ func (f mergeForge) inspect(root, owner, name string, w Withdrawal) (string, err
 // has nothing to wait for.
 const cleanStatus = "clean status"
 
-// arm sends w's re-arm, pinned to its head. A refusal for clean status
-// settles it as needing a manual merge (dcn-2610230328230096): abcd never
-// merges it outright, and never tries the arming again. Any other failure is
-// an *armError saying whether the forge refused it.
+// arm sends w's re-arm, pinned to its head, once the merge gate arms that head
+// (gateHead). A refusal for clean status settles it as needing a manual merge
+// (dcn-2610230328230096): abcd never merges it outright, and never tries the
+// arming again. Any other failure is an *armError saying whether the forge
+// refused it.
 func (f mergeForge) arm(root string, w Withdrawal) (string, error) {
+	if err := f.gateHead(root, w); err != nil {
+		return "", err
+	}
 	var serr error
 	if w.Form == FormQueue {
 		serr = f.send(root, EnqueueMutation, map[string]string{"id": w.ID, "h": w.Head}, nil, nil)
@@ -456,6 +485,29 @@ func (f mergeForge) arm(root string, w Withdrawal) (string, error) {
 		return "", &armError{reason: forgeReason(serr), refused: forgeRefused(serr)}
 	}
 	return WithdrawnRearmed, nil
+}
+
+// gateHead holds an arming to the merge gate: the head w records was armed once
+// and may have no review receipt here, so it is asked of the gate every time.
+// Its refusal is a *armError marked gated: nothing went to the forge, nothing is
+// settled, and a later act asks again, so a receipt recorded since arms it.
+func (f mergeForge) gateHead(root string, w Withdrawal) error {
+	held := func(why string) error { return &armError{reason: why, gated: true} }
+	if f.armGate == nil {
+		return held("no merge gate is wired in this binary, so its head " + w.Head[:12] + " is not armed")
+	}
+	owner, name, err := f.repo(root)
+	if err != nil {
+		return held("the merge gate cannot be asked about its head " + w.Head[:12] + ": " + err.Error())
+	}
+	arm, why, err := f.armGate(root, owner+"/"+name, strconv.Itoa(w.Number), w.Head)
+	switch {
+	case err != nil:
+		return held("the merge gate cannot be asked about its head " + w.Head[:12] + ": " + err.Error())
+	case !arm:
+		return held("the merge gate does not arm its head " + w.Head[:12] + ": " + why)
+	}
+	return nil
 }
 
 // commentBody is the one fixed sentence the writer posts on w's pull request
