@@ -371,6 +371,8 @@ func TestThePublicTextSaysWhatAProfileIs(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, text := range map[string]string{"consent": string(consent), "help": string(help), "page": string(page), "brief": string(brief)} {
+		// This world's own directory is called walled; the consent names it.
+		text = strings.ReplaceAll(text, abcdhome.Display("profiles", "walled"), "")
 		flat := strings.Join(strings.Fields(text), " ")
 		for _, want := range []string{"separate login and settings", "reads what this account can"} {
 			if !strings.Contains(flat, want) {
