@@ -58,6 +58,17 @@ type Options struct {
 	// NetworkProbe proves the network back for the shared outage probe a
 	// step runs when it is due; nil is implement.RemoteProbe at the checkout.
 	NetworkProbe func() (bool, string)
+	// OutageSession is the session the shared outage is recorded and probed for
+	// when no other is known, and it keeps probing past the schedule's give-up: a
+	// terminal drive's under a bound, which has a bound of its own. Unlike Session
+	// it claims nothing in the shared run.
+	OutageSession string
+	// RunnerFailed is told of each launch that failed, with what it showed; nil
+	// tells no one. A terminal run reads a limit and keeps its evidence from it.
+	RunnerFailed func(role string, fl *runner.Failure)
+	// RunnerStarting is told of each agent about to start, by role; nil tells no
+	// one. A terminal run says so on its screen and in its log.
+	RunnerStarting func(role string)
 	// Runners is the runner configuration read before a run is created
 	// (LoadRunners). A new run's budget check (budget.go) asks each runner a
 	// role of the run is routed to for its remaining quota; nil leaves every
@@ -138,6 +149,31 @@ func (o Options) roots(repoRoot string) layered.Roots {
 	}
 	r, _ := layered.RootsFor(repoRoot)
 	return r
+}
+
+// startingLaunch tells RunnerStarting of an agent about to start.
+func (o Options) startingLaunch(role string) {
+	if o.RunnerStarting != nil {
+		o.RunnerStarting(role)
+	}
+}
+
+// failedLaunch tells RunnerFailed of what a dispatch ended on, an error or a
+// failure it fell back from.
+func (o Options) failedLaunch(role string, err error, fl *runner.Failure) {
+	if o.RunnerFailed == nil {
+		return
+	}
+	if err != nil {
+		var f *runner.Failure
+		if !errors.As(err, &f) {
+			return
+		}
+		fl = f
+	}
+	if fl != nil {
+		o.RunnerFailed(role, fl)
+	}
 }
 
 func (o Options) now() time.Time {
@@ -346,8 +382,11 @@ type StartResult struct {
 
 // StepResult is what advance and Receipt return.
 type StepResult struct {
-	RunID string `json:"run_id"`
-	Lane  string `json:"lane,omitempty"`
+	// stepNote is what a step of a stage that takes several invocations did, the
+	// landing's among them: it moved the lane with no stage finished.
+	stepNote string
+	RunID    string `json:"run_id"`
+	Lane     string `json:"lane,omitempty"`
 	// PerformedStage is the stage this call completed; empty when it completed none
 	// (the lane awaits a receipt, or the run is complete).
 	PerformedStage Stage `json:"performed_stage,omitempty"`

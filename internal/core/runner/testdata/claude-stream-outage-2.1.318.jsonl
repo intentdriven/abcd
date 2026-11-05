@@ -1,0 +1,13 @@
+{"type": "system", "subtype": "init", "tools": []}
+{"type": "system", "subtype": "api_retry", "attempt": 1, "max_retries": 10, "retry_delay_ms": 587, "error_status": null, "error": "unknown"}
+{"type": "system", "subtype": "api_retry", "attempt": 2, "max_retries": 10, "retry_delay_ms": 1034, "error_status": null, "error": "unknown"}
+{"type": "system", "subtype": "api_retry", "attempt": 3, "max_retries": 10, "retry_delay_ms": 2121, "error_status": null, "error": "unknown"}
+{"type": "system", "subtype": "api_retry", "attempt": 4, "max_retries": 10, "retry_delay_ms": 4385, "error_status": null, "error": "unknown"}
+{"type": "system", "subtype": "api_retry", "attempt": 5, "max_retries": 10, "retry_delay_ms": 8015, "error_status": null, "error": "unknown"}
+{"type": "system", "subtype": "api_retry", "attempt": 6, "max_retries": 10, "retry_delay_ms": 16934, "error_status": null, "error": "unknown"}
+{"type": "system", "subtype": "api_retry", "attempt": 7, "max_retries": 10, "retry_delay_ms": 33459, "error_status": null, "error": "unknown"}
+{"type": "system", "subtype": "api_retry", "attempt": 8, "max_retries": 10, "retry_delay_ms": 35900, "error_status": null, "error": "unknown"}
+{"type": "system", "subtype": "api_retry", "attempt": 9, "max_retries": 10, "retry_delay_ms": 39391, "error_status": null, "error": "unknown"}
+{"type": "system", "subtype": "api_retry", "attempt": 10, "max_retries": 10, "retry_delay_ms": 39177, "error_status": null, "error": "unknown"}
+{"type": "assistant", "error": "server_error", "api_error": "connection_failed"}
+{"type": "result", "subtype": "success", "is_error": true, "api_error_status": null, "api_error": "connection_failed", "stop_reason": "stop_sequence", "duration_ms": 181107, "duration_api_ms": 0, "num_turns": 1, "total_cost_usd": 0}

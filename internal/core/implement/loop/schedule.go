@@ -754,7 +754,11 @@ func performMove(repoRoot string, st *State, steps Stages, w want, now time.Time
 		}
 	}
 	st.UpdatedAt = now
-	return laneResult(*st, lane, performed, handed), nil
+	res := laneResult(*st, lane, performed, handed)
+	if out.Stay || out.Goto != "" {
+		res.stepNote = out.Note
+	}
+	return res, nil
 }
 
 // holdWaiting writes the work the ceiling holds back into the run's waiting

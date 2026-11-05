@@ -36,6 +36,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -301,23 +302,31 @@ func (c *ClaudeCLI) Run(ctx context.Context, req Request) (Answer, []byte, error
 	res, err := launch.run(ctx, Claude, bin, c.args(req), seal, req.Dir, req.timeout())
 	transcript := res.transcript()
 	if err != nil {
-		// A harness that stopped on a rate limit exits non-zero: what its
-		// events say is the reason, not the exit.
+		// A harness that stopped on a rate limit exits non-zero, and one that
+		// reported a limit and then waited until it was killed is that limit
+		// too: what its events say is the reason, not the exit.
 		if what := claudeRateLimit(res.stdout); what != "" {
-			fl := rateLimited(what)
-			fl.ResetsAt = claudeRateLimitReset(res.stdout)
+			fl := limitFailure(what, res.stdout)
+			fl.Seen, fl.Model = claudeSeen(res), req.modelOr(c.model)
 			return Answer{}, transcript, fl
 		}
 		var fl *Failure
-		if errors.Is(err, ErrKilled) && errors.As(err, &fl) {
-			// Killed, it wrote no result event: what it spent is read
-			// from the stream it did write (iss-2611021751406429).
-			fl.Spent = spendOf(claudeSpent(res.stdout))
+		if errors.As(err, &fl) {
+			keepSeen(fl, res, req.modelOr(c.model))
+			if errors.Is(err, ErrKilled) {
+				// Killed, it wrote no result event: what it spent is read
+				// from the stream it did write (iss-2611021751406429).
+				fl.Spent = spendOf(claudeSpent(res.stdout))
+			}
 		}
 		return Answer{}, transcript, err
 	}
 	ans, err := parseClaude(res.stdout)
 	if err != nil {
+		var fl *Failure
+		if errors.As(err, &fl) {
+			keepSeen(fl, res, req.modelOr(c.model))
+		}
 		return ans, transcript, err
 	}
 	ans.ModelAsked, ans.PromptSHA256 = c.askedModel(req), promptSHA256(req)
@@ -332,59 +341,119 @@ func rateLimited(what string) *Failure {
 	return fail(Claude, ReasonRateLimited, "its event stream reports %s and the run did not finish", what)
 }
 
-// claudeRateLimitReset is when the rejected limit the event stream reports
-// resets, the zero time when it says none. Each line is read leniently, as
-// claudeRateLimit reads it.
+// limitFailure is the rate-limit failure for what the event stream out reports,
+// with the reset it names.
+func limitFailure(what string, out []byte) *Failure {
+	fl := rateLimited(what)
+	fl.ResetsAt = claudeRateLimitReset(out)
+	return fl
+}
+
+// claudeRateLimitReset is when the limit the event stream ends on resets, the zero
+// time when it names none.
 func claudeRateLimitReset(out []byte) time.Time {
-	var at time.Time
-	for _, line := range bytes.Split(out, []byte("\n")) {
-		var ev struct {
-			Type string `json:"type"`
-			Info struct {
-				Status   string `json:"status"`
-				ResetsAt int64  `json:"resetsAt"`
-			} `json:"rate_limit_info"`
-		}
-		if json.Unmarshal(bytes.TrimSpace(line), &ev) != nil || ev.Type != "rate_limit_event" || ev.Info.Status != "rejected" || ev.Info.ResetsAt <= 0 {
-			continue
-		}
-		at = time.Unix(ev.Info.ResetsAt, 0).UTC()
-	}
+	_, at := claudeLimitState(out)
 	return at
 }
 
-// claudeRateLimit names the rate-limit response the event stream carries, ""
-// when it carries none. The claude CLI (2.1) reports one in two shapes: a
-// rate_limit_event whose rate_limit_info.status is rejected (allowed and
-// allowed_warning are a run going on), and an assistant message whose error is
-// rate_limit. Each line is read leniently and on its own, so a field this
-// reader does not know never turns a limit into an unparsable run.
+// claudeRateLimit names the rate-limit response the event stream ends on, "" when
+// it ends on none.
 func claudeRateLimit(out []byte) string {
+	what, _ := claudeLimitState(out)
+	return what
+}
+
+// claudeLimitState reads the stream's latest state of its limits: what it reports,
+// "" for none, and the reset it names, the zero time for none. Three shapes are
+// read: a rate_limit_event whose rate_limit_info.status is rejected (allowed and
+// allowed_warning are a run going on), an assistant message whose error is
+// rate_limit, and a failed result that names the API's limit status. Which of them
+// a limit produces in a headless run has not been observed here, so each stands on
+// its own, and the evidence file a drive leaves says which one came. A later event
+// takes back an earlier one: the same window's status, an assistant message with no
+// error, or a result that is no error. Windows are told apart, so one window's
+// status lifts no other's, and of several still rejected the latest reset stands.
+// Each line is read leniently and on its own, so a field this reader does not know
+// never turns a limit into an unparsable run.
+func claudeLimitState(out []byte) (string, time.Time) {
+	rejected := map[string]time.Time{}
+	var assistant, result bool
+	clearAll := func() {
+		clear(rejected)
+		assistant, result = false, false
+	}
 	for _, line := range bytes.Split(out, []byte("\n")) {
+		line = bytes.TrimSpace(line)
 		var ev struct {
 			Type  string          `json:"type"`
 			Error json.RawMessage `json:"error"`
 			Info  json.RawMessage `json:"rate_limit_info"`
 		}
-		if json.Unmarshal(bytes.TrimSpace(line), &ev) != nil {
+		if json.Unmarshal(line, &ev) != nil {
 			continue
 		}
 		switch ev.Type {
 		case "rate_limit_event":
 			var info struct {
-				Status string `json:"status"`
+				Status   string  `json:"status"`
+				ResetsAt float64 `json:"resetsAt"`
+				Window   string  `json:"rateLimitType"`
 			}
-			if json.Unmarshal(ev.Info, &info) == nil && info.Status == "rejected" {
-				return "a rejected rate_limit_event"
+			if json.Unmarshal(ev.Info, &info) != nil {
+				continue
+			}
+			switch {
+			case info.Status == "rejected":
+				var at time.Time
+				if info.ResetsAt > 0 {
+					at = time.Unix(int64(info.ResetsAt), 0).UTC()
+				}
+				rejected[info.Window] = at
+			case info.Window == "":
+				clear(rejected)
+			default:
+				delete(rejected, info.Window)
 			}
 		case "assistant":
 			var e string
-			if json.Unmarshal(ev.Error, &e) == nil && e == "rate_limit" {
-				return "an assistant message whose error is rate_limit"
+			switch {
+			case len(ev.Error) == 0:
+				clearAll()
+			case json.Unmarshal(ev.Error, &e) == nil && e == "rate_limit":
+				assistant = true
+			}
+		case "result":
+			var r struct {
+				IsError bool   `json:"is_error"`
+				Status  any    `json:"api_error_status"`
+				API     string `json:"api_error"`
+			}
+			if json.Unmarshal(line, &r) != nil {
+				continue
+			}
+			switch {
+			case !r.IsError:
+				clearAll()
+			case fmt.Sprint(r.Status) == "429" || r.API == "usage_limit_reached":
+				result = true
 			}
 		}
 	}
-	return ""
+	var reset time.Time
+	for _, at := range rejected {
+		if at.After(reset) {
+			reset = at
+		}
+	}
+	switch {
+	case len(rejected) > 0:
+		return "a rejected rate_limit_event", reset
+	case assistant:
+		return "an assistant message whose error is rate_limit", reset
+	case result:
+		return "a failed result naming the API's limit", reset
+	}
+	return "", reset
 }
 
 // claudeEvent is the part of a stream-json event the runner reads.
@@ -645,7 +714,7 @@ func parseClaude(out []byte) (Answer, error) {
 		// A run that did not finish on a rate limit is that limit, whatever
 		// its result says.
 		if what := claudeRateLimit(out); what != "" {
-			return Answer{}, rateLimited(what)
+			return Answer{}, limitFailure(what, out)
 		}
 	}
 	if result == nil {

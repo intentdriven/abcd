@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/implement"
 )
 
 // stoppedDrive is a drive stopped because its run's state changed in an agent's call.
@@ -242,5 +243,71 @@ func TestDiscardAsksTheForgeWhichPullRequest(t *testing.T) {
 	}
 	if log := f.ghLog(t); !strings.Contains(log, "pr close 7") || strings.Contains(log, "pr close 99") {
 		t.Fatalf("the forge's own pull request is closed:\n%s", log)
+	}
+}
+
+// TestABoundedDriveRefusesAMarkedRun: a bound waits through limits and outages, and not
+// through this: the drive stops at once, saying the way out.
+func TestABoundedDriveRefusesAMarkedRun(t *testing.T) {
+	w, _, _ := stoppedDrive(t)
+	w.lines = nil
+	o := w.bounded(t, 30*24*time.Hour)
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil || res.Ended != TerminalWall || !strings.Contains(res.Why, "--discard") {
+		t.Fatalf("the bounded drive refuses the run: %+v %v\n%s", res, err, w.said())
+	}
+	if strings.Contains(w.said(), "waiting") || strings.Contains(w.said(), "land done") {
+		t.Fatalf("it neither waited nor went on:\n%s", w.said())
+	}
+}
+
+// TestALaneParkingWhileAnOutageIsOpenIsPassedOver: under a bound a lane left open at its
+// pull request while an outage stands is the drive's to leave: it counts as no stall and
+// no launch, and the run goes on rather than waiting on it.
+func TestALaneParkingWhileAnOutageIsOpenIsPassedOver(t *testing.T) {
+	w := newTerminalWorld(t)
+	shared := joinShared(t, w.repo.Root(), w.clock.now)
+	for i := range w.stages {
+		if w.stages[i].Name == StageLand {
+			w.stages[i].Run = func(c Context, l *Lane) (Outcome, error) {
+				if _, err := shared.Outage().Record("host-a", implement.ServiceNetwork, implement.OutageTool, "lane-9", "git push"); err != nil {
+					return Outcome{}, err
+				}
+				l.PR = 7
+				l.Landing = &Landing{RecordsDone: true, Pushed: l.HeadSHA, BodyChecked: true, Merge: "left open: the gate's reason"}
+				return Outcome{Stay: true, Note: "pull request #7 left open"}, nil
+			}
+		}
+	}
+	o := w.bounded(t, 30*24*time.Hour)
+	o.Options.NetworkProbe = func() (bool, string) { return false, "origin does not answer" }
+	launches := 0
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, w.said())
+	}
+	launches = w.launches(t)
+	if res.Ended == TerminalOutage || res.Ended == TerminalWaited || res.Ended == TerminalWall {
+		t.Fatalf("the run does not wait on a parked lane: %+v\n%s", res, w.said())
+	}
+	if strings.Contains(w.said(), "did not move") || strings.Contains(w.said(), "cannot move") || !strings.Contains(w.said(), "left open") {
+		t.Fatalf("a landing's step is a move, said as one:\n%s", w.said())
+	}
+	if res.Last.Counts.LanesHandedBack != 0 {
+		t.Fatalf("the lane is parked, not handed back: %+v", res.Last.Counts)
+	}
+	st, _, err := readDrain(w.repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := ReadState(w.repo.Root(), st.Lanes[0].RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome, _, _ := laneOutcome(run); outcome != DrainLanePullRequest {
+		t.Fatalf("the lane stays parked: %s", outcome)
+	}
+	if launches == 0 {
+		t.Fatal("the lane's own agents ran before it parked")
 	}
 }

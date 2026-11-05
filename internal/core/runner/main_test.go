@@ -178,6 +178,83 @@ func fakeHarness(mode string) int {
 			return 0
 		}
 		return 1
+	case "probe-ok", "probe-tools", "probe-word":
+		// What a limit probe may be answered with: the word it asked for, the
+		// word from a launch that held a tool, and some other answer.
+		init := `{"type":"system","subtype":"init","session_id":"fake-session-1","model":"fake-model","tools":[]}`
+		answer := "ok"
+		switch mode {
+		case "probe-tools":
+			init = `{"type":"system","subtype":"init","session_id":"fake-session-1","model":"fake-model","tools":["Read"]}`
+		case "probe-word":
+			answer = "I cannot help with that"
+		}
+		fmt.Fprintln(os.Stdout, init)
+		fmt.Fprintln(os.Stdout, `{"type":"result","subtype":"success","is_error":false,"result":"`+answer+`","session_id":"fake-session-1"}`)
+		return 0
+	case "probe-notools":
+		// A launch whose init event names no tool list at all.
+		fmt.Fprintln(os.Stdout, `{"type":"system","subtype":"init","session_id":"fake-session-1","model":"fake-model"}`)
+		fmt.Fprintln(os.Stdout, `{"type":"result","subtype":"success","is_error":false,"result":"ok","session_id":"fake-session-1"}`)
+		return 0
+	case "probe-noinit":
+		fmt.Fprintln(os.Stdout, `{"type":"result","subtype":"success","is_error":false,"result":"ok","session_id":"fake-session-1"}`)
+		return 0
+	case "api401-exit":
+		// An expired login: its failed result names the status.
+		fmt.Fprintln(os.Stdout, `{"type":"system","subtype":"init","session_id":"fake-session-1","model":"fake-model","tools":[]}`)
+		fmt.Fprintln(os.Stdout, `{"type":"result","subtype":"success","is_error":true,"api_error_status":401,"result":"please log in","usage":{"input_tokens":0,"output_tokens":0},"total_cost_usd":0}`)
+		return 1
+	case "retry-exit", "spent-exit", "api503-exit", "api404-exit", "spent-zero":
+		// A launch that got to its init event and failed: having retried the
+		// model service, having spent, naming an API status, or on a zero exit.
+		fmt.Fprintln(os.Stdout, `{"type":"system","subtype":"init","session_id":"fake-session-1","model":"fake-model","tools":[]}`)
+		switch mode {
+		case "retry-exit":
+			fmt.Fprintln(os.Stdout, `{"type":"system","subtype":"api_retry","attempt":1,"max_retries":10,"retry_delay_ms":500,"error_status":null,"error":"unknown"}`)
+			fmt.Fprintln(os.Stdout, `{"type":"system","subtype":"api_retry","attempt":2,"max_retries":10,"retry_delay_ms":900,"error_status":null,"error":"unknown"}`)
+		case "spent-exit":
+			fmt.Fprintln(os.Stdout, `{"type":"assistant","message":{"id":"m1","usage":{"input_tokens":10,"output_tokens":4}}}`)
+		case "api503-exit":
+			fmt.Fprintln(os.Stdout, `{"type":"result","subtype":"success","is_error":true,"api_error_status":503,"result":"unavailable","usage":{"input_tokens":0,"output_tokens":0},"total_cost_usd":0}`)
+		case "api404-exit":
+			fmt.Fprintln(os.Stdout, `{"type":"result","subtype":"success","is_error":true,"api_error_status":404,"result":"no such model","usage":{"input_tokens":0,"output_tokens":0},"total_cost_usd":0}`)
+		case "spent-zero":
+			fmt.Fprintln(os.Stdout, `{"type":"result","subtype":"error_during_execution","is_error":true,"result":"gave up","usage":{"input_tokens":10,"output_tokens":4},"total_cost_usd":0.01}`)
+			return 0
+		}
+		return 1
+	case "started-exit":
+		// A launch that got as far as its init event and then failed.
+		fmt.Fprintln(os.Stdout, `{"type":"system","subtype":"init","session_id":"fake-session-1","model":"fake-model"}`)
+		return 1
+	case "ratelimit-recovered":
+		// A limit the stream goes on to report lifted, in a launch that fails
+		// for some other reason.
+		fmt.Fprintln(os.Stdout, `{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","resetsAt":1791000000,"rateLimitType":"five_hour"},"session_id":"fake-session-1"}`)
+		fmt.Fprintln(os.Stdout, `{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","rateLimitType":"five_hour"},"session_id":"fake-session-1"}`)
+		return 1
+	case "ratelimit-apierror", "ratelimit-apierror-zero", "ratelimit-apistatus":
+		// A failed result naming the API's limit in its own fields, with no
+		// rate_limit_event before it: on a non-zero exit, on a zero one, and
+		// with the status alone.
+		fmt.Fprintln(os.Stdout, `{"type":"system","subtype":"init","session_id":"fake-session-1","model":"fake-model"}`)
+		if mode == "ratelimit-apistatus" {
+			fmt.Fprintln(os.Stdout, `{"type":"result","subtype":"success","is_error":true,"api_error_status":429,"result":"limit reached","session_id":"fake-session-1"}`)
+			return 1
+		}
+		fmt.Fprintln(os.Stdout, `{"type":"result","subtype":"success","is_error":true,"api_error_status":429,"api_error":"usage_limit_reached","result":"limit reached","session_id":"fake-session-1"}`)
+		if mode == "ratelimit-apierror-zero" {
+			return 0
+		}
+		return 1
+	case "ratelimit-silent":
+		// A harness that reports a limit and then waits inside its process,
+		// as an interactive session waits, until it is killed.
+		fmt.Fprintln(os.Stdout, `{"type":"system","subtype":"init","session_id":"fake-session-1","model":"fake-model"}`)
+		fmt.Fprintln(os.Stdout, `{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","resetsAt":1791000000,"rateLimitType":"five_hour"},"session_id":"fake-session-1"}`)
+		time.Sleep(time.Minute)
+		return 0
 	case "hugemodel", "ctrlmodel", "suffixmodel":
 		// A harness whose init event reports a model: one past any bound,
 		// one carrying control bytes, and a real id's bracketed suffix.

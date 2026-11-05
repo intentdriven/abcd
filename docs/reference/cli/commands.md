@@ -1400,7 +1400,7 @@ abcd docs fidelity record --verdict-json verdict.json
 
 Fix the issues needing no decision, one lane at a time, and hand the rest back: Writes its state and user-visible drafts; refuses without the rule's record.
 
-**Usage:** `abcd drain [--drive [--yes]] [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]`
+**Usage:** `abcd drain [--drive [--yes] [--until <date>]] [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]`
 
 Work the open issue ledger unattended: fix the issues that need no decision, and
 hand the rest back by kind. Which issues need no decision is this repository's own
@@ -1468,8 +1468,15 @@ under .abcd/.work.local/logs/. A lane that changes the Makefile, scripts/ or the
 hooks is handed back at its landing, and an issue that names one is passed over: that
 change needs a person's own session. The driver's commit, merge and reset hooks, and any
 filter run inside those commands, get the stage's variables, while its network commands,
-its other filters and its forge calls keep the person's environment. It ends at
-the cap, when nothing is eligible, or after eight hours of runner failures. One drive
+its other filters and its forge calls keep the person's environment. It ends at the cap,
+when nothing is eligible, or on a stop. With no --until, eight hours of runner failures
+or of nothing moving, a rate limit that outlasts eight hours, and origin unreadable
+through its schedule end it too. --until <date>, a date (the end of that day here) or an
+RFC 3339 instant, replaces those with one bound the yes names: the run waits through
+limits, outages and stuck queues at a capped interval, says what it waits on, keeps
+renewing what it holds, and at that time ends with the lane on its branch, an agent in a
+call finishing that call first. The bound is a time, not a limit on what the run spends.
+The first limit a run meets leaves its evidence under the same logs. One drive
 holds a checkout at a time; a second exits 3. A drive that is stopped, stops short or
 holds an issue back exits 3, and one a failed check stopped exits 2. The first interrupt, hang-up or termination is a
 stop: the agent in a call finishes that call, the lane's reservation is released, the
@@ -1637,6 +1644,7 @@ drain or run holds the state lock.
       --sub-agents string    the ceiling on lanes and validators alive at once; wins over every configured layer
       --take-over            move your own live reservation of each issue this move reaches from another copy to this one; never another person's
       --unskip stringArray   take an issue or path off the drain's skip list
+      --until string         with --drive: end the run at this time, a date or an RFC 3339 instant, and wait through limits, outages and stuck queues until then; the default is eight hours on each wait
       --yes                  with --drive: the scripted yes to its one question
 ```
 

@@ -49,6 +49,8 @@ var driveRoles = []string{loop.RoleDrainJudge, loop.RoleImplementer, loop.RoleRu
 type driveWallChecks struct {
 	static func(ctx context.Context, p runner.Profile) ([]string, error)
 	live   func(ctx context.Context, p runner.Profile) error
+	// settings checks the settings abcd wrote still stand.
+	settings func(p runner.Profile) error
 }
 
 // driveWalls is the one precondition the wall checks enter through
@@ -76,6 +78,7 @@ var driveWalls = driveWallChecks{
 	live: func(ctx context.Context, p runner.Profile) error {
 		return runner.ProveWall(ctx, p, runner.SelfBinary())
 	},
+	settings: func(p runner.Profile) error { return runner.CheckWallSettings(p, runner.SelfBinary()) },
 }
 
 // driveLockRel is the lock one drive holds on a checkout from its yes to its end,
@@ -87,6 +90,13 @@ const (
 
 // driveTerminal is loop.RunTerminal, a seam the tests replace.
 var driveTerminal = loop.RunTerminal
+
+// driveProofWait are the clock and the sleep a wait at the live proof runs on, nil
+// for the real ones: seams the tests replace.
+var driveProofWait struct {
+	now   func() time.Time
+	sleep func(ctx context.Context, d time.Duration)
+}
 
 // drivePreflightProgram is what a lane's preflight starts; a variable so a test
 // can read the environment it is given.
@@ -180,6 +190,29 @@ type driveFlags struct {
 	skips    drainSkips
 	// pace, subAgents and fixRounds are the flags as given, nil for one not.
 	pace, subAgents, fixRounds *string
+	// until is the run's bound; zero leaves each wait its eight hours.
+	until time.Time
+}
+
+// parseDriveUntil reads --until: an RFC 3339 instant, or a date, read as the end of
+// that day on this machine's clock. "" is no bound. A refusal never repeats the
+// value given.
+func parseDriveUntil(given string, now time.Time) (time.Time, error) {
+	if given == "" {
+		return time.Time{}, nil
+	}
+	at, err := time.Parse(time.RFC3339, given)
+	if err != nil {
+		day, derr := time.ParseInLocation(time.DateOnly, given, time.Local)
+		if derr != nil {
+			return time.Time{}, driveRefusal("--until is not a date (YYYY-MM-DD) or an RFC 3339 instant (the value given is not repeated here)")
+		}
+		at = time.Date(day.Year(), day.Month(), day.Day(), 23, 59, 59, 0, time.Local)
+	}
+	if !at.After(now) {
+		return time.Time{}, driveRefusal("--until names a time already past, so the run would end before its first move")
+	}
+	return at, nil
 }
 
 // driveRefusal is a precondition's refusal, naming that nothing was started.
@@ -232,7 +265,13 @@ func driveConsent(cmd *cobra.Command, w io.Writer, f driveFlags, lanes, runs int
 	}
 	fmt.Fprintln(w, "abcd drain --drive works through this repository's issues with no further input:")
 	fmt.Fprintf(w, "  cap:      %d lane(s)\n", lanes)
-	fmt.Fprintf(w, "  estimate: about %d agent run(s) at most\n", runs)
+	if f.until.IsZero() {
+		fmt.Fprintf(w, "  estimate: about %d agent run(s) at most\n", runs)
+		fmt.Fprintln(w, "  bound:    eight hours on any one wait (--until sets one of your own)")
+	} else {
+		fmt.Fprintf(w, "  estimate: about %d agent run(s) if nothing fails; retries through failures and short probes of a limit add to it\n", runs)
+		fmt.Fprintf(w, "  bound:    ends at %s, and waits through limits and outages until then; a time, not a limit on what it spends\n", f.until.UTC().Format(time.RFC3339))
+	}
 	fmt.Fprintf(w, "  runner: claude\n")
 	fmt.Fprintf(w, "  route:    this account's subscription, on the separate login %s\n", abcdhome.Display("profiles", filepath.Base(p.Dir)))
 	fmt.Fprintln(w, "  profile:  a separate login and settings on this one account; a stage's shell reads what this account can")
@@ -331,16 +370,18 @@ func runDriveLocked(cmd *cobra.Command, asJSON bool, repoRoot string, roots laye
 	for _, l := range lines {
 		fmt.Fprintln(errw, "abcd drain --drive: "+termsafe.Sanitize(fsutil.RedactHome(l)))
 	}
-	if err == nil {
-		err = driveWalls.live(sig.ctx, p)
-	}
 	if err != nil {
 		if sig.ctx.Err() != nil {
-			// The second signal killed the proof's launch, which says nothing
-			// about the wall it was proving.
 			return &exitError{Code: driveKilledExit, Msg: "abcd drain --drive: killed during the proof (nothing started, nothing reserved)"}
 		}
 		return driveRefusal("%s", err.Error())
+	}
+	ended, err := driveProve(sig, cmd, asJSON, repoRoot, p, o, f)
+	if err != nil {
+		return err
+	}
+	if ended {
+		return nil
 	}
 	d := loop.DrainOptions{Max: lanes, Transcripts: &lazyHistoryStore{cmd: cmd}, PassOver: drivePassOver(repoRoot),
 		Skip: f.skips.skip, SkipReason: f.skips.reason, Unskip: f.skips.unskip}
@@ -353,11 +394,64 @@ func runDriveLocked(cmd *cobra.Command, asJSON bool, repoRoot string, roots laye
 			d.Max = 0
 		}
 	}
-	return driveRun(sig, cmd, asJSON, repoRoot, roots, p, o, d, lines)
+	return driveRun(sig, cmd, asJSON, repoRoot, roots, p, o, d, f.until, lines)
+}
+
+// driveProve runs the live proof. A limit it meets is no failed check, and nor is a
+// launch that came to no verdict on any: with no bound the drive refuses, naming
+// which, and under one it waits on the schedule any limit or outage does and proves
+// again. Only a verdict, or the harness's absence, is refused then. It reports true
+// when the wait ended the drive cleanly, before anything started.
+func driveProve(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot string, p runner.Profile, o loop.Options, f driveFlags) (bool, error) {
+	killed := &exitError{Code: driveKilledExit, Msg: "abcd drain --drive: killed during the proof (nothing started, nothing reserved)"}
+	err := driveWalls.live(sig.ctx, p)
+	var limit *runner.LimitError
+	var none *runner.NoVerdictError
+	isLimit := errors.As(err, &limit)
+	if isLimit && f.until.IsZero() && sig.ctx.Err() == nil {
+		resets := ""
+		if !limit.ResetsAt.IsZero() {
+			resets = ", resetting at " + limit.ResetsAt.UTC().Format(time.RFC3339)
+		}
+		return false, &exitError{Code: 3, Msg: "abcd drain --drive: the account has met its rate limit" + resets +
+			", so the live proof could not run; run this again then, or give --until <date> to wait through it (nothing started, nothing reserved)"}
+	}
+	if (isLimit || errors.As(err, &none)) && !f.until.IsZero() && sig.ctx.Err() == nil {
+		lines := cmd.OutOrStdout()
+		if asJSON {
+			lines = cmd.ErrOrStderr()
+		}
+		say, _, closeLog := driveLog(repoRoot, lines)
+		defer closeLog()
+		o.Now = driveProofWait.now
+		var ended string
+		ended, err = loop.WaitOutProof(sig.ctx, repoRoot, loop.TerminalOptions{Options: o, Until: f.until, Stop: sig.stop, Say: say,
+			Sleep: driveProofWait.sleep, Probe: o.Runners.ProbeLimit, BeforeStage: func() error { return driveWalls.settings(p) }},
+			err, func(ctx context.Context) error { return driveWalls.live(ctx, p) })
+		switch ended {
+		case "":
+		case loop.TerminalKilled:
+			return false, killed
+		case loop.TerminalWall:
+			return false, &exitError{Code: 2, Msg: "abcd drain --drive: a check no longer held (nothing started, nothing reserved)"}
+		default:
+			fmt.Fprintf(cmd.ErrOrStderr(), "abcd drain --drive: ended: %s (nothing started, nothing reserved)\n", driveEndWords(ended))
+			return true, nil
+		}
+	}
+	if err != nil {
+		if sig.ctx.Err() != nil {
+			// The second signal killed the proof's launch, which says nothing
+			// about the wall it was proving.
+			return false, killed
+		}
+		return false, driveRefusal("%s", err.Error())
+	}
+	return false, nil
 }
 
 // driveRun runs the terminal loop and says how it ended.
-func driveRun(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot string, roots layered.Roots, p runner.Profile, o loop.Options, d loop.DrainOptions, startLines []string) error {
+func driveRun(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot string, roots layered.Roots, p runner.Profile, o loop.Options, d loop.DrainOptions, until time.Time, startLines []string) error {
 	review, err := loop.LoadReviewRoute(roots, agentPrompt)
 	if err != nil {
 		return loopFail(cmd.OutOrStdout(), asJSON, "abcd drain", err)
@@ -381,6 +475,11 @@ func driveRun(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot strin
 		fmt.Fprintln(detail, time.Now().UTC().Format(time.RFC3339)+" abcd drain --drive: "+termsafe.Sanitize(fsutil.RedactHome(l)))
 	}
 	noticeUnattended(cmd, "abcd drain")
+	// A yes with no bound never mentioned a probe.
+	var probe func(ctx context.Context, role, model string) (bool, *runner.Failure)
+	if !until.IsZero() {
+		probe = o.Runners.ProbeLimit
+	}
 	res, err := driveTerminal(sig.ctx, repoRoot, loop.TerminalOptions{
 		Options:          o,
 		Drain:            d,
@@ -390,6 +489,8 @@ func driveRun(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot strin
 		PreflightAllowed: driveGateCheck(),
 		Say:              say,
 		Stop:             sig.stop,
+		Until:            until,
+		Probe:            probe,
 		BeforeStage: func() error {
 			return runner.CheckWallSettings(p, runner.SelfBinary())
 		},
@@ -517,6 +618,7 @@ func driveEndWords(ended string) string {
 		loop.TerminalHalted:     "a stop set from elsewhere holds",
 		loop.TerminalLimited:    "the account's rate limit outlasts what a drive waits",
 		loop.TerminalWaited:     "nothing moved for eight hours",
+		loop.TerminalUntil:      "the time --until named has passed",
 		loop.TerminalWall:       "a check before a stage no longer holds",
 		loop.TerminalRefused:    "a move was refused",
 		loop.TerminalKilled:     "killed",
