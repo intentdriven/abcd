@@ -159,7 +159,7 @@ func TestAnEnqueueTheForgeRefusesTogglesTheArmingPastTheGrace(t *testing.T) {
 	if off < 0 || on < off {
 		t.Fatalf("the toggle withdraws the arming, then arms it again by the queue's method pinned to %s:\n%s", pushed, log)
 	}
-	if note := f.lastNote(t); !strings.Contains(note, "toggled its auto-merge once") {
+	if note := f.lastNote(t); !strings.Contains(note, "toggled its auto-merge, toggle 1 of") {
 		t.Fatalf("the record says the arming was toggled: %q", note)
 	}
 }

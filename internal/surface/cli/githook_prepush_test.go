@@ -194,6 +194,9 @@ func (c *prePushCase) preflight(dir string, scope ...string) string {
 	if err != nil {
 		c.t.Fatalf("state: %v\n%s", err, began)
 	}
+	if len(scope) == 0 {
+		c.stageReports(dir, "pass")
+	}
 	out, err := c.receipt(dir, append([]string{"mint", strings.TrimSpace(began)}, scope...)...)
 	if err != nil {
 		c.t.Fatalf("mint: %v\n%s", err, out)
@@ -201,9 +204,144 @@ func (c *prePushCase) preflight(dir string, scope ...string) string {
 	return out
 }
 
+// stageReports stands in for what the two test stages leave for the receipt:
+// internal/testreuse's report of each, for HEAD's exact tree.
+func (c *prePushCase) stageReports(dir, result string) {
+	c.t.Helper()
+	head, err := c.run(dir, "git", "rev-parse", "HEAD")
+	if err != nil {
+		return // no commit yet: the mint says so itself
+	}
+	tree, err := c.run(dir, "git", "rev-parse", "HEAD^{tree}")
+	if err != nil {
+		c.t.Fatalf("rev-parse: %v\n%s", err, tree)
+	}
+	head, tree = strings.TrimSpace(head), strings.TrimSpace(tree)
+	for stage, counts := range map[string]string{"unit": "reused 7\npackages 9\n", "race": "reused 2\npackages 5\n"} {
+		rel := filepath.Join(dir, ".abcd", ".work.local", "preflight-reuse", head, stage+"-aaaaaaaaaaaa")
+		if err := os.MkdirAll(filepath.Dir(rel), 0o755); err != nil {
+			c.t.Fatal(err)
+		}
+		body := "commit " + head + "\ntree " + tree + "\nstage " + stage + "\nmode reuse\n" + counts + "result " + result + "\n"
+		if err := os.WriteFile(rel, []byte(body), 0o644); err != nil {
+			c.t.Fatal(err)
+		}
+	}
+}
+
 func (c *prePushCase) push(args ...string) (string, error) {
 	c.t.Helper()
 	return c.run(c.dir, "git", append([]string{"push"}, args...)...)
+}
+
+// TestAFullReceiptNeedsBothStagesPassingOnThisExactTree: a reused result counts
+// for the tree it was checked on, so a receipt is minted only when both test
+// stages left a passing report for this commit's tree, and it records how many
+// packages each reused.
+func TestAFullReceiptNeedsBothStagesPassingOnThisExactTree(t *testing.T) {
+	c := newPrePushCase(t)
+	c.commit("a.txt", "a\n")
+	head, err := c.run(c.dir, "git", "rev-parse", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	head = strings.TrimSpace(head)
+	reports := filepath.Join(c.dir, ".abcd", ".work.local", "preflight-reuse", head)
+	receipt := filepath.Join(c.dir, ".abcd", ".work.local", "preflight-receipts", head)
+	mint := func() string {
+		t.Helper()
+		began, err := c.receipt(c.dir, "state")
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := c.receipt(c.dir, "mint", strings.TrimSpace(began))
+		if err != nil {
+			t.Fatalf("mint: %v\n%s", err, out)
+		}
+		return out
+	}
+
+	if out := mint(); strings.Contains(out, "receipt minted for") {
+		t.Fatalf("a run that left no stage report minted a receipt\n%s", out)
+	}
+	c.stageReports(c.dir, "pass")
+	if err := os.Remove(filepath.Join(reports, "race-aaaaaaaaaaaa")); err != nil {
+		t.Fatal(err)
+	}
+	if out := mint(); strings.Contains(out, "receipt minted for") {
+		t.Fatalf("a run with no race stage report minted a receipt\n%s", out)
+	}
+	c.stageReports(c.dir, "fail")
+	if out := mint(); strings.Contains(out, "receipt minted for") {
+		t.Fatalf("a run whose stages failed minted a receipt\n%s", out)
+	}
+	c.stageReports(c.dir, "pass")
+	unit := filepath.Join(reports, "unit-aaaaaaaaaaaa")
+	raw, err := os.ReadFile(unit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := regexp.MustCompile(`(?m)^tree .*$`).ReplaceAll(raw, []byte("tree 0000000000000000000000000000000000000000"))
+	if err := os.WriteFile(unit, other, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out := mint(); strings.Contains(out, "receipt minted for") {
+		t.Fatalf("a report for another tree minted a receipt\n%s", out)
+	}
+	c.stageReports(c.dir, "pass")
+	out := mint()
+	if !strings.Contains(out, "receipt minted for") || !strings.Contains(out, "the unit stage reused 7 of 9 packages and the race stage 2 of 5 (reuse)") {
+		t.Fatalf("the mint does not report the counts\n%s", out)
+	}
+	body, err := os.ReadFile(receipt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"scope full\n", "tests reuse\n", "reuse unit 7 of 9\n", "reuse race 2 of 5\n"} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("the receipt lacks %q:\n%s", want, body)
+		}
+	}
+
+	// A stage that ran over a working tree's edits names no tree, and one that
+	// claims a tree under that mode vouches for nothing either.
+	for _, bad := range []string{"tree none\nstage unit\nmode dirty\n", "stage unit\nmode dirty\n"} {
+		c.stageReports(c.dir, "pass")
+		raw, err := os.ReadFile(unit)
+		if err != nil {
+			t.Fatal(err)
+		}
+		edited := regexp.MustCompile(`(?m)^stage unit\nmode reuse\n`).ReplaceAll(raw, []byte(bad))
+		if bad[:4] == "tree" {
+			edited = regexp.MustCompile(`(?m)^tree [0-9a-f]+\n`).ReplaceAll(edited, nil)
+		}
+		if err := os.WriteFile(unit, edited, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(receipt); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		if out := mint(); strings.Contains(out, "receipt minted for") {
+			t.Fatalf("a dirty stage's report minted a receipt\n%s", out)
+		}
+	}
+
+	// A release cut's receipt says so, and a stage of each kind reads as mixed.
+	c.stageReports(c.dir, "pass")
+	for _, stage := range []string{"unit", "race"} {
+		path := filepath.Join(reports, stage+"-aaaaaaaaaaaa")
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, regexp.MustCompile(`(?m)^mode reuse$`).ReplaceAll(raw, []byte("mode cut")), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mint()
+	if body, _ := os.ReadFile(receipt); !strings.Contains(string(body), "tests cut\n") {
+		t.Errorf("a release cut's receipt:\n%s", body)
+	}
 }
 
 // remoteTip is the commit the bare remote holds for a branch, or "".
@@ -560,8 +698,9 @@ func TestMakePreflightMintsTheReceiptAfterItsLastGate(t *testing.T) {
 	raceAt := -1
 	for i, l := range stages {
 		// The race stage is the continuation of the line that derives its -p,
-		// so make -n prints it indented.
-		if strings.HasPrefix(strings.TrimSpace(l), "go test -race") {
+		// so make -n prints it indented, its go test written out after the check
+		// that runs it.
+		if strings.Contains(l, " race go test -race ") {
 			raceAt = i
 		}
 	}
@@ -589,8 +728,8 @@ func TestPreflightReceiptNamesItsScope(t *testing.T) {
 		c := newPrePushCase(t)
 		head := c.commit("feature.md", "a feature\n")
 		c.preflight(c.dir)
-		if got := c.receiptLines(head); len(got) != 3 || got[2] != "scope full" {
-			t.Fatalf("a full preflight's receipt is %q; want it to name the full scope", got)
+		if got := c.receiptLines(head); len(got) != 6 || got[2] != "scope full" {
+			t.Fatalf("a full preflight's receipt is %q; want it to name the full scope and each stage's reuse", got)
 		}
 	})
 	t.Run("records-only", func(t *testing.T) {

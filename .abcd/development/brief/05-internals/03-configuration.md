@@ -4,8 +4,8 @@ Almost nothing here is a decision anyone has to make. Installing abcd asks
 four questions and, at a terminal, a fifth about the README and two about live
 brief sessions, records the answers and whether it created the README, and gets
 on with it; `ahoy install --attribution` writes one more key and `ahoy install
---outbound` two more, and twelve further keys can be hand-set and are read but
-never written. Beyond those twenty-two, the binary reads only keys a person
+--outbound` two more, and thirteen further keys can be hand-set and are read but
+never written. Beyond those twenty-three, the binary reads only keys a person
 opts into: the provider adapter's `oracle` keys (the reviewer route's
 `oracle.review` among them) and the interview's list style, both below, the
 implement loop's `pace` (`pace.work_minutes`, `pace.pause_minutes`,
@@ -76,7 +76,7 @@ written by `ahoy install --attribution`, and `outbound.hook` and
 switch; the shell guard reads `outbound.forge`, and an install
 completes a repository that records only one of the two and leaves the other
 absent, while a key set to `false` is the repository's choice and is left as it
-is. The remaining twelve —
+is. The remaining thirteen —
 whether abcd should enable the forge's own secret scanning, the rules loader's
 refresh backstop, the filing-time match's threshold and compared fields,
 whether `abcd land` pushes and queues, whether a reservation may be made on
@@ -85,10 +85,11 @@ and the checks it requires, whether the shell guard also holds a pull
 request's title and body to RS004 (`outbound.declare_mentions`, a rule a
 repository adopts, so no install sets it), who merges (`facilitator.mode`,
 `human` by default or `auto`, read by the merge gate, the board and the shell
-guard at the default branch's tip, where `human` from any layer wins) and the
+guard at the default branch's tip, where `human` from any layer wins), the
 file a release cut appends its digest to (`release.digest`, read from the
-repository layer alone) — are hand-set: the binary reads them and never writes
-them.
+repository layer alone) and the workflow `abcd status` watches
+(`status.scheduled_workflow`, read at the default branch's tip) — are
+hand-set: the binary reads them and never writes them.
 
 ```json
 {
@@ -154,6 +155,12 @@ them.
                                         //   for a duplicates/refines link to be written
     "fields": ["issue.body", "intent.title", "intent.press_release"]
                                         // what each candidate offers; one or more of the three
+  },
+  "status": {                           // `abcd status` (04-surfaces/39-status.md)
+    "scheduled_workflow": "nightly.yml" // the file name of the workflow a schedule runs on the default branch,
+                                        //   at most 64 characters, read at the default branch's tip; a red
+                                        //   verdict is named by the verb and the prompt's block until a green
+                                        //   replaces it. Absent is off: the forge is not asked
   },
   "land": {                             // `abcd land` (04-surfaces/38-land.md)
     "push": true,                       // push the branch once a preflight receipt names its head
@@ -226,7 +233,7 @@ origin's push URLs a fork, so a malformed value (neither `"refuse"` nor one
 plain owner and one plain name), or a misspelt key under `reservation`, refuses
 a reservation on a fork naming the file and never stops one anywhere else. The machine layer's `reservation.github_username`
 (04-surfaces/37-reserve.md) shares the namespace; it is read from the machine
-layer alone and is not one of the twenty-two. The holder lookup reads the
+layer alone and is not one of the twenty-three. The holder lookup reads the
 machine's own file whatever origin is, so a misspelt key under `reservation`
 there refuses every reservation that reaches that lookup, on a fork or not.
 
@@ -930,6 +937,89 @@ directory is this checkout's; anything else is reported and left in place, and n
 removal is forced. It is the reclaim half of
 [adr-2609091248200336](../../decisions/adrs/2609091248200336-a-tool-never-creates-directories-in-user.md):
 a tool that must not create in the user's space must not delete there either.
+
+## The check directory
+
+`make preflight` runs its two test stages through `cmd/check-tests`
+(`internal/testreuse`). The lines whose results are to be reused run from one
+directory per repository and account: `~/.abcd.noindex/tests/<root-sha>/`, keyed on
+the root commit like the worktree store and outside every working tree. A fresh
+worktree defeats Go's test cache three ways: its paths change the test binary, its
+checkout gives every file a new time, and a file a test opens is hashed under its
+absolute path. So those lines run with `-trimpath` from the directory's `tree/`,
+which holds the commit's files, with no `.git`, each with a time derived from its
+content: 2001-01-01T00:00:00Z plus bits of the SHA-256 of the file, reduced to twenty
+years of whole seconds and to the nanoseconds of that second. Go keys an opened file
+on its size and time, so a file's time moves when its content does and is the same
+in every worktree. A directory's time derives from the names in it the same way.
+A result one worktree's check passed is replayed in any other.
+
+A sync reads every file of the tree back and keeps one only when its bytes hash to
+the commit's blob and its mode and time are right, about a second for a tree of
+eleven thousand files, and it writes only what differs: a commit that changes one
+file writes one file, and the thousands of file events of a whole tree happen once,
+when the directory is made. Every write goes through an `os.Root` on the tree, and a
+commit two of whose paths one file system would take for one, or with a path under a
+file or a link, is refused. A file is finished under a temporary name and renamed
+into place with its time already set, what a test or a crash left is removed, and a
+directory's time is set last, so the next sync repairs whatever a killed check left.
+Beside `tree/` it keeps only `lock` and `holder`, and removes anything else; a link
+in the tree's own place is refused and removed. The stage reads the tree back again
+after its lines have run, and fails if a tracked file changed.
+
+Each account has its own directory under its own home, and a check refuses one it
+does not own, that another account can write, or that is a symlink. One check at a
+time holds the lock, for its reused lines and no longer: its always-rerun lines run
+in the worktree outside it. So under `load.preflights` above one, a second run's
+reused lines wait for the first's, and each run's always-rerun lines run side by side
+as they would without a lock. A waiter gives up after four hours or when cancelled,
+exiting 3 having run nothing. A stage that waited takes its `-p` and `-timeout` again,
+since the recipe read them before the wait, and a race stage goes back through the
+race gate, holding nothing, since another may have started meanwhile.
+
+**What is reused.** Go's cache sees the test binary, the cacheable flags, and the
+files and environment variables a test reads, at the value the go command itself
+was given, so a reused line runs with `PWD` set to the tree, no `OLDPWD`, and
+`GOWORK=off`, and nothing in its key names the worktree. Its results run under one
+fixed `-timeout`, since the cache key holds it and a stage's own budget takes two
+values with the load. A race build is another binary, so the race stage reuses race
+results only and the unit stage's serve it nothing. A stage reports `reused N of M`
+and names each package that ran and why; its record under the local tier's
+`preflight-reuse/` names the commit, the tree and how it ran, and
+`scripts/preflight-receipt.sh` mints a full receipt only from both stages' passing
+records for that exact tree, and copies the counts and the mode (`tests reuse`, `cut`,
+`fallback` or `mixed`) into the receipt. A stage over a working tree's edits records
+no tree and mints nothing. A file a test leaves in the tree moves its directory's
+time, so a test that walks the tree does not replay; the stage names the file.
+
+**What is not.** The cache sees nothing a subprocess reads, a binary a test builds,
+the clock or the network. What reruns on every check is what is declared or found:
+
+- `.abcd/work/always-rerun-tests.txt` names a package or a test, with why, and is
+  read from origin's default branch at check time, never from the working tree. A
+  line lands like any other change and takes effect once on the default branch. A
+  list that is missing, does not read, or names a package or test the tree does not
+  hold turns all reuse off, and the stage says that merging the default branch clears
+  it on a branch behind it.
+- The classifier reads every test's source on every check, following what it names
+  through the package's test files and the module's test-helper packages, and reruns
+  a test it finds running a program through go, make or a shell, reaching the
+  repository from a package whose import closure can start a subprocess, reading the
+  network with no local server, or comparing the clock with a fixed date. So a test
+  nobody declared reruns anyway, and the report names it undeclared. A test file or
+  helper that does not parse reruns the package that holds or imports it. A rerun test
+  runs in the worktree with `-count=1`, where git can answer; the rest of its package
+  is reused under a `-skip` of it.
+- The check directory holds no `.git`, and `GIT_CEILING_DIRECTORIES` stops git
+  walking above it.
+
+The hosted run is the backstop: every hosted test step, the eval lanes' included,
+passes `-count=1`, on every pull request and merge-queue entry and in each release
+cut's gates. A working tree that differs from HEAD runs in the worktree reusing
+nothing, since its edits are what to test, and so does a directory refused or a list
+unread. `make preflight PREFLIGHT_FRESH=1` reuses nothing, for a person who wants that:
+the full rule whatever the change, a records-only one included, with `tests cut` on
+the receipt. No cut requires it; the hosted release run reuses nothing.
 
 ## The dogfood store
 
@@ -1796,7 +1886,7 @@ A Go binary plus the markdown plugin surface that shells to it:
 ```
 abcd/
 ├── .claude-plugin/                     # plugin.json + marketplace.json
-├── cmd/                                # the shipped entrypoint plus nine build-time binaries
+├── cmd/                                # the shipped entrypoint plus eleven build-time binaries
 │   ├── abcd/main.go                    #   entrypoint — wires the CLI front door to the core
 │   ├── record-lint/                    #   the record gate `make preflight` runs (06-lint.md)
 │   ├── scaffold-sync/                  #   keeps the scaffolded release workflows in step
@@ -1805,10 +1895,11 @@ abcd/
 │   ├── abcd-gen-surface/               #   writes the command-surface snapshot and the surface chapters' appendices
 │   ├── abcd-gen-cli-ref/               #   writes the generated CLI reference page
 │   ├── test-parallelism/               #   prints the go test -p `make preflight`'s test stages take
+│   ├── check-tests/                    #   runs `make preflight`'s test stages from the check directory, replaying what the test cache holds
 │   ├── ci-watchdog/                    #   the shell CI's test jobs run go test under, stopping a hang with its dumps before the job's cap
 │   ├── ci-shard/                       #   prints the packages one shard of CI's macOS suite tests, computed from `go list`
 │   └── record-slug-rename/             #   one-off: renames records minted before the 40-character slug cap (iss-2610100626320367)
-│                                       #   The ten are developer tooling, not user surface: they run
+│                                       #   The eleven are developer tooling, not user surface: they run
 │                                       #   from the Makefile, `go generate`, CI or by hand, and ship in no release
 ├── internal/
 │   ├── core/                           # transport-agnostic core, one package per capability

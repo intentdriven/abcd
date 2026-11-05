@@ -55,6 +55,73 @@ at most ten branches, the one waiting longest first, and a branch asked goes
 behind every branch still waiting, so each is asked within a bounded number
 of fetches. It pushes nothing.
 
+## The latest scheduled verdict
+
+A workflow a schedule runs on the default branch can stay red with no session
+told, since no merge reads it (iss-2611050035192370). The alert's purpose is that
+it does not go silent while the workflow is red, and does not read like green when
+nothing is known.
+
+**Asking.** A fetch that succeeded also asks the forge, through `gh api`
+(`GET /repos/{owner}/{repo}/actions/workflows/{file}/runs`, filtered to completed
+runs of the `schedule` event on `origin`'s default branch, 30 to a page), within
+five seconds, for the runs of the one workflow the repository names as
+`status.scheduled_workflow`. A session may never run the verb, so the prompt hook
+also starts the same ask in a detached process when the answer is missing or an
+hour old, at most once in 15 minutes; the hook itself never touches the network and
+spends no more of its deadline than starting a process, and it starts none when its
+deadline is near. The core asks through a lookup its front door hands it, as it asks
+who pushed, and the forge is the adapter (invariant 2).
+
+**Keeping.** What the runs say is kept in the machine's store,
+`~/.abcd.noindex/scheduled-runs/<root-sha>/`, one file per origin and workflow, since
+a fork shares its upstream's root commit and not its runs and one workflow's answer
+says nothing of another's. Every checkout of the repository reads it. A failed attempt
+keeps its time and a fixed class of reason beside it, never the forge's words, because
+the background refresh's stderr goes nowhere and this is how a prompt learns of it.
+
+**Reading.** `failure`, `timed_out` and `startup_failure` are a red verdict and
+`success` a green one; every other conclusion is no verdict and is read back past,
+so a cancelled night over a red leaves it red, and only a green replaces it. A latest
+run with no verdict has a line of its own naming it and the last verdict, and is not
+called a failure: a job past its `timeout-minutes` arrives as `cancelled`, so silence
+could hide a real fault. A green is silent while it is recent, and past three days, or
+three of the workflow's own cycles (the median gap between the runs read) when that is
+longer, one line says no verdict has been reached, so a weekly workflow is not called
+overdue between its runs. The state reads as unknown, naming the last successful ask
+and the last verdict kept, once a due refresh has failed; when a refresh started over a
+minute ago has kept nothing and the answer is six hours past due, as when the process
+died; when it was asked for more than two days ago or is dated ahead of now; and when it is
+missing, names another workflow or does not read back. An answer that only aged through
+an idle night says nothing, since saying so each morning would teach people to skip the
+line: the first prompt starts the refresh and the next carries what it found. The age is
+of the last successful ask and not of the run, so a nightly's start slipping by hours moves
+nothing. Each stale answer has one line per session. The age is of the asking, so a fresh answer that the last verdict failed a
+week ago is still named, with its age. A failure to ask (no `gh`, no login, an origin on
+another forge, no answer inside the five seconds) is said by the verb in one line,
+changes no exit, and leaves what was kept as it was.
+
+**Off, and what is trusted.** The key is read from the `.abcd/config.json` at the tip
+of `origin`'s default branch as last fetched, never a working tree, so another branch
+can neither switch the alert off nor point it elsewhere, and only `origin/HEAD` says
+which branch that is, so a branch that happens to be called `main` says nothing of it.
+Naming no workflow differs from not being able to tell: the tip is listed first, with
+its size and no blob read, so a config that cannot be read here, as in a partial clone
+that does not hold it, or that is over 1 MiB, says the state is unknown. With no
+`origin/HEAD`, which is every repository started locally and pushed, a checkout whose own
+config names a workflow is told how to set it, and any other reads as off, since a line
+in every such repository would say nothing to most of them; in such a checkout a branch
+whose config drops the key does read as off. A repository that names no workflow is off: nothing is asked, kept, read or said, so every managed repository,
+whatever its workflow is called, and one with none, reads alike. A value that is not a
+plain file name of at most 64 characters ending `.yml` or `.yaml` is said by the verb
+and at the prompt, in words that do not repeat it, and never reaches the forge. A kept
+answer reaches an agent's reading, so its URL is held on read to the same shape as on
+arrival, a run's page on the forge, and its conclusion to the forge's own words; an
+answer that fails either reads as unknown. The default branch's name is free text from
+`origin`: one outside letters, digits, `.`, `_`, `/` and `-`, or past 64 characters, is
+neither asked about nor kept, and every line says "the default branch" and names
+nothing.
+
 ## The intake
 
 One intake serves the verb and the prompt hook. It walks each status branch
@@ -105,7 +172,9 @@ first fetched each, then by the time it carries, each by the line the prompt
 hook shows it by, `h_0123456789abcdef0123456789abcdef (claimed): merging #1012, for 30 min`
 (the full id, here an invented one; a sender
 named by a username, on a branch made before the holder id, shows as
-`@maya (verified): …`), with the time sent; then each doubtful branch; then the reservations block `/abcd:peers`
+`@maya (verified): …`), with the time sent; then each doubtful branch; then a
+red, overdue or unknown scheduled workflow, in one line, and nothing on a recent
+green; then the reservations block `/abcd:peers`
 lists, release holds, a live drain lane's stage and each holder's hand-backs
 from the last day included, each by the line the land fence counts it by;
 then the line that an announcement informs and grants nothing. A failed fetch
@@ -116,7 +185,11 @@ succeeded (C10). The JSON document carries `status_view`, `announcements`,
 `doubtful`, `unread`, the counts `unread_names`, `branches_not_read`,
 `branches_left_to_read` and `announcements_not_read`, `grants`, and the
 reservations block's own fields, with `senders_unchecked`, `not_dropped`,
-`local_tier_missing`, `read_error`, `holder_ids_refused` (the class of the
+`local_tier_missing`, `read_error`, `scheduled_failure` (the red verdict's
+workflow, branch, conclusion, URL, end, age and the runs since that reached none),
+`scheduled_doubt` (`ended_without_verdict`, `no_verdict`, `unknown` or
+`invalid_name`, with its line), `scheduled_unread`
+(why this fetch's ask could not be read), `holder_ids_refused` (the class of the
 guarded read's refusal of the declared ids' file) and `holder_id_refused`
 (the class of the refusal of the reader's own holder id) when each has
 something to say.
@@ -130,7 +203,11 @@ h_0123456789abcdef0123456789abcdef (claimed): merges are held; the hold lapses
 at <time> unless the cut renews it", C8, a holder id not the reader's marked
 claimed), each release cut that lapsed within the last
 week ("release v0.16.0: the cut by h_0123456789abcdef0123456789abcdef (claimed) lapsed
-at …; no merge is held", iss-2610241107191205), then the newest
+at …; no merge is held", iss-2610241107191205), a red, overdue or unknown scheduled
+workflow from the machine's store (once per run in each session, so every new session
+is told, and a failure the next night is new to all; like the rest of the block, this
+needs the local tier that keeps what was shown, so a checkout without one, a bare
+`git worktree add` among them, shows none of it), then the newest
 announcement per item, then the doubts,
 at most two one by one and otherwise one line that sums them up and always
 keeps its place, at most ten lines in all, then a count of the rest and the

@@ -116,7 +116,7 @@ func TestBareRenderOmitsAbcdMachinery(t *testing.T) {
 	// The generic build + deterministic gates + rehearsal must be present. The
 	// race leg runs over the whole module, not the abcd-specific internal/ tree.
 	for _, needle := range []string{
-		"go build ./...", "go test -race ./...", "go-version-file: go.mod",
+		"go build ./...", "go test -race -count=1 ./...", "go-version-file: go.mod",
 		`"$goroot/bin/gofmt" -l .`,
 		"workflow_dispatch:", "rehearsal:", "gh release create",
 	} {

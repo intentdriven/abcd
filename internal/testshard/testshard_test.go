@@ -133,6 +133,31 @@ func TestEveryTestRunsOnceAcrossTheShards(t *testing.T) {
 	}
 }
 
+// TestASkipReachesEveryShard: a -skip holds in every process, so the check's
+// split of a package keeps the shards a long package needs, and no shard runs a
+// test the -skip names.
+func TestASkipReachesEveryShard(t *testing.T) {
+	if os.Getenv(selfTestEnv) != "" {
+		return
+	}
+	dir := t.TempDir()
+	cmd := exec.Command(os.Args[0], "-test.timeout=2m0s", "-test.skip=^TestProbeC$")
+	cmd.Env = append(os.Environ(), selfTestEnv+"="+dir, ShardsEnv+"=3")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("%v:\n%s", err, out)
+	}
+	if n := strings.Count(string(out), "=== testshard: shard "); n != 3 {
+		t.Errorf("the output names %d shards; want 3:\n%s", n, out)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "TestProbeC")); !os.IsNotExist(err) {
+		t.Errorf("a shard ran the test the -skip names: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "TestProbeA")); err != nil {
+		t.Errorf("a test the -skip does not name did not run: %v", err)
+	}
+}
+
 // TestAFailingShardFailsTheRun: one test failing in one shard fails the run,
 // and its failure is in the output.
 func TestAFailingShardFailsTheRun(t *testing.T) {
@@ -178,6 +203,7 @@ func TestShardsOnlyForTheWholePackage(t *testing.T) {
 		{"one", env(ShardsEnv, "1"), goTest, 0},
 		{"not a number", env(ShardsEnv, "many"), goTest, 0},
 		{"a shard's own process", env(ShardsEnv, "3", childEnv, "1"), goTest, 0},
+		{"a -skip", env(ShardsEnv, "3"), append(slices.Clone(goTest), "-test.skip=^TestX$"), 3},
 		{"a -run of its own", env(ShardsEnv, "3"), append(slices.Clone(goTest), "-test.run=^TestX$"), 0},
 		{"a profile", env(ShardsEnv, "3"), append(slices.Clone(goTest), "-test.coverprofile=c.out"), 0},
 		{"-json", env(ShardsEnv, "3"), append(slices.Clone(goTest), "-test.v=test2json"), 0},

@@ -78,6 +78,11 @@ that joins again with the role it holds is a resume, logged with `rejoin`; askin
 for the other role is refused. Leaving releases every claim the session holds,
 logs `session_close`, and removes the record.
 
+A first session's join is the one act by which a session says it coordinates a
+run, so a first session whose setting reads as off a profile is warned after each
+join, in any mode, on the terms [`26-mode.md`](26-mode.md#a-session-off-a-profile) sets out
+(dcn-2611041550129278).
+
 The role lives in that record and nowhere else: the environment is not a trust
 input, because a variable a shell or a repository's configuration can set is not
 a statement the session made. The record gives consistency, not authentication —

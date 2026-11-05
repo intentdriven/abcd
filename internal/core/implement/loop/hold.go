@@ -7,8 +7,8 @@ package loop
 // sibling whose round passes after the hand-back does not land: it takes the
 // stage `held` before the first landing step that reaches past the machine or
 // merges — before the push when it has not pushed, before arming when it has
-// opened its pull request, and disarmed (`gh pr merge <n> --disable-auto`)
-// when it was already armed. The person's word on each held lane is given
+// opened its pull request, and withdrawn (auto-merge off, out of the queue, read
+// back) when it was already armed. The person's word on each held lane is given
 // through `implement step --release <lane>` (it lands as it is) or `--discard
 // <lane>` (it does not land), once no lane of the run has anything left to do.
 
@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/implement"
+	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -67,19 +68,29 @@ func holdLane(c Context, lane *Lane) (Outcome, error) {
 				if strings.TrimSpace(state) == "MERGED" {
 					return landStage(c, lane)
 				}
-				if _, err := forge(c, *lane, "pr", "merge", n, "--disable-auto"); err != nil {
-					r, _ := AsRefusal(err)
-					if r != nil && r.outage != nil {
+				// Nothing merges until the person decides, so the queue entry leaves
+				// with the auto-merge, and the lane is held only once the forge stops
+				// reporting either.
+				v, unread, err := readQueue(c, *lane)
+				if err != nil {
+					return Outcome{}, err
+				}
+				if unread != "" {
+					return Outcome{}, contend(string(StageHeld), "", lane.ID,
+						"pull request #"+n+" is armed to merge and "+handedBackCause(c.State)+" was handed back, and its arming could not be read ("+unread+")",
+						"run `abcd implement step` again")
+				}
+				if err := landing.WithdrawArming(gateForge(c, *lane), n, v.ID, v.AutoMergeRequest != nil, v.queued()); err != nil {
+					if r := netFailure(StageHeld, lane.ID, "gh pr merge", err); r != nil {
 						// A lost network is waited out on the shared probe.
 						return Outcome{}, r
 					}
-					why := err.Error()
-					if r != nil {
-						why = r.Reason
-					}
 					return Outcome{}, refuse(string(StageHeld), "", lane.ID,
-						"pull request #"+n+" is armed to merge and "+handedBackCause(c.State)+" was handed back, but the forge refused to withdraw the arming: "+why,
+						"pull request #"+n+" is armed to merge and "+handedBackCause(c.State)+" was handed back, but the forge refused to withdraw the arming: "+forgeWhy(err),
 						"decide pull request #"+n+" yourself on the forge (disarm or close it), then run `abcd implement step` again")
+				}
+				if err := confirmWithdrawn(c, *lane, StageHeld); err != nil {
+					return Outcome{}, err
 				}
 			}
 			cp := *ld

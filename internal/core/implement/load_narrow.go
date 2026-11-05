@@ -184,7 +184,7 @@ func narrowLimit(set, cores int) int {
 	return defaultNarrowRuns(cores)
 }
 
-// NarrowRuns reads load.narrow_runs from the machine configuration alone
+// narrowRuns reads load.narrow_runs from the machine configuration alone
 // (layered.MachineRoots), as PreflightSlots reads load.preflights, and returns it
 // with where it came from; zero is unset, and a look then derives it from the
 // cores (narrowLimit). A value outside one to MaxNarrowRuns is refused naming the
