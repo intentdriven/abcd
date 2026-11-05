@@ -39,8 +39,9 @@ import (
 // rewritten in a spelling nobody anticipated passes and one that merely reads
 // right fails. The event set is derived from the workflow's `on:` block. A context
 // the job does not have fails the test, which is what catches a step left reading
-// `matrix.os` in a job with no such matrix: GitHub would read it as empty and skip
-// the step in silence.
+// `matrix.shard` in the called workflow, which has no matrix: GitHub would read it
+// as empty and skip the step in silence. The matrix and the condition are ci.yml's,
+// and a shard's runner and steps are macos-suite.yml's, which release.yml calls too.
 func TestMacOSLegRunsItsSuiteOnlyNightlyAndOnDemand(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
 	const rel = ".github/workflows/ci.yml"
@@ -192,8 +193,9 @@ func checkMacOSSuitePasses(t *testing.T, workflow string, events []string) {
 	if !ok {
 		t.Fatalf("ci.yml defines no %s job", macOSSuiteJob)
 	}
-	if r, _ := jobKey(job, "runs-on"); r != "macos-latest" {
-		t.Errorf("the %s job runs on %q; want macos-latest", macOSSuiteJob, r)
+	shardJob := macOSShardBlock(t, filepath.Join("..", "..", ".."))
+	if r, _ := jobKey(shardJob, "runs-on"); r != "macos-latest" {
+		t.Errorf("%s job %s runs on %q; want macos-latest", macOSSuiteWorkflow, macOSShardJob, r)
 	}
 	// The classifier has no say here: no pull request reaches a shard, and every
 	// other event is never inert. A need on it would only add a way to skip a
@@ -210,7 +212,7 @@ func checkMacOSSuitePasses(t *testing.T, workflow string, events []string) {
 		t.Fatalf("the %s job carries no if, so a pull request and a queue entry would take macOS runners", macOSSuiteJob)
 	}
 	shards := macOSShards(t, job)
-	items := jobSteps(job)
+	items := jobSteps(shardJob)
 	for _, event := range events {
 		t.Run(event, func(t *testing.T) {
 			ctx := map[string]any{
@@ -231,7 +233,7 @@ func checkMacOSSuitePasses(t *testing.T, workflow string, events []string) {
 			}
 			count := map[string]int{}
 			for _, shard := range shards {
-				ctx["matrix.shard"] = float64(shard)
+				ctx["inputs.shard"] = float64(shard)
 				running := runningSteps(t, items, ctx)
 				passes := goTestPasses(running)
 				if len(passes) == 0 || passes[0] != "go test -race -timeout 40m "+macOSShardPackages {
@@ -299,6 +301,17 @@ func goTestPasses(steps []jobStep) []string {
 	return passes
 }
 
+// macOSShardBlock returns the job that runs one shard of the suite, from the
+// reusable workflow ci.yml's matrix and release.yml's shard jobs both call.
+func macOSShardBlock(t *testing.T, root string) string {
+	t.Helper()
+	job, ok := workflowJobBlock(readRepoFile(t, root, macOSSuiteWorkflow), macOSShardJob)
+	if !ok {
+		t.Fatalf("%s defines no %s job", macOSSuiteWorkflow, macOSShardJob)
+	}
+	return job
+}
+
 // regexpFirst returns the first capture of pattern in text.
 func regexpFirst(text, pattern string) (string, bool) {
 	m := regexp.MustCompile(pattern).FindStringSubmatch(text)
@@ -342,7 +355,8 @@ func macOSShards(t *testing.T, suite string) []int {
 const macOSShardCount = 3
 
 // macOSRaceStepScript returns the shard race step's job step, its env values held
-// to what asks cmd/ci-shard for this shard of as many as the matrix has.
+// to what asks cmd/ci-shard for this shard of as many as its caller names
+// (TestMacOSSuiteCallersPassItsDeclaredInputs holds what each caller names).
 func macOSRaceStepScript(t *testing.T, suite string) jobStep {
 	t.Helper()
 	for _, s := range jobSteps(suite) {
@@ -350,11 +364,11 @@ func macOSRaceStepScript(t *testing.T, suite string) jobStep {
 			continue
 		}
 		for key, want := range map[string]string{
-			"ABCD_CI_SHARD":  "${{ matrix.shard }}",
-			"ABCD_CI_SHARDS": "${{ strategy.job-total }}",
+			"ABCD_CI_SHARD":  "${{ inputs.shard }}",
+			"ABCD_CI_SHARDS": "${{ inputs.shards }}",
 		} {
 			if got, _ := regexpFirst(s.body, `(?m)^\s+`+key+`: (.+?)\s*$`); got != want {
-				t.Errorf("step %q: %s is %q; want %q, so the count cannot drift from the matrix", macOSRaceStep, key, got, want)
+				t.Errorf("step %q: %s is %q; want %q, so the count cannot drift from the caller's", macOSRaceStep, key, got, want)
 			}
 		}
 		if s.cond != "" {
@@ -362,7 +376,7 @@ func macOSRaceStepScript(t *testing.T, suite string) jobStep {
 		}
 		return s
 	}
-	t.Fatalf("the %s job has no %q step", macOSSuiteJob, macOSRaceStep)
+	t.Fatalf("%s has no %q step", macOSSuiteWorkflow, macOSRaceStep)
 	return jobStep{}
 }
 
@@ -377,7 +391,7 @@ func TestMacOSSuiteShardsCoverTheModule(t *testing.T) {
 		t.Fatalf("ci.yml defines no %s job", macOSSuiteJob)
 	}
 	shards := macOSShards(t, suite)
-	step := macOSRaceStepScript(t, suite)
+	step := macOSRaceStepScript(t, macOSShardBlock(t, root))
 	const assign = `pkgs=$(go run ./cmd/ci-shard -shard "$ABCD_CI_SHARD" -of "$ABCD_CI_SHARDS")`
 	if !strings.Contains(step.script(), assign) {
 		t.Fatalf("step %q does not read %s:\n%s", macOSRaceStep, assign, step.script())
@@ -425,11 +439,7 @@ func TestMacOSSuiteShardsCoverTheModule(t *testing.T) {
 // other side, the packages it printed must reach go test as separate words.
 func TestAShardThatCannotReadItsPackagesFails(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
-	suite, ok := workflowJobBlock(readRepoFile(t, root, ".github/workflows/ci.yml"), macOSSuiteJob)
-	if !ok {
-		t.Fatalf("ci.yml defines no %s job", macOSSuiteJob)
-	}
-	script := macOSRaceStepScript(t, suite).script()
+	script := macOSRaceStepScript(t, macOSShardBlock(t, root)).script()
 	dir := t.TempDir()
 	stub := "#!/bin/sh\nprintf '%s\\n' \"$*\" >>\"$STUB_LOG\"\n" +
 		"[ \"$1\" = run ] || exit 0\n[ -z \"$STUB_FAIL\" ] || exit 1\nprintf 'p/a\\np/b\\n'\n"

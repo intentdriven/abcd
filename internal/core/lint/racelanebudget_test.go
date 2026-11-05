@@ -21,8 +21,9 @@ import (
 // an unrelated pull request from the queue. The lane's ceiling was the default
 // rather than a budget anyone had sized, so it is written down here, in four
 // places that must agree: the merge gate (ci.yml's race lane on ubuntu), the
-// nightly macOS suite (the race pass of its shards), the release gate
-// (release.yml's verify job) and the local pre-push gate (make preflight).
+// macOS suite (the race pass of macos-suite.yml's shards, nightly and on each
+// release cut), the release gate (release.yml's verify job) and the local
+// pre-push gate (make preflight).
 //
 // The enclosing ceilings are the other half, and they differ by job.
 //
@@ -124,8 +125,8 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 	}
 
 	ci := readRepoFile(t, root, ".github/workflows/ci.yml")
-	where := ".github/workflows/ci.yml job " + macOSSuiteJob
-	if suite, ok := workflowJobBlock(ci, macOSSuiteJob); !ok {
+	where := macOSSuiteWorkflow + " job " + macOSShardJob
+	if suite, ok := workflowJobBlock(readRepoFile(t, root, macOSSuiteWorkflow), macOSShardJob); !ok {
 		t.Errorf("%s: no such job; the parser or the workflow changed shape", where)
 	} else {
 		// A shard's race pass: the local gate's budget, over what cmd/ci-shard
@@ -171,8 +172,8 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 	}
 }
 
-// checkMacOSCeilingMinutes is the timeout-minutes of each shard of ci.yml's
-// macOS suite. The suite ran as one job until 2026-11-04, whose ceiling rose from
+// checkMacOSCeilingMinutes is the timeout-minutes of each shard of the macOS suite,
+// on the nightly run and on a release cut alike. The suite ran as one job until 2026-11-04, whose ceiling rose from
 // 45 to 85 as its runs grew (dcn-2610181756328249, dcn-2610282036219503) and which
 // still reached that ceiling on slow runners (iss-2610181757540736). A third of
 // the slowest passing run is about 30 minutes, so 50 is half as much again.
@@ -210,13 +211,13 @@ const checkClockStep = "Record the job's start"
 // on both: the macOS suite gates no pull request.
 func TestEachTestJobWarnsBeforeItsCap(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
-	ci := readRepoFile(t, root, ".github/workflows/ci.yml")
 	queue := mergeQueueResponseTimeout(t, root)
 	lead := time.Duration(checkWarnLeadMinutes) * time.Minute
 	var script string
-	for _, jobName := range ciTestJobs {
-		where := ".github/workflows/ci.yml job " + jobName
-		job, ok := workflowJobBlock(ci, jobName)
+	for _, testJob := range ciTestJobs {
+		jobName := testJob.job
+		where := testJob.file + " job " + jobName
+		job, ok := workflowJobBlock(readRepoFile(t, root, testJob.file), jobName)
 		if !ok {
 			t.Fatalf("%s: no such job; the parser or the workflow changed shape", where)
 		}
@@ -313,8 +314,15 @@ func TestEachTestJobWarnsBeforeItsCap(t *testing.T) {
 	}
 }
 
-// ciTestJobs are the jobs of ci.yml that run go test.
-var ciTestJobs = []string{"check", macOSSuiteJob}
+// ciTestJob names one job that runs go test, by its workflow file.
+type ciTestJob struct{ file, job string }
+
+// ciTestJobs are the jobs that run go test under the job clock's watchdog: ci.yml's
+// check job and the shard job both of the macOS suite's callers reach.
+var ciTestJobs = []ciTestJob{
+	{".github/workflows/ci.yml", "check"},
+	{macOSSuiteWorkflow, macOSShardJob},
+}
 
 // rulesetMirror is the tree's record of the live branch ruleset on main.
 const rulesetMirror = ".abcd/work/rulesets/main-protection.json"
@@ -397,9 +405,9 @@ const raceLanePattern = "./internal/..."
 // inert change, and what the macOS suite's shards add up to.
 const modulePattern = "./..."
 
-// The jobs and step of ci.yml's macOS suite.
+// ci.yml's jobs for the macOS suite, and the step of macos-suite.yml that races.
 const (
-	// macOSSuiteJob runs the suite, one matrix leg per shard.
+	// macOSSuiteJob calls the suite's workflow, one matrix leg per shard.
 	macOSSuiteJob = "macos-suite"
 	// macOSCheckJob reports `check (macos-latest)` from the shards' result.
 	macOSCheckJob = "check-macos"
