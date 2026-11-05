@@ -56,13 +56,16 @@ const (
 	ForgeRearm    = "re-arm"
 	ForgeRecord   = "record"
 	ForgeComment  = "comment"
+	// ForgeRead: a read of the forge that settling a withdrawal needed failed, so
+	// whether the pull request is armed is not known.
+	ForgeRead = "read"
 	// ForgeStandsArmed: a pull request abcd meant to leave off the merge path that
 	// the forge reports armed or queued.
 	ForgeStandsArmed = "stands-armed"
 )
 
 // ForgeFailure is one pull request the forge, or the record of it, failed
-// on: the act (ForgeWithdraw, ForgeRearm, ForgeRecord, ForgeComment,
+// on: the act (ForgeWithdraw, ForgeRearm, ForgeRecord, ForgeComment, ForgeRead,
 // ForgeStandsArmed) and the reason.
 type ForgeFailure struct {
 	Number int    `json:"number"`
@@ -75,12 +78,17 @@ func (f ForgeFailure) Line() string {
 	switch f.Act {
 	case ForgeWithdraw:
 		return fmt.Sprintf("#%d was not withdrawn: %s; it may still merge, and the launch check refuses the cut while it is armed", f.Number, f.Reason)
-	case ForgeRecord, ForgeComment:
+	case ForgeRecord, ForgeComment, ForgeRead:
 		return fmt.Sprintf("#%d: %s", f.Number, f.Reason)
 	case ForgeStandsArmed:
-		return fmt.Sprintf("#%d stands armed and may merge: %s; to withdraw it: gh pr merge %d --disable-auto, and take it out of the merge queue on its page if it is queued", f.Number, f.Reason, f.Number)
+		return fmt.Sprintf("#%d stands armed and may merge: %s; %s", f.Number, f.Reason, withdrawCommand(f.Number))
 	}
 	return fmt.Sprintf("#%d was not re-armed: %s; it stays withdrawn, and the next act of a copy of its holder tries again", f.Number, f.Reason)
+}
+
+// withdrawCommand is what takes pull request n off the merge path.
+func withdrawCommand(n int) string {
+	return fmt.Sprintf("to withdraw it: gh pr merge %d --disable-auto, and take it out of the merge queue on its page if it is queued", n)
 }
 
 // Settle is what an act did for one release's withdrawals that were due:
@@ -741,7 +749,7 @@ func rearmMine(a actor, ws []Withdrawal, vouched map[Withdrawal]bool) (out, sett
 		if state == WithdrawnMoved {
 			at := ""
 			if state, at, err = releaseForge.settleMoved(a.root, owner, name, w); err != nil {
-				fails = append(fails, rearmFailure(w.Number, ForgeRecord, err))
+				fails = append(fails, rearmFailure(w.Number, ForgeRead, err))
 				continue
 			}
 			out[i].ArmedAt = at
@@ -1265,25 +1273,39 @@ func (p *prepared) admitCheck(w Withdrawal) (state string, err error) {
 	}
 	state, err = releaseForge.inspect(p.root, owner, name, w)
 	// An admission names the commits withdrawn, so one armed since at another head
-	// is not what it admits, even at a head the gate arms.
-	if err == nil && state == WithdrawnFoundArmed && w.Pending() {
-		n, rerr := releaseForge.pullRequest(p.root, owner, name, w.Number)
+	// is not what it admits, even at a head the gate arms. A refusal over a moved
+	// head says what the forge reports of its arming.
+	armed, armedUnread := false, ""
+	if err == nil && (state == WithdrawnMoved || state == WithdrawnFoundArmed && w.Pending()) {
+		pr, rerr := releaseForge.pullRequest(p.root, owner, name, w.Number)
 		switch {
-		case rerr != nil:
+		case rerr == nil:
+			armed = pr.armed()
+			if pr.HeadRefOid != w.Head {
+				state = WithdrawnMoved
+			}
+		case state == WithdrawnMoved:
+			armedUnread = forgeReason(rerr)
+		default:
 			err = errors.New(forgeReason(rerr))
-		case n.HeadRefOid != w.Head:
-			state = WithdrawnMoved
 		}
 	}
 	switch {
 	case err != nil:
-		if ae := (*armError)(nil); errors.As(err, &ae) && ae.gated {
-			return "", refuse("#%d was not admitted: %s, so it stays withdrawn; %s", n, err.Error(), nothingPushed)
+		if ae := (*armError)(nil); errors.As(err, &ae) && ae.standsArmed {
+			return "", refuse("#%d was not admitted: %s; it stands armed and may merge; %s; %s", n, err.Error(), withdrawCommand(n), nothingPushed)
 		}
 		return "", refuse("#%d was not admitted: the forge could not be read for it (%s), so it stays withdrawn; %s", n, err.Error(), nothingPushed)
 	case state == WithdrawnMoved:
-		return "", refuse("#%d was not admitted: its head moved since it was withdrawn at %s, and an admission re-arms only the commits withdrawn; "+
-			"it stays withdrawn, for its owner to re-arm after the release; %s", n, w.Head[:12], nothingPushed)
+		left := "it stays withdrawn, for its owner to re-arm after the release"
+		switch {
+		case armed:
+			left = "it stands armed and may merge; " + withdrawCommand(n)
+		case armedUnread != "":
+			left = "whether it is armed could not be read (" + armedUnread + ")"
+		}
+		return "", refuse("#%d was not admitted: its head moved since it was withdrawn at %s, and an admission re-arms only the commits withdrawn; %s; %s",
+			n, w.Head[:12], left, nothingPushed)
 	case state == WithdrawnClosed || state == WithdrawnMerged:
 		return "", refuse("#%d was not admitted: it was %s since it was withdrawn; %s", n, state, nothingPushed)
 	case state == WithdrawnMismatch:

@@ -502,7 +502,7 @@ func (f mergeForge) inspect(root, owner, name string, w Withdrawal) (string, err
 func (f mergeForge) settleMoved(root, owner, name string, w Withdrawal) (state, at string, err error) {
 	n, err := f.pullRequest(root, owner, name, w.Number)
 	if err != nil {
-		return "", "", errors.New(forgeReason(err))
+		return "", "", fmt.Errorf("abcd could not read whether it is armed, to settle its moved head: %s", forgeReason(err))
 	}
 	if !n.armed() {
 		return WithdrawnMoved, "", nil

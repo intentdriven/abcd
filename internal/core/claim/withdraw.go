@@ -95,8 +95,8 @@ const (
 	// lost. This person's own renewals carry it, and a live one withdraws it
 	// again when the forge still has it armed; a tombstone ends it.
 	WithdrawnKept = "kept"
-	// WithdrawnStanding: an admitted one armed by another account at a head the
-	// merge gate here does not arm. That arming is left as it is, and its owner
+	// WithdrawnStanding: one armed by another account at a head the merge gate here
+	// does not arm. That arming is left as it is, and its owner
 	// is told what withdraws it.
 	WithdrawnStanding = "standing"
 )

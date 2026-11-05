@@ -575,3 +575,85 @@ func TestTheListingOfDueWithdrawalsPromisesOnlyWhatTheGateAllows(t *testing.T) {
 		t.Fatalf("the listing says %q", line)
 	}
 }
+
+// --admit refuses in words true of the pull request: armed on the forge, it stands
+// armed and may merge, with the command that withdraws it, whatever the refusal.
+func TestARefusedAdmissionSaysWhatIsTrueOfItsArming(t *testing.T) {
+	refuses := func(_, _, _, h string) (bool, string, error) { return false, "no review receipt names " + h, nil }
+	unreadable := func(_, _, _, _ string) (bool, string, error) { return false, "", errors.New("a read failed") }
+	for _, c := range []struct {
+		name   string
+		head   string
+		method string
+		gate   ArmGate
+		armed  bool
+	}{
+		{"armed at its recorded head, the gate refusing", "", "SQUASH", refuses, true},
+		{"armed at a moved head, the gate refusing", headC, "SQUASH", refuses, true},
+		{"armed at a moved head the gate arms", headC, "SQUASH", nil, true},
+		{"armed, the gate unreadable", "", "SQUASH", unreadable, true},
+		{"armed at a moved head, the gate unreadable", headC, "SQUASH", unreadable, true},
+		{"not armed, at a moved head", headC, "", refuses, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			w := newWorld(t)
+			f := armedForge(t)
+			p := w.clone("1234+octo@users.noreply.github.com", "")
+			if _, err := p.do(Request{Record: "rel-v0.16.0"}); err != nil {
+				t.Fatal(err)
+			}
+			if c.head != "" {
+				f.prs[11].head = c.head
+			}
+			f.prs[11].method = c.method
+			if c.gate != nil {
+				releaseForge.armGate = c.gate
+			}
+			_, err := p.do(Request{Record: "rel-v0.16.0", Admit: 11})
+			if !errors.Is(err, ErrRefused) {
+				t.Fatalf("admit = %v; want refused", err)
+			}
+			says := err.Error()
+			if c.armed {
+				for _, want := range []string{"stands armed", "may merge", "gh pr merge 11 --disable-auto"} {
+					if !strings.Contains(says, want) {
+						t.Fatalf("the refusal does not say %q: %s", want, says)
+					}
+				}
+				if strings.Contains(says, "stays withdrawn") {
+					t.Fatalf("the refusal says it is withdrawn: %s", says)
+				}
+			} else if !strings.Contains(says, "stays withdrawn") || strings.Contains(says, "stands armed") {
+				t.Fatalf("the refusal of an unarmed one says: %s", says)
+			}
+		})
+	}
+}
+
+// A first read that fails while settling names what it was reading, under an act
+// that says so.
+func TestAFailedReadWhileSettlingSaysWhatItWasReading(t *testing.T) {
+	w := newWorld(t)
+	f := armedForge(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	if _, err := p.do(Request{Record: "rel-v0.16.0"}); err != nil {
+		t.Fatal(err)
+	}
+	f.prs[11].head = headC
+	f.prs[11].views, f.prs[11].failViewAt = 0, 2
+	rel, err := p.do(Request{Record: "rel-v0.16.0", Release: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got ForgeFailure
+	for _, s := range rel.Settles {
+		for _, ff := range s.Failures {
+			if ff.Number == 11 {
+				got = ff
+			}
+		}
+	}
+	if got.Act != "read" || !strings.Contains(got.Line(), "could not read whether it is armed") || !strings.Contains(got.Line(), "HTTP 502") {
+		t.Fatalf("the failure is %+v, its line %q", got, got.Line())
+	}
+}

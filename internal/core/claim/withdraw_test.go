@@ -104,6 +104,8 @@ type fakePR struct {
 	stuck bool
 	// noReadBack fails the read of the pull request once it is not armed.
 	noReadBack bool
+	// failViewAt fails the read of it with this ordinal, counted in views.
+	failViewAt, views int
 }
 
 // fakeForge stands for GitHub's GraphQL endpoint: it refuses a query
@@ -364,6 +366,9 @@ func (f *fakeForge) graphql(_, doc string, vars map[string]string, ints map[stri
 		}
 		if p.noReadBack && !p.queued && p.method == "" {
 			return nil, errors.New("fake forge: the read failed")
+		}
+		if p.views++; p.views == p.failViewAt {
+			return nil, errors.New("HTTP 502")
 		}
 		return json.Marshal(map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequest": node(n, p)}}})
 	}
