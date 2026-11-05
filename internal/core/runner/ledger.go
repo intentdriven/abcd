@@ -234,18 +234,20 @@ const staleLedgerTemp = 24 * time.Hour
 type startedKey struct{}
 
 // LaunchStarted tells the launch ctx belongs to the process it started, so its
-// entry is judged by that process. The runners' launcher calls it; a launcher
-// that starts its own process inside RecordLaunch calls it too.
-func LaunchStarted(ctx context.Context, pid int) {
-	if f, ok := ctx.Value(startedKey{}).(func(int)); ok {
-		f(pid)
+// entry is judged by that process. at is read just before the start, since a
+// process's start time is when it forked and exec can take seconds after that.
+// The runners' launcher calls it; a launcher that starts its own process inside
+// RecordLaunch calls it too.
+func LaunchStarted(ctx context.Context, pid int, at time.Time) {
+	if f, ok := ctx.Value(startedKey{}).(func(int, time.Time)); ok {
+		f(pid, at)
 	}
 }
 
 // LaunchExited tells the launch ctx belongs to that its process has gone and the
 // launcher still holds it: validating an answer takes time, and an entry whose
 // launch is still being finished is not lost.
-func LaunchExited(ctx context.Context) { LaunchStarted(ctx, 0) }
+func LaunchExited(ctx context.Context) { LaunchStarted(ctx, 0, time.Time{}) }
 
 // RecordLaunch is the one way an entry is written. It writes the entry marked
 // running, runs run with a context LaunchStarted answers on, and completes the
@@ -432,13 +434,13 @@ func (h *launchHandle) write() error {
 // started moves the entry onto the process that runs the launch, or back onto
 // the launcher when pid is 0. A write that fails leaves it judged by the
 // launcher, which waits on that process.
-func (h *launchHandle) started(pid int) {
+func (h *launchHandle) started(pid int, at time.Time) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if pid == 0 {
 		h.entry.PID, h.entry.PIDStartUnix = os.Getpid(), 0
 	} else {
-		h.entry.PID, h.entry.PIDStartUnix = pid, h.l.now().Unix()
+		h.entry.PID, h.entry.PIDStartUnix = pid, at.Unix()
 	}
 	_ = h.write()
 }

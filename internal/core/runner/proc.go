@@ -183,10 +183,13 @@ func (l launcher) run(ctx context.Context, runner, bin string, args, seal []stri
 	cmd.Stderr = ew
 	procgroup.Lead(cmd)
 	cmd.WaitDelay = pipeGrace
+	// Read before the start returns: a process's start is when it forked, and
+	// Start returns only once exec has, which can take seconds.
+	forked := time.Now()
 	if err := cmd.Start(); err != nil {
 		return procResult{}, failAt(ErrNotStarted, runner, ReasonFailed, "%s could not be started", filepath.Base(bin))
 	}
-	LaunchStarted(ctx, cmd.Process.Pid)
+	LaunchStarted(ctx, cmd.Process.Pid, forked)
 	// The clock stands still while the harness's tree waits at the load gate
 	// (gatewait.go): each look that finds a waiter queued moves the deadline
 	// by the time since the last look, up to gateCredit.

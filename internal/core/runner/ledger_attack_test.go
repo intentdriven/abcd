@@ -413,9 +413,10 @@ func TestLaunchesRacingOnAFreshStoreEachKeepTheirOwnFile(t *testing.T) {
 func TestAStartedLaunchIsJudgedOnItsHarness(t *testing.T) {
 	home := t.TempDir()
 	if _, err := RecordLaunch(context.Background(), NewLedger(home), ledgerStart(), func(ctx context.Context) LaunchEnd {
-		LaunchStarted(ctx, 4242)
+		at := time.Now().Add(-time.Minute)
+		LaunchStarted(ctx, 4242, at)
 		e := ledgerFiles(t, home)[0]
-		if e.PID != 4242 || e.PIDStartUnix == 0 {
+		if e.PID != 4242 || e.PIDStartUnix != at.Unix() {
 			t.Errorf("after the start: %+v", e)
 		}
 		LaunchExited(ctx)
@@ -426,6 +427,75 @@ func TestAStartedLaunchIsJudgedOnItsHarness(t *testing.T) {
 		return LaunchEnd{}
 	}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A process's start is when it forked, whatever exec then cost, and exec can
+// cost seconds on a first run or a loaded machine. An entry stamped after the
+// start returned would read as lost for as long as its harness ran.
+func TestALiveHarnessReadsAsRunningHoweverLongItsExecTook(t *testing.T) {
+	f := newFake(t, "hang", Claude)
+	c := mustLoad(t, claudeRoute, "")
+	// The ledger's clock is as far ahead of the fork as a slow exec leaves it.
+	c.ledger.now = func() time.Time { return time.Now().UTC().Add(10 * time.Second) }
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = newHarness(t, c, true).d.Dispatch(ctx, f.request("ruthless-reviewer"))
+	}()
+	home := c.Ledger().home
+	deadline := time.Now().Add(20 * time.Second)
+	var got LedgerListing
+	for time.Now().Before(deadline) {
+		if entries := ledgerFilesIfAny(t, home); len(entries) == 1 && entries[0].PIDStartUnix != 0 {
+			got = readAll(t, home, LedgerQuery{All: true})
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	cancel()
+	<-done
+	if got.Totals.Running != 1 || got.Totals.Lost != 0 {
+		t.Errorf("a live harness reads as %+v, want running", got.Totals)
+	}
+}
+
+// ledgerFilesIfAny is ledgerFiles for a poll: a file being replaced is passed
+// over, not a failure.
+func ledgerFilesIfAny(t *testing.T, home string) []LedgerEntry {
+	t.Helper()
+	paths, err := filepath.Glob(filepath.Join(abcdhome.Path(home, ledgerFolder), "*.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []LedgerEntry
+	for _, p := range paths {
+		raw, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		var e LedgerEntry
+		if json.Unmarshal(raw, &e) == nil {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// A repository's longer figure binds its own launches and no other's: each
+// launch prunes by what it read, so only the machine's figure binds them all.
+func TestARepositorysLongerFigureBindsOnlyItsOwnLaunches(t *testing.T) {
+	long := mustLoad(t, "", `{"ledger":{"retention_days":365}}`).Ledger().retention
+	l, names := agedEntries(t, long, 40, 400)
+	if got := survivors(t, l, names); !slices.Equal(got, []int{40}) {
+		t.Errorf("its own launch held %v, want the 40-day entry", got)
+	}
+	other := mustLoad(t, "", "").Ledger().retention
+	l.retention = other
+	if got := survivors(t, l, names); len(got) != 0 {
+		t.Errorf("another repository's launch held %v, want the shipped retention to prune it", got)
 	}
 }
 
