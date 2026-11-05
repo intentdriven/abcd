@@ -216,9 +216,10 @@ func driverOf(tab sessionname.Table, from int, home string) (sessionname.Host, s
 }
 
 // claimDriver is ClaimDriver's claim, which a take-over makes directly. overHalted
-// lets a live driver give way where the run, as read under the lock, is halted: every
-// lane has settled, so no agent is in its call, and an idle session does not hold it
-// from being taken over.
+// lets a live driver give way where the run, as read under the lock, is halted and the
+// driver claimed before the halt: every lane has settled, so no agent is in its call,
+// and an idle session does not hold it from being taken over. One that claimed since
+// is a take-over at work, which holds the run as any driver does.
 func claimDriver(repoRoot, runID string, o Options, overHalted bool) error {
 	tab, err := readProcs()
 	if err != nil {
@@ -254,7 +255,7 @@ func claimDriver(repoRoot, runID string, o Options, overHalted bool) error {
 				}
 				alive = fresh.Alive(d.host())
 			}
-			over := alive && overHalted && c.Stop != nil && c.Stop.HaltedAt != nil
+			over := alive && overHalted && c.Stop != nil && c.Stop.HaltedAt != nil && !d.At.After(*c.Stop.HaltedAt)
 			if alive && !over {
 				return false, contend(StageDriver, "", "", fmt.Sprintf("%s is driven by %s, which has been alive since it took the run at %s",
 					st.RunID, driverName(*d), d.At.UTC().Format(time.RFC3339)),

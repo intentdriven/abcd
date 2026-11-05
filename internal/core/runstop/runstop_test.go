@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"errors"
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"strconv"
@@ -851,5 +852,34 @@ func TestAPlantedNumberNamesItsRemedy(t *testing.T) {
 	_, err := WriteSetting(t.TempDir(), folder, "")
 	if err == nil || !strings.Contains(err.Error(), stopDirName(os.Getuid())) || !strings.Contains(err.Error(), "administrator") {
 		t.Fatalf("the refusal: %v", err)
+	}
+}
+
+// TestANoticeIsSafeToPrintWhereverItGoes: what a notice says is made safe where it is
+// composed, since it reaches JSON and a board as well as a terminal.
+func TestANoticeIsSafeToPrintWhereverItGoes(t *testing.T) {
+	bad := filepath.Join(t.TempDir(), "x\x1b[31m")
+	if err := os.Mkdir(bad, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	line := foreignStop{folder: bad, path: filepath.Join(bad, "f"), dir: filepath.Join(bad, "d"), owner: os.Getuid()}.say("then")
+	if strings.ContainsRune(line, 0x1b) {
+		t.Fatalf("%q", line)
+	}
+}
+
+// TestAStopDirectoryThatCannotBeChangedSaysWhy: a directory that is the person's own and
+// cannot be changed is no planted entry, and its reason is kept.
+func TestAStopDirectoryThatCannotBeChangedSaysWhy(t *testing.T) {
+	old := chmodStopDir
+	t.Cleanup(func() { chmodStopDir = old })
+	chmodStopDir = func(*os.Root, string, os.FileMode) error { return syscall.EROFS }
+	folder := filepath.Join(t.TempDir(), "shared")
+	if err := os.Mkdir(folder, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	err := ensureStopDir(folder, os.Getuid())
+	if !errors.Is(err, syscall.EROFS) || strings.Contains(err.Error(), "administrator") {
+		t.Fatalf("ensureStopDir = %v", err)
 	}
 }

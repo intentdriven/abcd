@@ -35,6 +35,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 const (
@@ -244,6 +245,9 @@ func checkStopDir(folder string, person int) (ok bool, refused string, unreadabl
 	return true, "", false
 }
 
+// chmodStopDir sets the directory's mode; a test stands in a failure.
+var chmodStopDir = func(root *os.Root, name string, mode os.FileMode) error { return root.Chmod(name, mode) }
+
 // ensureStopDir makes the person's directory. What already stands there is judged
 // before anything is changed: one that is not a real directory of theirs is refused.
 func ensureStopDir(folder string, person int) error {
@@ -266,8 +270,10 @@ func ensureStopDir(folder string, person int) error {
 	if uid, known := ownerOf(fi); !fi.IsDir() || !known || uid != person {
 		return planted()
 	}
-	if err := root.Chmod(name, sharedDirMode); err != nil {
-		return planted()
+	if err := chmodStopDir(root, name, sharedDirMode); err != nil {
+		// The look above proved the directory is the person's: this is no planted
+		// entry, and its reason is the one to act on.
+		return fmt.Errorf("the stop directory %s in %s could not be made readable by the accounts that read it: %w", name, fsutil.DisplayPath(folder), err)
 	}
 	if ok, refused, _ := checkStopDir(folder, person); !ok {
 		if refused == "" {
@@ -349,7 +355,9 @@ func writeSettingFile(home string, s Setting) error {
 }
 
 // ReadPinned is the one read every run makes before a move. It never fails: a file
-// that is no stop is refused and named, so it neither halts a run nor goes unsaid.
+// that is no stop is refused and named, so it does not itself stop a run that holds no
+// mark and it does not go unsaid; such a read keeps a marked run stopped and refuses a
+// take-over, since it did not see clearly.
 // It reads the account's own stop, the folder the run started under, the folder the
 // setting names, and the platform's shared folder for an account it expects. Held
 // says the read cannot be trusted to have seen a stop, and the run does not take it
@@ -479,7 +487,7 @@ func foreignLines(stops []foreignStop) []string {
 	var out []string
 	for i, f := range stops {
 		if i == maxForeignLines {
-			out = append(out, fmt.Sprintf("and %d more like them in the shared folders, none of them honoured here", len(stops)-maxForeignLines))
+			out = append(out, termsafe.Sanitize(fmt.Sprintf("and %d more like them in the shared folders, none of them honoured here", len(stops)-maxForeignLines)))
 			break
 		}
 		out = append(out, f.say("this account did not name that account at setup, so it is not honoured here"))
@@ -493,10 +501,10 @@ func (f foreignStop) say(then string) string {
 	fi, err := os.Lstat(f.dir)
 	if err == nil && fi.IsDir() {
 		if uid, known := ownerOf(fi); known && uid == f.owner {
-			return fmt.Sprintf("a stop from the account %s stands in %s; %s", accountName(f.owner), fsutil.DisplayPath(f.folder), then)
+			return termsafe.Sanitize(fmt.Sprintf("a stop from the account %s stands in %s; %s", accountName(f.owner), fsutil.DisplayPath(f.folder), then))
 		}
 	}
-	return fmt.Sprintf("a stop file stands in %s under %s, which is not a directory of the account it names; %s", fsutil.DisplayPath(f.folder), filepath.Base(f.dir), then)
+	return termsafe.Sanitize(fmt.Sprintf("a stop file stands in %s under %s, which is not a directory of the account it names; %s", fsutil.DisplayPath(f.folder), filepath.Base(f.dir), then))
 }
 
 // maxFolderNames bounds a look through a shared folder for other accounts' stops.
@@ -557,7 +565,7 @@ func Unreached(home string) []string {
 	stops := foreignStops(nil, s, ok, expected)
 	for i, f := range stops {
 		if i == maxForeignLines {
-			out = append(out, fmt.Sprintf("and %d more this lift cannot reach", len(stops)-maxForeignLines))
+			out = append(out, termsafe.Sanitize(fmt.Sprintf("and %d more this lift cannot reach", len(stops)-maxForeignLines)))
 			break
 		}
 		out = append(out, f.say("this lift cannot reach it, and the account that made it lifts it"))

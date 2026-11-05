@@ -182,10 +182,10 @@ func ListRuns(repoRoot, only string, o Options) (Listing, error) {
 }
 
 func listDrain(checkout string, d DrainState) ListedDrain {
-	l := ListedDrain{Checkout: fsutil.RedactHome(checkout), Next: "run `abcd drain` in that checkout, which picks up from its state"}
+	l := ListedDrain{Checkout: termsafe.Sanitize(fsutil.RedactHome(checkout)), Next: "run `abcd drain` in that checkout, which picks up from its state"}
 	if d.Judging != nil {
-		l.Judging = d.Judging.Issue
-		l.Next = "give the judgement over " + d.Judging.Issue + " with `abcd drain --judgement`, in that checkout"
+		l.Judging = termsafe.Sanitize(d.Judging.Issue)
+		l.Next = "give the judgement over " + l.Judging + " with `abcd drain --judgement`, in that checkout"
 	}
 	return l
 }
@@ -223,11 +223,11 @@ func listRun(checkout string, o Options, root *os.Root, st State, tab *sessionna
 	case held != "":
 		out.Next = termsafe.Sanitize(held) + ": nothing moves until the person puts it back"
 	case c.Stop != nil && c.Stop.HaltedAt != nil:
-		out.Next = "a stop halted it, every lane has settled, and no agent is in its call: take it over with `abcd implement resume --take " + st.RunID + "`, in " + out.Checkout
+		out.Next = "a stop halted it, every lane has settled, and no agent is in its call: take it over with `abcd implement resume --take " + out.RunID + "`, in " + out.Checkout
 	case alive:
 		out.Next = "its driver is alive: leave it"
 	default:
-		out.Next = "take it over with `abcd implement resume --take " + st.RunID + "`, in " + out.Checkout
+		out.Next = "take it over with `abcd implement resume --take " + out.RunID + "`, in " + out.Checkout
 	}
 	return out
 }
@@ -317,6 +317,42 @@ type TakeResult struct {
 	Next string     `json:"next"`
 }
 
+// safeTake is a take-over's answer with what the run file named made safe to write
+// out: a state's lane ids and roles are not validated when it is read.
+func safeTake(res TakeResult) TakeResult {
+	safe := func(line string) string { return termsafe.Sanitize(line) }
+	res.RunID, res.Reservation, res.Next = safe(res.RunID), safe(res.Reservation), safe(res.Next)
+	if res.Collected != nil {
+		collected := make(map[string]string, len(res.Collected))
+		for lane, note := range res.Collected {
+			collected[safe(lane)] = safe(note)
+		}
+		res.Collected = collected
+	}
+	res.Left = slices.Clone(res.Left)
+	for i, l := range res.Left {
+		res.Left[i] = safe(l)
+	}
+	aside := func(a RestartAside) RestartAside {
+		a.RunID, a.Lane, a.Path, a.Why, a.Receipt = safe(a.RunID), safe(a.Lane), safe(a.Path), safe(a.Why), safe(a.Receipt)
+		a.Files = slices.Clone(a.Files)
+		for i, f := range a.Files {
+			a.Files[i] = safe(f)
+		}
+		return a
+	}
+	res.Saved = slices.Clone(res.Saved)
+	for i, a := range res.Saved {
+		res.Saved[i] = aside(a)
+	}
+	res.Restarted = slices.Clone(res.Restarted)
+	for i, r := range res.Restarted {
+		r.Lane, r.Next, r.Aside = safe(r.Lane), safe(r.Next), aside(r.Aside)
+		res.Restarted[i] = r
+	}
+	return res
+}
+
 // tookFirst says, on a refusal after the take-over began, what it did first.
 func tookFirst(err error, res TakeResult) error {
 	rf, ok := AsRefusal(err)
@@ -357,6 +393,11 @@ func finishedKey(repoRoot, runID string) string {
 // already arrived and changing nothing else, when a reservation a stop released
 // cannot be taken again.
 func TakeRun(repoRoot, runID string, o Options) (TakeResult, error) {
+	res, err := takeRun(repoRoot, runID, o)
+	return safeTake(res), err
+}
+
+func takeRun(repoRoot, runID string, o Options) (TakeResult, error) {
 	mine, err := runControl(repoRoot, runID)
 	if err != nil {
 		return TakeResult{}, err

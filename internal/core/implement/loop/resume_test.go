@@ -793,3 +793,58 @@ func TestTheListingNamesAStopAnotherAccountLeft(t *testing.T) {
 		t.Fatalf("the listing: %+v", l)
 	}
 }
+
+// TestASecondTakerDoesNotDisplaceTheFirst: only a driver that claimed before the halt
+// gives way. One that claimed since is a take-over at work, however halted the run
+// still reads while it reserves.
+func TestASecondTakerDoesNotDisplaceTheFirst(t *testing.T) {
+	repo, runID, _, _ := awaitingLane(t)
+	home, _ := stopWorld(t, false)
+	halted := time.Now().UTC().Truncate(time.Second)
+	if err := mutate(repo.Root(), runID, func(r *os.Root, _ *State) (bool, error) {
+		c, err := readControl(r, runID)
+		if err != nil {
+			return false, err
+		}
+		c.Stop = &RunStop{SetBy: "a person", SetAt: halted, NotedAt: halted, HaltedAt: &halted, FromFile: true}
+		return false, writeControl(r, runID, c)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	procsOf(t, hostOne, hostOne, hostTwo)
+	first := Options{stopHome: home, Session: "first", Now: func() time.Time { return halted.Add(time.Minute) }}
+	if err := claimDriver(repo.Root(), runID, first, true); err != nil {
+		t.Fatal(err)
+	}
+	procsOf(t, hostTwo, hostOne, hostTwo)
+	second := Options{stopHome: home, Session: "second", Now: func() time.Time { return halted.Add(2 * time.Minute) }}
+	err := claimDriver(repo.Root(), runID, second, true)
+	if r, ok := AsRefusal(err); !ok || r.Stage != StageDriver {
+		t.Fatalf("the second taker: %v", err)
+	}
+	if c := controlOf(t, repo.Root(), runID); c.Driver == nil || c.Driver.Session != "first" {
+		t.Fatalf("the driver: %+v", c.Driver)
+	}
+}
+
+// TestWhatARunFileNamesIsMadeSafe: lane ids and roles are not validated when a state is
+// read, so what a listing and a take-over say of them is made safe first.
+func TestWhatARunFileNamesIsMadeSafe(t *testing.T) {
+	const bad = "x\x1b[31m"
+	d := listDrain("/tmp/"+bad, DrainState{Judging: &DrainJudging{Issue: bad}})
+	res := safeTake(TakeResult{
+		Collected: map[string]string{bad: bad},
+		Left:      []string{bad},
+		Saved:     []RestartAside{{Lane: bad, Path: bad}},
+		Restarted: []RestartResult{{StepResult: StepResult{Lane: bad}, Aside: RestartAside{Lane: bad, Path: bad}}},
+	})
+	said := []string{d.Checkout, d.Judging, d.Next, res.Left[0], res.Saved[0].Lane, res.Saved[0].Path, res.Restarted[0].Lane, res.Restarted[0].Aside.Path}
+	for k, v := range res.Collected {
+		said = append(said, k, v)
+	}
+	for _, got := range said {
+		if strings.ContainsRune(got, 0x1b) {
+			t.Fatalf("%q went out as it was read", got)
+		}
+	}
+}
