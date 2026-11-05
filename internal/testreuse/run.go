@@ -10,26 +10,25 @@
 // whose file times derive from file content, under -trimpath and one lock.
 //
 // The cache cannot see what a test reads through a subprocess, a binary it
-// builds, the clock or the network, so a result must not be reused for those.
-// Three things hold that, in this order:
+// builds, the clock or the network, so a result is not reused for those:
 //
 //   - The always-rerun list on the default branch (ReadList) names a package or
-//     a test that reads what the cache cannot see. It is read from the branch,
-//     so a change cannot take its own tests off it; a list that is missing or
-//     does not read means nothing is reused.
+//     a test. It is read from the branch, so a change's own diff does not move
+//     it. A list that is missing, does not read, or names what does not exist
+//     means nothing is reused.
 //   - The classifier (ClassifyFiles) reads every test's source on every check.
 //     A test it finds evidence against reruns whether declared or not, and the
 //     report names it as undeclared. A file it cannot read reruns its package.
-//   - The check directory holds no .git and git may not walk above it, so a
-//     test that asks git about the repository from there fails or skips rather
-//     than reading state the cache cannot see. An always-rerun test runs in the
-//     worktree, where git answers, and is never reused.
+//   - The check directory holds no .git and git may not walk above it. An
+//     always-rerun test runs in the worktree, where git answers, with -count=1.
 //
-// What none of the three sees is a test the classifier finds no evidence
-// against, whose subprocess reads the tree by a path or a working directory
-// its source does not spell, or that compares the clock with a date in code it
-// links. That is reused here and caught by the hosted full run, which reuses
-// nothing, on every pull request and merge-queue entry.
+// The hosted run passes -count=1 on every test step, on every pull request and
+// merge-queue entry.
+//
+// The sync reads every file of the tree back against the commit before a line
+// runs and again after, and a receipt is minted only from a stage's record of that
+// exact tree. One check holds the lock at a time, for the lines that use the tree;
+// the rerun lines run outside it.
 //
 // A race stage's binary is built differently, so race results reuse race
 // results only, never the unit stage's, and the unit stage's never a race run's.
@@ -70,7 +69,8 @@ type Config struct {
 	Home     string
 	Stdout   io.Writer
 	Stderr   io.Writer
-	// Fresh is a release cut: nothing is reused and nothing is synced.
+	// Fresh is a release cut: nothing is reused and nothing is synced, and the
+	// report's mode says so.
 	Fresh bool
 	// CachedTimeout is the -timeout of a line whose results are to be reused.
 	// go test's cache key holds the timeout, and a stage's own takes one of two
@@ -81,6 +81,9 @@ type Config struct {
 	LockWait time.Duration
 	// Uid is the account that must own the check directory.
 	Uid int
+	// AfterWait, when a check has waited for the lock, takes -p and -timeout again
+	// and, for a race stage, passes its gate again. An error stops the stage.
+	AfterWait func(race bool) (p, timeout string, err error)
 }
 
 // goTestArgs is a recipe's go test command, read closely: a flag the check does
@@ -154,54 +157,98 @@ func Run(ctx context.Context, cfg Config) int {
 	}
 	worktree, err := gitutil.Toplevel(cfg.Worktree)
 	if err != nil {
-		return runFresh(ctx, cfg, g, "this is not a git checkout", "", "")
+		return runFresh(ctx, cfg, g, modeFallback, "this is not a git checkout", "", "")
 	}
 	cfg.Worktree = worktree
 	head, tree := headAndTree(ctx, worktree)
-	if cfg.Fresh {
-		return runFresh(ctx, cfg, g, "a release cut reuses nothing", head, tree)
-	}
 	if why := treeNotCommit(ctx, worktree); why != "" {
-		return runFresh(ctx, cfg, g, why, head, tree)
+		// The tests read the edits, so the report vouches for no commit's tree.
+		return runFresh(ctx, cfg, g, modeDirty, why, head, "")
+	}
+	if cfg.Fresh {
+		return runFresh(ctx, cfg, g, modeCut, "a release cut reuses nothing", head, tree)
 	}
 	list, _, err := ReadList(ctx, worktree)
 	if err != nil {
-		return runFresh(ctx, cfg, g, err.Error(), head, tree)
+		return runFresh(ctx, cfg, g, modeFallback, err.Error(), head, tree)
 	}
 	root, err := gitutil.RootCommit(worktree)
 	if err != nil || root == "" {
-		return runFresh(ctx, cfg, g, "no root commit names this repository", head, tree)
+		return runFresh(ctx, cfg, g, modeFallback, "no root commit names this repository", head, tree)
 	}
 	dir, err := checkDir(cfg.Home, root, cfg.Uid)
 	if err != nil {
-		return runFresh(ctx, cfg, g, err.Error(), head, tree)
+		return runFresh(ctx, cfg, g, modeFallback, err.Error(), head, tree)
 	}
 
-	code := -1
-	var fallback string
+	var (
+		waited   bool
+		plan     Plan
+		ran      bool
+		failed   bool
+		fallback string
+		refused  error
+		tally    Tally
+	)
 	locked := func() error {
 		noteHolder(dir, worktree)
-		c, why := runReusing(ctx, cfg, g, dir, list, head, tree)
-		code, fallback = c, why
+		if waited && cfg.AfterWait != nil {
+			p, timeout, err := cfg.AfterWait(g.race)
+			if err != nil {
+				refused = err
+				return nil
+			}
+			g.p, g.timeout = p, timeout
+		}
+		plan, failed, fallback = runReusedLines(ctx, cfg, g, dir, list, head, &tally)
+		ran = fallback == ""
 		return nil
 	}
 	lock := filepath.Join(dir, lockName)
-	err = fsutil.WithFileLock(lock, time.Second, locked)
-	if errors.Is(err, fsutil.ErrLockContention) {
-		fmt.Fprintf(cfg.Stdout, "check-tests: waiting for another check of this repository on this account to finish: %s\n", holder(dir))
-		err = fsutil.WithFileLock(lock, cfg.LockWait, locked)
+	deadline := time.Now().Add(cfg.LockWait)
+	for {
+		err = fsutil.WithFileLock(lock, lockSlice, locked)
+		if !errors.Is(err, fsutil.ErrLockContention) {
+			break
+		}
+		if !waited {
+			waited = true
+			fmt.Fprintf(cfg.Stdout, "check-tests: waiting for another check of this repository on this account to finish: %s\n", holder(dir))
+		}
+		if ctx.Err() != nil {
+			fmt.Fprintf(cfg.Stderr, "check-tests: cancelled while waiting for %s. Nothing ran.\n", dir)
+			return ExitBusy
+		}
+		if time.Now().After(deadline) {
+			fmt.Fprintf(cfg.Stderr, "check-tests: another check still holds %s after %s: %s. Nothing ran.\n", dir, cfg.LockWait, holder(dir))
+			return ExitBusy
+		}
 	}
 	switch {
-	case errors.Is(err, fsutil.ErrLockContention):
-		fmt.Fprintf(cfg.Stderr, "check-tests: another check still holds %s after %s: %s. Nothing ran.\n", dir, cfg.LockWait, holder(dir))
-		return ExitBusy
 	case err != nil:
-		return runFresh(ctx, cfg, g, "the check directory's lock: "+err.Error(), head, tree)
-	case fallback != "":
-		return runFresh(ctx, cfg, g, fallback, head, tree)
+		return runFresh(ctx, cfg, g, modeFallback, "the check directory's lock: "+err.Error(), head, tree)
+	case refused != nil:
+		fmt.Fprintf(cfg.Stderr, "check-tests: after the wait: %v. Nothing ran.\n", refused)
+		return 1
+	case !ran:
+		return runFresh(ctx, cfg, g, modeFallback, fallback, head, tree)
 	}
-	return code
+	r := lineRunner{ctx: ctx, cfg: cfg, tally: &tally}
+	failed = runRerunLines(r, g, plan, cfg) || failed
+	return finish(cfg, g, &tally, modeReuse, "", head, tree, &plan, failed)
 }
+
+// lockSlice is how long one try at the lock lasts, so a wait of hours still hears a
+// cancellation.
+const lockSlice = 500 * time.Millisecond
+
+// The modes a stage's report names.
+const (
+	modeReuse    = "reuse"    // from the check directory
+	modeCut      = "cut"      // a release cut: nothing reused, by asking
+	modeFallback = "fallback" // nothing reused, for the reason the report gives
+	modeDirty    = "dirty"    // the working tree's edits: vouches for no commit
+)
 
 // checkDir makes and vets the account's check directory. Two accounts on one
 // machine each have their own under their own home, and each refuses one it
@@ -247,11 +294,21 @@ func ownedDir(d string, uid int) error {
 // noteHolder says who holds the lock, for a waiter's message. It is a courtesy:
 // the lock is the flock, which a crash releases.
 func noteHolder(dir, worktree string) {
-	_ = os.WriteFile(filepath.Join(dir, holderName), fmt.Appendf(nil, "pid %d in %s", os.Getpid(), worktree), 0o600)
+	f, err := openNoFollow(filepath.Join(dir, holderName), os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	_, _ = fmt.Fprintf(f, "pid %d in %s", os.Getpid(), worktree)
 }
 
 func holder(dir string) string {
-	raw, err := os.ReadFile(filepath.Join(dir, holderName))
+	f, err := openNoFollow(filepath.Join(dir, holderName), os.O_RDONLY)
+	if err != nil {
+		return "holder not recorded"
+	}
+	defer f.Close()
+	raw, err := io.ReadAll(io.LimitReader(f, 4096))
 	if err != nil {
 		return "holder not recorded"
 	}
@@ -289,22 +346,23 @@ func treeNotCommit(ctx context.Context, worktree string) string {
 }
 
 // runFresh runs the stage as written, in the worktree, reusing nothing. It is
-// every path where reuse cannot be shown safe.
-func runFresh(ctx context.Context, cfg Config, g goTestArgs, why, head, tree string) int {
+// every path where reuse cannot be shown safe, and a release cut.
+func runFresh(ctx context.Context, cfg Config, g goTestArgs, mode, why, head, tree string) int {
 	fmt.Fprintf(cfg.Stdout, "check-tests: %s stage reuses nothing: %s\n", cfg.Stage, why)
 	var tally Tally
 	r := lineRunner{ctx: ctx, cfg: cfg, tally: &tally}
 	args := g.flags(g.timeout, "-count=1")
 	failed := r.run(goLine{dir: cfg.Worktree, args: append(args, g.patterns...)})
-	return finish(cfg, g, &tally, "fresh", head, tree, nil, failed)
+	return finish(cfg, g, &tally, mode, why, head, tree, nil, failed)
 }
 
-// runReusing runs the stage from the check directory, holding its lock. A
-// non-empty second result is a reason to run fresh instead, with nothing yet run.
-func runReusing(ctx context.Context, cfg Config, g goTestArgs, dir string, list List, head, tree string) (int, string) {
+// runReusedLines brings the check directory to the commit, plans the stage and
+// runs the lines that use the tree, holding its lock. A non-empty last result is a
+// reason to run fresh instead, with nothing yet run.
+func runReusedLines(ctx context.Context, cfg Config, g goTestArgs, dir string, list List, head string, tally *Tally) (Plan, bool, string) {
 	stats, snap, err := syncTree(ctx, cfg.Worktree, head, dir)
 	if err != nil {
-		return 0, "the check directory could not be brought to the commit: " + err.Error()
+		return Plan{}, false, "the check directory could not be brought to the commit: " + err.Error()
 	}
 	fmt.Fprintf(cfg.Stdout, "check-tests: %s stage from %s at %.12s: %d files written, %d removed, %d directories retimed, %d files already right, in %s\n",
 		cfg.Stage, snap.tree, head, stats.Written, stats.Removed, stats.Retimed, stats.Kept, stats.Took.Round(time.Millisecond))
@@ -312,19 +370,24 @@ func runReusing(ctx context.Context, cfg Config, g goTestArgs, dir string, list 
 	env := reusedLineEnv(dir, snap.tree)
 	all, err := listPackages(ctx, snap.tree, env, g.race, "./...")
 	if err != nil {
-		return 0, err.Error()
+		return Plan{}, false, err.Error()
 	}
 	named, err := listPackages(ctx, snap.tree, env, g.race, g.patterns...)
 	if err != nil {
-		return 0, err.Error()
+		return Plan{}, false, err.Error()
 	}
 	rels := map[string]string{}
+	known := map[string][]string{}
 	for _, p := range all {
 		rel, err := filepath.Rel(snap.tree, p.Dir)
 		if err != nil {
-			return 0, err.Error()
+			return Plan{}, false, err.Error()
 		}
 		rels[p.ImportPath] = filepath.ToSlash(rel)
+		known[filepath.ToSlash(rel)] = testNames(p)
+	}
+	if bad := unresolved(list, known); len(bad) > 0 {
+		return Plan{}, false, ListPath + " names what does not exist: " + strings.Join(firstFew(bad), ", ")
 	}
 	pkgs := make([]string, len(named))
 	for i, p := range named {
@@ -332,34 +395,33 @@ func runReusing(ctx context.Context, cfg Config, g goTestArgs, dir string, list 
 	}
 	plan := MakePlan(pkgs, rels, Survey(all), list, g.run != "")
 
-	var tally Tally
-	r := lineRunner{ctx: ctx, cfg: cfg, tally: &tally}
-	failed := runPlan(r, g, plan, snap.tree, env, cfg)
-	changed := snap.changedTracked()
-	if len(changed) > 0 {
+	r := lineRunner{ctx: ctx, cfg: cfg, tally: tally}
+	failed := runReused(r, g, plan, snap.tree, env, cfg)
+	if changed := snap.changedTracked(); len(changed) > 0 {
 		failed = true
 		fmt.Fprintf(cfg.Stdout, "check-tests: a test rewrote tracked files in the check directory, so what ran after it was not the commit: %s\n", strings.Join(firstFew(changed), ", "))
 	}
 	if left := snap.leftBehind(); len(left) > 0 {
 		fmt.Fprintf(cfg.Stdout, "check-tests: a test left files in the check directory, so a test that walks the tree will not replay: %s\n", strings.Join(firstFew(left), ", "))
 	}
-	return finish(cfg, g, &tally, "reuse", head, tree, &plan, failed), ""
+	return plan, failed, ""
 }
 
 // reusedLineEnv is the environment of a line whose results are to be reused. It
 // says nothing of the worktree the check started in: go test's key holds a
 // variable a test reads, at the value the go command itself was given, so PWD and
 // OLDPWD would tie a result to one worktree. Git may not walk above the check
-// directory, so a test asking about the repository gets no answer.
+// directory, so a test asking about the repository gets no answer, and go reads no
+// go.work from anywhere above the module.
 func reusedLineEnv(dir, tree string) []string {
 	var env []string
 	for _, kv := range gitEnv() {
 		name, _, _ := strings.Cut(kv, "=")
-		if name != "PWD" && name != "OLDPWD" {
+		if name != "PWD" && name != "OLDPWD" && name != "GOWORK" {
 			env = append(env, kv)
 		}
 	}
-	return append(env, "PWD="+tree, "GIT_CEILING_DIRECTORIES="+dir)
+	return append(env, "PWD="+tree, "GIT_CEILING_DIRECTORIES="+dir, "GOWORK=off")
 }
 
 func firstFew(names []string) []string {
@@ -369,10 +431,10 @@ func firstFew(names []string) []string {
 	return names
 }
 
-// runPlan runs a plan's lines in order, every one whatever the one before did,
-// as go test runs every package whatever the one before did. The lines run one
-// after another, or within -p of each other, so the stage keeps to its -p.
-func runPlan(r lineRunner, g goTestArgs, plan Plan, tree string, env []string, cfg Config) bool {
+// runReused runs a plan's lines that use the tree, every one whatever the one
+// before did, as go test runs every package whatever the one before did. The lines
+// run one after another, or within -p of each other, so the stage keeps to its -p.
+func runReused(r lineRunner, g goTestArgs, plan Plan, tree string, env []string, cfg Config) bool {
 	cachedTimeout := cfg.CachedTimeout
 	if cachedTimeout == "" {
 		cachedTimeout = g.timeout
@@ -409,7 +471,13 @@ func runPlan(r lineRunner, g goTestArgs, plan Plan, tree string, env []string, c
 		}(route)
 	}
 	wg.Wait()
+	return failed
+}
 
+// runRerunLines runs a plan's always-rerun lines. They run in the worktree with
+// -count=1 and touch nothing of the check directory, so they run outside its lock.
+func runRerunLines(r lineRunner, g goTestArgs, plan Plan, cfg Config) bool {
+	failed := false
 	if len(plan.Rerun) > 0 {
 		var pkgs []string
 		for _, route := range plan.Rerun {
@@ -495,7 +563,7 @@ func (r lineRunner) exec(l goLine, stdout, stderr io.Writer) bool {
 
 // finish writes the stage's report and the receipt's record and returns its
 // exit code.
-func finish(cfg Config, g goTestArgs, tally *Tally, mode, head, tree string, plan *Plan, failed bool) int {
+func finish(cfg Config, g goTestArgs, tally *Tally, mode, why, head, tree string, plan *Plan, failed bool) int {
 	c := tally.Counts()
 	fmt.Fprintf(cfg.Stdout, "check-tests: %s stage reused %d of %d packages (%d with no test run, %d with only their always-rerun tests run); %d ran\n",
 		cfg.Stage, c.Reused, c.Packages, c.Whole, c.Reused-c.Whole, len(c.Ran))
@@ -503,7 +571,7 @@ func finish(cfg Config, g goTestArgs, tally *Tally, mode, head, tree string, pla
 		fmt.Fprintf(cfg.Stdout, "check-tests:   ran %s: %s\n", name, ranWhy(plan, name, mode))
 	}
 	if head != "" {
-		report := StageReport{Commit: head, Tree: tree, Stage: cfg.Stage, Mode: mode, Counts: c, Passed: !failed}
+		report := StageReport{Commit: head, Tree: tree, Stage: cfg.Stage, Mode: mode, Why: why, Counts: c, Passed: !failed}
 		if err := report.write(cfg.Worktree, append([]string{g.run, fmt.Sprint(g.race)}, g.patterns...)); err != nil {
 			fmt.Fprintf(cfg.Stderr, "check-tests: the stage's report was not written, so no receipt will be minted: %v\n", err)
 			return 1

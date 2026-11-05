@@ -4,9 +4,10 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/binary"
-	"encoding/json"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -18,35 +19,58 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
+
+	"golang.org/x/text/unicode/norm"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // The check directory's own files, beside the tree so nothing a test reads of
-// the module holds them.
+// the module holds them. A sync removes anything else it finds there.
 const (
-	treeDirName  = "tree"
-	timesName    = "times.json"
-	lockName     = "lock"
-	holderName   = "holder"
-	incomingGlob = ".abcd-tmp-*"
+	treeDirName = "tree"
+	lockName    = "lock"
+	holderName  = "holder"
 )
 
-// A file's time is timeBase plus 64 bits of the SHA-256 of its content reduced
-// modulo timeWindow whole seconds: twenty years ending before 2021, so every
-// time is in the past, where Go will cache a test that opened the file (cmd/go,
-// errFileTooNew), and within what APFS and ext4 store. Go keys an opened file on
-// its size and time (hashWriteStat), so a same-size edit is reused by accident
-// about one time in 630 million; the time changes when the content does and is
-// the same in every worktree, where a commit time would survive an amend.
+// A file's time is timeBase plus bits of the SHA-256 of its content: 64 reduced
+// modulo timeWindow whole seconds, twenty years ending before 2021, so every time
+// is in the past, where Go will cache a test that opened the file (cmd/go,
+// errFileTooNew), and 64 more reduced to the nanoseconds of that second. Go keys
+// an opened file on its size and time (hashWriteStat), so the key moves when the
+// content does and is the same in every worktree, where a commit time would
+// survive an amend. The time is never how the sync knows a file is the commit's:
+// it reads the bytes (onDisk).
 var timeBase = time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)
 
 const timeWindow = 20 * 365 * 24 * 60 * 60
 
 // contentTime is the time a file or directory with this digest carries.
 func contentTime(sum [sha256.Size]byte) time.Time {
-	return timeBase.Add(time.Duration(binary.BigEndian.Uint64(sum[:8])%timeWindow) * time.Second)
+	sec := binary.BigEndian.Uint64(sum[:8]) % timeWindow
+	nsec := binary.BigEndian.Uint64(sum[8:16]) % uint64(time.Second)
+	return timeBase.Add(time.Duration(sec)*time.Second + time.Duration(nsec))
+}
+
+// blobOID is the object name git gives this content, in the format oid is in.
+func blobOID(oid string, body []byte) string {
+	head := fmt.Sprintf("blob %d\x00", len(body))
+	switch len(oid) {
+	case sha1.Size * 2:
+		h := sha1.New()
+		h.Write([]byte(head))
+		h.Write(body)
+		return hex.EncodeToString(h.Sum(nil))
+	case sha256.Size * 2:
+		h := sha256.New()
+		h.Write([]byte(head))
+		h.Write(body)
+		return hex.EncodeToString(h.Sum(nil))
+	}
+	return ""
 }
 
 // entry is one path of a commit's tree.
@@ -57,8 +81,9 @@ type entry struct {
 	path string
 }
 
-// listTree reads a commit's tree. A path that could leave the tree, or lands in
-// a directory named .git, is refused: what is copied here is executed.
+// listTree reads a commit's tree. What is copied here is executed, so it refuses
+// a path that could leave the tree, that lands in a directory named .git in any
+// spelling, or that a file system could take for another of the commit's paths.
 func listTree(ctx context.Context, repo, commit string) ([]entry, error) {
 	out, err := gitOutput(ctx, repo, "ls-tree", "-r", "-z", "-l", "--full-tree", commit)
 	if err != nil {
@@ -85,12 +110,49 @@ func listTree(ctx context.Context, repo, commit string) ([]entry, error) {
 		}
 		entries = append(entries, e)
 	}
+	if err := oneSpelling(entries); err != nil {
+		return nil, err
+	}
 	return entries, nil
 }
 
 // treePath reports whether a commit's path stays in the tree and out of a .git.
 func treePath(p string) bool {
-	return filepath.IsLocal(p) && !slices.Contains(strings.Split(p, "/"), ".git")
+	if !filepath.IsLocal(p) {
+		return false
+	}
+	return !slices.ContainsFunc(strings.Split(p, "/"), func(part string) bool {
+		return strings.EqualFold(norm.NFC.String(part), ".git")
+	})
+}
+
+// oneSpelling refuses a commit two of whose paths one file system would take for
+// one, by letter case or by Unicode form, and a path under a file or a link: on
+// such a file system the second would land wherever the first points.
+func oneSpelling(entries []entry) error {
+	fold := func(p string) string { return strings.ToLower(norm.NFC.String(p)) }
+	files := make(map[string]string, len(entries))
+	dirs := map[string]string{}
+	for _, e := range entries {
+		key := fold(e.path)
+		if other, dup := files[key]; dup {
+			return fmt.Errorf("the commit names one file twice: %q and %q", other, e.path)
+		}
+		files[key] = e.path
+		for d := path.Dir(e.path); d != "."; d = path.Dir(d) {
+			key := fold(d)
+			if other, dup := dirs[key]; dup && other != d {
+				return fmt.Errorf("the commit names one directory twice: %q and %q", other, d)
+			}
+			dirs[key] = d
+		}
+	}
+	for key, d := range dirs {
+		if f, under := files[key]; under {
+			return fmt.Errorf("the commit names %q as a file and as the directory %q", f, d)
+		}
+	}
+	return nil
 }
 
 // gitOutput runs a read-only git question in repo, under no variable an outer
@@ -187,64 +249,83 @@ type SyncStats struct {
 type snapshot struct {
 	tree    string
 	entries []entry
-	times   map[string]int64
-}
-
-// loadTimes reads the memo of each blob's derived time, so a sync reads only
-// blobs it has not seen. It is a memo: a file a crash cut short, or any other
-// that does not read, costs one read of every blob and nothing else.
-func loadTimes(dir string) map[string]int64 {
-	times := map[string]int64{}
-	raw, err := os.ReadFile(filepath.Join(dir, timesName))
-	if err != nil {
-		return times
-	}
-	if err := json.Unmarshal(raw, &times); err != nil {
-		return map[string]int64{}
-	}
-	return times
-}
-
-func saveTimes(dir string, times map[string]int64) error {
-	raw, err := json.Marshal(times)
-	if err != nil {
-		return err
-	}
-	return fsutil.WriteRebuildable(filepath.Join(dir, timesName), raw, 0o600, time.Now())
 }
 
 // Sync makes dir's tree exactly the commit's: every tracked file with its mode
 // and content-derived time, every directory with a time derived from the names
-// in it, and nothing else. It writes only what differs, so a commit that changes
-// one file writes one file and a repository whose tree has thousands of files
-// creates that churn once. A sync interrupted anywhere leaves a tree the next one
-// repairs: a file is renamed into place with its time already set, what a test
-// or a crash left is removed, and a directory's time is set last.
+// in it, and nothing else. It reads every file back and keeps one only when its
+// bytes are the commit's, and it writes only what differs, so a commit that
+// changes one file writes one file and a repository whose tree has thousands of
+// files creates that churn once. Every write goes through an os.Root on the tree,
+// so nothing a test or a commit left there takes one elsewhere. A sync interrupted
+// anywhere leaves a tree the next one repairs: a file is renamed into place with
+// its time already set, what a test or a crash left is removed, and a directory's
+// time is set last.
 func Sync(ctx context.Context, repo, commit, dir string) (SyncStats, error) {
 	stats, _, err := syncTree(ctx, repo, commit, dir)
 	return stats, err
 }
 
+// clearBeside readies the check directory: anything but the tree and the two
+// notes goes. A go.work here would be read above the module, and a link in the
+// tree's place would take the sync's writes elsewhere, so the check that finds one
+// refuses and removes it, and the next one starts clean.
+func clearBeside(top *os.Root) error {
+	f, err := top.Open(".")
+	if err != nil {
+		return err
+	}
+	items, err := f.ReadDir(-1)
+	_ = f.Close()
+	if err != nil {
+		return err
+	}
+	for _, it := range items {
+		switch it.Name() {
+		case lockName, holderName:
+		case treeDirName:
+			if it.IsDir() {
+				continue
+			}
+			kind := it.Type()
+			if err := top.RemoveAll(treeDirName); err != nil {
+				return err
+			}
+			if kind&fs.ModeSymlink != 0 {
+				return errors.New("the check directory's tree was a link, which was removed")
+			}
+		default:
+			if err := forceRemove(top, it.Name()); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func syncTree(ctx context.Context, repo, commit, dir string) (SyncStats, *snapshot, error) {
 	began := time.Now()
 	var stats SyncStats
-	leftovers, err := filepath.Glob(filepath.Join(dir, incomingGlob))
-	if err != nil {
-		return stats, nil, err
-	}
-	for _, l := range leftovers {
-		if err := os.Remove(l); err != nil {
-			return stats, nil, err
-		}
-	}
 	entries, err := listTree(ctx, repo, commit)
 	if err != nil {
 		return stats, nil, err
 	}
-	tree := filepath.Join(dir, treeDirName)
-	if err := os.MkdirAll(tree, 0o755); err != nil {
+	top, err := os.OpenRoot(dir)
+	if err != nil {
 		return stats, nil, err
 	}
+	defer top.Close()
+	if err := clearBeside(top); err != nil {
+		return stats, nil, err
+	}
+	if err := top.Mkdir(treeDirName, 0o755); err != nil && !errors.Is(err, fs.ErrExist) {
+		return stats, nil, err
+	}
+	root, err := top.OpenRoot(treeDirName)
+	if err != nil {
+		return stats, nil, err
+	}
+	defer root.Close()
 
 	wantFile := make(map[string]bool, len(entries))
 	wantDir := map[string]map[string]string{"": {}}
@@ -276,23 +357,16 @@ func syncTree(ctx context.Context, repo, commit, dir string) (SyncStats, *snapsh
 			child = parent
 		}
 	}
-	if err := removeExtras(tree, "", wantFile, wantDir, &stats); err != nil {
+	if err := removeExtras(root, "", wantFile, wantDir, &stats); err != nil {
 		return stats, nil, err
 	}
 
-	times := loadTimes(dir)
-	seen := make(map[string]int64, len(entries))
+	wrong := differing(root, entries)
+	stats.Kept = len(entries) - len(wrong)
 	blobs := &blobReader{ctx: ctx, repo: repo}
 	defer blobs.close()
-	for _, e := range entries {
+	for _, e := range wrong {
 		if e.mode == "160000" {
-			continue
-		}
-		abs := filepath.Join(tree, filepath.FromSlash(e.path))
-		info, statErr := os.Lstat(abs)
-		sec, known := times[e.oid]
-		if known && statErr == nil && e.matches(info, sec, abs) {
-			seen[e.oid] = sec
 			stats.Kept++
 			continue
 		}
@@ -300,13 +374,7 @@ func syncTree(ctx context.Context, repo, commit, dir string) (SyncStats, *snapsh
 		if err != nil {
 			return stats, nil, err
 		}
-		sec = contentTime(sha256.Sum256(body)).Unix()
-		seen[e.oid] = sec
-		if statErr == nil && e.matches(info, sec, abs) {
-			stats.Kept++
-			continue
-		}
-		if err := place(abs, e, body, sec); err != nil {
+		if err := place(root, e, body); err != nil {
 			return stats, nil, err
 		}
 		stats.Written++
@@ -318,32 +386,60 @@ func syncTree(ctx context.Context, repo, commit, dir string) (SyncStats, *snapsh
 	}
 	slices.Sort(dirs)
 	for _, d := range dirs {
-		abs := filepath.Join(tree, filepath.FromSlash(d))
-		if err := os.MkdirAll(abs, 0o755); err != nil {
+		rel := d
+		if rel == "" {
+			rel = "."
+		} else if err := root.MkdirAll(rel, 0o755); err != nil {
 			return stats, nil, err
 		}
-		info, err := os.Lstat(abs)
+		info, err := root.Lstat(rel)
 		if err != nil {
 			return stats, nil, err
 		}
 		if info.Mode().Perm() != 0o755 {
-			if err := os.Chmod(abs, 0o755); err != nil {
+			if err := root.Chmod(rel, 0o755); err != nil {
 				return stats, nil, err
 			}
 		}
 		at := dirTime(wantDir[d])
 		if !info.ModTime().Equal(at) {
-			if err := os.Chtimes(abs, at, at); err != nil {
+			if err := root.Chtimes(rel, at, at); err != nil {
 				return stats, nil, err
 			}
 			stats.Retimed++
 		}
 	}
-	if err := saveTimes(dir, seen); err != nil {
-		return stats, nil, err
-	}
 	stats.Took = time.Since(began)
-	return stats, &snapshot{tree: tree, entries: entries, times: seen}, nil
+	return stats, &snapshot{tree: filepath.Join(dir, treeDirName), entries: entries}, nil
+}
+
+// differing is the entries the tree does not hold, read on a few goroutines: a sync
+// reads every file of the commit, and a run reads them all again.
+func differing(root *os.Root, entries []entry) []entry {
+	wrong := make([]bool, len(entries))
+	var wg sync.WaitGroup
+	next := make(chan int)
+	for range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range next {
+				wrong[i] = !entries[i].onDisk(root)
+			}
+		}()
+	}
+	for i := range entries {
+		next <- i
+	}
+	close(next)
+	wg.Wait()
+	var out []entry
+	for i, e := range entries {
+		if wrong[i] {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // dirTime derives a directory's time from the names in it and each one's kind,
@@ -371,48 +467,72 @@ func (e entry) perm() fs.FileMode {
 	return 0o644
 }
 
-// matches reports whether what is on disk is this entry: a regular file of its
-// size, mode and derived time, or a link to its target.
-func (e entry) matches(info fs.FileInfo, sec int64, abs string) bool {
-	if e.mode == "120000" {
+// onDisk reports whether the tree holds this entry: a regular file of its mode
+// whose bytes are the blob and whose time derives from them, or a link whose target
+// is the blob, or a directory where the commit has a submodule.
+func (e entry) onDisk(root *os.Root) bool {
+	info, err := root.Lstat(e.path)
+	if err != nil {
+		return false
+	}
+	switch e.mode {
+	case "160000":
+		return info.IsDir()
+	case "120000":
 		if info.Mode()&fs.ModeSymlink == 0 {
 			return false
 		}
-		target, err := os.Readlink(abs)
-		return err == nil && int64(len(target)) == e.size
+		target, err := root.Readlink(e.path)
+		return err == nil && blobOID(e.oid, []byte(target)) == e.oid
 	}
-	return info.Mode().IsRegular() && info.Mode().Perm() == e.perm() && info.Size() == e.size &&
-		info.ModTime().Unix() == sec && info.ModTime().Nanosecond() == 0
+	if !info.Mode().IsRegular() || info.Mode().Perm() != e.perm() || info.Size() != e.size {
+		return false
+	}
+	body, err := root.ReadFile(e.path)
+	if err != nil {
+		return false
+	}
+	return blobOID(e.oid, body) == e.oid && info.ModTime().Equal(contentTime(sha256.Sum256(body)))
 }
 
-// place puts one entry at abs, a file with its time already set, so a crash
+// place puts one entry in the tree, a file with its time already set, so a crash
 // leaves the old file or the new one and never a part of one with the time that
 // would pass it as whole.
-func place(abs string, e entry, body []byte, sec int64) error {
-	if info, err := os.Lstat(abs); err == nil && info.IsDir() {
-		if err := forceRemove(abs); err != nil {
+func place(root *os.Root, e entry, body []byte) error {
+	if info, err := root.Lstat(e.path); err == nil && info.IsDir() {
+		if err := forceRemove(root, e.path); err != nil {
 			return err
 		}
 	}
 	if e.mode == "120000" {
-		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		if dir := path.Dir(e.path); dir != "." {
+			if err := root.MkdirAll(dir, 0o755); err != nil {
+				return err
+			}
+		}
+		if err := root.RemoveAll(e.path); err != nil {
 			return err
 		}
-		if err := os.RemoveAll(abs); err != nil {
-			return err
-		}
-		return os.Symlink(string(body), abs)
+		return root.Symlink(string(body), e.path)
 	}
-	return fsutil.WriteRebuildable(abs, body, e.perm(), time.Unix(sec, 0))
+	return fsutil.WriteRebuildableAtInRoot(root, e.path, body, e.perm(), contentTime(sha256.Sum256(body)))
 }
 
-// removeExtras removes everything under dir the commit does not hold.
-func removeExtras(root, rel string, wantFile map[string]bool, wantDir map[string]map[string]string, stats *SyncStats) error {
-	abs := filepath.Join(root, filepath.FromSlash(rel))
-	if err := os.Chmod(abs, 0o755); err != nil {
+// removeExtras removes everything under rel the commit does not hold.
+func removeExtras(root *os.Root, rel string, wantFile map[string]bool, wantDir map[string]map[string]string, stats *SyncStats) error {
+	name := rel
+	if name == "" {
+		name = "."
+	}
+	if err := root.Chmod(name, 0o755); err != nil {
 		return err
 	}
-	items, err := os.ReadDir(abs)
+	f, err := root.Open(name)
+	if err != nil {
+		return err
+	}
+	items, err := f.ReadDir(-1)
+	_ = f.Close()
 	if err != nil {
 		return err
 	}
@@ -426,7 +546,7 @@ func removeExtras(root, rel string, wantFile map[string]bool, wantDir map[string
 			}
 		case !it.IsDir() && wantFile[p]:
 		default:
-			if err := forceRemove(filepath.Join(abs, it.Name())); err != nil {
+			if err := forceRemove(root, p); err != nil {
 				return err
 			}
 			stats.Removed++
@@ -436,18 +556,30 @@ func removeExtras(root, rel string, wantFile map[string]bool, wantDir map[string
 }
 
 // forceRemove removes a path a test may have made unwritable.
-func forceRemove(p string) error {
-	err := os.RemoveAll(p)
+func forceRemove(root *os.Root, rel string) error {
+	err := root.RemoveAll(rel)
 	if err == nil || !errors.Is(err, fs.ErrPermission) {
 		return err
 	}
-	_ = filepath.WalkDir(p, func(sub string, d fs.DirEntry, walkErr error) error {
-		if d != nil && d.IsDir() {
-			_ = os.Chmod(sub, 0o755)
+	var open func(string)
+	open = func(d string) {
+		if root.Chmod(d, 0o755) != nil {
+			return
 		}
-		return nil
-	})
-	return os.RemoveAll(p)
+		f, err := root.Open(d)
+		if err != nil {
+			return
+		}
+		items, _ := f.ReadDir(-1)
+		_ = f.Close()
+		for _, it := range items {
+			if it.IsDir() {
+				open(path.Join(d, it.Name()))
+			}
+		}
+	}
+	open(rel)
+	return root.RemoveAll(rel)
 }
 
 // leftBehind names what is in the tree that the commit does not hold: what a test
@@ -471,19 +603,22 @@ func (s *snapshot) leftBehind() []string {
 	return extra
 }
 
-// changedTracked names the tracked files that no longer match the commit: what
-// a test run rewrote in place, which leaves what it read no longer the commit.
+// changedTracked names the tracked files whose bytes, mode or time are no longer
+// the commit's: what a test run rewrote, which leaves what it read not the commit.
 func (s *snapshot) changedTracked() []string {
+	root, err := os.OpenRoot(s.tree)
+	if err != nil {
+		return []string{treeDirName}
+	}
+	defer root.Close()
 	var changed []string
-	for _, e := range s.entries {
-		if e.mode == "160000" {
-			continue
-		}
-		abs := filepath.Join(s.tree, filepath.FromSlash(e.path))
-		info, err := os.Lstat(abs)
-		if err != nil || !e.matches(info, s.times[e.oid], abs) {
-			changed = append(changed, e.path)
-		}
+	for _, e := range differing(root, s.entries) {
+		changed = append(changed, e.path)
 	}
 	return changed
+}
+
+// openNoFollow opens a note beside the tree, never through a link in its place.
+func openNoFollow(path string, flag int) (*os.File, error) {
+	return os.OpenFile(path, flag|syscall.O_NOFOLLOW, 0o600)
 }

@@ -50,10 +50,14 @@
 #                                       A full receipt needs both test stages'
 #                                       passing reports for this commit's tree,
 #                                       a reused result counting for that exact
-#                                       tree, and records how many packages each
-#                                       stage reused
+#                                       tree, and records how the stages ran (reuse,
+#                                       cut, fallback or mixed) and how many packages
+#                                       each reused
 #   preflight-receipt.sh check <commit> exit 0 when a receipt for <commit> exists
 #                                       in any worktree of this repository
+#   preflight-receipt.sh tests <commit> print how the tests ran for each receipt
+#                                       of <commit> in any worktree (reuse, cut,
+#                                       fallback or mixed), one a line
 #
 # Exit 0 on success; `check` exits 1 when there is no receipt; 2 on a usage fault.
 set -euo pipefail
@@ -94,11 +98,12 @@ state() {
 	fi
 }
 
-# stage_counts <commit> <tree> <stage>: print "<reused> <packages>" summed over
-# the stage's reports, each of which must be a pass on this exact tree; print
-# nothing, and return 1, when there is none or one is not.
+# stage_counts <commit> <tree> <stage>: print "<reused> <packages> <mode>" summed
+# over the stage's reports, each of which must be a pass on this exact tree; a
+# stage that ran two ways reads as mixed. Print nothing, and return 1, when there is
+# none or one is not: a run over a working tree's edits names no tree at all.
 stage_counts() {
-	local commit="$1" tree="$2" stage="$3" report reused=0 total=0 found=false r_tree r_result r_reused r_packages
+	local commit="$1" tree="$2" stage="$3" report reused=0 total=0 found=false mode="" r_tree r_result r_reused r_packages r_mode
 	for report in "$reuse_rel/$commit/$stage-"*; do
 		[ -f "$report" ] || continue
 		found=true
@@ -106,9 +111,14 @@ stage_counts() {
 		r_result="$(sed -n 's/^result //p' "$report")"
 		r_reused="$(sed -n 's/^reused //p' "$report")"
 		r_packages="$(sed -n 's/^packages //p' "$report")"
-		if [ "$r_tree" != "$tree" ] || [ "$r_result" != pass ]; then
+		r_mode="$(sed -n 's/^mode //p' "$report")"
+		if [ "$r_tree" != "$tree" ] || [ "$r_result" != pass ] || [ "$r_mode" = dirty ]; then
 			return 1
 		fi
+		case "$mode" in
+		"" | "$r_mode") mode="$r_mode" ;;
+		*) mode=mixed ;;
+		esac
 		case "$r_reused$r_packages" in
 		"" | *[!0-9]*) return 1 ;;
 		esac
@@ -116,11 +126,11 @@ stage_counts() {
 		total=$((total + r_packages))
 	done
 	[ "$found" = true ] || return 1
-	echo "$reused $total"
+	echo "$reused $total $mode"
 }
 
 mint() {
-	local began="$1" scope="$2" began_head began_tree now now_head now_tree verdict base tree unit race
+	local began="$1" scope="$2" began_head began_tree now now_head now_tree verdict base tree unit race unit_reused unit_total unit_mode race_reused race_total race_mode tests
 	began_head="${began%% *}"
 	began_tree="${began##* }"
 	now="$(state)"
@@ -176,12 +186,16 @@ mint() {
 			echo "           Run \`make preflight\` again."
 			return 0
 		fi
+		read -r unit_reused unit_total unit_mode <<<"$unit"
+		read -r race_reused race_total race_mode <<<"$race"
+		tests="$unit_mode"
+		[ "$unit_mode" = "$race_mode" ] || tests=mixed
 	fi
 	mkdir -p "$receipts_rel"
 	if [ "$scope" = records-only ]; then
 		printf 'commit %s\nminted %s\nscope records-only\nverdict %s\nbase %s\n' "$now_head" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$verdict" "$base" >"$receipts_rel/$now_head"
 	else
-		printf 'commit %s\nminted %s\nscope full\nreuse unit %s of %s\nreuse race %s of %s\n' "$now_head" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${unit% *}" "${unit#* }" "${race% *}" "${race#* }" >"$receipts_rel/$now_head"
+		printf 'commit %s\nminted %s\nscope full\ntests %s\nreuse unit %s of %s\nreuse race %s of %s\n' "$now_head" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$tests" "$unit_reused" "$unit_total" "$race_reused" "$race_total" >"$receipts_rel/$now_head"
 	fi
 	# Keep the newest $keep receipts. The names are full commit ids, so a plain
 	# listing is safe to word-split.
@@ -201,7 +215,7 @@ mint() {
 		return 0
 	fi
 	echo "preflight: push receipt minted for ${now_head:0:12} — a push of that commit passes the pre-push gate."
-	echo "           the unit stage reused ${unit% *} of ${unit#* } packages and the race stage ${race% *} of ${race#* }."
+	echo "           the unit stage reused $unit_reused of $unit_total packages and the race stage $race_reused of $race_total ($tests)."
 }
 
 # own_receipt <dir>: the worktree at dir holds a receipt for $commit that is
@@ -254,6 +268,27 @@ check() {
 	return 1
 }
 
+# tests_of: how each receipt of $commit says its tests ran, from this checkout and
+# every worktree git lists, by the same test of whose a receipt is as check.
+tests_of() {
+	local commit="$1" wt
+	case "$commit" in
+	*[!0-9a-f]* | "") return 2 ;;
+	esac
+	if own_receipt .; then
+		sed -n 's/^tests //p' "$receipts_rel/$commit"
+	fi
+	while IFS= read -r wt; do
+		case "$wt" in
+		"worktree "*) wt="${wt#worktree }" ;;
+		*) continue ;;
+		esac
+		if own_receipt "$wt"; then
+			sed -n 's/^tests //p' "$wt/$receipts_rel/$commit"
+		fi
+	done <<<"$(git worktree list --porcelain 2>/dev/null || true)"
+}
+
 case "${1:-}" in
 state)
 	[ $# -eq 1 ] || exit 2
@@ -270,8 +305,12 @@ check)
 	[ $# -eq 2 ] || exit 2
 	check "$2"
 	;;
+tests)
+	[ $# -eq 2 ] || exit 2
+	tests_of "$2"
+	;;
 *)
-	echo "usage: preflight-receipt.sh state | mint \"<state>\" [records-only] | check <commit>" >&2
+	echo "usage: preflight-receipt.sh state | mint \"<state>\" [records-only] | check <commit> | tests <commit>" >&2
 	exit 2
 	;;
 esac

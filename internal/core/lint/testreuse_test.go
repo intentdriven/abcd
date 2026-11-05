@@ -63,6 +63,11 @@ func TestBothTestStagesRunThroughTheCheck(t *testing.T) {
 	if !strings.Contains(makefile, "$(if $(PREFLIGHT_FRESH), -fresh,)") {
 		t.Error("a release cut has no way to reuse nothing: CHECK_TESTS_FLAGS does not read PREFLIGHT_FRESH")
 	}
+	// PREFLIGHT_FRESH on a records-only commit must not take the shorter rule,
+	// whose test lines the check does not run and whose results replay.
+	if !strings.Contains(makefile, "PREFLIGHT_RECORDS_ONLY := $(if $(PREFLIGHT_FRESH),,$(shell ") {
+		t.Error("PREFLIGHT_FRESH does not hold a records-only commit to the full rule")
+	}
 }
 
 // TestTheReusedLinesTimeoutIsTheStagesLargest: go test's cache key holds the
@@ -79,6 +84,14 @@ func TestTheReusedLinesTimeoutIsTheStagesLargest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	b := regexp.MustCompile(`(?m)^CHECK_TESTS_FLAGS = .* -budget (\S+?)(\$|\s|$)`).FindStringSubmatch(makefile)
+	if b == nil {
+		t.Fatal("CHECK_TESTS_FLAGS sets no -budget, so a stage that waited keeps a -timeout as old as the wait")
+	}
+	budget, err := time.ParseDuration(b[1])
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, l := range rawRecipe(t, makefile, preflightStages) {
 		if b := timeoutCall.FindStringSubmatch(l); b != nil {
 			base, err := time.ParseDuration(b[1])
@@ -87,6 +100,9 @@ func TestTheReusedLinesTimeoutIsTheStagesLargest(t *testing.T) {
 			}
 			if want := base * machineload.TestTimeoutMaxFactor; fixed != want {
 				t.Errorf("-cached-timeout is %s; a stage with the base %s scales to %s", fixed, base, want)
+			}
+			if base != budget {
+				t.Errorf("-budget is %s; the stage's base is %s", budget, base)
 			}
 		}
 	}
@@ -106,6 +122,24 @@ func TestTheAlwaysRerunListReadsAndNamesRealPackages(t *testing.T) {
 		dir := filepath.Join(root, filepath.FromSlash(strings.TrimSuffix(d.Pattern, "/...")))
 		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 			t.Errorf("%s names no package: %v", d.Pattern, err)
+			continue
+		}
+		sources, err := filepath.Glob(filepath.Join(dir, "*_test.go"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var text strings.Builder
+		for _, f := range sources {
+			raw, err := os.ReadFile(f)
+			if err != nil {
+				t.Fatal(err)
+			}
+			text.Write(raw)
+		}
+		for _, name := range d.Tests {
+			if !strings.Contains(text.String(), "func "+name+"(") {
+				t.Errorf("%s names the test %s, which it does not declare", d.Pattern, name)
+			}
 		}
 	}
 }
@@ -128,25 +162,38 @@ func TestARecordsOnlyPreflightStillTakesItsOwnRoute(t *testing.T) {
 	}
 }
 
-// TestAReleaseWorkflowReusesNothing: a release cut's hosted gates run every test
-// on the tree being tagged, in the workflow and in the template it is rendered
-// from (itd-2611011325421304, criterion 2).
-func TestAReleaseWorkflowReusesNothing(t *testing.T) {
+// TestEveryHostedTestStepReusesNothing: every go test line a workflow runs passes
+// -count=1, so the hosted full run the reuse stands behind is a flag and not the
+// accident of a fresh checkout's file times, and a release cut's hosted gates run
+// every test on the tree being tagged (itd-2611011325421304, criterion 2).
+func TestEveryHostedTestStepReusesNothing(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
-	for _, rel := range []string{".github/workflows/release.yml", "internal/core/launch/scaffold/templates/release.yml.tmpl"} {
-		found := 0
+	workflows, err := filepath.Glob(filepath.Join(root, ".github", "workflows", "*.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rels := []string{"internal/core/launch/scaffold/templates/release.yml.tmpl"}
+	for _, w := range workflows {
+		rel, err := filepath.Rel(root, w)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rels = append(rels, filepath.ToSlash(rel))
+	}
+	found := 0
+	for _, rel := range rels {
 		for _, l := range strings.Split(readRepoFile(t, root, rel), "\n") {
-			l = strings.TrimSpace(l)
-			if !strings.HasPrefix(l, "run: go test ") {
+			l = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(l), "run:"))
+			if !strings.HasPrefix(l, "go test ") {
 				continue
 			}
 			found++
 			if !strings.Contains(l, " -count=1 ") {
-				t.Errorf("%s: a release gate can reuse a result: %s", rel, l)
+				t.Errorf("%s: a hosted test step can reuse a result: %s", rel, l)
 			}
 		}
-		if found == 0 {
-			t.Errorf("%s runs no go test; the parser or the workflow changed shape", rel)
-		}
+	}
+	if found < 8 {
+		t.Errorf("found %d go test steps; the parser or the workflows changed shape", found)
 	}
 }

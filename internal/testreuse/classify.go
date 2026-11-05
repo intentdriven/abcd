@@ -168,13 +168,17 @@ func buildGraph(files []*ast.File, helpers map[string]map[string]reached) *graph
 					continue
 				}
 				r.read(d.Body, n)
+				if d.Recv == nil && key == "TestMain" {
+					r.readMainAssignments(d.Body, get)
+					continue
+				}
 				if d.Recv == nil && isTestName(key) {
 					continue
 				}
-				// A package variable a set-up or helper function assigns carries
-				// what that function did, so a test reading the variable reaches
-				// it. A test's own assignment is left out: it would tie every
-				// reader of a shared variable to that one test.
+				// A package variable a helper assigns carries what that helper did,
+				// so a test reading the variable reaches it. A test's own assignment
+				// is left out: it would tie every reader of a shared variable to
+				// that one test.
 				ast.Inspect(d.Body, func(x ast.Node) bool {
 					as, ok := x.(*ast.AssignStmt)
 					if !ok {
@@ -332,7 +336,11 @@ func declaredNames(files []*ast.File) (top, methods map[string]bool) {
 				}
 				for _, s := range d.Specs {
 					for _, id := range s.(*ast.ValueSpec).Names {
-						top[id.Name] = true
+						// The blank name is not a variable: `var _ = f()` and
+						// `_, err := g()` have nothing to do with each other.
+						if id.Name != "_" {
+							top[id.Name] = true
+						}
 					}
 				}
 			}
@@ -386,6 +394,57 @@ func (r reader) global(id *ast.Ident) bool {
 	return id.Obj == nil || r.file.Scope.Lookup(id.Name) == id.Obj
 }
 
+// readMainAssignments gives a package variable TestMain assigns what its value
+// came from: the expression assigned, and every function TestMain hands the
+// variable to, which is how a helper binary is built before the tests that run it.
+// What else TestMain names is its own: its re-execution branches and stand-ins are
+// no part of what a test reading one of its variables reaches.
+func (r reader) readMainAssignments(body *ast.BlockStmt, get func(string) *node) {
+	assigned := map[string]bool{}
+	ast.Inspect(body, func(x ast.Node) bool {
+		as, ok := x.(*ast.AssignStmt)
+		if !ok {
+			return true
+		}
+		for i, l := range as.Lhs {
+			id, ok := l.(*ast.Ident)
+			if !ok || !r.global(id) {
+				continue
+			}
+			assigned[id.Name] = true
+			value := as.Rhs[0]
+			if len(as.Rhs) == len(as.Lhs) {
+				value = as.Rhs[i]
+			}
+			r.read(value, get(id.Name))
+		}
+		return true
+	})
+	ast.Inspect(body, func(x ast.Node) bool {
+		call, ok := x.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		callee := ""
+		switch f := call.Fun.(type) {
+		case *ast.Ident:
+			if r.global(f) {
+				callee = f.Name
+			}
+		case *ast.SelectorExpr:
+			if r.methods[f.Sel.Name] {
+				callee = "." + f.Sel.Name
+			}
+		}
+		for _, a := range call.Args {
+			if id, ok := a.(*ast.Ident); ok && assigned[id.Name] && r.global(id) && callee != "" {
+				get(id.Name).refs[callee] = true
+			}
+		}
+		return true
+	})
+}
+
 // read adds what body does to n: its evidence and the declarations it names.
 func (r reader) read(body ast.Node, n *node) {
 	skip := map[*ast.Ident]bool{}
@@ -420,6 +479,11 @@ func (r reader) read(body ast.Node, n *node) {
 				readCall(pkg, fn, x, &n.direct)
 			}
 			readSkip(x, &n.direct)
+		case *ast.CompositeLit:
+			// A command built by hand names its program however it likes.
+			if pkg, name, ok := stdRef(x.Type, r.imports); ok && pkg == "os/exec" && name == "Cmd" {
+				n.direct.program = true
+			}
 		}
 		return true
 	})
@@ -467,6 +531,9 @@ func readLiteral(s string, e *evidence) {
 }
 
 func readSelector(pkg, name string, e *evidence) {
+	if name == "ModuleRoot" && strings.HasSuffix(pkg, "/internal/fsutil") {
+		e.tree = true
+	}
 	switch pkg {
 	case "net/http":
 		if name == "DefaultClient" || name == "DefaultTransport" {
@@ -564,6 +631,14 @@ func readSpawn(fn string, call *ast.CallExpr, e *evidence) {
 	case "Command":
 	case "CommandContext":
 		first = 1
+	case "LookPath":
+		// A program found on PATH goes on to run under whatever name holds it.
+		if len(call.Args) == 1 {
+			if name, ok := stringArg(call.Args[0]); ok && slices.Contains(shellPrograms, filepath.Base(name)) {
+				e.program = true
+			}
+		}
+		return
 	default:
 		return
 	}
@@ -576,7 +651,8 @@ func readSpawn(fn string, call *ast.CallExpr, e *evidence) {
 		sub, _ = stringArg(call.Args[first+1])
 	}
 	// `go env`, `go version` and `go telemetry` read the toolchain, not the tree.
-	if named && slices.Contains(shellPrograms, name) && !(name == "go" && (sub == "env" || sub == "version" || sub == "telemetry")) {
+	program := filepath.Base(name)
+	if named && slices.Contains(shellPrograms, program) && !(program == "go" && (sub == "env" || sub == "version" || sub == "telemetry")) {
 		e.program = true
 	}
 	for _, a := range call.Args[first+1:] {

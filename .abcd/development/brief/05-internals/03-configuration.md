@@ -934,74 +934,84 @@ a tool that must not create in the user's space must not delete there either.
 ## The check directory
 
 `make preflight` runs its two test stages through `cmd/check-tests`
-(`internal/testreuse`), from one directory per repository and account:
-`~/.abcd.noindex/tests/<root-sha>/`, keyed on the root commit like the worktree
-store, outside every working tree, and one check at a time under a lock in it. A
-fresh worktree defeats Go's test cache three ways: its paths change the test
-binary, its checkout gives every file a new time, and a file a test opens is
-hashed under its absolute path. So a stage runs with `-trimpath` from the
-directory's `tree/`, which holds the commit's files, with no `.git`, each with a
-time derived from its content: 2001-01-01T00:00:00Z plus 64 bits of the SHA-256
-of the file reduced modulo twenty years of whole seconds. Go keys an opened file
+(`internal/testreuse`). The lines whose results are to be reused run from one
+directory per repository and account: `~/.abcd.noindex/tests/<root-sha>/`, keyed on
+the root commit like the worktree store and outside every working tree. A fresh
+worktree defeats Go's test cache three ways: its paths change the test binary, its
+checkout gives every file a new time, and a file a test opens is hashed under its
+absolute path. So those lines run with `-trimpath` from the directory's `tree/`,
+which holds the commit's files, with no `.git`, each with a time derived from its
+content: 2001-01-01T00:00:00Z plus bits of the SHA-256 of the file, reduced to twenty
+years of whole seconds and to the nanoseconds of that second. Go keys an opened file
 on its size and time, so a file's time moves when its content does and is the same
-in every worktree, and a same-size edit is reused by accident about one time in
-630 million. A directory's time derives from the names in it the same way. A
-result one worktree's check passed is replayed in any other.
+in every worktree. A directory's time derives from the names in it the same way.
+A result one worktree's check passed is replayed in any other.
 
-A sync writes only what differs from the commit, so a commit that changes one file
-writes one file; the thousands of file events of a whole tree happen once, when
-the directory is made. A file is finished under a temporary name and renamed into
-place with its time already set, what a test or a crash left is removed, and a
-directory's time is set last, so the next sync repairs whatever a killed check
-left. `times.json` is a memo of each blob's derived time, and one that does not
-read costs one read of every blob. Each account has its own directory under its
-own home, and a check refuses one it does not own, that another account can write,
-or that is a symlink. A second check waits for the lock, four hours by default,
-and then exits 3 having run nothing.
+A sync reads every file of the tree back and keeps one only when its bytes hash to
+the commit's blob and its mode and time are right, about a second for a tree of
+eleven thousand files, and it writes only what differs: a commit that changes one
+file writes one file, and the thousands of file events of a whole tree happen once,
+when the directory is made. Every write goes through an `os.Root` on the tree, and a
+commit two of whose paths one file system would take for one, or with a path under a
+file or a link, is refused. A file is finished under a temporary name and renamed
+into place with its time already set, what a test or a crash left is removed, and a
+directory's time is set last, so the next sync repairs whatever a killed check left.
+Beside `tree/` it keeps only `lock` and `holder`, and removes anything else; a link
+in the tree's own place is refused and removed. The stage reads the tree back again
+after its lines have run, and fails if a tracked file changed.
+
+Each account has its own directory under its own home, and a check refuses one it
+does not own, that another account can write, or that is a symlink. One check at a
+time holds the lock, for its reused lines and no longer: its always-rerun lines run
+in the worktree outside it. So under `load.preflights` above one, a second run's
+reused lines wait for the first's, and each run's always-rerun lines run side by side
+as they would without a lock. A waiter gives up after four hours or when cancelled,
+exiting 3 having run nothing. A stage that waited takes its `-p` and `-timeout` again,
+since the recipe read them before the wait, and a race stage goes back through the
+race gate, since another may have started meanwhile.
 
 **What is reused.** Go's cache sees the test binary, the cacheable flags, and the
 files and environment variables a test reads, at the value the go command itself
-was given, so a reused line runs with `PWD` set to the tree and no `OLDPWD`, and
-nothing in its key names the worktree. A stage's results run under one fixed
-`-timeout`, since the cache key holds it and a stage's own budget takes two values
-with the load. A race build is another binary, so the race stage reuses race
+was given, so a reused line runs with `PWD` set to the tree, no `OLDPWD`, and
+`GOWORK=off`, and nothing in its key names the worktree. Its results run under one
+fixed `-timeout`, since the cache key holds it and a stage's own budget takes two
+values with the load. A race build is another binary, so the race stage reuses race
 results only and the unit stage's serve it nothing. A stage reports `reused N of M`
 and names each package that ran and why; its record under the local tier's
-`preflight-reuse/` names the commit and tree, and `scripts/preflight-receipt.sh`
-mints a full receipt only from both stages' passing records for that exact tree,
-and copies the counts into the receipt. A file a test leaves in the tree moves its
-directory's time, so a test that walks the tree does not replay; the stage names the
-file.
+`preflight-reuse/` names the commit, the tree and how it ran, and
+`scripts/preflight-receipt.sh` mints a full receipt only from both stages' passing
+records for that exact tree, and copies the counts and the mode (`tests reuse`, `cut`,
+`fallback` or `mixed`) into the receipt. A stage over a working tree's edits records
+no tree and mints nothing. A file a test leaves in the tree moves its directory's
+time, so a test that walks the tree does not replay; the stage names the file.
 
-**What is not.** Three things keep a passing result from standing in for a test
-whose real inputs changed, since the cache sees nothing a subprocess reads, a binary
-a test builds, the clock or the network:
+**What is not.** The cache sees nothing a subprocess reads, a binary a test builds,
+the clock or the network, so a test reading those reruns on every check:
 
 - `.abcd/work/always-rerun-tests.txt` names a package or a test, with why, and is
-  read from origin's default branch at check time, never from the working tree, so
-  a change cannot take its own tests off it. A line lands like any other change and
-  takes effect once on the default branch. A list that is missing or does not read
+  read from origin's default branch at check time, never from the working tree. A
+  line lands like any other change and takes effect once on the default branch. A
+  list that is missing, does not read, or names a package or test that does not exist
   turns all reuse off.
 - The classifier reads every test's source on every check, following what it names
-  through the package's test files and the module's test-helper packages, and
-  reruns a test it finds running a program through go, make or a shell, reaching the
+  through the package's test files and the module's test-helper packages, and reruns
+  a test it finds running a program through go, make or a shell, reaching the
   repository from a package whose import closure can start a subprocess, reading the
   network with no local server, or comparing the clock with a fixed date. So a test
-  nobody declared reruns anyway, and the report names it undeclared. A test file that
-  does not parse reruns its package. A rerun test runs in the worktree with
-  `-count=1`, where git can answer; the rest of its package is reused under a `-skip`
-  of it.
+  nobody declared reruns anyway, and the report names it undeclared. A test file or
+  helper that does not parse reruns the package that holds or imports it. A rerun test
+  runs in the worktree with `-count=1`, where git can answer; the rest of its package
+  is reused under a `-skip` of it.
 - The check directory holds no `.git`, and `GIT_CEILING_DIRECTORIES` stops git
-  walking above it, so a test that asks git about the repository, and that the
-  classifier missed, gets no answer rather than state the cache cannot see.
+  walking above it.
 
-A test the classifier finds no evidence against, whose subprocess reads the tree by
-a path its source does not spell, or that compares the clock with a date in code it
-links, is still reused here; the hosted full run, which reuses nothing, catches it on
-every pull request and merge-queue entry. A working tree that differs from HEAD runs
-in the worktree reusing nothing, since its edits are what to test, and so does a
-directory refused or a list unread. A release cut's hosted gates pass `-count=1`, and
-`make preflight PREFLIGHT_FRESH=1` is the same run on the person's machine.
+Every hosted test step passes `-count=1`, on every pull request and merge-queue entry
+and in each release cut's gates. A working tree that differs from HEAD runs in the
+worktree reusing nothing, since its edits are what to test, and so does a directory
+refused or a list unread. `make preflight PREFLIGHT_FRESH=1` is a release cut's run on
+the person's machine: the full rule whatever the change, a records-only one included,
+reusing nothing, with `tests cut` on the receipt, and `launch ship` refuses a commit
+with no such receipt.
 
 ## The dogfood store
 

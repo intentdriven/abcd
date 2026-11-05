@@ -7,16 +7,21 @@ import (
 	"time"
 )
 
-// TestWriteRebuildableLeavesTheFileWhole: the content, mode and time all arrive
+// TestWriteRebuildableAtLeavesTheFileWhole: the content, mode and time all arrive
 // with the name, over an old file and through a directory that does not exist
-// yet, with no temporary file left and a symlink at the path replaced rather
-// than written through.
-func TestWriteRebuildableLeavesTheFileWhole(t *testing.T) {
+// yet, with no temporary file left, a symlink at the path replaced rather than
+// written through, and a link out of the root refused on the way to the path.
+func TestWriteRebuildableAtLeavesTheFileWhole(t *testing.T) {
 	dir := t.TempDir()
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
 	path := filepath.Join(dir, "a", "b", "file")
 	at := time.Date(2003, 4, 5, 6, 7, 8, 0, time.UTC)
 	for _, body := range []string{"first", "second"} {
-		if err := WriteRebuildable(path, []byte(body), 0o755, at); err != nil {
+		if err := WriteRebuildableAtInRoot(root, "a/b/file", []byte(body), 0o755, at); err != nil {
 			t.Fatal(err)
 		}
 		raw, err := os.ReadFile(path)
@@ -53,7 +58,7 @@ func TestWriteRebuildableLeavesTheFileWhole(t *testing.T) {
 	if err := os.Symlink(target, link); err != nil {
 		t.Fatal(err)
 	}
-	if err := WriteRebuildable(link, []byte("new"), 0o644, at); err != nil {
+	if err := WriteRebuildableAtInRoot(root, "link", []byte("new"), 0o644, at); err != nil {
 		t.Fatal(err)
 	}
 	if raw, _ := os.ReadFile(target); string(raw) != "kept" {
@@ -61,5 +66,16 @@ func TestWriteRebuildableLeavesTheFileWhole(t *testing.T) {
 	}
 	if info, _ := os.Lstat(link); info.Mode()&os.ModeSymlink != 0 {
 		t.Error("the link was not replaced")
+	}
+
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(dir, "out")); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteRebuildableAtInRoot(root, "out/escaped", []byte("x"), 0o644, at); err == nil {
+		t.Error("a write through a link out of the root was taken")
+	}
+	if items, _ := os.ReadDir(outside); len(items) != 0 {
+		t.Errorf("the write escaped the root: %v", items)
 	}
 }

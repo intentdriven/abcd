@@ -147,3 +147,27 @@ func TestExactlyMatchesOnlyTheNames(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+// TestALineThatNamesNothingIsNamed: a line whose package or test is gone holds
+// nothing to rerun, which is a test leaving the list by a rename.
+func TestALineThatNamesNothingIsNamed(t *testing.T) {
+	known := map[string][]string{"internal/a": {"TestOne"}, "internal/b/c": {"TestTwo"}}
+	for _, ok := range []List{
+		{{Pattern: "internal/a"}},
+		{{Pattern: "internal/a", Tests: []string{"TestOne"}}},
+		{{Pattern: "internal/b/..."}},
+	} {
+		if bad := unresolved(ok, known); len(bad) != 0 {
+			t.Errorf("%+v read as unresolved: %v", ok, bad)
+		}
+	}
+	for _, gone := range []List{
+		{{Pattern: "internal/gone"}},
+		{{Pattern: "internal/gone/..."}},
+		{{Pattern: "internal/a", Tests: []string{"TestGone"}}},
+	} {
+		if bad := unresolved(gone, known); len(bad) != 1 {
+			t.Errorf("%+v read as %v", gone, bad)
+		}
+	}
+}

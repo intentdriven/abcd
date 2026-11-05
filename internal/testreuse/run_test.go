@@ -3,6 +3,7 @@ package testreuse
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -563,7 +564,7 @@ func TestACrashedCheckRecovers(t *testing.T) {
 	writeFile(t, filepath.Join(tree, "reads", "data.txt"), "evil\n", 0o644)
 	writeFile(t, filepath.Join(tree, "stray_test.go"), "package nothing\n", 0o644)
 	writeFile(t, filepath.Join(dir, ".abcd-tmp-1"), "cut", 0o600)
-	writeFile(t, filepath.Join(dir, timesName), "{", 0o600)
+	writeFile(t, filepath.Join(dir, "unknown.json"), "{", 0o600)
 
 	r := w.stage(w.repo, nil, allPackages...)
 	if r.code != 0 {
@@ -625,6 +626,254 @@ func TestLeaves(t *testing.T) {
 	}
 	if !strings.Contains(r.out, "leaves/left-behind.lock") {
 		t.Errorf("the report does not name what the test left:\n%s", r)
+	}
+}
+
+// TestAGoWorkAboveTheTreeChangesNothing: go looks above the module for a go.work,
+// and a test can write one there. A reused line asks for none.
+func TestAGoWorkAboveTheTreeChangesNothing(t *testing.T) {
+	w := newWorld(t)
+	if r := w.stage(w.repo, nil, allPackages...); r.code != 0 {
+		t.Fatalf("the first check failed: %s", r)
+	}
+	writeFile(t, abcdhome.Path(w.home, "tests", "go.work"), "this is not a go.work\n", 0o644)
+	r := w.stage(w.repo, nil, allPackages...)
+	if r.code != 0 || !r.cached("pure") || strings.Contains(r.out, "reuses nothing") {
+		t.Errorf("a go.work above the tree reached the check:\n%s", r)
+	}
+}
+
+// TestTheHolderNoteIsNotWrittenThroughALink: the note of who holds the lock goes
+// to the file of that name and to nothing else.
+func TestTheHolderNoteIsNotWrittenThroughALink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(t.TempDir(), "elsewhere")
+	writeFile(t, target, "kept\n", 0o644)
+	if err := os.Symlink(target, filepath.Join(dir, holderName)); err != nil {
+		t.Fatal(err)
+	}
+	noteHolder(dir, "/a/checkout")
+	if raw, _ := os.ReadFile(target); string(raw) != "kept\n" {
+		t.Errorf("the note went through the link: %q", raw)
+	}
+	if got := holder(dir); strings.Contains(got, "kept") {
+		t.Errorf("the note read through the link: %q", got)
+	}
+}
+
+// TestCancellingEndsTheWait: a check waiting for another stops when it is told to,
+// having run nothing, rather than holding its caller for the rest of the bound.
+func TestCancellingEndsTheWait(t *testing.T) {
+	w := newWorld(t)
+	root := runGit(t, w.repo, "rev-list", "--max-parents=0", "HEAD")
+	dir, err := checkDir(w.home, root, os.Geteuid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	held, release, done := make(chan struct{}), make(chan struct{}), make(chan error)
+	go func() {
+		done <- fsutil.WithFileLock(filepath.Join(dir, lockName), time.Minute, func() error {
+			close(held)
+			<-release
+			return nil
+		})
+	}()
+	<-held
+	defer func() {
+		close(release)
+		<-done
+	}()
+	ctx, cancel := context.WithCancel(context.Background())
+	var out, errb bytes.Buffer
+	ended := make(chan int)
+	go func() {
+		ended <- Run(ctx, Config{Stage: "unit", Args: allPackages, Worktree: w.repo, Home: w.home, Stdout: &out, Stderr: &errb, LockWait: time.Hour, Uid: os.Geteuid()})
+	}()
+	time.Sleep(1500 * time.Millisecond)
+	cancel()
+	select {
+	case code := <-ended:
+		if code != ExitBusy {
+			t.Errorf("a cancelled wait exited %d, want %d", code, ExitBusy)
+		}
+		if strings.Contains(out.String(), "ok  \t") {
+			t.Errorf("a cancelled wait ran tests:\n%s", out.String())
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("the wait outlived its cancellation")
+	}
+}
+
+// TestAWaitTakesTheBudgetAgain: -p and -timeout are derived before a wait that can
+// last hours, so what follows one takes them afresh, and the hook says which stage
+// it follows so a race stage can go back through its gate. No wait, no hook.
+func TestAWaitTakesTheBudgetAgain(t *testing.T) {
+	w := newWorld(t)
+	var called []bool
+	hook := func(c *Config) {
+		c.AfterWait = func(race bool) (string, string, error) {
+			called = append(called, race)
+			return "3", "7m", nil
+		}
+	}
+	if r := w.stage(w.repo, hook, allPackages...); r.code != 0 {
+		t.Fatalf("the check failed: %s", r)
+	}
+	if len(called) != 0 {
+		t.Fatalf("a check that waited for nothing took the budget again: %v", called)
+	}
+	root := runGit(t, w.repo, "rev-list", "--max-parents=0", "HEAD")
+	dir, err := checkDir(w.home, root, os.Geteuid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	held, release, done := make(chan struct{}), make(chan struct{}), make(chan error)
+	go func() {
+		done <- fsutil.WithFileLock(filepath.Join(dir, lockName), time.Minute, func() error {
+			close(held)
+			<-release
+			return nil
+		})
+	}()
+	<-held
+	got := make(chan result)
+	go func() { got <- w.stage(w.repo, hook, "-race", "-timeout", "5m", "./...") }()
+	time.Sleep(1500 * time.Millisecond)
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if r := <-got; r.code != 0 {
+		t.Fatalf("the check failed: %s", r)
+	}
+	if len(called) != 1 || !called[0] {
+		t.Errorf("a race stage's wait called the hook %v", called)
+	}
+
+	// A hook that refuses, as a race gate past its bound does, stops the stage.
+	held2, release2, done2 := make(chan struct{}), make(chan struct{}), make(chan error)
+	go func() {
+		done2 <- fsutil.WithFileLock(filepath.Join(dir, lockName), time.Minute, func() error {
+			close(held2)
+			<-release2
+			return nil
+		})
+	}()
+	<-held2
+	refusing := func(c *Config) {
+		c.AfterWait = func(bool) (string, string, error) { return "", "", errors.New("the gate stayed shut") }
+	}
+	got2 := make(chan result)
+	go func() { got2 <- w.stage(w.repo, refusing, allPackages...) }()
+	time.Sleep(1500 * time.Millisecond)
+	close(release2)
+	if err := <-done2; err != nil {
+		t.Fatal(err)
+	}
+	r := <-got2
+	if r.code == 0 || !strings.Contains(r.String(), "the gate stayed shut") || strings.Contains(r.out, "ok  \t") {
+		t.Errorf("a refusing hook did not stop the stage:\n%s", r)
+	}
+}
+
+// TestTheLockIsReleasedBeforeTheRerunLines: the rerun lines run in the worktree and
+// touch nothing of the check directory, so another check need not wait for them.
+func TestTheLockIsReleasedBeforeTheRerunLines(t *testing.T) {
+	w := newWorld(t)
+	root := runGit(t, w.repo, "rev-list", "--max-parents=0", "HEAD")
+	lock := filepath.Join(abcdhome.Path(w.home, "tests", root), lockName)
+	t.Setenv("FIXTURE_LOCK", lock)
+	w.write("holds/holds_test.go", `package holds
+import (
+	"os"
+	"os/exec"
+	"syscall"
+	"testing"
+)
+func TestTheLockIsFree(t *testing.T) {
+	_ = exec.Command("bash", "-c", "true").Run()
+	f, err := os.OpenFile(os.Getenv("FIXTURE_LOCK"), os.O_RDWR, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		t.Fatalf("the check held its lock through the rerun lines: %v", err)
+	}
+	_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+}
+`)
+	w.commit("a test that tries the lock")
+	if r := w.stage(w.repo, nil, allPackages...); r.code != 0 {
+		t.Errorf("%s", r)
+	}
+}
+
+// TestADirtyRunNamesNoTree: tests that read a working tree's edits vouch for no
+// commit's tree, so their report says so and the receipt cannot name one.
+func TestADirtyRunNamesNoTree(t *testing.T) {
+	w := newWorld(t)
+	w.write("pure/edited.txt", "an edit\n")
+	if r := w.stage(w.repo, nil, allPackages...); r.code != 0 {
+		t.Fatalf("the check failed: %s", r)
+	}
+	head := runGit(t, w.repo, "rev-parse", "HEAD")
+	matches, err := filepath.Glob(filepath.Join(w.repo, ".abcd", ".work.local", "preflight-reuse", head, "unit-*"))
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("reports: %v, %v", matches, err)
+	}
+	raw, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree := runGit(t, w.repo, "rev-parse", "HEAD^{tree}")
+	if strings.Contains(string(raw), tree) || !strings.Contains(string(raw), "tree none\n") || !strings.Contains(string(raw), "mode dirty\n") {
+		t.Errorf("a dirty run's report names a tree:\n%s", raw)
+	}
+}
+
+// TestAListLineThatResolvesToNothingReusesNothing: a renamed package leaves the list
+// naming nothing, which would be its tests quietly reused.
+func TestAListLineThatResolvesToNothingReusesNothing(t *testing.T) {
+	for name, line := range map[string]string{
+		"a package": "renamed # a subprocess reads it\n",
+		"a test":    "pure TestRenamed # a subprocess reads it\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := newWorld(t)
+			w.write(ListPath, line)
+			w.commit("a stale line")
+			runGit(t, w.repo, "push", "-q", "origin", "main")
+			w.stage(w.repo, nil, allPackages...)
+			r := w.stage(w.repo, nil, allPackages...)
+			if r.code != 0 {
+				t.Fatalf("the check failed: %s", r)
+			}
+			if !r.ran("pure") || !r.ran("reads") || !strings.Contains(r.out, "reuses nothing") {
+				t.Errorf("a line naming nothing left reuse on:\n%s", r)
+			}
+		})
+	}
+}
+
+// TestAReleaseCutSaysSoInItsReport: the receipt reads the mode, so a cut's run is
+// told from one that fell back and from one that reused.
+func TestAReleaseCutSaysSoInItsReport(t *testing.T) {
+	w := newWorld(t)
+	if r := w.stage(w.repo, func(c *Config) { c.Fresh = true }, allPackages...); r.code != 0 {
+		t.Fatalf("the check failed: %s", r)
+	}
+	head := runGit(t, w.repo, "rev-parse", "HEAD")
+	matches, _ := filepath.Glob(filepath.Join(w.repo, ".abcd", ".work.local", "preflight-reuse", head, "unit-*"))
+	if len(matches) != 1 {
+		t.Fatalf("reports: %v", matches)
+	}
+	raw, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "mode cut\n") {
+		t.Errorf("a release cut's report:\n%s", raw)
 	}
 }
 

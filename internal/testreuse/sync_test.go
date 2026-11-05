@@ -77,18 +77,22 @@ func (r *gitRepo) commit(msg string) string {
 func TestAFileTimeIsInThePastAndFollowsItsContent(t *testing.T) {
 	limit := time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)
 	seen := map[int64]bool{}
+	fractional := 0
 	for i := range 2000 {
 		at := contentTime(sha256.Sum256([]byte{byte(i), byte(i >> 8)}))
 		if at.Before(timeBase) || !at.Before(limit) {
 			t.Fatalf("content %d takes %s, outside the window", i, at)
 		}
 		if at.Nanosecond() != 0 {
-			t.Fatalf("content %d takes %s, not a whole second", i, at)
+			fractional++
 		}
-		seen[at.Unix()] = true
+		seen[at.UnixNano()] = true
 	}
-	if len(seen) < 1990 {
+	if len(seen) != 2000 {
 		t.Errorf("2000 contents took %d times; the window should spread them", len(seen))
+	}
+	if fractional < 1990 {
+		t.Errorf("%d of 2000 times carry nanosecond bits; a whole second is too few bits to stand on", fractional)
 	}
 	if a, b := contentTime(sha256.Sum256([]byte("same"))), contentTime(sha256.Sum256([]byte("same"))); !a.Equal(b) {
 		t.Errorf("one content took two times: %s and %s", a, b)
@@ -261,7 +265,7 @@ func TestASyncRecoversADirectoryACrashLeft(t *testing.T) {
 	// directory a test made unreadable, and a directory's time moved.
 	writeFile(t, filepath.Join(tree, "a", "file.txt"), "whole", 0o644)
 	writeFile(t, filepath.Join(dir, ".abcd-tmp-12345"), "partial", 0o600)
-	writeFile(t, filepath.Join(dir, timesName), "{\"cut", 0o600)
+	writeFile(t, filepath.Join(dir, "unknown.json"), "{\"cut", 0o600)
 	writeFile(t, filepath.Join(tree, "a", "left-behind.txt"), "x", 0o644)
 	writeFile(t, filepath.Join(tree, "stray", "deep", "x.txt"), "x", 0o644)
 	if err := os.RemoveAll(filepath.Join(tree, "b")); err != nil {
@@ -321,8 +325,14 @@ func TestASyncRecoversADirectoryACrashLeft(t *testing.T) {
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Errorf("the recovered tree holds\n%v\nwant\n%v", got, want)
 	}
-	if left, _ := filepath.Glob(filepath.Join(dir, incomingGlob)); len(left) != 0 {
-		t.Errorf("temporary files remain: %v", left)
+	items, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range items {
+		if it.Name() != treeDirName {
+			t.Errorf("%s remains beside the tree", it.Name())
+		}
 	}
 }
 
@@ -350,7 +360,7 @@ func TestASnapshotNamesATrackedFileARunRewrote(t *testing.T) {
 // TestAPathOutOfTheTreeIsRefused: what the sync writes, the tests execute, so
 // nothing outside the tree and nothing in a .git.
 func TestAPathOutOfTheTreeIsRefused(t *testing.T) {
-	for _, p := range []string{"../escape", "a/../../b", "/abs", ".git/hooks/x", "a/.git/config"} {
+	for _, p := range []string{"../escape", "a/../../b", "/abs", ".git/hooks/x", "a/.git/config", ".GIT/hooks/x", "a/.Git/config"} {
 		if treePath(p) {
 			t.Errorf("%q was taken", p)
 		}
@@ -358,6 +368,230 @@ func TestAPathOutOfTheTreeIsRefused(t *testing.T) {
 	for _, p := range []string{"a", "a/b.txt", ".github/x", ".gitignore"} {
 		if !treePath(p) {
 			t.Errorf("%q was refused", p)
+		}
+	}
+}
+
+// TestASameSizeFileWithAMatchingTimeIsStillRewritten: a commit's file that shares
+// its size and derived time with what is on disk is not taken for it. The sync
+// proves the bytes, so a tree it keeps is the commit's.
+func TestASameSizeFileWithAMatchingTimeIsStillRewritten(t *testing.T) {
+	r := newGitRepo(t)
+	r.write("data.txt", "evil\n")
+	first := r.commit("one")
+	dir := t.TempDir()
+	if _, err := Sync(context.Background(), r.root, first, dir); err != nil {
+		t.Fatal(err)
+	}
+	r.write("data.txt", "good\n")
+	second := r.commit("two")
+	onDisk := filepath.Join(dir, treeDirName, "data.txt")
+	at := contentTime(sha256.Sum256([]byte("good\n")))
+	if err := os.Chtimes(onDisk, at, at); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Sync(context.Background(), r.root, second, dir); err != nil {
+		t.Fatal(err)
+	}
+	if raw, _ := os.ReadFile(onDisk); string(raw) != "good\n" {
+		t.Errorf("the tree holds %q under a time that says it is the commit's", raw)
+	}
+
+	// The same with both commits' blobs already seen: back to the first commit,
+	// with the file made to look like it.
+	writeFile(t, onDisk, "good\n", 0o644)
+	at = contentTime(sha256.Sum256([]byte("evil\n")))
+	if err := os.Chtimes(onDisk, at, at); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Sync(context.Background(), r.root, first, dir); err != nil {
+		t.Fatal(err)
+	}
+	if raw, _ := os.ReadFile(onDisk); string(raw) != "evil\n" {
+		t.Errorf("the tree holds %q after a sync to the first commit", raw)
+	}
+}
+
+// TestALinkToAnotherTargetOfTheSameLengthIsRetargeted: a link is the commit's
+// when its target is, whatever the length says.
+func TestALinkToAnotherTargetOfTheSameLengthIsRetargeted(t *testing.T) {
+	r := newGitRepo(t)
+	r.write("a.txt", "a\n")
+	r.write("b.txt", "b\n")
+	if err := os.Symlink("a.txt", filepath.Join(r.root, "link")); err != nil {
+		t.Fatal(err)
+	}
+	first := r.commit("one")
+	dir := t.TempDir()
+	if _, err := Sync(context.Background(), r.root, first, dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(r.root, "link")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("b.txt", filepath.Join(r.root, "link")); err != nil {
+		t.Fatal(err)
+	}
+	second := r.commit("two")
+	if _, err := Sync(context.Background(), r.root, second, dir); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.Readlink(filepath.Join(dir, treeDirName, "link")); err != nil || got != "b.txt" {
+		t.Errorf("the link points at %q (%v), want b.txt", got, err)
+	}
+}
+
+// TestASnapshotNamesAFileThatOnlyLooksTheSame: a run that rewrites a tracked file
+// and puts its size and time back has still left the tree not the commit.
+func TestASnapshotNamesAFileThatOnlyLooksTheSame(t *testing.T) {
+	r := newGitRepo(t)
+	r.write("a.txt", "a\n")
+	head := r.commit("one")
+	dir := t.TempDir()
+	_, snap, err := syncTree(context.Background(), r.root, head, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	onDisk := filepath.Join(dir, treeDirName, "a.txt")
+	info, err := os.Stat(onDisk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, onDisk, "b\n", 0o644)
+	if err := os.Chtimes(onDisk, info.ModTime(), info.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	if got := snap.changedTracked(); len(got) != 1 || got[0] != "a.txt" {
+		t.Errorf("a forged file reads as %v", got)
+	}
+}
+
+// commitFromIndex commits exactly the given index entries, which git would not
+// let a working tree spell.
+func commitFromIndex(t *testing.T, r *gitRepo, entries ...string) string {
+	t.Helper()
+	blob := func(body string) string {
+		cmd := exec.Command("git", "hash-object", "-w", "--stdin")
+		cmd.Dir = r.root
+		cmd.Env = gittest.Env(t)
+		cmd.Stdin = strings.NewReader(body)
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	for _, e := range entries {
+		mode, rest, _ := strings.Cut(e, " ")
+		path, body, _ := strings.Cut(rest, " ")
+		r.git("-c", "core.ignorecase=false", "update-index", "--add", "--cacheinfo", mode+","+blob(body)+","+path)
+	}
+	tree := r.git("-c", "core.ignorecase=false", "write-tree")
+	return r.git("commit-tree", tree, "-m", "by hand")
+}
+
+// TestACommitThatCouldWriteThroughALinkIsRefused: two paths one file system takes
+// for one, the first a link, would land the second wherever the link points. The
+// sync refuses the commit and writes nothing.
+func TestACommitThatCouldWriteThroughALinkIsRefused(t *testing.T) {
+	outside := t.TempDir()
+	r := newGitRepo(t)
+	for name, entries := range map[string][]string{
+		"a link and a path under its other spelling": {"120000 Link " + outside, "100644 link/evil.txt pwned"},
+		"one file under two spellings":               {"100644 File.txt one", "100644 file.txt two"},
+		"one directory under two spellings":          {"100644 Dir/a.txt one", "100644 dir/b.txt two"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r.git("read-tree", "--empty")
+			commit := commitFromIndex(t, r, entries...)
+			dir := t.TempDir()
+			if _, err := Sync(context.Background(), r.root, commit, dir); err == nil {
+				t.Error("the commit was taken")
+			}
+			if items, _ := os.ReadDir(outside); len(items) != 0 {
+				t.Errorf("the sync wrote outside the tree: %v", items)
+			}
+		})
+	}
+}
+
+// TestASyncDoesNotWriteThroughALinkARunLeft: a directory of the commit that a test
+// replaced with a link to elsewhere is put back, and elsewhere is untouched.
+func TestASyncDoesNotWriteThroughALinkARunLeft(t *testing.T) {
+	outside := t.TempDir()
+	r := newGitRepo(t)
+	r.write("a/file.txt", "commit\n")
+	first := r.commit("one")
+	dir := t.TempDir()
+	if _, err := Sync(context.Background(), r.root, first, dir); err != nil {
+		t.Fatal(err)
+	}
+	inTree := filepath.Join(dir, treeDirName, "a")
+	if err := os.RemoveAll(inTree); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, inTree); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Sync(context.Background(), r.root, first, dir); err != nil {
+		t.Fatal(err)
+	}
+	if items, _ := os.ReadDir(outside); len(items) != 0 {
+		t.Errorf("the sync wrote through the link: %v", items)
+	}
+	info, err := os.Lstat(inTree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.IsDir() {
+		t.Errorf("the directory is still %v", info.Mode())
+	}
+}
+
+// TestATreeThatIsALinkIsRefused: what a test plants in the tree's own place must
+// not take the sync's writes elsewhere.
+func TestATreeThatIsALinkIsRefused(t *testing.T) {
+	outside := t.TempDir()
+	r := newGitRepo(t)
+	r.write("a.txt", "a\n")
+	head := r.commit("one")
+	dir := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(dir, treeDirName)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Sync(context.Background(), r.root, head, dir); err == nil {
+		t.Error("a linked tree was taken")
+	}
+	if items, _ := os.ReadDir(outside); len(items) != 0 {
+		t.Errorf("the sync wrote through the link: %v", items)
+	}
+	if _, err := Sync(context.Background(), r.root, head, dir); err != nil {
+		t.Errorf("the next check does not recover: %v", err)
+	}
+}
+
+// TestASyncRemovesWhatItDoesNotKnowBesideTheTree: go looks above the module for a
+// go.work, and the directory is the tree's parent.
+func TestASyncRemovesWhatItDoesNotKnowBesideTheTree(t *testing.T) {
+	r := newGitRepo(t)
+	r.write("a.txt", "a\n")
+	head := r.commit("one")
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "go.work"), "go 1.21\n", 0o644)
+	writeFile(t, filepath.Join(dir, "nested", "x"), "x", 0o644)
+	writeFile(t, filepath.Join(dir, holderName), "kept", 0o600)
+	writeFile(t, filepath.Join(dir, lockName), "", 0o600)
+	if _, err := Sync(context.Background(), r.root, head, dir); err != nil {
+		t.Fatal(err)
+	}
+	for _, gone := range []string{"go.work", "nested"} {
+		if _, err := os.Lstat(filepath.Join(dir, gone)); !os.IsNotExist(err) {
+			t.Errorf("%s remains: %v", gone, err)
+		}
+	}
+	for _, kept := range []string{holderName, lockName} {
+		if _, err := os.Lstat(filepath.Join(dir, kept)); err != nil {
+			t.Errorf("%s was removed: %v", kept, err)
 		}
 	}
 }

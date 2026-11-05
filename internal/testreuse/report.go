@@ -124,9 +124,9 @@ const reportDir = ".abcd/.work.local/preflight-reuse"
 // StageReport is one go test line's record for the receipt: which commit and
 // tree it checked, how, and what it reused.
 type StageReport struct {
-	Commit, Tree, Stage, Mode string
-	Counts                    Counts
-	Passed                    bool
+	Commit, Tree, Stage, Mode, Why string
+	Counts                         Counts
+	Passed                         bool
 }
 
 // write records the report under the checkout's local tier, named for the
@@ -143,8 +143,13 @@ func (r StageReport) write(worktree string, selects []string) error {
 	if r.Passed {
 		result = "pass"
 	}
-	body := fmt.Sprintf("commit %s\ntree %s\nstage %s\nmode %s\nreused %d\npackages %d\nresult %s\n",
-		r.Commit, r.Tree, r.Stage, r.Mode, r.Counts.Reused, r.Counts.Packages, result)
+	tree := r.Tree
+	if tree == "" {
+		tree = "none" // the tests read no commit's tree
+	}
+	why := strings.Join(strings.Fields(r.Why), " ")
+	body := fmt.Sprintf("commit %s\ntree %s\nstage %s\nmode %s\nwhy %s\nreused %d\npackages %d\nresult %s\n",
+		r.Commit, tree, r.Stage, r.Mode, why, r.Counts.Reused, r.Counts.Packages, result)
 	name := r.Stage + "-" + hex.EncodeToString(sum[:6])
 	return fsutil.WriteFileAtomic(filepath.Join(dir, name), []byte(body), 0o644)
 }

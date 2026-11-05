@@ -476,45 +476,6 @@ func WriteFileAtomic(path string, data []byte, perm os.FileMode) error {
 	return nil
 }
 
-// WriteRebuildable is WriteFileAtomic for a file a later run can make again,
-// with no flush and with its modification time set before the name appears: a
-// reader, or a crash, sees the old file or the complete new one with its final
-// time, and never the new content under another time. A check directory writes
-// thousands of these at once, where a flush each would cost minutes on macOS
-// (flush.go) to protect nothing its next sync cannot repair.
-func WriteRebuildable(path string, data []byte, perm os.FileMode, at time.Time) error {
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	tmp, err := os.CreateTemp(dir, ".abcd-tmp-*")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	fail := func(err error) error {
-		tmp.Close()
-		os.Remove(tmpName)
-		return err
-	}
-	if _, err := tmp.Write(data); err != nil {
-		return fail(err)
-	}
-	if err := tmp.Chmod(perm); err != nil {
-		return fail(err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fail(err)
-	}
-	if err := os.Chtimes(tmpName, at, at); err != nil {
-		return fail(err)
-	}
-	if err := os.Rename(tmpName, path); err != nil {
-		return fail(err)
-	}
-	return nil
-}
-
 // WriteFileAtomicPreserveMode is WriteFileAtomic that keeps the target's
 // existing permission bits when it already exists, defaulting to 0644 for a new
 // file. It is the canonical form for the store writers that rewrite a file in
@@ -547,7 +508,7 @@ func WriteFileAtomicPreserveMode(path string, data []byte) error {
 // The temp name is unpredictable so the enumerable-name swap WriteFileAtomic
 // guards against has nothing to aim at.
 func WriteFileAtomicInRoot(root *os.Root, rel string, data []byte, perm os.FileMode) error {
-	return writeAtomicInRoot(root, rel, data, perm, true)
+	return writeAtomicInRoot(root, rel, data, perm, true, time.Time{})
 }
 
 // WriteRebuildableInRoot is WriteFileAtomicInRoot without the two flushes, for
@@ -557,10 +518,17 @@ func WriteFileAtomicInRoot(root *os.Root, rel string, data []byte, perm os.FileM
 // a power cut, and it saves two F_FULLFSYNCs a file on macOS, about 12 ms each:
 // a site of 6,678 files spent over two minutes on them.
 func WriteRebuildableInRoot(root *os.Root, rel string, data []byte, perm os.FileMode) error {
-	return writeAtomicInRoot(root, rel, data, perm, false)
+	return writeAtomicInRoot(root, rel, data, perm, false, time.Time{})
 }
 
-func writeAtomicInRoot(root *os.Root, rel string, data []byte, perm os.FileMode, durable bool) error {
+// WriteRebuildableAtInRoot is WriteRebuildableInRoot with the modification time
+// set before the name appears: a reader, or a crash, sees the old file or the
+// complete new one with its final time, and never the new content under another.
+func WriteRebuildableAtInRoot(root *os.Root, rel string, data []byte, perm os.FileMode, at time.Time) error {
+	return writeAtomicInRoot(root, rel, data, perm, false, at)
+}
+
+func writeAtomicInRoot(root *os.Root, rel string, data []byte, perm os.FileMode, durable bool, at time.Time) error {
 	dir := path.Dir(rel)
 	if dir != "." {
 		if err := root.MkdirAll(dir, 0o755); err != nil {
@@ -590,6 +558,12 @@ func writeAtomicInRoot(root *os.Root, rel string, data []byte, perm os.FileMode,
 	if err := tmp.Close(); err != nil {
 		_ = root.Remove(tmpRel)
 		return err
+	}
+	if !at.IsZero() {
+		if err := root.Chtimes(tmpRel, at, at); err != nil {
+			_ = root.Remove(tmpRel)
+			return err
+		}
 	}
 	if err := root.Rename(tmpRel, rel); err != nil {
 		_ = root.Remove(tmpRel)

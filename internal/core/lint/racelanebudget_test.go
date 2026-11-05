@@ -522,7 +522,7 @@ func TestTheOutsideInternalStepRunsWhatTheRaceLaneDoesNot(t *testing.T) {
 	if !ok {
 		t.Fatalf("%s: no %q step", where, name)
 	}
-	if cmd, want := oneGoTest(t, where+" step "+name, step), "go test "+outsideInternalPattern; cmd != want {
+	if cmd, want := oneGoTest(t, where+" step "+name, step), "go test -count=1 "+outsideInternalPattern; cmd != want {
 		t.Fatalf("%s step %q runs `%s`; want `%s`", where, name, cmd, want)
 	}
 	list := func(pattern string) []string {
@@ -658,7 +658,7 @@ func TestPreflightUnitStageRunsWhatCIPlainPassRuns(t *testing.T) {
 	if !ok {
 		t.Fatal(`.github/workflows/ci.yml job check: no "Test (plain-only guards)" step`)
 	}
-	want := []string{outsideInternalPattern, strings.TrimPrefix(oneGoTest(t, "the check job's guards", guards), "go test ")}
+	want := []string{outsideInternalPattern, strings.TrimPrefix(oneGoTest(t, "the check job's guards", guards), "go test -count=1 ")}
 	if !slices.Equal(plain, want) {
 		t.Errorf("preflight's unit stage runs %q; want the check job's two plain passes %q, under its derived -p and -timeout:\n%s", plain, want, recipe)
 	}

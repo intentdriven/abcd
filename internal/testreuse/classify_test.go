@@ -44,6 +44,10 @@ func TestTheClassifierSendsWhatTheCacheCannotSeeToTheRerunLine(t *testing.T) {
 		{"a relative path handed to a program", true, `func TestA(t *testing.T) { exec.Command("gofmt", "./cmd/x").Run() }`, whyTree},
 		{"a skip outside a checkout", true, `func TestA(t *testing.T) { t.Skip("not in a git checkout") }`, whyTree},
 		{"a skip where git cannot answer", true, `func TestA(t *testing.T) { t.Skipf("git ls-files unavailable in %s", "x") }`, whyTree},
+		{"an absolute path to a shell", true, `func TestA(t *testing.T) { exec.Command("/bin/bash", "x.sh").Run() }`, whyProgram},
+		{"a shell found on PATH", true, `func TestA(t *testing.T) { p, _ := exec.LookPath("bash"); exec.Command(p, "x.sh").Run() }`, whyProgram},
+		{"a command built by hand", true, `func TestA(t *testing.T) { c := exec.Cmd{Path: "/usr/local/bin/x"}; c.Run() }`, whyProgram},
+		{"a binary a helper builds and TestMain's assignment holds", true, "var helperBin string\nfunc build(p string) { exec.Command(\"gofmt\", p).Run(); exec.Command(\"go\", \"build\", \"-o\", p).Run() }\nfunc TestMain(m *testing.M) { helperBin = \"x\"; build(helperBin); m.Run() }\nfunc TestA(t *testing.T) { exec.Command(helperBin).Run() }", whyProgram},
 		{"the network", true, `func TestA(t *testing.T) { http.Get("https://example.invalid") }`, whyNetwork},
 		{"the clock against a fixed date", true, `func TestA(t *testing.T) { _ = time.Now().After(time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)) }`, whyClock},
 		{"the clock against a date string", true, `func TestA(t *testing.T) { _ = time.Now(); _ = "2030-01-01" }`, whyClock},
@@ -57,6 +61,7 @@ func TestTheClassifierSendsWhatTheCacheCannotSeeToTheRerunLine(t *testing.T) {
 		{"elapsed time", true, `func TestA(t *testing.T) { _ = time.Since(time.Now()) }`, ""},
 		{"a fixed date with no clock", true, `func TestA(t *testing.T) { _ = time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC) }`, ""},
 		{"a local variable sharing a helper's name", true, "func helper() { exec.Command(\"go\", \"build\").Run() }\nfunc TestA(t *testing.T) { helper := 1; _ = helper }", ""},
+		{"a blank assignment beside a blank variable", true, "var _ = shell()\nfunc shell() string { exec.Command(\"sh\", \"-c\", \"x\").Run(); return \"\" }\nfunc TestA(t *testing.T) { _, _ = os.ReadFile(\"testdata/x\") }", ""},
 		{"a field sharing a helper's name", true, "func env() { exec.Command(\"go\", \"build\").Run() }\ntype s struct{ env int }\nfunc TestA(t *testing.T) { v := s{env: 1}; _ = v.env }", ""},
 	}
 	for _, c := range cases {
@@ -76,6 +81,16 @@ func TestTheClassifierSendsWhatTheCacheCannotSeeToTheRerunLine(t *testing.T) {
 				t.Fatalf("got %q; want %q", got, c.want)
 			}
 		})
+	}
+}
+
+// TestTheModuleRootHelperCountsAsReachingTheTree: the repository's own helper for
+// finding the root is a walk to the repository like any other, in a package that
+// starts subprocesses.
+func TestTheModuleRootHelperCountsAsReachingTheTree(t *testing.T) {
+	const src = "package x\nimport (\n\t\"testing\"\n\t\"github.com/intentdriven/abcd/internal/fsutil\"\n)\nfunc TestA(t *testing.T) { fsutil.ModuleRoot(\"x\") }\n"
+	if v := classifyText(t, true, src); !strings.HasPrefix(v.Tests["TestA"], whyTree) {
+		t.Errorf("fsutil.ModuleRoot stayed reusable: %+v", v)
 	}
 }
 
@@ -130,6 +145,30 @@ func TestAHelperPackageCountsAsWhatTheTestReaches(t *testing.T) {
 	}
 	if v.Tests["TestPlain"] != "" {
 		t.Errorf("a test calling a harmless helper went to the rerun line: %+v", v)
+	}
+}
+
+// TestAHelperThatCannotBeReadSendsItsImportersOver: a helper package that does not
+// parse says nothing about what a test reaches through it.
+func TestAHelperThatCannotBeReadSendsItsImportersOver(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "helper.go"), []byte("package helper\nfunc Broken( {"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "x_test.go"), []byte("package x\nimport \"testing\"\nfunc TestA(t *testing.T) {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pkgs := []Package{
+		{ImportPath: "m/helper", Dir: dir, GoFiles: []string{"helper.go"}, Imports: []string{"testing"}},
+		{ImportPath: "m/x", Dir: dir, TestGoFiles: []string{"x_test.go"}, TestImports: []string{"m/helper", "testing"}},
+		{ImportPath: "m/other", Dir: dir, TestGoFiles: []string{"x_test.go"}, TestImports: []string{"testing"}},
+	}
+	got := Survey(pkgs)
+	if got["m/x"].Whole == "" {
+		t.Errorf("an importer of an unreadable helper stayed reusable: %+v", got["m/x"])
+	}
+	if got["m/other"].Whole != "" {
+		t.Errorf("a package that does not import it was sent over: %+v", got["m/other"])
 	}
 }
 

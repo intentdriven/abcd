@@ -290,17 +290,57 @@ func TestAFullReceiptNeedsBothStagesPassingOnThisExactTree(t *testing.T) {
 	}
 	c.stageReports(c.dir, "pass")
 	out := mint()
-	if !strings.Contains(out, "receipt minted for") || !strings.Contains(out, "the unit stage reused 7 of 9 packages and the race stage 2 of 5") {
+	if !strings.Contains(out, "receipt minted for") || !strings.Contains(out, "the unit stage reused 7 of 9 packages and the race stage 2 of 5 (reuse)") {
 		t.Fatalf("the mint does not report the counts\n%s", out)
 	}
 	body, err := os.ReadFile(receipt)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"scope full\n", "reuse unit 7 of 9\n", "reuse race 2 of 5\n"} {
+	for _, want := range []string{"scope full\n", "tests reuse\n", "reuse unit 7 of 9\n", "reuse race 2 of 5\n"} {
 		if !strings.Contains(string(body), want) {
 			t.Errorf("the receipt lacks %q:\n%s", want, body)
 		}
+	}
+
+	// A stage that ran over a working tree's edits names no tree, and one that
+	// claims a tree under that mode vouches for nothing either.
+	for _, bad := range []string{"tree none\nstage unit\nmode dirty\n", "stage unit\nmode dirty\n"} {
+		c.stageReports(c.dir, "pass")
+		raw, err := os.ReadFile(unit)
+		if err != nil {
+			t.Fatal(err)
+		}
+		edited := regexp.MustCompile(`(?m)^stage unit\nmode reuse\n`).ReplaceAll(raw, []byte(bad))
+		if bad[:4] == "tree" {
+			edited = regexp.MustCompile(`(?m)^tree [0-9a-f]+\n`).ReplaceAll(edited, nil)
+		}
+		if err := os.WriteFile(unit, edited, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(receipt); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		if out := mint(); strings.Contains(out, "receipt minted for") {
+			t.Fatalf("a dirty stage's report minted a receipt\n%s", out)
+		}
+	}
+
+	// A release cut's receipt says so, and a stage of each kind reads as mixed.
+	c.stageReports(c.dir, "pass")
+	for _, stage := range []string{"unit", "race"} {
+		path := filepath.Join(reports, stage+"-aaaaaaaaaaaa")
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, regexp.MustCompile(`(?m)^mode reuse$`).ReplaceAll(raw, []byte("mode cut")), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mint()
+	if body, _ := os.ReadFile(receipt); !strings.Contains(string(body), "tests cut\n") {
+		t.Errorf("a release cut's receipt:\n%s", body)
 	}
 }
 
@@ -688,7 +728,7 @@ func TestPreflightReceiptNamesItsScope(t *testing.T) {
 		c := newPrePushCase(t)
 		head := c.commit("feature.md", "a feature\n")
 		c.preflight(c.dir)
-		if got := c.receiptLines(head); len(got) != 5 || got[2] != "scope full" {
+		if got := c.receiptLines(head); len(got) != 6 || got[2] != "scope full" {
 			t.Fatalf("a full preflight's receipt is %q; want it to name the full scope and each stage's reuse", got)
 		}
 	})

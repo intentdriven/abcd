@@ -75,10 +75,8 @@ func (d Declared) matches(rel string) bool {
 var errNoDefaultBranch = errors.New("no default branch on origin to read the always-rerun list from")
 
 // ReadList reads the list from origin's default branch as last fetched, never
-// from the working tree, so a change cannot take its own tests off it. The ref
-// is local and the same account can move it, so this bounds a change's own
-// diff, not an agent rewriting the ref. No ref, or no list on it, is an error,
-// which the check takes as no reuse.
+// from the working tree, so a change's own diff does not move it. No ref, or no
+// list on it, is an error, which the check takes as no reuse.
 func ReadList(ctx context.Context, repo string) (List, string, error) {
 	ref := gitutil.TrackedDefaultBranch(repo, "origin")
 	if ref == "" {
@@ -177,4 +175,31 @@ func exactly(names []string) string {
 		quoted[i] = regexp.QuoteMeta(n)
 	}
 	return "^(" + strings.Join(quoted, "|") + ")$"
+}
+
+// unresolved names the lines that name no package, or a test no package under the
+// pattern declares: a line left behind by a rename holds nothing to rerun. known
+// holds every package's tests by its path from the module root.
+func unresolved(list List, known map[string][]string) []string {
+	var bad []string
+	for _, d := range list {
+		found := false
+		var tests []string
+		for rel, names := range known {
+			if d.matches(rel) {
+				found = true
+				tests = append(tests, names...)
+			}
+		}
+		if !found {
+			bad = append(bad, d.Pattern)
+			continue
+		}
+		for _, t := range d.Tests {
+			if !slices.Contains(tests, t) {
+				bad = append(bad, d.Pattern+" "+t)
+			}
+		}
+	}
+	return bad
 }

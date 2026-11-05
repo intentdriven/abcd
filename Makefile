@@ -309,7 +309,7 @@ asking-sync-check:
 # second rule's gates to every gate the full run runs (preflight-stages's) and
 # its test lines to precheck's. The records rule waits at no load gate.
 ifneq ($(filter preflight,$(MAKECMDGOALS)),)
-PREFLIGHT_RECORDS_ONLY := $(shell scripts/records-only.sh >/dev/null 2>&1 && echo yes)
+PREFLIGHT_RECORDS_ONLY := $(if $(PREFLIGHT_FRESH),,$(shell scripts/records-only.sh >/dev/null 2>&1 && echo yes))
 endif
 
 ifneq ($(PREFLIGHT_RECORDS_ONLY),yes)
@@ -412,29 +412,35 @@ preflight:
 # Both test stages run through cmd/check-tests (internal/testreuse,
 # itd-2611011325421304), which reuses every result whose inputs cannot have
 # changed, reruns the rest and reports `reused N of M` for each stage, and the
-# receipt records both counts. A stage runs from one fixed check directory per
-# repository and account, ~/.abcd.noindex/tests/<root-sha>/, one check at a time
-# under a lock, so a fresh worktree replays what another worktree's check of the
-# same inputs passed: the tree there is the commit's, with file times derived
-# from file content, a sync writes only the files that changed, and -trimpath
-# keeps the worktree's path out of the binary.
+# receipt records both counts and how the stage ran. A stage's reused lines run
+# from one fixed check directory per repository and account,
+# ~/.abcd.noindex/tests/<root-sha>/, whose tree the sync reads back against the
+# commit, byte for byte, before the lines run and after, writing only the files
+# that differ, with file times derived from file content and -trimpath keeping
+# the worktree's path out of the binary. So a fresh worktree replays what another
+# worktree's check of the same inputs passed.
 #
-# A test that reads what the cache cannot see (a subprocess, a binary it builds,
-# the clock, the network) reruns on every check, in the worktree: named on
-# .abcd/work/always-rerun-tests.txt on origin's default branch, or found by the
-# classifier reading the test's source, which reruns it and names it undeclared.
-# The check directory holds no .git, so a test neither finds that asks git about
-# the repository fails rather than passing on what the cache cannot see. A race
-# stage reuses race results only, since its binary is another build. A working
-# tree that differs from HEAD, a list that is missing or does not read, and a
-# directory another account owns all run in the worktree, reusing nothing. The
-# hosted full run reuses nothing, on every pull request and queue entry.
+# A test that reads what the cache cannot see reruns on every check, in the
+# worktree: named on .abcd/work/always-rerun-tests.txt on origin's default branch,
+# or found by the classifier reading the test's source, which names it undeclared.
+# A race stage reuses race results only, since its binary is another build. A
+# working tree that differs from HEAD, and a list that is missing, does not read or
+# names what does not exist, run in the worktree reusing nothing, and every test
+# step CI runs passes -count=1.
 #
-# A release cut reuses nothing: `make preflight PREFLIGHT_FRESH=1`. The results
-# to be reused run under one fixed -timeout, the larger of the two the budget
-# below takes, because go test's cache key holds the timeout and a result must
-# not stop being reusable when the load crosses the line.
-CHECK_TESTS_FLAGS = -cached-timeout 1h20m$(if $(PREFLIGHT_FRESH), -fresh,)
+# One check at a time holds the lock, for its reused lines and no longer, so under
+# load.preflights above one a second run's reused lines wait for the first's while
+# each run's rerun lines run side by side. A stage that waited takes its -p and
+# -timeout again from -budget, and a race stage goes back through the race gate,
+# since the recipe's reading of both is as old as the wait.
+#
+# A release cut reuses nothing: `make preflight PREFLIGHT_FRESH=1`, which takes the
+# full rule whatever the change, a records-only one included, and the receipt says
+# `tests cut`, which `launch ship` refuses a commit without. The results to be reused
+# run under one fixed -timeout, the larger of
+# the two the budget below takes, because go test's cache key holds the timeout and
+# a result must not stop being reusable when the load crosses the line.
+CHECK_TESTS_FLAGS = -cached-timeout 1h20m -budget 40m$(if $(PREFLIGHT_FRESH), -fresh,)
 
 # The flags of CI's "Test (plain-only guards)" step: the -run naming the tests
 # that assert only without the race detector, and the packages that hold them.
@@ -445,7 +451,7 @@ CHECK_TESTS_FLAGS = -cached-timeout 1h20m$(if $(PREFLIGHT_FRESH), -fresh,)
 # serves. A tree whose workflow stops matching names a package that does not
 # exist, so the stage fails there and names why, rather than running go test over
 # no packages, which tests the working directory and passes.
-PLAIN_ONLY_GUARDS = $(or $(shell sed -n "s/^ *run: go test \(-run '^(.*)\$$' .*\)$$/\1/p" .github/workflows/ci.yml 2>/dev/null | sed -n 1p),./ci.yml-carries-no-plain-only-guards-step)
+PLAIN_ONLY_GUARDS = $(or $(shell sed -n "s/^ *run: go test -count=1 \(-run '^(.*)\$$' .*\)$$/\1/p" .github/workflows/ci.yml 2>/dev/null | sed -n 1p),./ci.yml-carries-no-plain-only-guards-step)
 
 # The make the gate runs the stages with. It is named through this variable so
 # the gate's line is an ordinary recipe line: make runs a line that names MAKE

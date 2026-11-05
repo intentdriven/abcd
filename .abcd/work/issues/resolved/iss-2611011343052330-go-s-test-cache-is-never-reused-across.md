@@ -13,7 +13,7 @@ remedy: "Make every test helper that finds the repository through runtime.Caller
 related_intents: [itd-2611011325421304]
 deferred_after: "v0.16.0"
 deferral_reason: "Deferred by the product thinker on 2026-11-03 for this cut, v0.16.1 as the records derive it: the fix sweeps every test helper that locates the repository; the planned test-reuse build (itd-2611011325421304) takes it up."
-resolution: "Both test stages run through cmd/check-tests from one check directory under -trimpath, and the tests find the repository from go.mod. Measured on one commit through the load gate at a load of about 10: a cold race stage reused 0 of 126 packages in 1811s, the same commit from a fresh worktree reused 125 of 126 in 800s, and the suite passed under -trimpath. Hosted CI keeps its uncached runs and takes no -trimpath, as itd-2611011325421304 rules hosted reuse out of scope."
+resolution: "Both test stages run through cmd/check-tests from one check directory under -trimpath, and the tests find the repository from go.mod. Measured on one commit through the load gate at a load of about 10: a cold race stage reused 0 of 126 packages in 1811s, the same commit from a fresh worktree reused 125 of 126 in 800s, and the suite passed under -trimpath. Every hosted test step passes -count=1 and takes no -trimpath, as itd-2611011325421304 rules hosted reuse out of scope."
 impact: fix
 resolved_by:
   intent: "itd-2611011325421304"

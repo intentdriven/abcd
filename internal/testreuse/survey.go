@@ -6,10 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io"
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strings"
 )
 
 // Package is what the check reads of one package from go list.
@@ -20,11 +24,14 @@ type Package struct {
 	Imports      []string
 	TestGoFiles  []string
 	XTestGoFiles []string
-	TestImports  []string
-	XTestImports []string
+	// IgnoredGoFiles holds a test file built for another stage alone, whose tests
+	// a list line can name.
+	IgnoredGoFiles []string
+	TestImports    []string
+	XTestImports   []string
 }
 
-const goListFields = "ImportPath,Dir,GoFiles,Imports,TestGoFiles,XTestGoFiles,TestImports,XTestImports"
+const goListFields = "ImportPath,Dir,GoFiles,IgnoredGoFiles,Imports,TestGoFiles,XTestGoFiles,TestImports,XTestImports"
 
 // listPackages reads the packages patterns name, under the race build's file
 // set when race is set, since a test file can be built for one stage alone.
@@ -90,6 +97,7 @@ func Survey(all []Package) map[string]Verdict {
 	// A package whose ordinary files import testing is a test helper, or holds
 	// some: what a test calls in it counts as what the test reaches.
 	helpers := map[string]map[string]reached{}
+	unreadable := map[string]bool{}
 	for _, p := range all {
 		if !slices.Contains(p.Imports, "testing") {
 			continue
@@ -98,9 +106,12 @@ func Survey(all []Package) map[string]Verdict {
 		for _, f := range p.GoFiles {
 			paths = append(paths, filepath.Join(p.Dir, f))
 		}
-		if files, err := parseFiles(paths); err == nil {
-			helpers[p.ImportPath] = buildGraph(files, nil).symbols()
+		files, err := parseFiles(paths)
+		if err != nil {
+			unreadable[p.ImportPath] = true
+			continue
 		}
+		helpers[p.ImportPath] = buildGraph(files, nil).symbols()
 	}
 	out := map[string]Verdict{}
 	for _, p := range all {
@@ -118,7 +129,36 @@ func Survey(all []Package) map[string]Verdict {
 				break
 			}
 		}
+		if i := slices.IndexFunc(slices.Concat(p.TestImports, p.XTestImports), func(im string) bool { return unreadable[im] }); i >= 0 {
+			out[p.ImportPath] = Verdict{Whole: "a test helper could not be read: " + slices.Concat(p.TestImports, p.XTestImports)[i]}
+			continue
+		}
 		out[p.ImportPath] = ClassifyFiles(files, can, helpers)
 	}
 	return out
+}
+
+// testNames is every test a package's test files declare, in any build's files, so
+// a list line naming a test built for one stage alone still resolves in the other.
+func testNames(p Package) []string {
+	paths := slices.Concat(p.TestGoFiles, p.XTestGoFiles)
+	for _, f := range p.IgnoredGoFiles {
+		if strings.HasSuffix(f, "_test.go") {
+			paths = append(paths, f)
+		}
+	}
+	var names []string
+	fset := token.NewFileSet()
+	for _, f := range paths {
+		parsed, err := parser.ParseFile(fset, filepath.Join(p.Dir, f), nil, parser.SkipObjectResolution)
+		if err != nil {
+			continue
+		}
+		for _, d := range parsed.Decls {
+			if fn, ok := d.(*ast.FuncDecl); ok && fn.Recv == nil && isTestName(fn.Name.Name) {
+				names = append(names, fn.Name.Name)
+			}
+		}
+	}
+	return names
 }
