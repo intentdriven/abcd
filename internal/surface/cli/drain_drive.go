@@ -329,6 +329,7 @@ func renderDriveEnd(w io.Writer, res loop.TerminalResult) {
 		loop.DrainStoppedOrigin: "the drain gave up waiting on origin",
 		loop.TerminalOutage:     "eight hours of runner failures",
 		loop.TerminalStopped:    "stopped",
+		loop.TerminalHalted:     "a stop set from elsewhere holds",
 		loop.TerminalWall:       "a wall no longer held",
 		loop.TerminalRefused:    "a move was refused",
 		loop.TerminalKilled:     "killed",

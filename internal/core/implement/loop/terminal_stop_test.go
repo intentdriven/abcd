@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -341,5 +342,37 @@ func TestATakeUpAtTheCapWaitsAndHandsNothingBack(t *testing.T) {
 		if l.Issue == res.Issue && l.Outcome != DrainLaneDone {
 			t.Fatalf("the lane lands once the cap frees: %+v\n%s", l, strings.Join(w.lines, "\n"))
 		}
+	}
+}
+
+// TestAStopFromElsewhereEndsTheDriveAndLeavesItsClaimsToTheStop: a step refused
+// at the stop's stage is no wait the drive sleeps through. It ends at once,
+// naming the refusal and what lifts it, and releases nothing itself: what the run
+// holds is the stop's to let go, and a save that failed holds it on purpose.
+func TestAStopFromElsewhereEndsTheDriveAndLeavesItsClaimsToTheStop(t *testing.T) {
+	w := newTerminalWorld(t)
+	for i := range w.stages {
+		if w.stages[i].Name == StageBrief {
+			w.stages[i].Run = func(_ Context, l *Lane) (Outcome, error) {
+				return Outcome{}, contend(terminalHaltStage, "", l.ID, "a stop set by another account holds", "only the person lifts it")
+			}
+		}
+	}
+	res, err := RunTerminal(context.Background(), w.repo.Root(), w.options(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Ended != TerminalHalted || res.Resume != "" || res.Run == "" {
+		t.Fatalf("the run ends halted, naming the lane and no resume of its own: %+v", res)
+	}
+	said := strings.Join(w.lines, "\n")
+	if !strings.Contains(said, "a stop set by another account holds") || !strings.Contains(said, "only the person lifts it") {
+		t.Fatalf("the lines name the stop and what lifts it:\n%s", said)
+	}
+	if slices.Contains(w.sleeps, TerminalWaitFloor) {
+		t.Fatalf("a stop is not slept through: %v", w.sleeps)
+	}
+	if r := reservationOf(t, w.repo.Root(), res.Issue, w.clock.t); r.State != claim.StateLive {
+		t.Fatalf("the drive releases nothing the stop holds: %+v", r)
 	}
 }

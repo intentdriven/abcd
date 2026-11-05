@@ -32,10 +32,17 @@ const (
 	TerminalWall = "wall"
 	// TerminalRefused: a move refused in a way the run cannot go past.
 	TerminalRefused = "refused"
+	// TerminalHalted: a stop set from outside this terminal holds
+	// (itd-2611041549471712). What the run holds is that stop's to let go.
+	TerminalHalted = "halted"
 	// TerminalKilled: the context ended, a second signal: the agent's process
 	// group was killed, and what it held lapses on its own.
 	TerminalKilled = "killed"
 )
+
+// terminalHaltStage is the stage a move or a step refuses at while a stop set
+// from outside this terminal holds.
+const terminalHaltStage = "stop"
 
 // TerminalResumeCommand resumes a run that left a lane.
 const TerminalResumeCommand = "abcd drain --drive"
@@ -144,6 +151,18 @@ func (t *terminal) wallHeld() bool {
 	return err == nil
 }
 
+// haltedBy reports whether err is a stop set from outside this terminal, saying
+// what holds and what lifts it. Sleeping through it, as through another
+// contention, would keep the drive alive for ever under a stop.
+func (t *terminal) haltedBy(err error) bool {
+	r, ok := AsRefusal(err)
+	if !ok || r.Stage != terminalHaltStage {
+		return false
+	}
+	t.say("stopping: %s; %s", r.Reason, r.Remedy)
+	return true
+}
+
 // sleep waits d, saying why.
 func (t *terminal) sleep(ctx context.Context, d time.Duration, why string) {
 	t.say("waiting %s: %s", d.Round(time.Second), why)
@@ -186,6 +205,9 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 			// The terminal's interrupt reaches the git a move was running.
 			if t.stopped() {
 				return t.ended(TerminalStopped), nil
+			}
+			if t.haltedBy(err) {
+				return t.ended(TerminalHalted), nil
 			}
 			if r, ok := AsRefusal(err); ok && r.Contention {
 				t.sleep(ctx, TerminalWaitFloor, r.Reason)
@@ -279,6 +301,9 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 			// The terminal's interrupt reaches the git a step was running.
 			if t.stopped() {
 				return TerminalStopped, nil
+			}
+			if t.haltedBy(err) {
+				return TerminalHalted, nil
 			}
 			again, ended, err := t.stepRefused(ctx, runID, err)
 			if err != nil || ended != "" || !again {
@@ -462,12 +487,12 @@ func (t *terminal) letGo() {
 	}
 }
 
-// ended is the run's result as it ends: unless a kill ended it, what no lane is
-// working on is released, so a peer may take it up; the lane left in progress
-// is named, with the command that resumes it, or, after a kill, when its
-// reservation lapses.
+// ended is the run's result as it ends: unless a kill or a stop from elsewhere
+// ended it, what no lane is working on is released, so a peer may take it up; the
+// lane left in progress is named, with the command that resumes it, or, after a
+// kill, when its reservation lapses. A stop from elsewhere names its own remedy.
 func (t *terminal) ended(why string) TerminalResult {
-	if why != TerminalKilled {
+	if why != TerminalKilled && why != TerminalHalted {
 		t.letGo()
 	}
 	res := TerminalResult{Ended: why, Last: t.last}
@@ -479,7 +504,10 @@ func (t *terminal) ended(why string) TerminalResult {
 		if l.Outcome != DrainLaneInProgress {
 			continue
 		}
-		res.Run, res.Issue, res.Resume = l.RunID, l.Issue, TerminalResumeCommand
+		res.Run, res.Issue = l.RunID, l.Issue
+		if why != TerminalHalted {
+			res.Resume = TerminalResumeCommand
+		}
 		if run, err := ReadState(t.repoRoot, l.RunID); err == nil {
 			if i := run.current(); i >= 0 {
 				res.Lane = run.Lanes[i].ID
