@@ -58,6 +58,11 @@ type Options struct {
 	// NetworkProbe proves the network back for the shared outage probe a
 	// step runs when it is due; nil is implement.RemoteProbe at the checkout.
 	NetworkProbe func() (bool, string)
+	// OutageSession is the session the shared outage is recorded and probed for
+	// when no other is known, and it keeps probing past the schedule's give-up: a
+	// terminal drive's under a bound, which has a bound of its own. Unlike Session
+	// it claims nothing in the shared run.
+	OutageSession string
 	// RunnerFailed is told of each launch that failed, with what it showed; nil
 	// tells no one. A terminal run reads a limit and keeps its evidence from it.
 	RunnerFailed func(role string, fl *runner.Failure)

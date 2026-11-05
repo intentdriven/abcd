@@ -12,16 +12,20 @@ package loop
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -188,6 +192,21 @@ type terminal struct {
 	reached map[string]int
 	// blames are what the launches of this step or move said, not yet settled.
 	blames []launchBlame
+	// laneInHand is the run the lane counts below are of.
+	laneInHand string
+	// startedAgent says this step started an agent, which is movement of a kind.
+	startedAgent bool
+	// spentUnanswered counts, by role, launches in a row that spent with no probe
+	// answering, a ceiling on what a probe that never answers would let run.
+	spentUnanswered map[string]int
+	// netKey and netCount are the failure last read as a lost network with origin
+	// answering, and how many times in a row.
+	netKey   string
+	netCount int
+	// session is the drive's own in the shared run, under a bound, and shared that
+	// run: an open outage record needs a session to be probed for.
+	session string
+	shared  *implement.Run
 	// stalled counts the lane in hand's steps in a row that started no agent and
 	// moved no stage.
 	stalled int
@@ -213,6 +232,7 @@ type terminal struct {
 type launchBlame struct {
 	role, model string
 	blame       runner.Blame
+	spent       bool
 }
 
 // terminalCall is what is in flight, as the line that says so reads it.
@@ -247,7 +267,10 @@ func newTerminal(repoRoot string, o TerminalOptions) *terminal {
 	t.o.Options.ReceiptOwn = func(sha string) bool { return t.minted[sha] }
 	t.evidence = newDriveEvidence(repoRoot, func(line string) { t.say("%s", line) })
 	t.o.Options.RunnerFailed = t.noteFailure
-	t.o.Options.RunnerStarting = func(role string) { t.startCall("the " + role) }
+	t.o.Options.RunnerStarting = func(role string) {
+		t.startedAgent = true
+		t.startCall("the " + role)
+	}
 	t.waited = terminalRenewEvery
 	if t.bounded() {
 		t.o.Drain.KeepWaiting = true
@@ -277,10 +300,10 @@ func (t *terminal) noteFailure(role string, fl *runner.Failure) {
 	entry := evidenceEntry{Event: "failure", Role: role, Runner: fl.Runner, Response: fl.Detail, Seen: fl.Seen}
 	if fl.Reason != runner.ReasonRateLimited {
 		if fl.Outage() {
-			t.say("the %s's launch was retrying the model service when it ended, which reads as an outage, not the work's fault", role)
+			t.say("the %s's launch was retrying the model service when it ended, which reads as an outage", role)
 		}
 		if t.bounded() {
-			t.blames = append(t.blames, launchBlame{role: role, model: fl.Model, blame: fl.Blame()})
+			t.blames = append(t.blames, launchBlame{role: role, model: fl.Model, blame: fl.Blame(), spent: fl.Seen != nil && fl.Seen.Spent})
 		}
 		if fl.Seen != nil {
 			t.evidence.begin("suspect-"+failureKind(fl), entry, t.now())
@@ -456,6 +479,7 @@ func (t *terminal) failed(ctx context.Context, judge bool, what string) bool {
 // run is the loop.
 func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 	t.ctx = ctx
+	t.joinSharedRun()
 	for {
 		if ctx.Err() != nil {
 			return t.ended(TerminalKilled), nil
@@ -469,6 +493,7 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 		if !t.wallHeld() {
 			return t.ended(TerminalWall), nil
 		}
+		t.settleOutage(ctx)
 		t.judge = JudgeOutcome{}
 		t.blames = nil
 		res, err := Drain(t.repoRoot, t.o.Options, t.o.Drain)
@@ -531,6 +556,14 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 			// spent is the issue's fault and an account-wide failure is not.
 			counts := t.judge.Kind == JudgeNoAnswer
 			if t.judge.Kind == JudgeRunnerFailed && t.settleBlames(ctx) > 0 {
+				counts = true
+			}
+			if t.spentUnanswered[RoleDrainJudge] >= terminalSpentUnanswered {
+				delete(t.spentUnanswered, RoleDrainJudge)
+				if t.unanswered == nil {
+					t.unanswered = map[string]int{}
+				}
+				t.unanswered[res.Judging.Issue] = terminalJudgeAsks - 1
 				counts = true
 			}
 			if counts && t.holdBack(res.Judging.Issue) {
@@ -633,7 +666,13 @@ func (t *terminal) sayMove(res DrainResult) {
 // next move has something to say about it. It returns why the run ends, "" to
 // go on to the next move.
 func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) {
-	t.reached, t.stalled = nil, 0
+	// A refused step goes back through the next move to this same lane, so its
+	// counts last until another lane is in hand.
+	if runID != t.laneInHand {
+		t.laneInHand = runID
+		t.reached, t.stalled, t.spentUnanswered = nil, 0, nil
+		t.netKey, t.netCount = "", 0
+	}
 	if done, ended := t.takeUp(ctx, runID); done {
 		return ended, nil
 	}
@@ -650,6 +689,7 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 		if !t.wallHeld() {
 			return TerminalWall, nil
 		}
+		t.settleOutage(ctx)
 		if t.peerTook(runID) {
 			return "", nil
 		}
@@ -683,6 +723,7 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 			}
 		}
 		var res StepResult
+		t.startedAgent = false
 		t.renewing(func() {
 			res, err = Drive(ctx, t.repoRoot, runID, t.o.Stages, t.o.Options, t.o.Runners)
 			if err == nil {
@@ -752,20 +793,27 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 func (t *terminal) moved() {
 	t.outage.succeed()
 	t.limit.succeed()
-	t.reached, t.stalled = nil, 0
+	t.reached, t.stalled, t.spentUnanswered = nil, 0, nil
+	t.netKey, t.netCount = "", 0
 	t.evidence.resumed(t.now())
 }
 
 // cannotMove counts one step that started no agent and moved no stage, under a bound,
-// and hands the lane back at the limit, its worktree and branch left in place. A wait
-// the shared outage holds it to, or a claim on one of its agents that has yet to lapse,
-// a killed run's say, is no fault of the lane's and is not counted.
+// and hands the lane back at the limit, its worktree and branch left in place. A step
+// that started an agent is no stall, and ends the count: a silent launch killed at its
+// deadline moves no stage, and finished work is not sent back for that. A wait the
+// shared outage holds an agent of this lane's to, or a claim on one of its agents that
+// has yet to lapse, a killed run's say, is no fault of the lane's and is not counted.
 func (t *terminal) cannotMove(runID string, res StepResult) bool {
-	if !t.bounded() || res.Outage != nil {
+	if !t.bounded() {
+		return false
+	}
+	if t.startedAgent {
+		t.stalled = 0
 		return false
 	}
 	run, err := ReadState(t.repoRoot, runID)
-	if err != nil {
+	if err != nil || outageHoldsLane(res, run) {
 		return false
 	}
 	now := t.now()
@@ -783,6 +831,122 @@ func (t *terminal) cannotMove(runID string, res StepResult) bool {
 	r := refuse(StageRunner, "", "", fmt.Sprintf("%d steps in a row started no agent and moved no stage: %s", terminalNoMoveLimit, res.Next), "see the reason")
 	r.final = "the lane cannot move, so it goes back and the run goes on"
 	t.stayAsItIs(runID, run.Key, r)
+	return true
+}
+
+// outageHoldsLane reports whether the outage a step reports holds an agent the lane
+// wants: one kept for a person, or already answered, wants none.
+func outageHoldsLane(res StepResult, run State) bool {
+	if res.Outage == nil || len(res.Outage.Down) == 0 {
+		return false
+	}
+	for _, l := range run.Lanes {
+		for _, a := range l.Awaits {
+			if a.Kept == "" && a.Answered == nil {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// joinSharedRun joins the shared run under a session of the drive's own, under a
+// bound: an open outage record is probed only for a session, so without one it would
+// hold every agent until the bound. The session is used for the outage alone, so the
+// drive's runs claim nothing there. A drive that cannot join says so and goes on.
+func (t *terminal) joinSharedRun() {
+	if !t.bounded() {
+		return
+	}
+	sha, err := gitutil.RootCommit(t.repoRoot)
+	if err != nil || !gitutil.IsFullSHA(sha) {
+		return
+	}
+	run, err := implement.Open(sha)
+	if err != nil {
+		t.say("the shared run could not be opened, so no open outage will be probed: %s", err.Error())
+		return
+	}
+	run.Now = t.o.Options.Now
+	sum := sha256.Sum256([]byte(realPath(t.repoRoot)))
+	id := "drive-" + hex.EncodeToString(sum[:6])
+	if _, err := run.Join(id, implement.RoleSecond, "", "a drive's outage probes", 0); err != nil {
+		t.say("the shared run could not be joined, so no open outage will be probed: %s", err.Error())
+		return
+	}
+	t.shared, t.session = run, id
+	t.o.Options.OutageSession = id
+}
+
+// leaveSharedRun leaves what joinSharedRun joined.
+func (t *terminal) leaveSharedRun() {
+	if t.shared == nil {
+		return
+	}
+	_, _ = t.shared.Leave(t.session, "the drive ended")
+	t.shared, t.session = nil, ""
+	t.o.Options.OutageSession = ""
+}
+
+// settleOutage is the model service's canary, under a bound: an outage with the model
+// down holds every agent, so no launch would ever find out it is back, and only a lead's
+// canary proves it. A probe answering stands in. The network's own probe runs from the
+// step that finds it due (outageFor), and here too when both are down.
+func (t *terminal) settleOutage(ctx context.Context) {
+	if t.shared == nil || t.o.Probe == nil {
+		return
+	}
+	cur, err := t.shared.Outage().Current()
+	if err != nil || cur == nil || cur.Status != implement.OutageOpen ||
+		!slices.Contains(cur.Down, implement.ServiceModel) || t.now().Before(cur.NextProbeAt) || !t.wallHeld() {
+		return
+	}
+	t.say("the shared outage has the model service down, so a probe asks whether it is back")
+	answered, _ := t.o.Probe(ctx, RoleImplementer, "")
+	if ctx.Err() != nil {
+		return
+	}
+	_, _ = keepProbing(t.shared.Outage()).ProbeIfDue(t.session, implement.Prober{
+		Network: t.networkProbe(),
+		Model:   func() (bool, string) { return answered, "a short launch asked it" },
+	})
+}
+
+// networkProbe is the probe that proves the network back.
+func (t *terminal) networkProbe() func() (bool, string) {
+	if t.o.Options.NetworkProbe != nil {
+		return t.o.Options.NetworkProbe
+	}
+	return implement.RemoteProbe(t.repoRoot)
+}
+
+// netRepeats answers a failure read as a lost network, under a bound: the same one
+// repeating while origin answers the probe is no lost network, whatever its words say,
+// and waiting would hold the lane until the bound, so it goes back as stuck. It reports
+// whether it did.
+func (t *terminal) netRepeats(runID string, r *Refusal) bool {
+	if !t.bounded() || r.outage == nil || r.outage.service != implement.ServiceNetwork {
+		return false
+	}
+	if ok, _ := t.networkProbe()(); !ok {
+		t.netKey, t.netCount = "", 0
+		return false
+	}
+	key, _, _ := strings.Cut(r.Reason, "; it ")
+	if key != t.netKey {
+		t.netKey, t.netCount = key, 0
+	}
+	if t.netCount++; t.netCount < terminalNetRepeats {
+		return false
+	}
+	t.netKey, t.netCount = "", 0
+	run, err := ReadState(t.repoRoot, runID)
+	if err != nil {
+		return false
+	}
+	why := refuse(string(StageLand), "", "", key, "see the reason")
+	why.final = "it keeps failing the same way while origin answers, so it is no lost network"
+	t.stayAsItIs(runID, run.Key, why)
 	return true
 }
 
@@ -808,6 +972,14 @@ func (t *terminal) settleBlames(ctx context.Context) int {
 			t.evidence.add(entry, t.now())
 			count = renewed
 		}
+		if b.blame == runner.BlameAsk && b.spent && !count {
+			if t.spentUnanswered == nil {
+				t.spentUnanswered = map[string]int{}
+			}
+			t.spentUnanswered[b.role]++
+		} else if count {
+			delete(t.spentUnanswered, b.role)
+		}
 		if !count {
 			continue
 		}
@@ -823,10 +995,25 @@ func (t *terminal) settleBlames(ctx context.Context) int {
 
 // poisoned hands a lane back when one role's launches have failed in a row in a way
 // that is the work's, under a bound, where nothing else would end it: the run then
-// goes on to other issues. A launch that says nothing of the work stays on the
-// outage's wait.
+// goes on to other issues. So does a run of launches that spent with no probe
+// answering, which a real outage never raises, since its launches spend nothing. A
+// launch that says nothing of the work stays on the outage's wait.
 func (t *terminal) poisoned(ctx context.Context, runID string) bool {
 	t.settleBlames(ctx)
+	for role, n := range t.spentUnanswered {
+		if n < terminalSpentUnanswered {
+			continue
+		}
+		run, err := ReadState(t.repoRoot, runID)
+		if err != nil {
+			return false
+		}
+		r := refuse(StageRunner, "", "", fmt.Sprintf("the %s spent and failed %d times in a row, with no probe answered", role, n), "see the reason")
+		r.final = "launches of the same work kept spending and failing, so the lane goes back and the run goes on"
+		t.stayAsItIs(runID, run.Key, r)
+		t.spentUnanswered, t.reached = nil, nil
+		return true
+	}
 	for role, n := range t.reached {
 		if n < terminalPoisonLaunches {
 			continue
@@ -1117,6 +1304,9 @@ func (t *terminal) stepRefused(ctx context.Context, runID string, err error) (ag
 		return false, "", err
 	}
 	if r.checkWait.IsZero() {
+		if t.netRepeats(runID, r) {
+			return false, "", nil
+		}
 		if t.idle(ctx, TerminalWaitFloor, r.Reason) {
 			return false, TerminalWaited, nil
 		}
@@ -1298,6 +1488,7 @@ func (t *terminal) letGo() {
 // lane left in progress is named, with the command that resumes it, or, after a
 // kill, when its reservation lapses. A stop from elsewhere names its own remedy.
 func (t *terminal) ended(why string) TerminalResult {
+	defer t.leaveSharedRun()
 	if why != TerminalKilled && why != TerminalHalted {
 		t.letGo()
 	}

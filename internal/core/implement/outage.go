@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -807,7 +808,7 @@ func IsNetworkFailure(stderr string) bool {
 			return true
 		}
 	}
-	return false
+	return networkStatus.MatchString(s)
 }
 
 // networkMarkers are the lower-cased phrases git, curl, ssh and gh print when
@@ -838,11 +839,12 @@ var networkMarkers = []string{
 	"operation too slow",
 	"early eof",
 	"broken pipe",
-	// The service answering that it failed, in gh's words (HTTP 502: Bad Gateway)
-	// and git's (The requested URL returned error: 503). Waiting may fix it.
-	"http 5",
-	"returned error: 5",
 }
+
+// networkStatus is a forge or remote answering that it failed, in the forms gh
+// (a line of HTTP 502: Bad Gateway) and git (The requested URL returned error: 503)
+// print. A bare status elsewhere on a line may be a hook's own words, so it is not one.
+var networkStatus = regexp.MustCompile(`(?m)^http 5[0-9][0-9]:|the requested url returned error: 5[0-9][0-9]`)
 
 // notNetworkMarkers are the other end's refusals and the local conflicts.
 var notNetworkMarkers = []string{

@@ -239,10 +239,17 @@ failure is put to a probe, one short launch per failure: an answer shows the acc
 alive, which leaves the work, and a rejection or no answer counts nothing. Three in a row
 that are the work's hand the lane back as stuck, the run going on to other issues, and the
 same test decides whether a failed judge counts against its issue, beside the count of
-judgements that gave no answer. Six steps of one lane in a row that start no agent and move
-no stage hand it back too, worktree and branch in place, unless the shared outage holds it
-or a claim on one of its agents has yet to lapse. A forge or remote answering 5xx waits as
-a lost network does (`implement.IsNetworkFailure`).
+judgements that gave no answer. Six launches in a row that spend and fail with no probe
+answered hand the lane back too, or hold the issue back for a judge; a real outage's spend
+nothing. Six steps of one lane in a row that start no agent and move no stage hand it back,
+worktree and branch in place, unless the shared outage holds an agent it wants or a claim
+on one of its agents has yet to lapse; a step that started an agent ends the count. A forge
+or remote answering 5xx in gh's or git's own form waits as a lost network does
+(`implement.IsNetworkFailure`), and the same failure read that way three times running
+while origin answers sends the lane back. A drive under a bound joins the shared run under
+a session of its own for its outages alone (`Options.OutageSession`), claiming nothing
+there: an open record is then probed when due, never given up on, and a probe answering
+stands in for the model service's canary.
 
 A wait is measured twice: by the time slept and by the wall clock, whichever ends it
 first. The production sleep also looks at the wall clock each minute, since a timer
@@ -261,7 +268,7 @@ as it stood, and the role is retried; it counts against its lane only if a probe
 A launch that keeps retrying the model service is not silent: its stream names an
 `api_retry` event each time, which version 2.1.318 was seen to write ten times over about
 three minutes with the service unreachable before a failed result, and that reads as an
-outage and counts against nothing. A stream
+outage and, with nothing spent, counts against nothing. A stream
 that reported a rejected limit before falling silent, and has not reported it lifted,
 reads as that limit at the deadline. The harness's limit shapes the
 runner reads are a rejected `rate_limit_event`, an assistant message whose error is

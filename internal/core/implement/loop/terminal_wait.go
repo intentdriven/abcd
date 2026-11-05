@@ -51,9 +51,15 @@ const (
 	// way that is the work's before the lane goes back.
 	terminalPoisonLaunches = 3
 	// terminalNoMoveLimit is how many steps of one lane in a row may start no agent
-	// and move no stage before it goes back: about an hour and a quarter, on the
-	// outage's schedule.
+	// and move no stage before it goes back: about 17 minutes on the outage's schedule
+	// from a fresh clock.
 	terminalNoMoveLimit = 6
+	// terminalSpentUnanswered is how many launches of one role in a row may spend and
+	// fail with no probe answered before the lane goes back or the issue is held.
+	terminalSpentUnanswered = 6
+	// terminalNetRepeats is how many times in a row the same failure may read as a
+	// lost network while origin answers before the lane goes back.
+	terminalNetRepeats = 3
 )
 
 // terminalCallSayEvery is how often an agent's call or a preflight says it is still

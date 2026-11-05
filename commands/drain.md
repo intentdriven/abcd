@@ -101,11 +101,16 @@ nothing but the bound, the cap, an empty ledger or a stop ends the run:
 - **An outage or a stuck queue.** Runner failures keep the outage schedule, at most an
   hour apart. Work held by someone else, the reservation cap, a contended lock and a
   push or fetch origin refused while reserving are looked at again at most fifteen
-  minutes apart. A forge or remote answering 5xx waits as a lost network does, here and
-  in a drain with no drive. Origin keeps its schedule and is never given up on. An outage another
+  minutes apart. A forge or remote answering 5xx, in gh's `HTTP 502:` form or git's
+  `The requested URL returned error: 503`, waits as a lost network does, here and in a
+  drain with no drive. Origin keeps its schedule and is never given up on. An outage another
   session gave up on holds the run until `abcd implement outage clear` or the bound. A
   launch that was retrying the model service when it ended, or ran out of retries with
-  nothing spent, reads as an outage, says so, and counts against nothing. Version
+  nothing spent, reads as an outage and says so, and with nothing spent it counts against
+  nothing. Under a bound the run joins the shared run for its outages alone, so an open
+  record is probed when due and never given up on, a short probe standing in for the model
+  service's canary. The same failure read as a lost network three times running while
+  origin answers is no lost network, and the lane goes back as stuck. Version
   2.1.318 of the harness was seen to do this with the service unreachable: ten retries
   over about three minutes, then a failed result, with the init event before any of it.
 - **Work that keeps failing.** Three failures of one role in a row that are the work's
@@ -116,11 +121,14 @@ nothing but the bound, the cap, an empty ledger or a stop ends the run:
   the spending, is put to a short probe: an answer shows the account is alive, which
   makes it the work's, and a rejection or no answer counts nothing. A judge is judged
   the same way against its issue, so one at its deadline having spent is held back while
-  the account answers, and an account-wide failure does not empty the drain.
+  the account answers, and an account-wide failure does not empty the drain. Six launches
+  in a row that spend and fail with no probe answered hand the lane back too, or hold the
+  issue back for a judge; a real outage's launches spend nothing, so it never gets there.
 - **A lane that cannot move.** Six steps of one lane in a row that start no agent and
   move no stage hand it back as stuck, its worktree and branch left in place, so it
-  does not hold every other issue until the bound. A wait on the shared outage, or on a
-  claim that has yet to lapse from a killed run, is not counted.
+  does not hold every other issue until the bound. A step that started an agent ends the
+  count, and a wait on a shared outage holding an agent the lane wants, or on a claim that
+  has yet to lapse from a killed run, is not counted.
 
 Each wait says what it waits on when it begins, when its reason changes, and at least
 hourly while it lasts, and an agent's call or a preflight says when it starts and every

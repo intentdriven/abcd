@@ -19,8 +19,10 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // bounded is the options with the bound d away.
@@ -1002,12 +1004,24 @@ func TestAPoisonLaneGoesBackAndTheRunGoesOn(t *testing.T) {
 	}
 }
 
-// TestSpendWithADownServiceCountsNothing: having spent and then lost the service says
-// nothing of the work while nothing answers.
-func TestSpendWithADownServiceCountsNothing(t *testing.T) {
-	w, back, probes := poisonRun(t, "spends", 2*terminalPoisonLaunches, noProbeAnswers)
-	if len(back) != 0 || probes == 0 {
-		t.Fatalf("%+v, %d probes\n%s", back, probes, w.said())
+// TestSpendWithNoProbeAnsweredHasACeiling: launches that keep spending with no probe
+// answering would otherwise relaunch until the bound, so at six in a row the lane goes
+// back; a real outage's spend nothing, so it never gets there.
+func TestSpendWithNoProbeAnsweredHasACeiling(t *testing.T) {
+	w, back, probes := poisonRun(t, "spends", terminalSpentUnanswered, noProbeAnswers)
+	if len(back) != 1 || back[0].Kind != HandBackStuck || probes != terminalSpentUnanswered {
+		t.Fatalf("the lane goes back at the ceiling: %+v, %d probes\n%s", back, probes, w.said())
+	}
+	if len(lanesDone(t, w.repo)) != 1 {
+		t.Fatalf("the next lane lands:\n%s", w.said())
+	}
+	w, back, _ = poisonRun(t, "spends", terminalSpentUnanswered-1, noProbeAnswers)
+	if len(back) != 0 {
+		t.Fatalf("below the ceiling nothing goes back: %+v\n%s", back, w.said())
+	}
+	w, back, _ = poisonRun(t, "retries", 2*terminalSpentUnanswered, noProbeAnswers)
+	if len(back) != 0 {
+		t.Fatalf("an outage spends nothing and never gets there: %+v\n%s", back, w.said())
 	}
 }
 
@@ -1102,15 +1116,15 @@ func judgeRun(t *testing.T, turn string, probe func(*int) func(context.Context, 
 	return w, res, probes
 }
 
-// TestAJudgeThatSpentCountsOnlyIfAProbeAnswers: as a lane's launch does.
-func TestAJudgeThatSpentCountsOnlyIfAProbeAnswers(t *testing.T) {
+// TestAJudgeThatSpentCountsIfAProbeAnswersOrAtTheCeiling: as a lane's launch does.
+func TestAJudgeThatSpentCountsIfAProbeAnswersOrAtTheCeiling(t *testing.T) {
 	w, _, probes := judgeRun(t, "spends", probeAnswers)
-	if !strings.Contains(w.said(), "holding") || probes == 0 {
-		t.Fatalf("it holds the issue back: %d probes\n%s", probes, w.said())
+	if !strings.Contains(w.said(), "holding") || probes < terminalJudgeAsks {
+		t.Fatalf("it holds the issue back as the engine counts: %d probes\n%s", probes, w.said())
 	}
-	w, res, _ := judgeRun(t, "spends", noProbeAnswers)
-	if res.Ended != TerminalUntil || strings.Contains(w.said(), "holding") {
-		t.Fatalf("it holds nothing back: %+v\n%s", res, w.said())
+	w, _, probes = judgeRun(t, "spends", noProbeAnswers)
+	if !strings.Contains(w.said(), "holding") || probes < terminalSpentUnanswered {
+		t.Fatalf("with no probe answered it holds the issue back at the ceiling: %d probes\n%s", probes, w.said())
 	}
 }
 
@@ -1777,5 +1791,197 @@ func TestEachKindOfFailureLeavesItsEvidence(t *testing.T) {
 		if !strings.Contains(joined, want) {
 			t.Errorf("no file names %s: %v", want, files)
 		}
+	}
+}
+
+// TestAStaleNetworkOutageIsProbedUnderABound: a drive has no session of a person's, so
+// an open record would hold every agent for the whole bound; it joins under its own, and
+// the probe that falls due ends it.
+func TestAStaleNetworkOutageIsProbedUnderABound(t *testing.T) {
+	w := newTerminalWorld(t)
+	run := joinShared(t, w.repo.Root(), w.clock.now)
+	if _, err := run.Outage().Record("host-a", implement.ServiceNetwork, implement.OutageTool, "lane-9", "git push"); err != nil {
+		t.Fatal(err)
+	}
+	o := w.bounded(t, 30*24*time.Hour)
+	o.Options.NetworkProbe = func() (bool, string) { return true, "origin answered" }
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil || res.Ended != DrainStoppedCap {
+		t.Fatalf("the probe ends the outage and the lane lands: %+v %v\n%s", res, err, w.said())
+	}
+	if cur, _ := run.Outage().Current(); cur != nil {
+		t.Fatalf("the record is closed: %+v", cur)
+	}
+}
+
+// TestANetworkOutageUnderABoundIsNotGivenUpOn: probes that keep failing past eight
+// hours keep the record open, to be proved back, not stopped for a person.
+func TestANetworkOutageUnderABoundIsNotGivenUpOn(t *testing.T) {
+	w := newTerminalWorld(t)
+	run := joinShared(t, w.repo.Root(), w.clock.now)
+	if _, err := run.Outage().Record("host-a", implement.ServiceNetwork, implement.OutageTool, "lane-9", "git push"); err != nil {
+		t.Fatal(err)
+	}
+	o := w.bounded(t, 24*time.Hour)
+	o.Options.NetworkProbe = func() (bool, string) { return false, "no answer" }
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil || res.Ended != TerminalUntil {
+		t.Fatalf("the bound ends it: %+v %v\n%s", res, err, w.said())
+	}
+	cur, err := run.Outage().Current()
+	if err != nil || cur == nil || cur.Status != implement.OutageOpen || len(cur.Probes) < 8 {
+		t.Fatalf("the record stays open and is still probed: %+v %v", cur, err)
+	}
+}
+
+// TestAStaleModelOutageIsClearedByAnAnsweredProbe: the probe is the canary, since
+// nothing else would ever start an agent to find out.
+func TestAStaleModelOutageIsClearedByAnAnsweredProbe(t *testing.T) {
+	w := newTerminalWorld(t)
+	run := joinShared(t, w.repo.Root(), w.clock.now)
+	if _, err := run.Outage().Record("host-a", implement.ServiceModel, implement.OutageHost, "lane-9", "a turn"); err != nil {
+		t.Fatal(err)
+	}
+	o := w.bounded(t, 30*24*time.Hour)
+	probes := 0
+	o.Probe = probeAnswers(&probes)
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil || res.Ended != DrainStoppedCap || probes == 0 {
+		t.Fatalf("the probe ends the outage and the lane lands: %+v %v, %d probes\n%s", res, err, probes, w.said())
+	}
+}
+
+// TestADriveLeavesTheSharedRunItJoined: its session does not outlast it.
+func TestADriveLeavesTheSharedRunItJoined(t *testing.T) {
+	w := newTerminalWorld(t)
+	o := w.bounded(t, 30*24*time.Hour)
+	if _, err := RunTerminal(context.Background(), w.repo.Root(), o); err != nil {
+		t.Fatal(err)
+	}
+	sha, err := gitutil.RootCommit(w.repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := implement.Peek(sha)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessions, err := run.Sessions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range sessions {
+		if strings.HasPrefix(s.Session, "drive-") {
+			t.Fatalf("the drive's session is still open: %+v", s)
+		}
+	}
+}
+
+// TestAnOutageDiscountsANoMoveOnlyIfItHoldsTheAgentThisLaneWants: a kept await wants no
+// agent, so the outage is not why it cannot move.
+func TestAnOutageDiscountsANoMoveOnlyIfItHoldsTheAgentThisLaneWants(t *testing.T) {
+	outage := StepResult{Outage: &OutageInfo{Down: []string{implement.ServiceNetwork}}}
+	wants := State{Lanes: []Lane{{ID: "lane-1", Stage: StageImplement, Awaits: []Await{{Role: RoleImplementer}}}}}
+	kept := State{Lanes: []Lane{{ID: "lane-1", Stage: StageImplement, Awaits: []Await{{Role: RoleImplementer, Kept: "not saved"}}}}}
+	if !outageHoldsLane(outage, wants) {
+		t.Error("an agent it wants is held")
+	}
+	if outageHoldsLane(outage, kept) {
+		t.Error("a kept await wants no agent")
+	}
+	if outageHoldsLane(StepResult{}, wants) {
+		t.Error("no outage holds nothing")
+	}
+}
+
+// TestAStepThatStartedAnAgentIsNoStall: a silent launch, killed with its await kept,
+// moves no stage; it did start an agent, so finished work is not sent back for that.
+func TestAStepThatStartedAnAgentIsNoStall(t *testing.T) {
+	root, _, runID, c := laneForPeerCheck(t)
+	tm := newTerminal(root, TerminalOptions{Options: Options{Now: c.now}, Until: c.t.Add(time.Hour)})
+	tm.stalled = terminalNoMoveLimit - 1
+	tm.o.Options.RunnerStarting(RoleImplementer)
+	if tm.cannotMove(runID, StepResult{}) || tm.stalled != 0 {
+		t.Fatalf("a step that started an agent ends the count: %d", tm.stalled)
+	}
+	tm.startedAgent = false
+	tm.stalled = terminalNoMoveLimit - 1
+	if !tm.cannotMove(runID, StepResult{}) {
+		t.Fatal("one that started none reaches the limit")
+	}
+}
+
+// landFails makes the land stage fail on text, a network reading as a stage meets it.
+func (w *terminalWorld) landFails(text string, fails *int) {
+	for i := range w.stages {
+		if w.stages[i].Name == StageLand {
+			w.stages[i].Run = func(c Context, l *Lane) (Outcome, error) {
+				*fails++
+				return Outcome{}, netFailure(StageLand, l.ID, "git push "+l.Branch, errors.New(text))
+			}
+		}
+	}
+}
+
+// TestANetworkReadingThatOriginAnswersGoesBack: the same failure, read as a lost network,
+// repeating while origin answers the probe is no lost network, so the lane goes back.
+func TestANetworkReadingThatOriginAnswersGoesBack(t *testing.T) {
+	w := newTerminalWorld(t)
+	fails := 0
+	w.landFails("error: RPC failed; HTTP 500 curl 22 The requested URL returned error: 500", &fails)
+	o := w.bounded(t, 30*24*time.Hour)
+	o.Options.NetworkProbe = func() (bool, string) { return true, "origin answered" }
+	if _, err := RunTerminal(context.Background(), w.repo.Root(), o); err != nil {
+		t.Fatal(err)
+	}
+	st, _, _ := readDrain(w.repo.Root())
+	if len(st.HandBacks) == 0 || st.HandBacks[0].Kind != HandBackStuck {
+		t.Fatalf("the lane goes back as stuck: %+v after %d fails\n%s", st.HandBacks, fails, w.said())
+	}
+	if fails < terminalNetRepeats || fails > terminalNetRepeats+2 {
+		t.Fatalf("after about %d tries, got %d", terminalNetRepeats, fails)
+	}
+}
+
+// TestANetworkReadingWithOriginDownKeepsWaiting: and with origin down it is what it reads
+// as, waited out until the bound.
+func TestANetworkReadingWithOriginDownKeepsWaiting(t *testing.T) {
+	w := newTerminalWorld(t)
+	fails := 0
+	w.landFails("ssh: connect to host github.com port 22: Connection refused", &fails)
+	o := w.bounded(t, 10*time.Hour)
+	o.Options.NetworkProbe = func() (bool, string) { return false, "no answer" }
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, _, _ := readDrain(w.repo.Root())
+	if res.Ended != TerminalUntil || len(st.HandBacks) != 0 {
+		t.Fatalf("%+v %+v\n%s", res, st.HandBacks, w.said())
+	}
+}
+
+// TestAHookThatPrintsAStatusIsNoLostNetwork: a pre-push hook's own words, through a real
+// push, read as the refusal they are.
+func TestAHookThatPrintsAStatusIsNoLostNetwork(t *testing.T) {
+	repo, _ := reservingDrainRepo(t, "commands/drain.md")
+	hook := filepath.Join(repo.Root(), ".git", "hooks", "pre-push")
+	if err := os.MkdirAll(filepath.Dir(hook), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\necho 'HTTP 500 from fixture' >&2\nexit 1\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	repo.Write("a-file.md", "a\n")
+	repo.Commit("a change")
+	_, err := gitutil.Net(repo.Root(), "push", "--porcelain", "origin", "HEAD:refs/heads/a-branch")
+	if err == nil {
+		t.Fatal("the hook refuses the push")
+	}
+	if !strings.Contains(err.Error(), "HTTP 500 from fixture") {
+		t.Fatalf("the hook's words are in the error: %v", err)
+	}
+	if r := netFailure(StageLand, "lane-1", "git push", err); r != nil {
+		t.Fatalf("it reads as a lost network: %+v", r)
 	}
 }
