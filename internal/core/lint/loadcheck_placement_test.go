@@ -320,15 +320,23 @@ func TestPreflightStagesHaveNoGateOfTheirOwn(t *testing.T) {
 			continue
 		}
 		tests++
-		if i < 2 || strings.TrimSpace(lines[i-2]) != parallelismCall || !strings.Contains(l, ` -p "$$p" `) {
+		// The stage's -p and -timeout open the shell line the command is on, so
+		// two commands of one stage share them. Walk back to that line's start.
+		first := i
+		for first > 0 && strings.HasSuffix(strings.TrimSpace(lines[first-1]), `\`) {
+			first--
+		}
+		if i < first+2 || strings.TrimSpace(lines[first]) != parallelismCall || !strings.Contains(l, ` -p "$$p" `) {
 			t.Errorf("%s's %q does not take the -p derived as it starts (%s)", preflightStages, l, parallelismCall)
 		}
-		if i < 1 || !timeoutCall.MatchString(strings.TrimSpace(lines[i-1])) || !strings.Contains(l, ` -timeout "$$t" `) {
+		if i < first+2 || !timeoutCall.MatchString(strings.TrimSpace(lines[first+1])) || !strings.Contains(l, ` -timeout "$$t" `) {
 			t.Errorf("%s's %q does not take the -timeout scaled as it starts (%s)", preflightStages, l, timeoutCall)
 		}
 	}
-	if tests != 2 {
-		t.Fatalf("%s's recipe has %d go test stages, want 2:\n%s", preflightStages, tests, recipe)
+	// Two stages, three commands: the unit stage's two plain passes and the
+	// race stage (TestPreflightUnitStageRunsWhatCIPlainPassRuns).
+	if tests != 3 {
+		t.Fatalf("%s's recipe has %d go test commands, want 3:\n%s", preflightStages, tests, recipe)
 	}
 }
 

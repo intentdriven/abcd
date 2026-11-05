@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -71,8 +70,7 @@ func TestBareRenderExceptionsNameRealVerbsWithAReason(t *testing.T) {
 // The brief's one enumeration of the exceptions names every one the table
 // records, so the prose cannot claim conformance the tree does not have.
 func TestTheBriefEnumeratesEveryBareRenderException(t *testing.T) {
-	_, file, _, _ := runtime.Caller(0)
-	data, err := os.ReadFile(filepath.Join(filepath.Dir(file), "..", "..", "..", ".abcd", "development", "brief", "04-surfaces", "README.md"))
+	data, err := os.ReadFile(filepath.Join(repoRootFromTest(t), ".abcd", "development", "brief", "04-surfaces", "README.md"))
 	if err != nil {
 		t.Fatal(err)
 	}

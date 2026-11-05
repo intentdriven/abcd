@@ -159,6 +159,9 @@ type Context struct {
 	// the receipt's model and the runner's: the runner's taken for a receipt
 	// that names none, or the receipt's kept over a runner's that differs.
 	modelNote *string
+	// standingReceipt is the bytes of a receipt a step read itself, which the
+	// verifier decodes in place of reading the file again; nil for a hand-in.
+	standingReceipt []byte
 	// router decides the tier each role a round hands out runs at
 	// (escalate.go); nil records no route.
 	router *roundRouter
@@ -392,6 +395,10 @@ type StepResult struct {
 	// accepted (`implement step --accept-config-change`) before its step:
 	// names alone, a URL subsection hidden, never a value (configwatch.go).
 	AcceptedConfigChange []string `json:"accepted_config_change,omitempty"`
+	// standing is what the step said of a receipt it read and did not take,
+	// carried to whatever answer a later move of the same call gives
+	// (carryStanding).
+	standing string
 	// RouteUnused is each `implement step --route` the step did not use: a
 	// landing ahead of its role moved first (route_use.go). Every other
 	// --route the step would not use is refused before anything is written.
@@ -905,6 +912,26 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 		return StepResult{}, err
 	}
 	g.runner = routed
+	// A routed implementer's receipt is read before anything asks for a fresh
+	// one (receipt_standing.go): collecting it is the step's move. A step carrying
+	// a --route is judged on that route alone, since one the step will not use
+	// is refused with nothing written (route_use.go); the next plain step
+	// collects.
+	var stopped []stoppedReceipt
+	standing := ""
+	if len(overrides) == 0 {
+		collected, took, found := collectStanding(repoRoot, runID, steps, o)
+		if took {
+			if !collected.Complete {
+				collected.Outage = g.info()
+			}
+			return collected, nil
+		}
+		stopped = found
+		standing = stoppedText(stopped)
+	} else {
+		standing = standingUnderRoute(repoRoot, runID)
+	}
 	var res StepResult
 	var wait error
 	err = mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
@@ -949,6 +976,11 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 		logged := len(st.Record)
 		renewNote := renewReservation(repoRoot, st, now, nil)
 		renewed := len(st.Record) != logged
+		// A lane stopped on its receipt is no wait: it counts as a refused
+		// step does, and a drain hands it back at the bounds (stuck.go).
+		if noteStopped(st, stopped, now) {
+			renewed = true
+		}
 		r, moved, err := move(repoRoot, st, steps, now, g, newRoundRouter(o), o.PlanGuard)
 		if err != nil {
 			if rf, ok := AsRefusal(err); ok && renewNote != "" {
@@ -978,6 +1010,20 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 	})
 	if err == nil && wait != nil {
 		err = wait
+	}
+	if standing != "" {
+		if r, ok := AsRefusal(err); ok {
+			r.Remedy += "; " + standing
+		} else if err == nil {
+			// The re-told move is false of a lane stopped on its receipt, so
+			// that lane's answer is the stop alone.
+			if len(stopped) == 1 && stopped[0].whole && res.PerformedStage == "" && res.Lane == stopped[0].lane && res.Slots <= 1 {
+				res.Next = standing
+			} else {
+				res.Next += "; " + standing
+			}
+			res.standing = carriedText(stopped)
+		}
 	}
 	// The outage a stage met is recorded with the tier lock released, and the
 	// answer names it.
@@ -1055,7 +1101,8 @@ func pausedMove(st State, until time.Time) string {
 // its slot, which the next `implement step` fills. It is refused when no await
 // names the path, when this build carries no verifier for the stage, and when
 // the verifier refuses it; in every refusal the run stays where it was and the
-// agent's slot stays taken.
+// agent's slot stays taken. A path a step already collected is the one exception
+// to the first (answerCollected).
 func Receipt(repoRoot, runID, receiptPath string, steps Stages, o Options) (StepResult, error) {
 	return receipt(repoRoot, runID, receiptPath, steps, o, nil)
 }
@@ -1068,6 +1115,16 @@ func Receipt(repoRoot, runID, receiptPath string, steps Stages, o Options) (Step
 // hand-back after the step could not verify it records the route; the host's
 // own receipt carries none.
 func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *runner.RouteRecord) (StepResult, error) {
+	return handIn(repoRoot, runID, receipt, steps, o, route, false)
+}
+
+// handIn is receipt; stood says a step found the receipt where it stood
+// (receipt_standing.go) rather than an agent's hand-in naming it, which the
+// record says, with the digest of the bytes it took. A later hand-in at that
+// path is read, and answered only while the file is those bytes
+// (answerCollected): a step can collect a receipt before its agent's own
+// hand-in, or its runner's dispatch, arrives.
+func handIn(repoRoot, runID, receipt string, steps Stages, o Options, route *runner.RouteRecord, stood bool) (StepResult, error) {
 	var res StepResult
 	var noted *runner.RouteRecord
 	renewNote := ""
@@ -1075,6 +1132,12 @@ func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *ru
 		now := o.now()
 		i, k := st.findAwait(repoRoot, receipt)
 		if i < 0 {
+			if at, taken, digest, ok := st.collectedAt(repoRoot, receipt); ok {
+				var changed bool
+				var err error
+				res, changed, err = answerCollected(repoRoot, root, st, at, taken, digest, route, now)
+				return changed, err
+			}
 			return false, unknownReceipt(*st)
 		}
 		lane := st.Lanes[i]
@@ -1087,6 +1150,26 @@ func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *ru
 		modelNote := ""
 		c := Context{RepoRoot: repoRoot, RunDir: runRel(st.RunID), State: *st, Now: now, Await: &await,
 			Route: route, modelNote: &modelNote}
+		took := ""
+		if stood {
+			// One read: the check here and the verifier work from these bytes,
+			// and the record's digest names them.
+			data, err := standingBytes(repoRoot, root, await.Receipt)
+			if err != nil {
+				return false, refuse("receipt", "", lane.ID, err.Error(), "correct what the reason names, then hand the receipt back")
+			}
+			if rc, err := decodeReceipt(repoRoot, data, await.Receipt, lane.ID); err == nil && rc.HandBack != nil {
+				rf := refuse("receipt", "", lane.ID, await.Receipt+" hands the lane back, which a step does not do on its own",
+					"to hand the lane back, run `abcd implement receipt "+await.Receipt+"`")
+				rf.handBack = true
+				return false, rf
+			}
+			if gap := noWorkPastRound(c, lane, await); gap != "" {
+				return false, refuse("receipt", "", lane.ID, gap, "hand it back with `abcd implement receipt "+await.Receipt+"` if the round's findings needed no change")
+			}
+			took = answerDigest(data)
+			c.standingReceipt = data
+		}
 		if err := def.Verify(c, &lane, await.Receipt); err != nil {
 			if _, ok := AsRefusal(err); ok {
 				return false, err
@@ -1137,6 +1220,9 @@ func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *ru
 			if n := validationNote(lane, verified); n != "" {
 				note += "; " + n
 			}
+			if stood {
+				note += collectedNote(took)
+			}
 			st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: "receipt", Note: note})
 			st.Lanes[i] = lane
 			st.UpdatedAt = now
@@ -1144,6 +1230,9 @@ func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *ru
 			return true, nil
 		}
 		lane.Receipt = verified
+		if stood {
+			note += collectedNote(took)
+		}
 		st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: "receipt", Note: note})
 		lane.Stage = after(lane.Stage)
 		st.Lanes[i] = lane
@@ -1347,8 +1436,26 @@ func withLock(repoRoot string, fn func(root *os.Root) error) error {
 
 // mutate is every in-run mutation's frame: resolve nothing, check the tier,
 // take the lock, read the state, let fn change it, and write it only when fn
-// says it changed.
+// says it changed. The write takes the file to this abcd's own version, which
+// only the abcd driving the run may do: a writer that may be running a lane's
+// abcd uses mutateReservation (reservation_save.go).
 func mutate(repoRoot, runID string, fn func(root *os.Root, st *State) (bool, error)) error {
+	return withRun(repoRoot, runID, func(root *os.Root) error {
+		st, err := readStateIn(root, runID)
+		if err != nil {
+			return err
+		}
+		changed, err := fn(root, &st)
+		if err != nil || !changed {
+			return err
+		}
+		return writeState(root, st)
+	})
+}
+
+// withRun is a save's frame: resolve nothing, check the tier and the run, and
+// take the lock. mutate and mutateReservation are what is done under it.
+func withRun(repoRoot, runID string, fn func(root *os.Root) error) error {
 	if err := tierPresent(repoRoot); err != nil {
 		return err
 	}
@@ -1360,17 +1467,7 @@ func mutate(repoRoot, runID string, fn func(root *os.Root, st *State) (bool, err
 		return refuse("state", "", "", "no run "+runID+" in this checkout",
 			"name a run `abcd implement status` lists, or start one with `abcd build <itd-N>`")
 	}
-	return withLock(repoRoot, func(root *os.Root) error {
-		st, err := readStateIn(root, runID)
-		if err != nil {
-			return err
-		}
-		changed, err := fn(root, &st)
-		if err != nil || !changed {
-			return err
-		}
-		return writeState(root, st)
-	})
+	return withLock(repoRoot, fn)
 }
 
 // runIDDraws bounds the redraws freeRunID makes before it refuses.

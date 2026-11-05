@@ -61,9 +61,11 @@ func TestTreePathTypesAnswersEachPathOnItsOwn(t *testing.T) {
 
 // TestTreePathTypesClassifiesAGitlinkAsACommit: a submodule's gitlink is a
 // commit entry in its tree, never a file. Git answers "<sha> commit" when the
-// repository holds the commit the gitlink names, and "<sha> submodule",
-// ignoring the format asked, when it does not; both answer "commit", and a
-// path beneath a gitlink is not in the tree. None of it is an error.
+// repository holds the commit the gitlink names, and from 2.51 "<sha>
+// submodule", ignoring the format asked, when it does not; both answer
+// "commit", and a path beneath a gitlink is not in the tree. An older git
+// answers a gitlink whose commit is absent "missing", as it answers a path the
+// tree does not hold, so there it reads "". None of it is an error.
 func TestTreePathTypesClassifiesAGitlinkAsACommit(t *testing.T) {
 	repo := gittest.NewRepo(t)
 	repo.Write("a.go", "package a\n")
@@ -78,7 +80,11 @@ func TestTreePathTypesClassifiesAGitlinkAsACommit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a gitlink errored the answer: %v", err)
 	}
-	if want := []string{"commit", "commit", "", "blob"}; strings.Join(got, ",") != strings.Join(want, ",") {
+	want := []string{"commit", "commit", "", "blob"}
+	if ok, _ := gitutil.GitAtLeast(2, 51); !ok {
+		want[1] = ""
+	}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("the types = %q; want %q", got, want)
 	}
 }

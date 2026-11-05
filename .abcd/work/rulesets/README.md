@@ -1,7 +1,7 @@
 # Branch rulesets and repo settings — committed mirror
 
-The rulesets applied to this repository's default branch and to abcd's reservation
-and status branches, and the repository-object
+The rulesets applied to this repository's default branch, to abcd's reservation
+and status branches and to its branches as a whole, and the repository-object
 settings that sit behind a separate API, mirrored here in normalised form (name,
 target, enforcement, conditions, bypass actors, rules — no volatile ids or
 timestamps) so every gate claim in the contribution documents has a source of truth
@@ -61,6 +61,14 @@ in the tree rather than only a web console.
   second guard is abcd's own reader, built in step 3 of spc-2610150728396006
   (C11): a status commit whose tree is not the empty tree is shown as
   doubtful, with that reason, and never rendered.
+- `no-history-rewriting.json` — force-push protection on every branch except
+  `dependabot/**` and the merge queue's own `gh-readonly-queue/**`
+  (iss-2611040337038931), so the forge refuses a forced push the hooks never
+  saw. **No bypass actors.** It has no deletion rule, so a merged branch can
+  still be deleted. It also matches the default branch, where
+  `main-protection.json` holds the same rule; it names no merge queue, so it
+  never changes how a lane merges. Applied on 2026-11-04 (id 26544534), and the
+  mirror matched the live ruleset when read that day.
 - `release-tags.json` — the `v*` release tags: no update, no deletion, no
   force-move, and **no bypass actors**. A release's build provenance is checked
   against the commit its tag names, so a tag that could be moved would let an
@@ -84,7 +92,7 @@ in the tree rather than only a web console.
   written by that verb in the same normalised form. This repository has none:
   its rulesets above were made by hand.
 
-Refresh the rulesets after any settings change (ids: 19969675, 21045110, 24921633, 24933439, 25302453):
+Refresh the rulesets after any settings change (ids: 19969675, 21045110, 24921633, 24933439, 25302453, 26544534):
 
 ```sh
 gh api repos/intentdriven/abcd/rulesets/<id> \

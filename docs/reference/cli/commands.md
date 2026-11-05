@@ -3079,7 +3079,8 @@ Hand back the receipt an agent stage of a loop run awaits: Writes the run's stat
 Hand back the receipt a lane of the run named when its stage handed work to an agent.
 The path is looked up among every outstanding await of the run, and the lane it belongs
 to advances; a path no await names is refused, naming the awaits there are, and frees
-nothing. The stage's verifier checks it; a verified receipt frees its slot, and a
+nothing. A path a step already collected is answered while the file is what the step
+took, and refused once it has changed. The stage's verifier checks it; a verified receipt frees its slot, and a
 receipt that verifies completes the stage and the lane moves to its next stage, and one
 that does not is refused naming what is missing, with the lane left where it was. A
 stage whose verifier this abcd does not carry is refused naming the spec piece that
@@ -3231,8 +3232,11 @@ Perform the next stage of an implement loop run's lane and exit: Writes the run'
 
 Perform the run's next move, write the state, and exit. At a stage that hands work to
 an agent, the result names the agent to start, the brief it is handed and the path its
-receipt goes to; that work advances only on `abcd implement receipt`. A lane lands one
-step of the spec; its stages are how it gets there. A complete run says so.
+receipt goes to; that work advances on `abcd implement receipt`. One thing is taken
+without it: a routed implementer the run started a runner for, whose receipt stands at
+the path it awaits and verifies, is collected by the step, so a refusal before its
+hand-in loses nothing. A lane lands one step of the spec; its stages are how it gets
+there. A complete run says so.
 
 A run works in parallel up to its ceiling (--sub-agents, pace.sub_agents): each agent
 handed work and not yet verified is a slot, implementers and validators alike. Each call
@@ -4094,7 +4098,14 @@ credentials, so run it only on a branch whose content you trust.
      gate allows it, pinned to the head: into the merge queue by its method where
      one gates the default branch (then confirmed in the queue), otherwise as the
      forge's auto-merge (a merge commit; a forge that refuses it is said). An
-     arming someone else made is left as it is. With no pull request it composes
+     arming someone else made is left as it is. Where a merge queue gates the
+     default branch, a branch that shares a commit not on it with another pull
+     request queued or armed into it (a branch cut from that one's) is not armed:
+     the step stops naming it, since the queue would remove this one; run abcd land
+     again after that one merges, or rebase onto the default branch without its
+     commits. One whose head is not in the checkout is fetched from origin by
+     refs/pull/<n>/head to compare, and a listing or head land cannot read arms
+     nothing. With no pull request it composes
      the body from the branch's commits (each subject, their Refs:, Resolves: and
      Delivers: lines, abcd's own Assisted-by label and the models their
      Assisted-by: lines name) into the checkout's .abcd/.work.local/ where it has

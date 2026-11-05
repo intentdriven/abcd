@@ -108,8 +108,10 @@ func (w *capBuilder) Write(p []byte) (int, error) {
 // submodule's gitlink, or "" for a path the tree does not hold, a path
 // beneath a gitlink or through a symbolic link among them. Git answers a
 // gitlink "<sha> commit" when this repository holds the commit it names, and
-// "<sha> submodule", ignoring the format asked, when it does not (git 2.52);
-// both are "commit" here, never an error. Each path is resolved on its own,
+// "<sha> submodule", ignoring the format asked, when it does not (git 2.51
+// and later); both are "commit" here, never an error. An older git answers
+// that absent gitlink "missing", as it answers a path the tree does not hold,
+// so there it is "". Each path is resolved on its own,
 // so a directory asked beside a path beneath it is still answered as a tree,
 // and the answer is one short line per path, whatever the trees beneath hold.
 // commit must be a full object name, and a path holding a newline or a NUL,

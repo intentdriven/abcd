@@ -6,8 +6,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-
-	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // TestDocsLintNamesTheGitignoredPathsItPruned: `abcd lint docs` prunes what git
@@ -15,7 +13,7 @@ import (
 // and says so in both renders rather than reading as a smaller tree
 // (iss-2609151952353626).
 func TestDocsLintNamesTheGitignoredPathsItPruned(t *testing.T) {
-	repo := gittest.NewRepo(t)
+	repo := newRepo(t)
 	repo.Write(".gitignore", "docs/cache/\n")
 	repo.Write(".abcd/docs-lint.json", `{"roots": ["docs"], "rules": {"links_resolve": {"enabled": true, "severity": "blocker"}}}`)
 	repo.Write("docs/page.md", "# Page\n")

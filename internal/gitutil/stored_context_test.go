@@ -36,6 +36,11 @@ func stubGit(t *testing.T, act string) (runs string) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	// The guards read the stub's version, not the one an earlier test cached
+	// from the machine's git: below the lazy-fetch floor (2.44) they read the
+	// repository's config first, through this stub, which then counts a run
+	// that is not the read's and answers that config with the act's output.
+	gitutil.ColdGitVersionForTest(t)
 	return runs
 }
 

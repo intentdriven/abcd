@@ -34,6 +34,7 @@ Delivers itd-2611011325421304: on the person's machine, the pre-push check reuse
    - packages: internal/core/lint, internal/core/launch, internal/core/launch/scaffold, internal/surface/cli
    - tests: the nine test files iss-2611011343052330 names, a lint test refusing a `runtime.Caller` repository lookup in a test, `go test -trimpath ./...`
    - needs: none
+   - landed: 11418782b08a
 2. The preflight runs its tests from the fixed check directory, reuses results, reruns the listed tests and reports the counts
    - packages: Makefile, scripts, internal/core/lint, internal/abcdhome
    - tests: internal/core/lint (the preflight gate and Makefile tests), a preflight in a fresh worktree reporting reused packages, a test that reads a tracked file reused in a second worktree, and a same-size edit, amended or committed within the same second, rerun

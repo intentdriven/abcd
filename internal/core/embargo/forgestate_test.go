@@ -45,11 +45,7 @@ func heldOnly(t *testing.T, g *ghFake, ghsa, state, at string) {
 // triage or draft any more.
 func heldFixture(t *testing.T) (planFixture, fixture) {
 	t.Helper()
-	f, g := intakeFixture(t)
-	s, _, err := openStore(f.home, f.repo.Root())
-	if err != nil {
-		t.Fatal(err)
-	}
+	f, g, s := openedIntakeFixture(t)
 	pf := planFixture{f: f, s: s, g: g}
 	untriaged := Advisory{GHSAID: ghsaB, IssueID: issB, Title: "a sample untriaged report", Severity: "minor", ForgeState: "triage"}
 	pf.seed(t, vulnAdvisory(ghsaA, issA), untriaged)
@@ -318,11 +314,7 @@ func TestClosedOnGitHubRecordedOnlyForClosingVerdict(t *testing.T) {
 		"not-a-vulnerability": {strp(VerdictNotAVulnerability), true, ""},
 	} {
 		t.Run(name, func(t *testing.T) {
-			f, g := intakeFixture(t)
-			s, _, err := openStore(f.home, f.repo.Root())
-			if err != nil {
-				t.Fatal(err)
-			}
+			f, g, s := openedIntakeFixture(t)
 			pf := planFixture{f: f, s: s, g: g}
 			pf.seed(t, judged(tc.verdict))
 			heldOnly(t, g, ghsaA, "closed", endedAt.Format(time.RFC3339))

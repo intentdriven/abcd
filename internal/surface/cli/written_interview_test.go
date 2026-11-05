@@ -1,16 +1,17 @@
 package cli
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/question"
 	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/surface/cli/ask"
+	"github.com/intentdriven/abcd/internal/surface/cli/testdata/interviewstub/stub"
 	"github.com/intentdriven/abcd/internal/term"
 )
 
@@ -30,75 +32,89 @@ import (
 // a fallback, the answers-file replay by ordinal, and the runner's text
 // sanitised before it is drawn.
 
-// interviewStubScriptEnv names the stub runner's script: TestMain plays the
-// stub runner when it is set and the binary was started as claude is.
-const interviewStubScriptEnv = "ABCD_CLI_INTERVIEW_STUB"
+// interviewStubScriptEnv names the stub runner's script: the stub runner
+// (testdata/interviewstub) plays its turns when it is set.
+const interviewStubScriptEnv = stub.ScriptEnv
 
-// interviewStubRunner plays the claude runner for one turn: it copies the
-// script's turn-<n>.json to the receipt path the prompt names (no file, no
-// receipt), keeps the turn's brief and its argv beside the script, and
-// reports success. A turn-<n>.also.json, a map of path to content, makes the
-// turn write those files too, relative to the directory the runner was
-// started in; a turn-<n>.sleep makes it mark turn-<n>.started beside the
-// script and sleep, so a test can stop it mid-run.
-func interviewStubRunner(dir string) int {
-	prompt := os.Args[len(os.Args)-1]
-	field := func(prefix string) string {
-		sc := bufio.NewScanner(strings.NewReader(prompt))
-		for sc.Scan() {
-			if v, ok := strings.CutPrefix(sc.Text(), prefix); ok {
-				return strings.TrimSpace(v)
+// interviewStubBuild is the stub runner built from testdata/interviewstub once
+// for the test process. TestMain removes it after the tests.
+var interviewStubBuild struct {
+	once     sync.Once
+	dir, bin string
+	err      error
+}
+
+// The package's directory and the home the test binary started in, read
+// before any test changes either: the stub is built from the one, with the
+// go build cache the other names.
+var (
+	interviewStubSrc, _                     = os.Getwd()
+	interviewStubHome, interviewStubHomeSet = os.LookupEnv("HOME")
+	interviewStubXDG, interviewStubXDGSet   = os.LookupEnv("XDG_CONFIG_HOME")
+)
+
+// interviewStubProgram is the program interviewStub puts on PATH as claude:
+// the stub runner built once, which starts in milliseconds, where this test
+// binary playing it took about a second a turn under the race detector. With
+// no go on PATH to build it, the test binary plays it, through the same stub
+// code (TestMain).
+func interviewStubProgram(t *testing.T) string {
+	t.Helper()
+	goBin, err := exec.LookPath("go")
+	if err != nil {
+		self, err := os.Executable()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return self
+	}
+	b := &interviewStubBuild
+	b.once.Do(func() {
+		if b.dir, b.err = os.MkdirTemp(fixtureTemplateTempDir, "abcd-interview-stub-"); b.err != nil {
+			return
+		}
+		bin := filepath.Join(b.dir, "interviewstub")
+		cmd := exec.Command(goBin, "build", "-o", bin, "./testdata/interviewstub")
+		cmd.Dir = interviewStubSrc
+		var env []string
+		for _, kv := range os.Environ() {
+			if !strings.HasPrefix(kv, "HOME=") && !strings.HasPrefix(kv, "XDG_CONFIG_HOME=") {
+				env = append(env, kv)
 			}
 		}
-		return ""
-	}
-	receipt, brief := field("Receipt: "), field("Brief: ")
-	turn := strings.TrimSuffix(filepath.Base(receipt), ".receipt.json")
-	if b, err := os.ReadFile(brief); err == nil {
-		_ = os.WriteFile(filepath.Join(dir, turn+".brief.seen.md"), b, 0o600)
-	}
-	if argv, err := json.Marshal(os.Args[1:]); err == nil {
-		_ = os.WriteFile(filepath.Join(dir, turn+".argv.json"), argv, 0o600)
-	}
-	if body, err := os.ReadFile(filepath.Join(dir, turn+".json")); err == nil {
-		if err := os.WriteFile(receipt, body, 0o600); err != nil {
-			return 3
+		if interviewStubHomeSet {
+			env = append(env, "HOME="+interviewStubHome)
 		}
-	}
-	if raw, err := os.ReadFile(filepath.Join(dir, turn+".also.json")); err == nil {
-		var also map[string]string
-		if err := json.Unmarshal(raw, &also); err != nil {
-			return 3
+		if interviewStubXDGSet {
+			env = append(env, "XDG_CONFIG_HOME="+interviewStubXDG)
 		}
-		for p, body := range also {
-			target := filepath.FromSlash(p)
-			if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
-				return 3
-			}
-			if err := os.WriteFile(target, []byte(body), 0o600); err != nil {
-				return 3
-			}
+		cmd.Env = env
+		if out, err := cmd.CombinedOutput(); err != nil {
+			b.err = fmt.Errorf("%v\n%s", err, out)
+			return
 		}
+		b.bin = bin
+	})
+	if b.err != nil {
+		t.Fatalf("building the interview stub runner: %v", b.err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, turn+".sleep")); err == nil {
-		_ = os.WriteFile(filepath.Join(dir, turn+".started"), nil, 0o600)
-		time.Sleep(30 * time.Second)
+	return b.bin
+}
+
+// removeInterviewStub deletes the built stub runner, if one was built.
+func removeInterviewStub() {
+	if interviewStubBuild.dir != "" {
+		_ = os.RemoveAll(interviewStubBuild.dir)
 	}
-	fmt.Println(`{"type":"system","subtype":"init","session_id":"stub-session-1","model":"stub-model"}`)
-	fmt.Println(`{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"stub-session-1"}`)
-	return 0
 }
 
 // interviewStub puts the stub runner on PATH as claude, ahead of the rest of
 // PATH (the verbs still run git), with one receipt per turn.
 func interviewStub(t *testing.T, receipts ...string) string {
 	t.Helper()
-	self, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
+	program := interviewStubProgram(t)
 	bin, script := t.TempDir(), t.TempDir()
-	if err := os.Symlink(self, filepath.Join(bin, "claude")); err != nil {
+	if err := os.Symlink(program, filepath.Join(bin, "claude")); err != nil {
 		t.Fatal(err)
 	}
 	for i, r := range receipts {
@@ -456,7 +472,7 @@ func TestRunnerQuestionIsSanitisedBeforeItIsDrawn(t *testing.T) {
 // with a local tier, the working directory set to it.
 func planningRepo(t *testing.T) *gittest.Repo {
 	t.Helper()
-	r := gittest.NewRepo(t)
+	r := newRepo(t)
 	r.Write(".abcd/development/intents/drafts/itd-5-a-draft.md",
 		"---\nid: itd-5\nslug: a-draft\nkind: standalone\n---\n\n# A draft to plan\n\n## Press Release\n\n> A line.\n\n## Acceptance Criteria\n\n- Given a list, when it is long, then it narrows.\n")
 	r.Write(".abcd/development/intents/shipped/itd-6-shipped.md", reflectIntent("itd-6", "A shipped promise", "", reflectEmpty))
@@ -535,7 +551,7 @@ func TestIntentInterviewEndingWithAnOpenQuestionIsNotReady(t *testing.T) {
 		t.Run(fmt.Sprintf("json=%v", asJSON), func(t *testing.T) {
 			routeMachine(t, interview.RolePlanningInterviewer)
 			script := interviewStub(t, stubQuestion("Product Q1", "Does the press release stand?", ""), `{"done":{"summary":"A question was left open."}}`)
-			r := gittest.NewRepo(t)
+			r := newRepo(t)
 			r.Write(record, head+"## Open Questions\n\n_None open._\n"+cliGroundsSection)
 			r.Write(".abcd/development/specs/open/spc-1-alpha.md",
 				"---\nid: spc-1\nslug: alpha\nintent: itd-10\n---\n# alpha\n\n## Summary\n\nA written design record.\n")

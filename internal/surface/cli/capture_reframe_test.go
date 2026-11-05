@@ -12,7 +12,7 @@ import (
 // committed reading item, and changes into it.
 func reframeCLIRepo(t *testing.T) *gittest.Repo {
 	t.Helper()
-	r := gittest.NewRepo(t)
+	r := newRepo(t)
 	r.Write(".abcd/development/brief/01-product/06-framing.md", "# Framing\n\n## Construal\n\nThe first construal.\n")
 	r.Write(".abcd/development/brief/01-product/04-scope.md", "# Scope\n\nThe first scope.\n")
 	r.Write(".abcd/development/brief/glossary/core/term.md", "# Term\n")
