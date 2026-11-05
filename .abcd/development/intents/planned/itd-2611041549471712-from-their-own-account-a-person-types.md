@@ -30,7 +30,7 @@ The product thinker settled the place at the filing (dcn-2611041550139264): the 
 
 ## Mechanism
 
-We expect a stop to take hold on every run because each run already reads a recorded state before each move (the autonomous mode's store is the shape), and a file in the shared folder written by the person's account is one more such read; the runs stop at their next boundary, which is the only place a stop can act. The claim is shown wrong if a run makes a move after the stop file exists, or if any process but the person's own command removes it.
+We expect a stop to take hold on the runs that read where it is written because each run already reads a recorded state before each move (the autonomous mode's store is the shape), and a file in the shared folder written by the person's account is one more such read; the runs stop at their next boundary, which is the only place a stop can act. The claim is shown wrong if a run that reads the stop file makes a move after it exists, or if abcd removes it by any path but the person's own lift.
 
 ## Scope Conditions
 
@@ -43,7 +43,7 @@ We expect a stop to take hold on every run because each run already reads a reco
 
 ## Acceptance Criteria
 
-- **Given** the person runs the stop from their own account, **when** any run on the machine takes its next move, **then** it opens no lane, hands out no stage, starts no agent, and writes a `stop` event naming who set it and when; an agent already running finishes its call and its receipt is collected, never acted on further; and only then, with no agent live in the lane, is each lane's uncommitted work saved aside as a restart does and its reservations released so a peer may take the work (dcn-2611041550139264).
+- **Given** the person runs the stop from their own account, **when** a run of their account, or of an account that chose the same shared folder, takes its next move, **then** it opens no lane, hands out no stage, starts no agent, and writes a `stop` event naming who set it and when; an agent already running finishes its call and its receipt is collected, never acted on further; and only then, with no agent live in the lane, is each lane's uncommitted work saved aside as a restart does and its reservations released so a peer may take the work (dcn-2611041550139264).
 - **Given** the stop holds, **when** an agent's session, a driver or a hook tries to lift it, **then** the guard's rule refuses it; the person's own command lifts it, and the lift is a recorded event.
 - **Given** a terminal run, **when** Ctrl-C or a hang-up reaches it, **then** the signal is a stop: the running agent's call finishes and its receipt is collected, then the lane's uncommitted work is saved aside and its claims released, and the drive prints the run and the lane; a second press kills the process group at once (dcn-2611041608057544). This reverses dcn-2610222224054666, under which the open lane kept its reservation for the next drive to resume.
 - **Given** the stop holds, **when** the last run in the account that runs the work ends under it, **then** the stop composes that day's digest page before it ends, in that account (itd-2611041549483696), naming the stop, every run it halted and what each left; a page already written for the day is rewritten whole.
