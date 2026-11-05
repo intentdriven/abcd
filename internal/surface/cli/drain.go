@@ -34,12 +34,12 @@ type drainOutput struct {
 // `--dry-run` classifies every open issue by the eligibility rule and writes
 // nothing; the bare verb performs one move of the drain run (loop.Drain).
 func newDrainCommand(asJSON *bool) *cobra.Command {
-	var dryRun, takeOver, drive, yes bool
+	var dryRun, takeOver, drive, yes, trustGates bool
 	var maxLanes int
 	var pace, subAgents, fixRounds, judgement, skipReason string
 	var skip, unskip []string
 	cmd := &cobra.Command{
-		Use: "drain [--drive [--yes]] [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>]",
+		Use: "drain [--drive [--yes] [--trust-lane-gates]] [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>]",
 		Long: "Work the open issue ledger unattended: fix the issues that need no decision, and\n" +
 			"hand the rest back by kind. Which issues need no decision is this repository's own\n" +
 			"recorded decision: an accepted decision record whose frontmatter carries the four\n" +
@@ -89,16 +89,21 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"--drive makes the moves itself, from a plain terminal with no host session: it refuses\n" +
 			"before anything is reserved when the claude runner is not enabled or admitted, when\n" +
 			"there is no one walled directory under ~/.abcd.noindex/profiles/ logged in, when a\n" +
-			"wall does not hold, when a credential variable the harness would bill through is set\n" +
+			"wall does not hold or no git identity resolves, when a credential variable the harness would bill through is set\n" +
 			"(a drive runs on this account's subscription alone, for now), when the judge is routed\n" +
 			"to opencode, when a role is pinned to the host, and when it is started from inside an\n" +
 			"agent's own session. It shows the cap (eight unless --max says otherwise), an estimate\n" +
 			"of the agent runs, the runner and the route, and asks once; --yes is the scripted\n" +
-			"answer, and with no terminal nothing else answers. It then judges each eligible issue,\n" +
+			"answer, and with no terminal nothing else answers. A profile is a separate login and\n" +
+			"settings on this one account, not a boundary: a stage's shell reads what this account\n" +
+			"can. It then judges each eligible issue,\n" +
 			"drives each lane to its landing, every role on the walled login, and runs each\n" +
 			"landing's preflight behind the load gate, printing one line per step and logging them\n" +
-			"under .abcd/.work.local/logs/. It ends at the cap, when nothing is eligible, or after\n" +
-			"eight hours of runner failures. The first interrupt, hang-up or termination is a\n" +
+			"under .abcd/.work.local/logs/. A lane that changes the Makefile or scripts/ is handed\n" +
+			"back before its preflight unless --trust-lane-gates says the person agrees. It ends at\n" +
+			"the cap, when nothing is eligible, or after eight hours of runner failures. One drive\n" +
+			"holds a checkout at a time; a second exits 3. A drive that stops short exits 3, and one\n" +
+			"a broken wall stopped exits 2. The first interrupt, hang-up or termination is a\n" +
 			"stop: the agent in a call finishes that call, the lane's reservation is released, the\n" +
 			"lane stays on its branch, and the last lines name the run, the lane and the command\n" +
 			"that resumes it. A second kills the running agent's process group and exits at once\n" +
@@ -247,9 +252,21 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "abcd drain: --yes answers --drive's one question, and this is no drive; add --drive or leave it out (nothing written)"}
 			case drive && (dryRun || cmd.Flags().Changed("judgement")):
 				return &exitError{Code: 2, Msg: "abcd drain: --drive makes every move and judges through the runner itself, so it takes no --dry-run and no --judgement (nothing written)"}
+			case trustGates && !drive:
+				return &exitError{Code: 2, Msg: "abcd drain: --trust-lane-gates says what a drive's preflight may run, and this is no drive; add --drive or leave it out (nothing written)"}
 			case drive:
-				return runDrive(cmd, *asJSON, repoRoot, driveFlags{yes: yes, maxLanes: maxLanes, takeOver: takeOver,
-					skips: drainSkips{skip: skip, reason: skipReason, unskip: unskip}})
+				f := driveFlags{yes: yes, maxLanes: maxLanes, takeOver: takeOver, trustGates: trustGates,
+					skips: drainSkips{skip: skip, reason: skipReason, unskip: unskip}}
+				if cmd.Flags().Changed("pace") {
+					f.pace = &pace
+				}
+				if cmd.Flags().Changed("sub-agents") {
+					f.subAgents = &subAgents
+				}
+				if cmd.Flags().Changed("fix-rounds") {
+					f.fixRounds = &fixRounds
+				}
+				return runDrive(cmd, *asJSON, repoRoot, f)
 			}
 			if !dryRun {
 				return runDrain(cmd, *asJSON, repoRoot, maxLanes, pace, subAgents, fixRounds, judgement, takeOver,
@@ -281,6 +298,7 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&drive, "drive", false, "make every move from this terminal, starting each agent on the walled login, until the cap, an empty ledger or a stop")
 	cmd.Flags().BoolVar(&yes, "yes", false, "with --drive: the scripted yes to its one question")
+	cmd.Flags().BoolVar(&trustGates, "trust-lane-gates", false, "with --drive: run a lane's preflight even when the lane changes the Makefile or scripts/ it runs")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show every open issue's disposition and the order a drain takes them; writes nothing")
 	cmd.Flags().IntVar(&maxLanes, "max", 0, "cap the lanes this drain opens; the default is all")
 	cmd.Flags().StringVar(&pace, "pace", "", "the drain's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer")

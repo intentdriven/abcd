@@ -1558,6 +1558,13 @@
           "hidden": false
         },
         {
+          "name": "trust-lane-gates",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "unskip",
           "shorthand": "",
           "type": "stringArray",
@@ -1769,6 +1776,13 @@
           "hidden": false
         },
         {
+          "name": "declared",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "dir",
           "shorthand": "",
           "type": "string",
@@ -1776,9 +1790,23 @@
           "hidden": false
         },
         {
+          "name": "protect",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "run-dir",
           "shorthand": "",
           "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "stage-home",
+          "shorthand": "",
+          "type": "string",
           "required": false,
           "hidden": false
         }
