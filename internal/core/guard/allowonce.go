@@ -30,6 +30,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/runstop"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"slices"
 )
 
 // AllowWindow is how long a one-shot allow waits to be used.
@@ -260,20 +261,22 @@ func stopStoreUse(u pathUse, named, homeNamed bool) bool {
 		}
 		// A glob over the folder that holds the stop's directory, if it can match it.
 		first, _, _ := strings.Cut(glob, "/")
-		if u.ok && holdsStopDir(u.path) && shellGlobMatch(first, runstop.StopDirName) {
+		if u.ok && slices.ContainsFunc(stopDirsIn(u.path), func(name string) bool {
+			return shellGlobMatch(first, fsutil.FoldPath(name, true))
+		}) {
 			return true
 		}
 		// On a line that names the stop, a glob that can spell its folder or file.
 		if named {
 			for _, c := range strings.Split(glob, "/") {
-				if shellGlobMatch(c, runstop.StopDirName) || shellGlobMatch(c, runstop.StopFileName) {
+				if shellGlobMatch(c, runstop.StopDirName) || shellGlobMatch(c, runstop.StopDirName+"-0") || shellGlobMatch(c, runstop.StopFileName) {
 					return true
 				}
 			}
 		}
 		return false
 	case u.ok:
-		wholeFolder := (u.remove || u.bound) && (isHomeFolder(u.path) || holdsStopDir(u.path))
+		wholeFolder := (u.remove || u.bound) && (isHomeFolder(u.path) || len(stopDirsIn(u.path)) > 0)
 		// A find deletes below its start by a test this reading does not follow,
 		// so on a line that names the stop it may reach it.
 		return wholeFolder || (u.bound && named) || StopStorePath(u.path)
@@ -297,12 +300,24 @@ func stopStoreName(p string, unplaced bool) bool {
 	p = fsutil.FoldPath(filepath.Clean(p), true)
 	base, parent := filepath.Base(p), filepath.Dir(p)
 	switch base {
-	case runstop.StopFileName, runstop.StopDirName:
+	case runstop.StopFileName:
 		return true
 	case runstop.SettingFile, runstop.HomeStopFile:
 		return isHomeFolder(parent) || (unplaced && parent == ".")
 	}
-	return false
+	return isStopDirName(base)
+}
+
+// isStopDirName reports whether a folded name is a person's stop directory.
+func isStopDirName(name string) bool {
+	if name == runstop.StopDirName {
+		return true
+	}
+	number, ok := strings.CutPrefix(name, runstop.StopDirName+"-")
+	if !ok || number == "" {
+		return false
+	}
+	return strings.Trim(number, "0123456789") == ""
 }
 
 // isHomeFolder reports whether p names abcd's home folder, as the volume resolves it.
@@ -310,10 +325,18 @@ func isHomeFolder(p string) bool {
 	return fsutil.FoldPath(filepath.Base(p), true) == abcdhome.Rel()
 }
 
-// holdsStopDir reports whether the stop's directory stands directly in p.
-func holdsStopDir(p string) bool {
-	_, err := os.Lstat(filepath.Join(p, runstop.StopDirName))
-	return err == nil
+// maxStopDirNames bounds a look through a directory for a stop's directory.
+const maxStopDirNames = 4096
+
+// stopDirsIn is each person's stop directory standing directly in p.
+func stopDirsIn(p string) []string {
+	d, err := os.Open(p)
+	if err != nil {
+		return nil
+	}
+	defer d.Close()
+	names, _ := d.Readdirnames(maxStopDirNames)
+	return slices.DeleteFunc(names, func(name string) bool { return !isStopDirName(fsutil.FoldPath(name, true)) })
 }
 
 // inAny reports whether p is one of dirs or below one.

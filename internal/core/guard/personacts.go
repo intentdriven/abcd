@@ -80,7 +80,7 @@ var personActs = []personAct{
 	{
 		id: implementStopAnyEntryID, entry: "abcd-implement-stop", family: "implement stop",
 		verbs: []string{"implement", "stop"}, adjacent: true,
-		why:       "Setting or lifting a stop is the person's own act: a stop withdraws what every unattended run on the machine may do, and only their word lifts it, so one an agent sets or lifts is one no person decided.",
+		why:       "Setting or lifting a stop is the person's own act: a stop withdraws what the unattended runs that read it may do, and lifting it is their word to give, so one an agent sets or lifts is one no person decided.",
 		successor: "Leave this one to the person: tell them why you believe the runs should stop or go on, and let them run `abcd implement stop`, or `abcd implement stop --lift`, from their own account.",
 	},
 	{
@@ -107,15 +107,29 @@ func (a personAct) actOf(s segment) bool {
 		next := 0
 		on := make([]bool, len(a.flags))
 		valued := make([]bool, len(a.valueFlags))
+		skip := false
 		for j, w := range literalWords(s, site.idx+1) {
+			if a.adjacent {
+				// The words the command line's parser passes over on its way to a
+				// sub-command: --x=y alone, and --x with the word after it, but for
+				// the flags that take no word. A "--" ends its way.
+				if skip {
+					skip = false
+					continue
+				}
+				if w == "--" {
+					break
+				}
+				if strings.HasPrefix(w, "-") && w != "-" {
+					skip = !strings.Contains(w, "=") && w != "--json" && w != "--help" && w != "-h"
+					continue
+				}
+			}
 			switch {
 			case next < len(a.verbs) && w == a.verbs[next]:
 				next++
-			case a.adjacent && next > 0 && next < len(a.verbs) && w != "--json" && !strings.HasPrefix(w, "--json="):
-				// The run is broken: the verbs must start again. The one flag a
-				// command line can carry between them is the root's own --json;
-				// any other takes the next word as its value, so what follows
-				// is not this act.
+			case a.adjacent && next > 0 && next < len(a.verbs):
+				// The run is broken: the verbs must start again.
 				next = 0
 				if w == a.verbs[0] {
 					next = 1

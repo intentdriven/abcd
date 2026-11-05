@@ -153,7 +153,11 @@ func TestTheStopIsThePersonsAct(t *testing.T) {
 		{`bash scripts/abcd.sh --json implement stop --lift`, implementStopAnyEntryID},
 		{`abcd ahoy shared-folder /Users/Shared`, "abcd-ahoy-shared-folder"},
 		{`scripts/abcd.sh ahoy shared-folder /Users/Shared --person someone`, sharedFolderAnyEntryID},
-		{`script -q /dev/null bin/abcd-darwin-arm64 implement --json stop --lift`, implementStopAnyEntryID},
+		{`nohup bin/abcd-darwin-arm64 implement --json stop --lift`, implementStopAnyEntryID},
+		{`scripts/abcd.sh implement --lift=true stop`, implementStopAnyEntryID},
+		{`bin/abcd-darwin-arm64 ahoy --person me shared-folder /x`, sharedFolderAnyEntryID},
+		{`rm -r /Users/Shared/abcd-stop-501`, stopStoreEntryID},
+		{`rm -r /Users/Shared/ABCD-STOP-501`, stopStoreEntryID},
 		{`rm /Users/Shared/abcd-stop/abcd-stop.json`, stopStoreEntryID},
 		{`rm -r /Users/Shared/abcd-stop`, stopStoreEntryID},
 		{`cd ~/.abcd.noindex && mv stop.json x`, stopStoreEntryID},
@@ -242,7 +246,7 @@ func TestTheAllowStoreFoldsCaseToo(t *testing.T) {
 // names the stop. A removal elsewhere, or a glob that cannot match, is not refused.
 func TestARemovalThatCouldReachTheStopIsRefused(t *testing.T) {
 	folder := t.TempDir()
-	if err := os.Mkdir(filepath.Join(folder, runstop.StopDirName), 0o755); err != nil {
+	if err := os.Mkdir(filepath.Join(folder, runstop.StopDirName+"-501"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	elsewhere := t.TempDir()
@@ -255,7 +259,7 @@ func TestARemovalThatCouldReachTheStopIsRefused(t *testing.T) {
 	for _, cmd := range []string{
 		"rm -rf " + folder + "/abcd-s*",
 		"rm -rf " + folder + "/*",
-		"rm -rf " + folder + "/a*p",
+		"rm -rf " + folder + "/a*1",
 		"find " + folder + " -name 'abcd-s*' -delete",
 		"rm -rf " + folder,
 	} {
