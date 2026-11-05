@@ -20,7 +20,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
-	"strings"
 	"sync"
 	"time"
 
@@ -199,10 +198,12 @@ type terminal struct {
 	// spentUnanswered counts, by role, launches in a row that spent with no probe
 	// answering, a ceiling on what a probe that never answers would let run.
 	spentUnanswered map[string]int
-	// netKey and netCount are the failure last read as a lost network with origin
-	// answering, and how many times in a row.
+	// netKey and netSince are the act last read as a lost network with origin
+	// answering, and when that was first read.
 	netKey   string
-	netCount int
+	netSince time.Time
+	// gaveUpLook is when a record another session gave up on is next looked at.
+	gaveUpLook time.Time
 	// session is the drive's own in the shared run, under a bound, and shared that
 	// run: an open outage record needs a session to be probed for.
 	session string
@@ -671,7 +672,7 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 	if runID != t.laneInHand {
 		t.laneInHand = runID
 		t.reached, t.stalled, t.spentUnanswered = nil, 0, nil
-		t.netKey, t.netCount = "", 0
+		t.netKey, t.netSince = "", time.Time{}
 	}
 	if done, ended := t.takeUp(ctx, runID); done {
 		return ended, nil
@@ -794,7 +795,7 @@ func (t *terminal) moved() {
 	t.outage.succeed()
 	t.limit.succeed()
 	t.reached, t.stalled, t.spentUnanswered = nil, 0, nil
-	t.netKey, t.netCount = "", 0
+	t.netKey, t.netSince = "", time.Time{}
 	t.evidence.resumed(t.now())
 }
 
@@ -888,28 +889,67 @@ func (t *terminal) leaveSharedRun() {
 	t.o.Options.OutageSession = ""
 }
 
-// settleOutage is the model service's canary, under a bound: an outage with the model
-// down holds every agent, so no launch would ever find out it is back, and only a lead's
-// canary proves it. A probe answering stands in. The network's own probe runs from the
-// step that finds it due (outageFor), and here too when both are down.
+// settleOutage acts for the person a shared outage would otherwise wait on, under a
+// bound. With the model down in an open record, a probe answering is the service's
+// canary: that outage holds every agent, so no launch would ever find out it is back.
+// The probe runs inside the outage's own probe, so only once its lease is taken and it
+// is due, and a result that cannot be written costs nothing. The network's own probe
+// runs from the step that finds it due (outageFor), and here too when both are down. A
+// record another session gave up on can no longer be probed, so it is looked at on a
+// schedule of the run's own and cleared when every service down answers.
 func (t *terminal) settleOutage(ctx context.Context) {
-	if t.shared == nil || t.o.Probe == nil {
+	if t.shared == nil {
 		return
 	}
 	cur, err := t.shared.Outage().Current()
-	if err != nil || cur == nil || cur.Status != implement.OutageOpen ||
-		!slices.Contains(cur.Down, implement.ServiceModel) || t.now().Before(cur.NextProbeAt) || !t.wallHeld() {
+	if err != nil || cur == nil {
 		return
 	}
-	t.say("the shared outage has the model service down, so a probe asks whether it is back")
-	answered, _ := t.o.Probe(ctx, RoleImplementer, "")
-	if ctx.Err() != nil {
+	if cur.Status == implement.OutageGaveUp {
+		t.settleGaveUp(ctx, cur)
+		return
+	}
+	if t.o.Probe == nil || cur.Status != implement.OutageOpen ||
+		!slices.Contains(cur.Down, implement.ServiceModel) || t.now().Before(cur.NextProbeAt) || !t.wallHeld() {
 		return
 	}
 	_, _ = keepProbing(t.shared.Outage()).ProbeIfDue(t.session, implement.Prober{
 		Network: t.networkProbe(),
-		Model:   func() (bool, string) { return answered, "a short launch asked it" },
+		Model: func() (bool, string) {
+			t.say("the shared outage has the model service down, so a probe asks whether it is back")
+			answered, _ := t.o.Probe(ctx, RoleImplementer, "")
+			return answered, "a short launch asked it"
+		},
 	})
+}
+
+// settleGaveUp clears a record another session gave up on, when the probes of every
+// service it has down answer: the network's first, since it costs nothing, then a short
+// launch's for the model's.
+func (t *terminal) settleGaveUp(ctx context.Context, cur *implement.Outage) {
+	now := t.now()
+	if now.Before(t.gaveUpLook) || !t.wallHeld() {
+		return
+	}
+	t.gaveUpLook = now.Add(terminalGaveUpEvery)
+	if slices.Contains(cur.Down, implement.ServiceNetwork) {
+		if ok, _ := t.networkProbe()(); !ok {
+			return
+		}
+	}
+	if slices.Contains(cur.Down, implement.ServiceModel) {
+		if t.o.Probe == nil {
+			return
+		}
+		if answered, _ := t.o.Probe(ctx, RoleImplementer, ""); !answered || ctx.Err() != nil {
+			return
+		}
+	}
+	if _, err := t.shared.Outage().Clear(t.session, "a drive under a bound cleared it: the probes of every service down answered"); err != nil {
+		t.say("the outage another session gave up on could not be cleared: %s", err.Error())
+		return
+	}
+	t.say("the outage another session gave up on is cleared: the probes of every service down answered")
 }
 
 // networkProbe is the probe that proves the network back.
@@ -920,32 +960,34 @@ func (t *terminal) networkProbe() func() (bool, string) {
 	return implement.RemoteProbe(t.repoRoot)
 }
 
-// netRepeats answers a failure read as a lost network, under a bound: the same one
-// repeating while origin answers the probe is no lost network, whatever its words say,
-// and waiting would hold the lane until the bound, so it goes back as stuck. It reports
-// whether it did.
+// netRepeats answers a failure read as a lost network, under a bound. One act that
+// keeps failing that way for terminalNetGoesBack while origin answers is no lost
+// network, whatever its words say, and waiting would hold the lane until the bound, so
+// it goes back as stuck. The act is abcd's own wording, git push or gh pr create, since
+// what a command printed can change each time. Origin not answering, another act or a
+// step that worked restarts the clock. It reports whether the lane went back.
 func (t *terminal) netRepeats(runID string, r *Refusal) bool {
 	if !t.bounded() || r.outage == nil || r.outage.service != implement.ServiceNetwork {
 		return false
 	}
 	if ok, _ := t.networkProbe()(); !ok {
-		t.netKey, t.netCount = "", 0
+		t.netKey, t.netSince = "", time.Time{}
 		return false
 	}
-	key, _, _ := strings.Cut(r.Reason, "; it ")
-	if key != t.netKey {
-		t.netKey, t.netCount = key, 0
+	now := t.now()
+	if r.outage.what != t.netKey {
+		t.netKey, t.netSince = r.outage.what, now
 	}
-	if t.netCount++; t.netCount < terminalNetRepeats {
+	if now.Sub(t.netSince) < terminalNetGoesBack {
 		return false
 	}
-	t.netKey, t.netCount = "", 0
+	t.netKey, t.netSince = "", time.Time{}
 	run, err := ReadState(t.repoRoot, runID)
 	if err != nil {
 		return false
 	}
-	why := refuse(string(StageLand), "", "", key, "see the reason")
-	why.final = "it keeps failing the same way while origin answers, so it is no lost network"
+	why := refuse(string(StageLand), "", "", r.outage.what+" kept failing for "+terminalNetGoesBack.String()+" with origin answering", "see the reason")
+	why.final = "it kept failing while origin answered, so it reads as no lost network"
 	t.stayAsItIs(runID, run.Key, why)
 	return true
 }
@@ -996,8 +1038,9 @@ func (t *terminal) settleBlames(ctx context.Context) int {
 // poisoned hands a lane back when one role's launches have failed in a row in a way
 // that is the work's, under a bound, where nothing else would end it: the run then
 // goes on to other issues. So does a run of launches that spent with no probe
-// answering, which a real outage never raises, since its launches spend nothing. A
-// launch that says nothing of the work stays on the outage's wait.
+// answering; a launch started with the service unreachable was seen to spend nothing on
+// 2.1.318, so an outage of that kind does not raise it. A launch that says nothing of
+// the work stays on the outage's wait.
 func (t *terminal) poisoned(ctx context.Context, runID string) bool {
 	t.settleBlames(ctx)
 	for role, n := range t.spentUnanswered {

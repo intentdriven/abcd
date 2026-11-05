@@ -57,9 +57,14 @@ const (
 	// terminalSpentUnanswered is how many launches of one role in a row may spend and
 	// fail with no probe answered before the lane goes back or the issue is held.
 	terminalSpentUnanswered = 6
-	// terminalNetRepeats is how many times in a row the same failure may read as a
-	// lost network while origin answers before the lane goes back.
-	terminalNetRepeats = 3
+	// terminalNetGoesBack is how long one act may keep reading as a lost network, from
+	// the first such reading with origin answering, before the lane goes back. A
+	// partial forge incident, or a poor link, can have origin answer while the act
+	// itself cannot work, so this is long enough for those to pass.
+	terminalNetGoesBack = 2 * time.Hour
+	// terminalGaveUpEvery is how often a record another session gave up on is
+	// looked at again.
+	terminalGaveUpEvery = time.Hour
 )
 
 // terminalCallSayEvery is how often an agent's call or a preflight says it is still

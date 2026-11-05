@@ -752,7 +752,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		return refuseMoved(outageUnreadable(err))
 	} else if cur != nil && cur.Status == implement.OutageGaveUp {
 		if d.KeepWaiting {
-			return refuseMoved(contend(StageOutage, "", "", fmt.Sprintf("the run gave up on the %s outage open since %s, so the drain opens nothing until a person closes it with `abcd implement outage clear --session <id> --reason <why>`",
+			return refuseMoved(contend(StageOutage, "", "", fmt.Sprintf("the run gave up on the %s outage open since %s, so the drain opens nothing until its probes answer or a person closes it with `abcd implement outage clear --session <id> --reason <why>`",
 				strings.Join(cur.Services, " and "), cur.StartedAt.UTC().Format(time.RFC3339)), "close the outage once the connection is back"))
 		}
 		st.Stopped, st.EndedAt = DrainStoppedOutage, &now

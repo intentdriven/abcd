@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/implement"
+	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -424,6 +426,7 @@ func TestAnOutageTheSharedRunGaveUpOnWaitsUnderABound(t *testing.T) {
 	run := joinShared(t, w.repo.Root(), w.clock.now)
 	giveUp(t, run, "host-a", func(d time.Duration) { w.clock.t = w.clock.t.Add(d) })
 	o := w.bounded(t, 10*time.Hour)
+	o.Options.NetworkProbe = func() (bool, string) { return false, "no answer" }
 	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
 	if err != nil {
 		t.Fatal(err)
@@ -1006,7 +1009,8 @@ func TestAPoisonLaneGoesBackAndTheRunGoesOn(t *testing.T) {
 
 // TestSpendWithNoProbeAnsweredHasACeiling: launches that keep spending with no probe
 // answering would otherwise relaunch until the bound, so at six in a row the lane goes
-// back; a real outage's spend nothing, so it never gets there.
+// back; a launch started with the service unreachable was seen to spend nothing on 2.1.318,
+// so an outage of that kind does not get there.
 func TestSpendWithNoProbeAnsweredHasACeiling(t *testing.T) {
 	w, back, probes := poisonRun(t, "spends", terminalSpentUnanswered, noProbeAnswers)
 	if len(back) != 1 || back[0].Kind != HandBackStuck || probes != terminalSpentUnanswered {
@@ -1911,35 +1915,63 @@ func TestAStepThatStartedAnAgentIsNoStall(t *testing.T) {
 	}
 }
 
-// landFails makes the land stage fail on text, a network reading as a stage meets it.
-func (w *terminalWorld) landFails(text string, fails *int) {
+// landFailsAt makes the land stage fail on the act and the words fail answers, each
+// read as a lost network.
+func (w *terminalWorld) landFailsAt(fail func(l *Lane) (string, error)) {
 	for i := range w.stages {
 		if w.stages[i].Name == StageLand {
 			w.stages[i].Run = func(c Context, l *Lane) (Outcome, error) {
-				*fails++
-				return Outcome{}, netFailure(StageLand, l.ID, "git push "+l.Branch, errors.New(text))
+				what, err := fail(l)
+				if r := netFailure(StageLand, l.ID, what, err); r != nil {
+					return Outcome{}, r
+				}
+				return Outcome{}, refuse(string(StageLand), "", l.ID, err.Error(), "settle it")
 			}
 		}
 	}
 }
 
-// TestANetworkReadingThatOriginAnswersGoesBack: the same failure, read as a lost network,
-// repeating while origin answers the probe is no lost network, so the lane goes back.
+// landFails makes the land stage fail on text, a network reading as a stage meets it.
+func (w *terminalWorld) landFails(text string, fails *int) {
+	w.landFailsAt(func(l *Lane) (string, error) {
+		*fails++
+		return "git push " + l.Branch, errors.New(text)
+	})
+}
+
+// TestANetworkReadingThatOriginAnswersGoesBack: the same act read as a lost network for
+// two hours while origin answers is no lost network, so the lane goes back; not sooner,
+// since on a poor link or in a partial incident origin answers while the act cannot work.
 func TestANetworkReadingThatOriginAnswersGoesBack(t *testing.T) {
-	w := newTerminalWorld(t)
-	fails := 0
-	w.landFails("error: RPC failed; HTTP 500 curl 22 The requested URL returned error: 500", &fails)
-	o := w.bounded(t, 30*24*time.Hour)
-	o.Options.NetworkProbe = func() (bool, string) { return true, "origin answered" }
-	if _, err := RunTerminal(context.Background(), w.repo.Root(), o); err != nil {
-		t.Fatal(err)
-	}
-	st, _, _ := readDrain(w.repo.Root())
-	if len(st.HandBacks) == 0 || st.HandBacks[0].Kind != HandBackStuck {
-		t.Fatalf("the lane goes back as stuck: %+v after %d fails\n%s", st.HandBacks, fails, w.said())
-	}
-	if fails < terminalNetRepeats || fails > terminalNetRepeats+2 {
-		t.Fatalf("after about %d tries, got %d", terminalNetRepeats, fails)
+	for name, text := range map[string]string{
+		"git": "error: RPC failed; HTTP 500 curl 22 The requested URL returned error: 500",
+		"eof": "fatal: early EOF",
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := newTerminalWorld(t)
+			fails := 0
+			var first, last time.Time
+			w.landFailsAt(func(l *Lane) (string, error) {
+				fails++
+				if first.IsZero() {
+					first = w.clock.t
+				}
+				last = w.clock.t
+				return "git push " + l.Branch, errors.New(text)
+			})
+			o := w.bounded(t, 30*24*time.Hour)
+			o.Options.NetworkProbe = func() (bool, string) { return true, "origin answered" }
+			if _, err := RunTerminal(context.Background(), w.repo.Root(), o); err != nil {
+				t.Fatal(err)
+			}
+			st, _, _ := readDrain(w.repo.Root())
+			if len(st.HandBacks) == 0 || st.HandBacks[0].Kind != HandBackStuck {
+				t.Fatalf("the lane goes back as stuck: %+v after %d fails\n%s", st.HandBacks, fails, w.said())
+			}
+			if got := last.Sub(first); got < terminalNetGoesBack-terminalIdleCap {
+				t.Fatalf("it went back after %v and %d fails", got, fails)
+			}
+		})
 	}
 }
 
@@ -1983,5 +2015,184 @@ func TestAHookThatPrintsAStatusIsNoLostNetwork(t *testing.T) {
 	}
 	if r := netFailure(StageLand, "lane-1", "git push", err); r != nil {
 		t.Fatalf("it reads as a lost network: %+v", r)
+	}
+}
+
+// TestARepeatCountsTheActNotWhatItPrinted: a line that changes each time, a port or a
+// timestamp from a hook, is still the same act failing, so the clock is not restarted.
+func TestARepeatCountsTheActNotWhatItPrinted(t *testing.T) {
+	w := newTerminalWorld(t)
+	fails := 0
+	w.landFailsAt(func(l *Lane) (string, error) {
+		fails++
+		return "git push " + l.Branch, fmt.Errorf("dial tcp 127.0.0.1:%d: connect: connection refused", 54000+fails)
+	})
+	o := w.bounded(t, 30*24*time.Hour)
+	o.Options.NetworkProbe = func() (bool, string) { return true, "origin answered" }
+	if _, err := RunTerminal(context.Background(), w.repo.Root(), o); err != nil {
+		t.Fatal(err)
+	}
+	st, _, _ := readDrain(w.repo.Root())
+	if len(st.HandBacks) == 0 || st.HandBacks[0].Kind != HandBackStuck {
+		t.Fatalf("the lane goes back as stuck: %+v after %d fails\n%s", st.HandBacks, fails, w.said())
+	}
+}
+
+// TestAForgeActFollowsTheSameRule: a forge call and a push share one clock rule.
+func TestAForgeActFollowsTheSameRule(t *testing.T) {
+	w := newTerminalWorld(t)
+	var first, last time.Time
+	w.landFailsAt(func(*Lane) (string, error) {
+		if first.IsZero() {
+			first = w.clock.t
+		}
+		last = w.clock.t
+		return "gh pr create", errors.New("gh pr create: exit status 1 (HTTP 502: Bad Gateway (https://api.github.com/repos/o/r/pulls))")
+	})
+	o := w.bounded(t, 30*24*time.Hour)
+	o.Options.NetworkProbe = func() (bool, string) { return true, "origin answered" }
+	if _, err := RunTerminal(context.Background(), w.repo.Root(), o); err != nil {
+		t.Fatal(err)
+	}
+	st, _, _ := readDrain(w.repo.Root())
+	if len(st.HandBacks) == 0 || st.HandBacks[0].Kind != HandBackStuck {
+		t.Fatalf("after that long it goes back: %+v\n%s", st.HandBacks, w.said())
+	}
+	if got := last.Sub(first); got < terminalNetGoesBack-terminalIdleCap {
+		t.Fatalf("it went back after %v", got)
+	}
+}
+
+// TestADifferentActRestartsTheClock: the failure has moved on, so it has not lasted.
+func TestADifferentActRestartsTheClock(t *testing.T) {
+	w := newTerminalWorld(t)
+	start := w.clock.t
+	var last time.Time
+	w.landFailsAt(func(*Lane) (string, error) {
+		last = w.clock.t
+		what := "git push a"
+		if w.clock.t.Sub(start) > terminalNetGoesBack-30*time.Minute {
+			what = "gh pr create"
+		}
+		return what, errors.New("fatal: early EOF")
+	})
+	o := w.bounded(t, 30*24*time.Hour)
+	o.Options.NetworkProbe = func() (bool, string) { return true, "origin answered" }
+	if _, err := RunTerminal(context.Background(), w.repo.Root(), o); err != nil {
+		t.Fatal(err)
+	}
+	if got := last.Sub(start); got < 2*terminalNetGoesBack-time.Hour {
+		t.Fatalf("the second act has a clock of its own: %v", got)
+	}
+}
+
+// TestAMoveRestartsTheNetworkClock: a step that worked ends it.
+func TestAMoveRestartsTheNetworkClock(t *testing.T) {
+	c := &clock{t: time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)}
+	tm, _, _ := bareTerminal(t, c, c.t.Add(time.Hour))
+	tm.netKey, tm.netSince = "git push a", c.t
+	tm.moved()
+	if tm.netKey != "" || !tm.netSince.IsZero() {
+		t.Fatalf("a move ends the clock: %q %v", tm.netKey, tm.netSince)
+	}
+}
+
+// TestAForge5xxThroughTheClientWaitsAsALostNetwork: what the landing really reads, with
+// the client's own wrapper around a one-line stderr.
+func TestAForge5xxThroughTheClientWaitsAsALostNetwork(t *testing.T) {
+	bin := t.TempDir()
+	script := "#!/bin/sh\necho 'HTTP 502: Bad Gateway (https://api.github.com/repos/o/r/pulls)' >&2\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(bin, "gh"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	_, err := landing.GH(t.TempDir(), "pr", "create")
+	if err == nil {
+		t.Fatal("the stand-in fails")
+	}
+	r := netFailure(StageLand, "lane-1", "gh pr create", err)
+	if r == nil || !r.Contention || r.outage == nil {
+		t.Fatalf("%q reads as %+v", err, r)
+	}
+}
+
+// TestACanaryThatCannotLandSpendsNothing: a probe's result that could not be written
+// would otherwise cost one short launch per turn of the loop until the bound.
+func TestACanaryThatCannotLandSpendsNothing(t *testing.T) {
+	root, _, _, c := laneForPeerCheck(t)
+	run := joinShared(t, root, c.now)
+	if _, err := run.Outage().Record("host-a", implement.ServiceModel, implement.OutageHost, "lane-9", "a turn"); err != nil {
+		t.Fatal(err)
+	}
+	c.t = c.t.Add(time.Hour)
+	probes := 0
+	tm := newTerminal(root, TerminalOptions{Options: Options{Now: c.now}, Until: c.t.Add(time.Hour), Probe: probeAnswers(&probes)})
+	tm.shared, tm.session = run, "host-a"
+	if err := os.Chmod(run.Dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(run.Dir, 0o700) })
+	tm.settleOutage(context.Background())
+	if probes != 0 {
+		t.Fatalf("a probe ran with nowhere to put its answer: %d", probes)
+	}
+}
+
+// TestAGaveUpRecordIsClearedWhenItsProbesAnswer: another session on the default schedule
+// can give up during a long outage, and the drive cannot probe a record in that state, so
+// with no person there its own probes clear it when they answer, and the run goes on.
+func TestAGaveUpRecordIsClearedWhenItsProbesAnswer(t *testing.T) {
+	w := newTerminalWorld(t)
+	run := joinShared(t, w.repo.Root(), w.clock.now)
+	giveUp(t, run, "host-a", func(d time.Duration) { w.clock.t = w.clock.t.Add(d) })
+	start := w.clock.t
+	o := w.bounded(t, 30*24*time.Hour)
+	o.Options.NetworkProbe = func() (bool, string) {
+		return w.clock.t.Sub(start) >= 5*time.Hour, "origin"
+	}
+	probes := 0
+	o.Probe = probeAnswers(&probes)
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil || res.Ended != DrainStoppedCap {
+		t.Fatalf("the run goes on once the probes answer: %+v %v\n%s", res, err, w.said())
+	}
+	if cur, _ := run.Outage().Current(); cur != nil {
+		t.Fatalf("the record is cleared: %+v", cur)
+	}
+	if got := slept(w.sleeps); got < 5*time.Hour {
+		t.Fatalf("it waits for the answer: %v", got)
+	}
+}
+
+// TestAGaveUpRecordWithOriginDownStaysHeld: while the network is still out nothing is
+// cleared, nothing starts, and the bound ends it.
+func TestAGaveUpRecordWithOriginDownStaysHeld(t *testing.T) {
+	w := newTerminalWorld(t)
+	run := joinShared(t, w.repo.Root(), w.clock.now)
+	giveUp(t, run, "host-a", func(d time.Duration) { w.clock.t = w.clock.t.Add(d) })
+	o := w.bounded(t, 10*time.Hour)
+	o.Options.NetworkProbe = func() (bool, string) { return false, "no answer" }
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil || res.Ended != TerminalUntil || w.launches(t) != 0 {
+		t.Fatalf("%+v %v, %d launches\n%s", res, err, w.launches(t), w.said())
+	}
+	if cur, _ := run.Outage().Current(); cur == nil || cur.Status != implement.OutageGaveUp {
+		t.Fatalf("the record stands: %+v", cur)
+	}
+}
+
+// TestWithNoBoundAGaveUpRecordStopsTheDrain: an attended run behaves as it did.
+func TestWithNoBoundAGaveUpRecordStopsTheDrain(t *testing.T) {
+	w := newTerminalWorld(t)
+	run := joinShared(t, w.repo.Root(), w.clock.now)
+	giveUp(t, run, "host-a", func(d time.Duration) { w.clock.t = w.clock.t.Add(d) })
+	o := w.options(t)
+	o.Options.NetworkProbe = func() (bool, string) { return true, "origin answered" }
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil || res.Ended != DrainStoppedOutage {
+		t.Fatalf("%+v %v\n%s", res, err, w.said())
+	}
+	if cur, _ := run.Outage().Current(); cur == nil {
+		t.Fatal("it clears nothing")
 	}
 }

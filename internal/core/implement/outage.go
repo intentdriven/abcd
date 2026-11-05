@@ -841,10 +841,11 @@ var networkMarkers = []string{
 	"broken pipe",
 }
 
-// networkStatus is a forge or remote answering that it failed, in the forms gh
-// (a line of HTTP 502: Bad Gateway) and git (The requested URL returned error: 503)
-// print. A bare status elsewhere on a line may be a hook's own words, so it is not one.
-var networkStatus = regexp.MustCompile(`(?m)^http 5[0-9][0-9]:|the requested url returned error: 5[0-9][0-9]`)
+// networkStatus is a forge or remote answering that it failed, in the forms gh (HTTP
+// 502: Bad Gateway, which its runner wraps in parentheses), git (The requested URL
+// returned error: 503) and a GraphQL client (non-200 OK status code: 502) print. A bare
+// status with no colon after it may be a hook's own words, so it is not one.
+var networkStatus = regexp.MustCompile(`http 5[0-9][0-9]:|the requested url returned error: 5[0-9][0-9]|non-200 ok status code: 5[0-9][0-9]`)
 
 // notNetworkMarkers are the other end's refusals and the local conflicts.
 var notNetworkMarkers = []string{

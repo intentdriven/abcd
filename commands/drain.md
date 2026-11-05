@@ -104,13 +104,17 @@ nothing but the bound, the cap, an empty ledger or a stop ends the run:
   minutes apart. A forge or remote answering 5xx, in gh's `HTTP 502:` form or git's
   `The requested URL returned error: 503`, waits as a lost network does, here and in a
   drain with no drive. Origin keeps its schedule and is never given up on. An outage another
-  session gave up on holds the run until `abcd implement outage clear` or the bound. A
+  session gave up on holds the run until its probes answer, `abcd implement outage clear`
+  or the bound. A
   launch that was retrying the model service when it ended, or ran out of retries with
   nothing spent, reads as an outage and says so, and with nothing spent it counts against
   nothing. Under a bound the run joins the shared run for its outages alone, so an open
-  record is probed when due and never given up on, a short probe standing in for the model
-  service's canary. The same failure read as a lost network three times running while
-  origin answers is no lost network, and the lane goes back as stuck. Version
+  record is probed when due and its own probes never give up on it, a short probe standing
+  in for the model service's canary. A record another session gave up on is looked at
+  hourly and cleared when the probes of every service down answer. One act that keeps
+  reading as a lost network for two hours, from the first reading with origin answering,
+  is no lost network, and the lane goes back as stuck; another act, or a step that worked,
+  restarts the clock. Version
   2.1.318 of the harness was seen to do this with the service unreachable: ten retries
   over about three minutes, then a failed result, with the init event before any of it.
 - **Work that keeps failing.** Three failures of one role in a row that are the work's
@@ -123,7 +127,9 @@ nothing but the bound, the cap, an empty ledger or a stop ends the run:
   the same way against its issue, so one at its deadline having spent is held back while
   the account answers, and an account-wide failure does not empty the drain. Six launches
   in a row that spend and fail with no probe answered hand the lane back too, or hold the
-  issue back for a judge; a real outage's launches spend nothing, so it never gets there.
+  issue back for a judge. A launch started with the service unreachable was seen to spend
+  nothing on 2.1.318, so an outage of that kind does not get there; one that spends and then
+  loses the service does count.
 - **A lane that cannot move.** Six steps of one lane in a row that start no agent and
   move no stage hand it back as stuck, its worktree and branch left in place, so it
   does not hold every other issue until the bound. A step that started an agent ends the

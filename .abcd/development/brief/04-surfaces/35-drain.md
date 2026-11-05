@@ -240,16 +240,20 @@ alive, which leaves the work, and a rejection or no answer counts nothing. Three
 that are the work's hand the lane back as stuck, the run going on to other issues, and the
 same test decides whether a failed judge counts against its issue, beside the count of
 judgements that gave no answer. Six launches in a row that spend and fail with no probe
-answered hand the lane back too, or hold the issue back for a judge; a real outage's spend
-nothing. Six steps of one lane in a row that start no agent and move no stage hand it back,
+answered hand the lane back too, or hold the issue back for a judge; a launch started with
+the service unreachable was seen to spend nothing on 2.1.318, so an outage of that kind does
+not get there, while one that spends and then loses the service does count. Six steps of one lane in a row that start no agent and move no stage hand it back,
 worktree and branch in place, unless the shared outage holds an agent it wants or a claim
 on one of its agents has yet to lapse; a step that started an agent ends the count. A forge
 or remote answering 5xx in gh's or git's own form waits as a lost network does
-(`implement.IsNetworkFailure`), and the same failure read that way three times running
-while origin answers sends the lane back. A drive under a bound joins the shared run under
-a session of its own for its outages alone (`Options.OutageSession`), claiming nothing
-there: an open record is then probed when due, never given up on, and a probe answering
-stands in for the model service's canary.
+(`implement.IsNetworkFailure`). One act read that way for two hours, from the first reading
+with origin answering, sends the lane back, keyed on the act and not on what it printed;
+another act, or a step that worked, restarts the clock. A drive under a bound joins the
+shared run under a session of its own for its outages alone (`Options.OutageSession`),
+claiming nothing there: an open record is then probed when due, its own probes never giving
+up on it, and a probe answering stands in for the model service's canary. A record another
+session gave up on is looked at hourly and cleared when the probes of every service down
+answer.
 
 A wait is measured twice: by the time slept and by the wall clock, whichever ends it
 first. The production sleep also looks at the wall clock each minute, since a timer
