@@ -69,7 +69,7 @@ func TestMergeGateDecisionTable(t *testing.T) {
 func TestAnUnreadableReviewReceiptArmsNothingAndSaysWhy(t *testing.T) {
 	auto := Facilitator{Mode: ModeAuto, Layer: "repo", Origin: ".abcd/config.json at origin/main"}
 	d := mergeGate(gateFacts{mode: auto, rule: MergeRule{Method: "SQUASH"}, def: "main", head: "0123456789abcdef0123456789abcdef01234567",
-		author: "author-a", role: RoleMaintainer, roleWhy: "read", reviewed: false, reviewWhy: "git worktree list failed"})
+		author: "author-a", role: RoleMaintainer, roleWhy: "read", reviewed: false, reviewWhy: "git worktree list failed", reviewUnread: true})
 	if d.arm || !strings.Contains(d.why, "review receipts cannot be read (git worktree list failed)") {
 		t.Fatalf("mergeGate = %+v; want nothing armed, naming the failed read", d)
 	}
@@ -231,7 +231,8 @@ func (f *fixture) reviewed(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(p, []byte("{}\n"), 0o600); err != nil {
+	body := `{"commit":"` + f.head() + `","reviews":[{"name":"a","verdict":"SHIP","sha256":"x"},{"name":"b","verdict":"APPROVE","sha256":"y"}]}`
+	if err := os.WriteFile(p, []byte(body+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }

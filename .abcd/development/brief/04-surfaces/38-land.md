@@ -186,16 +186,47 @@ Its inputs:
   own pull request, and the facilitator authors most of the pull requests
   abcd opens. It is the person's act, and the shell guard refuses it to an
   agent ([`17-guard.md`](17-guard.md)).
-- **A review receipt** naming the head, recorded through the verb, the proof
-  that the review pair passed it. The review act, which takes the review switch
+- **A review receipt** naming the head, recorded through the verb: the record
+  that the review pair's returns passed the stop rule for it. The review act, which takes the review switch
   once per reviewer's return, lands nothing. It needs at least two returns, no two
-  the same text, each naming the head's first nine characters and stating
-  under its one `### Verdict` heading a verdict that passes the stop rule
+  the same text, each with a first line reading `Reviewed head: <name>`, naming
+  the head by at least its first nine characters, and stating
+  under its one `### Verdict` heading, with no other line opening as a Verdict, a
+  verdict that passes the stop rule
   (SHIP or APPROVE: no critical or major finding). It then writes
   `.abcd/.work.local/review-receipts/<sha>`, holding the commit, when it was
   recorded and each return's name, verdict and SHA-256; the gate finds it in
   any worktree of the repository. A return that falls short is refused,
   exit 2, naming it, and nothing is written.
+- **A delta review**, a receipt for a later head that rests on an earlier full
+  pair: a delta pair reviews a wording fix after a full pair, so a corrected
+  sentence costs a pair over that fix and not a pair over the branch. The review act names the base
+  head, and each of the two returns' first line reads exactly
+  `Reviewed delta: <base>..<head>` in place of the head's, with no line stating a
+  head; a return carrying that line, in this or any near form, is refused for a full
+  pair. A delta applies only when the base has a full pair's receipt (a
+  delta's is not one, so a later change rests on the same pair and its reviewers
+  read from that base again), the head descends from the base, and the branch's
+  own commits since it stay within the bound of 30 lines and 3 files, with no
+  more than 64 KiB of patch, and change only plain text markdown files of mode
+  `100644` under a closed list in the build of abcd that runs land:
+  `docs/explanation/`, `docs/how-to/`, `docs/tutorials/`,
+  `.abcd/development/plans/`, `.abcd/development/roadmap/`,
+  `.abcd/work/issues/resolved/` and `.abcd/work/issues/wontfix/`. Every changed line
+  is wording alone: letters, digits and a sentence's punctuation, naming no record and
+  no file, holding no code, no tool's line marker and no invisible character, and
+  outside any code fence or ledger record's grounds section on its side of the change.
+  No part of such a path below the listed directory starts with a dot or begins as
+  the name of a host's instruction file does, every file keeps its frontmatter byte
+  for byte, and no file is added, removed or moved. Anything
+  else needs a full pair: code and tests, `commands/`, `agents/`, `.claude*` and
+  `.abcd/*.json`, the release record and gate, the rest of `docs/`, open issues and
+  decisions, whose bodies later steps read, and the intents, the specs, this brief, the principles, the research and the ADRs. A merge of a default-branch commit counts for nothing, so merging the
+  default branch up needs no full pair, when it is exactly the merge git makes of
+  its two parents with no conflict; any other merge is refused. The gate judges
+  all of this again at landing, reads the receipts for the head in every worktree,
+  and counts a receipt with no delta only when it
+  holds a passing pair for the head it names.
 
 The decision, in order:
 
@@ -210,8 +241,9 @@ The decision, in order:
    the technical facilitator's approval. The product thinker never approves a merge: their
    part is to try the outcome and judge it.
 4. `auto`: the pull request of an author with write access is armed with no
-   one asked, but only when a review receipt names its head; otherwise the
-   note names the commit with no recorded review pair. Automated merging is never unreviewed
+   one asked, but only when a review receipt names its head, a delta's only
+   while its delta stands; otherwise the note names the commit with no recorded
+   review pair, or says why the delta does not stand. Automated merging is never unreviewed
    merging: the reviews are automated, not skipped.
 
 `human` holds against an agent merging by mistake, not against one set on
@@ -374,5 +406,6 @@ Sub-verbs: none.
 | `--no-enqueue` | bool |
 | `--no-push` | bool |
 | `--record-review` | stringArray |
+| `--rests-on` | string |
 
 <!-- surface-appendix:end -->
