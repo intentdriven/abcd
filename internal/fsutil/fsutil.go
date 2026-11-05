@@ -547,6 +547,20 @@ func WriteFileAtomicPreserveMode(path string, data []byte) error {
 // The temp name is unpredictable so the enumerable-name swap WriteFileAtomic
 // guards against has nothing to aim at.
 func WriteFileAtomicInRoot(root *os.Root, rel string, data []byte, perm os.FileMode) error {
+	return writeAtomicInRoot(root, rel, data, perm, true)
+}
+
+// WriteRebuildableInRoot is WriteFileAtomicInRoot without the two flushes, for
+// output a later run makes again from its source and nothing else reads back
+// after a power cut. The containment and the commit point are the same: a reader
+// sees the old file or the complete new one. What it gives up is only surviving
+// a power cut, and it saves two F_FULLFSYNCs a file on macOS, about 12 ms each:
+// a site of 6,678 files spent over two minutes on them.
+func WriteRebuildableInRoot(root *os.Root, rel string, data []byte, perm os.FileMode) error {
+	return writeAtomicInRoot(root, rel, data, perm, false)
+}
+
+func writeAtomicInRoot(root *os.Root, rel string, data []byte, perm os.FileMode, durable bool) error {
 	dir := path.Dir(rel)
 	if dir != "." {
 		if err := root.MkdirAll(dir, 0o755); err != nil {
@@ -568,8 +582,10 @@ func WriteFileAtomicInRoot(root *os.Root, rel string, data []byte, perm os.FileM
 	if err := tmp.Chmod(perm); err != nil {
 		return abandon(err)
 	}
-	if err := Flush(tmp); err != nil {
-		return abandon(err)
+	if durable {
+		if err := Flush(tmp); err != nil {
+			return abandon(err)
+		}
 	}
 	if err := tmp.Close(); err != nil {
 		_ = root.Remove(tmpRel)
@@ -579,7 +595,9 @@ func WriteFileAtomicInRoot(root *os.Root, rel string, data []byte, perm os.FileM
 		_ = root.Remove(tmpRel)
 		return err
 	}
-	syncDirInRoot(root, dir)
+	if durable {
+		syncDirInRoot(root, dir)
+	}
 	return nil
 }
 

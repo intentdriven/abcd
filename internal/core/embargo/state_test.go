@@ -48,11 +48,7 @@ func sampleState() State {
 
 func openedStore(t *testing.T) Store {
 	t.Helper()
-	f := newFixture(t)
-	s, _, err := openStore(f.home, f.repo.Root())
-	if err != nil {
-		t.Fatal(err)
-	}
+	_, s := openedFixture(t)
 	return s
 }
 

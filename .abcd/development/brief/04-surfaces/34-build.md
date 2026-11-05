@@ -555,7 +555,15 @@ reason and the first line it wrote to stderr, each later step that hands no
 agent out retries one held role once on its runner (a paused one, or one
 already with the host whose receipt nothing has written), an override naming
 its role retries it at once, and a restart with a route in force starts the
-fresh agent on its runner. A paused role whose route the person has since
+fresh agent on its runner. The exception is an implementer whose runner the
+run's state shows was started and whose receipt stands: a step reads that
+receipt (iss-2611031337115764) and takes it if it verifies, even if the runner
+then exited badly. One from a runner that exited badly and that does not verify
+is set aside as the role is retried. One the verifier refused after its runner
+ended starts no second runner over the work: the step says what the receipt
+lacks and how to correct it or restart, and counts the stop so a drain hands the
+lane back as stuck at its bounds. What stands at an agent's path when it is handed out, or when a
+runner is claimed for it, is set aside unread. A paused role whose route the person has since
 moved to the host is handed to the host by the next step, its pause cleared
 and the person's route, not a fallback, recorded. The
 opencode runner is sealed against the repository it runs in (ruling OC1): no

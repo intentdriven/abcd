@@ -162,7 +162,7 @@ go test ./internal/core/                 # a single package
 go test -run TestStatus ./internal/core/ # a single test
 ```
 
-**A push is gated before it connects.** Its test stages reuse unchanged results (`internal/testreuse`). The committed `.githooks/pre-push` hook
+**A push is gated before it connects.** The committed `.githooks/pre-push` hook
 never runs the preflight: git opens a push's connection before it runs the hook,
 and a preflight inside it outlasted the transport's idle timeout, so the push
 reported success and moved nothing. `make preflight` ends by minting a receipt
@@ -206,12 +206,12 @@ For this repository the line is
 CI (`.github/workflows/ci.yml`) runs its `check` job on Linux on every event —
 build, vet, test and the race-enabled internal tests, with the `make fmt-check`
 format gate, the record-lint, issue-drift and docs-lint steps and the
-site-render gate. Off a pull request three `macos-suite` shard jobs run the
+site-render gate. Nightly and on demand three `macos-suite` shard jobs run the
 macOS suite under -race, over what `cmd/ci-shard` assigns each; the first also
 builds, vets and runs the plain-only tests. `check-macos` reports
 `check (macos-latest)` from ubuntu and fails unless every shard succeeded; on a
-pull request the shards stand down and it runs nothing (every push there passed
-`make preflight`). The merge-queue entry tests exactly the tree that lands.
+pull request or a queue entry the shards stand down and it says so (the pre-push
+hook holds a push to `make preflight`). The queue entry tests on Linux the tree that lands.
 The workflow triggers on pull requests, merge-queue entries, a nightly
 schedule and by hand, never on a push to `main`: every commit there is a
 merge result its queue entry already tested, and the nightly run checks the
@@ -228,8 +228,8 @@ fail-closed classifier stands the race lane and the `zizmor`,
 `govulncheck` and smoke jobs down on a pull request confined to `docs/`,
 `.abcd/development/`, `.abcd/work/`, the root prose files and the
 community-health files in `.github/`; the Linux unit lane, the format gate and
-the record gates always run, and every other event — the merge-queue entry that
-gates the merge included — runs the lot.
+the record gates always run, and every other event, the merge-queue entry
+included, runs those lanes.
 
 ## Working-tree layout (three tiers under `.abcd/`)
 
@@ -352,7 +352,8 @@ with `*CONCURRENCY` to force it).
   `lint-issues`, `record-lint`, `issue-drift`, `docs-lint`,
   `check-attribution`, `secrets-check`, `vulncheck`, `site-render`), both tagged eval
   lanes (`smoke`, `evals-cold-reading`), plus `go build ./...`,
-  `go vet ./...`, `go test -timeout 40m ./...`, and
+  `go vet ./...`, the two plain passes CI's check job runs (`go test ./cmd/...`
+  and, by name, the tests that assert only without the race detector), and
   `go test -race -timeout 40m ./internal/...`, under `ABCD_TEST_SHARDS=3`,
   which runs the three longest packages as three test processes each
   (`internal/testshard`). The load

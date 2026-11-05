@@ -38,6 +38,10 @@ import (
 // Blocks raised to 26 when the installer's refuse_older landed
 // (hooks/bootstrap.sh): its printf argument line, read alone, blocks as
 // program-name-unknown, the same way say_refusal's argument line already did.
+// Raised to 30 when the RS003 ledger read's cases landed
+// (scripts/check-issue-resolution-cases.sh, iss-2610181757540736): four more
+// here-document openers, each read alone as heredoc-unterminated, the same way
+// the file's others already are.
 //
 // Warns raised to 33 when the away mode's stop check landed
 // (spc-2610180914469489 step 5): hooks/stop.sh and hooks/stop-failure.sh are
@@ -51,7 +55,7 @@ import (
 // command line and the file whole, as the other exec "$BIN" "$@" launchers
 // already do.
 const (
-	maxSweepBlocks = 26
+	maxSweepBlocks = 30
 	maxSweepWarns  = 37
 )
 

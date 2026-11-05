@@ -220,7 +220,7 @@ func watchQueue(c Context, lane *Lane, def string, rule landing.MergeRule) (*Out
 		r.outOfQueue = true
 		return nil, "", r
 	case v.AutoMergeRequest == nil:
-		return nil, "", droppedRefusal(c, *lane, def, v)
+		return nil, "", droppedRefusal(c, *lane, def, rule, v)
 	case v.MergeStateStatus != "CLEAN":
 		return nil, "; it is armed and not yet in the merge queue (the forge reports " + bounded(v.MergeStateStatus, 40) + ")", nil
 	}
@@ -313,7 +313,7 @@ func toggleArming(c Context, lane *Lane, def string, rule landing.MergeRule, why
 	if _, err := forge(c, *lane, "pr", "merge", n, "--disable-auto"); err != nil {
 		return nil, "", err
 	}
-	rearm := []string{"pr", "merge", n, "--auto", method, "--match-head-commit=" + ld.Pushed}
+	rearm := rearmArgs(n, method, ld.Pushed)
 	if _, err := landing.GH(c.RepoRoot, rearm...); err != nil {
 		if r := netFailure(StageLand, lane.ID, "gh pr merge", err); r != nil {
 			r.Reason = "pull request #" + n + " is now DISARMED: " + r.Reason
@@ -331,14 +331,24 @@ func toggleArming(c Context, lane *Lane, def string, rule landing.MergeRule, why
 		n, def, int(requeueGrace/time.Minute), why, strings.TrimPrefix(method, "--"), shortSHA(ld.Pushed))}, "", nil
 }
 
+// rearmArgs is the forge client's command that arms pull request n again by
+// the merge method's flag, pinned to head: the toggle's own re-arming, and
+// the one a dropped pull request's report quotes for a person to run. gh
+// refuses `pr merge --auto` with no method when it cannot prompt, so the
+// method is never left out.
+func rearmArgs(n, method, head string) []string {
+	return []string{"pr", "merge", n, "--auto", method, "--match-head-commit=" + head}
+}
+
 // droppedRefusal is the terminal report of an armed lane's pull request that
 // is open, outside the merge queue and no longer armed: the forge removed it
 // from the queue (a failed merge-group check clears the arming with it) or
 // someone withdrew the arming. It names the forge's reason and the checks
-// that failed on the pull request's last merge group. While a release being
-// cut holds every merge, the lane waits on the hold instead: the hold
-// withdraws armed merges and re-arms them after.
-func droppedRefusal(c Context, lane Lane, def string, v queueView) error {
+// that failed on the pull request's last merge group, and quotes the command
+// that arms it again by rule's method, the one toggleArming runs. While a
+// release being cut holds every merge, the lane waits on the hold instead:
+// the hold withdraws armed merges and re-arms them after.
+func droppedRefusal(c Context, lane Lane, def string, rule landing.MergeRule, v queueView) error {
 	held := ""
 	m, err := claim.FetchMergeHold(c.RepoRoot, c.Now, claimOptions(c.Now))
 	if err != nil {
@@ -360,9 +370,13 @@ func droppedRefusal(c Context, lane Lane, def string, v queueView) error {
 	}
 	reason := fmt.Sprintf("pull request #%s left %s's merge queue and is no longer armed, so it will not merge on its own: %s; %s%s",
 		n, def, removed, failedGroupChecks(c, lane, def), held)
+	rearm := lane.Landing.Pushed + " by the queue's merge method (the ruleset mirror names none the loop can quote)"
+	if method := landing.MergeMethods[rule.Method]; method != "" {
+		rearm = "(`gh " + strings.Join(rearmArgs(n, method, lane.Landing.Pushed), " ") + "`)"
+	}
 	r := refuse(string(StageLand), "", lane.ID, reason,
-		"fix or re-run the failed check, then arm it again pinned to the pushed head (`gh pr merge "+n+" --auto --match-head-commit="+lane.Landing.Pushed+
-			"`, with the queue's merge method), and run `abcd implement step` again: the loop does not re-queue it into the same failure")
+		"fix or re-run the failed check, then arm it again pinned to the pushed head "+rearm+
+			", and run `abcd implement step` again: the loop does not re-queue it into the same failure")
 	r.outOfQueue = true
 	return r
 }

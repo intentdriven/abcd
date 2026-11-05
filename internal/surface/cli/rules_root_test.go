@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,8 +21,18 @@ func gitInitAt(t *testing.T, dir string) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	env := gittest.Env(t)
+	// The empty repository git init lays out is the same bytes every time, so
+	// it is copied from the one built first (fixture_template_test.go) unless
+	// the directory is a repository already, which git init re-initialises.
+	if tpl, ok := templateInit(t); ok {
+		if _, err := os.Lstat(filepath.Join(dir, ".git")); errors.Is(err, fs.ErrNotExist) {
+			copyFixture(t, tpl, dir)
+			return
+		}
+	}
 	cmd := exec.Command("git", "-C", dir, "init", "--initial-branch=main")
-	cmd.Env = gittest.Env(t)
+	cmd.Env = env
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Skipf("git init unavailable: %v (%s)", err, out)
 	}

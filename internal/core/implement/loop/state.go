@@ -267,6 +267,10 @@ const lockFileName = ".lock"
 // file of version 19 or lower carrying any of them is not one its version
 // wrote, and is refused naming it. Releases that write version 19 refuse a
 // version-20 file as a newer abcd's before any strict decode.
+//
+// A version raises when the abcd driving the run writes it. A lane's own abcd
+// may be a version ahead of its driver, and what it saves leaves the version
+// where it was (mutateReservation, iss-2611020719494343).
 const SchemaVersion = 20
 
 // schemaVersionUnkeyed is the last version before a round keyed by reviewer:

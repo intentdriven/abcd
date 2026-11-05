@@ -44,6 +44,9 @@ type Refusal struct {
 	// its row: the drain stops its move on them rather than passing the issue
 	// over as contended.
 	unjudged []peers.Peer
+	// handBack marks a step's refusal of a standing receipt that hands its lane
+	// back (handIn): the step says so in its own words (collectStanding).
+	handBack bool
 	// checkWait is when a landing began waiting for its full check (ruling
 	// DR6d-2): the call that finds the wait writes it on the lane once.
 	checkWait time.Time

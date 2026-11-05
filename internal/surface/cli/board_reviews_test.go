@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-
-	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 func reviewLines(text string) []string {
@@ -34,7 +32,7 @@ func reviewLines(text string) []string {
 func TestBoardListsEachReviewWithItsAgeStalestFirst(t *testing.T) {
 	setBoardWidth(t, wideBoard)
 	t.Setenv("HOME", t.TempDir())
-	r := gittest.NewRepo(t)
+	r := newRepo(t)
 	r.Commit("c0")
 	old := r.Git("rev-parse", "HEAD")
 	for i := 1; i <= 21; i++ {
@@ -107,7 +105,7 @@ func TestBoardListsEachReviewWithItsAgeStalestFirst(t *testing.T) {
 // omits the member rather than nulling it.
 func TestBoardOmitsReviewsWithNoReviewFolders(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	r := gittest.NewRepo(t)
+	r := newRepo(t)
 	r.Commit("c0")
 	t.Chdir(r.Root())
 	stdout, _, err := runCLISplit(t, "--view", "facilitator")
@@ -132,7 +130,7 @@ func TestBoardOmitsReviewsWithNoReviewFolders(t *testing.T) {
 func TestBoardFoldsReleaseReceiptsIntoOneTruthfulLine(t *testing.T) {
 	setBoardWidth(t, wideBoard)
 	t.Setenv("HOME", t.TempDir())
-	r := gittest.NewRepo(t)
+	r := newRepo(t)
 	var pins []string
 	for i := 0; i <= 30; i++ {
 		r.Commit(fmt.Sprintf("c%d", i))

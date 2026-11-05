@@ -577,6 +577,26 @@ func TestBuildMarksItsOutput(t *testing.T) {
 	}
 }
 
+// TestOnlyTheMarkerEarnsAFlush: a power cut can leave a rebuildable file empty,
+// and the next build purges it, but an empty marker beside surviving files reads
+// as a directory the build does not own, and every later build refuses it. So the
+// marker alone is written durably.
+func TestOnlyTheMarkerEarnsAFlush(t *testing.T) {
+	var durable []string
+	orig := writeDurable
+	writeDurable = func(root *os.Root, rel string, data []byte, perm os.FileMode) error {
+		durable = append(durable, rel)
+		return orig(root, rel, data, perm)
+	}
+	t.Cleanup(func() { writeDurable = orig })
+	f := newFixture(t)
+	out := t.TempDir()
+	buildFixture(t, f, out)
+	if len(durable) != 1 || durable[0] != siteMarkerName {
+		t.Errorf("durable writes = %v, want the marker alone", durable)
+	}
+}
+
 // TestBuildClearsTheWreckageOfAFailedBuild is the property the write ORDER buys.
 //
 // A build that dies partway leaves a non-empty directory. If the marker were

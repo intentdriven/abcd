@@ -137,7 +137,7 @@ func TestLocalUsernameFindingNamesItsIdentitySource(t *testing.T) {
 }
 
 func TestGenericAccountNameFloor(t *testing.T) {
-	for _, name := range []string{"dev", "DEV", "runner", "root", "ubuntu", "ec2-user", "me", "a"} {
+	for _, name := range []string{"abcd", "dev", "DEV", "runner", "root", "ubuntu", "ec2-user", "me", "a"} {
 		if !isGenericAccountName(name) {
 			t.Errorf("%q should be under the generic-account floor", name)
 		}
@@ -289,6 +289,28 @@ func TestLocalUsernameRootHomeSpareADeeperAbsoluteSegment(t *testing.T) {
 	} {
 		if got := ScanText(line, id, pats, sev, "f"); !hasKind(got, kindLocalUser) {
 			t.Errorf("the home literal in %q was not flagged: %+v", line, got)
+		}
+	}
+}
+
+// The plugin's own install line reads as user@host, and it stands on the install
+// pages of a payload that a session under the cloud setup's account scans.
+func TestLocalUsernameProductAccountSparesThePluginSpecOnly(t *testing.T) {
+	pats, sev := DefaultPatterns(), DefaultIdentitySeverities()
+	id := Identity{HomeUser: "abcd"}
+	for _, line := range []string{
+		"/plugin install abcd@abcd-marketplace",
+		"run /plugin install abcd@abcd-marketplace.",
+		"(abcd@abcd-marketplace)",
+		"`abcd@abcd-marketplace`",
+	} {
+		if got := ScanText(line, id, pats, sev, "f"); hasKind(got, kindLocalUser) {
+			t.Errorf("%q reads as the caller's login: %v", line, got)
+		}
+	}
+	for _, line := range []string{"mail abcd@example.com", "mail abcd@abcd-marketplace.example.com", "mail abcd@abcd-marketplace2", "mail x-abcd@abcd-marketplace", "mail abcd@abcd-marketplace.éxample.com"} {
+		if got := ScanText(line, id, pats, sev, "f"); !hasKind(got, kindLocalUser) {
+			t.Errorf("%q no longer reads as the caller's login", line)
 		}
 	}
 }

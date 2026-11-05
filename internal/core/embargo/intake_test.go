@@ -356,17 +356,13 @@ func TestIntakeRefusesMalformedListingWritingNothing(t *testing.T) {
 // TestIntakeRefusesAnotherRepositorysStore: a store whose state names another
 // repository (a fork sharing the root commit) is not mixed with this one's.
 func TestIntakeRefusesAnotherRepositorysStore(t *testing.T) {
-	f, _ := intakeFixture(t)
-	s, _, err := openStore(f.home, f.repo.Root())
-	if err != nil {
-		t.Fatal(err)
-	}
+	f, _, s := openedIntakeFixture(t)
 	st := emptyState()
 	st.Repo = "example/other"
 	if err := s.SaveState(st); err != nil {
 		t.Fatal(err)
 	}
-	_, err = Intake(IntakeRequest{Home: f.home, RepoRoot: f.repo.Root()})
+	_, err := Intake(IntakeRequest{Home: f.home, RepoRoot: f.repo.Root()})
 	mustRefuse(t, err, "another repository")
 }
 

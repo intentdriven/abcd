@@ -374,7 +374,13 @@ func verifyLaneReceipt(c Context, lane *Lane, receiptRel, want string) error {
 		return fmt.Errorf("opening the checkout: %w", err)
 	}
 	defer root.Close()
-	rc, err := readReceipt(c.RepoRoot, root, receiptRel, lane.ID)
+	// A step's own read hands its bytes in, so what it judged is what is verified.
+	var rc LaneReceipt
+	if c.standingReceipt != nil {
+		rc, err = decodeReceipt(c.RepoRoot, c.standingReceipt, receiptRel, lane.ID)
+	} else {
+		rc, err = readReceipt(c.RepoRoot, root, receiptRel, lane.ID)
+	}
 	if err != nil {
 		return err
 	}
@@ -501,19 +507,24 @@ func modelFromRoute(c Context, rc *LaneReceipt) {
 // fault, so it is redacted through the canonical scanner for repoRoot rather
 // than quoted raw (iss-2609290300462829).
 func readReceipt(repoRoot string, root *os.Root, rel, laneID string) (LaneReceipt, error) {
-	var rc LaneReceipt
 	data, err := localtier.ReadInRoot(root, rel, maxReceiptBytes)
 	if errors.Is(err, fs.ErrNotExist) {
-		return rc, refuse("receipt", "", laneID, "no receipt at "+rel,
+		return LaneReceipt{}, refuse("receipt", "", laneID, "no receipt at "+rel,
 			"the implementer writes it there when its lane is built; hand it back once it exists")
 	}
 	if rf := tierRefusal("receipt", laneID, err); rf != nil {
-		return rc, rf
+		return LaneReceipt{}, rf
 	}
 	if err != nil {
-		return rc, refuse("receipt", "", laneID, fmt.Sprintf("%s cannot be read as a receipt: %v", rel, err),
+		return LaneReceipt{}, refuse("receipt", "", laneID, fmt.Sprintf("%s cannot be read as a receipt: %v", rel, err),
 			fmt.Sprintf("write the receipt as a regular file of at most %d bytes", maxReceiptBytes))
 	}
+	return decodeReceipt(repoRoot, data, rel, laneID)
+}
+
+// decodeReceipt decodes a receipt's bytes, read from rel.
+func decodeReceipt(repoRoot string, data []byte, rel, laneID string) (LaneReceipt, error) {
+	var rc LaneReceipt
 	// One strict decode, the one every trust-boundary reader shares: a repeated
 	// key is refused rather than read last-wins, so "exit_code":1,"exit_code":0
 	// cannot pass a failing definition of done (iss-2609262123574454).

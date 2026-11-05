@@ -100,15 +100,11 @@ func TestStoreCreatedDetachedOnce(t *testing.T) {
 // TestVerifyStoreRefusesBranchHead: a store someone put on a branch has a ref
 // that can be pushed, so every sub-verb refuses it.
 func TestVerifyStoreRefusesBranchHead(t *testing.T) {
-	f := newFixture(t)
-	s, _, err := openStore(f.home, f.repo.Root())
-	if err != nil {
-		t.Fatal(err)
-	}
+	f, s := openedFixture(t)
 	if out, err := storeGit(t, f, s.Root, "switch", "-c", "held"); err != nil {
 		t.Fatalf("switch: %v %s", err, out)
 	}
-	_, err = s.Verify()
+	_, err := s.Verify()
 	mustRefuse(t, err, "branch")
 	if _, _, err := openStore(f.home, f.repo.Root()); err == nil {
 		t.Fatal("openStore accepted a store on a branch")
@@ -118,11 +114,7 @@ func TestVerifyStoreRefusesBranchHead(t *testing.T) {
 // TestVerifyStoreRefusesTrackedRecord: a private record the store's index
 // tracks is one commit from the public history, so every sub-verb refuses.
 func TestVerifyStoreRefusesTrackedRecord(t *testing.T) {
-	f := newFixture(t)
-	s, _, err := openStore(f.home, f.repo.Root())
-	if err != nil {
-		t.Fatal(err)
-	}
+	f, s := openedFixture(t)
 	st := sampleState()
 	if err := s.SaveState(st); err != nil {
 		t.Fatal(err)
@@ -137,7 +129,7 @@ func TestVerifyStoreRefusesTrackedRecord(t *testing.T) {
 	if out, err := storeGit(t, f, s.Root, "add", "--", rec); err != nil {
 		t.Fatalf("add: %v %s", err, out)
 	}
-	_, err = s.Verify()
+	_, err := s.Verify()
 	mustRefuse(t, err, "tracks")
 	if strings.Contains(err.Error(), "private-report") {
 		t.Fatalf("the refusal names the record's file: %v", err)
@@ -190,15 +182,11 @@ func TestStoreRootOwnerOnly(t *testing.T) {
 // TestVerifyStoreRefusesRootOpenToOthers: a store's folder another account
 // can read or enter is refused, and the refusal says how to close it.
 func TestVerifyStoreRefusesRootOpenToOthers(t *testing.T) {
-	f := newFixture(t)
-	s, _, err := openStore(f.home, f.repo.Root())
-	if err != nil {
-		t.Fatal(err)
-	}
+	f, s := openedFixture(t)
 	if err := os.Chmod(s.Root, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	_, err = s.Verify()
+	_, err := s.Verify()
 	mustRefuse(t, err, "chmod 700")
 	if _, _, err := openStore(f.home, f.repo.Root()); err == nil {
 		t.Fatal("openStore accepted a store open to other accounts")
@@ -208,11 +196,7 @@ func TestVerifyStoreRefusesRootOpenToOthers(t *testing.T) {
 // TestVerifyStoreRefusesRecordOpenToOthers: a private record the state names
 // that another account could read is refused, without naming the record.
 func TestVerifyStoreRefusesRecordOpenToOthers(t *testing.T) {
-	f := newFixture(t)
-	s, _, err := openStore(f.home, f.repo.Root())
-	if err != nil {
-		t.Fatal(err)
-	}
+	_, s := openedFixture(t)
 	if err := s.SaveState(sampleState()); err != nil {
 		t.Fatal(err)
 	}
@@ -230,7 +214,7 @@ func TestVerifyStoreRefusesRecordOpenToOthers(t *testing.T) {
 	if err := os.Chmod(rec, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err = s.Verify()
+	_, err := s.Verify()
 	mustRefuse(t, err, "go-rwx")
 	if strings.Contains(err.Error(), "private-report") || strings.Contains(err.Error(), "iss-2610120000000002") {
 		t.Fatalf("the refusal names the record: %v", err)

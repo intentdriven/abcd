@@ -85,11 +85,7 @@ func TestStoreStateNamesOriginsRepository(t *testing.T) {
 func TestVerifyRefusesATrackedLocalTier(t *testing.T) {
 	for _, rel := range []string{StateRel, ".abcd/.WORK.LOCAL/embargo/notes.txt", ".ABCD/.work.local/x"} {
 		t.Run(rel, func(t *testing.T) {
-			f := newFixture(t)
-			s, _, err := openStore(f.home, f.repo.Root())
-			if err != nil {
-				t.Fatal(err)
-			}
+			f, s := openedFixture(t)
 			if err := s.SaveState(emptyState()); err != nil {
 				t.Fatal(err)
 			}
@@ -108,7 +104,7 @@ func TestVerifyRefusesATrackedLocalTier(t *testing.T) {
 			if out, err := storeGit(t, f, s.Root, "add", "-f", "--", rel); err != nil {
 				t.Fatalf("add: %v %s", err, out)
 			}
-			_, err = s.Verify()
+			_, err := s.Verify()
 			mustRefuse(t, err, "tracks a file in its local tier")
 		})
 	}
@@ -125,11 +121,7 @@ func TestVerifyRefusesAFolderSpelledAnotherWay(t *testing.T) {
 		".abcd/.wor\u212a.local/embargo": ".wor\u212a.local",
 	} {
 		t.Run(rel, func(t *testing.T) {
-			f := newFixture(t)
-			s, _, err := openStore(f.home, f.repo.Root())
-			if err != nil {
-				t.Fatal(err)
-			}
+			_, s := openedFixture(t)
 			dir := filepath.Join(s.Root, filepath.FromSlash(rel))
 			if err := os.MkdirAll(dir, 0o700); err != nil {
 				t.Fatal(err)
@@ -138,7 +130,7 @@ func TestVerifyRefusesAFolderSpelledAnotherWay(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(dir, "state.json"), data, 0o600); err != nil {
 				t.Fatal(err)
 			}
-			_, err = s.Verify()
+			_, err := s.Verify()
 			mustRefuse(t, err, "differs from")
 			exact := map[string]string{".Work.Local": ".work.local", "Embargo": "embargo", ".wor\u212a.local": ".work.local"}[found]
 			if want := fmt.Sprintf("rename %q to %s where it stands", found, exact); !strings.Contains(err.Error(), want) ||
@@ -152,11 +144,7 @@ func TestVerifyRefusesAFolderSpelledAnotherWay(t *testing.T) {
 // TestVerifyRefusesALinkedStateFolder: a folder on the state's path that is a
 // link is refused, so the state is never read from wherever it points.
 func TestVerifyRefusesALinkedStateFolder(t *testing.T) {
-	f := newFixture(t)
-	s, _, err := openStore(f.home, f.repo.Root())
-	if err != nil {
-		t.Fatal(err)
-	}
+	_, s := openedFixture(t)
 	elsewhere := filepath.Join(s.Root, "elsewhere")
 	if err := os.MkdirAll(elsewhere, 0o700); err != nil {
 		t.Fatal(err)
@@ -171,7 +159,7 @@ func TestVerifyRefusesALinkedStateFolder(t *testing.T) {
 	if err := os.Symlink(filepath.Join(elsewhere, ".abcd", ".work.local", "embargo"), filepath.Join(local, "embargo")); err != nil {
 		t.Fatal(err)
 	}
-	_, err = s.Verify()
+	_, err := s.Verify()
 	mustRefuse(t, err, "not a real directory")
 }
 
