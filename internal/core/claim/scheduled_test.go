@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/github"
 )
 
@@ -1190,7 +1191,7 @@ func TestTheStoreUsesTheRootCommitItIsHanded(t *testing.T) {
 	if calls == 0 {
 		t.Fatal("the store did not use the root commit it was handed")
 	}
-	entries, err := os.ReadDir(filepath.Join(p.home, ".abcd.noindex", scheduledStoreDir, handed))
+	entries, err := os.ReadDir(abcdhome.Path(p.home, scheduledStoreDir, handed))
 	if err != nil || len(entries) == 0 {
 		t.Fatalf("nothing kept under the handed root commit: %v, %v", entries, err)
 	}

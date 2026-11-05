@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/shellquote"
 )
@@ -131,7 +132,7 @@ func nameScheduledWorkflow(t *testing.T, root string) {
 // ageKeptAnswer dates every answer kept under home d earlier than it was.
 func ageKeptAnswer(t *testing.T, home string, d time.Duration) {
 	t.Helper()
-	files, err := filepath.Glob(filepath.Join(home, ".abcd.noindex", "scheduled-runs", "*", "*.json"))
+	files, err := filepath.Glob(abcdhome.Path(home, "scheduled-runs", "*", "*.json"))
 	if err != nil || len(files) == 0 {
 		t.Fatalf("no answer kept under %s: %v", home, err)
 	}
@@ -581,7 +582,7 @@ func TestThePromptDoesNotWalkHistoryAgainForTheStore(t *testing.T) {
 	if spawned.count() != 1 {
 		t.Fatalf("the prompt started %d refreshes; want 1", spawned.count())
 	}
-	stamps, err := filepath.Glob(filepath.Join(w.home, ".abcd.noindex", "scheduled-runs", handed, "*.attempt"))
+	stamps, err := filepath.Glob(abcdhome.Path(w.home, "scheduled-runs", handed, "*.attempt"))
 	if err != nil || len(stamps) != 1 {
 		t.Fatalf("the stamp is not under the root commit the prompt looked up: %v, %v", stamps, err)
 	}
