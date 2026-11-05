@@ -67,8 +67,8 @@ nothing is known.
 runs of the `schedule` event on `origin`'s default branch, 30 to a page), within
 five seconds, for the runs of the one workflow the repository names as
 `status.scheduled_workflow` in its own `.abcd/config.json`. A session may never run
-the verb, so the prompt hook also starts `abcd hook scheduled-refresh`, detached,
-when the answer is missing or an hour old, at most once in 15 minutes; the hook
+the verb, so the prompt hook also starts the same ask in a detached process when
+the answer is missing or an hour old, at most once in 15 minutes; the hook
 itself never touches the network and spends no more of its deadline than starting
 a process, and it starts none when its deadline is near. The core asks through a
 lookup its front door hands it, as it asks who pushed, and the forge is the adapter
