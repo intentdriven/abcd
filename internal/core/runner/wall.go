@@ -171,11 +171,11 @@ func CheckLogin(ctx context.Context, p Profile) error {
 	if err != nil {
 		return &WallError{WallLogin, "the harness could not be run"}
 	}
-	res, _ := l.run(ctx, Claude, bin, []string{"auth", "status", "--json"}, p.Env, p.Dir, wallLoginTimeout)
+	res, runErr := l.run(ctx, Claude, bin, []string{"auth", "status", "--json"}, p.Env, p.Dir, wallLoginTimeout)
 	var state struct {
 		LoggedIn bool `json:"loggedIn"`
 	}
-	if json.Unmarshal(res.stdout, &state) != nil || !state.LoggedIn {
+	if runErr != nil || json.Unmarshal(res.stdout, &state) != nil || !state.LoggedIn {
 		return &WallError{WallLogin, "the harness reports no login in the walled directory; log in once, in your own shell: " +
 			"CLAUDE_CONFIG_DIR=<the directory> claude, then the harness's own login step"}
 	}
@@ -294,7 +294,11 @@ func readWallProof(out []byte, named []string) error {
 			if len(ev.Plugins) > 0 {
 				return &WallError{WallPlugins, "the launch loaded " + safeWord(ev.Plugins[0].Name)}
 			}
-			if ev.APIKey != "" && ev.APIKey != "none" {
+			switch ev.APIKey {
+			case "none":
+			case "":
+				return &WallError{WallKey, "the harness did not report what it signs in with, so nothing shows that no key is in use"}
+			default:
 				return &WallError{WallKey, "the harness reports a key in use, not the walled login"}
 			}
 		case "hook_response":

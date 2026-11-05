@@ -24,6 +24,10 @@ func fakeWall(mode string) int {
 			fmt.Println(`{"loggedIn":false,"email":"never-kept@example.invalid"}`)
 			return 1
 		}
+		if mode == "wall-login-exit" {
+			fmt.Println(`{"loggedIn":true}`)
+			return 1
+		}
 		fmt.Println(`{"loggedIn":true,"email":"never-kept@example.invalid"}`)
 		return 0
 	}
@@ -57,6 +61,8 @@ func fakeWall(mode string) int {
 		init["plugins"] = []map[string]string{{"name": "persons-plugin"}}
 	case "wall-key":
 		init["apiKeySource"] = "ANTHROPIC_API_KEY"
+	case "wall-key-unsaid":
+		delete(init, "apiKeySource")
 	}
 	raw, _ := json.Marshal(init)
 	fmt.Println(string(raw))
@@ -177,19 +183,24 @@ func TestTheLoginWallAsksTheHarnessAndKeepsOnlyTheState(t *testing.T) {
 	if strings.Contains(err.Error(), "never-kept") {
 		t.Fatalf("no account identifier is kept: %v", err)
 	}
+	t.Setenv(fakeModeEnv, "wall-login-exit")
+	if err := CheckLogin(context.Background(), p); !errors.As(err, &we) || we.Wall != WallLogin {
+		t.Fatalf("a harness that failed proves no login, whatever it printed: %v", err)
+	}
 }
 
 // TestTheProofNamesEachWallThatDoesNotHold: the stand-in reports each wall held
 // or broken in turn.
 func TestTheProofNamesEachWallThatDoesNotHold(t *testing.T) {
 	for mode, wall := range map[string]string{
-		"wall-ok":      "",
-		"wall-tools":   WallTools,
-		"wall-servers": WallServers,
-		"wall-plugins": WallPlugins,
-		"wall-key":     WallKey,
-		"wall-guard":   WallGuard,
-		"wall-tree":    WallWorkingTree,
+		"wall-ok":         "",
+		"wall-tools":      WallTools,
+		"wall-servers":    WallServers,
+		"wall-plugins":    WallPlugins,
+		"wall-key":        WallKey,
+		"wall-key-unsaid": WallKey,
+		"wall-guard":      WallGuard,
+		"wall-tree":       WallWorkingTree,
 	} {
 		t.Run(mode, func(t *testing.T) {
 			f := newFake(t, mode, Claude)
