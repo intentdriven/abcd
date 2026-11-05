@@ -113,6 +113,7 @@ var helpPlacements = map[string]helpPlacement{
 	"dashboard": {group: groupSetUp},
 	"session":   {group: groupSetUp},
 	"update":    {group: groupSetUp},
+	"agents":    {group: groupRecords},
 	"build":     {group: groupRecords},
 	"capture":   {group: groupRecords},
 	"decide":    {group: groupRecords},

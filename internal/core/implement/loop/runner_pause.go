@@ -277,6 +277,7 @@ func releaseToHost(repoRoot, runID string, o Options, rs Runners, res StepResult
 	if !released {
 		return res, false, nil
 	}
+	listWithHost(context.Background(), rs.Config, out.Awaiting.Role, repoRoot, runner.LaunchWork{Run: runID, Lane: out.Lane, Await: out.Awaiting.Receipt})
 	if res.PerformedStage == "" {
 		return out, true, nil
 	}
@@ -441,6 +442,7 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		Model:     aw.Model,
 		SessionID: session,
 		Timeout:   timeout,
+		Work:      runner.LaunchWork{Run: runID, Lane: laneID, Await: aw.Receipt},
 	}
 	var done *StepResult
 	var refusedHandIn error

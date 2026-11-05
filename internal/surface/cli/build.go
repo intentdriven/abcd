@@ -1312,6 +1312,10 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 					// route instead when oracle.review selects one (itd-6).
 					res, err = loop.DriveReview(ctx, root, id, res, loop.DefaultStages(), loop.Options{}, review)
 				}
+				if err == nil {
+					// Only now is a role with the host known to stay there.
+					loop.ListHostRole(ctx, root, id, res, cfg)
+				}
 			}
 			var backOff *exitError
 			if errors.As(err, &backOff) {
