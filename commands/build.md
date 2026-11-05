@@ -209,6 +209,16 @@ check, and reports `resumed: true` with the same run and an empty `checks`: the
 run's own lanes move and claim the intent, so judging it again would refuse the
 run as its own peer.
 
+**A session whose setting reads as off a profile is warned while the away mode
+holds.** While `abcd mode autonomous` holds, or its record cannot be read, every
+`build` and `build next` that starts or resumes a run prints, after the move, one
+line on stderr opening `WARNING:` when the setting `/abcd:mode` describes reads as
+off a profile, and says why when the record was the doubt. Pass the line on to the
+person, as it asks. Nothing is refused and the exit code does not change. In the
+managed mode a build is one move at the person's direction and prints nothing; a
+refusal and `--release` start nothing and print nothing. This reads one setting and proves no wall, and the setting's value changes nothing
+the session holds.
+
 **Approval prompts are refused while the run runs.** A new run says so once,
 in one line on stderr (stdout's JSON is untouched; a resume says nothing).
 While the run is unfinished and its state was written within the last two

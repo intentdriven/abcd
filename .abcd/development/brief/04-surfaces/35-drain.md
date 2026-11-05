@@ -816,6 +816,14 @@ drain routes the hand-back and goes on unattended; refusal stops when the
 drain stops or after two hours with no activity. The move that begins a drain
 says so once, on stderr.
 
+## A session off a profile
+
+While the away mode holds, every move of a drain prints the off-profile line after
+the move, on the terms [`26-mode.md`](26-mode.md#a-session-off-a-profile) sets out
+(dcn-2611041550129278). Every move, rather than the first as with the approval
+prompts' notice, because a later move may be another session's. In the managed
+mode and on a dry run nothing prints.
+
 ## What it refuses
 
 The dry run and the bare verb both refuse, exit 2 with nothing written, when

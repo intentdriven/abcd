@@ -1076,6 +1076,15 @@ reviews are the only gate on what it says.
   before the build takes it, so the run ends complete with the plan written,
   and says so; the spec author is not built here.
 
+## A session off a profile
+
+While the away mode holds, a build that starts or resumes a run, whether the person
+named it or abcd picked it, prints the off-profile line after the move, on the terms
+[`26-mode.md`](26-mode.md#a-session-off-a-profile) sets out (dcn-2611041550129278). A
+resume prints it too, because the session resuming may not be the one that started
+the run. In the managed mode nothing prints. The line reads one setting and proves
+no wall.
+
 ## Approval prompts while it runs
 
 A run is unattended: nobody is at the terminal to answer the host's approval

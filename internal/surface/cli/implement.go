@@ -260,7 +260,11 @@ func newImplementJoinCommand(asJSON *bool) *cobra.Command {
 			"the second session, on top of the first session's). abcd does not run a session's agents: it counts the\n" +
 			"agents the session's own agent_start and agent_end lines declare alive, refuses an\n" +
 			"agent_start past the ceiling, and reports the count with every `check`. An agent the\n" +
-			"session never logs is invisible to it. A resume keeps the ceiling.",
+			"session never logs is invisible to it. A resume keeps the ceiling.\n\n" +
+			"A first session's join is how a session says it coordinates a run, so joining as first from a session\n" +
+			"whose setting reads as off a profile prints one line on stderr opening WARNING:, after the join, in any\n" +
+			"mode and on a resume, naming what abcd cannot check and addressed to the person; it never refuses and\n" +
+			"the exit code does not change. " + offProfileHelp,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			r, err := implement.ParseRole(role)
@@ -271,6 +275,9 @@ func newImplementJoinCommand(asJSON *bool) *cobra.Command {
 				res, err := run.Join(session, r, model, reason, ceiling)
 				if err != nil {
 					return err
+				}
+				if r == implement.RoleFirst {
+					warnOffProfile(cmd, "abcd implement join")
 				}
 				return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 					verb := "joined"
