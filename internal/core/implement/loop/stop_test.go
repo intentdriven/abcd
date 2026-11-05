@@ -11,14 +11,16 @@ import (
 	"context"
 	"github.com/intentdriven/abcd/internal/adapter/repoprompt/mcptest"
 	"github.com/intentdriven/abcd/internal/core/machineload"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/core/runstop"
 	"github.com/intentdriven/abcd/internal/core/sessionname"
 	"github.com/intentdriven/abcd/internal/gittest"
+	"strconv"
 )
 
 // stopFileIn is where the person's stop lives in folder.
 func stopFileIn(folder string) string {
-	return filepath.Join(folder, runstop.StopDirName, runstop.StopFileName)
+	return filepath.Join(folder, runstop.StopDirName+"-"+strconv.Itoa(os.Getuid()), runstop.StopFileName)
 }
 
 // checkOnce is the check a move makes, under the default stages.
@@ -441,6 +443,14 @@ func TestAgentStateErrsTowardsAlive(t *testing.T) {
 	if got := agentState(old, control{Driver: d}, nil, now); got != AgentUnknown {
 		t.Errorf("a host's agent whose driver cannot be judged: %s", got)
 	}
+	recent := Await{Since: now.Add(-time.Minute)}
+	if got := agentState(recent, control{Driver: d}, tab, now); got != AgentUnknown {
+		t.Errorf("a recent agent under a gone driver no session names: %s", got)
+	}
+	named := &LiveDriver{PID: 4100, StartUnix: now.Add(-time.Hour).Unix(), Session: "s"}
+	if got := agentState(recent, control{Driver: named}, tab, now); got != AgentLost {
+		t.Errorf("a host's agent whose named session is gone: %s", got)
+	}
 }
 
 // TestAGoneWorktreeHoldsNothingBack: a lane whose worktree no longer stands has
@@ -686,7 +696,8 @@ func TestADrainIsHeldWhenARunsSettingHasGone(t *testing.T) {
 	if err := os.Remove(settingOf(home)); err != nil {
 		t.Fatal(err)
 	}
-	wantStopRefusal(t, drainStop(repo.Root(), &DrainState{}, o))
+	_, err := drainStop(repo.Root(), &DrainState{}, o)
+	wantStopRefusal(t, err)
 }
 
 // TestTheStopHomeIsTheAccounts: a step under another HOME reads this account's
@@ -895,4 +906,276 @@ func handedReview(t *testing.T) (*gittest.Repo, string, StepResult, Stages, *mcp
 	}
 	srv := rpServer(func(string) string { return "" })
 	return repo, start.RunID, res, stages, srv, rpRoute(t, srv)
+}
+
+// handBackStanding leaves a lost lane with a hand-back receipt at its path.
+func handBackStanding(t *testing.T) (*gittest.Repo, string, Lane, string) {
+	t.Helper()
+	repo, runID, l, dir := awaitingLane(t)
+	writeReceipt(t, dir, handBackReceipt(t, runID, l, dir))
+	if err := os.WriteFile(filepath.Join(l.Worktree, "unsaved.txt"), []byte("work\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return repo, runID, l, dir
+}
+
+// TestAStopDoesNotDiscardALaneOnAHandBack: a stop collects what a run can take on its
+// own and saves the rest aside, so a hand-back standing at its path loses no work.
+func TestAStopDoesNotDiscardALaneOnAHandBack(t *testing.T) {
+	repo, runID, l, dir := handBackStanding(t)
+	o, _, _ := stopped(t)
+	later := time.Now().Add(3 * time.Hour)
+	o.Now = func() time.Time { return later }
+	wantStopRefusal(t, checkOnce(repo.Root(), runID, o))
+	st, err := ReadState(repo.Root(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Lanes[0].HandBack != nil || st.Lanes[0].Stage == StageHandedBack {
+		t.Fatalf("the stop handed the lane back: %+v", st.Lanes[0])
+	}
+	if _, meta := asideOf(t, dir); meta == nil {
+		t.Fatal("nothing was saved aside")
+	}
+	if _, err := os.Lstat(l.Worktree); err != nil {
+		t.Fatalf("the lane's worktree: %v", err)
+	}
+}
+
+// TestAnAgentsLaterHandInIsAnswered: a receipt a stop collected gets an answer when
+// its agent hands it in after.
+func TestAnAgentsLaterHandInIsAnswered(t *testing.T) {
+	repo, runID, l, dir := awaitingLane(t)
+	c1 := laneCommit(t, repo, l, "one.txt")
+	path := writeReceipt(t, dir, goodReceipt(t, runID, l, dir, c1))
+	o, _, _ := stopped(t)
+	wantStopRefusal(t, checkOnce(repo.Root(), runID, o))
+	if _, err := Receipt(repo.Root(), runID, path, DefaultStages(), o); err != nil {
+		t.Fatalf("the agent's own hand-in: %v", err)
+	}
+}
+
+// TestAReceiptTakenIsNotAnsweredAsAFailure: a verified receipt is answered as taken,
+// whatever then stands in the way of the stop's check.
+func TestAReceiptTakenIsNotAnsweredAsAFailure(t *testing.T) {
+	repo, runID, l, dir := awaitingLane(t)
+	c1 := laneCommit(t, repo, l, "one.txt")
+	path := writeReceipt(t, dir, goodReceipt(t, runID, l, dir, c1))
+	home, _ := stopWorld(t, false)
+	p := filepath.Join(repo.Root(), filepath.FromSlash(controlRel(runID)))
+	if err := os.WriteFile(p, []byte("not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Receipt(repo.Root(), runID, path, DefaultStages(), Options{stopHome: home})
+	if err != nil {
+		t.Fatalf("a receipt taken was answered as a failure: %v", err)
+	}
+	if !strings.Contains(res.Next, "control") {
+		t.Fatalf("the answer does not say what stands in the way: %q", res.Next)
+	}
+}
+
+// TestASettleLeavesARunAtAnotherSchemaToItsDriver: a binary at another schema does not
+// rewrite a run's state to settle it.
+func TestASettleLeavesARunAtAnotherSchemaToItsDriver(t *testing.T) {
+	st := State{SchemaVersion: SchemaVersion - 1}
+	if settlesHere(st) {
+		t.Fatal("an older state settled here")
+	}
+	st.SchemaVersion = SchemaVersion
+	if !settlesHere(st) {
+		t.Fatal("this binary's own state did not settle")
+	}
+}
+
+// aStopArrivesAfterTheCheck sets a stop's mark between a move's check and its lock.
+func aStopArrivesAfterTheCheck(t *testing.T, root, runID string) {
+	t.Helper()
+	old := afterStopCheck
+	t.Cleanup(func() { afterStopCheck = old })
+	afterStopCheck = func() {
+		afterStopCheck = old
+		if err := mutate(root, runID, func(r *os.Root, _ *State) (bool, error) {
+			c, err := readControl(r, runID)
+			if err != nil {
+				return false, err
+			}
+			at := time.Now()
+			c.Stop = &RunStop{SetBy: "a person", SetAt: at, NotedAt: at, HaltedAt: &at, FromFile: true}
+			return false, writeControl(r, runID, c)
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// TestAStepRereadsTheStopUnderTheLock: a step that passed its check does not act on a
+// run that let its claims go since.
+func TestAStepRereadsTheStopUnderTheLock(t *testing.T) {
+	repo, runID, _, _ := awaitingLane(t)
+	home, _ := stopWorld(t, false)
+	aStopArrivesAfterTheCheck(t, repo.Root(), runID)
+	_, err := advance(repo.Root(), runID, DefaultStages(), Options{stopHome: home})
+	wantStopRefusal(t, err)
+}
+
+// TestARoutedAwaitRereadsTheStopUnderTheLock: nor does a routed await start one.
+func TestARoutedAwaitRereadsTheStopUnderTheLock(t *testing.T) {
+	repo, runID, l, _ := awaitingLane(t)
+	home, _ := stopWorld(t, false)
+	st, err := ReadState(repo.Root(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	aStopArrivesAfterTheCheck(t, repo.Root(), runID)
+	_, err = dispatchAwait(context.Background(), repo.Root(), runID, DefaultStages(), Options{stopHome: home},
+		Runners{Config: &runner.Config{}}, l.ID, st.Lanes[0].Awaits[0], "", StepResult{})
+	wantStopRefusal(t, err)
+}
+
+// TestARoutedAwaitThatNeverStartedHoldsNothing: a routed await a stop refused before it
+// began is no agent in its call, so the run settles.
+func TestARoutedAwaitThatNeverStartedHoldsNothing(t *testing.T) {
+	repo, runID, l, _ := awaitingLane(t)
+	o, _, _ := stopped(t)
+	st, err := ReadState(repo.Root(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = dispatchAwait(context.Background(), repo.Root(), runID, DefaultStages(), o,
+		Runners{Config: &runner.Config{}}, l.ID, st.Lanes[0].Awaits[0], "", StepResult{})
+	wantStopRefusal(t, err)
+	c := controlOf(t, repo.Root(), runID)
+	if c.Stop == nil || c.Stop.HaltedAt == nil {
+		t.Fatalf("an await that never started holds the stop: %+v", c.Stop)
+	}
+}
+
+// TestALiftIsNotSaidOverARefusedRead: a halted run is told the stop lifted only when
+// the read saw that it did.
+func TestALiftIsNotSaidOverARefusedRead(t *testing.T) {
+	repo, runID, _, _, _ := deadLane(t)
+	o, _, folder := stopped(t)
+	later := time.Now().Add(3 * time.Hour)
+	o.Now = func() time.Time { return later }
+	wantStopRefusal(t, checkOnce(repo.Root(), runID, o))
+	p := stopFileIn(folder)
+	if err := os.Remove(p); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("/nonexistent", p); err != nil {
+		t.Fatal(err)
+	}
+	if r := wantStopRefusal(t, checkOnce(repo.Root(), runID, o)); strings.Contains(r.Reason, "has lifted") {
+		t.Fatalf("the refusal says %q", r.Reason)
+	}
+}
+
+// TestALiftIsNotSaidOverASignalsStop: nor over a stop that came from no file.
+func TestALiftIsNotSaidOverASignalsStop(t *testing.T) {
+	repo, runID, _, _, _ := deadLane(t)
+	home, _ := stopWorld(t, false)
+	later := time.Now().Add(3 * time.Hour)
+	o := Options{stopHome: home, Now: func() time.Time { return later }}
+	if _, err := haltOnce(repo.Root(), runID, runstop.Stop{SetBy: "a signal", SetAt: later}, o); err != nil {
+		t.Fatal(err)
+	}
+	if r := wantStopRefusal(t, checkOnce(repo.Root(), runID, o)); strings.Contains(r.Reason, "lifted") || strings.Contains(r.Remedy, "--lift") {
+		t.Fatalf("the refusal says %q; %q", r.Reason, r.Remedy)
+	}
+}
+
+// TestAStartNamesARefusedRead: what a read refused is said at a run's start.
+func TestAStartNamesARefusedRead(t *testing.T) {
+	repo := briefRepo(t, agentsMarked)
+	home, folder := stopWorld(t, true)
+	if err := os.Symlink("/nonexistent", stopFileIn(folder)); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Start(repo.Root(), "itd-10", Options{stopHome: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(res.Diagnostics, " "), runstop.StopFileName) {
+		t.Fatalf("the start's diagnostics: %q", res.Diagnostics)
+	}
+}
+
+// TestADrainNamesARefusedRead: and at a drain's move.
+func TestADrainNamesARefusedRead(t *testing.T) {
+	repo, _ := reservingDrainRepo(t, "commands/drain.md")
+	home, folder := stopWorld(t, true)
+	if err := os.Symlink("/nonexistent", stopFileIn(folder)); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Drain(repo.Root(), Options{stopHome: home}, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(res.Next, runstop.StopFileName) {
+		t.Fatalf("the drain's answer: %q", res.Next)
+	}
+}
+
+// TestAStopTakesNothingOverAChangedConfiguration: collecting a receipt verifies it with
+// git, so a changed configuration holds that too.
+func TestAStopTakesNothingOverAChangedConfiguration(t *testing.T) {
+	repo, runID, l, dir := awaitingLane(t)
+	c1 := laneCommit(t, repo, l, "one.txt")
+	writeReceipt(t, dir, goodReceipt(t, runID, l, dir, c1))
+	o, _, _ := stopped(t)
+	repo.Git("config", "core.fsmonitor", "/tmp/planted")
+	wantStopRefusal(t, checkOnce(repo.Root(), runID, o))
+	st, err := ReadState(repo.Root(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Lanes[0].Awaits) == 0 {
+		t.Fatalf("the receipt was collected over a changed configuration: %+v", st.Lanes[0])
+	}
+}
+
+// TestAStopReleasesNothingOverAChangedConfiguration: nor is a release pushed.
+func TestAStopReleasesNothingOverAChangedConfiguration(t *testing.T) {
+	repo, runID, _, _, _ := deadLane(t)
+	bare := onOriginAccepted(t, repo, runID)
+	now := time.Now().UTC().Truncate(time.Second)
+	reserveRun(t, repo, runID, "itd-10", now, "commands/x.md")
+	if err := mutate(repo.Root(), runID, func(_ *os.Root, st *State) (bool, error) {
+		st.Lanes[0].Stage = StageHandedBack
+		st.Lanes[0].Awaits = nil
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	o, _, _ := stopped(t)
+	repo.Git("config", "core.fsmonitor", "/tmp/planted")
+	wantStopRefusal(t, checkOnce(repo.Root(), runID, o))
+	if got := originReservation(t, bare, reservedRef); got.released {
+		t.Fatalf("released over a changed configuration: %+v", got)
+	}
+}
+
+// TestThePageNamesNoReleaseClause: what became of a reservation can name its holder, so
+// the page does not carry it.
+func TestThePageNamesNoReleaseClause(t *testing.T) {
+	repo, runID, _, _, _ := deadLane(t)
+	onOriginAccepted(t, repo, runID)
+	now := time.Now().UTC().Truncate(time.Second)
+	reserveRun(t, repo, runID, "itd-10", now, "commands/x.md")
+	o, _, folder := stopped(t)
+	later := now.Add(3 * time.Hour)
+	o.Now = func() time.Time { return later }
+	wantStopRefusal(t, checkOnce(repo.Root(), runID, o))
+	c := controlOf(t, repo.Root(), runID)
+	if c.Stop == nil || c.Stop.Released == "" {
+		t.Fatalf("the stop's account: %+v", c.Stop)
+	}
+	page, err := os.ReadFile(filepath.Join(folder, runstop.DigestDir, later.UTC().Format(time.DateOnly)+".md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(page), c.Stop.Released) {
+		t.Fatalf("the page carries the release clause:\n%s", page)
+	}
 }

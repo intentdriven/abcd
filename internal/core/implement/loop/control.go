@@ -197,20 +197,37 @@ func ClaimDriver(repoRoot, runID string, o Options) error {
 		}
 		return nil
 	}
-	return claimDriver(repoRoot, runID, o)
+	return claimDriver(repoRoot, runID, o, false)
 }
 
-// claimDriver is ClaimDriver's claim, which a take-over makes directly.
-func claimDriver(repoRoot, runID string, o Options) error {
+// driverOf is the process a step's run is driven by: the nearest one above it that
+// holds a session, so a program a host wraps one step in does not stand as the driver,
+// and without one the host walk's answer.
+func driverOf(tab sessionname.Table, from int, home string) (sessionname.Host, string, error) {
+	if home != "" {
+		for _, h := range sessionname.Lineage(tab, from) {
+			if s := occupancy.SessionOn(home, h); s != "" {
+				return h, s, nil
+			}
+		}
+	}
+	h, err := sessionname.FindHost(tab, from)
+	return h, "", err
+}
+
+// claimDriver is ClaimDriver's claim, which a take-over makes directly. over says a
+// live driver gives way: a run every lane of which has settled has no agent in its
+// call, and an idle session does not hold it from being taken over.
+func claimDriver(repoRoot, runID string, o Options, over bool) error {
 	tab, err := readProcs()
 	if err != nil {
 		return nil
 	}
-	here, hostErr := sessionname.FindHost(tab, hereFrom())
-	session := o.Session
 	home := o.stopHomeOf()
-	if hostErr == nil && session == "" && home != "" {
-		session = occupancy.SessionOn(home, here)
+	here, marked, hostErr := driverOf(tab, hereFrom(), home)
+	session := o.Session
+	if session == "" {
+		session = marked
 	}
 	return mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		now := o.now()
@@ -236,7 +253,7 @@ func claimDriver(repoRoot, runID string, o Options) error {
 				}
 				alive = fresh.Alive(d.host())
 			}
-			if alive {
+			if alive && !over {
 				return false, contend(StageDriver, "", "", fmt.Sprintf("%s is driven by %s, which has been alive since it took the run at %s",
 					st.RunID, driverName(*d), d.At.UTC().Format(time.RFC3339)),
 					"back off: only one driver steps a run; once that driver is gone, `abcd implement resume` lists what it left")

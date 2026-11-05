@@ -389,8 +389,9 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 	// The last moment before an agent starts: a stop set since the step began
 	// starts nothing (stop.go).
 	if _, err := stopCheck(repoRoot, runID, steps, o); err != nil {
-		return StepResult{}, err
+		return StepResult{}, notStartedUnderStop(repoRoot, runID, aw.Receipt, steps, o, err)
 	}
+	afterStopCheck()
 	route := rs.Config.RouteFor(aw.Role)
 	timeout := rs.Timeout
 	if timeout <= 0 {
@@ -399,6 +400,12 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 	session := fmt.Sprintf("%s-%s-%s-%d", runID, laneID, aw.Role, o.now().Unix())
 	var worktree, base string
 	err := mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+		// A stop may have come since the check: under the lock it starts nothing.
+		if c, err := readControl(root, runID); err != nil {
+			return false, err
+		} else if c.Stop != nil {
+			return false, stopRefusal(runID, *c.Stop)
+		}
 		now := o.now()
 		i, k := st.findAwait(repoRoot, aw.Receipt)
 		if i < 0 || st.Lanes[i].ID != laneID {
@@ -427,6 +434,9 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		st.UpdatedAt = now
 		return true, nil
 	})
+	if rf, ok := AsRefusal(err); ok && rf.Stage == StageStop {
+		return StepResult{}, notStartedUnderStop(repoRoot, runID, aw.Receipt, steps, o, err)
+	}
 	if err != nil {
 		return on, err
 	}

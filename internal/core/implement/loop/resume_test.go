@@ -10,9 +10,11 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/machineload"
+	"github.com/intentdriven/abcd/internal/core/occupancy"
 	"github.com/intentdriven/abcd/internal/core/runstop"
 	"github.com/intentdriven/abcd/internal/core/sessionname"
 	"github.com/intentdriven/abcd/internal/gittest"
+	"strconv"
 )
 
 // A fixture process table: the walk starts at the shell, whose parent is a host.
@@ -557,7 +559,7 @@ func TestAStepSettlesAStopBeforeItClaims(t *testing.T) {
 	home, _ := stopWorld(t, true)
 	o := Options{stopHome: home}
 	procsOf(t, hostOne, hostOne)
-	if err := ClaimDriver(repo.Root(), runID, o); err != nil {
+	if err := ClaimDriver(repo.Root(), runID, Options{stopHome: home, Session: "gone-session"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := runstop.Set(home, time.Now()); err != nil {
@@ -575,4 +577,168 @@ func TestAStepSettlesAStopBeforeItClaims(t *testing.T) {
 		t.Fatalf("the step claimed the run under a stop: %+v", c.Driver)
 	}
 	asideOf(t, dir)
+}
+
+// TestARecordedDriverIsTheSessionNotItsWrapper: a one-shot program between a host and
+// a step does not stand as the driver, so its exit does not read as the host gone.
+func TestARecordedDriverIsTheSessionNotItsWrapper(t *testing.T) {
+	repo, runID, _, _ := awaitingLane(t)
+	home, _ := stopWorld(t, false)
+	now := time.Now()
+	const host, wrapper, shell = 4100, 4150, 4160
+	tab := sessionname.Table{ReadAt: now, Procs: []machineload.Proc{
+		{PID: host, PPID: 1, Name: "host", Age: time.Hour},
+		{PID: wrapper, PPID: host, Name: "timeout", Age: time.Second},
+		{PID: shell, PPID: wrapper, Name: "zsh", Age: time.Second},
+	}}
+	if err := occupancy.Note(home, "s-one", repo.Root(), sessionname.Host{PID: host, StartUnix: now.Add(-time.Hour).Unix()}, tab); err != nil {
+		t.Fatal(err)
+	}
+	oldProcs, oldFrom := readProcs, hereFrom
+	t.Cleanup(func() { readProcs, hereFrom = oldProcs, oldFrom })
+	readProcs = func() (sessionname.Table, error) { return tab, nil }
+	hereFrom = func() int { return shell }
+	if err := ClaimDriver(repo.Root(), runID, Options{stopHome: home}); err != nil {
+		t.Fatal(err)
+	}
+	if c := controlOf(t, repo.Root(), runID); c.Driver == nil || c.Driver.PID != host || c.Driver.Session != "s-one" {
+		t.Fatalf("the driver: %+v", c.Driver)
+	}
+}
+
+// TestATakeOverChecksTheConfigurationFirst: a take-over runs git from its first move, so
+// a changed configuration refuses it before it collects anything.
+func TestATakeOverChecksTheConfigurationFirst(t *testing.T) {
+	repo, runID, l, dir := awaitingLane(t)
+	c1 := laneCommit(t, repo, l, "one.txt")
+	writeReceipt(t, dir, goodReceipt(t, runID, l, dir, c1))
+	home, _ := stopWorld(t, false)
+	repo.Git("config", "core.fsmonitor", "/tmp/planted")
+	if _, err := TakeRun(repo.Root(), runID, Options{stopHome: home}); err == nil {
+		t.Fatal("the take-over stepped over a changed configuration")
+	}
+	st, err := ReadState(repo.Root(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Lanes[0].Awaits) == 0 {
+		t.Fatalf("it collected first: %+v", st.Lanes[0])
+	}
+	if c := controlOf(t, repo.Root(), runID); c.Driver != nil {
+		t.Fatalf("it claimed first: %+v", c.Driver)
+	}
+}
+
+// TestARefusedTakeOverSaysWhatItDid: a reservation refused after the driver was claimed
+// and receipts collected says so.
+func TestARefusedTakeOverSaysWhatItDid(t *testing.T) {
+	repo, runID, _, _, _ := deadLane(t)
+	specHasFootprint(t, repo)
+	bare := onOriginAccepted(t, repo, runID)
+	now := time.Now().UTC().Truncate(time.Second)
+	reserveRun(t, repo, runID, "itd-10", now, "commands/x.md")
+	o, home, _ := stopped(t)
+	later := now.Add(3 * time.Hour)
+	o.Now = func() time.Time { return later }
+	wantStopRefusal(t, checkOnce(repo.Root(), runID, o))
+	if _, err := runstop.Lift(home, later); err != nil {
+		t.Fatal(err)
+	}
+	q := otherCopy(t, bare, quinnEmail)
+	if _, err := claim.Reserve(q, claim.Request{Record: "itd-10", Footprint: []string{"commands/x.md"}}, as(t, q, clockAt(later))); err != nil {
+		t.Fatal(err)
+	}
+	procsOf(t, hostTwo, hostTwo)
+	_, err := TakeRun(repo.Root(), runID, o)
+	r, ok := AsRefusal(err)
+	if !ok || !strings.Contains(r.Wrote, "driver") {
+		t.Fatalf("the refusal: %+v, %v", r, err)
+	}
+}
+
+// TestAHaltedRunIsNotHeldByItsIdleDriver: every lane has settled, so the listing names
+// the take-over and an idle driver's session does not stand in its way.
+func TestAHaltedRunIsNotHeldByItsIdleDriver(t *testing.T) {
+	repo, runID, _, _, _ := deadLane(t)
+	o, home, _ := stopped(t)
+	later := time.Now().Add(3 * time.Hour)
+	o.Now = func() time.Time { return later }
+	procsOf(t, hostOne, hostOne, hostTwo)
+	if err := claimDriver(repo.Root(), runID, Options{stopHome: home, Session: "idle", Now: o.Now}, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := mutate(repo.Root(), runID, func(_ *os.Root, st *State) (bool, error) {
+		st.Lanes[0].Awaits[0].Kept = "gone"
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	wantStopRefusal(t, checkOnce(repo.Root(), runID, o))
+	if c := controlOf(t, repo.Root(), runID); c.Stop == nil || c.Stop.HaltedAt == nil {
+		t.Fatalf("the run did not halt: %+v", c.Stop)
+	}
+	if _, err := runstop.Lift(home, later); err != nil {
+		t.Fatal(err)
+	}
+	procsOf(t, hostTwo, hostOne, hostTwo)
+	l, err := ListRuns(repo.Root(), runID, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next := theRun(t, l, runID).Next; !strings.Contains(next, "--take") {
+		t.Fatalf("the listing says %q", next)
+	}
+	if _, err := TakeRun(repo.Root(), runID, o); err != nil {
+		t.Fatalf("the take-over: %v", err)
+	}
+}
+
+// TestTheListingSanitisesWhatItReads: a control record's text is made safe before it is
+// written out, in JSON too.
+func TestTheListingSanitisesWhatItReads(t *testing.T) {
+	repo, runID, _, _ := awaitingLane(t)
+	home, _ := stopWorld(t, false)
+	if err := mutate(repo.Root(), runID, func(r *os.Root, _ *State) (bool, error) {
+		at := time.Now()
+		return false, writeControl(r, runID, control{
+			Driver: &LiveDriver{Session: "s\x1b[31m", PID: 1, At: at},
+			Stop:   &RunStop{SetBy: "p\x1b[31m", SetAt: at, NotedAt: at, Released: "r\x1b[31m", Left: []StopLeft{{Lane: "l", Note: "n\x1b[31m"}}},
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	l, err := ListRuns(repo.Root(), runID, Options{stopHome: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := theRun(t, l, runID)
+	for _, got := range []string{r.Driver.Session, r.Stop.SetBy, r.Stop.Released, r.Stop.Left[0].Note} {
+		if strings.ContainsRune(got, 0x1b) {
+			t.Fatalf("%q went out as it was read", got)
+		}
+	}
+}
+
+// TestTheListingNamesAStopAnotherAccountLeft: which is not honoured, and is said.
+func TestTheListingNamesAStopAnotherAccountLeft(t *testing.T) {
+	repo, _, _, _ := awaitingLane(t)
+	home, _ := stopWorld(t, false)
+	folder := t.TempDir()
+	dir := filepath.Join(folder, runstop.StopDirName+"-"+strconv.Itoa(os.Getuid()+1))
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, runstop.StopFileName), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	old := runstop.WellKnownFolder
+	runstop.WellKnownFolder = func() string { return folder }
+	t.Cleanup(func() { runstop.WellKnownFolder = old })
+	l, err := ListRuns(repo.Root(), "", Options{stopHome: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(l.Notices) != 1 || l.Stop != nil {
+		t.Fatalf("the listing: %+v", l)
+	}
 }

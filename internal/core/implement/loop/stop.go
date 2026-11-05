@@ -59,6 +59,9 @@ func accountStopHome() string {
 	return home
 }
 
+// afterStopCheck runs between a move's check and its lock; a test sets a stop there.
+var afterStopCheck = func() {}
+
 // stopReadingOff is set by the package's TestMain alone: a stop on the machine
 // running the tests stops no test, and a test of the stop names its own home.
 var stopReadingOff bool
@@ -91,7 +94,7 @@ func stopCheck(repoRoot, runID string, steps Stages, o Options) (string, error) 
 		return "", err
 	}
 	r := o.stopRead(c.Shared)
-	note := termsafe.Sanitize(strings.Join(r.Refused, "; "))
+	note := readingNote(r)
 	settle := func(s runstop.Stop) (string, error) {
 		rec, err := haltRun(repoRoot, runID, s, steps, o)
 		if err != nil || rec == nil {
@@ -115,8 +118,15 @@ func stopCheck(repoRoot, runID string, steps Stages, o Options) (string, error) 
 	case mark == nil:
 		return note, nil
 	case mark.HaltedAt != nil:
-		return note, contend(StageStop, "", "", fmt.Sprintf("%s was halted by a stop set by %s at %s, and let its claims go; the stop has lifted",
-			runID, termsafe.Sanitize(mark.SetBy), mark.SetAt.UTC().Format(time.RFC3339)),
+		said := "the stop has lifted"
+		switch {
+		case !mark.FromFile:
+			said = "it came from a signal"
+		case len(r.Refused) > 0:
+			said = "the read of where it stood was refused, so whether it lifted cannot be told"
+		}
+		return note, contend(StageStop, "", "", fmt.Sprintf("%s was halted by a stop set by %s at %s, and let its claims go; %s",
+			runID, termsafe.Sanitize(mark.SetBy), mark.SetAt.UTC().Format(time.RFC3339), said),
 			"run `abcd implement resume --take "+runID+"`, which reserves the work again before anything steps")
 	case !mark.FromFile:
 		// A signal's stop has no file to lift: it settles, and stays.
@@ -128,6 +138,12 @@ func stopCheck(repoRoot, runID string, steps Stages, o Options) (string, error) 
 	// Lifted before the run let its claims go: it holds them still, so it just
 	// goes on.
 	return note, goOnAfterLift(repoRoot, runID, o)
+}
+
+// readingNote is what a read has to say beyond its answer: each file it refused and
+// each stop another account left.
+func readingNote(r runstop.Reading) string {
+	return termsafe.Sanitize(strings.Join(append(slices.Clone(r.Refused), r.Foreign...), "; "))
 }
 
 // runControl is the run's control record, read without the lock; an empty one for
@@ -236,9 +252,12 @@ func stopRefusal(runID string, rec RunStop) error {
 	case heldBySave(&rec):
 		state = "with work that could not be saved aside still in place, so it keeps its claims until the work is saved; the run record names it"
 	}
+	remedy := "the person's own `abcd implement stop --lift` lifts it; hand back any receipt you hold with `abcd implement receipt`, then stop"
+	if !rec.FromFile {
+		remedy = "it came from a signal, and `abcd implement resume --take " + runID + "` takes the run over once it has settled; hand back any receipt you hold with `abcd implement receipt`, then stop"
+	}
 	return contend(StageStop, "", "", fmt.Sprintf("a stop set by %s at %s holds: %s is halted %s, and nothing further starts",
-		termsafe.Sanitize(rec.SetBy), rec.SetAt.UTC().Format(time.RFC3339), runID, state),
-		"the person's own `abcd implement stop --lift` lifts it; hand back any receipt you hold with `abcd implement receipt`, then stop")
+		termsafe.Sanitize(rec.SetBy), rec.SetAt.UTC().Format(time.RFC3339), runID, state), remedy)
 }
 
 // haltRun applies a stop in its order, one read from the file or one that did not
@@ -270,7 +289,9 @@ func haltRun(repoRoot, runID string, s runstop.Stop, steps Stages, o Options) (*
 		st.Record = append(st.Record, Entry{At: now, Stage: StageStop,
 			Note: fmt.Sprintf("a stop set by %s at %s: no lane opens, no stage is handed out and no agent starts", c.Stop.SetBy, s.SetAt.UTC().Format(time.RFC3339))})
 		st.UpdatedAt = now
-		logStopEvent(repoRoot, driver, c.Stop.SetBy, s.SetAt)
+		if configTripwireIn(repoRoot, root, runID) == nil {
+			logStopEvent(repoRoot, driver, c.Stop.SetBy, s.SetAt)
+		}
 		return true, nil
 	})
 	if err != nil || rec == nil {
@@ -284,7 +305,12 @@ func haltRun(repoRoot, runID string, s runstop.Stop, steps Stages, o Options) (*
 	if tabErr == nil {
 		seen = &tab
 	}
-	collected := collectArrived(repoRoot, runID, steps, seen, o)
+	// Collecting a receipt verifies it with git: a configuration changed during the
+	// run holds that too, and settleStop says so.
+	collected := map[string]string{}
+	if configTripwire(repoRoot, runID) == nil {
+		collected = collectArrived(repoRoot, runID, steps, seen, o)
+	}
 	err = mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		c, err := readControl(root, runID)
 		if err != nil {
@@ -383,12 +409,16 @@ func agentState(a Await, c control, tab *sessionname.Table, now time.Time) Agent
 		return AgentLost
 	}
 	if c.Driver != nil {
-		// A host's agent lives in its driver: gone with it, and otherwise taken to
-		// be in its call for as long as the driver lives or cannot be judged.
+		// A host's agent lives in its driver's session: gone with it, and otherwise
+		// taken to be in its call for as long as the driver lives or cannot be
+		// judged. A driver no session names may be a program that has simply
+		// exited, so its going says nothing and the lease decides.
 		if tab == nil || tab.Alive(c.Driver.host()) {
 			return AgentUnknown
 		}
-		return AgentLost
+		if c.Driver.Session != "" {
+			return AgentLost
+		}
 	}
 	if now.Sub(a.Since) < lease.Default {
 		return AgentUnknown
@@ -432,7 +462,10 @@ func collectArrived(repoRoot, runID string, steps Stages, tab *sessionname.Table
 			if !receiptArrived(repoRoot, runID, lane.ID, root, a) || agentState(a, c, tab, now) == AgentAlive {
 				continue
 			}
-			if _, err := receipt(repoRoot, runID, a.Receipt, steps, o, nil); err != nil {
+			// An implementer's receipt is taken as a step takes one where it stood, so
+			// one that hands the lane back is left for a person, and its agent's own
+			// hand-in later gets an answer. Validators' are handed in as ever.
+			if _, err := handIn(repoRoot, runID, a.Receipt, steps, o, nil, a.Role == RoleImplementer); err != nil {
 				said = append(said, fmt.Sprintf("the %s's receipt at %s did not verify: %s", a.Role, a.Receipt, fsutil.RedactHome(err.Error())))
 				continue
 			}
@@ -505,7 +538,8 @@ func settleStop(repoRoot string, root *os.Root, st *State, c *control, tab *sess
 		}
 	}
 	rec.Left = left
-	if waiting {
+	// A release runs git too, so a changed configuration holds it.
+	if waiting || tripped != nil {
 		return
 	}
 	rec.Released = noReservationHeld
@@ -628,6 +662,48 @@ func stopEndsRenewal(repoRoot string, st State, now time.Time) bool {
 	return !heldBySave(c.Stop)
 }
 
+// settlesHere reports whether this binary may settle st: it writes the state at its
+// own schema, so a run at another stays with its driver's own check, and its lease
+// lapses if that check does not come first.
+func settlesHere(st State) bool { return st.SchemaVersion == SchemaVersion }
+
+// notStartedUnderStop answers a routed await a stop refused before it began: no agent
+// is out for it, so it is marked as not started and takes the stop as one that was
+// lost, which a take-over re-tells. It returns the refusal the run now gives.
+func notStartedUnderStop(repoRoot, runID, receiptPath string, steps Stages, o Options, refused error) error {
+	if rf, ok := AsRefusal(refused); !ok || rf.Stage != StageStop {
+		return refused
+	}
+	err := mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+		c, err := readControl(root, runID)
+		if err != nil || c.Stop == nil {
+			return false, err
+		}
+		i, k := st.findAwait(repoRoot, receiptPath)
+		if i < 0 {
+			return false, nil
+		}
+		a := st.Lanes[i].Awaits[k]
+		if a.Running != nil || a.Paused != nil || a.Kept != "" {
+			return false, nil
+		}
+		a.Kept = stopKeptPrefix + c.Stop.SetBy + ": it had not started"
+		lane := st.Lanes[i]
+		lane.Awaits = slices.Clone(lane.Awaits)
+		lane.Awaits[k] = a
+		st.Lanes[i] = lane
+		st.UpdatedAt = o.now()
+		return true, nil
+	})
+	if err != nil {
+		return err
+	}
+	if _, again := stopCheck(repoRoot, runID, steps, o); again != nil {
+		return again
+	}
+	return refused
+}
+
 // heldBySave reports whether a lane of the stop has work a save could not take, with
 // no agent left to wait for.
 func heldBySave(rec *RunStop) bool {
@@ -685,7 +761,7 @@ func composeStopPage(repoRoot string, rec RunStop, o Options) {
 			if err != nil {
 				continue
 			}
-			fmt.Fprintf(&b, "- %s (%s, in %s): %s\n", st.RunID, st.Key, fsutil.RedactHome(checkout), termsafe.Sanitize(c.Stop.Released))
+			fmt.Fprintf(&b, "- %s (%s, in %s): halted, its claims let go\n", st.RunID, st.Key, fsutil.RedactHome(checkout))
 			for _, l := range c.Stop.Left {
 				fmt.Fprintf(&b, "  - %s at %s", l.Lane, l.Stage)
 				if l.Aside != "" {
@@ -729,11 +805,18 @@ func machineCheckouts(repoRoot, home string) []string {
 // a judgement the drain awaits is let go with its hold, so the issue is a peer's
 // to take. It refuses the move; the drain keeps its state and goes on when the
 // stop lifts. The caller's deferred settle releases the hold st no longer names.
-func drainStop(repoRoot string, st *DrainState, o Options) error {
+func drainStop(repoRoot string, st *DrainState, o Options) (string, error) {
 	r := o.stopRead(nil)
+	notes := []string{}
+	note := func(line string) {
+		if line != "" && !slices.Contains(notes, line) {
+			notes = append(notes, line)
+		}
+	}
+	note(readingNote(r))
 	runs, err := Runs(repoRoot)
 	if err != nil && r.Stop != nil {
-		return err
+		return "", err
 	}
 	// Each run reads the folder it started under, so a stop or a held read of any
 	// one of them is the drain's too.
@@ -743,9 +826,10 @@ func drainStop(repoRoot string, st *DrainState, o Options) error {
 		}
 		c, err := runControl(repoRoot, run.RunID)
 		if err != nil {
-			return err
+			return "", err
 		}
 		pinned := o.stopRead(c.Shared)
+		note(readingNote(pinned))
 		if r.Stop == nil {
 			r.Stop = pinned.Stop
 		}
@@ -753,11 +837,12 @@ func drainStop(repoRoot string, st *DrainState, o Options) error {
 			r.Held = pinned.Held
 		}
 	}
+	said := strings.Join(notes, "; ")
 	if r.Stop == nil {
 		if r.Held != "" {
-			return heldRefusal(r.Held)
+			return said, heldRefusal(r.Held)
 		}
-		return nil
+		return said, nil
 	}
 	for _, run := range runs {
 		if run.Complete() {
@@ -767,16 +852,16 @@ func drainStop(repoRoot string, st *DrainState, o Options) error {
 			if _, ok := AsRefusal(err); ok {
 				continue
 			}
-			return err
+			return said, err
 		}
 	}
 	if st.Judging != nil {
 		st.Judging = nil
 		if err := writeDrain(repoRoot, *st); err != nil {
-			return err
+			return said, err
 		}
 	}
-	return contend(StageStop, "", "", fmt.Sprintf("a stop set by %s at %s holds, so the drain opens no lane and asks for no judgement",
+	return said, contend(StageStop, "", "", fmt.Sprintf("a stop set by %s at %s holds, so the drain opens no lane and asks for no judgement",
 		termsafe.Sanitize(r.Stop.SetBy), r.Stop.SetAt.UTC().Format(time.RFC3339)),
 		"the person's own `abcd implement stop --lift` lifts it")
 }

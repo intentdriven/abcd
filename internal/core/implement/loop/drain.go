@@ -420,9 +420,10 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	}()
 	// A stop comes before the plan is read: the lanes take it and the move
 	// opens nothing (stop.go). A judgement awaited is let go with its hold.
-	if err := drainStop(repoRoot, &st, o); err != nil {
+	stopNote, serr := drainStop(repoRoot, &st, o)
+	if serr != nil {
 		persisted = st.Judging
-		return DrainResult{}, err
+		return DrainResult{}, serr
 	}
 	started := false
 	// repaced is what this move's new pace came to, "" when it took none;
@@ -487,6 +488,9 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	// published is what became of the pending hand-backs this move ended.
 	var published []string
 	finish := func(write bool) (DrainResult, error) {
+		if stopNote != "" {
+			res.Next = joinNext(res.Next, stopNote)
+		}
 		// A drain that ends awaits nothing, and every judgement hold the move
 		// leaves unused is released before the state is written.
 		if st.Stopped != "" && st.Judging != nil {

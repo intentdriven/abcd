@@ -107,6 +107,8 @@ type Listing struct {
 	Refused []string      `json:"refused,omitempty"`
 	// Unreadable names each run state that could not be read, and why.
 	Unreadable []string `json:"unreadable,omitempty"`
+	// Notices names each stop another account left, which is not honoured here.
+	Notices []string `json:"notices,omitempty"`
 }
 
 // ListRuns reads every run this account can on the machine: this repository's
@@ -119,6 +121,14 @@ func ListRuns(repoRoot, only string, o Options) (Listing, error) {
 	for _, line := range r.Refused {
 		out.Refused = append(out.Refused, termsafe.Sanitize(line))
 	}
+	notice := func(lines []string) {
+		for _, line := range lines {
+			if line = termsafe.Sanitize(line); !slices.Contains(out.Notices, line) {
+				out.Notices = append(out.Notices, line)
+			}
+		}
+	}
+	notice(r.Foreign)
 	var seen *sessionname.Table
 	if tab, err := readProcs(); err == nil {
 		seen = &tab
@@ -151,6 +161,7 @@ func ListRuns(repoRoot, only string, o Options) (Listing, error) {
 			}
 			c, _ := readControl(root, id)
 			pinned := o.stopRead(c.Shared)
+			notice(pinned.Foreign)
 			if out.Stop == nil {
 				out.Stop = pinned.Stop
 			}
@@ -186,11 +197,11 @@ func listRun(checkout string, o Options, root *os.Root, st State, tab *sessionna
 	if err != nil {
 		c = control{}
 	}
-	out.Stop = c.Stop
+	out.Stop = safeStop(c.Stop)
 	held := o.stopRead(c.Shared).Held
 	alive := false
 	if d := c.Driver; d != nil {
-		ld := &ListedDriver{Session: d.Session, PID: d.PID, State: "unknown", At: d.At}
+		ld := &ListedDriver{Session: termsafe.Sanitize(d.Session), PID: d.PID, State: "unknown", At: d.At}
 		if tab != nil {
 			ld.State = "gone"
 			if tab.Alive(d.host()) {
@@ -211,12 +222,28 @@ func listRun(checkout string, o Options, root *os.Root, st State, tab *sessionna
 		out.Next = "a stop holds: nothing moves until the person lifts it"
 	case held != "":
 		out.Next = termsafe.Sanitize(held) + ": nothing moves until the person puts it back"
+	case c.Stop != nil && c.Stop.HaltedAt != nil:
+		out.Next = "a stop halted it, every lane has settled, and no agent is in its call: take it over with `abcd implement resume --take " + st.RunID + "`, in " + out.Checkout
 	case alive:
 		out.Next = "its driver is alive: leave it"
 	default:
 		out.Next = "take it over with `abcd implement resume --take " + st.RunID + "`, in " + out.Checkout
 	}
 	return out
+}
+
+// safeStop is a stop's account with what it was read with made safe to write out.
+func safeStop(s *RunStop) *RunStop {
+	if s == nil {
+		return nil
+	}
+	out := *s
+	out.SetBy, out.Released = termsafe.Sanitize(s.SetBy), termsafe.Sanitize(s.Released)
+	out.Left = slices.Clone(s.Left)
+	for i, l := range out.Left {
+		out.Left[i].Note, out.Left[i].Aside = termsafe.Sanitize(l.Note), termsafe.Sanitize(l.Aside)
+	}
+	return &out
 }
 
 func listLane(checkout string, root *os.Root, runID string, lane Lane, c control, tab *sessionname.Table, view originView, now time.Time) ListedLane {
@@ -289,6 +316,26 @@ type TakeResult struct {
 	Next string     `json:"next"`
 }
 
+// tookFirst says, on a refusal after the take-over began, what it did first.
+func tookFirst(err error, res TakeResult) error {
+	rf, ok := AsRefusal(err)
+	if !ok {
+		return err
+	}
+	said := "it claimed the driver"
+	lanes := make([]string, 0, len(res.Collected))
+	for lane := range res.Collected {
+		lanes = append(lanes, lane)
+	}
+	slices.Sort(lanes)
+	for _, lane := range lanes {
+		said += "; " + lane + ": " + res.Collected[lane]
+	}
+	out := *rf
+	out.Wrote = termsafe.Sanitize(said)
+	return &out
+}
+
 // finishedKey is the record the run's state names, "" when it cannot be read.
 func finishedKey(repoRoot, runID string) string {
 	st, err := ReadState(repoRoot, runID)
@@ -325,6 +372,11 @@ func TakeRun(repoRoot, runID string, o Options) (TakeResult, error) {
 	if _, err := ReadState(repoRoot, runID); err != nil {
 		return TakeResult{}, err
 	}
+	// Everything below may run git, so a configuration changed during the run
+	// refuses the take-over before it does anything.
+	if err := configTripwire(repoRoot, runID); err != nil {
+		return TakeResult{}, err
+	}
 	// The record as the gone driver left it: what is lost is judged by that, not
 	// by the driver about to be claimed.
 	prev, err := readControl(root, runID)
@@ -341,7 +393,7 @@ func TakeRun(repoRoot, runID string, o Options) (TakeResult, error) {
 		return TakeResult{}, contend(StageDriver, "", "", fmt.Sprintf("the process table cannot be read, so whether %s still drives %s cannot be told, and nothing was changed",
 			driverName(*prev.Driver), runID), "run `abcd implement resume --take "+runID+"` again")
 	}
-	if err := claimDriver(repoRoot, runID, o); err != nil {
+	if err := claimDriver(repoRoot, runID, o, prev.Stop != nil && prev.Stop.HaltedAt != nil); err != nil {
 		return TakeResult{}, err
 	}
 	res := TakeResult{RunID: runID}
@@ -357,12 +409,12 @@ func TakeRun(repoRoot, runID string, o Options) (TakeResult, error) {
 			// is nothing to reserve, and the run ends as it would have.
 			res.Reservation = "the record has finished on the default branch, so there is nothing to reserve"
 		default:
-			return res, err
+			return res, tookFirst(err, res)
 		}
 	}
 	if prev.Stop != nil {
 		if err := clearStop(repoRoot, runID, "taken over after the stop lifted", o); err != nil {
-			return res, err
+			return res, tookFirst(err, res)
 		}
 	}
 

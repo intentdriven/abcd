@@ -452,13 +452,23 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		return StartResult{}, CheckResult{Key: key, Checks: []CheckRow{row}}.refusal()
 	}
 	// A stop opens no run, a resumed one included (stop.go).
-	if r := o.stopRead(nil); r.Stop != nil {
+	r := o.stopRead(nil)
+	if r.Stop != nil {
 		return StartResult{}, contend(StageStop, "", "", fmt.Sprintf("a stop set by %s at %s holds, so no run starts",
 			termsafe.Sanitize(r.Stop.SetBy), r.Stop.SetAt.UTC().Format(time.RFC3339)),
 			"the person's own `abcd implement stop --lift` lifts it")
 	} else if r.Held != "" {
 		return StartResult{}, heldRefusal(r.Held)
 	}
+	res, err := startChecked(repoRoot, key, o, pick)
+	if note := readingNote(r); note != "" {
+		res.Diagnostics = append(res.Diagnostics, note)
+	}
+	return res, err
+}
+
+// startChecked is start past the checks that need no run.
+func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) {
 	if o.AutoPlan && validIssueKey(key) {
 		return StartResult{}, refuse("check", CheckKey, "", key+" is an issue, and --auto-plan plans a draft intent; an issue has nothing to plan",
 			"build the issue without --auto-plan: `abcd build "+key+"`")
@@ -922,13 +932,14 @@ func advance(repoRoot, runID string, steps Stages, o Options) (StepResult, error
 // advanceWith is advance; routed reports whether a role is started through a
 // runner (Drive), which a network outage holds as well as a model one.
 func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(role string) bool, overrides map[string]string) (StepResult, error) {
-	// A stop comes before everything: the run takes it and the call moves
-	// nothing (stop.go). A stop file the read refused is no stop, and the
-	// answer names it.
+	// A stop comes first: the run takes it and the call moves nothing, and what
+	// it does in git it does only past the run tripwire (stop.go). A stop file the
+	// read refused is no stop, and the answer names it.
 	stopNote, err := stopCheck(repoRoot, runID, steps, o)
 	if err != nil {
 		return StepResult{}, err
 	}
+	afterStopCheck()
 	// The run tripwire (configwatch.go) comes before anything that may start
 	// git: a program-naming setting changed during the run stops the call.
 	if err := configTripwire(repoRoot, runID); err != nil {
@@ -962,6 +973,13 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 	var res StepResult
 	var wait error
 	err = mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+		// A stop may have come since the check: under the lock nothing acts on a
+		// run that took one.
+		if c, err := readControl(root, runID); err != nil {
+			return false, err
+		} else if c.Stop != nil {
+			return false, stopRefusal(runID, *c.Stop)
+		}
 		now := o.now()
 		if g.gaveUp() && !st.Complete() {
 			return false, g.stopRefusal(*st)
@@ -1146,7 +1164,9 @@ func Receipt(repoRoot, runID, receiptPath string, steps Stages, o Options) (Step
 			res.Next = rf.Reason + "; " + rf.Remedy
 			return res, nil
 		}
-		return res, serr
+		// The receipt is taken whatever stands in the way of the check: the answer
+		// says so, and the next move meets it.
+		res.Next = joinNext(res.Next, "the receipt was taken, and the stop's check could not be made: "+termsafe.Sanitize(fsutil.RedactHome(serr.Error())))
 	}
 	return res, nil
 }
