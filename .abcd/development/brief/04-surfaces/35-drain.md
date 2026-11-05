@@ -305,9 +305,10 @@ hooks, the Makefile, abcd's configuration or a preflight receipt; other records 
 is not held to this. The hooks read the rules and the guard's registry as the lane's base
 holds them, and the away mode, the checklist and recall stand aside on a stage.
 
-The driver's commit, merge and reset hooks get the same variables and home as a stage, and
-read the git configuration the drive wrote rather than any a stage left in that home; its
-network commands, filters and forge calls keep the person's environment. A preflight runs
+The driver's commit, merge and reset hooks, and any filter run inside those commands, get
+the same variables and home as a stage, and read the git configuration the drive wrote
+rather than any a stage left in that home; its network commands, its other filters and its
+forge calls keep the person's environment. A preflight runs
 with what a stage carries too, and only a receipt from a preflight the drive ran itself
 lands a lane. A lane at its landing that changes the Makefile, `scripts/` or the active
 hooks, measured from what it last merged of the default branch, is handed back, and an

@@ -102,16 +102,17 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"landing's preflight behind the load gate, printing one line per step and logging them\n" +
 			"under .abcd/.work.local/logs/. A lane that changes the Makefile, scripts/ or the active\n" +
 			"hooks is handed back at its landing, and an issue that names one is passed over: that\n" +
-			"change needs a person's own session. The driver's commit, merge and reset hooks get the\n" +
-			"stage's variables, while its network commands, filters and forge calls keep the person's\n" +
-			"environment. It ends at the cap, when nothing is eligible, or on a stop. With no --until,\n" +
-			"eight hours of runner failures or of nothing moving, a rate limit that outlasts eight\n" +
-			"hours, and origin unreadable through its schedule end it too. --until <date>, a date (the\n" +
-			"end of that day here) or an RFC 3339 instant, replaces those with one bound the yes names:\n" +
-			"the run waits through limits, outages and stuck queues at a capped interval, says what it\n" +
-			"waits on, keeps renewing what it holds, and at that time ends with the lane on its branch,\n" +
-			"an agent in a call finishing that call first. The bound is a time, not a limit on what the\n" +
-			"run spends. The first limit a run meets leaves its evidence under the same logs. One drive\n" +
+			"change needs a person's own session. The driver's commit, merge and reset hooks, and any\n" +
+			"filter run inside those commands, get the stage's variables, while its network commands,\n" +
+			"its other filters and its forge calls keep the person's environment. It ends at the cap,\n" +
+			"when nothing is eligible, or on a stop. With no --until, eight hours of runner failures\n" +
+			"or of nothing moving, a rate limit that outlasts eight hours, and origin unreadable\n" +
+			"through its schedule end it too. --until <date>, a date (the end of that day here) or an\n" +
+			"RFC 3339 instant, replaces those with one bound the yes names: the run waits through\n" +
+			"limits, outages and stuck queues at a capped interval, says what it waits on, keeps\n" +
+			"renewing what it holds, and at that time ends with the lane on its branch, an agent in a\n" +
+			"call finishing that call first. The bound is a time, not a limit on what the run spends.\n" +
+			"The first limit a run meets leaves its evidence under the same logs. One drive\n" +
 			"holds a checkout at a time; a second exits 3. A drive that is stopped, stops short or\n" +
 			"holds an issue back exits 3, and one a failed check stopped exits 2. The first interrupt, hang-up or termination is a\n" +
 			"stop: the agent in a call finishes that call, the lane's reservation is released, the\n" +

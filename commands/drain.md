@@ -49,8 +49,8 @@ shell tools its launch names, starts from an allow-list of variables, reads sett
 from that directory alone, and starts only while those settings and abcd's binary
 are as they were at the start. Its shell's home is emptied at each launch. A file tool
 writes only in the stage's working tree and run directories. The driver's commit, merge and
-reset hooks get the stage's variables, while its network commands, filters and forge calls
-keep the person's environment. A lane that changes the Makefile, `scripts/` or the active
+reset hooks, and any filter run inside those commands, get the stage's variables, while its
+network commands, its other filters and its forge calls keep the person's environment. A lane that changes the Makefile, `scripts/` or the active
 hooks is handed back at its landing, and an issue that names one is passed over: that change
 needs a person's own session, and the drive's last lines name each one.
 

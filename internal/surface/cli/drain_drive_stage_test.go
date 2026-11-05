@@ -565,7 +565,8 @@ func TestAGateIssueIsPassedOverForAPersonsOwnSession(t *testing.T) {
 	repo := gittest.NewRepo(t)
 	repo.Git("config", "core.hooksPath", "tools/hooks")
 	pass := drivePassOver(repo.Root())
-	for _, found := range []string{"Makefile", "scripts/check.sh:12", "tools/hooks/pre-push", ".githooks/commit-msg"} {
+	for _, found := range []string{"Makefile", "scripts/check.sh:12", "tools/hooks/pre-push", ".githooks/commit-msg",
+		"scripts", "scripts/", "./scripts", "hooks", "hooks/", ".githooks", ".githooks/", "tools/hooks", "tools/hooks/"} {
 		if why := pass("iss-1", found); !strings.Contains(why, "a person's own session") {
 			t.Errorf("%s: %q", found, why)
 		}

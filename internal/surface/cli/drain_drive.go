@@ -110,10 +110,13 @@ var drivePreflightProgram = func() (string, []string, error) {
 var driveGates = []string{"Makefile", "GNUmakefile", "makefile", "scripts/", ".githooks/", "hooks/"}
 
 // driveGate reports whether path, relative to the checkout, is one of those, or
-// under the hooks path the repository configures.
+// under the hooks path the repository configures. A directory counts with or
+// without its trailing slash.
 func driveGate(path, hooksPath string) bool {
+	path = filepath.ToSlash(filepath.Clean(path))
 	for _, gate := range driveGates {
-		if path == gate || (strings.HasSuffix(gate, "/") && strings.HasPrefix(path, gate)) {
+		dir := strings.TrimSuffix(gate, "/")
+		if path == dir || (dir != gate && strings.HasPrefix(path, gate)) {
 			return true
 		}
 	}
