@@ -212,7 +212,11 @@ func TestAGitIdentityBehindAnIncludeIsFound(t *testing.T) {
 	if err := os.WriteFile(inc, []byte("[user]\n\tname = Pat Example\n\temail = pat@example.invalid\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cfg := "[includeIf \"gitdir:" + filepath.Join(home, "work") + "/\"]\n\tpath = " + inc + "\n"
+	real, err := filepath.EvalSymlinks(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := "[includeIf \"gitdir:" + filepath.Join(real, "work") + "/\"]\n\tpath = " + inc + "\n"
 	if err := os.WriteFile(filepath.Join(home, ".gitconfig"), []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
 	}

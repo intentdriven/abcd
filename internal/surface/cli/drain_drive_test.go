@@ -40,6 +40,11 @@ func newDriveWorld(t *testing.T) *driveWorld {
 		t.Setenv(k, "")
 	}
 	w.machineConfig(t, driveRoutes)
+	for _, kv := range [][2]string{{"user.name", "Pat Example"}, {"user.email", "pat@example.invalid"}} {
+		if out, err := exec.Command("git", "-C", w.repo, "config", kv[0], kv[1]).CombinedOutput(); err != nil {
+			t.Fatalf("%v: %s", err, out)
+		}
+	}
 	w.profile = abcdhome.Path(w.home, "profiles", "walled")
 	if err := os.MkdirAll(w.profile, 0o700); err != nil {
 		t.Fatal(err)

@@ -173,6 +173,7 @@ func TestALaneThatChangesItsGatesIsRefusedUnlessThePersonAgreed(t *testing.T) {
 		t.Fatalf("code is no gate: %v", err)
 	}
 	for _, path := range []string{"Makefile", "scripts/check.sh"} {
+		base := strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
 		repo.Write(path, "x\n")
 		repo.Commit(path)
 		var refused *loop.PreflightRefused
@@ -345,6 +346,11 @@ func TestHowADriveEndsIsInItsExit(t *testing.T) {
 // TestThePublicTextSaysWhatAProfileIs: a profile is a separate login and settings
 // on one account, and a stage's shell reads what the account can.
 func TestThePublicTextSaysWhatAProfileIs(t *testing.T) {
+	here, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(here, "..", "..", "..")
 	w := newDriveWorld(t)
 	w.passWalls(t)
 	withTerminal(t)
@@ -356,7 +362,6 @@ func TestThePublicTextSaysWhatAProfileIs(t *testing.T) {
 	if herr != nil {
 		t.Fatal(herr)
 	}
-	root := filepath.Join("..", "..", "..")
 	page, err := os.ReadFile(filepath.Join(root, "commands", "drain.md"))
 	if err != nil {
 		t.Fatal(err)
