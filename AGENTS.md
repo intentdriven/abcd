@@ -277,8 +277,8 @@ new session, so it holds only throwaway files for the turn at hand (the
   plugin markdown surface and demonstrably executes there — no dead scaffolding.
 - **Host-delegated by default.** LLM review/agent work is delegated to the host;
   native/CLI/API/MCP oracles are opt-in adapters. The one written exception is
-  `abcd drain --drive`, which the person types in a plain terminal and which
-  starts agents itself
+  `abcd drain --drive`, typed by the person in a plain terminal, which starts
+  agents itself
   ([adr-2610222222326104](.abcd/development/decisions/adrs/2610222222326104-abcd-drives-agents-with-no-host-session.md));
   the key route waits for its budget (itd-2611011230226453).
 - **Single repo, curated release.** `.abcd/**` stays in-tree and is present in
