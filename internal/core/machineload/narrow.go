@@ -180,8 +180,8 @@ func NarrowAhead(snap Snapshot, self Self, args map[int][]string) (running, ahea
 }
 
 // OverdueWhole returns, in pid order, the whole-run waiters in a (self's own
-// reading, so each started before self) that have waited for at least after with
-// a whole-run slot free, against slots (load.preflights): a waiter whose slots
+// reading, so each started before self) that have been queued for at least after, with
+// a whole-run slot free now, against slots (load.preflights): a waiter whose slots
 // are all taken is shut by them, and no narrow run is in its way.
 //
 // Only a waiter that started earlier can be overdue. An older abcd counts a

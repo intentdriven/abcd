@@ -36,8 +36,8 @@ import (
 //
 // A whole run keeps its place honestly. Sharing the load limit, narrow runs could
 // otherwise take every dip the whole run waits for, and an older abcd also counts
-// them in its slots. So while a whole-run waiter that started earlier has waited
-// WaitNarrowYieldAfter with a whole slot free, narrow runs stop being admitted, for
+// them in its slots. So while a whole-run waiter that started earlier has been
+// queued WaitNarrowYieldAfter or more and a whole slot is free, narrow runs stop being admitted, for
 // at most WaitNarrowYieldCap spent in any one wait. The gap in admissions lets the
 // running ones finish and the load fall, which opens that whole run; one still
 // shut after the cap is shut by something no narrow run does, such as its own
@@ -87,8 +87,8 @@ var (
 	// that finds the gate free and the re-check that opens it.
 	WaitNarrowJitterMin = time.Second
 	WaitNarrowJitterMax = 5 * time.Second
-	// WaitNarrowYieldAfter is how long a whole-run waiter may wait with a slot free
-	// before narrow runs stand aside for it. It opens within a poll and a jitter of
+	// WaitNarrowYieldAfter is how long a whole-run waiter may be queued, with a slot
+	// free, before narrow runs stand aside for it. It opens within a poll and a jitter of
 	// a free slot and a load under the limit, about 75 seconds, so this is well past
 	// a waiter that is simply about to open.
 	WaitNarrowYieldAfter = 5 * time.Minute
