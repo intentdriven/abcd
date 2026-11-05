@@ -248,8 +248,8 @@ func (t *terminal) sayMove(res DrainResult) {
 // next move has something to say about it. It returns why the run ends, "" to
 // go on to the next move.
 func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) {
-	if t.takeUp(runID) {
-		return "", nil
+	if done, ended := t.takeUp(ctx, runID); done {
+		return ended, nil
 	}
 	for {
 		if ctx.Err() != nil {
@@ -357,24 +357,33 @@ func (t *terminal) stepRefused(ctx context.Context, runID string, err error) (ag
 }
 
 // takeUp reserves again a lane a drive let go as it ended. It reports true when
-// the lane cannot go on here: someone else holds its issue now, which the step
-// records as a refusal that cannot change, so the next move hands the lane back
-// as stuck and moves on.
-func (t *terminal) takeUp(runID string) bool {
+// the lane cannot go on here yet, with why the run ends, if it does. Someone
+// else holding its issue now is recorded as a refusal that cannot change, so the
+// next move hands the lane back as stuck and moves on. The person's own cap is
+// no such refusal: a pull request merging ends one of their reservations, so the
+// lane waits on the outage's deadline, as a drain at the cap waits, with nothing
+// logged against it.
+func (t *terminal) takeUp(ctx context.Context, runID string) (bool, string) {
 	run, err := ReadState(t.repoRoot, runID)
 	if err != nil || !letGoByDrive(run) {
-		return false
+		return false, ""
 	}
 	err = reserveResumed(t.repoRoot, &StartResult{RunID: runID}, t.o.Options)
 	if err == nil {
 		t.say("took up %s, run %s: its reservation is held again", run.Key, runID)
-		return false
+		return false, ""
 	}
 	r, ok := AsRefusal(err)
 	if !ok {
 		r = refuse(StageReservation, "", "", err.Error(), "see the reason")
 	}
-	if r.final == "" && r.Contention && r.capped == nil {
+	if r.capped != nil {
+		if t.failed(ctx, false, fmt.Sprintf("%s, run %s, waits at the cap: %s", run.Key, runID, r.Reason)) {
+			return true, TerminalOutage
+		}
+		return true, ""
+	}
+	if r.final == "" && r.Contention {
 		r.final = "another drive took the issue up after this lane stopped"
 	}
 	r.Contention = false
@@ -388,7 +397,7 @@ func (t *terminal) takeUp(runID string) bool {
 		r.Lane = st.Lanes[i].ID
 		return noteRefusal(st, r, now), nil
 	})
-	return true
+	return true, ""
 }
 
 // letGoByDrive reports whether the run's latest reservation entry is a drive

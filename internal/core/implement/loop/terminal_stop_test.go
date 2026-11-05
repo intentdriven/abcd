@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/claim"
 )
 
@@ -277,5 +278,68 @@ func TestALaneADrainLeftInProgressAsItEndedIsLetGoAndNamed(t *testing.T) {
 	}
 	if r := reservationOf(t, w.repo.Root(), killed.Issue, w.clock.t); r.State != claim.StateReleased {
 		t.Fatalf("the reservation is released: %+v", r)
+	}
+}
+
+// TestATakeUpAtTheCapWaitsAndHandsNothingBack: a stopped lane whose person now
+// holds as many reservations as they may is waiting, as a drain at the cap
+// waits, not refusing: the lane is not handed back as stuck, and once a
+// reservation ends it is taken up and lands.
+func TestATakeUpAtTheCapWaitsAndHandsNothingBack(t *testing.T) {
+	w, res := stoppedLane(t)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(abcdhome.Path(home, "config.json"), []byte(`{"reservation": {"max_live": 1}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	root := w.repo.Root()
+	o := w.options(t)
+	o.Stop = make(chan struct{})
+	o.Drain.Max = 0
+	var others []string
+	for _, id := range []string{eligibleIssue, secondIssue, thirdIssue} {
+		if id != res.Issue {
+			others = append(others, id)
+		}
+	}
+	o.Drain.Skip, o.Drain.SkipReason = others, "the stopped lane's alone"
+	other := "iss-2609230000000099"
+	if _, err := claim.Reserve(root, claim.Request{Record: other, Footprint: []string{"docs/other.md"}}, claim.Options{}); err != nil {
+		t.Fatal(err)
+	}
+	waits := 0
+	w.onSleep = func(time.Duration) {
+		if waits++; waits == 2 {
+			if _, err := claim.Reserve(root, claim.Request{Record: other, Release: true}, claim.Options{}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	sleep := o.Sleep
+	o.Sleep = func(ctx context.Context, d time.Duration) {
+		if len(w.sleeps) > 50 {
+			t.Fatalf("the wait did not end: %v", w.sleeps)
+		}
+		sleep(ctx, d)
+	}
+	if _, err := RunTerminal(context.Background(), root, o); err != nil {
+		t.Fatalf("%v\n%s", err, strings.Join(w.lines, "\n"))
+	}
+	back, _, err := readDrain(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(back.HandBacks) != 0 || waits < 2 {
+		t.Fatalf("the cap is waited out, nothing handed back: %d waits, %+v\n%s", waits, back.HandBacks, strings.Join(w.lines, "\n"))
+	}
+	for _, l := range back.Lanes {
+		if l.Issue == res.Issue && l.Outcome != DrainLaneDone {
+			t.Fatalf("the lane lands once the cap frees: %+v\n%s", l, strings.Join(w.lines, "\n"))
+		}
 	}
 }
