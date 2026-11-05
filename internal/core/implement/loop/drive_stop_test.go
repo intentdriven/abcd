@@ -71,6 +71,10 @@ func TestADriveThatStoppedOnAChangedRunDoesNotCarryOn(t *testing.T) {
 	}
 	for name, step := range map[string]func() error{
 		"a step": func() error { _, err := advance(w.repo.Root(), run, w.stages, Options{}); return err },
+		"a driven step": func() error {
+			_, err := Drive(context.Background(), w.repo.Root(), run, w.stages, Options{}, Runners{})
+			return err
+		},
 		"a hand-in": func() error {
 			_, err := Receipt(w.repo.Root(), run, filepath.Join(w.repo.Root(), "any"), w.stages, Options{})
 			return err
