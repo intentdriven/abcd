@@ -207,9 +207,8 @@ For this repository the line is
 CI (`.github/workflows/ci.yml`) runs its `check` job on Linux on every event —
 build, vet, test and the race-enabled internal tests, with the `make fmt-check`
 format gate, the record-lint, issue-drift and docs-lint steps and the
-site-render gate. Nightly and on demand three `macos-suite` shard jobs run the
-macOS suite under -race, over what `cmd/ci-shard` assigns each; the first also
-builds, vets and runs the plain-only tests. `check-macos` reports
+site-render gate. Nightly and on demand the macOS suite runs in three
+`macos-suite` shards. `check-macos` reports
 `check (macos-latest)` from ubuntu and fails unless every shard succeeded; on a
 pull request or a queue entry the shards stand down and it says so (the pre-push
 hook holds a push to `make preflight`). The queue entry tests on Linux the tree that lands.
@@ -219,8 +218,7 @@ schedule and by hand, never on a push to `main`: every commit there is a
 merge result its queue entry already tested, and the nightly run checks the
 default branch and saves its Go build cache for the runs that follow. On
 every merge-queue event `.github/workflows/queue-sweep.yml` cancels the runs
-of entries the queue has already dropped, and only those whose queue ref is
-gone; it is not a required check.
+of entries the queue has dropped; it is not a required check.
 Separate jobs run the reviews-charter check
 (`scripts/check-reviews.sh`) together with the issue-resolution gates
 (RS001–RS006), full-history secret scanning (`gitleaks`), a workflow audit
