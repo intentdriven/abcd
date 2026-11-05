@@ -12,6 +12,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/drainrule"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/runner"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // The flag, the preconditions and the consent of `abcd drain --drive`
@@ -36,12 +37,14 @@ func newDriveWorld(t *testing.T) *driveWorld {
 	for _, k := range driveSessionMarkers {
 		t.Setenv(k, "")
 	}
-	for _, k := range runner.CredentialVars() {
+	for _, k := range runner.HeldCredentials() {
 		t.Setenv(k, "")
 	}
 	w.machineConfig(t, driveRoutes)
 	for _, kv := range [][2]string{{"user.name", "Pat Example"}, {"user.email", "pat@example.invalid"}} {
-		if out, err := exec.Command("git", "-C", w.repo, "config", kv[0], kv[1]).CombinedOutput(); err != nil {
+		cmd := exec.Command("git", "-C", w.repo, "config", kv[0], kv[1])
+		cmd.Env = gittest.Env(t)
+		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("%v: %s", err, out)
 		}
 	}

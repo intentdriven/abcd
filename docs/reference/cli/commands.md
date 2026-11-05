@@ -1400,7 +1400,7 @@ abcd docs fidelity record --verdict-json verdict.json
 
 Fix the issues needing no decision, one lane at a time, and hand the rest back: Writes its state and user-visible drafts; refuses without the rule's record.
 
-**Usage:** `abcd drain [--drive [--yes] [--trust-lane-gates]] [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]`
+**Usage:** `abcd drain [--drive [--yes]] [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]`
 
 Work the open issue ledger unattended: fix the issues that need no decision, and
 hand the rest back by kind. Which issues need no decision is this repository's own
@@ -1465,9 +1465,10 @@ can. It then judges each eligible issue,
 drives each lane to its landing, every role on that separate login, and runs each
 landing's preflight behind the load gate, printing one line per step and logging them
 under .abcd/.work.local/logs/. A lane that changes the Makefile, scripts/ or the active
-hooks is handed back at its landing, and an issue that names one is passed over, unless
---trust-lane-gates says the person agrees. The driver's own git commands run the
-repository's hooks with what a stage carries; only the push keeps credentials. It ends at
+hooks is handed back at its landing, and an issue that names one is passed over: that
+change needs a person's own session. The driver's commit, merge and reset hooks get the
+stage's variables, while its network commands, filters and forge calls keep the person's
+environment. It ends at
 the cap, when nothing is eligible, or after eight hours of runner failures. One drive
 holds a checkout at a time; a second exits 3. A drive that is stopped, stops short or
 holds an issue back exits 3, and one a failed check stopped exits 2. The first interrupt, hang-up or termination is a
@@ -1635,7 +1636,6 @@ drain or run holds the state lock.
       --skip stringArray     hold an issue (iss-N), or every issue whose found_at lies in a path, back for now; needs --reason; cleared when the drain ends
       --sub-agents string    the ceiling on lanes and validators alive at once; wins over every configured layer
       --take-over            move your own live reservation of each issue this move reaches from another copy to this one; never another person's
-      --trust-lane-gates     with --drive: run a lane's preflight even when the lane changes the Makefile or scripts/ it runs
       --unskip stringArray   take an issue or path off the drain's skip list
       --yes                  with --drive: the scripted yes to its one question
 ```

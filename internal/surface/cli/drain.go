@@ -35,12 +35,12 @@ type drainOutput struct {
 // `--dry-run` classifies every open issue by the eligibility rule and writes
 // nothing; the bare verb performs one move of the drain run (loop.Drain).
 func newDrainCommand(asJSON *bool) *cobra.Command {
-	var dryRun, takeOver, drive, yes, trustGates bool
+	var dryRun, takeOver, drive, yes bool
 	var maxLanes int
 	var pace, subAgents, fixRounds, judgement, skipReason string
 	var skip, unskip []string
 	cmd := &cobra.Command{
-		Use: "drain [--drive [--yes] [--trust-lane-gates]] [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>]",
+		Use: "drain [--drive [--yes]] [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>]",
 		Long: "Work the open issue ledger unattended: fix the issues that need no decision, and\n" +
 			"hand the rest back by kind. Which issues need no decision is this repository's own\n" +
 			"recorded decision: an accepted decision record whose frontmatter carries the four\n" +
@@ -101,9 +101,10 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"drives each lane to its landing, every role on that separate login, and runs each\n" +
 			"landing's preflight behind the load gate, printing one line per step and logging them\n" +
 			"under .abcd/.work.local/logs/. A lane that changes the Makefile, scripts/ or the active\n" +
-			"hooks is handed back at its landing, and an issue that names one is passed over, unless\n" +
-			"--trust-lane-gates says the person agrees. The driver's own git commands run the\n" +
-			"repository's hooks with what a stage carries; only the push keeps credentials. It ends at\n" +
+			"hooks is handed back at its landing, and an issue that names one is passed over: that\n" +
+			"change needs a person's own session. The driver's commit, merge and reset hooks get the\n" +
+			"stage's variables, while its network commands, filters and forge calls keep the person's\n" +
+			"environment. It ends at\n" +
 			"the cap, when nothing is eligible, or after eight hours of runner failures. One drive\n" +
 			"holds a checkout at a time; a second exits 3. A drive that is stopped, stops short or\n" +
 			"holds an issue back exits 3, and one a failed check stopped exits 2. The first interrupt, hang-up or termination is a\n" +
@@ -259,10 +260,8 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "abcd drain: --yes answers --drive's one question, and this is no drive; add --drive or leave it out (nothing written)"}
 			case drive && (dryRun || cmd.Flags().Changed("judgement")):
 				return &exitError{Code: 2, Msg: "abcd drain: --drive makes every move and judges through the runner itself, so it takes no --dry-run and no --judgement (nothing written)"}
-			case trustGates && !drive:
-				return &exitError{Code: 2, Msg: "abcd drain: --trust-lane-gates says what a drive's preflight may run, and this is no drive; add --drive or leave it out (nothing written)"}
 			case drive:
-				f := driveFlags{yes: yes, maxLanes: maxLanes, takeOver: takeOver, trustGates: trustGates,
+				f := driveFlags{yes: yes, maxLanes: maxLanes, takeOver: takeOver,
 					skips: drainSkips{skip: skip, reason: skipReason, unskip: unskip}}
 				if cmd.Flags().Changed("pace") {
 					f.pace = &pace
@@ -305,7 +304,6 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&drive, "drive", false, "make every move from this terminal, starting each agent on a separate login, until the cap, an empty ledger or a stop")
 	cmd.Flags().BoolVar(&yes, "yes", false, "with --drive: the scripted yes to its one question")
-	cmd.Flags().BoolVar(&trustGates, "trust-lane-gates", false, "with --drive: run a lane's preflight even when the lane changes the Makefile or scripts/ it runs")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show every open issue's disposition and the order a drain takes them; writes nothing")
 	cmd.Flags().IntVar(&maxLanes, "max", 0, "cap the lanes this drain opens; the default is all")
 	cmd.Flags().StringVar(&pace, "pace", "", "the drain's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer")

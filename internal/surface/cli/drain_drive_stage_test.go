@@ -105,26 +105,6 @@ func TestAStagesHookReadsTheStagesHome(t *testing.T) {
 	}
 }
 
-// TestTheProofsCommandsAreOnesTheApproverPasses: the first is the one the guard
-// refuses; the rest must reach the shell, or the proof can never hold.
-func TestTheProofsCommandsAreOnesTheApproverPasses(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	f := guard.NewFiles(t.TempDir()).WithStage(abcdhome.Path(home, "stage-homes", "walled"), []string{abcdhome.Path(home, "profiles", "walled")}, nil)
-	cmds := runner.WallProofCommands()
-	if len(cmds) != 3 {
-		t.Fatalf("three commands: %q", cmds)
-	}
-	if a := approveLine(f, cmds[0]); a.Allow {
-		t.Fatalf("the first is meant to be refused: %q", cmds[0])
-	}
-	for _, c := range cmds[1:] {
-		if a := approveLine(f, c); !a.Allow {
-			t.Errorf("%q was refused: %s", c, a.Reason)
-		}
-	}
-}
-
 // TestAPreflightRunsInTheStagesEnvironment.
 func TestAPreflightRunsInTheStagesEnvironment(t *testing.T) {
 	dir := t.TempDir()
@@ -162,18 +142,19 @@ func TestAPreflightRunsInTheStagesEnvironment(t *testing.T) {
 	}
 }
 
-// TestALaneThatChangesItsGatesIsRefusedUnlessThePersonAgreed.
-func TestALaneThatChangesItsGatesIsRefusedUnlessThePersonAgreed(t *testing.T) {
+// TestALaneThatChangesItsGatesIsRefused: no flag opens it; a person's own session
+// handles such a change.
+func TestALaneThatChangesItsGatesIsRefused(t *testing.T) {
 	repo := gittest.NewRepo(t)
 	repo.Write("a.go", "package a\n")
 	repo.Commit("base")
 	base := strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
-	if err := driveGateCheck(false)(repo.Root(), base); err != nil {
+	if err := driveGateCheck()(repo.Root(), base); err != nil {
 		t.Fatalf("nothing changed: %v", err)
 	}
 	repo.Write("a.go", "package a\n\n// more\n")
 	repo.Commit("code")
-	if err := driveGateCheck(false)(repo.Root(), base); err != nil {
+	if err := driveGateCheck()(repo.Root(), base); err != nil {
 		t.Fatalf("code is no gate: %v", err)
 	}
 	for _, path := range []string{"Makefile", "scripts/check.sh"} {
@@ -181,16 +162,106 @@ func TestALaneThatChangesItsGatesIsRefusedUnlessThePersonAgreed(t *testing.T) {
 		repo.Write(path, "x\n")
 		repo.Commit(path)
 		var refused *loop.PreflightRefused
-		if err := driveGateCheck(false)(repo.Root(), base); !errors.As(err, &refused) || !strings.Contains(refused.Reason, path) {
+		if err := driveGateCheck()(repo.Root(), base); !errors.As(err, &refused) || !strings.Contains(refused.Reason, path) || !strings.Contains(refused.Reason, "a person's own session") {
 			t.Fatalf("%s: %v", path, err)
-		}
-		if err := driveGateCheck(true)(repo.Root(), base); err != nil {
-			t.Fatalf("the person agreed: %v", err)
 		}
 	}
 	var refused *loop.PreflightRefused
-	if err := driveGateCheck(false)(repo.Root(), "not-a-commit"); !errors.As(err, &refused) {
+	if err := driveGateCheck()(repo.Root(), "not-a-commit"); !errors.As(err, &refused) {
 		t.Fatalf("a diff that cannot be read refuses: %v", err)
+	}
+}
+
+// TestAMergedDefaultBranchIsNotTheLanesChange: read from what the lane merged, a
+// Makefile the default branch changed hands nothing back.
+func TestAMergedDefaultBranchIsNotTheLanesChange(t *testing.T) {
+	repo := gittest.NewRepo(t)
+	repo.Write("a.go", "package a\n")
+	repo.Commit("base")
+	repo.Git("checkout", "-q", "-b", "lane")
+	repo.Write("b.go", "package a\n")
+	repo.Commit("the lane's work")
+	repo.Git("checkout", "-q", "-")
+	repo.Write("Makefile", "x\n")
+	repo.Commit("the default branch's")
+	merged := strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
+	repo.Git("checkout", "-q", "lane")
+	repo.Git("merge", "-q", "--no-edit", merged)
+	if err := driveGateCheck()(repo.Root(), merged); err != nil {
+		t.Fatalf("the lane did not change the Makefile: %v", err)
+	}
+}
+
+// TestThereIsNoFlagThatOpensAGate: a drive has no way to open a gate file.
+func TestThereIsNoFlagThatOpensAGate(t *testing.T) {
+	w := newDriveWorld(t)
+	w.passWalls(t)
+	if text := refusedDrive(t, "drain", "--drive", "--yes", "--trust-lane-gates"); !strings.Contains(text, "unknown flag") {
+		t.Fatalf("the flag is gone: %s", text)
+	}
+}
+
+// TestAPreflightLeavesNoProcessBehind: on success and on failure.
+func TestAPreflightLeavesNoProcessBehind(t *testing.T) {
+	w := newDriveWorld(t)
+	p, err := runner.DriveProfile(w.home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Repo = w.repo
+	if _, err := runner.WriteWallSettings(p, runner.SelfBinary()); err != nil {
+		t.Fatal(err)
+	}
+	was := drivePreflightProgram
+	t.Cleanup(func() { drivePreflightProgram = was })
+	for name, exit := range map[string]string{"success": "0", "failure": "1"} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			left := filepath.Join(dir, "left")
+			drivePreflightProgram = func() (string, []string, error) {
+				return "/bin/sh", []string{"-c", "/bin/sleep 60 >/dev/null 2>&1 & echo $! > '" + left + "'; exit " + exit}, nil
+			}
+			_ = drivePreflight(os.Stderr, p)(context.Background(), dir)
+			pid := waitPidFile(t, left)
+			if !pidGone(pid, 5*time.Second) {
+				t.Fatalf("process %d outlived the preflight", pid)
+			}
+		})
+	}
+}
+
+// TestANoAtTheConsentWritesNothing: an n stops nothing and touches nothing.
+func TestANoAtTheConsentWritesNothing(t *testing.T) {
+	w := newDriveWorld(t)
+	w.passWalls(t)
+	withTerminal(t)
+	wrote := false
+	driveWalls.static = func(context.Context, runner.Profile) ([]string, error) {
+		wrote = true
+		return nil, nil
+	}
+	if out, err := runCLIPipedStdin(t, "n\n", "drain", "--drive"); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if wrote {
+		t.Fatal("a no wrote the settings")
+	}
+}
+
+// TestTheEndNamesWhatStoppedItAndWhatItPassedOver.
+func TestTheEndNamesWhatStoppedItAndWhatItPassedOver(t *testing.T) {
+	var b strings.Builder
+	renderDriveEnd(&b, loop.TerminalResult{Ended: loop.TerminalWall, Why: "abcd's binary changed while the drive ran",
+		PassedOver: []loop.Excluded{{ID: "iss-7", Check: loop.CheckNeedsPerson, Reason: "it needs a person's own session"}}})
+	for _, want := range []string{"abcd's binary changed while the drive ran", "iss-7", "a person's own session"} {
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("the end does not name %q:\n%s", want, b.String())
+		}
+	}
+	for _, never := range []string{"wall"} {
+		if strings.Contains(b.String(), never) {
+			t.Errorf("the end says %q:\n%s", never, b.String())
+		}
 	}
 }
 
@@ -472,56 +543,48 @@ func TestAGateChangeIsReadExactly(t *testing.T) {
 	repo.Git("mv", "scripts/old.sh", "elsewhere.sh")
 	repo.Commit("rename out of the gate")
 	var refused *loop.PreflightRefused
-	if err := driveGateCheck(false)(repo.Root(), base); !errors.As(err, &refused) {
+	if err := driveGateCheck()(repo.Root(), base); !errors.As(err, &refused) {
 		t.Fatalf("a rename out of a gate path is a change to it: %v", err)
 	}
 	base = strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
 	repo.Write("tools/hooks/commit-msg", "x\n")
 	repo.Commit("the configured hooks")
-	if err := driveGateCheck(false)(repo.Root(), base); !errors.As(err, &refused) {
+	if err := driveGateCheck()(repo.Root(), base); !errors.As(err, &refused) {
 		t.Fatalf("the configured hooks are gates: %v", err)
 	}
 	if !strings.Contains(refused.Reason, strconv.Quote("tools/hooks/commit-msg")) {
 		t.Fatalf("the path is quoted: %s", refused.Reason)
 	}
-	if strings.Contains(refused.Reason, "a drive started with --trust-lane-gates runs it") {
-		t.Fatalf("the remedy names the real steps: %s", refused.Reason)
+	if !strings.Contains(refused.Reason, "a person's own session") {
+		t.Fatalf("the reason names who handles it: %s", refused.Reason)
 	}
 }
 
-// TestAGateIssueIsPassedOverNamingTheFlag.
-func TestAGateIssueIsPassedOverNamingTheFlag(t *testing.T) {
+// TestAGateIssueIsPassedOverForAPersonsOwnSession.
+func TestAGateIssueIsPassedOverForAPersonsOwnSession(t *testing.T) {
 	repo := gittest.NewRepo(t)
 	repo.Git("config", "core.hooksPath", "tools/hooks")
-	pass := drivePassOver(repo.Root(), false)
+	pass := drivePassOver(repo.Root())
 	for _, found := range []string{"Makefile", "scripts/check.sh:12", "tools/hooks/pre-push", ".githooks/commit-msg"} {
-		if why := pass("iss-1", found); !strings.Contains(why, "--trust-lane-gates") {
+		if why := pass("iss-1", found); !strings.Contains(why, "a person's own session") {
 			t.Errorf("%s: %q", found, why)
 		}
 	}
 	if why := pass("iss-1", "internal/a.go"); why != "" {
 		t.Errorf("code is opened: %q", why)
 	}
-	if why := drivePassOver(repo.Root(), true)("iss-1", "Makefile"); why != "" {
-		t.Errorf("the person agreed: %q", why)
-	}
 }
 
-// TestTheConsentNamesTheGateFlag.
-func TestTheConsentNamesTheGateFlag(t *testing.T) {
+// TestTheConsentSaysALaneOnAGateIsHandedBack.
+func TestTheConsentSaysALaneOnAGateIsHandedBack(t *testing.T) {
 	w := newDriveWorld(t)
 	w.passWalls(t)
 	var out, errb strings.Builder
 	if code := Run([]string{"drain", "--drive", "--yes"}, &out, &errb); code != 0 {
 		t.Fatalf("exit %d", code)
 	}
-	if !strings.Contains(out.String(), "--trust-lane-gates") {
-		t.Fatalf("the consent does not name the flag:\n%s", out.String())
-	}
-	out.Reset()
-	Run([]string{"drain", "--drive", "--yes", "--trust-lane-gates"}, &out, &errb)
-	if !strings.Contains(out.String(), "trusted") {
-		t.Fatalf("the consent says the gates are trusted:\n%s", out.String())
+	if !strings.Contains(out.String(), "a person's own session") {
+		t.Fatalf("the consent does not say who handles it:\n%s", out.String())
 	}
 }
 
