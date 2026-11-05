@@ -472,6 +472,7 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		Now:    o.Now,
 	}
 	out, err := d.Dispatch(ctx, req)
+	o.failedLaunch(aw.Role, err, out.Failure)
 	retry := func(r StepResult, p *RunnerPause) StepResult {
 		if why != "" {
 			r.Retried = &Retry{Lane: laneID, Role: aw.Role, Runner: route.Runner, Why: why, Paused: p}

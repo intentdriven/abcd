@@ -199,12 +199,45 @@ load gate; each wait a move names is slept to the earliest time it names, at lea
 thirty seconds. Three runner failures in a row, or a judge's failure, enter the
 outage schedule (one minute, five, ten, then hourly), which hands nothing back and
 ends the drive at eight hours. A step that starts no agent and moves no stage waits
-on that same schedule. A rate limit starts no agent until the reset the harness
-reports, or, with none reported, waits on that schedule; a limit that outlasts eight
-hours ends the drive, saying when it resets. A wait on work someone else holds, or on
-a contended lock, ends the drive after eight hours with nothing moved, so no wait goes
-without a deadline, and a long wait renews what the lanes hold. A preflight that exits
-0 and leaves no receipt runs once for a head, and the lane then goes to the stuck check.
+on that same schedule. A rate limit starts no agent, the judge included, until the
+reset the harness reports, or, with none reported, waits on that schedule; a limit
+that outlasts eight hours ends the drive, saying when it resets. A wait on work
+someone else holds, or on a contended lock, ends the drive after eight hours with
+nothing moved, so no wait goes without a deadline, and a long wait renews what the
+lanes hold. A preflight that exits 0 and leaves no receipt runs once for a head, and
+the lane then goes to the stuck check.
+
+Those eight hours are the default, for a run someone is watching. `--until <date>`
+replaces each of them with one bound the person sets (adr-2610222222326104's amendment
+of 2026-11-05, dcn-2611050815115904): the yes names it, the run ends at that time with
+the lane on its branch and its reservation released, an agent in a call finishing that
+call first, and until then no limit, outage or stuck queue ends the run. A reset is
+waited for however far off, up to the bound; one more than 35 days off reads as a
+misread field and as none. A limit with no reset is probed by `runner.ProbeLimit`, one
+launch on the walled login holding no tool, at one, five and ten minutes and then
+every thirty, so a probe never disturbs the lane; the lane's own agent starts when one
+answers. Failures keep the outage schedule, at most an hour apart; a contended wait
+backs off to fifteen minutes; origin is never given up on (`DrainOptions.KeepWaiting`);
+and a shared outage another session gave up on holds the run until it is cleared.
+
+A wait is measured twice: by the time slept and by the wall clock, whichever ends it
+first. The production sleep also looks at the wall clock each minute, since a timer
+stops while the machine sleeps, so a long wait wakes on time and renews at once; a
+clock set back cannot stretch it. A claim that lapsed is revived on waking, and a peer
+who took the issue keeps it, the lane going back as stuck. A repeated wait prints on a
+change of reason and every half hour.
+
+An agent that goes silent cannot be told from a hung one on what is known today. It
+is treated as a hang: its role's deadline kills its process group, its worktree is left
+as it stood, and the role is retried. A stream that reported a rejected limit before
+falling silent reads as that limit at the deadline. The harness's limit shapes the
+runner reads are a rejected `rate_limit_event`, an assistant message whose error is
+`rate_limit`, and a failed result naming the API's limit status; which of them a
+headless agent really emits is unobserved, so the first limit a run meets, and the
+first kill or failed exit that may be one, leave a `drive-limit-` or `drive-suspect-`
+evidence file in the local tier's logs: the exit, the stream's shape with identifiers
+dropped and free text reduced to its length, the redacted first stderr line, the reset
+read, the loop's decision, each probe's answer and when the run resumed.
 
 Before the first move the drive writes the walled directory's settings, abcd's hooks
 as commands naming its own binary and nothing else, and proves each wall, refusing
@@ -850,6 +883,7 @@ Sub-verbs: none.
 | `--reason` | string |
 | `--skip` | stringArray |
 | `--sub-agents` | string |
+| `--until` | string |
 | `--take-over` | bool |
 | `--unskip` | stringArray |
 | `--yes` | bool |

@@ -241,6 +241,10 @@ type DrainOptions struct {
 	// request: a terminal drive has no host for the request to fall to, so a
 	// judge that did not answer is asked again (terminal.go).
 	AskJudgeAgain bool
+	// KeepWaiting keeps waiting on origin, and on an outage the shared run gave
+	// up on, for as long as the caller lasts: a drive under --until has a bound
+	// of its own, so neither ends the drain (terminal.go).
+	KeepWaiting bool
 	// Skip are --skip's targets, issue ids or paths, held back for now with
 	// SkipReason, --reason; Unskip are --unskip's, taken off the list
 	// (drain_skip.go).
@@ -465,7 +469,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	// The ledger as origin's default branch holds it, fetched now, before any
 	// judgement or reservation: a move that cannot read it plans nothing and
 	// waits (drain_origin.go).
-	plan, origin, wait, recovered, probed, err := movePlan(repoRoot, &st, rule, now)
+	plan, origin, wait, recovered, probed, err := movePlan(repoRoot, &st, rule, now, d.KeepWaiting)
 	if err != nil {
 		return DrainResult{}, err
 	}
@@ -742,6 +746,10 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	if cur, err := CurrentOutage(repoRoot); err != nil {
 		return refuseMoved(outageUnreadable(err))
 	} else if cur != nil && cur.Status == implement.OutageGaveUp {
+		if d.KeepWaiting {
+			return refuseMoved(contend(StageOutage, "", "", fmt.Sprintf("the run gave up on the %s outage open since %s, so the drain opens nothing until a person closes it with `abcd implement outage clear --session <id> --reason <why>`",
+				strings.Join(cur.Services, " and "), cur.StartedAt.UTC().Format(time.RFC3339)), "close the outage once the connection is back"))
+		}
 		st.Stopped, st.EndedAt = DrainStoppedOutage, &now
 		res.Next = fmt.Sprintf("the run gave up on the %s outage open since %s after %d probe(s), so the drain stops here with %d lane(s) opened; once the connection is back, close the outage with `abcd implement outage clear --session <id> --reason <why>`, then `abcd drain` begins a new drain",
 			strings.Join(cur.Services, " and "), cur.StartedAt.UTC().Format(time.RFC3339), len(cur.Probes), len(st.Lanes))

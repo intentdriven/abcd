@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -39,6 +40,8 @@ const (
 	TerminalLimited = "rate-limited"
 	// TerminalWaited: nothing moved for as long as a drive waits.
 	TerminalWaited = "waited"
+	// TerminalUntil: the bound the person set with --until has passed.
+	TerminalUntil = "until"
 	// TerminalKilled: the context ended, a second signal: the agent's process
 	// group was killed, and what it held lapses on its own.
 	TerminalKilled = "killed"
@@ -81,6 +84,15 @@ type TerminalOptions struct {
 	// Sleep waits; nil sleeps until the time passes or the stop or the
 	// context ends it.
 	Sleep func(ctx context.Context, d time.Duration)
+	// Until is the bound the person set (--until): the run ends at this time,
+	// and no wait ends it before then. Zero keeps the eight-hour limit on each
+	// wait (adr-2610222222326104's amendment of 2026-11-05).
+	Until time.Time
+	// Probe asks whether a limit that named no reset has lifted, for role, with
+	// the cheapest launch that can tell. It reports true when it has; otherwise
+	// the failure says what came back. Nil leaves the lane's next launch to find
+	// out.
+	Probe func(ctx context.Context, role string) (bool, *runner.Failure)
 }
 
 // TerminalResult is how one terminal run ended.
@@ -111,6 +123,18 @@ type terminal struct {
 	idleSince time.Time
 	// ranClean names the lane and head a preflight last exited 0 on.
 	ranClean string
+	// ctx is the run's, which says whether a failed launch was the run ending.
+	ctx context.Context
+	// evidence keeps what the run's first limit showed (limit_evidence.go).
+	evidence *driveEvidence
+	// judgeLimit is the limit this move's judge met, nil when it met none.
+	judgeLimit *runner.Failure
+	// lastWhy and lastSaid are the wait a line last named, and when.
+	lastWhy  string
+	lastSaid time.Time
+	// longWait says a wait since the last look was long enough for a claim to
+	// have lapsed, a machine asleep included.
+	longWait bool
 }
 
 // RunTerminal drives the drain from here until its cap, an empty ledger, the
@@ -127,8 +151,54 @@ func RunTerminal(ctx context.Context, repoRoot string, o TerminalOptions) (Termi
 	if o.Drain.Transcripts == nil {
 		o.Drain.Transcripts = o.Runners.Transcripts
 	}
+	return newTerminal(repoRoot, o).run(ctx)
+}
+
+// newTerminal is one run, not yet started.
+func newTerminal(repoRoot string, o TerminalOptions) *terminal {
 	t := &terminal{repoRoot: repoRoot, o: o}
-	return t.run(ctx)
+	t.evidence = newDriveEvidence(repoRoot, func(line string) { t.say("%s", line) })
+	t.o.Options.RunnerFailed = t.noteFailure
+	if t.bounded() {
+		t.o.Drain.KeepWaiting = true
+		t.outage.noLimit, t.limit.noLimit = true, true
+	}
+	return t
+}
+
+// bounded reports whether the person set the run's bound.
+func (t *terminal) bounded() bool { return !t.o.Until.IsZero() }
+
+// pastBound reports whether the person's bound has passed, saying so.
+func (t *terminal) pastBound() bool {
+	if !t.bounded() || t.now().Before(t.o.Until) {
+		return false
+	}
+	t.say("stopping: --until named %s, and that has passed", t.o.Until.UTC().Format(time.RFC3339))
+	return true
+}
+
+// noteFailure hears of each launch that failed. A limit the judge met is the move's
+// to answer, and the first of each kind leaves its evidence.
+func (t *terminal) noteFailure(role string, fl *runner.Failure) {
+	if t.ctx != nil && t.ctx.Err() != nil {
+		return
+	}
+	entry := evidenceEntry{Event: "failure", Role: role, Runner: fl.Runner, Response: fl.Detail, Seen: fl.Seen}
+	if fl.Reason != runner.ReasonRateLimited {
+		if fl.Seen != nil {
+			t.evidence.begin("suspect", entry, t.now())
+		}
+		return
+	}
+	if role == RoleDrainJudge {
+		t.judgeLimit = fl
+	}
+	entry.Event = "limit"
+	if !fl.ResetsAt.IsZero() {
+		entry.ResetRead = fl.ResetsAt.UTC().Format(time.RFC3339)
+	}
+	t.evidence.begin("limit", entry, t.now())
 }
 
 // say prints one line.
@@ -175,19 +245,46 @@ func (t *terminal) haltedBy(err error) bool {
 
 // sleep waits d, saying why, in stretches no longer than half a lease, renewing
 // what the run's lanes hold between them, so a long wait keeps their claims. A
-// stop or a kill ends it.
+// stop, a kill or the person's bound ends it. The wait is measured twice, by the
+// time slept and by the wall clock, and whichever ends it first stands: a machine
+// that slept through part of it wakes on time, and a clock set back does not
+// stretch it. A clock set forward ends it early, which the next launch answers.
 func (t *terminal) sleep(ctx context.Context, d time.Duration, why string) {
-	t.say("waiting %s: %s", d.Round(time.Second), why)
+	now := t.now()
+	if t.bounded() {
+		d = min(d, max(t.o.Until.Sub(now), 0))
+	}
+	end := now.Add(d)
+	asked := d
+	t.sayWait(d, why)
 	t.renewHeld()
 	for d > 0 {
-		step := min(d, terminalRenewEvery)
+		step := min(d, terminalRenewEvery, max(end.Sub(t.now()), time.Second))
 		t.o.Sleep(ctx, step)
 		d -= step
 		if ctx.Err() != nil || t.stopped() {
 			return
 		}
 		t.renewHeld()
+		if !t.now().Before(end) {
+			break
+		}
+		t.sayWait(d, why)
 	}
+	if asked >= terminalRenewEvery || t.now().Sub(end) >= terminalRenewEvery {
+		t.longWait = true
+	}
+}
+
+// sayWait prints a wait's line when its reason changed and every so often while it
+// stands, so a wait of days shows it is alive and a thirty-second poll is no flood.
+func (t *terminal) sayWait(d time.Duration, why string) {
+	now := t.now()
+	if why == t.lastWhy && now.Sub(t.lastSaid) < terminalSayEvery {
+		return
+	}
+	t.lastWhy, t.lastSaid = why, now
+	t.say("waiting %s: %s", d.Round(time.Second), why)
 }
 
 // renewHeld renews each due reservation of a run in progress, but one a drive
@@ -202,11 +299,16 @@ func (t *terminal) renewHeld() {
 
 // idle waits d on something someone else must do, reporting true when nothing
 // has moved for as long as a drive waits (adr-2610222222326104 condition 3): the
-// run then ends, saying so.
+// run then ends, saying so. Under the person's bound the wait goes on, looking
+// less often the longer it lasts, up to its cap.
 func (t *terminal) idle(ctx context.Context, d time.Duration, why string) bool {
 	now := t.now()
 	if t.idleSince.IsZero() {
 		t.idleSince = now
+	}
+	if t.bounded() {
+		t.sleep(ctx, max(d, min(now.Sub(t.idleSince)/4, terminalIdleCap)), why)
+		return false
 	}
 	if now.Sub(t.idleSince) >= terminalOutageLimit {
 		t.say("stopping: nothing has moved for eight hours, as long as a drive waits: %s", why)
@@ -234,6 +336,7 @@ func (t *terminal) failed(ctx context.Context, judge bool, what string) bool {
 
 // run is the loop.
 func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
+	t.ctx = ctx
 	for {
 		if ctx.Err() != nil {
 			return t.ended(TerminalKilled), nil
@@ -241,9 +344,13 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 		if t.stopped() {
 			return t.ended(TerminalStopped), nil
 		}
+		if t.pastBound() {
+			return t.ended(TerminalUntil), nil
+		}
 		if !t.wallHeld() {
 			return t.ended(TerminalWall), nil
 		}
+		t.judgeLimit = nil
 		res, err := Drain(t.repoRoot, t.o.Options, t.o.Drain)
 		if err != nil {
 			if ctx.Err() != nil {
@@ -273,10 +380,18 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 			return t.ended(res.Stopped), nil
 		}
 		if res.Judged != nil {
-			t.outage.succeed()
+			t.moved()
 		}
 		if res.Judged != nil || len(res.Routed) > 0 || len(res.Finished) > 0 || res.Start != nil {
 			t.idleSince = time.Time{}
+		}
+		// A judge that met a limit is an agent like any other: none starts,
+		// this one included, before the limit lets it.
+		if fl := t.judgeLimit; fl != nil && res.Judging != nil {
+			if ended := t.limited(ctx, RoleDrainJudge, fl.ResetsAt); ended != "" {
+				return t.ended(ended), nil
+			}
+			continue
 		}
 		if d, ok := moveWait(res, t.now()); ok {
 			if res.WaitingUntil == nil {
@@ -338,8 +453,14 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 		if t.stopped() {
 			return TerminalStopped, nil
 		}
+		if t.pastBound() {
+			return TerminalUntil, nil
+		}
 		if !t.wallHeld() {
 			return TerminalWall, nil
+		}
+		if t.peerTook(runID) {
+			return "", nil
 		}
 		run, err := ReadState(t.repoRoot, runID)
 		if err != nil {
@@ -379,15 +500,14 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 				return TerminalOutage, nil
 			}
 		case res.RateLimit != nil:
-			if t.rateLimited(ctx, res.RateLimit) {
-				return TerminalLimited, nil
+			if ended := t.limited(ctx, res.RateLimit.Role, res.RateLimit.resetsAt); ended != "" {
+				return ended, nil
 			}
 		case res.NextEligibleAt != nil:
 			t.sleep(ctx, max(res.NextEligibleAt.Sub(t.now()), TerminalWaitFloor), res.Next)
 		case res.Route != nil || res.PerformedStage != "":
 			t.idleSince = time.Time{}
-			t.outage.succeed()
-			t.limit.succeed()
+			t.moved()
 			t.sayStep(runID, res)
 		default:
 			// No agent ran and no stage moved. Every wait has a deadline
@@ -399,27 +519,116 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 	}
 }
 
-// rateLimited waits out the account's rate limit, reporting true when the run
-// should end instead. No agent starts during the wait: it lasts until the reset
-// the harness reported, or, with none reported, as long as the outage's schedule
-// says. A reset beyond what a drive waits ends the run now, saying when it is.
-func (t *terminal) rateLimited(ctx context.Context, rl *RateLimit) bool {
-	now := t.now()
-	d, up := t.limit.fail(now, true)
-	if at := rl.resetsAt; at.After(now) {
-		if at.Sub(t.limit.since) > terminalOutageLimit {
-			t.say("stopping: the account's rate limit resets at %s, later than a drive waits; run %s then", at.UTC().Format(time.RFC3339), TerminalResumeCommand)
-			return true
+// moved ends the counts a wait keeps: the outage's and the limit's. It is the moment
+// a limit's evidence says the run resumed.
+func (t *terminal) moved() {
+	t.outage.succeed()
+	t.limit.succeed()
+	t.evidence.resumed(t.now())
+}
+
+// limited waits out the account's rate limit, role's agent having met it, and says
+// why the run ends instead, "" to go on. No agent starts during the wait, the
+// judge's included. A reset the harness named is waited for, however far off under
+// the person's bound; beyond what a drive waits with no bound, the run ends now,
+// saying when it is. With none named the wait runs on the outage's schedule, capped
+// under a bound, and a probe asks at each turn whether the limit has lifted, so the
+// lane is not disturbed by asking. A probe that names a reset turns the wait into
+// that one; a few that get no answer say nothing of the limit, and the lane's own
+// launch finds out, which also serves a harness whose probe can never answer.
+func (t *terminal) limited(ctx context.Context, role string, at time.Time) string {
+	misses := 0
+	for {
+		now := t.now()
+		d, up := t.limit.fail(now, true)
+		if at.Sub(now) > terminalResetSane {
+			t.say("the rate limit names a reset at %s, too far off to be one; it is treated as naming none", at.UTC().Format(time.RFC3339))
+			at = time.Time{}
 		}
-		t.sleep(ctx, max(at.Sub(now), TerminalWaitFloor), fmt.Sprintf("the account's rate limit resets at %s", at.UTC().Format(time.RFC3339)))
+		if at.After(now) {
+			if !t.bounded() && at.Sub(t.limit.since) > terminalOutageLimit {
+				t.say("stopping: the account's rate limit resets at %s, later than a drive waits; run %s then", at.UTC().Format(time.RFC3339), TerminalResumeCommand)
+				return TerminalLimited
+			}
+			t.evidence.add(evidenceEntry{Event: "decided", Decided: "wait until the reset named", NextLook: at.UTC().Format(time.RFC3339)}, now)
+			t.sleep(ctx, max(at.Sub(now), TerminalWaitFloor), fmt.Sprintf("the account's rate limit resets at %s", at.UTC().Format(time.RFC3339)))
+			return ""
+		}
+		if up {
+			t.say("stopping: the account has met its rate limit for eight hours and nothing says when it resets; run %s later", TerminalResumeCommand)
+			return TerminalLimited
+		}
+		if t.bounded() {
+			d = min(d, terminalProbeCap)
+		}
+		t.evidence.add(evidenceEntry{Event: "decided", Decided: "probe, since nothing says when it resets", NextLook: now.Add(d).UTC().Format(time.RFC3339)}, now)
+		t.sleep(ctx, d, "the account has met its rate limit, and nothing says when it resets; it is asked again after this wait")
+		if t.o.Probe == nil || ctx.Err() != nil || t.stopped() || (t.bounded() && !t.now().Before(t.o.Until)) {
+			return ""
+		}
+		if !t.wallHeld() {
+			return TerminalWall
+		}
+		renewed, fl := t.o.Probe(ctx, role)
+		entry := evidenceEntry{Event: "probe", Answer: "no answer"}
+		if fl != nil {
+			entry.Seen = fl.Seen
+		}
+		at = time.Time{}
+		switch {
+		case ctx.Err() != nil:
+			return ""
+		case renewed:
+			entry.Answer = "renewed"
+			t.evidence.add(entry, t.now())
+			t.say("the account's rate limit has lifted: a probe was answered")
+			return ""
+		case fl != nil && fl.Reason == runner.ReasonRateLimited:
+			entry.Answer = "limited"
+			at, misses = fl.ResetsAt, 0
+			if !at.IsZero() {
+				entry.ResetRead = at.UTC().Format(time.RFC3339)
+			}
+			t.evidence.add(entry, t.now())
+		default:
+			t.evidence.add(entry, t.now())
+			if misses++; misses >= terminalProbeMisses {
+				t.say("the probe got no answer %d times running; the lane's own agent finds out instead", misses)
+				return ""
+			}
+		}
+	}
+}
+
+// peerTook reports whether someone else now holds the lane's issue, after a wait
+// long enough for its claim to have lapsed. What the run renewed through the wait it
+// still holds, and a lapse with no peer is revived as it wakes; a peer who took the
+// issue keeps it, so the lane stops spending on it and goes back as stuck.
+func (t *terminal) peerTook(runID string) bool {
+	if !t.longWait {
 		return false
 	}
-	if up {
-		t.say("stopping: the account has met its rate limit for eight hours and nothing says when it resets; run %s later", TerminalResumeCommand)
-		return true
+	t.longWait = false
+	run, err := ReadState(t.repoRoot, runID)
+	if err != nil || run.ReservedAt == nil || letGoByDrive(run) {
+		return false
 	}
-	t.sleep(ctx, d, "the account has met its rate limit, and nothing says when it resets")
-	return false
+	now := t.now()
+	if _, err := claim.Fetch(t.repoRoot, claimOptions(now)); err != nil {
+		return false
+	}
+	snap, err := claim.View(t.repoRoot, now)
+	if err != nil {
+		return false
+	}
+	_, _, lost := renewalDue(run, snap, now)
+	if lost == "" {
+		return false
+	}
+	r := refuse(StageReservation, "", "", lost, "see the reason")
+	r.final = "someone else took the issue up while this lane waited"
+	t.stayAsItIs(runID, run.Key, r)
+	return true
 }
 
 // pauseWhy is a paused await's reason.
@@ -523,7 +732,14 @@ func (t *terminal) takeUp(ctx context.Context, runID string) (bool, string) {
 		return true, ""
 	}
 	r.Contention = false
-	t.say("%s, run %s, stays as it is: %s", run.Key, runID, r.Reason)
+	t.stayAsItIs(runID, run.Key, r)
+	return true, ""
+}
+
+// stayAsItIs records a refusal that cannot change on the run's lane, so the next
+// move hands it back as stuck.
+func (t *terminal) stayAsItIs(runID, key string, r *Refusal) {
+	t.say("%s, run %s, stays as it is: %s", key, runID, r.Reason)
 	now := t.now()
 	_ = mutate(t.repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
 		i := st.current()
@@ -533,7 +749,6 @@ func (t *terminal) takeUp(ctx context.Context, runID string) (bool, string) {
 		r.Lane = st.Lanes[i].ID
 		return noteRefusal(st, r, now), nil
 	})
-	return true, ""
 }
 
 // letGoByDrive reports whether the run's latest reservation entry is a drive

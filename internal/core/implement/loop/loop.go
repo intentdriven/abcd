@@ -52,6 +52,9 @@ type Options struct {
 	// NetworkProbe proves the network back for the shared outage probe a
 	// step runs when it is due; nil is implement.RemoteProbe at the checkout.
 	NetworkProbe func() (bool, string)
+	// RunnerFailed is told of each launch that failed, with what it showed; nil
+	// tells no one. A terminal run reads a limit and keeps its evidence from it.
+	RunnerFailed func(role string, fl *runner.Failure)
 	// Runners is the runner configuration read before a run is created
 	// (LoadRunners). A new run's budget check (budget.go) asks each runner a
 	// role of the run is routed to for its remaining quota; nil leaves every
@@ -132,6 +135,24 @@ func (o Options) roots(repoRoot string) layered.Roots {
 	}
 	r, _ := layered.RootsFor(repoRoot)
 	return r
+}
+
+// failedLaunch tells RunnerFailed of what a dispatch ended on, an error or a
+// failure it fell back from.
+func (o Options) failedLaunch(role string, err error, fl *runner.Failure) {
+	if o.RunnerFailed == nil {
+		return
+	}
+	if err != nil {
+		var f *runner.Failure
+		if !errors.As(err, &f) {
+			return
+		}
+		fl = f
+	}
+	if fl != nil {
+		o.RunnerFailed(role, fl)
+	}
 }
 
 func (o Options) now() time.Time {

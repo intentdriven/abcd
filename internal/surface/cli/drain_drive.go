@@ -82,6 +82,29 @@ type driveFlags struct {
 	maxLanes int
 	takeOver bool
 	skips    drainSkips
+	// until is the run's bound; zero leaves each wait its eight hours.
+	until time.Time
+}
+
+// parseDriveUntil reads --until: an RFC 3339 instant, or a date, read as the end of
+// that day on this machine's clock. "" is no bound. A refusal never repeats the
+// value given.
+func parseDriveUntil(given string, now time.Time) (time.Time, error) {
+	if given == "" {
+		return time.Time{}, nil
+	}
+	at, err := time.Parse(time.RFC3339, given)
+	if err != nil {
+		day, derr := time.ParseInLocation(time.DateOnly, given, time.Local)
+		if derr != nil {
+			return time.Time{}, driveRefusal("--until is not a date (YYYY-MM-DD) or an RFC 3339 instant (the value given is not repeated here)")
+		}
+		at = time.Date(day.Year(), day.Month(), day.Day(), 23, 59, 59, 0, time.Local)
+	}
+	if !at.After(now) {
+		return time.Time{}, driveRefusal("--until names a time already past, so the run would end before its first move")
+	}
+	return at, nil
 }
 
 // driveRefusal is a precondition's refusal, naming that nothing was started.
@@ -141,6 +164,11 @@ func driveConsent(cmd *cobra.Command, f driveFlags, lanes, runs int, p runner.Pr
 	fmt.Fprintln(w, "abcd drain --drive works through this repository's issues with no further input:")
 	fmt.Fprintf(w, "  cap:      %d lane(s)\n", lanes)
 	fmt.Fprintf(w, "  estimate: about %d agent run(s) at most\n", runs)
+	if f.until.IsZero() {
+		fmt.Fprintln(w, "  bound:    eight hours on any one wait (--until sets one of your own)")
+	} else {
+		fmt.Fprintf(w, "  bound:    ends at %s, and waits through limits and outages until then\n", f.until.UTC().Format(time.RFC3339))
+	}
 	fmt.Fprintf(w, "  runner: claude\n")
 	fmt.Fprintf(w, "  route:    this account's subscription, on the walled login %s\n", abcdhome.Display("profiles", filepath.Base(p.Dir)))
 	fmt.Fprintln(w, "  first:    one short live launch proves the walls, on the same subscription")
@@ -221,11 +249,11 @@ func runDrive(cmd *cobra.Command, asJSON bool, repoRoot string, f driveFlags) er
 			d.Max = 0
 		}
 	}
-	return driveRun(sig, cmd, asJSON, repoRoot, roots, p, o, d)
+	return driveRun(sig, cmd, asJSON, repoRoot, roots, p, o, d, f.until)
 }
 
 // driveRun runs the terminal loop and says how it ended.
-func driveRun(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot string, roots layered.Roots, p runner.Profile, o loop.Options, d loop.DrainOptions) error {
+func driveRun(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot string, roots layered.Roots, p runner.Profile, o loop.Options, d loop.DrainOptions, until time.Time) error {
 	review, err := loop.LoadReviewRoute(roots, agentPrompt)
 	if err != nil {
 		return loopFail(cmd.OutOrStdout(), asJSON, "abcd drain", err)
@@ -253,6 +281,8 @@ func driveRun(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot strin
 		Preflight: drivePreflight(detail),
 		Say:       say,
 		Stop:      sig.stop,
+		Until:     until,
+		Probe:     o.Runners.ProbeLimit,
 		BeforeStage: func() error {
 			return runner.CheckWallSettings(p, runner.SelfBinary())
 		},
@@ -332,6 +362,7 @@ func renderDriveEnd(w io.Writer, res loop.TerminalResult) {
 		loop.TerminalHalted:     "a stop set from elsewhere holds",
 		loop.TerminalLimited:    "the account's rate limit outlasts what a drive waits",
 		loop.TerminalWaited:     "nothing moved for eight hours",
+		loop.TerminalUntil:      "the time --until named has passed",
 		loop.TerminalWall:       "a wall no longer held",
 		loop.TerminalRefused:    "a move was refused",
 		loop.TerminalKilled:     "killed",

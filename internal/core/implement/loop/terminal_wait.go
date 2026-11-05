@@ -26,6 +26,29 @@ const terminalOutageLimit = 8 * time.Hour
 // holds: half the bundled lease, the point a renewal falls due.
 const terminalRenewEvery = time.Hour
 
+// What a wait under the person's bound (--until) keeps to.
+const (
+	// terminalProbeCap is the longest between two probes of a limit that named
+	// no reset.
+	terminalProbeCap = 30 * time.Minute
+	// terminalIdleCap is the longest between two looks at something someone
+	// else must do.
+	terminalIdleCap = 15 * time.Minute
+	// terminalProbeMisses is how many probes in a row may get no answer before
+	// the lane's own launch finds out instead.
+	terminalProbeMisses = 3
+	// terminalResetSane is the furthest a reset may be and be read as one: past
+	// any usage window, so a field in another unit reads as no reset rather
+	// than a wait until the bound.
+	terminalResetSane = 35 * 24 * time.Hour
+)
+
+// terminalSayEvery is how often a wait that has not changed says it still stands.
+const terminalSayEvery = 30 * time.Minute
+
+// wallLookEvery is how often the production sleep looks at the wall clock.
+const wallLookEvery = time.Minute
+
 // moveWait is how long the loop sleeps after a move that returned a wait: until
 // the earliest time the move named, at least the floor. ok is false when it
 // named none.
@@ -57,6 +80,8 @@ type terminalOutageClock struct {
 	failures int
 	waits    int
 	since    time.Time
+	// noLimit keeps the schedule going for as long as the person's bound lasts.
+	noLimit bool
 }
 
 // fail counts one failure at now: how long to wait before trying again, and
@@ -70,7 +95,7 @@ func (c *terminalOutageClock) fail(now time.Time, judge bool) (time.Duration, bo
 		}
 		c.since = now
 	}
-	if now.Sub(c.since) >= terminalOutageLimit {
+	if !c.noLimit && now.Sub(c.since) >= terminalOutageLimit {
 		return 0, true
 	}
 	s := implement.DefaultSchedule
@@ -86,15 +111,34 @@ func (c *terminalOutageClock) fail(now time.Time, judge bool) (time.Duration, bo
 func (c *terminalOutageClock) inOutage() bool { return !c.since.IsZero() }
 
 // succeed ends the count.
-func (c *terminalOutageClock) succeed() { *c = terminalOutageClock{} }
+func (c *terminalOutageClock) succeed() { *c = terminalOutageClock{noLimit: c.noLimit} }
 
-// sleepOr is the production sleep: d, or until the stop or ctx ends it.
+// sleepOr is the production sleep: d, or until the stop or ctx ends it, or until
+// the wall clock says d has passed.
 func sleepOr(ctx context.Context, d time.Duration, stop <-chan struct{}) {
+	look := time.NewTicker(wallLookEvery)
+	defer look.Stop()
+	wallSleep(ctx, d, stop, time.Now, look.C)
+}
+
+// wallSleep waits d by a timer, which stops while the machine sleeps, and at each
+// look by the wall clock, which does not, and whichever passes d first ends it.
+func wallSleep(ctx context.Context, d time.Duration, stop <-chan struct{}, now func() time.Time, looks <-chan time.Time) {
+	end := now().Round(0).Add(d)
 	timer := time.NewTimer(d)
 	defer timer.Stop()
-	select {
-	case <-timer.C:
-	case <-stop:
-	case <-ctx.Done():
+	for {
+		select {
+		case <-timer.C:
+			return
+		case <-stop:
+			return
+		case <-ctx.Done():
+			return
+		case <-looks:
+			if !now().Round(0).Before(end) {
+				return
+			}
+		}
 	}
 }

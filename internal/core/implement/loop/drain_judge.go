@@ -217,6 +217,7 @@ func routedJudgement(repoRoot string, iss capture.Issue, v capture.DrainVerdict,
 	if ctx.Err() != nil {
 		return nil, "", true, judgeStopped(iss.ID)
 	}
+	o.failedLaunch(RoleDrainJudge, err, out.Failure)
 	switch {
 	case err != nil:
 		return nil, "the drain judge's runner did not judge " + iss.ID + " (" + termsafe.Sanitize(fsutil.RedactHome(err.Error())) +

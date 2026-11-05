@@ -48,8 +48,52 @@ it needs, reads settings from the walled directory alone, and starts only while 
 settings are what abcd wrote. Its shell has a home of its own in that directory.
 
 It prints one line per step and logs them under `.abcd/.work.local/logs/`. It ends
-at the cap, when nothing is eligible, or after eight hours of runner failures. The
-first interrupt, hang-up or termination is a stop: the agent in a call finishes
+at the cap, when nothing is eligible, at the bound below, or on a stop.
+
+**The bound.** With no flag each wait has an eight-hour limit: eight hours of runner
+failures, eight hours with nothing moving, a rate limit that outlasts eight hours, or
+origin unreadable through its schedule each end the run. `--until <date>` replaces
+those with one bound of the person's own, either a date, read as the end of that day
+on this machine's clock, or an RFC 3339 instant: the yes names it, and at that time
+the run ends with the lane on its branch and its reservation released. An agent in a
+call finishes that call first, and `abcd drain --drive` takes the lane up later. A
+long unattended run needs `--until`, and `--max` too, since the cap stays eight
+lanes unless it says otherwise.
+
+Under a bound nothing but the bound, the cap, an empty ledger or a stop ends the run:
+
+- **A limit with a reset.** No agent starts, the judge included, until the time the
+  harness named, however far off. A wait counts both the time slept and the wall
+  clock, so a machine that sleeps through part of it wakes at the right time and a
+  clock set back does not stretch it. A reset more than 35 days off reads as a
+  misread field and is treated as no reset.
+- **A limit with no reset.** One short launch on the walled login, holding no tool
+  and naming no brief, asks whether the limit has lifted, one, five and ten minutes
+  on and then every thirty. When it has, the lane's own agent starts. A probe that
+  gets no answer says nothing about the limit, and the run keeps asking.
+- **An agent that goes silent.** Silence cannot be told from a hang yet, so it is
+  treated as one: the role's own deadline kills it, what it left stays in the lane's
+  worktree, and the role is retried on the outage schedule. A stream that reported
+  a limit before its silence reads as that limit when the deadline falls.
+- **An outage or a stuck queue.** Runner failures keep the outage schedule, at most an
+  hour apart. Work held by someone else, the reservation cap and a contended lock are
+  looked at again at most fifteen minutes apart. Origin keeps its schedule and is
+  never given up on. An outage another session gave up on holds the run until
+  `abcd implement outage clear` or the bound.
+
+Each wait says what it waits on when it begins, when its reason changes, and at least
+hourly while it lasts. Through every wait the run renews what it holds. A claim that
+lapsed anyway, a machine asleep past its lease, is reserved again on waking; a peer
+who took the issue meanwhile keeps it, and the lane goes back as stuck.
+
+The first limit a run meets leaves `drive-limit-<time>.jsonl` under
+`.abcd/.work.local/logs/`, the first other failure that may be one, a kill or a
+failed exit, `drive-suspect-<time>.jsonl`. Each holds the exit, the end of the event
+stream with every identifier dropped and free text reduced to its length, the first
+stderr line through the scanner's redactor, the reset read, what the loop decided,
+each probe's answer and when the run resumed.
+
+The first interrupt, hang-up or termination is a stop: the agent in a call finishes
 that call, the lane's reservation is released, the lane stays on its branch, and
 the last lines name the run, the lane and `abcd drain --drive`, which resumes it.
 A second signal kills the running agent's process group and exits at once, naming
