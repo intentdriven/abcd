@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/runner"
 )
 
 // barerender_test.go — every top-level verb renders state on a bare call, or
@@ -36,6 +38,9 @@ func TestEveryTopLevelVerbRendersStateBareOrIsAnException(t *testing.T) {
 			repo, _ := sessionEndRepo(t) // a checkout with one commit, HOME isolated
 			t.Chdir(repo)
 			t.Setenv("PATH", "/usr/bin:/bin")
+			// As on a clean machine: a session this test runs under answers a verb
+			// that lists a session's state, and would hide what bare does without.
+			t.Setenv(runner.HostSessionEnv, "")
 			root := NewRootCommand()
 			var so, se bytes.Buffer
 			root.SetOut(&so)
