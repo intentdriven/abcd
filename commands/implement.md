@@ -272,7 +272,8 @@ a stage the binary performs is the call's answer, and no other lane moves.
 
 `receipt` looks the path up among every outstanding await of the run and
 advances the lane it belongs to; a path no await names is refused, naming the
-awaits there are, and frees nothing.
+awaits there are, and frees nothing. A path a step already collected (below) is
+answered while the file is what the step took, and refused once it has changed.
 
 `widen` is an issue lane implementer's, run from the checkout the run lives in
 before its first edit of a path beyond the lane's reservation; the lane's brief
@@ -354,7 +355,21 @@ no agent out retries one held role once on its runner, the one waiting longest:
 a paused role, or one already with the host, from an earlier fallback or a step
 before its route existed, whose receipt nothing has written (a role whose
 receipt is written is yours to hand back, and is never retried). The result
-names the retry in `retried`, and the run record in a `retry` line. A `--route`
+names the retry in `retried`, and the run record in a `retry` line. The one
+receipt a step reads itself is a routed implementer's, where the run shows its
+runner was started: one that verifies is collected, as the step's move, with no
+second runner and no retry, even if the runner then exited badly (a fix round's
+needs a commit past the round's head); its route names the runner asked for and
+leaves `ran` empty until that runner's report arrives. A receipt carrying a
+hand-back is not read this way: `receipt` takes it, or the runner's own hand-in as
+its agent ends. One that does not verify stays where it stands. While the runner's claim stands, `next` says to wait.
+After a runner that exited badly the role is retried and the file set aside. After
+a runner whose answer was refused the lane is stopped: no runner is started over
+the work, `next` names the ways out (correct the receipt and run `receipt`, which a
+plain `step` also reads, or `step --restart`), and a drain hands the lane back as
+stuck at its bounds. A `--route` for that role is refused.
+What stands at an agent's path when it is handed out, or when a runner is claimed
+for it, is set aside unread under the lane's `aside/`. A `--route`
 for a held role retries it at once on that route, as the step's one move; a
 `--route` with `--restart`, or any route in force for the restarted role,
 starts the fresh agent on its runner at once rather than re-telling it to you.
@@ -370,12 +385,13 @@ the launch charged as one agent run of its runner's budget; the run record's
 `fallback_counts` sums them as `cost_usd` and `charged_runs`. A fallback
 receipt's `spent` is state schema version 19's, and the drain state's version
 3's for its judge. An implementer
-killed after it committed past the lane's base and wrote its report is no
-failed start: the lane stays at its stage, neither paused nor counted as a
+killed after it committed past the lane's base and wrote its report, and before
+it wrote its receipt, is no failed start: the lane stays at its stage, neither paused nor counted as a
 fallback, the result names the implementer's await with its receipt still to
 write from the branch and the report, and the run records a `killed` line with
 the commits and what the launch spent; write the receipt, or the next `step`
-retries the role on its runner.
+retries the role on its runner. One killed with its receipt written too pauses,
+with a fallback receipt as any bad exit has, and the next `step` reads the receipt.
 A role a runner is running is claimed in the run's state (an await's
 `running`, until the run's time bound, and as long again for the load gate,
 has passed), so a second `step`, here or
