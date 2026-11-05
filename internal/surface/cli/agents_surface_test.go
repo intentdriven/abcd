@@ -145,3 +145,44 @@ func TestAgentsOnAMachineWithNoLedger(t *testing.T) {
 		t.Errorf("a read made the store: %v", err)
 	}
 }
+
+// A machine with nothing on record has a state to show, session or no session:
+// one plain line, and under --json the same listing with nothing in it. A store
+// that exists and is empty is the same as one never made.
+func TestAgentsBareWithNothingOnRecordSaysSo(t *testing.T) {
+	for name, makeStore := range map[string]bool{"no store": false, "an empty store": true} {
+		t.Run(name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv(runner.HostSessionEnv, "")
+			if makeStore {
+				if err := os.MkdirAll(abcdhome.Path(home, "agents"), 0o700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			dir := t.TempDir()
+			code, out, errOut := reserveRun(t, dir, "agents")
+			if code != 0 || errOut != "" {
+				t.Fatalf("exit %d, stderr %q", code, errOut)
+			}
+			if got := strings.TrimRight(out, "\n"); strings.Contains(got, "\n") || !strings.Contains(got, "no launches") || !strings.Contains(got, "on record") {
+				t.Errorf("want one plain line saying no launches are on record, got %q", out)
+			}
+			code, out, errOut = reserveRun(t, dir, "agents", "--json")
+			if code != 0 {
+				t.Fatalf("--json: exit %d, stderr %q", code, errOut)
+			}
+			var got struct {
+				Entries    []runner.LedgerEntry   `json:"entries"`
+				Totals     runner.LedgerTotals    `json:"totals"`
+				Unreadable []runner.LedgerProblem `json:"unreadable"`
+			}
+			if err := json.Unmarshal([]byte(out), &got); err != nil {
+				t.Fatalf("--json: %v\n%s", err, out)
+			}
+			if got.Entries == nil || len(got.Entries) != 0 || got.Totals.Launches != 0 || got.Unreadable == nil {
+				t.Errorf("--json is not the empty listing: %s", out)
+			}
+		})
+	}
+}

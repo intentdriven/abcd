@@ -1,6 +1,6 @@
 ---
 name: agents
-description: "List the agents abcd started for this session and add them up: Writes nothing; refuses when no session can be named and no scope is given."
+description: "List the agents abcd started for this session and add them up: Writes nothing; refuses when launches are on record and no session or scope says whose."
 argument-hint: "[--run <id> | --session <id> | --all]"
 block: people
 ---
@@ -19,9 +19,11 @@ changes no entry.
 ```
 
 Bare, it lists the session the command runs under: the one the host exports, or
-one whose host process the command descends from. Under neither, as in a plain
-terminal, it refuses (exit 2) and names the flags. Two scopes at once are refused
-the same way.
+one whose host process the command descends from. With nothing on record it says
+so in one line, under a session or not, and `--json` gives the same listing with
+nothing in it. Under neither session, as in a plain terminal, with launches on
+record, it refuses (exit 2) and names the flags, since it cannot say whose to list.
+Two scopes at once are refused the same way.
 
 ## What an entry says
 

@@ -45,7 +45,7 @@ and staleness it reports are unchanged.
 
 ### `abcd agents`
 
-List the agents abcd started for this session and add them up: Writes nothing; refuses when no session can be named and no scope is given.
+List the agents abcd started for this session and add them up: Writes nothing; refuses when launches are on record and no session or scope says whose.
 
 **Usage:** `abcd agents [flags]`
 
@@ -61,7 +61,8 @@ which is no money spent. Every cost is the harness's own estimate, and the
 provider's invoice is the final figure. An entry whose process is gone with no end
 written reads as lost. An entry it cannot read is named, never dropped.
 
-It reads only. Exit 2 on a refusal: no session to list, or two scopes at once.
+With nothing on record it says so, session or no session. It reads only. Exit 2 on a
+refusal: launches on record and no session or scope to say whose, or two scopes at once.
 
 **Flags:**
 

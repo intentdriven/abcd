@@ -20,7 +20,8 @@ it runs in the process, touching no network.
 
 Bare, the verb lists the launches of the session the command runs under; a flag
 names one run, another session or every launch instead. With no session to name
-and no scope given it refuses at exit 2, as it does for two scopes at once.
+and no scope given it says so in one line when nothing is on record, and refuses at
+exit 2 when launches are, as it does for two scopes at once.
 
 ## The record
 

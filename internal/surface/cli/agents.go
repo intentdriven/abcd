@@ -50,7 +50,8 @@ func newAgentsCommand(asJSON *bool) *cobra.Command {
 			"which is no money spent. Every cost is the harness's own estimate, and the\n" +
 			"provider's invoice is the final figure. An entry whose process is gone with no end\n" +
 			"written reads as lost. An entry it cannot read is named, never dropped.\n\n" +
-			"It reads only. Exit 2 on a refusal: no session to list, or two scopes at once.",
+			"With nothing on record it says so, session or no session. It reads only. Exit 2 on a\n" +
+			"refusal: launches on record and no session or scope to say whose, or two scopes at once.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			const prefix = "abcd agents: "
@@ -72,17 +73,23 @@ func newAgentsCommand(asJSON *bool) *cobra.Command {
 			}
 			q := runner.LedgerQuery{Run: run, Session: session, All: all}
 			scope := agentsScope{Run: run, Session: session, All: all}
+			noSession := false
 			if scopes == 0 {
-				o, ok := runner.CurrentSession(roots.Home)
-				if !ok {
-					return &exitError{Code: 2, Msg: prefix + "this command runs under no session abcd can name, so there is no " +
-						"\"this session\" to list; pass --run <id>, --session <id> or --all"}
+				if o, ok := runner.CurrentSession(roots.Home); ok {
+					q.Session, scope.Session, scope.Name = o.ID, o.ID, o.Name
+				} else {
+					// Whether there is anything to say whose depends on what the
+					// store holds, so a bare call always has a state to show.
+					q.All, noSession = true, true
 				}
-				q.Session, scope.Session, scope.Name = o.ID, o.ID, o.Name
 			}
 			listing, err := runner.ReadLedger(roots.Home, q)
 			if err != nil {
 				return &exitError{Code: 2, Msg: prefix + termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
+			}
+			if noSession && (len(listing.Entries) > 0 || len(listing.Unreadable) > 0) {
+				return &exitError{Code: 2, Msg: prefix + "this command runs under no session abcd can name, so there is no " +
+					"\"this session\" to list; pass --run <id>, --session <id> or --all"}
 			}
 			out := agentsOutput{Scope: scope, LedgerListing: listing}
 			return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) { renderAgents(w, out) })
@@ -98,6 +105,14 @@ func newAgentsCommand(asJSON *bool) *cobra.Command {
 // sanitised: a file in the store is data, whoever wrote it.
 func renderAgents(w io.Writer, o agentsOutput) {
 	safe := termsafe.Sanitize
+	if len(o.Entries) == 0 && len(o.Unreadable) == 0 {
+		line := "abcd agents: no launches are on record"
+		if text := agentsScopeText(o.Scope); text != "" && !o.Scope.All {
+			line += " for " + text
+		}
+		fmt.Fprintln(w, safe(line))
+		return
+	}
 	fmt.Fprintf(w, "abcd agents — %s\n", safe(agentsScopeText(o.Scope)))
 	if len(o.Entries) == 0 {
 		fmt.Fprintln(w, "no launches")
@@ -145,8 +160,10 @@ func agentsScopeText(s agentsScope) string {
 		return "run " + s.Run
 	case s.Name != "":
 		return "session " + s.Session + " (" + s.Name + ")"
-	default:
+	case s.Session != "":
 		return "session " + s.Session
+	default:
+		return ""
 	}
 }
 

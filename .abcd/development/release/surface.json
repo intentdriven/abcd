@@ -55,7 +55,7 @@
       "hidden": false,
       "group": "records",
       "block": "people",
-      "sentence": "List the agents abcd started for this session and add them up: Writes nothing; refuses when no session can be named and no scope is given.",
+      "sentence": "List the agents abcd started for this session and add them up: Writes nothing; refuses when launches are on record and no session or scope says whose.",
       "flags": [
         {
           "name": "all",
