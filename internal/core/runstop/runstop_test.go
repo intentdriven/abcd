@@ -803,3 +803,53 @@ func TestALinkAmongTheParentsIsHeldToTheRule(t *testing.T) {
 		t.Fatal("a link in a parent anyone can write passed")
 	}
 }
+
+// TestANoticeNamesAnAccountOnlyWhereTheDirectoryIsItsOwn: a name alone proves nothing.
+func TestANoticeNamesAnAccountOnlyWhereTheDirectoryIsItsOwn(t *testing.T) {
+	folder, other := plantedByAnother(t)
+	got := readNoPin(t.TempDir())
+	if len(got.Foreign) != 1 || strings.Contains(got.Foreign[0], accountName(other)) {
+		t.Fatalf("a directory another account did not make named it: %q", got.Foreign)
+	}
+	own := filepath.Join(folder, stopDirName(os.Getuid()))
+	if err := os.Mkdir(own, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	lines := foreignLines([]foreignStop{{folder: folder, path: filepath.Join(own, StopFileName), dir: own, owner: os.Getuid()}})
+	if len(lines) != 1 || !strings.Contains(lines[0], accountName(os.Getuid())) {
+		t.Fatalf("a directory its account owns: %q", lines)
+	}
+}
+
+// TestAFloodOfForeignDirectoriesFillsNothing: the notice is capped.
+func TestAFloodOfForeignDirectoriesFillsNothing(t *testing.T) {
+	folder := wellKnown(t)
+	for i := 1; i <= 40; i++ {
+		dir := filepath.Join(folder, StopDirName+"-"+strconv.Itoa(os.Getuid()+i))
+		if err := os.Mkdir(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, StopFileName), []byte("{}\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := readNoPin(t.TempDir()).Foreign
+	if len(got) > maxForeignLines+1 || !strings.Contains(got[len(got)-1], "more") {
+		t.Fatalf("the notice: %d lines, %q", len(got), got)
+	}
+}
+
+// TestAPlantedNumberNamesItsRemedy: the refusal names the entry and what to do.
+func TestAPlantedNumberNamesItsRemedy(t *testing.T) {
+	folder := filepath.Join(t.TempDir(), "shared")
+	if err := os.Mkdir(folder, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("/nonexistent", filepath.Join(folder, stopDirName(os.Getuid()))); err != nil {
+		t.Fatal(err)
+	}
+	_, err := WriteSetting(t.TempDir(), folder, "")
+	if err == nil || !strings.Contains(err.Error(), stopDirName(os.Getuid())) || !strings.Contains(err.Error(), "administrator") {
+		t.Fatalf("the refusal: %v", err)
+	}
+}

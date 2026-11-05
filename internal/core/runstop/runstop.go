@@ -260,11 +260,14 @@ func ensureStopDir(folder string, person int) error {
 	if err != nil {
 		return err
 	}
+	planted := func() error {
+		return fmt.Errorf("%s in %s stands and is not this account's, so no stop can rest there: choose a folder of your own that others cannot write, in each account, or have an administrator remove that entry", name, fsutil.DisplayPath(folder))
+	}
 	if uid, known := ownerOf(fi); !fi.IsDir() || !known || uid != person {
-		return fmt.Errorf("the stop directory in %s is not this account's", fsutil.DisplayPath(folder))
+		return planted()
 	}
 	if err := root.Chmod(name, sharedDirMode); err != nil {
-		return fmt.Errorf("the stop directory in %s is not this account's: %w", fsutil.DisplayPath(folder), err)
+		return planted()
 	}
 	if ok, refused, _ := checkStopDir(folder, person); !ok {
 		if refused == "" {
@@ -346,7 +349,7 @@ func writeSettingFile(home string, s Setting) error {
 }
 
 // ReadPinned is the one read every run makes before a move. It never fails: a file
-// that is no stop is refused and named, so it can neither halt a run nor pass unsaid.
+// that is no stop is refused and named, so it neither halts a run nor goes unsaid.
 // It reads the account's own stop, the folder the run started under, the folder the
 // setting names, and the platform's shared folder for an account it expects. Held
 // says the read cannot be trusted to have seen a stop, and the run does not take it
@@ -412,9 +415,7 @@ func ReadPinned(home string, pin *Pin) Reading {
 			}
 		}
 	}
-	for _, f := range foreignStops(pin, s, ok, expected) {
-		out.Foreign = append(out.Foreign, fmt.Sprintf("a stop from the account %s stands in %s; this account did not name that account at setup, so it is not honoured here", accountName(f.owner), fsutil.DisplayPath(f.folder)))
-	}
+	out.Foreign = foreignLines(foreignStops(pin, s, ok, expected))
 	return out
 }
 
@@ -464,8 +465,38 @@ func (r *Reading) readFolder(folder string, person int, owed bool) {
 
 // foreignStop is a stop another account left in a folder this one reads.
 type foreignStop struct {
-	folder, path string
-	owner        int
+	folder, path, dir string
+	owner             int
+}
+
+// maxForeignLines bounds the lines one read gives to other accounts' stops, so a
+// flood of directories does not fill every step's answer.
+const maxForeignLines = 3
+
+// foreignLines says what one read found: the first few, and how many more. An account
+// is looked up only for a line that names it.
+func foreignLines(stops []foreignStop) []string {
+	var out []string
+	for i, f := range stops {
+		if i == maxForeignLines {
+			out = append(out, fmt.Sprintf("and %d more like them in the shared folders, none of them honoured here", len(stops)-maxForeignLines))
+			break
+		}
+		out = append(out, f.say("this account did not name that account at setup, so it is not honoured here"))
+	}
+	return out
+}
+
+// say names what stands: the account, only where the directory is a real one that
+// account owns, and otherwise just what is there, since a name proves nothing.
+func (f foreignStop) say(then string) string {
+	fi, err := os.Lstat(f.dir)
+	if err == nil && fi.IsDir() {
+		if uid, known := ownerOf(fi); known && uid == f.owner {
+			return fmt.Sprintf("a stop from the account %s stands in %s; %s", accountName(f.owner), fsutil.DisplayPath(f.folder), then)
+		}
+	}
+	return fmt.Sprintf("a stop file stands in %s under %s, which is not a directory of the account it names; %s", fsutil.DisplayPath(f.folder), filepath.Base(f.dir), then)
 }
 
 // maxFolderNames bounds a look through a shared folder for other accounts' stops.
@@ -503,7 +534,7 @@ func foreignStops(pin *Pin, s Setting, ok bool, expected []int) []foreignStop {
 			}
 			p := filepath.Join(folder, name, StopFileName)
 			if _, err := os.Lstat(p); err == nil {
-				out = append(out, foreignStop{folder: folder, path: p, owner: uid})
+				out = append(out, foreignStop{folder: folder, path: p, dir: filepath.Join(folder, name), owner: uid})
 			}
 		}
 	}
@@ -523,8 +554,13 @@ func Unreached(home string) []string {
 		expected = append(expected, s.PersonUID)
 	}
 	var out []string
-	for _, f := range foreignStops(nil, s, ok, expected) {
-		out = append(out, fmt.Sprintf("this lift cannot reach the stop in %s: it is the account %s's, and that account lifts it", fsutil.DisplayPath(f.folder), accountName(f.owner)))
+	stops := foreignStops(nil, s, ok, expected)
+	for i, f := range stops {
+		if i == maxForeignLines {
+			out = append(out, fmt.Sprintf("and %d more this lift cannot reach", len(stops)-maxForeignLines))
+			break
+		}
+		out = append(out, f.say("this lift cannot reach it, and the account that made it lifts it"))
 	}
 	return out
 }
