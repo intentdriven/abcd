@@ -874,11 +874,11 @@ configured and not installed) carries `scan_gap` in `--json` and a `scan gap:`
 block in the text, as `history capture` names it; relay it as printed. Report
 every refusal as it is.
 
-## Stop every run, and take a run over
+## Stop the runs of each account that chose this folder, and take a run over
 
 **`abcd implement stop` is the person's, typed from their own account: leave it to
-them.** The guard and the verbs hold against an agent acting by mistake; a stop binds an agent only where an operating-system account separates them. The guard refuses it, its `--lift`, and any write to the stop file,
-through the shell or the host's file tools; the verb itself refuses a caller with no
+them.** The guard and the verbs hold against an agent acting by mistake; a stop binds an agent only where an operating-system account separates them. The guard's rule refuses it, its `--lift`, and writes, moves and removals of the stop's
+files; the verb itself refuses a caller with no
 terminal or under a host session. Tell the person why you
 believe the runs should stop or go on, and leave the command to them. A stop reads
 as a refusal at the stage `stop`, exit 3, from `implement step`, `abcd build` and

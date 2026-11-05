@@ -1492,7 +1492,9 @@ rule. The choice does not move while a stop stands in the folder: lift it first.
 on Linux both qualify. In the person's own account the verb makes the directory
 the stop lives in, named by their account's number. On Linux an age cleaner may remove
 what has stood in a temporary tree for weeks, a stop included (`systemd-tmpfiles` ages
-`/var/tmp` by default); a folder an administrator makes elsewhere avoids that.
+`/var/tmp` by default); a folder an administrator makes elsewhere avoids that. If setup says the directory for this
+account's number already stands and is not its own, choose a folder of your own that others
+cannot write, in each account, or have an administrator remove that entry.
 
 ## `--providers` and `connect` — the optional model provider
 

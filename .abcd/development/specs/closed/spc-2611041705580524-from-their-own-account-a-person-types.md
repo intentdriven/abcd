@@ -5,7 +5,7 @@ intent: itd-2611041549471712
 origin: researcher-authored
 production_mode: hand-written
 ---
-# A person stops every unattended run on the machine with one command
+# A person stops the unattended runs of each account that chose a folder, with one command
 
 ## Summary
 

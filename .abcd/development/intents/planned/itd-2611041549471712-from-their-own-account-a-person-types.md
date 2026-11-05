@@ -16,11 +16,11 @@ impact: additive
 target_release: next
 ---
 
-# A person stops every unattended run on the machine with one command
+# A person stops the unattended runs of each account that chose a folder, with one command
 
 ## Press Release
 
-> **A person stops every unattended run on their computer from their own account with one command, and it stays until their own command lifts it.** Alice runs abcd unattended on a second account of their computer, and at setup they chose a shared folder on it (`/Users/Shared` on macOS, its counterpart on Linux) for the things the two accounts pass between them. From their own account they type `abcd implement stop`: every run on the machine finishes the tool call in hand, opens no new lane, starts no new agent, writes what each lane holds uncommitted into its record, releases what it reserved, and says so in the next daily digest. An agent's session, a driver or a hook that tries to lift the stop is refused. "I could never reach a run from the terminal it was not in," said Alice, a solo founder. "Now a stop is a file my account writes and every run reads before its next move, and it stays stopped until I say otherwise."
+> **A person stops the unattended runs of each account that chose a shared folder, from their own account with one command, and it stays until their own command lifts it.** Alice runs abcd unattended on a second account of their computer, and at setup they chose a shared folder on it (`/Users/Shared` on macOS, its counterpart on Linux) for the things the two accounts pass between them. From their own account they type `abcd implement stop`: every run on the machine finishes the tool call in hand, opens no new lane, starts no new agent, writes what each lane holds uncommitted into its record, releases what it reserved, and says so in the next daily digest. An agent's session, a driver or a hook that tries to lift the stop is refused. "I could never reach a run from the terminal it was not in," said Alice, a solo founder. "Now a stop is a file my account writes and every run reads before its next move, and it stays stopped until I say otherwise."
 
 ## Why This Matters
 
