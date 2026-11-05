@@ -9,7 +9,7 @@ production_mode: hand-written
 
 ## Summary
 
-**What the restart path still owes after spc-2611041706004822.** The record, the listing and the take-over have landed: a successor lists every run from what it wrote down, collects before it restarts, and starts nothing twice. What remains reads what the listing does not yet: a pull request's state on the forge and the records a crashed copy stranded, and each agent's own process from the launch ledger in place of the process that started it. iss-2610110915210571, which the closed spec's step 2 named, was fixed by d7c05e9cb before this branch, with its test; this work added the stop's clearing of a judgement and the listing that names one, and the record is left for its own resolution, naming that commit. The intent stays planned until this spec closes.
+**What the restart path still owes after spc-2611041706004822.** The record, the listing and the take-over have landed: a successor lists every run from what it wrote down, collects before it restarts, and starts nothing twice. What remains reads what the listing does not yet: a pull request's state on the forge and the records a crashed copy stranded, and each agent's own process from the launch ledger in place of the process that started it. iss-2610110915210571, which the closed spec's step 2 named, was fixed by d7c05e9cb before this branch, with its test; this work added the stop's clearing of a judgement and the listing that names one, and the record is resolved naming that commit. The intent stays planned until this spec closes.
 
 ## Footprint
 
