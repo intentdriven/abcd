@@ -151,6 +151,8 @@ var wordReaders = map[string]string{
 	// the files it writes (adr-2610091150447054).
 	"after":          "commandSites and nameCouldBeAny: a name a substitution prints that can be cd leaves the directory unknown",
 	"targetsOf":      "commandSites and isUnknown: no file is read for a program name the line does not fix",
+	"actReadings":    "isUnknown, varMark and parseShellCall: a program the line does not fix is read as one, and a shell's call the line leaves open is read for the first word naming abcd",
+	"adjacentFrom":   "isUnknown through actWordsOf and unknownCouldBe: a word the line does not fix is read as the flag or verb it can print",
 	"parseShellCall": "isUnknown on every word: an argument the line does not fix leaves the rest of the call unread",
 	"optionName":     "exempt: folds the known long-option name parseShellCall hands it, after parseShellCall read the word by the rule",
 	"bashLongOption": "exempt: each caller (parseShellCall, shellReadsStreamAs, shellCPayloads) hands it only a word isUnknown cleared",
@@ -241,7 +243,6 @@ var wordReaders = map[string]string{
 	"factsFor":          "exempt: hands git its own options to read the repository's paths; reads no command word",
 	"unfixedSubstrings": "exempt: reads the command text whole for a substring expansion's operator and only ever refuses; it approves no word",
 	"commandNames":      "exempt: finds the name position to catch a builtin spelled with quotes, and only ever refuses; it approves no word",
-	"adjacentAct":       "exempt: reads a person's act only to refuse it; it approves no word",
 	"carriesAbcd":       "exempt: reads a program's name only to widen what adjacentAct refuses",
 	"shellProgram":      "exempt: reads a program's name only to widen what adjacentAct refuses",
 	"isStopDirName":     "exempt: reads a file name in a directory, not a word of the line",

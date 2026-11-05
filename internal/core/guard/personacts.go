@@ -172,16 +172,97 @@ func carriesAbcd(tok string) bool {
 	return strings.Contains(strings.ToLower(path.Base(tok)), "abcd")
 }
 
-// shellProgram reports whether a program runs the script it is handed.
-func shellProgram(tok string) bool {
-	switch path.Base(tok) {
-	case "sh", "bash", "zsh", "dash", "ksh":
-		return true
+// actLaunchers run the program they are handed, with options of their own before it, as
+// a volume that folds case resolves their names. actShells are the shells the guard's
+// family does not read but which run the script they are handed all the same.
+var (
+	actLaunchers = []string{".", "arch", "caffeinate", "chronic", "script", "source", "unbuffer"}
+	actShells    = []string{"csh", "fish", "tcsh"}
+)
+
+// shellProgram reports whether the program named runs a script it is handed, and
+// whether it is one whose arguments read as a shell's.
+func shellProgram(name string) (runs, shell bool) {
+	name = strings.ToLower(name)
+	shell = isShellFamily(name) || containsString(actShells, name)
+	return shell || containsString(actLaunchers, name), shell
+}
+
+// firstAbcdWord is the first word from from on that names abcd's program, a word holding
+// whitespace being prose rather than a program; -1 for none.
+func firstAbcdWord(s segment, from int) int {
+	for i := from; i < len(s.tokens); i++ {
+		w := s.tokens[i]
+		if lit, has := s.literal[i]; has && !lit.split {
+			w = lit.text
+		}
+		if carriesAbcd(w) && !strings.ContainsAny(w, " \t\n") {
+			return i
+		}
+	}
+	return -1
+}
+
+// actReading is one place a site's act may start from: the first word it reads, whether
+// the program before it is fixed as abcd's, and whether it may be abcd's.
+type actReading struct {
+	from             int
+	fixedName, named bool
+}
+
+// actReadings is each way a site's words may run: as the program's own, and where the
+// program runs another, as that one's. A shell's arguments are read as a shell reads
+// them; where the line leaves them open, and on a launcher, whose options the guard does
+// not model, the program run is the first word that names abcd.
+func actReadings(s segment, site arrival) []actReading {
+	tok := s.tokens[site.idx]
+	fixed := carriesAbcd(tok)
+	out := []actReading{{from: site.idx + 1, fixedName: fixed, named: fixed || isUnknown(tok)}}
+	if isUnknown(tok) || strings.ContainsRune(tok, varMark) {
+		return out
+	}
+	name := strings.ToLower(path.Base(tok))
+	if s.globAt(site.idx) {
+		if member, ok := shellFamilyGlob(name); ok {
+			name = member
+		}
+	}
+	runs, shell := shellProgram(name)
+	if !runs {
+		return out
+	}
+	open := !shell
+	if shell {
+		args := s.tokens[site.idx+1:]
+		for _, c := range shellCalls(name, args) {
+			switch {
+			case c.unresolved:
+				open = true
+			case !c.versionOnly && c.script >= 0:
+				script := carriesAbcd(args[c.script])
+				out = append(out, actReading{from: site.idx + 2 + c.script, fixedName: script, named: script})
+			}
+		}
+	}
+	if open {
+		if i := firstAbcdWord(s, site.idx+1); i >= 0 {
+			out = append(out, actReading{from: i + 1, fixedName: true, named: true})
+		}
+	}
+	return out
+}
+
+// adjacentAct reports whether any way the site's words may run carries the act.
+func (a personAct) adjacentAct(s segment, site arrival) bool {
+	for _, r := range actReadings(s, site) {
+		if a.adjacentFrom(s, r) {
+			return true
+		}
 	}
 	return false
 }
 
-// adjacentAct reads an act's words as the command line's parser reads them on its way
+// adjacentFrom reads an act's words as the command line's parser reads them on its way
 // to a sub-command. It passes over --x=y alone and a fixed --x with the word after it,
 // but for the flags that take no word; a "--" ends its way. A word the line does not
 // fix may be a flag or a flag's value: the word after it passes, breaking nothing, and
@@ -189,13 +270,12 @@ func shellProgram(tok string) bool {
 // fix, an unfixed word that can print the next verb counts as that verb where a verb
 // is due: the sub-command's own place, or straight after the verb before it. On a
 // program the line does not fix, one verb at least must be spelled.
-func (a personAct) adjacentAct(s segment, site arrival) bool {
-	fixedName := carriesAbcd(s.tokens[site.idx])
-	named := fixedName || isUnknown(s.tokens[site.idx])
+func (a personAct) adjacentFrom(s segment, r actReading) bool {
+	fixedName, named := r.fixedName, r.named
 	spelled := false
 	next := 0
 	opening, soft, skip := true, false, false
-	for _, w := range actWordsOf(s, site.idx+1) {
+	for _, w := range actWordsOf(s, r.from) {
 		if skip {
 			skip = false
 			continue
@@ -248,11 +328,6 @@ func (a personAct) adjacentAct(s segment, site arrival) bool {
 				if w.text == a.verbs[0] {
 					next = 1
 				}
-			}
-			// A script named for abcd handed to a shell is the program itself.
-			if !named && opening && shellProgram(s.tokens[site.idx]) && !strings.ContainsAny(w.text, " \t\n") && carriesAbcd(w.text) {
-				named, fixedName = true, true
-				continue
 			}
 			opening = false
 		}
