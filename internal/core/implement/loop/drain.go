@@ -237,6 +237,11 @@ type DrainOptions struct {
 	// Context ends the move's routed judge: the front door ends it on an
 	// interrupt or a termination. context.Background when nil.
 	Context context.Context
+	// PassOver says why an issue, given its id and found_at, is passed over
+	// rather than opened; "" opens it. Nil passes nothing over.
+	PassOver func(id, foundAt string) string
+	// JudgeOutcome, when set, receives what became of a routed judgement.
+	JudgeOutcome *JudgeOutcome
 	// AskJudgeAgain asks the routed judge once per move rather than once per
 	// request: a terminal drive has no host for the request to fall to, so a
 	// judge that did not answer is asked again (terminal.go).
@@ -961,6 +966,12 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			if s, ok := skipOf(st, iss); ok {
 				res.Passed = append(res.Passed, skipPassed(v.ID, s))
 				continue
+			}
+			if d.PassOver != nil {
+				if why := d.PassOver(v.ID, iss.FoundAt); why != "" {
+					res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckSkipped, Reason: termsafe.Sanitize(why)})
+					continue
+				}
 			}
 		}
 		if l, ok := lapseOf(st, v.ID); ok && now.Before(l.coolDownEnds()) {

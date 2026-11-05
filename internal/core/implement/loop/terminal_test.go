@@ -26,6 +26,7 @@ const (
 	terminalFakeMode  = "terminal"
 	terminalScriptEnv = "ABCD_LOOP_FAKE_SCRIPT"
 	terminalResetEnv  = "ABCD_LOOP_FAKE_RESET"
+	terminalTamperEnv = "ABCD_LOOP_FAKE_TAMPER"
 	thirdIssue        = "iss-2609230000000003"
 	// terminalRoutes is every role a lane starts, on the claude runner.
 	terminalRoutes = `{"roles":{"drain-judge":{"runner":"claude"},"implementer":{"runner":"claude"}},"runner":{"claude":{}}}`
@@ -57,6 +58,14 @@ func terminalFakeTurn(role string) string {
 		return "notloggedin"
 	case "limited":
 		return "ratelimit"
+	case "tamper":
+		// A stage's line rewriting the driver's own run state.
+		if p := os.Getenv(terminalTamperEnv); p != "" {
+			if raw, err := os.ReadFile(p); err == nil {
+				_ = os.WriteFile(p, []byte(strings.ReplaceAll(string(raw), `"stage": "implement"`, `"stage": "land"`)), 0o600)
+			}
+		}
+		return "ok"
 	case "dies":
 		// The harness killed mid-call: no result, no receipt.
 		_ = syscall.Kill(os.Getpid(), syscall.SIGKILL)

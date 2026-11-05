@@ -5,7 +5,8 @@ package loop
 import (
 	"context"
 	"errors"
-	"slices"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -161,10 +162,43 @@ func TestARefusalNothingLogsHasADeadline(t *testing.T) {
 	}
 }
 
-// TestAnIssueItsJudgeNeverAnswersIsHeldBack: after three unanswered judgements
-// the drive holds that issue back and goes on to the next.
-func TestAnIssueItsJudgeNeverAnswersIsHeldBack(t *testing.T) {
-	w := newTerminalWorld(t, "none", "none", "none")
+// TestARunnerFailureIsNoUnansweredJudgement: a judge whose runner fails is an
+// outage, so a run of them ends the run as one and holds nothing back.
+func TestARunnerFailureIsNoUnansweredJudgement(t *testing.T) {
+	w := newTerminalWorld(t, repeated("none", 80)...)
+	o := w.options(t)
+	o.Drain.Max = 1
+	w.guardSleeps(t, &o)
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Ended != TerminalOutage || len(res.HeldBack) != 0 {
+		t.Fatalf("an outage, nothing held back: %+v\n%s", res.HeldBack, strings.Join(w.lines, "\n"))
+	}
+}
+
+// TestALimitedJudgeWaitsOutTheLimit: a judge that meets the account's limit is the
+// limit's to wait for.
+func TestALimitedJudgeWaitsOutTheLimit(t *testing.T) {
+	w := newTerminalWorld(t, repeated("limited", 80)...)
+	o := w.options(t)
+	o.Drain.Max = 1
+	w.guardSleeps(t, &o)
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Ended != TerminalLimited || len(res.HeldBack) != 0 {
+		t.Fatalf("the limit ends the run, nothing held back: %+v %v\n%s", res.Ended, res.HeldBack, strings.Join(w.lines, "\n"))
+	}
+}
+
+// TestAHeldBackIssueIsNamedAndKept: only a judge that ran and answered nothing
+// holds an issue back; the result names it, a file outlasts the drain's skip list,
+// and no claim on it stays.
+func TestAHeldBackIssueIsNamedAndKept(t *testing.T) {
+	w := newTerminalWorld(t, "noshape", "noshape", "noshape")
 	o := w.options(t)
 	o.Drain.Max = 1
 	w.guardSleeps(t, &o)
@@ -172,26 +206,130 @@ func TestAnIssueItsJudgeNeverAnswersIsHeldBack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v\n%s", err, strings.Join(w.lines, "\n"))
 	}
-	if res.Ended != DrainStoppedCap || len(lanesDone(t, w.repo)) != 1 {
-		t.Fatalf("the next issue's lane lands: %+v\n%s", res, strings.Join(w.lines, "\n"))
+	if len(res.HeldBack) != 1 {
+		t.Fatalf("one issue held back: %+v\n%s", res.HeldBack, strings.Join(w.lines, "\n"))
 	}
-	if !strings.Contains(strings.Join(w.lines, "\n"), "holding") {
-		t.Fatalf("the run says it held the issue back: %q", w.lines)
+	id := res.HeldBack[0]
+	raw, err := os.ReadFile(filepath.Join(w.repo.Root(), filepath.FromSlash(HeldBackRel)))
+	if err != nil || !strings.Contains(string(raw), id) {
+		t.Fatalf("the fact is kept: %q %v", raw, err)
 	}
-	st, _, err := readDrain(w.repo.Root())
+	if r, ok := claimOf(t, w, id); ok && r.State == claim.StateLive {
+		t.Fatalf("the issue held back keeps its claim: %+v", r)
+	}
+}
+
+// claimOf reads an issue's reservation, if any.
+func claimOf(t *testing.T, w *terminalWorld, id string) (claim.Reservation, bool) {
+	t.Helper()
+	snap, err := claim.View(w.repo.Root(), w.clock.t)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []string{eligibleIssue, secondIssue, thirdIssue} {
-		if !slices.ContainsFunc(st.Skips, func(s DrainSkip) bool { return s.Target == id }) {
-			continue
+	return snap.Lookup(id)
+}
+
+// TestAStagesLineCannotRewriteTheRunState: what the driver wrote is compared after
+// each stage, and a difference stops the run.
+func TestAStagesLineCannotRewriteTheRunState(t *testing.T) {
+	w := newTerminalWorld(t, "shape", "tamper")
+	matches := func() string {
+		st, _, err := readDrain(w.repo.Root())
+		if err != nil || len(st.Lanes) == 0 {
+			return ""
 		}
-		snap, err := claim.View(w.repo.Root(), w.clock.t)
-		if err != nil {
-			t.Fatal(err)
+		return filepath.Join(w.repo.Root(), filepath.FromSlash(StateRelPath(st.Lanes[0].RunID)))
+	}
+	o := oneLane(t, w)
+	for i := range w.stages {
+		if w.stages[i].Name == StageBrief {
+			run := w.stages[i].Run
+			w.stages[i].Run = func(c Context, l *Lane) (Outcome, error) {
+				t.Setenv(terminalTamperEnv, matches())
+				return run(c, l)
+			}
 		}
-		if r, ok := snap.Lookup(id); ok && r.State == claim.StateLive {
-			t.Fatalf("the issue held back keeps its claim: %+v", r)
+	}
+	o.Options.RunStateWatch = true
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Ended != TerminalWall {
+		t.Fatalf("the run stops on the difference: %+v\n%s", res.Ended, strings.Join(w.lines, "\n"))
+	}
+}
+
+// TestTheGateCheckRunsWhateverReceiptExists: a lane at its landing is checked even
+// when no preflight is due.
+func TestTheGateCheckRunsWhateverReceiptExists(t *testing.T) {
+	w := newTerminalWorld(t)
+	o := oneLane(t, w)
+	o.PreflightAllowed = func(string, string) error {
+		return &PreflightRefused{Reason: "the lane changes what its gates run"}
+	}
+	if _, err := RunTerminal(context.Background(), w.repo.Root(), o); err != nil {
+		t.Fatal(err)
+	}
+	st, _, _ := readDrain(w.repo.Root())
+	if len(st.HandBacks) != 1 || st.HandBacks[0].Kind != HandBackStuck || len(lanesDone(t, w.repo)) != 0 {
+		t.Fatalf("the lane is handed back, not landed: %+v\n%s", st.HandBacks, strings.Join(w.lines, "\n"))
+	}
+}
+
+// TestAnIssueTheDriveWouldRefuseIsPassedOver: one whose own path is a gate file is
+// not opened, so no run is spent on it.
+func TestAnIssueTheDriveWouldRefuseIsPassedOver(t *testing.T) {
+	w := newTerminalWorld(t)
+	o := w.options(t)
+	o.Drain.Max = 1
+	seen := []string{}
+	o.Drain.PassOver = func(id, _ string) string {
+		seen = append(seen, id)
+		return "its path is a gate file; --trust-lane-gates opens it"
+	}
+	w.guardSleeps(t, &o)
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Ended != DrainStoppedEmpty || w.launches(t) != 0 || len(seen) == 0 {
+		t.Fatalf("nothing opened: %+v, %d launches, %q", res.Ended, w.launches(t), seen)
+	}
+}
+
+// TestABaseThatMovesBetweenStepsStopsTheRun: what a lane was cut from is held from
+// the first read, so a rewrite of it does not change what judges the lane.
+func TestABaseThatMovesBetweenStepsStopsTheRun(t *testing.T) {
+	w := newTerminalWorld(t)
+	o := oneLane(t, w)
+	calls := 0
+	o.BeforeStage = func() error {
+		st, _, err := readDrain(w.repo.Root())
+		if err != nil || len(st.Lanes) == 0 {
+			return nil
 		}
+		if calls++; calls == 3 {
+			path := filepath.Join(w.repo.Root(), filepath.FromSlash(StateRelPath(st.Lanes[0].RunID)))
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(raw), driveBase) {
+				t.Fatalf("the state holds no base to move:\n%s", raw)
+			}
+			moved := strings.ReplaceAll(string(raw), driveBase, strings.Repeat("e", len(driveBase)))
+			if err := os.WriteFile(path, []byte(moved), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return nil
+	}
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Ended != TerminalWall {
+		t.Fatalf("the run stops on the moved base: %+v\n%s", res.Ended, strings.Join(w.lines, "\n"))
 	}
 }

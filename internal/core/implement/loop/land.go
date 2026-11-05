@@ -583,6 +583,9 @@ func landPush(c Context, lane *Lane) (Outcome, error) {
 	if err != nil {
 		return Outcome{}, err
 	}
+	if rcp != "" && c.receiptOwn != nil && !c.receiptOwn(lane.HeadSHA) {
+		rcp = ""
+	}
 	if rcp == "" {
 		// The lane waits for its full check as a landing waits on the forge's
 		// merge (ruling DR6d-2): a contention that holds only this lane, from
