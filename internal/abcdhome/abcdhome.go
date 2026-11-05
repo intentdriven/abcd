@@ -42,6 +42,21 @@ const name = ".abcd.noindex"
 // is no window in which both names are read (decision 6 of the intent).
 const oldName = ".abcd"
 
+// PersonHomeEnv names the person's own home where a process runs under another,
+// as a walled stage's shell does. MachineHome reads it.
+const PersonHomeEnv = "ABCD_PERSON_HOME"
+
+// MachineHome is the home the machine's shared records are kept under: the load
+// gate's holds and limits among them, which every process on the account must
+// read alike. It is the person's own where PersonHomeEnv names one, else the
+// process's.
+func MachineHome() (string, error) {
+	if h := os.Getenv(PersonHomeEnv); filepath.IsAbs(h) {
+		return filepath.Clean(h), nil
+	}
+	return os.UserHomeDir()
+}
+
 // RenameCommand is the one command the stop names: the person's own act,
 // which abcd never performs, and the one command the shell guard admits while
 // the old folder stands.
