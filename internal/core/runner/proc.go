@@ -86,6 +86,10 @@ type procResult struct {
 	stdout, stderr []byte
 	// overflow names the stream that passed its bound, "" when neither did.
 	overflow string
+	// exit is the process's status, -1 when it was killed or did not exit.
+	exit int
+	// silent is how long it had written nothing when it ended.
+	silent time.Duration
 }
 
 // admit resolves name on PATH and refuses a result that is not absolute or
@@ -186,6 +190,7 @@ func (l launcher) run(ctx context.Context, runner, bin string, args, seal []stri
 	cmd.Stderr = ew
 	procgroup.Lead(cmd)
 	cmd.WaitDelay = pipeGrace
+	started := time.Now()
 	if err := cmd.Start(); err != nil {
 		return procResult{}, failAt(ErrNotStarted, runner, ReasonFailed, "%s could not be started", filepath.Base(bin))
 	}
@@ -243,7 +248,16 @@ wait:
 		_ = procgroup.Kill(cmd)
 		<-done
 	}
-	res := procResult{stdout: out.Bytes(), stderr: errb.Bytes()}
+	res := procResult{stdout: out.Bytes(), stderr: errb.Bytes(), exit: -1,
+		silent: time.Since(latest(started, ow.last, ew.last))}
+	var ee *exec.ExitError
+	switch {
+	case killed != "":
+	case werr == nil:
+		res.exit = 0
+	case errors.As(werr, &ee):
+		res.exit = ee.ExitCode()
+	}
 	switch {
 	case ow.overflowed:
 		res.overflow = "stdout"
@@ -260,7 +274,6 @@ wait:
 	case errors.Is(werr, exec.ErrWaitDelay):
 		return res, fail(runner, ReasonFailed, "%s exited, but a process it started left its group and held its output", name)
 	case werr != nil:
-		var ee *exec.ExitError
 		if errors.As(werr, &ee) {
 			return res, fail(runner, ReasonFailed, "%s exited with status %d", name, ee.ExitCode())
 		}
@@ -415,9 +428,23 @@ type bounded struct {
 	w          *bytes.Buffer
 	remaining  int
 	overflowed bool
+	// last is when anything was last written, the zero time for nothing yet.
+	last time.Time
+}
+
+// latest is the latest of times.
+func latest(times ...time.Time) time.Time {
+	var at time.Time
+	for _, t := range times {
+		if t.After(at) {
+			at = t
+		}
+	}
+	return at
 }
 
 func (b *bounded) Write(p []byte) (int, error) {
+	b.last = time.Now()
 	n := len(p)
 	k := n
 	if k > b.remaining {

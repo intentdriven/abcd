@@ -1,0 +1,213 @@
+package runner
+
+// limit_probe.go is what a drive learns about a limit from the harness: the one
+// short launch that asks whether a limit has lifted, and the shape of what a
+// failed launch showed, for the run's evidence file.
+//
+// Nothing here is read to decide anything but the probe's answer. The harness has
+// no check that says whether a subscription limit has lifted without asking it
+// something (its auth status names the login alone), so the probe asks the least
+// that can tell: one word, no tools, the role's route, on the walled login. A limit
+// answers as a rejected launch does; a lifted one costs that one short message.
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"time"
+)
+
+// limitProbeTimeout bounds one probe, past which it has said nothing.
+const limitProbeTimeout = 3 * time.Minute
+
+// limitProbePrompt is all a probe asks.
+const limitProbePrompt = "Reply with the single word: ok"
+
+// ProbeLimit asks whether a limit has lifted for role, with one short launch on
+// the walled login. It reports true when the launch answers; otherwise the failure
+// says what came back: a rate-limited one with the reset it named, if any, or any
+// other, which says nothing about the limit.
+func (c *Config) ProbeLimit(ctx context.Context, role string) (bool, *Failure) {
+	if c.profile == nil {
+		return false, fail(Claude, ReasonFailed, "the probe has no walled login to run on")
+	}
+	rc, ok := c.Runner(c.RouteFor(role).Runner)
+	if !ok || rc.Name != Claude {
+		return false, fail(Claude, ReasonFailed, "the probe has no claude route for the %s", role)
+	}
+	cl, ok := c.adapter(rc).(*ClaudeCLI)
+	if !ok {
+		return false, fail(Claude, ReasonFailed, "the probe has no claude route for the %s", role)
+	}
+	return cl.probeLimit(ctx)
+}
+
+// probeLimit is ProbeLimit's launch, a directory of its own and no tools.
+func (c *ClaudeCLI) probeLimit(ctx context.Context) (bool, *Failure) {
+	dir, err := os.MkdirTemp("", "abcd-limit-probe-")
+	if err != nil {
+		return false, fail(Claude, ReasonFailed, "the probe's working directory could not be made")
+	}
+	defer os.RemoveAll(dir)
+	if dir, err = filepath.EvalSymlinks(dir); err != nil {
+		return false, fail(Claude, ReasonFailed, "the probe's working directory could not be resolved")
+	}
+	p := *c.profile
+	c.launch.gateWaiting = nil
+	c.launch.allow = stageEnvAllowed
+	bin, err := c.launch.admit(Claude, "claude", p.Dir)
+	if err != nil {
+		return false, fail(Claude, ReasonFailed, "the harness could not be run for the probe")
+	}
+	req := Request{Role: "limit-probe", Brief: filepath.Join(dir, "brief.md"), Receipt: filepath.Join(dir, "receipt.json"),
+		Dir: dir, SessionID: "limit-probe", Timeout: limitProbeTimeout}
+	args := append(c.walledFlags(req), "--", limitProbePrompt)
+	res, err := c.launch.run(ctx, Claude, bin, args, p.Env, dir, limitProbeTimeout)
+	var ans Answer
+	if err == nil {
+		ans, err = parseClaude(res.stdout)
+	}
+	// The probe spends the same subscription as a stage, so its launch ends
+	// through the same seam.
+	recordLaunch(p, req, ans, err)
+	if err == nil {
+		return true, nil
+	}
+	if what := claudeRateLimit(res.stdout); what != "" {
+		fl := limitFailure(what, res.stdout)
+		fl.Seen = claudeSeen(res)
+		return false, fl
+	}
+	var fl *Failure
+	if !errors.As(err, &fl) {
+		return false, fail(Claude, ReasonFailed, "the probe did not complete")
+	}
+	fl.Seen = claudeSeen(res)
+	return false, fl
+}
+
+// claudeSeen is what a failed launch showed.
+func claudeSeen(res procResult) *HarnessSeen {
+	first, _, _ := strings.Cut(string(bytes.TrimSpace(res.stderr)), "\n")
+	return &HarnessSeen{ExitCode: res.exit, Shape: claudeShape(res.stdout), Stderr: first, SilentFor: res.silent}
+}
+
+// Limits on the shape a failed launch keeps.
+const (
+	maxShapeLines = 12
+	maxShapeLine  = 2000
+	maxResultText = 300
+	maxShapeDepth = 4
+)
+
+// shapeWords are the keys whose string values are kept as they are: each names a
+// state or a kind, never a person.
+var shapeWords = []string{"type", "subtype", "status", "rateLimitType", "error", "api_error", "stop_reason", "overageStatus", "model"}
+
+// shapeDropped are parts of the keys left out whole, whatever their values: each
+// names a session, a person or a place.
+var shapeDropped = []string{"session", "uuid", "email", "account", "org", "user", "name", "cwd", "path", "token", "key", "apikey"}
+
+// claudeShape is the end of the event stream, the events a limit shows in and the
+// stream's last, one line each, the harness's version kept: keys that name a session, a person or a place
+// dropped, a string reduced to its length unless its key names a state, numbers
+// and booleans kept. A failed result's text is kept, bounded, since it is where a
+// harness says what it met; the caller passes it through the scanner.
+func claudeShape(out []byte) []string {
+	var keep []string
+	lines := bytes.Split(out, []byte("\n"))
+	for i, line := range lines {
+		line = bytes.TrimSpace(line)
+		if len(line) == 0 {
+			continue
+		}
+		last := i >= len(lines)-2
+		dec := json.NewDecoder(bytes.NewReader(line))
+		dec.UseNumber()
+		var ev map[string]any
+		if dec.Decode(&ev) != nil {
+			keep = append(keep, fmt.Sprintf("[not json, %d bytes]", len(line)))
+			continue
+		}
+		if !last && !shapeWanted(ev) {
+			continue
+		}
+		raw, err := json.Marshal(shapeValue("", ev, 0, ev["is_error"] == true))
+		if err != nil {
+			continue
+		}
+		s := string(raw)
+		if len(s) > maxShapeLine {
+			s = s[:maxShapeLine] + "..."
+		}
+		// A status repeated turn after turn says it once.
+		if n := len(keep); n == 0 || keep[n-1] != s {
+			keep = append(keep, s)
+		}
+	}
+	if len(keep) > maxShapeLines {
+		keep = keep[len(keep)-maxShapeLines:]
+	}
+	return keep
+}
+
+// shapeWanted reports whether an event is one a limit shows in: anything but the
+// assistant's and the user's own turns, or one of those naming an error.
+func shapeWanted(ev map[string]any) bool {
+	switch ev["type"] {
+	case "assistant", "user", "stream_event":
+		_, failed := ev["error"]
+		return failed
+	case "system":
+		return ev["subtype"] != "thinking_tokens"
+	}
+	return true
+}
+
+// shapeValue is one value of an event, as shape keeps it.
+func shapeValue(key string, v any, depth int, failed bool) any {
+	switch x := v.(type) {
+	case map[string]any:
+		if depth >= maxShapeDepth {
+			return fmt.Sprintf("[object, %d keys]", len(x))
+		}
+		out := map[string]any{}
+		for k, val := range x {
+			if !shapeDrops(k) {
+				out[k] = shapeValue(k, val, depth+1, failed)
+			}
+		}
+		return out
+	case []any:
+		return fmt.Sprintf("[list, %d items]", len(x))
+	case string:
+		switch {
+		case slices.Contains(shapeWords, key) && safeWord(x) == x:
+			return x
+		case key == "claude_code_version":
+			return cleanHarness(x)
+		case key == "result" && failed:
+			if len(x) > maxResultText {
+				x = x[:maxResultText] + "..."
+			}
+			return x
+		}
+		return fmt.Sprintf("[text, %d bytes]", len(x))
+	}
+	return v
+}
+
+// shapeDrops reports whether a key names a session, a person or a place.
+func shapeDrops(key string) bool {
+	k := strings.ToLower(key)
+	if k == "id" || strings.HasSuffix(k, "_id") || strings.HasSuffix(key, "Id") {
+		return true
+	}
+	return slices.ContainsFunc(shapeDropped, func(part string) bool { return strings.Contains(k, part) })
+}

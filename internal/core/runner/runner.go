@@ -225,9 +225,28 @@ type Failure struct {
 	// ResetsAt is when a rate limit resets, as the harness reported it; zero
 	// when it reported none or the failure is no limit.
 	ResetsAt time.Time
+	// Seen is what the harness showed of its failure, for a run's evidence
+	// file; nil when no launch ran. It stays out of Detail, which is abcd's.
+	Seen *HarnessSeen
 	// cause is the launch stage that failed (ErrNotOnPath, ErrRefused,
 	// ErrNotStarted), nil for every other failure; errors.Is reads it.
 	cause error
+}
+
+// HarnessSeen is what a launch that failed showed, in the terms a person needs
+// to learn how a harness behaves at a limit: nothing here is read to decide
+// anything. The strings are the harness's own and not yet redacted, so whoever
+// keeps them passes them through the scanner first.
+type HarnessSeen struct {
+	// ExitCode is the process's status, -1 when it was killed or did not exit.
+	ExitCode int
+	// Shape is the end of its event stream, one line per event, with every
+	// identifier dropped and free text reduced to its length.
+	Shape []string
+	// Stderr is the first line it wrote to stderr.
+	Stderr string
+	// SilentFor is how long it had written nothing when it ended.
+	SilentFor time.Duration
 }
 
 func (f *Failure) Error() string {

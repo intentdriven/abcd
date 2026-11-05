@@ -167,6 +167,27 @@ func fakeHarness(mode string) int {
 			return 0
 		}
 		return 1
+	case "ratelimit-apierror", "ratelimit-apierror-zero", "ratelimit-apistatus":
+		// A failed result naming the API's limit in its own fields, with no
+		// rate_limit_event before it: on a non-zero exit, on a zero one, and
+		// with the status alone.
+		fmt.Fprintln(os.Stdout, `{"type":"system","subtype":"init","session_id":"fake-session-1","model":"fake-model"}`)
+		if mode == "ratelimit-apistatus" {
+			fmt.Fprintln(os.Stdout, `{"type":"result","subtype":"success","is_error":true,"api_error_status":429,"result":"limit reached","session_id":"fake-session-1"}`)
+			return 1
+		}
+		fmt.Fprintln(os.Stdout, `{"type":"result","subtype":"success","is_error":true,"api_error_status":429,"api_error":"usage_limit_reached","result":"limit reached","session_id":"fake-session-1"}`)
+		if mode == "ratelimit-apierror-zero" {
+			return 0
+		}
+		return 1
+	case "ratelimit-silent":
+		// A harness that reports a limit and then waits inside its process,
+		// as an interactive session waits, until it is killed.
+		fmt.Fprintln(os.Stdout, `{"type":"system","subtype":"init","session_id":"fake-session-1","model":"fake-model"}`)
+		fmt.Fprintln(os.Stdout, `{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","resetsAt":1791000000,"rateLimitType":"five_hour"},"session_id":"fake-session-1"}`)
+		time.Sleep(time.Minute)
+		return 0
 	case "hugemodel", "ctrlmodel", "suffixmodel":
 		// A harness whose init event reports a model: one past any bound,
 		// one carrying control bytes, and a real id's bracketed suffix.
