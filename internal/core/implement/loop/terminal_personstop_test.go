@@ -5,12 +5,15 @@ package loop
 import (
 	"context"
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/runstop"
 )
 
@@ -57,17 +60,38 @@ func TestABoundedWaitOnALimitEndsAtAStop(t *testing.T) {
 	}
 }
 
-// TestABoundedWaitOnAnOutageEndsAtAStop: the outage's schedule is a wait like any other.
+// TestABoundedWaitOnAnOutageEndsAtAStop: the outage's schedule is a wait like any other. An
+// hour's wait on it, through the production sleep, ends at the look after the stop is set.
 func TestABoundedWaitOnAnOutageEndsAtAStop(t *testing.T) {
-	w := newTerminalWorld(t, "shape", "crashes", "crashes", "crashes", "crashes")
+	old := wallLookEvery
+	wallLookEvery = 10 * time.Millisecond
+	t.Cleanup(func() { wallLookEvery = old })
+	w := newTerminalWorld(t, "shape")
 	o := w.bounded(t, 30*24*time.Hour)
-	stopOnFirstWait(t, w, &o)
-	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
-	if err != nil {
+	o.Sleep = nil
+	home, _ := stopWorld(t, false)
+	o.Options.stopHome = home
+	tm := newTerminal(w.repo.Root(), o)
+	tm.ctx = context.Background()
+	tm.outage = terminalOutageClock{failures: terminalFailuresToOutage, waits: len(implement.DefaultSchedule.Waits), since: w.clock.t, noLimit: true}
+	done := make(chan struct{})
+	go func() {
+		tm.failed(context.Background(), false, "the model service is out")
+		close(done)
+	}()
+	time.Sleep(100 * time.Millisecond)
+	select {
+	case <-done:
+		t.Fatal("the wait ended before any stop")
+	default:
+	}
+	if _, err := runstop.Set(home, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if res.Ended != TerminalHalted || len(w.sleeps) != 1 {
-		t.Fatalf("the drive ends on the stop: %+v, %v\n%s", res, w.sleeps, strings.Join(w.lines, "\n"))
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the outage's wait went on past the stop")
 	}
 }
 
@@ -179,27 +203,157 @@ func TestASignalHaltsTheLaneAndTheNextDriveTakesItOver(t *testing.T) {
 	}
 }
 
-// TestNothingIsReservedWhileAStopHoldsAMarkedRun: a person's stop set after the signal
-// stops the next drive before it reserves anything.
-func TestNothingIsReservedWhileAStopHoldsAMarkedRun(t *testing.T) {
-	w, res := stoppedLane(t)
+// personHaltedLane is a run a person's stop halted while its implementer was in its call,
+// the stop lifted since.
+func personHaltedLane(t *testing.T) (*terminalWorld, TerminalResult, string) {
+	t.Helper()
+	w := newTerminalWorld(t, "shape", "slow")
+	w.realWorktree()
+	home, _ := stopWorld(t, false)
+	o := w.options(t)
+	o.Options.stopHome = home
+	go func() {
+		for range 4000 {
+			if w.launches(t) >= 2 {
+				_, _ = runstop.Set(home, time.Now())
+				return
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}()
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Ended != TerminalHalted || res.Run == "" {
+		t.Fatalf("the drive ends on the stop: %+v\n%s", res, strings.Join(w.lines, "\n"))
+	}
+	if c := controlOf(t, w.repo.Root(), res.Run); c.Stop == nil || !c.Stop.FromFile || c.Stop.HaltedAt == nil {
+		t.Fatalf("the run took the person's stop: %+v", c.Stop)
+	}
+	if _, err := runstop.Lift(home, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	return w, res, home
+}
+
+// TestAPersonsHaltWaitsForItsTakeOver: nothing resumes by itself when a person's stop lifts,
+// so a new drive names the run and passes over it, reserving nothing for it and taking up
+// other work. The explicit take-over is what it waits for, and it still works.
+func TestAPersonsHaltWaitsForItsTakeOver(t *testing.T) {
+	w, res, home := personHaltedLane(t)
 	o := w.options(t)
 	o.Stop = make(chan struct{})
 	o.Drain.Max = 0
-	home, _ := stopWorld(t, false)
 	o.Options.stopHome = home
-	if _, err := runstop.Set(home, w.clock.t); err != nil {
-		t.Fatal(err)
-	}
 	next, err := RunTerminal(context.Background(), w.repo.Root(), o)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if next.Ended != TerminalHalted {
-		t.Fatalf("the drive ends on the stop: %+v", next)
+	if c := controlOf(t, w.repo.Root(), res.Run); c.Stop == nil || c.Stop.HaltedAt == nil {
+		t.Fatalf("a new drive took the run over: %+v\n%s", c.Stop, strings.Join(w.lines, "\n"))
+	}
+	if r := reservationOf(t, w.repo.Root(), res.Issue, w.clock.t); r.State != claim.StateReleased {
+		t.Fatalf("a new drive reserved the halted run's issue: %+v", r)
+	}
+	named := false
+	for _, p := range next.PassedOver {
+		named = named || (p.ID == res.Issue && strings.Contains(p.Reason, "implement resume --take "+res.Run))
+	}
+	if !named {
+		t.Fatalf("the drive does not name the run and its take-over: %+v", next.PassedOver)
+	}
+	if next.Ended != DrainStoppedCap || len(lanesDone(t, w.repo)) != 2 {
+		t.Fatalf("the drive goes on to other work: %+v\n%s", next, strings.Join(w.lines, "\n"))
+	}
+	again, err := Drain(w.repo.Root(), o.Options, o.Drain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	i := slices.IndexFunc(again.Passed, func(p Excluded) bool { return p.ID == res.Issue })
+	if i < 0 || again.Passed[i].Check != CheckNeedsPerson || !strings.Contains(again.Passed[i].Reason, "implement resume --take "+res.Run) {
+		t.Fatalf("a later drain does not name the run and its take-over: %+v", again.Passed)
+	}
+	if _, err := TakeRun(w.repo.Root(), res.Run, Options{stopHome: home, Now: w.clock.now}); err != nil {
+		t.Fatalf("the take-over it waits for: %v", err)
+	}
+	if c := controlOf(t, w.repo.Root(), res.Run); c.Stop != nil {
+		t.Fatalf("the take-over left the mark: %+v", c.Stop)
+	}
+	if r := reservationOf(t, w.repo.Root(), res.Issue, w.clock.t); r.State != claim.StateLive {
+		t.Fatalf("the take-over reserves again: %+v", r)
+	}
+}
+
+// TestNothingIsReservedWhileAStopHoldsAMarkedRun: a drive that let the run's reservation go
+// would take it again on its way back to the lane. A person's mark on the run stops that.
+func TestNothingIsReservedWhileAStopHoldsAMarkedRun(t *testing.T) {
+	w, res, home := personHaltedLane(t)
+	if err := mutate(w.repo.Root(), res.Run, func(_ *os.Root, st *State) (bool, error) {
+		st.Record = append(st.Record, Entry{At: w.clock.t, Stage: StageDriveReleased, Note: "let go"})
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	o := w.options(t)
+	o.Options.stopHome = home
+	done, ended := newTerminal(w.repo.Root(), o).takeUp(context.Background(), res.Run)
+	if !done || ended != "" {
+		t.Fatalf("the take-up: %v, %q", done, ended)
 	}
 	if r := reservationOf(t, w.repo.Root(), res.Issue, w.clock.t); r.State != claim.StateReleased {
 		t.Fatalf("something reserved under the mark: %+v", r)
+	}
+}
+
+// TestASignalsHaltComposesNoPage: the day's page says the person's stop holds and how to lift
+// it, which a drive's own signal is not.
+func TestASignalsHaltComposesNoPage(t *testing.T) {
+	repo, runID, _, _, _ := deadLane(t)
+	home, folder := stopWorld(t, true)
+	later := time.Now().Add(3 * time.Hour)
+	rec, err := haltOnce(repo.Root(), runID, runstop.Stop{SetBy: "a signal to the drive", SetAt: later}, Options{stopHome: home, Now: func() time.Time { return later }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec == nil || rec.HaltedAt == nil {
+		t.Fatalf("the signal's stop: %+v", rec)
+	}
+	if entries, _ := os.ReadDir(filepath.Join(folder, runstop.DigestDir)); len(entries) != 0 {
+		t.Fatalf("a signal wrote a page: %v", entries)
+	}
+}
+
+// TestAStepNamesBothWhereBothStand: the person has to act on each, so a step says so; with
+// the stop lifted it names only what is left.
+func TestAStepNamesBothWhereBothStand(t *testing.T) {
+	repo, runID, _, _, _ := deadLane(t)
+	if err := recordDriveStop(runID); err != nil {
+		t.Fatal(err)
+	}
+	p, err := driveStopPath(runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Remove(p) })
+	o, home, _ := stopped(t)
+	_, stepped := advance(repo.Root(), runID, DefaultStages(), o)
+	_, driven := Drive(context.Background(), repo.Root(), runID, DefaultStages(), o, Runners{})
+	_, restarted := restartLane(repo.Root(), runID, "lane-1", "", o)
+	for _, err := range []error{stepped, driven, restarted} {
+		r := wantStopRefusal(t, err)
+		if !strings.Contains(r.Reason, "a stop set by") || !strings.Contains(r.Reason, "a drive stopped on") ||
+			!strings.Contains(r.Remedy, "--lift") || !strings.Contains(r.Remedy, driveStopsDir) {
+			t.Fatalf("the refusal names one of them: %+v", r)
+		}
+	}
+	if _, err := runstop.Lift(home, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	_, stepped = advance(repo.Root(), runID, DefaultStages(), o)
+	r, ok := AsRefusal(stepped)
+	if !ok || strings.Contains(r.Reason, "a stop set by") || !strings.Contains(r.Reason, "a drive stopped on") {
+		t.Fatalf("after the lift: %v", stepped)
 	}
 }
 

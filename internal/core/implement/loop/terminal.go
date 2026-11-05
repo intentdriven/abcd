@@ -738,9 +738,8 @@ func (t *terminal) sayMove(res DrainResult) {
 		t.say("handed back: %s", DrainSummaryLine(r))
 	}
 	for _, p := range res.Passed {
-		if p.Check == CheckNeedsPerson && !slices.ContainsFunc(t.passedOver, func(e Excluded) bool { return e.ID == p.ID }) {
-			t.passedOver = append(t.passedOver, p)
-			t.say("passed over %s: %s", p.ID, p.Reason)
+		if p.Check == CheckNeedsPerson {
+			t.notePassedOver(p)
 		}
 	}
 	for _, f := range res.Finished {
@@ -1548,15 +1547,18 @@ func (t *terminal) takeUp(ctx context.Context, runID string) (bool, string) {
 	if err != nil {
 		return false, ""
 	}
-	// Nothing reserves while a stop's mark stands. The run takes what it can of the stop,
-	// and one that has halted is taken over as a person would, which reserves it again
-	// and clears the mark in that order.
+	// Nothing reserves while a stop's mark stands. The run takes what it can of the stop.
+	// One a person's stop halted waits for an explicit take-over, after the lift too. One
+	// this drive's own signal halted is its own terminal's person's to go on with, so it
+	// is taken over here, which reserves it again and clears the mark in that order.
 	if c, err := runControl(t.repoRoot, runID); err == nil && c.Stop != nil {
 		_, checked := stopCheck(t.repoRoot, runID, t.o.Stages, t.o.Options)
 		c, err = runControl(t.repoRoot, runID)
 		switch {
 		case err != nil:
 			return false, ""
+		case c.Stop != nil && c.Stop.HaltedAt != nil && c.Stop.FromFile:
+			return t.passOverHalted(run)
 		case c.Stop != nil && c.Stop.HaltedAt != nil:
 			return t.takeOver(ctx, run)
 		case c.Stop != nil:
@@ -1573,6 +1575,40 @@ func (t *terminal) takeUp(ctx context.Context, runID string) (bool, string) {
 		return false, ""
 	}
 	return t.tookUp(ctx, run, reserveResumed(t.repoRoot, &StartResult{RunID: runID}, t.o.Options))
+}
+
+// passOverHalted leaves a run a person's stop halted to its explicit take-over, names it and
+// has the drain go on to other work, as takeUp reports.
+func (t *terminal) passOverHalted(run State) (bool, string) {
+	err := fsutil.WithFileLock(filepath.Join(t.repoRoot, filepath.FromSlash(drainLockRel)), lockTimeout, func() error {
+		st, _, err := readDrain(t.repoRoot)
+		if err != nil {
+			return err
+		}
+		for i := range st.Lanes {
+			if st.Lanes[i].RunID == run.RunID && st.Lanes[i].Outcome == DrainLaneInProgress {
+				st.Lanes[i].Outcome = DrainLaneHalted
+				st.UpdatedAt = t.now()
+				return writeDrain(t.repoRoot, st)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.stoppedBy(fmt.Errorf("%s could not be passed over: %w", run.RunID, err))
+		return true, TerminalWall
+	}
+	t.notePassedOver(Excluded{ID: run.Key, Check: CheckNeedsPerson, Reason: waitsForTakeOver(run.RunID)})
+	return true, ""
+}
+
+// notePassedOver says an issue needs a person, once.
+func (t *terminal) notePassedOver(p Excluded) {
+	if slices.ContainsFunc(t.passedOver, func(e Excluded) bool { return e.ID == p.ID }) {
+		return
+	}
+	t.passedOver = append(t.passedOver, p)
+	t.say("passed over %s: %s", p.ID, p.Reason)
 }
 
 // takeOver takes a run a stop halted over, as takeUp reports: a stop that still holds ends

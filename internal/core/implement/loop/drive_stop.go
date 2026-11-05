@@ -89,6 +89,26 @@ func driveStopRefusal(runID string) error {
 		driveStopRemedy(runID))
 }
 
+// markedRefusal is driveStopRefusal, naming a person's stop as well where both stand, since
+// the person has to act on each (stopOverDriveStop).
+func markedRefusal(repoRoot, runID string, o Options) error {
+	err := driveStopRefusal(runID)
+	if err == nil {
+		return nil
+	}
+	if stopped, lerr := lookForDriveStop(runID); lerr != nil || !stopped {
+		return err
+	}
+	c, cerr := runControl(repoRoot, runID)
+	if cerr != nil {
+		return err
+	}
+	if s := o.stopRead(c.Shared).Stop; s != nil {
+		return stopOverDriveStop(runID, *s)
+	}
+	return err
+}
+
 // liftDriveStop removes the stop once no lane of st is left to go on.
 func liftDriveStop(st State) {
 	for _, l := range st.Lanes {

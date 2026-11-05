@@ -114,6 +114,9 @@ const (
 	DrainLaneHandedBack  = "handed-back"
 	// DrainLaneDone: the run is complete.
 	DrainLaneDone = "done"
+	// DrainLaneHalted is a lane a person's stop halted, which a drive passed over: it
+	// waits for an explicit take-over, and the drain goes on to other work.
+	DrainLaneHalted = "halted"
 )
 
 // The routes a hand-back takes, by kind (scope 5).
@@ -1009,6 +1012,10 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		// whether its record has changed since; on origin the hand-back's
 		// tombstone and this drain's routes say so (drain_readmit.go).
 		if i := slices.IndexFunc(runs, func(r State) bool { return r.Key == v.ID && !r.issueHandedBack() }); i >= 0 {
+			if !runs[i].Complete() && haltedByPerson(repoRoot, runs[i].RunID) {
+				res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckNeedsPerson, Reason: waitsForTakeOver(runs[i].RunID)})
+				continue
+			}
 			reason := "this checkout already has run " + runs[i].RunID + " for it; drive or finish that run"
 			if runs[i].Complete() {
 				reason = "this checkout's run " + runs[i].RunID + " for it is complete, and what it landed settles the issue, so no second run opens for it"

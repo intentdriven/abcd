@@ -102,7 +102,7 @@ func toolsFor(role string) []string {
 // as paused (runner_pause.go). A step that hands no agent out retries one held
 // role once on its runner, and a --route for a held role retries it at once.
 func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options, rs Runners) (StepResult, error) {
-	if err := driveStopRefusal(runID); err != nil {
+	if err := markedRefusal(repoRoot, runID, o); err != nil {
 		return StepResult{}, err
 	}
 	// An auto-plan run's reviews stay on the host (autoplan.go): its lane has

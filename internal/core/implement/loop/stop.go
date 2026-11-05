@@ -296,6 +296,18 @@ func stopOverDriveStop(runID string, s runstop.Stop) error {
 		"the person's own `abcd implement stop --lift` lifts the stop and leaves the other standing. "+driveStopRemedy(runID))
 }
 
+// haltedByPerson reports whether a person's stop halted the run, which then waits for an
+// explicit take-over; a drive's own signal is not one.
+func haltedByPerson(repoRoot, runID string) bool {
+	c, err := runControl(repoRoot, runID)
+	return err == nil && c.Stop != nil && c.Stop.FromFile && c.Stop.HaltedAt != nil
+}
+
+// waitsForTakeOver says what a run a person's stop halted waits for.
+func waitsForTakeOver(runID string) string {
+	return fmt.Sprintf("a person's stop halted run %s, which waits for `abcd implement resume --take %s`", termsafe.Sanitize(runID), termsafe.Sanitize(runID))
+}
+
 // haltRun applies a stop in its order, one read from the file or one that did not
 // come from it: the caller names who set it. A later call takes up what an agent
 // still in its call held back. The result's HaltedAt is set once every lane has
@@ -372,7 +384,8 @@ func haltRun(repoRoot, runID string, s runstop.Stop, steps Stages, o Options) (*
 	if err != nil {
 		return nil, err
 	}
-	if rec.HaltedAt != nil {
+	// The page says the person's stop holds and how to lift it, which a signal is not.
+	if rec.HaltedAt != nil && rec.FromFile {
 		composeStopPage(repoRoot, *rec, o)
 	}
 	return rec, nil
@@ -792,7 +805,7 @@ func composeStopPage(repoRoot string, rec RunStop, o Options) {
 		}
 		for _, id := range ids {
 			c, err := readControl(root, id)
-			if err != nil || c.Stop == nil || c.Stop.HaltedAt == nil || c.Stop.HaltedAt.UTC().Format(time.DateOnly) != now.UTC().Format(time.DateOnly) {
+			if err != nil || c.Stop == nil || !c.Stop.FromFile || c.Stop.HaltedAt == nil || c.Stop.HaltedAt.UTC().Format(time.DateOnly) != now.UTC().Format(time.DateOnly) {
 				continue
 			}
 			st, err := readListedState(root, id)

@@ -939,7 +939,9 @@ its await under `restarted`; a fresh agent takes each, started by the next
 in its call is named under `left` and not restarted. Work it could not save is a
 refusal, exit 2: settle it and take again, never step over it. Exit 3 while a stop holds, while
 another driver's process is alive or a recorded driver cannot be judged, or when a peer has
-taken the work a stop released: back off.
+taken the work a stop released: back off. A run a person's stop halted waits for this take-over,
+also after the stop lifts: a new `abcd drain --drive` names it and passes over it. A run halted
+by the first interrupt to a drive's own terminal is the one a later drive takes up.
 
 **One driver steps a run.** `implement step` records the session it runs under in
 the run's `control.json` beside its state, and refuses at exit 3 while another

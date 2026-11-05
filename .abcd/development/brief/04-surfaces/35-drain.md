@@ -342,7 +342,9 @@ its run with its own process, so the driver a listing names ends with it.
 
 The person's stop reaches a drive at its next move and through any
 wait: each wait looks for it every minute, under a bound as without one, and the drive ends
-saying what holds it. A drive's stop on a run whose state changed is another thing, and a
+saying what holds it. A run that stop halted waits for an explicit take-over, also after the
+stop lifts: a new drive names it, passes over it and goes on to other work, reserving nothing
+for it. A drive's stop on a run whose state changed is another thing, and a
 run can have both. While both stand the run is not settled, since what it says is not known
 to be the driver's: its work is not saved aside and its reservation lapses with its lease.
 Lifting the stop leaves the drive's stop, and a take-over is refused until it is removed;

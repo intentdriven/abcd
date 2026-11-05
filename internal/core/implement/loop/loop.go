@@ -985,7 +985,7 @@ func advance(repoRoot, runID string, steps Stages, o Options) (StepResult, error
 func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(role string) bool, overrides map[string]string) (StepResult, error) {
 	// A run a drive stopped on goes nowhere, and is not settled either: what it now
 	// says is not known to be the driver's (drive_stop.go).
-	if err := driveStopRefusal(runID); err != nil {
+	if err := markedRefusal(repoRoot, runID, o); err != nil {
 		return StepResult{}, err
 	}
 	// A stop comes next: the run takes it and the call moves nothing, and what
