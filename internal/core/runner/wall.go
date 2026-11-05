@@ -309,44 +309,71 @@ func writeStageFiles(p Profile, bin string) error {
 }
 
 // ResetStageHome makes a stage's home empty but for its git configuration, so
-// nothing one stage leaves there reaches the next or a preflight. A home that is
-// no real directory is refused, not followed.
+// nothing one stage leaves there reaches the next or a preflight. Every step goes
+// through a root on the home's parent, so it stays inside: no link, however it came
+// to be there, carries a change of mode, a removal or a write out of the tree. A home
+// that is no real directory is refused, not followed.
 func ResetStageHome(p Profile) error {
 	v, ok := stagesWritten.Load(p.ShellHome)
 	if !ok {
 		return &WallError{WallSettingsFile, "the stage's home was not laid out"}
 	}
-	if fi, err := os.Lstat(p.ShellHome); err == nil {
+	parent, home := filepath.Dir(p.ShellHome), filepath.Base(p.ShellHome)
+	if err := os.MkdirAll(parent, abcdhome.DirMode); err != nil {
+		return &WallError{WallSettingsFile, "the stage's home could not be made"}
+	}
+	root, err := os.OpenRoot(parent)
+	if err != nil {
+		return &WallError{WallSettingsFile, "the stage's home could not be made"}
+	}
+	defer root.Close()
+	if fi, err := root.Lstat(home); err == nil {
 		if !fi.IsDir() {
 			return &WallError{WallSettingsFile, "the stage's home is no real directory"}
 		}
-		restoreOwnerAccess(p.ShellHome)
-		if err := os.RemoveAll(p.ShellHome); err != nil {
+		restoreOwnerAccess(root, home)
+		if err := root.RemoveAll(home); err != nil {
 			return &WallError{WallSettingsFile, "the stage's home could not be emptied"}
 		}
 	}
-	if err := os.MkdirAll(p.ShellHome, abcdhome.DirMode); err != nil {
+	if err := root.Mkdir(home, abcdhome.DirMode); err != nil {
 		return &WallError{WallSettingsFile, "the stage's home could not be made"}
 	}
-	if err := fsutil.WriteFileAtomic(filepath.Join(p.ShellHome, ".gitconfig"), v.(*stageWritten).gitConfig, 0o600); err != nil {
+	if err := fsutil.WriteFileAtomicInRoot(root, home+"/.gitconfig", v.(*stageWritten).gitConfig, 0o600); err != nil {
 		return &WallError{WallSettingsFile, "the stage's git configuration could not be written"}
 	}
 	return nil
 }
 
-// restoreOwnerAccess gives the owner each directory under root back, so it can be
-// emptied: Go makes its module directories read-only, and a stage can leave any. The walk
-// follows no link. What it cannot reach, the removal that follows answers for.
-func restoreOwnerAccess(root string) {
-	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || !d.IsDir() {
-			return nil
+// restoreOwnerAccess gives the owner each directory at and below rel in root back, so
+// it can be emptied: Go makes its module directories read-only, and a stage can leave
+// any. Only a directory lacking owner access changes. What it cannot reach, the removal
+// that follows answers for.
+func restoreOwnerAccess(root *os.Root, rel string) {
+	fi, err := root.Lstat(rel)
+	if err != nil || !fi.IsDir() {
+		return
+	}
+	ownerAccess(root, rel, fi)
+	f, err := root.Open(rel)
+	if err != nil {
+		return
+	}
+	entries, _ := f.ReadDir(-1)
+	_ = f.Close()
+	for _, e := range entries {
+		if e.IsDir() {
+			restoreOwnerAccess(root, rel+"/"+e.Name())
 		}
-		if info, err := d.Info(); err == nil {
-			_ = os.Chmod(path, info.Mode().Perm()|0o700)
-		}
-		return nil
-	})
+	}
+}
+
+// ownerAccess adds owner access to the directory at rel whose mode fi read, if it lacks
+// any. A directory swapped since fi was read, for a link out of root, is refused by root.
+func ownerAccess(root *os.Root, rel string, fi fs.FileInfo) {
+	if perm := fi.Mode().Perm(); perm&0o700 != 0o700 {
+		_ = root.Chmod(rel, perm|0o700)
+	}
 }
 
 // PreflightEnv is the environment a lane's preflight runs in: what a stage

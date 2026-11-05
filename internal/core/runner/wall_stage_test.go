@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -578,6 +579,104 @@ func TestAResetEmptiesAReadOnlyTreeAndFollowsNoLink(t *testing.T) {
 	fi, err := os.Stat(outside)
 	if err != nil || fi.Mode().Perm() != 0o500 {
 		t.Fatalf("a link out was followed: %v %v", fi, err)
+	}
+}
+
+// TestAResetStaysInsideTheHome: a link at the top of the home and below it, pointing out,
+// leaves its target's mode and contents alone, a link where the git configuration goes
+// is no way out, and a home that is itself a link is refused and left.
+func TestAResetStaysInsideTheHome(t *testing.T) {
+	p := wallProfile(t)
+	if _, err := WriteWallSettings(p, wallBin); err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	secret := filepath.Join(outside, "key")
+	if err := os.WriteFile(secret, []byte("kept\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(outside, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(outside, 0o700) })
+	below := filepath.Join(p.ShellHome, "a", "b")
+	if err := os.MkdirAll(below, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, link := range []string{filepath.Join(p.ShellHome, "top"), filepath.Join(below, "deep")} {
+		if err := os.Symlink(outside, link); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Remove(filepath.Join(p.ShellHome, ".gitconfig")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(secret, filepath.Join(p.ShellHome, ".gitconfig")); err != nil {
+		t.Fatal(err)
+	}
+	unchanged := func() {
+		t.Helper()
+		fi, err := os.Stat(outside)
+		if err != nil || fi.Mode().Perm() != 0o500 {
+			t.Fatalf("the target's mode changed: %v %v", fi, err)
+		}
+		if raw, err := os.ReadFile(secret); err != nil || string(raw) != "kept\n" {
+			t.Fatalf("the target's contents changed: %q %v", raw, err)
+		}
+	}
+	if err := ResetStageHome(p); err != nil {
+		t.Fatalf("the home is emptied: %v", err)
+	}
+	unchanged()
+	if fi, err := os.Lstat(filepath.Join(p.ShellHome, ".gitconfig")); err != nil || !fi.Mode().IsRegular() {
+		t.Fatalf("the git configuration is a file of its own: %v %v", fi, err)
+	}
+	if err := os.RemoveAll(p.ShellHome); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, p.ShellHome); err != nil {
+		t.Fatal(err)
+	}
+	if err := ResetStageHome(p); err == nil {
+		t.Fatal("a home that is a link is refused")
+	}
+	unchanged()
+}
+
+// TestOwnerAccessStaysInsideAndWidensNoMore: a directory swapped for a link out, after its
+// mode was read, is refused; one with owner access is left as it is.
+func TestOwnerAccessStaysInsideAndWidensNoMore(t *testing.T) {
+	base := t.TempDir()
+	root, err := os.OpenRoot(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	outside := t.TempDir()
+	if err := os.Chmod(outside, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(outside, 0o700) })
+	read, err := os.Stat(outside)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(base, "swapped")); err != nil {
+		t.Fatal(err)
+	}
+	ownerAccess(root, "swapped", read)
+	if fi, err := os.Stat(outside); err != nil || fi.Mode().Perm() != 0o500 {
+		t.Fatalf("the change of mode left the root: %v %v", fi, err)
+	}
+	for want, mode := range map[os.FileMode]os.FileMode{0o755: 0o755, 0o750: 0o050, 0o700: 0} {
+		dir := fmt.Sprintf("d%o", mode)
+		if err := os.Mkdir(filepath.Join(base, dir), mode); err != nil {
+			t.Fatal(err)
+		}
+		restoreOwnerAccess(root, dir)
+		if fi, err := os.Stat(filepath.Join(base, dir)); err != nil || fi.Mode().Perm() != want {
+			t.Errorf("a directory of mode %o reads %v, want %o: %v", mode, fi.Mode().Perm(), want, err)
+		}
 	}
 }
 
