@@ -212,8 +212,8 @@ number. On Linux an age cleaner may remove what has stood in a temporary tree fo
 stop included; a folder an administrator makes elsewhere avoids that. The choice is written to ~/.abcd.noindex/shared-folder.json.
 
 Choosing is the person's own act: the guard's rule refuses it to an agent, and it refuses
-a caller with no terminal or under a host session. Exit 2 on a refusal, with nothing written. No network
-request.
+a caller with no terminal, under a host session, or where it cannot tell whether one is above it.
+Exit 2 on a refusal, with nothing written. No network request.
 
 **Flags:**
 
@@ -3650,6 +3650,8 @@ A run that let its claims go stays halted after the lift until a session runs
 It is the person's own act: the guard's rule refuses it to an agent, and it refuses a
 caller with no terminal or under a host session. Exit 2 on a refusal, with nothing changed: no terminal, a
 file at the stop's path no run would honour, or a folder the stop cannot rest on.
+Where it cannot tell whether a host session is above it, a stop is still set, and a
+lift is refused and asks to be run again.
 No network request.
 
 **Flags:**

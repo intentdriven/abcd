@@ -424,3 +424,26 @@ func TestCheckPathJudgesWhereAWriteLandsNotHowItIsSpelt(t *testing.T) {
 		}
 	}
 }
+
+// TestReadingASessionTellsNoneFromUnreadable: no marker says none; markers that cannot be
+// read say so to the caller that asks, and read as none to the one that does not.
+func TestReadingASessionTellsNoneFromUnreadable(t *testing.T) {
+	host := sessionname.Host{PID: 500, StartUnix: 1}
+	if s, err := ReadSessionOn(t.TempDir(), host); s != "" || err != nil {
+		t.Fatalf("no folder: %q, %v", s, err)
+	}
+	home := t.TempDir()
+	p := abcdhome.Path(home, dirLeaf)
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte("not a folder\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if s, err := ReadSessionOn(home, host); s != "" || err == nil {
+		t.Fatalf("a folder that cannot be read: %q, %v", s, err)
+	}
+	if s := SessionOn(home, host); s != "" {
+		t.Fatalf("SessionOn over it: %q", s)
+	}
+}

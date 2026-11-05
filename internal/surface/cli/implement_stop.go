@@ -24,40 +24,69 @@ import (
 )
 
 // personAtTerminal reports whether a person could be typing this command: a
-// terminal, in no host session, read from every process above this one. A test
-// stands it in.
-var personAtTerminal = func() bool { return stdinIsTerminal() && !underHostSession() }
+// terminal, and no host session found above it. A test stands it in.
+var personAtTerminal = func() bool { return stdinIsTerminal() && hostSessionReading() != hostSessionFound }
 
 // stdinIsTerminal reports whether standard input is a terminal; a test stands it in.
 var stdinIsTerminal = func() bool { return term.IsTerminal(os.Stdin) }
 
-// underHostSession reports whether this process runs under a host session, by its
-// environment or by the marker its host's session-start hook wrote.
-func underHostSession() bool {
+// hostReading is what a look above this process says of a host session.
+type hostReading int
+
+const (
+	// noHostSession: every process above was read, and none is a host session.
+	noHostSession hostReading = iota
+	// hostSessionFound: this process runs under a host session.
+	hostSessionFound
+	// hostSessionUnknown: what was needed to tell could not be read.
+	hostSessionUnknown
+)
+
+// cannotTellHostSession is the refusal of an act that opens what a stop or its folder
+// closes, where the look above it could not be finished.
+const cannotTellHostSession = "whether this runs under a host session could not be told, on a machine that may be too loaded to read its processes"
+
+// hostSessionReading reads whether this process runs under a host session, by its
+// environment or by the marker its host's session-start hook wrote. Each act decides
+// what an unknown means: setting a stop goes ahead, since it has to work on a machine
+// too loaded to read its processes and costs only pace; a lift and choosing the folder
+// are refused. A test stands it in.
+var hostSessionReading = func() hostReading {
 	if os.Getenv(hostSessionIDEnv) != "" {
-		return true
+		return hostSessionFound
 	}
 	m := sessionname.Live()
 	home, err := runstop.AccountHome()
 	if err != nil || home == "" {
-		return false
+		return hostSessionUnknown
 	}
 	tab, err := m.ReadTable()
 	if err != nil {
-		return false
+		return hostSessionUnknown
 	}
 	return hostSessionAbove(home, tab, m.From)
 }
 
-// hostSessionAbove reports whether any process above from is a host session: every
-// ancestor is asked.
-func hostSessionAbove(home string, tab sessionname.Table, from int) bool {
-	for _, h := range sessionname.Lineage(tab, from) {
-		if occupancy.SessionOn(home, h) != "" {
-			return true
+// hostSessionAbove says whether any process above from is a host session: every ancestor
+// is asked. A process the table does not hold, or markers that cannot be read, tell
+// nothing, unless another ancestor is found to be one.
+func hostSessionAbove(home string, tab sessionname.Table, from int) hostReading {
+	hosts := sessionname.Lineage(tab, from)
+	reading := noHostSession
+	if len(hosts) == 0 {
+		reading = hostSessionUnknown
+	}
+	for _, h := range hosts {
+		s, err := occupancy.ReadSessionOn(home, h)
+		if err != nil {
+			reading = hostSessionUnknown
+			continue
+		}
+		if s != "" {
+			return hostSessionFound
 		}
 	}
-	return false
+	return reading
 }
 
 // stopOutput is the --json shape of `implement stop`.
@@ -105,6 +134,8 @@ func newImplementStopCommand(asJSON *bool) *cobra.Command {
 			"It is the person's own act: the guard's rule refuses it to an agent, and it refuses a\n" +
 			"caller with no terminal or under a host session. Exit 2 on a refusal, with nothing changed: no terminal, a\n" +
 			"file at the stop's path no run would honour, or a folder the stop cannot rest on.\n" +
+			"Where it cannot tell whether a host session is above it, a stop is still set, and a\n" +
+			"lift is refused and asks to be run again.\n" +
 			"No network request.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -118,6 +149,9 @@ func newImplementStopCommand(asJSON *bool) *cobra.Command {
 			}
 			now := time.Now()
 			if lift {
+				if hostSessionReading() == hostSessionUnknown {
+					return &exitError{Code: 2, Msg: prefix + ": " + cannotTellHostSession + ": nothing was changed; run it again"}
+				}
 				lifted, err := runstop.Lift(home, now)
 				if err != nil {
 					return &exitError{Code: 2, Msg: prefix + ": " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
@@ -193,8 +227,8 @@ func newAhoySharedFolderCommand(asJSON *bool) *cobra.Command {
 			"number. On Linux an age cleaner may remove what has stood in a temporary tree for weeks, a\n" +
 			"stop included; a folder an administrator makes elsewhere avoids that. The choice is written to " + abcdhome.Display(runstop.SettingFile) + ".\n\n" +
 			"Choosing is the person's own act: the guard's rule refuses it to an agent, and it refuses\n" +
-			"a caller with no terminal or under a host session. Exit 2 on a refusal, with nothing written. No network\n" +
-			"request.",
+			"a caller with no terminal, under a host session, or where it cannot tell whether one is above it.\n" +
+			"Exit 2 on a refusal, with nothing written. No network request.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			const prefix = "abcd ahoy shared-folder"
@@ -205,6 +239,9 @@ func newAhoySharedFolderCommand(asJSON *bool) *cobra.Command {
 			if len(args) == 1 {
 				if !personAtTerminal() {
 					return &exitError{Code: 2, Msg: prefix + ": choosing the folder is the person's own act, typed at a terminal, and this caller has none: nothing was written"}
+				}
+				if hostSessionReading() == hostSessionUnknown {
+					return &exitError{Code: 2, Msg: prefix + ": " + cannotTellHostSession + ": nothing was written; run it again"}
 				}
 				if _, err := runstop.WriteSetting(home, args[0], person); err != nil {
 					return &exitError{Code: 2, Msg: prefix + ": " + termsafe.Sanitize(fsutil.RedactHome(err.Error())) + ": nothing was written"}

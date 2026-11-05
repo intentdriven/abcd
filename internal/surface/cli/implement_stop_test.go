@@ -23,9 +23,10 @@ import (
 func stopCLI(t *testing.T, home string, terminal bool, args ...string) (string, string, int) {
 	t.Helper()
 	t.Setenv("HOME", home)
-	old := personAtTerminal
+	old, oldReading := personAtTerminal, hostSessionReading
 	personAtTerminal = func() bool { return terminal }
-	t.Cleanup(func() { personAtTerminal = old })
+	hostSessionReading = func() hostReading { return noHostSession }
+	t.Cleanup(func() { personAtTerminal, hostSessionReading = old, oldReading })
 	var out, errb bytes.Buffer
 	code := Run(args, &out, &errb)
 	return out.String(), errb.String(), code
@@ -124,8 +125,89 @@ func TestImplementStopSaysWhenItDidNotTakeHold(t *testing.T) {
 // TestAHostSessionIsNoPerson: a process under a host session is no person.
 func TestAHostSessionIsNoPerson(t *testing.T) {
 	t.Setenv(hostSessionIDEnv, "a-session")
-	if !underHostSession() {
+	if hostSessionReading() != hostSessionFound {
 		t.Fatal("a process with a host session's id reads as a person")
+	}
+}
+
+// cannotTellCLI runs a verb at a terminal where the look for a host session cannot be
+// finished.
+func cannotTellCLI(t *testing.T, home string, args ...string) (string, int) {
+	t.Helper()
+	t.Setenv("HOME", home)
+	oldTerminal, oldReading := stdinIsTerminal, hostSessionReading
+	stdinIsTerminal = func() bool { return true }
+	hostSessionReading = func() hostReading { return hostSessionUnknown }
+	t.Cleanup(func() { stdinIsTerminal, hostSessionReading = oldTerminal, oldReading })
+	var out, errb bytes.Buffer
+	code := Run(args, &out, &errb)
+	return errb.String(), code
+}
+
+// TestAStopIsSetWhereASessionCannotBeTold: a stop has to work on a machine too loaded to
+// read its processes, and costs only pace.
+func TestAStopIsSetWhereASessionCannotBeTold(t *testing.T) {
+	home := t.TempDir()
+	if stderr, code := cannotTellCLI(t, home, "implement", "stop"); code != 0 {
+		t.Fatalf("the stop: %d %q", code, stderr)
+	}
+	if r := runstop.ReadPinned(home, nil); r.Stop == nil {
+		t.Fatalf("no stop: %+v", r)
+	}
+}
+
+// TestALiftIsRefusedWhereASessionCannotBeTold: what opens the runs again is no one's act
+// until a person is known to be taking it, and the refusal says to try again.
+func TestALiftIsRefusedWhereASessionCannotBeTold(t *testing.T) {
+	home := t.TempDir()
+	if _, stderr, code := stopCLI(t, home, true, "implement", "stop"); code != 0 {
+		t.Fatalf("the stop: %d %q", code, stderr)
+	}
+	stderr, code := cannotTellCLI(t, home, "implement", "stop", "--lift")
+	if code != 2 || !strings.Contains(stderr, "could not be told") || !strings.Contains(stderr, "run it again") {
+		t.Fatalf("the lift: %d %q", code, stderr)
+	}
+	if r := runstop.ReadPinned(home, nil); r.Stop == nil {
+		t.Fatalf("the refused lift took the stop away: %+v", r)
+	}
+}
+
+// TestAFolderIsNotChosenWhereASessionCannotBeTold: choosing says where the stop is read
+// from, so it waits as a lift does; reading the choice does not.
+func TestAFolderIsNotChosenWhereASessionCannotBeTold(t *testing.T) {
+	home := t.TempDir()
+	stderr, code := cannotTellCLI(t, home, "ahoy", "shared-folder", t.TempDir())
+	if code != 2 || !strings.Contains(stderr, "could not be told") || !strings.Contains(stderr, "run it again") {
+		t.Fatalf("the choice: %d %q", code, stderr)
+	}
+	if _, chosen, _ := runstop.ReadSetting(home); chosen {
+		t.Fatal("the refused choice wrote a folder")
+	}
+	if stderr, code := cannotTellCLI(t, home, "ahoy", "shared-folder"); code != 0 {
+		t.Fatalf("the bare form: %d %q", code, stderr)
+	}
+}
+
+// TestAHostSessionLookThatCannotFinishSaysSo: a process the table does not hold, and
+// markers that cannot be read, tell nothing; markers no one has written yet say none.
+func TestAHostSessionLookThatCannotFinishSaysSo(t *testing.T) {
+	tab := sessionname.Table{ReadAt: time.Now(), Procs: []machineload.Proc{{PID: 500, PPID: 1, Name: "zsh", Age: time.Hour}}}
+	if got := hostSessionAbove(t.TempDir(), tab, 500); got != noHostSession {
+		t.Fatalf("no markers yet: %v", got)
+	}
+	if got := hostSessionAbove(t.TempDir(), tab, 999); got != hostSessionUnknown {
+		t.Fatalf("a process the table lacks: %v", got)
+	}
+	home := t.TempDir()
+	p := abcdhome.Path(home, "occupancy")
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte("not a folder\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := hostSessionAbove(home, tab, 500); got != hostSessionUnknown {
+		t.Fatalf("markers that cannot be read: %v", got)
 	}
 }
 
@@ -143,16 +225,16 @@ func TestAnyAncestorsHostSessionCounts(t *testing.T) {
 	if err := occupancy.Note(home, "s-one", t.TempDir(), host, tab); err != nil {
 		t.Fatal(err)
 	}
-	if !hostSessionAbove(home, tab, 700) {
+	if hostSessionAbove(home, tab, 700) != hostSessionFound {
 		t.Fatal("a process with a host session above it reads as a person")
 	}
 	later := tab
 	later.ReadAt = now.Add(1100 * time.Millisecond)
 	later.Procs = later.Procs[:1]
-	if !hostSessionAbove(home, later, 500) {
+	if hostSessionAbove(home, later, 500) != hostSessionFound {
 		t.Fatal("a later reading of the host's start reads as no session")
 	}
-	if hostSessionAbove(t.TempDir(), tab, 700) {
+	if hostSessionAbove(t.TempDir(), tab, 700) != noHostSession {
 		t.Fatal("a terminal with no session above it reads as a host session")
 	}
 }

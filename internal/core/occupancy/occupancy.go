@@ -180,21 +180,28 @@ func Note(home, sessionID, checkout string, host sessionname.Host, tab sessionna
 // SessionOn is the session whose marker names host, "" when none does or the
 // markers cannot be read: one host runs one session at a time.
 func SessionOn(home string, host sessionname.Host) string {
+	s, _ := ReadSessionOn(home, host)
+	return s
+}
+
+// ReadSessionOn is SessionOn for a caller that must know the difference: an error says
+// the markers cannot be read, and "" with none says no marker names host.
+func ReadSessionOn(home string, host sessionname.Host) (string, error) {
 	dir, err := open(home, false)
 	if err != nil || dir == nil {
-		return ""
+		return "", err
 	}
 	defer dir.Close()
 	all, err := readAll(dir, home)
 	if err != nil {
-		return ""
+		return "", err
 	}
 	for _, f := range all {
 		if sessionname.SameHost(f.m.host(), host) {
-			return f.m.SessionID
+			return f.m.SessionID, nil
 		}
 	}
-	return ""
+	return "", nil
 }
 
 // Forget removes the session's marker. A missing marker or folder is not an
