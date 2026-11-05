@@ -65,7 +65,11 @@ inbound = outbound statement is the whole of it.
   which is the one CI runs, and the format gate runs that toolchain's gofmt
   (`make fmt` applies it); when the declared toolchain cannot be fetched,
   preflight refuses and names the skew rather than falling back to the `go` on
-  PATH. The repository
+  PATH. Its test and race stages replay what Go's test cache holds for unchanged
+  inputs, rerun what is declared or found reading past it, and report how many, and
+  every test step CI runs passes `-count=1`. A test that reads what Go's test cache
+  cannot see belongs on `.abcd/work/always-rerun-tests.txt`. The
+  repository
   ships its hooks in [`.githooks/`](../.githooks/); they are per-machine opt-in,
   and how to arm them turns on the hooks directory git already runs in the
   clone, which `scripts/abcd.sh ahoy --json` reports as `banlist.hooks_path`:

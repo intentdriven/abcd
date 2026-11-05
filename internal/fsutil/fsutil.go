@@ -40,6 +40,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 )
 
 // ErrNotRegular and ErrTooBig are the guarded-read sentinels: a non-regular leaf
@@ -507,7 +508,7 @@ func WriteFileAtomicPreserveMode(path string, data []byte) error {
 // The temp name is unpredictable so the enumerable-name swap WriteFileAtomic
 // guards against has nothing to aim at.
 func WriteFileAtomicInRoot(root *os.Root, rel string, data []byte, perm os.FileMode) error {
-	return writeAtomicInRoot(root, rel, data, perm, true)
+	return writeAtomicInRoot(root, rel, data, perm, true, time.Time{})
 }
 
 // WriteRebuildableInRoot is WriteFileAtomicInRoot without the two flushes, for
@@ -517,10 +518,17 @@ func WriteFileAtomicInRoot(root *os.Root, rel string, data []byte, perm os.FileM
 // a power cut, and it saves two F_FULLFSYNCs a file on macOS, about 12 ms each:
 // a site of 6,678 files spent over two minutes on them.
 func WriteRebuildableInRoot(root *os.Root, rel string, data []byte, perm os.FileMode) error {
-	return writeAtomicInRoot(root, rel, data, perm, false)
+	return writeAtomicInRoot(root, rel, data, perm, false, time.Time{})
 }
 
-func writeAtomicInRoot(root *os.Root, rel string, data []byte, perm os.FileMode, durable bool) error {
+// WriteRebuildableAtInRoot is WriteRebuildableInRoot with the modification time
+// set before the name appears: a reader, or a crash, sees the old file or the
+// complete new one with its final time, and never the new content under another.
+func WriteRebuildableAtInRoot(root *os.Root, rel string, data []byte, perm os.FileMode, at time.Time) error {
+	return writeAtomicInRoot(root, rel, data, perm, false, at)
+}
+
+func writeAtomicInRoot(root *os.Root, rel string, data []byte, perm os.FileMode, durable bool, at time.Time) error {
 	dir := path.Dir(rel)
 	if dir != "." {
 		if err := root.MkdirAll(dir, 0o755); err != nil {
@@ -550,6 +558,12 @@ func writeAtomicInRoot(root *os.Root, rel string, data []byte, perm os.FileMode,
 	if err := tmp.Close(); err != nil {
 		_ = root.Remove(tmpRel)
 		return err
+	}
+	if !at.IsZero() {
+		if err := root.Chtimes(tmpRel, at, at); err != nil {
+			_ = root.Remove(tmpRel)
+			return err
+		}
 	}
 	if err := root.Rename(tmpRel, rel); err != nil {
 		_ = root.Remove(tmpRel)

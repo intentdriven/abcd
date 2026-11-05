@@ -87,7 +87,7 @@ func shards(getenv func(string) string, args []string) (int, bool) {
 func repeatable(arg string) bool {
 	name, value, _ := strings.Cut(strings.TrimLeft(arg, "-"), "=")
 	switch name {
-	case "test.timeout", "test.count", "test.short", "test.failfast", "test.paniconexit0", "test.testlogfile":
+	case "test.timeout", "test.count", "test.short", "test.failfast", "test.paniconexit0", "test.testlogfile", "test.skip":
 		return true
 	case "test.v":
 		return value != "test2json"

@@ -828,6 +828,9 @@ account for is armed, so the cut's runbook (`commands/launch.md`) has the
 cutting session run the preview again just before it merges the release pull
 request, and tell people working in the repository by hand to hold.
 
+The hosted release run reuses no test result: its test steps pass `-count=1` on the
+tree being tagged.
+
 ## 4. Reports
 
 Every preview, and every cut that renders a payload, writes a pre-flight report:

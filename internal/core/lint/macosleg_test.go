@@ -158,9 +158,9 @@ func checkUbuntuJobPasses(t *testing.T, workflow string, events []string) {
 					return !strings.HasPrefix(p, "go test -race ") && strings.HasSuffix(p, " "+modulePattern)
 				})
 				hasRace := slices.ContainsFunc(passes, func(p string) bool { return strings.HasPrefix(p, "go test -race ") })
-				outside := slices.Contains(passes, "go test "+outsideInternalPattern)
+				outside := slices.Contains(passes, "go test -count=1 "+outsideInternalPattern)
 				guards := slices.ContainsFunc(passes, func(p string) bool {
-					return !strings.HasPrefix(p, "go test -race ") && strings.HasPrefix(p, "go test -run ")
+					return !strings.HasPrefix(p, "go test -race ") && strings.HasPrefix(p, "go test -count=1 -run ")
 				})
 				if inert == "true" {
 					if !plainWhole || hasRace || outside || guards {
@@ -169,7 +169,7 @@ func checkUbuntuJobPasses(t *testing.T, workflow string, events []string) {
 					}
 				} else if plainWhole || !hasRace || !outside || !guards {
 					t.Errorf("the check job on a %s event that is not inert runs %q; want the race "+
-						"pass, `go test %s` and the plain-only guards by name, and no plain "+
+						"pass, `go test -count=1 %s` and the plain-only guards by name, and no plain "+
 						"rerun of the whole module", event, passes, outsideInternalPattern)
 				}
 			})
@@ -236,14 +236,14 @@ func checkMacOSSuitePasses(t *testing.T, workflow string, events []string) {
 				ctx["inputs.shard"] = float64(shard)
 				running := runningSteps(t, items, ctx)
 				passes := goTestPasses(running)
-				if len(passes) == 0 || passes[0] != "go test -race -timeout 40m "+macOSShardPackages {
+				if len(passes) == 0 || passes[0] != "go test -race -count=1 -timeout 40m "+macOSShardPackages {
 					t.Errorf("shard %d on a %s event runs %q; want its race pass first, so the slowest "+
 						"packages start with the shard's testing", shard, event, passes)
 				}
 				for i, p := range passes {
 					switch {
 					case i == 0:
-					case strings.HasPrefix(p, "go test -run "):
+					case strings.HasPrefix(p, "go test -count=1 -run "):
 						count["guards"]++
 					default:
 						t.Errorf("shard %d on a %s event also runs %q; a shard makes one race pass, "+
@@ -465,7 +465,7 @@ func TestAShardThatCannotReadItsPackagesFails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the step failed with a working cmd/ci-shard: %v\n%s", err, log)
 	}
-	if !strings.Contains(log, "test -race -timeout 40m p/a p/b\n") {
+	if !strings.Contains(log, "test -race -count=1 -timeout 40m p/a p/b\n") {
 		t.Errorf("the step did not hand go test the shard's packages as separate words:\n%s", log)
 	}
 }
