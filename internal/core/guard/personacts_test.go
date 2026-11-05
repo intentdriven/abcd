@@ -1,6 +1,10 @@
 package guard
 
 import (
+	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/runstop"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -104,6 +108,171 @@ func TestEachPersonsActSaysWhatItsRegistryEntrySays(t *testing.T) {
 		}
 		if a.why != e.Why || a.successor != e.Successor {
 			t.Errorf("%s: why/successor differ from %s's:\n got %q / %q\nwant %q / %q", a.id, a.entry, a.why, a.successor, e.Why, e.Successor)
+		}
+	}
+}
+
+// TestStopStorePathNamesWhatTheFileToolsMayNotWrite: the file tools are held to
+// the same names a shell line is, wherever the shared folder stands.
+func TestStopStorePathNamesWhatTheFileToolsMayNotWrite(t *testing.T) {
+	for p, want := range map[string]bool{
+		"/Users/Shared/abcd-stop/abcd-stop.json":        true,
+		"/home/x/.abcd.noindex/stop.json":               true,
+		"/home/x/.abcd.noindex/shared-folder.json":      true,
+		"/home/x/.abcd.noindex/sub/../stop.json":        true,
+		"/home/x/.abcd.noindex/STOP.JSON":               true,
+		"/home/x/.ABCD.NOINDEX/Shared-Folder.json":      true,
+		"/Users/Shared/ABCD-STOP/ABCD-STOP.JSON":        true,
+		"/home/x/.abcd.noindex/\u017ftop.json":          true,
+		"/home/x/.abcd.noindex/\u017fhared-folder.json": true,
+		"/home/x/project/stop.json":                     false,
+		"/home/x/.abcd.noindex/rules.json":              false,
+		"/home/x/.abcd.noindex/worktrees/a/stop.json":   false,
+	} {
+		if got := StopStorePath(p); got != want {
+			t.Errorf("StopStorePath(%q) = %v, want %v", p, got, want)
+		}
+	}
+}
+
+// TestTheStopIsThePersonsAct: setting or lifting a stop, and choosing where a
+// stop is read, are the person's acts under any program name, and a shell write
+// to the stop file or the setting is refused, a removal included, since removing
+// a stop is lifting it (itd-2611041549471712). Naming the verbs in passing, or
+// another implement verb, is not.
+func TestTheStopIsThePersonsAct(t *testing.T) {
+	files := NewFiles(t.TempDir())
+	files.home = t.TempDir()
+	reg := Defaults().ReadingFrom(files)
+	for _, c := range []struct{ cmd, entry string }{
+		{`abcd implement stop`, "abcd-implement-stop"},
+		{`abcd implement stop --lift`, "abcd-implement-stop"},
+		{`go run ./cmd/abcd implement stop --lift`, "abcd-implement-stop"},
+		{`bin/abcd-darwin-arm64 implement stop --lift`, implementStopAnyEntryID},
+		{`scripts/abcd.sh implement stop`, implementStopAnyEntryID},
+		{`bash scripts/abcd.sh --json implement stop --lift`, implementStopAnyEntryID},
+		{`abcd ahoy shared-folder /Users/Shared`, "abcd-ahoy-shared-folder"},
+		{`scripts/abcd.sh ahoy shared-folder /Users/Shared --person someone`, sharedFolderAnyEntryID},
+		{`script -q /dev/null bin/abcd-darwin-arm64 implement --json stop --lift`, implementStopAnyEntryID},
+		{`rm /Users/Shared/abcd-stop/abcd-stop.json`, stopStoreEntryID},
+		{`rm -r /Users/Shared/abcd-stop`, stopStoreEntryID},
+		{`cd ~/.abcd.noindex && mv stop.json x`, stopStoreEntryID},
+		{`rm -f ~/.abcd.noindex/stop.json`, stopStoreEntryID},
+		{`mv /Users/Shared/abcd-stop/abcd-stop.json /tmp/x`, stopStoreEntryID},
+		{`echo '{}' > /Users/Shared/abcd-stop/abcd-stop.json`, stopStoreEntryID},
+		{`echo '{}' > ~/.abcd.noindex/shared-folder.json`, stopStoreEntryID},
+		{`rm "$F" # abcd-stop.json`, stopStoreEntryID},
+		{`rm ~/.abcd.noindex/stop.*`, stopStoreEntryID},
+		{`rm ~/.abcd.noindex/shared-*`, stopStoreEntryID},
+		{`cd ~/.abcd.noindex && rm -- *.json`, stopStoreEntryID},
+		{`rm -rf ~/.abcd.noindex`, stopStoreEntryID},
+		{`rm -rf ~/.abcd.noindex/`, stopStoreEntryID},
+		{`mv ~/.abcd.noindex ~/.old`, stopStoreEntryID},
+		{`find ~/.abcd.noindex -name stop.json -delete`, stopStoreEntryID},
+		{`mv /tmp/x ~/.abcd.noindex/stop.json`, stopStoreEntryID},
+		{`cd "$D" && rm stop.json`, stopStoreEntryID},
+		{`rm /Users/Shared/abcd-st*/abcd-stop.json`, stopStoreEntryID},
+		{`find /Users/Shared -name 'abcd-stop*' -delete`, stopStoreEntryID},
+		{`rm ~/.abcd.noindex/STOP.JSON`, stopStoreEntryID},
+		{`echo x > ~/.ABCD.NOINDEX/SHARED-FOLDER.JSON`, stopStoreEntryID},
+		{`rm /Users/Shared/ABCD-STOP/ABCD-STOP.JSON`, stopStoreEntryID},
+		{`mv /Users/Shared/Abcd-Stop /tmp/x`, stopStoreEntryID},
+		{`rm -rf ~/.ABCD.NOINDEX`, stopStoreEntryID},
+		{`rm ~/.abcd.noindex/STOP.*`, stopStoreEntryID},
+		{`rm ~/.ABCD.NOINDEX/Shared-*`, stopStoreEntryID},
+		{"rm ~/.abcd.noindex/\u017ftop.json", stopStoreEntryID},
+		{"echo x > ~/.abcd.noindex/\u017fhared-folder.json", stopStoreEntryID},
+		{"rm /Users/Shared/abcd-\u017ftop/abcd-\u017ftop.json", stopStoreEntryID},
+		{"rm ~/.abcd.noindex/\ufb06op.json", stopStoreEntryID},
+	} {
+		d, err := reg.Check(c.cmd)
+		if err != nil || d.Verdict != VerdictBlock || d.EntryID != c.entry {
+			t.Errorf("Check(%q) = %q via %q, %v; want a block via %q", c.cmd, d.Verdict, d.EntryID, err, c.entry)
+		}
+	}
+	for _, cmd := range []string{
+		`scripts/abcd.sh implement step --run run-1`,
+		`scripts/abcd.sh implement resume`,
+		`scripts/abcd.sh capture "an agent ran implement stop"`,
+		`git log --grep implement --grep stop`,
+		`cat /Users/Shared/abcd-stop/abcd-stop.json`,
+		`rm build/stop.json`,
+		`ls /Users/Shared/abcd-digest`,
+		`cd "$D" && rm build/stop.json`,
+		`rm -rf ~/.abcd.noindex/review-x/copy`,
+		`rm ~/.abcd.noindex/review-*`,
+		`rm ~/.abcd.noindex/review-x/*`,
+		`mkdir -p ~/.abcd.noindex`,
+		`printf x >> ~/.abcd.noindex/trusted-roots`,
+		`find ~/.abcd.noindex/worktrees -name x -delete`,
+	} {
+		if d, err := reg.Check(cmd); err != nil || d.Verdict == VerdictBlock {
+			t.Errorf("Check(%q) = %+v, %v; want it allowed", cmd, d, err)
+		}
+	}
+}
+
+// TestTheAllowStoreFoldsCaseToo: the sibling store's name is matched as a volume
+// that folds case would resolve it.
+func TestTheAllowStoreFoldsCaseToo(t *testing.T) {
+	home := t.TempDir()
+	dir := t.TempDir()
+	r, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := NewFiles(dir)
+	f.home = home
+	r = r.ReadingFrom(f)
+	store := abcdhome.Path(home, "GUARD-ALLOW", testRootSHA)
+	for _, line := range []string{
+		"echo '{}' > " + store + "/allow-x.json",
+		"cp /tmp/a.json " + store + "/allow-x.json",
+		"cat a > ~/.ABCD.NOINDEX/Guard-Allow/x.json",
+	} {
+		d, err := r.Check(line)
+		if err != nil || d.Verdict != VerdictBlock || d.EntryID != allowStoreEntryID {
+			t.Errorf("Check(%q) = %q via %q, %v", line, d.Verdict, d.EntryID, err)
+		}
+	}
+}
+
+// TestARemovalThatCouldReachTheStopIsRefused: a glob removal, or a removal of the
+// folder that holds it, is read against what stands there, whether or not the line
+// names the stop. A removal elsewhere, or a glob that cannot match, is not refused.
+func TestARemovalThatCouldReachTheStopIsRefused(t *testing.T) {
+	folder := t.TempDir()
+	if err := os.Mkdir(filepath.Join(folder, runstop.StopDirName), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	elsewhere := t.TempDir()
+	old := runstop.WellKnownFolder
+	runstop.WellKnownFolder = func() string { return folder }
+	t.Cleanup(func() { runstop.WellKnownFolder = old })
+	files := NewFiles(t.TempDir())
+	files.home = t.TempDir()
+	reg := Defaults().ReadingFrom(files)
+	for _, cmd := range []string{
+		"rm -rf " + folder + "/abcd-s*",
+		"rm -rf " + folder + "/*",
+		"rm -rf " + folder + "/a*p",
+		"find " + folder + " -name 'abcd-s*' -delete",
+		"rm -rf " + folder,
+	} {
+		if d, err := reg.Check(cmd); err != nil || d.Verdict != VerdictBlock || d.EntryID != stopStoreEntryID {
+			t.Errorf("Check(%q) = %q via %q, %v; want a block via %q", cmd, d.Verdict, d.EntryID, err, stopStoreEntryID)
+		}
+	}
+	for _, cmd := range []string{
+		"rm -rf " + elsewhere + "/*",
+		"rm -rf " + folder + "/other*",
+		"find " + elsewhere + " -name 'x*' -delete",
+		"ls " + folder + "/*",
+		`cd "$D" && rm -rf *`,
+		`cd "$D" && rm *.json`,
+	} {
+		if d, err := reg.Check(cmd); err != nil || d.EntryID == stopStoreEntryID {
+			t.Errorf("Check(%q) = %q via %q, %v; want it not refused for the stop", cmd, d.Verdict, d.EntryID, err)
 		}
 	}
 }

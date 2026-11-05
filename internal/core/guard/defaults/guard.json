@@ -1296,6 +1296,48 @@
         ]
       }
     },
+    "abcd-implement-stop": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "abcd",
+        "subcommand": "implement",
+        "subcommand2": "stop"
+      },
+      "why": "Setting or lifting a stop is the person's own act: a stop withdraws what every unattended run on the machine may do, and only their word lifts it, so one an agent sets or lifts is one no person decided.",
+      "successor": "Leave this one to the person: tell them why you believe the runs should stop or go on, and let them run `abcd implement stop`, or `abcd implement stop --lift`, from their own account.",
+      "fixtures": {
+        "known_bad": [
+          "abcd implement stop",
+          "abcd implement stop --lift",
+          "go run ./cmd/abcd implement stop --lift"
+        ],
+        "known_good": [
+          "abcd implement step",
+          "abcd implement resume",
+          "abcd capture \"an agent ran abcd implement stop\""
+        ]
+      }
+    },
+    "abcd-ahoy-shared-folder": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "abcd",
+        "subcommand": "ahoy",
+        "subcommand2": "shared-folder"
+      },
+      "why": "Choosing the shared folder is the person's own act: it decides where this account reads a stop from, so a choice an agent makes can put every run out of reach of the person's stop.",
+      "successor": "Leave this one to the person: tell them what the folder is for and let them run `abcd ahoy shared-folder <folder>` themselves, in each account.",
+      "fixtures": {
+        "known_bad": [
+          "abcd ahoy shared-folder /Users/Shared",
+          "abcd ahoy shared-folder /Users/Shared --person someone"
+        ],
+        "known_good": [
+          "abcd ahoy --json",
+          "abcd capture \"an agent ran abcd ahoy shared-folder\""
+        ]
+      }
+    },
     "abcd-guard-allow": {
       "tier": "blocker",
       "pattern": {

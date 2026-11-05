@@ -550,6 +550,13 @@ whatever the program is called: `abcd …` and, in a source checkout,
 `abcd-guard-allow-any-program`. It also refuses a shell write into its store. Tell the person the exact command and why it is safe, and let
 them decide.
 
+**Nor `abcd implement stop` or `abcd ahoy shared-folder`.** Setting or lifting a stop, and choosing the folder a
+stop is read from, are the person's acts: refused as `abcd-implement-stop` and `abcd-ahoy-shared-folder`, and under
+any other program name as `abcd-implement-stop-any-program` and `abcd-ahoy-shared-folder-any-program`. A shell write,
+move or removal of the stop file or the setting is refused as `implement-stop-store-write`, since removing a stop is
+lifting it (`commands/implement.md`), and so is a removal of the whole of abcd's home folder, a glob in it that
+reaches either file, or a removal or glob over the folder that holds the stop's directory. The host's file-writing tools are denied the same two files.
+
 The allow is recorded under `~/.abcd.noindex/guard-allow/<root-commit>/`, one
 file per line, and read only when this account owns it and no one else can
 write it or its folders, as the rules loader reads `~/.abcd.noindex/rules.json`.

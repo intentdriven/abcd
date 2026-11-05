@@ -1,5 +1,7 @@
 package guard
 
+import "strings"
+
 // The acts only the person takes are refused through the binary their
 // registry entries name, and abcd also runs under other names: go run of the
 // module, a cross-compiled build (bin/abcd-<os>-<arch>), the source-checkout
@@ -25,6 +27,13 @@ const (
 	// abcd-source-ledger-flip or its retired twin names.
 	ledgerFlipAnyEntryID        = "abcd-source-ledger-flip-any-program"
 	ledgerFlipRetiredAnyEntryID = "abcd-source-ledger-flip-retired-any-program"
+
+	// implementStopAnyEntryID and sharedFolderAnyEntryID are the reserved ids
+	// a stop and the folder it is read from are refused under when the program
+	// is not one abcd-implement-stop or abcd-ahoy-shared-folder names
+	// (itd-2611041549471712).
+	implementStopAnyEntryID = "abcd-implement-stop-any-program"
+	sharedFolderAnyEntryID  = "abcd-ahoy-shared-folder-any-program"
 )
 
 // personAct is one act only the person takes: the verbs that name it, in
@@ -37,7 +46,10 @@ type personAct struct {
 	id, entry, family string
 	verbs, flags      []string
 	valueFlags        []string
-	why, successor    string
+	// adjacent holds the verbs to consecutive words: an act no flag names, whose
+	// two common words would otherwise match a search that merely mentions them.
+	adjacent       bool
+	why, successor string
 }
 
 var personActs = []personAct{
@@ -65,6 +77,18 @@ var personActs = []personAct{
 		why:       "The retired spelling of the ledger flip: a binary older than the library verb still answers it, and such a binary is often reachable (the plugin root's copy, an older build). Flipping a source-ledger line to public citation is the person's own act, so a flip an agent makes writes a false record of who decided.",
 		successor: "Leave this one to the person: tell them which ledger line you believe is ready to cite publicly and why, and let them run `abcd library ledger --flip N` themselves.",
 	},
+	{
+		id: implementStopAnyEntryID, entry: "abcd-implement-stop", family: "implement stop",
+		verbs: []string{"implement", "stop"}, adjacent: true,
+		why:       "Setting or lifting a stop is the person's own act: a stop withdraws what every unattended run on the machine may do, and only their word lifts it, so one an agent sets or lifts is one no person decided.",
+		successor: "Leave this one to the person: tell them why you believe the runs should stop or go on, and let them run `abcd implement stop`, or `abcd implement stop --lift`, from their own account.",
+	},
+	{
+		id: sharedFolderAnyEntryID, entry: "abcd-ahoy-shared-folder", family: "ahoy shared-folder",
+		verbs: []string{"ahoy", "shared-folder"}, adjacent: true,
+		why:       "Choosing the shared folder is the person's own act: it decides where this account reads a stop from, so a choice an agent makes can put every run out of reach of the person's stop.",
+		successor: "Leave this one to the person: tell them what the folder is for and let them run `abcd ahoy shared-folder <folder>` themselves, in each account.",
+	},
 }
 
 // actOf reports whether segment s runs act a under a program other than one
@@ -84,8 +108,18 @@ func (a personAct) actOf(s segment) bool {
 		on := make([]bool, len(a.flags))
 		valued := make([]bool, len(a.valueFlags))
 		for j, w := range literalWords(s, site.idx+1) {
-			if next < len(a.verbs) && w == a.verbs[next] {
+			switch {
+			case next < len(a.verbs) && w == a.verbs[next]:
 				next++
+			case a.adjacent && next > 0 && next < len(a.verbs) && w != "--json" && !strings.HasPrefix(w, "--json="):
+				// The run is broken: the verbs must start again. The one flag a
+				// command line can carry between them is the root's own --json;
+				// any other takes the next word as its value, so what follows
+				// is not this act.
+				next = 0
+				if w == a.verbs[0] {
+					next = 1
+				}
 			}
 			for i, f := range a.flags {
 				on[i] = on[i] || boolFlagOn(w, f)

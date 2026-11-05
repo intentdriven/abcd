@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/runstop"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -161,7 +162,7 @@ const allowStoreEntryID = "guard-allow-store-write"
 // does, a write whose target the line does not fix is refused too, since it
 // may land there.
 func (r Registry) allowStoreSignal(command string, rc *readCtx, v verdicts) (payloadSignal, bool) {
-	if rc == nil || r.files == nil || r.files.home == "" || !strings.Contains(command, allowStoreLeaf) {
+	if rc == nil || r.files == nil || r.files.home == "" || !strings.Contains(fsutil.FoldPath(command, true), allowStoreLeaf) {
 		return payloadSignal{}, false
 	}
 	store := abcdhome.Path(r.files.home, allowStoreLeaf)
@@ -173,13 +174,146 @@ func (r Registry) allowStoreSignal(command string, rc *readCtx, v verdicts) (pay
 					// Removing an allow only takes one away.
 					continue
 				}
-				if !u.ok || inAny(u.path, stores) || inAny(fsutil.RealExistingPath(u.path), stores) {
+				if !u.ok || inAnyFolded(u.path, stores) || inAnyFolded(fsutil.RealExistingPath(u.path), stores) {
 					return allowStoreRefusal(), true
 				}
 			}
 		}
 	}
 	return payloadSignal{}, false
+}
+
+// stopStoreEntryID is the reserved id a shell write to the stop file or the
+// shared-folder setting is refused under (itd-2611041549471712).
+const stopStoreEntryID = "implement-stop-store-write"
+
+// inAnyFolded is inAny with case folded, since the volume may fold it, the home
+// folder's own name included: the same path by any spelling is the store.
+func inAnyFolded(p string, dirs []string) bool {
+	for _, d := range dirs {
+		if fsutil.PathWithin(filepath.Clean(p), filepath.Clean(d), true) {
+			return true
+		}
+	}
+	return false
+}
+
+// stopStoreReason and stopStoreSuccessor are what a refused write of the stop
+// says, on a shell line and through a file tool alike.
+const (
+	stopStoreReason    = "This writes or removes a stop file, or the setting naming where a stop is read: removing a stop is lifting it, and that is the person's own command."
+	stopStoreSuccessor = "Leave this one to the person: tell them why you believe the runs should go on, and let them run `abcd implement stop --lift` from their own account."
+)
+
+// stopStoreSignal refuses a line that writes, moves or removes the stop file or
+// the setting naming where it is read: removing a stop is lifting it, and only
+// the person's own command does that. A line that names one of the files is refused
+// when it writes one, or a target it does not fix. A line that names abcd's home
+// folder, the platform's shared folder or a glob is refused when it removes the
+// folder holding either, or a glob can match them. The files are matched as a volume
+// resolves their names, wherever they stand, since the shared folder is the person's
+// choice. A read is not refused.
+func (r Registry) stopStoreSignal(command string, rc *readCtx, v verdicts) (payloadSignal, bool) {
+	if rc == nil {
+		return payloadSignal{}, false
+	}
+	// Names are matched as the volume resolves them. A glob, or a line naming the
+	// platform's shared folder, is read for what stands where it reaches.
+	folded := fsutil.FoldPath(command, true)
+	named := strings.Contains(folded, runstop.StopDirName) || strings.Contains(folded, runstop.SettingFile) ||
+		strings.Contains(folded, runstop.HomeStopFile)
+	wellKnown := runstop.WellKnownFolder()
+	homeNamed := strings.Contains(folded, abcdhome.Rel())
+	if !named && !homeNamed && !strings.ContainsAny(command, "*?[") &&
+		(wellKnown == "" || !strings.Contains(folded, fsutil.FoldPath(wellKnown, true))) {
+		return payloadSignal{}, false
+	}
+	for _, p := range placedLine(rc.line, v.segs) {
+		for _, st := range p.states {
+			for _, u := range pathUses(rc, p.seg, st) {
+				if stopStoreUse(u, named, homeNamed) {
+					return payloadSignal{
+						id:        stopStoreEntryID,
+						verdict:   VerdictBlock,
+						family:    "implement stop",
+						reason:    stopStoreReason,
+						successor: stopStoreSuccessor,
+					}, true
+				}
+			}
+		}
+	}
+	return payloadSignal{}, false
+}
+
+// stopStoreUse reports whether one write or removal reaches the stop or the
+// setting. named says the line names one of the files, and homeNamed that it names
+// abcd's home folder. A relative name is judged by the name it spells.
+func stopStoreUse(u pathUse, named, homeNamed bool) bool {
+	switch {
+	case u.glob != "" && (u.rel || u.ok):
+		// A glob in a relative directory, on a line naming abcd's home folder.
+		glob := fsutil.FoldPath(u.glob, true)
+		if ((u.rel && homeNamed) || (u.ok && isHomeFolder(u.path))) &&
+			(shellGlobMatch(glob, runstop.HomeStopFile) || shellGlobMatch(glob, runstop.SettingFile)) {
+			return true
+		}
+		// A glob over the folder that holds the stop's directory, if it can match it.
+		first, _, _ := strings.Cut(glob, "/")
+		if u.ok && holdsStopDir(u.path) && shellGlobMatch(first, runstop.StopDirName) {
+			return true
+		}
+		// On a line that names the stop, a glob that can spell its folder or file.
+		if named {
+			for _, c := range strings.Split(glob, "/") {
+				if shellGlobMatch(c, runstop.StopDirName) || shellGlobMatch(c, runstop.StopFileName) {
+					return true
+				}
+			}
+		}
+		return false
+	case u.ok:
+		wholeFolder := (u.remove || u.bound) && (isHomeFolder(u.path) || holdsStopDir(u.path))
+		// A find deletes below its start by a test this reading does not follow,
+		// so on a line that names the stop it may reach it.
+		return wholeFolder || (u.bound && named) || StopStorePath(u.path)
+	case u.rel:
+		return named && stopStoreName(u.written, true)
+	}
+	return named
+}
+
+// StopStorePath reports whether p is the stop, the person's directory that holds
+// it, or the setting naming where it is read, by name wherever the folder stands.
+func StopStorePath(p string) bool { return stopStoreName(p, false) }
+
+// StopStoreRefusal is what a file tool refused StopStorePath is told.
+func StopStoreRefusal() string { return stopStoreReason + " " + stopStoreSuccessor }
+
+// stopStoreName is StopStorePath of a path, or with unplaced a relative name in a
+// directory that may be abcd's home folder. Case is folded, since the volume may
+// fold it.
+func stopStoreName(p string, unplaced bool) bool {
+	p = fsutil.FoldPath(filepath.Clean(p), true)
+	base, parent := filepath.Base(p), filepath.Dir(p)
+	switch base {
+	case runstop.StopFileName, runstop.StopDirName:
+		return true
+	case runstop.SettingFile, runstop.HomeStopFile:
+		return isHomeFolder(parent) || (unplaced && parent == ".")
+	}
+	return false
+}
+
+// isHomeFolder reports whether p names abcd's home folder, as the volume resolves it.
+func isHomeFolder(p string) bool {
+	return fsutil.FoldPath(filepath.Base(p), true) == abcdhome.Rel()
+}
+
+// holdsStopDir reports whether the stop's directory stands directly in p.
+func holdsStopDir(p string) bool {
+	_, err := os.Lstat(filepath.Join(p, runstop.StopDirName))
+	return err == nil
 }
 
 // inAny reports whether p is one of dirs or below one.

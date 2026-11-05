@@ -112,7 +112,7 @@ var reservedEntryIDs = []string{
 	forgeTextEntryID, forgeUnreadEntryID, forgeDisclosureEntryID, forgeMentionEntryID, shellCDeleteEntryID,
 	unnamedProgramEntryID, inlineCodeEntryID, checkNoteEntryID, registryEntryID, promptToolEntryID, promptInputEntryID,
 	protectedPathEntryID, criticalRemovalEntryID, sandboxEntryID, unfixedPathEntryID, gitConfigWriteEntryID, outsideRemovalEntryID,
-	groupBrokenEntryID, nulByteEntryID, arithmeticEntryID, deleteEntryID, allowStoreEntryID,
+	groupBrokenEntryID, nulByteEntryID, arithmeticEntryID, deleteEntryID, allowStoreEntryID, stopStoreEntryID, implementStopAnyEntryID, sharedFolderAnyEntryID,
 	mergeAutoEntryID, mergeNowEntryID, mergeEnqueueEntryID, mergeRESTEntryID, mergeUnreadEntryID, approveAnyEntryID, approveForgeEntryID,
 	guardAllowAnyEntryID, ledgerFlipAnyEntryID, ledgerFlipRetiredAnyEntryID,
 }
