@@ -340,7 +340,7 @@ that finds the issue held hands its lane back as stuck, and one at the person's 
 waits on the outage schedule for a reservation to end, handing nothing back. A drive claims
 its run with its own process, so the driver a listing names ends with it.
 
-The person's stop (`abcd implement stop`) reaches a drive at its next move and through any
+The person's stop reaches a drive at its next move and through any
 wait: each wait looks for it every minute, under a bound as without one, and the drive ends
 saying what holds it. A drive's stop on a run whose state changed is another thing, and a
 run can have both. While both stand the run is not settled, since what it says is not known
