@@ -94,6 +94,18 @@ or one already past, is refused (exit 2) with nothing written. Add
 narrows what sessions do and grants nothing. Tell the user the `terms` the
 verb prints. A prompt never ends the mode.
 
+**A session whose setting reads as off a profile is warned.** After the set, one
+line on stderr opens `WARNING:` (stdout's JSON is untouched) when one setting in
+this session's environment reads as off a profile. A host that reports no such
+setting reads as off, and every doubt falls towards the line. Pass the line on to
+the person, as it asks. The mode is set and the exit code is the same either way:
+this warns and never refuses. This reads one setting and proves no wall, and the setting's value changes nothing
+the session holds. No abcd command starts
+a session on a profile yet. A profile is a separate login and settings on one
+operating-system account, and a stage's shell reads what the account can.
+`abcd drain --drive` is the unattended start: it runs agents of its own on a separate
+login, with named tools, checked at its start.
+
 While it holds, an act only the person may approve is queued for their
 return instead of asked, and you carry on with other work:
 

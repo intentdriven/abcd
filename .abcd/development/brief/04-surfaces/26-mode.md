@@ -102,6 +102,44 @@ had within two seconds and a record or lock that fails the checks. Ending the
 mode refuses only where there is no checkout, no home or no root commit to key
 the record on. None makes a network request.
 
+## A session off a profile
+
+The away mode says sessions work on unattended, and every session that
+coordinates unattended work is meant to start on a profile
+(dcn-2611031722512037). A session the person started is warned and never refused
+(dcn-2611041550129278), since no host shows a session's tools to any hook.
+
+Setting the away mode warns; so does a build or a drain move while the mode
+holds ([`34-build.md`](34-build.md), [`35-drain.md`](35-drain.md)), a first
+session's join in any mode ([`27-implement.md`](27-implement.md)), and any of
+those moves when the away state cannot be read. A managed build or drain move
+whose away state can be read prints nothing. A drive's moves print no such line: it
+starts from a plain terminal, not from a session of the person's
+(dcn-2611050931219213).
+
+The warning is one line on stderr whatever the output form, printed after the
+move, opening `WARNING:`, worded as the setting's reading, naming what abcd cannot
+check and asking to be passed on to the person. What remains owed about the line is
+in dcn-2611050931229356. The exit code and the verb's behaviour do not change, and
+a refused verb started nothing and owes no line.
+
+**What decides.** One setting in the session's environment, resolved through its
+links (`runner.SessionOnProfile`, in the core, which writes nothing; the front door
+prints the line). A host that reports no such setting reads as off a profile. Every
+doubt falls towards the line, since a line printed once too often costs a line: an
+away record or store that cannot be read warns as if the mode held, and says why. A
+repository with no root commit can hold no away record, and reads as not away.
+
+**What it does not say.** This reads one setting and proves no wall, and the
+setting's value changes nothing the session holds. A session on a profile could
+hold other tools, and abcd has no way to see them. A host's report of a session's
+tools would show the tools and still not bound its shell; what the account cannot
+reach is a later step (itd-2610161621364075). A profile is a separate login and
+settings on one operating-system account, and a stage's shell reads what the account
+can. No abcd command starts a session on a profile yet. The drain's drive
+([`35-drain.md`](35-drain.md)) is the unattended start: it runs agents of its own on a
+separate login, with named tools, checked at its start.
+
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 
 ## Appendix: the shipped surface

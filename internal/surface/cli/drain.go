@@ -239,6 +239,10 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"passes it over before anything is pushed or asked, named in passed with check \"skipped\" and the reason. --skip may be\n" +
 			"given more than once, all with the one --reason; --unskip takes an entry off. The\n" +
 			"list clears when the drain ends.\n\n" +
+			"While the away mode holds (`abcd mode autonomous`), or its record cannot be read, every move from a\n" +
+			"session whose setting reads as off a profile prints one line on stderr opening WARNING:, after the move,\n" +
+			"naming what abcd cannot check and addressed to the person; it never refuses and the exit code does not\n" +
+			"change. In the managed mode and on --dry-run nothing prints. " + offProfileHelp + "\n\n" +
 			"Without the repository's record, the dry run and the run both refuse (exit 2),\n" +
 			"naming how to add it; `abcd ahoy install` offers it. A run that opens nothing or\n" +
 			"merges nothing exits 0 and says why. Exit 2 on a refusal, exit 3 when another\n" +
@@ -382,6 +386,7 @@ func runDrain(cmd *cobra.Command, asJSON bool, repoRoot string, maxLanes int, pa
 	if res.Started {
 		noticeUnattended(cmd, prefix)
 	}
+	warnOffProfileWhileAway(cmd, prefix, repoRoot)
 	for i := range res.Passed {
 		res.Passed[i].Reason = fsutil.RedactHome(res.Passed[i].Reason)
 	}
