@@ -1,4 +1,4 @@
-// Command ci-shard prints the packages one shard of ci.yml's macOS suite tests,
+// Command ci-shard prints the packages one shard of the macOS suite tests,
 // one import path per line, heaviest first (iss-2610181757540736):
 //
 //	pkgs=$(go run ./cmd/ci-shard -shard 2 -of 3)
@@ -78,7 +78,7 @@ var weights = map[string]int{
 const defaultWeight = 15
 
 // firstShardHead is the load the first shard starts with, in the same unit: it
-// alone runs the build, vet and the plain-only guards (ci.yml's macos-suite job),
+// alone runs the build, vet and the plain-only guards (macos-suite.yml),
 // about three minutes of wall clock on a slow runner, which at that runner's 2.7
 // busy slots is worth this many seconds of package time.
 const firstShardHead = 500
