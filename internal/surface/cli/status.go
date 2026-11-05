@@ -44,12 +44,16 @@ var statusPushers claim.PusherLookup = func(ctx context.Context, root, branch st
 
 // statusScheduledRun is the forge adapter `abcd status` asks for the latest
 // completed scheduled run of the workflow the repository names.
-var statusScheduledRun claim.ScheduledRunLookup = func(ctx context.Context, root, workflow, branch string) (*claim.ScheduledRun, error) {
-	r, err := github.LatestScheduledRun(ctx, root, workflow, branch)
-	if err != nil || r == nil {
+var statusScheduledRun claim.ScheduledRunLookup = func(ctx context.Context, root, workflow, branch string) ([]claim.ScheduledRun, error) {
+	runs, err := github.ScheduledRuns(ctx, root, workflow, branch)
+	if err != nil {
 		return nil, err
 	}
-	return &claim.ScheduledRun{Conclusion: r.Conclusion, URL: r.URL, CompletedAt: r.UpdatedAt}, nil
+	out := make([]claim.ScheduledRun, 0, len(runs))
+	for _, r := range runs {
+		out = append(out, claim.ScheduledRun{Conclusion: r.Conclusion, URL: r.URL, CompletedAt: r.UpdatedAt})
+	}
+	return out, nil
 }
 
 // statusOutput is the --json document of `abcd status`: the status view, the
@@ -72,9 +76,11 @@ type statusOutput struct {
 	NotDropped       string            `json:"not_dropped,omitempty"`
 	LocalTierMissing bool              `json:"local_tier_missing,omitempty"`
 	ReadError        string            `json:"read_error,omitempty"`
-	// ScheduledFailure is the repository's latest scheduled run when it failed,
-	// and ScheduledUnread why that run could not be read; each absent otherwise.
+	// ScheduledFailure is the repository's last scheduled verdict when it was
+	// red, ScheduledDoubt what is said when there is no verdict to name, and
+	// ScheduledUnread why the runs could not be read; each absent otherwise.
 	ScheduledFailure *scheduledFailureRow `json:"scheduled_failure,omitempty"`
+	ScheduledDoubt   *scheduledDoubtRow   `json:"scheduled_doubt,omitempty"`
 	ScheduledUnread  string               `json:"scheduled_unread,omitempty"`
 	Grants           string               `json:"grants"`
 	reservationsBlock
@@ -88,7 +94,15 @@ type scheduledFailureRow struct {
 	URL         string `json:"url"`
 	CompletedAt string `json:"completed_at"`
 	AgeSeconds  int64  `json:"age_seconds"`
+	RunsSince   int    `json:"runs_since,omitempty"`
 	Text        string `json:"text"`
+}
+
+// scheduledDoubtRow says why no verdict is named: its kind (no_verdict or
+// unknown) and the line it is shown by.
+type scheduledDoubtRow struct {
+	Kind string `json:"kind"`
+	Text string `json:"text"`
 }
 
 // statusView dates the announcements: when abcd last fetched the status
@@ -159,13 +173,18 @@ func newStatusCommand(asJSON *bool) *cobra.Command {
 			"match, so it is not asked about and its senders stay claimed.\n\n" +
 			"A repository that names a workflow a schedule runs on its default branch\n" +
 			"(status.scheduled_workflow in its .abcd/config.json, the file's name, such as\n" +
-			"nightly.yml) has that workflow's latest completed scheduled run read too: after\n" +
-			"a fetch that succeeded it asks the forge (gh api) within five seconds and keeps\n" +
-			"the answer in the local tier. A run that failed, timed out or could not start\n" +
-			"is named in one line with its URL and age, here and at the next prompt, and\n" +
-			"nothing is said of any other. A run that could not be read is said here alone,\n" +
-			"never as a failure, and changes no exit; an answer asked for more than two days\n" +
-			"ago is not read. With no such key nothing is asked, kept or shown.\n\n" +
+			"nightly.yml) has that workflow's latest scheduled verdict read too: after a\n" +
+			"fetch that succeeded it asks the forge (gh api) within five seconds for the\n" +
+			"latest completed scheduled runs and keeps what they say in the machine's store\n" +
+			"for the repository, which every checkout of it reads; the prompt hook does the\n" +
+			"same in the background when that answer is an hour old. A run that failed,\n" +
+			"timed out or could not start is named in one line with its URL and age, here\n" +
+			"and once to each session at a prompt, until a run that succeeds replaces it:\n" +
+			"a cancelled or skipped run replaces nothing. A green is silent while it is\n" +
+			"recent for the workflow's own cycle, and past that one line says no verdict has\n" +
+			"been reached. An answer that is missing, more than two days old or unreadable\n" +
+			"says the state is unknown. None of this changes an exit, and with no such key\n" +
+			"nothing is asked, kept or shown.\n\n" +
 			"An announcement stands for its life from when this checkout first fetched it,\n" +
 			"not by the sender's clock. One whose sender is not its branch's owner, one\n" +
 			"that does not read as an announcement (never shown but by its branch and the\n" +
@@ -279,7 +298,10 @@ func (out *statusOutput) addStatus(v claim.StatusView, now time.Time) {
 	}
 	if f := v.ScheduledFailure; f != nil {
 		out.ScheduledFailure = &scheduledFailureRow{Workflow: f.Workflow, Branch: f.Branch, Conclusion: f.Conclusion, URL: f.URL,
-			CompletedAt: rfc3339(f.CompletedAt), AgeSeconds: max(int64(now.Sub(f.CompletedAt).Seconds()), 0), Text: f.Line(now)}
+			CompletedAt: rfc3339(f.CompletedAt), AgeSeconds: max(int64(now.Sub(f.CompletedAt).Seconds()), 0), RunsSince: f.RunsSince, Text: f.Line(now)}
+	}
+	if d := v.ScheduledDoubt; d != nil {
+		out.ScheduledDoubt = &scheduledDoubtRow{Kind: d.Kind, Text: d.Text}
 	}
 	out.BranchesNotRead, out.NotRead, out.BranchesLeft = v.BranchesNotRead, v.AnnouncementsNotRead, v.BranchesLeft
 	n := v.UnreadNames
@@ -364,6 +386,11 @@ func renderStatus(w io.Writer, out statusOutput) {
 	if out.ScheduledFailure != nil {
 		fmt.Fprintln(w, "  "+out.ScheduledFailure.Text)
 	}
+	// A line saying why the runs could not be read says all an unknown state
+	// would, and more.
+	if d := out.ScheduledDoubt; d != nil && (d.Kind != claim.ScheduledUnknown || out.ScheduledUnread == "") {
+		fmt.Fprintln(w, "  "+d.Text)
+	}
 	if out.ScheduledUnread != "" {
 		fmt.Fprintln(w, "  "+out.ScheduledUnread)
 	}
@@ -381,17 +408,22 @@ var hookBudget = time.Second
 // read, rendered and kept shown before deadline, the hook's one deadline
 // (claim.PromptNotes). A read that could not be made is named on stderr, and
 // its block says the status is unavailable. The caller marks the block shown
-// once it has written it.
-func routerStatus(cmd *cobra.Command, root string, deadline time.Time) claim.Notes {
+// once it has written it. A refresh the block says is due is started here, in
+// the background, and never waited for.
+func routerStatus(cmd *cobra.Command, root, session string, deadline time.Time) claim.Notes {
 	if root == "" {
 		return claim.Notes{}
 	}
 	ctx, cancel := context.WithDeadline(context.Background(), deadline)
 	defer cancel()
 	now := time.Now().UTC().Truncate(time.Second)
-	n, err := claim.PromptNotes(ctx, root, now, claim.Options{Now: func() time.Time { return now }})
+	o := claim.Options{Now: func() time.Time { return now }, Session: session}
+	n, err := claim.PromptNotes(ctx, root, now, o)
 	if err != nil {
 		fmt.Fprintf(cmd.ErrOrStderr(), "abcd status: %s\n", termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+	}
+	if n.RefreshDue {
+		startDueRefresh(ctx, cmd, root, o, deadline)
 	}
 	return n
 }

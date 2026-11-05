@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,14 +14,45 @@ import (
 	"github.com/intentdriven/abcd/internal/shellquote"
 )
 
-// `abcd status` and a failed latest scheduled run (iss-2611050035192370),
-// through the forge adapter against a stand-in gh, in a repository that names
-// its own workflow.
+// `abcd status`, the prompt hook and a red latest scheduled run
+// (iss-2611050035192370), through the forge adapter against a stand-in gh, in a
+// repository that names its own workflow.
 
 const (
 	scheduledWorkflowName = "nightly.yaml"
 	scheduledRunURL       = "https://github.com/example-org/example-app/actions/runs/101"
 )
+
+// A test binary is no abcd: started by the hook, it would run this package's
+// tests. Every test starts none unless it says so (spawnsRefreshes).
+func init() { spawnScheduledRefresh = func(string) error { return nil } }
+
+// spawnsRefreshes records each background refresh the hook asks for, and runs
+// none, for the rest of the test.
+func spawnsRefreshes(t *testing.T) *refreshLog {
+	t.Helper()
+	l := &refreshLog{}
+	old := spawnScheduledRefresh
+	spawnScheduledRefresh = func(dir string) error {
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		l.dirs = append(l.dirs, dir)
+		return nil
+	}
+	t.Cleanup(func() { spawnScheduledRefresh = old })
+	return l
+}
+
+type refreshLog struct {
+	mu   sync.Mutex
+	dirs []string
+}
+
+func (l *refreshLog) count() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return len(l.dirs)
+}
 
 // scheduledJSON is the part of --json this names.
 type scheduledJSON struct {
@@ -31,8 +63,13 @@ type scheduledJSON struct {
 		URL         string `json:"url"`
 		CompletedAt string `json:"completed_at"`
 		AgeSeconds  int64  `json:"age_seconds"`
+		RunsSince   int    `json:"runs_since"`
 		Text        string `json:"text"`
 	} `json:"scheduled_failure"`
+	Doubt *struct {
+		Kind string `json:"kind"`
+		Text string `json:"text"`
+	} `json:"scheduled_doubt"`
 	Unread string `json:"scheduled_unread"`
 }
 
@@ -73,7 +110,7 @@ func askGitHubFrom(t *testing.T) {
 	gitInitAt(t, gh)
 	gitCmd(t, gh, "remote", "add", "origin", "https://github.com/example-org/example-app.git")
 	real := statusScheduledRun
-	statusScheduledRun = func(ctx context.Context, _, workflow, branch string) (*claim.ScheduledRun, error) {
+	statusScheduledRun = func(ctx context.Context, _, workflow, branch string) ([]claim.ScheduledRun, error) {
 		return real(ctx, gh, workflow, branch)
 	}
 	t.Cleanup(func() { statusScheduledRun = real })
@@ -99,6 +136,20 @@ func readCalls(t *testing.T, log string) string {
 		t.Fatal(err)
 	}
 	return string(b)
+}
+
+// hangOriginKeepingItsName is hangOrigin by a rewrite of origin's URL: the name
+// the checkout has configured for origin keys the store, so it stays, and any
+// network call to it hangs and leaves the file it returns.
+func hangOriginKeepingItsName(t *testing.T, root, origin string) (touched string) {
+	t.Helper()
+	touched = filepath.Join(t.TempDir(), "origin-reached")
+	if strings.ContainsAny(touched, " %") {
+		t.Fatalf("the marker path %q needs escaping in an ext:: URL", touched)
+	}
+	gitCmd(t, root, "config", "protocol.ext.allow", "always")
+	gitCmd(t, root, "config", "url.ext::sh -c touch% "+touched+";% sleep% 30.insteadOf", origin)
+	return touched
 }
 
 // TestStatusNamesAFailedLatestScheduledRun: the verb asks the forge for the
@@ -142,8 +193,8 @@ func TestStatusNamesAFailedLatestScheduledRun(t *testing.T) {
 		f.CompletedAt == "" || f.AgeSeconds < 3*3600 || f.Text != want {
 		t.Fatalf("--json's failure = %+v", *f)
 	}
-	if got.Unread != "" {
-		t.Fatalf("--json's scheduled_unread = %q", got.Unread)
+	if got.Unread != "" || got.Doubt != nil {
+		t.Fatalf("--json: scheduled_unread %q, scheduled_doubt %+v", got.Unread, got.Doubt)
 	}
 }
 
@@ -171,10 +222,35 @@ func TestStatusIsSilentOnAPassingLatestRun(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
 		t.Fatal(err)
 	}
-	for _, k := range []string{"scheduled_failure", "scheduled_unread"} {
+	for _, k := range []string{"scheduled_failure", "scheduled_doubt", "scheduled_unread"} {
 		if _, ok := got[k]; ok {
 			t.Errorf("--json carries %s on a passing run: %v", k, got[k])
 		}
+	}
+}
+
+// TestStatusSaysANoVerdictNightly: a latest run that reached no verdict over a
+// green older than a few days is one line, not a failure.
+func TestStatusSaysANoVerdictNightly(t *testing.T) {
+	w := newReserveWorld(t)
+	pat := w.clone(t, "pat", "5+pat@users.noreply.github.com")
+	nameScheduledWorkflow(t, pat)
+	askGitHubFrom(t)
+	standInForge(t, runListing("cancelled", time.Now().Add(-time.Hour)), false)
+	code, stdout, stderr := reserveRun(t, pat, "status", "--json")
+	if code != 0 {
+		t.Fatalf("status: exit %d, %s", code, stderr)
+	}
+	var got scheduledJSON
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Failure != nil || got.Doubt == nil || got.Doubt.Kind != claim.ScheduledNoVerdict {
+		t.Fatalf("--json: failure %+v, doubt %+v; want no failure and a no_verdict doubt", got.Failure, got.Doubt)
+	}
+	_, text, _ := reserveRun(t, pat, "status")
+	if !strings.Contains(text, "  "+got.Doubt.Text+"\n") {
+		t.Fatalf("status:\n%s\nwant the line %q", text, got.Doubt.Text)
 	}
 }
 
@@ -203,11 +279,11 @@ func TestStatusAsksNothingWhereNoWorkflowIsNamed(t *testing.T) {
 	}
 }
 
-// TestStatusWithNoForgeSaysItCouldNotReadAndNothingAsAFailure: a gh that fails,
-// and an origin that is not on GitHub at all, leave the exit as the fetch made
-// it, no failed run named, and one line saying the run was not read, in the
-// verb alone: the prompt's block stays silent.
-func TestStatusWithNoForgeSaysItCouldNotReadAndNothingAsAFailure(t *testing.T) {
+// TestStatusWithNoForgeSaysUnknownAndNothingAsAFailure: a gh that fails, and an
+// origin that is not on GitHub at all, leave the exit as the fetch made it, no
+// failed run named, one line in the verb saying why the run was not read, and a
+// block that says the state is unknown rather than read like a green.
+func TestStatusWithNoForgeSaysUnknownAndNothingAsAFailure(t *testing.T) {
 	for name, setup := range map[string]func(t *testing.T){
 		"gh fails": func(t *testing.T) {
 			askGitHubFrom(t)
@@ -221,6 +297,7 @@ func TestStatusWithNoForgeSaysItCouldNotReadAndNothingAsAFailure(t *testing.T) {
 			ownHookBudgets(t, 10*time.Second)
 			t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
 			t.Cleanup(claim.WaitPromptReadsForTest)
+			spawnsRefreshes(t)
 			w := newReserveWorld(t)
 			pat := w.clone(t, "pat", "5+pat@users.noreply.github.com")
 			nameScheduledWorkflow(t, pat)
@@ -240,12 +317,12 @@ func TestStatusWithNoForgeSaysItCouldNotReadAndNothingAsAFailure(t *testing.T) {
 			if err := json.Unmarshal([]byte(stdout), &got); err != nil {
 				t.Fatal(err)
 			}
-			if got.Failure != nil || got.Unread == "" {
-				t.Fatalf("--json = %+v; want no failure and the reason", got)
+			if got.Failure != nil || got.Unread == "" || got.Doubt == nil || got.Doubt.Kind != claim.ScheduledUnknown {
+				t.Fatalf("--json = %+v; want no failure, the reason and an unknown doubt", got)
 			}
 			out, _ := runHook(t, hookInputJSON(t, "s-sched", pat, "hello"), "hook", "prompt-router")
-			if strings.Contains(out, scheduledWorkflowName) {
-				t.Fatalf("the block speaks of an unread answer:\n%s", out)
+			if !strings.Contains(out, "the state of scheduled "+scheduledWorkflowName+" is unknown") || strings.Contains(out, " failed ") {
+				t.Fatalf("the block:\n%s\nwant it to say the state is unknown", out)
 			}
 		})
 	}
@@ -275,7 +352,8 @@ func TestAFailedFetchAsksTheForgeNothing(t *testing.T) {
 }
 
 // TestThePromptBlockReadsTheFailureFromDiskAlone: the hook names the failure
-// the verb kept, once, without reaching for origin or for gh.
+// the verb kept, once per session, without reaching for origin or for gh, and a
+// new session is told again.
 func TestThePromptBlockReadsTheFailureFromDiskAlone(t *testing.T) {
 	ownHookBudgets(t, 10*time.Second)
 	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
@@ -289,7 +367,7 @@ func TestThePromptBlockReadsTheFailureFromDiskAlone(t *testing.T) {
 		t.Fatalf("status: exit %d, %s", code, stderr)
 	}
 	calls := readCalls(t, log)
-	touched := hangOrigin(t, pat)
+	touched := hangOriginKeepingItsName(t, pat, w.origin)
 
 	out, _ := runHook(t, hookInputJSON(t, "s-sched", pat, "hello there"), "hook", "prompt-router")
 	want := "- the forge's latest scheduled " + scheduledWorkflowName + " run on main failed 3 hours ago: " + scheduledRunURL + "\n"
@@ -298,10 +376,96 @@ func TestThePromptBlockReadsTheFailureFromDiskAlone(t *testing.T) {
 	}
 	again, _ := runHook(t, hookInputJSON(t, "s-sched", pat, "hello again"), "hook", "prompt-router")
 	if strings.Contains(again, scheduledRunURL) {
-		t.Fatalf("the second prompt names it again:\n%s", again)
+		t.Fatalf("the session's second prompt names it again:\n%s", again)
+	}
+	next, _ := runHook(t, hookInputJSON(t, "s-another", pat, "hello from a new session"), "hook", "prompt-router")
+	if !strings.Contains(next, want) {
+		t.Fatalf("a new session's first prompt:\n%s\nwant it to carry %q", next, want)
 	}
 	requireOriginUntouched(t, touched)
 	if after := readCalls(t, log); after != calls {
 		t.Fatalf("the prompt hook asked the forge:\n%s", strings.TrimPrefix(after, calls))
+	}
+}
+
+// TestThePromptHookStartsARefreshWhenOneIsDue: a session that never runs `abcd
+// status` still gets the answer: its prompt, with none kept, says the state is
+// unknown and starts one refresh in the background, asking the forge nothing
+// itself, and the next prompt inside the cooldown starts no other.
+func TestThePromptHookStartsARefreshWhenOneIsDue(t *testing.T) {
+	ownHookBudgets(t, 10*time.Second)
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	w := newReserveWorld(t)
+	pat := w.clone(t, "pat", "5+pat@users.noreply.github.com")
+	t.Cleanup(claim.WaitPromptReadsForTest)
+	nameScheduledWorkflow(t, pat)
+	log := standInForge(t, runListing("failure", time.Now()), false)
+	spawned := spawnsRefreshes(t)
+	t.Setenv("HOME", w.home)
+
+	out, _ := runHook(t, hookInputJSON(t, "s-sched", pat, "hello there"), "hook", "prompt-router")
+	if !strings.Contains(out, "is unknown") {
+		t.Fatalf("the hook's text:\n%s\nwant it to say the state is unknown", out)
+	}
+	if spawned.count() != 1 {
+		t.Fatalf("the prompt started %d refreshes; want 1", spawned.count())
+	}
+	if calls := readCalls(t, log); strings.Contains(calls, "actions/workflows") {
+		t.Fatalf("the prompt hook asked the forge itself:\n%s", calls)
+	}
+	runHook(t, hookInputJSON(t, "s-sched", pat, "hello again"), "hook", "prompt-router")
+	if spawned.count() != 1 {
+		t.Fatalf("after a second prompt, %d refreshes; want still 1", spawned.count())
+	}
+}
+
+// TestTheRefreshVerbTellsASessionThatNeverRanStatus: what the prompt starts in
+// the background keeps the answer, and a new worktree of the same repository
+// that has run nothing is told of the red at its first prompt.
+func TestTheRefreshVerbTellsASessionThatNeverRanStatus(t *testing.T) {
+	ownHookBudgets(t, 10*time.Second)
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	w := newReserveWorld(t)
+	pat := w.clone(t, "pat", "5+pat@users.noreply.github.com")
+	t.Cleanup(claim.WaitPromptReadsForTest)
+	nameScheduledWorkflow(t, pat)
+	askGitHubFrom(t)
+	log := standInForge(t, runListing("failure", time.Now().Add(-3*time.Hour)), false)
+	spawnsRefreshes(t)
+
+	code, _, stderr := reserveRun(t, pat, "hook", "scheduled-refresh")
+	if code != 0 {
+		t.Fatalf("hook scheduled-refresh: exit %d, %s", code, stderr)
+	}
+	if !strings.Contains(readCalls(t, log), "actions/workflows") {
+		t.Fatal("the refresh did not ask the forge")
+	}
+	lane := filepath.Join(t.TempDir(), "lane")
+	gitCmd(t, pat, "worktree", "add", "-q", "-b", "lane", lane)
+	if h, ok := cloneHomes[pat]; ok {
+		cloneHomes[lane] = h
+	}
+	nameScheduledWorkflow(t, lane)
+	if err := os.MkdirAll(filepath.Join(lane, ".abcd", ".work.local"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := runHook(t, hookInputJSON(t, "s-lane", lane, "hello"), "hook", "prompt-router")
+	want := "the forge's latest scheduled " + scheduledWorkflowName + " run on main failed 3 hours ago: " + scheduledRunURL
+	if !strings.Contains(out, want) {
+		t.Fatalf("a fresh worktree's first prompt:\n%s\nwant it to carry %q", out, want)
+	}
+}
+
+// TestTheRefreshVerbFailsOpen: a forge that fails is said on stderr and the
+// hook verb still exits 0: nothing waits on it.
+func TestTheRefreshVerbFailsOpen(t *testing.T) {
+	w := newReserveWorld(t)
+	pat := w.clone(t, "pat", "5+pat@users.noreply.github.com")
+	nameScheduledWorkflow(t, pat)
+	askGitHubFrom(t)
+	standInForge(t, "HTTP 401: Bad credentials", true)
+	code, _, stderr := reserveRun(t, pat, "hook", "scheduled-refresh")
+	if code != 0 || !strings.Contains(stderr, "was not read") {
+		t.Fatalf("hook scheduled-refresh: exit %d, stderr %q; want 0 and the reason", code, stderr)
 	}
 }

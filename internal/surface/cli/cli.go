@@ -1896,7 +1896,7 @@ envelope carries it as system_message.`,
 				// The status block is the status reader's, not the rules':
 				// a rules.json that will not load does not switch it off
 				// (spc-2610150728396006 step 3).
-				status := routerStatus(cmd, root, deadline)
+				status := routerStatus(cmd, root, hookSession(in), deadline)
 				defer status.MarkShown()
 				// Nor does it switch off the away block and line.
 				text := joinBlocks(status.Text, away.Block)
@@ -1988,7 +1988,7 @@ envelope carries it as system_message.`,
 			// this checkout has not shown, from disk alone, inside its own
 			// budget, after the rules and the memory notes. It joins text
 			// before the title is read, so both emit paths below carry it.
-			status := routerStatus(cmd, root, deadline)
+			status := routerStatus(cmd, root, session, deadline)
 			defer status.MarkShown()
 			text = joinBlocks(text, status.Text)
 			text = joinBlocks(text, away.Block)
@@ -2389,6 +2389,9 @@ envelope carries it as system_message.`,
 	// dogfood-binary and dogfood-build — the hook shims' dogfood rung
 	// (hook_dogfood.go): which build a listed checkout runs, and making it.
 	hookCmd.AddCommand(newDogfoodBinaryCommand(), newDogfoodBuildCommand())
+	// scheduled-refresh — what the prompt router starts in the background when
+	// the kept answer about a scheduled workflow has aged (hook_scheduled.go).
+	hookCmd.AddCommand(newScheduledRefreshCommand())
 
 	return hookCmd
 }

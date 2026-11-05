@@ -20,6 +20,10 @@ type Options struct {
 	// Home is the home directory the machine layer of the configuration is
 	// read under; "" means the process's own.
 	Home string
+	// Session names the host session a prompt's block is shown to, so a line
+	// every session must be told, a red scheduled workflow, is kept shown per
+	// session; "" keeps it shown per checkout, as every other line is.
+	Session string
 	// Version is the binary's version the Assisted-by label names; "" means
 	// the running binary's (core.Version).
 	Version string

@@ -8,12 +8,14 @@ package evals
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/gittest"
 )
@@ -127,5 +129,62 @@ func TestAnnounceThenStatusEndToEnd(t *testing.T) {
 	}
 	if out := hook(); strings.Contains(out, "## STATUS") {
 		t.Fatalf("the second prompt shows the status again:\n%s", out)
+	}
+}
+
+// TestAPromptStartsTheRefreshThatTellsTheNextPrompt (iss-2611050035192370): a
+// session that never runs `abcd status`, through the built binary and a real
+// detached process. Its first prompt has no answer to read, says the state is
+// unknown and starts a refresh; the refresh asks a stand-in gh and keeps the
+// answer; a later prompt names the red run. No git network is touched: origin
+// names GitHub, and only gh is ever asked.
+func TestAPromptStartsTheRefreshThatTellsTheNextPrompt(t *testing.T) {
+	const runURL = "https://github.com/example-org/example-app/actions/runs/101"
+	w := newStatusWorld(t)
+	pat := w.clone("pat", "5+pat@users.noreply.github.com")
+	w.git(pat, "remote", "set-url", "origin", "https://github.com/example-org/example-app.git")
+	if err := os.WriteFile(filepath.Join(pat, ".abcd", "config.json"), []byte(`{"status":{"scheduled_workflow":"nightly.yaml"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := t.TempDir()
+	answer := filepath.Join(bin, "answer.json")
+	listing := `{"total_count":1,"workflow_runs":[{"id":101,"head_branch":"main","event":"schedule","status":"completed","conclusion":"failure",` +
+		`"html_url":"` + runURL + `","updated_at":"` + time.Now().UTC().Add(-3*time.Hour).Format(time.RFC3339) + `"}]}`
+	if err := os.WriteFile(answer, []byte(listing), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bin, "gh"), []byte("#!/bin/sh\ncat '"+answer+"'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	env := []string{"HOME=" + w.home, "ABCD_PLUGIN_ROOT=", "CLAUDE_PLUGIN_ROOT=", "ABCD_RULES_STATE_DIR=" + t.TempDir(),
+		"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH")}
+	hook := func(session string) string {
+		payload, err := json.Marshal(map[string]string{"session_id": session, "cwd": pat, "prompt": "hello", "hook_event_name": "UserPromptSubmit"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command(abcdBin, "hook", "prompt-router")
+		cmd.Dir = pat
+		cmd.Env = append(os.Environ(), env...)
+		cmd.Stdin = strings.NewReader(string(payload))
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("`abcd hook prompt-router`: %v", err)
+		}
+		return string(out)
+	}
+	if out := hook("first"); !strings.Contains(out, "the state of scheduled nightly.yaml is unknown") {
+		t.Fatalf("the first prompt's text:\n%s\nwant it to say the state is unknown", out)
+	}
+	deadline := time.Now().Add(30 * time.Second)
+	for i := 0; ; i++ {
+		out := hook(fmt.Sprintf("later-%d", i))
+		if strings.Contains(out, "failed 3 hours ago: "+runURL) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("after 30 s no prompt named the red run; the last prompt's text:\n%s", out)
+		}
+		time.Sleep(200 * time.Millisecond)
 	}
 }

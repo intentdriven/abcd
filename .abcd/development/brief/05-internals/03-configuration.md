@@ -147,9 +147,10 @@ hand-set: the binary reads them and never writes them.
                                         // what each candidate offers; one or more of the three
   },
   "status": {                           // `abcd status` (04-surfaces/39-status.md)
-    "scheduled_workflow": "nightly.yml" // the file name of the workflow a schedule runs on the default branch;
-                                        //   a failed latest run is named by the verb and the prompt's block.
-                                        //   Absent is off: the forge is not asked
+    "scheduled_workflow": "nightly.yml" // the file name of the workflow a schedule runs on the default branch,
+                                        //   at most 64 characters; a red verdict is named by the verb and the
+                                        //   prompt's block until a green replaces it. Absent is off: the forge
+                                        //   is not asked
   },
   "land": {                             // `abcd land` (04-surfaces/38-land.md)
     "push": true,                       // push the branch once a preflight receipt names its head

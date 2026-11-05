@@ -15,8 +15,8 @@ import (
 
 // The prompt hook's status block (C6, C8, C10 to C12, C18): each announcement
 // this checkout has not shown, each doubt, each release hold, each lapsed
-// release cut, each failed fetch and a failed latest scheduled run, shown once,
-// from this checkout's disk alone, as of the last fetch
+// release cut and each failed fetch, shown once, and a red or unknown scheduled
+// workflow, shown once to each session, from this machine's disk alone, as of the last fetch
 // with its age. It never touches the network, and is read, rendered and kept
 // shown inside the one deadline the hook sets at its start, so a slow read
 // says the status is unavailable rather than hold the prompt.
@@ -40,6 +40,10 @@ type Notes struct {
 	Text string
 	keys []string
 	root string
+	// RefreshDue is true when the kept answer about the repository's scheduled
+	// workflow has aged enough for the hook to start a refresh in the
+	// background; the block itself never touches the network.
+	RefreshDue bool
 	// by is when MarkShown may last start a write: the hook's deadline less
 	// promptWriteReserve. Zero when the hook set no deadline.
 	by time.Time
@@ -187,6 +191,7 @@ func PromptNotes(ctx context.Context, root string, now time.Time, o Options) (No
 			var n Notes
 			if err == nil {
 				n, err = notesFor(rctx, root, v, now)
+				n.RefreshDue = v.ScheduledRefreshDue
 			}
 			done <- answer{n, err}
 		}
@@ -275,6 +280,9 @@ func notesFor(ctx context.Context, root string, v StatusView, now time.Time) (No
 	}
 	if f := v.ScheduledFailure; f != nil {
 		first = append(first, noteLine{key: f.key(), text: f.Line(now)})
+	}
+	if d := v.ScheduledDoubt; d != nil {
+		first = append(first, noteLine{key: d.key, text: d.Text})
 	}
 	for _, d := range v.Doubts {
 		doubts = append(doubts, noteLine{key: hashedKey("doubt\x00" + d.Branch + "\x00" + d.Reason + "\x00" + d.Tip), text: DoubtLine(d), weight: 1})

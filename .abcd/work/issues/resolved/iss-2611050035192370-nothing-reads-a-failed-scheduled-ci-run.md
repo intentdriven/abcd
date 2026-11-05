@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".github/workflows/ci.yml"
 remedy: "Have abcd status name a failed latest scheduled ci.yml run on the default branch with its URL, in the verb and in the prompt's STATUS block: a step outside the prompt reads it through gh into the local tier, the prompt reads only that cache so its deadline is not spent on the network, an unknown result says nothing, and a repository names its own scheduled workflow."
-resolution: "abcd status now asks the forge for the latest completed scheduled run of the workflow a repository names as status.scheduled_workflow, keeps the answer in the local tier, and names a failed run with its URL and age in the verb and the prompt's STATUS block, which reads only what was kept."
+resolution: "A repository names its workflow as status.scheduled_workflow, and abcd status, and the prompt hook in the background once the answer is an hour old, asks the forge for its latest scheduled runs and keeps what they say in the machine's store, shared by every checkout. The verb and the prompt's STATUS block read only that, and name a red verdict with its URL and age to each new session until a green replaces it, reading back past cancelled and skipped runs; a workflow with no verdict for a few of its cycles, and an answer that is missing, stale or unreadable, each say so rather than read like green."
 impact: additive
 ---
 
