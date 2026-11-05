@@ -57,11 +57,13 @@ var widenStages = []Stage{StageImplement, StageValidate}
 // not at an editing stage; a path no reservation may carry; a reservation
 // the view does not show this copy holding. Contention (exit 3): another
 // copy's live hold on one of the paths, with nothing pushed and a run record
-// line saying the widening backed off; or a locked run state.
+// line saying the widening backed off; or a locked run state. Its brief has
+// the lane's implementer run it, so the save is the reservation's alone
+// (mutateReservation, iss-2611020719494343).
 func Widen(repoRoot, runID, laneID string, paths []string, o Options) (WidenResult, error) {
 	res := WidenResult{RunID: runID, Lane: laneID, Added: []string{}}
 	var backedOff error
-	err := mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+	err := mutateReservation(repoRoot, runID, func(st *State) (bool, error) {
 		now := o.now()
 		res.Record = st.Key
 		if st.Issue() == "" {

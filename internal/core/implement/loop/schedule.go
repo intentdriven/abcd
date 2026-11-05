@@ -728,6 +728,11 @@ func performMove(repoRoot string, st *State, steps Stages, w want, now time.Time
 		if out.Await.Since.IsZero() {
 			out.Await.Since = now
 		}
+		// The await's answer is what its agent writes from here on, so nothing
+		// that stands at its path now is kept there to be read as one.
+		if err := setAsideForAgent(repoRoot, st, lane, out.Await.Receipt, now); err != nil {
+			return StepResult{}, err
+		}
 		lane.Awaits = append(slices.Clone(lane.Awaits), *out.Await)
 		handed = out.Await
 		note := out.Note

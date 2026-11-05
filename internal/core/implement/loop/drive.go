@@ -143,9 +143,10 @@ func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options,
 		// paused or with the host with nothing received, is retried once
 		// on its runner.
 		if r, took, err := releaseToHost(repoRoot, runID, o, rs, res); took || err != nil {
-			return r, err
+			return carryStanding(r, res), err
 		}
-		return retryHeld(ctx, repoRoot, runID, steps, o, rs, res)
+		r, err := retryHeld(ctx, repoRoot, runID, steps, o, rs, res)
+		return carryStanding(r, res), err
 	}
 	aw := *res.Awaiting
 	if rs.Config.RouteFor(aw.Role).Runner == runner.Host {
@@ -160,7 +161,7 @@ func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options,
 		res.Next = fmt.Sprintf("another `abcd implement step` started the runner for %s's %s; run `abcd implement step` once it has finished", res.Lane, aw.Role)
 		return res, nil
 	}
-	return r, err
+	return carryStanding(r, res), err
 }
 
 // LoadRunners reads the runner configuration (runner.Load) at the roots a lane
@@ -237,6 +238,9 @@ func routeNote(role string, r runner.RouteRecord) string {
 	under := ""
 	if r.Override != "" {
 		under = ", under --route " + r.Override
+	}
+	if r.Ran == "" {
+		return fmt.Sprintf("the %s was routed to %s, and no runner's report reached the loop, so what ran it is not recorded%s", role, r.Asked, under)
 	}
 	if r.Asked == r.Ran {
 		return fmt.Sprintf("the %s ran on the %s runner (model %s%s)", role, r.Ran, model, under)
