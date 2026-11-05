@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -268,5 +271,97 @@ func TestALaunchWithNoSettingSourcesIsCaughtByTheProof(t *testing.T) {
 	var we *WallError
 	if err := ProveWall(context.Background(), p, wallBin); !errors.As(err, &we) || we.Wall != WallWorkingTree {
 		t.Fatalf("the working tree's hook ran: %v", err)
+	}
+}
+
+// ledgerWrapsTheProof is what the ledger owes the proof: nil while the package
+// has no RecordLaunch; once it has, ProveWall calls it and the end-only hook is
+// gone, since that hook sits inside the dispatcher's run and would double-record.
+func ledgerWrapsTheProof(files []*ast.File) error {
+	var ledger, hook, wrapped bool
+	for _, f := range files {
+		for _, d := range f.Decls {
+			switch d := d.(type) {
+			case *ast.FuncDecl:
+				if d.Recv == nil && d.Name.Name == "RecordLaunch" {
+					ledger = true
+				}
+				if d.Recv == nil && d.Name.Name == "recordLaunch" {
+					hook = true
+				}
+				if d.Recv == nil && d.Name.Name == "ProveWall" {
+					ast.Inspect(d, func(n ast.Node) bool {
+						if c, ok := n.(*ast.CallExpr); ok {
+							if id, ok := c.Fun.(*ast.Ident); ok && id.Name == "RecordLaunch" {
+								wrapped = true
+							}
+						}
+						return true
+					})
+				}
+			case *ast.GenDecl:
+				for _, sp := range d.Specs {
+					if v, ok := sp.(*ast.ValueSpec); ok && slices.ContainsFunc(v.Names, func(n *ast.Ident) bool { return n.Name == "recordLaunch" }) {
+						hook = true
+					}
+				}
+			}
+		}
+	}
+	switch {
+	case !ledger:
+		return nil
+	case !wrapped:
+		return errors.New("the package has RecordLaunch, and ProveWall does not call it, so the proof's launch goes unrecorded")
+	case hook:
+		return errors.New("the package has RecordLaunch and still the end-only recordLaunch hook; delete the hook")
+	}
+	return nil
+}
+
+// TestTheLedgerCannotLandWithoutTheProof fails the merge that brings RecordLaunch
+// here (itd-2611031342011261) until the proof's launch goes through it: the hook
+// is a no-op, so nothing else would notice the proof going unrecorded.
+func TestTheLedgerCannotLandWithoutTheProof(t *testing.T) {
+	parse := func(src string) []*ast.File {
+		f, err := parser.ParseFile(token.NewFileSet(), "src.go", "package runner\n"+src, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return []*ast.File{f}
+	}
+	const hook, ledger = "var recordLaunch = func() {}\n", "func RecordLaunch(run func() error) error { return run() }\n"
+	for _, c := range []struct {
+		name, src string
+		bad       bool
+	}{
+		{"no ledger yet", hook + "func ProveWall() { recordLaunch() }\n", false},
+		{"ledger beside the hook", hook + ledger + "func ProveWall() { recordLaunch() }\n", true},
+		{"ledger, proof unwrapped", ledger + "func ProveWall() {}\n", true},
+		{"ledger wraps, hook stays", hook + ledger + "func ProveWall() { RecordLaunch(nil) }\n", true},
+		{"ledger wraps, hook gone", ledger + "func ProveWall() { RecordLaunch(nil) }\n", false},
+	} {
+		if err := ledgerWrapsTheProof(parse(c.src)); (err != nil) != c.bad {
+			t.Errorf("%s: %v", c.name, err)
+		}
+	}
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var files []*ast.File
+	fset := token.NewFileSet()
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
+			continue
+		}
+		f, err := parser.ParseFile(fset, e.Name(), nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		files = append(files, f)
+	}
+	if err := ledgerWrapsTheProof(files); err != nil {
+		t.Fatal(err)
 	}
 }
