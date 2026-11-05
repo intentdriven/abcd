@@ -26,6 +26,14 @@ const terminalOutageLimit = 8 * time.Hour
 // holds: half the bundled lease, the point a renewal falls due.
 const terminalRenewEvery = time.Hour
 
+// terminalJudgeAsks is how many unanswered judgements of one issue a run makes
+// before it holds that issue back and goes on.
+const terminalJudgeAsks = 3
+
+// terminalRenewTick is how often what a lane holds is looked at while an agent
+// is in its call; a variable so a test can shorten it.
+var terminalRenewTick = 5 * time.Minute
+
 // moveWait is how long the loop sleeps after a move that returned a wait: until
 // the earliest time the move named, at least the floor. ok is false when it
 // named none.
