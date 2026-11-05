@@ -2306,6 +2306,13 @@
       "sentence": "Check the load before abcd's tests start, or wait for capacity: Writes a run-log event or the wait's hold; refuses an unknown --site, never a loaded machine.",
       "flags": [
         {
+          "name": "narrow",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "race-gate",
           "shorthand": "",
           "type": "bool",
