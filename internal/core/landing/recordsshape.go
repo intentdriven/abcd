@@ -6,14 +6,16 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/core/recordid"
 )
 
 // recordRoots are the folders whose subfolders hold a record's status.
-var recordRoots = []string{".abcd/work/issues", ".abcd/development/specs", ".abcd/development/intents"}
+var recordRoots = []string{recordid.IssuesRelDir, ".abcd/development/specs", ".abcd/development/intents"}
 
 // issueRoot is the record root an issue's move is read under, and issueIDName the id
 // a record's file name opens with.
-const issueRoot = ".abcd/work/issues/"
+const issueRoot = recordid.IssuesRelDir + "/"
 
 var issueIDName = regexp.MustCompile(`^iss-[0-9]+`)
 
