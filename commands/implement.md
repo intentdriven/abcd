@@ -693,11 +693,12 @@ over each of the run's lanes' own diff.
    once an approval of the pushed head counts, in `auto` once a review receipt
    names it, and a contributor's pull request in either mode only once an
    approval by someone with write access counts. In `auto` the loop records that
-   receipt itself, in its own process, from the returns of the lane's latest
-   round: the pair that passed for the head the round judged, and, for the head
-   the landing's records commit pushed, a receipt resting on that pair while the
-   one commit between them holds only records. A round that falls short, or a
-   head holding more than records, is left open, saying why. An armed merge goes into the
+   receipt itself, in its own process, only from a pair that read the pushed
+   head: the records commit goes to a review round of its own before anything is
+   pushed, scoped to that commit, and the round's returns are the receipt. A
+   records round that does not pass takes no fix round: the lane goes on to its
+   pull request and is left open, naming the finding, for a person. A gate that
+   could not read what it asks leaves the lane at this step, to ask again. An armed merge goes into the
    merge queue by the ruleset mirror's (`.abcd/work/rulesets/`) method, or as
    the forge's auto-merge where no queue gates the default branch. Otherwise
    `implement status` shows the landing as "left open: " and why, and each

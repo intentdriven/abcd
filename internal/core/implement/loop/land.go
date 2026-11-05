@@ -36,7 +36,8 @@ package loop
 //     replaced ruling AM1): the facilitator mode at the default branch's
 //     fetched tip, the author's permission, the approvals of the pushed head
 //     and, in auto, a review receipt naming it, which the loop records itself
-//     from the latest round's passing pair (recordOwnReview). Where it allows, the merge is
+//     from a pair that read that head (recordOwnReview): in auto a records commit
+//     goes to a round of its own (recordsRoundWanted) before the push. Where it allows, the merge is
 //     armed by the ruleset mirror's queue method, or as auto-merge with no
 //     queue; otherwise the pull request is left open, saying why, and each
 //     later step asks again. A pull request the forge reports CONFLICTING
@@ -175,6 +176,13 @@ func landStage(c Context, lane *Lane) (Outcome, error) {
 	case !ld.RecordsDone:
 		return landRecords(c, lane)
 	case ld.Pushed == "":
+		due, err := recordsRoundWanted(c, *lane)
+		if err != nil {
+			return Outcome{}, err
+		}
+		if due {
+			return Outcome{Goto: StageValidate, Note: "the landing's records commit " + shortSHA(lane.HeadSHA) + " goes to a review round of its own, before anything is pushed"}, nil
+		}
 		return landPush(c, lane)
 	case lane.PR == 0 || !ld.BodyChecked:
 		return landPullRequest(c, lane)
@@ -328,6 +336,13 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{Stay: true, Note: "found the landing's records commit " + shortSHA(tip) + " on " + lane.Branch}, nil
 	}
 
+	if why, err := strayChanges(lane.Worktree); err != nil {
+		return Outcome{}, fmt.Errorf("reading the lane's worktree: %w", err)
+	} else if why != "" {
+		return Outcome{}, refuse(string(StageLand), "", lane.ID, "the lane's worktree holds "+why+", and the landing commits only what it writes",
+			"commit or remove it in the lane's worktree (a change the validators did not judge goes back through a fix round), then run `abcd implement step` again")
+	}
+
 	// The disclosure is settled before any record is written, so a lane with
 	// no model to disclose is refused with its worktree untouched. A records
 	// commit that only marks the step carries no model's prose, only the mark
@@ -443,6 +458,79 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	}
 	ld.Records, ld.RecordsDone, lane.HeadSHA = head, true, head
 	return Outcome{Stay: true, Note: "committed the landing's records as " + shortSHA(head) + ": " + strings.Join(done, "; ")}, nil
+}
+
+// strayChanges names a change in the lane's worktree the landing did not write, ""
+// when there is none. A commit a repository hook refused leaves the landing's records
+// staged for the next call, so changes in the record folders and the local tier are
+// its own; what the records commit holds is the round's to read.
+func strayChanges(worktree string) (string, error) {
+	out, err := pickGit(worktree, "status", "--porcelain", "-z", "--untracked-files=all", "--no-renames")
+	if err != nil {
+		return "", err
+	}
+	for _, entry := range strings.Split(out, "\x00") {
+		if len(entry) < 4 {
+			continue
+		}
+		path := entry[3:]
+		if !slices.ContainsFunc(landingWrites, func(dir string) bool { return strings.HasPrefix(path, dir) }) {
+			return "the uncommitted " + strconv.Quote(termsafe.Sanitize(path)), nil
+		}
+	}
+	return "", nil
+}
+
+// landingWrites are the folders the landing's records are written in.
+var landingWrites = []string{".abcd/development/specs/", ".abcd/development/intents/", ".abcd/work/issues/", TierRelDir + "/"}
+
+// recordsRoundWanted reports whether the lane's head is a records commit no round has
+// read and the mode is auto, where the receipt that arms a head rests on a pair that
+// read it.
+func recordsRoundWanted(c Context, lane Lane) (bool, error) {
+	if !lane.recordsRoundDue() {
+		return false, nil
+	}
+	def, err := defaultBranch(c, lane)
+	if err != nil {
+		return false, err
+	}
+	tip, err := defaultTip(c, lane, def)
+	if err != nil {
+		return false, err
+	}
+	roots, _ := layered.RootsFor(c.RepoRoot)
+	return landing.AutoAt(roots, c.RepoRoot, tip, Remote+"/"+def), nil
+}
+
+// recordsRoundDue reports whether the lane's head is the landing's records commit and
+// its latest round read another head.
+func (l Lane) recordsRoundDue() bool {
+	n := len(l.Validation)
+	return n > 0 && l.Landing != nil && l.Landing.Records != "" && l.Landing.Records == l.HeadSHA && l.Validation[n-1].HeadSHA != l.HeadSHA
+}
+
+// readsRecords reports whether r is the round that reads the landing's records commit.
+func (l Lane) readsRecords(r ValidationRound) bool {
+	return l.Landing != nil && l.Landing.Records != "" && r.HeadSHA == l.Landing.Records
+}
+
+// recordsBase is the head the round before the records commit judged.
+func (l Lane) recordsBase(r ValidationRound) string {
+	for i := len(l.Validation) - 1; i >= 0; i-- {
+		if h := l.Validation[i].HeadSHA; h != r.HeadSHA {
+			return h
+		}
+	}
+	return diffBase(l)
+}
+
+// recordsRoundScope is what a round over the records commit is told to read.
+func recordsRoundScope(base, head string) string {
+	return fmt.Sprintf("## This round reads the landing's records commit alone\n\n"+
+		"The lane's own change passed its full round at `%s`. Read only `%s..%s`, the commit the landing added on it; this should take a couple of minutes, so do not read the lane again. "+
+		"Judge which issues it resolves and whether the lane's diff actually fixes them, each resolution's note, impact and grounds, and any record outside what the lane touches. "+
+		"A verdict that does not pass parks the lane for a person; no fix round follows.\n\n", base, base, head)
 }
 
 // bareClaudeRe is a bare Claude model id, which takes the Claude vendor prefix.
@@ -899,7 +987,8 @@ func readMergeRule(c Context, lane Lane, def string) (landing.MergeRule, error) 
 // the gate's reason: a contributor's pull request until a maintainer's
 // approval of its head counts, a maintainer's in human mode until the
 // technical facilitator's does, and in auto until a review receipt names it,
-// which the loop records from a round that passed (recordOwnReview).
+// which the loop records from a pair that read that head (recordOwnReview). A gate
+// that could not read what it asks leaves the lane at this step, to ask again.
 // A lane left open is parked: landMerged asks the gate again on each step, so
 // an approval given later arms it. A pull request the forge reports
 // conflicting is refused, unarmed.
@@ -951,6 +1040,13 @@ func landArm(c Context, lane *Lane) (Outcome, error) {
 	if err != nil {
 		return Outcome{}, err
 	}
+	if d.Unread {
+		// What the gate could not read says nothing of the lane: it stays at this
+		// step, and a later turn asks again, where a left-open lane would be
+		// stepped only when a person acts.
+		return Outcome{}, contend(string(StageLand), "", lane.ID,
+			"the merge gate could not read what it asks of pull request #"+n+": "+d.Why, "run `abcd implement step` again once the forge answers")
+	}
 	if !d.Arm {
 		ld.Merge = "left open: " + d.Why
 		return Outcome{Stay: true, Note: "pull request #" + n + " " + ld.Merge + "; the loop asks again on each step, and it lands when it is armed or a person merges it" + held}, nil
@@ -964,13 +1060,9 @@ func landArm(c Context, lane *Lane) (Outcome, error) {
 // rule at the lane's base. A mode that cannot be read is refused, masked,
 // and nothing is armed.
 func askMergeGate(c Context, lane Lane, def string, rule landing.MergeRule) (landing.MergeDecision, error) {
-	tracking, err := fetchDefault(c, lane, def)
+	tip, err := defaultTip(c, lane, def)
 	if err != nil {
 		return landing.MergeDecision{}, err
-	}
-	tip, err := gitutil.Run(c.RepoRoot, "rev-parse", "--verify", "--quiet", tracking+"^{commit}", "--")
-	if err != nil || !gitutil.IsFullSHA(tip) {
-		return landing.MergeDecision{}, fmt.Errorf("resolving %s: %v", tracking, err)
 	}
 	roots, _ := layered.RootsFor(c.RepoRoot)
 	unrecorded := recordOwnReview(c, lane, roots, tip, Remote+"/"+def)
@@ -988,10 +1080,24 @@ func askMergeGate(c Context, lane Lane, def string, rule landing.MergeRule) (lan
 	return d, nil
 }
 
-// recordOwnReview records the review pair of the lane's latest round, where the mode
-// at the default branch's tip is auto, so a lane that passed needs nobody to say so:
-// in process, from the returns that round read, against the head they name. It says
-// why when it did not; the merge gate then reads the receipts as it finds them.
+// defaultTip is the default branch's tip, just fetched.
+func defaultTip(c Context, lane Lane, def string) (string, error) {
+	tracking, err := fetchDefault(c, lane, def)
+	if err != nil {
+		return "", err
+	}
+	tip, err := gitutil.Run(c.RepoRoot, "rev-parse", "--verify", "--quiet", tracking+"^{commit}", "--")
+	if err != nil || !gitutil.IsFullSHA(tip) {
+		return "", fmt.Errorf("resolving %s: %v", tracking, err)
+	}
+	return tip, nil
+}
+
+// recordOwnReview writes the review receipt of a pair that read the pushed head,
+// where the mode at the default branch's tip is auto, so a lane whose reviewers passed
+// needs nobody to say so: in process, by RecordReview's rule, from the returns of the
+// lane's latest round. It says why when it does not; the merge gate then reads the
+// receipts as it finds them, a person's among them.
 func recordOwnReview(c Context, lane Lane, roots layered.Roots, tip, tipName string) string {
 	if !landing.AutoAt(roots, c.RepoRoot, tip, tipName) {
 		return ""
@@ -1001,25 +1107,50 @@ func recordOwnReview(c Context, lane Lane, roots layered.Roots, tip, tipName str
 		return "the lane records no review round"
 	}
 	round := lane.Validation[n-1]
+	head := lane.Landing.Pushed
+	if round.HeadSHA != head {
+		return fmt.Sprintf("its latest round read %s, not the pushed head %s", shortSHA(round.HeadSHA), shortSHA(head))
+	}
 	var returns []landing.ReviewReturn
 	for _, v := range round.Validators {
 		if v.Role == RoleAuditor {
 			continue
 		}
-		if !v.Pass {
-			return fmt.Sprintf("round %d's %s did not pass", round.Round, v.Role)
-		}
 		text, err := readReturn(c.RepoRoot, v.Return, lane.ID)
 		if err != nil {
 			return termsafe.Sanitize(fsutil.RedactHome(err.Error()))
 		}
+		if !v.Pass {
+			return fmt.Sprintf("round %d's %s said %s at %s (%s)%s", round.Round, v.Role, v.Verdict, shortSHA(head), v.Return, firstFinding(string(text)))
+		}
 		returns = append(returns, landing.ReviewReturn{Name: v.Return, Text: string(text)})
 	}
-	if _, err := landing.RecordLoopReview(c.RepoRoot, tip, round.HeadSHA, lane.Landing.Pushed, returns); err != nil {
+	if _, err := landing.RecordReview(c.RepoRoot, head, returns); err != nil {
 		return termsafe.Sanitize(fsutil.RedactHome(err.Error()))
 	}
 	return ""
 }
+
+// firstFinding is the first item of a return's findings, as a clause for a note, ""
+// when it lists none the loop can read.
+func firstFinding(text string) string {
+	_, rest, ok := strings.Cut(text, "Findings")
+	if !ok {
+		return ""
+	}
+	for _, line := range strings.Split(rest, "\n") {
+		if item, ok := strings.CutPrefix(strings.TrimSpace(line), "- "); ok {
+			if r := []rune(item); len(r) > maxFindingRunes {
+				item = string(r[:maxFindingRunes]) + "..."
+			}
+			return ": " + termsafe.Sanitize(fsutil.RedactHome(item))
+		}
+	}
+	return ""
+}
+
+// maxFindingRunes bounds what a note quotes of a finding.
+const maxFindingRunes = 200
 
 // gateForge is the forge client as the merge gate reads through it: run from
 // the checkout the run lives in (gh resolves {owner}/{repo} there, as it does

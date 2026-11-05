@@ -942,9 +942,12 @@ until the last step.
    request of an author with write access only once an approval of its head
    counts (a review by someone else with write access, or the technical
    facilitator's approval recorded through `abcd land`); `auto` arms one only
-   when a review receipt names its head. The loop mints no review receipt
-   itself, since the pushed head carries the records commit its validators did
-   not read: in `auto` the head's review is recorded through `abcd land`. An armed pull request goes into the merge
+   when a review receipt names its head. In `auto` the loop records a
+   review receipt itself only from a pair that read the pushed head: its records
+   commit takes a review round of its own before anything is pushed, scoped to
+   that commit. A round that does not pass takes no fix round: the lane goes on
+   to its pull request and is left open, naming the finding, for a person. A gate
+   that could not read what it asks leaves the lane at its arming, to ask again. An armed pull request goes into the merge
    queue by its method, or, where no queue gates the default branch, is armed
    as the forge's auto-merge with a merge commit; a forge that refuses
    auto-merge is refused at exit 2, saying so. A pull request the gate does

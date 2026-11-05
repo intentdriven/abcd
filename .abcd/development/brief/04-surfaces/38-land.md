@@ -199,14 +199,12 @@ Its inputs:
   any worktree of the repository. A return that falls short is refused,
   exit 2, naming it, and nothing is written.
   Where the mode is `auto` the build loop records this itself, in its own process
-  and never through a stage, from the reviewers' returns of a lane's latest round
-  read against the head that round judged. The landing's records commit moves the
-  head it pushes, so that head's receipt rests on the pair at the judged head while
-  the one commit between them holds only records: markdown of mode 100644 under the
-  specs, intents and issues folders, within a bound. The gate judges that again at
-  arming. A round that falls short, or a head holding more, leaves the lane open,
-  saying why. A drive passes such a lane over, and in `human` the loop records
-  nothing.
+  and never through a stage, and only from a pair that read the head it pushes. The
+  landing's records commit moves that head, so the commit takes a review round of its
+  own before anything is pushed, scoped to that commit, and the round's returns are
+  the receipt. A round that does not pass takes no fix round: the lane goes on to its
+  pull request and is left open, naming the finding, for a person, and a drive passes
+  it over. In `human` no such round runs and the loop records nothing.
 - **A delta review**, a receipt for a later head that rests on an earlier full
   pair: a delta pair reviews a wording fix after a full pair, so a corrected
   sentence costs a pair over that fix and not a pair over the branch. The review act names the base
@@ -266,7 +264,7 @@ person's.
 
 abcd's own repository commits `"facilitator": {"mode": "auto"}`: its pull
 requests are opened by people with write access, so each is armed once a
-review receipt names its head, the build loop's own for a lane it reviewed, and a contributor's still waits for an approval
+review receipt names its head, the build loop's own from a pair that read it, and a contributor's still waits for an approval
 by someone with write access. A machine that sets `human` in `~/.abcd.noindex/config.json` holds every one
 of them for the technical facilitator's approval.
 

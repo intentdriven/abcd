@@ -62,6 +62,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 )
 
 // StageRetry is the record's stage for a held role retried on its runner, and
@@ -428,6 +429,9 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 	}
 	release := func() error { return releaseClaim(repoRoot, runID, aw.Receipt, session) }
 
+	if aw.Paused != nil && aw.Paused.Reason == runner.ReasonInvalid {
+		noteRefusedReturn(repoRoot, runID, laneID, aw)
+	}
 	var declared []string
 	if rs.Config.OnWalledLogin() {
 		if st, err := ReadState(repoRoot, runID); err == nil {
@@ -618,6 +622,40 @@ func pauseAwait(repoRoot, runID, laneID string, aw Await, session string, fb run
 		return true, nil
 	})
 	return res, paused, err
+}
+
+// retryHeading opens what a reviewer's brief says of its last return.
+const retryHeading = "## Your last return was refused"
+
+// noteRefusedReturn tells the fresh reviewer a retry starts why the last return did
+// not count: the first line the hand-in reads, spelled out, and what it refused. A
+// brief it cannot read or write is left as it was: the hand-in refuses the same way.
+func noteRefusedReturn(repoRoot, runID, laneID string, aw Await) {
+	if _, ok := reviewerVerdicts[aw.Role]; !ok {
+		return
+	}
+	st, err := ReadState(repoRoot, runID)
+	if err != nil {
+		return
+	}
+	i := slices.IndexFunc(st.Lanes, func(l Lane) bool { return l.ID == laneID })
+	if i < 0 || len(st.Lanes[i].Validation) == 0 {
+		return
+	}
+	root, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return
+	}
+	defer root.Close()
+	raw, err := localtier.ReadInRoot(root, aw.Brief, maxReturnBytes)
+	if err != nil {
+		return
+	}
+	brief, _, _ := strings.Cut(string(raw), "\n"+retryHeading)
+	head := st.Lanes[i].Validation[len(st.Lanes[i].Validation)-1].HeadSHA
+	note := fmt.Sprintf("%s\n\n%s\n\nThe loop refused the last one: %s\n\nIts first line reads exactly `Reviewed head: %s`.\n",
+		brief+"\n"+retryHeading, "Write the return again, whole.", aw.Paused.Detail, head)
+	_ = writeRoundFile(repoRoot, aw.Brief, []byte(note))
 }
 
 // pauseCause says what the runner of a pause did: an answer the contract refused

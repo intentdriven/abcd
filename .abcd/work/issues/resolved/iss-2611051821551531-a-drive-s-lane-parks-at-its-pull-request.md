@@ -9,8 +9,8 @@ found_during: "reading how a drive ends"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/implement/loop/land.go"
-remedy: "have the build loop record the receipt itself from the passing pair of a lane's latest round, in process, with the pushed head resting on that pair while it adds only the landing's records"
-resolution: "the build loop records its own review receipt from a lane's latest passing round, so a lane that passed arms itself in auto"
+remedy: "have the build loop record the receipt from a pair that read the pushed head, with the landing's records commit taking a review round of its own before anything is pushed"
+resolution: "a lane's records commit takes a short review round of its own where the mode is auto, and the pair that read the pushed head is the receipt the merge gate reads, so a lane that passed arms itself and one that did not parks naming the finding"
 impact: fix
 ---
 
@@ -18,4 +18,4 @@ A drive's lane parks at its pull request where facilitator.mode is auto: the mer
 
 ## Grounds
 
-- pursued: a passing round is enough for an unattended lane to arm; shown wrong if a lane with no passing pair ever arms
+- pursued: a pair that read the pushed head is enough for an unattended lane to arm; shown wrong if a lane arms on a head no pair read

@@ -32,6 +32,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -188,7 +189,15 @@ func loopFakeHarness(mode string) int {
 	if mode == "ok" || mode == "metered" || strings.HasPrefix(mode, "model-") {
 		body := "{}\n"
 		if role := field("You are the "); strings.HasPrefix(role, RoleRuthless) {
-			body = reviewReturn
+			body = briefHeadLine(field("Brief: ")) + reviewReturn
+		}
+		_ = os.WriteFile(field("Receipt: "), []byte(body), 0o600)
+	}
+	if mode == "headonretry" {
+		// A reviewer that leaves the head out until a brief says what is missing.
+		body := reviewReturn
+		if raw, err := os.ReadFile(field("Brief: ")); err == nil && strings.Contains(string(raw), retryHeading) {
+			body = briefHeadLine(field("Brief: ")) + reviewReturn
 		}
 		_ = os.WriteFile(field("Receipt: "), []byte(body), 0o600)
 	}
@@ -228,6 +237,18 @@ func loopFakeHarness(mode string) int {
 	fmt.Println(string(init))
 	fmt.Println(`{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"fake-session-2"}`)
 	return 0
+}
+
+// briefHeadLine is the first line a reviewer's brief asks its return to open with.
+func briefHeadLine(path string) string {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	if m := regexp.MustCompile("`(Reviewed head: [0-9a-f]+)`").FindSubmatch(raw); m != nil {
+		return string(m[1]) + "\n\n"
+	}
+	return ""
 }
 
 // reviewReturn is a ruthless reviewer's return, the same bytes whichever route
@@ -556,13 +577,14 @@ func TestAReviewThroughARunnerDiffersFromAHostReviewOnlyInItsRoute(t *testing.T)
 		if err := os.MkdirAll(filepath.Join(repo.Root(), "review"), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(repo.Root(), "review", "brief.md"), []byte("# review\n"), 0o600); err != nil {
+		head := strings.Repeat("a", 40)
+		if err := os.WriteFile(filepath.Join(repo.Root(), "review", "brief.md"), []byte("# review\n\n`Reviewed head: "+head+"`\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		steps[2] = StageDef{Name: StageImplement, Piece: 7,
 			Run: func(c Context, l *Lane) (Outcome, error) {
 				if len(l.Validation) == 0 {
-					l.Validation = []ValidationRound{{Round: 1, HeadSHA: strings.Repeat("a", 40),
+					l.Validation = []ValidationRound{{Round: 1, HeadSHA: head,
 						Validators: []ValidatorRun{{Role: RoleRuthless, Brief: briefRel, Return: returnRel}}}}
 				}
 				return Outcome{Await: &Await{Role: RoleRuthless, Brief: briefRel, Receipt: returnRel}}, nil
@@ -589,7 +611,7 @@ func TestAReviewThroughARunnerDiffersFromAHostReviewOnlyInItsRoute(t *testing.T)
 			if err != nil || res.Awaiting == nil {
 				t.Fatalf("the host is handed the review: %+v %v", res, err)
 			}
-			if err := os.WriteFile(filepath.Join(repo.Root(), returnRel), []byte(reviewReturn), 0o600); err != nil {
+			if err := os.WriteFile(filepath.Join(repo.Root(), returnRel), []byte("Reviewed head: "+head+"\n\n"+reviewReturn), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := Receipt(repo.Root(), start.RunID, returnRel, steps, o); err != nil {

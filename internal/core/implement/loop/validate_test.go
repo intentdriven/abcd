@@ -141,6 +141,25 @@ func handBack(t *testing.T, repo *gittest.Repo, runID string, stages Stages, rol
 	return got
 }
 
+// statingHead is a reviewer's return as a reviewer's brief asks for it: opening with
+// the round's head, unless the test's own return says otherwise.
+func statingHead(t *testing.T, root, runID, body string) string {
+	t.Helper()
+	if strings.HasPrefix(body, "Reviewed ") {
+		return body
+	}
+	st, err := ReadState(root, runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	i := st.current()
+	if i < 0 || len(st.Lanes[i].Validation) == 0 {
+		return body
+	}
+	v := st.Lanes[i].Validation
+	return "Reviewed head: " + v[len(v)-1].HeadSHA + "\n\n" + body
+}
+
 // handBackOne takes the validate stage's next hand-out, checks it names role,
 // and hands back body as that agent's return. It returns the receipt's result.
 func handBackOne(t *testing.T, repo *gittest.Repo, runID string, stages Stages, role, body string) StepResult {
@@ -153,6 +172,9 @@ func handBackOne(t *testing.T, repo *gittest.Repo, runID string, stages Stages, 
 		t.Fatalf("the validate stage hands the lane to a fresh %s: %+v", role, res)
 	}
 	path := filepath.Join(repo.Root(), filepath.FromSlash(res.Awaiting.Receipt))
+	if role != RoleAuditor {
+		body = statingHead(t, repo.Root(), runID, body)
+	}
 	if role == RoleAuditor {
 		body = auditorVerdict(t, filepath.Join(filepath.Dir(path), AuditRequestFileName), body)
 	}
