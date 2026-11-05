@@ -107,6 +107,8 @@ type terminal struct {
 	// limit is the outage's schedule run for a rate limit.
 	limit terminalOutageClock
 	last  DrainResult
+	// ranClean names the lane and head a preflight last exited 0 on.
+	ranClean string
 }
 
 // RunTerminal drives the drain from here until its cap, an empty ledger, the
@@ -405,14 +407,29 @@ func (t *terminal) stepRefused(ctx context.Context, runID string, err error) (ag
 		if i < 0 {
 			return false, "", nil
 		}
-		t.say("%s %s: running the preflight", runID, run.Lanes[i].ID)
-		if perr := t.o.Preflight(ctx, run.Lanes[i].Worktree); perr != nil {
+		lane := run.Lanes[i]
+		head := runID + " " + lane.ID + " " + lane.HeadSHA
+		if t.ranClean == head {
+			// It exited 0 and the receipt is still not there, which running it
+			// again would not change: the lane goes to the stuck check.
+			why := refuse(string(StageLand), "", lane.ID, "its preflight exits 0 and leaves no receipt naming the lane's head", "see why `make preflight` mints no receipt")
+			now := t.now()
+			if err := mutate(t.repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+				return noteRefusal(st, why, now), nil
+			}); err != nil {
+				return false, "", err
+			}
+			t.sleep(ctx, TerminalWaitFloor, why.Reason)
+			return false, "", nil
+		}
+		t.say("%s %s: running the preflight", runID, lane.ID)
+		if perr := t.o.Preflight(ctx, lane.Worktree); perr != nil {
 			if t.failed(ctx, false, "the preflight of "+runID+" did not mint its receipt: "+perr.Error()) {
 				return false, TerminalOutage, nil
 			}
 			return true, "", nil
 		}
-		t.outage.succeed()
+		t.ranClean = head
 		return true, "", nil
 	}
 	t.sleep(ctx, TerminalWaitFloor, r.Reason)

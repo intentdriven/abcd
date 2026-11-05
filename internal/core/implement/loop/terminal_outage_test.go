@@ -300,3 +300,25 @@ func TestAResetPastTheDeadlineEndsTheRunNamingIt(t *testing.T) {
 		t.Fatalf("the run names the reset: %q", w.lines)
 	}
 }
+
+// TestAPreflightThatMintsNoReceiptCountsTowardStuck: a preflight that exits 0
+// and leaves no receipt runs once for a head; the lane then goes to the stuck
+// check rather than round again for ever.
+func TestAPreflightThatMintsNoReceiptCountsTowardStuck(t *testing.T) {
+	w := newTerminalWorld(t)
+	w.noReceipt = true
+	o := w.options(t)
+	o.Drain.Max = 1
+	o.Drain.Skip, o.Drain.SkipReason = []string{secondIssue, thirdIssue}, "the one lane's alone"
+	w.guardSleeps(t, &o)
+	if _, err := RunTerminal(context.Background(), w.repo.Root(), o); err != nil {
+		t.Fatalf("%v\n%s", err, strings.Join(w.lines, "\n"))
+	}
+	if len(w.preflights) != 1 {
+		t.Fatalf("the preflight runs once for the head: %d\n%s", len(w.preflights), strings.Join(w.lines, "\n"))
+	}
+	st, _, _ := readDrain(w.repo.Root())
+	if len(st.HandBacks) != 1 || st.HandBacks[0].Kind != HandBackStuck {
+		t.Fatalf("the lane is handed back as stuck: %+v\n%s", st.HandBacks, strings.Join(w.lines, "\n"))
+	}
+}
