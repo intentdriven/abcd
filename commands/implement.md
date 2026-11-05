@@ -867,6 +867,63 @@ configured and not installed) carries `scan_gap` in `--json` and a `scan gap:`
 block in the text, as `history capture` names it; relay it as printed. Report
 every refusal as it is.
 
+## Stop every run, and take a run over
+
+**`abcd implement stop` is the person's, typed from their own account, and an agent
+never runs it.** The guard refuses it, its `--lift`, and any write to the stop file,
+through the shell or the host's file tools; the verb itself refuses a caller with no
+terminal or under a host session. Tell the person why you
+believe the runs should stop or go on, and leave the command to them. A stop reads
+as a refusal at the stage `stop`, exit 3, from `implement step`, `abcd build` and
+`abcd drain`: stop working when you meet it. `implement receipt` is not refused, so
+hand back a receipt you hold; the lane goes no further. Under a stop an agent in a
+call finishes it and its receipt is collected; with no agent live each lane's
+uncommitted work is saved aside as a restart saves it; then the run's reservation
+is released, so a peer may take the work, and the day's page is written to the
+shared folder. A save that fails holds the lane and the claims. A stop file any
+other account wrote, a symlink or an oversized file is no stop, and each step's answer names it.
+A run fixes the shared folder at its start and reads it before each move, with the
+platform's shared folder for the account it expects. A setting that cannot be read, or that has gone or changed during the run,
+holds the run at the stage `stop`, exit 3, with nothing let go: tell the person, who puts it back.
+A home that cannot be found holds it the same way. A take-over needs a read that saw clearly.
+A renewal that falls due under a stop settles the run first; with no agent left in its call
+and its work saved it no longer renews, and work a save could not take keeps the claim. A
+lift names any stop it cannot reach.
+
+The person's two lines, never yours to run: `abcd implement stop` stops every run this
+account's stop reaches, and `abcd implement stop --lift` lifts it.
+
+Every entry to a move makes the one check, so a driver that steps through the loop
+takes the stop without asking for it.
+
+**`implement resume` is how the next session picks a run up.** Bare, it writes
+nothing and uses no network: every unfinished run on the machine with its driver
+alive or gone, what a stop left, and each lane's stage, each agent alive, lost or
+unknown, each receipt that arrived uncollected, its pull request, how far origin's
+default branch as last fetched has moved past its base, and the files it holds
+uncommitted. That listing and the checklist are all a session that lost its context
+needs.
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement resume [--run <run-id>] --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement resume --take <run-id> --json
+```
+
+`--take` runs from the checkout that holds the run. It claims the driver, collects
+every receipt that has arrived before anything else, reserves again what a stop
+released, saves aside and names the uncommitted work a gone agent left, and re-tells
+its await under `restarted`; a fresh agent takes each, started by the next
+`implement step`, and `collected` names what needs none. An agent that may still be
+in its call is named under `left` and not restarted. Work it could not save is a
+refusal, exit 2: settle it and take again, never step over it. Exit 3 while a stop holds, while
+another driver's process is alive or a recorded driver cannot be judged, or when a peer has
+taken the work a stop released: back off.
+
+**One driver steps a run.** `implement step` records the session it runs under in
+the run's `control.json` beside its state, and refuses at exit 3 while another
+driver's process is alive; a driver gone is replaced, with an entry in the run
+record.
+
 ## Stop when the repository's git settings change
 
 A program the repository's own git settings name (a content filter, a hook, a

@@ -11,6 +11,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/rules"
+	"github.com/intentdriven/abcd/internal/core/runstop"
 	"github.com/intentdriven/abcd/internal/core/sessionname"
 	"github.com/intentdriven/abcd/internal/core/vintage"
 	"github.com/intentdriven/abcd/internal/gittest"
@@ -43,6 +44,10 @@ var builtAbcd gittest.Abcd
 // own, the user layer reads as absent, and a test that sets HOME to a fixture
 // gets that fixture's user layer (spc-23).
 func TestMain(m *testing.M) {
+	// The verbs here read a stop from the fixture home each test names, and the
+	// machine's own shared folder stops no test.
+	runstop.AccountHome = os.UserHomeDir
+	runstop.WellKnownFolder = func() string { return "" }
 	// No test here, nor a child of one acting as the binary, trims the
 	// machine's own Go build cache through `ahoy worktree prune`. The shipping
 	// value is kept so the wiring itself stays asserted, against a temporary

@@ -38,6 +38,8 @@ own state lives in the checkout's local tier, not in the shared run state below;
 | `receipt` | — | shipped |
 | `widen` | — | shipped |
 | `record` | — | shipped |
+| `resume` | — | shipped |
+| `stop` | — | shipped |
 | `outage` | — | shipped |
 | `outage record` | — | shipped |
 | `outage probe` | — | shipped |
@@ -170,7 +172,7 @@ keyed on a flag the second session could omit would guard nothing.
 
 Logging appends one of the run's own events, with its key-value fields
 (`backoff`, `lane_open`, `lane_close`, `agent_start`, `agent_end`,
-`ceiling_wait`, `gate_run`, `review`, `fallback`, `stop`, `refusal`, `pr`,
+`ceiling_wait`, `gate_run`, `review`, `fallback`, the stop event, `refusal`, `pr`,
 `capture`, `context`, `ceiling_overrun`, `intervention`, `decision`). Every line carries `ts` (RFC 3339, UTC), `session` and `event`, then
 the fields; it reaches the file in one `O_APPEND` write through
 `fsutil.AppendLineIn`, which refuses a symlinked or non-regular leaf as its read
@@ -193,7 +195,7 @@ agents `alive`, the `ceiling`, the `lane` and the `minutes` over. The evidence
 events an autonomous run keeps so a later run can need no person carry theirs:
 an `intervention` its `kind` (`session_open`, `account`, `ruling`, `restart`,
 `close_session`, `file_restore`, `permission` or `other`), `by`, `what`, `why`
-and `autonomy_gap`; a `stop` its `cause`; a `decision` its `what`, the
+and `autonomy_gap`; a stop event its `cause`; a `decision` its `what`, the
 `alternative` not taken and `why`. An `at` or `last_productive` given is an
 RFC 3339 time, and a `detected_after_min` or `noticed_after_min` a number.
 
@@ -617,6 +619,66 @@ verb then discards the lane's worktree and branch, records the discarded head,
 and ends the lane before its validators, and the drain routes the hand-back by
 kind ([`35-drain.md`](35-drain.md)).
 
+## The stop and the take-over
+
+A stop is a recorded state every run reads before each move, never a signal to a
+terminal, because a stop can only take hold at a tool-call boundary
+(dcn-2611031722512037). The person's own command, from their own account, writes it;
+the same command lifts it, and the lift is recorded; the guard refuses both to an agent.
+The account's home is the account database's, whatever the environment says. With a shared folder chosen at setup in each account
+([`01-ahoy.md`](01-ahoy.md)) the stop is
+`<folder>/abcd-stop/abcd-stop.json`, in a directory of the person's own, on a machine no other person shares
+(dcn-2611041550139264); without one it is `~/.abcd.noindex/stop.json`, which reaches
+only that account's runs. The file in the folder is the one file outside abcd's
+owner-only rule. It is a request to stop and nothing more: judged on one descriptor,
+never followed through a symlink, at most 4 KiB, owned by the account named at setup,
+and no byte of it is read. Anything else there is refused, named on each move, and is
+no stop. A folder others can write needs the sticky bit and an owner that is root or the
+person, and each parent above it is held to the same rule, so another account can remove
+nothing and move nothing away.
+
+One check stands before every move, and every entry to a move makes it.
+Under a stop no lane opens, no stage is handed out and no agent starts, and the run
+record takes an entry naming who set it and when. A receipt is collected as
+ever, and the lane goes no further. An agent is live by its launch's process, or for
+a host's agent while its driver lives, or with no driver recorded for one reservation
+lease. A step killed outright leaves its agent unknown until the claim's term ends, and
+an unknown agent is never restarted. While one is live its lane is left as it stands. Then the lane's uncommitted work is
+saved aside as a restart saves it, an agent lost is marked kept, and with every lane
+settled, a save that failed holding its lane, the run's reservation is released and the run is halted.
+A run fixes the shared folder and the person at its start, in its control record, and
+reads that folder, the one the setting names and the platform's shared folder before each
+move, the last only for this account, the one the setting names or the one the run started
+under: what any other account leaves there is neither a stop nor a refusal, and a lift names
+a stop it cannot reach. A step under a stop claims no driver, so the agents are judged by the
+driver they ran under. A setting that
+cannot be read, or that has gone or changed during the run, holds the run: it moves
+nothing and lets nothing go until the setting is put back, and only a read that saw
+clearly and found no stop counts as a lift, or lets a run be taken over. A home that
+cannot be found holds the run the same way. The chosen folder does not move while a stop
+stands in it. A renewal that falls due under a stop settles the run first. With no agent left in its
+call and its work saved, a run under a stop no longer renews its reservation; work a save
+could not take keeps it until it is saved, and the move's refusal says so. A take-over over a
+record that has since finished on the default branch has nothing to reserve, and clears the
+mark. A signal's stop has no file to lift, and
+stays. A configuration changed during the run holds the save as it refuses a restart, and a
+worktree that no longer stands holds nothing back. A stop lifted before the halt lets
+the run go on, and a settled lane's agent is told again. The day's page,
+`<folder>/abcd-digest/<date>.md`, is rewritten whole at each halting, naming the stop,
+every run it halted and what each left, and no account. A halted run stays halted when
+the stop lifts, until a take-over reserves it again. A stop that does not come from the file
+takes the same order; the terminal drive's Ctrl-C joins it through the stop's remainder spec.
+
+A run records who drives it in `control.json`, beside its state: the live driver
+(session, process, start time) and each in-flight launch with its route. One driver
+steps a run: each step claims it, refused at exit 3 while another's process is alive.
+The resume verb lists every unfinished run on the machine from those records and writes
+nothing. Taking a run over claims the driver, refused too while the process table cannot
+say whether a recorded driver is gone, collects each receipt that has arrived before
+anything else, reserves again what a stop released, saves aside and
+names what a gone agent left, and re-tells its await; the next step starts the fresh
+agent, so nothing is started twice.
+
 ## The lost connection
 
 A lost connection to the network (git, gh, a download) or to the model service
@@ -665,7 +727,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd implement`
 
-Sub-verbs: `abcd implement check`, `abcd implement claim`, `abcd implement join`, `abcd implement leave`, `abcd implement load`, `abcd implement log`, `abcd implement mode`, `abcd implement outage`, `abcd implement receipt`, `abcd implement record`, `abcd implement release`, `abcd implement report`, `abcd implement status`, `abcd implement step`, `abcd implement widen`.
+Sub-verbs: `abcd implement check`, `abcd implement claim`, `abcd implement join`, `abcd implement leave`, `abcd implement load`, `abcd implement log`, `abcd implement mode`, `abcd implement outage`, `abcd implement receipt`, `abcd implement record`, `abcd implement release`, `abcd implement report`, `abcd implement resume`, `abcd implement status`, `abcd implement step`, `abcd implement stop`, `abcd implement widen`.
 
 Flags: none.
 
@@ -817,6 +879,15 @@ Sub-verbs: none.
 | `--date` | string |
 | `--log` | string |
 
+### `abcd implement resume`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--run` | string |
+| `--take` | string |
+
 ### `abcd implement status`
 
 Sub-verbs: none.
@@ -838,6 +909,14 @@ Sub-verbs: none.
 | `--route` | stringArray |
 | `--run` | string |
 | `--yielded` | string |
+
+### `abcd implement stop`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--lift` | bool |
 
 ### `abcd implement widen`
 

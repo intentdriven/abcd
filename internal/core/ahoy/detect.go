@@ -14,6 +14,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/identity"
 	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/core/provenance"
+	"github.com/intentdriven/abcd/internal/core/runstop"
 	"github.com/intentdriven/abcd/internal/core/shellpath"
 	"github.com/intentdriven/abcd/internal/core/tools"
 )
@@ -97,6 +98,10 @@ func detect(cwd string, judgeTools bool) (DetectionResult, error) {
 	if citations := detectCitations(abs); citations != "" {
 		signals["citations"] = citations
 	}
+
+	// Whether a stop can cross accounts on this machine (itd-2611041549471712):
+	// an option of setup, so its absence is said and is no gap.
+	signals["shared_folder"] = detectSharedFolder()
 
 	res := DetectionResult{
 		FolderKind:       kind,
@@ -1270,4 +1275,21 @@ func inSet(v string, set []string) bool {
 		}
 	}
 	return false
+}
+
+// detectSharedFolder says what the shared-folder setting of this account comes
+// to, one line for the board.
+func detectSharedFolder() string {
+	home, err := runstop.AccountHome()
+	if err != nil {
+		return ""
+	}
+	s, chosen, err := runstop.ReadSetting(home)
+	switch {
+	case err != nil:
+		return "unreadable: a stop from another account is not honoured here: " + fsutil.RedactHome(err.Error())
+	case !chosen:
+		return "none chosen: a stop reaches only this account's runs (`abcd ahoy shared-folder`)"
+	}
+	return s.Folder + ": a stop from the account " + s.Person + " reaches this account's runs"
 }

@@ -249,9 +249,11 @@ func newGuardHookCommand() *cobra.Command {
 			"manifest hands it the shell tool, the question tool and the host's\n" +
 			"file-writing tools (Write, Edit, MultiEdit, NotebookEdit) and nothing else.\n" +
 			"A file one of those tools writes is not held to the registry: it is denied\n" +
-			"with the host's deny when it lands in a main checkout two or more live\n" +
-			"sessions started in, with the refusal the record verbs give, naming the\n" +
-			"worktree store. The file's working tree is found by walking up to its .git,\n" +
+			"with the host's deny when it is the stop file or the setting naming where a\n" +
+			"stop is read (the person's own, by `abcd implement stop`), and when it lands\n" +
+			"in a main checkout two or more live sessions started in, with the refusal\n" +
+			"the record verbs give, naming the worktree store. The file's working tree\n" +
+			"is found by walking up to its .git,\n" +
 			"so a linked worktree, a checkout one session or none works in, a path in no\n" +
 			"checkout, and a file in a checkout's own local tier (.abcd/.work.local/,\n" +
 			"which git ignores) are written silently. A file call naming no path, a\n" +

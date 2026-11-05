@@ -83,7 +83,13 @@ func loopFail(w io.Writer, asJSON bool, prefix string, err error) error {
 				return encErr
 			}
 		}
-		return &exitError{Code: code, Msg: prefix + ": " + termsafe.Sanitize(red.Error()) + " (nothing written)"}
+		written := " (nothing written)"
+		if red.Stage == loop.StageStop || red.Stage == loop.StageResume {
+			// A stop's refusal records the stop and what it settled, and a
+			// take-over's what it did before it refused.
+			written = ""
+		}
+		return &exitError{Code: code, Msg: prefix + ": " + termsafe.Sanitize(red.Error()) + written}
 	}
 	if errorsIsNoCheckout(err) {
 		return &exitError{Code: 2, Msg: prefix + ": " + err.Error() + " (nothing written)"}
@@ -1231,6 +1237,11 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 				// route it replaced as the one that runs.
 				printRunnerDiagnostics(cmd, cfg)
 				routed = cfg
+			}
+			// One driver steps a run: this session records itself as the live
+			// driver, and backs off at exit 3 while another's process is alive.
+			if err := loop.ClaimDriver(root, id, loop.Options{}); err != nil {
+				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
 			switch {
 			case yieldedSet && restart == "":

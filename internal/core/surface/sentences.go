@@ -45,6 +45,8 @@ var sentences = map[string]string{
 		"Writes those settings, abcd's own rulesets and their mirrors; refuses an unconfirmed run.",
 	"abcd ahoy uninstall": "Remove abcd from this repository, leaving .abcd/ in place: " +
 		"Writes the removal of the marker block, PATH copy, and provenance record; refuses any argument.",
+	"abcd ahoy shared-folder": "Say what the shared folder is for, or choose it so a stop can cross accounts: " +
+		"Writes the choice given a folder; refuses no terminal or an unsafe folder.",
 	"abcd ahoy worktree": "List this repository's worktrees and its lane in the worktree store: " +
 		"Writes nothing; refuses a store it cannot trust or a directory outside a checkout.",
 	"abcd ahoy worktree add": "Add a worktree in this repository's lane of the worktree store: " +
@@ -243,6 +245,10 @@ var sentences = map[string]string{
 		"Writes the reservation and a run record line; refuses another copy's live hold, with exit 3.",
 	"abcd implement status": "Render the implement loop's runs in this checkout, lane by lane: " +
 		"Writes a due renewal to origin, its outcome to the run record; refuses a --run naming no run.",
+	"abcd implement stop": "Stop every unattended run on this machine, or lift the stop: " +
+		"Writes the stop file; refuses a caller with no terminal, and a file no run would honour.",
+	"abcd implement resume": "List every unfinished run on the machine, or take one over: " +
+		"Writes nothing bare; refuses a take-over while a stop holds or another driver is alive.",
 	"abcd implement step": "Perform the next stage of an implement loop run's lane and exit: " +
 		"Writes the run's state and the lane's stages; refuses a push with no preflight receipt.",
 
