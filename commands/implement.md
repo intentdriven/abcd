@@ -1250,7 +1250,7 @@ Its room is `load.narrow_runs` in `~/.abcd.noindex/config.json` under the proces
 home, as `load.preflights` is, a whole number from 1 to 32, read through the same
 guarded read, with no environment variable of its own and never from a repository; a value outside it refuses a narrow run's wait, naming the key.
 With none set it is half the online cores divided by 2, and one at the least, so
-an account admits up to half the machine: 16 cores admit four, eight cores in all,
+on four cores or more an account admits up to half the machine: 16 cores admit four, eight cores in all,
 and each other account can add one run over that, since every account keeps a place.
 Two is a ceiling on what narrow runs took as measured on a 16-core machine (from
 about 0.2 of a core to under 2). On a machine the load shows busy, within two of the
@@ -1260,7 +1260,7 @@ test is never behind them altogether. Narrow runs running and those queued ahead
 count against it, and another account's never take your last place.
 
 A narrow run cannot starve a whole run. While a whole-run waiter that started
-earlier has waited five minutes with a whole slot free, a narrow run stands
+earlier has been queued five minutes or more and a whole slot is free, a narrow run stands
 aside, and the waiting line says so: admissions stop, the running ones finish,
 the load falls and the whole run opens. One wait spends at most five minutes in all
 standing aside, so a whole run shut by something else, such as its own account's stricter

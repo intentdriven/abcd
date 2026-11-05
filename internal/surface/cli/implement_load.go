@@ -386,7 +386,7 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"running and those queued ahead count against it; another account's never take your last\n" +
 			"place. Its jitter is " + implement.WaitNarrowJitterMin.String() + " to " + implement.WaitNarrowJitterMax.String() + ", and it takes no open look, so across accounts two\n" +
 			"opening at once can pass the limit by one. So that it cannot starve a whole run, while a\n" +
-			"whole-run waiter that started earlier has waited " + implement.WaitNarrowYieldAfter.String() + " with a whole slot free, it\n" +
+			"whole-run waiter that started earlier has been queued " + implement.WaitNarrowYieldAfter.String() + " or more and a whole slot is free, it\n" +
 			"stands aside, spending at most " + implement.WaitNarrowYieldCap.String() + " of a wait so. Waiters queued ahead that alone keep it shut stop\n" +
 			"counting after " + implement.WaitNarrowQueueCap.String() + ".\n\n" +
 			"A wait that gives up exits 1 and ends with a line starting `LOAD GATE TIMED OUT`,\n" +

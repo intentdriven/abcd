@@ -2870,7 +2870,7 @@ their slots leave of the cores, at each slot's share, and one at the least. Narr
 running and those queued ahead count against it; another account's never take your last
 place. Its jitter is 1s to 5s, and it takes no open look, so across accounts two
 opening at once can pass the limit by one. So that it cannot starve a whole run, while a
-whole-run waiter that started earlier has waited 5m0s with a whole slot free, it
+whole-run waiter that started earlier has been queued 5m0s or more and a whole slot is free, it
 stands aside, spending at most 5m0s of a wait so. Waiters queued ahead that alone keep it shut stop
 counting after 2m0s.
 

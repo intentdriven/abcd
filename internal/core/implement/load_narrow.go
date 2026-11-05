@@ -110,7 +110,7 @@ func narrowJitter() time.Duration {
 
 // DefaultNarrowRuns is the limit with none set: half the online cores divided by
 // what one narrow run is bound to, and one at the least, so an account's look admits
-// up to half the machine. Each other account can add one run over that, since a look
+// up to half the machine on four cores or more. Each other account can add one run over that, since a look
 // always keeps its own account one place (narrowCount). Sixteen cores admit four,
 // eight cores in all; how much of that a look grants beside whole runs is narrowRoom's.
 func DefaultNarrowRuns(cores int) int {

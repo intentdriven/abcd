@@ -480,7 +480,7 @@ overshoot by one for those runs and no more.
 
 A whole run keeps its place honestly: sharing the load limit, narrow runs could take
 every dip it waits for, and an older abcd counts them in its slots. So while a
-whole-run waiter that started earlier has waited five minutes with a whole slot free
+whole-run waiter that started earlier has been queued five minutes or more and a whole slot is free
 (`machineload.OverdueWhole`), a narrow run stands aside, spending at most five minutes
 of one wait so. That gap in admissions lets the running ones finish and the load fall. The
 waiter must have started earlier because an older abcd counts a narrow waiter that
