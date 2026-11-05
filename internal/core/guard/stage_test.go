@@ -205,8 +205,8 @@ func TestAConfiguredHooksPathIsProtectedFromAStage(t *testing.T) {
 	}
 }
 
-// TestAStageDoesNotWriteWhatArmsAMerge: at any depth of its tree, so a folder the
-// repository later lists as a worktree of its own is no way round.
+// TestAStageDoesNotWriteWhatArmsAMerge: a local tier deeper in the tree is judged the
+// same.
 func TestAStageDoesNotWriteWhatArmsAMerge(t *testing.T) {
 	tree := t.TempDir()
 	for _, rel := range []string{
@@ -227,8 +227,8 @@ func TestAStageDoesNotWriteWhatArmsAMerge(t *testing.T) {
 	}
 }
 
-// TestAStageDoesNotLand: the loop lands; a stage's shell does not, and every other
-// verb stays open to it.
+// TestAStageDoesNotLand: the loop lands, a stage does not; the verbs a stage's work
+// needs stay open.
 func TestAStageDoesNotLand(t *testing.T) {
 	home := t.TempDir()
 	stage := NewFiles(t.TempDir()).WithStage(filepath.Join(home, "stage"), nil, nil)

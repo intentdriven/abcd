@@ -98,8 +98,8 @@ func stageGateFile(tree, path string, declared []string, fold bool) string {
 	return stageAbcd
 }
 
-// nestedLocalGate is the local tier's gate rel lands in deeper in the tree: a
-// folder there can become a worktree of the repository, whose tier counts too.
+// nestedLocalGate is the local tier's gate rel lands in deeper in the tree, judged
+// the same as the tier at the top.
 func nestedLocalGate(rel string, fold bool) string {
 	if fold {
 		rel = strings.ToLower(rel)
