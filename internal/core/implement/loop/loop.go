@@ -408,9 +408,6 @@ type StepResult struct {
 	// it re-told an await an earlier call began: only the call that hands the
 	// work out may start a runner for it.
 	handed bool
-	// withHost says Drive left this role on the host's route, for DriveStep to
-	// list once no reviewer route can still answer it.
-	withHost bool
 }
 
 // Start resumes the live run for key, or runs the checks and, when every one
