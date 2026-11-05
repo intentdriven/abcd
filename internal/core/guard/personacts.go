@@ -120,8 +120,14 @@ func (a personAct) actOf(s segment) bool {
 				if w == "--" {
 					break
 				}
-				if strings.HasPrefix(w, "-") && w != "-" {
-					skip = !strings.Contains(w, "=") && w != "--json" && w != "--help" && w != "-h"
+				// The token as written, so a flag whose value the line does not fix
+				// is still a flag, and a word it does not fix at all breaks nothing.
+				known := knownText(s.tokens[site.idx+1+j])
+				if strings.HasPrefix(known, "-") && known != "-" {
+					skip = !strings.Contains(known, "=") && known != "--json" && known != "--help" && known != "-h"
+					continue
+				}
+				if w == "" {
 					continue
 				}
 			}
