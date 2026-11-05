@@ -20,7 +20,7 @@ target_release: next
 
 ## Press Release
 
-> **A person stops the unattended runs of each account that chose a shared folder, from their own account with one command, and it stays until their own command lifts it.** Alice runs abcd unattended on a second account of their computer, and at setup they chose a shared folder on it (`/Users/Shared` on macOS, its counterpart on Linux) for the things the two accounts pass between them. From their own account they type `abcd implement stop`: every run on the machine finishes the tool call in hand, opens no new lane, starts no new agent, writes what each lane holds uncommitted into its record, releases what it reserved, and says so in the next daily digest. An agent's session, a driver or a hook that tries to lift the stop is refused. "I could never reach a run from the terminal it was not in," said Alice, a solo founder. "Now a stop is a file my account writes and every run reads before its next move, and it stays stopped until I say otherwise."
+> **A person stops the unattended runs of each account that chose a shared folder, from their own account with one command, and it stays until their own command lifts it.** Alice runs abcd unattended on a second account of their computer, and at setup they chose a shared folder on it (`/Users/Shared` on macOS, its counterpart on Linux) for the things the two accounts pass between them. From their own account they type `abcd implement stop`: each of those runs finishes the tool call in hand, opens no new lane, starts no new agent, writes what each lane holds uncommitted into its record, releases what it reserved, and says so in the next daily digest. Lifting it is the person's act, and the guard's rule refuses it to an agent's session, a driver or a hook. "I could never reach a run from the terminal it was not in," said Alice, a solo founder. "Now a stop is a file my account writes and each of those runs reads before its next move, and it stays stopped until I say otherwise."
 
 ## Why This Matters
 
@@ -68,7 +68,7 @@ Hand-run four-piece table, 2026-11-04, from the scratch draft that held the stop
 
 | Part | Kind | Home |
 |---|---|---|
-| one command stops every run on the machine at its next move, lifted only by the person; the shared folder offered at setup | capability | this intent |
+| one command stops the runs of each account that chose the folder at their next move, lifted by the person's own command; the shared folder offered at setup | capability | this intent |
 | the resume listing, the live-driver record, collect-before-launch, saved-aside work | capability | itd-2611041549461012, the restart path |
 | a stop is a recorded state read at each move, never a signal to a terminal; lifting it is the person's, by rule; one shared folder on an unshared machine is the one file outside the owner-only rule | trust rule | an ADR owed, extending adr-2610240850193281 (the grant permits, this withdraws) and dcn-2611031722512037, and narrowing the store ownership rule by this one exception (dcn-2611041550139264); a brief invariant when accepted; not filed here |
 | a run's account of itself lives in abcd's files, never in a session's memory | stance | a candidate principle, for the product thinker to confirm; not filed |
