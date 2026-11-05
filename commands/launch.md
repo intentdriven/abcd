@@ -888,7 +888,10 @@ has not admitted), the installability smoke at both tiers (the deep tier always 
 the cut), the parity diff against the anchor tag, and the warn-tier rows. A file the bundler
 rejected stops it at once; otherwise it refuses with every finding from every
 gate together (exit 2). It writes its pre-flight report whatever the verdict; the refusal names where it landed, and `--json` carries it as
-`preflight_report`. A working tree with uncommitted changes refuses unless the
+`preflight_report`. In a repository whose preflight mints receipts
+(`scripts/preflight-receipt.sh`), the cut refuses a commit with no receipt from a run
+that reused nothing: run `make preflight PREFLIGHT_FRESH=1` on it first, and no flag
+waives this. A working tree with uncommitted changes refuses unless the
 ship is passed `--allow-dirty`, which carries them into the cut and records the
 override, with every path it carried, in the report (`allowed_dirty` in
 `--json`). The flag waives the dirty-tree gate and nothing else: never lockstep,

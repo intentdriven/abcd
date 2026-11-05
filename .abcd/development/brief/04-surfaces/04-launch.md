@@ -828,6 +828,11 @@ account for is armed, so the cut's runbook (`commands/launch.md`) has the
 cutting session run the preview again just before it merges the release pull
 request, and tell people working in the repository by hand to hold.
 
+A cut that renders a payload, in a repository whose preflight mints receipts
+(`scripts/preflight-receipt.sh`), refuses a commit with no receipt saying `tests cut`,
+in any worktree of the checkout: `make preflight PREFLIGHT_FRESH=1` on that commit
+runs every test with nothing reused and mints it, and no flag waives the refusal.
+
 ## 4. Reports
 
 Every preview, and every cut that renders a payload, writes a pre-flight report:
