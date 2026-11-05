@@ -243,6 +243,7 @@ var wordReaders = map[string]string{
 	"commandNames":      "exempt: finds the name position to catch a builtin spelled with quotes, and only ever refuses; it approves no word",
 	"adjacentAct":       "exempt: reads a person's act only to refuse it; it approves no word",
 	"carriesAbcd":       "exempt: reads a program's name only to widen what adjacentAct refuses",
+	"shellProgram":      "exempt: reads a program's name only to widen what adjacentAct refuses",
 	"isStopDirName":     "exempt: reads a file name in a directory, not a word of the line",
 	"stopStoreUse":      "exempt: reads a path the line's reading already placed, not a word of the line",
 	"unfixedNames":      "exempt: reads the names a builtin is handed and only ever refuses; it approves no word",

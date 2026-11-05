@@ -172,15 +172,27 @@ func carriesAbcd(tok string) bool {
 	return strings.Contains(strings.ToLower(path.Base(tok)), "abcd")
 }
 
+// shellProgram reports whether a program runs the script it is handed.
+func shellProgram(tok string) bool {
+	switch path.Base(tok) {
+	case "sh", "bash", "zsh", "dash", "ksh":
+		return true
+	}
+	return false
+}
+
 // adjacentAct reads an act's words as the command line's parser reads them on its way
 // to a sub-command. It passes over --x=y alone and a fixed --x with the word after it,
 // but for the flags that take no word; a "--" ends its way. A word the line does not
 // fix may be a flag or a flag's value: the word after it passes, breaking nothing, and
 // counts if it is the next verb. On a program named for abcd, or one the line does not
 // fix, an unfixed word that can print the next verb counts as that verb where a verb
-// is due: the sub-command's own place, or straight after the verb before it.
+// is due: the sub-command's own place, or straight after the verb before it. On a
+// program the line does not fix, one verb at least must be spelled.
 func (a personAct) adjacentAct(s segment, site arrival) bool {
-	named := carriesAbcd(s.tokens[site.idx]) || isUnknown(s.tokens[site.idx])
+	fixedName := carriesAbcd(s.tokens[site.idx])
+	named := fixedName || isUnknown(s.tokens[site.idx])
+	spelled := false
 	next := 0
 	opening, soft, skip := true, false, false
 	for _, w := range actWordsOf(s, site.idx+1) {
@@ -203,7 +215,7 @@ func (a personAct) adjacentAct(s segment, site arrival) bool {
 			continue
 		}
 		if w.unfixed {
-			if named && (next > 0 || opening) && unknownCouldBe(w.text, a.verbs[next]) {
+			if named && (next > 0 || opening) && (fixedName || spelled || next+1 < len(a.verbs)) && unknownCouldBe(w.text, a.verbs[next]) {
 				next++
 				opening, soft = false, false
 				if next == len(a.verbs) {
@@ -223,6 +235,7 @@ func (a personAct) adjacentAct(s segment, site arrival) bool {
 		switch {
 		case !w.unfixed && w.text == a.verbs[next]:
 			next++
+			spelled = true
 			opening, soft = false, false
 			if next == len(a.verbs) {
 				return true
@@ -237,8 +250,8 @@ func (a personAct) adjacentAct(s segment, site arrival) bool {
 				}
 			}
 			// A script named for abcd handed to a shell is the program itself.
-			if !named && strings.Contains(w.text, "/") && carriesAbcd(w.text) {
-				named = true
+			if !named && opening && shellProgram(s.tokens[site.idx]) && !strings.ContainsAny(w.text, " \t\n") && carriesAbcd(w.text) {
+				named, fixedName = true, true
 				continue
 			}
 			opening = false

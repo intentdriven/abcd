@@ -228,6 +228,8 @@ func TestTheStopIsThePersonsAct(t *testing.T) {
 		`grep implement "$F"`,
 		`grep -r implement "$F" stop`,
 		`grep abcd implement "$F"`,
+		`printf 'see scripts/abcd.sh, then' "$A" "$B"`,
+		`grep scripts/abcd.sh implement "$F"`,
 		`scripts/abcd.sh capture "$T"`,
 		`scripts/abcd.sh --json capture "$T"`,
 		`scripts/abcd.sh implement step --run "$R"`,
