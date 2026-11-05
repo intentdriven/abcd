@@ -68,12 +68,12 @@ func stageGateFile(tree, path string, declared []string, fold bool) string {
 // refused, and both the path as written and where it really lands are judged.
 func StageWriteRefusal(dirs, declared []string, path string) string {
 	if !filepath.IsAbs(path) {
-		return "a walled stage's file tool names a file by its full path"
+		return "a drive's stage's file tool names a file by its full path"
 	}
 	fold := approveFoldsCase()
 	clean := filepath.Clean(path)
 	if fi, err := os.Lstat(clean); err == nil && fi.Mode()&os.ModeSymlink != 0 {
-		return "a walled stage does not write through a link"
+		return "a drive's stage does not write through a link"
 	}
 	for _, candidate := range []string{clean, fsutil.RealExistingPath(clean)} {
 		inside := false
@@ -84,15 +84,15 @@ func StageWriteRefusal(dirs, declared []string, path string) string {
 				}
 				inside = true
 				if name := protectedComponent(candidate, dir, fold); name != "" {
-					return "a walled stage does not write " + name + ", which is protected"
+					return "a drive's stage does not write " + name + ", which is protected"
 				}
 				if name := stageGateFile(dir, candidate, declared, fold); name != "" {
-					return "a walled stage writes " + name + " only where its work declares it"
+					return "a drive's stage writes " + name + " only where its work declares it"
 				}
 			}
 		}
 		if !inside {
-			return "a walled stage writes only in its working tree and its run directories"
+			return "a drive's stage writes only in its working tree and its run directories"
 		}
 	}
 	return ""

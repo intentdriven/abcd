@@ -164,9 +164,9 @@ func newGuardApproveCommand() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&dir, "dir", "", "the working tree the agent runs in, as an absolute path")
 	cmd.Flags().StringVar(&base, "base", "", "the commit the run started on, by its full object name")
-	cmd.Flags().StringVar(&stageHome, "stage-home", "", "on a walled stage, the home its shell runs under, as an absolute path")
-	cmd.Flags().StringArrayVar(&protect, "protect", nil, "on a walled stage, a directory it may not write, as an absolute path; repeatable")
-	cmd.Flags().StringArrayVar(&declared, "declared", nil, "on a walled stage, a path its work declares it changes, relative to --dir; repeatable")
+	cmd.Flags().StringVar(&stageHome, "stage-home", "", "on a drive's stage, the home its shell runs under, as an absolute path")
+	cmd.Flags().StringArrayVar(&protect, "protect", nil, "on a drive's stage, a directory it may not write, as an absolute path; repeatable")
+	cmd.Flags().StringArrayVar(&declared, "declared", nil, "on a drive's stage, a path its work declares it changes, relative to --dir; repeatable")
 	cmd.Flags().StringArrayVar(&runDirs, "run-dir", nil, "a directory the run keeps its own files in (its brief, its receipt), as an absolute path; repeatable")
 	return cmd
 }

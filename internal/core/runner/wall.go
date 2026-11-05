@@ -87,7 +87,7 @@ type WallError struct {
 }
 
 func (e *WallError) Error() string {
-	return fmt.Sprintf("the wall %q does not hold: %s", e.Wall, e.Detail)
+	return fmt.Sprintf("the check %q does not hold: %s", e.Wall, e.Detail)
 }
 
 // The bounds of the walls' two launches.
@@ -395,7 +395,7 @@ func checkStageFiles(p Profile) error {
 				continue
 			}
 		}
-		return &WallError{WallSettingsFile, "the walled directory holds " + name + ", which a launch would load; move it out"}
+		return &WallError{WallSettingsFile, "the profile directory holds " + name + ", which a launch would load; move it out"}
 	}
 	v, ok := stagesWritten.Load(p.Dir)
 	if !ok {
@@ -432,10 +432,10 @@ func checkStageFiles(p Profile) error {
 func CheckWallSettings(p Profile, bin string) error {
 	raw, err := os.ReadFile(filepath.Join(p.Dir, wallSettingsName))
 	if err != nil {
-		return &WallError{WallSettingsFile, "the walled directory's settings could not be read"}
+		return &WallError{WallSettingsFile, "the profile directory's settings could not be read"}
 	}
 	if !bytes.Equal(raw, WallSettings(bin)) {
-		return &WallError{WallSettingsFile, "the walled directory's settings differ from what abcd wrote"}
+		return &WallError{WallSettingsFile, "the profile directory's settings differ from what abcd wrote"}
 	}
 	return checkStageFiles(p)
 }
@@ -459,7 +459,7 @@ func CheckLogin(ctx context.Context, p Profile) error {
 		LoggedIn bool `json:"loggedIn"`
 	}
 	if runErr != nil || json.Unmarshal(res.stdout, &state) != nil || !state.LoggedIn {
-		return &WallError{WallLogin, "the harness reports no login in the walled directory; log in once, in your own shell: " +
+		return &WallError{WallLogin, "the harness reports no login in the profile directory; log in once, in your own shell: " +
 			"CLAUDE_CONFIG_DIR=<the directory> claude, then the harness's own login step"}
 	}
 	return nil
@@ -631,7 +631,7 @@ func readWallProof(out []byte, named []string, shellHome string) error {
 			case "":
 				return &WallError{WallKey, "the harness did not report what it signs in with, so nothing shows that no key is in use"}
 			default:
-				return &WallError{WallKey, "the harness reports a key in use, not the walled login"}
+				return &WallError{WallKey, "the harness reports a key in use, not the separate login"}
 			}
 		case "hook_response":
 			if ev.HookEvent == "PreToolUse" && strings.Contains(ev.HookStdout, guardRefusalText) {
@@ -643,7 +643,7 @@ func readWallProof(out []byte, named []string, shellHome string) error {
 		return &WallError{WallTools, "the harness reported no tool list"}
 	}
 	if homeSaid && !homeSeen {
-		return &WallError{WallHome, "a stage's shell does not run under the walled directory's own home"}
+		return &WallError{WallHome, "a stage's shell does not run under the stage's own home"}
 	}
 	if !homeSaid {
 		return &WallError{WallHome, "the launch did not show the home its shell runs under"}

@@ -191,10 +191,10 @@ that applies.
 The one exception is the drive (itd-2610222215485265,
 [adr-2610222222326104](../../decisions/adrs/2610222222326104-abcd-drives-agents-with-no-host-session.md)):
 typed in a plain terminal, on the person's own yes, it makes these moves itself, on
-one walled login under `~/.abcd.noindex/profiles/`, this account's subscription and
+one separate login under `~/.abcd.noindex/profiles/`, this account's subscription and
 no other. Each iteration is one move under the drain's lock for that move alone; a
 lane is driven in-process through `loop.Drive` and `DriveReview`, every role on the
-walled launch; a landing that waits for its receipt has its preflight run behind the
+launch on that login; a landing that waits for its receipt has its preflight run behind the
 load gate; each wait a move names is slept to the earliest time it names, at least
 thirty seconds. Three runner failures in a row, or a judge's failure, enter the
 outage schedule (one minute, five, ten, then hourly), which hands nothing back and
@@ -239,13 +239,13 @@ evidence file in the local tier's logs: the exit, the stream's shape with identi
 dropped and free text reduced to its length, the redacted first stderr line, the reset
 read, the loop's decision, each probe's answer and when the run resumed.
 
-Before the first move the drive writes the walled directory's settings, abcd's hooks
+Before the first move the drive writes the profile directory's settings, abcd's hooks
 as commands naming its own binary and nothing else, and checks each wall, refusing
 and naming the one that fails: the login state, the settings, a git identity for the
 checkout, and in one short live launch the tools the launch named, the approver as the
 only server, no plugin, no key, the guard refusing a command it is meant to refuse, the
 home and the variable names a stage's shell shows, and a settings file in the working
-tree having no effect, since the launch's setting sources name the walled directory
+tree having no effect, since the launch's setting sources name the profile directory
 alone. Before each stage and each preflight the settings, the files a stage's shell
 reads, the machine declarations, abcd's binary and the harness are compared with the
 start, and a difference stops the drive.

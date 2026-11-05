@@ -89,7 +89,7 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"back.\n\n" +
 			"--drive makes the moves itself, from a plain terminal with no host session: it refuses\n" +
 			"before anything is reserved when the claude runner is not enabled or admitted, when\n" +
-			"there is no one walled directory under " + abcdhome.Display("profiles") + "/ logged in, when a\n" +
+			"there is no one profile directory under " + abcdhome.Display("profiles") + "/ logged in, when a\n" +
 			"wall does not hold or no git identity resolves, when a credential variable the harness would bill through is set\n" +
 			"(a drive runs on this account's subscription alone, for now), when the judge is routed\n" +
 			"to opencode, when a role is pinned to the host, and when it is started from inside an\n" +
@@ -98,7 +98,7 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"answer, and with no terminal nothing else answers. A profile is a separate login and\n" +
 			"settings on this one account, not a boundary: a stage's shell reads what this account\n" +
 			"can. It then judges each eligible issue,\n" +
-			"drives each lane to its landing, every role on the walled login, and runs each\n" +
+			"drives each lane to its landing, every role on that separate login, and runs each\n" +
 			"landing's preflight behind the load gate, printing one line per step and logging them\n" +
 			"under .abcd/.work.local/logs/. A lane that changes the Makefile or scripts/ is handed\n" +
 			"back before its preflight unless --trust-lane-gates says the person agrees. It ends at\n" +
@@ -310,7 +310,7 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			})
 		},
 	}
-	cmd.Flags().BoolVar(&drive, "drive", false, "make every move from this terminal, starting each agent on the walled login, until the cap, an empty ledger or a stop")
+	cmd.Flags().BoolVar(&drive, "drive", false, "make every move from this terminal, starting each agent on a separate login, until the cap, an empty ledger or a stop")
 	cmd.Flags().BoolVar(&yes, "yes", false, "with --drive: the scripted yes to its one question")
 	cmd.Flags().StringVar(&until, "until", "", "with --drive: end the run at this time, a date or an RFC 3339 instant, and wait through limits, outages and stuck queues until then; the default is eight hours on each wait")
 	cmd.Flags().BoolVar(&trustGates, "trust-lane-gates", false, "with --drive: run a lane's preflight even when the lane changes the Makefile or scripts/ it runs")

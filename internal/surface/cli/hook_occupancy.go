@@ -106,7 +106,7 @@ func stageActive() bool { return os.Getenv(runner.StageWritesEnv) != "" }
 
 // stageUncheckedDeny is that denial.
 func stageUncheckedDeny() error {
-	return denyCall("Blocked by the abcd guard (unchecked on a walled stage): the guard could not judge this call, so it does not run. Run instead: the same call with a plain command, or a file named by its full path.")
+	return denyCall("Blocked by the abcd guard (unchecked on a drive's stage): the guard could not judge this call, so it does not run. Run instead: the same call with a plain command, or a file named by its full path.")
 }
 
 // fileWriteTools are the host tool names that write a file. The hook

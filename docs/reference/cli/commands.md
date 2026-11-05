@@ -1444,7 +1444,7 @@ back.
 
 --drive makes the moves itself, from a plain terminal with no host session: it refuses
 before anything is reserved when the claude runner is not enabled or admitted, when
-there is no one walled directory under ~/.abcd.noindex/profiles/ logged in, when a
+there is no one profile directory under ~/.abcd.noindex/profiles/ logged in, when a
 wall does not hold or no git identity resolves, when a credential variable the harness would bill through is set
 (a drive runs on this account's subscription alone, for now), when the judge is routed
 to opencode, when a role is pinned to the host, and when it is started from inside an
@@ -1453,7 +1453,7 @@ of the agent runs, the runner and the route, and asks once; --yes is the scripte
 answer, and with no terminal nothing else answers. A profile is a separate login and
 settings on this one account, not a boundary: a stage's shell reads what this account
 can. It then judges each eligible issue,
-drives each lane to its landing, every role on the walled login, and runs each
+drives each lane to its landing, every role on that separate login, and runs each
 landing's preflight behind the load gate, printing one line per step and logging them
 under .abcd/.work.local/logs/. A lane that changes the Makefile or scripts/ is handed
 back before its preflight unless --trust-lane-gates says the person agrees. It ends at
@@ -1612,7 +1612,7 @@ drain or run holds the state lock.
 **Flags:**
 
 ```
-      --drive                make every move from this terminal, starting each agent on the walled login, until the cap, an empty ledger or a stop
+      --drive                make every move from this terminal, starting each agent on a separate login, until the cap, an empty ledger or a stop
       --dry-run              show every open issue's disposition and the order a drain takes them; writes nothing
       --fix-rounds string    the fix rounds a lane may take before it is handed back; wins over every configured layer
       --judgement string     the host's answer to the judgement the drain awaits, at the path its request names
@@ -2042,11 +2042,11 @@ start it. It exits 0 when its input ends.
 
 ```
       --base string            the commit the run started on, by its full object name
-      --declared stringArray   on a walled stage, a path its work declares it changes, relative to --dir; repeatable
+      --declared stringArray   on a drive's stage, a path its work declares it changes, relative to --dir; repeatable
       --dir string             the working tree the agent runs in, as an absolute path
-      --protect stringArray    on a walled stage, a directory it may not write, as an absolute path; repeatable
+      --protect stringArray    on a drive's stage, a directory it may not write, as an absolute path; repeatable
       --run-dir stringArray    a directory the run keeps its own files in (its brief, its receipt), as an absolute path; repeatable
-      --stage-home string      on a walled stage, the home its shell runs under, as an absolute path
+      --stage-home string      on a drive's stage, the home its shell runs under, as an absolute path
 ```
 
 **Example:**

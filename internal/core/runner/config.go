@@ -762,7 +762,7 @@ func (c *Config) PinnedToHost(roles []string) []string {
 
 // walledRoute is where the person's yes puts a drive's roles (Walled): for
 // this drive alone, never a --route.
-var walledRoute = Route{Runner: Claude, Layer: layered.Machine, Origin: "the drive's yes, on the walled login"}
+var walledRoute = Route{Runner: Claude, Layer: layered.Machine, Origin: "the drive's yes, on its separate login"}
 
 // Walled is c for one drive: every role runs on the claude runner, on p, which
 // is the route the person's yes named (itd-2610222215485265 decision 5). c is
