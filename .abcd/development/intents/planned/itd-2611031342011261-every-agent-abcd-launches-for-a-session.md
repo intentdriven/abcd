@@ -308,8 +308,8 @@ default, and none was put as a question of its own:
     setting below that floor is read as the floor and named as such; the
     count limit keeps the same floor, never pruning inside that period. The
     store holds every repository's launches, so dcn-2611042248450089 narrows the
-    repository's half: its figure stands only where it lengthens what the
-    machine keeps.
+    repository's half: its figure stands only where it is longer, and binds
+    that repository's own launches alone.
 15. **The status line's cached read: 30 seconds**, the interval the
     prototype used; configurable the same way.
 16. **Token basis: every count the harness reports**, as the prototype

@@ -67,9 +67,12 @@ and never one inside 32 days, the longest calendar month a key's budget counts
 plus a day; the shipped 30 days therefore holds 32. `ledger.retention_days` and
 `ledger.retention_count` in `~/.abcd.noindex/config.json` set either figure, up to
 36,500 days and 1,000,000 entries, and a days figure below the floor is read as the
-floor and named as such. The store holds every repository's launches, so the same
-keys in a repository's `.abcd/config.json` may lengthen what this computer keeps and
-never shorten it: a shorter figure is named and ignored.
+floor and named as such. Each launch prunes the whole store by the figures it read,
+so only those keys bind every launch. The same keys in a repository's
+`.abcd/config.json` hold for launches started from that repository alone, and only
+where they are longer, a shorter figure being named and ignored: a launch from
+another repository still prunes by its own, so to keep entries longer everywhere,
+set the figure in `~/.abcd.noindex/config.json`.
 
 An entry that cannot be written refuses the launch, naming the store: no launch
 escapes the record.

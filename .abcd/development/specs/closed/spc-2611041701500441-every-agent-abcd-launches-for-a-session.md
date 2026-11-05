@@ -18,7 +18,7 @@ Delivers the record and the rollup of itd-2611031342011261: one entry per launch
 - The ledger hangs off the runner configuration, which every dispatcher already holds and which `runner.Load` builds with the home it read, so no launcher can forget to name it. A configuration built with no home refuses the launch.
 - The billing route and the API time are read from the launch's transcript, not added to `Answer` or `Sides`, because `Sides` is written into the run state and criterion 14 keeps that unchanged. The harness's process id reaches the entry through the context, so no adapter signature changes.
 - A launch that failed on the claude runner carries what its stream shows, as a killed one does: a failed launch spent too.
-- The floor is 32 days, the longest calendar month plus one day (decision 14), so the shipped 30-day default reads as 32 until the person sets more; the setting is `ledger.retention_days` and `ledger.retention_count`, in the machine configuration, and a repository's figure stands only where it lengthens what the machine keeps (dcn-2611042248450089).
+- The floor is 32 days, the longest calendar month plus one day (decision 14), so the shipped 30-day default reads as 32 until the person sets more; the setting is `ledger.retention_days` and `ledger.retention_count`, in the machine configuration, and a repository's figure stands only where it is longer, for that repository's launches alone (dcn-2611042248450089).
 
 **How each criterion is met.**
 - Criterion 1 (entry at start and end), criterion 3 (the store), criterion 6 (killed and lost) and criterion 14 (run state unchanged): steps 1 and 2.

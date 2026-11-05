@@ -193,7 +193,8 @@ func Load(r layered.Roots) (*Config, error) {
 //
 // The store holds every repository's launches, and a repository's file is
 // whatever its last committer wrote, so a repository's figure may lengthen what
-// this machine keeps and may not shorten it: one below is named and ignored.
+// this launch keeps and may not shorten it: one below is named and ignored. It
+// binds this launch's prune and no other's; only the machine's binds them all.
 func (c *Config) readLedger(s *layered.Stack) error {
 	r := DefaultRetention()
 	read := func(key string, ceiling int, at *int, floor func(layered.Found, int) int) error {
@@ -214,7 +215,7 @@ func (c *Config) readLedger(s *layered.Stack) error {
 			n = floor(f, n)
 			if f.Layer == layered.Repo && n < *at {
 				c.diagnose("", fmt.Sprintf("runner: %s (%s.%s) is %d, below the %d this machine keeps; the launch ledger holds "+
-					"every repository's launches, so a repository's figure may only lengthen it and this one is ignored",
+					"every repository's launches, so a repository's figure may only be longer and this one is ignored",
 					f.Origin, ledgerKey, key, n, *at))
 				continue
 			}

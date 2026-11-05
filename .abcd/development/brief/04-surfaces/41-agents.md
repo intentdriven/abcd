@@ -45,8 +45,10 @@ written.
 Retention is pruned by the next writer: 30 days and 20,000 entries unless
 `ledger.retention_days` or `ledger.retention_count` says otherwise, and never
 inside 32 days, the longest calendar month a key's budget counts plus a day. The
-store holds every repository's launches, so a repository's figure may lengthen
-what the machine keeps and never shorten it. The next writer also clears a
+store holds every repository's launches and each launch prunes it by the figures
+it read, so only the machine's figure binds every launch: a repository's figure
+holds for that repository's launches, and only where it is longer, and another
+repository's launch still prunes by its own. The next writer also clears a
 temporary file a crash left more than a day ago.
 
 An entry holds no prompt, no answer and no credential. A key is named by its
