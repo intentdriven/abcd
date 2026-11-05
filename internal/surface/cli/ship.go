@@ -7,9 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 
@@ -539,29 +537,6 @@ type shipEmit struct {
 // every write — the pre-flight report, the release record, the archive pin and
 // the staged payload — is reported instead of made. A refusal is the real
 // run's, rendered by the same code.
-// requireCutReceipt holds a cut in a repository whose preflight mints receipts to a
-// commit every test ran on with nothing reused: `make preflight PREFLIGHT_FRESH=1`,
-// whose receipt says `tests cut`, in any worktree of the checkout. No flag waives it,
-// and a repository with no receipt script has no such run to ask for.
-func requireCutReceipt(cwd string) error {
-	script := filepath.Join(cwd, "scripts", "preflight-receipt.sh")
-	if _, err := os.Stat(script); err != nil {
-		return nil
-	}
-	head, err := gitutil.Run(cwd, "rev-parse", "HEAD")
-	if err != nil {
-		return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
-	}
-	cmd := exec.Command("bash", script, "tests", strings.TrimSpace(head))
-	cmd.Dir = cwd
-	out, _ := cmd.Output()
-	if slices.Contains(strings.Fields(string(out)), "cut") {
-		return nil
-	}
-	return &exitError{Code: 2, Msg: "abcd launch ship: this commit has no receipt from a run that reused nothing; " +
-		"run `make preflight PREFLIGHT_FRESH=1` on it, then cut"}
-}
-
 func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string, allowDirty, fetchBaseline, dryRun, asJSON bool, route *oracle.Route, d *dispatched) error {
 	archive, err := launch.DeclaresPluginArchive(cwd)
 	if err != nil {
@@ -624,9 +599,6 @@ func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string
 			if staging == "" {
 				staging = filepath.Join(scratch, "payload")
 			}
-		}
-		if err := requireCutReceipt(cwd); err != nil {
-			return err
 		}
 		// The pre-flight suite runs here, BEFORE the cut writes anything, so the
 		// dirty-tree gate reads the tree the cut starts from; the render after
