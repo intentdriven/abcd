@@ -380,6 +380,35 @@ func TestTheLedgerCannotLandWithoutTheProof(t *testing.T) {
 	}
 }
 
+// TestAWalledLaunchCarriesOnlyWhatAStageNeeds: the launch's environment is an
+// allow-list, so nothing the person's shell holds passes by default.
+func TestAWalledLaunchCarriesOnlyWhatAStageNeeds(t *testing.T) {
+	f, c, p := walledFake(t, "ok")
+	for _, k := range []string{"GH_TOKEN", "GITHUB_TOKEN", "AWS_SECRET_ACCESS_KEY", "SSH_AUTH_SOCK", "A_PERSONS_OWN_SECRET"} {
+		t.Setenv(k, "a-value-never-passed")
+	}
+	t.Setenv("TMPDIR", "/a/tmp")
+	t.Setenv("LC_ALL", "C")
+	t.Setenv("GOFLAGS", "-p=1")
+	if _, _, err := c.Run(context.Background(), shellRequest(f)); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(f.log, "claude.env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "a-value-never-passed") {
+		t.Fatalf("something outside the allow-list reached the harness:\n%s", raw)
+	}
+	env := strings.Split(string(raw), "\n")
+	for _, want := range []string{"TMPDIR=/a/tmp", "LC_ALL=C", "GOFLAGS=-p=1", "PATH=" + os.Getenv("PATH"), "HOME=" + os.Getenv("HOME"),
+		"CLAUDE_ENV_FILE=" + filepath.Join(p.Dir, stageEnvName)} {
+		if !slices.Contains(env, want) {
+			t.Errorf("the harness's environment lacks %q:\n%s", want, raw)
+		}
+	}
+}
+
 // TestAStagesShellHasItsOwnHomeAndWhatItNeeds: sourcing the file the launch
 // names moves the shell's home under the profile, and git and the Go caches
 // still work there: identity and filters carry over, credential helpers do not.

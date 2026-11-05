@@ -215,6 +215,18 @@ func (c *ClaudeCLI) walledFlags(req Request) []string {
 	return a
 }
 
+// stageWriteDirs are where a walled launch's file tools write: its working tree
+// and the directories of its brief and receipt.
+func stageWriteDirs(req Request) []string {
+	dirs := []string{req.Dir}
+	for _, d := range []string{filepath.Dir(req.Brief), filepath.Dir(req.Receipt)} {
+		if !slices.Contains(dirs, d) {
+			dirs = append(dirs, d)
+		}
+	}
+	return dirs
+}
+
 // heldTools are the tools a launch holds for the grants it names: each grant's
 // tool, its path left to the allow-list. The harness judges a new file's write
 // against the Edit rules, so an edit grant holds Write as well.
@@ -279,10 +291,12 @@ func (c *ClaudeCLI) run(ctx context.Context, req Request) (Answer, []byte, error
 		return Answer{}, nil, err
 	}
 	var seal []string
+	launch := c.launch
 	if c.profile != nil {
-		seal = c.profile.Env
+		seal = append(slices.Clone(c.profile.Env), StageWritesEnv+"="+strings.Join(stageWriteDirs(req), string(os.PathListSeparator)))
+		launch.allow = stageEnvAllowed
 	}
-	res, err := c.launch.run(ctx, Claude, bin, c.args(req), seal, req.Dir, req.timeout())
+	res, err := launch.run(ctx, Claude, bin, c.args(req), seal, req.Dir, req.timeout())
 	transcript := res.transcript()
 	if err != nil {
 		// A harness that stopped on a rate limit exits non-zero: what its

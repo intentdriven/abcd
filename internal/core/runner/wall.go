@@ -326,6 +326,7 @@ func SelfBinary() string { return selfBinary() }
 func CheckLogin(ctx context.Context, p Profile) error {
 	l := defaultLauncher()
 	l.gateWaiting = nil
+	l.allow = stageEnvAllowed
 	bin, err := l.admit(Claude, "claude", p.Dir)
 	if err != nil {
 		return &WallError{WallLogin, "the harness could not be run"}
@@ -380,6 +381,7 @@ func ProveWall(ctx context.Context, p Profile, bin string) error {
 	c := newClaude("")
 	c.profile, c.approver = &p, bin
 	c.launch.gateWaiting = nil
+	c.launch.allow = stageEnvAllowed
 	if c.approver == "" {
 		return &WallError{WallLaunch, "abcd cannot name its own binary to answer the launch's permission prompts"}
 	}

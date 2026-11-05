@@ -33,6 +33,7 @@ const (
 )
 
 func TestMain(m *testing.M) {
+	stageEnvExtra = []string{fakeModeEnv, fakeLogEnv}
 	if mode := os.Getenv(fakeModeEnv); mode != "" {
 		os.Exit(fakeHarness(mode))
 	}

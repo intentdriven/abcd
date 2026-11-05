@@ -37,6 +37,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -69,6 +70,8 @@ type launcher struct {
 	// asked; zero is gatePollInterval.
 	gateWaiting func(pid int) bool
 	gatePoll    time.Duration
+	// allow, when set, is all a launch carries of the parent's environment.
+	allow func(key string) bool
 }
 
 // defaultLauncher is a harness's launcher: its clock stops while the role
@@ -174,7 +177,7 @@ func (l launcher) run(ctx context.Context, runner, bin string, args, seal []stri
 	// shell line.
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = dir
-	cmd.Env = sealedEnv(gitutil.ScrubbedEnv(), seal)
+	cmd.Env = sealedEnv(onlyAllowed(gitutil.ScrubbedEnv(), l.allow), seal)
 	cmd.Stdin = nil
 	var out, errb bytes.Buffer
 	ow := &bounded{w: &out, remaining: l.maxStdout}
@@ -347,6 +350,31 @@ func Exec(ctx context.Context, c Command) (Output, error) {
 // stageEnvExtra are further variables a walled launch carries: only a test's
 // stand-in harness needs any.
 var stageEnvExtra []string
+
+// stageEnvNames are what a walled launch carries of the parent's environment:
+// the harness's own needs, a shell's, and a build's. Nothing else passes.
+var stageEnvNames = []string{
+	"PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "TERM", "TZ", "LANG",
+	"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy",
+	"NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR",
+	"GOROOT", "GOFLAGS", "GOPROXY", "GOPRIVATE", "GONOSUMDB", "GONOPROXY", "GOTOOLCHAIN", "GOMAXPROCS",
+}
+
+// stageEnvAllowed reports whether a walled launch carries the variable key.
+func stageEnvAllowed(key string) bool {
+	return strings.HasPrefix(key, "LC_") || slices.Contains(stageEnvNames, key) || slices.Contains(stageEnvExtra, key)
+}
+
+// onlyAllowed is env with only the variables allow admits; all of it for nil.
+func onlyAllowed(env []string, allow func(string) bool) []string {
+	if allow == nil {
+		return env
+	}
+	return slices.DeleteFunc(slices.Clone(env), func(kv string) bool {
+		k, _, _ := strings.Cut(kv, "=")
+		return !allow(k)
+	})
+}
 
 // sealedEnv is env with every key seal names removed, then each of seal's
 // KEY=value entries appended: one entry per switch, the adapter's value. A
