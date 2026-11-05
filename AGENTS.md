@@ -352,7 +352,8 @@ with `*CONCURRENCY` to force it).
   `lint-issues`, `record-lint`, `issue-drift`, `docs-lint`,
   `check-attribution`, `secrets-check`, `vulncheck`, `site-render`), both tagged eval
   lanes (`smoke`, `evals-cold-reading`), plus `go build ./...`,
-  `go vet ./...`, `go test -timeout 40m ./...`, and
+  `go vet ./...`, the two plain passes CI's check job runs (`go test ./cmd/...`
+  and, by name, the tests that assert only without the race detector), and
   `go test -race -timeout 40m ./internal/...`, under `ABCD_TEST_SHARDS=3`,
   which runs the three longest packages as three test processes each
   (`internal/testshard`). The load

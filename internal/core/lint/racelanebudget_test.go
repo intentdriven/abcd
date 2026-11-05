@@ -611,6 +611,50 @@ func TestPlainTestStepRunsTheWholeModule(t *testing.T) {
 	}
 }
 
+// TestPreflightUnitStageRunsWhatCIPlainPassRuns: make preflight judges what the
+// check job judges where its race lane runs, and no more. Its race stage runs
+// every internal test, so its unit stage runs only what that cannot assert: the
+// packages outside internal/ and the tests that assert only without the race
+// detector, the same two passes as the check job's "Test (outside internal)"
+// and "Test (plain-only guards)". A plain rerun of every internal test was a
+// third of a preflight's test time for a verdict CI does not hold it to
+// (iss-2610171803053186 took the same pass out of CI). The guards' flags are
+// read from the check job's step, so a guard added there reaches preflight with
+// no second list, and this test expands the recipe to prove it did.
+func TestPreflightUnitStageRunsWhatCIPlainPassRuns(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+	recipe, ok := makeRecipe(readRepoFile(t, root, "Makefile"), preflightStages)
+	if !ok {
+		t.Fatalf("Makefile declares no `%s:` recipe", preflightStages)
+	}
+	cmd := exec.Command("make", "-n", "--no-print-directory", preflightStages)
+	cmd.Dir = root
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("make -n %s: %v", preflightStages, err)
+	}
+	const flags = `go test -p "$p" -timeout "$t" `
+	var plain []string
+	for _, l := range strings.Split(string(out), "\n") {
+		l = strings.TrimSuffix(strings.TrimSpace(l), " && \\")
+		if strings.HasPrefix(l, flags) {
+			plain = append(plain, strings.TrimPrefix(l, flags))
+		}
+	}
+	check, ok := workflowJobBlock(readRepoFile(t, root, ".github/workflows/ci.yml"), "check")
+	if !ok {
+		t.Fatal(".github/workflows/ci.yml: no check job; the parser or the workflow changed shape")
+	}
+	guards, ok := workflowStepBlock(check, "Test (plain-only guards)")
+	if !ok {
+		t.Fatal(`.github/workflows/ci.yml job check: no "Test (plain-only guards)" step`)
+	}
+	want := []string{outsideInternalPattern, strings.TrimPrefix(oneGoTest(t, "the check job's guards", guards), "go test ")}
+	if !slices.Equal(plain, want) {
+		t.Errorf("preflight's unit stage runs %q; want the check job's two plain passes %q, under its derived -p and -timeout:\n%s", plain, want, recipe)
+	}
+}
+
 // unitStageTimeout is the base -timeout make preflight's unit stage scales
 // from: the `t=$$(go run ./cmd/test-parallelism -timeout <base>)` line last
 // before the recipe's plain `go test` command, the one without -race.
