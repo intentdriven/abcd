@@ -90,6 +90,9 @@ func fakeWall(mode string) int {
 		for _, n := range names {
 			lines.WriteString(wallEnvMarker + n + "\n")
 		}
+		if mode == "wall-env-at" {
+			lines.WriteString(wallAtMarker + "HTTPS_PROXY\n")
+		}
 		ev, _ := json.Marshal(map[string]any{"type": "user", "message": map[string]any{"content": []map[string]any{
 			{"type": "tool_result", "content": lines.String()}}}})
 		fmt.Println(string(ev))
@@ -235,6 +238,7 @@ func TestTheProofNamesEachWallThatDoesNotHold(t *testing.T) {
 		"wall-home-unsaid": WallHome,
 		"wall-env":         WallEnv,
 		"wall-env-unsaid":  WallEnv,
+		"wall-env-at":      WallEnv,
 	} {
 		t.Run(mode, func(t *testing.T) {
 			f := newFake(t, mode, Claude)
@@ -389,7 +393,7 @@ func TestAWalledLaunchCarriesOnlyWhatAStageNeeds(t *testing.T) {
 	}
 	env := strings.Split(string(raw), "\n")
 	for _, want := range []string{"TMPDIR=/a/tmp", "LC_ALL=C", "GOFLAGS=-p=1", "PATH=" + os.Getenv("PATH"), "HOME=" + os.Getenv("HOME"),
-		"CLAUDE_ENV_FILE=" + filepath.Join(p.Dir, stageEnvName)} {
+		"CLAUDE_ENV_FILE=" + p.EnvFile} {
 		if !slices.Contains(env, want) {
 			t.Errorf("the harness's environment lacks %q:\n%s", want, raw)
 		}
@@ -433,7 +437,7 @@ func TestAStagesShellHasItsOwnHomeAndWhatItNeeds(t *testing.T) {
 	}
 	run := func(script string) string {
 		cmd := exec.Command("/bin/sh", "-c", `. "$F"; `+script)
-		cmd.Env = append(os.Environ(), "F="+filepath.Join(p.Dir, stageEnvName), "CLAUDE_CONFIG_DIR="+p.Dir)
+		cmd.Env = append(os.Environ(), "F="+p.EnvFile, "CLAUDE_CONFIG_DIR="+p.Dir)
 		out, _ := cmd.CombinedOutput()
 		return strings.TrimSpace(string(out))
 	}
@@ -472,7 +476,7 @@ func TestAStagesShellHasItsOwnHomeAndWhatItNeeds(t *testing.T) {
 func TestTheCheckComparesWhatALaunchReads(t *testing.T) {
 	for name, change := range map[string]func(t *testing.T, p Profile){
 		"the shell's file": func(t *testing.T, p Profile) {
-			if err := os.WriteFile(filepath.Join(p.Dir, stageEnvName), []byte("export X=1\n"), 0o600); err != nil {
+			if err := os.WriteFile(p.EnvFile, []byte("export X=1\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}
 		},

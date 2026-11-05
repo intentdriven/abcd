@@ -26,6 +26,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"os/exec"
 )
 
 // wallSettingsName is the settings file under the walled directory.
@@ -44,14 +45,55 @@ const (
 const (
 	wallHomeMarker = "abcd-home:"
 	wallEnvMarker  = "abcd-env:"
+	wallAtMarker   = "abcd-env-at:"
 )
+
+// PinPrograms fixes what each program name means for the rest of this process and
+// what it starts: the directory each resolves into goes first on PATH, so one
+// placed earlier on PATH later is not what runs. A name not on PATH is left.
+func PinPrograms(names ...string) {
+	var dirs []string
+	for _, name := range names {
+		if p, err := exec.LookPath(name); err == nil && filepath.IsAbs(p) && !slices.Contains(dirs, filepath.Dir(p)) {
+			dirs = append(dirs, filepath.Dir(p))
+		}
+	}
+	if len(dirs) > 0 {
+		_ = os.Setenv("PATH", strings.Join(append(dirs, os.Getenv("PATH")), string(os.PathListSeparator)))
+	}
+}
+
+// HookedEnv is the environment a hook the driver's own git runs gets: what a stage
+// carries, under its home, with git's own settings kept.
+func HookedEnv(p Profile) func([]string) []string {
+	return func(env []string) []string {
+		carried := stageEnv(env)
+		for _, kv := range env {
+			if strings.HasPrefix(kv, "GIT_") {
+				carried = append(carried, kv)
+			}
+		}
+		return sealedEnv(carried, stageSeal(p))
+	}
+}
+
+// stageSeal is what a process the driver starts for a lane is told, over what it
+// carries: the stage's home, the person's for the machine's shared records, and
+// the Go caches.
+func stageSeal(p Profile) []string {
+	seal := []string{"HOME=" + p.ShellHome, StageHomeEnv + "=" + p.ShellHome, abcdhome.PersonHomeEnv + "=" + p.PersonHome}
+	if v, ok := stagesWritten.Load(p.ShellHome); ok {
+		seal = append(seal, v.(*stageWritten).exports...)
+	}
+	return seal
+}
 
 // wallHomeCommand and wallEnvCommand are the proof's other two commands: the first
 // shows the home a stage's shell runs under, the second each variable's name in
 // its environment and never a value.
 const (
 	wallHomeCommand = "printf '" + wallHomeMarker + "%s\\n' \"$HOME\""
-	wallEnvCommand  = "awk 'BEGIN { for (name in ENVIRON) print \"" + wallEnvMarker + "\" name }'"
+	wallEnvCommand  = "awk 'BEGIN { for (name in ENVIRON) { print \"" + wallEnvMarker + "\" name; if (ENVIRON[name] ~ /@/ && ENVIRON[name] !~ /^\\//) print \"" + wallAtMarker + "\" name } }'"
 )
 
 // WallProofCommands are the shell commands the proof asks for, in order: the one
@@ -237,12 +279,15 @@ func writeStageFiles(p Profile, bin string) error {
 	if err != nil {
 		return err
 	}
+	if err := os.MkdirAll(p.StageRoot, abcdhome.DirMode); err != nil {
+		return &WallError{WallSettingsFile, "the stage's files could not be made"}
+	}
 	exports := stageGoExports(p)
 	written := &stageWritten{env: stageEnvFile(p, exports), gitConfig: gitConfig, declared: declaredNow(p), exports: exports, binaries: binariesNow(p, bin)}
-	if err := fsutil.WriteFileAtomic(filepath.Join(p.Dir, stageEnvName), written.env, 0o600); err != nil {
+	if err := fsutil.WriteFileAtomic(p.EnvFile, written.env, 0o600); err != nil {
 		return &WallError{WallSettingsFile, "the stage's shell file could not be written"}
 	}
-	stagesWritten.Store(p.Dir, written)
+	stagesWritten.Store(p.ShellHome, written)
 	return ResetStageHome(p)
 }
 
@@ -250,7 +295,7 @@ func writeStageFiles(p Profile, bin string) error {
 // nothing one stage leaves there reaches the next or a preflight. A home that is
 // no real directory is refused, not followed.
 func ResetStageHome(p Profile) error {
-	v, ok := stagesWritten.Load(p.Dir)
+	v, ok := stagesWritten.Load(p.ShellHome)
 	if !ok {
 		return &WallError{WallSettingsFile, "the stage's home was not laid out"}
 	}
@@ -275,22 +320,19 @@ func ResetStageHome(p Profile) error {
 // carries, under its home, with the person's home named for the load gate and the
 // Go caches kept. Nothing else of the parent's passes.
 func PreflightEnv(p Profile) []string {
-	seal := []string{"HOME=" + p.ShellHome, StageHomeEnv + "=" + p.ShellHome, abcdhome.PersonHomeEnv + "=" + p.PersonHome}
-	if v, ok := stagesWritten.Load(p.Dir); ok {
-		seal = append(seal, v.(*stageWritten).exports...)
-	}
-	return sealedEnv(stageEnv(gitutil.ScrubbedEnv()), seal)
+	return sealedEnv(stageEnv(gitutil.ScrubbedEnv()), stageSeal(p))
 }
 
 // stageGoExports are the Go caches as they stand in the person's own environment,
 // as KEY=value, when there is a Go to ask.
 func stageGoExports(p Profile) []string {
+	// What a stage installs lands under its home, so it shadows no program.
+	exports := []string{"GOBIN=" + filepath.Join(p.ShellHome, "bin")}
 	names := []string{"GOCACHE", "GOMODCACHE", "GOPATH"}
 	out, err := Exec(context.Background(), Command{Name: "go", Args: append([]string{"env"}, names...), Dir: p.Dir, Timeout: stageProbeTimeout})
 	if err != nil {
-		return nil
+		return exports
 	}
-	var exports []string
 	values := strings.Split(strings.TrimSpace(string(out.Stdout)), "\n")
 	for i, name := range names {
 		if i < len(values) && filepath.IsAbs(values[i]) {
@@ -315,26 +357,36 @@ func stageEnvFile(p Profile, exports []string) []byte {
 	return b.Bytes()
 }
 
-// binariesNow reads abcd's binary and the harness a launch would run, by content;
-// one that cannot be read is the zero hash.
+// binariesNow reads what the drive and its lanes run by name, by content: abcd's
+// binary, the harness, git, make and gh. One that is not there is left out.
 func binariesNow(p Profile, bin string) map[string][sha256.Size]byte {
 	paths := []string{bin}
 	if resolved, err := defaultLauncher().admit(Claude, "claude", p.Dir); err == nil {
 		paths = append(paths, resolved)
 	}
+	for _, name := range []string{"git", "make", "gh"} {
+		if resolved, err := exec.LookPath(name); err == nil {
+			paths = append(paths, resolved)
+		}
+	}
 	out := map[string][sha256.Size]byte{}
 	for _, path := range paths {
-		var sum [sha256.Size]byte
-		if f, err := os.Open(path); err == nil {
-			h := sha256.New()
-			if _, err := io.Copy(h, f); err == nil {
-				copy(sum[:], h.Sum(nil))
-			}
-			_ = f.Close()
-		}
-		out[path] = sum
+		out[path] = fileSum(path)
 	}
 	return out
+}
+
+// fileSum is a file's content by hash; one that cannot be read is the zero hash.
+func fileSum(path string) [sha256.Size]byte {
+	var sum [sha256.Size]byte
+	if f, err := os.Open(path); err == nil {
+		h := sha256.New()
+		if _, err := io.Copy(h, f); err == nil {
+			copy(sum[:], h.Sum(nil))
+		}
+		_ = f.Close()
+	}
+	return sum
 }
 
 // readStageGit is the person's git identity and content filters, rendered for the
@@ -397,7 +449,7 @@ func checkStageFiles(p Profile) error {
 		}
 		return &WallError{WallSettingsFile, "the profile directory holds " + name + ", which a launch would load; move it out"}
 	}
-	v, ok := stagesWritten.Load(p.Dir)
+	v, ok := stagesWritten.Load(p.ShellHome)
 	if !ok {
 		return nil
 	}
@@ -407,7 +459,7 @@ func checkStageFiles(p Profile) error {
 		want []byte
 		name string
 	}{
-		{filepath.Join(p.Dir, stageEnvName), written.env, "the stage's shell file"},
+		{p.EnvFile, written.env, "the stage's shell file"},
 		{filepath.Join(p.ShellHome, ".gitconfig"), written.gitConfig, "the stage's git configuration"},
 	} {
 		if raw, err := os.ReadFile(f.path); err != nil || !bytes.Equal(raw, f.want) {
@@ -420,8 +472,7 @@ func checkStageFiles(p Profile) error {
 		}
 	}
 	for path, sum := range written.binaries {
-		now := binariesNow(p, path)[path]
-		if now != sum {
+		if fileSum(path) != sum {
 			return &WallError{WallSettingsFile, filepath.Base(path) + "'s binary changed while the drive ran"}
 		}
 	}
@@ -521,7 +572,7 @@ func ProveWall(ctx context.Context, p Profile, bin string) error {
 	var res procResult
 	end, lerr := RecordLaunch(ctx, p.Ledger, LaunchStart{Role: req.Role, Runner: Claude, Repo: p.Repo, Fallback: req.SessionID}, func(ctx context.Context) LaunchEnd {
 		var runErr error
-		res, runErr = c.launch.run(ctx, Claude, claudeBin, args, p.Env, dir, wallProofTimeout)
+		res, runErr = c.launch.run(ctx, Claude, claudeBin, args, append(slices.Clone(p.Env), StageWritesEnv+"="+dir), dir, wallProofTimeout)
 		ans, _ := parseClaude(res.stdout)
 		return LaunchEnd{Answer: ans, Transcript: res.transcript(), Err: runErr}
 	})
@@ -573,7 +624,7 @@ func outsideStageEnv(line []byte) string {
 func readWallProof(out []byte, named []string, shellHome string) error {
 	var sawInit, refused, homeSeen bool
 	var homeSaid, envSaid bool
-	var envOutside string
+	var envOutside, envAt string
 	quotedHome, _ := json.Marshal(wallHomeMarker + shellHome)
 	wantHome := bytes.Trim(quotedHome, `"`)
 	for _, line := range bytes.Split(out, []byte("\n")) {
@@ -597,6 +648,10 @@ func readWallProof(out []byte, named []string, shellHome string) error {
 		if ev.Type == "user" && bytes.Contains(line, []byte(wallHomeMarker)) {
 			homeSaid = true
 			homeSeen = homeSeen || bytes.Contains(line, wantHome)
+		}
+		if ev.Type == "user" && bytes.Contains(line, []byte(wallAtMarker)) && envAt == "" {
+			_, rest, _ := strings.Cut(string(line), wallAtMarker)
+			envAt = rest[:max(strings.IndexAny(rest, "\\\"\n"), 0)]
 		}
 		if ev.Type == "user" && bytes.Contains(line, []byte(wallEnvMarker)) {
 			envSaid = true
@@ -650,6 +705,9 @@ func readWallProof(out []byte, named []string, shellHome string) error {
 	}
 	if !envSaid {
 		return &WallError{WallEnv, "the launch did not show the names of its shell's variables"}
+	}
+	if envAt != "" {
+		return &WallError{WallEnv, "a stage's shell holds " + safeWord(envAt) + ", whose value may carry a credential"}
 	}
 	if envOutside != "" {
 		return &WallError{WallEnv, "a stage's shell holds " + safeWord(envOutside) + ", which is not on the list it carries"}

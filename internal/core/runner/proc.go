@@ -252,6 +252,9 @@ wait:
 		// holds; the leader is not yet reaped, so the group id is still its.
 		_ = procgroup.Kill(cmd)
 		<-done
+	} else {
+		// Nothing the harness started outlives it, however it ended.
+		procgroup.KillLeft(cmd)
 	}
 	res := procResult{stdout: out.Bytes(), stderr: errb.Bytes()}
 	switch {
@@ -367,7 +370,7 @@ var stageEnvNames = []string{
 	"PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "TERM", "TZ", "LANG",
 	"LC_ALL", "LC_COLLATE", "LC_CTYPE", "LC_MESSAGES", "LC_MONETARY", "LC_NUMERIC", "LC_TIME",
 	"NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR",
-	"GOROOT", "GOFLAGS", "GOPROXY", "GOPRIVATE", "GONOSUMDB", "GONOPROXY", "GOTOOLCHAIN", "GOMAXPROCS",
+	"GOROOT", "GOFLAGS", "GOPRIVATE", "GONOSUMDB", "GONOPROXY", "GOTOOLCHAIN", "GOMAXPROCS",
 }
 
 // stageProxyNames are carried with any credentials in their URLs taken out.
@@ -381,6 +384,10 @@ func stageEnv(env []string) []string {
 		switch {
 		case slices.Contains(stageProxyNames, k):
 			if clean, ok := proxyWithoutCredentials(v); ok {
+				out = append(out, k+"="+clean)
+			}
+		case k == "GOPROXY":
+			if clean, ok := proxyListWithoutCredentials(v); ok {
 				out = append(out, k+"="+clean)
 			}
 		case slices.Contains(stageEnvNames, k) || slices.Contains(stageEnvExtra, k):
@@ -404,10 +411,32 @@ func proxyWithoutCredentials(v string) (string, bool) {
 	return u.String(), true
 }
 
+// proxyListWithoutCredentials is a Go proxy list, whose entries a comma or a bar
+// separates, with each entry's credentials taken out.
+func proxyListWithoutCredentials(v string) (string, bool) {
+	var b strings.Builder
+	start := 0
+	for i := 0; i <= len(v); i++ {
+		if i < len(v) && v[i] != ',' && v[i] != '|' {
+			continue
+		}
+		clean, ok := proxyWithoutCredentials(v[start:i])
+		if !ok {
+			return "", false
+		}
+		b.WriteString(clean)
+		if i < len(v) {
+			b.WriteByte(v[i])
+		}
+		start = i + 1
+	}
+	return b.String(), true
+}
+
 // stageShellNames are what the harness and the shell itself add to a stage's
 // shell, beside what it carries.
 var stageShellNames = []string{"PWD", "OLDPWD", "SHLVL", "_", "CLAUDECODE", "GIT_EDITOR", "COREPACK_ENABLE_AUTO_PIN",
-	"__CF_USER_TEXT_ENCODING", "GOCACHE", "GOMODCACHE", "GOPATH", abcdhome.PersonHomeEnv}
+	"__CF_USER_TEXT_ENCODING", "GOCACHE", "GOMODCACHE", "GOPATH", "GOBIN", "GOPROXY", abcdhome.PersonHomeEnv}
 
 // stageShellAllowed reports whether a stage's shell may hold the variable name.
 func stageShellAllowed(name string) bool {

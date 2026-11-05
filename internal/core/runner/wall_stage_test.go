@@ -7,8 +7,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 )
@@ -313,5 +316,110 @@ func TestAProofThatCannotBeRecordedIsNotStarted(t *testing.T) {
 	}
 	if f.launched(Claude) {
 		t.Fatal("nothing started")
+	}
+}
+
+// TestEachCheckoutHasAStageHomeOfItsOwn: a second drive elsewhere wipes nothing.
+func TestEachCheckoutHasAStageHomeOfItsOwn(t *testing.T) {
+	p := wallProfile(t)
+	a, b := p.ForCheckout(t.TempDir()), p.ForCheckout(t.TempDir())
+	if a.ShellHome == b.ShellHome || a.EnvFile == b.EnvFile {
+		t.Fatalf("one home for two checkouts: %q", a.ShellHome)
+	}
+	if !slices.Contains(a.Env, "CLAUDE_ENV_FILE="+a.EnvFile) || !slices.Contains(a.Env, StageHomeEnv+"="+a.ShellHome) {
+		t.Fatalf("the launch names this checkout's: %q", a.Env)
+	}
+	if _, err := WriteWallSettings(a, wallBin); err != nil {
+		t.Fatal(err)
+	}
+	mine := filepath.Join(a.ShellHome, "kept")
+	if err := os.WriteFile(mine, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := WriteWallSettings(b, wallBin); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(mine); err != nil {
+		t.Fatalf("the other drive wiped this one's home: %v", err)
+	}
+}
+
+// TestGoInstallsLandUnderTheStagesHome: what a stage installs never shadows a
+// program a later command runs, and a carried proxy list holds no credential.
+func TestGoInstallsLandUnderTheStagesHome(t *testing.T) {
+	p := wallProfile(t)
+	if _, err := WriteWallSettings(p, wallBin); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(p.EnvFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "export GOBIN="+shellQuoted(filepath.Join(p.ShellHome, "bin"))) {
+		t.Fatalf("the shell file:\n%s", raw)
+	}
+	env := stageEnv([]string{"GOPROXY=https://someone:a-value-never-passed@proxy.example.invalid,direct"})
+	if strings.Contains(strings.Join(env, " "), "a-value-never-passed") || !slices.Contains(env, "GOPROXY=https://proxy.example.invalid,direct") {
+		t.Fatalf("carried: %q", env)
+	}
+}
+
+// TestProgramsAreResolvedOnce: what a program name means is fixed at the start, so
+// one placed earlier on PATH later is not what runs.
+func TestProgramsAreResolvedOnce(t *testing.T) {
+	early, late := t.TempDir(), t.TempDir()
+	for _, name := range []string{"git", "make"} {
+		if err := os.WriteFile(filepath.Join(late, name), []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", early+string(os.PathListSeparator)+late)
+	PinPrograms("git", "make", "gh")
+	if err := os.WriteFile(filepath.Join(early, "git"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got, err := exec.LookPath("git")
+	if err != nil || got != filepath.Join(late, "git") {
+		t.Fatalf("git resolves to %q %v", got, err)
+	}
+}
+
+// TestALaunchLeavesNoProcessBehind: whatever came of the harness, nothing it
+// started in its group outlives the launch.
+func TestALaunchLeavesNoProcessBehind(t *testing.T) {
+	f, c, _ := walledFake(t, "leave-child")
+	_, _, _ = c.Run(context.Background(), shellRequest(f))
+	raw, err := os.ReadFile(filepath.Join(f.log, "left.pid"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if errors.Is(syscall.Kill(pid, 0), syscall.ESRCH) {
+			return
+		}
+	}
+	t.Fatalf("process %d outlived the launch", pid)
+}
+
+// TestHookedGitHoldsNoCredential: a hook the driver's git runs gets what a stage
+// carries, and git's own settings stay.
+func TestHookedGitHoldsNoCredential(t *testing.T) {
+	p := wallProfile(t)
+	if _, err := WriteWallSettings(p, wallBin); err != nil {
+		t.Fatal(err)
+	}
+	got := HookedEnv(p)([]string{"PATH=/bin", "GH_TOKEN=a-value-never-passed", "SSH_AUTH_SOCK=a-value-never-passed", "GIT_CONFIG_COUNT=1", "GIT_TERMINAL_PROMPT=0"})
+	if strings.Contains(strings.Join(got, " "), "a-value-never-passed") {
+		t.Fatalf("a credential reached a hook: %q", got)
+	}
+	for _, want := range []string{"PATH=/bin", "GIT_CONFIG_COUNT=1", "GIT_TERMINAL_PROMPT=0", "HOME=" + p.ShellHome} {
+		if !slices.Contains(got, want) {
+			t.Errorf("a hook's environment lacks %q: %q", want, got)
+		}
 	}
 }

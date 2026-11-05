@@ -99,6 +99,14 @@ func fakeHarness(mode string) int {
 	case "sleeper":
 		time.Sleep(60 * time.Second)
 		return 0
+	case "leave-child":
+		// A harness that leaves a process in its group as it exits, one that
+		// does not hold its output.
+		child := exec.Command("/bin/sleep", "60")
+		if child.Start() == nil && logDir != "" {
+			_ = os.WriteFile(filepath.Join(logDir, "left.pid"), []byte(strconv.Itoa(child.Process.Pid)), 0o600)
+		}
+		return 0
 	case "spend-hang":
 		// A run that works, spends, and is killed before its closing event
 		// (iss-2611021751406429): claude's assistant messages carry their
