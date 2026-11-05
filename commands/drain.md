@@ -42,10 +42,15 @@ set in the environment, refuses the start, naming `itd-2611011230226453`.
 Before its first move it shows the cap (eight unless `--max` says otherwise), an
 estimate of the agent runs, the runner and the route, and asks once; `--yes` is
 the scripted answer, and with no terminal nothing else answers. One short live
-launch then proves the walls, naming any that does not hold. Each stage's agent
-holds only the file and shell tools its launch names, carries only the variables
-it needs, reads settings from the walled directory alone, and starts only while those
-settings are what abcd wrote. Its shell has a home of its own in that directory.
+launch then checks the tools, the guard and the shell, naming any wall that does not
+hold. A profile is a separate login and settings on this one account, not a boundary: a
+stage's shell reads what this account can. Each stage's agent holds only the file and
+shell tools its launch names, starts from an allow-list of variables, reads settings
+from the walled directory alone, and starts only while those settings and abcd's binary
+are as they were at the start. Its shell's home is emptied at each launch. A file tool
+writes only in the stage's working tree and run directories, and a lane that changes the
+Makefile or `scripts/` is handed back before its preflight unless the drive was started
+with `--trust-lane-gates`.
 
 It prints one line per step and logs them under `.abcd/.work.local/logs/`. It ends
 at the cap, when nothing is eligible, or after eight hours of runner failures. The
