@@ -271,18 +271,31 @@ reviewer's stock return opens with its analysis. Each return's first line must r
 exactly `Reviewed head: <name>`, naming
 the head by at least its first nine characters (as the build loop's briefs
 abbreviate it), with no other line stating a head, and it must carry one
-`### Verdict` heading and no other line opening as a Verdict, each counted fenced or
-not, whose first line begins with the verdict,
-which ends the line or is followed by the commit's name or a separator
-(`**SHIP** — nothing survived.` states `SHIP`). When every verdict passes the
+`### Verdict` heading and no other line opening a verdict, whatever qualifies it
+(`### Final verdict`, `**Overall verdict:**`), each counted fenced or not. The first
+line under that heading begins with the verdict, which ends the line or is followed by
+the head's name or a separator, and the verdict names the head it judges by its full
+object name, on that line or on a `Head: <full name>` line directly under the
+heading: `**SHIP** <full name> — nothing survived.` states `SHIP` of that head. Ask each
+reviewer in its brief for this too, and give it the name (`git rev-parse HEAD`). When
+every verdict passes the
 stop rule, `SHIP` or `APPROVE` (no critical or major finding), the head's review receipt is written to
 `.abcd/.work.local/review-receipts/<full sha>`, beside the preflight receipts
 and found from any worktree the same way, and `--json` carries the `commit` and
 the `receipt` path. A return whose first line does not state this head, has no verdict or more
-than one Verdict heading, says `FIX FIRST`, `BLOCK` or `NEEDS-INPUT`, or is the
+than one line opening a verdict, whose verdict names no head, another head or this one
+abbreviated, says `FIX FIRST`, `BLOCK` or `NEEDS-INPUT`, or is the
 same text as another return is refused with exit 2, naming the return, and
 nothing is written. The receipt is written only inside the checkout.
 `--record-review` takes no `--no-push` or `--no-enqueue`.
+
+A receipt says which reading of a verdict it was recorded under. One recorded before a
+verdict named its head does not count at the merge gate or as a delta's base, whichever
+build of abcd wrote it: it keeps its returns' digests and not their text, so it cannot be
+read again. Record the pair again. A return written before this rule is refused
+until its verdict names the head, so have the reviewer write it again, or, having read
+it yourself, put the name on its verdict line. In `human` mode no receipt is read, and
+nothing changes.
 
 ## Record a delta review
 

@@ -40,6 +40,11 @@ type Refusal struct {
 	// probe a lane waits on, or, at the stage "outage", the give-up with what
 	// the run had done and what is left (iss-2610080620372731).
 	Outage *OutageInfo `json:"outage,omitempty"`
+	// cutShort marks a validator's return refused because its launch reports it
+	// stopped short (runner.Sides.StoppedShort). The verifier reads only the bytes,
+	// and a later hand-in brings no report, so the return is set aside as the role
+	// pauses.
+	cutShort bool
 	// unjudged is each peer a start's peers check could not read, copied from
 	// its row: the drain stops its move on them rather than passing the issue
 	// over as contended.

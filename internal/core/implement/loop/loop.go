@@ -1172,6 +1172,14 @@ func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *ru
 	return handIn(repoRoot, runID, receipt, steps, o, route, false)
 }
 
+// judgesWork reports whether a role's return states a verdict the loop records: a
+// reviewer's or the auditor's. An implementer's receipt claims commits, which its
+// verifier holds to the branch.
+func judgesWork(role string) bool {
+	_, reviewer := reviewerVerdicts[role]
+	return reviewer || role == RoleAuditor
+}
+
 // handIn is receipt; stood says a step found the receipt where it stood
 // (receipt_standing.go) rather than an agent's hand-in naming it, which the
 // record says, with the digest of the bytes it took. A later hand-in at that
@@ -1223,6 +1231,13 @@ func handIn(repoRoot, runID, receipt string, steps Stages, o Options, route *run
 			}
 			took = answerDigest(data)
 			c.standingReceipt = data
+		}
+		if route != nil && route.StoppedShort() && judgesWork(await.Role) {
+			rf := refuse("receipt", "", lane.ID,
+				fmt.Sprintf("the %s's launch reports it stopped for %s, so its return at %s may be cut off and counts as no verdict", await.Role, route.FinishReason, await.Receipt),
+				"start a fresh "+await.Role+" with the brief "+await.Brief+"; its return fits within what its model may write")
+			rf.cutShort = true
+			return false, rf
 		}
 		if err := def.Verify(c, &lane, await.Receipt); err != nil {
 			if _, ok := AsRefusal(err); ok {

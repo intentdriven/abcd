@@ -250,7 +250,7 @@ func RecordDeltaReview(repoRoot, head, base string, returns []ReviewReturn) (str
 			return "", fmt.Errorf("%s already has a full review pair's receipt, which a delta would only weaken", short(head))
 		}
 	}
-	entries, err := judgeReturns(returns, func(text string) error { return statesDelta(text, base, head) })
+	entries, err := judgeReturns(returns, head, func(text string) error { return statesDelta(text, base, head) })
 	if err != nil {
 		return "", err
 	}
@@ -329,6 +329,8 @@ func hasFullPair(repoRoot, base string) error {
 		return fmt.Errorf("%s that can be read: %w", none, first.err)
 	case first.rec.Delta != nil:
 		return fmt.Errorf("%s: its receipt rests on %s, and a delta rests on a full pair directly", none, short(first.rec.Delta.Base))
+	case first.rec.Commit == base && holdsPair(first.rec) && !readUnderThisRule(first.rec):
+		return fmt.Errorf("%s: %s", none, recordAgain)
 	}
 	return fmt.Errorf("%s: its receipt holds no passing pair for it", none)
 }
@@ -376,9 +378,10 @@ func readReviewReceipts(repoRoot, sha string) ([]reviewReceiptRead, error) {
 	return reads, nil
 }
 
-// isFullPair reports whether a receipt is a full pair's for sha.
+// isFullPair reports whether a receipt is a full pair's for sha, read under this
+// rule.
 func isFullPair(rec reviewRecord, sha string) bool {
-	return rec.Delta == nil && rec.Commit == sha && holdsPair(rec)
+	return rec.Delta == nil && rec.Commit == sha && holdsPair(rec) && readUnderThisRule(rec)
 }
 
 // holdsPair reports whether a receipt lists a review pair that passed.
@@ -459,16 +462,22 @@ func receiptProof(repoRoot, head, tip string, r reviewReceiptRead) reviewProof {
 	}
 	rec := r.rec
 	if rec.Delta == nil {
-		if !isFullPair(rec, head) {
-			return reviewProof{unreadable: "the receipt holds no passing pair for " + short(head)}
+		switch {
+		case isFullPair(rec, head):
+			return reviewProof{reviewed: true}
+		case rec.Commit == head && holdsPair(rec):
+			return reviewProof{unreadable: recordAgain}
 		}
-		return reviewProof{reviewed: true}
+		return reviewProof{unreadable: "the receipt holds no passing pair for " + short(head)}
 	}
 	why := func(err error) reviewProof {
 		return reviewProof{deltaWhy: termsafe.Sanitize(fsutil.RedactHome(err.Error())), unread: couldNotJudge(err)}
 	}
 	if rec.Commit != head || !holdsPair(rec) {
 		return why(fmt.Errorf("its receipt holds no passing pair for %s", short(head)))
+	}
+	if !readUnderThisRule(rec) {
+		return why(errors.New(recordAgain))
 	}
 	if !fullSHA.MatchString(rec.Delta.Base) {
 		return why(fmt.Errorf("its receipt names %s as its base, which is not a commit's full object name", clip(rec.Delta.Base)))

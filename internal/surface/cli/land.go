@@ -130,12 +130,16 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			"--record-review records the review pair's verdicts for the branch's head and\n" +
 			"lands nothing: given once per reviewer's return (at least two, no two the\n" +
 			"same), each with a first line reading Reviewed head: <name>, naming the head by at\n" +
-			"least its first nine characters, and one ### Verdict heading and no other line opening as a Verdict, fenced or not, it writes the head's\n" +
-			"review receipt in\n" +
+			"least its first nine characters, and one ### Verdict heading and no other line opening a verdict, qualified or not, fenced or not,\n" +
+			"where the first line under the heading opens with the verdict and names the head by\n" +
+			"its full object name (**SHIP** <full name>, or a Head: <full name> line directly\n" +
+			"under the heading), it writes the head's review receipt in\n" +
 			".abcd/.work.local/review-receipts/ when every verdict passes the stop rule\n" +
 			"(SHIP or APPROVE: no critical or major finding). A return that does not pass is\n" +
 			"refused naming it, exit 2, and nothing is written. It takes no --no-push or\n" +
-			"--no-enqueue.\n\n" +
+			"--no-enqueue. A receipt recorded before a verdict named its head does not count at\n" +
+			"the merge gate or as a delta's base: its returns are not kept, so it cannot be read\n" +
+			"again, and the head records its pair again.\n\n" +
 			"--rests-on <base> makes that a delta review, of a wording fix after a full pair: the\n" +
 			"head's receipt rests on the full pair recorded for <base>, a\n" +
 			"full object name, and each return's first line reads exactly Reviewed delta:\n" +

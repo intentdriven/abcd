@@ -177,7 +177,7 @@ func TestLandTakesAtMostOneBranch(t *testing.T) {
 // writeReturn lays one review return naming head and stating verdict.
 func writeReturn(t *testing.T, path, head, verdict string) {
 	t.Helper()
-	if err := os.WriteFile(path, []byte("Reviewed head: "+head[:9]+"\n\n# return\n\n### Verdict\n\n"+verdict+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("Reviewed head: "+head[:9]+"\n\n# return\n\n### Verdict\n\nHead: "+head+"\n"+verdict+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -269,7 +269,7 @@ func TestLandRecordsADeltaReviewRestingOnAFullPair(t *testing.T) {
 	head := strings.TrimSpace(gitCmd(t, dir, "rev-parse", "HEAD"))
 	delta := func(path, verdict string) {
 		t.Helper()
-		body := "Reviewed delta: " + base + ".." + head + "\n\n" + filepath.Base(path) + " found nothing.\n\n### Verdict\n\n" + verdict + "\n"
+		body := "Reviewed delta: " + base + ".." + head + "\n\n" + filepath.Base(path) + " found nothing.\n\n### Verdict\n\nHead: " + head + "\n" + verdict + "\n"
 		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}

@@ -646,11 +646,8 @@ func writePlanReviewBrief(c Context, lane Lane, r PlanReview) error {
 	p("unattended plan has nobody to answer it, so it hands the draft back to the person.\n\n")
 	p("## What you hand back\n\n")
 	p("Write your whole return to:\n\n`%s`\n\n", abs(c.RepoRoot, r.Return))
-	words := make([]string, 0, len(reviewerVerdicts[r.Role]))
-	for _, w := range reviewerVerdicts[r.Role] {
-		words = append(words, w.word)
-	}
-	p("It ends with one `### Verdict` section stating exactly one of: %s. The loop reads that\n", strings.Join(words, ", "))
+	p("%s\n", oneVerdictLine)
+	p("%s The loop reads that\n", namesTheHeadLine(reviewerVerdicts[r.Role], ap.Digest))
 	p("section and records the verdict itself; a verdict written anywhere else is nobody's.\n")
 	return writeRoundFile(c.RepoRoot, r.Brief, b.Bytes())
 }
@@ -672,10 +669,10 @@ func verifyPlanReview(c Context, lane *Lane, receiptRel string) error {
 	if err != nil {
 		return err
 	}
-	got, err := parseVerdict(string(raw), reviewerVerdicts[ap.Reviews[k].Role])
+	got, err := parseVerdict(string(raw), reviewerVerdicts[ap.Reviews[k].Role], ap.Digest)
 	if err != nil {
 		return refuse("receipt", "", lane.ID, "the return at "+ap.Reviews[k].Return+" states no verdict the loop can read: "+err.Error(),
-			"end the return with one `### Verdict` section whose first line states the verdict, then hand it back")
+			"end the return with one `### Verdict` section whose first line opens with the verdict and names the draft's digest, `"+ap.Digest+"`, then hand it back")
 	}
 	ap.Reviews[k].Verdict, ap.Reviews[k].Pass = got.word, got.pass
 	lane.AutoPlan = &ap

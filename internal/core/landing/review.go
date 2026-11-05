@@ -30,7 +30,7 @@ const minReviewers = 2
 
 // ReviewReturn is one reviewer's return: the name it is recorded under and its
 // text, which states what it read and states its verdict under one
-// `### Verdict` heading.
+// `### Verdict` heading, naming the head it judges.
 type ReviewReturn struct {
 	Name string
 	Text string
@@ -48,95 +48,235 @@ var knownVerdicts = []string{"NEEDS-INPUT", "FIX FIRST", "APPROVE", "BLOCK", "SH
 var fullSHA = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
 
 // verdictEnd is what may follow a verdict word on its line, once the emphasis closing
-// the word is off: a commit's name, and then the end of the line or a separator.
-// Anything else makes the word the start of another statement.
-var verdictEnd = regexp.MustCompile(`^(?:[ \t]+[0-9a-f]{7,64})?[*_]*[ \t]*(?:$|[\x{2014}\x{2013}(]|[:;,.](?:[ \t]|$)|-{1,2}[ \t])`)
+// the word is off: what it judges by name, and then the end of the line or a
+// separator. Anything else makes the word the start of another statement.
+var verdictEnd = regexp.MustCompile("^(?:[ \\t]+[*_`]*(?:sha256:)?[0-9a-f]{7,64}[*_`]*)?[*_`]*[ \\t]*(?:$|[\\x{2014}\\x{2013}(]|[:;,.](?:[ \\t]|$)|-{1,2}[ \\t])")
 
-// verdictHeading is a return's Verdict heading at the start of a line, at any
-// depth, as the implement loop reads one; text indented as code, or a heading
-// with more after it, is not one.
-var verdictHeading = regexp.MustCompile(`(?im)^[ \t]{0,3}#{1,6}[ \t]+verdict[ \t]*#*[ \t]*$`)
+// verdictHeading is the one Verdict heading a return's verdict is read under, at any
+// depth, starting its line. A line indented or quoted, or a heading with more after
+// it, is not it.
+var verdictHeading = regexp.MustCompile(`(?i)^#{1,6}[ \t]+verdict[ \t]*#*[ \t]*$`)
 
-// reviewedCommitPrefix is how much of the commit's name a return must carry:
-// the nine characters the build loop's briefs abbreviate a head to.
+// reviewedCommitPrefix is how much of the commit's name a return's first line must
+// carry: the nine characters the build loop's briefs abbreviate a head to.
 const reviewedCommitPrefix = 9
 
-// reviewVerdict reads the verdict a return states, by the implement loop's rule: the
-// return has exactly one line opening as a Verdict (OneVerdictLine), counted wherever
-// it stands, fenced or not; that line is the exact Verdict heading; and the first
-// non-blank line under it begins with a verdict word (list marker and
-// emphasis stripped, its words joined by a space, a hyphen or an underscore, in
-// capitals) that ends the line or is followed by a separator (VerdictEnds). A return
-// with no Verdict heading, more than one, or a first line beginning with no verdict
-// word is an error.
-func reviewVerdict(text string) (string, error) {
-	if err := OneVerdictLine(text); err != nil {
+// lineBreaks are the ways a return's text can end a line. A verdict is read line by
+// line, so each ends one.
+var lineBreaks = strings.NewReplacer("\r\n", "\n", "\r", "\n", "\f", "\n", "\v", "\n", "\u0085", "\n", "\u2028", "\n", "\u2029", "\n")
+
+// ReadVerdict reads the verdict a return states of subject, the full name of what it
+// judges: the head of a commit, or a draft's digest. It is the one rule every reader
+// of a reviewer's return asks, and it holds a return to this:
+//
+//   - exactly one line opens a verdict (verdictLines), counted wherever it stands,
+//     fenced or not, and that line is the exact Verdict heading;
+//   - the first non-blank line under it begins with a verdict word (list marker and
+//     emphasis stripped, its words joined by a space, a hyphen or an underscore, in
+//     capitals) that ends the line or is followed by a separator;
+//   - subject is named in full, on that line or on a `Head: <name>` line directly
+//     under the heading, and no other name stands on either.
+//
+// subject is named in full because a head's name is a hash over the text it reviews,
+// which therefore cannot hold it, and only the full name is. It returns the word as
+// knownVerdicts spells it, and an error for anything short of the above.
+func ReadVerdict(text, subject string) (string, error) {
+	lines := strings.Split(lineBreaks.Replace(text), "\n")
+	heading, err := oneVerdictHeading(lines)
+	if err != nil {
 		return "", err
 	}
-	heads := verdictHeading.FindAllStringIndex(text, -1)
-	switch len(heads) {
-	case 0:
-		return "", errors.New("it has no ### Verdict section")
-	case 1:
-	default:
-		return "", fmt.Errorf("it has %d Verdict sections; one states the verdict", len(heads))
-	}
-	line := ""
-	for _, ln := range strings.Split(text[heads[0][1]:], "\n") {
-		if line = strings.TrimSpace(ln); line != "" {
-			break
+	below := make([]string, 0, 2)
+	for _, ln := range lines[heading+1:] {
+		if t := strings.TrimSpace(ln); t != "" {
+			if below = append(below, t); len(below) == 2 {
+				break
+			}
 		}
 	}
-	if line == "" {
+	if len(below) == 0 {
 		return "", errors.New("its ### Verdict section states no verdict")
 	}
+	named := false
+	line := below[0]
+	if m := verdictNameLine.FindStringSubmatch(line); m != nil {
+		if m[1] != subject {
+			return "", namesOther(m[1], subject)
+		}
+		named = true
+		if len(below) < 2 {
+			return "", errors.New("its ### Verdict section names the head and states no verdict")
+		}
+		line = below[1]
+	}
+	word, rest, ok := verdictWordOf(line)
+	if !ok {
+		return "", fmt.Errorf("its verdict %s is not one a validator writes", clip(line))
+	}
+	abbreviated := false
+	for _, name := range verdictNames.FindAllString(rest, -1) {
+		switch {
+		case name == subject:
+			named = true
+		case strings.HasPrefix(subject, name):
+			abbreviated = true
+		case strings.ContainsAny(name, "0123456789"):
+			return "", namesOther(name, subject)
+		}
+	}
+	switch {
+	case named:
+		return word, nil
+	case abbreviated:
+		return "", fmt.Errorf("its verdict %s abbreviates what it judges; the line names it in full, %s", clip(line), subject)
+	}
+	return "", fmt.Errorf("its verdict %s names no head; the line under the ### Verdict heading opens with the verdict and names what it judges in full, %s", clip(line), subject)
+}
+
+// verdictNames is a name on a verdict line. A run of hex letters with no digit in it
+// is a word unless it is the name itself.
+var verdictNames = regexp.MustCompile(`\b(?:sha256:)?[0-9a-f]{7,64}\b`)
+
+// verdictNameLine is a labelled line naming what a verdict judges and nothing else,
+// directly under the heading and above the verdict.
+var verdictNameLine = regexp.MustCompile("^(?:[-*+][ \\t]+)?[*_`]*(?i:head)[*_`]*:[*_`]*[ \\t]*[*_`]*((?:sha256:)?[0-9a-f]{7,64})[*_`]*$")
+
+// namesOther is the refusal of a verdict naming something other than subject.
+func namesOther(name, subject string) error {
+	if strings.HasPrefix(subject, name) {
+		return fmt.Errorf("its verdict abbreviates what it judges to %s; it names it in full, %s", clip(name), subject)
+	}
+	return fmt.Errorf("its verdict names %s, and this review judges %s", clip(name), subject)
+}
+
+// verdictWordOf reads the verdict word line begins with, and what follows it.
+func verdictWordOf(line string) (word, rest string, ok bool) {
 	t := strings.TrimLeft(strings.TrimLeft(line, "-*+ \t"), "*_`")
 	norm := strings.NewReplacer("-", " ", "_", " ").Replace(t)
 	for _, w := range knownVerdicts {
 		ww := strings.NewReplacer("-", " ").Replace(w)
-		if strings.HasPrefix(norm, ww) && VerdictEnds(t[len(ww):]) {
-			return w, nil
+		if strings.HasPrefix(norm, ww) && verdictEnds(t[len(ww):]) {
+			return w, t[len(ww):], true
 		}
 	}
-	return "", fmt.Errorf("its verdict %s is not one a validator writes", clip(line))
+	return "", "", false
 }
 
-// verdictOpening is any line whose first letter or digit starts the word Verdict, in
-// any case, whatever leads it or follows it.
-var verdictOpening = regexp.MustCompile(`(?mi)^[^\pL\pN\n]*verdict\b.*$`)
-
-// OneVerdictLine reports a return with more than one line opening as a Verdict,
-// naming a line to reword: the first that is not the exact heading. The implement
-// loop's reader and this one both ask it, since only the exact heading is read for a
-// verdict word, and any other such line may state another.
-func OneVerdictLine(text string) error {
-	lines := verdictOpening.FindAllString(text, -1)
-	if len(lines) <= 1 {
-		return nil
-	}
-	line := lines[1]
-	for _, l := range lines {
-		if !verdictHeading.MatchString(l) {
-			line = l
-			break
-		}
-	}
-	return fmt.Errorf("it has %d Verdict sections; one states the verdict, so reword the line %s", len(lines), clip(strings.TrimSpace(line)))
-}
-
-// VerdictEnds reports whether what follows a verdict word on its line leaves it a
-// verdict: the implement loop's reader and this one share the rule.
-func VerdictEnds(rest string) bool {
+// verdictEnds reports whether what follows a verdict word on its line leaves it a
+// verdict.
+func verdictEnds(rest string) bool {
 	return verdictEnd.MatchString(strings.TrimLeft(rest, "*_`"))
 }
 
+// oneVerdictHeading finds the exact Verdict heading in a return's lines, refusing a
+// return with more than one line opening a verdict, naming a line to reword: the
+// first that is not the exact heading.
+func oneVerdictHeading(lines []string) (int, error) {
+	opening := verdictLines(lines)
+	switch len(opening) {
+	case 0:
+		return 0, errors.New("it has no ### Verdict section")
+	case 1:
+		if at := opening[0]; !verdictHeading.MatchString(lines[at]) {
+			return 0, fmt.Errorf("it has no ### Verdict section, and the line %s stands in for one; a verdict is read under the exact heading", clip(strings.TrimSpace(lines[at])))
+		}
+		return opening[0], nil
+	}
+	line := lines[opening[1]]
+	for _, at := range opening {
+		if !verdictHeading.MatchString(lines[at]) {
+			line = lines[at]
+			break
+		}
+	}
+	return 0, fmt.Errorf("it has %d Verdict sections; one states the verdict, so reword the line %s", len(opening), clip(strings.TrimSpace(line)))
+}
+
+// verdictInLine is the word Verdict within a line's first words: what leads the line,
+// the words before it, and what follows it.
+var verdictInLine = regexp.MustCompile(`(?i)^([^\pL\pN]*)((?:[\pL\pN][\pL\pN'\x{2019}_-]*[^\pL\pN]+){0,4}?)verdicts?([^\pL\pN].*)?$`)
+
+// numberedItem is a numbered list marker, which is no word of the line it leads.
+var numberedItem = regexp.MustCompile(`^([^\pL\pN]*)[0-9]+[.)][ \t]+`)
+
+// lineLead is what leads a line and says nothing of it: a quote or a list marker.
+var lineLead = regexp.MustCompile(`^[ \t>]*(?:[-*+][ \t]+)?`)
+
+// setextUnderline is the line that makes the one above it a heading.
+var setextUnderline = regexp.MustCompile(`^[ \t]*(?:=+|-{2,})[ \t]*$`)
+
+// verdictStatement is what follows the word Verdict in a plain line, once its
+// emphasis is off, that makes the line state one: a separator, or a verdict word,
+// directly or after is. A bracketed note may stand before either.
+var verdictStatement = regexp.MustCompile("^(?:\\([^)]*\\)[ \\t]*)?(?:[:=|\\x{2014}\\x{2013}]|-{1,2}[ \\t]|(?:(?:is|was|remains|stands)[ \\t:]+[*_`]*)?(?:SHIP|APPROVE|BLOCK|FIX[ _-]FIRST|NEEDS[ _-]INPUT)\\b)")
+
+// verdictQualifier is a word that, before Verdict alone on a line, makes the line name
+// one rather than end a sentence.
+var verdictQualifier = regexp.MustCompile(`(?i)^(?:final|overall|my|our|the|last|review|reviewer'?s?|reviewers'?|security|ruthless|code|actual|formal)\b`)
+
+// verdictLines is the index of every line opening a verdict, in the shapes a reviewer
+// writes one. A line that begins with the word does, whatever follows it. With words
+// before it (`Final`, `My`, `The overall`), a heading and an emphasised line do, and a
+// plain line does when it goes on to state one (verdictStatement) or ends there after
+// a qualifier: the word in a sentence opens nothing.
+func verdictLines(lines []string) []int {
+	var at []int
+	for i, line := range lines {
+		next := ""
+		if i+1 < len(lines) {
+			next = lines[i+1]
+		}
+		if opensVerdict(line, next) {
+			at = append(at, i)
+		}
+	}
+	return at
+}
+
+func opensVerdict(line, next string) bool {
+	m := verdictInLine.FindStringSubmatch(numberedItem.ReplaceAllString(line, "$1"))
+	if m == nil {
+		return false
+	}
+	lead, qualifiers, rest := m[1], m[2], m[3]
+	if qualifiers == "" {
+		return true
+	}
+	if strings.ContainsAny(lineLead.ReplaceAllString(lead, ""), "#*_") || setextUnderline.MatchString(next) {
+		return true
+	}
+	rest = strings.TrimLeft(rest, "*_` \t")
+	if rest == "" {
+		return verdictQualifier.MatchString(qualifiers)
+	}
+	return verdictStatement.MatchString(rest)
+}
+
+// verdictRule is the reading of a verdict a receipt records itself under: 2 holds a
+// return's verdict to naming the head it judges (ReadVerdict), and a receipt with no
+// rule was read before it did. A receipt keeps its returns' digests and not their
+// text, so its verdicts cannot be read again: the merge gate and a delta's base count
+// only a receipt of this rule, whichever build of abcd wrote the file, and the head
+// records its pair again. A receipt binds one head, in one machine's local tier, so
+// that costs only the heads in flight as this rule arrives.
+const verdictRule = 2
+
 // reviewRecord is the receipt's content.
 type reviewRecord struct {
-	Commit     string              `json:"commit"`
-	RecordedAt string              `json:"recorded_at"`
-	Reviews    []reviewRecordEntry `json:"reviews"`
-	Delta      *deltaRecord        `json:"delta,omitempty"`
+	Commit      string              `json:"commit"`
+	VerdictRule int                 `json:"verdict_rule"`
+	RecordedAt  string              `json:"recorded_at"`
+	Reviews     []reviewRecordEntry `json:"reviews"`
+	Delta       *deltaRecord        `json:"delta,omitempty"`
 }
+
+// readUnderThisRule reports whether a receipt's verdicts were read as ReadVerdict
+// reads one.
+func readUnderThisRule(rec reviewRecord) bool { return rec.VerdictRule == verdictRule }
+
+// recordAgain is what the gate and a delta say of a receipt read under an earlier
+// rule.
+const recordAgain = "its receipt was recorded before a verdict named the head it judges, so record the pair again (abcd land --record-review), each return's verdict naming the head"
 
 type reviewRecordEntry struct {
 	Name    string `json:"name"`
@@ -147,15 +287,16 @@ type reviewRecordEntry struct {
 // RecordReview writes the review receipt for the commit sha in the local tier
 // of the checkout at repoRoot, once the review pair's returns pass the stop
 // rule: at least two returns, no two the same text, each stating the commit on
-// its first line (statesHead) and each stating a passing verdict. Anything
-// short of that is refused, naming the return, and nothing is written. sha
-// must be the full object name of a commit the repository holds. A return that
-// states a delta is refused: it is a delta's (RecordDeltaReview).
+// its first line (statesHead) and each stating a passing verdict that names the
+// commit (ReadVerdict). Anything short of that is refused, naming the return, and
+// nothing is written. sha must be the full object name of a commit the repository
+// holds. A return that states a delta is refused: it is a delta's
+// (RecordDeltaReview).
 func RecordReview(repoRoot, sha string, returns []ReviewReturn) (string, error) {
 	if err := holdsCommit(repoRoot, sha); err != nil {
 		return "", err
 	}
-	entries, err := judgeReturns(returns, func(text string) error { return statesFullPair(text, sha) })
+	entries, err := judgeReturns(returns, sha, func(text string) error { return statesFullPair(text, sha) })
 	if err != nil {
 		return "", err
 	}
@@ -174,10 +315,10 @@ func holdsCommit(repoRoot, sha string) error {
 	return nil
 }
 
-// judgeReturns applies the stop rule to a review pair's returns and gives each
-// one's entry in the receipt. states is the rule binding a return to what it
+// judgeReturns applies the stop rule to a review pair's returns on head and gives
+// each one's entry in the receipt. states is the rule binding a return to what it
 // read; its refusal names the return.
-func judgeReturns(returns []ReviewReturn, states func(text string) error) ([]reviewRecordEntry, error) {
+func judgeReturns(returns []ReviewReturn, head string, states func(text string) error) ([]reviewRecordEntry, error) {
 	if len(returns) < minReviewers {
 		return nil, fmt.Errorf("a review receipt needs the review pair's returns, at least two; %d given", len(returns))
 	}
@@ -191,7 +332,7 @@ func judgeReturns(returns []ReviewReturn, states func(text string) error) ([]rev
 		if err := states(r.Text); err != nil {
 			return nil, fmt.Errorf("the return %s: %v", name, err)
 		}
-		v, err := reviewVerdict(r.Text)
+		v, err := ReadVerdict(r.Text, head)
 		if err != nil {
 			return nil, fmt.Errorf("the return %s: %v", name, err)
 		}
@@ -210,7 +351,7 @@ func judgeReturns(returns []ReviewReturn, states func(text string) error) ([]rev
 }
 
 func newReviewRecord(sha string, entries []reviewRecordEntry, delta *deltaRecord) reviewRecord {
-	return reviewRecord{Commit: sha, RecordedAt: time.Now().UTC().Format(time.RFC3339), Reviews: entries, Delta: delta}
+	return reviewRecord{Commit: sha, VerdictRule: verdictRule, RecordedAt: time.Now().UTC().Format(time.RFC3339), Reviews: entries, Delta: delta}
 }
 
 // writeReviewRecord writes the receipt in the checkout's local tier.

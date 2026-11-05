@@ -537,7 +537,7 @@ func TestARunnerRunReviewerIsHandedItsClassModel(t *testing.T) {
 			if err != nil || res.Awaiting == nil || res.Awaiting.Model != model || !strings.Contains(res.Next, model) {
 				t.Fatalf("the host is handed the review with its class's model: %+v %v", res, err)
 			}
-			if err := os.WriteFile(filepath.Join(repo.Root(), returnRel), []byte("Reviewed head: "+strings.Repeat("a", 40)+"\n\n"+reviewReturn), 0o600); err != nil {
+			if err := os.WriteFile(filepath.Join(repo.Root(), returnRel), []byte("Reviewed head: "+strings.Repeat("a", 40)+"\n\n"+namingHead(reviewReturn, strings.Repeat("a", 40))), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := Receipt(repo.Root(), start.RunID, returnRel, steps, o); err != nil {

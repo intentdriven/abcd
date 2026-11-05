@@ -25,9 +25,9 @@ func reviewRepo(t *testing.T) (*gittest.Repo, string) {
 }
 
 // reviewReturn is one reviewer's return naming the commit it read and ending
-// in the verdict section the loop's validators write.
+// in the verdict section the loop's validators write, which names the commit too.
 func reviewReturn(sha, verdict string) string {
-	return "Reviewed head: " + sha[:9] + "\n\n# return\n\n## Findings\n\nNone.\n\n### Verdict\n\n" + verdict + "\n"
+	return "Reviewed head: " + sha[:9] + "\n\n# return\n\n## Findings\n\nNone.\n\n### Verdict\n\nHead: " + sha + "\n" + verdict + "\n"
 }
 
 func TestAPassingReviewPairRecordsAReceiptFoundFromAnyWorktree(t *testing.T) {
@@ -139,9 +139,9 @@ func TestAReviewThatDoesNotPassRecordsNothing(t *testing.T) {
 // a mention of a commit anywhere else says nothing about what it read.
 func TestAReturnNamesItsHeadOnItsFirstLine(t *testing.T) {
 	const other = "0123456789abcdef0123456789abcdef01234567"
-	const body = "\n\n## Findings\n\nNone.\n\n### Verdict\n\nSHIP\n"
 	line := func(name string) string { return "Reviewed head: " + name }
 	repo, sha := reviewRepo(t)
+	body := "\n\n## Findings\n\nNone.\n\n### Verdict\n\nSHIP " + sha + "\n"
 	for name, text := range map[string]string{
 		"another head, this one mentioned": line(other[:9]) + "\n\nThis follows " + sha[:9] + "." + body,
 		"a mention and no line":            "# return\n\nThis follows " + sha[:9] + "." + body,
@@ -201,7 +201,7 @@ func TestAVerdictWordFollowedByASeparatorPasses(t *testing.T) {
 	for _, line := range []string{
 		"SHIP", "**SHIP**", "- **APPROVE**", "SHIP \u2014 nothing survived.", "**APPROVE** \u2014 nothing survived.", "SHIP: nothing survived.",
 		"APPROVE. Nothing survived.", "SHIP, nothing survived.", "SHIP (nothing survived)", "SHIP - nothing survived", "SHIP \u2013 nothing",
-		"APPROVE 9f0c4e7bb \u2014 one file added", "SHIP fe8693cdc", "`SHIP`",
+		"APPROVE " + sha[:9] + " \u2014 one file added", "SHIP " + sha[:9], "`SHIP`",
 	} {
 		if _, err := RecordReview(repo.Root(), sha, []ReviewReturn{
 			{Name: "a.md", Text: reviewReturn(sha, line)},

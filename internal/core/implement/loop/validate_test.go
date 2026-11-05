@@ -163,7 +163,7 @@ func statingHeadAt(t *testing.T, root, runID, rel, body string) string {
 		for _, r := range l.Validation {
 			for _, v := range r.Validators {
 				if rel != "" && v.Return == rel {
-					return "Reviewed head: " + r.HeadSHA + "\n\n" + body
+					return "Reviewed head: " + r.HeadSHA + "\n\n" + namingHead(body, r.HeadSHA)
 				}
 			}
 		}
@@ -173,7 +173,14 @@ func statingHeadAt(t *testing.T, root, runID, rel, body string) string {
 		return body
 	}
 	v := st.Lanes[i].Validation
-	return "Reviewed head: " + v[len(v)-1].HeadSHA + "\n\n" + body
+	head := v[len(v)-1].HeadSHA
+	return "Reviewed head: " + head + "\n\n" + namingHead(body, head)
+}
+
+// namingHead is a return with its Verdict section naming head, directly under the
+// heading, as a reviewer's brief asks.
+func namingHead(body, head string) string {
+	return strings.Replace(body, "### Verdict\n\n", "### Verdict\n\nHead: "+head+"\n", 1)
 }
 
 // handBackOne takes the validate stage's next hand-out, checks it names role,
@@ -250,7 +257,7 @@ func TestTheValidatorsAreFreshAgentsAndOnlyTheLoopRecordsAVerdict(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"fresh", "did not implement", l.BaseSHA + ".." + l.HeadSHA, l.Branch, "### Verdict", "first line reads exactly `Reviewed head: " + l.HeadSHA + "`", "A return has one `### Verdict` section and no other line opening with the word Verdict.", "SHIP", "FIX FIRST",
+	for _, want := range []string{"fresh", "did not implement", l.BaseSHA + ".." + l.HeadSHA, l.Branch, "### Verdict", "first line reads exactly `Reviewed head: " + l.HeadSHA + "`", oneVerdictLine, "which is `" + l.HeadSHA + "`", "SHIP", "FIX FIRST",
 		filepath.Join(repo.Root(), filepath.FromSlash(res.Awaiting.Receipt))} {
 		if !strings.Contains(string(brief), want) {
 			t.Fatalf("the reviewer's brief names %q:\n%s", want, brief)
@@ -484,7 +491,12 @@ func TestAReportCarryingAVerdictIsRefusedAtTheAdvance(t *testing.T) {
 // a word that opens another statement is no verdict.
 func TestAVerdictWordEndsItsLineOrMeetsASeparator(t *testing.T) {
 	words := reviewerVerdicts[RoleSecurity]
-	for _, line := range []string{"APPROVE", "**APPROVE**", "- **APPROVE**", "`APPROVE`", "APPROVE \u2014 nothing survived.", "**APPROVE** \u2014 nothing survived.", "APPROVE: nothing survived.", "APPROVE. Nothing survived.", "APPROVE (nothing survived)", "APPROVE - nothing", "APPROVE 9f0c4e7bb \u2014 one file"} {
+	head := "9f0c4e7bb" + strings.Repeat("a", 31)
+	leadingVerdict := func(line string, words []verdictWord) (verdictWord, bool) {
+		w, err := parseVerdict("### Verdict\n\nHead: "+head+"\n"+line+"\n", words, head)
+		return w, err == nil
+	}
+	for _, line := range []string{"APPROVE", "**APPROVE**", "- **APPROVE**", "`APPROVE`", "APPROVE \u2014 nothing survived.", "**APPROVE** \u2014 nothing survived.", "APPROVE: nothing survived.", "APPROVE. Nothing survived.", "APPROVE (nothing survived)", "APPROVE - nothing", "APPROVE " + head + " \u2014 one file"} {
 		if w, ok := leadingVerdict(line, words); !ok || w.word != "APPROVE" {
 			t.Errorf("leadingVerdict(%q) = %+v, %v; want APPROVE", line, w, ok)
 		}
@@ -511,18 +523,18 @@ func TestEveryVerdictShapedLineCounts(t *testing.T) {
 		"only a heading with its verdict":                "### Verdict: APPROVE\n",
 		"only a bold verdict":                            "**Verdict:** APPROVE\n",
 	} {
-		if w, err := parseVerdict(text, words); err == nil {
+		if w, err := parseVerdict(text, words, strings.Repeat("a", 40)); err == nil {
 			t.Errorf("%s: parseVerdict = %+v; want a refusal", name, w)
 		}
 	}
-	if w, err := parseVerdict("### Analysis\n\nThe verdict is plain, and **a verdict** in a sentence is none.\n\n### Verdict\n\nAPPROVE\n", words); err != nil || w.word != "APPROVE" {
+	if w, err := parseVerdict("### Analysis\n\nThe verdict is plain, and **a verdict** in a sentence is none.\n\n### Verdict\n\nAPPROVE "+strings.Repeat("a", 40)+"\n", words, strings.Repeat("a", 40)); err != nil || w.word != "APPROVE" {
 		t.Errorf("a return with one heading: %+v, %v", w, err)
 	}
 }
 
 // A report states no verdict at all, so its check reads more widely than a return's.
 func TestAReportsVerdictReadsWiderThanAReturns(t *testing.T) {
-	for _, text := range []string{"### Verdict\n\nSHIP BLOCKER\n", "### Verdict\n\nAPPROVE/BLOCK\n"} {
+	for _, text := range []string{"### Verdict\n\nSHIP BLOCKER\n", "### Verdict\n\nAPPROVE/BLOCK\n", "### Verdict\n\nHead: " + strings.Repeat("a", 40) + "\nSHIP\n"} {
 		if _, ok := reportVerdict(text); !ok {
 			t.Errorf("reportVerdict(%q) found none", text)
 		}
@@ -538,7 +550,7 @@ func TestAReturnTheLoopCannotReadAVerdictFromIsRefused(t *testing.T) {
 		"no verdict":         {RoleRuthless, "### Analysis\n\nLooks fine.\n", "Verdict"},
 		"two verdicts":       {RoleRuthless, reviewerReturn("SHIP") + "\n### Verdict\n\n- **FIX FIRST**\n", "Verdict"},
 		"another role's":     {RoleRuthless, reviewerReturn("APPROVE"), "SHIP"},
-		"no word":            {RoleSecurity, "### Verdict\n\nLGTM\n", "APPROVE"},
+		"no word":            {RoleSecurity, "### Verdict\n\nLGTM\n", "LGTM"},
 		"more words":         {RoleRuthless, reviewerReturn("SHIP BLOCKER"), "SHIP"},
 		"a slash":            {RoleSecurity, "### Verdict\n\nAPPROVE/BLOCK\n", "APPROVE"},
 		"a foreign hash":     {RoleAuditor, "", "prompt_hash"},
@@ -569,6 +581,9 @@ func TestAReturnTheLoopCannotReadAVerdictFromIsRefused(t *testing.T) {
 				body = regexp.MustCompile(`"prompt_hash":"sha256:[0-9a-f]{64}"`).ReplaceAllString(
 					auditorVerdict(t, filepath.Join(filepath.Dir(path), AuditRequestFileName), "MET"),
 					`"prompt_hash":"sha256:`+strings.Repeat("0", 64)+`"`)
+			}
+			if tc.role != RoleAuditor {
+				body = statingHead(t, repo.Root(), id, body)
 			}
 			if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 				t.Fatal(err)
