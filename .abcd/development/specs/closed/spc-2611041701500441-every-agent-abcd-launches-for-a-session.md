@@ -42,22 +42,27 @@ Delivers the record and the rollup of itd-2611031342011261: one entry per launch
    - packages: internal/core/runner
    - tests: an entry written before the launch runs and completed after, one file holding one line, the placeholder for a host-handed role, a launch refused when the entry cannot be written, a kept answer when the completion cannot
    - needs: none
+   - landed: 7a02f0236
 2. MUST: every dispatched launch is recorded, with its process, route, model, tokens, cost and times
    - packages: internal/core/runner, internal/core/implement/loop, internal/core/interview
    - tests: the dispatcher over a fake harness for a finished, failed, killed and host-handed launch, the subscription, key and unknown routes, the run-state schema unchanged
    - needs: 1
+   - landed: 7c21e2642
 3. MUST: an entry names the session that asked for it
    - packages: internal/core/sessionname, internal/core/runner
    - tests: the exported session id with its persona name, a host found above the process, and the run id when neither answers
    - needs: 1
+   - landed: aa57aaffc
 4. MUST: retention never drops an entry inside the longest cap period
    - packages: internal/core/runner
    - tests: the oldest whole files pruned past days and past count, nothing pruned inside 32 days whatever is set, a setting below the floor read as the floor and named
    - needs: 1
+   - landed: fb6305133
 5. MUST: `abcd agents` lists and totals the launches
    - packages: internal/core/runner, internal/surface/cli, internal/core/surface, commands, docs/reference/cli, .abcd/development/release, .abcd/development/release-gate, .abcd/development/brief/04-surfaces, .abcd/rules.json
    - tests: the verb bare, with --run, --session and --all, in text and --json; money summed for keys alone; an unreadable and a newer entry named; running against lost judged on the process; two launches for one await named
    - needs: 1, 2
+   - landed: 981d898ae
 6. AFTER: the status line's row, its cached read and its explanation, with the token basis as a setting
    - packages: internal/core/statusline, internal/surface/cli
    - tests: the row from the ledger alone, within the status command's deadline, cached for the configured interval
