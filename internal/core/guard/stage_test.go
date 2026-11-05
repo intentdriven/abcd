@@ -204,3 +204,52 @@ func TestAConfiguredHooksPathIsProtectedFromAStage(t *testing.T) {
 		t.Error("a file tool wrote the configured hooks")
 	}
 }
+
+// TestAStageDoesNotWriteWhatArmsAMerge: at any depth of its tree, so a folder the
+// repository later lists as a worktree of its own is no way round.
+func TestAStageDoesNotWriteWhatArmsAMerge(t *testing.T) {
+	tree := t.TempDir()
+	for _, rel := range []string{
+		".abcd/.work.local/approvals/abc",
+		".abcd/.work.local/review-receipts/abc",
+		".abcd/.work.local/preflight-receipts/abc",
+		"nested/.abcd/.work.local/approvals/abc",
+		"nested/deeper/.abcd/.work.local/review-receipts/abc",
+	} {
+		if StageWriteRefusal([]string{tree}, nil, filepath.Join(tree, rel)) == "" {
+			t.Errorf("a stage may write %s", rel)
+		}
+	}
+	for _, rel := range []string{".abcd/.work.local/scratch/abc", "internal/approvals/abc", "nested/review-receipts/abc"} {
+		if why := StageWriteRefusal([]string{tree}, nil, filepath.Join(tree, rel)); why != "" {
+			t.Errorf("%s is refused: %s", rel, why)
+		}
+	}
+}
+
+// TestAStageDoesNotLand: the loop lands; a stage's shell does not, and every other
+// verb stays open to it.
+func TestAStageDoesNotLand(t *testing.T) {
+	home := t.TempDir()
+	stage := NewFiles(t.TempDir()).WithStage(filepath.Join(home, "stage"), nil, nil)
+	for _, line := range []string{
+		`abcd land`,
+		`abcd land --record-review return.md`,
+		`abcd land --approve 12`,
+		`abcd --json land`,
+		`scripts/abcd.sh land --record-review return.md`,
+		`true && abcd land`,
+	} {
+		if a := approveShell(clean(), stage, line); a.Allow {
+			t.Errorf("a stage may run %q", line)
+		}
+	}
+	for _, line := range []string{`abcd rules land`, `abcd capture "land the thing"`, `abcd implement load --wait --narrow -- go test ./x`, `abcd peers`} {
+		if a := approveShell(clean(), stage, line); !a.Allow {
+			t.Errorf("%q is refused: %s", line, a.Reason)
+		}
+	}
+	if a := approveShell(clean(), NewFiles(t.TempDir()), `abcd land`); !a.Allow {
+		t.Errorf("outside a stage the verb is the person's: %s", a.Reason)
+	}
+}
