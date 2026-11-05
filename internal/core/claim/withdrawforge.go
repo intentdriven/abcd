@@ -36,7 +36,7 @@ const (
 	ArmedPullRequestsQuery = `query($o:String!,$r:String!,$b:String!,$c:String){repository(owner:$o,name:$r){pullRequests(states:OPEN,baseRefName:$b,first:100,after:$c){pageInfo{hasNextPage endCursor} nodes{number id headRefOid headRefName isCrossRepository isInMergeQueue autoMergeRequest{mergeMethod}}}}}`
 	// PullRequestQuery reads one pull request's way to the merge, for a
 	// re-arm to judge it by.
-	PullRequestQuery = `query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){number id state headRefOid isInMergeQueue autoMergeRequest{mergeMethod}}}}`
+	PullRequestQuery = `query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){number id state headRefOid isInMergeQueue mergeQueueEntry{enqueuer{login}} autoMergeRequest{mergeMethod enabledBy{login}}}}}`
 
 	DisableAutoMergeMutation = `mutation($id:ID!){disablePullRequestAutoMerge(input:{pullRequestId:$id}){clientMutationId}}`
 	DequeueMutation          = `mutation($id:ID!){dequeuePullRequest(input:{id:$id}){clientMutationId}}`
@@ -75,6 +75,24 @@ type mergeForge struct {
 	// reservation branch, asked by its full ref (withdrawpush.go): what a
 	// re-arm and the launch check's exemption are held to.
 	pushers PusherLookup
+	// armGate is the merge gate (ArmGate): every arming of a withdrawn merge
+	// is held to it. nil arms nothing.
+	armGate ArmGate
+}
+
+// ArmGate says whether the merge gate arms pull request pr of repo
+// ("owner/name") at head, and why not; an error is a gate that could not
+// answer. It is the landing package's, which this one cannot import.
+type ArmGate func(root, repo, pr, head string) (arm bool, why string, err error)
+
+// wiredArmGate is the gate SetArmGate registered.
+var wiredArmGate ArmGate
+
+// SetArmGate registers the merge gate every path to a re-arm is held to, and
+// returns the one it replaces.
+func SetArmGate(g ArmGate) (prev ArmGate) {
+	prev, wiredArmGate = wiredArmGate, g
+	return prev
 }
 
 // PRCommenter posts one comment on the pull request whose node id is
@@ -95,7 +113,13 @@ var releaseForge = productionForge()
 // productionForge is the forge as abcd runs it: gh for every call.
 func productionForge() mergeForge {
 	return mergeForge{repo: originRepo, graphql: ghGraphQL, login: ghLogin, pushers: reservationPushers,
-		comments: ghCommenter{graphql: ghGraphQL}}
+		comments: ghCommenter{graphql: ghGraphQL},
+		armGate: func(root, repo, pr, head string) (bool, string, error) {
+			if wiredArmGate == nil {
+				return false, "", errors.New("no merge gate is wired in this binary")
+			}
+			return wiredArmGate(root, repo, pr, head)
+		}}
 }
 
 // ghLogin is the login the session's gh token answers the user endpoint
@@ -111,7 +135,7 @@ func ghLogin(root string) (string, error) {
 func SetMergeForgeForTest(repo func(root string) (string, string, error),
 	graphql func(root, doc string, vars map[string]string, ints map[string]int) ([]byte, error)) (restore func()) {
 	prev := releaseForge
-	releaseForge = mergeForge{repo: repo, graphql: graphql, login: prev.login, pushers: prev.pushers}
+	releaseForge = mergeForge{repo: repo, graphql: graphql, login: prev.login, pushers: prev.pushers, armGate: prev.armGate}
 	return func() { releaseForge = prev }
 }
 
@@ -246,10 +270,16 @@ func forgeTransient(msg string) bool {
 }
 
 // armError is a re-arm the forge did not take: why, and whether the forge
-// refused it (forgeRefused), which alone counts toward maxRearmRefusals.
+// refused it (forgeRefused), which alone counts toward maxRearmRefusals, or the
+// merge gate held it back (gated) with nothing sent to the forge, unread saying
+// the gate could not answer rather than that it refused.
 type armError struct {
 	reason  string
 	refused bool
+	gated   bool
+	unread  bool
+	// standsArmed says the forge reports the pull request armed or queued.
+	standsArmed bool
 }
 
 func (e *armError) Error() string { return e.reason }
@@ -281,12 +311,34 @@ type prNode struct {
 	HeadRefName       string `json:"headRefName"`
 	IsCrossRepository bool   `json:"isCrossRepository"`
 	IsInMergeQueue    bool   `json:"isInMergeQueue"`
-	AutoMergeRequest  *struct {
-		MergeMethod string `json:"mergeMethod"`
+	MergeQueueEntry   *struct {
+		Enqueuer *prActor `json:"enqueuer"`
+	} `json:"mergeQueueEntry"`
+	AutoMergeRequest *struct {
+		MergeMethod string   `json:"mergeMethod"`
+		EnabledBy   *prActor `json:"enabledBy"`
 	} `json:"autoMergeRequest"`
 }
 
+// prActor is an account as PullRequestQuery reads it.
+type prActor struct {
+	Login string `json:"login"`
+}
+
 func (n prNode) armed() bool { return n.IsInMergeQueue || n.AutoMergeRequest != nil }
+
+// armedBy reports whether the forge says login made every arming on it, as
+// `abcd land` reads one. One it attributes to no one counts as another account's.
+func (n prNode) armedBy(login string) bool {
+	by := func(who *prActor) bool { return login != "" && who != nil && strings.EqualFold(who.Login, login) }
+	if n.AutoMergeRequest != nil && !by(n.AutoMergeRequest.EnabledBy) {
+		return false
+	}
+	if n.IsInMergeQueue && (n.MergeQueueEntry == nil || !by(n.MergeQueueEntry.Enqueuer)) {
+		return false
+	}
+	return true
+}
 
 // armedPullRequests lists every open pull request into base on owner/name
 // that is armed or queued. A page the forge answers wrongly, a node that is
@@ -406,11 +458,10 @@ func (f mergeForge) rearm(root, owner, name string, w Withdrawal) (string, error
 // The forge's node id for the number must be the one recorded: every
 // mutation names the pull request by node id, and node ids are global, so a
 // record pairing one pull request's number with another's id (in this
-// repository or any other) is never acted on (mismatch). An admitted one
-// found armed or queued counts as done whatever its head: the forge keeps an
-// arming across pushes to the head, so its owner's push during the cut left
-// it armed, and nothing is left for its owner to re-arm. A withdrawn one whose
-// head moved is its owner's to re-arm (dcn-2610222219297487).
+// repository or any other) is never acted on (mismatch). One found armed or
+// queued counts as done where the merge gate arms the head it stands at. One whose
+// head moved, past a head the gate refuses if it is armed, is its owner's to re-arm
+// (dcn-2610222219297487).
 func (f mergeForge) inspect(root, owner, name string, w Withdrawal) (string, error) {
 	n, err := f.pullRequest(root, owner, name, w.Number)
 	if err != nil {
@@ -423,14 +474,59 @@ func (f mergeForge) inspect(root, owner, name string, w Withdrawal) (string, err
 		return WithdrawnMerged, nil
 	case n.State == "CLOSED":
 		return WithdrawnClosed, nil
-	case w.State == WithdrawnAdmitted && n.armed():
-		return WithdrawnFoundArmed, nil
-	case n.HeadRefOid != w.Head:
+	case n.HeadRefOid != w.Head && !n.armed():
 		return WithdrawnMoved, nil
-	case n.armed():
-		return WithdrawnFoundArmed, nil
+	case !n.armed():
+		return "", nil
 	}
-	return "", nil
+	// Found armed counts as done only at a head the merge gate arms. Past a head it
+	// refuses, it is its owner's (settleMoved); any other refusal goes the way of an
+	// arming the gate holds, and the pull request stands armed under it.
+	if err := f.gateHeadAt(root, w.Number, n.HeadRefOid); err != nil {
+		var ae *armError
+		if errors.As(err, &ae) {
+			ae.standsArmed = true
+			if n.HeadRefOid != w.Head && !ae.unread {
+				return WithdrawnMoved, nil
+			}
+		}
+		return "", err
+	}
+	return WithdrawnFoundArmed, nil
+}
+
+// settleMoved is what a re-arm does with a withdrawal inspect settled as moved, so
+// that what it records is true. Not armed, it is moved. Armed at a head
+// the gate refuses by this account (the holder's own --admit, usually), the arming
+// comes off and is read back before it is moved. Armed by another account, it is
+// left, and is standing; at names the head it stands at.
+func (f mergeForge) settleMoved(root, owner, name string, w Withdrawal) (state, at string, err error) {
+	n, err := f.pullRequest(root, owner, name, w.Number)
+	if err != nil {
+		return "", "", fmt.Errorf("abcd could not read whether it is armed, to settle its moved head: %s", forgeReason(err))
+	}
+	if !n.armed() {
+		return WithdrawnMoved, "", nil
+	}
+	login, err := f.login(root)
+	if err != nil {
+		return "", "", &armError{reason: "whose arming it stands under cannot be read: " + forgeReason(err), standsArmed: true}
+	}
+	if !n.armedBy(login) {
+		return WithdrawnStanding, n.HeadRefOid, nil
+	}
+	pr := ArmedPR{Number: n.Number, ID: n.ID, Head: n.HeadRefOid, Queued: n.IsInMergeQueue, AutoMerge: n.AutoMergeRequest != nil}
+	if _, _, err := f.withdraw(root, pr, w.By); err != nil {
+		return "", "", &armError{reason: fmt.Sprintf("its arming at %s could not be withdrawn: %s", n.HeadRefOid[:12], err.Error()), standsArmed: true}
+	}
+	back, err := f.pullRequest(root, owner, name, w.Number)
+	if err != nil {
+		return "", "", fmt.Errorf("its arming at %s was withdrawn and could not be read back: %s", n.HeadRefOid[:12], forgeReason(err))
+	}
+	if back.armed() {
+		return "", "", &armError{reason: fmt.Sprintf("its arming at %s was withdrawn, but the forge still reports it armed or queued", n.HeadRefOid[:12]), standsArmed: true}
+	}
+	return WithdrawnMoved, "", nil
 }
 
 // cleanStatus is the forge's refusal of an arming when the pull request can
@@ -438,11 +534,15 @@ func (f mergeForge) inspect(root, owner, name string, w Withdrawal) (string, err
 // has nothing to wait for.
 const cleanStatus = "clean status"
 
-// arm sends w's re-arm, pinned to its head. A refusal for clean status
-// settles it as needing a manual merge (dcn-2610230328230096): abcd never
-// merges it outright, and never tries the arming again. Any other failure is
-// an *armError saying whether the forge refused it.
+// arm sends w's re-arm, pinned to its head, once the merge gate arms that head
+// (gateHead). A refusal for clean status settles it as needing a manual merge
+// (dcn-2610230328230096): abcd never merges it outright, and never tries the
+// arming again. Any other failure is an *armError saying whether the forge
+// refused it.
 func (f mergeForge) arm(root string, w Withdrawal) (string, error) {
+	if err := f.gateHead(root, w); err != nil {
+		return "", err
+	}
 	var serr error
 	if w.Form == FormQueue {
 		serr = f.send(root, EnqueueMutation, map[string]string{"id": w.ID, "h": w.Head}, nil, nil)
@@ -456,6 +556,50 @@ func (f mergeForge) arm(root string, w Withdrawal) (string, error) {
 		return "", &armError{reason: forgeReason(serr), refused: forgeRefused(serr)}
 	}
 	return WithdrawnRearmed, nil
+}
+
+// gateHead holds an arming to the merge gate: the head w records was armed once
+// and may have no review receipt here, so it is asked of the gate every time.
+// Its refusal is a *armError marked gated: nothing went to the forge, nothing is
+// settled, and a later act asks again, so a receipt recorded since arms it.
+func (f mergeForge) gateHead(root string, w Withdrawal) error {
+	return f.gateHeadAt(root, w.Number, w.Head)
+}
+
+// gateHeadAt is gateHead for the head a pull request stands at.
+func (f mergeForge) gateHeadAt(root string, number int, head string) error {
+	unread := func(why string) error { return &armError{reason: why, gated: true, unread: true} }
+	if f.armGate == nil {
+		return unread("no merge gate is wired in this binary, so its head " + head[:12] + " is not armed")
+	}
+	owner, name, err := f.repo(root)
+	if err != nil {
+		return unread("the merge gate cannot be asked about its head " + head[:12] + ": " + err.Error())
+	}
+	arm, why, err := f.armGate(root, owner+"/"+name, strconv.Itoa(number), head)
+	switch {
+	case err != nil:
+		return unread("the merge gate cannot be asked about its head " + head[:12] + ": " + err.Error())
+	case !arm:
+		return &armError{reason: "the merge gate does not arm its head " + head[:12] + ": " + why, gated: true}
+	}
+	return nil
+}
+
+// armedHead is the head a standing withdrawal's sentences name, as twelve
+// characters, "" when this act did not read it (a line read from a tombstone).
+func (w Withdrawal) armedHead() string {
+	if len(w.ArmedAt) < 12 {
+		return ""
+	}
+	return w.ArmedAt[:12]
+}
+
+// heldBody is the one fixed sentence on a pull request whose re-arm the merge gate
+// holds. Every value in it is validated data, as commentBody's are.
+func heldBody(subject string, w Withdrawal) string {
+	return fmt.Sprintf("abcd release hold: the merge of #%d stays withdrawn after release %s: no review or approval in this checkout names its head %s. abcd land from a checkout holding the review re-arms it.",
+		w.Number, strings.TrimPrefix(subject, releasePrefix), w.Head[:12])
 }
 
 // commentBody is the one fixed sentence the writer posts on w's pull request
@@ -478,13 +622,19 @@ func commentBody(subject string, w Withdrawal, by string, lapsed bool) string {
 	}
 	switch w.State {
 	case WithdrawnPending:
-		return fmt.Sprintf("abcd release hold: the merge of #%d is withdrawn by %s while release %s is cut, and is re-armed after it.", w.Number, by, tag)
+		return fmt.Sprintf("abcd release hold: the merge of #%d is withdrawn by %s while release %s is cut, and is re-armed after it where the merge gate arms its head.", w.Number, by, tag)
 	case WithdrawnAdmitted:
 		return fmt.Sprintf("abcd release hold: the merge of #%d is admitted into release %s by %s.", w.Number, tag, by)
 	case WithdrawnRearmed:
 		return fmt.Sprintf("abcd release hold: the merge of #%d is re-armed; %s.", w.Number, ended)
 	case WithdrawnFoundArmed:
 		return fmt.Sprintf("abcd release hold: the merge of #%d is armed; %s.", w.Number, ended)
+	case WithdrawnStanding:
+		at := "a head"
+		if h := w.armedHead(); h != "" {
+			at = h
+		}
+		return fmt.Sprintf("abcd release hold: the merge of #%d stays armed at %s, which the merge gate in this checkout does not arm; %s. To withdraw it: gh pr merge %d --disable-auto, and take it out of the merge queue on its page if it is queued.", w.Number, at, ended, w.Number)
 	}
 	clause, ok := map[string]string{
 		WithdrawnMoved:   "Its head changed while it was held, so its owner needs to re-arm it.",
@@ -531,8 +681,15 @@ func (f mergeForge) comment(root, subject string, w Withdrawal, by string, lapse
 // by pull request and reason; it never holds up or undoes the act the
 // comment reports. nil when it was posted as sent, or no writer is set.
 func (f mergeForge) postComment(root string, w Withdrawal, body string) *ForgeFailure {
+	_, ff := f.postCommentOnce(root, w, body)
+	return ff
+}
+
+// postCommentOnce is postComment, also saying whether the forge took the comment,
+// which a failure to read it back does not undo.
+func (f mergeForge) postCommentOnce(root string, w Withdrawal, body string) (taken bool, _ *ForgeFailure) {
 	if f.comments == nil {
-		return nil
+		return false, nil
 	}
 	fail := func(reason string) *ForgeFailure {
 		return &ForgeFailure{Number: w.Number, Act: ForgeComment, Reason: reason}
@@ -541,9 +698,9 @@ func (f mergeForge) postComment(root string, w Withdrawal, body string) *ForgeFa
 	findings, err := scanner.CheckOutbound(root, body, commentFamily.name)
 	switch {
 	case len(findings) > 0:
-		return fail(what + " was not posted: it carries " + findings[0].Kind + ", which public text may not carry")
+		return false, fail(what + " was not posted: it carries " + findings[0].Kind + ", which public text may not carry")
 	case err != nil:
-		return fail(what + " was not posted: it could not be judged against the outbound policy (" + redacted(err) + ")")
+		return false, fail(what + " was not posted: it could not be judged against the outbound policy (" + redacted(err) + ")")
 	}
 	posted, read, err := f.comments.Comment(root, w.ID, body)
 	switch {
@@ -552,14 +709,14 @@ func (f mergeForge) postComment(root string, w Withdrawal, body string) *ForgeFa
 		if err != nil {
 			reason = forgeReason(err)
 		}
-		return fail(what + " was not posted: " + reason)
+		return false, fail(what + " was not posted: " + reason)
 	case err != nil:
-		return fail(what + " was posted, but could not be read back from the forge to check it (" + forgeReason(err) + "); read it on the pull request")
+		return true, fail(what + " was posted, but could not be read back from the forge to check it (" + forgeReason(err) + "); read it on the pull request")
 	case read != body:
-		return fail(fmt.Sprintf("%s was posted, but the forge reads it back as %d bytes that are not the %d abcd sent: something changed it after it was posted "+
+		return true, fail(fmt.Sprintf("%s was posted, but the forge reads it back as %d bytes that are not the %d abcd sent: something changed it after it was posted "+
 			"(a footer appended, say); abcd does not edit it, so read it on the pull request and correct it there", what, len(read), len(body)))
 	}
-	return nil
+	return true, nil
 }
 
 // commentWord is a state as a comment's failure names it.
@@ -573,6 +730,8 @@ func commentWord(state string) string {
 		return "re-armed"
 	case WithdrawnFoundArmed:
 		return "armed"
+	case WithdrawnStanding:
+		return "still armed"
 	}
 	return "not re-armed (" + state + ")"
 }

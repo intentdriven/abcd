@@ -53,6 +53,9 @@ type Refusal struct {
 	// outage is the lost connection a stage met, which the call records in
 	// the shared run once the tier lock is released.
 	outage *outageReport
+	// modeUnread marks a merge gate whose facilitator.mode could not be read: for
+	// an armed lane's watch that is a wait, the arming left as it is.
+	modeUnread bool
 	// originUnread marks a land fence that could not read the reservation
 	// from origin: a wait by design, never logged on a drain's lane
 	// (stuck.go).

@@ -185,23 +185,23 @@ func readAuthor(forge ForgeCall, repo, n string) (login, role, why string) {
 // maintainer (readRole). An earlier commit's approval counts for nothing, and
 // so does an approval a later review of the same reviewer superseded. "" with
 // why when none counts.
-func countedApproval(forge ForgeCall, repoRoot, repo, n, head, author string) (by, why string) {
+func countedApproval(forge ForgeCall, repoRoot, repo, n, head, author string) (by, why string, unread bool) {
 	switch p, err := approvalRecord(repoRoot, head); {
 	case err != nil:
-		why = "the technical facilitator's recorded approval cannot be read (" + forgeWhy(err) + "); "
+		why, unread = "the technical facilitator's recorded approval cannot be read ("+forgeWhy(err)+"); ", true
 	case p != "":
-		return "the technical facilitator's recorded approval (abcd land --approve)", ""
+		return "the technical facilitator's recorded approval (abcd land --approve)", "", false
 	}
 	out, err := forge(reviewsArgs(repo, n)...)
 	if err != nil {
-		return "", why + "the forge could not be asked for pull request #" + n + "'s reviews: " + forgeWhy(err)
+		return "", why + "the forge could not be asked for pull request #" + n + "'s reviews: " + forgeWhy(err), true
 	}
 	var reviews []reviewAnswer
 	if json.Unmarshal([]byte(out), &reviews) != nil {
-		return "", why + "the forge's answer listing pull request #" + n + "'s reviews does not parse"
+		return "", why + "the forge's answer listing pull request #" + n + "'s reviews does not parse", true
 	}
 	if len(reviews) >= maxReviews {
-		return "", why + fmt.Sprintf("pull request #%s has %d reviews or more, a later one may sit beyond the page read, so none counts", n, maxReviews)
+		return "", why + fmt.Sprintf("pull request #%s has %d reviews or more, a later one may sit beyond the page read, so none counts", n, maxReviews), true
 	}
 	// The latest submitted review of each reviewer, in the order they first
 	// reviewed. A pending review is the reviewer's own draft, not a review.
@@ -232,14 +232,15 @@ func countedApproval(forge ForgeCall, repoRoot, repo, n, head, author string) (b
 		}
 		role, rwhy := readRole(forge, repo, r.User.Login)
 		if role == RoleMaintainer {
-			return r.User.Login + "'s approving review (" + rwhy + ")", ""
+			return r.User.Login + "'s approving review (" + rwhy + ")", "", false
 		}
+		unread = unread || role == RoleUnverified
 		notes = append(notes, r.User.Login+"'s approval is not by someone with write access ("+rwhy+")")
 	}
 	if len(notes) == 0 {
-		return "", why + "no review approves " + short(head)
+		return "", why + "no review approves " + short(head), unread
 	}
-	return "", why + "no approval of " + short(head) + " counts: " + strings.Join(notes, "; ")
+	return "", why + "no approval of " + short(head) + " counts: " + strings.Join(notes, "; "), unread
 }
 
 // approvalRecord finds the technical facilitator's recorded approval of sha in
@@ -302,8 +303,9 @@ type gateFacts struct {
 	// (readRole).
 	author, role, roleWhy string
 	// approvedBy names the approval of head that counts, "" for none, and
-	// approvalWhy why none does.
+	// approvalWhy why none does; approvalUnread says a read it rests on failed.
 	approvedBy, approvalWhy string
+	approvalUnread          bool
 	// reviewed is whether a review receipt names head, and reviewWhy why
 	// the receipts could not be read, "" when they were.
 	reviewed  bool
@@ -383,6 +385,10 @@ type MergeDecision struct {
 	Arm    bool
 	Method string
 	Why    string
+	// Unread marks a decision not to arm that rests on an answer the gate could
+	// not read: a forge read that failed, or receipts it could not list. It is
+	// no refusal of the head, so nothing is withdrawn on it.
+	Unread bool
 }
 
 // ErrModeUnreadable wraps a facilitator.mode the gate could not read, whose
@@ -401,7 +407,7 @@ func DecideMerge(q MergeQuery) (MergeDecision, error) {
 	f := gateFacts{mode: mode, rule: q.Rule, def: q.Default, head: q.Head}
 	f.author, f.role, f.roleWhy = readAuthor(q.Forge, q.Repo, q.PR)
 	if f.role == RoleContributor || (f.role == RoleMaintainer && mode.Mode != ModeAuto) {
-		f.approvedBy, f.approvalWhy = countedApproval(q.Forge, q.RepoRoot, q.Repo, q.PR, q.Head, f.author)
+		f.approvedBy, f.approvalWhy, f.approvalUnread = countedApproval(q.Forge, q.RepoRoot, q.Repo, q.PR, q.Head, f.author)
 	}
 	if mode.Mode == ModeAuto {
 		p, err := reviewReceipt(q.RepoRoot, q.Head)
@@ -411,5 +417,6 @@ func DecideMerge(q MergeQuery) (MergeDecision, error) {
 		}
 	}
 	d := mergeGate(f)
-	return MergeDecision{Arm: d.arm, Method: d.method, Why: d.why}, nil
+	return MergeDecision{Arm: d.arm, Method: d.method, Why: d.why,
+		Unread: !d.arm && (f.role == RoleUnverified || f.reviewWhy != "" || f.approvalUnread)}, nil
 }

@@ -11,10 +11,17 @@ package loop
 // branch a merge queue gates reads the pull request's place in the queue:
 //
 //   - in the queue: the ordinary wait, naming its place;
-//   - armed, CLEAN and outside the queue: the landing's fence is asked, as
-//     at the arming, and the pull request is queued, pinned to the pushed
-//     head; when the forge refuses that, auto-merge is toggled once its
-//     arming is past requeueGrace, and otherwise the wait says when;
+//   - at a head other than the one pushed, armed or queued, with origin's branch
+//     moved too: the arming is withdrawn and refused for a person. A reading
+//     origin does not bear out is a wait, the arming left as it is;
+//   - armed, CLEAN and outside the queue: the landing's fence and the merge
+//     gate are asked, as at the arming, and the pull request is queued, pinned
+//     to the pushed head; when the forge refuses that, auto-merge is toggled
+//     once its arming is past requeueGrace, at most maxToggles times at one head,
+//     and otherwise the wait says when.
+//     A head the gate refuses has its arming withdrawn and is left open, for
+//     the gate to be asked again on the next step; a gate it could not read is a
+//     wait, the arming left as it is;
 //   - neither armed nor queued nor merged: a terminal state. It is refused
 //     for a person, naming the forge's reason for the removal and the checks
 //     that failed on the pull request's last merge group, never re-queued
@@ -76,6 +83,10 @@ func checkRunsPath(sha string) string {
 // 15-minute pickup on #1018), which a toggle would only churn. It is
 // `abcd land`'s own grace (landing's toggleGrace), counted from the arming.
 const requeueGrace = 30 * time.Minute
+
+// maxToggles bounds how many times the watch toggles one lane's arming at one
+// pushed head: an enqueue the forge goes on refusing is not asked for without end.
+const maxToggles = 3
 
 // The bounds on forge text a refusal or a note carries.
 const (
@@ -210,15 +221,13 @@ func watchQueue(c Context, lane *Lane, def string, rule landing.MergeRule) (*Out
 		// Merged or closed since the state was read: the next step's read
 		// of its state settles it.
 		return nil, "", nil
+	case v.HeadRefOid != "" && v.HeadRefOid != ld.Pushed:
+		if wait := unconfirmedMove(c, *lane, v); wait != "" {
+			return nil, wait, nil
+		}
+		return nil, "", movedHeadRefusal(c, *lane, v)
 	case v.queued():
 		return nil, "; it is in " + def + "'s merge queue" + entryText(v), nil
-	case v.HeadRefOid != "" && v.HeadRefOid != ld.Pushed:
-		r := refuse(string(StageLand), "", lane.ID,
-			fmt.Sprintf("pull request #%s's head on the forge is %s, not %s, the head the loop pushed and armed, and it is not in the merge queue, so the loop neither queues nor re-arms it",
-				n, shortSHA(bounded(v.HeadRefOid, 40)), shortSHA(ld.Pushed)),
-			"settle who moved the pull request's head (nothing is pushed to a lane after its arming), then merge it yourself or close it")
-		r.outOfQueue = true
-		return nil, "", r
 	case v.AutoMergeRequest == nil:
 		return nil, "", droppedRefusal(c, *lane, def, rule, v)
 	case v.MergeStateStatus != "CLEAN":
@@ -231,6 +240,36 @@ func watchQueue(c Context, lane *Lane, def string, rule landing.MergeRule) (*Out
 	// asked again: the reservation still this person's, no release held.
 	if _, _, err := fence(c, *lane, fenceLease, fenceQueue); err != nil {
 		return nil, "", err
+	}
+	// So is the merge gate: a queue entry and a toggle both make the arming
+	// again, and neither is made at a head the gate would not arm now.
+	d, err := askMergeGate(c, *lane, def, rule)
+	if r, ok := AsRefusal(err); ok && r.modeUnread {
+		return nil, "; it is armed and CLEAN outside the merge queue, and facilitator.mode could not be read at " + Remote + "/" + def + ", so its arming is left as it is and the loop neither queues nor toggles it", nil
+	}
+	if err != nil {
+		return nil, "", err
+	}
+	if d.Unread {
+		return nil, "; it is armed and CLEAN outside the merge queue, and the merge gate could not be read (" + d.Why + "), so its arming is left as it is and the loop neither queues nor toggles it", nil
+	}
+	if !d.Arm {
+		if _, err := forge(c, *lane, "pr", "merge", n, "--disable-auto"); err != nil {
+			return nil, "", err
+		}
+		// The forge took the withdrawal, so a read-back that fails leaves it
+		// unconfirmed, not undone: the lane is recorded left open, and the next
+		// step asks the gate again rather than read it as dropped from the queue.
+		still, err := landing.StillArmed(gateForge(c, *lane), lane.Branch, lane.PR)
+		if err == nil && still {
+			return nil, "", stillArmedRefusal(*lane, StageLand)
+		}
+		note := "the loop withdrew pull request #" + n + "'s arming and neither queues nor toggles it: " + d.Why + "; the loop asks again on each step"
+		if err != nil {
+			note += "; it could not read the withdrawal back (" + forgeWhy(err) + ")"
+		}
+		ld.Merge, ld.Armed = "left open: "+d.Why, false
+		return &Outcome{Stay: true, Note: note}, "", nil
 	}
 	why, err := enqueue(c, *lane, v.ID)
 	if err != nil {
@@ -249,7 +288,100 @@ func watchQueue(c Context, lane *Lane, def string, rule landing.MergeRule) (*Out
 		return nil, "; it is armed and CLEAN outside the merge queue, and the forge refused to queue it (" + why +
 			"); the forge may still queue it by itself, and the loop toggles its auto-merge " + after, nil
 	}
+	if ld.Toggles >= maxToggles {
+		return nil, fmt.Sprintf("; it is armed and CLEAN outside the merge queue, and the forge refused to queue it (%s); the loop toggled its auto-merge %d times at this head and no longer toggles it, so the forge queues it by itself or a person settles it", why, ld.Toggles), nil
+	}
 	return toggleArming(c, lane, def, rule, why)
+}
+
+// watchAutoMerge is the same watch where no queue gates the default branch: the
+// forge's auto-merge is the arming, and a head moved under it is withdrawn and
+// refused. It returns the clause the wait adds; a reading that fails adds none.
+func watchAutoMerge(c Context, lane Lane) (string, error) {
+	v, unread, err := readQueue(c, lane)
+	switch {
+	case err != nil:
+		return "", err
+	case unread != "", v.State != "" && v.State != "OPEN", v.HeadRefOid == "", v.HeadRefOid == lane.Landing.Pushed:
+		return "", nil
+	}
+	if wait := unconfirmedMove(c, lane, v); wait != "" {
+		return wait, nil
+	}
+	return "", movedHeadRefusal(c, lane, v)
+}
+
+// unconfirmedMove is the clause for an arming whose head the forge reads as moved
+// and origin does not bear out: its branch still at the pushed head, gone, or
+// out of reach. The forge's reading can lag, so nothing comes off for it. "" when
+// there is no arming, or origin's branch has moved.
+func unconfirmedMove(c Context, lane Lane, v queueView) string {
+	if v.AutoMergeRequest == nil && !v.queued() {
+		return ""
+	}
+	tip, err := landing.RemoteTip(gitutil.Net, c.RepoRoot, lane.Branch)
+	if err == nil && tip != "" && tip != lane.Landing.Pushed {
+		return ""
+	}
+	return fmt.Sprintf("; the forge reads its head as %s, and %s does not show that move, so its arming is left as it is", shortSHA(bounded(v.HeadRefOid, 40)), Remote)
+}
+
+// movedHeadRefusal is the refusal of a pull request whose head on the forge is
+// not the one the loop pushed: nothing is pushed to a lane after its arming, so
+// someone else moved it, and any arming still on it is withdrawn first. A
+// withdrawal the network refuses waits on the shared probe, as every forge call
+// of the landing does.
+func movedHeadRefusal(c Context, lane Lane, v queueView) error {
+	ld := lane.Landing
+	n := strconv.Itoa(lane.PR)
+	head := fmt.Sprintf("pull request #%s's head on the forge is %s, not %s, the head the loop pushed and armed", n, shortSHA(bounded(v.HeadRefOid, 40)), shortSHA(ld.Pushed))
+	settle := "settle who moved the pull request's head (nothing is pushed to a lane after its arming), then merge it yourself or close it"
+	reason := head + ", and it is not in the merge queue, so the loop neither queues nor re-arms it"
+	if v.AutoMergeRequest != nil || v.queued() {
+		if err := landing.WithdrawArming(gateForge(c, lane), n, v.ID, v.AutoMergeRequest != nil, v.queued()); err != nil {
+			if r := netFailure(StageLand, lane.ID, "gh pr merge", err); r != nil {
+				return r
+			}
+			r := refuse(string(StageLand), "", lane.ID, head+", and the loop could not withdraw its arming: "+forgeWhy(err),
+				"withdraw it yourself (`gh pr merge "+n+" --disable-auto`, and take it out of the merge queue on its page), then "+settle)
+			r.outOfQueue = true
+			return r
+		}
+		if err := confirmWithdrawn(c, lane, StageLand); err != nil {
+			return err
+		}
+		reason = head + ", so the loop withdrew its arming and neither queues nor re-arms it"
+	}
+	r := refuse(string(StageLand), "", lane.ID, reason, settle)
+	r.outOfQueue = true
+	return r
+}
+
+// confirmWithdrawn reads back a withdrawal, as land does: the lane records nothing
+// withdrawn until the forge stops reporting the arming. A read the network refuses
+// waits on the shared probe.
+func confirmWithdrawn(c Context, lane Lane, stage Stage) error {
+	n := strconv.Itoa(lane.PR)
+	still, err := landing.StillArmed(gateForge(c, lane), lane.Branch, lane.PR)
+	if err != nil {
+		if r := netFailure(stage, lane.ID, "gh api graphql", err); r != nil {
+			return r
+		}
+		return refuse(string(stage), "", lane.ID, "the loop withdrew pull request #"+n+"'s arming and could not read it back: "+forgeWhy(err),
+			"check it (`gh pr view "+n+"`), then run `abcd implement step` again")
+	}
+	if still {
+		return stillArmedRefusal(lane, stage)
+	}
+	return nil
+}
+
+// stillArmedRefusal is the refusal of a withdrawal the forge took and goes on
+// reporting armed or queued.
+func stillArmedRefusal(lane Lane, stage Stage) error {
+	n := strconv.Itoa(lane.PR)
+	return refuse(string(stage), "", lane.ID, "the loop withdrew pull request #"+n+"'s arming, but the forge still reports it armed or queued",
+		"check it (`gh pr view "+n+"`), then run `abcd implement step` again")
 }
 
 // entryText is the queue entry's state and place, as a clause.
@@ -327,8 +459,9 @@ func toggleArming(c Context, lane *Lane, def string, rule landing.MergeRule, why
 		r.outOfQueue = true
 		return nil, "", r
 	}
-	return &Outcome{Stay: true, Note: fmt.Sprintf("pull request #%s sat armed and CLEAN outside %s's merge queue past the %d-minute grace, and the forge refused to queue it (%s), so the loop toggled its auto-merge once, re-armed by %s pinned to %s",
-		n, def, int(requeueGrace/time.Minute), why, strings.TrimPrefix(method, "--"), shortSHA(ld.Pushed))}, "", nil
+	ld.Toggles++
+	return &Outcome{Stay: true, Note: fmt.Sprintf("pull request #%s sat armed and CLEAN outside %s's merge queue past the %d-minute grace, and the forge refused to queue it (%s), so the loop toggled its auto-merge, toggle %d of %d, re-armed by %s pinned to %s",
+		n, def, int(requeueGrace/time.Minute), why, ld.Toggles, maxToggles, strings.TrimPrefix(method, "--"), shortSHA(ld.Pushed))}, "", nil
 }
 
 // rearmArgs is the forge client's command that arms pull request n again by

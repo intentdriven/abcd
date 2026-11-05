@@ -1,0 +1,6 @@
+---
+id: dcn-2611050959161600
+slug: the-release-hold-s-posted-sentences
+date: 2026-11-05
+---
+2026-11-05 — The release hold's posted sentences change in three places, amending dcn-2610230833367984, whose other sentences stand. In place of its withdrawn sentence: "abcd release hold: the merge of #1234 is withdrawn by octo while release v0.16.0 is cut, and is re-armed after it where the merge gate arms its head." New, where the merge gate holds a re-arm: "abcd release hold: the merge of #1234 stays withdrawn after release v0.16.0: no review or approval in this checkout names its head 0123456789ab. abcd land from a checkout holding the review re-arms it." New, where a withdrawn or admitted pull request stands armed by another account at a head the merge gate does not arm (state standing): "abcd release hold: the merge of #1234 stays armed at 0123456789ab, which the merge gate in this checkout does not arm; the hold for release v0.16.0 has ended. To withdraw it: gh pr merge 1234 --disable-auto, and take it out of the merge queue on its page if it is queued." Each carries validated fields only, as the others do. An older binary reads a tip carrying standing as unreadable, which holds merges for it for up to 2 hours where the release is untagged (the reservation's lease), so that hold is this record's cost and not a fault to chase.
