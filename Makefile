@@ -457,7 +457,7 @@ preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift
 	@echo "preflight: a records-only change, so the unit and race stages are skipped and precheck's tests run in their place; CI's unit lane still runs every test"
 	go build ./...
 	go vet ./...
-	go test -timeout 20m ./internal/core/lint ./internal/core/launch/scaffold ./internal/core/mdrecord ./internal/core/issueschema ./internal/core/guard ./internal/core/glossary ./internal/core/reading ./internal/core/recordid ./internal/core/changelog ./internal/core/intent ./internal/core/release ./internal/core/releasedigest ./internal/core/decisions ./internal/core/record/match ./internal/core/lifeboat
+	go test -timeout 20m ./internal/core/lint ./internal/core/launch/scaffold ./internal/core/mdrecord ./internal/core/issueschema ./internal/core/guard ./internal/core/glossary ./internal/core/reading ./internal/core/recordid ./internal/core/changelog ./internal/core/intent ./internal/core/release ./internal/core/releasedigest ./internal/core/decisions ./internal/core/record/match ./internal/core/lifeboat ./internal/reachaudit
 	go test -timeout 20m -run '$(PRECHECK_AUDIT_TESTS)' ./internal/surface/cli ./internal/core/site
 	@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)" records-only
 endif
@@ -469,7 +469,8 @@ endif
 # tests audit the record, the generated pages and the agent definitions, in full,
 # and the packages whose tests read the committed record tree whole (record ids
 # and slugs, the changelog derivation, intents, release pages, decisions, the
-# brief's lifeboat table),
+# brief's lifeboat table), the audit that every exported core function has a
+# caller (internal/reachaudit),
 # and the command and site packages' audit tests, chosen by name: a test in those
 # two packages that reads the committed tree carries one of the PRECHECK_AUDIT_TESTS
 # words in its name, which is how a new one joins without a list to keep. It skips
@@ -482,7 +483,7 @@ PRECHECK_AUDIT_TESTS := Surface|Page|Brief|Parity|Reference|Snapshot|Appendix|Ap
 precheck: fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution secrets-check vulncheck site-render smoke evals-cold-reading
 	go build ./...
 	go vet ./...
-	go test -timeout 20m ./internal/core/lint ./internal/core/launch/scaffold ./internal/core/mdrecord ./internal/core/issueschema ./internal/core/guard ./internal/core/glossary ./internal/core/reading ./internal/core/recordid ./internal/core/changelog ./internal/core/intent ./internal/core/release ./internal/core/releasedigest ./internal/core/decisions ./internal/core/record/match ./internal/core/lifeboat
+	go test -timeout 20m ./internal/core/lint ./internal/core/launch/scaffold ./internal/core/mdrecord ./internal/core/issueschema ./internal/core/guard ./internal/core/glossary ./internal/core/reading ./internal/core/recordid ./internal/core/changelog ./internal/core/intent ./internal/core/release ./internal/core/releasedigest ./internal/core/decisions ./internal/core/record/match ./internal/core/lifeboat ./internal/reachaudit
 	go test -timeout 20m -run '$(PRECHECK_AUDIT_TESTS)' ./internal/surface/cli ./internal/core/site
 
 precheck: export GOTOOLCHAIN := go$(GO_TOOLCHAIN_VERSION)
