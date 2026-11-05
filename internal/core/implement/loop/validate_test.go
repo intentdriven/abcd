@@ -212,7 +212,7 @@ func TestTheValidatorsAreFreshAgentsAndOnlyTheLoopRecordsAVerdict(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"fresh", "did not implement", l.BaseSHA + ".." + l.HeadSHA, l.Branch, "### Verdict", "first line reads exactly `Reviewed head: " + l.HeadSHA + "`", "SHIP", "FIX FIRST",
+	for _, want := range []string{"fresh", "did not implement", l.BaseSHA + ".." + l.HeadSHA, l.Branch, "### Verdict", "first line reads exactly `Reviewed head: " + l.HeadSHA + "`", "A return has one `### Verdict` section and no other line opening with the word Verdict.", "SHIP", "FIX FIRST",
 		filepath.Join(repo.Root(), filepath.FromSlash(res.Awaiting.Receipt))} {
 		if !strings.Contains(string(brief), want) {
 			t.Fatalf("the reviewer's brief names %q:\n%s", want, brief)

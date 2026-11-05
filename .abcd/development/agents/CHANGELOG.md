@@ -18,8 +18,9 @@ unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
 PATCH: the output section says that a return the brief records with
 `abcd land --record-review` has the first line `Reviewed head: <name>`, and a
-delta review's has `Reviewed delta: <base>..<head>`. No other rule or field
-changed. Unmeasured, in the `0.x` band.
+delta review's has `Reviewed delta: <base>..<head>`, and that a return has one
+`### Verdict` section and no other line opening with the word Verdict. No other rule
+or field changed. Unmeasured, in the `0.x` band.
 
 ### security-reviewer 0.4.1
 

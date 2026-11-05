@@ -380,6 +380,7 @@ func writeValidatorBrief(c Context, lane Lane, r ValidationRound, v *ValidatorRu
 		p("## What you hand back\n\n")
 		p("Write your whole return, in your agent definition's shape, to:\n\n`%s`\n\n", abs(c.RepoRoot, v.Return))
 		p("Its first line reads exactly `Reviewed head: %s`, so that `abcd land --record-review` can record it.\n", r.HeadSHA)
+		p("%s\n", oneVerdictLine)
 		p("It ends with one `### Verdict` section stating exactly one of: %s. The loop reads that\n", strings.Join(words, ", "))
 		p("section and records the verdict itself; a verdict written anywhere else is nobody's.\n")
 	}
@@ -669,6 +670,10 @@ func readReturn(repoRoot, rel, laneID string) ([]byte, error) {
 	}
 	return data, nil
 }
+
+// oneVerdictLine is what a validator's brief and a routed request say of a return's
+// verdict, as the reviewers' own pages say it (landing.OneVerdictLine).
+const oneVerdictLine = "A return has one `### Verdict` section and no other line opening with the word Verdict."
 
 // parseVerdict reads the one verdict a return states: the first line under its
 // one Verdict heading, list marker and emphasis stripped, must begin with one
@@ -1557,6 +1562,7 @@ func reviewRequest(repoRoot, runID, laneID string, aw Await, agentPrompt func(st
 	p("## What you answer\n\n")
 	p("Answer with your whole return, in your agent definition's shape.\n")
 	p("Its first line reads exactly `Reviewed head: %s`, so that `abcd land --record-review` can record it.\n", r.HeadSHA)
+	p("%s\n", oneVerdictLine)
 	p("It ends with one `### Verdict`\n")
 	p("section stating exactly one of: %s. The loop writes your answer to the review's return and\n", strings.Join(words, ", "))
 	p("records the verdict itself; a verdict written anywhere else is nobody's.\n")

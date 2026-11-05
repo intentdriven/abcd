@@ -1180,6 +1180,21 @@ func TestADeltaKeepsEveryFilesFrontmatter(t *testing.T) {
 	}
 }
 
+// The reviewers' pages say a return has one Verdict section and no other line opening
+// with the word, so a reviewer is told before a recording refuses the return.
+func TestTheReviewerPagesStateOneVerdictLine(t *testing.T) {
+	const want = "A return has one `### Verdict` section and no other line opening with the word Verdict."
+	for _, rel := range []string{"agents/ruthless-reviewer.md", "agents/security-reviewer.md"} {
+		data, err := os.ReadFile(filepath.Join("..", "..", "..", filepath.FromSlash(rel)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(strings.Join(strings.Fields(string(data)), " "), want) {
+			t.Errorf("%s does not say %q", rel, want)
+		}
+	}
+}
+
 // The reviewers' pages and the command page say, each in one sentence, that a
 // return's first line is the line that states what it read, and each line as a page
 // states it is what a recording takes and a line below the first is not.

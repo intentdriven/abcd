@@ -83,7 +83,7 @@ it with one line before these sections: its first line reads exactly
 `Reviewed head: <name>`, where `<name>` is the head you read, by at least its first
 nine characters. When the brief says it is a delta review (`--rests-on`), its first line reads exactly
 `Reviewed delta: <base>..<head>` instead, each end named the same way, and no line
-states a head.
+states a head. A return has one `### Verdict` section and no other line opening with the word Verdict.
 
 Two sections, in this order. Reason first, format second — do not try to think
 inside the structure.
