@@ -150,7 +150,8 @@ func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options,
 	}
 	aw := *res.Awaiting
 	if rs.Config.RouteFor(aw.Role).Runner == runner.Host {
-		rs.Config.RecordHandoff(ctx, aw.Role, repoRoot, runner.LaunchWork{Run: runID, Lane: res.Lane, Await: aw.Receipt})
+		// Not listed yet: a reviewer route can still answer it (DriveStep).
+		res.withHost = true
 		return res, nil
 	}
 	r, err := dispatchAwait(ctx, repoRoot, runID, steps, o, rs, res.Lane, aw, "", res)
@@ -162,6 +163,25 @@ func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options,
 		return res, nil
 	}
 	return carryStanding(r, res), err
+}
+
+// DriveStep is one driven step: Drive, then DriveReview, which sends a review
+// handed to the host to rr instead, and only then the launch ledger's placeholder
+// for a role still with the host, so the ledger never names a host that did not
+// see the role. A route's answer returns a new result, which carries no such
+// mark, and a fallback returns this one, which does.
+func DriveStep(ctx context.Context, repoRoot, runID string, steps Stages, o Options, rs Runners, rr *ReviewRoute) (StepResult, error) {
+	res, err := Drive(ctx, repoRoot, runID, steps, o, rs)
+	if err != nil {
+		return res, err
+	}
+	if res, err = DriveReview(ctx, repoRoot, runID, res, steps, Options{}, rr); err != nil {
+		return res, err
+	}
+	if res.withHost && res.Awaiting != nil {
+		rs.Config.RecordHandoff(ctx, res.Awaiting.Role, repoRoot, runner.LaunchWork{Run: runID, Lane: res.Lane, Await: res.Awaiting.Receipt})
+	}
+	return res, nil
 }
 
 // LoadRunners reads the runner configuration (runner.Load) at the roots a lane
