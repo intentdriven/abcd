@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"strconv"
 )
 
 // world is a fixture home and a sticky shared folder, each with the setting
@@ -57,7 +58,7 @@ func TestSetIsReadAndLifted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := stopPath(folder); set.Path != want {
+	if want := stopPath(folder, os.Getuid()); set.Path != want {
 		t.Fatalf("set at %q, want %q", set.Path, want)
 	}
 	got := readNoPin(home)
@@ -114,7 +115,7 @@ func TestNoFolderStaysInTheHome(t *testing.T) {
 func TestContentIsNeverTheRequest(t *testing.T) {
 	home, folder := world(t)
 	planted := `{"set_by":"someone-else","set_at":"1999-01-01T00:00:00Z","lift":true}` + "\x1b[2J"
-	if err := os.WriteFile(stopPath(folder), []byte(planted), 0o644); err != nil {
+	if err := os.WriteFile(stopPath(folder, os.Getuid()), []byte(planted), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	got := readNoPin(home)
@@ -145,7 +146,7 @@ func TestSymlinkRefused(t *testing.T) {
 	if err := os.WriteFile(target, []byte("{}"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	p := stopPath(folder)
+	p := stopPath(folder, os.Getuid())
 	if err := os.Symlink(target, p); err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +157,7 @@ func TestSymlinkRefused(t *testing.T) {
 // nor counts.
 func TestFIFORefusedWithoutBlocking(t *testing.T) {
 	home, folder := world(t)
-	p := stopPath(folder)
+	p := stopPath(folder, os.Getuid())
 	if err := syscall.Mkfifo(p, 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +174,7 @@ func TestFIFORefusedWithoutBlocking(t *testing.T) {
 // TestOversizedRefused: a file past the bound is refused, not read.
 func TestOversizedRefused(t *testing.T) {
 	home, folder := world(t)
-	p := stopPath(folder)
+	p := stopPath(folder, os.Getuid())
 	if err := os.WriteFile(p, bytes.Repeat([]byte("x"), MaxStopBytes+1), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -185,11 +186,11 @@ func TestOversizedRefused(t *testing.T) {
 // account owns, so it names a person who is not this account.
 func TestAnotherAccountRefused(t *testing.T) {
 	_, folder := world(t)
-	p := stopPath(folder)
+	p := stopPath(folder, os.Getuid())
 	if err := os.WriteFile(p, []byte("{}"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	stop, refused := judge(p, os.Getuid()+1)
+	stop, refused, _ := judge(p, os.Getuid()+1)
 	if stop != nil || !strings.Contains(refused, "another account") {
 		t.Fatalf("judge = %+v, %q", stop, refused)
 	}
@@ -215,26 +216,20 @@ func TestAPlantedStopDirectoryIsRefused(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	dir := filepath.Join(folder, StopDirName)
+	dir := filepath.Join(folder, stopDirName(os.Getuid()))
 	if err := os.Symlink(t.TempDir(), dir); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := WriteSetting(home, folder, ""); err == nil {
 		t.Fatal("setup accepted a planted directory")
 	}
-	if _, refused := checkStopDir(folder, os.Getuid()); !strings.Contains(refused, "refused") {
+	if _, refused, _ := checkStopDir(folder, os.Getuid()); !strings.Contains(refused, "refused") {
 		t.Fatalf("checkStopDir = %q", refused)
 	}
-	if err := os.Remove(dir); err != nil {
+	if err := os.Mkdir(filepath.Join(folder, stopDirName(os.Getuid()+1)), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Mkdir(dir, 0o777); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(dir, 0o777); err != nil {
-		t.Fatal(err)
-	}
-	if _, refused := checkStopDir(folder, os.Getuid()+1); !strings.Contains(refused, "refused") {
+	if _, refused, _ := checkStopDir(folder, os.Getuid()+1); !strings.Contains(refused, "refused") {
 		t.Fatalf("another account's directory: %q", refused)
 	}
 }
@@ -292,7 +287,7 @@ func TestSymlinkedFolderRefused(t *testing.T) {
 // while a file the runs refuse occupies its path.
 func TestSetOverARefusedFileSaysSo(t *testing.T) {
 	home, folder := world(t)
-	p := stopPath(folder)
+	p := stopPath(folder, os.Getuid())
 	if err := os.Symlink("/nonexistent", p); err != nil {
 		t.Fatal(err)
 	}
@@ -394,7 +389,7 @@ func TestLiftLeavesAPlantedDirectoryAlone(t *testing.T) {
 	if _, err := WriteSetting(home, folder, ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Remove(filepath.Join(folder, StopDirName)); err != nil {
+	if err := os.Remove(filepath.Join(folder, stopDirName(os.Getuid()))); err != nil {
 		t.Fatal(err)
 	}
 	elsewhere := filepath.Join(base, "elsewhere")
@@ -405,7 +400,7 @@ func TestLiftLeavesAPlantedDirectoryAlone(t *testing.T) {
 	if err := os.WriteFile(kept, []byte("mine\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(elsewhere, filepath.Join(folder, StopDirName)); err != nil {
+	if err := os.Symlink(elsewhere, filepath.Join(folder, stopDirName(os.Getuid()))); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Lift(home, time.Now()); err == nil {
@@ -510,13 +505,13 @@ func TestTheWellKnownFolderIsReadWithNoSetting(t *testing.T) {
 	if _, err := Set(personHome, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if got := readNoPin(t.TempDir()); got.Stop == nil || got.Stop.Path != stopPath(folder) {
+	if got := readNoPin(t.TempDir()); got.Stop == nil || got.Stop.Path != stopPath(folder, os.Getuid()) {
 		t.Fatalf("Read = %+v", got)
 	}
 	if lifted, err := Lift(personHome, time.Now()); err != nil || !lifted {
 		t.Fatalf("Lift = %v, %v", lifted, err)
 	}
-	if err := os.WriteFile(stopPath(folder), bytes.Repeat([]byte("x"), MaxStopBytes+1), 0o644); err != nil {
+	if err := os.WriteFile(stopPath(folder, os.Getuid()), bytes.Repeat([]byte("x"), MaxStopBytes+1), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if got := readNoPin(t.TempDir()); got.Stop != nil || len(got.Refused) != 1 {
@@ -541,7 +536,7 @@ func TestLiftReachesTheWellKnownStopWithNoSetting(t *testing.T) {
 	if lifted, err := Lift(home, time.Now()); err != nil || !lifted {
 		t.Fatalf("Lift = %v, %v", lifted, err)
 	}
-	if _, err := os.Lstat(stopPath(folder)); !os.IsNotExist(err) {
+	if _, err := os.Lstat(stopPath(folder, os.Getuid())); !os.IsNotExist(err) {
 		t.Fatalf("the stop stands: %v", err)
 	}
 }
@@ -606,19 +601,18 @@ func TestAnUnknownHomeHoldsTheRead(t *testing.T) {
 	}
 }
 
-// plantedByAnother leaves a stop in the platform's shared folder, its directory read
-// as another account's.
+// plantedByAnother leaves a stop in the platform's shared folder under another
+// account's name.
 func plantedByAnother(t *testing.T) (folder string, other int) {
 	t.Helper()
 	folder = wellKnown(t)
-	if err := os.Mkdir(filepath.Join(folder, StopDirName), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(stopPath(folder), []byte("{}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	other = os.Getuid() + 1
-	t.Cleanup(SwapStopDirOwnerForTest(func(string) (int, bool) { return other, true }))
+	if err := os.Mkdir(filepath.Join(folder, StopDirName+"-"+strconv.Itoa(other)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(folder, StopDirName+"-"+strconv.Itoa(other), StopFileName), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	return folder, other
 }
 
@@ -630,6 +624,9 @@ func TestAnotherAccountsStopInThePlatformFolderIsNotHonoured(t *testing.T) {
 	got := readNoPin(t.TempDir())
 	if got.Stop != nil || len(got.Refused) != 0 || got.Held != "" {
 		t.Fatalf("Read = %+v", got)
+	}
+	if len(got.Foreign) != 1 || !strings.Contains(got.Foreign[0], "not honoured") {
+		t.Fatalf("what another account left goes unsaid: %+v", got)
 	}
 }
 
@@ -655,10 +652,153 @@ func TestLiftSaysWhatItCannotReach(t *testing.T) {
 		t.Fatalf("Lift = %v, %v", lifted, err)
 	}
 	got := Unreached(home)
-	if len(got) != 1 || !strings.Contains(got[0], fsutil.DisplayPath(stopPath(folder))) {
+	if len(got) != 1 || !strings.Contains(got[0], fsutil.DisplayPath(folder)) {
 		t.Fatalf("Unreached = %q", got)
 	}
-	if _, err := os.Lstat(stopPath(folder)); err != nil {
+	if _, err := os.Lstat(filepath.Join(folder, StopDirName+"-"+strconv.Itoa(os.Getuid()+1), StopFileName)); err != nil {
 		t.Fatalf("the lift removed what it could not reach: %v", err)
+	}
+}
+
+// TestTheStopsDirectoryCarriesThePersonsNumber: one account's directory is not
+// another's to contest.
+func TestTheStopsDirectoryCarriesThePersonsNumber(t *testing.T) {
+	want := StopDirName + "-" + strconv.Itoa(os.Getuid())
+	if got := stopDirName(os.Getuid()); got != want {
+		t.Fatalf("stopDirName = %q, want %q", got, want)
+	}
+	home, folder := world(t)
+	if _, err := Set(home, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(filepath.Join(folder, want, StopFileName)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// unreadableBy makes p unreadable to this account for the test.
+func unreadableBy(t *testing.T, p string) {
+	t.Helper()
+	if os.Getuid() == 0 {
+		t.Skip("root reads everything")
+	}
+	fi, err := os.Lstat(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(p, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(p, fi.Mode().Perm()) })
+}
+
+// TestAStopThatCannotBeReadHoldsTheRead: a folder the run started under or the setting
+// names, whose stop cannot be read, is not read as no stop.
+func TestAStopThatCannotBeReadHoldsTheRead(t *testing.T) {
+	for name, target := range map[string]func(folder string) string{
+		"the stop file":      func(f string) string { return stopPath(f, os.Getuid()) },
+		"the stop directory": func(f string) string { return filepath.Join(f, stopDirName(os.Getuid())) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			home, folder := world(t)
+			if _, err := Set(home, time.Now()); err != nil {
+				t.Fatal(err)
+			}
+			pin := pinOf(t, home)
+			unreadableBy(t, target(folder))
+			if got := ReadPinned(home, pin); got.Stop != nil || got.Held == "" {
+				t.Fatalf("pinned: %+v", got)
+			}
+			if got := readNoPin(home); got.Stop != nil || got.Held == "" {
+				t.Fatalf("by the setting: %+v", got)
+			}
+		})
+	}
+}
+
+// TestAFolderThatFailsItsCheckHoldsTheRead: the folder a run started under going away
+// or failing its check is not read as no stop.
+func TestAFolderThatFailsItsCheckHoldsTheRead(t *testing.T) {
+	home, folder := world(t)
+	pin := pinOf(t, home)
+	if err := os.Chmod(folder, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if got := ReadPinned(home, pin); got.Held == "" || len(got.Refused) == 0 {
+		t.Fatalf("Read = %+v", got)
+	}
+}
+
+// TestWhatIsNoStopStaysARefusal: a wrong owner, a non-regular file and an oversized
+// file are refused and hold nothing, and the platform's folder holds nothing.
+func TestWhatIsNoStopStaysARefusal(t *testing.T) {
+	home, folder := world(t)
+	if err := os.Symlink("/nonexistent", stopPath(folder, os.Getuid())); err != nil {
+		t.Fatal(err)
+	}
+	if got := readNoPin(home); got.Held != "" || len(got.Refused) != 1 {
+		t.Fatalf("a link: %+v", got)
+	}
+	known := wellKnown(t)
+	if err := os.Mkdir(filepath.Join(known, stopDirName(os.Getuid())), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	unreadableBy(t, filepath.Join(known, stopDirName(os.Getuid())))
+	if got := readNoPin(t.TempDir()); got.Held != "" {
+		t.Fatalf("the platform's folder held the read: %+v", got)
+	}
+}
+
+// TestAPlantedLinkIsNotChangedThrough: what stands at the person's directory is judged
+// before anything is changed, so a link does not have its target's mode changed.
+func TestAPlantedLinkIsNotChangedThrough(t *testing.T) {
+	base := t.TempDir()
+	folder := filepath.Join(base, "shared")
+	if err := os.Mkdir(folder, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	real := filepath.Join(folder, "real")
+	if err := os.Mkdir(real, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("real", filepath.Join(folder, stopDirName(os.Getuid()))); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := WriteSetting(t.TempDir(), folder, ""); err == nil {
+		t.Fatal("a setting over a planted link succeeded")
+	}
+	fi, err := os.Stat(real)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Mode().Perm() != 0o700 {
+		t.Fatalf("the link's target became %v", fi.Mode().Perm())
+	}
+}
+
+// TestALinkAmongTheParentsIsHeldToTheRule: a link's containing directory is judged as
+// any parent is, not only where the link leads.
+func TestALinkAmongTheParentsIsHeldToTheRule(t *testing.T) {
+	base := t.TempDir()
+	real := filepath.Join(base, "real")
+	if err := os.MkdirAll(filepath.Join(real, "shared"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	open := filepath.Join(base, "open")
+	if err := os.Mkdir(open, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(real, filepath.Join(open, "link")); err != nil {
+		t.Fatal(err)
+	}
+	folder := filepath.Join(open, "link", "shared")
+	if err := checkFolder(folder, os.Getuid()); err != nil {
+		t.Fatalf("a link in a closed parent: %v", err)
+	}
+	if err := os.Chmod(open, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkFolder(folder, os.Getuid()); err == nil {
+		t.Fatal("a link in a parent anyone can write passed")
 	}
 }

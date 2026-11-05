@@ -1,6 +1,6 @@
-// Package runstop is the stop a person sets from their own account, which every
-// unattended run on the machine reads before its next move (itd-2611041549471712,
-// dcn-2611041550139264).
+// Package runstop is the stop a person sets from their own account, which the
+// unattended runs of each account that chose the same folder read before their next
+// move (itd-2611041549471712, dcn-2611041550139264).
 //
 // The person's seat and the run's seat may be two accounts on one machine, and
 // no store abcd has can carry a word between them, since each is owner-only. So
@@ -29,6 +29,7 @@ import (
 	"runtime"
 	"slices"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -37,9 +38,10 @@ import (
 )
 
 const (
-	// StopDirName is the person's own directory in the shared folder,
-	// StopFileName the stop inside it, and HomeStopFile the stop in the account's
-	// own home where no folder was chosen.
+	// StopDirName opens the name of the person's own directory in the shared
+	// folder, which carries their account's number (stopDirName), StopFileName is
+	// the stop inside it, and HomeStopFile the stop in the account's own home where
+	// no folder was chosen.
 	StopDirName  = "abcd-stop"
 	StopFileName = "abcd-stop.json"
 	HomeStopFile = "stop.json"
@@ -94,6 +96,9 @@ type Reading struct {
 	Stop    *Stop
 	Refused []string
 	Held    string
+	// Foreign names each stop another account left where this one looks, which is
+	// not honoured and is said.
+	Foreign []string
 }
 
 // AccountHome is the home a stop is read from, and databaseHome the production
@@ -125,7 +130,7 @@ func PinOf(home string) *Pin {
 }
 
 // Suggested is the folder setup offers: a real, sticky, shared directory on this
-// platform.
+// platform. On Linux it is under an age cleaner's care, which the setup's page says.
 func Suggested() string {
 	if runtime.GOOS == "darwin" {
 		return "/Users/Shared"
@@ -133,8 +138,13 @@ func Suggested() string {
 	return "/var/tmp"
 }
 
+// stopDirName is the person's own directory in a shared folder.
+func stopDirName(person int) string { return StopDirName + "-" + strconv.Itoa(person) }
+
 // stopPath is where the person's stop lives in the folder.
-func stopPath(folder string) string { return filepath.Join(folder, StopDirName, StopFileName) }
+func stopPath(folder string, person int) string {
+	return filepath.Join(folder, stopDirName(person), StopFileName)
+}
 
 // checkFolder refuses a folder the stop cannot rest on: one that is not a real
 // directory, one others can write without the sticky bit, or one owned by any
@@ -161,22 +171,50 @@ func checkFolder(folder string, person int) error {
 	return checkFolderParents(folder, person)
 }
 
-// checkFolderParents walks the folder's real parents, each held to the folder's
-// own rule, since whoever can rename a parent can move the folder away.
+// checkFolderParents walks the folder's parents as the path spells them, each held
+// to the folder's own rule, since whoever can rename a parent can move the folder
+// away. A link is held to the owner's half of the rule, and so is what it leads to,
+// walked the same way.
 func checkFolderParents(folder string, person int) error {
-	dir, err := filepath.EvalSymlinks(filepath.Dir(folder))
-	if err != nil {
+	return checkChain(filepath.Dir(folder), folder, person, 0)
+}
+
+// maxLinkDepth bounds the links one parent chain follows.
+const maxLinkDepth = 16
+
+func checkChain(dir, folder string, person, depth int) error {
+	unread := func(err error) error {
 		return fmt.Errorf("the parents of the shared folder %s cannot be read: %w", fsutil.DisplayPath(folder), err)
+	}
+	if depth > maxLinkDepth {
+		return unread(errors.New("too many links"))
 	}
 	for {
 		fi, err := os.Lstat(dir)
 		if err != nil {
-			return fmt.Errorf("the parents of the shared folder %s cannot be read: %w", fsutil.DisplayPath(folder), err)
+			return unread(err)
 		}
 		uid, known := ownerOf(fi)
-		open := fi.Mode().Perm()&0o022 != 0 && fi.Mode()&os.ModeSticky == 0
+		link := fi.Mode()&os.ModeSymlink != 0
+		open := !link && fi.Mode().Perm()&0o022 != 0 && fi.Mode()&os.ModeSticky == 0
 		if open || !known || (uid != 0 && uid != person) {
 			return fmt.Errorf("the shared folder %s has a parent, %s, that another account can change, which could move a stop away", fsutil.DisplayPath(folder), fsutil.DisplayPath(dir))
+		}
+		if link {
+			to, err := os.Readlink(dir)
+			if err != nil {
+				return unread(err)
+			}
+			if !filepath.IsAbs(to) {
+				base, err := filepath.EvalSymlinks(filepath.Dir(dir))
+				if err != nil {
+					return unread(err)
+				}
+				to = filepath.Join(base, to)
+			}
+			if err := checkChain(filepath.Clean(to), folder, person, depth+1); err != nil {
+				return err
+			}
 		}
 		next := filepath.Dir(dir)
 		if next == dir {
@@ -188,39 +226,47 @@ func checkFolderParents(folder string, person int) error {
 
 // checkStopDir judges the person's directory: ok is false when it is absent,
 // which is no stop and nothing to refuse. Anything but a real directory the person
-// owns and no one else can write is refused.
-func checkStopDir(folder string, person int) (ok bool, refused string) {
-	dir := filepath.Join(folder, StopDirName)
+// owns and no one else can write is refused. unreadable says the look itself failed,
+// so nothing can be told of what stands there.
+func checkStopDir(folder string, person int) (ok bool, refused string, unreadable bool) {
+	dir := filepath.Join(folder, stopDirName(person))
 	fi, err := os.Lstat(dir)
 	if errors.Is(err, fs.ErrNotExist) {
-		return false, ""
+		return false, "", false
 	}
 	if err != nil {
-		return false, fmt.Sprintf("the stop directory %s cannot be read, so it holds no stop: %v", fsutil.DisplayPath(dir), err)
+		return false, fmt.Sprintf("the stop directory %s cannot be read: %v", fsutil.DisplayPath(dir), err), true
 	}
 	uid, known := ownerOf(fi)
 	if !fi.IsDir() || !known || uid != person || fi.Mode().Perm()&0o022 != 0 {
-		return false, fmt.Sprintf("the stop directory %s is refused: it is not a directory the person's account alone can write, so it holds no stop", fsutil.DisplayPath(dir))
+		return false, fmt.Sprintf("the stop directory %s is refused: it is not a directory the person's account alone can write, so it holds no stop", fsutil.DisplayPath(dir)), false
 	}
-	return true, ""
+	return true, "", false
 }
 
-// ensureStopDir makes the person's directory, refusing one that stands and is not
-// theirs: planted before they chose the folder, it would otherwise hold every stop
-// they set.
+// ensureStopDir makes the person's directory. What already stands there is judged
+// before anything is changed: one that is not a real directory of theirs is refused.
 func ensureStopDir(folder string, person int) error {
 	root, err := os.OpenRoot(folder)
 	if err != nil {
 		return err
 	}
 	defer root.Close()
-	if err := root.Mkdir(StopDirName, sharedDirMode); err != nil && !errors.Is(err, fs.ErrExist) {
+	name := stopDirName(person)
+	if err := root.Mkdir(name, sharedDirMode); err != nil && !errors.Is(err, fs.ErrExist) {
 		return err
 	}
-	if err := root.Chmod(StopDirName, sharedDirMode); err != nil {
+	fi, err := root.Lstat(name)
+	if err != nil {
+		return err
+	}
+	if uid, known := ownerOf(fi); !fi.IsDir() || !known || uid != person {
+		return fmt.Errorf("the stop directory in %s is not this account's", fsutil.DisplayPath(folder))
+	}
+	if err := root.Chmod(name, sharedDirMode); err != nil {
 		return fmt.Errorf("the stop directory in %s is not this account's: %w", fsutil.DisplayPath(folder), err)
 	}
-	if ok, refused := checkStopDir(folder, person); !ok {
+	if ok, refused, _ := checkStopDir(folder, person); !ok {
 		if refused == "" {
 			refused = "the stop directory is gone after it was made"
 		}
@@ -270,7 +316,7 @@ func WriteSetting(home, folder, person string) (Setting, error) {
 	// A stop stands where every worker reads it, so the choice does not move from
 	// under it: the person lifts it first.
 	if was, chosen, err := ReadSetting(home); err == nil && chosen && (was.Folder != folder || was.PersonUID != uid) {
-		if stop, _ := judge(stopPath(was.Folder), was.PersonUID); stop != nil {
+		if stop, _, _ := judge(stopPath(was.Folder, was.PersonUID), was.PersonUID); stop != nil {
 			return Setting{}, fmt.Errorf("a stop stands in %s, so the shared folder does not move from under it; lift it with `abcd implement stop --lift` first", fsutil.DisplayPath(was.Folder))
 		}
 	}
@@ -299,32 +345,39 @@ func writeSettingFile(home string, s Setting) error {
 	return fsutil.WriteFileAtomicInRoot(root, SettingFile, append(data, '\n'), abcdhome.FileMode)
 }
 
-// ReadPinned is the one read every run makes before a move. It never fails: what
-// it cannot judge is refused and named, and is no stop, so a planted file can
-// neither halt a run nor pass unsaid. It reads the account's own stop, the folder
-// the run started under, the folder the setting names, and the platform's shared
-// folder for an account it expects. A setting that cannot be read, or that has
-// gone or changed since the run took pin, leaves Held saying so: the read cannot
-// be trusted to have seen a stop, and the run does not take it for none.
+// ReadPinned is the one read every run makes before a move. It never fails: a file
+// that is no stop is refused and named, so it can neither halt a run nor pass unsaid.
+// It reads the account's own stop, the folder the run started under, the folder the
+// setting names, and the platform's shared folder for an account it expects. Held
+// says the read cannot be trusted to have seen a stop, and the run does not take it
+// for none: a setting that cannot be read, or that has gone or changed since the run
+// took pin; a home that cannot be found; or a folder the run started under or the
+// setting names that fails its check, or whose stop cannot be looked at. A stop any
+// other account left in one of those folders is not honoured, and is named in Foreign.
 func ReadPinned(home string, pin *Pin) Reading {
 	var out Reading
 	var read []string
+	expected := []int{os.Getuid()}
 	if pin != nil {
-		out.readFolder(pin.Folder, pin.PersonUID)
-		read = append(read, pin.Folder)
+		out.readFolder(pin.Folder, pin.PersonUID, true)
+		read = append(read, folderKey(pin.Folder, pin.PersonUID))
+		expected = append(expected, pin.PersonUID)
 	}
 	var s Setting
 	var ok bool
 	var err error
 	if home == "" {
-		out.Held = "this account's home cannot be found, so whether a stop holds cannot be told"
+		out.hold("this account's home cannot be found, so whether a stop holds cannot be told")
 	} else {
-		stop, refused := judge(abcdhome.Path(home, HomeStopFile), os.Getuid())
+		stop, refused, unreadable := judge(abcdhome.Path(home, HomeStopFile), os.Getuid())
 		if out.Stop == nil {
 			out.Stop = stop
 		}
 		if refused != "" {
 			out.Refused = append(out.Refused, refused)
+		}
+		if unreadable {
+			out.hold("this account's own stop cannot be read, so whether a stop holds cannot be told")
 		}
 		s, ok, err = ReadSetting(home)
 	}
@@ -332,117 +385,183 @@ func ReadPinned(home string, pin *Pin) Reading {
 	case home == "":
 	case err != nil:
 		out.Refused = append(out.Refused, err.Error())
-		out.Held = abcdhome.Display(SettingFile) + " cannot be read, so whether a stop holds cannot be told"
+		out.hold(abcdhome.Display(SettingFile) + " cannot be read, so whether a stop holds cannot be told")
 	case !ok && pin != nil:
-		out.Held = "the shared-folder setting this run started under has gone from " + abcdhome.Display(SettingFile)
+		out.hold("the shared-folder setting this run started under has gone from " + abcdhome.Display(SettingFile))
 	case ok && pin != nil && (s.Folder != pin.Folder || s.PersonUID != pin.PersonUID):
-		out.Held = "the shared-folder setting in " + abcdhome.Display(SettingFile) + " is not the one this run started under"
+		out.hold("the shared-folder setting in " + abcdhome.Display(SettingFile) + " is not the one this run started under")
 	}
-	if ok && !slices.Contains(read, s.Folder) {
-		out.readFolder(s.Folder, s.PersonUID)
-		read = append(read, s.Folder)
+	if ok {
+		expected = append(expected, s.PersonUID)
+		if key := folderKey(s.Folder, s.PersonUID); !slices.Contains(read, key) {
+			out.readFolder(s.Folder, s.PersonUID, true)
+			read = append(read, key)
+		}
 	}
 	// The platform's shared folder is read for an account a run has reason to
 	// expect: this one, the one the setting names, the one the run started under.
-	// Anything another account left there is neither a stop nor a refusal.
-	if folder := WellKnownFolder(); folder != "" && !slices.Contains(read, folder) {
-		if owner, present := stopDirOwnerOf(folder); present &&
-			(owner == os.Getuid() || (ok && owner == s.PersonUID) || (pin != nil && owner == pin.PersonUID)) {
-			out.readFolder(folder, owner)
+	if folder := WellKnownFolder(); folder != "" {
+		for _, uid := range expected {
+			key := folderKey(folder, uid)
+			if slices.Contains(read, key) {
+				continue
+			}
+			read = append(read, key)
+			if _, err := os.Lstat(filepath.Join(folder, stopDirName(uid))); err == nil {
+				out.readFolder(folder, uid, false)
+			}
 		}
+	}
+	for _, f := range foreignStops(pin, s, ok, expected) {
+		out.Foreign = append(out.Foreign, fmt.Sprintf("a stop from the account %s stands in %s; this account did not name that account at setup, so it is not honoured here", accountName(f.owner), fsutil.DisplayPath(f.folder)))
 	}
 	return out
 }
 
-// readFolder judges one folder's stop as the person's, naming what it refuses.
-func (r *Reading) readFolder(folder string, person int) {
+func folderKey(folder string, uid int) string { return folder + "\x00" + strconv.Itoa(uid) }
+
+// hold records the first reason the read cannot be trusted.
+func (r *Reading) hold(why string) {
+	if r.Held == "" {
+		r.Held = why
+	}
+}
+
+// readFolder judges one folder's stop as the person's, naming what it refuses. owed
+// says the run was told to read this folder, so one it cannot look at holds it.
+func (r *Reading) readFolder(folder string, person int, owed bool) {
+	cannotTell := func() {
+		if owed {
+			r.hold("the stop in " + fsutil.DisplayPath(folder) + " cannot be read, so whether a stop holds cannot be told")
+		}
+	}
 	if err := checkFolder(folder, person); err != nil {
 		r.Refused = append(r.Refused, err.Error())
+		cannotTell()
 		return
 	}
-	present, refused := checkStopDir(folder, person)
+	present, refused, unreadable := checkStopDir(folder, person)
 	if refused != "" {
 		r.Refused = append(r.Refused, refused)
+	}
+	if unreadable {
+		cannotTell()
 	}
 	if !present {
 		return
 	}
-	stop, refused := judge(stopPath(folder), person)
+	stop, refused, unreadable := judge(stopPath(folder, person), person)
 	if refused != "" {
 		r.Refused = append(r.Refused, refused)
+	}
+	if unreadable {
+		cannotTell()
 	}
 	if r.Stop == nil {
 		r.Stop = stop
 	}
 }
 
-// stopDirOwnerOf is stopDirOwner; a test stands in another account, which it cannot
-// create (SwapStopDirOwnerForTest).
-var stopDirOwnerOf = stopDirOwner
+// foreignStop is a stop another account left in a folder this one reads.
+type foreignStop struct {
+	folder, path string
+	owner        int
+}
 
-// SwapStopDirOwnerForTest stands in who owns a stop's directory, and returns what
-// restores it.
-func SwapStopDirOwnerForTest(f func(string) (int, bool)) func() {
-	old := stopDirOwnerOf
-	stopDirOwnerOf = f
-	return func() { stopDirOwnerOf = old }
+// maxFolderNames bounds a look through a shared folder for other accounts' stops.
+const maxFolderNames = 4096
+
+// foreignStops looks by name, in each folder this account reads, for the stop of an
+// account it does not expect. No such stop is honoured, or any account could halt
+// the work; each is said.
+func foreignStops(pin *Pin, s Setting, ok bool, expected []int) []foreignStop {
+	var folders []string
+	if pin != nil {
+		folders = append(folders, pin.Folder)
+	}
+	if ok {
+		folders = append(folders, s.Folder)
+	}
+	if known := WellKnownFolder(); known != "" {
+		folders = append(folders, known)
+	}
+	slices.Sort(folders)
+	var out []foreignStop
+	for _, folder := range slices.Compact(folders) {
+		d, err := os.Open(folder)
+		if err != nil {
+			continue
+		}
+		names, _ := d.Readdirnames(maxFolderNames)
+		_ = d.Close()
+		slices.Sort(names)
+		for _, name := range names {
+			number, isStop := strings.CutPrefix(name, StopDirName+"-")
+			uid, err := strconv.Atoi(number)
+			if !isStop || err != nil || slices.Contains(expected, uid) {
+				continue
+			}
+			p := filepath.Join(folder, name, StopFileName)
+			if _, err := os.Lstat(p); err == nil {
+				out = append(out, foreignStop{folder: folder, path: p, owner: uid})
+			}
+		}
+	}
+	return out
 }
 
 // Unreached names each stop that stands where this account's lift cannot reach it,
-// so a person is never told there is none: one another account left in the
-// platform's shared folder, which that account lifts.
+// so a person is never told there is none: one another account left, which that
+// account lifts.
 func Unreached(home string) []string {
-	folder := WellKnownFolder()
-	if folder == "" {
-		return nil
-	}
-	if s, ok, err := ReadSetting(home); err == nil && ok && s.Folder == folder {
-		return nil // the lift itself judges the folder the setting names
-	}
-	owner, present := stopDirOwnerOf(folder)
-	if !present || owner == os.Getuid() {
-		return nil
-	}
-	p := stopPath(folder)
-	if _, err := os.Lstat(p); err != nil {
-		return nil
-	}
-	return []string{fmt.Sprintf("this lift cannot reach the stop file %s: the account %s holds its directory, and lifts it from there", fsutil.DisplayPath(p), accountName(owner))}
-}
-
-// stopDirOwner is who owns the stop's directory in folder, which in the platform's
-// shared folder is the person where no setting says; present is false when there
-// is none.
-func stopDirOwner(folder string) (owner int, present bool) {
-	fi, err := os.Lstat(filepath.Join(folder, StopDirName))
+	s, ok, err := ReadSetting(home)
 	if err != nil {
-		return 0, false
+		ok = false
 	}
-	return ownerOf(fi)
+	expected := []int{os.Getuid()}
+	if ok {
+		expected = append(expected, s.PersonUID)
+	}
+	var out []string
+	for _, f := range foreignStops(nil, s, ok, expected) {
+		out = append(out, fmt.Sprintf("this lift cannot reach the stop in %s: it is the account %s's, and that account lifts it", fsutil.DisplayPath(f.folder), accountName(f.owner)))
+	}
+	return out
 }
 
-// judge is the file's whole judgement, on one descriptor: absent is nothing,
-// and anything but a regular file within the bound owned by want is refused.
-func judge(p string, want int) (*Stop, string) {
+// judge is the file's whole judgement, on one descriptor: absent is nothing, and
+// anything but a regular file within the bound owned by want is refused. unreadable
+// says the open itself failed for a reason other than what stands there.
+func judge(p string, want int) (_ *Stop, refused string, unreadable bool) {
 	f, fi, err := fsutil.OpenRegular(p)
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil, ""
+		return nil, "", false
 	}
 	if err != nil {
-		return nil, fmt.Sprintf("the stop file %s is refused: it is not a regular file abcd can open (%v), so it is no stop", fsutil.DisplayPath(p), err)
+		if notAFile(err) {
+			return nil, fmt.Sprintf("the stop file %s is refused: it is not a regular file abcd can open (%v), so it is no stop", fsutil.DisplayPath(p), err), false
+		}
+		return nil, fmt.Sprintf("the stop file %s cannot be read: %v", fsutil.DisplayPath(p), err), true
 	}
 	defer f.Close()
 	uid, ok := ownerOf(fi)
 	if !ok {
-		return nil, fmt.Sprintf("the stop file %s is refused: its owner cannot be read, so it is no stop", fsutil.DisplayPath(p))
+		return nil, fmt.Sprintf("the stop file %s is refused: its owner cannot be read, so it is no stop", fsutil.DisplayPath(p)), false
 	}
 	if uid != want {
-		return nil, fmt.Sprintf("the stop file %s is refused: another account (%s) wrote it, not the person's, so it is no stop", fsutil.DisplayPath(p), accountName(uid))
+		return nil, fmt.Sprintf("the stop file %s is refused: another account (%s) wrote it, not the person's, so it is no stop", fsutil.DisplayPath(p), accountName(uid)), false
 	}
 	if fi.Size() > MaxStopBytes {
-		return nil, fmt.Sprintf("the stop file %s is refused: it holds %d bytes, over the %d a stop file may hold, so it is no stop", fsutil.DisplayPath(p), fi.Size(), MaxStopBytes)
+		return nil, fmt.Sprintf("the stop file %s is refused: it holds %d bytes, over the %d a stop file may hold, so it is no stop", fsutil.DisplayPath(p), fi.Size(), MaxStopBytes), false
 	}
-	return &Stop{SetBy: accountName(uid), UID: uid, SetAt: fi.ModTime().UTC(), Path: p}, ""
+	return &Stop{SetBy: accountName(uid), UID: uid, SetAt: fi.ModTime().UTC(), Path: p}, "", false
+}
+
+// notAFile reports an open refused for what stands at the path: a link, a socket or
+// anything else that is no regular file.
+func notAFile(err error) bool {
+	return errors.Is(err, fsutil.ErrNotRegular) || errors.Is(err, syscall.ELOOP) || errors.Is(err, syscall.EMLINK) ||
+		errors.Is(err, syscall.ENXIO) || errors.Is(err, syscall.EOPNOTSUPP)
 }
 
 // ownerOf is the owner fi was read with: the descriptor's, for judge, so a file
@@ -481,7 +600,7 @@ func target(home string) (dir, leaf string, err error) {
 	if err := ensureStopDir(s.Folder, s.PersonUID); err != nil {
 		return "", "", err
 	}
-	return filepath.Join(s.Folder, StopDirName), StopFileName, nil
+	return filepath.Join(s.Folder, stopDirName(s.PersonUID)), StopFileName, nil
 }
 
 // Set writes the stop from this account. A path a run would refuse is reported
@@ -492,7 +611,7 @@ func Set(home string, now time.Time) (Stop, error) {
 		return Stop{}, err
 	}
 	p := filepath.Join(dir, leaf)
-	if _, refused := judge(p, os.Getuid()); refused != "" {
+	if _, refused, _ := judge(p, os.Getuid()); refused != "" {
 		return Stop{}, errors.New(refused)
 	}
 	if leaf == HomeStopFile {
@@ -520,7 +639,7 @@ func Set(home string, now time.Time) (Stop, error) {
 	if err := root.Chmod(leaf, sharedFileMode); err != nil {
 		return Stop{}, err
 	}
-	stop, refused := judge(p, os.Getuid())
+	stop, refused, _ := judge(p, os.Getuid())
 	if refused != "" {
 		return Stop{}, errors.New(refused)
 	}
@@ -546,19 +665,17 @@ func Lift(home string, now time.Time) (lifted bool, _ error) {
 	if ok {
 		// A directory no run would read holds no stop, and what it points at is
 		// not this lift's to remove.
-		present, refused := checkStopDir(s.Folder, s.PersonUID)
+		present, refused, _ := checkStopDir(s.Folder, s.PersonUID)
 		refusedDir = refused
 		if present {
-			places = append(places, place{filepath.Join(s.Folder, StopDirName), StopFileName})
+			places = append(places, place{filepath.Join(s.Folder, stopDirName(s.PersonUID)), StopFileName})
 		}
 	}
-	// The platform's shared folder is read whatever the setting says, so a stop
-	// there is this account's to lift when the directory is its own.
-	if folder := WellKnownFolder(); folder != "" && (!ok || folder != s.Folder) {
-		if owner, present := stopDirOwnerOf(folder); present && owner == os.Getuid() {
-			if yes, _ := checkStopDir(folder, owner); yes {
-				places = append(places, place{filepath.Join(folder, StopDirName), StopFileName})
-			}
+	// The platform's shared folder is read for this account whatever the setting
+	// says, so its stop there is this account's to lift.
+	if folder := WellKnownFolder(); folder != "" && (!ok || folder != s.Folder || s.PersonUID != os.Getuid()) {
+		if yes, _, _ := checkStopDir(folder, os.Getuid()); yes {
+			places = append(places, place{filepath.Join(folder, stopDirName(os.Getuid())), StopFileName})
 		}
 	}
 	var found []place
