@@ -10,7 +10,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/intentdriven/abcd/internal/core/guard"
 	"github.com/intentdriven/abcd/internal/core/occupancy"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/core/sessionname"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -145,6 +147,11 @@ func fileWriteGate(cmd *cobra.Command, tool, cwd, filePath, notebookPath string)
 		path = base + string(filepath.Separator) + path
 		if !filepath.IsAbs(path) {
 			return fileWriteFailOpen(cmd.ErrOrStderr(), "the %s call names a relative path and a session directory that is not absolute", termsafe.Sanitize(tool))
+		}
+	}
+	if dirs := os.Getenv(runner.StageWritesEnv); dirs != "" {
+		if why := guard.StageWriteRefusal(filepath.SplitList(dirs), path); why != "" {
+			return denyCall("Blocked by the abcd guard (" + termsafe.Sanitize(tool) + "): " + why)
 		}
 	}
 	m, ok := sessionNameMachine()

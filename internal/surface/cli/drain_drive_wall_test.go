@@ -2,11 +2,13 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/runner"
 )
@@ -131,5 +133,42 @@ func TestASettingsFileAPersonEditedIsReplacedAndSaid(t *testing.T) {
 	raw, _ := os.ReadFile(filepath.Join(w.profile, "settings.json"))
 	if strings.Contains(string(raw), "mine") {
 		t.Fatalf("the edit is gone:\n%s", raw)
+	}
+}
+
+// TestAStagesFileToolsWriteOnlyWhereTheStageWorks: on a walled launch the guard
+// holds a file tool to the stage's working tree and run directories, and to
+// nothing protected inside them. No other session is judged this way.
+func TestAStagesFileToolsWriteOnlyWhereTheStageWorks(t *testing.T) {
+	tree, run := t.TempDir(), t.TempDir()
+	stage := tree + string(os.PathListSeparator) + run
+	payload := func(path string) string {
+		raw, _ := json.Marshal(map[string]any{"tool_name": "Write", "cwd": tree, "tool_input": map[string]string{"file_path": path}})
+		return string(raw)
+	}
+	home := t.TempDir()
+	for _, c := range []struct {
+		name, path string
+		denied     bool
+	}{
+		{"its tree", filepath.Join(tree, "a.go"), false},
+		{"a run directory", filepath.Join(run, "receipt.json"), false},
+		{"the person's machine configuration", abcdhome.Path(home, "config.json"), true},
+		{"a walled directory", abcdhome.Path(home, "profiles", "walled", "settings.json"), true},
+		{"a start-up file", filepath.Join(home, ".zshrc"), true},
+		{"out through a parent", filepath.Join(tree, "..", "elsewhere"), true},
+		{"the tree's git directory", filepath.Join(tree, ".git", "config"), true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv(runner.StageWritesEnv, stage)
+			out, _ := runHook(t, payload(c.path), "guard", "hook")
+			if got := strings.Contains(out, `"deny"`); got != c.denied {
+				t.Fatalf("denied = %v, want %v: %s", got, c.denied, out)
+			}
+		})
+	}
+	t.Setenv(runner.StageWritesEnv, "")
+	if out, _ := runHook(t, payload(filepath.Join(home, ".zshrc")), "guard", "hook"); strings.Contains(out, "writes only") {
+		t.Fatalf("another session is not judged this way: %s", out)
 	}
 }
