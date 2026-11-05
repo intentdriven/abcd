@@ -207,8 +207,8 @@ nothing moved, so no wait goes without a deadline, and a long wait renews what t
 lanes hold. A preflight that exits 0 and leaves no receipt runs once for a head, and
 the lane then goes to the stuck check.
 
-Those eight hours are the default, for a run someone is watching. `--until <date>`
-replaces each of them with one bound the person sets (adr-2610222222326104's amendment
+Those eight hours are the default, for a run someone is watching. A date the person
+names on the command line replaces each of them with one bound of their own (adr-2610222222326104's amendment
 of 2026-11-05, dcn-2611050815115904): the yes names it, the run ends at that time with
 the lane on its branch and its reservation released, an agent in a call finishing that
 call first, and until then no limit, outage or stuck queue ends the run. A reset is
