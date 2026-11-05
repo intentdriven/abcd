@@ -5821,6 +5821,16 @@ someone else, and claimed when the forge cannot say or an app pushed it. A
 branch named by a holder id names no account the forge's record could
 match, so it is not asked about and its senders stay claimed.
 
+A repository that names a workflow a schedule runs on its default branch
+(status.scheduled_workflow in its .abcd/config.json, the file's name, such as
+nightly.yml) has that workflow's latest completed scheduled run read too: after
+a fetch that succeeded it asks the forge (gh api) within five seconds and keeps
+the answer in the local tier. A run that failed, timed out or could not start
+is named in one line with its URL and age, here and at the next prompt, and
+nothing is said of any other. A run that could not be read is said here alone,
+never as a failure, and changes no exit; an answer asked for more than two days
+ago is not read. With no such key nothing is asked, kept or shown.
+
 An announcement stands for its life from when this checkout first fetched it,
 not by the sender's clock. One whose sender is not its branch's owner, one
 that does not read as an announcement (never shown but by its branch and the

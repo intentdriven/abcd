@@ -42,6 +42,16 @@ var statusPushers claim.PusherLookup = func(ctx context.Context, root, branch st
 	return out, nil
 }
 
+// statusScheduledRun is the forge adapter `abcd status` asks for the latest
+// completed scheduled run of the workflow the repository names.
+var statusScheduledRun claim.ScheduledRunLookup = func(ctx context.Context, root, workflow, branch string) (*claim.ScheduledRun, error) {
+	r, err := github.LatestScheduledRun(ctx, root, workflow, branch)
+	if err != nil || r == nil {
+		return nil, err
+	}
+	return &claim.ScheduledRun{Conclusion: r.Conclusion, URL: r.URL, CompletedAt: r.UpdatedAt}, nil
+}
+
 // statusOutput is the --json document of `abcd status`: the status view, the
 // announcements, the doubtful branches, the count of status branches whose
 // names are not read (never the names: a pusher chose each, and an agent
@@ -62,8 +72,23 @@ type statusOutput struct {
 	NotDropped       string            `json:"not_dropped,omitempty"`
 	LocalTierMissing bool              `json:"local_tier_missing,omitempty"`
 	ReadError        string            `json:"read_error,omitempty"`
-	Grants           string            `json:"grants"`
+	// ScheduledFailure is the repository's latest scheduled run when it failed,
+	// and ScheduledUnread why that run could not be read; each absent otherwise.
+	ScheduledFailure *scheduledFailureRow `json:"scheduled_failure,omitempty"`
+	ScheduledUnread  string               `json:"scheduled_unread,omitempty"`
+	Grants           string               `json:"grants"`
 	reservationsBlock
+}
+
+// scheduledFailureRow is a failed latest scheduled run as the listing shows it.
+type scheduledFailureRow struct {
+	Workflow    string `json:"workflow"`
+	Branch      string `json:"branch"`
+	Conclusion  string `json:"conclusion"`
+	URL         string `json:"url"`
+	CompletedAt string `json:"completed_at"`
+	AgeSeconds  int64  `json:"age_seconds"`
+	Text        string `json:"text"`
 }
 
 // statusView dates the announcements: when abcd last fetched the status
@@ -132,6 +157,15 @@ func newStatusCommand(asJSON *bool) *cobra.Command {
 			"someone else, and claimed when the forge cannot say or an app pushed it. A\n" +
 			"branch named by a holder id names no account the forge's record could\n" +
 			"match, so it is not asked about and its senders stay claimed.\n\n" +
+			"A repository that names a workflow a schedule runs on its default branch\n" +
+			"(status.scheduled_workflow in its .abcd/config.json, the file's name, such as\n" +
+			"nightly.yml) has that workflow's latest completed scheduled run read too: after\n" +
+			"a fetch that succeeded it asks the forge (gh api) within five seconds and keeps\n" +
+			"the answer in the local tier. A run that failed, timed out or could not start\n" +
+			"is named in one line with its URL and age, here and at the next prompt, and\n" +
+			"nothing is said of any other. A run that could not be read is said here alone,\n" +
+			"never as a failure, and changes no exit; an answer asked for more than two days\n" +
+			"ago is not read. With no such key nothing is asked, kept or shown.\n\n" +
 			"An announcement stands for its life from when this checkout first fetched it,\n" +
 			"not by the sender's clock. One whose sender is not its branch's owner, one\n" +
 			"that does not read as an announcement (never shown but by its branch and the\n" +
@@ -173,6 +207,9 @@ func newStatusCommand(asJSON *bool) *cobra.Command {
 			o := claim.Options{Now: func() time.Time { return now }}
 			fetched, ferr := claim.FetchStatus(root, statusPushers, o)
 			out := statusOutput{Grants: claim.GrantsNothing, UnreadNames: new(int)}
+			if ferr == nil {
+				out.ScheduledUnread = claim.RefreshScheduledRun(root, statusScheduledRun, o)
+			}
 			// One read of the reservations (View, in the block) and one of
 			// the holds (ReadStatus's), shared by the listing and the view.
 			failed, listed := out.reservationsBlock.fillView(root, now, fetched.Gap, ferr)
@@ -239,6 +276,10 @@ func (out *statusOutput) addStatus(v claim.StatusView, now time.Time) {
 	}
 	for _, d := range v.Doubts {
 		out.Doubtful = append(out.Doubtful, doubtRow{Branch: "abcd-status/" + d.Branch, Reason: d.Reason, Tip: d.Tip, Text: claim.DoubtLine(d)})
+	}
+	if f := v.ScheduledFailure; f != nil {
+		out.ScheduledFailure = &scheduledFailureRow{Workflow: f.Workflow, Branch: f.Branch, Conclusion: f.Conclusion, URL: f.URL,
+			CompletedAt: rfc3339(f.CompletedAt), AgeSeconds: max(int64(now.Sub(f.CompletedAt).Seconds()), 0), Text: f.Line(now)}
 	}
 	out.BranchesNotRead, out.NotRead, out.BranchesLeft = v.BranchesNotRead, v.AnnouncementsNotRead, v.BranchesLeft
 	n := v.UnreadNames
@@ -319,6 +360,12 @@ func renderStatus(w io.Writer, out statusOutput) {
 	}
 	if out.SendersUnchecked != "" {
 		fmt.Fprintln(w, "  not checked against the forge, so shown as claimed: "+out.SendersUnchecked)
+	}
+	if out.ScheduledFailure != nil {
+		fmt.Fprintln(w, "  "+out.ScheduledFailure.Text)
+	}
+	if out.ScheduledUnread != "" {
+		fmt.Fprintln(w, "  "+out.ScheduledUnread)
 	}
 	renderReservations(w, out.reservationsBlock)
 	fmt.Fprintln(w, out.Grants)

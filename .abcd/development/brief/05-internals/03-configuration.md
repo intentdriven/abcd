@@ -4,8 +4,8 @@ Almost nothing here is a decision anyone has to make. Installing abcd asks
 four questions and, at a terminal, a fifth about the README and two about live
 brief sessions, records the answers and whether it created the README, and gets
 on with it; `ahoy install --attribution` writes one more key and `ahoy install
---outbound` two more, and twelve further keys can be hand-set and are read but
-never written. Beyond those twenty-two, the binary reads only keys a person
+--outbound` two more, and thirteen further keys can be hand-set and are read but
+never written. Beyond those twenty-three, the binary reads only keys a person
 opts into: the provider adapter's `oracle` keys (the reviewer route's
 `oracle.review` among them) and the interview's list style, both below, the
 implement loop's `pace` (`pace.work_minutes`, `pace.pause_minutes`,
@@ -66,7 +66,7 @@ written by `ahoy install --attribution`, and `outbound.hook` and
 switch; the shell guard reads `outbound.forge`, and an install
 completes a repository that records only one of the two and leaves the other
 absent, while a key set to `false` is the repository's choice and is left as it
-is. The remaining twelve —
+is. The remaining thirteen —
 whether abcd should enable the forge's own secret scanning, the rules loader's
 refresh backstop, the filing-time match's threshold and compared fields,
 whether `abcd land` pushes and queues, whether a reservation may be made on
@@ -75,10 +75,11 @@ and the checks it requires, whether the shell guard also holds a pull
 request's title and body to RS004 (`outbound.declare_mentions`, a rule a
 repository adopts, so no install sets it), who merges (`facilitator.mode`,
 `human` by default or `auto`, read by the merge gate, the board and the shell
-guard at the default branch's tip, where `human` from any layer wins) and the
+guard at the default branch's tip, where `human` from any layer wins), the
 file a release cut appends its digest to (`release.digest`, read from the
-repository layer alone) — are hand-set: the binary reads them and never writes
-them.
+repository layer alone) and the workflow `abcd status` watches
+(`status.scheduled_workflow`, read from the repository's own file) — are
+hand-set: the binary reads them and never writes them.
 
 ```json
 {
@@ -144,6 +145,11 @@ them.
                                         //   for a duplicates/refines link to be written
     "fields": ["issue.body", "intent.title", "intent.press_release"]
                                         // what each candidate offers; one or more of the three
+  },
+  "status": {                           // `abcd status` (04-surfaces/39-status.md)
+    "scheduled_workflow": "nightly.yml" // the file name of the workflow a schedule runs on the default branch;
+                                        //   a failed latest run is named by the verb and the prompt's block.
+                                        //   Absent is off: the forge is not asked
   },
   "land": {                             // `abcd land` (04-surfaces/38-land.md)
     "push": true,                       // push the branch once a preflight receipt names its head
@@ -216,7 +222,7 @@ origin's push URLs a fork, so a malformed value (neither `"refuse"` nor one
 plain owner and one plain name), or a misspelt key under `reservation`, refuses
 a reservation on a fork naming the file and never stops one anywhere else. The machine layer's `reservation.github_username`
 (04-surfaces/37-reserve.md) shares the namespace; it is read from the machine
-layer alone and is not one of the twenty-two. The holder lookup reads the
+layer alone and is not one of the twenty-three. The holder lookup reads the
 machine's own file whatever origin is, so a misspelt key under `reservation`
 there refuses every reservation that reaches that lookup, on a fork or not.
 

@@ -251,6 +251,9 @@ type StatusView struct {
 	// holdsUnread is true when the holds could not be read, and the rest of
 	// the view was: the prompt block says so in its own line.
 	holdsUnread bool
+	// ScheduledFailure is the failed latest scheduled run `abcd status` kept
+	// the forge's word of, nil when none is known (readScheduledFailure).
+	ScheduledFailure *ScheduledFailure
 }
 
 // StatusFetch is what `abcd status`'s fetch could not read: Gap is why
@@ -434,6 +437,7 @@ func ReadStatus(ctx context.Context, root string, now time.Time, o Options) (Sta
 	if v.Holds, v.Lapsed, err = readHolds(root, now, o); err != nil {
 		holdsErr = &holdsUnreadError{err}
 	}
+	v.ScheduledFailure = readScheduledFailure(root, now)
 	in, err := takeIn(ctx, root, now)
 	if err != nil {
 		return v, errors.Join(holdsErr, err)

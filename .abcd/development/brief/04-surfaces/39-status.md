@@ -55,6 +55,34 @@ at most ten branches, the one waiting longest first, and a branch asked goes
 behind every branch still waiting, so each is asked within a bounded number
 of fetches. It pushes nothing.
 
+## The latest scheduled run
+
+A workflow a schedule runs on the default branch can stay red with no session
+told, since no merge reads it (iss-2611050035192370). So a fetch that succeeded
+also asks the forge, through `gh api`
+(`GET /repos/{owner}/{repo}/actions/workflows/{file}/runs`, filtered to a
+completed run of the `schedule` event on `origin`'s default branch, one per
+page), within five seconds, for the latest run of the one workflow the
+repository names as `status.scheduled_workflow` in its own `.abcd/config.json`,
+and keeps the conclusion, the run's URL, when it ended and when it asked in
+`.abcd/.work.local/status/scheduled-run.json`. The verb is where this happens
+because it has already been to the network, and the prompt hook's block promises
+never to; the block reads only what the verb kept.
+
+The core asks through a lookup its front door hands it, as it asks who pushed,
+and the forge is the adapter (invariant 2). A repository that names no workflow
+is off: nothing is asked, kept or read, so every managed repository, whatever
+its workflow is called, and one with none, reads alike. A value that could not
+name a workflow's file is said by the verb and never reaches the forge. Only
+`failure`, `timed_out` and `startup_failure` are named: a cancelled or skipped
+run says nothing of whether the branch is healthy. A failure to ask (no `gh`, no
+login, an origin on another forge, no answer inside the five seconds) is said by
+the verb in one line that is not a failure, changes no exit, is never in the
+block, and leaves what was kept as it was; an answer asked for more than two days
+ago, about another workflow, or that does not read back is not read. The age is
+of the asking, so a fresh answer that the latest run failed a week ago is still
+named, with its age.
+
 ## The intake
 
 One intake serves the verb and the prompt hook. It walks each status branch
@@ -105,7 +133,9 @@ first fetched each, then by the time it carries, each by the line the prompt
 hook shows it by, `h_0123456789abcdef0123456789abcdef (claimed): merging #1012, for 30 min`
 (the full id, here an invented one; a sender
 named by a username, on a branch made before the holder id, shows as
-`@maya (verified): …`), with the time sent; then each doubtful branch; then the reservations block `/abcd:peers`
+`@maya (verified): …`), with the time sent; then each doubtful branch; then a
+failed latest scheduled run, in one line with its URL and age, and nothing when
+it did not fail; then the reservations block `/abcd:peers`
 lists, release holds, a live drain lane's stage and each holder's hand-backs
 from the last day included, each by the line the land fence counts it by;
 then the line that an announcement informs and grants nothing. A failed fetch
@@ -116,7 +146,9 @@ succeeded (C10). The JSON document carries `status_view`, `announcements`,
 `doubtful`, `unread`, the counts `unread_names`, `branches_not_read`,
 `branches_left_to_read` and `announcements_not_read`, `grants`, and the
 reservations block's own fields, with `senders_unchecked`, `not_dropped`,
-`local_tier_missing`, `read_error`, `holder_ids_refused` (the class of the
+`local_tier_missing`, `read_error`, `scheduled_failure` (the failed run's
+workflow, branch, conclusion, URL, end and age), `scheduled_unread` (why the
+run could not be read), `holder_ids_refused` (the class of the
 guarded read's refusal of the declared ids' file) and `holder_id_refused`
 (the class of the refusal of the reader's own holder id) when each has
 something to say.
@@ -130,7 +162,8 @@ h_0123456789abcdef0123456789abcdef (claimed): merges are held; the hold lapses
 at <time> unless the cut renews it", C8, a holder id not the reader's marked
 claimed), each release cut that lapsed within the last
 week ("release v0.16.0: the cut by h_0123456789abcdef0123456789abcdef (claimed) lapsed
-at …; no merge is held", iss-2610241107191205), then the newest
+at …; no merge is held", iss-2610241107191205), a failed latest scheduled run by
+what the verb kept (once per run, so a failure the next night is new), then the newest
 announcement per item, then the doubts,
 at most two one by one and otherwise one line that sums them up and always
 keeps its place, at most ten lines in all, then a count of the rest and the
