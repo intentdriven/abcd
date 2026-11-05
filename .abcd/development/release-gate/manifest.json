@@ -22,6 +22,7 @@
     ".abcd/development/brief/02-constraints/04-naming.md",
     ".abcd/development/brief/04-surfaces/README.md",
     ".abcd/development/brief/04-surfaces/08-abcd.md",
+    ".abcd/development/brief/04-surfaces/41-agents.md",
     ".abcd/development/brief/04-surfaces/01-ahoy.md",
     ".abcd/development/brief/04-surfaces/38-announce.md",
     ".abcd/development/brief/04-surfaces/20-banlist.md",
@@ -67,6 +68,7 @@
   ],
   "commands": [
     "abcd",
+    "agents",
     "ahoy",
     "announce",
     "banlist",
