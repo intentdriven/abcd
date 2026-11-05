@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/core/claim"
 )
 
 // repeated is the script line, n times.
@@ -124,5 +126,39 @@ func TestAPreflightThatFailsCountsTowardTheOutage(t *testing.T) {
 	}
 	if !slices.Contains(w.sleeps, time.Minute) {
 		t.Fatalf("the third failure enters the schedule: %v", w.sleeps)
+	}
+}
+
+// TestAJudgedMoveThatThenWaitsEndsTheCount: the judge answers, so the outage is
+// over, though the same move goes on to wait; the next failure starts the
+// schedule afresh.
+func TestAJudgedMoveThatThenWaitsEndsTheCount(t *testing.T) {
+	w := newTerminalWorld(t, "none", "yes", "none")
+	q := otherCopy(t, w.bare, quinnEmail)
+	held := map[string]string{secondIssue: "commands/drain.md", thirdIssue: "commands/other.md"}
+	for id, path := range held {
+		if _, err := claim.Reserve(q, claim.Request{Record: id, Footprint: []string{path}}, as(t, q, claim.Options{})); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w.onSleep = func(d time.Duration) {
+		if d < drainWaitMinutes*time.Minute {
+			return
+		}
+		for id := range held {
+			delete(held, id)
+			if _, err := claim.Reserve(q, claim.Request{Record: id, Release: true}, as(t, q, claim.Options{})); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	o := w.options(t)
+	o.Drain.Max = 1
+	if _, err := RunTerminal(context.Background(), w.repo.Root(), o); err != nil {
+		t.Fatal(err)
+	}
+	want := []time.Duration{time.Minute, drainWaitMinutes * time.Minute, time.Minute}
+	if len(w.sleeps) < len(want) || !slices.Equal(w.sleeps[:len(want)], want) {
+		t.Fatalf("the waits are %v, want %v first\n%s", w.sleeps, want, strings.Join(w.lines, "\n"))
 	}
 }
