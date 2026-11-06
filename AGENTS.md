@@ -207,8 +207,9 @@ For this repository the line is
 CI (`.github/workflows/ci.yml`) runs its `check` job on Linux on every event —
 build, vet, test and the race-enabled internal tests, with the `make fmt-check`
 format gate, the record-lint, issue-drift and docs-lint steps and the
-site-render gate. Nightly and on demand the macOS suite runs in three
-`macos-suite` shards. `check-macos` reports
+site-render gate. Nightly and on demand the macOS suite runs in four
+`macos-suite` shards, the last holding `internal/core/implement/loop` alone.
+`check-macos` reports
 `check (macos-latest)` from ubuntu and fails unless every shard succeeded; on a
 pull request or a queue entry the shards stand down and it says so (the pre-push
 hook holds a push to `make preflight`). The queue entry tests on Linux the tree that lands.

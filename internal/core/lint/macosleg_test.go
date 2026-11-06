@@ -324,6 +324,9 @@ func regexpFirst(text, pattern string) (string, bool) {
 // macOSContext is the required context the macOS suite's aggregator reports.
 const macOSContext = "check (macos-latest)"
 
+// modulePackagePrefix starts every import path cmd/ci-shard prints.
+const modulePackagePrefix = "github.com/intentdriven/abcd/"
+
 // macOSShards reads the suite's matrix, failing unless it is 1..n: the step asks
 // cmd/ci-shard for shard matrix.shard of strategy.job-total, so a gap or a repeat
 // here would leave a shard's packages tested nowhere.
@@ -348,11 +351,11 @@ func macOSShards(t *testing.T, suite string) []int {
 	return shards
 }
 
-// macOSShardCount is how many shards the suite runs: a third of the slowest
-// passing run fits a slow runner comfortably, and one run's three shards fit the
-// account's five macOS runners (the comment on the macos-suite job in ci.yml has
-// the sums).
-const macOSShardCount = 3
+// macOSShardCount is how many shards the suite runs: three that share most of the
+// module, and one that holds internal/core/implement/loop alone. One run's four fit
+// the account's five macOS runners (the comment on the macos-suite job in ci.yml
+// has the sums).
+const macOSShardCount = 4
 
 // macOSRaceStepScript returns the shard race step's job step, its env values held
 // to what asks cmd/ci-shard for this shard of as many as its caller names
@@ -406,6 +409,7 @@ func TestMacOSSuiteShardsCoverTheModule(t *testing.T) {
 	}
 	want := strings.Fields(string(out))
 	seen := map[string]int{}
+	var last []string
 	for _, shard := range shards {
 		cmd := exec.Command("go", "run", "./cmd/ci-shard", "-shard", strconv.Itoa(shard), "-of", strconv.Itoa(len(shards)))
 		cmd.Dir = root
@@ -420,6 +424,13 @@ func TestMacOSSuiteShardsCoverTheModule(t *testing.T) {
 		for _, p := range got {
 			seen[p]++
 		}
+		last = got
+	}
+	// The loop package has a shard to itself, under the count the workflow really
+	// asks for. The first shard also runs the build, vet and the plain-only guards,
+	// so it cannot be this one.
+	if wantLast := []string{modulePackagePrefix + "internal/core/implement/loop"}; !slices.Equal(last, wantLast) {
+		t.Errorf("the last shard names %q; want %q alone", last, wantLast)
 	}
 	for _, p := range want {
 		if seen[p] != 1 {
@@ -451,7 +462,7 @@ func TestAShardThatCannotReadItsPackagesFails(t *testing.T) {
 		// The flags the step's own shell gives bash, ci-watchdog aside.
 		cmd := exec.Command("bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", script)
 		cmd.Env = append(os.Environ(), "PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"),
-			"STUB_LOG="+log, "STUB_FAIL="+fail, "ABCD_CI_SHARD=1", "ABCD_CI_SHARDS=3")
+			"STUB_LOG="+log, "STUB_FAIL="+fail, "ABCD_CI_SHARD=1", "ABCD_CI_SHARDS="+strconv.Itoa(macOSShardCount))
 		err := cmd.Run()
 		got, _ := os.ReadFile(log)
 		return string(got), err
