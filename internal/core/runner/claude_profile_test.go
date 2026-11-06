@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // walledFake is a fake harness with a profile, for a claude runner the test
@@ -15,7 +17,7 @@ import (
 func walledFake(t *testing.T, mode string) (fakeEnv, *ClaudeCLI, Profile) {
 	t.Helper()
 	f := newFake(t, mode, Claude)
-	p, err := DriveProfile(profileHome(t, "walled"))
+	p, err := DriveProfile(profileHome(t, "walled"), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,4 +194,73 @@ func TestConfigWalledPutsEveryRoleOnTheWalledClaudeLaunch(t *testing.T) {
 	if got := c.RouteFor("implementer").Runner; got != Host {
 		t.Errorf("the configuration read stays as it was: %q", got)
 	}
+}
+
+// TestEveryCheckAndLaunchOnANamedProfileIsOnItsDirectory: the settings written and
+// compared, the login asked after, a stage's launch and a limit's probe are the
+// named directory's, and its sibling is left as it was.
+func TestEveryCheckAndLaunchOnANamedProfileIsOnItsDirectory(t *testing.T) {
+	f := newFake(t, "probe-ok", Claude)
+	home := profileHome(t, "alpha", "beta")
+	alpha := abcdhome.Path(home, "profiles", "alpha")
+	p, err := DriveProfile(home, "beta")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const bin = "/opt/abcd/bin/abcd"
+	if _, err := WriteWallSettings(p, bin); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(p.Dir, wallSettingsName)); err != nil {
+		t.Fatalf("the settings are written into the named directory: %v", err)
+	}
+	if entries, err := os.ReadDir(alpha); err != nil || len(entries) != 0 {
+		t.Fatalf("its sibling is left as it was: %v %v", entries, err)
+	}
+	if err := CheckWallSettings(p, bin); err != nil {
+		t.Fatalf("the settings stand: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(alpha, wallSettingsName), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckWallSettings(p, bin); err != nil {
+		t.Fatalf("a sibling's settings are no matter: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(p.Dir, wallSettingsName), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckWallSettings(p, bin); err == nil {
+		t.Fatal("the named directory's own settings are what is compared")
+	}
+	if _, err := WriteWallSettings(p, bin); err != nil {
+		t.Fatal(err)
+	}
+
+	onDir := func(what string) {
+		t.Helper()
+		if got, _ := envValue(envOf(t, f, "claude.env"), "CLAUDE_CONFIG_DIR"); got != p.Dir {
+			t.Errorf("%s ran on %q, want %q", what, got, p.Dir)
+		}
+	}
+	cfg := mustLoad(t, `{"runner":{"claude":{}}}`, "").Walled(p)
+	if renewed, fl := cfg.ProbeLimit(context.Background(), "implementer", ""); !renewed {
+		t.Fatalf("the probe answered: %+v", fl)
+	}
+	onDir("a limit's probe")
+	t.Setenv(fakeModeEnv, "wall-ok")
+	if err := CheckLogin(context.Background(), p); err != nil {
+		t.Fatalf("a login holds: %v", err)
+	}
+	onDir("the login's check")
+	t.Setenv(fakeModeEnv, "ok")
+	rc, ok := cfg.Runner(Claude)
+	if !ok {
+		t.Fatal("the runner is enabled")
+	}
+	c := cfg.adapter(rc).(*ClaudeCLI)
+	c.approver = bin
+	if _, _, err := c.Run(context.Background(), shellRequest(f)); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	onDir("a stage's launch")
 }

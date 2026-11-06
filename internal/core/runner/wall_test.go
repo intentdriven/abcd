@@ -133,7 +133,7 @@ func fakeWall(mode string) int {
 func wallProfile(t *testing.T) Profile {
 	t.Helper()
 	home := profileHome(t, "walled")
-	p, err := DriveProfile(home)
+	p, err := DriveProfile(home, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -453,7 +453,7 @@ func TestAStagesShellHasItsOwnHomeAndWhatItNeeds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := DriveProfile(home)
+	p, err := DriveProfile(home, "")
 	if err != nil {
 		t.Fatal(err)
 	}

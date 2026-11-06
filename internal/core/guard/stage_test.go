@@ -1,6 +1,7 @@
 package guard
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -345,5 +346,32 @@ func TestAStageAddsNoWorktree(t *testing.T) {
 	}
 	if a := approveShell(clean(), NewFiles(t.TempDir()), `git worktree list`); !a.Allow {
 		t.Errorf("another session is not judged this way: %s", a.Reason)
+	}
+}
+
+// TestAStageOnOneProfileWritesNoSiblingProfile: a stage names only its own profile to
+// protect, and the lines the guard reads are refused on a sibling's login and settings
+// all the same. The stage's home stands where a drive puts it, four levels below abcd's
+// home. This judges lines: a shell can reach what the guard does not read.
+func TestAStageOnOneProfileWritesNoSiblingProfile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	profile := abcdhome.Path(home, "profiles", "walled")
+	sibling := abcdhome.Path(home, "profiles", "sibling")
+	shellHome := abcdhome.Path(home, "stage-homes", "walled", "0123456789abcdef", "home")
+	f := NewFiles(t.TempDir()).WithStage(shellHome, []string{profile}, []string{"docs/page.md"})
+	if err := os.MkdirAll(sibling, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range []string{
+		`printf x > ` + filepath.Join(sibling, "settings.json"),
+		`printf x > ~/../../../../profiles/sibling/settings.json`,
+		`printf x > "$HOME/../../../../profiles/sibling/settings.json"`,
+		`rm -rf ` + sibling,
+		`cp /dev/null ` + filepath.Join(sibling, ".credentials.json"),
+	} {
+		if a := approveShell(clean(), f, line); a.Allow {
+			t.Errorf("%q was approved on a walled stage", line)
+		}
 	}
 }

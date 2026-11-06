@@ -31,11 +31,14 @@ const (
 
 // RunRecord is a run's record as it is read at the end.
 type RunRecord struct {
-	RunID     string    `json:"run_id"`
-	Key       string    `json:"key"`
-	Intent    string    `json:"intent"`
-	Spec      string    `json:"spec"`
-	Driver    Driver    `json:"driver"`
+	RunID  string `json:"run_id"`
+	Key    string `json:"key"`
+	Intent string `json:"intent"`
+	Spec   string `json:"spec"`
+	Driver Driver `json:"driver"`
+	// Profile names the profile a drive ran the run on, by name; absent for a run no
+	// drive named one for.
+	Profile   string    `json:"profile,omitempty"`
 	Complete  bool      `json:"complete"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -176,7 +179,7 @@ type RecordComparison struct {
 
 // recordOf renders a run's state as its record.
 func recordOf(st State) RunRecord {
-	rec := RunRecord{RunID: st.RunID, Key: st.Key, Intent: st.Intent, Spec: st.Spec, Driver: st.Driver,
+	rec := RunRecord{RunID: st.RunID, Key: st.Key, Intent: st.Intent, Spec: st.Spec, Driver: st.Driver, Profile: st.Profile,
 		Complete: st.Complete(), CreatedAt: st.CreatedAt, UpdatedAt: st.UpdatedAt, Pace: st.Pace, Review: st.Review,
 		Lanes: []RecordLane{}, Pending: st.Pending, Transcripts: st.Transcripts, Record: st.Record,
 		Fallbacks: st.Fallbacks, FallbackCounts: runner.Tally(st.Fallbacks), Outages: []implement.OutageSpan{},

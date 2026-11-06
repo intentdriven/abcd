@@ -933,8 +933,10 @@ nothing and uses no network: every unfinished run this account can read, in this
 alive or gone, what a stop left, and each lane's stage, each agent alive, lost or
 unknown, each receipt that arrived uncollected, its pull request, how far origin's
 default branch as last fetched has moved past its base, and the files it holds
-uncommitted. A run in a lane's own worktree is not listed. That listing and the checklist are all a session that lost its context
-needs.
+uncommitted. A run in a lane's own worktree is not listed. A run a drive started names the
+profile it started on, in the listing and in `--take`'s answer, since what the session starts
+from there runs on the session's own login. That listing and the checklist are all a session
+that lost its context needs.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement resume [--run <run-id>] --json
