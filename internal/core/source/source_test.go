@@ -163,10 +163,81 @@ func TestIdentifyingKeyLeavesAnOpaqueKeyAlone(t *testing.T) {
 		{"conf2026a", "Ada Okoro-Bello"},
 		{"lixu2026", "Li Na"},
 		{"adler2026", "Ad Xu"},
+		{"conf2026a", "Quiet Harbour Group 2026"},
+		{"conf2026a", "Ada Okoro 2026"},
 	} {
 		e := Entry{ID: tc.key, Title: confTitle, Author: []Name{{Literal: tc.literal}}}
 		if field := identifyingKey(e); field != "" {
 			t.Errorf("key %q with author %q is refused for its %s", tc.key, tc.literal, field)
+		}
+	}
+	for _, tc := range []struct {
+		key  string
+		name Name
+	}{
+		{"conf2026a", Name{Family: confAuthor, Given: "Ada"}},
+		{"conf2026a", Name{Family: "Okoro-Bello", Given: "Mary-Anne"}},
+		{"lixu2026", Name{Family: "Na", Given: "Li"}},
+		{"conf2026a", Name{Family: "Okoro 2026", Given: "Ada"}},
+	} {
+		e := Entry{ID: tc.key, Title: confTitle, Author: []Name{tc.name}}
+		if field := identifyingKey(e); field != "" {
+			t.Errorf("key %q with author %+v is refused for its %s", tc.key, tc.name, field)
+		}
+	}
+}
+
+// TestIdentifyingKeyReadsEveryFieldInEitherUnicodeForm: an accented value in its
+// composed and decomposed forms gives the same answer in each field fold reads,
+// against a key spelled in plain letters.
+func TestIdentifyingKeyReadsEveryFieldInEitherUnicodeForm(t *testing.T) {
+	const composed, decomposed = "M\u00fclo", "Mu\u0308lo"
+	for _, tc := range []struct {
+		field string
+		entry func(value string) Entry
+		key   string
+	}{
+		{"alias", func(v string) Entry { return Entry{Title: confTitle, Custom: Custom{Aliases: []string{v}}} }, "mulo2026"},
+		{"title", func(v string) Entry { return Entry{Title: v} }, "mulo2026"},
+		{"title", func(v string) Entry { return Entry{Title: "Some " + v + "ness Notes"} }, "muloness2026"},
+		{"author", func(v string) Entry { return Entry{Title: confTitle, Author: []Name{{Family: v}}} }, "mulo2026"},
+		{"author", func(v string) Entry { return Entry{Title: confTitle, Author: []Name{{Given: v, Family: confAuthor}}} }, "mulo2026"},
+		{"author", func(v string) Entry { return Entry{Title: confTitle, Author: []Name{{Literal: "Ada " + v}}} }, "mulo2026"},
+	} {
+		for name, value := range map[string]string{"composed": composed, "decomposed": decomposed} {
+			e := tc.entry(value)
+			e.ID = tc.key
+			if got := identifyingKey(e); got != tc.field {
+				t.Errorf("%s form of %+v with key %q: refused for %q, want %q", name, e, tc.key, got, tc.field)
+			}
+		}
+	}
+}
+
+// TestFoldGivesOneAnswerForEitherUnicodeForm: fold keeps letters and digits,
+// lowercased, whichever form a name arrives in.
+func TestFoldGivesOneAnswerForEitherUnicodeForm(t *testing.T) {
+	for in, want := range map[string]string{
+		"M\u00fcller":  "muller",
+		"Mu\u0308ller": "muller",
+		"O'Brien 2026": "obrien2026",
+	} {
+		if got := fold(in); got != want {
+			t.Errorf("fold(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// TestIdentifyingKeyReadsAnAuthorTheSameInEitherForm: a person entered plainly and
+// the same person entered as family and given name refuse the same keys.
+func TestIdentifyingKeyReadsAnAuthorTheSameInEitherForm(t *testing.T) {
+	plain := Name{Literal: "Mary-Anne Okoro-Bello"}
+	parts := Name{Family: "Okoro-Bello", Given: "Mary-Anne"}
+	for _, key := range []string{"mary2026", "anne2026", "okoro2026", "bello2026", "maryanne2026", "okorobello2026", "maryanneokorobello2026", "conf2026a"} {
+		a := identifyingKey(Entry{ID: key, Title: confTitle, Author: []Name{plain}})
+		b := identifyingKey(Entry{ID: key, Title: confTitle, Author: []Name{parts}})
+		if a != b {
+			t.Errorf("key %q: the plain form gives %q, the family and given form %q", key, a, b)
 		}
 	}
 }
@@ -194,6 +265,15 @@ func TestAddRefusals(t *testing.T) {
 		{"key names the second half of a hyphenated plain name", func(r *AddRequest) { r.Key = "bello2026"; r.Authors = []Name{{Literal: "Ada Okoro-Bello"}} }, ErrIdentifyingKey},
 		{"key names the part of a plain name after an apostrophe", func(r *AddRequest) { r.Key = "brien2026"; r.Authors = []Name{{Literal: "Ada O'Brien"}} }, ErrIdentifyingKey},
 		{"key names a whole plain name of short words", func(r *AddRequest) { r.Key = "lina2026"; r.Authors = []Name{{Literal: "Li Na"}} }, ErrIdentifyingKey},
+		{"key names the second half of a hyphenated family name", func(r *AddRequest) { r.Key = "bello2026"; r.Authors = []Name{{Family: "Okoro-Bello", Given: "Ada"}} }, ErrIdentifyingKey},
+		{"key names a word of a family name in several words", func(r *AddRequest) { r.Key = "berg2026"; r.Authors = []Name{{Family: "van der Berg", Given: "Ada"}} }, ErrIdentifyingKey},
+		{"key names the given name", func(r *AddRequest) { r.Key = "adaeze2026"; r.Authors = []Name{{Family: confAuthor, Given: "Adaeze"}} }, ErrIdentifyingKey},
+		{"key names a word of the given name", func(r *AddRequest) { r.Key = "anne2026"; r.Authors = []Name{{Family: confAuthor, Given: "Mary-Anne"}} }, ErrIdentifyingKey},
+		{"key names a family and given name of short words", func(r *AddRequest) { r.Key = "lina2026"; r.Authors = []Name{{Family: "Na", Given: "Li"}} }, ErrIdentifyingKey},
+		{"key names an accented plain name without its accent", func(r *AddRequest) { r.Key = "muller2026"; r.Authors = []Name{{Literal: "Ada M\u00fcller"}} }, ErrIdentifyingKey},
+		{"key names an accented family name without its accent", func(r *AddRequest) { r.Key = "muller2026"; r.Authors = []Name{{Family: "M\u00fcller", Given: "Ada"}} }, ErrIdentifyingKey},
+		{"key names a decomposed given name without its accent", func(r *AddRequest) { r.Key = "zoe2026"; r.Authors = []Name{{Family: confAuthor, Given: "Zoe\u0308"}} }, ErrIdentifyingKey},
+		{"key names a word holding a combining mark", func(r *AddRequest) { r.Key = "mulo2026"; r.Authors = []Name{{Literal: "Ada Mu\u0308lo"}} }, ErrIdentifyingKey},
 		{"bad key", func(r *AddRequest) { r.Key = "../x" }, ErrInvalidEntry},
 		{"binary original with no text", func(r *AddRequest) { r.Text = "" }, ErrInvalidEntry},
 		{"fragment alias", func(r *AddRequest) { r.Aliases = []string{"hb"} }, ErrInvalidEntry},

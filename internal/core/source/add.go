@@ -11,6 +11,8 @@ import (
 	"strings"
 	"unicode"
 
+	"golang.org/x/text/unicode/norm"
+
 	"github.com/intentdriven/abcd/internal/core/banlist"
 	"github.com/intentdriven/abcd/internal/core/question"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -338,9 +340,10 @@ func nameText(n Name) string {
 }
 
 // fold lowercases s and keeps only its letters and digits, for the key check.
+// Decomposing first gives one answer for a name in either Unicode form.
 func fold(s string) string {
 	var b strings.Builder
-	for _, r := range strings.ToLower(s) {
+	for _, r := range strings.ToLower(norm.NFD.String(s)) {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) {
 			b.WriteRune(r)
 		}
@@ -351,7 +354,7 @@ func fold(s string) string {
 // identifyingKey names the field a confidential entry's key would reveal, or "".
 // The key is printed by the guard and by cite-check, so it must not carry an alias,
 // the title or one of its longer words, an author's name, or a word of three or
-// more runes from a plain-name author.
+// more runes from an author's name, however the name was entered.
 func identifyingKey(e Entry) string {
 	key := fold(e.ID)
 	has := func(s string, min int) bool {
@@ -372,28 +375,37 @@ func identifyingKey(e Entry) string {
 		}
 	}
 	for _, n := range e.Author {
-		for _, part := range []string{n.Family, n.Literal} {
+		if has(nameText(n), 3) {
+			return "author"
+		}
+		for _, part := range []string{n.Family, n.Given, n.Literal} {
 			if has(part, 3) {
 				return "author"
 			}
-		}
-		for _, word := range nameWords(n.Literal) {
-			if has(word, 3) {
-				return "author"
+			for _, word := range nameWords(part) {
+				if !allDigits(word) && has(word, 3) {
+					return "author"
+				}
 			}
 		}
 	}
 	return ""
 }
 
-// nameWords splits a plain-name author, stored whole in Literal, into the words a
-// key could carry on their own. Whitespace and punctuation separate, so each half
-// of a hyphenated name and the part after an apostrophe count. A combining mark
-// does not separate, so a decomposed name stays one word, as fold reads it.
-func nameWords(literal string) []string {
-	return strings.FieldsFunc(literal, func(r rune) bool {
+// nameWords splits one field of an author's name into the words a key could carry
+// on their own. Whitespace and punctuation separate, so each half of a hyphenated
+// name and the part after an apostrophe count. A combining mark does not separate,
+// so a decomposed name stays one word, as fold reads it.
+func nameWords(field string) []string {
+	return strings.FieldsFunc(field, func(r rune) bool {
 		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && !unicode.IsMark(r)
 	})
+}
+
+// allDigits reports a word made only of digits: a year in an organisation's name
+// says nothing of who it is, and an opaque key is likely to hold one.
+func allDigits(word string) bool {
+	return strings.IndexFunc(word, func(r rune) bool { return !unicode.IsDigit(r) }) < 0
 }
 
 // copyFile copies a document into the corpus, creating the destination exclusively
