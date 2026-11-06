@@ -46,10 +46,9 @@ With several it refuses, naming them, until `--profile <name>` names the one to 
 mkdir -p ~/.abcd.noindex/profiles/first ~/.abcd.noindex/profiles/second
 CLAUDE_CONFIG_DIR=~/.abcd.noindex/profiles/first claude    # then the harness's own login step
 CLAUDE_CONFIG_DIR=~/.abcd.noindex/profiles/second claude   # then the harness's own login step
-abcd drain --drive --profile second
 ```
 
-The name is letters and digits, with `.`, `_` or `-` after the first, and the directory
+Then the person types `abcd drain --drive --profile second`. The name is letters and digits, with `.`, `_` or `-` after the first, and the directory
 meets every check the one directory does, as does each folder above it: a link, or a
 folder another account can change, refuses. Anything else refuses before anything is
 reserved. The question names
