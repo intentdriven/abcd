@@ -81,6 +81,9 @@ type ListedRun struct {
 	Driver   *ListedDriver `json:"driver,omitempty"`
 	// Reserved says the run holds its record's reservation as its state has it.
 	Reserved bool `json:"reserved"`
+	// ReleaseFailed says the run let its reservation go and the release did not reach
+	// origin, so the tip stands until a renewal takes it up or its lease lapses.
+	ReleaseFailed bool `json:"release_failed,omitempty"`
 	// Stop is what a stop did to the run, and left.
 	Stop  *RunStop     `json:"stop,omitempty"`
 	Lanes []ListedLane `json:"lanes"`
@@ -192,7 +195,7 @@ func listDrain(checkout string, d DrainState) ListedDrain {
 
 // listRun is one run's whole account.
 func listRun(checkout string, o Options, root *os.Root, st State, tab *sessionname.Table, stopHolds bool, now time.Time) ListedRun {
-	out := ListedRun{Checkout: termsafe.Sanitize(fsutil.RedactHome(checkout)), RunID: termsafe.Sanitize(st.RunID), Key: termsafe.Sanitize(st.Key), Reserved: st.ReservedAt != nil && !letGoByDrive(st), Lanes: []ListedLane{}}
+	out := ListedRun{Checkout: termsafe.Sanitize(fsutil.RedactHome(checkout)), RunID: termsafe.Sanitize(st.RunID), Key: termsafe.Sanitize(st.Key), Reserved: st.ReservedAt != nil && !letGoByDrive(st), ReleaseFailed: letGoByDrive(st) && failedReleaseTip(st) != "", Lanes: []ListedLane{}}
 	c, err := readControl(root, st.RunID)
 	if err != nil {
 		c = control{}
@@ -437,7 +440,8 @@ func takeRun(repoRoot, runID string, o Options) (TakeResult, error) {
 		return TakeResult{}, err
 	}
 	defer root.Close()
-	if _, err := ReadState(repoRoot, runID); err != nil {
+	was, err := ReadState(repoRoot, runID)
+	if err != nil {
 		return TakeResult{}, err
 	}
 	// Everything below may run git, so a configuration changed during the run
@@ -467,7 +471,9 @@ func takeRun(repoRoot, runID string, o Options) (TakeResult, error) {
 	res := TakeResult{RunID: runID}
 	res.Collected = collectArrived(repoRoot, runID, DefaultStages(), seen, o)
 
-	if prev.Stop != nil && prev.Stop.HaltedAt != nil && prev.Stop.Released != noReservationHeld {
+	// A stop's halt or a drive's letting go left the run holding nothing that a step would
+	// take up, so the take-over reserves it again.
+	if (prev.Stop != nil && prev.Stop.HaltedAt != nil && prev.Stop.Released != noReservationHeld) || letGoByDrive(was) {
 		start := StartResult{RunID: runID}
 		switch err := reserveTaken(repoRoot, &start, o, false); {
 		case err == nil:

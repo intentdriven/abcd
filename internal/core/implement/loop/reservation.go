@@ -813,12 +813,24 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 	} else if fp, err = runFootprint(repoRoot, st.Key, st.Spec, res.RunID+" is unchanged"); err != nil {
 		return err
 	}
+	// A reservation the run could not record is released again, and peers would see the
+	// issue flap on each retry, so the lock is looked at before anything is pushed.
+	if err := withLock(repoRoot, func(*os.Root) error { return nil }); err != nil {
+		return err
+	}
 	now := o.now()
-	moved := recordMovedOn(repoRoot, st, now)
-	if moved != "" && o.drain {
-		rf := refuse(StageDrain, CheckReservation, "", moved+"; nothing was reserved", "take other work; a later drain takes the issue as its record now stands")
-		rf.recordMoved = true
-		return rf
+	since := recordMovedOn(repoRoot, st, now)
+	if o.drain {
+		if since.moved != "" {
+			rf := refuse(StageDrain, CheckReservation, "", since.moved+"; nothing was reserved", "take other work; a later drain takes the issue as its record now stands")
+			rf.recordMoved = true
+			return rf
+		}
+		if since.unread != "" {
+			rf := refuse(StageReservation, "", "", since.unread+"; nothing was reserved", "run the verb again once "+claim.Remote+" answers")
+			rf.originUnread = true
+			return rf
+		}
 	}
 	i := st.current()
 	landing := i >= 0 && st.Lanes[i].Stage == StageLand
@@ -826,9 +838,13 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 	if err != nil {
 		return err
 	}
-	if moved != "" {
-		// A person's own, as one over a hand-back is (claim's HandBack.Note).
-		r.note += "; " + moved + ", and the lane's brief reads it as it stood at the lane's base; this reservation is a person's own, so it was made"
+	// A person's own, as one over a hand-back is (claim's HandBack.Note).
+	const own = "; this reservation is a person's own, so it was made"
+	if since.moved != "" {
+		r.note += "; " + since.moved + ", and the lane's brief reads it as it stood at the lane's base" + own
+	}
+	if since.unread != "" {
+		r.note += "; " + since.unread + own
 	}
 	if err := mutate(repoRoot, res.RunID, func(_ *os.Root, st *State) (bool, error) {
 		if st.ReservedAt == nil {

@@ -474,13 +474,18 @@ func Finished(root, id string) bool {
 	return err == nil && terminal(recs[id], id)
 }
 
-// RecordBlob is the blob of id's record on origin's default branch as last
-// fetched. It is "" where this checkout names no default branch, the branch
-// cannot be read, or it holds the record in no file or in several.
-func RecordBlob(root, id string) string {
-	recs, err := defaultRecords(root, originDefault(root))
-	if err != nil {
-		return ""
+// RecordOnDefault reads id's record on origin's default branch as last fetched:
+// the blob of the one file that holds it ("" for none or several) and how many
+// files hold it. readable is false where this checkout names no default branch or
+// the branch cannot be read.
+func RecordOnDefault(root, id string) (blob string, files int, readable bool) {
+	ref := originDefault(root)
+	if ref == "" {
+		return "", 0, false
 	}
-	return blobOf(recs[id])
+	recs, err := defaultRecords(root, ref)
+	if err != nil {
+		return "", 0, false
+	}
+	return blobOf(recs[id]), len(recs[id]), true
 }

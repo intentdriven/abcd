@@ -288,19 +288,24 @@ paths a released tip of this copy names beside the found_at (a sweep that has de
 tombstone leaves the found_at, and the receipt's check then asks for the widening again), and
 tells the marked roles again in the same write. A take-over tells them nothing and restarts
 them instead, since a role told again with no agent reads as one that may still be in its
-call. A release that never reached origin is said as one: the tip stands, the wait renews
-nothing it let go, and a renewal on waking or from a session waiting in the checkout
-(`RenewRunsIn`) reads the lane as held, so `takeUp` tells the marked roles again there too.
-Such a lane kept its hold, as a short limit does, so what follows is not compared. Every
-release a drive or a stop makes notes the record's blob on the default branch, after the
-release's own fetch, as `drive_released_over`; a stop over a run a drive already let go keeps
-the note made then. `reserveResumed` compares it before it reserves, so every automated return
-shares the answer: only a blob read and differing counts, as a hand-back reads a change, and a
-drain's act is refused with nothing pushed, the take-up, the take-over or the start dropping
-the lane and saying the record changed. That drop tries once more a release that never reached
-origin, which over a tombstone pushes nothing. A person's act goes ahead and says the record
-changed, in the form a person's reservation over a hand-back uses, since the lane's brief reads
-it as it stood at the lane's base. A new drain itself does not resume a run left let go: it
+call. A release that never reached origin is said as one, and notes the tip it left as
+`drive_release_failed`: the tip stands, neither the wait nor a move renews what it let go, and
+the listing says the tip holds. A session waiting in the checkout (`RenewRunsIn`) may renew it,
+which reads the lane as held, so `takeUp` tells the marked roles again there too, and such a lane
+kept its hold, as a short limit does, so what follows is not compared. Every release a drive or a
+stop makes notes the record's blob on the default branch, after the release's own fetch, as
+`drive_released_over`; a stop over a run a drive already let go keeps the note made then.
+`reserveResumed` looks at the run lock before anything is pushed, so a lock another invocation
+holds costs origin no commits, then fetches and compares, so every automated return shares the
+answer. The note proves the record stood, so a readable branch with no file for it counts as a
+change, while a fetch that fails or a branch that cannot be read is no comparison at all. On a
+change a drain's act is refused with nothing pushed, the take-up, the take-over or the start
+dropping the lane and saying so; with no comparison it waits. That drop tries a failed release
+again only over the tip that release left, so a reservation made by hand from this copy during
+the wait stands, and the reason says which happened. A person's act goes ahead and says the record
+changed, is gone or could not be compared, in the form a person's reservation over a hand-back
+uses, since the lane's brief reads it as it stood at the lane's base. A take-over reserves a run
+a drive let go with no stop on it too, since no step would. A new drain itself does not resume a run left let go: it
 passes the issue over while the run stands, and the start's comparison answers the race where
 a concurrent build opened that run after the move read the runs. A branch behind
 the default branch catches up at the landing's sync, as any does. A reservation backing off is

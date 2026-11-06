@@ -98,7 +98,10 @@ func renderListedRun(w io.Writer, r loop.ListedRun) {
 	} else {
 		fmt.Fprintln(w, "  driver: none recorded")
 	}
-	if !r.Reserved {
+	switch {
+	case r.ReleaseFailed:
+		fmt.Fprintln(w, "  reservation: let go, but the release did not reach origin, so its tip holds until its lease lapses")
+	case !r.Reserved:
 		fmt.Fprintln(w, "  reservation: not held")
 	}
 	if s := r.Stop; s != nil {

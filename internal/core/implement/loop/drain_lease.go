@@ -28,7 +28,8 @@ import (
 // the routing's (releaseHandedBack). It returns the
 // notes of renewals that failed or found the hold another's, for the move's
 // next step; a lane whose run cannot be read is left to the routing below,
-// which names it.
+// which names it. A run a drive let go is renewed by nothing here either: the tip of
+// a release that did not reach origin is the take-up's, which compares the record first.
 func renewInProgress(repoRoot string, st DrainState, view *claim.Snapshot, now time.Time) []string {
 	var notes []string
 	for _, l := range st.Lanes {
@@ -36,7 +37,7 @@ func renewInProgress(repoRoot string, st DrainState, view *claim.Snapshot, now t
 			continue
 		}
 		run, err := ReadState(repoRoot, l.RunID)
-		if err != nil || !renewable(run) {
+		if err != nil || !renewable(run) || letGoByDrive(run) {
 			continue
 		}
 		if view == nil {

@@ -114,10 +114,13 @@ nothing but the bound, the cap, an empty ledger or a stop ends the run:
   the default branch, its record there changed since the release, a hand-back stands on
   it, or a peer holds it or a path of its footprint, the lane goes back holding nothing,
   saying which, with no hand-back published over the issue by this run, so a later drain
-  can still take it once what stopped this one has passed. A drain's stop lets the issue go
-  too, and the same comparison waits for whatever reserves it again. A person who resumes
-  or takes over such a run goes ahead and is told the record changed, since the lane's
-  brief reads it as it stood at the lane's base. Its worktree, its branch and what it saved stay, named in the summary,
+  can still take it once what stopped this one has passed. A record gone from the default
+  branch counts as changed. When the comparison cannot be made, the drain waits. A drain's
+  stop lets the issue go too, and the same comparison waits for whatever reserves it again.
+  A person who resumes or takes over such a run, with or without a stop on it, reserves it
+  again and goes ahead, told if the record changed, is gone or could not be compared, since
+  the lane's brief reads it as it stood at the lane's base. A reservation made by hand
+  during the wait stays when the lane goes back, and the lane says so. Its worktree, its branch and what it saved stay, named in the summary,
   until `abcd implement step --run <run-id> --discard <lane>`, and the run takes the next
   issue. A stop during the wait holds as any stop does, and nothing marks a lane let go
   this way as a person's: a later drive takes it up.

@@ -42,6 +42,16 @@ func TestImplementResumeTakeRefusesAnUnknownRun(t *testing.T) {
 	}
 }
 
+// TestTheListingSaysAFailedReleasesTipHolds: the run let go and the tip stands, so "not held"
+// would not be true.
+func TestTheListingSaysAFailedReleasesTipHolds(t *testing.T) {
+	var b bytes.Buffer
+	renderListedRun(&b, loop.ListedRun{ReleaseFailed: true})
+	if !strings.Contains(b.String(), "did not reach origin") || strings.Contains(b.String(), "not held") {
+		t.Fatalf("the listing says what is true:\n%s", b.String())
+	}
+}
+
 // TestTheListingNamesWhatAStopCannotHold: a pull request armed before it, and a page it could
 // not write.
 func TestTheListingNamesWhatAStopCannotHold(t *testing.T) {

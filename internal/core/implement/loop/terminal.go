@@ -70,6 +70,10 @@ const StageDriveReleased = "drive_released"
 // the take-up can tell what the issue asks now from what the lane was working to.
 const StageReleasedOver = "drive_released_over"
 
+// StageDriveReleaseFailed is the run record's stage for a release that did not reach
+// origin: its note is the tip it left and nothing else.
+const StageDriveReleaseFailed = "drive_release_failed"
+
 // TerminalOptions are one terminal run's inputs.
 type TerminalOptions struct {
 	// Options are the loop's seams and configuration, Runners among them.
@@ -1629,9 +1633,9 @@ func (t *terminal) takeUp(ctx context.Context, runID string) (bool, string) {
 		}
 	}
 	if !letGoByDrive(run) {
-		// A release that never reached origin reads as held once a renewal has logged
-		// itself, so what it marked is told again here. A reservation made tells it again
-		// with the reservation (reserveResumed).
+		// A release that never reached origin reads as held once a session's renewal has
+		// logged itself, so what it marked is told again here. A reservation made tells it
+		// again with the reservation (reserveResumed).
 		t.retellLimit(runID)
 		return false, ""
 	}
@@ -1664,13 +1668,40 @@ func (t *terminal) retellLimit(runID string) {
 	}
 }
 
-// noteRecordReleased records the blob of the issue's record on origin's default branch
-// as last fetched, as a drive lets the issue go. A record it cannot read leaves no note,
-// and with no note the take-up compares nothing.
-func noteRecordReleased(repoRoot string, st *State, now time.Time) {
-	if blob := claim.RecordBlob(repoRoot, st.Key); blob != "" {
+// noteRecordReleased records, as a drive or a stop lets the issue go, the blob of its record
+// on origin's default branch as last fetched, and, for a release that did not reach
+// origin, the tip it left. A record it cannot read leaves no note, and with no note
+// reserving again compares nothing.
+func noteRecordReleased(repoRoot string, st *State, failed bool, now time.Time) {
+	if blob, _, _ := claim.RecordOnDefault(repoRoot, st.Key); blob != "" {
 		st.Record = append(st.Record, Entry{At: now, Stage: StageReleasedOver, Note: blob})
 	}
+	if !failed {
+		return
+	}
+	snap, err := claim.View(repoRoot, now)
+	if err != nil {
+		return
+	}
+	if r, ok := snap.Lookup(st.Key); ok && r.Copy == claim.CopyThis && (r.State == claim.StateLive || r.State == claim.StateExpired) {
+		st.Record = append(st.Record, Entry{At: now, Stage: StageDriveReleaseFailed, Note: r.Commit})
+	}
+}
+
+// failedReleaseTip is the tip the run's latest release left when it did not reach origin,
+// "" when that release did, or the run has reserved since.
+func failedReleaseTip(run State) string {
+	for i := len(run.Record) - 1; i >= 0; i-- {
+		switch run.Record[i].Stage {
+		case StageDriveReleaseFailed:
+			return run.Record[i].Note
+		case StageReleasedOver, StageDriveReleased, StageReservationReleased, StageReservationReleaseFailed:
+			continue
+		case StageReservation, StageReservationRenewed:
+			return ""
+		}
+	}
+	return ""
 }
 
 // releasedOverBlob is the blob the run's latest release noted, "" when it noted none or
@@ -1687,34 +1718,62 @@ func releasedOverBlob(run State) string {
 	return ""
 }
 
+// recordFetch is claim.Fetch, a seam a test replaces to make the comparison's fetch fail.
+var recordFetch = claim.Fetch
+
 // recordMovedOnWith is who an issue is with whose record changed while it was let go.
 const recordMovedOnWith = "whoever changed its record"
 
-// recordMovedOn says the issue's record changed on origin's default branch since the run
-// let it go, "" when it did not. Only a blob read there and differing from the note counts,
-// as a hand-back reads a change (claim's changedSince), and a finished record is the
-// reservation's to refuse, which says so. A fetch that fails compares what was last
-// fetched: the reservation that follows asks origin itself.
-func recordMovedOn(repoRoot string, run State, now time.Time) string {
+// recordSince is what comparing the issue's record with the run's note came to: moved says
+// how it changed, unread why it could not be compared, and neither means it stands as noted.
+type recordSince struct{ moved, unread string }
+
+// recordMovedOn compares the issue's record on origin's default branch, freshly fetched, with
+// what the run noted as it let the issue go. The note proves the record stood then, so a
+// branch that can be read and holds no file for it is a change. A finished record is the
+// reservation's to refuse, which says so.
+func recordMovedOn(repoRoot string, run State, now time.Time) recordSince {
 	noted := releasedOverBlob(run)
 	if noted == "" {
-		return ""
+		return recordSince{}
 	}
-	_, _ = claim.Fetch(repoRoot, claimOptions(now))
-	current := claim.RecordBlob(repoRoot, run.Key)
-	if current == "" || current == noted || claim.Finished(repoRoot, run.Key) {
-		return ""
+	notCompared := func(why string) recordSince {
+		return recordSince{unread: fmt.Sprintf("%s's record could not be compared with what stood when the issue was let go: %s", run.Key, why)}
 	}
-	return fmt.Sprintf("%s's record on %s's default branch changed while the issue was let go", run.Key, claim.Remote)
+	if _, err := recordFetch(repoRoot, claimOptions(now)); err != nil {
+		return notCompared(claim.Remote + " could not be fetched")
+	}
+	blob, files, readable := claim.RecordOnDefault(repoRoot, run.Key)
+	switch {
+	case !readable:
+		return notCompared(claim.Remote + "'s default branch cannot be read")
+	case claim.Finished(repoRoot, run.Key):
+		return recordSince{}
+	case files == 0:
+		return recordSince{moved: fmt.Sprintf("%s's record is gone from %s's default branch, where it stood when the issue was let go", run.Key, claim.Remote)}
+	case files > 1:
+		return notCompared(claim.Remote + "'s default branch holds it in more than one file")
+	case blob == noted:
+		return recordSince{}
+	}
+	return recordSince{moved: fmt.Sprintf("%s's record on %s's default branch changed while the issue was let go", run.Key, claim.Remote)}
 }
 
 // dropMovedRun ends the lane of a run whose record changed while it was let go, and returns
-// the reason it goes back for. A release that never reached origin is tried once more,
-// so the lane does not leave its own tip holding the issue; over a tombstone that pushes
-// nothing.
+// the reason it goes back for. Only a release of the run's own that did not reach origin is
+// tried again, and only over the tip it left, so a reservation anyone made since stands,
+// and the reason says which.
 func dropMovedRun(repoRoot string, run State, why string, now time.Time) (string, error) {
-	if clause, failed := releaseReservation(repoRoot, run.Key, "", now); failed {
-		why += "; " + clause + ", so it lapses with its lease"
+	if tip := failedReleaseTip(run); tip != "" {
+		clause, failed := releaseReservationAt(repoRoot, run.Key, tip, "", now)
+		why += "; " + clause
+		if failed {
+			why += ", so it lapses with its lease"
+		}
+	} else if snap, err := claim.View(repoRoot, now); err == nil {
+		if r, ok := snap.Lookup(run.Key); ok && r.Copy == claim.CopyThis && r.State == claim.StateLive {
+			why += "; the reservation made on it from this copy since it was let go stands"
+		}
 	}
 	return why, dropRun(repoRoot, run.RunID, why, recordMovedOnWith, now)
 }
@@ -1865,9 +1924,9 @@ const limitKept = "let go for a long limit"
 // save could take, which are said and tried again at the wait's next turn; a stop's mark
 // leaves it to the stop. The run stays the driver's, and no person's: it is marked as a
 // drive's letting go, which the next take-up answers (takeUp). A release that does not
-// reach origin leaves the tip standing: the wait renews nothing it let go, so the tip
-// lapses with its lease unless a renewal on waking or a session waiting in this checkout
-// (RenewRunsIn) takes it up first, and either way the next move tells the lane again.
+// reach origin leaves the tip standing: neither the wait nor a move renews what it let go,
+// so the tip lapses with its lease unless the take-up or a session waiting in this checkout
+// (RenewRunsIn) takes it up first, and either way the lane is told again.
 func (t *terminal) letGoForLimit(runID string) {
 	if runID == "" || t.stopped() || t.stopHolds() || driveStopped(runID) {
 		return
@@ -1917,7 +1976,7 @@ func (t *terminal) letGoForLimit(runID string) {
 		// Noted after the release's fetch, so a change the lane never fetched is no change
 		// while it was let go.
 		clause, failed = releaseReservation(t.repoRoot, st.Key, "", now)
-		noteRecordReleased(t.repoRoot, st, now)
+		noteRecordReleased(t.repoRoot, st, failed, now)
 		st.Record = append(st.Record, Entry{At: now, Stage: StageDriveReleased, Note: clause})
 		st.UpdatedAt = now
 		return true, nil
@@ -2052,10 +2111,10 @@ func (t *terminal) letGo() {
 			if c, err := runControl(t.repoRoot, l.RunID); err == nil && c.Stop != nil {
 				continue
 			}
-			clause, _ := releaseReservation(t.repoRoot, run.Key, "", now)
+			clause, failed := releaseReservation(t.repoRoot, run.Key, "", now)
 			t.say("%s: %s", run.Key, clause)
 			_ = mutate(t.repoRoot, l.RunID, func(_ *os.Root, st *State) (bool, error) {
-				noteRecordReleased(t.repoRoot, st, now)
+				noteRecordReleased(t.repoRoot, st, failed, now)
 				st.Record = append(st.Record, Entry{At: now, Stage: StageDriveReleased, Note: clause})
 				st.UpdatedAt = now
 				return true, nil

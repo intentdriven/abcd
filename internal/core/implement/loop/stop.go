@@ -658,7 +658,7 @@ func settleStop(repoRoot string, root *os.Root, st *State, c *control, tab *sess
 		// A run a drive already let go keeps the note made then, which is what its lane
 		// was working to.
 		if !letGoByDrive(*st) {
-			noteRecordReleased(repoRoot, st, now)
+			noteRecordReleased(repoRoot, st, failed, now)
 		}
 		// Failed or not the run no longer holds it: a renewal now would keep the
 		// claim the stop let go.
