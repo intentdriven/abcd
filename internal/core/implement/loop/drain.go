@@ -117,6 +117,9 @@ const (
 	// DrainLaneHalted is a lane a person's stop halted, which a drive passed over: it
 	// waits for an explicit take-over, and the drain goes on to other work.
 	DrainLaneHalted = "halted"
+	// DrainLaneTakenOver is such a lane once a person has taken its run over: the run is
+	// theirs to drive, and the drain leaves it to them.
+	DrainLaneTakenOver = "taken-over"
 )
 
 // The routes a hand-back takes, by kind (scope 5).
@@ -832,6 +835,16 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			st.HandBacks = append(st.HandBacks, r)
 			res.Routed = append(res.Routed, r)
 			st.Lanes[i].Outcome, finished = DrainLaneHandedBack, true
+		}
+	}
+
+	// A lane passed over for its take-over reads as halted only while its run is.
+	for i := range st.Lanes {
+		if st.Lanes[i].Outcome != DrainLaneHalted {
+			continue
+		}
+		if c, err := runControl(repoRoot, st.Lanes[i].RunID); err == nil && c.Stop == nil {
+			st.Lanes[i].Outcome, finished = DrainLaneTakenOver, true
 		}
 	}
 

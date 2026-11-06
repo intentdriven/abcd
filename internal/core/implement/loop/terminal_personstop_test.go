@@ -306,6 +306,39 @@ func TestNothingIsReservedWhileAStopHoldsAMarkedRun(t *testing.T) {
 	}
 }
 
+// TestALanePassedOverSaysWhenItWasTakenOver: the drain's lines say what became of each lane,
+// so a lane passed over reads halted only while the run is, and reads as a person's once they
+// have taken it over.
+func TestALanePassedOverSaysWhenItWasTakenOver(t *testing.T) {
+	w, res, home := personHaltedLane(t)
+	o := w.options(t)
+	o.Options.stopHome = home
+	if done, ended := newTerminal(w.repo.Root(), o).takeUp(context.Background(), res.Run); !done || ended != "" {
+		t.Fatalf("the take-up: %v, %q", done, ended)
+	}
+	outcome := func() string {
+		t.Helper()
+		move, err := Drain(w.repo.Root(), o.Options, o.Drain)
+		if err != nil {
+			t.Fatal(err)
+		}
+		i := slices.IndexFunc(move.Lanes, func(l DrainLane) bool { return l.RunID == res.Run })
+		if i < 0 {
+			t.Fatalf("the drain has no lane for the run: %+v", move.Lanes)
+		}
+		return move.Lanes[i].Outcome
+	}
+	if got := outcome(); got != DrainLaneHalted {
+		t.Fatalf("before the take-over the lane reads %q", got)
+	}
+	if _, err := TakeRun(w.repo.Root(), res.Run, Options{stopHome: home, Now: w.clock.now}); err != nil {
+		t.Fatal(err)
+	}
+	if got := outcome(); got != "taken-over" {
+		t.Fatalf("after the take-over the lane reads %q", got)
+	}
+}
+
 // TestASignalsHaltComposesNoPage: the day's page says the person's stop holds and how to lift
 // it, which a drive's own signal is not.
 func TestASignalsHaltComposesNoPage(t *testing.T) {

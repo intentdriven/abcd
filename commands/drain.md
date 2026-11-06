@@ -770,7 +770,9 @@ question as its reason. Once the decision record is written, take the
 drain; `rule`, `loosened` and `order` are the plan's; `max` is the cap (`0`:
 all); `pace` is the drain's pace; `lanes` lists every lane the drain opened
 (`issue`, `run_id`, `opened_at`, `outcome`: `in-progress`, `pull-request`,
-`handed-back` or `done`, and `pr`); `lane` is the one in progress; `start` is
+`handed-back`, `done`, `halted`, a lane a person's stop halted that waits for its
+take-over, or `taken-over`, the same lane once that happened and its run is the
+person's to drive, and `pr`); `lane` is the one in progress; `start` is
 the run this move started; `routed` are the hand-backs this move routed and
 `hand_backs` every one the drain has (`issue`, `from`: `lane`, `judgement`,
 `reservation` or `field`, `kind`, `route`, `draft`, `question`, `rule`, `home`, `reason`,
