@@ -1947,6 +1947,13 @@ func markerState(content, rcp string) (string, bool) {
 	return b.state, ok
 }
 
+// AuditIngested reports whether an intent record's Audit Notes carry the verdict for the
+// receipt as ingested.
+func AuditIngested(content, receipt string) bool {
+	state, ok := markerState(content, receipt)
+	return ok && state == "INGESTED"
+}
+
 // upsertReviewBlock replaces the existing review block for rcp with newBlock, or
 // appends newBlock to the Audit Notes section (creating the section if absent).
 // The block's extent is readReviewBlocks'. The record it returns ends in a

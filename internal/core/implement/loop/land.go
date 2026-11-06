@@ -241,6 +241,18 @@ func passingAudit(lane Lane) string {
 	return ""
 }
 
+// passingAuditReceipt is the receipt of the audit passingAudit names, "" when there is none.
+func passingAuditReceipt(lane Lane) string {
+	if n := len(lane.Validation); n > 0 {
+		for _, v := range lane.Validation[n-1].Validators {
+			if v.Role == RoleAuditor && v.Pass && v.Audit != nil {
+				return v.Audit.ReceiptID
+			}
+		}
+	}
+	return ""
+}
+
 // landPrepare is the landing's first step.
 func landPrepare(c Context, lane *Lane) (Outcome, error) {
 	tip, err := branchTip(c, *lane)
@@ -359,14 +371,14 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{}, err
 	}
 	if tip != lane.HeadSHA {
-		parent, _ := gitutil.Run(c.RepoRoot, "rev-parse", "--verify", "--quiet", tip+"^1^{commit}", "--")
+		parents, _ := gitutil.Run(c.RepoRoot, "log", "-1", "--format=%P", tip, "--")
 		subject, _ := gitutil.Run(c.RepoRoot, "log", "-1", "--format=%s", tip, "--")
-		if parent != lane.HeadSHA || subject != landSubject(st, *lane) {
+		if parents != lane.HeadSHA || subject != landSubject(st, *lane) {
 			return Outcome{}, refuse(string(StageLand), "", lane.ID,
 				fmt.Sprintf("%s moved to %s, which is not the landing's records commit on the judged head %s", lane.Branch, shortSHA(tip), shortSHA(lane.HeadSHA)),
 				"restore the branch to the judged head, then run `abcd implement step` again")
 		}
-		found, err := gitutil.Run(c.RepoRoot, "diff-tree", "-r", "--raw", "--no-renames", "--no-abbrev", "-z", lane.HeadSHA, tip, "--")
+		found, err := gitutil.Run(c.RepoRoot, "diff-tree", "-r", "--raw", "--no-renames", "--no-abbrev", "--ignore-submodules=none", "-z", lane.HeadSHA, tip, "--")
 		if err != nil {
 			return Outcome{}, fmt.Errorf("reading what %s changes: %w", shortSHA(tip), err)
 		}
@@ -513,6 +525,10 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 			return Outcome{}, refuse(string(StageLand), "", lane.ID, "`spec close "+st.Spec+"` refused in the lane's worktree: "+fsutil.RedactHome(err.Error()),
 				"settle what the close names in the lane's worktree and leave it uncommitted (an intent ships only with an impact:), then run `abcd implement step` again")
 		}
+		// The records stand moved, so the next call's close finds them and repoints again.
+		if res.RelinkError != "" {
+			return Outcome{}, relinkRefusal(*lane, st.Spec+" and "+st.Intent, res.RelinkError)
+		}
 		if res.AuditEmitError != "" {
 			return Outcome{}, refuse(string(StageLand), "", lane.ID, "the close parked no fidelity receipt for the audit to answer: "+fsutil.RedactHome(res.AuditEmitError),
 				"settle what the emit names, then run `abcd implement step` again")
@@ -537,15 +553,18 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 			// A call killed or refused after the move may have left links naming the
 			// record where it stood.
 			if err := capture.RepointResolved(wt, r.Issue); err != nil {
-				return Outcome{}, refuse(string(StageLand), "", lane.ID, "the links to "+r.Issue+" could not be repointed in the lane's worktree: "+fsutil.RedactHome(err.Error()),
-					"settle what it names in the lane's worktree and leave it uncommitted, then run `abcd implement step` again")
+				return Outcome{}, relinkRefusal(*lane, r.Issue, err.Error())
 			}
 			done = append(done, "found "+r.Issue+" resolved")
 		} else {
-			if _, err := capture.Resolve(capture.ResolveRequest{RepoRoot: wt, ID: r.Issue, Resolution: r.Note, Impact: r.Impact,
-				ByCommit: r.Commit, Grounds: r.Grounds}); err != nil {
+			moved, err := capture.Resolve(capture.ResolveRequest{RepoRoot: wt, ID: r.Issue, Resolution: r.Note, Impact: r.Impact,
+				ByCommit: r.Commit, Grounds: r.Grounds})
+			if err != nil {
 				return Outcome{}, refuse(string(StageLand), "", lane.ID, "`capture resolve "+r.Issue+"` refused in the lane's worktree: "+fsutil.RedactHome(err.Error()),
 					"the resolution is the lane receipt's; settle what the capture store names in the lane's worktree and leave it uncommitted, then run `abcd implement step` again")
+			}
+			if moved.RelinkError != "" {
+				return Outcome{}, relinkRefusal(*lane, r.Issue, moved.RelinkError)
 			}
 			wrote = true
 			done = append(done, "resolved "+r.Issue+" with "+shortSHA(r.Commit))
@@ -633,6 +652,13 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	return Outcome{Stay: true, Note: "committed the landing's records as " + shortSHA(head) + ": " + strings.Join(done, "; ")}, nil
 }
 
+// relinkRefusal stops a call whose moves stand with links not repointed: a commit made
+// now would carry links that resolve to nothing, and the next call repoints them.
+func relinkRefusal(lane Lane, records, why string) error {
+	return refuse(string(StageLand), "", lane.ID, "the links to "+records+" could not be repointed in the lane's worktree: "+fsutil.RedactHome(why),
+		"settle what it names in the lane's worktree and leave it uncommitted, then run `abcd implement step` again")
+}
+
 // stagedOnlyTheMark reports whether what is staged is the lane's own spec record with
 // its mode unchanged, and its blob the judged head's plus the one `- landed:` line
 // naming mark. staged is the NUL-separated list of staged paths.
@@ -653,7 +679,13 @@ func stagedOnlyTheMark(worktree, specID, staged, head, mark string) (bool, error
 	if len(before) < 3 || len(after) < 3 || before[0] != after[0] {
 		return false, nil
 	}
-	blobs, err := gitutil.CatFileBatch(worktree, []string{before[2], after[1]}, 2*(maxSpecRecordBytes+256))
+	return addsOnlyTheMark(worktree, before[2], after[1], mark)
+}
+
+// addsOnlyTheMark reports whether the second blob is the first plus the one `- landed:`
+// line naming mark.
+func addsOnlyTheMark(repo, was, now, mark string) (bool, error) {
+	blobs, err := gitutil.CatFileBatch(repo, []string{was, now}, 2*(maxSpecRecordBytes+256))
 	if err != nil {
 		return false, err
 	}
@@ -751,6 +783,38 @@ func (r closeRecord) realises(id string) bool {
 		return true
 	}
 	return slices.ContainsFunc(frontmatter.StringList(r.field("intents")), func(m string) bool { return recordid.SameID(m, id) })
+}
+
+// closeMembers are the intent records a close of this spec moves or finds moved, in the
+// close's own order: the one intent: names, or for a bundle each member it does not pass
+// over (intent.BundleMemberPassedOver).
+func (r closeRecord) closeMembers(intents []closeRecord) []closeRecord {
+	bundle, listed := r.bundleName(), frontmatter.StringList(r.field("intents"))
+	names := []string{r.field("intent")}
+	inBundle := bundle != "" && len(listed) > 0
+	if inBundle {
+		names = append(names, listed...)
+	}
+	var out []closeRecord
+	for _, name := range names {
+		for _, i := range intents {
+			if !recordid.SameID(i.field("id"), name) || slices.ContainsFunc(out, func(o closeRecord) bool { return o.rel == i.rel }) {
+				continue
+			}
+			if !inBundle || !intent.BundleMemberPassedOver(i.bucket, i.bundleName(), bundle) {
+				out = append(out, i)
+			}
+		}
+	}
+	return out
+}
+
+// bundleName is the record's bundle: "" when it names none.
+func (r closeRecord) bundleName() string {
+	if b := r.field("bundle"); !frontmatter.IsNull(b) {
+		return b
+	}
+	return ""
 }
 
 // closeStore is one store as the close reads it: where it lives, its buckets, the cap
@@ -1143,8 +1207,8 @@ func storeRecord(path string) (store closeStore, bucket, name string, ok bool) {
 	return closeStore{}, "", "", false
 }
 
-// strayRule is what the landing commits outside the record stores.
-const strayRule = "outside the record stores the landing commits only the links its own moves repointed"
+// strayRule is what the landing commits, in the record stores' modes and outside them.
+const strayRule = "the landing commits a record a store reads as an ordinary file, and outside the record stores only the links its own moves repointed"
 
 // strayRefusal names a change the landing does not commit, and how to take it out.
 func strayRefusal(lane Lane, why string) error {
@@ -1155,7 +1219,7 @@ func strayRefusal(lane Lane, why string) error {
 // stagedRawArgs is git's list of what the index changes against head, one form for
 // every judgement to read.
 func stagedRawArgs(head string) []string {
-	return []string{"diff", "--cached", "--raw", "--no-renames", "--no-abbrev", "--no-ext-diff", "-z", head, "--"}
+	return []string{"diff", "--cached", "--raw", "--no-renames", "--no-abbrev", "--no-ext-diff", "--ignore-submodules=none", "-z", head, "--"}
 }
 
 // strayChanges judges the lane's worktree as `git add` would stage it, on a copy of the
@@ -1197,46 +1261,145 @@ func strayChanges(st State, lane Lane) (string, error) {
 	return judgeLandingDiff(wt, st, lane, raw)
 }
 
-// landingDiff reads git's raw NUL-separated list of what the landing would commit: the
-// moves of the landing's own records it holds, and each entry outside what a store reads.
-func landingDiff(st State, lane Lane, raw string) ([]relink.Move, []rawEntry, error) {
+// parseRawDiff reads git's raw NUL-separated list of changes.
+func parseRawDiff(raw string) ([]rawEntry, error) {
 	if raw == "" {
-		return nil, nil, nil
+		return nil, nil
 	}
 	fields := strings.Split(strings.TrimSuffix(raw, "\x00"), "\x00")
 	if len(fields)%2 != 0 {
-		return nil, nil, fmt.Errorf("git's list of what the landing changes does not parse")
+		return nil, fmt.Errorf("git's list of what the landing changes does not parse")
 	}
-	from, to := map[string]string{}, map[string]string{}
-	var outside []rawEntry
+	var entries []rawEntry
 	for i := 0; i < len(fields); i += 2 {
 		f := strings.Fields(fields[i])
 		if len(f) != 5 {
-			return nil, nil, fmt.Errorf("git's list of what the landing changes does not parse")
+			return nil, fmt.Errorf("git's list of what the landing changes does not parse")
 		}
-		e := rawEntry{oldMode: strings.TrimPrefix(f[0], ":"), newMode: f[1], oldObject: f[2], newObject: f[3], status: f[4], path: fields[i+1]}
+		entries = append(entries, rawEntry{oldMode: strings.TrimPrefix(f[0], ":"), newMode: f[1], oldObject: f[2], newObject: f[3], status: f[4], path: fields[i+1]})
+	}
+	return entries, nil
+}
+
+// landingDiff reads what the landing would commit: the moves of the landing's own records
+// the list holds, each entry outside what a store reads, and a record whose mode no write
+// of the landing's gives it, "" when none is.
+func landingDiff(st State, lane Lane, raw string) ([]relink.Move, []rawEntry, string, error) {
+	entries, err := parseRawDiff(raw)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	from, to, left := map[string]string{}, map[string]string{}, map[string]string{}
+	var outside []rawEntry
+	for _, e := range entries {
 		store, _, name, ok := storeRecord(e.path)
 		if !ok {
 			outside = append(outside, e)
 			continue
+		}
+		key := store.rel + "/" + name
+		if e.status == "D" {
+			left[key] = e.oldMode
 		}
 		if !ownMovedRecord(st, lane, store, name) {
 			continue
 		}
 		switch e.status {
 		case "D":
-			from[store.rel+"/"+name] = e.path
+			from[key] = e.path
 		case "A":
-			to[store.rel+"/"+name] = e.path
+			to[key] = e.path
+		}
+	}
+	for _, e := range entries {
+		store, _, name, ok := storeRecord(e.path)
+		if !ok || e.status == "D" {
+			continue
+		}
+		had := e.oldMode
+		if e.status == "A" {
+			had = left[store.rel+"/"+name]
+		}
+		if !recordModeHolds(e.newMode, had) {
+			return nil, nil, e.path, nil
 		}
 	}
 	var moves []relink.Move
-	for key, left := range from {
+	for key, was := range from {
 		if reached, ok := to[key]; ok {
-			moves = append(moves, relink.Move{From: left, To: reached})
+			moves = append(moves, relink.Move{From: was, To: reached})
 		}
 	}
-	return moves, outside, nil
+	return moves, outside, "", nil
+}
+
+// recordModeHolds reports whether a record's mode is one a store's write gives it: an
+// ordinary file, or the executable bit it already had, which a move and a write that
+// preserves the mode both keep.
+func recordModeHolds(mode, had string) bool {
+	return mode == "100644" || (mode == "100755" && had == "100755")
+}
+
+// standingMoves are the moves the judged head already holds of the records this landing
+// repoints for: a close and a resolution repoint for a record standing moved, whichever
+// commit moved it. A move whose source the head still holds is none, as a repoint reads it.
+func standingMoves(repo string, st State, lane Lane) ([]relink.Move, error) {
+	at := baseTree{root: repo, sha: lane.HeadSHA}
+	var moves []relink.Move
+	add := func(from, to string) error {
+		held, err := at.list(from, false)
+		if err != nil {
+			return err
+		}
+		if len(held) == 0 {
+			moves = append(moves, relink.Move{From: from, To: to})
+		}
+		return nil
+	}
+	if lane.Landing != nil && lane.Landing.Closes {
+		specs, err := treeRecords(at, specCloseStore)
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range specs {
+			if !isSpecRecordOf(r.rel, st.Spec) {
+				continue
+			}
+			if r.bucket == spec.StatusClosed {
+				if err := add(spec.SpecsRelDir+"/"+spec.StatusOpen+"/"+r.name, r.rel); err != nil {
+					return nil, err
+				}
+			}
+			intents, err := treeRecords(at, intentCloseStore)
+			if err != nil {
+				return nil, err
+			}
+			for _, m := range r.closeMembers(intents) {
+				if m.bucket != intent.BucketShipped {
+					continue
+				}
+				if err := add(intent.IntentsRelDir+"/"+intent.BucketPlanned+"/"+m.name, m.rel); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+	if len(lane.Resolves) > 0 {
+		resolved, err := at.list(capture.LedgerRelPath+"/"+string(capture.StateResolved)+"/", false)
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range resolved {
+			name := e.path[strings.LastIndex(e.path, "/")+1:]
+			if !slices.ContainsFunc(lane.Resolves, func(r Resolution) bool { return strings.HasPrefix(name, r.Issue+"-") }) {
+				continue
+			}
+			if err := add(capture.LedgerRelPath+"/"+string(capture.StateOpen)+"/"+name, e.path); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return moves, nil
 }
 
 // rawEntry is one line of git's raw diff.
@@ -1245,15 +1408,26 @@ type rawEntry struct {
 }
 
 // judgeLandingDiff judges one list of what the landing would commit against the judged
-// head: a record a store reads is the reader's, and any other path must keep its mode
-// and hold exactly what the repoint of the landing's own moves in this same list writes
-// over the head's file. It says which path fails, "" when none does. Everything it needs
-// is in the list and the object store, so a call after a refusal or a kill reads the
-// same answer.
+// head: a record a store reads is the reader's in what it says and keeps a mode its writes
+// give it, and any other path must keep its mode and hold exactly what the repoint of the
+// landing's own moves writes over the head's file, those in this same list and those the
+// head already holds. It says which path fails, "" when none does. Everything it needs is
+// in the list and the object store, so a call after a refusal or a kill reads the same
+// answer.
 func judgeLandingDiff(repo string, st State, lane Lane, raw string) (string, error) {
-	moves, outside, err := landingDiff(st, lane, raw)
+	moves, outside, odd, err := landingDiff(st, lane, raw)
 	if err != nil {
 		return "", err
+	}
+	if odd != "" {
+		return strconv.Quote(termsafe.Sanitize(odd)), nil
+	}
+	if len(outside) > 0 {
+		standing, err := standingMoves(repo, st, lane)
+		if err != nil {
+			return "", err
+		}
+		moves = append(moves, standing...)
 	}
 	for _, e := range outside {
 		says := strconv.Quote(termsafe.Sanitize(e.path))
@@ -1271,9 +1445,11 @@ func judgeLandingDiff(repo string, st State, lane Lane, raw string) (string, err
 	return "", nil
 }
 
-// foundCommitLacks says which of the lane's own moves a commit found on its judged head
-// does not hold, "" when it holds them all: such a commit is the landing's records, and
-// any other leaves its close and resolutions unrun. raw is git's list of what it changes.
+// foundCommitLacks says what of the landing's own a commit found on its judged head does
+// not hold, "" when it holds it all: the lane's moves, its step's mark, the audit on the
+// intent's record and the trailers the landing writes. Such a commit is the landing's
+// records, and any other leaves its close and resolutions unrun. raw is git's list of what
+// it changes.
 func foundCommitLacks(c Context, lane Lane, tip, raw string) (string, error) {
 	st, ld := c.State, lane.Landing
 	if raw == "" {
@@ -1302,17 +1478,26 @@ func foundCommitLacks(c Context, lane Lane, tip, raw string) (string, error) {
 			return fmt.Sprintf("the mark of step %d", ld.MarkStep), nil
 		}
 	}
+	delivers := false
 	if ld.Closes {
 		intents, err := treeRecords(at, intentCloseStore)
 		if err != nil {
 			return "", err
 		}
-		for _, r := range intents {
+		members := own.closeMembers(intents)
+		for _, r := range members {
 			id := r.field("id")
 			kept := slices.ContainsFunc(specs, func(o closeRecord) bool { return o.bucket == spec.StatusOpen && o.realises(id) })
-			if own.realises(id) && !kept && r.bucket != intent.BucketShipped {
+			if !kept && r.bucket != intent.BucketShipped {
 				return "the move of " + termsafe.Sanitize(id) + " to shipped/", nil
 			}
+		}
+		delivers = len(members) > 0 && members[0].bucket == intent.BucketShipped
+		receipt := passingAuditReceipt(lane)
+		if !slices.ContainsFunc(intents, func(r closeRecord) bool {
+			return recordid.SameID(r.field("id"), st.Intent) && intent.AuditIngested(r.content, receipt)
+		}) {
+			return "the audit on the record of " + st.Intent, nil
 		}
 	}
 	if len(lane.Resolves) > 0 {
@@ -1329,7 +1514,85 @@ func foundCommitLacks(c Context, lane Lane, tip, raw string) (string, error) {
 			}
 		}
 	}
+	return foundTrailersLack(c, lane, tip, raw, delivers)
+}
+
+// foundTrailersLack says which trailers a commit found on the judged head lacks, "" when
+// the ones it carries are the ones the landing writes: its delivery, each resolution and
+// its disclosure, which is abcd's only on a commit of the mark alone.
+func foundTrailersLack(c Context, lane Lane, tip, raw string, delivers bool) (string, error) {
+	st, ld := c.State, lane.Landing
+	var want []string
+	if delivers {
+		want = append(want, "Delivers: "+st.Intent)
+	}
+	for _, r := range lane.Resolves {
+		want = append(want, "Resolves: "+r.Issue)
+	}
+	composed := !ld.Closes && len(lane.Resolves) == 0 && !ld.SpecSettled
+	if composed {
+		only, err := rawOnlyTheMark(c.RepoRoot, st.Spec, raw, shortSHA(lane.HeadSHA))
+		if err != nil {
+			return "", err
+		}
+		composed = only
+	}
+	if composed {
+		want = append(want, composedAssistedBy())
+	} else {
+		assisted, gap := assistedByTrailers(lane.Receipts)
+		if gap != "" {
+			return "a model to disclose: " + gap, nil
+		}
+		want = append(want, assisted...)
+	}
+	slices.Sort(want)
+	want = slices.Compact(want)
+	msg, err := gitutil.Run(c.RepoRoot, "log", "-1", "--format=%B", tip, "--")
+	if err != nil {
+		return "", fmt.Errorf("reading the message of %s: %w", shortSHA(tip), err)
+	}
+	if !slices.Equal(landingTrailers(msg), want) {
+		return "the landing's trailers (" + termsafe.Sanitize(strings.Join(want, ", ")) + ")", nil
+	}
 	return "", nil
+}
+
+// landingTrailerRe is a line git or a gate could read as one of the trailers the landing
+// writes.
+var landingTrailerRe = regexp.MustCompile(`(?i)^(assisted-by|delivers|resolves)\s*:`)
+
+// landingTrailers lists a commit message's lines of those trailers, wherever in it they
+// stand and with a folded value unfolded, sorted and without repeats.
+func landingTrailers(msg string) []string {
+	var out []string
+	folding := false
+	for line := range strings.SplitSeq(msg, "\n") {
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case landingTrailerRe.MatchString(trimmed):
+			out = append(out, trimmed)
+			folding = true
+		case folding && trimmed != "" && (line[0] == ' ' || line[0] == '\t'):
+			out[len(out)-1] += " " + trimmed
+		default:
+			folding = false
+		}
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
+}
+
+// rawOnlyTheMark is stagedOnlyTheMark over git's raw list of what a commit changes.
+func rawOnlyTheMark(repo, specID, raw, mark string) (bool, error) {
+	entries, err := parseRawDiff(raw)
+	if err != nil {
+		return false, err
+	}
+	if len(entries) != 1 || entries[0].status != "M" || entries[0].oldMode != entries[0].newMode || !isSpecRecordOf(entries[0].path, specID) {
+		return false, nil
+	}
+	return addsOnlyTheMark(repo, entries[0].oldObject, entries[0].newObject, mark)
 }
 
 // maxRepointedBytes bounds the read of a file the landing's moves repointed; a repoint
@@ -1431,11 +1694,11 @@ func resolutionsSection(lane Lane, r ValidationRound) string {
 // recordsRoundScope is what a round over the records commit is told to read.
 func recordsRoundScope(base, head string) string {
 	return fmt.Sprintf("## This round reads the landing's records commit alone\n\n"+
-		"The lane's own change passed its full round at `%s`, which judged each resolution its receipt declared. Read only `%s..%s`, the commit the landing added on it; this should take a couple of minutes, so do not read the lane again or judge the fix again. "+
+		"The lane's own change passed its full round at `%s`, which judged each resolution its receipt declared. Read only `%s..%s` (`git "+readerDiff+" %s..%s`), the commit the landing added on it; this should take a couple of minutes, so do not read the lane again or judge the fix again. "+
 		"Judge the records' text against what the lane says it did: each resolution's note, impact and grounds, and the folder each record lands in. "+
 		"This commit normally holds records and link rewrites, and anything else in it is a finding. "+
 		"It can also carry a change to the lane's own spec, left in its worktree for the landing: a change to that spec beyond its `- landed:` line and its folder must be named and justified in your verdict, or it is a finding. "+
-		"A verdict that does not pass parks the lane for a person; no fix round follows.\n\n", base, base, head)
+		"A verdict that does not pass parks the lane for a person; no fix round follows.\n\n", base, base, head, base, head)
 }
 
 // bareClaudeRe is a bare Claude model id, which takes the Claude vendor prefix.

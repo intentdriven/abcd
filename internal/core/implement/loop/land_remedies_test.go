@@ -940,7 +940,13 @@ func TestARecordsCommitIsLabelledFromWhatItHolds(t *testing.T) {
 		}, false},
 		"a mode change beside the mark": {func(t *testing.T, f *landFixture, l Lane) {
 			t.Helper()
-			if err := os.Chmod(filepath.Join(l.Worktree, specRel), 0o755); err != nil {
+			abs := filepath.Join(l.Worktree, specRel)
+			f.commitAtTheJudgedHead(t, l, func() {
+				if err := os.Chmod(abs, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			})
+			if err := os.Chmod(abs, 0o644); err != nil {
 				t.Fatal(err)
 			}
 		}, false},

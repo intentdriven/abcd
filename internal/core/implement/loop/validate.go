@@ -339,6 +339,10 @@ func writeRoundFile(repoRoot, rel string, body []byte) error {
 // abs is a checkout-relative path as an agent in another checkout addresses it.
 func abs(repoRoot, rel string) string { return filepath.Join(repoRoot, filepath.FromSlash(rel)) }
 
+// readerDiff is the git command a validator reads a range with: git's own text, whatever
+// attributes or drivers the lane's worktree holds.
+const readerDiff = "diff --text --no-ext-diff --no-textconv"
+
 // writeValidatorBrief renders the brief of one validator of a round and, for
 // the intent-auditor, the fidelity request it reads.
 func writeValidatorBrief(c Context, lane Lane, r ValidationRound, v *ValidatorRun, route *oracle.Route) error {
@@ -357,7 +361,7 @@ func writeValidatorBrief(c Context, lane Lane, r ValidationRound, v *ValidatorRu
 		p("- the lane: %s, spec step %d, %q\n", lane.ID, lane.SpecStep, lane.StepTitle)
 	}
 	p("- the worktree: `%s`, branch `%s`\n", lane.Worktree, lane.Branch)
-	p("- the lane's diff: `%s..%s` (`git -C %s diff %s..%s`)\n", lane.BaseSHA, r.HeadSHA, lane.Worktree, lane.BaseSHA, r.HeadSHA)
+	p("- the lane's diff: `%s..%s` (`git -C %s %s %s..%s`)\n", lane.BaseSHA, r.HeadSHA, lane.Worktree, readerDiff, lane.BaseSHA, r.HeadSHA)
 	p("- the implementer's report: `%s`\n", reportPathOf(c, lane, lane.Receipt))
 	for _, prev := range lane.Validation {
 		if prev.Round < r.Round && prev.Fix != "" {
@@ -447,7 +451,7 @@ func composeAudit(c Context, lane Lane) (intent.DeliveryAudit, string, error) {
 	// base when it never synced, so no sibling's or outside change reads as
 	// this run's (spc-2609202134341288, ruling AI).
 	var d strings.Builder
-	fmt.Fprintf(&d, "- the whole delivery: the diff of each of the run's lanes, below\n")
+	fmt.Fprintf(&d, "- the whole delivery: the diff of each of the run's lanes, below, each read with `git %s <range>`\n", readerDiff)
 	for _, l := range st.Lanes {
 		if l.ID == lane.ID {
 			l = lane
@@ -1529,12 +1533,12 @@ func reviewRequest(repoRoot, runID, laneID string, aw Await, agentPrompt func(st
 	// default-branch commit its last sync merged in, or its base, so a sync
 	// never carries the default branch's changes into the request. Git's own
 	// diff, whatever the repository configures: no external diff program, no
-	// textconv driver, no colour.
+	// textconv driver, no colour, and text whatever attributes the worktree holds.
 	base := diffBase(lane)
 	if lane.readsRecords(r) {
 		base = lane.recordsBase(r)
 	}
-	diff, err := gitutil.RunCappedBytes(lane.Worktree, maxReviewDiffBytes, "diff", "--no-ext-diff", "--no-textconv", "--no-color",
+	diff, err := gitutil.RunCappedBytes(lane.Worktree, maxReviewDiffBytes, "diff", "--text", "--no-ext-diff", "--no-textconv", "--no-color",
 		base+".."+r.HeadSHA, "--")
 	if err != nil {
 		return "", fmt.Errorf("the lane's diff: %w", err)

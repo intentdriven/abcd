@@ -900,11 +900,15 @@ mode is `auto`, back at `validate`, and a sync.
    directory and build the intent again. An issue's landing moves no intent or spec.
    Outside the records a store reads, in what the worktree holds, what it stages and
    any commit it finds on the judged head, the landing commits a file only if it is
-   exactly what its own moves' repoint writes over the head's: a file holding anything
-   else stops it until that file is put back. A commit found on the judged head counts
-   as the landing's records only if it holds the lane's own moves and its step's mark;
-   any other is refused until the branch is restored to that head. Inside a store the
-   landing still carries an edit to a record, which the reader judges. It commits them on
+   exactly what the repoint of its own records' moves writes over the head's, whether
+   this landing moved them or the head already holds them moved: a file holding anything
+   else stops it until that file is put back. A repoint that fails stops the call before
+   its commit, and the next call repoints again. A commit found on the judged head counts
+   as the landing's records only if that head is its one parent and it holds the lane's
+   own moves, its step's mark, the audit on the intent's record and the trailers the
+   landing writes; any other is refused until the branch is restored to that head. Inside
+   a store the landing still carries an edit to a record, which the reader judges, and
+   a record stays an ordinary file. It commits them on
    the lane's branch with a computed message carrying `Delivers:` (when the
    close ships the intent) and one `Resolves:` per capture, so RS005 and RS001
    find the records in the change. Unlike the pick's commit, whose text abcd
