@@ -173,6 +173,8 @@ type terminal struct {
 	// limit is the outage's schedule run for a rate limit.
 	limit terminalOutageClock
 	last  DrainResult
+	// heldToProfile is set when the drive ended on a run's profile (holdToProfile).
+	heldToProfile bool
 	// idleSince is when the run last stopped moving, zero while it moves.
 	idleSince time.Time
 	// ranClean names the lane and head a preflight last exited 0 on.
@@ -777,6 +779,9 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 		t.stoppedBy(err)
 		return TerminalWall, nil
 	}
+	if ended, err := t.holdToProfile(runID); ended != "" || err != nil {
+		return ended, err
+	}
 	// A refused step goes back through the next move to this same lane, so its
 	// counts last until another lane is in hand.
 	if runID != t.laneInHand {
@@ -796,6 +801,9 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 	}
 	if done, ended := t.takeUp(ctx, runID); done {
 		return ended, nil
+	}
+	if err := t.markProfile(runID); err != nil {
+		return "", err
 	}
 	for {
 		if ctx.Err() != nil {
@@ -1234,7 +1242,7 @@ func (t *terminal) limited(ctx context.Context, role string, at time.Time) strin
 		}
 		if at.After(now) {
 			if !t.bounded() && at.Sub(t.limit.since) > terminalOutageLimit {
-				t.say("stopping: the account's rate limit resets at %s, later than a drive waits; run %s then", at.UTC().Format(time.RFC3339), TerminalResumeCommand)
+				t.say("stopping: the subscription's rate limit resets at %s, later than a drive waits; run %s then", at.UTC().Format(time.RFC3339), t.resumeCommand())
 				return TerminalLimited
 			}
 			left, look := at.Sub(now), terminalNamedProbeEvery
@@ -1242,7 +1250,7 @@ func (t *terminal) limited(ctx context.Context, role string, at time.Time) strin
 				look = terminalFarResetFirstLook
 			}
 			firstLook = false
-			why := fmt.Sprintf("the account's rate limit resets at %s", at.UTC().Format(time.RFC3339))
+			why := fmt.Sprintf("the subscription's rate limit resets at %s", at.UTC().Format(time.RFC3339))
 			if !probing || left <= look {
 				t.evidence.add(evidenceEntry{Event: "decided", Decided: "wait until the reset named", NextLook: at.UTC().Format(time.RFC3339)}, now)
 				t.sleep(ctx, max(left, TerminalWaitFloor), why)
@@ -1252,14 +1260,14 @@ func (t *terminal) limited(ctx context.Context, role string, at time.Time) strin
 			t.sleep(ctx, look, why+"; it is asked again after this wait")
 		} else {
 			if up {
-				t.say("stopping: the account has met its rate limit for eight hours and nothing says when it resets; run %s later", TerminalResumeCommand)
+				t.say("stopping: the subscription has met its rate limit for eight hours and nothing says when it resets; run %s later", t.resumeCommand())
 				return TerminalLimited
 			}
 			if t.bounded() {
 				d = min(d, terminalProbeCap)
 			}
 			t.evidence.add(evidenceEntry{Event: "decided", Decided: "probe, since nothing says when it resets", NextLook: now.Add(d).UTC().Format(time.RFC3339)}, now)
-			t.sleep(ctx, d, "the account has met its rate limit, and nothing says when it resets; it is asked again after this wait")
+			t.sleep(ctx, d, "the subscription has met its rate limit, and nothing says when it resets; it is asked again after this wait")
 			if !probing {
 				return ""
 			}
@@ -1281,7 +1289,7 @@ func (t *terminal) limited(ctx context.Context, role string, at time.Time) strin
 		case renewed:
 			entry.Answer = "renewed"
 			t.evidence.add(entry, t.now())
-			t.say("the account's rate limit has lifted: a probe was answered")
+			t.say("the subscription's rate limit has lifted: a probe was answered")
 			return ""
 		case fl != nil && fl.Reason == runner.ReasonRateLimited:
 			entry.Answer = "limited"
@@ -1807,7 +1815,8 @@ func (t *terminal) ended(why string) TerminalResult {
 		run, rerr := ReadState(t.repoRoot, l.RunID)
 		// A later drive takes up no parked lane, so the command that would is not named.
 		parked := rerr == nil && parkedAtLand(run) >= 0
-		if why != TerminalHalted && !driveStopped(l.RunID) && !parked {
+		// Nor is any after a hold to a run's profile, whose reason names the ways on.
+		if why != TerminalHalted && !driveStopped(l.RunID) && !parked && !t.heldToProfile {
 			res.Resume = TerminalResumeCommand
 		}
 		if parked {

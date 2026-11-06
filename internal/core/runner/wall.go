@@ -293,24 +293,45 @@ func writeStageFiles(p Profile, bin string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(p.StageRoot, abcdhome.DirMode); err != nil {
-		return &WallError{WallSettingsFile, "the stage's files could not be made"}
+	root, err := stageScope(p)
+	if err != nil {
+		return err
 	}
+	defer root.Close()
 	exports, goNote := stageGoExports(p)
 	written := &stageWritten{env: stageEnvFile(p, exports), gitConfig: gitConfig, declared: declaredNow(p), exports: exports, goNote: goNote, binaries: binariesNow(p, bin)}
-	if err := fsutil.WriteFileAtomic(p.EnvFile, written.env, 0o600); err != nil {
+	if err := fsutil.WriteFileAtomicInRoot(root, filepath.Base(p.EnvFile), written.env, 0o600); err != nil {
 		return &WallError{WallSettingsFile, "the stage's shell file could not be written"}
 	}
-	if err := fsutil.WriteFileAtomic(stageGitFile(p), gitConfig, 0o600); err != nil {
+	if err := fsutil.WriteFileAtomicInRoot(root, filepath.Base(stageGitFile(p)), gitConfig, 0o600); err != nil {
 		return &WallError{WallSettingsFile, "the stage's git configuration could not be written"}
 	}
 	stagesWritten.Store(p.ShellHome, written)
 	return ResetStageHome(p)
 }
 
+// stageScope opens the folder that holds a stage's files, made if it is absent, through
+// each level of abcd's home in turn, each checked as a profile's are: a link, or a level
+// another account can change, is refused in the words that name it.
+func stageScope(p Profile) (*os.Root, error) {
+	failed := &WallError{WallSettingsFile, "the stage's files could not be made"}
+	rel, err := filepath.Rel(p.PersonHome, p.StageRoot)
+	if err != nil {
+		return nil, failed
+	}
+	root, err := fsutil.EnsureHomeDeclarationScope(p.PersonHome, filepath.ToSlash(rel), abcdhome.DirMode)
+	switch {
+	case err == nil:
+		return root, nil
+	case errors.Is(err, fsutil.ErrHomeScopeSymlinked), errors.Is(err, fsutil.ErrHomeScopeExposed):
+		return nil, &WallError{WallSettingsFile, err.Error()}
+	}
+	return nil, failed
+}
+
 // ResetStageHome makes a stage's home empty but for its git configuration, so
 // nothing one stage leaves there reaches the next or a preflight. Every step goes
-// through a root on the home's parent, so it stays inside: no link, however it came
+// through a root on the home's parent, reached level by level, so it stays inside: no link, however it came
 // to be there, carries a change of mode, a removal or a write out of the tree. A home
 // that is no real directory is refused, not followed.
 func ResetStageHome(p Profile) error {
@@ -318,13 +339,10 @@ func ResetStageHome(p Profile) error {
 	if !ok {
 		return &WallError{WallSettingsFile, "the stage's home was not laid out"}
 	}
-	parent, home := filepath.Dir(p.ShellHome), filepath.Base(p.ShellHome)
-	if err := os.MkdirAll(parent, abcdhome.DirMode); err != nil {
-		return &WallError{WallSettingsFile, "the stage's home could not be made"}
-	}
-	root, err := os.OpenRoot(parent)
+	home := filepath.Base(p.ShellHome)
+	root, err := stageScope(p)
 	if err != nil {
-		return &WallError{WallSettingsFile, "the stage's home could not be made"}
+		return err
 	}
 	defer root.Close()
 	if fi, err := root.Lstat(home); err == nil {

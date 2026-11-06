@@ -91,6 +91,9 @@ const (
 // driveTerminal is loop.RunTerminal, a seam the tests replace.
 var driveTerminal = loop.RunTerminal
 
+// driveLanesElsewhere is loop.LanesOnAnotherProfile, a seam the tests replace.
+var driveLanesElsewhere = loop.LanesOnAnotherProfile
+
 // driveProofWait are the clock and the sleep a wait at the live proof runs on, nil
 // for the real ones: seams the tests replace.
 var driveProofWait struct {
@@ -187,7 +190,9 @@ type driveFlags struct {
 	yes      bool
 	maxLanes int
 	takeOver bool
-	skips    drainSkips
+	// profile is the --profile name, "" for none given.
+	profile string
+	skips   drainSkips
 	// pace, subAgents and fixRounds are the flags as given, nil for one not.
 	pace, subAgents, fixRounds *string
 	// until is the run's bound; zero leaves each wait its eight hours.
@@ -222,7 +227,7 @@ func driveRefusal(format string, args ...any) error {
 
 // drivePreconditions refuses what a drive cannot start on, in the order the
 // person can act on it, and answers the configuration and the profile.
-func drivePreconditions(ctx context.Context, cmd *cobra.Command, repoRoot string, roots layered.Roots) (*runner.Config, runner.Profile, error) {
+func drivePreconditions(ctx context.Context, cmd *cobra.Command, repoRoot string, roots layered.Roots, named string) (*runner.Config, runner.Profile, error) {
 	var p runner.Profile
 	for _, k := range driveSessionMarkers {
 		if os.Getenv(k) != "" {
@@ -230,7 +235,7 @@ func drivePreconditions(ctx context.Context, cmd *cobra.Command, repoRoot string
 		}
 	}
 	if held := runner.HeldCredentials(); len(held) > 0 {
-		return nil, p, driveRefusal("%s is set in the environment, and a drive runs on this account's subscription alone until %s covers how a key reaches the harness and what it may spend; unset it",
+		return nil, p, driveRefusal("%s is set in the environment, and a drive runs on a subscription alone until %s covers how a key reaches the harness and what it may spend; unset it",
 			strings.Join(held, ", "), runner.BudgetIntent)
 	}
 	cfg, err := loadRunners(cmd, roots)
@@ -249,12 +254,25 @@ func drivePreconditions(ctx context.Context, cmd *cobra.Command, repoRoot string
 	if pinned := cfg.PinnedToHost(driveRoles); len(pinned) > 0 {
 		return nil, p, driveRefusal("%s pinned to the host, which has nowhere to run with no host session; remove the pin", strings.Join(pinned, ", "))
 	}
-	if p, err = runner.DriveProfile(roots.Home); err != nil {
+	if p, err = runner.DriveProfile(roots.Home, named); err != nil {
 		return nil, p, driveRefusal("%s", err.Error())
 	}
 	p = p.ForCheckout(repoRoot)
 	p.Ledger = cfg.Ledger()
 	return cfg, p, nil
+}
+
+// driveHoldsToProfile refuses a drive that would go on with a lane on another profile
+// than the one it started on, which is another subscription: before the question, so
+// nothing is spent or reserved. The loop holds to the same rule for a lane that comes
+// back later (drive_profile.go). A state that cannot be read is the first move's to
+// refuse, in its own words.
+func driveHoldsToProfile(repoRoot, profile string) error {
+	lanes, err := driveLanesElsewhere(repoRoot, profile)
+	if err != nil || len(lanes) == 0 {
+		return nil
+	}
+	return driveRefusal("%s", loop.OnAnotherProfile(lanes[0], profile))
 }
 
 // driveConsent shows what the drive will do and asks once; --yes is the
@@ -273,8 +291,9 @@ func driveConsent(cmd *cobra.Command, w io.Writer, f driveFlags, lanes, runs int
 		fmt.Fprintf(w, "  bound:    ends at %s, and waits through limits and outages until then; a time, not a limit on what it spends\n", f.until.UTC().Format(time.RFC3339))
 	}
 	fmt.Fprintf(w, "  runner: claude\n")
-	fmt.Fprintf(w, "  route:    this account's subscription, on the separate login %s\n", abcdhome.Display("profiles", filepath.Base(p.Dir)))
-	fmt.Fprintln(w, "  profile:  a separate login and settings on this one account; a stage's shell reads what this account can")
+	name := termsafe.Sanitize(p.Name())
+	fmt.Fprintf(w, "  route:    the subscription logged in there, on the separate login %s\n", abcdhome.Display("profiles", name))
+	fmt.Fprintf(w, "  profile:  %s, a separate login and settings on this one account; a stage's shell reads what this account can\n", name)
 	fmt.Fprintln(w, "  gates:    a change to the Makefile, scripts/ or the hooks is not a drive's: it needs a person's own session")
 	fmt.Fprintln(w, "  first:    one short live launch checks the tools, the guard and the shell, on the same subscription")
 	if f.yes {
@@ -298,7 +317,7 @@ func runDrive(cmd *cobra.Command, asJSON bool, repoRoot string, f driveFlags) er
 	for _, n := range notes {
 		fmt.Fprintln(cmd.ErrOrStderr(), noteLine(n))
 	}
-	cfg, p, err := drivePreconditions(ctx, cmd, repoRoot, roots)
+	cfg, p, err := drivePreconditions(ctx, cmd, repoRoot, roots, f.profile)
 	if err != nil {
 		return err
 	}
@@ -319,7 +338,10 @@ func runDrive(cmd *cobra.Command, asJSON bool, repoRoot string, f driveFlags) er
 // runDriveLocked is the drive holding the checkout's drive lock, up to its yes.
 func runDriveLocked(cmd *cobra.Command, asJSON bool, repoRoot string, roots layered.Roots, cfg *runner.Config, p runner.Profile, f driveFlags, stopAsking func()) error {
 	walled := cfg.Walled(p)
-	o := loop.Options{Roots: &roots, Runners: walled, TakeOver: f.takeOver, Pace: f.pace, SubAgents: f.subAgents, FixRounds: f.fixRounds}
+	o := loop.Options{Roots: &roots, Runners: walled, TakeOver: f.takeOver, Pace: f.pace, SubAgents: f.subAgents, FixRounds: f.fixRounds, Profile: p.Name()}
+	if err := driveHoldsToProfile(repoRoot, p.Name()); err != nil {
+		return err
+	}
 	progress, err := loop.ReadDrainProgress(repoRoot)
 	if err != nil {
 		return loopFail(cmd.OutOrStdout(), asJSON, "abcd drain", err)
@@ -394,7 +416,7 @@ func runDriveLocked(cmd *cobra.Command, asJSON bool, repoRoot string, roots laye
 			d.Max = 0
 		}
 	}
-	return driveRun(sig, cmd, asJSON, repoRoot, roots, p, o, d, f.until, lines)
+	return driveRun(sig, cmd, asJSON, repoRoot, roots, p, o, d, f, lines)
 }
 
 // driveProve runs the live proof. A limit it meets is no failed check, and nor is a
@@ -413,7 +435,7 @@ func driveProve(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot str
 		if !limit.ResetsAt.IsZero() {
 			resets = ", resetting at " + limit.ResetsAt.UTC().Format(time.RFC3339)
 		}
-		return false, &exitError{Code: 3, Msg: "abcd drain --drive: the account has met its rate limit" + resets +
+		return false, &exitError{Code: 3, Msg: "abcd drain --drive: profile " + termsafe.Sanitize(p.Name()) + " has met its rate limit" + resets +
 			", so the live proof could not run; run this again then, or give --until <date> to wait through it (nothing started, nothing reserved)"}
 	}
 	if (isLimit || errors.As(err, &none)) && !f.until.IsZero() && sig.ctx.Err() == nil {
@@ -451,7 +473,8 @@ func driveProve(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot str
 }
 
 // driveRun runs the terminal loop and says how it ended.
-func driveRun(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot string, roots layered.Roots, p runner.Profile, o loop.Options, d loop.DrainOptions, until time.Time, startLines []string) error {
+func driveRun(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot string, roots layered.Roots, p runner.Profile, o loop.Options, d loop.DrainOptions, f driveFlags, startLines []string) error {
+	until := f.until
 	review, err := loop.LoadReviewRoute(roots, agentPrompt)
 	if err != nil {
 		return loopFail(cmd.OutOrStdout(), asJSON, "abcd drain", err)
@@ -495,6 +518,10 @@ func driveRun(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot strin
 			return runner.CheckWallSettings(p, runner.SelfBinary())
 		},
 	})
+	// What was typed to choose the profile is what going on takes.
+	if res.Resume != "" && f.profile != "" {
+		res.Resume += " --profile " + f.profile
+	}
 	if err != nil {
 		if res.Ended != "" {
 			renderDriveEnd(cmd.ErrOrStderr(), res)
@@ -616,7 +643,7 @@ func driveEndWords(ended string) string {
 		loop.TerminalOutage:     "eight hours of runner failures",
 		loop.TerminalStopped:    "stopped",
 		loop.TerminalHalted:     "a stop holds the run",
-		loop.TerminalLimited:    "the account's rate limit outlasts what a drive waits",
+		loop.TerminalLimited:    "the profile's rate limit outlasts what a drive waits",
 		loop.TerminalWaited:     "nothing moved for eight hours",
 		loop.TerminalUntil:      "the time --until named has passed",
 		loop.TerminalWall:       "a check before a stage no longer holds",

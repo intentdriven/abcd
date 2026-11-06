@@ -54,3 +54,25 @@ func TestTheListingNamesWhatAStopCannotHold(t *testing.T) {
 		}
 	}
 }
+
+// TestAListedRunAndATakeOverSayTheProfile: a session taking up what a drive left is told
+// which subscription the run started on, so going on elsewhere is never silent.
+func TestAListedRunAndATakeOverSayTheProfile(t *testing.T) {
+	var listed strings.Builder
+	renderListedRun(&listed, loop.ListedRun{RunID: "run-1", Key: "iss-1", Profile: "alpha"})
+	if !strings.Contains(listed.String(), "profile: alpha") {
+		t.Fatalf("the listing says:\n%s", listed.String())
+	}
+	var none strings.Builder
+	renderListedRun(&none, loop.ListedRun{RunID: "run-1", Key: "iss-1"})
+	if strings.Contains(none.String(), "profile:") {
+		t.Fatalf("no profile, no line:\n%s", none.String())
+	}
+	var took strings.Builder
+	renderTake(&took, loop.TakeResult{RunID: "run-1", Profile: "alpha", Next: "step"})
+	for _, want := range []string{"alpha", "this session's own login"} {
+		if !strings.Contains(took.String(), want) {
+			t.Errorf("the take-over does not say %q:\n%s", want, took.String())
+		}
+	}
+}

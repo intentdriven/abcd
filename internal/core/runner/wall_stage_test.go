@@ -187,7 +187,7 @@ func gitIdentityWorld(t *testing.T, global string) (Profile, string) {
 	if err := os.MkdirAll(abcdhome.Path(home, "profiles", "walled"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	p, err := DriveProfile(home)
+	p, err := DriveProfile(home, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +284,7 @@ func TestTheProofCatchesACredentialUnderAHarnessPrefix(t *testing.T) {
 func TestAWalledLaunchAndTheProofEachWriteOneLedgerEntry(t *testing.T) {
 	f := newFake(t, "wall-ok", Claude)
 	c := mustLoad(t, claudeRoute, "")
-	p, err := DriveProfile(profileHome(t, "walled"))
+	p, err := DriveProfile(profileHome(t, "walled"), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -697,5 +697,76 @@ func TestAColdNoteNamesWhatIsMissedAndWhyTheGoStillRuns(t *testing.T) {
 	partial := stageColdNote([]string{"GOPATH"}, "go names no absolute path for it")
 	if !strings.Contains(partial, "GOPATH") || strings.Contains(partial, "GOCACHE") || strings.Contains(partial, "from cold") {
 		t.Errorf("a partial miss is named as one: %s", partial)
+	}
+}
+
+// TestEveryLevelOfAStageHomeIsChecked: a stage's files are made through each level of the
+// store in turn, so a link or a level another account can change is refused by name and
+// nothing lands behind it.
+func TestEveryLevelOfAStageHomeIsChecked(t *testing.T) {
+	for _, c := range []struct {
+		what  string
+		level func(p Profile) string
+		link  bool
+		names string
+	}{
+		{"a linked stage-homes folder", func(p Profile) string { return abcdhome.Path(p.PersonHome, stageHomesLeaf) }, true, "is a symlink"},
+		{"a linked profile folder below it", func(p Profile) string { return filepath.Dir(p.StageRoot) }, true, "is a symlink"},
+		{"a stage-homes folder every account can write", func(p Profile) string { return abcdhome.Path(p.PersonHome, stageHomesLeaf) }, false, "chmod"},
+	} {
+		t.Run(c.what, func(t *testing.T) {
+			p := wallProfile(t)
+			at := c.level(p)
+			away := t.TempDir()
+			if err := os.MkdirAll(filepath.Dir(at), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if c.link {
+				if err := os.Symlink(away, at); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				if err := os.Mkdir(at, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chmod(at, 0o777); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var we *WallError
+			if _, err := WriteWallSettings(p, wallBin); !errors.As(err, &we) || !strings.Contains(err.Error(), c.names) {
+				t.Fatalf("got %v", err)
+			}
+			if entries, err := os.ReadDir(away); err != nil || len(entries) != 0 {
+				t.Fatalf("written behind the level: %v %v", entries, err)
+			}
+		})
+	}
+}
+
+// TestAStageHomesResetChecksEveryLevel: the reset before each launch makes the same check.
+func TestAStageHomesResetChecksEveryLevel(t *testing.T) {
+	p := wallProfile(t)
+	if _, err := WriteWallSettings(p, wallBin); err != nil {
+		t.Fatal(err)
+	}
+	at := abcdhome.Path(p.PersonHome, stageHomesLeaf)
+	away := filepath.Join(t.TempDir(), "away")
+	if err := os.Rename(at, away); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(away, at); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(p.ShellHome, "kept")
+	if err := os.WriteFile(marker, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var we *WallError
+	if err := ResetStageHome(p); !errors.As(err, &we) || !strings.Contains(err.Error(), "is a symlink") {
+		t.Fatalf("got %v", err)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("the reset went on behind the link: %v", err)
 	}
 }

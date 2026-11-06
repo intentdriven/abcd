@@ -1574,6 +1574,13 @@
           "hidden": false
         },
         {
+          "name": "profile",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "reason",
           "shorthand": "",
           "type": "string",

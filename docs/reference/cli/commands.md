@@ -1443,7 +1443,7 @@ abcd docs fidelity record --verdict-json verdict.json
 
 Fix the issues needing no decision, one lane at a time, and hand the rest back: Writes its state and user-visible drafts; refuses without the rule's record.
 
-**Usage:** `abcd drain [--drive [--yes] [--until <date>]] [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]`
+**Usage:** `abcd drain [--drive [--yes] [--until <date>] [--profile <name>]] [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]`
 
 Work the open issue ledger unattended: fix the issues that need no decision, and
 hand the rest back by kind. Which issues need no decision is this repository's own
@@ -1496,15 +1496,21 @@ back.
 
 --drive makes the moves itself, from a plain terminal with no host session: it refuses
 before anything is reserved when the claude runner is not enabled or admitted, when
-there is no one profile directory under ~/.abcd.noindex/profiles/ logged in, when a
+it has no profile directory under ~/.abcd.noindex/profiles/ to run on, logged in, when a
 wall does not hold or no git identity resolves, when a credential variable the harness would bill through is set
-(a drive runs on this account's subscription alone, for now), when the judge is routed
+(a drive runs on a subscription alone, for now), when the judge is routed
 to opencode, when a role is pinned to the host, and when it is started from inside an
 agent's own session. It shows the cap (eight unless --max says otherwise), an estimate
 of the agent runs, the runner and the route, and asks once; --yes is the scripted
 answer, and with no terminal nothing else answers. A profile is a separate login and
 settings on this one account, not a boundary: a stage's shell reads what this account
-can. It then judges each eligible issue,
+can. With one directory there it runs on that one. With several it refuses, naming them,
+until --profile <name> names the one to run on: letters and digits, with '.', '_' or '-'
+after the first, naming a directory that meets every check the one directory does, and
+the question names it. A run keeps the profile it
+started on: a drive on another refuses before it takes that run's lane up, since that is
+another subscription, and a limit waits for that profile's reset. Nothing moves a drive
+from one profile to another. It then judges each eligible issue,
 drives each lane to its landing, every role on that separate login, and runs each
 landing's preflight behind the load gate, printing one line per step and logging them
 under .abcd/.work.local/logs/. A lane that changes the Makefile, scripts/ or the active
@@ -1520,7 +1526,7 @@ limits, outages and stuck queues at a capped interval, says what it waits on, ke
 renewing what it holds, and at that time ends with the lane on its branch, an agent in a
 call finishing that call first. The bound is a time, not a limit on what the run spends.
 The first limit a run meets leaves its evidence under the same logs. One drive
-holds a checkout at a time; a second exits 3. A drive that is stopped, stops short or
+holds a checkout at a time, whatever its profile; a second exits 3. A drive that is stopped, stops short or
 holds an issue back exits 3, and one a failed check stopped exits 2. The first interrupt, hang-up or termination is a
 stop: the agent in a call finishes that call, the lane's reservation is released, the
 lane stays on its branch, and the last lines name the run, the lane and the command
@@ -1682,6 +1688,7 @@ drain or run holds the state lock.
       --judgement string     the host's answer to the judgement the drain awaits, at the path its request names
       --max int              cap the lanes this drain opens; the default is all
       --pace string          the drain's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer
+      --profile string       with --drive: the profile directory to run on, by name; needed when there are several
       --reason string        why --skip holds its issues back, shown in each pass-over
       --skip stringArray     hold an issue (iss-N), or every issue whose found_at lies in a path, back for now; needs --reason; cleared when the drain ends
       --sub-agents string    the ceiling on lanes and validators alive at once; wins over every configured layer
@@ -3368,7 +3375,9 @@ all a session that lost its context needs. It writes nothing and uses no network
 the driver, collects every receipt that has arrived before anything else, reserves
 again what a stop released, saves aside and names the uncommitted work a gone agent
 left, and re-tells its await. It starts no agent: `abcd implement step` does that
-next. An agent that may still be in its call is left alone and named.
+next. An agent that may still be in its call is left alone and named. A run a drive
+started names the profile it started on, in the listing and here, since what this
+session starts runs on this session's own login, whichever that is.
 
 Exit 2 on a refusal. Exit 3 while a stop holds, while another driver's process is
 alive or a recorded driver cannot be judged, or when a peer has taken the work a
