@@ -88,7 +88,7 @@ func TestTheWalledLaunchNamesWhatTheAgentMayHold(t *testing.T) {
 // server, under the strict switch all the same, and its permission rules stay
 // on the allow-list while the tools it holds are their bare names.
 func TestAWalledLaunchWithNoShellHoldsNoServer(t *testing.T) {
-	f, c, _ := walledFake(t, "ok")
+	f, c, p := walledFake(t, "ok")
 	req := f.request("drain-judge")
 	req.Tools = []string{"Read(//d/**)", "Edit(//d/answer.json)"}
 	req.Denied = []string{"Read(//repo/**)"}
@@ -108,8 +108,35 @@ func TestAWalledLaunchWithNoShellHoldsNoServer(t *testing.T) {
 	if got := argWith(argv, "--allowedTools="); got != "Read(//d/**),Edit(//d/answer.json)" {
 		t.Errorf("the grants keep their paths: %q", got)
 	}
-	if got := argWith(argv, "--disallowedTools="); got != "Read(//repo/**)" {
-		t.Errorf("the refusals stand: %q", got)
+	if got := argWith(argv, "--disallowedTools="); got != "Read(//repo/**),"+walledDirRule(p.Dir) {
+		t.Errorf("the refusals stand, and the stage's file tools are denied the walled directory: %q", got)
+	}
+}
+
+// TestAWalledLaunchDeniesItsFileToolsTheWalledDirectory: with no refusal of its own, and
+// the profile a deny rule cannot hold stops before any launch.
+func TestAWalledLaunchDeniesItsFileToolsTheWalledDirectory(t *testing.T) {
+	f, c, p := walledFake(t, "ok")
+	req := shellRequest(f)
+	if _, _, err := c.Run(context.Background(), req); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if got, want := argWith(f.argv(t, Claude), "--disallowedTools="), "Read(/"+p.Dir+"/**)"; got != want {
+		t.Errorf("the deny rule is %q, want %q", got, want)
+	}
+	if want := "Read(//"; !strings.HasPrefix(walledDirRule(p.Dir), want) {
+		t.Errorf("a rule for an absolute path starts %q: %q", want, walledDirRule(p.Dir))
+	}
+
+	for _, home := range []string{"a,b", "a(b", "a)b"} {
+		root := profileHome(t, "walled")
+		split := filepath.Join(filepath.Dir(root), home)
+		if err := os.Rename(root, split); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := DriveProfile(split, ""); err == nil || !strings.Contains(err.Error(), "deny rule") {
+			t.Errorf("home %q: %v", home, err)
+		}
 	}
 }
 

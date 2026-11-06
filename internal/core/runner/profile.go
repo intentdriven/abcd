@@ -195,6 +195,9 @@ func DriveProfile(home, name string) (Profile, error) {
 	if fsutil.WritableByOthers(fi) {
 		return Profile{}, fmt.Errorf("%s%s is one group or other can write; chmod go-w it", shown, name)
 	}
+	if !toolRe.MatchString(walledDirRule(dir)) {
+		return Profile{}, fmt.Errorf("%s%s has a path a harness deny rule cannot hold (a comma, a bracket or a line break); a drive's stages could not be kept from it", shown, name)
+	}
 	return Profile{
 		Dir:        dir,
 		PersonHome: home,

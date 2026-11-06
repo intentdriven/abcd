@@ -79,7 +79,9 @@ stage's shell reads what this account can. Each stage's agent holds only the fil
 shell tools its launch names, starts from an allow-list of variables, reads settings
 from that directory alone, and starts only while those settings and abcd's binary
 are as they were at the start. Its shell's home is emptied at each launch. A file tool
-writes only in the stage's working tree and run directories. The driver's commit, merge and
+writes only in the stage's working tree and run directories. A file tool, and a shell
+line the guard can read, does not reach the profile's directory, and such a line starts
+no program it makes itself. The driver's commit, merge and
 reset hooks, and any filter run inside those commands, get the stage's variables, while its
 network commands, its other filters and its forge calls keep the person's environment. A lane that changes the Makefile, `scripts/` or the active
 hooks is handed back at its landing, and an issue that names one is passed over: that change

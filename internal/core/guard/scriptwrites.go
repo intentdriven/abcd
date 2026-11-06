@@ -191,6 +191,26 @@ func (w writerArgs) goBuildTarget() []writeTarget {
 // the found file's directory, which the line does not fix.
 func findRuns(rc *readCtx, s segment, st *shellState, from int) []writeTarget {
 	var out []writeTarget
+	for _, run := range findActions(s, from) {
+		in := st
+		if run.elsewhere {
+			in = st.unresolved()
+		}
+		out = append(out, writerTargets(rc, run.seg, in)...)
+	}
+	return out
+}
+
+// findAction is one command a find runs: its words, with each found path a word no line
+// fixes, and whether it runs somewhere the reading does not place.
+type findAction struct {
+	seg       segment
+	elsewhere bool
+}
+
+// findActions is what a find whose arguments start at from runs.
+func findActions(s segment, from int) []findAction {
+	var out []findAction
 	for i := from; i < len(s.tokens); i++ {
 		action := s.tokens[i]
 		// An unknown word may be -exec (unknown.go), so what follows it is
@@ -207,12 +227,10 @@ func findRuns(rc *readCtx, s segment, st *shellState, from int) []writeTarget {
 			for _, t := range s.tokens[i+1 : end] {
 				toks = append(toks, strings.ReplaceAll(t, "{}", unknownText))
 			}
-			sub := segment{tokens: toks, chain: s.chain, globbed: s.globSlice(i+1, end)}
-			in := st
-			if action == "-execdir" || action == "-okdir" || isUnknown(action) {
-				in = st.unresolved()
-			}
-			out = append(out, writerTargets(rc, sub, in)...)
+			out = append(out, findAction{
+				seg:       segment{tokens: toks, chain: s.chain, globbed: s.globSlice(i+1, end)},
+				elsewhere: action == "-execdir" || action == "-okdir" || isUnknown(action),
+			})
 		}
 		i = end
 	}

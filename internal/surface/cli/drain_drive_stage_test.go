@@ -121,13 +121,24 @@ func TestAStagesHookReadsTheStagesHome(t *testing.T) {
 	}
 	tree := t.TempDir()
 	t.Setenv(runner.StageWritesEnv, tree)
-	for _, line := range []string{proved + " --version", link + " --version", "claude --version"} {
+	for line, id := range map[string]string{
+		proved + " --version":                                "stage-further-agent",
+		link + " --version":                                  "stage-further-agent",
+		"claude --version":                                   "stage-further-agent",
+		"find . -name a -exec " + link + " --version ;":      "stage-further-agent",
+		"cp " + link + " ./made":                             "stage-further-agent",
+		"printf x > ./made && find . -name a -exec ./made ;": "stage-further-agent",
+		"PATH=" + home + ":$PATH plain-link --version":       "stage-further-agent",
+		"CLAUDE_CONFIG_DIR=/somewhere/else ./tool --version": "stage-walled-login",
+		"cat " + profile + "/.credentials.json":              "stage-walled-login",
+		"cd " + filepath.Dir(profile) + " && cat walled/x":   "stage-walled-login",
+	} {
 		payload, err := json.Marshal(map[string]any{"tool_name": "Bash", "cwd": tree, "tool_input": map[string]string{"command": line}})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if out, _, _ := runHookAllowingFailure(string(payload), "guard", "hook"); !strings.Contains(out, `"deny"`) || !strings.Contains(out, "stage-further-agent") {
-			t.Errorf("the hook lets %q through: %q", line, out)
+		if out, _, _ := runHookAllowingFailure(string(payload), "guard", "hook"); !strings.Contains(out, `"deny"`) || !strings.Contains(out, id) {
+			t.Errorf("the hook does not answer %q with %s: %q", line, id, out)
 		}
 	}
 }
