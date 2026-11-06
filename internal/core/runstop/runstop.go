@@ -52,7 +52,7 @@ const (
 	// abcd's home.
 	LiftLogFile = "stop-log.jsonl"
 	// DigestDir opens the name of each account's directory of dated pages in the shared
-	// folder (DigestDirFor).
+	// folder (digestDirFor).
 	DigestDir = "abcd-digest"
 	// MaxStopBytes bounds the stop file: what the verb writes is a few dozen
 	// bytes.
@@ -145,8 +145,8 @@ func Suggested() string {
 // stopDirName is the person's own directory in a shared folder.
 func stopDirName(person int) string { return StopDirName + "-" + strconv.Itoa(person) }
 
-// DigestDirFor is the directory in the shared folder that holds one account's pages.
-func DigestDirFor(uid int) string { return DigestDir + "-" + strconv.Itoa(uid) }
+// digestDirFor is the directory in the shared folder that holds one account's pages.
+func digestDirFor(uid int) string { return DigestDir + "-" + strconv.Itoa(uid) }
 
 // stopPath is where the person's stop lives in the folder.
 func stopPath(folder string, person int) string {
@@ -807,7 +807,7 @@ func WritePage(home string, day time.Time, data []byte) (string, error) {
 		return "", err
 	}
 	defer root.Close()
-	dir := DigestDirFor(os.Getuid())
+	dir := digestDirFor(os.Getuid())
 	if err := root.Mkdir(dir, sharedDirMode); err != nil && !errors.Is(err, fs.ErrExist) {
 		return "", err
 	}

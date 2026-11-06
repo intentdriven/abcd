@@ -13,10 +13,13 @@ import (
 	"github.com/intentdriven/abcd/internal/core/runstop"
 )
 
+// accountDigestDir is the directory in the shared folder that holds this account's pages.
+func accountDigestDir() string { return runstop.DigestDir + "-" + strconv.Itoa(os.Getuid()) }
+
 // pageOf reads the page this account wrote for the day of at.
 func pageOf(t *testing.T, folder string, at time.Time) string {
 	t.Helper()
-	got, err := os.ReadFile(filepath.Join(folder, runstop.DigestDirFor(os.Getuid()), at.UTC().Format(time.DateOnly)+".md"))
+	got, err := os.ReadFile(filepath.Join(folder, accountDigestDir(), at.UTC().Format(time.DateOnly)+".md"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +199,7 @@ func TestAStopNamesAPullRequestArmedBeforeIt(t *testing.T) {
 func TestAPageThatCannotBeWrittenIsNamed(t *testing.T) {
 	repo, runID, _, _, _ := deadLane(t)
 	o, _, folder := stopped(t)
-	if err := os.WriteFile(filepath.Join(folder, runstop.DigestDir+"-"+strconv.Itoa(os.Getuid())), []byte("not a directory\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(folder, accountDigestDir()), []byte("not a directory\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	// Whichever name the account's directory has, this one cannot be written through.

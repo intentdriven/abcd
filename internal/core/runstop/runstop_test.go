@@ -326,7 +326,7 @@ func TestDigestPageRewrittenWhole(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := filepath.Join(folder, DigestDirFor(os.Getuid()), "2026-11-04.md"); p != want {
+	if want := filepath.Join(folder, digestDirFor(os.Getuid()), "2026-11-04.md"); p != want {
 		t.Fatalf("page at %q, want %q", p, want)
 	}
 	if _, err := WritePage(home, day, []byte("second\n")); err != nil {
@@ -912,7 +912,7 @@ func TestASecondSetKeepsTheStopThatStands(t *testing.T) {
 // directory alone, so a second account running under the same stop has somewhere to write.
 func TestEachAccountHasItsOwnPageDirectory(t *testing.T) {
 	home, folder := world(t)
-	if got, want := DigestDirFor(501), DigestDir+"-501"; got != want {
+	if got, want := digestDirFor(501), DigestDir+"-501"; got != want {
 		t.Fatalf("the directory for 501 is %q, want %q", got, want)
 	}
 	if err := os.WriteFile(filepath.Join(folder, DigestDir), []byte("something else\n"), 0o644); err != nil {
@@ -922,7 +922,7 @@ func TestEachAccountHasItsOwnPageDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := filepath.Join(folder, DigestDirFor(os.Getuid()), "2026-11-04.md"); p != want {
+	if want := filepath.Join(folder, digestDirFor(os.Getuid()), "2026-11-04.md"); p != want {
 		t.Fatalf("page at %q, want %q", p, want)
 	}
 }
@@ -933,7 +933,7 @@ func TestAPlantedPageDirectoryIsRefused(t *testing.T) {
 	day := time.Date(2026, 11, 4, 18, 0, 0, 0, time.UTC)
 	t.Run("a file", func(t *testing.T) {
 		home, folder := world(t)
-		if err := os.WriteFile(filepath.Join(folder, DigestDirFor(os.Getuid())), []byte("x\n"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(folder, digestDirFor(os.Getuid())), []byte("x\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := WritePage(home, day, []byte("mine\n")); err == nil {
@@ -943,7 +943,7 @@ func TestAPlantedPageDirectoryIsRefused(t *testing.T) {
 	t.Run("a link", func(t *testing.T) {
 		home, folder := world(t)
 		elsewhere := t.TempDir()
-		if err := os.Symlink(elsewhere, filepath.Join(folder, DigestDirFor(os.Getuid()))); err != nil {
+		if err := os.Symlink(elsewhere, filepath.Join(folder, digestDirFor(os.Getuid()))); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := WritePage(home, day, []byte("mine\n")); err == nil {
