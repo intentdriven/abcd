@@ -32,7 +32,7 @@ const minLocalEvalBudget = 20 * time.Minute
 // evalJobHeadroom is what a job spends in steps that declare no -timeout before
 // its eval step: checkout, setup-go and the load check took about half a minute
 // in CI's smoke and cold-reading-evals jobs (merge-group runs of 2026-10-24), and
-// release.yml's verify job 2.8 minutes before its race step (racelanebudget_test.go).
+// release.yml's verify job about two outside its timed steps on the v0.16.2 cut.
 // Rounded up to three.
 const evalJobHeadroom = 3 * time.Minute
 

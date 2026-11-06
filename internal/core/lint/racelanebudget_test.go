@@ -140,8 +140,8 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 	if suite, ok := workflowJobBlock(readRepoFile(t, root, macOSSuiteWorkflow), macOSShardJob); !ok {
 		t.Errorf("%s: no such job; the parser or the workflow changed shape", where)
 	} else {
-		// A shard's race pass: the local gate's budget, over what cmd/ci-shard
-		// assigns it, and nothing but that.
+		// A shard's race pass: its own budget, over what cmd/ci-shard assigns it,
+		// and nothing but that.
 		pkg, ok := raceStep(where, suite, macOSRaceStep, macOSPackageTimeoutMinutes*time.Minute, []string{macOSShardPackages})
 		if ok {
 			step, _ := workflowStepBlock(suite, macOSRaceStep)
@@ -171,11 +171,15 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 		}
 	}
 
-	// The last cut's verify job (run 41969380736, ubuntu, uncached toolchain) spent
-	// 17.5 minutes before the race step, most of it in the plain Test step, and
-	// internal/surface/cli is named first, so it waits for nothing inside the step.
-	// Twice that on a slow runner is 35.
-	const verifyHeadroom = 35 * time.Minute
+	// The slowest package here is internal/core/implement/loop, named seventh, so it
+	// waits inside the step as well as behind the steps before it. On the v0.16.2
+	// cut (run 42201072965, ubuntu, uncached toolchain, one process) it started 25.0
+	// minutes into the job: 18.7 before the race step and 6.3 inside it. Shards do
+	// not clearly move that: in the check job (three runs of 2026-11-06) it starts
+	// 7.1 to 9.1 minutes into the race step, against which the plain step should
+	// shorten, though no verify run has measured that yet. Twice 25 on a slow runner
+	// is 50, which leaves the job's clock five minutes past the package timeout.
+	const verifyHeadroom = 50 * time.Minute
 	if verify, pkg, ok := raceJob(".github/workflows/release.yml", "verify", checkPackageTimeoutMinutes*time.Minute); ok {
 		const where = ".github/workflows/release.yml job verify"
 		capMin := jobTimeoutMinutes(t, where, verify)
@@ -202,16 +206,16 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 }
 
 // verifyCeilingMinutes is the timeout-minutes of release.yml's verify job. It holds
-// the limits that run in sequence, 30, 70 and the smoke step's 8, with three minutes
-// for the untimed steps (TestEvalLaneBudgetIsDeclaredAndFitsItsJob), and about twice
-// the job's measured time, 49 minutes on the last cut and growing
-// (dcn-2611062222587959). No caller holds a shorter limit.
-const verifyCeilingMinutes = 120
+// the limits that run in sequence, 40, 70 and the smoke step's 8, with three minutes
+// for the untimed steps, 121 in all (TestEvalLaneBudgetIsDeclaredAndFitsItsJob), and
+// about twice the job's 58.3 minutes on the v0.16.2 cut (dcn-2611062222587959). No
+// caller holds a shorter limit.
+const verifyCeilingMinutes = 125
 
 // verifyPlainTimeoutMinutes is the -timeout of the verify job's plain Test step:
-// about twice its slowest package's 492 seconds on the last cut, with room for that
-// package's growth (dcn-2611062222587959).
-const verifyPlainTimeoutMinutes = 30
+// twice its slowest package's 844 seconds on the v0.16.2 cut is about 28 minutes,
+// and the margin is left for that package's growth (dcn-2611062222587959).
+const verifyPlainTimeoutMinutes = 40
 
 // checkMacOSCeilingMinutes is the timeout-minutes of each shard of the macOS suite,
 // on the nightly run and on a release cut alike. The suite ran as one job until 2026-11-04, whose ceiling rose from

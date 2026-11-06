@@ -203,11 +203,11 @@ jobs:
 <%- if .Abcd %>
     # Each go test step's own -timeout must fire before this does, or a hang
     # reads as a cancelled job with no goroutine dump. The smoke step fits too:
-    # 30m for Test, 70m for the race step (sized in ci.yml), its own 8m, and
-    # three minutes for the untimed steps (evallanebudget_test.go). A limit here only
-    # frees a stuck runner and does not judge speed, so a slow runner does not fail a
-    # cut with no failing test (dcn-2611062222587959).
-    timeout-minutes: 120
+    # 40m for Test, 70m for the race step (sized in ci.yml), its own 8m, and
+    # three minutes for the untimed steps, 121 in all (evallanebudget_test.go). A
+    # limit here only frees a stuck runner and does not judge speed, so a slow runner
+    # does not fail a cut with no failing test (dcn-2611062222587959).
+    timeout-minutes: 125
 <%- else %>
     timeout-minutes: 15
 <%- end %>
@@ -291,11 +291,19 @@ jobs:
 
       # Past this limit a package fails with no test failing, after the merge queue
       # passed it, so it holds about twice the slowest package here, with room for
-      # its growth (dcn-2611062222587959).
+      # its growth (dcn-2611062222587959). Both test steps carry the check job's
+      # switches, so a cut tests the longest packages the way the merge gate does
+      # (TestCIRacePassesShardLikePreflight).
       - name: Test
-        run: go test -count=1 -timeout 30m ./...
+        env:
+          ABCD_TEST_SKIP_FLUSH: "1"
+          ABCD_TEST_SHARDS: "3"
+        run: go test -count=1 -timeout 40m ./...
 
       - name: Test (race, internal)
+        env:
+          ABCD_TEST_SKIP_FLUSH: "1"
+          ABCD_TEST_SHARDS: "3"
         run: go test -race -count=1 -timeout 70m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
 <%- else %>
 
