@@ -293,7 +293,11 @@ refused. Exit 3 means another copy holds a live reservation on one of the paths
 and nothing was pushed: the implementer edits none of them and stops without a
 receipt, and the lane is handed to an implementer again on a later step. An
 implementer's receipt is refused while the lane's branch changes a path the
-reservation does not cover, naming the paths and this command.
+reservation does not cover, naming the paths and this command. A lane past its
+last receipt meets the same check at the fence before its push and its arming:
+a path the reservation does not cover is reserved there, judged for overlap,
+and exit 3 names a hold on it, with nothing pushed or armed. A reservation made
+again names every path widened to, even when the reservation branch was deleted.
 
 When the stage hands the lane to a role that `roles.<role>.runner` in
 `~/.abcd.noindex/config.json` routes to a command-line runner (`claude` or `opencode`,

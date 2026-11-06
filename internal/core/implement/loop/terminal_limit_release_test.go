@@ -1293,6 +1293,35 @@ func TestALaneLetGoKeepsWhatItHeld(t *testing.T) {
 	}
 }
 
+// TestALaneLetGoKeepsWhatItWidenedToOverADeletedTip: the tip is deleted while the
+// lane is let go, so nothing on origin names the path the lane widened to, and the
+// reservation made again names it all the same.
+func TestALaneLetGoKeepsWhatItWidenedToOverADeletedTip(t *testing.T) {
+	f := newNarrowFixture(t)
+	if _, err := f.widen(t, Options{}, "README.txt"); err != nil {
+		t.Fatal(err)
+	}
+	root := f.repo.Root()
+	tm := newTerminal(root, TerminalOptions{})
+	tm.letGoForLimit(f.runID)
+	if tip := f.tip(t); !tip.released {
+		t.Fatalf("the issue is let go: %+v", tip)
+	}
+	gitIn(t, f.bare, "update-ref", "-d", claim.RefPrefix+secondIssue)
+	if _, err := claim.Fetch(root, claim.Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if done, ended := tm.takeUp(context.Background(), f.runID); done || ended != "" {
+		t.Fatalf("the lane is taken up: %v %q", done, ended)
+	}
+	if tip := f.tip(t); tip.released {
+		t.Fatalf("the issue is reserved again: %+v", tip)
+	}
+	if fp := sortedFootprint(t, f); !slices.Equal(fp, []string{"README.txt", "docs"}) {
+		t.Fatalf("the reservation names the found_at and the path the lane widened to: %q", fp)
+	}
+}
+
 // laneAwaiting puts a role out on the run's lane, its receipt in the lane's directory.
 func laneAwaiting(t *testing.T, root, runID string, running *RunnerClaim, now time.Time) string {
 	t.Helper()

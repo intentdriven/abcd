@@ -584,7 +584,14 @@ lane moves on. The landing's narrowing keeps a path the lane widened to and
 changed, a resume at land renews that narrowing as it stands, a resume that
 reserves again over this copy's live or lapsed hold keeps the paths that hold
 names beside the found_at, and a lane leaving land for a fresh round reserves
-its found_at again beside the paths its narrowed hold names.
+its found_at again beside the paths its narrowed hold names. The run record
+keeps each path widened to in a `reservation_widened_to` line of its own, so a
+reservation made again names it even when the reservation branch was deleted.
+The fence before a landing's push and its arming judges the lane's branch the
+same way, since no receipt stands between a lane at its validators and its
+landing: a path the reservation does not cover is reserved there, judged for
+overlap and against the cap, and another's hold on it stops the lane at its
+landing, naming that hold, with nothing pushed or armed.
 
 A run that holds a reservation on the shared remote (itd-2609091034175565;
 the state's `reserved_at`) holds it for the copy the run lives in. The step

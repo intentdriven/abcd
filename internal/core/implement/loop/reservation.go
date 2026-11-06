@@ -301,7 +301,10 @@ func pushFence(c Context, lane Lane) (time.Time, string, error) {
 // makes too). A fetch that fails is a wait by design either way
 // (dcn-2610170116582725; fenceUnread). It returns the renewed expiry, zero
 // for a run that holds no reservation, and the notice naming each release
-// dated ahead that the hold did not count, "" when there is none.
+// dated ahead that the hold did not count, "" when there is none. A hold that
+// stands then answers for what the lane's branch changes (holdLaneChanges), so
+// nothing lands that no reservation covers; the notice names a reservation that
+// made.
 func fence(c Context, lane Lane, term time.Duration, act fenceAct) (time.Time, string, error) {
 	if c.State.ReservedAt == nil {
 		// A stop's mark is what a take-over answers by reserving again.
@@ -338,7 +341,17 @@ func fence(c Context, lane Lane, term time.Duration, act fenceAct) (time.Time, s
 		return time.Time{}, "", err
 	}
 	notice, err := releaseHold(c, lane, act)
-	return holds, notice, err
+	if err != nil {
+		return holds, notice, err
+	}
+	reserved, err := holdLaneChanges(c, lane, act)
+	if err != nil {
+		return holds, notice, err
+	}
+	if notice != "" && reserved != "" {
+		return holds, notice + "; " + reserved, nil
+	}
+	return holds, notice + reserved, nil
 }
 
 // letItsReservationGo reports whether a run with no reservation had one and let it go, which
@@ -812,6 +825,8 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 		fp = autoPlanFootprint(*ap)
 	} else if fp, err = runFootprint(repoRoot, st.Key, st.Spec, res.RunID+" is unchanged"); err != nil {
 		return err
+	} else {
+		fp = heldWith(fp, widenedPaths(st))
 	}
 	// A reservation the run could not record is released again, and peers would see the
 	// issue flap on each retry, so the lock is looked at before anything is pushed.
@@ -891,7 +906,9 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 // record's footprint, --take-over passed through. For an issue whose tip
 // this copy holds, live, lapsed or released, that footprint is the found_at with the
 // tip's paths beside it, so a path the lane widened to (widen.go) is never
-// dropped by a widening, a revival or a fallback. A drain's act (drain) carries
+// dropped by a widening, a revival or a fallback; a tip since deleted loses
+// nothing, since the caller's fp already names what the run record says the lane
+// widened to (widenedPaths). A drain's act (drain) carries
 // the drain's mark on every reservation it pushes, so a hand-back standing on the
 // issue backs it off; a renewal of this copy's own live tip carries none, since
 // that tip is no hand-back. A person's resume goes over a hand-back and says so.

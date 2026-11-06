@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -30,6 +31,7 @@ func (f *narrowFixture) handBack(t *testing.T, o Options, names ...string) error
 	sha := commitIn(t, f.repo, l, names...)
 	dir := filepath.Join(f.repo.Root(), filepath.FromSlash(RunRelDir), f.runID, l.ID)
 	rc := goodReceipt(t, f.runID, l, dir, sha)
+	rc.Model = "claude-test-5"
 	rc.Resolves = []Resolution{{Issue: secondIssue, Commit: sha, Note: "the page names the flag", Impact: "fix",
 		Grounds: "pursued: the page names the flag; shown wrong if it still does not"}}
 	_, err := Receipt(f.repo.Root(), f.runID, writeReceipt(t, dir, rc), f.stages, o)
@@ -336,5 +338,96 @@ func TestTheBackstopLeavesOutTheLandingsOwnRecords(t *testing.T) {
 	g := gaps()
 	if len(g) != 1 || !strings.Contains(g[0], "README.txt") || strings.Contains(g[0], "iss-1-the-record.md") {
 		t.Fatalf("an edit beyond the hold after the records is still named, the records left out: %q", g)
+	}
+}
+
+// holdNamesTheFoundAtAlone implements the lane with README.txt widened to, then
+// makes the reservation name the found_at alone, as a reservation made again
+// over a deleted tip by an earlier abcd did, leaving the lane at its validators.
+func holdNamesTheFoundAtAlone(t *testing.T, f *narrowFixture) {
+	t.Helper()
+	if _, err := f.widen(t, Options{}, "README.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.handBack(t, Options{}, "docs/page.md", "README.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if l := currentLane(t, f.repo, f.runID); l.Stage != StageValidate {
+		t.Fatalf("the lane is at its validators: %s", l.Stage)
+	}
+	if _, err := claim.Reserve(f.repo.Root(), claim.Request{Record: secondIssue, Footprint: []string{"docs"}}, claim.Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if fp := f.footprint(t); !slices.Equal(fp, []string{"docs"}) {
+		t.Fatalf("the reservation names the found_at alone: %q", fp)
+	}
+}
+
+// stepToThePush steps the lane from its validators to the fence before its
+// landing's push, its head preflighted, returning the first refusal met.
+func stepToThePush(t *testing.T, f *narrowFixture) (Lane, error) {
+	t.Helper()
+	for range 4 * len(Sequence) {
+		f.toLand(t)
+		l := currentLane(t, f.repo, f.runID)
+		if l.Landing != nil && l.Landing.Pushed != "" {
+			return l, nil
+		}
+		if l.Landing != nil && l.Landing.RecordsDone {
+			preflighted(t, l, l.HeadSHA)
+		}
+		if _, err := advance(f.repo.Root(), f.runID, f.stages, Options{}); err != nil {
+			if rf, ok := AsRefusal(err); ok && rf.Contention {
+				return currentLane(t, f.repo, f.runID), err
+			}
+			t.Fatalf("stepping to the push: %v", err)
+		}
+	}
+	t.Fatal("the lane never reached its push")
+	return Lane{}, nil
+}
+
+// TestALaneDoesNotLandAPathAPeerHolds: the lane's branch changes README.txt, no
+// reservation of its covers it, and another account holds it live; the lane
+// passes its validators and stops at the fence before its push, naming the
+// hold, with nothing pushed and its reservation as it was.
+func TestALaneDoesNotLandAPathAPeerHolds(t *testing.T) {
+	f := newNarrowFixture(t)
+	holdNamesTheFoundAtAlone(t, f)
+	f.reserveAs(t, "iss-99", "quinn", "README.txt", time.Now().Add(-time.Minute))
+	l, err := stepToThePush(t, f)
+	rf, ok := AsRefusal(err)
+	if !ok || !rf.Contention {
+		t.Fatalf("the lane stops as contention: %v (%+v)", err, l.Landing)
+	}
+	if !strings.Contains(rf.Reason, "iss-99") || !strings.Contains(rf.Reason, "quinn") || !strings.Contains(rf.Reason, "README.txt") {
+		t.Fatalf("the stop names the hold it met and its holder: %s", rf.Reason)
+	}
+	if l.Stage != StageLand || l.Landing == nil || l.Landing.Pushed != "" {
+		t.Fatalf("the lane stays at its landing, unpushed: %s %+v", l.Stage, l.Landing)
+	}
+	if got := gitIn(t, f.bare, "for-each-ref", "refs/heads/"+l.Branch); got != "" {
+		t.Fatalf("the lane's branch reached origin: %s", got)
+	}
+	if fp := f.footprint(t); !slices.Equal(fp, []string{"docs"}) {
+		t.Fatalf("the reservation is left as it was: %q", fp)
+	}
+}
+
+// TestALaneReservesAPathNoReservationCoversBeforeItLands: with no other hold on
+// README.txt, the fence reserves it, judged like any reservation, and the
+// lane's push goes ahead holding every path its branch changes.
+func TestALaneReservesAPathNoReservationCoversBeforeItLands(t *testing.T) {
+	f := newNarrowFixture(t)
+	holdNamesTheFoundAtAlone(t, f)
+	l, err := stepToThePush(t, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := gitIn(t, f.bare, "for-each-ref", "refs/heads/"+l.Branch); got == "" {
+		t.Fatalf("the lane's branch is pushed: %+v", l.Landing)
+	}
+	if fp := sortedFootprint(t, f); !slices.Equal(fp, []string{"README.txt", "docs"}) {
+		t.Fatalf("the reservation names the path before the push: %q", fp)
 	}
 }

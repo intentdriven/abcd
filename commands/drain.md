@@ -527,7 +527,9 @@ what it did in `next`:
   read as holding every issue, and the drain would pass each over and end.
   The lane's run then renews the reservation, fences its landing on it, before
   its push and again before arming, and tombstones it once it lands
-  (`commands/implement.md`). Every drain move that neither waits on origin nor stops at a given-up outage also renews the lane in
+  (`commands/implement.md`). Each fence also reserves any path the lane's branch
+  changes that the reservation does not cover, judged for overlap; another's hold
+  on one stops the lane there, naming that hold. Every drain move that neither waits on origin nor stops at a given-up outage also renews the lane in
   progress at half its lease, waiting on the pace or a judgement or not, though no step of the lane ran,
   so a lane the host paused past its lease is not taken over (a lane handed
   back is renewed by no move). Once the lane's validators have passed and it

@@ -284,8 +284,8 @@ next turn asks again; a stop's mark leaves it to the stop. The lane goes back th
 next move to `takeUp`, which reserves through `reserveResumed` with the drain's mark, so a
 hand-back standing on the issue backs it off as it backs off any drain, while a person
 resuming the same run has no mark and goes over one, saying so. The reservation keeps the
-paths a released tip of this copy names beside the found_at (a sweep that has deleted the
-tombstone leaves the found_at, and the receipt's check then asks for the widening again), and
+paths a released tip of this copy names and the paths the run record says the lane widened to
+beside the found_at, so a sweep that has deleted the tombstone loses none of them, and
 tells the marked roles again in the same write. A take-over tells them nothing and restarts
 them instead, since a role told again with no agent reads as one that may still be in its
 call. A release that never reached origin is said as one, and notes the tip it left as
