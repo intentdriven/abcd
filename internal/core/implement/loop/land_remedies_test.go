@@ -747,30 +747,30 @@ func TestAClosingLaneReadsOnlyItsOwnRecords(t *testing.T) {
 		"a new spec record with the id": {change: func(t *testing.T, wt string) {
 			t.Helper()
 			write(t, wt, ".abcd/development/specs/open/spc-0-second.md", linked(t, wt))
-		}, reason: "the id of spc-1"},
+		}, reason: "spc-0-second.md"},
 		"an existing spec record given the id": {
 			extra: map[string]string{otherSpec: "---\nid: spc-2\nslug: other\nintent: itd-11\n---\n# other\n\n## Summary\n\nAnother record.\n"},
 			change: func(t *testing.T, wt string) {
 				t.Helper()
 				write(t, wt, otherSpec, linked(t, wt))
-			}, reason: "the id of spc-1"},
+			}, reason: "spc-2-other.md"},
 		"the lane's record given another id": {change: func(t *testing.T, wt string) {
 			t.Helper()
 			write(t, wt, specRel, strings.Replace(read(t, wt, specRel), "id: spc-1\n", "id: spc-3\n", 1))
-		}, reason: "the id of spc-1"},
+		}, reason: "changes what it links"},
 		"a new intent record with the id": {change: func(t *testing.T, wt string) {
 			t.Helper()
 			write(t, wt, ".abcd/development/intents/planned/itd-10-aaa.md", read(t, wt, plannedIntentRel))
-		}, reason: "the id of itd-10"},
+		}, reason: "itd-10-aaa.md"},
 		"an existing intent record given the id": {change: func(t *testing.T, wt string) {
 			t.Helper()
 			write(t, wt, secondIntent, strings.Replace(read(t, wt, secondIntent), "id: itd-11\n", "id: itd-10\n", 1))
-		}, reason: "the id of itd-10"},
+		}, reason: "itd-11-beta.md"},
 		"the lane's intent record's id taken by another": {change: func(t *testing.T, wt string) {
 			t.Helper()
 			write(t, wt, plannedIntentRel, strings.Replace(read(t, wt, plannedIntentRel), "id: itd-10\n", "id: itd-12\n", 1))
 			write(t, wt, secondIntent, strings.Replace(read(t, wt, secondIntent), "id: itd-11\n", "id: itd-10\n", 1))
-		}, reason: "the id of itd-10"},
+		}, reason: "itd-10-alpha.md"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			files := map[string]string{
@@ -814,7 +814,12 @@ func TestAClosingLaneReadsOnlyItsOwnRecords(t *testing.T) {
 // An audit's verdict is on the record it was asked of: another intent record parking
 // the receipt does not take the ingest.
 func TestAVerdictIngestsOnlyOnTheRecordItWasAskedOf(t *testing.T) {
-	f := newLandFixtureWith(t, map[string]string{".abcd/work/rulesets/main-protection.json": queueRuleset("MERGE")})
+	const otherRel = ".abcd/development/intents/planned/itd-0-first.md"
+	other := strings.Replace(strings.Replace(readyIntent("impact: additive\n", settledQuestions), "id: itd-10\n", "id: itd-0\n", 1), "slug: alpha\n", "slug: first\n", 1)
+	f := newLandFixtureWith(t, map[string]string{
+		".abcd/work/rulesets/main-protection.json": queueRuleset("MERGE"),
+		otherRel: other,
+	})
 	l := f.validated(t)
 	f.step(t)
 	raw, err := os.ReadFile(abs(f.repo.Root(), passingAudit(l)))
@@ -827,9 +832,7 @@ func TestAVerdictIngestsOnlyOnTheRecordItWasAskedOf(t *testing.T) {
 	if err := json.Unmarshal(raw, &v); err != nil || v.ReceiptID == "" {
 		t.Fatalf("premise: the lane's audit names its receipt: %v %q", err, v.ReceiptID)
 	}
-	other := strings.Replace(strings.Replace(readyIntent("impact: additive\n", settledQuestions), "id: itd-10\n", "id: itd-0\n", 1), "slug: alpha\n", "slug: first\n", 1) +
-		"\n## Audit Notes\n\n<!-- abcd-review: OWED receipt=" + v.ReceiptID + " -->\n"
-	if err := os.WriteFile(filepath.Join(l.Worktree, ".abcd/development/intents/planned/itd-0-first.md"), []byte(other), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(l.Worktree, otherRel), []byte(other+"\n## Audit Notes\n\n<!-- abcd-review: OWED receipt="+v.ReceiptID+" -->\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	_, stepErr := advance(f.repo.Root(), f.runID, f.stages, Options{})
@@ -921,6 +924,25 @@ func TestARecordsCommitIsLabelledFromWhatItHolds(t *testing.T) {
 		abcdHas bool
 	}{
 		"the mark alone": {func(*testing.T, *landFixture, Lane) {}, true},
+		"the mark alone under a coloured git": {func(t *testing.T, f *landFixture, l Lane) {
+			t.Helper()
+			f.repo.Git("-C", l.Worktree, "config", "color.ui", "always")
+			f.repo.Git("-C", l.Worktree, "config", "color.diff", "always")
+		}, true},
+		"an added line that opens as a diff header does": {func(t *testing.T, f *landFixture, l Lane) {
+			t.Helper()
+			landWrite(t, l.Worktree, specRel, strings.Replace(landRead(t, l.Worktree, specRel), "-- an aside\n", "-- an aside\n++ an added line\n", 1))
+		}, false},
+		"a removed line that opens as a diff header does": {func(t *testing.T, f *landFixture, l Lane) {
+			t.Helper()
+			landWrite(t, l.Worktree, specRel, strings.Replace(landRead(t, l.Worktree, specRel), "-- an aside\n", "", 1))
+		}, false},
+		"a mode change beside the mark": {func(t *testing.T, f *landFixture, l Lane) {
+			t.Helper()
+			if err := os.Chmod(filepath.Join(l.Worktree, specRel), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}, false},
 		"a spec edited after the mark refused": {func(t *testing.T, f *landFixture, l Lane) {
 			t.Helper()
 			path := filepath.Join(l.Worktree, specRel)
@@ -945,7 +967,7 @@ func TestARecordsCommitIsLabelledFromWhatItHolds(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			f := newLandFixtureWith(t, map[string]string{
 				".abcd/work/rulesets/main-protection.json": queueRuleset("MERGE"),
-				specRel: specWithSteps(steps),
+				specRel: strings.Replace(specWithSteps(steps), "A written design record.", "A written design record.\n\n-- an aside\n", 1),
 			})
 			f.twoStepLandWithNoResolutions(t)
 			f.step(t)

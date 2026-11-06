@@ -263,7 +263,7 @@ func landPrepare(c Context, lane *Lane) (Outcome, error) {
 			"remove them from the lane's worktree (the landing lands only what was validated, and a commit moves the branch off that head), then run `abcd implement step` again")
 	}
 	if settled {
-		if err := refuseChangedSpecLinks(c, *lane); err != nil {
+		if err := refuseChangedCloseRecords(c, *lane, false); err != nil {
 			return Outcome{}, err
 		}
 	}
@@ -369,15 +369,10 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 			"remove it from the lane's worktree (the landing lands only what was validated, and a commit moves the branch off that head), then run `abcd implement step` again")
 	}
 
-	// A close ships what the spec's links name, so they stay as the judged head has
-	// them, whenever the record was edited.
+	// What a close ships and what holds it back stay as the judged head has them,
+	// whatever markdown the worktree holds.
 	if st.Issue() == "" {
-		if err := refuseChangedSpecLinks(c, *lane); err != nil {
-			return Outcome{}, err
-		}
-	}
-	if ld.Closes {
-		if err := refuseOtherIntentRecords(c, *lane); err != nil {
+		if err := refuseChangedCloseRecords(c, *lane, ld.Closes); err != nil {
 			return Outcome{}, err
 		}
 	}
@@ -394,11 +389,13 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 		}
 	}
 
-	// The disclosure is settled before any record is written, so a lane with
-	// no model to disclose is refused with its worktree untouched. A records
-	// commit that only marks the step carries no model's prose, only the mark
-	// abcd computed from the run's state, so it declares abcd's label instead
-	// (composed_attribution.go).
+	// The disclosure is settled before any record is written where the landing
+	// writes a model's text, so a lane with no model to disclose is refused with its
+	// worktree untouched. A records commit that only marks the step carries no
+	// model's prose, only the mark abcd computed from the run's state, so it declares
+	// abcd's label instead (composed_attribution.go); what is staged settles that
+	// below, after the mark is written, and a refusal there leaves the mark in the
+	// worktree for the next call.
 	if note := rereadModels(c, lane); note != "" {
 		return Outcome{Stay: true, Note: note}, nil
 	}
@@ -506,7 +503,7 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	if _, err := pickGit(wt, "reset", "-q", "--", TierRelDir); err != nil {
 		return Outcome{}, fmt.Errorf("keeping the local tier out of the landing's records: %w", err)
 	}
-	staged, err := pickGit(wt, "diff", "--cached", "--name-only", "-z")
+	staged, err := pickGit(wt, "diff", "--cached", "--no-renames", "--name-only", "-z")
 	if err != nil {
 		return Outcome{}, fmt.Errorf("reading the landing's staged records: %w", err)
 	}
@@ -523,7 +520,7 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	// abcd's label covers the mark it computed and nothing else, so it is chosen from
 	// what is staged: anything beside the mark names the lane's model.
 	if composed {
-		only, err := stagedOnlyTheMark(wt, st.Spec, staged, shortSHA(lane.HeadSHA))
+		only, err := stagedOnlyTheMark(wt, st.Spec, staged, lane.HeadSHA, shortSHA(lane.HeadSHA))
 		if err != nil {
 			return Outcome{}, fmt.Errorf("reading the landing's staged records: %w", err)
 		}
@@ -564,32 +561,37 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	return Outcome{Stay: true, Note: "committed the landing's records as " + shortSHA(head) + ": " + strings.Join(done, "; ")}, nil
 }
 
-// stagedOnlyTheMark reports whether what is staged is one line added to the lane's own
-// spec record, the `- landed:` line naming mark. staged is the NUL-separated list of
-// staged paths.
-func stagedOnlyTheMark(worktree, specID, staged, mark string) (bool, error) {
+// stagedOnlyTheMark reports whether what is staged is the lane's own spec record with
+// its mode unchanged, and its blob the judged head's plus the one `- landed:` line
+// naming mark. staged is the NUL-separated list of staged paths.
+func stagedOnlyTheMark(worktree, specID, staged, head, mark string) (bool, error) {
 	path, rest, _ := strings.Cut(staged, "\x00")
 	if strings.Trim(rest, "\x00") != "" || !isSpecRecordOf(path, specID) {
 		return false, nil
 	}
-	diff, err := pickGit(worktree, "diff", "--cached", "--no-ext-diff", "--no-textconv", "--no-renames", "--unified=0", "--", path)
+	was, err := pickGit(worktree, "ls-tree", head, "--", path)
 	if err != nil {
 		return false, err
 	}
-	added := 0
-	for _, line := range strings.Split(diff, "\n") {
-		switch {
-		case strings.HasPrefix(line, "+++ "), strings.HasPrefix(line, "--- "):
-		case strings.HasPrefix(line, "-"):
-			return false, nil
-		case strings.HasPrefix(line, "+"):
-			if strings.TrimSpace(line[1:]) != "- landed: "+mark {
-				return false, nil
-			}
-			added++
+	now, err := pickGit(worktree, "ls-files", "--stage", "--", ":(literal)"+path)
+	if err != nil {
+		return false, err
+	}
+	before, after := strings.Fields(was), strings.Fields(now) // <mode> blob <object> <path>, <mode> <object> <stage> <path>
+	if len(before) < 3 || len(after) < 3 || before[0] != after[0] {
+		return false, nil
+	}
+	blobs, err := gitutil.CatFileBatch(worktree, []string{before[2], after[1]}, 2*(maxSpecRecordBytes+256))
+	if err != nil {
+		return false, err
+	}
+	lines := strings.SplitAfter(blobs[1].Content, "\n")
+	for i, line := range lines {
+		if strings.TrimSpace(line) == "- landed: "+mark && strings.Join(lines[:i], "")+strings.Join(lines[i+1:], "") == blobs[0].Content {
+			return true, nil
 		}
 	}
-	return added == 1, nil
+	return false, nil
 }
 
 // worktreeChanges reads the lane's worktree for the first step. settled is an
@@ -627,133 +629,225 @@ func isSpecRecordOf(path, specID string) bool {
 	if !ok || (bucket != spec.StatusOpen && bucket != spec.StatusClosed) || strings.Contains(name, "/") {
 		return false
 	}
-	id, _, ok := recordid.SplitRecordFilename("spc", name)
+	id, ok := spec.RecordFileID(name)
 	return ok && recordid.SameID(id, specID)
 }
 
-// specLinks is what a spec record says it realises: its intent:, intents: and
-// bundle: fields, read as the spec store reads them.
-func specLinks(content string) string {
-	fields := frontmatter.Fields(strings.Split(content, "\n"))
-	return strings.Join([]string{fields["intent"].Value, strings.Join(frontmatter.StringList(fields["intents"].Value), ","), fields["bundle"].Value}, "\x00")
+// maxSpecRecordBytes bounds the read of a spec record, as the spec store bounds its own.
+const maxSpecRecordBytes = 256 * 1024
+
+// closeFields are the frontmatter fields of each store a close decides by: what a spec
+// realises, and what an intent's id, back-link, bundle and hold say. Anything else in a
+// record is the worktree's to settle, an intent's related_issues and impact among them.
+var (
+	specCloseFields   = []string{"id", "intent", "intents", "bundle"}
+	intentCloseFields = []string{"id", "spec_id", "bundle", "held"}
+)
+
+// closeRecord is one markdown file directly inside a store's bucket.
+type closeRecord struct {
+	rel, bucket, name, content string
 }
 
-// refuseChangedSpecLinks refuses a lane's own spec record whose links differ from
-// the judged head's, or that no longer stands as one regular file in the worktree:
-// the close ships what the links name, so an uncommitted edit never chooses it. A
-// head holding no record of the spec links only the run's own intent. The record the
-// store resolves for the spec's id is held to be that same record, and the only one
-// with the id.
-func refuseChangedSpecLinks(c Context, lane Lane) error {
-	st := c.State
-	want := specLinks("---\nintent: " + st.Intent + "\n---\n")
-	listed, err := pickGit(lane.Worktree, "ls-tree", "-r", "--name-only", "-z", "HEAD", "--", spec.SpecsRelDir)
-	if err != nil {
-		return fmt.Errorf("reading the spec store at the lane's head: %w", err)
-	}
-	for _, rel := range strings.Split(listed, "\x00") {
-		if rel != "" && isSpecRecordOf(rel, st.Spec) {
-			body, err := pickGit(lane.Worktree, "show", "HEAD:"+rel)
-			if err != nil {
-				return fmt.Errorf("reading %s at the lane's head: %w", st.Spec, err)
-			}
-			want = specLinks(body)
-			break
+// closeFacts is what the record says in fields, each present or absent.
+func (r closeRecord) closeFacts(fields []string) string {
+	read := frontmatter.Fields(strings.Split(r.content, "\n"))
+	var out []string
+	for _, key := range fields {
+		f, ok := read[key]
+		switch {
+		case !ok:
+			out = append(out, "")
+		case key == "intents":
+			out = append(out, "="+strings.Join(frontmatter.StringList(f.Value), ","))
+		default:
+			out = append(out, "="+f.Value)
 		}
 	}
-	var records []string
-	for _, bucket := range []string{spec.StatusOpen, spec.StatusClosed} {
-		entries, err := os.ReadDir(filepath.Join(lane.Worktree, filepath.FromSlash(spec.SpecsRelDir), bucket))
-		if err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("reading the spec store in the lane's worktree: %w", err)
+	return strings.Join(out, "\x00")
+}
+
+// headRecords reads a store's records out of the judged head.
+func headRecords(at baseTree, store string, buckets []string, limit int64) ([]closeRecord, error) {
+	entries, err := at.list(store+"/", true)
+	if err != nil {
+		return nil, fmt.Errorf("reading %s at the judged head: %w", store, err)
+	}
+	var records []closeRecord
+	var objects []string
+	budget := 0
+	for _, e := range entries {
+		bucket, name, ok := strings.Cut(strings.TrimPrefix(e.path, store+"/"), "/")
+		if !ok || strings.Contains(name, "/") || !strings.HasSuffix(name, ".md") || !slices.Contains(buckets, bucket) {
+			continue
+		}
+		if err := at.readable(e, limit); err != nil {
+			return nil, fmt.Errorf("reading %s at the judged head: %w", e.path, err)
+		}
+		records = append(records, closeRecord{rel: e.path, bucket: bucket, name: name})
+		objects = append(objects, e.object)
+		budget += len(e.object) + 32 + int(e.size)
+	}
+	got, err := gitutil.CatFileBatch(at.root, objects, budget)
+	if err != nil {
+		return nil, fmt.Errorf("reading %s at the judged head: %w", store, err)
+	}
+	for i := range records {
+		if got[i].Missing || got[i].Type != "blob" {
+			return nil, fmt.Errorf("reading %s at the judged head: it holds no blob there", records[i].rel)
+		}
+		records[i].content = got[i].Content
+	}
+	return records, nil
+}
+
+// worktreeRecords reads a store's records from the lane's worktree, as the close will.
+// odd names one the close could not read.
+func worktreeRecords(worktree, store string, buckets []string, limit int64) (records []closeRecord, odd string, err error) {
+	for _, bucket := range buckets {
+		dir := filepath.Join(worktree, filepath.FromSlash(store), bucket)
+		info, err := os.Lstat(dir)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return nil, "", fmt.Errorf("reading %s/%s in the lane's worktree: %w", store, bucket, err)
+		}
+		if !info.IsDir() {
+			return nil, store + "/" + bucket, nil
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return nil, "", fmt.Errorf("reading %s/%s in the lane's worktree: %w", store, bucket, err)
 		}
 		for _, e := range entries {
-			if rel := spec.SpecsRelDir + "/" + bucket + "/" + e.Name(); isSpecRecordOf(rel, st.Spec) {
-				records = append(records, rel)
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+				continue
 			}
-		}
-	}
-	same := len(records) == 1
-	if same {
-		abs := filepath.Join(lane.Worktree, filepath.FromSlash(records[0]))
-		info, err := os.Lstat(abs)
-		if err != nil {
-			return fmt.Errorf("reading %s in the lane's worktree: %w", st.Spec, err)
-		}
-		same = info.Mode().IsRegular() && info.Size() <= maxSpecRecordBytes
-		if same {
-			body, err := os.ReadFile(abs)
+			rel := store + "/" + bucket + "/" + e.Name()
+			info, err := e.Info()
 			if err != nil {
-				return fmt.Errorf("reading %s in the lane's worktree: %w", st.Spec, err)
+				return nil, "", fmt.Errorf("reading %s in the lane's worktree: %w", rel, err)
 			}
-			same = specLinks(string(body)) == want
+			if !info.Mode().IsRegular() || info.Size() > limit {
+				return nil, rel, nil
+			}
+			body, err := os.ReadFile(filepath.Join(dir, e.Name()))
+			if err != nil {
+				return nil, "", fmt.Errorf("reading %s in the lane's worktree: %w", rel, err)
+			}
+			records = append(records, closeRecord{rel: rel, bucket: bucket, name: e.Name(), content: string(body)})
 		}
 	}
-	if !same {
-		return refuse(string(StageLand), "", lane.ID, "the uncommitted change to "+st.Spec+" changes what it links (its record, or its intent:, intents: or bundle:), which decides what the close ships",
-			"put the record and those fields back as the judged head has them, in the lane's worktree, then run `abcd implement step` again")
-	}
-	// The record the close reads is the one the store resolves from the id inside.
-	store, err := spec.Load(lane.Worktree)
-	if err != nil {
-		return refuse(string(StageLand), "", lane.ID, "the spec store in the lane's worktree could not be read: "+fsutil.RedactHome(err.Error()),
-			"settle what the spec store names in the lane's worktree and leave it uncommitted, then run `abcd implement step` again")
-	}
-	const remedy = "put the id back as the judged head has it, or remove the other record, in the lane's worktree, then run `abcd implement step` again"
-	for _, other := range store.Specs {
-		if spec.SameNum(other.ID, st.Spec) && filepath.ToSlash(other.Path) != records[0] {
-			return refuse(string(StageLand), "", lane.ID, strconv.Quote(termsafe.Sanitize(filepath.ToSlash(other.Path)))+" carries the id of "+st.Spec+", and a close reads the lane's own record alone", remedy)
-		}
-	}
-	if sp, ok := store.Lookup(st.Spec); !ok || filepath.ToSlash(sp.Path) != records[0] {
-		return refuse(string(StageLand), "", lane.ID, "the lane's own record no longer carries the id of "+st.Spec+", and a close reads that record alone", remedy)
-	}
-	return nil
+	return records, "", nil
 }
 
-// refuseOtherIntentRecords refuses a worktree where an intent the lane's spec links
-// is not one record named for its id: the close moves the first record the corpus
-// resolves for the id, and the ingest writes to the record holding the receipt.
-func refuseOtherIntentRecords(c Context, lane Lane) error {
+// refuseChangedCloseRecords reads the spec and intent stores as the judged head and the
+// lane's worktree each hold them and refuses any difference a close would decide by, so
+// nothing uncommitted chooses what it ships or lifts what holds it back. The lane's own
+// spec record may stand in either bucket; a closing lane's own intents may stand in
+// planned or shipped, where a call a hook refused left them. A head holding no record
+// of the spec links only the run's own intent.
+func refuseChangedCloseRecords(c Context, lane Lane, closes bool) error {
 	st := c.State
-	store, err := spec.Load(lane.Worktree)
+	at := baseTree{root: c.RepoRoot, sha: lane.HeadSHA}
+	refused := func(rel, how string) error {
+		return refuse(string(StageLand), "", lane.ID, strconv.Quote(termsafe.Sanitize(rel))+" "+how+" in the lane's worktree, and the judged head decides what the close ships and what holds it",
+			"put it back as the judged head has it, removing it if the head holds no such record, in the lane's worktree, then run `abcd implement step` again")
+	}
+	headSpecs, err := headRecords(at, spec.SpecsRelDir, []string{spec.StatusOpen, spec.StatusClosed}, maxSpecRecordBytes)
 	if err != nil {
-		return refuse(string(StageLand), "", lane.ID, "the spec store in the lane's worktree could not be read: "+fsutil.RedactHome(err.Error()),
-			"settle what the spec store names in the lane's worktree and leave it uncommitted, then run `abcd implement step` again")
+		return err
 	}
-	sp, ok := store.Lookup(st.Spec)
-	if !ok {
-		return nil // refuseChangedSpecLinks refuses this first.
-	}
-	corpus, err := intent.Load(lane.Worktree)
+	workSpecs, odd, err := worktreeRecords(lane.Worktree, spec.SpecsRelDir, []string{spec.StatusOpen, spec.StatusClosed}, maxSpecRecordBytes)
 	if err != nil {
-		return refuse(string(StageLand), "", lane.ID, "the intent store in the lane's worktree could not be read: "+fsutil.RedactHome(err.Error()),
-			"settle what the intent store names in the lane's worktree and leave it uncommitted, then run `abcd implement step` again")
+		return err
 	}
-	const remedy = "put the id back as the judged head has it, or remove the other record, in the lane's worktree, then run `abcd implement step` again"
-	for _, member := range sp.Members() {
-		var held []string
-		for _, it := range corpus.Intents {
-			if recordid.SameID(it.ID, member) {
-				held = append(held, filepath.ToSlash(it.Path))
-			}
+	if odd != "" {
+		return refused(odd, "is not a regular file within its cap")
+	}
+	var own []closeRecord
+	for _, r := range workSpecs {
+		if isSpecRecordOf(r.rel, st.Spec) {
+			own = append(own, r)
 		}
-		if len(held) > 1 {
-			return refuse(string(StageLand), "", lane.ID, fmt.Sprintf("%d intent records in the lane's worktree carry the id of %s, and a close reads one", len(held), member), remedy)
+	}
+	ownChanged := refuse(string(StageLand), "", lane.ID, "the uncommitted change to "+st.Spec+" changes what it links (its record, or its id:, intent:, intents: or bundle:), which decides what the close ships",
+		"put the record and those fields back as the judged head has them, in the lane's worktree, then run `abcd implement step` again")
+	if len(own) != 1 {
+		return ownChanged
+	}
+	want := closeRecord{content: "---\nid: " + st.Spec + "\nintent: " + st.Intent + "\n---\n"}
+	var heldBack []closeRecord
+	for _, r := range headSpecs {
+		if isSpecRecordOf(r.rel, st.Spec) {
+			want = r
+			continue
 		}
-		if len(held) == 1 {
-			id, _, ok := recordid.SplitRecordFilename("itd", filepath.Base(held[0]))
-			if !ok || !recordid.SameID(id, member) {
-				return refuse(string(StageLand), "", lane.ID, strconv.Quote(termsafe.Sanitize(held[0]))+" carries the id of "+member+", which its name does not", remedy)
-			}
+		heldBack = append(heldBack, r)
+	}
+	if want.closeFacts(specCloseFields) != own[0].closeFacts(specCloseFields) {
+		return ownChanged
+	}
+	others := slices.DeleteFunc(slices.Clone(workSpecs), func(r closeRecord) bool { return isSpecRecordOf(r.rel, st.Spec) })
+	if err := refuseRecordDifferences(heldBack, others, specCloseFields, nil, refused); err != nil {
+		return err
+	}
+
+	headIntents, err := headRecords(at, intent.IntentsRelDir, intent.Buckets, intent.MaxFileBytes)
+	if err != nil {
+		return err
+	}
+	workIntents, odd, err := worktreeRecords(lane.Worktree, intent.IntentsRelDir, intent.Buckets, intent.MaxFileBytes)
+	if err != nil {
+		return err
+	}
+	if odd != "" {
+		return refused(odd, "is not a regular file within its cap")
+	}
+	links := frontmatter.Fields(strings.Split(own[0].content, "\n"))
+	members := append([]string{links["intent"].Value}, frontmatter.StringList(links["intents"].Value)...)
+	moves := func(r closeRecord, bucket string) bool {
+		if !closes || !slices.Contains([]string{intent.BucketPlanned, intent.BucketShipped}, bucket) || !slices.Contains([]string{intent.BucketPlanned, intent.BucketShipped}, r.bucket) {
+			return false
+		}
+		id := frontmatter.Fields(strings.Split(r.content, "\n"))["id"].Value
+		return slices.ContainsFunc(members, func(m string) bool { return recordid.SameID(m, id) })
+	}
+	return refuseRecordDifferences(headIntents, workIntents, intentCloseFields, moves, refused)
+}
+
+// refuseRecordDifferences holds the worktree's records to the judged head's, by file
+// name: none new, none gone, none in another bucket unless moves allows it, and each
+// saying the same in fields.
+func refuseRecordDifferences(head, work []closeRecord, fields []string, moves func(closeRecord, string) bool, refused func(rel, how string) error) error {
+	at := map[string]closeRecord{}
+	for _, r := range work {
+		if _, twice := at[r.name]; twice {
+			return refused(r.rel, "stands in two buckets")
+		}
+		at[r.name] = r
+	}
+	held := map[string]bool{}
+	for _, r := range head {
+		held[r.name] = true
+		w, ok := at[r.name]
+		switch {
+		case !ok:
+			return refused(r.rel, "is gone")
+		case w.bucket != r.bucket && (moves == nil || !moves(r, w.bucket)):
+			return refused(r.rel, "moved to "+w.bucket+"/")
+		case w.closeFacts(fields) != r.closeFacts(fields):
+			return refused(w.rel, "changes its "+strings.Join(fields, ":, ")+":")
+		}
+	}
+	for _, r := range work {
+		if !held[r.name] {
+			return refused(r.rel, "is new")
 		}
 	}
 	return nil
 }
-
-// maxSpecRecordBytes bounds the read of a spec record in the lane's worktree, as the
-// spec store bounds its own.
-const maxSpecRecordBytes = 256 * 1024
 
 // strayChanges names a change in the lane's worktree that cannot be the landing's own,
 // "" when there is none. A commit a repository hook refused leaves the landing's
