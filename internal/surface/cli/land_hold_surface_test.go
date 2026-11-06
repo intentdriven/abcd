@@ -172,3 +172,50 @@ func TestLandExitsThreeUnderAStop(t *testing.T) {
 		t.Fatalf("a landing after the approval: exit %d, want 3", code)
 	}
 }
+
+// TestLandRecordsAReviewUnderAStop: a review's receipt lands nothing, so a stop leaves it to be
+// written, and the landing it counts toward is the one the stop holds.
+func TestLandRecordsAReviewUnderAStop(t *testing.T) {
+	dir, origin := landHoldWorld(t)
+	if err := os.MkdirAll(filepath.Join(dir, filepath.FromSlash(landing.TierRelDir)), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	head := gitCmd(t, dir, "rev-parse", "HEAD")
+	if _, err := runstop.Set(os.Getenv("HOME"), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	a, b := filepath.Join(t.TempDir(), "ruthless.md"), filepath.Join(t.TempDir(), "security.md")
+	writeReturn(t, a, head, "SHIP")
+	writeReturn(t, b, head, "APPROVE")
+	if code, _, stderr := reserveRun(t, dir, "land", "--record-review", a, "--record-review", b); code != 0 {
+		t.Fatalf("exit %d, stderr %q", code, stderr)
+	}
+	if fi, err := os.Lstat(filepath.Join(dir, filepath.FromSlash(landing.ReviewReceiptsRelDir), head)); err != nil || !fi.Mode().IsRegular() {
+		t.Fatalf("no receipt for %s: %v", head, err)
+	}
+	if pushed := gitCmd(t, origin, "for-each-ref", "--format=%(objectname)", "refs/heads/feat/x"); pushed != "" {
+		t.Fatalf("origin feat/x is %q", pushed)
+	}
+}
+
+// TestLandGoesOnOnceTheStopLifts: the landing a stop refused needs nothing but the lift.
+func TestLandGoesOnOnceTheStopLifts(t *testing.T) {
+	dir, origin := landHoldWorld(t)
+	head := gitCmd(t, dir, "rev-parse", "HEAD")
+	writeRel(t, dir, landing.ReceiptsRelDir+"/"+head, "")
+	if _, err := runstop.Set(os.Getenv("HOME"), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, stderr := reserveRun(t, dir, "land", "--no-enqueue"); code != 3 {
+		t.Fatalf("under the stop: exit %d, stderr %q", code, stderr)
+	}
+	if lifted, err := runstop.Lift(os.Getenv("HOME"), time.Now()); err != nil || !lifted {
+		t.Fatalf("the lift: %v, %v", lifted, err)
+	}
+	if code, _, stderr := reserveRun(t, dir, "land", "--no-enqueue"); code != 0 {
+		t.Fatalf("after the lift: exit %d, stderr %q", code, stderr)
+	}
+	if pushed := gitCmd(t, origin, "for-each-ref", "--format=%(objectname)", "refs/heads/feat/x"); pushed != head {
+		t.Fatalf("origin feat/x is %q, want %s", pushed, head)
+	}
+}
