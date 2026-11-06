@@ -2,7 +2,7 @@
 // one import path per line, heaviest first (iss-2610181757540736):
 //
 //	pkgs=$(go run ./cmd/ci-shard -shard 2 -of 4)
-//	go test -race -timeout 40m $pkgs
+//	go test -race -timeout 80m $pkgs
 //
 // The suite keeps its runner's three test slots full, so its time is its total
 // work on that runner, and hosted macOS runners vary about twofold: the same

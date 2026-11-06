@@ -45,19 +45,25 @@ env:
 jobs:
   # A shard's ceiling. A job's timeout-minutes starts when a runner takes it, so it
   # counts none of the wait for one, and no shard runs on the merge queue's clock.
-  # 50 is half as much again as the 30 a shard takes on a slow runner. The single
-  # job before the split had reached 85 (dcn-2610282036219503); the remedy for a
-  # shard near this cap is a faster suite or a rebalance in cmd/ci-shard, which is
-  # why internal/core/implement/loop holds the last shard alone.
+  # The ceiling only frees a scarce runner from a stuck run and does not judge speed
+  # (dcn-2611062201286033), and a release cut needs this suite green.
+  # internal/core/implement/loop alone took 2137 to 2189 seconds on its own shard and
+  # runners vary about twofold, so a slow one takes about 73 minutes: the race pass's
+  # -timeout of 80m holds that, and the watchdog at 85 holds it with the set-up and a
+  # cut's uncached build. A stuck shard holds its runner for 90 minutes rather than
+  # 50, on a nightly run or a cut only. The single job before the split had reached
+  # 85 (dcn-2610282036219503); the remedy for a shard past the warning at 80 is a
+  # faster suite or a rebalance in cmd/ci-shard, which is why
+  # internal/core/implement/loop holds the last shard alone.
   # TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds it.
   shard:
-    timeout-minutes: 50
+    timeout-minutes: 90
     runs-on: macos-latest
     permissions:
       contents: read
     env:
       ABCD_CI_LEG: macos-suite (${{ inputs.shard }})
-      ABCD_CI_JOB_CAP_MINUTES: 50
+      ABCD_CI_JOB_CAP_MINUTES: 90
     steps:
       # The clock for the warning and the watchdog, as in ci.yml's check job.
       - name: Record the job's start
@@ -109,8 +115,9 @@ jobs:
       # TestAShardThatCannotReadItsPackagesFails runs this script against a stub go.
       #
       # ABCD_TEST_SKIP_FLUSH and ABCD_TEST_SHARDS are ci.yml's check job's, for the
-      # reasons given there. -timeout is the local gate's, and a package that starts
-      # late meets the job clock's watchdog first.
+      # reasons given there. -timeout is this job's own budget, above the local
+      # gate's (see the job's header), and a package that starts late meets the job
+      # clock's watchdog first.
       - name: Test (race, this shard)
         shell: go run ./cmd/ci-watchdog bash --noprofile --norc -eo pipefail {0}
         env:
@@ -120,7 +127,7 @@ jobs:
           ABCD_CI_SHARDS: ${{ inputs.shards }}
         run: |
           pkgs=$(go run ./cmd/ci-shard -shard "$ABCD_CI_SHARD" -of "$ABCD_CI_SHARDS")
-          go test -race -count=1 -timeout 40m $pkgs
+          go test -race -count=1 -timeout 80m $pkgs
 
       # The plain-only guards on macOS (iss-2610180542030806): the same command as
       # the check job's "Test (plain-only guards)", about a minute, in the first
@@ -139,8 +146,8 @@ jobs:
         continue-on-error: true
         env:
           STARTED_AT: ${{ steps.started.outputs.epoch }}
-          WARN_AFTER_MINUTES: 40
-          CEILING_MINUTES: 50
+          WARN_AFTER_MINUTES: 80
+          CEILING_MINUTES: 90
         run: |
           case "${STARTED_AT:-}" in
             '' | *[!0-9]*)

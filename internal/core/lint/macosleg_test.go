@@ -236,7 +236,7 @@ func checkMacOSSuitePasses(t *testing.T, workflow string, events []string) {
 				ctx["inputs.shard"] = float64(shard)
 				running := runningSteps(t, items, ctx)
 				passes := goTestPasses(running)
-				if len(passes) == 0 || passes[0] != "go test -race -count=1 -timeout 40m "+macOSShardPackages {
+				if len(passes) == 0 || passes[0] != "go test -race -count=1 -timeout 80m "+macOSShardPackages {
 					t.Errorf("shard %d on a %s event runs %q; want its race pass first, so the slowest "+
 						"packages start with the shard's testing", shard, event, passes)
 				}
@@ -476,7 +476,7 @@ func TestAShardThatCannotReadItsPackagesFails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the step failed with a working cmd/ci-shard: %v\n%s", err, log)
 	}
-	if !strings.Contains(log, "test -race -count=1 -timeout 40m p/a p/b\n") {
+	if !strings.Contains(log, "test -race -count=1 -timeout 80m p/a p/b\n") {
 		t.Errorf("the step did not hand go test the shard's packages as separate words:\n%s", log)
 	}
 }

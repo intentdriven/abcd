@@ -23,12 +23,12 @@ import (
 // places: the merge gate (ci.yml's race lane on ubuntu), the macOS suite (the
 // race pass of macos-suite.yml's shards, nightly and on each release cut), the
 // release gate (release.yml's verify job) and the local pre-push gate (make
-// preflight). The release gate, the macOS suite and the local gate share one
-// budget. The merge gate carries a longer one of its own, because a limit there
-// only frees a stuck queue and does not judge speed (dcn-2611062201286033): it
-// stays at or above the local gate's, so what the local gate passes has room in
-// CI, and inside its job's watchdog, so a hang in a package that starts with the
-// step still fails at its own timeout.
+// preflight). The release gate and the local gate share one budget. The merge
+// gate and the macOS suite each carry a longer one of their own, because a limit
+// there only frees a stuck runner and does not judge speed (dcn-2611062201286033):
+// each stays at or above the local gate's, so what the local gate passes has room
+// in CI, and inside its job's watchdog, so a hang in a package that starts with
+// the step still fails at its own timeout.
 //
 // The enclosing ceilings are the other half, and they differ by job.
 //
@@ -190,11 +190,16 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 // on the nightly run and on a release cut alike. The suite ran as one job until 2026-11-04, whose ceiling rose from
 // 45 to 85 as its runs grew (dcn-2610181756328249, dcn-2610282036219503) and which
 // still reached that ceiling on slow runners (iss-2610181757540736). A third of
-// the slowest passing run was about 30 minutes, so 50 is half as much again.
-const checkMacOSCeilingMinutes = 50
+// the slowest passing run was about 30 minutes, so it was 50, half as much again.
+// It is 90 since internal/core/implement/loop took 2137 to 2189 seconds on its own
+// shard: runners vary about twofold, so a slow one takes about 73 minutes, plus
+// set-up and a release cut's uncached build, and a slow runner may not fail a cut
+// with no failing test (dcn-2611062201286033).
+const checkMacOSCeilingMinutes = 90
 
-// macOSPackageTimeoutMinutes is the -timeout of a macOS shard's race pass.
-const macOSPackageTimeoutMinutes = 40
+// macOSPackageTimeoutMinutes is the -timeout of a macOS shard's race pass: twice
+// the slowest package's own shard, about 73 minutes, rounded up.
+const macOSPackageTimeoutMinutes = 80
 
 // checkUbuntuCeilingMinutes is the check job's ceiling on the ubuntu runner: 30
 // under ruling Z; 45 from 2026-10-17, when the drain bundle
