@@ -475,6 +475,7 @@ const (
 	ShapeForcedRefMutationAnyKey = "graphql-forced-ref-update-any-key"
 	ShapeRefUpdateQuery          = "graphql-ref-update"
 	ShapeForceField              = "graphql-force-field"
+	ShapeRefForceField           = "rest-ref-force-field"
 )
 
 // flagValueShapes are the shapes a flag-value constraint may name; Validate
@@ -484,13 +485,17 @@ var flagValueShapes = map[string]bool{
 	ShapeForcedRefMutationAnyKey: true,
 	ShapeRefUpdateQuery:          true,
 	ShapeForceField:              true,
+	ShapeRefForceField:           true,
 }
 
 // flagValueShapeHolds reports whether a setting's fixed text has the shape. The
-// setting comes as the word holds it, since one shape asks what is not fixed.
-func flagValueShapeHolds(shape, got string) bool {
+// setting comes as the word holds it, since one shape asks what is not fixed, and glob says
+// the word is a pattern, which one shape compares as one.
+func flagValueShapeHolds(shape, got string, glob bool) bool {
 	text := knownText(got)
 	switch shape {
+	case ShapeRefForceField:
+		return setsRefForce(got, glob)
 	case ShapeForcedRefMutation:
 		query, ok := strings.CutPrefix(text, "query=")
 		return ok && forcesRefUpdate(query)
@@ -504,6 +509,34 @@ func flagValueShapeHolds(shape, got string) bool {
 		key, value, ok := strings.Cut(text, "=")
 		key = strings.ToLower(key)
 		return ok && (key == "force" || strings.HasSuffix(key, "[force]")) && !gitBoolFalse(value)
+	}
+	return false
+}
+
+// setsRefForce reports whether a field of a REST call sets force to anything but false, in
+// gh's `key=value` form: force itself, or force[...], which gh sends as an array or an
+// object. gh sends -F force=1 as a number, -F force=@file as the file's text, and every -f
+// value as a string, so only a value that plainly says false is not read as true: false,
+// which either flag can send, the 0 and null -F converts, or nothing at all. A value the line
+// does not fix is read as true, and so is a key it does not fix where force can still be
+// what it becomes; a field fixed as another key is not force.
+func setsRefForce(got string, glob bool) bool {
+	lead := strings.ToLower(knownLead(got))
+	key, value, keyFixed := strings.Cut(lead, "=")
+	if !keyFixed {
+		return isUnknown(got) && (strings.HasPrefix("force", lead) || strings.HasPrefix(lead, "force["))
+	}
+	if key != "force" && !strings.HasPrefix(key, "force[") && !(glob && globMatches(key, "force")) {
+		return false
+	}
+	return isUnknown(got) || !plainlyNotForce(value)
+}
+
+// plainlyNotForce reports whether a field's value is one of the few that say force is off.
+func plainlyNotForce(value string) bool {
+	switch value {
+	case "", "false", "0", "null":
+		return true
 	}
 	return false
 }

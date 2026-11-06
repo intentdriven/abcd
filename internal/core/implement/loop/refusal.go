@@ -74,6 +74,10 @@ type Refusal struct {
 	// reservation now another person's. A drain hands a lane refused so back
 	// at once (stuck.go).
 	final string
+	// recordMoved marks a drain's resume refused because the issue's record changed since
+	// the run let it go: the caller drops the lane (dropMovedRun), since asking again
+	// meets the same record.
+	recordMoved bool
 	// capped is the holder's live reservations when the refusal is the cap's
 	// (claim.CapError): the drain waits on it rather than refusing its move
 	// (drain_wait.go).

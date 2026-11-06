@@ -515,7 +515,8 @@ stands one object in for another, `git reflog expire`, `delete` and `drop`,
 force push by these routes: its flags, a `+` refspec, `git push --mirror`,
 `git send-pack` forcing or reading its refs from `--stdin`,
 `git fast-import --force`, `gh repo sync --force`, and through the forge's API a
-PATCH of a ref with `force=true`, a value the line does not fix or `--input`, or
+PATCH of a ref with `force` set to anything but `false`, `0`, `null` or nothing, a value
+the line does not fix or `--input`, or
 a GraphQL `updateRef` with `force`, in the query or in a field beside it. Each asks for a new commit instead. A rebase
 or an amend stays allowed: a line cannot show whether its commits were pushed,
 and the force push a pushed one would need is refused. Each git entry here sets

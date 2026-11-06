@@ -13,16 +13,15 @@ package loop
 // again.
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
 
-	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/lease"
 	"github.com/intentdriven/abcd/internal/core/runstop"
@@ -48,30 +47,12 @@ const stopKeptPrefix = "stopped: a stop set by "
 
 // defaultStopHome is the home a stop is read from; TestMain empties it, which
 // reads as no stop, so a stop on the developer's machine stops no test.
-var defaultStopHome = machineStopHome
-
-// machineStopHome is the production home a stop is read from: the machine's shared
-// records' (abcdhome.MachineHome), the person's own under a walled stage.
-func machineStopHome() string {
-	home, err := abcdhome.MachineHome()
-	if err != nil || !filepath.IsAbs(home) {
-		return ""
-	}
-	return home
-}
+var defaultStopHome = runstop.MachineStopHome
 
 // accountStopHome is the account's own home (runstop.AccountHome), which is where the
 // verb writes a stop and which the variable a process inherits does not move. A test
 // names a fixture.
-var accountStopHome = theAccountsHome
-
-func theAccountsHome() string {
-	home, err := runstop.AccountHome()
-	if err != nil || !filepath.IsAbs(home) {
-		return ""
-	}
-	return home
-}
+var accountStopHome = runstop.ThisAccountHome
 
 // afterStopCheck runs between a move's check and its lock; a test sets a stop there.
 var afterStopCheck = func() {}
@@ -85,13 +66,11 @@ func (o Options) stopRead(pin *runstop.Pin) runstop.Reading {
 	if stopReadingOff && o.stopHome == "" {
 		return runstop.Reading{}
 	}
-	home := o.stopHomeOf()
-	r := runstop.ReadPinned(home, pin)
-	// A stop stands in the account's home whatever this process was told its home is.
-	if account := accountStopHome(); r.Stop == nil && o.stopHome == "" && account != "" && account != home {
-		r.Stop = runstop.ReadPinned(account, pin).Stop
+	account := ""
+	if o.stopHome == "" {
+		account = accountStopHome()
 	}
-	return r
+	return runstop.ReadHomes(o.stopHomeOf(), account, pin)
 }
 
 // stopHomeOf is the home this call reads a stop from.
@@ -245,26 +224,36 @@ func goOnAfterLift(repoRoot, runID string, o Options) error {
 		}
 		now := o.now()
 		note := "the stop lifted before the run halted, so it goes on"
-		for i, lane := range st.Lanes {
-			retold := false
-			lane.Awaits = slices.Clone(lane.Awaits)
-			for k, a := range lane.Awaits {
-				if strings.HasPrefix(a.Kept, stopKeptPrefix) {
-					// What a restart clears: the fresh agent's return is its own.
-					a.Since, a.Kept, a.Answered, a.Paused, a.Running = now, "", nil, nil, nil
-					lane.Awaits[k] = a
-					retold = true
-				}
-			}
-			if retold {
-				st.Lanes[i] = lane
-				note += "; " + lane.ID + "'s agent is told again"
-			}
+		for _, id := range retellKept(st, stopKeptPrefix, now) {
+			note += "; " + id + "'s agent is told again"
 		}
 		st.Record = append(st.Record, Entry{At: now, Stage: StageStop, Note: note})
 		st.UpdatedAt = now
 		return true, nil
 	})
+}
+
+// retellKept tells again each await marked with a reason opening with prefix, and
+// names each lane it did. It clears what a restart clears: the fresh agent's return is
+// its own.
+func retellKept(st *State, prefix string, now time.Time) []string {
+	var told []string
+	for i, lane := range st.Lanes {
+		retold := false
+		lane.Awaits = slices.Clone(lane.Awaits)
+		for k, a := range lane.Awaits {
+			if strings.HasPrefix(a.Kept, prefix) {
+				a.Since, a.Kept, a.Answered, a.Paused, a.Running = now, "", nil, nil, nil
+				lane.Awaits[k] = a
+				retold = true
+			}
+		}
+		if retold {
+			st.Lanes[i] = lane
+			told = append(told, lane.ID)
+		}
+	}
+	return told
 }
 
 // stopRefusal is the answer a move gets while a stop holds.
@@ -274,7 +263,7 @@ func stopRefusal(runID string, rec RunStop) error {
 	case rec.HaltedAt != nil:
 		state = "and has let its claims go"
 	case heldBySave(&rec):
-		state = "with work that could not be saved aside still in place, so it keeps its claims until the work is saved; the run record names it"
+		state = "with work that could not be saved aside left uncommitted in its worktree and nowhere else; its claims lapse at their lease unless renewed, which a gated waiter or `abcd implement status` does and neither does for a run parked at land; the run record names it"
 	}
 	remedy := "the person's own `abcd implement stop --lift` lifts it; hand back any receipt you hold with `abcd implement receipt`, then stop"
 	if !rec.FromFile {
@@ -325,6 +314,41 @@ func waitsForItsTakeOver(repoRoot, runID string) string {
 		return waitsForTakeOver(runID)
 	}
 	return fmt.Sprintf("a signal to a drive halted run %s, which waits for `abcd implement resume --take %s`", termsafe.Sanitize(runID), termsafe.Sanitize(runID))
+}
+
+// stopMarkNote says why a stop's mark leaves nothing to be done for a run, "" for a run with
+// none: what a halted run waits for, or what takes up one that has not settled. A record
+// that cannot be read is said, and nothing is done on it.
+func stopMarkNote(repoRoot, runID string) string {
+	if note := waitsForItsTakeOver(repoRoot, runID); note != "" {
+		return note
+	}
+	c, err := runControl(repoRoot, runID)
+	if err != nil || c.Stop == nil {
+		return ""
+	}
+	id := termsafe.Sanitize(runID)
+	if !c.Stop.FromFile {
+		// A signal has nothing to lift, so its mark is only ever taken over.
+		return fmt.Sprintf("a signal to a drive marked run %s, which has not settled, so nothing is done for it: `abcd implement resume --take %s` takes it over", id, id)
+	}
+	return fmt.Sprintf("a stop set by %s marked run %s, which has not settled, so nothing is done for it: `abcd implement step --run %s` takes that up once the stop lifts",
+		termsafe.Sanitize(c.Stop.SetBy), id, id)
+}
+
+// parkedStopNote is stopMarkNote for a drain's move over a parked run. A mark that has not
+// settled first takes the check every move makes, so one from a stop lifted since goes, and
+// the run is then as any other.
+func parkedStopNote(repoRoot, runID string, o Options) (string, error) {
+	c, err := runControl(repoRoot, runID)
+	if err == nil && c.Stop != nil && c.Stop.HaltedAt == nil {
+		if _, err := stopCheck(repoRoot, runID, DefaultStages(), o); err != nil {
+			if _, refused := AsRefusal(err); !refused {
+				return "", err
+			}
+		}
+	}
+	return stopMarkNote(repoRoot, runID), nil
 }
 
 // waitsUntaken says what a run no later drive takes up waits for: one a person's stop halted,
@@ -619,11 +643,17 @@ func settleStop(repoRoot string, root *os.Root, st *State, c *control, tab *sess
 		// releasing would let a peer in over work saved nowhere.
 		out.Settled = saveLaneForStop(repoRoot, root, st, i, why, &out, now)
 		waiting = waiting || !out.Settled
-		left = append(left, out)
 		if out.Aside != "" {
 			st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: StageStop,
 				Note: fmt.Sprintf("%d uncommitted file(s) saved aside at %s", out.Files, out.Aside)})
+		} else if letGoByDrive(*st) {
+			// The limit that let the lane go saved its work, so the worktree holds
+			// nothing now and the stop still says where that work is.
+			if a, ok := newestAside(root, *st, lane.ID); ok {
+				out.Aside, out.Files = a.Path, len(a.Files)
+			}
 		}
+		left = append(left, out)
 	}
 	rec.Left = left
 	// A release runs git too, so a changed configuration holds it.
@@ -638,6 +668,11 @@ func settleStop(repoRoot string, root *os.Root, st *State, c *control, tab *sess
 			clause += ", so it lapses with its lease"
 			stage = StageReservationReleaseFailed
 		}
+		// A run a drive already let go keeps the note made then, which is what its lane
+		// was working to.
+		if !letGoByDrive(*st) {
+			noteRecordReleased(repoRoot, st, failed, now)
+		}
 		// Failed or not the run no longer holds it: a renewal now would keep the
 		// claim the stop let go.
 		st.ReservedAt = nil
@@ -646,6 +681,35 @@ func settleStop(repoRoot string, root *os.Root, st *State, c *control, tab *sess
 	}
 	rec.HaltedAt = &now
 	st.Record = append(st.Record, Entry{At: now, Stage: StageStop, Note: "halted: every lane has settled and the run's claims are let go"})
+}
+
+// newestAside is the newest aside holding files saved for the lane. An aside that cannot
+// be read is passed over.
+func newestAside(root *os.Root, st State, laneID string) (RestartAside, bool) {
+	dir, err := laneRel(st.RunID, laneID, stageRestart)
+	if err != nil {
+		return RestartAside{}, false
+	}
+	f, err := root.Open(dir + "/" + AsideDirName)
+	if err != nil {
+		return RestartAside{}, false
+	}
+	names, _ := f.Readdirnames(-1)
+	f.Close()
+	var newest RestartAside
+	found := false
+	for _, n := range names {
+		data, err := root.ReadFile(dir + "/" + AsideDirName + "/" + n + "/" + AsideFileName)
+		if err != nil {
+			continue
+		}
+		var a RestartAside
+		if json.Unmarshal(data, &a) != nil || len(a.Files) == 0 || (found && a.At.Before(newest.At)) {
+			continue
+		}
+		newest, found = a, true
+	}
+	return newest, found
 }
 
 // saveLaneForStop is one lane with no agent live: each await marked kept with its
@@ -722,9 +786,13 @@ func laneWorktreeGone(repoRoot, runID string, lane Lane) bool {
 // stopEndsRenewal reports whether a stop has ended the run's right to renew its
 // reservation: one is in force or the run took one, no agent may still be in its
 // call, and no lane holds work a save could not take. A claim a stop is letting go
-// is not kept alive; one with an agent in its call keeps the claim until that agent
-// is done, and one over work saved nowhere keeps it until the work is saved, so no
-// peer enters over it.
+// is not kept alive; one with an agent in its call stays renewable until that agent
+// is done, and one over work saved nowhere until the work is saved. That holds only
+// where something still renews: under a stop in force a move and a step refuse before
+// any renewal, so only a gated waiter's round, implement status or a drive still in an
+// agent's call or a preflight renews a run, and only that drive renews one parked at
+// land. With none of them, the claim lapses at its lease, with
+// the lane's work still on its branch and in its worktree.
 func stopEndsRenewal(repoRoot string, st State, now time.Time) bool {
 	c, err := runControl(repoRoot, st.RunID)
 	if err != nil {

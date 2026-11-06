@@ -79,8 +79,13 @@ type ListedRun struct {
 	RunID    string        `json:"run_id"`
 	Key      string        `json:"key"`
 	Driver   *ListedDriver `json:"driver,omitempty"`
+	// Profile names the profile a drive runs it on, "" for a run no drive has driven.
+	Profile string `json:"profile,omitempty"`
 	// Reserved says the run holds its record's reservation as its state has it.
 	Reserved bool `json:"reserved"`
+	// ReleaseFailed says the run let its reservation go and the release did not reach
+	// origin, so the tip stands until a renewal takes it up or its lease lapses.
+	ReleaseFailed bool `json:"release_failed,omitempty"`
 	// Stop is what a stop did to the run, and left.
 	Stop  *RunStop     `json:"stop,omitempty"`
 	Lanes []ListedLane `json:"lanes"`
@@ -192,7 +197,7 @@ func listDrain(checkout string, d DrainState) ListedDrain {
 
 // listRun is one run's whole account.
 func listRun(checkout string, o Options, root *os.Root, st State, tab *sessionname.Table, stopHolds bool, now time.Time) ListedRun {
-	out := ListedRun{Checkout: termsafe.Sanitize(fsutil.RedactHome(checkout)), RunID: termsafe.Sanitize(st.RunID), Key: termsafe.Sanitize(st.Key), Reserved: st.ReservedAt != nil, Lanes: []ListedLane{}}
+	out := ListedRun{Checkout: termsafe.Sanitize(fsutil.RedactHome(checkout)), RunID: termsafe.Sanitize(st.RunID), Key: termsafe.Sanitize(st.Key), Profile: termsafe.Sanitize(st.Profile), Reserved: st.ReservedAt != nil && !letGoByDrive(st), ReleaseFailed: letGoByDrive(st) && failedReleaseTip(st) != "", Lanes: []ListedLane{}}
 	c, err := readControl(root, st.RunID)
 	if err != nil {
 		c = control{}
@@ -309,6 +314,8 @@ func listLane(checkout string, root *os.Root, runID string, lane Lane, c control
 // TakeResult is what a take-over did.
 type TakeResult struct {
 	RunID string `json:"run_id"`
+	// Profile names the profile a drive ran the run on, "" for none.
+	Profile string `json:"profile,omitempty"`
 	// Collected are the receipts it handed back, by lane.
 	Collected map[string]string `json:"collected,omitempty"`
 	// Saved are the lanes with no agent whose uncommitted work it saved aside.
@@ -329,7 +336,7 @@ type TakeResult struct {
 // out: a state's lane ids and roles are not validated when it is read.
 func safeTake(res TakeResult) TakeResult {
 	safe := func(line string) string { return termsafe.Sanitize(line) }
-	res.RunID, res.Reservation, res.Next = safe(res.RunID), safe(res.Reservation), safe(res.Next)
+	res.RunID, res.Profile, res.Reservation, res.Next = safe(res.RunID), safe(res.Profile), safe(res.Reservation), safe(res.Next)
 	if res.Collected != nil {
 		collected := make(map[string]string, len(res.Collected))
 		for lane, note := range res.Collected {
@@ -437,7 +444,8 @@ func takeRun(repoRoot, runID string, o Options) (TakeResult, error) {
 		return TakeResult{}, err
 	}
 	defer root.Close()
-	if _, err := ReadState(repoRoot, runID); err != nil {
+	was, err := ReadState(repoRoot, runID)
+	if err != nil {
 		return TakeResult{}, err
 	}
 	// Everything below may run git, so a configuration changed during the run
@@ -464,12 +472,14 @@ func takeRun(repoRoot, runID string, o Options) (TakeResult, error) {
 	if err := claimDriver(repoRoot, runID, o, true); err != nil {
 		return TakeResult{}, err
 	}
-	res := TakeResult{RunID: runID}
+	res := TakeResult{RunID: runID, Profile: was.Profile}
 	res.Collected = collectArrived(repoRoot, runID, DefaultStages(), seen, o)
 
-	if prev.Stop != nil && prev.Stop.HaltedAt != nil && prev.Stop.Released != noReservationHeld {
+	// A stop's halt or a drive's letting go left the run holding nothing that a step would
+	// take up, so the take-over reserves it again.
+	if (prev.Stop != nil && prev.Stop.HaltedAt != nil && prev.Stop.Released != noReservationHeld) || letGoByDrive(was) {
 		start := StartResult{RunID: runID}
-		switch err := reserveResumed(repoRoot, &start, o); {
+		switch err := reserveTaken(repoRoot, &start, o, false); {
 		case err == nil:
 			res.Reservation = start.Reservation
 		case claim.Finished(repoRoot, finishedKey(repoRoot, runID)):

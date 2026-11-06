@@ -70,7 +70,7 @@ Each release cut runs its own macOS suite on the commit it is about to tag,
 whatever the nightly run said
 ([dcn-2611042202509334](../../work/decisions/dcn-2611042202509334-the-product-thinker-ruled-on-2026-11-04.md)).
 The merge queue tests on Linux, so nothing else tests that commit on macOS before
-it ships. `release.yml` runs three jobs, `macos-suite-1` to `macos-suite-3`, beside
+it ships. `release.yml` runs four jobs, `macos-suite-1` to `macos-suite-4`, beside
 `verify`. Each calls `macos-suite.yml`, the workflow `ci.yml`'s nightly suite calls,
 so a shard runs the same steps, over what `cmd/ci-shard` assigns it, under the same
 50-minute ceiling, except that the release path restores and saves no Go cache. The

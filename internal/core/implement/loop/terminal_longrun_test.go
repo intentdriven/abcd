@@ -66,8 +66,9 @@ func letGoAtTheEnd(t *testing.T, w *terminalWorld) State {
 }
 
 // TestAResetDaysAwayIsWaitedOutUnderABound: with a bound of its own a drive waits
-// for a reset however far off, starts nothing before it, keeps renewing what it
-// holds, says so as it goes, and lands the lane afterwards.
+// for a reset however far off, starts nothing before it, holds nothing and renews
+// nothing while it waits (iss-2611052230565049), says so as it goes, and lands the
+// lane afterwards.
 func TestAResetDaysAwayIsWaitedOutUnderABound(t *testing.T) {
 	w := newTerminalWorld(t, "shape", "limited")
 	w.realWorktree()
@@ -93,14 +94,10 @@ func TestAResetDaysAwayIsWaitedOutUnderABound(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	renewed := 0
 	for _, e := range run.Record {
 		if e.Stage == StageReservationRenewed {
-			renewed++
+			t.Fatalf("a wait that let its issue go renews nothing: %+v", e)
 		}
-	}
-	if renewed < 30 {
-		t.Fatalf("the wait keeps its claim: %d renewals in three days", renewed)
 	}
 	if n := strings.Count(w.said(), "rate limit"); n < 60 {
 		t.Fatalf("the wait says so as it goes: %d lines\n%s", n, w.said())
@@ -480,13 +477,13 @@ func TestABoundThatHasPassedStartsNothing(t *testing.T) {
 	}
 }
 
-// TestAMachineAsleepCutsTheWaitAndRevivesTheClaim: the machine sleeps through two
-// days of a three-day wait and a lease with them. The wait counts what the wall
-// clock says, so it ends at the reset, and the claim is held again on waking.
+// TestAMachineAsleepCutsTheWaitAndRevivesTheClaim: the machine sleeps through a wait
+// short enough to keep its hold, and through a lease with it. The wait counts what the
+// wall clock says, so it ends at the reset, and the claim is held again on waking.
 func TestAMachineAsleepCutsTheWaitAndRevivesTheClaim(t *testing.T) {
 	w := newTerminalWorld(t, "shape", "limited")
 	w.realWorktree()
-	reset := w.resetIn(t, 72*time.Hour)
+	reset := w.resetIn(t, 30*time.Minute)
 	o := w.bounded(t, 30*24*time.Hour)
 	once := false
 	w.onSleep = func(time.Duration) {
@@ -505,9 +502,6 @@ func TestAMachineAsleepCutsTheWaitAndRevivesTheClaim(t *testing.T) {
 	if res.Ended != DrainStoppedCap {
 		t.Fatalf("the lane lands: %+v\n%s", res, w.said())
 	}
-	if got := slept(w.sleeps); got > 25*time.Hour {
-		t.Fatalf("the time asleep counts: the run slept %v more", got)
-	}
 	if w.clock.t.Before(reset) {
 		t.Fatalf("the wait ended before the reset: %v", w.clock.t)
 	}
@@ -524,13 +518,46 @@ func TestAMachineAsleepCutsTheWaitAndRevivesTheClaim(t *testing.T) {
 	}
 }
 
+// TestAMachineAsleepCutsALongWaitToo: a wait that let its issue go counts the time asleep
+// against the reset as any wait does: two days of a three-day reset slept through leave a
+// day to sleep, never three, and the lane lands.
+func TestAMachineAsleepCutsALongWaitToo(t *testing.T) {
+	w := newTerminalWorld(t, "shape", "limited")
+	w.realWorktree()
+	reset := w.resetIn(t, 72*time.Hour)
+	o := w.bounded(t, 30*24*time.Hour)
+	once := false
+	w.onSleep = func(time.Duration) {
+		if !once {
+			once = true
+			w.clock.t = w.clock.t.Add(48 * time.Hour)
+			if !letGoByDrive(w.firstLaneRun(t)) {
+				t.Errorf("the wait let its issue go:\n%s", w.said())
+			}
+		}
+		if got := slept(w.sleeps); got > 25*time.Hour {
+			t.Fatalf("the time asleep counts: the run slept %v more", got)
+		}
+	}
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Ended != DrainStoppedCap {
+		t.Fatalf("the lane lands: %+v\n%s", res, w.said())
+	}
+	if w.clock.t.Before(reset) {
+		t.Fatalf("the wait ended before the reset: %v", w.clock.t)
+	}
+}
+
 // TestAPeerWhoTookALapsedIssueBacksTheLaneOff: while the machine slept the lease
 // lapsed and a peer reserved the issue, so the lane starts no further agent, goes
 // back as stuck, and the run moves on; the peer keeps what it took.
 func TestAPeerWhoTookALapsedIssueBacksTheLaneOff(t *testing.T) {
 	w := newTerminalWorld(t, "shape", "limited")
 	w.realWorktree()
-	w.resetIn(t, 5*time.Hour)
+	w.resetIn(t, 30*time.Minute)
 	o := w.bounded(t, 30*24*time.Hour)
 	o.Drain.Max = 2
 	q := otherCopy(t, w.bare, quinnEmail)
@@ -1483,7 +1510,7 @@ func TestTheProbeAsksWithTheLaunchesModel(t *testing.T) {
 	fl := limitedNoReset()
 	fl.Model = "anthropic/a-model"
 	tm.noteFailure(RoleImplementer, fl)
-	if ended := tm.limited(context.Background(), RoleImplementer, time.Time{}); ended != "" {
+	if ended := tm.limited(context.Background(), "", RoleImplementer, time.Time{}); ended != "" {
 		t.Fatalf("the run goes on: %q", ended)
 	}
 	if asked != "anthropic/a-model" {

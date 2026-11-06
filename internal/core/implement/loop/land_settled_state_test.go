@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// A landing's `spec_settled` is state version 22's: a version-21 file carrying one is
+// A landing's `spec_settled` is state version 23's: a version-22 file carrying one is
 // refused naming it, and one without it reads and comes back at the current version.
 func TestASettledSpecIsTheVersionAfterTheUnsettled(t *testing.T) {
 	const steps = "1. The parser\n   - packages: internal/core/spec\n2. The loop\n   - packages: internal/core/implement\n"

@@ -746,6 +746,105 @@ func TestOutageEndKeepsTheRecordWhenTheLogFails(t *testing.T) {
 	}
 }
 
+// TestAStatusCountsOnlyWhereTheToolPrintsIt: a 5xx is a lost connection at the start of a
+// line, or at the start of the stderr a runner wraps, and in git's own sentence. Text that
+// merely holds the same words is whatever else it says, wherever it says them.
+func TestAStatusCountsOnlyWhereTheToolPrintsIt(t *testing.T) {
+	for text, want := range map[string]bool{
+		// gh's own line, on its own and after other lines.
+		"HTTP 500: Internal Server Error (https://api.github.com/graphql)":          true,
+		"warning: slow\nHTTP 502: Bad Gateway (https://api.github.com/graphql)":     true,
+		"non-200 OK status code: 503 Service Unavailable body: \"\"":                true,
+		"warning: slow\nnon-200 OK status code: 503 Service Unavailable body: \"\"": true,
+		// landing's and gitutil's wrapper around a command's stderr.
+		"gh pr merge: exit status 1 (HTTP 500: Internal Server Error (https://api.github.com/graphql))":                            true,
+		"gh api graphql: exit status 1 (non-200 OK status code: 502 Bad Gateway body: \"\")":                                       true,
+		"gh pr merge: exit status 1 (warning: slow\nHTTP 500: Internal Server Error)":                                              true,
+		"git push: exit status 128 (fatal: unable to access 'https://github.com/o/r.git/': The requested URL returned error: 503)": true,
+		"git fetch: exit status 128 (error: RPC failed; HTTP 500 curl 22 The requested URL returned error: 500\nfatal: early EOF)": true,
+		// The %q form the isolated runner's error carries.
+		`exit status 128 (stderr: "fatal: unable to access 'https://github.com/o/r.git/': The requested URL returned error: 502")`:                true,
+		`exit status 128 (stderr: "warning: slow\nfatal: unable to access 'https://github.com/o/r.git/': The requested URL returned error: 502")`: true,
+		`exit status 1 (stderr: "HTTP 503: Service Unavailable")`:                                                                                 true,
+		// git's sentence with the lines around it.
+		"error: The requested URL returned error: 503 while accessing https://github.com/o/r.git/info/refs": true,
+		"fatal: The requested URL returned error: 500":                                                      true,
+
+		// What gh prints round a status on the calls abcd makes.
+		"gh pr create: exit status 1 (pull request create failed: HTTP 502: 502 Bad Gateway (https://api.github.com/graphql))":               true,
+		"gh pr create: exit status 1 (pull request update failed: HTTP 503: 503 Service Unavailable (https://api.github.com/graphql))":       true,
+		"gh pr create: exit status 1 (error checking for existing pull request: HTTP 502: 502 Bad Gateway (https://api.github.com/graphql))": true,
+		"gh pr close: exit status 1 (API call failed: HTTP 500: 500 Internal Server Error (https://api.github.com/graphql))":                 true,
+		"gh pr create: exit status 1 (pull request create failed: non-200 OK status code: 502 Bad Gateway body: \"\")":                       true,
+		"pull request create failed: HTTP 502: 502 Bad Gateway (https://api.github.com/graphql)":                                             true,
+		"HTTP 503 (https://api.github.com/graphql)":                             true,
+		"gh pr view: exit status 1 (HTTP 502 (https://api.github.com/graphql))": true,
+		"gh: HTTP 502":                                                                  true,
+		"gh: Server Error (HTTP 500)":                                                   true,
+		"gh api graphql: exit status 1 (gh: HTTP 502)":                                  true,
+		"gh api graphql: exit status 1 (gh: Bad Gateway (HTTP 502))":                    true,
+		`exit status 1 (stderr: "gh: HTTP 503")`:                                        true,
+		"error: RPC failed; HTTP 502 curl 22":                                           true,
+		"git push: exit status 1 (error: RPC failed; HTTP 500 curl 92 HTTP/2 stream 0)": true,
+
+		// The same words past where gh prints them, or a 4xx.
+		"gh pr create: exit status 1 (pull request create failed: HTTP 422: Validation Failed (https://api.github.com/graphql))": false,
+		"gh: Not Found (HTTP 404)":                                    false,
+		"gh api graphql: exit status 1 (gh: HTTP 403)":                false,
+		"hook: pull request create failed: HTTP 502: 502 Bad Gateway": false,
+		"hook: gh: HTTP 502":                                          false,
+		"remote: gh: HTTP 502":                                        false,
+		"hook: API call failed: HTTP 500: broken":                     false,
+		"error: RPC failed; HTTP 404 curl 22":                         false,
+
+		// A backslash and an n open a line only inside the runner's %q'd stderr.
+		`hook: printf "one\nHTTP 500: two"`:                                    false,
+		`one\nHTTP 500: two`:                                                   false,
+		`git push: exit status 1 (hook: "a\nHTTP 502: b")`:                     false,
+		`gh pr merge: exit status 1 (one\nHTTP 502: two)`:                      false,
+		`exit status 1 (stderr: "hook: printf \"a\\nHTTP 500: b\"")`:           false,
+		`exit status 1 (stderr: "a" then\nHTTP 500: b`:                         false,
+		`exit status 1 (stderr: "warning: \"quoted\"\nHTTP 502: Bad Gateway")`: true,
+
+		// A hook's lines, a test's output or a pasted log that hold the words.
+		"pre-push: see HTTP 500: what the fixture answers":                                    false,
+		"hook: the upload said HTTP 503: try later":                                           false,
+		"FAIL TestClient: got HTTP 500: wanted 200":                                           false,
+		"the stub answers (HTTP 500: on purpose)":                                             false,
+		"  HTTP 502: Bad Gateway":                                                             false,
+		"remote: HTTP 502: Bad Gateway":                                                       false,
+		"remote: The requested URL returned error: 502":                                       false,
+		"remote: fatal: unable to access 'https://x/': The requested URL returned error: 502": false,
+		"curl: (22) The requested URL returned error: 503":                                    false,
+		"hook: The requested URL returned error: 503":                                         false,
+		"lint: the doc quotes non-200 OK status code: 502":                                    false,
+		"remote: non-200 OK status code: 502":                                                 false,
+		"remote: ci: exit status 1 (gh: Bad Gateway (HTTP 502))":                              false,
+		"remote: ci: exit status 1 (HTTP 502: Bad Gateway)":                                   false,
+		"git push: exit status 1 (remote: ci: exit status 1 (HTTP 502: Bad Gateway))":         false,
+		"remote: ci\nremote: exit status 1 (gh: HTTP 502)":                                    false,
+		"git push: exit status 1 (hook: got HTTP 500: from the stub)":                         false,
+		"git push: exit status 1 (remote: The requested URL returned error: 500)":             false,
+		`exit status 1 (stderr: "hook: got HTTP 500: from the stub")`:                         false,
+		// A 4xx in any of the shapes.
+		"gh pr merge: exit status 1 (HTTP 422: Validation Failed)": false,
+		// A bare marker on a line the remote printed is that end's text.
+		"remote: connection refused by the build cache":                              false,
+		"git push: exit status 1 (remote: dial tcp 10.0.0.1:80: connection refused)": false,
+		"remote: broken pipe\nremote: no route to host":                              false,
+		// and off such a line it stands.
+		"remote: fine\nfatal: unable to access 'https://x/': The requested URL returned error: 503":                             true,
+		"git push: exit status 128 (remote: fine\nfatal: unable to access 'https://x/': The requested URL returned error: 503)": true,
+		"gh pr merge: exit status 1 (remote: fine\nHTTP 502: Bad Gateway (https://api.github.com/graphql))":                     true,
+		"remote: fine\nfatal: the remote end hung up unexpectedly\nfatal: early EOF":                                            true,
+		"git push: exit status 128 (ssh: connect to host github.com port 22: Connection refused)":                               true,
+	} {
+		if got := IsNetworkFailure(text); got != want {
+			t.Errorf("IsNetworkFailure(%q) = %v, want %v", text, got, want)
+		}
+	}
+}
+
 // TestAForgeOrRemote5xxIsALostConnection: in gh's and git's own wording, a service that
 // answered 5xx is waited out as a lost network, and a 4xx, which waiting will not
 // change, is not.

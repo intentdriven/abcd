@@ -293,7 +293,13 @@ refused. Exit 3 means another copy holds a live reservation on one of the paths
 and nothing was pushed: the implementer edits none of them and stops without a
 receipt, and the lane is handed to an implementer again on a later step. An
 implementer's receipt is refused while the lane's branch changes a path the
-reservation does not cover, naming the paths and this command.
+reservation does not cover, naming the paths and this command. A lane past its
+last receipt meets the same check at the fence before its push and its arming:
+a path the reservation does not cover is reserved there, judged for overlap,
+and exit 3 names a hold on it, with nothing pushed or armed. Only the records the
+landing moves are left out, so anything else its records commit holds is judged,
+and so is a reservation made by hand for a run that recorded none. A reservation made
+again names every path widened to, even when the reservation branch was deleted.
 
 When the stage hands the lane to a role that `roles.<role>.runner` in
 `~/.abcd.noindex/config.json` routes to a command-line runner (`claude` or `opencode`,
@@ -898,7 +904,7 @@ files; the verb itself refuses a caller with no
 terminal or under a host session, and a lift or a choice of folder where it cannot tell whether one is above it. A stop is not the stop a drive keeps on a run whose state changed: a run can have both, nothing is settled while both stand, and neither's end answers for the other. Tell the person why you
 believe the runs should stop or go on, and leave the command to them. A stop reads
 as a refusal at the stage `stop`, exit 3, from `implement step`, `abcd build` and
-`abcd drain`: stop working when you meet it. `implement receipt` is not refused, so
+`abcd drain`, and as a refusal at exit 3 from `abcd land`: stop working when you meet it. `implement receipt` is not refused, so
 hand back a receipt you hold; the lane goes no further. `implement step --release` and
 `--discard`, a person's decisions over a held lane, do not make the check. Under a stop an agent in a
 call finishes it and its receipt is collected; with no agent live each lane's
@@ -907,7 +913,8 @@ is released, so a peer may take the work, and the day's page is written to this 
 directory in the shared folder, naming the stop and every run of this account's it halted in this repository's worktrees and each checkout a driver worked in. A
 page that cannot be written changes nothing about the stop: its answer and the listing say so. A
 pull request armed before the stop can still merge under it: the page and the listing's text name each
-with its disarm command, and nothing disarms it on its own. A save that fails holds the lane and the claims. A stop file any
+with its disarm command, and nothing disarms it on its own. A drain's move does nothing for a parked run
+with the stop's mark, a merged lane's last step included, until the take-over or the lift that lets it go on. A save that fails holds the lane and keeps the claims only while something renews them, and under a stop in force only a drive still in an agent's call or a preflight renews a parked run's, which otherwise lapses at its lease with the work it could not take still uncommitted in its worktree and nowhere else. A stop file any
 other account wrote, a symlink or an oversized file is no stop, and each step's answer names it.
 A run fixes the shared folder at its start and reads it before each move, with the
 platform's shared folder for the account it expects. A setting that cannot be read, that has gone or changed during the run, or a folder the run
@@ -915,7 +922,9 @@ should read whose stop cannot be looked at,
 holds the run at the stage `stop`, exit 3, with nothing let go: tell the person, who puts it back.
 A home that cannot be found holds it the same way. A take-over needs a read that saw clearly.
 A renewal that falls due under a stop settles the run first; with no agent left in its call
-and its work saved it no longer renews, and work a save could not take keeps the claim. A
+and its work saved it no longer renews. Work a save could not take stays uncommitted in its
+worktree and nowhere else, and its claim lapses at its lease unless a gated waiter, `abcd implement status` or a drive still
+in an agent's call or a preflight renews it; only that drive renews a run parked at land. A
 lift names any stop it cannot reach. A stop another account left is not honoured, and each
 step's answer and the listing name it.
 
@@ -930,8 +939,10 @@ nothing and uses no network: every unfinished run this account can read, in this
 alive or gone, what a stop left, and each lane's stage, each agent alive, lost or
 unknown, each receipt that arrived uncollected, its pull request, how far origin's
 default branch as last fetched has moved past its base, and the files it holds
-uncommitted. A run in a lane's own worktree is not listed. That listing and the checklist are all a session that lost its context
-needs.
+uncommitted. A run in a lane's own worktree is not listed. A run a drive started names the
+profile it started on, in the listing and in `--take`'s answer, since what the session starts
+from there runs on the session's own login. That listing and the checklist are all a session
+that lost its context needs.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement resume [--run <run-id>] --json

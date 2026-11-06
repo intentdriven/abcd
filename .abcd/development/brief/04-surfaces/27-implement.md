@@ -585,7 +585,17 @@ lane moves on. The landing's narrowing keeps a path the lane widened to and
 changed, a resume at land renews that narrowing as it stands, a resume that
 reserves again over this copy's live or lapsed hold keeps the paths that hold
 names beside the found_at, and a lane leaving land for a fresh round reserves
-its found_at again beside the paths its narrowed hold names.
+its found_at again beside the paths its narrowed hold names. The run record
+keeps each path widened to in a `reservation_widened_to` line of its own, so a
+reservation made again names it even when the reservation branch was deleted.
+The fence before a landing's push and its arming judges the lane's branch the
+same way, since no receipt stands between a lane at its validators and its
+landing: a path the reservation does not cover is reserved there, judged for
+overlap and against the cap, and another's hold on it stops the lane at its
+landing, naming that hold, with nothing pushed or armed. Only the records the
+landing moves are left out of that reading, so anything else its records commit
+holds is judged, and so is a reservation made by hand for a run that recorded
+none. An origin it cannot reach is a wait, as at the fence's other reads.
 
 A run that holds a reservation on the shared remote (itd-2609091034175565;
 the state's `reserved_at`) holds it for the copy the run lives in. The step
@@ -729,8 +739,9 @@ nothing and lets nothing go until the setting is put back, and only a read that 
 clearly and found no stop counts as a lift, or lets a run be taken over. A home that
 cannot be found holds the run the same way. The chosen folder does not move while a stop
 stands in it. A renewal that falls due under a stop settles the run first. With no agent left in its
-call and its work saved, a run under a stop no longer renews its reservation; work a save
-could not take keeps it until it is saved, and the move's refusal says so. A take-over over a
+call and its work saved, a run under a stop no longer renews its reservation; a run with work a save
+could not take keeps it only while a gated waiter, a reading of the run's status or a drive still in an
+agent's call or a preflight renews it, lapses at its lease otherwise, and the move's refusal says so. A take-over over a
 record that has since finished on the default branch has nothing to reserve, and clears the
 mark. A signal's stop has no file to lift, and
 stays. A configuration changed during the run holds the save as it refuses a restart, and a

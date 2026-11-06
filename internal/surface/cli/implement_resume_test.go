@@ -42,6 +42,16 @@ func TestImplementResumeTakeRefusesAnUnknownRun(t *testing.T) {
 	}
 }
 
+// TestTheListingSaysAFailedReleasesTipHolds: the run let go and the tip stands, so "not held"
+// would not be true.
+func TestTheListingSaysAFailedReleasesTipHolds(t *testing.T) {
+	var b bytes.Buffer
+	renderListedRun(&b, loop.ListedRun{ReleaseFailed: true})
+	if !strings.Contains(b.String(), "did not reach origin") || strings.Contains(b.String(), "not held") {
+		t.Fatalf("the listing says what is true:\n%s", b.String())
+	}
+}
+
 // TestTheListingNamesWhatAStopCannotHold: a pull request armed before it, and a page it could
 // not write.
 func TestTheListingNamesWhatAStopCannotHold(t *testing.T) {
@@ -51,6 +61,28 @@ func TestTheListingNamesWhatAStopCannotHold(t *testing.T) {
 	for _, want := range []string{"gh pr merge 7 --disable-auto", "the day's page could not be written: no room"} {
 		if !strings.Contains(b.String(), want) {
 			t.Fatalf("the listing lacks %q:\n%s", want, b.String())
+		}
+	}
+}
+
+// TestAListedRunAndATakeOverSayTheProfile: a session taking up what a drive left is told
+// which subscription the run started on, so going on elsewhere is never silent.
+func TestAListedRunAndATakeOverSayTheProfile(t *testing.T) {
+	var listed strings.Builder
+	renderListedRun(&listed, loop.ListedRun{RunID: "run-1", Key: "iss-1", Profile: "alpha"})
+	if !strings.Contains(listed.String(), "profile: alpha") {
+		t.Fatalf("the listing says:\n%s", listed.String())
+	}
+	var none strings.Builder
+	renderListedRun(&none, loop.ListedRun{RunID: "run-1", Key: "iss-1"})
+	if strings.Contains(none.String(), "profile:") {
+		t.Fatalf("no profile, no line:\n%s", none.String())
+	}
+	var took strings.Builder
+	renderTake(&took, loop.TakeResult{RunID: "run-1", Profile: "alpha", Next: "step"})
+	for _, want := range []string{"alpha", "this session's own login"} {
+		if !strings.Contains(took.String(), want) {
+			t.Errorf("the take-over does not say %q:\n%s", want, took.String())
 		}
 	}
 }

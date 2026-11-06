@@ -117,7 +117,7 @@ func TestAPreflightRunsInTheStagesEnvironment(t *testing.T) {
 	w := newDriveWorld(t)
 	t.Setenv("GH_TOKEN", "a-value-never-passed")
 	t.Setenv("SSH_AUTH_SOCK", "a-value-never-passed")
-	p, err := runner.DriveProfile(w.home)
+	p, err := runner.DriveProfile(w.home, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +147,7 @@ func TestAPreflightRunsInTheStagesEnvironment(t *testing.T) {
 // can write, so neither is run.
 func TestADriveSaysWhenAStagesGoCachesAreNotKept(t *testing.T) {
 	w := newDriveWorld(t)
-	p, err := runner.DriveProfile(w.home)
+	p, err := runner.DriveProfile(w.home, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,7 +233,7 @@ func TestThereIsNoFlagThatOpensAGate(t *testing.T) {
 // TestAPreflightLeavesNoProcessBehind: on success and on failure.
 func TestAPreflightLeavesNoProcessBehind(t *testing.T) {
 	w := newDriveWorld(t)
-	p, err := runner.DriveProfile(w.home)
+	p, err := runner.DriveProfile(w.home, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,10 +315,21 @@ func TestTheGateReadsThePersonsHomeUnderAStagesHome(t *testing.T) {
 	}
 }
 
-// TestASecondDriveOnACheckoutIsRefused: exit 3, before any proof is spent.
+// TestASecondDriveOnACheckoutIsRefused: exit 3, before any proof is spent, on another
+// profile as on the same one.
 func TestASecondDriveOnACheckoutIsRefused(t *testing.T) {
+	t.Run("the same profile", func(t *testing.T) { aSecondDriveIsRefused(t, false) })
+	t.Run("another profile", func(t *testing.T) { aSecondDriveIsRefused(t, true) })
+}
+
+func aSecondDriveIsRefused(t *testing.T, otherProfile bool) {
 	w := newDriveWorld(t)
 	w.passWalls(t)
+	args := []string{"drain", "--drive", "--yes"}
+	if otherProfile {
+		w.twoProfiles(t)
+		args = append(args, "--profile", "beta")
+	}
 	proved := false
 	walls := driveWalls
 	driveWalls.live = func(ctx context.Context, p runner.Profile) error {
@@ -341,7 +352,7 @@ func TestASecondDriveOnACheckoutIsRefused(t *testing.T) {
 	}()
 	<-held
 	var out, errb strings.Builder
-	code := Run([]string{"drain", "--drive", "--yes"}, &out, &errb)
+	code := Run(args, &out, &errb)
 	close(release)
 	if err := <-done; err != nil {
 		t.Fatal(err)
@@ -475,8 +486,10 @@ func TestThePublicTextSaysWhatAProfileIs(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, text := range map[string]string{"consent": string(consent), "help": string(help), "page": string(page), "brief": string(brief)} {
-		// This world's own directory is called walled; the consent names it.
+		// This world's own directory is called walled; the consent names it, by its
+		// path and by its name.
 		text = strings.ReplaceAll(text, abcdhome.Display("profiles", "walled"), "")
+		text = strings.ReplaceAll(text, "profile:  walled,", "profile:")
 		flat := strings.Join(strings.Fields(text), " ")
 		for _, want := range []string{"separate login and settings", "reads what this account can"} {
 			if !strings.Contains(flat, want) {

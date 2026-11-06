@@ -270,6 +270,7 @@ var trustedContext = map[string]any{
 	"needs.verify.result":  "success", "needs.tag.result": "success", "needs.release.result": "success",
 	"needs.macos-gate.result": "success", "needs.macos-suite-1.result": "success",
 	"needs.macos-suite-2.result": "success", "needs.macos-suite-3.result": "success",
+	"needs.macos-suite-4.result":         "success",
 	"needs.verify.outputs.content_sha":   strings.Repeat("b", 40),
 	"needs.build.result":                 "success",
 	"needs.build.outputs.assets":         "false",

@@ -187,7 +187,7 @@ func gitIdentityWorld(t *testing.T, global string) (Profile, string) {
 	if err := os.MkdirAll(abcdhome.Path(home, "profiles", "walled"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	p, err := DriveProfile(home)
+	p, err := DriveProfile(home, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +284,7 @@ func TestTheProofCatchesACredentialUnderAHarnessPrefix(t *testing.T) {
 func TestAWalledLaunchAndTheProofEachWriteOneLedgerEntry(t *testing.T) {
 	f := newFake(t, "wall-ok", Claude)
 	c := mustLoad(t, claudeRoute, "")
-	p, err := DriveProfile(profileHome(t, "walled"))
+	p, err := DriveProfile(profileHome(t, "walled"), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -668,15 +668,72 @@ func TestOwnerAccessStaysInsideAndWidensNoMore(t *testing.T) {
 	if fi, err := os.Stat(outside); err != nil || fi.Mode().Perm() != 0o500 {
 		t.Fatalf("the change of mode left the root: %v %v", fi, err)
 	}
-	for want, mode := range map[os.FileMode]os.FileMode{0o755: 0o755, 0o750: 0o050, 0o700: 0} {
+	for mode, want := range map[os.FileMode]os.FileMode{0o755: 0o755, 0o700: 0o700, 0o050: 0o700, 0: 0o700, 0o077: 0o700, 0o577: 0o700} {
 		dir := fmt.Sprintf("d%o", mode)
-		if err := os.Mkdir(filepath.Join(base, dir), mode); err != nil {
+		if err := os.Mkdir(filepath.Join(base, dir), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		// Mkdir applies the umask; the mode under test is set exactly.
+		if err := os.Chmod(filepath.Join(base, dir), mode); err != nil {
 			t.Fatal(err)
 		}
 		restoreOwnerAccess(root, dir)
 		if fi, err := os.Stat(filepath.Join(base, dir)); err != nil || fi.Mode().Perm() != want {
 			t.Errorf("a directory of mode %o reads %v, want %o: %v", mode, fi.Mode().Perm(), want, err)
 		}
+	}
+}
+
+// TestRestoredAccessIsTheOwnersAlone: what the restoring changes reads exactly 0700, a file
+// standing at the name included, whatever other bits the mode it read held. A file the walk
+// meets is left to the removal, which needs only its directory.
+func TestRestoredAccessIsTheOwnersAlone(t *testing.T) {
+	base := t.TempDir()
+	root, err := os.OpenRoot(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	wide := filepath.Join(base, "wide")
+	if err := os.WriteFile(wide, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(wide, 0o077); err != nil {
+		t.Fatal(err)
+	}
+	read, err := os.Stat(wide)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownerAccess(root, "wide", read)
+	if fi, err := os.Stat(wide); err != nil || fi.Mode().Perm() != 0o700 {
+		t.Fatalf("a file of mode 077 reads %v, want 700: %v", fi.Mode().Perm(), err)
+	}
+
+	tree := filepath.Join(base, "tree")
+	sealed := filepath.Join(tree, "sealed")
+	if err := os.MkdirAll(sealed, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	inner := filepath.Join(sealed, "inner")
+	if err := os.WriteFile(inner, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(inner, 0o077); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(sealed, 0o077); err != nil {
+		t.Fatal(err)
+	}
+	restoreOwnerAccess(root, "tree")
+	if fi, err := os.Stat(sealed); err != nil || fi.Mode().Perm() != 0o700 {
+		t.Fatalf("the directory reads %v, want 700: %v", fi.Mode().Perm(), err)
+	}
+	if err := root.RemoveAll("tree"); err != nil {
+		t.Fatalf("a directory and a file with no owner access do not empty: %v", err)
+	}
+	if _, err := os.Lstat(tree); !os.IsNotExist(err) {
+		t.Fatalf("the tree stands after its removal: %v", err)
 	}
 }
 
@@ -697,5 +754,76 @@ func TestAColdNoteNamesWhatIsMissedAndWhyTheGoStillRuns(t *testing.T) {
 	partial := stageColdNote([]string{"GOPATH"}, "go names no absolute path for it")
 	if !strings.Contains(partial, "GOPATH") || strings.Contains(partial, "GOCACHE") || strings.Contains(partial, "from cold") {
 		t.Errorf("a partial miss is named as one: %s", partial)
+	}
+}
+
+// TestEveryLevelOfAStageHomeIsChecked: a stage's files are made through each level of the
+// store in turn, so a link or a level another account can change is refused by name and
+// nothing lands behind it.
+func TestEveryLevelOfAStageHomeIsChecked(t *testing.T) {
+	for _, c := range []struct {
+		what  string
+		level func(p Profile) string
+		link  bool
+		names string
+	}{
+		{"a linked stage-homes folder", func(p Profile) string { return abcdhome.Path(p.PersonHome, stageHomesLeaf) }, true, "is a symlink"},
+		{"a linked profile folder below it", func(p Profile) string { return filepath.Dir(p.StageRoot) }, true, "is a symlink"},
+		{"a stage-homes folder every account can write", func(p Profile) string { return abcdhome.Path(p.PersonHome, stageHomesLeaf) }, false, "chmod"},
+	} {
+		t.Run(c.what, func(t *testing.T) {
+			p := wallProfile(t)
+			at := c.level(p)
+			away := t.TempDir()
+			if err := os.MkdirAll(filepath.Dir(at), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if c.link {
+				if err := os.Symlink(away, at); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				if err := os.Mkdir(at, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chmod(at, 0o777); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var we *WallError
+			if _, err := WriteWallSettings(p, wallBin); !errors.As(err, &we) || !strings.Contains(err.Error(), c.names) {
+				t.Fatalf("got %v", err)
+			}
+			if entries, err := os.ReadDir(away); err != nil || len(entries) != 0 {
+				t.Fatalf("written behind the level: %v %v", entries, err)
+			}
+		})
+	}
+}
+
+// TestAStageHomesResetChecksEveryLevel: the reset before each launch makes the same check.
+func TestAStageHomesResetChecksEveryLevel(t *testing.T) {
+	p := wallProfile(t)
+	if _, err := WriteWallSettings(p, wallBin); err != nil {
+		t.Fatal(err)
+	}
+	at := abcdhome.Path(p.PersonHome, stageHomesLeaf)
+	away := filepath.Join(t.TempDir(), "away")
+	if err := os.Rename(at, away); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(away, at); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(p.ShellHome, "kept")
+	if err := os.WriteFile(marker, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var we *WallError
+	if err := ResetStageHome(p); !errors.As(err, &we) || !strings.Contains(err.Error(), "is a symlink") {
+		t.Fatalf("got %v", err)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("the reset went on behind the link: %v", err)
 	}
 }

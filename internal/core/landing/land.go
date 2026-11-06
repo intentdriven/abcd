@@ -9,6 +9,8 @@ package landing
 //     the worktree that has it checked out) and its head; refused on a
 //     detached HEAD and a tree with uncommitted changes. With land.push and
 //     land.enqueue both off nothing else runs.
+//     A person's stop (stophold.go) holds anything else, here, again after the
+//     gate and again at the arming.
 //  2. origin: origin's every fetch and push URL must be the repository the
 //     forge client resolves here, and the forge's default branch must be the
 //     one origin itself names (git ls-remote --symref, never fetched or
@@ -92,6 +94,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/layered"
+	"github.com/intentdriven/abcd/internal/core/runstop"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/procgroup"
@@ -175,6 +178,8 @@ type Options struct {
 	// Sleep pauses between the forge readings that wait for land's own push
 	// to show; nil is time.Sleep.
 	Sleep func(time.Duration)
+	// StopRead reads a person's stop; nil is the read every other verb makes.
+	StopRead func() runstop.Reading
 	// Announce is the options the announcements before the push are made
 	// with (announce.go): its Home "" is Roots.Home, its Embargo nil the
 	// check `abcd announce` uses, its ForgeUser nil the forge's user
@@ -221,8 +226,9 @@ func (r *Result) add(name, status, note, command string) {
 func clean(s string) string { return gitutil.ScrubURLCredentials(s) }
 
 // Refusal is a landing refused: Reason says why, Fix what settles it. Held
-// marks a landing a release being cut holds (releaseHold): contention, which
-// the surface exits 3 on, as every verb that backs off does.
+// marks a landing a release being cut holds (releaseHold) or a person's stop
+// holds (stopHold): contention, which the surface exits 3 on, as every verb that
+// backs off does.
 type Refusal struct {
 	Reason string
 	Fix    string
@@ -253,6 +259,9 @@ func (o Options) withDefaults() Options {
 	}
 	if o.Gate == nil {
 		o.Gate = makePreflight(o.GateOutput)
+	}
+	if o.StopRead == nil {
+		o.StopRead = readStop
 	}
 	return o
 }
@@ -297,6 +306,9 @@ func Land(cwd string, o Options) (Result, error) {
 		addPushOff(&res)
 		res.add("enqueue", StatusOff, res.Enqueue.offText()+": nothing was armed or queued", "")
 		return res, nil
+	}
+	if err := stopHold(&res, o); err != nil {
+		return res, err
 	}
 	origin, def, err := checkOrigin(o, dir, branch)
 	if err != nil {
@@ -344,6 +356,9 @@ func Land(cwd string, o Options) (Result, error) {
 	// environment: it could rewrite origin's URLs (a pushurl, a pushInsteadOf)
 	// after they were checked, so they are read again before the push.
 	if err := origin.unchanged(dir); err != nil {
+		return res, err
+	}
+	if err := stopHold(&res, o); err != nil {
 		return res, err
 	}
 	// The hold is judged from the checkout land runs in, not the branch's:
@@ -1315,6 +1330,9 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved,
 		}
 		res.add("enqueue", StatusLeft, note, "")
 		return nil
+	}
+	if err := stopHold(res, o); err != nil {
+		return err
 	}
 	view := func() (prState, error) {
 		out, err := forge(o, dir, prStateArgs(owner, name, n)...)

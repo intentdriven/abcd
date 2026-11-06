@@ -473,3 +473,19 @@ func Finished(root, id string) bool {
 	recs, err := defaultRecords(root, ref)
 	return err == nil && terminal(recs[id], id)
 }
+
+// RecordOnDefault reads id's record on origin's default branch as last fetched:
+// the blob of the one file that holds it ("" for none or several) and how many
+// files hold it. readable is false where this checkout names no default branch or
+// the branch cannot be read.
+func RecordOnDefault(root, id string) (blob string, files int, readable bool) {
+	ref := originDefault(root)
+	if ref == "" {
+		return "", 0, false
+	}
+	recs, err := defaultRecords(root, ref)
+	if err != nil {
+		return "", 0, false
+	}
+	return blobOf(recs[id]), len(recs[id]), true
+}

@@ -104,6 +104,10 @@ type Options struct {
 	// left at its plan and the run's state unwritten. Nil guards nothing.
 	PlanGuard func() error
 
+	// Profile is the profile a drive runs on, by name, which a run it starts records
+	// (drive_profile.go); "" for anything but a drive.
+	Profile string
+
 	// TakeOver is `abcd build --take-over`: the start's reservation moves
 	// this person's own live reservation from another copy to this one. It
 	// never moves another person's.
@@ -539,6 +543,13 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 			err = reserveResumed(repoRoot, &res, o)
 		}
 		if err != nil {
+			if rf, ok := AsRefusal(err); ok && rf.recordMoved {
+				if st, rerr := ReadState(repoRoot, res.RunID); rerr == nil {
+					if _, derr := dropMovedRun(repoRoot, st, rf.Reason, o.now()); derr != nil {
+						return StartResult{}, derr
+					}
+				}
+			}
 			return StartResult{}, err
 		}
 		return res, nil
@@ -655,6 +666,7 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 			Intent:        chk.Intent,
 			Spec:          chk.Spec,
 			Driver:        DriverHost,
+			Profile:       o.Profile,
 			CreatedAt:     now,
 			UpdatedAt:     now,
 			Lanes:         []Lane{},

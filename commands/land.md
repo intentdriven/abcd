@@ -396,6 +396,14 @@ settled resumes), and the
 forge client missing while an act needs it. Relay the refusal; never retry it with `--no-verify`, a force, or a
 hand-run `gh pr merge` the merge gate did not allow.
 
+**While a person's stop holds, exit 3.** Land reads the stop `abcd implement stop` sets before
+anything runs, again after the preflight and again at the arming, and while one holds it pushes,
+arms and queues nothing more, naming who set it and when; it also holds when the read cannot tell
+whether one does, saying why. The steps done before it are named. Only the person's own lift
+ends a stop, and putting the setting back ends a read that cannot tell: leave both to them. `--approve` and `--record-review` land nothing and are not held, and
+what they record arms nothing until a landing passes the read. A landing with both acts off does
+nothing for a stop to hold. A pull request armed before the stop can still merge under it.
+
 **While a release is being cut, exit 3.** Before the push, land fetches the
 reservations and `origin`'s release tags, as the implement loop's land fence
 does, and makes the same judgement. While another session holds a live

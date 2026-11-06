@@ -191,8 +191,8 @@ that applies.
 The one exception is the drive (itd-2610222215485265,
 [adr-2610222222326104](../../decisions/adrs/2610222222326104-abcd-drives-agents-with-no-host-session.md)):
 typed in a plain terminal, on the person's own yes, it makes these moves itself, on
-one separate login under `~/.abcd.noindex/profiles/`, this account's subscription and
-no other. Each iteration is one move under the drain's lock for that move alone; a
+one separate login under `~/.abcd.noindex/profiles/`, one subscription and no other.
+Each iteration is one move under the drain's lock for that move alone; a
 lane is driven in-process through `loop.Drive` and `DriveReview`, every role on the
 launch on that login; a landing that waits for its receipt has its preflight run behind the
 load gate; each wait a move names is slept to the earliest time it names, at least
@@ -204,7 +204,7 @@ reset the harness reports, or, with none reported, waits on that schedule; a lim
 that outlasts eight hours ends the drive, saying when it resets. A wait on work
 someone else holds, or on a contended lock, ends the drive after eight hours with
 nothing moved, so no wait goes without a deadline, and a long wait renews what the
-lanes hold. A preflight that exits 0 and leaves no receipt runs once for a head, and
+lanes still hold. A preflight that exits 0 and leaves no receipt runs once for a head, and
 the lane then goes to the stuck check.
 
 Those eight hours are the default, for a run someone is watching. A date the person
@@ -258,13 +258,71 @@ answer.
 A wait is measured twice: by the time slept and by the wall clock, whichever ends it
 first. The production sleep also looks at the wall clock each minute, since a timer
 stops while the machine sleeps, so a long wait wakes on time and renews at once; a
-clock set back cannot stretch it. A wait renews what the run holds, lanes parked at their
+clock set back cannot stretch it. A wait renews what the run still holds, lanes parked at their
 open pull requests included, the forge read first and only when one is due. After waits
 that add up to an hour, short ones included, the lane's claim is read again from origin: a
 claim that lapsed is revived on waking, and a peer who took the issue keeps it, the lane
 going back as stuck, as it does when its reservation was released. A check that could not
 be made stays owed. A repeated wait prints on a change of reason and every half hour, and
 an agent's call or a preflight says when it starts and every half hour while it runs.
+
+A limit that lasts lets the lane's issue go for the wait (iss-2611052230565049), so a run of
+days does not hide it from every peer with a driver that is not working on it. The
+threshold is an hour, `terminalReleaseAfter`: a reset named that far off or further lets go
+at once, and any limit does at the first turn of its wait after holding that long. Releasing
+and reserving again cost a commit on origin each, and a hold first costs one at an hour,
+half the bundled lease, which is also where the outage schedule's quick looks turn hourly,
+so short of it holding is the cheaper. With no reset named the release takes a probe to end
+the wait, since otherwise the lane's own launch asks and needs the reservation each time,
+and with no bound that wait has its eight hours. `letGoForLimit` saves the lane through the
+stop's own `saveLaneForStop`, marking a role out with no agent as the stop marks a lost one,
+and records `drive_released` as a drive's end does, keeping `reserved_at`, so renewals pass
+it by, a stop settling it later still has a claim for its take-over to reserve again, and no
+schema changes. A lane with an open pull request, an agent with a running claim in its call,
+a tripped configuration or work a save could not take keeps what it holds, and the wait's
+next turn asks again; a stop's mark leaves it to the stop. The lane goes back through the
+next move to `takeUp`, which reserves through `reserveResumed` with the drain's mark, so a
+hand-back standing on the issue backs it off as it backs off any drain, while a person
+resuming the same run has no mark and goes over one, saying so. The reservation keeps the
+paths a released tip of this copy names and the paths the run record says the lane widened to
+beside the found_at, so a sweep that has deleted the tombstone loses none of them, and
+tells the marked roles again in the same write. A take-over tells them nothing and restarts
+them instead, since a role told again with no agent reads as one that may still be in its
+call. A release that never reached origin is said as one, and notes the tip it left as
+`drive_release_failed`: the tip stands, neither the wait nor a move renews what it let go, and
+the listing says the tip holds, until a later release reaches origin: a stop's, or a drop's
+retry, which records it as `reservation_released`. A session waiting in the checkout (`RenewRunsIn`) may renew it,
+which reads the lane as held, so `takeUp` tells the marked roles again there too, and such a lane
+kept its hold, as a short limit does, so what follows is not compared. Every release a drive or a
+stop makes notes the record's blob on the default branch, after the release's own fetch, as
+`drive_released_over`; a stop over a run a drive already let go keeps the note made then.
+`reserveResumed` fetches and compares first, so every automated return shares the answer, and
+looks at the run lock before it pushes a reservation, so a lock another invocation holds costs
+origin no reservation commit; a moved record whose release failed earlier can still cost one, as
+that release is pushed again before the lane drops. The note proves the record stood, so a readable branch with no file for it counts as a
+change, while a fetch that fails or a branch that cannot be read is no comparison at all. On a
+change a drain's act is refused with nothing pushed, the take-up, the take-over or the start
+dropping the lane and saying so; with no comparison it waits. That drop tries a failed release
+again only over the tip that release left, so a reservation made by hand from this copy during
+the wait stands, and the reason says which happened. A person's act goes ahead and says the record
+changed, is gone or could not be compared, in the form a person's reservation over a hand-back
+uses, since the lane's brief reads it as it stood at the lane's base. A take-over reserves a run
+a drive let go with no stop on it too, since no step would. A new drain itself does not resume a run left let go: it
+passes the issue over while the run stands, and the start's comparison answers the race where
+a concurrent build opened that run after the move read the runs. A branch behind
+the default branch catches up at the landing's sync, as any does. A reservation backing off is
+`dropLane`, which reads the view once more to say who the issue is with: finished, a standing
+hand-back, a tip no one can read, this person's other copy, a peer, or the holder of the
+overlap the refusal names. The lane is handed back as stuck with no reservation left on its
+run, so no release is pushed and no hand-back is published over the issue, and later drains
+may still take it. Its worktree, branch and asides stay until a discard, the hand-back naming
+each, and the move goes on to the next issue. Nothing about the release is a stop:
+`waitsUntaken` does not read it, and a later drive takes the lane up rather than passing it
+over. A run lock another invocation holds at the take-up is waited out, with nothing written on
+the lane. The listing's `reserved` is false for a lane let go, since the run's `reserved_at`
+outlives the release. A person's stop during the wait halts the run as ever, its page naming
+what the limit saved aside, and the take-over then reserves it again, since the run still names
+a reservation.
 
 An agent that goes silent cannot be told from a hung one on what is known today. It
 is treated as a hang: its role's deadline kills its process group, its worktree is left
@@ -295,6 +353,42 @@ tree having no effect, since the launch's setting sources name the profile direc
 alone. Before each stage and each preflight the settings, the files a stage's shell
 reads, the machine declarations, abcd's binary and the harness are compared with the
 start, and a difference stops the drive.
+
+**Which profile.** `runner.DriveProfile` is the one function that answers it. With one
+directory under `~/.abcd.noindex/profiles/` a drive runs on it. With several it refuses,
+naming them and the flag that names one; it never chooses among them. A name is one plain path
+element the folder holds exactly, in letters and digits with `.`, `_` or `-` after the first, so
+a command that prints it reads the same pasted, and the one directory is held to that too. The
+named directory takes every check the one directory takes, the link, the owner and the group or
+other write among them, and each level of abcd's home above it takes the check every declaration
+read there takes, so a name that fails is refused before the question and before anything is
+reserved. A stage's files are made through each level of abcd's home the same way. The question
+names the profile. The settings, the login, the live check, each launch and each limit's
+probe are that directory's, so a limit pauses that drive until that profile's limit ends
+and nothing moves it to another. Choosing by itself among several, a registry, a creating
+command and key profiles are itd-2611040344170206, which stays a draft.
+
+A run records the profile a drive started it on (`State.Profile`, schema version 22), and
+the record and the listing of unfinished runs name it. A drive on another profile does not take
+that run up, since that is another subscription: it is refused before the question when
+the lane is the drain's in progress (`loop.LanesOnAnotherProfile`), and ends the run as a
+check that no longer holds, before anything claims or reserves it, when a lane comes back
+later, as one at its pull request does for its sync. A lane at its pull request needs no
+agent, so it stops no drive by itself, and the run is what says so, since only a drain's own
+move rewrites the outcome it stored. The refusal names the ways on: the name it started on,
+another checkout, or a take-over from a session of the person's own, and the drive's last line
+then names no command of its own to resume. A take-over says
+which profile the run started on, since what that session starts runs on its own login. A
+run that names no profile goes on, says so, and takes the profile that drove it once the drive
+holds it, so a drive that only waited on another driver leaves it as it was.
+
+Two drives on two profiles at once take two checkouts, since one drive holds a checkout
+whatever its profile. Each checkout's drain and runs are its own, each profile and
+checkout its own stage's files, and a stage writes only under its own directories, so
+neither reaches the other's login or settings by a file tool or a line the guard can read,
+though its shell reads what the account can. They share what any two drives on one
+account share: the reservations on origin, which keep them off one issue and count
+towards one cap; the load gate; a stop, which holds both; and the launch ledger.
 
 A profile is a separate login and settings on this one account, not a boundary: a
 stage's shell reads what this account can. A launch starts from an allow-list of
@@ -345,8 +439,8 @@ wait: each wait looks for it every minute, under a bound as without one, and the
 saying what holds it. A preflight queued at the load gate or running ends at the next look too,
 and a probe does not start. A run that stop halted waits for an explicit take-over, also after the
 stop lifts: a new drive names it, passes over it and goes on to other work, reserving nothing (a lane parked on its pull request that a signal halted waits the same way, and the drive's end names that take-over rather than another drive)
-for it. A drain's move finishes such a lane parked at its pull request only if the forge has merged
-it, and leaves its sync and its queue watch until the take-over; the land fence refuses a run a stop
+for it. A drain's move does nothing for such a lane until the take-over, a merged lane's last step,
+its sync and its queue watch included; the land fence refuses a run a stop
 halted that has not been taken over, and a run with no mark that let its reservation go until it is
 reserved again or its lane discarded. A run a drive stopped on is left as it stands and
 named. A drive's stop on a run whose state changed is another thing, and a
@@ -982,6 +1076,7 @@ Sub-verbs: none.
 | `--judgement` | string |
 | `--max` | int |
 | `--pace` | string |
+| `--profile` | string |
 | `--reason` | string |
 | `--skip` | stringArray |
 | `--sub-agents` | string |
