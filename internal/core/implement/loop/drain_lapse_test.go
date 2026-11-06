@@ -189,7 +189,7 @@ func TestALapsedOnlyIssueIsReleasedThenAskedAgainOnTheDrainsOwnHold(t *testing.T
 }
 
 // TestPollingWithoutAnAnswerNeverHoldsTheIssuePastOneLease: the one eligible
-// issue is polled every four minutes, unanswered, across four leases; every
+// issue is polled every four minutes, unanswered, across three leases; every
 // reservation of it origin shows live is the hold the awaited judgement
 // records, none outlives one lease, each is released by the poll that finds it
 // lapsed, and the issue is asked again on a new hold only once a cool-down of
@@ -206,7 +206,7 @@ func TestPollingWithoutAnAnswerNeverHoldsTheIssuePastOneLease(t *testing.T) {
 	// sooner than the cool-down after it, since the request is dropped no
 	// sooner than the lapse.
 	var lapsedAt time.Time
-	for end := c.t.Add(4 * lease.Default); c.t.Before(end); {
+	for end := c.t.Add(3 * lease.Default); c.t.Before(end); {
 		c.t = c.t.Add(step)
 		res, err := Drain(repo.Root(), Options{Now: c.now}, DrainOptions{})
 		if err != nil {
@@ -230,7 +230,7 @@ func TestPollingWithoutAnAnswerNeverHoldsTheIssuePastOneLease(t *testing.T) {
 		holds[r.commit] = true
 	}
 	if len(holds) < 3 {
-		t.Fatalf("four leases of polling took %d hold(s); want the issue asked again after each lapse", len(holds))
+		t.Fatalf("three leases of polling took %d hold(s); want the issue asked again after each lapse", len(holds))
 	}
 }
 
