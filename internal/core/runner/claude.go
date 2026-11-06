@@ -288,7 +288,11 @@ func (c *ClaudeCLI) Run(ctx context.Context, req Request) (Answer, []byte, error
 		return Answer{}, nil, fail(Claude, ReasonFailed,
 			"the run names no base commit for its permission prompts to be judged against, so the shell launch was not started")
 	}
-	bin, err := c.launch.admit(Claude, "claude", req.Dir, req.Checkout)
+	admits := c.launch
+	if c.profile != nil {
+		admits = admits.pinnedTo(*c.profile)
+	}
+	bin, err := admits.admit(Claude, "claude", req.Dir, req.Checkout)
 	if err != nil {
 		return Answer{}, nil, err
 	}

@@ -65,7 +65,7 @@ var driveWalls = driveWallChecks{
 		}
 		var lines []string
 		if replaced {
-			lines = append(lines, "the profile directory's settings were edited, and were replaced with abcd's: a drive's agents hold abcd's hooks and nothing else")
+			lines = append(lines, "the profile directory's settings were edited, and were replaced with abcd's: a drive's agents hold abcd's settings and nothing else")
 		}
 		if note := runner.StageCachesNote(p); note != "" {
 			lines = append(lines, note)

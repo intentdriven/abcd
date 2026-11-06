@@ -2,10 +2,11 @@ package runner
 
 // wall.go is the walled directory's settings and the proof before a drive's
 // first move (spc-2610230813348813 step 4). The settings are abcd's hooks as
-// commands naming, by absolute path, the binary running the drive, and nothing
-// else; the login state beside them is never read or touched. Each check is a
-// named wall, and the walls the launch holds are read from what the harness
-// reports in one short live launch, by state alone.
+// commands naming, by absolute path, the binary running the drive, and the
+// harness's own attribution, off, and nothing else; the login state beside them
+// is never read or touched. Each check is a named wall, and the walls the launch
+// holds are read from what the harness reports in one short live launch, by state
+// alone.
 
 import (
 	"bytes"
@@ -44,11 +45,13 @@ const (
 )
 
 // wallHomeMarker opens the line the proof's second command prints, and
-// wallEnvMarker each line its third prints: a variable's name, never its value.
+// wallShellMarker the first its third prints, the flags of the shell that ran it;
+// wallEnvMarker opens each line after that: a variable's name, never its value.
 const (
-	wallHomeMarker = "abcd-home:"
-	wallEnvMarker  = "abcd-env:"
-	wallAtMarker   = "abcd-env-at:"
+	wallHomeMarker  = "abcd-home:"
+	wallShellMarker = "abcd-shell:"
+	wallEnvMarker   = "abcd-env:"
+	wallAtMarker    = "abcd-env-at:"
 )
 
 // PinPrograms fixes what each program name means for the rest of this process and
@@ -101,11 +104,13 @@ func stageSeal(p Profile) []string {
 }
 
 // wallHomeCommand and wallEnvCommand are the proof's other two commands: the first
-// shows the home a stage's shell runs under, the second each variable's name in
-// its environment and never a value.
+// shows the home a stage's shell runs under, the second that shell's flags and then
+// each variable's name in its environment and never a value. The approver hands an
+// allowed command back to run under a shell it starts itself with -p, so $- holds p
+// only in a command the approver answered for.
 const (
 	wallHomeCommand = "printf '" + wallHomeMarker + "%s\\n' \"$HOME\""
-	wallEnvCommand  = "awk 'BEGIN { for (name in ENVIRON) { print \"" + wallEnvMarker + "\" name; if (ENVIRON[name] ~ /@/ && ENVIRON[name] !~ /^\\//) print \"" + wallAtMarker + "\" name } }'"
+	wallEnvCommand  = "awk -v flags=\"$-\" 'BEGIN { print \"" + wallShellMarker + "\" flags; for (name in ENVIRON) { print \"" + wallEnvMarker + "\" name; if (ENVIRON[name] ~ /@/ && ENVIRON[name] !~ /^\\//) print \"" + wallAtMarker + "\" name } }'"
 )
 
 // wallProofCommands are the shell commands the proof asks for, in order: the one
@@ -130,6 +135,7 @@ const (
 	WallGuard        = "guard"
 	WallWorkingTree  = "working tree's settings"
 	WallHome         = "shell's home"
+	WallApprover     = "approver"
 	WallEnv          = "shell's environment"
 	WallIdentity     = "git identity"
 )
@@ -175,9 +181,35 @@ type hookGroup struct {
 	Hooks   []hookCommand `json:"hooks"`
 }
 
+// wallAttribution turns off the trailer and the footer the harness otherwise tells a
+// launch to write: what a commit carries is the repository's to say.
+type wallAttribution struct {
+	Commit string `json:"commit"`
+	PR     string `json:"pr"`
+}
+
 // wallSettings renders the walled settings for bin, the abcd binary whose hooks
-// they name: the guard, the rules loader and the session hooks.
+// they name: the guard, the rules loader and the session hooks, and the harness's
+// own attribution, off.
 func wallSettings(bin string) []byte {
+	raw, _ := json.MarshalIndent(struct {
+		Hooks       map[string][]hookGroup `json:"hooks"`
+		Attribution wallAttribution        `json:"attribution"`
+	}{wallHooks(bin), wallAttribution{}}, "", "  ")
+	return append(raw, '\n')
+}
+
+// wallSettingsHooksOnly is the walled settings as a release before the attribution
+// rendered them: a file abcd wrote, which a new binary re-wires with nothing lost.
+func wallSettingsHooksOnly(bin string) []byte {
+	raw, _ := json.MarshalIndent(struct {
+		Hooks map[string][]hookGroup `json:"hooks"`
+	}{wallHooks(bin)}, "", "  ")
+	return append(raw, '\n')
+}
+
+// wallHooks are the hooks the walled settings hold.
+func wallHooks(bin string) map[string][]hookGroup {
 	cmd := func(verb string) hookCommand {
 		return hookCommand{Type: "command", Command: shellquote.Single(bin) + " " + verb}
 	}
@@ -188,9 +220,7 @@ func wallSettings(bin string) []byte {
 		}
 		return []hookGroup{g}
 	}
-	settings := struct {
-		Hooks map[string][]hookGroup `json:"hooks"`
-	}{Hooks: map[string][]hookGroup{
+	return map[string][]hookGroup{
 		"PreToolUse": {{Matcher: "Bash|AskUserQuestion|Write|Edit|MultiEdit|NotebookEdit",
 			Hooks: []hookCommand{cmd("guard hook")}}},
 		"UserPromptSubmit": one("hook prompt-router"),
@@ -200,9 +230,7 @@ func wallSettings(bin string) []byte {
 		"SubagentStop":     one("hook subagent-stop"),
 		"Stop":             one("hook stop"),
 		"StopFailure":      one("hook stop-failure"),
-	}}
-	raw, _ := json.MarshalIndent(settings, "", "  ")
-	return append(raw, '\n')
+	}
 }
 
 // wallBinaryRe reads the binary a rendered settings file names.
@@ -219,7 +247,7 @@ func renderedByAbcd(raw []byte) bool {
 	if json.Unmarshal(append(append([]byte{'"'}, m[1]...), '"'), &bin) != nil {
 		return false
 	}
-	return bytes.Equal(raw, wallSettings(bin))
+	return bytes.Equal(raw, wallSettings(bin)) || bytes.Equal(raw, wallSettingsHooksOnly(bin))
 }
 
 // WriteWallSettings writes the walled settings at each start, so a new binary
@@ -253,6 +281,10 @@ type stageWritten struct {
 	goNote string
 	// binaries are abcd's binary and the harness, by content.
 	binaries map[string][sha256.Size]byte
+	// harness is the file the start resolved claude to, which every walled launch
+	// after it runs: "" when it resolved to none. harnessPath is where PATH reached
+	// it, which each launch still judges against its repository.
+	harness, harnessPath string
 }
 
 // stagesWritten holds this process's stageWritten, by walled directory.
@@ -299,7 +331,11 @@ func writeStageFiles(p Profile, bin string) error {
 	}
 	defer root.Close()
 	exports, goNote := stageGoExports(p)
-	written := &stageWritten{env: stageEnvFile(p, exports), gitConfig: gitConfig, declared: declaredNow(p), exports: exports, goNote: goNote, binaries: binariesNow(p, bin)}
+	starts := defaultLauncher()
+	harness, _ := starts.admit(Claude, "claude", p.Dir)
+	harnessPath, _ := starts.lookPath("claude")
+	written := &stageWritten{env: stageEnvFile(p, exports), gitConfig: gitConfig, declared: declaredNow(p), exports: exports, goNote: goNote,
+		binaries: binariesNow(bin, harness), harness: harness, harnessPath: harnessPath}
 	if err := fsutil.WriteFileAtomicInRoot(root, filepath.Base(p.EnvFile), written.env, 0o600); err != nil {
 		return &WallError{WallSettingsFile, "the stage's shell file could not be written"}
 	}
@@ -475,16 +511,16 @@ func stageEnvFile(p Profile, exports []string) []byte {
 		k, v, _ := strings.Cut(kv, "=")
 		fmt.Fprintf(&b, "export %s=%s\n", k, shellquote.Single(v))
 	}
-	b.WriteString("unset CLAUDE_CONFIG_DIR\n")
+	fmt.Fprintf(&b, "unset %s\n", strings.Join(stageShellUnset, " "))
 	return b.Bytes()
 }
 
 // binariesNow reads what the drive and its lanes run by name, by content: abcd's
 // binary, the harness, git, make and gh. One that is not there is left out.
-func binariesNow(p Profile, bin string) map[string][sha256.Size]byte {
+func binariesNow(bin, harness string) map[string][sha256.Size]byte {
 	paths := []string{bin}
-	if resolved, err := defaultLauncher().admit(Claude, "claude", p.Dir); err == nil {
-		paths = append(paths, resolved)
+	if harness != "" {
+		paths = append(paths, harness)
 	}
 	for _, name := range []string{"git", "make", "gh"} {
 		if resolved, err := exec.LookPath(name); err == nil {
@@ -618,13 +654,34 @@ func CheckWallSettings(p Profile, bin string) error {
 // cannot name it: the binary a drive's hooks name.
 func SelfBinary() string { return selfBinary() }
 
+// pinnedTo is l resolving the harness to the file p's start resolved it to, so a walled
+// launch runs the harness the start read and the proof ran, wherever a link has moved
+// since; admit's checks still judge that file before each launch. A start that resolved
+// no harness resolves none after it. Without a start in this process l is as it was.
+func (l launcher) pinnedTo(p Profile) launcher {
+	v, ok := stagesWritten.Load(p.ShellHome)
+	if !ok {
+		return l
+	}
+	written := v.(*stageWritten)
+	harness := written.harness
+	l.reachedThrough = written.harnessPath
+	l.lookPath = func(string) (string, error) {
+		if harness == "" {
+			return "", exec.ErrNotFound
+		}
+		return harness, nil
+	}
+	return l
+}
+
 // CheckLogin asks the harness whether the walled directory has a login. It
 // reads the one state and keeps nothing else the harness reports.
 func CheckLogin(ctx context.Context, p Profile) error {
 	l := defaultLauncher()
 	l.gateWaiting = nil
 	l.carry = stageEnv
-	bin, err := l.admit(Claude, "claude", p.Dir)
+	bin, err := l.pinnedTo(p).admit(Claude, "claude", p.Dir)
 	if err != nil {
 		return &WallError{WallLogin, "the harness could not be run"}
 	}
@@ -710,7 +767,7 @@ func ProveWall(ctx context.Context, p Profile, bin string) error {
 	if c.approver == "" {
 		return &WallError{WallLaunch, "abcd cannot name its own binary to answer the launch's permission prompts"}
 	}
-	claudeBin, err := c.launch.admit(Claude, "claude", p.Dir)
+	claudeBin, err := c.launch.pinnedTo(p).admit(Claude, "claude", p.Dir)
 	if err != nil {
 		return &WallError{WallLaunch, "the harness could not be run"}
 	}
@@ -760,6 +817,28 @@ func ProveWall(ctx context.Context, p Profile, bin string) error {
 // wallProofPrompt is the live launch's one instruction.
 var wallProofPrompt = "This is abcd's check of its own guard. Use the Bash tool three times, once for each of these commands, exactly as written, and do nothing else:\n" +
 	strings.Join(wallProofCommands(), "\n") + "\nWhatever the tool answers, then reply with the single word: done\n"
+
+// wallShellFlags reads the flags the proof's env step printed from a line of its
+// output, and whether it printed any: the step's own text beside them holds none.
+func wallShellFlags(line []byte) (string, bool) {
+	text := string(line)
+	for {
+		_, rest, ok := strings.Cut(text, wallShellMarker)
+		if !ok {
+			return "", false
+		}
+		end := strings.IndexFunc(rest, func(r rune) bool {
+			return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9')
+		})
+		if end < 0 {
+			end = len(rest)
+		}
+		if end > 0 {
+			return rest[:end], true
+		}
+		text = rest
+	}
+}
 
 // outsideStageEnv is the first variable name a proof's output line shows that a
 // stage's shell should not hold, "" for none. It keeps names alone.
@@ -859,7 +938,7 @@ func readWallProof(out []byte, named []string, shellHome string) error {
 func judgeWallProof(out []byte, named []string, shellHome string) error {
 	var sawInit, refused, homeSeen bool
 	var homeSaid, envSaid bool
-	var envOutside, envAt string
+	var envOutside, envAt, shellFlags string
 	quotedHome, _ := json.Marshal(wallHomeMarker + shellHome)
 	wantHome := bytes.Trim(quotedHome, `"`)
 	for _, line := range bytes.Split(out, []byte("\n")) {
@@ -879,6 +958,9 @@ func judgeWallProof(out []byte, named []string, shellHome string) error {
 		if ev.Type == "user" && bytes.Contains(line, []byte(wallHomeMarker)) {
 			homeSaid = true
 			homeSeen = homeSeen || bytes.Contains(line, wantHome)
+		}
+		if ev.Type == "user" && shellFlags == "" {
+			shellFlags, _ = wallShellFlags(line)
 		}
 		if ev.Type == "user" && bytes.Contains(line, []byte(wallAtMarker)) && envAt == "" {
 			_, rest, _ := strings.Cut(string(line), wallAtMarker)
@@ -935,6 +1017,9 @@ func judgeWallProof(out []byte, named []string, shellHome string) error {
 	}
 	if !homeSaid {
 		return &WallError{WallHome, "the launch did not show the home its shell runs under"}
+	}
+	if !strings.Contains(shellFlags, "p") {
+		return &WallError{WallApprover, "the launch's shell step did not run as the approver hands it back, so nothing shows the approver answered for it"}
 	}
 	if !envSaid {
 		return &WallError{WallEnv, "the launch did not show the names of its shell's variables"}

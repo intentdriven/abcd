@@ -63,9 +63,12 @@ const pipeGrace = 5 * time.Second
 // launcher starts one harness binary. Its fields are the seams the tests
 // narrow; production uses defaultLauncher.
 type launcher struct {
-	lookPath  func(string) (string, error)
-	maxStdout int
-	maxStderr int
+	lookPath func(string) (string, error)
+	// reachedThrough is where a pinned harness was found on PATH, judged against the
+	// repository as what lookPath answers is; "" for none.
+	reachedThrough string
+	maxStdout      int
+	maxStderr      int
 	// gateWaiting reports whether the process tree a run's harness leads
 	// holds a waiter queued at abcd's load gate (queuedAtGate); nil asks
 	// nothing, and the run's clock never stops. gatePoll is how often it is
@@ -133,8 +136,8 @@ func (l launcher) admit(runner, name string, repos ...string) (string, error) {
 	}
 	fold := fsutil.CaseFoldingFS()
 	for _, g := range guards {
-		for _, c := range []string{filepath.Clean(p), resolved} {
-			if fsutil.PathWithin(c, g, fold) {
+		for _, c := range []string{filepath.Clean(p), resolved, l.reachedThrough} {
+			if c != "" && fsutil.PathWithin(c, g, fold) {
 				return "", failAt(ErrRefused, runner, ReasonAbsent, "%s resolves inside the repository the role runs in or the checkout it belongs to; "+
 					"a program there is repository content and is never run", name)
 			}
@@ -448,12 +451,31 @@ func proxyListWithoutCredentials(v string) (string, bool) {
 // stageShellNames are what the harness and the shell itself add to a stage's
 // shell, beside what it carries.
 var stageShellNames = []string{"PWD", "OLDPWD", "SHLVL", "_", "CLAUDECODE", "AI_AGENT", "GIT_EDITOR", "COREPACK_ENABLE_AUTO_PIN",
-	"NoDefaultCurrentDirectoryInExePath", "__CF_USER_TEXT_ENCODING", "GOCACHE", "GOMODCACHE", "GOPATH", "GOBIN", "GOPROXY", abcdhome.PersonHomeEnv}
+	"NoDefaultCurrentDirectoryInExePath", "__CF_USER_TEXT_ENCODING", "GOCACHE", "GOMODCACHE", "GOPATH", "GOBIN", "GOPROXY", abcdhome.PersonHomeEnv,
+	stageUpdatesOff}
+
+// stageShellUnset are what a stage's shell file takes back out of what the harness
+// starts the shell with: the walled directory and the harness's messaging variables.
+// They stay outside what a stage's shell may hold.
+var stageShellUnset = []string{"CLAUDE_CONFIG_DIR", "CLAUDE_CODE_MESSAGING_TOKEN", "CLAUDE_CODE_MESSAGING_SOCKET"}
+
+// harnessSecretWords are the words in a name under the harness's prefix that keep it
+// from a stage's shell, each whole between underscores. The prefix stays open because
+// each harness release adds names of its own, and a stage holding a new setting costs
+// nothing; a new name of one of these shapes stops the drive and says the version.
+var harnessSecretWords = []string{"TOKEN", "OAUTH", "KEY", "APIKEY", "SECRET", "PASSWORD", "PASSWD", "CREDENTIAL", "CREDENTIALS", "CREDS", "AUTH", "COOKIE", "SOCKET"}
 
 // stageShellAllowed reports whether a stage's shell may hold the variable name.
 func stageShellAllowed(name string) bool {
-	if slices.Contains(credentialVars, name) {
+	if slices.Contains(credentialVars, name) || slices.Contains(stageShellUnset, name) {
 		return false
+	}
+	if rest, ok := strings.CutPrefix(name, "CLAUDE_"); ok {
+		for _, word := range strings.Split(rest, "_") {
+			if slices.Contains(harnessSecretWords, word) {
+				return false
+			}
+		}
 	}
 	return slices.Contains(stageEnvNames, name) || slices.Contains(stageProxyNames, name) || slices.Contains(stageShellNames, name) ||
 		strings.HasPrefix(name, "CLAUDE_") || strings.HasPrefix(name, "ABCD_STAGE_")

@@ -42,6 +42,10 @@ const (
 	StageBaseEnv     = "ABCD_STAGE_BASE"
 )
 
+// stageUpdatesOff switches off the harness's own updates in a walled launch and the
+// shell it starts: a run keeps the file its start resolved and proved.
+const stageUpdatesOff = "DISABLE_UPDATES"
+
 // BudgetIntent, which a drive's refusals name, covers how a key reaches the harness
 // and what it may spend.
 const BudgetIntent = "itd-2611011230226453"
@@ -197,6 +201,7 @@ func DriveProfile(home, name string) (Profile, error) {
 			"CLAUDE_CONFIG_DIR=" + dir,
 			"CLAUDE_CODE_DISABLE_CLAUDE_MDS=1",
 			"CLAUDE_CODE_DISABLE_AUTO_MEMORY=1",
+			stageUpdatesOff + "=1",
 			StageProtectEnv + "=" + dir,
 		}, credentialVars...),
 		// The user layer is the file under CLAUDE_CONFIG_DIR: naming it alone

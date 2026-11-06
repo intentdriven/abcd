@@ -62,7 +62,7 @@ func (c *ClaudeCLI) probeLimit(ctx context.Context, ledger *Ledger, model string
 	p := *c.profile
 	c.launch.gateWaiting = nil
 	c.launch.carry = stageEnv
-	bin, err := c.launch.admit(Claude, "claude", p.Dir, p.Repo)
+	bin, err := c.launch.pinnedTo(p).admit(Claude, "claude", p.Dir, p.Repo)
 	if err != nil {
 		return false, fail(Claude, ReasonFailed, "the harness could not be run for the probe")
 	}

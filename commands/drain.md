@@ -35,8 +35,8 @@ in a plain terminal with no host session; it refuses inside an agent's own sessi
 It runs on a subscription alone, on one separate login: a directory under
 `~/.abcd.noindex/profiles/` that the person makes and logs the harness into once, in
 their own shell. abcd never reads, stores or forwards that login. The directory's
-`settings.json` is abcd's, rewritten at each start, and holds abcd's hooks and nothing
-else. A credential variable the harness would bill through, set in the environment,
+`settings.json` is abcd's, rewritten at each start, and holds abcd's hooks and the
+harness's own attribution, off, and nothing else. A credential variable the harness would bill through, set in the environment,
 refuses the start, naming `itd-2611011230226453`.
 
 **Two subscriptions, two directories.** With one directory there the drive runs on it.

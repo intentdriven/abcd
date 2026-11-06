@@ -120,6 +120,7 @@ func TestTheWalledLaunchsEnvironmentNamesTheDirectoryAndHoldsNoCredential(t *tes
 	f, c, p := walledFake(t, "ok")
 	t.Setenv("CLAUDE_CONFIG_DIR", "/the/persons/own")
 	t.Setenv("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "0")
+	t.Setenv("DISABLE_UPDATES", "")
 	for _, k := range credentialVars {
 		t.Setenv(k, "a-value-never-passed")
 	}
@@ -131,7 +132,7 @@ func TestTheWalledLaunchsEnvironmentNamesTheDirectoryAndHoldsNoCredential(t *tes
 		t.Fatal(err)
 	}
 	env := strings.Split(string(raw), "\n")
-	for _, want := range []string{"CLAUDE_CONFIG_DIR=" + p.Dir, "CLAUDE_CODE_DISABLE_CLAUDE_MDS=1", "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1"} {
+	for _, want := range []string{"CLAUDE_CONFIG_DIR=" + p.Dir, "CLAUDE_CODE_DISABLE_CLAUDE_MDS=1", "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1", "DISABLE_UPDATES=1"} {
 		if !slices.Contains(env, want) {
 			t.Errorf("the harness's environment lacks %q", want)
 		}

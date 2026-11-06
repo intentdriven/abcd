@@ -344,17 +344,28 @@ harness wrote is redacted before it is cut; a file stops taking that detail at 6
 goes on taking the answers; the newest twenty of a kind are kept.
 
 Before the first move the drive writes the profile directory's settings, abcd's hooks
-as commands naming its own binary and nothing else, and checks each wall, refusing
-and naming the one that fails: the login state, the settings, a git identity for the
+as commands naming its own binary and the harness's own attribution, off, and nothing
+else; resolves the harness to one file, which every launch of the run runs, the proof
+and each stage alike, so a link moved after the start changes nothing that runs; and
+checks each wall, refusing and naming the one that fails: the login state, the settings, a git identity for the
 checkout, and in one short live launch the tools the launch named, the approver as the
 only server with the harness reporting it connected, no plugin but the harness's own
-built-ins, no key, the guard refusing a command it is meant to refuse, the home and the
-variable names a stage's shell shows, and a settings file in the working tree having no
-effect, since the launch's setting sources name the profile directory alone. The launch
-runs in a repository of one empty commit, the base the approver judges against, and a
-refusal from it says the harness's version. Before each stage and each preflight the settings, the files a stage's shell
+built-ins, no key, the guard refusing a command it is meant to refuse, the approver
+having answered for the step that reads the shell, the home and the variable names a
+stage's shell shows, and a settings file in the working tree having no effect, since the
+launch's setting sources name the profile directory alone. That step reads the flags of
+the shell it runs in, and the approver hands a command back to run under a shell it
+starts itself, so the proof holds only when the flags are that shell's. A stage's shell
+file takes the walled directory and the harness's messaging variables back out of the
+shell, and the wall refuses a name it holds under the harness's prefix that reads as a
+credential, a key or a socket, along with any name outside the list it carries; a new
+setting the harness adds under that prefix stops nothing. A walled launch and its shell
+run with the harness's own updates off. The launch runs in a repository of one empty
+commit, the base the approver judges against, and a refusal from it says the harness's
+version. Before each stage and each preflight the settings, the files a stage's shell
 reads, the machine declarations, abcd's binary and the harness are compared with the
-start, and a difference stops the drive.
+start, and a difference stops the drive; a harness file changed or gone since the start
+is that difference.
 
 **Which profile.** `runner.DriveProfile` is the one function that answers it. With one
 directory under `~/.abcd.noindex/profiles/` a drive runs on it. With several it refuses,

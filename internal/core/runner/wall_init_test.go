@@ -5,12 +5,19 @@ package runner
 // for the proof's own flags, its session id and paths reduced.
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/guard"
+	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/shellquote"
 )
 
 const wallInitHome = "/proof/stage/home"
@@ -29,6 +36,24 @@ func wallInitLine(t *testing.T) map[string]any {
 	return init
 }
 
+// wallApprovedFlags is what the proof's env step reads for $- under the approver's
+// wrapper, as a real proof showed it.
+const wallApprovedFlags = "hpBc"
+
+// wallEnvStep is the tool result of the proof's env step, as the harness writes it.
+func wallEnvStep(flags string, names ...string) string {
+	var content []string
+	if flags != "" {
+		content = append(content, wallShellMarker+flags)
+	}
+	for _, n := range names {
+		content = append(content, wallEnvMarker+n)
+	}
+	raw, _ := json.Marshal(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": []map[string]any{
+		{"tool_use_id": "toolu_02", "type": "tool_result", "content": strings.Join(content, "\n"), "is_error": false}}}})
+	return string(raw) + "\n"
+}
+
 // wallProofStream is a finished proof after init, in the shapes the same harness
 // writes: the shell's home, its variables' names, the guard's refusal and the end.
 func wallProofStream(init map[string]any) []byte {
@@ -36,7 +61,7 @@ func wallProofStream(init map[string]any) []byte {
 	return []byte(string(line) + "\n" +
 		`{"type":"system","subtype":"hook_response","hook_name":"PreToolUse:Bash","hook_event":"PreToolUse","stdout":"{\"hookSpecificOutput\":{\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"` + guardRefusalText + ` (git-push-force)\"}}","exit_code":0}` + "\n" +
 		`{"type":"user","message":{"role":"user","content":[{"tool_use_id":"toolu_01","type":"tool_result","content":"` + wallHomeMarker + wallInitHome + `","is_error":false}]}}` + "\n" +
-		`{"type":"user","message":{"role":"user","content":[{"tool_use_id":"toolu_02","type":"tool_result","content":"` + wallEnvMarker + `PATH\n` + wallEnvMarker + `HOME","is_error":false}]}}` + "\n" +
+		wallEnvStep(wallApprovedFlags, "PATH", "HOME") +
 		`{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"s"}` + "\n")
 }
 
@@ -159,36 +184,206 @@ func TestARefusalReadsTheHarnessVersionOnlyWhenItIsOne(t *testing.T) {
 	}
 }
 
-// TestTheShellStepTheApproverRefusesIsNoProof: a finished launch whose approver refused
-// the step that shows the names, with the rest of the proof as it was, is refused.
-func TestTheShellStepTheApproverRefusesIsNoProof(t *testing.T) {
+// TestTheProofNeedsTheShellStepAsTheApproverHandsItBack: the env step reads $-, and only
+// the approver's wrapper runs it with p, whichever shell would run it otherwise; a step
+// refused, or showing no flags or others, refuses, and says the harness's version.
+func TestTheProofNeedsTheShellStepAsTheApproverHandsItBack(t *testing.T) {
 	line, _ := json.Marshal(wallInitLine(t))
-	stream := string(line) + "\n" +
-		`{"type":"system","subtype":"hook_response","hook_event":"PreToolUse","stdout":"` + guardRefusalText + `"}` + "\n" +
-		`{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"` + wallHomeMarker + wallInitHome + `","is_error":false}]}}` + "\n" +
-		`{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"Refused by the abcd guard (registry-not-in-force)","is_error":true}]}}` + "\n" +
-		`{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"s"}` + "\n"
-	var we *WallError
-	if err := readWallProof([]byte(stream), []string{"Read", "Bash"}, wallInitHome); !errors.As(err, &we) || we.Wall != WallEnv {
-		t.Fatalf("no names shown is the environment's wall: %v", err)
+	const home = `{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"` + wallHomeMarker + wallInitHome + `","is_error":false}]}}` + "\n"
+	const guarded = `{"type":"system","subtype":"hook_response","hook_event":"PreToolUse","stdout":"` + guardRefusalText + `"}` + "\n"
+	const end = `{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"s"}` + "\n"
+	refused := `{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"Refused by the abcd guard (registry-not-in-force)","is_error":true}]}}` + "\n"
+	closed := `{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"<tool_use_error>Error calling tool (Bash): Connection closed</tool_use_error>","is_error":true}]}}` + "\n"
+	quoted := `{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"` + strings.ReplaceAll(wallEnvCommand, `"`, `\"`) + `","is_error":true}]}}` + "\n"
+	for _, c := range []struct {
+		name, step string
+		wall       string
+	}{
+		{"the approver's wrapper, as measured", wallEnvStep("hpBc", "PATH", "HOME"), ""},
+		{"the approver's wrapper, with other flags beside p", wallEnvStep("himpBHs", "PATH"), ""},
+		{"bash without the wrapper", wallEnvStep("hBc", "PATH", "HOME"), WallApprover},
+		{"zsh without the wrapper", wallEnvStep("569X", "PATH", "HOME"), WallApprover},
+		{"no flags in the marker", wallEnvStep("", "PATH", "HOME"), WallApprover},
+		{"the marker with nothing after it", `{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"` + wallShellMarker + `\n` + wallEnvMarker + `PATH"}]}}` + "\n", WallApprover},
+		{"the step refused", refused, WallApprover},
+		{"the approver gone", closed, WallApprover},
+		{"the step's own text and no output", quoted, WallApprover},
+		{"the flags with no names", wallEnvStep("hpBc"), WallEnv},
+		{"a name it may not hold", wallEnvStep("hpBc", "PATH", "CLAUDE_CODE_MESSAGING_TOKEN"), WallEnv},
+		{"a socket it may not hold", wallEnvStep("hpBc", "PATH", "CLAUDE_CODE_MESSAGING_SOCKET"), WallEnv},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			stream := string(line) + "\n" + guarded + home + c.step + end
+			err := readWallProof([]byte(stream), []string{"Read", "Bash"}, wallInitHome)
+			if c.wall == "" {
+				if err != nil {
+					t.Fatalf("every wall holds: %v", err)
+				}
+				return
+			}
+			var we *WallError
+			if !errors.As(err, &we) || we.Wall != c.wall {
+				t.Fatalf("the refusal names the wall %q: %v", c.wall, err)
+			}
+			if !strings.Contains(err.Error(), "2.1.319") {
+				t.Errorf("the refusal says the harness's version: %v", err)
+			}
+		})
+	}
+}
+
+// TestTheEnvStepsFlagsShowTheApproversWrapper runs the proof's real env command: as the
+// guard hands it back, it shows p; as written, in a shell of its own, it does not.
+func TestTheEnvStepsFlagsShowTheApproversWrapper(t *testing.T) {
+	gittest.Env(t)
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, err := wallProofRepository(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input, _ := json.Marshal(map[string]string{"command": wallEnvCommand, "description": "the proof's env step"})
+	approval, updated := guard.ApprovePrompt(guard.LoadRepoAt(dir, base), guard.NewFiles(dir), "Bash", input)
+	if !approval.Allow {
+		t.Fatalf("the guard clears the proof's env step: %s", approval.Reason)
+	}
+	var handed struct {
+		Command string `json:"command"`
+	}
+	if err := json.Unmarshal(updated, &handed); err != nil {
+		t.Fatal(err)
+	}
+	if handed.Command == wallEnvCommand {
+		t.Fatalf("the guard hands the command back as written: %q", handed.Command)
+	}
+	run := func(shell, command string) string {
+		out, err := exec.Command(shell, "-c", command).Output()
+		if err != nil {
+			t.Fatalf("%s: %v", shell, err)
+		}
+		return string(out)
+	}
+	if flags, shown := wallShellFlags([]byte(run("/bin/sh", handed.Command))); !shown || !strings.Contains(flags, "p") {
+		t.Errorf("as handed back the step shows %q", flags)
+	}
+	for _, shell := range []string{"/bin/sh", "/bin/bash", "/bin/zsh"} {
+		if _, err := os.Stat(shell); err != nil {
+			continue
+		}
+		if flags, shown := wallShellFlags([]byte(run(shell, wallEnvCommand))); !shown || strings.Contains(flags, "p") {
+			t.Errorf("as written, under %s, the step shows %q", shell, flags)
+		}
 	}
 }
 
 // TestWhatTheHarnessAddsToAStagesShellIsAllowed: the names claude 2.1.319 and the shell
 // add under a walled launch, read from a real proof's output. Allowed, a stage's shell
-// passes on them; a credential among them still would not.
+// passes on them; a credential, a key or a socket among the harness's names does not,
+// whichever release names it.
 func TestWhatTheHarnessAddsToAStagesShellIsAllowed(t *testing.T) {
 	for _, name := range []string{"ABCD_PERSON_HOME", "ABCD_STAGE_HOME", "ABCD_STAGE_PROTECT", "AI_AGENT", "CLAUDECODE",
 		"CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CODE_DISABLE_CLAUDE_MDS", "CLAUDE_CODE_ENTRYPOINT",
 		"CLAUDE_CODE_EXECPATH", "CLAUDE_CODE_SESSION_ATTENDED", "CLAUDE_CODE_SESSION_ID", "CLAUDE_EFFORT", "CLAUDE_ENV_FILE", "CLAUDE_PID",
-		"COREPACK_ENABLE_AUTO_PIN", "GIT_EDITOR", "HOME", "LOGNAME", "NoDefaultCurrentDirectoryInExePath", "PATH", "PWD", "SHELL", "SHLVL", "TMPDIR", "_"} {
+		"COREPACK_ENABLE_AUTO_PIN", "DISABLE_UPDATES", "GIT_EDITOR", "HOME", "LOGNAME", "NoDefaultCurrentDirectoryInExePath", "PATH", "PWD", "SHELL", "SHLVL", "TMPDIR", "_",
+		"CLAUDE_CODE_A_NAME_NO_RELEASE_HAS_YET", "CLAUDE_CODE_MAX_OUTPUT_TOKENS"} {
 		if !stageShellAllowed(name) {
 			t.Errorf("%s is what the harness adds, and a stage's shell may not hold it", name)
 		}
 	}
-	for _, name := range []string{"ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "GH_TOKEN"} {
+	for _, name := range []string{"ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "GH_TOKEN",
+		"CLAUDE_CODE_MESSAGING_TOKEN", "CLAUDE_CODE_MESSAGING_SOCKET", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_HOST_CREDS_FILE",
+		"CLAUDE_BG_SOCKET_TOKENS_PATH", "CLAUDE_CODE_CCR_WORKER_SOCKET", "CLAUDE_CODE_HOST_AUTH_ENV_VAR", "CLAUDE_A_SECRET", "CLAUDE_AN_API_KEY"} {
 		if stageShellAllowed(name) {
 			t.Errorf("%s stays outside what a stage's shell holds", name)
 		}
+	}
+}
+
+// TestAStageRunsTheHarnessTheStartResolved: a link moved after the start changes nothing
+// a walled launch runs, the login check, the proof and each stage alike, and with the
+// file gone the check stops the stage before anything starts.
+func TestAStageRunsTheHarnessTheStartResolved(t *testing.T) {
+	f := newFake(t, "wall-ok", Claude)
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	versions := t.TempDir()
+	which := filepath.Join(f.log, "which")
+	version := func(name string) string {
+		path := filepath.Join(versions, name)
+		script := "#!/bin/sh\nprintf '%s\\n' " + name + " >> \"$" + fakeLogEnv + "/which\"\nexec " + shellquote.Single(self) + " \"$@\"\n"
+		if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	first, second := version("first"), version("second")
+	link := filepath.Join(f.bin, Claude)
+	repoint := func(to string) {
+		t.Helper()
+		if err := os.Remove(link); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(to, link); err != nil {
+			t.Fatal(err)
+		}
+	}
+	repoint(first)
+	p := wallProfile(t)
+	c := newClaude("")
+	c.profile = &p
+	c.approver = wallBin
+	if _, err := WriteWallSettings(p, c.approver); err != nil {
+		t.Fatal(err)
+	}
+	ran := func() []string {
+		t.Helper()
+		raw, err := os.ReadFile(which)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.Fields(string(raw))
+	}
+	repoint(second)
+	if err := CheckWallSettings(p, c.approver); err != nil {
+		t.Fatalf("the file the start resolved is as it was: %v", err)
+	}
+	if err := CheckLogin(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
+	if err := ProveWall(context.Background(), p, c.approver); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(fakeModeEnv, "ok")
+	if _, _, err := c.Run(context.Background(), shellRequest(f)); err != nil {
+		t.Fatal(err)
+	}
+	// Which harness answers is what this holds, not what it answers.
+	_, _ = c.probeLimit(context.Background(), p.Ledger, "probe-model")
+	got := ran()
+	if len(got) != 4 || slices.Contains(got, "second") {
+		t.Fatalf("each launch runs the file the start resolved: %q", got)
+	}
+	if err := os.Remove(first); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(which); err != nil {
+		t.Fatal(err)
+	}
+	var we *WallError
+	if err := CheckWallSettings(p, c.approver); !errors.As(err, &we) || we.Wall != WallSettingsFile || !strings.Contains(err.Error(), "changed while the drive ran") {
+		t.Fatalf("with the file gone the check stops the drive: %v", err)
+	}
+	if _, _, err := c.Run(context.Background(), shellRequest(f)); err == nil || !strings.Contains(err.Error(), "changed while the drive ran") {
+		t.Fatalf("with the file gone no stage starts: %v", err)
+	}
+	if got := ran(); len(got) != 0 {
+		t.Fatalf("nothing started: %q", got)
 	}
 }

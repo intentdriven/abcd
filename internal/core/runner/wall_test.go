@@ -110,12 +110,24 @@ func fakeWall(mode string) int {
 	}
 	// This stand-in's approver clears the names' command, and it clears nothing while
 	// the launch's base is no commit in its working tree.
-	if mode != "wall-env-unsaid" && approverClears(args) {
-		names := []string{"PATH", "HOME", "CLAUDECODE"}
-		if mode == "wall-env" {
-			names = append(names, "GH_TOKEN")
-		}
+	if approverClears(args) {
 		var lines strings.Builder
+		switch mode {
+		case "wall-approver-unsaid":
+		case "wall-approver-flags":
+			lines.WriteString(wallShellMarker + "hBc\n")
+		default:
+			lines.WriteString(wallShellMarker + "hpBc\n")
+		}
+		names := []string{"PATH", "HOME", "CLAUDECODE"}
+		switch mode {
+		case "wall-env":
+			names = append(names, "GH_TOKEN")
+		case "wall-env-session":
+			names = append(names, "CLAUDE_CODE_MESSAGING_TOKEN")
+		case "wall-env-unsaid":
+			names = nil
+		}
 		for _, n := range names {
 			lines.WriteString(wallEnvMarker + n + "\n")
 		}
@@ -190,15 +202,26 @@ func wallProfile(t *testing.T) Profile {
 }
 
 // TestTheWalledSettingsHoldAbcdsHooksAndNothingElse: each event's command names
-// the binary by absolute path, the guard's matcher is the plugin's, and no
-// other key stands beside hooks.
+// the binary by absolute path, the guard's matcher is the plugin's, and beside the
+// hooks stands only the harness's own attribution, turned off.
 func TestTheWalledSettingsHoldAbcdsHooksAndNothingElse(t *testing.T) {
-	var s map[string]map[string][]hookGroup
-	if err := json.Unmarshal(wallSettings(wallBin), &s); err != nil {
+	var whole map[string]json.RawMessage
+	if err := json.Unmarshal(wallSettings(wallBin), &whole); err != nil {
 		t.Fatal(err)
 	}
-	if len(s) != 1 || s["hooks"] == nil {
-		t.Fatalf("hooks and nothing else: %v", s)
+	if len(whole) != 2 || whole["hooks"] == nil || whole["attribution"] == nil {
+		t.Fatalf("hooks and the attribution and nothing else: %v", whole)
+	}
+	var attribution map[string]string
+	if err := json.Unmarshal(whole["attribution"], &attribution); err != nil {
+		t.Fatal(err)
+	}
+	if len(attribution) != 2 || attribution["commit"] != "" || attribution["pr"] != "" {
+		t.Fatalf("the harness adds no attribution of its own: %v", attribution)
+	}
+	var s map[string]map[string][]hookGroup
+	if err := json.Unmarshal(append(append([]byte(`{"hooks":`), whole["hooks"]...), '}'), &s); err != nil {
+		t.Fatal(err)
 	}
 	pre := s["hooks"]["PreToolUse"]
 	if len(pre) != 1 || !strings.Contains(pre[0].Matcher, "Bash") || pre[0].Hooks[0].Command != "'"+wallBin+"' guard hook" {
@@ -236,6 +259,12 @@ func TestWritingTheSettingsReWiresANewBinaryAndSaysWhenItReplacedAnEdit(t *testi
 		t.Fatalf("what was written holds: %v", err)
 	}
 	path := filepath.Join(p.Dir, wallSettingsName)
+	if err := os.WriteFile(path, wallSettingsHooksOnly("/old/abcd"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if replaced, err := WriteWallSettings(p, wallBin); err != nil || replaced {
+		t.Fatalf("what an earlier release wrote is abcd's, not an edit: %v %v", replaced, err)
+	}
 	edited := strings.Replace(string(wallSettings(wallBin)), `"hooks": {`, `"apiKeyHelper": "x", "hooks": {`, 1)
 	if err := os.WriteFile(path, []byte(edited), 0o600); err != nil {
 		t.Fatal(err)
@@ -298,20 +327,23 @@ func TestTheLoginWallAsksTheHarnessAndKeepsOnlyTheState(t *testing.T) {
 // or broken in turn.
 func TestTheProofNamesEachWallThatDoesNotHold(t *testing.T) {
 	for mode, wall := range map[string]string{
-		"wall-ok":            "",
-		"wall-tools":         WallTools,
-		"wall-servers":       WallServers,
-		"wall-server-failed": WallServers,
-		"wall-plugins":       WallPlugins,
-		"wall-key":           WallKey,
-		"wall-key-unsaid":    WallKey,
-		"wall-guard":         WallGuard,
-		"wall-tree":          WallWorkingTree,
-		"wall-home":          WallHome,
-		"wall-home-unsaid":   WallHome,
-		"wall-env":           WallEnv,
-		"wall-env-unsaid":    WallEnv,
-		"wall-env-at":        WallEnv,
+		"wall-ok":              "",
+		"wall-tools":           WallTools,
+		"wall-servers":         WallServers,
+		"wall-server-failed":   WallServers,
+		"wall-plugins":         WallPlugins,
+		"wall-key":             WallKey,
+		"wall-key-unsaid":      WallKey,
+		"wall-guard":           WallGuard,
+		"wall-tree":            WallWorkingTree,
+		"wall-home":            WallHome,
+		"wall-home-unsaid":     WallHome,
+		"wall-env":             WallEnv,
+		"wall-env-unsaid":      WallEnv,
+		"wall-env-at":          WallEnv,
+		"wall-env-session":     WallEnv,
+		"wall-approver-unsaid": WallApprover,
+		"wall-approver-flags":  WallApprover,
 	} {
 		t.Run(mode, func(t *testing.T) {
 			f := newFake(t, mode, Claude)
@@ -520,6 +552,12 @@ func TestAStagesShellHasItsOwnHomeAndWhatItNeeds(t *testing.T) {
 	run(`go telemetry off`)
 	if got := run(`printf %s "$CLAUDE_CONFIG_DIR"`); got != "" {
 		t.Errorf("the shell keeps the walled directory: %q", got)
+	}
+	for _, name := range []string{"CLAUDE_CODE_MESSAGING_TOKEN", "CLAUDE_CODE_MESSAGING_SOCKET"} {
+		t.Setenv(name, "set-by-the-harness")
+		if got := run(`printf %s "$` + name + `"`); got != "" {
+			t.Errorf("the shell keeps the harness's %s: %q", name, got)
+		}
 	}
 	if got := run(`printf %s "$` + abcdhome.PersonHomeEnv + `"`); got != home {
 		t.Errorf("the shell names the person's home for abcd's shared records: %q", got)
