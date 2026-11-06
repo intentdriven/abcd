@@ -154,6 +154,50 @@ func TestPreCommitHook_IdentityGate(t *testing.T) {
 	}
 }
 
+// TestPreCommitHook_JudgesTheIdentityAsStamped: the hook holds the same reading as
+// the Go check, for the committer above all, since git exports only the author it
+// resolved into this hook's environment. A field git would fill in itself stays
+// out of the judgment.
+func TestPreCommitHook_JudgesTheIdentityAsStamped(t *testing.T) {
+	hook := locateHook(t)
+	for _, tc := range []struct {
+		name      string
+		user      [2]string
+		config    map[string]string
+		env       []string
+		wantBlock bool
+		wantSay   string
+	}{
+		{name: "a committer name in config", user: [2]string{"Alice", "alice@example.com"},
+			config: map[string]string{"committer.name": "ci-bot,"}, wantBlock: true, wantSay: `the committer "ci-bot <alice@example.com>" is a machine identity`},
+		{name: "a committer email in config", user: [2]string{"Alice", "alice@example.com"},
+			config: map[string]string{"committer.email": "ci@anthro>pic.com"}, wantBlock: true, wantSay: "the committer"},
+		{name: "a committer in the environment", user: [2]string{"Alice", "alice@example.com"},
+			env: []string{"GIT_COMMITTER_NAME=Cl<aude"}, wantBlock: true, wantSay: "the committer"},
+		{name: "an author and committer in user config", user: [2]string{"Cl<aude", "no<reply@anthro>pic.com"},
+			wantBlock: true, wantSay: "machine identity"},
+		{name: "a person whose name carries the same bytes", user: [2]string{"Carol Talbot,", "carol.talbot@example.com"}},
+		{name: "a committer email git fills in stays out", env: []string{
+			"GIT_AUTHOR_NAME=Alice", "GIT_AUTHOR_EMAIL=alice@example.com", "GIT_COMMITTER_NAME=Alice", "EMAIL=ci@anthropic.com",
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env := hookEnv(t)
+			dir := hookRepo(t, hook, env, tc.user[0], tc.user[1])
+			for k, v := range tc.config {
+				hookGit(t, dir, env, "config", k, v)
+			}
+			blocked, out := commitThroughHook(t, dir, append(env, tc.env...))
+			if blocked != tc.wantBlock {
+				t.Fatalf("blocked=%v, want %v\n%s", blocked, tc.wantBlock, out)
+			}
+			if tc.wantSay != "" && !strings.Contains(out, tc.wantSay) {
+				t.Fatalf("the refusal does not say %q:\n%s", tc.wantSay, out)
+			}
+		})
+	}
+}
+
 // TestPreCommitHook_RefusesAnUntrustedRecord: the hook reads the record under
 // the rules loader's guards and blocks on every one it fails; a symlinked
 // ~/.abcd.noindex with no record in it reads as absent.

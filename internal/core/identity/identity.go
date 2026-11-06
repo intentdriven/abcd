@@ -21,10 +21,11 @@ import (
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
-// Effective is the identity git would actually stamp on a commit in the repo,
-// resolved as git resolves the author: the GIT_AUTHOR_NAME/GIT_AUTHOR_EMAIL
-// environment overrides first, then git config's local > global > system
-// layering.
+// Effective is the identity git would use for a commit in the repo, resolved as
+// git resolves the author: the GIT_AUTHOR_NAME/GIT_AUTHOR_EMAIL environment
+// overrides first, then git config's local > global > system layering. Its fields
+// are the values as set, which can hold bytes git removes when it stamps them
+// (isToolAsStamped).
 type Effective struct {
 	Name  string
 	Email string
@@ -167,7 +168,8 @@ func effective(root string, role Role) (Effective, error) {
 // <role>.email, then user.name / user.email. It deliberately does NOT ask
 // `git var GIT_<ROLE>_IDENT`, which fabricates an identity from the account's
 // gecos field and the hostname when none is configured and exits 0 — that would
-// collapse the distinct StatusUnset state the pre-commit hook blocks on.
+// collapse the distinct StatusUnset state the pre-commit hook blocks on. The
+// value is as set; isToolAsStamped reads the stamp for the machine check.
 func (c *identityConfig) effective(role Role) (Effective, error) {
 	env := "GIT_" + strings.ToUpper(string(role)) + "_"
 	name, err := c.resolveField(env+"NAME", string(role)+".name", "user.name")
@@ -326,9 +328,68 @@ func checkWithHome(root, home string) (Result, error) {
 	res := authorResult(rec, recorded, ref, eff)
 	res.Committer = committer
 	res.CommitterDiverges, res.CommitterReason = committerDivergence(rec, recorded, eff, committer)
-	res.AuthorIsTool = eff != (Effective{}) && IsToolIdentity(RoleAuthor, eff.Name, eff.Email)
-	res.CommitterIsTool = committer != (Effective{}) && IsToolIdentity(RoleCommitter, committer.Name, committer.Email)
+	res.AuthorIsTool = isToolAsStamped(root, RoleAuthor, eff)
+	res.CommitterIsTool = isToolAsStamped(root, RoleCommitter, committer)
 	return res, nil
+}
+
+// isToolAsStamped reports whether eff, the identity resolved for role, is a
+// machine identity as it is set or as git would stamp it. Git removes some bytes
+// when it stamps (angle brackets anywhere, and punctuation at either end), so a
+// value can differ from the stamp; the attribution gate reads the stamp on the
+// commit, and this reads what that stamp will be.
+//
+// Git itself is asked, rather than a copy of its rule, so the answer is the
+// installed git's. A read that fails judges the set value alone: git refuses to
+// stamp in the same cases (user.useConfigOnly with a field unset, a blank
+// GIT_<ROLE>_NAME), so there is no stamp to judge. A field the resolver found
+// unset stays out of the judgment: effective says why git's value for it is not
+// the person's.
+func isToolAsStamped(root string, role Role, eff Effective) bool {
+	if eff == (Effective{}) {
+		return false
+	}
+	if IsToolIdentity(role, eff.Name, eff.Email) {
+		return true
+	}
+	stamped, ok := stampedIdentity(root, role)
+	if !ok {
+		return false
+	}
+	if eff.Name == "" {
+		stamped.Name = ""
+	}
+	if eff.Email == "" {
+		stamped.Email = ""
+	}
+	return IsToolIdentity(role, stamped.Name, stamped.Email)
+}
+
+// stampedIdentity is the identity `git var GIT_<ROLE>_IDENT` prints for root,
+// under the environment git commits with (commitConfigEnv). It runs nothing a
+// configuration names. ok is false when git stamps nothing.
+func stampedIdentity(root string, role Role) (Effective, bool) {
+	cmd := exec.Command("git", "-C", root, "var", "GIT_"+strings.ToUpper(string(role))+"_IDENT")
+	cmd.Env = commitConfigEnv()
+	out, err := cmd.Output()
+	if err != nil {
+		return Effective{}, false
+	}
+	return parseIdent(string(out))
+}
+
+// parseIdent reads git's `Name <email> timestamp zone`. Git has removed every
+// angle bracket from both fields, so the first of each ends the name and the email.
+func parseIdent(line string) (Effective, bool) {
+	name, rest, ok := strings.Cut(line, "<")
+	if !ok {
+		return Effective{}, false
+	}
+	email, _, ok := strings.Cut(rest, ">")
+	if !ok {
+		return Effective{}, false
+	}
+	return Effective{Name: strings.TrimSpace(name), Email: email}, true
 }
 
 // authorResult is the author half of Check.
