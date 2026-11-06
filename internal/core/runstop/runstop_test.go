@@ -954,3 +954,29 @@ func TestAPlantedPageDirectoryIsRefused(t *testing.T) {
 		}
 	})
 }
+
+// TestAPageIsOpenUnderAnyUmask: the person reads the page from their own account, so neither
+// it nor its directory takes this process's umask.
+func TestAPageIsOpenUnderAnyUmask(t *testing.T) {
+	home, folder := world(t)
+	old := syscall.Umask(0o077)
+	t.Cleanup(func() { syscall.Umask(old) })
+	p, err := WritePage(home, time.Date(2026, 11, 4, 18, 0, 0, 0, time.UTC), []byte("mine\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, err := os.Stat(filepath.Join(folder, digestDirFor(os.Getuid())))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dir.Mode().Perm()&0o055 != 0o055 {
+		t.Fatalf("the directory is %o, which another account cannot open", dir.Mode().Perm())
+	}
+	page, err := os.Stat(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Mode().Perm()&0o044 != 0o044 {
+		t.Fatalf("the page is %o, which another account cannot read", page.Mode().Perm())
+	}
+}

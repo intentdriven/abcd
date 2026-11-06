@@ -818,6 +818,9 @@ func WritePage(home string, day time.Time, data []byte) (string, error) {
 	if uid, ok := ownerOf(fi); !ok || !fi.IsDir() || uid != os.Getuid() {
 		return "", fmt.Errorf("%s in the shared folder is not a directory this account made", dir)
 	}
+	if err := root.Chmod(dir, sharedDirMode); err != nil {
+		return "", err
+	}
 	rel := dir + "/" + day.UTC().Format(time.DateOnly) + ".md"
 	if err := fsutil.WriteFileAtomicInRoot(root, rel, data, sharedFileMode); err != nil {
 		return "", err
