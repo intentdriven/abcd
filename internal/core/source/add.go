@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
 
@@ -339,47 +340,103 @@ func nameText(n Name) string {
 	return strings.TrimSpace(strings.TrimSpace(n.Given) + " " + strings.TrimSpace(n.Family))
 }
 
-// plainSpelling maps the Latin letters with no Unicode decomposition that names
-// commonly carry to their usual plain spelling, the form an ASCII key writes them
-// in. It is a table of those letters, not of every letter: a value in another
-// script has no spelling here, so it can never match an ASCII key.
-var plainSpelling = strings.NewReplacer(
-	"\u00f8", "o", "\u0142", "l", "\u0111", "d", "\u00f0", "d", "\u00fe", "th",
-	"\u00e6", "ae", "\u0153", "oe", "\u00df", "ss", "\u0131", "i",
-	"\u0127", "h", "\u0167", "t", "\u014b", "ng", "\u0259", "a", "\u0192", "f",
-)
+// letterSpellings holds a lowercase Latin letter's usual plain spellings, the forms an
+// ASCII key writes it in, the first first: the letters with no Unicode decomposition,
+// and the composed letters with a second spelling, read before a decomposition strips
+// the mark it comes from.
+var letterSpellings = map[rune][]string{
+	'\u00f8': {"o", "oe"}, '\u0142': {"l"}, '\u0111': {"d", "dj"}, '\u00f0': {"d"},
+	'\u00fe': {"th"}, '\u00e6': {"ae"}, '\u0153': {"oe"}, '\u00df': {"ss"},
+	'\u0131': {"i"}, '\u0127': {"h"}, '\u0167': {"t"}, '\u014b': {"ng", "n"},
+	'\u0259': {"a", "e"}, '\u0192': {"f"},
+	'\u00fc': {"u", "ue"}, '\u00f6': {"o", "oe"}, '\u00e4': {"a", "ae"}, '\u00e5': {"a", "aa"},
+	'\u0151': {"o", "oe"}, '\u0171': {"u", "ue"}, '\u0161': {"s", "sh"}, '\u017e': {"z", "zh"},
+	'\u010d': {"c", "ch"}, '\u0107': {"c", "ch"},
+}
 
-// secondSpelling maps the composed letters with a second usual plain spelling to
-// it. Decomposing would strip the mark these spellings are read from, so it runs
-// on the composed form, ahead of fold.
-var secondSpelling = strings.NewReplacer(
-	"\u00fc", "ue", "\u00f6", "oe", "\u00e4", "ae", "\u00f8", "oe", "\u00e5", "aa",
-	"\u0111", "dj", "\u014b", "n", "\u0259", "e",
-)
+// keyLetter is one letter of a value as the key check reads it: the spellings it may
+// take in a key, or, for a Latin letter with none known, a short gap that holds it.
+// spellings[0] is the first spelling; a letter of another script keeps itself there,
+// which an ASCII key can never hold.
+type keyLetter struct {
+	spellings []string
+	gap       bool
+}
 
-// fold lowercases s and keeps only its letters and digits, for the key check.
-// Decomposing first gives one answer for a name in either Unicode form and for a
-// compatibility form such as a ligature, and the letters that leave alone take
-// their plain spelling.
+// keyLetters reads s letter by letter for the key check: lowercase, with symbols,
+// format characters and modifier letters gone, one answer for either Unicode form,
+// and compatibility forms such as ligatures taken apart.
+func keyLetters(s string) []keyLetter {
+	var kept strings.Builder
+	for _, r := range s {
+		if (unicode.IsLetter(r) && !unicode.Is(unicode.Lm, r)) || unicode.IsMark(r) || unicode.IsDigit(r) {
+			kept.WriteRune(r)
+		}
+	}
+	var out []keyLetter
+	read := func(r rune) bool {
+		if spellings, ok := letterSpellings[r]; ok {
+			out = append(out, keyLetter{spellings: spellings})
+			return true
+		}
+		if r < utf8.RuneSelf {
+			out = append(out, keyLetter{spellings: []string{string(r)}})
+			return true
+		}
+		return false
+	}
+	for _, r := range strings.ToLower(norm.NFC.String(kept.String())) {
+		if read(r) {
+			continue
+		}
+		for _, d := range norm.NFKD.String(string(r)) {
+			d = unicode.ToLower(d)
+			if unicode.IsMark(d) || read(d) {
+				continue
+			}
+			out = append(out, keyLetter{spellings: []string{string(d)}, gap: unicode.Is(unicode.Latin, d)})
+		}
+	}
+	return out
+}
+
+// fold is s in the first spelling of each of its letters, for the key check.
 func fold(s string) string {
 	var b strings.Builder
-	for _, r := range plainSpelling.Replace(strings.ToLower(norm.NFKD.String(s))) {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			b.WriteRune(r)
-		}
+	for _, l := range keyLetters(s) {
+		b.WriteString(l.spellings[0])
 	}
 	return b.String()
 }
 
-// spellings is s as fold reads it, and again with the second spelling of each
-// letter that has one. One value spelling some letters each way is not compared.
-func spellings(s string) []string {
-	first := fold(s)
-	second := fold(secondSpelling.Replace(strings.ToLower(norm.NFKC.String(s))))
-	if second == first {
-		return []string{first}
+// keyHolds reports that key holds s in any mix of its letters' usual spellings. A value
+// counts only by the letters it can be spelt in, at least min of them, so a gap never
+// makes a short value match most keys.
+func keyHolds(key, s string, min int) bool {
+	letters := keyLetters(s)
+	var pattern strings.Builder
+	spelt := 0
+	for _, l := range letters {
+		if l.gap {
+			pattern.WriteString("[a-z]{0,2}")
+			continue
+		}
+		spelt += utf8.RuneCountInString(l.spellings[0])
+		quoted := make([]string, len(l.spellings))
+		for i, spelling := range l.spellings {
+			quoted[i] = regexp.QuoteMeta(spelling)
+		}
+		pattern.WriteString("(?:" + strings.Join(quoted, "|") + ")")
 	}
-	return []string{first, second}
+	if spelt < min {
+		return false
+	}
+	re, err := regexp.Compile(pattern.String())
+	if err != nil {
+		// Only a value too long to compile lands here; its first spelling still counts.
+		return strings.Contains(key, fold(s))
+	}
+	return re.MatchString(key)
 }
 
 // identifyingKey names the field a confidential entry's key would reveal, or "".
@@ -388,14 +445,7 @@ func spellings(s string) []string {
 // more runes from an author's name, however the name was entered.
 func identifyingKey(e Entry) string {
 	key := fold(e.ID)
-	has := func(s string, min int) bool {
-		for _, f := range spellings(s) {
-			if len([]rune(f)) >= min && strings.Contains(key, f) {
-				return true
-			}
-		}
-		return false
-	}
+	has := func(s string, min int) bool { return keyHolds(key, s, min) }
 	for _, a := range e.Custom.Aliases {
 		if has(a, 3) {
 			return "alias"
@@ -433,12 +483,15 @@ func identifyingKey(e Entry) string {
 // separate, so a decomposed word stays one word, as fold reads it.
 func keyWords(field string) []string {
 	return strings.FieldsFunc(strings.Map(func(r rune) rune {
+		if r == '\u200b' {
+			return ' '
+		}
 		if unicode.Is(unicode.Cf, r) {
 			return -1
 		}
 		return r
 	}, field), func(r rune) bool {
-		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && !unicode.IsMark(r)
+		return unicode.Is(unicode.Lm, r) || (!unicode.IsLetter(r) && !unicode.IsDigit(r) && !unicode.IsMark(r))
 	})
 }
 

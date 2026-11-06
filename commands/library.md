@@ -162,8 +162,9 @@ names:
   JSON file (`{"title": …, "aliases": […], "author": [{"family": …, "given": …}],
   "keywords": […]}`) so they stay out of argv, and choose an **opaque** key
   (`conf2026a`): the verb refuses a key that contains an alias, the title or a
-  longer title word, or an author's name, in any usual Latin spelling of it; a name in
-  another script is not compared, so choose an opaque key for one.
+  longer title word, or an author's name, in the usual plain spellings of its Latin
+  letters. It cannot know every spelling, and a name in another script is not compared, so choose
+  an opaque key whatever the check says.
 - abcd fetches and converts nothing. A `.md` or `.txt` document is its own text;
   anything else needs `--text` with the extracted text; a URL alone registers a
   metadata stub. For a public source `--title`, `--author "Family, Given"`,

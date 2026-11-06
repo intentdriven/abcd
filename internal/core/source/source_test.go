@@ -292,11 +292,27 @@ func TestIdentifyingKeyReadsEveryUsualSpelling(t *testing.T) {
 		{"f hook", "\u0192arlo", "farlo2026", "author"},
 		{"soft hyphen in a title word", "Harb\u00adour Notes", "harbour2026", "title"},
 		{"zero width joiner in a name", "Mar\u200dlo", "marlo2026", "author"},
+		{"schwa, spelt each way in one word", "M\u0259mm\u0259dov", "mammedov2026", "author"},
+		{"slashed o and a ring, spelt each way", "N\u00f8rg\u00e5rd", "norgaard2026", "author"},
+		{"modifier letter turned comma", "G\u02bbofurov", "gofurov2026", "author"},
+		{"modifier letter apostrophe, whole name", "O\u02bcBrien", "obrien2026", "author"},
+		{"modifier letter apostrophe, the part after it", "O\u02bcBrien", "brien2026", "author"},
+		{"Latin letter outside the table", "\u018aanjuma", "danjuma2026", "author"},
+		{"Latin letter outside the table, two of them", "\u0198a\u0253ir", "kabir2026", "author"},
+		{"double acute", "Erd\u0151s", "erdoes2026", "author"},
+		{"s and c with marks, second spellings", "\u0160imi\u0107", "shimich2026", "author"},
+		{"z caron, second spelling", "\u017dukov", "zhukov2026", "author"},
+		{"zero width space between words", "Anna\u200bSmith", "smith2026", "author"},
+		{"symbol ending an alias", "Foobar\u2122", "foobar2026", "alias"},
+		{"symbol ending a short title", "Acme\u2122", "acme2026", "title"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := Entry{ID: tc.key, Title: confTitle, Author: []Name{{Family: tc.value}}}
-			if tc.field == "title" {
+			switch tc.field {
+			case "title":
 				e = Entry{ID: tc.key, Title: tc.value}
+			case "alias":
+				e = Entry{ID: tc.key, Title: confTitle, Custom: Custom{Aliases: []string{tc.value}}}
 			}
 			if got := identifyingKey(e); got != tc.field {
 				t.Errorf("key %q with %q: refused for %q, want %q", tc.key, tc.value, got, tc.field)
@@ -305,6 +321,27 @@ func TestIdentifyingKeyReadsEveryUsualSpelling(t *testing.T) {
 				if got := identifyingKey(Entry{ID: "conf2026a", Title: confTitle, Author: []Name{{Family: tc.value}}}); got != "" {
 					t.Errorf("an unrelated key with author %q is refused for its %s", tc.value, got)
 				}
+			}
+		})
+	}
+}
+
+// TestIdentifyingKeyPassesWhatHoldsNoneOfTheName: an opaque key stands however its
+// source's name is spelt, a short name counts by the letters it can be spelt in, and a
+// name in another script is not compared.
+func TestIdentifyingKeyPassesWhatHoldsNoneOfTheName(t *testing.T) {
+	for _, tc := range []struct{ name, value, key string }{
+		{"two letters and a long second spelling", "\u00c5s", "aas2026"},
+		{"one letter and one outside the table", "\u018aa", "handbook2026"},
+		{"two letters and one outside the table", "\u018aan", "handbook2026"},
+		{"another script", "\u0418\u0432\u0430\u043d\u043e\u0432", "ivanov2026"},
+		{"opaque key, Latin letter outside the table", "\u018aanjuma", "conf2026a"},
+		{"opaque key, mixed spellings", "N\u00f8rg\u00e5rd", "conf2026a"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := Entry{ID: tc.key, Title: confTitle, Author: []Name{{Family: tc.value}}}
+			if got := identifyingKey(e); got != "" {
+				t.Errorf("key %q with author %q is refused for its %s", tc.key, tc.value, got)
 			}
 		})
 	}

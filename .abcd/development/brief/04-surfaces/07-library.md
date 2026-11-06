@@ -121,7 +121,9 @@ metadata stub.
 Every refusal, every guard message and every scan names a source by its key and
 nothing else. So a confidential source's key must not name it: the add refuses a
 key containing one of its aliases, its title or a longer title word, or an
-author's name, and asks for an opaque key such as `conf2026a`. The identifying
+author's name, in the usual plain spellings of its Latin letters, and asks for an
+opaque key such as `conf2026a`. It cannot know every spelling, and a name in another
+script is not compared. The identifying
 strings themselves can travel in a metadata file or on stdin, so they stay out of
 the process list and the shell history.
 
