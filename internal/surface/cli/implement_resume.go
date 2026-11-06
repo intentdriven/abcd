@@ -30,7 +30,9 @@ func newImplementResumeCommand(asJSON *bool) *cobra.Command {
 			"the driver, collects every receipt that has arrived before anything else, reserves\n" +
 			"again what a stop released, saves aside and names the uncommitted work a gone agent\n" +
 			"left, and re-tells its await. It starts no agent: `abcd implement step` does that\n" +
-			"next. An agent that may still be in its call is left alone and named.\n\n" +
+			"next. An agent that may still be in its call is left alone and named. A run a drive\n" +
+			"started names the profile it started on, in the listing and here, since what this\n" +
+			"session starts runs on this session's own login, whichever that is.\n\n" +
 			"Exit 2 on a refusal. Exit 3 while a stop holds, while another driver's process is\n" +
 			"alive or a recorded driver cannot be judged, or when a peer has taken the work a\n" +
 			"stop released: back off.",
@@ -98,6 +100,9 @@ func renderListedRun(w io.Writer, r loop.ListedRun) {
 	} else {
 		fmt.Fprintln(w, "  driver: none recorded")
 	}
+	if r.Profile != "" {
+		fmt.Fprintf(w, "  profile: %s\n", termsafe.Sanitize(r.Profile))
+	}
 	if !r.Reserved {
 		fmt.Fprintln(w, "  reservation: not held")
 	}
@@ -156,6 +161,10 @@ func renderListedRun(w io.Writer, r loop.ListedRun) {
 // renderTake is the take-over's text form.
 func renderTake(w io.Writer, res loop.TakeResult) {
 	fmt.Fprintf(w, "took over %s\n", termsafe.Sanitize(res.RunID))
+	if res.Profile != "" {
+		fmt.Fprintf(w, "  profile: it started on %s; what this session starts from here runs on this session's own login, whichever that is, and a drive still holds it to %s\n",
+			termsafe.Sanitize(res.Profile), termsafe.Sanitize(res.Profile))
+	}
 	for lane, note := range res.Collected {
 		fmt.Fprintf(w, "  %s: %s\n", termsafe.Sanitize(lane), termsafe.Sanitize(note))
 	}

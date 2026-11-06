@@ -207,6 +207,12 @@ func swapGroupMembersForTest(fn func(uint32) ([]uint32, bool)) (restore func()) 
 	return func() { groupMembers = prev }
 }
 
+// SwapGroupMembersForTest is swapGroupMembersForTest for the packages whose refusal
+// of a level its group can write needs proving. Tests only.
+func SwapGroupMembersForTest(fn func(uint32) ([]uint32, bool)) (restore func()) {
+	return swapGroupMembersForTest(fn)
+}
+
 // accountFileGroupMembers reads gid's members from /etc/passwd and
 // /etc/group (groupMembersFrom), where the name service switch reads those
 // files alone. On darwin they do not hold the machine's accounts (directory
