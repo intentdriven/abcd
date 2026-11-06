@@ -259,4 +259,41 @@ func TestPlanReachesADecisionOverTheCap(t *testing.T) {
 	if got := read(t, root, "AGENTS.md"); !strings.Contains(got, moved) {
 		t.Fatalf("a reference follows the name:\n%s", got)
 	}
+	for applied, word := range map[bool]string{true: "renamed 1 record(s)", false: "1 record(s) would be renamed"} {
+		var out bytes.Buffer
+		printReport(&out, rep, applied)
+		if !strings.Contains(out.String(), word) || !strings.Contains(out.String(), "dcn 1") {
+			t.Errorf("the report's line counts the decision: %s", out.String())
+		}
+	}
+}
+
+// TestARefusedCapIsMaskedOnAWholeRun: the cap's refusal quotes the repository's
+// config, so a control byte there reaches the terminal unless the error line masks
+// it. The attack rune is written as a JSON escape, so this file carries none.
+func TestARefusedCapIsMaskedOnAWholeRun(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "record-slug-rename")
+	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
+		t.Fatalf("building the tool: %v\n%s", err, out)
+	}
+	root := fixture(t)
+	if err := os.WriteFile(filepath.Join(root, ".abcd", "config.json"), []byte(`{"records": {"x\u001b[31my": 1}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git(t, root, "add", "-A")
+	git(t, root, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "a config")
+
+	run := exec.Command(bin, "-root", root)
+	run.Env = gittest.Env(t)
+	var stderr bytes.Buffer
+	run.Stderr = &stderr
+	if err := run.Run(); err == nil {
+		t.Fatalf("a refused cap ran: %q", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "record-slug-rename:") || !strings.Contains(stderr.String(), "records.x") {
+		t.Fatalf("the refusal is not the cap's: %q", stderr.String())
+	}
+	if strings.ContainsRune(stderr.String(), 0x1b) {
+		t.Errorf("the error line carries a raw escape: %q", stderr.String())
+	}
 }

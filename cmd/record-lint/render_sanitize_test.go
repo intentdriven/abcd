@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -89,5 +91,38 @@ func TestSlugNamesMasksAConfigValueInItsErrorLine(t *testing.T) {
 	}
 	if strings.ContainsRune(string(line), 0x1b) {
 		t.Errorf("the error line carries a raw escape: %q", line)
+	}
+}
+
+// TestARefusedCapIsMaskedOnAWholeRun: the same refusal, reached through the rule on
+// a whole run of the linter rather than through -slug-names.
+func TestARefusedCapIsMaskedOnAWholeRun(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "record-lint")
+	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
+		t.Fatalf("building the linter: %v\n%s", err, out)
+	}
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".abcd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{
+		"config.json":      `{"records": {"x\u001b[31my": 1}}`,
+		"record-lint.json": `{"rules": {"record_slug_cap": {"enabled": true, "severity": "blocker"}}}`,
+	} {
+		if err := os.WriteFile(filepath.Join(root, ".abcd", name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run := exec.Command(bin, "-root", root)
+	var stderr bytes.Buffer
+	run.Stderr = &stderr
+	if err := run.Run(); err == nil {
+		t.Fatalf("a refused cap ran: %q", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "record-lint:") || !strings.Contains(stderr.String(), "records.x") {
+		t.Fatalf("the refusal is not the cap's: %q", stderr.String())
+	}
+	if strings.ContainsRune(stderr.String(), 0x1b) {
+		t.Errorf("the error line carries a raw escape: %q", stderr.String())
 	}
 }

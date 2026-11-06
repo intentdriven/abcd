@@ -67,6 +67,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // family is one store whose filenames carry a minted slug.
@@ -140,7 +141,8 @@ func main() {
 	}
 	rep, err := run(root, *apply)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "record-slug-rename:", err)
+		// The cap's refusal quotes the repository's config.
+		fmt.Fprintln(os.Stderr, "record-slug-rename:", termsafe.Sanitize(err.Error()))
 		os.Exit(1)
 	}
 	printReport(os.Stdout, rep, *apply)
@@ -491,13 +493,13 @@ func printReport(w io.Writer, rep Report, applied bool) {
 		for _, r := range rep.Plan {
 			fmt.Fprintf(w, "%s -> %s\n", r.OldRel, r.NewRel)
 		}
-		fmt.Fprintf(w, "dry run: %d record(s) would be renamed (iss %d, itd %d, spc %d, adr %d); nothing was changed. Re-run with -apply.\n",
-			rep.total(), rep.Renamed["iss"], rep.Renamed["itd"], rep.Renamed["spc"], rep.Renamed["adr"])
+		fmt.Fprintf(w, "dry run: %d record(s) would be renamed (iss %d, itd %d, spc %d, adr %d, dcn %d); nothing was changed. Re-run with -apply.\n",
+			rep.total(), rep.Renamed["iss"], rep.Renamed["itd"], rep.Renamed["spc"], rep.Renamed["adr"], rep.Renamed["dcn"])
 		return
 	}
 	for _, l := range rep.Leftovers {
 		fmt.Fprintf(w, "leftover %s:%d: %s (%s)\n", l.File, l.Line, l.Slug, l.Why)
 	}
-	fmt.Fprintf(w, "renamed %d record(s) (iss %d, itd %d, spc %d, adr %d); rewrote %d reference(s) in %d file(s); %d leftover(s). Nothing is committed.\n",
-		rep.total(), rep.Renamed["iss"], rep.Renamed["itd"], rep.Renamed["spc"], rep.Renamed["adr"], rep.References, rep.Files, len(rep.Leftovers))
+	fmt.Fprintf(w, "renamed %d record(s) (iss %d, itd %d, spc %d, adr %d, dcn %d); rewrote %d reference(s) in %d file(s); %d leftover(s). Nothing is committed.\n",
+		rep.total(), rep.Renamed["iss"], rep.Renamed["itd"], rep.Renamed["spc"], rep.Renamed["adr"], rep.Renamed["dcn"], rep.References, rep.Files, len(rep.Leftovers))
 }

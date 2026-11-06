@@ -126,9 +126,10 @@ func main() {
 		cfg = lint.ArmAgentDiff(cfg, *agentDiff)
 	}
 
+	// A rule's refusal can quote the repository's config, as runSlugNames' can.
 	findings, err := lint.Lint(cfg, root)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "record-lint:", scrubPaths(err, root))
+		fmt.Fprintln(os.Stderr, "record-lint:", termsafe.Sanitize(scrubPaths(err, root)))
 		os.Exit(2)
 	}
 
