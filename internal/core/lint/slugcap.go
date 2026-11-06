@@ -9,8 +9,8 @@ import (
 
 // ruleRecordSlugCap holds every record in an id-bearing store to the repository's
 // slug cap, the one value the minting verbs cut at (layered.RecordSlugCap). A verb
-// cannot write past it; a hand rename can, and this rule and the commit-msg hook
-// are what refuse that. Every committed name is judged by the value in force:
+// cannot write past it; a hand rename can, and this rule, and in the hook's own
+// repository the commit-msg hook, are what refuse that. Every committed name is judged by the value in force:
 // a name written under an earlier, wider cap has no standing of its own, so a
 // repository that lowers the cap renames what it left over the line
 // (cmd/record-slug-rename), or does not lower it.

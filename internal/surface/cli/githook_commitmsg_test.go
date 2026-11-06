@@ -395,6 +395,41 @@ func TestCommitMsgHookJudgesARenameOntoALongSlug(t *testing.T) {
 	}
 }
 
+// A copy is a new record too, and copy detection, which a person's git config can
+// turn on, reports it under a status of its own.
+func TestCommitMsgHookJudgesACopyOntoALongSlug(t *testing.T) {
+	c := newOwnRepoHookCase(t)
+	c.withRecordLint()
+	c.makeDecisionsDir()
+	c.git("config", "diff.renames", "copies")
+	short := hookDecisions + "dcn-2611050000000001-short.md"
+	body := strings.Repeat("a decision worth keeping word for word\n", 8)
+	if err := os.WriteFile(filepath.Join(c.dir, short), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c.git("add", short)
+	msg := filepath.Join(t.TempDir(), "msg")
+	if err := os.WriteFile(msg, []byte("docs: a decision\n\nAssisted-by: None\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := c.tryGit("commit", "-q", "-F", msg); err != nil {
+		t.Fatalf("a short slug was refused: %v\n%s", err, out)
+	}
+	if err := os.WriteFile(filepath.Join(c.dir, hookLongRel), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(c.dir, short), []byte(body+"and a line more\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c.git("add", short, hookLongRel)
+	if status := c.git("diff", "--cached", "--name-status"); !strings.Contains(status, "C") {
+		t.Fatalf("premise: git reports no copy:\n%s", status)
+	}
+	if out, err := c.tryGit("commit", "-q", "-F", msg); err == nil || !strings.Contains(out, "commit-msg: BLOCKED") {
+		t.Fatalf("a copy over the cap: %v\n%s", err, out)
+	}
+}
+
 func TestCommitMsgHookPassesADeclaredIssueMention(t *testing.T) {
 	c := newOwnRepoHookCase(t)
 	if refused, out := c.commitWith("a.txt", "fix: the walk behind iss-12\n\nRefs: iss-12\nAssisted-by: None\n"); refused {

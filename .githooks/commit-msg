@@ -50,14 +50,17 @@
 # runs it for, and the commit-msg hook `ahoy install --outbound` writes for a
 # managed repository does not run it.
 #
-# The hook also holds what the commit adds or renames under .abcd/ to the record
-# slug cap, at the end, with record-lint's rule: see the last block below.
+# In this repository alone, under the same test, the hook also holds what the
+# commit adds, renames or copies under .abcd/ to the record slug cap, at the end,
+# with record-lint's rule: see the last block below.
 #
 # REACH, stated rather than implied. git runs this hook for `git commit` (an
 # amend and a reword through `git commit` included) and for a `git merge` that
 # creates a commit. `git commit --no-verify`, `git rebase`, `git cherry-pick`,
 # `git am` and a message edited on the forge bypass it by construction; the CI
-# gate over the pull request's range is the backstop for all of them.
+# gate over the pull request's range is the backstop for all of them. The slug cap
+# reads the cap and each slug field from the working tree, leaving the commit's own
+# tree to the clean-tree gates.
 # `set` is dropped before its first use: a shadowed one would leave errexit off for
 # the whole hook. The fixed list below drops it again with the rest.
 unset -f set 2>/dev/null || true
@@ -412,8 +415,8 @@ case "$rc" in
     ;;
 esac
 
-# The record slug cap, for what this commit adds or renames under .abcd/, in the
-# hook's own repository only (iss-2611052241331003): any other repository a global
+# The record slug cap, for what this commit adds, renames or copies under .abcd/, in
+# the hook's own repository only (iss-2611052241331003): any other repository a global
 # dispatcher runs this hook for keeps its own names and its own config out of it.
 # The test is RS004's, on its own flag, because a merge brings records in and is
 # judged here though RS004 leaves it to the range check. A verb cuts a slug as it
@@ -422,10 +425,11 @@ esac
 # here, and the cap is this repository's own records.slug_cap. The names are read in
 # git's environment for this commit, so a partial commit answers from its temporary
 # index; everything after them runs with that environment unset, as above. A commit
-# that adds nothing under .abcd/ builds nothing here.
+# that adds nothing under .abcd/ builds nothing here. With --no-renames a rename or
+# copy lists its new name as an added path, whatever a person's diff.renames says.
 if [ "$own_repo" -eq 1 ]; then
   names="$work/added-names"
-  if ! git diff --cached --name-only --diff-filter=AR -z -- .abcd >"$names"; then
+  if ! git diff --cached --no-renames --name-only --diff-filter=A -z -- .abcd >"$names"; then
     echo "commit-msg: BLOCKED — could not read what this commit adds, so the record slug cap cannot judge it." >&2
     exit 1
   fi
