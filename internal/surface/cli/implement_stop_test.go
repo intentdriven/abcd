@@ -462,3 +462,50 @@ func TestARefusalNamesWhatItWrote(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 }
+
+// TestAStopTypedAgainSaysItStood: it changes nothing, and says since when.
+func TestAStopTypedAgainSaysItStood(t *testing.T) {
+	home := t.TempDir()
+	first, stderr, code := stopCLI(t, home, true, "--json", "implement", "stop")
+	if code != 0 {
+		t.Fatalf("the stop: %d %q", code, stderr)
+	}
+	var set stopOutput
+	if err := json.Unmarshal([]byte(first), &set); err != nil || set.Stood || set.SetAt == nil {
+		t.Fatalf("the stop: %q %v", first, err)
+	}
+	time.Sleep(20 * time.Millisecond)
+	again, stderr, code := stopCLI(t, home, true, "--json", "implement", "stop")
+	if code != 0 {
+		t.Fatalf("again: %d %q", code, stderr)
+	}
+	var stood stopOutput
+	if err := json.Unmarshal([]byte(again), &stood); err != nil || !stood.Stood || stood.SetAt == nil || !stood.SetAt.Equal(*set.SetAt) {
+		t.Fatalf("again: %q %v", again, err)
+	}
+	said, stderr, code := stopCLI(t, home, true, "implement", "stop")
+	if code != 0 || !strings.Contains(said, "has stood since "+set.SetAt.UTC().Format(time.RFC3339)) {
+		t.Fatalf("the words: %d %q %q", code, said, stderr)
+	}
+}
+
+// TestTheStopsFlagsNameNoValue: a flag's help takes a backquoted word as the name of its
+// value, which is no value a boolean or a run id's flag has.
+func TestTheStopsFlagsNameNoValue(t *testing.T) {
+	for _, tc := range []struct {
+		args  []string
+		wrong string
+	}{
+		{[]string{"implement", "stop", "--help"}, "--lift abcd"},
+		{[]string{"implement", "resume", "--help"}, "--take abcd"},
+		{[]string{"ahoy", "shared-folder", "--help"}, "--person abcd"},
+	} {
+		var out, errb bytes.Buffer
+		if code := Run(tc.args, &out, &errb); code != 0 {
+			t.Fatalf("%v: %d %q", tc.args, code, errb.String())
+		}
+		if strings.Contains(out.String(), tc.wrong) {
+			t.Fatalf("%v names a value:\n%s", tc.args, out.String())
+		}
+	}
+}

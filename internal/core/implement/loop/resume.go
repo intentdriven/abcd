@@ -246,6 +246,7 @@ func safeStop(s *RunStop) *RunStop {
 	}
 	out := *s
 	out.SetBy, out.Released = termsafe.Sanitize(s.SetBy), termsafe.Sanitize(s.Released)
+	out.PageFailed = termsafe.Sanitize(s.PageFailed)
 	out.Left = slices.Clone(s.Left)
 	for i, l := range out.Left {
 		out.Left[i].Lane, out.Left[i].Stage = termsafe.Sanitize(l.Lane), Stage(termsafe.Sanitize(string(l.Stage)))

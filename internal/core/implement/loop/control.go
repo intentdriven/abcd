@@ -93,6 +93,8 @@ type RunStop struct {
 	// FromFile says the stop was read from a stop file, which a lift removes; a
 	// signal's stop has none, and stays until a take-over.
 	FromFile bool `json:"from_file,omitempty"`
+	// PageFailed says why the day's page could not be written, "" when it could.
+	PageFailed string `json:"page_failed,omitempty"`
 }
 
 // StopLeft is what the stop left in one lane.
@@ -108,6 +110,9 @@ type StopLeft struct {
 	// Note says anything else: a receipt collected, an agent lost, work that
 	// could not be saved.
 	Note string `json:"note,omitempty"`
+	// ArmedPR is the pull request armed before the stop, which the forge can still merge
+	// under it, 0 when there is none.
+	ArmedPR int `json:"armed_pr,omitempty"`
 }
 
 // control is the file's whole shape.

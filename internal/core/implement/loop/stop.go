@@ -280,8 +280,12 @@ func stopRefusal(runID string, rec RunStop) error {
 	if !rec.FromFile {
 		remedy = "it came from a signal, and `abcd implement resume --take " + runID + "` takes the run over once it has settled; hand back any receipt you hold with `abcd implement receipt`, then stop"
 	}
-	return contend(StageStop, "", "", fmt.Sprintf("a stop set by %s at %s holds: %s is halted %s, and nothing further starts",
-		termsafe.Sanitize(rec.SetBy), rec.SetAt.UTC().Format(time.RFC3339), runID, state), remedy)
+	reason := fmt.Sprintf("a stop set by %s at %s holds: %s is halted %s, and nothing further starts",
+		termsafe.Sanitize(rec.SetBy), rec.SetAt.UTC().Format(time.RFC3339), runID, state)
+	if rec.PageFailed != "" {
+		reason += "; " + termsafe.Sanitize(rec.PageFailed)
+	}
+	return contend(StageStop, "", "", reason, remedy)
 }
 
 // stopOverDriveStop is the refusal where both a stop and a drive's own stop stand on a
@@ -306,6 +310,21 @@ func haltedByPerson(repoRoot, runID string) bool {
 // waitsForTakeOver says what a run a person's stop halted waits for.
 func waitsForTakeOver(runID string) string {
 	return fmt.Sprintf("a person's stop halted run %s, which waits for `abcd implement resume --take %s`", termsafe.Sanitize(runID), termsafe.Sanitize(runID))
+}
+
+// waitsForItsTakeOver says what a run a stop halted waits for, "" for a run no stop halted;
+// a record that cannot be read is said, and nothing is done on it.
+func waitsForItsTakeOver(repoRoot, runID string) string {
+	c, err := runControl(repoRoot, runID)
+	switch {
+	case err != nil:
+		return fmt.Sprintf("the control record of run %s cannot be read, so nothing is done for it: %s", termsafe.Sanitize(runID), termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+	case c.Stop == nil || c.Stop.HaltedAt == nil:
+		return ""
+	case c.Stop.FromFile:
+		return waitsForTakeOver(runID)
+	}
+	return fmt.Sprintf("a signal to a drive halted run %s, which waits for `abcd implement resume --take %s`", termsafe.Sanitize(runID), termsafe.Sanitize(runID))
 }
 
 // haltRun applies a stop in its order, one read from the file or one that did not
@@ -346,6 +365,9 @@ func haltRun(repoRoot, runID string, s runstop.Stop, steps Stages, o Options) (*
 		return nil, err
 	}
 	if rec.HaltedAt != nil {
+		if rec.FromFile && rec.PageFailed != "" {
+			return notePage(repoRoot, runID, rec, o), nil
+		}
 		return rec, nil
 	}
 	tab, tabErr := readProcs()
@@ -386,7 +408,7 @@ func haltRun(repoRoot, runID string, s runstop.Stop, steps Stages, o Options) (*
 	}
 	// The page says the person's stop holds and how to lift it, which a signal is not.
 	if rec.HaltedAt != nil && rec.FromFile {
-		composeStopPage(repoRoot, *rec, o)
+		return notePage(repoRoot, runID, rec, o), nil
 	}
 	return rec, nil
 }
@@ -560,6 +582,9 @@ func settleStop(repoRoot string, root *os.Root, st *State, c *control, tab *sess
 			continue
 		}
 		out := StopLeft{Lane: lane.ID, Stage: lane.Stage, Note: collected[lane.ID]}
+		if lane.PR > 0 && lane.Landing != nil && lane.Landing.Armed {
+			out.ArmedPR = lane.PR
+		}
 		live := slices.ContainsFunc(lane.Awaits, func(a Await) bool {
 			s := agentState(a, *c, tab, now)
 			return s == AgentAlive || s == AgentUnknown
@@ -778,21 +803,20 @@ func settleDueStop(repoRoot, runID string) bool {
 	return true
 }
 
-// composeStopPage rewrites the day's page whole from the records: the stop, and
-// every run on the machine it halted with what each left. Each halting rewrites
-// it, so the last run to end leaves a page naming them all. It holds no account's
-// name, which a page never does (itd-2611041549483696). Without a shared folder
-// nothing is written; a page that cannot be written changes nothing about the
-// stop.
-func composeStopPage(repoRoot string, rec RunStop, o Options) {
+// composeStopPage rewrites this account's page for the day whole from the records: the
+// stop, and every run this account can read that it halted, with what each left. Each
+// halting rewrites it, so the last run to end leaves a page naming them all. Every value
+// is masked as it is written, so none adds a line. It holds no account's name, which a
+// page never does (itd-2611041549483696). Without a shared folder nothing is written; a
+// page that cannot be written changes nothing about the stop, and the error says why.
+func composeStopPage(repoRoot string, rec RunStop, o Options) error {
 	home := o.stopHomeOf()
 	if home == "" {
-		return
+		return nil
 	}
 	now := o.now()
 	var b strings.Builder
-	fmt.Fprintf(&b, "# abcd, %s\n\n## Stop\n\nThe person's stop, set at %s, holds. Nothing further starts until they lift it.\n\n## Runs it halted\n\n",
-		now.UTC().Format(time.DateOnly), rec.SetAt.UTC().Format(time.RFC3339))
+	armed := false
 	for _, checkout := range machineCheckouts(repoRoot, home) {
 		root, err := os.OpenRoot(checkout)
 		if err != nil {
@@ -812,30 +836,84 @@ func composeStopPage(repoRoot string, rec RunStop, o Options) {
 			if err != nil {
 				continue
 			}
-			fmt.Fprintf(&b, "- %s (%s, in %s): halted, its claims let go\n", st.RunID, st.Key, fsutil.RedactHome(checkout))
+			fmt.Fprintf(&b, "- %s (%s, in %s): halted, its claims let go\n", termsafe.Sanitize(st.RunID), termsafe.Sanitize(st.Key), termsafe.Sanitize(fsutil.RedactHome(checkout)))
 			for _, l := range c.Stop.Left {
-				fmt.Fprintf(&b, "  - %s at %s", l.Lane, l.Stage)
+				fmt.Fprintf(&b, "  - %s at %s", termsafe.Sanitize(l.Lane), termsafe.Sanitize(string(l.Stage)))
 				if l.Aside != "" {
-					fmt.Fprintf(&b, ": %d file(s) saved aside at %s", l.Files, l.Aside)
+					fmt.Fprintf(&b, ": %d file(s) saved aside at %s", l.Files, termsafe.Sanitize(l.Aside))
 				}
 				if l.Note != "" {
-					fmt.Fprintf(&b, ": %s", l.Note)
+					fmt.Fprintf(&b, ": %s", termsafe.Sanitize(l.Note))
 				}
 				b.WriteString("\n")
+				if l.ArmedPR > 0 {
+					armed = true
+					fmt.Fprintf(&b, "  - %s\n", ArmedLine(l.ArmedPR))
+				}
 			}
 		}
 		root.Close()
 	}
-	_, _ = runstop.WritePage(home, now, []byte(termsafe.SanitizeBlock(b.String())))
+	still := ""
+	if armed {
+		still = " A pull request armed before the stop can still merge, and each is named below."
+	}
+	page := fmt.Sprintf("# abcd, %s\n\n## Stop\n\nThe person's stop, set at %s, holds. Nothing further starts until they lift it.%s\n\n## Runs it halted\n\n%s",
+		now.UTC().Format(time.DateOnly), rec.SetAt.UTC().Format(time.RFC3339), still, b.String())
+	_, err := runstop.WritePage(home, now, []byte(page))
+	return err
+}
+
+// ArmedLine says what a stop leaves of a pull request armed before it, which nothing disarms
+// on its own.
+func ArmedLine(pr int) string {
+	return fmt.Sprintf("pull request #%d was armed before the stop and can still merge: disarm it with `gh pr merge %d --disable-auto`, and take it out of the merge queue on its page if it is there", pr, pr)
+}
+
+// notePage writes the page for a run the stop halted and keeps in the run's account whether
+// it could, so the stop's answer can say; a later check tries again.
+func notePage(repoRoot, runID string, rec *RunStop, o Options) *RunStop {
+	why := ""
+	if err := composeStopPage(repoRoot, *rec, o); err != nil {
+		why = "the day's page could not be written: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))
+	}
+	if why == rec.PageFailed {
+		return rec
+	}
+	now := o.now()
+	_ = mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+		c, err := readControl(root, runID)
+		if err != nil || c.Stop == nil {
+			return false, err
+		}
+		c.Stop.PageFailed = why
+		if err := writeControl(root, runID, c); err != nil {
+			return false, err
+		}
+		note := why
+		if note == "" {
+			note = "the day's page was written"
+		}
+		st.Record = append(st.Record, Entry{At: now, Stage: StageStop, Note: note})
+		st.UpdatedAt = now
+		return true, nil
+	})
+	out := *rec
+	out.PageFailed = why
+	return &out
 }
 
 // machineCheckouts is every checkout whose runs this account can read: this
 // repository's worktrees and each checkout a driver noted, those that still
-// stand, this one first.
+// stand, this one first. A lane's own worktree is none of them: what it holds is
+// its agent's to write, and a run's state lives in the checkout that started it.
 func machineCheckouts(repoRoot, home string) []string {
-	out := []string{repoRoot}
+	out := []string{}
+	if !isLaneWorktree(repoRoot) {
+		out = append(out, repoRoot)
+	}
 	add := func(p string) {
-		if p != "" && fsutil.IsRealDir(p) && !slices.ContainsFunc(out, func(have string) bool { return samePath(repoRoot, have, p) }) {
+		if p != "" && !isLaneWorktree(p) && fsutil.IsRealDir(p) && !slices.ContainsFunc(out, func(have string) bool { return samePath(repoRoot, have, p) }) {
 			out = append(out, p)
 		}
 	}

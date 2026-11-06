@@ -148,7 +148,9 @@ type stopOutput struct {
 	Stopped bool       `json:"stopped"`
 	Lifted  bool       `json:"lifted,omitempty"`
 	SetAt   *time.Time `json:"set_at,omitempty"`
-	Path    string     `json:"path,omitempty"`
+	// Stood says the stop was already standing, and was left as it is.
+	Stood bool   `json:"stood,omitempty"`
+	Path  string `json:"path,omitempty"`
 	// Reach says which runs the stop reaches.
 	Reach string `json:"reach,omitempty"`
 	// Unreached names each stop that stands where this lift cannot reach it.
@@ -175,7 +177,8 @@ func newImplementStopCommand(asJSON *bool) *cobra.Command {
 			"hands out no stage and starts no agent. An agent in a call finishes that call and\n" +
 			"its receipt is collected. Then each lane's uncommitted work is saved aside, the\n" +
 			"run's reservation is released so a peer may take the work, and the day's page is\n" +
-			"written to the shared folder.\n\n" +
+			"written to this account's directory in the shared folder. A stop that stands is left\n" +
+			"as it is, and says since when.\n\n" +
 			"It takes hold across accounts where the shared folder was chosen in each account\n" +
 			"(`abcd ahoy shared-folder`). Without one the stop lives in " + abcdhome.Display(runstop.HomeStopFile) + "\n" +
 			"and reaches only this account's runs.\n\n" +
@@ -232,15 +235,19 @@ func newImplementStopCommand(asJSON *bool) *cobra.Command {
 			if _, chosen, _ := runstop.ReadSetting(home); !chosen {
 				reach = "this account's runs only: no shared folder was chosen (`abcd ahoy shared-folder`)"
 			}
-			out := stopOutput{Stopped: true, SetAt: &s.SetAt, Path: fsutil.RedactHome(s.Path), Reach: reach}
+			out := stopOutput{Stopped: true, SetAt: &s.SetAt, Stood: s.Stood, Path: fsutil.RedactHome(s.Path), Reach: reach}
 			return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) {
-				fmt.Fprintf(w, "stopped at %s: %s\n", s.SetAt.Format(time.RFC3339), reach)
+				if s.Stood {
+					fmt.Fprintf(w, "a stop has stood since %s, and it stays as it is: %s\n", s.SetAt.Format(time.RFC3339), reach)
+				} else {
+					fmt.Fprintf(w, "stopped at %s: %s\n", s.SetAt.Format(time.RFC3339), reach)
+				}
 				fmt.Fprintf(w, "each run takes it at its next move; lift it with `abcd implement stop --lift`\n")
 				fmt.Fprintf(w, "stop file: %s\n", termsafe.Sanitize(out.Path))
 			})
 		},
 	}
-	cmd.Flags().BoolVar(&lift, "lift", false, "lift the stop; a halted run then waits for `abcd implement resume --take`")
+	cmd.Flags().BoolVar(&lift, "lift", false, "lift the stop; a halted run then waits for a take-over (abcd implement resume --take)")
 	return cmd
 }
 

@@ -352,7 +352,7 @@ func TestASignalsHaltComposesNoPage(t *testing.T) {
 	if rec == nil || rec.HaltedAt == nil {
 		t.Fatalf("the signal's stop: %+v", rec)
 	}
-	if entries, _ := os.ReadDir(filepath.Join(folder, runstop.DigestDir)); len(entries) != 0 {
+	if entries, _ := os.ReadDir(filepath.Join(folder, runstop.DigestDirFor(os.Getuid()))); len(entries) != 0 {
 		t.Fatalf("a signal wrote a page: %v", entries)
 	}
 }

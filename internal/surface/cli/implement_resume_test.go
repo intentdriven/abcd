@@ -41,3 +41,16 @@ func TestImplementResumeTakeRefusesAnUnknownRun(t *testing.T) {
 		t.Fatalf("resume --take over nothing: %d %q %q", code, out.String(), errb.String())
 	}
 }
+
+// TestTheListingNamesWhatAStopCannotHold: a pull request armed before it, and a page it could
+// not write.
+func TestTheListingNamesWhatAStopCannotHold(t *testing.T) {
+	var b bytes.Buffer
+	renderListedRun(&b, loop.ListedRun{Stop: &loop.RunStop{SetBy: "someone", PageFailed: "the day's page could not be written: no room",
+		Left: []loop.StopLeft{{Lane: "lane-1", Stage: "land", Settled: true, ArmedPR: 7}}}})
+	for _, want := range []string{"gh pr merge 7 --disable-auto", "the day's page could not be written: no room"} {
+		if !strings.Contains(b.String(), want) {
+			t.Fatalf("the listing lacks %q:\n%s", want, b.String())
+		}
+	}
+}

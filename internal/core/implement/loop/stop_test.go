@@ -359,7 +359,7 @@ func TestTheStopComposesTheDaysPage(t *testing.T) {
 	o.Now = func() time.Time { return later }
 	wantStopRefusal(t, checkOnce(repo.Root(), runID, o))
 
-	page := filepath.Join(folder, runstop.DigestDir, later.UTC().Format(time.DateOnly)+".md")
+	page := filepath.Join(folder, runstop.DigestDirFor(os.Getuid()), later.UTC().Format(time.DateOnly)+".md")
 	got, err := os.ReadFile(page)
 	if err != nil {
 		t.Fatal(err)
@@ -396,7 +396,7 @@ func TestAStopOverMidnightNamesEveryRunItHalted(t *testing.T) {
 	o.Now = func() time.Time { return after }
 	wantStopRefusal(t, checkOnce(second.Root(), secondRun, o))
 
-	got, err := os.ReadFile(filepath.Join(folder, runstop.DigestDir, after.Format(time.DateOnly)+".md"))
+	got, err := os.ReadFile(filepath.Join(folder, runstop.DigestDirFor(os.Getuid()), after.Format(time.DateOnly)+".md"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -428,7 +428,7 @@ func TestThePageLeavesOutARunAnEarlierStopHalted(t *testing.T) {
 	}
 	wantStopRefusal(t, checkOnce(second.Root(), secondRun, o))
 
-	got, err := os.ReadFile(filepath.Join(folder, runstop.DigestDir, later.UTC().Format(time.DateOnly)+".md"))
+	got, err := os.ReadFile(filepath.Join(folder, runstop.DigestDirFor(os.Getuid()), later.UTC().Format(time.DateOnly)+".md"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1240,7 +1240,7 @@ func TestThePageNamesNoReleaseClause(t *testing.T) {
 	if c.Stop == nil || c.Stop.Released == "" {
 		t.Fatalf("the stop's account: %+v", c.Stop)
 	}
-	page, err := os.ReadFile(filepath.Join(folder, runstop.DigestDir, later.UTC().Format(time.DateOnly)+".md"))
+	page, err := os.ReadFile(filepath.Join(folder, runstop.DigestDirFor(os.Getuid()), later.UTC().Format(time.DateOnly)+".md"))
 	if err != nil {
 		t.Fatal(err)
 	}

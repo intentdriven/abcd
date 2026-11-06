@@ -107,6 +107,9 @@ func renderListedRun(w io.Writer, r loop.ListedRun) {
 			state = "halted: " + s.Released
 		}
 		fmt.Fprintf(w, "  stop: set by %s; %s\n", termsafe.Sanitize(s.SetBy), termsafe.Sanitize(state))
+		if s.PageFailed != "" {
+			fmt.Fprintf(w, "    %s\n", termsafe.Sanitize(s.PageFailed))
+		}
 		for _, l := range s.Left {
 			line := fmt.Sprintf("%s at %s", l.Lane, l.Stage)
 			if l.Aside != "" {
@@ -116,6 +119,9 @@ func renderListedRun(w io.Writer, r loop.ListedRun) {
 				line += ": " + l.Note
 			}
 			fmt.Fprintf(w, "    left %s\n", termsafe.Sanitize(line))
+			if l.ArmedPR > 0 {
+				fmt.Fprintf(w, "    %s\n", loop.ArmedLine(l.ArmedPR))
+			}
 		}
 	}
 	for _, l := range r.Lanes {

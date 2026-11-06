@@ -51,7 +51,8 @@ const (
 	// LiftLogFile is the person's own account of each stop set and lifted, in
 	// abcd's home.
 	LiftLogFile = "stop-log.jsonl"
-	// DigestDir holds the dated pages in the shared folder.
+	// DigestDir opens the name of each account's directory of dated pages in the shared
+	// folder (DigestDirFor).
 	DigestDir = "abcd-digest"
 	// MaxStopBytes bounds the stop file: what the verb writes is a few dozen
 	// bytes.
@@ -81,6 +82,8 @@ type Stop struct {
 	UID   int       `json:"uid"`
 	SetAt time.Time `json:"set_at"`
 	Path  string    `json:"path"`
+	// Stood is set by Set on a stop that was already standing, which it left in place.
+	Stood bool `json:"stood,omitempty"`
 }
 
 // Pin is the shared folder and the person a run started under.
@@ -141,6 +144,9 @@ func Suggested() string {
 
 // stopDirName is the person's own directory in a shared folder.
 func stopDirName(person int) string { return StopDirName + "-" + strconv.Itoa(person) }
+
+// DigestDirFor is the directory in the shared folder that holds one account's pages.
+func DigestDirFor(uid int) string { return DigestDir + "-" + strconv.Itoa(uid) }
 
 // stopPath is where the person's stop lives in the folder.
 func stopPath(folder string, person int) string {
@@ -649,14 +655,21 @@ func target(home string) (dir, leaf string, err error) {
 
 // Set writes the stop from this account. A path a run would refuse is reported
 // and left alone: the person is never told a stop took hold that no run honours.
+// A valid stop that stands is left as it is, keeping its time, since the runs it
+// has reached know it by that; the result's Stood says so.
 func Set(home string, now time.Time) (Stop, error) {
 	dir, leaf, err := target(home)
 	if err != nil {
 		return Stop{}, err
 	}
 	p := filepath.Join(dir, leaf)
-	if _, refused, _ := judge(p, os.Getuid()); refused != "" {
+	standing, refused, _ := judge(p, os.Getuid())
+	if refused != "" {
 		return Stop{}, errors.New(refused)
+	}
+	if standing != nil {
+		standing.Stood = true
+		return *standing, nil
 	}
 	if leaf == HomeStopFile {
 		h, err := fsutil.EnsureHomeScope(home, abcdhome.Rel(), abcdhome.DirMode)
@@ -778,9 +791,9 @@ func logEvent(home, event string, now time.Time) error {
 	return fsutil.AppendLineIn(root, LiftLogFile, line, abcdhome.FileMode)
 }
 
-// WritePage writes one dated page whole into the shared folder, as this
-// account, readable by every account on the machine, and returns its path; ""
-// when no folder was chosen, which writes nothing.
+// WritePage writes one dated page whole into this account's directory in the shared
+// folder, readable by every account on the machine, and returns its path; "" when no
+// folder was chosen, which writes nothing.
 func WritePage(home string, day time.Time, data []byte) (string, error) {
 	s, ok, err := ReadSetting(home)
 	if err != nil || !ok {
@@ -794,17 +807,18 @@ func WritePage(home string, day time.Time, data []byte) (string, error) {
 		return "", err
 	}
 	defer root.Close()
-	if err := root.Mkdir(DigestDir, sharedDirMode); err != nil && !errors.Is(err, fs.ErrExist) {
+	dir := DigestDirFor(os.Getuid())
+	if err := root.Mkdir(dir, sharedDirMode); err != nil && !errors.Is(err, fs.ErrExist) {
 		return "", err
 	}
-	fi, err := root.Lstat(DigestDir)
+	fi, err := root.Lstat(dir)
 	if err != nil {
 		return "", err
 	}
 	if uid, ok := ownerOf(fi); !ok || !fi.IsDir() || uid != os.Getuid() {
-		return "", fmt.Errorf("%s in the shared folder is not a directory this account made", DigestDir)
+		return "", fmt.Errorf("%s in the shared folder is not a directory this account made", dir)
 	}
-	rel := DigestDir + "/" + day.UTC().Format(time.DateOnly) + ".md"
+	rel := dir + "/" + day.UTC().Format(time.DateOnly) + ".md"
 	if err := fsutil.WriteFileAtomicInRoot(root, rel, data, sharedFileMode); err != nil {
 		return "", err
 	}

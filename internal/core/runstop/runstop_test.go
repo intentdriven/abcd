@@ -326,7 +326,7 @@ func TestDigestPageRewrittenWhole(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := filepath.Join(folder, DigestDir, "2026-11-04.md"); p != want {
+	if want := filepath.Join(folder, DigestDirFor(os.Getuid()), "2026-11-04.md"); p != want {
 		t.Fatalf("page at %q, want %q", p, want)
 	}
 	if _, err := WritePage(home, day, []byte("second\n")); err != nil {
@@ -882,4 +882,75 @@ func TestAStopDirectoryThatCannotBeChangedSaysWhy(t *testing.T) {
 	if !errors.Is(err, syscall.EROFS) || strings.Contains(err.Error(), "administrator") {
 		t.Fatalf("ensureStopDir = %v", err)
 	}
+}
+
+// TestASecondSetKeepsTheStopThatStands: typing the stop again leaves it as it is, at the time
+// it was set, and says so; the runs it has reached read it as one stop.
+func TestASecondSetKeepsTheStopThatStands(t *testing.T) {
+	home, _ := world(t)
+	first, err := Set(home, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Stood {
+		t.Fatalf("a new stop says it stood: %+v", first)
+	}
+	time.Sleep(20 * time.Millisecond)
+	again, err := Set(home, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !again.Stood || !again.SetAt.Equal(first.SetAt) {
+		t.Fatalf("the second set: %+v, the first: %+v", again, first)
+	}
+	if r := ReadPinned(home, nil); r.Stop == nil || !r.Stop.SetAt.Equal(first.SetAt) {
+		t.Fatalf("the stop in force moved: %+v, the first: %+v", r.Stop, first)
+	}
+}
+
+// TestEachAccountHasItsOwnPageDirectory: a page written by one account leaves another's
+// directory alone, so a second account running under the same stop has somewhere to write.
+func TestEachAccountHasItsOwnPageDirectory(t *testing.T) {
+	home, folder := world(t)
+	if got, want := DigestDirFor(501), DigestDir+"-501"; got != want {
+		t.Fatalf("the directory for 501 is %q, want %q", got, want)
+	}
+	if err := os.WriteFile(filepath.Join(folder, DigestDir), []byte("something else\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p, err := WritePage(home, time.Date(2026, 11, 4, 18, 0, 0, 0, time.UTC), []byte("mine\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(folder, DigestDirFor(os.Getuid()), "2026-11-04.md"); p != want {
+		t.Fatalf("page at %q, want %q", p, want)
+	}
+}
+
+// TestAPlantedPageDirectoryIsRefused: a link or a file at the account's directory is not
+// written through.
+func TestAPlantedPageDirectoryIsRefused(t *testing.T) {
+	day := time.Date(2026, 11, 4, 18, 0, 0, 0, time.UTC)
+	t.Run("a file", func(t *testing.T) {
+		home, folder := world(t)
+		if err := os.WriteFile(filepath.Join(folder, DigestDirFor(os.Getuid())), []byte("x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := WritePage(home, day, []byte("mine\n")); err == nil {
+			t.Fatal("a page was written through a file")
+		}
+	})
+	t.Run("a link", func(t *testing.T) {
+		home, folder := world(t)
+		elsewhere := t.TempDir()
+		if err := os.Symlink(elsewhere, filepath.Join(folder, DigestDirFor(os.Getuid()))); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := WritePage(home, day, []byte("mine\n")); err == nil {
+			t.Fatal("a page was written through a link")
+		}
+		if entries, _ := os.ReadDir(elsewhere); len(entries) != 0 {
+			t.Fatalf("the page reached through the link: %v", entries)
+		}
+	})
 }

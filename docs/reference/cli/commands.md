@@ -3680,7 +3680,8 @@ lift the stop. Every run reads the stop before its next move: it opens no lane,
 hands out no stage and starts no agent. An agent in a call finishes that call and
 its receipt is collected. Then each lane's uncommitted work is saved aside, the
 run's reservation is released so a peer may take the work, and the day's page is
-written to the shared folder.
+written to this account's directory in the shared folder. A stop that stands is left
+as it is, and says since when.
 
 It takes hold across accounts where the shared folder was chosen in each account
 (`abcd ahoy shared-folder`). Without one the stop lives in ~/.abcd.noindex/stop.json
@@ -3703,7 +3704,7 @@ No network request.
 **Flags:**
 
 ```
-      --lift abcd implement resume --take   lift the stop; a halted run then waits for abcd implement resume --take
+      --lift   lift the stop; a halted run then waits for a take-over (abcd implement resume --take)
 ```
 
 **Example:**
