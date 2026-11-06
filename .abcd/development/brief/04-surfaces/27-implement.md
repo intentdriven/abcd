@@ -706,13 +706,14 @@ no stop. A folder others can write needs the sticky bit and an owner that is roo
 person, and each parent above it is held to the same rule, so another account can remove
 nothing and move nothing away.
 
-One check stands before every move, and every entry to a move makes it.
+One check stands before every move, and every entry to a move makes it. The release and
+the discard of a held lane, a person's decisions over it, do not make it.
 Under a stop no lane opens, no stage is handed out and no agent starts, and the run
 record takes an entry naming who set it and when. A receipt is collected as
 ever, and the lane goes no further. An agent is live by its launch's process, or for
 a host's agent while its driver lives, or with no driver recorded for one reservation
-lease. A step killed outright leaves its agent unknown until the claim's term ends, and
-an unknown agent is never restarted. While one is live its lane is left as it stands. Then the lane's uncommitted work is
+lease. A step killed outright leaves its agent unknown until the claim's term ends. A take-over
+names an unknown agent and leaves it to an explicit restart, which does not judge its state. While one is live its lane is left as it stands. Then the lane's uncommitted work is
 saved aside as a restart saves it, an agent lost is marked kept, and with every lane
 settled, a save that failed holding its lane, the run's reservation is released and the run is halted.
 A run fixes the shared folder and the person at its start, in its control record, and
@@ -733,17 +734,20 @@ record that has since finished on the default branch has nothing to reserve, and
 mark. A signal's stop has no file to lift, and
 stays. A configuration changed during the run holds the save as it refuses a restart, and a
 worktree that no longer stands holds nothing back. A stop lifted before the halt lets
-the run go on, and a settled lane's agent is told again. The day's page,
-`<folder>/abcd-digest/<date>.md`, is rewritten whole at each halting, naming the stop,
-every run it halted and what each left, and no account. A halted run stays halted when
+the run go on, and a settled lane's agent is told again. Each account has its own page for the day,
+`<folder>/abcd-digest-<uid>/<date>.md`, rewritten whole at each halting in that account, naming the stop,
+every run of that account's it halted and what each left, and no account's name. A page that cannot be
+written changes nothing about the stop: its answer and the listing say so, and a later check tries again.
+A pull request armed before the stop can still merge under it: the stop's account, the page and the
+listing name each with its disarm command, and nothing disarms it on its own. A halted run stays halted when
 the stop lifts, until a take-over reserves it again. A stop that does not come from the file,
 the terminal drive's first interrupt, takes the same order and writes no page.
 
 A run records who drives it in `control.json`, beside its state: the live driver
 (session, process, start time) and each in-flight launch with its route. One driver
 steps a run: each step claims it, refused at exit 3 while another's process is alive.
-The resume verb lists every unfinished run on the machine from those records and writes
-nothing. Taking a run over claims the driver, refused too while the process table cannot
+The resume verb lists every unfinished run this account can read from those records and writes
+nothing. A lane's own worktree is not read for runs, by the listing or the page. Taking a run over claims the driver, refused too while the process table cannot
 say whether a recorded driver is gone, collects each receipt that has arrived before
 anything else, reserves again what a stop released, saves aside and
 names what a gone agent left, and re-tells its await; the next step starts the fresh

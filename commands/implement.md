@@ -896,11 +896,15 @@ terminal or under a host session, and a lift or a choice of folder where it cann
 believe the runs should stop or go on, and leave the command to them. A stop reads
 as a refusal at the stage `stop`, exit 3, from `implement step`, `abcd build` and
 `abcd drain`: stop working when you meet it. `implement receipt` is not refused, so
-hand back a receipt you hold; the lane goes no further. Under a stop an agent in a
+hand back a receipt you hold; the lane goes no further. `implement step --release` and
+`--discard`, a person's decisions over a held lane, do not make the check. Under a stop an agent in a
 call finishes it and its receipt is collected; with no agent live each lane's
 uncommitted work is saved aside as a restart saves it; then the run's reservation
-is released, so a peer may take the work, and the day's page is written to the
-shared folder. A save that fails holds the lane and the claims. A stop file any
+is released, so a peer may take the work, and the day's page is written to this account's
+directory in the shared folder, naming the stop and every run of this account's it halted. A
+page that cannot be written changes nothing about the stop: its answer and the listing say so. A
+pull request armed before the stop can still merge under it: the page and the listing name each
+with its disarm command, and nothing disarms it on its own. A save that fails holds the lane and the claims. A stop file any
 other account wrote, a symlink or an oversized file is no stop, and each step's answer names it.
 A run fixes the shared folder at its start and reads it before each move, with the
 platform's shared folder for the account it expects. A setting that cannot be read, that has gone or changed during the run, or a folder the run
@@ -919,7 +923,7 @@ Every entry to a move makes the one check, so a driver that steps through the lo
 takes the stop without asking for it.
 
 **`implement resume` is how the next session picks a run up.** Bare, it writes
-nothing and uses no network: every unfinished run on the machine with its driver
+nothing and uses no network: every unfinished run this account can read with its driver
 alive or gone, what a stop left, and each lane's stage, each agent alive, lost or
 unknown, each receipt that arrived uncollected, its pull request, how far origin's
 default branch as last fetched has moved past its base, and the files it holds
