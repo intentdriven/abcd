@@ -21,7 +21,7 @@ production_mode: hand-written
 ## Why This Matters
 
 Typed links: `builds_on`
-[itd-2611031342011261](itd-2611031342011261-every-agent-abcd-launches-for-a-session.md)
+[itd-2611031342011261](../planned/itd-2611031342011261-every-agent-abcd-launches-for-a-session.md)
 (the per-session launch ledger, which owns what each agent cost). This draft owns
 none of that figure. Token cost per spec and size classes stay with
 [itd-2609292107351737](itd-2609292107351737-every-development-session-records-what.md),
