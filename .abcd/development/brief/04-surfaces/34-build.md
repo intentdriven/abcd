@@ -882,7 +882,8 @@ and finds what it made rather than making it twice. The lane stays at `land`
 until the last step, but for the review round its records commit takes where the
 mode is `auto`, back at `validate`, and a sync.
 
-1. It checks the lane's worktree is clean and its branch is at the head the
+1. It checks the lane's worktree is clean, an uncommitted edit to the lane's own
+   spec record aside, which its commit carries, and its branch is at the head the
    validators judged, and decides whether the landing closes the spec: the
    lane that took the fidelity audit does.
 2. In the lane's worktree it runs the spec's close (which ships the intent
