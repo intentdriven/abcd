@@ -885,8 +885,8 @@ func TestAReviewRequestShowsEveryFileBesideOneItLists(t *testing.T) {
 		t.Helper()
 		got, err := f.requestOf(t)
 		if err != nil {
-			if !strings.Contains(err.Error(), "the lane's diff") {
-				t.Fatalf("the request cannot be composed, for its diff: %v", err)
+			if !strings.Contains(err.Error(), "does not hold each file the diff changes") {
+				t.Fatalf("the request cannot be composed because a file is missing from its text: %v", err)
 			}
 			return
 		}
@@ -908,6 +908,8 @@ func TestAReviewRequestShowsEveryFileBesideOneItLists(t *testing.T) {
 		})
 		wants(t, f)
 	})
+	// This row depends on git honouring core.precomposeunicode, which it does only on macOS:
+	// a run elsewhere shows both names and says nothing of the comparison.
 	t.Run("a name that composes to another's", func(t *testing.T) {
 		f := newLandFixture(t, queueRuleset("MERGE"))
 		l := f.validatedOnce(t)
@@ -984,7 +986,7 @@ func TestAValidatorBriefNamesGitsOwnTextDiff(t *testing.T) {
 	was := l.HeadSHA
 	head := f.atRoundHead(t, l, func() {
 		landWrite(t, l.Worktree, ".gitattributes", "*.md -diff\n")
-		landWrite(t, l.Worktree, "cmd/nul.bin", "\x00\n")
+		landWrite(t, l.Worktree, "cmd/nul.bin", "\xff\x00\n")
 		landWrite(t, l.Worktree, plannedIntentRel, landRead(t, l.Worktree, plannedIntentRel)+line+"\n")
 	})
 	f.standIn(t, l.Worktree, f.repo.Git("-C", l.Worktree, "rev-parse", head+":"+plannedIntentRel), f.repo.Git("-C", l.Worktree, "rev-parse", was+":"+plannedIntentRel))
@@ -1015,11 +1017,13 @@ func TestAValidatorBriefNamesGitsOwnTextDiff(t *testing.T) {
 	if strings.Contains(string(brief), "ls-tree") {
 		t.Errorf("the brief asks of a file what its kind is, not its size:\n%s", brief)
 	}
-	if m := regexp.MustCompile("`(git -C \\S+ --no-replace-objects cat-file blob \\S+:<path> [^`]*)`").FindStringSubmatch(string(brief)); m == nil {
+	if m := regexp.MustCompile("`(git -C \\S+ --no-replace-objects cat-file blob '\\S+:<path>' [^`]*)`").FindStringSubmatch(string(brief)); m == nil {
 		t.Errorf("the brief names the test of a file's kind:\n%s", brief)
 	} else {
 		for path, want := range map[string]string{"cmd/nul.bin": "1", plannedIntentRel: "0"} {
-			out, err := exec.Command("sh", "-c", strings.ReplaceAll(m[1], "<path>", path)).CombinedOutput()
+			cmd := exec.Command("sh", "-c", strings.ReplaceAll(m[1], "<path>", path))
+			cmd.Env = append(os.Environ(), "LC_ALL=en_US.UTF-8") // as a person's shell has it
+			out, err := cmd.CombinedOutput()
 			if err != nil || strings.TrimSpace(string(out)) != want {
 				t.Errorf("the test of %s counts %s NUL bytes: %q %v", path, want, out, err)
 			}

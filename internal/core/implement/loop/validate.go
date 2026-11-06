@@ -599,7 +599,7 @@ func writeValidatorBrief(c Context, lane Lane, r ValidationRound, v *ValidatorRu
 		p("- the lane: %s, spec step %d, %q\n", lane.ID, lane.SpecStep, lane.StepTitle)
 	}
 	p("- the worktree: `%s`, branch `%s`\n", lane.Worktree, lane.Branch)
-	p("- the lane's diff: `%s..%s` (`git -C %s %s %s..%s`); `--text` prints a binary's bytes too, so you may leave out with `':(exclude)<path>'` a file in which `git -C %s --no-replace-objects cat-file blob %s:<path> | head -c %d | tr -dc '\\000' | wc -c` counts a NUL; read any other, and a file left out is unread: a verdict passes over one only by naming it and saying its kind fits its path and the lane, and otherwise it is a finding\n", lane.BaseSHA, r.HeadSHA, lane.Worktree, readerDiff, lane.BaseSHA, r.HeadSHA, lane.Worktree, r.HeadSHA, gitBinaryProbeBytes)
+	p("- the lane's diff: `%s..%s` (`git -C %s %s %s..%s`); `--text` prints a binary's bytes too, so you may leave out with `':(exclude)<path>'` a file in which `git -C %s --no-replace-objects cat-file blob '%s:<path>' | head -c %d | LC_ALL=C tr -dc '\\000' | wc -c` counts a NUL; read any other, and a file left out is unread: a verdict passes over one only by naming it and saying its kind fits its path and the lane, and otherwise it is a finding\n", lane.BaseSHA, r.HeadSHA, lane.Worktree, readerDiff, lane.BaseSHA, r.HeadSHA, lane.Worktree, r.HeadSHA, gitBinaryProbeBytes)
 	p("- the implementer's report: `%s`\n", reportPathOf(c, lane, lane.Receipt))
 	for _, prev := range lane.Validation {
 		if prev.Round < r.Round && prev.Fix != "" {
