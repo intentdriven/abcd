@@ -176,7 +176,7 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 // on the nightly run and on a release cut alike. The suite ran as one job until 2026-11-04, whose ceiling rose from
 // 45 to 85 as its runs grew (dcn-2610181756328249, dcn-2610282036219503) and which
 // still reached that ceiling on slow runners (iss-2610181757540736). A third of
-// the slowest passing run is about 30 minutes, so 50 is half as much again.
+// the slowest passing run was about 30 minutes, so 50 is half as much again.
 const checkMacOSCeilingMinutes = 50
 
 // checkUbuntuCeilingMinutes is the check job's ceiling on the ubuntu runner: 30
