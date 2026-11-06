@@ -901,7 +901,7 @@ files; the verb itself refuses a caller with no
 terminal or under a host session, and a lift or a choice of folder where it cannot tell whether one is above it. A stop is not the stop a drive keeps on a run whose state changed: a run can have both, nothing is settled while both stand, and neither's end answers for the other. Tell the person why you
 believe the runs should stop or go on, and leave the command to them. A stop reads
 as a refusal at the stage `stop`, exit 3, from `implement step`, `abcd build` and
-`abcd drain`: stop working when you meet it. `implement receipt` is not refused, so
+`abcd drain`, and as a refusal at exit 3 from `abcd land`: stop working when you meet it. `implement receipt` is not refused, so
 hand back a receipt you hold; the lane goes no further. `implement step --release` and
 `--discard`, a person's decisions over a held lane, do not make the check. Under a stop an agent in a
 call finishes it and its receipt is collected; with no agent live each lane's
@@ -910,7 +910,8 @@ is released, so a peer may take the work, and the day's page is written to this 
 directory in the shared folder, naming the stop and every run of this account's it halted in this repository's worktrees and each checkout a driver worked in. A
 page that cannot be written changes nothing about the stop: its answer and the listing say so. A
 pull request armed before the stop can still merge under it: the page and the listing's text name each
-with its disarm command, and nothing disarms it on its own. A save that fails holds the lane and the claims. A stop file any
+with its disarm command, and nothing disarms it on its own. A drain's move does nothing for a parked run
+with the stop's mark, a merged lane's last step included, until the take-over or the lift that lets it go on. A save that fails holds the lane and keeps the claims only while something renews them, and under a stop in force only a drive still in an agent's call or a preflight renews a parked run's, which otherwise lapses at its lease with the work it could not take still uncommitted in its worktree and nowhere else. A stop file any
 other account wrote, a symlink or an oversized file is no stop, and each step's answer names it.
 A run fixes the shared folder at its start and reads it before each move, with the
 platform's shared folder for the account it expects. A setting that cannot be read, that has gone or changed during the run, or a folder the run
@@ -918,7 +919,9 @@ should read whose stop cannot be looked at,
 holds the run at the stage `stop`, exit 3, with nothing let go: tell the person, who puts it back.
 A home that cannot be found holds it the same way. A take-over needs a read that saw clearly.
 A renewal that falls due under a stop settles the run first; with no agent left in its call
-and its work saved it no longer renews, and work a save could not take keeps the claim. A
+and its work saved it no longer renews. Work a save could not take stays uncommitted in its
+worktree and nowhere else, and its claim lapses at its lease unless a gated waiter, `abcd implement status` or a drive still
+in an agent's call or a preflight renews it; only that drive renews a run parked at land. A
 lift names any stop it cannot reach. A stop another account left is not honoured, and each
 step's answer and the listing name it.
 

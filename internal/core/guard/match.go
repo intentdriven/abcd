@@ -1570,8 +1570,8 @@ func flagMatches(alt, arg string, glob bool) bool {
 }
 
 // flagValueHit reports whether the token at i SETS one of the flag
-// alternatives to one of the accepted values. All three spellings a shell user
-// reaches for are read — `-X DELETE`, `-XDELETE`, `--method=DELETE` — because a
+// alternatives to one of the accepted values. Every spelling a shell user
+// reaches for is read — `-X DELETE`, `-XDELETE`, `--method=DELETE`, `-iX DELETE` — because a
 // constraint another spelling of the same call steps past is not one. A
 // globbed flag or value token is compared as a pattern in the separate-token
 // form; the attached forms stay literal (the floor flagMatches names). The
@@ -1588,9 +1588,7 @@ func flagValueHit(fv FlagValue, tokens []string, i int, glob func(int) bool) boo
 	accepts := func(got string, glob bool) bool {
 		switch {
 		case fv.Shape != "":
-			return flagValueShapeHolds(fv.Shape, got)
-		case fv.ByLead && isUnknown(got):
-			return acceptsByLead(fv.Values, knownLead(got))
+			return flagValueShapeHolds(fv.Shape, got, glob)
 		}
 		return acceptsValue(fv.Values, got, glob)
 	}
@@ -1604,8 +1602,9 @@ func flagValueHit(fv FlagValue, tokens []string, i int, glob func(int) bool) boo
 		// accepts.
 		if unknownFlagCouldBe(arg, alt) {
 			// A shape is about the setting's text, and an unknown dash-word is
-			// on every line that has one, so the setting is still read.
-			if fv.Shape == "" {
+			// on every line that has one, so the setting is still read. A field's
+			// setting can be attached to the dash-word itself, whatever it holds.
+			if fv.Shape == "" || fv.Shape == ShapeRefForceField {
 				return true
 			}
 			if accepts(arg, false) || (i+1 < len(tokens) && accepts(tokens[i+1], glob(i+1))) {
@@ -1613,6 +1612,10 @@ func flagValueHit(fv FlagValue, tokens []string, i int, glob func(int) bool) boo
 			}
 		}
 		k := knownText(arg)
+		at := -1 // where a short flag sits in a cluster of single-letter flags
+		if isShortFlag(alt) {
+			at = strings.IndexByte(k, alt[1])
+		}
 		switch {
 		case k == alt || (glob(i) && flagShaped(k) && globMatches(k, alt)):
 			// The separate-token form: the value is the next argument.
@@ -1634,6 +1637,16 @@ func flagValueHit(fv FlagValue, tokens []string, i int, glob func(int) bool) boo
 			}
 		case isShortFlag(alt) && len(k) > len(alt) && strings.HasPrefix(k, alt):
 			if accepts(k[len(alt):], false) {
+				return true
+			}
+		case at > 1 && isShortCluster(k[:at]):
+			// A short flag at the end of a cluster takes its value as it does alone:
+			// `-iF x`, `-iFx` or `-iF=x`.
+			if at+1 == len(k) {
+				if i+1 < len(tokens) && accepts(tokens[i+1], glob(i+1)) {
+					return true
+				}
+			} else if accepts(strings.TrimPrefix(k[at+1:], "="), false) {
 				return true
 			}
 		}
@@ -1658,18 +1671,6 @@ func acceptsValue(values []string, got string, glob bool) bool {
 			return true
 		}
 		if glob && globMatches(strings.ToLower(got), strings.ToLower(want)) {
-			return true
-		}
-	}
-	return false
-}
-
-// acceptsByLead reports whether a setting whose text is fixed only up to lead
-// can still become one of values (FlagValue.ByLead).
-func acceptsByLead(values []string, lead string) bool {
-	lead = strings.ToLower(lead)
-	for _, want := range values {
-		if want != "" && strings.HasPrefix(strings.ToLower(want), lead) {
 			return true
 		}
 	}

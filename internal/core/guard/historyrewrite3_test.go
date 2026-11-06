@@ -183,3 +183,49 @@ func TestCaseLabelIsNoDashedGitProgram(t *testing.T) {
 		})
 	}
 }
+
+// TestARefMovedWithForceIsReadFromEverySpellingGHSends: gh's -F converts true, whole numbers
+// and null and reads @file, its -f sends text, and the rule asks only whether force is off.
+func TestARefMovedWithForceIsReadFromEverySpellingGHSends(t *testing.T) {
+	const ref = `gh api -X PATCH repos/o/r/git/refs/heads/main `
+	bad := []verdictCase{}
+	for _, field := range []string{
+		`-F force=true`, `-f force=true`, `-F force=TRUE`, `-f force=True`,
+		`-F force=1`, `-f force=1`, `-F force=2`, `-F force=-1`, `-F force=+1`, `-F force=01`,
+		`-f force=t`, `-f force=T`, `-f force=y`, `-f force=yes`, `-f force=on`, `-f force=no`, `-f force=off`,
+		`-F force=@flag.txt`, `-F force=@-`, `-F force={owner}`,
+		`-F 'force[]=1'`, `-F 'force[x]=1'`, `-f 'force[]=true'`,
+		`-F Force=1`, `-F FORCE=1`, `-F 'force= false'`,
+		`--field force=1`, `--field=force=1`, `--raw-field force=1`, `--raw-field=force=1`, `-Fforce=1`, `-fforce=1`,
+		`-F "force=1"`, `-F force=f"$X"`, `-F force=false"$X"`, `-F force=1"$X"`, `-F force=$(cat f)`,
+		`-F "$K=1"`, `-F "f$K=1"`, `-F "force$K=1"`, `-F "force[$K]=1"`,
+		`-F forc?=1`, `-F force=tru?`, `-$F`, `-$F sha=abc`,
+		`-F force=false -F force=1`, `-F sha=abc -f force=1`,
+		`-iF force=true`, `-if force=1`, `-iFforce=1`, `-ifforce=true`, `-iF=force=1`, `-qiF force=1`,
+	} {
+		bad = append(bad, verdictCase{ref + field, VerdictBlock, "gh-api-ref-force"})
+	}
+	runVerdictCases(t, bad)
+	good := []string{}
+	for _, field := range []string{
+		`-F force=false`, `-f force=false`, `--field force=false`, `--raw-field=force=false`, `-Fforce=false`,
+		`-F force=False`, `-F force=FALSE`, `-F force=0`, `-f force=0`, `-F force=null`, `-F force=`, `-f force=`,
+		`-f sha=abc1234`, `-F sha="$SHA"`, `-F forced=1`, `-F 'x[force]=1'`, `-f notforce=1`, `-f message=force=1`,
+		`-F forc?=false`, `-iF force=false`, `-iFforce=false`, `-iF sha=abc`, `-if sha=abc`,
+	} {
+		good = append(good, ref+field)
+	}
+	bad = bad[:0]
+	for _, line := range []string{
+		`gh api -iX PATCH repos/o/r/git/refs/heads/main -F force=1`,
+		`gh api -iXPATCH repos/o/r/git/refs/heads/main -F force=1`,
+	} {
+		bad = append(bad, verdictCase{line, VerdictBlock, "gh-api-ref-force"})
+	}
+	runVerdictCases(t, bad)
+	good = append(good,
+		`gh api -X PATCH repos/o/r/pulls/1 -F force=1`,
+		`gh api repos/o/r/git/refs/heads/main -F force=1 -X GET`,
+	)
+	assertAllowed(t, good)
+}

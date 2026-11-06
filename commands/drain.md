@@ -660,7 +660,16 @@ what it did in `next`:
   only while such a lane is parked. A lane the landing will not finish (its branch moved past what
   landed, a worktree with changes, its branch checked out in another
   checkout, which the drain names, or a pushed head git cannot read) is named
-  in `next` and the move goes on.
+  in `next` and the move goes on. A run a stop's mark stands on is not finished, synced
+  or queued, whatever its pull request says: it is named in `next` and in `parked` as
+  `stop-holds`, with what takes it up. While the read refuses a stop file, a
+  run with work a save could not take has its reservation renewed. A read that holds the run
+  refuses the move first, so only a drive still in an agent's call or a preflight renews it then. Under a stop in force only a drive
+  still in an agent's call or a preflight renews it, and once none is: a run that settles releases its reservation, and
+  one with work a save could not take leaves it to lapse at its lease, so a peer can then
+  take the issue, with what the lane committed on its branch and the rest in its worktree alone. A halted run waits for
+  `abcd implement resume --take <run-id>`; a mark from a person's stop that has not settled
+  goes on as any other if the stop has lifted, and one from a signal to a drive waits for that same take-over.
 - **It reads parked lanes from their pull requests.** A move that finds a
   lane parked at land lists your latest 100 pull requests once
   (`gh pr list --state all --author @me`), and reads each parked lane whose
@@ -852,7 +861,7 @@ the landing's last step for (`issue`, `run_id`, `pr`, `done`, and a `note`:
 the landing's line, or why it did not finish the lane when `done` is `false`);
 `parked` reads every other lane parked at land from its pull request
 (`issue`, `run_id`, `pr`, `state`: `waiting`, `conflicting`, `syncing`,
-`dropped`, `closed`, `merged` or `unread`, and a `note`);
+`dropped`, `closed`, `merged`, `unread` or `stop-holds`, and a `note`);
 `waiting_until` and `waiting` (`cap` or `held`) say when a waiting drain looks
 again and on what; `next_eligible_at`, `stopped` (`cap`, `empty`,
 `outage` or `origin`) and `complete` say whether it paused or ended; `counts` totals the

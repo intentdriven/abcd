@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -70,6 +71,9 @@ const (
 	// renewed: a person re-arms it, and a release's hold, which withdraws
 	// armed merges and re-arms them after, reads the same in the listing.
 	ParkedDropped = "dropped"
+	// ParkedStopHolds: a stop's mark stands on the run, so the move did nothing for it,
+	// whatever its pull request says; the note says what takes it up.
+	ParkedStopHolds = "stop-holds"
 )
 
 // parkedAtLand is the issue lane of run waiting on its pull request's merge:
@@ -180,6 +184,10 @@ func (p DrainParked) held() bool {
 	return p.State == ParkedWaiting || p.State == ParkedUnread || p.State == ParkedDropped
 }
 
+// afterParkedFetch runs once a move has read the forge and fetched the default branch; a test
+// sets a stop's mark there.
+var afterParkedFetch = func() {}
+
 // finishMerged takes the landing's last step for every issue lane in the
 // checkout parked at land whose pushed head is on the default branch as the
 // remote holds it, whatever the drain's or the run's window clock says, and
@@ -191,13 +199,18 @@ func (p DrainParked) held() bool {
 // named; a closed one is handed back as closed with its reservation released
 // (handBackClosed), which the drain then routes. A lane the landing refuses
 // to finish (a branch moved past what landed, a worktree with changes) is
-// named, not fatal: the drain's own move goes on.
-func finishMerged(repoRoot string, now time.Time) ([]DrainFinished, []DrainParked, error) {
+// named, not fatal: the drain's own move goes on. A run a stop's mark stands on
+// is not among them, whatever the forge says of it: it is named as what the mark
+// waits for. Only its renewal stands, which decides for itself (stopEndsRenewal), and only
+// where this code is reached: under a stop in force the move refuses first (drainStop), so
+// only a drive still in an agent's call or a preflight renews the claim of a run with work a
+// save could not take, and otherwise it lapses at its lease with the lane's work still on its branch and in its worktree.
+func finishMerged(repoRoot string, now time.Time, o Options) ([]DrainFinished, []DrainParked, error) {
 	runs, err := Runs(repoRoot)
 	if err != nil {
 		return nil, nil, err
 	}
-	var parked []State
+	var parked, marked []State
 	out, reads := []DrainFinished{}, []DrainParked{}
 	for _, run := range runs {
 		// What a run a drive stopped on says is not known to be its driver's, so nothing
@@ -209,17 +222,36 @@ func finishMerged(repoRoot string, now time.Time) ([]DrainFinished, []DrainParke
 			}
 			continue
 		}
-		if parkedAtLand(run) >= 0 {
-			parked = append(parked, run)
+		i := parkedAtLand(run)
+		if i < 0 {
+			continue
 		}
+		note, err := parkedStopNote(repoRoot, run.RunID, o)
+		if err != nil {
+			return nil, nil, err
+		}
+		if note != "" {
+			marked = append(marked, run)
+			reads = append(reads, DrainParked{Issue: run.Issue(), RunID: run.RunID, PR: run.Lanes[i].PR, State: ParkedStopHolds, Note: fsutil.RedactHome(note)})
+			continue
+		}
+		parked = append(parked, run)
 	}
-	if len(parked) == 0 {
+	if len(parked)+len(marked) == 0 {
 		return out, reads, nil
 	}
-	listed, unread := listParked(repoRoot)
+	var listed map[int]listedPR
+	var unread string
+	if len(parked) > 0 {
+		listed, unread = listParked(repoRoot)
+	}
 	read := make(map[string]DrainParked, len(parked))
+	renewing := slices.Clone(marked)
 	for _, run := range parked {
 		read[run.RunID] = readParked(run, run.Lanes[parkedAtLand(run)], listed, unread)
+		if read[run.RunID].held() {
+			renewing = append(renewing, run)
+		}
 	}
 	// Every drain move keeps its parked lanes held (spc-2610031753359849): a
 	// pull request waiting on a person's merge can wait overnight, and
@@ -231,8 +263,8 @@ func finishMerged(repoRoot string, now time.Time) ([]DrainFinished, []DrainParke
 	// it shows due (or held by another) is locked and renewed; the renewal's
 	// own fetch and push are made for that run alone.
 	if snap, err := claim.View(repoRoot, now); err == nil {
-		for _, run := range parked {
-			if run.ReservedAt == nil || !read[run.RunID].held() {
+		for _, run := range renewing {
+			if run.ReservedAt == nil {
 				continue
 			}
 			if _, due, lost := renewalDue(run, snap, now); !due && lost == "" {
@@ -251,6 +283,9 @@ func finishMerged(repoRoot string, now time.Time) ([]DrainFinished, []DrainParke
 				}
 			}
 		}
+	}
+	if len(parked) == 0 {
+		return out, reads, nil
 	}
 	refused := func(run State, r *Refusal) DrainFinished {
 		return DrainFinished{Issue: run.Issue(), RunID: run.RunID, PR: run.Lanes[parkedAtLand(run)].PR,
@@ -277,9 +312,17 @@ func finishMerged(repoRoot string, now time.Time) ([]DrainFinished, []DrainParke
 		}
 		return out, reads, nil
 	}
+	afterParkedFetch()
 	for _, run := range parked {
 		lane := run.Lanes[parkedAtLand(run)]
 		f := DrainFinished{Issue: run.Issue(), RunID: run.RunID, PR: lane.PR}
+		// A stop can reach the run while the forge is read and the default branch fetched.
+		if note := stopMarkNote(repoRoot, run.RunID); note != "" {
+			p := read[run.RunID]
+			p.State, p.Note = ParkedStopHolds, fsutil.RedactHome(note)
+			reads = append(reads, p)
+			continue
+		}
 		on, err := gitutil.IsAncestor(repoRoot, lane.Landing.Pushed, tracking)
 		if err != nil {
 			// git could not answer, which is not a no: the lane is named, so
@@ -291,13 +334,6 @@ func finishMerged(repoRoot string, now time.Time) ([]DrainFinished, []DrainParke
 		}
 		if !on {
 			p := read[run.RunID]
-			// A stop halted the run and let its claims go. The forge merging it is the one
-			// thing that finishes it; until the take-over nothing else is done for it.
-			if note := waitsForItsTakeOver(repoRoot, run.RunID); note != "" {
-				p.Note = note
-				reads = append(reads, p)
-				continue
-			}
 			if p.State == ParkedConflicting && syncable(repoRoot, tracking, lane.Landing.Pushed) {
 				// A conflict confined to declared generated files, or one
 				// this checkout cannot reproduce, goes back through the
@@ -511,17 +547,32 @@ func handBackClosed(repoRoot, runID string, now time.Time) (string, error) {
 	return note, err
 }
 
-// parkedNote names, before a drain move's next move, the parked lanes it read
-// from their pull requests.
+// parkedNote names, before a drain move's next move, the parked lanes it read from their
+// pull requests, those it could not read and those a stop's mark left it to do nothing for.
 func parkedNote(ps []DrainParked) string {
-	var parts []string
+	var read, unread, held []string
 	for _, p := range ps {
-		parts = append(parts, fmt.Sprintf("%s's run %s: %s", p.Issue, p.RunID, p.Note))
+		part := fmt.Sprintf("%s's run %s: %s", p.Issue, p.RunID, p.Note)
+		switch p.State {
+		case ParkedUnread:
+			unread = append(unread, part)
+		case ParkedStopHolds:
+			held = append(held, part)
+		default:
+			read = append(read, part)
+		}
 	}
-	if len(parts) == 0 {
-		return ""
+	var clauses []string
+	if len(read) > 0 {
+		clauses = append(clauses, fmt.Sprintf("read %d parked lane(s) from their pull requests: %s", len(read), strings.Join(read, "; ")))
 	}
-	return fmt.Sprintf("read %d parked lane(s) from their pull requests: %s", len(parts), strings.Join(parts, "; "))
+	if len(unread) > 0 {
+		clauses = append(clauses, fmt.Sprintf("could not read the pull requests of %d parked lane(s): %s", len(unread), strings.Join(unread, "; ")))
+	}
+	if len(held) > 0 {
+		clauses = append(clauses, fmt.Sprintf("left %d parked lane(s) as a stop's mark holds them: %s", len(held), strings.Join(held, "; ")))
+	}
+	return strings.Join(clauses, ". ")
 }
 
 // finishedNote names, before a drain move's next move, the merged lanes it

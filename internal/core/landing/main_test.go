@@ -13,6 +13,9 @@ import (
 // identity does not say, so a test that reached the real login would pass here
 // and fail on CI, which has none.
 func TestMain(m *testing.M) {
+	// A stop on the machine running the tests holds no test here; a test of the stop
+	// stands in its own read (Options.StopRead).
+	stopReadingOff = true
 	cleanup, err := gittest.HideGHLogin()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "landing tests: cannot hide the machine's gh login:", err)

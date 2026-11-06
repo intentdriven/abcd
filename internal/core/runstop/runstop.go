@@ -433,6 +433,37 @@ func ReadPinned(home string, pin *Pin) Reading {
 	return out
 }
 
+// MachineStopHome is the home a verb reads a stop from: the machine's shared records'
+// (abcdhome.MachineHome), the person's own under a walled stage; "" when it cannot be found.
+func MachineStopHome() string {
+	home, err := abcdhome.MachineHome()
+	if err != nil || !filepath.IsAbs(home) {
+		return ""
+	}
+	return home
+}
+
+// ThisAccountHome is the account's own home (AccountHome), which is where the verb writes a
+// stop and which the variable a process inherits does not move; "" when it cannot be found.
+func ThisAccountHome() string {
+	home, err := AccountHome()
+	if err != nil || !filepath.IsAbs(home) {
+		return ""
+	}
+	return home
+}
+
+// ReadHomes is ReadPinned of home, and of account where it is another home: a stop stands in
+// the account's home whatever this process was told its home is. An empty account reads home
+// alone.
+func ReadHomes(home, account string, pin *Pin) Reading {
+	r := ReadPinned(home, pin)
+	if r.Stop == nil && account != "" && account != home {
+		r.Stop = ReadPinned(account, pin).Stop
+	}
+	return r
+}
+
 func folderKey(folder string, uid int) string { return folder + "\x00" + strconv.Itoa(uid) }
 
 // hold records the first reason the read cannot be trusted.

@@ -176,13 +176,6 @@ type FlagValue struct {
 	// an HTTP method's case is not what makes it destructive, and a constraint a
 	// change of case walks past is not a constraint.
 	Values []string `json:"values"`
-	// ByLead, when true, reads a setting a substitution helps to write by the
-	// text before the substitution, so it is accepted only where that text can
-	// still become one of Values. By default such a word is any setting, the
-	// safe reading for a flag with few settings (`-X "$M"`). A flag whose
-	// settings are open text needs this: `-F force="$V"` can be `force=true`, and
-	// `-F sha="$SHA"` cannot.
-	ByLead bool `json:"by_lead,omitempty"`
 	// Shape, in place of Values, accepts a setting by a shape of the text the
 	// line fixes. The shapes are a closed set the matcher knows (flagValueShapes).
 	Shape string `json:"shape,omitempty"`
@@ -1114,7 +1107,7 @@ func cloneFlagValues(in []FlagValue) []FlagValue {
 	}
 	out := make([]FlagValue, len(in))
 	for i, fv := range in {
-		out[i] = FlagValue{Flag: fv.Flag, Values: append([]string(nil), fv.Values...), ByLead: fv.ByLead, Shape: fv.Shape}
+		out[i] = FlagValue{Flag: fv.Flag, Values: append([]string(nil), fv.Values...), Shape: fv.Shape}
 	}
 	return out
 }

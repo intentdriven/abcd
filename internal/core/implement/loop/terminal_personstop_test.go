@@ -530,8 +530,8 @@ func TestTheStopHomeIsTheMachines(t *testing.T) {
 	t.Setenv("HOME", stage)
 	t.Setenv(abcdhome.StageHomeEnv, stage)
 	t.Setenv(abcdhome.PersonHomeEnv, person)
-	if got := machineStopHome(); got != person {
-		t.Fatalf("machineStopHome = %q, want the person's %q", got, person)
+	if got := runstop.MachineStopHome(); got != person {
+		t.Fatalf("the machine's stop home = %q, want the person's %q", got, person)
 	}
 }
 

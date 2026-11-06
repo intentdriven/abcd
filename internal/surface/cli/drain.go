@@ -209,6 +209,8 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"renewed and named as waiting, or, once the merge-queue watch finds it will not merge\n" +
 			"on its own (it left the queue disarmed, or its head moved), as dropped, naming why\n" +
 			"(parked in --json); the watch queues one it finds armed and CLEAN outside the queue.\n" +
+			"A run a stop's mark stands on is named as stop-holds and nothing else is done for it,\n" +
+			"its renewal apart, whatever the forge says of its pull request.\n" +
 			"Before its records and push a\n" +
 			"lane's sync fetches origin's default branch and merges it whenever it has moved, a\n" +
 			"fresh round judging the merge: a conflict confined to files origin declares\n" +

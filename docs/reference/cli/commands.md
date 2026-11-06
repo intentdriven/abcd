@@ -1617,6 +1617,8 @@ it closed; a conflicting one is not renewed and is named; an open one is
 renewed and named as waiting, or, once the merge-queue watch finds it will not merge
 on its own (it left the queue disarmed, or its head moved), as dropped, naming why
 (parked in --json); the watch queues one it finds armed and CLEAN outside the queue.
+A run a stop's mark stands on is named as stop-holds and nothing else is done for it,
+its renewal apart, whatever the forge says of its pull request.
 Before its records and push a
 lane's sync fetches origin's default branch and merges it whenever it has moved, a
 fresh round judging the merge: a conflict confined to files origin declares
@@ -4390,6 +4392,12 @@ this clock holds from when this checkout first saw it; one this checkout cannot
 keep that sighting for (no .abcd/.work.local/) is not counted, and a notice
 line on stderr names it.
 
+A person's stop (abcd implement stop) holds a landing: it is read before anything
+runs, again after the gate and again at the arming, and while one holds, or a read
+cannot tell whether one does, nothing more is pushed, armed or queued. --approve and
+--record-review land nothing and are not held, and a landing with both acts off does
+nothing for a stop to hold.
+
 Before a push that will move the head of the branch's armed or queued pull request,
 land withdraws the arming, reads it back and says so. Where the merge gate refuses
 the local head, land withdraws this account's arming at it and refuses over another
@@ -4399,7 +4407,8 @@ Exit 0 when every step did its act or said why it stopped. Exit 2 on a refusal,
 which names what was done before it; reservations that cannot be fetched are
 one, and so is an announcement that cannot be published, each made before
 anything is pushed. Exit 3 when a release being cut holds the
-landing: it names the release, its holder and until when.
+landing: it names the release, its holder and until when; and when a stop holds it,
+naming who set it and when, or a read cannot tell whether one does, saying why.
 
 --record-review records the review pair's verdicts for the branch's head and
 lands nothing: given once per reviewer's return (at least two, no two the
