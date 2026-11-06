@@ -151,7 +151,7 @@ nothing but the bound, the cap, an empty ledger or a stop ends the run:
   during the wait stays when the lane goes back, and the lane says so. Its worktree, its branch and what it saved stay, named in the summary,
   until `abcd implement step --run <run-id> --discard <lane>`, and the run takes the next
   issue. A stop during the wait holds as any stop does, and nothing marks a lane let go
-  this way as a person's: a later drive takes it up.
+  this way as a person's: a later drive on the same profile takes it up.
 - **An agent that goes silent.** Silence cannot be told from a hang yet, so it is
   treated as one: the role's own deadline kills it, what it left stays in the lane's
   worktree, and the role is retried on the outage schedule. A stream that reported
