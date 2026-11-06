@@ -770,6 +770,42 @@ func TestAStatusCountsOnlyWhereTheToolPrintsIt(t *testing.T) {
 		"error: The requested URL returned error: 503 while accessing https://github.com/o/r.git/info/refs": true,
 		"fatal: The requested URL returned error: 500":                                                      true,
 
+		// What gh prints round a status on the calls abcd makes.
+		"gh pr create: exit status 1 (pull request create failed: HTTP 502: 502 Bad Gateway (https://api.github.com/graphql))":               true,
+		"gh pr create: exit status 1 (pull request update failed: HTTP 503: 503 Service Unavailable (https://api.github.com/graphql))":       true,
+		"gh pr create: exit status 1 (error checking for existing pull request: HTTP 502: 502 Bad Gateway (https://api.github.com/graphql))": true,
+		"gh pr close: exit status 1 (API call failed: HTTP 500: 500 Internal Server Error (https://api.github.com/graphql))":                 true,
+		"gh pr create: exit status 1 (pull request create failed: non-200 OK status code: 502 Bad Gateway body: \"\")":                       true,
+		"pull request create failed: HTTP 502: 502 Bad Gateway (https://api.github.com/graphql)":                                             true,
+		"HTTP 503 (https://api.github.com/graphql)":                             true,
+		"gh pr view: exit status 1 (HTTP 502 (https://api.github.com/graphql))": true,
+		"gh: HTTP 502":                                                                  true,
+		"gh: Server Error (HTTP 500)":                                                   true,
+		"gh api graphql: exit status 1 (gh: HTTP 502)":                                  true,
+		"gh api graphql: exit status 1 (gh: Bad Gateway (HTTP 502))":                    true,
+		`exit status 1 (stderr: "gh: HTTP 503")`:                                        true,
+		"error: RPC failed; HTTP 502 curl 22":                                           true,
+		"git push: exit status 1 (error: RPC failed; HTTP 500 curl 92 HTTP/2 stream 0)": true,
+
+		// The same words past where gh prints them, or a 4xx.
+		"gh pr create: exit status 1 (pull request create failed: HTTP 422: Validation Failed (https://api.github.com/graphql))": false,
+		"gh: Not Found (HTTP 404)":                                    false,
+		"gh api graphql: exit status 1 (gh: HTTP 403)":                false,
+		"hook: pull request create failed: HTTP 502: 502 Bad Gateway": false,
+		"hook: gh: HTTP 502":                                          false,
+		"remote: gh: HTTP 502":                                        false,
+		"hook: API call failed: HTTP 500: broken":                     false,
+		"error: RPC failed; HTTP 404 curl 22":                         false,
+
+		// A backslash and an n open a line only inside the runner's %q'd stderr.
+		`hook: printf "one\nHTTP 500: two"`:                                    false,
+		`one\nHTTP 500: two`:                                                   false,
+		`git push: exit status 1 (hook: "a\nHTTP 502: b")`:                     false,
+		`gh pr merge: exit status 1 (one\nHTTP 502: two)`:                      false,
+		`exit status 1 (stderr: "hook: printf \"a\\nHTTP 500: b\"")`:           false,
+		`exit status 1 (stderr: "a" then\nHTTP 500: b`:                         false,
+		`exit status 1 (stderr: "warning: \"quoted\"\nHTTP 502: Bad Gateway")`: true,
+
 		// A hook's lines, a test's output or a pasted log that hold the words.
 		"pre-push: see HTTP 500: what the fixture answers":                                    false,
 		"hook: the upload said HTTP 503: try later":                                           false,

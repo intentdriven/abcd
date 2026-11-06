@@ -843,17 +843,31 @@ var networkMarkers = []string{
 }
 
 // lineOpens is where a command's own line can start in the text this file reads: at a
-// line's start, or where a runner's error opens or continues the stderr it wraps, as
-// `git push: exit status 128 (...)` or, %q'd, `exit status 128 (stderr: "...\\n...")`.
-const lineOpens = `(?:^|exit status [0-9]+ \((?:stderr: ")?|\\n)`
+// line's start, where a runner's error opens the stderr it wraps, as
+// `git push: exit status 128 (...)`, or inside the %q'd form of that stderr, as
+// `exit status 128 (stderr: "...\n...")`, where a line break is written as a backslash and
+// an n. Anywhere else those two characters are only text.
+const lineOpens = `(?:^|exit status [0-9]+ \((?:stderr: "(?:(?:[^"\\\n]|\\.)*?\\n)?)?)`
 
-// networkStatus is a forge or remote answering that it failed, in the forms gh (HTTP
-// 502: Bad Gateway), a GraphQL client (non-200 OK status code: 502) and git (fatal:
-// unable to access '...': The requested URL returned error: 503, or that sentence after
-// error: RPC failed; or on its own after fatal: or error:) print, each where such a line
-// opens (lineOpens). The same words anywhere else in a line, or a bare status with no
-// colon after it, may be a hook's own, so they are not one.
-var networkStatus = regexp.MustCompile(`(?m)` + lineOpens + `(?:http 5[0-9][0-9]:|non-200 ok status code: 5[0-9][0-9]|` +
+// ghStatusPrefixes are the words gh puts before a status on the calls abcd makes: pr create's
+// two failures and its look for a pull request already open, and pr close's.
+const ghStatusPrefixes = `(?:pull request (?:create|update) failed: |error checking for existing pull request: |api call failed: )?`
+
+// networkStatus is a forge or remote answering that it failed, each where such a line opens
+// (lineOpens), in the forms these print:
+//   - gh's client: HTTP 502: Bad Gateway (url), or HTTP 502 (url) with no message;
+//   - gh api, on its stderr: gh: HTTP 502, or gh: Bad Gateway (HTTP 502);
+//   - a GraphQL client: non-200 OK status code: 502;
+//   - git: fatal: unable to access '...': The requested URL returned error: 503, that
+//     sentence after error: RPC failed; or on its own after fatal: or error:, and
+//     error: RPC failed; HTTP 502.
+//
+// The same words anywhere else in a line, or a bare status with nothing of these forms round
+// it, may be a hook's own, so they are not one.
+var networkStatus = regexp.MustCompile(`(?m)` + lineOpens + `(?:` +
+	ghStatusPrefixes + `(?:http 5[0-9][0-9](?::| \()|non-200 ok status code: 5[0-9][0-9])|` +
+	`gh: (?:http 5[0-9][0-9]\b|[^\n]*\(http 5[0-9][0-9]\))|` +
+	`error: rpc failed; http 5[0-9][0-9]\b|` +
 	`(?:fatal: unable to access '[^'\n]*': |error: rpc failed; [^\n]*?|fatal: |error: )the requested url returned error: 5[0-9][0-9])`)
 
 // remoteLine is a line git relayed from the remote, which is the other end's text: on a
