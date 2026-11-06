@@ -1,6 +1,8 @@
 package main
 
 import (
+	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -44,5 +46,48 @@ func TestRenderFindingMasksAndScrubs(t *testing.T) {
 	if !strings.Contains(got, "docs/note") || !strings.Contains(got, ":7:") ||
 		!strings.Contains(got, "stray_root_docs") || !strings.Contains(got, "link") {
 		t.Fatalf("iss-264: scrubbing must not drop the finding's structure/content:\n%q", got)
+	}
+}
+
+// TestSlugNamesMasksAConfigValueInItsErrorLine: the cap's refusal quotes what the
+// repository's config holds, so a control byte there reaches the terminal unless
+// the error line masks it as renderFinding does. The attack rune is written as a
+// JSON escape, so this file carries none.
+func TestSlugNamesMasksAConfigValueInItsErrorLine(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".abcd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	config := `{"records": {"slug_cap": "\u001b[31mred", "x\u001b[31my": 1}}`
+	if err := os.WriteFile(filepath.Join(root, ".abcd", "config.json"), []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	names := filepath.Join(t.TempDir(), "names")
+	if err := os.WriteFile(names, []byte(".abcd/work/decisions/dcn-2611050000000001-a.md\x00"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved := os.Stderr
+	os.Stderr = w
+	code := runSlugNames(names, root)
+	os.Stderr = saved
+	w.Close()
+	line, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if code != 2 {
+		t.Fatalf("a refused cap cannot judge: exit %d\n%q", code, line)
+	}
+	if !strings.Contains(string(line), "record-lint:") {
+		t.Fatalf("the error line is missing: %q", line)
+	}
+	if strings.ContainsRune(string(line), 0x1b) {
+		t.Errorf("the error line carries a raw escape: %q", line)
 	}
 }

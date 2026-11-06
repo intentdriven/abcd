@@ -155,11 +155,12 @@ func main() {
 
 // runSlugNames judges the NUL-separated paths in file against the slug cap,
 // printing each finding, and returns the exit code: 0 clean, 1 on a finding, 2
-// where it cannot judge (the list unreadable, the cap refused).
+// where it cannot judge (the list unreadable, the cap refused). The refusal quotes
+// the repository's config, so its error line is masked as renderFinding's are.
 func runSlugNames(file, root string) int {
 	data, err := os.ReadFile(file)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "record-lint:", scrubPaths(err, root))
+		fmt.Fprintln(os.Stderr, "record-lint:", termsafe.Sanitize(scrubPaths(err, root)))
 		return 2
 	}
 	var rels []string
@@ -170,7 +171,7 @@ func runSlugNames(file, root string) int {
 	}
 	findings, err := lint.SlugCapFindings(root, rels)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "record-lint:", scrubPaths(err, root))
+		fmt.Fprintln(os.Stderr, "record-lint:", termsafe.Sanitize(scrubPaths(err, root)))
 		return 2
 	}
 	for _, f := range findings {
