@@ -351,9 +351,10 @@ tag_older() {
 # account owns that no one else can write, and writes the whole record into a
 # mktemp sibling renamed in, mode 0600, never through a symlinked
 # ~/.abcd.noindex. A mark that cannot be recorded is said, and never fails the
-# install it follows.
+# install it follows. The version is read as verify_release reads it, since the
+# stop for an old ~/.abcd says nothing of the release.
 record_mark() {
-	tag=$("$1/abcd" --version 2>/dev/null | sed -n '1s/^abcd \(v[0-9][^ ]*\)$/\1/p') || tag=''
+	tag=$(HOME=$PWD "$1/abcd" --version 2>/dev/null | sed -n '1s/^abcd \(v[0-9][^ ]*\)$/\1/p') || tag=''
 	if [ -z "$(tag_parts "$tag")" ]; then
 		printf 'abcd install: the newest-release mark was not recorded, because the installed binary did not report a release version.\n' >&2
 		return 0
@@ -392,6 +393,17 @@ record_mark() {
 		[ -z "$mark_tmp" ] || rm -f "$mark_tmp" 2>/dev/null || :
 		printf 'abcd install: the newest-release mark was not recorded, so a later plugin session cannot tell %s from an older release it cached.\n' "$tag" >&2
 	fi
+}
+
+# rename_is_pending succeeds when the binary installed in $1 runs under another
+# home and stops under this one, with no ~/.abcd.noindex yet: the state abcd's
+# rename command is written for, which needs that name free. The binary is asked
+# because its stop is the rule, and this script keeps no second copy of it.
+# refuse_symlinked_home has already refused a symlink at that name.
+rename_is_pending() {
+	[ ! -e "$HOME/.abcd.noindex" ] &&
+		HOME=$PWD "$1/abcd" --version >/dev/null 2>&1 &&
+		! "$1/abcd" --version >/dev/null 2>&1
 }
 
 # report prints the PATH fix when the install directory is not on PATH, then runs
@@ -456,8 +468,12 @@ main() {
 	verify_provenance "$binary" "$bin_dir"
 	verify_release "$binary"
 	install_binary "$binary" "$bin_dir"
-	record_path_entry "$bin_dir" "$verified_sha256"
-	record_mark "$bin_dir"
+	if rename_is_pending "$bin_dir"; then
+		printf 'abcd install: this install was not recorded, because ~/.abcd still stands and the record belongs in ~/.abcd.noindex, the name it is to be renamed to. Follow the steps abcd prints below, then run this installer again.\n' >&2
+	else
+		record_path_entry "$bin_dir" "$verified_sha256"
+		record_mark "$bin_dir"
+	fi
 	report "$bin_dir"
 }
 

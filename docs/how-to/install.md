@@ -479,6 +479,10 @@ the latest. If the temporary directory cannot run programs, it installs without
 that comparison and prints a warning saying so. It does the same when there is
 no `gh` 2.68 or later and GitHub does not say which tag is the latest.
 
+If an earlier abcd left a `~/.abcd` folder and there is no `~/.abcd.noindex`, the
+installer puts the binary in place and records nothing, and the binary stops
+until you rename the folder. Run the installer again after the rename.
+
 To install somewhere else, end the command with `sh -s -- --bin-dir <dir>`
 instead of `sh`.
 

@@ -645,6 +645,46 @@ func TestInstallerLeavesTheHomeUntouchedByTheComparison(t *testing.T) {
 	}
 }
 
+// TestInstallerLeavesTheNewHomeUncreatedWhileTheOldStandsAlone: abcd's rename takes
+// the old folder to the new name, so the install creates nothing there. It installs
+// the binary, says nothing was recorded and what to do, and closes on the stop.
+func TestInstallerLeavesTheNewHomeUncreatedWhileTheOldStandsAlone(t *testing.T) {
+	r := runInstallOf(t, []string{"sh", renderedInstaller(t)}, ghVerifies, homeStoppedBinary(installedTag), func(home string) { oldHomeShapes["the old folder"](t, home) })
+	if !r.installed(t) {
+		t.Fatalf("the latest release must install:\n%s", r.out)
+	}
+	if _, err := os.Lstat(abcdhome.Path(r.home)); !os.IsNotExist(err) {
+		t.Errorf("the install created the new home beside the old one: %v\n%s", err, r.out)
+	}
+	if strings.Contains(r.out, "did not report a release version") {
+		t.Errorf("the install blamed the binary for the stop:\n%s", r.out)
+	}
+	for _, want := range []string{"not recorded", "run this installer again", "the old folder still stands"} {
+		if !strings.Contains(r.out, want) {
+			t.Errorf("the install must say %q:\n%s", want, r.out)
+		}
+	}
+}
+
+// TestInstallerRecordsTheInstallBesideBothFolders: where the new home already
+// stands, the records go there as ever, and the mark reads the release under the
+// comparison's home rather than the stop.
+func TestInstallerRecordsTheInstallBesideBothFolders(t *testing.T) {
+	r := runInstallOf(t, []string{"sh", renderedInstaller(t)}, ghVerifies, homeStoppedBinary(installedTag), func(home string) { oldHomeShapes["both folders"](t, home) })
+	if !r.installed(t) {
+		t.Fatalf("the latest release must install:\n%s", r.out)
+	}
+	if _, err := os.Stat(abcdhome.Path(r.home, "path-entry")); err != nil {
+		t.Errorf("the install must record its path-entry: %v\n%s", err, r.out)
+	}
+	if got, ok := r.mark(t); !ok || got != "release_tag="+installedTag+"\n" {
+		t.Errorf("the install must record the release mark, got %q (%v):\n%s", got, ok, r.out)
+	}
+	if strings.Contains(r.out, "did not report a release version") {
+		t.Errorf("the install blamed the binary for the stop:\n%s", r.out)
+	}
+}
+
 // TestInstallerRunsNoBinaryItsProvenanceRefused: the version comes from running
 // the fetched binary, so that waits until its provenance has passed.
 func TestInstallerRunsNoBinaryItsProvenanceRefused(t *testing.T) {
