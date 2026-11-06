@@ -275,10 +275,20 @@ const lockFileName = ".lock"
 // version wrote, and is refused naming it. Releases that write version 20 refuse a
 // version-21 file as a newer abcd's before any strict decode.
 //
+// Version 22 kept the profile a drive runs the run on: the run's `profile`. Version 21
+// is its strict subset, read as a run no drive named one for; a file of version 21 or
+// lower carrying one is not one its version wrote, and is refused naming it. Releases
+// that write version 21 refuse a version-22 file as a newer abcd's before any strict
+// decode.
+//
 // A version raises when the abcd driving the run writes it. A lane's own abcd
 // may be a version ahead of its driver, and what it saves leaves the version
 // where it was (mutateReservation, iss-2611020719494343).
-const SchemaVersion = 21
+const SchemaVersion = 22
+
+// schemaVersionUnprofiled is the last version before a run kept its profile: read,
+// never written.
+const schemaVersionUnprofiled = 21
 
 // schemaVersionUnshown is the last version before a round kept what it was shown and a
 // landing how long its gate went unread: read, never written.
@@ -436,7 +446,10 @@ type State struct {
 	Intent string `json:"intent"`
 	Spec   string `json:"spec"`
 	// Driver is what drives the loop (DriverHost unless configured).
-	Driver    Driver    `json:"driver"`
+	Driver Driver `json:"driver"`
+	// Profile names the profile a drive runs this run on (drive_profile.go), "" for
+	// a run no drive has driven.
+	Profile   string    `json:"profile,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	// WindowStartedAt and NextEligibleAt are the window clock the pacing intent
@@ -1303,7 +1316,10 @@ func readListedState(root *os.Root, runID string) (State, error) {
 	case st.SchemaVersion <= schemaVersionUnshown && st.shown() != "":
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.shown(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnshown:
+	case st.SchemaVersion <= schemaVersionUnprofiled && st.Profile != "":
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a profile, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnprofiled:
 		// Read as the current version, its stages already carried over by
 		// decodeState when it named them `step`; the next write carries it, and
 		// this read writes nothing.
@@ -1311,6 +1327,10 @@ func readListedState(root *os.Root, runID string) (State, error) {
 	case st.SchemaVersion != SchemaVersion:
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d; this abcd reads versions %d to %d", rel, st.SchemaVersion, schemaVersionUnpaced, SchemaVersion),
 			"run the abcd that wrote it")
+	}
+	if st.Profile != "" && !runner.PlainProfileName(st.Profile) {
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s carries a profile that is no plain name (the value is not repeated here)", rel),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}
 	if st.RunID != runID {
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s names run %q, not the run it is stored under", rel, st.RunID),

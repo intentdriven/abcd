@@ -191,8 +191,8 @@ that applies.
 The one exception is the drive (itd-2610222215485265,
 [adr-2610222222326104](../../decisions/adrs/2610222222326104-abcd-drives-agents-with-no-host-session.md)):
 typed in a plain terminal, on the person's own yes, it makes these moves itself, on
-one separate login under `~/.abcd.noindex/profiles/`, this account's subscription and
-no other. Each iteration is one move under the drain's lock for that move alone; a
+one separate login under `~/.abcd.noindex/profiles/`, one subscription and no other.
+Each iteration is one move under the drain's lock for that move alone; a
 lane is driven in-process through `loop.Drive` and `DriveReview`, every role on the
 launch on that login; a landing that waits for its receipt has its preflight run behind the
 load gate; each wait a move names is slept to the earliest time it names, at least
@@ -295,6 +295,42 @@ tree having no effect, since the launch's setting sources name the profile direc
 alone. Before each stage and each preflight the settings, the files a stage's shell
 reads, the machine declarations, abcd's binary and the harness are compared with the
 start, and a difference stops the drive.
+
+**Which profile.** `runner.DriveProfile` is the one function that answers it. With one
+directory under `~/.abcd.noindex/profiles/` a drive runs on it. With several it refuses,
+naming them and the flag that names one; it never chooses among them. A name is one plain path
+element the folder holds exactly, in letters and digits with `.`, `_` or `-` after the first, so
+a command that prints it reads the same pasted, and the one directory is held to that too. The
+named directory takes every check the one directory takes, the link, the owner and the group or
+other write among them, and each level of abcd's home above it takes the check every declaration
+read there takes, so a name that fails is refused before the question and before anything is
+reserved. A stage's files are made through each level of abcd's home the same way. The question
+names the profile. The settings, the login, the live check, each launch and each limit's
+probe are that directory's, so a limit pauses that drive until that profile's limit ends
+and nothing moves it to another. Choosing by itself among several, a registry, a creating
+command and key profiles are itd-2611040344170206, which stays a draft.
+
+A run records the profile a drive started it on (`State.Profile`, schema version 22), and
+the record and the listing of unfinished runs name it. A drive on another profile does not take
+that run up, since that is another subscription: it is refused before the question when
+the lane is the drain's in progress (`loop.LanesOnAnotherProfile`), and ends the run as a
+check that no longer holds, before anything claims or reserves it, when a lane comes back
+later, as one at its pull request does for its sync. A lane at its pull request needs no
+agent, so it stops no drive by itself, and the run is what says so, since only a drain's own
+move rewrites the outcome it stored. The refusal names the ways on: the name it started on,
+another checkout, or a take-over from a session of the person's own, and the drive's last line
+then names no command of its own to resume. A take-over says
+which profile the run started on, since what that session starts runs on its own login. A
+run that names no profile goes on, says so, and takes the profile that drove it once the drive
+holds it, so a drive that only waited on another driver leaves it as it was.
+
+Two drives on two profiles at once take two checkouts, since one drive holds a checkout
+whatever its profile. Each checkout's drain and runs are its own, each profile and
+checkout its own stage's files, and a stage writes only under its own directories, so
+neither reaches the other's login or settings by a file tool or a line the guard can read,
+though its shell reads what the account can. They share what any two drives on one
+account share: the reservations on origin, which keep them off one issue and count
+towards one cap; the load gate; a stop, which holds both; and the launch ledger.
 
 A profile is a separate login and settings on this one account, not a boundary: a
 stage's shell reads what this account can. A launch starts from an allow-list of
@@ -982,6 +1018,7 @@ Sub-verbs: none.
 | `--judgement` | string |
 | `--max` | int |
 | `--pace` | string |
+| `--profile` | string |
 | `--reason` | string |
 | `--skip` | stringArray |
 | `--sub-agents` | string |

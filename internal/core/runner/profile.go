@@ -2,12 +2,14 @@ package runner
 
 // profile.go is the one place that answers "the profile this drive runs on"
 // (spc-2610230813348813 step 1; adr-2610222222326104's amendment of
-// 2026-11-04): the one directory under ~/.abcd.noindex/profiles/, the launch's
-// environment and its arguments. The person makes the directory and logs the
-// harness into it once, in their own shell; abcd never reads, stores or
-// forwards the login. Nothing else reads the directory, so
-// itd-2611040344170206, which admits several named profiles, replaces this
-// file's one function and moves nothing the person logged in.
+// 2026-11-04): the directory under ~/.abcd.noindex/profiles/ the person names,
+// or the one directory there is, the launch's environment and its arguments.
+// The person makes each directory and logs the harness into it once, in their
+// own shell; abcd never reads, stores or forwards the login. Nothing else reads
+// the directory, so itd-2611040344170206, whose choosing among several, registry
+// and creating command go further, still replaces this file's one function and
+// moves nothing the person logged in. Nothing here moves a drive between
+// directories: the person's name is the whole of the choice.
 
 import (
 	"errors"
@@ -17,11 +19,13 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+	"unicode"
 
 	"crypto/sha256"
 	"encoding/hex"
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 	"slices"
 )
 
@@ -38,13 +42,9 @@ const (
 	StageBaseEnv     = "ABCD_STAGE_BASE"
 )
 
-// The intents a drive's refusals name.
-const (
-	// ProfilesIntent admits several named profiles.
-	ProfilesIntent = "itd-2611040344170206"
-	// BudgetIntent covers how a key reaches the harness and what it may spend.
-	BudgetIntent = "itd-2611011230226453"
-)
+// BudgetIntent, which a drive's refusals name, covers how a key reaches the harness
+// and what it may spend.
+const BudgetIntent = "itd-2611011230226453"
 
 // profilesLeaf is the walled directories' folder below abcd's home.
 const profilesLeaf = "profiles"
@@ -53,6 +53,7 @@ const profilesLeaf = "profiles"
 var (
 	ErrNoProfile       = errors.New("no profile directory")
 	ErrSeveralProfiles = errors.New("more than one profile directory")
+	ErrProfileName     = errors.New("no plain profile name")
 )
 
 // credentialVars are the variables the harness would bill through or sign in
@@ -103,12 +104,48 @@ type Profile struct {
 	Args []string
 }
 
+// PlainProfileName reports whether name is one a drive may run on: a letter or digit,
+// then letters, digits, '.', '_' and '-'. That is one path element with no way out of
+// the profiles' folder, no separator the environment's lists would split it on, nothing a
+// terminal would act on and nothing a shell would, so the command a line suggests with
+// it reads the same pasted.
+func PlainProfileName(name string) bool {
+	for i, r := range name {
+		switch {
+		case unicode.IsLetter(r), unicode.IsDigit(r):
+		case i > 0 && (r == '.' || r == '_' || r == '-'):
+		default:
+			return false
+		}
+	}
+	return name != ""
+}
+
 // DriveProfile is the profile a drive runs on, below home, the person's home
-// directory. It refuses none, several, and a directory it would not trust
-// with the settings that decide what the drive's agents run.
-func DriveProfile(home string) (Profile, error) {
+// directory: the directory name names, or with name empty the one directory there
+// is. It refuses a name that is no plain one or that the folder does not hold exactly,
+// none, several with no name, and a directory it would not trust with the settings that
+// decide what the drive's agents run, or one behind a level of abcd's home that is a link
+// or that another account can change, judged as every declaration read there is. A
+// refusal lists what the folder holds and never repeats the name, as abcd's other
+// refusals of a typed value do not.
+func DriveProfile(home, name string) (Profile, error) {
+	if !filepath.IsAbs(home) {
+		return Profile{}, errors.New("a drive's profile is found from the person's home directory, and no absolute one is known")
+	}
 	root := abcdhome.Path(home, profilesLeaf)
 	shown := abcdhome.Display(profilesLeaf) + "/"
+	notPlain := fmt.Errorf("%w: a profile's name is one directory's under %s, a letter or digit, then letters, digits, '.', '_' and '-' (the value given is not repeated here)", ErrProfileName, shown)
+	if name != "" && !PlainProfileName(name) {
+		return Profile{}, notPlain
+	}
+	scope, err := fsutil.OpenHomeDeclarationScope(home, abcdhome.Rel(profilesLeaf))
+	switch {
+	case err == nil:
+		scope.Close()
+	case !errors.Is(err, os.ErrNotExist):
+		return Profile{}, err
+	}
 	entries, err := os.ReadDir(root)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return Profile{}, fmt.Errorf("%s could not be read: %w", shown, err)
@@ -120,28 +157,38 @@ func DriveProfile(home string) (Profile, error) {
 		}
 	}
 	sort.Strings(names)
-	switch len(names) {
-	case 0:
-		return Profile{}, fmt.Errorf("%w under %s: make one and log the harness into it once, in your own shell: "+
-			"`mkdir -p %sdrive && CLAUDE_CONFIG_DIR=%sdrive claude`, then the harness's own login step; abcd never logs a harness in", ErrNoProfile, shown, shown, shown)
-	case 1:
+	held := termsafe.Sanitize(strings.Join(names, ", "))
+	makeOne := fmt.Sprintf("make one and log the harness into it once, in your own shell: "+
+		"`mkdir -p %sdrive && CLAUDE_CONFIG_DIR=%sdrive claude`, then the harness's own login step; abcd never logs a harness in", shown, shown)
+	switch {
+	case name != "" && slices.Contains(names, name):
+	case name != "" && len(names) == 0:
+		return Profile{}, fmt.Errorf("%w named by --profile under %s, which holds none: %s", ErrNoProfile, shown, makeOne)
+	case name != "":
+		return Profile{}, fmt.Errorf("%w named by --profile under %s (the value given is not repeated here), which holds %s", ErrNoProfile, shown, held)
+	case len(names) == 0:
+		return Profile{}, fmt.Errorf("%w under %s: %s", ErrNoProfile, shown, makeOne)
+	case len(names) > 1:
+		return Profile{}, fmt.Errorf("%w under %s (%s): name the one this drive runs on with --profile <name>; a drive never chooses among them or moves from one to another",
+			ErrSeveralProfiles, shown, held)
+	case !PlainProfileName(names[0]):
+		return Profile{}, notPlain
 	default:
-		return Profile{}, fmt.Errorf("%w under %s (%s): a drive runs on exactly one until %s admits several; move the others out",
-			ErrSeveralProfiles, shown, strings.Join(names, ", "), ProfilesIntent)
+		name = names[0]
 	}
-	dir := filepath.Join(root, names[0])
+	dir := filepath.Join(root, name)
 	fi, err := os.Lstat(dir)
 	if err != nil {
-		return Profile{}, fmt.Errorf("%s%s could not be read: %w", shown, names[0], err)
+		return Profile{}, fmt.Errorf("%s%s could not be read: %w", shown, name, err)
 	}
 	if !fi.IsDir() {
-		return Profile{}, fmt.Errorf("%s%s is a link, not a directory of its own; a drive's settings are written only into a real directory", shown, names[0])
+		return Profile{}, fmt.Errorf("%s%s is a link, not a directory of its own; a drive's settings are written only into a real directory", shown, name)
 	}
 	if st, ok := fi.Sys().(*syscall.Stat_t); ok && int(st.Uid) != os.Geteuid() {
-		return Profile{}, fmt.Errorf("%s%s belongs to another account; a drive runs only on a directory this account owns", shown, names[0])
+		return Profile{}, fmt.Errorf("%s%s belongs to another account; a drive runs only on a directory this account owns", shown, name)
 	}
 	if fsutil.WritableByOthers(fi) {
-		return Profile{}, fmt.Errorf("%s%s is one group or other can write; chmod go-w it", shown, names[0])
+		return Profile{}, fmt.Errorf("%s%s is one group or other can write; chmod go-w it", shown, name)
 	}
 	return Profile{
 		Dir:        dir,
@@ -155,15 +202,18 @@ func DriveProfile(home string) (Profile, error) {
 		// The user layer is the file under CLAUDE_CONFIG_DIR: naming it alone
 		// leaves out the project and local layers of the working tree.
 		Args: []string{"--no-session-persistence", "--strict-mcp-config", "--setting-sources=user"},
-	}.withStageRoot(abcdhome.Path(home, stageHomesLeaf, names[0], "no-checkout")), nil
+	}.withStageRoot(abcdhome.Path(home, stageHomesLeaf, name, "no-checkout")), nil
 }
+
+// Name is the profile's name: its directory's, directly under the profiles' folder.
+func (p Profile) Name() string { return filepath.Base(p.Dir) }
 
 // ForCheckout is p for a drive in the checkout at repo: its stage's home and shell
 // file are that checkout's own, so a drive in another deletes nothing of this one.
 func (p Profile) ForCheckout(repo string) Profile {
 	p.Repo = repo
 	sum := sha256.Sum256([]byte(filepath.Clean(repo)))
-	return p.withStageRoot(abcdhome.Path(p.PersonHome, stageHomesLeaf, filepath.Base(p.Dir), hex.EncodeToString(sum[:8])))
+	return p.withStageRoot(abcdhome.Path(p.PersonHome, stageHomesLeaf, p.Name(), hex.EncodeToString(sum[:8])))
 }
 
 // withStageRoot is p with its stage's files under root.
