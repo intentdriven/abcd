@@ -133,6 +133,24 @@ func TestModeAutonomousIsQuietOnAProfile(t *testing.T) {
 	wantNoOffProfile(t, stdout, stderr)
 }
 
+// A session on either of two profiles reads as on one: nothing warns of the other.
+func TestModeAutonomousIsQuietOnEitherOfTwoProfiles(t *testing.T) {
+	awayCheckout(t)
+	home := os.Getenv("HOME")
+	for _, name := range []string{"alpha", "beta"} {
+		dir := abcdhome.Path(home, "profiles", name)
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv(runner.ConfigDirEnv, dir)
+		stdout, stderr, err := runSplit(t, "", "mode", "autonomous")
+		if err != nil {
+			t.Fatalf("mode autonomous on %s: %v\n%s", name, err, stderr)
+		}
+		wantNoOffProfile(t, stdout, stderr)
+	}
+}
+
 // A refused set started nothing, so it owes no warning, and its exit is the
 // refusal's own.
 func TestARefusedModeAutonomousDoesNotWarn(t *testing.T) {

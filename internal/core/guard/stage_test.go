@@ -1,6 +1,7 @@
 package guard
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -345,5 +346,26 @@ func TestAStageAddsNoWorktree(t *testing.T) {
 	}
 	if a := approveShell(clean(), NewFiles(t.TempDir()), `git worktree list`); !a.Allow {
 		t.Errorf("another session is not judged this way: %s", a.Reason)
+	}
+}
+
+// TestAStageOnOneProfileWritesNoSiblingProfile: a stage names only its own profile to
+// protect, and a sibling's login and settings stay out of its reach all the same,
+// since a stage writes only under its own directories.
+func TestAStageOnOneProfileWritesNoSiblingProfile(t *testing.T) {
+	f, profile, _ := stageFiles(t)
+	sibling := filepath.Join(filepath.Dir(profile), "sibling")
+	if err := os.MkdirAll(sibling, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range []string{
+		`printf x > ` + filepath.Join(sibling, "settings.json"),
+		`printf x > ~/../../profiles/sibling/settings.json`,
+		`rm -rf ` + sibling,
+		`cp /dev/null ` + filepath.Join(sibling, ".credentials.json"),
+	} {
+		if a := approveShell(clean(), f, line); a.Allow {
+			t.Errorf("%q was approved on a walled stage", line)
+		}
 	}
 }

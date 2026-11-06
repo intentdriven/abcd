@@ -777,6 +777,9 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 		t.stoppedBy(err)
 		return TerminalWall, nil
 	}
+	if ended, err := t.holdToProfile(runID); ended != "" || err != nil {
+		return ended, err
+	}
 	// A refused step goes back through the next move to this same lane, so its
 	// counts last until another lane is in hand.
 	if runID != t.laneInHand {

@@ -32,12 +32,39 @@ This page always calls the drain one move at a time, and an agent never drives
 it any other way. `abcd drain --drive` is the person's own form of the verb, typed
 in a plain terminal with no host session; it refuses inside an agent's own session.
 
-It runs on this account's subscription alone, on one separate login: one directory
-under `~/.abcd.noindex/profiles/` that the person makes and logs the harness into
-once, in their own shell. abcd never reads, stores or forwards that login. The
-directory's `settings.json` is abcd's, rewritten at each start, and holds abcd's
-hooks and nothing else. A credential variable the harness would bill through,
-set in the environment, refuses the start, naming `itd-2611011230226453`.
+It runs on a subscription alone, on one separate login: a directory under
+`~/.abcd.noindex/profiles/` that the person makes and logs the harness into once, in
+their own shell. abcd never reads, stores or forwards that login. The directory's
+`settings.json` is abcd's, rewritten at each start, and holds abcd's hooks and nothing
+else. A credential variable the harness would bill through, set in the environment,
+refuses the start, naming `itd-2611011230226453`.
+
+**Two subscriptions, two directories.** With one directory there the drive runs on it.
+With several it refuses, naming them, until `--profile <name>` names the one to run on:
+
+```bash
+mkdir -p ~/.abcd.noindex/profiles/first ~/.abcd.noindex/profiles/second
+CLAUDE_CONFIG_DIR=~/.abcd.noindex/profiles/first claude    # then the harness's own login step
+CLAUDE_CONFIG_DIR=~/.abcd.noindex/profiles/second claude   # then the harness's own login step
+abcd drain --drive --profile second
+```
+
+The name is one plain directory name, and the directory meets every check the one
+directory does; anything else refuses before anything is reserved. The question names
+the profile. A limit on that profile pauses that drive until that profile's limit ends:
+nothing moves a drive to the other. A run keeps the profile it started on, so a drive on
+the other refuses before it takes that run's lane up, since that is another subscription,
+and names the three ways on: give `--profile` the name it started on, run the other in
+another checkout, whose runs are its own, or take the run over from a session of your own
+(`abcd implement resume --take <run-id>`). A run that names no profile goes on, says so,
+and takes the profile that drove it. One drive holds a checkout at a time, so two at once
+take two checkouts; each reserves on origin as any drive does, so they never hold the same
+issue, and their preflights queue at the one load gate.
+
+A session started by hand with `CLAUDE_CONFIG_DIR` set to either directory reads as on a
+profile. No abcd command starts one, and a drive that starts later on that directory
+rewrites its `settings.json` and stops at anything a session left there that a launch
+would load.
 
 Before its first move it shows the cap (eight unless `--max` says otherwise), an
 estimate of the agent runs, the runner and the route, and asks once; `--yes` is
@@ -72,7 +99,7 @@ those with one bound of the person's own, either a date, read as the end of that
 on this machine's clock, or an RFC 3339 instant: the yes names it, and at that time
 the run ends with the lane on its branch and its reservation released, and exits 0,
 since that is what was asked. An agent in a call finishes that call first, and
-`abcd drain --drive` takes the lane up later. A
+`abcd drain --drive`, on the same profile, takes the lane up later. A
 long unattended run needs `--until`, and `--max` too, since the cap stays eight
 lanes unless it says otherwise.
 

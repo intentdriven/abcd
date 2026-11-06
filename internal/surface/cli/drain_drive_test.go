@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/drainrule"
@@ -212,10 +213,236 @@ func TestNoWalledDirectoryOrSeveralRefuses(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if text := refusedDrive(t, "drain", "--drive", "--yes"); !strings.Contains(text, runner.ProfilesIntent) {
-		t.Fatalf("the refusal names the profiles intent: %s", text)
+	text := refusedDrive(t, "drain", "--drive", "--yes")
+	for _, want := range []string{"one", "two", "--profile <name>"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the refusal %q does not name %q", text, want)
+		}
 	}
 	noDrainBegun(t, w.repo)
+}
+
+// twoProfiles is a world holding the directories alpha and beta, and no other.
+func (w *driveWorld) twoProfiles(t *testing.T) {
+	t.Helper()
+	if err := os.Remove(w.profile); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []string{"alpha", "beta"} {
+		if err := os.MkdirAll(abcdhome.Path(w.home, "profiles", n), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// TestDriveProfileRunsOnTheDirectoryItNames: the checks and the loop, a run's record
+// and its probe, are each on the named directory.
+func TestDriveProfileRunsOnTheDirectoryItNames(t *testing.T) {
+	w := newDriveWorld(t)
+	w.passWalls(t)
+	w.twoProfiles(t)
+	var walled []string
+	driveWalls.static = func(_ context.Context, p runner.Profile) ([]string, error) {
+		walled = append(walled, p.Dir)
+		return nil, nil
+	}
+	driveWalls.live = func(_ context.Context, p runner.Profile) error {
+		walled = append(walled, p.Dir)
+		return nil
+	}
+	var out, errb strings.Builder
+	if code := Run([]string{"drain", "--drive", "--yes", "--profile", "beta"}, &out, &errb); code != 0 {
+		t.Fatalf("exit %d:\n%s%s", code, out.String(), errb.String())
+	}
+	beta := abcdhome.Path(w.home, "profiles", "beta")
+	if len(walled) != 2 || walled[0] != beta || walled[1] != beta {
+		t.Fatalf("the checks ran on %q, want %q", walled, beta)
+	}
+	if w.terminalCalls != 1 || w.terminal.Options.Profile != "beta" {
+		t.Fatalf("the loop starts on beta: %d call(s), profile %q", w.terminalCalls, w.terminal.Options.Profile)
+	}
+}
+
+// recordConfigDir has the stand-in harness keep the directory each launch was
+// pointed at, and reports the file that holds them.
+func recordConfigDir(t *testing.T) string {
+	t.Helper()
+	log := filepath.Join(t.TempDir(), "config-dirs")
+	bin := t.TempDir()
+	script := "#!/bin/sh\nprintf '%s\\n' \"$CLAUDE_CONFIG_DIR\" >> '" + log + "'\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(bin, "claude"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return log
+}
+
+// TestAWaitOnANamedProfileProbesAndLaunchesOnThatDirectory: what a limit's wait starts
+// with is all on the named directory, whether the wait is the live proof's or the
+// run's, and nothing moves to its sibling.
+func TestAWaitOnANamedProfileProbesAndLaunchesOnThatDirectory(t *testing.T) {
+	w := newDriveWorld(t)
+	w.passWalls(t)
+	w.twoProfiles(t)
+	proofs, _ := limitedProof(t, 2, func(now time.Time) time.Time { return now.Add(3 * time.Hour) })
+	var proved []string
+	limited := driveWalls.live
+	driveWalls.live = func(ctx context.Context, p runner.Profile) error {
+		proved = append(proved, p.Dir)
+		return limited(ctx, p)
+	}
+	log := recordConfigDir(t)
+	at := time.Now().Add(30 * 24 * time.Hour).UTC().Format(time.RFC3339)
+	var out, errb strings.Builder
+	if code := Run([]string{"drain", "--drive", "--yes", "--until", at, "--profile", "beta"}, &out, &errb); code != 0 {
+		t.Fatalf("exit %d:\n%s%s", code, out.String(), errb.String())
+	}
+	beta := abcdhome.Path(w.home, "profiles", "beta")
+	if *proofs != 3 {
+		t.Fatalf("the proof runs until the limit lifts: %d", *proofs)
+	}
+	for _, dir := range proved {
+		if dir != beta {
+			t.Fatalf("a proof after the wait ran on %q, want %q", dir, beta)
+		}
+	}
+	if w.terminal.Probe == nil {
+		t.Fatal("under a bound the run probes a limit")
+	}
+	for _, probe := range []func(context.Context, string, string) (bool, *runner.Failure){
+		w.terminal.Probe, w.terminal.Runners.Config.ProbeLimit, w.terminal.Options.Runners.ProbeLimit,
+	} {
+		probe(context.Background(), loop.RoleImplementer, "")
+	}
+	raw, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatalf("the probes launched: %v", err)
+	}
+	dirs := strings.Fields(string(raw))
+	if len(dirs) != 3 {
+		t.Fatalf("three probes, three launches: %q", dirs)
+	}
+	for _, dir := range dirs {
+		if dir != beta {
+			t.Fatalf("a launch after the wait ran on %q, want %q", dir, beta)
+		}
+	}
+}
+
+// TestAProfileThatFailsItsChecksIsRefusedBeforeAnythingIsReserved: each refusal comes
+// before the consent, and repeats nothing typed.
+func TestAProfileThatFailsItsChecksIsRefusedBeforeAnythingIsReserved(t *testing.T) {
+	w := newDriveWorld(t)
+	w.passWalls(t)
+	w.twoProfiles(t)
+	folder := abcdhome.Path(w.home, "profiles")
+	if err := os.Symlink(t.TempDir(), filepath.Join(folder, "linked")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Join(folder, "alpha"), 0o770); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ name, want string }{
+		{"absent-one", "no profile directory"},
+		{"../profiles/beta", "plain"},
+		{"linked", "is a link"},
+		{"alpha", "chmod go-w"},
+	} {
+		text := refusedDrive(t, "drain", "--drive", "--yes", "--profile", c.name)
+		for _, want := range []string{c.want, "nothing started, nothing reserved"} {
+			if !strings.Contains(text, want) {
+				t.Errorf("%s: the refusal %q does not say %q", c.name, text, want)
+			}
+		}
+		noDrainBegun(t, w.repo)
+		if w.terminalCalls != 0 {
+			t.Fatalf("%s: nothing runs", c.name)
+		}
+	}
+}
+
+// TestAWorldOfOneDirectoryIsAsItWas: no flag behaves as it always did, and the
+// directory there may be named too.
+func TestAWorldOfOneDirectoryIsAsItWas(t *testing.T) {
+	w := newDriveWorld(t)
+	w.passWalls(t)
+	for _, args := range [][]string{{"drain", "--drive", "--yes"}, {"drain", "--drive", "--yes", "--profile", "walled"}} {
+		var out, errb strings.Builder
+		if code := Run(args, &out, &errb); code != 0 {
+			t.Fatalf("%v: exit %d:\n%s%s", args, code, out.String(), errb.String())
+		}
+		if w.terminal.Options.Profile != "walled" {
+			t.Fatalf("%v: the run records the directory it runs on: %q", args, w.terminal.Options.Profile)
+		}
+	}
+}
+
+// TestAResumeCommandNamesTheProfileThatWasNamed: the lines a drive ends on name what
+// to type, and with several directories that takes the flag.
+func TestAResumeCommandNamesTheProfileThatWasNamed(t *testing.T) {
+	w := newDriveWorld(t)
+	w.passWalls(t)
+	w.twoProfiles(t)
+	driveTerminal = func(context.Context, string, loop.TerminalOptions) (loop.TerminalResult, error) {
+		return loop.TerminalResult{Ended: loop.TerminalStopped, Run: "run-1", Issue: "iss-1", Lane: "lane-1", Resume: loop.TerminalResumeCommand}, nil
+	}
+	var out, errb strings.Builder
+	if code := Run([]string{"drain", "--drive", "--yes", "--profile", "beta"}, &out, &errb); code != 3 {
+		t.Fatalf("a stop exits 3, got %d:\n%s%s", code, out.String(), errb.String())
+	}
+	if want := "to resume: abcd drain --drive --profile beta"; !strings.Contains(out.String(), want) {
+		t.Fatalf("the end does not say %q:\n%s", want, out.String())
+	}
+}
+
+// TestADriveOnAnotherProfileThanALaneStartedOnIsRefused: nothing crosses from one
+// subscription to the other unasked, and the refusal says both what to type to go on
+// and where else the other profile may run.
+func TestADriveOnAnotherProfileThanALaneStartedOnIsRefused(t *testing.T) {
+	w := newDriveWorld(t)
+	w.passWalls(t)
+	w.twoProfiles(t)
+	was := driveLanesElsewhere
+	t.Cleanup(func() { driveLanesElsewhere = was })
+	driveLanesElsewhere = func(_, profile string) ([]loop.LaneOnProfile, error) {
+		if profile == "alpha" {
+			return nil, nil
+		}
+		return []loop.LaneOnProfile{{RunID: "run-1", Issue: "iss-1", Profile: "alpha"}}, nil
+	}
+	text := refusedDrive(t, "drain", "--drive", "--yes", "--profile", "beta")
+	for _, want := range []string{"run-1", "iss-1", "alpha", "beta", "--profile alpha", "another checkout", "nothing started, nothing reserved"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the refusal %q does not name %q", text, want)
+		}
+	}
+	if w.terminalCalls != 0 {
+		t.Fatal("nothing runs")
+	}
+	var out, errb strings.Builder
+	if code := Run([]string{"drain", "--drive", "--yes", "--profile", "alpha"}, &out, &errb); code != 0 {
+		t.Fatalf("the profile it started on goes on: exit %d:\n%s%s", code, out.String(), errb.String())
+	}
+}
+
+// TestTheConsentNamesTheProfile: the question says which subscription it would spend.
+func TestTheConsentNamesTheProfile(t *testing.T) {
+	w := newDriveWorld(t)
+	w.passWalls(t)
+	w.twoProfiles(t)
+	withTerminal(t)
+	out, err := runCLIPipedStdin(t, "n\n", "drain", "--drive", "--profile", "beta")
+	if err != nil {
+		t.Fatalf("a no is no failure: %v\n%s", err, out)
+	}
+	for _, want := range []string{"profile:  beta", abcdhome.Display("profiles", "beta"), "separate login and settings"} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("the consent does not name %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(string(out), "alpha") {
+		t.Errorf("the consent names the other one:\n%s", out)
+	}
 }
 
 // TestAWallNotProvedRefusesNamingIt: with the production check, the drive does
@@ -308,6 +535,8 @@ func TestTheDrivesFlagsRefuseWhatTheyCannotTake(t *testing.T) {
 		{"drain", "--yes"},
 		{"drain", "--drive", "--dry-run"},
 		{"drain", "--drive", "--judgement", "x.json"},
+		{"drain", "--profile", "walled"},
+		{"drain", "--drive", "--profile", ""},
 	} {
 		refusedDrive(t, args...)
 	}

@@ -187,7 +187,7 @@ func gitIdentityWorld(t *testing.T, global string) (Profile, string) {
 	if err := os.MkdirAll(abcdhome.Path(home, "profiles", "walled"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	p, err := DriveProfile(home)
+	p, err := DriveProfile(home, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +284,7 @@ func TestTheProofCatchesACredentialUnderAHarnessPrefix(t *testing.T) {
 func TestAWalledLaunchAndTheProofEachWriteOneLedgerEntry(t *testing.T) {
 	f := newFake(t, "wall-ok", Claude)
 	c := mustLoad(t, claudeRoute, "")
-	p, err := DriveProfile(profileHome(t, "walled"))
+	p, err := DriveProfile(profileHome(t, "walled"), "")
 	if err != nil {
 		t.Fatal(err)
 	}

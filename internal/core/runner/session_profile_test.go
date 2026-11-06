@@ -153,3 +153,18 @@ func TestSessionOnProfileWithNoHome(t *testing.T) {
 		}
 	}
 }
+
+// TestASessionOnEitherOfTwoProfilesReadsAsOn: the folder may hold several, and a
+// session on any of them is on a profile.
+func TestASessionOnEitherOfTwoProfilesReadsAsOn(t *testing.T) {
+	home := t.TempDir()
+	for _, name := range []string{"alpha", "beta"} {
+		dir := abcdhome.Path(home, "profiles", name)
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if on, why := SessionOnProfile(home, dir); !on {
+			t.Errorf("a session on %s reads as off: it %s", name, why)
+		}
+	}
+}
