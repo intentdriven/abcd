@@ -293,8 +293,7 @@ A receipt says which reading of a verdict it was recorded under. One recorded be
 verdict named its head does not count at the merge gate or as a delta's base, whichever
 build of abcd wrote it: it keeps its returns' digests and not their text, so it cannot be
 read again. Record the pair again. A return written before this rule is refused
-until its verdict names the head, so have the reviewer write it again, or, having read
-it yourself, put the name on its verdict line. In `human` mode no receipt is read, and
+until its verdict names the head, so have the reviewer write it again. In `human` mode no receipt is read, and
 nothing changes.
 
 ## Record a delta review
