@@ -354,24 +354,7 @@ func TestAnOutageUnderABoundOutlastsEightHours(t *testing.T) {
 // it, and the run renews nothing it does not hold.
 func TestAStuckQueueUnderABoundOutlastsEightHours(t *testing.T) {
 	w := newTerminalWorld(t)
-	q := otherCopy(t, w.bare, quinnEmail)
-	held := map[string]string{eligibleIssue: "AGENTS.md", secondIssue: "commands/drain.md", thirdIssue: "commands/other.md"}
-	opts := func() claim.Options { return as(t, q, claim.Options{Now: w.clock.now}) }
-	for id, path := range held {
-		if _, err := claim.Reserve(q, claim.Request{Record: id, Footprint: []string{path}}, opts()); err != nil {
-			t.Fatal(err)
-		}
-	}
-	w.onSleep = func(d time.Duration) {
-		now := w.clock.t
-		w.clock.t = now.Add(d)
-		for id := range held {
-			if _, err := claim.Reserve(q, claim.Request{Record: id, Renew: true}, opts()); err != nil {
-				t.Fatal(err)
-			}
-		}
-		w.clock.t = now
-	}
+	w.heldByAPeer(t)
 	o := w.bounded(t, pastTheOutageLimit)
 	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
 	if err != nil {
