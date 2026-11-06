@@ -407,3 +407,47 @@ func TestALimitLineNamesTheSubscriptionAndTheFlag(t *testing.T) {
 		})
 	}
 }
+
+// TestADriveEndedOnAHoldNamesNoResumeWhateverElseIsInProgress: the reason is the way on,
+// even with another lane in progress that is on the drive's own profile.
+func TestADriveEndedOnAHoldNamesNoResumeWhateverElseIsInProgress(t *testing.T) {
+	w := newTerminalWorld(t, "shape", "late")
+	left := laneLeftOn(t, w, "alpha")
+	root := w.repo.Root()
+	other, err := ReadState(root, left.Run)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other.RunID, other.Profile = "run-2611061200000001", "beta"
+	if err := os.MkdirAll(filepath.Join(root, filepath.FromSlash(runRel(other.RunID))), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := os.OpenRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dir.Close()
+	if err := writeState(dir, other); err != nil {
+		t.Fatal(err)
+	}
+	drain, _, err := readDrain(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	drain.Lanes = append(drain.Lanes, DrainLane{Issue: "iss-2609239999999999", RunID: other.RunID, OpenedAt: w.clock.t, Outcome: DrainLaneInProgress})
+	if err := writeDrain(root, drain); err != nil {
+		t.Fatal(err)
+	}
+	o := w.options(t)
+	o.Options.Profile = "beta"
+	res, err := RunTerminal(context.Background(), root, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Ended != TerminalWall || !strings.Contains(res.Why, "--profile alpha") {
+		t.Fatalf("the hold on the first lane ends the drive: %+v\n%s", res, w.said())
+	}
+	if res.Resume != "" {
+		t.Fatalf("a resume line after a hold: %q", res.Resume)
+	}
+}

@@ -374,3 +374,20 @@ func TestALevelItsOwnersPrivateGroupCanWriteStands(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestAHomeThatIsNotAbsoluteIsRefused: the store is found from the person's home, never
+// from the working directory.
+func TestAHomeThatIsNotAbsoluteIsRefused(t *testing.T) {
+	here := t.TempDir()
+	if err := os.MkdirAll(abcdhome.Path(here, "profiles", "alpha"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(here)
+	for _, home := range []string{"", "."} {
+		for _, name := range []string{"", "alpha"} {
+			if _, err := DriveProfile(home, name); err == nil || !strings.Contains(err.Error(), "home directory") {
+				t.Errorf("home %q, name %q: %v", home, name, err)
+			}
+		}
+	}
+}

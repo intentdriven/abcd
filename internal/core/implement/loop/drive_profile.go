@@ -91,6 +91,7 @@ func (t *terminal) holdToProfile(runID string) (string, error) {
 	if err != nil || !t.onAnotherProfile(run) {
 		return "", err
 	}
+	t.heldToProfile = true
 	t.stoppedBy(errors.New(OnAnotherProfile(LaneOnProfile{RunID: runID, Issue: run.Key, Profile: run.Profile}, t.o.Options.Profile)))
 	return TerminalWall, nil
 }

@@ -304,7 +304,7 @@ a command that prints it reads the same pasted, and the one directory is held to
 named directory takes every check the one directory takes, the link, the owner and the group or
 other write among them, and each level of abcd's home above it takes the check every declaration
 read there takes, so a name that fails is refused before the question and before anything is
-reserved. The question
+reserved. A stage's files are made through each level of abcd's home the same way. The question
 names the profile. The settings, the login, the live check, each launch and each limit's
 probe are that directory's, so a limit pauses that drive until that profile's limit ends
 and nothing moves it to another. Choosing by itself among several, a registry, a creating

@@ -130,6 +130,9 @@ func PlainProfileName(name string) bool {
 // refusal lists what the folder holds and never repeats the name, as abcd's other
 // refusals of a typed value do not.
 func DriveProfile(home, name string) (Profile, error) {
+	if !filepath.IsAbs(home) {
+		return Profile{}, errors.New("a drive's profile is found from the person's home directory, and no absolute one is known")
+	}
 	root := abcdhome.Path(home, profilesLeaf)
 	shown := abcdhome.Display(profilesLeaf) + "/"
 	notPlain := fmt.Errorf("%w: a profile's name is one directory's under %s, a letter or digit, then letters, digits, '.', '_' and '-' (the value given is not repeated here)", ErrProfileName, shown)

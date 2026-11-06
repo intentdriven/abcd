@@ -173,6 +173,8 @@ type terminal struct {
 	// limit is the outage's schedule run for a rate limit.
 	limit terminalOutageClock
 	last  DrainResult
+	// heldToProfile is set when the drive ended on a run's profile (holdToProfile).
+	heldToProfile bool
 	// idleSince is when the run last stopped moving, zero while it moves.
 	idleSince time.Time
 	// ranClean names the lane and head a preflight last exited 0 on.
@@ -1813,9 +1815,8 @@ func (t *terminal) ended(why string) TerminalResult {
 		run, rerr := ReadState(t.repoRoot, l.RunID)
 		// A later drive takes up no parked lane, so the command that would is not named.
 		parked := rerr == nil && parkedAtLand(run) >= 0
-		// Nor is the command a hold to another profile has just refused.
-		held := rerr == nil && t.onAnotherProfile(run)
-		if why != TerminalHalted && !driveStopped(l.RunID) && !parked && !held {
+		// Nor is any after a hold to a run's profile, whose reason names the ways on.
+		if why != TerminalHalted && !driveStopped(l.RunID) && !parked && !t.heldToProfile {
 			res.Resume = TerminalResumeCommand
 		}
 		if parked {
