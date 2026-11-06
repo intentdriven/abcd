@@ -1085,7 +1085,7 @@ func TestSpendWithNoProbeAnsweredHasACeiling(t *testing.T) {
 	if len(back) != 0 {
 		t.Fatalf("below the ceiling nothing goes back: %+v\n%s", back, w.said())
 	}
-	w, back, _ = poisonRun(t, "retries", 2*terminalSpentUnanswered, noProbeAnswers)
+	w, back, _ = poisonRun(t, "retries", terminalSpentUnanswered+1, noProbeAnswers)
 	if len(back) != 0 {
 		t.Fatalf("an outage spends nothing and never gets there: %+v\n%s", back, w.said())
 	}
@@ -1099,18 +1099,18 @@ func TestACrashAfterInitCountsOnlyIfAProbeAnswers(t *testing.T) {
 	if len(back) != 1 || back[0].Kind != HandBackStuck || probes != terminalPoisonLaunches {
 		t.Fatalf("a probe answering counts each: %+v, %d probes\n%s", back, probes, w.said())
 	}
-	w, back, probes = poisonRun(t, "crashes", 2*terminalPoisonLaunches, noProbeAnswers)
+	w, back, probes = poisonRun(t, "crashes", terminalPoisonLaunches+1, noProbeAnswers)
 	if len(back) != 0 || probes == 0 {
 		t.Fatalf("a probe unanswered counts nothing: %+v, %d probes\n%s", back, probes, w.said())
 	}
-	if w, back, _ = poisonRun(t, "crashes", 2*terminalPoisonLaunches, nil); len(back) != 0 {
+	if w, back, _ = poisonRun(t, "crashes", terminalPoisonLaunches+1, nil); len(back) != 0 {
 		t.Fatalf("with no probe nothing is counted: %+v\n%s", back, w.said())
 	}
 }
 
 // TestARejectedProbeCountsNothing: the same limit that may have failed the launch.
 func TestARejectedProbeCountsNothing(t *testing.T) {
-	w, back, probes := poisonRun(t, "crashes", 2*terminalPoisonLaunches, func(n *int) func(context.Context, string, string) (bool, *runner.Failure) {
+	w, back, probes := poisonRun(t, "crashes", terminalPoisonLaunches+1, func(n *int) func(context.Context, string, string) (bool, *runner.Failure) {
 		return func(context.Context, string, string) (bool, *runner.Failure) {
 			*n++
 			return false, limitedNoReset()
@@ -1124,7 +1124,7 @@ func TestARejectedProbeCountsNothing(t *testing.T) {
 // TestALaunchStuckRetryingIsAnOutage: it says so, costs no probe, and is never counted
 // against its lane, a probe that would answer included.
 func TestALaunchStuckRetryingIsAnOutage(t *testing.T) {
-	w, back, probes := poisonRun(t, "retries", 2*terminalPoisonLaunches, probeAnswers)
+	w, back, probes := poisonRun(t, "retries", terminalPoisonLaunches+1, probeAnswers)
 	if len(back) != 0 || probes != 0 {
 		t.Fatalf("nothing counts, and nothing is asked: %+v, %d probes\n%s", back, probes, w.said())
 	}
@@ -1136,7 +1136,7 @@ func TestALaunchStuckRetryingIsAnOutage(t *testing.T) {
 // TestAnAPIStatusThatIsTheAccountsCountsNothing: a result naming the service's own
 // failure says nothing of the work.
 func TestAnAPIStatusThatIsTheAccountsCountsNothing(t *testing.T) {
-	w, back, probes := poisonRun(t, "apifails", 2*terminalPoisonLaunches, probeAnswers)
+	w, back, probes := poisonRun(t, "apifails", terminalPoisonLaunches+1, probeAnswers)
 	if len(back) != 0 || probes != 0 {
 		t.Fatalf("%+v, %d probes\n%s", back, probes, w.said())
 	}
@@ -1145,7 +1145,7 @@ func TestAnAPIStatusThatIsTheAccountsCountsNothing(t *testing.T) {
 // TestLaunchesThatNeverReachTheModelStayOnTheOutageWait: no stream at all, and no
 // account alive to say otherwise.
 func TestLaunchesThatNeverReachTheModelStayOnTheOutageWait(t *testing.T) {
-	w, back, _ := poisonRun(t, "none", 2*terminalPoisonLaunches, noProbeAnswers)
+	w, back, _ := poisonRun(t, "none", terminalPoisonLaunches+1, noProbeAnswers)
 	if len(back) != 0 || len(lanesDone(t, w.repo)) == 0 {
 		t.Fatalf("the lane stays and lands: %+v\n%s", back, w.said())
 	}
@@ -1290,7 +1290,7 @@ func TestAProbeAtTheProofHoldsToTheSettings(t *testing.T) {
 
 // TestWithNoBoundNothingIsCountedAgainstALane: an attended run behaves as it did.
 func TestWithNoBoundNothingIsCountedAgainstALane(t *testing.T) {
-	w := newTerminalWorld(t, append([]string{"shape"}, repeated("crashes", 2*terminalPoisonLaunches)...)...)
+	w := newTerminalWorld(t, append([]string{"shape"}, repeated("crashes", terminalPoisonLaunches+1)...)...)
 	o := w.options(t)
 	o.Drain.Max = 1
 	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
