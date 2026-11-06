@@ -99,8 +99,9 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"answer, and with no terminal nothing else answers. A profile is a separate login and\n" +
 			"settings on this one account, not a boundary: a stage's shell reads what this account\n" +
 			"can. With one directory there it runs on that one. With several it refuses, naming them,\n" +
-			"until --profile <name> names the one to run on, a plain directory name that meets every\n" +
-			"check the one directory does, and the question names it. A run keeps the profile it\n" +
+			"until --profile <name> names the one to run on: letters and digits, with '.', '_' or '-'\n" +
+			"after the first, naming a directory that meets every check the one directory does, and\n" +
+			"the question names it. A run keeps the profile it\n" +
 			"started on: a drive on another refuses before it takes that run's lane up, since that is\n" +
 			"another subscription, and a limit waits for that profile's reset. Nothing moves a drive\n" +
 			"from one profile to another. It then judges each eligible issue,\n" +

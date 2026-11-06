@@ -19,6 +19,7 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+	"unicode"
 
 	"crypto/sha256"
 	"encoding/hex"
@@ -103,25 +104,44 @@ type Profile struct {
 	Args []string
 }
 
-// plainProfileName reports whether name is one path element a drive may run on: no
-// way out of the profiles' folder or round to a sibling, no separator the
-// environment's lists would split it on, and nothing a terminal would act on.
-func plainProfileName(name string) bool {
-	return name != "." && name != ".." && !strings.ContainsRune(name, filepath.Separator) &&
-		!strings.ContainsRune(name, os.PathListSeparator) && termsafe.Sanitize(name) == name
+// PlainProfileName reports whether name is one a drive may run on: a letter or digit,
+// then letters, digits, '.', '_' and '-'. That is one path element with no way out of
+// the profiles' folder, no separator the environment's lists would split it on, nothing a
+// terminal would act on and nothing a shell would, so the command a line suggests with
+// it reads the same pasted.
+func PlainProfileName(name string) bool {
+	for i, r := range name {
+		switch {
+		case unicode.IsLetter(r), unicode.IsDigit(r):
+		case i > 0 && (r == '.' || r == '_' || r == '-'):
+		default:
+			return false
+		}
+	}
+	return name != ""
 }
 
 // DriveProfile is the profile a drive runs on, below home, the person's home
 // directory: the directory name names, or with name empty the one directory there
-// is. It refuses a name that is no plain element or that the folder does not hold
-// exactly, none, several with no name, and a directory it would not trust with the
-// settings that decide what the drive's agents run. A refusal lists what the folder
-// holds and never repeats the name, as abcd's other refusals of a typed value do not.
+// is. It refuses a name that is no plain one or that the folder does not hold exactly,
+// none, several with no name, and a directory it would not trust with the settings that
+// decide what the drive's agents run, or one behind a level of abcd's home that is a link
+// or that another account can change, judged as every declaration read there is. A
+// refusal lists what the folder holds and never repeats the name, as abcd's other
+// refusals of a typed value do not.
 func DriveProfile(home, name string) (Profile, error) {
 	root := abcdhome.Path(home, profilesLeaf)
 	shown := abcdhome.Display(profilesLeaf) + "/"
-	if name != "" && !plainProfileName(name) {
-		return Profile{}, fmt.Errorf("%w: --profile takes one directory's name under %s, with no separator and no control character (the value given is not repeated here)", ErrProfileName, shown)
+	notPlain := fmt.Errorf("%w: a profile's name is one directory's under %s, a letter or digit, then letters, digits, '.', '_' and '-' (the value given is not repeated here)", ErrProfileName, shown)
+	if name != "" && !PlainProfileName(name) {
+		return Profile{}, notPlain
+	}
+	scope, err := fsutil.OpenHomeDeclarationScope(home, abcdhome.Rel(profilesLeaf))
+	switch {
+	case err == nil:
+		scope.Close()
+	case !errors.Is(err, os.ErrNotExist):
+		return Profile{}, err
 	}
 	entries, err := os.ReadDir(root)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -134,6 +154,7 @@ func DriveProfile(home, name string) (Profile, error) {
 		}
 	}
 	sort.Strings(names)
+	held := termsafe.Sanitize(strings.Join(names, ", "))
 	makeOne := fmt.Sprintf("make one and log the harness into it once, in your own shell: "+
 		"`mkdir -p %sdrive && CLAUDE_CONFIG_DIR=%sdrive claude`, then the harness's own login step; abcd never logs a harness in", shown, shown)
 	switch {
@@ -141,12 +162,14 @@ func DriveProfile(home, name string) (Profile, error) {
 	case name != "" && len(names) == 0:
 		return Profile{}, fmt.Errorf("%w named by --profile under %s, which holds none: %s", ErrNoProfile, shown, makeOne)
 	case name != "":
-		return Profile{}, fmt.Errorf("%w named by --profile under %s (the value given is not repeated here), which holds %s", ErrNoProfile, shown, strings.Join(names, ", "))
+		return Profile{}, fmt.Errorf("%w named by --profile under %s (the value given is not repeated here), which holds %s", ErrNoProfile, shown, held)
 	case len(names) == 0:
 		return Profile{}, fmt.Errorf("%w under %s: %s", ErrNoProfile, shown, makeOne)
 	case len(names) > 1:
 		return Profile{}, fmt.Errorf("%w under %s (%s): name the one this drive runs on with --profile <name>; a drive never chooses among them or moves from one to another",
-			ErrSeveralProfiles, shown, strings.Join(names, ", "))
+			ErrSeveralProfiles, shown, held)
+	case !PlainProfileName(names[0]):
+		return Profile{}, notPlain
 	default:
 		name = names[0]
 	}

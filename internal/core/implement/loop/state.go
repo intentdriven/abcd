@@ -1328,6 +1328,10 @@ func readListedState(root *os.Root, runID string) (State, error) {
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d; this abcd reads versions %d to %d", rel, st.SchemaVersion, schemaVersionUnpaced, SchemaVersion),
 			"run the abcd that wrote it")
 	}
+	if st.Profile != "" && !runner.PlainProfileName(st.Profile) {
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s carries a profile that is no plain name (the value is not repeated here)", rel),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	}
 	if st.RunID != runID {
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s names run %q, not the run it is stored under", rel, st.RunID),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))

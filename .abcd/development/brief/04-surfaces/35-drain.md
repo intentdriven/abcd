@@ -299,9 +299,12 @@ start, and a difference stops the drive.
 **Which profile.** `runner.DriveProfile` is the one function that answers it. With one
 directory under `~/.abcd.noindex/profiles/` a drive runs on it. With several it refuses,
 naming them and the flag that names one; it never chooses among them. A name is one plain path
-element the folder holds exactly, and the named directory takes every check the one
-directory takes, the link, the owner and the group or other write among them, so a name
-that fails is refused before the question and before anything is reserved. The question
+element the folder holds exactly, in letters and digits with `.`, `_` or `-` after the first, so
+a command that prints it reads the same pasted, and the one directory is held to that too. The
+named directory takes every check the one directory takes, the link, the owner and the group or
+other write among them, and each level of abcd's home above it takes the check every declaration
+read there takes, so a name that fails is refused before the question and before anything is
+reserved. The question
 names the profile. The settings, the login, the live check, each launch and each limit's
 probe are that directory's, so a limit pauses that drive until that profile's limit ends
 and nothing moves it to another. Choosing by itself among several, a registry, a creating
@@ -313,10 +316,13 @@ that run up, since that is another subscription: it is refused before the questi
 the lane is the drain's in progress (`loop.LanesOnAnotherProfile`), and ends the run as a
 check that no longer holds, before anything claims or reserves it, when a lane comes back
 later, as one at its pull request does for its sync. A lane at its pull request needs no
-agent, so it stops no drive by itself. The refusal names the ways on: the name it started
-on, another checkout, or a take-over from a session of the person's own. A take-over says
+agent, so it stops no drive by itself, and the run is what says so, since only a drain's own
+move rewrites the outcome it stored. The refusal names the ways on: the name it started on,
+another checkout, or a take-over from a session of the person's own, and the drive's last line
+then names no command of its own to resume. A take-over says
 which profile the run started on, since what that session starts runs on its own login. A
-run that names no profile goes on, says so, and takes the profile that drove it.
+run that names no profile goes on, says so, and takes the profile that drove it once the drive
+holds it, so a drive that only waited on another driver leaves it as it was.
 
 Two drives on two profiles at once take two checkouts, since one drive holds a checkout
 whatever its profile. Each checkout's drain and runs are its own, each profile and

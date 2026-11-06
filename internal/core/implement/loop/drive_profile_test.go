@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -234,5 +235,175 @@ func TestALaterVersionAloneCarriesAProfile(t *testing.T) {
 	write(strings.Replace(string(good), cur, cur+` "profile": "alpha",`, 1))
 	if st, err = ReadState(repo.Root(), runID); err != nil || st.Profile != "alpha" {
 		t.Fatalf("the current version carries it: %q %v", st.Profile, err)
+	}
+}
+
+// TestLanesOnAnotherProfileReadTheRunNotTheStoredOutcome: only a drain's own move
+// rewrites the outcome it stored, so a run a session finished, or one a drive left right
+// after its land step, still reads there as in progress; neither needs an agent.
+func TestLanesOnAnotherProfileReadTheRunNotTheStoredOutcome(t *testing.T) {
+	for _, c := range []struct {
+		what string
+		make func(st *State)
+	}{
+		{"finished", func(st *State) {
+			st.Pending = nil
+			for i := range st.Lanes {
+				st.Lanes[i].Stage = StageDone
+			}
+		}},
+		{"at its pull request", func(st *State) {
+			st.Lanes[st.current()].Landing = &Landing{Merge: "queue"}
+		}},
+		{"handed back", func(st *State) {
+			st.Lanes[st.current()].HandBack = &HandBack{}
+		}},
+	} {
+		t.Run(c.what, func(t *testing.T) {
+			w := newTerminalWorld(t, "shape", "late")
+			left := laneLeftOn(t, w, "alpha")
+			root := w.repo.Root()
+			if err := mutate(root, left.Run, func(_ *os.Root, st *State) (bool, error) {
+				c.make(st)
+				return true, nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			drain, _, err := readDrain(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(drain.Lanes) != 1 || drain.Lanes[0].Outcome != DrainLaneInProgress {
+				t.Fatalf("the drain still stores it as in progress: %+v", drain.Lanes)
+			}
+			if got, err := LanesOnAnotherProfile(root, "beta"); err != nil || len(got) != 0 {
+				t.Fatalf("got %+v, %v", got, err)
+			}
+		})
+	}
+}
+
+// TestAHeldDriveNamesNoCommandTheHoldRefuses: the reason names the ways on, and the last
+// line does not send the person back to what just stopped; on the run's own profile it
+// still names the way on.
+func TestAHeldDriveNamesNoCommandTheHoldRefuses(t *testing.T) {
+	w := newTerminalWorld(t, "shape", "late")
+	left := laneLeftOn(t, w, "alpha")
+	if left.Resume == "" {
+		t.Fatalf("a drive on the run's own profile names the way on: %+v", left)
+	}
+	o := w.options(t)
+	o.Options.Profile = "beta"
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Ended != TerminalWall || res.Run != left.Run {
+		t.Fatalf("the hold ends the drive and names the run: %+v", res)
+	}
+	if res.Resume != "" {
+		t.Fatalf("the last line sends the person back to it: %q", res.Resume)
+	}
+	if !strings.Contains(res.Why, "--profile alpha") {
+		t.Fatalf("the reason names the way on: %q", res.Why)
+	}
+}
+
+// TestADriveWaitingOnALiveDriverMarksNothing: a run that names no profile takes the
+// drive's only once the drive holds it. One that waited on a session and ended leaves
+// the run as it found it, since nothing ran on that profile.
+func TestADriveWaitingOnALiveDriverMarksNothing(t *testing.T) {
+	w := newTerminalWorld(t, "shape", "late")
+	left := laneLeftOn(t, w, "")
+	root := w.repo.Root()
+	before := w.launches(t)
+	procsOf(t, hostOne, hostOne, hostTwo)
+	if err := ClaimDriver(root, left.Run, Options{Session: "session-one"}); err != nil {
+		t.Fatal(err)
+	}
+	procsOf(t, hostTwo, hostOne, hostTwo)
+	o := w.options(t)
+	o.Options.Profile = "beta"
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	waited, sleep := 0, o.Sleep
+	o.Sleep = func(ctx context.Context, d time.Duration) {
+		if waited++; waited == 2 {
+			cancel()
+		}
+		sleep(ctx, d)
+	}
+	res, err := RunTerminal(ctx, root, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Ended != TerminalKilled || !strings.Contains(w.said(), "session-one") {
+		t.Fatalf("the drive waits on the driver until it is stopped: %+v\n%s", res, w.said())
+	}
+	if w.launches(t) != before {
+		t.Fatalf("no agent starts: %d, was %d", w.launches(t), before)
+	}
+	st, err := ReadState(root, left.Run)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Profile != "" || slices.ContainsFunc(st.Record, func(e Entry) bool { return e.Stage == StageProfile }) {
+		t.Fatalf("the run reads as started on a profile nothing ran on: %q %+v", st.Profile, st.Record)
+	}
+}
+
+// TestAStoredProfileThatIsNoPlainNameIsRefused: the state is read into a command the
+// person is told to type, so the value is judged as a typed one is, and not repeated.
+func TestAStoredProfileThatIsNoPlainNameIsRefused(t *testing.T) {
+	repo, runID, _, _ := issueAwaiting(t)
+	path := filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(runID)))
+	good := stateBytes(t, repo.Root(), runID)
+	cur := fmt.Sprintf(`"schema_version": %d,`, SchemaVersion)
+	for _, stored := range []string{"a b", "$(x)", "-x", "../beta"} {
+		if err := os.WriteFile(path, []byte(strings.Replace(string(good), cur, cur+` "profile": "`+stored+`",`, 1)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		_, err := ReadState(repo.Root(), runID)
+		if err == nil || !strings.Contains(err.Error(), "profile") || strings.Contains(err.Error(), stored) {
+			t.Errorf("%q: %v", stored, err)
+		}
+	}
+}
+
+// TestALimitLineNamesTheSubscriptionAndTheFlag: with several directories the bare
+// command refuses, so the line a limit ends a drive on names the one to type.
+func TestALimitLineNamesTheSubscriptionAndTheFlag(t *testing.T) {
+	for _, c := range []struct {
+		what string
+		arm  func(t *testing.T, w *terminalWorld)
+	}{
+		{"a reset too far off", func(t *testing.T, w *terminalWorld) {
+			t.Setenv(terminalResetEnv, strconv.FormatInt(w.clock.t.Add(72*time.Hour).Unix(), 10))
+		}},
+		{"no reset named", func(t *testing.T, w *terminalWorld) {}},
+	} {
+		t.Run(c.what, func(t *testing.T) {
+			w := newTerminalWorld(t, append([]string{"shape"}, repeated("limited", 60)...)...)
+			w.realWorktree()
+			c.arm(t, w)
+			o := w.options(t)
+			o.Options.Profile = "alpha"
+			o.Drain.Max = 1
+			w.guardSleeps(t, &o)
+			res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.Ended != TerminalLimited {
+				t.Fatalf("the run ends on the limit: %+v\n%s", res, w.said())
+			}
+			said := w.said()
+			if !strings.Contains(said, "subscription") || !strings.Contains(said, TerminalResumeCommand+" --profile alpha") {
+				t.Fatalf("the line names neither:\n%s", said)
+			}
+			if strings.Contains(said, "the account") {
+				t.Fatalf("a limit is the subscription's:\n%s", said)
+			}
+		})
 	}
 }

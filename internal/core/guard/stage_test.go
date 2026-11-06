@@ -350,17 +350,23 @@ func TestAStageAddsNoWorktree(t *testing.T) {
 }
 
 // TestAStageOnOneProfileWritesNoSiblingProfile: a stage names only its own profile to
-// protect, and a sibling's login and settings stay out of its reach all the same,
-// since a stage writes only under its own directories.
+// protect, and the lines the guard reads are refused on a sibling's login and settings
+// all the same. The stage's home stands where a drive puts it, four levels below abcd's
+// home. This judges lines: a shell can reach what the guard does not read.
 func TestAStageOnOneProfileWritesNoSiblingProfile(t *testing.T) {
-	f, profile, _ := stageFiles(t)
-	sibling := filepath.Join(filepath.Dir(profile), "sibling")
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	profile := abcdhome.Path(home, "profiles", "walled")
+	sibling := abcdhome.Path(home, "profiles", "sibling")
+	shellHome := abcdhome.Path(home, "stage-homes", "walled", "0123456789abcdef", "home")
+	f := NewFiles(t.TempDir()).WithStage(shellHome, []string{profile}, []string{"docs/page.md"})
 	if err := os.MkdirAll(sibling, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	for _, line := range []string{
 		`printf x > ` + filepath.Join(sibling, "settings.json"),
-		`printf x > ~/../../profiles/sibling/settings.json`,
+		`printf x > ~/../../../../profiles/sibling/settings.json`,
+		`printf x > "$HOME/../../../../profiles/sibling/settings.json"`,
 		`rm -rf ` + sibling,
 		`cp /dev/null ` + filepath.Join(sibling, ".credentials.json"),
 	} {

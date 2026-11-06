@@ -40,7 +40,8 @@ func OnAnotherProfile(l LaneOnProfile, profile string) string {
 
 // LanesOnAnotherProfile names each lane this checkout's drain would drive next that
 // started on another profile than this one: its lanes in progress, while the drain is
-// live. A lane at its pull request is no such lane until it needs an agent again, and a
+// live. Only a drain's own move rewrites the outcome it stored, so the run says too: one
+// a session finished, or at its pull request, needs no agent until it comes back, and a
 // drain that ended takes nothing up. A run that names no profile holds to none yet.
 func LanesOnAnotherProfile(repoRoot, profile string) ([]LaneOnProfile, error) {
 	st, live, err := readDrain(repoRoot)
@@ -56,6 +57,9 @@ func LanesOnAnotherProfile(repoRoot, profile string) ([]LaneOnProfile, error) {
 		if err != nil {
 			return nil, err
 		}
+		if outcome, _, _ := laneOutcome(run); outcome != DrainLaneInProgress {
+			continue
+		}
 		if run.Profile != "" && run.Profile != profile {
 			out = append(out, LaneOnProfile{RunID: l.RunID, Issue: l.Issue, Profile: run.Profile})
 		}
@@ -63,41 +67,61 @@ func LanesOnAnotherProfile(repoRoot, profile string) ([]LaneOnProfile, error) {
 	return out, nil
 }
 
+// onAnotherProfile reports whether this drive is on another profile than run started on.
+func (t *terminal) onAnotherProfile(run State) bool {
+	return t.o.Options.Profile != "" && run.Profile != "" && run.Profile != t.o.Options.Profile
+}
+
+// resumeCommand is what a person types to go on with this drive's work later.
+func (t *terminal) resumeCommand() string {
+	if p := t.o.Options.Profile; p != "" {
+		return TerminalResumeCommand + " --profile " + p
+	}
+	return TerminalResumeCommand
+}
+
 // holdToProfile is the check before a drive drives run runID: another profile ends the
 // run, before anything claims or reserves the lane, as a wall that no longer holds does.
-// A run that names no profile goes on and takes this one, said and recorded, so a later
-// drive on another is held to it. It returns why the run ends, "" to go on.
+// It returns why the run ends, "" to go on.
 func (t *terminal) holdToProfile(runID string) (string, error) {
-	profile := t.o.Options.Profile
-	if profile == "" {
+	if t.o.Options.Profile == "" {
 		return "", nil
 	}
 	run, err := ReadState(t.repoRoot, runID)
-	if err != nil {
+	if err != nil || !t.onAnotherProfile(run) {
 		return "", err
 	}
-	switch run.Profile {
-	case profile:
-		return "", nil
-	case "":
-	default:
-		t.stoppedBy(errors.New(OnAnotherProfile(LaneOnProfile{RunID: runID, Issue: run.Key, Profile: run.Profile}, profile)))
-		return TerminalWall, nil
+	t.stoppedBy(errors.New(OnAnotherProfile(LaneOnProfile{RunID: runID, Issue: run.Key, Profile: run.Profile}, t.o.Options.Profile)))
+	return TerminalWall, nil
+}
+
+// markProfile has a run that names no profile take this drive's, said and recorded, so a
+// later drive on another is held to it. It waits until the drive has taken the lane up:
+// one that waited on another driver and ended ran nothing on this profile.
+func (t *terminal) markProfile(runID string) error {
+	profile := t.o.Options.Profile
+	if profile == "" {
+		return nil
 	}
-	now := t.now()
+	now, marked := t.now(), false
 	note := "this run named no profile, and from here a drive runs it on profile " + termsafe.Sanitize(profile)
-	err = mutate(t.repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
-		st.Profile = profile
+	err := mutate(t.repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+		if st.Profile != "" {
+			return false, nil
+		}
+		st.Profile, marked = profile, true
 		st.Record = append(st.Record, Entry{At: now, Stage: StageProfile, Note: note})
 		st.UpdatedAt = now
 		return true, nil
 	})
 	if r, ok := AsRefusal(err); ok && r.Contention {
-		return "", nil
+		return nil
 	}
 	if err != nil {
-		return "", err
+		return err
 	}
-	t.say("%s: %s", runID, note)
-	return "", nil
+	if marked {
+		t.say("%s: %s", runID, note)
+	}
+	return nil
 }

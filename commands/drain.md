@@ -49,8 +49,10 @@ CLAUDE_CONFIG_DIR=~/.abcd.noindex/profiles/second claude   # then the harness's 
 abcd drain --drive --profile second
 ```
 
-The name is one plain directory name, and the directory meets every check the one
-directory does; anything else refuses before anything is reserved. The question names
+The name is letters and digits, with `.`, `_` or `-` after the first, and the directory
+meets every check the one directory does, as does each folder above it: a link, or a
+folder another account can change, refuses. Anything else refuses before anything is
+reserved. The question names
 the profile. A limit on that profile pauses that drive until that profile's limit ends:
 nothing moves a drive to the other. A run keeps the profile it started on, so a drive on
 the other refuses before it takes that run's lane up, since that is another subscription,
