@@ -17,12 +17,13 @@
 # attestation verify` and installs nothing if that fails; without gh, or with a
 # gh that is not signed in, the checksum stands alone and a warning says so
 # (iss-2610120617521209); installoneliner_run_test.go proves the same through
-# the documented command. It refuses a symlinked ~/.abcd.noindex before it
-# fetches anything more, and after the install it records the installed path
-# and its SHA-256 in ~/.abcd.noindex/path-entry, the record the hooks and `abcd
-# ahoy` read to know the PATH copy as abcd's own (iss-2610240827243654). It also
-# records the release in ~/.abcd.noindex/release-mark, the newest-release mark
-# hooks/bootstrap.sh and `abcd update` keep (iss-2610120601505029).
+# the documented command. Either way it installs nothing whose own --version
+# names another release than the latest. It refuses a symlinked ~/.abcd.noindex
+# before it fetches anything more, and after the install it records the installed
+# path and its SHA-256 in ~/.abcd.noindex/path-entry, the record the hooks and
+# `abcd ahoy` read to know the PATH copy as abcd's own (iss-2610240827243654). It
+# also records the release in ~/.abcd.noindex/release-mark, the newest-release
+# mark hooks/bootstrap.sh and `abcd update` keep (iss-2610120601505029).
 #
 # Everything between `set -eu` and the last line is a definition. Only the final
 # `main "$@"` runs anything, so a download truncated in transit executes nothing.
@@ -83,6 +84,9 @@ also checks the binary's build provenance with `gh attestation verify`, held
 to the commit the latest release names, and installs nothing if that check
 fails. Without gh it installs on the checksum alone and
 prints a warning with the command that checks the binary by hand.
+
+Either way, the script runs the downloaded binary's --version before it installs
+it, and installs nothing if that names another release than the latest.
 EOT
 }
 
@@ -149,6 +153,14 @@ verify() {
 	verified_sha256=$(printf '%s\n' "${line%% *}" | tr 'ABCDEF' 'abcdef')
 }
 
+# latest_release_tag prints the tag the latest release names, or nothing when
+# GitHub does not answer. main reads it after the download, so a release published
+# in between is refused, never passed: the downloaded build is not that release's.
+latest_release_tag() {
+	location=$(curl -q --proto '=https' --proto-redir '=https' --tlsv1.2 -fsS -o /dev/null -w '%{redirect_url}' "https://github.com/intentdriven/abcd/releases/latest") || location=''
+	printf '%s\n' "$location" | sed -n 's|^https://github.com/intentdriven/abcd/releases/tag/\(v[0-9][0-9A-Za-z.-]*\)$|\1|p'
+}
+
 # verify_provenance checks the build provenance of the downloaded binary $1
 # with `gh attestation verify` when it can. checksums.txt comes from the same
 # release page as the binary, so whoever can change that page can change both
@@ -167,10 +179,8 @@ verify() {
 # release whose commit the API does not answer, stops the install; a gh whose
 # attestation command lacks any flag of the policy (--source-digest,
 # --source-ref, --cert-identity, --deny-self-hosted-runners) counts as one that
-# cannot verify. The tag is read after the download, so a release published in
-# between is refused, never passed: its commit is not the downloaded build's.
-# The hand check binds the installed binary to the commit of the release it
-# reports itself to be.
+# cannot verify. The hand check binds the installed binary to the commit of the
+# release it reports itself to be.
 verify_provenance() {
 	hand_check="gh attestation verify '$2/abcd' $gh_policy --source-digest \$(gh api repos/intentdriven/abcd/commits/\$('$2/abcd' --version | sed -n '1s/^abcd //p') -H 'Accept: application/vnd.github.sha')"
 	cannot=''
@@ -187,11 +197,9 @@ verify_provenance() {
 	elif ! gh attestation verify --help 2>/dev/null | grep -q -e '--deny-self-hosted-runners'; then
 		cannot='the installed gh cannot hold the check to a GitHub-hosted runner (its attestation verify has no --deny-self-hosted-runners; gh 2.68 or later has it)'
 	else
-		tag=$(curl -q --proto '=https' --proto-redir '=https' --tlsv1.2 -fsS -o /dev/null -w '%{redirect_url}' "https://github.com/intentdriven/abcd/releases/latest") || tag=''
-		tag=$(printf '%s\n' "$tag" | sed -n 's|^https://github.com/intentdriven/abcd/releases/tag/\(v[0-9][0-9A-Za-z.-]*\)$|\1|p')
 		commit=''
-		if [ -n "$tag" ]; then
-			commit=$(curl -q --proto '=https' --proto-redir '=https' --tlsv1.2 -fsS -H 'Accept: application/vnd.github.sha' "https://api.github.com/repos/intentdriven/abcd/commits/$tag") || commit=''
+		if [ -n "$release_tag" ]; then
+			commit=$(curl -q --proto '=https' --proto-redir '=https' --tlsv1.2 -fsS -H 'Accept: application/vnd.github.sha' "https://api.github.com/repos/intentdriven/abcd/commits/$release_tag") || commit=''
 		fi
 		printf '%s\n' "$commit" | grep -q '^[0-9a-f]\{40\}$' ||
 			die "the commit of the latest release could not be resolved through GitHub's API, so the build provenance of $1 cannot be bound to that release, and a check not bound to it would pass any release's build. Nothing is installed."
@@ -200,7 +208,7 @@ verify_provenance() {
 		said=$(GH_PROMPT_DISABLED=1 GH_NO_UPDATE_NOTIFIER=1 gh attestation verify "$1" $gh_policy --source-digest "$commit" 2>&1) || rc=$?
 		case "$rc" in
 		0)
-			printf 'abcd install: verified the build provenance of %s with gh attestation verify: the release workflow of intentdriven/abcd built it from %s (commit %s).\n' "$1" "$tag" "$commit"
+			printf 'abcd install: verified the build provenance of %s with gh attestation verify: the release workflow of intentdriven/abcd built it from %s (commit %s).\n' "$1" "$release_tag" "$commit"
 			return 0
 			;;
 		4)
@@ -208,11 +216,41 @@ verify_provenance() {
 			;;
 		*)
 			said=$(printf '%s\n' "$said" | grep -v '^[[:space:]]*$' | tail -n 1) || said=''
-			die "$1 matches the release checksums.txt, but gh attestation verify could not verify its build provenance as signed by the release workflow of intentdriven/abcd from $tag's commit $commit (gh said: $said). The checksum came from the same release page as the binary, so it cannot tell a replaced release from the real one. Nothing is installed."
+			die "$1 matches the release checksums.txt, but gh attestation verify could not verify its build provenance as signed by the release workflow of intentdriven/abcd from $release_tag's commit $commit (gh said: $said). The checksum came from the same release page as the binary, so it cannot tell a replaced release from the real one. Nothing is installed."
 			;;
 		esac
 	fi
 	printf 'abcd install: WARNING: %s was checked only against the checksums.txt published beside it on the release page, and was not checked against the signed build record (the build provenance the release workflow signs), because %s. To check it by hand: %s\n' "$1" "$cannot" "$hand_check" >&2
+}
+
+# verify_release holds the downloaded binary $1 to the release it came from: its
+# own --version must name the tag the latest release names, with or without gh.
+# It runs the binary, so it comes after every check of the bytes, and a binary
+# those refused has not run.
+#
+# Two cases cannot compare, and say so rather than stop the install: GitHub did
+# not answer with the tag (a gh that can verify has already refused on that), and
+# the temporary directory could not run the binary at all, exit 126, as a noexec
+# mount gives. Anything else that does not name the tag is refused, a binary that
+# failed or printed something other than a release included. Only a tag's own
+# characters reach the refusal, so nothing else the binary printed reaches the
+# terminal.
+verify_release() {
+	if [ -z "$release_tag" ]; then
+		printf 'abcd install: WARNING: %s was not compared with the latest release, because GitHub did not say which tag that is. After the install, abcd --version should name the tag at https://github.com/intentdriven/abcd/releases/latest\n' "$1" >&2
+		return 0
+	fi
+	chmod 0700 "$1" ||
+		die "cannot make $1 runnable in the temporary directory, so it cannot be compared with $release_tag. Nothing is installed."
+	rc=0
+	said=$("./$1" --version 2>/dev/null) || rc=$?
+	if [ "$rc" -eq 126 ]; then
+		printf 'abcd install: WARNING: %s was not compared with the latest release, %s, because the temporary directory cannot run programs. After the install, abcd --version should name that tag.\n' "$1" "$release_tag" >&2
+		return 0
+	fi
+	reported=$(printf '%s\n' "$said" | sed -n '1s/^abcd \(v[0-9][0-9A-Za-z.-]*\)$/\1/p')
+	[ "$reported" = "$release_tag" ] ||
+		die "$1 reports ${reported:-no release version} where the latest release is $release_tag, so it is not that release's build. Nothing is installed."
 }
 
 # install_binary copies the verified binary $1 into the directory $2. abcd never
@@ -406,7 +444,9 @@ main() {
 
 	download "$binary"
 	verify "$binary"
+	release_tag=$(latest_release_tag)
 	verify_provenance "$binary" "$bin_dir"
+	verify_release "$binary"
 	install_binary "$binary" "$bin_dir"
 	record_path_entry "$bin_dir" "$verified_sha256"
 	record_mark "$bin_dir"

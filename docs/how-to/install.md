@@ -473,6 +473,12 @@ If you do not have `gh`, the download is checked only against the
 signed build record, and the installer prints a warning saying so, with the
 `gh attestation verify` command that checks the installed binary by hand.
 
+With or without `gh`, the installer runs the downloaded binary's `--version`
+before it installs it, and installs nothing if that names another release than
+the latest. If it cannot make the comparison, because GitHub does not say which
+tag is the latest or the temporary directory cannot run programs, it installs
+and prints a warning saying so.
+
 To install somewhere else, end the command with `sh -s -- --bin-dir <dir>`
 instead of `sh`.
 
