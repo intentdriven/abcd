@@ -383,6 +383,20 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 		if err := fsutil.EnsureRealDirAll(wt, TierRelDir, dirPerm); err != nil {
 			return Outcome{}, fmt.Errorf("making the local tier in the lane's worktree: %w", err)
 		}
+		// The close ships, so it meets what `spec close` meets: an issue the
+		// intent names and leaves unresolved. This lane's own resolutions land in
+		// this commit, just below, so they are not refused here.
+		links, err := capture.UnresolvedLinks(wt, spec.CloseShips(wt, st.Spec))
+		if err != nil {
+			return Outcome{}, refuse(string(StageLand), "", lane.ID, "the issue ledger could not be read to judge what `spec close "+st.Spec+"` ships: "+fsutil.RedactHome(err.Error()),
+				"settle what the capture store names on the lane's branch, then run `abcd implement step` again")
+		}
+		for _, l := range links {
+			if !laneResolves(*lane, l.Issue) {
+				return Outcome{}, refuse(string(StageLand), "", lane.ID, "`spec close "+st.Spec+"` would ship: "+l.String(),
+					"settle the link on the lane's branch and commit it, then run `abcd implement step` again")
+			}
+		}
 		res, err := intent.Reconcile(wt, st.Spec, "", intent.RemainderRequest{})
 		if err != nil {
 			return Outcome{}, refuse(string(StageLand), "", lane.ID, "`spec close "+st.Spec+"` refused in the lane's worktree: "+fsutil.RedactHome(err.Error()),
@@ -681,6 +695,17 @@ func modelGap(lane Lane, what, gap string) error {
 		what+", and "+gap+", so its Assisted-by: trailer cannot name the model",
 		"have the implementer's receipt report the model its harness runs (\"model\": \"<vendor>:<model-id>\", or a bare claude-* id), "+
 			"correct the receipt file so it reports the model (the landing reads a receipt's model again from its file), then run `abcd implement step` again; the loop never claims no assistance for a model's text")
+}
+
+// laneResolves reports whether the lane's receipts declared issue fixed, so the
+// landing resolves it in the commit that closes the spec.
+func laneResolves(lane Lane, issue string) bool {
+	for _, r := range lane.Resolves {
+		if r.Issue == issue {
+			return true
+		}
+	}
+	return false
 }
 
 // resolvedIn reports whether issue is already in the worktree's resolved/.

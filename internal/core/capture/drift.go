@@ -80,15 +80,7 @@ func IssueDrift(req IssueDriftRequest) (IssueDriftResult, error) {
 	if err != nil {
 		return IssueDriftResult{}, err
 	}
-	ledgerByID := map[string]*migrateRecord{}
-	intentByID := map[string]*migrateRecord{}
-	for _, r := range records {
-		if r.intentHalf {
-			intentByID[r.id] = r
-		} else {
-			ledgerByID[r.id] = r
-		}
-	}
+	ledgerByID, intentByID := driftIndex(records)
 	findings := []DriftFinding{}
 	add := func(kind string, r *migrateRecord, other, msg string) {
 		findings = append(findings, DriftFinding{Kind: kind, Record: r.id, Other: other, Path: r.rel, Message: msg})
@@ -117,8 +109,8 @@ func IssueDrift(req IssueDriftRequest) (IssueDriftResult, error) {
 					"%s names %s in `related_issues`, but %s does not name %s in `related_intents`; the join reads from one end only (`abcd capture promote %s --intent %s` writes the missing half)",
 					it.id, src, src, it.id, src, it.id))
 			}
-			if bucket == intent.BucketShipped && strings.HasPrefix(src, "iss-") {
-				if status := filepath.Base(filepath.Dir(rec.abs)); status != string(StateResolved) {
+			if bucket == intent.BucketShipped {
+				if status, unresolved := unresolvedLink(src, rec); unresolved {
 					add(DriftShippedUnresolved, it, src, fmt.Sprintf(
 						"%s is shipped, but %s, which it names in `related_issues`, is in %s/ rather than resolved/",
 						it.id, src, status))
@@ -162,6 +154,93 @@ func IssueDrift(req IssueDriftRequest) (IssueDriftResult, error) {
 	}
 	res.ReceiptPath = rel
 	return res, nil
+}
+
+// driftIndex keys a scan's records by id, the ledger's and the intent store's
+// apart.
+func driftIndex(records []*migrateRecord) (ledger, intents map[string]*migrateRecord) {
+	ledger, intents = map[string]*migrateRecord{}, map[string]*migrateRecord{}
+	for _, r := range records {
+		if r.intentHalf {
+			intents[r.id] = r
+		} else {
+			ledger[r.id] = r
+		}
+	}
+	return ledger, intents
+}
+
+// unresolvedLink is the one reading of DriftShippedUnresolved's join: src, a
+// record a shipping or shipped intent names in related_issues, is an issue that
+// is not in resolved/. It returns the folder the issue sits in.
+func unresolvedLink(src string, rec *migrateRecord) (status string, unresolved bool) {
+	if !strings.HasPrefix(src, "iss-") {
+		return "", false
+	}
+	status = filepath.Base(filepath.Dir(rec.abs))
+	return status, status != string(StateResolved)
+}
+
+// UnresolvedLink is one issue an intent names in related_issues that is not in
+// resolved/: what issue-drift would report as DriftShippedUnresolved once the
+// intent reached shipped/.
+type UnresolvedLink struct {
+	Intent string `json:"intent"`
+	Issue  string `json:"issue"`
+	// Status is the ledger folder the issue sits in.
+	Status string `json:"status"`
+}
+
+// String states the link and the ways out of it.
+func (l UnresolvedLink) String() string {
+	move := fmt.Sprintf("move the link: take %s out of %s's `related_issues` and name it on the intent that will deliver it",
+		l.Issue, l.Intent)
+	ways := move
+	// `capture resolve` moves an open issue only, so it is no way out of a
+	// declined one.
+	if l.Status == string(StateOpen) {
+		ways = fmt.Sprintf("resolve it if %s delivers it (`abcd capture resolve %s <note> --impact <impact>`), or %s", l.Intent, l.Issue, move)
+	}
+	return fmt.Sprintf("%s names %s in `related_issues`, and %s is in %s/ rather than resolved/: %s", l.Intent, l.Issue, l.Issue, l.Status, ways)
+}
+
+// UnresolvedLinks asks of the intents about to ship what issue-drift would say
+// once they had: the issue each names that is not in resolved/, in the order
+// the walk reads them. A close asks before anything moves, so the finding
+// arrives while it is still a refusal of the close and not a gate's verdict on a
+// commit. A record the store does not hold is the walk's dangling finding, and
+// not this question's. It reads both stores and writes nothing, no receipt
+// included.
+func UnresolvedLinks(repoRoot string, intents []string) ([]UnresolvedLink, error) {
+	if len(intents) == 0 {
+		return nil, nil
+	}
+	root, issuesRoot, err := resolveRoots(repoRoot, "")
+	if err != nil {
+		return nil, err
+	}
+	records, err := migrateScan(root, issuesRoot)
+	if err != nil {
+		return nil, err
+	}
+	ledgerByID, intentByID := driftIndex(records)
+	var out []UnresolvedLink
+	for _, id := range intents {
+		it, ok := intentByID[id]
+		if !ok {
+			continue
+		}
+		for _, src := range it.list {
+			rec, ok := ledgerByID[src]
+			if !ok {
+				continue
+			}
+			if status, unresolved := unresolvedLink(src, rec); unresolved {
+				out = append(out, UnresolvedLink{Intent: id, Issue: src, Status: status})
+			}
+		}
+	}
+	return out, nil
 }
 
 // writeDriftReceipt allocates this run's receipt directory and writes the

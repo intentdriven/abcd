@@ -183,6 +183,33 @@ func CreateBundle(repoRoot string, members []string, bundle, productionMode stri
 	return create(repoRoot, members[0], append([]string(nil), members...), bundle, bundle, productionMode, nil)
 }
 
+// CloseShips names the intents a close of specID would move to shipped: each
+// member no other open spec still names. A reference the store cannot resolve
+// ships nothing here, and the close reports it itself.
+func CloseShips(repoRoot, specID string) []string {
+	store, err := Load(repoRoot)
+	if err != nil {
+		return nil
+	}
+	sp, ok := store.Lookup(specID)
+	if !ok || sp.Status != StatusOpen {
+		return nil
+	}
+	var out []string
+	for _, m := range sp.Members() {
+		others := 0
+		for _, o := range store.OpenSpecsForIntent(m) {
+			if o.ID != sp.ID {
+				others++
+			}
+		}
+		if others == 0 {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
 // create is the one mint-and-write both constructors share: intents and bundle
 // are empty for an ordinary spec.
 func create(repoRoot, intentID string, intents []string, bundle, slug, productionMode string, steps []Step) (Spec, error) {
