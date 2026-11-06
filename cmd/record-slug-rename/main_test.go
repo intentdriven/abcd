@@ -297,3 +297,24 @@ func TestARefusedCapIsMaskedOnAWholeRun(t *testing.T) {
 		t.Errorf("the error line carries a raw escape: %q", stderr.String())
 	}
 }
+
+// The report's paths and slugs come from the repository's file names and contents,
+// so a control byte there is masked. The attack rune is built numerically, so this
+// file carries none.
+func TestTheReportMasksWhatItPrints(t *testing.T) {
+	esc := string(rune(0x1b))
+	rep := Report{
+		Plan:      []rename{{OldRel: "old" + esc + ".md", NewRel: "new" + esc + ".md"}},
+		Leftovers: []Leftover{{File: "left" + esc + ".md", Line: 1, Slug: "slug" + esc, Why: "a reason"}},
+	}
+	for _, applied := range []bool{true, false} {
+		var out bytes.Buffer
+		printReport(&out, rep, applied)
+		if strings.Contains(out.String(), esc) {
+			t.Errorf("the report carries a raw escape (applied %v): %q", applied, out.String())
+		}
+		if !strings.Contains(out.String(), ".md") {
+			t.Errorf("the report lost its paths: %q", out.String())
+		}
+	}
+}

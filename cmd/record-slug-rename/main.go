@@ -491,14 +491,14 @@ func writeKeepingMode(root, rel string, data []byte) error {
 func printReport(w io.Writer, rep Report, applied bool) {
 	if !applied {
 		for _, r := range rep.Plan {
-			fmt.Fprintf(w, "%s -> %s\n", r.OldRel, r.NewRel)
+			fmt.Fprintf(w, "%s -> %s\n", termsafe.Sanitize(r.OldRel), termsafe.Sanitize(r.NewRel))
 		}
 		fmt.Fprintf(w, "dry run: %d record(s) would be renamed (iss %d, itd %d, spc %d, adr %d, dcn %d); nothing was changed. Re-run with -apply.\n",
 			rep.total(), rep.Renamed["iss"], rep.Renamed["itd"], rep.Renamed["spc"], rep.Renamed["adr"], rep.Renamed["dcn"])
 		return
 	}
 	for _, l := range rep.Leftovers {
-		fmt.Fprintf(w, "leftover %s:%d: %s (%s)\n", l.File, l.Line, l.Slug, l.Why)
+		fmt.Fprintf(w, "leftover %s:%d: %s (%s)\n", termsafe.Sanitize(l.File), l.Line, termsafe.Sanitize(l.Slug), termsafe.Sanitize(l.Why))
 	}
 	fmt.Fprintf(w, "renamed %d record(s) (iss %d, itd %d, spc %d, adr %d, dcn %d); rewrote %d reference(s) in %d file(s); %d leftover(s). Nothing is committed.\n",
 		rep.total(), rep.Renamed["iss"], rep.Renamed["itd"], rep.Renamed["spc"], rep.Renamed["adr"], rep.Renamed["dcn"], rep.References, rep.Files, len(rep.Leftovers))
