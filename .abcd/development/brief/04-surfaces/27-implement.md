@@ -736,8 +736,8 @@ worktree that no longer stands holds nothing back. A stop lifted before the halt
 the run go on, and a settled lane's agent is told again. The day's page,
 `<folder>/abcd-digest/<date>.md`, is rewritten whole at each halting, naming the stop,
 every run it halted and what each left, and no account. A halted run stays halted when
-the stop lifts, until a take-over reserves it again. A stop that does not come from the file
-takes the same order; the terminal drive's Ctrl-C joins it through the stop's remainder spec.
+the stop lifts, until a take-over reserves it again. A stop that does not come from the file,
+the terminal drive's first interrupt, takes the same order and writes no page.
 
 A run records who drives it in `control.json`, beside its state: the live driver
 (session, process, start time) and each in-flight launch with its route. One driver

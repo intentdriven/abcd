@@ -805,7 +805,7 @@ func composeStopPage(repoRoot string, rec RunStop, o Options) {
 		}
 		for _, id := range ids {
 			c, err := readControl(root, id)
-			if err != nil || c.Stop == nil || !c.Stop.FromFile || c.Stop.HaltedAt == nil || c.Stop.HaltedAt.UTC().Format(time.DateOnly) != now.UTC().Format(time.DateOnly) {
+			if err != nil || c.Stop == nil || !c.Stop.FromFile || c.Stop.HaltedAt == nil || !c.Stop.SetAt.Equal(rec.SetAt) {
 				continue
 			}
 			st, err := readListedState(root, id)

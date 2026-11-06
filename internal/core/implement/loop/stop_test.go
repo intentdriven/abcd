@@ -378,6 +378,68 @@ func TestTheStopComposesTheDaysPage(t *testing.T) {
 	}
 }
 
+// TestAStopOverMidnightNamesEveryRunItHalted: the stop's last halt writes the page for its
+// day, and a run the same stop halted before midnight is still one it halted.
+func TestAStopOverMidnightNamesEveryRunItHalted(t *testing.T) {
+	first, firstRun, _, _, _ := deadLane(t)
+	o, home, folder := stopped(t)
+	midnight := time.Now().UTC().Add(48 * time.Hour).Truncate(24 * time.Hour)
+	before, after := midnight.Add(-time.Minute), midnight.Add(time.Minute)
+	o.Now = func() time.Time { return before }
+	wantStopRefusal(t, checkOnce(first.Root(), firstRun, o))
+	if c := controlOf(t, first.Root(), firstRun); c.Stop == nil || c.Stop.HaltedAt == nil {
+		t.Fatalf("the first run did not halt: %+v", c.Stop)
+	}
+	noteRunCheckout(home, first.Root())
+	// A second world moves the environment the first was built in, so it comes after that halt.
+	second, secondRun, _, _, _ := deadLane(t)
+	o.Now = func() time.Time { return after }
+	wantStopRefusal(t, checkOnce(second.Root(), secondRun, o))
+
+	got, err := os.ReadFile(filepath.Join(folder, runstop.DigestDir, after.Format(time.DateOnly)+".md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{firstRun, secondRun} {
+		if !strings.Contains(string(got), want) {
+			t.Errorf("the page lacks %q:\n%s", want, got)
+		}
+	}
+}
+
+// TestThePageLeavesOutARunAnEarlierStopHalted: the page says which runs this stop halted, so
+// a run an earlier stop halted that day, not yet taken over, is not one of them.
+func TestThePageLeavesOutARunAnEarlierStopHalted(t *testing.T) {
+	first, firstRun, _, _, _ := deadLane(t)
+	o, home, folder := stopped(t)
+	later := time.Now().Add(3 * time.Hour)
+	o.Now = func() time.Time { return later }
+	wantStopRefusal(t, checkOnce(first.Root(), firstRun, o))
+	if c := controlOf(t, first.Root(), firstRun); c.Stop == nil || c.Stop.HaltedAt == nil {
+		t.Fatalf("the first run did not halt: %+v", c.Stop)
+	}
+	noteRunCheckout(home, first.Root())
+	second, secondRun, _, _, _ := deadLane(t)
+	if _, err := runstop.Lift(home, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runstop.Set(home, time.Now().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	wantStopRefusal(t, checkOnce(second.Root(), secondRun, o))
+
+	got, err := os.ReadFile(filepath.Join(folder, runstop.DigestDir, later.UTC().Format(time.DateOnly)+".md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), secondRun) {
+		t.Errorf("the page lacks the run this stop halted:\n%s", got)
+	}
+	if strings.Contains(string(got), firstRun) {
+		t.Errorf("the page names a run an earlier stop halted:\n%s", got)
+	}
+}
+
 // TestADrainUnderAStopOpensNothing: a drain's move under a stop refuses, reads no
 // plan and lets a judgement it awaited go with its hold.
 func TestADrainUnderAStopOpensNothing(t *testing.T) {
