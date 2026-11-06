@@ -358,6 +358,9 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int) Approval
 			}
 		}
 	}
+	if files.stageHome != "" && files.stageStartsHarness(rc, placed) {
+		return refusal(stageAgentEntryID, stageAgentWhy, stageAgentInstead)
+	}
 	for _, s := range v.segs {
 		for _, a := range commandSites(s) {
 			tok := s.tokens[a.idx]
@@ -370,9 +373,7 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int) Approval
 					"the same command with the program's name spelled out.")
 			}
 			if files.stageHome != "" && startsAnAgent(s.tokens, a.idx) {
-				return refusal(stageAgentEntryID,
-					"a drive's stage starts no further agent and no drive, moves no run and lands nothing: its work is the brief it was given, and the loop does the rest.",
-					"do the work in this stage, or say in the receipt that the task needs another agent.")
+				return refusal(stageAgentEntryID, stageAgentWhy, stageAgentInstead)
 			}
 			if files.stageHome != "" && addsAWorktree(s.tokens, a.idx) {
 				return refusal(stageAgentEntryID,

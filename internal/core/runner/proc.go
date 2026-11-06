@@ -455,27 +455,38 @@ var stageShellNames = []string{"PWD", "OLDPWD", "SHLVL", "_", "CLAUDECODE", "AI_
 	stageUpdatesOff}
 
 // stageShellUnset are what a stage's shell file takes back out of what the harness
-// starts the shell with: the walled directory and the harness's messaging variables.
-// They stay outside what a stage's shell may hold.
-var stageShellUnset = []string{"CLAUDE_CONFIG_DIR", "CLAUDE_CODE_MESSAGING_TOKEN", "CLAUDE_CODE_MESSAGING_SOCKET"}
+// starts the shell with: the walled directory, under each name it goes by, the file the
+// run proved and the harness's messaging variables. The hooks and the approver read their
+// own environment and flags, not the shell's. These stay outside what a stage's shell may
+// hold.
+var stageShellUnset = []string{"CLAUDE_CONFIG_DIR", StageProtectEnv, StageHarnessEnv, "CLAUDE_CODE_MESSAGING_TOKEN", "CLAUDE_CODE_MESSAGING_SOCKET"}
 
-// harnessSecretWords are the words in a name under the harness's prefix that keep it
-// from a stage's shell, each whole between underscores. The prefix stays open because
-// each harness release adds names of its own, and a stage holding a new setting costs
-// nothing; a new name of one of these shapes stops the drive and says the version.
-var harnessSecretWords = []string{"TOKEN", "OAUTH", "KEY", "APIKEY", "SECRET", "PASSWORD", "PASSWD", "CREDENTIAL", "CREDENTIALS", "CREDS", "AUTH", "COOKIE", "SOCKET"}
+// harnessSecretWords are what a word of a name under the harness's prefix may not end in,
+// so a joined spelling reads as the plain one. The prefix stays open because each harness
+// release adds names of its own, and a stage holding a new setting costs nothing; a new
+// name of one of these shapes stops the drive and says the version.
+var harnessSecretWords = []string{"TOKEN", "OAUTH", "KEY", "SECRET", "PASSWORD", "PASSWD", "PASSPHRASE", "CREDENTIAL", "CREDENTIALS", "CREDS",
+	"AUTH", "AUTHENTICATE", "AUTHENTICATION", "AUTHORIZATION", "COOKIE", "GRANT", "SOCKET", "SOCK", "JWT", "BEARER"}
+
+// stageShellSecret reports whether name reads as a credential or a socket: one abcd
+// knows, or one under the harness's prefix with a word of that shape.
+func stageShellSecret(name string) bool {
+	if slices.Contains(credentialVars, name) {
+		return true
+	}
+	rest, ok := strings.CutPrefix(name, "CLAUDE_")
+	if !ok {
+		return false
+	}
+	return slices.ContainsFunc(strings.Split(rest, "_"), func(word string) bool {
+		return slices.ContainsFunc(harnessSecretWords, func(secret string) bool { return strings.HasSuffix(word, secret) })
+	})
+}
 
 // stageShellAllowed reports whether a stage's shell may hold the variable name.
 func stageShellAllowed(name string) bool {
-	if slices.Contains(credentialVars, name) || slices.Contains(stageShellUnset, name) {
+	if stageShellSecret(name) || slices.Contains(stageShellUnset, name) {
 		return false
-	}
-	if rest, ok := strings.CutPrefix(name, "CLAUDE_"); ok {
-		for _, word := range strings.Split(rest, "_") {
-			if slices.Contains(harnessSecretWords, word) {
-				return false
-			}
-		}
 	}
 	return slices.Contains(stageEnvNames, name) || slices.Contains(stageProxyNames, name) || slices.Contains(stageShellNames, name) ||
 		strings.HasPrefix(name, "CLAUDE_") || strings.HasPrefix(name, "ABCD_STAGE_")

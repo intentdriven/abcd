@@ -411,7 +411,8 @@ abcd's shared records are named, and any other toolchain's cache starts empty. A
 PATH that abcd will not ask, or that names no cache, leaves the caches it did not name in
 that home, and the drive says which at its start; a stage's shell and the preflight still
 run that Go. The guard
-reads a shell line against that home and refuses a further agent, a moved home, the
+reads a shell line against that home and refuses a further agent, the file the run proved
+among them, a moved home, the
 keychain tool, the land verb and every implement verb but the load gate and widening a hold. A file tool, and a shell line the guard can read, write only in the
 stage's working tree and run directories, its home and temporary files, and never the
 hooks, the Makefile, abcd's configuration, a preflight or review receipt or an approval;

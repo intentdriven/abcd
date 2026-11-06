@@ -40,6 +40,7 @@ const (
 	StageProtectEnv  = "ABCD_STAGE_PROTECT"
 	StageDeclaredEnv = "ABCD_STAGE_DECLARED"
 	StageBaseEnv     = "ABCD_STAGE_BASE"
+	StageHarnessEnv  = "ABCD_STAGE_HARNESS"
 )
 
 // stageUpdatesOff switches off the harness's own updates in a walled launch and the

@@ -119,6 +119,9 @@ func (c *ClaudeCLI) approverConfig(dir, base string, runDirs, declared []string)
 	}
 	if c.profile != nil {
 		args = append(args, "--stage-home="+c.profile.ShellHome, "--protect="+c.profile.Dir)
+		if harness := provedHarness(*c.profile); harness != "" {
+			args = append(args, "--harness="+harness)
+		}
 		for _, d := range declared {
 			args = append(args, "--declared="+d)
 		}
@@ -304,7 +307,7 @@ func (c *ClaudeCLI) Run(ctx context.Context, req Request) (Answer, []byte, error
 		}
 		list := string(os.PathListSeparator)
 		seal = append(slices.Clone(c.profile.Env), StageWritesEnv+"="+strings.Join(stageWriteDirs(req), list),
-			StageDeclaredEnv+"="+strings.Join(req.Declared, list), StageBaseEnv+"="+req.Base)
+			StageDeclaredEnv+"="+strings.Join(req.Declared, list), StageBaseEnv+"="+req.Base, StageHarnessEnv+"="+bin)
 		launch.carry = stageEnv
 	}
 	res, err := launch.run(ctx, Claude, bin, c.args(req), seal, req.Dir, req.timeout())

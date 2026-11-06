@@ -1,6 +1,9 @@
 package guard
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -114,6 +117,125 @@ func startsAnAgent(tokens []string, idx int) bool {
 		})
 	}
 	return false
+}
+
+// stageAgentWhy and stageAgentInstead are that refusal's words.
+const (
+	stageAgentWhy     = "a drive's stage starts no further agent and no drive, moves no run and lands nothing: its work is the brief it was given, and the loop does the rest."
+	stageAgentInstead = "do the work in this stage, or say in the receipt that the task needs another agent."
+)
+
+// stageVersionName is a program named as a release is named, as a native install names
+// the harness's own file.
+var stageVersionName = regexp.MustCompile(`^v?[0-9]+\.[0-9]+\.[0-9]+([-+.][0-9A-Za-z.+-]*)?$`)
+
+// stageStartsHarness reports whether a program the placed line runs is named as a release
+// is named, or is the harness file the run proved: that file through any link, or a copy
+// of it. A file of another size is read no further, so the content is hashed only for one
+// of the same size.
+func (f *Files) stageStartsHarness(rc *readCtx, placed []placedSeg) bool {
+	for _, p := range placed {
+		for _, a := range commandSites(p.seg) {
+			if stageVersionName.MatchString(filepath.Base(p.seg.tokens[a.idx])) {
+				return true
+			}
+			for _, st := range p.states {
+				if f.namesProvedHarness(rc, st, p.seg, a.idx) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// namesProvedHarness reports whether word i of s, read where st places it, is the file
+// the run proved or a copy of it.
+func (f *Files) namesProvedHarness(rc *readCtx, st *shellState, s segment, i int) bool {
+	if f.stageHarness == "" {
+		return false
+	}
+	path, ok := "", false
+	if tok := s.tokens[i]; strings.ContainsRune(tok, filepath.Separator) || strings.HasPrefix(tok, "~") {
+		path, ok = st.resolveToken(rc, s, i)
+	} else {
+		path, ok = f.onPath(tok)
+	}
+	if !ok {
+		return false
+	}
+	proved, err := f.stat(f.stageHarness, false)
+	if err != nil {
+		return false
+	}
+	named, err := f.stat(path, false)
+	if err != nil || !named.Mode().IsRegular() {
+		return false
+	}
+	return os.SameFile(proved, named) || (proved.Size() == named.Size() && sameContent(f.stageHarness, path))
+}
+
+// onPath is the first file named name in a directory of the PATH f reads.
+func (f *Files) onPath(name string) (string, bool) {
+	if isUnknown(name) || strings.ContainsRune(name, varMark) {
+		return "", false
+	}
+	for _, dir := range filepath.SplitList(f.path) {
+		if !filepath.IsAbs(dir) {
+			continue
+		}
+		path := filepath.Join(dir, name)
+		if fi, err := f.stat(path, false); err == nil && fi.Mode().IsRegular() {
+			return path, true
+		}
+	}
+	return "", false
+}
+
+// sameContent reports whether two files read the same; one that cannot be read does not.
+func sameContent(a, b string) bool {
+	sum := func(path string) ([]byte, bool) {
+		file, err := os.Open(path)
+		if err != nil {
+			return nil, false
+		}
+		defer file.Close()
+		h := sha256.New()
+		if _, err := io.Copy(h, file); err != nil {
+			return nil, false
+		}
+		return h.Sum(nil), true
+	}
+	sa, oka := sum(a)
+	sb, okb := sum(b)
+	return oka && okb && bytes.Equal(sa, sb)
+}
+
+// StageProgramRefusal is the guard hook's refusal of a line from a walled stage that starts
+// a further harness, read as the approver reads it, "" when it does not or f is no stage's.
+// A line the reading cannot take is the registry's to refuse.
+func StageProgramRefusal(f *Files, line string) string {
+	if f == nil || f.stageHome == "" {
+		return ""
+	}
+	r := (&Registry{}).ReadingFrom(f)
+	rc := newReadCtx(r.files)
+	rc.record = true
+	v, err := r.judge(line, rc, nil)
+	if err != nil {
+		return ""
+	}
+	placed := placedLine(rc.line, v.segs)
+	refused := f.stageStartsHarness(rc, placed)
+	for _, s := range v.segs {
+		for _, a := range commandSites(s) {
+			refused = refused || startsAnAgent(s.tokens, a.idx)
+		}
+	}
+	if !refused {
+		return ""
+	}
+	return "Blocked by the abcd guard (" + stageAgentEntryID + "): " + stageAgentWhy + " Run instead: " + stageAgentInstead
 }
 
 // stageGateFile is the gate file path lands in below tree, "" when it lands in

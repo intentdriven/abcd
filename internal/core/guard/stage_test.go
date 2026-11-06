@@ -44,6 +44,84 @@ func TestAStagesHomeIsTheOneItsShellExpands(t *testing.T) {
 	}
 }
 
+// TestAStageDoesNotStartTheHarnessItRunsUnder: the file its run proved, however it is
+// reached, a copy of it, and a program named as a release is named; another session is
+// not judged this way, and a file the same size that is not a copy is any program.
+func TestAStageDoesNotStartTheHarnessItRunsUnder(t *testing.T) {
+	f, profile, _ := stageFiles(t)
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	proved := filepath.Join(root, "claude", "versions", "9.8.7")
+	if err := os.MkdirAll(filepath.Dir(proved), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	write := func(path, content string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(content), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(proved, "the harness")
+	f = f.WithStageHarness(proved)
+	link, hard, copied, other := filepath.Join(root, "plain-link"), filepath.Join(root, "hard-link"), filepath.Join(root, "plain-copy"), filepath.Join(root, "other-tool")
+	if err := os.Symlink(proved, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(proved, hard); err != nil {
+		t.Fatal(err)
+	}
+	write(copied, "the harness")
+	write(other, "not harness")
+	t.Setenv("PATH", root+string(os.PathListSeparator)+os.Getenv("PATH"))
+	f.path = os.Getenv("PATH")
+	for _, line := range []string{
+		proved + ` --version`,
+		`CLAUDE_CONFIG_DIR=` + profile + ` ` + proved + ` --version`,
+		`env A=1 ` + proved + ` --version`,
+		`true && ` + proved + ` --version`,
+		`cd ` + filepath.Dir(proved) + ` && ./9.8.7 --version`,
+		link + ` --version`,
+		`plain-link --version`,
+		hard + ` --version`,
+		copied + ` --version`,
+		`cd ` + root + ` && ./plain-copy --version`,
+		`/some/where/claude/versions/2.1.320 --version`,
+		`/some/where/else/1.2.3 --version`,
+		`./10.0.0-beta.1 --version`,
+	} {
+		if a := approveShell(clean(), f, line); a.Allow || a.EntryID != stageAgentEntryID {
+			t.Errorf("%q: allowed %v, id %q", line, a.Allow, a.EntryID)
+		}
+		if StageProgramRefusal(f, line) == "" {
+			t.Errorf("%q: the hook's reading lets it through", line)
+		}
+	}
+	for _, line := range []string{other + ` --version`, `printf %s ` + proved, `go test ./...`, `./v1.2 run`} {
+		if a := approveShell(clean(), f, line); !a.Allow {
+			t.Errorf("%q is refused: %s", line, a.Reason)
+		}
+		if why := StageProgramRefusal(f, line); why != "" {
+			t.Errorf("%q: the hook's reading refuses it: %s", line, why)
+		}
+	}
+	notStage := NewFiles(t.TempDir())
+	if a := approveShell(clean(), notStage, proved+` --version`); !a.Allow {
+		t.Errorf("another session is not judged this way: %s", a.Reason)
+	}
+	if why := StageProgramRefusal(notStage, proved+` --version`); why != "" {
+		t.Errorf("another session's hook is not judged this way: %s", why)
+	}
+	// The file gone: a program named as a release is named is still refused.
+	if err := os.Remove(proved); err != nil {
+		t.Fatal(err)
+	}
+	if a := approveShell(clean(), f, proved+` --version`); a.Allow {
+		t.Errorf("with the file gone its name is still refused")
+	}
+}
+
 // TestAStageStartsNoFurtherAgent: no second harness and no drive from a stage's
 // shell, whatever precedes the program; another session is not judged this way.
 func TestAStageStartsNoFurtherAgent(t *testing.T) {

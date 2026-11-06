@@ -675,6 +675,14 @@ func (l launcher) pinnedTo(p Profile) launcher {
 	return l
 }
 
+// provedHarness is the file p's start resolved the harness to, "" when none has.
+func provedHarness(p Profile) string {
+	if v, ok := stagesWritten.Load(p.ShellHome); ok {
+		return v.(*stageWritten).harness
+	}
+	return ""
+}
+
 // CheckLogin asks the harness whether the walled directory has a login. It
 // reads the one state and keeps nothing else the harness reports.
 func CheckLogin(ctx context.Context, p Profile) error {
@@ -780,7 +788,7 @@ func ProveWall(ctx context.Context, p Profile, bin string) error {
 	var res procResult
 	end, lerr := RecordLaunch(ctx, p.Ledger, LaunchStart{Role: req.Role, Runner: Claude, Repo: p.Repo, Fallback: req.SessionID}, func(ctx context.Context) LaunchEnd {
 		var runErr error
-		res, runErr = c.launch.run(ctx, Claude, claudeBin, args, append(slices.Clone(p.Env), StageWritesEnv+"="+dir), dir, wallProofTimeout)
+		res, runErr = c.launch.run(ctx, Claude, claudeBin, args, append(slices.Clone(p.Env), StageWritesEnv+"="+dir, StageHarnessEnv+"="+claudeBin), dir, wallProofTimeout)
 		ans, _ := parseClaude(res.stdout)
 		return LaunchEnd{Answer: ans, Transcript: res.transcript(), Err: runErr}
 	})
@@ -1028,6 +1036,9 @@ func judgeWallProof(out []byte, named []string, shellHome string) error {
 		return &WallError{WallEnv, "a stage's shell holds " + safeWord(envAt) + ", whose value may carry a credential"}
 	}
 	if envOutside != "" {
+		if stageShellSecret(envOutside) {
+			return &WallError{WallEnv, "a stage's shell holds " + safeWord(envOutside) + ", which reads as a credential or a socket"}
+		}
 		return &WallError{WallEnv, "a stage's shell holds " + safeWord(envOutside) + ", which is not on the list it carries"}
 	}
 	if !refused {

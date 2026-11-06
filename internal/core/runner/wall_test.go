@@ -553,7 +553,7 @@ func TestAStagesShellHasItsOwnHomeAndWhatItNeeds(t *testing.T) {
 	if got := run(`printf %s "$CLAUDE_CONFIG_DIR"`); got != "" {
 		t.Errorf("the shell keeps the walled directory: %q", got)
 	}
-	for _, name := range []string{"CLAUDE_CODE_MESSAGING_TOKEN", "CLAUDE_CODE_MESSAGING_SOCKET"} {
+	for _, name := range []string{"CLAUDE_CODE_MESSAGING_TOKEN", "CLAUDE_CODE_MESSAGING_SOCKET", StageProtectEnv, StageHarnessEnv} {
 		t.Setenv(name, "set-by-the-harness")
 		if got := run(`printf %s "$` + name + `"`); got != "" {
 			t.Errorf("the shell keeps the harness's %s: %q", name, got)

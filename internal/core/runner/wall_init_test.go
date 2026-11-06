@@ -37,7 +37,7 @@ func wallInitLine(t *testing.T) map[string]any {
 }
 
 // wallApprovedFlags is what the proof's env step reads for $- under the approver's
-// wrapper, as a real proof showed it.
+// wrapper, as a run of the real harness and approver against a stub API showed it.
 const wallApprovedFlags = "hpBc"
 
 // wallEnvStep is the tool result of the proof's env step, as the harness writes it.
@@ -211,6 +211,7 @@ func TestTheProofNeedsTheShellStepAsTheApproverHandsItBack(t *testing.T) {
 		{"the flags with no names", wallEnvStep("hpBc"), WallEnv},
 		{"a name it may not hold", wallEnvStep("hpBc", "PATH", "CLAUDE_CODE_MESSAGING_TOKEN"), WallEnv},
 		{"a socket it may not hold", wallEnvStep("hpBc", "PATH", "CLAUDE_CODE_MESSAGING_SOCKET"), WallEnv},
+		{"the walled directory by name", wallEnvStep("hpBc", "PATH", "ABCD_STAGE_PROTECT"), WallEnv},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			stream := string(line) + "\n" + guarded + home + c.step + end
@@ -229,6 +230,25 @@ func TestTheProofNeedsTheShellStepAsTheApproverHandsItBack(t *testing.T) {
 				t.Errorf("the refusal says the harness's version: %v", err)
 			}
 		})
+	}
+}
+
+// TestAHarnessNameThatReadsAsASecretIsToldApart: a name stopped for its words says so,
+// with the name and the harness's version; one merely off the list says that.
+func TestAHarnessNameThatReadsAsASecretIsToldApart(t *testing.T) {
+	line, _ := json.Marshal(wallInitLine(t))
+	const home = `{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"` + wallHomeMarker + wallInitHome + `","is_error":false}]}}` + "\n"
+	const end = `{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"s"}` + "\n"
+	for name, want := range map[string]string{
+		"CLAUDE_BG_RENDEZVOUS_SOCK": "reads as a credential or a socket",
+		"CLAUDE_CODE_OAUTH_TOKEN":   "reads as a credential or a socket",
+		"ANTHROPIC_API_KEY":         "reads as a credential or a socket",
+		"AN_ORDINARY_NAME":          "not on the list it carries",
+	} {
+		err := readWallProof([]byte(string(line)+"\n"+home+wallEnvStep("hpBc", "PATH", name)+end), []string{"Read", "Bash"}, wallInitHome)
+		if err == nil || !strings.Contains(err.Error(), name) || !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), "2.1.319") {
+			t.Errorf("%s: %v", name, err)
+		}
 	}
 }
 
@@ -265,25 +285,32 @@ func TestTheEnvStepsFlagsShowTheApproversWrapper(t *testing.T) {
 		}
 		return string(out)
 	}
-	if flags, shown := wallShellFlags([]byte(run("/bin/sh", handed.Command))); !shown || !strings.Contains(flags, "p") {
-		t.Errorf("as handed back the step shows %q", flags)
-	}
-	for _, shell := range []string{"/bin/sh", "/bin/bash", "/bin/zsh"} {
+	// dash's $- is empty under -c, so the step as written may show no flags at all;
+	// what it may never show is the flag the approver's shell carries.
+	for _, shell := range []string{"/bin/sh", "/bin/dash", "/bin/bash", "/bin/zsh"} {
 		if _, err := os.Stat(shell); err != nil {
 			continue
 		}
-		if flags, shown := wallShellFlags([]byte(run(shell, wallEnvCommand))); !shown || strings.Contains(flags, "p") {
+		if flags, shown := wallShellFlags([]byte(run(shell, handed.Command))); !shown || !strings.Contains(flags, "p") {
+			t.Errorf("as handed back, under %s, the step shows %q", shell, flags)
+		}
+		out := run(shell, wallEnvCommand)
+		if !strings.Contains(out, wallShellMarker) {
+			t.Errorf("as written, under %s, the step did not run: %q", shell, out)
+		}
+		if flags, _ := wallShellFlags([]byte(out)); strings.Contains(flags, "p") {
 			t.Errorf("as written, under %s, the step shows %q", shell, flags)
 		}
 	}
 }
 
 // TestWhatTheHarnessAddsToAStagesShellIsAllowed: the names claude 2.1.319 and the shell
-// add under a walled launch, read from a real proof's output. Allowed, a stage's shell
+// add under a walled launch, read from a run of the real harness and approver against
+// a stub API. Allowed, a stage's shell
 // passes on them; a credential, a key or a socket among the harness's names does not,
 // whichever release names it.
 func TestWhatTheHarnessAddsToAStagesShellIsAllowed(t *testing.T) {
-	for _, name := range []string{"ABCD_PERSON_HOME", "ABCD_STAGE_HOME", "ABCD_STAGE_PROTECT", "AI_AGENT", "CLAUDECODE",
+	for _, name := range []string{"ABCD_PERSON_HOME", "ABCD_STAGE_HOME", "AI_AGENT", "CLAUDECODE",
 		"CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CODE_DISABLE_CLAUDE_MDS", "CLAUDE_CODE_ENTRYPOINT",
 		"CLAUDE_CODE_EXECPATH", "CLAUDE_CODE_SESSION_ATTENDED", "CLAUDE_CODE_SESSION_ID", "CLAUDE_EFFORT", "CLAUDE_ENV_FILE", "CLAUDE_PID",
 		"COREPACK_ENABLE_AUTO_PIN", "DISABLE_UPDATES", "GIT_EDITOR", "HOME", "LOGNAME", "NoDefaultCurrentDirectoryInExePath", "PATH", "PWD", "SHELL", "SHLVL", "TMPDIR", "_",
@@ -294,7 +321,10 @@ func TestWhatTheHarnessAddsToAStagesShellIsAllowed(t *testing.T) {
 	}
 	for _, name := range []string{"ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "GH_TOKEN",
 		"CLAUDE_CODE_MESSAGING_TOKEN", "CLAUDE_CODE_MESSAGING_SOCKET", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_HOST_CREDS_FILE",
-		"CLAUDE_BG_SOCKET_TOKENS_PATH", "CLAUDE_CODE_CCR_WORKER_SOCKET", "CLAUDE_CODE_HOST_AUTH_ENV_VAR", "CLAUDE_A_SECRET", "CLAUDE_AN_API_KEY"} {
+		"CLAUDE_BG_SOCKET_TOKENS_PATH", "CLAUDE_CODE_CCR_WORKER_SOCKET", "CLAUDE_CODE_HOST_AUTH_ENV_VAR", "CLAUDE_A_SECRET", "CLAUDE_AN_API_KEY",
+		"CLAUDE_BG_RENDEZVOUS_SOCK", "CLAUDE_A_JWT", "CLAUDE_A_BEARER", "CLAUDE_CODE_PROXY_AUTHENTICATE", "CLAUDE_CODE_APITOKEN", "CLAUDE_CODE_WEBSOCKET",
+		"CLAUDE_CODE_CLIENT_KEY_PASSPHRASE", "CLAUDE_AN_ACCESSTOKEN", "CLAUDE_ARTIFACT_HOST_GRANT",
+		"ABCD_STAGE_PROTECT", StageHarnessEnv} {
 		if stageShellAllowed(name) {
 			t.Errorf("%s stays outside what a stage's shell holds", name)
 		}
@@ -363,6 +393,20 @@ func TestAStageRunsTheHarnessTheStartResolved(t *testing.T) {
 	t.Setenv(fakeModeEnv, "ok")
 	if _, _, err := c.Run(context.Background(), shellRequest(f)); err != nil {
 		t.Fatal(err)
+	}
+	proved, err := filepath.EvalSymlinks(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := argWith(f.argv(t, Claude), "--mcp-config="); !strings.Contains(got, "--harness="+proved) {
+		t.Errorf("the approver is told the harness the run proved: %s", got)
+	}
+	raw, err := os.ReadFile(filepath.Join(f.log, "claude.env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(strings.Split(string(raw), "\n"), StageHarnessEnv+"="+proved) {
+		t.Errorf("the hooks are told the harness the run proved")
 	}
 	// Which harness answers is what this holds, not what it answers.
 	_, _ = c.probeLimit(context.Background(), p.Ledger, "probe-model")

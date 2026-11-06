@@ -19,9 +19,11 @@ import (
 // decision someone writes down, never a bypass nobody saw (review3-guard). An
 // entry that is not "exempt:" must also call something unknown.go defines.
 var wordReaders = map[string]string{
-	"startsAnAgent": "exempt: reads the word commandSites places as the program, after a word no line fixes is refused",
-	"addsAWorktree": "isUnknown on the words it decides by, after a program commandSites places",
-	"FileAtCommit":  "exempt: reads git's listing of a commit, not a word of the line",
+	"startsAnAgent":       "exempt: reads the word commandSites places as the program, after a word no line fixes is refused",
+	"stageStartsHarness":  "exempt: reads the word commandSites places as the program, after a word no line fixes is refused",
+	"StageProgramRefusal": "exempt: reads the word commandSites places as the program, and a word no line fixes names no file",
+	"addsAWorktree":       "isUnknown on the words it decides by, after a program commandSites places",
+	"FileAtCommit":        "exempt: reads git's listing of a commit, not a word of the line",
 	// unknown.go: the rule and the walks that apply it.
 	"unknownFlagCouldBe": "the rule itself",
 	"flagCouldBe":        "the rule itself",

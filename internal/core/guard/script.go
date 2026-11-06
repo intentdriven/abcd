@@ -162,6 +162,8 @@ type Files struct {
 	stageHome     string
 	stageProtect  []string
 	stageDeclared []string
+	// stageHarness is the file the run proved, "" when it names none (WithStageHarness).
+	stageHarness string
 }
 
 // WithRunDirs returns f with dirs as the run's own directories, each a clean
@@ -229,6 +231,15 @@ func (f *Files) WithStage(home string, protect, declared []string) *Files {
 		return f
 	}
 	f.stageHome, f.stageProtect, f.stageDeclared = filepath.Clean(home), protect, declared
+	return f
+}
+
+// WithStageHarness returns f knowing the harness file its run proved, an absolute path;
+// any other is left out.
+func (f *Files) WithStageHarness(path string) *Files {
+	if filepath.IsAbs(path) {
+		f.stageHarness = filepath.Clean(path)
+	}
 	return f
 }
 

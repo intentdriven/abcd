@@ -513,6 +513,13 @@ func guardHookDecide(cmd *cobra.Command) error {
 		}
 	}
 
+	// A stage's further agent stays refused whichever of the harness and the approver
+	// comes to answer for the line.
+	if stageActive() {
+		if why := guard.StageProgramRefusal(files, candidate); why != "" {
+			return denyCall(termsafe.Sanitize(why))
+		}
+	}
 	// A diagnostic changes no verdict (a script that does not exist, so
 	// there was nothing to read); it goes to stderr, where a warn's message
 	// goes, and on an allow the host keeps it only beside a loud exit.
