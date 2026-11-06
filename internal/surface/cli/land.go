@@ -131,7 +131,8 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			"lands nothing: given once per reviewer's return (at least two, no two the\n" +
 			"same), each with a first line reading Reviewed head: <name>, naming the head by at\n" +
 			"least its first nine characters, and one ### Verdict heading and no other line opening a verdict, qualified or not, fenced or not,\n" +
-			"where the first line under the heading opens with the verdict and names the head by\n" +
+			"where the first line under the heading opens with the verdict (SHIP, APPROVE, FIX\n" +
+			"FIRST, BLOCK or NEEDS-INPUT) and names the head by\n" +
 			"its full object name (**SHIP** <full name>, or a Head: <full name> line directly\n" +
 			"under the heading), it writes the head's review receipt in\n" +
 			".abcd/.work.local/review-receipts/ when every verdict passes the stop rule\n" +
@@ -143,7 +144,8 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			"--rests-on <base> makes that a delta review, of a wording fix after a full pair: the\n" +
 			"head's receipt rests on the full pair recorded for <base>, a\n" +
 			"full object name, and each return's first line reads exactly Reviewed delta:\n" +
-			"<base>..<head> in place of the head's, with no line stating a head. It is refused, and the head needs a full pair, unless the base\n" +
+			"<base>..<head> in place of the head's, with no Reviewed head: line, its verdict still\n" +
+			"naming the head in full. It is refused, and the head needs a full pair, unless the base\n" +
 			"has a full pair (a delta's receipt is not one), the head descends from it, and the\n" +
 			"branch's own commits since it change only plain text markdown files of mode 100644\n" +
 			"under docs/explanation/, docs/how-to/, docs/tutorials/, .abcd/development/plans/,\n" +

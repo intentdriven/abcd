@@ -372,3 +372,27 @@ func TestLandApproveRecordsTheFacilitatorsApproval(t *testing.T) {
 		t.Fatal("recording an approval pushed the branch")
 	}
 }
+
+// land --help says what a return recorded with --record-review opens its verdict
+// with, each word a validator writes and the name, with an example line, and that a
+// delta's return holds no Reviewed head line.
+func TestLandHelpStatesTheVerdictLine(t *testing.T) {
+	code, stdout, stderr := reserveRun(t, t.TempDir(), "land", "--help")
+	if code != 0 {
+		t.Fatalf("land --help: exit %d: %s", code, stderr)
+	}
+	flat := strings.Join(strings.Fields(stdout), " ")
+	for _, want := range []string{
+		"### Verdict",
+		"opens with the verdict (SHIP, APPROVE, FIX FIRST, BLOCK or NEEDS-INPUT)",
+		"**SHIP** <full name>",
+		"with no Reviewed head: line",
+	} {
+		if !strings.Contains(flat, want) {
+			t.Errorf("land --help does not say %q:\n%s", want, flat)
+		}
+	}
+	if strings.Contains(flat, "no line stating a head") {
+		t.Errorf("land --help says no line of a delta's return states a head, and its verdict names one:\n%s", flat)
+	}
+}

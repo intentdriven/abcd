@@ -61,9 +61,13 @@ var verdictHeading = regexp.MustCompile(`(?i)^#{1,6}[ \t]+verdict[ \t]*#*[ \t]*$
 // carry: the nine characters the build loop's briefs abbreviate a head to.
 const reviewedCommitPrefix = 9
 
-// lineBreaks are the ways a return's text can end a line. A verdict is read line by
-// line, so each ends one.
+// lineBreaks are the ways a text can end a line. A verdict is read line by line, so
+// each ends one.
 var lineBreaks = strings.NewReplacer("\r\n", "\n", "\r", "\n", "\f", "\n", "\v", "\n", "\u0085", "\n", "\u2028", "\n", "\u2029", "\n")
+
+// NormalizeLineBreaks ends every line of text with a newline, whichever way it ended,
+// so a text is read for a verdict by the lines ReadVerdict reads.
+func NormalizeLineBreaks(text string) string { return lineBreaks.Replace(text) }
 
 // ReadVerdict reads the verdict a return states of subject, the full name of what it
 // judges: the head of a commit, or a draft's digest. It is the one rule every reader
@@ -81,7 +85,7 @@ var lineBreaks = strings.NewReplacer("\r\n", "\n", "\r", "\n", "\f", "\n", "\v",
 // which therefore cannot hold it, and only the full name is. It returns the word as
 // knownVerdicts spells it, and an error for anything short of the above.
 func ReadVerdict(text, subject string) (string, error) {
-	lines := strings.Split(lineBreaks.Replace(text), "\n")
+	lines := strings.Split(NormalizeLineBreaks(text), "\n")
 	heading, err := oneVerdictHeading(lines)
 	if err != nil {
 		return "", err
@@ -202,6 +206,10 @@ var numberedItem = regexp.MustCompile(`^([^\pL\pN]*)[0-9]+[.)][ \t]+`)
 // lineLead is what leads a line and says nothing of it: a quote or a list marker.
 var lineLead = regexp.MustCompile(`^[ \t>]*(?:[-*+][ \t]+)?`)
 
+// beforeEmphasisCloses is what may stand between the word Verdict and the emphasis
+// closing it: a bracketed note and a separator.
+var beforeEmphasisCloses = regexp.MustCompile(`^(?:[ \t]*\([^)]*\))?[ \t]*[:=.]?[ \t]*`)
+
 // setextUnderline is the line that makes the one above it a heading.
 var setextUnderline = regexp.MustCompile(`^[ \t]*(?:=+|-{2,})[ \t]*$`)
 
@@ -216,9 +224,10 @@ var verdictQualifier = regexp.MustCompile(`(?i)^(?:final|overall|my|our|the|last
 
 // verdictLines is the index of every line opening a verdict, in the shapes a reviewer
 // writes one. A line that begins with the word does, whatever follows it. With words
-// before it (`Final`, `My`, `The overall`), a heading and an emphasised line do, and a
-// plain line does when it goes on to state one (verdictStatement) or ends there after
-// a qualifier: the word in a sentence opens nothing.
+// before it (`Final`, `My`, `The overall`), a heading does, and so does a line whose
+// emphasis wraps the word (emphasisWrapsWord), and any other line does when it goes on
+// to state one (verdictStatement) or ends there after a qualifier: the word in a
+// sentence opens nothing.
 func verdictLines(lines []string) []int {
 	var at []int
 	for i, line := range lines {
@@ -242,7 +251,8 @@ func opensVerdict(line, next string) bool {
 	if qualifiers == "" {
 		return true
 	}
-	if strings.ContainsAny(lineLead.ReplaceAllString(lead, ""), "#*_") || setextUnderline.MatchString(next) {
+	marks := lineLead.ReplaceAllString(lead, "")
+	if strings.Contains(marks, "#") || setextUnderline.MatchString(next) || emphasisWrapsWord(marks, qualifiers, rest) {
 		return true
 	}
 	rest = strings.TrimLeft(rest, "*_` \t")
@@ -250,6 +260,20 @@ func opensVerdict(line, next string) bool {
 		return verdictQualifier.MatchString(qualifiers)
 	}
 	return verdictStatement.MatchString(rest)
+}
+
+// emphasisWrapsWord reports whether emphasis opened in what leads a line stays open
+// up to the word Verdict and closes directly after it, a bracketed note or a separator
+// aside: `**Final verdict:**`. Emphasis closed before the word, as a finding's label
+// is (`*Failure scenario:* a verdict ...`), or still running past it, wraps a sentence.
+func emphasisWrapsWord(marks, qualifiers, rest string) bool {
+	after := beforeEmphasisCloses.ReplaceAllString(rest, "")
+	for _, mark := range []string{"*", "_"} {
+		if strings.Contains(marks, mark) && !strings.Contains(qualifiers, mark) && strings.HasPrefix(after, mark) {
+			return true
+		}
+	}
+	return false
 }
 
 // verdictRule is the reading of a verdict a receipt records itself under: 2 holds a

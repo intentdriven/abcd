@@ -163,7 +163,8 @@ var anyDeltaLine = regexp.MustCompile(`(?mi)^[^\pL\pN\n]*(?:[0-9]+[.)][ \t]+)?re
 // statesDelta reports why a return does not state that it read base..head: its
 // first line reads Reviewed delta: <base>..<head>, naming each end by at least the
 // nine characters a brief abbreviates a head to, no other line states a delta, and
-// no line states a head.
+// no line is a Reviewed head line (anyHeadLine). Its verdict names the head all the
+// same (ReadVerdict).
 func statesDelta(text, base, head string) error {
 	if n := len(anyDeltaLine.FindAllString(text, -1)); n > 1 {
 		return fmt.Errorf("it has %d Reviewed delta lines; its first line states what it read", n)
@@ -186,13 +187,13 @@ func statesDelta(text, base, head string) error {
 // the head it read, exactly: nothing before the words and nothing after the name.
 var reviewedHead = regexp.MustCompile(`\A(?:[ \t]*\r?\n)*Reviewed head: ([0-9a-f]+)[ \t]*\r?(?:\n|\z)`)
 
-// anyHeadLine is any line that begins by stating a head, in any case, whatever
-// markup leads it.
+// anyHeadLine is any line that begins by stating the head it reviewed, in any case,
+// whatever markup leads it. A verdict naming its head is not one.
 var anyHeadLine = regexp.MustCompile(`(?mi)^[^\pL\pN\n]*reviewed[ \t]+head\b[^\pL\pN\n]*?(?::|[0-9a-f]{7,})`)
 
 // statesHead reports why a full pair's return does not state that it read head:
 // its first line reads Reviewed head: <name>, naming head by at least the nine
-// characters a brief abbreviates it to, and no other line states a head.
+// characters a brief abbreviates it to, and no other line is a Reviewed head line.
 func statesHead(text, head string) error {
 	want := "Reviewed head: " + head[:reviewedCommitPrefix]
 	m := reviewedHead.FindStringSubmatch(text)

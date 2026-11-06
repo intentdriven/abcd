@@ -219,8 +219,8 @@ Its inputs:
   pair: a delta pair reviews a wording fix after a full pair, so a corrected
   sentence costs a pair over that fix and not a pair over the branch. The review act names the base
   head, and each of the two returns' first line reads exactly
-  `Reviewed delta: <base>..<head>` in place of the head's, with no line stating a
-  head; a return carrying that line, in this or any near form, is refused for a full
+  `Reviewed delta: <base>..<head>` in place of the head's, with no `Reviewed head:`
+  line and its verdict still naming the head in full; a return carrying that line, in this or any near form, is refused for a full
   pair. A delta applies only when the base has a full pair's receipt (a
   delta's is not one, so a later change rests on the same pair and its reviewers
   read from that base again), the head descends from the base, and the branch's

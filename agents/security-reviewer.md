@@ -80,8 +80,8 @@ When your brief says this return is recorded with `abcd land --record-review`, o
 it with one line before these sections: its first line reads exactly
 `Reviewed head: <name>`, where `<name>` is the head you read, by at least its first
 nine characters. When the brief says it is a delta review (`--rests-on`), its first line reads exactly
-`Reviewed delta: <base>..<head>` instead, each end named the same way, and no line
-states a head. A return so recorded names that head again in its verdict, by its full
+`Reviewed delta: <base>..<head>` instead, each end named the same way, and no line reads `Reviewed head:`.
+A return so recorded, a delta's too, names the head in its verdict, by its full
 object name: the first line under `### Verdict` opens with the verdict and then the
 name, as in `**APPROVE** <full name>`. A return has one `### Verdict` section and no other line opening a verdict, whatever qualifies it.
 

@@ -820,9 +820,10 @@ func reportsCarryNoVerdict(c Context, lane Lane) error {
 
 // reportVerdict finds a verdict a report states: as a field on a line, or as
 // either of the first two lines under a Verdict heading, beginning with a verdict word
-// followed by anything but a letter. A report states none, so this reads wider than
-// a return.
+// followed by anything but a letter, whatever ends its lines. A report states none, so
+// this reads wider than a return.
 func reportVerdict(text string) (string, bool) {
+	text = landing.NormalizeLineBreaks(text)
 	if m := reportVerdictRe.FindStringSubmatch(text); m != nil {
 		return m[1], true
 	}

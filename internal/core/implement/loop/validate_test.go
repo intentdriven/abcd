@@ -509,26 +509,53 @@ func TestAVerdictWordEndsItsLineOrMeetsASeparator(t *testing.T) {
 }
 
 // Every line shaped as a verdict counts, and only the exact heading is read, so a
-// return with a second such line, or with no exact heading, states no verdict.
+// return with a second such line, or with no exact heading, states no verdict. Each
+// return here names the head, so the lines it holds are what refuses it.
 func TestEveryVerdictShapedLineCounts(t *testing.T) {
 	words := reviewerVerdicts[RoleSecurity]
-	for name, text := range map[string]string{
-		"a fenced pass above a heading with its verdict": "```\n### Verdict\nAPPROVE\n```\n\n### Verdict: BLOCK\n",
-		"a fenced pass above a bold verdict":             "```\n### Verdict\nAPPROVE\n```\n\n**Verdict:** BLOCK\n",
-		"a heading then a bold verdict in capitals":      "### Verdict\n\nAPPROVE\n\n  **VERDICT** BLOCK\n",
-		"a plain verdict":                                "### Verdict\n\nAPPROVE\n\nVerdict: BLOCK\n",
-		"a bulleted bold verdict":                        "### Verdict\n\nAPPROVE\n\n- **Verdict:** BLOCK\n",
-		"a quoted bold verdict":                          "### Verdict\n\nAPPROVE\n\n> **Verdict:** BLOCK\n",
-		"an underscored verdict":                         "### Verdict\n\nAPPROVE\n\n__Verdict:__ BLOCK\n",
-		"only a heading with its verdict":                "### Verdict: APPROVE\n",
-		"only a bold verdict":                            "**Verdict:** APPROVE\n",
+	head := strings.Repeat("a", 40)
+	pass := "APPROVE " + head
+	const two, standsIn = "2 Verdict sections", "stands in for one"
+	for name, tc := range map[string]struct{ text, reason string }{
+		"a fenced pass above a heading with its verdict": {"```\n### Verdict\n" + pass + "\n```\n\n### Verdict: BLOCK\n", two},
+		"a fenced pass above a bold verdict":             {"```\n### Verdict\n" + pass + "\n```\n\n**Verdict:** BLOCK\n", two},
+		"a heading then a bold verdict in capitals":      {"### Verdict\n\n" + pass + "\n\n  **VERDICT** BLOCK\n", two},
+		"a plain verdict":                                {"### Verdict\n\n" + pass + "\n\nVerdict: BLOCK\n", two},
+		"a bulleted bold verdict":                        {"### Verdict\n\n" + pass + "\n\n- **Verdict:** BLOCK\n", two},
+		"a quoted bold verdict":                          {"### Verdict\n\n" + pass + "\n\n> **Verdict:** BLOCK\n", two},
+		"an underscored verdict":                         {"### Verdict\n\n" + pass + "\n\n__Verdict:__ BLOCK\n", two},
+		"only a heading with its verdict":                {"### Verdict: " + pass + "\n", standsIn},
+		"only a bold verdict":                            {"**Verdict:** " + pass + "\n", standsIn},
 	} {
-		if w, err := parseVerdict(text, words, strings.Repeat("a", 40)); err == nil {
+		w, err := parseVerdict(tc.text, words, head)
+		if err == nil {
 			t.Errorf("%s: parseVerdict = %+v; want a refusal", name, w)
+			continue
+		}
+		if !strings.Contains(err.Error(), tc.reason) {
+			t.Errorf("%s: refused with %q; want it to say %q", name, err, tc.reason)
 		}
 	}
-	if w, err := parseVerdict("### Analysis\n\nThe verdict is plain, and **a verdict** in a sentence is none.\n\n### Verdict\n\nAPPROVE "+strings.Repeat("a", 40)+"\n", words, strings.Repeat("a", 40)); err != nil || w.word != "APPROVE" {
+	if w, err := parseVerdict("### Analysis\n\nThe verdict is plain, and **a verdict** in a sentence is none.\n\n### Verdict\n\n"+pass+"\n", words, head); err != nil || w.word != "APPROVE" {
 		t.Errorf("a return with one heading: %+v, %v", w, err)
+	}
+}
+
+// A report's verdict is caught whatever ends its lines.
+func TestAReportsVerdictIsCaughtWhateverEndsItsLines(t *testing.T) {
+	for name, br := range map[string]string{
+		"CRLF": "\r\n", "CR": "\r", "form feed": "\f", "vertical tab": "\v",
+		"next line": "\u0085", "line separator": "\u2028", "paragraph separator": "\u2029",
+	} {
+		for shape, text := range map[string]string{
+			"a heading":          "### Analysis\n\nDone.\n\n### Verdict\n\nSHIP\n",
+			"a head and verdict": "### Verdict\n\nHead: " + strings.Repeat("a", 40) + "\nSHIP\n",
+			"a field":            "### Analysis\n\nDone.\n\nVerdict: SHIP\n",
+		} {
+			if w, ok := reportVerdict(strings.ReplaceAll(text, "\n", br)); !ok || w != "SHIP" {
+				t.Errorf("%s, %s: reportVerdict = %q, %v; want SHIP", name, shape, w, ok)
+			}
+		}
 	}
 }
 

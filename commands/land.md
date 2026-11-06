@@ -270,7 +270,7 @@ two. Ask each reviewer in its brief to open its return with this line, since a
 reviewer's stock return opens with its analysis. Each return's first line must read
 exactly `Reviewed head: <name>`, naming
 the head by at least its first nine characters (as the build loop's briefs
-abbreviate it), with no other line stating a head, and it must carry one
+abbreviate it), with no other `Reviewed head:` line, and it must carry one
 `### Verdict` heading and no other line opening a verdict, whatever qualifies it
 (`### Final verdict`, `**Overall verdict:**`), each counted fenced or not. The first
 line under that heading begins with the verdict, which ends the line or is followed by
@@ -310,8 +310,8 @@ the review a delta review: the two reviewers read only what the branch's own com
 the new head's receipt rests on that pair. Give the reviewers the branch's own
 commits, with `git log -p --no-merges <base>..<head> --not origin/<default>`.
 
-Each return meets every rule above but the head's line, and no line of it states a
-head. Ask each reviewer in its brief to open its return with this line instead. Each
+Each return meets every rule above but the head's line, its verdict still naming the
+head in full, and no line reads `Reviewed head:`. Ask each reviewer in its brief to open its return with this line instead. Each
 return's first line must read exactly `Reviewed delta: <base>..<head>`, naming each
 end by at least its first nine characters, with no other line stating a delta.
 Without `--rests-on`, a return carrying that line, in this or

@@ -91,6 +91,9 @@ func TestAQualifiedVerdictLineCounts(t *testing.T) {
 		"# My verdict",
 		"#### The reviewers' final overall verdict",
 		"> ### Final verdict",
+		"**Verdict:**",
+		"**Final verdict**",
+		"**Final verdict (round 2):** BLOCK",
 		"**Final verdict:** BLOCK",
 		"**Final verdict**: BLOCK",
 		"__Overall verdict__ BLOCK",
@@ -217,5 +220,75 @@ func TestAVerdictNamesAHeadOfAnyObjectFormat(t *testing.T) {
 		{Name: "b.md", Text: namingReturn(sha, "b", "APPROVE")},
 	}); err == nil {
 		t.Fatal("a name of SHA-1's length is the whole of no SHA-256 head")
+	}
+}
+
+// A finding that mentions a verdict, in a reviewer's own format, opens none: emphasis
+// makes a line open a verdict only where it wraps the word itself.
+func TestAFindingThatMentionsAVerdictOpensNone(t *testing.T) {
+	_, sha := reviewRepo(t)
+	for _, line := range []string{
+		"  - *Failure scenario:* a verdict naming no head is refused.",
+		"- **review.go:83** — the verdict reader drops a line.",
+		"1. **review.go:83** — the verdict reader drops a line.",
+		"_Failure scenario:_ a verdict naming no head is refused.",
+		"**The verdict reader drops a line.**",
+		"*The verdict reader drops a line.*",
+	} {
+		text := "Reviewed head: " + sha[:9] + "\n\n### Analysis\n\n" + line + "\n\n### Verdict\n\nSHIP " + sha + "\n"
+		if word, err := ReadVerdict(text, sha); err != nil || word != "SHIP" {
+			t.Errorf("a return with the finding %q: %q, %v; want SHIP", line, word, err)
+		}
+	}
+}
+
+// A verdict directly under the head's line, with no heading, is refused naming the
+// heading it is read under, and the same line under that heading is recorded. The
+// reviewers' pages name the heading too.
+func TestAVerdictIsReadUnderItsHeadingAndTheRefusalNamesIt(t *testing.T) {
+	repo, sha := reviewRepo(t)
+	first := "Reviewed head: " + sha[:9] + "\n\n"
+	bare := []ReviewReturn{
+		{Name: "a.md", Text: first + "SHIP " + sha + "\n"},
+		{Name: "b.md", Text: first + "APPROVE " + sha + "\n"},
+	}
+	if _, err := RecordReview(repo.Root(), sha, bare); err == nil || !strings.Contains(err.Error(), "### Verdict") {
+		t.Errorf("a verdict under the head's line: %v; want a refusal naming the heading", err)
+	}
+	headed := []ReviewReturn{
+		{Name: "a.md", Text: first + "### Verdict\n\nSHIP " + sha + "\n"},
+		{Name: "b.md", Text: first + "### Verdict\n\nAPPROVE " + sha + "\n"},
+	}
+	if _, err := RecordReview(repo.Root(), sha, headed); err != nil {
+		t.Errorf("the same verdict under the heading: %v", err)
+	}
+	for _, page := range []string{"ruthless-reviewer.md", "security-reviewer.md"} {
+		data, err := os.ReadFile(filepath.Join("..", "..", "..", "agents", page))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(data), "the first line under `### Verdict` opens with the verdict") {
+			t.Errorf("%s does not name the heading a verdict is read under", page)
+		}
+	}
+}
+
+// A delta's return holds no Reviewed head line, and its verdict names the head: the
+// pages say both, as the reader holds them.
+func TestTheDeltaWordingSaysWhatTheReaderHolds(t *testing.T) {
+	for _, path := range []string{
+		"commands/land.md", "agents/ruthless-reviewer.md", "agents/security-reviewer.md",
+	} {
+		data, err := os.ReadFile(filepath.Join("..", "..", "..", path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		flat := strings.Join(strings.Fields(string(data)), " ")
+		if strings.Contains(flat, "no line states a head") || strings.Contains(flat, "no line of it states a head") {
+			t.Errorf("%s says no line of a delta's return states a head, and its verdict names one", path)
+		}
+		if !strings.Contains(flat, "no line reads `Reviewed head:`") {
+			t.Errorf("%s does not say a delta's return holds no Reviewed head line", path)
+		}
 	}
 }

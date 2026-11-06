@@ -4273,7 +4273,8 @@ landing: it names the release, its holder and until when.
 lands nothing: given once per reviewer's return (at least two, no two the
 same), each with a first line reading Reviewed head: <name>, naming the head by at
 least its first nine characters, and one ### Verdict heading and no other line opening a verdict, qualified or not, fenced or not,
-where the first line under the heading opens with the verdict and names the head by
+where the first line under the heading opens with the verdict (SHIP, APPROVE, FIX
+FIRST, BLOCK or NEEDS-INPUT) and names the head by
 its full object name (**SHIP** <full name>, or a Head: <full name> line directly
 under the heading), it writes the head's review receipt in
 .abcd/.work.local/review-receipts/ when every verdict passes the stop rule
@@ -4286,7 +4287,8 @@ again, and the head records its pair again.
 --rests-on <base> makes that a delta review, of a wording fix after a full pair: the
 head's receipt rests on the full pair recorded for <base>, a
 full object name, and each return's first line reads exactly Reviewed delta:
-<base>..<head> in place of the head's, with no line stating a head. It is refused, and the head needs a full pair, unless the base
+<base>..<head> in place of the head's, with no Reviewed head: line, its verdict still
+naming the head in full. It is refused, and the head needs a full pair, unless the base
 has a full pair (a delta's receipt is not one), the head descends from it, and the
 branch's own commits since it change only plain text markdown files of mode 100644
 under docs/explanation/, docs/how-to/, docs/tutorials/, .abcd/development/plans/,
