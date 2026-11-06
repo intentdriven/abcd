@@ -8,8 +8,8 @@ source: "user-observation"
 found_during: "first real drain dry run ahead of a long run"
 origin: researcher-authored
 production_mode: hand-written
-found_at: "internal/surface/cli"
-remedy: "Read the age from the remote-tracking ref's own reflog or FETCH_HEAD's modification time, whichever is newer, rather than a stamp only abcd writes."
+found_at: "internal/core/implement/loop/drain_origin.go"
+remedy: "Read the age from the newer of abcd's stamp and FETCH_HEAD's modification time, counting FETCH_HEAD only when it names the default branch, since a fetch of another branch alone says nothing of how fresh the default branch is."
 ---
 
 The origin line of abcd drain --dry-run says when the checkout last fetched by reading only abcd's own fetch stamp, so straight after a git pull it reported the last fetch as 107 minutes old while also, correctly, reporting no commits behind. A reader takes that as a stale plan when it is not.

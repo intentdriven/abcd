@@ -8,8 +8,8 @@ source: "user-observation"
 found_during: "first real drain ahead of a long run"
 origin: researcher-authored
 production_mode: hand-written
-found_at: "internal/surface/cli"
-remedy: "Say this only for a build that is not a release; for a release, name the version and leave it there, and never append it to a usage refusal."
+found_at: "internal/surface/cli/staleusage.go"
+remedy: "Say this only for a build that is not a release; for a release, name the version and leave it there, and never append it to a usage refusal. The install check in internal/core/ahoy/vintage.go gives the same advice and needs the same test."
 ---
 
-A released abcd binary run in a checkout of its own repository tells the person it is behind its own source and to rebuild with make build, naming the commit it was built from. For someone deliberately on the latest release that advice is wrong, and following it replaces the release they chose to run. The same line follows an unrelated usage refusal, so it reads as the cause of the refusal.
+A released abcd binary run in a checkout of its own repository tells the person it is behind its own source and to rebuild with make build, naming the commit it was built from. For someone deliberately on the latest release that advice is wrong, and following it does nothing for them: make build writes a build under bin/ in the checkout, so the copy that gave the advice is the one that still runs. The same line follows an unrelated usage refusal, so it reads as the cause of the refusal.
