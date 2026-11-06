@@ -84,12 +84,34 @@ const (
 
 // Review is layer 2's answer.
 type Review struct {
-	Status   ReviewStatus `json:"status"`
-	Commit   string       `json:"commit"`
-	Named    string       `json:"named,omitempty"`
-	Verdict  string       `json:"verdict,omitempty"`
-	Problems []string     `json:"problems,omitempty"`
-	Findings []Sentence   `json:"findings,omitempty"`
+	Status ReviewStatus `json:"status"`
+	Commit string       `json:"commit"`
+	// SameTreeAs is the commit the saved review names where it is not Commit:
+	// the two commits share one tree object, so the review of the one's bytes is
+	// the review of the other's.
+	SameTreeAs string     `json:"same_tree_as,omitempty"`
+	Named      string     `json:"named,omitempty"`
+	Verdict    string     `json:"verdict,omitempty"`
+	Problems   []string   `json:"problems,omitempty"`
+	Findings   []Sentence `json:"findings,omitempty"`
+}
+
+// TreeNote states a same-tree match for a front door to print, "" where the
+// review names the commit under judgement itself.
+func (r Review) TreeNote() string {
+	if r.SameTreeAs == "" {
+		return ""
+	}
+	return "the doc-fidelity review of " + short(r.SameTreeAs) + " stands for " + short(r.Commit) + ": the two commits have the same tree"
+}
+
+// label names the review in a reason: the commit it was saved for, and the
+// commit under judgement where that is another.
+func (r Review) label() string {
+	if r.SameTreeAs == "" {
+		return short(r.Commit)
+	}
+	return short(r.SameTreeAs) + " (the same tree as " + short(r.Commit) + ")"
 }
 
 // Reviewer is the delegated layer.
@@ -211,7 +233,7 @@ func judge(in Inputs, r Reviewer, report bool) Verdict {
 			v.Public = append(v.Public, f)
 		}
 	}
-	at := short(rev.Commit)
+	at := rev.label()
 	switch rev.Status {
 	case ReviewMatch:
 		// Record refuses a PROMOTE naming a false brief sentence; a receipt
@@ -223,10 +245,10 @@ func judge(in Inputs, r Reviewer, report bool) Verdict {
 			}
 		}
 	case ReviewNone:
-		v.Reasons = append(v.Reasons, who+"no saved doc-fidelity review names "+at+": "+RunReviewFirst)
+		v.Reasons = append(v.Reasons, who+"no saved doc-fidelity review names "+short(rev.Commit)+": "+RunReviewFirst)
 	case ReviewStale:
-		v.Reasons = append(v.Reasons, who+"the saved doc-fidelity review names "+short(rev.Named)+", not "+at+
-			", so the code changed since it was reviewed: "+RunReviewFirst)
+		v.Reasons = append(v.Reasons, who+"the saved doc-fidelity review names "+short(rev.Named)+", not "+short(rev.Commit)+
+			", whose tree is not the tree reviewed: "+RunReviewFirst)
 	case ReviewHold:
 		n := 0
 		for _, f := range rev.Findings {

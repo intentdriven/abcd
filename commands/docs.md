@@ -120,7 +120,9 @@ give, in the same words and with the same exit 2; nothing is written. With
 `--json` it adds `"dry_run": true`, `would_write` and `would_do` to the usual
 result.
 
-The binary labels the receipt with HEAD; a later commit makes it stale. When a
+The binary labels the receipt with HEAD; a later commit that changes the tree
+makes it stale, while one with the same tree (a revert back to it, an empty
+commit) stands on the receipt, and the verb says so. When a
 HOLD carries drafted replacements, `docs fidelity --apply` writes them into the
 brief and flags each in `.abcd/work/brief-review-flags.json`: tell the user
 which sentences changed, because the brief now carries sentences they did not

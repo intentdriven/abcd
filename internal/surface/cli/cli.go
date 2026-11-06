@@ -4010,7 +4010,7 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 			if err := enforceShipLinks(repoRoot, "abcd spec close", ships); err != nil {
 				return err
 			}
-			if err := enforceDocFidelity(repoRoot, "abcd spec close", ships); err != nil {
+			if err := enforceDocFidelity(cmd.ErrOrStderr(), repoRoot, "abcd spec close", ships); err != nil {
 				return err
 			}
 			res, err := intent.Reconcile(repoRoot, args[0], closeImpact, rem)

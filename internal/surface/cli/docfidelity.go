@@ -47,7 +47,7 @@ func enforceShipLinks(repoRoot, verb string, population []string) error {
 // the binary its brief describes; elsewhere it judges nothing. An empty
 // population still meets layer 1, the coverage floor; only the saved docs
 // review waits on a shipped intent (iss-2610020728118137).
-func enforceDocFidelity(repoRoot, verb string, population []string) error {
+func enforceDocFidelity(stderr io.Writer, repoRoot, verb string, population []string) error {
 	if !docfidelity.Armed(repoRoot) {
 		return nil
 	}
@@ -60,6 +60,9 @@ func enforceDocFidelity(repoRoot, verb string, population []string) error {
 		return &exitError{Code: 2, Msg: verb + ": the doc-fidelity gate cannot read its inputs (nothing moved): " + scrubPaths(err)}
 	}
 	if !v.Refuse {
+		if v.Review != nil && v.Review.TreeNote() != "" {
+			fmt.Fprintln(stderr, verb+": "+v.Review.TreeNote())
+		}
 		return nil
 	}
 	lags := "the binary it ships"
@@ -252,6 +255,9 @@ func renderFidelity(w io.Writer, verb string, out docsFidelityReport) {
 		fmt.Fprintln(w, "  layer 2: not run — layer 1 refused, and an undocumented surface needs no reviewer")
 	} else {
 		fmt.Fprintf(w, "  layer 2: the saved docs review is %s for %s\n", v.Review.Status, termsafe.Sanitize(v.Review.Commit))
+		if note := v.Review.TreeNote(); note != "" {
+			fmt.Fprintf(w, "    %s\n", termsafe.Sanitize(note))
+		}
 	}
 	for _, f := range out.Flagged {
 		fmt.Fprintf(w, "  applied  %s: %q -> %q (flagged for review in %s)\n", f.Chapter,

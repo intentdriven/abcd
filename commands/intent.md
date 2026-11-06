@@ -652,7 +652,8 @@ with "run the docs review first" until one is saved:
 ```
 
 `/abcd:docs` (its `fidelity` section) says how to compose the verdict. A commit
-after the review makes it stale, so review the commit you close on.
+after the review that changes the tree makes it stale, so review the commit you
+close on; a head with the reviewed tree stands on the review, and the close says so.
 
 **An intent owns one or more specs.** Where the work did not fit one piece of
 scheduled work, the spec that delivered part of it is closed on its own terms

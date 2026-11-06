@@ -76,9 +76,11 @@ in a gate, which is what keeps the lint itself deterministic and offline.
   labelled with the commit the checkout stands at, under
   `.abcd/.work.local/doc-fidelity/<commit>/`. The receipt has the release gate's
   shape and is judged by the release gate's own receipt reader. A receipt for
-  HEAD that is PROMOTE lets the change proceed. A missing receipt, one naming
-  another commit, an unreadable one, or an INCONCLUSIVE one refuses with "run the
-  docs review first". A HOLD refuses and names each false brief sentence. A false
+  HEAD that is PROMOTE lets the change proceed, and so does one for another commit
+  with HEAD's tree object, since a review reads bytes: the receipt keeps its one
+  shape, and the verb states which review it stood on. A missing receipt, one naming
+  another commit with another tree or a commit git can no longer resolve, an
+  unreadable one, or an INCONCLUSIVE one refuses with "run the docs review first". A HOLD refuses and names each false brief sentence. A false
   sentence in a public doc is reported and never refuses. The record sub-verb
   refuses a PROMOTE that names a false brief sentence, and a saved PROMOTE that
   names one refuses as unusable. Each quoted sentence and drafted replacement is

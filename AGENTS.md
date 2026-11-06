@@ -420,7 +420,8 @@ with `*CONCURRENCY` to force it).
   gate, and so does `launch ship` for every intent shipped since the last tag:
   each refuses until `scripts/abcd.sh docs fidelity record` has saved a docs
   review for HEAD (`commands/docs.md` says how to run one). The review is
-  labelled with the commit it read and kept in the checkout's local tier, so a
+  labelled with the commit it read (a head with that commit's tree stands on it)
+  and kept in the checkout's local tier, so a
   cut made on `main` needs a review recorded there for the merge commit: the
   reviewer runs after the merge, not before it. A revert
   withdraws a `Delivers:` on the same terms, only for an intent its own diff
