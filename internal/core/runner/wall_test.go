@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/guard"
 	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/shellquote"
 )
@@ -80,15 +81,17 @@ func fakeWall(mode string) int {
 		}
 	}
 	init := map[string]any{"type": "system", "subtype": "init", "session_id": "s", "model": "m",
-		"tools": []string{"Read", "Bash", ApproverTool}, "apiKeySource": "none",
+		"tools": []string{"Read", "Bash"}, "apiKeySource": "none", "claude_code_version": "2.1.319",
 		"mcp_servers": []map[string]string{{"name": "abcd", "status": "connected"}}, "plugins": []string{}}
 	switch mode {
 	case "wall-tools":
-		init["tools"] = []string{"Read", "Bash", ApproverTool, "WebFetch"}
+		init["tools"] = []string{"Read", "Bash", "WebFetch"}
 	case "wall-servers":
-		init["mcp_servers"] = []map[string]string{{"name": "abcd"}, {"name": "persons-own"}}
+		init["mcp_servers"] = []map[string]string{{"name": "abcd", "status": "connected"}, {"name": "persons-own", "status": "connected"}}
+	case "wall-server-failed":
+		init["mcp_servers"] = []map[string]string{{"name": "abcd", "status": "failed"}}
 	case "wall-plugins":
-		init["plugins"] = []map[string]string{{"name": "persons-plugin"}}
+		init["plugins"] = []map[string]string{{"name": "persons-plugin", "path": "/plugins/persons-plugin", "source": "persons-plugin@a-marketplace"}}
 	case "wall-key":
 		init["apiKeySource"] = "ANTHROPIC_API_KEY"
 	case "wall-key-unsaid":
@@ -105,7 +108,9 @@ func fakeWall(mode string) int {
 			{"type": "tool_result", "content": wallHomeMarker + shellHome + "\n"}}}})
 		fmt.Println(string(ev))
 	}
-	if mode != "wall-env-unsaid" {
+	// This stand-in's approver clears the names' command, and it clears nothing while
+	// the launch's base is no commit in its working tree.
+	if mode != "wall-env-unsaid" && approverClears(args) {
 		names := []string{"PATH", "HOME", "CLAUDECODE"}
 		if mode == "wall-env" {
 			names = append(names, "GH_TOKEN")
@@ -130,8 +135,51 @@ func fakeWall(mode string) int {
 	return 0
 }
 
+// approverClears reports whether the approver this launch names would answer at all
+// from the working directory: the guard's own read of the registry at the launch's base.
+func approverClears(args []string) bool {
+	for _, a := range args {
+		config, ok := strings.CutPrefix(a, "--mcp-config=")
+		if !ok {
+			continue
+		}
+		var c struct {
+			Servers map[string]struct {
+				Args []string `json:"args"`
+			} `json:"mcpServers"`
+		}
+		if json.Unmarshal([]byte(config), &c) != nil {
+			return false
+		}
+		for _, arg := range c.Servers["abcd"].Args {
+			if base, ok := strings.CutPrefix(arg, "--base="); ok {
+				wd, err := os.Getwd()
+				return err == nil && guard.LoadRepoAt(wd, base).Posture == guard.LoadClean
+			}
+		}
+	}
+	return false
+}
+
+// gitDirAtStart is the directory git was found in before any test narrowed PATH to its
+// stand-in: the proof's working directory is a repository.
+var gitDirAtStart = func() string {
+	p, err := exec.LookPath("git")
+	if err != nil {
+		return ""
+	}
+	return filepath.Dir(p)
+}()
+
+// gitOnPath puts git back behind a test's stand-in.
+func gitOnPath(t *testing.T) {
+	t.Helper()
+	t.Setenv("PATH", os.Getenv("PATH")+string(os.PathListSeparator)+gitDirAtStart)
+}
+
 func wallProfile(t *testing.T) Profile {
 	t.Helper()
+	gitOnPath(t)
 	home := profileHome(t, "walled")
 	p, err := DriveProfile(home, "")
 	if err != nil {
@@ -250,19 +298,20 @@ func TestTheLoginWallAsksTheHarnessAndKeepsOnlyTheState(t *testing.T) {
 // or broken in turn.
 func TestTheProofNamesEachWallThatDoesNotHold(t *testing.T) {
 	for mode, wall := range map[string]string{
-		"wall-ok":          "",
-		"wall-tools":       WallTools,
-		"wall-servers":     WallServers,
-		"wall-plugins":     WallPlugins,
-		"wall-key":         WallKey,
-		"wall-key-unsaid":  WallKey,
-		"wall-guard":       WallGuard,
-		"wall-tree":        WallWorkingTree,
-		"wall-home":        WallHome,
-		"wall-home-unsaid": WallHome,
-		"wall-env":         WallEnv,
-		"wall-env-unsaid":  WallEnv,
-		"wall-env-at":      WallEnv,
+		"wall-ok":            "",
+		"wall-tools":         WallTools,
+		"wall-servers":       WallServers,
+		"wall-server-failed": WallServers,
+		"wall-plugins":       WallPlugins,
+		"wall-key":           WallKey,
+		"wall-key-unsaid":    WallKey,
+		"wall-guard":         WallGuard,
+		"wall-tree":          WallWorkingTree,
+		"wall-home":          WallHome,
+		"wall-home-unsaid":   WallHome,
+		"wall-env":           WallEnv,
+		"wall-env-unsaid":    WallEnv,
+		"wall-env-at":        WallEnv,
 	} {
 		t.Run(mode, func(t *testing.T) {
 			f := newFake(t, mode, Claude)

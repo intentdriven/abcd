@@ -347,10 +347,12 @@ Before the first move the drive writes the profile directory's settings, abcd's 
 as commands naming its own binary and nothing else, and checks each wall, refusing
 and naming the one that fails: the login state, the settings, a git identity for the
 checkout, and in one short live launch the tools the launch named, the approver as the
-only server, no plugin, no key, the guard refusing a command it is meant to refuse, the
-home and the variable names a stage's shell shows, and a settings file in the working
-tree having no effect, since the launch's setting sources name the profile directory
-alone. Before each stage and each preflight the settings, the files a stage's shell
+only server with the harness reporting it connected, no plugin but the harness's own
+built-ins, no key, the guard refusing a command it is meant to refuse, the home and the
+variable names a stage's shell shows, and a settings file in the working tree having no
+effect, since the launch's setting sources name the profile directory alone. The launch
+runs in a repository of one empty commit, the base the approver judges against, and a
+refusal from it says the harness's version. Before each stage and each preflight the settings, the files a stage's shell
 reads, the machine declarations, abcd's binary and the harness are compared with the
 start, and a difference stops the drive.
 

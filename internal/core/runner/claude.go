@@ -72,8 +72,12 @@ type ClaudeCLI struct {
 	profile *Profile
 }
 
-// ApproverTool is the permission prompt tool a shell launch names.
-const ApproverTool = "mcp__abcd__approve"
+// approverServer is the name of the one server a shell launch starts, and
+// ApproverTool the permission prompt tool it names on that server.
+const (
+	approverServer = "abcd"
+	ApproverTool   = "mcp__" + approverServer + "__approve"
+)
 
 // newClaude returns the claude CLI runner asking for model, a
 // <provider>/<model> route the configuration admitted, or "" for the harness's
@@ -119,7 +123,7 @@ func (c *ClaudeCLI) approverConfig(dir, base string, runDirs, declared []string)
 			args = append(args, "--declared="+d)
 		}
 	}
-	raw, _ := json.Marshal(map[string]map[string]server{"mcpServers": {"abcd": {
+	raw, _ := json.Marshal(map[string]map[string]server{"mcpServers": {approverServer: {
 		Type: "stdio", Command: c.approver, Args: args,
 	}}})
 	return string(raw)

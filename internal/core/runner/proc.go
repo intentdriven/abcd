@@ -447,8 +447,8 @@ func proxyListWithoutCredentials(v string) (string, bool) {
 
 // stageShellNames are what the harness and the shell itself add to a stage's
 // shell, beside what it carries.
-var stageShellNames = []string{"PWD", "OLDPWD", "SHLVL", "_", "CLAUDECODE", "GIT_EDITOR", "COREPACK_ENABLE_AUTO_PIN",
-	"__CF_USER_TEXT_ENCODING", "GOCACHE", "GOMODCACHE", "GOPATH", "GOBIN", "GOPROXY", abcdhome.PersonHomeEnv}
+var stageShellNames = []string{"PWD", "OLDPWD", "SHLVL", "_", "CLAUDECODE", "AI_AGENT", "GIT_EDITOR", "COREPACK_ENABLE_AUTO_PIN",
+	"NoDefaultCurrentDirectoryInExePath", "__CF_USER_TEXT_ENCODING", "GOCACHE", "GOMODCACHE", "GOPATH", "GOBIN", "GOPROXY", abcdhome.PersonHomeEnv}
 
 // stageShellAllowed reports whether a stage's shell may hold the variable name.
 func stageShellAllowed(name string) bool {

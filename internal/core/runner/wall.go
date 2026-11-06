@@ -153,7 +153,7 @@ const (
 )
 
 // guardProofCommand is the command the proof asks for: one the guard is meant
-// to refuse, harmless if it ran, in a directory that is no repository.
+// to refuse, harmless if it ran, in a repository with no remote.
 const guardProofCommand = "git push --force origin abcd-wall-proof"
 
 // guardRefusalText opens the refusal abcd's guard hook gives.
@@ -651,11 +651,35 @@ func workingTreeSettings(marker string) []byte {
 	return raw
 }
 
+// wallProofRepository makes dir a repository of one empty commit and returns that
+// commit. The approver judges each command against the registry at the run's base, and
+// a base that is no commit in its working tree refuses every command, as it would a
+// stage's. Nothing here reads a template, or runs a hook or a signer.
+func wallProofRepository(dir string) (string, error) {
+	if _, err := gitutil.Run(dir, "init", "-q", "--template=", "--object-format=sha1"); err != nil {
+		return "", err
+	}
+	tree, err := gitutil.Run(dir, "hash-object", "-w", "-t", "tree", os.DevNull)
+	if err != nil {
+		return "", err
+	}
+	commit, err := gitutil.Run(dir, "-c", "user.name=abcd", "-c", "user.email=wall-proof@abcd.invalid", "commit-tree", tree, "-m", "abcd's wall proof")
+	if err != nil {
+		return "", err
+	}
+	if _, err := gitutil.Run(dir, "update-ref", "HEAD", commit); err != nil {
+		return "", err
+	}
+	return commit, nil
+}
+
 // ProveWall starts one short live launch on p and reads each wall from what
 // the harness reports: the tools it holds are the ones the launch named, the
-// only server is the approver, no plugin is loaded, no key is in use, the guard
-// hook refuses a command it is meant to refuse, and a settings file in the
-// working tree has no effect. bin is the abcd binary serving the approver.
+// only server is the approver and it is connected, no plugin is loaded but the
+// harness's own, no key is in use, the guard hook refuses a command it is meant
+// to refuse, the shell shows the stage's home and only the variables it may hold,
+// and a settings file in the working tree has no effect. bin is the abcd binary
+// serving the approver.
 func ProveWall(ctx context.Context, p Profile, bin string) error {
 	dir, err := os.MkdirTemp("", "abcd-wall-proof-")
 	if err != nil {
@@ -664,6 +688,10 @@ func ProveWall(ctx context.Context, p Profile, bin string) error {
 	defer os.RemoveAll(dir)
 	if dir, err = filepath.EvalSymlinks(dir); err != nil {
 		return &WallError{WallLaunch, "its working directory could not be resolved"}
+	}
+	base, err := wallProofRepository(dir)
+	if err != nil {
+		return &WallError{WallLaunch, "its working directory could not be made a repository"}
 	}
 	marker := filepath.Join(dir, workingTreeMarker)
 	claudeDir := filepath.Join(dir, ".claude")
@@ -688,7 +716,7 @@ func ProveWall(ctx context.Context, p Profile, bin string) error {
 	}
 	named := []string{"Read", "Bash"}
 	req := Request{Role: "wall-proof", Brief: filepath.Join(dir, "brief.md"), Receipt: filepath.Join(dir, "receipt.json"),
-		Dir: dir, Tools: named, Base: strings.Repeat("0", 40), SessionID: "wall-proof", Timeout: wallProofTimeout}
+		Dir: dir, Tools: named, Base: base, SessionID: "wall-proof", Timeout: wallProofTimeout}
 	args := append(c.walledFlags(req), "--include-hook-events", "--", wallProofPrompt)
 	// The proof spends the same subscription as a stage, so its launch is written
 	// to the same ledger, and one the ledger cannot hold is not started.
@@ -724,7 +752,7 @@ func ProveWall(ctx context.Context, p Profile, bin string) error {
 		return err
 	}
 	if _, err := os.Lstat(marker); !errors.Is(err, os.ErrNotExist) {
-		return &WallError{WallWorkingTree, "a settings file in the working tree ran its hook, so the launch read it"}
+		return withHarnessVersion(&WallError{WallWorkingTree, "a settings file in the working tree ran its hook, so the launch read it"}, res.stdout)
 	}
 	return nil
 }
@@ -753,9 +781,82 @@ func outsideStageEnv(line []byte) string {
 	}
 }
 
-// readWallProof reads each wall from the launch's event stream. Every line is
-// read leniently, and only the fields named here are kept.
+// wallServer is one server the harness's start-up report names.
+type wallServer struct {
+	Name   string `json:"name"`
+	Status string `json:"status"`
+}
+
+// wallPlugin is one plugin the harness's start-up report names.
+type wallPlugin struct {
+	Name   string `json:"name"`
+	Path   string `json:"path"`
+	Source string `json:"source"`
+}
+
+// harnessOwn reports whether the plugin is built into the harness: no path of its
+// own and a source its built-ins alone carry. Nothing names which built-ins there
+// are, since each release of the harness may bring more. Neither field alone is
+// enough: a marketplace may be called builtin, and a plugin may sit at any path.
+func (p wallPlugin) harnessOwn() bool {
+	return p.Path == "builtin" && strings.HasSuffix(p.Source, "@builtin")
+}
+
+// checkWallServers holds the one server a launch may start to what the harness says
+// of it. The report's tool list need not name a server's tools, so the status is what
+// shows a server that did not start. A connected server has yet to answer anything.
+func checkWallServers(servers []wallServer) error {
+	if len(servers) == 0 {
+		return &WallError{WallServers, "the launch started no server, so nothing answers its permission prompts"}
+	}
+	for _, s := range servers {
+		if s.Name != approverServer {
+			return &WallError{WallServers, "the launch started " + safeWord(s.Name) + ", and the approver is the only server it may"}
+		}
+	}
+	if len(servers) > 1 {
+		return &WallError{WallServers, "the launch reports more than one server under the approver's name"}
+	}
+	switch status := servers[0].Status; status {
+	case "connected":
+		return nil
+	case "":
+		return &WallError{WallServers, "the harness reports no status for the approver's server"}
+	default:
+		return &WallError{WallServers, "the harness reports the approver's server as " + safeWord(status) + ", not connected"}
+	}
+}
+
+// wallVersionRe is what a harness's version may be to reach a refusal.
+var wallVersionRe = regexp.MustCompile(`^[0-9A-Za-z][0-9A-Za-z.+_-]{0,39}$`)
+
+// withHarnessVersion is err, a wall's refusal, saying which harness refused, so a
+// refusal that follows an update reads as one. A report that names no version, or a
+// value that is none, adds nothing.
+func withHarnessVersion(err error, out []byte) error {
+	var we *WallError
+	if !errors.As(err, &we) {
+		return err
+	}
+	for _, line := range bytes.Split(out, []byte("\n")) {
+		var ev claudeEvent
+		if json.Unmarshal(bytes.TrimSpace(line), &ev) == nil && ev.Type == "system" && ev.Subtype == "init" && wallVersionRe.MatchString(ev.Version) {
+			we.Detail += " (harness version " + ev.Version + ")"
+			break
+		}
+	}
+	return err
+}
+
+// readWallProof reads each wall from the launch's event stream, and a wall that does
+// not hold says the harness's version.
 func readWallProof(out []byte, named []string, shellHome string) error {
+	return withHarnessVersion(judgeWallProof(out, named, shellHome), out)
+}
+
+// judgeWallProof is readWallProof's verdict. Every line is read leniently, and only
+// the fields named here are kept.
+func judgeWallProof(out []byte, named []string, shellHome string) error {
 	var sawInit, refused, homeSeen bool
 	var homeSaid, envSaid bool
 	var envOutside, envAt string
@@ -763,18 +864,14 @@ func readWallProof(out []byte, named []string, shellHome string) error {
 	wantHome := bytes.Trim(quotedHome, `"`)
 	for _, line := range bytes.Split(out, []byte("\n")) {
 		var ev struct {
-			Type       string   `json:"type"`
-			Subtype    string   `json:"subtype"`
-			Tools      []string `json:"tools"`
-			APIKey     string   `json:"apiKeySource"`
-			HookEvent  string   `json:"hook_event"`
-			HookStdout string   `json:"stdout"`
-			Servers    []struct {
-				Name string `json:"name"`
-			} `json:"mcp_servers"`
-			Plugins []struct {
-				Name string `json:"name"`
-			} `json:"plugins"`
+			Type       string       `json:"type"`
+			Subtype    string       `json:"subtype"`
+			Tools      []string     `json:"tools"`
+			APIKey     string       `json:"apiKeySource"`
+			HookEvent  string       `json:"hook_event"`
+			HookStdout string       `json:"stdout"`
+			Servers    []wallServer `json:"mcp_servers"`
+			Plugins    []wallPlugin `json:"plugins"`
 		}
 		if json.Unmarshal(bytes.TrimSpace(line), &ev) != nil {
 			continue
@@ -804,16 +901,18 @@ func readWallProof(out []byte, named []string, shellHome string) error {
 					return &WallError{WallTools, "the launch holds " + safeWord(t) + ", which it did not name"}
 				}
 			}
-			if !slices.Contains(ev.Tools, ApproverTool) {
-				return &WallError{WallTools, "the approver is not among the tools the launch holds"}
-			}
-			for _, s := range ev.Servers {
-				if s.Name != "abcd" {
-					return &WallError{WallServers, "the launch started " + safeWord(s.Name) + ", and the approver is the only server it may"}
+			for _, t := range named {
+				if !slices.Contains(ev.Tools, t) {
+					return &WallError{WallTools, "the launch does not hold " + safeWord(t) + ", which it named"}
 				}
 			}
-			if len(ev.Plugins) > 0 {
-				return &WallError{WallPlugins, "the launch loaded " + safeWord(ev.Plugins[0].Name)}
+			if err := checkWallServers(ev.Servers); err != nil {
+				return err
+			}
+			for _, pl := range ev.Plugins {
+				if !pl.harnessOwn() {
+					return &WallError{WallPlugins, "the launch loaded " + safeWord(pl.Name) + ", which is not the harness's own"}
+				}
 			}
 			switch ev.APIKey {
 			case "none":
