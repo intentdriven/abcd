@@ -1116,7 +1116,7 @@ func (t *terminal) settleBlames(ctx context.Context) int {
 	counted := 0
 	for _, b := range t.blames {
 		count := b.blame == runner.BlameWork
-		if b.blame == runner.BlameAsk && t.o.Probe != nil && t.bounded() && ctx.Err() == nil && !t.stopped() && t.wallHeld() {
+		if b.blame == runner.BlameAsk && t.o.Probe != nil && t.bounded() && ctx.Err() == nil && !t.stopped() && !t.stopHolds() && t.wallHeld() {
 			t.say("nothing shows what failed the %s, so a probe asks whether the account is alive", b.role)
 			renewed, fl := t.o.Probe(ctx, b.role, b.model)
 			entry := evidenceEntry{Event: "probe", Role: b.role, Answer: "no answer"}
@@ -1496,28 +1496,43 @@ func (t *terminal) stepRefused(ctx context.Context, runID string, err error) (ag
 		t.ranClean = head
 		t.minted[lane.HeadSHA] = true
 		return true, "", nil
-	case ctx.Err() != nil || t.stopped():
+	case ctx.Err() != nil || t.stopped() || t.stopHolds():
 		return false, "", nil
 	default:
 		return t.laneRefused(ctx, runID, lane.ID, "its preflight failed: "+perr.Error(), "")
 	}
 }
 
-// preflight runs a lane's preflight on a context a stop also ends, so one queued
-// at the load gate or running does not outlast it.
+// preflight runs a lane's preflight on a context a stop also ends, this terminal's or one
+// set from outside it, so one queued at the load gate or running does not outlast it.
 func (t *terminal) preflight(ctx context.Context, worktree string) error {
 	pctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	looked := make(chan struct{})
 	go func() {
-		select {
-		case <-t.o.Stop:
-			cancel()
-		case <-pctx.Done():
+		defer close(looked)
+		look := time.NewTicker(wallLookEvery)
+		defer look.Stop()
+		for {
+			select {
+			case <-t.o.Stop:
+				cancel()
+				return
+			case <-pctx.Done():
+				return
+			case <-look.C:
+				if t.stopHolds() {
+					cancel()
+					return
+				}
+			}
 		}
 	}()
 	var err error
 	t.beginCall("the preflight")
 	t.renewing(func() { err = t.o.Preflight(pctx, worktree) })
+	cancel()
+	<-looked
 	return err
 }
 

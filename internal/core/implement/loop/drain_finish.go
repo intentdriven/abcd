@@ -198,12 +198,21 @@ func finishMerged(repoRoot string, now time.Time) ([]DrainFinished, []DrainParke
 		return nil, nil, err
 	}
 	var parked []State
+	out, reads := []DrainFinished{}, []DrainParked{}
 	for _, run := range runs {
+		// What a run a drive stopped on says is not known to be its driver's, so nothing
+		// is done on its word, whatever it reads as: it is named.
+		if driveStopped(run.RunID) {
+			if i := parkedAtLand(run); i >= 0 {
+				out = append(out, DrainFinished{Issue: run.Issue(), RunID: run.RunID, PR: run.Lanes[i].PR,
+					Note: fsutil.RedactHome("a drive stopped on " + run.RunID + ", so it is left as it stands: " + driveStopRemedy(run.RunID))})
+			}
+			continue
+		}
 		if parkedAtLand(run) >= 0 {
 			parked = append(parked, run)
 		}
 	}
-	out, reads := []DrainFinished{}, []DrainParked{}
 	if len(parked) == 0 {
 		return out, reads, nil
 	}
@@ -282,6 +291,13 @@ func finishMerged(repoRoot string, now time.Time) ([]DrainFinished, []DrainParke
 		}
 		if !on {
 			p := read[run.RunID]
+			// A stop halted the run and let its claims go. The forge merging it is the one
+			// thing that finishes it; until the take-over nothing else is done for it.
+			if note := waitsForItsTakeOver(repoRoot, run.RunID); note != "" {
+				p.Note = note
+				reads = append(reads, p)
+				continue
+			}
 			if p.State == ParkedConflicting && syncable(repoRoot, tracking, lane.Landing.Pushed) {
 				// A conflict confined to declared generated files, or one
 				// this checkout cannot reproduce, goes back through the

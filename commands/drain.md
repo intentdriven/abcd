@@ -175,7 +175,8 @@ when the reservation lapses.
 
 The person's own `abcd implement stop` ends a drive too, at its next move, and any wait
 within about a minute, a wait on a limit or an outage included. The drive then says what
-holds it. A run that stop halted waits for `abcd implement resume --take <run-id>`, also
+holds it. A preflight queued at the load gate or running ends at the next look too, and a probe does not
+start. A run that stop halted waits for `abcd implement resume --take <run-id>`, also
 after the stop lifts: a new drive names it, passes over it and goes on to other work. A stop and a drive's stop on a run whose state changed are two things: while both
 stand the run is not settled, its work is not saved aside and its reservation lapses with
 its lease. Lifting the stop leaves the other, and removing the other leaves the stop.

@@ -292,6 +292,20 @@ func pushFence(c Context, lane Lane) (time.Time, string, error) {
 	return fence(c, lane, term, fencePush)
 }
 
+// letItsReservationGo reports whether a run with no reservation had one and let it go, which
+// a run that never held one did not.
+func letItsReservationGo(st State) bool {
+	for i := len(st.Record) - 1; i >= 0; i-- {
+		switch st.Record[i].Stage {
+		case StageReservationReleased, StageReservationReleaseFailed, StageDriveReleased:
+			return true
+		case StageReservation, StageReservationRenewed:
+			return false
+		}
+	}
+	return false
+}
+
 // fence is the land fence for act. It fetches the reservations from origin,
 // then refuses, doing nothing of act, unless the run's own reservation is
 // this person's from this copy and live (renewing it with term,
@@ -304,6 +318,11 @@ func pushFence(c Context, lane Lane) (time.Time, string, error) {
 // dated ahead that the hold did not count, "" when there is none.
 func fence(c Context, lane Lane, term time.Duration, act fenceAct) (time.Time, string, error) {
 	if c.State.ReservedAt == nil {
+		if letItsReservationGo(c.State) {
+			return time.Time{}, "", contend(string(StageLand), "", lane.ID,
+				"this run let its reservation on "+termsafe.Sanitize(c.State.Key)+" go and has not taken it again, so this lane does not "+act.not,
+				"run `abcd implement resume --take "+c.State.RunID+"`, which reserves the work again before anything steps")
+		}
 		m, err := claim.FetchMergeHold(c.RepoRoot, c.Now, claimOptions(c.Now))
 		var fe *claim.FetchError
 		switch {
