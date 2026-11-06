@@ -154,6 +154,23 @@ func TestAddConfidentialLandsUnderItsClassFolder(t *testing.T) {
 	}
 }
 
+// TestIdentifyingKeyLeavesAnOpaqueKeyAlone: comparing a plain name word by word
+// refuses no key that holds none of its words, and a word under three runes is
+// too short to count on its own.
+func TestIdentifyingKeyLeavesAnOpaqueKeyAlone(t *testing.T) {
+	for _, tc := range []struct{ key, literal string }{
+		{"conf2026a", "Ada " + confAuthor},
+		{"conf2026a", "Ada Okoro-Bello"},
+		{"lixu2026", "Li Na"},
+		{"adler2026", "Ad Xu"},
+	} {
+		e := Entry{ID: tc.key, Title: confTitle, Author: []Name{{Literal: tc.literal}}}
+		if field := identifyingKey(e); field != "" {
+			t.Errorf("key %q with author %q is refused for its %s", tc.key, tc.literal, field)
+		}
+	}
+}
+
 // TestAddRefusals: every refusal writes nothing, and none quotes a confidential
 // title or alias.
 func TestAddRefusals(t *testing.T) {
@@ -172,6 +189,11 @@ func TestAddRefusals(t *testing.T) {
 		{"unknown permission", func(r *AddRequest) { r.Permission = "whatever" }, ErrInvalidEntry},
 		{"key names an alias", func(r *AddRequest) { r.Key = "harbourwatch2026"; r.Aliases = []string{confAlias} }, ErrIdentifyingKey},
 		{"key names the author", func(r *AddRequest) { r.Key = "okonkwo2026"; r.Authors = []Name{{Family: confAuthor}} }, ErrIdentifyingKey},
+		{"key names a plain-name author's surname", func(r *AddRequest) { r.Key = "okonkwo2026"; r.Authors = []Name{{Literal: "Ada " + confAuthor}} }, ErrIdentifyingKey},
+		{"key names a plain-name author's first name", func(r *AddRequest) { r.Key = "adaeze2026"; r.Authors = []Name{{Literal: "Adaeze " + confAuthor}} }, ErrIdentifyingKey},
+		{"key names the second half of a hyphenated plain name", func(r *AddRequest) { r.Key = "bello2026"; r.Authors = []Name{{Literal: "Ada Okoro-Bello"}} }, ErrIdentifyingKey},
+		{"key names the part of a plain name after an apostrophe", func(r *AddRequest) { r.Key = "brien2026"; r.Authors = []Name{{Literal: "Ada O'Brien"}} }, ErrIdentifyingKey},
+		{"key names a whole plain name of short words", func(r *AddRequest) { r.Key = "lina2026"; r.Authors = []Name{{Literal: "Li Na"}} }, ErrIdentifyingKey},
 		{"bad key", func(r *AddRequest) { r.Key = "../x" }, ErrInvalidEntry},
 		{"binary original with no text", func(r *AddRequest) { r.Text = "" }, ErrInvalidEntry},
 		{"fragment alias", func(r *AddRequest) { r.Aliases = []string{"hb"} }, ErrInvalidEntry},

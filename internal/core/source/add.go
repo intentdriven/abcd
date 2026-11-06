@@ -350,7 +350,8 @@ func fold(s string) string {
 
 // identifyingKey names the field a confidential entry's key would reveal, or "".
 // The key is printed by the guard and by cite-check, so it must not carry an alias,
-// the title or one of its longer words, or an author's name.
+// the title or one of its longer words, an author's name, or a word of three or
+// more runes from a plain-name author.
 func identifyingKey(e Entry) string {
 	key := fold(e.ID)
 	has := func(s string, min int) bool {
@@ -376,8 +377,23 @@ func identifyingKey(e Entry) string {
 				return "author"
 			}
 		}
+		for _, word := range nameWords(n.Literal) {
+			if has(word, 3) {
+				return "author"
+			}
+		}
 	}
 	return ""
+}
+
+// nameWords splits a plain-name author, stored whole in Literal, into the words a
+// key could carry on their own. Whitespace and punctuation separate, so each half
+// of a hyphenated name and the part after an apostrophe count. A combining mark
+// does not separate, so a decomposed name stays one word, as fold reads it.
+func nameWords(literal string) []string {
+	return strings.FieldsFunc(literal, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && !unicode.IsMark(r)
+	})
 }
 
 // copyFile copies a document into the corpus, creating the destination exclusively
