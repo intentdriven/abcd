@@ -462,11 +462,15 @@ var stageShellNames = []string{"PWD", "OLDPWD", "SHLVL", "_", "CLAUDECODE", "AI_
 var stageShellUnset = []string{"CLAUDE_CONFIG_DIR", StageProtectEnv, StageHarnessEnv, "CLAUDE_CODE_MESSAGING_TOKEN", "CLAUDE_CODE_MESSAGING_SOCKET"}
 
 // harnessSecretWords are what a word of a name under the harness's prefix may not end in,
-// so a joined spelling reads as the plain one. The prefix stays open because each harness
-// release adds names of its own, and a stage holding a new setting costs nothing; a new
-// name of one of these shapes stops the drive and says the version.
+// one or many, so a joined or plural spelling reads as the plain one. The prefix stays open
+// because each harness release adds names of its own, and a stage holding a new setting
+// costs nothing; a new name of one of these shapes stops the drive and says the version.
 var harnessSecretWords = []string{"TOKEN", "OAUTH", "KEY", "SECRET", "PASSWORD", "PASSWD", "PASSPHRASE", "CREDENTIAL", "CREDENTIALS", "CREDS",
 	"AUTH", "AUTHENTICATE", "AUTHENTICATION", "AUTHORIZATION", "COOKIE", "GRANT", "SOCKET", "SOCK", "JWT", "BEARER"}
+
+// harnessPlainPlurals are words that read as a plural of those and mean something else
+// in the harness's own names: how many tokens a model may use, and the proxy protocol.
+var harnessPlainPlurals = []string{"TOKENS", "SOCKS"}
 
 // stageShellSecret reports whether name reads as a credential or a socket: one abcd
 // knows, or one under the harness's prefix with a word of that shape.
@@ -479,7 +483,13 @@ func stageShellSecret(name string) bool {
 		return false
 	}
 	return slices.ContainsFunc(strings.Split(rest, "_"), func(word string) bool {
-		return slices.ContainsFunc(harnessSecretWords, func(secret string) bool { return strings.HasSuffix(word, secret) })
+		plural := strings.TrimSuffix(word, "S")
+		if slices.Contains(harnessPlainPlurals, word) {
+			plural = word
+		}
+		return slices.ContainsFunc(harnessSecretWords, func(secret string) bool {
+			return strings.HasSuffix(word, secret) || strings.HasSuffix(plural, secret)
+		})
 	})
 }
 

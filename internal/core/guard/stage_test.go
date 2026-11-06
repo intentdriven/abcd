@@ -46,9 +46,9 @@ func TestAStagesHomeIsTheOneItsShellExpands(t *testing.T) {
 
 // TestAStageDoesNotStartTheHarnessItRunsUnder: the file its run proved, however it is
 // reached, a copy of it, and a program named as a release is named; another session is
-// not judged this way, and a file the same size that is not a copy is any program.
+// not judged this way, and a file with other contents is any program.
 func TestAStageDoesNotStartTheHarnessItRunsUnder(t *testing.T) {
-	f, profile, _ := stageFiles(t)
+	f, _, _ := stageFiles(t)
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -78,7 +78,6 @@ func TestAStageDoesNotStartTheHarnessItRunsUnder(t *testing.T) {
 	f.path = os.Getenv("PATH")
 	for _, line := range []string{
 		proved + ` --version`,
-		`CLAUDE_CONFIG_DIR=` + profile + ` ` + proved + ` --version`,
 		`env A=1 ` + proved + ` --version`,
 		`true && ` + proved + ` --version`,
 		`cd ` + filepath.Dir(proved) + ` && ./9.8.7 --version`,

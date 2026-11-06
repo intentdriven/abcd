@@ -356,7 +356,7 @@ stage's shell shows, and a settings file in the working tree having no effect, s
 launch's setting sources name the profile directory alone. That step reads the flags of
 the shell it runs in, and the approver hands a command back to run under a shell it
 starts itself, so the proof holds only when the flags are that shell's. A stage's shell
-file takes the walled directory and the harness's messaging variables back out of the
+file takes the walled directory, the name of the file the run proved and the harness's messaging variables back out of the
 shell, and the wall refuses a name it holds under the harness's prefix that reads as a
 credential, a key or a socket, along with any name outside the list it carries; a new
 setting the harness adds under that prefix stops nothing. A walled launch and its shell
@@ -412,8 +412,13 @@ PATH that abcd will not ask, or that names no cache, leaves the caches it did no
 that home, and the drive says which at its start; a stage's shell and the preflight still
 run that Go. The guard
 reads a shell line against that home and refuses a further agent, the file the run proved
-among them, a moved home, the
-keychain tool, the land verb and every implement verb but the load gate and widening a hold. A file tool, and a shell line the guard can read, write only in the
+and any program named as a release is named among them, a moved home, a moved search for
+a program, a program the same line writes or links, a copy, link or move of the proved
+file, the
+keychain tool, the land verb and every implement verb but the load gate and widening a hold.
+It refuses a line that names the harness's configuration variable or the profile's
+directory, however the line spells or reaches that directory; the stage's file tools are denied it by a deny rule of the launch's own,
+and a profile whose path such a rule cannot hold is refused at the drive's start. A file tool, and a shell line the guard can read, write only in the
 stage's working tree and run directories, its home and temporary files, and never the
 hooks, the Makefile, abcd's configuration, a preflight or review receipt or an approval;
 other records under

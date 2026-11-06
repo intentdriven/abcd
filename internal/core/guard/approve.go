@@ -205,8 +205,8 @@ func runFrom(dir, command string) string {
 // registry with files as the directory it runs in.
 func approveShell(ld Loaded, files *Files, command string) Approval {
 	if files != nil && files.stageHome != "" {
-		if why := stageLineRefused(command); why != "" {
-			return refusal(stageAgentEntryID, why, "the same command without setting or naming the home.")
+		if refused := files.stageLineRefusal(command); refused != nil {
+			return refused.approval()
 		}
 	}
 	// The arithmetic scan reads the whole text, every string a deeper
@@ -260,6 +260,12 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int) Approval
 		return refusal(unparsableEntryID, "the guard could not check this command line.",
 			"a plainer command line, one command at a time.")
 	}
+	placed := placedLine(rc.line, v.segs)
+	if files.stageHome != "" {
+		if refused := files.stagePlacedRefusal(rc, placed); refused != nil {
+			return refused.approval()
+		}
+	}
 	if d := r.decide(v); d.Verdict != VerdictAllow {
 		return fromDecision(d)
 	}
@@ -268,7 +274,6 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int) Approval
 			"a command whose every script exists and is a file the guard can read.")
 	}
 	facts := factsFor(r.files)
-	placed := placedLine(rc.line, v.segs)
 	for _, p := range placed {
 		if p.seg.parenWord {
 			return parenRefusal()
@@ -358,9 +363,6 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int) Approval
 			}
 		}
 	}
-	if files.stageHome != "" && files.stageStartsHarness(rc, placed) {
-		return refusal(stageAgentEntryID, stageAgentWhy, stageAgentInstead)
-	}
 	for _, s := range v.segs {
 		for _, a := range commandSites(s) {
 			tok := s.tokens[a.idx]
@@ -371,9 +373,6 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int) Approval
 				return refusal(unnamedProgramEntryID,
 					"a variable, a substitution or a glob stands where the program's name goes, so the guard cannot say which program runs.",
 					"the same command with the program's name spelled out.")
-			}
-			if files.stageHome != "" && startsAnAgent(s.tokens, a.idx) {
-				return refusal(stageAgentEntryID, stageAgentWhy, stageAgentInstead)
 			}
 			if files.stageHome != "" && addsAWorktree(s.tokens, a.idx) {
 				return refusal(stageAgentEntryID,

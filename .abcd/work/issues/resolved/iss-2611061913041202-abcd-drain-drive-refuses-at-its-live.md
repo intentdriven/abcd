@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/runner/wall.go"
 remedy: "read the approver from the status the harness reports for its one server, admit only the harness's own built-in plugins, make the proof's working directory a repository whose commit is the approver's base, and say the harness's version in a wall refusal"
-resolution: "the live proof reads the approver from the status of its one server, admits only the harness's own plugins, runs in a repository whose commit is the approver's base, and a wall's refusal says the harness's version; a run stays on the harness file it proved, a stage does not update the harness, and a stage's commits carry no harness attribution"
+resolution: "the live proof reads the approver from the status of its one server, admits only the harness's own plugins, runs in a repository whose commit is the approver's base, and a wall's refusal says the harness's version; a run stays on the harness file it proved, a stage does not update the harness, a stage's commits carry no harness attribution, and a stage's line or file tool stays away from the profile's directory and starts no program the line itself makes"
 impact: fix
 resolved_by:
   commit: "70fe62596db8d11c985105d9afd5f46c3eeeb34c"

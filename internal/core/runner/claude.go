@@ -190,6 +190,10 @@ func (c *ClaudeCLI) args(req Request) []string {
 	return append(a, "--", prompt(req))
 }
 
+// walledDirRule is the harness's rule for everything below dir, in the rule's own form for
+// an absolute path.
+func walledDirRule(dir string) string { return "Read(/" + dir + "/**)" }
+
 // walledFlags is the walled launch's flags (spc-2610230813348813): hooks on,
 // so no --bare; the tools the stage holds and no others; the shell answered by
 // the approver, the only server the launch may start; and the profile's own
@@ -202,9 +206,8 @@ func (c *ClaudeCLI) walledFlags(req Request) []string {
 	}
 	a := []string{"--print", "--output-format", "stream-json", "--verbose", "--permission-mode", mode}
 	a = append(a, c.profile.Args...)
-	if len(req.Denied) > 0 {
-		a = append(a, "--disallowedTools="+strings.Join(req.Denied, ","))
-	}
+	// The stage's file tools answer to no approver, so the walled directory is a deny rule.
+	a = append(a, "--disallowedTools="+strings.Join(append(slices.Clone(req.Denied), walledDirRule(c.profile.Dir)), ","))
 	dirs := []string{filepath.Dir(req.Brief)}
 	if d := filepath.Dir(req.Receipt); d != dirs[0] {
 		dirs = append(dirs, d)
