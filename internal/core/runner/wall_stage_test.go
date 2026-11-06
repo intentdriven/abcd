@@ -578,7 +578,7 @@ func TestADrivesPreflightReusesWhatTheOneBeforeItPassed(t *testing.T) {
 	if err := os.MkdirAll(abcdhome.Path(home, "profiles", "walled"), abcdhome.DirMode); err != nil {
 		t.Fatal(err)
 	}
-	p, err := DriveProfile(home)
+	p, err := DriveProfile(home, "")
 	if err != nil {
 		t.Fatal(err)
 	}
