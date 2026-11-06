@@ -299,6 +299,8 @@ func TestIdentifyingKeyReadsEveryUsualSpelling(t *testing.T) {
 		{"modifier letter apostrophe, the part after it", "O\u02bcBrien", "brien2026", "author"},
 		{"Latin letter outside the table", "\u018aanjuma", "danjuma2026", "author"},
 		{"Latin letter outside the table, two of them", "\u0198a\u0253ir", "kabir2026", "author"},
+		{"compatibility form holding a middle dot", "Pa\u0140lar\u00e8s", "pallares2026", "author"},
+		{"compatibility form holding a modifier letter", "\u0149arlo", "narlo2026", "author"},
 		{"double acute", "Erd\u0151s", "erdoes2026", "author"},
 		{"s and c with marks, second spellings", "\u0160imi\u0107", "shimich2026", "author"},
 		{"z caron, second spelling", "\u017dukov", "zhukov2026", "author"},

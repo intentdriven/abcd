@@ -391,7 +391,7 @@ func keyLetters(s string) []keyLetter {
 		}
 		for _, d := range norm.NFKD.String(string(r)) {
 			d = unicode.ToLower(d)
-			if unicode.IsMark(d) || read(d) {
+			if unicode.Is(unicode.Lm, d) || (!unicode.IsLetter(d) && !unicode.IsDigit(d)) || read(d) {
 				continue
 			}
 			out = append(out, keyLetter{spellings: []string{string(d)}, gap: unicode.Is(unicode.Latin, d)})
