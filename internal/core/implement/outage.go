@@ -795,7 +795,7 @@ func outageFieldText(v any) string {
 // out, reset or cut off, or a forge or remote answering 5xx. A refusal by the other end — an authentication
 // failure, a hook's refusal, a rejected push — or a merge conflict is not one,
 // even when its text also quotes a network-sounding line, because waiting does
-// not fix it.
+// not fix it. Nor is what a line the remote printed says: that end was reached.
 func IsNetworkFailure(stderr string) bool {
 	s := strings.ToLower(stderr)
 	for _, m := range notNetworkMarkers {
@@ -803,8 +803,9 @@ func IsNetworkFailure(stderr string) bool {
 			return false
 		}
 	}
+	own := remoteLine.ReplaceAllString(s, "")
 	for _, m := range networkMarkers {
-		if strings.Contains(s, m) {
+		if strings.Contains(own, m) {
 			return true
 		}
 	}
@@ -841,11 +842,24 @@ var networkMarkers = []string{
 	"broken pipe",
 }
 
+// lineOpens is where a command's own line can start in the text this file reads: at a
+// line's start, or where a runner's error opens or continues the stderr it wraps, as
+// `git push: exit status 128 (...)` or, %q'd, `exit status 128 (stderr: "...\\n...")`.
+const lineOpens = `(?:^|exit status [0-9]+ \((?:stderr: ")?|\\n)`
+
 // networkStatus is a forge or remote answering that it failed, in the forms gh (HTTP
-// 502: Bad Gateway, which its runner wraps in parentheses), git (The requested URL
-// returned error: 503) and a GraphQL client (non-200 OK status code: 502) print. A bare
-// status with no colon after it may be a hook's own words, so it is not one.
-var networkStatus = regexp.MustCompile(`http 5[0-9][0-9]:|the requested url returned error: 5[0-9][0-9]|non-200 ok status code: 5[0-9][0-9]`)
+// 502: Bad Gateway), a GraphQL client (non-200 OK status code: 502) and git (fatal:
+// unable to access '...': The requested URL returned error: 503, or that sentence after
+// error: RPC failed; or on its own after fatal: or error:) print, each where such a line
+// opens (lineOpens). The same words anywhere else in a line, or a bare status with no
+// colon after it, may be a hook's own, so they are not one.
+var networkStatus = regexp.MustCompile(`(?m)` + lineOpens + `(?:http 5[0-9][0-9]:|non-200 ok status code: 5[0-9][0-9]|` +
+	`(?:fatal: unable to access '[^'\n]*': |error: rpc failed; [^\n]*?|fatal: |error: )the requested url returned error: 5[0-9][0-9])`)
+
+// remoteLine is a line git relayed from the remote, which is the other end's text: on a
+// line of its own or where a runner's error opens the stderr it wraps. The %q'd form
+// holds its lines as one, and stays as it is.
+var remoteLine = regexp.MustCompile(`(?m)^(?:[^\n]*exit status [0-9]+ \()?remote:[^\n]*$`)
 
 // notNetworkMarkers are the other end's refusals and the local conflicts.
 var notNetworkMarkers = []string{
