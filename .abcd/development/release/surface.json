@@ -1841,6 +1841,13 @@
           "hidden": false
         },
         {
+          "name": "harness",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "protect",
           "shorthand": "",
           "type": "stringArray",
