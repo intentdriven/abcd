@@ -539,6 +539,13 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 			err = reserveResumed(repoRoot, &res, o)
 		}
 		if err != nil {
+			if rf, ok := AsRefusal(err); ok && rf.recordMoved {
+				if st, rerr := ReadState(repoRoot, res.RunID); rerr == nil {
+					if _, derr := dropMovedRun(repoRoot, st, rf.Reason, o.now()); derr != nil {
+						return StartResult{}, derr
+					}
+				}
+			}
 			return StartResult{}, err
 		}
 		return res, nil

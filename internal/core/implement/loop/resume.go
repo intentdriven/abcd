@@ -469,7 +469,7 @@ func takeRun(repoRoot, runID string, o Options) (TakeResult, error) {
 
 	if prev.Stop != nil && prev.Stop.HaltedAt != nil && prev.Stop.Released != noReservationHeld {
 		start := StartResult{RunID: runID}
-		switch err := reserveResumed(repoRoot, &start, o); {
+		switch err := reserveTaken(repoRoot, &start, o, false); {
 		case err == nil:
 			res.Reservation = start.Reservation
 		case claim.Finished(repoRoot, finishedKey(repoRoot, runID)):

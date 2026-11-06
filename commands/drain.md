@@ -111,10 +111,13 @@ nothing but the bound, the cap, an empty ledger or a stop ends the run:
   it holds, and asks again at the wait's next turn. When the limit lifts, the same run
   reserves the issue again, with the footprint it held, and goes on from its branch,
   which the landing's sync brings up to the default branch. If the issue has finished on
-  the default branch, its record there changed during the wait, a hand-back stands on it,
-  or a peer holds it or a path of its footprint, the lane goes back holding nothing,
+  the default branch, its record there changed since the release, a hand-back stands on
+  it, or a peer holds it or a path of its footprint, the lane goes back holding nothing,
   saying which, with no hand-back published over the issue by this run, so a later drain
-  can still take it once what stopped this one has passed. Its worktree, its branch and what it saved stay, named in the summary,
+  can still take it once what stopped this one has passed. A drain's stop lets the issue go
+  too, and the same comparison waits for whatever reserves it again. A person who resumes
+  or takes over such a run goes ahead and is told the record changed, since the lane's
+  brief reads it as it stood at the lane's base. Its worktree, its branch and what it saved stay, named in the summary,
   until `abcd implement step --run <run-id> --discard <lane>`, and the run takes the next
   issue. A stop during the wait holds as any stop does, and nothing marks a lane let go
   this way as a person's: a later drive takes it up.

@@ -780,8 +780,17 @@ type heldReservation struct {
 // landing can hold a narrowed tip, so only there is an issue's tip within its
 // found_at renewed as it stands (reserveAgain's landing). A run
 // handed back starts nothing further and reserves nothing. The run's state
-// records the reservation; a refusal leaves the run unchanged.
+// records the reservation, and tells again what a limit's release marked, in one write;
+// a refusal leaves the run unchanged. Where the run let the issue go and its record
+// has changed on origin's default branch since (recordMovedOn), a drain's act (o.drain)
+// is refused before anything is pushed, and a person's goes ahead and says so.
 func reserveResumed(repoRoot string, res *StartResult, o Options) error {
+	return reserveTaken(repoRoot, res, o, true)
+}
+
+// reserveTaken is reserveResumed; a take-over passes retell false, since it restarts what
+// the marks say has no agent, and a role told again would read as one that may have.
+func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) error {
 	if o.noReserve {
 		return nil
 	}
@@ -805,20 +814,30 @@ func reserveResumed(repoRoot string, res *StartResult, o Options) error {
 		return err
 	}
 	now := o.now()
+	moved := recordMovedOn(repoRoot, st, now)
+	if moved != "" && o.drain {
+		rf := refuse(StageDrain, CheckReservation, "", moved+"; nothing was reserved", "take other work; a later drain takes the issue as its record now stands")
+		rf.recordMoved = true
+		return rf
+	}
 	i := st.current()
 	landing := i >= 0 && st.Lanes[i].Stage == StageLand
 	r, err := reserveAgain(repoRoot, st.Key, fp, o.TakeOver, o.drain, landing, renewalStage(st), now)
 	if err != nil {
 		return err
 	}
+	if moved != "" {
+		// A person's own, as one over a hand-back is (claim's HandBack.Note).
+		r.note += "; " + moved + ", and the lane's brief reads it as it stood at the lane's base; this reservation is a person's own, so it was made"
+	}
 	if err := mutate(repoRoot, res.RunID, func(_ *os.Root, st *State) (bool, error) {
 		if st.ReservedAt == nil {
 			st.ReservedAt = r.at
 		}
 		st.Record = append(st.Record, Entry{At: now, Stage: StageReservation, Note: r.note})
-		// What a limit's release marked goes with the reservation, so no reservation
-		// made is left beside a lane still marked out for it.
-		retellKept(st, limitKept, now)
+		if retell {
+			retellKept(st, limitKept, now)
+		}
 		st.UpdatedAt = now
 		return true, nil
 	}); err != nil {
