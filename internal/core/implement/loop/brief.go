@@ -11,7 +11,6 @@ package loop
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -362,7 +361,11 @@ func (b baseTree) blob(e baseEntry, limit int64) ([]byte, error) {
 	if err := b.readable(e, limit); err != nil {
 		return nil, err
 	}
-	return gitutil.RunCappedBytesAsStoredContext(context.Background(), b.root, "", int(limit), "cat-file", "blob", e.object)
+	out, err := gitutil.RunCappedAsStored(b.root, int(limit), "cat-file", "blob", e.object)
+	if err != nil {
+		return nil, err
+	}
+	return []byte(out), nil
 }
 
 // readable is why blob refuses e, nil when it reads it: anything but a regular
