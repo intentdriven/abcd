@@ -727,6 +727,31 @@ func transition(repoRoot, issuesRoot, issID, verb, field, note string, extra []k
 	return result, nil
 }
 
+// RepointResolved repoints the links still naming an issue's record in open/ once
+// the record stands in resolved/, for a transition a killed call left without its
+// repoint. A link already following the move is left as it is. The record's own links
+// are read from where it stands, since it may have been edited there.
+func RepointResolved(repoRoot, id string) ([]relink.Rewrite, error) {
+	rr, ir, err := resolveRoots(repoRoot, "")
+	if err != nil {
+		return nil, err
+	}
+	found, err := filepath.Glob(filepath.Join(ir, statusDirName[StateResolved], id+"-*"))
+	if err != nil {
+		return nil, err
+	}
+	var out []relink.Rewrite
+	for _, dst := range found {
+		src := filepath.Join(ir, statusDirName[StateOpen], filepath.Base(dst))
+		rw, errText := repointIssueMove(rr, ir, src, dst, false)
+		out = append(out, rw...)
+		if errText != "" {
+			return out, fmt.Errorf("%s", errText)
+		}
+	}
+	return out, nil
+}
+
 // repointMovedIssue repoints the links that named an issue's path before a
 // transition moved it, through the one primitive every record-moving verb
 // shares. A ledger outside the repository (a custom issues root) is linked from
@@ -744,6 +769,11 @@ func transition(repoRoot, issuesRoot, issID, verb, field, note string, extra []k
 // be taken is reported as the repoint's error, with nothing repointed, and the
 // front door names record-lint's links_resolve as what finds each stale link.
 func repointMovedIssue(repoRoot, issuesRoot, src, dst string) ([]relink.Rewrite, string) {
+	return repointIssueMove(repoRoot, issuesRoot, src, dst, true)
+}
+
+// repointIssueMove is repointMovedIssue, saying whether this operation made the move.
+func repointIssueMove(repoRoot, issuesRoot, src, dst string, movedNow bool) ([]relink.Rewrite, string) {
 	from, err1 := filepath.Rel(repoRoot, src)
 	to, err2 := filepath.Rel(repoRoot, dst)
 	if err1 != nil || err2 != nil || !filepath.IsLocal(from) || !filepath.IsLocal(to) {
@@ -758,7 +788,7 @@ func repointMovedIssue(repoRoot, issuesRoot, src, dst string) ([]relink.Rewrite,
 		if duringIssueRepoint != nil {
 			duringIssueRepoint()
 		}
-		rw, rpErr = relink.Repoint(repoRoot, []relink.Move{{From: from, To: to, MovedNow: true}})
+		rw, rpErr = relink.Repoint(repoRoot, []relink.Move{{From: from, To: to, MovedNow: movedNow}})
 		return nil
 	}); err != nil {
 		return nil, err.Error()

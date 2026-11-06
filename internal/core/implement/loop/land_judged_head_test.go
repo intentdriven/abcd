@@ -171,7 +171,7 @@ func TestACommitHoldingMoreThanTheMarkNeedsAModel(t *testing.T) {
 	head := l.HeadSHA
 	setModel(t, f, "", nil, true)
 	f.step(t)
-	landWrite(t, l.Worktree, ".abcd/development/specs/note.md", "a note\n")
+	f.fileAnotherIssue(t, l)
 	r := f.wantsRefusedStep(t)
 	if !strings.Contains(r.Reason, "did not compose") || !strings.Contains(r.Remedy, "model") {
 		t.Fatalf("the refusal names the model: %+v", r)
@@ -315,6 +315,10 @@ func TestAFactTheJudgedHeadHoldsHandsTheLaneBack(t *testing.T) {
 			t.Helper()
 			landWrite(t, wt, ".abcd/development/specs/open/spc-0-twin.md", landRead(t, wt, specRel))
 		}, "spc-0-twin.md"},
+		"a second record under the lane's own spec number at the head": {func(t *testing.T, wt string) {
+			t.Helper()
+			landWrite(t, wt, ".abcd/development/specs/open/spc-1-twin.md", landRead(t, wt, specRel))
+		}, "spc-1-twin.md"},
 		"the lane's intent id twice at the head": {func(t *testing.T, wt string) {
 			t.Helper()
 			landWrite(t, wt, ".abcd/development/intents/planned/itd-0-twin.md", landRead(t, wt, plannedIntentRel))

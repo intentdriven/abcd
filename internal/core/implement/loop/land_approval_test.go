@@ -449,21 +449,25 @@ func TestACommitHoldingMoreThanRecordsParks(t *testing.T) {
 	f := autoFixture(t)
 	f.validated(t)
 	f.step(t)
+	f.step(t)
 	l := currentLane(t, f.repo, f.runID)
-	st, err := ReadState(f.repo.Root(), f.runID)
-	if err != nil {
-		t.Fatal(err)
-	}
 	if err := os.WriteFile(filepath.Join(l.Worktree, "code.txt"), []byte("x\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := gitutil.LocalGit(l.Worktree, "add", "code.txt"); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := gitutil.LocalGit(l.Worktree, "commit", "-q", "-m", landSubject(st, l)); err != nil {
+	if out, err := gitutil.LocalGit(l.Worktree, "commit", "-q", "--amend", "--no-edit"); err != nil {
 		t.Fatalf("%v: %s", err, out)
 	}
-	f.step(t)
+	head := f.repo.Git("-C", l.Worktree, "rev-parse", "HEAD")
+	if err := mutate(f.repo.Root(), f.runID, func(_ *os.Root, st *State) (bool, error) {
+		cur := &st.Lanes[st.current()]
+		cur.HeadSHA, cur.Landing.Records = head, head
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 	l = f.pushToArm(t)
 	if strings.Contains(f.ghLog(t), "pr merge") || l.Landing == nil || l.Landing.Armed || !strings.Contains(l.Landing.Merge, "code.txt") {
 		t.Fatalf("the lane parks naming the path: %+v\n%s", l.Landing, f.ghLog(t))
@@ -526,16 +530,14 @@ func TestAnUnreadGateIsPassedOverOnceItsBoundRunsOut(t *testing.T) {
 	}
 }
 
-// TestALandingOverARefusedHookKeepsItsOwnEdits: a markdown change in a record store, as
-// a relink leaves, is not called stray.
+// TestALandingOverARefusedHookKeepsItsOwnEdits: a change to a record in a store, as a
+// remedy asks for, is not called stray.
 func TestALandingOverARefusedHookKeepsItsOwnEdits(t *testing.T) {
 	f := autoFixture(t)
 	f.validated(t)
 	f.step(t)
 	l := currentLane(t, f.repo, f.runID)
-	if err := os.WriteFile(filepath.Join(l.Worktree, ".abcd/development/specs/relinked.md"), []byte("x\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	f.fileAnotherIssue(t, l)
 	f.step(t)
 	if l := currentLane(t, f.repo, f.runID); !l.Landing.RecordsDone {
 		t.Fatalf("the records commit is made: %+v", l.Landing)

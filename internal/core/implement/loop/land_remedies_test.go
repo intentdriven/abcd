@@ -958,11 +958,9 @@ func TestARecordsCommitIsLabelledFromWhatItHolds(t *testing.T) {
 				t.Fatal(err)
 			}
 		}, false},
-		"a markdown file beside the mark": {func(t *testing.T, f *landFixture, l Lane) {
+		"a record beside the mark": {func(t *testing.T, f *landFixture, l Lane) {
 			t.Helper()
-			if err := os.WriteFile(filepath.Join(l.Worktree, ".abcd/development/specs/note.md"), []byte("a note\n"), 0o644); err != nil {
-				t.Fatal(err)
-			}
+			f.fileAnotherIssue(t, l)
 		}, false},
 	} {
 		t.Run(name, func(t *testing.T) {

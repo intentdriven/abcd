@@ -782,9 +782,12 @@ A lane's stages run in order:
    default branch, put back anything uncommitted in the lane's worktree, discard the
    lane, and once the run's other lanes are finished or decided remove the run's
    directory and build the intent again. An issue's landing moves no intent or spec.
-   The landing commits only what it wrote: its records, the links its moves
-   repointed, and what a refusal asked to be settled in the record stores. Any other
-   change in the lane's worktree stops it until that change is removed. It pushes the
+   Outside the record stores, in what the worktree holds, what it stages and any commit
+   it finds on the judged head, the landing commits only the links its own moves
+   repointed: a file holding anything else stops it until that file is put back, and a
+   link it cannot tell from any other edit (written from beside the record, or not in
+   its shortest form) hands the lane back. Inside a store it still carries an edit to
+   a record, which the reader judges. It pushes the
    branch only once the repository's preflight receipt names the lane's head:
    until then the lane is waiting for its full check (since the time the wait
    began) while the other lanes carry on; run `make preflight` in the lane's
