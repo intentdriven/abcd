@@ -60,8 +60,11 @@ const (
 	ghNoCertIdentity
 	ghNoDenySelfHosted
 	// ghAbsentTagUnresolved: no gh, and GitHub does not answer which tag the
-	// latest release names.
+	// latest release names. The next two pair that silence with a gh too old to
+	// verify, and with a current gh that is not signed in.
 	ghAbsentTagUnresolved
+	ghNoSourceDigestTagUnresolved
+	ghSignedOutTagUnresolved
 )
 
 // installerRun is one run of the template under a sandbox.
@@ -165,7 +168,7 @@ func runInstallOf(t *testing.T, argv []string, gh ghBehaviour, binary []byte, pr
 		commitAnswer = "exit 22"
 	}
 	tagAnswer := "printf '%s' 'https://github.com/intentdriven/abcd/releases/tag/" + installedTag + "'"
-	if gh == ghAbsentTagUnresolved {
+	if gh == ghAbsentTagUnresolved || gh == ghNoSourceDigestTagUnresolved || gh == ghSignedOutTagUnresolved {
 		tagAnswer = "exit 22"
 	}
 	curl := "#!/bin/sh\nfor a in \"$@\"; do url=\"$a\"; done\n" +
@@ -185,12 +188,12 @@ func runInstallOf(t *testing.T, argv []string, gh ghBehaviour, binary []byte, pr
 		switch gh {
 		case ghRefuses:
 			verdict = "echo 'Error: verifying with issuer \"sigstore.dev\": no matching attestation' >&2; exit 1"
-		case ghSignedOut:
+		case ghSignedOut, ghSignedOutTagUnresolved:
 			verdict = "echo 'To get started with GitHub CLI, please run:  gh auth login' >&2; exit 4"
 		}
 		help := "printf '%s\\n' '      --cert-identity string' '      --deny-self-hosted-runners' '      --signer-workflow string' '      --source-digest string' '      --source-ref string'"
 		switch gh {
-		case ghNoSourceDigest:
+		case ghNoSourceDigest, ghNoSourceDigestTagUnresolved:
 			help = "printf '%s\\n' '      --signer-workflow string'"
 		case ghNoSourceRef:
 			help = "printf '%s\\n' '      --signer-workflow string' '      --source-digest string'"
@@ -655,21 +658,67 @@ func TestInstallerRunsNoBinaryItsProvenanceRefused(t *testing.T) {
 	}
 }
 
-// TestInstallerSaysWhenItHasNoTagToCompare: with no gh and no answer on the tag,
-// the checksum stands alone as it did, and a warning says the release was not
-// compared. With a gh that can verify, the same silence already refuses
-// (TestInstallerRefusesWhenTheReleaseCommitCannotBeResolved).
+// TestInstallerSaysWhenItHasNoTagToCompare: with no gh 2.68 or later and no answer
+// on the tag, the checksum stands alone as it did, and a warning says the release
+// was not compared. A gh 2.68 or later refuses on the same silence, signed in or
+// not, because the commit lookup comes first.
 func TestInstallerSaysWhenItHasNoTagToCompare(t *testing.T) {
-	r := runInstallerOf(t, ghAbsentTagUnresolved, releaseBinary("abcd "+installedTag))
-	if r.err != nil {
-		t.Fatalf("no answer on the tag must not stop a checksum-only install: %v\n%s", r.err, r.out)
+	for name, gh := range map[string]ghBehaviour{"no gh": ghAbsentTagUnresolved, "an older gh": ghNoSourceDigestTagUnresolved} {
+		t.Run(name, func(t *testing.T) {
+			r := runInstallerOf(t, gh, releaseBinary("abcd "+installedTag))
+			if r.err != nil {
+				t.Fatalf("no answer on the tag must not stop a checksum-only install: %v\n%s", r.err, r.out)
+			}
+			if !r.installed(t) {
+				t.Fatalf("the checksum-verified binary must be installed:\n%s", r.out)
+			}
+			for _, want := range []string{"WARNING", "not compared with the latest release"} {
+				if !strings.Contains(r.out, want) {
+					t.Errorf("the warning must say %q:\n%s", want, r.out)
+				}
+			}
+		})
 	}
-	if !r.installed(t) {
-		t.Fatalf("the checksum-verified binary must be installed:\n%s", r.out)
+	t.Run("a signed-out gh refuses", func(t *testing.T) {
+		r := runInstallerOf(t, ghSignedOutTagUnresolved, releaseBinary("abcd "+installedTag))
+		if r.err == nil {
+			t.Fatalf("no answer on the tag must refuse where gh 2.68 or later is present:\n%s", r.out)
+		}
+		assertInstalledNothing(t, r)
+	})
+}
+
+// TestInstallerSaysWhenTheKernelRefusesToRunTheBinary: a binary the kernel will not
+// run is about the temporary directory and says nothing of the release, in every
+// shell the installer meets and as the documented command pipes it. The chmod stub
+// leaves the fetched file without execute permission, so the refusal is the
+// kernel's own, and it passes every other chmod through.
+func TestInstallerSaysWhenTheKernelRefusesToRunTheBinary(t *testing.T) {
+	stubs := t.TempDir()
+	stub := "#!/bin/sh\nif [ \"$1\" = 0700 ]; then exit 0; fi\nexec /bin/chmod \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(stubs, "chmod"), []byte(stub), 0o755); err != nil {
+		t.Fatal(err)
 	}
-	for _, want := range []string{"WARNING", "not compared with the latest release"} {
-		if !strings.Contains(r.out, want) {
-			t.Errorf("the warning must say %q:\n%s", want, r.out)
+	script := renderedInstaller(t)
+	const asScript = `PATH="$0:$PATH"; export PATH; exec "$1" "$2"`
+	const piped = `PATH="$0:$PATH"; export PATH; cat "$2" | "$1"`
+	for _, shell := range []string{"/bin/sh", "/bin/bash", "/bin/dash"} {
+		if _, err := os.Stat(shell); err != nil {
+			continue
+		}
+		for form, wrapper := range map[string]string{"as a script": asScript, "piped": piped} {
+			t.Run(shell+" "+form, func(t *testing.T) {
+				r := runInstallOf(t, []string{"/bin/sh", "-c", wrapper, stubs, shell, script}, ghAbsent, releaseBinary("abcd "+installedTag), nil)
+				if r.err != nil {
+					t.Fatalf("a binary the temporary directory cannot run must not stop the install: %v\n%s", r.err, r.out)
+				}
+				if !r.installed(t) {
+					t.Fatalf("the binary must be installed:\n%s", r.out)
+				}
+				if !strings.Contains(r.out, "cannot run programs") {
+					t.Errorf("the warning must say why the release was not compared:\n%s", r.out)
+				}
+			})
 		}
 	}
 }

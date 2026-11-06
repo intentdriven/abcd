@@ -233,7 +233,7 @@ verify_provenance() {
 # closing report runs in the real home and shows that stop.
 #
 # Two cases cannot compare, and say so rather than stop the install: GitHub did
-# not answer with the tag (a gh that can verify has already refused on that), and
+# not answer with the tag (a gh 2.68 or later has already refused on that), and
 # the temporary directory could not run the binary at all, exit 126, as a noexec
 # mount gives. Anything else that does not name the tag is refused, a binary that
 # failed or printed something other than a release included. Only a tag's own
@@ -246,8 +246,12 @@ verify_release() {
 	fi
 	chmod 0700 "$1" ||
 		die "cannot make $1 runnable in the temporary directory, so it cannot be compared with $release_tag. Nothing is installed."
-	rc=0
-	said=$(HOME=$PWD "./$1" --version 2>/dev/null) || rc=$?
+	# Outside `set -e`: a shell that keeps errexit on here can report a kernel
+	# refusal inside the substitution as 1 rather than 126.
+	set +e
+	said=$(HOME=$PWD "./$1" --version 2>/dev/null)
+	rc=$?
+	set -e
 	if [ "$rc" -eq 126 ]; then
 		printf 'abcd install: WARNING: %s was not compared with the latest release, %s, because the temporary directory cannot run programs. After the install, abcd --version should name that tag.\n' "$1" "$release_tag" >&2
 		return 0
