@@ -347,8 +347,9 @@ func ResetStageHome(p Profile) error {
 
 // restoreOwnerAccess gives the owner each directory at and below rel in root back, so
 // it can be emptied: Go makes its module directories read-only, and a stage can leave
-// any. Only a directory lacking owner access changes. What it cannot reach, the removal
-// that follows answers for.
+// any. Only a directory lacking owner access changes, and it reads exactly 0700 after, since
+// nothing but this account's removal has use of it. A file is left alone: its removal needs
+// only its directory. What it cannot reach, the removal that follows answers for.
 func restoreOwnerAccess(root *os.Root, rel string) {
 	fi, err := root.Lstat(rel)
 	if err != nil || !fi.IsDir() {
@@ -368,11 +369,12 @@ func restoreOwnerAccess(root *os.Root, rel string) {
 	}
 }
 
-// ownerAccess adds owner access to the directory at rel whose mode fi read, if it lacks
-// any. A directory swapped since fi was read, for a link out of root, is refused by root.
+// ownerAccess gives the directory at rel whose mode fi read to its owner alone, if it lacks
+// owner access. A directory swapped since fi was read, for a link out of root, is refused by
+// root.
 func ownerAccess(root *os.Root, rel string, fi fs.FileInfo) {
-	if perm := fi.Mode().Perm(); perm&0o700 != 0o700 {
-		_ = root.Chmod(rel, perm|0o700)
+	if fi.Mode().Perm()&0o700 != 0o700 {
+		_ = root.Chmod(rel, 0o700)
 	}
 }
 

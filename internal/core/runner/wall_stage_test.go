@@ -668,15 +668,72 @@ func TestOwnerAccessStaysInsideAndWidensNoMore(t *testing.T) {
 	if fi, err := os.Stat(outside); err != nil || fi.Mode().Perm() != 0o500 {
 		t.Fatalf("the change of mode left the root: %v %v", fi, err)
 	}
-	for want, mode := range map[os.FileMode]os.FileMode{0o755: 0o755, 0o750: 0o050, 0o700: 0} {
+	for mode, want := range map[os.FileMode]os.FileMode{0o755: 0o755, 0o700: 0o700, 0o050: 0o700, 0: 0o700, 0o077: 0o700, 0o577: 0o700} {
 		dir := fmt.Sprintf("d%o", mode)
-		if err := os.Mkdir(filepath.Join(base, dir), mode); err != nil {
+		if err := os.Mkdir(filepath.Join(base, dir), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		// Mkdir applies the umask; the mode under test is set exactly.
+		if err := os.Chmod(filepath.Join(base, dir), mode); err != nil {
 			t.Fatal(err)
 		}
 		restoreOwnerAccess(root, dir)
 		if fi, err := os.Stat(filepath.Join(base, dir)); err != nil || fi.Mode().Perm() != want {
 			t.Errorf("a directory of mode %o reads %v, want %o: %v", mode, fi.Mode().Perm(), want, err)
 		}
+	}
+}
+
+// TestRestoredAccessIsTheOwnersAlone: what the restoring changes reads exactly 0700, a file
+// standing at the name included, whatever other bits the mode it read held. A file the walk
+// meets is left to the removal, which needs only its directory.
+func TestRestoredAccessIsTheOwnersAlone(t *testing.T) {
+	base := t.TempDir()
+	root, err := os.OpenRoot(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	wide := filepath.Join(base, "wide")
+	if err := os.WriteFile(wide, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(wide, 0o077); err != nil {
+		t.Fatal(err)
+	}
+	read, err := os.Stat(wide)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownerAccess(root, "wide", read)
+	if fi, err := os.Stat(wide); err != nil || fi.Mode().Perm() != 0o700 {
+		t.Fatalf("a file of mode 077 reads %v, want 700: %v", fi.Mode().Perm(), err)
+	}
+
+	tree := filepath.Join(base, "tree")
+	sealed := filepath.Join(tree, "sealed")
+	if err := os.MkdirAll(sealed, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	inner := filepath.Join(sealed, "inner")
+	if err := os.WriteFile(inner, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(inner, 0o077); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(sealed, 0o077); err != nil {
+		t.Fatal(err)
+	}
+	restoreOwnerAccess(root, "tree")
+	if fi, err := os.Stat(sealed); err != nil || fi.Mode().Perm() != 0o700 {
+		t.Fatalf("the directory reads %v, want 700: %v", fi.Mode().Perm(), err)
+	}
+	if err := root.RemoveAll("tree"); err != nil {
+		t.Fatalf("a directory and a file with no owner access do not empty: %v", err)
+	}
+	if _, err := os.Lstat(tree); !os.IsNotExist(err) {
+		t.Fatalf("the tree stands after its removal: %v", err)
 	}
 }
 
