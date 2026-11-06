@@ -2,6 +2,7 @@ package loop
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -337,9 +338,10 @@ func TestAMarkedParkedRunIsLeftAloneBeforeItSettles(t *testing.T) {
 	})
 }
 
-// TestAMarkedParkedRunKeepsItsClaim: work a save could not take keeps the reservation, so no
-// peer enters over it, whatever else the move leaves undone for the run.
-func TestAMarkedParkedRunKeepsItsClaim(t *testing.T) {
+// TestAMarkedParkedRunIsRenewedWhileTheReadCannotTell: with no stop seen and no lift either,
+// the move renews the reservation of a run with work a save could not take, whatever else it
+// leaves undone for the run.
+func TestAMarkedParkedRunIsRenewedWhileTheReadCannotTell(t *testing.T) {
 	f, l := parkDrainLane(t)
 	f.listPRs(t, stubPR{Number: 7, HeadRefName: l.Branch, State: "OPEN", Mergeable: "MERGEABLE", MergeStateStatus: "BLOCKED"})
 	ref := claim.RefPrefix + secondIssue
@@ -357,6 +359,191 @@ func TestAMarkedParkedRunKeepsItsClaim(t *testing.T) {
 	}
 	if p := parkedOf(t, res, f.runID); p.State != ParkedStopHolds {
 		t.Fatalf("the lane is not named: %+v", p)
+	}
+}
+
+// TestAStopInForceRenewsNoParkedClaim: under a stop the move refuses before any renewal and
+// no process stays to renew: a settled run releases its reservation, and one with work a save
+// could not take leaves it to lapse at its lease. The lane's work stays on its branch and in
+// its worktree either way.
+func TestAStopInForceRenewsNoParkedClaim(t *testing.T) {
+	stands := func(t *testing.T, f *landFixture, l Lane) {
+		t.Helper()
+		if ld := currentLane(t, f.repo, f.runID); ld.Stage != StageLand || ld.Landing.Pushed != l.Landing.Pushed {
+			t.Fatalf("the lane moved: %+v", ld)
+		}
+		if _, err := os.Stat(l.Worktree); err != nil {
+			t.Fatalf("the lane's worktree: %v", err)
+		}
+		if got := f.repo.Git("rev-parse", "refs/heads/"+l.Branch); strings.TrimSpace(got) != l.Landing.Pushed {
+			t.Fatalf("the lane's branch is at %s, want %s", got, l.Landing.Pushed)
+		}
+	}
+	t.Run("work a save could not take", func(t *testing.T) {
+		f, l := parkDrainLane(t)
+		f.listPRs(t, stubPR{Number: 7, HeadRefName: l.Branch, State: "OPEN", Mergeable: "MERGEABLE", MergeStateStatus: "BLOCKED"})
+		ref := claim.RefPrefix + secondIssue
+		fenced := originReservation(t, f.bare, ref)
+		left := filepath.Join(l.Worktree, "unsaved.txt")
+		if err := os.WriteFile(left, []byte("work in hand\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		old := checkAsidePatch
+		checkAsidePatch = func(string, string) error { return errors.New("will not apply") }
+		t.Cleanup(func() { checkAsidePatch = old })
+		o, _, _ := stopped(t)
+		for _, after := range []time.Duration{12*time.Hour + 30*time.Minute, 23 * time.Hour} {
+			at := fenced.claimed.Add(after)
+			o.Now = func() time.Time { return at }
+			_, err := Drain(f.repo.Root(), o, DrainOptions{})
+			wantStopRefusal(t, err)
+			if tip := originReservation(t, f.bare, ref); tip.commit != fenced.commit || tip.released {
+				t.Fatalf("%s on: the claim moved: fenced %+v, now %+v", after, fenced, tip)
+			}
+		}
+		c := controlOf(t, f.repo.Root(), f.runID)
+		if c.Stop == nil || c.Stop.HaltedAt != nil {
+			t.Fatalf("the run has settled: %+v", c.Stop)
+		}
+		if _, err := os.Stat(left); err != nil {
+			t.Fatalf("the work in hand: %v", err)
+		}
+		stands(t, f, l)
+	})
+	t.Run("a run that settles", func(t *testing.T) {
+		f, l := parkDrainLane(t)
+		f.listPRs(t, stubPR{Number: 7, HeadRefName: l.Branch, State: "OPEN", Mergeable: "MERGEABLE", MergeStateStatus: "BLOCKED"})
+		ref := claim.RefPrefix + secondIssue
+		fenced := originReservation(t, f.bare, ref)
+		o, _, _ := stopped(t)
+		at := fenced.claimed.Add(12*time.Hour + 30*time.Minute)
+		o.Now = func() time.Time { return at }
+		_, err := Drain(f.repo.Root(), o, DrainOptions{})
+		wantStopRefusal(t, err)
+		if tip := originReservation(t, f.bare, ref); !tip.released {
+			t.Fatalf("the claim is not released: fenced %+v, now %+v", fenced, tip)
+		}
+		stands(t, f, l)
+	})
+}
+
+// TestAMarkArrivingDuringTheFetchLeavesTheRunAlone: the mark is read again once the forge has
+// been listed and the default branch fetched, which take time.
+func TestAMarkArrivingDuringTheFetchLeavesTheRunAlone(t *testing.T) {
+	f := drainLandFixture(t)
+	first := f.firstMove(t)
+	f.runID, f.issue = first.Start.RunID, secondIssue
+	l := f.armIssueLaneOnce(t)
+	f.merged(t, l.Landing.Pushed)
+	old := afterParkedFetch
+	afterParkedFetch = func() { markHalted(t, f.repo.Root(), f.runID, true) }
+	t.Cleanup(func() { afterParkedFetch = old })
+	res, err := Drain(f.repo.Root(), Options{}, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if i := slices.IndexFunc(res.Finished, func(d DrainFinished) bool { return d.RunID == f.runID }); i >= 0 {
+		t.Fatalf("the move took the run's last step: %+v", res.Finished)
+	}
+	if ld := currentLane(t, f.repo, f.runID); ld.Stage != StageLand {
+		t.Fatalf("the lane left its landing: %+v", ld)
+	}
+	if p := parkedOf(t, res, f.runID); p.State != ParkedStopHolds || !strings.Contains(p.Note, "implement resume --take "+f.runID) {
+		t.Fatalf("the move does not name it: %+v", p)
+	}
+}
+
+// TestATakeOverFinishesAParkedRunsMergedLane: a stop halts the parked run, the forge merges it
+// while it waits, a drain's move leaves it after the lift, and after the take-over the next
+// move takes the last step, its worktree and branch going with it.
+func TestATakeOverFinishesAParkedRunsMergedLane(t *testing.T) {
+	f := drainLandFixture(t)
+	first := f.firstMove(t)
+	f.runID, f.issue = first.Start.RunID, secondIssue
+	l := f.armIssueLaneOnce(t)
+	o, home, _ := stopped(t)
+	_, err := Drain(f.repo.Root(), o, DrainOptions{})
+	wantStopRefusal(t, err)
+	if c := controlOf(t, f.repo.Root(), f.runID); c.Stop == nil || c.Stop.HaltedAt == nil {
+		t.Fatalf("the run did not halt: %+v", c.Stop)
+	}
+	f.merged(t, l.Landing.Pushed)
+	if lifted, err := runstop.Lift(home, time.Now()); err != nil || !lifted {
+		t.Fatalf("the lift: %v, %v", lifted, err)
+	}
+	waited, err := Drain(f.repo.Root(), o, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := parkedOf(t, waited, f.runID); p.State != ParkedStopHolds || !strings.Contains(p.Note, "implement resume --take "+f.runID) {
+		t.Fatalf("the move does not name the take-over: %+v", p)
+	}
+	if _, err := TakeRun(f.repo.Root(), f.runID, o); err != nil {
+		t.Fatalf("the take-over: %v", err)
+	}
+	res, err := Drain(f.repo.Root(), o, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	i := slices.IndexFunc(res.Finished, func(d DrainFinished) bool { return d.RunID == f.runID })
+	if i < 0 || !res.Finished[i].Done {
+		t.Fatalf("the merged lane is not finished after the take-over: %+v, %s", res.Finished, res.Next)
+	}
+	if _, err := os.Stat(l.Worktree); !os.IsNotExist(err) {
+		t.Fatalf("the lane's worktree stands: %v", err)
+	}
+	if got := f.repo.Git("for-each-ref", "refs/heads/"+l.Branch); strings.TrimSpace(got) != "" {
+		t.Fatalf("the lane's branch stands: %s", got)
+	}
+}
+
+// TestAnUnsettledMarkNamesWhatTakesItUp: a person's stop lifts and a step goes on; a signal has
+// nothing to lift, so its mark is taken over.
+func TestAnUnsettledMarkNamesWhatTakesItUp(t *testing.T) {
+	f, _ := armedConflict(t)
+	mark := func(fromFile bool) {
+		now := time.Now().UTC()
+		if err := mutate(f.repo.Root(), f.runID, func(root *os.Root, _ *State) (bool, error) {
+			c, err := readControl(root, f.runID)
+			if err != nil {
+				return false, err
+			}
+			c.Stop = &RunStop{SetBy: "someone", SetAt: now, NotedAt: now, FromFile: fromFile}
+			return false, writeControl(root, f.runID, c)
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mark(true)
+	if note := stopMarkNote(f.repo.Root(), f.runID); !strings.Contains(note, "once the stop lifts") || !strings.Contains(note, "implement step --run "+f.runID) {
+		t.Fatalf("a person's stop: %s", note)
+	}
+	mark(false)
+	note := stopMarkNote(f.repo.Root(), f.runID)
+	if !strings.Contains(note, "implement resume --take "+f.runID) || strings.Contains(note, "lifts") || strings.Contains(note, "implement step") {
+		t.Fatalf("a signal: %s", note)
+	}
+}
+
+// TestParkedNoteSaysWhatItRead: a lane left to a stop, or one whose pull request could not be
+// read, is not among those read.
+func TestParkedNoteSaysWhatItRead(t *testing.T) {
+	note := parkedNote([]DrainParked{
+		{Issue: "iss-1", RunID: "run-1", State: ParkedWaiting, Note: "waiting"},
+		{Issue: "iss-2", RunID: "run-2", State: ParkedStopHolds, Note: "a stop"},
+		{Issue: "iss-3", RunID: "run-3", State: ParkedUnread, Note: "no answer"},
+	})
+	for _, want := range []string{
+		"read 1 parked lane(s) from their pull requests: iss-1's run run-1: waiting",
+		"could not read the pull requests of 1 parked lane(s): iss-3's run run-3: no answer",
+		"left 1 parked lane(s) as a stop's mark holds them: iss-2's run run-2: a stop",
+	} {
+		if !strings.Contains(note, want) {
+			t.Errorf("the note does not say %q: %s", want, note)
+		}
+	}
+	if only := parkedNote([]DrainParked{{Issue: "iss-2", RunID: "run-2", State: ParkedStopHolds, Note: "a stop"}}); strings.Contains(only, "from their pull requests") {
+		t.Errorf("a lane it did not read is said to be read: %s", only)
 	}
 }
 

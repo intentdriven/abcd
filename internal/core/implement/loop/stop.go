@@ -317,6 +317,10 @@ func stopMarkNote(repoRoot, runID string) string {
 		return ""
 	}
 	id := termsafe.Sanitize(runID)
+	if !c.Stop.FromFile {
+		// A signal has nothing to lift, so its mark is only ever taken over.
+		return fmt.Sprintf("a signal to a drive marked run %s, which has not settled, so nothing is done for it: `abcd implement resume --take %s` takes it over", id, id)
+	}
 	return fmt.Sprintf("a stop set by %s marked run %s, which has not settled, so nothing is done for it: `abcd implement step --run %s` takes that up once the stop lifts",
 		termsafe.Sanitize(c.Stop.SetBy), id, id)
 }
@@ -731,9 +735,11 @@ func laneWorktreeGone(repoRoot, runID string, lane Lane) bool {
 // stopEndsRenewal reports whether a stop has ended the run's right to renew its
 // reservation: one is in force or the run took one, no agent may still be in its
 // call, and no lane holds work a save could not take. A claim a stop is letting go
-// is not kept alive; one with an agent in its call keeps the claim until that agent
-// is done, and one over work saved nowhere keeps it until the work is saved, so no
-// peer enters over it.
+// is not kept alive; one with an agent in its call stays renewable until that agent
+// is done, and one over work saved nowhere until the work is saved. That holds only
+// where something still renews: under a stop in force a move and a step refuse before
+// any renewal and a parked run is not renewed where it waits, so such a run's claim
+// lapses at its lease, with the lane's work still on its branch and in its worktree.
 func stopEndsRenewal(repoRoot string, st State, now time.Time) bool {
 	c, err := runControl(repoRoot, st.RunID)
 	if err != nil {

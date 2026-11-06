@@ -607,11 +607,14 @@ what it did in `next`:
   landed, a worktree with changes, its branch checked out in another
   checkout, which the drain names, or a pushed head git cannot read) is named
   in `next` and the move goes on. A run a stop's mark stands on is not finished, synced
-  or queued, and its pull request is not read: it is named in `next` and in `parked` as
-  `stop-holds`, with what takes it up, whatever the forge says of it. Only its reservation's
-  renewal stands, while work a save could not take keeps the claim. A halted run waits for
-  `abcd implement resume --take <run-id>`; one that has not settled goes on as any other
-  if the stop has lifted.
+  or queued, whatever its pull request says: it is named in `next` and in `parked` as
+  `stop-holds`, with what takes it up. While a read cannot tell whether a stop stands, a
+  run with work a save could not take has its reservation renewed. Under a stop in force nothing
+  renews it, since no process runs to do so: a run that settles releases its reservation, and
+  one with work a save could not take leaves it to lapse at its lease, so a peer can then
+  take the issue, with the lane's work still on its branch and in its worktree. A halted run waits for
+  `abcd implement resume --take <run-id>`; a mark from a person's stop that has not settled
+  goes on as any other if the stop has lifted, and one from a signal to a drive waits for that same take-over.
 - **It reads parked lanes from their pull requests.** A move that finds a
   lane parked at land lists your latest 100 pull requests once
   (`gh pr list --state all --author @me`), and reads each parked lane whose
