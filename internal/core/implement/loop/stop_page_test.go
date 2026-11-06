@@ -197,6 +197,34 @@ func TestAPageIsOfTheStopInForce(t *testing.T) {
 	}
 }
 
+// TestASignalKeepsAFileStopsPage: a signal's stop is not on any page, so a run marked from the
+// file and settled under a signal stays on that stop's.
+func TestASignalKeepsAFileStopsPage(t *testing.T) {
+	repo, runID, _, _, _ := deadLane(t)
+	o, _, folder := stopped(t)
+	at := time.Now().Add(3 * time.Hour)
+	o.Now = func() time.Time { return at }
+	old := time.Now().Add(-time.Hour).UTC().Truncate(time.Second)
+	if err := mutate(repo.Root(), runID, func(root *os.Root, _ *State) (bool, error) {
+		c, err := readControl(root, runID)
+		if err != nil {
+			return false, err
+		}
+		c.Stop = &RunStop{SetBy: "someone", SetAt: old, NotedAt: old, FromFile: true}
+		return false, writeControl(root, runID, c)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rec, err := haltOnce(repo.Root(), runID, runstop.Stop{SetBy: "a signal to the drive", SetAt: at}, o)
+	if err != nil || rec == nil || rec.HaltedAt == nil {
+		t.Fatalf("the run is not halted: %+v %v", rec, err)
+	}
+	page := pageOf(t, folder, at)
+	if !strings.Contains(page, old.Format(time.RFC3339)) || !strings.Contains(page, runID) {
+		t.Fatalf("the page is not the file stop's, naming the run:\n%s", page)
+	}
+}
+
 // TestAStopNamesAPullRequestArmedBeforeIt: the forge can still merge what was armed, so the
 // stop's account and the page name it with how to disarm it, and nothing disarms it.
 func TestAStopNamesAPullRequestArmedBeforeIt(t *testing.T) {

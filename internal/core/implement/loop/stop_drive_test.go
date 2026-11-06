@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/core/runstop"
 )
@@ -246,12 +247,14 @@ func TestTheFenceRefusesAReservationAStopReleased(t *testing.T) {
 	}
 }
 
-// TestTheFenceNamesNoTakeOverItCannotAnswer: with no mark standing a take-over reserves
-// nothing, so a run with no reservation is not sent to one.
-func TestTheFenceNamesNoTakeOverItCannotAnswer(t *testing.T) {
-	f := newLandFixture(t, queueRuleset("MERGE"))
-	f.toArmOnce(t)
-	now := time.Now().UTC()
+// letGoWithNoMark has the run let its reservation go with no stop's mark standing.
+func letGoWithNoMark(t *testing.T, f *landFixture) time.Time {
+	t.Helper()
+	now := time.Now().UTC().Truncate(time.Second)
+	reserveRun(t, f.repo, f.runID, "itd-10", now.Add(-30*time.Minute), "internal/widget")
+	if _, err := claim.Reserve(f.repo.Root(), claim.Request{Record: "itd-10", Release: true}, clockAt(now.Add(-time.Minute))); err != nil {
+		t.Fatal(err)
+	}
 	if err := mutate(f.repo.Root(), f.runID, func(_ *os.Root, st *State) (bool, error) {
 		st.ReservedAt = nil
 		st.Record = append(st.Record, Entry{At: now, Stage: StageReservationReleased, Note: "released"})
@@ -259,9 +262,105 @@ func TestTheFenceNamesNoTakeOverItCannotAnswer(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	_, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
-	if r, ok := AsRefusal(err); ok && strings.Contains(r.Remedy, "implement resume --take") {
+	return now
+}
+
+// TestTheFenceSendsAReservationLetGoToReserve: with no mark standing a take-over reserves
+// nothing, so the fence refuses and names what does.
+func TestTheFenceSendsAReservationLetGoToReserve(t *testing.T) {
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	l := f.toArmOnce(t)
+	letGoWithNoMark(t, f)
+	r := f.fenced(t)
+	for _, want := range []string{"abcd reserve itd-10 --footprint", "--discard " + l.ID} {
+		if !strings.Contains(r.Remedy, want) {
+			t.Errorf("the remedy lacks %q: %+v", want, r)
+		}
+	}
+	if strings.Contains(r.Remedy, "--take") {
 		t.Fatalf("the remedy would come back to the fence: %+v", r)
+	}
+}
+
+// TestTheRemedyForAReservationLetGoWorks: each thing the refusal names gets the run past it.
+func TestTheRemedyForAReservationLetGoWorks(t *testing.T) {
+	t.Run("reserve", func(t *testing.T) {
+		f := newLandFixture(t, queueRuleset("MERGE"))
+		f.toArmOnce(t)
+		now := letGoWithNoMark(t, f)
+		f.fenced(t)
+		if _, err := claim.Reserve(f.repo.Root(), claim.Request{Record: "itd-10", Footprint: []string{"internal/widget"}}, clockAt(now)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := advance(f.repo.Root(), f.runID, f.stages, Options{}); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(f.ghLog(t), "pr merge") {
+			t.Fatalf("the reserved run did not arm:\n%s", f.ghLog(t))
+		}
+	})
+	t.Run("discard", func(t *testing.T) {
+		f := newLandFixture(t, queueRuleset("MERGE"))
+		l := f.toArmOnce(t)
+		letGoWithNoMark(t, f)
+		f.fenced(t)
+		if _, err := Discard(f.repo.Root(), f.runID, l.ID, Options{}); err != nil {
+			t.Fatal(err)
+		}
+		if got := onlyLaneStage(t, f); got != StageDiscarded {
+			t.Fatalf("the lane is at %s", got)
+		}
+	})
+}
+
+// onlyLaneStage is the fixture's one lane's stage.
+func onlyLaneStage(t *testing.T, f *landFixture) Stage {
+	t.Helper()
+	st, err := ReadState(f.repo.Root(), f.runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return st.Lanes[0].Stage
+}
+
+// TestAMarkedRunIsNotDiscardedAsLetGo: a stop's mark keeps its own remedy.
+func TestAMarkedRunIsNotDiscardedAsLetGo(t *testing.T) {
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	l := f.toArmOnce(t)
+	letGoWithNoMark(t, f)
+	markHalted(t, f.repo.Root(), f.runID, true)
+	if _, err := Discard(f.repo.Root(), f.runID, l.ID, Options{}); err == nil {
+		t.Fatal("a lane a stop's mark holds was discarded as let go")
+	}
+}
+
+// TestARunThatNeverReservedPassesTheFence: nothing was let go, so nothing is asked for.
+func TestARunThatNeverReservedPassesTheFence(t *testing.T) {
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	f.toArmOnce(t)
+	if _, err := advance(f.repo.Root(), f.runID, f.stages, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(f.ghLog(t), "pr merge") {
+		t.Fatalf("the run did not arm:\n%s", f.ghLog(t))
+	}
+}
+
+// TestTheFenceRefusesOnAnUnreadableControlRecord: what cannot be read is said, and does not
+// arm on the chance that no mark stands.
+func TestTheFenceRefusesOnAnUnreadableControlRecord(t *testing.T) {
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	f.toArmOnce(t)
+	if err := os.WriteFile(filepath.Join(f.repo.Root(), filepath.FromSlash(controlRel(f.runID))), []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	st, err := ReadState(f.repo.Root(), f.runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = fence(Context{RepoRoot: f.repo.Root(), State: st, Now: time.Now().UTC()}, st.Lanes[0], fenceLease, fenceQueue)
+	if r, ok := AsRefusal(err); !ok || !r.Contention || !strings.Contains(r.Reason, "cannot be read") {
+		t.Fatalf("the fence does not say so: %v", err)
 	}
 }
 

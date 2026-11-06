@@ -127,8 +127,9 @@ func busyLanes(st State) []string {
 // decidable finds the held lane a --release or --discard names, refusing a
 // lane that is not held and a run with any lane still at work. --discard also
 // takes a lane a drain handed back as stuck (stuck.go), whose worktree and
-// branch the hand-back left.
-func decidable(st State, laneID, flag string) (int, error) {
+// branch the hand-back left, and a lane the land fence refuses because its run let its
+// reservation go with no stop's mark standing.
+func decidable(repoRoot string, st State, laneID, flag string) (int, error) {
 	i := -1
 	for k, l := range st.Lanes {
 		if l.ID == laneID {
@@ -139,7 +140,7 @@ func decidable(st State, laneID, flag string) (int, error) {
 		return -1, refuse(string(StageHeld), "", "", fmt.Sprintf("%s has no lane of the name given (%s)", st.RunID, termsafe.DescribeRefused(laneID)),
 			"name a held lane `abcd implement status` lists")
 	}
-	if l := st.Lanes[i]; flag == "--discard" && (stuckLane(l) || driveStopped(st.RunID)) {
+	if l := st.Lanes[i]; flag == "--discard" && (stuckLane(l) || driveStopped(st.RunID) || letGoAtLand(repoRoot, st, l)) {
 		return i, nil
 	}
 	if l := st.Lanes[i]; l.Stage != StageHeld || l.Hold == nil {
@@ -153,6 +154,16 @@ func decidable(st State, laneID, flag string) (int, error) {
 	return i, nil
 }
 
+// letGoAtLand reports whether l waits at land on a reservation its run let go, with no stop's
+// mark standing, whose answer is the run's take-over instead.
+func letGoAtLand(repoRoot string, st State, l Lane) bool {
+	if l.Stage != StageLand || st.ReservedAt != nil || !letItsReservationGo(st) {
+		return false
+	}
+	c, err := runControl(repoRoot, st.RunID)
+	return err == nil && (c.Stop == nil || c.Stop.HaltedAt == nil)
+}
+
 // Release lands a held lane as it is, on the person's word (`implement step
 // --release <lane>`): its stage returns to `land` and its landing resumes at the
 // step it stopped before, synced first when a sibling landed since its base.
@@ -163,7 +174,7 @@ func Release(repoRoot, runID, laneID string, o Options) (StepResult, error) {
 	}
 	var res StepResult
 	err := mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
-		i, err := decidable(*st, laneID, "--release")
+		i, err := decidable(repoRoot, *st, laneID, "--release")
 		if err != nil {
 			return false, err
 		}
@@ -235,7 +246,7 @@ func discardHeld(repoRoot, runID, laneID string, o Options) (StepResult, error) 
 	}
 	var res StepResult
 	err = mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
-		i, err := decidable(*st, laneID, "--discard")
+		i, err := decidable(repoRoot, *st, laneID, "--discard")
 		if err != nil {
 			return false, err
 		}
