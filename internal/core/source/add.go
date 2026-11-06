@@ -339,24 +339,47 @@ func nameText(n Name) string {
 	return strings.TrimSpace(strings.TrimSpace(n.Given) + " " + strings.TrimSpace(n.Family))
 }
 
-// plainSpelling maps each lowercase letter with no Unicode decomposition to its
-// usual plain spelling, the form an ASCII key writes it in.
+// plainSpelling maps the Latin letters with no Unicode decomposition that names
+// commonly carry to their usual plain spelling, the form an ASCII key writes them
+// in. It is a table of those letters, not of every letter: a value in another
+// script has no spelling here, so it can never match an ASCII key.
 var plainSpelling = strings.NewReplacer(
 	"\u00f8", "o", "\u0142", "l", "\u0111", "d", "\u00f0", "d", "\u00fe", "th",
 	"\u00e6", "ae", "\u0153", "oe", "\u00df", "ss", "\u0131", "i",
+	"\u0127", "h", "\u0167", "t", "\u014b", "ng", "\u0259", "a", "\u0192", "f",
+)
+
+// secondSpelling maps the composed letters with a second usual plain spelling to
+// it. Decomposing would strip the mark these spellings are read from, so it runs
+// on the composed form, ahead of fold.
+var secondSpelling = strings.NewReplacer(
+	"\u00fc", "ue", "\u00f6", "oe", "\u00e4", "ae", "\u00f8", "oe", "\u00e5", "aa",
+	"\u0111", "dj", "\u014b", "n", "\u0259", "e",
 )
 
 // fold lowercases s and keeps only its letters and digits, for the key check.
-// Decomposing first gives one answer for a name in either Unicode form, and the
-// letters that leave alone take their plain spelling.
+// Decomposing first gives one answer for a name in either Unicode form and for a
+// compatibility form such as a ligature, and the letters that leave alone take
+// their plain spelling.
 func fold(s string) string {
 	var b strings.Builder
-	for _, r := range plainSpelling.Replace(strings.ToLower(norm.NFD.String(s))) {
+	for _, r := range plainSpelling.Replace(strings.ToLower(norm.NFKD.String(s))) {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) {
 			b.WriteRune(r)
 		}
 	}
 	return b.String()
+}
+
+// spellings is s as fold reads it, and again with the second spelling of each
+// letter that has one. One value spelling some letters each way is not compared.
+func spellings(s string) []string {
+	first := fold(s)
+	second := fold(secondSpelling.Replace(strings.ToLower(norm.NFKC.String(s))))
+	if second == first {
+		return []string{first}
+	}
+	return []string{first, second}
 }
 
 // identifyingKey names the field a confidential entry's key would reveal, or "".
@@ -366,8 +389,12 @@ func fold(s string) string {
 func identifyingKey(e Entry) string {
 	key := fold(e.ID)
 	has := func(s string, min int) bool {
-		f := fold(s)
-		return len([]rune(f)) >= min && strings.Contains(key, f)
+		for _, f := range spellings(s) {
+			if len([]rune(f)) >= min && strings.Contains(key, f) {
+				return true
+			}
+		}
+		return false
 	}
 	for _, a := range e.Custom.Aliases {
 		if has(a, 3) {
@@ -405,7 +432,12 @@ func identifyingKey(e Entry) string {
 // hyphenated word and the part after an apostrophe count. A combining mark does not
 // separate, so a decomposed word stays one word, as fold reads it.
 func keyWords(field string) []string {
-	return strings.FieldsFunc(field, func(r rune) bool {
+	return strings.FieldsFunc(strings.Map(func(r rune) rune {
+		if unicode.Is(unicode.Cf, r) {
+			return -1
+		}
+		return r
+	}, field), func(r rune) bool {
 		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && !unicode.IsMark(r)
 	})
 }

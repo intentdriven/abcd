@@ -266,6 +266,50 @@ func TestIdentifyingKeyReadsLettersByTheirPlainSpelling(t *testing.T) {
 	}
 }
 
+// TestIdentifyingKeyReadsEveryUsualSpelling: a name is compared by each of its usual
+// plain spellings, in its compatibility forms too, and a format character inside a
+// word does not split it. A key holding none of the name still passes.
+func TestIdentifyingKeyReadsEveryUsualSpelling(t *testing.T) {
+	for _, tc := range []struct{ name, value, key, field string }{
+		{"u umlaut, second spelling", "M\u00fcller", "mueller2026", "author"},
+		{"u umlaut, decomposed", "Mu\u0308ller", "mueller2026", "author"},
+		{"u umlaut, first spelling", "M\u00fcller", "muller2026", "author"},
+		{"capital u umlaut", "M\u00dcLLER", "mueller2026", "author"},
+		{"o umlaut", "Sch\u00f6n", "schoen2026", "author"},
+		{"a umlaut", "B\u00e4r", "baer2026", "author"},
+		{"slashed o, second spelling", "S\u00f8rensen", "soerensen2026", "author"},
+		{"a ring, second spelling", "H\u00e5kon", "haakon2026", "author"},
+		{"a ring, first spelling", "H\u00e5kon", "hakon2026", "author"},
+		{"d stroke, second spelling", "\u0110okovi\u0107", "djokovic2026", "author"},
+		{"ligature", "Gri\ufb03ths", "griffiths2026", "author"},
+		{"fullwidth letters", "\uff2d\uff41\uff52\uff4c\uff4f", "marlo2026", "author"},
+		{"h stroke", "\u0126agar", "hagar2026", "author"},
+		{"t stroke", "\u0166alor", "talor2026", "author"},
+		{"eng, first spelling", "Ha\u014bor", "hangor2026", "author"},
+		{"eng, second spelling", "Ha\u014bor", "hanor2026", "author"},
+		{"schwa, first spelling", "\u018fliyev", "aliyev2026", "author"},
+		{"schwa, second spelling", "\u018fliyev", "eliyev2026", "author"},
+		{"f hook", "\u0192arlo", "farlo2026", "author"},
+		{"soft hyphen in a title word", "Harb\u00adour Notes", "harbour2026", "title"},
+		{"zero width joiner in a name", "Mar\u200dlo", "marlo2026", "author"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := Entry{ID: tc.key, Title: confTitle, Author: []Name{{Family: tc.value}}}
+			if tc.field == "title" {
+				e = Entry{ID: tc.key, Title: tc.value}
+			}
+			if got := identifyingKey(e); got != tc.field {
+				t.Errorf("key %q with %q: refused for %q, want %q", tc.key, tc.value, got, tc.field)
+			}
+			if tc.field == "author" {
+				if got := identifyingKey(Entry{ID: "conf2026a", Title: confTitle, Author: []Name{{Family: tc.value}}}); got != "" {
+					t.Errorf("an unrelated key with author %q is refused for its %s", tc.value, got)
+				}
+			}
+		})
+	}
+}
+
 // TestIdentifyingKeyReadsAnAuthorTheSameInEitherForm: a person entered plainly and
 // the same person entered as family and given name refuse the same keys.
 func TestIdentifyingKeyReadsAnAuthorTheSameInEitherForm(t *testing.T) {
