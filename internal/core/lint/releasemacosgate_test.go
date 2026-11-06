@@ -324,7 +324,7 @@ func TestEveryPublishingJobNeedsTheMacOSGate(t *testing.T) {
 		"the release job's if ignores the gate":  replaceInJob("release", " && needs."+releaseMacOSGateJob+".result == 'success'", ""),
 		"the site job does not need the gate":    replaceInJob("site", "needs: [release, "+releaseMacOSGateJob+"]", "needs: release"),
 		"the site job's if ignores the gate":     replaceInJob("site", " && needs."+releaseMacOSGateJob+".result == 'success'", ""),
-		"the gate waits for two shards":          replaceInJob(releaseMacOSGateJob, ", "+releaseMacOSShardJob(3)+"]", "]"),
+		"the gate leaves a shard out":            replaceInJob(releaseMacOSGateJob, ", "+releaseMacOSShardJob(macOSShardCount)+"]", "]"),
 		"the gate is skipped when a shard fails": replaceInJob(releaseMacOSGateJob, "always() && ", ""),
 		"the gate's failure reads as success":    replaceInJob(releaseMacOSGateJob, "    timeout-minutes:", "    continue-on-error: true\n    timeout-minutes:"),
 		"a new job publishes round the gate": func(wf string) string {
@@ -601,7 +601,7 @@ func TestMacOSSuiteCallersPassItsDeclaredInputs(t *testing.T) {
 }
 
 // TestMacOSGateStopsTheReleaseAndSaysWhich runs the gate's own script over every
-// result each shard can read: it passes only when all three succeeded, and otherwise
+// result each shard can read: it passes only when all of them succeeded, and otherwise
 // names each shard that did not, what became of it, and the remedy, in the log and
 // the step summary. A shard that never got a runner gets the words its job's
 // annotation carries, since that is the line the person has just read on the run.
@@ -643,6 +643,13 @@ func TestMacOSGateStopsTheReleaseAndSaysWhich(t *testing.T) {
 		}
 	}
 
+	allGreen := func() [macOSShardCount]string {
+		var results [macOSShardCount]string
+		for i := range results {
+			results[i] = "success"
+		}
+		return results
+	}
 	run := func(t *testing.T, results [macOSShardCount]string) (string, string, error) {
 		t.Helper()
 		summary := filepath.Join(t.TempDir(), "summary")
@@ -657,7 +664,7 @@ func TestMacOSGateStopsTheReleaseAndSaysWhich(t *testing.T) {
 		return string(out), string(written), err
 	}
 
-	if out, _, err := run(t, [macOSShardCount]string{"success", "success", "success"}); err != nil {
+	if out, _, err := run(t, allGreen()); err != nil {
 		t.Errorf("the gate failed with every shard green: %v\n%s", err, out)
 	} else if strings.Contains(out, "::error") {
 		t.Errorf("the gate raised an error with every shard green:\n%s", out)
@@ -666,7 +673,7 @@ func TestMacOSGateStopsTheReleaseAndSaysWhich(t *testing.T) {
 	for n := 1; n <= macOSShardCount; n++ {
 		for _, result := range nonSuccessResults {
 			t.Run(fmt.Sprintf("shard %d reads %q", n, result), func(t *testing.T) {
-				results := [macOSShardCount]string{"success", "success", "success"}
+				results := allGreen()
 				results[n-1] = result
 				out, summary, err := run(t, results)
 				if err == nil {
@@ -698,11 +705,16 @@ func TestMacOSGateStopsTheReleaseAndSaysWhich(t *testing.T) {
 	}
 
 	t.Run("every shard that did not succeed is named", func(t *testing.T) {
-		out, _, err := run(t, [macOSShardCount]string{"failure", "success", "abandoned"})
+		results := allGreen()
+		results[0], results[macOSShardCount-1] = "failure", "abandoned"
+		out, _, err := run(t, results)
 		if err == nil {
 			t.Fatalf("the gate passed:\n%s", out)
 		}
-		for _, says := range []string{"shard 1 of 3", "'failure'", "shard 3 of 3", "'abandoned'"} {
+		for _, says := range []string{
+			fmt.Sprintf("shard 1 of %d", macOSShardCount), "'failure'",
+			fmt.Sprintf("shard %d of %d", macOSShardCount, macOSShardCount), "'abandoned'",
+		} {
 			if !strings.Contains(out, says) {
 				t.Errorf("the refusal does not say %q:\n%s", says, out)
 			}

@@ -292,7 +292,7 @@ jobs:
     uses: ./.github/workflows/macos-suite.yml
     with:
       shard: 1
-      shards: 3
+      shards: 4
       # The commit verify gates and the tag job tags, resolved the same way.
       ref: ${{ inputs.ref || github.sha }}
       # No cache in a run that publishes, as in verify.
@@ -306,7 +306,7 @@ jobs:
     uses: ./.github/workflows/macos-suite.yml
     with:
       shard: 2
-      shards: 3
+      shards: 4
       # The commit verify gates and the tag job tags, resolved the same way.
       ref: ${{ inputs.ref || github.sha }}
       # No cache in a run that publishes, as in verify.
@@ -320,7 +320,21 @@ jobs:
     uses: ./.github/workflows/macos-suite.yml
     with:
       shard: 3
-      shards: 3
+      shards: 4
+      # The commit verify gates and the tag job tags, resolved the same way.
+      ref: ${{ inputs.ref || github.sha }}
+      # No cache in a run that publishes, as in verify.
+      cache: false
+
+  macos-suite-4:
+    # Runs wherever verify does, and on no pushed tag.
+    if: github.event_name != 'push' || github.ref_type != 'tag'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/macos-suite.yml
+    with:
+      shard: 4
+      shards: 4
       # The commit verify gates and the tag job tags, resolved the same way.
       ref: ${{ inputs.ref || github.sha }}
       # No cache in a run that publishes, as in verify.
@@ -337,7 +351,7 @@ jobs:
   # that run.
   # TestMacOSGateStopsTheReleaseAndSaysWhich runs this script over every result.
   macos-gate:
-    needs: [macos-suite-1, macos-suite-2, macos-suite-3]
+    needs: [macos-suite-1, macos-suite-2, macos-suite-3, macos-suite-4]
     if: ${{ always() && (github.event_name != 'push' || github.ref_type != 'tag') }}
     timeout-minutes: 5
     runs-on: ubuntu-latest
@@ -349,9 +363,10 @@ jobs:
           SHARD_1_RESULT: ${{ needs.macos-suite-1.result }}
           SHARD_2_RESULT: ${{ needs.macos-suite-2.result }}
           SHARD_3_RESULT: ${{ needs.macos-suite-3.result }}
+          SHARD_4_RESULT: ${{ needs.macos-suite-4.result }}
         run: |
           stopped=""
-          for shard in 1 2 3; do
+          for shard in 1 2 3 4; do
             var="SHARD_${shard}_RESULT"
             result="${!var:-}"
             echo "macOS shard ${shard} concluded '${result}'"
@@ -362,7 +377,7 @@ jobs:
               abandoned) why="it never got a runner (its job's annotation reads \"not acquired by Runner\")" ;;
               *) why="it did not run" ;;
             esac
-            stopped="${stopped}shard ${shard} of 3 concluded '${result}': ${why}. "
+            stopped="${stopped}shard ${shard} of 4 concluded '${result}': ${why}. "
           done
           if [ -n "$stopped" ]; then
             msg="${stopped}This run has made no tag and published nothing. The remedy is to re-run the failed jobs of this run: gh run rerun ${GITHUB_RUN_ID} --failed. If a test fails again, land its fix: the push that lands it starts the release again."
