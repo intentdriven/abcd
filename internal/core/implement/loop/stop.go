@@ -13,6 +13,7 @@ package loop
 // again.
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -245,26 +246,36 @@ func goOnAfterLift(repoRoot, runID string, o Options) error {
 		}
 		now := o.now()
 		note := "the stop lifted before the run halted, so it goes on"
-		for i, lane := range st.Lanes {
-			retold := false
-			lane.Awaits = slices.Clone(lane.Awaits)
-			for k, a := range lane.Awaits {
-				if strings.HasPrefix(a.Kept, stopKeptPrefix) {
-					// What a restart clears: the fresh agent's return is its own.
-					a.Since, a.Kept, a.Answered, a.Paused, a.Running = now, "", nil, nil, nil
-					lane.Awaits[k] = a
-					retold = true
-				}
-			}
-			if retold {
-				st.Lanes[i] = lane
-				note += "; " + lane.ID + "'s agent is told again"
-			}
+		for _, id := range retellKept(st, stopKeptPrefix, now) {
+			note += "; " + id + "'s agent is told again"
 		}
 		st.Record = append(st.Record, Entry{At: now, Stage: StageStop, Note: note})
 		st.UpdatedAt = now
 		return true, nil
 	})
+}
+
+// retellKept tells again each await marked with a reason opening with prefix, and
+// names each lane it did. It clears what a restart clears: the fresh agent's return is
+// its own.
+func retellKept(st *State, prefix string, now time.Time) []string {
+	var told []string
+	for i, lane := range st.Lanes {
+		retold := false
+		lane.Awaits = slices.Clone(lane.Awaits)
+		for k, a := range lane.Awaits {
+			if strings.HasPrefix(a.Kept, prefix) {
+				a.Since, a.Kept, a.Answered, a.Paused, a.Running = now, "", nil, nil, nil
+				lane.Awaits[k] = a
+				retold = true
+			}
+		}
+		if retold {
+			st.Lanes[i] = lane
+			told = append(told, lane.ID)
+		}
+	}
+	return told
 }
 
 // stopRefusal is the answer a move gets while a stop holds.
@@ -619,11 +630,17 @@ func settleStop(repoRoot string, root *os.Root, st *State, c *control, tab *sess
 		// releasing would let a peer in over work saved nowhere.
 		out.Settled = saveLaneForStop(repoRoot, root, st, i, why, &out, now)
 		waiting = waiting || !out.Settled
-		left = append(left, out)
 		if out.Aside != "" {
 			st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: StageStop,
 				Note: fmt.Sprintf("%d uncommitted file(s) saved aside at %s", out.Files, out.Aside)})
+		} else if letGoByDrive(*st) {
+			// The limit that let the lane go saved its work, so the worktree holds
+			// nothing now and the stop still says where that work is.
+			if a, ok := newestAside(root, *st, lane.ID); ok {
+				out.Aside, out.Files = a.Path, len(a.Files)
+			}
 		}
+		left = append(left, out)
 	}
 	rec.Left = left
 	// A release runs git too, so a changed configuration holds it.
@@ -638,6 +655,11 @@ func settleStop(repoRoot string, root *os.Root, st *State, c *control, tab *sess
 			clause += ", so it lapses with its lease"
 			stage = StageReservationReleaseFailed
 		}
+		// A run a drive already let go keeps the note made then, which is what its lane
+		// was working to.
+		if !letGoByDrive(*st) {
+			noteRecordReleased(repoRoot, st, failed, now)
+		}
 		// Failed or not the run no longer holds it: a renewal now would keep the
 		// claim the stop let go.
 		st.ReservedAt = nil
@@ -646,6 +668,35 @@ func settleStop(repoRoot string, root *os.Root, st *State, c *control, tab *sess
 	}
 	rec.HaltedAt = &now
 	st.Record = append(st.Record, Entry{At: now, Stage: StageStop, Note: "halted: every lane has settled and the run's claims are let go"})
+}
+
+// newestAside is the newest aside holding files saved for the lane. An aside that cannot
+// be read is passed over.
+func newestAside(root *os.Root, st State, laneID string) (RestartAside, bool) {
+	dir, err := laneRel(st.RunID, laneID, stageRestart)
+	if err != nil {
+		return RestartAside{}, false
+	}
+	f, err := root.Open(dir + "/" + AsideDirName)
+	if err != nil {
+		return RestartAside{}, false
+	}
+	names, _ := f.Readdirnames(-1)
+	f.Close()
+	var newest RestartAside
+	found := false
+	for _, n := range names {
+		data, err := root.ReadFile(dir + "/" + AsideDirName + "/" + n + "/" + AsideFileName)
+		if err != nil {
+			continue
+		}
+		var a RestartAside
+		if json.Unmarshal(data, &a) != nil || len(a.Files) == 0 || (found && a.At.Before(newest.At)) {
+			continue
+		}
+		newest, found = a, true
+	}
+	return newest, found
 }
 
 // saveLaneForStop is one lane with no agent live: each await marked kept with its

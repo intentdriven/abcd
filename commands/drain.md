@@ -128,6 +128,30 @@ nothing but the bound, the cap, an empty ledger or a stop ends the run:
   the lane's own agent starts. Only the word it asked for counts as an answer. A probe
   that gets none says nothing about the limit: after three in a row the lane's own
   agent starts and finds out, and meets the limit again if it still holds.
+- **A limit that lasts.** A reset an hour or more off, or a limit that has already held
+  for an hour, lets the issue go for the wait, so no peer is kept off work no one is
+  doing. The lane's uncommitted work is saved aside as a stop saves it, the reservation
+  is released, and the lane stays on its branch. An hour is where a renewal first falls
+  due and the outage schedule turns hourly: short of it a hold costs less than the two
+  commits of releasing and reserving again. With no reset named this takes a probe, so
+  with no `--until` that limit keeps its hold for the launch that asks. A lane with an
+  open pull request, an agent still in a call, or work a save could not take keeps what
+  it holds, and asks again at the wait's next turn. When the limit lifts, the same run
+  reserves the issue again, with the footprint it held, and goes on from its branch,
+  which the landing's sync brings up to the default branch. If the issue has finished on
+  the default branch, its record there changed since the release, a hand-back stands on
+  it, or a peer holds it or a path of its footprint, the lane goes back holding nothing,
+  saying which, with no hand-back published over the issue by this run, so a later drain
+  can still take it once what stopped this one has passed. A record gone from the default
+  branch counts as changed. When the comparison cannot be made, the drain waits. A drain's
+  stop lets the issue go too, and the same comparison waits for whatever reserves it again.
+  A person who resumes or takes over such a run, with or without a stop on it, reserves it
+  again and goes ahead, told if the record changed, is gone or could not be compared, since
+  the lane's brief reads it as it stood at the lane's base. A reservation made by hand
+  during the wait stays when the lane goes back, and the lane says so. Its worktree, its branch and what it saved stay, named in the summary,
+  until `abcd implement step --run <run-id> --discard <lane>`, and the run takes the next
+  issue. A stop during the wait holds as any stop does, and nothing marks a lane let go
+  this way as a person's: a later drive on the same profile takes it up.
 - **An agent that goes silent.** Silence cannot be told from a hang yet, so it is
   treated as one: the role's own deadline kills it, what it left stays in the lane's
   worktree, and the role is retried on the outage schedule. A stream that reported
@@ -175,7 +199,7 @@ nothing but the bound, the cap, an empty ledger or a stop ends the run:
 Each wait says what it waits on when it begins, when its reason changes, and at least
 hourly while it lasts, and an agent's call or a preflight says when it starts and every
 half hour while it runs, on the screen and in the log. Through every wait the run renews
-what it holds, a lane parked at its open pull request included, read from the forge first
+what it still holds, a lane parked at its open pull request included, read from the forge first
 and only when its renewal is due. A claim that lapsed anyway, a machine asleep past its
 lease, is reserved again on waking; a peer who took the issue meanwhile keeps it, and the
 lane goes back as stuck, as it does when its reservation was released during the wait.
@@ -531,7 +555,9 @@ what it did in `next`:
   read as holding every issue, and the drain would pass each over and end.
   The lane's run then renews the reservation, fences its landing on it, before
   its push and again before arming, and tombstones it once it lands
-  (`commands/implement.md`). Every drain move that neither waits on origin nor stops at a given-up outage also renews the lane in
+  (`commands/implement.md`). Each fence also reserves any path the lane's branch
+  changes that the reservation does not cover, judged for overlap; another's hold
+  on one stops the lane there, naming that hold. Every drain move that neither waits on origin nor stops at a given-up outage also renews the lane in
   progress at half its lease, waiting on the pace or a judgement or not, though no step of the lane ran,
   so a lane the host paused past its lease is not taken over (a lane handed
   back is renewed by no move). Once the lane's validators have passed and it
