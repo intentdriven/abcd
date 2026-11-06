@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // namingReturn is a return whose verdict line opens with verdict and names sha.
@@ -190,6 +192,7 @@ func TestAVerdictNamesAHeadOfAnyObjectFormat(t *testing.T) {
 	git := func(args ...string) string {
 		t.Helper()
 		cmd := exec.Command("git", append([]string{"-C", dir, "-c", "user.name=A Tester", "-c", "user.email=tester@example.com", "-c", "commit.gpgsign=false"}, args...)...)
+		cmd.Env = gittest.Env(t)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Skipf("git cannot make a SHA-256 repository here: %v (%s)", err, out)
