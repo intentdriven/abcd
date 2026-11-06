@@ -738,8 +738,9 @@ func laneWorktreeGone(repoRoot, runID string, lane Lane) bool {
 // is not kept alive; one with an agent in its call stays renewable until that agent
 // is done, and one over work saved nowhere until the work is saved. That holds only
 // where something still renews: under a stop in force a move and a step refuse before
-// any renewal, so only a gated waiter's round or implement status renews a run, and
-// neither renews one parked at land. With neither, the claim lapses at its lease, with
+// any renewal, so only a gated waiter's round, implement status or a drive still in an
+// agent's call or a preflight renews a run, and only that drive renews one parked at
+// land. With none of them, the claim lapses at its lease, with
 // the lane's work still on its branch and in its worktree.
 func stopEndsRenewal(repoRoot string, st State, now time.Time) bool {
 	c, err := runControl(repoRoot, st.RunID)

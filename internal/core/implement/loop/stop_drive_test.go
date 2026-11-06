@@ -386,8 +386,8 @@ func TestAReadThatHoldsTheRunRenewsNoParkedClaim(t *testing.T) {
 	}
 }
 
-// TestAStopInForceRenewsNoParkedClaim: under a stop the move refuses before any renewal and
-// no process stays to renew: a settled run releases its reservation, and one with work a save
+// TestAStopInForceRenewsNoParkedClaim: under a stop the move refuses before any renewal, and
+// with no drive in an agent's call or a preflight no process stays to renew: a settled run releases its reservation, and one with work a save
 // could not take leaves it to lapse at its lease. The lane's work stays on its branch and in
 // its worktree either way.
 func TestAStopInForceRenewsNoParkedClaim(t *testing.T) {

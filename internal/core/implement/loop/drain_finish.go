@@ -203,8 +203,8 @@ var afterParkedFetch = func() {}
 // is not among them, whatever the forge says of it: it is named as what the mark
 // waits for. Only its renewal stands, which decides for itself (stopEndsRenewal), and only
 // where this code is reached: under a stop in force the move refuses first (drainStop), so
-// nothing renews the claim of a run with work a save could not take, and it lapses at its
-// lease with the lane's work still on its branch and in its worktree.
+// only a drive still in an agent's call or a preflight renews the claim of a run with work a
+// save could not take, and otherwise it lapses at its lease with the lane's work still on its branch and in its worktree.
 func finishMerged(repoRoot string, now time.Time, o Options) ([]DrainFinished, []DrainParked, error) {
 	runs, err := Runs(repoRoot)
 	if err != nil {

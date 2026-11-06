@@ -871,8 +871,7 @@ var networkStatus = regexp.MustCompile(`(?m)` + lineOpens + `(?:` +
 	`(?:fatal: unable to access '[^'\n]*': |error: rpc failed; [^\n]*?|fatal: |error: )the requested url returned error: 5[0-9][0-9])`)
 
 // remoteLine is a line git relayed from the remote, which is the other end's text: on a
-// line of its own or where a runner's error opens the stderr it wraps. The %q'd form
-// holds its lines as one, and stays as it is.
+// line of its own or where a runner's error opens the stderr it wraps.
 var remoteLine = regexp.MustCompile(`(?m)^(?:[^\n]*exit status [0-9]+ \()?remote:[^\n]*$`)
 
 // notNetworkMarkers are the other end's refusals and the local conflicts.
