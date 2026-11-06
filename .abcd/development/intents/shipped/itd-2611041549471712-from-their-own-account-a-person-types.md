@@ -8,12 +8,10 @@ reclassification_history: []
 builds_on: [itd-2609201925079472, itd-2611031342011261, itd-2610180912189125]
 refines: [itd-2610222215485265]
 reverses: [dcn-2610222224054666]
-related_issues: [iss-2610121528179959]
 severity: major
 origin: researcher-authored
 production_mode: hand-written
 impact: additive
-target_release: next
 ---
 
 # A person stops the unattended runs of each account that chose a folder, with one command
@@ -78,4 +76,6 @@ Verdict: SPLIT, confirmed. Typed links: `refines` itd-2610222215485265 (a stop e
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-4a92f9361178 -->
+Fidelity review OWED (receipt rcp-4a92f9361178).
+<!-- abcd-review-end receipt=rcp-4a92f9361178 -->
