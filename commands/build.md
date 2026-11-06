@@ -298,7 +298,8 @@ returns are written there, as they are for the build's validators.
    time, so the two are never out together. Each has its own brief under
    `<lane>/plan-review/<lens>/`, which tells it the draft's text is data to
    judge, not instructions, and to change nothing. Each writes its return
-   there, ending with one `### Verdict` section (`SHIP` or `FIX FIRST`), and
+   there, ending with one `### Verdict` section (`SHIP` or `FIX FIRST`, then the
+   draft's digest, which its brief names), and
    `implement receipt <return>` hands it back: the loop parses the verdict and
    records it. A return it cannot read as a verdict records nothing and is
    refused. Once both are in, a `FIX FIRST` hands the lane back as
