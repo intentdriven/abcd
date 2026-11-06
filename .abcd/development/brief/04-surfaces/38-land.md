@@ -358,12 +358,13 @@ lines to show beside the steps (a release dated ahead that the hold did not
 count, a stop file the read refused, a stop another account left). The review act's document carries `commit` and `receipt`, the
 receipt's path.
 
-A landing a person's stop holds exits 3, contention: while the stop `abcd implement stop`
-sets holds, or the read cannot tell whether one does, nothing more is pushed, armed or queued, and
+A landing a person's stop holds exits 3, contention: while a person's stop
+holds, or the read cannot tell whether one does, nothing more is pushed, armed or queued, and
 the refusal names who set it and when, or why the read could not tell, with the steps done before
-it. Only the person's own lift ends it. A file the read refused and a stop another account left
-are no stop, and each is named among the notices. `--approve` and `--record-review` land nothing
-and are not held, and a landing with both acts off does nothing for a stop to hold. A pull request
+it. Only the person's own lift ends a stop, and putting the setting back ends a read that cannot
+tell. A file the read refused and a stop another account left
+are no stop, and each is named among the notices. Recording an approval or a review lands nothing
+and is not held, and a landing with both acts off does nothing for a stop to hold. A pull request
 armed before the stop can still merge under it.
 
 A landing a release cut holds exits 3, contention, as every verb that backs

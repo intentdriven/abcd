@@ -400,7 +400,7 @@ hand-run `gh pr merge` the merge gate did not allow.
 anything runs, again after the preflight and again at the arming, and while one holds it pushes,
 arms and queues nothing more, naming who set it and when; it also holds when the read cannot tell
 whether one does, saying why. The steps done before it are named. Only the person's own lift
-ends it: leave that to them. `--approve` and `--record-review` land nothing and are not held, and
+ends a stop, and putting the setting back ends a read that cannot tell: leave both to them. `--approve` and `--record-review` land nothing and are not held, and
 what they record arms nothing until a landing passes the read. A landing with both acts off does
 nothing for a stop to hold. A pull request armed before the stop can still merge under it.
 
