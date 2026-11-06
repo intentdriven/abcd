@@ -25,7 +25,7 @@ import (
 // whose gates carry a run line only), and the
 // job's timeout-minutes must hold that budget after everything before it: the
 // -timeout of every earlier step in the job (release.yml's verify job runs smoke
-// after its 40m race step) plus evalJobHeadroom for the untimed steps.
+// after its 70m race step) plus evalJobHeadroom for the untimed steps.
 
 const minLocalEvalBudget = 20 * time.Minute
 

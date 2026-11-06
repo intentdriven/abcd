@@ -23,12 +23,13 @@ import (
 // places: the merge gate (ci.yml's race lane on ubuntu), the macOS suite (the
 // race pass of macos-suite.yml's shards, nightly and on each release cut), the
 // release gate (release.yml's verify job) and the local pre-push gate (make
-// preflight). The release gate and the local gate share one budget. The merge
-// gate and the macOS suite each carry a longer one of their own, because a limit
-// there only frees a stuck runner and does not judge speed (dcn-2611062201286033):
-// each stays at or above the local gate's, so what the local gate passes has room
-// in CI, and inside its job's watchdog, so a hang in a package that starts with
-// the step still fails at its own timeout.
+// preflight). The merge gate, the macOS suite and the release gate each carry a
+// longer budget than the local gate's, because a limit there only frees a stuck
+// runner and does not judge speed (dcn-2611062201286033, dcn-2611062222587959).
+// Each stays at or above the local gate's, so what the local gate passes has room
+// in CI, and inside its job's clock, so a hang in a package that starts with the
+// step still fails at its own timeout. The release gate's equals the merge gate's,
+// so a package the merge gate passed does not then fail the cut.
 //
 // The enclosing ceilings are the other half, and they differ by job.
 //
@@ -59,9 +60,9 @@ import (
 // is its ceiling. A package timeout that reaches past it never fires: the
 // runner cancels the job first, and a cancellation carries no goroutine dump,
 // so a real hang would read as a slow runner. verify therefore holds the
-// package timeout plus the time its slowest package waits before it starts:
-// the steps ahead of the race step, and the packages `go test` runs ahead of
-// it inside the step.
+// package timeout plus the time its slowest package waits before it starts on a
+// slow runner: the steps ahead of the race step, and the packages `go test` runs
+// ahead of it inside the step.
 //
 // The commands also name one package list, in one order. go test starts
 // packages in the order its arguments list them, a few at a time on a runner
@@ -170,12 +171,12 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 		}
 	}
 
-	// The last release (run 35963282477, ubuntu, uncached toolchain): 2.8
-	// minutes before the race step, 4.8 inside it before internal/surface/cli
-	// started, 0.5 after it; the ubuntu race step has grown by about two
-	// minutes since. Rounded up to 10.
-	const verifyHeadroom = 10 * time.Minute
-	if verify, pkg, ok := raceJob(".github/workflows/release.yml", "verify", local); ok {
+	// The last cut's verify job (run 41969380736, ubuntu, uncached toolchain) spent
+	// 17.5 minutes before the race step, most of it in the plain Test step, and
+	// internal/surface/cli is named first, so it waits for nothing inside the step.
+	// Twice that on a slow runner is 35.
+	const verifyHeadroom = 35 * time.Minute
+	if verify, pkg, ok := raceJob(".github/workflows/release.yml", "verify", checkPackageTimeoutMinutes*time.Minute); ok {
 		const where = ".github/workflows/release.yml job verify"
 		capMin := jobTimeoutMinutes(t, where, verify)
 		if need := pkg + verifyHeadroom; capMin < need {
@@ -183,8 +184,34 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 				"the runner would cancel the job before go test could report a hang",
 				where, capMin, pkg, verifyHeadroom, need)
 		}
+		if capMin != verifyCeilingMinutes*time.Minute {
+			t.Errorf("%s: timeout-minutes is %s; want %dm", where, capMin, verifyCeilingMinutes)
+		}
+		// The plain step runs ahead of the race step in the same job, and each
+		// package in it gets the whole of this limit.
+		if step, ok := workflowStepBlock(verify, "Test"); !ok {
+			t.Errorf("%s: no `Test` step", where)
+		} else if m := regexp.MustCompile(`\bgo test\b.*\s-timeout[ =](\S+)`).FindStringSubmatch(step); m == nil {
+			t.Errorf("%s step Test sets no -timeout, so each package inherits go test's 10m default", where)
+		} else if d, err := time.ParseDuration(m[1]); err != nil {
+			t.Errorf("%s step Test: -timeout %q: %v", where, m[1], err)
+		} else if d != verifyPlainTimeoutMinutes*time.Minute {
+			t.Errorf("%s step Test runs under -timeout %s; want %dm", where, d, verifyPlainTimeoutMinutes)
+		}
 	}
 }
+
+// verifyCeilingMinutes is the timeout-minutes of release.yml's verify job. It holds
+// the limits that run in sequence, 30, 70 and the smoke step's 8, with three minutes
+// for the untimed steps (TestEvalLaneBudgetIsDeclaredAndFitsItsJob), and about twice
+// the job's measured time, 49 minutes on the last cut and growing
+// (dcn-2611062222587959). No caller holds a shorter limit.
+const verifyCeilingMinutes = 120
+
+// verifyPlainTimeoutMinutes is the -timeout of the verify job's plain Test step:
+// about twice its slowest package's 492 seconds on the last cut, with room for that
+// package's growth (dcn-2611062222587959).
+const verifyPlainTimeoutMinutes = 30
 
 // checkMacOSCeilingMinutes is the timeout-minutes of each shard of the macOS suite,
 // on the nightly run and on a release cut alike. The suite ran as one job until 2026-11-04, whose ceiling rose from
@@ -521,7 +548,7 @@ func raceTimeout(t *testing.T, where, text string) time.Duration {
 	m := regexp.MustCompile(`\s-timeout[ =](\S+)`).FindStringSubmatch(cmd)
 	if m != nil && m[1] == `"$$t"` {
 		// make preflight's stage scales its base with the load as it starts
-		// (timeoutCall); the base is the budget CI's steps declare.
+		// (timeoutCall); the base is the local gate's budget.
 		m = nil
 		before := text
 		if i := strings.Index(text, cmd); i >= 0 {

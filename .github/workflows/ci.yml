@@ -444,9 +444,10 @@ jobs:
       # goroutine dump where the enclosing ceiling leaves room for it: in a package
       # that starts within this job's first ten minutes it does, while on a later
       # package the job clock's watchdog, held below the merge queue's response cap,
-      # is the binding one (see the job header). The Makefile's preflight recipe and
-      # release.yml's verify job carry 40m, and a macOS shard's race pass its own
-      # budget; TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds all four.
+      # is the binding one (see the job header). release.yml's verify job carries the
+      # same flag, so a package this lane passed does not then fail a cut; the
+      # Makefile's preflight recipe carries 40m and a macOS shard's race pass its own
+      # budget. TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds all four.
       #
       # The packages named ahead of the pattern are the slowest under -race
       # (iss-2609281715083637). go test starts packages in the

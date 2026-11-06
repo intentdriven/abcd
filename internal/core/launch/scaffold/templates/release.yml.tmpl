@@ -203,9 +203,11 @@ jobs:
 <%- if .Abcd %>
     # Each go test step's own -timeout must fire before this does, or a hang
     # reads as a cancelled job with no goroutine dump. The smoke step fits too:
-    # 20m for Test, 40m for the race step (sized in ci.yml), its own 8m, and
-    # three minutes for the untimed steps (evallanebudget_test.go).
-    timeout-minutes: 75
+    # 30m for Test, 70m for the race step (sized in ci.yml), its own 8m, and
+    # three minutes for the untimed steps (evallanebudget_test.go). A limit here only
+    # frees a stuck runner and does not judge speed, so a slow runner does not fail a
+    # cut with no failing test (dcn-2611062222587959).
+    timeout-minutes: 120
 <%- else %>
     timeout-minutes: 15
 <%- end %>
@@ -287,13 +289,14 @@ jobs:
         run: go vet ./...
 <%- if .Abcd %>
 
-      # Past go test's 10-minute default, a package fails with no test failing,
-      # after the merge queue passed it.
+      # Past this limit a package fails with no test failing, after the merge queue
+      # passed it, so it holds about twice the slowest package here, with room for
+      # its growth (dcn-2611062222587959).
       - name: Test
-        run: go test -count=1 -timeout 20m ./...
+        run: go test -count=1 -timeout 30m ./...
 
       - name: Test (race, internal)
-        run: go test -race -count=1 -timeout 40m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
+        run: go test -race -count=1 -timeout 70m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
 <%- else %>
 
       - name: Test
