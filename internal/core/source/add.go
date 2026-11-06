@@ -339,11 +339,19 @@ func nameText(n Name) string {
 	return strings.TrimSpace(strings.TrimSpace(n.Given) + " " + strings.TrimSpace(n.Family))
 }
 
+// plainSpelling maps each lowercase letter with no Unicode decomposition to its
+// usual plain spelling, the form an ASCII key writes it in.
+var plainSpelling = strings.NewReplacer(
+	"\u00f8", "o", "\u0142", "l", "\u0111", "d", "\u00f0", "d", "\u00fe", "th",
+	"\u00e6", "ae", "\u0153", "oe", "\u00df", "ss", "\u0131", "i",
+)
+
 // fold lowercases s and keeps only its letters and digits, for the key check.
-// Decomposing first gives one answer for a name in either Unicode form.
+// Decomposing first gives one answer for a name in either Unicode form, and the
+// letters that leave alone take their plain spelling.
 func fold(s string) string {
 	var b strings.Builder
-	for _, r := range strings.ToLower(norm.NFD.String(s)) {
+	for _, r := range plainSpelling.Replace(strings.ToLower(norm.NFD.String(s))) {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) {
 			b.WriteRune(r)
 		}

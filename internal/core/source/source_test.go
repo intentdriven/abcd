@@ -229,6 +229,43 @@ func TestFoldGivesOneAnswerForEitherUnicodeForm(t *testing.T) {
 	}
 }
 
+// TestIdentifyingKeyReadsLettersByTheirPlainSpelling: a letter with no decomposition
+// compares by its usual plain spelling, in any field and in either case, since a
+// key is ASCII. A key holding none of the name still passes.
+func TestIdentifyingKeyReadsLettersByTheirPlainSpelling(t *testing.T) {
+	for _, tc := range []struct{ letter, value, want string }{
+		{"\u00f8", "S\u00f8rlo", "sorlo"},
+		{"\u0142", "Wa\u0142ek", "walek"},
+		{"\u0111", "\u0111urlo", "durlo"},
+		{"\u00f0", "E\u00f0valo", "edvalo"},
+		{"\u00fe", "\u00feorlo", "thorlo"},
+		{"\u00e6", "H\u00e6lor", "haelor"},
+		{"\u0153", "C\u0153lor", "coelor"},
+		{"\u00df", "Stra\u00dfer", "strasser"},
+		{"\u0131", "Y\u0131ldor", "yildor"},
+		{"capital \u00d8", "S\u00d8RLO", "sorlo"},
+	} {
+		t.Run(tc.letter, func(t *testing.T) {
+			if got := fold(tc.value); got != tc.want {
+				t.Errorf("fold(%q) = %q, want %q", tc.value, got, tc.want)
+			}
+			key := tc.want + "2026"
+			for field, e := range map[string]Entry{
+				"author": {ID: key, Title: confTitle, Author: []Name{{Family: tc.value}}},
+				"alias":  {ID: key, Title: confTitle, Custom: Custom{Aliases: []string{tc.value}}},
+				"title":  {ID: key, Title: tc.value},
+			} {
+				if got := identifyingKey(e); got != field {
+					t.Errorf("key %q with %s %q: refused for %q", key, field, tc.value, got)
+				}
+			}
+			if got := identifyingKey(Entry{ID: "conf2026a", Title: confTitle, Author: []Name{{Family: tc.value}}}); got != "" {
+				t.Errorf("an unrelated key with author %q is refused for its %s", tc.value, got)
+			}
+		})
+	}
+}
+
 // TestIdentifyingKeyReadsAnAuthorTheSameInEitherForm: a person entered plainly and
 // the same person entered as family and given name refuse the same keys.
 func TestIdentifyingKeyReadsAnAuthorTheSameInEitherForm(t *testing.T) {
