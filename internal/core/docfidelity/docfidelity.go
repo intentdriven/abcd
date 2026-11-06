@@ -248,7 +248,7 @@ func judge(in Inputs, r Reviewer, report bool) Verdict {
 		v.Reasons = append(v.Reasons, who+"no saved doc-fidelity review names "+short(rev.Commit)+": "+RunReviewFirst)
 	case ReviewStale:
 		v.Reasons = append(v.Reasons, who+"the saved doc-fidelity review names "+short(rev.Named)+", not "+short(rev.Commit)+
-			", whose tree is not the tree reviewed: "+RunReviewFirst)
+			", and no saved review is shown to have read the tree of "+short(rev.Commit)+": "+RunReviewFirst)
 	case ReviewHold:
 		n := 0
 		for _, f := range rev.Findings {

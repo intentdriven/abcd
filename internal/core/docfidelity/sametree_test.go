@@ -113,6 +113,17 @@ func TestAReviewOfAnUnresolvableCommitStaysRefused(t *testing.T) {
 	if got.Status != ReviewStale || got.Named != gone || got.SameTreeAs != "" {
 		t.Fatalf("a review of a commit no longer held: %+v; want stale naming %s", got, gone)
 	}
+
+	// The refusal says only what was established: this commit's tree cannot be
+	// compared with a commit the repository no longer holds.
+	v := judge(fixture(), fixedReviewer(got), false)
+	joined := strings.Join(v.Reasons, "\n")
+	if !v.Refuse || !strings.Contains(joined, "no saved review is shown to have read") {
+		t.Fatalf("the refusal says what is shown: %v", v.Reasons)
+	}
+	if strings.Contains(joined, "is not the tree reviewed") {
+		t.Fatalf("the refusal claims a tree differs that was never compared: %v", v.Reasons)
+	}
 }
 
 // The head's own review is the review of the head: a HOLD there is not outvoted
