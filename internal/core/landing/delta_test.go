@@ -1196,7 +1196,7 @@ func TestADeltaKeepsEveryFilesFrontmatter(t *testing.T) {
 func TestTheReviewerPagesStateOneVerdictLine(t *testing.T) {
 	for _, want := range []string{
 		"A return has one `### Verdict` section and no other line opening a verdict, whatever qualifies it.",
-		"A return so recorded names that head again in its verdict, by its full object name",
+		"A return so recorded, a delta's too, names the head in its verdict, by its full object name",
 	} {
 		for _, rel := range []string{"agents/ruthless-reviewer.md", "agents/security-reviewer.md"} {
 			data, err := os.ReadFile(filepath.Join("..", "..", "..", filepath.FromSlash(rel)))
