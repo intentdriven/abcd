@@ -593,12 +593,13 @@ jobs:
   # compiling a single job shared.
   #
   # Why four. internal/core/implement/loop runs as three test processes, each with
-  # the whole of -timeout, and sharing a runner with 47 other packages all three
-  # reached that limit in ordinary tests, with no test failing (run 42197788864). So
-  # cmd/ci-shard gives it the last shard alone, and the other three share the rest.
-  # macOS is the scarcest runner this account has, five jobs at once, and one run's
-  # four shards fit inside that. A fifth would leave one job's room, and what decides
-  # a run is the last shard to get a runner.
+  # the whole of -timeout, and on a slow runner all three reached that limit in
+  # ordinary tests, with no test failing (run 42197788864). cmd/ci-shard gives it the
+  # last shard alone, which is meant to give it more of the runner's cores; its time
+  # alone is not yet measured. The other three shards share the rest. macOS is the
+  # scarcest runner this account has, five jobs at once: one run's four shards leave
+  # one free and a fifth would leave none, and what decides a run is the last shard
+  # to get a runner.
   #
   # It runs nightly and by hand: on every event that is neither a pull request nor
   # a merge-queue entry (dcn-2611042202509334). The pre-push hook refuses a

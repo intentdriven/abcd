@@ -118,9 +118,9 @@ func TestLargePackagesSpreadAcrossShards(t *testing.T) {
 		return -1
 	}
 	// The three heaviest that share go to three different runners.
-	a, b, c := shardOf("internal/core/ahoy"), shardOf("internal/surface/cli"), shardOf("internal/core/site")
+	a, b, c := shardOf("internal/surface/cli"), shardOf("internal/core/launch"), shardOf("internal/core/claim")
 	if a == b || b == c || a == c {
-		t.Errorf("ahoy, surface/cli and site are in shards %d, %d, %d; want three different ones", a, b, c)
+		t.Errorf("surface/cli, launch and claim are in shards %d, %d, %d; want three different ones", a, b, c)
 	}
 	loads := make([]int, len(shared))
 	loads[0] = firstShardHead
@@ -136,13 +136,11 @@ func TestLargePackagesSpreadAcrossShards(t *testing.T) {
 	}
 }
 
-// TestThePackageTooLongToShareHasALegOfItsOwn: the last shard holds
-// internal/core/implement/loop and nothing else, and no other shard holds it. A
-// package whose test processes reach -timeout beside other packages' tests fails
-// its shard with no test failing, so it is alone at every count that can spare a
-// shard. It is never the first shard, which also runs the build, vet and the
-// plain-only guards.
-func TestThePackageTooLongToShareHasALegOfItsOwn(t *testing.T) {
+// TestTheLoopPackageHasALegOfItsOwn: the last shard holds
+// internal/core/implement/loop and nothing else, and no other shard holds it, at
+// every count that can spare a shard. It is never the first shard, which also runs
+// the build, vet and the plain-only guards.
+func TestTheLoopPackageHasALegOfItsOwn(t *testing.T) {
 	pkgs := modulePackages(t)
 	own := modulePath + ownLegPackage
 	if !slices.Contains(pkgs, own) {

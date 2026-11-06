@@ -351,10 +351,10 @@ func macOSShards(t *testing.T, suite string) []int {
 	return shards
 }
 
-// macOSShardCount is how many shards the suite runs: three that share what a
-// slow runner can finish, one for the package too long to share, and one run's
-// four fit the account's five macOS runners (the comment on the macos-suite job
-// in ci.yml has the sums).
+// macOSShardCount is how many shards the suite runs: three that share most of the
+// module, and one that holds internal/core/implement/loop alone. One run's four fit
+// the account's five macOS runners (the comment on the macos-suite job in ci.yml
+// has the sums).
 const macOSShardCount = 4
 
 // macOSRaceStepScript returns the shard race step's job step, its env values held
@@ -426,9 +426,9 @@ func TestMacOSSuiteShardsCoverTheModule(t *testing.T) {
 		}
 		last = got
 	}
-	// The package too long to share a runner gets one, under the count the workflow
-	// really asks for. The first shard also runs the build, vet and the plain-only
-	// guards, so it cannot be this one.
+	// The loop package has a shard to itself, under the count the workflow really
+	// asks for. The first shard also runs the build, vet and the plain-only guards,
+	// so it cannot be this one.
 	if wantLast := []string{modulePackagePrefix + "internal/core/implement/loop"}; !slices.Equal(last, wantLast) {
 		t.Errorf("the last shard names %q; want %q alone", last, wantLast)
 	}

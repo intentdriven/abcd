@@ -49,40 +49,40 @@ import (
 const modulePath = "github.com/intentdriven/abcd/"
 
 // weights are the packages that decide how long a shard runs: go test's own
-// seconds for each, under -race on the macOS runner, on the slowest passing run
-// measured (merge-group run 41733393432, 2026-11-03, 76.6 minutes). They are
-// every package at 100s or more, and together about seven eighths of the pass.
+// seconds for each, under -race on the macOS runner, the mean of two runs at normal
+// speed (release run 41969380736 and nightly run 42005455969, both 2026-11-05). The
+// slow nightly run 42197788864 sets none of them, since hosted runners vary about
+// twofold and a slow one would skew the table. They are every package at 100s or
+// more, and together about seven eighths of the pass.
 var weights = map[string]int{
-	"internal/core/implement/loop": 1733,
-	"internal/core/ahoy":           1097,
-	"internal/surface/cli":         913,
-	"internal/core/site":           831,
-	"internal/core/claim":          778,
-	"internal/core/capture":        730,
-	"internal/core/reading":        719,
-	"internal/core/launch":         634,
-	"internal/core/embargo":        523,
-	"internal/adapter/scanner":     518,
-	"internal/core/guard":          430,
-	"internal/cloudscripts":        336,
-	"internal/core/memory":         269,
-	"internal/core/decisions":      259,
-	"internal/core/lint":           255,
-	"internal/core/landing":        244,
-	"internal/core/release":        175,
-	"internal/core/intent":         173,
-	"internal/core/lifeboat":       145,
-	"internal/core/interview":      123,
-	"internal/core/runner":         102,
+	"internal/surface/cli":         1269,
+	"internal/core/launch":         1227,
+	"internal/core/implement/loop": 1206,
+	"internal/core/claim":          1104,
+	"internal/core/capture":        593,
+	"internal/core/lint":           569,
+	"internal/cloudscripts":        397,
+	"internal/core/embargo":        370,
+	"internal/core/ahoy":           335,
+	"internal/core/intent":         304,
+	"internal/core/reading":        298,
+	"internal/core/guard":          264,
+	"internal/adapter/scanner":     213,
+	"internal/core/memory":         169,
+	"internal/core/release":        134,
+	"internal/core/landing":        122,
+	"internal/core/runner":         120,
+	"internal/core/site":           102,
 }
 
-// defaultWeight is the mean of the packages the table leaves out, on that run.
-const defaultWeight = 15
+// defaultWeight is the mean of the packages the table leaves out, on those runs.
+const defaultWeight = 12
 
-// ownLegPackage is the package that takes the last shard alone. Its three test
-// processes each spend -timeout's whole budget, so beside other packages on a
-// runner with three cores they reached it with no test failing (nightly run
-// 42197788864). Its weight above only orders it where one shard holds everything.
+// ownLegPackage is the package that takes the last shard alone. On a slow runner
+// its three test processes each reached -timeout with no test failing (nightly run
+// 42197788864). A shard of its own is meant to give it more of the runner's cores;
+// its time alone is not yet measured. Its weight above only orders it where one
+// shard holds everything.
 const ownLegPackage = "internal/core/implement/loop"
 
 // firstShardHead is the load the first shard starts with, in the same unit: it
