@@ -295,6 +295,21 @@ func TestCheck_JudgesNoFieldGitWouldMakeUp(t *testing.T) {
 	}
 }
 
+// TestStampedIdentityReadsTheRepositoryAtRoot: the read runs under
+// commitConfigEnv, so an inherited GIT_DIR does not point it at another repository.
+func TestStampedIdentityReadsTheRepositoryAtRoot(t *testing.T) {
+	noIdentityEnv(t)
+	dir := gitRepo(t, "Alice", "alice@example.com")
+	other := gitRepo(t, "Bob", "bob@example.com")
+	t.Setenv("GIT_DIR", filepath.Join(other, ".git"))
+	for _, role := range []Role{RoleAuthor, RoleCommitter} {
+		got, ok := stampedIdentity(dir, role)
+		if !ok || got != (Effective{Name: "Alice", Email: "alice@example.com"}) {
+			t.Errorf("%s: read %+v, %v, want the identity of the repository at root", role, got, ok)
+		}
+	}
+}
+
 // TestParseIdent reads the line `git var` prints.
 func TestParseIdent(t *testing.T) {
 	for line, want := range map[string]Effective{
