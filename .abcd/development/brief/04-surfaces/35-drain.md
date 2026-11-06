@@ -356,10 +356,10 @@ stage's shell shows, and a settings file in the working tree having no effect, s
 launch's setting sources name the profile directory alone. That step reads the flags of
 the shell it runs in, and the approver hands a command back to run under a shell it
 starts itself, so the proof holds only when the flags are that shell's. A stage's shell
-file takes the walled directory, the name of the file the run proved and the harness's messaging variables back out of the
+file takes the profile's directory, the name of the file the run proved and the harness's messaging variables back out of the
 shell, and the wall refuses a name it holds under the harness's prefix that reads as a
 credential, a key or a socket, along with any name outside the list it carries; a new
-setting the harness adds under that prefix stops nothing. A walled launch and its shell
+setting the harness adds under that prefix stops nothing. A drive's launch and its shell
 run with the harness's own updates off. The launch runs in a repository of one empty
 commit, the base the approver judges against, and a refusal from it says the harness's
 version. Before each stage and each preflight the settings, the files a stage's shell
