@@ -462,3 +462,14 @@ func ownCopyKey(root string) string {
 	}
 	return ""
 }
+
+// Finished reports whether id's record sits in a terminal folder of origin's default
+// branch as last fetched. A branch that cannot be read says no.
+func Finished(root, id string) bool {
+	ref := originDefault(root)
+	if ref == "" {
+		return false
+	}
+	recs, err := defaultRecords(root, ref)
+	return err == nil && terminal(recs[id], id)
+}

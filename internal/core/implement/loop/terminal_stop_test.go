@@ -53,6 +53,7 @@ func (w *terminalWorld) stopOnLaunch(t *testing.T, n int) {
 func stoppedLane(t *testing.T) (*terminalWorld, TerminalResult) {
 	t.Helper()
 	w := newTerminalWorld(t, "shape", "slow")
+	w.realWorktree()
 	w.stopOnLaunch(t, 2)
 	res, err := RunTerminal(context.Background(), w.repo.Root(), w.options(t))
 	if err != nil {
@@ -215,6 +216,7 @@ func TestASecondSignalKillsTheProcessGroupAndNamesWhenTheReservationLapses(t *te
 // it is, releasing the lane, and not as a refusal.
 func TestAStopThatBreaksAStepEndsAsAStop(t *testing.T) {
 	w := newTerminalWorld(t)
+	w.realWorktree()
 	for i := range w.stages {
 		if w.stages[i].Name == StageBrief {
 			w.stages[i].Run = func(Context, *Lane) (Outcome, error) {
@@ -240,6 +242,7 @@ func TestAStopThatBreaksAStepEndsAsAStop(t *testing.T) {
 // lane's reservation is still released and the lane still named.
 func TestALaneADrainLeftInProgressAsItEndedIsLetGoAndNamed(t *testing.T) {
 	w := newTerminalWorld(t, "shape", "late")
+	w.realWorktree()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	o := w.options(t)
@@ -354,7 +357,7 @@ func TestAStopFromElsewhereEndsTheDriveAndLeavesItsClaimsToTheStop(t *testing.T)
 	for i := range w.stages {
 		if w.stages[i].Name == StageBrief {
 			w.stages[i].Run = func(_ Context, l *Lane) (Outcome, error) {
-				return Outcome{}, contend(terminalHaltStage, "", l.ID, "a stop set by another account holds", "only the person lifts it")
+				return Outcome{}, contend(StageStop, "", l.ID, "a stop set by another account holds", "only the person lifts it")
 			}
 		}
 	}

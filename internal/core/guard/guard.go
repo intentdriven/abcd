@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"sort"
 	"strings"
 )
@@ -596,7 +597,7 @@ func (r Registry) check(command string) (Decision, error) {
 		rc = newReadCtx(r.files)
 		// A line that names the allow store has its writes read, as the
 		// approver reads every line's (allowonce.go).
-		rc.record = strings.Contains(command, allowStoreLeaf)
+		rc.record = strings.Contains(fsutil.FoldPath(command, true), allowStoreLeaf)
 	}
 	v, err := r.judge(command, rc, nil)
 	if err != nil {
@@ -606,6 +607,9 @@ func (r Registry) check(command string) (Decision, error) {
 		v.signals = append(v.signals, sig)
 	}
 	if sig, ok := r.allowStoreSignal(command, rc, v); ok {
+		v.signals = append(v.signals, sig)
+	}
+	if sig, ok := r.stopStoreSignal(command, rc, v); ok {
 		v.signals = append(v.signals, sig)
 	}
 	d := r.decide(v)

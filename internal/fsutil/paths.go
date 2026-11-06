@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 
+	"golang.org/x/text/cases"
 	"golang.org/x/text/unicode/norm"
 )
 
@@ -86,7 +87,7 @@ func CaseFoldingFS() bool {
 // false, that a case-sensitive host keeps exact-match semantics.
 var caseFoldingFS = CaseFoldingFS
 
-// FoldPath returns p in the spelling a path comparison uses: lower-cased AND
+// FoldPath returns p in the spelling a path comparison uses: case-folded AND
 // Unicode-normalised (NFC) when fold is set, unchanged otherwise. It is the single
 // place a case-folding comparison key is minted, so a containment gate and a
 // duplicate-target map fold identically rather than drifting apart.
@@ -106,7 +107,10 @@ var caseFoldingFS = CaseFoldingFS
 // prove.
 func FoldPath(p string, fold bool) string {
 	if fold {
-		return norm.NFC.String(strings.ToLower(p))
+		// A full Unicode case fold over the decomposed form, as a case-folding
+		// volume compares names, so a name a plain lower-casing leaves alone
+		// (a long s, a ligature) keys as the file it resolves to.
+		return norm.NFC.String(cases.Fold().String(norm.NFD.String(p)))
 	}
 	return p
 }

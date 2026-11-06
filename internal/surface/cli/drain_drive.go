@@ -513,7 +513,7 @@ func driveRun(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot strin
 	case loop.TerminalWall:
 		return &exitError{Code: 2, Msg: "abcd drain --drive: " + driveEndWords(res.Ended) + driveWhy(res)}
 	case loop.TerminalStopped, loop.TerminalOutage, loop.TerminalLimited, loop.TerminalWaited, loop.TerminalHalted, loop.DrainStoppedOutage, loop.DrainStoppedOrigin:
-		return &exitError{Code: 3, Msg: "abcd drain --drive: stopped short: " + driveEndWords(res.Ended)}
+		return &exitError{Code: 3, Msg: "abcd drain --drive: stopped short: " + driveEndWords(res.Ended) + driveWhy(res)}
 	}
 	return nil
 }
@@ -615,7 +615,7 @@ func driveEndWords(ended string) string {
 		loop.DrainStoppedOrigin: "the drain gave up waiting on origin",
 		loop.TerminalOutage:     "eight hours of runner failures",
 		loop.TerminalStopped:    "stopped",
-		loop.TerminalHalted:     "a stop set from elsewhere holds",
+		loop.TerminalHalted:     "a stop holds the run",
 		loop.TerminalLimited:    "the account's rate limit outlasts what a drive waits",
 		loop.TerminalWaited:     "nothing moved for eight hours",
 		loop.TerminalUntil:      "the time --until named has passed",

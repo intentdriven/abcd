@@ -102,7 +102,7 @@ func toolsFor(role string) []string {
 // as paused (runner_pause.go). A step that hands no agent out retries one held
 // role once on its runner, and a --route for a held role retries it at once.
 func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options, rs Runners) (StepResult, error) {
-	if err := driveStopRefusal(runID); err != nil {
+	if err := markedRefusal(repoRoot, runID, o); err != nil {
 		return StepResult{}, err
 	}
 	// An auto-plan run's reviews stay on the host (autoplan.go): its lane has
@@ -122,6 +122,10 @@ func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options,
 		routed = func(role string) bool { return rs.Config.RouteFor(role).Runner != runner.Host }
 		overrides = rs.Config.FlagRoutes()
 		if len(overrides) > 0 {
+			// A stop starts nothing, a retried role included (stop.go).
+			if _, err := stopCheck(repoRoot, runID, steps, o); err != nil {
+				return StepResult{}, err
+			}
 			// A --route for a held role (runner_pause.go) retries it at
 			// once, and is the step's one move.
 			if r, took, err := retryRouted(ctx, repoRoot, runID, steps, o, rs, overrides); took {
@@ -156,7 +160,7 @@ func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options,
 		// Not listed yet: a reviewer route can still answer it (ListHostRole).
 		return res, nil
 	}
-	r, err := dispatchAwait(ctx, repoRoot, runID, steps, o, rs, res.Lane, aw, "", res)
+	r, err := dispatchAwait(ctx, repoRoot, runID, steps, o, rs, res.Lane, aw, "", res, true)
 	if errors.Is(err, errClaimed) {
 		// A peer's step retried the role in the moment between: its runner
 		// has it, so the host is handed nothing.

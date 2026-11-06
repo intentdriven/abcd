@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -422,5 +423,29 @@ func TestCheckPathJudgesWhereAWriteLandsNotHowItIsSpelt(t *testing.T) {
 		if err := CheckPath(home, p, read(tab)); err != nil {
 			t.Errorf("CheckPath(%s): the write lands in the local tier or in no checkout, want nil, got %v", p, err)
 		}
+	}
+}
+
+// TestReadingASessionTellsNoneFromUnreadable: no marker says none; markers that cannot be
+// read say so to the caller that asks, and read as none to the one that does not.
+func TestReadingASessionTellsNoneFromUnreadable(t *testing.T) {
+	host := sessionname.Host{PID: 500, StartUnix: 1}
+	if s, err := ReadSessionOn(t.TempDir(), host); s != "" || err != nil {
+		t.Fatalf("no folder: %q, %v", s, err)
+	}
+	home := t.TempDir()
+	p := abcdhome.Path(home, dirLeaf)
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte("not a folder\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := ReadSessionOn(home, host)
+	if s != "" || err == nil || !strings.Contains(err.Error(), abcdhome.Display(dirLeaf)) {
+		t.Fatalf("a folder that cannot be read: %q, %v", s, err)
+	}
+	if s := SessionOn(home, host); s != "" {
+		t.Fatalf("SessionOn over it: %q", s)
 	}
 }

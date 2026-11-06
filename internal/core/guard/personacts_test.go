@@ -1,6 +1,10 @@
 package guard
 
 import (
+	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/runstop"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -104,6 +108,249 @@ func TestEachPersonsActSaysWhatItsRegistryEntrySays(t *testing.T) {
 		}
 		if a.why != e.Why || a.successor != e.Successor {
 			t.Errorf("%s: why/successor differ from %s's:\n got %q / %q\nwant %q / %q", a.id, a.entry, a.why, a.successor, e.Why, e.Successor)
+		}
+	}
+}
+
+// homeDir and upperHomeDir spell abcd's home folder as a line does, the second as a
+// volume that folds case resolves it.
+var (
+	homeDir      = abcdhome.Display()
+	upperHomeDir = "~/" + strings.ToUpper(abcdhome.Rel())
+)
+
+// TestStopStorePathNamesWhatTheFileToolsMayNotWrite: the file tools are held to
+// the same names a shell line is, wherever the shared folder stands.
+func TestStopStorePathNamesWhatTheFileToolsMayNotWrite(t *testing.T) {
+	for p, want := range map[string]bool{
+		"/Users/Shared/abcd-stop/abcd-stop.json":                             true,
+		abcdhome.Path("/home/x", "stop.json"):                                true,
+		abcdhome.Path("/home/x", "shared-folder.json"):                       true,
+		"/home/x/" + abcdhome.Rel("sub") + "/../stop.json":                   true,
+		abcdhome.Path("/home/x", "STOP.JSON"):                                true,
+		"/home/x/" + strings.ToUpper(abcdhome.Rel()) + "/Shared-Folder.json": true,
+		"/Users/Shared/ABCD-STOP/ABCD-STOP.JSON":                             true,
+		abcdhome.Path("/home/x", "\u017ftop.json"):                           true,
+		abcdhome.Path("/home/x", "\u017fhared-folder.json"):                  true,
+		"/home/x/project/stop.json":                                          false,
+		abcdhome.Path("/home/x", "rules.json"):                               false,
+		abcdhome.Path("/home/x", "worktrees/a/stop.json"):                    false,
+	} {
+		if got := StopStorePath(p); got != want {
+			t.Errorf("StopStorePath(%q) = %v, want %v", p, got, want)
+		}
+	}
+}
+
+// TestTheStopIsThePersonsAct: setting or lifting a stop, and choosing where a
+// stop is read, are the person's acts under any program name, and a shell write
+// to the stop file or the setting is refused, a removal included, since removing
+// a stop is lifting it (itd-2611041549471712). Naming the verbs in passing, or
+// another implement verb, is not.
+func TestTheStopIsThePersonsAct(t *testing.T) {
+	files := NewFiles(t.TempDir())
+	files.home = t.TempDir()
+	reg := Defaults().ReadingFrom(files)
+	for _, c := range []struct{ cmd, entry string }{
+		{`abcd implement stop`, "abcd-implement-stop"},
+		{`abcd implement stop --lift`, "abcd-implement-stop"},
+		{`go run ./cmd/abcd implement stop --lift`, "abcd-implement-stop"},
+		{`bin/abcd-darwin-arm64 implement stop --lift`, implementStopAnyEntryID},
+		{`scripts/abcd.sh implement stop`, implementStopAnyEntryID},
+		{`bash scripts/abcd.sh --json implement stop --lift`, implementStopAnyEntryID},
+		{`abcd ahoy shared-folder /Users/Shared`, "abcd-ahoy-shared-folder"},
+		{`scripts/abcd.sh ahoy shared-folder /Users/Shared --person someone`, sharedFolderAnyEntryID},
+		{`nohup bin/abcd-darwin-arm64 implement --json stop --lift`, implementStopAnyEntryID},
+		{`scripts/abcd.sh implement --lift=true stop`, implementStopAnyEntryID},
+		{`scripts/abcd.sh implement --lift="$V" stop`, implementStopAnyEntryID},
+		{`scripts/abcd.sh ahoy --person="$USER" shared-folder /Users/Shared`, sharedFolderAnyEntryID},
+		{`scripts/abcd.sh implement "$V" stop`, implementStopAnyEntryID},
+		{`scripts/abcd.sh implement --lift"$V" stop`, implementStopAnyEntryID},
+		{`V='=true'; scripts/abcd.sh implement --lift"$V" stop`, implementStopAnyEntryID},
+		{`scripts/abcd.sh ahoy --person"$X" shared-folder /Users/Shared`, sharedFolderAnyEntryID},
+		{`scripts/abcd.sh ahoy "$F" me shared-folder /Users/Shared`, sharedFolderAnyEntryID},
+		{`F=--person; scripts/abcd.sh ahoy "$F" me shared-folder /Users/Shared`, sharedFolderAnyEntryID},
+		{`scripts/abcd.sh implement "$V"`, implementStopAnyEntryID},
+		{`V=stop; scripts/abcd.sh implement "$V"`, implementStopAnyEntryID},
+		{`scripts/abcd.sh implement st"$X"`, implementStopAnyEntryID},
+		{`scripts/abcd.sh implement $(echo stop)`, implementStopAnyEntryID},
+		{`scripts/abcd.sh "$V" stop`, implementStopAnyEntryID},
+		{`scripts/abcd.sh $(echo implement) stop`, implementStopAnyEntryID},
+		{`A='implement stop'; scripts/abcd.sh $A`, implementStopAnyEntryID},
+		{`scripts/abcd.sh implement $'stop'`, implementStopAnyEntryID},
+		{`bash -- scripts/abcd.sh implement stop`, implementStopAnyEntryID},
+		{`sh -- scripts/abcd.sh implement stop`, implementStopAnyEntryID},
+		{`zsh -- scripts/abcd.sh implement stop`, implementStopAnyEntryID},
+		{`dash -- scripts/abcd.sh implement stop`, implementStopAnyEntryID},
+		{`ksh -- scripts/abcd.sh implement stop`, implementStopAnyEntryID},
+		{`bash -- scripts/abcd.sh ahoy shared-folder /Users/Shared`, sharedFolderAnyEntryID},
+		{`bash -- renamed implement stop`, implementStopAnyEntryID},
+		{`bash -x scripts/abcd.sh implement "$V"`, implementStopAnyEntryID},
+		{`sh -e scripts/abcd.sh implement "$V"`, implementStopAnyEntryID},
+		{`bash -o errexit scripts/abcd.sh implement "$V"`, implementStopAnyEntryID},
+		{`bash "$F" scripts/abcd.sh implement "$V"`, implementStopAnyEntryID},
+		{`script -q /dev/null scripts/abcd.sh implement "$V"`, implementStopAnyEntryID},
+		{`source scripts/abcd.sh implement "$V"`, implementStopAnyEntryID},
+		{`. scripts/abcd.sh implement "$V"`, implementStopAnyEntryID},
+		{`caffeinate scripts/abcd.sh implement "$V"`, implementStopAnyEntryID},
+		{`caffeinate -i scripts/abcd.sh implement "$V"`, implementStopAnyEntryID},
+		{`arch -arm64 scripts/abcd.sh implement "$V"`, implementStopAnyEntryID},
+		{`unbuffer scripts/abcd.sh implement "$V"`, implementStopAnyEntryID},
+		{`chronic scripts/abcd.sh implement "$V"`, implementStopAnyEntryID},
+		{`fish scripts/abcd.sh implement "$V"`, implementStopAnyEntryID},
+		{`rbash scripts/abcd.sh implement "$V"`, implementStopAnyEntryID},
+		{`ash scripts/abcd.sh implement "$V"`, implementStopAnyEntryID},
+		{`mksh scripts/abcd.sh implement "$V"`, implementStopAnyEntryID},
+		{`csh scripts/abcd.sh implement "$V"`, implementStopAnyEntryID},
+		{`tcsh scripts/abcd.sh implement "$V"`, implementStopAnyEntryID},
+		{`BASH scripts/abcd.sh implement "$V"`, implementStopAnyEntryID},
+		{`Bash -- scripts/abcd.sh implement stop`, implementStopAnyEntryID},
+		{`CAFFEINATE scripts/abcd.sh implement "$V"`, implementStopAnyEntryID},
+		{`/bin/bas? scripts/abcd.sh implement "$V"`, implementStopAnyEntryID},
+		{`bash scripts/abcd.sh implement "$V"`, implementStopAnyEntryID},
+		{`bin/abcd-darwin-arm64 implement "$V"`, implementStopAnyEntryID},
+		{`scripts/abcd.sh ahoy "$V"`, sharedFolderAnyEntryID},
+		{`bin/abcd-darwin-arm64 ahoy --person me shared-folder /x`, sharedFolderAnyEntryID},
+		{`rm -r /Users/Shared/abcd-stop-501`, stopStoreEntryID},
+		{`rm -r /Users/Shared/ABCD-STOP-501`, stopStoreEntryID},
+		{`rm /Users/Shared/abcd-stop/abcd-stop.json`, stopStoreEntryID},
+		{`rm -r /Users/Shared/abcd-stop`, stopStoreEntryID},
+		{`cd ` + homeDir + ` && mv stop.json x`, stopStoreEntryID},
+		{`rm -f ` + homeDir + `/stop.json`, stopStoreEntryID},
+		{`mv /Users/Shared/abcd-stop/abcd-stop.json /tmp/x`, stopStoreEntryID},
+		{`echo '{}' > /Users/Shared/abcd-stop/abcd-stop.json`, stopStoreEntryID},
+		{`echo '{}' > ` + homeDir + `/shared-folder.json`, stopStoreEntryID},
+		{`rm "$F" # abcd-stop.json`, stopStoreEntryID},
+		{`rm ` + homeDir + `/stop.*`, stopStoreEntryID},
+		{`rm ` + homeDir + `/shared-*`, stopStoreEntryID},
+		{`cd ` + homeDir + ` && rm -- *.json`, stopStoreEntryID},
+		{`rm -rf ` + homeDir, stopStoreEntryID},
+		{`rm -rf ` + homeDir + `/`, stopStoreEntryID},
+		{`mv ` + homeDir + ` ~/.old`, stopStoreEntryID},
+		{`find ` + homeDir + ` -name stop.json -delete`, stopStoreEntryID},
+		{`mv /tmp/x ` + homeDir + `/stop.json`, stopStoreEntryID},
+		{`cd "$D" && rm stop.json`, stopStoreEntryID},
+		{`rm /Users/Shared/abcd-st*/abcd-stop.json`, stopStoreEntryID},
+		{`find /Users/Shared -name 'abcd-stop*' -delete`, stopStoreEntryID},
+		{`rm ` + homeDir + `/STOP.JSON`, stopStoreEntryID},
+		{`echo x > ` + upperHomeDir + `/SHARED-FOLDER.JSON`, stopStoreEntryID},
+		{`rm /Users/Shared/ABCD-STOP/ABCD-STOP.JSON`, stopStoreEntryID},
+		{`mv /Users/Shared/Abcd-Stop /tmp/x`, stopStoreEntryID},
+		{`rm -rf ` + upperHomeDir, stopStoreEntryID},
+		{`rm ` + homeDir + `/STOP.*`, stopStoreEntryID},
+		{`rm ` + upperHomeDir + `/Shared-*`, stopStoreEntryID},
+		{"rm " + homeDir + "/\u017ftop.json", stopStoreEntryID},
+		{"echo x > " + homeDir + "/\u017fhared-folder.json", stopStoreEntryID},
+		{"rm /Users/Shared/abcd-\u017ftop/abcd-\u017ftop.json", stopStoreEntryID},
+		{"rm " + homeDir + "/\ufb06op.json", stopStoreEntryID},
+	} {
+		d, err := reg.Check(c.cmd)
+		if err != nil || d.Verdict != VerdictBlock || d.EntryID != c.entry {
+			t.Errorf("Check(%q) = %q via %q, %v; want a block via %q", c.cmd, d.Verdict, d.EntryID, err, c.entry)
+		}
+	}
+	for _, cmd := range []string{
+		`scripts/abcd.sh implement step --run run-1`,
+		`scripts/abcd.sh implement resume`,
+		`scripts/abcd.sh capture "an agent ran implement stop"`,
+		`git log --grep implement --grep stop`,
+		`grep implement "$F"`,
+		`grep -r implement "$F" stop`,
+		`grep abcd implement "$F"`,
+		`printf 'see scripts/abcd.sh, then' "$A" "$B"`,
+		`grep scripts/abcd.sh implement "$F"`,
+		`bash hooks/bootstrap.sh`,
+		`bash hooks/bootstrap.sh "$A" "$B"`,
+		`bash -- hooks/bootstrap.sh "$A"`,
+		`bash -x scripts/abcd.sh capture "$T"`,
+		`bash -- scripts/abcd.sh implement step`,
+		`script -q /dev/null scripts/abcd.sh capture "$T"`,
+		`caffeinate make test`,
+		`scripts/abcd.sh capture "$T"`,
+		`scripts/abcd.sh --json capture "$T"`,
+		`scripts/abcd.sh implement step --run "$R"`,
+		`scripts/abcd.sh implement receipt "$P"`,
+		`scripts/abcd.sh implement step`,
+		`scripts/abcd.sh ahoy --json`,
+		`scripts/abcd.sh ahoy worktree add "$N"`,
+		`cat /Users/Shared/abcd-stop/abcd-stop.json`,
+		`rm build/stop.json`,
+		`ls /Users/Shared/abcd-digest`,
+		`cd "$D" && rm build/stop.json`,
+		`rm -rf ` + homeDir + `/review-x/copy`,
+		`rm ` + homeDir + `/review-*`,
+		`rm ` + homeDir + `/review-x/*`,
+		`mkdir -p ` + homeDir,
+		`printf x >> ` + homeDir + `/trusted-roots`,
+		`find ` + homeDir + `/worktrees -name x -delete`,
+	} {
+		if d, err := reg.Check(cmd); err != nil || d.Verdict == VerdictBlock {
+			t.Errorf("Check(%q) = %+v, %v; want it allowed", cmd, d, err)
+		}
+	}
+}
+
+// TestTheAllowStoreFoldsCaseToo: the sibling store's name is matched as a volume
+// that folds case would resolve it.
+func TestTheAllowStoreFoldsCaseToo(t *testing.T) {
+	home := t.TempDir()
+	dir := t.TempDir()
+	r, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := NewFiles(dir)
+	f.home = home
+	r = r.ReadingFrom(f)
+	store := abcdhome.Path(home, "GUARD-ALLOW", testRootSHA)
+	for _, line := range []string{
+		"echo '{}' > " + store + "/allow-x.json",
+		"cp /tmp/a.json " + store + "/allow-x.json",
+		"cat a > " + upperHomeDir + "/Guard-Allow/x.json",
+	} {
+		d, err := r.Check(line)
+		if err != nil || d.Verdict != VerdictBlock || d.EntryID != allowStoreEntryID {
+			t.Errorf("Check(%q) = %q via %q, %v", line, d.Verdict, d.EntryID, err)
+		}
+	}
+}
+
+// TestARemovalThatCouldReachTheStopIsRefused: a glob removal, or a removal of the
+// folder that holds it, is read against what stands there, whether or not the line
+// names the stop. A removal elsewhere, or a glob that cannot match, is not refused.
+func TestARemovalThatCouldReachTheStopIsRefused(t *testing.T) {
+	folder := t.TempDir()
+	if err := os.Mkdir(filepath.Join(folder, runstop.StopDirName+"-501"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	elsewhere := t.TempDir()
+	old := runstop.WellKnownFolder
+	runstop.WellKnownFolder = func() string { return folder }
+	t.Cleanup(func() { runstop.WellKnownFolder = old })
+	files := NewFiles(t.TempDir())
+	files.home = t.TempDir()
+	reg := Defaults().ReadingFrom(files)
+	for _, cmd := range []string{
+		"rm -rf " + folder + "/abcd-s*",
+		"rm -rf " + folder + "/*",
+		"rm -rf " + folder + "/a*1",
+		"find " + folder + " -name 'abcd-s*' -delete",
+		"rm -rf " + folder,
+	} {
+		if d, err := reg.Check(cmd); err != nil || d.Verdict != VerdictBlock || d.EntryID != stopStoreEntryID {
+			t.Errorf("Check(%q) = %q via %q, %v; want a block via %q", cmd, d.Verdict, d.EntryID, err, stopStoreEntryID)
+		}
+	}
+	for _, cmd := range []string{
+		"rm -rf " + elsewhere + "/*",
+		"rm -rf " + folder + "/other*",
+		"find " + elsewhere + " -name 'x*' -delete",
+		"ls " + folder + "/*",
+		`cd "$D" && rm -rf *`,
+		`cd "$D" && rm *.json`,
+	} {
+		if d, err := reg.Check(cmd); err != nil || d.EntryID == stopStoreEntryID {
+			t.Errorf("Check(%q) = %q via %q, %v; want it not refused for the stop", cmd, d.Verdict, d.EntryID, err)
 		}
 	}
 }

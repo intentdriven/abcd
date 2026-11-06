@@ -403,6 +403,20 @@
       ]
     },
     {
+      "path": "abcd ahoy shared-folder",
+      "hidden": false,
+      "sentence": "Say what the shared folder is for, or choose it so a stop can cross accounts: Writes the choice given a folder; refuses no terminal or an unsafe folder.",
+      "flags": [
+        {
+          "name": "person",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd ahoy uninstall",
       "hidden": false,
       "sentence": "Remove abcd from this repository, leaving .abcd/ in place: Writes the removal of the marker block, PATH copy, and provenance record; refuses any argument.",
@@ -2622,6 +2636,27 @@
       ]
     },
     {
+      "path": "abcd implement resume",
+      "hidden": false,
+      "sentence": "List every unfinished run on the machine, or take one over: Writes nothing bare; refuses a take-over while a stop holds or another driver is alive.",
+      "flags": [
+        {
+          "name": "run",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "take",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd implement status",
       "hidden": false,
       "sentence": "Render the implement loop's runs in this checkout, lane by lane: Writes a due renewal to origin, its outcome to the run record; refuses a --run naming no run.",
@@ -2686,6 +2721,20 @@
           "name": "yielded",
           "shorthand": "",
           "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd implement stop",
+      "hidden": false,
+      "sentence": "Stop the unattended runs of each account that chose this folder, or lift it: Writes the stop file; refuses no terminal, and a file no run would honour.",
+      "flags": [
+        {
+          "name": "lift",
+          "shorthand": "",
+          "type": "bool",
           "required": false,
           "hidden": false
         }

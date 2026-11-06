@@ -26,6 +26,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/runner"
+	"github.com/intentdriven/abcd/internal/core/runstop"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -41,8 +42,9 @@ const (
 	TerminalWall = "wall"
 	// TerminalRefused: a move refused in a way the run cannot go past.
 	TerminalRefused = "refused"
-	// TerminalHalted: a stop set from outside this terminal holds
-	// (itd-2611041549471712). What the run holds is that stop's to let go.
+	// TerminalHalted: a stop set from outside this terminal holds, or one a run
+	// keeps stands against it (itd-2611041549471712). What the run holds is that
+	// stop's to let go.
 	TerminalHalted = "halted"
 	// TerminalLimited: the account's rate limit outlasts what a drive waits.
 	TerminalLimited = "rate-limited"
@@ -54,10 +56,6 @@ const (
 	// group was killed, and what it held lapses on its own.
 	TerminalKilled = "killed"
 )
-
-// terminalHaltStage is the stage a move or a step refuses at while a stop set
-// from outside this terminal holds.
-const terminalHaltStage = "stop"
 
 // TerminalResumeCommand resumes a run that left a lane.
 const TerminalResumeCommand = "abcd drain --drive"
@@ -196,6 +194,8 @@ type terminal struct {
 	reached map[string]int
 	// blames are what the launches of this step or move said, not yet settled.
 	blames []launchBlame
+	// notedFinish is what each run left unfinished last said, so it is said once.
+	notedFinish map[string]string
 	// laneInHand is the run the lane counts below are of.
 	laneInHand string
 	// startedAgent says this step started an agent, which is movement of a kind.
@@ -254,9 +254,6 @@ func RunTerminal(ctx context.Context, repoRoot string, o TerminalOptions) (Termi
 	if o.Stages == nil {
 		o.Stages = DefaultStages()
 	}
-	if o.Sleep == nil {
-		o.Sleep = func(ctx context.Context, d time.Duration) { sleepOr(ctx, d, o.Stop) }
-	}
 	o.Drain.Context = ctx
 	o.Drain.AskJudgeAgain = true
 	if o.Drain.Transcripts == nil {
@@ -268,6 +265,10 @@ func RunTerminal(ctx context.Context, repoRoot string, o TerminalOptions) (Termi
 // newTerminal is one run, not yet started.
 func newTerminal(repoRoot string, o TerminalOptions) *terminal {
 	t := &terminal{repoRoot: repoRoot, o: o, minted: map[string]bool{}, bases: map[string]string{}}
+	if t.o.Sleep == nil {
+		t.o.Sleep = func(ctx context.Context, d time.Duration) { sleepOr(ctx, d, o.Stop, t.stopHolds) }
+	}
+	t.o.Options.driverIsSelf = true
 	t.o.Drain.JudgeOutcome = &t.judge
 	t.o.Options.RunStateWatch = true
 	t.o.Options.ReceiptOwn = func(sha string) bool { return t.minted[sha] }
@@ -387,15 +388,84 @@ func (t *terminal) stoppedOnChange(runID string, cause error) {
 }
 
 // haltedBy reports whether err is a stop set from outside this terminal, saying
-// what holds and what lifts it. Sleeping through it, as through another
-// contention, would keep the drive alive for ever under a stop.
+// what holds and what lifts it, and keeping that for the end. Sleeping through it, as
+// through another contention, would keep the drive alive for ever under a stop.
 func (t *terminal) haltedBy(err error) bool {
 	r, ok := AsRefusal(err)
-	if !ok || r.Stage != terminalHaltStage {
+	if !ok || r.Stage != StageStop {
 		return false
 	}
-	t.say("stopping: %s; %s", r.Reason, r.Remedy)
+	t.why = termsafe.Sanitize(fsutil.RedactHome(r.Reason + "; " + r.Remedy))
+	t.say("stopping: %s", t.why)
 	return true
+}
+
+// stopHolds reports whether a stop set from outside this terminal holds, or a read that
+// cannot be trusted holds the run, for the lane in hand. Every wait asks, so a stop is not
+// waited through; a read refused is no stop.
+func (t *terminal) stopHolds() bool {
+	var pin *runstop.Pin
+	if t.laneInHand != "" {
+		if c, err := runControl(t.repoRoot, t.laneInHand); err == nil {
+			pin = c.Shared
+		}
+	}
+	r := t.o.Options.stopRead(pin)
+	return r.Stop != nil || r.Held != ""
+}
+
+// settleHalted has each lane in progress take the stop that ended the run, as a step
+// would have, and keeps what holds for the end when no step has said.
+func (t *terminal) settleHalted() {
+	st, _, err := readDrain(t.repoRoot)
+	if err == nil {
+		for _, l := range st.Lanes {
+			if l.Outcome != DrainLaneInProgress {
+				continue
+			}
+			if _, err := stopCheck(t.repoRoot, l.RunID, t.o.Stages, t.o.Options); t.why == "" {
+				t.haltedBy(err)
+			}
+		}
+	}
+	if t.why != "" {
+		return
+	}
+	r := t.o.Options.stopRead(nil)
+	switch {
+	case r.Stop != nil:
+		t.haltedBy(contend(StageStop, "", "", fmt.Sprintf("a stop set by %s at %s holds", termsafe.Sanitize(r.Stop.SetBy), r.Stop.SetAt.UTC().Format(time.RFC3339)),
+			"the person's own `abcd implement stop --lift` lifts it"))
+	case r.Held != "":
+		t.haltedBy(heldRefusal(r.Held))
+	}
+}
+
+// haltOnSignal has each lane in progress take the stop this terminal was asked for, in a
+// stop's order: the call in hand has finished by now, so what the lane left is saved aside
+// and its reservation released. A run a drive stopped on is left as it stands (stop.go).
+func (t *terminal) haltOnSignal() {
+	st, _, err := readDrain(t.repoRoot)
+	if err != nil {
+		t.say("the lanes this run holds could not be read to halt them: %s", err.Error())
+		return
+	}
+	now := t.now()
+	for _, l := range st.Lanes {
+		if l.Outcome != DrainLaneInProgress || driveStopped(l.RunID) {
+			continue
+		}
+		s := runstop.Stop{SetBy: "a signal to the drive", SetAt: now}
+		rec, err := haltRun(t.repoRoot, l.RunID, s, t.o.Stages, t.o.Options)
+		switch {
+		case err != nil:
+			t.say("%s: the stop could not be applied: %s", l.RunID, err.Error())
+		case rec != nil && rec.HaltedAt == nil:
+			t.say("%s: an agent is still in its call, so the next drive settles what it left", l.RunID)
+		case rec != nil:
+			t.say("%s: halted, and what its lanes left is saved", l.RunID)
+		}
+	}
 }
 
 // sleep waits d, saying why, in stretches no longer than half a lease, renewing
@@ -415,10 +485,13 @@ func (t *terminal) sleep(ctx context.Context, d time.Duration, why string) {
 	t.sayWait(d, why)
 	t.renewHeld()
 	for d > 0 {
+		if t.stopHolds() {
+			return
+		}
 		step := min(d, terminalRenewEvery, max(end.Sub(t.now()), time.Second))
 		t.o.Sleep(ctx, step)
 		d -= step
-		if ctx.Err() != nil || t.stopped() {
+		if ctx.Err() != nil || t.stopped() || t.stopHolds() {
 			return
 		}
 		t.renewHeld()
@@ -502,6 +575,9 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 		if t.stopped() {
 			return t.ended(TerminalStopped), nil
 		}
+		if t.stopHolds() {
+			return t.ended(TerminalHalted), nil
+		}
 		if t.pastBound() {
 			return t.ended(TerminalUntil), nil
 		}
@@ -545,7 +621,7 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 		if res.Judged != nil {
 			t.moved()
 		}
-		if res.Judged != nil || len(res.Routed) > 0 || len(res.Finished) > 0 || res.Start != nil {
+		if drainMoved(res) {
 			t.idleSince = time.Time{}
 		}
 		// A judge that met a limit is an agent like any other: none starts,
@@ -664,17 +740,32 @@ func (t *terminal) sayMove(res DrainResult) {
 		t.say("handed back: %s", DrainSummaryLine(r))
 	}
 	for _, p := range res.Passed {
-		if p.Check == CheckNeedsPerson && !slices.ContainsFunc(t.passedOver, func(e Excluded) bool { return e.ID == p.ID }) {
-			t.passedOver = append(t.passedOver, p)
-			t.say("passed over %s: %s", p.ID, p.Reason)
+		if p.Check == CheckNeedsPerson {
+			t.notePassedOver(p)
 		}
 	}
 	for _, f := range res.Finished {
-		t.say("finished %s", f.Issue)
+		switch {
+		case f.Done:
+			t.say("finished %s", f.Issue)
+		case f.Note != "" && t.notedFinish[f.RunID] != f.Note:
+			if t.notedFinish == nil {
+				t.notedFinish = map[string]string{}
+			}
+			t.notedFinish[f.RunID] = f.Note
+			t.say("%s: %s", f.Issue, f.Note)
+		}
 	}
 	if res.Start != nil && res.Lane != nil {
 		t.say("opened the lane of %s: run %s", res.Lane.Issue, res.Lane.RunID)
 	}
+}
+
+// drainMoved reports whether a drain's move moved anything: a lane it read and did not finish
+// did not.
+func drainMoved(res DrainResult) bool {
+	return res.Judged != nil || len(res.Routed) > 0 || res.Start != nil ||
+		slices.ContainsFunc(res.Finished, func(f DrainFinished) bool { return f.Done })
 }
 
 // driveLane steps one lane until it has landed or been handed back, or the
@@ -693,6 +784,16 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 		t.reached, t.stalled, t.spentUnanswered = nil, 0, nil
 		t.netKey, t.netSince = "", time.Time{}
 	}
+	if err := ClaimDriver(t.repoRoot, runID, t.o.Options); err != nil {
+		r, ok := AsRefusal(err)
+		if !ok || !r.Contention {
+			return "", err
+		}
+		if t.idle(ctx, TerminalWaitFloor, r.Reason) {
+			return TerminalWaited, nil
+		}
+		return "", nil
+	}
 	if done, ended := t.takeUp(ctx, runID); done {
 		return ended, nil
 	}
@@ -702,6 +803,9 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 		}
 		if t.stopped() {
 			return TerminalStopped, nil
+		}
+		if t.stopHolds() {
+			return TerminalHalted, nil
 		}
 		if t.pastBound() {
 			return TerminalUntil, nil
@@ -1030,7 +1134,7 @@ func (t *terminal) settleBlames(ctx context.Context) int {
 	counted := 0
 	for _, b := range t.blames {
 		count := b.blame == runner.BlameWork
-		if b.blame == runner.BlameAsk && t.o.Probe != nil && t.bounded() && ctx.Err() == nil && !t.stopped() && t.wallHeld() {
+		if b.blame == runner.BlameAsk && t.o.Probe != nil && t.bounded() && ctx.Err() == nil && !t.stopped() && !t.stopHolds() && t.wallHeld() {
 			t.say("nothing shows what failed the %s, so a probe asks whether the account is alive", b.role)
 			renewed, fl := t.o.Probe(ctx, b.role, b.model)
 			entry := evidenceEntry{Event: "probe", Role: b.role, Answer: "no answer"}
@@ -1160,7 +1264,7 @@ func (t *terminal) limited(ctx context.Context, role string, at time.Time) strin
 				return ""
 			}
 		}
-		if ctx.Err() != nil || t.stopped() || !t.now().Before(t.o.Until) {
+		if ctx.Err() != nil || t.stopped() || t.stopHolds() || !t.now().Before(t.o.Until) {
 			return ""
 		}
 		if !t.wallHeld() {
@@ -1205,9 +1309,6 @@ func (t *terminal) limited(ctx context.Context, role string, at time.Time) strin
 // ended the run, "" when prove has run clean or come to a verdict, and then what
 // prove said. Nothing has started: what it may renew is what an earlier run left held.
 func WaitOutProof(ctx context.Context, repoRoot string, o TerminalOptions, first error, prove func(context.Context) error) (string, error) {
-	if o.Sleep == nil {
-		o.Sleep = func(ctx context.Context, d time.Duration) { sleepOr(ctx, d, o.Stop) }
-	}
 	t := newTerminal(repoRoot, o)
 	t.ctx = ctx
 	err := first
@@ -1237,6 +1338,8 @@ func WaitOutProof(ctx context.Context, repoRoot string, o TerminalOptions, first
 			return TerminalKilled, nil
 		case t.stopped():
 			return TerminalStopped, nil
+		case t.stopHolds():
+			return TerminalHalted, nil
 		case t.pastBound():
 			return TerminalUntil, nil
 		case !t.wallHeld():
@@ -1411,28 +1514,43 @@ func (t *terminal) stepRefused(ctx context.Context, runID string, err error) (ag
 		t.ranClean = head
 		t.minted[lane.HeadSHA] = true
 		return true, "", nil
-	case ctx.Err() != nil || t.stopped():
+	case ctx.Err() != nil || t.stopped() || t.stopHolds():
 		return false, "", nil
 	default:
 		return t.laneRefused(ctx, runID, lane.ID, "its preflight failed: "+perr.Error(), "")
 	}
 }
 
-// preflight runs a lane's preflight on a context a stop also ends, so one queued
-// at the load gate or running does not outlast it.
+// preflight runs a lane's preflight on a context a stop also ends, this terminal's or one
+// set from outside it, so one queued at the load gate or running does not outlast it.
 func (t *terminal) preflight(ctx context.Context, worktree string) error {
 	pctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	looked := make(chan struct{})
 	go func() {
-		select {
-		case <-t.o.Stop:
-			cancel()
-		case <-pctx.Done():
+		defer close(looked)
+		look := time.NewTicker(wallLookEvery)
+		defer look.Stop()
+		for {
+			select {
+			case <-t.o.Stop:
+				cancel()
+				return
+			case <-pctx.Done():
+				return
+			case <-look.C:
+				if t.stopHolds() {
+					cancel()
+					return
+				}
+			}
 		}
 	}()
 	var err error
 	t.beginCall("the preflight")
 	t.renewing(func() { err = t.o.Preflight(pctx, worktree) })
+	cancel()
+	<-looked
 	return err
 }
 
@@ -1459,10 +1577,106 @@ func (t *terminal) laneRefused(ctx context.Context, runID, laneID, reason, final
 // outage's deadline with nothing logged against it.
 func (t *terminal) takeUp(ctx context.Context, runID string) (bool, string) {
 	run, err := ReadState(t.repoRoot, runID)
-	if err != nil || !letGoByDrive(run) {
+	if err != nil {
 		return false, ""
 	}
-	err = reserveResumed(t.repoRoot, &StartResult{RunID: runID}, t.o.Options)
+	// Nothing reserves while a stop's mark stands. The run takes what it can of the stop.
+	// One a person's stop halted waits for an explicit take-over, after the lift too. One
+	// this drive's own signal halted is its own terminal's person's to go on with, so it
+	// is taken over here, which reserves it again and clears the mark in that order.
+	if c, err := runControl(t.repoRoot, runID); err == nil && c.Stop != nil {
+		_, checked := stopCheck(t.repoRoot, runID, t.o.Stages, t.o.Options)
+		c, err = runControl(t.repoRoot, runID)
+		switch {
+		case err != nil:
+			return false, ""
+		case c.Stop != nil && c.Stop.HaltedAt != nil && c.Stop.FromFile:
+			return t.passOverHalted(run)
+		case c.Stop != nil && c.Stop.HaltedAt != nil:
+			return t.takeOver(ctx, run)
+		case c.Stop != nil:
+			if t.haltedBy(checked) {
+				return true, TerminalHalted
+			}
+			return false, ""
+		}
+		if run, err = ReadState(t.repoRoot, runID); err != nil {
+			return false, ""
+		}
+	}
+	if !letGoByDrive(run) {
+		return false, ""
+	}
+	return t.tookUp(ctx, run, reserveResumed(t.repoRoot, &StartResult{RunID: runID}, t.o.Options))
+}
+
+// passOverHalted leaves a run a person's stop halted to its explicit take-over, names it and
+// has the drain go on to other work, as takeUp reports.
+func (t *terminal) passOverHalted(run State) (bool, string) {
+	err := fsutil.WithFileLock(filepath.Join(t.repoRoot, filepath.FromSlash(drainLockRel)), lockTimeout, func() error {
+		st, _, err := readDrain(t.repoRoot)
+		if err != nil {
+			return err
+		}
+		for i := range st.Lanes {
+			if st.Lanes[i].RunID == run.RunID && st.Lanes[i].Outcome == DrainLaneInProgress {
+				st.Lanes[i].Outcome = DrainLaneHalted
+				st.UpdatedAt = t.now()
+				return writeDrain(t.repoRoot, st)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.stoppedBy(fmt.Errorf("%s could not be passed over: %w", run.RunID, err))
+		return true, TerminalWall
+	}
+	t.notePassedOver(Excluded{ID: run.Key, Check: CheckNeedsPerson, Reason: waitsForTakeOver(run.RunID)})
+	return true, ""
+}
+
+// notePassedOver says an issue needs a person, once.
+func (t *terminal) notePassedOver(p Excluded) {
+	if slices.ContainsFunc(t.passedOver, func(e Excluded) bool { return e.ID == p.ID }) {
+		return
+	}
+	t.passedOver = append(t.passedOver, p)
+	t.say("passed over %s: %s", p.ID, p.Reason)
+}
+
+// takeOver takes a run a stop halted over, as takeUp reports: a stop that still holds ends
+// the run, as does a take-over that says not to step; a session at the same take-over is
+// waited for; and a reservation it could not take is answered as any other is.
+func (t *terminal) takeOver(ctx context.Context, run State) (bool, string) {
+	res, err := TakeRun(t.repoRoot, run.RunID, t.o.Options)
+	if err == nil {
+		t.say("took over %s, run %s: its reservation is held again", run.Key, run.RunID)
+		for _, line := range res.Left {
+			t.say("%s", line)
+		}
+		return false, ""
+	}
+	if t.haltedBy(err) {
+		return true, TerminalHalted
+	}
+	if r, ok := AsRefusal(err); ok {
+		switch r.Stage {
+		case StageResume:
+			t.stoppedBy(fmt.Errorf("%s; %s", r.Reason, r.Remedy))
+			return true, TerminalWall
+		case StageDriver:
+			if t.idle(ctx, TerminalWaitFloor, r.Reason) {
+				return true, TerminalWaited
+			}
+			return true, ""
+		}
+	}
+	return t.tookUp(ctx, run, err)
+}
+
+// tookUp says what became of reserving the lane of run again.
+func (t *terminal) tookUp(ctx context.Context, run State, err error) (bool, string) {
+	runID := run.RunID
 	if err == nil {
 		t.say("took up %s, run %s: its reservation is held again", run.Key, runID)
 		return false, ""
@@ -1534,6 +1748,10 @@ func (t *terminal) letGo() {
 			if err != nil || run.ReservedAt == nil || letGoByDrive(run) {
 				continue
 			}
+			// A stop that could not settle the lane holds its claims with its work.
+			if c, err := runControl(t.repoRoot, l.RunID); err == nil && c.Stop != nil {
+				continue
+			}
 			clause, _ := releaseReservation(t.repoRoot, run.Key, "", now)
 			t.say("%s: %s", run.Key, clause)
 			_ = mutate(t.repoRoot, l.RunID, func(_ *os.Root, st *State) (bool, error) {
@@ -1564,11 +1782,17 @@ func (t *terminal) letGo() {
 // kill, when its reservation lapses. A stop from elsewhere names its own remedy.
 func (t *terminal) ended(why string) TerminalResult {
 	defer t.leaveSharedRun()
+	switch why {
+	case TerminalStopped:
+		t.haltOnSignal()
+	case TerminalHalted:
+		t.settleHalted()
+	}
 	if why != TerminalKilled && why != TerminalHalted {
 		t.letGo()
 	}
 	res := TerminalResult{Ended: why, Last: t.last, HeldBack: t.heldBack, PassedOver: t.passedOver}
-	if why == TerminalWall {
+	if why == TerminalWall || why == TerminalHalted {
 		res.Why = t.why
 	}
 	st, _, err := readDrain(t.repoRoot)
@@ -1580,10 +1804,18 @@ func (t *terminal) ended(why string) TerminalResult {
 			continue
 		}
 		res.Run, res.Issue = l.RunID, l.Issue
-		if why != TerminalHalted && !driveStopped(l.RunID) {
+		run, rerr := ReadState(t.repoRoot, l.RunID)
+		// A later drive takes up no parked lane, so the command that would is not named.
+		parked := rerr == nil && parkedAtLand(run) >= 0
+		if why != TerminalHalted && !driveStopped(l.RunID) && !parked {
 			res.Resume = TerminalResumeCommand
 		}
-		if run, err := ReadState(t.repoRoot, l.RunID); err == nil {
+		if parked {
+			if note := waitsForItsTakeOver(t.repoRoot, l.RunID); note != "" {
+				t.say("%s: %s", l.Issue, note)
+			}
+		}
+		if rerr == nil {
 			if i := run.current(); i >= 0 {
 				res.Lane = run.Lanes[i].ID
 			}
