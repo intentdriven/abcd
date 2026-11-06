@@ -2,6 +2,191 @@
   "schema_version": 1,
   "releases": [
     {
+      "tag": "v0.16.2",
+      "base_tag": "v0.16.1",
+      "entries": [
+        {
+          "line": "**One command stops the unattended runs of each account that chose a shared folder.** `abcd implement stop`, typed from the person's own account, takes hold at each run's next move through `abcd implement step`, `abcd build`, `abcd drain` and `abcd drain --drive`: the run opens no lane, hands out no stage and starts no agent; an agent in a call finishes that call and its receipt is collected; then each lane's uncommitted work is saved aside, the run's reservation is released and the day's page is written to the account's directory in the shared folder. It stays until `abcd implement stop --lift`, and a run it halted stays halted until `abcd implement resume --take <run-id>` reserves the work again. Each account that takes part chooses the folder with `abcd ahoy shared-folder`, naming the account it takes a stop from; every account on the machine can read that folder, so it is meant for a machine no other person shares, and with none chosen a stop reaches only that account's runs. Setting a stop, lifting it and choosing the folder are the person's own acts: the guard's rule refuses them to an agent and the command refuses a caller with no terminal or under a host session, which holds against an agent acting by mistake and binds one only where an operating-system account separates them. A pull request armed before the stop can still merge under it; the day's page names each with the command that disarms it.",
+          "records": [
+            {
+              "id": "itd-2611041549471712",
+              "impact": "additive"
+            }
+          ]
+        },
+        {
+          "line": "In `abcd drain --drive` the first interrupt, hang-up or termination is a stop for that run: the agent in a call finishes it, the lane's uncommitted work is saved aside, its reservation is released and the last lines name the run, the lane and the command that takes it up. A second signal kills the running agent's process group and exits at once. `abcd implement stop` ends a drive's wait within about a minute, a wait on a limit or an outage included.",
+          "records": [
+            {
+              "id": "itd-2611041549471712",
+              "impact": "additive"
+            }
+          ]
+        },
+        {
+          "line": "**`abcd drain --drive --until <date>` sets one time bound for a long run.** It takes a date, read as the end of that day on the machine's clock, or an RFC 3339 instant. Under the bound the drive waits for a rate limit's reset however far off, probes a limit with no reset on a capped backoff, and waits through outages and stuck queues at a capped interval. At the bound the run ends with the lane on its branch and its reservation released, and exits 0. With no flag each wait keeps its eight-hour limit. The bound is a time, not a limit on what the run spends, and the cap stays eight lanes unless `--max` says otherwise.",
+          "records": [
+            {
+              "id": "iss-2611050753557564",
+              "impact": "additive"
+            }
+          ]
+        },
+        {
+          "line": "**A short test waits at a gate of its own.** `abcd implement load --wait --narrow -- go test` naming at most three packages outright waits on its own limit, `load.narrow_runs` in the person's own configuration, and takes no whole-run slot and no place in the whole-run queue; a whole run counts it through the load figure alone. The load limit and the memory floor still shut it, and a command the gate cannot read as narrow (`make`, a wildcard, `-race`, or one without the mark) stays a whole run. A wait through `abcd implement load --wait` defaults to six hours, and one that gives up exits 1 and ends with a line opening `LOAD GATE TIMED OUT`.",
+          "records": [
+            {
+              "id": "iss-2610260845422800",
+              "impact": "additive"
+            },
+            {
+              "id": "iss-2610241415121917",
+              "impact": "fix"
+            },
+            {
+              "id": "iss-2610241920339387",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "**A wording fix can rest on an earlier full review pair.** `abcd land --record-review <return> --record-review <return> --rests-on <base>` records a delta review of what the branch's own commits changed since the head the last full pair passed. Land accepts it, at recording and again at the merge gate, only while the head descends from that base and those commits change plain prose in the paths `/abcd:land` lists, within 30 lines, 3 files and 64 KiB of patch, holding wording alone: no record or file named, no code, and no file added, removed or moved. A delta rests on a full pair directly, never on another delta. Code, open issues, decisions, intents, specs, research, the brief and the ADRs always take a full pair, and a preflight still binds one head.",
+          "records": [
+            {
+              "id": "iss-2611012123291272",
+              "impact": "additive"
+            }
+          ]
+        },
+        {
+          "line": "**`abcd status` and the prompt's STATUS block name a red scheduled run.** A repository names its scheduled workflow's file as `status.scheduled_workflow` in the `.abcd/config.json` on its default branch. Each then names a red latest verdict with its URL and age until a green replaces it, reading back past runs that reached no verdict. A workflow with no verdict for a few of its cycles, and an answer that is missing, stale or unreadable, each say so rather than read like green. The prompt hook refreshes the answer in the background once it is an hour old and the block reads only what is stored, so the prompt spends no time on the network. Where no workflow is named, nothing is asked or shown.",
+          "records": [
+            {
+              "id": "iss-2611050035192370",
+              "impact": "additive"
+            }
+          ]
+        },
+        {
+          "line": "**A session whose setting reads as off a profile is warned.** `abcd mode autonomous`, a `build` or `drain` run while the away mode holds or its record cannot be read, and `abcd implement join --role first` in any mode each print one `WARNING:` line on stderr after the move, naming what abcd cannot check and asking to be passed on to the person. Nothing is refused and no exit code changes. The check reads one setting and proves no wall: a profile is a separate login and settings on one operating-system account, not a boundary. `abcd drain --drive` prints no such line.",
+          "records": [
+            {
+              "id": "iss-2611032327111678",
+              "impact": "additive"
+            }
+          ]
+        },
+        {
+          "line": "`abcd land` keeps an arming to a head the merge gate arms. Where its push will move the head of an armed or queued pull request from this repository, it withdraws the arming first, reads it back and says so, and the enqueue step arms the new head only where the gate allows; where it cannot make the withdrawal it refuses and pushes nothing. In abcd's own repository the committed pre-push hook refuses a fast-forward it reads as moving that head, naming `abcd land` and the command that withdraws the arming.",
+          "records": [
+            {
+              "id": "iss-2611050535437225",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "`abcd ahoy worktree prune`, when it removes at least one worktree, also deletes Go build-cache entries unused for two days and says how many entries and bytes went; `--dry-run` reports the same and deletes nothing. It acts only on the directory `go env GOCACHE` reports, when that is a real directory this account owns with a Go build cache's shape, and only on its entry files, and a skip or a failure never fails the prune. The age is fixed, so a cache whose entries are all recent frees little.",
+          "records": [
+            {
+              "id": "iss-2610290717018523",
+              "impact": "additive"
+            }
+          ]
+        },
+        {
+          "line": "Where a repository's `facilitator.mode` is `auto`, a lane that passed its reviews arms its own merge, in `abcd build`, `abcd drain` and `abcd drain --drive` alike: its records commit takes a short review round of its own, and the pair that read the pushed head is the receipt the merge gate reads. A lane that did not pass stays open, naming the finding, and one whose records commit moves an issue's record its full round was not told of, or holds more than plain markdown, parks before any round. A contributor's pull request still needs an approval.",
+          "records": [
+            {
+              "id": "iss-2611051821551531",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "Where a merge queue gates the default branch, `abcd land` lists the pull requests queued or armed into it before it arms, and stops unarmed while the branch shares a commit not on the default branch with one of them, naming it and saying to run `abcd land` again after it merges or to rebase onto the default branch. A head the checkout lacks is fetched by its pull-request ref, and an unreadable listing or head arms nothing.",
+          "records": [
+            {
+              "id": "iss-2611031719581061",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "The shell guard's bundled registry refuses `git filter-repo`, `git filter-branch`, `git update-ref`, a `git replace` that stands one object for another, `git reflog expire`, `git gc --prune=now`, `git push --mirror`, `git send-pack --force`, `git fast-import --force` and a `gh api` PATCH of a ref with `force=true`, each naming what to run instead, a new commit among the choices. A rebase or an amend stays allowed, since a line cannot show whether its commits were pushed.",
+          "records": [
+            {
+              "id": "iss-2611041015338189",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "A routed implementer's finished work is collected by a later step. Where the run's state shows a runner was started for that await, at the implement stage or a validate round, a step reads its receipt and hands in what verifies through the check `abcd implement receipt` uses, even if the runner then exited badly, so no second runner starts over it. A receipt that does not verify stays in place while the claim stands and the step says to wait; a fix round's also needs a commit past the round's head, and a receipt carrying a hand-back is left to `abcd implement receipt`.",
+          "records": [
+            {
+              "id": "iss-2611031337115764",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "A lane built at a newer run-state schema leaves the run that drives it able to step: the writers a lane's abcd can reach (the gated waiter, `abcd implement status`, `abcd implement widen` and a drain's keep-alive) rewrite only the run's record and its date, keeping the schema version and every other byte. A state file above this abcd's version stays refused, unchanged, and the waiter names it.",
+          "records": [
+            {
+              "id": "iss-2611020719494343",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "The queue watch's report of a dropped pull request quotes a re-arm command that carries the queue's merge method (`--merge`, `--squash` or `--rebase`), the same command the watch itself runs.",
+          "records": [
+            {
+              "id": "iss-2611031337128901",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "A drain that stops clears the judgement it awaited in the move that ends it, so its state and its answer say the same, and a later `--judgement` is told the drain awaits none.",
+          "records": [
+            {
+              "id": "iss-2610110915210571",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "abcd's own `make preflight` runs both test stages from one fixed check directory under `-trimpath`, so a fresh worktree reuses what Go's test cache holds for unchanged inputs from another worktree's check, and reports `reused N of M` for each stage. A test on the always-rerun list, or found reading past that cache, reruns on every check, and the hosted test steps pass `-count=1` and reuse nothing.",
+          "records": [
+            {
+              "id": "iss-2611011343052330",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "abcd's own release workflow sets `-timeout 20m` on its Test step under a 75-minute job, so each step's own limit fires first and a package past go's 10-minute default does not fail the job with no test failing. A scaffolded repository's release workflow keeps go's default limit under its 15-minute job.",
+          "records": [
+            {
+              "id": "iss-2611041016350835",
+              "impact": "fix"
+            }
+          ]
+        },
+        {
+          "line": "The identity scanner reads an account that shares the product's name as one that identifies no person, so record text holding that name stays as written and a launch render on a clean tree does not hard-fail on it. The plugin's own install line is spared where the name stands before an at sign.",
+          "records": [
+            {
+              "id": "iss-2611041104094416",
+              "impact": "fix"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "tag": "v0.16.1",
       "base_tag": "v0.16.0",
       "entries": [
