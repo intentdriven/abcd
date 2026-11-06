@@ -194,6 +194,8 @@ type terminal struct {
 	reached map[string]int
 	// blames are what the launches of this step or move said, not yet settled.
 	blames []launchBlame
+	// notedFinish is what each run left unfinished last said, so it is said once.
+	notedFinish map[string]string
 	// laneInHand is the run the lane counts below are of.
 	laneInHand string
 	// startedAgent says this step started an agent, which is movement of a kind.
@@ -619,7 +621,7 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 		if res.Judged != nil {
 			t.moved()
 		}
-		if res.Judged != nil || len(res.Routed) > 0 || len(res.Finished) > 0 || res.Start != nil {
+		if drainMoved(res) {
 			t.idleSince = time.Time{}
 		}
 		// A judge that met a limit is an agent like any other: none starts,
@@ -743,11 +745,27 @@ func (t *terminal) sayMove(res DrainResult) {
 		}
 	}
 	for _, f := range res.Finished {
-		t.say("finished %s", f.Issue)
+		switch {
+		case f.Done:
+			t.say("finished %s", f.Issue)
+		case f.Note != "" && t.notedFinish[f.RunID] != f.Note:
+			if t.notedFinish == nil {
+				t.notedFinish = map[string]string{}
+			}
+			t.notedFinish[f.RunID] = f.Note
+			t.say("%s: %s", f.Issue, f.Note)
+		}
 	}
 	if res.Start != nil && res.Lane != nil {
 		t.say("opened the lane of %s: run %s", res.Lane.Issue, res.Lane.RunID)
 	}
+}
+
+// drainMoved reports whether a drain's move moved anything: a lane it read and did not finish
+// did not.
+func drainMoved(res DrainResult) bool {
+	return res.Judged != nil || len(res.Routed) > 0 || res.Start != nil ||
+		slices.ContainsFunc(res.Finished, func(f DrainFinished) bool { return f.Done })
 }
 
 // driveLane steps one lane until it has landed or been handed back, or the
@@ -1786,10 +1804,18 @@ func (t *terminal) ended(why string) TerminalResult {
 			continue
 		}
 		res.Run, res.Issue = l.RunID, l.Issue
-		if why != TerminalHalted && !driveStopped(l.RunID) {
+		run, rerr := ReadState(t.repoRoot, l.RunID)
+		// A later drive takes up no parked lane, so the command that would is not named.
+		parked := rerr == nil && parkedAtLand(run) >= 0
+		if why != TerminalHalted && !driveStopped(l.RunID) && !parked {
 			res.Resume = TerminalResumeCommand
 		}
-		if run, err := ReadState(t.repoRoot, l.RunID); err == nil {
+		if parked {
+			if note := waitsForItsTakeOver(t.repoRoot, l.RunID); note != "" {
+				t.say("%s: %s", l.Issue, note)
+			}
+		}
+		if rerr == nil {
 			if i := run.current(); i >= 0 {
 				res.Lane = run.Lanes[i].ID
 			}

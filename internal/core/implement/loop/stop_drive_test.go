@@ -229,9 +229,26 @@ func TestAHaltedRunsMergedLaneStillFinishes(t *testing.T) {
 	}
 }
 
-// TestTheFenceRefusesAReservationAStopReleased: a run with no reservation because a stop let
-// it go is not a run that never held one.
+// TestTheFenceRefusesAReservationAStopReleased: a run a stop halted has let its reservation
+// go, and the take-over the fence names reserves it again.
 func TestTheFenceRefusesAReservationAStopReleased(t *testing.T) {
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	f.toArmOnce(t)
+	markHalted(t, f.repo.Root(), f.runID, true)
+	st, err := ReadState(f.repo.Root(), f.runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = fence(Context{RepoRoot: f.repo.Root(), State: st, Now: time.Now().UTC()}, st.Lanes[0], fenceLease, fenceQueue)
+	r, ok := AsRefusal(err)
+	if !ok || !r.Contention || !strings.Contains(r.Reason, "let its reservation") || !strings.Contains(r.Remedy, "implement resume --take "+f.runID) {
+		t.Fatalf("the fence does not say so: %v", err)
+	}
+}
+
+// TestTheFenceNamesNoTakeOverItCannotAnswer: with no mark standing a take-over reserves
+// nothing, so a run with no reservation is not sent to one.
+func TestTheFenceNamesNoTakeOverItCannotAnswer(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
 	f.toArmOnce(t)
 	now := time.Now().UTC()
@@ -242,8 +259,115 @@ func TestTheFenceRefusesAReservationAStopReleased(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	r := f.fenced(t)
-	if !strings.Contains(r.Reason, "let its reservation") || !strings.Contains(r.Remedy, "implement resume --take "+f.runID) {
-		t.Fatalf("the fence does not say so: %+v", r)
+	_, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
+	if r, ok := AsRefusal(err); ok && strings.Contains(r.Remedy, "implement resume --take") {
+		t.Fatalf("the remedy would come back to the fence: %+v", r)
+	}
+}
+
+// signalAtTheArmingStep ends a drive on a signal the moment its first lane arms.
+func signalAtTheArmingStep(t *testing.T) (*terminalWorld, TerminalResult) {
+	t.Helper()
+	w := newTerminalWorld(t, "shape")
+	w.realWorktree()
+	armed := false
+	for i := range w.stages {
+		if w.stages[i].Name == StageLand {
+			w.stages[i].Run = func(_ Context, l *Lane) (Outcome, error) {
+				if armed {
+					return Outcome{Note: "land done"}, nil
+				}
+				armed = true
+				l.PR, l.Landing = 7, &Landing{Pushed: strings.Repeat("a", 40), Merge: "armed", Armed: true}
+				close(w.stop)
+				return Outcome{Stay: true, Note: "pull request #7 is armed"}, nil
+			}
+		}
+	}
+	res, err := RunTerminal(context.Background(), w.repo.Root(), w.options(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Ended != TerminalStopped || res.Run == "" {
+		t.Fatalf("the run ends on the signal: %+v\n%s", res, strings.Join(w.lines, "\n"))
+	}
+	if c := controlOf(t, w.repo.Root(), res.Run); c.Stop == nil || c.Stop.FromFile || c.Stop.HaltedAt == nil {
+		t.Fatalf("the signal's stop: %+v", c.Stop)
+	}
+	return w, res
+}
+
+// laterDrivePassesOver wants a later drive to name the run as a person's to take over.
+func laterDrivePassesOver(t *testing.T, w *terminalWorld, res TerminalResult) {
+	t.Helper()
+	next := w.options(t)
+	next.Stop = make(chan struct{})
+	later, err := RunTerminal(context.Background(), w.repo.Root(), next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	i := slices.IndexFunc(later.PassedOver, func(p Excluded) bool { return p.ID == res.Issue })
+	if i < 0 || later.PassedOver[i].Check != CheckNeedsPerson || !strings.Contains(later.PassedOver[i].Reason, "implement resume --take "+res.Run) {
+		t.Fatalf("a later drive does not name it: %+v\n%s", later.PassedOver, strings.Join(w.lines, "\n"))
+	}
+}
+
+// TestASignalAtTheArmingStepWaitsForItsTakeOver: a later drive takes up no parked lane, so
+// the end names no command that would, and that drive names the run and goes on.
+func TestASignalAtTheArmingStepWaitsForItsTakeOver(t *testing.T) {
+	w, res := signalAtTheArmingStep(t)
+	if res.Resume != "" {
+		t.Fatalf("the end names a command that takes up no parked lane: %+v", res)
+	}
+	if !strings.Contains(strings.Join(w.lines, "\n"), "implement resume --take "+res.Run) {
+		t.Fatalf("the end does not name the take-over:\n%s", strings.Join(w.lines, "\n"))
+	}
+	laterDrivePassesOver(t, w, res)
+}
+
+// TestANewDrainNamesARunASignalParked: a drain begun since has no lane of that issue in hand,
+// and is told the same.
+func TestANewDrainNamesARunASignalParked(t *testing.T) {
+	w, res := signalAtTheArmingStep(t)
+	if err := os.Remove(filepath.Join(w.repo.Root(), filepath.FromSlash(DrainStateRel))); err != nil {
+		t.Fatal(err)
+	}
+	laterDrivePassesOver(t, w, res)
+}
+
+// TestADriveNamesAParkedRunItLeftAlone: what is not finished is not said to be, says what it
+// is once, and is no movement.
+func TestADriveNamesAParkedRunItLeftAlone(t *testing.T) {
+	f, _ := armedConflict(t)
+	if err := recordDriveStop(f.runID); err != nil {
+		t.Fatal(err)
+	}
+	p, err := driveStopPath(f.runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Remove(p) })
+	res, err := Drain(f.repo.Root(), Options{}, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lines []string
+	tm := newTerminal(f.repo.Root(), TerminalOptions{Stages: DefaultStages(), Say: func(s string) { lines = append(lines, s) }})
+	tm.sayMove(res)
+	tm.sayMove(res)
+	said := strings.Join(lines, "\n")
+	if strings.Contains(said, "finished ") {
+		t.Fatalf("a run it left alone is said to be finished:\n%s", said)
+	}
+	if strings.Count(said, "a drive stopped on") != 1 {
+		t.Fatalf("the run is not named once:\n%s", said)
+	}
+	if drainMoved(res) {
+		t.Fatalf("a run it left alone reads as movement: %+v", res.Finished)
+	}
+	done := res
+	done.Finished = []DrainFinished{{Issue: "iss-1", RunID: f.runID, Done: true}}
+	if !drainMoved(done) {
+		t.Fatal("a finished lane is movement")
 	}
 }

@@ -163,6 +163,40 @@ func TestASecondStopKeepsTheRunsOnOnePage(t *testing.T) {
 	}
 }
 
+// TestAPageIsOfTheStopInForce: a run marked under a stop since lifted settles under a new one.
+// The page is the new stop's, and names that run and the others it halted.
+func TestAPageIsOfTheStopInForce(t *testing.T) {
+	first, firstRun, _, _, _ := deadLane(t)
+	o, home, folder := stopped(t)
+	later := time.Now().Add(3 * time.Hour)
+	o.Now = func() time.Time { return later }
+	wantStopRefusal(t, checkOnce(first.Root(), firstRun, o))
+	noteRunCheckout(home, first.Root())
+	inForce := runstop.ReadPinned(home, nil).Stop.SetAt
+	second, secondRun, _, _, _ := deadLane(t)
+	old := inForce.Add(-time.Hour)
+	if err := mutate(second.Root(), secondRun, func(root *os.Root, _ *State) (bool, error) {
+		c, err := readControl(root, secondRun)
+		if err != nil {
+			return false, err
+		}
+		c.Stop = &RunStop{SetBy: "someone", SetAt: old, NotedAt: old, FromFile: true}
+		return false, writeControl(root, secondRun, c)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	wantStopRefusal(t, checkOnce(second.Root(), secondRun, o))
+	page := pageOf(t, folder, later)
+	if !strings.Contains(page, inForce.UTC().Format(time.RFC3339)) || strings.Contains(page, old.UTC().Format(time.RFC3339)) {
+		t.Fatalf("the page is not of the stop in force (%s):\n%s", inForce, page)
+	}
+	for _, want := range []string{firstRun, secondRun} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the page lacks %q:\n%s", want, page)
+		}
+	}
+}
+
 // TestAStopNamesAPullRequestArmedBeforeIt: the forge can still merge what was armed, so the
 // stop's account and the page name it with how to disarm it, and nothing disarms it.
 func TestAStopNamesAPullRequestArmedBeforeIt(t *testing.T) {

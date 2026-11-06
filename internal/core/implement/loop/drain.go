@@ -992,6 +992,11 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		// taken up again once its record has changed on origin
 		// (drain_readmit.go).
 		if st.taken(v.ID, blobs) {
+			if i := slices.IndexFunc(runs, func(r State) bool { return r.Key == v.ID && !r.issueHandedBack() }); i >= 0 {
+				if why := waitsUntaken(repoRoot, runs[i]); why != "" {
+					res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckNeedsPerson, Reason: why})
+				}
+			}
 			continue
 		}
 		// An issue the skip list holds back is passed over before anything
@@ -1025,8 +1030,8 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		// whether its record has changed since; on origin the hand-back's
 		// tombstone and this drain's routes say so (drain_readmit.go).
 		if i := slices.IndexFunc(runs, func(r State) bool { return r.Key == v.ID && !r.issueHandedBack() }); i >= 0 {
-			if !runs[i].Complete() && haltedByPerson(repoRoot, runs[i].RunID) {
-				res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckNeedsPerson, Reason: waitsForTakeOver(runs[i].RunID)})
+			if why := waitsUntaken(repoRoot, runs[i]); why != "" {
+				res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckNeedsPerson, Reason: why})
 				continue
 			}
 			reason := "this checkout already has run " + runs[i].RunID + " for it; drive or finish that run"

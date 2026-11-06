@@ -327,6 +327,15 @@ func waitsForItsTakeOver(repoRoot, runID string) string {
 	return fmt.Sprintf("a signal to a drive halted run %s, which waits for `abcd implement resume --take %s`", termsafe.Sanitize(runID), termsafe.Sanitize(runID))
 }
 
+// waitsUntaken says what a run no later drive takes up waits for: one a person's stop halted,
+// or a parked one either kind of stop did. It is "" for any other.
+func waitsUntaken(repoRoot string, run State) string {
+	if run.Complete() || (!haltedByPerson(repoRoot, run.RunID) && parkedAtLand(run) < 0) {
+		return ""
+	}
+	return waitsForItsTakeOver(repoRoot, run.RunID)
+}
+
 // haltRun applies a stop in its order, one read from the file or one that did not
 // come from it: the caller names who set it. A later call takes up what an agent
 // still in its call held back. The result's HaltedAt is set once every lane has
@@ -366,7 +375,7 @@ func haltRun(repoRoot, runID string, s runstop.Stop, steps Stages, o Options) (*
 	}
 	if rec.HaltedAt != nil {
 		if rec.FromFile && rec.PageFailed != "" {
-			return notePage(repoRoot, runID, rec, o), nil
+			return notePage(repoRoot, runID, rec, s, o), nil
 		}
 		return rec, nil
 	}
@@ -395,6 +404,11 @@ func haltRun(repoRoot, runID string, s runstop.Stop, steps Stages, o Options) (*
 			rec = c.Stop
 			return false, nil
 		}
+		// A mark from a stop since lifted settles under the stop in force, which is the one
+		// that halts it and the one whose page names it.
+		if c.Stop.FromFile && s.Path != "" && !c.Stop.SetAt.Equal(s.SetAt) {
+			c.Stop.SetBy, c.Stop.SetAt = termsafe.Sanitize(s.SetBy), s.SetAt
+		}
 		settleStop(repoRoot, root, st, &c, seen, collected, now)
 		if err := writeControl(root, runID, c); err != nil {
 			return false, err
@@ -408,7 +422,7 @@ func haltRun(repoRoot, runID string, s runstop.Stop, steps Stages, o Options) (*
 	}
 	// The page says the person's stop holds and how to lift it, which a signal is not.
 	if rec.HaltedAt != nil && rec.FromFile {
-		return notePage(repoRoot, runID, rec, o), nil
+		return notePage(repoRoot, runID, rec, s, o), nil
 	}
 	return rec, nil
 }
@@ -872,9 +886,13 @@ func ArmedLine(pr int) string {
 
 // notePage writes the page for a run the stop halted and keeps in the run's account whether
 // it could, so the stop's answer can say; a later check tries again.
-func notePage(repoRoot, runID string, rec *RunStop, o Options) *RunStop {
+func notePage(repoRoot, runID string, rec *RunStop, s runstop.Stop, o Options) *RunStop {
 	why := ""
-	if err := composeStopPage(repoRoot, *rec, o); err != nil {
+	inForce := *rec
+	if s.Path != "" {
+		inForce.SetBy, inForce.SetAt = termsafe.Sanitize(s.SetBy), s.SetAt
+	}
+	if err := composeStopPage(repoRoot, inForce, o); err != nil {
 		why = "the day's page could not be written: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))
 	}
 	if why == rec.PageFailed {
