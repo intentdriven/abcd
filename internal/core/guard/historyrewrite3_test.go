@@ -201,6 +201,7 @@ func TestARefMovedWithForceIsReadFromEverySpellingGHSends(t *testing.T) {
 		`-F "$K=1"`, `-F "f$K=1"`, `-F "force$K=1"`, `-F "force[$K]=1"`,
 		`-F forc?=1`, `-F force=tru?`, `-$F`, `-$F sha=abc`,
 		`-F force=false -F force=1`, `-F sha=abc -f force=1`,
+		`-iF force=true`, `-if force=1`, `-iFforce=1`, `-ifforce=true`, `-iF=force=1`, `-qiF force=1`,
 	} {
 		bad = append(bad, verdictCase{ref + field, VerdictBlock, "gh-api-ref-force"})
 	}
@@ -210,10 +211,18 @@ func TestARefMovedWithForceIsReadFromEverySpellingGHSends(t *testing.T) {
 		`-F force=false`, `-f force=false`, `--field force=false`, `--raw-field=force=false`, `-Fforce=false`,
 		`-F force=False`, `-F force=FALSE`, `-F force=0`, `-f force=0`, `-F force=null`, `-F force=`, `-f force=`,
 		`-f sha=abc1234`, `-F sha="$SHA"`, `-F forced=1`, `-F 'x[force]=1'`, `-f notforce=1`, `-f message=force=1`,
-		`-F forc?=false`,
+		`-F forc?=false`, `-iF force=false`, `-iFforce=false`, `-iF sha=abc`, `-if sha=abc`,
 	} {
 		good = append(good, ref+field)
 	}
+	bad = bad[:0]
+	for _, line := range []string{
+		`gh api -iX PATCH repos/o/r/git/refs/heads/main -F force=1`,
+		`gh api -iXPATCH repos/o/r/git/refs/heads/main -F force=1`,
+	} {
+		bad = append(bad, verdictCase{line, VerdictBlock, "gh-api-ref-force"})
+	}
+	runVerdictCases(t, bad)
 	good = append(good,
 		`gh api -X PATCH repos/o/r/pulls/1 -F force=1`,
 		`gh api repos/o/r/git/refs/heads/main -F force=1 -X GET`,

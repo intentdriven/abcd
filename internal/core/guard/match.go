@@ -1570,8 +1570,8 @@ func flagMatches(alt, arg string, glob bool) bool {
 }
 
 // flagValueHit reports whether the token at i SETS one of the flag
-// alternatives to one of the accepted values. All three spellings a shell user
-// reaches for are read — `-X DELETE`, `-XDELETE`, `--method=DELETE` — because a
+// alternatives to one of the accepted values. Every spelling a shell user
+// reaches for is read — `-X DELETE`, `-XDELETE`, `--method=DELETE`, `-iX DELETE` — because a
 // constraint another spelling of the same call steps past is not one. A
 // globbed flag or value token is compared as a pattern in the separate-token
 // form; the attached forms stay literal (the floor flagMatches names). The
@@ -1612,6 +1612,10 @@ func flagValueHit(fv FlagValue, tokens []string, i int, glob func(int) bool) boo
 			}
 		}
 		k := knownText(arg)
+		at := -1 // where a short flag sits in a cluster of single-letter flags
+		if isShortFlag(alt) {
+			at = strings.IndexByte(k, alt[1])
+		}
 		switch {
 		case k == alt || (glob(i) && flagShaped(k) && globMatches(k, alt)):
 			// The separate-token form: the value is the next argument.
@@ -1633,6 +1637,16 @@ func flagValueHit(fv FlagValue, tokens []string, i int, glob func(int) bool) boo
 			}
 		case isShortFlag(alt) && len(k) > len(alt) && strings.HasPrefix(k, alt):
 			if accepts(k[len(alt):], false) {
+				return true
+			}
+		case at > 1 && isShortCluster(k[:at]):
+			// A short flag at the end of a cluster takes its value as it does alone:
+			// `-iF x`, `-iFx` or `-iF=x`.
+			if at+1 == len(k) {
+				if i+1 < len(tokens) && accepts(tokens[i+1], glob(i+1)) {
+					return true
+				}
+			} else if accepts(strings.TrimPrefix(k[at+1:], "="), false) {
 				return true
 			}
 		}
