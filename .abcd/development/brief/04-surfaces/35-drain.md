@@ -296,9 +296,10 @@ which reads the lane as held, so `takeUp` tells the marked roles again there too
 kept its hold, as a short limit does, so what follows is not compared. Every release a drive or a
 stop makes notes the record's blob on the default branch, after the release's own fetch, as
 `drive_released_over`; a stop over a run a drive already let go keeps the note made then.
-`reserveResumed` looks at the run lock before anything is pushed, so a lock another invocation
-holds costs origin no commits, then fetches and compares, so every automated return shares the
-answer. The note proves the record stood, so a readable branch with no file for it counts as a
+`reserveResumed` fetches and compares first, so every automated return shares the answer, and
+looks at the run lock before it pushes a reservation, so a lock another invocation holds costs
+origin no reservation commit; a moved record whose release failed earlier can still cost one, as
+that release is pushed again before the lane drops. The note proves the record stood, so a readable branch with no file for it counts as a
 change, while a fetch that fails or a branch that cannot be read is no comparison at all. On a
 change a drain's act is refused with nothing pushed, the take-up, the take-over or the start
 dropping the lane and saying so; with no comparison it waits. That drop tries a failed release
