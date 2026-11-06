@@ -39,13 +39,14 @@ const NarrowMark = "--narrow"
 const MaxNarrowPackages = 3
 
 // narrowBoolFlags and narrowValueFlags are all the flags a narrow run may carry,
-// without their dashes. Each only selects or reports, so none can make a run
-// heavier than the packages it names. Any other flag is a whole run, -race first:
+// without their dashes. Each only selects or reports, or for -trimpath lets the
+// run reuse what another checkout compiled, so none can make a run heavier than
+// the packages it names. Any other flag is a whole run, -race first:
 // a race run stays where the rule keeping race stages apart can see it, whatever
 // its size, and -p, -parallel, -tags, -cover, -exec and the rest either widen the
 // run or are not known to be narrow.
 var (
-	narrowBoolFlags  = []string{"v", "short", "failfast", "json"}
+	narrowBoolFlags  = []string{"v", "short", "failfast", "json", "trimpath"}
 	narrowValueFlags = []string{"run", "skip", "timeout", "count"}
 )
 

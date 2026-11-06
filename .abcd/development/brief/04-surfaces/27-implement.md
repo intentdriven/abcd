@@ -457,7 +457,7 @@ abcd built before the mark reads a marked waiter as a waiter like any other. The
 command is go by that exact name with no shell in between, a gated `go test`, `go -C
 <dir>` allowed: at most three packages named outright, judged cleaned as go cleans
 them, no wildcard or bare word, and no flag beyond `-v`, `-short`, `-failfast`,
-`-json`, `-run`, `-skip`, `-timeout` and `-count=1`. The reading fails closed, so its
+`-json`, `-trimpath`, `-run`, `-skip`, `-timeout` and `-count=1`. The reading fails closed, so its
 one mistake is a slower wait: `make`, a shell, a wildcard and `-race` are whole runs,
 the last so race runs stay where the rule keeping race stages apart can see them, and
 so is the same command unmarked.

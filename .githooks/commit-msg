@@ -372,11 +372,13 @@ printf '%s' "$message" >"$artefact"
 
 # Git exports its private environment (GIT_DIR, GIT_INDEX_FILE et al.) to a hook;
 # the Go build must not see it. -buildvcs=false keeps the build from asking git
-# about this checkout at all while a commit holds its index.
+# about this checkout at all while a commit holds its index, and -trimpath keeps
+# its directory out of go's compile key, so a worktree's first commit reuses what
+# scripts/abcd.sh compiled rather than adding a copy of every package to the cache.
 rc=0
 out="$(cd "$src" && unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
   GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX &&
-  "$go_bin" build -buildvcs=false -o "$work/abcd" ./cmd/abcd 2>&1)" || rc=$?
+  "$go_bin" build -trimpath -buildvcs=false -o "$work/abcd" ./cmd/abcd 2>&1)" || rc=$?
 if [ "$rc" -ne 0 ] || [ ! -x "$work/abcd" ]; then
   echo "commit-msg: BLOCKED — could not judge the message (the tree does not build)." >&2
   echo "            the outbound check is this checkout's own abcd, and \`go build ./cmd/abcd\` failed" >&2

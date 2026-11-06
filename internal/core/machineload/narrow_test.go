@@ -26,6 +26,8 @@ func TestIsNarrowCommand(t *testing.T) {
 		{"go test ./a -run TestX", true},
 		{"go test -v=true ./a", true},
 		{"go test --count=1 ./a", true},
+		{"go test -trimpath -count=1 -timeout 40m ./a", true},
+		{"go test -trimpath=false ./a", true},
 		{"go -C /copy test -count=1 ./a", true},
 		{"go -C=/copy test ./a", true},
 
@@ -67,6 +69,7 @@ func TestIsNarrowCommand(t *testing.T) {
 		{"go test -bench . ./a", false},
 		{"go test -test.count=99 ./a", false},
 		{"go test -v=maybe ./a", false},
+		{"go test -trimpath=maybe ./a", false},
 		{"go test ./a -args -x", false},
 		{"go test -- ./a", false},
 		{"go test -run", false},
