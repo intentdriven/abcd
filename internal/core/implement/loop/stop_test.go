@@ -942,6 +942,9 @@ func TestAWaitersRenewalKeepsALeaseOverUnsavedWork(t *testing.T) {
 	editsIntact(t, repo, l)
 	r := wantStopRefusal(t, checkOnce(repo.Root(), runID, Options{}))
 	if !strings.Contains(r.Reason, "could not be saved") || !strings.Contains(r.Reason, "lapse at their lease") ||
+		!strings.Contains(r.Reason, "uncommitted in its worktree and nowhere else") ||
+		!strings.Contains(r.Reason, "parked at land") ||
+		strings.Contains(r.Reason, "on its branch") ||
 		strings.Contains(r.Reason, "until the work is saved") {
 		t.Fatalf("the refusal says %q", r.Reason)
 	}

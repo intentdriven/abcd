@@ -905,7 +905,7 @@ directory in the shared folder, naming the stop and every run of this account's 
 page that cannot be written changes nothing about the stop: its answer and the listing say so. A
 pull request armed before the stop can still merge under it: the page and the listing's text name each
 with its disarm command, and nothing disarms it on its own. A drain's move does nothing for a parked run
-with the stop's mark, a merged lane's last step included, until the take-over or the lift that lets it go on. A save that fails holds the lane and does not let the claims go, and under a stop in force nothing renews a parked run's, which lapses at its lease with the work still on its branch and in its worktree. A stop file any
+with the stop's mark, a merged lane's last step included, until the take-over or the lift that lets it go on. A save that fails holds the lane and does not let the claims go, and under a stop in force nothing renews a parked run's, which lapses at its lease with the work it could not take still uncommitted in its worktree and nowhere else. A stop file any
 other account wrote, a symlink or an oversized file is no stop, and each step's answer names it.
 A run fixes the shared folder at its start and reads it before each move, with the
 platform's shared folder for the account it expects. A setting that cannot be read, that has gone or changed during the run, or a folder the run
@@ -913,8 +913,8 @@ should read whose stop cannot be looked at,
 holds the run at the stage `stop`, exit 3, with nothing let go: tell the person, who puts it back.
 A home that cannot be found holds it the same way. A take-over needs a read that saw clearly.
 A renewal that falls due under a stop settles the run first; with no agent left in its call
-and its work saved it no longer renews. Work a save could not take stays on its branch and in its
-worktree, and its claim lapses at its lease unless a gated waiter or `abcd implement status` still
+and its work saved it no longer renews. Work a save could not take stays uncommitted in its
+worktree and nowhere else, and its claim lapses at its lease unless a gated waiter or `abcd implement status` still
 renews it, which neither does for a run parked at land. A
 lift names any stop it cannot reach. A stop another account left is not honoured, and each
 step's answer and the listing name it.
