@@ -290,7 +290,8 @@ tells the marked roles again in the same write. A take-over tells them nothing a
 them instead, since a role told again with no agent reads as one that may still be in its
 call. A release that never reached origin is said as one, and notes the tip it left as
 `drive_release_failed`: the tip stands, neither the wait nor a move renews what it let go, and
-the listing says the tip holds. A session waiting in the checkout (`RenewRunsIn`) may renew it,
+the listing says the tip holds, until a later release reaches origin: a stop's, or a drop's
+retry, which records it as `reservation_released`. A session waiting in the checkout (`RenewRunsIn`) may renew it,
 which reads the lane as held, so `takeUp` tells the marked roles again there too, and such a lane
 kept its hold, as a short limit does, so what follows is not compared. Every release a drive or a
 stop makes notes the record's blob on the default branch, after the release's own fetch, as

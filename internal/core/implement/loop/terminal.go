@@ -1689,15 +1689,15 @@ func noteRecordReleased(repoRoot string, st *State, failed bool, now time.Time) 
 }
 
 // failedReleaseTip is the tip the run's latest release left when it did not reach origin,
-// "" when that release did, or the run has reserved since.
+// "" when that release did, a later one reached origin, or the run has reserved since.
 func failedReleaseTip(run State) string {
 	for i := len(run.Record) - 1; i >= 0; i-- {
 		switch run.Record[i].Stage {
 		case StageDriveReleaseFailed:
 			return run.Record[i].Note
-		case StageReleasedOver, StageDriveReleased, StageReservationReleased, StageReservationReleaseFailed:
+		case StageReleasedOver, StageDriveReleased, StageReservationReleaseFailed:
 			continue
-		case StageReservation, StageReservationRenewed:
+		case StageReservationReleased, StageReservation, StageReservationRenewed:
 			return ""
 		}
 	}
@@ -1769,6 +1769,12 @@ func dropMovedRun(repoRoot string, run State, why string, now time.Time) (string
 		why += "; " + clause
 		if failed {
 			why += ", so it lapses with its lease"
+		} else if err := mutate(repoRoot, run.RunID, func(_ *os.Root, st *State) (bool, error) {
+			st.Record = append(st.Record, Entry{At: now, Stage: StageReservationReleased, Note: clause})
+			st.UpdatedAt = now
+			return true, nil
+		}); err != nil {
+			return why, err
 		}
 	} else if snap, err := claim.View(repoRoot, now); err == nil {
 		if r, ok := snap.Lookup(run.Key); ok && r.Copy == claim.CopyThis && r.State == claim.StateLive {
@@ -2182,7 +2188,7 @@ func (t *terminal) ended(why string) TerminalResult {
 		}
 		if why == TerminalKilled {
 			if snap, err := claim.View(t.repoRoot, t.now()); err == nil {
-				if r, ok := snap.Lookup(l.Issue); ok && r.State == claim.StateLive {
+				if r, ok := snap.Lookup(l.Issue); ok && r.Copy == claim.CopyThis && r.State == claim.StateLive {
 					at := r.EffectiveExpiry
 					res.Lapses = &at
 				}

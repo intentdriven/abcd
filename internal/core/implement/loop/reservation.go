@@ -303,8 +303,7 @@ func pushFence(c Context, lane Lane) (time.Time, string, error) {
 // for a run that holds no reservation, and the notice naming each release
 // dated ahead that the hold did not count, "" when there is none. A hold that
 // stands then answers for what the lane's branch changes (holdLaneChanges), so
-// nothing lands that no reservation covers; the notice names a reservation that
-// made.
+// each path a landing carries is judged; the notice names a reservation that made.
 func fence(c Context, lane Lane, term time.Duration, act fenceAct) (time.Time, string, error) {
 	if c.State.ReservedAt == nil {
 		// A stop's mark is what a take-over answers by reserving again.
@@ -333,7 +332,11 @@ func fence(c Context, lane Lane, term time.Duration, act fenceAct) (time.Time, s
 				return time.Time{}, "", refuse(string(StageLand), "", lane.ID, "the reservations could not be read at the land fence: "+err.Error(),
 					"settle what it names, then run `abcd implement step` again")
 			}
-			return time.Time{}, termsafe.Sanitize(m.Notice()), heldMerge(lane, m, act)
+			notice := termsafe.Sanitize(m.Notice())
+			if err := heldMerge(lane, m, act); err != nil {
+				return time.Time{}, notice, err
+			}
+			return laneChangesHeld(c, lane, act, time.Time{}, notice)
 		}
 	}
 	holds, err := renewAtFence(c, lane, term, act)
@@ -344,6 +347,11 @@ func fence(c Context, lane Lane, term time.Duration, act fenceAct) (time.Time, s
 	if err != nil {
 		return holds, notice, err
 	}
+	return laneChangesHeld(c, lane, act, holds, notice)
+}
+
+// laneChangesHeld ends the fence with holdLaneChanges, its clause beside notice.
+func laneChangesHeld(c Context, lane Lane, act fenceAct, holds time.Time, notice string) (time.Time, string, error) {
 	reserved, err := holdLaneChanges(c, lane, act)
 	if err != nil {
 		return holds, notice, err
@@ -818,6 +826,22 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 	if st.handedBack() {
 		return nil
 	}
+	// Compared first, since a record gone from the checkout as well as from origin
+	// has no found_at left to read and is the same change.
+	now := o.now()
+	since := recordMovedOn(repoRoot, st, now)
+	if o.drain {
+		if since.moved != "" {
+			rf := refuse(StageDrain, CheckReservation, "", since.moved+"; nothing was reserved", "take other work; a later drain takes the issue as its record now stands")
+			rf.recordMoved = true
+			return rf
+		}
+		if since.unread != "" {
+			rf := refuse(StageReservation, "", "", since.unread+"; nothing was reserved", "run the verb again once "+claim.Remote+" answers")
+			rf.originUnread = true
+			return rf
+		}
+	}
 	var fp []string
 	if ap := st.autoPlanLane(); ap != nil {
 		// An auto-plan run has no spec yet: it reserves the draft's two
@@ -832,20 +856,6 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 	// issue flap on each retry, so the lock is looked at before anything is pushed.
 	if err := withLock(repoRoot, func(*os.Root) error { return nil }); err != nil {
 		return err
-	}
-	now := o.now()
-	since := recordMovedOn(repoRoot, st, now)
-	if o.drain {
-		if since.moved != "" {
-			rf := refuse(StageDrain, CheckReservation, "", since.moved+"; nothing was reserved", "take other work; a later drain takes the issue as its record now stands")
-			rf.recordMoved = true
-			return rf
-		}
-		if since.unread != "" {
-			rf := refuse(StageReservation, "", "", since.unread+"; nothing was reserved", "run the verb again once "+claim.Remote+" answers")
-			rf.originUnread = true
-			return rf
-		}
 	}
 	i := st.current()
 	landing := i >= 0 && st.Lanes[i].Stage == StageLand

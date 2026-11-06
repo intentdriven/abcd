@@ -28,6 +28,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -190,12 +191,15 @@ func widenPaths(laneID string, paths []string) ([]string, error) {
 // changes, at its tip, that the issue run's reservation does not cover. An
 // intent's run, a run holding no reservation, and a reservation the view
 // does not show this copy holding (the land fence's to settle) give none.
-// The paths the landing's own records commit changed are left out
-// (landingRecordPaths): a lane leaving its landing after that commit, its
-// pull request having started to conflict, carries the loop's move of the
-// issue's record, which no implementer made and no hold names.
+// The records the landing moves are left out (landingRecordPaths): a lane
+// leaving its landing after that commit, its pull request having started to
+// conflict, carries the loop's move of the issue's record, which no implementer
+// made and no hold names.
 func unheldGaps(c Context, lane Lane, now time.Time) []string {
 	st := c.State
+	if st.ReservedAt == nil {
+		return nil
+	}
 	own, paths, gap := unheldPaths(c, lane, now)
 	if gap != "" {
 		return []string{gap}
@@ -216,11 +220,11 @@ func unheldGaps(c Context, lane Lane, now time.Time) []string {
 // unheldPaths is the reading unheldGaps and holdLaneChanges share: the reservation
 // this copy holds on the issue, and each path lane's branch changes at its tip,
 // as git names it, that the reservation does not cover. gap, set when one of them
-// cannot be read, says what is missing in a receipt's words. See unheldGaps for
-// what gives none.
+// cannot be read, says what is missing in a receipt's words. An intent's run, and
+// a reservation the view does not show this copy holding, give none.
 func unheldPaths(c Context, lane Lane, now time.Time) (own claim.Reservation, unheld []string, gap string) {
 	st := c.State
-	if st.Issue() == "" || st.ReservedAt == nil {
+	if st.Issue() == "" {
 		return own, nil, ""
 	}
 	snap, err := claim.View(c.RepoRoot, now)
@@ -256,8 +260,11 @@ func unheldPaths(c Context, lane Lane, now time.Time) (own claim.Reservation, un
 // reservation came to leave out would otherwise land unjudged. A path the
 // reservation does not cover is reserved now, judged for overlap and against the
 // cap like any reservation, keeping the tip's term; another's hold on it, or a
-// refusal of the reservation, stops act, naming what it met. note is the run
-// record's clause for a reservation made, "" when every path was held.
+// refusal of the reservation, stops act, naming what it met. An origin it cannot
+// reach is a wait, as at the fence's other reads (fenceUnread). It reads the
+// reservation this copy holds whether the run recorded one or a person made it by
+// hand. note is the run record's clause for a reservation made, "" when every
+// path was held.
 func holdLaneChanges(c Context, lane Lane, act fenceAct) (note string, err error) {
 	own, paths, gap := unheldPaths(c, lane, c.Now)
 	if gap != "" {
@@ -281,17 +288,25 @@ func holdLaneChanges(c Context, lane Lane, act fenceAct) (note string, err error
 		}
 		what := fmt.Sprintf("the lane's branch changes %s beyond its reservation on %s, which could not be reserved: %s; so this lane does not %s",
 			named, c.State.Key, reason, act.not)
-		if ok && rf.Contention {
+		switch {
+		case ok && rf.originUnread:
+			return "", fenceUnread(lane, what, reason, "git push the reservation on "+c.State.Key)
+		case ok && rf.Contention:
 			return "", contend(string(StageLand), "", lane.ID, what,
 				act.stays+"; wait for the reservation it names to end, or settle it with its holder, then run `abcd implement step` again")
 		}
-		return "", refuse(string(StageLand), "", lane.ID, what, "settle what it names, then run `abcd implement step` again; "+act.stays)
+		out := refuse(string(StageLand), "", lane.ID, what, "settle what it names, then run `abcd implement step` again; "+act.stays)
+		if ok {
+			out.capped = rf.capped
+		}
+		return "", out
 	}
 	return r.note + ", widened to " + named + ", which the lane's branch changes beyond it", nil
 }
 
-// landingRecordPaths is the set of paths lane's landing records commit
-// changed against its parent, or nil when the landing has made none.
+// landingRecordPaths is the set of records lane's landing records commit moved
+// (landingMoves), or nil when the landing has made none. Anything else that
+// commit holds is judged like the rest of the lane's branch.
 func landingRecordPaths(repoRoot string, lane Lane) (map[string]bool, string) {
 	if lane.Landing == nil || !gitutil.IsFullSHA(lane.Landing.Records) {
 		return nil, ""
@@ -302,11 +317,23 @@ func landingRecordPaths(repoRoot string, lane Lane) (map[string]bool, string) {
 	}
 	paths := map[string]bool{}
 	for _, raw := range bytes.Split(out, []byte{0}) {
-		if p := string(raw); p != "" {
+		if p := string(raw); p != "" && landingMoves(lane, p) {
 			paths[p] = true
 		}
 	}
 	return paths, ""
+}
+
+// landingMoves reports whether p is the record of an issue lane resolves, in the
+// folder the landing moves it out of or into (landRecords).
+func landingMoves(lane Lane, p string) bool {
+	dir, base := path.Split(p)
+	if dir != capture.LedgerRelPath+"/open/" && dir != capture.LedgerRelPath+"/resolved/" {
+		return false
+	}
+	return strings.HasSuffix(base, ".md") && slices.ContainsFunc(lane.Resolves, func(r Resolution) bool {
+		return strings.HasPrefix(base, r.Issue+"-")
+	})
 }
 
 // widenCommand is the widen step's command line for runID's lane laneID over

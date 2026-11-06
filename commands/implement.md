@@ -296,7 +296,9 @@ implementer's receipt is refused while the lane's branch changes a path the
 reservation does not cover, naming the paths and this command. A lane past its
 last receipt meets the same check at the fence before its push and its arming:
 a path the reservation does not cover is reserved there, judged for overlap,
-and exit 3 names a hold on it, with nothing pushed or armed. A reservation made
+and exit 3 names a hold on it, with nothing pushed or armed. Only the records the
+landing moves are left out, so anything else its records commit holds is judged,
+and so is a reservation made by hand for a run that recorded none. A reservation made
 again names every path widened to, even when the reservation branch was deleted.
 
 When the stage hands the lane to a role that `roles.<role>.runner` in

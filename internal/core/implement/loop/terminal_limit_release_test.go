@@ -791,6 +791,20 @@ func TestAFailedReleaseIsTriedAgainWhenTheRecordMovedOn(t *testing.T) {
 	if text := strings.Join(said, "\n"); !strings.Contains(text, "released the reservation") {
 		t.Fatalf("and so does the screen: %s", text)
 	}
+	wantNoFailedRelease(t, root, runID, c)
+}
+
+// wantNoFailedRelease fails t unless the listing reads the run's latest release as one
+// that reached origin.
+func wantNoFailedRelease(t *testing.T, root, runID string, c *clock) {
+	t.Helper()
+	l, err := ListRuns(root, runID, Options{Now: c.now})
+	if err != nil || len(l.Runs) != 1 {
+		t.Fatalf("the run is listed: %+v %v", l, err)
+	}
+	if l.Runs[0].ReleaseFailed {
+		t.Fatalf("the listing reads the release that reached origin: %+v", l.Runs[0])
+	}
 }
 
 // TestAHandReservationMadeWhileLetGoStaysOnTheDrop: a person changed the record and reserved
@@ -885,26 +899,36 @@ func TestAFailedReleaseOnWakingIsCompared(t *testing.T) {
 // so a branch that can be read and holds no file for it is a change. The lane, which has
 // nothing to resolve yet, goes back saying the record is gone, and the run goes on.
 func TestARecordDeletedWhileLetGoDropsTheLane(t *testing.T) {
-	w := newTerminalWorld(t, "shape", "limited")
-	w.realWorktree()
-	w.leavesWork(t)
-	o := w.bounded(t, 30*24*time.Hour)
-	o.Drain.Max = 2
-	w.resetIn(t, 5*time.Hour)
-	first := true
-	w.onSleep = func(time.Duration) {
-		if first {
-			first = false
-			deleteRecordOnOrigin(t, w.bare, w.firstLaneRun(t).Key)
-		}
-	}
-	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
-	if err != nil {
-		t.Fatal(err)
-	}
-	wantDropped(t, w, res, "is gone from origin's default branch")
-	if got := w.firstLaneRun(t).Lanes[0].Resolves; len(got) != 0 {
-		t.Fatalf("the lane had nothing to resolve: %+v", got)
+	for _, tc := range []struct {
+		name string
+		pull bool
+	}{{"on origin", false}, {"on origin and pulled into the checkout", true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := newTerminalWorld(t, "shape", "limited")
+			w.realWorktree()
+			w.leavesWork(t)
+			o := w.bounded(t, 30*24*time.Hour)
+			o.Drain.Max = 2
+			w.resetIn(t, 5*time.Hour)
+			first := true
+			w.onSleep = func(time.Duration) {
+				if first {
+					first = false
+					deleteRecordOnOrigin(t, w.bare, w.firstLaneRun(t).Key)
+					if tc.pull {
+						gitIn(t, w.repo.Root(), "pull", "-q", "--ff-only", "origin", "main")
+					}
+				}
+			}
+			res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantDropped(t, w, res, "is gone from origin's default branch")
+			if got := w.firstLaneRun(t).Lanes[0].Resolves; len(got) != 0 {
+				t.Fatalf("the lane had nothing to resolve: %+v", got)
+			}
+		})
 	}
 }
 
@@ -1036,6 +1060,57 @@ func TestAListingSaysAFailedReleasesTipStands(t *testing.T) {
 	}
 	if l.Runs[0].Reserved || !l.Runs[0].ReleaseFailed {
 		t.Fatalf("the listing says the failed release's tip stands: %+v", l.Runs[0])
+	}
+}
+
+// TestAStopsReleaseSettlesAFailedRelease: the limit's release did not reach origin, and a
+// stop's later release did, so the listing reads the tombstone that stands.
+func TestAStopsReleaseSettlesAFailedRelease(t *testing.T) {
+	root, _, runID, c := laneForPeerCheck(t)
+	was := claimReserve
+	t.Cleanup(func() { claimReserve = was })
+	claimReserve = func(string, claim.Request, claim.Options) (claim.Result, error) {
+		return claim.Result{}, errors.New("no route to origin")
+	}
+	tm := newTerminal(root, TerminalOptions{Options: Options{Now: c.now}})
+	tm.letGoForLimit(runID)
+	claimReserve = was
+	run, err := ReadState(root, runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failedReleaseTip(run) == "" {
+		t.Fatalf("the limit's release failed: %+v", run.Record)
+	}
+	if clause, failed := releaseReservation(root, run.Key, "", c.now()); failed {
+		t.Fatalf("the stop's release reaches origin: %s", clause)
+	}
+	markHalted(t, root, runID, false)
+	wantNoFailedRelease(t, root, runID, c)
+}
+
+// TestAKillNamesOnlyThisCopysLapse: a peer holds the issue the lane let go, so the end of a
+// kill names no lapse, which would be the peer's expiry.
+func TestAKillNamesOnlyThisCopysLapse(t *testing.T) {
+	root, bare, runID, c := laneForPeerCheck(t)
+	tm := newTerminal(root, TerminalOptions{Options: Options{Now: c.now}})
+	tm.letGoForLimit(runID)
+	run, err := ReadState(root, runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := otherCopy(t, bare, quinnEmail)
+	if _, err := claim.Reserve(q, claim.Request{Record: run.Key, Footprint: []string{"elsewhere.md"}}, as(t, q, claim.Options{Now: c.now})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := claim.Fetch(root, claim.Options{Now: c.now}); err != nil {
+		t.Fatal(err)
+	}
+	if r := reservationOf(t, root, run.Key, c.t); r.Copy == claim.CopyThis || r.State != claim.StateLive {
+		t.Fatalf("the peer holds it: %+v", r)
+	}
+	if res := tm.ended(TerminalKilled); res.Run != runID || res.Lapses != nil {
+		t.Fatalf("the kill names the run and no lapse of its own: %+v", res)
 	}
 }
 
