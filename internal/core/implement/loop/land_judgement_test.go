@@ -1,13 +1,17 @@
 package loop
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 const stepsOfOne = "1. The parser\n   - packages: internal/core/spec\n"
@@ -786,6 +790,18 @@ func TestAReviewRequestBoundsAFileWithANulByte(t *testing.T) {
 			t.Fatalf("the change is shown, escaped:\n%q", got)
 		}
 	})
+	t.Run("a late NUL past the bound", func(t *testing.T) {
+		f := newLandFixture(t, queueRuleset("MERGE"))
+		l := f.validatedOnce(t)
+		f.atRoundHead(t, l, func() {
+			landWrite(t, l.Worktree, "run.sh", "#!/bin/sh\necho "+line+"\n"+strings.Repeat("# a comment\n", 80<<10/12)+"\x00\n")
+		})
+		got := f.reviewOf(t)
+		nul(t, got)
+		if !strings.Contains(got, "+echo "+line) || strings.Contains(got, "not shown") {
+			t.Fatalf("the file is shown:\n%.2000q", got)
+		}
+	})
 	for name, c := range map[string]struct {
 		edit func(t *testing.T, f *landFixture, l Lane)
 		want string
@@ -816,6 +832,132 @@ func TestAReviewRequestBoundsAFileWithANulByte(t *testing.T) {
 	}
 }
 
+// A file the request lists says both its modes, so a change of mode or of kind reads as one.
+func TestAReviewRequestNamesBothModesOfAFileNotShown(t *testing.T) {
+	binary := strings.Repeat("\x00\xff\x01binary\n", 80*1024)
+	for name, c := range map[string]struct {
+		edit func(t *testing.T, wt string)
+		now  string
+	}{
+		"a link in its place": {func(t *testing.T, wt string) {
+			t.Helper()
+			if err := os.Remove(filepath.Join(wt, "vendored")); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink("elsewhere", filepath.Join(wt, "vendored")); err != nil {
+				t.Fatal(err)
+			}
+		}, "120000"},
+		"its mode changed alone": {func(t *testing.T, wt string) {
+			t.Helper()
+			if err := os.Chmod(filepath.Join(wt, "vendored"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}, "100755"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newLandFixtureWith(t, map[string]string{
+				".abcd/work/rulesets/main-protection.json": queueRuleset("MERGE"),
+				"vendored": binary,
+			})
+			l := f.validated(t)
+			f.atRoundHead(t, l, func() { c.edit(t, l.Worktree) })
+			got := f.reviewOf(t)
+			i := strings.Index(got, "# binary, not shown")
+			if i < 0 {
+				t.Fatalf("the file is listed:\n%.2000s", got)
+			}
+			listed, _, _ := strings.Cut(got[i:], "\n")
+			if !strings.Contains(listed, "100644") || !strings.Contains(listed, c.now) {
+				t.Fatalf("the line names both modes: %s", listed)
+			}
+		})
+	}
+}
+
+// Every changed file reaches the request or the request is not composed: a path the list of
+// shown files lacks, however git's pathspecs came to leave it out, sends the review to the
+// host reader.
+func TestAReviewRequestShowsEveryFileBesideOneItLists(t *testing.T) {
+	const line = "A line the reader must see."
+	binary := strings.Repeat("\x00\xff\x01binary\n", 80*1024)
+	wants := func(t *testing.T, f *landFixture) {
+		t.Helper()
+		got, err := f.requestOf(t)
+		if err != nil {
+			if !strings.Contains(err.Error(), "the lane's diff") {
+				t.Fatalf("the request cannot be composed, for its diff: %v", err)
+			}
+			return
+		}
+		if !strings.Contains(got, line) {
+			t.Fatalf("the line is shown, or the review falls back:\n%.4000s", got)
+		}
+	}
+	t.Run("a directory of the same name", func(t *testing.T) {
+		f := newLandFixtureWith(t, map[string]string{
+			".abcd/work/rulesets/main-protection.json": queueRuleset("MERGE"),
+			"assets/big.bin": binary,
+		})
+		l := f.validated(t)
+		f.atRoundHead(t, l, func() {
+			if err := os.Remove(filepath.Join(l.Worktree, "assets/big.bin")); err != nil {
+				t.Fatal(err)
+			}
+			landWrite(t, l.Worktree, "assets/big.bin/run.sh", line+"\n")
+		})
+		wants(t, f)
+	})
+	t.Run("a name that composes to another's", func(t *testing.T) {
+		f := newLandFixture(t, queueRuleset("MERGE"))
+		l := f.validatedOnce(t)
+		object := func(text string) string {
+			t.Helper()
+			p := filepath.Join(t.TempDir(), "blob")
+			if err := os.WriteFile(p, []byte(text), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			return f.repo.Git("-C", l.Worktree, "hash-object", "-w", "--", p)
+		}
+		add := func(name, text string) {
+			t.Helper()
+			f.repo.Git("-C", l.Worktree, "-c", "core.precomposeunicode=false", "update-index", "--add", "--cacheinfo", "100644,"+object(text)+","+name)
+		}
+		add("e\u0301.bin", binary[:70<<10])
+		add("\u00e9.bin", line+"\n")
+		tree := f.repo.Git("-C", l.Worktree, "write-tree")
+		head := f.repo.Git("-C", l.Worktree, "commit-tree", tree, "-p", l.HeadSHA, "-m", "two names")
+		if err := mutate(f.repo.Root(), f.runID, func(_ *os.Root, st *State) (bool, error) {
+			cur := &st.Lanes[st.current()]
+			cur.HeadSHA, cur.Validation[len(cur.Validation)-1].HeadSHA = head, head
+			return true, nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		f.repo.Git("config", "core.precomposeunicode", "true")
+		wants(t, f)
+	})
+}
+
+// A run of files with a NUL byte stops at the request's cap, not after the last of them.
+func TestAReviewRequestStopsAtItsCap(t *testing.T) {
+	const files = 12
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	l := f.validatedOnce(t)
+	f.atRoundHead(t, l, func() {
+		for i := range files {
+			landWrite(t, l.Worktree, fmt.Sprintf("assets/%02d.bin", i), strings.Repeat("\x00\xff\x01\x02", 60<<10/4))
+		}
+	})
+	calls := gittest.SlowPipeGit(t, "diff", 0)
+	if _, err := f.requestOf(t); err == nil || !strings.Contains(err.Error(), "cap") {
+		t.Fatalf("the request cannot be composed: %v", err)
+	}
+	if n := calls(); n >= files {
+		t.Fatalf("git diff ran %d times for a request full after a few", n)
+	}
+}
+
 // What the request holds is what the review reads, so it says what a file it lists as not
 // shown means for a verdict.
 func TestAReviewRequestSaysAFileNotShownIsUnread(t *testing.T) {
@@ -842,6 +984,7 @@ func TestAValidatorBriefNamesGitsOwnTextDiff(t *testing.T) {
 	was := l.HeadSHA
 	head := f.atRoundHead(t, l, func() {
 		landWrite(t, l.Worktree, ".gitattributes", "*.md -diff\n")
+		landWrite(t, l.Worktree, "cmd/nul.bin", "\x00\n")
 		landWrite(t, l.Worktree, plannedIntentRel, landRead(t, l.Worktree, plannedIntentRel)+line+"\n")
 	})
 	f.standIn(t, l.Worktree, f.repo.Git("-C", l.Worktree, "rev-parse", head+":"+plannedIntentRel), f.repo.Git("-C", l.Worktree, "rev-parse", was+":"+plannedIntentRel))
@@ -869,8 +1012,18 @@ func TestAValidatorBriefNamesGitsOwnTextDiff(t *testing.T) {
 			t.Errorf("the brief says %q of a file left out:\n%s", want, brief)
 		}
 	}
-	if strings.Contains(string(brief), "so leave one out") {
-		t.Errorf("the brief does not send a reader past a file:\n%s", brief)
+	if strings.Contains(string(brief), "ls-tree") {
+		t.Errorf("the brief asks of a file what its kind is, not its size:\n%s", brief)
+	}
+	if m := regexp.MustCompile("`(git -C \\S+ --no-replace-objects cat-file blob \\S+:<path> [^`]*)`").FindStringSubmatch(string(brief)); m == nil {
+		t.Errorf("the brief names the test of a file's kind:\n%s", brief)
+	} else {
+		for path, want := range map[string]string{"cmd/nul.bin": "1", plannedIntentRel: "0"} {
+			out, err := exec.Command("sh", "-c", strings.ReplaceAll(m[1], "<path>", path)).CombinedOutput()
+			if err != nil || strings.TrimSpace(string(out)) != want {
+				t.Errorf("the test of %s counts %s NUL bytes: %q %v", path, want, out, err)
+			}
+		}
 	}
 	if got := recordsRoundScope("abc", "def"); !strings.Contains(got, "git "+flags+"abc..def") {
 		t.Errorf("the records round names the command:\n%s", got)

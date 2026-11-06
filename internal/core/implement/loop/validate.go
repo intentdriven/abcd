@@ -356,13 +356,20 @@ const maxReaderBlobBytes = 4 << 20
 // maxReaderNulBytes bounds a file with a NUL byte that a reader is shown, escaped.
 const maxReaderNulBytes = 64 << 10
 
+// gitBinaryProbeBytes is how much of a file git's own test looks through for a NUL byte.
+const gitBinaryProbeBytes = 8000
+
+// errReviewDiffPastCap is the request's diff past what a request carries.
+var errReviewDiffPastCap = fmt.Errorf("the lane's diff exceeds the %d-byte cap on a review request", maxReviewDiffBytes)
+
 // laneDiffForReader is the diff a reviewer's request carries: git's own text of each file
 // as stored, whatever the repository configures (no external diff program, no textconv
 // driver, no colour, no attribute calling text binary, no replace ref, no file git's diff
 // is asked to pass over). A file with a NUL byte is shown with what cannot be printed
-// escaped, so text beside the NUL stays readable, and past maxReaderNulBytes it is one
-// line giving its path, mode, size and blob, the request saying such a file is unread; what
-// takes the place of one past the bound is shown after its line.
+// escaped, so text beside the NUL stays readable. Past maxReaderNulBytes, one whose NUL git's
+// own test would find is one line giving its path, modes, size and blob, the request saying
+// such a file is unread, and what takes its place is shown after its line; any other stays
+// in git's text. Every other changed file is in that text, or there is no request.
 func laneDiffForReader(worktree, base, head string) ([]byte, error) {
 	ctx := context.Background()
 	raw, err := gitutil.RunCappedBytesAsStoredContext(ctx, worktree, "", maxBaseListing, "diff-tree", "-r", "--raw", "--no-renames", "--no-abbrev", "--ignore-submodules=none", "-z", base, head, "--")
@@ -381,18 +388,23 @@ func laneDiffForReader(worktree, base, head string) ([]byte, error) {
 	gitDiff := []string{"diff", "--text", "--ignore-submodules=none", "--no-ext-diff", "--no-textconv", "--no-color", base + ".." + head, "--"}
 	args := slices.Clone(gitDiff)
 	excluded := false
+	var inText []string
 	for _, e := range entries {
+		if notes.Len() > maxReviewDiffBytes {
+			return nil, errReviewDiffPastCap
+		}
 		was, now := blobs[e.oldObject], blobs[e.newObject]
-		if !was.nul && !now.nul {
+		if !was.apart() && !now.apart() {
+			inText = append(inText, e.path)
 			continue
 		}
 		if !excluded {
 			args, excluded = append(args, "."), true
 		}
 		args = append(args, ":(top,literal,exclude)"+e.path)
-		mode, object, side := e.newMode, e.newObject, now
-		if !now.nul || (was.pastBound() && !now.pastBound()) {
-			mode, object, side = e.oldMode, e.oldObject, was
+		object, side := e.newObject, now
+		if !now.apart() || (was.pastBound() && !now.pastBound()) {
+			object, side = e.oldObject, was
 		}
 		name := strconv.Quote(termsafe.Sanitize(e.path))
 		if !side.pastBound() {
@@ -400,15 +412,27 @@ func laneDiffForReader(worktree, base, head string) ([]byte, error) {
 			if err != nil {
 				return nil, err
 			}
-			fmt.Fprintf(&notes, "# a NUL byte, so what cannot be printed is escaped: %s: mode %s, %d bytes, blob %s\n", name, mode, side.size, object)
+			fmt.Fprintf(&notes, "# a NUL byte, so what cannot be printed is escaped: %s: mode %s to %s, %d bytes, blob %s\n", name, e.oldMode, e.newMode, side.size, object)
 			notes.Write(escapedBytes(shown))
 			continue
 		}
-		fmt.Fprintf(&notes, "# binary, not shown: %s: mode %s, %d bytes, blob %s (a NUL byte, past the %d bytes shown)\n", name, mode, side.size, object, maxReaderNulBytes)
+		fmt.Fprintf(&notes, "# binary, not shown: %s: mode %s to %s, %d bytes, blob %s (a NUL byte, past the %d bytes shown)\n", name, e.oldMode, e.newMode, side.size, object, maxReaderNulBytes)
 		if !now.pastBound() {
 			if err := newSideForReader(&notes, worktree, e, now); err != nil {
 				return nil, err
 			}
+		}
+	}
+	if excluded {
+		listed, err := gitutil.RunCappedBytesAsStoredContext(ctx, worktree, "", maxBaseListing, slices.Insert(slices.Clone(args), 1, "--no-renames", "--name-only", "-z")...)
+		if err != nil {
+			return nil, err
+		}
+		got := slices.DeleteFunc(strings.Split(string(listed), "\x00"), func(p string) bool { return p == "" })
+		slices.Sort(got)
+		slices.Sort(inText)
+		if !slices.Equal(got, inText) {
+			return nil, errors.New("git's text of the lane's diff does not hold each file the diff changes")
 		}
 	}
 	text, err := gitutil.RunCappedBytesAsStoredContext(ctx, worktree, "", maxReviewDiffBytes, args...)
@@ -417,7 +441,7 @@ func laneDiffForReader(worktree, base, head string) ([]byte, error) {
 	}
 	text = bytes.ReplaceAll(text, []byte{0}, []byte(`\x00`))
 	if len(text)+notes.Len() > maxReviewDiffBytes {
-		return nil, fmt.Errorf("the lane's diff exceeds the %d-byte cap on a review request", maxReviewDiffBytes)
+		return nil, errReviewDiffPastCap
 	}
 	return append(text, notes.Bytes()...), nil
 }
@@ -432,7 +456,7 @@ func newSideForReader(notes *bytes.Buffer, worktree string, e rawEntry, now read
 	case now.size == 0:
 		return nil
 	case now.size > maxReviewDiffBytes:
-		return fmt.Errorf("the lane's diff exceeds the %d-byte cap on a review request", maxReviewDiffBytes)
+		return errReviewDiffPastCap
 	}
 	got, err := gitutil.CatFileBatch(worktree, []string{e.newObject}, int(now.size)+len(e.newObject)+64)
 	if err != nil {
@@ -472,15 +496,21 @@ func escapedBytes(data []byte) []byte {
 	return out.Bytes()
 }
 
-// readerBlob is what a reader's diff knows of one blob: whether it has a NUL byte, and its
-// size. An absent side, a gitlink and a blob past maxReaderBlobBytes read as having none.
+// readerBlob is what a reader's diff knows of one blob: whether it has a NUL byte, whether
+// git's own test finds one, and its size. An absent side, a gitlink and a blob past
+// maxReaderBlobBytes read as having none.
 type readerBlob struct {
-	nul  bool
-	size int64
+	nul, nulToGit bool
+	size          int64
 }
 
-// pastBound says the blob has a NUL byte and is too large to show.
-func (b readerBlob) pastBound() bool { return b.nul && b.size > maxReaderNulBytes }
+// pastBound says the blob is one line in a reader's diff: git's own test calls it binary and
+// it is too large to show.
+func (b readerBlob) pastBound() bool { return b.nulToGit && b.size > maxReaderNulBytes }
+
+// apart says the blob's file is not in git's text of a reader's diff: it is too large to
+// show, or it has a NUL byte and is shown escaped.
+func (b readerBlob) apart() bool { return b.pastBound() || (b.nul && b.size <= maxReaderNulBytes) }
 
 // readerBlobs reads, as stored, each blob the entries name and says which have a NUL byte.
 func readerBlobs(worktree string, entries []rawEntry) (map[string]readerBlob, error) {
@@ -523,7 +553,8 @@ func readerBlobs(worktree string, entries []rawEntry) (map[string]readerBlob, er
 			return err
 		}
 		for _, o := range got {
-			out[o.Name] = readerBlob{size: sizes[o.Name], nul: strings.IndexByte(o.Content, 0) >= 0}
+			first := strings.IndexByte(o.Content, 0)
+			out[o.Name] = readerBlob{size: sizes[o.Name], nul: first >= 0, nulToGit: first >= 0 && first < gitBinaryProbeBytes}
 		}
 		batch, budget = nil, 0
 		return nil
@@ -568,7 +599,7 @@ func writeValidatorBrief(c Context, lane Lane, r ValidationRound, v *ValidatorRu
 		p("- the lane: %s, spec step %d, %q\n", lane.ID, lane.SpecStep, lane.StepTitle)
 	}
 	p("- the worktree: `%s`, branch `%s`\n", lane.Worktree, lane.Branch)
-	p("- the lane's diff: `%s..%s` (`git -C %s %s %s..%s`); `--text` prints a large binary's bytes too, so once `git ls-tree -l` shows a file is one you may leave it out with `':(exclude)<path>'`; a text file is read, a NUL in it or not, and a file left out is unread: a verdict passes over one only by naming it and saying its kind fits its path and the lane, and otherwise it is a finding\n", lane.BaseSHA, r.HeadSHA, lane.Worktree, readerDiff, lane.BaseSHA, r.HeadSHA)
+	p("- the lane's diff: `%s..%s` (`git -C %s %s %s..%s`); `--text` prints a binary's bytes too, so you may leave out with `':(exclude)<path>'` a file in which `git -C %s --no-replace-objects cat-file blob %s:<path> | head -c %d | tr -dc '\\000' | wc -c` counts a NUL; read any other, and a file left out is unread: a verdict passes over one only by naming it and saying its kind fits its path and the lane, and otherwise it is a finding\n", lane.BaseSHA, r.HeadSHA, lane.Worktree, readerDiff, lane.BaseSHA, r.HeadSHA, lane.Worktree, r.HeadSHA, gitBinaryProbeBytes)
 	p("- the implementer's report: `%s`\n", reportPathOf(c, lane, lane.Receipt))
 	for _, prev := range lane.Validation {
 		if prev.Round < r.Round && prev.Fix != "" {
