@@ -27,6 +27,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/core/runstop"
+	"github.com/intentdriven/abcd/internal/core/sessionname"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -469,7 +470,7 @@ func (t *terminal) haltOnSignal() {
 }
 
 // sleep waits d, saying why, in stretches no longer than half a lease, renewing
-// what the run's lanes hold between them, so a long wait keeps their claims. A
+// what the run's lanes still hold between them, so a long wait keeps those claims. A
 // stop, a kill or the person's bound ends it. The wait is measured twice, by the
 // time slept and by the wall clock, and whichever ends it first stands: a machine
 // that slept through part of it wakes on time, and a clock set back does not
@@ -514,7 +515,8 @@ func (t *terminal) sayWait(d time.Duration, why string) {
 }
 
 // renewHeld renews each due reservation of a run in progress, but one a drive
-// let go, and of a lane parked at its pull request, and says what failed.
+// let go, as it ended or for a limit, and of a lane parked at its pull request, and says
+// what failed.
 func (t *terminal) renewHeld() {
 	now := t.now()
 	for _, r := range renewRunsAt(t.repoRoot, "", func(st State) bool { return !letGoByDrive(st) }, now) {
@@ -627,7 +629,7 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 		// A judge that met a limit is an agent like any other: none starts,
 		// this one included, before the limit lets it.
 		if t.judge.Kind == JudgeLimited && res.Judging != nil {
-			if ended := t.limited(ctx, RoleDrainJudge, t.judge.ResetsAt); ended != "" {
+			if ended := t.limited(ctx, "", RoleDrainJudge, t.judge.ResetsAt); ended != "" {
 				return t.ended(ended), nil
 			}
 			continue
@@ -898,8 +900,13 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 				return TerminalOutage, nil
 			}
 		case res.RateLimit != nil:
-			if ended := t.limited(ctx, res.RateLimit.Role, res.RateLimit.resetsAt); ended != "" {
+			if ended := t.limited(ctx, runID, res.RateLimit.Role, res.RateLimit.resetsAt); ended != "" {
 				return ended, nil
+			}
+			// A lane let go for the limit goes back through the next move, which takes
+			// it up or drops it as any lane a drive let go.
+			if after, err := ReadState(t.repoRoot, runID); err == nil && letGoByDrive(after) {
+				return "", nil
 			}
 		case res.NextEligibleAt != nil:
 			t.sleep(ctx, max(res.NextEligibleAt.Sub(t.now()), TerminalWaitFloor), res.Next)
@@ -1214,6 +1221,12 @@ func (t *terminal) poisoned(ctx context.Context, runID string) bool {
 // saying when it is. With none named the wait runs on the outage's schedule, capped
 // under a bound.
 //
+// runID is the lane the limit interrupted, "" for a judge's or a live check's. A wait
+// that lasts lets its issue go (letGoForLimit): a reset named terminalReleaseAfter or
+// more away at once, and any limit once it has lasted that long. With none named that
+// takes a probe to end it: the lane's own launch, which is all that asks with no probe,
+// needs the reservation for each asking, and with no bound that wait has its limit.
+//
 // Under a bound a probe asks too, so the lane is not disturbed by asking: at each
 // turn of that schedule, and at a low rate during a named wait, since a reset read
 // from a stream can be wrong and a limit that lets a probe through is read as over. A
@@ -1221,7 +1234,7 @@ func (t *terminal) poisoned(ctx context.Context, runID string) bool {
 // none leaves the wait as it was. Probes with no answer say nothing of the limit: a
 // named wait goes on, and with none named a few in a row leave it to the lane's own
 // launch, which also serves a harness whose probe can never answer.
-func (t *terminal) limited(ctx context.Context, role string, at time.Time) string {
+func (t *terminal) limited(ctx context.Context, runID, role string, at time.Time) string {
 	misses, firstLook := 0, true
 	model := t.limitModel
 	probing := t.o.Probe != nil && t.bounded()
@@ -1238,6 +1251,9 @@ func (t *terminal) limited(ctx context.Context, role string, at time.Time) strin
 				return TerminalLimited
 			}
 			left, look := at.Sub(now), terminalNamedProbeEvery
+			if left >= terminalReleaseAfter || now.Sub(t.limit.since) >= terminalReleaseAfter {
+				t.letGoForLimit(runID)
+			}
 			if firstLook && left > terminalFarReset {
 				look = terminalFarResetFirstLook
 			}
@@ -1257,6 +1273,9 @@ func (t *terminal) limited(ctx context.Context, role string, at time.Time) strin
 			}
 			if t.bounded() {
 				d = min(d, terminalProbeCap)
+			}
+			if probing && now.Sub(t.limit.since) >= terminalReleaseAfter {
+				t.letGoForLimit(runID)
 			}
 			t.evidence.add(evidenceEntry{Event: "decided", Decided: "probe, since nothing says when it resets", NextLook: now.Add(d).UTC().Format(time.RFC3339)}, now)
 			t.sleep(ctx, d, "the account has met its rate limit, and nothing says when it resets; it is asked again after this wait")
@@ -1322,7 +1341,7 @@ func WaitOutProof(ctx context.Context, repoRoot string, o TerminalOptions, first
 				entry.ResetRead = limit.ResetsAt.UTC().Format(time.RFC3339)
 			}
 			t.evidence.begin("limit", entry, t.now())
-			if ended := t.limited(ctx, RoleImplementer, limit.ResetsAt); ended != "" {
+			if ended := t.limited(ctx, "", RoleImplementer, limit.ResetsAt); ended != "" {
 				return ended, nil
 			}
 		case errors.As(err, &none):
@@ -1569,12 +1588,12 @@ func (t *terminal) laneRefused(ctx context.Context, runID, laneID, reason, final
 	return false, "", nil
 }
 
-// takeUp reserves again a lane a drive let go as it ended. It reports true when
-// the lane cannot go on here yet, with why the run ends, if it does. Someone
-// else holding its issue now is recorded as a refusal that cannot change, so the
-// next move hands the lane back as stuck and moves on. Anything else may pass, a
-// failed push or the person's own cap among them, so the lane waits on the
-// outage's deadline with nothing logged against it.
+// takeUp reserves again a lane a drive let go, as it ended or for a limit. It reports
+// true when the lane cannot go on here yet, with why the run ends, if it does. Someone
+// else holding its issue now, or the issue finished on the default branch, drops the
+// lane, and the next move goes on. Anything else may pass, a failed push or the
+// person's own cap among them, so the lane waits on the outage's deadline with
+// nothing logged against it.
 func (t *terminal) takeUp(ctx context.Context, runID string) (bool, string) {
 	run, err := ReadState(t.repoRoot, runID)
 	if err != nil {
@@ -1607,7 +1626,21 @@ func (t *terminal) takeUp(ctx context.Context, runID string) (bool, string) {
 	if !letGoByDrive(run) {
 		return false, ""
 	}
-	return t.tookUp(ctx, run, reserveResumed(t.repoRoot, &StartResult{RunID: runID}, t.o.Options))
+	err = reserveResumed(t.repoRoot, &StartResult{RunID: runID}, t.o.Options)
+	if err == nil {
+		// What the limit's release marked is told again now the lane is its own again.
+		now := t.now()
+		if merr := mutate(t.repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+			told := retellKept(st, limitKept, now)
+			if len(told) > 0 {
+				st.UpdatedAt = now
+			}
+			return len(told) > 0, nil
+		}); merr != nil {
+			t.say("%s: what waited on the limit could not be told again: %s", runID, merr.Error())
+		}
+	}
+	return t.tookUp(ctx, run, err)
 }
 
 // passOverHalted leaves a run a person's stop halted to its explicit take-over, names it and
@@ -1685,6 +1718,10 @@ func (t *terminal) tookUp(ctx context.Context, run State, err error) (bool, stri
 	if !ok {
 		r = refuse(StageReservation, "", "", err.Error(), "see the reason")
 	}
+	if r.Contention && r.Stage == StageReservation {
+		t.dropLane(run, r)
+		return true, ""
+	}
 	if r.final == "" && r.Contention {
 		r.final = "another drive took the issue up after this lane stopped"
 	}
@@ -1726,6 +1763,142 @@ func letGoByDrive(run State) bool {
 		}
 	}
 	return false
+}
+
+// limitKept is the reason a release for a limit marks a role out on the lane with, so
+// a stop reads no agent there and taking the lane up tells it again (retellKept).
+const limitKept = "let go for a long limit"
+
+// letGoForLimit lets the issue of the lane in hand go for a limit that lasts: its work
+// saved as a stop saves it, then the reservation released, so no peer is kept off a
+// wait no one is working through. Only a lane a limit interrupted is let go. One at its
+// pull request keeps what it holds, and so does one with an agent in a call or work no
+// save could take, which are said and tried again at the wait's next turn; a stop's mark
+// leaves it to the stop. The run stays the driver's, and no person's: it is marked as a
+// drive's letting go, which the next take-up answers (takeUp). A release that does not
+// reach origin lapses with its lease, since nothing renews it now.
+func (t *terminal) letGoForLimit(runID string) {
+	if runID == "" || t.stopped() || t.stopHolds() || driveStopped(runID) {
+		return
+	}
+	now := t.now()
+	key, held, clause := "", "", ""
+	err := mutate(t.repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+		if st.ReservedAt == nil || letGoByDrive(*st) {
+			return false, nil
+		}
+		if outcome, _, _ := laneOutcome(*st); outcome != DrainLaneInProgress {
+			return false, nil
+		}
+		c, err := readControl(root, runID)
+		if err != nil || c.Stop != nil {
+			return false, err
+		}
+		key = st.Key
+		if tripped := configTripwireIn(t.repoRoot, root, runID); tripped != nil {
+			held = "nothing was saved aside: " + tripped.Error()
+			return false, nil
+		}
+		if why := limitKeepsHold(*st, c, now); why != "" {
+			held = why
+			return false, nil
+		}
+		for i := range st.Lanes {
+			lane := st.Lanes[i]
+			if stopFinished(lane) {
+				continue
+			}
+			out := StopLeft{Lane: lane.ID, Stage: lane.Stage}
+			if !saveLaneForStop(t.repoRoot, root, st, i, limitKept, &out, now) {
+				held = out.Note
+			}
+			if out.Aside != "" {
+				st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: StageCheckpoint,
+					Note: fmt.Sprintf("%d uncommitted file(s) saved aside at %s", out.Files, out.Aside)})
+			}
+		}
+		if held != "" {
+			// What was marked goes on as it was, since the lane does.
+			retellKept(st, limitKept, now)
+			st.UpdatedAt = now
+			return true, nil
+		}
+		clause, _ = releaseReservation(t.repoRoot, st.Key, "", now)
+		st.Record = append(st.Record, Entry{At: now, Stage: StageDriveReleased, Note: clause})
+		st.UpdatedAt = now
+		return true, nil
+	})
+	switch {
+	case err != nil:
+		t.say("%s: the reservation stays held, since the run could not be saved: %s", runID, err.Error())
+	case held != "":
+		t.say("%s: the reservation stays held for now: %s", key, held)
+	case clause != "":
+		t.say("%s: the limit lasts, so the issue is let go until it lifts: %s", key, clause)
+	}
+}
+
+// limitKeepsHold says why a limit does not let st's lanes go, "" when it does: a lane
+// with a pull request open waits on that and not the limit, and an agent still in its
+// call, which a limit met by another role says nothing of, works on what it holds. A role
+// out with no running claim has no agent, since a drive starts every agent it awaits.
+func limitKeepsHold(st State, c control, now time.Time) string {
+	var seen *sessionname.Table
+	if tab, err := readProcs(); err == nil {
+		seen = &tab
+	}
+	for _, lane := range st.Lanes {
+		if stopFinished(lane) {
+			continue
+		}
+		if lane.PR > 0 {
+			return fmt.Sprintf("%s has pull request #%d open", lane.ID, lane.PR)
+		}
+		for _, a := range lane.Awaits {
+			if a.Running == nil {
+				continue
+			}
+			if s := agentState(a, c, seen, now); s == AgentAlive || s == AgentUnknown {
+				return fmt.Sprintf("%s's %s is still in its call", lane.ID, a.Role)
+			}
+		}
+	}
+	return ""
+}
+
+// dropLane ends a lane whose issue stopped being its to work on while it held nothing:
+// finished on the default branch, or held by a peer. It goes back holding nothing, so
+// no release is pushed and no hand-back is published over an issue that is no person's
+// question, and the next move routes it and takes the next issue. What the lane left
+// stays where the hand-back says.
+func (t *terminal) dropLane(run State, r *Refusal) {
+	whose := "the peer who holds it"
+	if claim.Finished(t.repoRoot, run.Key) {
+		whose = "no one: the issue has finished on the default branch"
+	}
+	reason := termsafe.Sanitize(fsutil.RedactHome(r.Reason))
+	t.say("%s, run %s, is dropped: %s", run.Key, run.RunID, reason)
+	now := t.now()
+	err := mutate(t.repoRoot, run.RunID, func(_ *os.Root, st *State) (bool, error) {
+		i := st.current()
+		if i < 0 || st.Lanes[i].HandBack != nil {
+			return false, nil
+		}
+		lane := st.Lanes[i]
+		home := fmt.Sprintf("%s; the run %s keeps its worktree and branch %s", whose, st.RunID, lane.Branch)
+		if rel, err := laneRel(st.RunID, lane.ID, stageRestart); err == nil {
+			home += ", and what the lane left under " + rel + "/" + AsideDirName
+		}
+		home += ", until `abcd implement step --run " + st.RunID + " --discard " + lane.ID + "` discards them"
+		handBackLane(st, &lane, HandBack{Kind: HandBackStuck, Reason: reason, Home: home}, "", now)
+		st.Lanes[i] = lane
+		st.ReservedAt = nil
+		st.UpdatedAt = now
+		return true, nil
+	})
+	if err != nil {
+		t.say("%s, run %s, could not be dropped, and stays as it is: %s", run.Key, run.RunID, err.Error())
+	}
 }
 
 // letGo releases what the run holds and no lane is working on: each lane in

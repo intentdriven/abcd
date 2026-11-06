@@ -851,7 +851,7 @@ func reserveResumed(repoRoot string, res *StartResult, o Options) error {
 // gone, released by a tombstone, or moved to this person's other copy)
 // falls back to the reservation any other resume makes: a reserve with the
 // record's footprint, --take-over passed through. For an issue whose tip
-// this copy holds, live or lapsed, that footprint is the found_at with the
+// this copy holds, live, lapsed or released, that footprint is the found_at with the
 // tip's paths beside it, so a path the lane widened to (widen.go) is never
 // dropped by a widening, a revival or a fallback.
 func reserveAgain(repoRoot, key string, fp []string, takeOver, landing bool, stage string, now time.Time) (reserved, error) {
@@ -861,11 +861,13 @@ func reserveAgain(repoRoot, key string, fp []string, takeOver, landing bool, sta
 		return reserveKey(repoRoot, key, plain, now)
 	}
 	r, ok := snap.Lookup(key)
-	// An issue's tip this copy holds, live or lapsed, names the paths its
-	// lane widened to beyond the found_at before an edit (widen.go), and the
-	// lane's branch changes them: a reservation made again keeps them beside
+	// An issue's tip this copy holds, live or lapsed, or released with a tombstone
+	// that keeps its footprint, as a drive lets a lane go for a limit, names the
+	// paths its lane widened to beyond the found_at before an edit (widen.go), and
+	// the lane's branch changes them: a reservation made again keeps them beside
 	// the found_at rather than dropping them.
-	if validIssueKey(key) && ok && r.Copy == claim.CopyThis && (r.State == claim.StateLive || r.State == claim.StateExpired) {
+	if validIssueKey(key) && ok && r.Copy == claim.CopyThis &&
+		(r.State == claim.StateLive || r.State == claim.StateExpired || r.ReleasedBy == claim.ReleasedByTombstone) {
 		fp = heldWith(fp, r.Footprint)
 		plain.Footprint = fp
 	}

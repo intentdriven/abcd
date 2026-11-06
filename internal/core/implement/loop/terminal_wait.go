@@ -26,6 +26,15 @@ const terminalOutageLimit = 8 * time.Hour
 // holds: half the bundled lease, the point a renewal falls due.
 const terminalRenewEvery = time.Hour
 
+// terminalReleaseAfter is how long a limit must have left, or have lasted, before a
+// lane in hand lets its issue go for the wait. Releasing and reserving again cost a
+// commit on origin each, two in all. A hold costs one for each renewal, and the first
+// falls due only at terminalRenewEvery, half the lease, which is also where the
+// shared schedule's quick looks of one, five and ten minutes turn hourly: short of it
+// holding is the cheaper and the limit may yet pass, and past it the hold hides the
+// issue from every peer for a wait no one is working through.
+const terminalReleaseAfter = terminalRenewEvery
+
 // What a wait under the person's bound (--until) keeps to.
 const (
 	// terminalProbeCap is the longest between two probes of a limit that named

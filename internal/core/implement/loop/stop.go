@@ -245,26 +245,36 @@ func goOnAfterLift(repoRoot, runID string, o Options) error {
 		}
 		now := o.now()
 		note := "the stop lifted before the run halted, so it goes on"
-		for i, lane := range st.Lanes {
-			retold := false
-			lane.Awaits = slices.Clone(lane.Awaits)
-			for k, a := range lane.Awaits {
-				if strings.HasPrefix(a.Kept, stopKeptPrefix) {
-					// What a restart clears: the fresh agent's return is its own.
-					a.Since, a.Kept, a.Answered, a.Paused, a.Running = now, "", nil, nil, nil
-					lane.Awaits[k] = a
-					retold = true
-				}
-			}
-			if retold {
-				st.Lanes[i] = lane
-				note += "; " + lane.ID + "'s agent is told again"
-			}
+		for _, id := range retellKept(st, stopKeptPrefix, now) {
+			note += "; " + id + "'s agent is told again"
 		}
 		st.Record = append(st.Record, Entry{At: now, Stage: StageStop, Note: note})
 		st.UpdatedAt = now
 		return true, nil
 	})
+}
+
+// retellKept tells again each await marked with a reason opening with prefix, and
+// names each lane it did. It clears what a restart clears: the fresh agent's return is
+// its own.
+func retellKept(st *State, prefix string, now time.Time) []string {
+	var told []string
+	for i, lane := range st.Lanes {
+		retold := false
+		lane.Awaits = slices.Clone(lane.Awaits)
+		for k, a := range lane.Awaits {
+			if strings.HasPrefix(a.Kept, prefix) {
+				a.Since, a.Kept, a.Answered, a.Paused, a.Running = now, "", nil, nil, nil
+				lane.Awaits[k] = a
+				retold = true
+			}
+		}
+		if retold {
+			st.Lanes[i] = lane
+			told = append(told, lane.ID)
+		}
+	}
+	return told
 }
 
 // stopRefusal is the answer a move gets while a stop holds.
