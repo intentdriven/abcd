@@ -369,20 +369,20 @@ func identifyingKey(e Entry) string {
 	if has(e.Title, 3) {
 		return "title"
 	}
-	for _, w := range strings.Fields(e.Title) {
+	for _, w := range keyWords(e.Title) {
 		if has(w, 5) {
 			return "title"
 		}
 	}
 	for _, n := range e.Author {
-		if has(nameText(n), 3) {
+		if has(nameText(n), 3) || has(n.Family+" "+n.Given, 3) {
 			return "author"
 		}
 		for _, part := range []string{n.Family, n.Given, n.Literal} {
 			if has(part, 3) {
 				return "author"
 			}
-			for _, word := range nameWords(part) {
+			for _, word := range keyWords(part) {
 				if !allDigits(word) && has(word, 3) {
 					return "author"
 				}
@@ -392,11 +392,11 @@ func identifyingKey(e Entry) string {
 	return ""
 }
 
-// nameWords splits one field of an author's name into the words a key could carry
-// on their own. Whitespace and punctuation separate, so each half of a hyphenated
-// name and the part after an apostrophe count. A combining mark does not separate,
-// so a decomposed name stays one word, as fold reads it.
-func nameWords(field string) []string {
+// keyWords splits a title or one field of an author's name into the words a key
+// could carry on their own. Whitespace and punctuation separate, so each half of a
+// hyphenated word and the part after an apostrophe count. A combining mark does not
+// separate, so a decomposed word stays one word, as fold reads it.
+func keyWords(field string) []string {
 	return strings.FieldsFunc(field, func(r rune) bool {
 		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && !unicode.IsMark(r)
 	})

@@ -179,6 +179,7 @@ func TestIdentifyingKeyLeavesAnOpaqueKeyAlone(t *testing.T) {
 		{"conf2026a", Name{Family: "Okoro-Bello", Given: "Mary-Anne"}},
 		{"lixu2026", Name{Family: "Na", Given: "Li"}},
 		{"conf2026a", Name{Family: "Okoro 2026", Given: "Ada"}},
+		{"linu2026", Name{Family: "Na", Given: "Li"}},
 	} {
 		e := Entry{ID: tc.key, Title: confTitle, Author: []Name{tc.name}}
 		if field := identifyingKey(e); field != "" {
@@ -273,6 +274,9 @@ func TestAddRefusals(t *testing.T) {
 		{"key names an accented plain name without its accent", func(r *AddRequest) { r.Key = "muller2026"; r.Authors = []Name{{Literal: "Ada M\u00fcller"}} }, ErrIdentifyingKey},
 		{"key names an accented family name without its accent", func(r *AddRequest) { r.Key = "muller2026"; r.Authors = []Name{{Family: "M\u00fcller", Given: "Ada"}} }, ErrIdentifyingKey},
 		{"key names a decomposed given name without its accent", func(r *AddRequest) { r.Key = "zoe2026"; r.Authors = []Name{{Family: confAuthor, Given: "Zoe\u0308"}} }, ErrIdentifyingKey},
+		{"key names a longer word of a hyphenated title", func(r *AddRequest) { r.Key = "harbour2026"; r.Title = "Quiet-Harbour Notes" }, ErrIdentifyingKey},
+		{"key names a longer word after an apostrophe in the title", func(r *AddRequest) { r.Key = "harbour2026"; r.Title = "O'Harbour Notes" }, ErrIdentifyingKey},
+		{"key names a family and given name, family first", func(r *AddRequest) { r.Key = "nali2026"; r.Authors = []Name{{Family: "Na", Given: "Li"}} }, ErrIdentifyingKey},
 		{"key names a word holding a combining mark", func(r *AddRequest) { r.Key = "mulo2026"; r.Authors = []Name{{Literal: "Ada Mu\u0308lo"}} }, ErrIdentifyingKey},
 		{"bad key", func(r *AddRequest) { r.Key = "../x" }, ErrInvalidEntry},
 		{"binary original with no text", func(r *AddRequest) { r.Text = "" }, ErrInvalidEntry},
