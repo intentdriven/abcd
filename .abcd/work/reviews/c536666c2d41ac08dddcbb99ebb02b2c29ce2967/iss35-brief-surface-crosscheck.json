@@ -1,0 +1,1191 @@
+{
+ "subject": {
+  "digest": {
+   "gitCommit": "c536666c2d41ac08dddcbb99ebb02b2c29ce2967"
+  }
+ },
+ "verifier": {
+  "id": "iss35-brief-surface-crosscheck@release"
+ },
+ "timeVerified": "2026-11-06T08:23:13Z",
+ "verificationResult": "PROMOTE",
+ "judgeModel": "claude-opus-5-5",
+ "tier": "full",
+ "manifestHash": "sha256:46fbd6e7e9b30f4f574c4ed92412d9ee45ad23ce422edcdd5cea559d82a83ee7",
+ "policy": {
+  "detector": "iss35-brief-surface-crosscheck",
+  "version": "1",
+  "promptHash": "sha256:b93e557f8c9958a71b769599d6093b4860ec0f24542bf3c7403ab65b2bee0c08",
+  "briefVersion": "0.16.2"
+ },
+ "categories": {
+  "false-claim": 98,
+  "stale-count": 11,
+  "undocumented-surface": 20
+ },
+ "failing": [
+  {
+   "id": "x-001",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/02-constraints/04-naming.md:14",
+   "summary": "The naming row's list of ahoy write paths omits the worktree and shared-folder sub-verbs that write.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809005398"
+  },
+  {
+   "id": "x-002",
+   "category": "stale-count",
+   "where": ".abcd/development/brief/02-constraints/04-naming.md:56",
+   "summary": "The naming chapter's register of exempt surfaces leaves out the `agents` verb.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809000628"
+  },
+  {
+   "id": "x-003",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/02-constraints/04-naming.md:223",
+   "summary": "The naming register's `managed-repo` definition disagrees with the classifier and with the ahoy chapter.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2610262030363874"
+  },
+  {
+   "id": "x-004",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/02-constraints/04-naming.md:228",
+   "summary": "The naming register says prior repository names are recorded in `meta.json`, and nothing writes them.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2610151422107714"
+  },
+  {
+   "id": "x-005",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/README.md:191",
+   "summary": "The chapter says every visible verb carries the sentence and the gate walks them all, without naming the exempt framework commands.",
+   "severity": "nitpick",
+   "disposition": "deferred",
+   "record": "iss-2611060809013416"
+  },
+  {
+   "id": "x-006",
+   "category": "undocumented-surface",
+   "where": ".abcd/development/brief/04-surfaces/README.md:284",
+   "summary": "The brief's rules verb section does not mention the `--fill` flag of `abcd rules`.",
+   "severity": "nitpick",
+   "disposition": "deferred",
+   "record": "iss-2611060809025632"
+  },
+  {
+   "id": "x-007",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/41-agents.md:60",
+   "summary": "The agents chapter calls two unbuilt items the remaining steps of a spec that is closed.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809036916"
+  },
+  {
+   "id": "x-008",
+   "category": "undocumented-surface",
+   "where": ".abcd/development/brief/04-surfaces/01-ahoy.md:34",
+   "summary": "The setup chapter lists `abcd ahoy shared-folder` as shipped and gives it no prose contract.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809045160"
+  },
+  {
+   "id": "x-009",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/01-ahoy.md:47",
+   "summary": "The chapter says the slash command dispatches every ahoy sub-verb, and the command page gives no dispatch for worktree.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809053025"
+  },
+  {
+   "id": "x-010",
+   "category": "undocumented-surface",
+   "where": ".abcd/development/brief/04-surfaces/01-ahoy.md:631",
+   "summary": "The inventory of abcd's home folder omits five entries the binary uses.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809067992"
+  },
+  {
+   "id": "x-011",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/01-ahoy.md:909",
+   "summary": "The ahoy chapter's list of person-only questions omits the live brief session question that runs first.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611040554153819"
+  },
+  {
+   "id": "x-012",
+   "category": "undocumented-surface",
+   "where": ".abcd/development/brief/04-surfaces/01-ahoy.md:974",
+   "summary": "The setup chapter's gap table omits two categories and its flag paragraph omits `--live-sessions`.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611040554090612"
+  },
+  {
+   "id": "x-013",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/01-ahoy.md:1017",
+   "summary": "The ahoy chapter places the README question calls in the dry run's view, while only the bare JSON render carries them.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809074048"
+  },
+  {
+   "id": "x-014",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/01-ahoy.md:1473",
+   "summary": "The chapter calls a byte-identical uninstall and install round trip tested, and the test does not compare bytes.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809080524"
+  },
+  {
+   "id": "x-015",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/20-banlist.md:222",
+   "summary": "The banlist chapter credits bare `abcd ahoy` with writing artefacts that `abcd ahoy install` writes.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611040554189675"
+  },
+  {
+   "id": "x-016",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/20-banlist.md:248",
+   "summary": "The banlist chapter says abcd does not set the hooks path, and setup sets it on a yes.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611040554105026"
+  },
+  {
+   "id": "x-017",
+   "category": "stale-count",
+   "where": ".abcd/development/brief/04-surfaces/34-build.md:295",
+   "summary": "The build chapter states the run state's schema version as 20, while the code writes 21.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809092034"
+  },
+  {
+   "id": "x-018",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/34-build.md:533",
+   "summary": "The build chapter says a route is refused beside a restart, and the binary accepts that combination.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809105666"
+  },
+  {
+   "id": "x-019",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/34-build.md:594",
+   "summary": "The build chapter says a failed runner hands its role to the host, where the binary pauses the lane and hands it to no one.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809106010"
+  },
+  {
+   "id": "x-020",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/06-capture.md:296",
+   "summary": "The capture chapter says every refusal of a ledger verb's input exits 2, and `capture promote` exits 1 on several.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611040554208787"
+  },
+  {
+   "id": "x-021",
+   "category": "stale-count",
+   "where": ".abcd/development/brief/04-surfaces/36-dashboard.md:3",
+   "summary": "The brief counts two listeners, while session set-up opens a third on loopback for the app manifest's answer.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809113118"
+  },
+  {
+   "id": "x-022",
+   "category": "stale-count",
+   "where": ".abcd/development/brief/04-surfaces/24-decide.md:21",
+   "summary": "The decide chapter's ratio of decisions to ADRs is stale.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611040554221246"
+  },
+  {
+   "id": "x-023",
+   "category": "stale-count",
+   "where": ".abcd/development/brief/04-surfaces/24-decide.md:97",
+   "summary": "The decide chapter counts four values in a JSON form that carries five.",
+   "severity": "nitpick",
+   "disposition": "deferred",
+   "record": "iss-2611060809127037"
+  },
+  {
+   "id": "x-024",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/02-disembark.md:212",
+   "summary": "The disembark chapter's review gate says an opt-in adapter runs the review, and the chapter and the code say none can.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809131583"
+  },
+  {
+   "id": "x-025",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/27-implement.md:63",
+   "summary": "The implement chapter lists two sub-verbs that work outside a checkout, and `implement stop` is a third.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809141088"
+  },
+  {
+   "id": "x-026",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/30-inbox.md:30",
+   "summary": "The inbox list silently skips a file whose name is not report-shaped, though the chapter says such a file is never dropped.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611040554256499"
+  },
+  {
+   "id": "x-027",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/05-intent.md:74",
+   "summary": "The intent chapter names the retired phase plan as the canonical build order.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2610262033248041"
+  },
+  {
+   "id": "x-028",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/05-intent.md:83",
+   "summary": "The intent chapter's kinds table maps a standalone intent to one spec while the chapter and invariant 17 say one or more.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2610262033557020"
+  },
+  {
+   "id": "x-029",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/05-intent.md:154",
+   "summary": "The intent chapter says all ten later disciplines carry a Fit section, and itd-190 does not.",
+   "severity": "nitpick",
+   "disposition": "deferred",
+   "record": "iss-2611060809158052"
+  },
+  {
+   "id": "x-030",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/05-intent.md:297",
+   "summary": "A kind change recorded without a reason contradicts the chapter's statement that every history entry carries one.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809166862"
+  },
+  {
+   "id": "x-031",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/05-intent.md:525",
+   "summary": "The intent chapter says every superseded record carries a field that three of them lack.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2610252214200070"
+  },
+  {
+   "id": "x-032",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/31-lab.md:34",
+   "summary": "The lab chapter and the verb's help omit that a model matrix plan needs a passed preflight.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611040554318883"
+  },
+  {
+   "id": "x-033",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/38-land.md:352",
+   "summary": "The land chapter's list of JSON step names omits the `withdraw` step the result can carry.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809172280"
+  },
+  {
+   "id": "x-034",
+   "category": "undocumented-surface",
+   "where": ".abcd/development/brief/04-surfaces/38-land.md:106",
+   "summary": "The land chapter does not describe the deferral of arming for a branch sharing commits with a queued pull request.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809182848"
+  },
+  {
+   "id": "x-035",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/04-launch.md:48",
+   "summary": "The launch chapter says the cut runs unchanged for every kind, but the surface guard refuses every managed repository because nothing writes its baseline.",
+   "severity": "major",
+   "disposition": "deferred",
+   "record": "iss-2611060809192132"
+  },
+  {
+   "id": "x-036",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/04-launch.md:205",
+   "summary": "The launch chapter calls commit, tag and publish a design target of a superseded intent.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2610252214260179"
+  },
+  {
+   "id": "x-037",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/04-launch.md:385",
+   "summary": "The launch chapter says two gate rows report without a tier, and five do.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611040554433915"
+  },
+  {
+   "id": "x-038",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/04-launch.md:413",
+   "summary": "The launch chapter says the gate suite has no deeper opt-in secret scan, though an armed gitleaks is one.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809191251"
+  },
+  {
+   "id": "x-039",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/04-launch.md:537",
+   "summary": "The launch chapter says the repository organises work by a phase that has been retired.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2610262030345408"
+  },
+  {
+   "id": "x-040",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/04-launch.md:659",
+   "summary": "The launch chapter says the refusal states four routes out, and the refusal states three.",
+   "severity": "nitpick",
+   "disposition": "deferred",
+   "record": "iss-2611060809203137"
+  },
+  {
+   "id": "x-041",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/07-library.md:141",
+   "summary": "The library chapter says the no-agent flip rule lives in the command pages, and the shell guard enforces it too.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611040554362755"
+  },
+  {
+   "id": "x-042",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/16-lint.md:87",
+   "summary": "The lint chapter wrongly calls `abcd lint outbound` the only surface judging text before it is public.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611040554372807"
+  },
+  {
+   "id": "x-043",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/37-memory.md:98",
+   "summary": "The memory chapter gives exit 2 for two gate refusals that exit 1.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611040555330992"
+  },
+  {
+   "id": "x-044",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/37-memory.md:97",
+   "summary": "The memory chapter gives exit 1 for a refused machine file, and the two read forms exit 0.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611040555321903"
+  },
+  {
+   "id": "x-045",
+   "category": "undocumented-surface",
+   "where": ".abcd/development/brief/04-surfaces/26-mode.md:97",
+   "summary": "The mode chapter's list of away refusals omits an over-long step, a full queue and a full record.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2610230851480890"
+  },
+  {
+   "id": "x-046",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/23-reading.md:40",
+   "summary": "The chapter's two-operand closure concerns what a reading is about, and the output flags it documents do not breach it.",
+   "severity": "minor",
+   "disposition": "invalid",
+   "note": "The finding reads operand as any flag. The section is about what selects a reading's object and question: it closes that choice so no ledger content can travel in the framing of a request. `--out` and `--dry-run` only choose where the two artefacts land, and the output directory enters neither the bundle nor the manifest (internal/core/reading/assemble.go:640-660). The same chapter documents both at lines 125-129, along with the cost of naming a directory, and its appendix lists them, so no reader is misled."
+  },
+  {
+   "id": "x-047",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/23-reading.md:282",
+   "summary": "The reading chapter counts one unrecorded refusal past the identity point where the code has two.",
+   "severity": "nitpick",
+   "disposition": "deferred",
+   "record": "iss-2611060809210526"
+  },
+  {
+   "id": "x-048",
+   "category": "undocumented-surface",
+   "where": ".abcd/development/brief/04-surfaces/23-reading.md:364",
+   "summary": "The reading chapter's dispatch form states no size limit, and a bundle past 4 MiB is refused.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611040555379758"
+  },
+  {
+   "id": "x-049",
+   "category": "undocumented-surface",
+   "where": ".abcd/development/brief/04-surfaces/09-reflect.md:67",
+   "summary": "The reflect chapter names one source for the unshipped targets, and the seed also reads the changelog's target-move notes.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809220159"
+  },
+  {
+   "id": "x-050",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/29-report.md:118",
+   "summary": "The bare board draws no `inbox:` row in the product view, though the report chapter says it does.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611040555404486"
+  },
+  {
+   "id": "x-051",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/37-reserve.md:11",
+   "summary": "The reserve chapter says the bare board shows reservations, and it shows none.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809234702"
+  },
+  {
+   "id": "x-052",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/37-reserve.md:81",
+   "summary": "The reserve chapter says an exposed home folder refuses the holder-id mint, and for a folder this account owns the binary narrows it first and goes on.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809247857"
+  },
+  {
+   "id": "x-053",
+   "category": "undocumented-surface",
+   "where": ".abcd/development/brief/04-surfaces/37-reserve.md:623",
+   "summary": "The reserve chapter's list of withdrawal states omits `standing`.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809250949"
+  },
+  {
+   "id": "x-054",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/37-reserve.md:961",
+   "summary": "A refused release of a reservation held elsewhere exits 2, and the reserve chapter's exit list puts that case at exit 3.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809264429"
+  },
+  {
+   "id": "x-055",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/37-session.md:234",
+   "summary": "The session chapter's exit list omits the 130 that a stopped question exits with.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809268698"
+  },
+  {
+   "id": "x-056",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/22-site.md:160",
+   "summary": "The site chapter lists the timeline as a page, and it is a panel on the record dashboard.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809277124"
+  },
+  {
+   "id": "x-057",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/21-update.md:26",
+   "summary": "The update chapter names the launch preview and the cut as the other commands reaching the release origin, and session set-up and install reach it too.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809286890"
+  },
+  {
+   "id": "x-058",
+   "category": "stale-count",
+   "where": ".abcd/development/brief/05-internals/03-configuration.md:59",
+   "summary": "The configuration chapter counts twenty-two keys in one place and twenty-three in two others.",
+   "severity": "nitpick",
+   "disposition": "deferred",
+   "record": "iss-2611060809294152"
+  },
+  {
+   "id": "x-059",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/05-internals/03-configuration.md:3",
+   "summary": "The configuration chapter counts the oracle backend among the questions install asks, and install records it unasked.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611040554556207"
+  },
+  {
+   "id": "x-060",
+   "category": "stale-count",
+   "where": ".abcd/development/brief/05-internals/03-configuration.md:241",
+   "summary": "The configuration chapter counts nine blocks in this repository's config, and there are ten.",
+   "severity": "nitpick",
+   "disposition": "deferred",
+   "record": "iss-2611060809301279"
+  },
+  {
+   "id": "x-061",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/05-internals/03-configuration.md:35",
+   "summary": "The configuration chapter's default of 30 days with a floor of 32 matches the code.",
+   "severity": "minor",
+   "disposition": "invalid",
+   "note": "The sentence is right as written. `DefaultRetentionDays` is 30 (internal/core/runner/ledger.go:168), and the same sentence says a days figure below the floor of 32 is read as the floor, which is what `defaultRetention` does at ledger.go:187. commands/agents.md:67-69 says it the same way: the shipped 30 days holds 32. The finding read the default's clause without the floor's."
+  },
+  {
+   "id": "x-062",
+   "category": "stale-count",
+   "where": ".abcd/development/brief/05-internals/03-configuration.md:1553",
+   "summary": "The SHELL domain's injected block costs about four times the tokens the configuration chapter states.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809312249"
+  },
+  {
+   "id": "x-063",
+   "category": "stale-count",
+   "where": ".abcd/development/brief/05-internals/03-configuration.md:1587",
+   "summary": "The configuration chapter understates the size of the `GRILL` domain.",
+   "severity": "nitpick",
+   "disposition": "deferred",
+   "record": "iss-2611060809322689"
+  },
+  {
+   "id": "x-064",
+   "category": "undocumented-surface",
+   "where": ".abcd/development/brief/05-internals/03-configuration.md:1612",
+   "summary": "The prompt router's documented JSON envelope omits `fill` and `bracket`.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611040554591860"
+  },
+  {
+   "id": "x-065",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/05-internals/05-prompt-quality.md:56",
+   "summary": "The prompt-quality chapter names the CI caller as the source of the diff range, and the local preflight supplies one too.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2610151422133234"
+  },
+  {
+   "id": "x-066",
+   "category": "stale-count",
+   "where": ".abcd/development/brief/05-internals/05-prompt-quality.md:122",
+   "summary": "The prompt-quality chapter undercounts the changelog entries that state no measured delta.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611040555021637"
+  },
+  {
+   "id": "x-067",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/05-internals/05-prompt-quality.md:82",
+   "summary": "The prompt-quality chapter justifies the harness's timing by a second agent, and eighteen already ship.",
+   "severity": "nitpick",
+   "disposition": "deferred",
+   "record": "iss-2611060809335201"
+  },
+  {
+   "id": "x-068",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/05-internals/05-prompt-quality.md:101",
+   "summary": "The prompt-quality chapter says no shipped agent has a research file, and later says one does under its old name.",
+   "severity": "nitpick",
+   "disposition": "deferred",
+   "record": "iss-2611060809343029"
+  },
+  {
+   "id": "x-069",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/06-delivery/01-build-sequence.md:55",
+   "summary": "The build sequence says install takes flags rather than a wizard, and install runs a question flow.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611040555039034"
+  },
+  {
+   "id": "x-070",
+   "category": "stale-count",
+   "where": ".abcd/development/brief/06-delivery/01-build-sequence.md:62",
+   "summary": "The build sequence's count of writing `ahoy` forms omits `shared-folder`.",
+   "severity": "nitpick",
+   "disposition": "deferred",
+   "record": "iss-2611060809346884"
+  },
+  {
+   "id": "x-071",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/06-delivery/01-build-sequence.md:92",
+   "summary": "The build sequence states an unbuilt vendor memory harvest without the design-target mark.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611040555055477"
+  },
+  {
+   "id": "x-072",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/06-delivery/01-build-sequence.md:159",
+   "summary": "The build sequence says the disembark pack runs the audit, and the pack does not.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611040555060165"
+  },
+  {
+   "id": "x-073",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/06-delivery/02-verification-matrix.md:26",
+   "summary": "The verification matrix's ahoy idempotency row quotes wording and a visibility re-confirm the binary does not produce.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809354261"
+  },
+  {
+   "id": "x-074",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/06-delivery/02-verification-matrix.md:28",
+   "summary": "The verification matrix promises a tracked-versus-ignored list on a visibility flip that the binary never shows.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611040555095597"
+  },
+  {
+   "id": "x-075",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/06-delivery/02-verification-matrix.md:29",
+   "summary": "The verification matrix says a missing scanner backend is never a hard failure, and a release refuses on an armed one.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809360063"
+  },
+  {
+   "id": "x-076",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/06-delivery/02-verification-matrix.md:39",
+   "summary": "The verification matrix says a re-pack over an abcd-produced destination confirms first, and it regenerates with no confirmation.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611040555097951"
+  },
+  {
+   "id": "x-077",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/06-delivery/02-verification-matrix.md:48",
+   "summary": "The verification matrix says the launch manifest comes from the bundler's own rules, and the include set is read from a per-repository file.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611040555110508"
+  },
+  {
+   "id": "x-078",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/06-delivery/02-verification-matrix.md:57",
+   "summary": "Bare `abcd intent` prints counts rather than the grouped intents and next actions the matrix describes.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611040555127350"
+  },
+  {
+   "id": "x-079",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/06-delivery/02-verification-matrix.md:63",
+   "summary": "The verification matrix gives a capture form that the verb refuses.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611040555120214"
+  },
+  {
+   "id": "x-080",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/06-delivery/02-verification-matrix.md:63",
+   "summary": "The verification matrix says a capture reports its severity, and it does not.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809373895"
+  },
+  {
+   "id": "x-081",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/06-delivery/02-verification-matrix.md:64",
+   "summary": "The verification matrix says resolving or declining an issue populates a timestamp, and neither writes one.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809386735"
+  },
+  {
+   "id": "x-082",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/06-delivery/02-verification-matrix.md:65",
+   "summary": "A wontfix record carries no timestamp, though the verification matrix says it does.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809397681"
+  },
+  {
+   "id": "x-083",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/06-delivery/02-verification-matrix.md:86",
+   "summary": "The verification matrix describes a lifeboat licence gate that is not built.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2610262033500384"
+  },
+  {
+   "id": "x-084",
+   "category": "undocumented-surface",
+   "where": ".abcd/development/brief/04-surfaces/README.md:301",
+   "summary": "The brief's rules section omits `abcd rules --fill`.",
+   "severity": "nitpick",
+   "disposition": "deferred",
+   "record": "iss-2611060809405161"
+  },
+  {
+   "id": "x-085",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/glossary/core/librarian.md:17",
+   "summary": "The librarian glossary term names `abcd library pack` in the present tense, and no such command exists.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611040555153652"
+  },
+  {
+   "id": "x-086",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/06-delivery/02-verification-matrix.md:73",
+   "summary": "The verification matrix says nothing counts prompts, though the router counts them and refreshes on a multiple of the backstop.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2610262031167048"
+  },
+  {
+   "id": "x-087",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/05-internals/03-configuration.md:1666",
+   "summary": "The configuration chapter says a domain in force is never re-injected unchanged, and the prompt-count backstop re-injects it.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2610262031108321"
+  },
+  {
+   "id": "x-088",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/05-internals/03-configuration.md:150",
+   "summary": "The configuration chapter says the refresh backstop only re-injects always-relevant domains, and it brings back any domain the prompt matches.",
+   "severity": "nitpick",
+   "disposition": "deferred",
+   "record": "iss-2611060809419595"
+  },
+  {
+   "id": "x-089",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/05-internals/03-configuration.md:1602",
+   "summary": "The configuration chapter's account of the prompt hook's stdout omits memory pages, the away block and the away mode's JSON form.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809424276"
+  },
+  {
+   "id": "x-090",
+   "category": "undocumented-surface",
+   "where": ".abcd/development/brief/05-internals/03-configuration.md:1629",
+   "summary": "The prompt router's documented `--json` envelope and stderr contract omit fields and a line the binary emits.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809422351"
+  },
+  {
+   "id": "x-091",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/05-internals/07-memory.md:193",
+   "summary": "The memory chapter describes an index query and a keyword collision rule that the recall does not have.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809438042"
+  },
+  {
+   "id": "x-092",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/05-internals/07-memory.md:185",
+   "summary": "The memory chapter's bracket table omits the unknown row and misstates what MODERATE and DEPLETED send.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809443412"
+  },
+  {
+   "id": "x-093",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/11-history.md:250",
+   "summary": "The history chapter says the session-start hook's stdout is one sentence and a count, and it carries several other blocks.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809453708"
+  },
+  {
+   "id": "x-094",
+   "category": "undocumented-surface",
+   "where": ".abcd/development/brief/04-surfaces/README.md:280",
+   "summary": "The hook row cites the mode chapter for the stop check, and neither that chapter nor any other describes its behaviour.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809467300"
+  },
+  {
+   "id": "x-095",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/35-drain.md:654",
+   "summary": "The chapter says a drain's cap is fixed when it begins, but a drive gives a live drain with no cap a cap.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809475573"
+  },
+  {
+   "id": "x-096",
+   "category": "undocumented-surface",
+   "where": ".abcd/development/brief/04-surfaces/35-drain.md:942",
+   "summary": "A drain cap of zero is accepted and means no cap, which the chapter does not state and the binary's own remedy wording excludes.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809486452"
+  },
+  {
+   "id": "x-097",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/35-drain.md:759",
+   "summary": "The chapter says a judge routed to opencode is skipped, but a drive refuses to start on that route.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809492476"
+  },
+  {
+   "id": "x-098",
+   "category": "undocumented-surface",
+   "where": ".abcd/development/brief/04-surfaces/35-drain.md:193",
+   "summary": "The drain chapter leaves out the drive's default cap, its consent forms, its exit statuses, several refusals and the accepted forms of its end date.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809502312"
+  },
+  {
+   "id": "x-099",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/37-embargo.md:89",
+   "summary": "The chapter says the check always refuses the store's location, but it does so only while something is under embargo.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809502482"
+  },
+  {
+   "id": "x-100",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/37-embargo.md:17",
+   "summary": "The embargo chapter's list of the person's acts omits putting back details redacted to land a fix, which the command page lists.",
+   "severity": "nitpick",
+   "disposition": "deferred",
+   "record": "iss-2611060809519550"
+  },
+  {
+   "id": "x-101",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/03-embark.md:214",
+   "summary": "The chapter says the pass-B exemption is the first line of both reports, but the probe report opens with a heading line.",
+   "severity": "nitpick",
+   "disposition": "deferred",
+   "record": "iss-2611060809529676"
+  },
+  {
+   "id": "x-102",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/03-embark.md:141",
+   "summary": "The embark chapter says an oversize file is refused anywhere in a lifeboat, while the cap applies only to the files the manifest hashes.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809535371"
+  },
+  {
+   "id": "x-103",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/03-embark.md:143",
+   "summary": "The chapter says an operand outside a checkout is taken as given, but one that is itself a symlink is refused.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611040555203853"
+  },
+  {
+   "id": "x-104",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/03-embark.md:329",
+   "summary": "The packing-history example shows a relative destination, while the log records the resolved absolute path.",
+   "severity": "nitpick",
+   "disposition": "deferred",
+   "record": "iss-2611060809546274"
+  },
+  {
+   "id": "x-105",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/03-embark.md:135",
+   "summary": "An embark that writes an issue leaves the ledger's lock file in the target, which the chapter's list of what it writes omits.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809557633"
+  },
+  {
+   "id": "x-106",
+   "category": "undocumented-surface",
+   "where": ".abcd/development/brief/04-surfaces/03-embark.md:165",
+   "summary": "The embark chapter's marker outcomes omit an unreadable settings file, which skips the block where an unknown value does not.",
+   "severity": "nitpick",
+   "disposition": "deferred",
+   "record": "iss-2611060809563011"
+  },
+  {
+   "id": "x-107",
+   "category": "undocumented-surface",
+   "where": ".abcd/development/brief/04-surfaces/03-embark.md:74",
+   "summary": "`embark lessons --scores -` reads standard input, which the chapter and the command page do not mention.",
+   "severity": "nitpick",
+   "disposition": "deferred",
+   "record": "iss-2611060809571307"
+  },
+  {
+   "id": "x-108",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/17-guard.md:455",
+   "summary": "The guard chapter leaves the hook's exit 2 undefined, including that the rename passes only when the plugin binary is present.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060809582940"
+  },
+  {
+   "id": "x-109",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/17-guard.md:459",
+   "summary": "The chapter names two things the shim's warning can name, and the shim has a third for file writes.",
+   "severity": "nitpick",
+   "disposition": "deferred",
+   "record": "iss-2611060809597822"
+  },
+  {
+   "id": "x-110",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/17-guard.md:483",
+   "summary": "The guard chapter says a file-tool write is judged only by a shared main checkout, while stop files, the shared-folder setting and a drive's stage are judged too.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060810004413"
+  },
+  {
+   "id": "x-111",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/17-guard.md:534",
+   "summary": "The chapter says the guard refuses to run without `schema_version: 1`, but only the check refuses and the hook keeps the bundled hazards.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611040555254496"
+  },
+  {
+   "id": "x-112",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/17-guard.md:335",
+   "summary": "The guard chapter says an unchipped question under a named mode is marked open, while the header rule always refuses it.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060810014724"
+  },
+  {
+   "id": "x-113",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/17-guard.md:834",
+   "summary": "The chapter says a variable's carried value is not read, but a value assigned on the same line is read.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611040555220611"
+  },
+  {
+   "id": "x-114",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/17-guard.md:1038",
+   "summary": "The narrower pid-list forms still allow, so the guard chapter's unseen-list clause needs narrowing rather than removing.",
+   "severity": "nitpick",
+   "disposition": "deferred",
+   "record": "iss-2611060810012471"
+  },
+  {
+   "id": "x-115",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/17-guard.md:1044",
+   "summary": "The chapter lists same-line carried values as unseen and calls the matter an open ruling, but they block and the ruling is made.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060810026397"
+  },
+  {
+   "id": "x-116",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/17-guard.md:1022",
+   "summary": "The guard chapter lists a guarded delete form as unseen although the bundled entry blocks it.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611040555212928"
+  },
+  {
+   "id": "x-117",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/17-guard.md:1059",
+   "summary": "The chapter calls the check's help the fuller statement of the list, but the help is shorter and contradicts the chapter on `--$VAR`.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611040555249487"
+  },
+  {
+   "id": "x-118",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/17-guard.md:765",
+   "summary": "The guard chapter limits the unproven-delete refusal to a repository, while the same delete is refused outside one.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060810039095"
+  },
+  {
+   "id": "x-119",
+   "category": "undocumented-surface",
+   "where": ".abcd/development/brief/04-surfaces/17-guard.md:595",
+   "summary": "The guard chapter's approver section describes only the bare launch and omits how a drive's stage is judged, which only the drain chapter describes.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060810040824"
+  },
+  {
+   "id": "x-120",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/11-history.md:53",
+   "summary": "The history chapter's account of how showing matches a record leaves out the agent id and the main-thread preference.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2610252214517210"
+  },
+  {
+   "id": "x-121",
+   "category": "undocumented-surface",
+   "where": ".abcd/development/brief/04-surfaces/11-history.md:56",
+   "summary": "A capture can replace and delete a stored record it extends, which the chapter's account of idempotence does not say.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060810055166"
+  },
+  {
+   "id": "x-122",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/11-history.md:186",
+   "summary": "The history chapter says every verb goes through the store-creating seam, while two forms skip it.",
+   "severity": "nitpick",
+   "disposition": "deferred",
+   "record": "iss-2611060810065301"
+  },
+  {
+   "id": "x-123",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/11-history.md:209",
+   "summary": "The chapter says only a session start or a discard ends a pending transcript's wait, but the drain verb also places pending transcripts.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060810072511"
+  },
+  {
+   "id": "x-124",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/11-history.md:242",
+   "summary": "The history chapter's session-start notice list names a setup-version notice that does not exist and omits several that do.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060810088225"
+  },
+  {
+   "id": "x-125",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/11-history.md:267",
+   "summary": "The chapter gives the prompt hook's drain a half-megabyte bound, which does not apply to the first entry of a pass.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060810092646"
+  },
+  {
+   "id": "x-126",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/11-history.md:290",
+   "summary": "The history chapter says nothing is encoded in a staged filename, while the name carries the capture time and the key that locks it.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060810104650"
+  },
+  {
+   "id": "x-127",
+   "category": "undocumented-surface",
+   "where": ".abcd/development/brief/04-surfaces/18-ideate.md:164",
+   "summary": "An unresolved record id in a reviewer's `implies_building` refuses a verdict, but the chapter's list of checked places omits that field.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060810119096"
+  },
+  {
+   "id": "x-128",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/18-ideate.md:203",
+   "summary": "The ideate chapter and the stray-store note say a run reaches the checkout's store, which holds only with the public flag.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060810115703"
+  },
+  {
+   "id": "x-129",
+   "category": "false-claim",
+   "where": ".abcd/development/brief/04-surfaces/19-identity.md:93",
+   "summary": "The chapter says a tagline wrapped across two lines is not drift, but the fallback locators capture one line and report it as drift.",
+   "severity": "minor",
+   "disposition": "deferred",
+   "record": "iss-2611060810127057"
+  }
+ ],
+ "_reviewProvenance": "Full tier for an additive release: both directions, the manifest's 51 checkers (Direction A over the 46 brief docs, Direction B over the 5 surfaces), each reading its prompt verbatim from a file holding the manifest's pinned context and direction template filled for its item, run by hand through the host's agent tool as Opus 5.5 agents against an exact export with the binary built from it, in eight groups; one group stalled with no result and was stopped, and its seven items ran afresh in three further groups. Findings merged by the detector's merge (where plus the first fifty characters of claim, first kept): 129. Each was then re-verified against the tree and binary by a separate triage agent before its disposition.",
+ "provenanceExtra": "The checkers read an exact export of 9125afc7b0de0f9accc2d9605da5873bed5afba7, and this receipt names c536666c2d41ac08dddcbb99ebb02b2c29ce2967. `git diff` between them touches only CHANGELOG.md, RELEASE.md and internal/core/releasedigest/digest.json, the wording of the composed prose, each version judged by the docs gate."
+}
