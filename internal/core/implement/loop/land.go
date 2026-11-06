@@ -62,6 +62,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -80,6 +81,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/core/relink"
 	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -357,17 +359,16 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 				fmt.Sprintf("%s moved to %s, which is not the landing's records commit on the judged head %s", lane.Branch, shortSHA(tip), shortSHA(lane.HeadSHA)),
 				"restore the branch to the judged head, then run `abcd implement step` again")
 		}
-		if st.Issue() == "" {
-			if err := refuseFoundCloseRecords(c, *lane, tip, ld.Closes); err != nil {
-				return Outcome{}, err
-			}
+		if err := refuseFoundCloseRecords(c, *lane, tip, ld.Closes); err != nil {
+			return Outcome{}, err
 		}
 		// A call killed after its commit and before its state write: found.
 		ld.Records, ld.RecordsDone, lane.HeadSHA = tip, true, tip
 		return Outcome{Stay: true, Note: "found the landing's records commit " + shortSHA(tip) + " on " + lane.Branch}, nil
 	}
 
-	if why, err := strayChanges(lane.Worktree); err != nil {
+	repointed := landingRepointed(st, *lane)
+	if why, err := strayChanges(lane.Worktree, repointed); err != nil {
 		return Outcome{}, fmt.Errorf("reading the lane's worktree: %w", err)
 	} else if why != "" {
 		return Outcome{}, refuse(string(StageLand), "", lane.ID, "the lane's worktree holds "+why+", and the landing commits only what it writes",
@@ -375,12 +376,19 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	}
 
 	// What a close ships and what holds it back stay as the judged head has them,
-	// whatever markdown the worktree holds.
+	// whatever markdown the worktree holds; a lane with no close moves no intent or spec.
+	if err := refuseChangedCloseRecords(c, *lane, ld.Closes); err != nil {
+		return Outcome{}, err
+	}
 	if st.Issue() == "" {
-		if err := refuseChangedCloseRecords(c, *lane, ld.Closes); err != nil {
-			return Outcome{}, err
-		}
 		if why, err := ownSpecUnresolved(*lane, st.Spec); err != nil {
+			return Outcome{}, err
+		} else if why != "" {
+			return closeHandBack(c, *lane, why), nil
+		}
+	}
+	if ld.Closes {
+		if why, err := ownIntentUnresolved(*lane, st.Intent); err != nil {
 			return Outcome{}, err
 		} else if why != "" {
 			return closeHandBack(c, *lane, why), nil
@@ -425,9 +433,16 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 		done = append(done, "carried the change to "+st.Spec+" left in the lane's worktree")
 	}
 	wrote := false
-	// The step is marked before the close moves the spec, so a closed spec
-	// carries every step's mark.
+	fresh := map[string]bool{}
+	// The step is marked before the close moves the spec, since only an open spec takes
+	// a mark, so a closed spec carries every step's mark. A close refused on what the
+	// judged head holds takes the mark back with it: the hand-back leaves the worktree
+	// as the call found it.
+	takeBackMark := func() {}
 	if ld.MarkStep > 0 {
+		if ld.Closes {
+			takeBackMark = ownSpecRestorer(wt, st.Spec)
+		}
 		mark := shortSHA(lane.HeadSHA)
 		if _, err := spec.MarkLanded(wt, st.Spec, ld.MarkStep, mark); err != nil {
 			return Outcome{}, refuse(string(StageLand), "", lane.ID, fmt.Sprintf("step %d of %s could not be marked landed in the lane's worktree: %s", ld.MarkStep, st.Spec, fsutil.RedactHome(err.Error())),
@@ -471,6 +486,7 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 		if errors.As(err, &fact) {
 			// The worktree says what the judged head says of these, so only a new head
 			// could change the answer.
+			takeBackMark()
 			return closeHandBack(c, *lane, "`spec close "+st.Spec+"` refused what the judged head holds: "+termsafe.Sanitize(fsutil.RedactHome(err.Error()))), nil
 		}
 		if err != nil {
@@ -491,6 +507,7 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 			return Outcome{}, refuse(string(StageLand), "", lane.ID, "the audit's verdict was "+ing.Status+" at the close, not ingested: "+fsutil.RedactHome(ing.Reason),
 				"the landing ships only an intent whose audit is on its record; settle the verdict, then run `abcd implement step` again")
 		}
+		noteRepointed(fresh, repointed, res.Relinked)
 		done = append(done, fmt.Sprintf("closed %s (%s %s -> %s), audit %s %s", st.Spec, st.Intent, res.From, res.To, ing.ReceiptID, ing.Status))
 		if res.To == intent.BucketShipped {
 			trailers = append(trailers, "Delivers: "+st.Intent)
@@ -500,15 +517,23 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 		if resolvedIn(wt, r.Issue) {
 			done = append(done, "found "+r.Issue+" resolved")
 		} else {
-			if _, err := capture.Resolve(capture.ResolveRequest{RepoRoot: wt, ID: r.Issue, Resolution: r.Note, Impact: r.Impact,
-				ByCommit: r.Commit, Grounds: r.Grounds}); err != nil {
+			moved, err := capture.Resolve(capture.ResolveRequest{RepoRoot: wt, ID: r.Issue, Resolution: r.Note, Impact: r.Impact,
+				ByCommit: r.Commit, Grounds: r.Grounds})
+			if err != nil {
 				return Outcome{}, refuse(string(StageLand), "", lane.ID, "`capture resolve "+r.Issue+"` refused in the lane's worktree: "+fsutil.RedactHome(err.Error()),
 					"the resolution is the lane receipt's; settle what the capture store names in the lane's worktree and leave it uncommitted, then run `abcd implement step` again")
 			}
+			noteRepointed(fresh, repointed, moved.Relinked)
 			wrote = true
 			done = append(done, "resolved "+r.Issue+" with "+shortSHA(r.Commit))
 		}
 		trailers = append(trailers, "Resolves: "+r.Issue)
+	}
+	// A link repointed outside the record stores is the landing's own write, and only
+	// the run's record can say so to a later call: a refusal saves no state. So it is
+	// recorded before the commit is tried, and the next call commits.
+	if len(fresh) > 0 {
+		return Outcome{Stay: true, Note: repointedNote(lane.HeadSHA, fresh)}, nil
 	}
 	if _, err := pickGit(wt, "add", "-A", "--", "."); err != nil {
 		return Outcome{}, fmt.Errorf("staging the landing's records: %w", err)
@@ -795,7 +820,7 @@ type closeRefusal func(rel, how string) error
 // refuseChangedCloseRecords holds the lane's worktree to the judged head.
 func refuseChangedCloseRecords(c Context, lane Lane, closes bool) error {
 	refused := func(rel, how string) error {
-		return refuse(string(StageLand), "", lane.ID, strconv.Quote(termsafe.Sanitize(rel))+" "+how+" in the lane's worktree, and the judged head decides what the close ships and what holds it",
+		return refuse(string(StageLand), "", lane.ID, strconv.Quote(termsafe.Sanitize(rel))+" "+how+" in the lane's worktree, and "+headDecides(c.State),
 			"put it back as the judged head has it, removing it if the head holds no such record, in the lane's worktree, then run `abcd implement step` again")
 	}
 	return judgeCloseRecords(c, lane, closes, refused, func(store closeStore) ([]closeRecord, error) {
@@ -810,12 +835,20 @@ func refuseChangedCloseRecords(c Context, lane Lane, closes bool) error {
 // refuseFoundCloseRecords holds a commit found on the judged head to it.
 func refuseFoundCloseRecords(c Context, lane Lane, tip string, closes bool) error {
 	refused := func(rel, how string) error {
-		return refuse(string(StageLand), "", lane.ID, strconv.Quote(termsafe.Sanitize(rel))+" "+how+" in "+shortSHA(tip)+", the commit found on the judged head "+shortSHA(lane.HeadSHA)+", and that head decides what the close ships and what holds it",
+		return refuse(string(StageLand), "", lane.ID, strconv.Quote(termsafe.Sanitize(rel))+" "+how+" in "+shortSHA(tip)+", the commit found on the judged head "+shortSHA(lane.HeadSHA)+", and "+headDecides(c.State),
 			"restore the branch to the judged head, then run `abcd implement step` again")
 	}
 	return judgeCloseRecords(c, lane, closes, refused, func(store closeStore) ([]closeRecord, error) {
 		return treeRecords(baseTree{root: c.RepoRoot, sha: tip}, store)
 	})
+}
+
+// headDecides says what the comparison holds to the judged head.
+func headDecides(st State) string {
+	if st.Issue() != "" {
+		return "the judged head decides what the spec and intent stores hold, and an issue's landing moves neither"
+	}
+	return "the judged head decides what the close ships and what holds it"
 }
 
 // judgeCloseRecords reads the spec and intent stores as the judged head and read each
@@ -825,7 +858,7 @@ func refuseFoundCloseRecords(c Context, lane Lane, tip string, closes bool) erro
 // where a call a hook refused left it, but in shipped only as the close would have
 // moved it: the head holds no hold and no other open spec naming it, and the record
 // carries a valid impact. A head holding no record of the spec links only the run's own
-// intent.
+// intent. An issue's run has no spec of its own, so every record stands as the head has it.
 func judgeCloseRecords(c Context, lane Lane, closes bool, refused closeRefusal, read func(closeStore) ([]closeRecord, error)) error {
 	st := c.State
 	at := baseTree{root: c.RepoRoot, sha: lane.HeadSHA}
@@ -843,10 +876,6 @@ func judgeCloseRecords(c Context, lane Lane, closes bool, refused closeRefusal, 
 			own = append(own, r)
 		}
 	}
-	ownChanged := refused(st.Spec, "changes what it links (its record, or its id:, intent:, intents: or bundle:)")
-	if len(own) != 1 {
-		return ownChanged
-	}
 	want := closeRecord{content: "---\nid: " + st.Spec + "\nintent: " + st.Intent + "\n---\n"}
 	var otherSpecs []closeRecord
 	for _, r := range headSpecs {
@@ -856,8 +885,11 @@ func judgeCloseRecords(c Context, lane Lane, closes bool, refused closeRefusal, 
 		}
 		otherSpecs = append(otherSpecs, r)
 	}
-	if want.closeFacts(specCloseFields) != own[0].closeFacts(specCloseFields) {
-		return ownChanged
+	if st.Spec != "" {
+		ownChanged := refused(st.Spec, "changes what it links (its record, or its id:, intent:, intents: or bundle:)")
+		if len(own) != 1 || want.closeFacts(specCloseFields) != own[0].closeFacts(specCloseFields) {
+			return ownChanged
+		}
 	}
 	others := slices.DeleteFunc(slices.Clone(workSpecs), func(r closeRecord) bool { return isSpecRecordOf(r.rel, st.Spec) })
 	if err := refuseRecordDifferences(otherSpecs, others, specCloseFields, nil, nil, refused); err != nil {
@@ -874,7 +906,7 @@ func judgeCloseRecords(c Context, lane Lane, closes bool, refused closeRefusal, 
 	}
 	moves := func(r, w closeRecord) bool {
 		id := r.field("id")
-		if !closes || !own[0].realises(id) || !isCloseBucket(r.bucket) || !isCloseBucket(w.bucket) {
+		if !closes || len(own) != 1 || !own[0].realises(id) || !isCloseBucket(r.bucket) || !isCloseBucket(w.bucket) {
 			return false
 		}
 		if w.bucket != intent.BucketShipped {
@@ -961,22 +993,91 @@ func ownSpecUnresolved(lane Lane, specID string) (string, error) {
 	return "", nil
 }
 
+// ownSpecRestorer returns what writes the lane's own spec record back as it stands now.
+// What cannot be read is left: the hand-back's way out names any change it leaves.
+func ownSpecRestorer(worktree, specID string) func() {
+	nothing := func() {}
+	store, err := spec.Load(worktree)
+	if err != nil {
+		return nothing
+	}
+	sp, ok := store.Lookup(specID)
+	if !ok {
+		return nothing
+	}
+	abs := filepath.Join(worktree, sp.Path)
+	before, err := os.ReadFile(abs)
+	if err != nil {
+		return nothing
+	}
+	return func() { _ = fsutil.WriteFileAtomicPreserveMode(abs, before) }
+}
+
+// ownIntentUnresolved reads the intent store as the close does, once the worktree agrees
+// with the judged head, and says why the head leaves the close no one record to read for
+// the run's intent: "" when it has one.
+func ownIntentUnresolved(lane Lane, id string) (string, error) {
+	corpus, err := intent.Load(lane.Worktree)
+	if err != nil {
+		changed, gerr := pickGit(lane.Worktree, "status", "--porcelain", "--", intent.IntentsRelDir)
+		if gerr != nil {
+			return "", fmt.Errorf("reading the lane's worktree: %w", gerr)
+		}
+		if changed != "" {
+			return "", refuse(string(StageLand), "", lane.ID, "the intent store in the lane's worktree could not be read: "+fsutil.RedactHome(err.Error()),
+				"settle what the intent store names in the lane's worktree and leave it uncommitted, then run `abcd implement step` again")
+		}
+		return "the intent store cannot be read at the judged head: " + termsafe.Sanitize(fsutil.RedactHome(err.Error())), nil
+	}
+	var holding []string
+	for _, it := range corpus.Intents {
+		if recordid.SameID(it.ID, id) {
+			holding = append(holding, strconv.Quote(termsafe.Sanitize(filepath.ToSlash(it.Path))))
+		}
+	}
+	if len(holding) > 1 {
+		return strings.Join(holding, " and ") + " carry the id of " + id + " at the judged head, and the close reads only one of them", nil
+	}
+	return "", nil
+}
+
 // closeHandBack hands the lane back for what the judged head holds against its close:
 // no edit in the worktree may settle that, and a lane takes a new head only from a
 // sibling's landing.
 func closeHandBack(c Context, lane Lane, why string) Outcome {
 	st := c.State
+	var others []string
+	for _, l := range st.Lanes {
+		if l.ID != lane.ID && l.Stage != StageDone && l.Stage != StageHandedBack && l.Stage != StageDiscarded {
+			others = append(others, l.ID)
+		}
+	}
+	then := "remove the run's directory " + runRel(st.RunID)
+	if len(others) > 0 {
+		then = "once `abcd implement status` shows " + strings.Join(others, ", ") + " finished or decided, " + then
+	}
 	return Outcome{HandBack: &HandBack{Kind: HandBackStuck, Reason: why,
-		Home: "a person: the judged head holds this, and this lane takes no new head from the default branch, so settle it on the default branch, then discard the lane with `abcd implement step --run " +
-			st.RunID + " --discard " + lane.ID + "`, remove the run's directory " + runRel(st.RunID) + " and build " + st.Intent + " again"}}
+		Home: "a person: the judged head holds this, and this lane takes no new head from the default branch. To keep the lane's commits, save its branch " + lane.Branch + " first with `git tag saved-" + st.RunID + "-" + lane.ID + " " + lane.Branch +
+			"`: the discard deletes that branch and every commit on it not pushed, and removing the run's directory deletes the record naming them. Then settle it on the default branch, put back anything `git status` shows uncommitted in the lane's worktree, discard the lane with `abcd implement step --run " +
+			st.RunID + " --discard " + lane.ID + "`, and " + then + " and build " + st.Intent + " again"}}
 }
 
-// strayChanges names a change in the lane's worktree that cannot be the landing's own,
-// "" when there is none. A commit a repository hook refused leaves the landing's
-// records staged for the next call, and its relink reaches any markdown, so a markdown
-// change and the local tier are let through; one a stray process made joins the records
-// commit, for the round to read.
-func strayChanges(worktree string) (string, error) {
+// recordStores are where the landing's records live, and where its remedies ask for an
+// uncommitted edit.
+var recordStores = []string{spec.SpecsRelDir, intent.IntentsRelDir, capture.LedgerRelPath}
+
+// inRecordStore reports whether the repository-relative path is markdown in a record store.
+func inRecordStore(path string) bool {
+	return strings.HasSuffix(path, ".md") && slices.ContainsFunc(recordStores, func(root string) bool {
+		return strings.HasPrefix(path, root+"/")
+	})
+}
+
+// strayChanges names a change in the lane's worktree the landing does not commit, ""
+// when there is none. A commit a repository hook refused leaves the landing's records
+// staged for the next call, so markdown in a record store and the links repointed
+// elsewhere are let through, as is the local tier, which is never staged.
+func strayChanges(worktree string, repointed map[string]bool) (string, error) {
 	out, err := pickGit(worktree, "status", "--porcelain", "-z", "--untracked-files=all", "--no-renames")
 	if err != nil {
 		return "", err
@@ -986,11 +1087,59 @@ func strayChanges(worktree string) (string, error) {
 			continue
 		}
 		path := entry[3:]
-		if !strings.HasSuffix(path, ".md") && !strings.HasPrefix(path, TierRelDir+"/") {
+		if !inRecordStore(path) && !repointed[path] && !strings.HasPrefix(path, TierRelDir+"/") {
 			return "the uncommitted " + strconv.Quote(termsafe.Sanitize(path)), nil
 		}
 	}
 	return "", nil
+}
+
+// repointedLead opens the record line naming the files a landing's moves repointed links
+// in outside the record stores, on the head it holds for.
+const repointedLead = "the landing's moves repointed links on "
+
+// repointedNote is that line: the head, then the files as a JSON list.
+func repointedNote(head string, files map[string]bool) string {
+	names, err := json.Marshal(slices.Sorted(maps.Keys(files)))
+	if err != nil {
+		names = []byte("[]")
+	}
+	return repointedLead + head + " in " + string(names)
+}
+
+// landingRepointed reads back what the lane's lines say of its current head. A head the
+// lane has left takes its lines with it, and a line admits only markdown.
+func landingRepointed(st State, lane Lane) map[string]bool {
+	out := map[string]bool{}
+	for _, e := range st.Record {
+		if e.Lane != lane.ID || e.Stage != string(StageLand) {
+			continue
+		}
+		list, ok := strings.CutPrefix(e.Note, repointedLead+lane.HeadSHA+" in ")
+		if !ok {
+			continue
+		}
+		var names []string
+		if json.Unmarshal([]byte(list), &names) != nil {
+			continue
+		}
+		for _, name := range names {
+			if strings.HasSuffix(name, ".md") {
+				out[name] = true
+			}
+		}
+	}
+	return out
+}
+
+// noteRepointed adds to fresh each file the rewrites touched outside the record stores
+// that no line has named.
+func noteRepointed(fresh, repointed map[string]bool, rewrites []relink.Rewrite) {
+	for _, r := range rewrites {
+		if !inRecordStore(r.File) && !repointed[r.File] {
+			fresh[r.File] = true
+		}
+	}
 }
 
 // recordsRoundWanted reports whether the lane's head is a records commit no round has
@@ -1907,7 +2056,7 @@ func landMerged(c Context, lane *Lane) (Outcome, error) {
 			return Outcome{}, err
 		}
 	}
-	if err := removeLaneWorktree(c, *lane); err != nil {
+	if err := removeLaneWorktree(c, *lane, "run `abcd implement step` again"); err != nil {
 		return Outcome{}, err
 	}
 	if tipErr == nil && gitutil.IsFullSHA(tip) {
@@ -1979,7 +2128,7 @@ func branchCheckedOutElsewhere(c Context, lane Lane, stage, again string) error 
 // never forces it. git judges the changes as the person's own git does
 // (pickGit), through the filters and ignore files their global config names
 // (iss-2610111729375108).
-func removeLaneWorktree(c Context, lane Lane) error {
+func removeLaneWorktree(c Context, lane Lane, again string) error {
 	if err := loopWorktree(c, lane, string(StageLand)); err != nil {
 		return err
 	}
@@ -1998,7 +2147,7 @@ func removeLaneWorktree(c Context, lane Lane) error {
 		}
 		if _, err := pickGit(c.RepoRoot, "worktree", "remove", "--", wt.Path); err != nil {
 			return refuse(string(StageLand), "", lane.ID, "git could not remove the lane's worktree: "+fsutil.RedactHome(err.Error()),
-				"settle what git reports (it refuses a worktree with changes), then run `abcd implement step` again")
+				"settle what git reports (it refuses a worktree with changes), then "+again)
 		}
 		return nil
 	}

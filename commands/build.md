@@ -777,9 +777,14 @@ A lane's stages run in order:
    names is settled. What a close ships and what holds it stay as the judged head has them, so an
    uncommitted change to them is refused, and what that head itself holds against
    the close (a hold, a drifted `spec_id`, a bundle member another open spec keeps)
-   hands the lane back as `stuck`, naming it and the way out: settle it on the
-   default branch, discard the lane, remove the run's directory and build the
-   intent again. It pushes the
+   hands the lane back as `stuck`, naming it and the way out: save the lane's
+   branch if its commits are wanted, since the discard deletes it, settle it on the
+   default branch, put back anything uncommitted in the lane's worktree, discard the
+   lane, and once the run's other lanes are finished or decided remove the run's
+   directory and build the intent again. An issue's landing moves no intent or spec.
+   The landing commits only what it wrote: its records, the links its moves
+   repointed, and what a refusal asked to be settled in the record stores. Any other
+   change in the lane's worktree stops it until that change is removed. It pushes the
    branch only once the repository's preflight receipt names the lane's head:
    until then the lane is waiting for its full check (since the time the wait
    began) while the other lanes carry on; run `make preflight` in the lane's

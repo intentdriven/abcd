@@ -3,6 +3,7 @@ package loop
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -170,7 +171,7 @@ func TestACommitHoldingMoreThanTheMarkNeedsAModel(t *testing.T) {
 	head := l.HeadSHA
 	setModel(t, f, "", nil, true)
 	f.step(t)
-	landWrite(t, l.Worktree, "note.md", "a note\n")
+	landWrite(t, l.Worktree, ".abcd/development/specs/note.md", "a note\n")
 	r := f.wantsRefusedStep(t)
 	if !strings.Contains(r.Reason, "did not compose") || !strings.Contains(r.Remedy, "model") {
 		t.Fatalf("the refusal names the model: %+v", r)
@@ -291,7 +292,7 @@ func TestAnIntentInShippedIsOneTheCloseWouldHaveMoved(t *testing.T) {
 func TestAFactTheJudgedHeadHoldsHandsTheLaneBack(t *testing.T) {
 	const betaRel = ".abcd/development/intents/planned/itd-11-beta.md"
 	beta := strings.Replace(strings.Replace(readyIntent("impact: additive\nbundle: pair\n", settledQuestions), "id: itd-10\n", "id: itd-11\n", 1), "slug: alpha\n", "slug: beta\n", 1)
-	for name, c := range map[string]struct {
+	cases := map[string]struct {
 		atHead func(t *testing.T, wt string)
 		names  string
 	}{
@@ -314,40 +315,86 @@ func TestAFactTheJudgedHeadHoldsHandsTheLaneBack(t *testing.T) {
 			t.Helper()
 			landWrite(t, wt, ".abcd/development/specs/open/spc-0-twin.md", landRead(t, wt, specRel))
 		}, "spc-0-twin.md"},
-	} {
-		t.Run(name, func(t *testing.T) {
-			f := newLandFixture(t, queueRuleset("MERGE"))
-			l := f.validatedOnce(t)
-			f.commitAtTheJudgedHead(t, l, func() { c.atHead(t, l.Worktree) })
-			f.step(t)
+		"the lane's intent id twice at the head": {func(t *testing.T, wt string) {
+			t.Helper()
+			landWrite(t, wt, ".abcd/development/intents/planned/itd-0-twin.md", landRead(t, wt, plannedIntentRel))
+		}, "itd-0-twin.md"},
+		"the lane's intent id twice under its own number": {func(t *testing.T, wt string) {
+			t.Helper()
+			landWrite(t, wt, ".abcd/development/intents/planned/itd-10-twin.md", landRead(t, wt, plannedIntentRel))
+		}, "itd-10-twin.md"},
+	}
+	for name, c := range cases {
+		for _, stepped := range []bool{false, true} {
+			t.Run(name+map[bool]string{false: "", true: ", on a stepped spec"}[stepped], func(t *testing.T) {
+				f := newLandFixture(t, queueRuleset("MERGE"))
+				if stepped {
+					f = newLandFixtureWith(t, map[string]string{
+						".abcd/work/rulesets/main-protection.json": queueRuleset("MERGE"),
+						specRel: specWithSteps("1. The parser\n   - packages: internal/core/spec\n"),
+					})
+				}
+				l := f.validatedOnce(t)
+				head := f.commitAtTheJudgedHead(t, l, func() { c.atHead(t, l.Worktree) })
+				f.step(t)
+				if got := currentLane(t, f.repo, f.runID); stepped && (got.Landing == nil || got.Landing.MarkStep != 1) {
+					t.Fatalf("premise: the landing marks its step: %+v", got.Landing)
+				}
 
-			res, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
-			if err != nil {
-				t.Fatalf("the step hands the lane back rather than refuse: %v", err)
-			}
-			if res.HandBack == nil || res.HandBack.Kind != HandBackStuck || !strings.Contains(res.HandBack.Reason, c.names) {
-				t.Fatalf("the hand-back names what holds it: %+v", res.HandBack)
-			}
-			if !strings.Contains(res.HandBack.Home, "--discard "+l.ID) || !strings.Contains(res.HandBack.Home, "default branch") {
-				t.Fatalf("the hand-back names the way out: %+v", res.HandBack)
-			}
-			if _, err := os.Stat(filepath.Join(l.Worktree, filepath.FromSlash(shippedIntentRel))); err == nil {
-				t.Fatal("the intent shipped")
-			}
-			if _, err := advance(f.repo.Root(), f.runID, f.stages, Options{}); err == nil {
-				t.Fatal("every later step refuses")
-			}
-			// The way the hand-back names: discard the lane, remove the run, build afresh.
-			if _, err := Discard(f.repo.Root(), f.runID, l.ID, Options{}); err != nil {
-				t.Fatalf("the lane is discarded as the hand-back says: %v", err)
-			}
-			if err := os.RemoveAll(filepath.Join(f.repo.Root(), filepath.FromSlash(runRel(f.runID)))); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := Start(f.repo.Root(), "itd-10", Options{noReserve: true}); err != nil {
-				t.Fatalf("the intent is built afresh: %v", err)
-			}
-		})
+				res, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
+				if err != nil {
+					t.Fatalf("the step hands the lane back rather than refuse: %v", err)
+				}
+				if res.HandBack == nil || res.HandBack.Kind != HandBackStuck || !strings.Contains(res.HandBack.Reason, c.names) {
+					t.Fatalf("the hand-back names what holds it: %+v", res.HandBack)
+				}
+				home := res.HandBack.Home
+				if !strings.Contains(home, "--discard "+l.ID) || !strings.Contains(home, "default branch") {
+					t.Fatalf("the hand-back names the way out: %+v", res.HandBack)
+				}
+				// The save comes first: the discard deletes the branch, and the run's
+				// directory holds the record naming the commit.
+				save := regexp.MustCompile("`git tag ([^`]*)`").FindStringSubmatch(home)
+				if save == nil || !strings.Contains(save[1], l.Branch) {
+					t.Fatalf("the hand-back names the branch and how to save it: %s", home)
+				}
+				at, discard, remove := strings.Index(home, save[0]), strings.Index(home, "--discard "), strings.Index(home, runRel(f.runID))
+				if at > discard || discard > remove {
+					t.Fatalf("the save comes before the discard, and that before the directory goes: %s", home)
+				}
+				if landed := landRead(t, l.Worktree, specRel); strings.Contains(landed, "- landed:") {
+					t.Fatalf("the hand-back leaves no mark in the worktree:\n%s", landed)
+				}
+				if !strings.Contains(home, "commits") {
+					t.Fatalf("the hand-back says what the discard deletes: %s", home)
+				}
+				if strings.Contains(home, "once ") {
+					t.Fatalf("a lane with no sibling at work has nothing to wait for: %s", home)
+				}
+				if _, err := os.Stat(filepath.Join(l.Worktree, filepath.FromSlash(shippedIntentRel))); err == nil {
+					t.Fatal("the intent shipped")
+				}
+				if _, err := advance(f.repo.Root(), f.runID, f.stages, Options{}); err == nil {
+					t.Fatal("every later step refuses")
+				}
+				// The way the hand-back names: save the branch, discard the lane, remove
+				// the run, build afresh.
+				f.repo.Git(strings.Fields(save[0][1 : len(save[0])-1])[1:]...)
+				saved := strings.Fields(save[1])[0]
+				if _, err := Discard(f.repo.Root(), f.runID, l.ID, Options{}); err != nil {
+					t.Fatalf("the lane is discarded as the hand-back says: %v", err)
+				}
+				if got := f.repo.Git("rev-parse", saved); got != head {
+					t.Fatalf("the saved branch keeps the lane's commit: %s, %s", got, head)
+				}
+				if err := os.RemoveAll(filepath.Join(f.repo.Root(), filepath.FromSlash(runRel(f.runID)))); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := Start(f.repo.Root(), "itd-10", Options{noReserve: true}); err != nil {
+					t.Fatalf("the intent is built afresh: %v", err)
+				}
+			})
+		}
 	}
 }
 

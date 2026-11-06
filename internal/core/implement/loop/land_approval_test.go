@@ -526,14 +526,14 @@ func TestAnUnreadGateIsPassedOverOnceItsBoundRunsOut(t *testing.T) {
 	}
 }
 
-// TestALandingOverARefusedHookKeepsItsOwnEdits: a markdown change, as a relink leaves,
-// is not called stray.
+// TestALandingOverARefusedHookKeepsItsOwnEdits: a markdown change in a record store, as
+// a relink leaves, is not called stray.
 func TestALandingOverARefusedHookKeepsItsOwnEdits(t *testing.T) {
 	f := autoFixture(t)
 	f.validated(t)
 	f.step(t)
 	l := currentLane(t, f.repo, f.runID)
-	if err := os.WriteFile(filepath.Join(l.Worktree, "relinked.md"), []byte("x\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(l.Worktree, ".abcd/development/specs/relinked.md"), []byte("x\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	f.step(t)
