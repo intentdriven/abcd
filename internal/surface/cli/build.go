@@ -1405,8 +1405,10 @@ func newImplementReceiptCommand(asJSON *bool) *cobra.Command {
 			"note, the impact and the grounds; the landing resolves each.\n\n" +
 			"At the validate stage the receipt is the validator's return: a reviewer's is refused\n" +
 			"unless it has one Verdict section stating one verdict of its role (SHIP or FIX FIRST;\n" +
-			"APPROVE, BLOCK or NEEDS-INPUT), and the intent-auditor's unless it is the fidelity verdict\n" +
-			"the request asked for, echoing its receipt and both provenance hashes. The loop records\n" +
+			"APPROVE, BLOCK or NEEDS-INPUT) and naming the head it judges by its full object name, and\n" +
+			"the intent-auditor's unless it is the fidelity verdict the request asked for, echoing its\n" +
+			"receipt and both provenance hashes. Either is refused, whatever it says, when its launch\n" +
+			"reports a stop for length, a provider's filter or refusal, or an error. The loop records\n" +
 			"the verdict and the lane stays at validate for the next validator. A fresh implementer's\n" +
 			"receipt after a round is verified as an implementer's is.\n\n" +
 			"--run names the run; without it, the one run in progress in this checkout. Exit 2 on a\n" +

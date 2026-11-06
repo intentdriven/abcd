@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -90,7 +91,15 @@ func TestAnAutoPlanStepRefusesASharedMainCheckoutBeforeItPlans(t *testing.T) {
 			t.Fatalf("a plan review is handed out: %v %s", err, out)
 		}
 		p := filepath.Join(repo.Root(), filepath.FromSlash(res.Awaiting.Receipt))
-		if err := os.WriteFile(p, []byte("## Analysis\n\nRead it.\n\n### Verdict\n\nSHIP\n"), 0o600); err != nil {
+		brief, err := os.ReadFile(filepath.Join(filepath.Dir(p), "brief.md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		digest := regexp.MustCompile("`(sha256:[0-9a-f]{64})`").FindStringSubmatch(string(brief))
+		if digest == nil {
+			t.Fatalf("the brief names no digest for the verdict to name:\n%s", brief)
+		}
+		if err := os.WriteFile(p, []byte("## Analysis\n\nRead it.\n\n### Verdict\n\nSHIP "+digest[1]+"\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		mustImplement(t, "implement", "receipt", p)

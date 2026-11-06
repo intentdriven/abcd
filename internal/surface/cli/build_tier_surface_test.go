@@ -118,7 +118,7 @@ func TestAReviewTheReviewerRouteTakesRecordsNoTierAtTheFrontDoor(t *testing.T) {
 			if strings.Contains(msg, "name: security-reviewer") {
 				verdict = "APPROVE"
 			}
-			return mcptest.TextResult(reviewedHeadLine(msg) + "### Findings\n\n- none\n\n### Verdict\n\n- **" + verdict + "** — nothing survived.\n")
+			return mcptest.TextResult(reviewedHeadLine(msg) + "### Findings\n\n- none\n\n" + verdictSection(msg, verdict))
 		}}
 	url := mcptest.Start(t, srv)
 	repo.Write(".abcd/config.json", `{"oracle":{"review":"rp"}}`)

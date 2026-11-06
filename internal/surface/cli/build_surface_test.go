@@ -293,7 +293,7 @@ func TestTheHostDrivesALaneThroughTheCLI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(ret, []byte(reviewedHeadLine(string(reviewBrief))+"### Verdict\n\n- **SHIP** — nothing survived.\n"), 0o600); err != nil {
+	if err := os.WriteFile(ret, []byte(reviewedHeadLine(string(reviewBrief))+verdictSection(string(reviewBrief), "SHIP")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if res := mustStep(t, "implement", "receipt", review.Awaiting.Receipt, "--json"); res.PerformedStage != "" || res.Stage != "validate" {

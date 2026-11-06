@@ -40,10 +40,10 @@ func TestAReturnMustStateTheRoundsHead(t *testing.T) {
 		t.Fatalf("a return with no such line is refused, naming it: %v", err)
 	}
 	other := strings.Repeat("a", len(head))
-	if err := hand("Reviewed head: " + other + "\n\n" + reviewerReturn("SHIP")); err == nil || !strings.Contains(err.Error(), want) {
+	if err := hand("Reviewed head: " + other + "\n\n" + namingHead(reviewerReturn("SHIP"), head)); err == nil || !strings.Contains(err.Error(), want) {
 		t.Fatalf("a return naming another head is refused, naming the right one: %v", err)
 	}
-	if err := hand("Reviewed head: " + head + "\n\n" + reviewerReturn("SHIP")); err != nil {
+	if err := hand("Reviewed head: " + head + "\n\n" + namingHead(reviewerReturn("SHIP"), head)); err != nil {
 		t.Fatalf("the line lets it in: %v", err)
 	}
 	if v := currentLane(t, repo, id).Validation[0].Validators[0]; v.Verdict != "SHIP" {

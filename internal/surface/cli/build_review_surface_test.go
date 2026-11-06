@@ -76,7 +76,7 @@ func TestAReviewTheStepHandsOutGoesToTheMCPOracleWhenConfigured(t *testing.T) {
 	srv := &mcptest.Server{Tools: map[string][]string{repoprompt.DefaultTool: {"message", "new_chat"}},
 		Answer: func(args map[string]any) any {
 			msg, _ := args["message"].(string)
-			return mcptest.TextResult(reviewedHeadLine(msg) + "### Findings\n\n- none\n\n### Verdict\n\n- **SHIP** — nothing survived.\n")
+			return mcptest.TextResult(reviewedHeadLine(msg) + "### Findings\n\n- none\n\n" + verdictSection(msg, "SHIP"))
 		}}
 	url := mcptest.Start(t, srv)
 	repo.Write(".abcd/config.json", `{"oracle":{"review":"rp"}}`)
@@ -165,6 +165,16 @@ func TestAReviewTheOracleDoesNotReturnFallsBackAndIsCountedAtTheFrontDoor(t *tes
 	if rec.FallbackCounts.Total != 1 || rec.FallbackCounts.ByRunner["rp"] != 1 {
 		t.Fatalf("the record counts the fallback: %+v", rec.FallbackCounts)
 	}
+}
+
+// verdictSection is the section a reviewer's brief or request asks a return to end with,
+// stating verdict and naming the head text names.
+func verdictSection(text, verdict string) string {
+	head := ""
+	if m := regexp.MustCompile("`Reviewed head: ([0-9a-f]+)`").FindStringSubmatch(text); m != nil {
+		head = " " + m[1]
+	}
+	return "### Verdict\n\n- **" + verdict + "**" + head + " — nothing survived.\n"
 }
 
 // reviewedHeadLine is the first line a reviewer's brief or request asks its return to

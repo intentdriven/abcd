@@ -324,3 +324,18 @@ func TestClaudeNegativeCountIsNotReported(t *testing.T) {
 		t.Fatalf("usage %+v, list %v", ans.Usage, got)
 	}
 }
+
+// A finish reason says whether the run stopped short of finishing, however the
+// harness or the provider spells it; one that says nothing of the kind is no such
+// report.
+func TestSidesSayWhenARunStoppedShort(t *testing.T) {
+	for reason, want := range map[string]bool{
+		"length": true, "LENGTH": true, "max_tokens": true, "max-tokens": true, "max_output_tokens": true,
+		"model_context_window_exceeded": true, "content_filter": true, "content-filter": true, "refusal": true, "error": true,
+		"": false, "stop": false, "end_turn": false, "stop_sequence": false, "tool-calls": false, "tool_use": false, "unknown": false,
+	} {
+		if got := (Sides{FinishReason: reason}).StoppedShort(); got != want {
+			t.Errorf("StoppedShort(%q) = %v; want %v", reason, got, want)
+		}
+	}
+}
