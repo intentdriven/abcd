@@ -16,8 +16,8 @@
 //
 //  1. Refuses unless the working tree is clean, so nothing uncommitted is folded
 //     into the rename.
-//  2. Finds every tracked record of the four families whose filenames carry a
-//     minted slug — issues, intents, specs and ADRs, every bucket — whose slug
+//  2. Finds every tracked record of the five families whose filenames carry a
+//     minted slug — issues, intents, specs, ADRs and decisions, every bucket — whose slug
 //     exceeds the cap, and computes the new slug with recordid.CapSlug, the same
 //     cut the minting verbs apply to a slug that arrives whole.
 //  3. Moves each with `git mv`, and rewrites the `slug:` field of its leading
@@ -25,7 +25,7 @@
 //     one value (record-lint's record_schema and the ledger reader compare them
 //     exactly).
 //  4. Rewrites every reference to an old name in every tracked text file: the
-//     name `<id-part>-<old-slug>` (iss-N-, itd-N-, spc-N-, or an ADR's bare
+//     name `<id-part>-<old-slug>` (iss-N-, itd-N-, spc-N-, dcn-N-, or an ADR's bare
 //     number) where it stands whole — not glued to a letter or a hyphen before
 //     it, nor to a letter, digit or hyphen after it. The id part is in the
 //     match, so the replacement is the path's name, never the slug alone, and a
@@ -77,12 +77,14 @@ type family struct {
 }
 
 // families are the stores the minting verbs write: capture, intent, spec and
-// decide. Every bucket under each root is read.
+// decide, its decisions and its ADRs alike, which are what record_slug_cap judges.
+// Every bucket under each root is read.
 var families = []family{
 	{"iss", "iss", recordid.IssuesRelDir},
 	{"itd", "itd", intent.IntentsRelDir},
 	{"spc", "spc", spec.SpecsRelDir},
 	{"adr", "", recordid.ADRsRelDir},
+	{"dcn", "dcn", recordid.DecisionsRelDir},
 }
 
 // rename is one record's move.
@@ -90,7 +92,7 @@ type rename struct {
 	Family  string
 	OldRel  string
 	NewRel  string
-	IDPart  string // the filename before the slug: "iss-N-", "itd-N-", "spc-N-" or "NNNN-"
+	IDPart  string // the filename before the slug: "iss-N-", "itd-N-", "spc-N-", "dcn-N-" or "NNNN-"
 	OldSlug string
 	NewSlug string
 }
@@ -329,7 +331,7 @@ func slugLine(data []byte) (int, string, bool) {
 
 // idPartRe finds a candidate record-name prefix: a family tag and number, or an
 // ADR's bare number, followed by the hyphen the slug hangs from.
-var idPartRe = regexp.MustCompile(`(?:(?:iss|itd|spc)-)?[0-9]+-`)
+var idPartRe = regexp.MustCompile(`(?:(?:iss|itd|spc|dcn)-)?[0-9]+-`)
 
 // rewriteRefs replaces every whole occurrence of an old record name with the new
 // one and returns the result and the count. The name is matched with its id

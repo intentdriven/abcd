@@ -218,3 +218,45 @@ func TestPlanRefusesASlugFieldThatDisagrees(t *testing.T) {
 		t.Fatalf("a refused run changed the tree:\n%s", s)
 	}
 }
+
+// TestPlanReachesADecisionOverTheCap: record_slug_cap judges a decision, so the
+// tool that puts a repository right takes a decision too, and a reference to one
+// follows it.
+func TestPlanReachesADecisionOverTheCap(t *testing.T) {
+	root := t.TempDir()
+	const (
+		long  = "a-decision-whose-slug-runs-well-past-the-cap-it-is-held-to"
+		short = "a-decision-whose-slug-runs-well-past-the"
+		old   = ".abcd/work/decisions/dcn-2610100000000002-" + long + ".md"
+		moved = ".abcd/work/decisions/dcn-2610100000000002-" + short + ".md"
+	)
+	for rel, body := range map[string]string{
+		old:         "---\nid: dcn-2610100000000002\nslug: " + long + "\ndate: 2026-10-10\n---\nDecided.\n",
+		"AGENTS.md": "See .abcd/work/decisions/dcn-2610100000000002-" + long + ".md for it.\n",
+	} {
+		abs := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(abs, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	git(t, root, "init", "-q")
+	git(t, root, "add", "-A")
+	git(t, root, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "fixture")
+
+	rep, err := run(root, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Plan) != 1 || rep.Plan[0].OldRel != old || rep.Plan[0].NewRel != moved || rep.Renamed["dcn"] != 1 {
+		t.Fatalf("the run renames the decision: %+v", rep)
+	}
+	if got := read(t, root, moved); !strings.Contains(got, "slug: "+short+"\n") {
+		t.Fatalf("the slug field follows the name:\n%s", got)
+	}
+	if got := read(t, root, "AGENTS.md"); !strings.Contains(got, moved) {
+		t.Fatalf("a reference follows the name:\n%s", got)
+	}
+}
