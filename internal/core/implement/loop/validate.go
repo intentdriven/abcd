@@ -66,6 +66,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -339,9 +340,155 @@ func writeRoundFile(repoRoot, rel string, body []byte) error {
 // abs is a checkout-relative path as an agent in another checkout addresses it.
 func abs(repoRoot, rel string) string { return filepath.Join(repoRoot, filepath.FromSlash(rel)) }
 
-// readerDiff is the git command a validator reads a range with: git's own text, whatever
-// attributes or drivers the lane's worktree holds.
-const readerDiff = "diff --text --no-ext-diff --no-textconv"
+// readerDiff is the git command a validator reads a range with: git's own text of the
+// objects as stored, whatever attributes, drivers, replace refs or submodule settings the
+// lane's worktree holds.
+const readerDiff = "--no-replace-objects diff --text --ignore-submodules=none --no-ext-diff --no-textconv"
+
+// gitlinkMode is a submodule commit's mode in git's lists: it names no blob here.
+const gitlinkMode = "160000"
+
+// maxReaderBlobBytes bounds a blob read to tell whether it is plain text; a larger one is
+// named and not shown.
+const maxReaderBlobBytes = 4 << 20
+
+// laneDiffForReader is the diff a reviewer's request carries: git's own text of each file
+// whose stored blobs are plain text, whatever the repository configures (no external diff
+// program, no textconv driver, no colour, no attribute calling text binary, no replace ref,
+// no file git's diff is asked to pass over). Any other file is one line giving its path,
+// mode, size and blob, since its bytes would mean nothing to a reader; text that takes such
+// a file's place is shown after its line.
+func laneDiffForReader(worktree, base, head string) ([]byte, error) {
+	ctx := context.Background()
+	raw, err := gitutil.RunCappedBytesAsStoredContext(ctx, worktree, "", maxBaseListing, "diff-tree", "-r", "--raw", "--no-renames", "--no-abbrev", "--ignore-submodules=none", "-z", base, head, "--")
+	if err != nil {
+		return nil, err
+	}
+	entries, err := parseRawDiff(string(raw))
+	if err != nil {
+		return nil, err
+	}
+	blobs, err := readerBlobs(worktree, entries)
+	if err != nil {
+		return nil, err
+	}
+	var notes bytes.Buffer
+	args := []string{"diff", "--text", "--ignore-submodules=none", "--no-ext-diff", "--no-textconv", "--no-color", base + ".." + head, "--"}
+	excluded := false
+	for _, e := range entries {
+		was, now := blobs[e.oldObject], blobs[e.newObject]
+		if was.why == "" && now.why == "" {
+			continue
+		}
+		if !excluded {
+			args, excluded = append(args, "."), true
+		}
+		args = append(args, ":(top,literal,exclude)"+e.path)
+		mode, object, side := e.newMode, e.newObject, now
+		if now.why == "" {
+			mode, object, side = e.oldMode, e.oldObject, was
+		}
+		fmt.Fprintf(&notes, "# %s: %s: mode %s, %d bytes, blob %s (%s)\n", side.label, strconv.Quote(termsafe.Sanitize(e.path)), mode, side.size, object, side.why)
+		if now.why == "" && now.size > 0 {
+			got, err := gitutil.CatFileBatch(worktree, []string{e.newObject}, int(now.size)+len(e.newObject)+64)
+			if err != nil {
+				return nil, err
+			}
+			fmt.Fprintf(&notes, "# the text that takes its place:\n")
+			for line := range strings.SplitSeq(strings.TrimSuffix(got[0].Content, "\n"), "\n") {
+				fmt.Fprintf(&notes, "+%s\n", line)
+			}
+		}
+	}
+	text, err := gitutil.RunCappedBytesAsStoredContext(ctx, worktree, "", maxReviewDiffBytes, args...)
+	if err != nil {
+		return nil, err
+	}
+	if len(text)+notes.Len() > maxReviewDiffBytes {
+		return nil, fmt.Errorf("the lane's diff exceeds the %d-byte cap on a review request", maxReviewDiffBytes)
+	}
+	return append(text, notes.Bytes()...), nil
+}
+
+// readerBlob is what a reader's diff knows of one blob: why it is not shown as text, ""
+// when it is plain text, the line's label for that, and its size.
+type readerBlob struct {
+	why, label string
+	size       int64
+}
+
+// readerBlobs reads, as stored, each blob the entries name and says which are plain text.
+// A gitlink and an absent side name no blob, so they read as plain text here.
+func readerBlobs(worktree string, entries []rawEntry) (map[string]readerBlob, error) {
+	var names []string
+	for _, e := range entries {
+		if e.oldMode != gitlinkMode && strings.Trim(e.oldObject, "0") != "" {
+			names = append(names, e.oldObject)
+		}
+		if e.newMode != gitlinkMode && strings.Trim(e.newObject, "0") != "" {
+			names = append(names, e.newObject)
+		}
+	}
+	slices.Sort(names)
+	names = slices.Compact(names)
+	out := map[string]readerBlob{}
+	if len(names) == 0 {
+		return out, nil
+	}
+	checked, err := gitutil.RunCappedBytesAsStoredContext(context.Background(), worktree, strings.Join(names, "\n")+"\n", len(names)*128, "cat-file", "--batch-check")
+	if err != nil {
+		return nil, err
+	}
+	sizes := map[string]int64{}
+	for line := range strings.SplitSeq(strings.TrimSpace(string(checked)), "\n") {
+		f := strings.Fields(line)
+		if len(f) != 3 {
+			return nil, fmt.Errorf("git cat-file --batch-check answered %q, a line it does not document", line)
+		}
+		n, err := strconv.ParseInt(f[2], 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("git cat-file --batch-check answered %q, a line it does not document", line)
+		}
+		sizes[f[0]] = n
+	}
+	var batch []string
+	budget := 0
+	flush := func() error {
+		got, err := gitutil.CatFileBatch(worktree, batch, budget)
+		if err != nil {
+			return err
+		}
+		for _, o := range got {
+			b := readerBlob{size: sizes[o.Name]}
+			if why := landing.NotPlainText([]byte(o.Content)); why != "" {
+				b.why, b.label = why, "binary, not shown"
+			}
+			out[o.Name] = b
+		}
+		batch, budget = nil, 0
+		return nil
+	}
+	for _, name := range names {
+		size := sizes[name]
+		if size > maxReaderBlobBytes {
+			out[name] = readerBlob{size: size, why: fmt.Sprintf("past the %d bytes read to tell whether it is text", maxReaderBlobBytes), label: "not read, not shown"}
+			continue
+		}
+		if budget+int(size) > 8*maxReaderBlobBytes {
+			if err := flush(); err != nil {
+				return nil, err
+			}
+		}
+		batch = append(batch, name)
+		budget += int(size) + len(name) + 64
+	}
+	if len(batch) > 0 {
+		if err := flush(); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
 
 // writeValidatorBrief renders the brief of one validator of a round and, for
 // the intent-auditor, the fidelity request it reads.
@@ -361,7 +508,7 @@ func writeValidatorBrief(c Context, lane Lane, r ValidationRound, v *ValidatorRu
 		p("- the lane: %s, spec step %d, %q\n", lane.ID, lane.SpecStep, lane.StepTitle)
 	}
 	p("- the worktree: `%s`, branch `%s`\n", lane.Worktree, lane.Branch)
-	p("- the lane's diff: `%s..%s` (`git -C %s %s %s..%s`)\n", lane.BaseSHA, r.HeadSHA, lane.Worktree, readerDiff, lane.BaseSHA, r.HeadSHA)
+	p("- the lane's diff: `%s..%s` (`git -C %s %s %s..%s`); `--text` prints a binary file's bytes too, so leave one out with `':(exclude)<path>'` and judge it by what `git ls-tree -l` says of it\n", lane.BaseSHA, r.HeadSHA, lane.Worktree, readerDiff, lane.BaseSHA, r.HeadSHA)
 	p("- the implementer's report: `%s`\n", reportPathOf(c, lane, lane.Receipt))
 	for _, prev := range lane.Validation {
 		if prev.Round < r.Round && prev.Fix != "" {
@@ -1531,15 +1678,12 @@ func reviewRequest(repoRoot, runID, laneID string, aw Await, agentPrompt func(st
 	}
 	// The lane's own changes, as the audit reads them: its head against the
 	// default-branch commit its last sync merged in, or its base, so a sync
-	// never carries the default branch's changes into the request. Git's own
-	// diff, whatever the repository configures: no external diff program, no
-	// textconv driver, no colour, and text whatever attributes the worktree holds.
+	// never carries the default branch's changes into the request.
 	base := diffBase(lane)
 	if lane.readsRecords(r) {
 		base = lane.recordsBase(r)
 	}
-	diff, err := gitutil.RunCappedBytes(lane.Worktree, maxReviewDiffBytes, "diff", "--text", "--no-ext-diff", "--no-textconv", "--no-color",
-		base+".."+r.HeadSHA, "--")
+	diff, err := laneDiffForReader(lane.Worktree, base, r.HeadSHA)
 	if err != nil {
 		return "", fmt.Errorf("the lane's diff: %w", err)
 	}

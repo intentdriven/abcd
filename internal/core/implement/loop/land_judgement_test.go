@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -90,54 +91,226 @@ func TestARecordTheHeadHoldsMovedAdmitsOnlyItsRepoint(t *testing.T) {
 	}
 }
 
-// A nested checkout the landing would stage is judged whatever the repository's list of
-// submodules says of it, at each point the landing reads what it commits.
-func TestANestedCheckoutIsJudgedWhateverTheRepositoryIgnores(t *testing.T) {
-	nested := func(t *testing.T, f *landFixture, wt string) {
-		t.Helper()
-		dir := filepath.Join(wt, "vendored")
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		f.repo.Git("-C", dir, "init", "-q")
-		f.repo.Git("-C", dir, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "--allow-empty", "-m", "nested")
+// nestedCheckout makes a checkout with a commit of its own inside the lane's worktree.
+func (f *landFixture) nestedCheckout(t *testing.T, wt string) {
+	t.Helper()
+	dir := filepath.Join(wt, "vendored")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
 	}
+	f.repo.Git("-C", dir, "init", "-q")
+	f.repo.Git("-C", dir, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "--allow-empty", "-m", "nested")
+}
+
+// submoduleSettings are the two ways a repository asks git's diff to pass over a gitlink:
+// each sets up a fixture so asked.
+var submoduleSettings = map[string]func(t *testing.T) *landFixture{
+	"its list of submodules": func(t *testing.T) *landFixture {
+		t.Helper()
+		return newLandFixtureWith(t, map[string]string{
+			".abcd/work/rulesets/main-protection.json": queueRuleset("MERGE"),
+			".gitmodules": "[submodule \"vendored\"]\n\tpath = vendored\n\turl = ./vendored\n\tignore = all\n",
+		})
+	},
+	"its configuration": func(t *testing.T) *landFixture {
+		t.Helper()
+		f := newLandFixture(t, queueRuleset("MERGE"))
+		f.repo.Git("config", "diff.ignoreSubmodules", "all")
+		return f
+	},
+}
+
+// A nested checkout the landing would stage is judged whatever the repository asks git's
+// diff to pass over, at each point the landing reads what it commits.
+func TestANestedCheckoutIsJudgedWhateverTheRepositoryIgnores(t *testing.T) {
 	for name, setup := range map[string]func(t *testing.T, f *landFixture, l Lane){
 		"in the worktree": func(t *testing.T, f *landFixture, l Lane) {
 			t.Helper()
-			nested(t, f, l.Worktree)
+			f.nestedCheckout(t, l.Worktree)
 		},
 		"staged by the close": func(t *testing.T, f *landFixture, l Lane) {
 			t.Helper()
-			beforeLandingStage = func(string) { nested(t, f, l.Worktree) }
+			beforeLandingStage = func(string) { f.nestedCheckout(t, l.Worktree) }
 			t.Cleanup(func() { beforeLandingStage = nil })
 		},
 		"in a commit found": func(t *testing.T, f *landFixture, l Lane) {
 			t.Helper()
 			judged := l.HeadSHA
 			f.step(t) // the landing's own commit
-			nested(t, f, l.Worktree)
+			f.nestedCheckout(t, l.Worktree)
 			f.repo.Git("-C", l.Worktree, "add", "-A")
 			f.repo.Git("-C", l.Worktree, "commit", "-q", "--amend", "--no-edit")
 			f.rollBackToJudged(t, judged)
 		},
 	} {
-		t.Run(name, func(t *testing.T) {
-			f := newLandFixtureWith(t, map[string]string{
-				".abcd/work/rulesets/main-protection.json": queueRuleset("MERGE"),
-				".gitmodules": "[submodule \"vendored\"]\n\tpath = vendored\n\turl = ./vendored\n\tignore = all\n",
+		for how, fixture := range submoduleSettings {
+			t.Run(name+", passed over by "+how, func(t *testing.T) {
+				f := fixture(t)
+				f.validated(t)
+				f.step(t) // prepare
+				l := currentLane(t, f.repo, f.runID)
+				setup(t, f, l)
+				if r := f.wantsRefusedStep(t); !strings.Contains(r.Reason, "vendored") {
+					t.Fatalf("the refusal names it: %+v", r)
+				}
+				if got := currentLane(t, f.repo, f.runID); got.Landing.RecordsDone {
+					t.Fatalf("nothing holding it is taken as the landing's records: %+v", got.Landing)
+				}
 			})
-			f.validated(t)
+		}
+	}
+}
+
+// standIn makes the object named by the replacement stand in for the one named first, as
+// the repository's own replace refs do.
+func (f *landFixture) standIn(t *testing.T, wt, object, replacement string) {
+	t.Helper()
+	f.repo.Git("-C", wt, "replace", object, replacement)
+}
+
+// A landing reads what it commits as stored, whatever the repository's replace refs stand
+// in for those objects, and leaves those refs where they are.
+func TestALandingReadsWhatItCommitsAsStored(t *testing.T) {
+	const payload = "Not the landing's.\n"
+	for name, standIn := range map[string]func(t *testing.T, f *landFixture, l Lane) string{
+		"another blob for the file's": func(t *testing.T, f *landFixture, l Lane) string {
+			t.Helper()
+			written := f.repo.Git("-C", l.Worktree, "hash-object", "-w", "--", "AGENTS.md")
+			f.standIn(t, l.Worktree, written, f.repo.Git("-C", l.Worktree, "rev-parse", "HEAD:AGENTS.md"))
+			return written
+		},
+		"another commit for the judged head": func(t *testing.T, f *landFixture, l Lane) string {
+			t.Helper()
+			f.repo.Git("-C", l.Worktree, "add", "AGENTS.md")
+			tree := f.repo.Git("-C", l.Worktree, "write-tree")
+			f.repo.Git("-C", l.Worktree, "reset", "-q")
+			other := f.repo.Git("-C", l.Worktree, "commit-tree", tree, "-p", l.HeadSHA+"^", "-m", "the head")
+			f.standIn(t, l.Worktree, l.HeadSHA, other)
+			return l.HeadSHA
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newLandFixture(t, queueRuleset("MERGE"))
+			f.validatedOnce(t)
 			f.step(t) // prepare
 			l := currentLane(t, f.repo, f.runID)
-			setup(t, f, l)
-			if r := f.wantsRefusedStep(t); !strings.Contains(r.Reason, "vendored") {
-				t.Fatalf("the refusal names it: %+v", r)
+			judged := l.HeadSHA
+			landWrite(t, l.Worktree, "AGENTS.md", landRead(t, l.Worktree, "AGENTS.md")+payload)
+			object := standIn(t, f, l)
+			r := f.wantsRefusedStep(t)
+			if !strings.Contains(r.Reason, "AGENTS.md") || !strings.Contains(r.Reason, strayClaim) {
+				t.Fatalf("the refusal names the file: %+v", r)
 			}
-			if got := currentLane(t, f.repo, f.runID); got.Landing.RecordsDone {
-				t.Fatalf("nothing holding it is taken as the landing's records: %+v", got.Landing)
+			if got := f.repo.Git("-C", l.Worktree, "rev-parse", "HEAD"); got != judged {
+				t.Fatalf("nothing is committed: %s, %s", got, judged)
+			}
+			if got := f.repo.Git("-C", l.Worktree, "replace", "-l"); !strings.Contains(got, object) {
+				t.Fatalf("the repository's replace ref stays: %q", got)
 			}
 		})
+	}
+}
+
+// A commit found on the judged head is read as stored: what stands in for it, its blobs or
+// its parents says nothing of what it holds.
+func TestACommitFoundIsReadAsStored(t *testing.T) {
+	// merged stands a merge of the judged head and a side commit in at the tip, its tree
+	// the landing's own.
+	merged := func(t *testing.T, f *landFixture, l Lane) string {
+		t.Helper()
+		own := f.repo.Git("-C", l.Worktree, "rev-parse", "HEAD")
+		msg := f.repo.Git("-C", l.Worktree, "log", "-1", "--format=%B")
+		f.repo.Git("-C", l.Worktree, "reset", "-q", "--hard", l.HeadSHA)
+		landWrite(t, l.Worktree, "docs/beside.md", "Beside.\n")
+		f.repo.Git("-C", l.Worktree, "add", "-A")
+		f.repo.Git("-C", l.Worktree, "commit", "-q", "-m", "beside")
+		side := f.repo.Git("-C", l.Worktree, "rev-parse", "HEAD")
+		merge := f.repo.Git("-C", l.Worktree, "commit-tree", own+"^{tree}", "-p", l.HeadSHA, "-p", side, "-m", msg)
+		f.repo.Git("-C", l.Worktree, "reset", "-q", "--hard", merge)
+		return merge
+	}
+	for name, c := range map[string]struct {
+		arrange func(t *testing.T, f *landFixture, l Lane)
+		says    string
+	}{
+		"parents a replace ref gives it": {func(t *testing.T, f *landFixture, l Lane) {
+			t.Helper()
+			merge := merged(t, f, l)
+			f.repo.Git("-C", l.Worktree, "replace", "--graft", merge, l.HeadSHA)
+		}, "not the landing's records commit"},
+		"parents a graft file gives it": {func(t *testing.T, f *landFixture, l Lane) {
+			t.Helper()
+			merge := merged(t, f, l)
+			common := f.repo.Git("-C", l.Worktree, "rev-parse", "--path-format=absolute", "--git-common-dir")
+			if err := os.MkdirAll(filepath.Join(common, "info"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(common, "info", "grafts"), []byte(merge+" "+l.HeadSHA+"\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}, "not the landing's records commit"},
+		"the landing's own commit standing in for it": {func(t *testing.T, f *landFixture, l Lane) {
+			t.Helper()
+			own := f.repo.Git("-C", l.Worktree, "rev-parse", "HEAD")
+			landWrite(t, l.Worktree, "docs/beside.md", "Beside.\n")
+			f.repo.Git("-C", l.Worktree, "add", "-A")
+			f.repo.Git("-C", l.Worktree, "commit", "-q", "--amend", "--no-edit")
+			f.standIn(t, l.Worktree, f.repo.Git("-C", l.Worktree, "rev-parse", "HEAD"), own)
+		}, "docs/beside.md"},
+		"the head's blob standing in for what it holds": {func(t *testing.T, f *landFixture, l Lane) {
+			t.Helper()
+			landWrite(t, l.Worktree, "AGENTS.md", landRead(t, l.Worktree, "AGENTS.md")+"Not the landing's.\n")
+			f.repo.Git("-C", l.Worktree, "add", "-A")
+			f.repo.Git("-C", l.Worktree, "commit", "-q", "--amend", "--no-edit")
+			f.standIn(t, l.Worktree, f.repo.Git("-C", l.Worktree, "rev-parse", "HEAD:AGENTS.md"), f.repo.Git("-C", l.Worktree, "rev-parse", l.HeadSHA+":AGENTS.md"))
+		}, "AGENTS.md"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newLandFixture(t, queueRuleset("MERGE"))
+			f.validatedOnce(t)
+			f.step(t) // prepare
+			l := currentLane(t, f.repo, f.runID)
+			f.step(t) // the landing's own commit
+			c.arrange(t, f, l)
+			f.rollBackToJudged(t, l.HeadSHA)
+			if r := f.wantsRefusedStep(t); !strings.Contains(r.Reason, c.says) {
+				t.Fatalf("the refusal says %q: %+v", c.says, r)
+			}
+			if got := currentLane(t, f.repo, f.runID); got.Landing.RecordsDone {
+				t.Fatalf("the commit is not taken as the landing's records: %+v", got.Landing)
+			}
+		})
+	}
+}
+
+// A store's records and a mark's blobs are read as stored.
+func TestRecordsAndAMarkAreReadAsStored(t *testing.T) {
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	l := f.validatedOnce(t)
+	wt, head := l.Worktree, l.HeadSHA
+	stored := f.repo.Git("-C", wt, "rev-parse", head+":"+specRel)
+	body := landRead(t, wt, specRel)
+	const mark = "abc123"
+	landWrite(t, wt, ".mark", body+"- landed: "+mark+"\n")
+	marked := f.repo.Git("-C", wt, "hash-object", "-w", "--", ".mark")
+	landWrite(t, wt, ".mark", body+"- landed: "+mark+"\nNot the mark.\n")
+	more := f.repo.Git("-C", wt, "hash-object", "-w", "--", ".mark")
+	if err := os.Remove(filepath.Join(wt, ".mark")); err != nil {
+		t.Fatal(err)
+	}
+	f.standIn(t, wt, more, marked)
+	if only, err := addsOnlyTheMark(wt, stored, more, mark); err != nil || only {
+		t.Errorf("a blob holding more than the mark reads as the mark alone: %v %v", only, err)
+	}
+	f.standIn(t, wt, stored, more)
+	records, err := treeRecords(baseTree{root: wt, sha: head}, specCloseStore)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range records {
+		if r.rel == specRel && r.content != body {
+			t.Errorf("the record reads as what stands in for it:\n%s", r.content)
+		}
 	}
 }
 
@@ -284,6 +457,10 @@ func TestACommitFoundMustReadAsTheLandingsOwn(t *testing.T) {
 			t.Helper()
 			landWrite(t, l.Worktree, shippedIntentRel, strings.ReplaceAll(landRead(t, l.Worktree, shippedIntentRel), "abcd-review: INGESTED", "abcd-review: OWED"))
 		}, "lacks the audit"},
+		"the audit's words changed": {func(t *testing.T, _ *landFixture, l Lane) {
+			t.Helper()
+			landWrite(t, l.Worktree, shippedIntentRel, strings.Replace(landRead(t, l.Worktree, shippedIntentRel), "Provenance:", "Provenance, as read:", 1))
+		}, "lacks the audit"},
 		"a record made executable": {func(t *testing.T, _ *landFixture, l Lane) {
 			t.Helper()
 			if err := os.Chmod(filepath.Join(l.Worktree, filepath.FromSlash(closed)), 0o755); err != nil {
@@ -420,15 +597,10 @@ func TestARecordKeepsTheModeItsWritesGive(t *testing.T) {
 	})
 }
 
-// laneWithMarkdownBinary commits a markdown edit under attributes that call markdown
-// binary, and makes it the head of the lane's latest round.
-func (f *landFixture) laneWithMarkdownBinary(t *testing.T, l Lane) string {
+// atRoundHead commits what edit changes and makes it the head of the lane's latest round.
+func (f *landFixture) atRoundHead(t *testing.T, l Lane, edit func()) string {
 	t.Helper()
-	const line = "A line the reader must see."
-	head := f.commitAtTheJudgedHead(t, l, func() {
-		landWrite(t, l.Worktree, ".gitattributes", "*.md -diff\n")
-		landWrite(t, l.Worktree, plannedIntentRel, landRead(t, l.Worktree, plannedIntentRel)+line+"\n")
-	})
+	head := f.commitAtTheJudgedHead(t, l, edit)
 	if err := mutate(f.repo.Root(), f.runID, func(_ *os.Root, st *State) (bool, error) {
 		cur := &st.Lanes[st.current()]
 		cur.Validation[len(cur.Validation)-1].HeadSHA = head
@@ -436,15 +608,12 @@ func (f *landFixture) laneWithMarkdownBinary(t *testing.T, l Lane) string {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	return line
+	return head
 }
 
-// A reviewer's request shows the text of what changed, whatever attributes the lane's
-// worktree holds.
-func TestAReviewRequestShowsTheTextWhateverTheAttributesSay(t *testing.T) {
-	f := newLandFixture(t, queueRuleset("MERGE"))
-	l := f.validatedOnce(t)
-	line := f.laneWithMarkdownBinary(t, l)
+// reviewOf is the request a reviewer route is sent for the lane's latest round.
+func (f *landFixture) reviewOf(t *testing.T) string {
+	t.Helper()
 	cur := currentLane(t, f.repo, f.runID)
 	v := cur.Validation[len(cur.Validation)-1].Validators[0]
 	req, err := reviewRequest(f.repo.Root(), f.runID, cur.ID, Await{Role: v.Role, Receipt: v.Return}, func(string) (string, error) { return "the agent", nil })
@@ -455,26 +624,115 @@ func TestAReviewRequestShowsTheTextWhateverTheAttributesSay(t *testing.T) {
 	if !ok {
 		t.Fatalf("the request has its diff section:\n%s", req)
 	}
-	if !strings.Contains(diff, "+"+line) {
-		t.Fatalf("the diff section shows the text:\n%s", diff)
+	diff, _, _ = strings.Cut(diff, "## What you answer")
+	return diff
+}
+
+// A reviewer's request shows the text of what changed as the objects store it, whatever
+// attributes the lane's worktree holds, replace refs stand in or the repository asks git's
+// diff to pass over.
+func TestAReviewRequestShowsTheTextWhateverTheAttributesSay(t *testing.T) {
+	const line = "A line the reader must see."
+	edit := func(t *testing.T, wt string) {
+		t.Helper()
+		landWrite(t, wt, plannedIntentRel, landRead(t, wt, plannedIntentRel)+line+"\n")
+	}
+	t.Run("markdown called binary by the attributes", func(t *testing.T) {
+		f := newLandFixture(t, queueRuleset("MERGE"))
+		l := f.validatedOnce(t)
+		f.atRoundHead(t, l, func() {
+			landWrite(t, l.Worktree, ".gitattributes", "*.md -diff\n")
+			edit(t, l.Worktree)
+		})
+		if got := f.reviewOf(t); !strings.Contains(got, "+"+line) {
+			t.Fatalf("the diff section shows the text:\n%s", got)
+		}
+	})
+	t.Run("a blob standing in for the lane's own", func(t *testing.T) {
+		f := newLandFixture(t, queueRuleset("MERGE"))
+		l := f.validatedOnce(t)
+		was := l.HeadSHA
+		head := f.atRoundHead(t, l, func() { edit(t, l.Worktree) })
+		f.standIn(t, l.Worktree, f.repo.Git("-C", l.Worktree, "rev-parse", head+":"+plannedIntentRel), f.repo.Git("-C", l.Worktree, "rev-parse", was+":"+plannedIntentRel))
+		if got := f.reviewOf(t); !strings.Contains(got, "+"+line) {
+			t.Fatalf("the diff section shows the text:\n%s", got)
+		}
+	})
+	for how, fixture := range submoduleSettings {
+		t.Run("a nested checkout passed over by "+how, func(t *testing.T) {
+			f := fixture(t)
+			l := f.validated(t)
+			f.atRoundHead(t, l, func() { f.nestedCheckout(t, l.Worktree) })
+			if got := f.reviewOf(t); !strings.Contains(got, "Subproject commit") {
+				t.Fatalf("the diff section shows the gitlink:\n%s", got)
+			}
+		})
 	}
 }
 
-// Each command or range a validator's brief hands it reads git's own text diff, whatever
-// attributes or drivers the lane's worktree holds, and the command works as written.
+// A binary file reaches a reviewer as one line naming it, never as its bytes, whatever its
+// size: the text beside it, and text that takes a binary file's place, are still shown.
+func TestAReviewRequestNamesABinaryFile(t *testing.T) {
+	const line = "A line the reader must see."
+	binary := strings.Repeat("\x00\xff\x01binary\n", 80*1024) // past the request's cap
+	t.Run("beside text", func(t *testing.T) {
+		f := newLandFixture(t, queueRuleset("MERGE"))
+		l := f.validatedOnce(t)
+		head := f.atRoundHead(t, l, func() {
+			landWrite(t, l.Worktree, "assets/logo.bin", binary)
+			landWrite(t, l.Worktree, plannedIntentRel, landRead(t, l.Worktree, plannedIntentRel)+line+"\n")
+		})
+		got := f.reviewOf(t)
+		if !strings.Contains(got, "+"+line) {
+			t.Fatalf("the text beside it is shown:\n%.2000s", got)
+		}
+		if strings.Contains(got, "\x00") || strings.Contains(got, "\xff") {
+			t.Fatalf("no byte of the binary reaches the reader:\n%.2000q", got)
+		}
+		blob := f.repo.Git("-C", l.Worktree, "rev-parse", head+":assets/logo.bin")
+		for _, want := range []string{"binary", "assets/logo.bin", "100644", strconv.Itoa(len(binary)), blob} {
+			if !strings.Contains(got, want) {
+				t.Errorf("the line names %q:\n%.2000s", want, got)
+			}
+		}
+	})
+	t.Run("text in its place", func(t *testing.T) {
+		f := newLandFixtureWith(t, map[string]string{
+			".abcd/work/rulesets/main-protection.json": queueRuleset("MERGE"),
+			"assets/note.md": "\x00\xff\n",
+		})
+		l := f.validated(t)
+		f.atRoundHead(t, l, func() { landWrite(t, l.Worktree, "assets/note.md", line+"\n") })
+		got := f.reviewOf(t)
+		if !strings.Contains(got, "+"+line) || !strings.Contains(got, "binary") {
+			t.Fatalf("the new text is shown beside the line for what it replaced:\n%s", got)
+		}
+		if strings.Contains(got, "\x00") {
+			t.Fatalf("no byte of the binary reaches the reader:\n%q", got)
+		}
+	})
+}
+
+// Each command or range a validator's brief hands it reads git's own text diff of the
+// objects as stored, and the command works as written.
 func TestAValidatorBriefNamesGitsOwnTextDiff(t *testing.T) {
-	const flags = "diff --text --no-ext-diff --no-textconv "
+	const flags = "--no-replace-objects diff --text --ignore-submodules=none --no-ext-diff --no-textconv "
+	const line = "A line the reader must see."
 	f := newLandFixture(t, queueRuleset("MERGE"))
 	l := f.validatedOnce(t)
-	line := f.laneWithMarkdownBinary(t, l)
+	was := l.HeadSHA
+	head := f.atRoundHead(t, l, func() {
+		landWrite(t, l.Worktree, ".gitattributes", "*.md -diff\n")
+		landWrite(t, l.Worktree, plannedIntentRel, landRead(t, l.Worktree, plannedIntentRel)+line+"\n")
+	})
+	f.standIn(t, l.Worktree, f.repo.Git("-C", l.Worktree, "rev-parse", head+":"+plannedIntentRel), f.repo.Git("-C", l.Worktree, "rev-parse", was+":"+plannedIntentRel))
 	cur := currentLane(t, f.repo, f.runID)
 	st, err := ReadState(f.repo.Root(), f.runID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var v ValidatorRun
 	r := cur.Validation[len(cur.Validation)-1]
-	v = r.Validators[0]
+	v := r.Validators[0]
 	if err := writeValidatorBrief(Context{RepoRoot: f.repo.Root(), State: st}, cur, r, &v, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -486,6 +744,9 @@ func TestAValidatorBriefNamesGitsOwnTextDiff(t *testing.T) {
 		t.Errorf("the brief names the command:\n%s", brief)
 	} else if got := f.repo.Git(append([]string{"-C", m[1]}, strings.Fields(m[2])...)...); !strings.Contains(got, "+"+line) {
 		t.Errorf("the command shows the text:\n%s", got)
+	}
+	if !strings.Contains(string(brief), "binary file") {
+		t.Errorf("the brief says what to do about a binary file:\n%s", brief)
 	}
 	if got := recordsRoundScope("abc", "def"); !strings.Contains(got, "git "+flags+"abc..def") {
 		t.Errorf("the records round names the command:\n%s", got)

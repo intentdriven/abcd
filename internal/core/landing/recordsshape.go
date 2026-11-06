@@ -57,7 +57,7 @@ func RecordsCommitShape(repoRoot, base, head string, issues []string) (string, e
 				if err != nil {
 					return "", fmt.Errorf("%s changes %s, which cannot be read whole: %w", short(head), clip(p), err)
 				}
-				if why := notPlainText(data); why != "" {
+				if why := NotPlainText(data); why != "" {
 					return "it changes " + clip(p) + ", which holds " + why, nil
 				}
 			default:

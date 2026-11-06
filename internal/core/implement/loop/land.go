@@ -220,7 +220,7 @@ func defaultBranch(c Context, lane Lane) (string, error) {
 
 // branchTip is the lane branch's tip.
 func branchTip(c Context, lane Lane) (string, error) {
-	tip, err := gitutil.Run(c.RepoRoot, "rev-parse", "--verify", "--quiet", "refs/heads/"+lane.Branch+"^{commit}", "--")
+	tip, err := gitutil.RunCappedAsStored(c.RepoRoot, maxGitOutput, "rev-parse", "--verify", "--quiet", "refs/heads/"+lane.Branch+"^{commit}", "--")
 	if err != nil || !gitutil.IsFullSHA(tip) {
 		return "", refuse(string(StageLand), "", lane.ID, "the lane's branch "+lane.Branch+" cannot be read",
 			"restore the branch at the lane's head, then run `abcd implement step` again")
@@ -235,18 +235,6 @@ func passingAudit(lane Lane) string {
 		for _, v := range lane.Validation[n-1].Validators {
 			if v.Role == RoleAuditor && v.Pass {
 				return v.Return
-			}
-		}
-	}
-	return ""
-}
-
-// passingAuditReceipt is the receipt of the audit passingAudit names, "" when there is none.
-func passingAuditReceipt(lane Lane) string {
-	if n := len(lane.Validation); n > 0 {
-		for _, v := range lane.Validation[n-1].Validators {
-			if v.Role == RoleAuditor && v.Pass && v.Audit != nil {
-				return v.Audit.ReceiptID
 			}
 		}
 	}
@@ -371,14 +359,16 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{}, err
 	}
 	if tip != lane.HeadSHA {
-		parents, _ := gitutil.Run(c.RepoRoot, "log", "-1", "--format=%P", tip, "--")
-		subject, _ := gitutil.Run(c.RepoRoot, "log", "-1", "--format=%s", tip, "--")
+		// A commit found is read as stored throughout: what stands in for it, its parents
+		// or its objects says nothing of what it holds.
+		parents, _ := gitutil.RunCappedAsStored(c.RepoRoot, maxGitOutput, "log", "-1", "--format=%P", tip, "--")
+		subject, _ := gitutil.RunCappedAsStored(c.RepoRoot, maxGitOutput, "log", "-1", "--format=%s", tip, "--")
 		if parents != lane.HeadSHA || subject != landSubject(st, *lane) {
 			return Outcome{}, refuse(string(StageLand), "", lane.ID,
 				fmt.Sprintf("%s moved to %s, which is not the landing's records commit on the judged head %s", lane.Branch, shortSHA(tip), shortSHA(lane.HeadSHA)),
 				"restore the branch to the judged head, then run `abcd implement step` again")
 		}
-		found, err := gitutil.Run(c.RepoRoot, "diff-tree", "-r", "--raw", "--no-renames", "--no-abbrev", "--ignore-submodules=none", "-z", lane.HeadSHA, tip, "--")
+		found, err := gitutil.RunCappedAsStored(c.RepoRoot, maxBaseListing, "diff-tree", "-r", "--raw", "--no-renames", "--no-abbrev", "--ignore-submodules=none", "-z", lane.HeadSHA, tip, "--")
 		if err != nil {
 			return Outcome{}, fmt.Errorf("reading what %s changes: %w", shortSHA(tip), err)
 		}
@@ -594,7 +584,7 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	} else if why != "" {
 		return Outcome{}, strayRefusal(*lane, why)
 	}
-	staged, err := pickGit(wt, "diff", "--cached", "--no-renames", "--name-only", "-z")
+	staged, err := pickGit(wt, "--no-replace-objects", "diff", "--cached", "--no-renames", "--ignore-submodules=none", "--name-only", "-z")
 	if err != nil {
 		return Outcome{}, fmt.Errorf("reading the landing's staged records: %w", err)
 	}
@@ -667,7 +657,7 @@ func stagedOnlyTheMark(worktree, specID, staged, head, mark string) (bool, error
 	if strings.Trim(rest, "\x00") != "" || !isSpecRecordOf(path, specID) {
 		return false, nil
 	}
-	was, err := pickGit(worktree, "ls-tree", head, "--", path)
+	was, err := pickGit(worktree, "--no-replace-objects", "ls-tree", head, "--", path)
 	if err != nil {
 		return false, err
 	}
@@ -1208,7 +1198,7 @@ func storeRecord(path string) (store closeStore, bucket, name string, ok bool) {
 }
 
 // strayRule is what the landing commits, in the record stores' modes and outside them.
-const strayRule = "the landing commits a record a store reads as an ordinary file, and outside the record stores only the links its own moves repointed"
+const strayRule = "the landing commits a record a store reads only with the mode its writes give it, and outside the record stores only the links its own moves repointed"
 
 // strayRefusal names a change the landing does not commit, and how to take it out.
 func strayRefusal(lane Lane, why string) error {
@@ -1217,9 +1207,9 @@ func strayRefusal(lane Lane, why string) error {
 }
 
 // stagedRawArgs is git's list of what the index changes against head, one form for
-// every judgement to read.
+// every judgement to read, with head's objects as stored.
 func stagedRawArgs(head string) []string {
-	return []string{"diff", "--cached", "--raw", "--no-renames", "--no-abbrev", "--no-ext-diff", "--ignore-submodules=none", "-z", head, "--"}
+	return []string{"--no-replace-objects", "diff", "--cached", "--raw", "--no-renames", "--no-abbrev", "--no-ext-diff", "--ignore-submodules=none", "-z", head, "--"}
 }
 
 // strayChanges judges the lane's worktree as `git add` would stage it, on a copy of the
@@ -1493,10 +1483,22 @@ func foundCommitLacks(c Context, lane Lane, tip, raw string) (string, error) {
 			}
 		}
 		delivers = len(members) > 0 && members[0].bucket == intent.BucketShipped
-		receipt := passingAuditReceipt(lane)
-		if !slices.ContainsFunc(intents, func(r closeRecord) bool {
-			return recordid.SameID(r.field("id"), st.Intent) && intent.AuditIngested(r.content, receipt)
-		}) {
+		verdict, err := intent.ReadVerdict(abs(c.RepoRoot, passingAudit(lane)))
+		if err != nil {
+			return "the audit on the record of " + st.Intent + ", whose verdict cannot be read", nil
+		}
+		holds := false
+		for _, r := range intents {
+			if !recordid.SameID(r.field("id"), st.Intent) {
+				continue
+			}
+			on, err := intent.VerdictOnRecord(lane.Worktree, st.Intent, r.content, verdict)
+			if err != nil {
+				return "", fmt.Errorf("reading the audit on %s: %w", st.Intent, err)
+			}
+			holds = holds || on
+		}
+		if !holds {
 			return "the audit on the record of " + st.Intent, nil
 		}
 	}
@@ -1548,7 +1550,7 @@ func foundTrailersLack(c Context, lane Lane, tip, raw string, delivers bool) (st
 	}
 	slices.Sort(want)
 	want = slices.Compact(want)
-	msg, err := gitutil.Run(c.RepoRoot, "log", "-1", "--format=%B", tip, "--")
+	msg, err := gitutil.RunCappedAsStored(c.RepoRoot, maxGitOutput, "log", "-1", "--format=%B", tip, "--")
 	if err != nil {
 		return "", fmt.Errorf("reading the message of %s: %w", shortSHA(tip), err)
 	}

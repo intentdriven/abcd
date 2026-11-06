@@ -593,7 +593,7 @@ func addOwnCommit(repoRoot, parent, commit string, files map[string]bool, d *del
 		if err != nil {
 			return fmt.Errorf("%s changes %s, which cannot be read whole: %w", short(commit), clip(side.path), err)
 		}
-		if why := notPlainText(data); why != "" {
+		if why := NotPlainText(data); why != "" {
 			return fmt.Errorf("%s changes %s, which holds %s, and a delta review covers plain text alone", short(commit), clip(side.path), why)
 		}
 		fenced[side.file][side.side] = fencedLines(string(data))
@@ -855,10 +855,10 @@ func frontmatterBlock(text string) string {
 	return strings.Join(lines[:end+1], "\n")
 }
 
-// notPlainText says what keeps a file from being plain text, "" when nothing does:
+// NotPlainText says what keeps a file from being plain text, "" when nothing does:
 // a NUL byte, bytes that are not UTF-8, a control character, or a line break other
 // than LF and CRLF.
-func notPlainText(data []byte) string {
+func NotPlainText(data []byte) string {
 	if bytes.IndexByte(data, 0) >= 0 {
 		return "a NUL byte, so it is a binary file"
 	}

@@ -792,7 +792,9 @@ A lane's stages run in order:
    own moves, its step's mark, the audit on the intent's record and the trailers the
    landing writes; any other is refused until the branch is restored to that head. Inside
    a store the landing still carries an edit to a record, which the reader judges, and
-   a record stays an ordinary file. It pushes the
+   a record keeps the mode its writes give it: an ordinary file's, or the executable bit
+   the judged head already had. The landing reads what it judges as the objects store it.
+   It pushes the
    branch only once the repository's preflight receipt names the lane's head:
    until then the lane is waiting for its full check (since the time the wait
    began) while the other lanes carry on; run `make preflight` in the lane's

@@ -769,8 +769,10 @@ up to the run's ceiling, each with a brief the loop renders into
 `.abcd/.work.local/run/<run-id>/<lane-id>/validate/round-<n>/<role>/` (`<role>.<i>/`
 for a role's later reviewer): the reviewers the run's review set names (below)
 for the `ruthless-reviewer` and then the `security-reviewer`, each over the
-lane's diff from its base to its head, and, on the lane whose landing closes
-the spec, an `intent-auditor`. The fidelity audit runs once, on that lane, over the whole
+lane's diff from its base to its head, read as the objects store it (a plain
+file's text whatever its attributes say, every nested checkout, and a binary
+file named in one line of its path, mode, size and blob id), and, on the lane
+whose landing closes the spec, an `intent-auditor`. The fidelity audit runs once, on that lane, over the whole
 delivery (ruling AI, 2026-09-29): its request carries the range from the base of
 the run's first lane to the closing lane's head, each lane's own range, and
 every spec step landed before the run by what landed it. A lane that does not
@@ -908,8 +910,9 @@ mode is `auto`, back at `validate`, and a sync.
    own moves, its step's mark, the audit on the intent's record and the trailers the
    landing writes; any other is refused until the branch is restored to that head. Inside
    a store the landing still carries an edit to a record, which the reader judges, and
-   a record stays an ordinary file. It commits them on
-   the lane's branch with a computed message carrying `Delivers:` (when the
+   a record keeps the mode its writes give it: an ordinary file's, or the executable bit
+   the judged head already had. The landing reads what it judges as the objects store it.
+   It commits them on the lane's branch with a computed message carrying `Delivers:` (when the
    close ships the intent) and one `Resolves:` per capture, so RS005 and RS001
    find the records in the change. Unlike the pick's commit, whose text abcd
    computes, the records carry prose a model composed (the receipt's
