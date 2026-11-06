@@ -17,6 +17,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/guard"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/shellquote"
 )
@@ -534,6 +535,139 @@ func TestAResetLeavesThePersonsCheckDirectory(t *testing.T) {
 	}
 	if guard.StageWriteRefusal([]string{filepath.Join(p.PersonHome, "work")}, nil, kept) == "" {
 		t.Fatal("a stage's file tool may write in the check directory")
+	}
+}
+
+// TestADrivesPreflightReusesWhatTheOneBeforeItPassed: under a stage's environment,
+// with its home emptied before each run as a drive empties it, the real check-tests
+// replays a result for the next run, for a fresh worktree of that commit and for a
+// later commit that leaves the test's inputs alone. A test that reads the home takes
+// part, since the home's value is in go test's key. The check directory is not written
+// again, and the build cache lies outside the home.
+func TestADrivesPreflightReusesWhatTheOneBeforeItPassed(t *testing.T) {
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("no go")
+	}
+	names := []string{"GOCACHE", "GOMODCACHE", "GOPATH"}
+	asked, err := exec.Command("go", append([]string{"env"}, names...)...).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	caches := strings.Split(strings.TrimSpace(string(asked)), "\n")
+	if len(caches) != len(names) {
+		t.Fatalf("go env answered %q", asked)
+	}
+	repo := gittest.NewRepo(t) // moves the home, so the caches are named again below
+	for i, name := range names {
+		t.Setenv(name, caches[i])
+	}
+	admittedGo(t)
+	bin := filepath.Join(t.TempDir(), "check-tests")
+	if out, err := exec.Command("go", "build", "-o", bin, "../../../cmd/check-tests").CombinedOutput(); err != nil {
+		t.Fatalf("building check-tests: %v\n%s", err, out)
+	}
+	script, err := os.ReadFile("../../../scripts/preflight-receipt.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// git and go report a resolved path, and the check directory is compared with them.
+	home, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(abcdhome.Path(home, "profiles", "walled"), abcdhome.DirMode); err != nil {
+		t.Fatal(err)
+	}
+	p, err := DriveProfile(home, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := WriteWallSettings(p, wallBin); err != nil {
+		t.Fatal(err)
+	}
+	if note := StageCachesNote(p); note != "" {
+		t.Fatalf("the stage keeps its caches: %s", note)
+	}
+
+	// A token in each binary keeps this run's results apart from every earlier run's.
+	token := strconv.FormatInt(time.Now().UnixNano(), 10)
+	repo.Write("go.mod", "module example.com/fixture\n\ngo 1.21\n")
+	repo.Write("scripts/preflight-receipt.sh", string(script))
+	repo.Write(".gitignore", ".abcd/.work.local/\n")
+	repo.Write(".abcd/work/always-rerun-tests.txt", "# nothing declared yet\n")
+	repo.Write("reads/data.txt", "good\n")
+	repo.Write("reads/reads_test.go", `package reads
+import (
+	"os"
+	"testing"
+)
+func TestReadsATrackedFileAndTheHome(t *testing.T) {
+	raw, err := os.ReadFile("data.txt")
+	if err != nil || string(raw) != "good\n" {
+		t.Fatalf("data.txt is %q: %v", raw, err)
+	}
+	if _, err := os.UserHomeDir(); err != nil {
+		t.Fatal(err)
+	}
+	t.Log("`+token+`")
+}
+`)
+	origin := filepath.Join(t.TempDir(), "origin.git")
+	gittest.InitBare(t, origin)
+	repo.Git("remote", "add", "origin", origin)
+	repo.Git("add", "-A")
+	repo.Git("commit", "-q", "-m", "the fixture")
+	repo.Git("push", "-q", "origin", "main")
+	repo.Git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+
+	preflight := func(dir string) string {
+		t.Helper()
+		if err := ResetStageHome(p); err != nil {
+			t.Fatal(err)
+		}
+		// The Go there starts its telemetry under that home, which would race the next
+		// reset and this test's cleanup.
+		off := exec.Command("go", "telemetry", "off")
+		off.Dir, off.Env = dir, PreflightEnv(p)
+		if out, err := off.CombinedOutput(); err != nil {
+			t.Fatalf("go telemetry off: %v\n%s", err, out)
+		}
+		cmd := exec.Command(bin, "-cached-timeout", "1h20m", "unit", "go", "test", "-timeout", "40m", "./...")
+		cmd.Dir, cmd.Env = dir, PreflightEnv(p)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("a preflight's test stage in %s failed: %v\n%s", dir, err, out)
+		}
+		return string(out)
+	}
+	const replayed = "example.com/fixture/reads\t(cached)"
+	if out := preflight(repo.Root()); strings.Contains(out, replayed) || !strings.Contains(out, "reused 0 of 1 packages") {
+		t.Fatalf("the first run has nothing to reuse:\n%s", out)
+	}
+	worktree := func(name string) string {
+		t.Helper()
+		dir := filepath.Join(t.TempDir(), name)
+		repo.Git("worktree", "add", "-q", "--detach", dir, "HEAD")
+		return dir
+	}
+	again := preflight(repo.Root())
+	if !strings.Contains(again, " 0 files written") {
+		t.Errorf("the next run wrote the check directory again:\n%s", again)
+	}
+	repeats := map[string]string{"the next run": again, "a fresh worktree": preflight(worktree("fresh"))}
+	repo.Write("unrelated.txt", "not read by any test\n")
+	repo.Git("add", "-A")
+	repo.Git("commit", "-q", "-m", "a later commit")
+	repeats["a later commit"] = preflight(worktree("later"))
+	for name, out := range repeats {
+		if !strings.Contains(out, replayed) || !strings.Contains(out, "reused 1 of 1 packages") {
+			t.Errorf("%s did not reuse the result:\n%s", name, out)
+		}
+	}
+	env := PreflightEnv(p)
+	if !slices.Contains(env, "GOCACHE="+caches[0]) || fsutil.PathWithin(caches[0], p.ShellHome, false) {
+		t.Errorf("the build cache is not the one kept outside the home %s: %q", p.ShellHome, env)
 	}
 }
 
