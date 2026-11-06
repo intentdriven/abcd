@@ -177,7 +177,7 @@ The person's own `abcd implement stop` ends a drive too, at its next move, and a
 within about a minute, a wait on a limit or an outage included. The drive then says what
 holds it. A preflight queued at the load gate or running ends at the next look too, and a probe does not
 start. A run that stop halted waits for `abcd implement resume --take <run-id>`, also
-after the stop lifts: a new drive names it, passes over it and goes on to other work. A stop and a drive's stop on a run whose state changed are two things: while both
+after the stop lifts: a new drive names it, passes over it and goes on to other work. A lane parked on its pull request that a signal halted waits the same way: the drive's end names that take-over and no resume command, and a new drive names it and passes over it. A stop and a drive's stop on a run whose state changed are two things: while both
 stand the run is not settled, its work is not saved aside and its reservation lapses with
 its lease. Lifting the stop leaves the other, and removing the other leaves the stop.
 

@@ -736,9 +736,9 @@ stays. A configuration changed during the run holds the save as it refuses a res
 worktree that no longer stands holds nothing back. A stop lifted before the halt lets
 the run go on, and a settled lane's agent is told again. Each account has its own page for the day,
 `<folder>/abcd-digest-<uid>/<date>.md`, rewritten whole at each halting in that account, naming the stop,
-every run of that account's it halted and what each left, and no account's name. A page that cannot be
+every run of that account's it halted in this repository's worktrees and each checkout a driver worked in, what each left, and no account's name. A page that cannot be
 written changes nothing about the stop: its answer and the listing say so, and a later check tries again.
-A pull request armed before the stop can still merge under it: the stop's account, the page and the
+A pull request armed before the stop can still merge under it: the stop's account holds its number, and the page and the text of the
 listing name each with its disarm command, and nothing disarms it on its own. A halted run stays halted when
 the stop lifts, until a take-over reserves it again. A stop that does not come from the file,
 the terminal drive's first interrupt, takes the same order and writes no page.
@@ -746,8 +746,8 @@ the terminal drive's first interrupt, takes the same order and writes no page.
 A run records who drives it in `control.json`, beside its state: the live driver
 (session, process, start time) and each in-flight launch with its route. One driver
 steps a run: each step claims it, refused at exit 3 while another's process is alive.
-The resume verb lists every unfinished run this account can read from those records and writes
-nothing. A lane's own worktree is not read for runs, by the listing or the page. Taking a run over claims the driver, refused too while the process table cannot
+The resume verb lists every unfinished run this account can read, in this repository's worktrees and each checkout a driver worked in, from those records and writes
+nothing. A lane's own worktree is not read for runs, by the listing or the page, so a run in one is not listed. Taking a run over claims the driver, refused too while the process table cannot
 say whether a recorded driver is gone, collects each receipt that has arrived before
 anything else, reserves again what a stop released, saves aside and
 names what a gone agent left, and re-tells its await; the next step starts the fresh

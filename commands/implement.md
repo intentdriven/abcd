@@ -901,9 +901,9 @@ hand back a receipt you hold; the lane goes no further. `implement step --releas
 call finishes it and its receipt is collected; with no agent live each lane's
 uncommitted work is saved aside as a restart saves it; then the run's reservation
 is released, so a peer may take the work, and the day's page is written to this account's
-directory in the shared folder, naming the stop and every run of this account's it halted. A
+directory in the shared folder, naming the stop and every run of this account's it halted in this repository's worktrees and each checkout a driver worked in. A
 page that cannot be written changes nothing about the stop: its answer and the listing say so. A
-pull request armed before the stop can still merge under it: the page and the listing name each
+pull request armed before the stop can still merge under it: the page and the listing's text name each
 with its disarm command, and nothing disarms it on its own. A save that fails holds the lane and the claims. A stop file any
 other account wrote, a symlink or an oversized file is no stop, and each step's answer names it.
 A run fixes the shared folder at its start and reads it before each move, with the
@@ -919,15 +919,15 @@ step's answer and the listing name it.
 The person's two lines, to leave to them: `abcd implement stop` stops the runs of each
 account that chose this folder, and `abcd implement stop --lift` lifts it.
 
-Every entry to a move makes the one check, so a driver that steps through the loop
+Every other entry to a move makes the one check, so a driver that steps through the loop
 takes the stop without asking for it.
 
 **`implement resume` is how the next session picks a run up.** Bare, it writes
-nothing and uses no network: every unfinished run this account can read with its driver
+nothing and uses no network: every unfinished run this account can read, in this repository's worktrees and each checkout a driver worked in, with its driver
 alive or gone, what a stop left, and each lane's stage, each agent alive, lost or
 unknown, each receipt that arrived uncollected, its pull request, how far origin's
 default branch as last fetched has moved past its base, and the files it holds
-uncommitted. That listing and the checklist are all a session that lost its context
+uncommitted. A run in a lane's own worktree is not listed. That listing and the checklist are all a session that lost its context
 needs.
 
 ```bash

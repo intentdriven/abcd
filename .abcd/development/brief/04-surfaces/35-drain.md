@@ -344,10 +344,10 @@ The person's stop reaches a drive at its next move and through any
 wait: each wait looks for it every minute, under a bound as without one, and the drive ends
 saying what holds it. A preflight queued at the load gate or running ends at the next look too,
 and a probe does not start. A run that stop halted waits for an explicit take-over, also after the
-stop lifts: a new drive names it, passes over it and goes on to other work, reserving nothing
+stop lifts: a new drive names it, passes over it and goes on to other work, reserving nothing (a lane parked on its pull request that a signal halted waits the same way, and the drive's end names that take-over rather than another drive)
 for it. A drain's move finishes such a lane parked at its pull request only if the forge has merged
-it, and leaves its sync and its queue watch until the take-over; the land fence refuses a run that
-let its reservation go and has not taken it again. A run a drive stopped on is left as it stands and
+it, and leaves its sync and its queue watch until the take-over; the land fence refuses a run a stop
+halted that has not been taken over. A run a drive stopped on is left as it stands and
 named. A drive's stop on a run whose state changed is another thing, and a
 run can have both. While both stand the run is not settled, since what it says is not known
 to be the driver's: its work is not saved aside and its reservation lapses with its lease.
