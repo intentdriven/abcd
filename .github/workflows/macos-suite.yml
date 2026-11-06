@@ -152,7 +152,7 @@ jobs:
           minutes=$((elapsed / 60))
           echo "${ABCD_CI_LEG} has run ${minutes}m $((elapsed % 60))s; the warning line is ${WARN_AFTER_MINUTES}m"
           if [ "$elapsed" -gt $((WARN_AFTER_MINUTES * 60)) ]; then
-            msg="${ABCD_CI_LEG} ran ${minutes} minutes, past the ${WARN_AFTER_MINUTES}-minute warning line and close to the job's ${CEILING_MINUTES}-minute cap. If it is cancelled at the cap, rerun it once; a second cancellation for the same reason stops any pull request it gates: open a speed lane to make the suite faster, and do not raise the timeout."
+            msg="${ABCD_CI_LEG} ran ${minutes} minutes, past the ${WARN_AFTER_MINUTES}-minute warning line and close to the job's ${CEILING_MINUTES}-minute cap. The cap only frees a stuck run and does not judge speed, so nearing it calls for speed work on the suite. A queue entry dropped at the cap with no failing test is re-armed until it lands, and a real failure gets fixed."
             echo "::warning title=${ABCD_CI_LEG} near its cap::${msg}"
             printf '### %s near its cap\n\n%s\n' "$ABCD_CI_LEG" "$msg" >>"$GITHUB_STEP_SUMMARY"
           fi

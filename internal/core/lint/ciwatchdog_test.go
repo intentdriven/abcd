@@ -15,8 +15,8 @@ import (
 //
 // go test's -timeout counts from each test binary's own start, so it cannot
 // bound the job's clock: on a passing merge-group run the ubuntu job's last
-// package binary started 23.8 minutes into the job, so a hang there would have
-// met the job's 60-minute cap before its 40m -timeout fired, and a
+// package binary started 23.8 minutes into the job, so under a 70m -timeout a hang
+// there would meet the job's 85-minute cap first, and a
 // cancellation at the cap carries no dump. No single -timeout fits every package
 // a job starts at a different time.
 //
@@ -25,9 +25,8 @@ import (
 // the step's shell as a process group it owns and, at the job's cap less the
 // declared margin on the clock the "Record the job's start" step sets, sends the
 // test binaries under go test SIGQUIT (each prints its goroutines and fails), then
-// the group SIGKILL after a grace period. The package -timeout stays the
-// per-package budget make preflight shares
-// (TestRaceLaneBudgetIsDeclaredAndFitsItsJob).
+// the group SIGKILL after a grace period. The package -timeout stays each job's
+// per-package budget (TestRaceLaneBudgetIsDeclaredAndFitsItsJob).
 //
 // The margin is declared once in each workflow's env, and the cap the watchdog
 // reads is held to each job's timeout-minutes, so the deadline sits inside every
