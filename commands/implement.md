@@ -601,7 +601,7 @@ Either is refused, changing nothing, for a lane that is not held or while a lane
 still has work. `--discard` also takes an issue run's lane a drain handed back
 as `stuck` or `closed` (`/abcd:drain`): its worktree and branch are removed, its pull
 request closed if it opened one, and the run is over, so no run directory is
-removed by hand. It takes any lane of a run a drive stopped on because its state
+removed by hand. It takes a lane the land fence refuses because its run let its reservation go with no stop's mark standing too; the fence's other remedy is to reserve the record again with `abcd reserve <id> --footprint <path>` and step. It takes any lane of a run a drive stopped on because its state
 changed or could not be read too, finding the pull request by the lane's branch; if your own
 `implement step` caused that stop, remove the file the message names instead. An issue run logs each refused step on its lane, until its pull
 request is armed or left open (`refused` in its state: the stage, the check, the reason and a count), which the drain
@@ -886,6 +886,72 @@ transcript stored without the scanner coverage the repository armed (gitleaks
 configured and not installed) carries `scan_gap` in `--json` and a `scan gap:`
 block in the text, as `history capture` names it; relay it as printed. Report
 every refusal as it is.
+
+## Stop the runs of each account that chose this folder, and take a run over
+
+**`abcd implement stop` is the person's, typed from their own account: leave it to
+them.** The guard and the verbs hold against an agent acting by mistake; a stop binds an agent only where an operating-system account separates them. The guard's rule refuses it, its `--lift`, and writes, moves and removals of the stop's
+files; the verb itself refuses a caller with no
+terminal or under a host session, and a lift or a choice of folder where it cannot tell whether one is above it. A stop is not the stop a drive keeps on a run whose state changed: a run can have both, nothing is settled while both stand, and neither's end answers for the other. Tell the person why you
+believe the runs should stop or go on, and leave the command to them. A stop reads
+as a refusal at the stage `stop`, exit 3, from `implement step`, `abcd build` and
+`abcd drain`: stop working when you meet it. `implement receipt` is not refused, so
+hand back a receipt you hold; the lane goes no further. `implement step --release` and
+`--discard`, a person's decisions over a held lane, do not make the check. Under a stop an agent in a
+call finishes it and its receipt is collected; with no agent live each lane's
+uncommitted work is saved aside as a restart saves it; then the run's reservation
+is released, so a peer may take the work, and the day's page is written to this account's
+directory in the shared folder, naming the stop and every run of this account's it halted in this repository's worktrees and each checkout a driver worked in. A
+page that cannot be written changes nothing about the stop: its answer and the listing say so. A
+pull request armed before the stop can still merge under it: the page and the listing's text name each
+with its disarm command, and nothing disarms it on its own. A save that fails holds the lane and the claims. A stop file any
+other account wrote, a symlink or an oversized file is no stop, and each step's answer names it.
+A run fixes the shared folder at its start and reads it before each move, with the
+platform's shared folder for the account it expects. A setting that cannot be read, that has gone or changed during the run, or a folder the run
+should read whose stop cannot be looked at,
+holds the run at the stage `stop`, exit 3, with nothing let go: tell the person, who puts it back.
+A home that cannot be found holds it the same way. A take-over needs a read that saw clearly.
+A renewal that falls due under a stop settles the run first; with no agent left in its call
+and its work saved it no longer renews, and work a save could not take keeps the claim. A
+lift names any stop it cannot reach. A stop another account left is not honoured, and each
+step's answer and the listing name it.
+
+The person's two lines, to leave to them: `abcd implement stop` stops the runs of each
+account that chose this folder, and `abcd implement stop --lift` lifts it.
+
+Every other entry to a move makes the one check, so a driver that steps through the loop
+takes the stop without asking for it.
+
+**`implement resume` is how the next session picks a run up.** Bare, it writes
+nothing and uses no network: every unfinished run this account can read, in this repository's worktrees and each checkout a driver worked in, with its driver
+alive or gone, what a stop left, and each lane's stage, each agent alive, lost or
+unknown, each receipt that arrived uncollected, its pull request, how far origin's
+default branch as last fetched has moved past its base, and the files it holds
+uncommitted. A run in a lane's own worktree is not listed. That listing and the checklist are all a session that lost its context
+needs.
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement resume [--run <run-id>] --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement resume --take <run-id> --json
+```
+
+`--take` runs from the checkout that holds the run. It claims the driver, collects
+every receipt that has arrived before anything else, reserves again what a stop
+released, saves aside and names the uncommitted work a gone agent left, and re-tells
+its await under `restarted`; a fresh agent takes each, started by the next
+`implement step`, and `collected` names what needs none. An agent that may still be
+in its call is named under `left` and not restarted. Work it could not save is a
+refusal, exit 2: settle it and take again, never step over it. Exit 3 while a stop holds, while
+another driver's process is alive or a recorded driver cannot be judged, or when a peer has
+taken the work a stop released: back off. A run a person's stop halted waits for this take-over,
+also after the stop lifts: a new `abcd drain --drive` names it and passes over it. A run halted
+by the first interrupt to a drive's own terminal is the one a later drive takes up,
+unless its lane is parked on its pull request, which waits for this take-over.
+
+**One driver steps a run.** `implement step` records the session it runs under in
+the run's `control.json` beside its state, and refuses at exit 3 while another
+driver's process is alive; a driver gone is replaced, with an entry in the run
+record.
 
 ## Stop when the repository's git settings change
 

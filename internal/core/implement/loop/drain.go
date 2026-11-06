@@ -114,6 +114,12 @@ const (
 	DrainLaneHandedBack  = "handed-back"
 	// DrainLaneDone: the run is complete.
 	DrainLaneDone = "done"
+	// DrainLaneHalted is a lane a person's stop halted, which a drive passed over: it
+	// waits for an explicit take-over, and the drain goes on to other work.
+	DrainLaneHalted = "halted"
+	// DrainLaneTakenOver is such a lane once a person has taken its run over: the run is
+	// theirs to drive, and the drain leaves it to them.
+	DrainLaneTakenOver = "taken-over"
 )
 
 // The routes a hand-back takes, by kind (scope 5).
@@ -431,6 +437,13 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			panic(r)
 		}
 	}()
+	// A stop comes before the plan is read: the lanes take it and the move
+	// opens nothing (stop.go). A judgement awaited is let go with its hold.
+	stopNote, serr := drainStop(repoRoot, &st, o)
+	if serr != nil {
+		persisted = st.Judging
+		return DrainResult{}, serr
+	}
 	started := false
 	// repaced is what this move's new pace came to, "" when it took none;
 	// repace is the new pace the lanes in progress take once the move's
@@ -494,6 +507,9 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	// published is what became of the pending hand-backs this move ended.
 	var published []string
 	finish := func(write bool) (DrainResult, error) {
+		if stopNote != "" {
+			res.Next = joinNext(res.Next, stopNote)
+		}
 		// A drain that ends awaits nothing, and every judgement hold the move
 		// leaves unused is released before the state is written.
 		if st.Stopped != "" && st.Judging != nil {
@@ -822,6 +838,16 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		}
 	}
 
+	// A lane passed over for its take-over reads as halted only while its run is.
+	for i := range st.Lanes {
+		if st.Lanes[i].Outcome != DrainLaneHalted {
+			continue
+		}
+		if c, err := runControl(repoRoot, st.Lanes[i].RunID); err == nil && c.Stop == nil {
+			st.Lanes[i].Outcome, finished = DrainLaneTakenOver, true
+		}
+	}
+
 	// The window clock, as a run keeps it: before next_eligible_at nothing
 	// moves; a pause that has ended opens the next window; a window that has
 	// elapsed closes here, and the call opens nothing.
@@ -966,6 +992,11 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		// taken up again once its record has changed on origin
 		// (drain_readmit.go).
 		if st.taken(v.ID, blobs) {
+			if i := slices.IndexFunc(runs, func(r State) bool { return r.Key == v.ID && !r.issueHandedBack() }); i >= 0 {
+				if why := waitsUntaken(repoRoot, runs[i]); why != "" {
+					res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckNeedsPerson, Reason: why})
+				}
+			}
 			continue
 		}
 		// An issue the skip list holds back is passed over before anything
@@ -999,6 +1030,10 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		// whether its record has changed since; on origin the hand-back's
 		// tombstone and this drain's routes say so (drain_readmit.go).
 		if i := slices.IndexFunc(runs, func(r State) bool { return r.Key == v.ID && !r.issueHandedBack() }); i >= 0 {
+			if why := waitsUntaken(repoRoot, runs[i]); why != "" {
+				res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckNeedsPerson, Reason: why})
+				continue
+			}
 			reason := "this checkout already has run " + runs[i].RunID + " for it; drive or finish that run"
 			if runs[i].Complete() {
 				reason = "this checkout's run " + runs[i].RunID + " for it is complete, and what it landed settles the issue, so no second run opens for it"

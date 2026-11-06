@@ -184,6 +184,49 @@ Apply every GitHub setting the remote audit finds differing: Writes those settin
       --yes   confirm the remote change without being asked (never the install of a missing gh); without it an unanswered run declines and changes nothing
 ```
 
+#### `abcd ahoy shared-folder`
+
+Say what the shared folder is for, or choose it so a stop can cross accounts: Writes the choice given a folder; refuses no terminal or an unsafe folder.
+
+**Usage:** `abcd ahoy shared-folder [<folder>] [--person <account>] [flags]`
+
+Say what the shared folder is for and which one this account chose; with <folder>,
+choose it. Run it in each account that takes part, naming the same folder, and
+--person naming the account you stop from (this account when omitted). A run honours
+a stop only from that account.
+
+The shared folder is one option of setup, for a person who runs abcd unattended on a
+second account of this computer. It holds what the two accounts pass between them: the
+stop you set from your own account, which the runs of each account that chose it read before
+their next move, and each
+day's digest page. Every account on this machine can read what is in it, so it is meant
+for a machine no other person shares. Declining leaves every other part of abcd working,
+and a stop then reaches only runs in your own account. To decline, do nothing.
+
+The folder must be a real directory, and one other accounts can write must carry
+the sticky bit, and it must be owned by root or by you, each parent above it held
+to the same rule, which keeps what you wrote there from other accounts' removal or moving.
+/Users/Shared on macOS and /var/tmp on Linux both qualify. In
+your own account this also makes the directory the stop lives in, named by your account's
+number. On Linux an age cleaner may remove what has stood in a temporary tree for weeks, a
+stop included; a folder an administrator makes elsewhere avoids that. The choice is written to ~/.abcd.noindex/shared-folder.json.
+
+Choosing is the person's own act: the guard's rule refuses it to an agent, and it refuses
+a caller with no terminal, under a host session, or where it cannot tell whether one is above it.
+Exit 2 on a refusal, with nothing written. No network request.
+
+**Flags:**
+
+```
+      --person string   the account you stop from; this account when omitted
+```
+
+**Example:**
+
+```
+abcd ahoy shared-folder /Users/Shared
+```
+
 #### `abcd ahoy uninstall`
 
 Remove abcd from this repository, leaving .abcd/ in place: Writes the removal of the marker block, PATH copy, and provenance record; refuses any argument.
@@ -2229,9 +2272,11 @@ The hook judges only what the host hands it, and the plugin's hook
 manifest hands it the shell tool, the question tool and the host's
 file-writing tools (Write, Edit, MultiEdit, NotebookEdit) and nothing else.
 A file one of those tools writes is not held to the registry: it is denied
-with the host's deny when it lands in a main checkout two or more live
-sessions started in, with the refusal the record verbs give, naming the
-worktree store. The file's working tree is found by walking up to its .git,
+with the host's deny when it is the stop file or the setting naming where a
+stop is read (the person's own, by `abcd implement stop`), and when it lands
+in a main checkout two or more live sessions started in, with the refusal
+the record verbs give, naming the worktree store. The file's working tree
+is found by walking up to its .git,
 so a linked worktree, a checkout one session or none works in, a path in no
 checkout, and a file in a checkout's own local tier (.abcd/.work.local/,
 which git ignores) are written silently. A file call naming no path, a
@@ -3304,6 +3349,42 @@ By default the run's whole log is read, every day of it; --date reads one day, a
       --log string    read this log file instead of the run's own
 ```
 
+#### `abcd implement resume`
+
+List every unfinished run on the machine, or take one over: Writes nothing bare; refuses a take-over while a stop holds or another driver is alive.
+
+**Usage:** `abcd implement resume [--run <run-id>] [--take <run-id>] [flags]`
+
+List every unfinished run this account can read on the machine, in this repository's
+worktrees and in each checkout a driver worked in: its driver alive or gone, what a
+stop left, and each lane's stage, each agent alive, lost or unknown, each receipt
+that arrived uncollected, its pull request, how far origin's default branch as last
+fetched has moved past its base, and the files it holds uncommitted. The listing is
+all a session that lost its context needs. It writes nothing and uses no network.
+
+--take takes a run over from this session, in the checkout that holds it: it claims
+the driver, collects every receipt that has arrived before anything else, reserves
+again what a stop released, saves aside and names the uncommitted work a gone agent
+left, and re-tells its await. It starts no agent: `abcd implement step` does that
+next. An agent that may still be in its call is left alone and named.
+
+Exit 2 on a refusal. Exit 3 while a stop holds, while another driver's process is
+alive or a recorded driver cannot be judged, or when a peer has taken the work a
+stop released: back off.
+
+**Flags:**
+
+```
+      --run string    list this run alone (run-<16 digits>)
+      --take string   take this run over (run-<16 digits>)
+```
+
+**Example:**
+
+```
+abcd implement resume --take run-2609010000000001
+```
+
 #### `abcd implement status`
 
 Render the implement loop's runs in this checkout, lane by lane: Writes a due renewal to origin, its outcome to the run record; refuses a --run naming no run.
@@ -3586,6 +3667,50 @@ refusal, exit 3 on a pause or a locked run state.
       --route stringArray      route one role this step hands to an agent to a runner, for this invocation alone: <role>=runner:<name>[@<provider>/<model>], the runner one this machine enables and the model one its provider lists (else the runner's own model); one per role (implementer, ruthless-reviewer, security-reviewer, intent-auditor); wins over every configured route for this step alone, and the role's receipt records it verbatim
       --run string             the run to step (run-<16 digits>); the one run in progress when omitted
       --yielded string         with --restart: the line the agent yielded with, NETWORK: <cmd>, when a network failure stopped it rather than it dying
+```
+
+#### `abcd implement stop`
+
+Stop the unattended runs of each account that chose this folder, or lift it: Writes the stop file; refuses no terminal, and a file no run would honour.
+
+**Usage:** `abcd implement stop [--lift] [flags]`
+
+Stop the unattended runs of each account that chose this shared folder, or with --lift
+lift the stop. Every run reads the stop before its next move: it opens no lane,
+hands out no stage and starts no agent. An agent in a call finishes that call and
+its receipt is collected. Then each lane's uncommitted work is saved aside, the
+run's reservation is released so a peer may take the work, and the day's page is
+written to this account's directory in the shared folder. A stop that stands is left
+as it is, and says since when.
+
+It takes hold across accounts where the shared folder was chosen in each account
+(`abcd ahoy shared-folder`). Without one the stop lives in ~/.abcd.noindex/stop.json
+and reaches only this account's runs.
+
+This command lifts a stop, and each lift is recorded in ~/.abcd.noindex/stop-log.jsonl.
+A run reads the folder it started under whatever the setting says, and the platform's
+shared folder for the account it expects; a setting that has gone or changed during a run
+holds that run until it is put back. A stop this lift cannot reach is named.
+A run that let its claims go stays halted after the lift until a session runs
+`abcd implement resume --take <run-id>`, which reserves the work again first.
+
+It is the person's own act: the guard's rule refuses it to an agent, and it refuses a
+caller with no terminal or under a host session. Exit 2 on a refusal, with nothing changed: no terminal, a
+file at the stop's path no run would honour, or a folder the stop cannot rest on.
+Where it cannot tell whether a host session is above it, a stop is still set, and a
+lift is refused and asks to be run again.
+No network request.
+
+**Flags:**
+
+```
+      --lift   lift the stop; a halted run then waits for a take-over (abcd implement resume --take)
+```
+
+**Example:**
+
+```
+abcd implement stop
 ```
 
 #### `abcd implement widen`

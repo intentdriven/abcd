@@ -1,16 +1,18 @@
 ---
 id: itd-2611041549461012
 slug: when-the-session-coordinating-unattended
-spec_id: null
-kind: null
+spec_id: spc-2611041706004822
+kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: [itd-2609201925079472, itd-2611031342011261, itd-2610180912189125]
 refines: [itd-2610222215485265]
-related_issues: [iss-2611022247128872, iss-2611032348373007, iss-2610241107435264, iss-2610241414414823, iss-2611040337228910, iss-2610110915210571]
+related_issues: [iss-2611022247128872, iss-2611032348373007, iss-2610241107435264, iss-2610241414414823, iss-2611040337228910, iss-2610110915210571, iss-2610121528179959]
 severity: major
 origin: researcher-authored
 production_mode: hand-written
+impact: additive
+target_release: next
 ---
 
 # A session that takes over a run steps on from what abcd wrote down
@@ -31,10 +33,10 @@ We expect a successor to step on without starting anything twice because every f
 
 ## Scope Conditions
 
-- Holds for runs abcd drives on one machine: build runs, drain lanes and the terminal drive (itd-2610222215485265), whose plugin page stays an agent's command and whose terminal form stays the person's way to drive it (dcn-2611041550139264). A hosted runner's run is resumed by its host.
-- A process killed outright is outside the promise; the resume treats its agents as lost and its work as saved aside.
-- Recorded state means abcd's own files: the run and drain states, the checklist, the launch ledger and the log; never a session's transcript or memory.
-- Holds on macOS and Linux, where `~/.abcd.noindex/` is abcd's home; there is no Windows target.
+- Holds for runs abcd drives on one machine: build runs, drain lanes and the terminal drive (itd-2610222215485265), whose plugin page stays an agent's command and whose terminal form stays the person's way to drive it (dcn-2611041550139264). A hosted runner's run is resumed by its host. <!-- cond: cond-2611041706003922 -->
+- A process killed outright is outside the promise; the resume treats its agents as lost and its work as saved aside. <!-- cond: cond-2611041706002354 -->
+- Recorded state means abcd's own files: the run and drain states, the checklist, the launch ledger and the log; never a session's transcript or memory. <!-- cond: cond-2611041706009161 -->
+- Holds on macOS and Linux, where `~/.abcd.noindex/` is abcd's home; there is no Windows target. <!-- cond: cond-2611041706005578 -->
 
 ## Acceptance Criteria
 
@@ -62,8 +64,8 @@ Hand-run four-piece table, 2026-11-04, from the scratch draft that held the stop
 | Part | Kind | Home |
 |---|---|---|
 | the resume listing, the live-driver record, collect-before-launch, saved-aside work, the drain's judging entry | capability | this intent |
-| one command stops every run on the machine at its next move, lifted only by the person | capability | itd-2611041549471712, the stop switch |
-| a stop is a recorded state read at each move, never a signal to a terminal; an agent's session may never lift it | trust rule | an ADR owed with the stop switch, extending adr-2610240850193281 (the grant permits, this withdraws) and dcn-2611031722512037; a brief invariant when accepted; not filed here |
+| one command stops the runs of each account that chose the folder at their next move, lifted by the person's own command | capability | itd-2611041549471712, the stop switch |
+| a stop is a recorded state read at each move, never a signal to a terminal; lifting it is the person's, by rule | trust rule | an ADR owed with the stop switch, extending adr-2610240850193281 (the grant permits, this withdraws) and dcn-2611031722512037; a brief invariant when accepted; not filed here |
 | a run's account of itself lives in abcd's files, never in a session's memory | stance | a candidate principle, for the product thinker to confirm; not filed |
 | the driver fields, the resume's output | plumbing | the brief's loop chapter, through this intent's spec |
 

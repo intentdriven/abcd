@@ -42,6 +42,54 @@ func stageLineRefused(line string) string {
 	return ""
 }
 
+// addsAWorktree reports whether the git command at tokens[idx] adds or moves a worktree, or
+// has a subcommand or an action no line fixes where those would stand.
+func addsAWorktree(tokens []string, idx int) bool {
+	var args []string
+	switch strings.ToLower(filepath.Base(tokens[idx])) {
+	case "find":
+		for i := idx + 1; i < len(tokens); i++ {
+			switch tokens[i] {
+			case "-exec", "-execdir", "-ok", "-okdir":
+				if i+1 < len(tokens) && addsAWorktree(tokens, i+1) {
+					return true
+				}
+			}
+		}
+		return false
+	case "git-worktree":
+		args = tokens[idx+1:]
+	case "git":
+		i := idx + 1
+		for i < len(tokens) && strings.HasPrefix(tokens[i], "-") {
+			if gitValueOptions[tokens[i]] || tokens[i] == "--attr-source" || tokens[i] == "--shallow-file" {
+				i++
+			}
+			i++
+		}
+		if i >= len(tokens) {
+			return false
+		}
+		if isUnknown(tokens[i]) {
+			return true
+		}
+		// Case folds where the filesystem does, and a program in git's own directory answers.
+		if !strings.EqualFold(tokens[i], "worktree") {
+			return false
+		}
+		args = tokens[i+1:]
+	default:
+		return false
+	}
+	for _, w := range args {
+		if strings.HasPrefix(w, "-") {
+			continue
+		}
+		return isUnknown(w) || w == "add" || w == "move"
+	}
+	return false
+}
+
 // startsAnAgent reports whether the command at tokens[idx] starts a further
 // harness or a drive, lands a branch, moves a run, or reads the keychain. A stage's
 // tests go behind the load gate and an issue lane's brief has it widen its own hold, so

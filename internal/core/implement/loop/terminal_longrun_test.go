@@ -657,7 +657,7 @@ func TestASleepThatOverrunsEndsOnTheWallClock(t *testing.T) {
 	looks := make(chan time.Time)
 	done := make(chan struct{})
 	go func() {
-		wallSleep(context.Background(), time.Hour, nil, now, looks)
+		wallSleep(context.Background(), time.Hour, nil, nil, now, looks)
 		close(done)
 	}()
 	looks <- start // not yet: a second send proves it is still looking

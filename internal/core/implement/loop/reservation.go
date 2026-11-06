@@ -88,7 +88,7 @@ func claimOptions(now time.Time) claim.Options {
 // run's keeps its whole footprint (dcn-2610300615451659). While any lane may yet hold uncommitted work, or where those files
 // cannot be read, the whole footprint is judged, as before.
 func renewReservation(repoRoot string, st *State, now time.Time, snap *claim.Snapshot) string {
-	if st.ReservedAt == nil {
+	if st.ReservedAt == nil || stopEndsRenewal(repoRoot, *st, now) {
 		return ""
 	}
 	if snap == nil {
@@ -304,18 +304,34 @@ func pushFence(c Context, lane Lane) (time.Time, string, error) {
 // dated ahead that the hold did not count, "" when there is none.
 func fence(c Context, lane Lane, term time.Duration, act fenceAct) (time.Time, string, error) {
 	if c.State.ReservedAt == nil {
-		m, err := claim.FetchMergeHold(c.RepoRoot, c.Now, claimOptions(c.Now))
-		var fe *claim.FetchError
-		switch {
-		case errors.As(err, &fe):
-			return time.Time{}, "", fenceUnread(lane,
-				"could not read the reservations from "+claim.Remote+": "+fe.Reason+", so no release hold could be judged and "+act.none,
-				fe.Reason, "git fetch the reservations")
-		case err != nil:
-			return time.Time{}, "", refuse(string(StageLand), "", lane.ID, "the reservations could not be read at the land fence: "+err.Error(),
-				"settle what it names, then run `abcd implement step` again")
+		// A stop's mark is what a take-over answers by reserving again.
+		mark, err := runControl(c.RepoRoot, c.State.RunID)
+		if err != nil {
+			return time.Time{}, "", contend(string(StageLand), "", lane.ID,
+				"the control record of run "+termsafe.Sanitize(c.State.RunID)+" cannot be read, so this lane does not "+act.not,
+				"restore the run's control record")
 		}
-		return time.Time{}, termsafe.Sanitize(m.Notice()), heldMerge(lane, m, act)
+		if mark.Stop != nil && mark.Stop.HaltedAt != nil {
+			return time.Time{}, "", contend(string(StageLand), "", lane.ID,
+				"this run let its reservation on "+termsafe.Sanitize(c.State.Key)+" go and has not taken it again, so this lane does not "+act.not,
+				"run `abcd implement resume --take "+c.State.RunID+"`, which reserves the work again before anything steps")
+		}
+		// A run that never reserved has nothing to hold. One that let its reservation go
+		// holds it again only by reserving, which the renewal below reads.
+		if !letItsReservationGo(c.State) {
+			m, err := claim.FetchMergeHold(c.RepoRoot, c.Now, claimOptions(c.Now))
+			var fe *claim.FetchError
+			switch {
+			case errors.As(err, &fe):
+				return time.Time{}, "", fenceUnread(lane,
+					"could not read the reservations from "+claim.Remote+": "+fe.Reason+", so no release hold could be judged and "+act.none,
+					fe.Reason, "git fetch the reservations")
+			case err != nil:
+				return time.Time{}, "", refuse(string(StageLand), "", lane.ID, "the reservations could not be read at the land fence: "+err.Error(),
+					"settle what it names, then run `abcd implement step` again")
+			}
+			return time.Time{}, termsafe.Sanitize(m.Notice()), heldMerge(lane, m, act)
+		}
 	}
 	holds, err := renewAtFence(c, lane, term, act)
 	if err != nil {
@@ -323,6 +339,20 @@ func fence(c Context, lane Lane, term time.Duration, act fenceAct) (time.Time, s
 	}
 	notice, err := releaseHold(c, lane, act)
 	return holds, notice, err
+}
+
+// letItsReservationGo reports whether a run with no reservation had one and let it go, which
+// a run that never held one did not.
+func letItsReservationGo(st State) bool {
+	for i := len(st.Record) - 1; i >= 0; i-- {
+		switch st.Record[i].Stage {
+		case StageReservationReleased, StageReservationReleaseFailed, StageDriveReleased:
+			return true
+		case StageReservation, StageReservationRenewed:
+			return false
+		}
+	}
+	return false
 }
 
 // fenceUnread is the fence's wait on an origin it could not read: never a
@@ -382,6 +412,9 @@ func renewAtFence(c Context, lane Lane, term time.Duration, act fenceAct) (time.
 	stage := string(StageLand)
 	again := "run `abcd implement step` again"
 	reserveAgain := "reserve it again with abcd build " + id
+	if c.State.ReservedAt == nil {
+		reserveAgain = "reserve it again (`abcd reserve " + id + " --footprint <path>`, once per path the work changes) and run `abcd implement step` again, or discard the lane (`abcd implement step --run " + c.State.RunID + " --discard " + lane.ID + "`)"
+	}
 	not := ", so this lane does not " + act.not
 	var fe *claim.FetchError
 	var nh *claim.NotHeld

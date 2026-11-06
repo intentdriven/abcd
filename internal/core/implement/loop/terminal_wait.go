@@ -74,8 +74,9 @@ const terminalCallSayEvery = 30 * time.Minute
 // terminalSayEvery is how often a wait that has not changed says it still stands.
 const terminalSayEvery = 30 * time.Minute
 
-// wallLookEvery is how often the production sleep looks at the wall clock.
-const wallLookEvery = time.Minute
+// wallLookEvery is how often the production sleep looks at the wall clock, and for a stop
+// set from outside the run; a variable so a test can shorten it.
+var wallLookEvery = time.Minute
 
 // terminalJudgeAsks is how many unanswered judgements of one issue a run makes
 // before it holds that issue back and goes on.
@@ -149,17 +150,18 @@ func (c *terminalOutageClock) inOutage() bool { return !c.since.IsZero() }
 // succeed ends the count.
 func (c *terminalOutageClock) succeed() { *c = terminalOutageClock{noLimit: c.noLimit} }
 
-// sleepOr is the production sleep: d, or until the stop or ctx ends it, or until
-// the wall clock says d has passed.
-func sleepOr(ctx context.Context, d time.Duration, stop <-chan struct{}) {
+// sleepOr is the production sleep: d, or until the stop or ctx ends it, or a stop from
+// outside the run holds, or until the wall clock says d has passed.
+func sleepOr(ctx context.Context, d time.Duration, stop <-chan struct{}, holds func() bool) {
 	look := time.NewTicker(wallLookEvery)
 	defer look.Stop()
-	wallSleep(ctx, d, stop, time.Now, look.C)
+	wallSleep(ctx, d, stop, holds, time.Now, look.C)
 }
 
 // wallSleep waits d by a timer, which stops while the machine sleeps, and at each
-// look by the wall clock, which does not, and whichever passes d first ends it.
-func wallSleep(ctx context.Context, d time.Duration, stop <-chan struct{}, now func() time.Time, looks <-chan time.Time) {
+// look by the wall clock, which does not, and whichever passes d first ends it. Each
+// look also asks holds, so no wait outlasts a stop by more than a look.
+func wallSleep(ctx context.Context, d time.Duration, stop <-chan struct{}, holds func() bool, now func() time.Time, looks <-chan time.Time) {
 	end := now().Round(0).Add(d)
 	timer := time.NewTimer(d)
 	defer timer.Stop()
@@ -172,7 +174,7 @@ func wallSleep(ctx context.Context, d time.Duration, stop <-chan struct{}, now f
 		case <-ctx.Done():
 			return
 		case <-looks:
-			if !now().Round(0).Before(end) {
+			if !now().Round(0).Before(end) || (holds != nil && holds()) {
 				return
 			}
 		}

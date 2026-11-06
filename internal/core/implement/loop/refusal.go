@@ -30,6 +30,8 @@ type Refusal struct {
 	// invocation, a pause: back off and take other work. The CLI maps it to
 	// exit 3, as `abcd implement` does.
 	Contention bool `json:"contention,omitempty"`
+	// Wrote says what the call did before it refused, "" for nothing.
+	Wrote string `json:"wrote,omitempty"`
 	// Checks is every pre-start check's row, when Stage is "check", so a caller
 	// sees the whole picture rather than the first failure.
 	Checks []CheckRow `json:"checks,omitempty"`
