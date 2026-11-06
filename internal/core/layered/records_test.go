@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 )
 
@@ -82,11 +83,10 @@ func TestRecordSlugCapRefusesAnUnreadableFile(t *testing.T) {
 // The cap bounds names committed for every clone, so a machine's file sets nothing.
 func TestRecordSlugCapIgnoresTheMachineLayer(t *testing.T) {
 	home := t.TempDir()
-	dir := filepath.Join(home, ".abcd.noindex")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{"records": {"slug_cap": 60}}`), 0o600); err != nil {
+	if err := os.WriteFile(abcdhome.Path(home, "config.json"), []byte(`{"records": {"slug_cap": 60}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)

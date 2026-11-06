@@ -448,7 +448,7 @@ if [ "$own_repo" -eq 1 ]; then
     rc=0
     out="$(unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
       GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX &&
-      "$work/record-lint" -root "$top" -slug-names "$names" 2>&1)" || rc=$?
+      "$work/record-lint" -root="$top" -slug-names="$names" 2>&1)" || rc=$?
     case "$rc" in
       0) ;;
       1)
