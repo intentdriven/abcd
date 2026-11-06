@@ -431,7 +431,7 @@ func reconcileBundle(repoRoot string, store spec.Store, sp spec.Spec, impact str
 			return err
 		}
 		if members, skipped, err = judgeBundleMembers(store, corpus, sp); err != nil {
-			return err
+			return &CloseFactError{err}
 		}
 		type staged struct {
 			abs, content, stamp, dstRel string

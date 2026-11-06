@@ -774,7 +774,12 @@ A lane's stages run in order:
    `Assisted-by:` naming the model the lane's receipts reported, the
    repository's hooks running: a lane whose receipt reports no model is
    refused, and a hook that refuses the commit stops the landing until what it
-   names is settled. It pushes the
+   names is settled. What a close ships and what holds it stay as the judged head has them, so an
+   uncommitted change to them is refused, and what that head itself holds against
+   the close (a hold, a drifted `spec_id`, a bundle member another open spec keeps)
+   hands the lane back as `stuck`, naming it and the way out: settle it on the
+   default branch, discard the lane, remove the run's directory and build the
+   intent again. It pushes the
    branch only once the repository's preflight receipt names the lane's head:
    until then the lane is waiting for its full check (since the time the wait
    began) while the other lanes carry on; run `make preflight` in the lane's

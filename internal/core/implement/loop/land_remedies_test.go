@@ -123,9 +123,7 @@ func TestASpecTheMarkCannotReadIsSettledUncommitted(t *testing.T) {
 // no impact, and the same intent, given one in the worktree, ships.
 func TestAnIntentTheCloseRefusesIsSettledUncommitted(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
-	f.validatedOnce(t)
-	f.step(t)
-	l := currentLane(t, f.repo, f.runID)
+	l := f.validatedOnce(t)
 	path := filepath.Join(l.Worktree, plannedIntentRel)
 	good, err := os.ReadFile(path)
 	if err != nil {
@@ -135,9 +133,12 @@ func TestAnIntentTheCloseRefusesIsSettledUncommitted(t *testing.T) {
 	if without == string(good) {
 		t.Fatalf("premise: the intent declares no impact:\n%s", good)
 	}
-	if err := os.WriteFile(path, []byte(without), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	f.commitAtTheJudgedHead(t, l, func() {
+		if err := os.WriteFile(path, []byte(without), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	})
+	f.step(t)
 	r := f.wantsRefusedStep(t)
 	if !strings.Contains(r.Reason, "refused in the lane's worktree") {
 		t.Fatalf("the close refuses: %+v", r)

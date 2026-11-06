@@ -357,6 +357,11 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 				fmt.Sprintf("%s moved to %s, which is not the landing's records commit on the judged head %s", lane.Branch, shortSHA(tip), shortSHA(lane.HeadSHA)),
 				"restore the branch to the judged head, then run `abcd implement step` again")
 		}
+		if st.Issue() == "" {
+			if err := refuseFoundCloseRecords(c, *lane, tip, ld.Closes); err != nil {
+				return Outcome{}, err
+			}
+		}
 		// A call killed after its commit and before its state write: found.
 		ld.Records, ld.RecordsDone, lane.HeadSHA = tip, true, tip
 		return Outcome{Stay: true, Note: "found the landing's records commit " + shortSHA(tip) + " on " + lane.Branch}, nil
@@ -374,6 +379,11 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	if st.Issue() == "" {
 		if err := refuseChangedCloseRecords(c, *lane, ld.Closes); err != nil {
 			return Outcome{}, err
+		}
+		if why, err := ownSpecUnresolved(*lane, st.Spec); err != nil {
+			return Outcome{}, err
+		} else if why != "" {
+			return closeHandBack(c, *lane, why), nil
 		}
 	}
 	// A landing prepared over a change to the spec holds it no longer once it is put
@@ -457,6 +467,12 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 			}
 		}
 		res, err := intent.Reconcile(wt, st.Spec, "", intent.RemainderRequest{})
+		var fact *intent.CloseFactError
+		if errors.As(err, &fact) {
+			// The worktree says what the judged head says of these, so only a new head
+			// could change the answer.
+			return closeHandBack(c, *lane, "`spec close "+st.Spec+"` refused what the judged head holds: "+termsafe.Sanitize(fsutil.RedactHome(err.Error()))), nil
+		}
 		if err != nil {
 			return Outcome{}, refuse(string(StageLand), "", lane.ID, "`spec close "+st.Spec+"` refused in the lane's worktree: "+fsutil.RedactHome(err.Error()),
 				"settle what the close names in the lane's worktree and leave it uncommitted (an intent ships only with an impact:), then run `abcd implement step` again")
@@ -638,15 +654,21 @@ const maxSpecRecordBytes = 256 * 1024
 
 // closeFields are the frontmatter fields of each store a close decides by: what a spec
 // realises, and what an intent's id, back-link, bundle and hold say. Anything else in a
-// record is the worktree's to settle, an intent's related_issues and impact among them.
+// record is the worktree's to settle, an intent's related_issues among them, and its
+// impact where the judged head declares none.
 var (
 	specCloseFields   = []string{"id", "intent", "intents", "bundle"}
 	intentCloseFields = []string{"id", "spec_id", "bundle", "held"}
 )
 
-// closeRecord is one markdown file directly inside a store's bucket.
+// closeRecord is one record of a store's bucket, under a name the store reads.
 type closeRecord struct {
 	rel, bucket, name, content string
+}
+
+// field is the record's frontmatter value for key.
+func (r closeRecord) field(key string) string {
+	return frontmatter.Fields(strings.Split(r.content, "\n"))[key].Value
 }
 
 // closeFacts is what the record says in fields, each present or absent.
@@ -667,22 +689,47 @@ func (r closeRecord) closeFacts(fields []string) string {
 	return strings.Join(out, "\x00")
 }
 
-// headRecords reads a store's records out of the judged head.
-func headRecords(at baseTree, store string, buckets []string, limit int64) ([]closeRecord, error) {
-	entries, err := at.list(store+"/", true)
+// realises reports whether a spec record names the intent.
+func (r closeRecord) realises(id string) bool {
+	if recordid.SameID(r.field("intent"), id) {
+		return true
+	}
+	return slices.ContainsFunc(frontmatter.StringList(r.field("intents")), func(m string) bool { return recordid.SameID(m, id) })
+}
+
+// closeStore is one store as the close reads it: where it lives, its buckets, the cap
+// on a record and the file names it reads.
+type closeStore struct {
+	rel     string
+	buckets []string
+	limit   int64
+	reads   func(name string) bool
+}
+
+var (
+	specCloseStore = closeStore{spec.SpecsRelDir, []string{spec.StatusOpen, spec.StatusClosed}, maxSpecRecordBytes, func(name string) bool {
+		_, ok := spec.RecordFileID(name)
+		return ok
+	}}
+	intentCloseStore = closeStore{intent.IntentsRelDir, intent.Buckets, intent.MaxFileBytes, intent.IsRecordFile}
+)
+
+// treeRecords reads a store's records out of a commit.
+func treeRecords(at baseTree, store closeStore) ([]closeRecord, error) {
+	entries, err := at.list(store.rel+"/", true)
 	if err != nil {
-		return nil, fmt.Errorf("reading %s at the judged head: %w", store, err)
+		return nil, fmt.Errorf("reading %s at %s: %w", store.rel, shortSHA(at.sha), err)
 	}
 	var records []closeRecord
 	var objects []string
 	budget := 0
 	for _, e := range entries {
-		bucket, name, ok := strings.Cut(strings.TrimPrefix(e.path, store+"/"), "/")
-		if !ok || strings.Contains(name, "/") || !strings.HasSuffix(name, ".md") || !slices.Contains(buckets, bucket) {
+		bucket, name, ok := strings.Cut(strings.TrimPrefix(e.path, store.rel+"/"), "/")
+		if !ok || strings.Contains(name, "/") || !store.reads(name) || !slices.Contains(store.buckets, bucket) {
 			continue
 		}
-		if err := at.readable(e, limit); err != nil {
-			return nil, fmt.Errorf("reading %s at the judged head: %w", e.path, err)
+		if err := at.readable(e, store.limit); err != nil {
+			return nil, fmt.Errorf("reading %s at %s: %w", e.path, shortSHA(at.sha), err)
 		}
 		records = append(records, closeRecord{rel: e.path, bucket: bucket, name: name})
 		objects = append(objects, e.object)
@@ -690,11 +737,11 @@ func headRecords(at baseTree, store string, buckets []string, limit int64) ([]cl
 	}
 	got, err := gitutil.CatFileBatch(at.root, objects, budget)
 	if err != nil {
-		return nil, fmt.Errorf("reading %s at the judged head: %w", store, err)
+		return nil, fmt.Errorf("reading %s at %s: %w", store.rel, shortSHA(at.sha), err)
 	}
 	for i := range records {
 		if got[i].Missing || got[i].Type != "blob" {
-			return nil, fmt.Errorf("reading %s at the judged head: it holds no blob there", records[i].rel)
+			return nil, fmt.Errorf("reading %s at %s: it holds no blob there", records[i].rel, shortSHA(at.sha))
 		}
 		records[i].content = got[i].Content
 	}
@@ -703,33 +750,33 @@ func headRecords(at baseTree, store string, buckets []string, limit int64) ([]cl
 
 // worktreeRecords reads a store's records from the lane's worktree, as the close will.
 // odd names one the close could not read.
-func worktreeRecords(worktree, store string, buckets []string, limit int64) (records []closeRecord, odd string, err error) {
-	for _, bucket := range buckets {
-		dir := filepath.Join(worktree, filepath.FromSlash(store), bucket)
+func worktreeRecords(worktree string, store closeStore) (records []closeRecord, odd string, err error) {
+	for _, bucket := range store.buckets {
+		dir := filepath.Join(worktree, filepath.FromSlash(store.rel), bucket)
 		info, err := os.Lstat(dir)
 		if os.IsNotExist(err) {
 			continue
 		}
 		if err != nil {
-			return nil, "", fmt.Errorf("reading %s/%s in the lane's worktree: %w", store, bucket, err)
+			return nil, "", fmt.Errorf("reading %s/%s in the lane's worktree: %w", store.rel, bucket, err)
 		}
 		if !info.IsDir() {
-			return nil, store + "/" + bucket, nil
+			return nil, store.rel + "/" + bucket, nil
 		}
 		entries, err := os.ReadDir(dir)
 		if err != nil {
-			return nil, "", fmt.Errorf("reading %s/%s in the lane's worktree: %w", store, bucket, err)
+			return nil, "", fmt.Errorf("reading %s/%s in the lane's worktree: %w", store.rel, bucket, err)
 		}
 		for _, e := range entries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			if e.IsDir() || !store.reads(e.Name()) {
 				continue
 			}
-			rel := store + "/" + bucket + "/" + e.Name()
+			rel := store.rel + "/" + bucket + "/" + e.Name()
 			info, err := e.Info()
 			if err != nil {
 				return nil, "", fmt.Errorf("reading %s in the lane's worktree: %w", rel, err)
 			}
-			if !info.Mode().IsRegular() || info.Size() > limit {
+			if !info.Mode().IsRegular() || info.Size() > store.limit {
 				return nil, rel, nil
 			}
 			body, err := os.ReadFile(filepath.Join(dir, e.Name()))
@@ -742,29 +789,53 @@ func worktreeRecords(worktree, store string, buckets []string, limit int64) (rec
 	return records, "", nil
 }
 
-// refuseChangedCloseRecords reads the spec and intent stores as the judged head and the
-// lane's worktree each hold them and refuses any difference a close would decide by, so
-// nothing uncommitted chooses what it ships or lifts what holds it back. The lane's own
-// spec record may stand in either bucket; a closing lane's own intents may stand in
-// planned or shipped, where a call a hook refused left them. A head holding no record
-// of the spec links only the run's own intent.
+// closeRefusal says what differs from the judged head, and where.
+type closeRefusal func(rel, how string) error
+
+// refuseChangedCloseRecords holds the lane's worktree to the judged head.
 func refuseChangedCloseRecords(c Context, lane Lane, closes bool) error {
-	st := c.State
-	at := baseTree{root: c.RepoRoot, sha: lane.HeadSHA}
 	refused := func(rel, how string) error {
 		return refuse(string(StageLand), "", lane.ID, strconv.Quote(termsafe.Sanitize(rel))+" "+how+" in the lane's worktree, and the judged head decides what the close ships and what holds it",
 			"put it back as the judged head has it, removing it if the head holds no such record, in the lane's worktree, then run `abcd implement step` again")
 	}
-	headSpecs, err := headRecords(at, spec.SpecsRelDir, []string{spec.StatusOpen, spec.StatusClosed}, maxSpecRecordBytes)
+	return judgeCloseRecords(c, lane, closes, refused, func(store closeStore) ([]closeRecord, error) {
+		records, odd, err := worktreeRecords(lane.Worktree, store)
+		if err == nil && odd != "" {
+			return nil, refused(odd, "is not a regular file within its cap")
+		}
+		return records, err
+	})
+}
+
+// refuseFoundCloseRecords holds a commit found on the judged head to it.
+func refuseFoundCloseRecords(c Context, lane Lane, tip string, closes bool) error {
+	refused := func(rel, how string) error {
+		return refuse(string(StageLand), "", lane.ID, strconv.Quote(termsafe.Sanitize(rel))+" "+how+" in "+shortSHA(tip)+", the commit found on the judged head "+shortSHA(lane.HeadSHA)+", and that head decides what the close ships and what holds it",
+			"restore the branch to the judged head, then run `abcd implement step` again")
+	}
+	return judgeCloseRecords(c, lane, closes, refused, func(store closeStore) ([]closeRecord, error) {
+		return treeRecords(baseTree{root: c.RepoRoot, sha: tip}, store)
+	})
+}
+
+// judgeCloseRecords reads the spec and intent stores as the judged head and read each
+// hold them and refuses any difference a close decides by, so nothing uncommitted
+// chooses what it ships or lifts what holds it back. The lane's own spec record may
+// stand in either bucket. A closing lane's own intent may stand in planned or shipped,
+// where a call a hook refused left it, but in shipped only as the close would have
+// moved it: the head holds no hold and no other open spec naming it, and the record
+// carries a valid impact. A head holding no record of the spec links only the run's own
+// intent.
+func judgeCloseRecords(c Context, lane Lane, closes bool, refused closeRefusal, read func(closeStore) ([]closeRecord, error)) error {
+	st := c.State
+	at := baseTree{root: c.RepoRoot, sha: lane.HeadSHA}
+	headSpecs, err := treeRecords(at, specCloseStore)
 	if err != nil {
 		return err
 	}
-	workSpecs, odd, err := worktreeRecords(lane.Worktree, spec.SpecsRelDir, []string{spec.StatusOpen, spec.StatusClosed}, maxSpecRecordBytes)
+	workSpecs, err := read(specCloseStore)
 	if err != nil {
 		return err
-	}
-	if odd != "" {
-		return refused(odd, "is not a regular file within its cap")
 	}
 	var own []closeRecord
 	for _, r := range workSpecs {
@@ -772,55 +843,69 @@ func refuseChangedCloseRecords(c Context, lane Lane, closes bool) error {
 			own = append(own, r)
 		}
 	}
-	ownChanged := refuse(string(StageLand), "", lane.ID, "the uncommitted change to "+st.Spec+" changes what it links (its record, or its id:, intent:, intents: or bundle:), which decides what the close ships",
-		"put the record and those fields back as the judged head has them, in the lane's worktree, then run `abcd implement step` again")
+	ownChanged := refused(st.Spec, "changes what it links (its record, or its id:, intent:, intents: or bundle:)")
 	if len(own) != 1 {
 		return ownChanged
 	}
 	want := closeRecord{content: "---\nid: " + st.Spec + "\nintent: " + st.Intent + "\n---\n"}
-	var heldBack []closeRecord
+	var otherSpecs []closeRecord
 	for _, r := range headSpecs {
 		if isSpecRecordOf(r.rel, st.Spec) {
 			want = r
 			continue
 		}
-		heldBack = append(heldBack, r)
+		otherSpecs = append(otherSpecs, r)
 	}
 	if want.closeFacts(specCloseFields) != own[0].closeFacts(specCloseFields) {
 		return ownChanged
 	}
 	others := slices.DeleteFunc(slices.Clone(workSpecs), func(r closeRecord) bool { return isSpecRecordOf(r.rel, st.Spec) })
-	if err := refuseRecordDifferences(heldBack, others, specCloseFields, nil, refused); err != nil {
+	if err := refuseRecordDifferences(otherSpecs, others, specCloseFields, nil, nil, refused); err != nil {
 		return err
 	}
 
-	headIntents, err := headRecords(at, intent.IntentsRelDir, intent.Buckets, intent.MaxFileBytes)
+	headIntents, err := treeRecords(at, intentCloseStore)
 	if err != nil {
 		return err
 	}
-	workIntents, odd, err := worktreeRecords(lane.Worktree, intent.IntentsRelDir, intent.Buckets, intent.MaxFileBytes)
+	workIntents, err := read(intentCloseStore)
 	if err != nil {
 		return err
 	}
-	if odd != "" {
-		return refused(odd, "is not a regular file within its cap")
-	}
-	links := frontmatter.Fields(strings.Split(own[0].content, "\n"))
-	members := append([]string{links["intent"].Value}, frontmatter.StringList(links["intents"].Value)...)
-	moves := func(r closeRecord, bucket string) bool {
-		if !closes || !slices.Contains([]string{intent.BucketPlanned, intent.BucketShipped}, bucket) || !slices.Contains([]string{intent.BucketPlanned, intent.BucketShipped}, r.bucket) {
+	moves := func(r, w closeRecord) bool {
+		id := r.field("id")
+		if !closes || !own[0].realises(id) || !isCloseBucket(r.bucket) || !isCloseBucket(w.bucket) {
 			return false
 		}
-		id := frontmatter.Fields(strings.Split(r.content, "\n"))["id"].Value
-		return slices.ContainsFunc(members, func(m string) bool { return recordid.SameID(m, id) })
+		if w.bucket != intent.BucketShipped {
+			return true
+		}
+		if _, held := frontmatter.Fields(strings.Split(r.content, "\n"))["held"]; held {
+			return false
+		}
+		if slices.ContainsFunc(otherSpecs, func(o closeRecord) bool { return o.bucket == spec.StatusOpen && o.realises(id) }) {
+			return false
+		}
+		return intent.ShipImpactValid(w.content)
 	}
-	return refuseRecordDifferences(headIntents, workIntents, intentCloseFields, moves, refused)
+	impact := func(r, w closeRecord) string {
+		if intent.ShipImpactValid(r.content) && w.field("impact") != r.field("impact") {
+			return "changes the impact: the judged head declares"
+		}
+		return ""
+	}
+	return refuseRecordDifferences(headIntents, workIntents, intentCloseFields, moves, impact, refused)
 }
 
-// refuseRecordDifferences holds the worktree's records to the judged head's, by file
-// name: none new, none gone, none in another bucket unless moves allows it, and each
-// saying the same in fields.
-func refuseRecordDifferences(head, work []closeRecord, fields []string, moves func(closeRecord, string) bool, refused func(rel, how string) error) error {
+// isCloseBucket reports whether a close may find a record of its own in the bucket.
+func isCloseBucket(bucket string) bool {
+	return bucket == intent.BucketPlanned || bucket == intent.BucketShipped
+}
+
+// refuseRecordDifferences holds the records read to the judged head's, by file name:
+// none new, none gone, none in another bucket unless moves allows it, each saying the
+// same in fields, and none differing as also says.
+func refuseRecordDifferences(head, work []closeRecord, fields []string, moves func(r, w closeRecord) bool, also func(r, w closeRecord) string, refused closeRefusal) error {
 	at := map[string]closeRecord{}
 	for _, r := range work {
 		if _, twice := at[r.name]; twice {
@@ -835,10 +920,15 @@ func refuseRecordDifferences(head, work []closeRecord, fields []string, moves fu
 		switch {
 		case !ok:
 			return refused(r.rel, "is gone")
-		case w.bucket != r.bucket && (moves == nil || !moves(r, w.bucket)):
+		case w.bucket != r.bucket && (moves == nil || !moves(r, w)):
 			return refused(r.rel, "moved to "+w.bucket+"/")
 		case w.closeFacts(fields) != r.closeFacts(fields):
 			return refused(w.rel, "changes its "+strings.Join(fields, ":, ")+":")
+		}
+		if also != nil {
+			if how := also(r, w); how != "" {
+				return refused(w.rel, how)
+			}
 		}
 	}
 	for _, r := range work {
@@ -847,6 +937,38 @@ func refuseRecordDifferences(head, work []closeRecord, fields []string, moves fu
 		}
 	}
 	return nil
+}
+
+// ownSpecUnresolved reads the spec store as the close does, once the worktree agrees
+// with the judged head, and says why the head leaves the close no way to read the lane's
+// own record: "" when it reads it. What the worktree changed in the store, it settles.
+func ownSpecUnresolved(lane Lane, specID string) (string, error) {
+	store, err := spec.Load(lane.Worktree)
+	if err != nil {
+		changed, gerr := pickGit(lane.Worktree, "status", "--porcelain", "--", spec.SpecsRelDir)
+		if gerr != nil {
+			return "", fmt.Errorf("reading the lane's worktree: %w", gerr)
+		}
+		if changed != "" {
+			return "", refuse(string(StageLand), "", lane.ID, "the spec store in the lane's worktree could not be read: "+fsutil.RedactHome(err.Error()),
+				"settle what the spec store names in the lane's worktree and leave it uncommitted, then run `abcd implement step` again")
+		}
+		return "the spec store cannot be read at the judged head: " + termsafe.Sanitize(fsutil.RedactHome(err.Error())), nil
+	}
+	if sp, ok := store.Lookup(specID); ok && !isSpecRecordOf(filepath.ToSlash(sp.Path), specID) {
+		return strconv.Quote(termsafe.Sanitize(filepath.ToSlash(sp.Path))) + " carries the id of " + specID + " at the judged head, and the close would read it in place of the lane's own record", nil
+	}
+	return "", nil
+}
+
+// closeHandBack hands the lane back for what the judged head holds against its close:
+// no edit in the worktree may settle that, and a lane takes a new head only from a
+// sibling's landing.
+func closeHandBack(c Context, lane Lane, why string) Outcome {
+	st := c.State
+	return Outcome{HandBack: &HandBack{Kind: HandBackStuck, Reason: why,
+		Home: "a person: the judged head holds this, and this lane takes no new head from the default branch, so settle it on the default branch, then discard the lane with `abcd implement step --run " +
+			st.RunID + " --discard " + lane.ID + "`, remove the run's directory " + runRel(st.RunID) + " and build " + st.Intent + " again"}}
 }
 
 // strayChanges names a change in the lane's worktree that cannot be the landing's own,

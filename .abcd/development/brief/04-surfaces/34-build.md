@@ -890,7 +890,12 @@ mode is `auto`, back at `validate`, and a sync.
    and parks the fidelity receipt) and ingests the verdict of the audit
    the lane took into that receipt, rather than asking for a second audit; and
    for every capture the lane's receipts declared fixed it runs the capture
-   store's resolve with the lane's commit that fixed it. It commits them on
+   store's resolve with the lane's commit that fixed it. What a close ships and what holds it stay as the judged head has them, so an
+   uncommitted change to them is refused, and what that head itself holds against
+   the close (a hold, a drifted `spec_id`, a bundle member another open spec keeps)
+   hands the lane back as `stuck`, naming it and the way out: settle it on the
+   default branch, discard the lane, remove the run's directory and build the
+   intent again. It commits them on
    the lane's branch with a computed message carrying `Delivers:` (when the
    close ships the intent) and one `Resolves:` per capture, so RS005 and RS001
    find the records in the change. Unlike the pick's commit, whose text abcd

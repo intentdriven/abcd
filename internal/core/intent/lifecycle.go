@@ -890,7 +890,7 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 	// is ever used to build a path.
 	intentID := sp.Intent
 	if !recordid.ValidIntentID(intentID) {
-		return ReconcileResult{}, fmt.Errorf("intent: spec %s has no well-formed intent link (got %q); refusing to reconcile", specID, intentID)
+		return ReconcileResult{}, closeFact("intent: spec %s has no well-formed intent link (got %q); refusing to reconcile", specID, intentID)
 	}
 
 	corpus, err := Load(repoRoot)
@@ -899,7 +899,7 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 	}
 	it, ok := corpus.Lookup(intentID)
 	if !ok {
-		return ReconcileResult{}, fmt.Errorf("intent: %s (linked by spec %s) not found in any bucket; refusing to reconcile", intentID, specID)
+		return ReconcileResult{}, closeFact("intent: %s (linked by spec %s) not found in any bucket; refusing to reconcile", intentID, specID)
 	}
 	// Bidirectional agreement, 1:n-aware: the intent's spec_id must name one of
 	// the specs that realise it. Under the 1:1 rule this was equality with THIS
@@ -919,7 +919,7 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 		}
 	}
 	if !backLinked {
-		return ReconcileResult{}, fmt.Errorf("intent: %s spec_id is %q but no spec realising it carries that id (spec %s claims it; bidirectional link disagrees); refusing to reconcile",
+		return ReconcileResult{}, closeFact("intent: %s spec_id is %q but no spec realising it carries that id (spec %s claims it; bidirectional link disagrees); refusing to reconcile",
 			intentID, it.SpecID, specID)
 	}
 	// Bucket guard runs BEFORE any move, so an unexpected bucket (drafts,
@@ -928,7 +928,7 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 	case BucketPlanned, BucketShipped:
 		// planned → advance; shipped → idempotent (already advanced).
 	default:
-		return ReconcileResult{}, fmt.Errorf("intent: %s is in %s (linked by spec %s); expected planned or shipped — refusing to reconcile", intentID, it.Bucket, specID)
+		return ReconcileResult{}, closeFact("intent: %s is in %s (linked by spec %s); expected planned or shipped — refusing to reconcile", intentID, it.Bucket, specID)
 	}
 	// A hold blocks EVERY lifecycle move until `intent unhold`, and the close is
 	// one: a held planned record is refused here, ahead of the remainder mint,
@@ -943,7 +943,7 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 	// is left to complete.
 	if it.Bucket == BucketPlanned {
 		if err := refuseIfHeld(it, "spec close"); err != nil {
-			return ReconcileResult{}, err
+			return ReconcileResult{}, &CloseFactError{err}
 		}
 	}
 
@@ -1329,6 +1329,28 @@ func resolveShipImpact(repoRoot string, it Intent, supplied string) (string, err
 		return "", err
 	}
 	return resolveShipImpactFrom(it, string(data), supplied)
+}
+
+// CloseFactError is a close refusing what the records themselves say: a link, a
+// back-link, a bucket or a hold. Its message is the refusal's own.
+type CloseFactError struct{ err error }
+
+func (e *CloseFactError) Error() string { return e.err.Error() }
+func (e *CloseFactError) Unwrap() error { return e.err }
+
+// closeFact is a CloseFactError from a message.
+func closeFact(format string, args ...any) error {
+	return &CloseFactError{fmt.Errorf(format, args...)}
+}
+
+// ShipImpactValid reports whether a record's content declares an impact shipped/ takes.
+func ShipImpactValid(content string) bool {
+	return validShipImpact(recordedImpact(content)) == nil
+}
+
+// IsRecordFile reports whether the store reads a file of this name as an intent record.
+func IsRecordFile(name string) bool {
+	return intentFileRe.MatchString(name)
 }
 
 // resolveShipImpactFrom is resolveShipImpact on the record's content as the
