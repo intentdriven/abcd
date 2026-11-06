@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/runner"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -44,7 +46,11 @@ func terminalFakeTurn(role string) string {
 	lines := strings.Fields(string(raw))
 	count, _ := os.ReadFile(path + ".n")
 	n, _ := strconv.Atoi(strings.TrimSpace(string(count)))
-	_ = os.WriteFile(path+".n", []byte(strconv.Itoa(n+1)), 0o600)
+	// Atomic, since a hang limit can kill this process anywhere: a count truncated
+	// and not yet written would read as zero, and send the next launch to the
+	// script's first line (iss-2611061914290330). Killed before the rename, the next
+	// launch repeats this line.
+	_ = fsutil.WriteFileAtomic(path+".n", []byte(strconv.Itoa(n+1)), 0o600)
 	turn := "shape"
 	if n < len(lines) {
 		turn = lines[n]
@@ -94,6 +100,40 @@ func terminalFakeTurn(role string) string {
 		return "judge-" + JudgementNo
 	}
 	return "ok"
+}
+
+// TestACounterWriteCutOffKeepsTheScriptsPlace: the launches that read terminalFakeTurn's
+// count can be killed at any moment of a hang limit, and a write cut off there must
+// leave the count as it was. Back at zero, the next launch takes the script's first
+// line instead of its own. A file-size limit of nothing cuts every write off after
+// its open, the same place each time, so this needs no kill to land anywhere.
+func TestACounterWriteCutOffKeepsTheScriptsPlace(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "script")
+	if err := os.WriteFile(path, []byte("shape\nnone\nnone\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path+".n", []byte("2"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	launch := exec.Command("/bin/sh", "-c", `ulimit -f 0; exec "$0" brief`, exe)
+	launch.Env = append(os.Environ(), loopFakeEnv+"="+terminalFakeMode, terminalScriptEnv+"="+path, loopFakeLogEnv+"=")
+	// It exits as the line it took says, and "none" prints this, which shows it got
+	// past the count.
+	out, _ := launch.CombinedOutput()
+	if !strings.Contains(string(out), "Not logged in") {
+		t.Fatalf("the launch never took its line: %q", out)
+	}
+	got, err := os.ReadFile(path + ".n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "2" {
+		t.Fatalf("the count is %q after a write cut off; want it left at 2", got)
+	}
 }
 
 // terminalWorld is one test's scratch ledger of three eligible issues, on a

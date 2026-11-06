@@ -272,9 +272,13 @@ jobs:
     # again on 2026-10-28, on delegation from the technical facilitator
     # (dcn-2610280635092222): merge-group runs took 29, 29 and 29 minutes and a
     # fourth was cancelled at 30, a second after its race tests passed, which
-    # rebuilt every group queued behind it. Its warning, ten minutes ahead, fires
-    # at 35. The race step's -timeout lifts go test's 10m per-package default, so a
-    # slow package runs on to this ceiling instead of failing at ten minutes. The
+    # rebuilt every group queued behind it. It is 60 since iss-2611061904457784:
+    # at 45 the job clock's watchdog fired at 40, the cap less its margin, and
+    # queue runs reach about 40 with no test failing, so an entry left the queue
+    # with nothing failed. 60 still sits 30 under the queue's timeout. Its warning,
+    # ten minutes ahead, fires at 50. The race step's -timeout lifts go test's 10m
+    # per-package default, so a slow package runs on to this ceiling instead of
+    # failing at ten minutes. The
     # step names its slowest packages first, so they start with the step rather
     # than behind every faster package; a hang in one of them fails at the package
     # timeout, with a goroutine dump, before this ceiling cancels the job; a hang
@@ -282,13 +286,13 @@ jobs:
     # TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds the ceiling at or below the
     # cap, and TestEachTestJobWarnsBeforeItsCap holds the warning step at the
     # end of the job below it.
-    timeout-minutes: 45
+    timeout-minutes: 60
     runs-on: ubuntu-latest
     # The job clock's watchdog (cmd/ci-watchdog). go test's -timeout counts
     # from each test binary's own start, so a package that starts late meets
     # this job's cap first and is cancelled with no goroutine dump: on a
     # passing merge-group run the last package started 23.8 minutes into this
-    # job, against a 40m -timeout and a cap of 45. Every step that runs go test,
+    # job, against a 40m -timeout and a cap of 60. Every step that runs go test,
     # here and in macos-suite, therefore runs under the
     # watchdog, which sends the test binaries under go test SIGQUIT (each prints
     # its goroutines and fails) at the cap less the margin on the clock the
@@ -299,7 +303,7 @@ jobs:
     # go test step's shell.
     env:
       ABCD_CI_LEG: check (ubuntu-latest)
-      ABCD_CI_JOB_CAP_MINUTES: 45
+      ABCD_CI_JOB_CAP_MINUTES: 60
     steps:
       # The clock for the warning step at the end of the job. It is the first step
       # that runs, so the time the runner spent before it (queueing, set-up) is not
@@ -565,8 +569,8 @@ jobs:
         continue-on-error: true
         env:
           STARTED_AT: ${{ steps.started.outputs.epoch }}
-          WARN_AFTER_MINUTES: 35
-          CEILING_MINUTES: 45
+          WARN_AFTER_MINUTES: 50
+          CEILING_MINUTES: 60
         run: |
           case "${STARTED_AT:-}" in
             '' | *[!0-9]*)

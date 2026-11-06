@@ -3,7 +3,7 @@ name: security-reviewer
 description: Adversarial security review of a diff or design. Use PROACTIVELY before presenting any change that touches a trust boundary — auth, secrets, network exposure, input parsing, file/DB access, subprocess execution — or any invariant declared in the project's AGENTS.md. Authorized defensive review of the user's own code only.
 tools: Read, Grep, Glob, Bash
 model: opus
-prompt_version: 0.4.1
+prompt_version: 0.4.2
 reads_untrusted_input: true
 capability_scope:
   task_classes: [oracle_review]
@@ -80,8 +80,10 @@ When your brief says this return is recorded with `abcd land --record-review`, o
 it with one line before these sections: its first line reads exactly
 `Reviewed head: <name>`, where `<name>` is the head you read, by at least its first
 nine characters. When the brief says it is a delta review (`--rests-on`), its first line reads exactly
-`Reviewed delta: <base>..<head>` instead, each end named the same way, and no line
-states a head. A return has one `### Verdict` section and no other line opening with the word Verdict.
+`Reviewed delta: <base>..<head>` instead, each end named the same way, and no line reads `Reviewed head:`.
+A return so recorded, a delta's too, names the head in its verdict, by its full
+object name: the first line under `### Verdict` opens with the verdict and then the
+name, as in `**APPROVE** <full name>`. A return has one `### Verdict` section and no other line opening a verdict, whatever qualifies it.
 
 Reason first, format second.
 

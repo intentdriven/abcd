@@ -16,7 +16,7 @@ import (
 // go test's -timeout counts from each test binary's own start, so it cannot
 // bound the job's clock: on a passing merge-group run the ubuntu job's last
 // package binary started 23.8 minutes into the job, so a hang there would have
-// met the job's 45-minute cap long before its 40m -timeout fired, and a
+// met the job's 60-minute cap before its 40m -timeout fired, and a
 // cancellation at the cap carries no dump. No single -timeout fits every package
 // a job starts at a different time.
 //

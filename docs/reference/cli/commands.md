@@ -3256,8 +3256,10 @@ note, the impact and the grounds; the landing resolves each.
 
 At the validate stage the receipt is the validator's return: a reviewer's is refused
 unless it has one Verdict section stating one verdict of its role (SHIP or FIX FIRST;
-APPROVE, BLOCK or NEEDS-INPUT), and the intent-auditor's unless it is the fidelity verdict
-the request asked for, echoing its receipt and both provenance hashes. The loop records
+APPROVE, BLOCK or NEEDS-INPUT) and naming the head it judges by its full object name, and
+the intent-auditor's unless it is the fidelity verdict the request asked for, echoing its
+receipt and both provenance hashes. Either is refused, whatever it says, when its launch
+reports a stop for length, a provider's filter or refusal, or an error. The loop records
 the verdict and the lane stays at validate for the next validator. A fresh implementer's
 receipt after a round is verified as an implementer's is.
 
@@ -4414,17 +4416,23 @@ naming who set it and when, or a read cannot tell whether one does, saying why.
 --record-review records the review pair's verdicts for the branch's head and
 lands nothing: given once per reviewer's return (at least two, no two the
 same), each with a first line reading Reviewed head: <name>, naming the head by at
-least its first nine characters, and one ### Verdict heading and no other line opening as a Verdict, fenced or not, it writes the head's
-review receipt in
+least its first nine characters, and one ### Verdict heading and no other line opening a verdict, qualified or not, fenced or not,
+where the first line under the heading opens with the verdict (SHIP, APPROVE, FIX
+FIRST, BLOCK or NEEDS-INPUT) and names the head by
+its full object name (**SHIP** <full name>, or a Head: <full name> line directly
+under the heading), it writes the head's review receipt in
 .abcd/.work.local/review-receipts/ when every verdict passes the stop rule
 (SHIP or APPROVE: no critical or major finding). A return that does not pass is
 refused naming it, exit 2, and nothing is written. It takes no --no-push or
---no-enqueue.
+--no-enqueue. A receipt recorded before a verdict named its head does not count at
+the merge gate or as a delta's base: its returns are not kept, so it cannot be read
+again, and the head records its pair again.
 
 --rests-on <base> makes that a delta review, of a wording fix after a full pair: the
 head's receipt rests on the full pair recorded for <base>, a
 full object name, and each return's first line reads exactly Reviewed delta:
-<base>..<head> in place of the head's, with no line stating a head. It is refused, and the head needs a full pair, unless the base
+<base>..<head> in place of the head's, with no Reviewed head: line, its verdict still
+naming the head in full. It is refused, and the head needs a full pair, unless the base
 has a full pair (a delta's receipt is not one), the head descends from it, and the
 branch's own commits since it change only plain text markdown files of mode 100644
 under docs/explanation/, docs/how-to/, docs/tutorials/, .abcd/development/plans/,
