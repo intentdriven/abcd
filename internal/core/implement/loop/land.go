@@ -376,6 +376,23 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 			return Outcome{}, err
 		}
 	}
+	if ld.Closes {
+		if err := refuseOtherIntentRecords(c, *lane); err != nil {
+			return Outcome{}, err
+		}
+	}
+	// A landing prepared over a change to the spec holds it no longer once it is put
+	// back: nothing is written yet, so the first step runs again on the tree as it stands.
+	if ld.SpecSettled {
+		_, settled, err := worktreeChanges(lane.Worktree, st.Spec)
+		if err != nil {
+			return Outcome{}, fmt.Errorf("reading the lane's worktree: %w", err)
+		}
+		if !settled {
+			lane.Landing = nil
+			return Outcome{Stay: true, Note: "the change to " + st.Spec + " the landing's first step took is gone from the lane's worktree, so that step runs again"}, nil
+		}
+	}
 
 	// The disclosure is settled before any record is written, so a lane with
 	// no model to disclose is refused with its worktree untouched. A records
@@ -386,7 +403,9 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{Stay: true, Note: note}, nil
 	}
 	assisted := []string{composedAssistedBy()}
+	composed := true
 	if ld.Closes || len(lane.Resolves) > 0 || ld.SpecSettled {
+		composed = false
 		var gap string
 		if assisted, gap = assistedByTrailers(lane.Receipts); gap != "" {
 			return Outcome{}, modelGap(*lane, "the landing's records commit carries text the lane's implementer composed", gap)
@@ -420,7 +439,16 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 		// this commit, just below, so they are not refused here. The remedy keeps
 		// the settled link uncommitted: a commit moves the branch off the judged
 		// head, which refuses above, and this commit carries a markdown change.
-		links, err := capture.UnresolvedLinks(wt, spec.CloseShips(wt, st.Spec))
+		store, err := spec.Load(wt)
+		if err != nil {
+			return Outcome{}, refuse(string(StageLand), "", lane.ID, "the spec store could not be read to judge what `spec close "+st.Spec+"` ships: "+fsutil.RedactHome(err.Error()),
+				"settle what the spec store names in the lane's worktree and leave it uncommitted, then run `abcd implement step` again")
+		}
+		var ships []string
+		if sp, ok := store.Lookup(st.Spec); ok {
+			ships = store.Ships(sp)
+		}
+		links, err := capture.UnresolvedLinks(wt, ships)
 		if err != nil {
 			return Outcome{}, refuse(string(StageLand), "", lane.ID, "the issue ledger could not be read to judge what `spec close "+st.Spec+"` ships: "+fsutil.RedactHome(err.Error()),
 				"settle what the capture store names in the lane's worktree and leave it uncommitted, then run `abcd implement step` again")
@@ -492,6 +520,21 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{}, refuse(string(StageLand), "", lane.ID, "the landing's records changed nothing on the lane's branch",
 			"the close and the resolutions should move records; put back anything the branch already moved, or the spec left for the landing to carry, in the lane's worktree and leave it uncommitted, then run `abcd implement step` again")
 	}
+	// abcd's label covers the mark it computed and nothing else, so it is chosen from
+	// what is staged: anything beside the mark names the lane's model.
+	if composed {
+		only, err := stagedOnlyTheMark(wt, st.Spec, staged, shortSHA(lane.HeadSHA))
+		if err != nil {
+			return Outcome{}, fmt.Errorf("reading the landing's staged records: %w", err)
+		}
+		if !only {
+			var gap string
+			if assisted, gap = assistedByTrailers(lane.Receipts); gap != "" {
+				return Outcome{}, modelGap(*lane, "the landing's records commit carries text abcd did not compose", gap)
+			}
+			done = append(done, "carried what else was left in the lane's worktree")
+		}
+	}
 	// Unlike the pick commit (pickcommit.go), whose text abcd computes and
 	// which declares `Assisted-by: abcd:<version>`, this commit's diff carries prose a
 	// model composed: the receipt's resolution note and grounds, and the
@@ -519,6 +562,34 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	}
 	ld.Records, ld.RecordsDone, lane.HeadSHA = head, true, head
 	return Outcome{Stay: true, Note: "committed the landing's records as " + shortSHA(head) + ": " + strings.Join(done, "; ")}, nil
+}
+
+// stagedOnlyTheMark reports whether what is staged is one line added to the lane's own
+// spec record, the `- landed:` line naming mark. staged is the NUL-separated list of
+// staged paths.
+func stagedOnlyTheMark(worktree, specID, staged, mark string) (bool, error) {
+	path, rest, _ := strings.Cut(staged, "\x00")
+	if strings.Trim(rest, "\x00") != "" || !isSpecRecordOf(path, specID) {
+		return false, nil
+	}
+	diff, err := pickGit(worktree, "diff", "--cached", "--no-ext-diff", "--no-textconv", "--no-renames", "--unified=0", "--", path)
+	if err != nil {
+		return false, err
+	}
+	added := 0
+	for _, line := range strings.Split(diff, "\n") {
+		switch {
+		case strings.HasPrefix(line, "+++ "), strings.HasPrefix(line, "--- "):
+		case strings.HasPrefix(line, "-"):
+			return false, nil
+		case strings.HasPrefix(line, "+"):
+			if strings.TrimSpace(line[1:]) != "- landed: "+mark {
+				return false, nil
+			}
+			added++
+		}
+	}
+	return added == 1, nil
 }
 
 // worktreeChanges reads the lane's worktree for the first step. settled is an
@@ -570,7 +641,9 @@ func specLinks(content string) string {
 // refuseChangedSpecLinks refuses a lane's own spec record whose links differ from
 // the judged head's, or that no longer stands as one regular file in the worktree:
 // the close ships what the links name, so an uncommitted edit never chooses it. A
-// head holding no record of the spec links only the run's own intent.
+// head holding no record of the spec links only the run's own intent. The record the
+// store resolves for the spec's id is held to be that same record, and the only one
+// with the id.
 func refuseChangedSpecLinks(c Context, lane Lane) error {
 	st := c.State
 	want := specLinks("---\nintent: " + st.Intent + "\n---\n")
@@ -616,11 +689,66 @@ func refuseChangedSpecLinks(c Context, lane Lane) error {
 			same = specLinks(string(body)) == want
 		}
 	}
-	if same {
-		return nil
+	if !same {
+		return refuse(string(StageLand), "", lane.ID, "the uncommitted change to "+st.Spec+" changes what it links (its record, or its intent:, intents: or bundle:), which decides what the close ships",
+			"put the record and those fields back as the judged head has them, in the lane's worktree, then run `abcd implement step` again")
 	}
-	return refuse(string(StageLand), "", lane.ID, "the uncommitted change to "+st.Spec+" changes what it links (its record, or its intent:, intents: or bundle:), which decides what the close ships",
-		"put the record and those fields back as the judged head has them, in the lane's worktree, then run `abcd implement step` again")
+	// The record the close reads is the one the store resolves from the id inside.
+	store, err := spec.Load(lane.Worktree)
+	if err != nil {
+		return refuse(string(StageLand), "", lane.ID, "the spec store in the lane's worktree could not be read: "+fsutil.RedactHome(err.Error()),
+			"settle what the spec store names in the lane's worktree and leave it uncommitted, then run `abcd implement step` again")
+	}
+	const remedy = "put the id back as the judged head has it, or remove the other record, in the lane's worktree, then run `abcd implement step` again"
+	for _, other := range store.Specs {
+		if spec.SameNum(other.ID, st.Spec) && filepath.ToSlash(other.Path) != records[0] {
+			return refuse(string(StageLand), "", lane.ID, strconv.Quote(termsafe.Sanitize(filepath.ToSlash(other.Path)))+" carries the id of "+st.Spec+", and a close reads the lane's own record alone", remedy)
+		}
+	}
+	if sp, ok := store.Lookup(st.Spec); !ok || filepath.ToSlash(sp.Path) != records[0] {
+		return refuse(string(StageLand), "", lane.ID, "the lane's own record no longer carries the id of "+st.Spec+", and a close reads that record alone", remedy)
+	}
+	return nil
+}
+
+// refuseOtherIntentRecords refuses a worktree where an intent the lane's spec links
+// is not one record named for its id: the close moves the first record the corpus
+// resolves for the id, and the ingest writes to the record holding the receipt.
+func refuseOtherIntentRecords(c Context, lane Lane) error {
+	st := c.State
+	store, err := spec.Load(lane.Worktree)
+	if err != nil {
+		return refuse(string(StageLand), "", lane.ID, "the spec store in the lane's worktree could not be read: "+fsutil.RedactHome(err.Error()),
+			"settle what the spec store names in the lane's worktree and leave it uncommitted, then run `abcd implement step` again")
+	}
+	sp, ok := store.Lookup(st.Spec)
+	if !ok {
+		return nil // refuseChangedSpecLinks refuses this first.
+	}
+	corpus, err := intent.Load(lane.Worktree)
+	if err != nil {
+		return refuse(string(StageLand), "", lane.ID, "the intent store in the lane's worktree could not be read: "+fsutil.RedactHome(err.Error()),
+			"settle what the intent store names in the lane's worktree and leave it uncommitted, then run `abcd implement step` again")
+	}
+	const remedy = "put the id back as the judged head has it, or remove the other record, in the lane's worktree, then run `abcd implement step` again"
+	for _, member := range sp.Members() {
+		var held []string
+		for _, it := range corpus.Intents {
+			if recordid.SameID(it.ID, member) {
+				held = append(held, filepath.ToSlash(it.Path))
+			}
+		}
+		if len(held) > 1 {
+			return refuse(string(StageLand), "", lane.ID, fmt.Sprintf("%d intent records in the lane's worktree carry the id of %s, and a close reads one", len(held), member), remedy)
+		}
+		if len(held) == 1 {
+			id, _, ok := recordid.SplitRecordFilename("itd", filepath.Base(held[0]))
+			if !ok || !recordid.SameID(id, member) {
+				return refuse(string(StageLand), "", lane.ID, strconv.Quote(termsafe.Sanitize(held[0]))+" carries the id of "+member+", which its name does not", remedy)
+			}
+		}
+	}
+	return nil
 }
 
 // maxSpecRecordBytes bounds the read of a spec record in the lane's worktree, as the

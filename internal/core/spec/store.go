@@ -196,10 +196,16 @@ func CloseShips(repoRoot, specID string) []string {
 	if !ok || sp.Status != StatusOpen {
 		return nil
 	}
+	return store.Ships(sp)
+}
+
+// Ships names the members of sp no other open spec still names, the intents its
+// close moves to shipped, in whichever bucket the record stands.
+func (s Store) Ships(sp Spec) []string {
 	var out []string
 	for _, m := range sp.Members() {
 		others := 0
-		for _, o := range store.OpenSpecsForIntent(m) {
+		for _, o := range s.OpenSpecsForIntent(m) {
 			if o.ID != sp.ID {
 				others++
 			}

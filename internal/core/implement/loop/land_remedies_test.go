@@ -1,6 +1,7 @@
 package loop
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -701,6 +702,265 @@ func TestAChangeToWhatTheSpecLinksIsRefused(t *testing.T) {
 			}
 			if err := os.WriteFile(path, was, 0o644); err != nil {
 				t.Fatal(err)
+			}
+		})
+	}
+}
+
+// A close reads the spec record the store resolves for the lane's spec id and the
+// intent records the corpus resolves for its links, so the records step holds those
+// to be the lane's own, as the judged head links them, and the only ones with the id.
+func TestAClosingLaneReadsOnlyItsOwnRecords(t *testing.T) {
+	const (
+		secondIntent = ".abcd/development/intents/planned/itd-11-beta.md"
+		otherSpec    = ".abcd/development/specs/open/spc-2-other.md"
+		links        = "intent: itd-10\nbundle: pair\nintents: [itd-10, itd-11]\n"
+	)
+	write := func(t *testing.T, wt, rel, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(wt, filepath.FromSlash(rel)), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	read := func(t *testing.T, wt, rel string) string {
+		t.Helper()
+		data, err := os.ReadFile(filepath.Join(wt, filepath.FromSlash(rel)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(data)
+	}
+	linked := func(t *testing.T, wt string) string {
+		t.Helper()
+		return strings.Replace(read(t, wt, specRel), "intent: itd-10\n", links, 1)
+	}
+	beta := strings.Replace(strings.Replace(readyIntent("impact: additive\nbundle: pair\n", settledQuestions), "id: itd-10\n", "id: itd-11\n", 1), "slug: alpha\n", "slug: beta\n", 1)
+	for name, c := range map[string]struct {
+		extra  map[string]string
+		change func(t *testing.T, wt string)
+		reason string
+	}{
+		"the lane's record with its links changed": {change: func(t *testing.T, wt string) {
+			t.Helper()
+			write(t, wt, specRel, linked(t, wt))
+		}, reason: "changes what it links"},
+		"a new spec record with the id": {change: func(t *testing.T, wt string) {
+			t.Helper()
+			write(t, wt, ".abcd/development/specs/open/spc-0-second.md", linked(t, wt))
+		}, reason: "the id of spc-1"},
+		"an existing spec record given the id": {
+			extra: map[string]string{otherSpec: "---\nid: spc-2\nslug: other\nintent: itd-11\n---\n# other\n\n## Summary\n\nAnother record.\n"},
+			change: func(t *testing.T, wt string) {
+				t.Helper()
+				write(t, wt, otherSpec, linked(t, wt))
+			}, reason: "the id of spc-1"},
+		"the lane's record given another id": {change: func(t *testing.T, wt string) {
+			t.Helper()
+			write(t, wt, specRel, strings.Replace(read(t, wt, specRel), "id: spc-1\n", "id: spc-3\n", 1))
+		}, reason: "the id of spc-1"},
+		"a new intent record with the id": {change: func(t *testing.T, wt string) {
+			t.Helper()
+			write(t, wt, ".abcd/development/intents/planned/itd-10-aaa.md", read(t, wt, plannedIntentRel))
+		}, reason: "the id of itd-10"},
+		"an existing intent record given the id": {change: func(t *testing.T, wt string) {
+			t.Helper()
+			write(t, wt, secondIntent, strings.Replace(read(t, wt, secondIntent), "id: itd-11\n", "id: itd-10\n", 1))
+		}, reason: "the id of itd-10"},
+		"the lane's intent record's id taken by another": {change: func(t *testing.T, wt string) {
+			t.Helper()
+			write(t, wt, plannedIntentRel, strings.Replace(read(t, wt, plannedIntentRel), "id: itd-10\n", "id: itd-12\n", 1))
+			write(t, wt, secondIntent, strings.Replace(read(t, wt, secondIntent), "id: itd-11\n", "id: itd-10\n", 1))
+		}, reason: "the id of itd-10"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			files := map[string]string{
+				".abcd/work/rulesets/main-protection.json": queueRuleset("MERGE"),
+				secondIntent: beta,
+			}
+			for rel, body := range c.extra {
+				files[rel] = body
+			}
+			f := newLandFixtureWith(t, files)
+			l := f.validated(t)
+			head := f.commitAtTheJudgedHead(t, l, func() {
+				write(t, l.Worktree, plannedIntentRel, strings.Replace(read(t, l.Worktree, plannedIntentRel), "\nslug:", "\nbundle: pair\nslug:", 1))
+			})
+			f.step(t)
+			if l := currentLane(t, f.repo, f.runID); l.Landing == nil || l.Landing.SpecSettled {
+				t.Fatalf("premise: the first step ran on a clean tree: %+v", l.Landing)
+			}
+			c.change(t, l.Worktree)
+
+			_, stepErr := advance(f.repo.Root(), f.runID, f.stages, Options{})
+			if _, err := os.Stat(filepath.Join(l.Worktree, ".abcd/development/intents/shipped/itd-11-beta.md")); err == nil {
+				t.Fatalf("the close moved a record the lane's own does not link; step: %v", stepErr)
+			}
+			if stepErr == nil {
+				t.Fatal("the records step went through")
+			}
+			if r := mustRefusal(t, stepErr); !strings.Contains(r.Reason, c.reason) {
+				t.Fatalf("the refusal names the records: %+v", r)
+			}
+			if got := f.repo.Git("-C", l.Worktree, "rev-parse", "HEAD"); got != head {
+				t.Fatalf("no records commit is made: %s, %s", got, head)
+			}
+			if _, err := os.Stat(filepath.Join(l.Worktree, filepath.FromSlash(plannedIntentRel))); err != nil {
+				t.Fatalf("the lane's own intent stays planned: %v", err)
+			}
+		})
+	}
+}
+
+// An audit's verdict is on the record it was asked of: another intent record parking
+// the receipt does not take the ingest.
+func TestAVerdictIngestsOnlyOnTheRecordItWasAskedOf(t *testing.T) {
+	f := newLandFixtureWith(t, map[string]string{".abcd/work/rulesets/main-protection.json": queueRuleset("MERGE")})
+	l := f.validated(t)
+	f.step(t)
+	raw, err := os.ReadFile(abs(f.repo.Root(), passingAudit(l)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v struct {
+		ReceiptID string `json:"receipt_id"`
+	}
+	if err := json.Unmarshal(raw, &v); err != nil || v.ReceiptID == "" {
+		t.Fatalf("premise: the lane's audit names its receipt: %v %q", err, v.ReceiptID)
+	}
+	other := strings.Replace(strings.Replace(readyIntent("impact: additive\n", settledQuestions), "id: itd-10\n", "id: itd-0\n", 1), "slug: alpha\n", "slug: first\n", 1) +
+		"\n## Audit Notes\n\n<!-- abcd-review: OWED receipt=" + v.ReceiptID + " -->\n"
+	if err := os.WriteFile(filepath.Join(l.Worktree, ".abcd/development/intents/planned/itd-0-first.md"), []byte(other), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, stepErr := advance(f.repo.Root(), f.runID, f.stages, Options{})
+	if stepErr == nil {
+		t.Fatal("the records step went through")
+	}
+	if r := mustRefusal(t, stepErr); !strings.Contains(r.Reason, "did not ingest") {
+		t.Fatalf("the refusal names the ingest: %+v", r)
+	}
+	if got := f.repo.Git("-C", l.Worktree, "rev-parse", "HEAD"); got != l.HeadSHA {
+		t.Fatalf("no records commit is made: %s, %s", got, l.HeadSHA)
+	}
+}
+
+// A landing prepared over a change to the lane's spec holds it no longer once it is
+// put back, so the first step runs again on the tree as it stands.
+func TestASpecPutBackAfterTheFirstStepPreparesTheLandingAgain(t *testing.T) {
+	const steps = "1. The parser\n   - packages: internal/core/spec\n2. The loop\n   - packages: internal/core/implement\n"
+	f := newLandFixtureWith(t, map[string]string{
+		".abcd/work/rulesets/main-protection.json": queueRuleset("MERGE"),
+		specRel: specWithSteps(steps),
+	})
+	l := f.twoStepLandWithNoResolutions(t)
+	path := filepath.Join(l.Worktree, specRel)
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(strings.Replace(string(before), "A written design record.", "A written design record, and more.", 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f.step(t)
+	if cur := currentLane(t, f.repo, f.runID); cur.Landing == nil || !cur.Landing.SpecSettled {
+		t.Fatalf("premise: the first step took the change: %+v", cur.Landing)
+	}
+	if err := os.WriteFile(path, before, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f.step(t)
+	if cur := currentLane(t, f.repo, f.runID); cur.Landing != nil {
+		t.Fatalf("no landing stands over the change put back: %+v", cur.Landing)
+	}
+	f.step(t)
+	if cur := currentLane(t, f.repo, f.runID); cur.Landing == nil || cur.Landing.SpecSettled || cur.Landing.MarkStep != 1 {
+		t.Fatalf("the first step prepares the landing again: %+v", cur.Landing)
+	}
+	l = f.wantsRecordsCommit(t)
+	if msg := f.repo.Git("-C", l.Worktree, "log", "-1", "--format=%B", l.HeadSHA); !strings.Contains(msg, composedAssistedBy()) {
+		t.Fatalf("a commit of the mark alone declares abcd:\n%s", msg)
+	}
+}
+
+// A close's check on what it ships reads the lane's record in whichever bucket it
+// stands, so a record already in closed/ meets the check an open one meets.
+func TestAClosedRecordMeetsTheSameCheckOnWhatItShips(t *testing.T) {
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	l := f.validatedOnce(t)
+	f.fileAnotherIssue(t, l)
+	f.laneNamesIssue(t, l, "iss-77")
+	f.step(t)
+	if cur := currentLane(t, f.repo, f.runID); cur.Landing == nil || !cur.Landing.Closes {
+		t.Fatalf("premise: the lane closes: %+v", cur.Landing)
+	}
+	closedRel := strings.Replace(specRel, "/open/", "/closed/", 1)
+	if err := os.MkdirAll(filepath.Dir(filepath.Join(l.Worktree, closedRel)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(filepath.Join(l.Worktree, specRel), filepath.Join(l.Worktree, closedRel)); err != nil {
+		t.Fatal(err)
+	}
+	_, stepErr := advance(f.repo.Root(), f.runID, f.stages, Options{})
+	if stepErr == nil {
+		t.Fatal("the records step went through with a link the lane leaves unresolved")
+	}
+	if r := mustRefusal(t, stepErr); !strings.Contains(r.Reason, "iss-77") {
+		t.Fatalf("the refusal names the link: %+v", r)
+	}
+	if _, err := os.Stat(filepath.Join(l.Worktree, plannedIntentRel)); err != nil {
+		t.Fatalf("the lane's own intent stays planned: %v", err)
+	}
+}
+
+// A commit declares abcd's own label only when it holds the mark abcd computed; the
+// label is chosen from what is staged, so anything else in it names the lane's model.
+func TestARecordsCommitIsLabelledFromWhatItHolds(t *testing.T) {
+	const steps = "1. The parser\n   - packages: internal/core/spec\n2. The loop\n   - packages: internal/core/implement\n"
+	for name, c := range map[string]struct {
+		change  func(t *testing.T, f *landFixture, l Lane)
+		abcdHas bool
+	}{
+		"the mark alone": {func(*testing.T, *landFixture, Lane) {}, true},
+		"a spec edited after the mark refused": {func(t *testing.T, f *landFixture, l Lane) {
+			t.Helper()
+			path := filepath.Join(l.Worktree, specRel)
+			if err := os.WriteFile(path, []byte(specWithSteps("")), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if r := f.wantsRefusedStep(t); !strings.Contains(r.Reason, "could not be marked landed") {
+				t.Fatalf("the mark refuses: %+v", r)
+			}
+			edited := strings.Replace(specWithSteps(steps), "A written design record.", "A written design record, and more.", 1)
+			if err := os.WriteFile(path, []byte(edited), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}, false},
+		"a markdown file beside the mark": {func(t *testing.T, f *landFixture, l Lane) {
+			t.Helper()
+			if err := os.WriteFile(filepath.Join(l.Worktree, "note.md"), []byte("a note\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newLandFixtureWith(t, map[string]string{
+				".abcd/work/rulesets/main-protection.json": queueRuleset("MERGE"),
+				specRel: specWithSteps(steps),
+			})
+			f.twoStepLandWithNoResolutions(t)
+			f.step(t)
+			l := currentLane(t, f.repo, f.runID)
+			if l.Landing == nil || l.Landing.MarkStep != 1 || l.Landing.Closes {
+				t.Fatalf("premise: a landing that only marks its step: %+v", l.Landing)
+			}
+			c.change(t, f, l)
+			l = f.wantsRecordsCommit(t)
+			msg := f.repo.Git("-C", l.Worktree, "log", "-1", "--format=%B", l.HeadSHA)
+			if got := strings.Contains(msg, composedAssistedBy()); got != c.abcdHas {
+				t.Errorf("the abcd label present = %v, want %v:\n%s", got, c.abcdHas, msg)
+			}
+			if got := strings.Contains(msg, "Assisted-by: Claude:claude-test-5"); got == c.abcdHas {
+				t.Errorf("the model's label present = %v, want %v:\n%s", got, !c.abcdHas, msg)
 			}
 		})
 	}
