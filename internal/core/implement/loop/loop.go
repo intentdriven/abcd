@@ -24,9 +24,11 @@ import (
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/runner"
+	"github.com/intentdriven/abcd/internal/core/runstop"
 	"github.com/intentdriven/abcd/internal/core/statusblock"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // Options are the seams tests set; the zero value is production.
@@ -39,6 +41,12 @@ type Options struct {
 	RunStateWatch bool
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
+	// driverIsSelf has a claim on the run name this process, where a drive runs the
+	// run itself, rather than the session above it.
+	driverIsSelf bool
+	// stopHome is the home a stop is read from; "" is the account's own
+	// (defaultStopHome). A test names a fixture home.
+	stopHome string
 	// Minter mints the run id; the zero value is production.
 	Minter recordid.Minter
 	// Session is the joined session of the shared run state
@@ -494,6 +502,24 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 	if row, ok := keyCheck(key); !ok {
 		return StartResult{}, CheckResult{Key: key, Checks: []CheckRow{row}}.refusal()
 	}
+	// A stop opens no run, a resumed one included (stop.go).
+	r := o.stopRead(nil)
+	if r.Stop != nil {
+		return StartResult{}, contend(StageStop, "", "", fmt.Sprintf("a stop set by %s at %s holds, so no run starts",
+			termsafe.Sanitize(r.Stop.SetBy), r.Stop.SetAt.UTC().Format(time.RFC3339)),
+			"the person's own `abcd implement stop --lift` lifts it")
+	} else if r.Held != "" {
+		return StartResult{}, heldRefusal(r.Held)
+	}
+	res, err := startChecked(repoRoot, key, o, pick)
+	if note := readingNote(r); note != "" {
+		res.Diagnostics = append(res.Diagnostics, note)
+	}
+	return res, err
+}
+
+// startChecked is start past the checks that need no run.
+func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) {
 	if o.AutoPlan && validIssueKey(key) {
 		return StartResult{}, refuse("check", CheckKey, "", key+" is an issue, and --auto-plan plans a draft intent; an issue has nothing to plan",
 			"build the issue without --auto-plan: `abcd build "+key+"`")
@@ -677,6 +703,13 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 				_, _ = shared.Release(o.Session, chk.record())
 			}
 			return err
+		}
+		// The shared folder is the run's for its life from its start (stop.go). A
+		// write that fails leaves the pin to the run's first check.
+		if home := o.stopHomeOf(); home != "" {
+			if pin := runstop.PinOf(home); pin != nil {
+				_ = writeControl(root, st.RunID, control{Shared: pin})
+			}
 		}
 		res = startResult(st, chk.Checks, false)
 		res.Diagnostics = reviewNotes
@@ -950,9 +983,19 @@ func advance(repoRoot, runID string, steps Stages, o Options) (StepResult, error
 // advanceWith is advance; routed reports whether a role is started through a
 // runner (Drive), which a network outage holds as well as a model one.
 func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(role string) bool, overrides map[string]string) (StepResult, error) {
-	if err := driveStopRefusal(runID); err != nil {
+	// A run a drive stopped on goes nowhere, and is not settled either: what it now
+	// says is not known to be the driver's (drive_stop.go).
+	if err := markedRefusal(repoRoot, runID, o); err != nil {
 		return StepResult{}, err
 	}
+	// A stop comes next: the run takes it and the call moves nothing, and what
+	// it does in git it does only past the run tripwire (stop.go). A stop file the
+	// read refused is no stop, and the answer names it.
+	stopNote, err := stopCheck(repoRoot, runID, steps, o)
+	if err != nil {
+		return StepResult{}, err
+	}
+	afterStopCheck()
 	// The run tripwire (configwatch.go) comes before anything that may start
 	// git: a program-naming setting changed during the run stops the call.
 	if err := configTripwire(repoRoot, runID); err != nil {
@@ -986,6 +1029,13 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 	var res StepResult
 	var wait error
 	err = mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+		// A stop may have come since the check: under the lock nothing acts on a
+		// run that took one.
+		if c, err := readControl(root, runID); err != nil {
+			return false, err
+		} else if c.Stop != nil {
+			return false, stopRefusal(runID, *c.Stop)
+		}
 		now := o.now()
 		if g.gaveUp() && !st.Complete() {
 			return false, g.stopRefusal(*st)
@@ -1092,6 +1142,9 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 	if !res.Complete {
 		res.Outage = g.info()
 	}
+	if stopNote != "" {
+		res.Next = joinNext(res.Next, stopNote)
+	}
 	return res, nil
 }
 
@@ -1155,7 +1208,23 @@ func pausedMove(st State, until time.Time) string {
 // agent's slot stays taken. A path a step already collected is the one exception
 // to the first (answerCollected).
 func Receipt(repoRoot, runID, receiptPath string, steps Stages, o Options) (StepResult, error) {
-	return receipt(repoRoot, runID, receiptPath, steps, o, nil)
+	res, err := receipt(repoRoot, runID, receiptPath, steps, o, nil)
+	if err != nil {
+		return res, err
+	}
+	// An agent's receipt is collected under a stop, and the lane goes no
+	// further: the same call takes the stop as far as it now can.
+	if _, serr := stopCheck(repoRoot, runID, steps, o); serr != nil {
+		if rf, ok := AsRefusal(serr); ok && rf.Stage == StageStop {
+			res.Awaiting = nil
+			res.Next = rf.Reason + "; " + rf.Remedy
+			return res, nil
+		}
+		// The receipt is taken whatever stands in the way of the check: the answer
+		// says so, and the next move meets it.
+		res.Next = joinNext(res.Next, "the receipt was taken, and the stop's check could not be made: "+termsafe.Sanitize(fsutil.RedactHome(serr.Error())))
+	}
+	return res, nil
 }
 
 // receipt is Receipt. A route that is not nil is the runner that ran the

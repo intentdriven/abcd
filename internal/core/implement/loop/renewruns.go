@@ -114,6 +114,11 @@ func renewRunsAt(root, runID string, serves func(State) bool, now time.Time) []R
 		if _, due, lost := renewalDue(st, *view, now); !due && lost == "" {
 			continue
 		}
+		// A renewal due under a stop settles the run first: what a stop lets go
+		// is let go, and what it cannot save keeps its lease below.
+		if settlesHere(st) {
+			settleDueStop(root, st.RunID)
+		}
 		r := RunRenewal{Root: root, RunID: st.RunID, Key: st.Key}
 		err := mutateReservation(root, st.RunID, func(st *State) (bool, error) {
 			if !renewsWhereItWaits(*st) {

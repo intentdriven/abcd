@@ -31,6 +31,7 @@ repo whose stamp says it is current.
 | `install` | — | shipped |
 | `remote` | — | shipped |
 | `remote apply` | gate | shipped |
+| `shared-folder` | — | shipped |
 | `uninstall` | — | shipped |
 | `worktree` | — | shipped |
 | `worktree add` | — | shipped |
@@ -1583,7 +1584,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd ahoy`
 
-Sub-verbs: `abcd ahoy connect`, `abcd ahoy credential`, `abcd ahoy doctor`, `abcd ahoy install`, `abcd ahoy remote`, `abcd ahoy uninstall`, `abcd ahoy worktree`.
+Sub-verbs: `abcd ahoy connect`, `abcd ahoy credential`, `abcd ahoy doctor`, `abcd ahoy install`, `abcd ahoy remote`, `abcd ahoy shared-folder`, `abcd ahoy uninstall`, `abcd ahoy worktree`.
 
 | Flag | Type |
 |---|---|
@@ -1666,6 +1667,14 @@ Sub-verbs: none.
 | Flag | Type |
 |---|---|
 | `--yes` | bool |
+
+### `abcd ahoy shared-folder`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--person` | string |
 
 ### `abcd ahoy uninstall`
 

@@ -200,9 +200,13 @@ not what the program is called, so `go run .`, a cross-compiled build, a
 wrapper script and a renamed copy are all refused (`go run ./cmd/abcd` is read
 as abcd, and the entry refuses it). A flag word a
 substitution prints is not read. The person's other acts are refused under any
-program name the same way: allowing one delete (`abcd-guard-allow-any-program`)
-and flipping a source-ledger line (`abcd-source-ledger-flip-any-program`, and
-`abcd-source-ledger-flip-retired-any-program` in the retired spelling). An
+program name the same way: allowing one delete (`abcd-guard-allow-any-program`),
+flipping a source-ledger line (`abcd-source-ledger-flip-any-program`, and
+`abcd-source-ledger-flip-retired-any-program` in the retired spelling), setting
+or lifting a stop (`abcd-implement-stop-any-program`) and choosing the folder a
+stop is read from (`abcd-ahoy-shared-folder-any-program`). Writes, moves and
+removals of the stop's files are refused as `implement-stop-store-write`, since
+removing a stop is lifting it. The guard and the verbs hold against an agent acting by mistake; a stop binds an agent only where an operating-system account separates them. An
 approving review posted on the forge,
 which the gate also counts as an approval, is refused the same way in every
 mode, as `forge-review-approve`: an approving `gh pr review`; a `gh api` call to the
@@ -211,7 +215,7 @@ line does not show; and one carrying the `addPullRequestReview` or
 `submitPullRequestReview` mutation with an `APPROVE` event. Reading the reviews
 is not refused, whatever its filter names. A review
 that comments or requests changes is not refused. The five merge ids,
-the four any-program ids and `forge-review-approve` are reserved, so a
+the six any-program ids, `implement-stop-store-write` and `forge-review-approve` are reserved, so a
 repository's `.abcd/guard.json` cannot declare an entry under them.
 
 The guard holds against an agent merging or approving by mistake, not against

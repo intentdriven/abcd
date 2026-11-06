@@ -4181,6 +4181,9 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				if citations, _ := res.Signals["citations"].(string); citations != "" {
 					fmt.Fprintf(w, "  citations:   %s\n", termsafe.Sanitize(citations))
 				}
+				if shared, _ := res.Signals["shared_folder"].(string); shared != "" {
+					fmt.Fprintf(w, "  shared:      %s\n", termsafe.Sanitize(shared))
+				}
 				fmt.Fprintf(w, "  gaps:        %d\n", len(res.Gaps))
 				// Each gap by its title, the words the install's approvals
 				// list (iss-2610071528375981).
@@ -4564,6 +4567,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	ahoyCmd.AddCommand(newAhoyConnectCommand(asJSON))
 	ahoyCmd.AddCommand(newAhoyCredentialCommand(asJSON))
 	ahoyCmd.AddCommand(newAhoyWorktreeCommand(asJSON))
+	ahoyCmd.AddCommand(newAhoySharedFolderCommand(asJSON))
 
 	return ahoyCmd
 }

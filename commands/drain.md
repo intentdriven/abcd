@@ -166,10 +166,20 @@ each probe's answer and when the run resumed. A file stops taking the stream's d
 64 KiB and goes on taking the answers, and the newest twenty of a kind are kept.
 
 The first interrupt, hang-up or termination is a stop: the agent in a call finishes
-that call, the lane's reservation is released, the lane stays on its branch, and
-the last lines name the run, the lane and `abcd drain --drive`, which resumes it.
+that call, the lane's uncommitted work is saved aside, its reservation is released, the
+lane stays on its branch, and the last lines name the run, the lane and
+`abcd drain --drive`, which takes the run over and resumes it, because that terminal's
+person is the one who stopped it.
 A second signal kills the running agent's process group and exits at once, naming
 when the reservation lapses.
+
+The person's own `abcd implement stop` ends a drive too, at its next move, and any wait
+within about a minute, a wait on a limit or an outage included. The drive then says what
+holds it. A preflight queued at the load gate or running ends at the next look too, and a probe does not
+start. A run that stop halted waits for `abcd implement resume --take <run-id>`, also
+after the stop lifts: a new drive names it, passes over it and goes on to other work. A lane parked on its pull request that a signal halted waits the same way: the drive's end names that take-over and no resume command, and a new drive names it and passes over it. A stop and a drive's stop on a run whose state changed are two things: while both
+stand the run is not settled, its work is not saved aside and its reservation lapses with
+its lease. Lifting the stop leaves the other, and removing the other leaves the stop.
 
 ## The rule
 
@@ -761,7 +771,9 @@ question as its reason. Once the decision record is written, take the
 drain; `rule`, `loosened` and `order` are the plan's; `max` is the cap (`0`:
 all); `pace` is the drain's pace; `lanes` lists every lane the drain opened
 (`issue`, `run_id`, `opened_at`, `outcome`: `in-progress`, `pull-request`,
-`handed-back` or `done`, and `pr`); `lane` is the one in progress; `start` is
+`handed-back`, `done`, `halted`, a lane a person's stop halted that waits for its
+take-over, or `taken-over`, the same lane once that happened and its run is the
+person's to drive, and `pr`); `lane` is the one in progress; `start` is
 the run this move started; `routed` are the hand-backs this move routed and
 `hand_backs` every one the drain has (`issue`, `from`: `lane`, `judgement`,
 `reservation` or `field`, `kind`, `route`, `draft`, `question`, `rule`, `home`, `reason`,

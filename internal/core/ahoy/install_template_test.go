@@ -449,6 +449,10 @@ var seamsNotInTheKey = map[string]string{
 	// and the floors, named *ForTest because only a test wants to.
 	"identity.LoadRecordForTest": "reads a record, swaps nothing",
 	"question.FloorsForTest":     "reads the floors, swaps nothing",
+	// One line of the board reads the account's shared-folder setting, which no
+	// install writes.
+	"runstop.AccountHome":     "keeps the board's read of the setting to the fixture's home",
+	"runstop.WellKnownFolder": "keeps the board's read of the platform's folder to the fixture's",
 }
 
 // neverBesideAFixture marks a seam no test reaching a swap of it reaches a kept
