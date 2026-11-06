@@ -611,12 +611,18 @@ func (f *landFixture) atRoundHead(t *testing.T, l Lane, edit func()) string {
 	return head
 }
 
-// reviewOf is the request a reviewer route is sent for the lane's latest round.
-func (f *landFixture) reviewOf(t *testing.T) string {
+// requestOf composes the request a reviewer route is sent for the lane's latest round.
+func (f *landFixture) requestOf(t *testing.T) (string, error) {
 	t.Helper()
 	cur := currentLane(t, f.repo, f.runID)
 	v := cur.Validation[len(cur.Validation)-1].Validators[0]
-	req, err := reviewRequest(f.repo.Root(), f.runID, cur.ID, Await{Role: v.Role, Receipt: v.Return}, func(string) (string, error) { return "the agent", nil })
+	return reviewRequest(f.repo.Root(), f.runID, cur.ID, Await{Role: v.Role, Receipt: v.Return}, func(string) (string, error) { return "the agent", nil })
+}
+
+// reviewOf is the diff section of the request a reviewer route is sent.
+func (f *landFixture) reviewOf(t *testing.T) string {
+	t.Helper()
+	req, err := f.requestOf(t)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -670,12 +676,75 @@ func TestAReviewRequestShowsTheTextWhateverTheAttributesSay(t *testing.T) {
 	}
 }
 
-// A binary file reaches a reviewer as one line naming it, never as its bytes, whatever its
-// size: the text beside it, and text that takes a binary file's place, are still shown.
-func TestAReviewRequestNamesABinaryFile(t *testing.T) {
+// A file with no NUL byte reaches a reviewer as git's text, whatever other bytes it holds.
+func TestAReviewRequestShowsAFileWithNoNulByte(t *testing.T) {
+	const payload = "var Payload = 1"
+	for name, text := range map[string]string{
+		"an escape byte":   "// \x1b[2K\n" + payload + "\n",
+		"a bell":           "// a\x07b\n" + payload + "\n",
+		"a lone CR":        "// a\rb\n" + payload + "\n",
+		"not UTF-8":        "// \xff\xfe\n" + payload + "\n",
+		"a line separator": "// a\u2028b\n" + payload + "\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newLandFixture(t, queueRuleset("MERGE"))
+			l := f.validatedOnce(t)
+			f.atRoundHead(t, l, func() { landWrite(t, l.Worktree, "cmd/x.go", text) })
+			got := f.reviewOf(t)
+			if !strings.Contains(got, "+"+payload) {
+				t.Fatalf("the diff section shows the file:\n%q", got)
+			}
+			if strings.Contains(got, "not shown") {
+				t.Fatalf("the file is not listed as unread:\n%q", got)
+			}
+		})
+	}
+	t.Run("a small change to a file past what is read for its kind", func(t *testing.T) {
+		const big = "vendor/deps.lock"
+		f := newLandFixtureWith(t, map[string]string{
+			".abcd/work/rulesets/main-protection.json": queueRuleset("MERGE"),
+			big: strings.Repeat("a locked dependency at a version\n", (maxReaderBlobBytes+1<<20)/33),
+		})
+		l := f.validated(t)
+		f.atRoundHead(t, l, func() { landWrite(t, l.Worktree, big, landRead(t, l.Worktree, big)+payload+"\n") })
+		got := f.reviewOf(t)
+		if !strings.Contains(got, "+"+payload) || strings.Contains(got, "not shown") {
+			t.Fatalf("the hunk is shown:\n%.2000q", got)
+		}
+	})
+}
+
+// A file with a NUL byte is shown with its unprintable bytes escaped under a bound, so text
+// beside the NUL stays readable. Past the bound it is one line naming it and it is unread;
+// past what is read for its kind it stays in git's text, where a large one overflows the
+// request. Nothing raw reaches the reader, and text taking its place is shown.
+func TestAReviewRequestBoundsAFileWithANulByte(t *testing.T) {
 	const line = "A line the reader must see."
 	binary := strings.Repeat("\x00\xff\x01binary\n", 80*1024) // past the request's cap
-	t.Run("beside text", func(t *testing.T) {
+	nul := func(t *testing.T, got string) {
+		t.Helper()
+		if strings.Contains(got, "\x00") || strings.Contains(got, "\xff") {
+			t.Fatalf("no raw byte of the binary reaches the reader:\n%.2000q", got)
+		}
+	}
+	t.Run("a script under the bound", func(t *testing.T) {
+		f := newLandFixture(t, queueRuleset("MERGE"))
+		l := f.validatedOnce(t)
+		f.atRoundHead(t, l, func() {
+			landWrite(t, l.Worktree, "run.sh", "#!/bin/sh\necho "+line+"\n\x00\xff\n")
+		})
+		got := f.reviewOf(t)
+		nul(t, got)
+		for _, want := range []string{"+echo " + line, `\x00`, `\xff`, "run.sh"} {
+			if !strings.Contains(got, want) {
+				t.Errorf("the request shows %q:\n%q", want, got)
+			}
+		}
+		if strings.Contains(got, "not shown") {
+			t.Errorf("a file shown is not listed as unread:\n%q", got)
+		}
+	})
+	t.Run("past the bound, beside text", func(t *testing.T) {
 		f := newLandFixture(t, queueRuleset("MERGE"))
 		l := f.validatedOnce(t)
 		head := f.atRoundHead(t, l, func() {
@@ -683,20 +752,28 @@ func TestAReviewRequestNamesABinaryFile(t *testing.T) {
 			landWrite(t, l.Worktree, plannedIntentRel, landRead(t, l.Worktree, plannedIntentRel)+line+"\n")
 		})
 		got := f.reviewOf(t)
+		nul(t, got)
 		if !strings.Contains(got, "+"+line) {
 			t.Fatalf("the text beside it is shown:\n%.2000s", got)
 		}
-		if strings.Contains(got, "\x00") || strings.Contains(got, "\xff") {
-			t.Fatalf("no byte of the binary reaches the reader:\n%.2000q", got)
-		}
 		blob := f.repo.Git("-C", l.Worktree, "rev-parse", head+":assets/logo.bin")
-		for _, want := range []string{"binary", "assets/logo.bin", "100644", strconv.Itoa(len(binary)), blob} {
+		for _, want := range []string{"not shown", "assets/logo.bin", "100644", strconv.Itoa(len(binary)), blob} {
 			if !strings.Contains(got, want) {
 				t.Errorf("the line names %q:\n%.2000s", want, got)
 			}
 		}
 	})
-	t.Run("text in its place", func(t *testing.T) {
+	t.Run("past what is read for its kind", func(t *testing.T) {
+		f := newLandFixture(t, queueRuleset("MERGE"))
+		l := f.validatedOnce(t)
+		f.atRoundHead(t, l, func() {
+			landWrite(t, l.Worktree, "assets/huge.bin", strings.Repeat(binary, 7))
+		})
+		if _, err := f.requestOf(t); err == nil || !strings.Contains(err.Error(), "cap") {
+			t.Fatalf("the request cannot be composed, and the review falls back: %v", err)
+		}
+	})
+	t.Run("text in the place of one under the bound", func(t *testing.T) {
 		f := newLandFixtureWith(t, map[string]string{
 			".abcd/work/rulesets/main-protection.json": queueRuleset("MERGE"),
 			"assets/note.md": "\x00\xff\n",
@@ -704,13 +781,55 @@ func TestAReviewRequestNamesABinaryFile(t *testing.T) {
 		l := f.validated(t)
 		f.atRoundHead(t, l, func() { landWrite(t, l.Worktree, "assets/note.md", line+"\n") })
 		got := f.reviewOf(t)
-		if !strings.Contains(got, "+"+line) || !strings.Contains(got, "binary") {
-			t.Fatalf("the new text is shown beside the line for what it replaced:\n%s", got)
-		}
-		if strings.Contains(got, "\x00") {
-			t.Fatalf("no byte of the binary reaches the reader:\n%q", got)
+		nul(t, got)
+		if !strings.Contains(got, "+"+line) || !strings.Contains(got, `-\x00\xff`) {
+			t.Fatalf("the change is shown, escaped:\n%q", got)
 		}
 	})
+	for name, c := range map[string]struct {
+		edit func(t *testing.T, f *landFixture, l Lane)
+		want string
+	}{
+		"text in the place of one past the bound": {func(t *testing.T, _ *landFixture, l Lane) {
+			landWrite(t, l.Worktree, "vendored", line+"\n")
+		}, "+" + line},
+		"a nested checkout in the place of one past the bound": {func(t *testing.T, f *landFixture, l Lane) {
+			if err := os.Remove(filepath.Join(l.Worktree, "vendored")); err != nil {
+				t.Fatal(err)
+			}
+			f.nestedCheckout(t, l.Worktree)
+		}, "+Subproject commit "},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newLandFixtureWith(t, map[string]string{
+				".abcd/work/rulesets/main-protection.json": queueRuleset("MERGE"),
+				"vendored": binary,
+			})
+			l := f.validated(t)
+			f.atRoundHead(t, l, func() { c.edit(t, f, l) })
+			got := f.reviewOf(t)
+			nul(t, got)
+			if !strings.Contains(got, c.want) || !strings.Contains(got, "not shown") {
+				t.Fatalf("the new side is shown beside the line for what it replaced:\n%.2000s", got)
+			}
+		})
+	}
+}
+
+// What the request holds is what the review reads, so it says what a file it lists as not
+// shown means for a verdict.
+func TestAReviewRequestSaysAFileNotShownIsUnread(t *testing.T) {
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	f.validatedOnce(t)
+	got, err := f.requestOf(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"listed as not shown is unread", "naming it", "its kind fits its path and the lane", "finding"} {
+		if !strings.Contains(strings.Join(strings.Fields(got), " "), want) {
+			t.Errorf("the request says %q:\n%s", want, got)
+		}
+	}
 }
 
 // Each command or range a validator's brief hands it reads git's own text diff of the
@@ -745,8 +864,13 @@ func TestAValidatorBriefNamesGitsOwnTextDiff(t *testing.T) {
 	} else if got := f.repo.Git(append([]string{"-C", m[1]}, strings.Fields(m[2])...)...); !strings.Contains(got, "+"+line) {
 		t.Errorf("the command shows the text:\n%s", got)
 	}
-	if !strings.Contains(string(brief), "binary file") {
-		t.Errorf("the brief says what to do about a binary file:\n%s", brief)
+	for _, want := range []string{"is unread", "naming it", "its kind fits its path and the lane", "finding"} {
+		if !strings.Contains(strings.Join(strings.Fields(string(brief)), " "), want) {
+			t.Errorf("the brief says %q of a file left out:\n%s", want, brief)
+		}
+	}
+	if strings.Contains(string(brief), "so leave one out") {
+		t.Errorf("the brief does not send a reader past a file:\n%s", brief)
 	}
 	if got := recordsRoundScope("abc", "def"); !strings.Contains(got, "git "+flags+"abc..def") {
 		t.Errorf("the records round names the command:\n%s", got)

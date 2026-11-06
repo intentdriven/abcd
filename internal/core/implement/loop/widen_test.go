@@ -465,6 +465,22 @@ func forgotAfterItsCommit(t *testing.T, f *narrowFixture) func(Lane) {
 	}
 }
 
+// aHeadStandsIn leaves, once the landing's commit is made, a commit standing in for the
+// branch's tip whose tree holds nothing the branch changed.
+func aHeadStandsIn(t *testing.T, f *narrowFixture) func(Lane) {
+	done := false
+	return func(l Lane) {
+		t.Helper()
+		if done || l.Landing == nil || !l.Landing.RecordsDone {
+			return
+		}
+		done = true
+		main := strings.TrimSpace(f.repo.Git("rev-parse", "refs/remotes/origin/main"))
+		stand := strings.TrimSpace(f.repo.Git("commit-tree", main+"^{tree}", "-p", main, "-m", "a stand-in"))
+		f.repo.Git("replace", "-f", l.HeadSHA, stand)
+	}
+}
+
 // heldByHand leaves the run with no reserved_at, a reservation made by hand
 // naming the found_at alone standing for it; letGo says the run's record shows
 // it let an earlier one go.
@@ -515,6 +531,8 @@ func fenceCases() []fenceCase {
 		{name: "repointed by the landing's commit", path: "NOTES.md", linked: true, setup: onlyThePage},
 		{name: "repointed in the landing's commit found on the judged head", path: "NOTES.md", linked: true, setup: onlyThePage,
 			before: forgotAfterItsCommit},
+		{name: "changed on its branch, under a head standing in without it", path: "README.txt", setup: holdNamesTheFoundAtAlone,
+			before: aHeadStandsIn},
 		{name: "beyond a hand reservation in a run that never held one", path: "README.txt",
 			setup: func(t *testing.T, f *narrowFixture) { heldByHand(t, f, false) }},
 		{name: "beyond a hand reservation in a run that let its own go", path: "README.txt",
@@ -635,6 +653,72 @@ func TestALandingStopsAPathItsMovesDoNotExplainBeforeTheFence(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestWhatALaneChangedIsReadAsStored: the files a lane changed and the records its commit
+// moved are read from the objects as stored, whatever stands in for them, and a nested
+// checkout counts whatever the repository asks git's diff to pass over.
+func TestWhatALaneChangedIsReadAsStored(t *testing.T) {
+	nested := func(t *testing.T, f *narrowFixture, l Lane) string {
+		t.Helper()
+		dir := filepath.Join(l.Worktree, "vendored")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		f.repo.Git("-C", dir, "init", "-q")
+		f.repo.Git("-C", dir, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "--allow-empty", "-m", "nested")
+		f.repo.Git("-C", l.Worktree, "add", "-A")
+		f.repo.Git("-C", l.Worktree, "commit", "-q", "-m", "a nested checkout")
+		return strings.TrimSpace(f.repo.Git("-C", l.Worktree, "rev-parse", "HEAD"))
+	}
+	for name, ignore := range map[string]func(t *testing.T, f *narrowFixture, l Lane){
+		"its list of submodules": func(t *testing.T, f *narrowFixture, _ Lane) {
+			t.Helper()
+			landWrite(t, f.repo.Root(), ".gitmodules", "[submodule \"vendored\"]\n\tpath = vendored\n\turl = ./vendored\n\tignore = all\n")
+		},
+		"its configuration": func(t *testing.T, f *narrowFixture, _ Lane) {
+			t.Helper()
+			f.repo.Git("config", "diff.ignoreSubmodules", "all")
+		},
+	} {
+		t.Run("a nested checkout passed over by "+name, func(t *testing.T) {
+			f := newNarrowFixture(t)
+			f.awaitImplementer(t)
+			l := currentLane(t, f.repo, f.runID)
+			ignore(t, f, l)
+			head := nested(t, f, l)
+			got, declined := laneChangedFiles(f.repo.Root(), l, head)
+			if declined != "" || !slices.Contains(got, "vendored") {
+				t.Fatalf("the nested checkout is among what the lane changed: %q %s", got, declined)
+			}
+		})
+	}
+	t.Run("the records under a commit standing in", func(t *testing.T) {
+		f := newNarrowFixture(t)
+		if err := f.handBack(t, Options{}, "docs/page.md"); err != nil {
+			t.Fatal(err)
+		}
+		done := false
+		if _, err := stepToThePush(t, f, func(l Lane) {
+			t.Helper()
+			if done || l.Landing == nil || !l.Landing.RecordsDone {
+				return
+			}
+			done = true
+			parent := strings.TrimSpace(f.repo.Git("rev-parse", l.Landing.Records+"~1"))
+			stand := strings.TrimSpace(f.repo.Git("commit-tree", parent+"^{tree}", "-p", parent, "-m", "a stand-in"))
+			f.repo.Git("replace", "-f", l.Landing.Records, stand)
+			defer f.repo.Git("replace", "-d", l.Landing.Records)
+			if got, declined := landingRecordPaths(f.repo.Root(), l); declined != "" || len(got) == 0 {
+				t.Fatalf("the records the commit moved are read as stored: %v %s", got, declined)
+			}
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if !done {
+			t.Fatal("premise: the landing's commit was never made")
+		}
+	})
 }
 
 // TestTheFenceWaitsOutALostNetworkAtItsWidening: the network goes after the
