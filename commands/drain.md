@@ -608,9 +608,10 @@ what it did in `next`:
   checkout, which the drain names, or a pushed head git cannot read) is named
   in `next` and the move goes on. A run a stop's mark stands on is not finished, synced
   or queued, whatever its pull request says: it is named in `next` and in `parked` as
-  `stop-holds`, with what takes it up. While a read cannot tell whether a stop stands, a
-  run with work a save could not take has its reservation renewed. Under a stop in force nothing
-  renews it, since no process runs to do so: a run that settles releases its reservation, and
+  `stop-holds`, with what takes it up. While the read refuses a stop file, a
+  run with work a save could not take has its reservation renewed. A read that holds the run
+  refuses the move first, so nothing renews then. Under a stop in force nothing
+  renews it either, since no process runs to do so: a run that settles releases its reservation, and
   one with work a save could not take leaves it to lapse at its lease, so a peer can then
   take the issue, with the lane's work still on its branch and in its worktree. A halted run waits for
   `abcd implement resume --take <run-id>`; a mark from a person's stop that has not settled

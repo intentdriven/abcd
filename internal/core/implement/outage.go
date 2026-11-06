@@ -809,7 +809,7 @@ func IsNetworkFailure(stderr string) bool {
 			return true
 		}
 	}
-	return networkStatus.MatchString(s)
+	return networkStatus.MatchString(own)
 }
 
 // networkMarkers are the lower-cased phrases git, curl, ssh and gh print when

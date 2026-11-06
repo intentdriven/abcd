@@ -260,9 +260,9 @@ func markUnsettled(t *testing.T, repoRoot, runID string) {
 	}
 }
 
-// aReadThatCannotTell is the options of a move whose read of a stop refused what stands
+// aReadThatRefusesAStopFile is the options of a move whose read of a stop refused what stands
 // there, which is no stop and no lift, so a mark stays.
-func aReadThatCannotTell(t *testing.T) Options {
+func aReadThatRefusesAStopFile(t *testing.T) Options {
 	t.Helper()
 	home := t.TempDir()
 	p := abcdhome.Path(home, runstop.HomeStopFile)
@@ -290,7 +290,7 @@ func TestAMarkedParkedRunIsLeftAloneBeforeItSettles(t *testing.T) {
 	t.Run("a conflict it would sync", func(t *testing.T) {
 		f, l := armedConflict(t)
 		markUnsettled(t, f.repo.Root(), f.runID)
-		res, err := Drain(f.repo.Root(), aReadThatCannotTell(t), DrainOptions{})
+		res, err := Drain(f.repo.Root(), aReadThatRefusesAStopFile(t), DrainOptions{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -311,7 +311,7 @@ func TestAMarkedParkedRunIsLeftAloneBeforeItSettles(t *testing.T) {
 			"autoMergeRequest": map[string]any{"mergeMethod": "MERGE"}}})
 		f.queueAnswer(t, stubQueue{head: l.Landing.Pushed, enabledAt: "2026-10-15T07:00:00Z", status: "CLEAN"})
 		markUnsettled(t, f.repo.Root(), f.runID)
-		res, err := Drain(f.repo.Root(), aReadThatCannotTell(t), DrainOptions{})
+		res, err := Drain(f.repo.Root(), aReadThatRefusesAStopFile(t), DrainOptions{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -327,7 +327,7 @@ func TestAMarkedParkedRunIsLeftAloneBeforeItSettles(t *testing.T) {
 		l := f.armIssueLaneOnce(t)
 		markUnsettled(t, f.repo.Root(), f.runID)
 		f.merged(t, l.Landing.Pushed)
-		res, err := Drain(f.repo.Root(), aReadThatCannotTell(t), DrainOptions{})
+		res, err := Drain(f.repo.Root(), aReadThatRefusesAStopFile(t), DrainOptions{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -338,17 +338,17 @@ func TestAMarkedParkedRunIsLeftAloneBeforeItSettles(t *testing.T) {
 	})
 }
 
-// TestAMarkedParkedRunIsRenewedWhileTheReadCannotTell: with no stop seen and no lift either,
-// the move renews the reservation of a run with work a save could not take, whatever else it
-// leaves undone for the run.
-func TestAMarkedParkedRunIsRenewedWhileTheReadCannotTell(t *testing.T) {
+// TestAMarkedParkedRunIsRenewedWhileTheReadRefusesAStopFile: with no stop seen and no lift
+// either, the move renews the reservation of a run with work a save could not take, whatever
+// else it leaves undone for the run.
+func TestAMarkedParkedRunIsRenewedWhileTheReadRefusesAStopFile(t *testing.T) {
 	f, l := parkDrainLane(t)
 	f.listPRs(t, stubPR{Number: 7, HeadRefName: l.Branch, State: "OPEN", Mergeable: "MERGEABLE", MergeStateStatus: "BLOCKED"})
 	ref := claim.RefPrefix + secondIssue
 	fenced := originReservation(t, f.bare, ref)
 	at := fenced.claimed.Add(12*time.Hour + 30*time.Minute)
 	markUnsettled(t, f.repo.Root(), f.runID)
-	o := aReadThatCannotTell(t)
+	o := aReadThatRefusesAStopFile(t)
 	o.Now = func() time.Time { return at }
 	res, err := Drain(f.repo.Root(), o, DrainOptions{})
 	if err != nil {
@@ -359,6 +359,30 @@ func TestAMarkedParkedRunIsRenewedWhileTheReadCannotTell(t *testing.T) {
 	}
 	if p := parkedOf(t, res, f.runID); p.State != ParkedStopHolds {
 		t.Fatalf("the lane is not named: %+v", p)
+	}
+}
+
+// TestAReadThatHoldsTheRunRenewsNoParkedClaim: a read that holds the run refuses the move
+// before any renewal.
+func TestAReadThatHoldsTheRunRenewsNoParkedClaim(t *testing.T) {
+	f, l := parkDrainLane(t)
+	f.listPRs(t, stubPR{Number: 7, HeadRefName: l.Branch, State: "OPEN", Mergeable: "MERGEABLE", MergeStateStatus: "BLOCKED"})
+	ref := claim.RefPrefix + secondIssue
+	fenced := originReservation(t, f.bare, ref)
+	home, _ := stopWorld(t, true)
+	at := fenced.claimed.Add(12*time.Hour + 30*time.Minute)
+	o := Options{stopHome: home, Now: func() time.Time { return at }}
+	if err := checkOnce(f.repo.Root(), f.runID, o); err != nil {
+		t.Fatal(err)
+	}
+	markUnsettled(t, f.repo.Root(), f.runID)
+	if err := os.Remove(settingOf(home)); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Drain(f.repo.Root(), o, DrainOptions{})
+	wantStopRefusal(t, err)
+	if tip := originReservation(t, f.bare, ref); tip.commit != fenced.commit || tip.released {
+		t.Fatalf("the claim moved: fenced %+v, now %+v", fenced, tip)
 	}
 }
 

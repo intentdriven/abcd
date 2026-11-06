@@ -819,6 +819,10 @@ func TestAStatusCountsOnlyWhereTheToolPrintsIt(t *testing.T) {
 		"hook: The requested URL returned error: 503":                                         false,
 		"lint: the doc quotes non-200 OK status code: 502":                                    false,
 		"remote: non-200 OK status code: 502":                                                 false,
+		"remote: ci: exit status 1 (gh: Bad Gateway (HTTP 502))":                              false,
+		"remote: ci: exit status 1 (HTTP 502: Bad Gateway)":                                   false,
+		"git push: exit status 1 (remote: ci: exit status 1 (HTTP 502: Bad Gateway))":         false,
+		"remote: ci\nremote: exit status 1 (gh: HTTP 502)":                                    false,
 		"git push: exit status 1 (hook: got HTTP 500: from the stub)":                         false,
 		"git push: exit status 1 (remote: The requested URL returned error: 500)":             false,
 		`exit status 1 (stderr: "hook: got HTTP 500: from the stub")`:                         false,
@@ -829,8 +833,11 @@ func TestAStatusCountsOnlyWhereTheToolPrintsIt(t *testing.T) {
 		"git push: exit status 1 (remote: dial tcp 10.0.0.1:80: connection refused)": false,
 		"remote: broken pipe\nremote: no route to host":                              false,
 		// and off such a line it stands.
-		"remote: fine\nfatal: the remote end hung up unexpectedly\nfatal: early EOF":              true,
-		"git push: exit status 128 (ssh: connect to host github.com port 22: Connection refused)": true,
+		"remote: fine\nfatal: unable to access 'https://x/': The requested URL returned error: 503":                             true,
+		"git push: exit status 128 (remote: fine\nfatal: unable to access 'https://x/': The requested URL returned error: 503)": true,
+		"gh pr merge: exit status 1 (remote: fine\nHTTP 502: Bad Gateway (https://api.github.com/graphql))":                     true,
+		"remote: fine\nfatal: the remote end hung up unexpectedly\nfatal: early EOF":                                            true,
+		"git push: exit status 128 (ssh: connect to host github.com port 22: Connection refused)":                               true,
 	} {
 		if got := IsNetworkFailure(text); got != want {
 			t.Errorf("IsNetworkFailure(%q) = %v, want %v", text, got, want)

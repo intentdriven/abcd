@@ -915,9 +915,10 @@ func TestAStatusSettlesARunNoAgentHolds(t *testing.T) {
 	}
 }
 
-// TestAFailedSaveKeepsItsLease: work saved nowhere keeps the claim that guards it, and
-// a move's refusal says so.
-func TestAFailedSaveKeepsItsLease(t *testing.T) {
+// TestAWaitersRenewalKeepsALeaseOverUnsavedWork: a renewal that falls due where something
+// still waits keeps the claim over work saved nowhere, and a move's refusal says what becomes
+// of that claim once nothing does.
+func TestAWaitersRenewalKeepsALeaseOverUnsavedWork(t *testing.T) {
 	repo, runID, l, dir, _ := deadLane(t)
 	bare := onOriginAccepted(t, repo, runID)
 	now := time.Now().UTC().Truncate(time.Second)
@@ -940,7 +941,8 @@ func TestAFailedSaveKeepsItsLease(t *testing.T) {
 	noAside(t, dir)
 	editsIntact(t, repo, l)
 	r := wantStopRefusal(t, checkOnce(repo.Root(), runID, Options{}))
-	if !strings.Contains(r.Reason, "could not be saved") {
+	if !strings.Contains(r.Reason, "could not be saved") || !strings.Contains(r.Reason, "lapse at their lease") ||
+		strings.Contains(r.Reason, "until the work is saved") {
 		t.Fatalf("the refusal says %q", r.Reason)
 	}
 }

@@ -913,7 +913,9 @@ should read whose stop cannot be looked at,
 holds the run at the stage `stop`, exit 3, with nothing let go: tell the person, who puts it back.
 A home that cannot be found holds it the same way. A take-over needs a read that saw clearly.
 A renewal that falls due under a stop settles the run first; with no agent left in its call
-and its work saved it no longer renews, and work a save could not take keeps the claim. A
+and its work saved it no longer renews. Work a save could not take stays on its branch and in its
+worktree, and its claim lapses at its lease unless a gated waiter or `abcd implement status` still
+renews it, which neither does for a run parked at land. A
 lift names any stop it cannot reach. A stop another account left is not honoured, and each
 step's answer and the listing name it.
 

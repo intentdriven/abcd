@@ -252,7 +252,7 @@ func stopRefusal(runID string, rec RunStop) error {
 	case rec.HaltedAt != nil:
 		state = "and has let its claims go"
 	case heldBySave(&rec):
-		state = "with work that could not be saved aside still in place, so it keeps its claims until the work is saved; the run record names it"
+		state = "with work that could not be saved aside kept on its branch and in its worktree; its claims lapse at their lease unless a gated waiter or `abcd implement status` renews them; the run record names it"
 	}
 	remedy := "the person's own `abcd implement stop --lift` lifts it; hand back any receipt you hold with `abcd implement receipt`, then stop"
 	if !rec.FromFile {
@@ -738,8 +738,9 @@ func laneWorktreeGone(repoRoot, runID string, lane Lane) bool {
 // is not kept alive; one with an agent in its call stays renewable until that agent
 // is done, and one over work saved nowhere until the work is saved. That holds only
 // where something still renews: under a stop in force a move and a step refuse before
-// any renewal and a parked run is not renewed where it waits, so such a run's claim
-// lapses at its lease, with the lane's work still on its branch and in its worktree.
+// any renewal, so only a gated waiter's round or implement status renews a run, and
+// neither renews one parked at land. With neither, the claim lapses at its lease, with
+// the lane's work still on its branch and in its worktree.
 func stopEndsRenewal(repoRoot string, st State, now time.Time) bool {
 	c, err := runControl(repoRoot, st.RunID)
 	if err != nil {
