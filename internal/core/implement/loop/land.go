@@ -248,7 +248,7 @@ func landPrepare(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{}, fmt.Errorf("reading the lane's worktree: %w", err)
 	} else if dirty != "" {
 		return Outcome{}, refuse(string(StageLand), "", lane.ID, "the lane's worktree holds uncommitted changes, and the landing commits only what it writes",
-			"commit or remove them in the lane's worktree (a change the validators did not judge goes back through a fix round), then run `abcd implement step` again")
+			"remove them from the lane's worktree (the landing lands only what was validated, and a commit moves the branch off that head), then run `abcd implement step` again")
 	}
 	closes, err := auditsHere(c, *lane)
 	if err != nil {
@@ -346,7 +346,7 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{}, fmt.Errorf("reading the lane's worktree: %w", err)
 	} else if why != "" {
 		return Outcome{}, refuse(string(StageLand), "", lane.ID, "the lane's worktree holds "+why+", and the landing commits only what it writes",
-			"commit or remove it in the lane's worktree (a change the validators did not judge goes back through a fix round), then run `abcd implement step` again")
+			"remove it from the lane's worktree (the landing lands only what was validated, and a commit moves the branch off that head), then run `abcd implement step` again")
 	}
 
 	// The disclosure is settled before any record is written, so a lane with
@@ -373,7 +373,7 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 		mark := shortSHA(lane.HeadSHA)
 		if _, err := spec.MarkLanded(wt, st.Spec, ld.MarkStep, mark); err != nil {
 			return Outcome{}, refuse(string(StageLand), "", lane.ID, fmt.Sprintf("step %d of %s could not be marked landed in the lane's worktree: %s", ld.MarkStep, st.Spec, fsutil.RedactHome(err.Error())),
-				"settle what the spec store names on the lane's branch, then run `abcd implement step` again")
+				"settle what the spec store names in the lane's worktree and leave it uncommitted, then run `abcd implement step` again")
 		}
 		done = append(done, fmt.Sprintf("marked step %d landed at %s", ld.MarkStep, mark))
 	}
@@ -402,7 +402,7 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 		res, err := intent.Reconcile(wt, st.Spec, "", intent.RemainderRequest{})
 		if err != nil {
 			return Outcome{}, refuse(string(StageLand), "", lane.ID, "`spec close "+st.Spec+"` refused in the lane's worktree: "+fsutil.RedactHome(err.Error()),
-				"settle what the close names on the lane's branch (an intent ships only with an impact:), then run `abcd implement step` again")
+				"settle what the close names in the lane's worktree and leave it uncommitted (an intent ships only with an impact:), then run `abcd implement step` again")
 		}
 		if res.AuditEmitError != "" {
 			return Outcome{}, refuse(string(StageLand), "", lane.ID, "the close parked no fidelity receipt for the audit to answer: "+fsutil.RedactHome(res.AuditEmitError),
@@ -430,7 +430,7 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 			if _, err := capture.Resolve(capture.ResolveRequest{RepoRoot: wt, ID: r.Issue, Resolution: r.Note, Impact: r.Impact,
 				ByCommit: r.Commit, Grounds: r.Grounds}); err != nil {
 				return Outcome{}, refuse(string(StageLand), "", lane.ID, "`capture resolve "+r.Issue+"` refused in the lane's worktree: "+fsutil.RedactHome(err.Error()),
-					"the resolution is the lane receipt's; settle what the capture store names on the lane's branch, then run `abcd implement step` again")
+					"the resolution is the lane receipt's; settle what the capture store names in the lane's worktree and leave it uncommitted, then run `abcd implement step` again")
 			}
 			done = append(done, "resolved "+r.Issue+" with "+shortSHA(r.Commit))
 		}
