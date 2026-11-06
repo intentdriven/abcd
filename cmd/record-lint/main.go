@@ -106,7 +106,7 @@ func main() {
 
 	cfg, err := lint.LoadConfig(cfgPath)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "record-lint: load config:", scrubPaths(err, root))
+		fmt.Fprintln(os.Stderr, "record-lint: load config:", termsafe.Sanitize(scrubPaths(err, root)))
 		os.Exit(2)
 	}
 

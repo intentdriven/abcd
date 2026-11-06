@@ -126,3 +126,25 @@ func TestARefusedCapIsMaskedOnAWholeRun(t *testing.T) {
 		t.Errorf("the error line carries a raw escape: %q", stderr.String())
 	}
 }
+
+// TestALoadConfigErrorMasksThePathItNames: the path a caller passes reaches the error
+// line whole. The attack rune is built numerically, so this file carries none.
+func TestALoadConfigErrorMasksThePathItNames(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "record-lint")
+	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
+		t.Fatalf("building the linter: %v\n%s", err, out)
+	}
+	path := filepath.Join(t.TempDir(), "no"+string(rune(0x1b))+"where.json")
+	run := exec.Command(bin, "-root", t.TempDir(), "-config", path)
+	var stderr bytes.Buffer
+	run.Stderr = &stderr
+	if err := run.Run(); err == nil {
+		t.Fatalf("the run should fail: %q", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "load config:") || !strings.Contains(stderr.String(), "where.json") {
+		t.Fatalf("the path does not reach the line, so this proves nothing: %q", stderr.String())
+	}
+	if strings.ContainsRune(stderr.String(), 0x1b) {
+		t.Errorf("the error line carries a raw escape: %q", stderr.String())
+	}
+}
