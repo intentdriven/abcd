@@ -236,8 +236,10 @@ type terminal struct {
 	heldBack   []string
 	// passedOver are the issues said to need a person, each once.
 	passedOver []Excluded
-	// why is what stopped the run, when a check did.
-	why string
+	// why is what stopped the run, when a check did, and wallEnded the reason a wait
+	// inside that check ended it for, when one did.
+	why       string
+	wallEnded string
 	// judge is what the last move's routed judgement came to.
 	judge JudgeOutcome
 	// minted names each head a preflight this run ran exited 0 on, and bases each
@@ -372,12 +374,23 @@ func (t *terminal) stopped() bool {
 
 func (t *terminal) now() time.Time { return t.o.Options.now() }
 
+// WallEnded is a BeforeStage's error when a wait inside the check ended the run for a
+// reason of its own, which the run ends on: a stop, a kill, or a limit it could not outwait.
+type WallEnded struct{ Ended string }
+
+func (e *WallEnded) Error() string { return "the check before a stage ended the run: " + e.Ended }
+
 // wallHeld runs the check before a stage, saying what stopped the run.
 func (t *terminal) wallHeld() bool {
 	if t.o.BeforeStage == nil {
 		return true
 	}
 	err := t.o.BeforeStage()
+	var ended *WallEnded
+	if errors.As(err, &ended) {
+		t.wallEnded = ended.Ended
+		return false
+	}
 	if err != nil {
 		t.stoppedBy(err)
 	}
@@ -2156,6 +2169,9 @@ func (t *terminal) letGo() {
 // kill, when its reservation lapses. A stop from elsewhere names its own remedy.
 func (t *terminal) ended(why string) TerminalResult {
 	defer t.leaveSharedRun()
+	if why == TerminalWall && t.wallEnded != "" {
+		why = t.wallEnded
+	}
 	switch why {
 	case TerminalStopped:
 		t.haltOnSignal()

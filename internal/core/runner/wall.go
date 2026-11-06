@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -281,10 +282,14 @@ type stageWritten struct {
 	goNote string
 	// binaries are abcd's binary and the harness, by content.
 	binaries map[string][sha256.Size]byte
-	// harness is the file the start resolved claude to, which every walled launch
-	// after it runs: "" when it resolved to none. harnessPath is where PATH reached
-	// it, which each launch still judges against its repository.
+	// harness is the file the start resolved claude to, or a proof since then passed,
+	// which every walled launch runs: "" when it resolved to none. harnessPath is where
+	// PATH reached it, which each launch still judges against its repository.
 	harness, harnessPath string
+	// version is what the harness last proved reports itself as, and unproved that
+	// harness is a file put in its place that has yet to pass.
+	version  string
+	unproved bool
 }
 
 // stagesWritten holds this process's stageWritten, by walled directory.
@@ -593,7 +598,7 @@ func readStageGit(p Profile) ([]byte, error) {
 
 // checkStageFiles compares what a launch reads beside its settings with what this
 // drive wrote.
-func checkStageFiles(p Profile) error {
+func checkStageFiles(p Profile, harnessToo bool) error {
 	for _, name := range wallLoaded {
 		path := filepath.Join(p.Dir, name)
 		fi, err := os.Lstat(path)
@@ -631,15 +636,29 @@ func checkStageFiles(p Profile) error {
 		}
 	}
 	for path, sum := range written.binaries {
+		if path == written.harness && !harnessToo {
+			continue
+		}
 		if fileSum(path) != sum {
 			return &WallError{WallSettingsFile, filepath.Base(path) + "'s binary changed while the drive ran"}
 		}
+	}
+	if written.unproved && harnessToo {
+		return &WallError{WallSettingsFile, filepath.Base(written.harness) + " has not passed the check the run's harness must"}
 	}
 	return nil
 }
 
 // CheckWallSettings compares the walled settings with what abcd wrote for bin.
-func CheckWallSettings(p Profile, bin string) error {
+func CheckWallSettings(p Profile, bin string) error { return checkWallSettings(p, bin, true) }
+
+// CheckWallSettingsBesideHarness is CheckWallSettings leaving the harness out: what a wait
+// for a harness's proof checks while that proof is owed.
+func CheckWallSettingsBesideHarness(p Profile, bin string) error {
+	return checkWallSettings(p, bin, false)
+}
+
+func checkWallSettings(p Profile, bin string, harnessToo bool) error {
 	raw, err := os.ReadFile(filepath.Join(p.Dir, wallSettingsName))
 	if err != nil {
 		return &WallError{WallSettingsFile, "the profile directory's settings could not be read"}
@@ -647,7 +666,7 @@ func CheckWallSettings(p Profile, bin string) error {
 	if !bytes.Equal(raw, wallSettings(bin)) {
 		return &WallError{WallSettingsFile, "the profile directory's settings differ from what abcd wrote"}
 	}
-	return checkStageFiles(p)
+	return checkStageFiles(p, harnessToo)
 }
 
 // SelfBinary is the absolute path of the running abcd, "" when the system
@@ -673,6 +692,85 @@ func (l launcher) pinnedTo(p Profile) launcher {
 		return harness, nil
 	}
 	return l
+}
+
+// owesProof reports whether the harness file differs from what the last proof read, or
+// one put in its place has yet to pass. What the check compares tells the two kinds of
+// change apart, a file gone reading as the zero hash, and both come to the same: what is
+// there now has not been proved.
+func (w *stageWritten) owesProof() bool {
+	return w.harness != "" && (w.unproved || fileSum(w.harness) != w.binaries[w.harness])
+}
+
+// HarnessOwed reports whether p's run must prove the harness before a stage starts.
+func HarnessOwed(p Profile) bool {
+	v, ok := stagesWritten.Load(p.ShellHome)
+	return ok && v.(*stageWritten).owesProof()
+}
+
+// ReproveHarness is the check before a stage when HarnessOwed: every other wall, then the
+// harness resolved again, pinned, and the login check and the full proof on that file. It
+// returns the one line that says what changed, "" when nothing was owed. Pinned first, the
+// file is unproved until it passes, so nothing starts on it. A limit or a launch with no
+// verdict comes back as the first proof's would; called again it resolves and proves again,
+// and still names the version the run last proved. It is called between stages, never
+// during one.
+func ReproveHarness(ctx context.Context, p Profile, bin string) (string, error) {
+	v, ok := stagesWritten.Load(p.ShellHome)
+	if !ok || !v.(*stageWritten).owesProof() {
+		return "", nil
+	}
+	written := v.(*stageWritten)
+	if err := checkWallSettings(p, bin, false); err != nil {
+		return "", err
+	}
+	starts := defaultLauncher()
+	harness, err := starts.admit(Claude, "claude", p.Dir)
+	if err != nil {
+		return "", &WallError{WallLaunch, "the harness the run proved has changed, and no harness that can be run takes its place"}
+	}
+	harnessPath, _ := starts.lookPath("claude")
+	next := *written
+	next.binaries = maps.Clone(written.binaries)
+	delete(next.binaries, written.harness)
+	sum := fileSum(harness)
+	next.binaries[harness] = sum
+	next.harness, next.harnessPath, next.unproved = harness, harnessPath, true
+	stagesWritten.Store(p.ShellHome, &next)
+	if err := CheckLogin(ctx, p); err != nil {
+		var we *WallError
+		if errors.As(err, &we) {
+			we.Detail += " (harness file " + safeWord(filepath.Base(harness)) + ")"
+		}
+		return "", err
+	}
+	if err := ProveWall(ctx, p, bin); err != nil {
+		return "", err
+	}
+	if fileSum(harness) != sum {
+		markUnproved(p)
+		return "", &WallError{WallSettingsFile, filepath.Base(harness) + "'s binary changed while its proof ran"}
+	}
+	proved, _ := stagesWritten.Load(p.ShellHome)
+	return harnessChangedLine(written.version, proved.(*stageWritten).version), nil
+}
+
+// markUnproved marks p's harness file as owing a proof it had seemed to pass.
+func markUnproved(p Profile) {
+	if v, ok := stagesWritten.Load(p.ShellHome); ok {
+		next := *v.(*stageWritten)
+		next.unproved = true
+		stagesWritten.Store(p.ShellHome, &next)
+	}
+}
+
+// harnessChangedLine says what a re-proof found and that the run goes on with it.
+func harnessChangedLine(was, now string) string {
+	name := func(version string) string { return cmp.Or(version, "an unnamed version") }
+	if was == now {
+		return "the harness's file changed during the run, still " + name(now) + "; it passed the full check again, and the run goes on with it"
+	}
+	return "the harness was updated during the run, from " + name(was) + " to " + name(now) + "; the new one passed the full check, and the run goes on with it"
 }
 
 // provedHarness is the file p's start resolved the harness to, "" when none has.
@@ -819,6 +917,11 @@ func ProveWall(ctx context.Context, p Profile, bin string) error {
 	if _, err := os.Lstat(marker); !errors.Is(err, os.ErrNotExist) {
 		return withHarnessVersion(&WallError{WallWorkingTree, "a settings file in the working tree ran its hook, so the launch read it"}, res.stdout)
 	}
+	if v, ok := stagesWritten.Load(p.ShellHome); ok {
+		next := *v.(*stageWritten)
+		next.version, next.unproved = harnessVersion(res.stdout), false
+		stagesWritten.Store(p.ShellHome, &next)
+	}
 	return nil
 }
 
@@ -925,14 +1028,22 @@ func withHarnessVersion(err error, out []byte) error {
 	if !errors.As(err, &we) {
 		return err
 	}
+	if version := harnessVersion(out); version != "" {
+		we.Detail += " (harness version " + version + ")"
+	}
+	return err
+}
+
+// harnessVersion is what a launch's start-up report names as its version, "" for none or
+// for a value that is none.
+func harnessVersion(out []byte) string {
 	for _, line := range bytes.Split(out, []byte("\n")) {
 		var ev claudeEvent
 		if json.Unmarshal(bytes.TrimSpace(line), &ev) == nil && ev.Type == "system" && ev.Subtype == "init" && wallVersionRe.MatchString(ev.Version) {
-			we.Detail += " (harness version " + ev.Version + ")"
-			break
+			return ev.Version
 		}
 	}
-	return err
+	return ""
 }
 
 // readWallProof reads each wall from the launch's event stream, and a wall that does

@@ -89,6 +89,12 @@ func terminalFakeTurn(role string) string {
 		return "judge-" + JudgementYes
 	case "slow":
 		time.Sleep(time.Second)
+	case "incall":
+		// The agent in its call, as a check beside it could see.
+		mark := os.Getenv(terminalScriptEnv) + ".in-call"
+		_ = os.WriteFile(mark, nil, 0o600)
+		time.Sleep(300 * time.Millisecond)
+		_ = os.Remove(mark)
 	}
 	if strings.HasPrefix(role, RoleDrainJudge) {
 		return "judge-" + JudgementNo
@@ -348,6 +354,53 @@ func TestAStopSetFromOutsideIsHonouredAtTheNextBoundary(t *testing.T) {
 	}
 	if res.Ended != TerminalStopped || w.launches(t) != 0 {
 		t.Fatalf("a stop is honoured at once: %+v, %d launches", res, w.launches(t))
+	}
+}
+
+// TestNoCheckRunsWhileAStageIsInItsCall: the check before a stage, where a proof may run,
+// comes between calls, whatever the renewals beside a call do.
+func TestNoCheckRunsWhileAStageIsInItsCall(t *testing.T) {
+	w := newTerminalWorld(t, slices.Repeat([]string{"incall"}, 12)...)
+	o := w.options(t)
+	mark := os.Getenv(terminalScriptEnv) + ".in-call"
+	was := terminalRenewTick
+	terminalRenewTick = 20 * time.Millisecond
+	t.Cleanup(func() { terminalRenewTick = was })
+	calls, during := 0, 0
+	o.BeforeStage = func() error {
+		calls++
+		if _, err := os.Stat(mark); err == nil {
+			during++
+		}
+		return nil
+	}
+	if _, err := RunTerminal(context.Background(), w.repo.Root(), o); err != nil {
+		t.Fatal(err)
+	}
+	if calls == 0 || w.launches(t) <= 3 {
+		t.Fatalf("the world ran no stage beside its judges: %d checks, %d launches", calls, w.launches(t))
+	}
+	if during != 0 {
+		t.Fatalf("the check ran %d times during a call", during)
+	}
+}
+
+// TestAWaitInTheCheckEndsTheRunOnItsOwnReason: what ended the wait is what the run reports,
+// so a person's stop is not read as a wall; a wall that did not hold is still one.
+func TestAWaitInTheCheckEndsTheRunOnItsOwnReason(t *testing.T) {
+	for _, ended := range []string{TerminalStopped, TerminalLimited, TerminalOutage} {
+		t.Run(ended, func(t *testing.T) {
+			w := newTerminalWorld(t)
+			o := w.options(t)
+			o.BeforeStage = func() error { return &WallEnded{Ended: ended} }
+			res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.Ended != ended || w.launches(t) != 0 {
+				t.Fatalf("ended %+v after %d launches", res, w.launches(t))
+			}
+		})
 	}
 }
 

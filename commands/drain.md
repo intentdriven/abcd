@@ -36,7 +36,10 @@ It runs on a subscription alone, on one separate login: a directory under
 `~/.abcd.noindex/profiles/` that the person makes and logs the harness into once, in
 their own shell. abcd never reads, stores or forwards that login. The directory's
 `settings.json` is abcd's, rewritten at each start, and holds abcd's hooks and the
-harness's own attribution, off, and nothing else. A credential variable the harness would bill through, set in the environment,
+harness's own attribution, off, and nothing else. A harness update during the run is
+proved again before the next stage: passing, one line names the old version and the new
+and the run goes on; failing, the run ends at that check, exit 2, naming it and the
+version. A credential variable the harness would bill through, set in the environment,
 refuses the start, naming `itd-2611011230226453`.
 
 **Two subscriptions, two directories.** With one directory there the drive runs on it.

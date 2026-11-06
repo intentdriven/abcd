@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -81,7 +82,7 @@ func fakeWall(mode string) int {
 		}
 	}
 	init := map[string]any{"type": "system", "subtype": "init", "session_id": "s", "model": "m",
-		"tools": []string{"Read", "Bash"}, "apiKeySource": "none", "claude_code_version": "2.1.319",
+		"tools": []string{"Read", "Bash"}, "apiKeySource": "none", "claude_code_version": cmp.Or(os.Getenv(fakeVersionEnv), "2.1.319"),
 		"mcp_servers": []map[string]string{{"name": "abcd", "status": "connected"}}, "plugins": []string{}}
 	switch mode {
 	case "wall-tools":
@@ -146,6 +147,9 @@ func fakeWall(mode string) int {
 	fmt.Println(`{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"s"}`)
 	return 0
 }
+
+// fakeVersionEnv is the version a stand-in harness reports, beside the one it does.
+const fakeVersionEnv = "ABCD_TEST_FAKE_HARNESS_VERSION"
 
 // approverClears reports whether the approver this launch names would answer at all
 // from the working directory: the guard's own read of the registry at the launch's base.

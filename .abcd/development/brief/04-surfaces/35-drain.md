@@ -364,8 +364,18 @@ run with the harness's own updates off. The launch runs in a repository of one e
 commit, the base the approver judges against, and a refusal from it says the harness's
 version. Before each stage and each preflight the settings, the files a stage's shell
 reads, the machine declarations, abcd's binary and the harness are compared with the
-start, and a difference stops the drive; a harness file changed or gone since the start
-is that difference.
+start, and a difference stops the drive.
+
+The harness is the one exception. When the file a run proved is gone or its contents
+changed, the point a stage would start resolves the harness again and runs the login check
+and the full proof, once, on what is there now, before any stage; a stage in its call is
+left to finish. Passing, that file is what the run pins, and one line names the old version
+and the new. Failing, the run ends as any wall does, exit 2 with the lane let go, naming
+the check and the version; a new version whose environment the wall does not admit ends it
+this way too. A limit or a launch with no verdict says nothing of a wall, so it waits as the
+first proof's does, the other walls checked at each turn. A file changed while its proof
+runs is not passed. The yes covers this launch, which adds no prompt, and the screen says
+so in a line.
 
 **Which profile.** `runner.DriveProfile` is the one function that answers it. With one
 directory under `~/.abcd.noindex/profiles/` a drive runs on it. With several it refuses,
