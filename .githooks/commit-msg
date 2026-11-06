@@ -326,10 +326,11 @@ common_dir() {
 here_common="$(common_dir)"
 src_common="$(cd "$src" && unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
   GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX && common_dir)" || src_common=""
-judge_mentions=1
+own_repo=1
 if [ -z "$here_common" ] || [ "$here_common" != "$src_common" ]; then
-  judge_mentions=0
+  own_repo=0
 fi
+judge_mentions="$own_repo"
 merge_head="$(git rev-parse -q --verify MERGE_HEAD 2>/dev/null || true)"
 if [ -n "$merge_head" ]; then
   judge_mentions=0
@@ -411,47 +412,52 @@ case "$rc" in
     ;;
 esac
 
-# The record slug cap, for what this commit adds or renames under .abcd/
-# (iss-2611052241331003). A verb cuts a slug as it writes it; a hand rename is the
-# one way past the cap, and this is the first place abcd sees one. The judgement is
-# record-lint's record_slug_cap, never a pattern here, and the cap is the committing
-# repository's own records.slug_cap. The names are read in git's environment for
-# this commit, so `git commit -a` answers from its temporary index; everything after
-# them runs with that environment unset, as above. A commit that adds nothing under
-# .abcd/ builds nothing here.
-names="$work/added-names"
-if ! git diff --cached --name-only --diff-filter=AR -z -- .abcd >"$names"; then
-  echo "commit-msg: BLOCKED — could not read what this commit adds, so the record slug cap cannot judge it." >&2
-  exit 1
-fi
-if [ -s "$names" ]; then
-  top="$(git rev-parse --show-toplevel)"
-  # The build is its own step, as above: its failure is not a finding.
-  rc=0
-  out="$(cd "$src" && unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
-    GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX &&
-    "$go_bin" build -buildvcs=false -o "$work/record-lint" ./cmd/record-lint 2>&1)" || rc=$?
-  if [ "$rc" -ne 0 ] || [ ! -x "$work/record-lint" ]; then
-    echo "commit-msg: BLOCKED — the record slug cap could not judge this commit (\`go build ./cmd/record-lint\` failed)." >&2
-    say "            " "$out"
+# The record slug cap, for what this commit adds or renames under .abcd/, in the
+# hook's own repository only (iss-2611052241331003): any other repository a global
+# dispatcher runs this hook for keeps its own names and its own config out of it.
+# The test is RS004's, on its own flag, because a merge brings records in and is
+# judged here though RS004 leaves it to the range check. A verb cuts a slug as it
+# writes it; a hand rename is the one way past the cap, and this is the first place
+# abcd sees one. The judgement is record-lint's record_slug_cap, never a pattern
+# here, and the cap is this repository's own records.slug_cap. The names are read in
+# git's environment for this commit, so a partial commit answers from its temporary
+# index; everything after them runs with that environment unset, as above. A commit
+# that adds nothing under .abcd/ builds nothing here.
+if [ "$own_repo" -eq 1 ]; then
+  names="$work/added-names"
+  if ! git diff --cached --name-only --diff-filter=AR -z -- .abcd >"$names"; then
+    echo "commit-msg: BLOCKED — could not read what this commit adds, so the record slug cap cannot judge it." >&2
     exit 1
   fi
-  rc=0
-  out="$(unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
-    GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX &&
-    "$work/record-lint" -root "$top" -slug-names "$names" 2>&1)" || rc=$?
-  case "$rc" in
-    0) ;;
-    1)
-      echo "commit-msg: BLOCKED — a record this commit adds or renames has a slug over the cap." >&2
+  if [ -s "$names" ]; then
+    top="$(git rev-parse --show-toplevel)"
+    # The build is its own step, as above: its failure is not a finding.
+    rc=0
+    out="$(cd "$src" && unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+      GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX &&
+      "$go_bin" build -buildvcs=false -o "$work/record-lint" ./cmd/record-lint 2>&1)" || rc=$?
+    if [ "$rc" -ne 0 ] || [ ! -x "$work/record-lint" ]; then
+      echo "commit-msg: BLOCKED — the record slug cap could not judge this commit (\`go build ./cmd/record-lint\` failed)." >&2
       say "            " "$out"
       exit 1
-      ;;
-    *)
-      echo "commit-msg: BLOCKED — the record slug cap could not judge this commit (exit $rc)." >&2
-      say "            " "$out"
-      echo "            the message was not found wrong; fix what is named and commit again." >&2
-      exit 1
-      ;;
-  esac
+    fi
+    rc=0
+    out="$(unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+      GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX &&
+      "$work/record-lint" -root "$top" -slug-names "$names" 2>&1)" || rc=$?
+    case "$rc" in
+      0) ;;
+      1)
+        echo "commit-msg: BLOCKED — a record this commit adds or renames has a slug over the cap." >&2
+        say "            " "$out"
+        exit 1
+        ;;
+      *)
+        echo "commit-msg: BLOCKED — the record slug cap could not judge this commit (exit $rc)." >&2
+        say "            " "$out"
+        echo "            the message was not found wrong; fix what is named and commit again." >&2
+        exit 1
+        ;;
+    esac
+  fi
 fi
