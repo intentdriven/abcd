@@ -1588,9 +1588,7 @@ func flagValueHit(fv FlagValue, tokens []string, i int, glob func(int) bool) boo
 	accepts := func(got string, glob bool) bool {
 		switch {
 		case fv.Shape != "":
-			return flagValueShapeHolds(fv.Shape, got)
-		case fv.ByLead && isUnknown(got):
-			return acceptsByLead(fv.Values, knownLead(got))
+			return flagValueShapeHolds(fv.Shape, got, glob)
 		}
 		return acceptsValue(fv.Values, got, glob)
 	}
@@ -1604,8 +1602,9 @@ func flagValueHit(fv FlagValue, tokens []string, i int, glob func(int) bool) boo
 		// accepts.
 		if unknownFlagCouldBe(arg, alt) {
 			// A shape is about the setting's text, and an unknown dash-word is
-			// on every line that has one, so the setting is still read.
-			if fv.Shape == "" {
+			// on every line that has one, so the setting is still read. A field's
+			// setting can be attached to the dash-word itself, whatever it holds.
+			if fv.Shape == "" || fv.Shape == ShapeRefForceField {
 				return true
 			}
 			if accepts(arg, false) || (i+1 < len(tokens) && accepts(tokens[i+1], glob(i+1))) {
@@ -1658,18 +1657,6 @@ func acceptsValue(values []string, got string, glob bool) bool {
 			return true
 		}
 		if glob && globMatches(strings.ToLower(got), strings.ToLower(want)) {
-			return true
-		}
-	}
-	return false
-}
-
-// acceptsByLead reports whether a setting whose text is fixed only up to lead
-// can still become one of values (FlagValue.ByLead).
-func acceptsByLead(values []string, lead string) bool {
-	lead = strings.ToLower(lead)
-	for _, want := range values {
-		if want != "" && strings.HasPrefix(strings.ToLower(want), lead) {
 			return true
 		}
 	}

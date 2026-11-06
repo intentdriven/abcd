@@ -587,8 +587,8 @@ command, so a commit message or a search naming one passes:
 - a force push by these routes: `--force` and its relatives, a `+` refspec,
   `git push --mirror`, `git send-pack --force`, `--mirror`, `--stdin` or a `+`
   ref, `git fast-import --force`, `gh repo sync --force`, and through the forge's
-  API a PATCH of a ref with `force=true`, a value the line does not fix or
-  `--input`, or a GraphQL `updateRef` with `force`, in the query or in a field
+  API a PATCH of a ref with `force` set to anything but `false`, `0`, `null` or
+  nothing, a value the line does not fix or `--input`, or a GraphQL `updateRef` with `force`, in the query or in a field
   beside it.
 
 A program git runs for a subcommand is read as that subcommand, wherever it

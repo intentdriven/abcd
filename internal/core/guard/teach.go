@@ -332,4 +332,5 @@ var flagValueShapeTaught = map[string]string{
 	ShapeForcedRefMutationAnyKey: "a value that force-moves a ref",
 	ShapeRefUpdateQuery:          "a query naming a ref update",
 	ShapeForceField:              "a field setting force",
+	ShapeRefForceField:           "a field setting force to anything but false",
 }

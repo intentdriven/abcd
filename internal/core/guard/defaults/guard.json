@@ -625,20 +625,23 @@
         "value_flags": ["-X", "--method", "-f", "--field", "-F", "--raw-field", "-H", "--header", "-q", "--jq", "-t", "--template", "--cache", "--hostname", "--input"],
         "flag_values": [
           {"flag": "-X|--method", "values": ["PATCH"]},
-          {"flag": "-F|--field|-f|--raw-field", "values": ["force=true"], "by_lead": true}
+          {"flag": "-F|--field|-f|--raw-field", "values": [], "shape": "rest-ref-force-field"}
         ],
         "arg_shapes": ["forge-git-ref-path"]
       },
-      "why": "PATCH on a ref with `force=true` is a force push through the forge's API: it moves the branch to a commit that does not descend from it, past every hook on this machine, so commits other people already have can disappear with no copy left anywhere. A value the line does not fix is read as true.",
+      "why": "PATCH on a ref with `force` set to true is a force push through the forge's API: it moves the branch to a commit that does not descend from it, past every hook on this machine, so commits others have can disappear with no copy left. Any value but `false`, `0`, `null` or nothing is read as true, as is one the line does not fix.",
       "successor": "Move the ref without the field, which refuses anything but a fast-forward, or make a new commit: `git revert <sha>` to undo a commit, or a fix on top.",
       "fixtures": {
         "known_bad": [
           "gh api -X PATCH repos/o/r/git/refs/heads/main -f sha=abc1234 -F force=true",
           "gh api --method PATCH repos/o/r/git/refs/heads/main --field force=true",
+          "gh api -X PATCH repos/o/r/git/refs/heads/main -F force=1",
+          "gh api -X PATCH repos/o/r/git/refs/heads/main -f force=1",
           "gh api -X PATCH repos/o/r/git/refs/heads/main -F force=\"$V\""
         ],
         "known_good": [
           "gh api repos/o/r/git/refs/heads/main",
+          "gh api -X PATCH repos/o/r/git/refs/heads/feat -f sha=abc1234 -F force=false",
           "gh api -X PATCH repos/o/r/git/refs/heads/feat -f sha=abc1234",
           "gh api -X PATCH repos/o/r/git/refs/heads/feat -F sha=\"$SHA\"",
           "gh api -X PATCH repos/o/r/pulls/1 -f body=\"$(cat body.md)\"",
