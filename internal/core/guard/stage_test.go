@@ -2,6 +2,7 @@ package guard
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
@@ -293,5 +294,56 @@ func TestAStageMovesNoRun(t *testing.T) {
 	}
 	if a := approveShell(clean(), NewFiles(t.TempDir()), `abcd implement receipt return.md`); !a.Allow {
 		t.Errorf("a host session's stage hands back as it did: %s", a.Reason)
+	}
+}
+
+// TestAStageAddsNoWorktree: a lane has its own worktree.
+func TestAStageAddsNoWorktree(t *testing.T) {
+	f, _, _ := stageFiles(t)
+	for _, line := range []string{
+		`git worktree add ../other`,
+		`git worktree move ../one ../other`,
+		`git -C /tmp/lane worktree add ../other`,
+		`git -C /tmp/lane worktree move ../one ../other`,
+		`git --git-dir=/tmp/lane/.git worktree add ../other`,
+		`git -c core.pager=cat worktree add -b new ../other`,
+		`/usr/bin/git worktree add ../other`,
+		`env A=1 git worktree add ../other`,
+		`true && git worktree add ../other`,
+		`git worktree "$WHAT" ../other`,
+		`git "$WHAT" add ../other`,
+		`git --attr-source HEAD worktree add ../other`,
+		`git WORKTREE add ../other`,
+		`git-worktree add ../other`,
+		`find . -exec git worktree add ../other ;`,
+	} {
+		if a := approveShell(clean(), f, line); a.Allow {
+			t.Errorf("%q was approved on a walled stage", line)
+		}
+	}
+	// The rule itself, whatever an earlier reading of the line makes of a change of directory.
+	for line, want := range map[string]bool{
+		`git worktree add x`:                 true,
+		`git worktree move a b`:              true,
+		`git -C /tmp/lane worktree add x`:    true,
+		`git -C /tmp/lane worktree move a b`: true,
+		`git-worktree add x`:                 true,
+		`git worktree list`:                  false,
+		`git -C /tmp/lane status`:            false,
+		`git log --grep worktree`:            false,
+		`git add worktree`:                   false,
+		`printf git worktree add`:            false,
+	} {
+		if got := addsAWorktree(strings.Fields(line), 0); got != want {
+			t.Errorf("%q: addsAWorktree = %v, want %v", line, got, want)
+		}
+	}
+	for _, line := range []string{`git worktree list`, `git log --grep worktree`, `git add worktree`} {
+		if a := approveShell(clean(), f, line); !a.Allow {
+			t.Errorf("%q was refused on a walled stage: %s", line, a.Reason)
+		}
+	}
+	if a := approveShell(clean(), NewFiles(t.TempDir()), `git worktree list`); !a.Allow {
+		t.Errorf("another session is not judged this way: %s", a.Reason)
 	}
 }
