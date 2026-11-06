@@ -807,7 +807,7 @@ func reserveResumed(repoRoot string, res *StartResult, o Options) error {
 	now := o.now()
 	i := st.current()
 	landing := i >= 0 && st.Lanes[i].Stage == StageLand
-	r, err := reserveAgain(repoRoot, st.Key, fp, o.TakeOver, landing, renewalStage(st), now)
+	r, err := reserveAgain(repoRoot, st.Key, fp, o.TakeOver, o.drain, landing, renewalStage(st), now)
 	if err != nil {
 		return err
 	}
@@ -816,6 +816,9 @@ func reserveResumed(repoRoot string, res *StartResult, o Options) error {
 			st.ReservedAt = r.at
 		}
 		st.Record = append(st.Record, Entry{At: now, Stage: StageReservation, Note: r.note})
+		// What a limit's release marked goes with the reservation, so no reservation
+		// made is left beside a lane still marked out for it.
+		retellKept(st, limitKept, now)
 		st.UpdatedAt = now
 		return true, nil
 	}); err != nil {
@@ -853,9 +856,12 @@ func reserveResumed(repoRoot string, res *StartResult, o Options) error {
 // record's footprint, --take-over passed through. For an issue whose tip
 // this copy holds, live, lapsed or released, that footprint is the found_at with the
 // tip's paths beside it, so a path the lane widened to (widen.go) is never
-// dropped by a widening, a revival or a fallback.
-func reserveAgain(repoRoot, key string, fp []string, takeOver, landing bool, stage string, now time.Time) (reserved, error) {
-	plain := claim.Request{Footprint: fp, TakeOver: takeOver}
+// dropped by a widening, a revival or a fallback. A drain's act (drain) carries
+// the drain's mark on every reservation it pushes, so a hand-back standing on the
+// issue backs it off; a renewal of this copy's own live tip carries none, since
+// that tip is no hand-back. A person's resume goes over a hand-back and says so.
+func reserveAgain(repoRoot, key string, fp []string, takeOver, drain, landing bool, stage string, now time.Time) (reserved, error) {
+	plain := claim.Request{Footprint: fp, TakeOver: takeOver, Drain: drain}
 	snap, err := claim.View(repoRoot, now)
 	if err != nil {
 		return reserveKey(repoRoot, key, plain, now)
@@ -881,7 +887,7 @@ func reserveAgain(repoRoot, key string, fp []string, takeOver, landing bool, sta
 	// found_at again nor is refused by an overlap the narrowing let in.
 	narrowed := landing && validIssueKey(key)
 	if !narrowed && !covers(r.Footprint, fp) {
-		return widenReservation(repoRoot, key, fp, takeOver, r, now)
+		return widenReservation(repoRoot, key, fp, takeOver, drain, r, now)
 	}
 	res, err := reserveRenewal(repoRoot, claim.Request{Record: key, Renew: true, Lease: renewalTerm(r), Stage: stage}, claimOptions(now))
 	var nh *claim.NotHeld
@@ -896,8 +902,8 @@ func reserveAgain(repoRoot, key string, fp []string, takeOver, landing bool, sta
 // not cover, keeping own's term: the widening is published and judged for
 // overlap (and against the cap) like any reservation, so a widening never
 // cuts the day a fence gave a pull request either.
-func widenReservation(repoRoot, key string, fp []string, takeOver bool, own claim.Reservation, now time.Time) (reserved, error) {
-	return reserveKey(repoRoot, key, claim.Request{Footprint: fp, TakeOver: takeOver, Lease: renewalTerm(own)}, now)
+func widenReservation(repoRoot, key string, fp []string, takeOver, drain bool, own claim.Reservation, now time.Time) (reserved, error) {
+	return reserveKey(repoRoot, key, claim.Request{Footprint: fp, TakeOver: takeOver, Drain: drain, Lease: renewalTerm(own)}, now)
 }
 
 // reserveOnLeavingLand reserves an issue lane's whole found_at again when the
@@ -955,7 +961,7 @@ func reserveOnLeavingLand(repoRoot string, st State, lane Lane, to Stage, now ti
 		// to beyond the found_at among them (widen.go), and the fresh round
 		// still changes those: they are kept beside the found_at.
 		fp = heldWith(fp, own.Footprint)
-		r, err := widenReservation(repoRoot, st.Key, fp, false, own, now)
+		r, err := widenReservation(repoRoot, st.Key, fp, false, false, own, now)
 		if err != nil {
 			reason := err.Error()
 			if rf, ok := AsRefusal(err); ok {

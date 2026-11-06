@@ -65,6 +65,11 @@ const TerminalResumeCommand = "abcd drain --drive"
 // go as it ended, which the drive that takes the lane up reserves again.
 const StageDriveReleased = "drive_released"
 
+// StageReleasedOver is the run record's stage for the record a drive's release let go
+// of: its note is that record's blob on origin's default branch and nothing else, so
+// the take-up can tell what the issue asks now from what the lane was working to.
+const StageReleasedOver = "drive_released_over"
+
 // TerminalOptions are one terminal run's inputs.
 type TerminalOptions struct {
 	// Options are the loop's seams and configuration, Runners among them.
@@ -1612,6 +1617,10 @@ func (t *terminal) takeUp(ctx context.Context, runID string) (bool, string) {
 		case c.Stop != nil && c.Stop.HaltedAt != nil && c.Stop.FromFile:
 			return t.passOverHalted(run)
 		case c.Stop != nil && c.Stop.HaltedAt != nil:
+			if why := t.recordMovedOn(run); why != "" {
+				t.dropWith(run, why, recordMovedOnWith)
+				return true, ""
+			}
 			return t.takeOver(ctx, run)
 		case c.Stop != nil:
 			if t.haltedBy(checked) {
@@ -1624,23 +1633,87 @@ func (t *terminal) takeUp(ctx context.Context, runID string) (bool, string) {
 		}
 	}
 	if !letGoByDrive(run) {
+		// A release that never reached origin reads as held once a renewal has logged
+		// itself, so what it marked is told again here. A reservation made tells it again
+		// with the reservation (reserveResumed).
+		t.retellLimit(runID)
 		return false, ""
 	}
-	err = reserveResumed(t.repoRoot, &StartResult{RunID: runID}, t.o.Options)
-	if err == nil {
-		// What the limit's release marked is told again now the lane is its own again.
-		now := t.now()
-		if merr := mutate(t.repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
-			told := retellKept(st, limitKept, now)
-			if len(told) > 0 {
-				st.UpdatedAt = now
-			}
-			return len(told) > 0, nil
-		}); merr != nil {
-			t.say("%s: what waited on the limit could not be told again: %s", runID, merr.Error())
+	if why := t.recordMovedOn(run); why != "" {
+		t.dropWith(run, why, recordMovedOnWith)
+		return true, ""
+	}
+	err = reserveResumed(t.repoRoot, &StartResult{RunID: runID}, t.takeUpOptions())
+	return t.tookUp(ctx, run, err)
+}
+
+// takeUpOptions is what a drive reserves its own lanes again with: a drain's act, so a
+// hand-back standing on an issue backs it off as it backs off any drain. A person
+// resuming the same run shares the reservation and not the mark.
+func (t *terminal) takeUpOptions() Options {
+	o := t.o.Options
+	o.drain = true
+	return o
+}
+
+// retellLimit tells again what a limit's release marked on a run that holds its
+// reservation after all. A failure is said, and the next move tries again.
+func (t *terminal) retellLimit(runID string) {
+	now := t.now()
+	err := mutate(t.repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+		told := retellKept(st, limitKept, now)
+		if len(told) > 0 {
+			st.UpdatedAt = now
+		}
+		return len(told) > 0, nil
+	})
+	if err != nil {
+		t.say("%s: what waited on the limit could not be told again: %s", runID, err.Error())
+	}
+}
+
+// noteRecordReleased records the blob of the issue's record on origin's default branch
+// as last fetched, as a drive lets the issue go. A record it cannot read leaves no note,
+// and with no note the take-up compares nothing.
+func noteRecordReleased(repoRoot string, st *State, now time.Time) {
+	if blob := claim.RecordBlob(repoRoot, st.Key); blob != "" {
+		st.Record = append(st.Record, Entry{At: now, Stage: StageReleasedOver, Note: blob})
+	}
+}
+
+// releasedOverBlob is the blob the run's latest release noted, "" when it noted none or
+// the run has reserved since.
+func releasedOverBlob(run State) string {
+	for i := len(run.Record) - 1; i >= 0; i-- {
+		switch run.Record[i].Stage {
+		case StageReleasedOver:
+			return run.Record[i].Note
+		case StageReservation, StageReservationRenewed:
+			return ""
 		}
 	}
-	return t.tookUp(ctx, run, err)
+	return ""
+}
+
+// recordMovedOnWith is who an issue is with whose record changed while it was let go.
+const recordMovedOnWith = "whoever changed its record"
+
+// recordMovedOn says how the issue's record changed on origin's default branch since the
+// drive let it go, "" when it did not. Only a blob read there and differing from the note
+// counts, as a hand-back reads a change (claim's changedSince), and a finished record is
+// the reservation's to refuse, which says so. The branch is read as the move that reached
+// this lane just fetched it.
+func (t *terminal) recordMovedOn(run State) string {
+	noted := releasedOverBlob(run)
+	if noted == "" {
+		return ""
+	}
+	now := claim.RecordBlob(t.repoRoot, run.Key)
+	if now == "" || now == noted || claim.Finished(t.repoRoot, run.Key) {
+		return ""
+	}
+	return fmt.Sprintf("%s's record on %s's default branch changed while the issue was let go, so a fix to what it asked before is no longer wanted; nothing was reserved",
+		run.Key, claim.Remote)
 }
 
 // passOverHalted leaves a run a person's stop halted to its explicit take-over, names it and
@@ -1681,7 +1754,7 @@ func (t *terminal) notePassedOver(p Excluded) {
 // the run, as does a take-over that says not to step; a session at the same take-over is
 // waited for; and a reservation it could not take is answered as any other is.
 func (t *terminal) takeOver(ctx context.Context, run State) (bool, string) {
-	res, err := TakeRun(t.repoRoot, run.RunID, t.o.Options)
+	res, err := TakeRun(t.repoRoot, run.RunID, t.takeUpOptions())
 	if err == nil {
 		t.say("took over %s, run %s: its reservation is held again", run.Key, run.RunID)
 		for _, line := range res.Left {
@@ -1776,13 +1849,15 @@ const limitKept = "let go for a long limit"
 // save could take, which are said and tried again at the wait's next turn; a stop's mark
 // leaves it to the stop. The run stays the driver's, and no person's: it is marked as a
 // drive's letting go, which the next take-up answers (takeUp). A release that does not
-// reach origin lapses with its lease, since nothing renews it now.
+// reach origin leaves the tip standing: the wait renews nothing it let go, so the tip
+// lapses with its lease unless a renewal on waking or a session waiting in this checkout
+// (RenewRunsIn) takes it up first, and either way the next move tells the lane again.
 func (t *terminal) letGoForLimit(runID string) {
 	if runID == "" || t.stopped() || t.stopHolds() || driveStopped(runID) {
 		return
 	}
 	now := t.now()
-	key, held, clause := "", "", ""
+	key, held, clause, failed := "", "", "", false
 	err := mutate(t.repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		if st.ReservedAt == nil || letGoByDrive(*st) {
 			return false, nil
@@ -1823,7 +1898,8 @@ func (t *terminal) letGoForLimit(runID string) {
 			st.UpdatedAt = now
 			return true, nil
 		}
-		clause, _ = releaseReservation(t.repoRoot, st.Key, "", now)
+		noteRecordReleased(t.repoRoot, st, now)
+		clause, failed = releaseReservation(t.repoRoot, st.Key, "", now)
 		st.Record = append(st.Record, Entry{At: now, Stage: StageDriveReleased, Note: clause})
 		st.UpdatedAt = now
 		return true, nil
@@ -1833,6 +1909,8 @@ func (t *terminal) letGoForLimit(runID string) {
 		t.say("%s: the reservation stays held, since the run could not be saved: %s", runID, err.Error())
 	case held != "":
 		t.say("%s: the reservation stays held for now: %s", key, held)
+	case failed:
+		t.say("%s: the limit lasts, and the release did not reach %s, so the reservation stands until its lease lapses or a renewal takes it up: %s", key, claim.Remote, clause)
 	case clause != "":
 		t.say("%s: the limit lasts, so the issue is let go until it lifts: %s", key, clause)
 	}
@@ -1866,17 +1944,45 @@ func limitKeepsHold(st State, c control, now time.Time) string {
 	return ""
 }
 
-// dropLane ends a lane whose issue stopped being its to work on while it held nothing:
-// finished on the default branch, or held by a peer. It goes back holding nothing, so
-// no release is pushed and no hand-back is published over an issue that is no person's
-// question, and the next move routes it and takes the next issue. What the lane left
-// stays where the hand-back says.
+// dropLane ends a lane whose reservation backed off, naming who the issue is with now.
 func (t *terminal) dropLane(run State, r *Refusal) {
-	whose := "the peer who holds it"
-	if claim.Finished(t.repoRoot, run.Key) {
-		whose = "no one: the issue has finished on the default branch"
+	t.dropWith(run, r.Reason, t.issueIsWith(run.Key))
+}
+
+// issueIsWith reads, after a back-off, who the issue is with, in words true of the cause.
+func (t *terminal) issueIsWith(key string) string {
+	now := t.now()
+	if claim.Finished(t.repoRoot, key) {
+		return "no one: the issue has finished on the default branch"
 	}
-	reason := termsafe.Sanitize(fsutil.RedactHome(r.Reason))
+	snap, err := claim.View(t.repoRoot, now)
+	if err != nil {
+		return "no one this drive can name, since the reservations cannot be read"
+	}
+	if snap.HandBack(key, now) != "" {
+		return "a person: a hand-back stands on the issue until its record changes"
+	}
+	r, ok := snap.Lookup(key)
+	switch {
+	case ok && r.State == claim.StateUnreadable:
+		return "no one this drive can name, since the tip of its reservation cannot be read"
+	case ok && r.Copy != claim.CopyThis && (r.State == claim.StateLive || r.State == claim.StateExpired):
+		if claim.ReaderSelf(t.repoRoot, claimOptions(now)).Owns(r.Holder) {
+			return "your other copy, which holds it"
+		}
+		return "the peer who holds it"
+	}
+	return "the holder of the reservation the refusal names"
+}
+
+// dropWith ends a lane whose issue stopped being its to work on while it held nothing:
+// the reservation backed off, or the record changed. It goes back holding nothing, so no
+// release is pushed and no hand-back is published over an issue that is no person's
+// question, and the next move routes it and takes the next issue. A tip whose release
+// never reached origin lapses with its lease, since the run names no reservation to
+// renew. What the lane left stays where the hand-back says.
+func (t *terminal) dropWith(run State, why, whose string) {
+	reason := termsafe.Sanitize(fsutil.RedactHome(why))
 	t.say("%s, run %s, is dropped: %s", run.Key, run.RunID, reason)
 	now := t.now()
 	err := mutate(t.repoRoot, run.RunID, func(_ *os.Root, st *State) (bool, error) {
@@ -1928,6 +2034,7 @@ func (t *terminal) letGo() {
 			clause, _ := releaseReservation(t.repoRoot, run.Key, "", now)
 			t.say("%s: %s", run.Key, clause)
 			_ = mutate(t.repoRoot, l.RunID, func(_ *os.Root, st *State) (bool, error) {
+				noteRecordReleased(t.repoRoot, st, now)
 				st.Record = append(st.Record, Entry{At: now, Stage: StageDriveReleased, Note: clause})
 				st.UpdatedAt = now
 				return true, nil

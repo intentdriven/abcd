@@ -10,6 +10,7 @@ package loop
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -265,7 +266,11 @@ func TestAnIssueFixedElsewhereDropsTheLaneAndTheRunGoesOn(t *testing.T) {
 	w.onSleep = func(time.Duration) {
 		if first {
 			first = false
-			resolveOnOrigin(t, w.bare, w.firstLaneRun(t).Key)
+			key := w.firstLaneRun(t).Key
+			resolveOnOrigin(t, w.bare, key)
+			// A real resolve stamps the record as it moves it, so its blob changes too,
+			// and finished is still what the hand-back says.
+			changeRecordOnOrigin(t, w.bare, key, "resolved")
 		}
 	}
 	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
@@ -282,43 +287,333 @@ func TestAnIssueFixedElsewhereDropsTheLaneAndTheRunGoesOn(t *testing.T) {
 	}
 }
 
-// TestAPeerHoldingTheIssueDropsTheLaneAndTheRunGoesOn: a peer reserved the released
-// issue during the wait, so the reservation backs off, the peer keeps it, nothing is
-// published over it, and the next issue is taken.
+// TestAPeerHoldingTheIssueDropsTheLaneAndTheRunGoesOn: a peer took the released issue,
+// or took it and handed it back, during the wait. Either way the drive backs off, as any
+// drain does, the lane goes back saying which, nothing is pushed over what the peer left,
+// and the run goes on.
 func TestAPeerHoldingTheIssueDropsTheLaneAndTheRunGoesOn(t *testing.T) {
+	for _, tc := range []struct {
+		name, reason, home string
+		handsBack          bool
+	}{
+		{name: "holding it", reason: "back off", home: "the peer who holds it"},
+		{name: "handing it back", reason: "handed back by", home: "a hand-back stands", handsBack: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := newTerminalWorld(t, "shape", "limited")
+			w.realWorktree()
+			w.leavesWork(t)
+			o := w.bounded(t, 30*24*time.Hour)
+			o.Drain.Max = 2
+			w.resetIn(t, 5*time.Hour)
+			q := otherCopy(t, w.bare, quinnEmail)
+			first := true
+			peerTip := ""
+			w.onSleep = func(time.Duration) {
+				if !first {
+					return
+				}
+				first = false
+				took := w.firstLaneRun(t).Key
+				if got := reservationOf(t, w.repo.Root(), took, w.clock.t); got.State != claim.StateReleased {
+					t.Errorf("the peer can see the issue free: %+v", got)
+				}
+				qo := as(t, q, claim.Options{Now: w.clock.now})
+				if _, err := claim.Reserve(q, claim.Request{Record: took, Footprint: []string{"elsewhere.md"}, Lease: 24 * time.Hour}, qo); err != nil {
+					t.Error(err)
+				}
+				if tc.handsBack {
+					if _, err := claim.Reserve(q, claim.Request{Record: took, Release: true, HandBack: claim.HandBackSecondPackage}, qo); err != nil {
+						t.Error(err)
+					}
+				}
+				peerTip = gitIn(t, w.bare, "rev-parse", claim.RefPrefix+took)
+			}
+			res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantDropped(t, w, res, tc.reason)
+			run := w.firstLaneRun(t)
+			if !strings.Contains(run.Lanes[0].HandBack.Home, tc.home) {
+				t.Fatalf("the hand-back says who the issue is with (%q): %q", tc.home, run.Lanes[0].HandBack.Home)
+			}
+			if tip := gitIn(t, w.bare, "rev-parse", claim.RefPrefix+run.Key); tip != peerTip {
+				t.Fatalf("nothing is pushed over what the peer left: %s, was %s", tip, peerTip)
+			}
+			if _, err := claim.Fetch(w.repo.Root(), claim.Options{Now: w.clock.now}); err != nil {
+				t.Fatal(err)
+			}
+			r := reservationOf(t, w.repo.Root(), run.Key, w.clock.t)
+			if r.Copy == claim.CopyThis {
+				t.Fatalf("what the peer left stays the peer's: %+v", r)
+			}
+			if tc.handsBack && r.HandedBack != claim.HandBackSecondPackage {
+				t.Fatalf("the hand-back stands: %+v", r)
+			}
+			if !tc.handsBack && (r.State != claim.StateLive || r.HandedBack != "") {
+				t.Fatalf("the peer keeps what it took: %+v", r)
+			}
+		})
+	}
+}
+
+// TestOnlyADrainBacksOffAHandBackOnResuming: the drive's take-up carries the drain's mark
+// and a person's resume of the same run does not: a person may go over a hand-back, and
+// is told so, as a person's reservation always may.
+func TestOnlyADrainBacksOffAHandBackOnResuming(t *testing.T) {
+	root, bare, runID, c := laneForPeerCheck(t)
+	run, err := ReadState(root, runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := claim.Reserve(root, claim.Request{Record: run.Key, Release: true}, claim.Options{Now: c.now}); err != nil {
+		t.Fatal(err)
+	}
+	q := otherCopy(t, bare, quinnEmail)
+	qo := as(t, q, claim.Options{Now: c.now})
+	if _, err := claim.Reserve(q, claim.Request{Record: run.Key, Footprint: []string{"elsewhere.md"}}, qo); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := claim.Reserve(q, claim.Request{Record: run.Key, Release: true, HandBack: claim.HandBackSecondPackage}, qo); err != nil {
+		t.Fatal(err)
+	}
+	tip := gitIn(t, bare, "rev-parse", claim.RefPrefix+run.Key)
+	r, ok := AsRefusal(reserveResumed(root, &StartResult{RunID: runID}, Options{Now: c.now, drain: true}))
+	if !ok || !r.Contention || r.Stage != StageReservation || !strings.Contains(r.Reason, "handed back by") {
+		t.Fatalf("a drain backs off the hand-back: %+v", r)
+	}
+	if got := gitIn(t, bare, "rev-parse", claim.RefPrefix+run.Key); got != tip {
+		t.Fatalf("nothing is pushed by a drain that backs off: %s, was %s", got, tip)
+	}
+	if err := reserveResumed(root, &StartResult{RunID: runID}, Options{Now: c.now}); err != nil {
+		t.Fatalf("a person's resume goes over the hand-back: %v", err)
+	}
+	if run, err = ReadState(root, runID); err != nil {
+		t.Fatal(err)
+	}
+	if last := lastReservationEntry(run); last == nil || !strings.Contains(last.Note, "handed back") {
+		t.Fatalf("and is told it did: %+v", last)
+	}
+}
+
+// changeRecordOnOrigin adds a line to id's record in folder on origin's main.
+func changeRecordOnOrigin(t *testing.T, bare, id, folder string) {
+	t.Helper()
+	pushFromOtherCopy(t, bare, "change "+id, func(dir string) {
+		matches, _ := filepath.Glob(filepath.Join(dir, ".abcd", "work", "issues", folder, id+"-*.md"))
+		if len(matches) != 1 {
+			t.Fatalf("origin holds no %s record of %s", folder, id)
+		}
+		f, err := os.OpenFile(matches[0], os.O_APPEND|os.O_WRONLY, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		if _, err := f.WriteString("\nWhat this asks has changed.\n"); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
+// TestARecordChangedWhileLetGoDropsTheLane: a person changed what the issue asks during
+// the wait, so the fix under way is to what it asked before and is no longer wanted.
+// The lane goes back saying so, with nothing reserved.
+func TestARecordChangedWhileLetGoDropsTheLane(t *testing.T) {
 	w := newTerminalWorld(t, "shape", "limited")
 	w.realWorktree()
 	w.leavesWork(t)
 	o := w.bounded(t, 30*24*time.Hour)
 	o.Drain.Max = 2
 	w.resetIn(t, 5*time.Hour)
-	q := otherCopy(t, w.bare, quinnEmail)
 	first := true
+	tip := ""
 	w.onSleep = func(time.Duration) {
 		if !first {
 			return
 		}
 		first = false
-		took := w.firstLaneRun(t).Key
-		if got := reservationOf(t, w.repo.Root(), took, w.clock.t); got.State != claim.StateReleased {
-			t.Errorf("the peer can see the issue free: %+v", got)
-		}
-		qo := as(t, q, claim.Options{Now: w.clock.now})
-		if _, err := claim.Reserve(q, claim.Request{Record: took, Footprint: []string{"elsewhere.md"}, Lease: 24 * time.Hour}, qo); err != nil {
-			t.Error(err)
-		}
+		key := w.firstLaneRun(t).Key
+		tip = gitIn(t, w.bare, "rev-parse", claim.RefPrefix+key)
+		changeRecordOnOrigin(t, w.bare, key, "open")
 	}
 	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantDropped(t, w, res, "")
+	wantDropped(t, w, res, "changed while the issue was let go")
 	run := w.firstLaneRun(t)
-	if _, err := claim.Fetch(w.repo.Root(), claim.Options{Now: w.clock.now}); err != nil {
+	if !strings.Contains(run.Lanes[0].HandBack.Home, "whoever changed its record") {
+		t.Fatalf("the hand-back says who the issue is with: %q", run.Lanes[0].HandBack.Home)
+	}
+	if got := gitIn(t, w.bare, "rev-parse", claim.RefPrefix+run.Key); got != tip {
+		t.Fatalf("nothing is reserved over a record that moved on: %s, was %s", got, tip)
+	}
+}
+
+// TestARecordChangedBetweenDrivesDropsTheLane: a drive's end lets its lanes go as a limit
+// does, so the next drive compares the record in the same way before it goes on.
+func TestARecordChangedBetweenDrivesDropsTheLane(t *testing.T) {
+	w := newTerminalWorld(t, "shape", "limited")
+	w.realWorktree()
+	o := w.bounded(t, 20*time.Minute)
+	w.resetIn(t, 30*time.Minute)
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil || res.Ended != TerminalUntil {
+		t.Fatalf("the bound ends the drive: %+v %v\n%s", res, err, w.said())
+	}
+	run := w.firstLaneRun(t)
+	if !letGoByDrive(run) {
+		t.Fatalf("the drive's end let the issue go:\n%s", w.said())
+	}
+	changeRecordOnOrigin(t, w.bare, run.Key, "open")
+	again := w.bounded(t, 24*time.Hour)
+	if _, err := RunTerminal(context.Background(), w.repo.Root(), again); err != nil {
 		t.Fatal(err)
 	}
-	if r := reservationOf(t, w.repo.Root(), run.Key, w.clock.t); r.State != claim.StateLive || r.Copy == claim.CopyThis || r.HandedBack != "" {
-		t.Fatalf("the peer keeps what it took: %+v", r)
+	run = w.firstLaneRun(t)
+	if hb := run.Lanes[0].HandBack; hb == nil || !strings.Contains(hb.Reason, "changed while the issue was let go") {
+		t.Fatalf("the lane goes back saying the record changed: %+v\n%s", hb, w.said())
+	}
+}
+
+// TestARecordChangedBeforeATakeOverDropsTheLane: a signal halted the run during the wait,
+// so the next drive takes it over rather than up, and compares the record all the same.
+func TestARecordChangedBeforeATakeOverDropsTheLane(t *testing.T) {
+	w := newTerminalWorld(t, "shape", "limited")
+	w.realWorktree()
+	o := w.bounded(t, 30*24*time.Hour)
+	w.resetIn(t, 5*time.Hour)
+	first := true
+	w.onSleep = func(time.Duration) {
+		if first {
+			first = false
+			close(w.stop)
+		}
+	}
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil || res.Ended != TerminalStopped {
+		t.Fatalf("the signal ends the drive: %+v %v\n%s", res, err, w.said())
+	}
+	run := w.firstLaneRun(t)
+	changeRecordOnOrigin(t, w.bare, run.Key, "open")
+	w.onSleep = nil
+	again := w.bounded(t, 24*time.Hour)
+	again.Stop = make(chan struct{})
+	if _, err := RunTerminal(context.Background(), w.repo.Root(), again); err != nil {
+		t.Fatal(err)
+	}
+	run = w.firstLaneRun(t)
+	if hb := run.Lanes[0].HandBack; hb == nil || !strings.Contains(hb.Reason, "changed while the issue was let go") {
+		t.Fatalf("the lane goes back saying the record changed: %+v\n%s", hb, w.said())
+	}
+}
+
+// TestADriveTakingOverBacksOffAHandBack: a run this drive's own signal halted is taken over
+// by the next drive, and that take-over reserves as a drain's act too.
+func TestADriveTakingOverBacksOffAHandBack(t *testing.T) {
+	root, bare, runID, c := laneForPeerCheck(t)
+	run, err := ReadState(root, runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	markHalted(t, root, runID, false)
+	if _, err := claim.Reserve(root, claim.Request{Record: run.Key, Release: true}, claim.Options{Now: c.now}); err != nil {
+		t.Fatal(err)
+	}
+	q := otherCopy(t, bare, quinnEmail)
+	qo := as(t, q, claim.Options{Now: c.now})
+	if _, err := claim.Reserve(q, claim.Request{Record: run.Key, Footprint: []string{"elsewhere.md"}}, qo); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := claim.Reserve(q, claim.Request{Record: run.Key, Release: true, HandBack: claim.HandBackSecondPackage}, qo); err != nil {
+		t.Fatal(err)
+	}
+	tip := gitIn(t, bare, "rev-parse", claim.RefPrefix+run.Key)
+	tm := newTerminal(root, TerminalOptions{Options: Options{Now: c.now}})
+	done, ended := tm.takeUp(context.Background(), runID)
+	if !done || ended != "" {
+		t.Fatalf("the lane is dropped and the drive goes on: %v %q", done, ended)
+	}
+	if got := gitIn(t, bare, "rev-parse", claim.RefPrefix+run.Key); got != tip {
+		t.Fatalf("nothing is pushed over the hand-back: %s, was %s", got, tip)
+	}
+	if run, err = ReadState(root, runID); err != nil {
+		t.Fatal(err)
+	}
+	if hb := run.Lanes[0].HandBack; hb == nil || !strings.Contains(hb.Home, "a hand-back stands") {
+		t.Fatalf("the lane goes back saying so: %+v", hb)
+	}
+}
+
+// TestADroppedLaneSaysWhoTheIssueIsWith: each cause of backing off names what is true of
+// it, and only a peer who holds the issue is called one.
+func TestADroppedLaneSaysWhoTheIssueIsWith(t *testing.T) {
+	for _, tc := range []struct {
+		name, whose string
+		arrange     func(t *testing.T, root, bare, key string, c *clock)
+	}{
+		{"a peer", "the peer who holds it", func(t *testing.T, root, bare, key string, c *clock) {
+			q := otherCopy(t, bare, quinnEmail)
+			if _, err := claim.Reserve(q, claim.Request{Record: key, Footprint: []string{"elsewhere.md"}}, as(t, q, claim.Options{Now: c.now})); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"this person's other copy", "your other copy", func(t *testing.T, root, bare, key string, c *clock) {
+			p := otherCopy(t, bare, gitIn(t, root, "config", "user.email"))
+			if _, err := claim.Reserve(p, claim.Request{Record: key, Footprint: []string{"elsewhere.md"}}, as(t, p, claim.Options{Now: c.now})); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"a hand-back", "a hand-back stands", func(t *testing.T, root, bare, key string, c *clock) {
+			q := otherCopy(t, bare, quinnEmail)
+			qo := as(t, q, claim.Options{Now: c.now})
+			if _, err := claim.Reserve(q, claim.Request{Record: key, Footprint: []string{"elsewhere.md"}}, qo); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := claim.Reserve(q, claim.Request{Record: key, Release: true, HandBack: claim.HandBackSecondPackage}, qo); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"an unreadable tip", "cannot be read", func(t *testing.T, root, bare, key string, c *clock) {
+			dir := filepath.Join(t.TempDir(), "ahead")
+			gitIn(t, "", "clone", "-q", bare, dir)
+			tree := gitIn(t, dir, "hash-object", "-w", "-t", "tree", "/dev/null")
+			sha := gitIn(t, dir, "-c", "user.name=Quinn", "-c", "user.email=quinn@example.invalid", "-c", "commit.gpgsign=false",
+				"commit-tree", tree, "-m", "abcd reservation: "+key, "-m", "not a reservation")
+			gitIn(t, dir, "push", "-q", "-f", "origin", sha+":"+claim.RefPrefix+key)
+		}},
+		{"a finished issue", "finished on the default branch", func(t *testing.T, root, bare, key string, c *clock) {
+			resolveOnOrigin(t, bare, key)
+		}},
+		{"another record's footprint", "the reservation the refusal names", func(t *testing.T, root, bare, key string, c *clock) {}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root, bare, runID, c := laneForPeerCheck(t)
+			run, err := ReadState(root, runID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := claim.Reserve(root, claim.Request{Record: run.Key, Release: true}, claim.Options{Now: c.now}); err != nil {
+				t.Fatal(err)
+			}
+			tc.arrange(t, root, bare, run.Key, c)
+			if _, err := claim.Fetch(root, claim.Options{Now: c.now}); err != nil {
+				t.Fatal(err)
+			}
+			tm := newTerminal(root, TerminalOptions{Options: Options{Now: c.now}})
+			tm.dropLane(run, &Refusal{Reason: "the refusal's own words"})
+			if run, err = ReadState(root, runID); err != nil {
+				t.Fatal(err)
+			}
+			hb := run.Lanes[0].HandBack
+			if hb == nil || !strings.Contains(hb.Home, tc.whose) {
+				t.Fatalf("the hand-back says %q: %+v", tc.whose, hb)
+			}
+			if tc.whose != "the peer who holds it" && strings.Contains(hb.Home, "peer") {
+				t.Fatalf("no peer is named where none holds it: %q", hb.Home)
+			}
+		})
 	}
 }
 
@@ -481,6 +776,131 @@ func TestARoleNotStartedIsToldAgainOnRecovery(t *testing.T) {
 	a := run.Lanes[0].Awaits[0]
 	if a.Kept != "" || !a.Since.Equal(c.t) {
 		t.Fatalf("the role is told again: %+v", a)
+	}
+}
+
+// TestAReleaseThatFailedIsToldAgainOnceHeld: a release that did not reach origin leaves
+// the tip standing, and a renewal then reads the lane as held rather than let go. What
+// the release marked is told again all the same, so the lane does not stall on a mark
+// and go back as stuck.
+func TestAReleaseThatFailedIsToldAgainOnceHeld(t *testing.T) {
+	root, _, runID, c := laneForPeerCheck(t)
+	laneAwaiting(t, root, runID, nil, c.t)
+	was := claimReserve
+	t.Cleanup(func() { claimReserve = was })
+	failures := 0
+	claimReserve = func(repo string, req claim.Request, o claim.Options) (claim.Result, error) {
+		if req.Release {
+			failures++
+			return claim.Result{}, errors.New("no route to origin")
+		}
+		return was(repo, req, o)
+	}
+	var said []string
+	tm := newTerminal(root, TerminalOptions{Options: Options{Now: c.now}, Say: func(line string) { said = append(said, line) }})
+	tm.letGoForLimit(runID)
+	if failures != 1 {
+		t.Fatalf("the release was asked once and failed: %d", failures)
+	}
+	if text := strings.Join(said, "\n"); !strings.Contains(text, "did not reach origin") {
+		t.Fatalf("the failure is said as one: %s", text)
+	}
+	run, err := ReadState(root, runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !letGoByDrive(run) || run.Lanes[0].Awaits[0].Kept == "" {
+		t.Fatalf("the run is let go with the role marked: %+v", run.Lanes[0].Awaits)
+	}
+	if r := reservationOf(t, root, run.Key, c.t); r.State != claim.StateLive {
+		t.Fatalf("the tip stands: %+v", r)
+	}
+	c.t = c.t.Add(90 * time.Minute)
+	if renewed := RenewRunsIn(root, runID, c.t); len(renewed) == 0 {
+		t.Fatal("the standing tip is renewed by a session waiting in this checkout")
+	}
+	if run, err = ReadState(root, runID); err != nil {
+		t.Fatal(err)
+	}
+	if letGoByDrive(run) {
+		t.Fatalf("the renewal reads the lane as held: %+v", run.Record)
+	}
+	if done, ended := tm.takeUp(context.Background(), runID); done || ended != "" {
+		t.Fatalf("the lane goes on: %v %q", done, ended)
+	}
+	if run, err = ReadState(root, runID); err != nil {
+		t.Fatal(err)
+	}
+	if a := run.Lanes[0].Awaits[0]; a.Kept != "" || !a.Since.Equal(c.t) {
+		t.Fatalf("the role is told again: %+v", a)
+	}
+}
+
+// TestAListingSaysALaneLetGoHoldsNothing: the run keeps its reservation's date for its
+// take-up, and the listing says what is true while it is let go and again once it is held.
+func TestAListingSaysALaneLetGoHoldsNothing(t *testing.T) {
+	root, _, runID, c := laneForPeerCheck(t)
+	reserved := func() bool {
+		t.Helper()
+		l, err := ListRuns(root, runID, Options{Now: c.now})
+		if err != nil || len(l.Runs) != 1 {
+			t.Fatalf("the run is listed: %+v %v", l, err)
+		}
+		return l.Runs[0].Reserved
+	}
+	if !reserved() {
+		t.Fatal("a run holding its reservation says so")
+	}
+	tm := newTerminal(root, TerminalOptions{Options: Options{Now: c.now}})
+	tm.letGoForLimit(runID)
+	if reserved() {
+		t.Fatal("a lane let go lists no reservation")
+	}
+	if done, ended := tm.takeUp(context.Background(), runID); done || ended != "" {
+		t.Fatalf("the lane is taken up: %v %q", done, ended)
+	}
+	if !reserved() {
+		t.Fatal("a lane taken up lists its reservation again")
+	}
+}
+
+// TestAStopAfterTheReleaseNamesWhatTheLimitSaved: the worktree is clean by the time the
+// stop reads it, so the stop has nothing of its own to save, and its page still says where
+// the lane's work is.
+func TestAStopAfterTheReleaseNamesWhatTheLimitSaved(t *testing.T) {
+	w := newTerminalWorld(t, "shape", "limited")
+	w.realWorktree()
+	w.leavesWork(t)
+	o := w.bounded(t, 30*24*time.Hour)
+	w.resetIn(t, 5*time.Hour)
+	home := stopOnFirstWait(t, w, &o)
+	folder := filepath.Join(t.TempDir(), "shared")
+	if err := os.Mkdir(folder, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runstop.WriteSetting(home, folder, ""); err != nil {
+		t.Fatal(err)
+	}
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil || res.Ended != TerminalHalted {
+		t.Fatalf("the stop halts the run: %+v %v\n%s", res, err, w.said())
+	}
+	run := w.firstLaneRun(t)
+	saved := asidesOf(t, w.repo.Root(), run)
+	i := slices.IndexFunc(saved, func(a RestartAside) bool { return slices.Contains(a.Files, partialFile) })
+	if i < 0 {
+		t.Fatalf("the limit saved the work: %+v", saved)
+	}
+	c := controlOf(t, w.repo.Root(), res.Run)
+	if c.Stop == nil || len(c.Stop.Left) != 1 {
+		t.Fatalf("the stop says what it left: %+v", c.Stop)
+	}
+	if l := c.Stop.Left[0]; l.Aside != saved[i].Path || l.Files != len(saved[i].Files) {
+		t.Fatalf("the stop names the aside at %s: %+v", saved[i].Path, l)
+	}
+	page := pageOf(t, folder, w.clock.t)
+	if !strings.Contains(page, saved[i].Path) {
+		t.Fatalf("the page names the aside at %s:\n%s", saved[i].Path, page)
 	}
 }
 

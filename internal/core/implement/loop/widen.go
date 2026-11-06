@@ -113,7 +113,7 @@ func Widen(repoRoot, runID, laneID string, paths []string, o Options) (WidenResu
 			return false, nil
 		}
 		fp := append(slices.Clone(own.Footprint), res.Added...)
-		r, err := widenReservation(repoRoot, st.Key, fp, false, own, now)
+		r, err := widenReservation(repoRoot, st.Key, fp, false, false, own, now)
 		if err != nil {
 			rf, ok := AsRefusal(err)
 			if !ok || !rf.Contention {

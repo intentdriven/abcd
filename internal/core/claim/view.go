@@ -473,3 +473,15 @@ func Finished(root, id string) bool {
 	recs, err := defaultRecords(root, ref)
 	return err == nil && terminal(recs[id], id)
 }
+
+// RecordBlob is the blob of id's record on origin's default branch as last
+// fetched. It is "" where this checkout names no default branch, the branch
+// cannot be read, or it holds the record in no file or in several, and none of
+// those reads as a change (changedSince).
+func RecordBlob(root, id string) string {
+	recs, err := defaultRecords(root, originDefault(root))
+	if err != nil {
+		return ""
+	}
+	return blobOf(recs[id])
+}

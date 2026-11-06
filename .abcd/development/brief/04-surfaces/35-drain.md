@@ -281,18 +281,32 @@ it by, a stop settling it later still has a claim for its take-over to reserve a
 schema changes. A lane with an open pull request, an agent with a running claim in its call,
 a tripped configuration or work a save could not take keeps what it holds, and the wait's
 next turn asks again; a stop's mark leaves it to the stop. The lane goes back through the
-next move to `takeUp`, which reserves through `reserveResumed`, keeping the paths a released
-tip of this copy names beside the found_at (a sweep that has deleted the tombstone leaves the
-found_at, and the receipt's check then asks for the widening again), and tells the marked
-roles again. A branch behind the default branch catches up at the landing's sync, as any
-does. A reservation backing off, the issue finished on the default branch or a peer holding
-it or a path of its footprint, is `dropLane`: the lane is handed back as stuck with no
-reservation left on its run, so no release is pushed and no hand-back is published over
-the issue, and later drains may still take it. Its worktree, branch and asides stay until a
-discard, the hand-back naming each, and the move goes on to the next issue. Nothing about
-the release is a stop: `waitsUntaken` does not read it, and a later drive takes the lane up
-rather than passing it over. A person's stop during the wait halts the run as ever, and
-the take-over then reserves it again, since the run still names a reservation.
+next move to `takeUp`, which reserves through `reserveResumed` with the drain's mark, so a
+hand-back standing on the issue backs it off as it backs off any drain, while a person
+resuming the same run has no mark and goes over one, saying so. The reservation keeps the
+paths a released tip of this copy names beside the found_at (a sweep that has deleted the
+tombstone leaves the found_at, and the receipt's check then asks for the widening again), and
+tells the marked roles again in the same write. A release that never reached origin is said
+as one: the tip stands, the wait renews nothing it let go, and a renewal on waking or from a
+session waiting in the checkout (`RenewRunsIn`) reads the lane as held, so `takeUp` tells the
+marked roles again there too. Such a lane kept its hold, as a short limit does, so what follows
+is not compared. Everything a drive releases, for a limit or as it ends, notes the record's
+blob on the default branch as `drive_released_over`, and `takeUp` compares it before it
+reserves or takes over a run the drive's own signal halted: only a blob read and differing
+counts, as a hand-back reads a change, and the lane then goes back saying a fix to what the
+issue asked before is no longer wanted. A person's own take-over is that person's to judge. A branch behind
+the default branch catches up at the landing's sync, as any does. A reservation backing off is
+`dropLane`, which reads the view once more to say who the issue is with: finished, a standing
+hand-back, a tip no one can read, this person's other copy, a peer, or the holder of the
+overlap the refusal names. The lane is handed back as stuck with no reservation left on its
+run, so no release is pushed and no hand-back is published over the issue, and later drains
+may still take it. Its worktree, branch and asides stay until a discard, the hand-back naming
+each, and the move goes on to the next issue. Nothing about the release is a stop:
+`waitsUntaken` does not read it, and a later drive takes the lane up rather than passing it
+over. The listing's `reserved` is false for a lane let go, since the run's `reserved_at`
+outlives the release. A person's stop during the wait halts the run as ever, its page naming
+what the limit saved aside, and the take-over then reserves it again, since the run still names
+a reservation.
 
 An agent that goes silent cannot be told from a hung one on what is known today. It
 is treated as a hang: its role's deadline kills its process group, its worktree is left

@@ -192,7 +192,7 @@ func listDrain(checkout string, d DrainState) ListedDrain {
 
 // listRun is one run's whole account.
 func listRun(checkout string, o Options, root *os.Root, st State, tab *sessionname.Table, stopHolds bool, now time.Time) ListedRun {
-	out := ListedRun{Checkout: termsafe.Sanitize(fsutil.RedactHome(checkout)), RunID: termsafe.Sanitize(st.RunID), Key: termsafe.Sanitize(st.Key), Reserved: st.ReservedAt != nil, Lanes: []ListedLane{}}
+	out := ListedRun{Checkout: termsafe.Sanitize(fsutil.RedactHome(checkout)), RunID: termsafe.Sanitize(st.RunID), Key: termsafe.Sanitize(st.Key), Reserved: st.ReservedAt != nil && !letGoByDrive(st), Lanes: []ListedLane{}}
 	c, err := readControl(root, st.RunID)
 	if err != nil {
 		c = control{}

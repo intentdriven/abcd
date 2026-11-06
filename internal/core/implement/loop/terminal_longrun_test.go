@@ -502,9 +502,6 @@ func TestAMachineAsleepCutsTheWaitAndRevivesTheClaim(t *testing.T) {
 	if res.Ended != DrainStoppedCap {
 		t.Fatalf("the lane lands: %+v\n%s", res, w.said())
 	}
-	if got := slept(w.sleeps); got > 25*time.Hour {
-		t.Fatalf("the time asleep counts: the run slept %v more", got)
-	}
 	if w.clock.t.Before(reset) {
 		t.Fatalf("the wait ended before the reset: %v", w.clock.t)
 	}
@@ -518,6 +515,39 @@ func TestAMachineAsleepCutsTheWaitAndRevivesTheClaim(t *testing.T) {
 	})
 	if !revived {
 		t.Fatalf("the lapsed claim is held again on waking:\n%s", w.said())
+	}
+}
+
+// TestAMachineAsleepCutsALongWaitToo: a wait that let its issue go counts the time asleep
+// against the reset as any wait does: two days of a three-day reset slept through leave a
+// day to sleep, never three, and the lane lands.
+func TestAMachineAsleepCutsALongWaitToo(t *testing.T) {
+	w := newTerminalWorld(t, "shape", "limited")
+	w.realWorktree()
+	reset := w.resetIn(t, 72*time.Hour)
+	o := w.bounded(t, 30*24*time.Hour)
+	once := false
+	w.onSleep = func(time.Duration) {
+		if !once {
+			once = true
+			w.clock.t = w.clock.t.Add(48 * time.Hour)
+			if !letGoByDrive(w.firstLaneRun(t)) {
+				t.Errorf("the wait let its issue go:\n%s", w.said())
+			}
+		}
+		if got := slept(w.sleeps); got > 25*time.Hour {
+			t.Fatalf("the time asleep counts: the run slept %v more", got)
+		}
+	}
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Ended != DrainStoppedCap {
+		t.Fatalf("the lane lands: %+v\n%s", res, w.said())
+	}
+	if w.clock.t.Before(reset) {
+		t.Fatalf("the wait ended before the reset: %v", w.clock.t)
 	}
 }
 
