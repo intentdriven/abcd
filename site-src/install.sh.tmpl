@@ -226,7 +226,11 @@ verify_provenance() {
 # verify_release holds the downloaded binary $1 to the release it came from: its
 # own --version must name the tag the latest release names, with or without gh.
 # It runs the binary, so it comes after every check of the bytes, and a binary
-# those refused has not run.
+# those refused has not run. The run takes this temporary directory as its home:
+# while an old ~/.abcd stands, abcd stops every command before it starts and
+# prints nothing on stdout, which says nothing of the release, and the binary is
+# not installed yet, so it has no business in the person's home. The install's
+# closing report runs in the real home and shows that stop.
 #
 # Two cases cannot compare, and say so rather than stop the install: GitHub did
 # not answer with the tag (a gh that can verify has already refused on that), and
@@ -243,7 +247,7 @@ verify_release() {
 	chmod 0700 "$1" ||
 		die "cannot make $1 runnable in the temporary directory, so it cannot be compared with $release_tag. Nothing is installed."
 	rc=0
-	said=$("./$1" --version 2>/dev/null) || rc=$?
+	said=$(HOME=$PWD "./$1" --version 2>/dev/null) || rc=$?
 	if [ "$rc" -eq 126 ]; then
 		printf 'abcd install: WARNING: %s was not compared with the latest release, %s, because the temporary directory cannot run programs. After the install, abcd --version should name that tag.\n' "$1" "$release_tag" >&2
 		return 0

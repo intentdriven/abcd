@@ -557,6 +557,91 @@ func TestInstallerRefusesABinaryThatFailsToReport(t *testing.T) {
 	assertInstalledNothing(t, r)
 }
 
+// homeStoppedBinary is a stub of the released binary as abcd behaves while its old
+// home stands: --version says the stop on stderr, prints nothing on stdout and
+// exits 1, for any command, before the command runs.
+func homeStoppedBinary(tag string) []byte {
+	return []byte("#!/bin/sh\nif [ -e \"$HOME/.abcd\" ]; then echo 'abcd: the old folder still stands' >&2; exit 1; fi\n" +
+		"echo 'abcd " + tag + "'\n")
+}
+
+// oldHomeShapes are the two homes abcd stops in: the old folder alone, and the
+// old folder beside the current one.
+var oldHomeShapes = map[string]func(t *testing.T, home string){
+	"the old folder": func(t *testing.T, home string) {
+		t.Helper()
+		if err := os.Mkdir(filepath.Join(home, ".abcd"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	},
+	"both folders": func(t *testing.T, home string) {
+		t.Helper()
+		for _, d := range []string{filepath.Join(home, ".abcd"), abcdhome.Path(home)} {
+			if err := os.Mkdir(d, 0o700); err != nil {
+				t.Fatal(err)
+			}
+		}
+	},
+}
+
+// TestInstallerComparesTheReleaseWhateverTheHomeHolds: abcd's stop for an old home
+// comes before --version, and says nothing about which release the binary is. The
+// comparison reads the binary under a home holding neither folder, so the latest
+// release still installs, and the install's closing report shows the stop.
+func TestInstallerComparesTheReleaseWhateverTheHomeHolds(t *testing.T) {
+	for name, shape := range oldHomeShapes {
+		t.Run(name, func(t *testing.T) {
+			r := runInstallOf(t, []string{"sh", renderedInstaller(t)}, ghVerifies, homeStoppedBinary(installedTag), func(home string) { shape(t, home) })
+			if !r.installed(t) {
+				t.Fatalf("the latest release must install whatever the home holds:\n%s", r.out)
+			}
+			if strings.Contains(r.out, "Nothing is installed") {
+				t.Errorf("the comparison read the stop as a verdict on the release:\n%s", r.out)
+			}
+			if !strings.Contains(r.out, "the old folder still stands") {
+				t.Errorf("the install's closing report must show the stop:\n%s", r.out)
+			}
+		})
+	}
+}
+
+// TestInstallerRefusesAnotherReleaseWhateverTheHomeHolds: reading the binary under
+// another home keeps the comparison in force where abcd's stop stands.
+func TestInstallerRefusesAnotherReleaseWhateverTheHomeHolds(t *testing.T) {
+	for name, shape := range oldHomeShapes {
+		t.Run(name, func(t *testing.T) {
+			r := runInstallOf(t, []string{"sh", renderedInstaller(t)}, ghVerifies, homeStoppedBinary("v0.13.4"), func(home string) { shape(t, home) })
+			if r.err == nil {
+				t.Fatalf("a binary reporting another release must refuse:\n%s", r.out)
+			}
+			if _, err := os.Lstat(filepath.Join(r.binDir, "abcd")); !os.IsNotExist(err) {
+				t.Errorf("a refused install must install nothing: %v", err)
+			}
+			if !strings.Contains(r.out, "v0.13.4") {
+				t.Errorf("the refusal must name what the binary reported:\n%s", r.out)
+			}
+		})
+	}
+}
+
+// TestInstallerLeavesTheHomeUntouchedByTheComparison: the binary being compared
+// is not installed yet, so its run sees the temporary directory as its home.
+func TestInstallerLeavesTheHomeUntouchedByTheComparison(t *testing.T) {
+	seen := filepath.Join(t.TempDir(), "homes")
+	binary := []byte("#!/bin/sh\ncase \"$0\" in ./*) printf '%s\\n' \"$HOME\" > '" + seen + "' ;; esac\necho 'abcd " + installedTag + "'\n")
+	r := runInstallerOf(t, ghVerifies, binary)
+	if r.err != nil {
+		t.Fatalf("install failed: %v\n%s", r.err, r.out)
+	}
+	raw, err := os.ReadFile(seen)
+	if err != nil {
+		t.Fatalf("the comparison did not run the binary: %v\n%s", err, r.out)
+	}
+	if got := strings.TrimSpace(string(raw)); got == r.home || !filepath.IsAbs(got) {
+		t.Errorf("the comparison ran under home %q, want an absolute path other than the person's %q", got, r.home)
+	}
+}
+
 // TestInstallerRunsNoBinaryItsProvenanceRefused: the version comes from running
 // the fetched binary, so that waits until its provenance has passed.
 func TestInstallerRunsNoBinaryItsProvenanceRefused(t *testing.T) {
