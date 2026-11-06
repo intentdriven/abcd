@@ -30,6 +30,9 @@ Three incidents on 2026-08-30 alone:
 - the orchestrator hit it directly while staging a probe, and recovered only
   because the failure was in the foreground.
 
+Two more agents met these prompts on 2026-11-06, during a release cut, in host
+sessions whose shell reads the person's own profile.
+
 What makes it worth a record rather than a note is the SHAPE. It is silent, it
 strikes at the end of a task rather than the start, and the mitigation is one
 character: use `cat src > dst`, or `command cp`, or an explicit `/bin/cp`. Every

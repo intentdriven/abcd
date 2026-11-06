@@ -9,7 +9,7 @@ found_during: "v0.16.2 cut"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/implement/loop/terminal.go"
-remedy: "Name such a lane in the later drive's first lines."
+remedy: "Have the killed drive's end say what moves such a lane on, and name the lane in a later drive's first lines."
 ---
 
-A lane parked at its pull request when a drive is killed, with no stop's mark on its run, gets no resume command and no line at the drive's end (`terminal.go:1813`), while a later drive still reads it through finishMerged. A person reading how the run ended cannot tell the lane exists or that another drive will touch it.
+A lane parked at its pull request when a drive is killed, with no stop's mark on its run, gets no resume command: the drive's end names the lane and its run as left on its branch (`internal/surface/cli/drain_drive.go:599`) and stops there, because a later drive takes up no parked lane (`terminal.go:1806`). A later drive still reads that lane through finishMerged on its first move. It says so when the lane has finished, and otherwise only in the line of a wait, if the drive waits. A person reading how the run ended is not told what moves the lane on, or that another drive will touch it.
