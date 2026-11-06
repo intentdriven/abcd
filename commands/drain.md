@@ -606,7 +606,12 @@ what it did in `next`:
   only while such a lane is parked. A lane the landing will not finish (its branch moved past what
   landed, a worktree with changes, its branch checked out in another
   checkout, which the drain names, or a pushed head git cannot read) is named
-  in `next` and the move goes on.
+  in `next` and the move goes on. A run a stop's mark stands on is not finished, synced
+  or queued, and its pull request is not read: it is named in `next` and in `parked` as
+  `stop-holds`, with what takes it up, whatever the forge says of it. Only its reservation's
+  renewal stands, while work a save could not take keeps the claim. A halted run waits for
+  `abcd implement resume --take <run-id>`; one that has not settled goes on as any other
+  if the stop has lifted.
 - **It reads parked lanes from their pull requests.** A move that finds a
   lane parked at land lists your latest 100 pull requests once
   (`gh pr list --state all --author @me`), and reads each parked lane whose
@@ -798,7 +803,7 @@ the landing's last step for (`issue`, `run_id`, `pr`, `done`, and a `note`:
 the landing's line, or why it did not finish the lane when `done` is `false`);
 `parked` reads every other lane parked at land from its pull request
 (`issue`, `run_id`, `pr`, `state`: `waiting`, `conflicting`, `syncing`,
-`dropped`, `closed`, `merged` or `unread`, and a `note`);
+`dropped`, `closed`, `merged`, `unread` or `stop-holds`, and a `note`);
 `waiting_until` and `waiting` (`cap` or `held`) say when a waiting drain looks
 again and on what; `next_eligible_at`, `stopped` (`cap`, `empty`,
 `outage` or `origin`) and `complete` say whether it paused or ended; `counts` totals the

@@ -904,7 +904,8 @@ is released, so a peer may take the work, and the day's page is written to this 
 directory in the shared folder, naming the stop and every run of this account's it halted in this repository's worktrees and each checkout a driver worked in. A
 page that cannot be written changes nothing about the stop: its answer and the listing say so. A
 pull request armed before the stop can still merge under it: the page and the listing's text name each
-with its disarm command, and nothing disarms it on its own. A save that fails holds the lane and the claims. A stop file any
+with its disarm command, and nothing disarms it on its own. A drain's move does nothing for a parked run
+with the stop's mark, a merged lane's last step included, until the take-over or the lift that lets it go on. A save that fails holds the lane and the claims. A stop file any
 other account wrote, a symlink or an oversized file is no stop, and each step's answer names it.
 A run fixes the shared folder at its start and reads it before each move, with the
 platform's shared folder for the account it expects. A setting that cannot be read, that has gone or changed during the run, or a folder the run

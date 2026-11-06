@@ -1611,6 +1611,8 @@ it closed; a conflicting one is not renewed and is named; an open one is
 renewed and named as waiting, or, once the merge-queue watch finds it will not merge
 on its own (it left the queue disarmed, or its head moved), as dropped, naming why
 (parked in --json); the watch queues one it finds armed and CLEAN outside the queue.
+A run a stop's mark stands on is named as stop-holds and nothing else is done for it,
+its renewal apart, whatever the forge says of its pull request.
 Before its records and push a
 lane's sync fetches origin's default branch and merges it whenever it has moved, a
 fresh round judging the merge: a conflict confined to files origin declares

@@ -327,6 +327,37 @@ func waitsForItsTakeOver(repoRoot, runID string) string {
 	return fmt.Sprintf("a signal to a drive halted run %s, which waits for `abcd implement resume --take %s`", termsafe.Sanitize(runID), termsafe.Sanitize(runID))
 }
 
+// stopMarkNote says why a stop's mark leaves nothing to be done for a run, "" for a run with
+// none: what a halted run waits for, or what takes up one that has not settled. A record
+// that cannot be read is said, and nothing is done on it.
+func stopMarkNote(repoRoot, runID string) string {
+	if note := waitsForItsTakeOver(repoRoot, runID); note != "" {
+		return note
+	}
+	c, err := runControl(repoRoot, runID)
+	if err != nil || c.Stop == nil {
+		return ""
+	}
+	id := termsafe.Sanitize(runID)
+	return fmt.Sprintf("a stop set by %s marked run %s, which has not settled, so nothing is done for it: `abcd implement step --run %s` takes that up once the stop lifts",
+		termsafe.Sanitize(c.Stop.SetBy), id, id)
+}
+
+// parkedStopNote is stopMarkNote for a drain's move over a parked run. A mark that has not
+// settled first takes the check every move makes, so one from a stop lifted since goes, and
+// the run is then as any other.
+func parkedStopNote(repoRoot, runID string, o Options) (string, error) {
+	c, err := runControl(repoRoot, runID)
+	if err == nil && c.Stop != nil && c.Stop.HaltedAt == nil {
+		if _, err := stopCheck(repoRoot, runID, DefaultStages(), o); err != nil {
+			if _, refused := AsRefusal(err); !refused {
+				return "", err
+			}
+		}
+	}
+	return stopMarkNote(repoRoot, runID), nil
+}
+
 // waitsUntaken says what a run no later drive takes up waits for: one a person's stop halted,
 // or a parked one either kind of stop did. It is "" for any other.
 func waitsUntaken(repoRoot string, run State) string {

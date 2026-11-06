@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/core/runstop"
@@ -213,8 +214,9 @@ func TestAHaltedParkedRunIsNotQueuedBeforeItsTakeOver(t *testing.T) {
 	}
 }
 
-// TestAHaltedRunsMergedLaneStillFinishes: the forge merged it, and only the finish is left.
-func TestAHaltedRunsMergedLaneStillFinishes(t *testing.T) {
+// TestAHaltedRunsMergedLaneWaitsForItsTakeOver: the forge merged it, and the finish is the
+// run's own move, which the take-over gives it back.
+func TestAHaltedRunsMergedLaneWaitsForItsTakeOver(t *testing.T) {
 	f := drainLandFixture(t)
 	first := f.firstMove(t)
 	f.runID, f.issue = first.Start.RunID, secondIssue
@@ -225,8 +227,157 @@ func TestAHaltedRunsMergedLaneStillFinishes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if i := slices.IndexFunc(res.Finished, func(d DrainFinished) bool { return d.RunID == f.runID }); i >= 0 {
+		t.Fatalf("the move took a halted run's last step: %+v", res.Finished)
+	}
+	if ld := currentLane(t, f.repo, f.runID); ld.Stage != StageLand {
+		t.Fatalf("the lane left its landing: %+v", ld)
+	}
+	if p := parkedOf(t, res, f.runID); p.State != ParkedStopHolds || !strings.Contains(p.Note, "implement resume --take "+f.runID) {
+		t.Fatalf("the move does not name the take-over: %+v", p)
+	}
+	if !strings.Contains(res.Next, f.runID) {
+		t.Fatalf("next does not name the run: %s", res.Next)
+	}
+}
+
+// markUnsettled leaves the run a person's stop's mark with work a save could not take, so it
+// has not let its claims go.
+func markUnsettled(t *testing.T, repoRoot, runID string) {
+	t.Helper()
+	now := time.Now().UTC()
+	if err := mutate(repoRoot, runID, func(root *os.Root, _ *State) (bool, error) {
+		c, err := readControl(root, runID)
+		if err != nil {
+			return false, err
+		}
+		c.Stop = &RunStop{SetBy: "someone", SetAt: now, NotedAt: now, FromFile: true,
+			Left: []StopLeft{{Lane: "lane-1", Stage: StageLand, Note: "its work could not be saved aside"}}}
+		return false, writeControl(root, runID, c)
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// aReadThatCannotTell is the options of a move whose read of a stop refused what stands
+// there, which is no stop and no lift, so a mark stays.
+func aReadThatCannotTell(t *testing.T) Options {
+	t.Helper()
+	home := t.TempDir()
+	p := abcdhome.Path(home, runstop.HomeStopFile)
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(home, "elsewhere"), p); err != nil {
+		t.Fatal(err)
+	}
+	return Options{stopHome: home}
+}
+
+// TestAMarkedParkedRunIsLeftAloneBeforeItSettles: a run with the mark and no halt yet is not
+// synced, queued or finished by a drain's move, which names it and what takes it up.
+func TestAMarkedParkedRunIsLeftAloneBeforeItSettles(t *testing.T) {
+	named := func(t *testing.T, res DrainResult, runID string) {
+		t.Helper()
+		if i := slices.IndexFunc(res.Finished, func(d DrainFinished) bool { return d.RunID == runID }); i >= 0 {
+			t.Fatalf("the move finished a marked run: %+v", res.Finished)
+		}
+		if p := parkedOf(t, res, runID); p.State != ParkedStopHolds || !strings.Contains(p.Note, runID) || !strings.Contains(p.Note, "implement step --run "+runID) {
+			t.Fatalf("the move does not name what takes it up: %+v", p)
+		}
+	}
+	t.Run("a conflict it would sync", func(t *testing.T) {
+		f, l := armedConflict(t)
+		markUnsettled(t, f.repo.Root(), f.runID)
+		res, err := Drain(f.repo.Root(), aReadThatCannotTell(t), DrainOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(f.ghLog(t), "--disable-auto") {
+			t.Fatalf("the move disarmed a marked run:\n%s", f.ghLog(t))
+		}
+		if ld := currentLane(t, f.repo, f.runID).Landing; !ld.Armed || ld.Pushed != l.Landing.Pushed {
+			t.Fatalf("the move changed the lane: %+v", ld)
+		}
+		named(t, res, f.runID)
+	})
+	t.Run("a pull request it would queue", func(t *testing.T) {
+		f := drainLandFixture(t)
+		first := drainToLane(t, f.repo, Options{}, DrainOptions{})
+		f.runID, f.issue = first.Start.RunID, secondIssue
+		l := f.armIssueLane(t)
+		f.writeGH(t, "pr.json", []any{map[string]any{"number": 7, "headRefName": l.Branch, "state": "OPEN", "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+			"autoMergeRequest": map[string]any{"mergeMethod": "MERGE"}}})
+		f.queueAnswer(t, stubQueue{head: l.Landing.Pushed, enabledAt: "2026-10-15T07:00:00Z", status: "CLEAN"})
+		markUnsettled(t, f.repo.Root(), f.runID)
+		res, err := Drain(f.repo.Root(), aReadThatCannotTell(t), DrainOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(filepath.Join(f.gh, "enqueued")); err == nil {
+			t.Fatalf("the move queued a marked run's pull request:\n%s", f.ghLog(t))
+		}
+		named(t, res, f.runID)
+	})
+	t.Run("a lane that merged", func(t *testing.T) {
+		f := drainLandFixture(t)
+		first := f.firstMove(t)
+		f.runID, f.issue = first.Start.RunID, secondIssue
+		l := f.armIssueLaneOnce(t)
+		markUnsettled(t, f.repo.Root(), f.runID)
+		f.merged(t, l.Landing.Pushed)
+		res, err := Drain(f.repo.Root(), aReadThatCannotTell(t), DrainOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ld := currentLane(t, f.repo, f.runID); ld.Stage != StageLand {
+			t.Fatalf("the lane left its landing: %+v", ld)
+		}
+		named(t, res, f.runID)
+	})
+}
+
+// TestAMarkedParkedRunKeepsItsClaim: work a save could not take keeps the reservation, so no
+// peer enters over it, whatever else the move leaves undone for the run.
+func TestAMarkedParkedRunKeepsItsClaim(t *testing.T) {
+	f, l := parkDrainLane(t)
+	f.listPRs(t, stubPR{Number: 7, HeadRefName: l.Branch, State: "OPEN", Mergeable: "MERGEABLE", MergeStateStatus: "BLOCKED"})
+	ref := claim.RefPrefix + secondIssue
+	fenced := originReservation(t, f.bare, ref)
+	at := fenced.claimed.Add(12*time.Hour + 30*time.Minute)
+	markUnsettled(t, f.repo.Root(), f.runID)
+	o := aReadThatCannotTell(t)
+	o.Now = func() time.Time { return at }
+	res, err := Drain(f.repo.Root(), o, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tip := originReservation(t, f.bare, ref); tip.parent != fenced.commit || tip.released || tip.claimed.Before(at) {
+		t.Fatalf("the claim is not renewed: fenced %+v, now %+v", fenced, tip)
+	}
+	if p := parkedOf(t, res, f.runID); p.State != ParkedStopHolds {
+		t.Fatalf("the lane is not named: %+v", p)
+	}
+}
+
+// TestAParkedRunGoesOnFromAStopLiftedBeforeItSettled: a read that saw clearly and found no
+// stop is the lift, as at every move, and the run is then as any other.
+func TestAParkedRunGoesOnFromAStopLiftedBeforeItSettled(t *testing.T) {
+	f := drainLandFixture(t)
+	first := f.firstMove(t)
+	f.runID, f.issue = first.Start.RunID, secondIssue
+	l := f.armIssueLaneOnce(t)
+	markUnsettled(t, f.repo.Root(), f.runID)
+	f.merged(t, l.Landing.Pushed)
+	res, err := Drain(f.repo.Root(), Options{}, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(res.Finished) != 1 || !res.Finished[0].Done || res.Finished[0].RunID != f.runID {
 		t.Fatalf("the merged lane is not finished: %+v", res.Finished)
+	}
+	if c, err := runControl(f.repo.Root(), f.runID); err != nil || c.Stop != nil {
+		t.Fatalf("the mark stands: %+v, %v", c.Stop, err)
 	}
 }
 
