@@ -71,6 +71,13 @@ The first session opens each window by naming its mode — `single`, `claim`,
 
 The second session cannot set the mode.
 
+A session that joins as `first` is how abcd knows a session coordinates a run, so
+when the setting `/abcd:mode` describes reads as off a profile, each such join prints,
+after the join and in any mode, one line on stderr opening `WARNING:`. Pass the line
+on to the person, as it asks. The join stands and the exit code does not change.
+This reads one setting and proves no wall, and the setting's value changes nothing
+the session holds.
+
 ## Claim a record before opening its lane
 
 ```bash
@@ -272,7 +279,8 @@ a stage the binary performs is the call's answer, and no other lane moves.
 
 `receipt` looks the path up among every outstanding await of the run and
 advances the lane it belongs to; a path no await names is refused, naming the
-awaits there are, and frees nothing.
+awaits there are, and frees nothing. A path a step already collected (below) is
+answered while the file is what the step took, and refused once it has changed.
 
 `widen` is an issue lane implementer's, run from the checkout the run lives in
 before its first edit of a path beyond the lane's reservation; the lane's brief
@@ -285,7 +293,13 @@ refused. Exit 3 means another copy holds a live reservation on one of the paths
 and nothing was pushed: the implementer edits none of them and stops without a
 receipt, and the lane is handed to an implementer again on a later step. An
 implementer's receipt is refused while the lane's branch changes a path the
-reservation does not cover, naming the paths and this command.
+reservation does not cover, naming the paths and this command. A lane past its
+last receipt meets the same check at the fence before its push and its arming:
+a path the reservation does not cover is reserved there, judged for overlap,
+and exit 3 names a hold on it, with nothing pushed or armed. Only the records the
+landing moves are left out, so anything else its records commit holds is judged,
+and so is a reservation made by hand for a run that recorded none. A reservation made
+again names every path widened to, even when the reservation branch was deleted.
 
 When the stage hands the lane to a role that `roles.<role>.runner` in
 `~/.abcd.noindex/config.json` routes to a command-line runner (`claude` or `opencode`,
@@ -354,7 +368,21 @@ no agent out retries one held role once on its runner, the one waiting longest:
 a paused role, or one already with the host, from an earlier fallback or a step
 before its route existed, whose receipt nothing has written (a role whose
 receipt is written is yours to hand back, and is never retried). The result
-names the retry in `retried`, and the run record in a `retry` line. A `--route`
+names the retry in `retried`, and the run record in a `retry` line. The one
+receipt a step reads itself is a routed implementer's, where the run shows its
+runner was started: one that verifies is collected, as the step's move, with no
+second runner and no retry, even if the runner then exited badly (a fix round's
+needs a commit past the round's head); its route names the runner asked for and
+leaves `ran` empty until that runner's report arrives. A receipt carrying a
+hand-back is not read this way: `receipt` takes it, or the runner's own hand-in as
+its agent ends. One that does not verify stays where it stands. While the runner's claim stands, `next` says to wait.
+After a runner that exited badly the role is retried and the file set aside. After
+a runner whose answer was refused the lane is stopped: no runner is started over
+the work, `next` names the ways out (correct the receipt and run `receipt`, which a
+plain `step` also reads, or `step --restart`), and a drain hands the lane back as
+stuck at its bounds. A `--route` for that role is refused.
+What stands at an agent's path when it is handed out, or when a runner is claimed
+for it, is set aside unread under the lane's `aside/`. A `--route`
 for a held role retries it at once on that route, as the step's one move; a
 `--route` with `--restart`, or any route in force for the restarted role,
 starts the fresh agent on its runner at once rather than re-telling it to you.
@@ -370,12 +398,13 @@ the launch charged as one agent run of its runner's budget; the run record's
 `fallback_counts` sums them as `cost_usd` and `charged_runs`. A fallback
 receipt's `spent` is state schema version 19's, and the drain state's version
 3's for its judge. An implementer
-killed after it committed past the lane's base and wrote its report is no
-failed start: the lane stays at its stage, neither paused nor counted as a
+killed after it committed past the lane's base and wrote its report, and before
+it wrote its receipt, is no failed start: the lane stays at its stage, neither paused nor counted as a
 fallback, the result names the implementer's await with its receipt still to
 write from the branch and the report, and the run records a `killed` line with
 the commits and what the launch spent; write the receipt, or the next `step`
-retries the role on its runner.
+retries the role on its runner. One killed with its receipt written too pauses,
+with a fallback receipt as any bad exit has, and the next `step` reads the receipt.
 A role a runner is running is claimed in the run's state (an await's
 `running`, until the run's time bound, and as long again for the load gate,
 has passed), so a second `step`, here or
@@ -578,7 +607,9 @@ Either is refused, changing nothing, for a lane that is not held or while a lane
 still has work. `--discard` also takes an issue run's lane a drain handed back
 as `stuck` or `closed` (`/abcd:drain`): its worktree and branch are removed, its pull
 request closed if it opened one, and the run is over, so no run directory is
-removed by hand. An issue run logs each refused step on its lane, until its pull
+removed by hand. It takes a lane the land fence refuses because its run let its reservation go with no stop's mark standing too; the fence's other remedy is to reserve the record again with `abcd reserve <id> --footprint <path>` and step. It takes any lane of a run a drive stopped on because its state
+changed or could not be read too, finding the pull request by the lane's branch; if your own
+`implement step` caused that stop, remove the file the message names instead. An issue run logs each refused step on its lane, until its pull
 request is armed or left open (`refused` in its state: the stage, the check, the reason and a count), which the drain
 reads; an intent's run refuses as before, writing nothing. The run stays in progress, so `build next` passes over its
 intent; no verb clears it, and the refusal names the way out: once the intent
@@ -669,7 +700,17 @@ over each of the run's lanes' own diff.
    `.abcd/config.json` and `~/.abcd.noindex/config.json`: in `human` it arms
    once an approval of the pushed head counts, in `auto` once a review receipt
    names it, and a contributor's pull request in either mode only once an
-   approval by someone with write access counts. An armed merge goes into the
+   approval by someone with write access counts. In `auto` the loop records that
+   receipt itself, in its own process, only from a pair that read the pushed
+   head. The full round is told each resolution the lane declares and judges it.
+   The records commit then goes to a review round of its own before anything is
+   pushed, scoped to that commit, and the round's returns are the receipt, unless
+   it moves an issue's record the full round was not told of or holds more than
+   plain markdown of mode 100644: then no round runs and the lane parks, naming
+   which. A records round that does not pass takes no fix round: the lane goes on
+   to its pull request and is left open, naming the finding, for a person. A gate
+   that could not read what it asks leaves the lane at this step for 30 minutes,
+   asking again, then leaves it open saying why. An armed merge goes into the
    merge queue by the ruleset mirror's (`.abcd/work/rulesets/`) method, or as
    the forge's auto-merge where no queue gates the default branch. Otherwise
    `implement status` shows the landing as "left open: " and why, and each
@@ -679,7 +720,8 @@ over each of the run's lanes' own diff.
    merge queue never takes a conflicting pull request. An issue lane whose
    conflict lies in declared generated files alone, or in no file when this
    checkout merges, enters its sync again instead, an armed merge withdrawn
-   first, and one whose head already holds the default branch waits at exit 3
+   first, unless the lane failed or parked over its records commit, which is refused
+   for a person, and one whose head already holds the default branch waits at exit 3
    for the forge's stale verdict. Nothing is pushed to the lane while it is armed.
 6. It waits (exit 3) until the pushed head is an ancestor of the default branch
    on `origin`, then removes the lane's worktree and branch, and the lane is
@@ -851,6 +893,77 @@ configured and not installed) carries `scan_gap` in `--json` and a `scan gap:`
 block in the text, as `history capture` names it; relay it as printed. Report
 every refusal as it is.
 
+## Stop the runs of each account that chose this folder, and take a run over
+
+**`abcd implement stop` is the person's, typed from their own account: leave it to
+them.** The guard and the verbs hold against an agent acting by mistake; a stop binds an agent only where an operating-system account separates them. The guard's rule refuses it, its `--lift`, and writes, moves and removals of the stop's
+files; the verb itself refuses a caller with no
+terminal or under a host session, and a lift or a choice of folder where it cannot tell whether one is above it. A stop is not the stop a drive keeps on a run whose state changed: a run can have both, nothing is settled while both stand, and neither's end answers for the other. Tell the person why you
+believe the runs should stop or go on, and leave the command to them. A stop reads
+as a refusal at the stage `stop`, exit 3, from `implement step`, `abcd build` and
+`abcd drain`, and as a refusal at exit 3 from `abcd land`: stop working when you meet it. `implement receipt` is not refused, so
+hand back a receipt you hold; the lane goes no further. `implement step --release` and
+`--discard`, a person's decisions over a held lane, do not make the check. Under a stop an agent in a
+call finishes it and its receipt is collected; with no agent live each lane's
+uncommitted work is saved aside as a restart saves it; then the run's reservation
+is released, so a peer may take the work, and the day's page is written to this account's
+directory in the shared folder, naming the stop and every run of this account's it halted in this repository's worktrees and each checkout a driver worked in. A
+page that cannot be written changes nothing about the stop: its answer and the listing say so. A
+pull request armed before the stop can still merge under it: the page and the listing's text name each
+with its disarm command, and nothing disarms it on its own. A drain's move does nothing for a parked run
+with the stop's mark, a merged lane's last step included, until the take-over or the lift that lets it go on. A save that fails holds the lane and keeps the claims only while something renews them, and under a stop in force only a drive still in an agent's call or a preflight renews a parked run's, which otherwise lapses at its lease with the work it could not take still uncommitted in its worktree and nowhere else. A stop file any
+other account wrote, a symlink or an oversized file is no stop, and each step's answer names it.
+A run fixes the shared folder at its start and reads it before each move, with the
+platform's shared folder for the account it expects. A setting that cannot be read, that has gone or changed during the run, or a folder the run
+should read whose stop cannot be looked at,
+holds the run at the stage `stop`, exit 3, with nothing let go: tell the person, who puts it back.
+A home that cannot be found holds it the same way. A take-over needs a read that saw clearly.
+A renewal that falls due under a stop settles the run first; with no agent left in its call
+and its work saved it no longer renews. Work a save could not take stays uncommitted in its
+worktree and nowhere else, and its claim lapses at its lease unless a gated waiter, `abcd implement status` or a drive still
+in an agent's call or a preflight renews it; only that drive renews a run parked at land. A
+lift names any stop it cannot reach. A stop another account left is not honoured, and each
+step's answer and the listing name it.
+
+The person's two lines, to leave to them: `abcd implement stop` stops the runs of each
+account that chose this folder, and `abcd implement stop --lift` lifts it.
+
+Every other entry to a move makes the one check, so a driver that steps through the loop
+takes the stop without asking for it.
+
+**`implement resume` is how the next session picks a run up.** Bare, it writes
+nothing and uses no network: every unfinished run this account can read, in this repository's worktrees and each checkout a driver worked in, with its driver
+alive or gone, what a stop left, and each lane's stage, each agent alive, lost or
+unknown, each receipt that arrived uncollected, its pull request, how far origin's
+default branch as last fetched has moved past its base, and the files it holds
+uncommitted. A run in a lane's own worktree is not listed. A run a drive started names the
+profile it started on, in the listing and in `--take`'s answer, since what the session starts
+from there runs on the session's own login. That listing and the checklist are all a session
+that lost its context needs.
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement resume [--run <run-id>] --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement resume --take <run-id> --json
+```
+
+`--take` runs from the checkout that holds the run. It claims the driver, collects
+every receipt that has arrived before anything else, reserves again what a stop
+released, saves aside and names the uncommitted work a gone agent left, and re-tells
+its await under `restarted`; a fresh agent takes each, started by the next
+`implement step`, and `collected` names what needs none. An agent that may still be
+in its call is named under `left` and not restarted. Work it could not save is a
+refusal, exit 2: settle it and take again, never step over it. Exit 3 while a stop holds, while
+another driver's process is alive or a recorded driver cannot be judged, or when a peer has
+taken the work a stop released: back off. A run a person's stop halted waits for this take-over,
+also after the stop lifts: a new `abcd drain --drive` names it and passes over it. A run halted
+by the first interrupt to a drive's own terminal is the one a later drive takes up,
+unless its lane is parked on its pull request, which waits for this take-over.
+
+**One driver steps a run.** `implement step` records the session it runs under in
+the run's `control.json` beside its state, and refuses at exit 3 while another
+driver's process is alive; a driver gone is replaced, with an entry in the run
+record.
+
 ## Stop when the repository's git settings change
 
 A program the repository's own git settings name (a content filter, a hook, a
@@ -1021,13 +1134,13 @@ cache key holds the timeout), so a package slowed by the load is not killed
 with no test hung. It reads the machine every 15 seconds, prints one line when
 it starts waiting and one when
 it first finds the machine free, and nothing more until it opens, and gives up
-after `--timeout` (30 minutes by default; `make preflight` gives its first gate
+after `--timeout` (6 hours by default; `make preflight` gives its first gate
 twelve hours and its race gate two), exiting 1 and naming what it still waited
-on (`still`: `load`, `race-run`, `preflight`, `waiter`, `lock`, `memory` or
-`unreadable`). `--json` reports `status`
+on (`still`: `load`, `race-run`, `preflight`, `waiter`, `lock`, `memory`,
+`whole-run` or `unreadable`). `--json` reports `status`
 (`open`, `timeout`, `skipped` on a CI runner, `unchecked` on an unsupported
 platform), `waited_on` and `waited_s`, with the `gate` it waited at
-(`tests` or `race`), `slots` and `slots_source`, and `backoffs` when it stood
+(`tests`, `race` or `narrow`), `slots` and `slots_source`, `narrow_runs` and `narrow_source` at a narrow gate, and `backoffs` when it stood
 back.
 
 Both gates also refuse, exiting 1 without waiting, while the volume holding
@@ -1044,8 +1157,9 @@ frees disk while it sleeps. The refusal names each low volume, its free space
 and the floor, and, when the cache's own volume is low, the cache's path and
 size and two ways to free it: a `find` line deleting the build entries unused
 for two days (offered only for a directory with a Go build cache's shape, and
-keeping the fuzz corpora) and `go clean -cache`. abcd never deletes anything
-itself. A disk it cannot read, on a platform other than macOS and Linux or
+keeping the fuzz corpora) and `go clean -cache`. The gate never deletes anything
+itself; `ahoy worktree prune` trims the cache's unused entries when it removes a
+worktree. A disk it cannot read, on a platform other than macOS and Linux or
 through a read that fails, is never refused, in whole or in part: one line on
 stderr says it was not checked and why (`disk_note` in `--json`). CI runners
 skip the check with the rest of the gate.
@@ -1186,13 +1300,84 @@ whose `load` is not an object is read past, one preflight at a time applies,
 and the waiter prints one line on stderr naming the file, the cause and how to
 fix it: keep it a regular file you own that nobody else can write (`chmod go-w
 ~/.abcd.noindex/config.json`), holding one valid JSON object whose `load` names
-no key but `preflights`. A key under `load` other than `preflights` is named on
+no key but those above. Any other key under `load` is named on
 that line too, and a usable `load.preflights` beside it still counts. The gate
 never read that file before the setting existed, so a file that holds other
 settings never stops a `make preflight` of someone who did not set the count.
 Only a `load.preflights` that is there and unusable (out of range, or not a
 whole number) refuses the wait, as an unusable `ABCD_LOAD_PREFLIGHTS` does;
 the environment is read first, and with it set the file is not read.
+
+A narrow run waits at a gate of its own, so a change's own check never queues
+behind whole preflights. It is `implement load --wait --narrow -- go test
+-count=1 ./internal/foo`. The mark asks for the gate, and it is all any waiter goes
+by: every waiter reads the mark and the command from the waiter's own arguments,
+itself included, so the same command without the mark is a whole run, as it always
+was. An abcd built before the mark reads a marked waiter as a waiter like any other.
+
+The command is `go` by that exact name, with no shell in between: `go test` (or `go
+-C <dir> test`), at most three packages named outright (`./internal/foo`, `.`, or a
+path that still holds a slash once cleaned, never a `...` wildcard or a bare word
+such as `all`), and no flag but `-v`, `-short`, `-failfast`, `-json`, `-run`,
+`-skip`, `-timeout` and `-count=1`. Three is a change's usual reach: its package,
+the caller that exercises it and the surface over that. Everything else is a whole
+run: `make`, `sh -c`, a wildcard, a repeat count, and `-race`, whatever its size, so
+race runs stay where the rule that keeps race stages apart can see them. A mark on
+such a command marks nothing, and one line on stderr says so.
+
+What the command runs under is not in its arguments, so the waiter proves it: `go
+env GOFLAGS`, which answers for the environment, `GOENV`'s file and `go env -w`
+alike, must be empty as the wait starts and again as it opens. If it is not, the
+waiter says why on stderr and replaces itself without the mark, keeping its pid and
+its start, so it carries on as a whole run in its place in the queue and every
+reader agrees. The command then runs with `GOFLAGS=-p=1` and `GOMAXPROCS=2`, or a
+lower `GOMAXPROCS` of your own: one package at a time and two cores for go, its
+compiler and the test binaries. Children a test starts beyond go's reach are not
+bound by it.
+
+A narrow run takes no whole-run slot and no place in the whole-run queue, and it
+reads no race run; a whole run counts it through the load figure alone. It is shut
+by the load limit and the memory floor, as every gate is; by your account's last
+narrow run for 30 seconds (its hold, `~/.abcd.noindex/load-wait-narrow.json`) and
+your account's last whole run or race stage for two minutes, each long enough for
+the load to show the run before; and by its own room. It takes no last look, so
+across accounts two opening in one moment can pass the room by one for those runs.
+
+Its room is `load.narrow_runs` in `~/.abcd.noindex/config.json` under the process's
+home, as `load.preflights` is, a whole number from 1 to 32, read through the same
+guarded read, with no environment variable of its own and never from a repository; a value outside it refuses a narrow run's wait, naming the key.
+With none set it is half the online cores divided by 2, and one at the least, so
+on four cores or more an account admits up to half the machine: 16 cores admit four, eight cores in all,
+and each other account can add one run over that, since every account keeps a place.
+Two is a ceiling on what narrow runs took as measured on a 16-core machine (from
+about 0.2 of a core to under 2). On a machine the load shows busy, within two of the
+online cores, the two classes share one budget: the room is what the whole runs in
+their slots leave of the cores, each at its stage's `-p`, and one at the least, so a
+test is never behind them altogether. Narrow runs running and those queued ahead
+count against it, and another account's never take your last place.
+
+A narrow run cannot starve a whole run. While a whole-run waiter that started
+earlier has been queued five minutes or more and a whole slot is free, a narrow run stands
+aside, and the waiting line says so: admissions stop, the running ones finish,
+the load falls and the whole run opens. One wait spends at most five minutes in all
+standing aside, so a whole run shut by something else, such as its own account's stricter
+wait limit, costs a narrow run minutes and not its wait. It never stands aside for
+a whole run with no slot free, which no narrow run is holding up. Waiters queued
+ahead that alone keep a narrow run shut stop counting after two minutes, since one
+may be shut by its own account's stricter settings, which no other account can see.
+
+Accounts can run different abcd versions. An abcd built before narrow runs queues
+behind a marked waiter that started earlier and counts one running against its
+slots, which is more cautious, never less, and it reads no
+`load-wait-narrow.json`. With `load.narrow_runs` in a `config.json` it names the key
+on stderr as one nothing reads, and goes on. This code counts that abcd's waiters in
+full, since none can carry the mark, and every wait points at an earlier start or a
+command already running, so no two wait on each other.
+
+A wait that gives up exits 1 and ends with a line starting `LOAD GATE TIMED OUT`,
+naming how long it waited and that nothing ran, after anything else the wait has
+to say, so a pipe that loses the exit code still shows it; with `--json`, where
+standard output stays one document, that line is the last on standard error.
 
 Within one account the waiter that opens also writes a hold,
 `~/.abcd.noindex/load-wait.json` at the first gate and

@@ -473,6 +473,16 @@ If you do not have `gh`, the download is checked only against the
 signed build record, and the installer prints a warning saying so, with the
 `gh attestation verify` command that checks the installed binary by hand.
 
+With or without `gh`, the installer runs the downloaded binary's `--version`
+before it installs it, and installs nothing if that names another release than
+the latest. If the temporary directory cannot run programs, it installs without
+that comparison and prints a warning saying so. It does the same when there is
+no `gh` 2.68 or later and GitHub does not say which tag is the latest.
+
+If an earlier abcd left a `~/.abcd` folder and there is no `~/.abcd.noindex`, the
+installer puts the binary in place and records nothing, and the binary stops
+until you rename the folder. Run the installer again after the rename.
+
 To install somewhere else, end the command with `sh -s -- --bin-dir <dir>`
 instead of `sh`.
 
@@ -903,7 +913,10 @@ make preflight   # the pre-push gate: it waits its turn at the load gate
                  # docs-lint, check-attribution, secrets-check, vulncheck,
                  # site-render, smoke and
                  # evals-cold-reading, then
-                 # build, vet, test and race, all on the toolchain go.mod declares
+                 # build, vet, test and race, all on the toolchain go.mod declares;
+                 # the test and race stages replay what Go's test cache holds
+                 # for unchanged inputs, rerun what is declared or found reading
+                 # past it, and report how many; CI's test steps reuse nothing
 go run ./cmd/abcd            # bare status board for the current directory
 go run ./cmd/abcd --version  # print the version
 make build                   # cross-compile bin/abcd-<goos>-<arch>

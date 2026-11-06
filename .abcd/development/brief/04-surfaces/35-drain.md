@@ -188,6 +188,267 @@ exits. It reads the ledger afresh (the classification is re-derived at every mov
 that can read it and written nowhere, decision 8), then does the first of these
 that applies.
 
+The one exception is the drive (itd-2610222215485265,
+[adr-2610222222326104](../../decisions/adrs/2610222222326104-abcd-drives-agents-with-no-host-session.md)):
+typed in a plain terminal, on the person's own yes, it makes these moves itself, on
+one separate login under `~/.abcd.noindex/profiles/`, one subscription and no other.
+Each iteration is one move under the drain's lock for that move alone; a
+lane is driven in-process through `loop.Drive` and `DriveReview`, every role on the
+launch on that login; a landing that waits for its receipt has its preflight run behind the
+load gate; each wait a move names is slept to the earliest time it names, at least
+thirty seconds. Three runner failures in a row, or a judge's failure, enter the
+outage schedule (one minute, five, ten, then hourly), which hands nothing back and
+ends the drive at eight hours. A step that starts no agent and moves no stage waits
+on that same schedule. A rate limit starts no agent, the judge included, until the
+reset the harness reports, or, with none reported, waits on that schedule; a limit
+that outlasts eight hours ends the drive, saying when it resets. A wait on work
+someone else holds, or on a contended lock, ends the drive after eight hours with
+nothing moved, so no wait goes without a deadline, and a long wait renews what the
+lanes still hold. A preflight that exits 0 and leaves no receipt runs once for a head, and
+the lane then goes to the stuck check.
+
+Those eight hours are the default, for a run someone is watching. A date the person
+names on the command line replaces each of them with one bound of their own (adr-2610222222326104's amendment
+of 2026-11-05, dcn-2611050815115904): the yes names it, as a time and not a limit on what
+is spent, the run ends at that time with the lane on its branch and its reservation
+released, an agent in a call finishing that call first, and until then no limit, outage
+or stuck queue ends the run. A reset is waited for however far off, up to the bound; one
+more than 35 days off reads as a misread field and as none. `runner.ProbeLimit` runs only
+under a bound, since a yes with none never mentioned it: one launch on the profile asking
+for no tools, on the model of the launch that met the limit, counting only the word it
+asked for from a launch whose init event names an empty tool list, as version 2.1.318 of
+the harness was seen to, and failing closed on any other. With no reset named it runs at one, five and
+ten minutes and then every thirty, so a probe never disturbs the lane, and the lane's own
+agent starts when one answers, or after three in a row that get no answer, when that
+launch finds out instead. During a named wait it runs every four hours, or half an hour
+in for a reset more than eight days off: a rejection changes nothing, and an answer ends
+the wait, which is read as the reset having been wrong. Failures keep the outage schedule, at most an hour apart; a contended wait
+backs off to fifteen minutes, as does a push or fetch origin refused while reserving;
+origin is never given up on (`DrainOptions.KeepWaiting`); and a shared outage another
+session gave up on holds the run until it is cleared. A limit the live check meets, and a
+launch that came to no verdict on any check (`runner.LimitError`, `runner.NoVerdictError`),
+are waited out the same way, the settings checked before each probe, and the check run
+again (`loop.WaitOutProof`); only a verdict, or no harness to run, is refused then, and
+with no bound the drive refuses either way. Under a bound `Failure.Blame` says what a
+failed launch shows of its work. An answer the contract refused is the work's. A launch
+that spent, read on every exit, may have lost the service afterwards, so spend decides
+nothing by itself. With nothing spent, a launch that was retrying the model service, or a
+result naming 401, 403, 429 or 5xx, says nothing of the work. An init event says nothing,
+since version 2.1.318 was seen to write one before any contact with the model. Any other
+failure is put to a probe, one short launch per failure: an answer shows the account is
+alive, which leaves the work, and a rejection or no answer counts nothing. Three in a row
+that are the work's hand the lane back as stuck, the run going on to other issues, and the
+same test decides whether a failed judge counts against its issue, beside the count of
+judgements that gave no answer. Six launches in a row that spend and fail with no probe
+answered hand the lane back too, or hold the issue back for a judge; a launch started with
+the service unreachable was seen to spend nothing on 2.1.318, so an outage of that kind does
+not get there, while one that spends and then loses the service does count. Six steps of one lane in a row that start no agent and move no stage hand it back,
+worktree and branch in place, unless the shared outage holds an agent it wants or a claim
+on one of its agents has yet to lapse; a step that started an agent ends the count. A forge
+or remote answering 5xx in gh's or git's own form waits as a lost network does
+(`implement.IsNetworkFailure`). One act read that way for two hours, from the first reading
+with origin answering, sends the lane back, keyed on the act and not on what it printed;
+another act, or a step that worked, restarts the clock. A drive under a bound joins the
+shared run under a session of its own for its outages alone (`Options.OutageSession`),
+claiming nothing there: an open record is then probed when due, its own probes never giving
+up on it, and a probe answering stands in for the model service's canary. A record another
+session gave up on is looked at hourly and cleared when the probes of every service down
+answer.
+
+A wait is measured twice: by the time slept and by the wall clock, whichever ends it
+first. The production sleep also looks at the wall clock each minute, since a timer
+stops while the machine sleeps, so a long wait wakes on time and renews at once; a
+clock set back cannot stretch it. A wait renews what the run still holds, lanes parked at their
+open pull requests included, the forge read first and only when one is due. After waits
+that add up to an hour, short ones included, the lane's claim is read again from origin: a
+claim that lapsed is revived on waking, and a peer who took the issue keeps it, the lane
+going back as stuck, as it does when its reservation was released. A check that could not
+be made stays owed. A repeated wait prints on a change of reason and every half hour, and
+an agent's call or a preflight says when it starts and every half hour while it runs.
+
+A limit that lasts lets the lane's issue go for the wait (iss-2611052230565049), so a run of
+days does not hide it from every peer with a driver that is not working on it. The
+threshold is an hour, `terminalReleaseAfter`: a reset named that far off or further lets go
+at once, and any limit does at the first turn of its wait after holding that long. Releasing
+and reserving again cost a commit on origin each, and a hold first costs one at an hour,
+half the bundled lease, which is also where the outage schedule's quick looks turn hourly,
+so short of it holding is the cheaper. With no reset named the release takes a probe to end
+the wait, since otherwise the lane's own launch asks and needs the reservation each time,
+and with no bound that wait has its eight hours. `letGoForLimit` saves the lane through the
+stop's own `saveLaneForStop`, marking a role out with no agent as the stop marks a lost one,
+and records `drive_released` as a drive's end does, keeping `reserved_at`, so renewals pass
+it by, a stop settling it later still has a claim for its take-over to reserve again, and no
+schema changes. A lane with an open pull request, an agent with a running claim in its call,
+a tripped configuration or work a save could not take keeps what it holds, and the wait's
+next turn asks again; a stop's mark leaves it to the stop. The lane goes back through the
+next move to `takeUp`, which reserves through `reserveResumed` with the drain's mark, so a
+hand-back standing on the issue backs it off as it backs off any drain, while a person
+resuming the same run has no mark and goes over one, saying so. The reservation keeps the
+paths a released tip of this copy names and the paths the run record says the lane widened to
+beside the found_at, so a sweep that has deleted the tombstone loses none of them, and
+tells the marked roles again in the same write. A take-over tells them nothing and restarts
+them instead, since a role told again with no agent reads as one that may still be in its
+call. A release that never reached origin is said as one, and notes the tip it left as
+`drive_release_failed`: the tip stands, neither the wait nor a move renews what it let go, and
+the listing says the tip holds, until a later release reaches origin: a stop's, or a drop's
+retry, which records it as `reservation_released`. A session waiting in the checkout (`RenewRunsIn`) may renew it,
+which reads the lane as held, so `takeUp` tells the marked roles again there too, and such a lane
+kept its hold, as a short limit does, so what follows is not compared. Every release a drive or a
+stop makes notes the record's blob on the default branch, after the release's own fetch, as
+`drive_released_over`; a stop over a run a drive already let go keeps the note made then.
+`reserveResumed` fetches and compares first, so every automated return shares the answer, and
+looks at the run lock before it pushes a reservation, so a lock another invocation holds costs
+origin no reservation commit; a moved record whose release failed earlier can still cost one, as
+that release is pushed again before the lane drops. The note proves the record stood, so a readable branch with no file for it counts as a
+change, while a fetch that fails or a branch that cannot be read is no comparison at all. On a
+change a drain's act is refused with nothing pushed, the take-up, the take-over or the start
+dropping the lane and saying so; with no comparison it waits. That drop tries a failed release
+again only over the tip that release left, so a reservation made by hand from this copy during
+the wait stands, and the reason says which happened. A person's act goes ahead and says the record
+changed, is gone or could not be compared, in the form a person's reservation over a hand-back
+uses, since the lane's brief reads it as it stood at the lane's base. A take-over reserves a run
+a drive let go with no stop on it too, since no step would. A new drain itself does not resume a run left let go: it
+passes the issue over while the run stands, and the start's comparison answers the race where
+a concurrent build opened that run after the move read the runs. A branch behind
+the default branch catches up at the landing's sync, as any does. A reservation backing off is
+`dropLane`, which reads the view once more to say who the issue is with: finished, a standing
+hand-back, a tip no one can read, this person's other copy, a peer, or the holder of the
+overlap the refusal names. The lane is handed back as stuck with no reservation left on its
+run, so no release is pushed and no hand-back is published over the issue, and later drains
+may still take it. Its worktree, branch and asides stay until a discard, the hand-back naming
+each, and the move goes on to the next issue. Nothing about the release is a stop:
+`waitsUntaken` does not read it, and a later drive takes the lane up rather than passing it
+over. A run lock another invocation holds at the take-up is waited out, with nothing written on
+the lane. The listing's `reserved` is false for a lane let go, since the run's `reserved_at`
+outlives the release. A person's stop during the wait halts the run as ever, its page naming
+what the limit saved aside, and the take-over then reserves it again, since the run still names
+a reservation.
+
+An agent that goes silent cannot be told from a hung one on what is known today. It
+is treated as a hang: its role's deadline kills its process group, its worktree is left
+as it stood, and the role is retried; it counts against its lane only if a probe answers.
+A launch that keeps retrying the model service is not silent: its stream names an
+`api_retry` event each time, which version 2.1.318 was seen to write ten times over about
+three minutes with the service unreachable before a failed result, and that reads as an
+outage and, with nothing spent, counts against nothing. A stream
+that reported a rejected limit before falling silent, and has not reported it lifted,
+reads as that limit at the deadline. The harness's limit shapes the
+runner reads are a rejected `rate_limit_event`, an assistant message whose error is
+`rate_limit`, and a failed result naming the API's limit status, the stream's latest state
+standing; which of them a headless agent really emits is unobserved, so the first limit a
+run meets, and the first of each other kind of failure that may be one, leave a
+`drive-limit-` or `drive-suspect-<kind>-` evidence file in the local tier's logs: the exit, the stream's shape with
+identifiers dropped and free text reduced to its length, the redacted first stderr line,
+the reset read, the loop's decision, each probe's answer and when the run resumed. What the
+harness wrote is redacted before it is cut; a file stops taking that detail at 64 KiB and
+goes on taking the answers; the newest twenty of a kind are kept.
+
+Before the first move the drive writes the profile directory's settings, abcd's hooks
+as commands naming its own binary and nothing else, and checks each wall, refusing
+and naming the one that fails: the login state, the settings, a git identity for the
+checkout, and in one short live launch the tools the launch named, the approver as the
+only server, no plugin, no key, the guard refusing a command it is meant to refuse, the
+home and the variable names a stage's shell shows, and a settings file in the working
+tree having no effect, since the launch's setting sources name the profile directory
+alone. Before each stage and each preflight the settings, the files a stage's shell
+reads, the machine declarations, abcd's binary and the harness are compared with the
+start, and a difference stops the drive.
+
+**Which profile.** `runner.DriveProfile` is the one function that answers it. With one
+directory under `~/.abcd.noindex/profiles/` a drive runs on it. With several it refuses,
+naming them and the flag that names one; it never chooses among them. A name is one plain path
+element the folder holds exactly, in letters and digits with `.`, `_` or `-` after the first, so
+a command that prints it reads the same pasted, and the one directory is held to that too. The
+named directory takes every check the one directory takes, the link, the owner and the group or
+other write among them, and each level of abcd's home above it takes the check every declaration
+read there takes, so a name that fails is refused before the question and before anything is
+reserved. A stage's files are made through each level of abcd's home the same way. The question
+names the profile. The settings, the login, the live check, each launch and each limit's
+probe are that directory's, so a limit pauses that drive until that profile's limit ends
+and nothing moves it to another. Choosing by itself among several, a registry, a creating
+command and key profiles are itd-2611040344170206, which stays a draft.
+
+A run records the profile a drive started it on (`State.Profile`, schema version 22), and
+the record and the listing of unfinished runs name it. A drive on another profile does not take
+that run up, since that is another subscription: it is refused before the question when
+the lane is the drain's in progress (`loop.LanesOnAnotherProfile`), and ends the run as a
+check that no longer holds, before anything claims or reserves it, when a lane comes back
+later, as one at its pull request does for its sync. A lane at its pull request needs no
+agent, so it stops no drive by itself, and the run is what says so, since only a drain's own
+move rewrites the outcome it stored. The refusal names the ways on: the name it started on,
+another checkout, or a take-over from a session of the person's own, and the drive's last line
+then names no command of its own to resume. A take-over says
+which profile the run started on, since what that session starts runs on its own login. A
+run that names no profile goes on, says so, and takes the profile that drove it once the drive
+holds it, so a drive that only waited on another driver leaves it as it was.
+
+Two drives on two profiles at once take two checkouts, since one drive holds a checkout
+whatever its profile. Each checkout's drain and runs are its own, each profile and
+checkout its own stage's files, and a stage writes only under its own directories, so
+neither reaches the other's login or settings by a file tool or a line the guard can read,
+though its shell reads what the account can. They share what any two drives on one
+account share: the reservations on origin, which keep them off one issue and count
+towards one cap; the load gate; a stop, which holds both; and the launch ledger.
+
+A profile is a separate login and settings on this one account, not a boundary: a
+stage's shell reads what this account can. A launch starts from an allow-list of
+variables, a proxy's credentials taken out. Its shell's home is emptied at each launch
+and holds the person's git identity and filters; Go's caches and the person's home for
+abcd's shared records are named, and any other toolchain's cache starts empty. A Go on
+PATH that abcd will not ask, or that names no cache, leaves the caches it did not name in
+that home, and the drive says which at its start; a stage's shell and the preflight still
+run that Go. The guard
+reads a shell line against that home and refuses a further agent, a moved home, the
+keychain tool, the land verb and every implement verb but the load gate and widening a hold. A file tool, and a shell line the guard can read, write only in the
+stage's working tree and run directories, its home and temporary files, and never the
+hooks, the Makefile, abcd's configuration, a preflight or review receipt or an approval;
+other records under
+`.abcd/` are written only where the work declares them. A program the guard cannot read
+is not held to this. The hooks read the rules and the guard's registry as the lane's base
+holds them, and the away mode, the checklist and recall stand aside on a stage.
+
+The driver's commit, merge and reset hooks, and any filter run inside those commands, get
+the same variables and home as a stage, and read the git configuration the drive wrote
+rather than any a stage left in that home; its network commands, its other filters and its
+forge calls keep the person's environment. A preflight runs
+with what a stage carries too, and only a receipt from a preflight the drive ran itself
+lands a lane. A lane at its landing that changes the Makefile, `scripts/` or the active
+hooks, measured from what it last merged of the default branch, is handed back, and an
+issue that names one is passed over before a lane opens: that change needs a person's own
+session, and the drive's last lines name each one. What the driver wrote of a run is compared after each agent's call, and a
+difference, or a read that keeps failing, stops the drive, and a later drive, step or
+hand-in refuses that run until a person discards its lanes or restores its state. One drive holds a checkout at a time, and each checkout has
+its stage's home to itself. A credential variable the harness would bill
+through refuses the start, naming itd-2611011230226453, and so does a start from
+inside an agent's own session.
+
+A stop takes two presses. The first interrupt, hang-up or termination leaves the
+drive's context live, so the agent in a call finishes that call and its receipt is
+recorded; the run then takes the stop in its order, saving the lane's uncommitted work
+aside and releasing its reservation and claims so a peer may take the issue up, leaves
+the lane on its branch, and names the run, the lane and the command that resumes it. The
+second signal ends the context, which kills the process group, and names when the
+reservation lapses. Nothing is handed back for a stop. A later drive on the same copy
+takes the run over, reserving it again before the signal's mark goes, and lands it; one
+that finds the issue held hands its lane back as stuck, and one at the person's own cap
+waits on the outage schedule for a reservation to end, handing nothing back. A drive claims
+its run with its own process, so the driver a listing names ends with it.
+
+The person's stop reaches a drive at its next move and through any
+wait: each wait looks for it every minute, under a bound as without one, and the drive ends
+saying what holds it. A preflight queued at the load gate or running ends at the next look too,
+and a probe does not start. A run that stop halted waits for an explicit take-over, also after the
+stop lifts: a new drive names it, passes over it and goes on to other work, reserving nothing (a lane parked on its pull request that a signal halted waits the same way, and the drive's end names that take-over rather than another drive)
+for it. A drain's move does nothing for such a lane until the take-over, a merged lane's last step,
+its sync and its queue watch included; the land fence refuses a run a stop
+halted that has not been taken over, and a run with no mark that let its reservation go until it is
+reserved again or its lane discarded. A run a drive stopped on is left as it stands and
+named. A drive's stop on a run whose state changed is another thing, and a
+run can have both. While both stand the run is not settled, since what it says is not known
+to be the driver's: its work is not saved aside and its reservation lapses with its lease.
+Lifting the stop leaves the drive's stop, and a take-over is refused until it is removed;
+removing that leaves the stop, which the run then takes in its order.
+
 In a checkout with a remote named `origin`, the ledger a move reads is origin's
 default branch, never the checkout's own, which may be behind it
 (spc-2610161044461448 step 1, dcn-2610161040350256): under the drain's lock,
@@ -753,6 +1014,17 @@ drain routes the hand-back and goes on unattended; refusal stops when the
 drain stops or after two hours with no activity. The move that begins a drain
 says so once, on stderr.
 
+## A session off a profile
+
+A drive's moves print no such line: it starts from a plain terminal, not from a session
+of the person's (dcn-2611050931219213). Otherwise:
+
+While the away mode holds, every move of a drain prints the off-profile line after
+the move, on the terms [`26-mode.md`](26-mode.md#a-session-off-a-profile) sets out
+(dcn-2611041550129278). Every move, rather than the first as with the approval
+prompts' notice, because a later move may be another session's. In the managed
+mode and on a dry run nothing prints.
+
 ## What it refuses
 
 The dry run and the bare verb both refuse, exit 2 with nothing written, when
@@ -798,15 +1070,19 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--drive` | bool |
 | `--dry-run` | bool |
 | `--fix-rounds` | string |
 | `--judgement` | string |
 | `--max` | int |
 | `--pace` | string |
+| `--profile` | string |
 | `--reason` | string |
 | `--skip` | stringArray |
 | `--sub-agents` | string |
 | `--take-over` | bool |
 | `--unskip` | stringArray |
+| `--until` | string |
+| `--yes` | bool |
 
 <!-- surface-appendix:end -->

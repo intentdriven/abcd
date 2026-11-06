@@ -114,6 +114,12 @@ const (
 	DrainLaneHandedBack  = "handed-back"
 	// DrainLaneDone: the run is complete.
 	DrainLaneDone = "done"
+	// DrainLaneHalted is a lane a person's stop halted, which a drive passed over: it
+	// waits for an explicit take-over, and the drain goes on to other work.
+	DrainLaneHalted = "halted"
+	// DrainLaneTakenOver is such a lane once a person has taken its run over: the run is
+	// theirs to drive, and the drain leaves it to them.
+	DrainLaneTakenOver = "taken-over"
 )
 
 // The routes a hand-back takes, by kind (scope 5).
@@ -237,6 +243,19 @@ type DrainOptions struct {
 	// Context ends the move's routed judge: the front door ends it on an
 	// interrupt or a termination. context.Background when nil.
 	Context context.Context
+	// PassOver says why an issue, given its id and found_at, is passed over
+	// rather than opened; "" opens it. Nil passes nothing over.
+	PassOver func(id, foundAt string) string
+	// JudgeOutcome, when set, receives what became of a routed judgement.
+	JudgeOutcome *JudgeOutcome
+	// AskJudgeAgain asks the routed judge once per move rather than once per
+	// request: a terminal drive has no host for the request to fall to, so a
+	// judge that did not answer is asked again (terminal.go).
+	AskJudgeAgain bool
+	// KeepWaiting keeps waiting on origin, and on an outage the shared run gave
+	// up on, for as long as the caller lasts: a drive under --until has a bound
+	// of its own, so neither ends the drain (terminal.go).
+	KeepWaiting bool
 	// Skip are --skip's targets, issue ids or paths, held back for now with
 	// SkipReason, --reason; Unskip are --unskip's, taken off the list
 	// (drain_skip.go).
@@ -418,6 +437,13 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			panic(r)
 		}
 	}()
+	// A stop comes before the plan is read: the lanes take it and the move
+	// opens nothing (stop.go). A judgement awaited is let go with its hold.
+	stopNote, serr := drainStop(repoRoot, &st, o)
+	if serr != nil {
+		persisted = st.Judging
+		return DrainResult{}, serr
+	}
 	started := false
 	// repaced is what this move's new pace came to, "" when it took none;
 	// repace is the new pace the lanes in progress take once the move's
@@ -461,7 +487,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	// The ledger as origin's default branch holds it, fetched now, before any
 	// judgement or reservation: a move that cannot read it plans nothing and
 	// waits (drain_origin.go).
-	plan, origin, wait, recovered, probed, err := movePlan(repoRoot, &st, rule, now)
+	plan, origin, wait, recovered, probed, err := movePlan(repoRoot, &st, rule, now, d.KeepWaiting)
 	if err != nil {
 		return DrainResult{}, err
 	}
@@ -481,6 +507,9 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	// published is what became of the pending hand-backs this move ended.
 	var published []string
 	finish := func(write bool) (DrainResult, error) {
+		if stopNote != "" {
+			res.Next = joinNext(res.Next, stopNote)
+		}
 		// A drain that ends awaits nothing, and every judgement hold the move
 		// leaves unused is released before the state is written.
 		if st.Stopped != "" && st.Judging != nil {
@@ -738,6 +767,10 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	if cur, err := CurrentOutage(repoRoot); err != nil {
 		return refuseMoved(outageUnreadable(err))
 	} else if cur != nil && cur.Status == implement.OutageGaveUp {
+		if d.KeepWaiting {
+			return refuseMoved(contend(StageOutage, "", "", fmt.Sprintf("the run gave up on the %s outage open since %s, so the drain opens nothing until its probes answer or a person closes it with `abcd implement outage clear --session <id> --reason <why>`",
+				strings.Join(cur.Services, " and "), cur.StartedAt.UTC().Format(time.RFC3339)), "close the outage once the connection is back"))
+		}
 		st.Stopped, st.EndedAt = DrainStoppedOutage, &now
 		res.Next = fmt.Sprintf("the run gave up on the %s outage open since %s after %d probe(s), so the drain stops here with %d lane(s) opened; once the connection is back, close the outage with `abcd implement outage clear --session <id> --reason <why>`, then `abcd drain` begins a new drain",
 			strings.Join(cur.Services, " and "), cur.StartedAt.UTC().Format(time.RFC3339), len(cur.Probes), len(st.Lanes))
@@ -746,7 +779,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 
 	// Merged lanes are finished before the window clock is read: the cleanup
 	// does no new work, so the pace does not hold it (iss-2610090936460789).
-	if res.Finished, res.Parked, err = finishMerged(repoRoot, now); err != nil {
+	if res.Finished, res.Parked, err = finishMerged(repoRoot, now, o); err != nil {
 		return refuseMoved(err)
 	}
 	// The lane in progress is renewed at half its lease on every move,
@@ -802,6 +835,16 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			st.HandBacks = append(st.HandBacks, r)
 			res.Routed = append(res.Routed, r)
 			st.Lanes[i].Outcome, finished = DrainLaneHandedBack, true
+		}
+	}
+
+	// A lane passed over for its take-over reads as halted only while its run is.
+	for i := range st.Lanes {
+		if st.Lanes[i].Outcome != DrainLaneHalted {
+			continue
+		}
+		if c, err := runControl(repoRoot, st.Lanes[i].RunID); err == nil && c.Stop == nil {
+			st.Lanes[i].Outcome, finished = DrainLaneTakenOver, true
 		}
 	}
 
@@ -949,6 +992,11 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		// taken up again once its record has changed on origin
 		// (drain_readmit.go).
 		if st.taken(v.ID, blobs) {
+			if i := slices.IndexFunc(runs, func(r State) bool { return r.Key == v.ID && !r.issueHandedBack() }); i >= 0 {
+				if why := waitsUntaken(repoRoot, runs[i]); why != "" {
+					res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckNeedsPerson, Reason: why})
+				}
+			}
 			continue
 		}
 		// An issue the skip list holds back is passed over before anything
@@ -957,6 +1005,12 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			if s, ok := skipOf(st, iss); ok {
 				res.Passed = append(res.Passed, skipPassed(v.ID, s))
 				continue
+			}
+			if d.PassOver != nil {
+				if why := d.PassOver(v.ID, iss.FoundAt); why != "" {
+					res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckNeedsPerson, Reason: termsafe.Sanitize(why)})
+					continue
+				}
 			}
 		}
 		if l, ok := lapseOf(st, v.ID); ok && now.Before(l.coolDownEnds()) {
@@ -976,6 +1030,10 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		// whether its record has changed since; on origin the hand-back's
 		// tombstone and this drain's routes say so (drain_readmit.go).
 		if i := slices.IndexFunc(runs, func(r State) bool { return r.Key == v.ID && !r.issueHandedBack() }); i >= 0 {
+			if why := waitsUntaken(repoRoot, runs[i]); why != "" {
+				res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckNeedsPerson, Reason: why})
+				continue
+			}
 			reason := "this checkout already has run " + runs[i].RunID + " for it; drive or finish that run"
 			if runs[i].Complete() {
 				reason = "this checkout's run " + runs[i].RunID + " for it is complete, and what it landed settles the issue, so no second run opens for it"
@@ -1117,7 +1175,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 				}
 			}
 			if taken == nil {
-				if judging.RoutedAsked {
+				if judging.RoutedAsked && !d.AskJudgeAgain {
 					clause = joinNext(clause, judgeAskedClause(v.ID))
 				} else {
 					var routed string

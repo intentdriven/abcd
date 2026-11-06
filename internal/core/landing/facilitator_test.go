@@ -69,7 +69,7 @@ func TestMergeGateDecisionTable(t *testing.T) {
 func TestAnUnreadableReviewReceiptArmsNothingAndSaysWhy(t *testing.T) {
 	auto := Facilitator{Mode: ModeAuto, Layer: "repo", Origin: ".abcd/config.json at origin/main"}
 	d := mergeGate(gateFacts{mode: auto, rule: MergeRule{Method: "SQUASH"}, def: "main", head: "0123456789abcdef0123456789abcdef01234567",
-		author: "author-a", role: RoleMaintainer, roleWhy: "read", reviewed: false, reviewWhy: "git worktree list failed"})
+		author: "author-a", role: RoleMaintainer, roleWhy: "read", reviewed: false, reviewWhy: "git worktree list failed", reviewUnread: true})
 	if d.arm || !strings.Contains(d.why, "review receipts cannot be read (git worktree list failed)") {
 		t.Fatalf("mergeGate = %+v; want nothing armed, naming the failed read", d)
 	}
@@ -186,7 +186,7 @@ func TestOnlyTheLatestApprovalOfTheHeadByAnotherMaintainerCounts(t *testing.T) {
 		{"an answer that does not parse", "{", false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			by, why := countedApproval(reviewsForge(c.reviews, roles), f.repo.Root(), "o/r", "7", head, "author-a")
+			by, why, _ := countedApproval(reviewsForge(c.reviews, roles), f.repo.Root(), "o/r", "7", head, "author-a")
 			if (by != "") != c.counts || (by == "" && why == "") {
 				t.Fatalf("countedApproval = %q, %q; want counted %v", by, why, c.counts)
 			}
@@ -200,10 +200,10 @@ func TestOnlyTheLatestApprovalOfTheHeadByAnotherMaintainerCounts(t *testing.T) {
 	if _, err := RecordApproval(f.repo.Root(), head); err != nil {
 		t.Fatal(err)
 	}
-	if by, _ := countedApproval(reviewsForge("[]", roles), f.repo.Root(), "o/r", "7", head, "author-a"); !strings.Contains(by, "recorded approval") {
+	if by, _, _ := countedApproval(reviewsForge("[]", roles), f.repo.Root(), "o/r", "7", head, "author-a"); !strings.Contains(by, "recorded approval") {
 		t.Fatalf("the recorded approval counts: %q", by)
 	}
-	if by, _ := countedApproval(reviewsForge("[]", roles), f.repo.Root(), "o/r", "7", earlier, "author-a"); by != "" {
+	if by, _, _ := countedApproval(reviewsForge("[]", roles), f.repo.Root(), "o/r", "7", earlier, "author-a"); by != "" {
 		t.Fatalf("an approval recorded for another commit counts for nothing: %q", by)
 	}
 }
@@ -231,7 +231,8 @@ func (f *fixture) reviewed(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(p, []byte("{}\n"), 0o600); err != nil {
+	body := `{"commit":"` + f.head() + `","verdict_rule":2,"reviews":[{"name":"a","verdict":"SHIP","sha256":"x"},{"name":"b","verdict":"APPROVE","sha256":"y"}]}`
+	if err := os.WriteFile(p, []byte(body+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }

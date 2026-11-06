@@ -9,7 +9,6 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/guard"
-	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // outboundInstallBase is a fully answered, non-interactive install.
@@ -23,7 +22,7 @@ var outboundInstallBase = []string{"ahoy", "install", "--yes", "--adopt",
 // committed commit-msg hook and the shell guard's forge-text check.
 func TestAhoyInstallOutboundFlagIsWired(t *testing.T) {
 	hermeticEnv(t)
-	repo := gittest.NewRepo(t).Root()
+	repo := newRepo(t).Root()
 	t.Chdir(repo)
 	hook := filepath.Join(repo, filepath.FromSlash(ahoy.OutboundHookRelPath))
 
@@ -55,7 +54,7 @@ func TestAhoyInstallRetiredOutboundFlagsNameTheReplacement(t *testing.T) {
 	for _, flag := range []string{"--outbound-hook", "--outbound-forge", "--outbound-hook=false", "--outbound-forge=true"} {
 		t.Run(flag, func(t *testing.T) {
 			hermeticEnv(t)
-			repo := gittest.NewRepo(t).Root()
+			repo := newRepo(t).Root()
 			t.Chdir(repo)
 			_, err := runCLIErr(t, append(outboundInstallBase, flag)...)
 			if err == nil {

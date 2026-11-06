@@ -185,6 +185,7 @@ func routedJudgement(repoRoot string, iss capture.Issue, v capture.DrainVerdict,
 		Denied:    denied,
 		SessionID: fmt.Sprintf("%s-%s-%d", RoleDrainJudge, iss.ID, now.Unix()),
 		Timeout:   timeout,
+		Work:      runner.LaunchWork{Run: "drain-" + st.StartedAt.UTC().Format("060102150405"), Lane: iss.ID, Await: RoleDrainJudge},
 	}
 	// A request no runner may be started with (a path its grants cannot
 	// carry) starts nothing, and is no request asked of the runner.
@@ -213,15 +214,19 @@ func routedJudgement(repoRoot string, iss capture.Issue, v capture.DrainVerdict,
 		},
 		Now: func() time.Time { return now },
 	}
+	o.startingLaunch(RoleDrainJudge)
 	out, err := dsp.Dispatch(ctx, req)
 	if ctx.Err() != nil {
 		return nil, "", true, judgeStopped(iss.ID)
 	}
+	o.failedLaunch(RoleDrainJudge, err, out.Failure)
+	noteJudgeOutcome(d, out, err, taken)
 	switch {
 	case err != nil:
 		return nil, "the drain judge's runner did not judge " + iss.ID + " (" + termsafe.Sanitize(fsutil.RedactHome(err.Error())) +
 			"), so the request is the host's", true, nil
 	case out.Handoff:
+		listWithHost(ctx, o.Runners, RoleDrainJudge, filepath.Clean(repoRoot), req.Work)
 		why := "it handed the role back"
 		if fb := out.Fallback; fb != nil {
 			why = fmt.Sprintf("the %s runner was %s, recorded as a fallback", fb.Asked, fb.Reason)
@@ -233,6 +238,24 @@ func routedJudgement(repoRoot string, iss capture.Issue, v capture.DrainVerdict,
 	route := out.Receipt.Route
 	taken.Route = &route
 	return taken, "", true, nil
+}
+
+// noteJudgeOutcome tells the caller who asked what a judgement came to.
+func noteJudgeOutcome(d DrainOptions, out runner.Outcome, err error, taken *DrainJudgement) {
+	if d.JudgeOutcome == nil || taken != nil {
+		return
+	}
+	var fl *runner.Failure
+	switch {
+	case errors.As(err, &fl) && fl.Reason == runner.ReasonRateLimited:
+		*d.JudgeOutcome = JudgeOutcome{Kind: JudgeLimited, ResetsAt: fl.ResetsAt}
+	case err != nil:
+		*d.JudgeOutcome = JudgeOutcome{Kind: JudgeRunnerFailed}
+	case out.Failure != nil && out.Failure.Reason != runner.ReasonInvalid:
+		*d.JudgeOutcome = JudgeOutcome{Kind: JudgeRunnerFailed}
+	default:
+		*d.JudgeOutcome = JudgeOutcome{Kind: JudgeNoAnswer}
+	}
 }
 
 // keepJudgeFallback records fb in st, keeping the latest maxJudgeFallbacks.

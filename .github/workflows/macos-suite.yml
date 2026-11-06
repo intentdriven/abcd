@@ -1,0 +1,158 @@
+name: macos-suite
+
+# One shard of abcd's macOS suite, called by the two workflows that run it, so a
+# shard's steps have one definition: ci.yml's macos-suite matrix, nightly and on
+# demand, and release.yml's macos-suite-1 to -4 jobs, on every release cut before
+# anything is tagged (dcn-2611042202509334). It starts only when called. Each input
+# is required, so a caller states which shard of how many, which commit, and whether
+# the Go cache may be used; a with: block that does not match these inputs fails the
+# calling run before any job starts, and TestMacOSSuiteCallersPassItsDeclaredInputs
+# pins both callers to them.
+#
+# macOS is the scarcest runner this account has, and a private repository pays for
+# each of its minutes, so this file is abcd's own: the release scaffold renders no
+# call to it for a managed repository (TestOnlyAbcdsRenderingRunsAMacOSSuite).
+on:
+  workflow_call:
+    inputs:
+      shard:
+        description: This shard's number, from 1.
+        required: true
+        type: number
+      shards:
+        description: How many shards the suite runs.
+        required: true
+        type: number
+      ref:
+        description: The commit to test, a resolved SHA.
+        required: true
+        type: string
+      cache:
+        description: Whether setup-go may restore and save the Go build cache.
+        required: true
+        type: boolean
+
+permissions:
+  contents: read
+
+# The margin the job clock's watchdog leaves before the job's cap (cmd/ci-watchdog).
+# A caller's workflow-level env does not reach a called workflow, so it is declared
+# here as well as in ci.yml, and TestCheckJobTestStepsRunUnderTheJobClockWatchdog
+# holds the two to one value.
+env:
+  ABCD_CI_WATCHDOG_MARGIN_MINUTES: 5
+
+jobs:
+  # A shard's ceiling. A job's timeout-minutes starts when a runner takes it, so it
+  # counts none of the wait for one, and no shard runs on the merge queue's clock.
+  # 50 is half as much again as the 30 a shard takes on a slow runner. The single
+  # job before the split had reached 85 (dcn-2610282036219503); the remedy for a
+  # shard near this cap is a faster suite or a rebalance in cmd/ci-shard, which is
+  # why internal/core/implement/loop holds the last shard alone.
+  # TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds it.
+  shard:
+    timeout-minutes: 50
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    env:
+      ABCD_CI_LEG: macos-suite (${{ inputs.shard }})
+      ABCD_CI_JOB_CAP_MINUTES: 50
+    steps:
+      # The clock for the warning and the watchdog, as in ci.yml's check job.
+      - name: Record the job's start
+        id: started
+        run: |
+          epoch=$(date +%s)
+          echo "epoch=${epoch}" >>"$GITHUB_OUTPUT"
+          echo "ABCD_CI_JOB_STARTED=${epoch}" >>"$GITHUB_ENV"
+
+      # Full history, as in ci.yml's check job: the tests read the same repository.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      # On a key miss every shard reaches the cache's save at its end, and the
+      # first to finish wins it, so the macOS cache the nightly run saves holds
+      # that shard's packages' builds, the standard library and third-party
+      # dependencies under -race among them. ci.yml's check job has the rest of
+      # why. The release path turns it off, as its verify job does: a cache in a
+      # run that publishes is a cache-poisoning vector.
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: ${{ inputs.cache }}
+
+      # What the suite does once rather than per shard runs in the first shard,
+      # and cmd/ci-shard gives that shard a lighter share for it.
+      - name: Build
+        if: inputs.shard == 1
+        run: go build ./...
+
+      - name: Vet
+        if: inputs.shard == 1
+        run: go vet ./...
+
+      # One race-enabled pass over this shard's packages (iss-2610110938293273).
+      # Two passes cost a median 13.6 minutes plain plus 23.1 race of a 39.9-minute
+      # job (8 queue runs, 2026-10-11), and the race pass already runs every test
+      # the plain pass would; the ones that assert only without the detector run
+      # after it, by name (the next step). cmd/ci-shard prints the shard heaviest
+      # first, so its slowest packages start with the step.
+      #
+      # The assignment is its own line, under the shell's -e: a failure inside
+      # `$(...)` on go test's own line would leave go test with no packages, which
+      # tests the working directory and reports success.
+      # TestAShardThatCannotReadItsPackagesFails runs this script against a stub go.
+      #
+      # ABCD_TEST_SKIP_FLUSH and ABCD_TEST_SHARDS are ci.yml's check job's, for the
+      # reasons given there. -timeout is the local gate's, and a package that starts
+      # late meets the job clock's watchdog first.
+      - name: Test (race, this shard)
+        shell: go run ./cmd/ci-watchdog bash --noprofile --norc -eo pipefail {0}
+        env:
+          ABCD_TEST_SKIP_FLUSH: "1"
+          ABCD_TEST_SHARDS: "3"
+          ABCD_CI_SHARD: ${{ inputs.shard }}
+          ABCD_CI_SHARDS: ${{ inputs.shards }}
+        run: |
+          pkgs=$(go run ./cmd/ci-shard -shard "$ABCD_CI_SHARD" -of "$ABCD_CI_SHARDS")
+          go test -race -count=1 -timeout 40m $pkgs
+
+      # The plain-only guards on macOS (iss-2610180542030806): the same command as
+      # the check job's "Test (plain-only guards)", about a minute, in the first
+      # shard after its race pass. TestEveryLegRunsEveryPlainOnlyGuard holds both
+      # steps to the list it derives from the test files.
+      - name: Test (plain-only guards, macOS)
+        if: inputs.shard == 1
+        shell: go run ./cmd/ci-watchdog bash --noprofile --norc -eo pipefail {0}
+        env:
+          ABCD_TEST_SKIP_FLUSH: "1"
+        run: go test -count=1 -run '^(TestAHereDocBodyFeedStaysLinear|TestAPatternPastTheStepBudgetIsNotGenerated|TestAVeryDeepPathIsJudgedQuickly|TestAdjacencyProbeStaysLinearOnLongLines|TestAdjacencyProbeWindowIsBounded|TestBacktickPrePassStaysLinear|TestBraceScanStaysLinear|TestClosedOverDocumentsStayLinear|TestClosingScansAreLinear|TestDoubleQuotedBraceExpansionStaysLinear|TestExpandedHeredocBodyStaysLinear|TestForgeTextWorkIsLinear|TestGallopingProbeCostIsLinearInLineLength|TestGallopingProbeStaysBoundedOnLongLines|TestGluedFixedOutputStaysLinear|TestGluedSweepWorkIsLinear|TestHereDocumentPayloadStaysLinear|TestHistoryCaptureAcceptsWhatTheHooksAccept|TestHomeSpellingsStayLinear|TestIFSSplitCheckStaysLinear|TestJunctionBacktrackIsBounded|TestKillFeedGroupsAndStringsStayLinear|TestKillFeedReadingStaysLinear|TestMakerNoteWorkIsLinear|TestMetadataViewsWorkIsLinear|TestNestedHereDocumentPayloadStaysLinear|TestParameterExpansionReadingStaysLinear|TestPatternShapesStayLinear|TestQuotedSubstitutionStaysLinear|TestRawHeadingScanStaysLinearInTheOpenerCount|TestScanLineWorkIsLinear|TestScriptReadingStaysLinearOnAdversarialLines|TestSpeculationIsBoundedAtTheStdinCap|TestSpellingSetsStayLinear|TestSurfaceChapterProseStatesNoShape|TestSweepCallerHomeWorkIsLinear|TestSynopsisScanIsLinearInThePage|TestTheBudgetBoundsWallTimeOverLongLiterals|TestTheBudgetBoundsWallTimeOverManyLines|TestTheHiddenHTMLReadersStayLinear|TestTheTagWalksStayLinear|TestUTF16ViewWorkIsLinear|TestUnknownWordWalksStayLinear)$' ./internal/adapter/scanner ./internal/core/claim ./internal/core/guard ./internal/core/reading ./internal/surface/cli
+
+      # ci.yml's check job's warning, against this job's ceiling.
+      - name: Warn when the check nears its job's cap
+        if: always()
+        continue-on-error: true
+        env:
+          STARTED_AT: ${{ steps.started.outputs.epoch }}
+          WARN_AFTER_MINUTES: 40
+          CEILING_MINUTES: 50
+        run: |
+          case "${STARTED_AT:-}" in
+            '' | *[!0-9]*)
+              echo "::notice::no job start was recorded, so the elapsed-time warning did not run"
+              exit 0
+              ;;
+          esac
+          elapsed=$(($(date +%s) - STARTED_AT))
+          minutes=$((elapsed / 60))
+          echo "${ABCD_CI_LEG} has run ${minutes}m $((elapsed % 60))s; the warning line is ${WARN_AFTER_MINUTES}m"
+          if [ "$elapsed" -gt $((WARN_AFTER_MINUTES * 60)) ]; then
+            msg="${ABCD_CI_LEG} ran ${minutes} minutes, past the ${WARN_AFTER_MINUTES}-minute warning line and close to the job's ${CEILING_MINUTES}-minute cap. If it is cancelled at the cap, rerun it once; a second cancellation for the same reason stops any pull request it gates: open a speed lane to make the suite faster, and do not raise the timeout."
+            echo "::warning title=${ABCD_CI_LEG} near its cap::${msg}"
+            printf '### %s near its cap\n\n%s\n' "$ABCD_CI_LEG" "$msg" >>"$GITHUB_STEP_SUMMARY"
+          fi

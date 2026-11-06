@@ -56,6 +56,9 @@ type RateLimit struct {
 	Runner      string       `json:"runner"`
 	Response    string       `json:"response"`
 	Checkpoints []Checkpoint `json:"checkpoints"`
+	// resetsAt is when the limit resets, as the harness reported it; zero when
+	// it reported none.
+	resetsAt time.Time
 }
 
 // Checkpoint is one lane with work in flight, as a rate limit left it.
@@ -88,7 +91,7 @@ func rateLimitWindow(repoRoot, runID, laneID string, aw Await, fl *runner.Failur
 			return false, refuse(StageRateLimit, "", "", fmt.Sprintf("%s has no lane %q to checkpoint", st.RunID, laneID),
 				"restore the run's state file")
 		}
-		rl := &RateLimit{Lane: laneID, Role: aw.Role, Runner: fl.Runner, Response: fl.Detail, Checkpoints: []Checkpoint{}}
+		rl := &RateLimit{Lane: laneID, Role: aw.Role, Runner: fl.Runner, Response: fl.Detail, Checkpoints: []Checkpoint{}, resetsAt: fl.ResetsAt}
 		st.Record = append(st.Record, Entry{At: now, Lane: laneID, Stage: StageRateLimit,
 			Note: fmt.Sprintf("the %s runner answered %s's %s with a rate-limit response (%s); every lane spends the same budget, so the run's window ends early",
 				fl.Runner, laneID, aw.Role, fl.Detail)})

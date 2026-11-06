@@ -916,6 +916,9 @@ type entryMatcher struct {
 	// groups is how many of the clauses are flag groups, the ones a signal
 	// word is no answer to.
 	groups int
+	// tokens, valueFlags, notAlts and opts are what standsDown reads; notAlts is
+	// empty for an entry that declares no not_flags.
+	tokens, valueFlags, notAlts, opts []string
 	// nextSig[i] is the first index at or after i holding a word the command
 	// reads as its signal (signalWordCommands), or len(tokens); nil for a
 	// command that reads none.
@@ -936,6 +939,7 @@ func newEntryMatcher(p Pattern, tokens []string, spelled map[int][]string, varLe
 	n := len(tokens)
 	want := operandWant{
 		sub: p.Subcommand, sub2: p.Subcommand2, min: p.MinOperands,
+		subNamed: p.SubcommandNamed != nil && *p.SubcommandNamed,
 		prefixes: p.ArgPrefixes, paths: p.ArgPaths, values: p.ArgValues, shapes: p.ArgShapes,
 		prefixLiteral: p.ArgPrefixesLiteral != nil && *p.ArgPrefixesLiteral,
 	}
@@ -964,6 +968,10 @@ func newEntryMatcher(p Pattern, tokens []string, spelled map[int][]string, varLe
 		m.nextHit = append(m.nextHit, next(func(i int) bool { return flagGroupHit(alts, tokens, i, glob, opts) }))
 	}
 	m.groups = len(p.Flags)
+	for _, group := range p.NotFlags {
+		m.notAlts = append(m.notAlts, strings.Split(group, "|")...)
+	}
+	m.tokens, m.valueFlags, m.opts = tokens, p.ValueFlags, opts
 	if signalWordCommands[strings.ToLower(p.Command)] && len(p.Flags) > 0 {
 		m.nextSig = next(func(i int) bool { return isSignalWord(tokens[i]) })
 	}
@@ -983,6 +991,9 @@ func (m entryMatcher) matchesAfter(site int) bool {
 		return false
 	}
 	stop := m.nextStop[start]
+	if len(m.notAlts) > 0 && m.standsDown(start, stop) {
+		return false
+	}
 	for c, nh := range m.nextHit {
 		h := nh[start]
 		// The command's first signal word is its signal, never a flag.
@@ -994,6 +1005,38 @@ func (m entryMatcher) matchesAfter(site int) bool {
 		}
 	}
 	return true
+}
+
+// standsDown reports whether tokens[start:stop], a command's arguments, carry a
+// not_flags alternative for the subcommand. Only words after the subcommand are
+// its flags: before it `-n` is a global option's value (`git --namespace -n
+// prune`). The reading is the one line that can be sure of it, so a word a
+// substitution helps to write, anywhere in the arguments, stands nothing down,
+// nor does a line that also undoes the flag.
+func (m entryMatcher) standsDown(start, stop int) bool {
+	i := start
+	for i < stop {
+		r := readWord(m.tokens[i], m.valueFlags)
+		if isUnknown(m.tokens[i]) {
+			return false
+		}
+		if r.operand {
+			break
+		}
+		i++
+		if r.takes {
+			i++
+		}
+	}
+	found := false
+	for i++; i < stop; i++ {
+		tok := m.tokens[i]
+		if isUnknown(tok) || notFlagUndone(m.notAlts, tok, m.opts) {
+			return false
+		}
+		found = found || notFlagHit(m.notAlts, tok, m.opts)
+	}
+	return found
 }
 
 // globMatches reports whether the shell pattern can produce the literal.
@@ -1435,6 +1478,33 @@ func flagGroupHit(alts []string, tokens []string, i int, glob func(int) bool, op
 	return false
 }
 
+// notFlagHit reports whether a typed word is one of an entry's not_flags
+// alternatives, its abbreviation included.
+func notFlagHit(alts []string, tok string, opts []string) bool {
+	for _, alt := range alts {
+		if alt != "" && (flagMatches(alt, tok, false) || (opts != nil && abbreviatesAlternative(tok, alt, alts, opts))) {
+			return true
+		}
+	}
+	return false
+}
+
+// notFlagUndone reports whether a typed word is the `--no-` of a long not_flags
+// alternative, its abbreviation included.
+func notFlagUndone(alts []string, tok string, opts []string) bool {
+	for _, alt := range alts {
+		name, ok := strings.CutPrefix(alt, "--")
+		if !ok {
+			continue
+		}
+		no := "--no-" + name
+		if tok == no || (opts != nil && abbreviatesAlternative(tok, no, []string{no}, opts)) {
+			return true
+		}
+	}
+	return false
+}
+
 // flagShaped reports whether a token can be a flag at all — whether its own
 // literal prefix begins with `-`. It gates the globbed compare at every flag
 // position: a glob denotes a set of words, but a flag constraint is offered
@@ -1500,8 +1570,8 @@ func flagMatches(alt, arg string, glob bool) bool {
 }
 
 // flagValueHit reports whether the token at i SETS one of the flag
-// alternatives to one of the accepted values. All three spellings a shell user
-// reaches for are read — `-X DELETE`, `-XDELETE`, `--method=DELETE` — because a
+// alternatives to one of the accepted values. Every spelling a shell user
+// reaches for is read — `-X DELETE`, `-XDELETE`, `--method=DELETE`, `-iX DELETE` — because a
 // constraint another spelling of the same call steps past is not one. A
 // globbed flag or value token is compared as a pattern in the separate-token
 // form; the attached forms stay literal (the floor flagMatches names). The
@@ -1515,6 +1585,13 @@ func flagValueHit(fv FlagValue, tokens []string, i int, glob func(int) bool) boo
 	if arg == "--" {
 		return false
 	}
+	accepts := func(got string, glob bool) bool {
+		switch {
+		case fv.Shape != "":
+			return flagValueShapeHolds(fv.Shape, got, glob)
+		}
+		return acceptsValue(fv.Values, got, glob)
+	}
 	for _, alt := range strings.Split(fv.Flag, "|") {
 		if alt == "" {
 			continue
@@ -1524,30 +1601,52 @@ func flagValueHit(fv FlagValue, tokens []string, i int, glob func(int) bool) boo
 		// which, with its value attached, is a setting the constraint
 		// accepts.
 		if unknownFlagCouldBe(arg, alt) {
-			return true
+			// A shape is about the setting's text, and an unknown dash-word is
+			// on every line that has one, so the setting is still read. A field's
+			// setting can be attached to the dash-word itself, whatever it holds.
+			if fv.Shape == "" || fv.Shape == ShapeRefForceField {
+				return true
+			}
+			if accepts(arg, false) || (i+1 < len(tokens) && accepts(tokens[i+1], glob(i+1))) {
+				return true
+			}
 		}
 		k := knownText(arg)
+		at := -1 // where a short flag sits in a cluster of single-letter flags
+		if isShortFlag(alt) {
+			at = strings.IndexByte(k, alt[1])
+		}
 		switch {
 		case k == alt || (glob(i) && flagShaped(k) && globMatches(k, alt)):
 			// The separate-token form: the value is the next argument.
-			if i+1 < len(tokens) && acceptsValue(fv.Values, tokens[i+1], glob(i+1)) {
+			if i+1 < len(tokens) && accepts(tokens[i+1], glob(i+1)) {
 				return true
 			}
 		case strings.HasPrefix(arg, alt+"="):
-			if acceptsValue(fv.Values, arg[len(alt)+1:], false) {
+			if accepts(arg[len(alt)+1:], false) {
 				return true
 			}
 		case strings.HasPrefix(k, alt+"="):
-			if acceptsValue(fv.Values, k[len(alt)+1:], false) {
+			if accepts(k[len(alt)+1:], false) {
 				return true
 			}
 		case isShortFlag(alt) && len(arg) > len(alt) && strings.HasPrefix(arg, alt):
 			// A short flag's value may be attached with no separator at all.
-			if acceptsValue(fv.Values, arg[len(alt):], false) {
+			if accepts(arg[len(alt):], false) {
 				return true
 			}
 		case isShortFlag(alt) && len(k) > len(alt) && strings.HasPrefix(k, alt):
-			if acceptsValue(fv.Values, k[len(alt):], false) {
+			if accepts(k[len(alt):], false) {
+				return true
+			}
+		case at > 1 && isShortCluster(k[:at]):
+			// A short flag at the end of a cluster takes its value as it does alone:
+			// `-iF x`, `-iFx` or `-iF=x`.
+			if at+1 == len(k) {
+				if i+1 < len(tokens) && accepts(tokens[i+1], glob(i+1)) {
+					return true
+				}
+			} else if accepts(strings.TrimPrefix(k[at+1:], "="), false) {
 				return true
 			}
 		}

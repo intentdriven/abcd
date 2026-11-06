@@ -71,7 +71,7 @@ const (
 // loadKeys are every key the machine configuration's `load` object takes, each
 // claimed by every reader of it, so a key under `load` that nothing reads is
 // still named and none of these is.
-var loadKeys = []string{"preflights", "memory_floor_macos", "memory_floor_linux"}
+var loadKeys = []string{"preflights", "narrow_runs", "memory_floor_macos", "memory_floor_linux"}
 
 // WaitOnMemory: the system reports memory pressure at or above the floor, or,
 // after pressure was last seen, another waiter opened within the settle.
@@ -155,7 +155,7 @@ func memoryFloorAt(home, repo string) (MemoryFloor, string, error) {
 	}
 	note := func() string { return strings.Join(notes, "; ") }
 	if home == "" {
-		h, err := os.UserHomeDir()
+		h, err := abcdhome.MachineHome()
 		if err != nil || h == "" {
 			return floor, note(), nil
 		}

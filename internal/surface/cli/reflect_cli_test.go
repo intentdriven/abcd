@@ -32,7 +32,7 @@ func reflectIntent(id, title, extraFM, notes string) string {
 // is still planned; v0.3.0 ships nothing.
 func reflectRepo(t *testing.T) *gittest.Repo {
 	t.Helper()
-	r := gittest.NewRepo(t)
+	r := newRepo(t)
 	r.Write(reflectShipped+"itd-1-first.md", reflectIntent("itd-1", "The first promise", "", reflectAudited))
 	r.Write("CHANGELOG.md", "# Changelog\n\n## [Unreleased]\n\n## [0.1.0] - 2026-09-01\n\n- The first promise (itd-1).\n")
 	r.Commit("first release")

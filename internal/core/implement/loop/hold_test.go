@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -21,7 +22,11 @@ import (
 // and every implementer is out before lane 2's receipt.
 func armedSibling(t *testing.T, third bool) *parFixture {
 	t.Helper()
-	return siblingAtArm(t, third, queueRuleset("MERGE"), func(ld *Landing) bool { return ld.Armed })
+	v, w := builtOnce(t, worldKey("armedSibling", strconv.FormatBool(third)), func(w *fixtureWorld) parWalked {
+		f := siblingAtArm(t, third, queueRuleset("MERGE"), func(ld *Landing) bool { return ld.Armed })
+		return parWalked{runID: f.runID, now: f.now}
+	})
+	return v.fixture(t, w)
 }
 
 // siblingAtArm is armedSibling over the ruleset mirror given, stepping lane 2
@@ -201,5 +206,36 @@ func TestADiscardRemovesTheLaneLocallyBeforeItClosesItsPullRequest(t *testing.T)
 	}
 	if gitErr(f.repo, "rev-parse", "--verify", "--quiet", "refs/heads/"+l2.Branch) == nil {
 		t.Fatal("the lane's branch is gone")
+	}
+}
+
+// A held lane merges nothing: a queued pull request leaves the queue too, and the
+// lane is held only once the forge stops reporting it armed or queued.
+func TestAHeldLaneLeavesTheQueueAndIsReadBack(t *testing.T) {
+	f := armedSibling(t, false)
+	f.handedBack(t)
+	l2 := f.lane(t, "lane-2")
+	f.touchGH(t, "queue.json", `{"data":{"repository":{"pullRequest":{"id":"PR_kwDOstub7","state":"OPEN","headRefOid":"`+l2.Landing.Pushed+
+		`","isInMergeQueue":true,"mergeQueueEntry":{"state":"QUEUED","position":1},"autoMergeRequest":{"mergeMethod":"MERGE","enabledAt":"2026-10-15T07:00:00Z"},"mergeStateStatus":"CLEAN","timelineItems":{"nodes":[]}}}}}`)
+	stillArmedIn(t, f.gh)
+	before := f.ghLog(t)
+	_, err := advance(f.repo.Root(), f.runID, f.stages, f.opts())
+	if r := mustRefusal(t, err); r.Contention || !strings.Contains(r.Reason, "still reports") {
+		t.Fatalf("an arming the forge still reports holds nothing: %+v", r)
+	}
+	if l := f.lane(t, "lane-2"); l.Stage == StageHeld {
+		t.Fatalf("the lane is recorded held while the forge reports it armed: %+v", l)
+	}
+	log := strings.TrimPrefix(f.ghLog(t), before)
+	off, out := strings.Index(log, "pr merge 7 --disable-auto"), strings.Index(log, "dequeuePullRequest")
+	if off < 0 || out < off {
+		t.Fatalf("auto-merge goes off, then it leaves the queue:\n%s", log)
+	}
+	if err := os.Remove(filepath.Join(f.gh, "armings.json")); err != nil {
+		t.Fatal(err)
+	}
+	f.step(t)
+	if l := f.lane(t, "lane-2"); l.Stage != StageHeld || l.Landing.Armed {
+		t.Fatalf("the lane is held once the forge stops reporting it armed: %+v", l)
 	}
 }

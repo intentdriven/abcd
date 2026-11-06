@@ -204,6 +204,11 @@ func runFrom(dir, command string) string {
 // approveShell answers a prompt for one shell command line, read against ld's
 // registry with files as the directory it runs in.
 func approveShell(ld Loaded, files *Files, command string) Approval {
+	if files != nil && files.stageHome != "" {
+		if why := stageLineRefused(command); why != "" {
+			return refusal(stageAgentEntryID, why, "the same command without setting or naming the home.")
+		}
+	}
 	// The arithmetic scan reads the whole text, every string a deeper
 	// judgement would read included, so it runs once here.
 	if why := arithmeticUnfixed(command); why != "" {
@@ -363,6 +368,16 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int) Approval
 				return refusal(unnamedProgramEntryID,
 					"a variable, a substitution or a glob stands where the program's name goes, so the guard cannot say which program runs.",
 					"the same command with the program's name spelled out.")
+			}
+			if files.stageHome != "" && startsAnAgent(s.tokens, a.idx) {
+				return refusal(stageAgentEntryID,
+					"a drive's stage starts no further agent and no drive, moves no run and lands nothing: its work is the brief it was given, and the loop does the rest.",
+					"do the work in this stage, or say in the receipt that the task needs another agent.")
+			}
+			if files.stageHome != "" && addsAWorktree(s.tokens, a.idx) {
+				return refusal(stageAgentEntryID,
+					"a drive's stage adds no worktree and moves none: its lane has its own.",
+					"do the work in the lane's worktree.")
 			}
 			if name, ok := inlineCode(s.tokens, a.idx); ok {
 				return refusal(inlineCodeEntryID,

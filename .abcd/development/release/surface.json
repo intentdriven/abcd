@@ -51,6 +51,36 @@
       ]
     },
     {
+      "path": "abcd agents",
+      "hidden": false,
+      "group": "records",
+      "block": "people",
+      "sentence": "List the agents abcd started for this session and add them up: Writes nothing; refuses when launches are on record and no session or scope says whose.",
+      "flags": [
+        {
+          "name": "all",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "run",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "session",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd ahoy",
       "hidden": false,
       "group": "set-up",
@@ -373,6 +403,20 @@
       ]
     },
     {
+      "path": "abcd ahoy shared-folder",
+      "hidden": false,
+      "sentence": "Say what the shared folder is for, or choose it so a stop can cross accounts: Writes the choice given a folder; refuses no terminal or an unsafe folder.",
+      "flags": [
+        {
+          "name": "person",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd ahoy uninstall",
       "hidden": false,
       "sentence": "Remove abcd from this repository, leaving .abcd/ in place: Writes the removal of the marker block, PATH copy, and provenance record; refuses any argument.",
@@ -423,7 +467,7 @@
     {
       "path": "abcd ahoy worktree prune",
       "hidden": false,
-      "sentence": "Reclaim this lane's merged, clean worktrees, archiving their notes first: Writes the notes archive and removes the worktrees; refuses a store it cannot trust.",
+      "sentence": "Reclaim this lane's merged, clean worktrees and stale Go cache entries: Writes the notes archive and removes both; refuses a store it cannot trust.",
       "flags": [
         {
           "name": "dry-run",
@@ -1488,6 +1532,13 @@
       "sentence": "Fix the issues needing no decision, one lane at a time, and hand the rest back: Writes its state and user-visible drafts; refuses without the rule's record.",
       "flags": [
         {
+          "name": "drive",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "dry-run",
           "shorthand": "",
           "type": "bool",
@@ -1517,6 +1568,13 @@
         },
         {
           "name": "pace",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "profile",
           "shorthand": "",
           "type": "string",
           "required": false,
@@ -1554,6 +1612,20 @@
           "name": "unskip",
           "shorthand": "",
           "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "until",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "yes",
+          "shorthand": "",
+          "type": "bool",
           "required": false,
           "hidden": false
         }
@@ -1755,6 +1827,13 @@
           "hidden": false
         },
         {
+          "name": "declared",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "dir",
           "shorthand": "",
           "type": "string",
@@ -1762,9 +1841,23 @@
           "hidden": false
         },
         {
+          "name": "protect",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "run-dir",
           "shorthand": "",
           "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "stage-home",
+          "shorthand": "",
+          "type": "string",
           "required": false,
           "hidden": false
         }
@@ -2035,6 +2128,11 @@
       "flags": []
     },
     {
+      "path": "abcd hook scheduled-refresh",
+      "hidden": false,
+      "flags": []
+    },
+    {
       "path": "abcd hook session-end",
       "hidden": false,
       "flags": []
@@ -2292,6 +2390,13 @@
       "sentence": "Check the load before abcd's tests start, or wait for capacity: Writes a run-log event or the wait's hold; refuses an unknown --site, never a loaded machine.",
       "flags": [
         {
+          "name": "narrow",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "race-gate",
           "shorthand": "",
           "type": "bool",
@@ -2538,6 +2643,27 @@
       ]
     },
     {
+      "path": "abcd implement resume",
+      "hidden": false,
+      "sentence": "List every unfinished run on the machine, or take one over: Writes nothing bare; refuses a take-over while a stop holds or another driver is alive.",
+      "flags": [
+        {
+          "name": "run",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "take",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd implement status",
       "hidden": false,
       "sentence": "Render the implement loop's runs in this checkout, lane by lane: Writes a due renewal to origin, its outcome to the run record; refuses a --run naming no run.",
@@ -2602,6 +2728,20 @@
           "name": "yielded",
           "shorthand": "",
           "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd implement stop",
+      "hidden": false,
+      "sentence": "Stop the unattended runs of each account that chose this folder, or lift it: Writes the stop file; refuses no terminal, and a file no run would honour.",
+      "flags": [
+        {
+          "name": "lift",
+          "shorthand": "",
+          "type": "bool",
           "required": false,
           "hidden": false
         }
@@ -3120,6 +3260,13 @@
           "name": "record-review",
           "shorthand": "",
           "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "rests-on",
+          "shorthand": "",
+          "type": "string",
           "required": false,
           "hidden": false
         }

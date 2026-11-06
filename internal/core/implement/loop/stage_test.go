@@ -22,7 +22,7 @@ import (
 // "stage", and no key of theirs says "step" for it.
 func TestTheStateAndTheResultNameTheLaneStage(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestTheStateAndTheResultNameTheLaneStage(t *testing.T) {
 // is refused.
 func TestAVersionThreeStateIsMigratedOnReadAndNeverRewrittenByTheRead(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}

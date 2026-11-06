@@ -38,6 +38,8 @@ own state lives in the checkout's local tier, not in the shared run state below;
 | `receipt` | — | shipped |
 | `widen` | — | shipped |
 | `record` | — | shipped |
+| `resume` | — | shipped |
+| `stop` | — | shipped |
 | `outage` | — | shipped |
 | `outage record` | — | shipped |
 | `outage probe` | — | shipped |
@@ -75,6 +77,11 @@ logs `session_open` with the role. Nothing signals any other session. A session
 that joins again with the role it holds is a resume, logged with `rejoin`; asking
 for the other role is refused. Leaving releases every claim the session holds,
 logs `session_close`, and removes the record.
+
+A first session's join is the one act by which a session says it coordinates a
+run, so a first session whose setting reads as off a profile is warned after each
+join, in any mode, on the terms [`26-mode.md`](26-mode.md#a-session-off-a-profile) sets out
+(dcn-2611041550129278).
 
 The role lives in that record and nowhere else: the environment is not a trust
 input, because a variable a shell or a repository's configuration can set is not
@@ -170,7 +177,7 @@ keyed on a flag the second session could omit would guard nothing.
 
 Logging appends one of the run's own events, with its key-value fields
 (`backoff`, `lane_open`, `lane_close`, `agent_start`, `agent_end`,
-`ceiling_wait`, `gate_run`, `review`, `fallback`, `stop`, `refusal`, `pr`,
+`ceiling_wait`, `gate_run`, `review`, `fallback`, the stop event, `refusal`, `pr`,
 `capture`, `context`, `ceiling_overrun`, `intervention`, `decision`). Every line carries `ts` (RFC 3339, UTC), `session` and `event`, then
 the fields; it reaches the file in one `O_APPEND` write through
 `fsutil.AppendLineIn`, which refuses a symlinked or non-regular leaf as its read
@@ -193,7 +200,7 @@ agents `alive`, the `ceiling`, the `lane` and the `minutes` over. The evidence
 events an autonomous run keeps so a later run can need no person carry theirs:
 an `intervention` its `kind` (`session_open`, `account`, `ruling`, `restart`,
 `close_session`, `file_restore`, `permission` or `other`), `by`, `what`, `why`
-and `autonomy_gap`; a `stop` its `cause`; a `decision` its `what`, the
+and `autonomy_gap`; a stop event its `cause`; a `decision` its `what`, the
 `alternative` not taken and `why`. An `at` or `last_productive` given is an
 RFC 3339 time, and a `detected_after_min` or `noticed_after_min` a number.
 
@@ -440,6 +447,70 @@ one-minute load a second stage starts under lags the first stage's demand.
 Deriving the count from the machine's resources is a later step
 (iss-2610161756384596). <!-- record-lint: forward-looking -->
 
+A narrow run waits at a gate of its own (`internal/core/implement/load_narrow.go`,
+`internal/core/machineload/narrow.go`), because on 2026-11-04 about thirty builders
+queued one package's test each behind whole preflights, at a load of 12 on 16 cores
+with 96% of memory free, until the 30-minute wait ran out and no test ran. It asks
+for the gate with a mark in the waiter's argv, which is the one truth: every waiter
+judges every other, and itself, by the mark and the command's words alone, and an
+abcd built before the mark reads a marked waiter as a waiter like any other. The
+command is go by that exact name with no shell in between, a gated `go test`, `go -C
+<dir>` allowed: at most three packages named outright, judged cleaned as go cleans
+them, no wildcard or bare word, and no flag beyond `-v`, `-short`, `-failfast`,
+`-json`, `-run`, `-skip`, `-timeout` and `-count=1`. The reading fails closed, so its
+one mistake is a slower wait: `make`, a shell, a wildcard and `-race` are whole runs,
+the last so race runs stay where the rule keeping race stages apart can see them, and
+so is the same command unmarked.
+
+What the argv cannot show, the waiter proves: go's own answer for the effective
+`GOFLAGS`, environment, `GOENV` file and `go env -w` alike, must be empty as the wait
+starts and as it opens. Otherwise the waiter replaces itself without the mark, keeping
+its pid and its start, so the argv stays the truth, and says why on stderr. The
+command then runs with `GOFLAGS=-p=1` and `GOMAXPROCS=2`, or a lower one of the
+person's, which the proof means overrides nothing.
+
+A narrow run takes no whole-run slot and no place in the whole-run queue; a whole run
+counts it through the load figure alone. It is shut by the load limit, the memory
+floor, its account's 30-second hold (`load-wait-narrow.json`), its account's whole run
+or race stage for that hold's two-minute settle, however long the hold itself lasts, and
+its room. The room is the person's `load.narrow_runs` (1 to 32, read from the machine
+layer alone, under the process's home as `load.preflights` is, with no environment variable
+of its own; by default half the online cores divided by 2, so an account admits up to half
+the machine, and each other account can add one run over that, since every account keeps a
+place, two being a ceiling on what they took as measured on 16 cores, from about 0.2 of a core to
+under 2). On a machine the load shows within two of the online cores, the two classes share
+one budget: the room is what the whole runs in their slots leave of the cores, each at its
+stage's `-p`, and one at the least. Running narrow runs and those queued ahead count against
+it, and another account's never take an account's last place. Its jitter is 1 to 5
+seconds, and it takes no open look: nothing waits on it, so two accounts opening together
+overshoot by one for those runs and no more.
+
+A whole run keeps its place honestly: sharing the load limit, narrow runs could take
+every dip it waits for, and an older abcd counts them in its slots. So while a
+whole-run waiter that started earlier has been queued five minutes or more and a whole slot is free
+(`machineload.OverdueWhole`), a narrow run stands aside, spending at most five minutes
+of one wait so. That gap in admissions lets the running ones finish and the load fall. The
+waiter must have started earlier because an older abcd counts a narrow waiter that
+started before it as ahead: standing aside for a later start would have each wait on
+the other until a timeout. Every wait points at an earlier start or a command already
+running, so no cycle forms across versions. An older abcd reads a narrow waiter as a
+waiter like any other, the cautious direction, reads no narrow hold, and names
+`load.narrow_runs` as a key nothing reads while `load.preflights` beside it counts;
+this code counts its waiters in full, since none can carry the mark, so none passes its
+limit. A narrow waiter queued ahead can be shut by its own account's stricter settings,
+which no other account can see, so waiters ahead that alone keep a narrow run shut stop
+counting after two minutes, flat whatever their number: a waiter free to go takes a free
+place in under one, and each that leaves starts the count again, so a queue that is
+moving never reaches it.
+
+A wait gives up after six hours by default, the figure sessions came to
+pass by hand once thirty minutes ended every gated test on a busy machine. It exits
+1 as ever, and its last line starts `LOAD GATE TIMED OUT`, naming how long it waited
+and that nothing ran, with the renewal stopped first so no message follows it, since
+builders' pipes hid the exit code that day and they read the gate as still running;
+under the JSON form, whose standard output stays one document, that line is the last
+on standard error.
+
 ## The implement loop
 
 Five sub-verbs drive the loop a build starts, the status, step, receipt, widen
@@ -513,7 +584,17 @@ lane moves on. The landing's narrowing keeps a path the lane widened to and
 changed, a resume at land renews that narrowing as it stands, a resume that
 reserves again over this copy's live or lapsed hold keeps the paths that hold
 names beside the found_at, and a lane leaving land for a fresh round reserves
-its found_at again beside the paths its narrowed hold names.
+its found_at again beside the paths its narrowed hold names. The run record
+keeps each path widened to in a `reservation_widened_to` line of its own, so a
+reservation made again names it even when the reservation branch was deleted.
+The fence before a landing's push and its arming judges the lane's branch the
+same way, since no receipt stands between a lane at its validators and its
+landing: a path the reservation does not cover is reserved there, judged for
+overlap and against the cap, and another's hold on it stops the lane at its
+landing, naming that hold, with nothing pushed or armed. Only the records the
+landing moves are left out of that reading, so anything else its records commit
+holds is judged, and so is a reservation made by hand for a run that recorded
+none. An origin it cannot reach is a wait, as at the fence's other reads.
 
 A run that holds a reservation on the shared remote (itd-2609091034175565;
 the state's `reserved_at`) holds it for the copy the run lives in. The step
@@ -617,6 +698,72 @@ verb then discards the lane's worktree and branch, records the discarded head,
 and ends the lane before its validators, and the drain routes the hand-back by
 kind ([`35-drain.md`](35-drain.md)).
 
+## The stop and the take-over
+
+A stop is a recorded state every run reads before each move, never a signal to a
+terminal, because a stop can only take hold at a tool-call boundary
+(dcn-2611031722512037). The person's own command, from their own account, writes it;
+the same command lifts it, and the lift is recorded; the guard refuses both to an agent.
+The account's home is the account database's, whatever the environment says. With a shared folder chosen at setup in each account
+([`01-ahoy.md`](01-ahoy.md)) the stop is
+`<folder>/abcd-stop-<number>/abcd-stop.json`, in a directory of the person's own, named by their account's number, on a machine no other person shares
+(dcn-2611041550139264); without one it is `~/.abcd.noindex/stop.json`, which reaches
+only that account's runs. The file in the folder is the one file outside abcd's
+owner-only rule. It is a request to stop and nothing more: judged on one descriptor,
+never followed through a symlink, at most 4 KiB, owned by the account named at setup,
+and no byte of it is read. Anything else there is refused, named on each move, and is
+no stop. A folder others can write needs the sticky bit and an owner that is root or the
+person, and each parent above it is held to the same rule, so another account can remove
+nothing and move nothing away.
+
+One check stands before every move, and every entry to a move makes it. The release and
+the discard of a held lane, a person's decisions over it, do not make it.
+Under a stop no lane opens, no stage is handed out and no agent starts, and the run
+record takes an entry naming who set it and when. A receipt is collected as
+ever, and the lane goes no further. An agent is live by its launch's process, or for
+a host's agent while its driver lives, or with no driver recorded for one reservation
+lease. A step killed outright leaves its agent unknown until the claim's term ends. A take-over
+names an unknown agent and leaves it to an explicit restart, which does not judge its state. While one is live its lane is left as it stands. Then the lane's uncommitted work is
+saved aside as a restart saves it, an agent lost is marked kept, and with every lane
+settled, a save that failed holding its lane, the run's reservation is released and the run is halted.
+A run fixes the shared folder and the person at its start, in its control record, and
+reads that folder, the one the setting names and the platform's shared folder before each
+move, the last only for this account, the one the setting names or the one the run started
+under: what any other account leaves there is not honoured and is said, on each step's answer, the
+listing and the setup board, and a lift names a stop it cannot reach. A step under a stop claims no driver, so the agents are judged by the
+driver they ran under. A setting that
+cannot be read, that has gone or changed during the run, or a folder the run should read
+whose stop cannot be looked at, holds the run: it moves
+nothing and lets nothing go until the setting is put back, and only a read that saw
+clearly and found no stop counts as a lift, or lets a run be taken over. A home that
+cannot be found holds the run the same way. The chosen folder does not move while a stop
+stands in it. A renewal that falls due under a stop settles the run first. With no agent left in its
+call and its work saved, a run under a stop no longer renews its reservation; a run with work a save
+could not take keeps it only while a gated waiter, a reading of the run's status or a drive still in an
+agent's call or a preflight renews it, lapses at its lease otherwise, and the move's refusal says so. A take-over over a
+record that has since finished on the default branch has nothing to reserve, and clears the
+mark. A signal's stop has no file to lift, and
+stays. A configuration changed during the run holds the save as it refuses a restart, and a
+worktree that no longer stands holds nothing back. A stop lifted before the halt lets
+the run go on, and a settled lane's agent is told again. Each account has its own page for the day,
+`<folder>/abcd-digest-<uid>/<date>.md`, rewritten whole at each halting in that account, naming the stop,
+every run of that account's it halted in this repository's worktrees and each checkout a driver worked in, what each left, and no account's name. A page that cannot be
+written changes nothing about the stop: its answer and the listing say so, and a later check tries again.
+A pull request armed before the stop can still merge under it: the stop's account holds its number, and the page and the text of the
+listing name each with its disarm command, and nothing disarms it on its own. A halted run stays halted when
+the stop lifts, until a take-over reserves it again. A stop that does not come from the file,
+the terminal drive's first interrupt, takes the same order and writes no page.
+
+A run records who drives it in `control.json`, beside its state: the live driver
+(session, process, start time) and each in-flight launch with its route. One driver
+steps a run: each step claims it, refused at exit 3 while another's process is alive.
+The resume verb lists every unfinished run this account can read, in this repository's worktrees and each checkout a driver worked in, from those records and writes
+nothing. A lane's own worktree is not read for runs, by the listing or the page, so a run in one is not listed. Taking a run over claims the driver, refused too while the process table cannot
+say whether a recorded driver is gone, collects each receipt that has arrived before
+anything else, reserves again what a stop released, saves aside and
+names what a gone agent left, and re-tells its await; the next step starts the fresh
+agent, so nothing is started twice.
+
 ## The lost connection
 
 A lost connection to the network (git, gh, a download) or to the model service
@@ -665,7 +812,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd implement`
 
-Sub-verbs: `abcd implement check`, `abcd implement claim`, `abcd implement join`, `abcd implement leave`, `abcd implement load`, `abcd implement log`, `abcd implement mode`, `abcd implement outage`, `abcd implement receipt`, `abcd implement record`, `abcd implement release`, `abcd implement report`, `abcd implement status`, `abcd implement step`, `abcd implement widen`.
+Sub-verbs: `abcd implement check`, `abcd implement claim`, `abcd implement join`, `abcd implement leave`, `abcd implement load`, `abcd implement log`, `abcd implement mode`, `abcd implement outage`, `abcd implement receipt`, `abcd implement record`, `abcd implement release`, `abcd implement report`, `abcd implement resume`, `abcd implement status`, `abcd implement step`, `abcd implement stop`, `abcd implement widen`.
 
 Flags: none.
 
@@ -716,6 +863,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--narrow` | bool |
 | `--race-gate` | bool |
 | `--site` | string |
 | `--timeout` | duration |
@@ -817,6 +965,15 @@ Sub-verbs: none.
 | `--date` | string |
 | `--log` | string |
 
+### `abcd implement resume`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--run` | string |
+| `--take` | string |
+
 ### `abcd implement status`
 
 Sub-verbs: none.
@@ -838,6 +995,14 @@ Sub-verbs: none.
 | `--route` | stringArray |
 | `--run` | string |
 | `--yielded` | string |
+
+### `abcd implement stop`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--lift` | bool |
 
 ### `abcd implement widen`
 

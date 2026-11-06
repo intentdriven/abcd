@@ -42,7 +42,7 @@ func TestTheFenceHoldsWhileAnotherPersonCutsARelease(t *testing.T) {
 		name := map[bool]string{true: "a run holding its reservation", false: "a run holding none"}[reserved]
 		t.Run(name, func(t *testing.T) {
 			f := newLandFixture(t, queueRuleset("MERGE"))
-			f.toArm(t)
+			f.toArmOnce(t)
 			now := time.Now().UTC().Truncate(time.Second)
 			if reserved {
 				reserveRun(t, f.repo, f.runID, "itd-10", now.Add(-30*time.Minute), "internal/widget")
@@ -73,7 +73,7 @@ func TestTheFenceHoldsWhileAnotherPersonCutsARelease(t *testing.T) {
 // own lane; the cut is its to rule on.
 func TestTheCuttingSessionsOwnLaneArms(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
-	f.toArm(t)
+	f.toArmOnce(t)
 	now := time.Now().UTC().Truncate(time.Second)
 	reserveRun(t, f.repo, f.runID, "itd-10", now.Add(-30*time.Minute), "internal/widget")
 	reserveRelease(t, f.repo.Root(), "rel-v0.16.0", now.Add(-time.Minute))
@@ -88,7 +88,7 @@ func TestTheCuttingSessionsOwnLaneArms(t *testing.T) {
 // and the refusal says it is P's own other copy.
 func TestTheCuttingPersonsOtherCopyIsHeld(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
-	f.toArm(t)
+	f.toArmOnce(t)
 	now := time.Now().UTC().Truncate(time.Second)
 	reserveRun(t, f.repo, f.runID, "itd-10", now.Add(-30*time.Minute), "internal/widget")
 	p2 := otherCopy(t, f.bare, patEmail)
@@ -107,7 +107,7 @@ func TestATaggedOrReleasedCutHoldsNothing(t *testing.T) {
 	for _, end := range []string{"tagged", "released"} {
 		t.Run(end, func(t *testing.T) {
 			f := newLandFixture(t, queueRuleset("MERGE"))
-			f.toArm(t)
+			f.toArmOnce(t)
 			now := time.Now().UTC().Truncate(time.Second)
 			q := otherCopy(t, f.bare, quinnEmail)
 			reserveRelease(t, q, "rel-v0.16.0", now.Add(-time.Hour))
@@ -129,7 +129,7 @@ func TestATaggedOrReleasedCutHoldsNothing(t *testing.T) {
 // read arms nothing, since a hold it cannot see may be there.
 func TestTheFenceRefusesWhenItCannotReadTheHold(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
-	f.toArm(t)
+	f.toArmOnce(t)
 	if err := os.Rename(f.bare, f.bare+".gone"); err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +239,7 @@ func TestTheFenceCountsAReleaseDatedAheadFromItsFirstSighting(t *testing.T) {
 // arms, and the arming's note names the release that was not counted.
 func TestTheFenceArmsPastAReleaseDatedAheadItCannotKeepASightingOf(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
-	f.toArm(t)
+	f.toArmOnce(t)
 	now := time.Now().UTC().Truncate(time.Second)
 	reserveRun(t, f.repo, f.runID, "itd-10", now.Add(-30*time.Minute), "internal/widget")
 	undated := filepath.Join(f.repo.Root(), ".abcd", ".work.local", "reservation", "undated")
@@ -267,7 +267,7 @@ func TestTheFenceArmsPastAReleaseDatedAheadItCannotKeepASightingOf(t *testing.T)
 // preflight receipt minted, stopping before the push fence.
 func (f *landFixture) toPush(t *testing.T) Lane {
 	t.Helper()
-	f.validated(t)
+	f.validatedOnce(t)
 	f.step(t)
 	f.step(t)
 	l := currentLane(t, f.repo, f.runID)

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/embargo/storepath"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/intent"
@@ -177,7 +178,7 @@ func read(root string, titles bool) (Report, error) {
 	}
 	checkedOut := map[string]bool{}
 	self := realPath(root)
-	home, _ := os.UserHomeDir()
+	home, _ := abcdhome.MachineHome()
 	for _, wt := range wts {
 		if wt.bare || realPath(wt.path) == self {
 			if wt.branch != "" {

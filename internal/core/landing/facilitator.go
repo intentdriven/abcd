@@ -22,7 +22,9 @@ package landing
 //   - human arms a maintainer's pull request only once an approval of its head
 //     counts, and until then says it waits for the technical facilitator's;
 //   - auto arms a maintainer's pull request only when a review receipt names
-//     its head, and otherwise names the commit with no recorded review pair.
+//     its head, and otherwise names the commit with no recorded review pair. A
+//     delta's receipt names the head only while the delta stands (delta.go);
+//     one that does not stand says why, and that the head needs a full pair.
 //
 // An armed merge goes by the mirror's method: the merge queue's where one
 // gates the default branch, auto-merge (a merge commit) where none does. abcd
@@ -185,23 +187,23 @@ func readAuthor(forge ForgeCall, repo, n string) (login, role, why string) {
 // maintainer (readRole). An earlier commit's approval counts for nothing, and
 // so does an approval a later review of the same reviewer superseded. "" with
 // why when none counts.
-func countedApproval(forge ForgeCall, repoRoot, repo, n, head, author string) (by, why string) {
+func countedApproval(forge ForgeCall, repoRoot, repo, n, head, author string) (by, why string, unread bool) {
 	switch p, err := approvalRecord(repoRoot, head); {
 	case err != nil:
-		why = "the technical facilitator's recorded approval cannot be read (" + forgeWhy(err) + "); "
+		why, unread = "the technical facilitator's recorded approval cannot be read ("+forgeWhy(err)+"); ", true
 	case p != "":
-		return "the technical facilitator's recorded approval (abcd land --approve)", ""
+		return "the technical facilitator's recorded approval (abcd land --approve)", "", false
 	}
 	out, err := forge(reviewsArgs(repo, n)...)
 	if err != nil {
-		return "", why + "the forge could not be asked for pull request #" + n + "'s reviews: " + forgeWhy(err)
+		return "", why + "the forge could not be asked for pull request #" + n + "'s reviews: " + forgeWhy(err), true
 	}
 	var reviews []reviewAnswer
 	if json.Unmarshal([]byte(out), &reviews) != nil {
-		return "", why + "the forge's answer listing pull request #" + n + "'s reviews does not parse"
+		return "", why + "the forge's answer listing pull request #" + n + "'s reviews does not parse", true
 	}
 	if len(reviews) >= maxReviews {
-		return "", why + fmt.Sprintf("pull request #%s has %d reviews or more, a later one may sit beyond the page read, so none counts", n, maxReviews)
+		return "", why + fmt.Sprintf("pull request #%s has %d reviews or more, a later one may sit beyond the page read, so none counts", n, maxReviews), true
 	}
 	// The latest submitted review of each reviewer, in the order they first
 	// reviewed. A pending review is the reviewer's own draft, not a review.
@@ -232,19 +234,20 @@ func countedApproval(forge ForgeCall, repoRoot, repo, n, head, author string) (b
 		}
 		role, rwhy := readRole(forge, repo, r.User.Login)
 		if role == RoleMaintainer {
-			return r.User.Login + "'s approving review (" + rwhy + ")", ""
+			return r.User.Login + "'s approving review (" + rwhy + ")", "", false
 		}
+		unread = unread || role == RoleUnverified
 		notes = append(notes, r.User.Login+"'s approval is not by someone with write access ("+rwhy+")")
 	}
 	if len(notes) == 0 {
-		return "", why + "no review approves " + short(head)
+		return "", why + "no review approves " + short(head), unread
 	}
-	return "", why + "no approval of " + short(head) + " counts: " + strings.Join(notes, "; ")
+	return "", why + "no approval of " + short(head) + " counts: " + strings.Join(notes, "; "), unread
 }
 
 // approvalRecord finds the technical facilitator's recorded approval of sha in
-// any worktree git lists for the repository at repoRoot, as reviewReceipt
-// finds a review receipt, and returns its path, or "" when none names sha.
+// any worktree git lists for the repository at repoRoot, as findReceipts finds
+// a review receipt, and returns its path, or "" when none names sha.
 func approvalRecord(repoRoot, sha string) (string, error) {
 	return findReceipt(repoRoot, ApprovalsRelDir, sha)
 }
@@ -302,12 +305,19 @@ type gateFacts struct {
 	// (readRole).
 	author, role, roleWhy string
 	// approvedBy names the approval of head that counts, "" for none, and
-	// approvalWhy why none does.
+	// approvalWhy why none does; approvalUnread says a read it rests on failed.
 	approvedBy, approvalWhy string
-	// reviewed is whether a review receipt names head, and reviewWhy why
-	// the receipts could not be read, "" when they were.
+	approvalUnread          bool
+	// reviewed is whether a review receipt that stands names head, and
+	// reviewWhy why the receipts could not be read, "" when they were.
 	reviewed  bool
 	reviewWhy string
+	// reviewUnread says the gate could not judge the receipts, so whether one stands
+	// is unknown; a receipt read and found wanting is the head refused.
+	reviewUnread bool
+	// deltaWhy is why the delta receipt naming head does not stand, "" when
+	// there is none or it does; reviewNote says what a standing one rests on.
+	deltaWhy, reviewNote string
 }
 
 // gateDecision is the merge gate's answer: whether to arm the merge and with
@@ -336,8 +346,14 @@ func mergeGate(f gateFacts) gateDecision {
 	case f.mode.Mode != ModeAuto && f.approvedBy == "":
 		return gateDecision{why: modeText(f.mode) + ", so it waits for the technical facilitator's approval of " + head +
 			" (a forge review approving that commit by someone with write access other than its author, or abcd land --approve run by the facilitator): " + f.approvalWhy}
-	case f.mode.Mode == ModeAuto && f.reviewWhy != "":
+	case f.mode.Mode == ModeAuto && f.reviewWhy != "" && f.reviewUnread:
 		return gateDecision{why: modeText(f.mode) + ", but the review receipts cannot be read (" + f.reviewWhy + "), so whether a review pair passed " + head + " is unknown and nothing is armed"}
+	case f.mode.Mode == ModeAuto && f.reviewWhy != "":
+		return gateDecision{why: modeText(f.mode) + ", but no review receipt for " + head + " stands (" + f.reviewWhy + "): the head needs a recorded review pair (abcd land --record-review), so nothing is armed"}
+	case f.mode.Mode == ModeAuto && f.deltaWhy != "" && f.reviewUnread:
+		return gateDecision{why: modeText(f.mode) + ", but whether the delta review recorded for " + head + " stands cannot be judged (" + f.deltaWhy + "), so nothing is armed"}
+	case f.mode.Mode == ModeAuto && f.deltaWhy != "":
+		return gateDecision{why: modeText(f.mode) + ", but the delta review recorded for " + head + " does not stand (" + f.deltaWhy + "), so it needs a full review pair (record it with abcd land --record-review), and nothing is armed"}
 	case f.mode.Mode == ModeAuto && !f.reviewed:
 		return gateDecision{why: modeText(f.mode) + ", but no review receipt names " + f.head + ": the head has no recorded review pair (record it with abcd land --record-review), so nothing is armed"}
 	}
@@ -347,6 +363,9 @@ func mergeGate(f gateFacts) gateDecision {
 	}
 	if f.mode.Mode == ModeAuto {
 		why += "; a review receipt names " + head
+		if f.reviewNote != "" {
+			why += " (" + f.reviewNote + ")"
+		}
 	}
 	if f.rule.Method == "" {
 		return gateDecision{arm: true, method: "--merge", why: why + "; auto-merge armed (merge commit): no merge queue gates " + f.def + " (per the ruleset mirror)"}
@@ -383,6 +402,10 @@ type MergeDecision struct {
 	Arm    bool
 	Method string
 	Why    string
+	// Unread marks a decision not to arm that rests on an answer the gate could
+	// not read: a forge read that failed, or receipts it could not judge. It is
+	// no refusal of the head, so nothing is withdrawn on it.
+	Unread bool
 }
 
 // ErrModeUnreadable wraps a facilitator.mode the gate could not read, whose
@@ -401,15 +424,13 @@ func DecideMerge(q MergeQuery) (MergeDecision, error) {
 	f := gateFacts{mode: mode, rule: q.Rule, def: q.Default, head: q.Head}
 	f.author, f.role, f.roleWhy = readAuthor(q.Forge, q.Repo, q.PR)
 	if f.role == RoleContributor || (f.role == RoleMaintainer && mode.Mode != ModeAuto) {
-		f.approvedBy, f.approvalWhy = countedApproval(q.Forge, q.RepoRoot, q.Repo, q.PR, q.Head, f.author)
+		f.approvedBy, f.approvalWhy, f.approvalUnread = countedApproval(q.Forge, q.RepoRoot, q.Repo, q.PR, q.Head, f.author)
 	}
 	if mode.Mode == ModeAuto {
-		p, err := reviewReceipt(q.RepoRoot, q.Head)
-		f.reviewed = err == nil && p != ""
-		if err != nil {
-			f.reviewWhy = termsafe.Sanitize(fsutil.RedactHome(err.Error()))
-		}
+		proof := readReviewProof(q.RepoRoot, q.Head, q.Tip)
+		f.reviewed, f.reviewNote, f.deltaWhy, f.reviewWhy, f.reviewUnread = proof.reviewed, proof.note, proof.deltaWhy, proof.unreadable, proof.unread
 	}
 	d := mergeGate(f)
-	return MergeDecision{Arm: d.arm, Method: d.method, Why: d.why}, nil
+	return MergeDecision{Arm: d.arm, Method: d.method, Why: d.why,
+		Unread: !d.arm && (f.role == RoleUnverified || f.reviewUnread || f.approvalUnread)}, nil
 }

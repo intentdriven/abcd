@@ -28,11 +28,11 @@ func assertConventionsRemedy(t *testing.T, err error) {
 
 func TestAnIntentBriefWithoutConventionsNamesThePluginCommand(t *testing.T) {
 	repo := briefRepo(t, "")
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
-	advanceTo(t, repo, start.RunID, StageBrief)
+	advancedToOnce(t, repo, start.RunID, StageBrief)
 	_, err = advance(repo.Root(), start.RunID, DefaultStages(), Options{})
 	assertConventionsRemedy(t, err)
 }

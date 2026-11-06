@@ -1,7 +1,7 @@
-// Command ci-shard prints the packages one shard of ci.yml's macOS suite tests,
+// Command ci-shard prints the packages one shard of the macOS suite tests,
 // one import path per line, heaviest first (iss-2610181757540736):
 //
-//	pkgs=$(go run ./cmd/ci-shard -shard 2 -of 3)
+//	pkgs=$(go run ./cmd/ci-shard -shard 2 -of 4)
 //	go test -race -timeout 40m $pkgs
 //
 // The suite keeps its runner's three test slots full, so its time is its total
@@ -14,7 +14,9 @@
 // later is tested without anyone naming it, and a package cannot fall between two
 // hand-kept lists. Each package takes the lightest shard so far, heaviest package first, ties broken by import
 // path, which makes it deterministic for one tree: every shard computes it on
-// its own runner and they all reach the same answer. TestShardsPartitionTheModule
+// its own runner and they all reach the same answer. The exception is
+// ownLegPackage, which takes the last shard alone wherever there is more than one
+// and the module holds it. TestShardsPartitionTheModule
 // holds the union to the module's packages and the shards to disjoint, and
 // lint's TestMacOSSuiteShardsCoverTheModule holds what the workflow's own matrix
 // asks for to the same.
@@ -47,38 +49,44 @@ import (
 const modulePath = "github.com/intentdriven/abcd/"
 
 // weights are the packages that decide how long a shard runs: go test's own
-// seconds for each, under -race on the macOS runner, on the slowest passing run
-// measured (merge-group run 41733393432, 2026-11-03, 76.6 minutes). They are
-// every package at 100s or more, and together about seven eighths of the pass.
+// seconds for each, under -race on the macOS runner, the mean of two runs at normal
+// speed (release run 41969380736 and nightly run 42005455969, both 2026-11-05). The
+// slow nightly run 42197788864 sets none of them, since hosted runners vary about
+// twofold and a slow one would skew the table. They are every package at 100s or
+// more, and together about seven eighths of the pass.
 var weights = map[string]int{
-	"internal/core/implement/loop": 1733,
-	"internal/core/ahoy":           1097,
-	"internal/surface/cli":         913,
-	"internal/core/site":           831,
-	"internal/core/claim":          778,
-	"internal/core/capture":        730,
-	"internal/core/reading":        719,
-	"internal/core/launch":         634,
-	"internal/core/embargo":        523,
-	"internal/adapter/scanner":     518,
-	"internal/core/guard":          430,
-	"internal/cloudscripts":        336,
-	"internal/core/memory":         269,
-	"internal/core/decisions":      259,
-	"internal/core/lint":           255,
-	"internal/core/landing":        244,
-	"internal/core/release":        175,
-	"internal/core/intent":         173,
-	"internal/core/lifeboat":       145,
-	"internal/core/interview":      123,
-	"internal/core/runner":         102,
+	"internal/surface/cli":         1269,
+	"internal/core/launch":         1227,
+	"internal/core/implement/loop": 1206,
+	"internal/core/claim":          1104,
+	"internal/core/capture":        593,
+	"internal/core/lint":           569,
+	"internal/cloudscripts":        397,
+	"internal/core/embargo":        370,
+	"internal/core/ahoy":           335,
+	"internal/core/intent":         304,
+	"internal/core/reading":        298,
+	"internal/core/guard":          264,
+	"internal/adapter/scanner":     213,
+	"internal/core/memory":         169,
+	"internal/core/release":        134,
+	"internal/core/landing":        122,
+	"internal/core/runner":         120,
+	"internal/core/site":           102,
 }
 
-// defaultWeight is the mean of the packages the table leaves out, on that run.
-const defaultWeight = 15
+// defaultWeight is the mean of the packages the table leaves out, on those runs.
+const defaultWeight = 12
+
+// ownLegPackage is the package that takes the last shard alone. On a slow runner
+// its three test processes each reached -timeout with no test failing (nightly run
+// 42197788864). A shard of its own is meant to give it more of the runner's cores;
+// its time alone is not yet measured. Its weight above only orders it where one
+// shard holds everything.
+const ownLegPackage = "internal/core/implement/loop"
 
 // firstShardHead is the load the first shard starts with, in the same unit: it
-// alone runs the build, vet and the plain-only guards (ci.yml's macos-suite job),
+// alone runs the build, vet and the plain-only guards (macos-suite.yml),
 // about three minutes of wall clock on a slow runner, which at that runner's 2.7
 // busy slots is worth this many seconds of package time.
 const firstShardHead = 500
@@ -132,9 +140,10 @@ func run(args []string, list func() ([]string, error), w, errw io.Writer) int {
 }
 
 // assign deals pkgs into of shards, each package once whatever order pkgs names
-// them in: heaviest first, each to the lightest shard so far, the first shard
-// holding its head start. Each shard lists its packages heaviest first, the order
-// go test starts them in.
+// them in: ownLegPackage alone in the last shard, when there is more than one and
+// pkgs names it, and the rest heaviest first, each to the lightest of the other
+// shards so far, the first shard holding its head start. Each shard lists its
+// packages heaviest first, the order go test starts them in.
 func assign(pkgs []string, of int) [][]string {
 	sorted := slices.Clone(pkgs)
 	slices.Sort(sorted)
@@ -142,7 +151,13 @@ func assign(pkgs []string, of int) [][]string {
 	slices.SortStableFunc(sorted, func(a, b string) int { return cmp.Compare(weightOf(b), weightOf(a)) })
 
 	shards := make([][]string, of)
-	loads := make([]int, of)
+	deal := of
+	if own := modulePath + ownLegPackage; of > 1 && slices.Contains(sorted, own) {
+		sorted = slices.DeleteFunc(sorted, func(p string) bool { return p == own })
+		deal = of - 1
+		shards[deal] = []string{own}
+	}
+	loads := make([]int, deal)
 	loads[0] = firstShardHead
 	for _, p := range sorted {
 		lightest := 0

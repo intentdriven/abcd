@@ -463,12 +463,12 @@ func TestTheBuildSideHolderLineCarriesNoAbsoluteGitdir(t *testing.T) {
 // request, written), and only then refuses on the unreadable worktree.
 func TestALiveDrainFinishesAMergedLaneBeforeItRefuses(t *testing.T) {
 	f := drainLandFixture(t)
-	first := drainToLane(t, f.repo, Options{}, DrainOptions{})
+	first := f.firstMove(t)
 	if first.Start == nil {
 		t.Fatalf("the drain opens a lane: %+v", first)
 	}
 	f.runID, f.issue = first.Start.RunID, first.Lane.Issue
-	l := f.armIssueLane(t)
+	l := f.armIssueLaneOnce(t)
 	f.merged(t, l.Landing.Pushed)
 	broken := filepath.Join(t.TempDir(), "wt-broken")
 	f.repo.Git("worktree", "add", "-q", "-b", "lane-broken", broken)

@@ -127,6 +127,11 @@ func goCacheDir(goEnv func() (string, error), getenv func(string) string, userCa
 	return filepath.Clean(dir)
 }
 
+// GoEnvCache is what `go env GOCACHE` reports, run as GoCacheDir runs it but
+// with none of its fallbacks: an error where no go command can answer. A caller
+// about to delete files from the path asks this, never a guess at it.
+func GoEnvCache() (string, error) { return goEnvGOCACHE() }
+
 // goEnvGOCACHE runs `go env GOCACHE`.
 func goEnvGOCACHE() (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), goEnvTimeout)
@@ -229,11 +234,15 @@ const goCacheREADME = "This directory holds cached build artifacts from the Go b
 // creates (00 to ff). A directory named by GOCACHE that is not a cache (a
 // project, or a home) is not one, so the gate prints no command that deletes
 // files in it.
-func LooksLikeGoCache(dir string) bool {
-	if b, err := os.ReadFile(filepath.Join(dir, "README")); err == nil && strings.HasPrefix(string(b), goCacheREADME) {
+func LooksLikeGoCache(dir string) bool { return LooksLikeGoCacheFS(os.DirFS(dir)) }
+
+// LooksLikeGoCacheFS is LooksLikeGoCache for a directory already opened, such as
+// an os.Root's FS.
+func LooksLikeGoCacheFS(fsys fs.FS) bool {
+	if b, err := fs.ReadFile(fsys, "README"); err == nil && strings.HasPrefix(string(b), goCacheREADME) {
 		return true
 	}
-	entries, err := os.ReadDir(dir)
+	entries, err := fs.ReadDir(fsys, ".")
 	if err != nil {
 		return false
 	}
@@ -244,6 +253,16 @@ func LooksLikeGoCache(dir string) bool {
 		}
 	}
 	return n == 256
+}
+
+// HoldsHome reports whether dir is the home or a directory above it, so a
+// caller deleting files from a directory the environment named can decline it.
+func HoldsHome(dir, home string) bool {
+	if home == "" {
+		return false
+	}
+	rel, err := filepath.Rel(filepath.Clean(dir), filepath.Clean(home))
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, "../")
 }
 
 // isHexByte reports whether name is two lowercase hex digits, the name of one

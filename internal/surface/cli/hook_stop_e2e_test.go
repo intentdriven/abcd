@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // hook_stop_e2e_test.go — the away mode's stop check end to end, through the
@@ -25,7 +23,7 @@ func ownedUnpushedCheckout(t *testing.T) (root, ghLog string) {
 	gitAt(t, root, "config", "--local", "user.email", "alice@example.invalid")
 	gitAt(t, root, "config", "--local", "commit.gpgsign", "false")
 	origin := filepath.Join(t.TempDir(), "origin.git")
-	gittest.InitBare(t, origin)
+	initBare(t, origin)
 	gitAt(t, root, "remote", "add", "origin", origin)
 	main := gitAt(t, root, "rev-parse", "--abbrev-ref", "HEAD")
 	gitAt(t, root, "push", "-q", "origin", main)

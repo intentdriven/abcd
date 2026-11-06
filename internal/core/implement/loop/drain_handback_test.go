@@ -73,7 +73,7 @@ func TestEveryKindTheLoopHandsBackIsATombstoneKind(t *testing.T) {
 // request.
 func TestOneClonesHandBackIsPassedOverByAnotherClonesDrain(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
-	first, err := Drain(repo.Root(), Options{}, DrainOptions{})
+	first, err := drainedOnce(t, repo, DrainOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestOneClonesHandBackIsPassedOverByAnotherClonesDrain(t *testing.T) {
 // origin's blob of the record.
 func TestALanesHandBackIsPublishedWithItsKind(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
-	first := drainToLane(t, repo, Options{}, DrainOptions{})
+	first := drainedToLaneOnce(t, repo, DrainOptions{})
 	if first.Start == nil || first.Lane.Issue != secondIssue {
 		t.Fatalf("the drain opens the documentation issue's lane: %+v", first)
 	}

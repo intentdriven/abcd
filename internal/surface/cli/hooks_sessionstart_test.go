@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -40,16 +39,12 @@ type sessionStartHooks struct {
 	} `json:"hooks"`
 }
 
-// hooksManifest locates the committed hooks/hooks.json from this test file's own
-// on-disk position, the same way bootstrapScript locates the shipped script — so
-// the assertions below derive from the manifest that actually ships.
+// hooksManifest locates the committed hooks/hooks.json at the repository root,
+// the same way bootstrapScript locates the shipped script — so the assertions
+// below derive from the manifest that actually ships.
 func hooksManifest(t *testing.T) string {
 	t.Helper()
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller failed to locate the test source file")
-	}
-	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..", "..", "hooks", "hooks.json"))
+	return filepath.Join(repoRootFromTest(t), "hooks", "hooks.json")
 }
 
 // sessionStartCommand returns the single SessionStart command string, failing if

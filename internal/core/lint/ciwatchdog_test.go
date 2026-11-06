@@ -16,12 +16,12 @@ import (
 // go test's -timeout counts from each test binary's own start, so it cannot
 // bound the job's clock: on a passing merge-group run the ubuntu job's last
 // package binary started 23.8 minutes into the job, so a hang there would have
-// met the job's 45-minute cap long before its 40m -timeout fired, and a
+// met the job's 60-minute cap before its 40m -timeout fired, and a
 // cancellation at the cap carries no dump. No single -timeout fits every package
 // a job starts at a different time.
 //
-// So every step that runs go test, in ci.yml's check job and in each shard of its
-// macOS suite, runs it under cmd/ci-watchdog, the job clock's watchdog. It starts
+// So every step that runs go test, in ci.yml's check job and in each shard of the
+// macOS suite (macos-suite.yml), runs it under cmd/ci-watchdog, the job clock's watchdog. It starts
 // the step's shell as a process group it owns and, at the job's cap less the
 // declared margin on the clock the "Record the job's start" step sets, sends the
 // test binaries under go test SIGQUIT (each prints its goroutines and fails), then
@@ -29,39 +29,46 @@ import (
 // per-package budget make preflight shares
 // (TestRaceLaneBudgetIsDeclaredAndFitsItsJob).
 //
-// The margin is declared once, in the workflow's env, and the cap the watchdog
+// The margin is declared once in each workflow's env, and the cap the watchdog
 // reads is held to each job's timeout-minutes, so the deadline sits inside every
 // job's cap by the margin. No job outside ciTestJobs may run go test at all: it
 // would have no watchdog and this test would not read it.
 func TestCheckJobTestStepsRunUnderTheJobClockWatchdog(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
-	workflow := readRepoFile(t, root, ".github/workflows/ci.yml")
-
-	head, jobsPart, ok := strings.Cut(workflow, "\njobs:\n")
-	if !ok {
-		t.Fatal(".github/workflows/ci.yml: no `jobs:` key; the parser or the workflow changed shape")
-	}
-	var margin time.Duration
-	if m := regexp.MustCompile(`(?m)^  ` + watchdogMarginVar + `: (.+?)\s*$`).FindStringSubmatch(head); m == nil {
-		t.Errorf(".github/workflows/ci.yml: the workflow's env declares no %s, which the watchdog reads", watchdogMarginVar)
-	} else {
-		n, err := strconv.Atoi(strings.Trim(m[1], `"`))
-		margin = time.Duration(n) * time.Minute
-		switch {
-		case err != nil:
-			t.Errorf(".github/workflows/ci.yml: %s is %q, not a whole number of minutes", watchdogMarginVar, m[1])
-		case margin < watchdogMarginFloor:
-			t.Errorf(".github/workflows/ci.yml: %s is %s, under %s: the dumps, the grace before SIGKILL and "+
-				"the job's remaining steps must finish inside it", watchdogMarginVar, margin, watchdogMarginFloor)
+	// A caller's workflow-level env does not reach a called workflow, so each file
+	// declares the margin once, and the two declare one value.
+	margins := map[string]time.Duration{}
+	for _, file := range []string{".github/workflows/ci.yml", macOSSuiteWorkflow} {
+		head, jobsPart, ok := strings.Cut(readRepoFile(t, root, file), "\njobs:\n")
+		if !ok {
+			t.Fatalf("%s: no `jobs:` key; the parser or the workflow changed shape", file)
+		}
+		if m := regexp.MustCompile(`(?m)^  ` + watchdogMarginVar + `: (.+?)\s*$`).FindStringSubmatch(head); m == nil {
+			t.Errorf("%s: the workflow's env declares no %s, which the watchdog reads", file, watchdogMarginVar)
+		} else {
+			n, err := strconv.Atoi(strings.Trim(m[1], `"`))
+			margins[file] = time.Duration(n) * time.Minute
+			switch {
+			case err != nil:
+				t.Errorf("%s: %s is %q, not a whole number of minutes", file, watchdogMarginVar, m[1])
+			case margins[file] < watchdogMarginFloor:
+				t.Errorf("%s: %s is %s, under %s: the dumps, the grace before SIGKILL and "+
+					"the job's remaining steps must finish inside it", file, watchdogMarginVar, margins[file], watchdogMarginFloor)
+			}
+		}
+		if strings.Contains(jobsPart, watchdogMarginVar+":") {
+			t.Errorf("%s: a job declares %s of its own; it is declared once, in the workflow's env", file, watchdogMarginVar)
 		}
 	}
-	if strings.Contains(jobsPart, watchdogMarginVar+":") {
-		t.Errorf(".github/workflows/ci.yml: a job declares %s of its own; it is declared once, in the workflow's env", watchdogMarginVar)
+	if a, b := margins[".github/workflows/ci.yml"], margins[macOSSuiteWorkflow]; a != b {
+		t.Errorf("ci.yml's %s is %s and %s's is %s; want one margin", watchdogMarginVar, a, macOSSuiteWorkflow, b)
 	}
 
-	for _, name := range ciTestJobs {
-		where := ".github/workflows/ci.yml job " + name
-		job, ok := workflowJobBlock(workflow, name)
+	for _, testJob := range ciTestJobs {
+		name := testJob.job
+		margin := margins[testJob.file]
+		where := testJob.file + " job " + name
+		job, ok := workflowJobBlock(readRepoFile(t, root, testJob.file), name)
 		if !ok {
 			t.Fatalf("%s: no such job; the parser or the workflow changed shape", where)
 		}
@@ -129,15 +136,18 @@ func TestCheckJobTestStepsRunUnderTheJobClockWatchdog(t *testing.T) {
 	}
 
 	// Comments between steps belong to no step, so only a step's own text counts.
-	for _, m := range regexp.MustCompile(`(?m)^  ([A-Za-z][A-Za-z0-9_-]*):\s*$`).FindAllStringSubmatch(jobsPart, -1) {
-		if slices.Contains(ciTestJobs, m[1]) {
-			continue
-		}
-		job, _ := workflowJobBlock(workflow, m[1])
-		for _, step := range jobSteps(job) {
-			if goTestRe.MatchString(step.body) {
-				t.Errorf(".github/workflows/ci.yml job %s: step %q runs go test, in a job with no job clock "+
-					"for the watchdog; add the job to ciTestJobs and give it the clock", m[1], step.label)
+	for _, file := range []string{".github/workflows/ci.yml", macOSSuiteWorkflow} {
+		workflow := readRepoFile(t, root, file)
+		for _, id := range workflowJobIDs(workflow) {
+			if slices.Contains(ciTestJobs, ciTestJob{file, id}) {
+				continue
+			}
+			job, _ := workflowJobBlock(workflow, id)
+			for _, step := range jobSteps(job) {
+				if goTestRe.MatchString(step.body) {
+					t.Errorf("%s job %s: step %q runs go test, in a job with no job clock "+
+						"for the watchdog; add the job to ciTestJobs and give it the clock", file, id, step.label)
+				}
 			}
 		}
 	}

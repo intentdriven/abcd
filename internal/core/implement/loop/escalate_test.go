@@ -68,6 +68,8 @@ func tieredHandBackOne(t *testing.T, repo *gittest.Repo, runID string, o Options
 	path := filepath.Join(repo.Root(), filepath.FromSlash(res.Awaiting.Receipt))
 	if role == RoleAuditor {
 		body = auditorVerdict(t, filepath.Join(filepath.Dir(path), AuditRequestFileName), body)
+	} else {
+		body = statingHeadAt(t, repo.Root(), runID, res.Awaiting.Receipt, body)
 	}
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
@@ -132,7 +134,7 @@ func routeOfRole(t *testing.T, repo *gittest.Repo, runID string, n int, role str
 // and the switch, one step per failed round, never two.
 func TestAFailedRoundRunsTheNextOneTierUp(t *testing.T) {
 	repo := briefRepo(t, agentsMarked)
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +213,7 @@ func TestAFailedRoundRunsTheNextOneTierUp(t *testing.T) {
 // escalated_from empty, and none is swapped for another route.
 func TestARouteThatNamesNoTierDoesNotMove(t *testing.T) {
 	repo := briefRepo(t, agentsMarked)
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,7 +317,7 @@ func TestARoundsRouteIsStateVersion16s(t *testing.T) {
 		t.Fatalf("a round's route is state version 16's, got %d", schemaVersionUnplanned)
 	}
 	repo := briefRepo(t, agentsMarked)
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -365,7 +367,7 @@ func TestARoundsRouteIsStateVersion16s(t *testing.T) {
 // as every other free text of the state is.
 func TestARoundsGateOutputIsBoundedAndMasked(t *testing.T) {
 	repo := briefRepo(t, agentsMarked)
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}

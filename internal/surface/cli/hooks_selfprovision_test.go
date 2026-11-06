@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -352,16 +351,12 @@ func TestSessionEndNeverBootstraps(t *testing.T) {
 	}
 }
 
-// briefChapter locates a committed design-record chapter from this test file's
-// own on-disk position, the same way hooksManifest locates the manifest — so
-// the assertions below read the chapter that actually ships in the checkout.
+// briefChapter locates a committed design-record chapter at the repository root,
+// the same way hooksManifest locates the manifest — so the assertions below read
+// the chapter that actually ships in the checkout.
 func briefChapter(t *testing.T, rel string) string {
 	t.Helper()
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller failed to locate the test source file")
-	}
-	path := filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..", "..", rel))
+	path := filepath.Join(repoRootFromTest(t), filepath.FromSlash(rel))
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("reading the committed chapter %s: %v", rel, err)

@@ -124,7 +124,7 @@ func landsWithModel(t *testing.T, f *landFixture, from, trailer string) {
 func TestALandingReadsACorrectedReceiptsModelAgain(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
 	f.model = "claude-test-5"
-	f.validated(t)
+	f.validatedOnce(t)
 	setModel(t, f, "", nil, false)
 	landsWithModel(t, f, "from its file", "Assisted-by: Claude:claude-test-5")
 }
@@ -133,7 +133,7 @@ func TestALandingReadsACorrectedReceiptsModelAgain(t *testing.T) {
 // implementer wrote with no model lands with the model the runner reported.
 func TestALandingTakesTheModelOfTheRouteThatRanIt(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
-	f.validated(t)
+	f.validatedOnce(t)
 	setModel(t, f, "", &runner.RouteRecord{Asked: runner.Claude, Ran: runner.Claude, Model: "claude-route-1"}, true)
 	landsWithModel(t, f, "from the route that ran it", "Assisted-by: Claude:claude-route-1")
 }
@@ -144,7 +144,7 @@ func TestALandingTakesTheModelOfTheRouteThatRanIt(t *testing.T) {
 func TestALandingReadsAnUnnameableModelAgain(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
 	f.model = "claude-test-5"
-	f.validated(t)
+	f.validatedOnce(t)
 	setModel(t, f, "unprefixed-model", nil, false)
 	landsWithModel(t, f, "from its file", "Assisted-by: Claude:claude-test-5")
 }
@@ -154,12 +154,12 @@ func TestALandingReadsAnUnnameableModelAgain(t *testing.T) {
 // for the model as required rather than optional (iss-2611022247103872).
 func TestAFixBriefAsksForTheModel(t *testing.T) {
 	repo := briefRepo(t, agentsMarked)
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
 	id, stages := start.RunID, DefaultStages()
-	implemented(t, repo, id, stages, "one.txt")
+	implementedOnce(t, repo, id, "one.txt")
 	passRound(t, repo, id, stages, RoleRuthless, RoleSecurity)
 	handBack(t, repo, id, stages, RoleAuditor, "INCONCLUSIVE")
 	res, err := advance(repo.Root(), id, stages, Options{})

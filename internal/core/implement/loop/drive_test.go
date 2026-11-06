@@ -32,6 +32,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -41,6 +42,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/runner"
+	"github.com/intentdriven/abcd/internal/core/runstop"
 	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/testshard"
 )
@@ -60,6 +62,12 @@ func TestMain(m *testing.M) {
 		os.Exit(loopFakeHarness(mode))
 	}
 	announceBeforePush = noAnnouncement
+	// A stop on the machine running the tests stops no test: a test of the stop
+	// names its own fixture home (stop_test.go).
+	defaultStopHome = func() string { return "" }
+	accountStopHome = func() string { return "" }
+	stopReadingOff = true
+	runstop.WellKnownFolder = func() string { return "" }
 	// The package is too long for one test process under the preflight's
 	// package budget (iss-2610251004378066).
 	if code, ok := testshard.Shard(); ok {
@@ -73,6 +81,7 @@ func TestMain(m *testing.M) {
 	}
 	code := m.Run()
 	cleanup()
+	removeFixtureWorlds()
 	os.Exit(code)
 }
 
@@ -104,6 +113,12 @@ func loopFakeHarness(mode string) int {
 		}
 		return ""
 	}
+	if mode == terminalFakeMode {
+		mode = terminalFakeTurn(field("You are the "))
+	}
+	if mode == "noshape" {
+		_ = os.WriteFile(field("Receipt: "), []byte("not a receipt\n"), 0o600)
+	}
 	if mode == "ratelimit" {
 		// The claude CLI cut off by a rate limit mid-work: an edit left
 		// uncommitted in the worktree it runs in, a partial receipt, and the
@@ -111,8 +126,34 @@ func loopFakeHarness(mode string) int {
 		_ = os.WriteFile("halfway.txt", []byte("half done\n"), 0o600)
 		_ = os.WriteFile(field("Receipt: "), []byte(`{"schema_version": 1, "run_id": "`), 0o600)
 		fmt.Println(`{"type":"system","subtype":"init","session_id":"fake-session-3","model":"fake-model"}`)
-		fmt.Println(`{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","resetsAt":1791000000,"rateLimitType":"five_hour"},"session_id":"fake-session-3"}`)
+		resets := os.Getenv(terminalResetEnv)
+		if resets == "" {
+			resets = "1791000000"
+		}
+		fmt.Println(`{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","resetsAt":` + resets + `,"rateLimitType":"five_hour"},"session_id":"fake-session-3"}`)
 		fmt.Println(`{"type":"result","subtype":"success","is_error":true,"result":"limit reached","session_id":"fake-session-3"}`)
+		return 1
+	}
+	if mode == "spentcrash" || mode == "retrycrash" || mode == "apicrash" || mode == "accountzero" {
+		// A launch past its init event that failed: having spent, stuck
+		// retrying, naming an API status, or on a zero exit with nothing spent.
+		fmt.Println(`{"type":"system","subtype":"init","session_id":"fake-session-5","model":"fake-model","tools":[]}`)
+		switch mode {
+		case "spentcrash":
+			fmt.Println(`{"type":"assistant","message":{"id":"m1","usage":{"input_tokens":10,"output_tokens":4}}}`)
+		case "retrycrash":
+			fmt.Println(`{"type":"system","subtype":"api_retry","attempt":1,"max_retries":10,"retry_delay_ms":500,"error_status":null,"error":"unknown"}`)
+		case "apicrash":
+			fmt.Println(`{"type":"result","subtype":"success","is_error":true,"api_error_status":503,"result":"unavailable"}`)
+		case "accountzero":
+			fmt.Println(`{"type":"result","subtype":"error_during_execution","is_error":true,"result":"gave up"}`)
+			return 0
+		}
+		return 1
+	}
+	if mode == "startedcrash" {
+		// A launch that reached its init event and then failed.
+		fmt.Println(`{"type":"system","subtype":"init","session_id":"fake-session-4","model":"fake-model"}`)
 		return 1
 	}
 	if mode == "notloggedin" {
@@ -177,7 +218,28 @@ func loopFakeHarness(mode string) int {
 	if mode == "ok" || mode == "metered" || strings.HasPrefix(mode, "model-") {
 		body := "{}\n"
 		if role := field("You are the "); strings.HasPrefix(role, RoleRuthless) {
-			body = reviewReturn
+			body = briefReturn(field("Brief: "), reviewReturn)
+		}
+		_ = os.WriteFile(field("Receipt: "), []byte(body), 0o600)
+	}
+	if mode == "lengthstop" {
+		// A reviewer whose return reads as whole and whose launch reports it was
+		// stopped for length.
+		_ = os.WriteFile(field("Receipt: "), []byte(briefReturn(field("Brief: "), reviewReturn)), 0o600)
+		if name == "opencode" {
+			fmt.Println(`{"type":"step_start","sessionID":"ses_fake2","part":{"type":"step-start"}}`)
+			fmt.Println(`{"type":"step_finish","sessionID":"ses_fake2","part":{"type":"step-finish","reason":"length"}}`)
+			return 0
+		}
+		fmt.Println(`{"type":"system","subtype":"init","session_id":"fake-session-2","model":"fake-model"}`)
+		fmt.Println(`{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"fake-session-2","stop_reason":"max_tokens"}`)
+		return 0
+	}
+	if mode == "headonretry" {
+		// A reviewer that leaves the head out until a brief says what is missing.
+		body := reviewReturn
+		if raw, err := os.ReadFile(field("Brief: ")); err == nil && strings.Contains(string(raw), retryHeading) {
+			body = briefReturn(field("Brief: "), reviewReturn)
 		}
 		_ = os.WriteFile(field("Receipt: "), []byte(body), 0o600)
 	}
@@ -217,6 +279,25 @@ func loopFakeHarness(mode string) int {
 	fmt.Println(string(init))
 	fmt.Println(`{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"fake-session-2"}`)
 	return 0
+}
+
+// briefReturn is body as the reviewer's brief at path asks for it.
+func briefReturn(path, body string) string {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return body
+	}
+	return briefReturnIn(string(raw), body)
+}
+
+// briefReturnIn is body as a brief's or a request's text asks for it: opening with the
+// line it names and naming that head in its Verdict section, as it was when the text
+// asks for none.
+func briefReturnIn(text, body string) string {
+	if m := regexp.MustCompile("`Reviewed head: ([0-9a-f]+)`").FindStringSubmatch(text); m != nil {
+		return "Reviewed head: " + m[1] + "\n\n" + namingHead(body, m[1])
+	}
+	return body
 }
 
 // reviewReturn is a ruthless reviewer's return, the same bytes whichever route
@@ -344,7 +425,7 @@ const driveBase = "0123456789abcdef0123456789abcdef01234567"
 func startToImplement(t *testing.T) (root, id string, steps Stages, o Options) {
 	t.Helper()
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -535,7 +616,7 @@ func TestARunnerThatCannotRunTheRoleFallsBackAndIsRecorded(t *testing.T) {
 func TestAReviewThroughARunnerDiffersFromAHostReviewOnlyInItsRoute(t *testing.T) {
 	review := func(t *testing.T, routed bool) ValidatorRun {
 		repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-		start, err := Start(repo.Root(), "itd-10", Options{})
+		start, err := startedOnce(t, repo, "itd-10")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -545,13 +626,14 @@ func TestAReviewThroughARunnerDiffersFromAHostReviewOnlyInItsRoute(t *testing.T)
 		if err := os.MkdirAll(filepath.Join(repo.Root(), "review"), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(repo.Root(), "review", "brief.md"), []byte("# review\n"), 0o600); err != nil {
+		head := strings.Repeat("a", 40)
+		if err := os.WriteFile(filepath.Join(repo.Root(), "review", "brief.md"), []byte("# review\n\n`Reviewed head: "+head+"`\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		steps[2] = StageDef{Name: StageImplement, Piece: 7,
 			Run: func(c Context, l *Lane) (Outcome, error) {
 				if len(l.Validation) == 0 {
-					l.Validation = []ValidationRound{{Round: 1, HeadSHA: strings.Repeat("a", 40),
+					l.Validation = []ValidationRound{{Round: 1, HeadSHA: head,
 						Validators: []ValidatorRun{{Role: RoleRuthless, Brief: briefRel, Return: returnRel}}}}
 				}
 				return Outcome{Await: &Await{Role: RoleRuthless, Brief: briefRel, Receipt: returnRel}}, nil
@@ -578,7 +660,7 @@ func TestAReviewThroughARunnerDiffersFromAHostReviewOnlyInItsRoute(t *testing.T)
 			if err != nil || res.Awaiting == nil {
 				t.Fatalf("the host is handed the review: %+v %v", res, err)
 			}
-			if err := os.WriteFile(filepath.Join(repo.Root(), returnRel), []byte(reviewReturn), 0o600); err != nil {
+			if err := os.WriteFile(filepath.Join(repo.Root(), returnRel), []byte("Reviewed head: "+head+"\n\n"+namingHead(reviewReturn, head)), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := Receipt(repo.Root(), start.RunID, returnRel, steps, o); err != nil {

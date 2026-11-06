@@ -12,6 +12,35 @@ over the brief's earlier `1.0.0`-at-close expectation). The four M6 synthesis
 agents below entered at `0.1.0`, wired to their `abcd disembark` verbs and
 unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
+## 2026-11-05 (a recorded verdict names the head it judges)
+
+### ruthless-reviewer 0.3.2
+
+PATCH: the output section says that a return the brief records opens its verdict
+line with the verdict and then names the head by its full object name, and that no
+other line opens a verdict, whatever qualifies it. A review no brief records is
+unchanged. No other rule or field changed. Unmeasured, in the `0.x` band.
+
+### security-reviewer 0.4.2
+
+PATCH: the same output line as the ruthless reviewer's. No other rule or field
+changed. Unmeasured, in the `0.x` band.
+
+## 2026-11-05 (iss-2611012123291272 — a recorded return opens with what it read)
+
+### ruthless-reviewer 0.3.1
+
+PATCH: the output section says that a return the brief records with
+`abcd land --record-review` has the first line `Reviewed head: <name>`, and a
+delta review's has `Reviewed delta: <base>..<head>`, and that a return has one
+`### Verdict` section and no other line opening with the word Verdict. No other rule
+or field changed. Unmeasured, in the `0.x` band.
+
+### security-reviewer 0.4.1
+
+PATCH: the same output line as the ruthless reviewer's. No other rule or field
+changed. Unmeasured, in the `0.x` band.
+
 ## 2026-11-03 (iss-2611011402496418 — a refused question is redrafted, never the end)
 
 ### planning-interviewer 0.3.0

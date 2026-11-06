@@ -17,8 +17,9 @@ import (
 // shard, and a step that names its tests with -run is left as one process: the
 // plain-only guard steps carry no count, since it would do nothing there. The
 // same holds for -json, -cover, -shuffle and every other flag testshard does
-// not repeat, so the race steps' go test may carry -race and -timeout alone:
-// another flag would run each package as one process with the count still set.
+// not repeat, so the race steps' go test may carry -race, -timeout and the
+// -count=1 every hosted test step passes, which testshard does repeat: another
+// flag would run each package as one process with the count still set.
 // A macOS shard's race pass carries the count like the rest: splitting the suite
 // across runners does not make a package shorter on the runner it lands on. The
 // check job's plain pass on an inert change, its only test pass there, shards the
@@ -34,24 +35,29 @@ func TestCIRacePassesShardLikePreflight(t *testing.T) {
 	}
 	want := `ABCD_TEST_SHARDS: "` + m[1] + `"`
 
-	ci := readRepoFile(t, root, filepath.Join(".github", "workflows", "ci.yml"))
-	for _, name := range []string{"Test (race, internal)", macOSRaceStep, "Test"} {
-		step, ok := workflowStepBlock(ci, name)
+	const ci = ".github/workflows/ci.yml"
+	for _, pass := range []struct{ file, name string }{
+		{ci, "Test (race, internal)"},
+		{macOSSuiteWorkflow, macOSRaceStep},
+		{ci, "Test"},
+	} {
+		file, name := pass.file, pass.name
+		step, ok := workflowStepBlock(readRepoFile(t, root, file), name)
 		if !ok {
-			t.Errorf("ci.yml has no `%s` step", name)
+			t.Errorf("%s has no `%s` step", file, name)
 			continue
 		}
 		if !strings.Contains(step, "\n          "+want+"\n") {
-			t.Errorf("ci.yml's `%s` step does not set %s in its env, the count preflight runs with:\n%s", name, want, step)
+			t.Errorf("%s's `%s` step does not set %s in its env, the count preflight runs with:\n%s", file, name, want, step)
 		}
 		run := regexp.MustCompile(`(?m)^\s+(?:run: )?go test (.*)$`).FindStringSubmatch(step)
 		if run == nil {
-			t.Errorf("ci.yml's `%s` step runs no `go test` line", name)
+			t.Errorf("%s's `%s` step runs no `go test` line", file, name)
 			continue
 		}
 		for _, f := range strings.Fields(run[1]) {
-			if strings.HasPrefix(f, "-") && f != "-race" && f != "-timeout" {
-				t.Errorf("ci.yml's `%s` step passes %s, which runs each package as one process whatever the shard count", name, f)
+			if strings.HasPrefix(f, "-") && f != "-race" && f != "-timeout" && f != "-count=1" {
+				t.Errorf("%s's `%s` step passes %s, which runs each package as one process whatever the shard count", file, name, f)
 			}
 		}
 	}

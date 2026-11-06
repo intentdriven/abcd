@@ -209,6 +209,16 @@ check, and reports `resumed: true` with the same run and an empty `checks`: the
 run's own lanes move and claim the intent, so judging it again would refuse the
 run as its own peer.
 
+**A session whose setting reads as off a profile is warned while the away mode
+holds.** While `abcd mode autonomous` holds, or its record cannot be read, every
+`build` and `build next` that starts or resumes a run prints, after the move, one
+line on stderr opening `WARNING:` when the setting `/abcd:mode` describes reads as
+off a profile, and says why when the record was the doubt. Pass the line on to the
+person, as it asks. Nothing is refused and the exit code does not change. In the
+managed mode a build is one move at the person's direction and prints nothing; a
+refusal and `--release` start nothing and print nothing. This reads one setting and proves no wall, and the setting's value changes nothing
+the session holds.
+
 **Approval prompts are refused while the run runs.** A new run says so once,
 in one line on stderr (stdout's JSON is untouched; a resume says nothing).
 While the run is unfinished and its state was written within the last two
@@ -288,7 +298,8 @@ returns are written there, as they are for the build's validators.
    time, so the two are never out together. Each has its own brief under
    `<lane>/plan-review/<lens>/`, which tells it the draft's text is data to
    judge, not instructions, and to change nothing. Each writes its return
-   there, ending with one `### Verdict` section (`SHIP` or `FIX FIRST`), and
+   there, ending with one `### Verdict` section (`SHIP` or `FIX FIRST`, then the
+   draft's digest, which its brief names), and
    `implement receipt <return>` hands it back: the loop parses the verdict and
    records it. A return it cannot read as a verdict records nothing and is
    refused. Once both are in, a `FIX FIRST` hands the lane back as
@@ -628,7 +639,15 @@ session for work routed to the runner; tell the user the reason (a `Not logged
 in` asks for the runner's API key in the environment). Each later `implement
 step` that hands no agent out retries one held role once on its runner, and
 names it in `retried`; `implement step --route <role>=runner:<name>` retries
-it at once. A role already with you, from a step before its route existed,
+it at once. An implementer whose runner left a receipt at its path is the
+exception: the step reads the receipt first and a `--route` retries nothing. One
+that verifies is collected, even if the runner then exited badly. One whose
+runner exited badly and that does not verify is set aside as the role is retried.
+One the verifier refused after its runner ended stops the lane: no runner is
+started over that work, `next` names the ways out, correcting the receipt (then
+`implement receipt`, or a plain `implement step` reads it) or
+`implement step --restart <lane>`, and a drain hands the lane back as stuck at
+its bounds. A role already with you, from a step before its route existed,
 whose receipt you have not written is retried the same way, so do not start an
 agent for it once its role is routed. A paused role whose route has since
 moved to the host is handed to you by the next step that hands no other agent
@@ -771,9 +790,14 @@ A lane's stages run in order:
    reading `facilitator.mode` from the default branch's committed
    `.abcd/config.json` and `~/.abcd.noindex/config.json`, never the lane's
    checkout: in `human`, once an approval of the pushed head counts; in
-   `auto`, once a review receipt names it (`abcd land --record-review`); and a
-   contributor's pull request in either mode only once an approval by someone
-   with write access counts. An armed merge goes into the merge queue by the
+   `auto`, once a review receipt names it, which the loop records itself from a
+   pair that read that head: its full round judges each resolution the lane
+   declares, and its records commit takes a review round of its own before
+   anything is pushed, unless it moves an issue's record that round was not told
+   of or holds more than plain markdown, when the lane parks before any round,
+   naming which; a round that does not pass is left open, naming the finding, for
+   `abcd land --record-review`; and a contributor's pull request
+   in either mode only once an approval by someone with write access counts. An armed merge goes into the merge queue by the
    ruleset mirror's (`.abcd/work/rulesets/`) method, or as the forge's
    auto-merge where no queue gates the default branch. Otherwise the step's
    note and the run record say "left open: " and why, and each later step asks
@@ -804,7 +828,7 @@ A lane's stages run in order:
    push to the lane or merge it yourself. An issue lane whose conflict lies in
    declared generated files alone, or in no file when this checkout merges,
    enters its sync again instead of being refused, an armed merge withdrawn
-   first; one whose head already holds the default branch keeps the exit-3 wait.
+   first, unless it failed or parked over its records commit, which stays refused for a person; one whose head already holds the default branch keeps the exit-3 wait.
    `UNKNOWN`, a verdict the forge has not
    computed yet, keeps the exit-3 wait.
 

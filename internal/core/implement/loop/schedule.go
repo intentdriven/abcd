@@ -370,7 +370,7 @@ func laneWant(st State, i int) want {
 			return w
 		}
 		n := len(l.Validation)
-		if n == 0 || l.Validation[n-1].Fix != "" || l.syncRoundDue() {
+		if n == 0 || l.Validation[n-1].Fix != "" || l.syncRoundDue() || l.recordsRoundDue() {
 			w.kind, w.role = wantAgent, RoleRuthless
 			return w
 		}
@@ -391,7 +391,7 @@ func laneWant(st State, i int) want {
 		}
 		for _, v := range cur.Validators {
 			if !v.Pass {
-				if l.fixRoundsTaken() >= st.FixRoundCap() {
+				if l.fixRoundsTaken() >= st.FixRoundCap() || l.readsRecords(cur) {
 					w.kind = wantBinary
 				} else {
 					w.kind, w.role = wantAgent, RoleImplementer
@@ -426,9 +426,10 @@ func laneWant(st State, i int) want {
 			w.kind, w.hold = wantBinary, true
 			return w
 		}
-		// One landing at a time: a sibling's landing under way holds this one.
+		// One landing at a time: a sibling's landing under way holds one not yet
+		// begun, its records round included; a landing begun never waits.
 		for j, o := range st.Lanes {
-			if j != i && o.Stage == StageLand && o.Landing != nil && o.Landing.Merged == "" {
+			if j != i && l.Landing == nil && (o.Stage == StageLand || o.Stage == StageValidate) && o.Landing != nil && o.Landing.Merged == "" {
 				return w
 			}
 		}
@@ -728,6 +729,11 @@ func performMove(repoRoot string, st *State, steps Stages, w want, now time.Time
 		if out.Await.Since.IsZero() {
 			out.Await.Since = now
 		}
+		// The await's answer is what its agent writes from here on, so nothing
+		// that stands at its path now is kept there to be read as one.
+		if err := setAsideForAgent(repoRoot, st, lane, out.Await.Receipt, now); err != nil {
+			return StepResult{}, err
+		}
 		lane.Awaits = append(slices.Clone(lane.Awaits), *out.Await)
 		handed = out.Await
 		note := out.Note
@@ -748,7 +754,11 @@ func performMove(repoRoot string, st *State, steps Stages, w want, now time.Time
 		}
 	}
 	st.UpdatedAt = now
-	return laneResult(*st, lane, performed, handed), nil
+	res := laneResult(*st, lane, performed, handed)
+	if out.Stay || out.Goto != "" {
+		res.stepNote = out.Note
+	}
+	return res, nil
 }
 
 // holdWaiting writes the work the ceiling holds back into the run's waiting
@@ -858,6 +868,15 @@ func (l Lane) CheckWait() string {
 // check, with a record entry naming it, and reports whether it wrote.
 func beganCheckWait(st *State, i int, r *Refusal, now time.Time) bool {
 	l := st.Lanes[i]
+	if r.gateUnread && l.Landing != nil && l.Landing.GateUnreadSince == nil {
+		ld := *l.Landing
+		ld.GateUnreadSince = &now
+		l.Landing = &ld
+		st.Lanes[i] = l
+		st.Record = append(st.Record, Entry{At: now, Lane: l.ID, Stage: string(StageLand), Note: "waiting on the merge gate, which could not read what it asks: " + r.Reason})
+		st.UpdatedAt = now
+		return true
+	}
 	if r.checkWait.IsZero() || l.Landing == nil || l.Landing.CheckWaitSince != nil {
 		return false
 	}

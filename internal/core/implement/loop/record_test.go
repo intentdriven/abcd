@@ -31,7 +31,7 @@ func fakeCapture(calls *[]string) TranscriptCapturer {
 // history store, one capture per path.
 func TestTheRunRecordNamesEveryLaneReceiptVerdictModelAndTranscript(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
-	l := f.landedToArmed(t)
+	l := f.landedToArmedOnce(t)
 	var calls []string
 	if _, err := CaptureTranscripts(f.repo.Root(), f.runID, []string{"/t/main.jsonl"}, fakeCapture(&calls), Options{}); err == nil {
 		t.Fatal("a run that is not complete has no transcripts captured yet")
@@ -105,7 +105,7 @@ func TestTheRunRecordNamesEveryLaneReceiptVerdictModelAndTranscript(t *testing.T
 // file carrying any of them is not one version 6 wrote, and is refused.
 func TestAVersion6StateReadsAsOneNothingHasLanded(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
-	f.validated(t)
+	f.validatedOnce(t)
 	f.step(t)
 	path := filepath.Join(f.repo.Root(), filepath.FromSlash(StateRelPath(f.runID)))
 	current := stateBytes(t, f.repo.Root(), f.runID)

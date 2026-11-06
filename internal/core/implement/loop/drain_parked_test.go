@@ -66,12 +66,12 @@ func parkedOf(t *testing.T, res DrainResult, runID string) DrainParked {
 func parkDrainLane(t *testing.T) (*landFixture, Lane) {
 	t.Helper()
 	f := drainLandFixtureWith(t, unreviewedQueueRuleset("MERGE"))
-	first := drainToLane(t, f.repo, Options{}, DrainOptions{})
+	first := f.firstMove(t)
 	if first.Start == nil || first.Lane.Issue != secondIssue {
 		t.Fatalf("the drain opens the documentation issue's lane: %+v", first)
 	}
 	f.runID, f.issue = first.Start.RunID, secondIssue
-	return f, f.parkIssueLane(t)
+	return f, f.parkIssueLaneOnce(t)
 }
 
 // TestEveryParkedLaneIsReadInOneForgeListing: two lanes parked at land, the

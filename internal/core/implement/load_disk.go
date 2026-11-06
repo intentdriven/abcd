@@ -3,7 +3,6 @@ package implement
 import (
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -33,8 +32,9 @@ import (
 // than waits, since nothing frees disk while it sleeps. The refusal names
 // each low volume, its free space and the floor, and, when the cache's own
 // volume is low, the cache's path and size and the age-based trim a person
-// can run. abcd never trims the cache itself: deleting another tool's files
-// is not the gate's call.
+// can run. The gate never trims the cache itself: deleting another tool's
+// files is not its call. The one place abcd does is `ahoy worktree prune`,
+// after it removes a worktree (worktree.TrimGoCache).
 //
 // A platform whose free space abcd cannot read (other than macOS and Linux),
 // or a read that fails, is reported and never refused.
@@ -67,7 +67,7 @@ func diskFloorFor(slots int) uint64 {
 // for) reads as the default of one.
 func diskFloorAt(getenv func(string) string, home string) uint64 {
 	if home == "" {
-		h, err := os.UserHomeDir()
+		h, err := abcdhome.MachineHome()
 		if err != nil || h == "" {
 			return diskFloorFor(1)
 		}
@@ -177,7 +177,7 @@ func realDiskProbe(floor uint64) diskProbe {
 func checkDisk(home string, p diskProbe) DiskCheck {
 	out := DiskCheck{Status: DiskOK, FloorBytes: p.floor, Volumes: []DiskVolume{}}
 	if home == "" {
-		if h, err := os.UserHomeDir(); err == nil {
+		if h, err := abcdhome.MachineHome(); err == nil {
 			home = h
 		}
 	}
@@ -227,7 +227,7 @@ func checkDisk(home string, p diskProbe) DiskCheck {
 		out.Status = DiskUnknown
 	}
 	if cacheLow {
-		out.goCacheHome = holdsHome(cache, home)
+		out.goCacheHome = machineload.HoldsHome(cache, home)
 		out.goCacheTrimmable = !out.goCacheHome && machineload.LooksLikeGoCache(cache)
 		if size, err := p.cacheSize(cache); err != nil {
 			reasons = append(reasons, "the Go build cache's size could not be measured: "+termsafe.Sanitize(fsRedact(err.Error(), home)))
@@ -450,15 +450,6 @@ func globEscape(p string) string {
 		b.WriteRune(c)
 	}
 	return b.String()
-}
-
-// holdsHome reports whether dir is the home or a directory above it.
-func holdsHome(dir, home string) bool {
-	if home == "" {
-		return false
-	}
-	rel, err := filepath.Rel(filepath.Clean(dir), filepath.Clean(home))
-	return err == nil && rel != ".." && !strings.HasPrefix(rel, "../")
 }
 
 // fsRedact replaces home in s with ~, so no message carries the home's path.

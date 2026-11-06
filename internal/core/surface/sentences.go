@@ -45,14 +45,16 @@ var sentences = map[string]string{
 		"Writes those settings, abcd's own rulesets and their mirrors; refuses an unconfirmed run.",
 	"abcd ahoy uninstall": "Remove abcd from this repository, leaving .abcd/ in place: " +
 		"Writes the removal of the marker block, PATH copy, and provenance record; refuses any argument.",
+	"abcd ahoy shared-folder": "Say what the shared folder is for, or choose it so a stop can cross accounts: " +
+		"Writes the choice given a folder; refuses no terminal or an unsafe folder.",
 	"abcd ahoy worktree": "List this repository's worktrees and its lane in the worktree store: " +
 		"Writes nothing; refuses a store it cannot trust or a directory outside a checkout.",
 	"abcd ahoy worktree add": "Add a worktree in this repository's lane of the worktree store: " +
 		"Writes the worktree, its start record and its local tier; refuses a taken or reserved name.",
 	"abcd ahoy worktree list": "List this repository's worktrees and its lane, or every lane with --all: " +
 		"Writes nothing; refuses a store it cannot trust or a directory outside a checkout.",
-	"abcd ahoy worktree prune": "Reclaim this lane's merged, clean worktrees, archiving their notes first: " +
-		"Writes the notes archive and removes the worktrees; refuses a store it cannot trust.",
+	"abcd ahoy worktree prune": "Reclaim this lane's merged, clean worktrees and stale Go cache entries: " +
+		"Writes the notes archive and removes both; refuses a store it cannot trust.",
 
 	"abcd banlist": "Render both banned-names layers: " +
 		"Writes nothing; refuses an unknown word without echoing it.",
@@ -243,6 +245,10 @@ var sentences = map[string]string{
 		"Writes the reservation and a run record line; refuses another copy's live hold, with exit 3.",
 	"abcd implement status": "Render the implement loop's runs in this checkout, lane by lane: " +
 		"Writes a due renewal to origin, its outcome to the run record; refuses a --run naming no run.",
+	"abcd implement stop": "Stop the unattended runs of each account that chose this folder, or lift it: " +
+		"Writes the stop file; refuses no terminal, and a file no run would honour.",
+	"abcd implement resume": "List every unfinished run on the machine, or take one over: " +
+		"Writes nothing bare; refuses a take-over while a stop holds or another driver is alive.",
 	"abcd implement step": "Perform the next stage of an implement loop run's lane and exit: " +
 		"Writes the run's state and the lane's stages; refuses a push with no preflight receipt.",
 
@@ -407,6 +413,9 @@ var sentences = map[string]string{
 
 	"abcd announce": "Post a fixed-form announcement on the shared remote: " +
 		"Writes one commit to your status branch; refuses free text, a record not yet public and an embargoed one.",
+
+	"abcd agents": "List the agents abcd started for this session and add them up: " +
+		"Writes nothing; refuses when launches are on record and no session or scope says whose.",
 
 	"abcd land": "Push a branch whose preflight passed and queue its pull request: " +
 		"Writes a push to origin and arms a merge; refuses the default branch or a dirty tree.",

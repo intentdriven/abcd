@@ -90,7 +90,7 @@ func TestTheWorktreeStepMakesTheLaneInTheStore(t *testing.T) {
 // making a second.
 func TestTheWorktreeStepFindsWhatItMadeLastTime(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +127,7 @@ func TestTheWorktreeStepRefusesAPathThatCouldEscapeTheStore(t *testing.T) {
 	for _, bad := range []string{"../escape", "lane-1/../../x", "-lane-1", "lane-1\x01", "lane-1/x", "..", "lane-01", ""} {
 		t.Run(strings.ReplaceAll(bad, "/", "_"), func(t *testing.T) {
 			repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-			start, err := Start(repo.Root(), "itd-10", Options{})
+			start, err := startedOnce(t, repo, "itd-10")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -165,7 +165,7 @@ func TestTheWorktreeStepRefusesAPathThatCouldEscapeTheStore(t *testing.T) {
 // of the store refuses the step, and nothing is made where it points.
 func TestTheWorktreeStepRefusesASymlinkedStore(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +190,7 @@ func TestTheWorktreeStepRefusesASymlinkedStore(t *testing.T) {
 // exactly as it was.
 func TestTheWorktreeStepNeverAdoptsWhatItDidNotMake(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +227,7 @@ func TestTheWorktreeStepRefusesAStoreLevelAnyoneElseCanWrite(t *testing.T) {
 	} {
 		t.Run(strings.ReplaceAll(tc.level, "/", "_")+"-"+tc.mode.String(), func(t *testing.T) {
 			repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-			start, err := Start(repo.Root(), "itd-10", Options{})
+			start, err := startedOnce(t, repo, "itd-10")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -264,7 +264,7 @@ func TestTheWorktreeStepRefusesAStoreLevelAnyoneElseCanWrite(t *testing.T) {
 // is 0700, so the store it makes passes its own test on the next call.
 func TestTheWorktreeStepMakesTheStoreTheCallersAlone(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}

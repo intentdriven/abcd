@@ -71,6 +71,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/intent"
+	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/recordid"
@@ -118,7 +119,8 @@ var reviewerVerdicts = map[string][]verdictWord{
 	RoleSecurity: {{"APPROVE", true}, {"BLOCK", false}, {"NEEDS-INPUT", false}},
 }
 
-// verdictHeadingRe is a return's Verdict heading, at any depth.
+// verdictHeadingRe is a Verdict heading in a report, at any depth: a report states
+// no verdict, so this reads wider than landing.ReadVerdict reads a return.
 var verdictHeadingRe = regexp.MustCompile(`(?im)^[ \t]{0,3}#{1,6}[ \t]+verdict[ \t]*#*[ \t]*$`)
 
 // reportVerdictRe is a verdict stated as a field on one line of a report:
@@ -151,7 +153,7 @@ func validateStage(c Context, lane *Lane) (Outcome, error) {
 			Note: fmt.Sprintf("the sync of %s with the default branch conflicted; a fresh implementer resolves it from the brief %s", lane.ID, s.Brief)}, nil
 	}
 	n := len(lane.Validation)
-	if n == 0 || lane.Validation[n-1].Fix != "" || lane.syncRoundDue() {
+	if n == 0 || lane.Validation[n-1].Fix != "" || lane.syncRoundDue() || lane.recordsRoundDue() {
 		round, err := openRound(c, *lane, n+1)
 		if err != nil {
 			return Outcome{}, err
@@ -207,6 +209,11 @@ func validateStage(c Context, lane *Lane) (Outcome, error) {
 			failing = append(failing, v)
 		}
 	}
+	if len(failing) > 0 && lane.readsRecords(*cur) {
+		// No fix round: the landing goes on to its pull request and leaves it open,
+		// naming the finding (recordOwnReview), for a person to see.
+		return Outcome{Note: fmt.Sprintf("round %d read the landing's records at %s and did not pass (%s); the lane parks at its pull request for a person", cur.Round, shortSHA(cur.HeadSHA), verdictsLine(*cur))}, nil
+	}
 	if len(failing) > 0 {
 		if taken, limit := lane.fixRoundsTaken(), c.State.FixRoundCap(); taken >= limit {
 			hb := HandBack{Verdict: VerdictUnachievable, Round: cur.Round, FixRounds: limit, Verdicts: verdictsLine(*cur)}
@@ -242,14 +249,20 @@ func validateStage(c Context, lane *Lane) (Outcome, error) {
 // closes the spec.
 func openRound(c Context, lane Lane, n int) (ValidationRound, error) {
 	roles := []string{RoleRuthless, RoleSecurity}
-	audits, err := auditsHere(c, lane)
-	if err != nil {
-		return ValidationRound{}, err
-	}
-	if audits {
-		roles = append(roles, RoleAuditor)
+	// A round over the records commit takes no audit: the verdict is on that record.
+	if !lane.recordsRoundDue() {
+		audits, err := auditsHere(c, lane)
+		if err != nil {
+			return ValidationRound{}, err
+		}
+		if audits {
+			roles = append(roles, RoleAuditor)
+		}
 	}
 	r := ValidationRound{Round: n, HeadSHA: lane.HeadSHA}
+	for _, res := range lane.Resolves {
+		r.ResolvesShown = append(r.ResolvesShown, res.Issue)
+	}
 	for _, role := range roles {
 		for _, v := range roundReviewers(c.State, role) {
 			dir, err := reviewerDir(c.State.RunID, lane.ID, n, role, v.Reviewer)
@@ -352,6 +365,12 @@ func writeValidatorBrief(c Context, lane Lane, r ValidationRound, v *ValidatorRu
 			p("- round %d's fix report (findings applied, or rejected in writing with the reason): `%s`\n", prev.Round, reportPathOf(c, lane, prev.Fix))
 		}
 	}
+	if lane.readsRecords(r) {
+		p("\n%s", recordsRoundScope(lane.recordsBase(r), r.HeadSHA))
+	}
+	if s := resolutionsSection(lane, r); s != "" {
+		p("\n%s", s)
+	}
 	p("\nRead only; change nothing in the worktree or on the branch.\n\n")
 	p("%s", routingSection(route))
 	if v.Role == RoleAuditor {
@@ -372,13 +391,11 @@ func writeValidatorBrief(c Context, lane Lane, r ValidationRound, v *ValidatorRu
 		p("Write the verdict JSON, in the request's shape and nothing else, to:\n\n`%s`\n\n", abs(c.RepoRoot, v.Return))
 		p("The loop checks it against the request and records what it reads; the landing's close consumes it.\n")
 	} else {
-		words := make([]string, 0, len(reviewerVerdicts[v.Role]))
-		for _, w := range reviewerVerdicts[v.Role] {
-			words = append(words, w.word)
-		}
 		p("## What you hand back\n\n")
+		p("%s\n\n", reviewedHeadLine(r.HeadSHA))
 		p("Write your whole return, in your agent definition's shape, to:\n\n`%s`\n\n", abs(c.RepoRoot, v.Return))
-		p("It ends with one `### Verdict` section stating exactly one of: %s. The loop reads that\n", strings.Join(words, ", "))
+		p("%s\n", oneVerdictLine)
+		p("%s The loop reads that\n", namesTheHeadLine(reviewerVerdicts[v.Role], r.HeadSHA))
 		p("section and records the verdict itself; a verdict written anywhere else is nobody's.\n")
 	}
 	return writeRoundFile(c.RepoRoot, v.Brief, b.Bytes())
@@ -598,10 +615,14 @@ func verifyValidation(c Context, lane *Lane, receiptRel string) error {
 		if v.Role == RoleAuditor {
 			return recordAudit(c, lane, v, raw)
 		}
-		word, err := parseVerdict(string(raw), reviewerVerdicts[v.Role])
+		if err := landing.StatesFullPair(string(raw), cur.HeadSHA); err != nil {
+			return refuse("receipt", "", lane.ID, fmt.Sprintf("%s does not state the head it read: %v", receiptRel, err),
+				"start a fresh "+v.Role+" with the brief "+v.Brief+"; its first line reads exactly `Reviewed head: "+cur.HeadSHA+"`, then hand it back")
+		}
+		word, err := parseVerdict(string(raw), reviewerVerdicts[v.Role], cur.HeadSHA)
 		if err != nil {
 			return refuse("receipt", "", lane.ID, fmt.Sprintf("%s states no verdict the loop can record: %v", receiptRel, err),
-				"start a fresh "+v.Role+" with the brief "+v.Brief+"; its return ends with one `### Verdict` section, then hand it back")
+				"start a fresh "+v.Role+" with the brief "+v.Brief+"; its return ends with one `### Verdict` section whose first line opens with the verdict and names the head, `"+cur.HeadSHA+"`, then hand it back")
 		}
 		v.Verdict, v.Pass = word.word, word.pass
 		// The route's answer, as its step placed and recorded it, is the
@@ -668,28 +689,46 @@ func readReturn(repoRoot, rel, laneID string) ([]byte, error) {
 	return data, nil
 }
 
-// parseVerdict reads the one verdict a return states: the first line under its
-// one Verdict heading, list marker and emphasis stripped, must begin with one
-// of words.
-func parseVerdict(text string, words []verdictWord) (verdictWord, error) {
+// reviewedHeadLine is what a reviewer's brief and a routed request say first of a
+// return: the line the hand-in reads and the landing records it by, as the reviewers'
+// own pages name it (`abcd land --record-review`, which reads it the same way).
+func reviewedHeadLine(head string) string {
+	return "Its first line reads exactly `Reviewed head: " + head + "`, nothing before it, so that the landing can record it as `abcd land --record-review` does. " +
+		"A return that does not open with that line, or that names another head, is refused and handed out again."
+}
+
+// oneVerdictLine is what a validator's brief and a routed request say of a return's
+// verdict, as the reviewers' own pages say it (landing.ReadVerdict).
+const oneVerdictLine = "A return has one `### Verdict` section and no other line opening a verdict, whatever qualifies it."
+
+// namesTheHeadLine is what a validator's brief and a routed request say of what stands
+// under that heading: words, the words its role may state, and subject, what it judges.
+// It spells no line a return could copy whole.
+func namesTheHeadLine(words []verdictWord, subject string) string {
 	names := make([]string, 0, len(words))
 	for _, w := range words {
 		names = append(names, w.word)
 	}
-	want := strings.Join(names, " or ")
-	heads := verdictHeadingRe.FindAllStringIndex(text, -1)
-	switch len(heads) {
-	case 0:
-		return verdictWord{}, fmt.Errorf("it has no Verdict section stating %s", want)
-	case 1:
-	default:
-		return verdictWord{}, fmt.Errorf("it has %d Verdict sections; one states the verdict", len(heads))
+	return "It ends with one `### Verdict` section. The first line under that heading opens with exactly one of " + strings.Join(names, ", ") +
+		", and then, on the same line, names what you judged by its full name, which is `" + subject + "`. " +
+		"A verdict that names nothing, abbreviates the name or names anything else is refused and handed out again."
+}
+
+// parseVerdict reads the one verdict a return states of subject, by the rule a
+// receipt reads it (landing.ReadVerdict): it must be one of words.
+func parseVerdict(text string, words []verdictWord, subject string) (verdictWord, error) {
+	word, err := landing.ReadVerdict(text, subject)
+	if err != nil {
+		return verdictWord{}, err
 	}
-	line := firstLine(text[heads[0][1]:])
-	if w, ok := leadingVerdict(line, words); ok {
-		return w, nil
+	names := make([]string, 0, len(words))
+	for _, w := range words {
+		if w.word == word {
+			return w, nil
+		}
+		names = append(names, w.word)
 	}
-	return verdictWord{}, fmt.Errorf("its Verdict section does not state %s", want)
+	return verdictWord{}, fmt.Errorf("its Verdict section does not state %s", strings.Join(names, " or "))
 }
 
 // firstLine is the first non-blank line of s.
@@ -702,16 +741,15 @@ func firstLine(s string) string {
 	return ""
 }
 
-// leadingVerdict reports the verdict line begins with, its list marker and
-// emphasis stripped, spelled with a space, a hyphen or an underscore between its
-// words, and ended by anything but a letter.
-func leadingVerdict(line string, words []verdictWord) (verdictWord, bool) {
+// verdictAtStart reports the verdict line begins with, with ends judging what
+// follows the word.
+func verdictAtStart(line string, words []verdictWord, ends func(rest string) bool) (verdictWord, bool) {
 	t := strings.TrimLeft(line, "-*+ \t")
 	t = strings.TrimLeft(t, "*_`")
 	norm := strings.NewReplacer("-", " ", "_", " ").Replace(t)
 	for _, w := range longestFirst(words) {
 		ww := strings.NewReplacer("-", " ", "_", " ").Replace(w.word)
-		if rest, ok := strings.CutPrefix(norm, ww); ok && (rest == "" || !isLetter(rest[0])) {
+		if strings.HasPrefix(norm, ww) && ends(t[len(ww):]) {
 			return w, true
 		}
 	}
@@ -781,14 +819,23 @@ func reportsCarryNoVerdict(c Context, lane Lane) error {
 }
 
 // reportVerdict finds a verdict a report states: as a field on a line, or as
-// the first line under a Verdict heading.
+// either of the first two lines under a Verdict heading, beginning with a verdict word
+// followed by anything but a letter, whatever ends its lines. A report states none, so
+// this reads wider than a return.
 func reportVerdict(text string) (string, bool) {
+	text = landing.NormalizeLineBreaks(text)
 	if m := reportVerdictRe.FindStringSubmatch(text); m != nil {
 		return m[1], true
 	}
 	for _, h := range verdictHeadingRe.FindAllStringIndex(text, -1) {
-		if w, ok := leadingVerdict(firstLine(text[h[1]:]), allVerdicts); ok {
-			return w.word, true
+		notALetter := func(rest string) bool { return rest == "" || !isLetter(rest[0]) }
+		under := text[h[1]:]
+		for range 2 {
+			line := firstLine(under)
+			if w, ok := verdictAtStart(line, allVerdicts, notALetter); ok {
+				return w.word, true
+			}
+			_, under, _ = strings.Cut(strings.TrimLeft(under, " \t\r\n"), "\n")
 		}
 	}
 	return "", false
@@ -967,6 +1014,12 @@ func DriveReview(ctx context.Context, repoRoot, runID string, res StepResult, st
 	if st, err := ReadState(repoRoot, runID); err == nil && st.autoPlanning() {
 		return res, nil
 	}
+	// The last moment before the route is asked: a stop set since the step began
+	// sends it nothing (stop.go).
+	if _, err := stopCheck(repoRoot, runID, steps, o); err != nil {
+		// res.handed: this step handed the review out, so nothing has it yet.
+		return StepResult{}, notStartedUnderStop(repoRoot, runID, aw.Receipt, steps, o, err)
+	}
 	ret, err := sendReview(ctx, repoRoot, runID, res.Lane, aw, rr)
 	switch {
 	case err != nil && ctx.Err() != nil:
@@ -975,7 +1028,7 @@ func DriveReview(ctx context.Context, repoRoot, runID string, res StepResult, st
 	case len(ret) > maxReturnBytes:
 		err = &reviewFailure{runner.ReasonInvalid, fmt.Sprintf("its return is %d bytes, more than the %d a return may be", len(ret), maxReturnBytes)}
 	default:
-		if _, perr := parseVerdict(ret, words); perr != nil {
+		if _, perr := parseVerdict(ret, words, roundHead(repoRoot, runID, res.Lane)); perr != nil {
 			err = &reviewFailure{runner.ReasonInvalid, "its return states no verdict the loop can record: " + perr.Error()}
 		}
 	}
@@ -1042,6 +1095,21 @@ func DriveReview(ctx context.Context, repoRoot, runID string, res StepResult, st
 	}
 	r.Route = &route
 	return r, nil
+}
+
+// roundHead is the head a lane's latest round read, "" when it cannot be read, which
+// no verdict names.
+func roundHead(repoRoot, runID, laneID string) string {
+	st, err := ReadState(repoRoot, runID)
+	if err != nil {
+		return ""
+	}
+	for _, l := range st.Lanes {
+		if n := len(l.Validation); l.ID == laneID && n > 0 {
+			return l.Validation[n-1].HeadSHA
+		}
+	}
+	return ""
 }
 
 // reviewReceipt hands the route's placed return back through the receipt;
@@ -1229,7 +1297,7 @@ func (st *State) dropAnswer(repoRoot, rel string) bool {
 }
 
 // keptAside keeps the route's answer beside the review's return when a return
-// the host's agent wrote already stands there, records nothing for it, and
+// written since the review was handed out stands there, records nothing for it, and
 // reports where the lane stands now.
 func keptAside(repoRoot, runID string, res StepResult, aw Await, rr *ReviewRoute, ret string) (StepResult, error) {
 	aside, err := keepAside(repoRoot, aw, rr, ret)
@@ -1245,7 +1313,7 @@ func keptAside(repoRoot, runID string, res StepResult, aw Await, rr *ReviewRoute
 			res = laneResult(st, l, "", nil)
 		}
 	}
-	res.Next = fmt.Sprintf("a return the host's agent wrote already stands at %s, so the %s route's answer is kept aside at %s and recorded nowhere; %s",
+	res.Next = fmt.Sprintf("a return written since this review was handed out stands at %s, so the %s route's answer is kept aside at %s and recorded nowhere; %s",
 		aw.Receipt, rr.Name, aside, res.Next)
 	return res, nil
 }
@@ -1477,6 +1545,9 @@ func reviewRequest(repoRoot, runID, laneID string, aw Await, agentPrompt func(st
 	// diff, whatever the repository configures: no external diff program, no
 	// textconv driver, no colour.
 	base := diffBase(lane)
+	if lane.readsRecords(r) {
+		base = lane.recordsBase(r)
+	}
 	diff, err := gitutil.RunCappedBytes(lane.Worktree, maxReviewDiffBytes, "diff", "--no-ext-diff", "--no-textconv", "--no-color",
 		base+".."+r.HeadSHA, "--")
 	if err != nil {
@@ -1531,18 +1602,20 @@ func reviewRequest(repoRoot, runID, laneID string, aw Await, agentPrompt func(st
 		p("- the lane: %s, spec step %d, %q\n", lane.ID, lane.SpecStep, lane.StepTitle)
 	}
 	p("- the branch: `%s`, its own changes `%s..%s` below\n\n", lane.Branch, base, r.HeadSHA)
+	if lane.readsRecords(r) {
+		p("%s", recordsRoundScope(base, r.HeadSHA))
+	}
+	p("%s", resolutionsSection(lane, r))
 	p("## The record: the lane's brief\n\n%s\n\n", fenced("markdown", string(brief)))
 	for _, rp := range reports {
 		p("## %s\n\n%s\n\n", rp.title, fenced("markdown", rp.body))
 	}
 	p("## The diff\n\n%s\n\n", fenced("diff", string(diff)))
-	words := make([]string, 0, len(reviewerVerdicts[aw.Role]))
-	for _, w := range reviewerVerdicts[aw.Role] {
-		words = append(words, w.word)
-	}
 	p("## What you answer\n\n")
-	p("Answer with your whole return, in your agent definition's shape. It ends with one `### Verdict`\n")
-	p("section stating exactly one of: %s. The loop writes your answer to the review's return and\n", strings.Join(words, ", "))
+	p("%s\n\n", reviewedHeadLine(r.HeadSHA))
+	p("Answer with your whole return, in your agent definition's shape.\n")
+	p("%s\n", oneVerdictLine)
+	p("%s The loop writes your answer to the review's return and\n", namesTheHeadLine(reviewerVerdicts[aw.Role], r.HeadSHA))
 	p("records the verdict itself; a verdict written anywhere else is nobody's.\n")
 	return b.String(), nil
 }

@@ -12,7 +12,11 @@ package loop
 // the widening backed off, and the implementer edits none of them. The
 // receipt is the backstop (unheldGaps): one is refused while the lane's
 // branch changes a path the reservation does not cover, which catches a
-// widening forgotten and an edit made through the shell.
+// widening forgotten and an edit made through the shell. The fence before a
+// landing's push and its arming judges the same paths (holdLaneChanges), for
+// a lane past its last receipt. The run record keeps each path widened to
+// (StageWidenedTo), so a reservation made again names it whatever became of
+// the reservation branch.
 
 import (
 	"bytes"
@@ -24,12 +28,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/shellquote"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
+
+// StageWidenedTo is the run record's stage for a path a lane's reservation was
+// widened to; its note is the path and nothing else. A reservation made again
+// names these beside the found_at (widenedPaths), so they outlive a deleted tip.
+const StageWidenedTo = "reservation_widened_to"
 
 // WidenResult is a widening's outcome: the run and lane, the paths newly held
 // (none when the reservation already covered every one), the footprint the
@@ -57,11 +67,13 @@ var widenStages = []Stage{StageImplement, StageValidate}
 // not at an editing stage; a path no reservation may carry; a reservation
 // the view does not show this copy holding. Contention (exit 3): another
 // copy's live hold on one of the paths, with nothing pushed and a run record
-// line saying the widening backed off; or a locked run state.
+// line saying the widening backed off; or a locked run state. Its brief has
+// the lane's implementer run it, so the save is the reservation's alone
+// (mutateReservation, iss-2611020719494343).
 func Widen(repoRoot, runID, laneID string, paths []string, o Options) (WidenResult, error) {
 	res := WidenResult{RunID: runID, Lane: laneID, Added: []string{}}
 	var backedOff error
-	err := mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+	err := mutateReservation(repoRoot, runID, func(st *State) (bool, error) {
 		now := o.now()
 		res.Record = st.Key
 		if st.Issue() == "" {
@@ -111,7 +123,7 @@ func Widen(repoRoot, runID, laneID string, paths []string, o Options) (WidenResu
 			return false, nil
 		}
 		fp := append(slices.Clone(own.Footprint), res.Added...)
-		r, err := widenReservation(repoRoot, st.Key, fp, false, own, now)
+		r, err := widenReservation(repoRoot, st.Key, fp, false, false, own, now)
 		if err != nil {
 			rf, ok := AsRefusal(err)
 			if !ok || !rf.Contention {
@@ -127,6 +139,9 @@ func Widen(repoRoot, runID, laneID string, paths []string, o Options) (WidenResu
 		}
 		res.Footprint = fp
 		res.Note = r.note + ", widened to " + strings.Join(res.Added, ", ") + " before the lane's implementer edits it"
+		for _, p := range res.Added {
+			st.Record = append(st.Record, Entry{At: now, Lane: laneID, Stage: StageWidenedTo, Note: p})
+		}
 		st.Record = append(st.Record, Entry{At: now, Lane: laneID, Stage: StageReservation, Note: res.Note})
 		st.UpdatedAt = now
 		return true, nil
@@ -138,6 +153,17 @@ func Widen(repoRoot, runID, laneID string, paths []string, o Options) (WidenResu
 		return WidenResult{}, backedOff
 	}
 	return res, nil
+}
+
+// widenedPaths is each path the run record says the run's lanes widened to.
+func widenedPaths(st State) []string {
+	var out []string
+	for _, e := range st.Record {
+		if e.Stage == StageWidenedTo && !slices.Contains(out, e.Note) {
+			out = append(out, e.Note)
+		}
+	}
+	return out
 }
 
 // widenPaths is paths cleaned, deduplicated and sorted, refused when one is
@@ -165,54 +191,122 @@ func widenPaths(laneID string, paths []string) ([]string, error) {
 // changes, at its tip, that the issue run's reservation does not cover. An
 // intent's run, a run holding no reservation, and a reservation the view
 // does not show this copy holding (the land fence's to settle) give none.
-// The paths the landing's own records commit changed are left out
-// (landingRecordPaths): a lane leaving its landing after that commit, its
-// pull request having started to conflict, carries the loop's move of the
-// issue's record, which no implementer made and no hold names.
+// The records the landing moves are left out (landingRecordPaths): a lane
+// leaving its landing after that commit, its pull request having started to
+// conflict, carries the loop's move of the issue's record, which no implementer
+// made and no hold names.
 func unheldGaps(c Context, lane Lane, now time.Time) []string {
 	st := c.State
-	if st.Issue() == "" || st.ReservedAt == nil {
+	if st.ReservedAt == nil {
 		return nil
 	}
-	snap, err := claim.View(c.RepoRoot, now)
-	if err != nil {
-		return []string{"a reservation that can be read to check the files the lane changed (" + fsutil.RedactHome(err.Error()) + ")"}
+	own, paths, gap := unheldPaths(c, lane, now)
+	if gap != "" {
+		return []string{gap}
 	}
-	own, ok := snap.Lookup(st.Key)
-	if !ok || own.Copy != claim.CopyThis || (own.State != claim.StateLive && own.State != claim.StateExpired) {
+	if len(paths) == 0 {
 		return nil
 	}
-	head, err := branchTip(c, lane)
-	if err != nil {
-		return []string{"a branch whose tip can be read to check the files the lane changed (" + fsutil.RedactHome(err.Error()) + ")"}
-	}
-	changed, declined := laneChangedFiles(c.RepoRoot, lane, head)
-	if declined != "" {
-		return []string{"the files the lane changed, to check them against its reservation (" + declined + ")"}
-	}
-	records, declined := landingRecordPaths(c.RepoRoot, lane)
-	if declined != "" {
-		return []string{"the files the lane changed, to check them against its reservation (" + declined + ")"}
-	}
-	var unheld []string
-	for _, p := range changed {
-		if !records[p] && !covers(own.Footprint, []string{p}) {
-			unheld = append(unheld, termsafe.Sanitize(p))
-		}
-	}
-	if len(unheld) == 0 {
-		return nil
-	}
-	quoted := make([]string, len(unheld))
-	for i, p := range unheld {
-		quoted[i] = shellquote.Single(p)
+	unheld := make([]string, len(paths))
+	quoted := make([]string, len(paths))
+	for i, p := range paths {
+		unheld[i] = termsafe.Sanitize(p)
+		quoted[i] = shellquote.Single(unheld[i])
 	}
 	return []string{fmt.Sprintf("a hold on %s, which the lane's branch changes beyond its reservation on %s (%s): run `%s` from the run's checkout before the edit, or take the change out of the branch",
 		strings.Join(unheld, ", "), st.Key, strings.Join(own.Footprint, ", "), widenCommand(st.RunID, lane.ID, strings.Join(quoted, " ")))}
 }
 
-// landingRecordPaths is the set of paths lane's landing records commit
-// changed against its parent, or nil when the landing has made none.
+// unheldPaths is the reading unheldGaps and holdLaneChanges share: the reservation
+// this copy holds on the issue, and each path lane's branch changes at its tip,
+// as git names it, that the reservation does not cover. gap, set when one of them
+// cannot be read, says what is missing in a receipt's words. An intent's run, and
+// a reservation the view does not show this copy holding, give none.
+func unheldPaths(c Context, lane Lane, now time.Time) (own claim.Reservation, unheld []string, gap string) {
+	st := c.State
+	if st.Issue() == "" {
+		return own, nil, ""
+	}
+	snap, err := claim.View(c.RepoRoot, now)
+	if err != nil {
+		return own, nil, "a reservation that can be read to check the files the lane changed (" + fsutil.RedactHome(err.Error()) + ")"
+	}
+	own, ok := snap.Lookup(st.Key)
+	if !ok || own.Copy != claim.CopyThis || (own.State != claim.StateLive && own.State != claim.StateExpired) {
+		return own, nil, ""
+	}
+	head, err := branchTip(c, lane)
+	if err != nil {
+		return own, nil, "a branch whose tip can be read to check the files the lane changed (" + fsutil.RedactHome(err.Error()) + ")"
+	}
+	changed, declined := laneChangedFiles(c.RepoRoot, lane, head)
+	if declined != "" {
+		return own, nil, "the files the lane changed, to check them against its reservation (" + declined + ")"
+	}
+	records, declined := landingRecordPaths(c.RepoRoot, lane)
+	if declined != "" {
+		return own, nil, "the files the lane changed, to check them against its reservation (" + declined + ")"
+	}
+	for _, p := range changed {
+		if !records[p] && !covers(own.Footprint, []string{p}) {
+			unheld = append(unheld, p)
+		}
+	}
+	return own, unheld, ""
+}
+
+// holdLaneChanges is the fence's judgement of what the lane's branch changes: no
+// receipt stands between a lane at its validators and its landing, so a path its
+// reservation came to leave out would otherwise land unjudged. A path the
+// reservation does not cover is reserved now, judged for overlap and against the
+// cap like any reservation, keeping the tip's term; another's hold on it, or a
+// refusal of the reservation, stops act, naming what it met. An origin it cannot
+// reach is a wait, as at the fence's other reads (fenceUnread). It reads the
+// reservation this copy holds whether the run recorded one or a person made it by
+// hand. note is the run record's clause for a reservation made, "" when every
+// path was held.
+func holdLaneChanges(c Context, lane Lane, act fenceAct) (note string, err error) {
+	own, paths, gap := unheldPaths(c, lane, c.Now)
+	if gap != "" {
+		return "", refuse(string(StageLand), "", lane.ID, "the land fence is missing "+gap+", so this lane does not "+act.not,
+			"settle what it names, then run `abcd implement step` again; "+act.stays)
+	}
+	if len(paths) == 0 {
+		return "", nil
+	}
+	shown := make([]string, len(paths))
+	for i, p := range paths {
+		shown[i] = termsafe.Sanitize(p)
+	}
+	named := strings.Join(shown, ", ")
+	r, err := widenReservation(c.RepoRoot, c.State.Key, heldWith(own.Footprint, paths), false, false, own, c.Now)
+	if err != nil {
+		reason := fsutil.RedactHome(err.Error())
+		rf, ok := AsRefusal(err)
+		if ok {
+			reason = rf.Reason
+		}
+		what := fmt.Sprintf("the lane's branch changes %s beyond its reservation on %s, which could not be reserved: %s; so this lane does not %s",
+			named, c.State.Key, reason, act.not)
+		switch {
+		case ok && rf.originUnread:
+			return "", fenceUnread(lane, what, reason, "git push the reservation on "+c.State.Key)
+		case ok && rf.Contention:
+			return "", contend(string(StageLand), "", lane.ID, what,
+				act.stays+"; wait for the reservation it names to end, or settle it with its holder, then run `abcd implement step` again")
+		}
+		out := refuse(string(StageLand), "", lane.ID, what, "settle what it names, then run `abcd implement step` again; "+act.stays)
+		if ok {
+			out.capped = rf.capped
+		}
+		return "", out
+	}
+	return r.note + ", widened to " + named + ", which the lane's branch changes beyond it", nil
+}
+
+// landingRecordPaths is the set of records lane's landing records commit moved
+// (landingMoves), or nil when the landing has made none. Anything else that
+// commit holds is judged like the rest of the lane's branch.
 func landingRecordPaths(repoRoot string, lane Lane) (map[string]bool, string) {
 	if lane.Landing == nil || !gitutil.IsFullSHA(lane.Landing.Records) {
 		return nil, ""
@@ -223,11 +317,23 @@ func landingRecordPaths(repoRoot string, lane Lane) (map[string]bool, string) {
 	}
 	paths := map[string]bool{}
 	for _, raw := range bytes.Split(out, []byte{0}) {
-		if p := string(raw); p != "" {
+		if p := string(raw); p != "" && landingMoves(lane, p) {
 			paths[p] = true
 		}
 	}
 	return paths, ""
+}
+
+// landingMoves reports whether p is the record of an issue lane resolves, in the
+// folder the landing moves it out of or into (landRecords).
+func landingMoves(lane Lane, p string) bool {
+	dir, base := path.Split(p)
+	if dir != capture.LedgerRelPath+"/open/" && dir != capture.LedgerRelPath+"/resolved/" {
+		return false
+	}
+	return strings.HasSuffix(base, ".md") && slices.ContainsFunc(lane.Resolves, func(r Resolution) bool {
+		return strings.HasPrefix(base, r.Issue+"-")
+	})
 }
 
 // widenCommand is the widen step's command line for runID's lane laneID over

@@ -9,7 +9,6 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/tools"
-	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // TestTerminalToolConfirmAsksOnlyAPersonAtATerminal is the gh offer's
@@ -68,7 +67,7 @@ func TestTerminalToolConfirmAsksOnlyAPersonAtATerminal(t *testing.T) {
 // never attempted, and the refusal carries the by-hand download to make.
 func TestAhoyRemoteApplyNeverInstallsGhOnAScriptedYes(t *testing.T) {
 	hermeticEnv(t)
-	repo := gittest.NewRepo(t)
+	repo := newRepo(t)
 	repo.Git("remote", "add", "origin", "https://github.com/example-org/example-repo.git")
 	t.Chdir(repo.Root())
 	if _, err := runCLIErr(t, "ahoy", "install", "--yes", "--adopt",

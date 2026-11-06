@@ -513,7 +513,8 @@ func voidsIf(line string) lineKind {
 }
 
 // validAttrName is git's rule for an attribute name: letters, digits, '-',
-// '.' and '_', not starting with '-', and not reserved (builtin_).
+// '.' and '_', not starting with '-', and not reserved (builtin_, from git
+// 2.44; an older git reads such a name as an ordinary attribute).
 func validAttrName(name string) bool {
 	if name == "" || name[0] == '-' || strings.HasPrefix(name, "builtin_") {
 		return false

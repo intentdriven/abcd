@@ -20,6 +20,7 @@ package worktree
 import (
 	"errors"
 	"fmt"
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -433,7 +434,7 @@ type AllListing struct {
 // opts.Labels; its worktrees are judged from their own checkout, found
 // through each one's .git file. Anything else is not a lane.
 func ListAll(opts AllOptions) (AllListing, error) {
-	home, err := os.UserHomeDir()
+	home, err := abcdhome.MachineHome()
 	if err != nil || home == "" {
 		return AllListing{}, fmt.Errorf("cannot resolve the caller's home directory for the worktree store: %v", err)
 	}

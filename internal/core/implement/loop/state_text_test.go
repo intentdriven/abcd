@@ -27,8 +27,8 @@ const schemaVersionPrevious = SchemaVersion - 1
 // migrates from name that earlier version as schemaVersionPrevious, never a
 // fixed older version a later bump leaves behind (iss-2610142134346602).
 func TestTheStoredTextTestsReadTheVersionJustBeforeTheCurrent(t *testing.T) {
-	if schemaVersionPrevious != schemaVersionUnkeyed {
-		t.Fatalf("the version before %d is the newest version read but never written: %d, %d", SchemaVersion, schemaVersionPrevious, schemaVersionUnkeyed)
+	if schemaVersionPrevious != schemaVersionUnprofiled {
+		t.Fatalf("the version before %d is the newest version read but never written: %d, %d", SchemaVersion, schemaVersionPrevious, schemaVersionUnprofiled)
 	}
 	// The needles are joined at run time so this file's own source matches
 	// only where a test passes the version, not where this test names it.
@@ -119,7 +119,7 @@ func withHandBack(t *testing.T, state []byte, hb map[string]any, field, bad stri
 // drain's call that routes the lane's hand-back, none echoing the rune.
 func TestARunStateRefusesHandBackTextItNeverWrites(t *testing.T) {
 	repo := drainRepo(t)
-	first := drainToLane(t, repo, Options{}, DrainOptions{})
+	first := drainedToLaneOnce(t, repo, DrainOptions{})
 	id := first.Start.RunID
 	handBackLaneOf(t, repo, id, Options{}, LaneHandBack{Kind: HandBackDesignFinding, Reason: "the fix changes the record's shape", Home: "the parser's ADR"})
 	st, err := ReadState(repo.Root(), id)

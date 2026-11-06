@@ -94,7 +94,7 @@ func (f *landFixture) refusedUnchanged(t *testing.T) *Refusal {
 func TestAConflictingPullRequestIsRefusedBeforeArming(t *testing.T) {
 	f := newLandFixtureWith(t, map[string]string{".abcd/work/rulesets/main-protection.json": queueRuleset("MERGE"),
 		".gitattributes": unionOne[".gitattributes"]})
-	l := f.toArm(t)
+	l := f.toArmOnce(t)
 	f.mainAdds(t, "one.txt", "main's own line\n")
 	f.forgeSays(t, forgeConflicting)
 	r := f.refusedUnchanged(t)
@@ -132,7 +132,7 @@ func TestAConflictingPullRequestIsRefusedBeforeArming(t *testing.T) {
 func TestAnArmedPullRequestThatTurnsConflictingIsRefusedNamingItsPaths(t *testing.T) {
 	f := newLandFixtureWith(t, map[string]string{".abcd/work/rulesets/main-protection.json": queueRuleset("MERGE"),
 		".gitattributes": unionOne[".gitattributes"]})
-	l := f.landedToArmed(t)
+	l := f.landedToArmedOnce(t)
 	pushed := f.remoteBranch(t, l.Branch)
 	f.mainAdds(t, "one.txt", "main's own line\n")
 	f.forgeSays(t, forgeConflicting)
@@ -168,7 +168,7 @@ func TestAnArmedPullRequestThatTurnsConflictingIsRefusedNamingItsPaths(t *testin
 // rather than blaming a driver.
 func TestAConflictWithoutADriverIsNamedAsOne(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
-	f.landedToArmed(t)
+	f.landedToArmedOnce(t)
 	f.mainAdds(t, "one.txt", "main's own line\n")
 	f.forgeSays(t, forgeConflicting)
 	r := f.refusedUnchanged(t)
@@ -182,7 +182,7 @@ func TestAConflictWithoutADriverIsNamedAsOne(t *testing.T) {
 // refusal says it cannot reproduce it rather than guessing at paths.
 func TestAConflictThisCheckoutCannotReproduceIsSaidSo(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
-	f.landedToArmed(t)
+	f.landedToArmedOnce(t)
 	f.forgeSays(t, forgeConflicting)
 	r := f.refusedUnchanged(t)
 	if !strings.Contains(r.Reason, "GitHub reports a conflict this checkout cannot reproduce") {
@@ -196,7 +196,7 @@ func TestAConflictThisCheckoutCannotReproduceIsSaidSo(t *testing.T) {
 // and an UNKNOWN verdict at the arm arms as before.
 func TestAnUncomputedOrMergeableVerdictKeepsWaiting(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
-	f.toArm(t)
+	f.toArmOnce(t)
 	f.forgeSays(t, forgeUnknown)
 	f.step(t)
 	if !strings.Contains(f.ghLog(t), "pr merge 7 --auto --merge") {

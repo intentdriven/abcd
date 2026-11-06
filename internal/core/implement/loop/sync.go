@@ -36,6 +36,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -260,6 +261,16 @@ func undeclaredConflict(lane Lane, def, merged string, paths []string, unread st
 // records and the pull request are kept. Any other conflict is refused for a
 // person, as before (conflictRefusal).
 func resyncLane(c Context, lane *Lane, def, tracking string, m mergeability) (Outcome, error) {
+	if why := failedRecordsRound(c, *lane); why != "" {
+		return Outcome{}, refuse(string(StageLand), "", lane.ID, "pull request #"+strconv.Itoa(lane.PR)+" conflicts with "+def+", and "+why+"; a sync's fresh round would not hear of it",
+			"settle the finding yourself on the lane's branch, or hand the lane back; the loop does not sync over it")
+	}
+	if due, err := recordsRoundWanted(c, *lane); err != nil {
+		return Outcome{}, err
+	} else if why := recordsParked(c, *lane); due && why != "" {
+		return Outcome{}, refuse(string(StageLand), "", lane.ID, "pull request #"+strconv.Itoa(lane.PR)+" conflicts with "+def+", and its records commit went to a person before any round: "+why+"; a sync's fresh round would not hear of it",
+			"settle it yourself on the lane's branch, or hand the lane back; the loop does not sync over it")
+	}
 	ld := lane.Landing
 	f := localConflict(c.RepoRoot, tracking, ld.Pushed)
 	if f.err != nil {
@@ -290,7 +301,23 @@ func resyncLane(c Context, lane *Lane, def, tracking string, m mergeability) (Ou
 		// the forge holds nothing armed, its merge wait for ever. The next
 		// step reaches the arming, finds the conflict again and enters the
 		// sync with nothing armed.
-		if _, err := forge(c, *lane, "pr", "merge", n, "--disable-auto"); err != nil {
+		v, unread, err := readQueue(c, *lane)
+		if err != nil {
+			return Outcome{}, err
+		}
+		if unread != "" {
+			return Outcome{}, contend(string(StageLand), "", lane.ID,
+				"pull request #"+n+" started to conflict with "+def+", and its arming could not be read ("+unread+"), so it is left as it is",
+				"run `abcd implement step` again")
+		}
+		if err := landing.WithdrawArming(gateForge(c, *lane), n, v.ID, v.AutoMergeRequest != nil, v.queued()); err != nil {
+			if r := netFailure(StageLand, lane.ID, "gh pr merge", err); r != nil {
+				return Outcome{}, r
+			}
+			return Outcome{}, refuse(string(StageLand), "", lane.ID, "pull request #"+n+" started to conflict with "+def+", and the loop could not withdraw its arming: "+forgeWhy(err),
+				"withdraw it yourself (`gh pr merge "+n+" --disable-auto`, and take it out of the merge queue on its page), then run `abcd implement step` again")
+		}
+		if err := confirmWithdrawn(c, *lane, StageLand); err != nil {
 			return Outcome{}, err
 		}
 		ld.Merge, ld.Armed = "", false
@@ -298,7 +325,8 @@ func resyncLane(c Context, lane *Lane, def, tracking string, m mergeability) (Ou
 			"), so its armed merge is withdrawn, and armed again once the lane's sync is pushed; the next step enters the sync"}, nil
 	}
 	again := *ld
-	again.Pushed, again.PreflightReceipt, again.CheckWaitSince, again.Merge, again.Armed = "", "", nil, "", false
+	again.Pushed, again.PreflightReceipt, again.CheckWaitSince, again.Merge, again.Armed, again.Toggles = "", "", nil, "", false, 0
+	again.GateUnreadSince = nil
 	lane.Landing = &again
 	out, _, err := mergeDefault(c, lane, def, tracking, nil)
 	if err != nil {
