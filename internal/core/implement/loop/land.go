@@ -379,6 +379,12 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 		if err := refuseFoundCloseRecords(c, *lane, tip, ld.Closes); err != nil {
 			return Outcome{}, err
 		}
+		if lacks, err := foundCommitLacks(c, *lane, tip, found); err != nil {
+			return Outcome{}, err
+		} else if lacks != "" {
+			return Outcome{}, refuse(string(StageLand), "", lane.ID, shortSHA(tip)+", the commit found on the judged head "+shortSHA(lane.HeadSHA)+", lacks "+lacks+", so it is not the landing's records",
+				"restore the branch to the judged head, then run `abcd implement step` again; the landing makes its records itself")
+		}
 		// A call killed after its commit and before its state write: found.
 		ld.Records, ld.RecordsDone, lane.HeadSHA = tip, true, tip
 		return Outcome{Stay: true, Note: "found the landing's records commit " + shortSHA(tip) + " on " + lane.Branch}, nil
@@ -453,7 +459,6 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	// judged head holds takes the mark back with it: the hand-back leaves the worktree
 	// as the call found it.
 	takeBackMark := func() {}
-	var rewrites []relink.Rewrite
 	if ld.MarkStep > 0 {
 		if ld.Closes {
 			takeBackMark = ownSpecRestorer(wt, st.Spec)
@@ -497,7 +502,6 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 			}
 		}
 		res, err := intent.Reconcile(wt, st.Spec, "", intent.RemainderRequest{})
-		rewrites = append(rewrites, res.Relinked...)
 		var fact *intent.CloseFactError
 		if errors.As(err, &fact) {
 			// The worktree says what the judged head says of these, so only a new head
@@ -532,18 +536,14 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 		if resolvedIn(wt, r.Issue) {
 			// A call killed or refused after the move may have left links naming the
 			// record where it stood.
-			found, err := capture.RepointResolved(wt, r.Issue)
-			rewrites = append(rewrites, found...)
-			if err != nil {
+			if err := capture.RepointResolved(wt, r.Issue); err != nil {
 				return Outcome{}, refuse(string(StageLand), "", lane.ID, "the links to "+r.Issue+" could not be repointed in the lane's worktree: "+fsutil.RedactHome(err.Error()),
 					"settle what it names in the lane's worktree and leave it uncommitted, then run `abcd implement step` again")
 			}
 			done = append(done, "found "+r.Issue+" resolved")
 		} else {
-			moved, err := capture.Resolve(capture.ResolveRequest{RepoRoot: wt, ID: r.Issue, Resolution: r.Note, Impact: r.Impact,
-				ByCommit: r.Commit, Grounds: r.Grounds})
-			rewrites = append(rewrites, moved.Relinked...)
-			if err != nil {
+			if _, err := capture.Resolve(capture.ResolveRequest{RepoRoot: wt, ID: r.Issue, Resolution: r.Note, Impact: r.Impact,
+				ByCommit: r.Commit, Grounds: r.Grounds}); err != nil {
 				return Outcome{}, refuse(string(StageLand), "", lane.ID, "`capture resolve "+r.Issue+"` refused in the lane's worktree: "+fsutil.RedactHome(err.Error()),
 					"the resolution is the lane receipt's; settle what the capture store names in the lane's worktree and leave it uncommitted, then run `abcd implement step` again")
 			}
@@ -573,9 +573,6 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	if why, err := judgeLandingDiff(wt, st, *lane, raw); err != nil {
 		return Outcome{}, err
 	} else if why != "" {
-		if file := unreadableRepoint(st, *lane, raw, rewrites); file != "" {
-			return closeHandBack(c, *lane, strconv.Quote(termsafe.Sanitize(file))+" holds a link to a moved record at the judged head, written from beside the record or not in its shortest form, and the landing cannot tell that repoint from any other edit: respell the link there"), nil
-		}
 		return Outcome{}, strayRefusal(*lane, why)
 	}
 	staged, err := pickGit(wt, "diff", "--cached", "--no-renames", "--name-only", "-z")
@@ -1146,10 +1143,6 @@ func storeRecord(path string) (store closeStore, bucket, name string, ok bool) {
 	return closeStore{}, "", "", false
 }
 
-// recordMove is one moved record's path as a link spells it wherever it is written from
-// outside the record's bucket: `<old bucket>/<name>` to `<new bucket>/<name>`.
-type recordMove struct{ from, to string }
-
 // strayRule is what the landing commits outside the record stores.
 const strayRule = "outside the record stores the landing commits only the links its own moves repointed"
 
@@ -1206,7 +1199,7 @@ func strayChanges(st State, lane Lane) (string, error) {
 
 // landingDiff reads git's raw NUL-separated list of what the landing would commit: the
 // moves of the landing's own records it holds, and each entry outside what a store reads.
-func landingDiff(st State, lane Lane, raw string) ([]recordMove, []rawEntry, error) {
+func landingDiff(st State, lane Lane, raw string) ([]relink.Move, []rawEntry, error) {
 	if raw == "" {
 		return nil, nil, nil
 	}
@@ -1222,7 +1215,7 @@ func landingDiff(st State, lane Lane, raw string) ([]recordMove, []rawEntry, err
 			return nil, nil, fmt.Errorf("git's list of what the landing changes does not parse")
 		}
 		e := rawEntry{oldMode: strings.TrimPrefix(f[0], ":"), newMode: f[1], oldObject: f[2], newObject: f[3], status: f[4], path: fields[i+1]}
-		store, bucket, name, ok := storeRecord(e.path)
+		store, _, name, ok := storeRecord(e.path)
 		if !ok {
 			outside = append(outside, e)
 			continue
@@ -1232,16 +1225,15 @@ func landingDiff(st State, lane Lane, raw string) ([]recordMove, []rawEntry, err
 		}
 		switch e.status {
 		case "D":
-			from[store.rel+"/"+name] = bucket
+			from[store.rel+"/"+name] = e.path
 		case "A":
-			to[store.rel+"/"+name] = bucket
+			to[store.rel+"/"+name] = e.path
 		}
 	}
-	var moves []recordMove
+	var moves []relink.Move
 	for key, left := range from {
 		if reached, ok := to[key]; ok {
-			name := key[strings.LastIndex(key, "/")+1:]
-			moves = append(moves, recordMove{left + "/" + name, reached + "/" + name})
+			moves = append(moves, relink.Move{From: left, To: reached})
 		}
 	}
 	return moves, outside, nil
@@ -1253,10 +1245,11 @@ type rawEntry struct {
 }
 
 // judgeLandingDiff judges one list of what the landing would commit against the judged
-// head: a record a store reads is the reader's, and any other path must be markdown
-// changed in place to what the landing's own moves in this same list would write. It
-// says which path fails, "" when none does. Everything it needs is in the list and the
-// object store, so a call after a refusal or a kill reads the same answer.
+// head: a record a store reads is the reader's, and any other path must keep its mode
+// and hold exactly what the repoint of the landing's own moves in this same list writes
+// over the head's file. It says which path fails, "" when none does. Everything it needs
+// is in the list and the object store, so a call after a refusal or a kill reads the
+// same answer.
 func judgeLandingDiff(repo string, st State, lane Lane, raw string) (string, error) {
 	moves, outside, err := landingDiff(st, lane, raw)
 	if err != nil {
@@ -1264,37 +1257,82 @@ func judgeLandingDiff(repo string, st State, lane Lane, raw string) (string, err
 	}
 	for _, e := range outside {
 		says := strconv.Quote(termsafe.Sanitize(e.path))
-		if e.status != "M" || e.oldMode != e.newMode || (e.newMode != "100644" && e.newMode != "100755") || !strings.HasSuffix(e.path, ".md") {
+		if e.status != "M" || e.oldMode != e.newMode || (e.newMode != "100644" && e.newMode != "100755") {
 			return says, nil
 		}
 		blobs, err := gitutil.CatFileBatch(repo, []string{e.oldObject, e.newObject}, 2*(maxRepointedBytes+256))
 		if err != nil || len(blobs) != 2 || blobs[0].Missing || blobs[1].Missing {
 			return says, nil
 		}
-		if !followsMoves(blobs[0].Content, blobs[1].Content, moves) {
+		if blobs[1].Content != relink.Rewritten(e.path, blobs[0].Content, moves) {
 			return says, nil
 		}
 	}
 	return "", nil
 }
 
-// unreadableRepoint names a file outside the record stores where this call's repoint
-// wrote a link the judgement cannot read as a move: the repoint writes it again on every
-// call, so no edit in the worktree settles it. "" when there is none.
-func unreadableRepoint(st State, lane Lane, raw string, rewrites []relink.Rewrite) string {
-	moves, _, err := landingDiff(st, lane, raw)
-	if err != nil {
-		return ""
+// foundCommitLacks says which of the lane's own moves a commit found on its judged head
+// does not hold, "" when it holds them all: such a commit is the landing's records, and
+// any other leaves its close and resolutions unrun. raw is git's list of what it changes.
+func foundCommitLacks(c Context, lane Lane, tip, raw string) (string, error) {
+	st, ld := c.State, lane.Landing
+	if raw == "" {
+		return "any change", nil
 	}
-	for _, r := range rewrites {
-		if _, _, _, ok := storeRecord(r.File); !ok && !lineFollowsMoves(r.From, r.To, moves) {
-			return r.File
+	at := baseTree{root: c.RepoRoot, sha: tip}
+	specs, err := treeRecords(at, specCloseStore)
+	if err != nil {
+		return "", err
+	}
+	var own *closeRecord
+	for i := range specs {
+		if isSpecRecordOf(specs[i].rel, st.Spec) {
+			own = &specs[i]
 		}
 	}
-	return ""
+	if (ld.Closes || ld.MarkStep > 0) && own == nil {
+		return "the record of " + st.Spec, nil
+	}
+	if ld.Closes && own.bucket != spec.StatusClosed {
+		return "the close of " + st.Spec, nil
+	}
+	if ld.MarkStep > 0 {
+		steps, err := spec.ParseSteps(own.content)
+		if err != nil || ld.MarkStep > len(steps) || steps[ld.MarkStep-1].Landed != shortSHA(lane.HeadSHA) {
+			return fmt.Sprintf("the mark of step %d", ld.MarkStep), nil
+		}
+	}
+	if ld.Closes {
+		intents, err := treeRecords(at, intentCloseStore)
+		if err != nil {
+			return "", err
+		}
+		for _, r := range intents {
+			id := r.field("id")
+			kept := slices.ContainsFunc(specs, func(o closeRecord) bool { return o.bucket == spec.StatusOpen && o.realises(id) })
+			if own.realises(id) && !kept && r.bucket != intent.BucketShipped {
+				return "the move of " + termsafe.Sanitize(id) + " to shipped/", nil
+			}
+		}
+	}
+	if len(lane.Resolves) > 0 {
+		resolved, err := at.list(capture.LedgerRelPath+"/"+string(capture.StateResolved)+"/", false)
+		if err != nil {
+			return "", err
+		}
+		for _, r := range lane.Resolves {
+			if !slices.ContainsFunc(resolved, func(e baseEntry) bool {
+				name := e.path[strings.LastIndex(e.path, "/")+1:]
+				return strings.HasPrefix(name, r.Issue+"-") || name == r.Issue+".md"
+			}) {
+				return "the issue " + r.Issue + " resolved", nil
+			}
+		}
+	}
+	return "", nil
 }
 
-// maxRepointedBytes bounds the read of a file the landing's moves repointed; relink
+// maxRepointedBytes bounds the read of a file the landing's moves repointed; a repoint
 // reads no larger a file.
 const maxRepointedBytes = 4 << 20
 
@@ -1312,47 +1350,6 @@ func ownMovedRecord(st State, lane Lane, store closeStore, name string) bool {
 			return strings.HasPrefix(name, r.Issue+"-") || name == r.Issue+".md"
 		})
 	}
-}
-
-// followsMoves reports whether now is was with moved records' paths substituted: the
-// same lines, at least one differing, each differing line the old one with some of its
-// occurrences of a move's old path spelled as its new path. Only some, because a repoint
-// rewrites a link and leaves the record's path written as plain text on the same line.
-func followsMoves(was, now string, moves []recordMove) bool {
-	before, after := strings.Split(was, "\n"), strings.Split(now, "\n")
-	if len(before) != len(after) {
-		return false
-	}
-	differs := false
-	for i := range before {
-		if before[i] == after[i] {
-			continue
-		}
-		if !lineFollowsMoves(before[i], after[i], moves) {
-			return false
-		}
-		differs = true
-	}
-	return differs
-}
-
-// lineFollowsMoves walks the two lines together, stepping over a move where the old
-// line holds its old path and the new line its new one.
-func lineFollowsMoves(was, now string, moves []recordMove) bool {
-walk:
-	for was != "" || now != "" {
-		for _, m := range moves {
-			if strings.HasPrefix(was, m.from) && strings.HasPrefix(now, m.to) {
-				was, now = was[len(m.from):], now[len(m.to):]
-				continue walk
-			}
-		}
-		if was == "" || now == "" || was[0] != now[0] {
-			return false
-		}
-		was, now = was[1:], now[1:]
-	}
-	return true
 }
 
 // recordsRoundWanted reports whether the lane's head is a records commit no round has

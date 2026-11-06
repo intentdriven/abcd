@@ -474,21 +474,45 @@ func TestACommitHoldingMoreThanRecordsParks(t *testing.T) {
 	}
 }
 
-// TestACommitFoundOnTheJudgedHeadIsReadLikeAnyOther: a commit under the landing's
-// subject that the landing did not make still goes to the round.
+// TestACommitFoundOnTheJudgedHeadIsReadLikeAnyOther: a commit under the landing's subject
+// counts as the landing's only if it holds the lane's own moves, so an empty or
+// records-only one is refused until the branch is restored; one that holds them is not
+// taken on trust, and still goes to the round.
 func TestACommitFoundOnTheJudgedHeadIsReadLikeAnyOther(t *testing.T) {
 	f := autoFixture(t)
 	f.validated(t)
 	f.step(t)
 	l := currentLane(t, f.repo, f.runID)
+	judged := l.HeadSHA
 	st, err := ReadState(f.repo.Root(), f.runID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out, err := gitutil.LocalGit(l.Worktree, "commit", "-q", "--allow-empty", "-m", landSubject(st, l)); err != nil {
-		t.Fatalf("%v: %s", err, out)
+	for name, arrange := range map[string]func(){
+		"an empty commit": func() {},
+		"records alone":   func() { f.fileAnotherIssue(t, l) },
+	} {
+		arrange()
+		f.repo.Git("-C", l.Worktree, "add", "-A")
+		if out, err := gitutil.LocalGit(l.Worktree, "commit", "-q", "--allow-empty", "-m", landSubject(st, l)); err != nil {
+			t.Fatalf("%v: %s", err, out)
+		}
+		r := f.wantsRefusedStep(t)
+		if !strings.Contains(r.Reason, "lacks") || !strings.Contains(r.Remedy, "restore the branch") {
+			t.Fatalf("%s: the refusal says what is missing and the way back: %+v", name, r)
+		}
+		if got := currentLane(t, f.repo, f.runID); got.Landing.RecordsDone || got.HeadSHA != judged {
+			t.Fatalf("%s: the commit is not taken as the landing's records: %+v", name, got.Landing)
+		}
+		f.repo.Git("-C", l.Worktree, "reset", "-q", "--hard", judged)
 	}
+	// The landing's own commit, found after a kill, is taken, and a reviewer reads it.
 	f.step(t)
+	f.rollBackToJudged(t, judged)
+	f.step(t)
+	if got := currentLane(t, f.repo, f.runID); !got.Landing.RecordsDone {
+		t.Fatalf("the commit holding the lane's moves is taken: %+v", got.Landing)
+	}
 	f.step(t)
 	res, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
 	if err != nil || res.Awaiting == nil || res.Awaiting.Role != RoleRuthless {

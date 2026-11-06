@@ -121,9 +121,10 @@ func TestALandingCommitsTheLinksItsCloseRepointed(t *testing.T) {
 		t.Fatalf("the repointed file passes the retry's judgement: %+v", r)
 	}
 	for name, edit := range map[string]string{
-		"a word on the link's line": strings.Replace(repointed, "See ", "Do see ", 1),
-		"a line added":              repointed + "Another.\n",
-		"another line changed":      strings.Replace(repointed, "More.", "Less.", 1),
+		"a word on the link's line":            strings.Replace(repointed, "See ", "Do see ", 1),
+		"a line added":                         repointed + "Another.\n",
+		"another line changed":                 strings.Replace(repointed, "More.", "Less.", 1),
+		"the name in plain text moved by hand": strings.Replace(repointed, "`planned/", "`shipped/", 1),
 	} {
 		landWrite(t, l.Worktree, guide, edit)
 		if r := f.wantsRefusedStep(t); !strings.Contains(r.Reason, guide) || !strings.Contains(r.Reason, strayClaim) {
@@ -149,10 +150,9 @@ func TestALandingCommitsTheLinksItsCloseRepointed(t *testing.T) {
 	}
 }
 
-// A link the repoint rewrites in a form the judgement cannot read is a fact of the judged
-// head, since the repoint writes it again on every call: the lane is handed back, and the
-// way out holds.
-func TestALinkTheJudgementCannotReadHandsTheLaneBack(t *testing.T) {
+// A link lands in whatever form the repoint writes it, and a further edit on its line
+// is refused like any other.
+func TestALinkLandsInAnyFormTheRepointWrites(t *testing.T) {
 	for name, c := range map[string]struct{ rel, body string }{
 		"written from beside the record": {".abcd/development/intents/planned/notes.md", "See [it](itd-10-alpha.md).\n"},
 		"not in its shortest form":       {"docs/long.md", "See [it](../docs/../" + plannedIntentRel + ").\n"},
@@ -163,18 +163,24 @@ func TestALinkTheJudgementCannotReadHandsTheLaneBack(t *testing.T) {
 				c.rel: c.body,
 			})
 			l := f.validated(t)
+			hook := installHook(t, f, "commit-msg", "#!/bin/sh\necho 'commit-msg: refused by the test' >&2\nexit 1\n")
 			f.step(t) // prepare
-			res, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
-			if err != nil {
-				t.Fatalf("the step hands the lane back rather than refuse: %v", err)
+			if r := f.wantsRefusedStep(t); !strings.Contains(r.Reason, "refused by the test") {
+				t.Fatalf("what the repoint wrote passes, and the hook is next: %+v", r)
 			}
-			if res.HandBack == nil || res.HandBack.Kind != HandBackStuck || !strings.Contains(res.HandBack.Reason, c.rel) {
-				t.Fatalf("the hand-back names the file: %+v", res.HandBack)
+			repointed := landRead(t, l.Worktree, c.rel)
+			landWrite(t, l.Worktree, c.rel, strings.Replace(repointed, "See ", "Do see ", 1))
+			if r := f.wantsRefusedStep(t); !strings.Contains(r.Reason, c.rel) || !strings.Contains(r.Reason, strayClaim) {
+				t.Fatalf("a further edit on the line is refused: %+v", r)
 			}
-			f.repo.Git("-C", l.Worktree, "reset", "-q", "--hard", "HEAD")
-			f.repo.Git("-C", l.Worktree, "clean", "-qfd")
-			if _, err := Discard(f.repo.Root(), f.runID, l.ID, Options{}); err != nil {
-				t.Fatalf("the lane is discarded as the hand-back says: %v", err)
+			landWrite(t, l.Worktree, c.rel, repointed)
+			if err := os.WriteFile(hook, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			acceptHook(t, f)
+			l = f.wantsRecordsCommit(t)
+			if got := committedFiles(f, l, l.HeadSHA); !slices.Contains(got, c.rel) {
+				t.Fatalf("the commit holds the link: %v", got)
 			}
 		})
 	}
@@ -285,6 +291,85 @@ func TestACommitFoundOnTheJudgedHeadIsJudgedLikeTheLandingsOwn(t *testing.T) {
 	}
 	if got := currentLane(t, f.repo, f.runID); got.Landing.RecordsDone {
 		t.Fatalf("the commit is not taken for the landing's records: %+v", got.Landing)
+	}
+}
+
+// rollBackToJudged puts the run's state where a call killed after its commit left it.
+func (f *landFixture) rollBackToJudged(t *testing.T, judged string) {
+	t.Helper()
+	if err := mutate(f.repo.Root(), f.runID, func(_ *os.Root, st *State) (bool, error) {
+		cur := &st.Lanes[st.current()]
+		cur.HeadSHA, cur.Landing.Records, cur.Landing.RecordsDone = judged, "", false
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A commit found on the judged head counts as the landing's only if it holds each of the
+// lane's own moves and its step's mark: one missing any is refused, and the landing runs
+// again once the branch is restored.
+func TestACommitFoundMustHoldTheLanesOwnMoves(t *testing.T) {
+	closed := strings.Replace(specRel, "/open/", "/closed/", 1)
+	for name, c := range map[string]struct {
+		undo  func(t *testing.T, f *landFixture, l Lane)
+		names string
+	}{
+		"the spec left open": {func(t *testing.T, f *landFixture, l Lane) {
+			t.Helper()
+			f.repo.Git("-C", l.Worktree, "mv", closed, specRel)
+		}, "spc-1"},
+		"the intent left planned": {func(t *testing.T, f *landFixture, l Lane) {
+			t.Helper()
+			f.repo.Git("-C", l.Worktree, "mv", shippedIntentRel, plannedIntentRel)
+		}, "itd-10"},
+		"the issue left open": {func(t *testing.T, f *landFixture, l Lane) {
+			t.Helper()
+			found, err := filepath.Glob(filepath.Join(l.Worktree, ".abcd", "work", "issues", "resolved", f.issue+"*"))
+			if err != nil || len(found) != 1 {
+				t.Fatalf("premise: the resolved record: %v %v", found, err)
+			}
+			name := filepath.Base(found[0])
+			f.repo.Git("-C", l.Worktree, "mv", ".abcd/work/issues/resolved/"+name, ".abcd/work/issues/open/"+name)
+		}, "the issue"},
+		"the step's mark left out": {func(t *testing.T, _ *landFixture, l Lane) {
+			t.Helper()
+			var kept []string
+			for line := range strings.SplitSeq(landRead(t, l.Worktree, closed), "\n") {
+				if !strings.Contains(line, "- landed:") {
+					kept = append(kept, line)
+				}
+			}
+			landWrite(t, l.Worktree, closed, strings.Join(kept, "\n"))
+		}, "step 1"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newLandFixtureWith(t, map[string]string{
+				".abcd/work/rulesets/main-protection.json": queueRuleset("MERGE"),
+				specRel: specWithSteps("1. The parser\n   - packages: internal/core/spec\n"),
+			})
+			f.validatedOnce(t)
+			f.step(t) // prepare
+			l := currentLane(t, f.repo, f.runID)
+			judged := l.HeadSHA
+			f.step(t) // the landing's own commit
+			c.undo(t, f, l)
+			f.repo.Git("-C", l.Worktree, "add", "-A")
+			f.repo.Git("-C", l.Worktree, "commit", "-q", "--amend", "--no-edit")
+			f.rollBackToJudged(t, judged)
+			r := f.wantsRefusedStep(t)
+			if !strings.Contains(r.Reason, "lacks") || !strings.Contains(r.Reason, c.names) || !strings.Contains(r.Remedy, "restore the branch") {
+				t.Fatalf("the refusal names what is missing and the way back: %+v", r)
+			}
+			if got := currentLane(t, f.repo, f.runID); got.Landing.RecordsDone {
+				t.Fatalf("the commit is not taken as the landing's records: %+v", got.Landing)
+			}
+			f.repo.Git("-C", l.Worktree, "reset", "-q", "--hard", judged)
+			f.repo.Git("-C", l.Worktree, "clean", "-qfd")
+			if got := f.wantsRecordsCommit(t); got.HeadSHA == judged {
+				t.Fatalf("the landing runs again on the restored branch: %+v", got.Landing)
+			}
+		})
 	}
 }
 
@@ -445,36 +530,6 @@ func TestAnIssueLaneCommitsTheLinksItsResolutionRepointed(t *testing.T) {
 	}
 	if body := landRead(t, l.Worktree, guide); !strings.Contains(body, "/resolved/") {
 		t.Fatalf("the link follows the move:\n%s", body)
-	}
-}
-
-// A changed line follows the moves when it is the head's with moved paths substituted,
-// occurrence by occurrence; nothing else does.
-func TestAChangeFollowsTheMovesOnlyAsTheyWouldWriteIt(t *testing.T) {
-	moves := []recordMove{{"planned/itd-10-a.md", "shipped/itd-10-a.md"}, {"open/iss-1-b.md", "resolved/iss-1-b.md"}}
-	const head = "A [link](../i/planned/itd-10-a.md) and [one](x/open/iss-1-b.md#f).\nOther.\n"
-	for name, c := range map[string]struct {
-		now  string
-		want bool
-	}{
-		"every link moved":   {"A [link](../i/shipped/itd-10-a.md) and [one](x/resolved/iss-1-b.md#f).\nOther.\n", true},
-		"one link moved":     {"A [link](../i/shipped/itd-10-a.md) and [one](x/open/iss-1-b.md#f).\nOther.\n", true},
-		"no line differs":    {head, false},
-		"a word beside":      {"A [link](../i/shipped/itd-10-a.md) and [one](x/open/iss-1-b.md#f)!\nOther.\n", false},
-		"another path":       {"A [link](../i/shipped/itd-11-a.md) and [one](x/open/iss-1-b.md#f).\nOther.\n", false},
-		"a move backwards":   {"A [link](../i/planned/itd-10-a.md) and [one](x/open/iss-1-b.md#f).\nOther?\n", false},
-		"a line added":       {"A [link](../i/shipped/itd-10-a.md) and [one](x/open/iss-1-b.md#f).\nOther.\nMore.\n", false},
-		"a line removed":     {"A [link](../i/shipped/itd-10-a.md) and [one](x/open/iss-1-b.md#f).\n", false},
-		"nothing was linked": {"Nothing.\nOther.\n", false},
-	} {
-		t.Run(name, func(t *testing.T) {
-			if got := followsMoves(head, c.now, moves); got != c.want {
-				t.Fatalf("followsMoves = %v, want %v", got, c.want)
-			}
-		})
-	}
-	if followsMoves(head, strings.Replace(head, "planned", "shipped", 1), nil) {
-		t.Fatal("with no move made, no change follows")
 	}
 }
 

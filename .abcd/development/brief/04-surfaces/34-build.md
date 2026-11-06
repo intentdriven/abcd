@@ -898,12 +898,13 @@ mode is `auto`, back at `validate`, and a sync.
    default branch, put back anything uncommitted in the lane's worktree, discard the
    lane, and once the run's other lanes are finished or decided remove the run's
    directory and build the intent again. An issue's landing moves no intent or spec.
-   Outside the record stores, in what the worktree holds, what it stages and any commit
-   it finds on the judged head, the landing commits only the links its own moves
-   repointed: a file holding anything else stops it until that file is put back, and a
-   link it cannot tell from any other edit (written from beside the record, or not in
-   its shortest form) hands the lane back. Inside a store it still carries an edit to
-   a record, which the reader judges. It commits them on
+   Outside the records a store reads, in what the worktree holds, what it stages and
+   any commit it finds on the judged head, the landing commits a file only if it is
+   exactly what its own moves' repoint writes over the head's: a file holding anything
+   else stops it until that file is put back. A commit found on the judged head counts
+   as the landing's records only if it holds the lane's own moves and its step's mark;
+   any other is refused until the branch is restored to that head. Inside a store the
+   landing still carries an edit to a record, which the reader judges. It commits them on
    the lane's branch with a computed message carrying `Delivers:` (when the
    close ships the intent) and one `Resolves:` per capture, so RS005 and RS001
    find the records in the change. Unlike the pick's commit, whose text abcd
