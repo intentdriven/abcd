@@ -17,12 +17,10 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
 
-	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/lease"
 	"github.com/intentdriven/abcd/internal/core/runstop"
@@ -48,30 +46,12 @@ const stopKeptPrefix = "stopped: a stop set by "
 
 // defaultStopHome is the home a stop is read from; TestMain empties it, which
 // reads as no stop, so a stop on the developer's machine stops no test.
-var defaultStopHome = machineStopHome
-
-// machineStopHome is the production home a stop is read from: the machine's shared
-// records' (abcdhome.MachineHome), the person's own under a walled stage.
-func machineStopHome() string {
-	home, err := abcdhome.MachineHome()
-	if err != nil || !filepath.IsAbs(home) {
-		return ""
-	}
-	return home
-}
+var defaultStopHome = runstop.MachineStopHome
 
 // accountStopHome is the account's own home (runstop.AccountHome), which is where the
 // verb writes a stop and which the variable a process inherits does not move. A test
 // names a fixture.
-var accountStopHome = theAccountsHome
-
-func theAccountsHome() string {
-	home, err := runstop.AccountHome()
-	if err != nil || !filepath.IsAbs(home) {
-		return ""
-	}
-	return home
-}
+var accountStopHome = runstop.ThisAccountHome
 
 // afterStopCheck runs between a move's check and its lock; a test sets a stop there.
 var afterStopCheck = func() {}
@@ -85,13 +65,11 @@ func (o Options) stopRead(pin *runstop.Pin) runstop.Reading {
 	if stopReadingOff && o.stopHome == "" {
 		return runstop.Reading{}
 	}
-	home := o.stopHomeOf()
-	r := runstop.ReadPinned(home, pin)
-	// A stop stands in the account's home whatever this process was told its home is.
-	if account := accountStopHome(); r.Stop == nil && o.stopHome == "" && account != "" && account != home {
-		r.Stop = runstop.ReadPinned(account, pin).Stop
+	account := ""
+	if o.stopHome == "" {
+		account = accountStopHome()
 	}
-	return r
+	return runstop.ReadHomes(o.stopHomeOf(), account, pin)
 }
 
 // stopHomeOf is the home this call reads a stop from.

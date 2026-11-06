@@ -13,6 +13,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/landing"
+	"github.com/intentdriven/abcd/internal/core/runstop"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -135,5 +136,39 @@ func TestLandExitsTwoWhenTheReservationsCannotBeRead(t *testing.T) {
 	if code != 2 || !strings.Contains(stderr, "could not read the reservations from origin") ||
 		!strings.Contains(stderr, "run abcd land again once origin answers") {
 		t.Fatalf("exit %d, stderr %q: want exit 2 naming the failed read", code, stderr)
+	}
+}
+
+// TestLandExitsThreeUnderAStop: the verb reads the stop the other verbs read, here the one
+// in the account's own home, and exits 3 naming it with nothing pushed. An act that lands
+// nothing is not held: both acts off, and the person's own recorded approval, which the
+// landing it counts toward then answers for.
+func TestLandExitsThreeUnderAStop(t *testing.T) {
+	dir, origin := landHoldWorld(t)
+	head := gitCmd(t, dir, "rev-parse", "HEAD")
+	writeRel(t, dir, landing.ReceiptsRelDir+"/"+head, "")
+	if _, err := runstop.Set(os.Getenv("HOME"), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"land"}, {"land", "--no-enqueue"}, {"land", "--no-push"}} {
+		code, _, stderr := reserveRun(t, dir, args...)
+		if code != 3 || !strings.Contains(stderr, "a stop set by") || !strings.Contains(stderr, "abcd implement stop --lift") {
+			t.Fatalf("%v: exit %d, stderr %q: want exit 3 naming the stop", args, code, stderr)
+		}
+	}
+	if pushed := gitCmd(t, origin, "for-each-ref", "--format=%(objectname)", "refs/heads/feat/x"); pushed != "" {
+		t.Fatalf("origin feat/x is %q under a stop", pushed)
+	}
+	if code, _, stderr := reserveRun(t, dir, "land", "--no-push", "--no-enqueue"); code != 0 {
+		t.Fatalf("both acts off: exit %d, stderr %q", code, stderr)
+	}
+	if code, _, stderr := reserveRun(t, dir, "land", "--approve"); code != 0 {
+		t.Fatalf("--approve under a stop: exit %d, stderr %q", code, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".abcd", ".work.local", "approvals", head)); err != nil {
+		t.Fatalf("the approval was not written: %v", err)
+	}
+	if code, _, _ := reserveRun(t, dir, "land"); code != 3 {
+		t.Fatalf("a landing after the approval: exit %d, want 3", code)
 	}
 }

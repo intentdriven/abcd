@@ -777,8 +777,8 @@ func TestTheStopHomeIsTheAccounts(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", filepath.Join(t.TempDir(), "elsewhere"))
-	if got := theAccountsHome(); got != want {
-		t.Fatalf("theAccountsHome = %q, want %q", got, want)
+	if got := runstop.ThisAccountHome(); got != want {
+		t.Fatalf("the account's home = %q, want %q", got, want)
 	}
 }
 

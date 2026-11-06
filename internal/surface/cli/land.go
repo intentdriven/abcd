@@ -118,6 +118,11 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			"this clock holds from when this checkout first saw it; one this checkout cannot\n" +
 			"keep that sighting for (no .abcd/.work.local/) is not counted, and a notice\n" +
 			"line on stderr names it.\n\n" +
+			"A person's stop (abcd implement stop) holds a landing: it is read before anything\n" +
+			"runs, again after the gate and again at the arming, and while one holds, or a read\n" +
+			"cannot tell whether one does, nothing more is pushed, armed or queued. --approve and\n" +
+			"--record-review land nothing and are not held, and a landing with both acts off does\n" +
+			"nothing for a stop to hold.\n\n" +
 			"Before a push that will move the head of the branch's armed or queued pull request,\n" +
 			"land withdraws the arming, reads it back and says so. Where the merge gate refuses\n" +
 			"the local head, land withdraws this account's arming at it and refuses over another\n" +
@@ -126,7 +131,8 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			"which names what was done before it; reservations that cannot be fetched are\n" +
 			"one, and so is an announcement that cannot be published, each made before\n" +
 			"anything is pushed. Exit 3 when a release being cut holds the\n" +
-			"landing: it names the release, its holder and until when.\n\n" +
+			"landing: it names the release, its holder and until when; and when a stop holds it,\n" +
+			"naming who set it and when, or a read cannot tell whether one does, saying why.\n\n" +
 			"--record-review records the review pair's verdicts for the branch's head and\n" +
 			"lands nothing: given once per reviewer's return (at least two, no two the\n" +
 			"same), each with a first line reading Reviewed head: <name>, naming the head by at\n" +

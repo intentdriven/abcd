@@ -895,7 +895,7 @@ files; the verb itself refuses a caller with no
 terminal or under a host session, and a lift or a choice of folder where it cannot tell whether one is above it. A stop is not the stop a drive keeps on a run whose state changed: a run can have both, nothing is settled while both stand, and neither's end answers for the other. Tell the person why you
 believe the runs should stop or go on, and leave the command to them. A stop reads
 as a refusal at the stage `stop`, exit 3, from `implement step`, `abcd build` and
-`abcd drain`: stop working when you meet it. `implement receipt` is not refused, so
+`abcd drain`, and as a refusal at exit 3 from `abcd land`: stop working when you meet it. `implement receipt` is not refused, so
 hand back a receipt you hold; the lane goes no further. `implement step --release` and
 `--discard`, a person's decisions over a held lane, do not make the check. Under a stop an agent in a
 call finishes it and its receipt is collected; with no agent live each lane's
