@@ -107,3 +107,33 @@ func assertNoDecision(t *testing.T, root string) {
 		t.Errorf("the plan recorded a decision: %s", e.Name())
 	}
 }
+
+// The pointer a practice run names is the path the decision writer writes, so it
+// reads the repository's records.slug_cap as that writer does
+// (iss-2611052241331003), and a nonsense value refuses the plan.
+func TestPlanRecordNamesThePointerAtTheRepositorysCap(t *testing.T) {
+	root := seedRepo(t)
+	cfg := filepath.Join(root, ".abcd", "config.json")
+	if err := os.MkdirAll(filepath.Dir(cfg), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfg, []byte(`{"records": {"slug_cap": 16}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := PlanRecord(root, "the-ideate-gate", publicStore, encode(t, validPayload()), at)
+	if err != nil {
+		t.Fatalf("PlanRecord: %v", err)
+	}
+	ptr := plan.Plan.Writes[1].Path
+	prefix := decisions.RelDir + "/" + decisions.Family + "-" + dryrun.MintedID + "-"
+	slug := strings.TrimSuffix(strings.TrimPrefix(ptr, prefix), ".md")
+	if len(slug) == 0 || len(slug) > 16 {
+		t.Fatalf("the pointer's slug is %q in %s, want at most 16 characters", slug, ptr)
+	}
+	if err := os.WriteFile(cfg, []byte(`{"records": {"slug_cap": 0}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := PlanRecord(root, "the-ideate-gate", publicStore, encode(t, validPayload()), at); err == nil {
+		t.Fatal("a nonsense cap planned a verdict")
+	}
+}

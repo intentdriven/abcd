@@ -30,7 +30,8 @@ each read from the machine layer alone, a repository's key named as ignored
 (`internal/core/implement/load_memory.go`), the quiet window of `ahoy worktree
 prune`, `worktrees.quiet_days` (how many days without activity make an
 unmerged worktree with no open pull request quiet: 1 to 36500 and 14 by
-default; `internal/core/ahoy/worktree/quiet.go`), the launch ledger's retention
+default; `internal/core/ahoy/worktree/quiet.go`), the record slug cap
+`records.slug_cap` (below), the launch ledger's retention
 `ledger.retention_days` and `ledger.retention_count` (whole numbers from 1 to
 36500 and from 1 to 1000000, 30 and 20000 by default, from the machine layer, a
 days figure below the floor of 32 read as the floor and named as such, and a
@@ -684,6 +685,40 @@ only set them lower:
   absent, and nothing is said.
 - **No verb writes them.** The keys are edited by hand, as `pace.*` and
   `interview.list` are; `abcd ahoy install` asks no question about them.
+
+### The record slug cap
+
+`records.slug_cap` in `.abcd/config.json` is how many characters a record's slug
+may run to in this repository: a whole number from 16 to 200, 40 by default
+(`internal/core/layered/records.go`).
+
+```jsonc
+{
+  "records": {
+    "slug_cap": 60                      // 16 to 200; bundled default 40
+  }
+}
+```
+
+- **One value, read one way.** `layered.RecordSlugCap` is the only reader. Every
+  verb that mints a record filename cuts the slug at it as it writes, so a verb
+  cannot write past it: `capture` and `capture promote`, `intent`, `spec` (a
+  remainder's and a bundle's included), `decide` and `decide --adr`, and the
+  decision a public `ideate` verdict points at. `record-lint`'s `record_slug_cap`
+  rule holds every committed record's filename and `slug:` field to the same value,
+  and this repository's `commit-msg` hook asks the same of what a commit adds or
+  renames, so a hand rename is refused before the commit exists.
+- **The repository's alone.** A machine's `~/.abcd.noindex/config.json` sets nothing
+  here: the cap bounds names committed for every clone.
+- **A nonsense value refuses.** A value out of bounds or not a whole number, or a
+  misspelt key under `records`, refuses the mint and the rule, naming the file and
+  the bounds, and never falls back to the default.
+- **The value in force judges every name.** A longer name written under an earlier,
+  wider cap has no standing of its own: lowering the cap makes `record_slug_cap`
+  refuse what the tree already holds over it, and `cmd/record-slug-rename` renames
+  those to the value in force. Raising it costs nothing.
+- **What it does not bound.** An idea's slug in `ideate`, whose verdict record is not
+  one of these families, keeps its own limit of 64, and a checklist item's id its own.
 
 ### Staged config keys
 
@@ -1898,7 +1933,7 @@ abcd/
 │   ├── check-tests/                    #   runs `make preflight`'s test stages from the check directory, replaying what the test cache holds
 │   ├── ci-watchdog/                    #   the shell CI's test jobs run go test under, stopping a hang with its dumps before the job's cap
 │   ├── ci-shard/                       #   prints the packages one shard of CI's macOS suite tests, computed from `go list`
-│   └── record-slug-rename/             #   one-off: renames records minted before the 40-character slug cap (iss-2610100626320367)
+│   └── record-slug-rename/             #   one-off: renames records over the repository's slug cap (iss-2610100626320367)
 │                                       #   The eleven are developer tooling, not user surface: they run
 │                                       #   from the Makefile, `go generate`, CI or by hand, and ship in no release
 ├── internal/

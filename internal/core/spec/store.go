@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/provenance"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -219,7 +220,11 @@ func create(repoRoot, intentID string, intents []string, bundle, slug, productio
 	// The slug arrives whole — the intent's, a remainder's, a bundle's name —
 	// and may predate the record cap, so it is cut here, at the one mint every
 	// spec passes (iss-2610100626320367).
-	slug = recordid.CapSlug(slug, recordid.MaxSlugLen)
+	slugCap, err := layered.RecordSlugCap(repoRoot)
+	if err != nil {
+		return Spec{}, fmt.Errorf("spec: %w", err)
+	}
+	slug = recordid.CapSlug(slug, slugCap)
 	stamp, err := provenance.NewStamp(provenance.KindResearcherAuthored, productionMode)
 	if err != nil {
 		return Spec{}, fmt.Errorf("spec: %w", err)

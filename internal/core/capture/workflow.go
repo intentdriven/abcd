@@ -14,6 +14,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/issuerecord"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/provenance"
 	"github.com/intentdriven/abcd/internal/core/record/findingkey"
 	"github.com/intentdriven/abcd/internal/core/record/match"
@@ -105,6 +106,10 @@ func captureWith(lock ledgerLocker, req CaptureRequest) (CaptureResult, error) {
 	// A found_at that names a path must name one in THIS checkout
 	// (iss-2609120511058115). Checked before the preamble, so a refused capture
 	// writes nothing at all — not even the ledger directories.
+	slugCap, err := layered.RecordSlugCap(repoRoot)
+	if err != nil {
+		return CaptureResult{}, err
+	}
 	if err := checkFoundAt(repoRoot, req.FoundAt); err != nil {
 		return CaptureResult{}, err
 	}
@@ -156,10 +161,10 @@ func captureWith(lock ledgerLocker, req CaptureRequest) (CaptureResult, error) {
 	// out of the filename; an explicit slug still flows through redactCaptureInputs
 	// above.
 	if strings.TrimSpace(req.Slug) == "" {
-		req.Slug = deriveSlug(req.Text)
+		req.Slug = deriveSlug(req.Text, slugCap)
 	}
 
-	slugNorm, err := normaliseSlug(req.Slug)
+	slugNorm, err := normaliseSlug(req.Slug, slugCap)
 	if err != nil {
 		return CaptureResult{}, err
 	}

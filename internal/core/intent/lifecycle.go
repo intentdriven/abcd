@@ -12,6 +12,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/launch"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/relink"
 	"github.com/intentdriven/abcd/internal/core/spec"
@@ -1037,7 +1038,11 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 	var minted spec.Spec
 	mintedHere := false
 	if remainder.Slug != "" {
-		if existing, ok := openRemainderWithSlug(claimers, remainder.Slug, specID); ok {
+		slugCap, err := layered.RecordSlugCap(repoRoot)
+		if err != nil {
+			return ReconcileResult{}, fmt.Errorf("intent: %w", err)
+		}
+		if existing, ok := openRemainderWithSlug(claimers, remainder.Slug, specID, slugCap); ok {
 			minted = existing
 		} else {
 			minted, err = spec.CreateWithSteps(repoRoot, intentID, remainder.Slug, remainder.ProductionMode, carried)
@@ -1257,10 +1262,10 @@ func otherOpenSpecs(claimers []spec.Spec, closingID string) []spec.Spec {
 // remainder by slug and by nothing else, so two closes asking for `the-rest` on
 // one intent are one request repeated; a genuinely different second remainder is
 // asked for under a different slug and mints normally.
-func openRemainderWithSlug(claimers []spec.Spec, slug, closingID string) (spec.Spec, bool) {
+func openRemainderWithSlug(claimers []spec.Spec, slug, closingID string, slugCap int) (spec.Spec, bool) {
 	// The mint cuts a long slug at the record cap, so the comparison is against
 	// the slug as minted, or a retry would not recognise its own remainder.
-	slug = recordid.CapSlug(slug, recordid.MaxSlugLen)
+	slug = recordid.CapSlug(slug, slugCap)
 	for _, c := range claimers {
 		if c.Status != spec.StatusOpen || spec.SameNum(c.ID, closingID) {
 			continue

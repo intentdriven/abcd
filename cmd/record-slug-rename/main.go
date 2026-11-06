@@ -1,5 +1,5 @@
 // Command record-slug-rename renames every committed record file whose slug is
-// longer than the record cap (recordid.MaxSlugLen) to the slug the minting verbs
+// longer than the repository's record cap (layered.RecordSlugCap) to the slug the minting verbs
 // would cut today, and rewrites every reference to the old name across the
 // tracked tree. It is the one-off half of iss-2610100626320367: the minting verbs
 // cut new slugs at the cap, and this brings the records minted before it inside
@@ -63,6 +63,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/intent"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -213,6 +214,10 @@ func run(root string, apply bool) (Report, error) {
 // path, and refuses a plan in which two records, or a record and a tracked
 // file, would land on one path.
 func buildPlan(root string) ([]rename, error) {
+	slugCap, err := layered.RecordSlugCap(root)
+	if err != nil {
+		return nil, err
+	}
 	files, err := gitutil.TrackedFiles(root)
 	if err != nil {
 		return nil, err
@@ -229,7 +234,7 @@ func buildPlan(root string) ([]rename, error) {
 			}
 			base := path.Base(rel)
 			_, slug, ok := recordid.SplitRecordFilename(fam.fileFamily, base)
-			if !ok || len(slug) <= recordid.MaxSlugLen {
+			if !ok || len(slug) <= slugCap {
 				continue
 			}
 			// A slug field that disagrees with the filename is refused here,
@@ -241,7 +246,7 @@ func buildPlan(root string) ([]rename, error) {
 			if _, field, ok := slugLine(data); ok && field != slug {
 				return nil, fmt.Errorf("%s: its slug field reads %q, not the filename's %q; record-lint refuses that record already, so fix it before renaming (nothing was changed)", rel, field, slug)
 			}
-			newSlug := recordid.CapSlug(slug, recordid.MaxSlugLen)
+			newSlug := recordid.CapSlug(slug, slugCap)
 			idPart := strings.TrimSuffix(base, slug+".md")
 			plan = append(plan, rename{
 				Family: fam.prefix, OldRel: rel,
@@ -421,9 +426,6 @@ func findLeftovers(root string, plan []rename) ([]Leftover, error) {
 func slugsIn(text string, old map[string]bool) []string {
 	var hits []string
 	for _, run := range kebabRunRe.FindAllString(text, -1) {
-		if len(run) <= recordid.MaxSlugLen {
-			continue
-		}
 		starts := []int{0}
 		ends := []int{}
 		for i := 0; i < len(run); i++ {
@@ -435,7 +437,7 @@ func slugsIn(text string, old map[string]bool) []string {
 		ends = append(ends, len(run))
 		for _, a := range starts {
 			for _, b := range ends {
-				if b-a > recordid.MaxSlugLen && old[run[a:b]] {
+				if a < b && old[run[a:b]] {
 					hits = append(hits, run[a:b])
 				}
 			}

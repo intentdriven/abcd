@@ -220,6 +220,60 @@ func TestCommitMsgHookRefusesAnUndeclaredIssueMention(t *testing.T) {
 	}
 }
 
+// The hand rename is iss-2611052241331003: a record's slug over the cap reached
+// the commit and was caught by a test minutes later. The hook refuses it before
+// the commit exists, under the repository's own cap.
+func TestCommitMsgHookRefusesARecordSlugOverTheCap(t *testing.T) {
+	c := newCommitMsgHookCase(t)
+	const slug = "a-slug-of-forty-one-characters-it-is-long"
+	rel := ".abcd/work/decisions/dcn-2611050000000001-" + slug + ".md"
+	if err := os.MkdirAll(filepath.Join(c.dir, filepath.Dir(rel)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	refused, out := c.commitWith(rel, "docs: a decision\n\nAssisted-by: None\n")
+	if !refused {
+		t.Fatalf("a record slug over the cap was committed\n%s", out)
+	}
+	if !strings.Contains(out, "commit-msg: BLOCKED") || !strings.Contains(out, slug) || !strings.Contains(out, "records.slug_cap") {
+		t.Errorf("the refusal does not name the record and the key\n%s", out)
+	}
+	if _, err := c.tryGit("rev-parse", "--verify", "HEAD"); err == nil {
+		t.Errorf("a commit exists after the refusal")
+	}
+
+	// The repository's own figure decides.
+	if err := os.MkdirAll(filepath.Join(c.dir, ".abcd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(c.dir, ".abcd", "config.json"), []byte(`{"records": {"slug_cap": 60}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if refused, out := c.commitWith(rel, "docs: a decision\n\nAssisted-by: None\n"); refused {
+		t.Fatalf("a slug within the repository's cap of 60 was refused\n%s", out)
+	}
+}
+
+// `git commit -a` judges through a temporary index, and a rename onto a long name
+// is judged as the added path it is.
+func TestCommitMsgHookReadsTheCommitsOwnIndex(t *testing.T) {
+	c := newCommitMsgHookCase(t)
+	const dir = ".abcd/work/decisions/"
+	if err := os.MkdirAll(filepath.Join(c.dir, dir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if refused, out := c.commitWith(dir+"dcn-2611050000000001-short.md", "docs: a decision\n\nAssisted-by: None\n"); refused {
+		t.Fatalf("a short slug was refused\n%s", out)
+	}
+	c.git("mv", dir+"dcn-2611050000000001-short.md", dir+"dcn-2611050000000001-a-slug-of-forty-one-characters-it-is-long.md")
+	msg := filepath.Join(t.TempDir(), "msg")
+	if err := os.WriteFile(msg, []byte("docs: rename a decision\n\nAssisted-by: None\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := c.tryGit("commit", "-q", "-a", "-F", msg); err == nil || !strings.Contains(out, "commit-msg: BLOCKED") {
+		t.Fatalf("a rename over the cap under -a: %v\n%s", err, out)
+	}
+}
+
 func TestCommitMsgHookPassesADeclaredIssueMention(t *testing.T) {
 	c := newOwnRepoHookCase(t)
 	if refused, out := c.commitWith("a.txt", "fix: the walk behind iss-12\n\nRefs: iss-12\nAssisted-by: None\n"); refused {

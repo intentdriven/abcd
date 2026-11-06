@@ -537,6 +537,16 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 		findings = append(findings, rs...)
 	}
 
+	// record_slug_cap walks the same stores, for the one question of a slug's
+	// length, against the value the minting verbs cut at.
+	if scCfg, ok := cfg.Rules[ruleRecordSlugCap]; ok && scCfg.Enabled {
+		sc, err := checkRecordSlugCap(repoRoot, scCfg)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, sc...)
+	}
+
 	// prose_citation_resolves reads the BODIES of the same stores, which straddle
 	// cfg.Roots for the same reason, so it runs once here beside record_schema —
 	// the frontmatter half and the prose half of one question, armed together.

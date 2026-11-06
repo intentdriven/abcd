@@ -2,7 +2,7 @@
 // `.abcd/work/decisions/`, holding one `dcn-<id>-<slug>.md` file per decision
 // (adr-2610110925465593, itd-2609151138388536). A decision is a record like any
 // other: its id comes from the adr-45 mint (internal/core/recordid), its slug is
-// cut at recordid.MaxSlugLen, and recording one writes a new file and appends to
+// cut at the repository's slug cap, and recording one writes a new file and appends to
 // nothing, so two branches that each record a decision merge with nothing to
 // reconcile.
 //
