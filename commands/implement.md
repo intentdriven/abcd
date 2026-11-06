@@ -650,7 +650,9 @@ The closing lane, which reaches its landing with no
 step pending, no other lane open and none handed back, takes the fidelity audit
 over each of the run's lanes' own diff.
 
-1. It checks the lane's worktree is clean and its branch is at the head the
+1. It checks the lane's worktree holds no change beside an uncommitted edit to
+   the lane's own spec record, which step 2's commit then carries and which may
+   not change what the record links, and that its branch is at the head the
    validators judged.
 2. On an intent lane it marks the lane's step landed on the open spec, a
    `- landed:` line naming the judged head (not when the spec lists no steps or

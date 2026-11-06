@@ -760,7 +760,8 @@ A lane's stages run in order:
    removed, which the refusal names as the way to build the intent afresh once
    it is replanned.
 5. `land` — one `implement step` per move, the lane staying at `land` until
-   the last. The loop checks the lane's worktree is clean at the judged head;
+   the last. The loop checks the lane's worktree is clean at the judged head, an
+   uncommitted edit to the lane's own spec record aside, which its commit carries;
    on an intent lane it marks the lane's step landed on the open spec (a
    `- landed:` line naming the judged head, unless the spec lists no steps or
    already marks it, and a commit doing only that declares

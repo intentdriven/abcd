@@ -5,8 +5,9 @@ package loop
 // invocation, each recorded in the lane's `landing` as it completes, so a
 // killed process resumes at the step that did not:
 //
-//  1. prepare: the lane's worktree is clean and its branch is at the head the
-//     validators judged; the landing decides whether it closes the spec (the
+//  1. prepare: the lane's worktree holds no change beside the lane's own spec
+//     record, which the records commit then carries, and its branch is at the head
+//     the validators judged; the landing decides whether it closes the spec (the
 //     lane that took the fidelity audit) and what it records.
 //  2. records: in the lane's worktree, the lane's step marked landed on the
 //     open spec (its `- landed:` line, naming the judged head), `spec close`
@@ -74,9 +75,11 @@ import (
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/embargo"
+	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/core/layered"
+	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -99,6 +102,9 @@ type Landing struct {
 	// RecordsDone is set once it is made, or once there was nothing to record.
 	Records     string `json:"records,omitempty"`
 	RecordsDone bool   `json:"records_done"`
+	// SpecSettled says the first step took an uncommitted change to the lane's own
+	// spec record, so the records commit has that to carry whatever else it holds.
+	SpecSettled bool `json:"spec_settled,omitempty"`
 	// PreflightReceipt is the preflight receipt that named the pushed head,
 	// home-redacted, and Pushed the head the loop pushed.
 	PreflightReceipt string `json:"preflight_receipt,omitempty"`
@@ -244,11 +250,22 @@ func landPrepare(c Context, lane *Lane) (Outcome, error) {
 			fmt.Sprintf("%s is at %s, not at the head %s its validators judged", lane.Branch, shortSHA(tip), shortSHA(lane.HeadSHA)),
 			"restore the branch to the judged head (the landing lands only what was validated), then run `abcd implement step` again")
 	}
-	if dirty, err := changesBesideTheSpecs(lane.Worktree); err != nil {
+	ownSpec := ""
+	if c.State.Issue() == "" {
+		ownSpec = c.State.Spec
+	}
+	dirty, settled, err := worktreeChanges(lane.Worktree, ownSpec)
+	if err != nil {
 		return Outcome{}, fmt.Errorf("reading the lane's worktree: %w", err)
-	} else if dirty {
+	}
+	if dirty {
 		return Outcome{}, refuse(string(StageLand), "", lane.ID, "the lane's worktree holds uncommitted changes, and the landing commits only what it writes",
 			"remove them from the lane's worktree (the landing lands only what was validated, and a commit moves the branch off that head), then run `abcd implement step` again")
+	}
+	if settled {
+		if err := refuseChangedSpecLinks(c, *lane); err != nil {
+			return Outcome{}, err
+		}
 	}
 	closes, err := auditsHere(c, *lane)
 	if err != nil {
@@ -262,8 +279,11 @@ func landPrepare(c Context, lane *Lane) (Outcome, error) {
 	if err != nil {
 		return Outcome{}, err
 	}
-	ld := &Landing{Closes: closes, MarkStep: mark}
+	ld := &Landing{Closes: closes, MarkStep: mark, SpecSettled: settled}
 	var does []string
+	if settled {
+		does = append(does, "carries the change to "+c.State.Spec+" left in the lane's worktree")
+	}
 	if mark > 0 {
 		does = append(does, fmt.Sprintf("marks step %d landed", mark))
 	}
@@ -349,6 +369,14 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 			"remove it from the lane's worktree (the landing lands only what was validated, and a commit moves the branch off that head), then run `abcd implement step` again")
 	}
 
+	// A close ships what the spec's links name, so they stay as the judged head has
+	// them, whenever the record was edited.
+	if st.Issue() == "" {
+		if err := refuseChangedSpecLinks(c, *lane); err != nil {
+			return Outcome{}, err
+		}
+	}
+
 	// The disclosure is settled before any record is written, so a lane with
 	// no model to disclose is refused with its worktree untouched. A records
 	// commit that only marks the step carries no model's prose, only the mark
@@ -358,7 +386,7 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{Stay: true, Note: note}, nil
 	}
 	assisted := []string{composedAssistedBy()}
-	if ld.Closes || len(lane.Resolves) > 0 {
+	if ld.Closes || len(lane.Resolves) > 0 || ld.SpecSettled {
 		var gap string
 		if assisted, gap = assistedByTrailers(lane.Receipts); gap != "" {
 			return Outcome{}, modelGap(*lane, "the landing's records commit carries text the lane's implementer composed", gap)
@@ -367,6 +395,10 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 
 	wt := lane.Worktree
 	var trailers, done []string
+	if ld.SpecSettled {
+		done = append(done, "carried the change to "+st.Spec+" left in the lane's worktree")
+	}
+	wrote := false
 	// The step is marked before the close moves the spec, so a closed spec
 	// carries every step's mark.
 	if ld.MarkStep > 0 {
@@ -432,6 +464,7 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 				return Outcome{}, refuse(string(StageLand), "", lane.ID, "`capture resolve "+r.Issue+"` refused in the lane's worktree: "+fsutil.RedactHome(err.Error()),
 					"the resolution is the lane receipt's; settle what the capture store names in the lane's worktree and leave it uncommitted, then run `abcd implement step` again")
 			}
+			wrote = true
 			done = append(done, "resolved "+r.Issue+" with "+shortSHA(r.Commit))
 		}
 		trailers = append(trailers, "Resolves: "+r.Issue)
@@ -450,8 +483,14 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{}, fmt.Errorf("reading the landing's staged records: %w", err)
 	}
 	if staged == "" {
+		// A resolution written on this call that stages nothing is one the branch
+		// already holds byte for byte: the step has nothing left to commit.
+		if wrote {
+			ld.RecordsDone = true
+			return Outcome{Stay: true, Note: "the branch already holds the landing's records, so there is nothing to commit: " + strings.Join(done, "; ")}, nil
+		}
 		return Outcome{}, refuse(string(StageLand), "", lane.ID, "the landing's records changed nothing on the lane's branch",
-			"the close and the resolutions should move records; put back any the branch already moved in the lane's worktree and leave it uncommitted, then run `abcd implement step` again")
+			"the close and the resolutions should move records; put back anything the branch already moved, or the spec left for the landing to carry, in the lane's worktree and leave it uncommitted, then run `abcd implement step` again")
 	}
 	// Unlike the pick commit (pickcommit.go), whose text abcd computes and
 	// which declares `Assisted-by: abcd:<version>`, this commit's diff carries prose a
@@ -482,27 +521,111 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	return Outcome{Stay: true, Note: "committed the landing's records as " + shortSHA(head) + ": " + strings.Join(done, "; ")}, nil
 }
 
-// changesBesideTheSpecs reports a change in the lane's worktree other than a spec
-// record's. stepToMark reads the spec there, and its refusals of a spec the judged
-// head leaves unfit are settled only by a spec put right and left uncommitted: a
-// commit moves the branch off that head. The records commit carries the change, for
-// the round to read, as strayChanges lets it.
-func changesBesideTheSpecs(worktree string) (bool, error) {
+// worktreeChanges reads the lane's worktree for the first step. settled is an
+// uncommitted change to the lane's own spec record, in any bucket: stepToMark reads
+// the record there, and a record the judged head leaves unfit is settled only that
+// way, since a commit moves the branch off that head. The records commit carries it
+// (Landing.SpecSettled), for the round to read. dirty is any other change. ownSpec
+// is "" on a lane with no spec, which has no such record.
+func worktreeChanges(worktree, ownSpec string) (dirty, settled bool, err error) {
 	out, err := pickGit(worktree, "status", "--porcelain", "-z", "--untracked-files=all", "--no-renames")
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 	for _, entry := range strings.Split(out, "\x00") {
 		if len(entry) < 4 {
 			continue
 		}
-		path := entry[3:]
-		if !strings.HasPrefix(path, spec.SpecsRelDir+"/") || !strings.HasSuffix(path, ".md") {
-			return true, nil
+		if ownSpec != "" && isSpecRecordOf(entry[3:], ownSpec) {
+			settled = true
+			continue
+		}
+		dirty = true
+	}
+	return dirty, settled, nil
+}
+
+// isSpecRecordOf reports whether the repository-relative path is a record of the
+// spec, directly inside one of the store's buckets.
+func isSpecRecordOf(path, specID string) bool {
+	rest, ok := strings.CutPrefix(path, spec.SpecsRelDir+"/")
+	if !ok {
+		return false
+	}
+	bucket, name, ok := strings.Cut(rest, "/")
+	if !ok || (bucket != spec.StatusOpen && bucket != spec.StatusClosed) || strings.Contains(name, "/") {
+		return false
+	}
+	id, _, ok := recordid.SplitRecordFilename("spc", name)
+	return ok && recordid.SameID(id, specID)
+}
+
+// specLinks is what a spec record says it realises: its intent:, intents: and
+// bundle: fields, read as the spec store reads them.
+func specLinks(content string) string {
+	fields := frontmatter.Fields(strings.Split(content, "\n"))
+	return strings.Join([]string{fields["intent"].Value, strings.Join(frontmatter.StringList(fields["intents"].Value), ","), fields["bundle"].Value}, "\x00")
+}
+
+// refuseChangedSpecLinks refuses a lane's own spec record whose links differ from
+// the judged head's, or that no longer stands as one regular file in the worktree:
+// the close ships what the links name, so an uncommitted edit never chooses it. A
+// head holding no record of the spec links only the run's own intent.
+func refuseChangedSpecLinks(c Context, lane Lane) error {
+	st := c.State
+	want := specLinks("---\nintent: " + st.Intent + "\n---\n")
+	listed, err := pickGit(lane.Worktree, "ls-tree", "-r", "--name-only", "-z", "HEAD", "--", spec.SpecsRelDir)
+	if err != nil {
+		return fmt.Errorf("reading the spec store at the lane's head: %w", err)
+	}
+	for _, rel := range strings.Split(listed, "\x00") {
+		if rel != "" && isSpecRecordOf(rel, st.Spec) {
+			body, err := pickGit(lane.Worktree, "show", "HEAD:"+rel)
+			if err != nil {
+				return fmt.Errorf("reading %s at the lane's head: %w", st.Spec, err)
+			}
+			want = specLinks(body)
+			break
 		}
 	}
-	return false, nil
+	var records []string
+	for _, bucket := range []string{spec.StatusOpen, spec.StatusClosed} {
+		entries, err := os.ReadDir(filepath.Join(lane.Worktree, filepath.FromSlash(spec.SpecsRelDir), bucket))
+		if err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("reading the spec store in the lane's worktree: %w", err)
+		}
+		for _, e := range entries {
+			if rel := spec.SpecsRelDir + "/" + bucket + "/" + e.Name(); isSpecRecordOf(rel, st.Spec) {
+				records = append(records, rel)
+			}
+		}
+	}
+	same := len(records) == 1
+	if same {
+		abs := filepath.Join(lane.Worktree, filepath.FromSlash(records[0]))
+		info, err := os.Lstat(abs)
+		if err != nil {
+			return fmt.Errorf("reading %s in the lane's worktree: %w", st.Spec, err)
+		}
+		same = info.Mode().IsRegular() && info.Size() <= maxSpecRecordBytes
+		if same {
+			body, err := os.ReadFile(abs)
+			if err != nil {
+				return fmt.Errorf("reading %s in the lane's worktree: %w", st.Spec, err)
+			}
+			same = specLinks(string(body)) == want
+		}
+	}
+	if same {
+		return nil
+	}
+	return refuse(string(StageLand), "", lane.ID, "the uncommitted change to "+st.Spec+" changes what it links (its record, or its intent:, intents: or bundle:), which decides what the close ships",
+		"put the record and those fields back as the judged head has them, in the lane's worktree, then run `abcd implement step` again")
 }
+
+// maxSpecRecordBytes bounds the read of a spec record in the lane's worktree, as the
+// spec store bounds its own.
+const maxSpecRecordBytes = 256 * 1024
 
 // strayChanges names a change in the lane's worktree that cannot be the landing's own,
 // "" when there is none. A commit a repository hook refused leaves the landing's
@@ -608,6 +731,7 @@ func recordsRoundScope(base, head string) string {
 		"The lane's own change passed its full round at `%s`, which judged each resolution its receipt declared. Read only `%s..%s`, the commit the landing added on it; this should take a couple of minutes, so do not read the lane again or judge the fix again. "+
 		"Judge the records' text against what the lane says it did: each resolution's note, impact and grounds, and the folder each record lands in. "+
 		"This commit normally holds records and link rewrites, and anything else in it is a finding. "+
+		"It can also carry a change to the lane's own spec, left in its worktree for the landing: a change to that spec beyond its `- landed:` line and its folder must be named and justified in your verdict, or it is a finding. "+
 		"A verdict that does not pass parks the lane for a person; no fix round follows.\n\n", base, base, head)
 }
 
