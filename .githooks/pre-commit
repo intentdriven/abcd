@@ -733,9 +733,11 @@ sources_refresh() {
     return 0
   }
   trap 'rm -rf "$_work"' EXIT INT TERM HUP
+  # --trimpath shares the build cache across worktrees; two dashes, since the shell
+  # guard cannot fix a program named by a variable and -t reads as `killall -t`.
   if (cd "$_src" && unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
     GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX &&
-    "$go_bin" build -trimpath -buildvcs=false -o "$_work/abcd" ./cmd/abcd) >/dev/null 2>&1 && [ -x "$_work/abcd" ]; then
+    "$go_bin" build --trimpath -buildvcs=false -o "$_work/abcd" ./cmd/abcd) >/dev/null 2>&1 && [ -x "$_work/abcd" ]; then
     sources_relay "$_work/abcd" "the abcd built from this checkout"
   else
     echo "pre-commit: warning — could not build ./cmd/abcd from this checkout (run 'go build ./cmd/abcd' to see why), so the sources banlist block was not refreshed; the banlist is checked as it stands." >&2
