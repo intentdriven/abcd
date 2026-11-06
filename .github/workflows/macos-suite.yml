@@ -2,7 +2,7 @@ name: macos-suite
 
 # One shard of abcd's macOS suite, called by the two workflows that run it, so a
 # shard's steps have one definition: ci.yml's macos-suite matrix, nightly and on
-# demand, and release.yml's macos-suite-1 to -3 jobs, on every release cut before
+# demand, and release.yml's macos-suite-1 to -4 jobs, on every release cut before
 # anything is tagged (dcn-2611042202509334). It starts only when called. Each input
 # is required, so a caller states which shard of how many, which commit, and whether
 # the Go cache may be used; a with: block that does not match these inputs fails the
@@ -47,7 +47,8 @@ jobs:
   # counts none of the wait for one, and no shard runs on the merge queue's clock.
   # 50 is half as much again as the 30 a shard takes on a slow runner. The single
   # job before the split had reached 85 (dcn-2610282036219503); the remedy for a
-  # shard near this cap is a faster suite or a rebalance in cmd/ci-shard.
+  # shard near this cap is a faster suite or a rebalance in cmd/ci-shard, which is
+  # why internal/core/implement/loop holds the last shard alone.
   # TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds it.
   shard:
     timeout-minutes: 50

@@ -588,15 +588,17 @@ jobs:
   # hosted macOS runners vary about twofold: one pass over the module took 32
   # minutes on one and 77 on another with the same work and the same restored
   # cache, and past its 80-minute deadline on others. Only several runners shorten
-  # what one runner has to do. Three shards bring the slowest passing run's 76.6
+  # what one runner has to do. Three shards brought the slowest passing run's 76.6
   # minutes to about 27 of testing in a shard, and about 30 with its set-up and the
   # compiling a single job shared.
   #
-  # Why three. macOS is the scarcest runner this account has, five jobs at once,
-  # and one run's three shards fit inside that. Two shards take 41 minutes each on
-  # the slowest runners, and what decides a run is the last shard to get a runner,
-  # so three make that a third of the work rather than a half. A fourth shard would
-  # only ask for more of the same five runners.
+  # Why four. internal/core/implement/loop runs as three test processes, each with
+  # the whole of -timeout, and sharing a runner with 47 other packages all three
+  # reached that limit in ordinary tests, with no test failing (run 42197788864). So
+  # cmd/ci-shard gives it the last shard alone, and the other three share the rest.
+  # macOS is the scarcest runner this account has, five jobs at once, and one run's
+  # four shards fit inside that. A fifth would leave one job's room, and what decides
+  # a run is the last shard to get a runner.
   #
   # It runs nightly and by hand: on every event that is neither a pull request nor
   # a merge-queue entry (dcn-2611042202509334). The pre-push hook refuses a
@@ -628,7 +630,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4]
     uses: ./.github/workflows/macos-suite.yml
     with:
       shard: ${{ matrix.shard }}
