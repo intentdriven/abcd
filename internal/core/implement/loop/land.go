@@ -244,9 +244,9 @@ func landPrepare(c Context, lane *Lane) (Outcome, error) {
 			fmt.Sprintf("%s is at %s, not at the head %s its validators judged", lane.Branch, shortSHA(tip), shortSHA(lane.HeadSHA)),
 			"restore the branch to the judged head (the landing lands only what was validated), then run `abcd implement step` again")
 	}
-	if dirty, err := pickGit(lane.Worktree, "status", "--porcelain", "-z", "--untracked-files=all"); err != nil {
+	if dirty, err := changesBesideTheSpecs(lane.Worktree); err != nil {
 		return Outcome{}, fmt.Errorf("reading the lane's worktree: %w", err)
-	} else if dirty != "" {
+	} else if dirty {
 		return Outcome{}, refuse(string(StageLand), "", lane.ID, "the lane's worktree holds uncommitted changes, and the landing commits only what it writes",
 			"remove them from the lane's worktree (the landing lands only what was validated, and a commit moves the branch off that head), then run `abcd implement step` again")
 	}
@@ -299,12 +299,12 @@ func stepToMark(c Context, lane Lane) (int, error) {
 	sp, ok := store.Lookup(st.Spec)
 	if !ok || sp.Status != spec.StatusOpen {
 		return 0, refuse(string(StageLand), "", lane.ID, "the lane's branch holds no open "+st.Spec+" to mark its step landed on",
-			"restore "+st.Spec+" in the open specs on the lane's branch, then run `abcd implement step` again")
+			"restore "+st.Spec+" in the open specs in the lane's worktree and leave it uncommitted, then run `abcd implement step` again")
 	}
 	steps, err := spec.ReadSteps(lane.Worktree, sp)
 	if err != nil {
 		return 0, refuse(string(StageLand), "", lane.ID, fmt.Sprintf("%s's steps cannot be read on the lane's branch: %s", st.Spec, fsutil.RedactHome(err.Error())),
-			"rewrite "+spec.StepsHeading+" on the lane's branch as `abcd intent ready "+st.Intent+"` describes, then run `abcd implement step` again")
+			"rewrite "+spec.StepsHeading+" as `abcd intent ready "+st.Intent+"` describes in the lane's worktree and leave it uncommitted, then run `abcd implement step` again")
 	}
 	if len(steps) == 0 {
 		return 0, nil
@@ -312,7 +312,7 @@ func stepToMark(c Context, lane Lane) (int, error) {
 	n := lane.SpecStep
 	if n > len(steps) || steps[n-1].Title != lane.StepTitle {
 		return 0, refuse(string(StageLand), "", lane.ID, fmt.Sprintf("%s on the lane's branch does not list step %d as %q, the step this lane was opened for", st.Spec, n, lane.StepTitle),
-			"restore "+st.Spec+"'s steps on the lane's branch as the run started from them, then run `abcd implement step` again")
+			"restore "+st.Spec+"'s steps as the run started from them in the lane's worktree and leave it uncommitted, then run `abcd implement step` again")
 	}
 	if steps[n-1].Landed != "" {
 		return 0, nil
@@ -451,7 +451,7 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	}
 	if staged == "" {
 		return Outcome{}, refuse(string(StageLand), "", lane.ID, "the landing's records changed nothing on the lane's branch",
-			"the close and the resolutions should move records; check the lane's branch holds them open, then run `abcd implement step` again")
+			"the close and the resolutions should move records; put back any the branch already moved in the lane's worktree and leave it uncommitted, then run `abcd implement step` again")
 	}
 	// Unlike the pick commit (pickcommit.go), whose text abcd computes and
 	// which declares `Assisted-by: abcd:<version>`, this commit's diff carries prose a
@@ -480,6 +480,28 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	}
 	ld.Records, ld.RecordsDone, lane.HeadSHA = head, true, head
 	return Outcome{Stay: true, Note: "committed the landing's records as " + shortSHA(head) + ": " + strings.Join(done, "; ")}, nil
+}
+
+// changesBesideTheSpecs reports a change in the lane's worktree other than a spec
+// record's. stepToMark reads the spec there, and its refusals of a spec the judged
+// head leaves unfit are settled only by a spec put right and left uncommitted: a
+// commit moves the branch off that head. The records commit carries the change, for
+// the round to read, as strayChanges lets it.
+func changesBesideTheSpecs(worktree string) (bool, error) {
+	out, err := pickGit(worktree, "status", "--porcelain", "-z", "--untracked-files=all", "--no-renames")
+	if err != nil {
+		return false, err
+	}
+	for _, entry := range strings.Split(out, "\x00") {
+		if len(entry) < 4 {
+			continue
+		}
+		path := entry[3:]
+		if !strings.HasPrefix(path, spec.SpecsRelDir+"/") || !strings.HasSuffix(path, ".md") {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // strayChanges names a change in the lane's worktree that cannot be the landing's own,

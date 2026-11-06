@@ -168,7 +168,7 @@ func mergeDefault(c Context, lane *Lane, def, tracking string, siblings []string
 			return Outcome{}, false, fmt.Errorf("reading the lane's worktree: %w", err)
 		} else if dirty != "" {
 			return Outcome{}, false, refuse(string(StageLand), "", lane.ID, "the lane's worktree holds uncommitted changes, so the sync with "+def+" is not merged over them",
-				"commit or remove them in the lane's worktree (a change the validators did not judge goes back through a fix round), then run `abcd implement step` again")
+				"remove them from the lane's worktree (a commit moves the branch off the judged head, which the landing refuses), then run `abcd implement step` again")
 		}
 		if reserved, err = reserveOnLeavingLand(c.RepoRoot, c.State, *lane, StageValidate, c.Now); err != nil {
 			return Outcome{}, false, err
