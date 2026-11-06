@@ -33,9 +33,9 @@ import (
 // outer ceiling on the event the lane was ejected on, and a job ceiling above it
 // is unreachable there: the queue gives up first, with no job failure to read.
 // So the check job may not carry a timeout-minutes above the cap the ruleset
-// mirror records, and it carries 45 since 2026-10-28 (dcn-2610280635092222),
-// after a first spell at 45 from 2026-10-17 (dcn-2610171803056931) and 30 between
-// (iss-2610171803053186).
+// mirror records, and it carries 60 (iss-2611061904457784), after 45 from
+// 2026-10-28 (dcn-2610280635092222), a first spell at 45 from 2026-10-17
+// (dcn-2610171803056931) and 30 between (iss-2610171803053186).
 //
 // The macOS suite's shards stand down on a merge-queue entry, so neither they nor
 // any wait for a macOS runner run on the queue's clock. Off the queue a shard's
@@ -118,7 +118,7 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 				"unreachable there and any budget sized against it is false. Raise the live "+
 				"ruleset's cap (an admin act) before the job's", where, capMin, queue, rulesetMirror)
 		}
-		// It carries 45 since 2026-10-28 (dcn-2610280635092222).
+		// It carries 60 (iss-2611061904457784).
 		if capMin != checkUbuntuCeilingMinutes*time.Minute {
 			t.Errorf("%s: timeout-minutes is %s; want %dm, the ubuntu job's ceiling", where, capMin, checkUbuntuCeilingMinutes)
 		}
@@ -183,10 +183,12 @@ const checkMacOSCeilingMinutes = 50
 // under ruling Z; 45 from 2026-10-17, when the drain bundle
 // (spc-2610161044461448) grew the loop package's race run past 30
 // (dcn-2610171803056931); 30 when the plain pass stopped rerunning the race
-// lane's tests (iss-2610171803053186); 45 again since 2026-10-28, when
+// lane's tests (iss-2610171803053186); 45 again from 2026-10-28, when
 // merge-group runs took 29 minutes and one was cancelled at 30 a second after
-// its race tests passed (dcn-2610280635092222).
-const checkUbuntuCeilingMinutes = 45
+// its race tests passed (dcn-2610280635092222); 60 since the job clock's watchdog,
+// at 40 under that cap, ended queue runs with no test failed
+// (iss-2611061904457784).
+const checkUbuntuCeilingMinutes = 60
 
 // checkWarnLeadMinutes is how far ahead of each test job's ceiling the warning
 // step fires: ruling Z's cancel policy (2026-09-28) set the line ten minutes under

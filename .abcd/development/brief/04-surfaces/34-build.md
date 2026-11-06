@@ -786,10 +786,15 @@ landing's close consumes; the delivered range sits after its Provenance block,
 outside the prompt hash. Only the loop writes a verdict (decision 9): each
 validator writes its return, and the loop parses the verdict out of it — a
 reviewer's one `### Verdict` section stating one verdict of its role (`SHIP` or
-`FIX FIRST`; `APPROVE`, `BLOCK` or `NEEDS-INPUT`), the auditor's fidelity
+`FIX FIRST`; `APPROVE`, `BLOCK` or `NEEDS-INPUT`) and naming the head it judges by its
+full object name, by the one rule the landing reads a return by, with a plan review's
+naming its draft's digest instead, the auditor's fidelity
 verdict checked against the request (its receipt, both provenance hashes, every
 criterion and scope condition) — and records it into the state file; a return
-the loop cannot read one verdict from is refused and the lane still awaits it.
+the loop cannot read one verdict from is refused and the lane still awaits it. So is a
+validator's return whose launch reports a stop for length, a provider's filter or
+refusal, or an error, whatever it says: it is set aside, the role pauses, and the next
+step starts a fresh validator.
 A round whose validators all pass completes the stage, unless a report the
 lane's receipts name states a verdict (`Verdict: SHIP`, or a Verdict heading
 over one), which is refused at the advance naming the report. A round one of

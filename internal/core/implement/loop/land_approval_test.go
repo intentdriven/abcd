@@ -241,7 +241,7 @@ func TestAPairReadsTheRecordsCommitBeforeAnythingIsPushed(t *testing.T) {
 		}
 	}
 	if err := os.WriteFile(filepath.Join(f.repo.Root(), filepath.FromSlash(res.Awaiting.Receipt)),
-		[]byte("Reviewed head: "+records.HeadSHA+"\n\nReader 0.\n\n"+reviewerReturn("SHIP")), 0o600); err != nil {
+		[]byte("Reviewed head: "+records.HeadSHA+"\n\nReader 0.\n\n"+namingHead(reviewerReturn("SHIP"), records.HeadSHA)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Receipt(f.repo.Root(), f.runID, res.Awaiting.Receipt, f.stages, Options{}); err != nil {
@@ -682,5 +682,5 @@ func TestThisRepositorysOwnMirrorAndConfigArm(t *testing.T) {
 // reviewPairReceipt is a review receipt for sha holding a passing pair, as
 // abcd land --record-review writes one.
 func reviewPairReceipt(sha string) []byte {
-	return []byte(`{"commit":"` + sha + `","reviews":[{"name":"a","verdict":"SHIP","sha256":"x"},{"name":"b","verdict":"APPROVE","sha256":"y"}]}` + "\n")
+	return []byte(`{"commit":"` + sha + `","verdict_rule":2,"reviews":[{"name":"a","verdict":"SHIP","sha256":"x"},{"name":"b","verdict":"APPROVE","sha256":"y"}]}` + "\n")
 }
