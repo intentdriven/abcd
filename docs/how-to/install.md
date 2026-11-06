@@ -476,8 +476,8 @@ signed build record, and the installer prints a warning saying so, with the
 With or without `gh`, the installer runs the downloaded binary's `--version`
 before it installs it, and installs nothing if that names another release than
 the latest. If the temporary directory cannot run programs, it installs without
-that comparison and prints a warning saying so. It does the same when it has no
-usable `gh` and GitHub does not say which tag is the latest.
+that comparison and prints a warning saying so. It does the same when there is
+no `gh` 2.68 or later and GitHub does not say which tag is the latest.
 
 To install somewhere else, end the command with `sh -s -- --bin-dir <dir>`
 instead of `sh`.
