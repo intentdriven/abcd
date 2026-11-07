@@ -43,6 +43,7 @@ no new permission beyond the one this intent's decision records.
 - Holds only where the check of itd-2611041656012738 is on; with no check, nothing picks a run up.
 - Holds under every other condition of adr-2610222222326104: the walls proved live before any agent starts, the same bounds, and hand-back of what cannot be finished.
 - Holds only for a death abcd can tell from a person's act. A process a person kills from outside abcd reads as a crash, so a run they want to stay stopped takes the stop of itd-2611041549471712.
+- Holds for a stop the check can read. On a machine with two accounts, a stop set and lifted between two looks from the person's own account is not seen, because the record of it stays in their home, and the run may be picked up.
 
 ## Acceptance Criteria
 

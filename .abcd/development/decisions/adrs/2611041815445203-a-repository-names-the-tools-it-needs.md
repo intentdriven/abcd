@@ -51,7 +51,7 @@ and take where a copy lives from a person alone.
 2. **A name and a version, never a binary or a path.** The committed list holds a tool's
    name, why it is needed and which file declares its version, and no path, checksum or
    version of its own. A name follows a strict grammar. Reserved names are refused: a
-   shell, `git`, `abcd`, `node` and the command each runner starts. `go` and `make` are not reserved, though abcd runs them, because a repository may need them. A reason has a length limit and a character allowlist with no path separator, `~`, `$`, backtick, quote or control character, so it cannot hand a person a location to type, and it is shown as data. A version
+   shell, `git`, `abcd`, `node` and the command each runner starts. `go` and `make` are not reserved, though abcd runs them, because a repository may need them. A reason has a length limit and a character allowlist with no path separator, `~`, `$`, backtick, quote or control character, so it cannot carry a path to type, though it can still describe a place in words, and it is shown as data. A version
    file comes from a closed set for that tool. One naming a binary or a remote (`path:`,
    `ref:`, a rustup path, a `packageManager` URL, a suffixed Go toolchain name) is refused,
    not followed. A version is held to a strict allowlist, anything else is reported as
@@ -83,7 +83,7 @@ and take where a copy lives from a person alone.
    configuration.
 7. **Only the chosen programs move, and the claim stops at PATH.** Commands abcd starts
    get a directory made for that command, under the person's abcd home and removed when it
-   ends, first on PATH, holding links to the registered programs and nothing else,
+   ends, first on PATH, holding links to the registered programs the repository lists and nothing else,
    so the person's other tools resolve as before. No other part of a stage's environment
    is changed: abcd does not force no-download switches on a repository's own commands,
    because that would change how the repository works. The report warns about an inherited

@@ -81,7 +81,7 @@ Adding and registering:
 - **Given** a person is registering a copy, **when** abcd asks them to confirm, **then** the question shows the file's path, its owner, when its contents and when its metadata last changed, and what a link points at, read from the file itself, and no text from the list, an issue or an agent.
 - **Given** a copy that is relative, inside any working tree, reached through a directory others can write, or a link to somewhere this account cannot enter, **when** someone tries to register it, **then** it is refused naming why, with both a link and what it points at held to this, and registering never downloads anything.
 - **Given** a name outside the strict grammar, a reserved name, which means a shell, `git`, `abcd`, `node` and the command each runner starts, or a path whose own last part differs from the tool's name, **when** the list is read or a tool is added, **then** it is refused. `go` and `make` are not reserved, though abcd runs them, because a repository may need them.
-- **Given** a reason over the length limit, or with a character outside its allowlist, which holds no path separator, `~`, `$`, backtick, quote or control character, **when** the list is read, a tool is added or an agent asks for a tool, **then** it is refused, so a repository's reason cannot hand a person a location to type; a reason is always shown as data.
+- **Given** a reason over the length limit, or with a character outside its allowlist, which holds no path separator, `~`, `$`, backtick, quote or control character, **when** the list is read, a tool is added or an agent asks for a tool, **then** it is refused, so a repository's reason cannot carry a path to type, though it can still describe a place in words; a reason is always shown as data.
 - **Given** the home file holding the locations is not a regular file this account owns that no one else can write, **when** the test reads it, **then** the test fails loudly, and no file in any repository can supply a location.
 
 The test:
@@ -99,7 +99,7 @@ The test:
 
 Running a command:
 
-- **Given** a command abcd starts, **when** it runs, **then** a directory made for that command under the person's abcd home comes first on PATH, holding only the registered programs, each fingerprint is checked immediately before, and the directory is removed when the command ends.
+- **Given** a command abcd starts, **when** it runs, **then** a directory made for that command under the person's abcd home comes first on PATH, holding only the registered programs the repository lists, each fingerprint is checked immediately before, and the directory is removed when the command ends.
 - **Given** a fingerprint no longer matches at that check, **when** the command would start, **then** it does not start, the report names the file, and a lane's item waits as it would for a missing tool, with its work kept.
 - **Given** an inherited `GOROOT` or a pinned `GOTOOLCHAIN`, **when** the test runs, **then** the report warns that it may change which copy runs.
 

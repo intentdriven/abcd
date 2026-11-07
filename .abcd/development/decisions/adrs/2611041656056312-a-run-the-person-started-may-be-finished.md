@@ -53,7 +53,8 @@ We will let a run be finished after it dies, on these terms.
    pick-ups, and then waits for the person.
 7. **A person's stop outranks this.** adr-2611050740453233 says nothing resumes
    by itself when a stop lifts, so nothing is picked up under a stop, and a run
-   that died under one waits for a person's take-over. A second Ctrl-C, which
+   that died under one, or that the check saw under one since, waits for a
+   person's take-over. A second Ctrl-C, which
    kills a run at once, is a stop and not a death. A pick-up steps through the
    restart path of itd-2611041549461012 and starts nothing twice.
 
