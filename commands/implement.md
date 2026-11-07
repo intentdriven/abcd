@@ -676,8 +676,11 @@ over each of the run's lanes' own diff.
    records carry that model's prose. A lane with nothing to record still makes
    this commit, changing no file, under `Assisted-by: abcd:<version>`, so the
    admission reaches the default branch with the merge; a run whose state names
-   no admission (one started before runs recorded it) is refused here, and is
-   started again. A
+   no admission (one started before runs recorded it) is refused here. Such a
+   run is resumed, never started afresh, so resuming it with this abcd records
+   the admission its start would have: `abcd build <key>` for a run `abcd
+   build` started, and the next `abcd drain` for a drain's lane, under the rule
+   the drain began under; the step then goes on. A
    receipt that verified without a model the trailer can name (none, as one
    written before it was required, or one in another form) takes the model the
    runner that ran it reported, or else its file's model, read again, so a corrected receipt file lands without anyone editing the

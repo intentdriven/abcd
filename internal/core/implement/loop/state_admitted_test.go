@@ -101,6 +101,10 @@ func TestADrainsStartWithoutItsRuleIsRefused(t *testing.T) {
 		if !strings.Contains(r.Remedy, "drainrule.Load") {
 			t.Fatalf("%+v: the refusal names drainrule.Load: %+v", a, r)
 		}
+		// A rule given and refused is named as that, with why, never as none given.
+		if given := a != nil; given == strings.Contains(r.Reason, "none was given") || given && !strings.Contains(r.Reason, "admission") {
+			t.Fatalf("%+v: the refusal says whether a rule was given and why it was refused: %q", a, r.Reason)
+		}
 		if runs, _ := Runs(repo.Root()); len(runs) != 0 {
 			t.Fatalf("%+v: no run is created: %d", a, len(runs))
 		}

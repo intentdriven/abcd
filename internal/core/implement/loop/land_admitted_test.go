@@ -77,8 +77,8 @@ func TestRecordsStepRefusesAStateWithoutAdmission(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := f.wantsRefusedStep(t)
-	if r.Stage != string(StageLand) || !strings.Contains(r.Reason, "`admitted`") || !strings.Contains(r.Remedy, "start the run again") {
-		t.Fatalf("the records step is refused naming the field: %+v", r)
+	if r.Stage != string(StageLand) || !strings.Contains(r.Reason, "`admitted`") || !strings.Contains(r.Remedy, "`abcd build itd-10`") || !strings.Contains(r.Remedy, "`abcd drain`") {
+		t.Fatalf("the records step is refused naming the field and the act that records it: %+v", r)
 	}
 	l = currentLane(t, f.repo, f.runID)
 	if tip := f.repo.Git("-C", l.Worktree, "rev-parse", "HEAD"); tip != judged || l.HeadSHA != judged || l.Landing.RecordsDone {
@@ -86,6 +86,44 @@ func TestRecordsStepRefusesAStateWithoutAdmission(t *testing.T) {
 	}
 	if status := f.repo.Git("-C", l.Worktree, "status", "--porcelain"); strings.TrimSpace(status) != "" {
 		t.Fatalf("the worktree is untouched:\n%s", status)
+	}
+}
+
+// TestFollowingTheNoAdmissionRemedyLands: the refusal's remedy works. A run
+// begun before runs recorded their admission is resumed by `abcd build <key>`,
+// not started afresh, so the resumed start records the admission its own start
+// would have, and the records step it was refused at then commits the trailer.
+func TestFollowingTheNoAdmissionRemedyLands(t *testing.T) {
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	f.validated(t)
+	f.step(t) // prepare
+	if err := mutate(f.repo.Root(), f.runID, func(_ *os.Root, st *State) (bool, error) {
+		st.Admitted = nil
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	f.wantsRefusedStep(t)
+	res, err := Start(f.repo.Root(), "itd-10", Options{noReserve: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Resumed || res.RunID != f.runID {
+		t.Fatalf("premise: `abcd build itd-10` resumes the run rather than starting another: %+v", res)
+	}
+	st, err := ReadState(f.repo.Root(), f.runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Admitted{Kind: landings.KindBuild, Record: "spc-1"}
+	if st.Admitted == nil || *st.Admitted != want || !slices.ContainsFunc(st.Record, func(e Entry) bool {
+		return e.Stage == StageAdmitted && strings.HasPrefix(e.Note, "admitted under "+want.String())
+	}) {
+		t.Fatalf("the resumed start records the admission and says so: %+v", st.Admitted)
+	}
+	l := f.wantsRecordsCommit(t)
+	if msg := f.repo.Git("-C", l.Worktree, "log", "-1", "--format=%B", l.HeadSHA); !slices.Contains(trailerBlock(msg), "Admitted-by: build spc-1") {
+		t.Fatalf("the records commit carries the admission recorded on resume:\n%s", msg)
 	}
 }
 

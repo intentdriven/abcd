@@ -550,6 +550,80 @@ func admission(chk CheckResult, o Options) *Admitted {
 	return &Admitted{Kind: landings.KindBuild, Record: chk.Spec}
 }
 
+// drainAdmission says why a drain's start carries no admission it may open a
+// lane under, or "" when it does or the start is no drain's.
+func drainAdmission(o Options) string {
+	switch {
+	case !o.drain:
+		return ""
+	case o.admitted == nil:
+		return "none was given to this start"
+	case o.admitted.Kind != landings.KindDrain:
+		return "the admission given to this start is a " + o.admitted.Kind + "'s"
+	}
+	if why := o.admitted.Check(); why != "" {
+		return "the one given to this start is refused: " + why
+	}
+	return ""
+}
+
+// admitResumed records the admission of a resumed run whose state names none,
+// as a run begun before runs recorded theirs does: what its own start would
+// have written, so the records step it is refused at goes on. It records only
+// what it knows. A drain's start gives the drain's rule; `abcd build` gives the
+// spec an intent's run builds against, or the issue an issue-keyed run fixes
+// unless the drain's state lists the run as its lane, which the drain's next
+// move admits instead (admitDrainLane). An auto-plan run lands nothing.
+func admitResumed(repoRoot, runID string, o Options) error {
+	st, err := ReadState(repoRoot, runID)
+	if err != nil || st.Admitted != nil || st.autoPlanning() {
+		return err
+	}
+	var a Admitted
+	switch {
+	case o.drain:
+		if drainAdmission(o) != "" {
+			return nil
+		}
+		a = *o.admitted
+	case st.Issue() != "":
+		if drainsLane(repoRoot, runID) {
+			return nil
+		}
+		a = Admitted{Kind: landings.KindBuild, Record: st.Key}
+	case st.Spec != "":
+		a = Admitted{Kind: landings.KindBuild, Record: st.Spec}
+	default:
+		return nil
+	}
+	return admitLate(repoRoot, runID, a, o.now())
+}
+
+// drainsLane reports whether the drain's state lists runID as one of its lanes.
+// A drain state that cannot be read lists none.
+func drainsLane(repoRoot, runID string) bool {
+	d, _, err := readDrain(repoRoot)
+	return err == nil && slices.ContainsFunc(d.Lanes, func(l DrainLane) bool { return l.RunID == runID })
+}
+
+// admitLate writes a into a run's state that names no admission, with a record
+// entry saying it was recorded after the start; a state that names one keeps it.
+func admitLate(repoRoot, runID string, a Admitted, now time.Time) error {
+	if why := a.Check(); why != "" {
+		return fmt.Errorf("admitting run %s: %s", runID, why)
+	}
+	return mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+		if st.Admitted != nil {
+			return false, nil
+		}
+		st.Admitted = &a
+		st.UpdatedAt = now
+		st.Record = append(st.Record, Entry{At: now, Stage: StageAdmitted,
+			Note: "admitted under " + a.String() + ", recorded as the run resumed: its start recorded none"})
+		return true, nil
+	})
+}
+
 // startChecked is start past the checks that need no run.
 func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) {
 	if o.AutoPlan && validIssueKey(key) {
@@ -570,6 +644,9 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 		if err == nil {
 			err = reserveResumed(repoRoot, &res, o)
 		}
+		if err == nil {
+			err = admitResumed(repoRoot, res.RunID, o)
+		}
 		if err != nil {
 			if rf, ok := AsRefusal(err); ok && rf.recordMoved {
 				if st, rerr := ReadState(repoRoot, res.RunID); rerr == nil {
@@ -582,8 +659,8 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 		}
 		return res, nil
 	}
-	if o.drain && (o.admitted == nil || o.admitted.Kind != landings.KindDrain || o.admitted.Check() != "") {
-		return StartResult{}, refuse("check", "", "", "a lane the drain opens starts only under the repository's drain rule record, and none was given to this start",
+	if why := drainAdmission(o); why != "" {
+		return StartResult{}, refuse("check", "", "", "a lane the drain opens starts only under the repository's drain rule record, and "+why,
 			"drain again: the drain passes the rule record drainrule.Load names to every lane it opens, and the bundled baseline is never one")
 	}
 	var pace Pace

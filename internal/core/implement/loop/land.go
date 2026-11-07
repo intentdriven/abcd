@@ -375,7 +375,7 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	// recorded no admission is refused before anything is read or written.
 	if st.Admitted == nil {
 		return Outcome{}, refuse(string(StageLand), "", lane.ID, "the run's state names no `admitted`, the rule its lanes were admitted under, so its records commit cannot carry its "+landings.TrailerKey+": trailer",
-			"start the run again with this abcd (`abcd build "+st.Key+"`, or drain again for a drain's lane): a run begun before runs recorded their admission cannot land under it")
+			"resume the run with this abcd, which records the admission its start would have: `abcd build "+st.Key+"` for a run `abcd build` started, or `abcd drain` for a drain's lane (under the rule the drain began under); then run `abcd implement step` again")
 	}
 	if st.Issue() == "" {
 		if why, err := ownSpecTwice(c, *lane); err != nil {
