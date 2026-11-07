@@ -122,7 +122,7 @@ jobs:
       - name: Build the outbound checker from this checkout
         run: |
           set -euo pipefail
-          go build -o "$RUNNER_TEMP/abcd" ./cmd/abcd
+          go build -trimpath -o "$RUNNER_TEMP/abcd" ./cmd/abcd
 
       # The form steps judge the pull request's title and body AS THEY STAND,
       # read from the API, never from the event payload. A re-run replays the

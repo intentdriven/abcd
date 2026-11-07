@@ -3030,7 +3030,7 @@ the gate, and every waiter reads it and the command from the waiter's own words,
 without it the same command is a whole run. The command is go by that exact name, with no
 shell between, `test` after `-C <dir>` at most, at most 3 packages named outright
 (no `...` and no bare word such as `all`), and no flag but -v, -short, -failfast, -json,
--run, -skip, -timeout and -count=1. Anything else is a whole run, -race, a `make` and a
+-trimpath, -run, -skip, -timeout and -count=1. Anything else is a whole run, -race, a `make` and a
 shell included, so race runs stay apart as above. The effective GOFLAGS must be empty, as
 `go env GOFLAGS` reads it when the wait starts and again as it opens; otherwise the waiter
 says why on stderr and carries on as a whole run, with the same pid and start, without

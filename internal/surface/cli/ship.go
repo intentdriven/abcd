@@ -860,6 +860,14 @@ func renderCut(w io.Writer, verb string, cut release.Cut) {
 	if cut.FidelityNote != "" {
 		fmt.Fprintf(w, "  docs review: %s\n", termsafe.Sanitize(cut.FidelityNote))
 	}
+	// Every forward-looking marker whose records have all reached the tree,
+	// reported for removal and never refused on (iss-2611031731385043): the
+	// marker said its record was not here yet, which is no longer true, and a
+	// marker that outlives its reason makes a pending citation look dead.
+	for _, m := range cut.References.StaleMarkers {
+		fmt.Fprintf(w, "  stale marker: %s:%d — %s now in the tree; remove the forward-looking marker\n",
+			termsafe.Sanitize(m.File), m.Line, termsafe.Sanitize(strings.Join(m.IDs, ", ")))
+	}
 	for _, refusal := range cut.Refusals {
 		fmt.Fprintf(w, "  refused (%s):\n", refusal.Kind)
 		// SanitizeBlock, not Sanitize: a refusal reason IS lines — the surface

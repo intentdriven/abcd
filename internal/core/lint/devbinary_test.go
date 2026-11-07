@@ -16,7 +16,7 @@ import (
 
 // scripts/abcd.sh, the source checkout's own abcd (iss-2610241240133009), driven
 // against a stub `go` so no compile runs. The stub records how it was called
-// and, for `build -buildvcs=false -o <path>`, removes <path> and writes a fake
+// and, for `build -trimpath -buildvcs=false -o <path>`, removes <path> and writes a fake
 // binary there, as go does, unless STUB_UP_TO_DATE says the tree is unchanged;
 // then it records what the binary's own path holds at that moment. The fake
 // records its own arguments, working directory and the script's mark, and exits
@@ -32,10 +32,10 @@ if [ -n "$STUB_BUILD_FAIL" ]; then
 	echo "stub go: $STUB_BUILD_FAIL" >&2
 	exit 1
 fi
-[ "$1" = build ] && [ "$2" = -buildvcs=false ] && [ "$3" = -o ] || { echo "stub go: unexpected arguments: $*" >&2; exit 9; }
+[ "$1" = build ] && [ "$2" = -trimpath ] && [ "$3" = -buildvcs=false ] && [ "$4" = -o ] || { echo "stub go: unexpected arguments: $*" >&2; exit 9; }
 [ -n "$STUB_UP_TO_DATE" ] && exit 0
-rm -f "$4"
-cat > "$4" <<'BIN'
+rm -f "$5"
+cat > "$5" <<'BIN'
 #!/bin/sh
 {
 	printf 'bin-cwd=%s\n' "$(pwd -P)"
@@ -44,7 +44,7 @@ cat > "$4" <<'BIN'
 } >> "$STUB_LOG"
 exit "${FAKE_EXIT:-0}"
 BIN
-chmod +x "$4"
+chmod +x "$5"
 printf 'bin-at-link-end=%s\n' "$(cat "$STUB_BIN" 2>/dev/null)" >> "$STUB_LOG"
 `
 
@@ -189,7 +189,7 @@ func TestTheCheckoutsAbcdBuildsToTheLocalTierAndRunsInPlace(t *testing.T) {
 			t.Errorf("the calls do not show %q:\n%s", want, got.log)
 		}
 	}
-	build := regexp.MustCompile(`(?m)^args=build -buildvcs=false -o ` + regexp.QuoteMeta(devBinaryPath(root)) + `\.[0-9]+ \./cmd/abcd$`)
+	build := regexp.MustCompile(`(?m)^args=build -trimpath -buildvcs=false -o ` + regexp.QuoteMeta(devBinaryPath(root)) + `\.[0-9]+ \./cmd/abcd$`)
 	if !build.MatchString(got.log) {
 		t.Errorf("the build did not link to a private name beside %s:\n%s", devBinaryPath(root), got.log)
 	}
@@ -376,7 +376,7 @@ func TestTheCheckoutsAbcdBuildsElsewhereWhenTheTierIsReadOnly(t *testing.T) {
 	if got.code != 3 {
 		t.Errorf("with a read-only tier scripts/abcd.sh exited %d, want the binary's 3\nstderr:\n%s", got.code, got.stderr)
 	}
-	m := regexp.MustCompile(`(?m)^args=build -buildvcs=false -o (\S+) \./cmd/abcd$`).FindStringSubmatch(got.log)
+	m := regexp.MustCompile(`(?m)^args=build -trimpath -buildvcs=false -o (\S+) \./cmd/abcd$`).FindStringSubmatch(got.log)
 	if m == nil {
 		t.Fatalf("no build ran:\n%s", got.log)
 	}

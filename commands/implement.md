@@ -1321,8 +1321,8 @@ was. An abcd built before the mark reads a marked waiter as a waiter like any ot
 The command is `go` by that exact name, with no shell in between: `go test` (or `go
 -C <dir> test`), at most three packages named outright (`./internal/foo`, `.`, or a
 path that still holds a slash once cleaned, never a `...` wildcard or a bare word
-such as `all`), and no flag but `-v`, `-short`, `-failfast`, `-json`, `-run`,
-`-skip`, `-timeout` and `-count=1`. Three is a change's usual reach: its package,
+such as `all`), and no flag but `-v`, `-short`, `-failfast`, `-json`, `-trimpath`,
+`-run`, `-skip`, `-timeout` and `-count=1`. Three is a change's usual reach: its package,
 the caller that exercises it and the surface over that. Everything else is a whole
 run: `make`, `sh -c`, a wildcard, a repeat count, and `-race`, whatever its size, so
 race runs stay where the rule that keeps race stages apart can see them. A mark on

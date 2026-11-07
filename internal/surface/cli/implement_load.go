@@ -370,7 +370,7 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"without it the same command is a whole run. The command is go by that exact name, with no\n" +
 			"shell between, `test` after `-C <dir>` at most, at most " + strconv.Itoa(machineload.MaxNarrowPackages) + " packages named outright\n" +
 			"(no `...` and no bare word such as `all`), and no flag but -v, -short, -failfast, -json,\n" +
-			"-run, -skip, -timeout and -count=1. Anything else is a whole run, -race, a `make` and a\n" +
+			"-trimpath, -run, -skip, -timeout and -count=1. Anything else is a whole run, -race, a `make` and a\n" +
 			"shell included, so race runs stay apart as above. The effective GOFLAGS must be empty, as\n" +
 			"`go env GOFLAGS` reads it when the wait starts and again as it opens; otherwise the waiter\n" +
 			"says why on stderr and carries on as a whole run, with the same pid and start, without\n" +

@@ -349,6 +349,53 @@ func ADRFiles(repoRoot string) ([]string, error) {
 // Len reports how many record ids resolved — the size of the live record.
 func (r *Resolver) Len() int { return len(r.ids) }
 
+// FamilyRootDirs lists the id-bearing families' store roots, repo-relative and
+// slash-separated, in the order the resolver reads them: the pathspecs a reader
+// of another tree (a commit's, through git) lists to see what the resolver would
+// see there.
+func FamilyRootDirs() []string {
+	out := make([]string, 0, len(familyRoots))
+	for _, fam := range familyRoots {
+		out = append(out, fam.dir)
+	}
+	return out
+}
+
+// NewResolverFromPaths is NewResolver over a listing of another tree rather
+// than the working tree: paths are repo-relative, slash-separated regular files
+// (a `git ls-tree -r` of a commit, its links and submodules already dropped),
+// and each is recorded exactly where the shallow scan would find it, directly in
+// a family root or one bucket below. So a record on another branch resolves by
+// the same derivation as one here, and there is still one reading of what names
+// a record (iss-2611031731385043). A deeper path, or one outside every family,
+// is ignored as the scan ignores it, and the scan's entry budget holds here too.
+func NewResolverFromPaths(paths []string) (*Resolver, error) {
+	r := &Resolver{ids: map[string][]string{}}
+	if len(paths) > maxScanEntries {
+		return nil, fmt.Errorf("recordid: more than %d record files; refusing to scan further", maxScanEntries)
+	}
+	sorted := append([]string(nil), paths...)
+	sort.Strings(sorted)
+	for _, p := range sorted {
+		for _, fam := range familyRoots {
+			rest, ok := strings.CutPrefix(p, fam.dir+"/")
+			if !ok || rest == "" {
+				continue
+			}
+			parts := strings.Split(rest, "/")
+			switch len(parts) {
+			case 1:
+				r.record(fam.prefix, fam.dir, parts[0])
+			case 2:
+				if parts[0] != "" {
+					r.record(fam.prefix, path.Join(fam.dir, parts[0]), parts[1])
+				}
+			}
+		}
+	}
+	return r, nil
+}
+
 // scanFamily reads one family root and, one level down, each of its buckets. It
 // decrements the shared entry budget so the ceiling is over the whole scan rather
 // than per family.

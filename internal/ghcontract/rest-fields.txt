@@ -41,3 +41,20 @@ workflow-runs.workflow_runs.created_at
 check-runs.check_runs
 check-runs.check_runs.name
 check-runs.check_runs.conclusion
+# The open pull requests record-lint's pending-reference lookup lists
+# (internal/core/pendingref, iss-2611031731385043): which pull requests are
+# open, the head each names, and whether that head is a branch of this
+# repository. Read on 2026-11-03 by one live, read-only GET against abcd's
+# own repository:
+#   pull-requests  GET repos/{owner}/{repo}/pulls?state=open
+pull-requests.number
+pull-requests.head
+pull-requests.head.ref
+pull-requests.head.sha
+pull-requests.head.repo
+pull-requests.head.repo.full_name
+pull-requests.base
+pull-requests.base.ref
+pull-requests.base.sha
+pull-requests.base.repo
+pull-requests.base.repo.full_name

@@ -292,11 +292,13 @@ func TestAPreflightThatMintsNoReceiptCountsTowardStuck(t *testing.T) {
 	}
 }
 
-// TestAWaitOnHeldWorkHasADeadline: everything stays held by someone else, so the
-// move names one wait after another; the run ends at the deadline, saying so,
-// and hands nothing back.
-func TestAWaitOnHeldWorkHasADeadline(t *testing.T) {
-	w := newTerminalWorld(t)
+// heldByAPeer has another copy reserve all three issues and keep them for as long as
+// the run waits, renewing at half the lease as a drive does. Each renewal is a commit
+// on origin, so renewing at every wait would be much of what a long wait's test does.
+// At every look a hold has more of its lease left than the longest wait, so the run
+// waiting sees only that it is held.
+func (w *terminalWorld) heldByAPeer(t *testing.T) {
+	t.Helper()
 	q := otherCopy(t, w.bare, quinnEmail)
 	held := map[string]string{eligibleIssue: "AGENTS.md", secondIssue: "commands/drain.md", thirdIssue: "commands/other.md"}
 	opts := func() claim.Options { return as(t, q, claim.Options{Now: w.clock.now}) }
@@ -305,16 +307,30 @@ func TestAWaitOnHeldWorkHasADeadline(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	renewed := w.clock.t
 	w.onSleep = func(d time.Duration) {
 		now := w.clock.t
-		w.clock.t = now.Add(d)
+		wakes := now.Add(d)
+		if wakes.Sub(renewed) < terminalRenewEvery {
+			return
+		}
+		w.clock.t = wakes
 		for id := range held {
 			if _, err := claim.Reserve(q, claim.Request{Record: id, Renew: true}, opts()); err != nil {
 				t.Fatal(err)
 			}
 		}
 		w.clock.t = now
+		renewed = wakes
 	}
+}
+
+// TestAWaitOnHeldWorkHasADeadline: everything stays held by someone else, so the
+// move names one wait after another; the run ends at the deadline, saying so,
+// and hands nothing back.
+func TestAWaitOnHeldWorkHasADeadline(t *testing.T) {
+	w := newTerminalWorld(t)
+	w.heldByAPeer(t)
 	o := w.options(t)
 	w.guardSleeps(t, &o)
 	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
