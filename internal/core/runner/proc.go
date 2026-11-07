@@ -33,6 +33,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/url"
 	"os"
 	"os/exec"
@@ -63,9 +64,12 @@ const pipeGrace = 5 * time.Second
 // launcher starts one harness binary. Its fields are the seams the tests
 // narrow; production uses defaultLauncher.
 type launcher struct {
-	lookPath  func(string) (string, error)
-	maxStdout int
-	maxStderr int
+	lookPath func(string) (string, error)
+	// reachedThrough is where a pinned harness was found on PATH, judged against the
+	// repository as what lookPath answers is; "" for none.
+	reachedThrough string
+	maxStdout      int
+	maxStderr      int
 	// gateWaiting reports whether the process tree a run's harness leads
 	// holds a waiter queued at abcd's load gate (queuedAtGate); nil asks
 	// nothing, and the run's clock never stops. gatePoll is how often it is
@@ -113,6 +117,9 @@ func (l launcher) admit(runner, name string, repos ...string) (string, error) {
 	// the directory it resolves into chooses what runs.
 	for _, c := range []string{resolved, filepath.Dir(resolved), filepath.Dir(filepath.Clean(p))} {
 		fi, err := os.Stat(c)
+		if errors.Is(err, fs.ErrNotExist) {
+			return "", failAt(ErrNotOnPath, runner, ReasonAbsent, "%s does not resolve to a file", name)
+		}
 		if err != nil {
 			return "", failAt(ErrRefused, runner, ReasonAbsent, "%s could not be examined before it is run", name)
 		}
@@ -133,8 +140,8 @@ func (l launcher) admit(runner, name string, repos ...string) (string, error) {
 	}
 	fold := fsutil.CaseFoldingFS()
 	for _, g := range guards {
-		for _, c := range []string{filepath.Clean(p), resolved} {
-			if fsutil.PathWithin(c, g, fold) {
+		for _, c := range []string{filepath.Clean(p), resolved, l.reachedThrough} {
+			if c != "" && fsutil.PathWithin(c, g, fold) {
 				return "", failAt(ErrRefused, runner, ReasonAbsent, "%s resolves inside the repository the role runs in or the checkout it belongs to; "+
 					"a program there is repository content and is never run", name)
 			}
@@ -447,12 +454,52 @@ func proxyListWithoutCredentials(v string) (string, bool) {
 
 // stageShellNames are what the harness and the shell itself add to a stage's
 // shell, beside what it carries.
-var stageShellNames = []string{"PWD", "OLDPWD", "SHLVL", "_", "CLAUDECODE", "GIT_EDITOR", "COREPACK_ENABLE_AUTO_PIN",
-	"__CF_USER_TEXT_ENCODING", "GOCACHE", "GOMODCACHE", "GOPATH", "GOBIN", "GOPROXY", abcdhome.PersonHomeEnv}
+var stageShellNames = []string{"PWD", "OLDPWD", "SHLVL", "_", "CLAUDECODE", "AI_AGENT", "GIT_EDITOR", "COREPACK_ENABLE_AUTO_PIN",
+	"NoDefaultCurrentDirectoryInExePath", "__CF_USER_TEXT_ENCODING", "GOCACHE", "GOMODCACHE", "GOPATH", "GOBIN", "GOPROXY", abcdhome.PersonHomeEnv,
+	stageUpdatesOff}
+
+// stageShellUnset are what a stage's shell file takes back out of what the harness
+// starts the shell with: the walled directory, under each name it goes by, the file the
+// run proved and the harness's messaging variables. The hooks and the approver read their
+// own environment and flags, not the shell's. These stay outside what a stage's shell may
+// hold.
+var stageShellUnset = []string{"CLAUDE_CONFIG_DIR", StageProtectEnv, StageHarnessEnv, "CLAUDE_CODE_MESSAGING_TOKEN", "CLAUDE_CODE_MESSAGING_SOCKET"}
+
+// harnessSecretWords are what a word of a name under the harness's prefix may not end in,
+// one or many, so a joined or plural spelling reads as the plain one. The prefix stays open
+// because each harness release adds names of its own, and a stage holding a new setting
+// costs nothing; a new name of one of these shapes stops the drive and says the version.
+var harnessSecretWords = []string{"TOKEN", "OAUTH", "KEY", "SECRET", "PASSWORD", "PASSWD", "PASSPHRASE", "CREDENTIAL", "CREDENTIALS", "CREDS",
+	"AUTH", "AUTHENTICATE", "AUTHENTICATION", "AUTHORIZATION", "COOKIE", "GRANT", "SOCKET", "SOCK", "JWT", "BEARER"}
+
+// harnessPlainPlurals are words that read as a plural of those and mean something else
+// in the harness's own names: how many tokens a model may use, and the proxy protocol.
+var harnessPlainPlurals = []string{"TOKENS", "SOCKS"}
+
+// stageShellSecret reports whether name reads as a credential or a socket: one abcd
+// knows, or one under the harness's prefix with a word of that shape.
+func stageShellSecret(name string) bool {
+	if slices.Contains(credentialVars, name) {
+		return true
+	}
+	rest, ok := strings.CutPrefix(name, "CLAUDE_")
+	if !ok {
+		return false
+	}
+	return slices.ContainsFunc(strings.Split(rest, "_"), func(word string) bool {
+		plural := strings.TrimSuffix(word, "S")
+		if slices.Contains(harnessPlainPlurals, word) {
+			plural = word
+		}
+		return slices.ContainsFunc(harnessSecretWords, func(secret string) bool {
+			return strings.HasSuffix(word, secret) || strings.HasSuffix(plural, secret)
+		})
+	})
+}
 
 // stageShellAllowed reports whether a stage's shell may hold the variable name.
 func stageShellAllowed(name string) bool {
-	if slices.Contains(credentialVars, name) {
+	if stageShellSecret(name) || slices.Contains(stageShellUnset, name) {
 		return false
 	}
 	return slices.Contains(stageEnvNames, name) || slices.Contains(stageProxyNames, name) || slices.Contains(stageShellNames, name) ||

@@ -97,7 +97,7 @@ func refuseSharedMainCheckout(cmd *cobra.Command, verb, root string) error {
 // it is for any other session.
 func stageFilesFromEnv(f *guard.Files) *guard.Files {
 	return f.WithStage(os.Getenv(runner.StageHomeEnv), filepath.SplitList(os.Getenv(runner.StageProtectEnv)),
-		filepath.SplitList(os.Getenv(runner.StageDeclaredEnv)))
+		filepath.SplitList(os.Getenv(runner.StageDeclaredEnv))).WithStageHarness(os.Getenv(runner.StageHarnessEnv))
 }
 
 // stageActive reports whether this hook runs for a walled stage, where whatever

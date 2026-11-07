@@ -35,8 +35,16 @@ in a plain terminal with no host session; it refuses inside an agent's own sessi
 It runs on a subscription alone, on one separate login: a directory under
 `~/.abcd.noindex/profiles/` that the person makes and logs the harness into once, in
 their own shell. abcd never reads, stores or forwards that login. The directory's
-`settings.json` is abcd's, rewritten at each start, and holds abcd's hooks and nothing
-else. A credential variable the harness would bill through, set in the environment,
+`settings.json` is abcd's, rewritten at each start, and holds abcd's hooks and the
+harness's own attribution, off, and nothing else. A harness update during the run
+carries on only where the new file is signed by the team the start verified, and passes one
+more short launch before the next stage: then one line says what was checked and names the
+old version and the new. Anywhere else the run stops, saying why, with nothing run on the new
+file, and new contents at the file's own path stop it too. That launch shows what a launch
+holds, not who wrote the file. A file gone for a moment is waited for. A new file has three
+tries, minutes apart, across its signature and that launch, before the run ends at that
+check, exit 2, naming it; another team's file, or a start that read no team, stops it at
+once. A credential variable the harness would bill through, set in the environment,
 refuses the start, naming `itd-2611011230226453`.
 
 **Two subscriptions, two directories.** With one directory there the drive runs on it.
@@ -76,7 +84,9 @@ stage's shell reads what this account can. Each stage's agent holds only the fil
 shell tools its launch names, starts from an allow-list of variables, reads settings
 from that directory alone, and starts only while those settings and abcd's binary
 are as they were at the start. Its shell's home is emptied at each launch. A file tool
-writes only in the stage's working tree and run directories. The driver's commit, merge and
+writes only in the stage's working tree and run directories. A file tool, and a shell
+line the guard can read, does not reach the profile's directory, and such a line starts
+no program it makes itself. The driver's commit, merge and
 reset hooks, and any filter run inside those commands, get the stage's variables, while its
 network commands, its other filters and its forge calls keep the person's environment. A lane that changes the Makefile, `scripts/` or the active
 hooks is handed back at its landing, and an issue that names one is passed over: that change

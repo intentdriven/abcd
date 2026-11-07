@@ -103,6 +103,44 @@ func TestAStagesHookReadsTheStagesHome(t *testing.T) {
 	if a := approveLine(f, "claude --version"); a.Allow {
 		t.Fatal("the stage's reading refuses a further agent")
 	}
+	proved := filepath.Join(home, "claude", "versions", "9.8.7")
+	if err := os.MkdirAll(filepath.Dir(proved), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(proved, []byte("the harness"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(home, "plain-link")
+	if err := os.Symlink(proved, link); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(runner.StageHarnessEnv, proved)
+	f = stageFilesFromEnv(guard.NewFiles(t.TempDir()))
+	if guard.StageProgramRefusal(f, link+" --version") == "" {
+		t.Fatal("the hook reads the file the run proved")
+	}
+	tree := t.TempDir()
+	t.Setenv(runner.StageWritesEnv, tree)
+	for line, id := range map[string]string{
+		proved + " --version":                                "stage-further-agent",
+		link + " --version":                                  "stage-further-agent",
+		"claude --version":                                   "stage-further-agent",
+		"find . -name a -exec " + link + " --version ;":      "stage-further-agent",
+		"cp " + link + " ./made":                             "stage-further-agent",
+		"printf x > ./made && find . -name a -exec ./made ;": "stage-further-agent",
+		"PATH=" + home + ":$PATH plain-link --version":       "stage-further-agent",
+		"CLAUDE_CONFIG_DIR=/somewhere/else ./tool --version": "stage-walled-login",
+		"cat " + profile + "/.credentials.json":              "stage-walled-login",
+		"cd " + filepath.Dir(profile) + " && cat walled/x":   "stage-walled-login",
+	} {
+		payload, err := json.Marshal(map[string]any{"tool_name": "Bash", "cwd": tree, "tool_input": map[string]string{"command": line}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if out, _, _ := runHookAllowingFailure(string(payload), "guard", "hook"); !strings.Contains(out, `"deny"`) || !strings.Contains(out, id) {
+			t.Errorf("the hook does not answer %q with %s: %q", line, id, out)
+		}
+	}
 }
 
 // TestAPreflightRunsInTheStagesEnvironment.

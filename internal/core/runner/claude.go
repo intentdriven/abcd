@@ -72,8 +72,12 @@ type ClaudeCLI struct {
 	profile *Profile
 }
 
-// ApproverTool is the permission prompt tool a shell launch names.
-const ApproverTool = "mcp__abcd__approve"
+// approverServer is the name of the one server a shell launch starts, and
+// ApproverTool the permission prompt tool it names on that server.
+const (
+	approverServer = "abcd"
+	ApproverTool   = "mcp__" + approverServer + "__approve"
+)
 
 // newClaude returns the claude CLI runner asking for model, a
 // <provider>/<model> route the configuration admitted, or "" for the harness's
@@ -115,11 +119,14 @@ func (c *ClaudeCLI) approverConfig(dir, base string, runDirs, declared []string)
 	}
 	if c.profile != nil {
 		args = append(args, "--stage-home="+c.profile.ShellHome, "--protect="+c.profile.Dir)
+		if harness := provedHarness(*c.profile); harness != "" {
+			args = append(args, "--harness="+harness)
+		}
 		for _, d := range declared {
 			args = append(args, "--declared="+d)
 		}
 	}
-	raw, _ := json.Marshal(map[string]map[string]server{"mcpServers": {"abcd": {
+	raw, _ := json.Marshal(map[string]map[string]server{"mcpServers": {approverServer: {
 		Type: "stdio", Command: c.approver, Args: args,
 	}}})
 	return string(raw)
@@ -183,6 +190,10 @@ func (c *ClaudeCLI) args(req Request) []string {
 	return append(a, "--", prompt(req))
 }
 
+// walledDirRule is the harness's rule for everything below dir, in the rule's own form for
+// an absolute path.
+func walledDirRule(dir string) string { return "Read(/" + dir + "/**)" }
+
 // walledFlags is the walled launch's flags (spc-2610230813348813): hooks on,
 // so no --bare; the tools the stage holds and no others; the shell answered by
 // the approver, the only server the launch may start; and the profile's own
@@ -195,9 +206,8 @@ func (c *ClaudeCLI) walledFlags(req Request) []string {
 	}
 	a := []string{"--print", "--output-format", "stream-json", "--verbose", "--permission-mode", mode}
 	a = append(a, c.profile.Args...)
-	if len(req.Denied) > 0 {
-		a = append(a, "--disallowedTools="+strings.Join(req.Denied, ","))
-	}
+	// The stage's file tools answer to no approver, so the walled directory is a deny rule.
+	a = append(a, "--disallowedTools="+strings.Join(append(slices.Clone(req.Denied), walledDirRule(c.profile.Dir)), ","))
 	dirs := []string{filepath.Dir(req.Brief)}
 	if d := filepath.Dir(req.Receipt); d != dirs[0] {
 		dirs = append(dirs, d)
@@ -284,7 +294,11 @@ func (c *ClaudeCLI) Run(ctx context.Context, req Request) (Answer, []byte, error
 		return Answer{}, nil, fail(Claude, ReasonFailed,
 			"the run names no base commit for its permission prompts to be judged against, so the shell launch was not started")
 	}
-	bin, err := c.launch.admit(Claude, "claude", req.Dir, req.Checkout)
+	admits := c.launch
+	if c.profile != nil {
+		admits = admits.pinnedTo(*c.profile)
+	}
+	bin, err := admits.admit(Claude, "claude", req.Dir, req.Checkout)
 	if err != nil {
 		return Answer{}, nil, err
 	}
@@ -296,7 +310,7 @@ func (c *ClaudeCLI) Run(ctx context.Context, req Request) (Answer, []byte, error
 		}
 		list := string(os.PathListSeparator)
 		seal = append(slices.Clone(c.profile.Env), StageWritesEnv+"="+strings.Join(stageWriteDirs(req), list),
-			StageDeclaredEnv+"="+strings.Join(req.Declared, list), StageBaseEnv+"="+req.Base)
+			StageDeclaredEnv+"="+strings.Join(req.Declared, list), StageBaseEnv+"="+req.Base, StageHarnessEnv+"="+bin)
 		launch.carry = stageEnv
 	}
 	res, err := launch.run(ctx, Claude, bin, c.args(req), seal, req.Dir, req.timeout())

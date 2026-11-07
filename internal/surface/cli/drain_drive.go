@@ -65,7 +65,7 @@ var driveWalls = driveWallChecks{
 		}
 		var lines []string
 		if replaced {
-			lines = append(lines, "the profile directory's settings were edited, and were replaced with abcd's: a drive's agents hold abcd's hooks and nothing else")
+			lines = append(lines, "the profile directory's settings were edited, and were replaced with abcd's: a drive's agents hold abcd's settings and nothing else")
 		}
 		if note := runner.StageCachesNote(p); note != "" {
 			lines = append(lines, note)
@@ -275,6 +275,57 @@ func driveHoldsToProfile(repoRoot, profile string) error {
 	return driveRefusal("%s", loop.OnAnotherProfile(lanes[0], profile))
 }
 
+// driveBeforeStage is the check before each stage: the walls, and where the file the run
+// proved is gone, a new file held to the run's signing team and the one proof of it. A limit,
+// a launch with no verdict, or a file that has gone for now waits as the first proof's does,
+// renewing what the run holds, with the walls beside the harness checked at each turn; that
+// wait's own end is what the run ends on, and a wall that fails in it is the reason given. A
+// file that goes after this check is the launch's own full check to refuse, which starts
+// nothing, and the next turn finds the proof owed.
+func driveBeforeStage(sig *driveSignals, repoRoot string, p runner.Profile, o loop.Options, until time.Time, say func(string)) func() error {
+	return func() error {
+		bin := runner.SelfBinary()
+		if runner.HarnessOwed(p) {
+			line, err := runner.ReproveHarness(sig.ctx, p, bin)
+			var limit *runner.LimitError
+			var none *runner.NoVerdictError
+			if sig.ctx.Err() == nil && (errors.As(err, &limit) || errors.As(err, &none)) {
+				o.Now = driveProofWait.now
+				var wall error
+				ended, werr := loop.WaitOutProof(sig.ctx, repoRoot, loop.TerminalOptions{Options: o, Until: until, Stop: sig.stop, Say: say, Sleep: driveProofWait.sleep,
+					BeforeStage: func() error {
+						if wall = runner.CheckWallSettingsBesideHarness(p, bin); wall != nil {
+							return &loop.WallEnded{Ended: loop.TerminalWall}
+						}
+						return nil
+					}},
+					err, func(ctx context.Context) error {
+						var perr error
+						line, perr = runner.ReproveHarness(ctx, p, bin)
+						return perr
+					})
+				if wall != nil {
+					return wall
+				}
+				if ended != "" {
+					return &loop.WallEnded{Ended: ended}
+				}
+				err = werr
+			}
+			if sig.ctx.Err() != nil {
+				return &loop.WallEnded{Ended: loop.TerminalKilled}
+			}
+			if err != nil {
+				return err
+			}
+			if line != "" {
+				say(line)
+			}
+		}
+		return runner.CheckWallSettingsBesideHarness(p, bin)
+	}
+}
+
 // driveConsent shows what the drive will do and asks once; --yes is the
 // scripted answer, and with no terminal nothing else answers.
 func driveConsent(cmd *cobra.Command, w io.Writer, f driveFlags, lanes, runs int, p runner.Profile) (bool, error) {
@@ -296,6 +347,7 @@ func driveConsent(cmd *cobra.Command, w io.Writer, f driveFlags, lanes, runs int
 	fmt.Fprintf(w, "  profile:  %s, a separate login and settings on this one account; a stage's shell reads what this account can\n", name)
 	fmt.Fprintln(w, "  gates:    a change to the Makefile, scripts/ or the hooks is not a drive's: it needs a person's own session")
 	fmt.Fprintln(w, "  first:    one short live launch checks the tools, the guard and the shell, on the same subscription")
+	fmt.Fprintln(w, "  updates:  a harness update during the run carries on only where the new file has the same signing team and passes one more such launch; elsewhere the run stops")
 	if f.yes {
 		return true, nil
 	}
@@ -514,9 +566,7 @@ func driveRun(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot strin
 		Stop:             sig.stop,
 		Until:            until,
 		Probe:            probe,
-		BeforeStage: func() error {
-			return runner.CheckWallSettings(p, runner.SelfBinary())
-		},
+		BeforeStage:      driveBeforeStage(sig, repoRoot, p, o, until, say),
 	})
 	// What was typed to choose the profile is what going on takes.
 	if res.Resume != "" && f.profile != "" {

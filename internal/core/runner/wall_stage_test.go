@@ -300,6 +300,7 @@ func TestAWalledLaunchAndTheProofEachWriteOneLedgerEntry(t *testing.T) {
 	if got := ledgerFiles(t, c.Ledger().home); len(got) != 1 || got[0].Role != shellRequest(f).Role {
 		t.Fatalf("the stage's one entry: %+v", got)
 	}
+	gitOnPath(t)
 	if err := ProveWall(context.Background(), p, selfBinary()); err != nil {
 		t.Fatal(err)
 	}

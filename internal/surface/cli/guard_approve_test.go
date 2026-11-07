@@ -42,6 +42,13 @@ func approverRepo(t *testing.T) (dir, base string) {
 func approverSession(t *testing.T, dir, base string, lines ...string) (map[string]rpcReply, int) {
 	t.Helper()
 	stdout, stderr, code := runGuard(strings.Join(lines, "\n")+"\n", "guard", "approve", "--dir="+dir, "--base="+base)
+	return parseApproverReplies(t, stdout, stderr), code
+}
+
+// parseApproverReplies is an approver's replies by id, failing on any stdout line that is
+// not one.
+func parseApproverReplies(t *testing.T, stdout, stderr string) map[string]rpcReply {
+	t.Helper()
 	out := map[string]rpcReply{}
 	sc := bufio.NewScanner(strings.NewReader(stdout))
 	sc.Buffer(make([]byte, 1<<20), 1<<20)
@@ -52,7 +59,7 @@ func approverSession(t *testing.T, dir, base string, lines ...string) (map[strin
 		}
 		out[string(r.ID)] = r
 	}
-	return out, code
+	return out
 }
 
 // callLine is a tools/call request for the approver's tool.

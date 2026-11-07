@@ -2,10 +2,11 @@ package runner
 
 // wall.go is the walled directory's settings and the proof before a drive's
 // first move (spc-2610230813348813 step 4). The settings are abcd's hooks as
-// commands naming, by absolute path, the binary running the drive, and nothing
-// else; the login state beside them is never read or touched. Each check is a
-// named wall, and the walls the launch holds are read from what the harness
-// reports in one short live launch, by state alone.
+// commands naming, by absolute path, the binary running the drive, and the
+// harness's own attribution, off, and nothing else; the login state beside them
+// is never read or touched. Each check is a named wall, and the walls the launch
+// holds are read from what the harness reports in one short live launch, by state
+// alone.
 
 import (
 	"bytes"
@@ -17,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -44,11 +46,13 @@ const (
 )
 
 // wallHomeMarker opens the line the proof's second command prints, and
-// wallEnvMarker each line its third prints: a variable's name, never its value.
+// wallShellMarker the first its third prints, the flags of the shell that ran it;
+// wallEnvMarker opens each line after that: a variable's name, never its value.
 const (
-	wallHomeMarker = "abcd-home:"
-	wallEnvMarker  = "abcd-env:"
-	wallAtMarker   = "abcd-env-at:"
+	wallHomeMarker  = "abcd-home:"
+	wallShellMarker = "abcd-shell:"
+	wallEnvMarker   = "abcd-env:"
+	wallAtMarker    = "abcd-env-at:"
 )
 
 // PinPrograms fixes what each program name means for the rest of this process and
@@ -101,11 +105,13 @@ func stageSeal(p Profile) []string {
 }
 
 // wallHomeCommand and wallEnvCommand are the proof's other two commands: the first
-// shows the home a stage's shell runs under, the second each variable's name in
-// its environment and never a value.
+// shows the home a stage's shell runs under, the second that shell's flags and then
+// each variable's name in its environment and never a value. The approver hands an
+// allowed command back to run under a shell it starts itself with -p, so $- holds p
+// only in a command the approver answered for.
 const (
 	wallHomeCommand = "printf '" + wallHomeMarker + "%s\\n' \"$HOME\""
-	wallEnvCommand  = "awk 'BEGIN { for (name in ENVIRON) { print \"" + wallEnvMarker + "\" name; if (ENVIRON[name] ~ /@/ && ENVIRON[name] !~ /^\\//) print \"" + wallAtMarker + "\" name } }'"
+	wallEnvCommand  = "awk -v flags=\"$-\" 'BEGIN { print \"" + wallShellMarker + "\" flags; for (name in ENVIRON) { print \"" + wallEnvMarker + "\" name; if (ENVIRON[name] ~ /@/ && ENVIRON[name] !~ /^\\//) print \"" + wallAtMarker + "\" name } }'"
 )
 
 // wallProofCommands are the shell commands the proof asks for, in order: the one
@@ -130,6 +136,7 @@ const (
 	WallGuard        = "guard"
 	WallWorkingTree  = "working tree's settings"
 	WallHome         = "shell's home"
+	WallApprover     = "approver"
 	WallEnv          = "shell's environment"
 	WallIdentity     = "git identity"
 )
@@ -148,12 +155,16 @@ func (e *WallError) Error() string {
 const (
 	wallLoginTimeout = 30 * time.Second
 	wallProofTimeout = 5 * time.Minute
+	// reproofTries is how many tries a new harness file has, at its signature and its proof
+	// together, before a failure stands, and reproofRetryWait what parts them.
+	reproofTries     = 3
+	reproofRetryWait = 3 * time.Minute
 	// stageProbeTimeout bounds asking git and go what a stage's shell keeps.
 	stageProbeTimeout = 30 * time.Second
 )
 
 // guardProofCommand is the command the proof asks for: one the guard is meant
-// to refuse, harmless if it ran, in a directory that is no repository.
+// to refuse, harmless if it ran, in a repository with no remote.
 const guardProofCommand = "git push --force origin abcd-wall-proof"
 
 // guardRefusalText opens the refusal abcd's guard hook gives.
@@ -175,9 +186,35 @@ type hookGroup struct {
 	Hooks   []hookCommand `json:"hooks"`
 }
 
+// wallAttribution turns off the trailer and the footer the harness otherwise tells a
+// launch to write: what a commit carries is the repository's to say.
+type wallAttribution struct {
+	Commit string `json:"commit"`
+	PR     string `json:"pr"`
+}
+
 // wallSettings renders the walled settings for bin, the abcd binary whose hooks
-// they name: the guard, the rules loader and the session hooks.
+// they name: the guard, the rules loader and the session hooks, and the harness's
+// own attribution, off.
 func wallSettings(bin string) []byte {
+	raw, _ := json.MarshalIndent(struct {
+		Hooks       map[string][]hookGroup `json:"hooks"`
+		Attribution wallAttribution        `json:"attribution"`
+	}{wallHooks(bin), wallAttribution{}}, "", "  ")
+	return append(raw, '\n')
+}
+
+// wallSettingsHooksOnly is the walled settings as a release before the attribution
+// rendered them: a file abcd wrote, which a new binary re-wires with nothing lost.
+func wallSettingsHooksOnly(bin string) []byte {
+	raw, _ := json.MarshalIndent(struct {
+		Hooks map[string][]hookGroup `json:"hooks"`
+	}{wallHooks(bin)}, "", "  ")
+	return append(raw, '\n')
+}
+
+// wallHooks are the hooks the walled settings hold.
+func wallHooks(bin string) map[string][]hookGroup {
 	cmd := func(verb string) hookCommand {
 		return hookCommand{Type: "command", Command: shellquote.Single(bin) + " " + verb}
 	}
@@ -188,9 +225,7 @@ func wallSettings(bin string) []byte {
 		}
 		return []hookGroup{g}
 	}
-	settings := struct {
-		Hooks map[string][]hookGroup `json:"hooks"`
-	}{Hooks: map[string][]hookGroup{
+	return map[string][]hookGroup{
 		"PreToolUse": {{Matcher: "Bash|AskUserQuestion|Write|Edit|MultiEdit|NotebookEdit",
 			Hooks: []hookCommand{cmd("guard hook")}}},
 		"UserPromptSubmit": one("hook prompt-router"),
@@ -200,9 +235,7 @@ func wallSettings(bin string) []byte {
 		"SubagentStop":     one("hook subagent-stop"),
 		"Stop":             one("hook stop"),
 		"StopFailure":      one("hook stop-failure"),
-	}}
-	raw, _ := json.MarshalIndent(settings, "", "  ")
-	return append(raw, '\n')
+	}
 }
 
 // wallBinaryRe reads the binary a rendered settings file names.
@@ -219,7 +252,7 @@ func renderedByAbcd(raw []byte) bool {
 	if json.Unmarshal(append(append([]byte{'"'}, m[1]...), '"'), &bin) != nil {
 		return false
 	}
-	return bytes.Equal(raw, wallSettings(bin))
+	return bytes.Equal(raw, wallSettings(bin)) || bytes.Equal(raw, wallSettingsHooksOnly(bin))
 }
 
 // WriteWallSettings writes the walled settings at each start, so a new binary
@@ -253,6 +286,20 @@ type stageWritten struct {
 	goNote string
 	// binaries are abcd's binary and the harness, by content.
 	binaries map[string][sha256.Size]byte
+	// harness is the file the start resolved claude to, or a proof since then passed,
+	// which every walled launch runs: "" when it resolved to none. harnessPath is where
+	// PATH reached it, which each launch still judges against its repository.
+	harness, harnessPath string
+	// version is what the harness last proved reports itself as, and unproved that
+	// harness is a file put in its place that has yet to pass.
+	version  string
+	unproved bool
+	// team is the signing team the start verified on the file it proved, "" when it could
+	// verify none: what a new file is held to, from outside that file.
+	team string
+	// triedFile is the file a re-proof last spent a try on, failedTries how many.
+	triedFile   string
+	failedTries int
 }
 
 // stagesWritten holds this process's stageWritten, by walled directory.
@@ -299,7 +346,15 @@ func writeStageFiles(p Profile, bin string) error {
 	}
 	defer root.Close()
 	exports, goNote := stageGoExports(p)
-	written := &stageWritten{env: stageEnvFile(p, exports), gitConfig: gitConfig, declared: declaredNow(p), exports: exports, goNote: goNote, binaries: binariesNow(p, bin)}
+	starts := defaultLauncher()
+	harness, _ := starts.admit(Claude, "claude", p.harnessGuards()...)
+	harnessPath, _ := starts.lookPath("claude")
+	var team string
+	if harness != "" {
+		team = verifiedTeam(harness)
+	}
+	written := &stageWritten{env: stageEnvFile(p, exports), gitConfig: gitConfig, declared: declaredNow(p), exports: exports, goNote: goNote,
+		binaries: binariesNow(bin, harness), harness: harness, harnessPath: harnessPath, team: team}
 	if err := fsutil.WriteFileAtomicInRoot(root, filepath.Base(p.EnvFile), written.env, 0o600); err != nil {
 		return &WallError{WallSettingsFile, "the stage's shell file could not be written"}
 	}
@@ -475,16 +530,16 @@ func stageEnvFile(p Profile, exports []string) []byte {
 		k, v, _ := strings.Cut(kv, "=")
 		fmt.Fprintf(&b, "export %s=%s\n", k, shellquote.Single(v))
 	}
-	b.WriteString("unset CLAUDE_CONFIG_DIR\n")
+	fmt.Fprintf(&b, "unset %s\n", strings.Join(stageShellUnset, " "))
 	return b.Bytes()
 }
 
 // binariesNow reads what the drive and its lanes run by name, by content: abcd's
 // binary, the harness, git, make and gh. One that is not there is left out.
-func binariesNow(p Profile, bin string) map[string][sha256.Size]byte {
+func binariesNow(bin, harness string) map[string][sha256.Size]byte {
 	paths := []string{bin}
-	if resolved, err := defaultLauncher().admit(Claude, "claude", p.Dir); err == nil {
-		paths = append(paths, resolved)
+	if harness != "" {
+		paths = append(paths, harness)
 	}
 	for _, name := range []string{"git", "make", "gh"} {
 		if resolved, err := exec.LookPath(name); err == nil {
@@ -557,7 +612,7 @@ func readStageGit(p Profile) ([]byte, error) {
 
 // checkStageFiles compares what a launch reads beside its settings with what this
 // drive wrote.
-func checkStageFiles(p Profile) error {
+func checkStageFiles(p Profile, harnessToo bool) error {
 	for _, name := range wallLoaded {
 		path := filepath.Join(p.Dir, name)
 		fi, err := os.Lstat(path)
@@ -595,15 +650,32 @@ func checkStageFiles(p Profile) error {
 		}
 	}
 	for path, sum := range written.binaries {
+		// A harness that went is the proof's to answer. New bytes at its path are not.
+		if path == written.harness && !harnessToo && written.harnessGone() {
+			continue
+		}
 		if fileSum(path) != sum {
 			return &WallError{WallSettingsFile, filepath.Base(path) + "'s binary changed while the drive ran"}
 		}
+	}
+	if written.unproved && harnessToo {
+		return &WallError{WallSettingsFile, filepath.Base(written.harness) + " has not passed the check the run's harness must"}
 	}
 	return nil
 }
 
 // CheckWallSettings compares the walled settings with what abcd wrote for bin.
-func CheckWallSettings(p Profile, bin string) error {
+func CheckWallSettings(p Profile, bin string) error { return checkWallSettings(p, bin, true) }
+
+// CheckWallSettingsBesideHarness is CheckWallSettings leaving aside a harness file that has
+// gone and a new one yet to pass: what the check before a stage holds to, and a wait for the
+// proof, since the launch's own full check starts nothing on either. New bytes at the file's
+// path still stop the run.
+func CheckWallSettingsBesideHarness(p Profile, bin string) error {
+	return checkWallSettings(p, bin, false)
+}
+
+func checkWallSettings(p Profile, bin string, harnessToo bool) error {
 	raw, err := os.ReadFile(filepath.Join(p.Dir, wallSettingsName))
 	if err != nil {
 		return &WallError{WallSettingsFile, "the profile directory's settings could not be read"}
@@ -611,12 +683,226 @@ func CheckWallSettings(p Profile, bin string) error {
 	if !bytes.Equal(raw, wallSettings(bin)) {
 		return &WallError{WallSettingsFile, "the profile directory's settings differ from what abcd wrote"}
 	}
-	return checkStageFiles(p)
+	return checkStageFiles(p, harnessToo)
 }
 
 // SelfBinary is the absolute path of the running abcd, "" when the system
 // cannot name it: the binary a drive's hooks name.
 func SelfBinary() string { return selfBinary() }
+
+// pinnedTo is l resolving the harness to the file p's start resolved it to, so a walled
+// launch runs the harness the start read and the proof ran, wherever a link has moved
+// since; admit's checks still judge that file before each launch. A start that resolved
+// no harness resolves none after it. Without a start in this process l is as it was.
+func (l launcher) pinnedTo(p Profile) launcher {
+	v, ok := stagesWritten.Load(p.ShellHome)
+	if !ok {
+		return l
+	}
+	written := v.(*stageWritten)
+	harness := written.harness
+	l.reachedThrough = written.harnessPath
+	l.lookPath = func(string) (string, error) {
+		if harness == "" {
+			return "", exec.ErrNotFound
+		}
+		return harness, nil
+	}
+	return l
+}
+
+// owesProof reports whether the file the run proved is gone, as an update's leaves it, or
+// one put in its place has yet to pass. A file changed at its own path is no update: it
+// owes nothing, and the check of the binaries stops the run.
+func (w *stageWritten) owesProof() bool {
+	return w.harness != "" && (w.unproved || w.harnessGone())
+}
+
+// harnessGone reports whether nothing stands at the path of the file the run holds.
+func (w *stageWritten) harnessGone() bool {
+	_, err := os.Lstat(w.harness)
+	return errors.Is(err, fs.ErrNotExist)
+}
+
+// HarnessOwed reports whether p's run must prove the harness before a stage starts.
+func HarnessOwed(p Profile) bool {
+	v, ok := stagesWritten.Load(p.ShellHome)
+	return ok && v.(*stageWritten).owesProof()
+}
+
+// ReproveHarness is the check before a stage when HarnessOwed: every other wall, then the
+// harness resolved again and held to the signing team the start verified, before anything
+// runs it; then pinned, and the login check and the proof on that file, from an empty stage
+// home. What a launch shows says what it holds, not who wrote the file, so the team is what
+// admits it, and with no team to hold it to the run stops. It returns the one line that says
+// what changed, "" when nothing was owed. Pinned first, the file is unproved until it passes,
+// so nothing starts on it. A limit or a launch with no verdict comes back as the first
+// proof's would, as does a file that goes, since an upgrade leaves that for a moment, and a
+// signature or a proof that failed before the file's last try; called again it resolves and proves again, and still
+// names the version the run last proved. New bytes at a path it holds stop the run. It is
+// called between stages, never during one.
+func ReproveHarness(ctx context.Context, p Profile, bin string) (string, error) {
+	v, ok := stagesWritten.Load(p.ShellHome)
+	if !ok || !v.(*stageWritten).owesProof() {
+		return "", nil
+	}
+	written := v.(*stageWritten)
+	if err := checkWallSettings(p, bin, false); err != nil {
+		return "", err
+	}
+	starts := defaultLauncher()
+	harness, err := starts.admit(Claude, "claude", p.harnessGuards()...)
+	switch {
+	case errors.Is(err, ErrNotOnPath):
+		return "", &NoVerdictError{Detail: "the harness the run proved is gone, and no harness stands in its place yet"}
+	case err != nil:
+		return "", &WallError{WallLaunch, "the harness the run proved has changed, and no harness that can be run takes its place"}
+	}
+	if harness == written.harness && !written.unproved {
+		if fileSum(harness) == written.binaries[harness] {
+			return "", nil
+		}
+		return "", &WallError{WallSettingsFile, filepath.Base(harness) + "'s binary changed while the drive ran"}
+	}
+	harnessPath, _ := starts.lookPath("claude")
+	sum := fileSum(harness)
+	if err := holdToTeam(p, harness, written.team); err != nil {
+		return "", err
+	}
+	if err := stillHarness(harness, sum, "its signature was read"); err != nil {
+		var none *NoVerdictError
+		if harness != written.harness && !errors.As(err, &none) {
+			return "", spendTry(p, harness, err, safeWord(filepath.Base(harness))+" changed as its signature was read, and may still be being written")
+		}
+		return "", err
+	}
+	v, _ = stagesWritten.Load(p.ShellHome)
+	written = v.(*stageWritten)
+	next := *written
+	next.binaries = maps.Clone(written.binaries)
+	delete(next.binaries, written.harness)
+	next.binaries[harness] = sum
+	next.harness, next.harnessPath, next.unproved = harness, harnessPath, true
+	stagesWritten.Store(p.ShellHome, &next)
+	if err := ResetStageHome(p); err != nil {
+		return "", err
+	}
+	if err := CheckLogin(ctx, p); err != nil {
+		var none *NoVerdictError
+		var we *WallError
+		if !errors.As(err, &none) && errors.As(err, &we) {
+			we.Detail += " (harness file " + safeWord(filepath.Base(harness)) + ")"
+		}
+		return "", err
+	}
+	if err := ProveWall(ctx, p, bin); err != nil {
+		if changed := stillHarness(harness, sum, "its proof ran"); changed != nil {
+			return "", changed
+		}
+		return "", tryAgainOrStop(p, harness, err)
+	}
+	if err := stillHarness(harness, sum, "its proof ran"); err != nil {
+		markUnproved(p)
+		return "", err
+	}
+	proved, _ := stagesWritten.Load(p.ShellHome)
+	return harnessChangedLine(written.version, proved.(*stageWritten).version), nil
+}
+
+// stillHarness holds a harness file to the contents it had before a step: a file that went
+// has no verdict and the next try resolves again; new bytes at its path stop the run.
+func stillHarness(harness string, sum [sha256.Size]byte, during string) error {
+	if fileSum(harness) == sum {
+		return nil
+	}
+	if _, err := os.Lstat(harness); errors.Is(err, fs.ErrNotExist) {
+		return &NoVerdictError{Detail: safeWord(filepath.Base(harness)) + " went while " + during}
+	}
+	return &WallError{WallSettingsFile, filepath.Base(harness) + "'s binary changed while " + during}
+}
+
+// tryAgainOrStop reads a re-proof that failed. A status can read as failed under load, and
+// ending the run here would expose it to the next update's proof all over again, so a
+// verdict has the file's tries before it stands. Anything short of a verdict comes back as
+// it is.
+func tryAgainOrStop(p Profile, harness string, err error) error {
+	var limit *LimitError
+	var none *NoVerdictError
+	var we *WallError
+	if errors.As(err, &limit) || errors.As(err, &none) || !errors.As(err, &we) {
+		return err
+	}
+	return spendTry(p, harness, err, err.Error())
+}
+
+// spendTry counts one failed try against harness: stop once its tries are spent, until then
+// a wait of the tries' own saying detail.
+func spendTry(p Profile, harness string, stop error, detail string) error {
+	v, ok := stagesWritten.Load(p.ShellHome)
+	if !ok {
+		return stop
+	}
+	next := *v.(*stageWritten)
+	if next.triedFile != harness {
+		next.triedFile, next.failedTries = harness, 0
+	}
+	next.failedTries++
+	stagesWritten.Store(p.ShellHome, &next)
+	if next.failedTries >= reproofTries {
+		return stop
+	}
+	return &NoVerdictError{Detail: fmt.Sprintf("%s (try %d of %d)", detail, next.failedTries, reproofTries), RetryAfter: reproofRetryWait}
+}
+
+// holdToTeam refuses harness unless the system verifies it as team's, saying why and what
+// to do; harness has not been run. A start with no team, or a file that reads as another
+// team's, stops the run now, since waiting cannot change either. A file with no identity to
+// read, or one that fails verification, may still be being written, and has the file's tries.
+func holdToTeam(p Profile, harness, team string) error {
+	if team == "" {
+		return &WallError{WallSettingsFile, "the harness the run proved is gone, and the run holds no signing team to check a new file against, so nothing ran the new file; start the drive again, which proves what is installed now"}
+	}
+	if Signing.Verify(harness, team) == nil {
+		return nil
+	}
+	name := safeWord(filepath.Base(harness))
+	stop := &WallError{WallSettingsFile, "the harness the run proved is gone, and " + name + " is not verified as signed by the signing team the run started on, so nothing ran it; look at that install, then start the drive again"}
+	switch read := Signing.Team(harness); read {
+	case "":
+		return spendTry(p, harness, stop, name+" has no signing identity the system can read yet, and nothing has run it")
+	case team:
+		return spendTry(p, harness, stop, name+" reads the run's signing team but does not verify yet, and nothing has run it")
+	default:
+		return stop
+	}
+}
+
+// markUnproved marks p's harness file as owing a proof it had seemed to pass.
+func markUnproved(p Profile) {
+	if v, ok := stagesWritten.Load(p.ShellHome); ok {
+		next := *v.(*stageWritten)
+		next.unproved = true
+		stagesWritten.Store(p.ShellHome, &next)
+	}
+}
+
+// harnessChangedLine says what was checked of a new file, and that the run goes on with it.
+func harnessChangedLine(was, now string) string {
+	name := func(version string) string { return cmp.Or(version, "an unnamed version") }
+	const checked = "; the new file is signed by the same team and answered the checks a launch can show, and the run goes on with it"
+	if was == now {
+		return "the harness's file was replaced during the run, still " + name(now) + checked
+	}
+	return "the harness was updated during the run, from " + name(was) + " to " + name(now) + checked
+}
+
+// provedHarness is the file p's start resolved the harness to, "" when none has.
+func provedHarness(p Profile) string {
+	if v, ok := stagesWritten.Load(p.ShellHome); ok {
+		return v.(*stageWritten).harness
+	}
+	return ""
+}
 
 // CheckLogin asks the harness whether the walled directory has a login. It
 // reads the one state and keeps nothing else the harness reports.
@@ -624,17 +910,28 @@ func CheckLogin(ctx context.Context, p Profile) error {
 	l := defaultLauncher()
 	l.gateWaiting = nil
 	l.carry = stageEnv
-	bin, err := l.admit(Claude, "claude", p.Dir)
+	bin, err := l.pinnedTo(p).admit(Claude, "claude", p.harnessGuards()...)
+	if errors.Is(err, ErrNotOnPath) {
+		return &NoVerdictError{Detail: "the harness's file is not there to ask about the login"}
+	}
 	if err != nil {
 		return &WallError{WallLogin, "the harness could not be run"}
 	}
 	res, runErr := l.run(ctx, Claude, bin, []string{"auth", "status", "--json"}, p.Env, p.Dir, wallLoginTimeout)
+	// Only an answer of logged out is a verdict, and that answer may exit non-zero. A
+	// failure to answer says nothing of the login either way.
 	var state struct {
-		LoggedIn bool `json:"loggedIn"`
+		LoggedIn *bool `json:"loggedIn"`
 	}
-	if runErr != nil || json.Unmarshal(res.stdout, &state) != nil || !state.LoggedIn {
+	read := json.Unmarshal(res.stdout, &state) == nil && state.LoggedIn != nil
+	switch {
+	case read && !*state.LoggedIn:
 		return &WallError{WallLogin, "the harness reports no login in the profile directory; log in once, in your own shell: " +
 			"CLAUDE_CONFIG_DIR=<the directory> claude, then the harness's own login step"}
+	case runErr != nil:
+		return &NoVerdictError{Detail: "the harness did not answer about the login"}
+	case !read:
+		return &NoVerdictError{Detail: "the harness gave no readable answer about the login"}
 	}
 	return nil
 }
@@ -651,11 +948,35 @@ func workingTreeSettings(marker string) []byte {
 	return raw
 }
 
+// wallProofRepository makes dir a repository of one empty commit and returns that
+// commit. The approver judges each command against the registry at the run's base, and
+// a base that is no commit in its working tree refuses every command, as it would a
+// stage's. Nothing here reads a template, or runs a hook or a signer.
+func wallProofRepository(dir string) (string, error) {
+	if _, err := gitutil.Run(dir, "init", "-q", "--template=", "--object-format=sha1"); err != nil {
+		return "", err
+	}
+	tree, err := gitutil.Run(dir, "hash-object", "-w", "-t", "tree", os.DevNull)
+	if err != nil {
+		return "", err
+	}
+	commit, err := gitutil.Run(dir, "-c", "user.name=abcd", "-c", "user.email=wall-proof@abcd.invalid", "commit-tree", tree, "-m", "abcd's wall proof")
+	if err != nil {
+		return "", err
+	}
+	if _, err := gitutil.Run(dir, "update-ref", "HEAD", commit); err != nil {
+		return "", err
+	}
+	return commit, nil
+}
+
 // ProveWall starts one short live launch on p and reads each wall from what
 // the harness reports: the tools it holds are the ones the launch named, the
-// only server is the approver, no plugin is loaded, no key is in use, the guard
-// hook refuses a command it is meant to refuse, and a settings file in the
-// working tree has no effect. bin is the abcd binary serving the approver.
+// only server is the approver and it is connected, no plugin is loaded but the
+// harness's own, no key is in use, the guard hook refuses a command it is meant
+// to refuse, the shell shows the stage's home and only the variables it may hold,
+// and a settings file in the working tree has no effect. bin is the abcd binary
+// serving the approver.
 func ProveWall(ctx context.Context, p Profile, bin string) error {
 	dir, err := os.MkdirTemp("", "abcd-wall-proof-")
 	if err != nil {
@@ -664,6 +985,10 @@ func ProveWall(ctx context.Context, p Profile, bin string) error {
 	defer os.RemoveAll(dir)
 	if dir, err = filepath.EvalSymlinks(dir); err != nil {
 		return &WallError{WallLaunch, "its working directory could not be resolved"}
+	}
+	base, err := wallProofRepository(dir)
+	if err != nil {
+		return &WallError{WallLaunch, "its working directory could not be made a repository"}
 	}
 	marker := filepath.Join(dir, workingTreeMarker)
 	claudeDir := filepath.Join(dir, ".claude")
@@ -682,20 +1007,20 @@ func ProveWall(ctx context.Context, p Profile, bin string) error {
 	if c.approver == "" {
 		return &WallError{WallLaunch, "abcd cannot name its own binary to answer the launch's permission prompts"}
 	}
-	claudeBin, err := c.launch.admit(Claude, "claude", p.Dir)
+	claudeBin, err := c.launch.pinnedTo(p).admit(Claude, "claude", p.harnessGuards()...)
 	if err != nil {
 		return &WallError{WallLaunch, "the harness could not be run"}
 	}
 	named := []string{"Read", "Bash"}
 	req := Request{Role: "wall-proof", Brief: filepath.Join(dir, "brief.md"), Receipt: filepath.Join(dir, "receipt.json"),
-		Dir: dir, Tools: named, Base: strings.Repeat("0", 40), SessionID: "wall-proof", Timeout: wallProofTimeout}
+		Dir: dir, Tools: named, Base: base, SessionID: "wall-proof", Timeout: wallProofTimeout}
 	args := append(c.walledFlags(req), "--include-hook-events", "--", wallProofPrompt)
 	// The proof spends the same subscription as a stage, so its launch is written
 	// to the same ledger, and one the ledger cannot hold is not started.
 	var res procResult
 	end, lerr := RecordLaunch(ctx, p.Ledger, LaunchStart{Role: req.Role, Runner: Claude, Repo: p.Repo, Fallback: req.SessionID}, func(ctx context.Context) LaunchEnd {
 		var runErr error
-		res, runErr = c.launch.run(ctx, Claude, claudeBin, args, append(slices.Clone(p.Env), StageWritesEnv+"="+dir), dir, wallProofTimeout)
+		res, runErr = c.launch.run(ctx, Claude, claudeBin, args, append(slices.Clone(p.Env), StageWritesEnv+"="+dir, StageHarnessEnv+"="+claudeBin), dir, wallProofTimeout)
 		ans, _ := parseClaude(res.stdout)
 		return LaunchEnd{Answer: ans, Transcript: res.transcript(), Err: runErr}
 	})
@@ -715,23 +1040,59 @@ func ProveWall(ctx context.Context, p Profile, bin string) error {
 		if errors.As(err, &fl) {
 			detail = fl.Detail
 		}
-		return &NoVerdictError{Detail: detail, Seen: claudeSeen(res)}
+		return &NoVerdictError{Detail: detail + onHarnessFile(claudeBin, res.stdout), Seen: claudeSeen(res)}
 	}
 	if claudeResultFailed(res.stdout) {
-		return &NoVerdictError{Detail: "its result reports an error", Seen: claudeSeen(res)}
+		return &NoVerdictError{Detail: "its result reports an error" + onHarnessFile(claudeBin, res.stdout), Seen: claudeSeen(res)}
 	}
 	if err := readWallProof(res.stdout, named, p.ShellHome); err != nil {
 		return err
 	}
 	if _, err := os.Lstat(marker); !errors.Is(err, os.ErrNotExist) {
-		return &WallError{WallWorkingTree, "a settings file in the working tree ran its hook, so the launch read it"}
+		return withHarnessVersion(&WallError{WallWorkingTree, "a settings file in the working tree ran its hook, so the launch read it"}, res.stdout)
+	}
+	if v, ok := stagesWritten.Load(p.ShellHome); ok {
+		next := *v.(*stageWritten)
+		next.version, next.unproved, next.failedTries = harnessVersion(res.stdout), false, 0
+		stagesWritten.Store(p.ShellHome, &next)
 	}
 	return nil
+}
+
+// onHarnessFile names the file a launch ran and the version it showed, for a wait line.
+func onHarnessFile(harness string, stdout []byte) string {
+	named := " (harness file " + safeWord(filepath.Base(harness))
+	if version := harnessVersion(stdout); version != "" {
+		named += ", version " + version
+	}
+	return named + ")"
 }
 
 // wallProofPrompt is the live launch's one instruction.
 var wallProofPrompt = "This is abcd's check of its own guard. Use the Bash tool three times, once for each of these commands, exactly as written, and do nothing else:\n" +
 	strings.Join(wallProofCommands(), "\n") + "\nWhatever the tool answers, then reply with the single word: done\n"
+
+// wallShellFlags reads the flags the proof's env step printed from a line of its
+// output, and whether it printed any: the step's own text beside them holds none.
+func wallShellFlags(line []byte) (string, bool) {
+	text := string(line)
+	for {
+		_, rest, ok := strings.Cut(text, wallShellMarker)
+		if !ok {
+			return "", false
+		}
+		end := strings.IndexFunc(rest, func(r rune) bool {
+			return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9')
+		})
+		if end < 0 {
+			end = len(rest)
+		}
+		if end > 0 {
+			return rest[:end], true
+		}
+		text = rest
+	}
+}
 
 // outsideStageEnv is the first variable name a proof's output line shows that a
 // stage's shell should not hold, "" for none. It keeps names alone.
@@ -753,28 +1114,105 @@ func outsideStageEnv(line []byte) string {
 	}
 }
 
-// readWallProof reads each wall from the launch's event stream. Every line is
-// read leniently, and only the fields named here are kept.
+// wallServer is one server the harness's start-up report names.
+type wallServer struct {
+	Name   string `json:"name"`
+	Status string `json:"status"`
+}
+
+// wallPlugin is one plugin the harness's start-up report names.
+type wallPlugin struct {
+	Name   string `json:"name"`
+	Path   string `json:"path"`
+	Source string `json:"source"`
+}
+
+// harnessOwn reports whether the plugin is built into the harness: no path of its
+// own and a source its built-ins alone carry. Nothing names which built-ins there
+// are, since each release of the harness may bring more. Neither field alone is
+// enough: a marketplace may be called builtin, and a plugin may sit at any path.
+func (p wallPlugin) harnessOwn() bool {
+	return p.Path == "builtin" && strings.HasSuffix(p.Source, "@builtin")
+}
+
+// checkWallServers holds the one server a launch may start to what the harness says
+// of it. The report's tool list need not name a server's tools, so the status is what
+// shows a server that did not start. A connected server has yet to answer anything.
+func checkWallServers(servers []wallServer) error {
+	if len(servers) == 0 {
+		return &WallError{WallServers, "the launch started no server, so nothing answers its permission prompts"}
+	}
+	for _, s := range servers {
+		if s.Name != approverServer {
+			return &WallError{WallServers, "the launch started " + safeWord(s.Name) + ", and the approver is the only server it may"}
+		}
+	}
+	if len(servers) > 1 {
+		return &WallError{WallServers, "the launch reports more than one server under the approver's name"}
+	}
+	switch status := servers[0].Status; status {
+	case "connected":
+		return nil
+	case "":
+		return &WallError{WallServers, "the harness reports no status for the approver's server"}
+	default:
+		return &WallError{WallServers, "the harness reports the approver's server as " + safeWord(status) + ", not connected"}
+	}
+}
+
+// wallVersionRe is what a harness's version may be to reach a refusal.
+var wallVersionRe = regexp.MustCompile(`^[0-9A-Za-z][0-9A-Za-z.+_-]{0,39}$`)
+
+// withHarnessVersion is err, a wall's refusal, saying which harness refused, so a
+// refusal that follows an update reads as one. A report that names no version, or a
+// value that is none, adds nothing.
+func withHarnessVersion(err error, out []byte) error {
+	var we *WallError
+	if !errors.As(err, &we) {
+		return err
+	}
+	if version := harnessVersion(out); version != "" {
+		we.Detail += " (harness version " + version + ")"
+	}
+	return err
+}
+
+// harnessVersion is what a launch's start-up report names as its version, "" for none or
+// for a value that is none.
+func harnessVersion(out []byte) string {
+	for _, line := range bytes.Split(out, []byte("\n")) {
+		var ev claudeEvent
+		if json.Unmarshal(bytes.TrimSpace(line), &ev) == nil && ev.Type == "system" && ev.Subtype == "init" && wallVersionRe.MatchString(ev.Version) {
+			return ev.Version
+		}
+	}
+	return ""
+}
+
+// readWallProof reads each wall from the launch's event stream, and a wall that does
+// not hold says the harness's version.
 func readWallProof(out []byte, named []string, shellHome string) error {
+	return withHarnessVersion(judgeWallProof(out, named, shellHome), out)
+}
+
+// judgeWallProof is readWallProof's verdict. Every line is read leniently, and only
+// the fields named here are kept.
+func judgeWallProof(out []byte, named []string, shellHome string) error {
 	var sawInit, refused, homeSeen bool
 	var homeSaid, envSaid bool
-	var envOutside, envAt string
+	var envOutside, envAt, shellFlags string
 	quotedHome, _ := json.Marshal(wallHomeMarker + shellHome)
 	wantHome := bytes.Trim(quotedHome, `"`)
 	for _, line := range bytes.Split(out, []byte("\n")) {
 		var ev struct {
-			Type       string   `json:"type"`
-			Subtype    string   `json:"subtype"`
-			Tools      []string `json:"tools"`
-			APIKey     string   `json:"apiKeySource"`
-			HookEvent  string   `json:"hook_event"`
-			HookStdout string   `json:"stdout"`
-			Servers    []struct {
-				Name string `json:"name"`
-			} `json:"mcp_servers"`
-			Plugins []struct {
-				Name string `json:"name"`
-			} `json:"plugins"`
+			Type       string       `json:"type"`
+			Subtype    string       `json:"subtype"`
+			Tools      []string     `json:"tools"`
+			APIKey     string       `json:"apiKeySource"`
+			HookEvent  string       `json:"hook_event"`
+			HookStdout string       `json:"stdout"`
+			Servers    []wallServer `json:"mcp_servers"`
+			Plugins    []wallPlugin `json:"plugins"`
 		}
 		if json.Unmarshal(bytes.TrimSpace(line), &ev) != nil {
 			continue
@@ -782,6 +1220,9 @@ func readWallProof(out []byte, named []string, shellHome string) error {
 		if ev.Type == "user" && bytes.Contains(line, []byte(wallHomeMarker)) {
 			homeSaid = true
 			homeSeen = homeSeen || bytes.Contains(line, wantHome)
+		}
+		if ev.Type == "user" && shellFlags == "" {
+			shellFlags, _ = wallShellFlags(line)
 		}
 		if ev.Type == "user" && bytes.Contains(line, []byte(wallAtMarker)) && envAt == "" {
 			_, rest, _ := strings.Cut(string(line), wallAtMarker)
@@ -804,16 +1245,18 @@ func readWallProof(out []byte, named []string, shellHome string) error {
 					return &WallError{WallTools, "the launch holds " + safeWord(t) + ", which it did not name"}
 				}
 			}
-			if !slices.Contains(ev.Tools, ApproverTool) {
-				return &WallError{WallTools, "the approver is not among the tools the launch holds"}
-			}
-			for _, s := range ev.Servers {
-				if s.Name != "abcd" {
-					return &WallError{WallServers, "the launch started " + safeWord(s.Name) + ", and the approver is the only server it may"}
+			for _, t := range named {
+				if !slices.Contains(ev.Tools, t) {
+					return &WallError{WallTools, "the launch does not hold " + safeWord(t) + ", which it named"}
 				}
 			}
-			if len(ev.Plugins) > 0 {
-				return &WallError{WallPlugins, "the launch loaded " + safeWord(ev.Plugins[0].Name)}
+			if err := checkWallServers(ev.Servers); err != nil {
+				return err
+			}
+			for _, pl := range ev.Plugins {
+				if !pl.harnessOwn() {
+					return &WallError{WallPlugins, "the launch loaded " + safeWord(pl.Name) + ", which is not the harness's own"}
+				}
 			}
 			switch ev.APIKey {
 			case "none":
@@ -837,6 +1280,9 @@ func readWallProof(out []byte, named []string, shellHome string) error {
 	if !homeSaid {
 		return &WallError{WallHome, "the launch did not show the home its shell runs under"}
 	}
+	if !strings.Contains(shellFlags, "p") {
+		return &WallError{WallApprover, "the launch's shell step did not run as the approver hands it back, so nothing shows the approver answered for it"}
+	}
 	if !envSaid {
 		return &WallError{WallEnv, "the launch did not show the names of its shell's variables"}
 	}
@@ -844,6 +1290,9 @@ func readWallProof(out []byte, named []string, shellHome string) error {
 		return &WallError{WallEnv, "a stage's shell holds " + safeWord(envAt) + ", whose value may carry a credential"}
 	}
 	if envOutside != "" {
+		if stageShellSecret(envOutside) {
+			return &WallError{WallEnv, "a stage's shell holds " + safeWord(envOutside) + ", which reads as a credential or a socket"}
+		}
 		return &WallError{WallEnv, "a stage's shell holds " + safeWord(envOutside) + ", which is not on the list it carries"}
 	}
 	if !refused {

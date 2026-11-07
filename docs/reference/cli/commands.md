@@ -2116,6 +2116,7 @@ start it. It exits 0 when its input ends.
       --base string            the commit the run started on, by its full object name
       --declared stringArray   on a drive's stage, a path its work declares it changes, relative to --dir; repeatable
       --dir string             the working tree the agent runs in, as an absolute path
+      --harness string         on a drive's stage, the harness file its run proved, as an absolute path
       --protect stringArray    on a drive's stage, a directory it may not write, as an absolute path; repeatable
       --run-dir stringArray    a directory the run keeps its own files in (its brief, its receipt), as an absolute path; repeatable
       --stage-home string      on a drive's stage, the home its shell runs under, as an absolute path

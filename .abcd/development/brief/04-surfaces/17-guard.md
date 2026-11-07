@@ -1102,6 +1102,7 @@ Sub-verbs: none.
 | `--base` | string |
 | `--declared` | stringArray |
 | `--dir` | string |
+| `--harness` | string |
 | `--protect` | stringArray |
 | `--run-dir` | stringArray |
 | `--stage-home` | string |

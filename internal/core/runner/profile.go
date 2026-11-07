@@ -40,7 +40,12 @@ const (
 	StageProtectEnv  = "ABCD_STAGE_PROTECT"
 	StageDeclaredEnv = "ABCD_STAGE_DECLARED"
 	StageBaseEnv     = "ABCD_STAGE_BASE"
+	StageHarnessEnv  = "ABCD_STAGE_HARNESS"
 )
+
+// stageUpdatesOff switches off the harness's own updates in a walled launch and the
+// shell it starts: a run keeps the file its start resolved and proved.
+const stageUpdatesOff = "DISABLE_UPDATES"
 
 // BudgetIntent, which a drive's refusals name, covers how a key reaches the harness
 // and what it may spend.
@@ -190,6 +195,9 @@ func DriveProfile(home, name string) (Profile, error) {
 	if fsutil.WritableByOthers(fi) {
 		return Profile{}, fmt.Errorf("%s%s is one group or other can write; chmod go-w it", shown, name)
 	}
+	if !toolRe.MatchString(walledDirRule(dir)) {
+		return Profile{}, fmt.Errorf("%s%s has a path a harness deny rule cannot hold (a comma, a bracket or a line break); a drive's stages could not be kept from it", shown, name)
+	}
 	return Profile{
 		Dir:        dir,
 		PersonHome: home,
@@ -197,12 +205,24 @@ func DriveProfile(home, name string) (Profile, error) {
 			"CLAUDE_CONFIG_DIR=" + dir,
 			"CLAUDE_CODE_DISABLE_CLAUDE_MDS=1",
 			"CLAUDE_CODE_DISABLE_AUTO_MEMORY=1",
+			stageUpdatesOff + "=1",
 			StageProtectEnv + "=" + dir,
 		}, credentialVars...),
 		// The user layer is the file under CLAUDE_CONFIG_DIR: naming it alone
 		// leaves out the project and local layers of the working tree.
 		Args: []string{"--no-session-persistence", "--strict-mcp-config", "--setting-sources=user"},
 	}.withStageRoot(abcdhome.Path(home, stageHomesLeaf, name, "no-checkout")), nil
+}
+
+// harnessGuards are where a walled launch's harness may not lie: the profile, the
+// repository, every lane's worktree and the stage's own files, all of which a stage's work
+// can reach.
+func (p Profile) harnessGuards() []string {
+	guards := []string{p.Dir, p.Repo, p.StageRoot}
+	if p.PersonHome != "" {
+		guards = append(guards, abcdhome.Path(p.PersonHome, "worktrees"))
+	}
+	return guards
 }
 
 // Name is the profile's name: its directory's, directly under the profiles' folder.

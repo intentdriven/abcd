@@ -344,15 +344,56 @@ harness wrote is redacted before it is cut; a file stops taking that detail at 6
 goes on taking the answers; the newest twenty of a kind are kept.
 
 Before the first move the drive writes the profile directory's settings, abcd's hooks
-as commands naming its own binary and nothing else, and checks each wall, refusing
-and naming the one that fails: the login state, the settings, a git identity for the
+as commands naming its own binary and the harness's own attribution, off, and nothing
+else; resolves the harness to one file, which every launch of the run runs, the proof
+and each stage alike, so a link moved after the start changes nothing that runs; and
+checks each wall, refusing and naming the one that fails: the login state, the settings, a git identity for the
 checkout, and in one short live launch the tools the launch named, the approver as the
-only server, no plugin, no key, the guard refusing a command it is meant to refuse, the
-home and the variable names a stage's shell shows, and a settings file in the working
-tree having no effect, since the launch's setting sources name the profile directory
-alone. Before each stage and each preflight the settings, the files a stage's shell
+only server with the harness reporting it connected, no plugin but the harness's own
+built-ins, no key, the guard refusing a command it is meant to refuse, the approver
+having answered for the step that reads the shell, the home and the variable names a
+stage's shell shows, and a settings file in the working tree having no effect, since the
+launch's setting sources name the profile directory alone. That step reads the flags of
+the shell it runs in, and the approver hands a command back to run under a shell it
+starts itself, so the proof holds only when the flags are that shell's. A stage's shell
+file takes the profile's directory, the name of the file the run proved and the harness's messaging variables back out of the
+shell, and the wall refuses a name it holds under the harness's prefix that reads as a
+credential, a key or a socket, along with any name outside the list it carries; a new
+setting the harness adds under that prefix stops nothing. A drive's launch and its shell
+run with the harness's own updates off. The launch runs in a repository of one empty
+commit, the base the approver judges against, and a refusal from it says the harness's
+version. Before each stage and each preflight the settings, the files a stage's shell
 reads, the machine declarations, abcd's binary and the harness are compared with the
 start, and a difference stops the drive.
+
+The harness is the one exception, and only where the file a run proved is gone. The start
+reads that file's code-signing team with the system's own tool and keeps it where the system
+verifies the file as that team's. At the point a stage would start the harness is resolved
+again, and the system must verify the new file as signed by that team before anything runs
+it; a stage in its call is left to finish. The login check and the full proof then run on
+that file, from an empty stage home, before any stage. Passing, it is what the run pins, and
+one line says what was checked and names the old version and the new. The proof shows what a
+launch holds, not who wrote the file, and the team is what answers that, so a new file that
+reads as another team's stops the run at once with a line saying why and what to do, and so
+does a start that kept no team, as on a platform or an install whose file the system cannot
+verify. A file caught as it is written has no identity to read yet, so one with none, one
+that fails verification and one that changes as it is read wait for another read, each wait
+line saying which, and nothing runs the file meanwhile. New contents at a path the run holds
+are no update, and stop the run wherever they are seen, during a proof too.
+
+A file that has gone with nothing yet in its place is waited for, since an upgrade leaves it
+that way for a moment; a harness that stays gone ends the run at the outage's limit or the
+bound, with the reason on its wait line. Going between the check and the launch costs the
+lane nothing: the launch's own full check starts nothing on it, the next check finds the proof
+owed, and the role runs again. A new file has three tries, minutes apart, across those reads
+and its proof together, since a status can read as failed under load; a run's first proof has
+one. The last failure ends the run as any wall does, exit 2 with the lane let go, naming the check
+and the version; a new version whose environment the wall does not admit ends it this way
+too. A limit or a launch with no verdict says nothing of a wall, so it waits as the first
+proof's does, the other walls checked at each turn, and a wall that fails in that wait is the
+reason the run gives. The login check is a verdict only on an answer of logged out: a failure
+to answer tells a person nothing to do, and is a launch with no verdict. The yes covers this
+launch, which adds no prompt, and the screen says so in a line.
 
 **Which profile.** `runner.DriveProfile` is the one function that answers it. With one
 directory under `~/.abcd.noindex/profiles/` a drive runs on it. With several it refuses,
@@ -398,8 +439,14 @@ abcd's shared records are named, and any other toolchain's cache starts empty. A
 PATH that abcd will not ask, or that names no cache, leaves the caches it did not name in
 that home, and the drive says which at its start; a stage's shell and the preflight still
 run that Go. The guard
-reads a shell line against that home and refuses a further agent, a moved home, the
-keychain tool, the land verb and every implement verb but the load gate and widening a hold. A file tool, and a shell line the guard can read, write only in the
+reads a shell line against that home and refuses a further agent, the file the run proved
+and any program named as a release is named among them, a moved home, a moved search for
+a program, a program the same line writes or links, a copy, link or move of the proved
+file or of anything in its directory, the
+keychain tool, the land verb and every implement verb but the load gate and widening a hold.
+It refuses a line the guard can read that names the harness's configuration variable or the
+profile's directory; the stage's file tools are denied it by a deny rule of the launch's own,
+and a profile whose path such a rule cannot hold is refused at the drive's start. A file tool, and a shell line the guard can read, write only in the
 stage's working tree and run directories, its home and temporary files, and never the
 hooks, the Makefile, abcd's configuration, a preflight or review receipt or an approval;
 other records under
