@@ -1349,9 +1349,8 @@ func PreflightParallelism(getenv func(string) string, read func() (machineload.S
 // PreflightTimeout is the -timeout `make preflight` gives each package of its
 // test and race stages (cmd/test-parallelism -timeout prints it): base scaled
 // with the one-minute load as the stage starts (machineload.GoTestTimeout). On
-// a CI runner the machine is not read and base stands, so CI's steps and the
-// local lanes keep one declared budget, as it does when the machine cannot be
-// read.
+// a CI runner the machine is not read and base stands, as it does when the
+// machine cannot be read.
 func PreflightTimeout(getenv func(string) string, read func() (machineload.Snapshot, error), base time.Duration) time.Duration {
 	if getenv == nil {
 		getenv = os.Getenv

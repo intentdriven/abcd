@@ -403,8 +403,9 @@ ifneq ($(PREFLIGHT_RECORDS_ONLY),yes)
 # (`cmd/test-parallelism -timeout`), since a package on a loaded machine runs
 # slower in proportion, and takes no value between, since go test's cache key
 # holds the timeout: three packages hit the timeout at a load of 17.8 on ten
-# cores, with no test hung (iss-2610241911052191). On a CI runner the budget is
-# the 40 minutes CI's own steps declare.
+# cores, with no test hung (iss-2610241911052191). On a CI runner it stays 40
+# minutes unscaled, so make preflight's own budget never moves with CI's steps,
+# which declare their own (dcn-2611062201286033).
 preflight:
 	go run ./cmd/abcd implement load --wait --timeout 12h -- $(PREFLIGHT_STAGES_MAKE)
 	@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)"
