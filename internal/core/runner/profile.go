@@ -97,6 +97,8 @@ type Profile struct {
 	EnvFile   string
 	// PersonHome is the person's own home directory.
 	PersonHome string
+	// Began is what a resuming drive's process began on, nil for a start a person typed.
+	Began *StartPins
 	// Repo is the checkout the drive runs in, whose git configuration names the
 	// identity a stage commits under.
 	Repo string

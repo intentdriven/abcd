@@ -65,6 +65,16 @@ func watchDriveSignals(first, second func()) *driveSignals {
 	return s
 }
 
+// stopAsked reports whether the first signal has come.
+func (s *driveSignals) stopAsked() bool {
+	select {
+	case <-s.stop:
+		return true
+	default:
+		return false
+	}
+}
+
 // close ends the handling.
 func (s *driveSignals) close() {
 	s.once.Do(func() {

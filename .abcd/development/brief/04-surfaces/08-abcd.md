@@ -467,7 +467,9 @@ offline, and writes nothing. The opt-in online check is a flag of the update
 verb, which fetches the latest release exactly once, compares, and names the
 source it consulted: it lives with the verb that takes the update it finds
 ([`21-update.md`](21-update.md)), and it is the only network touch either
-answer makes, because abcd never fetches implicitly.
+answer makes, because abcd never fetches implicitly. The one process that asks the
+origin unprompted is a drive, on the yes whose question names it
+([`35-drain.md`](35-drain.md)).
 
 ### What the version flag reports
 

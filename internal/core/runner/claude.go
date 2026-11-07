@@ -89,13 +89,7 @@ func newClaude(model string) *ClaudeCLI {
 // selfBinary is the absolute path of the running abcd, "" when the system
 // cannot name it. The approver is the binary already running, so starting it
 // trusts nothing new.
-func selfBinary() string {
-	p, err := os.Executable()
-	if err != nil || !filepath.IsAbs(p) {
-		return ""
-	}
-	return filepath.Clean(p)
-}
+var selfBinary = selfNamer(os.Executable)
 
 // grantsShell reports whether a contract grants the whole shell, the one
 // grant the guard answers prompts for. A scoped grant (Bash(git log:*)) is

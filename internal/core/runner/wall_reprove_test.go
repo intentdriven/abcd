@@ -325,6 +325,7 @@ func TestANewHarnessWithNoIdentityStopsTheRun(t *testing.T) {
 	}{
 		"the start recorded no team": {func(w *reproveWorld, t *testing.T) {
 			delete(w.signed, w.first)
+			stagesWritten.Delete(w.p.ShellHome)
 			if _, err := WriteWallSettings(w.p, w.c.approver); err != nil {
 				t.Fatal(err)
 			}
@@ -469,6 +470,7 @@ func TestAFileChangingAsItsSignatureIsReadIsTriedAgain(t *testing.T) {
 func TestAStartReadsATeamOnlyWhereItsSignatureHolds(t *testing.T) {
 	w := newReproveWorld(t, "")
 	Signing.Verify = func(string, string) error { return errors.New("does not hold") }
+	stagesWritten.Delete(w.p.ShellHome)
 	if _, err := WriteWallSettings(w.p, w.c.approver); err != nil {
 		t.Fatal(err)
 	}
@@ -872,5 +874,380 @@ func TestNothingIsProvedWhileAStageIsInItsCall(t *testing.T) {
 	}
 	if !HarnessOwed(w.p) {
 		t.Fatal("the file went during the call")
+	}
+}
+
+// TestPinnedBinariesAreHeldApartFromTheHarness: a start tried again holds what it runs to
+// what this process pinned, before it pins anything new. A harness update is proved rather
+// than refused, so it stands aside.
+func TestPinnedBinariesAreHeldApartFromTheHarness(t *testing.T) {
+	w := newReproveWorld(t, "")
+	bin := filepath.Join(t.TempDir(), "abcd")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := WriteWallSettings(w.p, bin); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckPinnedBinaries(w.p); err != nil {
+		t.Fatalf("nothing has changed: %v", err)
+	}
+	w.update(t)
+	if err := CheckPinnedBinaries(w.p); err != nil {
+		t.Fatalf("a harness update is not this check's: %v", err)
+	}
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\n# another\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var wall *WallError
+	if err := CheckPinnedBinaries(w.p); !errors.As(err, &wall) || !strings.Contains(err.Error(), "changed") {
+		t.Fatalf("the binary differs: %v", err)
+	}
+	if err := CheckPinnedBinaries(Profile{ShellHome: t.TempDir()}); err != nil {
+		t.Fatalf("no pin holds nothing: %v", err)
+	}
+}
+
+// TestAHarnessLinkThatMovedOwesAProof: the link moves to a new file and the old one stays,
+// which is how the harness ordinarily updates. The next check proves and pins the new file.
+func TestAHarnessLinkThatMovedOwesAProof(t *testing.T) {
+	w := newReproveWorld(t, "")
+	if HarnessMoved(w.p) || HarnessOwed(w.p) {
+		t.Fatal("the link stands where it was")
+	}
+	w.repoint(t, w.second)
+	if !HarnessMoved(w.p) {
+		t.Fatal("a start would run another file")
+	}
+	if !HarnessOwed(w.p) {
+		t.Fatal("the moved link owes a proof")
+	}
+	t.Setenv(fakeModeEnv, "wall-ok")
+	if _, err := ReproveHarness(context.Background(), w.p, w.c.approver); err != nil {
+		t.Fatal(err)
+	}
+	if got := w.ran(t); !slices.Equal(got, []string{"second", "second"}) {
+		t.Fatalf("the login check and the one proof, on the new file: %q", got)
+	}
+	if HarnessMoved(w.p) || HarnessOwed(w.p) {
+		t.Fatal("the new file is the one the run holds")
+	}
+	if err := os.Remove(w.link); err != nil {
+		t.Fatal(err)
+	}
+	if !HarnessMoved(w.p) {
+		t.Fatal("a start would run nothing")
+	}
+	if HarnessOwed(w.p) {
+		t.Fatal("a name that resolves to nothing marks nothing while the file stands")
+	}
+}
+
+// TestARetriedStartHoldsTheHarnessToThePinnedTeam: a second start in the one process is an
+// attempt after a failed one. Reading the team again would admit whatever now stands at the
+// name and write its team in as the baseline, so the team the run pinned is what it is held to.
+func TestARetriedStartHoldsTheHarnessToThePinnedTeam(t *testing.T) {
+	pinned := func(t *testing.T, w *reproveWorld) *stageWritten {
+		t.Helper()
+		v, ok := stagesWritten.Load(w.p.ShellHome)
+		if !ok {
+			t.Fatal("no pin")
+		}
+		return v.(*stageWritten)
+	}
+	t.Run("a new file of the team", func(t *testing.T) {
+		w := newReproveWorld(t, "")
+		w.repoint(t, w.second)
+		if _, err := WriteWallSettings(w.p, w.c.approver); err != nil {
+			t.Fatal(err)
+		}
+		if got := pinned(t, w); got.team != testTeam || got.harness != w.second {
+			t.Fatalf("pinned %q on %s", got.team, got.harness)
+		}
+	})
+	t.Run("a new file of another team", func(t *testing.T) {
+		w := newReproveWorld(t, "")
+		w.signed[w.second] = otherTeam
+		w.repoint(t, w.second)
+		_, err := WriteWallSettings(w.p, w.c.approver)
+		var stop *HarnessTeamError
+		var we *WallError
+		if !errors.As(err, &stop) || !errors.As(err, &we) || !strings.Contains(err.Error(), "signing team") {
+			t.Fatalf("the run stops and says why: %v", err)
+		}
+		if strings.Contains(err.Error(), "is gone") {
+			t.Fatalf("the file it proved still stands: %v", err)
+		}
+		if got := pinned(t, w); got.team != testTeam || got.harness != w.first {
+			t.Fatalf("the pin moved: %q on %s", got.team, got.harness)
+		}
+		if got := w.ran(t); len(got) != 0 {
+			t.Fatalf("ran: %q", got)
+		}
+	})
+	t.Run("an unsigned file has the file's tries", func(t *testing.T) {
+		w := newReproveWorld(t, "")
+		delete(w.signed, w.second)
+		w.repoint(t, w.second)
+		for try := 0; try < reproofTries-1; try++ {
+			_, err := WriteWallSettings(w.p, w.c.approver)
+			var none *NoVerdictError
+			var stop *HarnessTeamError
+			if !errors.As(err, &none) || errors.As(err, &stop) {
+				t.Fatalf("try %d is no stop: %v", try, err)
+			}
+		}
+		_, err := WriteWallSettings(w.p, w.c.approver)
+		var stop *HarnessTeamError
+		if !errors.As(err, &stop) {
+			t.Fatalf("the last try stops: %v", err)
+		}
+	})
+	t.Run("a run that pinned no team", func(t *testing.T) {
+		w := newReproveWorld(t, "")
+		delete(w.signed, w.first)
+		stagesWritten.Delete(w.p.ShellHome)
+		if _, err := WriteWallSettings(w.p, w.c.approver); err != nil {
+			t.Fatal(err)
+		}
+		w.repoint(t, w.second)
+		_, err := WriteWallSettings(w.p, w.c.approver)
+		var stop *HarnessTeamError
+		if !errors.As(err, &stop) {
+			t.Fatalf("a new file has nothing to hold it to: %v", err)
+		}
+	})
+	t.Run("the file it pinned, unchanged", func(t *testing.T) {
+		w := newReproveWorld(t, "")
+		read := 0
+		Signing.Verify = func(string, string) error { read++; return errors.New("does not hold") }
+		if _, err := WriteWallSettings(w.p, w.c.approver); err != nil {
+			t.Fatal(err)
+		}
+		if got := pinned(t, w); got.team != testTeam || read != 0 {
+			t.Fatalf("pinned %q, %d signature reads", got.team, read)
+		}
+	})
+	t.Run("a first attempt that found no harness pinned none", func(t *testing.T) {
+		w := newReproveWorld(t, "")
+		if err := os.Remove(w.link); err != nil {
+			t.Fatal(err)
+		}
+		stagesWritten.Delete(w.p.ShellHome)
+		if _, err := WriteWallSettings(w.p, w.c.approver); err != nil {
+			t.Fatal(err)
+		}
+		w.repoint(t, w.second)
+		if _, err := WriteWallSettings(w.p, w.c.approver); err != nil {
+			t.Fatal(err)
+		}
+		if got := pinned(t, w); got.team != testTeam || got.harness != w.second {
+			t.Fatalf("pinned %q on %s", got.team, got.harness)
+		}
+	})
+}
+
+// TestAHarnessLinkMovedWhereALaunchMayNotRunIsNoFileToProve: a release check judges the name
+// as a launch does, so a file a stage's work can reach is not marked as owing a proof.
+func TestAHarnessLinkMovedWhereALaunchMayNotRunIsNoFileToProve(t *testing.T) {
+	w := newReproveWorld(t, "")
+	if err := os.MkdirAll(w.p.StageRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	inside := filepath.Join(w.p.StageRoot, "planted")
+	harnessScript(t, inside, "planted", "2.1.321", "")
+	w.signed[inside] = testTeam
+	w.repoint(t, inside)
+	if !HarnessMoved(w.p) {
+		t.Fatal("a start would not run the file the run holds")
+	}
+	if HarnessOwed(w.p) {
+		t.Fatal("a file no launch may run was marked to be proved")
+	}
+}
+
+// TestARetriedStartWithNoPinOfItsOwnHoldsToTheTeamItBeganOn: the likeliest first attempt
+// fails before it pins anything, so the team read as the process began is what stands
+// between a retried start and whatever has come to stand at the name.
+func TestARetriedStartWithNoPinOfItsOwnHoldsToTheTeamItBeganOn(t *testing.T) {
+	began := func(w *reproveWorld) Profile {
+		stagesWritten.Delete(w.p.ShellHome)
+		pins := PinStart(w.p.PersonHome)
+		p := w.p
+		p.Began = &pins
+		return p
+	}
+	stops := func(t *testing.T, err error) {
+		t.Helper()
+		var stop *HarnessTeamError
+		if !errors.As(err, &stop) || !strings.Contains(err.Error(), "signing team") {
+			t.Fatalf("the run stops and says why: %v", err)
+		}
+	}
+	teamIs := func(t *testing.T, w *reproveWorld, harness string) {
+		t.Helper()
+		v, ok := stagesWritten.Load(w.p.ShellHome)
+		if !ok || v.(*stageWritten).team != testTeam || v.(*stageWritten).harness != harness {
+			t.Fatalf("pinned %+v", v)
+		}
+	}
+	t.Run("a file of another team", func(t *testing.T) {
+		w := newReproveWorld(t, "")
+		p := began(w)
+		w.signed[w.second] = otherTeam
+		w.repoint(t, w.second)
+		_, err := WriteWallSettings(p, w.c.approver)
+		stops(t, err)
+		if got := provedHarness(w.p); got != "" {
+			t.Fatalf("pinned %s", got)
+		}
+	})
+	t.Run("a file with no identity to read has the file's tries", func(t *testing.T) {
+		w := newReproveWorld(t, "")
+		p := began(w)
+		delete(w.signed, w.second)
+		w.repoint(t, w.second)
+		for try := 0; try < reproofTries-1; try++ {
+			_, err := WriteWallSettings(p, w.c.approver)
+			var none *NoVerdictError
+			var stop *HarnessTeamError
+			if !errors.As(err, &none) || errors.As(err, &stop) {
+				t.Fatalf("try %d is no stop: %v", try, err)
+			}
+		}
+		_, err := WriteWallSettings(p, w.c.approver)
+		stops(t, err)
+	})
+	t.Run("a new file of the team", func(t *testing.T) {
+		w := newReproveWorld(t, "")
+		p := began(w)
+		w.repoint(t, w.second)
+		if _, err := WriteWallSettings(p, w.c.approver); err != nil {
+			t.Fatal(err)
+		}
+		teamIs(t, w, w.second)
+	})
+	t.Run("the file it began on, unchanged", func(t *testing.T) {
+		w := newReproveWorld(t, "")
+		p := began(w)
+		read := 0
+		Signing.Verify = func(string, string) error { read++; return errors.New("does not hold") }
+		if _, err := WriteWallSettings(p, w.c.approver); err != nil {
+			t.Fatal(err)
+		}
+		teamIs(t, w, w.first)
+		if read != 0 {
+			t.Fatalf("%d signature reads", read)
+		}
+	})
+	t.Run("no harness as it began, and one that comes", func(t *testing.T) {
+		w := newReproveWorld(t, "")
+		if err := os.Remove(w.link); err != nil {
+			t.Fatal(err)
+		}
+		p := began(w)
+		w.repoint(t, w.second)
+		_, err := WriteWallSettings(p, w.c.approver)
+		stops(t, err)
+	})
+	t.Run("a first attempt that pinned an empty harness", func(t *testing.T) {
+		for name, team := range map[string]string{"another team": otherTeam, "the team": testTeam} {
+			t.Run(name, func(t *testing.T) {
+				w := newReproveWorld(t, "")
+				p := began(w)
+				if err := os.Remove(w.link); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := WriteWallSettings(p, w.c.approver); err != nil {
+					t.Fatal(err)
+				}
+				w.signed[w.second] = team
+				w.repoint(t, w.second)
+				_, err := WriteWallSettings(p, w.c.approver)
+				if team == otherTeam {
+					stops(t, err)
+					return
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				teamIs(t, w, w.second)
+			})
+		}
+	})
+}
+
+// TestAProofThatPassedLeavesTheComparisonHolding: the candidate's proof names it in the
+// settings for one launch, and the comparison before the swap reads them put back.
+func TestAProofThatPassedLeavesTheComparisonHolding(t *testing.T) {
+	w := newReproveWorld(t, "")
+	bin := SelfBinary()
+	if _, err := WriteWallSettings(w.p, bin); err != nil {
+		t.Fatal(err)
+	}
+	was := proveCandidateWall
+	t.Cleanup(func() { proveCandidateWall = was })
+	proveCandidateWall = func(context.Context, Profile, string) error { return nil }
+	if err := ProveCandidate(context.Background(), w.p, filepath.Join(t.TempDir(), "candidate")); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckWallSettings(w.p, bin); err != nil {
+		t.Fatalf("a passing proof trips the comparison: %v", err)
+	}
+}
+
+// TestALinkMovedToAFileTheRunCannotAdmitOwesNoProof: the old file stands, so nothing is
+// proved and the run goes on, and a start tried again on that file still stops.
+func TestALinkMovedToAFileTheRunCannotAdmitOwesNoProof(t *testing.T) {
+	for name, set := range map[string]func(*testing.T, *reproveWorld){
+		"no team held": func(t *testing.T, w *reproveWorld) {
+			t.Helper()
+			delete(w.signed, w.first)
+			stagesWritten.Delete(w.p.ShellHome)
+			if _, err := WriteWallSettings(w.p, w.c.approver); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"another team": func(_ *testing.T, w *reproveWorld) { w.signed[w.second] = otherTeam },
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := newReproveWorld(t, "")
+			set(t, w)
+			w.repoint(t, w.second)
+			if !HarnessMoved(w.p) {
+				t.Fatal("a start would run another file")
+			}
+			if HarnessOwed(w.p) {
+				t.Fatal("a file the run could not admit was marked to be proved")
+			}
+			said, err := ReproveHarness(context.Background(), w.p, w.c.approver)
+			if said != "" || err != nil {
+				t.Fatalf("nothing is owed: %q %v", said, err)
+			}
+			if got := w.ran(t); len(got) != 0 {
+				t.Fatalf("ran: %q", got)
+			}
+			_, err = WriteWallSettings(w.p, w.c.approver)
+			var stop *HarnessTeamError
+			if !errors.As(err, &stop) {
+				t.Fatalf("a start tried again still stops: %v", err)
+			}
+		})
+	}
+}
+
+// TestTheRunsOwnNameIsReadOnce: on a system where the name a process reports follows its file
+// to the kept copy, a refused re-execution would otherwise read as a changed binary.
+func TestTheRunsOwnNameIsReadOnce(t *testing.T) {
+	names := []string{"/installed/abcd", "/installed/.abcd.previous"}
+	self := selfNamer(func() (string, error) {
+		name := names[0]
+		names = names[1:]
+		return name, nil
+	})
+	for range 2 {
+		if got := self(); got != "/installed/abcd" || len(names) != 1 {
+			t.Fatalf("read again: %q, %d left", got, len(names))
+		}
 	}
 }

@@ -67,6 +67,8 @@ import (
 type exitError struct {
 	Code int
 	Msg  string
+	// wall says a comparison ended a drive, which another attempt must not write over.
+	wall bool
 }
 
 func (e *exitError) Error() string { return e.Msg }

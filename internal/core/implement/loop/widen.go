@@ -22,15 +22,14 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"os"
 	"path"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/shellquote"
@@ -347,14 +346,17 @@ func widenCommand(runID, laneID, paths string) string {
 	return abcdCommand() + " implement widen --run " + runID + " --lane " + laneID + " " + paths
 }
 
+// selfName names the running binary, a variable so a test can say what it reads.
+var selfName = runner.SelfBinary
+
 // abcdCommand is how a command line the loop renders for an agent names abcd
 // (widenCommand).
 func abcdCommand() string {
 	if sourceBuild() {
 		return "go run ./cmd/abcd"
 	}
-	if p, err := os.Executable(); err == nil && filepath.IsAbs(p) {
-		return shellquote.Single(filepath.Clean(p))
+	if p := selfName(); p != "" {
+		return shellquote.Single(p)
 	}
 	return "abcd"
 }
