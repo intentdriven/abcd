@@ -322,8 +322,9 @@ func TestTheLoginWallAsksTheHarnessAndKeepsOnlyTheState(t *testing.T) {
 		t.Fatalf("no account identifier is kept: %v", err)
 	}
 	t.Setenv(fakeModeEnv, "wall-login-exit")
-	if err := CheckLogin(context.Background(), p); !errors.As(err, &we) || we.Wall != WallLogin {
-		t.Fatalf("a harness that failed proves no login, whatever it printed: %v", err)
+	var none *NoVerdictError
+	if err := CheckLogin(context.Background(), p); !errors.As(err, &none) {
+		t.Fatalf("a harness that failed proves no login and says nothing of one, whatever it printed: %v", err)
 	}
 }
 

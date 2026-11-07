@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -502,5 +503,124 @@ func TestALaneThatDoesNotMoveHasADeadline(t *testing.T) {
 	st, _, _ := readDrain(w.repo.Root())
 	if len(st.HandBacks) != 0 {
 		t.Fatalf("nothing is handed back: %+v", st.HandBacks)
+	}
+}
+
+// TestAHarnessGoneBetweenTheCheckAndTheLaunchCostsTheLaneNothing: the launch's own check
+// refuses a file that went after the check before the stage; the await pauses, the next
+// check finds what is owed and proves it, the role runs again, and the lane lands with
+// nothing counted against it.
+func TestAHarnessGoneBetweenTheCheckAndTheLaunchCostsTheLaneNothing(t *testing.T) {
+	w := newTerminalWorld(t)
+	o := w.options(t)
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	versions, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(versions, "2.1.319")
+	script := "#!/bin/sh\n" + loopFakeEnv + "=" + terminalFakeMode + " " + loopFakeLogEnv + "=" + w.env.log + " " + terminalScriptEnv + "=" + os.Getenv(terminalScriptEnv) +
+		"; export " + loopFakeEnv + " " + loopFakeLogEnv + " " + terminalScriptEnv + "\nexec " + self + " \"$@\"\n"
+	place := func() {
+		t.Helper()
+		if err := os.WriteFile(file, []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	place()
+	link := filepath.Join(w.env.bin, "claude")
+	if err := os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(file, link); err != nil {
+		t.Fatal(err)
+	}
+	home := t.TempDir()
+	if err := os.MkdirAll(abcdhome.Path(home, "profiles", "walled"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(home, "identity"))
+	if err := os.WriteFile(filepath.Join(home, "identity"), []byte("[user]\n\tname = A Person\n\temail = a@example.invalid\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p, err := runner.DriveProfile(home, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p = p.ForCheckout(w.repo.Root())
+	bin := runner.SelfBinary()
+	if _, err := runner.WriteWallSettings(p, bin); err != nil {
+		t.Fatal(err)
+	}
+	o.Runners.Config = o.Runners.Config.Walled(p)
+	o.Options.Runners = o.Runners.Config
+	owed := 0
+	gone := false
+	o.BeforeStage = func() error {
+		if err := runner.CheckWallSettingsBesideHarness(p, bin); err != nil {
+			return err
+		}
+		if runner.HarnessOwed(p) {
+			owed++
+			place()
+		}
+		if !gone && slices.ContainsFunc(w.lines, func(l string) bool { return strings.Contains(l, "brief done") }) {
+			gone = true
+			if err := os.Remove(file); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return nil
+	}
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if owed != 1 {
+		t.Fatalf("the next check found what was owed %d times:\n%s", owed, strings.Join(w.lines, "\n"))
+	}
+	if res.Ended == TerminalWall || len(res.HeldBack) != 0 || w.launches(t) == 0 {
+		t.Fatalf("the run went on: %+v, %d launches:\n%s", res, w.launches(t), strings.Join(w.lines, "\n"))
+	}
+	st, _, err := readDrain(w.repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range st.Lanes {
+		if l.Outcome == DrainLaneHandedBack || l.Outcome == DrainLaneHalted {
+			t.Fatalf("a lane paid for it: %+v\n%s", l, strings.Join(w.lines, "\n"))
+		}
+	}
+	paused := slices.IndexFunc(w.lines, func(l string) bool { return strings.Contains(l, "implementer") && strings.Contains(l, "did not run") })
+	if paused < 0 || !slices.ContainsFunc(w.lines[paused:], func(l string) bool { return strings.Contains(l, "implement done") }) {
+		t.Fatalf("the await paused and the role ran again:\n%s", strings.Join(w.lines, "\n"))
+	}
+}
+
+// TestARetryAfterIsTheWaitOfAProofsNextTry: it waits that long, says why, and is not read
+// as the start of an outage.
+func TestARetryAfterIsTheWaitOfAProofsNextTry(t *testing.T) {
+	w := newTerminalWorld(t)
+	o := w.options(t)
+	tries := 0
+	ended, err := WaitOutProof(context.Background(), w.repo.Root(), o, &runner.NoVerdictError{Detail: "the file answered wrongly", RetryAfter: 3 * time.Minute},
+		func(context.Context) error {
+			tries++
+			if tries == 1 {
+				return &runner.NoVerdictError{Detail: "the file answered wrongly", RetryAfter: 3 * time.Minute}
+			}
+			return nil
+		})
+	if ended != "" || err != nil {
+		t.Fatalf("%q %v", ended, err)
+	}
+	if !slices.Equal(w.sleeps, []time.Duration{3 * time.Minute, 3 * time.Minute}) {
+		t.Fatalf("the waits: %v", w.sleeps)
+	}
+	if !slices.ContainsFunc(w.lines, func(l string) bool { return strings.Contains(l, "the file answered wrongly") }) {
+		t.Fatalf("the line:\n%s", strings.Join(w.lines, "\n"))
 	}
 }

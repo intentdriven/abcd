@@ -214,6 +214,17 @@ func DriveProfile(home, name string) (Profile, error) {
 	}.withStageRoot(abcdhome.Path(home, stageHomesLeaf, name, "no-checkout")), nil
 }
 
+// harnessGuards are where a walled launch's harness may not lie: the profile, the
+// repository, every lane's worktree and the stage's own files, all of which a stage's work
+// can reach.
+func (p Profile) harnessGuards() []string {
+	guards := []string{p.Dir, p.Repo, p.StageRoot}
+	if p.PersonHome != "" {
+		guards = append(guards, abcdhome.Path(p.PersonHome, "worktrees"))
+	}
+	return guards
+}
+
 // Name is the profile's name: its directory's, directly under the profiles' folder.
 func (p Profile) Name() string { return filepath.Base(p.Dir) }
 

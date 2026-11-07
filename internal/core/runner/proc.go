@@ -33,6 +33,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/url"
 	"os"
 	"os/exec"
@@ -116,6 +117,9 @@ func (l launcher) admit(runner, name string, repos ...string) (string, error) {
 	// the directory it resolves into chooses what runs.
 	for _, c := range []string{resolved, filepath.Dir(resolved), filepath.Dir(filepath.Clean(p))} {
 		fi, err := os.Stat(c)
+		if errors.Is(err, fs.ErrNotExist) {
+			return "", failAt(ErrNotOnPath, runner, ReasonAbsent, "%s does not resolve to a file", name)
+		}
 		if err != nil {
 			return "", failAt(ErrRefused, runner, ReasonAbsent, "%s could not be examined before it is run", name)
 		}

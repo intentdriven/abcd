@@ -1354,7 +1354,7 @@ func (t *terminal) limited(ctx context.Context, runID, role string, at time.Time
 
 // WaitOutProof waits out what stopped the drive's live proof short of a verdict: a
 // limit, on the schedule any agent's limit waits on, or a launch that came to none,
-// on the outage's. Each time it may go on it proves again. It returns why the wait
+// on the outage's unless it named its own wait. Each time it may go on it proves again. It returns why the wait
 // ended the run, "" when prove has run clean or come to a verdict, and then what
 // prove said. Nothing has started: what it may renew is what an earlier run left held.
 func WaitOutProof(ctx context.Context, repoRoot string, o TerminalOptions, first error, prove func(context.Context) error) (string, error) {
@@ -1376,7 +1376,9 @@ func WaitOutProof(ctx context.Context, repoRoot string, o TerminalOptions, first
 			}
 		case errors.As(err, &none):
 			t.evidence.begin("suspect-live-proof", evidenceEntry{Event: "failure", Role: "live proof", Response: none.Detail, Seen: none.Seen}, t.now())
-			if t.failed(ctx, false, "the live check came to no verdict: "+none.Detail) {
+			if none.RetryAfter > 0 {
+				t.sleep(ctx, none.RetryAfter, "the live check failed: "+none.Detail)
+			} else if t.failed(ctx, false, "the live check came to no verdict: "+none.Detail) {
 				return TerminalOutage, nil
 			}
 		default:

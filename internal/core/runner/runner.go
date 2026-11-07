@@ -289,6 +289,9 @@ type NoVerdictError struct {
 	Detail string
 	// Seen is what the launch showed.
 	Seen *HarnessSeen
+	// RetryAfter is how long to wait before the next try, when the attempt sets that
+	// itself rather than following the outage's schedule.
+	RetryAfter time.Duration
 }
 
 func (e *NoVerdictError) Error() string { return e.wall().Error() }
