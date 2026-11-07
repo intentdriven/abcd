@@ -279,11 +279,15 @@ func TestARuleRecordWhoseIdDisagreesWithItsFileNameRefuses(t *testing.T) {
 			t.Errorf("the refusal does not name %s: %v", want, err)
 		}
 	}
-	// The same number written with its ordinal zeros is the same id.
-	repo = t.TempDir()
-	writeADR(t, repo, "0015-rule.md", "adr-0015", "accepted", strictFields)
-	if r, err := Load(repo); err != nil || r.Record != "adr-0015" && r.Record != "adr-15" {
-		t.Errorf("a zero-padded id refused or renamed: %+v %v", r, err)
+	// The same number written with its ordinal zeros, or in capitals, is the
+	// same id, and the rule names it in its one spelling: every surface, a
+	// lane's admission among them, takes the id as Load gives it.
+	for _, id := range []string{"adr-0015", "ADR-15", "Adr-0015"} {
+		repo = t.TempDir()
+		writeADR(t, repo, "0015-rule.md", id, "accepted", strictFields)
+		if r, err := Load(repo); err != nil || r.Record != "adr-15" {
+			t.Errorf("%s: refused, or not named adr-15: %+v %v", id, r, err)
+		}
 	}
 }
 
