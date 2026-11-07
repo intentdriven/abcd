@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/recall"
 	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/core/runner"
+	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
@@ -366,6 +368,60 @@ func TestRulesPromptRecallsNothingOnADrivesStage(t *testing.T) {
 	t.Setenv(runner.StageWritesEnv, "1")
 	if got := notes(); got != 0 {
 		t.Fatalf("on a drive's stage, notes shown = %d, want 0: the hook recalls none there", got)
+	}
+	out, stderr, err := runCLISplit(t, "rules", "--prompt", "test")
+	if err != nil {
+		t.Fatalf("rules --prompt: %v\n%s", err, stderr)
+	}
+	if !strings.Contains(out, "Notes: not recalled on a drive's stage") || strings.Contains(out, "Notes: none matched") {
+		t.Fatalf("on a drive's stage the view does not say nothing was recalled:\n%s", out)
+	}
+}
+
+// TestRulesPromptOnAStageReadsTheBasesRules: on a drive's stage the hook reads
+// the rules as the lane's base commit holds them, so `rules --prompt` there
+// shows the base's domains, not what the lane wrote; off the stage it shows
+// the working tree's.
+func TestRulesPromptOnAStageReadsTheBasesRules(t *testing.T) {
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	_, repo := memoryFixture(t)
+	writeRepoRules(t, repo, `{"schema_version":1,"domains":{"BASEONE":{"recall":["zebra"],"rules":["the base's"]}}}`)
+	runGitT(t, repo, "add", ".abcd/rules.json")
+	gitCommitAt(t, repo, "the base")
+	cmd := exec.Command("git", "-C", repo, "rev-parse", "HEAD")
+	cmd.Env = gittest.Env(t)
+	head, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeRepoRules(t, repo, `{"schema_version":1,"domains":{"LANEONE":{"recall":["zebra"],"rules":["the lane's"]}}}`)
+	matched := func() map[string]bool {
+		t.Helper()
+		jout, stderr, err := runCLISplit(t, "rules", "--prompt", "zebra", "--json")
+		if err != nil {
+			t.Fatalf("rules --prompt --json: %v\n%s", err, stderr)
+		}
+		var env struct {
+			Domains []struct {
+				Name string `json:"name"`
+			} `json:"domains"`
+		}
+		if err := json.Unmarshal([]byte(jout), &env); err != nil {
+			t.Fatal(err)
+		}
+		got := map[string]bool{}
+		for _, d := range env.Domains {
+			got[d.Name] = true
+		}
+		return got
+	}
+	if got := matched(); !got["LANEONE"] || got["BASEONE"] {
+		t.Fatalf("off a stage, matched %v, want the working tree's LANEONE", got)
+	}
+	t.Setenv(runner.StageWritesEnv, "1")
+	t.Setenv(runner.StageBaseEnv, strings.TrimSpace(string(head)))
+	if got := matched(); !got["BASEONE"] || got["LANEONE"] {
+		t.Fatalf("on a drive's stage, matched %v, want the base's BASEONE", got)
 	}
 }
 

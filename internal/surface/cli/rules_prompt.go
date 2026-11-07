@@ -265,7 +265,10 @@ type rulesPromptPage struct {
 
 // rulesPromptView is `rules --prompt`'s --json envelope.
 type rulesPromptView struct {
-	Disabled   bool                `json:"disabled"`
+	Disabled bool `json:"disabled"`
+	// staged is a drive's stage, where nothing is recalled: the plain form says
+	// so rather than "none matched".
+	staged     bool
 	Bracket    rulesPromptBracket  `json:"bracket"`
 	Domains    []rulesPromptDomain `json:"domains"`
 	Notes      []rulesPromptNote   `json:"notes"`
@@ -316,7 +319,8 @@ func rulesPrompt(stderr io.Writer, rs rules.RuleSet, root, prompt string, used *
 	// nothing is read for them here either: the view shows only what that agent
 	// gets, and no root-commit lookup is made for a tied note.
 	var items []recall.Item
-	if !stageActive() {
+	v.staged = stageActive()
+	if !v.staged {
 		var refused []recall.Refusal
 		items, refused = recall.ReadItems(rules.UserHome(), root)
 		v.Unreadable = append(v.Unreadable, refused...)
@@ -410,7 +414,9 @@ func renderRulesPrompt(w io.Writer, rs rules.RuleSet, v rulesPromptView) {
 			fmt.Fprintf(w, "  %s — hit by %s — %s\n", d.Label, termsafe.Sanitize(strings.Join(d.Hits, ", ")), promptFormWords(d.Form))
 		}
 	}
-	if len(v.Notes) == 0 {
+	if v.staged {
+		fmt.Fprintln(w, "Notes: not recalled on a drive's stage")
+	} else if len(v.Notes) == 0 {
 		fmt.Fprintln(w, "Notes: none matched")
 	} else {
 		fmt.Fprintln(w, "Notes:")
@@ -420,7 +426,9 @@ func renderRulesPrompt(w io.Writer, rs rules.RuleSet, v rulesPromptView) {
 			renderTermScores(w, n.Terms)
 		}
 	}
-	if len(v.Pages) == 0 {
+	if v.staged {
+		fmt.Fprintln(w, "Pages: not recalled on a drive's stage")
+	} else if len(v.Pages) == 0 {
 		fmt.Fprintln(w, "Pages: none matched")
 	} else {
 		fmt.Fprintln(w, "Pages:")
