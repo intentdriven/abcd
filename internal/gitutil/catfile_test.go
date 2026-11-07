@@ -35,6 +35,24 @@ func TestCatFileBatchAnswersEachObjectInOrderUnderItsCap(t *testing.T) {
 	}
 }
 
+// TestCatFileBatchReadsObjectsAsStored: a replace ref stands in for no object the
+// batch reads.
+func TestCatFileBatchReadsObjectsAsStored(t *testing.T) {
+	repo := gittest.NewRepo(t)
+	repo.Write("a.txt", "the stored bytes\n")
+	a := strings.TrimSpace(repo.Git("hash-object", "-w", "--", "a.txt"))
+	repo.Write("b.txt", "what stands in\n")
+	b := strings.TrimSpace(repo.Git("hash-object", "-w", "--", "b.txt"))
+	repo.Git("replace", a, b)
+	got, err := gitutil.CatFileBatch(repo.Root(), []string{a}, 1<<10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Content != "the stored bytes\n" {
+		t.Fatalf("the batch = %+v", got)
+	}
+}
+
 // TestTreePathTypesAnswersEachPathOnItsOwn: one batch answers each path's
 // type in order, a directory asked beside a file beneath it still a tree and
 // an absent path ""; a path that cannot be asked on one line, and a commit
@@ -61,9 +79,11 @@ func TestTreePathTypesAnswersEachPathOnItsOwn(t *testing.T) {
 
 // TestTreePathTypesClassifiesAGitlinkAsACommit: a submodule's gitlink is a
 // commit entry in its tree, never a file. Git answers "<sha> commit" when the
-// repository holds the commit the gitlink names, and "<sha> submodule",
-// ignoring the format asked, when it does not; both answer "commit", and a
-// path beneath a gitlink is not in the tree. None of it is an error.
+// repository holds the commit the gitlink names, and from 2.51 "<sha>
+// submodule", ignoring the format asked, when it does not; both answer
+// "commit", and a path beneath a gitlink is not in the tree. An older git
+// answers a gitlink whose commit is absent "missing", as it answers a path the
+// tree does not hold, so there it reads "". None of it is an error.
 func TestTreePathTypesClassifiesAGitlinkAsACommit(t *testing.T) {
 	repo := gittest.NewRepo(t)
 	repo.Write("a.go", "package a\n")
@@ -78,7 +98,11 @@ func TestTreePathTypesClassifiesAGitlinkAsACommit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a gitlink errored the answer: %v", err)
 	}
-	if want := []string{"commit", "commit", "", "blob"}; strings.Join(got, ",") != strings.Join(want, ",") {
+	want := []string{"commit", "commit", "", "blob"}
+	if ok, _ := gitutil.GitAtLeast(2, 51); !ok {
+		want[1] = ""
+	}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("the types = %q; want %q", got, want)
 	}
 }

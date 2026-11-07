@@ -67,9 +67,7 @@ func (f *parFixture) toPush(t *testing.T, laneID string) {
 // push before the probe.
 func TestLandPushNetworkFailureHoldsOnlyItsLane(t *testing.T) {
 	f := newParFixture(t, "1. One\n2. Two\n   - needs: none\n", Options{SubAgents: strp("4"), Session: "host-a"})
-	f.stepUntil(t, "both implementers are out", func(st State) bool {
-		return len(st.Lanes) == 2 && len(st.Lanes[0].Awaits) == 1 && len(st.Lanes[1].Awaits) == 1
-	})
+	f.bothImplementersOut(t)
 	f.implement(t, "lane-1", "one.txt")
 	f.toPush(t, "lane-1")
 	f.implement(t, "lane-2", "two.txt")
@@ -209,9 +207,7 @@ func giveUp(t *testing.T, run *implement.Run, session string, advance func(time.
 // pending steps) and the pending notification, which an ack lowers.
 func TestStepAfterGiveUpRefusesWithDoneAndLeft(t *testing.T) {
 	f := newParFixture(t, "1. One\n2. Two\n   - needs: none\n3. Three\n   - needs: 2\n", Options{SubAgents: strp("4"), Session: "host-a"})
-	f.stepUntil(t, "both implementers are out", func(st State) bool {
-		return len(st.Lanes) == 2 && len(st.Lanes[0].Awaits) == 1 && len(st.Lanes[1].Awaits) == 1
-	})
+	f.bothImplementersOut(t)
 	f.implement(t, "lane-1", "one.txt")
 	f.roundPassed(t, "lane-1")
 	f.landed(t, "lane-1")

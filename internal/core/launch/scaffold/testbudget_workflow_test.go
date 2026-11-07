@@ -55,3 +55,27 @@ func TestEveryRenderedTestStepLimitFitsUnderTheVerifyJob(t *testing.T) {
 		}
 	}
 }
+
+// abcd's own verify job tests its longest packages the way its merge gate does,
+// through switches only abcd's test binaries read (internal/testshard). A managed
+// repository's render carries neither: they would mean nothing to its tests.
+func TestOnlyAbcdsRenderedVerifyJobSetsItsTestSwitches(t *testing.T) {
+	for name, subs := range map[string]Substitutions{
+		"abcd": AbcdSubstitutions(), "bare": BareSubstitutions("main"), "gate": GateSubstitutions("main", ""),
+	} {
+		rendered, err := Render(subs)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		verify := jobSection(t, string(rendered.ReleaseYML), "verify")
+		for _, word := range []string{`ABCD_TEST_SHARDS: "3"`, `ABCD_TEST_SKIP_FLUSH: "1"`} {
+			got, want := strings.Count(verify, word), 0
+			if name == "abcd" {
+				want = 2 // the plain step and the race step
+			}
+			if got != want {
+				t.Errorf("%s: the verify job sets %s %d times; want %d", name, word, got, want)
+			}
+		}
+	}
+}

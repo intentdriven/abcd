@@ -45,17 +45,21 @@ func sameRefusal(lane string, _ int) *Refusal {
 // issue's, cut and at its brief, on the clock c.
 func stuckDrain(t *testing.T, c *clock) (*gittest.Repo, string, string) {
 	t.Helper()
-	repo, bare := reservingDrainRepo(t, "commands/drain.md")
-	o := Options{Now: c.now}
-	first := drainToLane(t, repo, o, DrainOptions{})
+	first, w := builtOnce(t, worldKey("stuckDrain", c.t.String()), func(w *fixtureWorld) DrainResult {
+		repo, _ := reservingDrainRepo(t, "commands/drain.md")
+		o := Options{Now: c.now}
+		first := drainToLane(t, repo, o, DrainOptions{})
+		if first.Start != nil {
+			if _, err := advance(repo.Root(), first.Start.RunID, DefaultStages(), o); err != nil {
+				t.Fatalf("the worktree stage: %v", err)
+			}
+		}
+		return first
+	})
 	if first.Start == nil || first.Lane == nil || first.Lane.Issue != secondIssue {
 		t.Fatalf("the drain opens the documentation issue's lane: %+v", first)
 	}
-	runID := first.Start.RunID
-	if _, err := advance(repo.Root(), runID, DefaultStages(), o); err != nil {
-		t.Fatalf("the worktree stage: %v", err)
-	}
-	return repo, bare, runID
+	return w.repo, w.bare, first.Start.RunID
 }
 
 // refuseStep advances runID through stages and wants the step refused.

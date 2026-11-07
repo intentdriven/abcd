@@ -144,3 +144,15 @@ func TestArgumentsItDoesNotKnowAreRefused(t *testing.T) {
 		t.Errorf("no args: exit %d, printed %q, want 0 and the -p %q", code, out.String(), "16\n")
 	}
 }
+
+// TestTheSlotsAreThePersonsUnderAStagesHome: a preflight under a stage's home
+// divides the cores by the person's load.preflights, not a default.
+func TestTheSlotsAreThePersonsUnderAStagesHome(t *testing.T) {
+	stage, person := t.TempDir(), t.TempDir()
+	t.Setenv("HOME", stage)
+	t.Setenv(abcdhome.StageHomeEnv, stage)
+	t.Setenv(abcdhome.PersonHomeEnv, person)
+	if got := slotsHome(); got != person {
+		t.Fatalf("the slots are read under %q, want %q", got, person)
+	}
+}

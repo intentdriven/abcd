@@ -1,10 +1,14 @@
 package loop
 
 import (
+	"fmt"
+	"github.com/intentdriven/abcd/internal/gitutil"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // land_approval_test.go is the build loop's half of the merge gate
@@ -79,14 +83,14 @@ func (f *landFixture) approve(t *testing.T) {
 // request open, saying it waits for the technical facilitator's approval.
 func TestHumanLeavesAPullRequestWithNoApprovalOpen(t *testing.T) {
 	f := newLandFixture(t, unreviewedQueueRuleset("MERGE"))
-	assertLeftOpen(t, f, f.landedToArmed(t))
+	assertLeftOpen(t, f, f.landedToArmedOnce(t))
 }
 
 // TestAMissingRulesetMirrorLeavesThePullRequestOpen: with no mirror at the
 // lane's base and no approval of the head, nothing is armed.
 func TestAMissingRulesetMirrorLeavesThePullRequestOpen(t *testing.T) {
 	f := newLandFixture(t, "")
-	l := f.landedToArmed(t)
+	l := f.landedToArmedOnce(t)
 	if strings.Contains(f.ghLog(t), "pr merge") || l.Landing == nil || l.Landing.Armed || l.Landing.Merge == "" {
 		t.Fatalf("a missing mirror leaves the pull request open: %+v\n%s", l.Landing, f.ghLog(t))
 	}
@@ -145,7 +149,7 @@ func TestTheRulesetsApprovalRuleNoLongerDecidesTheArming(t *testing.T) {
 // its head is given.
 func TestALaterApprovalArmsAParkedLane(t *testing.T) {
 	f := newLandFixture(t, unreviewedQueueRuleset("MERGE"))
-	l := f.landedToArmed(t)
+	l := f.landedToArmedOnce(t)
 	if l.Landing == nil || l.Landing.Armed {
 		t.Fatalf("the lane is left open with no approval: %+v", l.Landing)
 	}
@@ -157,37 +161,490 @@ func TestALaterApprovalArmsAParkedLane(t *testing.T) {
 	}
 }
 
-// TestAutoArmsOnlyAHeadAReviewReceiptNames: with facilitator.mode auto on the
-// default branch, the loop arms a maintainer's pull request with no approval
-// only once a review receipt names its pushed head, and says which commit has
-// none until then.
-func TestAutoArmsOnlyAHeadAReviewReceiptNames(t *testing.T) {
+// autoFixture is a lane in a repository whose committed mode is auto.
+func autoFixture(t *testing.T) *landFixture {
+	t.Helper()
 	t.Setenv("HOME", t.TempDir())
-	f := newLandFixtureWith(t, map[string]string{
+	return newLandFixtureWith(t, map[string]string{
 		".abcd/work/rulesets/main-protection.json": unreviewedQueueRuleset("MERGE"),
 		".abcd/config.json":                        `{"facilitator":{"mode":"auto"}}` + "\n",
 	})
-	l := f.landedToArmed(t)
+}
+
+// prBodyOf is the pull request's body as the loop composed it.
+func (f *landFixture) prBodyOf(t *testing.T, l Lane) string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(f.repo.Root(), filepath.FromSlash(l.Landing.Body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
+// recordsRound takes the step that sends the records commit to its round, and hands
+// back each reviewer's return of it, with verdict words by role.
+func (f *landFixture) recordsRound(t *testing.T, ruthless, security string) {
+	t.Helper()
+	f.step(t)
+	st, err := ReadState(f.repo.Root(), f.runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range []struct{ role, verdict string }{{RoleRuthless, ruthless}, {RoleSecurity, security}} {
+		for i := range roundReviewers(st, r.role) {
+			handBackOne(t, f.repo, f.runID, f.stages, r.role, fmt.Sprintf("### Reader\n\nReader %d.\n\n%s", i, reviewerReturn(r.verdict)))
+		}
+	}
+}
+
+// pushToArm pushes the lane at its preflight receipt, opens its pull request and asks
+// the gate.
+func (f *landFixture) pushToArm(t *testing.T) Lane {
+	t.Helper()
+	l := currentLane(t, f.repo, f.runID)
+	preflighted(t, l, l.HeadSHA)
+	f.step(t)
+	f.step(t)
+	f.step(t)
+	return currentLane(t, f.repo, f.runID)
+}
+
+// TestAPairReadsTheRecordsCommitBeforeAnythingIsPushed: with facilitator.mode auto a
+// lane's records commit goes to a round of its own, scoped to that commit, nothing
+// pushed until it has read it; the pair that read the pushed head is its receipt, and
+// the lane arms itself.
+func TestAPairReadsTheRecordsCommitBeforeAnythingIsPushed(t *testing.T) {
+	f := autoFixture(t)
+	f.validated(t)
+	f.step(t)
+	f.step(t)
+	records := currentLane(t, f.repo, f.runID)
+	judged := records.Validation[len(records.Validation)-1].HeadSHA
+	if records.HeadSHA == judged || records.Landing == nil || records.Landing.Records != records.HeadSHA {
+		t.Fatalf("the landing made a records commit: %+v", records.Landing)
+	}
+	f.step(t)
+	res, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
+	if err != nil || res.Awaiting == nil || res.Awaiting.Role != RoleRuthless {
+		t.Fatalf("a reviewer is handed the records commit: %+v %v", res, err)
+	}
+	if strings.Contains(f.ghLog(t), "pr create") {
+		t.Fatalf("nothing is opened before the round:\n%s", f.ghLog(t))
+	}
+	raw, err := os.ReadFile(filepath.Join(f.repo.Root(), filepath.FromSlash(res.Awaiting.Brief)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{judged + ".." + records.HeadSHA, "couple of minutes", "resolution's note, impact and grounds", "records and link rewrites", "`Reviewed head: " + records.HeadSHA + "`"} {
+		if !strings.Contains(string(raw), want) {
+			t.Fatalf("the brief says %q:\n%s", want, raw)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(f.repo.Root(), filepath.FromSlash(res.Awaiting.Receipt)),
+		[]byte("Reviewed head: "+records.HeadSHA+"\n\nReader 0.\n\n"+namingHead(reviewerReturn("SHIP"), records.HeadSHA)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Receipt(f.repo.Root(), f.runID, res.Awaiting.Receipt, f.stages, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	st, err := ReadState(f.repo.Root(), f.runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i < len(roundReviewers(st, RoleRuthless)); i++ {
+		handBackOne(t, f.repo, f.runID, f.stages, RoleRuthless, fmt.Sprintf("### Reader\n\nReader %d.\n\n%s", i, reviewerReturn("SHIP")))
+	}
+	for i := range roundReviewers(st, RoleSecurity) {
+		handBackOne(t, f.repo, f.runID, f.stages, RoleSecurity, fmt.Sprintf("### Reader\n\nOther %d.\n\n%s", i, reviewerReturn("APPROVE")))
+	}
+	f.step(t)
+	l := f.pushToArm(t)
+	if !strings.Contains(f.ghLog(t), "pr merge 7 --auto --merge") || l.Landing == nil || !l.Landing.Armed {
+		t.Fatalf("a lane whose pair read its head arms itself: %+v\n%s", l.Landing, f.ghLog(t))
+	}
+	if l.Landing.Pushed != records.HeadSHA {
+		t.Fatalf("the head the pair read is the one pushed: %+v", l.Landing)
+	}
+	for _, v := range l.Validation[len(l.Validation)-1].Validators {
+		if v.Role == RoleAuditor {
+			t.Fatalf("a records round takes no audit: %+v", v)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(f.repo.Root(), ".abcd", ".work.local", "review-receipts", l.Landing.Pushed)); err != nil {
+		t.Fatalf("no receipt names the pushed head: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(f.repo.Root(), ".abcd", ".work.local", "review-receipts", judged)); err == nil {
+		t.Fatal("nothing signs the head no one pushed")
+	}
+}
+
+// TestARecordsRoundThatFailsParksNamingTheFinding: no fix round follows: the lane goes
+// on to its pull request, left open naming the finding, and a pair a person records
+// later still arms it.
+func TestARecordsRoundThatFailsParksNamingTheFinding(t *testing.T) {
+	f := autoFixture(t)
+	f.validated(t)
+	f.step(t)
+	f.step(t)
+	f.recordsRound(t, "FIX FIRST", "APPROVE")
+	f.step(t)
+	before := len(currentLane(t, f.repo, f.runID).Validation)
+	l := f.pushToArm(t)
 	if strings.Contains(f.ghLog(t), "pr merge") || l.Landing == nil || l.Landing.Armed ||
-		!strings.Contains(l.Landing.Merge, "no review receipt names "+l.Landing.Pushed) {
-		t.Fatalf("an unreviewed head is left open, naming it: %+v\n%s", l.Landing, f.ghLog(t))
+		!strings.Contains(l.Landing.Merge, "FIX FIRST") {
+		t.Fatalf("the lane parks naming the finding: %+v\n%s", l.Landing, f.ghLog(t))
+	}
+	if len(l.Validation) != before || len(l.Awaits) != 0 {
+		t.Fatalf("no fix round follows: %+v %+v", l.Validation, l.Awaits)
+	}
+	if body := f.prBodyOf(t, l); !strings.Contains(body, "did not pass") || !strings.Contains(body, "parked at this pull request for a person") {
+		t.Fatalf("the public body states the round's outcome:\n%s", body)
 	}
 	rcp := filepath.Join(f.repo.Root(), ".abcd", ".work.local", "review-receipts", l.Landing.Pushed)
 	if err := os.MkdirAll(filepath.Dir(rcp), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(rcp, []byte("{}\n"), 0o600); err != nil {
+	if err := os.WriteFile(rcp, reviewPairReceipt(l.Landing.Pushed), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	f.step(t)
-	if l = currentLane(t, f.repo, f.runID); !l.Landing.Armed || !strings.Contains(f.ghLog(t), "pr merge 7 --auto --merge") {
-		t.Fatalf("a review receipt naming the head arms it: %+v\n%s", l.Landing, f.ghLog(t))
+	if l = currentLane(t, f.repo, f.runID); !l.Landing.Armed {
+		t.Fatalf("a person's pair arms it: %+v\n%s", l.Landing, f.ghLog(t))
+	}
+}
+
+// TestAResyncDoesNotEraseAFailedRecordsRound: a lane parked over its records is refused
+// for a person, naming the finding, rather than merged to a head a fresh round passes.
+func TestAResyncDoesNotEraseAFailedRecordsRound(t *testing.T) {
+	root := t.TempDir()
+	const rel = "return.md"
+	if err := os.WriteFile(filepath.Join(root, rel), []byte("### Analysis\n\n- not this one\n\n### Findings\n\n- the impact is wrong\n\n### Verdict\n\nBLOCK\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	head := strings.Repeat("a", 40)
+	lane := Lane{ID: "lane-1", PR: 7, Landing: &Landing{Records: head, Pushed: head},
+		Validation: []ValidationRound{{Round: 2, HeadSHA: head, Validators: []ValidatorRun{{Role: RoleSecurity, Verdict: "BLOCK", Return: rel}}}}}
+	_, err := resyncLane(Context{RepoRoot: root}, &lane, "main", "origin/main", mergeability{})
+	r, ok := AsRefusal(err)
+	if !ok || r.Contention || !strings.Contains(r.Reason, "the impact is wrong") || strings.Contains(r.Reason, "not this one") {
+		t.Fatalf("the sync is refused naming the finding: %v", err)
+	}
+}
+
+// TestFirstFindingIsTheHeadingsFirstItem: the word elsewhere is no heading.
+func TestFirstFindingIsTheHeadingsFirstItem(t *testing.T) {
+	for text, want := range map[string]string{
+		"### Analysis\n\nFindings below.\n- refuted\n\n### Findings\n\n- real\n": ": real",
+		"### Analysis\n\nFindings below.\n- refuted\n":                           "",
+		"## Findings\n\nNone.\n\n### Verdict\n\n- SHIP\n":                        "",
+	} {
+		if got := firstFinding(text); got != want {
+			t.Errorf("%q: got %q, want %q", text, got, want)
+		}
+	}
+}
+
+// TestAStaleRoundDoesNotServe: a round that read another head is no pair for the
+// pushed one, whatever it passed, so the lane stays open saying why.
+func TestAStaleRoundDoesNotServe(t *testing.T) {
+	f := autoFixture(t)
+	f.validated(t)
+	f.step(t)
+	f.step(t)
+	f.recordsRound(t, "SHIP", "APPROVE")
+	f.step(t)
+	l := currentLane(t, f.repo, f.runID)
+	preflighted(t, l, l.HeadSHA)
+	f.step(t)
+	f.step(t)
+	if err := mutate(f.repo.Root(), f.runID, func(_ *os.Root, st *State) (bool, error) {
+		lane := &st.Lanes[st.current()]
+		lane.Validation[len(lane.Validation)-1].HeadSHA = lane.BaseSHA
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	f.step(t)
+	l = currentLane(t, f.repo, f.runID)
+	if strings.Contains(f.ghLog(t), "pr merge") || l.Landing == nil || l.Landing.Armed ||
+		!strings.Contains(l.Landing.Merge, "the loop did not record its own review") {
+		t.Fatalf("a stale round arms nothing: %+v\n%s", l.Landing, f.ghLog(t))
+	}
+}
+
+// tellRoundOfNothing has the state say the lane's full round was shown no resolution.
+func (f *landFixture) tellRoundOfNothing(t *testing.T) {
+	t.Helper()
+	if err := mutate(f.repo.Root(), f.runID, func(_ *os.Root, st *State) (bool, error) {
+		lane := &st.Lanes[st.current()]
+		lane.Validation = slices.Clone(lane.Validation)
+		lane.Validation[len(lane.Validation)-1].ResolvesShown = nil
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestARecordNoRoundWasToldOfParksSayingWhich: what the commit actually moves is
+// compared with what the full round was shown, so a list edited since widens nothing.
+func TestARecordNoRoundWasToldOfParksSayingWhich(t *testing.T) {
+	f := autoFixture(t)
+	v := f.validated(t)
+	if got := v.Validation[len(v.Validation)-1].ResolvesShown; len(got) != 1 || got[0] != f.issue {
+		t.Fatalf("the round keeps what it was shown: %v", got)
+	}
+	f.tellRoundOfNothing(t)
+	before := len(v.Validation)
+	f.step(t)
+	f.step(t)
+	l := f.pushToArm(t)
+	if strings.Contains(f.ghLog(t), "pr merge") || l.Landing == nil || l.Landing.Armed || !strings.Contains(l.Landing.Merge, f.issue) {
+		t.Fatalf("the lane parks naming the record: %+v\n%s", l.Landing, f.ghLog(t))
+	}
+	if len(l.Validation) != before {
+		t.Fatalf("no round read it: %+v", l.Validation)
+	}
+	if body := f.prBodyOf(t, l); !strings.Contains(body, "parked at this pull request for a person") {
+		t.Fatalf("the public body says it is parked:\n%s", body)
+	}
+}
+
+// TestAParkedLaneIsNotSyncedIntoARound: a pull request parked before any round, that
+// then conflicts, is refused for a person rather than merged to a head a round passes.
+func TestAParkedLaneIsNotSyncedIntoARound(t *testing.T) {
+	f := autoFixture(t)
+	f.validated(t)
+	f.tellRoundOfNothing(t)
+	f.step(t)
+	f.step(t)
+	l := f.pushToArm(t)
+	st, err := ReadState(f.repo.Root(), f.runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = resyncLane(Context{RepoRoot: f.repo.Root(), State: st}, &l, "main", "origin/main", mergeability{})
+	if r, ok := AsRefusal(err); !ok || r.Contention || !strings.Contains(r.Reason, "went to a person") {
+		t.Fatalf("the sync is refused: %v", err)
+	}
+}
+
+// TestAFullRoundsBriefListsWhatTheLandingWillResolve: the round judges each resolution,
+// so the records round's premise is true.
+func TestAFullRoundsBriefListsWhatTheLandingWillResolve(t *testing.T) {
+	f := autoFixture(t)
+	l := f.validated(t)
+	raw, err := os.ReadFile(filepath.Join(f.repo.Root(), filepath.FromSlash(l.Validation[0].Validators[0].Brief)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"What the landing will record as resolved", f.issue, shortSHA(l.Resolves[0].Commit), l.Resolves[0].Note, "Judge each", "these and no others"} {
+		if !strings.Contains(string(raw), want) {
+			t.Fatalf("the brief says %q:\n%s", want, raw)
+		}
+	}
+}
+
+// TestACommitHoldingMoreThanRecordsParks: what is no markdown record goes to a person.
+func TestACommitHoldingMoreThanRecordsParks(t *testing.T) {
+	f := autoFixture(t)
+	f.validated(t)
+	f.step(t)
+	f.step(t)
+	l := currentLane(t, f.repo, f.runID)
+	if err := os.WriteFile(filepath.Join(l.Worktree, "code.txt"), []byte("x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gitutil.LocalGit(l.Worktree, "add", "code.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := gitutil.LocalGit(l.Worktree, "commit", "-q", "--amend", "--no-edit"); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	head := f.repo.Git("-C", l.Worktree, "rev-parse", "HEAD")
+	if err := mutate(f.repo.Root(), f.runID, func(_ *os.Root, st *State) (bool, error) {
+		cur := &st.Lanes[st.current()]
+		cur.HeadSHA, cur.Landing.Records = head, head
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	l = f.pushToArm(t)
+	if strings.Contains(f.ghLog(t), "pr merge") || l.Landing == nil || l.Landing.Armed || !strings.Contains(l.Landing.Merge, "code.txt") {
+		t.Fatalf("the lane parks naming the path: %+v\n%s", l.Landing, f.ghLog(t))
+	}
+}
+
+// TestACommitFoundOnTheJudgedHeadIsReadLikeAnyOther: a commit under the landing's subject
+// counts as the landing's only if it holds the lane's own moves, so an empty or
+// records-only one is refused until the branch is restored; one that holds them is not
+// taken on trust, and still goes to the round.
+func TestACommitFoundOnTheJudgedHeadIsReadLikeAnyOther(t *testing.T) {
+	f := autoFixture(t)
+	f.validated(t)
+	f.step(t)
+	l := currentLane(t, f.repo, f.runID)
+	judged := l.HeadSHA
+	st, err := ReadState(f.repo.Root(), f.runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, arrange := range map[string]func(){
+		"an empty commit": func() {},
+		"records alone":   func() { f.fileAnotherIssue(t, l) },
+	} {
+		arrange()
+		f.repo.Git("-C", l.Worktree, "add", "-A")
+		if out, err := gitutil.LocalGit(l.Worktree, "commit", "-q", "--allow-empty", "-m", landSubject(st, l)); err != nil {
+			t.Fatalf("%v: %s", err, out)
+		}
+		r := f.wantsRefusedStep(t)
+		if !strings.Contains(r.Reason, "lacks") || !strings.Contains(r.Remedy, "restore the branch") {
+			t.Fatalf("%s: the refusal says what is missing and the way back: %+v", name, r)
+		}
+		if got := currentLane(t, f.repo, f.runID); got.Landing.RecordsDone || got.HeadSHA != judged {
+			t.Fatalf("%s: the commit is not taken as the landing's records: %+v", name, got.Landing)
+		}
+		f.repo.Git("-C", l.Worktree, "reset", "-q", "--hard", judged)
+	}
+	// The landing's own commit, found after a kill, is taken, and a reviewer reads it.
+	f.step(t)
+	f.rollBackToJudged(t, judged)
+	f.step(t)
+	if got := currentLane(t, f.repo, f.runID); !got.Landing.RecordsDone {
+		t.Fatalf("the commit holding the lane's moves is taken: %+v", got.Landing)
+	}
+	f.step(t)
+	res, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
+	if err != nil || res.Awaiting == nil || res.Awaiting.Role != RoleRuthless {
+		t.Fatalf("a reviewer reads it: %+v %v", res, err)
+	}
+	if strings.Contains(f.ghLog(t), "pr create") {
+		t.Fatalf("it is not pushed first:\n%s", f.ghLog(t))
+	}
+}
+
+// TestAnUnreadGateIsPassedOverOnceItsBoundRunsOut: an answer that cannot change must not
+// hold the whole run: past the bound the lane is left open, saying why.
+func TestAnUnreadGateIsPassedOverOnceItsBoundRunsOut(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	f := newLandFixture(t, unreviewedQueueRuleset("MERGE"))
+	f.validated(t)
+	f.step(t)
+	f.step(t)
+	l := currentLane(t, f.repo, f.runID)
+	preflighted(t, l, l.HeadSHA)
+	f.step(t)
+	f.step(t)
+	if err := os.WriteFile(filepath.Join(f.gh, "role-author-a"), []byte("not json\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	at := func(d time.Duration) Options { return Options{Now: func() time.Time { return now.Add(d) }} }
+	if _, err := advance(f.repo.Root(), f.runID, f.stages, at(0)); err == nil {
+		t.Fatal("the first read waits")
+	}
+	if _, err := advance(f.repo.Root(), f.runID, f.stages, at(gateUnreadBound-time.Minute)); err == nil {
+		t.Fatal("within the bound it still waits")
+	}
+	if _, err := advance(f.repo.Root(), f.runID, f.stages, at(gateUnreadBound)); err != nil {
+		t.Fatalf("past the bound it is left open: %v", err)
+	}
+	if l := currentLane(t, f.repo, f.runID); l.Landing.Merge == "" || l.Landing.Armed {
+		t.Fatalf("the lane is parked, saying why: %+v", l.Landing)
+	}
+}
+
+// TestALandingOverARefusedHookKeepsItsOwnEdits: a change to a record in a store, as a
+// remedy asks for, is not called stray.
+func TestALandingOverARefusedHookKeepsItsOwnEdits(t *testing.T) {
+	f := autoFixture(t)
+	f.validated(t)
+	f.step(t)
+	l := currentLane(t, f.repo, f.runID)
+	f.fileAnotherIssue(t, l)
+	f.step(t)
+	if l := currentLane(t, f.repo, f.runID); !l.Landing.RecordsDone {
+		t.Fatalf("the records commit is made: %+v", l.Landing)
+	}
+}
+
+// TestAStrayChangeStopsTheRecordsCommit: what the landing did not write never joins
+// its commit.
+func TestAStrayChangeStopsTheRecordsCommit(t *testing.T) {
+	f := autoFixture(t)
+	f.validated(t)
+	f.step(t)
+	l := currentLane(t, f.repo, f.runID)
+	if err := os.WriteFile(filepath.Join(l.Worktree, "stray.txt"), []byte("x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := advance(f.repo.Root(), f.runID, f.stages, Options{}); err == nil || !strings.Contains(err.Error(), "stray.txt") {
+		t.Fatalf("the step is refused naming it: %v", err)
+	}
+	if l := currentLane(t, f.repo, f.runID); l.Landing.RecordsDone {
+		t.Fatalf("no records commit: %+v", l.Landing)
+	}
+}
+
+// TestAnUnreadGateAsksAgain: a read that failed says nothing of the lane, so it is not
+// left open; a later turn asks again, and the answer then decides.
+func TestAnUnreadGateAsksAgain(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	f := newLandFixture(t, unreviewedQueueRuleset("MERGE"))
+	f.validated(t)
+	f.step(t)
+	f.step(t)
+	l := currentLane(t, f.repo, f.runID)
+	preflighted(t, l, l.HeadSHA)
+	f.step(t)
+	f.step(t)
+	role := filepath.Join(f.gh, "role-author-a")
+	if err := os.WriteFile(role, []byte("not json\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
+	if r, ok := AsRefusal(err); !ok || !r.Contention {
+		t.Fatalf("the step waits on the read: %v", err)
+	}
+	if l := currentLane(t, f.repo, f.runID); l.Landing.Merge != "" {
+		t.Fatalf("a read that failed left the lane open: %+v", l.Landing)
+	}
+	if st, err := ReadState(f.repo.Root(), f.runID); err != nil || st.Lanes[0].Refused != nil {
+		t.Fatalf("the wait does not count toward stuck: %+v %v", st.Lanes[0].Refused, err)
+	}
+	if l := currentLane(t, f.repo, f.runID); l.Landing.GateUnreadSince == nil {
+		t.Fatalf("the wait's start is kept: %+v", l.Landing)
+	}
+	if err := os.Remove(role); err != nil {
+		t.Fatal(err)
+	}
+	f.approve(t)
+	f.step(t)
+	if l := currentLane(t, f.repo, f.runID); !l.Landing.Armed {
+		t.Fatalf("the later turn asks again and arms: %+v", l.Landing)
+	}
+}
+
+// TestHumanModeRecordsNoReviewOfTheLoops: only auto takes the records round and the
+// loop's own pair; in human the lane waits for the facilitator's approval, no round
+// reads the records commit, and no receipt appears.
+func TestHumanModeRecordsNoReviewOfTheLoops(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	f := newLandFixtureWith(t, map[string]string{
+		".abcd/work/rulesets/main-protection.json": unreviewedQueueRuleset("MERGE"),
+		".abcd/config.json":                        `{"facilitator":{"mode":"human"}}` + "\n",
+	})
+	l := f.landedToArmed(t)
+	if strings.Contains(f.ghLog(t), "pr merge") || l.Landing == nil || l.Landing.Armed {
+		t.Fatalf("human mode waits for an approval: %+v\n%s", l.Landing, f.ghLog(t))
+	}
+	if entries, err := os.ReadDir(filepath.Join(f.repo.Root(), ".abcd", ".work.local", "review-receipts")); err == nil && len(entries) > 0 {
+		t.Fatalf("human mode wrote a receipt: %v", entries)
 	}
 }
 
 // TestThisRepositorysOwnMirrorAndConfigArm: this repository's committed
-// mirror and .abcd/config.json, with the head approved and a review receipt
-// naming it, arm by the queue's method, so the merge gate keeps this
+// mirror and .abcd/config.json, with the head approved and a pair that read it, arm by the queue's method, so the merge gate keeps this
 // project's landings queueing in either mode. It reads every CODEOWNERS path
 // the forge reads, so one restored shows up here.
 func TestThisRepositorysOwnMirrorAndConfigArm(t *testing.T) {
@@ -214,20 +671,16 @@ func TestThisRepositorysOwnMirrorAndConfigArm(t *testing.T) {
 	f.validated(t)
 	f.step(t)
 	f.step(t)
-	l := currentLane(t, f.repo, f.runID)
-	preflighted(t, l, l.HeadSHA)
-	rcp := filepath.Join(f.repo.Root(), ".abcd", ".work.local", "review-receipts", l.HeadSHA)
-	if err := os.MkdirAll(filepath.Dir(rcp), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(rcp, []byte("{}\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	f.recordsRound(t, "SHIP", "APPROVE")
 	f.step(t)
-	f.step(t)
-	f.step(t)
-	l = currentLane(t, f.repo, f.runID)
+	l := f.pushToArm(t)
 	if !strings.Contains(f.ghLog(t), "pr merge 7 --auto --merge") || l.Landing == nil || !l.Landing.Armed {
 		t.Fatalf("this repository's own mirror and config arm the merge: %+v\n%s", l.Landing, f.ghLog(t))
 	}
+}
+
+// reviewPairReceipt is a review receipt for sha holding a passing pair, as
+// abcd land --record-review writes one.
+func reviewPairReceipt(sha string) []byte {
+	return []byte(`{"commit":"` + sha + `","verdict_rule":2,"reviews":[{"name":"a","verdict":"SHIP","sha256":"x"},{"name":"b","verdict":"APPROVE","sha256":"y"}]}` + "\n")
 }

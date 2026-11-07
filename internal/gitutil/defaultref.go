@@ -2,6 +2,7 @@ package gitutil
 
 import (
 	"context"
+	"errors"
 	"strings"
 )
 
@@ -23,27 +24,27 @@ func DefaultRef(root string) string {
 // answer in time" checks ctx.Err() after it.
 func DefaultRefContext(ctx context.Context, root string) string {
 	return defaultRef(func(args ...string) (string, error) {
-		out, err := RunLimitedContext(ctx, root, refAnswerCap, args...)
+		out, overflowed, err := runLimitedOverflow(ctx, root, refAnswerCap, false, args)
+		if err == nil && overflowed {
+			return "", errRefAnswerCut
+		}
 		return strings.TrimSpace(out), err
 	})
 }
 
-// refAnswerCap bounds one ref question's answer: a ref name or an object name.
-const refAnswerCap = 4096
+// refAnswerCap bounds one ref question's answer: a ref name, an object name, or
+// the listing, which also holds every ref below a conventional name. An answer
+// past it is refused whole, so the resolution asks ref by ref rather than reading
+// the part it got as the whole.
+const refAnswerCap = 64 << 10
+
+var errRefAnswerCut = errors.New("git's ref answer ran past its bound")
 
 // gitAsk is one read-only git question, its answer trimmed.
 type gitAsk func(args ...string) (string, error)
 
 func defaultRef(ask gitAsk) string {
-	if ref := trackedDefaultBranch(ask, "origin"); ref != "" {
-		return ref
-	}
-	for _, n := range defaultNames {
-		if commitRefExists(ask, "refs/heads/"+n) {
-			return "refs/heads/" + n
-		}
-	}
-	return ""
+	return resolveDefault(ask, "origin", true)
 }
 
 // defaultNames are the conventional default-branch names, in the order a
@@ -65,13 +66,76 @@ func TrackedDefaultBranch(root, remote string) string {
 }
 
 func trackedDefaultBranch(ask gitAsk, remote string) string {
+	return resolveDefault(ask, remote, false)
+}
+
+// defaultRefFormat is one row of the default-branch listing. Refnames hold no
+// space, and the last field keeps a row's trailing empties through the answer's
+// trim.
+const defaultRefFormat = "--format=%(refname) %(symref) %(objecttype) %(*objecttype) ."
+
+// resolveDefault answers from one listing of every ref the resolution can name,
+// where a question per ref cost up to ten processes on every call, and most of
+// the git a repository with no origin/HEAD spends. The order is the remote's HEAD
+// target, the conventional names under the remote, then, when local says so, the
+// same names locally.
+//
+// A listing has no row for what a ref's own read could still find. It shows no
+// HEAD that is a symlink, and it fails whole on one ref with a missing object, so
+// with no HEAD row symbolic-ref asks. On a file system that folds case,
+// refs/heads/main opens a loose ref spelt Main, so when the listing names nothing
+// it asks ref by ref, as every read before it did, and only a repository with no
+// default branch pays for that. A dangling HEAD has no row, and falls through to
+// the names as its failed read did. One answer differs from a question per ref:
+// a loose origin/Main beside origin/master on such a file system now answers
+// master, which is the branch that exists under that name.
+func resolveDefault(ask gitAsk, remote string, local bool) string {
 	prefix := "refs/remotes/" + remote + "/"
-	if out, err := ask("symbolic-ref", "--quiet", prefix+"HEAD"); err == nil && strings.HasPrefix(out, prefix) && commitRefExists(ask, out) {
-		return out
-	}
+	candidates := make([]string, 0, 2*len(defaultNames))
 	for _, n := range defaultNames {
-		if commitRefExists(ask, prefix+n) {
-			return prefix + n
+		candidates = append(candidates, prefix+n)
+	}
+	if local {
+		for _, n := range defaultNames {
+			candidates = append(candidates, "refs/heads/"+n)
+		}
+	}
+	rows := map[string][]string{}
+	args := append([]string{"for-each-ref", defaultRefFormat, prefix + "HEAD"}, candidates...)
+	if out, err := ask(args...); err == nil {
+		for _, line := range strings.Split(out, "\n") {
+			if f := strings.Split(line, " "); len(f) == 5 {
+				rows[f[0]] = f[1:4]
+			}
+		}
+	}
+	peelsToCommit := func(ref string, row []string) bool {
+		switch row[1] {
+		case "commit":
+			return true
+		case "tag":
+			// A tag of a tag peels on: older gits list only its first level.
+			return row[2] == "commit" || commitRefExists(ask, ref)
+		}
+		return false
+	}
+	if head, ok := rows[prefix+"HEAD"]; ok && strings.HasPrefix(head[0], prefix) && peelsToCommit(head[0], head) {
+		return head[0]
+	}
+	if _, ok := rows[prefix+"HEAD"]; !ok {
+		target, err := ask("symbolic-ref", "--quiet", prefix+"HEAD")
+		if err == nil && strings.HasPrefix(target, prefix) && commitRefExists(ask, target) {
+			return target
+		}
+	}
+	for _, ref := range candidates {
+		if row, ok := rows[ref]; ok && peelsToCommit(ref, row) {
+			return ref
+		}
+	}
+	for _, ref := range candidates {
+		if commitRefExists(ask, ref) {
+			return ref
 		}
 	}
 	return ""

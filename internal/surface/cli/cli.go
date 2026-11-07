@@ -47,6 +47,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/record"
 	"github.com/intentdriven/abcd/internal/core/record/match"
 	"github.com/intentdriven/abcd/internal/core/rules"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/core/surface"
 	"github.com/intentdriven/abcd/internal/core/tools"
@@ -66,6 +67,8 @@ import (
 type exitError struct {
 	Code int
 	Msg  string
+	// wall says a comparison ended a drive, which another attempt must not write over.
+	wall bool
 }
 
 func (e *exitError) Error() string { return e.Msg }
@@ -413,6 +416,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newReserveCommand(&asJSON))
 	root.AddCommand(newAnnounceCommand(&asJSON))
 	root.AddCommand(newStatusCommand(&asJSON))
+	root.AddCommand(newAgentsCommand(&asJSON))
 	root.AddCommand(newLandCommand(&asJSON))
 	root.AddCommand(newDrainCommand(&asJSON))
 	root.AddCommand(newBuildCommand(&asJSON))
@@ -1614,6 +1618,16 @@ func readGuardedOperand(spec string, cap int64) ([]byte, error) {
 	return data, nil
 }
 
+// rulesForHook is the rules a hook injects: on a walled launch, as they stood at
+// the commit its lane was cut from, since what the lane writes is not what the
+// agents reading its work are told.
+func rulesForHook(root string) (rules.RuleSet, error) {
+	if base := os.Getenv(runner.StageBaseEnv); base != "" {
+		return rules.LoadAt(root, base)
+	}
+	return rules.Load(root)
+}
+
 // maxHookStdinBytes caps the hook payload read from stdin (trust boundary).
 const maxHookStdinBytes = 1 << 20 // 1 MiB
 
@@ -1887,7 +1901,7 @@ envelope carries it as system_message.`,
 			// hook's one deadline: the status read below takes what it leaves.
 			root := rulesRoot(cwd, cmd.ErrOrStderr())
 			away := readPromptAway(cmd.ErrOrStderr(), drained, root)
-			rs, err := rules.Load(root)
+			rs, err := rulesForHook(root)
 			if err != nil {
 				// rules.Load errors already carry their own "rules:" prefix, so
 				// wrap with a bare "abcd" to avoid "abcd rules: rules: …"
@@ -1896,7 +1910,7 @@ envelope carries it as system_message.`,
 				// The status block is the status reader's, not the rules':
 				// a rules.json that will not load does not switch it off
 				// (spc-2610150728396006 step 3).
-				status := routerStatus(cmd, root, deadline)
+				status := routerStatus(cmd, root, hookSession(in), promptRoot(drained, root), deadline)
 				defer status.MarkShown()
 				// Nor does it switch off the away block and line.
 				text := joinBlocks(status.Text, away.Block)
@@ -1988,7 +2002,7 @@ envelope carries it as system_message.`,
 			// this checkout has not shown, from disk alone, inside its own
 			// budget, after the rules and the memory notes. It joins text
 			// before the title is read, so both emit paths below carry it.
-			status := routerStatus(cmd, root, deadline)
+			status := routerStatus(cmd, root, session, promptRoot(drained, root), deadline)
 			defer status.MarkShown()
 			text = joinBlocks(text, status.Text)
 			text = joinBlocks(text, away.Block)
@@ -2389,6 +2403,9 @@ envelope carries it as system_message.`,
 	// dogfood-binary and dogfood-build — the hook shims' dogfood rung
 	// (hook_dogfood.go): which build a listed checkout runs, and making it.
 	hookCmd.AddCommand(newDogfoodBinaryCommand(), newDogfoodBuildCommand())
+	// scheduled-refresh — what the prompt router starts in the background when
+	// the kept answer about a scheduled workflow has aged (hook_scheduled.go).
+	hookCmd.AddCommand(newScheduledRefreshCommand())
 
 	return hookCmd
 }
@@ -2444,8 +2461,8 @@ var livePromptDrainBudget = history.DrainBudget{MaxEntries: 1, MaxBytes: 512 << 
 // failure to drain is never a failure of the prompt: the hook exits 0
 // whatever happened here, because a transcript backlog must not be able to
 // wedge a session. What it returns is only the root-commit lookup it made,
-// for the memory recall to reuse (promptRoot), so one prompt spawns that
-// full-history rev-list once. That lookup is bounded (boundedRootCommit): a
+// for the memory recall and the status block to reuse (promptRoot), so one prompt
+// spawns that full-history rev-list once. That lookup is bounded (boundedRootCommit): a
 // git that does not answer in time drains nothing this turn, says so on
 // stderr, and leaves the recall's tied notes out.
 func drainWhileLive(cmd *cobra.Command, cwd string) rootLookup {
@@ -3953,6 +3970,8 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 			"parks an `<!-- abcd-review: OWED receipt=rcp-… -->` marker in the intent's Audit Notes, and writes the " +
 			"review request to `.abcd/.work.local/reviews/<rcp>.request.md`, the input `abcd intent audit ingest` " +
 			"answers. A failed emit is a warning on stderr; the intent ships regardless.\n\n" +
+			"A close that ships an intent first runs issue-drift's check over it: an issue its `related_issues` names " +
+			"that is not in resolved/ refuses the close, naming each one and the ways out, and nothing moves.\n\n" +
 			"In the repository whose brief describes the binary, a close that ships an intent first runs the " +
 			"doc-fidelity gate (`abcd docs fidelity`): a surface no brief chapter names, a missing or stale docs " +
 			"review, or a confirmed false sentence refuses the close, and nothing moves. A close that ships no " +
@@ -3986,9 +4005,14 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 			// meets the coverage floor alone (iss-2610020728118137).
 			var ships []string
 			if closeRemainder == "" {
-				ships = closeShips(repoRoot, args[0])
+				ships = spec.CloseShips(repoRoot, args[0])
 			}
-			if err := enforceDocFidelity(repoRoot, "abcd spec close", ships); err != nil {
+			// Before the doc-fidelity gate: answering this one changes the tree, and
+			// a docs review saved first would be stale by the time the close ran.
+			if err := enforceShipLinks(repoRoot, "abcd spec close", ships); err != nil {
+				return err
+			}
+			if err := enforceDocFidelity(cmd.ErrOrStderr(), repoRoot, "abcd spec close", ships); err != nil {
 				return err
 			}
 			res, err := intent.Reconcile(repoRoot, args[0], closeImpact, rem)
@@ -4165,6 +4189,9 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				// date derived from repo content, so it is sanitised.
 				if citations, _ := res.Signals["citations"].(string); citations != "" {
 					fmt.Fprintf(w, "  citations:   %s\n", termsafe.Sanitize(citations))
+				}
+				if shared, _ := res.Signals["shared_folder"].(string); shared != "" {
+					fmt.Fprintf(w, "  shared:      %s\n", termsafe.Sanitize(shared))
 				}
 				fmt.Fprintf(w, "  gaps:        %d\n", len(res.Gaps))
 				// Each gap by its title, the words the install's approvals
@@ -4549,6 +4576,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	ahoyCmd.AddCommand(newAhoyConnectCommand(asJSON))
 	ahoyCmd.AddCommand(newAhoyCredentialCommand(asJSON))
 	ahoyCmd.AddCommand(newAhoyWorktreeCommand(asJSON))
+	ahoyCmd.AddCommand(newAhoySharedFolderCommand(asJSON))
 
 	return ahoyCmd
 }

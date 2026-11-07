@@ -51,12 +51,12 @@ func drainAt(t *testing.T, root string, o Options) DrainResult {
 // issue over rather than taking a lapsed tip.
 func TestADrainKeepsItsOpenPullRequestLanesHeld(t *testing.T) {
 	f := drainLandFixtureWith(t, unreviewedQueueRuleset("MERGE"))
-	first := drainToLane(t, f.repo, Options{}, DrainOptions{})
+	first := f.firstMove(t)
 	if first.Start == nil || first.Lane.Issue != secondIssue {
 		t.Fatalf("the drain opens the documentation issue's lane: %+v", first)
 	}
 	f.runID, f.issue = first.Start.RunID, secondIssue
-	l := f.parkIssueLane(t)
+	l := f.parkIssueLaneOnce(t)
 	if l.Landing.Armed {
 		t.Fatalf("the pull request is left open for a person: %+v", l.Landing)
 	}
@@ -195,7 +195,7 @@ func TestTheFenceHoldsADayWhenThePullRequestIsLeftForAPerson(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := newLandFixture(t, ruleset)
-			f.toArm(t)
+			f.toArmOnce(t)
 			now := time.Now().UTC().Truncate(time.Second)
 			reserveRun(t, f.repo, f.runID, "itd-10", now.Add(-30*time.Minute), "internal/widget")
 			f.step(t)

@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // TestAhoyInstallOffersTheEmDashRuleOnStdin is ruling G1 at the front door: an
@@ -20,7 +18,7 @@ func TestAhoyInstallOffersTheEmDashRuleOnStdin(t *testing.T) {
 	hermeticEnv(t)
 	// A REAL repository: the docs-lint seed is written only on git's own verdict
 	// that its path is not ignored, which a bare `.git` directory cannot give.
-	repo := gittest.NewRepo(t).Root()
+	repo := newRepo(t).Root()
 	t.Chdir(repo)
 	out, errOut, err := runCLIPipedStdinSplit(t, strings.Repeat("y\n", 16), "ahoy", "install",
 		"--visibility", "private", "--docs-target", "agents_md",

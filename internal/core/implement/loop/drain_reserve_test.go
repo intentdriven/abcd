@@ -24,19 +24,21 @@ import (
 // docFoundAt is not "".
 func reservingDrainRepo(t *testing.T, docFoundAt string) (*gittest.Repo, string) {
 	t.Helper()
-	repo := briefRepo(t, agentsMarked)
-	issueRepoRule(t, repo)
-	repo.Write("commands/drain.md", "# drain\n")
-	fileIssueAt(t, repo, eligibleIssue, capture.SeverityMinor, capture.Category("bug"), issueRemedy, "AGENTS.md:3")
-	fileIssueAt(t, repo, secondIssue, capture.SeverityMinor, capture.Category("documentation"), "Name the flag in the page.", docFoundAt)
-	repo.Commit("the ledger")
-	bare := filepath.Join(t.TempDir(), "origin.git")
-	gittest.InitBare(t, bare)
-	repo.Git("remote", "add", "origin", bare)
-	repo.Git("push", "-q", "origin", "main")
-	repo.Git("fetch", "-q", "origin")
-	asPat(t, repo)
-	return repo, bare
+	_, w := builtOnce(t, worldKey("reservingDrainRepo", docFoundAt), func(w *fixtureWorld) struct{} {
+		repo := briefRepo(t, agentsMarked)
+		issueRepoRule(t, repo)
+		repo.Write("commands/drain.md", "# drain\n")
+		fileIssueAt(t, repo, eligibleIssue, capture.SeverityMinor, capture.Category("bug"), issueRemedy, "AGENTS.md:3")
+		fileIssueAt(t, repo, secondIssue, capture.SeverityMinor, capture.Category("documentation"), "Name the flag in the page.", docFoundAt)
+		repo.Commit("the ledger")
+		gittest.InitBare(t, w.bare)
+		repo.Git("remote", "add", "origin", w.bare)
+		repo.Git("push", "-q", "origin", "main")
+		repo.Git("fetch", "-q", "origin")
+		asPat(t, repo)
+		return struct{}{}
+	})
+	return w.repo, w.bare
 }
 
 // footprintOf is the footprint origin's reservation on id names.
@@ -62,7 +64,7 @@ func footprintOf(t *testing.T, bare, id string) []string {
 // tombstones it.
 func TestDrainReservesEachIssueWithItsFoundAt(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
-	first := drainToLane(t, repo, Options{}, DrainOptions{})
+	first := drainedToLaneOnce(t, repo, DrainOptions{})
 	if first.Start == nil || first.Lane == nil || first.Lane.Issue != secondIssue {
 		t.Fatalf("the drain opens the documentation issue's lane: %+v", first)
 	}
@@ -104,7 +106,7 @@ func TestDrainReservesEachIssueWithItsFoundAt(t *testing.T) {
 // and opens the next issue's lane.
 func TestADrainHandsBackAnIssueWithNoFoundAtAndMovesOn(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "")
-	res := drainToLane(t, repo, Options{}, DrainOptions{})
+	res := drainedToLaneOnce(t, repo, DrainOptions{})
 	r := routeOf(t, res.HandBacks, secondIssue)
 	if want := secondIssue + " has no found_at path to reserve it with; handed back"; r.Reason != want || r.From != DrainFromReservation {
 		t.Fatalf("the hand-back names the reason: %+v; want %q", r, want)
@@ -160,7 +162,7 @@ func TestADrainPassesOverAnIssueAnotherPersonReserved(t *testing.T) {
 // back no issue for want of a found_at, and the run records no reservation.
 func TestADrainWithoutOriginReservesNothing(t *testing.T) {
 	repo := drainRepo(t)
-	res := drainToLane(t, repo, Options{}, DrainOptions{})
+	res := drainedToLaneOnce(t, repo, DrainOptions{})
 	if res.Start == nil || len(res.HandBacks) != 0 {
 		t.Fatalf("the lane opens and nothing is handed back: %+v", res)
 	}
@@ -199,12 +201,12 @@ func TestADrainQuotesAnotherReservationsFootprintWhenItPassesOver(t *testing.T) 
 // reservation is not an overlap it backs off from.
 func TestADrainTakesItsNextIssueSharingAFoundAtWithItsOwnOpenLane(t *testing.T) {
 	f := drainLandFixture(t)
-	first := drainToLane(t, f.repo, Options{}, DrainOptions{})
+	first := f.firstMove(t)
 	if first.Start == nil || first.Lane.Issue != secondIssue {
 		t.Fatalf("the drain opens the documentation issue's lane: %+v", first)
 	}
 	f.runID, f.issue = first.Start.RunID, secondIssue
-	f.armIssueLane(t)
+	f.armIssueLaneOnce(t)
 	next := drainToLane(t, f.repo, Options{}, DrainOptions{})
 	if next.Start == nil || next.Lane == nil || next.Lane.Issue != eligibleIssue {
 		t.Fatalf("the drain opens the bug's lane beside its own open pull request: lane %+v, passed %+v", next.Lane, next.Passed)
@@ -220,7 +222,7 @@ func TestADrainTakesItsNextIssueSharingAFoundAtWithItsOwnOpenLane(t *testing.T) 
 // off until it lapses; the route says so.
 func TestAHandedBackDrainLaneReleasesItsReservation(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
-	first := drainToLane(t, repo, Options{}, DrainOptions{})
+	first := drainedToLaneOnce(t, repo, DrainOptions{})
 	if first.Start == nil || first.Lane.Issue != secondIssue {
 		t.Fatalf("the drain opens the documentation issue's lane: %+v", first)
 	}
@@ -242,7 +244,7 @@ func TestAHandedBackDrainLaneReleasesItsReservation(t *testing.T) {
 // does not hold every drain off until its lease lapses.
 func TestADrainRetriesAReleaseTheHandBackCouldNotPush(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
-	first := drainToLane(t, repo, Options{}, DrainOptions{})
+	first := drainedToLaneOnce(t, repo, DrainOptions{})
 	if first.Start == nil || first.Lane.Issue != secondIssue {
 		t.Fatalf("the drain opens the documentation issue's lane: %+v", first)
 	}
@@ -282,7 +284,7 @@ func TestADrainRetriesAReleaseTheHandBackCouldNotPush(t *testing.T) {
 // the same hand-back reuses that entry rather than pushing the release again.
 func TestADrainRetryThatReleasesIsLoggedOnTheRun(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
-	first := drainToLane(t, repo, Options{}, DrainOptions{})
+	first := drainedToLaneOnce(t, repo, DrainOptions{})
 	if first.Start == nil || first.Lane.Issue != secondIssue {
 		t.Fatalf("the drain opens the documentation issue's lane: %+v", first)
 	}

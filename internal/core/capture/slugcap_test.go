@@ -11,7 +11,7 @@ import (
 
 // TestCaptureCutsTheSlugAtTheRecordCap is iss-2610100626320367 at the capture
 // verb: a slug derived from long text, and a long slug given explicitly, are
-// both cut at recordid.MaxSlugLen on a hyphen, and the one value lands in the
+// both cut at recordid.DefaultMaxSlugLen on a hyphen, and the one value lands in the
 // filename and the frontmatter alike.
 func TestCaptureCutsTheSlugAtTheRecordCap(t *testing.T) {
 	long := "A record's file name has no cap tied to the length of its full path on Windows"
@@ -35,8 +35,8 @@ func TestCaptureCutsTheSlugAtTheRecordCap(t *testing.T) {
 			if res.Slug != c.want {
 				t.Fatalf("slug = %q, want %q", res.Slug, c.want)
 			}
-			if len(res.Slug) > recordid.MaxSlugLen {
-				t.Fatalf("slug %q is %d characters, over the %d cap", res.Slug, len(res.Slug), recordid.MaxSlugLen)
+			if len(res.Slug) > recordid.DefaultMaxSlugLen {
+				t.Fatalf("slug %q is %d characters, over the %d cap", res.Slug, len(res.Slug), recordid.DefaultMaxSlugLen)
 			}
 			if !strings.HasSuffix(filepath.Base(res.Path), "-"+c.want+".md") {
 				t.Fatalf("filename %q does not carry the capped slug %q", res.Path, c.want)

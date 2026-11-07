@@ -45,7 +45,7 @@ func landLaneOf(t *testing.T, repo interface{ Root() string }, runID string, pr 
 // drain read it keeps its pull request number.
 func TestTheDrainSummaryCountsPullRequestsPromotionsAndSpend(t *testing.T) {
 	repo := drainRepo(t)
-	first := drainToLane(t, repo, Options{}, DrainOptions{})
+	first := drainedToLaneOnce(t, repo, DrainOptions{})
 	if c := first.Counts; c.LanesOpened != 1 || c.InProgress != 1 || c.Judgements != 1 || c.Spend.AgentRuns != 0 {
 		t.Fatalf("the move that opens a lane counts it, in progress, and the judgement it took: %+v", c)
 	}
@@ -86,7 +86,7 @@ func TestTheDrainSummaryCountsPullRequestsPromotionsAndSpend(t *testing.T) {
 // ended in a pull request, a normal ending.
 func TestADrainWhoseLanesAllEndedWithoutAPullRequestSaysSo(t *testing.T) {
 	repo := drainRepo(t)
-	first := drainToLane(t, repo, Options{}, DrainOptions{Max: 1})
+	first := drainedToLaneOnce(t, repo, DrainOptions{Max: 1})
 	handBackLaneOf(t, repo, first.Start.RunID, Options{}, LaneHandBack{Kind: HandBackTrustRule, Reason: "may a guard skip the owner check?"})
 	capped, err := Drain(repo.Root(), Options{}, DrainOptions{})
 	if err != nil {
@@ -108,7 +108,7 @@ func TestADrainWhoseLanesAllEndedWithoutAPullRequestSaysSo(t *testing.T) {
 // named in the spend, which is then a floor, rather than refusing the drain.
 func TestASpendWhoseRunCannotBeReadIsNamed(t *testing.T) {
 	repo := drainRepo(t)
-	first := drainToLane(t, repo, Options{}, DrainOptions{Max: 1})
+	first := drainedToLaneOnce(t, repo, DrainOptions{Max: 1})
 	st := DrainState{Lanes: []DrainLane{{Issue: first.Lane.Issue, RunID: "run-0000000000000001", Outcome: DrainLanePullRequest, PR: 3}}}
 	c := drainCounts(repo.Root(), st, nil, nil)
 	if len(c.Spend.Unread) != 1 || c.Spend.Unread[0] != "run-0000000000000001" || c.PullRequests != 1 {
@@ -151,7 +151,7 @@ func TestADrainStoppedOnAnOutageWithALaneInProgressClaimsNoNormalEnding(t *testi
 // `from: field`, `route: rule` and the rule in `rule`.
 func TestADrainsOwnPromotionIsCountedOnce(t *testing.T) {
 	repo := drainRepo(t)
-	first, err := Drain(repo.Root(), Options{}, DrainOptions{})
+	first, err := drainedOnce(t, repo, DrainOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

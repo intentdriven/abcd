@@ -9,7 +9,6 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/question"
-	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // The live brief session questions at the CLI's doors (spc-2610141709430146
@@ -22,7 +21,7 @@ import (
 // answered question is no longer carried.
 func TestAhoyDetectionCarriesTheSessionsQuestions(t *testing.T) {
 	hermeticEnv(t)
-	repo := gittest.NewRepo(t).Root()
+	repo := newRepo(t).Root()
 	t.Chdir(repo)
 	if _, err := runCLIStdinErr(t, "", "ahoy", "install", "--yes", "--adopt", "--visibility", "private",
 		"--docs-target", "skip", "--scan-deep", "false", "--json"); err != nil {

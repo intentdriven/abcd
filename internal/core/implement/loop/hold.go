@@ -7,8 +7,8 @@ package loop
 // sibling whose round passes after the hand-back does not land: it takes the
 // stage `held` before the first landing step that reaches past the machine or
 // merges — before the push when it has not pushed, before arming when it has
-// opened its pull request, and disarmed (`gh pr merge <n> --disable-auto`)
-// when it was already armed. The person's word on each held lane is given
+// opened its pull request, and withdrawn (auto-merge off, out of the queue, read
+// back) when it was already armed. The person's word on each held lane is given
 // through `implement step --release <lane>` (it lands as it is) or `--discard
 // <lane>` (it does not land), once no lane of the run has anything left to do.
 
@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/implement"
+	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -67,19 +68,29 @@ func holdLane(c Context, lane *Lane) (Outcome, error) {
 				if strings.TrimSpace(state) == "MERGED" {
 					return landStage(c, lane)
 				}
-				if _, err := forge(c, *lane, "pr", "merge", n, "--disable-auto"); err != nil {
-					r, _ := AsRefusal(err)
-					if r != nil && r.outage != nil {
+				// Nothing merges until the person decides, so the queue entry leaves
+				// with the auto-merge, and the lane is held only once the forge stops
+				// reporting either.
+				v, unread, err := readQueue(c, *lane)
+				if err != nil {
+					return Outcome{}, err
+				}
+				if unread != "" {
+					return Outcome{}, contend(string(StageHeld), "", lane.ID,
+						"pull request #"+n+" is armed to merge and "+handedBackCause(c.State)+" was handed back, and its arming could not be read ("+unread+")",
+						"run `abcd implement step` again")
+				}
+				if err := landing.WithdrawArming(gateForge(c, *lane), n, v.ID, v.AutoMergeRequest != nil, v.queued()); err != nil {
+					if r := netFailure(StageHeld, lane.ID, "gh pr merge", err); r != nil {
 						// A lost network is waited out on the shared probe.
 						return Outcome{}, r
 					}
-					why := err.Error()
-					if r != nil {
-						why = r.Reason
-					}
 					return Outcome{}, refuse(string(StageHeld), "", lane.ID,
-						"pull request #"+n+" is armed to merge and "+handedBackCause(c.State)+" was handed back, but the forge refused to withdraw the arming: "+why,
+						"pull request #"+n+" is armed to merge and "+handedBackCause(c.State)+" was handed back, but the forge refused to withdraw the arming: "+forgeWhy(err),
 						"decide pull request #"+n+" yourself on the forge (disarm or close it), then run `abcd implement step` again")
+				}
+				if err := confirmWithdrawn(c, *lane, StageHeld); err != nil {
+					return Outcome{}, err
 				}
 			}
 			cp := *ld
@@ -115,9 +126,10 @@ func busyLanes(st State) []string {
 
 // decidable finds the held lane a --release or --discard names, refusing a
 // lane that is not held and a run with any lane still at work. --discard also
-// takes a lane a drain handed back as stuck (stuck.go), whose worktree and
-// branch the hand-back left.
-func decidable(st State, laneID, flag string) (int, error) {
+// takes a lane handed back as stuck or closed, by a drain (stuck.go) or a landing, whose
+// worktree and branch the hand-back left, and a lane the land fence refuses because its run let its
+// reservation go with no stop's mark standing.
+func decidable(repoRoot string, st State, laneID, flag string) (int, error) {
 	i := -1
 	for k, l := range st.Lanes {
 		if l.ID == laneID {
@@ -128,7 +140,7 @@ func decidable(st State, laneID, flag string) (int, error) {
 		return -1, refuse(string(StageHeld), "", "", fmt.Sprintf("%s has no lane of the name given (%s)", st.RunID, termsafe.DescribeRefused(laneID)),
 			"name a held lane `abcd implement status` lists")
 	}
-	if l := st.Lanes[i]; flag == "--discard" && stuckLane(l) {
+	if l := st.Lanes[i]; flag == "--discard" && (stuckLane(l) || driveStopped(st.RunID) || letGoAtLand(repoRoot, st, l)) {
 		return i, nil
 	}
 	if l := st.Lanes[i]; l.Stage != StageHeld || l.Hold == nil {
@@ -142,14 +154,27 @@ func decidable(st State, laneID, flag string) (int, error) {
 	return i, nil
 }
 
+// letGoAtLand reports whether l waits at land on a reservation its run let go, with no stop's
+// mark standing, whose answer is the run's take-over instead.
+func letGoAtLand(repoRoot string, st State, l Lane) bool {
+	if l.Stage != StageLand || st.ReservedAt != nil || !letItsReservationGo(st) {
+		return false
+	}
+	c, err := runControl(repoRoot, st.RunID)
+	return err == nil && (c.Stop == nil || c.Stop.HaltedAt == nil)
+}
+
 // Release lands a held lane as it is, on the person's word (`implement step
 // --release <lane>`): its stage returns to `land` and its landing resumes at the
 // step it stopped before, synced first when a sibling landed since its base.
 // It changes nothing when the lane is not held or any lane is still at work.
 func Release(repoRoot, runID, laneID string, o Options) (StepResult, error) {
+	if err := driveStopRefusal(runID); err != nil {
+		return StepResult{}, err
+	}
 	var res StepResult
 	err := mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
-		i, err := decidable(*st, laneID, "--release")
+		i, err := decidable(repoRoot, *st, laneID, "--release")
 		if err != nil {
 			return false, err
 		}
@@ -201,6 +226,17 @@ func stuckLane(l Lane) bool {
 // shared probe, changing nothing, and a close the network refuses is recorded
 // as the run's outage (outage.go).
 func Discard(repoRoot, runID, laneID string, o Options) (StepResult, error) {
+	res, err := discardHeld(repoRoot, runID, laneID, o)
+	if err == nil && driveStopped(runID) {
+		if st, rerr := ReadState(repoRoot, runID); rerr == nil {
+			liftDriveStop(st)
+		}
+	}
+	return res, err
+}
+
+// discardHeld is Discard's move on the lane.
+func discardHeld(repoRoot, runID, laneID string, o Options) (StepResult, error) {
 	if err := configTripwire(repoRoot, runID); err != nil {
 		return StepResult{}, err
 	}
@@ -210,7 +246,7 @@ func Discard(repoRoot, runID, laneID string, o Options) (StepResult, error) {
 	}
 	var res StepResult
 	err = mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
-		i, err := decidable(*st, laneID, "--discard")
+		i, err := decidable(repoRoot, *st, laneID, "--discard")
 		if err != nil {
 			return false, err
 		}
@@ -236,7 +272,7 @@ func Discard(repoRoot, runID, laneID string, o Options) (StepResult, error) {
 		}
 		did := []string{}
 		if lane.Worktree != "" {
-			if err := removeLaneWorktree(c, lane); err != nil {
+			if err := removeLaneWorktree(c, lane, "run `abcd implement step --discard "+lane.ID+"` again"); err != nil {
 				return false, err
 			}
 			did = append(did, "removed its worktree")
@@ -252,8 +288,26 @@ func Discard(repoRoot, runID, laneID string, o Options) (StepResult, error) {
 			}
 		}
 		// A lane handed back as closed has a pull request already closed.
-		if lane.PR > 0 && (lane.HandBack == nil || lane.HandBack.Kind != HandBackClosed) {
-			n := strconv.Itoa(lane.PR)
+		pr := lane.PR
+		if driveStopped(st.RunID) {
+			// The stop says the state cannot be trusted: the forge says which pull
+			// request the lane's branch has.
+			pr = 0
+			if lane.Branch != "" {
+				found, err := findPR(c, lane)
+				if err != nil {
+					if r, ok := AsRefusal(err); ok {
+						g.take(r)
+					}
+					return false, err
+				}
+				if found != nil {
+					pr = found.Number
+				}
+			}
+		}
+		if pr > 0 && (lane.HandBack == nil || lane.HandBack.Kind != HandBackClosed) {
+			n := strconv.Itoa(pr)
 			if _, err := forge(c, lane, "pr", "close", n); err != nil {
 				if r, ok := AsRefusal(err); ok {
 					g.take(r)

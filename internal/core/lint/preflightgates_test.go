@@ -647,9 +647,15 @@ func bareGofmtInvocation(text string) string {
 	return strings.TrimSpace(m[1])
 }
 
+// checkTestsPrefix is what a test stage's recipe line starts with: cmd/check-tests
+// and the stage's name, before the go test command written out whole.
+var checkTestsPrefix = regexp.MustCompile(`^(\s*)go run \./cmd/check-tests \$\(CHECK_TESTS_FLAGS\) (?:unit|race) `)
+
 // makeRecipe returns one Makefile target's recipe: every tab-indented line under
-// `<target>:`. Hand-parsed for the reason preflightPrereqs is — this repository
-// carries no Makefile parser and adds none for one target.
+// `<target>:`, each test stage's line as the go test command it runs
+// (TestBothTestStagesRunThroughTheCheck holds that they run through the check).
+// Hand-parsed for the reason preflightPrereqs is — this repository carries no
+// Makefile parser and adds none for one target.
 func makeRecipe(makefile, target string) (string, bool) {
 	lines := strings.Split(makefile, "\n")
 	at := -1
@@ -667,7 +673,7 @@ func makeRecipe(makefile, target string) (string, bool) {
 		if !strings.HasPrefix(lines[i], "\t") {
 			break
 		}
-		body = append(body, lines[i])
+		body = append(body, checkTestsPrefix.ReplaceAllString(lines[i], "$1"))
 	}
 	// A `define`d block invoked by the recipe is part of what the target runs, so
 	// fold every define in the file into what is inspected: the resolution logic

@@ -2,9 +2,12 @@ package cli
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // The committed pre-push hook's work-in-progress entry (spc-2610120941441282
@@ -39,8 +42,24 @@ const (
 func newWIPCase(t *testing.T) *prePushCase {
 	t.Helper()
 	bin := builtAbcd.Path(t)
-	c := newPrePushCase(t)
-	c.env = append(c.env, "ABCD_OUTBOUND_BIN="+bin)
+	for _, tool := range []string{"bash", "git"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			t.Skipf("%s unavailable", tool)
+		}
+	}
+	root := prePushSourceRoot(t)
+	env := append(gittest.Env(t), "ABCD_OUTBOUND_BIN="+bin)
+	return prePushCaseFromTemplate(t, "pre-push-wip", env, func(c *prePushCase) {
+		c.seed(root, "")
+		c.seedWIP()
+	})
+}
+
+// seedWIP lays the cloud scripts and the declared connector over a seeded
+// case, on origin's default branch.
+func (c *prePushCase) seedWIP() {
+	t := c.t
+	t.Helper()
 	top, err := c.run(".", "git", "rev-parse", "--show-toplevel")
 	if err != nil {
 		t.Fatalf("not in a git checkout: %s", top)
@@ -60,7 +79,6 @@ func newWIPCase(t *testing.T) *prePushCase {
 	c.git("-c", "core.hooksPath=/dev/null", "commit", "-q", "-m", "fixture: the cloud scripts")
 	c.git("-c", "core.hooksPath=/dev/null", "push", "-q", "origin", "HEAD:main")
 	c.git("fetch", "-q", "origin")
-	return c
 }
 
 // commitMsg commits one file with the message given.

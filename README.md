@@ -133,7 +133,7 @@ curl -fsSL https://github.com/intentdriven/abcd/releases/latest/download/install
 ```
 <!-- END GENERATED: install-command -->
 
-Without `gh`, the download is checked only against the `checksums.txt` published beside it on the same release page, not against the signed build record, and the installer prints a warning saying so, with the `gh attestation verify` command that checks the installed binary by hand.
+Without `gh`, the download is checked only against the `checksums.txt` published beside it on the same release page, not against the signed build record, and the installer prints a warning saying so, with the `gh attestation verify` command that checks the installed binary by hand. With or without `gh`, the installer runs the downloaded binary's `--version` before it installs it, and installs nothing if that names another release than the latest.
 
 The [install guide](docs/how-to/install.md) gives a hardened form of the command, which holds its own download to HTTPS with no proxy, and covers building from source and what to do when `abcd` isn't found afterwards.
 

@@ -118,6 +118,33 @@ var gitLongOptions = map[string][]string{
 		"--no-committer-date-is-author-date", "--no-ignore-date", "--no-rerere-autoupdate",
 		"--no-gpg-sign", "--no-rebasing",
 	},
+	"gc": {
+		"--quiet", "--prune", "--cruft", "--max-cruft-size", "--aggressive", "--auto", "--detach", "--force",
+		"--keep-largest-pack", "--expire-to", "--skip-foreground-tasks",
+		"--no-quiet", "--no-prune", "--no-cruft", "--no-aggressive", "--no-auto", "--no-detach", "--no-force",
+		"--no-keep-largest-pack", "--no-expire-to", "--no-skip-foreground-tasks",
+	},
+	"replace": {
+		"--list", "--delete", "--edit", "--graft", "--convert-graft-file", "--force", "--raw", "--format",
+		"--no-force", "--no-raw", "--no-format",
+	},
+	"send-pack": {
+		"--verbose", "--quiet", "--receive-pack", "--exec", "--remote", "--all", "--dry-run", "--mirror",
+		"--force", "--signed", "--push-option", "--progress", "--thin", "--atomic", "--stateless-rpc",
+		"--stdin", "--helper-status", "--force-with-lease", "--force-if-includes",
+		"--no-verbose", "--no-quiet", "--no-receive-pack", "--no-exec", "--no-remote", "--no-all",
+		"--no-dry-run", "--no-mirror", "--no-force", "--no-signed", "--no-push-option", "--no-progress",
+		"--no-thin", "--no-atomic", "--no-stateless-rpc", "--no-stdin", "--no-helper-status",
+		"--no-force-with-lease", "--no-force-if-includes",
+	},
+	"prune": {
+		"--dry-run", "--verbose", "--progress", "--expire", "--exclude-promisor-objects",
+		"--no-dry-run", "--no-verbose", "--no-progress", "--no-expire", "--no-exclude-promisor-objects",
+	},
+	// fast-import reads its options by hand and takes no abbreviation, and has
+	// no completion helper to read this from, so it holds the one option an
+	// entry names: a prefix of it is read as the option, which only over-blocks.
+	"fast-import": {"--force"},
 	"pull": {
 		"--verbose", "--quiet", "--progress", "--recurse-submodules", "--rebase", "--stat", "--summary",
 		"--compact-summary", "--log", "--signoff", "--squash", "--commit", "--edit", "--cleanup", "--ff",

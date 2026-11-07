@@ -5,8 +5,8 @@
 //
 // go test's -timeout counts from each test binary's own start, so a package
 // that starts late in a long step meets the job's timeout-minutes first, and a
-// cancellation at the cap carries nothing but the cancellation. The check and
-// macos-suite jobs in ci.yml therefore run every step that runs go test with
+// cancellation at the cap carries nothing but the cancellation. ci.yml's check
+// job and macos-suite.yml's shard job therefore run every step that runs go test with
 //
 //	shell: go run ./cmd/ci-watchdog bash --noprofile --norc -eo pipefail {0}
 //

@@ -58,12 +58,15 @@ func issueRepoRule(t *testing.T, repo *gittest.Repo) {
 // issueRepoAt is issueRepo with every issue's found_at; "" names none.
 func issueRepoAt(t *testing.T, foundAt string) *gittest.Repo {
 	t.Helper()
-	repo := briefRepo(t, agentsMarked)
-	issueRepoRule(t, repo)
-	fileIssueAt(t, repo, eligibleIssue, capture.SeverityMinor, capture.Category("bug"), issueRemedy, foundAt)
-	fileIssueAt(t, repo, majorIssue, capture.SeverityMajor, capture.Category("bug"), "A remedy for a major one.", foundAt)
-	repo.Commit("the ledger")
-	return repo
+	_, w := builtOnce(t, worldKey("issueRepoAt", foundAt), func(w *fixtureWorld) struct{} {
+		repo := briefRepo(t, agentsMarked)
+		issueRepoRule(t, repo)
+		fileIssueAt(t, repo, eligibleIssue, capture.SeverityMinor, capture.Category("bug"), issueRemedy, foundAt)
+		fileIssueAt(t, repo, majorIssue, capture.SeverityMajor, capture.Category("bug"), "A remedy for a major one.", foundAt)
+		repo.Commit("the ledger")
+		return struct{}{}
+	})
+	return w.repo
 }
 
 // TestAnIssueKeyOpensOneLaneWhoseBriefIsTheRecordAndItsRemedy is scope 4:
@@ -72,7 +75,7 @@ func issueRepoAt(t *testing.T, foundAt string) *gittest.Repo {
 // definition of done a detector watched to fail before the fix and pass after.
 func TestAnIssueKeyOpensOneLaneWhoseBriefIsTheRecordAndItsRemedy(t *testing.T) {
 	repo := issueRepo(t)
-	start, err := Start(repo.Root(), eligibleIssue, Options{})
+	start, err := startedOnce(t, repo, eligibleIssue)
 	if err != nil {
 		t.Fatalf("an eligible issue starts a run: %v", err)
 	}
@@ -239,20 +242,24 @@ func TestAPersonsOwnBuildTakesAPromotedIssueNamingTheIntent(t *testing.T) {
 // issueAwaiting drives a run for the eligible issue to its implement await.
 func issueAwaiting(t *testing.T) (*gittest.Repo, string, Lane, string) {
 	t.Helper()
-	repo := issueRepo(t)
-	start, err := Start(repo.Root(), eligibleIssue, Options{})
+	runID, w := builtOnce(t, "issueAwaiting", func(w *fixtureWorld) string {
+		repo := issueRepo(t)
+		start, err := startedOnce(t, repo, eligibleIssue)
+		if err != nil {
+			t.Fatal(err)
+		}
+		advancedToOnce(t, repo, start.RunID, StageImplement)
+		if _, err := advance(repo.Root(), start.RunID, DefaultStages(), Options{}); err != nil {
+			t.Fatal(err)
+		}
+		return start.RunID
+	})
+	repo := w.repo
+	st, err := ReadState(repo.Root(), runID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	advanceTo(t, repo, start.RunID, StageImplement)
-	if _, err := advance(repo.Root(), start.RunID, DefaultStages(), Options{}); err != nil {
-		t.Fatal(err)
-	}
-	st, err := ReadState(repo.Root(), start.RunID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return repo, start.RunID, st.Lanes[0], filepath.Join(repo.Root(), filepath.FromSlash(RunRelDir), start.RunID, "lane-1")
+	return repo, runID, st.Lanes[0], filepath.Join(repo.Root(), filepath.FromSlash(RunRelDir), runID, "lane-1")
 }
 
 // TestAnIssueLanesReceiptMustResolveItsIssue: the landing resolves the issue

@@ -857,6 +857,9 @@ func renderCut(w io.Writer, verb string, cut release.Cut) {
 	if cut.TargetsError != "" {
 		fmt.Fprintf(w, "  targeted:   not read — %s\n", termsafe.Sanitize(scrubPaths(errors.New(cut.TargetsError))))
 	}
+	if cut.FidelityNote != "" {
+		fmt.Fprintf(w, "  docs review: %s\n", termsafe.Sanitize(cut.FidelityNote))
+	}
 	// Every forward-looking marker whose records have all reached the tree,
 	// reported for removal and never refused on (iss-2611031731385043): the
 	// marker said its record was not here yet, which is no longer true, and a

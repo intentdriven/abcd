@@ -206,3 +206,18 @@ func TestBuildNamesTheBudgetCheckAndTheRunnersItSkipped(t *testing.T) {
 		}
 	}
 }
+
+// A discard takes a lane handed back from an intent's run as well as an issue's, and
+// the help says what becomes of each run.
+func TestStepHelpSaysADiscardTakesAHandedBackLaneOfAnyRun(t *testing.T) {
+	var asJSON bool
+	help := flattenSpace(newImplementStepCommand(&asJSON).Long)
+	if strings.Contains(help, "also takes an issue run's lane") {
+		t.Errorf("the help names only an issue run's lane: %q", help)
+	}
+	for _, want := range []string{"--discard also takes a lane handed back as stuck or closed", "ends an issue's run", "an intent's run stays"} {
+		if !strings.Contains(help, want) {
+			t.Errorf("the help is missing %q", want)
+		}
+	}
+}

@@ -23,6 +23,9 @@ import (
 // CheckSkipped is the pass-over of an issue the drain's skip list holds back.
 const CheckSkipped = "skipped"
 
+// CheckNeedsPerson is the pass-over of an issue a drive may not work.
+const CheckNeedsPerson = "needs-a-person"
+
 // maxDrainSkips caps the skip list, and maxSkipReasonBytes one entry's reason.
 const (
 	maxDrainSkips      = 64

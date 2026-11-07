@@ -27,7 +27,7 @@ func sweep(t *testing.T, bare, id string) {
 // passes the issue over, naming the hand-back.
 func TestAPendingHandBackIsPublishedOverASweptBranch(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
-	first, err := Drain(repo.Root(), Options{}, DrainOptions{})
+	first, err := drainedOnce(t, repo, DrainOptions{})
 	if err != nil || first.Judging == nil || first.Judging.Issue != secondIssue {
 		t.Fatalf("the first move asks over %s: %+v %v", secondIssue, first.Judging, err)
 	}

@@ -251,6 +251,15 @@ type StatusView struct {
 	// holdsUnread is true when the holds could not be read, and the rest of
 	// the view was: the prompt block says so in its own line.
 	holdsUnread bool
+	// ScheduledFailure is the last verdict kept of the repository's scheduled
+	// workflow, when it was red; ScheduledDoubt what is said when there is no
+	// verdict to name and silence would read like a green; ScheduledRefreshDue
+	// whether the kept answer has aged enough to start a refresh
+	// (readScheduled).
+	ScheduledFailure    *ScheduledFailure
+	ScheduledDoubt      *ScheduledDoubt
+	ScheduledRefreshDue bool
+	scheduledPaths      *scheduledPathSet
 }
 
 // StatusFetch is what `abcd status`'s fetch could not read: Gap is why
@@ -434,6 +443,8 @@ func ReadStatus(ctx context.Context, root string, now time.Time, o Options) (Sta
 	if v.Holds, v.Lapsed, err = readHolds(root, now, o); err != nil {
 		holdsErr = &holdsUnreadError{err}
 	}
+	scheduled := readScheduled(ctx, root, now, o)
+	v.ScheduledFailure, v.ScheduledDoubt, v.ScheduledRefreshDue, v.scheduledPaths = scheduled.failure, scheduled.doubt, scheduled.due, scheduled.paths
 	in, err := takeIn(ctx, root, now)
 	if err != nil {
 		return v, errors.Join(holdsErr, err)

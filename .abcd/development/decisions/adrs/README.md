@@ -238,9 +238,11 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-2610301638558260](2610301638558260-a-published-refusal-code-is-never.md) | A published refusal code is never renamed or reused | proposed | 2026-10-30 |
 | [adr-2610310235000654](2610310235000654-an-unattended-plan-stands-in-for-the.md) | An unattended plan stands in for the sign-off only on a recorded, reviewed, unchanged draft | proposed | 2026-10-31 |
 | [adr-2611011153058085](2611011153058085-a-re-render-never-discards-hand-written.md) | A re-render never discards hand-written text unasked | proposed | 2026-11-01 |
-| [adr-2611011231015519](2611011231015519-abcd-never-spends-a-person-s-money-past.md) | The launches abcd makes spend a person's money only within the budget they set, past it only through named residuals | proposed | 2026-11-01 |
+| [adr-2611011231015519](2611011231015519-abcd-never-spends-a-person-s-money-past.md) | The launches abcd makes spend a person's money only within the budget they set, past it only through named residuals | accepted | 2026-11-01 |
 | [adr-2611011327164895](2611011327164895-a-self-attested-result-is-labelled-as.md) | A self-attested result is labelled as such, and only the person switches it on, by an act abcd's own verbs refuse to its agents | proposed | 2026-11-01 |
 | [adr-2611011332427073](2611011332427073-abcd-resolves-every-layered-setting-by.md) | abcd resolves every layered setting by one precedence rule | proposed | 2026-11-01 |
 | [adr-2611011813190527](2611011813190527-a-repository-declares-a-sequence-s-shape.md) | A repository declares a sequence's shape but never a widening flag | proposed | 2026-11-01 |
 | [adr-2611011813195749](2611011813195749-abcd-never-runs-a-foreign-executable.md) | abcd never runs a foreign executable under its own name, and no code that writes records is loaded at run time | proposed | 2026-11-01 |
+| [adr-2611050740453233](2611050740453233-a-stop-is-recorded-state-a-person-sets.md) | A stop is recorded state a person sets, and one shared folder is the exception to the owner-only store | proposed | 2026-11-05 |
+| [adr-2611062149324491](2611062149324491-an-unattended-process-replaces-its-own.md) | An unattended process replaces its own binary only after verification and a passing proof | proposed | 2026-11-06 |
 <!-- /index -->

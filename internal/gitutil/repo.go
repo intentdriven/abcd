@@ -237,7 +237,9 @@ func WorkingTreeCommand(root string, args ...string) *exec.Cmd {
 // context's error even when git then exited 0, so a caller that needs to know
 // whether git's work was made checks ProcessState.
 func WorkingTreeCommitCommand(ctx context.Context, root string, args ...string) *exec.Cmd {
-	return workingTreeCommand(ctx, root, commitPins(), args)
+	cmd := workingTreeCommand(ctx, root, commitPins(), args)
+	cmd.Env = narrowHooked(cmd.Env)
+	return cmd
 }
 
 // repositoryCommitKnobs are the ExecPins a commit abcd makes leaves to the
@@ -716,21 +718,28 @@ func RunLimitedNetContext(ctx context.Context, root string, maxBytes int, args .
 // runLimitedContext is RunLimitedContext (network false) and
 // RunLimitedNetContext (true).
 func runLimitedContext(ctx context.Context, root string, maxBytes int, network bool, args []string) (string, error) {
+	out, _, err := runLimitedOverflow(ctx, root, maxBytes, network, args)
+	return out, err
+}
+
+// runLimitedOverflow is runLimitedContext that also says whether the answer ran
+// past maxBytes, for a caller that must not read part of one as the whole.
+func runLimitedOverflow(ctx context.Context, root string, maxBytes int, network bool, args []string) (string, bool, error) {
 	if err := ctx.Err(); err != nil {
-		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+		return "", false, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 	}
 	cmd := isolatedGitContext(ctx, root, args...)
 	if network {
 		cmd.Env = netEnv(cmd.Env)
 	}
-	out, _, err := runBoundedCmd(ctx, cmd, maxBytes)
+	out, overflowed, err := runBoundedCmd(ctx, cmd, maxBytes)
 	if ctxErr := ctx.Err(); ctxErr != nil {
-		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), ctxErr)
+		return "", overflowed, fmt.Errorf("git %s: %w", strings.Join(args, " "), ctxErr)
 	}
 	if err != nil {
-		return "", err
+		return "", overflowed, err
 	}
-	return strings.TrimRight(string(out), " \t\r\n"), nil
+	return strings.TrimRight(string(out), " \t\r\n"), overflowed, nil
 }
 
 // RunCapped is RunLimited for callers whose answer is only correct if it is

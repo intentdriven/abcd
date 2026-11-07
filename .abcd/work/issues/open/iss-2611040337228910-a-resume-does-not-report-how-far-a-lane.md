@@ -10,6 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/implement/loop"
 remedy: "Report commits behind at a resume and before a preflight, and offer the sync; a test resumes behind main and reads the report."
+related_intents: [itd-2611041549461012]
 ---
 
 A resume does not report how far a lane's base has moved: on 2026-11-04 a lane resumed on a base seven hours old, so its pull request was behind main by more than twenty commits and its preflight judged the old base.

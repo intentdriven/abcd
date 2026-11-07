@@ -252,7 +252,7 @@ func TestBuildReservesTheIntentWithItsSpecFootprint(t *testing.T) {
 // reserves its key when it is resumed, and records it.
 func TestAResumedRunWithoutAReservationReservesIt(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), footprintedSpec)
-	res, err := Start(repo.Root(), "itd-10", Options{})
+	res, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -400,7 +400,7 @@ func TestBuildReservesAnIssueWithItsFoundAt(t *testing.T) {
 // reservation when its lane is handed back, and its record says so.
 func TestAHandedBackBuildLaneReleasesItsReservation(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
-	res, err := Start(repo.Root(), secondIssue, Options{})
+	res, err := startedOnce(t, repo, secondIssue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -419,7 +419,7 @@ func TestAHandedBackBuildLaneReleasesItsReservation(t *testing.T) {
 // is in, and reserves with it, rather than calling it a record with none.
 func TestAResumedIssueRunReadsFoundAtWhereverItsIssueIs(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
-	res, err := Start(repo.Root(), secondIssue, Options{})
+	res, err := startedOnce(t, repo, secondIssue)
 	if err != nil {
 		t.Fatal(err)
 	}

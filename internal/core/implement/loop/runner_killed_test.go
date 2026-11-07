@@ -27,7 +27,7 @@ import (
 func killOnClaude(t *testing.T, commits int, report bool) (root, id string, res StepResult) {
 	t.Helper()
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}

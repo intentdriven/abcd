@@ -43,6 +43,9 @@ var (
 // It is how the routine case becomes machine-visible: an autonomous run that
 // commits under the harness's default identity is flagged wherever the identity
 // gate runs, before the attribution gate refuses the pull request in CI.
+//
+// It judges the values it is given. Check gives it the identity as git would stamp
+// it too (isToolAsStamped), since a value as set can differ from its stamp.
 func IsToolIdentity(role Role, name, email string) bool {
 	return aiNameRe.MatchString(name) || aiMailRe.MatchString(email) ||
 		IsMachineName(name) || IsMachineAddress(role, email) ||

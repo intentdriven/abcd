@@ -47,17 +47,20 @@ func decisionRecord(id, slug, date, text string) string {
 // the folder and a frozen decision log.
 func briefRepo(t *testing.T, agents string) *gittest.Repo {
 	t.Helper()
-	repo := loopRepo(t, readyIntent("", settledQuestions+"Refines adr-27, and adr-404 which does not exist.\n\n"), specWithSteps(""))
-	if agents != "" {
-		repo.Write("AGENTS.md", agents)
-	}
-	repo.Write(adrRel, adrBody)
-	repo.Write(decisions.FrozenLog, decisionsLog)
-	for name, body := range briefDecisionRecords {
-		repo.Write(decisions.RelDir+"/"+name, body)
-	}
-	repo.Commit("the record")
-	return repo
+	_, w := builtOnce(t, worldKey("briefRepo", agents), func(w *fixtureWorld) struct{} {
+		repo := loopRepo(t, readyIntent("", settledQuestions+"Refines adr-27, and adr-404 which does not exist.\n\n"), specWithSteps(""))
+		if agents != "" {
+			repo.Write("AGENTS.md", agents)
+		}
+		repo.Write(adrRel, adrBody)
+		repo.Write(decisions.FrozenLog, decisionsLog)
+		for name, body := range briefDecisionRecords {
+			repo.Write(decisions.RelDir+"/"+name, body)
+		}
+		repo.Commit("the record")
+		return struct{}{}
+	})
+	return w.repo
 }
 
 // advanceTo steps the run until its current lane's next step is want.
@@ -87,11 +90,11 @@ func advanceTo(t *testing.T, repo *gittest.Repo, runID string, want Stage) StepR
 // receipt go.
 func TestTheBriefNamesWhatItWasRenderedFrom(t *testing.T) {
 	repo := briefRepo(t, agentsMarked)
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
-	advanceTo(t, repo, start.RunID, StageBrief)
+	advancedToOnce(t, repo, start.RunID, StageBrief)
 	res, err := advance(repo.Root(), start.RunID, DefaultStages(), Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -207,11 +210,11 @@ func TestBriefQuotesDecisionsNamingTheIntent(t *testing.T) {
 // brief says so.
 func TestTheBriefCarriesAnUnmarkedAgentsFileWhole(t *testing.T) {
 	repo := briefRepo(t, "# AGENTS.md\n\n## Definition of done\n\n- make check is clean.\n")
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
-	advanceTo(t, repo, start.RunID, StageImplement)
+	advancedToOnce(t, repo, start.RunID, StageImplement)
 	st, _ := ReadState(repo.Root(), start.RunID)
 	raw, err := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(st.Lanes[0].Brief)))
 	if err != nil {
@@ -235,11 +238,11 @@ func TestTheBriefCarriesAnUnmarkedAgentsFileWhole(t *testing.T) {
 // instruction, outside every block it carries from the record.
 func TestTheBriefCarriesTheOutboundPolicy(t *testing.T) {
 	repo := briefRepo(t, agentsMarked)
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
-	advanceTo(t, repo, start.RunID, StageImplement)
+	advancedToOnce(t, repo, start.RunID, StageImplement)
 	st, err := ReadState(repo.Root(), start.RunID)
 	if err != nil {
 		t.Fatal(err)
@@ -271,11 +274,11 @@ func TestTheBriefCarriesTheOutboundPolicy(t *testing.T) {
 // the brief's own instruction, before the record it carries.
 func TestTheBriefTellsTheImplementerToYieldOnALostConnection(t *testing.T) {
 	repo := briefRepo(t, agentsMarked)
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
-	advanceTo(t, repo, start.RunID, StageImplement)
+	advancedToOnce(t, repo, start.RunID, StageImplement)
 	st, err := ReadState(repo.Root(), start.RunID)
 	if err != nil {
 		t.Fatal(err)
@@ -312,11 +315,11 @@ func TestTheBriefTellsTheImplementerToYieldOnALostConnection(t *testing.T) {
 func TestTheBriefIsRenderedFromTheLaneBase(t *testing.T) {
 	t.Run("no AGENTS.md at the base", func(t *testing.T) {
 		repo := briefRepo(t, "")
-		start, err := Start(repo.Root(), "itd-10", Options{})
+		start, err := startedOnce(t, repo, "itd-10")
 		if err != nil {
 			t.Fatal(err)
 		}
-		advanceTo(t, repo, start.RunID, StageBrief)
+		advancedToOnce(t, repo, start.RunID, StageBrief)
 		_, err = advance(repo.Root(), start.RunID, DefaultStages(), Options{})
 		if r := mustRefusal(t, err); r.Stage != string(StageBrief) || !strings.Contains(r.Reason, "AGENTS.md") {
 			t.Fatalf("want the missing conventions named: %+v", r)
@@ -352,11 +355,11 @@ func TestTheBriefIsRenderedFromTheLaneBase(t *testing.T) {
 // base's text, byte for byte the first rendering.
 func TestABriefRenderedAgainRendersTheBaseNotTheWorktree(t *testing.T) {
 	repo := briefRepo(t, agentsMarked)
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
-	advanceTo(t, repo, start.RunID, StageImplement)
+	advancedToOnce(t, repo, start.RunID, StageImplement)
 	st, err := ReadState(repo.Root(), start.RunID)
 	if err != nil {
 		t.Fatal(err)
@@ -439,11 +442,11 @@ func TestABriefSourceTheBaseHoldsAsASymlinkIsRefused(t *testing.T) {
 // (iss-2611012202511008). The receipt names the model it ran.
 func TestTheBriefScopesTheDefinitionOfDone(t *testing.T) {
 	repo := briefRepo(t, agentsMarked)
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
-	advanceTo(t, repo, start.RunID, StageImplement)
+	advancedToOnce(t, repo, start.RunID, StageImplement)
 	st, err := ReadState(repo.Root(), start.RunID)
 	if err != nil {
 		t.Fatal(err)

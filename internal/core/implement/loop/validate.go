@@ -66,11 +66,14 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/intent"
+	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/recordid"
@@ -118,7 +121,8 @@ var reviewerVerdicts = map[string][]verdictWord{
 	RoleSecurity: {{"APPROVE", true}, {"BLOCK", false}, {"NEEDS-INPUT", false}},
 }
 
-// verdictHeadingRe is a return's Verdict heading, at any depth.
+// verdictHeadingRe is a Verdict heading in a report, at any depth: a report states
+// no verdict, so this reads wider than landing.ReadVerdict reads a return.
 var verdictHeadingRe = regexp.MustCompile(`(?im)^[ \t]{0,3}#{1,6}[ \t]+verdict[ \t]*#*[ \t]*$`)
 
 // reportVerdictRe is a verdict stated as a field on one line of a report:
@@ -151,7 +155,7 @@ func validateStage(c Context, lane *Lane) (Outcome, error) {
 			Note: fmt.Sprintf("the sync of %s with the default branch conflicted; a fresh implementer resolves it from the brief %s", lane.ID, s.Brief)}, nil
 	}
 	n := len(lane.Validation)
-	if n == 0 || lane.Validation[n-1].Fix != "" || lane.syncRoundDue() {
+	if n == 0 || lane.Validation[n-1].Fix != "" || lane.syncRoundDue() || lane.recordsRoundDue() {
 		round, err := openRound(c, *lane, n+1)
 		if err != nil {
 			return Outcome{}, err
@@ -207,6 +211,11 @@ func validateStage(c Context, lane *Lane) (Outcome, error) {
 			failing = append(failing, v)
 		}
 	}
+	if len(failing) > 0 && lane.readsRecords(*cur) {
+		// No fix round: the landing goes on to its pull request and leaves it open,
+		// naming the finding (recordOwnReview), for a person to see.
+		return Outcome{Note: fmt.Sprintf("round %d read the landing's records at %s and did not pass (%s); the lane parks at its pull request for a person", cur.Round, shortSHA(cur.HeadSHA), verdictsLine(*cur))}, nil
+	}
 	if len(failing) > 0 {
 		if taken, limit := lane.fixRoundsTaken(), c.State.FixRoundCap(); taken >= limit {
 			hb := HandBack{Verdict: VerdictUnachievable, Round: cur.Round, FixRounds: limit, Verdicts: verdictsLine(*cur)}
@@ -242,14 +251,20 @@ func validateStage(c Context, lane *Lane) (Outcome, error) {
 // closes the spec.
 func openRound(c Context, lane Lane, n int) (ValidationRound, error) {
 	roles := []string{RoleRuthless, RoleSecurity}
-	audits, err := auditsHere(c, lane)
-	if err != nil {
-		return ValidationRound{}, err
-	}
-	if audits {
-		roles = append(roles, RoleAuditor)
+	// A round over the records commit takes no audit: the verdict is on that record.
+	if !lane.recordsRoundDue() {
+		audits, err := auditsHere(c, lane)
+		if err != nil {
+			return ValidationRound{}, err
+		}
+		if audits {
+			roles = append(roles, RoleAuditor)
+		}
 	}
 	r := ValidationRound{Round: n, HeadSHA: lane.HeadSHA}
+	for _, res := range lane.Resolves {
+		r.ResolvesShown = append(r.ResolvesShown, res.Issue)
+	}
 	for _, role := range roles {
 		for _, v := range roundReviewers(c.State, role) {
 			dir, err := reviewerDir(c.State.RunID, lane.ID, n, role, v.Reviewer)
@@ -327,6 +342,246 @@ func writeRoundFile(repoRoot, rel string, body []byte) error {
 // abs is a checkout-relative path as an agent in another checkout addresses it.
 func abs(repoRoot, rel string) string { return filepath.Join(repoRoot, filepath.FromSlash(rel)) }
 
+// readerDiff is the git command a validator reads a range with: git's own text of the
+// objects as stored, whatever attributes, drivers, replace refs or submodule settings the
+// lane's worktree holds.
+const readerDiff = "--no-replace-objects diff --text --ignore-submodules=none --no-ext-diff --no-textconv"
+
+// gitlinkMode is a submodule commit's mode in git's lists: it names no blob here.
+const gitlinkMode = "160000"
+
+// maxReaderBlobBytes bounds a blob read for a NUL byte; a larger one stays in git's text,
+// where a large binary overflows the request.
+const maxReaderBlobBytes = 4 << 20
+
+// maxReaderNulBytes bounds a file with a NUL byte that a reader is shown, escaped.
+const maxReaderNulBytes = 64 << 10
+
+// gitBinaryProbeBytes is how much of a file git's own test looks through for a NUL byte.
+const gitBinaryProbeBytes = 8000
+
+// errReviewDiffPastCap is the request's diff past what a request carries.
+var errReviewDiffPastCap = fmt.Errorf("the lane's diff exceeds the %d-byte cap on a review request", maxReviewDiffBytes)
+
+// laneDiffForReader is the diff a reviewer's request carries: git's own text of each file
+// as stored, whatever the repository configures (no external diff program, no textconv
+// driver, no colour, no attribute calling text binary, no replace ref, no file git's diff
+// is asked to pass over). A file with a NUL byte is shown with what cannot be printed
+// escaped, so text beside the NUL stays readable. Past maxReaderNulBytes, one whose NUL git's
+// own test would find is one line giving its path, modes, size and blob, the request saying
+// such a file is unread, and what takes its place is shown after its line; any other stays
+// in git's text. Every other changed file is in that text, or there is no request.
+func laneDiffForReader(worktree, base, head string) ([]byte, error) {
+	ctx := context.Background()
+	raw, err := gitutil.RunCappedBytesAsStoredContext(ctx, worktree, "", maxBaseListing, "diff-tree", "-r", "--raw", "--no-renames", "--no-abbrev", "--ignore-submodules=none", "-z", base, head, "--")
+	if err != nil {
+		return nil, err
+	}
+	entries, err := parseRawDiff(string(raw))
+	if err != nil {
+		return nil, err
+	}
+	blobs, err := readerBlobs(worktree, entries)
+	if err != nil {
+		return nil, err
+	}
+	var notes bytes.Buffer
+	gitDiff := []string{"diff", "--text", "--ignore-submodules=none", "--no-ext-diff", "--no-textconv", "--no-color", base + ".." + head, "--"}
+	args := slices.Clone(gitDiff)
+	excluded := false
+	var inText []string
+	for _, e := range entries {
+		if notes.Len() > maxReviewDiffBytes {
+			return nil, errReviewDiffPastCap
+		}
+		was, now := blobs[e.oldObject], blobs[e.newObject]
+		if !was.apart() && !now.apart() {
+			inText = append(inText, e.path)
+			continue
+		}
+		if !excluded {
+			args, excluded = append(args, "."), true
+		}
+		args = append(args, ":(top,literal,exclude)"+e.path)
+		object, side := e.newObject, now
+		if !now.apart() || (was.pastBound() && !now.pastBound()) {
+			object, side = e.oldObject, was
+		}
+		name := strconv.Quote(termsafe.Sanitize(e.path))
+		if !side.pastBound() {
+			shown, err := gitutil.RunCappedBytesAsStoredContext(ctx, worktree, "", maxReviewDiffBytes, append(slices.Clone(gitDiff), ":(top,literal)"+e.path)...)
+			if err != nil {
+				return nil, err
+			}
+			fmt.Fprintf(&notes, "# a NUL byte, so what cannot be printed is escaped: %s: mode %s to %s, %d bytes, blob %s\n", name, e.oldMode, e.newMode, side.size, object)
+			notes.Write(escapedBytes(shown))
+			continue
+		}
+		fmt.Fprintf(&notes, "# binary, not shown: %s: mode %s to %s, %d bytes, blob %s (a NUL byte, past the %d bytes shown)\n", name, e.oldMode, e.newMode, side.size, object, maxReaderNulBytes)
+		if !now.pastBound() {
+			if err := newSideForReader(&notes, worktree, e, now); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if excluded {
+		listed, err := gitutil.RunCappedBytesAsStoredContext(ctx, worktree, "", maxBaseListing, slices.Insert(slices.Clone(args), 1, "--no-renames", "--name-only", "-z")...)
+		if err != nil {
+			return nil, err
+		}
+		got := slices.DeleteFunc(strings.Split(string(listed), "\x00"), func(p string) bool { return p == "" })
+		slices.Sort(got)
+		slices.Sort(inText)
+		if !slices.Equal(got, inText) {
+			return nil, errors.New("git's text of the lane's diff does not hold each file the diff changes")
+		}
+	}
+	text, err := gitutil.RunCappedBytesAsStoredContext(ctx, worktree, "", maxReviewDiffBytes, args...)
+	if err != nil {
+		return nil, err
+	}
+	text = bytes.ReplaceAll(text, []byte{0}, []byte(`\x00`))
+	if len(text)+notes.Len() > maxReviewDiffBytes {
+		return nil, errReviewDiffPastCap
+	}
+	return append(text, notes.Bytes()...), nil
+}
+
+// newSideForReader adds what takes the place of a file not shown: a gitlink's commit, or
+// a blob's lines, escaped when it has a NUL byte itself. A deleted file adds nothing.
+func newSideForReader(notes *bytes.Buffer, worktree string, e rawEntry, now readerBlob) error {
+	switch {
+	case e.newMode == gitlinkMode:
+		fmt.Fprintf(notes, "+Subproject commit %s\n", e.newObject)
+		return nil
+	case now.size == 0:
+		return nil
+	case now.size > maxReviewDiffBytes:
+		return errReviewDiffPastCap
+	}
+	got, err := gitutil.CatFileBatch(worktree, []string{e.newObject}, int(now.size)+len(e.newObject)+64)
+	if err != nil {
+		return err
+	}
+	content := []byte(got[0].Content)
+	if now.nul {
+		content = escapedBytes(content)
+	}
+	fmt.Fprintf(notes, "# what takes its place:\n")
+	for line := range bytes.SplitSeq(bytes.TrimSuffix(content, []byte("\n")), []byte("\n")) {
+		fmt.Fprintf(notes, "+%s\n", line)
+	}
+	return nil
+}
+
+// escapedBytes is data with each byte or character a reader cannot read spelt out: a tab,
+// a line feed and the CR of a CRLF stay as they are.
+func escapedBytes(data []byte) []byte {
+	var out bytes.Buffer
+	for len(data) > 0 {
+		r, n := utf8.DecodeRune(data)
+		switch {
+		case r == utf8.RuneError && n == 1:
+			fmt.Fprintf(&out, `\x%02x`, data[0])
+		case r == '\t' || r == '\n' || (r == '\r' && len(data) > 1 && data[1] == '\n'):
+			out.WriteByte(data[0])
+		case r < 0x20 || r == 0x7f:
+			fmt.Fprintf(&out, `\x%02x`, r)
+		case (r >= 0x80 && r <= 0x9f) || r == 0x2028 || r == 0x2029:
+			fmt.Fprintf(&out, `\u%04x`, r)
+		default:
+			out.Write(data[:n])
+		}
+		data = data[n:]
+	}
+	return out.Bytes()
+}
+
+// readerBlob is what a reader's diff knows of one blob: whether it has a NUL byte, whether
+// git's own test finds one, and its size. An absent side, a gitlink and a blob past
+// maxReaderBlobBytes read as having none.
+type readerBlob struct {
+	nul, nulToGit bool
+	size          int64
+}
+
+// pastBound says the blob is one line in a reader's diff: git's own test calls it binary and
+// it is too large to show.
+func (b readerBlob) pastBound() bool { return b.nulToGit && b.size > maxReaderNulBytes }
+
+// apart says the blob's file is not in git's text of a reader's diff: it is too large to
+// show, or it has a NUL byte and is shown escaped.
+func (b readerBlob) apart() bool { return b.pastBound() || (b.nul && b.size <= maxReaderNulBytes) }
+
+// readerBlobs reads, as stored, each blob the entries name and says which have a NUL byte.
+func readerBlobs(worktree string, entries []rawEntry) (map[string]readerBlob, error) {
+	var names []string
+	for _, e := range entries {
+		if e.oldMode != gitlinkMode && strings.Trim(e.oldObject, "0") != "" {
+			names = append(names, e.oldObject)
+		}
+		if e.newMode != gitlinkMode && strings.Trim(e.newObject, "0") != "" {
+			names = append(names, e.newObject)
+		}
+	}
+	slices.Sort(names)
+	names = slices.Compact(names)
+	out := map[string]readerBlob{}
+	if len(names) == 0 {
+		return out, nil
+	}
+	checked, err := gitutil.RunCappedBytesAsStoredContext(context.Background(), worktree, strings.Join(names, "\n")+"\n", len(names)*128, "cat-file", "--batch-check")
+	if err != nil {
+		return nil, err
+	}
+	sizes := map[string]int64{}
+	for line := range strings.SplitSeq(strings.TrimSpace(string(checked)), "\n") {
+		f := strings.Fields(line)
+		if len(f) != 3 {
+			return nil, fmt.Errorf("git cat-file --batch-check answered %q, a line it does not document", line)
+		}
+		n, err := strconv.ParseInt(f[2], 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("git cat-file --batch-check answered %q, a line it does not document", line)
+		}
+		sizes[f[0]] = n
+	}
+	var batch []string
+	budget := 0
+	flush := func() error {
+		got, err := gitutil.CatFileBatch(worktree, batch, budget)
+		if err != nil {
+			return err
+		}
+		for _, o := range got {
+			first := strings.IndexByte(o.Content, 0)
+			out[o.Name] = readerBlob{size: sizes[o.Name], nul: first >= 0, nulToGit: first >= 0 && first < gitBinaryProbeBytes}
+		}
+		batch, budget = nil, 0
+		return nil
+	}
+	for _, name := range names {
+		size := sizes[name]
+		if size > maxReaderBlobBytes {
+			out[name] = readerBlob{size: size}
+			continue
+		}
+		if budget+int(size) > 8*maxReaderBlobBytes {
+			if err := flush(); err != nil {
+				return nil, err
+			}
+		}
+		batch = append(batch, name)
+		budget += int(size) + len(name) + 64
+	}
+	if len(batch) > 0 {
+		if err := flush(); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
 // writeValidatorBrief renders the brief of one validator of a round and, for
 // the intent-auditor, the fidelity request it reads.
 func writeValidatorBrief(c Context, lane Lane, r ValidationRound, v *ValidatorRun, route *oracle.Route) error {
@@ -345,12 +600,18 @@ func writeValidatorBrief(c Context, lane Lane, r ValidationRound, v *ValidatorRu
 		p("- the lane: %s, spec step %d, %q\n", lane.ID, lane.SpecStep, lane.StepTitle)
 	}
 	p("- the worktree: `%s`, branch `%s`\n", lane.Worktree, lane.Branch)
-	p("- the lane's diff: `%s..%s` (`git -C %s diff %s..%s`)\n", lane.BaseSHA, r.HeadSHA, lane.Worktree, lane.BaseSHA, r.HeadSHA)
+	p("- the lane's diff: `%s..%s` (`git -C %s %s %s..%s`); `--text` prints a binary's bytes too, so you may leave out with `':(exclude)<path>'` a file in which `git -C %s --no-replace-objects cat-file blob '%s:<path>' | head -c %d | LC_ALL=C tr -dc '\\000' | wc -c` counts a NUL; read any other, and a file left out is unread: a verdict passes over one only by naming it and saying its kind fits its path and the lane, and otherwise it is a finding\n", lane.BaseSHA, r.HeadSHA, lane.Worktree, readerDiff, lane.BaseSHA, r.HeadSHA, lane.Worktree, r.HeadSHA, gitBinaryProbeBytes)
 	p("- the implementer's report: `%s`\n", reportPathOf(c, lane, lane.Receipt))
 	for _, prev := range lane.Validation {
 		if prev.Round < r.Round && prev.Fix != "" {
 			p("- round %d's fix report (findings applied, or rejected in writing with the reason): `%s`\n", prev.Round, reportPathOf(c, lane, prev.Fix))
 		}
+	}
+	if lane.readsRecords(r) {
+		p("\n%s", recordsRoundScope(lane.recordsBase(r), r.HeadSHA))
+	}
+	if s := resolutionsSection(lane, r); s != "" {
+		p("\n%s", s)
 	}
 	p("\nRead only; change nothing in the worktree or on the branch.\n\n")
 	p("%s", routingSection(route))
@@ -372,13 +633,11 @@ func writeValidatorBrief(c Context, lane Lane, r ValidationRound, v *ValidatorRu
 		p("Write the verdict JSON, in the request's shape and nothing else, to:\n\n`%s`\n\n", abs(c.RepoRoot, v.Return))
 		p("The loop checks it against the request and records what it reads; the landing's close consumes it.\n")
 	} else {
-		words := make([]string, 0, len(reviewerVerdicts[v.Role]))
-		for _, w := range reviewerVerdicts[v.Role] {
-			words = append(words, w.word)
-		}
 		p("## What you hand back\n\n")
+		p("%s\n\n", reviewedHeadLine(r.HeadSHA))
 		p("Write your whole return, in your agent definition's shape, to:\n\n`%s`\n\n", abs(c.RepoRoot, v.Return))
-		p("It ends with one `### Verdict` section stating exactly one of: %s. The loop reads that\n", strings.Join(words, ", "))
+		p("%s\n", oneVerdictLine)
+		p("%s The loop reads that\n", namesTheHeadLine(reviewerVerdicts[v.Role], r.HeadSHA))
 		p("section and records the verdict itself; a verdict written anywhere else is nobody's.\n")
 	}
 	return writeRoundFile(c.RepoRoot, v.Brief, b.Bytes())
@@ -427,7 +686,7 @@ func composeAudit(c Context, lane Lane) (intent.DeliveryAudit, string, error) {
 	// base when it never synced, so no sibling's or outside change reads as
 	// this run's (spc-2609202134341288, ruling AI).
 	var d strings.Builder
-	fmt.Fprintf(&d, "- the whole delivery: the diff of each of the run's lanes, below\n")
+	fmt.Fprintf(&d, "- the whole delivery: the diff of each of the run's lanes, below, each read with `git %s <range>`\n", readerDiff)
 	for _, l := range st.Lanes {
 		if l.ID == lane.ID {
 			l = lane
@@ -598,10 +857,14 @@ func verifyValidation(c Context, lane *Lane, receiptRel string) error {
 		if v.Role == RoleAuditor {
 			return recordAudit(c, lane, v, raw)
 		}
-		word, err := parseVerdict(string(raw), reviewerVerdicts[v.Role])
+		if err := landing.StatesFullPair(string(raw), cur.HeadSHA); err != nil {
+			return refuse("receipt", "", lane.ID, fmt.Sprintf("%s does not state the head it read: %v", receiptRel, err),
+				"start a fresh "+v.Role+" with the brief "+v.Brief+"; its first line reads exactly `Reviewed head: "+cur.HeadSHA+"`, then hand it back")
+		}
+		word, err := parseVerdict(string(raw), reviewerVerdicts[v.Role], cur.HeadSHA)
 		if err != nil {
 			return refuse("receipt", "", lane.ID, fmt.Sprintf("%s states no verdict the loop can record: %v", receiptRel, err),
-				"start a fresh "+v.Role+" with the brief "+v.Brief+"; its return ends with one `### Verdict` section, then hand it back")
+				"start a fresh "+v.Role+" with the brief "+v.Brief+"; its return ends with one `### Verdict` section whose first line opens with the verdict and names the head, `"+cur.HeadSHA+"`, then hand it back")
 		}
 		v.Verdict, v.Pass = word.word, word.pass
 		// The route's answer, as its step placed and recorded it, is the
@@ -668,28 +931,46 @@ func readReturn(repoRoot, rel, laneID string) ([]byte, error) {
 	return data, nil
 }
 
-// parseVerdict reads the one verdict a return states: the first line under its
-// one Verdict heading, list marker and emphasis stripped, must begin with one
-// of words.
-func parseVerdict(text string, words []verdictWord) (verdictWord, error) {
+// reviewedHeadLine is what a reviewer's brief and a routed request say first of a
+// return: the line the hand-in reads and the landing records it by, as the reviewers'
+// own pages name it (`abcd land --record-review`, which reads it the same way).
+func reviewedHeadLine(head string) string {
+	return "Its first line reads exactly `Reviewed head: " + head + "`, nothing before it, so that the landing can record it as `abcd land --record-review` does. " +
+		"A return that does not open with that line, or that names another head, is refused and handed out again."
+}
+
+// oneVerdictLine is what a validator's brief and a routed request say of a return's
+// verdict, as the reviewers' own pages say it (landing.ReadVerdict).
+const oneVerdictLine = "A return has one `### Verdict` section and no other line opening a verdict, whatever qualifies it."
+
+// namesTheHeadLine is what a validator's brief and a routed request say of what stands
+// under that heading: words, the words its role may state, and subject, what it judges.
+// It spells no line a return could copy whole.
+func namesTheHeadLine(words []verdictWord, subject string) string {
 	names := make([]string, 0, len(words))
 	for _, w := range words {
 		names = append(names, w.word)
 	}
-	want := strings.Join(names, " or ")
-	heads := verdictHeadingRe.FindAllStringIndex(text, -1)
-	switch len(heads) {
-	case 0:
-		return verdictWord{}, fmt.Errorf("it has no Verdict section stating %s", want)
-	case 1:
-	default:
-		return verdictWord{}, fmt.Errorf("it has %d Verdict sections; one states the verdict", len(heads))
+	return "It ends with one `### Verdict` section. The first line under that heading opens with exactly one of " + strings.Join(names, ", ") +
+		", and then, on the same line, names what you judged by its full name, which is `" + subject + "`. " +
+		"A verdict that names nothing, abbreviates the name or names anything else is refused and handed out again."
+}
+
+// parseVerdict reads the one verdict a return states of subject, by the rule a
+// receipt reads it (landing.ReadVerdict): it must be one of words.
+func parseVerdict(text string, words []verdictWord, subject string) (verdictWord, error) {
+	word, err := landing.ReadVerdict(text, subject)
+	if err != nil {
+		return verdictWord{}, err
 	}
-	line := firstLine(text[heads[0][1]:])
-	if w, ok := leadingVerdict(line, words); ok {
-		return w, nil
+	names := make([]string, 0, len(words))
+	for _, w := range words {
+		if w.word == word {
+			return w, nil
+		}
+		names = append(names, w.word)
 	}
-	return verdictWord{}, fmt.Errorf("its Verdict section does not state %s", want)
+	return verdictWord{}, fmt.Errorf("its Verdict section does not state %s", strings.Join(names, " or "))
 }
 
 // firstLine is the first non-blank line of s.
@@ -702,16 +983,15 @@ func firstLine(s string) string {
 	return ""
 }
 
-// leadingVerdict reports the verdict line begins with, its list marker and
-// emphasis stripped, spelled with a space, a hyphen or an underscore between its
-// words, and ended by anything but a letter.
-func leadingVerdict(line string, words []verdictWord) (verdictWord, bool) {
+// verdictAtStart reports the verdict line begins with, with ends judging what
+// follows the word.
+func verdictAtStart(line string, words []verdictWord, ends func(rest string) bool) (verdictWord, bool) {
 	t := strings.TrimLeft(line, "-*+ \t")
 	t = strings.TrimLeft(t, "*_`")
 	norm := strings.NewReplacer("-", " ", "_", " ").Replace(t)
 	for _, w := range longestFirst(words) {
 		ww := strings.NewReplacer("-", " ", "_", " ").Replace(w.word)
-		if rest, ok := strings.CutPrefix(norm, ww); ok && (rest == "" || !isLetter(rest[0])) {
+		if strings.HasPrefix(norm, ww) && ends(t[len(ww):]) {
 			return w, true
 		}
 	}
@@ -781,14 +1061,23 @@ func reportsCarryNoVerdict(c Context, lane Lane) error {
 }
 
 // reportVerdict finds a verdict a report states: as a field on a line, or as
-// the first line under a Verdict heading.
+// either of the first two lines under a Verdict heading, beginning with a verdict word
+// followed by anything but a letter, whatever ends its lines. A report states none, so
+// this reads wider than a return.
 func reportVerdict(text string) (string, bool) {
+	text = landing.NormalizeLineBreaks(text)
 	if m := reportVerdictRe.FindStringSubmatch(text); m != nil {
 		return m[1], true
 	}
 	for _, h := range verdictHeadingRe.FindAllStringIndex(text, -1) {
-		if w, ok := leadingVerdict(firstLine(text[h[1]:]), allVerdicts); ok {
-			return w.word, true
+		notALetter := func(rest string) bool { return rest == "" || !isLetter(rest[0]) }
+		under := text[h[1]:]
+		for range 2 {
+			line := firstLine(under)
+			if w, ok := verdictAtStart(line, allVerdicts, notALetter); ok {
+				return w.word, true
+			}
+			_, under, _ = strings.Cut(strings.TrimLeft(under, " \t\r\n"), "\n")
 		}
 	}
 	return "", false
@@ -967,6 +1256,12 @@ func DriveReview(ctx context.Context, repoRoot, runID string, res StepResult, st
 	if st, err := ReadState(repoRoot, runID); err == nil && st.autoPlanning() {
 		return res, nil
 	}
+	// The last moment before the route is asked: a stop set since the step began
+	// sends it nothing (stop.go).
+	if _, err := stopCheck(repoRoot, runID, steps, o); err != nil {
+		// res.handed: this step handed the review out, so nothing has it yet.
+		return StepResult{}, notStartedUnderStop(repoRoot, runID, aw.Receipt, steps, o, err)
+	}
 	ret, err := sendReview(ctx, repoRoot, runID, res.Lane, aw, rr)
 	switch {
 	case err != nil && ctx.Err() != nil:
@@ -975,7 +1270,7 @@ func DriveReview(ctx context.Context, repoRoot, runID string, res StepResult, st
 	case len(ret) > maxReturnBytes:
 		err = &reviewFailure{runner.ReasonInvalid, fmt.Sprintf("its return is %d bytes, more than the %d a return may be", len(ret), maxReturnBytes)}
 	default:
-		if _, perr := parseVerdict(ret, words); perr != nil {
+		if _, perr := parseVerdict(ret, words, roundHead(repoRoot, runID, res.Lane)); perr != nil {
 			err = &reviewFailure{runner.ReasonInvalid, "its return states no verdict the loop can record: " + perr.Error()}
 		}
 	}
@@ -1042,6 +1337,21 @@ func DriveReview(ctx context.Context, repoRoot, runID string, res StepResult, st
 	}
 	r.Route = &route
 	return r, nil
+}
+
+// roundHead is the head a lane's latest round read, "" when it cannot be read, which
+// no verdict names.
+func roundHead(repoRoot, runID, laneID string) string {
+	st, err := ReadState(repoRoot, runID)
+	if err != nil {
+		return ""
+	}
+	for _, l := range st.Lanes {
+		if n := len(l.Validation); l.ID == laneID && n > 0 {
+			return l.Validation[n-1].HeadSHA
+		}
+	}
+	return ""
 }
 
 // reviewReceipt hands the route's placed return back through the receipt;
@@ -1229,7 +1539,7 @@ func (st *State) dropAnswer(repoRoot, rel string) bool {
 }
 
 // keptAside keeps the route's answer beside the review's return when a return
-// the host's agent wrote already stands there, records nothing for it, and
+// written since the review was handed out stands there, records nothing for it, and
 // reports where the lane stands now.
 func keptAside(repoRoot, runID string, res StepResult, aw Await, rr *ReviewRoute, ret string) (StepResult, error) {
 	aside, err := keepAside(repoRoot, aw, rr, ret)
@@ -1245,7 +1555,7 @@ func keptAside(repoRoot, runID string, res StepResult, aw Await, rr *ReviewRoute
 			res = laneResult(st, l, "", nil)
 		}
 	}
-	res.Next = fmt.Sprintf("a return the host's agent wrote already stands at %s, so the %s route's answer is kept aside at %s and recorded nowhere; %s",
+	res.Next = fmt.Sprintf("a return written since this review was handed out stands at %s, so the %s route's answer is kept aside at %s and recorded nowhere; %s",
 		aw.Receipt, rr.Name, aside, res.Next)
 	return res, nil
 }
@@ -1473,12 +1783,12 @@ func reviewRequest(repoRoot, runID, laneID string, aw Await, agentPrompt func(st
 	}
 	// The lane's own changes, as the audit reads them: its head against the
 	// default-branch commit its last sync merged in, or its base, so a sync
-	// never carries the default branch's changes into the request. Git's own
-	// diff, whatever the repository configures: no external diff program, no
-	// textconv driver, no colour.
+	// never carries the default branch's changes into the request.
 	base := diffBase(lane)
-	diff, err := gitutil.RunCappedBytes(lane.Worktree, maxReviewDiffBytes, "diff", "--no-ext-diff", "--no-textconv", "--no-color",
-		base+".."+r.HeadSHA, "--")
+	if lane.readsRecords(r) {
+		base = lane.recordsBase(r)
+	}
+	diff, err := laneDiffForReader(lane.Worktree, base, r.HeadSHA)
 	if err != nil {
 		return "", fmt.Errorf("the lane's diff: %w", err)
 	}
@@ -1522,7 +1832,9 @@ func reviewRequest(repoRoot, runID, laneID string, aw Await, agentPrompt func(st
 	p("## The review\n\n")
 	p("You are a fresh %s: you did not implement this lane, and nothing its implementer wrote binds your\n", aw.Role)
 	p("judgement. No one will answer a question about this request; what it does not settle, say so in\n")
-	p("your return. Everything the review reads is below.\n\n")
+	p("your return. Everything the review reads is below, so a file listed as not shown is unread: a verdict\n")
+	p("passes over one only by naming it and saying its kind fits its path and the lane, and otherwise it\n")
+	p("is a finding.\n\n")
 	if iss := st.Issue(); iss != "" {
 		p("- the run: `abcd build %s`, fixing %s by its remedy\n", st.Key, iss)
 		p("- the lane: %s, %q\n", lane.ID, lane.StepTitle)
@@ -1531,18 +1843,20 @@ func reviewRequest(repoRoot, runID, laneID string, aw Await, agentPrompt func(st
 		p("- the lane: %s, spec step %d, %q\n", lane.ID, lane.SpecStep, lane.StepTitle)
 	}
 	p("- the branch: `%s`, its own changes `%s..%s` below\n\n", lane.Branch, base, r.HeadSHA)
+	if lane.readsRecords(r) {
+		p("%s", recordsRoundScope(base, r.HeadSHA))
+	}
+	p("%s", resolutionsSection(lane, r))
 	p("## The record: the lane's brief\n\n%s\n\n", fenced("markdown", string(brief)))
 	for _, rp := range reports {
 		p("## %s\n\n%s\n\n", rp.title, fenced("markdown", rp.body))
 	}
 	p("## The diff\n\n%s\n\n", fenced("diff", string(diff)))
-	words := make([]string, 0, len(reviewerVerdicts[aw.Role]))
-	for _, w := range reviewerVerdicts[aw.Role] {
-		words = append(words, w.word)
-	}
 	p("## What you answer\n\n")
-	p("Answer with your whole return, in your agent definition's shape. It ends with one `### Verdict`\n")
-	p("section stating exactly one of: %s. The loop writes your answer to the review's return and\n", strings.Join(words, ", "))
+	p("%s\n\n", reviewedHeadLine(r.HeadSHA))
+	p("Answer with your whole return, in your agent definition's shape.\n")
+	p("%s\n", oneVerdictLine)
+	p("%s The loop writes your answer to the review's return and\n", namesTheHeadLine(reviewerVerdicts[aw.Role], r.HeadSHA))
 	p("records the verdict itself; a verdict written anywhere else is nobody's.\n")
 	return b.String(), nil
 }

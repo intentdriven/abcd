@@ -102,6 +102,9 @@ func toolsFor(role string) []string {
 // as paused (runner_pause.go). A step that hands no agent out retries one held
 // role once on its runner, and a --route for a held role retries it at once.
 func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options, rs Runners) (StepResult, error) {
+	if err := markedRefusal(repoRoot, runID, o); err != nil {
+		return StepResult{}, err
+	}
 	// An auto-plan run's reviews stay on the host (autoplan.go): its lane has
 	// no worktree a runner could be confined to, so no role of it is routed,
 	// nothing is dispatched and no fallback is recorded; a --route for it is
@@ -119,6 +122,10 @@ func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options,
 		routed = func(role string) bool { return rs.Config.RouteFor(role).Runner != runner.Host }
 		overrides = rs.Config.FlagRoutes()
 		if len(overrides) > 0 {
+			// A stop starts nothing, a retried role included (stop.go).
+			if _, err := stopCheck(repoRoot, runID, steps, o); err != nil {
+				return StepResult{}, err
+			}
 			// A --route for a held role (runner_pause.go) retries it at
 			// once, and is the step's one move.
 			if r, took, err := retryRouted(ctx, repoRoot, runID, steps, o, rs, overrides); took {
@@ -143,15 +150,17 @@ func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options,
 		// paused or with the host with nothing received, is retried once
 		// on its runner.
 		if r, took, err := releaseToHost(repoRoot, runID, o, rs, res); took || err != nil {
-			return r, err
+			return carryStanding(r, res), err
 		}
-		return retryHeld(ctx, repoRoot, runID, steps, o, rs, res)
+		r, err := retryHeld(ctx, repoRoot, runID, steps, o, rs, res)
+		return carryStanding(r, res), err
 	}
 	aw := *res.Awaiting
 	if rs.Config.RouteFor(aw.Role).Runner == runner.Host {
+		// Not listed yet: a reviewer route can still answer it (ListHostRole).
 		return res, nil
 	}
-	r, err := dispatchAwait(ctx, repoRoot, runID, steps, o, rs, res.Lane, aw, "", res)
+	r, err := dispatchAwait(ctx, repoRoot, runID, steps, o, rs, res.Lane, aw, "", res, true)
 	if errors.Is(err, errClaimed) {
 		// A peer's step retried the role in the moment between: its runner
 		// has it, so the host is handed nothing.
@@ -159,7 +168,24 @@ func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options,
 		res.Next = fmt.Sprintf("another `abcd implement step` started the runner for %s's %s; run `abcd implement step` once it has finished", res.Lane, aw.Role)
 		return res, nil
 	}
-	return r, err
+	return carryStanding(r, res), err
+}
+
+// ListHostRole writes the launch ledger's placeholder for the role res leaves
+// with the host, once DriveReview has had its turn, so the ledger never names a
+// host that did not see the role. A route's answer comes back with the route
+// named on it, and a fallback as the result Drive handed out, with none.
+func ListHostRole(ctx context.Context, repoRoot, runID string, res StepResult, cfg *runner.Config) {
+	if cfg != nil && res.handed && res.Route == nil && res.Awaiting != nil && cfg.RouteFor(res.Awaiting.Role).Runner == runner.Host {
+		listWithHost(ctx, cfg, res.Awaiting.Role, repoRoot, runner.LaunchWork{Run: runID, Lane: res.Lane, Await: res.Awaiting.Receipt})
+	}
+}
+
+// listWithHost writes the placeholder for a role handed to the host session.
+// The host counts its own agent, and the placeholder only keeps the run's
+// listing whole, so one that cannot be written holds nothing up.
+func listWithHost(ctx context.Context, cfg *runner.Config, role, repo string, work runner.LaunchWork) {
+	_, _ = runner.RecordLaunch(ctx, cfg.Ledger(), runner.LaunchStart{Role: role, Runner: runner.Host, Repo: repo, Work: work}, nil)
 }
 
 // LoadRunners reads the runner configuration (runner.Load) at the roots a lane
@@ -236,6 +262,9 @@ func routeNote(role string, r runner.RouteRecord) string {
 	under := ""
 	if r.Override != "" {
 		under = ", under --route " + r.Override
+	}
+	if r.Ran == "" {
+		return fmt.Sprintf("the %s was routed to %s, and no runner's report reached the loop, so what ran it is not recorded%s", role, r.Asked, under)
 	}
 	if r.Asked == r.Ran {
 		return fmt.Sprintf("the %s ran on the %s runner (model %s%s)", role, r.Ran, model, under)

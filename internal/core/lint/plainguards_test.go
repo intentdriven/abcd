@@ -36,9 +36,9 @@ import (
 // operating system: the check job's runs ahead of its race lane, so a guard fails
 // fast, and the macOS suite's runs in its first shard after that shard's race pass
 // (iss-2610180542030806). Each must name the derived list.
-var plainGuardSteps = []struct{ job, step string }{
-	{"check", "Test (plain-only guards)"},
-	{macOSSuiteJob, "Test (plain-only guards, macOS)"},
+var plainGuardSteps = []struct{ file, job, step string }{
+	{".github/workflows/ci.yml", "check", "Test (plain-only guards)"},
+	{macOSSuiteWorkflow, macOSShardJob, "Test (plain-only guards, macOS)"},
 }
 
 // raceFlag is the build constant the guards read, declared per package in a
@@ -419,10 +419,9 @@ func TestEveryLegRunsEveryPlainOnlyGuard(t *testing.T) {
 		t.Fatalf("no plain-only guard found under internal/; the scan or the tree changed shape")
 	}
 
-	ci := readRepoFile(t, root, ".github/workflows/ci.yml")
 	for _, guard := range plainGuardSteps {
-		where, name := ".github/workflows/ci.yml job "+guard.job, guard.step
-		job, ok := workflowJobBlock(ci, guard.job)
+		where, name := guard.file+" job "+guard.job, guard.step
+		job, ok := workflowJobBlock(readRepoFile(t, root, guard.file), guard.job)
 		if !ok {
 			t.Fatalf("%s: no such job; the parser or the workflow changed shape", where)
 		}

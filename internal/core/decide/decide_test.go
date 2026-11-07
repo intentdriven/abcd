@@ -326,7 +326,7 @@ func TestCreateStatedWritesAnAcceptedRecordWithItsFields(t *testing.T) {
 }
 
 // TestCreateCutsTheSlugAtTheRecordCap is iss-2610100626320367 at the decide
-// verb: a long title's slug is cut at recordid.MaxSlugLen, in the filename and
+// verb: a long title's slug is cut at recordid.DefaultMaxSlugLen, in the filename and
 // the frontmatter alike, while the title itself is kept whole.
 func TestCreateCutsTheSlugAtTheRecordCap(t *testing.T) {
 	root := t.TempDir()

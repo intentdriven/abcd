@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -49,7 +50,7 @@ func rpServer(answer func(request string) string) *mcptest.Server {
 	return &mcptest.Server{Tools: map[string][]string{repoprompt.DefaultTool: {"message", "new_chat"}},
 		Answer: func(args map[string]any) any {
 			msg, _ := args["message"].(string)
-			return mcptest.TextResult(answer(msg))
+			return mcptest.TextResult(briefReturnIn(msg, answer(msg)))
 		}}
 }
 
@@ -61,6 +62,15 @@ func sentTo(srv *mcptest.Server) []string {
 		out = append(out, msg)
 	}
 	return out
+}
+
+// headless is a return without the first line a reviewer's brief asks for and the head
+// its Verdict section names, which rpServer answers with.
+func headless(b []byte) string {
+	if _, rest, ok := strings.Cut(string(b), "\n\n"); ok && strings.HasPrefix(string(b), "Reviewed head: ") {
+		return regexp.MustCompile(`(?m)^Head: [0-9a-f]+\n`).ReplaceAllString(rest, "")
+	}
+	return string(b)
 }
 
 // verdictFor answers a request with the passing verdict of the role it names.
@@ -117,13 +127,13 @@ func TestTheReviewsGoToRepoPromptOverMCPAndTheLoopRecordsTheirVerdicts(t *testin
 			t.Fatal(err)
 		}
 		for _, want := range []string{"# The " + role + " agent definition", "fresh " + role, l.BaseSHA + ".." + l.HeadSHA,
-			"+one.txt", strings.TrimSpace(string(brief)), "### Verdict", strings.Join(wordsOf(role), ", ")} {
+			"+one.txt", strings.TrimSpace(string(brief)), "### Verdict", strings.Join(wordsOf(role), ", "), "first line reads exactly `Reviewed head: " + l.HeadSHA + "`", oneVerdictLine, "which is `" + l.HeadSHA + "`"} {
 			if !strings.Contains(sent[i], want) {
 				t.Fatalf("the %s's request carries %q:\n%s", role, want, sent[i])
 			}
 		}
 		ret, err := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(aw.Receipt)))
-		if err != nil || string(ret) != verdictFor(sent[i]) {
+		if err != nil || headless(ret) != verdictFor(sent[i]) {
 			t.Fatalf("the route's return is written where the host's agent would have written it: %q %v", ret, err)
 		}
 	}
@@ -236,16 +246,16 @@ func TestAReviewTheRouteDoesNotReturnFallsBackToTheHostWithAReceipt(t *testing.T
 		{"no server on this machine", &ReviewRoute{Name: "rp", Absent: "this machine names no oracle.rp.url", AgentPrompt: prompt},
 			runner.ReasonAbsent, "names no oracle.rp.url"},
 		{"an answer with no verdict", &ReviewRoute{Name: "rp", Reviewer: noVerdictClient, AgentPrompt: prompt},
-			runner.ReasonInvalid, "no Verdict section"},
+			runner.ReasonInvalid, "no ### Verdict section"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			repo := briefRepo(t, agentsMarked)
-			start, err := Start(repo.Root(), "itd-10", Options{})
+			start, err := startedOnce(t, repo, "itd-10")
 			if err != nil {
 				t.Fatal(err)
 			}
 			id, stages := start.RunID, DefaultStages()
-			implemented(t, repo, id, stages, "one.txt")
+			implementedOnce(t, repo, id, "one.txt")
 			res := reviewOut(t, repo.Root(), id, stages, RoleRuthless)
 			aw := *res.Awaiting
 
@@ -289,7 +299,7 @@ func TestAReviewTheRouteDoesNotReturnFallsBackToTheHostWithAReceipt(t *testing.T
 			// The host's own agent runs the review, and its verdict is the
 			// loop's, as any validator's is.
 			path := filepath.Join(repo.Root(), filepath.FromSlash(aw.Receipt))
-			if err := os.WriteFile(path, []byte(reviewerReturn("SHIP")), 0o600); err != nil {
+			if err := os.WriteFile(path, []byte(statingHead(t, repo.Root(), id, reviewerReturn("SHIP"))), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := Receipt(repo.Root(), id, path, stages, Options{}); err != nil {
@@ -386,15 +396,24 @@ func TestAnUnconfiguredRouteLeavesTheReviewAndTheStateByteIdentical(t *testing.T
 // its validators, its implementer committing name with body.
 func startAtValidate(t *testing.T, name, body string) (*gittest.Repo, string, Stages, Lane) {
 	t.Helper()
+	if body == "" {
+		id, w := builtOnce(t, worldKey("startAtValidate", name), func(w *fixtureWorld) string {
+			repo := briefRepo(t, agentsMarked)
+			start, err := startedOnce(t, repo, "itd-10")
+			if err != nil {
+				t.Fatal(err)
+			}
+			implemented(t, repo, start.RunID, DefaultStages(), name)
+			return start.RunID
+		})
+		return w.repo, id, DefaultStages(), currentLane(t, w.repo, id)
+	}
 	repo := briefRepo(t, agentsMarked)
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
 	id, stages := start.RunID, DefaultStages()
-	if body == "" {
-		return repo, id, stages, implemented(t, repo, id, stages, name)
-	}
 	stepTo(t, repo, id, stages, StageImplement)
 	if _, err := advance(repo.Root(), id, stages, Options{}); err != nil {
 		t.Fatal(err)
@@ -482,7 +501,7 @@ func TestTheRouteNeverOverwritesAReturnTheHostWrote(t *testing.T) {
 			res := reviewOut(t, repo.Root(), id, stages, RoleRuthless)
 			aw := *res.Awaiting
 			path := filepath.Join(repo.Root(), filepath.FromSlash(aw.Receipt))
-			host := reviewerReturn("SHIP")
+			host := statingHead(t, repo.Root(), id, reviewerReturn("SHIP"))
 			srv := rpServer(func(string) string {
 				// The host's agent writes its return, and hands it back,
 				// while the route works.
@@ -504,7 +523,7 @@ func TestTheRouteNeverOverwritesAReturnTheHostWrote(t *testing.T) {
 				t.Fatalf("the host's return stands: %q", b)
 			}
 			aside := filepath.Join(filepath.Dir(path), "rp-return.md")
-			if b, err := os.ReadFile(aside); err != nil || string(b) != reviewerReturn("FIX FIRST") {
+			if b, err := os.ReadFile(aside); err != nil || headless(b) != reviewerReturn("FIX FIRST") {
 				t.Fatalf("the route's answer is kept aside in the review's directory: %q %v", b, err)
 			}
 			if !strings.Contains(got.Next, filepath.ToSlash(filepath.Join(filepath.Dir(filepath.FromSlash(aw.Receipt)), "rp-return.md"))) {
@@ -577,7 +596,7 @@ func TestABusyLockLeavesThePlacedReturnStanding(t *testing.T) {
 	if busy != lockRetries {
 		t.Fatalf("the receipt is retried %d times: %d", lockRetries, busy)
 	}
-	if b, err := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(aw.Receipt))); err != nil || string(b) != reviewerReturn("SHIP") {
+	if b, err := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(aw.Receipt))); err != nil || headless(b) != reviewerReturn("SHIP") {
 		t.Fatalf("the placed return stands: %q %v", b, err)
 	}
 	st, _ := ReadState(repo.Root(), id)
@@ -680,7 +699,7 @@ func TestAHandBackAfterABusyLockRecordsTheRoute(t *testing.T) {
 				t.Fatalf("a busy lock is refused as contention: %v", err)
 			}
 			if rewritten {
-				if err := os.WriteFile(filepath.Join(repo.Root(), filepath.FromSlash(aw.Receipt)), []byte(reviewerReturn("FIX FIRST")), 0o600); err != nil {
+				if err := os.WriteFile(filepath.Join(repo.Root(), filepath.FromSlash(aw.Receipt)), []byte(statingHead(t, repo.Root(), id, reviewerReturn("FIX FIRST"))), 0o600); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -736,7 +755,7 @@ func TestABusyLockAtThePlacementKeepsTheAnswerAside(t *testing.T) {
 		t.Fatalf("a busy lock at the placement is refused as contention, naming the answer kept aside: %v", err)
 	}
 	b, err := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(aside)))
-	if err != nil || string(b) != reviewerReturn("SHIP") {
+	if err != nil || headless(b) != reviewerReturn("SHIP") {
 		t.Fatalf("the route's answer is kept aside: %q %v", b, err)
 	}
 	if _, err := os.Stat(filepath.Join(repo.Root(), filepath.FromSlash(aw.Receipt))); err == nil {
@@ -812,7 +831,7 @@ func editState(t *testing.T, root, runID string, edit func(doc map[string]any)) 
 // TheRoutes says the same of the auditor).
 func TestOnlyAReviewersReturnIsReadAsTheRoutes(t *testing.T) {
 	repo := briefRepo(t, agentsMarked)
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := startedOnce(t, repo, "itd-10")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -846,7 +865,7 @@ func TestAForgedAnswerFileBesideAReturnLeavesItTheHosts(t *testing.T) {
 	repo, id, stages, _ := startAtValidate(t, "one.txt", "")
 	res := reviewOut(t, repo.Root(), id, stages, RoleRuthless)
 	aw := *res.Awaiting
-	ret := reviewerReturn("SHIP")
+	ret := statingHead(t, repo.Root(), id, reviewerReturn("SHIP"))
 	if err := os.WriteFile(filepath.Join(repo.Root(), filepath.FromSlash(aw.Receipt)), []byte(ret), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -889,7 +908,7 @@ func TestTheRoutesAnswerIsVersion12sAndLeavesNothingBehind(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := st.Lanes[0].awaiting()
-	if a == nil || a.Answered == nil || *a.Answered != (RouteAnswer{Route: "rp", SHA256: answerDigest([]byte(reviewerReturn("SHIP")))}) {
+	if a == nil || a.Answered == nil || *a.Answered != (RouteAnswer{Route: "rp", SHA256: answerDigest([]byte(statingHead(t, repo.Root(), id, reviewerReturn("SHIP"))))}) {
 		t.Fatalf("the placed answer is recorded on its await: %+v", a)
 	}
 	statePath := filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(id)))
@@ -996,7 +1015,7 @@ func TestATakenBackAnswerLeavesNoAttributionBehind(t *testing.T) {
 			if a := st.Lanes[0].awaiting(); a == nil || a.Answered != nil {
 				t.Fatalf("the review still awaits its return, with no answer recorded: %+v", a)
 			}
-			if err := os.WriteFile(filepath.Join(repo.Root(), filepath.FromSlash(aw.Receipt)), []byte(reviewerReturn("SHIP")), 0o600); err != nil {
+			if err := os.WriteFile(filepath.Join(repo.Root(), filepath.FromSlash(aw.Receipt)), []byte(statingHead(t, repo.Root(), id, reviewerReturn("SHIP"))), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := Receipt(repo.Root(), id, aw.Receipt, stages, Options{}); err != nil {
@@ -1087,11 +1106,11 @@ func TestASecondAnswerKeptAsideNeverReplacesTheFirst(t *testing.T) {
 		if r, ok := AsRefusal(err); !ok || !r.Contention || !strings.Contains(r.Remedy, want+" ") {
 			t.Fatalf("step %d keeps its answer aside at %s and names it: %v", i+1, want, err)
 		}
-		if b, err := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(want))); err != nil || string(b) != answers[i] {
+		if b, err := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(want))); err != nil || headless(b) != answers[i] {
 			t.Fatalf("step %d's answer stands at %s: %q %v", i+1, want, b, err)
 		}
 	}
-	if b, _ := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(dir+"/rp-return.md"))); string(b) != answers[0] {
+	if b, _ := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(dir+"/rp-return.md"))); headless(b) != answers[0] {
 		t.Fatalf("the first answer kept aside stands: %q", b)
 	}
 	if tmps, _ := filepath.Glob(filepath.Join(repo.Root(), filepath.FromSlash(dir), ".rp-return-*.tmp")); len(tmps) != 0 {
@@ -1248,7 +1267,7 @@ func TestAnAnswerIsKeptAsideWhereNoHardLinkCanBeMade(t *testing.T) {
 		if r, ok := AsRefusal(err); !ok || !r.Contention || !strings.Contains(r.Remedy, want+" ") {
 			t.Fatalf("step %d keeps its answer aside at %s with no hard link: %v", i+1, want, err)
 		}
-		if b, err := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(want))); err != nil || string(b) != reviewerReturn("SHIP") {
+		if b, err := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(want))); err != nil || headless(b) != reviewerReturn("SHIP") {
 			t.Fatalf("step %d's answer stands at %s: %q %v", i+1, want, b, err)
 		}
 	}
@@ -1301,7 +1320,7 @@ func TestATakeBackThatCannotReadSaysTheReturnStands(t *testing.T) {
 			if err := os.Chmod(path, 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if b, err := os.ReadFile(path); err != nil || string(b) != reviewerReturn("SHIP") {
+			if b, err := os.ReadFile(path); err != nil || headless(b) != reviewerReturn("SHIP") {
 				t.Fatalf("the return stands: %q %v", b, err)
 			}
 			st, _ := ReadState(repo.Root(), id)
@@ -1337,7 +1356,7 @@ func TestAVersion11ReservationReadsAsVersion12(t *testing.T) {
 	if _, err := Receipt(repo.Root(), id, aw.Receipt, stages, Options{}); err == nil {
 		t.Fatal("no return stands yet, so the hand-back is refused and nothing is written")
 	}
-	if err := os.WriteFile(filepath.Join(repo.Root(), filepath.FromSlash(aw.Receipt)), []byte(reviewerReturn("SHIP")), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(repo.Root(), filepath.FromSlash(aw.Receipt)), []byte(statingHead(t, repo.Root(), id, reviewerReturn("SHIP"))), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Receipt(repo.Root(), id, aw.Receipt, stages, Options{}); err != nil {

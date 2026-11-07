@@ -47,11 +47,19 @@ func main() {
 	var requireGates multiFlag
 	flag.Var(&requireGates, "require-gate", "a required semantic gate name for --release-gate (repeatable); overrides the config list so the workflow, not the in-tree file, is the trust root")
 	agentDiff := flag.String("agent-diff", "", "a git revision or revision range (e.g. origin/main...HEAD); arms agent_contract's per-agent changelog sub-check over that diff, which is otherwise a no-op because it asks whether a CHANGE announced itself")
+	slugNames := flag.String("slug-names", "", "a file of NUL-separated repo-relative paths: judge only those against the record_slug_cap rule and exit, 1 on a finding; what the commit-msg hook asks of the paths a commit adds or renames")
 	flag.Parse()
 
 	root := *rootPath
 	if root == "" {
 		root = resolveRoot()
+	}
+
+	// --slug-names is a standalone mode too: the hook hands it the names git
+	// reads from the commit's own index, and it answers for those alone, in the
+	// time a commit can spare.
+	if *slugNames != "" {
+		os.Exit(runSlugNames(*slugNames, root))
 	}
 
 	// --derive-content-sha is a standalone resolution mode: it prints the content
@@ -103,7 +111,7 @@ func main() {
 
 	cfg, err := lint.LoadConfig(cfgPath)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "record-lint: load config:", scrubPaths(err, root))
+		fmt.Fprintln(os.Stderr, "record-lint: load config:", termsafe.Sanitize(scrubPaths(err, root)))
 		os.Exit(2)
 	}
 
@@ -123,9 +131,10 @@ func main() {
 		cfg = lint.ArmAgentDiff(cfg, *agentDiff)
 	}
 
+	// A rule's refusal can quote the repository's config, as runSlugNames' can.
 	findings, err := lint.Lint(cfg, root)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "record-lint:", scrubPaths(err, root))
+		fmt.Fprintln(os.Stderr, "record-lint:", termsafe.Sanitize(scrubPaths(err, root)))
 		os.Exit(2)
 	}
 
@@ -148,6 +157,36 @@ func main() {
 	if blockers > 0 {
 		os.Exit(1)
 	}
+}
+
+// runSlugNames judges the NUL-separated paths in file against the slug cap,
+// printing each finding, and returns the exit code: 0 clean, 1 on a finding, 2
+// where it cannot judge (the list unreadable, the cap refused). The refusal quotes
+// the repository's config, so its error line is masked as renderFinding's are.
+func runSlugNames(file, root string) int {
+	data, err := os.ReadFile(file)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "record-lint:", termsafe.Sanitize(scrubPaths(err, root)))
+		return 2
+	}
+	var rels []string
+	for _, rel := range strings.Split(string(data), "\x00") {
+		if rel != "" {
+			rels = append(rels, rel)
+		}
+	}
+	findings, err := lint.SlugCapFindings(root, rels)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "record-lint:", termsafe.Sanitize(scrubPaths(err, root)))
+		return 2
+	}
+	for _, f := range findings {
+		fmt.Println(renderFinding(f, root))
+	}
+	if len(findings) > 0 {
+		return 1
+	}
+	return 0
 }
 
 // renderFinding formats one finding as `file:line: [SEVERITY RuleID] message`.

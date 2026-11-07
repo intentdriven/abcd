@@ -14,21 +14,24 @@ import (
 	"github.com/intentdriven/abcd/internal/actionsexpr"
 )
 
-// TestMacOSLegRunsItsSuiteOnlyWhereItLands holds ci.yml to where it spends a
+// TestMacOSLegRunsItsSuiteOnlyNightlyAndOnDemand holds ci.yml to where it spends a
 // macOS runner, and to what each of its test jobs runs (iss-2610110938282654).
 //
-// macOS is the account's scarcest runner, five jobs at once, and its suite was the
+// macOS is the account's scarcest runner, five jobs at once, and its suite is the
 // slowest thing in the workflow. It ran on every pull request as well as on every
 // merge-queue entry, so on 2026-10-11 queue entries waited for a slot behind
 // pull-request runs that repeated a local `make preflight`, passed the queue's
-// timeout and were removed, and nothing merged for five hours. The suite now runs
-// on every event but pull_request, as shard jobs (iss-2610181757540736), and
-// `check (macos-latest)` is an aggregator on an ubuntu runner: on a pull request
-// it reports with no shard having run, and says so. Where the suite runs, every
-// shard makes one race-enabled pass over its packages (iss-2610110938293273), and
-// the build, vet and the tests that assert nothing under -race
-// (iss-2610180542030806) run once, in the first shard. The ubuntu job keeps its
-// plain pass and its race lane.
+// timeout and were removed, and nothing merged for five hours. It then ran on
+// every event but pull_request, and on 2026-11-04 queue entries kept dropping
+// because GitHub had no macOS runner to give, with no test failing. So it stands
+// down on a merge-queue entry too, and runs as shard jobs (iss-2610181757540736)
+// on the nightly schedule and by hand; the pre-push hook holds a pushed commit
+// to `make preflight` locally. `check (macos-latest)` is an aggregator on an ubuntu
+// runner: on a pull request and on a queue entry it reports with no shard having
+// run, and says so. Where the suite runs, every shard makes one race-enabled pass
+// over its packages (iss-2610110938293273), and the build, vet and the tests that
+// assert nothing under -race (iss-2610180542030806) run once, in the first shard.
+// The ubuntu job keeps its plain pass and its race lane.
 //
 // The check is SEMANTIC, like the concurrency and range-base contracts beside
 // it: every step's own `if:` and each job's `if:` are evaluated per shard, per
@@ -36,9 +39,10 @@ import (
 // rewritten in a spelling nobody anticipated passes and one that merely reads
 // right fails. The event set is derived from the workflow's `on:` block. A context
 // the job does not have fails the test, which is what catches a step left reading
-// `matrix.os` in a job with no such matrix: GitHub would read it as empty and skip
-// the step in silence.
-func TestMacOSLegRunsItsSuiteOnlyWhereItLands(t *testing.T) {
+// `matrix.shard` in the called workflow, which has no matrix: GitHub would read it
+// as empty and skip the step in silence. The matrix and the condition are ci.yml's,
+// and a shard's runner and steps are macos-suite.yml's, which release.yml calls too.
+func TestMacOSLegRunsItsSuiteOnlyNightlyAndOnDemand(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
 	const rel = ".github/workflows/ci.yml"
 	workflow := readRepoFile(t, root, rel)
@@ -46,6 +50,10 @@ func TestMacOSLegRunsItsSuiteOnlyWhereItLands(t *testing.T) {
 	if !slices.Contains(events, "pull_request") || !slices.Contains(events, "merge_group") {
 		t.Fatalf("%s triggers on %q; the trigger parser has lost its shape, or the workflow no "+
 			"longer gates pull requests and the merge queue", rel, events)
+	}
+	// The two events the suite exists for: without them it runs nowhere at all.
+	if !slices.Contains(events, "schedule") || !slices.Contains(events, "workflow_dispatch") {
+		t.Errorf("%s triggers on %q; the macOS suite runs on the schedule and by hand, so it needs both", rel, events)
 	}
 
 	t.Run("contexts", func(t *testing.T) { checkRequiredTestContexts(t, root, workflow) })
@@ -150,9 +158,9 @@ func checkUbuntuJobPasses(t *testing.T, workflow string, events []string) {
 					return !strings.HasPrefix(p, "go test -race ") && strings.HasSuffix(p, " "+modulePattern)
 				})
 				hasRace := slices.ContainsFunc(passes, func(p string) bool { return strings.HasPrefix(p, "go test -race ") })
-				outside := slices.Contains(passes, "go test "+outsideInternalPattern)
+				outside := slices.Contains(passes, "go test -count=1 "+outsideInternalPattern)
 				guards := slices.ContainsFunc(passes, func(p string) bool {
-					return !strings.HasPrefix(p, "go test -race ") && strings.HasPrefix(p, "go test -run ")
+					return !strings.HasPrefix(p, "go test -race ") && strings.HasPrefix(p, "go test -count=1 -run ")
 				})
 				if inert == "true" {
 					if !plainWhole || hasRace || outside || guards {
@@ -161,7 +169,7 @@ func checkUbuntuJobPasses(t *testing.T, workflow string, events []string) {
 					}
 				} else if plainWhole || !hasRace || !outside || !guards {
 					t.Errorf("the check job on a %s event that is not inert runs %q; want the race "+
-						"pass, `go test %s` and the plain-only guards by name, and no plain "+
+						"pass, `go test -count=1 %s` and the plain-only guards by name, and no plain "+
 						"rerun of the whole module", event, passes, outsideInternalPattern)
 				}
 			})
@@ -169,33 +177,42 @@ func checkUbuntuJobPasses(t *testing.T, workflow string, events []string) {
 	}
 }
 
+// macOSStandsDown reports whether the suite takes no macOS runner on event. Every
+// other event runs it, an event added later included, so a new trigger cannot read
+// as a green for a suite nobody ran.
+func macOSStandsDown(event string) bool {
+	return event == "pull_request" || event == "merge_group"
+}
+
 // checkMacOSSuitePasses evaluates the macOS suite per event and shard: no runner
-// on a pull request, and otherwise every shard's race pass and each one-off once.
+// on a pull request or a queue entry, and otherwise every shard's race pass and
+// each one-off once.
 func checkMacOSSuitePasses(t *testing.T, workflow string, events []string) {
 	t.Helper()
 	job, ok := workflowJobBlock(workflow, macOSSuiteJob)
 	if !ok {
 		t.Fatalf("ci.yml defines no %s job", macOSSuiteJob)
 	}
-	if r, _ := jobKey(job, "runs-on"); r != "macos-latest" {
-		t.Errorf("the %s job runs on %q; want macos-latest", macOSSuiteJob, r)
+	shardJob := macOSShardBlock(t, filepath.Join("..", "..", ".."))
+	if r, _ := jobKey(shardJob, "runs-on"); r != "macos-latest" {
+		t.Errorf("%s job %s runs on %q; want macos-latest", macOSSuiteWorkflow, macOSShardJob, r)
 	}
 	// The classifier has no say here: no pull request reaches a shard, and every
 	// other event is never inert. A need on it would only add a way to skip a
-	// shard, on the classifier's failure, on the one run that gates the merge.
+	// shard, on the classifier's failure, on the only runs the suite has.
 	if _, ok := jobKey(job, "needs"); ok {
 		t.Errorf("the %s job carries a needs; a failed dependency would skip the suite", macOSSuiteJob)
 	}
 	if f, _ := regexpFirst(job, `(?m)^      fail-fast: (\S+)\s*$`); f != "true" {
-		t.Errorf("the %s job's fail-fast is %q; want true: a shard that failed has decided the entry, and "+
-			"the rest would hold scarce runners and the queue for an answer already known", macOSSuiteJob, f)
+		t.Errorf("the %s job's fail-fast is %q; want true: a shard that failed has decided the run, and "+
+			"the rest would hold scarce runners for an answer already known", macOSSuiteJob, f)
 	}
 	jobIf, ok := jobKey(job, "if")
 	if !ok {
-		t.Fatalf("the %s job carries no if, so a pull request would take macOS runners", macOSSuiteJob)
+		t.Fatalf("the %s job carries no if, so a pull request and a queue entry would take macOS runners", macOSSuiteJob)
 	}
 	shards := macOSShards(t, job)
-	items := jobSteps(job)
+	items := jobSteps(shardJob)
 	for _, event := range events {
 		t.Run(event, func(t *testing.T) {
 			ctx := map[string]any{
@@ -208,7 +225,7 @@ func checkMacOSSuitePasses(t *testing.T, workflow string, events []string) {
 			if err != nil {
 				t.Fatalf("cannot evaluate the job's if %q: %v", jobIf, err)
 			}
-			if want := event != "pull_request"; run != want {
+			if want := !macOSStandsDown(event); run != want {
 				t.Fatalf("the %s job's if %q reads %v on a %s event; want %v", macOSSuiteJob, jobIf, run, event, want)
 			}
 			if !run {
@@ -216,17 +233,17 @@ func checkMacOSSuitePasses(t *testing.T, workflow string, events []string) {
 			}
 			count := map[string]int{}
 			for _, shard := range shards {
-				ctx["matrix.shard"] = float64(shard)
+				ctx["inputs.shard"] = float64(shard)
 				running := runningSteps(t, items, ctx)
 				passes := goTestPasses(running)
-				if len(passes) == 0 || passes[0] != "go test -race -timeout 40m "+macOSShardPackages {
+				if len(passes) == 0 || passes[0] != "go test -race -count=1 -timeout 80m "+macOSShardPackages {
 					t.Errorf("shard %d on a %s event runs %q; want its race pass first, so the slowest "+
 						"packages start with the shard's testing", shard, event, passes)
 				}
 				for i, p := range passes {
 					switch {
 					case i == 0:
-					case strings.HasPrefix(p, "go test -run "):
+					case strings.HasPrefix(p, "go test -count=1 -run "):
 						count["guards"]++
 					default:
 						t.Errorf("shard %d on a %s event also runs %q; a shard makes one race pass, "+
@@ -284,6 +301,17 @@ func goTestPasses(steps []jobStep) []string {
 	return passes
 }
 
+// macOSShardBlock returns the job that runs one shard of the suite, from the
+// reusable workflow ci.yml's matrix and release.yml's shard jobs both call.
+func macOSShardBlock(t *testing.T, root string) string {
+	t.Helper()
+	job, ok := workflowJobBlock(readRepoFile(t, root, macOSSuiteWorkflow), macOSShardJob)
+	if !ok {
+		t.Fatalf("%s defines no %s job", macOSSuiteWorkflow, macOSShardJob)
+	}
+	return job
+}
+
 // regexpFirst returns the first capture of pattern in text.
 func regexpFirst(text, pattern string) (string, bool) {
 	m := regexp.MustCompile(pattern).FindStringSubmatch(text)
@@ -295,6 +323,9 @@ func regexpFirst(text, pattern string) (string, bool) {
 
 // macOSContext is the required context the macOS suite's aggregator reports.
 const macOSContext = "check (macos-latest)"
+
+// modulePackagePrefix starts every import path cmd/ci-shard prints.
+const modulePackagePrefix = "github.com/intentdriven/abcd/"
 
 // macOSShards reads the suite's matrix, failing unless it is 1..n: the step asks
 // cmd/ci-shard for shard matrix.shard of strategy.job-total, so a gap or a repeat
@@ -320,14 +351,15 @@ func macOSShards(t *testing.T, suite string) []int {
 	return shards
 }
 
-// macOSShardCount is how many shards the suite runs: a third of the slowest
-// passing run fits a slow runner comfortably, and five macOS runners over four
-// building entries serve three shards each about as well as two
-// (the comment on the macos-suite job in ci.yml has the sums).
-const macOSShardCount = 3
+// macOSShardCount is how many shards the suite runs: three that share most of the
+// module, and one that holds internal/core/implement/loop alone. One run's four fit
+// the account's five macOS runners (the comment on the macos-suite job in ci.yml
+// has the sums).
+const macOSShardCount = 4
 
 // macOSRaceStepScript returns the shard race step's job step, its env values held
-// to what asks cmd/ci-shard for this shard of as many as the matrix has.
+// to what asks cmd/ci-shard for this shard of as many as its caller names
+// (TestMacOSSuiteCallersPassItsDeclaredInputs holds what each caller names).
 func macOSRaceStepScript(t *testing.T, suite string) jobStep {
 	t.Helper()
 	for _, s := range jobSteps(suite) {
@@ -335,11 +367,11 @@ func macOSRaceStepScript(t *testing.T, suite string) jobStep {
 			continue
 		}
 		for key, want := range map[string]string{
-			"ABCD_CI_SHARD":  "${{ matrix.shard }}",
-			"ABCD_CI_SHARDS": "${{ strategy.job-total }}",
+			"ABCD_CI_SHARD":  "${{ inputs.shard }}",
+			"ABCD_CI_SHARDS": "${{ inputs.shards }}",
 		} {
 			if got, _ := regexpFirst(s.body, `(?m)^\s+`+key+`: (.+?)\s*$`); got != want {
-				t.Errorf("step %q: %s is %q; want %q, so the count cannot drift from the matrix", macOSRaceStep, key, got, want)
+				t.Errorf("step %q: %s is %q; want %q, so the count cannot drift from the caller's", macOSRaceStep, key, got, want)
 			}
 		}
 		if s.cond != "" {
@@ -347,7 +379,7 @@ func macOSRaceStepScript(t *testing.T, suite string) jobStep {
 		}
 		return s
 	}
-	t.Fatalf("the %s job has no %q step", macOSSuiteJob, macOSRaceStep)
+	t.Fatalf("%s has no %q step", macOSSuiteWorkflow, macOSRaceStep)
 	return jobStep{}
 }
 
@@ -362,7 +394,7 @@ func TestMacOSSuiteShardsCoverTheModule(t *testing.T) {
 		t.Fatalf("ci.yml defines no %s job", macOSSuiteJob)
 	}
 	shards := macOSShards(t, suite)
-	step := macOSRaceStepScript(t, suite)
+	step := macOSRaceStepScript(t, macOSShardBlock(t, root))
 	const assign = `pkgs=$(go run ./cmd/ci-shard -shard "$ABCD_CI_SHARD" -of "$ABCD_CI_SHARDS")`
 	if !strings.Contains(step.script(), assign) {
 		t.Fatalf("step %q does not read %s:\n%s", macOSRaceStep, assign, step.script())
@@ -377,6 +409,7 @@ func TestMacOSSuiteShardsCoverTheModule(t *testing.T) {
 	}
 	want := strings.Fields(string(out))
 	seen := map[string]int{}
+	var last []string
 	for _, shard := range shards {
 		cmd := exec.Command("go", "run", "./cmd/ci-shard", "-shard", strconv.Itoa(shard), "-of", strconv.Itoa(len(shards)))
 		cmd.Dir = root
@@ -391,6 +424,13 @@ func TestMacOSSuiteShardsCoverTheModule(t *testing.T) {
 		for _, p := range got {
 			seen[p]++
 		}
+		last = got
+	}
+	// The loop package has a shard to itself, under the count the workflow really
+	// asks for. The first shard also runs the build, vet and the plain-only guards,
+	// so it cannot be this one.
+	if wantLast := []string{modulePackagePrefix + "internal/core/implement/loop"}; !slices.Equal(last, wantLast) {
+		t.Errorf("the last shard names %q; want %q alone", last, wantLast)
 	}
 	for _, p := range want {
 		if seen[p] != 1 {
@@ -410,11 +450,7 @@ func TestMacOSSuiteShardsCoverTheModule(t *testing.T) {
 // other side, the packages it printed must reach go test as separate words.
 func TestAShardThatCannotReadItsPackagesFails(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
-	suite, ok := workflowJobBlock(readRepoFile(t, root, ".github/workflows/ci.yml"), macOSSuiteJob)
-	if !ok {
-		t.Fatalf("ci.yml defines no %s job", macOSSuiteJob)
-	}
-	script := macOSRaceStepScript(t, suite).script()
+	script := macOSRaceStepScript(t, macOSShardBlock(t, root)).script()
 	dir := t.TempDir()
 	stub := "#!/bin/sh\nprintf '%s\\n' \"$*\" >>\"$STUB_LOG\"\n" +
 		"[ \"$1\" = run ] || exit 0\n[ -z \"$STUB_FAIL\" ] || exit 1\nprintf 'p/a\\np/b\\n'\n"
@@ -426,7 +462,7 @@ func TestAShardThatCannotReadItsPackagesFails(t *testing.T) {
 		// The flags the step's own shell gives bash, ci-watchdog aside.
 		cmd := exec.Command("bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", script)
 		cmd.Env = append(os.Environ(), "PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"),
-			"STUB_LOG="+log, "STUB_FAIL="+fail, "ABCD_CI_SHARD=1", "ABCD_CI_SHARDS=3")
+			"STUB_LOG="+log, "STUB_FAIL="+fail, "ABCD_CI_SHARD=1", "ABCD_CI_SHARDS="+strconv.Itoa(macOSShardCount))
 		err := cmd.Run()
 		got, _ := os.ReadFile(log)
 		return string(got), err
@@ -440,7 +476,7 @@ func TestAShardThatCannotReadItsPackagesFails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the step failed with a working cmd/ci-shard: %v\n%s", err, log)
 	}
-	if !strings.Contains(log, "test -race -timeout 40m p/a p/b\n") {
+	if !strings.Contains(log, "test -race -count=1 -timeout 80m p/a p/b\n") {
 		t.Errorf("the step did not hand go test the shard's packages as separate words:\n%s", log)
 	}
 }
@@ -448,10 +484,12 @@ func TestAShardThatCannotReadItsPackagesFails(t *testing.T) {
 // TestMacOSCheckFailsUnlessEveryShardSucceeded runs the aggregator's own script
 // over every result its need can read, per event (loud staging: a green may only
 // stand for work that happened). It passes in exactly two cases: every shard
-// succeeded off a pull request, and the shards were deliberately skipped on one.
-// A shard skipped anywhere else, failed or cancelled, or a result that reads as
-// nothing at all, fails it. needs.<job>.result is a matrix's result as a whole:
-// GitHub reads it as success only when every leg succeeded.
+// succeeded on an event the suite runs on, and the shards were deliberately skipped
+// on a pull request or a queue entry, where it says that no macOS suite ran and
+// where one does. A shard skipped anywhere else, failed, cancelled or abandoned, or
+// a result that reads as nothing at all, fails it. needs.<job>.result is a matrix's
+// result as a whole: GitHub reads it as success only when every leg succeeded, and
+// as abandoned when a shard never got a runner (run 41901793293).
 //
 // It must also report whatever happened to the shards and the run, so the job and
 // its step both read always(): a job's step with the implicit success() is skipped
@@ -502,12 +540,18 @@ func TestMacOSCheckFailsUnlessEveryShardSucceeded(t *testing.T) {
 		}
 	}
 
-	results := []string{"success", "failure", "cancelled", "skipped", "", "neutral"}
+	results := []string{"success", "failure", "cancelled", "skipped", "abandoned", "", "neutral"}
+	// What each stand-in has to say, in the log and the step summary: a green here
+	// tested nothing on macOS, and the reader is told where the suite does run.
+	standIn := map[string][]string{
+		"pull_request": {"this run tested nothing on macOS", "nightly", "on demand"},
+		"merge_group":  {"No macOS suite ran on this entry", "The nightly run covers the default branch"},
+	}
 	for _, event := range append(workflowTriggers(workflow), "an-event-added-later") {
 		for _, result := range results {
 			t.Run(fmt.Sprintf("%s/%s", event, result), func(t *testing.T) {
 				want := result == "success"
-				if event == "pull_request" {
+				if macOSStandsDown(event) {
 					want = result == "skipped"
 				}
 				summary := filepath.Join(t.TempDir(), "summary")
@@ -521,8 +565,21 @@ func TestMacOSCheckFailsUnlessEveryShardSucceeded(t *testing.T) {
 				if !want && !strings.Contains(string(out), "::error") {
 					t.Errorf("a refusal says nothing on the log:\n%s", out)
 				}
-				if event == "pull_request" && want && !strings.Contains(string(out), "::notice") {
-					t.Errorf("the pull-request stand-in does not say in the log that it tested nothing on macOS:\n%s", out)
+				if !macOSStandsDown(event) || !want {
+					return
+				}
+				if !strings.Contains(string(out), "::notice") {
+					t.Errorf("the %s stand-in raises no notice in the log:\n%s", event, out)
+				}
+				written, err := os.ReadFile(summary)
+				if err != nil {
+					t.Errorf("the %s stand-in writes no step summary: %v", event, err)
+				}
+				for _, says := range standIn[event] {
+					if !strings.Contains(string(out), says) || !strings.Contains(string(written), says) {
+						t.Errorf("the %s stand-in does not say %q in both the log and the summary:\n%s\nsummary:\n%s",
+							event, says, out, written)
+					}
 				}
 			})
 		}

@@ -1,16 +1,20 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/machineload"
 )
@@ -87,7 +91,7 @@ func TestImplementLoadWaitTimeoutExitsNonZero(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit %d, want 1:\n%s", code, out)
 	}
-	want := "load gate still shut after 1m0s: load 40.0 is not below 32 (2 x 16 online cores)"
+	want := "LOAD GATE TIMED OUT after 1m0s: exit 1, nothing ran: load 40.0 is not below 32 (2 x 16 online cores)"
 	if !strings.Contains(out, want) {
 		t.Fatalf("output lacks %q:\n%s", want, out)
 	}
@@ -285,7 +289,7 @@ func TestImplementLoadWaitSaysAQuietHolder(t *testing.T) {
 	for _, want := range []string{
 		"another waiter holds the gate (pid 777, until",
 		"; the holder (pid 777, /work/repo) has held the test slot for 11m0s using little CPU (under 10% of a core for the last 10m0s); if it is yours and stuck, stop it by its own pid",
-		"load gate still shut after 12m0s",
+		"LOAD GATE TIMED OUT after 12m0s",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("output lacks %q:\n%s", want, out)
@@ -450,5 +454,331 @@ func TestHoldersTextMarksAQuietHolder(t *testing.T) {
 		"pid 999 for 1m0s, not yet measured"
 	if got != want {
 		t.Fatalf("holdersText = %q, want %q", got, want)
+	}
+}
+
+// lastLine is the last line of out that holds anything.
+func lastLine(out string) string {
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	return lines[len(lines)-1]
+}
+
+// TestImplementLoadWaitTimeoutIsTheLastLine: a wait that times out says so in
+// its very last line, in words a pipe cannot lose, since on 2026-11-04 builders'
+// `| tail` hid the exit code and they read a timed-out gate as still running. A
+// settings notice comes before it; the exit code stays 1.
+func TestImplementLoadWaitTimeoutIsTheLastLine(t *testing.T) {
+	waitFixture(t, machine(40, 40, 40))
+	home, _ := os.UserHomeDir()
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(abcdhome.Path(home, "load-limits"), []byte("no-such-key 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out, _ := implementCLI(t, "implement", "load", "--wait", "--timeout", "1m")
+	if code != 1 {
+		t.Fatalf("exit %d, want 1:\n%s", code, out)
+	}
+	want := "LOAD GATE TIMED OUT after 1m0s: exit 1, nothing ran: load 40.0 is not below 32"
+	if !strings.HasPrefix(lastLine(out), want) {
+		t.Fatalf("last line = %q, want it to start %q:\n%s", lastLine(out), want, out)
+	}
+	if !strings.Contains(out, "LOAD CHECK SETTINGS UNUSABLE") {
+		t.Fatalf("the settings notice went missing:\n%s", out)
+	}
+}
+
+// TestImplementLoadWaitTimeoutComesAfterARenewalInFlight: with standard error
+// sent to the same pipe, a renewal's message said as the waiter stops would land
+// after the closing line.
+func TestImplementLoadWaitTimeoutComesAfterARenewalInFlight(t *testing.T) {
+	waitFixture(t, machine(40, 40, 40))
+	renewFixture(t, func(string) ([]claim.Renewal, error) {
+		time.Sleep(200 * time.Millisecond)
+		return []claim.Renewal{{Record: "iss-1", Until: time.Now()}}, nil
+	})
+	var both bytes.Buffer
+	w := &lockedWriter{w: &both}
+	code := Run([]string{"implement", "load", "--wait", "--timeout", "1m"}, w, w)
+	if code != 1 {
+		t.Fatalf("exit %d, want 1:\n%s", code, both.String())
+	}
+	if !strings.HasPrefix(lastLine(both.String()), "LOAD GATE TIMED OUT after 1m0s:") {
+		t.Fatalf("last line = %q:\n%s", lastLine(both.String()), both.String())
+	}
+}
+
+// TestImplementLoadWaitDefaultTimeout: left to its default, a gated test waits
+// long enough for a busy machine.
+func TestImplementLoadWaitDefaultTimeout(t *testing.T) {
+	var asJSON bool
+	f := newImplementLoadCommand(&asJSON).Flags().Lookup("timeout")
+	if f == nil || f.DefValue != "6h0m0s" {
+		t.Fatalf("--timeout default = %+v, want 6h0m0s", f)
+	}
+}
+
+// fakeGo puts a go on PATH that answers `go env GOFLAGS` with goflags and otherwise
+// records the environment it ran under in the file it returns, exiting with code.
+func fakeGo(t *testing.T, goflags string, code int) string {
+	t.Helper()
+	dir := t.TempDir()
+	ran := filepath.Join(dir, "ran")
+	body := fmt.Sprintf("#!/bin/sh\nif [ \"$1\" = env ]; then echo %q; exit 0; fi\necho \"GOFLAGS=$GOFLAGS GOMAXPROCS=$GOMAXPROCS\" > %q\nexit %d\n", goflags, ran, code)
+	if err := os.WriteFile(filepath.Join(dir, "go"), []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("GOFLAGS", "")
+	t.Setenv("GOMAXPROCS", "")
+	return ran
+}
+
+// reexecFixture records a fallback instead of replacing the test's process.
+func reexecFixture(t *testing.T) *[]string {
+	t.Helper()
+	var got []string
+	prev := loadReexec
+	loadReexec = func(argv []string) error {
+		got = argv
+		return errors.New("recorded")
+	}
+	t.Cleanup(func() { loadReexec = prev })
+	return &got
+}
+
+// narrowArgs is the marked form of cmd.
+func narrowArgs(cmd ...string) []string {
+	return append([]string{"implement", "load", "--wait", "--narrow", "--timeout", "1m", "--"}, cmd...)
+}
+
+// TestImplementLoadWaitANarrowCommandWaitsAtItsOwnGate: a marked one-package go test
+// opens past a live race run, which holds a whole run at one slot shut, runs bound to
+// its share of the machine, and passes its exit code on.
+func TestImplementLoadWaitANarrowCommandWaitsAtItsOwnGate(t *testing.T) {
+	waitFixture(t, machine(3, 3, 3, liveRace))
+	ran := fakeGo(t, "", 7)
+	code, out, errOut := implementCLI(t, narrowArgs("go", "test", "-count=1", "./internal/core/spec")...)
+	if code != 7 {
+		t.Fatalf("exit %d, want the command's 7:\n%s%s", code, out, errOut)
+	}
+	for _, want := range []string{
+		"narrow gate open after 20s: load 3.0 is below 32 (2 x 16 online cores), and fewer than ",
+		"held for 30s",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("output lacks %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "waiting for capacity") {
+		t.Fatalf("a narrow run waited on a race run:\n%s", out)
+	}
+	got, err := os.ReadFile(ran)
+	if err != nil || strings.TrimSpace(string(got)) != "GOFLAGS=-p=1 GOMAXPROCS=2" {
+		t.Fatalf("the command ran under %q (%v), want one package at a time on two cores", got, err)
+	}
+
+	// A lower GOMAXPROCS of the person's own stands.
+	ran = fakeGo(t, "", 0)
+	t.Setenv("GOMAXPROCS", "1")
+	if code, out, errOut := implementCLI(t, narrowArgs("go", "test", "./a")...); code != 0 {
+		t.Fatalf("exit %d:\n%s%s", code, out, errOut)
+	}
+	if got, _ := os.ReadFile(ran); strings.TrimSpace(string(got)) != "GOFLAGS=-p=1 GOMAXPROCS=1" {
+		t.Fatalf("the command ran under %q", got)
+	}
+}
+
+// TestImplementLoadWaitThePlainFormIsAWholeRun: without the mark the same command is
+// a whole run, to itself as to every reader of its argv, and runs as it was given.
+func TestImplementLoadWaitThePlainFormIsAWholeRun(t *testing.T) {
+	waitFixture(t, machine(3, 3, 3, liveRace))
+	fakeGo(t, "", 0)
+	for _, cmd := range [][]string{
+		{"go", "test", "./internal/core/spec"},
+		{"go", "test", "./..."},
+		{"sh", "-c", "go test ./internal/core/spec"},
+	} {
+		code, out, errOut := implementCLI(t, append([]string{"implement", "load", "--wait", "--timeout", "1m", "--"}, cmd...)...)
+		if code != 1 || !strings.Contains(out, "a go test -race run is live") {
+			t.Fatalf("%v: exit %d, want it shut as a whole run:\n%s%s", cmd, code, out, errOut)
+		}
+	}
+}
+
+// TestImplementLoadWaitTheMarkOnAWholeCommand: a mark on what is no narrow run marks
+// nothing: its argv reads as a whole run to everyone, so it waits as one and says so.
+func TestImplementLoadWaitTheMarkOnAWholeCommand(t *testing.T) {
+	waitFixture(t, machine(3, 3, 3, liveRace))
+	fakeGo(t, "", 0)
+	got := reexecFixture(t)
+	code, out, errOut := implementCLI(t, narrowArgs("go", "test", "./...")...)
+	if code != 1 || !strings.Contains(out, "a go test -race run is live") {
+		t.Fatalf("exit %d, want it shut as a whole run:\n%s%s", code, out, errOut)
+	}
+	if !strings.Contains(errOut, "not a narrow run") || *got != nil {
+		t.Fatalf("stderr %q, re-exec %v; want the line and no re-exec", errOut, *got)
+	}
+}
+
+// TestImplementLoadWaitFallsBackWhenGOFLAGSIsSet: the argv is the one truth, so a
+// waiter that cannot honour its mark takes the mark off its argv, keeping its pid
+// and its place, and says why. Effective GOFLAGS is go's own answer.
+func TestImplementLoadWaitFallsBackWhenGOFLAGSIsSet(t *testing.T) {
+	waitFixture(t, machine(3, 3, 3, liveRace))
+	ran := fakeGo(t, "-race", 0)
+	got := reexecFixture(t)
+	code, out, errOut := implementCLI(t, narrowArgs("go", "test", "./a")...)
+	if code != 2 || *got == nil {
+		t.Fatalf("exit %d, re-exec %v; want the fallback:\n%s%s", code, *got, out, errOut)
+	}
+	if !strings.Contains(errOut, "GOFLAGS") || !strings.Contains(errOut, "whole run") {
+		t.Fatalf("stderr does not say why:\n%s", errOut)
+	}
+	if slices.Contains(*got, "--narrow") {
+		t.Fatalf("the mark stayed on: %v", *got)
+	}
+	if _, err := os.Stat(ran); err == nil {
+		t.Fatal("the command ran")
+	}
+}
+
+// TestImplementLoadWaitRechecksGOFLAGSAtTheOpen: a wait can last hours, and go env -w
+// can change what the command would read in that time.
+func TestImplementLoadWaitRechecksGOFLAGSAtTheOpen(t *testing.T) {
+	waitFixture(t, machine(3, 3, 3))
+	ran := fakeGo(t, "", 0)
+	got := reexecFixture(t)
+	calls := 0
+	prev := loadGoFlags
+	loadGoFlags = func(cmd []string) (string, error) {
+		calls++
+		if calls > 1 {
+			return "-race", nil
+		}
+		return "", nil
+	}
+	t.Cleanup(func() { loadGoFlags = prev })
+	code, out, errOut := implementCLI(t, narrowArgs("go", "test", "./a")...)
+	if code != 2 || *got == nil || slices.Contains(*got, "--narrow") {
+		t.Fatalf("exit %d, re-exec %v:\n%s%s", code, *got, out, errOut)
+	}
+	if _, err := os.Stat(ran); err == nil {
+		t.Fatal("the command ran under a GOFLAGS it was not cleared for")
+	}
+}
+
+// TestEffectiveGoFlagsReadsGoEnv is the real go's answer: GOENV's file and the
+// environment both reach it, where reading the environment alone misses the file.
+func TestEffectiveGoFlagsReadsGoEnv(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "env")
+	if err := os.WriteFile(file, []byte("GOFLAGS=-p=64\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOENV", file)
+	t.Setenv("GOFLAGS", "")
+	if got, err := loadGoFlags([]string{"go", "test", "./a"}); err != nil || got != "-p=64" {
+		t.Fatalf("GOENV's file: %q, %v", got, err)
+	}
+	t.Setenv("GOFLAGS", "-race")
+	if got, err := loadGoFlags([]string{"go", "test", "./a"}); err != nil || got != "-race" {
+		t.Fatalf("the environment: %q, %v", got, err)
+	}
+}
+
+// TestWithoutNarrow takes the mark off before `--`, and only there.
+func TestWithoutNarrow(t *testing.T) {
+	got := withoutNarrow([]string{"abcd", "implement", "load", "--narrow", "--wait", "--narrow=true", "--", "go", "test", "--narrow", "./a"})
+	want := []string{"abcd", "implement", "load", "--wait", "--", "go", "test", "--narrow", "./a"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("withoutNarrow = %v", got)
+	}
+}
+
+// TestImplementLoadNarrowNeedsWait: the mark belongs to the first gate's waiter.
+func TestImplementLoadNarrowNeedsWait(t *testing.T) {
+	loadFixture(t, machine(3, 3, 3), nil)
+	for _, args := range [][]string{
+		{"implement", "load", "--narrow", "--site", "preflight"},
+		{"implement", "load", "--race-gate", "--narrow"},
+	} {
+		if code, out, errOut := implementCLI(t, args...); code != 2 || !strings.Contains(errOut, "--narrow") {
+			t.Errorf("%v: exit %d, want 2 naming the flag:\n%s%s", args, code, out, errOut)
+		}
+	}
+}
+
+// TestImplementLoadWaitTimeoutLineInJSON: --json keeps standard output one document,
+// so a timeout's closing line goes to standard error, last; the code stays 1.
+func TestImplementLoadWaitTimeoutLineInJSON(t *testing.T) {
+	waitFixture(t, machine(40, 40, 40))
+	code, out, errOut := implementCLI(t, "implement", "load", "--wait", "--timeout", "1m", "--json")
+	if code != 1 {
+		t.Fatalf("exit %d, want 1:\n%s%s", code, out, errOut)
+	}
+	var res implement.WaitResult
+	if err := json.Unmarshal([]byte(out), &res); err != nil || res.Status != implement.WaitTimedOut {
+		t.Fatalf("stdout is not one document saying timeout: %v\n%s", err, out)
+	}
+	if !strings.HasPrefix(lastLine(errOut), "LOAD GATE TIMED OUT after 1m0s: exit 1, nothing ran:") {
+		t.Fatalf("stderr's last line = %q", lastLine(errOut))
+	}
+}
+
+// TestImplementLoadWaitNamesANarrowRunsHolders: what shuts a narrow gate reads as
+// that gate's own.
+func TestImplementLoadWaitNamesANarrowRunsHolders(t *testing.T) {
+	running := []machineload.Proc{
+		{PID: 70000, PPID: 1, PGID: 70000, UID: uint32(os.Geteuid()), Age: time.Minute, Name: "abcd"},
+		{PID: 70001, PPID: 70000, PGID: 70000, UID: uint32(os.Geteuid()), Age: time.Minute, Name: "go"},
+	}
+	waitFixture(t, machine(3, 3, 3, running...))
+	fakeGo(t, "", 0)
+	prevSelf := loadSelf
+	loadSelf = func() machineload.Self { return machineload.Self{PID: loadCaller.PID, UID: uint32(os.Geteuid())} }
+	t.Cleanup(func() { loadSelf = prevSelf })
+	prev := loadArgsReader
+	loadArgsReader = func(pids []int) (map[int][]string, error) {
+		out := map[int][]string{}
+		for _, p := range pids {
+			switch p {
+			case 70000:
+				out[p] = []string{"implement", "load", "--wait", "--narrow", "--", "go", "test", "./a"}
+			case 70001:
+				out[p] = []string{"test", "./a"}
+			}
+		}
+		return out, nil
+	}
+	t.Cleanup(func() { loadArgsReader = prev })
+	home, _ := os.UserHomeDir()
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(abcdhome.Path(home, "config.json"), []byte(`{"load": {"narrow_runs": 1}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errOut := implementCLI(t, narrowArgs("go", "test", "./a")...)
+	if code != 1 || !strings.Contains(out, "the narrow runs' limit of 1 is taken: a narrow run is running or queued ahead (pid 70000)") {
+		t.Fatalf("exit %d, want shut on the narrow limit:\n%s%s", code, out, errOut)
+	}
+
+	if err := os.WriteFile(abcdhome.Path(home, "config.json"), []byte(`{"load": {"narrow_runs": 0}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errOut = implementCLI(t, narrowArgs("go", "test", "./a")...)
+	if code != 1 || !strings.Contains(errOut, implement.NarrowRunsKey) {
+		t.Fatalf("exit %d, want a refusal naming %s:\n%s%s", code, implement.NarrowRunsKey, out, errOut)
+	}
+}
+
+// TestImplementLoadHelpNamesTheNarrowGate: the verb's own help says it.
+func TestImplementLoadHelpNamesTheNarrowGate(t *testing.T) {
+	_, out, _ := implementCLI(t, "implement", "load", "--help")
+	for _, want := range []string{implement.NarrowRunsKey, "narrow run"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("help lacks %q", want)
+		}
 	}
 }

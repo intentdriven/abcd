@@ -194,7 +194,7 @@ func TestAYesWhoseHoldMovedOnPublishesItsHandBackAtTheNextRelease(t *testing.T) 
 // opened on and the state no longer records, is released.
 func TestANoThenAnUnreadablePeerAccountsForTheHold(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
-	first, taken := askFirst(t, repo, bare, Options{}, DrainOptions{})
+	first, taken := askFirstOnce(t, repo, bare, DrainOptions{})
 	broken := filepath.Join(t.TempDir(), "wt-broken")
 	repo.Git("worktree", "add", "-q", "-b", "lane-broken", broken)
 	breakGitFile(t, broken)
@@ -221,7 +221,7 @@ func TestANoThenAnUnreadablePeerAccountsForTheHold(t *testing.T) {
 // routes nothing twice.
 func TestAYesThenARefusedReservationKeepsWhatTheMoveDid(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
-	first, taken := askFirst(t, repo, bare, Options{}, DrainOptions{})
+	first, taken := askFirstOnce(t, repo, bare, DrainOptions{})
 	undo := refuseReservationPush(t, bare, eligibleIssue)
 	path := writeAnswer(t, repo, first.Judging, judgementAnswer(first.Judging, JudgementYes, HandBackTrustRule, "the remedy moves a trust boundary"))
 	_, err := Drain(repo.Root(), Options{}, DrainOptions{Judgement: path})
@@ -258,7 +258,7 @@ func TestAYesThenARefusedReservationKeepsWhatTheMoveDid(t *testing.T) {
 // opens the lane with no judgement asked.
 func TestANoWhoseLaneReservationIsRefusedKeepsTheJudgement(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
-	first, _ := askFirst(t, repo, bare, Options{}, DrainOptions{})
+	first, _ := askFirstOnce(t, repo, bare, DrainOptions{})
 	if _, err := claim.Reserve(repo.Root(), claim.Request{Record: secondIssue, Release: true}, claim.Options{}); err != nil {
 		t.Fatal(err)
 	}

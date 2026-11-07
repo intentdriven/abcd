@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/ghcontract"
 )
 
@@ -158,7 +159,7 @@ func TestAnEnqueueTheForgeRefusesTogglesTheArmingPastTheGrace(t *testing.T) {
 	if off < 0 || on < off {
 		t.Fatalf("the toggle withdraws the arming, then arms it again by the queue's method pinned to %s:\n%s", pushed, log)
 	}
-	if note := f.lastNote(t); !strings.Contains(note, "toggled its auto-merge once") {
+	if note := f.lastNote(t); !strings.Contains(note, "toggled its auto-merge, toggle 1 of") {
 		t.Fatalf("the record says the arming was toggled: %q", note)
 	}
 }
@@ -203,8 +204,8 @@ func TestAPullRequestDroppedAfterAFailedMergeGroupCheckIsReportedWithTheCheck(t 
 			t.Fatalf("a check that passed or was cancelled with the group is not named as failed (%s): %s", not, r.Reason)
 		}
 	}
-	if !strings.Contains(r.Remedy, "gh pr merge 7 --auto --match-head-commit="+pushed) || !strings.Contains(r.Remedy, "does not re-queue it") {
-		t.Fatalf("the remedy names the re-arming a person makes: %s", r.Remedy)
+	if !strings.Contains(r.Remedy, "`gh pr merge 7 --auto --merge --match-head-commit="+pushed+"`") || !strings.Contains(r.Remedy, "does not re-queue it") {
+		t.Fatalf("the remedy names the re-arming a person makes, by the queue's method: %s", r.Remedy)
 	}
 	log := strings.TrimPrefix(f.ghLog(t), before)
 	if !strings.Contains(log, "commits/"+group+"/check-runs") || strings.Contains(log, "commits/"+older) {
@@ -226,6 +227,37 @@ func TestAPullRequestDroppedAfterAFailedMergeGroupCheckIsReportedWithTheCheck(t 
 	_, err = advance(f.repo.Root(), f.runID, f.stages, Options{})
 	if r := mustRefusal(t, err); r.Contention || !strings.Contains(r.Reason, "no merge-queue run of it") {
 		t.Fatalf("a drop with no run to read is reported all the same: %+v", r)
+	}
+}
+
+// TestADroppedPullRequestsReArmingIsQuotedWithTheQueuesMethod
+// (iss-2611031337128901): the command the drop's report quotes is the one the
+// toggle runs, carrying the merge method of the queue's rule, since gh refuses
+// `pr merge --auto` with none when it cannot prompt; a rule naming no method
+// quotes no command rather than one gh refuses.
+func TestADroppedPullRequestsReArmingIsQuotedWithTheQueuesMethod(t *testing.T) {
+	f := newLandFixture(t, queueRuleset("SQUASH"))
+	l := f.landedToArmed(t)
+	pushed := l.Landing.Pushed
+	if !strings.Contains(f.ghLog(t), "pr merge 7 --auto --squash --match-head-commit="+pushed) {
+		t.Fatalf("the lane is armed by the queue's method:\n%s", f.ghLog(t))
+	}
+	f.queueAnswer(t, stubQueue{head: pushed, status: "CLEAN", removed: "failed_checks"})
+	f.writeGH(t, "runs.json", map[string]any{"workflow_runs": []any{}})
+
+	_, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
+	r := mustRefusal(t, err)
+	want := "`gh " + strings.Join(rearmArgs("7", "--squash", pushed), " ") + "`"
+	if !strings.Contains(r.Remedy, want) || !strings.Contains(r.Remedy, "--auto --squash --match-head-commit="+pushed) {
+		t.Fatalf("the remedy quotes the toggle's own re-arming, by the queue's method (%s): %s", want, r.Remedy)
+	}
+
+	lane := currentLane(t, f.repo, f.runID)
+	c := Context{RepoRoot: f.repo.Root(), Now: time.Now()}
+	err = droppedRefusal(c, lane, "main", landing.MergeRule{}, queueView{})
+	r = mustRefusal(t, err)
+	if strings.Contains(r.Remedy, "gh pr merge") || !strings.Contains(r.Remedy, pushed+" by the queue's merge method") {
+		t.Fatalf("with no method to quote, the remedy names the method to arm by and quotes no command gh refuses: %s", r.Remedy)
 	}
 }
 

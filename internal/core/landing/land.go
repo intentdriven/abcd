@@ -9,6 +9,8 @@ package landing
 //     the worktree that has it checked out) and its head; refused on a
 //     detached HEAD and a tree with uncommitted changes. With land.push and
 //     land.enqueue both off nothing else runs.
+//     A person's stop (stophold.go) holds anything else, here, again after the
+//     gate and again at the arming.
 //  2. origin: origin's every fetch and push URL must be the repository the
 //     forge client resolves here, and the forge's default branch must be the
 //     one origin itself names (git ls-remote --symref, never fetched or
@@ -38,19 +40,27 @@ package landing
 //     through claim.AnnounceBeforePush, the code `abcd announce` runs; the
 //     push waits until each is on origin, and one that cannot be published
 //     refuses the landing, nothing pushed.
-//  6. push (land.push): a plain `git push --porcelain origin
+//  6. withdraw (withdraw.go): an arming at the head the push will move is
+//     withdrawn and read back, as is this account's at a local head the merge
+//     gate refuses. One that cannot be, another account's at such a head, or a
+//     forge that cannot be asked, stops the landing, nothing pushed.
+//  7. push (land.push): a plain `git push --porcelain origin
 //     <head>:refs/heads/B` from the branch's checkout, so the commit pushed is
 //     the one the gate checked whatever the branch names by then, the
 //     repository's hooks running, never forced, never the default branch.
 //     Off, it prints the command and names the layer that turned it off.
-//  7. enqueue (land.enqueue): the open pull request for the branch, armed by
+//  8. enqueue (land.enqueue): the open pull request for the branch, armed by
 //     the merge gate (mergeGate), pinned to the head, and confirmed in the
 //     merge queue (PRStateQuery, asked of the repository the forge client
-//     named when origin was checked); with no pull request it composes the
+//     named when origin was checked). Before it arms, a branch that shares a
+//     commit not on the default branch with another pull request queued or
+//     armed into it (one cut from that one's branch) stops unarmed, naming
+//     it: the queue would remove this one as an invalid merge commit
+//     (stacked.go). With no pull request it composes the
 //     body from the branch's commits into the local tier, prints the
 //     `gh pr create` command naming it, and stops (prbody.go). It never opens a
-//     pull request, never overrides an arming someone else made, and never
-//     edits the repository's settings.
+//     pull request, never overrides an arming someone else made at a head the
+//     push does not move, and never edits the repository's settings.
 //
 // The trust boundaries: the remote is `origin` only, and its every fetch and
 // push URL must be the repository the forge client resolves here; a pull
@@ -84,6 +94,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/layered"
+	"github.com/intentdriven/abcd/internal/core/runstop"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/procgroup"
@@ -167,6 +178,8 @@ type Options struct {
 	// Sleep pauses between the forge readings that wait for land's own push
 	// to show; nil is time.Sleep.
 	Sleep func(time.Duration)
+	// StopRead reads a person's stop; nil is the read every other verb makes.
+	StopRead func() runstop.Reading
 	// Announce is the options the announcements before the push are made
 	// with (announce.go): its Home "" is Roots.Home, its Embargo nil the
 	// check `abcd announce` uses, its ForgeUser nil the forge's user
@@ -213,8 +226,9 @@ func (r *Result) add(name, status, note, command string) {
 func clean(s string) string { return gitutil.ScrubURLCredentials(s) }
 
 // Refusal is a landing refused: Reason says why, Fix what settles it. Held
-// marks a landing a release being cut holds (releaseHold): contention, which
-// the surface exits 3 on, as every verb that backs off does.
+// marks a landing a release being cut holds (releaseHold) or a person's stop
+// holds (stopHold): contention, which the surface exits 3 on, as every verb that
+// backs off does.
 type Refusal struct {
 	Reason string
 	Fix    string
@@ -245,6 +259,9 @@ func (o Options) withDefaults() Options {
 	}
 	if o.Gate == nil {
 		o.Gate = makePreflight(o.GateOutput)
+	}
+	if o.StopRead == nil {
+		o.StopRead = readStop
 	}
 	return o
 }
@@ -289,6 +306,9 @@ func Land(cwd string, o Options) (Result, error) {
 		addPushOff(&res)
 		res.add("enqueue", StatusOff, res.Enqueue.offText()+": nothing was armed or queued", "")
 		return res, nil
+	}
+	if err := stopHold(&res, o); err != nil {
+		return res, err
 	}
 	origin, def, err := checkOrigin(o, dir, branch)
 	if err != nil {
@@ -338,6 +358,9 @@ func Land(cwd string, o Options) (Result, error) {
 	if err := origin.unchanged(dir); err != nil {
 		return res, err
 	}
+	if err := stopHold(&res, o); err != nil {
+		return res, err
+	}
 	// The hold is judged from the checkout land runs in, not the branch's:
 	// that is the copy the reservation verbs run here speak for, so a session
 	// that reserved the release here lands through its own hold whichever
@@ -352,11 +375,15 @@ func Land(cwd string, o Options) (Result, error) {
 	if err := announceStep(&res, o, root, dir, tracking); err != nil {
 		return res, err
 	}
+	atHead, err := withdrawBeforePush(&res, o, dir, tracking, origin.repo.NameWithOwner)
+	if err != nil {
+		return res, err
+	}
 	moved, err := push(&res, o, dir)
 	if err != nil {
 		return res, err
 	}
-	return res, enqueue(&res, o, dir, tracking, origin.repo.NameWithOwner, moved)
+	return res, enqueue(&res, o, dir, tracking, origin.repo.NameWithOwner, moved, atHead)
 }
 
 // branchRepoRoot is the repository layer's root for the landed branch's own
@@ -1147,9 +1174,13 @@ const maxForgeErrorText = 512
 
 // errorText is the forge's messages in an answer's errors, sanitised and
 // bounded; an error with no message is shown as its raw JSON.
-func (a prStateAnswer) errorText() string {
+func (a prStateAnswer) errorText() string { return forgeErrorText(a.Errors) }
+
+// forgeErrorText is the messages in a GraphQL answer's errors, sanitised and
+// bounded; an error with no message is shown as its raw JSON.
+func forgeErrorText(errs []json.RawMessage) string {
 	var msgs []string
-	for _, raw := range a.Errors {
+	for _, raw := range errs {
 		var e struct {
 			Message string `json:"message"`
 		}
@@ -1219,8 +1250,9 @@ func listOwnPR(res *Result, o Options, dir, tracking string) (openPR, bool, erro
 
 // enqueue is step 6. tracking is origin's default branch as just fetched;
 // nameWithOwner is the repository as the forge client resolved it when origin
-// was checked, the one the pull request's state is asked of.
-func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved bool) error {
+// was checked, the one the pull request's state is asked of. atHead says an
+// arming is already at the local head, which land left as it is.
+func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved, atHead bool) error {
 	if !res.Enqueue.On {
 		res.add("enqueue", StatusOff, res.Enqueue.offText()+": nothing was armed or queued", "")
 		return nil
@@ -1273,8 +1305,8 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved 
 	case err != nil:
 		return err
 	}
-	owner, name, ok := strings.Cut(nameWithOwner, "/")
-	if !ok || owner == "" || name == "" || strings.Contains(name, "/") || !ownerName(owner) || !repoName(name) {
+	owner, name, ok := splitRepo(nameWithOwner)
+	if !ok {
 		return refuse("the forge client names the repository "+strconv.Quote(nameWithOwner)+", not owner/name, so land cannot ask the forge for pull request #"+n+"'s state, and nothing was armed",
 			"check the forge client (gh repo view), then run abcd land again")
 	}
@@ -1285,11 +1317,22 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved 
 	d, err := DecideMerge(MergeQuery{RepoRoot: dir, Roots: o.Roots, Tip: tip, TipName: Remote + "/" + res.Default, Default: res.Default,
 		Rule: rule, Repo: nameWithOwner, PR: n, Head: res.Head, Forge: func(args ...string) (string, error) { return o.Forge(dir, args...) }})
 	if err != nil {
-		return refuse(fsutil.RedactHome(err.Error())+" at "+Remote+"/"+res.Default+", so nothing was armed", "correct the file it names, then run abcd land again")
+		left := ", so nothing was armed"
+		if atHead {
+			left = ", and the arming already at " + short(res.Head) + " is left as it is"
+		}
+		return refuse(fsutil.RedactHome(err.Error())+" at "+Remote+"/"+res.Default+left, "correct the file it names, then run abcd land again")
 	}
 	if !d.Arm {
-		res.add("enqueue", StatusLeft, "pull request #"+n+": "+d.Why, "")
+		note := "pull request #" + n + ": " + d.Why
+		if atHead {
+			note += "; the arming already at " + short(res.Head) + " is left as it is"
+		}
+		res.add("enqueue", StatusLeft, note, "")
 		return nil
+	}
+	if err := stopHold(res, o); err != nil {
+		return err
 	}
 	view := func() (prState, error) {
 		out, err := forge(o, dir, prStateArgs(owner, name, n)...)
@@ -1356,6 +1399,20 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved 
 		note = "pull request #" + n + " is already armed (" + armedMethod(s) + ") by this account"
 		rearm = rearmArgs(s, n, res.Head)
 	default:
+		// A branch carrying another queued or armed pull request's commits
+		// (one cut from its branch) is removed by the merge queue as soon as
+		// it enters (stacked.go): the arming waits until that one merges.
+		// With no queue nothing removes it, and the forge's auto-merge arms.
+		if rule.Method != "" {
+			on, err := stackedOn(o, dir, tracking, owner, name, res.Default, pr.Number, res.Head)
+			if err != nil {
+				return err
+			}
+			if len(on) > 0 {
+				res.add("enqueue", StatusStopped, stackedNote(n, res.Branch, res.Default, on), "")
+				return nil
+			}
+		}
 		if err := arm(); err != nil {
 			if rule.Method == "" {
 				// With no queue the arming is the forge's auto-merge, which a

@@ -1,6 +1,7 @@
 package changelog
 
 import (
+	"errors"
 	"os/exec"
 	"path/filepath"
 	"slices"
@@ -107,7 +108,9 @@ func TestTheGuardNamesTheCommandsNewSinceTheAnchor(t *testing.T) {
 // fetched no blobs, the anchor's copy of a file edited since is not in the
 // object store, and a read that needs the blob would take the path for one the
 // anchor lacked. Presence is read from the trees, which the clone holds, so a
-// fix to that file is not marked new.
+// fix to that file is not marked new. Below git 2.44, which ignores
+// GIT_NO_LAZY_FETCH, abcd reads no objects in a partial clone at all, so there
+// the cut is refused at the lazy-fetch floor instead of marked.
 func TestABloblessCloneDoesNotMarkAPathTheAnchorHad(t *testing.T) {
 	src := baseRepo(t)
 	src.write("old.sh", "old\n")
@@ -142,15 +145,11 @@ func TestABloblessCloneDoesNotMarkAPathTheAnchorHad(t *testing.T) {
 	}
 
 	set, err := ShippedSince(dir, "v0.1.0")
-	if ok, v := gitutil.GitAtLeast(2, 44); !ok {
-		// Below git 2.44 GIT_NO_LAZY_FETCH is ignored, so abcd reads no object
-		// in a partial clone at all, and the marking cannot be judged on this
-		// machine. What can be is that the read refuses, naming the floor,
-		// rather than fetching through the clone's transport.
-		if err == nil || !strings.Contains(err.Error(), "2.44") {
-			t.Fatalf("git %s is below the lazy-fetch floor, yet the blobless clone's read did not refuse naming 2.44: %v", v, err)
+	if ok, version := gitutil.GitAtLeast(2, 44); !ok {
+		if !errors.Is(err, gitutil.ErrLazyFetchFloor) {
+			t.Fatalf("on git %s, below the lazy-fetch floor, a blobless clone's cut is refused at the floor, not read: %v", version, err)
 		}
-		t.Skipf("git %s is below 2.44, so a blobless clone's objects are not read and its marking cannot be judged here", v)
+		return
 	}
 	if err != nil {
 		t.Fatal(err)

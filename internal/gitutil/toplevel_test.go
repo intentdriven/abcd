@@ -82,6 +82,8 @@ func TestShowToplevelIsAskedOnlyThroughToplevel(t *testing.T) {
 	allowed := map[string]bool{
 		filepath.Join("internal", "gitutil", "repo.go"):             true,
 		filepath.Join("internal", "core", "banlist", "worktree.go"): true,
+		// It runs no git: it reads test source for a test that asks this.
+		filepath.Join("internal", "testreuse", "classify.go"): true,
 	}
 	err = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 		if err != nil {

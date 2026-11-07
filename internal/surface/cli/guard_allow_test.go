@@ -27,7 +27,7 @@ func withProver(t *testing.T, p guard.DeleteProver) {
 func allowRepo(t *testing.T) *gittest.Repo {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
-	repo := gittest.NewRepo(t)
+	repo := newRepo(t)
 	repo.Write("a.txt", "a\n")
 	repo.Commit("one")
 	t.Chdir(repo.Root())
@@ -108,7 +108,7 @@ func TestGuardAllowRefusesWithoutOnce(t *testing.T) {
 func TestGuardCheckAndHookProveARealLocalBranch(t *testing.T) {
 	repo := allowRepo(t)
 	origin := filepath.Join(t.TempDir(), "origin.git")
-	gittest.InitBare(t, origin)
+	initBare(t, origin)
 	repo.Git("remote", "add", "origin", origin)
 	for _, b := range []string{"done", "open"} {
 		repo.Git("switch", "-q", "-c", b)

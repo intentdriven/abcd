@@ -68,6 +68,32 @@ func TestEmitProceedsOnAMatchingDocsReview(t *testing.T) {
 	}
 }
 
+// A revert of a release roll leaves the head's tree the reviewed one, so the cut
+// stands on that review and carries the statement (iss-2611060603332537). The
+// reviewed commit's tree differs from any other, so a changed tree still refuses.
+func TestEmitStandsOnASameTreeReviewAndSaysSo(t *testing.T) {
+	r := armedRelease(t)
+	if _, _, err := docfidelity.Record(r.Root(), []byte(`{"verificationResult": "PROMOTE", "judgeModel": "claude-opus-5-5", "tier": "full", "failing": []}`),
+		time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	reviewed := r.Git("rev-parse", "HEAD")
+	r.Git("commit", "-q", "--allow-empty", "-m", "the same tree")
+	cut := emit(t, r)
+	if _, ok := docFidelityRefusal(cut); ok || !cut.Ready {
+		t.Fatalf("a same-tree review did not let the cut proceed: %+v", cut.Refusals)
+	}
+	if !strings.Contains(cut.FidelityNote, reviewed[:12]) || !strings.Contains(cut.FidelityNote, "same tree") {
+		t.Fatalf("the cut does not state the match: %q", cut.FidelityNote)
+	}
+	r.Write("changed.txt", "changed\n")
+	r.Commit("a change")
+	cut = emit(t, r)
+	if _, ok := docFidelityRefusal(cut); !ok {
+		t.Fatalf("a changed tree stood on the old review: note %q", cut.FidelityNote)
+	}
+}
+
 func TestEmitWithNoIntentShippedJudgesNoPopulation(t *testing.T) {
 	r := releasedRepo(t)
 	r.Write(docfidelity.ChaptersDir+"/04-launch.md", "### `abcd launch`\n")
