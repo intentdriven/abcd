@@ -397,9 +397,9 @@ func TestStartCreatesOneLaneAndAStartAgainResumesIt(t *testing.T) {
 	if len(st.Pending) != 1 || st.Pending[0].Number != 3 {
 		t.Fatalf("the unlanded steps after the first wait as pending: %+v", st.Pending)
 	}
-	if len(st.Record) != 4 || st.Record[0].Stage != "start" || st.Record[1].Stage != StagePace || st.Record[2].Stage != StageReview ||
-		st.Record[3].Stage != CheckBudget {
-		t.Fatalf("the record opens with the start, then names the pace, the review set and the budget check: %+v", st.Record)
+	if len(st.Record) != 5 || st.Record[0].Stage != "start" || st.Record[1].Stage != StagePace || st.Record[2].Stage != StageReview ||
+		st.Record[3].Stage != CheckBudget || st.Record[4].Stage != StageAdmitted {
+		t.Fatalf("the record opens with the start, then names the pace, the review set, the budget check and the admission: %+v", st.Record)
 	}
 	fi, err := os.Stat(filepath.Join(repo.Root(), filepath.FromSlash(res.State)))
 	if err != nil || fi.Mode().Perm() != filePerm {

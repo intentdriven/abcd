@@ -360,6 +360,7 @@ func TestAnOlderStateMigratesItsReviewerToIndexZero(t *testing.T) {
 		kept = append(kept, m)
 	}
 	round["validators"] = kept
+	delete(doc, "admitted")
 	older, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
 		t.Fatal(err)
