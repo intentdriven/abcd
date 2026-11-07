@@ -37,7 +37,8 @@ We will let a run be finished after it dies, on these terms.
 3. **On by default, and said at the start.** The default is yes wherever the
    person has turned on the check, and the start of each run says the run may be
    finished alone. This is the one part of condition 1 that changes: this one
-   permission is standing rather than asked per run.
+   permission is standing rather than asked per run. The product thinker
+   confirmed on 2026-11-07 that this is abcd's default in every repository.
 4. **A repository may switch it off and never on against the person.** A
    repository's configuration may say no. A person's own no on their computer
    always wins, so a repository's yes changes nothing where they have said no.

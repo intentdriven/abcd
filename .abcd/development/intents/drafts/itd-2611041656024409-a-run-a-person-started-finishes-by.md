@@ -23,7 +23,7 @@ blocked_by: [itd-2610222215485265, itd-2611041656012738, itd-2611041815429986, i
 
 A notice (itd-2611041656012738) tells the person a run died, and the work still waits for
 them. The product thinker ruled on 2026-11-04 that a run they started may be
-finished after it dies, inside its own limit, on by default, with each repository able to change it. That changes a standing rule, so the trust rule is written down in
+finished after it dies, inside its own limit, on by default, with each repository able to change it, and confirmed on 2026-11-07 that this is abcd's default in every repository. That changes a standing rule, so the trust rule is written down in
 adr-2611041656056312 and this intent carries the capability.
 
 The wider ask of iss-2610281328229800, a run starting by itself when paid credit
@@ -61,7 +61,6 @@ no new permission beyond the one this intent's decision records.
 
 ## Open Questions
 
-- Whether the default of yes is the default abcd ships with for every repository, as this draft assumes, or abcd's own repository's only (product thinker, to confirm from the interview answer).
 - A picked-up run is unattended, so the rule that unattended lanes run only where the person's forge login is absent (dcn-2610230710469123) appears to apply to it. How that fits with the named profiles of itd-2611040344170206 decides whether this works on an ordinary personal machine (technical facilitator).
 - The limit on pick-ups per run (technical facilitator).
 - Whether a run started inside a host session can be picked up at all, since there is no host to continue it (technical facilitator).
