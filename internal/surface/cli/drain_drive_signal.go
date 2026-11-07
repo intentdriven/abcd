@@ -20,6 +20,9 @@ import (
 // and say so before the process exits whatever it is doing.
 const driveKillGrace = 5 * time.Second
 
+// driveSayWait is how long closing the handling waits on a line a signal is still saying.
+var driveSayWait = driveKillGrace
+
 // driveKilledExit is the exit a second signal ends the process with.
 const driveKilledExit = 130
 
@@ -37,19 +40,22 @@ type driveSignals struct {
 	// pipes takes SIGPIPE and is never read.
 	pipes chan os.Signal
 	once  sync.Once
+	// done is closed when the handling has said all it will.
+	done chan struct{}
 }
 
 // watchDriveSignals starts the handling. first and second say what each signal
 // did.
 func watchDriveSignals(first, second func()) *driveSignals {
 	ctx, cancel := context.WithCancel(context.Background())
-	s := &driveSignals{stop: make(chan struct{}), ctx: ctx, cancel: cancel, ch: make(chan os.Signal, 2), pipes: make(chan os.Signal, 1)}
+	s := &driveSignals{stop: make(chan struct{}), done: make(chan struct{}), ctx: ctx, cancel: cancel, ch: make(chan os.Signal, 2), pipes: make(chan os.Signal, 1)}
 	// The drive outlives a terminal that closed, so a write to it is no reason
 	// to die. SIGPIPE is caught, not ignored: an ignored signal stays ignored
 	// across exec, and an agent's or a preflight's pipeline needs its own.
 	signal.Notify(s.pipes, syscall.SIGPIPE)
 	signal.Notify(s.ch, os.Interrupt, syscall.SIGHUP, syscall.SIGTERM)
 	go func() {
+		defer close(s.done)
 		if _, ok := <-s.ch; !ok {
 			return
 		}
@@ -75,12 +81,18 @@ func (s *driveSignals) stopAsked() bool {
 	}
 }
 
-// close ends the handling.
+// close ends the handling, and waits for a line a signal is still saying: what the drive
+// writes once it returns takes no lock, so that line has to be out first. A terminal that
+// stopped reading holds that line for good, so the wait has a limit.
 func (s *driveSignals) close() {
 	s.once.Do(func() {
 		signal.Stop(s.ch)
 		signal.Stop(s.pipes)
 		close(s.ch)
 		s.cancel()
+		select {
+		case <-s.done:
+		case <-time.After(driveSayWait):
+		}
 	})
 }

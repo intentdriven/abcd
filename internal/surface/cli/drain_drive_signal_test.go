@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -65,6 +66,50 @@ func TestTheFirstSignalLeavesTheContextLiveAndTheSecondEndsIt(t *testing.T) {
 				t.Fatalf("the child: %v\n%s", err, out)
 			}
 		})
+	}
+}
+
+// TestClosingWaitsForWhatASignalSays: the drive's last words are written with no lock once
+// it returns, so a line a signal is still saying has to be out by then.
+func TestClosingWaitsForWhatASignalSays(t *testing.T) {
+	entered := make(chan struct{})
+	var said atomic.Bool
+	s := watchDriveSignals(func() {
+		close(entered)
+		time.Sleep(50 * time.Millisecond)
+		said.Store(true)
+	}, func() {})
+	s.ch <- syscall.SIGTERM
+	<-entered
+	s.close()
+	if !said.Load() {
+		t.Fatal("the handling closed with a signal's line still being said")
+	}
+}
+
+// TestClosingDoesNotWaitOnALineThatCannotBeWritten: a terminal that stopped reading must not
+// hold the drive's exit.
+func TestClosingDoesNotWaitOnALineThatCannotBeWritten(t *testing.T) {
+	was := driveSayWait
+	t.Cleanup(func() { driveSayWait = was })
+	driveSayWait = 10 * time.Millisecond
+	entered, release := make(chan struct{}), make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	s := watchDriveSignals(func() {
+		close(entered)
+		<-release
+	}, func() {})
+	s.ch <- syscall.SIGTERM
+	<-entered
+	closed := make(chan struct{})
+	go func() {
+		s.close()
+		close(closed)
+	}()
+	select {
+	case <-closed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("closing waited on a line that cannot be written")
 	}
 }
 
