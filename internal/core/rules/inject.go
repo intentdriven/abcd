@@ -118,8 +118,8 @@ func (r InjectResult) Labels() []string {
 //
 // Recalled is the memory recall's own ledger (internal/core/recall,
 // spc-2610111627213138): item key to a signature of the item's content. It is
-// a second map because Inject prunes every Ledger name that is not an active
-// domain, which would forget every recalled item each turn; Inject carries it
+// a second map because InjectWithin prunes every Ledger name that is not an active
+// domain, which would forget every recalled item each turn; InjectWithin carries it
 // through untouched, and the same resets clear both — ResetState removes the
 // file, and the backstop prompt clears the two together.
 type SessionState struct {
@@ -152,7 +152,7 @@ func UnknownFillNotice(st *SessionState, f Fill) string {
 	return "rules: how full this session is, is unknown (" + reason + "); rules come back in full where they fit and memory notes and pages as one line each while it stays unknown, and `abcd rules --prompt` shows any of them in full"
 }
 
-// Inject is the pure heart of the prompt-router hook: it recall-matches prompt,
+// InjectWithin is the pure heart of the prompt-router hook: it recall-matches prompt,
 // drops any matched domain already injected this session with an unchanged
 // signature, renders the remainder, and returns the updated session state. It
 // performs no I/O and never reflects prompt bytes into the output — the rendered
@@ -174,16 +174,10 @@ func UnknownFillNotice(st *SessionState, f Fill) string {
 // when the bracket changes, nor the other way round, until a reset clears
 // the ledger.
 //
-// Inject is InjectWithin with nothing reserved, the budget of a turn with no
-// status or away block.
-func Inject(rs RuleSet, prompt string, prev SessionState, backstop int, bracket Bracket) InjectResult {
-	return InjectWithin(rs, prompt, prev, backstop, bracket, RulesBudget(0))
-}
-
-// InjectWithin is Inject under budget bytes for the rules. A domain that does not
-// fit in full goes in its short form and is recorded as sent, the same form and
-// the same record as in a bracket that shrinks, since the form names the command
-// that renders the rest.
+// budget is the bytes the rules may take. A domain that does not fit in full goes
+// in its short form and is recorded as sent, the same form and the same record as
+// in a bracket that shrinks, since the form names the command that renders the
+// rest.
 func InjectWithin(rs RuleSet, prompt string, prev SessionState, backstop int, bracket Bracket, budget int) InjectResult {
 	if backstop <= 0 {
 		backstop = DefaultRefreshBackstop
@@ -262,7 +256,7 @@ func InjectWithin(rs RuleSet, prompt string, prev SessionState, backstop int, br
 }
 
 // copyLedger copies the memory recall's ledger, nil for an empty one, so the
-// state Inject hands back never shares a map with the caller's.
+// state InjectWithin hands back never shares a map with the caller's.
 func copyLedger(m map[string]string) map[string]string {
 	if len(m) == 0 {
 		return nil
@@ -310,8 +304,8 @@ type sentDomain struct {
 const noticeReserve = 512
 
 // renderWithinBudget renders fresh within budget bytes. When every domain fits in
-// its row's form that is the whole answer, byte-identical to Render in the row
-// that keeps rules full. Otherwise the room goes up a ladder: every domain first
+// its row's form that is the whole answer, each domain in full in the row that
+// keeps rules full. Otherwise the room goes up a ladder: every domain first
 // gets its pointer, then what room is left widens domains to their first rule, then
 // to full, the cheapest first at each step, so one long domain never holds back the
 // next and as many as possible arrive whole; a row that shrinks rules stops at the

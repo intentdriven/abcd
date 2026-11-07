@@ -7,7 +7,7 @@ import (
 
 // brackets.go — the context brackets (spc-2610111627213138 step 6, "Context
 // brackets"): the one table that says how much the loader sends as the
-// session fills. The rules injection (Inject) and the memory recall
+// session fills. The rules injection (InjectWithin) and the memory recall
 // (internal/core/recall) both read it from here, so no payload grows
 // thresholds of its own (the facilitator's ruling of 2026-10-11, "Share the
 // brackets", and that the brackets gate rules too, with the same thresholds).

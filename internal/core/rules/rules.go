@@ -986,27 +986,13 @@ func isConsonant(b byte) bool {
 	return true
 }
 
-// Render is the single renderer both front doors use. It emits a header plus one
-// section per domain. An empty domain list renders to zero bytes (D3: no
-// model-facing tokens on a no-match).
-func Render(domains []ResolvedDomain) string {
-	if len(domains) == 0 {
-		return ""
-	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "# abcd rules — %d domain(s) active\n", len(domains))
-	for _, d := range domains {
-		b.WriteString(renderDomain(d))
-	}
-	return b.String()
-}
-
 // checkedLead introduces the second list in the listing.
 const checkedLead = "Carried by the guard, answered when the command is judged and not sent ahead of time:\n"
 
 // RenderListing renders domains as a reader of `abcd rules` wants them: what
 // the hook sends for each, then what a check carries. Only a domain with a
-// Checked list differs from Render, and this is never what is injected.
+// Checked list differs from what the hook renders, and this is never what is
+// injected.
 func RenderListing(domains []ResolvedDomain) string {
 	if len(domains) == 0 {
 		return ""
@@ -1290,7 +1276,7 @@ func cloneRuleSet(rs RuleSet) RuleSet {
 
 // CapPrompt is prompt cut to the bytes the loader scans (maxPromptBytes), so
 // a huge pasted prompt cannot blow up matching. Every reader of a prompt —
-// Inject, TermMatcher, Hits and the `rules --prompt` diagnostic — caps
+// InjectWithin, TermMatcher, Hits and the `rules --prompt` diagnostic — caps
 // through it, so a word past the cap matches nowhere.
 func CapPrompt(prompt string) string {
 	if len(prompt) > maxPromptBytes {
@@ -1302,7 +1288,7 @@ func CapPrompt(prompt string) string {
 // TermMatcher is the loader's term rule, exported so a memory note's recall
 // word hits on exactly the prompts a domain's recall word does
 // (spc-2610111627213138, "One recall for notes and pages"): it indexes prompt
-// once — capped at the bytes Inject scans, lower-cased, stemmed — and returns
+// once — capped at the bytes InjectWithin scans, lower-cased, stemmed — and returns
 // the match a domain's every recall word and alias is judged by (word
 // boundary, stems, multi-word phrases). One function, never a copy.
 func TermMatcher(prompt string) func(term string) bool {
