@@ -317,6 +317,25 @@ func TestAHugeFirstRuleDoesNotHoldBackTheOthers(t *testing.T) {
 	}
 }
 
+// TestAPointerIsNotRecordedAsSent: a domain that went as its pointer, which
+// says there was no room this turn, is sent with its rules on the next turn
+// that has room, rather than counted as sent until the backstop.
+func TestAPointerIsNotRecordedAsSent(t *testing.T) {
+	rs := sizedSet(1, 5000, "AHUGE")
+	first := InjectWithin(rs, "zebra", SessionState{}, 0, BracketUnknown, 1500)
+	if !slices.Contains(first.Pointed, "AHUGE") {
+		t.Fatalf("pointed = %v, want AHUGE", first.Pointed)
+	}
+	next := InjectWithin(rs, "zebra", first.State, 0, BracketUnknown, RulesBudget(0))
+	if !strings.Contains(next.Text, "AHUGE rule 0") {
+		t.Fatalf("the pointed domain was not sent once there was room:\n%s", next.Text)
+	}
+	again := InjectWithin(rs, "zebra", next.State, 0, BracketUnknown, RulesBudget(0))
+	if again.Text != "" {
+		t.Fatalf("a domain sent with its rules was sent again:\n%s", again.Text)
+	}
+}
+
 // TestALongFirstRuleInFrontDoesNotCrowdOutTheRest: a first rule that fits but
 // would leave no room behind it waits for what is left, so every domain behind it
 // still gets its command.
@@ -334,7 +353,7 @@ func TestALongFirstRuleInFrontDoesNotCrowdOutTheRest(t *testing.T) {
 }
 
 // TestADomainWithNoRoomIsTriedAgain: nothing is recorded as sent unless it
-// was, and the output stays within the budget even then.
+// went with a rule, and the output stays within the budget even then.
 func TestADomainWithNoRoomIsTriedAgain(t *testing.T) {
 	var names []string
 	for i := range 40 {
@@ -356,7 +375,7 @@ func TestADomainWithNoRoomIsTriedAgain(t *testing.T) {
 		t.Fatalf("routine overflow reads as an attack:\n%s", res.Text)
 	}
 	for _, n := range names {
-		sent := slices.Contains(res.Injected, n)
+		sent := slices.Contains(res.Injected, n) && !slices.Contains(res.Pointed, n)
 		if recorded := res.State.Ledger[n] != ""; recorded != sent {
 			t.Errorf("%s: sent %v, recorded %v", n, sent, recorded)
 		}

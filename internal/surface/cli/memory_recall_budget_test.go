@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/autonomy"
 	"github.com/intentdriven/abcd/internal/core/recall"
 	"github.com/intentdriven/abcd/internal/core/rules"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // writeProjectNotes writes the project's .abcd/memory.json with notes, each
@@ -241,6 +243,86 @@ func TestRulesPromptReportsAShortenedDomainTruthfully(t *testing.T) {
 		}
 	}
 	t.Fatalf("LONG did not match: %+v", env.Domains)
+}
+
+// TestRulesPromptTakesTheAwayBlockOffItsBudget: `rules --prompt` reads the away
+// block the hook reads first, so a domain that fits a turn whole on its own is
+// reported shortened once the away block takes its share, as the hook sends it.
+func TestRulesPromptTakesTheAwayBlockOffItsBudget(t *testing.T) {
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	home, repo := memoryFixture(t)
+	var list []string
+	for j := range 8 {
+		list = append(list, strings.Repeat(fmt.Sprintf("rule %d ", j), 140))
+	}
+	body, err := json.Marshal(map[string]any{"schema_version": 1, "domains": map[string]any{
+		"LONG": map[string]any{"recall": []string{"zebra"}, "rules": list}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeRepoRules(t, repo, string(body))
+	form := func() string {
+		t.Helper()
+		jout, stderr, err := runCLISplit(t, "rules", "--prompt", "zebra", "--json")
+		if err != nil {
+			t.Fatalf("rules --prompt --json: %v\n%s", err, stderr)
+		}
+		var env struct {
+			Domains []struct {
+				Name string `json:"name"`
+				Form string `json:"form"`
+			} `json:"domains"`
+		}
+		if err := json.Unmarshal([]byte(jout), &env); err != nil {
+			t.Fatal(err)
+		}
+		for _, d := range env.Domains {
+			if d.Name == "LONG" {
+				return d.Form
+			}
+		}
+		t.Fatalf("LONG did not match: %+v", env.Domains)
+		return ""
+	}
+	if got := form(); got != promptFormFull {
+		t.Fatalf("with no away block, form = %q, want %q", got, promptFormFull)
+	}
+	if err := os.MkdirAll(filepath.Join(repo, ".abcd", ".work.local"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := autonomy.SetAway(repo, "", false, autonomy.Options{Home: home}); err != nil {
+		t.Fatal(err)
+	}
+	if got := form(); got != promptFormShrunk {
+		t.Fatalf("with the away block, form = %q, want %q", got, promptFormShrunk)
+	}
+}
+
+// TestRulesPromptNamesAnAwayReadGitDidNotAnswer: in a managed checkout that is
+// away, a root-commit lookup git did not answer reads as not away, as in the
+// hook, and `rules --prompt` says so on stderr rather than report a fuller
+// form without a word.
+func TestRulesPromptNamesAnAwayReadGitDidNotAnswer(t *testing.T) {
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	home, repo := memoryFixture(t)
+	if err := os.MkdirAll(filepath.Join(repo, ".abcd", ".work.local"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := autonomy.SetAway(repo, "", false, autonomy.Options{Home: home}); err != nil {
+		t.Fatal(err)
+	}
+	prev := routerRootCommit
+	t.Cleanup(func() { routerRootCommit = prev })
+	routerRootCommit = func(context.Context, string) (string, error) {
+		return "", fmt.Errorf("git rev-list -n 1 --max-parents=0 HEAD: %w", gitutil.ErrGitTimedOut)
+	}
+	_, stderr, err := runCLISplit(t, "rules", "--prompt", "zebra")
+	if err != nil {
+		t.Fatalf("rules --prompt: %v\n%s", err, stderr)
+	}
+	if !strings.Contains(stderr, "read as not away this turn") {
+		t.Fatalf("stderr does not name the away read git did not answer:\n%s", stderr)
+	}
 }
 
 // TestRulesPromptCapsThePromptLikeTheHook (F5): `rules --prompt` scans the
