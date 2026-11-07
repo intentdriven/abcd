@@ -144,12 +144,7 @@ Start with the plan and the design record:
 Run from the repo root.
 
 ```bash
-make preflight      # the pre-push gate: load-check (a warning, never a
-                    # failure), then fmt-check + lint-reviews + lint-issues +
-                    # record-lint + issue-drift + docs-lint + check-attribution
-                    # + secrets-check + vulncheck + site-render + smoke +
-                    # evals-cold-reading, then build + vet + test + race
-                    # (internal), all on the go.mod toolchain
+make preflight      # the pre-push gate: all the Definition of done lists
 make precheck       # minutes, no queue: preflight's gates, build, vet, the
                     # record, page and agent audit packages, and the audit
                     # tests of the rest; no unit or race stage. Run it before
@@ -358,11 +353,16 @@ with `*CONCURRENCY` to force it).
   `go test -race -timeout 40m ./internal/...`, under `ABCD_TEST_SHARDS=3`,
   which runs the three longest packages as three test processes each
   (`internal/testshard`). The load
-  check runs first (`load-check`, a warning, never a failure) and is not a gate:
-  it exits 0 whatever it finds. The eval
-  lanes are named separately because their files carry a build tag, so
-  `go test ./...` compiles none of them; each takes under a minute in CI and
-  runs under `-timeout $(EVAL_TIMEOUT)`, 20m by default.
+  check (`load-check`) runs first and only warns. The eval
+  lanes carry a build tag, so `go test ./...` compiles neither; each runs
+  under `-timeout $(EVAL_TIMEOUT)`, 20m by default.
+- **A lane of `abcd drain --drive` has a shorter definition of done**: its
+  harness ends each command after about ten minutes, and the drive runs `make
+  preflight` itself before landing. A lane runs `make precheck`, then
+  `scripts/abcd.sh implement load --wait --narrow --timeout 2m -- go test
+  -trimpath -race -count=1 -timeout 7m` on up to three changed packages,
+  `-run` on the changed tests in `claim`, `implement/loop` and `surface/cli`.
+  A command cut off has failed.
 - **Preflight judges with CI's toolchain.** `make fmt-check`, the format gate
   CI's check job runs, is preflight's first gate, straight after the load
   check. It resolves gofmt from the toolchain `go.mod` declares rather than from
