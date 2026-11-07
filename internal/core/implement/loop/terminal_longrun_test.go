@@ -314,12 +314,18 @@ func TestAFarResetOnAJudgeUnderABoundIsWaitedOut(t *testing.T) {
 	}
 }
 
+// pastTheOutageLimit is a bound on a run that waits it out, past terminalOutageLimit,
+// the wait a run with no bound ends at, by what shows the bound and not the limit is
+// what ends it. The clock here is the test's, but each look along the wait is a real
+// step with its git processes, so an hour more of bound costs a test seconds.
+const pastTheOutageLimit = terminalOutageLimit + time.Hour
+
 // TestAnOutageUnderABoundOutlastsEightHours: failures in a row are waited through
 // on the schedule until the bound, which ends the run with the lane saved and
 // nothing handed back.
 func TestAnOutageUnderABoundOutlastsEightHours(t *testing.T) {
 	w := newTerminalWorld(t, append([]string{"shape"}, repeated("none", 60)...)...)
-	o := w.bounded(t, 24*time.Hour)
+	o := w.bounded(t, pastTheOutageLimit)
 	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
 	if err != nil {
 		t.Fatal(err)
@@ -327,7 +333,7 @@ func TestAnOutageUnderABoundOutlastsEightHours(t *testing.T) {
 	if res.Ended != TerminalUntil || res.Run == "" || res.Resume != TerminalResumeCommand {
 		t.Fatalf("the bound ends the run, naming the lane: %+v\n%s", res, w.said())
 	}
-	if got := slept(w.sleeps); got != 24*time.Hour {
+	if got := slept(w.sleeps); got != pastTheOutageLimit {
 		t.Fatalf("the run waits to the bound and no further: %v, %v", got, w.sleeps)
 	}
 	if max := slices.Max(w.sleeps); max > time.Hour {
@@ -348,25 +354,8 @@ func TestAnOutageUnderABoundOutlastsEightHours(t *testing.T) {
 // it, and the run renews nothing it does not hold.
 func TestAStuckQueueUnderABoundOutlastsEightHours(t *testing.T) {
 	w := newTerminalWorld(t)
-	q := otherCopy(t, w.bare, quinnEmail)
-	held := map[string]string{eligibleIssue: "AGENTS.md", secondIssue: "commands/drain.md", thirdIssue: "commands/other.md"}
-	opts := func() claim.Options { return as(t, q, claim.Options{Now: w.clock.now}) }
-	for id, path := range held {
-		if _, err := claim.Reserve(q, claim.Request{Record: id, Footprint: []string{path}}, opts()); err != nil {
-			t.Fatal(err)
-		}
-	}
-	w.onSleep = func(d time.Duration) {
-		now := w.clock.t
-		w.clock.t = now.Add(d)
-		for id := range held {
-			if _, err := claim.Reserve(q, claim.Request{Record: id, Renew: true}, opts()); err != nil {
-				t.Fatal(err)
-			}
-		}
-		w.clock.t = now
-	}
-	o := w.bounded(t, 10*time.Hour)
+	w.heldByAPeer(t)
+	o := w.bounded(t, pastTheOutageLimit)
 	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
 	if err != nil {
 		t.Fatal(err)
@@ -374,7 +363,7 @@ func TestAStuckQueueUnderABoundOutlastsEightHours(t *testing.T) {
 	if res.Ended != TerminalUntil {
 		t.Fatalf("the bound ends the wait: %+v\n%s", res, w.said())
 	}
-	if got := slept(w.sleeps); got != 10*time.Hour {
+	if got := slept(w.sleeps); got != pastTheOutageLimit {
 		t.Fatalf("the run waits to the bound and no further: %v", got)
 	}
 	if !strings.Contains(w.lines[len(w.lines)-1], "--until") {
@@ -387,7 +376,7 @@ func TestAStuckQueueUnderABoundOutlastsEightHours(t *testing.T) {
 func TestLosingOriginUnderABoundOutlastsEightHours(t *testing.T) {
 	w := newTerminalWorld(t)
 	w.repo.Git("remote", "set-url", "origin", filepath.Join(t.TempDir(), "gone"))
-	o := w.bounded(t, 24*time.Hour)
+	o := w.bounded(t, pastTheOutageLimit)
 	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
 	if err != nil {
 		t.Fatal(err)
@@ -395,7 +384,7 @@ func TestLosingOriginUnderABoundOutlastsEightHours(t *testing.T) {
 	if res.Ended != TerminalUntil {
 		t.Fatalf("the bound ends the wait, not origin: %+v\n%s", res, w.said())
 	}
-	if got := slept(w.sleeps); got != 24*time.Hour {
+	if got := slept(w.sleeps); got != pastTheOutageLimit {
 		t.Fatalf("the run waits to the bound and no further: %v, %v", got, w.sleeps)
 	}
 }
@@ -422,7 +411,7 @@ func TestAnOutageTheSharedRunGaveUpOnWaitsUnderABound(t *testing.T) {
 	w := newTerminalWorld(t)
 	run := joinShared(t, w.repo.Root(), w.clock.now)
 	giveUp(t, run, "host-a", func(d time.Duration) { w.clock.t = w.clock.t.Add(d) })
-	o := w.bounded(t, 10*time.Hour)
+	o := w.bounded(t, pastTheOutageLimit)
 	o.Options.NetworkProbe = func() (bool, string) { return false, "no answer" }
 	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
 	if err != nil {
@@ -922,7 +911,7 @@ func TestAJudgeThatCannotRunHoldsNothingBackUnderABound(t *testing.T) {
 	for _, bad := range []string{"none", "late"} {
 		t.Run(bad, func(t *testing.T) {
 			w := newTerminalWorld(t, repeated(bad, 60)...)
-			o := w.bounded(t, 10*time.Hour)
+			o := w.bounded(t, pastTheOutageLimit)
 			o.Drain.JudgeTimeout = ordinaryLaunchLimit
 			if bad == "late" {
 				o.Drain.JudgeTimeout = hangLimit
@@ -1038,7 +1027,7 @@ const hangLimit = 200 * time.Millisecond
 func silentRun(t *testing.T, probe func(*int) func(context.Context, string, string) (bool, *runner.Failure)) (*terminalWorld, TerminalResult, []DrainRoute, int) {
 	t.Helper()
 	w := newTerminalWorld(t, append([]string{"shape"}, repeated("late", 200)...)...)
-	o := w.bounded(t, 10*time.Hour)
+	o := w.bounded(t, pastTheOutageLimit)
 	o.Runners.Timeout, o.Drain.JudgeTimeout = hangLimit, ordinaryLaunchLimit
 	probes := 0
 	o.Probe = probe(&probes)
@@ -1079,7 +1068,7 @@ func TestSpendWithNoProbeAnsweredHasACeiling(t *testing.T) {
 	if len(back) != 0 {
 		t.Fatalf("below the ceiling nothing goes back: %+v\n%s", back, w.said())
 	}
-	w, back, _ = poisonRun(t, "retries", 2*terminalSpentUnanswered, noProbeAnswers)
+	w, back, _ = poisonRun(t, "retries", terminalSpentUnanswered+1, noProbeAnswers)
 	if len(back) != 0 {
 		t.Fatalf("an outage spends nothing and never gets there: %+v\n%s", back, w.said())
 	}
@@ -1093,18 +1082,18 @@ func TestACrashAfterInitCountsOnlyIfAProbeAnswers(t *testing.T) {
 	if len(back) != 1 || back[0].Kind != HandBackStuck || probes != terminalPoisonLaunches {
 		t.Fatalf("a probe answering counts each: %+v, %d probes\n%s", back, probes, w.said())
 	}
-	w, back, probes = poisonRun(t, "crashes", 2*terminalPoisonLaunches, noProbeAnswers)
+	w, back, probes = poisonRun(t, "crashes", terminalPoisonLaunches+1, noProbeAnswers)
 	if len(back) != 0 || probes == 0 {
 		t.Fatalf("a probe unanswered counts nothing: %+v, %d probes\n%s", back, probes, w.said())
 	}
-	if w, back, _ = poisonRun(t, "crashes", 2*terminalPoisonLaunches, nil); len(back) != 0 {
+	if w, back, _ = poisonRun(t, "crashes", terminalPoisonLaunches+1, nil); len(back) != 0 {
 		t.Fatalf("with no probe nothing is counted: %+v\n%s", back, w.said())
 	}
 }
 
 // TestARejectedProbeCountsNothing: the same limit that may have failed the launch.
 func TestARejectedProbeCountsNothing(t *testing.T) {
-	w, back, probes := poisonRun(t, "crashes", 2*terminalPoisonLaunches, func(n *int) func(context.Context, string, string) (bool, *runner.Failure) {
+	w, back, probes := poisonRun(t, "crashes", terminalPoisonLaunches+1, func(n *int) func(context.Context, string, string) (bool, *runner.Failure) {
 		return func(context.Context, string, string) (bool, *runner.Failure) {
 			*n++
 			return false, limitedNoReset()
@@ -1118,7 +1107,7 @@ func TestARejectedProbeCountsNothing(t *testing.T) {
 // TestALaunchStuckRetryingIsAnOutage: it says so, costs no probe, and is never counted
 // against its lane, a probe that would answer included.
 func TestALaunchStuckRetryingIsAnOutage(t *testing.T) {
-	w, back, probes := poisonRun(t, "retries", 2*terminalPoisonLaunches, probeAnswers)
+	w, back, probes := poisonRun(t, "retries", terminalPoisonLaunches+1, probeAnswers)
 	if len(back) != 0 || probes != 0 {
 		t.Fatalf("nothing counts, and nothing is asked: %+v, %d probes\n%s", back, probes, w.said())
 	}
@@ -1130,7 +1119,7 @@ func TestALaunchStuckRetryingIsAnOutage(t *testing.T) {
 // TestAnAPIStatusThatIsTheAccountsCountsNothing: a result naming the service's own
 // failure says nothing of the work.
 func TestAnAPIStatusThatIsTheAccountsCountsNothing(t *testing.T) {
-	w, back, probes := poisonRun(t, "apifails", 2*terminalPoisonLaunches, probeAnswers)
+	w, back, probes := poisonRun(t, "apifails", terminalPoisonLaunches+1, probeAnswers)
 	if len(back) != 0 || probes != 0 {
 		t.Fatalf("%+v, %d probes\n%s", back, probes, w.said())
 	}
@@ -1139,7 +1128,7 @@ func TestAnAPIStatusThatIsTheAccountsCountsNothing(t *testing.T) {
 // TestLaunchesThatNeverReachTheModelStayOnTheOutageWait: no stream at all, and no
 // account alive to say otherwise.
 func TestLaunchesThatNeverReachTheModelStayOnTheOutageWait(t *testing.T) {
-	w, back, _ := poisonRun(t, "none", 2*terminalPoisonLaunches, noProbeAnswers)
+	w, back, _ := poisonRun(t, "none", terminalPoisonLaunches+1, noProbeAnswers)
 	if len(back) != 0 || len(lanesDone(t, w.repo)) == 0 {
 		t.Fatalf("the lane stays and lands: %+v\n%s", back, w.said())
 	}
@@ -1284,7 +1273,7 @@ func TestAProbeAtTheProofHoldsToTheSettings(t *testing.T) {
 
 // TestWithNoBoundNothingIsCountedAgainstALane: an attended run behaves as it did.
 func TestWithNoBoundNothingIsCountedAgainstALane(t *testing.T) {
-	w := newTerminalWorld(t, append([]string{"shape"}, repeated("crashes", 2*terminalPoisonLaunches)...)...)
+	w := newTerminalWorld(t, append([]string{"shape"}, repeated("crashes", terminalPoisonLaunches+1)...)...)
 	o := w.options(t)
 	o.Drain.Max = 1
 	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
@@ -1779,7 +1768,7 @@ func TestALaneWhoseAgentIsStillClaimedIsNoStall(t *testing.T) {
 		return &Await{Role: RoleImplementer, Brief: filepath.Join(c.RepoRoot, l.Brief), Receipt: filepath.Join(c.RepoRoot, RunRelDir, "receipt-claimed.json"),
 			Running: &RunnerClaim{Runner: runner.Claude, Session: "a-killed-run", Until: until}}
 	})
-	o := w.bounded(t, 10*time.Hour)
+	o := w.bounded(t, pastTheOutageLimit)
 	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
 	if err != nil {
 		t.Fatal(err)
@@ -1882,7 +1871,7 @@ func TestANetworkOutageUnderABoundIsNotGivenUpOn(t *testing.T) {
 	if _, err := run.Outage().Record("host-a", implement.ServiceNetwork, implement.OutageTool, "lane-9", "git push"); err != nil {
 		t.Fatal(err)
 	}
-	o := w.bounded(t, 24*time.Hour)
+	o := w.bounded(t, pastTheOutageLimit)
 	o.Options.NetworkProbe = func() (bool, string) { return false, "no answer" }
 	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
 	if err != nil || res.Ended != TerminalUntil {
@@ -2037,7 +2026,7 @@ func TestANetworkReadingWithOriginDownKeepsWaiting(t *testing.T) {
 	w := newTerminalWorld(t)
 	fails := 0
 	w.landFails("ssh: connect to host github.com port 22: Connection refused", &fails)
-	o := w.bounded(t, 10*time.Hour)
+	o := w.bounded(t, pastTheOutageLimit)
 	o.Options.NetworkProbe = func() (bool, string) { return false, "no answer" }
 	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
 	if err != nil {
@@ -2229,7 +2218,7 @@ func TestAGaveUpRecordWithOriginDownStaysHeld(t *testing.T) {
 	w := newTerminalWorld(t)
 	run := joinShared(t, w.repo.Root(), w.clock.now)
 	giveUp(t, run, "host-a", func(d time.Duration) { w.clock.t = w.clock.t.Add(d) })
-	o := w.bounded(t, 10*time.Hour)
+	o := w.bounded(t, pastTheOutageLimit)
 	o.Options.NetworkProbe = func() (bool, string) { return false, "no answer" }
 	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
 	if err != nil || res.Ended != TerminalUntil || w.launches(t) != 0 {
