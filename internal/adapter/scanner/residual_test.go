@@ -1,8 +1,11 @@
 package scanner
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // TestCallerHomeTrimsTheTrailingSlash pins the one normalisation every store
@@ -13,6 +16,46 @@ func TestCallerHomeTrimsTheTrailingSlash(t *testing.T) {
 	t.Setenv("HOME", "/base/zzhomeuser42/")
 	if got := CallerHome(); got != "/base/zzhomeuser42" {
 		t.Errorf("CallerHome() = %q, want the trailing slash trimmed", got)
+	}
+}
+
+// TestCallerHomeInAStageIsThePersons pins what a walled stage must not change: a
+// stage gives its work a home of its own, whose folder is literally named home,
+// and that name is no account. Read as one, every shell word $HOME in a record's
+// text came back as $[redacted-user], so a test asserting a remedy survives
+// intact failed in every stage and no lane's definition of done could pass.
+func TestCallerHomeInAStageIsThePersons(t *testing.T) {
+	root := t.TempDir()
+	stage := filepath.Join(root, "stage", "home")
+	person := filepath.Join(root, "zzperson42")
+	t.Setenv("HOME", stage)
+	t.Setenv(abcdhome.StageHomeEnv, stage)
+	t.Setenv(abcdhome.PersonHomeEnv, person)
+
+	if got := CallerHome(); got != person {
+		t.Errorf("CallerHome() = %q, want the person's home %q", got, person)
+	}
+	id := ProbeIdentity(t.TempDir())
+	if id.HomeUser != "zzperson42" {
+		t.Errorf("HomeUser = %q, want the person's account name", id.HomeUser)
+	}
+	for _, f := range ScanText("a remedy naming $HOME intact", id, nil, DefaultIdentitySeverities(), "x") {
+		t.Errorf("a shell word was read as an account name: %+v", f)
+	}
+}
+
+// TestCallerHomeKeepsAFixtureThatMovedHome pins the other half: a test or a
+// redirected run that moved HOME away from the stage's home judges by the home
+// it moved to, as it does outside a stage.
+func TestCallerHomeKeepsAFixtureThatMovedHome(t *testing.T) {
+	root := t.TempDir()
+	fixture := filepath.Join(root, "zzfixture42")
+	t.Setenv("HOME", fixture)
+	t.Setenv(abcdhome.StageHomeEnv, filepath.Join(root, "stage", "home"))
+	t.Setenv(abcdhome.PersonHomeEnv, filepath.Join(root, "zzperson42"))
+
+	if got := CallerHome(); got != fixture {
+		t.Errorf("CallerHome() = %q, want the fixture's home %q", got, fixture)
 	}
 }
 

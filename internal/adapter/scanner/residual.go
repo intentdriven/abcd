@@ -1,10 +1,10 @@
 package scanner
 
 import (
-	"os"
 	"sort"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -18,15 +18,16 @@ import (
 // that are meant to agree on what counts as a leak could be fixed apart. The
 // answers live here once; the stores call them.
 
-// CallerHome resolves the caller's home directory as ProbeIdentity does — $HOME
-// first (so tests and redirected runs agree), then os.UserHomeDir — trimmed of
-// any trailing slash. Empty when neither resolves.
+// CallerHome resolves the home of the person the text is being judged for,
+// trimmed of any trailing slash; empty when none resolves. It reads $HOME, so
+// tests and redirected runs agree, except inside a walled stage: a stage's home
+// is its own folder, named home, and that name is no account, so the person's
+// home stands in through the one resolver that tells the two apart. A fixture
+// that moved HOME away from the stage's home keeps the home it moved to.
 func CallerHome() string {
-	home := os.Getenv("HOME")
-	if home == "" {
-		if h, err := os.UserHomeDir(); err == nil {
-			home = h
-		}
+	home, err := abcdhome.MachineHome()
+	if err != nil {
+		return ""
 	}
 	return strings.TrimRight(home, "/")
 }
