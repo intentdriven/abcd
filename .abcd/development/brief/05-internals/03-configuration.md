@@ -27,7 +27,10 @@ the online cores divided by 2, never from a repository, with no environment vari
 `load.memory_floor_macos` (`warn` by default, or `critical`) and
 `load.memory_floor_linux` (a whole percentage from 1 to 100, 10 by default),
 each read from the machine layer alone, a repository's key named as ignored
-(`internal/core/implement/load_memory.go`), the quiet window of `ahoy worktree
+(`internal/core/implement/load_memory.go`), the Go build cache's
+`load.go_cache_limit_gib`, read from the machine layer alone, 1 to 1048576 and 100
+by default, never from a repository, with no environment variable
+(`internal/core/ahoy/worktree/cachetrim.go`), the quiet window of `ahoy worktree
 prune`, `worktrees.quiet_days` (how many days without activity make an
 unmerged worktree with no open pull request quiet: 1 to 36500 and 14 by
 default; `internal/core/ahoy/worktree/quiet.go`), the record slug cap
@@ -947,23 +950,49 @@ loop's lanes are made through it, so a worktree enters the store one way. Before
 beside a manifest, redacted on write by the transcript store's pass; nothing
 reclaims the archive.
 
-**Removing a worktree also trims the Go build cache.** Go trims only entries
-unused for five days, and every store worktree adds entries, so a machine running
-many of them fills its disk until the load gate stands everything still. So when
-`prune` removes at least one worktree it deletes the entries of the cache unused
-for two days, a fixed age (`CacheTrimAge`, `internal/core/ahoy/worktree/cachetrim.go`),
-and reports the entries removed and the bytes freed; a dry run reports the same
-and deletes nothing. Since these are another tool's files, the trim acts only on
-the directory `go env GOCACHE` reports, and only when that is a real directory
-the caller owns, has a Go build cache's shape and is not the home directory or
-above it, the guards the load gate holds to before it offers a trim. The owner,
-the directory and the shape are read from the directory as opened, which must be
-the one the path named. Otherwise one line says why it was skipped. Inside it, it touches
-only regular files named `<hex>-a` or `<hex>-d` in a subdirectory named by two hex
-digits, and follows no symbolic link. It unlinks each file and removes no
-directory, so a build running beside it finds a miss and rebuilds. A trim that
-fails never fails the prune, and the one-at-a-time removal the sweep uses does
-not trim.
+**The Go build cache is kept under a size limit.** Go trims only entries unused
+for five days, and every store worktree adds entries, so a machine running many of
+them fills its disk until the load gate stands everything still. An age does not
+bound it: a cache of 324 GB in 951,386 entries, all used within five days, would
+have given up 87 GB to a two-day age. So the trim works to a limit,
+`load.go_cache_limit_gib`, 100 GiB by default, read from the machine layer alone: it
+deletes the oldest entries until the rest fit, and an entry the limit does not need
+gone stays however old (`internal/core/ahoy/worktree/cachetrim.go`). Every entry used
+in the last 3 hours stays whatever the limit, allowing the hour Go may leave an
+entry's time unrefreshed; when those alone exceed it they stay and the answer says
+so, since a running build needs them. It reports the size found, the size left, the
+entries removed and the bytes freed; a dry run reports the same and deletes nothing.
+A limit it cannot read or use deletes nothing, and so does a key under `load` that
+nothing reads, which may be this one misspelt, since a guessed size could remove
+what the person's own value would have kept.
+
+Since these are another tool's files, the trim acts only on the directory `go env
+GOCACHE` reports, and only when that is a real directory the caller owns, has a Go
+build cache's shape and is not the home directory or above it, the guards the load
+gate holds to before it offers a trim. The owner, the directory and the shape are
+read from the directory as opened, which must be the one the path named. Otherwise
+one line says why it was skipped. Inside it, it touches only regular files named
+`<hex>-a` or `<hex>-d` in a subdirectory named by two hex digits, and follows no
+symbolic link. It unlinks each file and removes no directory, so a build running
+beside it that looks up an entry already gone finds a miss and rebuilds. The walk
+takes minutes and Go refreshes an entry's time when a build uses it, so each entry
+is read again just before it is unlinked, and one used since the walk stays; a
+build that looks one up in the instant between that read and the unlink can still
+fail to open it, a window one system call wide, and a rerun rebuilds it. It is judged by the cache's size and never by
+free space, since a local snapshot can hold what it deleted.
+
+Three things run it. `prune` runs it when it removes at least one worktree, and a
+trim that fails never fails the prune; the one-at-a-time removal the sweep uses does
+not trim. `ahoy worktree trim-cache` runs it on demand. And the build loop asks for
+it whenever its worktree stage makes a lane, for a build and a drain alike, since a
+lane is what fills the cache and a drive that runs for weeks makes them throughout,
+where prune may not run for days. The walk takes minutes on a large cache, so a
+lane's start claims it under a marker in the abcd home that holds it to once an hour
+across the account, and starts the verb detached, in its own session and holding
+nothing of the caller's; the lane does not wait. A detached run has no terminal, so
+it saves its answer in the marker, and the next lane to claim says on stderr what it
+could not do: a skip, an entry it could not remove, a cache still over its limit, or
+a run that never finished. Nothing it meets stops the lane.
 
 **Invariant: the store deletes only what passes its proof of belonging.** A
 directory leaves the lane only when git lists it as a worktree of this
@@ -1256,7 +1285,10 @@ divided by 2, never read from a repository, with no environment variable, read p
 file cannot be read for it, and a value out of range refusing a narrow run's wait) and `load.memory_floor_macos` and
 `load.memory_floor_linux` (the default floors applied, with a note, on stderr at a
 gate and on stdout at the load check, when the file cannot be read for them, and a value outside its set refusing the wait,
-since the gate does not guess a floor) are honoured from the machine layer alone,
+since the gate does not guess a floor) and `load.go_cache_limit_gib` (the size the
+Go build cache's trim works to: 1 to 1048576 GiB, 100 by default, never read from a
+repository, and a file it cannot read or a value out of range deleting nothing, with
+the reason in the trim's answer) are honoured from the machine layer alone,
 and only from a home outside every git working tree but the account's own
 (`layered.MachineRoots`, the rule `RootsFor` applies): under a home inside
 one the machine layer reads as absent, so no holder is named from it and the

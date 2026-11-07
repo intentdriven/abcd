@@ -57,3 +57,40 @@ func TestTheLaneGoesThroughTheStorePackage(t *testing.T) {
 		t.Fatalf("an adopted lane is not made again: %d calls", len(calls))
 	}
 }
+
+// TestAMadeLaneTellsTheFrontDoor: the worktree stage says when it has made a lane,
+// which is when a front door asks for the Go cache's trim, and the same stage
+// adopting what it made says nothing.
+func TestAMadeLaneTellsTheFrontDoor(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+	opened := 0
+	was := LaneOpened
+	LaneOpened = func() { opened++ }
+	t.Cleanup(func() { LaneOpened = was })
+
+	start, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opened != 0 {
+		t.Fatalf("a run's start makes no lane: %d", opened)
+	}
+	if _, err := advance(repo.Root(), start.RunID, DefaultStages(), Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if opened != 1 {
+		t.Fatalf("the lane was made once: %d", opened)
+	}
+	st, err := ReadState(repo.Root(), start.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again := st.Lanes[0]
+	c := Context{RepoRoot: repo.Root(), RunDir: runRel(st.RunID), State: st}
+	if _, err := worktreeStage(c, &again); err != nil {
+		t.Fatal(err)
+	}
+	if opened != 1 {
+		t.Fatalf("adopting the lane makes none: %d", opened)
+	}
+}

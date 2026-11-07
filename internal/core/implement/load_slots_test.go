@@ -164,7 +164,7 @@ func TestPreflightSlotsReadsPastAnUnreadableFile(t *testing.T) {
 			c.cause,
 			"so one preflight at a time applies",
 			"keep " + file + " a regular file you own that nobody else can write (chmod go-w " + file + ")",
-			`whose "load" names no key but "preflights" (a whole number from 1 to 4), "narrow_runs", "memory_floor_macos" and "memory_floor_linux"`,
+			`whose "load" names no key but "preflights" (a whole number from 1 to 4), "narrow_runs", "memory_floor_macos", "memory_floor_linux" and "go_cache_limit_gib"`,
 		} {
 			if !strings.Contains(note, want) {
 				t.Errorf("%s: note lacks %q:\n%s", c.name, want, note)
@@ -660,5 +660,23 @@ func TestPreflightSlotsIgnoresAHomeInsideAWorkingTree(t *testing.T) {
 	n, src, note, err := PreflightSlots(noEnv, home)
 	if err != nil || n != 1 || src != SlotsDefault || !strings.Contains(note, "HOME lies inside a git working tree") {
 		t.Fatalf("PreflightSlots = %d, %q, %q, %v; want 1 from the default with a note saying HOME lies inside a working tree", n, src, note, err)
+	}
+}
+
+// TestPreflightSlotsKnowsTheCacheLimitKey: the Go cache's limit sits under load in
+// the same file (worktree.CacheLimitKey), and a key some reader does read is not
+// named to the person as one nothing reads.
+func TestPreflightSlotsKnowsTheCacheLimitKey(t *testing.T) {
+	home := t.TempDir()
+	dir := abcdhome.Path(home)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{"load":{"preflights":2,"go_cache_limit_gib":50}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	n, _, note, err := PreflightSlots(func(string) string { return "" }, home)
+	if err != nil || n != 2 || note != "" {
+		t.Fatalf("two preflights and nothing to say: %d %q %v", n, note, err)
 	}
 }

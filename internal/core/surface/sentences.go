@@ -53,8 +53,10 @@ var sentences = map[string]string{
 		"Writes the worktree, its start record and its local tier; refuses a taken or reserved name.",
 	"abcd ahoy worktree list": "List this repository's worktrees and its lane, or every lane with --all: " +
 		"Writes nothing; refuses a store it cannot trust or a directory outside a checkout.",
-	"abcd ahoy worktree prune": "Reclaim this lane's merged, clean worktrees and stale Go cache entries: " +
+	"abcd ahoy worktree prune": "Reclaim this lane's merged, clean worktrees and trim the Go cache to its limit: " +
 		"Writes the notes archive and removes both; refuses a store it cannot trust.",
+	"abcd ahoy worktree trim-cache": "Delete the Go build cache's oldest entries down to its size limit: " +
+		"Writes its answer for the next lane; refuses a cache it cannot prove is Go's.",
 
 	"abcd banlist": "Render both banned-names layers: " +
 		"Writes nothing; refuses an unknown word without echoing it.",

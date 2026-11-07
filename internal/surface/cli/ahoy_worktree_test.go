@@ -14,6 +14,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/ahoy/worktree"
 	"github.com/intentdriven/abcd/internal/core/embargo/storepath"
+	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -225,15 +226,22 @@ func TestAhoyWorktreePruneExitCodes(t *testing.T) {
 // stands in for it, so only a test that sets a temporary GOCACHE runs it.
 var shippedWorktreeTrimCache func(bool, time.Time) worktree.CacheTrim
 
+// shippedLaneOpened is what the binary hands the build loop to call when it makes
+// a lane; TestMain keeps it and clears the loop's, so no test starts a real trim.
+var shippedLaneOpened func()
+
 // tempGoCacheEntries has `go env GOCACHE` name a temporary directory holding one
 // old entry of five bytes and one fresh entry, and restores the shipping trim
-// for this test. It answers the two entries' paths.
+// for this test, with a limit nothing fits under so the old entry goes. It
+// answers the two entries' paths.
 func tempGoCacheEntries(t *testing.T) (cache, old, fresh string) {
 	t.Helper()
 	cache = t.TempDir()
 	t.Setenv("GOCACHE", cache)
 	prev := worktreeTrimCache
-	worktreeTrimCache = shippedWorktreeTrimCache
+	worktreeTrimCache = func(dry bool, now time.Time) worktree.CacheTrim {
+		return worktree.TrimGoCacheToForTest(tinyCacheLimit, dry, now)
+	}
 	t.Cleanup(func() { worktreeTrimCache = prev })
 	if err := os.WriteFile(filepath.Join(cache, "README"), []byte("This directory holds cached build artifacts from the Go build system.\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -248,7 +256,7 @@ func tempGoCacheEntries(t *testing.T) (cache, old, fresh string) {
 	if err := os.WriteFile(fresh, []byte("fresh"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	stale := time.Now().Add(-worktree.CacheTrimAge - 2*time.Hour)
+	stale := time.Now().Add(-worktree.CacheTrimKeep - 2*time.Hour)
 	if err := os.Chtimes(old, stale, stale); err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +278,7 @@ func TestAhoyWorktreePruneTrimsTheGoCache(t *testing.T) {
 
 	mergedLaneWorktree(t, repo, "done")
 	dry, code := runWorktree(t, false, "prune", "--dry-run")
-	if code != 0 || !strings.Contains(dry, "would remove 1 entry unused for 2 days, freeing 5 B") {
+	if code != 0 || !strings.Contains(dry, "would remove 1 entry, freeing 5 B, leaving 5 B of a limit of 5 B") {
 		t.Fatalf("the dry run says what would go: exit %d:\n%s", code, dry)
 	}
 	if !fileExists(old) || !fileExists(fresh) {
@@ -287,7 +295,7 @@ func TestAhoyWorktreePruneTrimsTheGoCache(t *testing.T) {
 	if err := json.Unmarshal([]byte(js), &got); err != nil || code != 0 {
 		t.Fatalf("the run's JSON (%v), exit %d:\n%s", err, code, js)
 	}
-	if tr := got.CacheTrim; tr == nil || tr.EntriesRemoved != 1 || tr.BytesFreed != 5 || tr.Path != cache || tr.UnusedDays != 2 {
+	if tr := got.CacheTrim; tr == nil || tr.EntriesRemoved != 1 || tr.BytesFreed != 5 || tr.Path != cache || tr.LimitBytes != tinyCacheLimit || tr.LeftBytes != 5 || tr.KeepHours != 3 {
 		t.Fatalf("the trim in the JSON: %+v\n%s", got.CacheTrim, js)
 	}
 	if fileExists(old) || !fileExists(fresh) {
@@ -304,7 +312,7 @@ func TestAhoyWorktreePrunePrintsTheTrim(t *testing.T) {
 
 	out, code := runWorktree(t, false, "prune")
 
-	if code != 0 || !strings.Contains(out, "removed 1 entry unused for 2 days, 5 B freed") || fileExists(old) {
+	if code != 0 || !strings.Contains(out, "removed 1 entry, 5 B freed, 5 B left of a limit of 5 B") || fileExists(old) {
 		t.Fatalf("exit %d:\n%s", code, out)
 	}
 }
@@ -329,7 +337,7 @@ func TestAhoyWorktreePruneSurvivesAFailingTrim(t *testing.T) {
 	repo := worktreeFixture(t)
 	prev := worktreeTrimCache
 	worktreeTrimCache = func(bool, time.Time) worktree.CacheTrim {
-		return worktree.CacheTrim{Path: "cache", UnusedDays: 2, Failed: 3}
+		return worktree.CacheTrim{Path: "cache", Failed: 3}
 	}
 	t.Cleanup(func() { worktreeTrimCache = prev })
 	mergedLaneWorktree(t, repo, "done")
@@ -784,5 +792,200 @@ func TestRenderDossierSaysWhenTheIgnoredFilesCouldNotBeListed(t *testing.T) {
 	renderDossier(&b, worktree.Dossier{Ignored: worktree.IgnoredState{Unread: true}})
 	if !strings.Contains(b.String(), "ignored: could not be listed") {
 		t.Fatalf("the dossier does not say its ignored files could not be listed:\n%s", b.String())
+	}
+}
+
+// tinyCacheLimit is what tempGoCacheEntries' trim works to: its fresh entry fits
+// and its old one does not.
+const tinyCacheLimit = 5
+
+// TestCacheTrimLineSaysItIsOverTheLimit: entries kept over the limit are said,
+// with the keep that kept them, and a figure in GiB reads as the limit does.
+func TestCacheTrimLineSaysItIsOverTheLimit(t *testing.T) {
+	line := cacheTrimLine(worktree.CacheTrim{Path: "/c", LimitBytes: 100 << 30, LeftBytes: 150 << 30, KeepHours: 3, OverLimit: true}, false)
+	for _, want := range []string{"150.0 GiB left of a limit of 100.0 GiB", "still over the limit", "used in the last 3 hours"} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("lacks %q: %s", want, line)
+		}
+	}
+}
+
+// TestAhoyWorktreeTrimCache: the verb trims with no worktree to remove, a dry run
+// deletes nothing and leaves the marker alone, a real run saves its answer for the
+// next lane to read, and a skip exits 1 and says why.
+func TestAhoyWorktreeTrimCache(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	gittest.Env(t)
+	cache, old, fresh := tempGoCacheEntries(t)
+	marker := abcdhome.Path(home, "go-cache-trim.json")
+
+	dry, code := runWorktree(t, false, "trim-cache", "--dry-run")
+	if code != 0 || !strings.Contains(dry, "would remove 1 entry") || !fileExists(old) {
+		t.Fatalf("the dry run: exit %d:\n%s", code, dry)
+	}
+	if fileExists(marker) {
+		t.Fatal("a dry run records nothing")
+	}
+
+	js, code := runWorktree(t, true, "trim-cache")
+	var got worktree.CacheTrim
+	if err := json.Unmarshal([]byte(js), &got); err != nil || code != 0 || got.EntriesRemoved != 1 || got.Path != cache {
+		t.Fatalf("the JSON (%v), exit %d:\n%s", err, code, js)
+	}
+	if fileExists(old) || !fileExists(fresh) {
+		t.Fatal("the old entry goes and the fresh one stays")
+	}
+	if !fileExists(marker) {
+		t.Fatal("a real run records its answer")
+	}
+
+	t.Setenv("GOCACHE", filepath.Join(t.TempDir(), "nope"))
+	out, code := runWorktree(t, false, "trim-cache")
+	if code != 1 || !strings.Contains(out, "go build cache not trimmed: ") {
+		t.Fatalf("a skip: exit %d:\n%s", code, out)
+	}
+}
+
+// TestALaneStartsOneDetachedTrimAnHour: the first lane asks for the trim, the next
+// inside the hour does not, and neither says anything while all is well.
+func TestALaneStartsOneDetachedTrimAnHour(t *testing.T) {
+	home := t.TempDir()
+	now := time.Now()
+	spawned := 0
+	spawn := func(dir string) error {
+		spawned++
+		if dir != home {
+			t.Errorf("the trim runs from the home, so it holds no checkout: %s", dir)
+		}
+		return nil
+	}
+	var errw bytes.Buffer
+
+	kickCacheTrim(&errw, home, now, spawn)
+	kickCacheTrim(&errw, home, now.Add(time.Minute), spawn)
+
+	if spawned != 1 || errw.Len() != 0 {
+		t.Fatalf("one trim, quietly: %d, %q", spawned, errw.String())
+	}
+}
+
+// TestALaneSaysWhatTheLastTrimCouldNotDo: a run's failure has no terminal of its
+// own, so the next lane to ask says it on stderr, and starts the next trim all
+// the same. All that is said is masked: the marker is a file on disk.
+func TestALaneSaysWhatTheLastTrimCouldNotDo(t *testing.T) {
+	spawnOK := func(string) error { return nil }
+	now := time.Now()
+	for name, c := range map[string]struct {
+		save *worktree.CacheTrim
+		want string
+	}{
+		"did not finish": {nil, "did not finish"},
+		"skipped":        {&worktree.CacheTrim{Skipped: "no go\x1b[2J command"}, "no go"},
+		"failed":         {&worktree.CacheTrim{Path: "/c", LimitBytes: 100, Failed: 7}, "7 could not be read or removed"},
+		"over":           {&worktree.CacheTrim{Path: "/c", LimitBytes: 100, LeftBytes: 200, KeepHours: 3, OverLimit: true}, "still over the limit"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			home := t.TempDir()
+			var errw bytes.Buffer
+			kickCacheTrim(&errw, home, now, spawnOK)
+			if c.save != nil {
+				if err := worktree.SaveCacheTrim(home, now, *c.save); err != nil {
+					t.Fatal(err)
+				}
+			}
+			spawned := 0
+			kickCacheTrim(&errw, home, now.Add(time.Hour), func(string) error { spawned++; return nil })
+			if !strings.Contains(errw.String(), c.want) || spawned != 1 {
+				t.Fatalf("said %q, spawned %d", errw.String(), spawned)
+			}
+			if strings.ContainsRune(errw.String(), 0x1b) {
+				t.Fatalf("an escape reached the terminal: %q", errw.String())
+			}
+		})
+	}
+	t.Run("a clean run says nothing", func(t *testing.T) {
+		home := t.TempDir()
+		var errw bytes.Buffer
+		kickCacheTrim(&errw, home, now, spawnOK)
+		if err := worktree.SaveCacheTrim(home, now, worktree.CacheTrim{Path: "/c", LimitBytes: 100, LeftBytes: 50, EntriesRemoved: 3}); err != nil {
+			t.Fatal(err)
+		}
+		kickCacheTrim(&errw, home, now.Add(time.Hour), spawnOK)
+		if errw.Len() != 0 {
+			t.Fatalf("said %q", errw.String())
+		}
+	})
+}
+
+// TestALaneSurvivesATrimThatCannotStart: what stops the trim is said on stderr and
+// stops nothing else.
+func TestALaneSurvivesATrimThatCannotStart(t *testing.T) {
+	t.Run("the spawn fails", func(t *testing.T) {
+		var errw bytes.Buffer
+		home, now := t.TempDir(), time.Now()
+		kickCacheTrim(&errw, home, now, func(string) error { return errors.New("no fork") })
+		if !strings.Contains(errw.String(), "no fork") {
+			t.Fatalf("said %q", errw.String())
+		}
+		// An hour on, the next lane names the spawn, not a run that did not finish.
+		errw.Reset()
+		kickCacheTrim(&errw, home, now.Add(time.Hour), func(string) error { return nil })
+		if !strings.Contains(errw.String(), "could not start: no fork") || strings.Contains(errw.String(), "did not finish") {
+			t.Fatalf("said %q", errw.String())
+		}
+	})
+	t.Run("the home cannot be trusted", func(t *testing.T) {
+		home := t.TempDir()
+		if err := os.Symlink(t.TempDir(), abcdhome.Path(home)); err != nil {
+			t.Fatal(err)
+		}
+		var errw bytes.Buffer
+		spawned := 0
+		kickCacheTrim(&errw, home, time.Now(), func(string) error { spawned++; return nil })
+		if spawned != 0 || !strings.Contains(errw.String(), "not trimmed") {
+			t.Fatalf("said %q, spawned %d", errw.String(), spawned)
+		}
+	})
+}
+
+// TestTheBuildLoopIsWiredToTheKick: the binary hands the loop the kick; TestMain
+// keeps it off for every other test here, so none starts a real trim.
+func TestTheBuildLoopIsWiredToTheKick(t *testing.T) {
+	if shippedLaneOpened == nil {
+		t.Fatal("the build loop asks for no trim when it makes a lane")
+	}
+	if loop.LaneOpened != nil {
+		t.Fatal("TestMain keeps the trim off")
+	}
+}
+
+// trimChildEnv marks this test binary's child as the trim's verb (TestMain).
+const trimChildEnv = "ABCD_TEST_TRIM_CHILD"
+
+// TestSpawnCacheTrimRunsTheVerbDetached: the real spawn starts a real process that
+// runs the verb from the home and leaves its answer in the marker, under a private
+// home; TestMain's stand-in answers in place of the trim, so no cache is touched.
+func TestSpawnCacheTrimRunsTheVerbDetached(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	gittest.Env(t)
+	t.Setenv(trimChildEnv, "1")
+	marker := abcdhome.Path(home, "go-cache-trim.json")
+
+	if err := spawnCacheTrim(home); err != nil {
+		t.Fatal(err)
+	}
+
+	deadline := time.Now().Add(time.Minute)
+	for {
+		raw, err := os.ReadFile(marker)
+		if err == nil && strings.Contains(string(raw), "a test stands in for the trim") {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the child left no answer: %v %q", err, raw)
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 }

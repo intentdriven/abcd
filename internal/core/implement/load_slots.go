@@ -152,6 +152,6 @@ func PreflightSlots(getenv func(string) string, home string) (int, string, strin
 func machineConfigNote(err error) string {
 	file := layered.Config.MachineOrigin()
 	return fmt.Sprintf("the machine configuration %s cannot be read for %s (%v), so one preflight at a time applies; "+
-		"to set it, keep %s a regular file you own that nobody else can write (chmod go-w %s), holding one valid JSON object whose \"load\" names no key but \"preflights\" (a whole number from 1 to %d), \"narrow_runs\", \"memory_floor_macos\" and \"memory_floor_linux\"",
+		"to set it, keep %s a regular file you own that nobody else can write (chmod go-w %s), holding one valid JSON object whose \"load\" names no key but \"preflights\" (a whole number from 1 to %d), \"narrow_runs\", \"memory_floor_macos\", \"memory_floor_linux\" and \"go_cache_limit_gib\"",
 		file, PreflightSlotsKey, err, file, file, MaxPreflightSlots)
 }

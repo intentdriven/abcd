@@ -1727,6 +1727,38 @@ working tree (the keychain and an external home stay open
 there), and a platform with no keychain tool refuses the keychain home and
 names the other two.
 
+## `worktree trim-cache` — keep the Go build cache under its limit
+
+Deletes the oldest entries of the Go build cache until the rest fit its limit:
+`load.go_cache_limit_gib` in `~/.abcd.noindex/config.json`, a whole number of GiB
+from 1 to 1048576, 100 by default, and never read from a repository. A value it
+cannot use, a file it cannot read, or a key under `load` that nothing reads (a
+misspelt one among them) deletes nothing and says why.
+
+Every entry used in the last 3 hours stays whatever the limit: Go refreshes an
+entry's time at most hourly, so an entry whose time is under 4 hours old stays. If
+those alone exceed the limit they stay and the line says so. A cache under its limit
+loses nothing, however old its entries. The limit counts entries alone, so the fuzz
+corpora are neither removed nor counted.
+
+It acts only on the directory `go env GOCACHE` reports, and only when that is a real
+directory this account owns, has a Go build cache's shape and is not the home or
+above it; inside, only regular files named `<hex>-a` or `<hex>-d` in a subdirectory
+named by two hex digits. A build that looks up an entry already gone finds a miss
+and rebuilds, and an entry a build used since the walk stays, since each one is read
+again just before it goes; a build that looks one up in the instant between that
+read and the unlink can still fail to open it, and a rerun rebuilds it. Judge
+it by the cache's size, never by free disk: a local snapshot can hold what it deleted.
+
+`ahoy worktree prune` runs the same trim when it removes a worktree. The build loop
+runs this verb detached whenever it makes a lane, for a build and a drain alike, at
+most once an hour across the account (`~/.abcd.noindex/go-cache-trim.json`), and the
+lane does not wait for it. What a detached run could not do (skipped, an entry it
+could not remove, still over the limit, or never finished) is said on stderr by the
+next lane that starts one; nothing stops the lane. `--dry-run` deletes and records
+nothing. It exits 0 when the cache was walked with nothing refused, and 1 when it was
+skipped or an entry could not be read or removed.
+
 ## `--dry-run` — the canonical detection envelope
 
 ```bash

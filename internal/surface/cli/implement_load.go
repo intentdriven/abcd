@@ -269,8 +269,9 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"it as it starts and at each look while memory holds it), and refuses at any such\n" +
 			"look. The refusal names\n" +
 			"each low volume, its free space and the floor, and, when the cache's own volume\n" +
-			"is low, the cache's size and a command that deletes its build entries unused for\n" +
-			"two days. A disk it cannot read, in whole or in part, is never refused: one line\n" +
+			"is low, the cache's size, `abcd ahoy worktree trim-cache`, which takes it down to\n" +
+			"its size limit, and a command that deletes its build entries unused for two\n" +
+			"days. A disk it cannot read, in whole or in part, is never refused: one line\n" +
 			"on stderr says it was not checked, and why. The load check (`--site`) prints the\n" +
 			"same finding as a warning and never fails for it.\n\n" +
 			"Both gates also stay shut while the system reports memory pressure at or above\n" +
