@@ -24,7 +24,9 @@ import (
 // across runners does not make a package shorter on the runner it lands on. The
 // check job's plain pass on an inert change, its only test pass there, shards the
 // same way: as one process internal/core/implement/loop crossed go
-// test's ten-minute default with no test hung (iss-2610302058222905).
+// test's ten-minute default with no test hung (iss-2610302058222905). Both test
+// steps of release.yml's verify job shard too, and each pass here also skips the
+// flush, so a cut tests the longest packages the way the merge gate does.
 func TestCIRacePassesShardLikePreflight(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
 
@@ -36,10 +38,16 @@ func TestCIRacePassesShardLikePreflight(t *testing.T) {
 	want := `ABCD_TEST_SHARDS: "` + m[1] + `"`
 
 	const ci = ".github/workflows/ci.yml"
+	const release = ".github/workflows/release.yml"
+	const skipFlush = `ABCD_TEST_SKIP_FLUSH: "1"`
 	for _, pass := range []struct{ file, name string }{
 		{ci, "Test (race, internal)"},
 		{macOSSuiteWorkflow, macOSRaceStep},
 		{ci, "Test"},
+		// A cut tests the longest packages the way the merge gate does, so a
+		// package the merge gate passed does not then fail the cut.
+		{release, "Test (race, internal)"},
+		{release, "Test"},
 	} {
 		file, name := pass.file, pass.name
 		step, ok := workflowStepBlock(readRepoFile(t, root, file), name)
@@ -49,6 +57,9 @@ func TestCIRacePassesShardLikePreflight(t *testing.T) {
 		}
 		if !strings.Contains(step, "\n          "+want+"\n") {
 			t.Errorf("%s's `%s` step does not set %s in its env, the count preflight runs with:\n%s", file, name, want, step)
+		}
+		if !strings.Contains(step, "\n          "+skipFlush+"\n") {
+			t.Errorf("%s's `%s` step does not set %s in its env, as every other test pass does:\n%s", file, name, skipFlush, step)
 		}
 		run := regexp.MustCompile(`(?m)^\s+(?:run: )?go test (.*)$`).FindStringSubmatch(step)
 		if run == nil {

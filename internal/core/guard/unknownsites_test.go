@@ -19,9 +19,15 @@ import (
 // decision someone writes down, never a bypass nobody saw (review3-guard). An
 // entry that is not "exempt:" must also call something unknown.go defines.
 var wordReaders = map[string]string{
-	"startsAnAgent": "exempt: reads the word commandSites places as the program, after a word no line fixes is refused",
-	"addsAWorktree": "isUnknown on the words it decides by, after a program commandSites places",
-	"FileAtCommit":  "exempt: reads git's listing of a commit, not a word of the line",
+	"startsAnAgent":         "exempt: reads the word commandSites places as the program, after a word no line fixes is refused",
+	"stageStartsHarness":    "exempt: reads the word commandSites places as the program, after a word no line fixes is refused",
+	"stagePlacesProvedFile": "exempt: reads the word commandSites places as the program, and a word no line fixes names no file",
+	"stageStartsAgent":      "exempt: reads the word commandSites places as the program, and a word no line fixes starts nothing it names",
+	"withFindActions":       "exempt: reads the word commandSites places as the program, and findActions reads a word no line fixes as -exec",
+	"isPathNameByte":        "exempt: reads a byte of a line's text, not a word",
+	"stageRunsWhatItWrites": "exempt: reads the word commandSites places as the program through whereItRuns",
+	"addsAWorktree":         "isUnknown on the words it decides by, after a program commandSites places",
+	"FileAtCommit":          "exempt: reads git's listing of a commit, not a word of the line",
 	// unknown.go: the rule and the walks that apply it.
 	"unknownFlagCouldBe": "the rule itself",
 	"flagCouldBe":        "the rule itself",
@@ -196,7 +202,7 @@ var wordReaders = map[string]string{
 	"sedTargets":         "exempt: reads sed's literal options; each target goes through resolveToken, which refuses an unknown word",
 	"gitTargets":         "exempt: reads git's literal options; each target goes through resolveToken or fixedToken, which refuse an unknown word",
 	"tarExtracts":        "exempt: reads tar's literal mode letters; an unknown mode word reads as no extraction, a write the reading misses",
-	"findRuns":           "isUnknown: an unknown word may be -exec, so what follows it is read as the command find runs",
+	"findActions":        "isUnknown: an unknown word may be -exec, so what follows it is read as the command find runs",
 	"goBuildTarget":      "exempt: reads go build's literal -o spellings; an unknown word reads as no -o, a write the reading misses",
 	"secondOf":           "exempt: compares a filter's output operand with `-`, standard output; an unknown operand goes through at, which reads it as not fixed",
 	"splitTarget":        "exempt: steps split's literal value options; an unknown word is an operand, which at reads as not fixed",

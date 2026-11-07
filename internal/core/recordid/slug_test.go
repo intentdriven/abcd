@@ -35,13 +35,13 @@ func TestSlugCutsAtATokenBoundary(t *testing.T) {
 	}
 }
 
-// TestMaxSlugLenIsForty pins the product thinker's ruling of 2026-10-10
+// TestDefaultMaxSlugLenIsForty pins the product thinker's ruling of 2026-10-10
 // (iss-2610100626320367): every minted slug — capture, intent, spec and decide
 // alike — is cut at 40 characters, so a record's path stays inside the budget a
 // Windows checkout allows.
-func TestMaxSlugLenIsForty(t *testing.T) {
-	if MaxSlugLen != 40 {
-		t.Fatalf("MaxSlugLen = %d, want 40 (iss-2610100626320367)", MaxSlugLen)
+func TestDefaultMaxSlugLenIsForty(t *testing.T) {
+	if DefaultMaxSlugLen != 40 {
+		t.Fatalf("DefaultMaxSlugLen = %d, want 40 (iss-2610100626320367)", DefaultMaxSlugLen)
 	}
 }
 
@@ -83,7 +83,7 @@ func TestCapSlugCutsOnAHyphen(t *testing.T) {
 	}
 }
 
-// TestSlugAtTheCapAgreesWithCapSlug: a slug derived from text at MaxSlugLen is
+// TestSlugAtTheCapAgreesWithCapSlug: a slug derived from text at DefaultMaxSlugLen is
 // already within the cap, so the kebab cut applied after it changes nothing —
 // the derivation and the cut cannot disagree about a minted slug.
 func TestSlugAtTheCapAgreesWithCapSlug(t *testing.T) {
@@ -93,11 +93,11 @@ func TestSlugAtTheCapAgreesWithCapSlug(t *testing.T) {
 		strings.Repeat("x", 90),
 		"short",
 	} {
-		s := Slug(text, MaxSlugLen)
-		if len(s) > MaxSlugLen {
-			t.Errorf("Slug(%q, MaxSlugLen) = %q exceeds the cap", text, s)
+		s := Slug(text, DefaultMaxSlugLen)
+		if len(s) > DefaultMaxSlugLen {
+			t.Errorf("Slug(%q, DefaultMaxSlugLen) = %q exceeds the cap", text, s)
 		}
-		if c := CapSlug(s, MaxSlugLen); c != s {
+		if c := CapSlug(s, DefaultMaxSlugLen); c != s {
 			t.Errorf("CapSlug(Slug(%q)) = %q, want %q unchanged", text, c, s)
 		}
 	}

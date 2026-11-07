@@ -696,6 +696,10 @@
       "glossary_dir": ".abcd/development/brief/glossary",
       "registry": ".abcd/development/brief/glossary/core/record-families.md"
     },
+    "record_slug_cap": {
+      "enabled": true,
+      "severity": "blocker"
+    },
     "record_family_key": {
       "enabled": true,
       "severity": "warn",

@@ -121,3 +121,26 @@ func TestSpecCloseWithARemainderRefusesAnUndocumentedSurface(t *testing.T) {
 	}
 	assertUnmoved(t, repo)
 }
+
+// TestSpecCloseStandsOnASameTreeReviewAndSaysSo is iss-2611060603332537: a head
+// whose tree is the reviewed commit's own closes on that review, and the close
+// says which review it stood on.
+func TestSpecCloseStandsOnASameTreeReviewAndSaysSo(t *testing.T) {
+	repo := armedCloseRepo(t)
+	if _, _, err := docfidelity.Record(repo, []byte(`{"verificationResult": "PROMOTE", "judgeModel": "claude-opus-5-5", "tier": "full", "failing": []}`), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	reviewed := strings.TrimSpace(gitCommit(t, repo, "rev-parse", "HEAD"))
+	gitCommit(t, repo, "commit", "-q", "--allow-empty", "-m", "the same tree")
+	head := strings.TrimSpace(gitCommit(t, repo, "rev-parse", "HEAD"))
+
+	stdout, stderr, err := runCLISplit(t, "spec", "close", "spc-1")
+	if err != nil {
+		t.Fatalf("the close refused a head with the reviewed tree: %v\n%s%s", err, stdout, stderr)
+	}
+	for _, want := range []string{reviewed[:12], head[:12], "same tree"} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("the close does not state %q:\n%s", want, stderr)
+		}
+	}
+}

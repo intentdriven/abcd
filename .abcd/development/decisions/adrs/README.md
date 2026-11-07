@@ -244,4 +244,5 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-2611011813190527](2611011813190527-a-repository-declares-a-sequence-s-shape.md) | A repository declares a sequence's shape but never a widening flag | proposed | 2026-11-01 |
 | [adr-2611011813195749](2611011813195749-abcd-never-runs-a-foreign-executable.md) | abcd never runs a foreign executable under its own name, and no code that writes records is loaded at run time | proposed | 2026-11-01 |
 | [adr-2611050740453233](2611050740453233-a-stop-is-recorded-state-a-person-sets.md) | A stop is recorded state a person sets, and one shared folder is the exception to the owner-only store | proposed | 2026-11-05 |
+| [adr-2611062149324491](2611062149324491-an-unattended-process-replaces-its-own.md) | An unattended process replaces its own binary only after verification and a passing proof | proposed | 2026-11-06 |
 <!-- /index -->

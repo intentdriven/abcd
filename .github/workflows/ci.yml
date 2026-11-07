@@ -262,7 +262,13 @@ jobs:
     # (.abcd/work/rulesets/main-protection.json), written out so it reads the
     # same as check (macos-latest), the other half of the pair.
     name: check (ubuntu-latest)
-    # The ceiling sits below the merge queue's check response timeout (90 minutes
+    # This ceiling exists only to free the queue when something is truly stuck; it
+    # does not judge speed (dcn-2611062201286033, which withdrew the rule that a
+    # second cancellation stops a pull request). A run nearing it is reported by the
+    # warning step below and answered by speed work, a queue entry dropped with no
+    # failing test is re-armed until it lands, and a real failure gets fixed.
+    #
+    # It sits just under the merge queue's check response timeout (90 minutes
     # since 2026-10-11, recorded in .abcd/work/rulesets/main-protection.json),
     # which is the outer ceiling on a merge-group run: the queue fails the group
     # when this required check has not concluded by then, so a job ceiling above
@@ -275,24 +281,29 @@ jobs:
     # again on 2026-10-28, on delegation from the technical facilitator
     # (dcn-2610280635092222): merge-group runs took 29, 29 and 29 minutes and a
     # fourth was cancelled at 30, a second after its race tests passed, which
-    # rebuilt every group queued behind it. Its warning, ten minutes ahead, fires
-    # at 35. The race step's -timeout lifts go test's 10m per-package default, so a
-    # slow package runs on to this ceiling instead of failing at ten minutes. The
-    # step names its slowest packages first, so they start with the step rather
-    # than behind every faster package; a hang in one of them fails at the package
-    # timeout, with a goroutine dump, before this ceiling cancels the job; a hang
-    # in a package that starts later meets the job clock's watchdog below first.
-    # TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds the ceiling at or below the
+    # rebuilt every group queued behind it. At 45 the job clock's watchdog fired at
+    # 40, the cap less its margin, and queue runs reach about 40 with no test
+    # failing, so an entry left the queue with nothing failed; 60
+    # (iss-2611061904457784) moved that to 55 and stayed close to the same runs. It
+    # is 85 since dcn-2611062201286033, 5 under the queue's timeout: the watchdog
+    # fires at 80 and the warning, ten minutes ahead of the cap, at 75. The test
+    # steps' -timeout, 70m, lifts go test's 10m per-package default, so a slow
+    # package is not failed while the job has room. The step names its slowest
+    # packages first, so they start with the step rather than behind every faster
+    # package; a hang in a package that starts within the job's first ten minutes
+    # fails at its own timeout, with a goroutine dump, and a hang in one that starts
+    # later meets the job clock's watchdog below first.
+    # TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds the ceiling below the queue's
     # cap, and TestEachTestJobWarnsBeforeItsCap holds the warning step at the
     # end of the job below it.
-    timeout-minutes: 45
+    timeout-minutes: 85
     runs-on: ubuntu-latest
     # The job clock's watchdog (cmd/ci-watchdog). go test's -timeout counts
     # from each test binary's own start, so a package that starts late meets
     # this job's cap first and is cancelled with no goroutine dump: on a
     # passing merge-group run the last package started 23.8 minutes into this
-    # job, against a 40m -timeout and a cap of 45. Every step that runs go test,
-    # here and in macos-suite, therefore runs under the
+    # job, so a 70m -timeout there would run to 93.8, past the cap of 85. Every
+    # step that runs go test, here and in macos-suite, therefore runs under the
     # watchdog, which sends the test binaries under go test SIGQUIT (each prints
     # its goroutines and fails) at the cap less the margin on the clock the
     # "Record the job's start" step exports, then the step SIGKILL after 30
@@ -302,7 +313,7 @@ jobs:
     # go test step's shell.
     env:
       ABCD_CI_LEG: check (ubuntu-latest)
-      ABCD_CI_JOB_CAP_MINUTES: 45
+      ABCD_CI_JOB_CAP_MINUTES: 85
     steps:
       # The clock for the warning step at the end of the job. It is the first step
       # that runs, so the time the runner spent before it (queueing, set-up) is not
@@ -385,8 +396,8 @@ jobs:
       # internal/surface/cli started about three and a half minutes into the
       # step and finished it alone; named first, both start with the step. The set is still exactly ./... (go test runs a package
       # named twice once), which TestPlainTestStepRunsTheWholeModule pins.
-      # It shards the longest packages as preflight does, and its -timeout is
-      # the base preflight's unit stage scales from: as one process under go test's
+      # It shards the longest packages as preflight does, and its -timeout is this
+      # job's budget, the race step's below: as one process under go test's
       # ten-minute default, internal/core/implement/loop crossed 600s here on
       # 2026-10-30 with no test hung (iss-2610302058222905).
       # TestCIRacePassesShardLikePreflight holds the count, and
@@ -397,7 +408,7 @@ jobs:
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
           ABCD_TEST_SHARDS: "3"
-        run: go test -count=1 -timeout 40m ./internal/core/implement/loop ./internal/surface/cli ./...
+        run: go test -count=1 -timeout 70m ./internal/core/implement/loop ./internal/surface/cli ./...
 
       # Every package ./... matches that ./internal/... does not;
       # TestTheOutsideInternalStepRunsWhatTheRaceLaneDoesNot holds the set.
@@ -430,14 +441,16 @@ jobs:
       # internal/surface/cli under -race on the macOS runner measured 418-568s
       # passing, and a slow runner crossed 600s with no test hung, ejecting an
       # unrelated pull request from the merge queue (iss-2609260319483365). The
-      # budget was first 20m, about twice the slowest passing run, and is 40m
-      # since 2026-10-17, so a real hang still fails with
-      # a goroutine dump where the enclosing ceiling leaves room for it: in
-      # release.yml's verify job it does, while on a late package this job's own
-      # ceiling, held below the merge queue's response cap, is the binding one (see
-      # the job header). The Makefile's preflight recipe and release.yml's verify
-      # job carry the same flag, and so does a macOS shard's race pass;
-      # TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds all four.
+      # budget was first 20m, about twice the slowest passing run, then 40m from
+      # 2026-10-17, and is 70m since dcn-2611062201286033, so a slow package is not
+      # failed at 40 minutes while the job has room. A real hang still fails with a
+      # goroutine dump where the enclosing ceiling leaves room for it: in a package
+      # that starts within this job's first ten minutes it does, while on a later
+      # package the job clock's watchdog, held below the merge queue's response cap,
+      # is the binding one (see the job header). release.yml's verify job carries the
+      # same flag, so a package this lane passed does not then fail a cut; the
+      # Makefile's preflight recipe carries 40m and a macOS shard's race pass its own
+      # budget. TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds all four.
       #
       # The packages named ahead of the pattern are the slowest under -race
       # (iss-2609281715083637). go test starts packages in the
@@ -456,16 +469,17 @@ jobs:
       # share of the tests under the same -timeout, as the preflight recipe does
       # (iss-2610290720087336). As one process implement/loop took 2244s of the
       # macOS pass's 40 minutes on a passing run, and a queue entry timed out on
-      # it with no test hung. This step and a macOS shard's race pass carry the
-      # same count as the preflight recipe; TestCIRacePassesShardLikePreflight
-      # holds them, and the plain Test step above, to it.
+      # it with no test hung. This step, a macOS shard's race pass and both of
+      # release.yml's verify test steps carry the same count as the preflight recipe;
+      # TestCIRacePassesShardLikePreflight holds them, and the plain Test step above,
+      # to it.
       - name: Test (race, internal)
         if: needs.changes.outputs.inert != 'true'
         shell: go run ./cmd/ci-watchdog bash --noprofile --norc -eo pipefail {0}
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
           ABCD_TEST_SHARDS: "3"
-        run: go test -race -count=1 -timeout 40m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
+        run: go test -race -count=1 -timeout 70m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
 
       # Drift gate for the .abcd/development design record. Blocking: a
       # blocker-severity finding exits non-zero and fails the job; warn-level
@@ -549,13 +563,13 @@ jobs:
           go run ./cmd/abcd site build --project --base-path /abcd/ --out "$RUNNER_TEMP/project-site-render-check"
           go run ./cmd/abcd lint site --project --base-path /abcd/ --out "$RUNNER_TEMP/project-site-render-check"
 
-      # Warn before the cap cancels (ruling Z's cancel policy, 2026-09-28). A
-      # check that runs past WARN_AFTER_MINUTES is ten minutes from its job's
-      # ceiling, and a cancellation there carries nothing but the cancellation.
-      # The rule for a cancelled check is to rerun it once; a second cancellation
-      # for the same reason stops any pull request it gates and opens a speed lane,
-      # never another raise of the timeout. This warning moves that signal ahead of the
-      # first cancellation: it is emitted at the job's end, for a run that
+      # Warn before the cap cancels. A check that runs past WARN_AFTER_MINUTES is ten
+      # minutes from its job's ceiling, and a cancellation there carries nothing but
+      # the cancellation. The cap only frees a stuck run and does not judge speed
+      # (dcn-2611062201286033), so this warning is how a slow suite is reported, and
+      # speed work answers it. A queue entry dropped at the cap with no failing test
+      # is re-armed until it lands, and a real failure gets fixed. The warning is
+      # emitted at the job's end, for a run that
       # finished past the line, so a check that passed within ten minutes of its
       # job's cap says so before one is cancelled at the cap. It never fails the
       # job: `always()` runs it however the steps before it ended, and
@@ -568,8 +582,8 @@ jobs:
         continue-on-error: true
         env:
           STARTED_AT: ${{ steps.started.outputs.epoch }}
-          WARN_AFTER_MINUTES: 35
-          CEILING_MINUTES: 45
+          WARN_AFTER_MINUTES: 75
+          CEILING_MINUTES: 85
         run: |
           case "${STARTED_AT:-}" in
             '' | *[!0-9]*)
@@ -581,7 +595,7 @@ jobs:
           minutes=$((elapsed / 60))
           echo "${ABCD_CI_LEG} has run ${minutes}m $((elapsed % 60))s; the warning line is ${WARN_AFTER_MINUTES}m"
           if [ "$elapsed" -gt $((WARN_AFTER_MINUTES * 60)) ]; then
-            msg="${ABCD_CI_LEG} ran ${minutes} minutes, past the ${WARN_AFTER_MINUTES}-minute warning line and close to the job's ${CEILING_MINUTES}-minute cap. If it is cancelled at the cap, rerun it once; a second cancellation for the same reason stops any pull request it gates: open a speed lane to make the suite faster, and do not raise the timeout."
+            msg="${ABCD_CI_LEG} ran ${minutes} minutes, past the ${WARN_AFTER_MINUTES}-minute warning line and close to the job's ${CEILING_MINUTES}-minute cap. The cap only frees a stuck run and does not judge speed, so nearing it calls for speed work on the suite. A queue entry dropped at the cap with no failing test is re-armed until it lands, and a real failure gets fixed."
             echo "::warning title=${ABCD_CI_LEG} near its cap::${msg}"
             printf '### %s near its cap\n\n%s\n' "$ABCD_CI_LEG" "$msg" >>"$GITHUB_STEP_SUMMARY"
           fi

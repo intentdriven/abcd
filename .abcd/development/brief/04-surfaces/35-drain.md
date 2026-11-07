@@ -344,15 +344,115 @@ harness wrote is redacted before it is cut; a file stops taking that detail at 6
 goes on taking the answers; the newest twenty of a kind are kept.
 
 Before the first move the drive writes the profile directory's settings, abcd's hooks
-as commands naming its own binary and nothing else, and checks each wall, refusing
-and naming the one that fails: the login state, the settings, a git identity for the
+as commands naming its own binary and the harness's own attribution, off, and nothing
+else; resolves the harness to one file, which every launch of the run runs, the proof
+and each stage alike, so a link moved after the start changes nothing that runs until a release check finds it and the new file carries the run's signing team and passes the run's proof; and
+checks each wall, refusing and naming the one that fails: the login state, the settings, a git identity for the
 checkout, and in one short live launch the tools the launch named, the approver as the
-only server, no plugin, no key, the guard refusing a command it is meant to refuse, the
-home and the variable names a stage's shell shows, and a settings file in the working
-tree having no effect, since the launch's setting sources name the profile directory
-alone. Before each stage and each preflight the settings, the files a stage's shell
+only server with the harness reporting it connected, no plugin but the harness's own
+built-ins, no key, the guard refusing a command it is meant to refuse, the approver
+having answered for the step that reads the shell, the home and the variable names a
+stage's shell shows, and a settings file in the working tree having no effect, since the
+launch's setting sources name the profile directory alone. That step reads the flags of
+the shell it runs in, and the approver hands a command back to run under a shell it
+starts itself, so the proof holds only when the flags are that shell's. A stage's shell
+file takes the profile's directory, the name of the file the run proved and the harness's messaging variables back out of the
+shell, and the wall refuses a name it holds under the harness's prefix that reads as a
+credential, a key or a socket, along with any name outside the list it carries; a new
+setting the harness adds under that prefix stops nothing. A drive's launch and its shell
+run with the harness's own updates off. The launch runs in a repository of one empty
+commit, the base the approver judges against, and a refusal from it says the harness's
+version. Before each stage and each preflight the settings, the files a stage's shell
 reads, the machine declarations, abcd's binary and the harness are compared with the
 start, and a difference stops the drive.
+
+The harness is the one exception, and only where the file a run proved is gone or a release check finds its name now leads to another file the run's team admits. The start
+reads that file's code-signing team with the system's own tool and keeps it where the system
+verifies the file as that team's. At the point a stage would start the harness is resolved
+again, and the system must verify the new file as signed by that team before anything runs
+it; a stage in its call is left to finish. The login check and the full proof then run on
+that file, from an empty stage home, before any stage. Passing, it is what the run pins, and
+one line says what was checked and names the old version and the new. The proof shows what a
+launch holds, not who wrote the file, and the team is what answers that, so a new file that
+reads as another team's stops the run at once with a line saying why and what to do, and so
+does a start that kept no team, as on a platform or an install whose file the system cannot
+verify. That is when the file the run holds has gone, or at a start tried again; while it stands, a link moved to such a file costs a waiting release one line and each later check a look, and the run carries on with the file it proved. A file caught as it is written has no identity to read yet, so one with none, one
+that fails verification and one that changes as it is read wait for another read, each wait
+line saying which, and nothing runs the file meanwhile. New contents at a path the run holds
+are no update, and stop the run wherever the run compares them, during a proof too. Only a resuming process's start, which pins afresh, holds them to the run's team instead, on its first attempt as on a later one, and an attempt after a failed one proves them.
+
+A file that has gone with nothing yet in its place is waited for, since an upgrade leaves it
+that way for a moment; a harness that stays gone ends the run at the outage's limit or the
+bound, with the reason on its wait line. Going between the check and the launch costs the
+lane nothing: the launch's own full check starts nothing on it, the next check finds the proof
+owed, and the role runs again. A new file has three tries, minutes apart, across those reads
+and its proof together, since a status can read as failed under load; a run's first proof has
+one. The last failure ends the run as any wall does, exit 2 with the lane let go, naming the check
+and the version; a new version whose environment the wall does not admit ends it this way
+too. A limit or a launch with no verdict says nothing of a wall, so it waits as the first
+proof's does, the other walls checked at each turn, and a wall that fails in that wait is the
+reason the run gives. The login check is a verdict only on an answer of logged out or a harness that cannot be run: any other failure
+to answer tells a person nothing to do, and is a launch with no verdict. The yes covers this
+launch, which adds no prompt, and the screen says so in a line.
+
+**A new release of abcd.** A drive on a release-installed binary takes each newer stable
+release itself, on the yes whose question names the check
+([proposed adr-2611062149324491](../../decisions/adrs/2611062149324491-an-unattended-process-replaces-its-own.md)).
+The step runs in `loop.TerminalOptions.AtBoundary`, once after each drain move, with nothing
+in hand and after the walls have held; the first pass of a run has none, since no move has
+yet written the state a resume reads. A refused step comes back with its lane still in progress
+and reserved, and a judgement holds its issue, so the step stays due until the next move has
+settled each, for one check interval at most: a wait line says so once, and past that the step runs
+beside them, renewing what the run holds. Only a skip the run gave and the next move has yet to
+take holds it for longer. What a run held back stands in the drain's skip
+list, and the process that goes on from it reports it, with the exit a held-back issue gives. At most about once an hour it asks the origin's
+latest-release answer, one request; a tag not newer, or carrying a pre-release suffix, is
+not taken. The bytes pass `Updater.FetchVerified` into the staging name beside the installed
+binary. The staged binary then runs in the checkout, in a stage's sealed environment rather
+than the drive's, as a process group of its own killed at a two-minute bound: it accepts the arguments its re-execution would be given, since the proof
+exercises no drain verb, and answers the read-only drain's JSON form with `dry_run: true`. It then
+serves as the approver and the hooks of `runner.ProveCandidate`, which is `ProveWall` with the
+profile's settings naming the staged path for the launch and restored on every way out, so
+that no wall is skipped and the run's baseline stands. The file is held to its verified digest
+and to being a regular file immediately before each run of it and before the swap, and the
+swap keeps the previous binary as `.<name>.previous`. The install record's digest and the release mark are written after it,
+and never read to decide a swap. The installed file is held to the same digest, and the drive
+then executes that name, read before the swap, so a drive started through a link runs what it checked.
+Its arguments carry a hidden flag naming both versions, the yes and the profile by name; a caught
+signal and every descriptor abcd opens, the drive's lock and log among them, end at the exec,
+so a refused exec leaves the drive as it was, and it restores the kept copy and goes on.
+
+The re-executed drive shows no question, and a drive moved onto a release proves no wall live,
+since the process that started it did both on this path. A kept copy going on after a refused
+start proves itself in one live launch. It writes the settings afresh, pins the new binary as its
+baseline and goes on from the drain's own state, given none of what that state holds, so a change a person made
+since the start stands, and a bound that
+passed during the step ends the run in the loop rather than refusing the start. A resuming start that fails, on either copy, is tried again on a schedule of about three minutes in all, one line each time, and a stop during it, in a try or between them, ends the run with nothing restored and nothing launched, so a passing failure counts against no release. Only the last attempt says how the run ended, in one refusal document under the machine-readable form, and a rate limit at a resuming start's proof is waited out as one in the loop is, up to the same eight hours with no bound given. Each attempt after the first holds the installed file, the machine's declarations and the programs beside the harness to what the process began on and pinned before it pins anything, holds a harness that changed to the signing team the run pinned or verified as the process began, and proves itself in one live launch; a difference ends the run, as a comparison that fails in the loop does, naming the way back on a release just moved onto. A start that
+keeps failing before its first move, a panic in it or a first move that refuses included, holds the kept copy to its own build claim and its build provenance
+under the checkout's drive lock, restores those bytes, says one line naming both versions, and executes it with a second hidden flag naming that release, which is
+how the tag stays tried. Another drive's hold and a stop go back to nothing. A copy found not to be that
+release is never restored, and a verification with no answer is asked again over about two minutes, one line each try and the lock free between them, and then counts the same; a stop during that restores nothing. That, a restore or an exec that fails ends the run with
+exit 2 naming the way back, and a run past its first move that ends on a failure names it too;
+recovery there is the person's, by the kept copy when it verifies and otherwise by the update
+verb with the tag. A verdict on the release, a digest or
+provenance that does not hold, a failed proof or a failed start, changes nothing, is said once
+and takes the tag off the table for the run. A failed rehearsal is said once per reason and
+tried again at later checks, since it reads the checkout as it stands. `update.NoVerdictError`
+marks what says nothing of it: a transport fault, any status but not-found, a body cut short,
+a trusted root not fetched, a staging file not written. That goes back to the next check with
+one line each attempt, as a limit or a launch with no verdict at the proof does, and as a harness update the run owes a proof of does around the proof, a link moved to a new file with the old one standing included. Before the swap the comparison runs once more, with the settings put back by then, so new bytes at the harness's own path, a changed program or a changed declaration swap nothing and the loop's own check ends the run on them: the run moves onto no harness the proof did not see, and its next check before a stage proves a new one the run's team admits. The check
+itself is one request under its own short bound, so a dead network costs a boundary no more.
+
+The decision reads the flag, the clock, the running build's own metadata and the installed
+binary's kind, both read once at the start, and the origin over `urlguard`'s override-free
+roots with no proxy read. The staging name, the
+release mark and the install record are not inputs. The settings, the installed binary and what else the comparison holds can hold a swap back and never bring one in; the comparison before each stage stands,
+and a difference in the binary or the settings ends the run before the next check. A failed rehearsal keeps a version out and never brings
+one in. The client leaves the process's environment alone, since
+the person's proxy still serves git, the forge and the agents. A source build, a plugin root's
+binary, a package manager's and the track-latest shim never self-update, and the plugin root
+and its pages are never touched. Two drives sharing a binary end each other at a swap, at the
+next comparison.
 
 **Which profile.** `runner.DriveProfile` is the one function that answers it. With one
 directory under `~/.abcd.noindex/profiles/` a drive runs on it. With several it refuses,
@@ -383,7 +483,8 @@ run that names no profile goes on, says so, and takes the profile that drove it 
 holds it, so a drive that only waited on another driver leaves it as it was.
 
 Two drives on two profiles at once take two checkouts, since one drive holds a checkout
-whatever its profile. Each checkout's drain and runs are its own, each profile and
+whatever its profile, and one that moves to a new release ends the other whatever flags that
+other has: one drive to an account is the supported shape while a drive may take a release (dcn-2611070019463013), and a start that may take one says so in a line. Each checkout's drain and runs are its own, each profile and
 checkout its own stage's files, and a stage writes only under its own directories, so
 neither reaches the other's login or settings by a file tool or a line the guard can read,
 though its shell reads what the account can. They share what any two drives on one
@@ -398,8 +499,14 @@ abcd's shared records are named, and any other toolchain's cache starts empty. A
 PATH that abcd will not ask, or that names no cache, leaves the caches it did not name in
 that home, and the drive says which at its start; a stage's shell and the preflight still
 run that Go. The guard
-reads a shell line against that home and refuses a further agent, a moved home, the
-keychain tool, the land verb and every implement verb but the load gate and widening a hold. A file tool, and a shell line the guard can read, write only in the
+reads a shell line against that home and refuses a further agent, the file the run proved
+and any program named as a release is named among them, a moved home, a moved search for
+a program, a program the same line writes or links, a copy, link or move of the proved
+file or of anything in its directory, the
+keychain tool, the land verb and every implement verb but the load gate and widening a hold.
+It refuses a line the guard can read that names the harness's configuration variable or the
+profile's directory; the stage's file tools are denied it by a deny rule of the launch's own,
+and a profile whose path such a rule cannot hold is refused at the drive's start. A file tool, and a shell line the guard can read, write only in the
 stage's working tree and run directories, its home and temporary files, and never the
 hooks, the Makefile, abcd's configuration, a preflight or review receipt or an approval;
 other records under
@@ -1070,11 +1177,13 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--after-update` (hidden) | string |
 | `--drive` | bool |
 | `--dry-run` | bool |
 | `--fix-rounds` | string |
 | `--judgement` | string |
 | `--max` | int |
+| `--no-self-update` | bool |
 | `--pace` | string |
 | `--profile` | string |
 | `--reason` | string |
@@ -1083,6 +1192,7 @@ Sub-verbs: none.
 | `--take-over` | bool |
 | `--unskip` | stringArray |
 | `--until` | string |
+| `--update-refused` (hidden) | stringArray |
 | `--yes` | bool |
 
 <!-- surface-appendix:end -->

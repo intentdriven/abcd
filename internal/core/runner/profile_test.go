@@ -36,7 +36,7 @@ func TestTheDriveRunsOnTheOneWalledDirectory(t *testing.T) {
 	if p.Dir != dir {
 		t.Fatalf("the profile's directory is %q, want %q", p.Dir, dir)
 	}
-	for _, want := range []string{"CLAUDE_CONFIG_DIR=" + dir, "CLAUDE_CODE_DISABLE_CLAUDE_MDS=1", "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1"} {
+	for _, want := range []string{"CLAUDE_CONFIG_DIR=" + dir, "CLAUDE_CODE_DISABLE_CLAUDE_MDS=1", "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1", "DISABLE_UPDATES=1"} {
 		if !slices.Contains(p.Env, want) {
 			t.Errorf("the profile's environment %q lacks %q", p.Env, want)
 		}

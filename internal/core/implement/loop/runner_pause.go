@@ -616,6 +616,11 @@ func pauseAwait(repoRoot, runID, laneID string, aw Await, session string, fb run
 			res = noteRunnerEnded(st, laneID, aw, fb, handIn, now)
 			return true, nil
 		}
+		if rf, ok := AsRefusal(handIn); ok && rf.cutShort {
+			if err := setAsideCutShort(repoRoot, st, st.Lanes[i], aw.Receipt, now); err != nil {
+				return false, err
+			}
+		}
 		fb.At, fb.Ran = now, ranNone
 		st.Fallbacks = append(st.Fallbacks, fb)
 		p := RunnerPause{Runner: fb.Asked, Reason: fb.Reason, Detail: fsutil.RedactHome(fb.Detail), Stderr: stderr, Since: now, At: now, Tries: 1}
@@ -691,8 +696,8 @@ func noteRefusedReturn(repoRoot, runID, laneID string, aw Await) {
 	}
 	brief, _, _ := strings.Cut(string(raw), "\n"+retryHeading)
 	head := st.Lanes[i].Validation[len(st.Lanes[i].Validation)-1].HeadSHA
-	note := fmt.Sprintf("%s\n\n%s\n\nThe loop refused the last one: %s\n\nIts first line reads exactly `Reviewed head: %s`.\n",
-		brief+"\n"+retryHeading, "Write the return again, whole.", aw.Paused.Detail, head)
+	note := fmt.Sprintf("%s\n\n%s\n\nThe loop refused the last one: %s\n\nIts first line reads exactly `Reviewed head: %s`. %s\n",
+		brief+"\n"+retryHeading, "Write the return again, whole.", aw.Paused.Detail, head, namesTheHeadLine(reviewerVerdicts[aw.Role], head))
 	_ = writeRoundFile(repoRoot, aw.Brief, []byte(note))
 }
 

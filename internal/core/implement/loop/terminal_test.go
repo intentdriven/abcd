@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -14,8 +15,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/runner"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -44,7 +47,11 @@ func terminalFakeTurn(role string) string {
 	lines := strings.Fields(string(raw))
 	count, _ := os.ReadFile(path + ".n")
 	n, _ := strconv.Atoi(strings.TrimSpace(string(count)))
-	_ = os.WriteFile(path+".n", []byte(strconv.Itoa(n+1)), 0o600)
+	// Atomic, since a hang limit can kill this process anywhere: a count truncated
+	// and not yet written would read as zero, and send the next launch to the
+	// script's first line (iss-2611061914290330). Killed before the rename, the next
+	// launch repeats this line.
+	_ = fsutil.WriteFileAtomic(path+".n", []byte(strconv.Itoa(n+1)), 0o600)
 	turn := "shape"
 	if n < len(lines) {
 		turn = lines[n]
@@ -89,11 +96,51 @@ func terminalFakeTurn(role string) string {
 		return "judge-" + JudgementYes
 	case "slow":
 		time.Sleep(time.Second)
+	case "incall":
+		// The agent in its call, as a check beside it could see.
+		mark := os.Getenv(terminalScriptEnv) + ".in-call"
+		_ = os.WriteFile(mark, nil, 0o600)
+		time.Sleep(300 * time.Millisecond)
+		_ = os.Remove(mark)
 	}
 	if strings.HasPrefix(role, RoleDrainJudge) {
 		return "judge-" + JudgementNo
 	}
 	return "ok"
+}
+
+// TestACounterWriteCutOffKeepsTheScriptsPlace: the launches that read terminalFakeTurn's
+// count can be killed at any moment of a hang limit, and a write cut off there must
+// leave the count as it was. Back at zero, the next launch takes the script's first
+// line instead of its own. A file-size limit of nothing cuts every write off after
+// its open, the same place each time, so this needs no kill to land anywhere.
+func TestACounterWriteCutOffKeepsTheScriptsPlace(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "script")
+	if err := os.WriteFile(path, []byte("shape\nnone\nnone\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path+".n", []byte("2"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	launch := exec.Command("/bin/sh", "-c", `ulimit -f 0; exec "$0" brief`, exe)
+	launch.Env = append(os.Environ(), loopFakeEnv+"="+terminalFakeMode, terminalScriptEnv+"="+path, loopFakeLogEnv+"=")
+	// It exits as the line it took says, and "none" prints this, which shows it got
+	// past the count.
+	out, _ := launch.CombinedOutput()
+	if !strings.Contains(string(out), "Not logged in") {
+		t.Fatalf("the launch never took its line: %q", out)
+	}
+	got, err := os.ReadFile(path + ".n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "2" {
+		t.Fatalf("the count is %q after a write cut off; want it left at 2", got)
+	}
 }
 
 // terminalWorld is one test's scratch ledger of three eligible issues, on a
@@ -351,6 +398,53 @@ func TestAStopSetFromOutsideIsHonouredAtTheNextBoundary(t *testing.T) {
 	}
 }
 
+// TestNoCheckRunsWhileAStageIsInItsCall: the check before a stage, where a proof may run,
+// comes between calls, whatever the renewals beside a call do.
+func TestNoCheckRunsWhileAStageIsInItsCall(t *testing.T) {
+	w := newTerminalWorld(t, slices.Repeat([]string{"incall"}, 12)...)
+	o := w.options(t)
+	mark := os.Getenv(terminalScriptEnv) + ".in-call"
+	was := terminalRenewTick
+	terminalRenewTick = 20 * time.Millisecond
+	t.Cleanup(func() { terminalRenewTick = was })
+	calls, during := 0, 0
+	o.BeforeStage = func() error {
+		calls++
+		if _, err := os.Stat(mark); err == nil {
+			during++
+		}
+		return nil
+	}
+	if _, err := RunTerminal(context.Background(), w.repo.Root(), o); err != nil {
+		t.Fatal(err)
+	}
+	if calls == 0 || w.launches(t) <= 3 {
+		t.Fatalf("the world ran no stage beside its judges: %d checks, %d launches", calls, w.launches(t))
+	}
+	if during != 0 {
+		t.Fatalf("the check ran %d times during a call", during)
+	}
+}
+
+// TestAWaitInTheCheckEndsTheRunOnItsOwnReason: what ended the wait is what the run reports,
+// so a person's stop is not read as a wall; a wall that did not hold is still one.
+func TestAWaitInTheCheckEndsTheRunOnItsOwnReason(t *testing.T) {
+	for _, ended := range []string{TerminalStopped, TerminalLimited, TerminalOutage} {
+		t.Run(ended, func(t *testing.T) {
+			w := newTerminalWorld(t)
+			o := w.options(t)
+			o.BeforeStage = func() error { return &WallEnded{Ended: ended} }
+			res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.Ended != ended || w.launches(t) != 0 {
+				t.Fatalf("ended %+v after %d launches", res, w.launches(t))
+			}
+		})
+	}
+}
+
 // TestASettingsDifferenceStopsTheRunBeforeTheNextStage: the check runs before
 // each stage, and the first refusal ends the run with no further launch.
 func TestASettingsDifferenceStopsTheRunBeforeTheNextStage(t *testing.T) {
@@ -409,5 +503,124 @@ func TestALaneThatDoesNotMoveHasADeadline(t *testing.T) {
 	st, _, _ := readDrain(w.repo.Root())
 	if len(st.HandBacks) != 0 {
 		t.Fatalf("nothing is handed back: %+v", st.HandBacks)
+	}
+}
+
+// TestAHarnessGoneBetweenTheCheckAndTheLaunchCostsTheLaneNothing: the launch's own check
+// refuses a file that went after the check before the stage; the await pauses, the next
+// check finds what is owed and proves it, the role runs again, and the lane lands with
+// nothing counted against it.
+func TestAHarnessGoneBetweenTheCheckAndTheLaunchCostsTheLaneNothing(t *testing.T) {
+	w := newTerminalWorld(t)
+	o := w.options(t)
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	versions, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(versions, "2.1.319")
+	script := "#!/bin/sh\n" + loopFakeEnv + "=" + terminalFakeMode + " " + loopFakeLogEnv + "=" + w.env.log + " " + terminalScriptEnv + "=" + os.Getenv(terminalScriptEnv) +
+		"; export " + loopFakeEnv + " " + loopFakeLogEnv + " " + terminalScriptEnv + "\nexec " + self + " \"$@\"\n"
+	place := func() {
+		t.Helper()
+		if err := os.WriteFile(file, []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	place()
+	link := filepath.Join(w.env.bin, "claude")
+	if err := os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(file, link); err != nil {
+		t.Fatal(err)
+	}
+	home := t.TempDir()
+	if err := os.MkdirAll(abcdhome.Path(home, "profiles", "walled"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(home, "identity"))
+	if err := os.WriteFile(filepath.Join(home, "identity"), []byte("[user]\n\tname = A Person\n\temail = a@example.invalid\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p, err := runner.DriveProfile(home, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p = p.ForCheckout(w.repo.Root())
+	bin := runner.SelfBinary()
+	if _, err := runner.WriteWallSettings(p, bin); err != nil {
+		t.Fatal(err)
+	}
+	o.Runners.Config = o.Runners.Config.Walled(p)
+	o.Options.Runners = o.Runners.Config
+	owed := 0
+	gone := false
+	o.BeforeStage = func() error {
+		if err := runner.CheckWallSettingsBesideHarness(p, bin); err != nil {
+			return err
+		}
+		if runner.HarnessOwed(p) {
+			owed++
+			place()
+		}
+		if !gone && slices.ContainsFunc(w.lines, func(l string) bool { return strings.Contains(l, "brief done") }) {
+			gone = true
+			if err := os.Remove(file); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return nil
+	}
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if owed != 1 {
+		t.Fatalf("the next check found what was owed %d times:\n%s", owed, strings.Join(w.lines, "\n"))
+	}
+	if res.Ended == TerminalWall || len(res.HeldBack) != 0 || w.launches(t) == 0 {
+		t.Fatalf("the run went on: %+v, %d launches:\n%s", res, w.launches(t), strings.Join(w.lines, "\n"))
+	}
+	st, _, err := readDrain(w.repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range st.Lanes {
+		if l.Outcome == DrainLaneHandedBack || l.Outcome == DrainLaneHalted {
+			t.Fatalf("a lane paid for it: %+v\n%s", l, strings.Join(w.lines, "\n"))
+		}
+	}
+	paused := slices.IndexFunc(w.lines, func(l string) bool { return strings.Contains(l, "implementer") && strings.Contains(l, "did not run") })
+	if paused < 0 || !slices.ContainsFunc(w.lines[paused:], func(l string) bool { return strings.Contains(l, "implement done") }) {
+		t.Fatalf("the await paused and the role ran again:\n%s", strings.Join(w.lines, "\n"))
+	}
+}
+
+// TestARetryAfterIsTheWaitOfAProofsNextTry: it waits that long, says why, and is not read
+// as the start of an outage.
+func TestARetryAfterIsTheWaitOfAProofsNextTry(t *testing.T) {
+	w := newTerminalWorld(t)
+	o := w.options(t)
+	tries := 0
+	ended, err := WaitOutProof(context.Background(), w.repo.Root(), o, &runner.NoVerdictError{Detail: "the file answered wrongly", RetryAfter: 3 * time.Minute},
+		func(context.Context) error {
+			tries++
+			if tries == 1 {
+				return &runner.NoVerdictError{Detail: "the file answered wrongly", RetryAfter: 3 * time.Minute}
+			}
+			return nil
+		})
+	if ended != "" || err != nil {
+		t.Fatalf("%q %v", ended, err)
+	}
+	if !slices.Equal(w.sleeps, []time.Duration{3 * time.Minute, 3 * time.Minute}) {
+		t.Fatalf("the waits: %v", w.sleeps)
+	}
+	if !slices.ContainsFunc(w.lines, func(l string) bool { return strings.Contains(l, "the file answered wrongly") }) {
+		t.Fatalf("the line:\n%s", strings.Join(w.lines, "\n"))
 	}
 }

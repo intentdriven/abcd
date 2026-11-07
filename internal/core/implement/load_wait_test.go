@@ -668,8 +668,7 @@ func TestPreflightParallelism(t *testing.T) {
 
 // TestPreflightTimeout: a stage's go test -timeout is the base scaled with the
 // load as the stage starts (machineload.GoTestTimeout), and the base itself on
-// a CI runner, where the machine is not read, or where it cannot be read, so
-// CI's race steps and the local lane keep one declared budget.
+// a CI runner, where the machine is not read, or where it cannot be read.
 func TestPreflightTimeout(t *testing.T) {
 	base := 40 * time.Minute
 	read := func() (machineload.Snapshot, error) {

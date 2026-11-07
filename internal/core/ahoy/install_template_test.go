@@ -421,6 +421,7 @@ func installSeams() map[string]string {
 		"osExecutable": osExecutable, "afterHistoryReloadHook": afterHistoryReloadHook,
 		"beforeHistoryIndexCreateHook": beforeHistoryIndexCreateHook, "currentVintage": currentVintage,
 		"waitingRange": waitingRange, "waitingDefaultChanges": waitingDefaultChanges,
+		"runningBuild": runningBuild,
 	}
 	seams := map[string]string{
 		"claudeCodeAgentsFloor": fmt.Sprint(claudeCodeAgentsFloor),

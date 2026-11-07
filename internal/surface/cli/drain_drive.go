@@ -25,6 +25,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/runner"
+	"github.com/intentdriven/abcd/internal/core/update"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/procgroup"
@@ -51,6 +52,8 @@ type driveWallChecks struct {
 	live   func(ctx context.Context, p runner.Profile) error
 	// settings checks the settings abcd wrote still stand.
 	settings func(p runner.Profile) error
+	// binaries holds the binaries to what this process pinned, the harness aside.
+	binaries func(p runner.Profile) error
 }
 
 // driveWalls is the one precondition the wall checks enter through
@@ -65,7 +68,7 @@ var driveWalls = driveWallChecks{
 		}
 		var lines []string
 		if replaced {
-			lines = append(lines, "the profile directory's settings were edited, and were replaced with abcd's: a drive's agents hold abcd's hooks and nothing else")
+			lines = append(lines, "the profile directory's settings were edited, and were replaced with abcd's: a drive's agents hold abcd's settings and nothing else")
 		}
 		if note := runner.StageCachesNote(p); note != "" {
 			lines = append(lines, note)
@@ -79,6 +82,7 @@ var driveWalls = driveWallChecks{
 		return runner.ProveWall(ctx, p, runner.SelfBinary())
 	},
 	settings: func(p runner.Profile) error { return runner.CheckWallSettings(p, runner.SelfBinary()) },
+	binaries: runner.CheckPinnedBinaries,
 }
 
 // driveLockRel is the lock one drive holds on a checkout from its yes to its end,
@@ -101,12 +105,15 @@ var driveProofWait struct {
 	sleep func(ctx context.Context, d time.Duration)
 }
 
+// driveSelfName names the running binary, a variable so a test can say what it reads.
+var driveSelfName = runner.SelfBinary
+
 // drivePreflightProgram is what a lane's preflight starts; a variable so a test
 // can read the environment it is given.
 var drivePreflightProgram = func() (string, []string, error) {
-	self, err := os.Executable()
-	if err != nil {
-		return "", nil, fmt.Errorf("abcd cannot name its own binary: %w", err)
+	self := driveSelfName()
+	if self == "" {
+		return "", nil, errors.New("abcd cannot name its own binary")
 	}
 	return self, []string{"implement", "load", "--wait", "--", "make", "preflight"}, nil
 }
@@ -197,6 +204,29 @@ type driveFlags struct {
 	pace, subAgents, fixRounds *string
 	// until is the run's bound; zero leaves each wait its eight hours.
 	until time.Time
+	// noSelfUpdate is --no-self-update.
+	noSelfUpdate bool
+	// afterUpdate is the hidden --after-update <from>=<to> a drive's own re-execution
+	// passes, "" for none; refused the hidden --update-refused tags.
+	afterUpdate string
+	refused     []string
+	// self is the running file, read once at the start.
+	self update.SelfTarget
+	// reached is set once the loop has made a move.
+	reached *bool
+	// said is set once a resuming drive has said what it resumes from; a failed start
+	// tried again does not say it twice.
+	said *bool
+	// stopped is set once a stop was asked for during a resuming start, which outlives a
+	// try that fails.
+	stopped *bool
+	// began is what a resuming process began on beside the installed file, which each
+	// attempt after a failed one is held to before it pins anything.
+	began runner.StartPins
+	// startedOn is the installed file's digest as this resuming process began, and retried
+	// says this is an attempt after a failed one.
+	startedOn string
+	retried   bool
 }
 
 // parseDriveUntil reads --until: an RFC 3339 instant, or a date, read as the end of
@@ -275,6 +305,57 @@ func driveHoldsToProfile(repoRoot, profile string) error {
 	return driveRefusal("%s", loop.OnAnotherProfile(lanes[0], profile))
 }
 
+// driveBeforeStage is the check before each stage: the walls, and where the file the run
+// proved is gone, a new file held to the run's signing team and the one proof of it. A limit,
+// a launch with no verdict, or a file that has gone for now waits as the first proof's does,
+// renewing what the run holds, with the walls beside the harness checked at each turn; that
+// wait's own end is what the run ends on, and a wall that fails in it is the reason given. A
+// file that goes after this check is the launch's own full check to refuse, which starts
+// nothing, and the next turn finds the proof owed.
+func driveBeforeStage(sig *driveSignals, repoRoot string, p runner.Profile, o loop.Options, until time.Time, say func(string)) func() error {
+	return func() error {
+		bin := runner.SelfBinary()
+		if runner.HarnessOwed(p) {
+			line, err := runner.ReproveHarness(sig.ctx, p, bin)
+			var limit *runner.LimitError
+			var none *runner.NoVerdictError
+			if sig.ctx.Err() == nil && (errors.As(err, &limit) || errors.As(err, &none)) {
+				o.Now = driveProofWait.now
+				var wall error
+				ended, werr := loop.WaitOutProof(sig.ctx, repoRoot, loop.TerminalOptions{Options: o, Until: until, Stop: sig.stop, Say: say, Sleep: driveProofWait.sleep,
+					BeforeStage: func() error {
+						if wall = runner.CheckWallSettingsBesideHarness(p, bin); wall != nil {
+							return &loop.WallEnded{Ended: loop.TerminalWall}
+						}
+						return nil
+					}},
+					err, func(ctx context.Context) error {
+						var perr error
+						line, perr = runner.ReproveHarness(ctx, p, bin)
+						return perr
+					})
+				if wall != nil {
+					return wall
+				}
+				if ended != "" {
+					return &loop.WallEnded{Ended: ended}
+				}
+				err = werr
+			}
+			if sig.ctx.Err() != nil {
+				return &loop.WallEnded{Ended: loop.TerminalKilled}
+			}
+			if err != nil {
+				return err
+			}
+			if line != "" {
+				say(line)
+			}
+		}
+		return runner.CheckWallSettingsBesideHarness(p, bin)
+	}
+}
+
 // driveConsent shows what the drive will do and asks once; --yes is the
 // scripted answer, and with no terminal nothing else answers.
 func driveConsent(cmd *cobra.Command, w io.Writer, f driveFlags, lanes, runs int, p runner.Profile) (bool, error) {
@@ -296,6 +377,11 @@ func driveConsent(cmd *cobra.Command, w io.Writer, f driveFlags, lanes, runs int
 	fmt.Fprintf(w, "  profile:  %s, a separate login and settings on this one account; a stage's shell reads what this account can\n", name)
 	fmt.Fprintln(w, "  gates:    a change to the Makefile, scripts/ or the hooks is not a drive's: it needs a person's own session")
 	fmt.Fprintln(w, "  first:    one short live launch checks the tools, the guard and the shell, on the same subscription")
+	fmt.Fprintln(w, "  updates:  a harness update during the run carries on only where the new file has the same signing team and passes one more such launch; elsewhere the run stops")
+	fmt.Fprintln(w, "  releases: "+fsutil.RedactHome(driveReleaseLine(f)))
+	if !f.noSelfUpdate && f.self.Refusal == nil {
+		fmt.Fprintln(w, "  others:   any other drive on this account ends when this one moves to a new release, whatever flags it has")
+	}
 	if f.yes {
 		return true, nil
 	}
@@ -308,9 +394,114 @@ func driveConsent(cmd *cobra.Command, w io.Writer, f driveFlags, lanes, runs int
 	return a == "y" || a == "yes", nil
 }
 
-// runDrive is the verb. Before the yes a signal ends the process, with nothing
-// started; from the yes on it is a stop (drain_drive_signal.go).
+// errAnotherDrive is what a drive that lost the checkout's lock ends on. Holding it is
+// no fault of a release, so a re-executed start does not go back over it.
+var errAnotherDrive = &exitError{Code: 3, Msg: "abcd drain --drive: another drive holds this checkout; nothing started, nothing reserved"}
+
+// runDrive is the verb, and what a re-executed drive does when it cannot go on: a failed
+// start is tried again on a short schedule, since a passing failure is no verdict on the
+// release; one that repeats before its first move goes back to the kept copy, and past
+// that move names the copy.
 func runDrive(cmd *cobra.Command, asJSON bool, repoRoot string, f driveFlags) error {
+	reached, said, stopped := false, false, false
+	f.reached, f.said, f.stopped = &reached, &said, &stopped
+	if f.resuming() {
+		f.startedOn = driveFileDigest(f.self.Path)
+		runner.PinPrograms(drivePrograms...)
+		roots, _ := layered.RootsFor(repoRoot)
+		f.began = runner.PinStart(roots.Home)
+	}
+	err := startGuarded(cmd, asJSON, repoRoot, f)
+	if f.resuming() {
+		for i, wait := range driveStartRetries {
+			if err == nil || reached || stopped || !driveStartFailed(err) {
+				break
+			}
+			if killed := driveWaitToStartAgain(cmd.ErrOrStderr(), repoRoot, f, err, wait, i); killed != nil {
+				return killed
+			}
+			f.retried = true
+			err = startGuarded(cmd, asJSON, repoRoot, f)
+		}
+	}
+	if err != nil && stopped && !reached && driveStartFailed(err) {
+		return driveStoppedStarting()
+	}
+	if err == nil || f.afterUpdate == "" {
+		return driveSayRefused(err)
+	}
+	switch failed := driveStartFailed(err); {
+	case driveEndedOnWall(err), failed && reached:
+		driveKeptNote(cmd.ErrOrStderr(), f)
+		return err
+	case !failed:
+		return err
+	}
+	back := driveGoBack(cmd.ErrOrStderr(), repoRoot, f, err)
+	if back == nil {
+		return nil
+	}
+	// The kept copy did not take over, so the answer for this attempt is still owed.
+	answer := driveSayRefused(err)
+	if back == err {
+		return answer
+	}
+	return back
+}
+
+// driveHeldRefusal is a failure on a resuming start before its first move: another attempt
+// or the way back may follow, so what it says to its reader waits until none does.
+type driveHeldRefusal struct {
+	end error
+	say func() error
+}
+
+func (e *driveHeldRefusal) Error() string { return e.end.Error() }
+
+// driveFail says how the loop's err ended the run, unless a further attempt may yet answer
+// for it; res is the run's result, when it got as far as having one.
+func driveFail(cmd *cobra.Command, asJSON bool, f driveFlags, res *loop.TerminalResult, err error) error {
+	say := func() error {
+		if res != nil && res.Ended != "" {
+			renderDriveEnd(cmd.ErrOrStderr(), *res)
+		}
+		return loopFail(cmd.OutOrStdout(), asJSON, "abcd drain", err)
+	}
+	if f.resuming() && !*f.reached {
+		if end := loopFail(io.Discard, false, "abcd drain", err); driveStartFailed(end) {
+			return &driveHeldRefusal{end: end, say: say}
+		}
+	}
+	return say()
+}
+
+// driveSayRefused says what a held refusal held, once, when no attempt comes after it.
+func driveSayRefused(err error) error {
+	var held *driveHeldRefusal
+	if errors.As(err, &held) {
+		return held.say()
+	}
+	return err
+}
+
+// startGuarded is startDrive, with a panic before a resuming drive's first move read as
+// a failed start, so it reaches the same tries and the same verified way back. Past that
+// move, and on a start a person typed, a panic stays a panic.
+func startGuarded(cmd *cobra.Command, asJSON bool, repoRoot string, f driveFlags) (err error) {
+	defer func() {
+		if !f.resuming() || *f.reached {
+			return
+		}
+		if r := recover(); r != nil {
+			err = fmt.Errorf("it panicked: %v", r)
+		}
+	}()
+	return startDrive(cmd, asJSON, repoRoot, f)
+}
+
+// startDrive takes the checkout and starts the run. Before the yes a signal ends the
+// process, with nothing started; from the yes on it is a stop (drain_drive_signal.go).
+func startDrive(cmd *cobra.Command, asJSON bool, repoRoot string, f driveFlags) error {
 	ctx, stopAsking := drainSignalContext()
 	defer stopAsking()
 	roots, notes := layered.RootsFor(repoRoot)
@@ -327,16 +518,26 @@ func runDrive(cmd *cobra.Command, asJSON bool, repoRoot string, f driveFlags) er
 	// One drive per checkout, from before it writes anything to its end: one
 	// stopping after a hang-up must not release a claim under the next.
 	err = fsutil.WithFileLock(filepath.Join(repoRoot, filepath.FromSlash(driveLockRel)), driveLockWait, func() error {
-		return runDriveLocked(cmd, asJSON, repoRoot, roots, cfg, p, f, stopAsking)
+		return runDriveLocked(ctx, cmd, asJSON, repoRoot, roots, cfg, p, f, stopAsking)
 	})
 	if errors.Is(err, fsutil.ErrLockContention) {
-		return &exitError{Code: 3, Msg: "abcd drain --drive: another drive holds this checkout; nothing started, nothing reserved"}
+		return errAnotherDrive
 	}
 	return err
 }
 
+// drivePrograms are the program names a drive fixes the meaning of.
+var drivePrograms = []string{"git", "make", "gh", "claude"}
+
+// driveAtYes is called in the window before the drive's own signal handling starts, a seam
+// the tests stand a signal in with.
+var driveAtYes = func(context.Context) {}
+
 // runDriveLocked is the drive holding the checkout's drive lock, up to its yes.
-func runDriveLocked(cmd *cobra.Command, asJSON bool, repoRoot string, roots layered.Roots, cfg *runner.Config, p runner.Profile, f driveFlags, stopAsking func()) error {
+func runDriveLocked(starting context.Context, cmd *cobra.Command, asJSON bool, repoRoot string, roots layered.Roots, cfg *runner.Config, p runner.Profile, f driveFlags, stopAsking func()) error {
+	if f.resuming() {
+		p.Began = &f.began
+	}
 	walled := cfg.Walled(p)
 	o := loop.Options{Roots: &roots, Runners: walled, TakeOver: f.takeOver, Pace: f.pace, SubAgents: f.subAgents, FixRounds: f.fixRounds, Profile: p.Name()}
 	if err := driveHoldsToProfile(repoRoot, p.Name()); err != nil {
@@ -344,7 +545,7 @@ func runDriveLocked(cmd *cobra.Command, asJSON bool, repoRoot string, roots laye
 	}
 	progress, err := loop.ReadDrainProgress(repoRoot)
 	if err != nil {
-		return loopFail(cmd.OutOrStdout(), asJSON, "abcd drain", err)
+		return driveFail(cmd, asJSON, f, nil, err)
 	}
 	if progress.Live && progress.Max > 0 && f.maxLanes > 0 && f.maxLanes != progress.Max {
 		return driveRefusal("--max %d differs from the cap of %d the drain in progress began with; leave --max out", f.maxLanes, progress.Max)
@@ -356,26 +557,32 @@ func runDriveLocked(cmd *cobra.Command, asJSON bool, repoRoot string, roots laye
 	if progress.Live && progress.Max > 0 {
 		lanes = max(progress.Max-progress.Lanes, 0)
 	}
-	runs, err := loop.EstimateRuns(o, repoRoot, lanes)
-	if err != nil {
-		return loopFail(cmd.OutOrStdout(), asJSON, "abcd drain", err)
+	// A re-executed drive asks nothing: the yes was given once, and covered this.
+	if !f.resuming() {
+		runs, err := loop.EstimateRuns(o, repoRoot, lanes)
+		if err != nil {
+			return driveFail(cmd, asJSON, f, nil, err)
+		}
+		asked := cmd.OutOrStdout()
+		if asJSON {
+			asked = cmd.ErrOrStderr()
+		}
+		yes, err := driveConsent(cmd, asked, f, lanes, runs, p)
+		if err != nil {
+			return err
+		}
+		if !yes {
+			fmt.Fprintln(asked, "abcd drain --drive: nothing started, nothing reserved")
+			return nil
+		}
 	}
-	asked := cmd.OutOrStdout()
-	if asJSON {
-		asked = cmd.ErrOrStderr()
-	}
-	yes, err := driveConsent(cmd, asked, f, lanes, runs, p)
-	if err != nil {
-		return err
-	}
-	if !yes {
-		fmt.Fprintln(asked, "abcd drain --drive: nothing started, nothing reserved")
-		return nil
-	}
+	driveAtYes(starting)
+	// Ending the start's own handling ends its context too, so what it heard is read first.
+	heard := starting.Err() != nil
 	stopAsking()
 	// What a program name means is fixed now, hooks the driver's git runs get only
 	// what a stage carries, and only the push keeps the person's credentials.
-	runner.PinPrograms("git", "make", "gh", "claude")
+	runner.PinPrograms(drivePrograms...)
 	gitutil.SetHookedEnv(runner.HookedEnv(p))
 	defer gitutil.SetHookedEnv(nil)
 	// The signal handling says what each signal did while the drive writes.
@@ -387,6 +594,23 @@ func runDriveLocked(cmd *cobra.Command, asJSON bool, repoRoot string, roots laye
 		fmt.Fprintln(errw, "abcd drain --drive: killing the running agent's process group and exiting")
 	})
 	defer sig.close()
+	// A stop outlives a try that fails, and the window before this handling began counts.
+	if f.resuming() {
+		defer func() {
+			if sig.stopAsked() {
+				*f.stopped = true
+			}
+		}()
+		if heard {
+			*f.stopped = true
+			return driveStoppedStarting()
+		}
+	}
+	if f.retried {
+		if err := driveStillOnItsBinaries(p, f); err != nil {
+			return err
+		}
+	}
 	// Only a yes writes anything: another drive on this login reads these files.
 	lines, err := driveWalls.static(sig.ctx, p)
 	for _, l := range lines {
@@ -396,14 +620,27 @@ func runDriveLocked(cmd *cobra.Command, asJSON bool, repoRoot string, roots laye
 		if sig.ctx.Err() != nil {
 			return &exitError{Code: driveKilledExit, Msg: "abcd drain --drive: killed during the proof (nothing started, nothing reserved)"}
 		}
+		var team *runner.HarnessTeamError
+		if errors.As(err, &team) {
+			return &exitError{Code: 2, wall: true, Msg: driveLine + termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
+		}
 		return driveRefusal("%s", err.Error())
 	}
-	ended, err := driveProve(sig, cmd, asJSON, repoRoot, p, o, f)
-	if err != nil {
-		return err
-	}
-	if ended {
-		return nil
+	// A release moved onto passed the live proof moments ago, from the file now installed.
+	// A kept copy going on after a refused start did not, and proves itself: it is rare and
+	// costs one launch. Nor did an attempt after a wait, whose harness may have changed in it.
+	if f.afterUpdate == "" || f.retried {
+		// The proof is an agent, and none starts after a stop.
+		if f.resuming() && sig.stopAsked() {
+			return driveStoppedStarting()
+		}
+		ended, err := driveProve(sig, cmd, asJSON, repoRoot, p, o, f)
+		if err != nil {
+			return err
+		}
+		if ended {
+			return nil
+		}
 	}
 	d := loop.DrainOptions{Max: lanes, Transcripts: &lazyHistoryStore{cmd: cmd}, PassOver: drivePassOver(repoRoot),
 		Skip: f.skips.skip, SkipReason: f.skips.reason, Unskip: f.skips.unskip}
@@ -411,7 +648,7 @@ func runDriveLocked(cmd *cobra.Command, asJSON bool, repoRoot string, roots laye
 		d.Max = f.maxLanes
 		if progress.Max == 0 {
 			if err := loop.CapDrainInProgress(repoRoot, lanes); err != nil {
-				return loopFail(cmd.OutOrStdout(), asJSON, "abcd drain", err)
+				return driveFail(cmd, asJSON, f, nil, err)
 			}
 			d.Max = 0
 		}
@@ -420,17 +657,18 @@ func runDriveLocked(cmd *cobra.Command, asJSON bool, repoRoot string, roots laye
 }
 
 // driveProve runs the live proof. A limit it meets is no failed check, and nor is a
-// launch that came to no verdict on any: with no bound the drive refuses, naming
-// which, and under one it waits on the schedule any limit or outage does and proves
-// again. Only a verdict, or the harness's absence, is refused then. It reports true
-// when the wait ended the drive cleanly, before anything started.
+// launch that came to no verdict on any: with no bound a start someone typed refuses,
+// naming which, and under one it waits on the schedule any limit or outage does and proves
+// again. A resuming start has nobody at the terminal to run it again, so a limit waits
+// there with no bound too. Only a verdict, or the harness's absence, is refused then. It
+// reports true when the wait ended the drive cleanly, before anything started.
 func driveProve(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot string, p runner.Profile, o loop.Options, f driveFlags) (bool, error) {
 	killed := &exitError{Code: driveKilledExit, Msg: "abcd drain --drive: killed during the proof (nothing started, nothing reserved)"}
 	err := driveWalls.live(sig.ctx, p)
 	var limit *runner.LimitError
 	var none *runner.NoVerdictError
 	isLimit := errors.As(err, &limit)
-	if isLimit && f.until.IsZero() && sig.ctx.Err() == nil {
+	if isLimit && f.until.IsZero() && !f.resuming() && sig.ctx.Err() == nil {
 		resets := ""
 		if !limit.ResetsAt.IsZero() {
 			resets = ", resetting at " + limit.ResetsAt.UTC().Format(time.RFC3339)
@@ -438,7 +676,7 @@ func driveProve(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot str
 		return false, &exitError{Code: 3, Msg: "abcd drain --drive: profile " + termsafe.Sanitize(p.Name()) + " has met its rate limit" + resets +
 			", so the live proof could not run; run this again then, or give --until <date> to wait through it (nothing started, nothing reserved)"}
 	}
-	if (isLimit || errors.As(err, &none)) && !f.until.IsZero() && sig.ctx.Err() == nil {
+	if ((isLimit && f.resuming()) || ((isLimit || errors.As(err, &none)) && !f.until.IsZero())) && sig.ctx.Err() == nil {
 		lines := cmd.OutOrStdout()
 		if asJSON {
 			lines = cmd.ErrOrStderr()
@@ -455,8 +693,14 @@ func driveProve(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot str
 		case loop.TerminalKilled:
 			return false, killed
 		case loop.TerminalWall:
-			return false, &exitError{Code: 2, Msg: "abcd drain --drive: a check no longer held (nothing started, nothing reserved)"}
+			return false, &exitError{Code: 2, Msg: "abcd drain --drive: a check no longer held (nothing started, nothing reserved)", wall: true}
 		default:
+			if f.resuming() && ended == loop.TerminalStopped {
+				return false, driveStoppedStarting()
+			}
+			if f.resuming() && ended != loop.TerminalUntil {
+				return false, &exitError{Code: 3, Msg: "abcd drain --drive: stopped short: " + driveEndWords(ended) + " (nothing started on this binary)"}
+			}
 			fmt.Fprintf(cmd.ErrOrStderr(), "abcd drain --drive: ended: %s (nothing started, nothing reserved)\n", driveEndWords(ended))
 			return true, nil
 		}
@@ -477,11 +721,11 @@ func driveRun(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot strin
 	until := f.until
 	review, err := loop.LoadReviewRoute(roots, agentPrompt)
 	if err != nil {
-		return loopFail(cmd.OutOrStdout(), asJSON, "abcd drain", err)
+		return driveFail(cmd, asJSON, f, nil, err)
 	}
 	tiers, diags, err := loop.LoadTiering(roots, review)
 	if err != nil {
-		return loopFail(cmd.OutOrStdout(), asJSON, "abcd drain", err)
+		return driveFail(cmd, asJSON, f, nil, err)
 	}
 	for _, line := range diags {
 		fmt.Fprintln(cmd.ErrOrStderr(), termsafe.Sanitize(fsutil.RedactHome(line)))
@@ -498,12 +742,22 @@ func driveRun(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot strin
 		fmt.Fprintln(detail, time.Now().UTC().Format(time.RFC3339)+" abcd drain --drive: "+termsafe.Sanitize(fsutil.RedactHome(l)))
 	}
 	noticeUnattended(cmd, "abcd drain")
+	switch {
+	case *f.said:
+	case f.afterUpdate != "":
+		from, to, _ := parseAfterUpdate(f.afterUpdate)
+		say(driveLine + update.UpdatedLine(from, to))
+	case f.resuming():
+		say(driveLine + f.refused[len(f.refused)-1] + " could not start, so the drive is going on with " + f.self.Version)
+	}
+	*f.said = true
+	updates := newDriveUpdate(repoRoot, p, f, sig.stop, say, detail)
 	// A yes with no bound never mentioned a probe.
 	var probe func(ctx context.Context, role, model string) (bool, *runner.Failure)
 	if !until.IsZero() {
 		probe = o.Runners.ProbeLimit
 	}
-	res, err := driveTerminal(sig.ctx, repoRoot, loop.TerminalOptions{
+	terminal := loop.TerminalOptions{
 		Options:          o,
 		Drain:            d,
 		Runners:          loop.Runners{Config: o.Runners, Transcripts: d.Transcripts},
@@ -514,35 +768,42 @@ func driveRun(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot strin
 		Stop:             sig.stop,
 		Until:            until,
 		Probe:            probe,
-		BeforeStage: func() error {
-			return runner.CheckWallSettings(p, runner.SelfBinary())
-		},
-	})
+		BeforeStage:      driveBeforeStage(sig, repoRoot, p, o, until, say),
+		Resumed:          f.resuming(),
+		Moved:            func() { *f.reached = true },
+	}
+	// A run that takes no release has no check to hold, and nothing to say waits for one.
+	if !f.noSelfUpdate && f.self.Refusal == nil {
+		terminal.BoundaryCeiling, terminal.AtBoundary = driveCheckEvery, updates.atBoundary
+	}
+	res, err := driveTerminal(sig.ctx, repoRoot, terminal)
 	// What was typed to choose the profile is what going on takes.
 	if res.Resume != "" && f.profile != "" {
 		res.Resume += " --profile " + f.profile
 	}
 	if err != nil {
-		if res.Ended != "" {
-			renderDriveEnd(cmd.ErrOrStderr(), res)
-		}
-		return loopFail(cmd.OutOrStdout(), asJSON, "abcd drain", err)
+		return driveFail(cmd, asJSON, f, &res, err)
 	}
 	if rerr := render(cmd.OutOrStdout(), asJSON, res, func(w io.Writer) { renderDriveEnd(w, res) }); rerr != nil {
 		return rerr
 	}
 	if len(res.HeldBack) > 0 && res.Ended != loop.TerminalKilled && res.Ended != loop.TerminalWall {
-		return &exitError{Code: 3, Msg: "abcd drain --drive: stopped short: it held back " + strings.Join(res.HeldBack, ", ")}
+		return driveHeldBackExit(res.HeldBack)
 	}
 	switch res.Ended {
 	case loop.TerminalKilled:
 		return &exitError{Code: driveKilledExit, Msg: "abcd drain --drive: killed"}
 	case loop.TerminalWall:
-		return &exitError{Code: 2, Msg: "abcd drain --drive: " + driveEndWords(res.Ended) + driveWhy(res)}
+		return &exitError{Code: 2, Msg: "abcd drain --drive: " + driveEndWords(res.Ended) + driveWhy(res), wall: true}
 	case loop.TerminalStopped, loop.TerminalOutage, loop.TerminalLimited, loop.TerminalWaited, loop.TerminalHalted, loop.DrainStoppedOutage, loop.DrainStoppedOrigin:
 		return &exitError{Code: 3, Msg: "abcd drain --drive: stopped short: " + driveEndWords(res.Ended) + driveWhy(res)}
 	}
 	return nil
+}
+
+// driveHeldBackExit is the exit of a run that held issues back.
+func driveHeldBackExit(held []string) error {
+	return &exitError{Code: 3, Msg: "abcd drain --drive: stopped short: it held back " + termsafe.Sanitize(strings.Join(held, ", "))}
 }
 
 // driveLog is where a drive's lines go: the terminal, one line per step, and a

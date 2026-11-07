@@ -241,7 +241,7 @@ func TestAPairReadsTheRecordsCommitBeforeAnythingIsPushed(t *testing.T) {
 		}
 	}
 	if err := os.WriteFile(filepath.Join(f.repo.Root(), filepath.FromSlash(res.Awaiting.Receipt)),
-		[]byte("Reviewed head: "+records.HeadSHA+"\n\nReader 0.\n\n"+reviewerReturn("SHIP")), 0o600); err != nil {
+		[]byte("Reviewed head: "+records.HeadSHA+"\n\nReader 0.\n\n"+namingHead(reviewerReturn("SHIP"), records.HeadSHA)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Receipt(f.repo.Root(), f.runID, res.Awaiting.Receipt, f.stages, Options{}); err != nil {
@@ -449,42 +449,70 @@ func TestACommitHoldingMoreThanRecordsParks(t *testing.T) {
 	f := autoFixture(t)
 	f.validated(t)
 	f.step(t)
+	f.step(t)
 	l := currentLane(t, f.repo, f.runID)
-	st, err := ReadState(f.repo.Root(), f.runID)
-	if err != nil {
-		t.Fatal(err)
-	}
 	if err := os.WriteFile(filepath.Join(l.Worktree, "code.txt"), []byte("x\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := gitutil.LocalGit(l.Worktree, "add", "code.txt"); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := gitutil.LocalGit(l.Worktree, "commit", "-q", "-m", landSubject(st, l)); err != nil {
+	if out, err := gitutil.LocalGit(l.Worktree, "commit", "-q", "--amend", "--no-edit"); err != nil {
 		t.Fatalf("%v: %s", err, out)
 	}
-	f.step(t)
+	head := f.repo.Git("-C", l.Worktree, "rev-parse", "HEAD")
+	if err := mutate(f.repo.Root(), f.runID, func(_ *os.Root, st *State) (bool, error) {
+		cur := &st.Lanes[st.current()]
+		cur.HeadSHA, cur.Landing.Records = head, head
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 	l = f.pushToArm(t)
 	if strings.Contains(f.ghLog(t), "pr merge") || l.Landing == nil || l.Landing.Armed || !strings.Contains(l.Landing.Merge, "code.txt") {
 		t.Fatalf("the lane parks naming the path: %+v\n%s", l.Landing, f.ghLog(t))
 	}
 }
 
-// TestACommitFoundOnTheJudgedHeadIsReadLikeAnyOther: a commit under the landing's
-// subject that the landing did not make still goes to the round.
+// TestACommitFoundOnTheJudgedHeadIsReadLikeAnyOther: a commit under the landing's subject
+// counts as the landing's only if it holds the lane's own moves, so an empty or
+// records-only one is refused until the branch is restored; one that holds them is not
+// taken on trust, and still goes to the round.
 func TestACommitFoundOnTheJudgedHeadIsReadLikeAnyOther(t *testing.T) {
 	f := autoFixture(t)
 	f.validated(t)
 	f.step(t)
 	l := currentLane(t, f.repo, f.runID)
+	judged := l.HeadSHA
 	st, err := ReadState(f.repo.Root(), f.runID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out, err := gitutil.LocalGit(l.Worktree, "commit", "-q", "--allow-empty", "-m", landSubject(st, l)); err != nil {
-		t.Fatalf("%v: %s", err, out)
+	for name, arrange := range map[string]func(){
+		"an empty commit": func() {},
+		"records alone":   func() { f.fileAnotherIssue(t, l) },
+	} {
+		arrange()
+		f.repo.Git("-C", l.Worktree, "add", "-A")
+		if out, err := gitutil.LocalGit(l.Worktree, "commit", "-q", "--allow-empty", "-m", landSubject(st, l)); err != nil {
+			t.Fatalf("%v: %s", err, out)
+		}
+		r := f.wantsRefusedStep(t)
+		if !strings.Contains(r.Reason, "lacks") || !strings.Contains(r.Remedy, "restore the branch") {
+			t.Fatalf("%s: the refusal says what is missing and the way back: %+v", name, r)
+		}
+		if got := currentLane(t, f.repo, f.runID); got.Landing.RecordsDone || got.HeadSHA != judged {
+			t.Fatalf("%s: the commit is not taken as the landing's records: %+v", name, got.Landing)
+		}
+		f.repo.Git("-C", l.Worktree, "reset", "-q", "--hard", judged)
 	}
+	// The landing's own commit, found after a kill, is taken, and a reviewer reads it.
 	f.step(t)
+	f.rollBackToJudged(t, judged)
+	f.step(t)
+	if got := currentLane(t, f.repo, f.runID); !got.Landing.RecordsDone {
+		t.Fatalf("the commit holding the lane's moves is taken: %+v", got.Landing)
+	}
 	f.step(t)
 	res, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
 	if err != nil || res.Awaiting == nil || res.Awaiting.Role != RoleRuthless {
@@ -526,16 +554,14 @@ func TestAnUnreadGateIsPassedOverOnceItsBoundRunsOut(t *testing.T) {
 	}
 }
 
-// TestALandingOverARefusedHookKeepsItsOwnEdits: a markdown change, as a relink leaves,
-// is not called stray.
+// TestALandingOverARefusedHookKeepsItsOwnEdits: a change to a record in a store, as a
+// remedy asks for, is not called stray.
 func TestALandingOverARefusedHookKeepsItsOwnEdits(t *testing.T) {
 	f := autoFixture(t)
 	f.validated(t)
 	f.step(t)
 	l := currentLane(t, f.repo, f.runID)
-	if err := os.WriteFile(filepath.Join(l.Worktree, "relinked.md"), []byte("x\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	f.fileAnotherIssue(t, l)
 	f.step(t)
 	if l := currentLane(t, f.repo, f.runID); !l.Landing.RecordsDone {
 		t.Fatalf("the records commit is made: %+v", l.Landing)
@@ -656,5 +682,5 @@ func TestThisRepositorysOwnMirrorAndConfigArm(t *testing.T) {
 // reviewPairReceipt is a review receipt for sha holding a passing pair, as
 // abcd land --record-review writes one.
 func reviewPairReceipt(sha string) []byte {
-	return []byte(`{"commit":"` + sha + `","reviews":[{"name":"a","verdict":"SHIP","sha256":"x"},{"name":"b","verdict":"APPROVE","sha256":"y"}]}` + "\n")
+	return []byte(`{"commit":"` + sha + `","verdict_rule":2,"reviews":[{"name":"a","verdict":"SHIP","sha256":"x"},{"name":"b","verdict":"APPROVE","sha256":"y"}]}` + "\n")
 }

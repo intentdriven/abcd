@@ -270,6 +270,24 @@ func noWorkPastRound(c Context, lane Lane, await Await) string {
 // path or a runner is claimed for it: from here on what stands there is that
 // agent's. The caller holds the run's lock and writes the state.
 func setAsideForAgent(repoRoot string, st *State, lane Lane, path string, now time.Time) error {
+	return setAside(repoRoot, st, lane, path, now, func(rel, dir string) string {
+		return fmt.Sprintf("what stood at %s before its agent was started is set aside at %s, unread", rel, dir)
+	})
+}
+
+// setAsideCutShort moves a return whose launch reports it stopped short out of the
+// path a later hand-in would read it at, with no report to say so. The caller holds
+// the run's lock and writes the state.
+func setAsideCutShort(repoRoot string, st *State, lane Lane, path string, now time.Time) error {
+	return setAside(repoRoot, st, lane, path, now, func(rel, dir string) string {
+		return fmt.Sprintf("the return at %s, whose launch reports it stopped short, is set aside at %s", rel, dir)
+	})
+}
+
+// setAside moves whatever stands at path into the lane's aside directory, and logs it
+// in the run record in the words note gives it. The caller holds the run's lock and
+// writes the state.
+func setAside(repoRoot string, st *State, lane Lane, path string, now time.Time, note func(rel, dir string) string) error {
 	if !received(repoRoot, path) {
 		return nil
 	}
@@ -300,8 +318,7 @@ func setAsideForAgent(repoRoot string, st *State, lane Lane, path string, now ti
 		return refuse("state", "", lane.ID, fmt.Sprintf("%s could not be set aside before its agent was started: %s", rel, fsutil.RedactHome(err.Error())),
 			"move it out of the way yourself, then run `abcd implement step` again")
 	}
-	st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: StageRunner,
-		Note: fmt.Sprintf("what stood at %s before its agent was started is set aside at %s, unread", rel, dir)})
+	st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: StageRunner, Note: note(rel, dir)})
 	return nil
 }
 

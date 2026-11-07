@@ -218,15 +218,28 @@ func loopFakeHarness(mode string) int {
 	if mode == "ok" || mode == "metered" || strings.HasPrefix(mode, "model-") {
 		body := "{}\n"
 		if role := field("You are the "); strings.HasPrefix(role, RoleRuthless) {
-			body = briefHeadLine(field("Brief: ")) + reviewReturn
+			body = briefReturn(field("Brief: "), reviewReturn)
 		}
 		_ = os.WriteFile(field("Receipt: "), []byte(body), 0o600)
+	}
+	if mode == "lengthstop" {
+		// A reviewer whose return reads as whole and whose launch reports it was
+		// stopped for length.
+		_ = os.WriteFile(field("Receipt: "), []byte(briefReturn(field("Brief: "), reviewReturn)), 0o600)
+		if name == "opencode" {
+			fmt.Println(`{"type":"step_start","sessionID":"ses_fake2","part":{"type":"step-start"}}`)
+			fmt.Println(`{"type":"step_finish","sessionID":"ses_fake2","part":{"type":"step-finish","reason":"length"}}`)
+			return 0
+		}
+		fmt.Println(`{"type":"system","subtype":"init","session_id":"fake-session-2","model":"fake-model"}`)
+		fmt.Println(`{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"fake-session-2","stop_reason":"max_tokens"}`)
+		return 0
 	}
 	if mode == "headonretry" {
 		// A reviewer that leaves the head out until a brief says what is missing.
 		body := reviewReturn
 		if raw, err := os.ReadFile(field("Brief: ")); err == nil && strings.Contains(string(raw), retryHeading) {
-			body = briefHeadLine(field("Brief: ")) + reviewReturn
+			body = briefReturn(field("Brief: "), reviewReturn)
 		}
 		_ = os.WriteFile(field("Receipt: "), []byte(body), 0o600)
 	}
@@ -268,22 +281,23 @@ func loopFakeHarness(mode string) int {
 	return 0
 }
 
-// briefHeadLine is the first line a reviewer's brief asks its return to open with.
-func briefHeadLine(path string) string {
+// briefReturn is body as the reviewer's brief at path asks for it.
+func briefReturn(path, body string) string {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return ""
+		return body
 	}
-	return briefHeadLineIn(string(raw))
+	return briefReturnIn(string(raw), body)
 }
 
-// briefHeadLineIn is the first line a brief's or a request's text asks a return to open
-// with, "" when it asks for none.
-func briefHeadLineIn(text string) string {
-	if m := regexp.MustCompile("`(Reviewed head: [0-9a-f]+)`").FindStringSubmatch(text); m != nil {
-		return m[1] + "\n\n"
+// briefReturnIn is body as a brief's or a request's text asks for it: opening with the
+// line it names and naming that head in its Verdict section, as it was when the text
+// asks for none.
+func briefReturnIn(text, body string) string {
+	if m := regexp.MustCompile("`Reviewed head: ([0-9a-f]+)`").FindStringSubmatch(text); m != nil {
+		return "Reviewed head: " + m[1] + "\n\n" + namingHead(body, m[1])
 	}
-	return ""
+	return body
 }
 
 // reviewReturn is a ruthless reviewer's return, the same bytes whichever route
@@ -646,7 +660,7 @@ func TestAReviewThroughARunnerDiffersFromAHostReviewOnlyInItsRoute(t *testing.T)
 			if err != nil || res.Awaiting == nil {
 				t.Fatalf("the host is handed the review: %+v %v", res, err)
 			}
-			if err := os.WriteFile(filepath.Join(repo.Root(), returnRel), []byte("Reviewed head: "+head+"\n\n"+reviewReturn), 0o600); err != nil {
+			if err := os.WriteFile(filepath.Join(repo.Root(), returnRel), []byte("Reviewed head: "+head+"\n\n"+namingHead(reviewReturn, head)), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := Receipt(repo.Root(), start.RunID, returnRel, steps, o); err != nil {

@@ -17,7 +17,7 @@ import (
 //
 // The inputs are adversarial by construction and seeded, so a failure
 // reproduces: separator runs, punctuation, non-ASCII, and lengths either side
-// of the slug budget (recordid.MaxSlugLen), which is where the reported trailing hyphen was
+// of the slug budget (recordid.DefaultMaxSlugLen), which is where the reported trailing hyphen was
 // cut.
 func TestDerivedSlugAlwaysSatisfiesItsOwnValidator(t *testing.T) {
 	rng := rand.New(rand.NewSource(20260912))
@@ -31,11 +31,11 @@ func TestDerivedSlugAlwaysSatisfiesItsOwnValidator(t *testing.T) {
 			b.WriteString(pieces[rng.Intn(len(pieces))])
 		}
 		text := b.String()
-		derived := deriveSlug(text)
+		derived := deriveSlug(text, recordid.DefaultMaxSlugLen)
 		if derived == "" {
 			continue // an input with no slug-able rune is refused upstream as empty
 		}
-		got, err := normaliseSlug(derived)
+		got, err := normaliseSlug(derived, recordid.DefaultMaxSlugLen)
 		if err != nil {
 			t.Fatalf("normaliseSlug(deriveSlug(%q)) refused %q: %v", text, derived, err)
 		}
@@ -45,8 +45,8 @@ func TestDerivedSlugAlwaysSatisfiesItsOwnValidator(t *testing.T) {
 		if !reSlug.MatchString(got) {
 			t.Fatalf("deriveSlug(%q) = %q, which the reader's slug validator refuses", text, got)
 		}
-		if len(got) > recordid.MaxSlugLen {
-			t.Fatalf("deriveSlug(%q) = %q exceeds the %d-character budget", text, got, recordid.MaxSlugLen)
+		if len(got) > recordid.DefaultMaxSlugLen {
+			t.Fatalf("deriveSlug(%q) = %q exceeds the %d-character budget", text, got, recordid.DefaultMaxSlugLen)
 		}
 	}
 }

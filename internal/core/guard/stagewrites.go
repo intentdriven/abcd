@@ -1,7 +1,11 @@
 package guard
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -11,8 +15,12 @@ import (
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
-// stageAgentEntryID is the refusal of a further agent from a walled stage.
-const stageAgentEntryID = "stage-further-agent"
+// stageAgentEntryID is the refusal of a further agent from a walled stage, and
+// stageLoginEntryID of a line that reaches the login its run was given.
+const (
+	stageAgentEntryID = "stage-further-agent"
+	stageLoginEntryID = "stage-walled-login"
+)
 
 // stageGateFiles are the first parts of a path, below a stage's working tree, that
 // decide how its lane is judged. No work's footprint opens them.
@@ -30,16 +38,290 @@ const (
 	stageAbcd      = ".abcd"
 )
 
-// stageMovesHome is a line that sets the home or unsets it.
-var stageMovesHome = regexp.MustCompile(`(^|[^A-Za-z0-9_])HOME[ \t]*=|(^|[^A-Za-z0-9_])unset[ \t][^;&|]*(^|[^A-Za-z0-9_])HOME($|[^A-Za-z0-9_])`)
+// stageMovesHome is a line that sets the home or unsets it, and stageMovesPath one that
+// sets the search for a program.
+var (
+	stageMovesHome = regexp.MustCompile(`(^|[^A-Za-z0-9_])HOME[ \t]*=|(^|[^A-Za-z0-9_])unset[ \t][^;&|]*(^|[^A-Za-z0-9_])HOME($|[^A-Za-z0-9_])`)
+	stageMovesPath = regexp.MustCompile(`(^|[^A-Za-z0-9_])PATH[ \t]*\+?=`)
+)
 
-// stageLineRefused says why a stage's shell may not run line, "" when the line
-// itself is no reason: its home stays the one it was given.
-func stageLineRefused(line string) string {
-	if stageMovesHome.MatchString(line) || strings.Contains(line, abcdhome.PersonHomeEnv) || strings.Contains(line, abcdhome.StageHomeEnv) {
-		return "a drive's stage keeps the home its shell was given."
+// stageConfigVar is the variable that points the harness at a login directory.
+const stageConfigVar = "CLAUDE_CONFIG_DIR"
+
+// stageRefusal is a refusal of a walled stage's line, for the approver and the hook alike.
+type stageRefusal struct{ id, why, instead string }
+
+func (r *stageRefusal) approval() Approval { return refusal(r.id, r.why, r.instead) }
+
+func (r *stageRefusal) hookText() string {
+	return "Blocked by the abcd guard (" + r.id + "): " + r.why + " Run instead: " + r.instead
+}
+
+// stageWalledLogin is what a stage's line that reaches the walled login is told.
+var stageWalledLogin = &stageRefusal{stageLoginEntryID,
+	"a drive's stage keeps away from the login its run was given: no line names its variable or its directory.",
+	"do the work without it, or say in the receipt that the task needs it."}
+
+// stageLineRefusal is the refusal of what the line's text says, whatever the shell's
+// quoting makes of it, nil when the text is no reason.
+func (f *Files) stageLineRefusal(line string) *stageRefusal {
+	text := strings.NewReplacer(`'`, "", `"`, "", `\`, "").Replace(line)
+	switch {
+	case stageMovesHome.MatchString(text) || strings.Contains(text, abcdhome.PersonHomeEnv) || strings.Contains(text, abcdhome.StageHomeEnv):
+		return &stageRefusal{stageAgentEntryID, "a drive's stage keeps the home its shell was given.", "the same command without setting or naming the home."}
+	case stageMovesPath.MatchString(text):
+		return &stageRefusal{stageAgentEntryID, "a drive's stage keeps the search for a program its shell was given.", "the same command, naming the program by its full path."}
+	case strings.Contains(text, stageConfigVar):
+		return stageWalledLogin
 	}
-	return ""
+	fold := approveFoldsCase()
+	for _, dir := range f.stageLoginDirs() {
+		if textNamesDir(fsutil.FoldPath(text, fold), fsutil.FoldPath(dir, fold)) {
+			return stageWalledLogin
+		}
+	}
+	return nil
+}
+
+// stageLoginDirs is each protected directory as the configuration names it and where it
+// leads.
+func (f *Files) stageLoginDirs() []string {
+	var out []string
+	for _, p := range f.stageProtect {
+		if !filepath.IsAbs(p) {
+			continue
+		}
+		p = filepath.Clean(p)
+		out = append(out, p)
+		if real := fsutil.RealExistingPath(p); real != p {
+			out = append(out, real)
+		}
+	}
+	return out
+}
+
+// textNamesDir reports whether text holds dir as a whole path: the directory, or a path
+// below it, and not a longer name that starts the same.
+func textNamesDir(text, dir string) bool {
+	for from := 0; ; {
+		i := strings.Index(text[from:], dir)
+		if i < 0 {
+			return false
+		}
+		from += i + len(dir)
+		if from == len(text) || !isPathNameByte(text[from]) {
+			return true
+		}
+	}
+}
+
+func isPathNameByte(b byte) bool {
+	return b == '_' || b == '-' || b == '.' || (b >= '0' && b <= '9') || (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
+}
+
+// stagePlacedRefusal is the refusal of what the line's words reach where the reading
+// places them, nil when they reach nothing of the run's.
+func (f *Files) stagePlacedRefusal(rc *readCtx, placed []placedSeg) *stageRefusal {
+	placed = withFindActions(placed)
+	switch {
+	case f.stageWordsReachLogin(rc, placed):
+		return stageWalledLogin
+	case f.stageRunsWhatItWrites(rc, placed):
+		return &stageRefusal{stageAgentEntryID, "a drive's stage runs no program its own line writes or links.", "do the work without it, or say in the receipt why the task needs it."}
+	case f.stagePlacesProvedFile(rc, placed), f.stageStartsHarness(rc, placed), stageStartsAgent(placed):
+		return &stageRefusal{stageAgentEntryID, stageAgentWhy, stageAgentInstead}
+	}
+	return nil
+}
+
+// withFindActions is placed with each command a find on the line runs placed after the
+// find, so what a stage may not run directly it may not run through one.
+func withFindActions(placed []placedSeg) []placedSeg {
+	out := make([]placedSeg, 0, len(placed))
+	for _, p := range placed {
+		out = append(out, p)
+		for _, a := range commandSites(p.seg) {
+			if strings.ToLower(filepath.Base(p.seg.tokens[a.idx])) != "find" {
+				continue
+			}
+			for _, run := range findActions(p.seg, a.idx+1) {
+				states := p.states
+				if run.elsewhere {
+					states = nil
+					for _, st := range p.states {
+						states = append(states, st.unresolved())
+					}
+				}
+				out = append(out, placedSeg{seg: run.seg, states: states})
+			}
+		}
+	}
+	return out
+}
+
+// stageStartsAgent reports whether a program the placed line runs starts an agent.
+func stageStartsAgent(placed []placedSeg) bool {
+	for _, p := range placed {
+		for _, a := range commandSites(p.seg) {
+			if startsAnAgent(p.seg.tokens, a.idx) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// stageWordsReachLogin reports whether a word or a redirection of the line, read where
+// the reading places it, is a protected directory, a path below one or a parent of one.
+func (f *Files) stageWordsReachLogin(rc *readCtx, placed []placedSeg) bool {
+	dirs := f.stageLoginDirs()
+	if len(dirs) == 0 {
+		return false
+	}
+	fold := approveFoldsCase()
+	reaches := func(st *shellState, word string, glob bool) bool {
+		path, ok := st.resolve(rc, word, strings.HasPrefix(word, "~"))
+		if !ok {
+			return false
+		}
+		for _, dir := range dirs {
+			if glob && globReachesDir(path, dir, fold) {
+				return true
+			}
+			if !glob && pathReachesDir(path, dir, fold) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, p := range placed {
+		for _, st := range p.states {
+			for i, tok := range p.seg.tokens {
+				if isUnknown(tok) || strings.ContainsRune(tok, varMark) || tok == "" {
+					continue
+				}
+				glob := p.seg.globAt(i)
+				if reaches(st, tok, glob) {
+					return true
+				}
+				if _, value, ok := strings.Cut(tok, "="); ok && value != "" && reaches(st, value, glob) {
+					return true
+				}
+			}
+			for _, r := range p.seg.redirects {
+				if r.target.ok && reaches(st, r.target.text, false) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// pathReachesDir reports whether path is dir, below it, or a parent of it below the
+// filesystem's root, as it is spelled or where it leads.
+func pathReachesDir(path, dir string, fold bool) bool {
+	for _, p := range []string{path, fsutil.RealExistingPath(path)} {
+		if fsutil.PathWithin(p, dir, fold) || (filepath.Dir(p) != p && fsutil.PathWithin(dir, p, fold)) {
+			return true
+		}
+	}
+	return false
+}
+
+// globReachesDir reports whether a pattern's directories, as far as it spells them, match
+// dir's or a path below it.
+func globReachesDir(pattern, dir string, fold bool) bool {
+	pats := strings.Split(strings.Trim(fsutil.FoldPath(pattern, fold), "/"), "/")
+	parts := strings.Split(strings.Trim(fsutil.FoldPath(dir, fold), "/"), "/")
+	for i, part := range parts {
+		if i == len(pats) {
+			return true
+		}
+		if ok, err := path.Match(pats[i], part); err != nil || !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// stageRunsWhatItWrites reports whether a program the placed line runs is, or lies in, a
+// path a command before it on the line wrote or linked. A change of mode writes no program,
+// so `chmod +x` stays open.
+func (f *Files) stageRunsWhatItWrites(rc *readCtx, placed []placedSeg) bool {
+	var before []writeTarget
+	for _, p := range placed {
+		for _, st := range p.states {
+			before = append(before, writesOf(rc, p.seg, st)...)
+		}
+		for _, a := range commandSites(p.seg) {
+			for _, st := range p.states {
+				for _, run := range f.whereItRuns(rc, st, p.seg, a.idx) {
+					if written, _ := writtenBefore(run, before); written {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+// whereItRuns is where word i of s runs from: the path it names, or its name in each
+// directory of the PATH f reads.
+func (f *Files) whereItRuns(rc *readCtx, st *shellState, s segment, i int) []string {
+	tok := s.tokens[i]
+	if strings.ContainsRune(tok, filepath.Separator) || strings.HasPrefix(tok, "~") {
+		if run, ok := st.resolveToken(rc, s, i); ok {
+			return []string{run}
+		}
+		return nil
+	}
+	if isUnknown(tok) || strings.ContainsRune(tok, varMark) || tok == "" {
+		return nil
+	}
+	var out []string
+	for _, dir := range filepath.SplitList(f.path) {
+		if filepath.IsAbs(dir) {
+			out = append(out, filepath.Join(dir, tok))
+		}
+	}
+	return out
+}
+
+// stagePlacesProvedFile reports whether a command that copies, links or moves a file has
+// among its operands the file the run proved, or anything in that file's directory.
+func (f *Files) stagePlacesProvedFile(rc *readCtx, placed []placedSeg) bool {
+	if f.stageHarness == "" {
+		return false
+	}
+	proved, provedErr := f.stat(f.stageHarness, false)
+	dir := filepath.Dir(fsutil.RealExistingPath(f.stageHarness))
+	fold := approveFoldsCase()
+	for _, p := range placed {
+		for _, a := range commandSites(p.seg) {
+			switch strings.ToLower(filepath.Base(p.seg.tokens[a.idx])) {
+			case "cp", "ln", "mv", "install", "ditto", "rsync":
+			default:
+				continue
+			}
+			for i := a.idx + 1; i < len(p.seg.tokens); i++ {
+				for _, st := range p.states {
+					operand, ok := st.resolveToken(rc, p.seg, i)
+					if !ok {
+						continue
+					}
+					if fsutil.PathWithin(fsutil.RealExistingPath(operand), dir, fold) {
+						return true
+					}
+					if fi, err := f.stat(operand, false); err == nil && provedErr == nil && os.SameFile(proved, fi) {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
 }
 
 // addsAWorktree reports whether the git command at tokens[idx] adds or moves a worktree, or
@@ -114,6 +396,126 @@ func startsAnAgent(tokens []string, idx int) bool {
 		})
 	}
 	return false
+}
+
+// stageAgentWhy and stageAgentInstead are that refusal's words.
+const (
+	stageAgentWhy     = "a drive's stage starts no further agent and no drive, moves no run and lands nothing: its work is the brief it was given, and the loop does the rest."
+	stageAgentInstead = "do the work in this stage, or say in the receipt that the task needs another agent."
+)
+
+// stageVersionName is a program named as a release is named, as a native install names
+// the harness's own file.
+var stageVersionName = regexp.MustCompile(`^v?[0-9]+\.[0-9]+\.[0-9]+([-+.][0-9A-Za-z.+-]*)?$`)
+
+// stageStartsHarness reports whether a program the placed line runs is named as a release
+// is named, or is the harness file the run proved: that file through any link, or a file
+// with its contents.
+func (f *Files) stageStartsHarness(rc *readCtx, placed []placedSeg) bool {
+	for _, p := range placed {
+		for _, a := range commandSites(p.seg) {
+			if stageVersionName.MatchString(filepath.Base(p.seg.tokens[a.idx])) {
+				return true
+			}
+			for _, st := range p.states {
+				if run, ok := f.programFile(rc, st, p.seg, a.idx); ok && stageVersionName.MatchString(filepath.Base(fsutil.RealExistingPath(run))) {
+					return true
+				}
+				if f.namesProvedHarness(rc, st, p.seg, a.idx) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// namesProvedHarness reports whether word i of s, read where st places it, is the file
+// the run proved or a copy of it.
+func (f *Files) namesProvedHarness(rc *readCtx, st *shellState, s segment, i int) bool {
+	if f.stageHarness == "" {
+		return false
+	}
+	path, ok := f.programFile(rc, st, s, i)
+	if !ok {
+		return false
+	}
+	proved, err := f.stat(f.stageHarness, false)
+	if err != nil {
+		return false
+	}
+	named, err := f.stat(path, false)
+	if err != nil || !named.Mode().IsRegular() {
+		return false
+	}
+	return os.SameFile(proved, named) || (proved.Size() == named.Size() && sameContent(f.stageHarness, path))
+}
+
+// programFile is the file word i of s runs, read where st places it.
+func (f *Files) programFile(rc *readCtx, st *shellState, s segment, i int) (string, bool) {
+	if tok := s.tokens[i]; strings.ContainsRune(tok, filepath.Separator) || strings.HasPrefix(tok, "~") {
+		return st.resolveToken(rc, s, i)
+	}
+	return f.onPath(s.tokens[i])
+}
+
+// onPath is the first file named name in a directory of the PATH f reads.
+func (f *Files) onPath(name string) (string, bool) {
+	if isUnknown(name) || strings.ContainsRune(name, varMark) {
+		return "", false
+	}
+	for _, dir := range filepath.SplitList(f.path) {
+		if !filepath.IsAbs(dir) {
+			continue
+		}
+		path := filepath.Join(dir, name)
+		if fi, err := f.stat(path, false); err == nil && fi.Mode().IsRegular() {
+			return path, true
+		}
+	}
+	return "", false
+}
+
+// sameContent reports whether two files read the same; one that cannot be read does not.
+func sameContent(a, b string) bool {
+	sum := func(path string) ([]byte, bool) {
+		file, err := os.Open(path)
+		if err != nil {
+			return nil, false
+		}
+		defer file.Close()
+		h := sha256.New()
+		if _, err := io.Copy(h, file); err != nil {
+			return nil, false
+		}
+		return h.Sum(nil), true
+	}
+	sa, oka := sum(a)
+	sb, okb := sum(b)
+	return oka && okb && bytes.Equal(sa, sb)
+}
+
+// StageProgramRefusal is the guard hook's refusal of a line from a walled stage, read as
+// the approver reads it, "" when it holds nothing a stage may not do or f is no stage's. A
+// line the reading cannot take is the registry's to refuse.
+func StageProgramRefusal(f *Files, line string) string {
+	if f == nil || f.stageHome == "" {
+		return ""
+	}
+	if refused := f.stageLineRefusal(line); refused != nil {
+		return refused.hookText()
+	}
+	r := (&Registry{}).ReadingFrom(f)
+	rc := newReadCtx(r.files)
+	rc.record = true
+	v, err := r.judge(line, rc, nil)
+	if err != nil {
+		return ""
+	}
+	if refused := f.stagePlacedRefusal(rc, placedLine(rc.line, v.segs)); refused != nil {
+		return refused.hookText()
+	}
+	return ""
 }
 
 // stageGateFile is the gate file path lands in below tree, "" when it lands in

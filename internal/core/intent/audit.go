@@ -1947,6 +1947,36 @@ func markerState(content, rcp string) (string, bool) {
 	return b.state, ok
 }
 
+// VerdictOnRecord reports whether an intent record's bytes hold the verdict as the ingest
+// rendered it: its receipt's block, ingested, saying what the ingest would say. An owed
+// check's issue is the one the block names, since the ledger chose it at the write. It
+// writes nothing and asks the ledger nothing. A verdict that does not validate against
+// the record is on no record; an error is a detector that could not read the text.
+func VerdictOnRecord(repoRoot, intentID, content string, raw []byte) (bool, error) {
+	rcp, err := verdictReceipt(raw)
+	if err != nil {
+		return false, nil
+	}
+	if state, ok := markerState(content, rcp); !ok || state != "INGESTED" {
+		return false, nil
+	}
+	free, degraded, err := newVerdictProse(repoRoot)
+	if err != nil {
+		return false, err
+	}
+	v, verr := validateVerdict(raw, rcp, content)
+	if verr != nil {
+		return false, nil
+	}
+	issue, _ := flaggedIssue(content, rcp)
+	block := ingestedBlock(rcp, v, countVerdicts(v), free, owedFor(Intent{ID: intentID}, rcp, v), issue)
+	if err := degraded(); err != nil {
+		return false, err
+	}
+	existing, ok := reviewBlockText(content, rcp)
+	return ok && sameReviewBlock(existing, block, rcp), nil
+}
+
 // upsertReviewBlock replaces the existing review block for rcp with newBlock, or
 // appends newBlock to the Audit Notes section (creating the section if absent).
 // The block's extent is readReviewBlocks'. The record it returns ends in a

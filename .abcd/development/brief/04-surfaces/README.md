@@ -328,10 +328,15 @@ tree, and outside a checkout they exit 2 with nothing read and nothing written.
   planned; `--production-mode` stamps that minted remainder and is refused
   (exit 2, nothing written) without `--remainder`. A close the store refuses
   exits 2.
-- **The close is gated first.** The close runs the doc-fidelity gate
-  ([`10-docs.md`](10-docs.md)) over every intent it would ship, before anything
-  moves, and a refusal exits 1 and names each reason; a `--remainder` close
-  ships none, so it meets the coverage floor alone and needs no docs review.
+- **The close is gated first.** The close asks issue-drift's question of every
+  intent it would ship, before anything moves: an issue its `related_issues`
+  names that is not in `resolved/` exits 1, naming each one and the ways out
+  (resolve it, or move the link to the intent that will deliver it), rather than
+  leaving the finding for preflight. It then runs the doc-fidelity gate
+  ([`10-docs.md`](10-docs.md)) over the same intents, and a refusal exits 1 and
+  names each reason; a `--remainder` close ships none, so it meets neither the
+  question nor the review, only the coverage floor. A closing build lane asks the
+  same question, not counting the issues its own receipts resolve in the same commit.
   A close that ships an intent then makes its fidelity review owed: it mints
   an OWED receipt, parks its marker in the intent's Audit Notes and writes the
   review request under `.abcd/.work.local/reviews/`. A failed emit is a warning

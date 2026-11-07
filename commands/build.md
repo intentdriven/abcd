@@ -298,7 +298,8 @@ returns are written there, as they are for the build's validators.
    time, so the two are never out together. Each has its own brief under
    `<lane>/plan-review/<lens>/`, which tells it the draft's text is data to
    judge, not instructions, and to change nothing. Each writes its return
-   there, ending with one `### Verdict` section (`SHIP` or `FIX FIRST`), and
+   there, ending with one `### Verdict` section (`SHIP` or `FIX FIRST`, then the
+   draft's digest, which its brief names), and
    `implement receipt <return>` hands it back: the loop parses the verdict and
    records it. A return it cannot read as a verdict records nothing and is
    refused. Once both are in, a `FIX FIRST` hands the lane back as
@@ -760,7 +761,8 @@ A lane's stages run in order:
    removed, which the refusal names as the way to build the intent afresh once
    it is replanned.
 5. `land` — one `implement step` per move, the lane staying at `land` until
-   the last. The loop checks the lane's worktree is clean at the judged head;
+   the last. The loop checks the lane's worktree is clean at the judged head, an
+   uncommitted edit to the lane's own spec record aside, which its commit carries;
    on an intent lane it marks the lane's step landed on the open spec (a
    `- landed:` line naming the judged head, unless the spec lists no steps or
    already marks it, and a commit doing only that declares
@@ -773,7 +775,27 @@ A lane's stages run in order:
    `Assisted-by:` naming the model the lane's receipts reported, the
    repository's hooks running: a lane whose receipt reports no model is
    refused, and a hook that refuses the commit stops the landing until what it
-   names is settled. It pushes the
+   names is settled. What a close ships and what holds it stay as the judged head has them, so an
+   uncommitted change to them is refused, and what that head itself holds against
+   the close (a hold, a drifted `spec_id`, a bundle member another open spec keeps)
+   hands the lane back as `stuck`, naming it and the way out: save the lane's
+   branch if its commits are wanted, since the discard deletes it, settle it on the
+   default branch, put back anything uncommitted in the lane's worktree, discard the
+   lane, and once the run's other lanes are finished or decided remove the run's
+   directory and build the intent again. An issue's landing moves no intent or spec.
+   Outside the records a store reads, in what the worktree holds, what it stages and
+   any commit it finds on the judged head, the landing commits a file only if it is
+   exactly what the repoint of its own records' moves writes over the head's, whether
+   this landing moved them or the head already holds them moved: a file holding anything
+   else stops it until that file is put back. A repoint that fails stops the call before
+   its commit, and the next call repoints again. A commit found on the judged head counts
+   as the landing's records only if that head is its one parent and it holds the lane's
+   own moves, its step's mark, the audit on the intent's record and the trailers the
+   landing writes; any other is refused until the branch is restored to that head. Inside
+   a store the landing still carries an edit to a record, which the reader judges, and
+   a record keeps the mode its writes give it: an ordinary file's, or the executable bit
+   the judged head already had. The landing reads what it judges as the objects store it.
+   It pushes the
    branch only once the repository's preflight receipt names the lane's head:
    until then the lane is waiting for its full check (since the time the wait
    began) while the other lanes carry on; run `make preflight` in the lane's

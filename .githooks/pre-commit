@@ -210,6 +210,12 @@ cd "$toplevel"
 # git does not export the committer into this hook, so the environment holds only
 # what the caller set; a -c committer.* reaches the git config reads below
 # through the GIT_CONFIG_PARAMETERS git passes down.
+#
+# git removes some bytes when it stamps an identity, so each role is judged as
+# set and as `git var GIT_<ROLE>_IDENT` says git would stamp it, as the Go check
+# judges it (isToolAsStamped). A field found unset here stays out of that
+# judgement, because git fills one in itself, and where git refuses to stamp the
+# set value is judged alone.
 have_name=${GIT_AUTHOR_NAME:-}
 [ -n "$have_name" ] || have_name=$(git config author.name || git config user.name || true)
 have_email=${GIT_AUTHOR_EMAIL:-}
@@ -278,9 +284,29 @@ else
   re_local_word=$(tool_pattern machine_local_word)
   re_author_mail=$(tool_pattern author_only_mail)
   for _role in author committer; do
-    if [ "$_role" = author ]; then _n=$have_name _e=$have_email; else _n=$have_cname _e=$have_cemail; fi
+    if [ "$_role" = author ]; then
+      _n=$have_name _e=$have_email _var=GIT_AUTHOR_IDENT
+    else
+      _n=$have_cname _e=$have_cemail _var=GIT_COMMITTER_IDENT
+    fi
+    _ident=$(git var "$_var" 2>/dev/null) || _ident=""
+    _sn="" _se=""
+    case "$_ident" in
+      *"<"*">"*)
+        _sn=${_ident%%<*} _sn=${_sn% }
+        _se=${_ident#*<} _se=${_se%%>*}
+        ;;
+    esac
+    [ -n "$_n" ] || _sn=""
+    [ -n "$_e" ] || _se=""
+    _judged=""
     if is_machine "$_role" "$_n" "$_e"; then
-      echo "pre-commit: BLOCKED — the $_role \"$_n <$_e>\" is a machine identity; the person responsible is the author of record." >&2
+      _judged="$_n <$_e>"
+    elif is_machine "$_role" "$_sn" "$_se"; then
+      _judged="$_sn <$_se>"
+    fi
+    if [ -n "$_judged" ]; then
+      echo "pre-commit: BLOCKED — the $_role \"$_judged\" is a machine identity; the person responsible is the author of record." >&2
       echo "            fix: commit as yourself — set user.name/user.email to your own, and drop any GIT_AUTHOR_*/GIT_COMMITTER_*," >&2
       echo "            author.*/committer.*, --author or -c that names the tool. An unattended run's launcher supplies the" >&2
       echo "            human identity before it commits." >&2

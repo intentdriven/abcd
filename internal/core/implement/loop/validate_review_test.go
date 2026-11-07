@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -49,7 +50,7 @@ func rpServer(answer func(request string) string) *mcptest.Server {
 	return &mcptest.Server{Tools: map[string][]string{repoprompt.DefaultTool: {"message", "new_chat"}},
 		Answer: func(args map[string]any) any {
 			msg, _ := args["message"].(string)
-			return mcptest.TextResult(briefHeadLineIn(msg) + answer(msg))
+			return mcptest.TextResult(briefReturnIn(msg, answer(msg)))
 		}}
 }
 
@@ -63,11 +64,11 @@ func sentTo(srv *mcptest.Server) []string {
 	return out
 }
 
-// headless is a return without the first line a reviewer's brief asks for, which rpServer
-// answers with.
+// headless is a return without the first line a reviewer's brief asks for and the head
+// its Verdict section names, which rpServer answers with.
 func headless(b []byte) string {
 	if _, rest, ok := strings.Cut(string(b), "\n\n"); ok && strings.HasPrefix(string(b), "Reviewed head: ") {
-		return rest
+		return regexp.MustCompile(`(?m)^Head: [0-9a-f]+\n`).ReplaceAllString(rest, "")
 	}
 	return string(b)
 }
@@ -126,7 +127,7 @@ func TestTheReviewsGoToRepoPromptOverMCPAndTheLoopRecordsTheirVerdicts(t *testin
 			t.Fatal(err)
 		}
 		for _, want := range []string{"# The " + role + " agent definition", "fresh " + role, l.BaseSHA + ".." + l.HeadSHA,
-			"+one.txt", strings.TrimSpace(string(brief)), "### Verdict", strings.Join(wordsOf(role), ", "), "first line reads exactly `Reviewed head: " + l.HeadSHA + "`", "A return has one `### Verdict` section and no other line opening with the word Verdict."} {
+			"+one.txt", strings.TrimSpace(string(brief)), "### Verdict", strings.Join(wordsOf(role), ", "), "first line reads exactly `Reviewed head: " + l.HeadSHA + "`", oneVerdictLine, "which is `" + l.HeadSHA + "`"} {
 			if !strings.Contains(sent[i], want) {
 				t.Fatalf("the %s's request carries %q:\n%s", role, want, sent[i])
 			}
@@ -245,7 +246,7 @@ func TestAReviewTheRouteDoesNotReturnFallsBackToTheHostWithAReceipt(t *testing.T
 		{"no server on this machine", &ReviewRoute{Name: "rp", Absent: "this machine names no oracle.rp.url", AgentPrompt: prompt},
 			runner.ReasonAbsent, "names no oracle.rp.url"},
 		{"an answer with no verdict", &ReviewRoute{Name: "rp", Reviewer: noVerdictClient, AgentPrompt: prompt},
-			runner.ReasonInvalid, "no Verdict section"},
+			runner.ReasonInvalid, "no ### Verdict section"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			repo := briefRepo(t, agentsMarked)

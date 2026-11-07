@@ -22,7 +22,7 @@ import (
 // its filename and every reader that trusts the field disagree in silence.
 func TestFilenameSlugMustMatchFrontmatterSlug(t *testing.T) {
 	// A 60-char slug sat exactly on deriveSlug's former cap, and the ledger holds
-	// slugs well past recordid.MaxSlugLen, minted before the cap
+	// slugs well past recordid.DefaultMaxSlugLen, minted before the cap
 	// (iss-2610100626320367), so both sides of the boundary must pass whole
 	// rather than being compared as prefixes: the reader never caps.
 	at60 := strings.Repeat("ab-", 20)[:59] + "c" // 60 chars, kebab-case

@@ -107,6 +107,16 @@ func (s Spec) Members() []string {
 	return out
 }
 
+// RecordFileID is the spec id a record's file name carries, by the pattern the store
+// reads names with.
+func RecordFileID(name string) (string, bool) {
+	m := specFileRe.FindStringSubmatch(name)
+	if m == nil {
+		return "", false
+	}
+	return m[1], true
+}
+
 // Store is the in-memory set of spec records discovered under both buckets.
 type Store struct {
 	Specs []Spec `json:"specs"`

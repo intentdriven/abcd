@@ -1046,8 +1046,9 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"--discard <lane-id> removes its worktree and branch, then closes its pull request, and\n" +
 			"leaves its step unlanded. Either is refused, changing nothing,\n" +
 			"for a lane that is not held or while any lane still has work. --discard also takes\n" +
-			"an issue run's lane a drain handed back as stuck or closed, and ends that run, and\n" +
-			"any lane of a run a drive stopped on because its state changed or could not be read.\n" +
+			"a lane handed back as stuck or closed, which ends an issue's run while an intent's run\n" +
+			"stays, and any lane of a run a drive stopped on because its state changed or could not\n" +
+			"be read.\n" +
 			"--restart <lane-id> restarts a lane whose implementer died, or yielded on a network\n" +
 			"failure (--yielded passes its `NETWORK: <cmd>` line), as a fresh agent from the lane's\n" +
 			"last commit: everything left uncommitted is saved aside under the lane's directory\n" +
@@ -1067,7 +1068,8 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"for a blank --yielded, for a lane with neither an implementer out nor an await a rate\n" +
 			"limit kept, or for a worktree that is not the one the loop derives.\n" +
 			"land follows a passing round, one step per call: it checks the lane's worktree is clean\n" +
-			"at the judged head; on an intent lane it marks the lane's step landed on the open spec with a `- landed:`\n" +
+			"at the judged head, an uncommitted edit to the lane's own spec record aside, which its commit carries;\n" +
+			"on an intent lane it marks the lane's step landed on the open spec with a `- landed:`\n" +
 			"line naming the judged head (unless the spec lists no steps or already marks it); on\n" +
 			"the lane that closes the spec it runs `spec close` in the lane's\n" +
 			"worktree and ingests the audit that lane took, and for every capture the lane's receipts\n" +
@@ -1405,8 +1407,10 @@ func newImplementReceiptCommand(asJSON *bool) *cobra.Command {
 			"note, the impact and the grounds; the landing resolves each.\n\n" +
 			"At the validate stage the receipt is the validator's return: a reviewer's is refused\n" +
 			"unless it has one Verdict section stating one verdict of its role (SHIP or FIX FIRST;\n" +
-			"APPROVE, BLOCK or NEEDS-INPUT), and the intent-auditor's unless it is the fidelity verdict\n" +
-			"the request asked for, echoing its receipt and both provenance hashes. The loop records\n" +
+			"APPROVE, BLOCK or NEEDS-INPUT) and naming the head it judges by its full object name, and\n" +
+			"the intent-auditor's unless it is the fidelity verdict the request asked for, echoing its\n" +
+			"receipt and both provenance hashes. Either is refused, whatever it says, when its launch\n" +
+			"reports a stop for length, a provider's filter or refusal, or an error. The loop records\n" +
 			"the verdict and the lane stays at validate for the next validator. A fresh implementer's\n" +
 			"receipt after a round is verified as an implementer's is.\n\n" +
 			"--run names the run; without it, the one run in progress in this checkout. Exit 2 on a\n" +
