@@ -151,9 +151,9 @@ make preflight      # the pre-push gate: load-check (a warning, never a
                     # evals-cold-reading, then build + vet + test + race
                     # (internal), all on the go.mod toolchain
 make precheck       # minutes, no queue: preflight's gates, build, vet, the
-                    # record, page and agent audit packages, and the command
-                    # and site audit tests chosen by name; no unit or race
-                    # stage. Run it before queuing a preflight
+                    # record, page and agent audit packages, and the audit
+                    # tests of the rest; no unit or race stage. Run it before
+                    # queuing a preflight
 make build          # cross-compiles bin/abcd-<goos>-<arch> (there is no plain bin/abcd)
 make fmt-check      # format gate, run through the go.mod toolchain's gofmt
 make fmt            # rewrite what fmt-check names, with that same gofmt

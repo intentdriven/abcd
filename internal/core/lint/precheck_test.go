@@ -82,9 +82,9 @@ func TestPrecheckAuditPatternCatchesTheLateFailures(t *testing.T) {
 }
 
 // TestPrecheckRunsTheAuditTests: the recipe itself runs the audit packages in
-// full and the pattern-chosen audit tests of the command and site packages, so
-// deleting a test line fails here rather than leaving a precheck that passes
-// on gates alone.
+// full, the pattern-chosen audit tests of the command and site packages, and
+// the audit tests cmd/precheck-audits finds everywhere else, so deleting a test
+// line fails here rather than leaving a precheck that passes on gates alone.
 func TestPrecheckRunsTheAuditTests(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
 	recipe, ok := makeRecipe(readRepoFile(t, root, "Makefile"), "precheck")
@@ -94,15 +94,63 @@ func TestPrecheckRunsTheAuditTests(t *testing.T) {
 	for _, want := range []string{
 		"go build ./...",
 		"go vet ./...",
-		"go test -timeout 20m ./internal/core/lint ./internal/core/launch/scaffold ./internal/core/mdrecord " +
-			"./internal/core/issueschema ./internal/core/guard ./internal/core/glossary ./internal/core/reading " +
-			"./internal/core/recordid ./internal/core/changelog ./internal/core/intent ./internal/core/release " +
-			"./internal/core/releasedigest ./internal/core/decisions ./internal/core/record/match ./internal/core/lifeboat ./internal/reachaudit ./internal/abcdhome",
-		"go test -timeout 20m -run '$(PRECHECK_AUDIT_TESTS)' ./internal/surface/cli ./internal/core/site",
+		"go test -timeout 20m $(PRECHECK_AUDIT_PACKAGES)",
+		"go test -timeout 20m -run '$(PRECHECK_AUDIT_TESTS)' $(PRECHECK_NAMED_PACKAGES)",
+		"go run ./cmd/precheck-audits $(PRECHECK_AUDIT_PACKAGES) $(PRECHECK_NAMED_PACKAGES)",
 	} {
 		if !strings.Contains(recipe, want) {
 			t.Errorf("the precheck recipe does not run %q:\n%s", want, recipe)
 		}
+	}
+}
+
+// TestPrecheckAuditPackagesAreNamedOutright: what cmd/precheck-audits leaves out
+// is what the two lines before it run, so both lists are one variable each and
+// the packages that failed preflights stay in them.
+func TestPrecheckAuditPackagesAreNamedOutright(t *testing.T) {
+	makefile := readRepoFile(t, filepath.Join("..", "..", ".."), "Makefile")
+	for variable, want := range map[string][]string{
+		"PRECHECK_AUDIT_PACKAGES": {
+			"./internal/core/lint", "./internal/core/launch/scaffold", "./internal/core/mdrecord",
+			"./internal/core/issueschema", "./internal/core/guard", "./internal/core/glossary",
+			"./internal/core/reading", "./internal/core/recordid", "./internal/core/changelog",
+			"./internal/core/intent", "./internal/core/release", "./internal/core/releasedigest",
+			"./internal/core/decisions", "./internal/core/record/match", "./internal/core/lifeboat",
+			"./internal/reachaudit", "./internal/abcdhome", "./cmd/precheck-audits",
+		},
+		"PRECHECK_NAMED_PACKAGES": {"./internal/surface/cli", "./internal/core/site"},
+	} {
+		m := regexp.MustCompile(`(?m)^` + variable + ` := (.+)$`).FindStringSubmatch(makefile)
+		if m == nil {
+			t.Errorf("Makefile declares no %s", variable)
+			continue
+		}
+		got := strings.Fields(m[1])
+		for _, pkg := range want {
+			if !slices.Contains(got, pkg) {
+				t.Errorf("%s does not name %s: %v", variable, pkg, got)
+			}
+		}
+	}
+}
+
+// TestSiteRenderBuildsInADirectoryOfItsOwn: make precheck and make preflight
+// both run site-render, and in one worktree a shared output directory had one
+// run removing what the other was writing (`RemoveAll record: directory not
+// empty`), which failed a gate on a tree with nothing wrong with it. So each run
+// builds under a directory of its own and removes it however the run ends.
+func TestSiteRenderBuildsInADirectoryOfItsOwn(t *testing.T) {
+	recipe, ok := makeRecipe(readRepoFile(t, filepath.Join("..", "..", ".."), "Makefile"), "site-render")
+	if !ok {
+		t.Fatal("Makefile declares no `site-render:` recipe")
+	}
+	for _, want := range []string{"mktemp -d", "trap "} {
+		if !strings.Contains(recipe, want) {
+			t.Errorf("the site-render recipe does not use %q:\n%s", want, recipe)
+		}
+	}
+	if regexp.MustCompile(`--out \.abcd/`).MatchString(recipe) {
+		t.Errorf("the site-render recipe builds into a directory every run shares:\n%s", recipe)
 	}
 }
 
