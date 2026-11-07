@@ -1046,8 +1046,9 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"--discard <lane-id> removes its worktree and branch, then closes its pull request, and\n" +
 			"leaves its step unlanded. Either is refused, changing nothing,\n" +
 			"for a lane that is not held or while any lane still has work. --discard also takes\n" +
-			"an issue run's lane a drain handed back as stuck or closed, and ends that run, and\n" +
-			"any lane of a run a drive stopped on because its state changed or could not be read.\n" +
+			"a lane handed back as stuck or closed, which ends an issue's run while an intent's run\n" +
+			"stays, and any lane of a run a drive stopped on because its state changed or could not\n" +
+			"be read.\n" +
 			"--restart <lane-id> restarts a lane whose implementer died, or yielded on a network\n" +
 			"failure (--yielded passes its `NETWORK: <cmd>` line), as a fresh agent from the lane's\n" +
 			"last commit: everything left uncommitted is saved aside under the lane's directory\n" +
@@ -1067,7 +1068,8 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"for a blank --yielded, for a lane with neither an implementer out nor an await a rate\n" +
 			"limit kept, or for a worktree that is not the one the loop derives.\n" +
 			"land follows a passing round, one step per call: it checks the lane's worktree is clean\n" +
-			"at the judged head; on an intent lane it marks the lane's step landed on the open spec with a `- landed:`\n" +
+			"at the judged head, an uncommitted edit to the lane's own spec record aside, which its commit carries;\n" +
+			"on an intent lane it marks the lane's step landed on the open spec with a `- landed:`\n" +
 			"line naming the judged head (unless the spec lists no steps or already marks it); on\n" +
 			"the lane that closes the spec it runs `spec close` in the lane's\n" +
 			"worktree and ingests the audit that lane took, and for every capture the lane's receipts\n" +

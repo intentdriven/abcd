@@ -126,8 +126,8 @@ func busyLanes(st State) []string {
 
 // decidable finds the held lane a --release or --discard names, refusing a
 // lane that is not held and a run with any lane still at work. --discard also
-// takes a lane a drain handed back as stuck (stuck.go), whose worktree and
-// branch the hand-back left, and a lane the land fence refuses because its run let its
+// takes a lane handed back as stuck or closed, by a drain (stuck.go) or a landing, whose
+// worktree and branch the hand-back left, and a lane the land fence refuses because its run let its
 // reservation go with no stop's mark standing.
 func decidable(repoRoot string, st State, laneID, flag string) (int, error) {
 	i := -1
@@ -272,7 +272,7 @@ func discardHeld(repoRoot, runID, laneID string, o Options) (StepResult, error) 
 		}
 		did := []string{}
 		if lane.Worktree != "" {
-			if err := removeLaneWorktree(c, lane); err != nil {
+			if err := removeLaneWorktree(c, lane, "run `abcd implement step --discard "+lane.ID+"` again"); err != nil {
 				return false, err
 			}
 			did = append(did, "removed its worktree")

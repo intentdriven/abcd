@@ -20,6 +20,7 @@ package loop
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"path"
@@ -311,7 +312,7 @@ func landingRecordPaths(repoRoot string, lane Lane) (map[string]bool, string) {
 	if lane.Landing == nil || !gitutil.IsFullSHA(lane.Landing.Records) {
 		return nil, ""
 	}
-	out, err := gitutil.RunCappedBytes(repoRoot, maxGitOutput, "diff-tree", "--no-commit-id", "--no-renames", "--name-only", "-r", "-z", lane.Landing.Records, "--")
+	out, err := gitutil.RunCappedBytesAsStoredContext(context.Background(), repoRoot, "", maxGitOutput, "diff-tree", "--no-commit-id", "--no-renames", "--ignore-submodules=none", "--name-only", "-r", "-z", lane.Landing.Records, "--")
 	if err != nil {
 		return nil, "git could not read the files the landing's records commit " + shortSHA(lane.Landing.Records) + " changed"
 	}

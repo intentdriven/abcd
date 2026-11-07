@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -115,5 +116,50 @@ func TestMarkerReCountsOnlyAWholeLine(t *testing.T) {
 		if state, ok := markerState("## Audit Notes\n\n"+name+"\n", rcp); ok {
 			t.Errorf("mid-line text counted as a %s marker: %q", state, name)
 		}
+	}
+}
+
+// TestVerdictOnRecordReadsTheBlockTheIngestWrote: a record holds a verdict only as the
+// ingest rendered it, an owed check's issue among what it renders, and no other block
+// under the same marker.
+func TestVerdictOnRecordReadsTheBlockTheIngestWrote(t *testing.T) {
+	const rcp = "rcp-0123456789ab"
+	rel := shippedDir + "/itd-10-alpha.md"
+	for name, verdictText := range map[string]string{
+		"a verdict that passes": verdictWithRationale(rcp, "the delivered code matches the criterion"),
+		"a verdict leaving a check owed": strings.NewReplacer(`"verdict": "MET"`, `"verdict": "NOT_MET"`, `"MET": 1`, `"MET": 0`, `"NOT_MET": 0`, `"NOT_MET": 1`).
+			Replace(verdictWithRationale(rcp, "the delivered code falls short")),
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			writeFile(t, root, rel, shippedWithMarker("itd-10", "alpha", "spc-1", "OWED", rcp))
+			path := writeVerdict(t, root, verdictText)
+			if res, err := IngestVerdict(root, path); err != nil || res.Status != "ingested" {
+				t.Fatalf("premise: the verdict ingests: %+v %v", res, err)
+			}
+			verdict, err := ReadVerdict(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			content := string(data)
+			if ok, err := VerdictOnRecord(root, "itd-10", content, verdict); err != nil || !ok {
+				t.Fatalf("the ingest's own block holds the verdict: %v %v\n%s", ok, err, content)
+			}
+			edited := strings.Replace(content, "Provenance:", "Provenance, as read:", 1)
+			if edited == content {
+				t.Fatal("premise: the block did not change")
+			}
+			if ok, err := VerdictOnRecord(root, "itd-10", edited, verdict); err != nil || ok {
+				t.Fatalf("an edited block holds the verdict: %v %v", ok, err)
+			}
+			owed := strings.ReplaceAll(content, "abcd-review: INGESTED", "abcd-review: OWED")
+			if ok, err := VerdictOnRecord(root, "itd-10", owed, verdict); err != nil || ok {
+				t.Fatalf("a block not ingested holds the verdict: %v %v", ok, err)
+			}
+		})
 	}
 }

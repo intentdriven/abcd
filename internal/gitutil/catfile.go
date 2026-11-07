@@ -23,7 +23,8 @@ type BatchObject struct {
 // names reaches git's input. maxBytes caps git's whole answer, headers
 // included: an answer past it is an error, never a truncated one, so a caller
 // bounds it by what it already knows of each object's size. An answer whose
-// shape git does not document is an error too.
+// shape git does not document is an error too. Each object is read as stored
+// (asStored): no replace ref stands another's bytes in for the one named.
 //
 // The answer is read into one buffer sized to maxBytes up front, so it is
 // never grown by copying, and each object's content is a slice of it: what
@@ -40,7 +41,7 @@ func CatFileBatch(root string, objects []string, maxBytes int) ([]BatchObject, e
 		in.WriteString(o)
 		in.WriteByte('\n')
 	}
-	cmd := isolatedGit(root, "cat-file", "--batch")
+	cmd := asStored(isolatedGit(root, "cat-file", "--batch"))
 	cmd.Stdin = strings.NewReader(in.String())
 	w := &capBuilder{remaining: maxBytes}
 	w.b.Grow(maxBytes)

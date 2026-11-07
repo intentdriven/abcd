@@ -1,5 +1,5 @@
 // Command record-slug-rename renames every committed record file whose slug is
-// longer than the record cap (recordid.MaxSlugLen) to the slug the minting verbs
+// longer than the repository's record cap (layered.RecordSlugCap) to the slug the minting verbs
 // would cut today, and rewrites every reference to the old name across the
 // tracked tree. It is the one-off half of iss-2610100626320367: the minting verbs
 // cut new slugs at the cap, and this brings the records minted before it inside
@@ -16,8 +16,8 @@
 //
 //  1. Refuses unless the working tree is clean, so nothing uncommitted is folded
 //     into the rename.
-//  2. Finds every tracked record of the four families whose filenames carry a
-//     minted slug — issues, intents, specs and ADRs, every bucket — whose slug
+//  2. Finds every tracked record of the five families whose filenames carry a
+//     minted slug — issues, intents, specs, ADRs and decisions, every bucket — whose slug
 //     exceeds the cap, and computes the new slug with recordid.CapSlug, the same
 //     cut the minting verbs apply to a slug that arrives whole.
 //  3. Moves each with `git mv`, and rewrites the `slug:` field of its leading
@@ -25,7 +25,7 @@
 //     one value (record-lint's record_schema and the ledger reader compare them
 //     exactly).
 //  4. Rewrites every reference to an old name in every tracked text file: the
-//     name `<id-part>-<old-slug>` (iss-N-, itd-N-, spc-N-, or an ADR's bare
+//     name `<id-part>-<old-slug>` (iss-N-, itd-N-, spc-N-, dcn-N-, or an ADR's bare
 //     number) where it stands whole — not glued to a letter or a hyphen before
 //     it, nor to a letter, digit or hyphen after it. The id part is in the
 //     match, so the replacement is the path's name, never the slug alone, and a
@@ -63,9 +63,11 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/intent"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // family is one store whose filenames carry a minted slug.
@@ -76,12 +78,14 @@ type family struct {
 }
 
 // families are the stores the minting verbs write: capture, intent, spec and
-// decide. Every bucket under each root is read.
+// decide, its decisions and its ADRs alike, which are what record_slug_cap judges.
+// Every bucket under each root is read.
 var families = []family{
 	{"iss", "iss", recordid.IssuesRelDir},
 	{"itd", "itd", intent.IntentsRelDir},
 	{"spc", "spc", spec.SpecsRelDir},
 	{"adr", "", recordid.ADRsRelDir},
+	{"dcn", "dcn", recordid.DecisionsRelDir},
 }
 
 // rename is one record's move.
@@ -89,7 +93,7 @@ type rename struct {
 	Family  string
 	OldRel  string
 	NewRel  string
-	IDPart  string // the filename before the slug: "iss-N-", "itd-N-", "spc-N-" or "NNNN-"
+	IDPart  string // the filename before the slug: "iss-N-", "itd-N-", "spc-N-", "dcn-N-" or "NNNN-"
 	OldSlug string
 	NewSlug string
 }
@@ -137,7 +141,8 @@ func main() {
 	}
 	rep, err := run(root, *apply)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "record-slug-rename:", err)
+		// The cap's refusal quotes the repository's config.
+		fmt.Fprintln(os.Stderr, "record-slug-rename:", termsafe.Sanitize(err.Error()))
 		os.Exit(1)
 	}
 	printReport(os.Stdout, rep, *apply)
@@ -213,6 +218,10 @@ func run(root string, apply bool) (Report, error) {
 // path, and refuses a plan in which two records, or a record and a tracked
 // file, would land on one path.
 func buildPlan(root string) ([]rename, error) {
+	slugCap, err := layered.RecordSlugCap(root)
+	if err != nil {
+		return nil, err
+	}
 	files, err := gitutil.TrackedFiles(root)
 	if err != nil {
 		return nil, err
@@ -229,7 +238,7 @@ func buildPlan(root string) ([]rename, error) {
 			}
 			base := path.Base(rel)
 			_, slug, ok := recordid.SplitRecordFilename(fam.fileFamily, base)
-			if !ok || len(slug) <= recordid.MaxSlugLen {
+			if !ok || len(slug) <= slugCap {
 				continue
 			}
 			// A slug field that disagrees with the filename is refused here,
@@ -241,7 +250,7 @@ func buildPlan(root string) ([]rename, error) {
 			if _, field, ok := slugLine(data); ok && field != slug {
 				return nil, fmt.Errorf("%s: its slug field reads %q, not the filename's %q; record-lint refuses that record already, so fix it before renaming (nothing was changed)", rel, field, slug)
 			}
-			newSlug := recordid.CapSlug(slug, recordid.MaxSlugLen)
+			newSlug := recordid.CapSlug(slug, slugCap)
 			idPart := strings.TrimSuffix(base, slug+".md")
 			plan = append(plan, rename{
 				Family: fam.prefix, OldRel: rel,
@@ -324,7 +333,7 @@ func slugLine(data []byte) (int, string, bool) {
 
 // idPartRe finds a candidate record-name prefix: a family tag and number, or an
 // ADR's bare number, followed by the hyphen the slug hangs from.
-var idPartRe = regexp.MustCompile(`(?:(?:iss|itd|spc)-)?[0-9]+-`)
+var idPartRe = regexp.MustCompile(`(?:(?:iss|itd|spc|dcn)-)?[0-9]+-`)
 
 // rewriteRefs replaces every whole occurrence of an old record name with the new
 // one and returns the result and the count. The name is matched with its id
@@ -421,9 +430,6 @@ func findLeftovers(root string, plan []rename) ([]Leftover, error) {
 func slugsIn(text string, old map[string]bool) []string {
 	var hits []string
 	for _, run := range kebabRunRe.FindAllString(text, -1) {
-		if len(run) <= recordid.MaxSlugLen {
-			continue
-		}
 		starts := []int{0}
 		ends := []int{}
 		for i := 0; i < len(run); i++ {
@@ -435,7 +441,7 @@ func slugsIn(text string, old map[string]bool) []string {
 		ends = append(ends, len(run))
 		for _, a := range starts {
 			for _, b := range ends {
-				if b-a > recordid.MaxSlugLen && old[run[a:b]] {
+				if a < b && old[run[a:b]] {
 					hits = append(hits, run[a:b])
 				}
 			}
@@ -485,15 +491,15 @@ func writeKeepingMode(root, rel string, data []byte) error {
 func printReport(w io.Writer, rep Report, applied bool) {
 	if !applied {
 		for _, r := range rep.Plan {
-			fmt.Fprintf(w, "%s -> %s\n", r.OldRel, r.NewRel)
+			fmt.Fprintf(w, "%s -> %s\n", termsafe.Sanitize(r.OldRel), termsafe.Sanitize(r.NewRel))
 		}
-		fmt.Fprintf(w, "dry run: %d record(s) would be renamed (iss %d, itd %d, spc %d, adr %d); nothing was changed. Re-run with -apply.\n",
-			rep.total(), rep.Renamed["iss"], rep.Renamed["itd"], rep.Renamed["spc"], rep.Renamed["adr"])
+		fmt.Fprintf(w, "dry run: %d record(s) would be renamed (iss %d, itd %d, spc %d, adr %d, dcn %d); nothing was changed. Re-run with -apply.\n",
+			rep.total(), rep.Renamed["iss"], rep.Renamed["itd"], rep.Renamed["spc"], rep.Renamed["adr"], rep.Renamed["dcn"])
 		return
 	}
 	for _, l := range rep.Leftovers {
-		fmt.Fprintf(w, "leftover %s:%d: %s (%s)\n", l.File, l.Line, l.Slug, l.Why)
+		fmt.Fprintf(w, "leftover %s:%d: %s (%s)\n", termsafe.Sanitize(l.File), l.Line, termsafe.Sanitize(l.Slug), termsafe.Sanitize(l.Why))
 	}
-	fmt.Fprintf(w, "renamed %d record(s) (iss %d, itd %d, spc %d, adr %d); rewrote %d reference(s) in %d file(s); %d leftover(s). Nothing is committed.\n",
-		rep.total(), rep.Renamed["iss"], rep.Renamed["itd"], rep.Renamed["spc"], rep.Renamed["adr"], rep.References, rep.Files, len(rep.Leftovers))
+	fmt.Fprintf(w, "renamed %d record(s) (iss %d, itd %d, spc %d, adr %d, dcn %d); rewrote %d reference(s) in %d file(s); %d leftover(s). Nothing is committed.\n",
+		rep.total(), rep.Renamed["iss"], rep.Renamed["itd"], rep.Renamed["spc"], rep.Renamed["adr"], rep.Renamed["dcn"], rep.References, rep.Files, len(rep.Leftovers))
 }

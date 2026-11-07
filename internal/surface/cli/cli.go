@@ -3968,6 +3968,8 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 			"parks an `<!-- abcd-review: OWED receipt=rcp-… -->` marker in the intent's Audit Notes, and writes the " +
 			"review request to `.abcd/.work.local/reviews/<rcp>.request.md`, the input `abcd intent audit ingest` " +
 			"answers. A failed emit is a warning on stderr; the intent ships regardless.\n\n" +
+			"A close that ships an intent first runs issue-drift's check over it: an issue its `related_issues` names " +
+			"that is not in resolved/ refuses the close, naming each one and the ways out, and nothing moves.\n\n" +
 			"In the repository whose brief describes the binary, a close that ships an intent first runs the " +
 			"doc-fidelity gate (`abcd docs fidelity`): a surface no brief chapter names, a missing or stale docs " +
 			"review, or a confirmed false sentence refuses the close, and nothing moves. A close that ships no " +
@@ -4001,9 +4003,14 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 			// meets the coverage floor alone (iss-2610020728118137).
 			var ships []string
 			if closeRemainder == "" {
-				ships = closeShips(repoRoot, args[0])
+				ships = spec.CloseShips(repoRoot, args[0])
 			}
-			if err := enforceDocFidelity(repoRoot, "abcd spec close", ships); err != nil {
+			// Before the doc-fidelity gate: answering this one changes the tree, and
+			// a docs review saved first would be stale by the time the close ran.
+			if err := enforceShipLinks(repoRoot, "abcd spec close", ships); err != nil {
+				return err
+			}
+			if err := enforceDocFidelity(cmd.ErrOrStderr(), repoRoot, "abcd spec close", ships); err != nil {
 				return err
 			}
 			res, err := intent.Reconcile(repoRoot, args[0], closeImpact, rem)

@@ -300,7 +300,7 @@ func TestSpecCreateStampsProvenance(t *testing.T) {
 
 // TestCreateCutsTheSlugAtTheRecordCap is iss-2610100626320367 at the spec mint:
 // a spec takes its intent's slug (or a remainder's, or a bundle's name), and a
-// long one is cut at recordid.MaxSlugLen before it becomes a filename.
+// long one is cut at recordid.DefaultMaxSlugLen before it becomes a filename.
 func TestCreateCutsTheSlugAtTheRecordCap(t *testing.T) {
 	root := t.TempDir()
 	sp, err := Create(root, "itd-9", "a-record-s-file-name-has-no-cap-tied-to-the-length-of-its", "")

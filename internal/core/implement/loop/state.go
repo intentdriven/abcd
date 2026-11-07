@@ -281,10 +281,21 @@ const lockFileName = ".lock"
 // that write version 21 refuse a version-22 file as a newer abcd's before any strict
 // decode.
 //
+// Version 23 added a landing's `spec_settled`: the first step took an uncommitted
+// change to the lane's own spec record, which its records commit carries. Version 22
+// is its strict subset, read as a landing that took none; a file of version 22 or
+// lower carrying it is not one its version wrote, and is refused naming it. Releases
+// that write version 22 refuse a version-23 file as a newer abcd's before any strict
+// decode.
+//
 // A version raises when the abcd driving the run writes it. A lane's own abcd
 // may be a version ahead of its driver, and what it saves leaves the version
 // where it was (mutateReservation, iss-2611020719494343).
-const SchemaVersion = 22
+const SchemaVersion = 23
+
+// schemaVersionUnsettled is the last version before a landing kept that it took a
+// change to the lane's spec: read, never written.
+const schemaVersionUnsettled = 22
 
 // schemaVersionUnprofiled is the last version before a run kept its profile: read,
 // never written.
@@ -1047,6 +1058,17 @@ func (s State) shown() string {
 	return ""
 }
 
+// settledSpec names the first field only version 22 and later write that the run
+// carries, or "".
+func (s State) settledSpec() string {
+	for _, l := range s.Lanes {
+		if l.Landing != nil && l.Landing.SpecSettled {
+			return l.ID + "'s spec_settled"
+		}
+	}
+	return ""
+}
+
 // pinKey names the first of a route's pin fields, or its `local`, that the
 // route carries, or "": the fields the run state's version 16 and the drain
 // state's version 2 added.
@@ -1319,7 +1341,10 @@ func readListedState(root *os.Root, runID string) (State, error) {
 	case st.SchemaVersion <= schemaVersionUnprofiled && st.Profile != "":
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a profile, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnprofiled:
+	case st.SchemaVersion <= schemaVersionUnsettled && st.settledSpec() != "":
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.settledSpec(), st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnsettled:
 		// Read as the current version, its stages already carried over by
 		// decodeState when it named them `step`; the next write carries it, and
 		// this read writes nothing.

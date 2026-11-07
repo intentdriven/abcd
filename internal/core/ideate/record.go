@@ -40,6 +40,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/decisions"
 	"github.com/intentdriven/abcd/internal/core/dryrun"
 	"github.com/intentdriven/abcd/internal/core/homeignore"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/source"
 	"github.com/intentdriven/abcd/internal/core/update"
@@ -252,11 +253,15 @@ func PlanRecord(repoRoot, slug string, store Store, raw []byte, at time.Time) (R
 			return RecordPlan{}, &ExistsError{Path: rel}
 		}
 	}
+	pointerWrite, err := plannedPointer(repoRoot, pointer)
+	if err != nil {
+		return RecordPlan{}, err
+	}
 	return RecordPlan{
 		Result: res,
 		Plan: dryrun.Plan{Writes: []dryrun.Write{
 			{Path: rel, Action: dryrun.Create, Bytes: len(body), Content: []byte(body)},
-			plannedPointer(pointer),
+			pointerWrite,
 		}},
 		repoRoot: repoRoot, store: store, name: name, rel: rel, body: body, pointer: pointer,
 	}, nil
@@ -266,9 +271,13 @@ func PlanRecord(repoRoot, slug string, store Store, raw []byte, at time.Time) (R
 // recorded as. The decision writer mints its id at the write, so the path
 // carries dryrun.MintedID where the id goes; the slug and the size follow
 // from the text, as the decision writer derives them.
-func plannedPointer(pointer string) dryrun.Write {
+func plannedPointer(repoRoot, pointer string) (dryrun.Write, error) {
 	text := strings.Join(strings.Fields(pointer), " ")
-	slug := recordid.Slug(text, recordid.MaxSlugLen)
+	slugCap, err := layered.RecordSlugCap(repoRoot)
+	if err != nil {
+		return dryrun.Write{}, err
+	}
+	slug := recordid.Slug(text, slugCap)
 	// The id is the family prefix and a sixteen-digit stamp, and the date
 	// ten characters, whatever the clock says, so the size is the size. The
 	// decision writer lays the record as its frontmatter (two delimiter lines
@@ -285,7 +294,7 @@ func plannedPointer(pointer string) dryrun.Write {
 		Action:  dryrun.Create,
 		Bytes:   size,
 		Pending: "the decision's id is minted when it is recorded",
-	}
+	}, nil
 }
 
 // Apply lays the planned writes. Every refusal Record makes on the input was

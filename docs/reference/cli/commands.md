@@ -3507,8 +3507,9 @@ the hand-back and each held lane. --release <lane-id> lands a held lane as it is
 --discard <lane-id> removes its worktree and branch, then closes its pull request, and
 leaves its step unlanded. Either is refused, changing nothing,
 for a lane that is not held or while any lane still has work. --discard also takes
-an issue run's lane a drain handed back as stuck or closed, and ends that run, and
-any lane of a run a drive stopped on because its state changed or could not be read.
+a lane handed back as stuck or closed, which ends an issue's run while an intent's run
+stays, and any lane of a run a drive stopped on because its state changed or could not
+be read.
 --restart <lane-id> restarts a lane whose implementer died, or yielded on a network
 failure (--yielded passes its `NETWORK: <cmd>` line), as a fresh agent from the lane's
 last commit: everything left uncommitted is saved aside under the lane's directory
@@ -3528,7 +3529,8 @@ alone. It is refused, changing nothing, while the run has an outage (open or giv
 for a blank --yielded, for a lane with neither an implementer out nor an await a rate
 limit kept, or for a worktree that is not the one the loop derives.
 land follows a passing round, one step per call: it checks the lane's worktree is clean
-at the judged head; on an intent lane it marks the lane's step landed on the open spec with a `- landed:`
+at the judged head, an uncommitted edit to the lane's own spec record aside, which its commit carries;
+on an intent lane it marks the lane's step landed on the open spec with a `- landed:`
 line naming the judged head (unless the spec lists no steps or already marks it); on
 the lane that closes the spec it runs `spec close` in the lane's
 worktree and ingests the audit that lane took, and for every capture the lane's receipts
@@ -6090,6 +6092,8 @@ Close a spec, and ship its intent when no open spec names it: Writes the moves t
 Moves the spec to closed/ and, when no open spec still names its intent, moves the intent to shipped/.
 
 The close that ships an intent also makes its fidelity review owed: it mints an OWED receipt (rcp-…), parks an `<!-- abcd-review: OWED receipt=rcp-… -->` marker in the intent's Audit Notes, and writes the review request to `.abcd/.work.local/reviews/<rcp>.request.md`, the input `abcd intent audit ingest` answers. A failed emit is a warning on stderr; the intent ships regardless.
+
+A close that ships an intent first runs issue-drift's check over it: an issue its `related_issues` names that is not in resolved/ refuses the close, naming each one and the ways out, and nothing moves.
 
 In the repository whose brief describes the binary, a close that ships an intent first runs the doc-fidelity gate (`abcd docs fidelity`): a surface no brief chapter names, a missing or stale docs review, or a confirmed false sentence refuses the close, and nothing moves. A close that ships no intent, a --remainder close included, still refuses a surface no brief chapter names, and needs no docs review.
 

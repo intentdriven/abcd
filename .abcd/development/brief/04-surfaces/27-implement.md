@@ -543,9 +543,10 @@ the forge refuses the withdrawal, the step refused naming the pull request; the
 person's word on a held lane is given through the step verb, one lane per
 invocation: release lands it as it is, and discard removes its worktree and
 branch, then closes its pull request, and leaves its step unlanded, each refused, changing nothing, unless the lane is
-held and no lane has work left. Discard also takes an issue run's lane a drain
-handed back as stuck or closed, and that run is then over
-([`35-drain.md`](35-drain.md); spc-2610161044461448 step 5). An issue run logs
+held and no lane has work left. Discard also takes a lane handed back as stuck or
+closed, whatever else the run is doing. A drain's issue run is then over
+([`35-drain.md`](35-drain.md); spc-2610161044461448 step 5); an intent's run stays,
+and a landing's hand-back says when to remove its directory. An issue run logs
 each refused step on its lane, until its pull request is armed or left open, the stage, the check, the reason and a count,
 for the drain to read; an intent's run refuses as before, writing nothing.
 Without a named run, the step
