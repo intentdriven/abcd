@@ -277,16 +277,17 @@ type rulesPromptView struct {
 // the rules, read as the hook reads it. The status block the hook also reads
 // first is left out: reading it takes in the status branches, which writes the
 // local tier, and this diagnostic writes nothing. An unmanaged checkout holds no
-// away record, so the root commit is not looked up for it. A lookup git did not
-// answer reads as not away, as in the hook, and is named on stderr with that
-// consequence, as the hook names each of its own.
+// away record, and a drive's stage reads none, so the root commit is not looked
+// up for either. A lookup git did not answer leaves the away record unread, as in
+// the hook, which says nothing of it; the diagnostic names it on stderr, since a
+// fuller form than the hook sends would otherwise be shown without a word.
 func promptReserved(stderr io.Writer, root string, here recall.RootFunc) int {
-	if root == "" || !autonomy.Managed(root) {
+	if root == "" || stageActive() || !autonomy.Managed(root) {
 		return 0
 	}
 	sha, err := here()
 	if err != nil {
-		diagnosticLine(stderr, "abcd mode: this repository's root commit: %s; read as not away this turn",
+		diagnosticLine(stderr, "abcd mode: this repository's root commit: %s; the away record was not read, so nothing is reserved for it",
 			fsutil.RedactHome(err.Error()))
 	}
 	return len(readPromptAway(stderr, rootLookup{sha: sha, err: err, asked: true}, root).Block)
@@ -299,7 +300,8 @@ func promptReserved(stderr io.Writer, root string, here recall.RootFunc) int {
 // nil for an unknown fill) puts it in — and writes nothing: no session state
 // is loaded or saved. A root-commit
 // lookup git did not answer in time leaves the tied notes out of the view,
-// and is named on stderr, once, as the hook names it.
+// and is named on stderr, once for the recall as the hook names it, and once
+// more for the away record in a managed checkout.
 func rulesPrompt(stderr io.Writer, rs rules.RuleSet, root, prompt string, used *float64) rulesPromptView {
 	v := rulesPromptView{Disabled: rs.Disabled, Bracket: promptBracket(used), Domains: []rulesPromptDomain{}, Notes: []rulesPromptNote{},
 		Pages: []rulesPromptPage{}, Unreadable: []recall.Refusal{}}
