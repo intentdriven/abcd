@@ -300,8 +300,9 @@ func promptReserved(stderr io.Writer, root string, here recall.RootFunc) int {
 // nil for an unknown fill) puts it in — and writes nothing: no session state
 // is loaded or saved. A root-commit
 // lookup git did not answer in time leaves the tied notes out of the view,
-// and is named on stderr, once for the recall as the hook names it, and once
-// more for the away record in a managed checkout.
+// and is named on stderr, once for the recall when a tied note matched, as the
+// hook names it, and once more for the away record in a managed checkout. On a
+// drive's stage, where the hook reads neither, neither is looked up.
 func rulesPrompt(stderr io.Writer, rs rules.RuleSet, root, prompt string, used *float64) rulesPromptView {
 	v := rulesPromptView{Disabled: rs.Disabled, Bracket: promptBracket(used), Domains: []rulesPromptDomain{}, Notes: []rulesPromptNote{},
 		Pages: []rulesPromptPage{}, Unreadable: []recall.Refusal{}}
@@ -311,8 +312,15 @@ func rulesPrompt(stderr io.Writer, rs rules.RuleSet, root, prompt string, used *
 	bracket := v.Bracket.bracket
 	// The hook's own cap, so a word past it matches here no more than there.
 	prompt = rules.CapPrompt(prompt)
-	items, refused := recall.ReadItems(rules.UserHome(), root)
-	v.Unreadable = append(v.Unreadable, refused...)
+	// On a drive's stage the hook recalls no notes or pages (recallMemory), so
+	// nothing is read for them here either: the view shows only what that agent
+	// gets, and no root-commit lookup is made for a tied note.
+	var items []recall.Item
+	if !stageActive() {
+		var refused []recall.Refusal
+		items, refused = recall.ReadItems(rules.UserHome(), root)
+		v.Unreadable = append(v.Unreadable, refused...)
+	}
 	here := promptRoot(rootLookup{}, root)
 	res, mem := injectWithRecall(rs, prompt, rules.SessionState{}, 0, bracket, promptReserved(stderr, root, here), func(_ map[string]string, budget int) recall.Result {
 		return recall.Recall(recall.Request{Items: items, Prompt: prompt, Budget: budget, Root: here, Bracket: bracket})

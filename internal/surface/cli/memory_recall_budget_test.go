@@ -339,6 +339,36 @@ func TestRulesPromptNamesAnAwayReadGitDidNotAnswer(t *testing.T) {
 	}
 }
 
+// TestRulesPromptRecallsNothingOnADrivesStage: the hook recalls no notes or
+// pages on a drive's stage, so `rules --prompt` there shows none either; off
+// the stage the same note is shown.
+func TestRulesPromptRecallsNothingOnADrivesStage(t *testing.T) {
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	_, repo := memoryFixture(t)
+	writeProjectNotes(t, repo, [3]string{"mem-2610111200000009", "A lesson", "note words"})
+	notes := func() int {
+		t.Helper()
+		jout, stderr, err := runCLISplit(t, "rules", "--prompt", "test", "--json")
+		if err != nil {
+			t.Fatalf("rules --prompt --json: %v\n%s", err, stderr)
+		}
+		var env struct {
+			Notes []json.RawMessage `json:"notes"`
+		}
+		if err := json.Unmarshal([]byte(jout), &env); err != nil {
+			t.Fatal(err)
+		}
+		return len(env.Notes)
+	}
+	if got := notes(); got != 1 {
+		t.Fatalf("off a stage, notes shown = %d, want 1", got)
+	}
+	t.Setenv(runner.StageWritesEnv, "1")
+	if got := notes(); got != 0 {
+		t.Fatalf("on a drive's stage, notes shown = %d, want 0: the hook recalls none there", got)
+	}
+}
+
 // TestRulesPromptCapsThePromptLikeTheHook (F5): `rules --prompt` scans the
 // same leading bytes of a prompt the hook does, so a recall word that lies
 // only past the cap matches no domain in the diagnostic, as it injects none

@@ -2729,7 +2729,8 @@ reading it would write this checkout's status state. Notes and pages share one r
 score that decides which of them fit the budget: each shows its rank and
 score and, under it, every matched term with the fields it was found in
 (recall words, title, body) and what it added to the score. It reads
-against an empty ledger and writes nothing.
+against an empty ledger and writes nothing. On a drive's stage, where the hook
+recalls no notes or pages, it shows none.
 
 --fill <percent-used>, with --prompt, sets how full the context window is,
 and so the bracket shown; without it the diagnostic has no session, so the
