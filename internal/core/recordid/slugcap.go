@@ -7,6 +7,8 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/core/frontmatter"
 )
 
 // SlugOverCap is one place a record's slug runs past a repository's cap.
@@ -116,12 +118,12 @@ func frontmatterSlug(file string) (string, int, bool) {
 	defer f.Close()
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
-	if !sc.Scan() || strings.TrimSpace(sc.Text()) != "---" {
+	if !sc.Scan() || !frontmatter.IsDelimiter(sc.Text()) {
 		return "", 0, false
 	}
 	for line := 2; sc.Scan(); line++ {
 		text := sc.Text()
-		if strings.TrimSpace(text) == "---" {
+		if frontmatter.IsDelimiter(text) {
 			return "", 0, false
 		}
 		if v, ok := strings.CutPrefix(text, "slug:"); ok {
