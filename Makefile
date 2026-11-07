@@ -16,6 +16,20 @@ LDFLAGS := -s -w$(if $(VERSION), -X github.com/intentdriven/abcd/internal/core.V
 # Go step `preflight` makes, below.
 GO_TOOLCHAIN_VERSION := $(shell sed -n 's/^go \([0-9][0-9.]*\)$$/\1/p' go.mod)
 
+# Every Go step a target here makes builds under -trimpath. Without it go puts a
+# package's directory in its compile key, so each worktree adds its own compiled
+# copy of every package to the build cache; with it a second checkout's build of
+# ./cmd/abcd added 1.9 MiB rather than 170.5 MiB. It goes through the environment,
+# not onto each recipe line, for two reasons: it reaches the go a script or a test
+# starts (the evals' build of abcd, the outbound checker), and it leaves every
+# command line alone, since the load gate reads waiters and race runs from their
+# argv and the tests hold the stages' lines to CI's. A flag in the person's own
+# environment stays; one set only with `go env -w` is not read here, as CI has none.
+# CI sets the same in its workflow env (TestCIBuildsUnderTrimpath), and its smoke
+# and cold-reading jobs run these targets, so preflight judges the form CI runs. No
+# code may read its own source path, which -trimpath breaks (sourcepath_test.go).
+export GOFLAGS := $(strip $(filter-out -trimpath,$(GOFLAGS)) -trimpath)
+
 .PHONY: build test vet clean preflight preflight-stages precheck load-check lint-reviews lint-issues record-lint issue-drift docs-lint site-render smoke \
 	evals-cold-reading check-attribution secrets-check vulncheck scaffold-sync scaffold-sync-check asking-sync asking-sync-check fmt fmt-check
 

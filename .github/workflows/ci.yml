@@ -110,8 +110,11 @@ permissions:
 
 # The margin the job clock's watchdog leaves before a test job's cap
 # (cmd/ci-watchdog; see the check job), declared once for both jobs that run it.
+# GOFLAGS is the Makefile's, so the local gates judge the form of the tests these
+# jobs run and every job here saves and restores one form of the build cache.
 env:
   ABCD_CI_WATCHDOG_MARGIN_MINUTES: 5
+  GOFLAGS: -trimpath
 
 jobs:
   # Classify the diff so the duplicated lanes can stand down on a change that

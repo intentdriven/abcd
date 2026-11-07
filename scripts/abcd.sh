@@ -22,6 +22,10 @@
 # goes to a private temporary directory instead, runs as a child, and is
 # removed afterwards.
 #
+# -trimpath takes the checkout's directory out of go's compile key, so every
+# worktree of a repository reuses one compiled copy of each package rather than
+# adding its own to the build cache, and two trees that match link one binary.
+#
 # Usage: scripts/abcd.sh <verb> [args...] from the checkout root, or by its path
 # (or a symlink to it) from anywhere; the verb runs in the caller's working
 # directory. A tree that does not build exits 2 and runs nothing, so a broken
@@ -50,7 +54,7 @@ fi
 
 # build <output>: link the tree to <output>, or exit 2 having run nothing.
 build() {
-	if ! (cd "$root" && go build -buildvcs=false -o "$1" ./cmd/abcd); then
+	if ! (cd "$root" && go build -trimpath -buildvcs=false -o "$1" ./cmd/abcd); then
 		echo "scripts/abcd.sh: cmd/abcd did not build, so nothing ran" >&2
 		exit 2
 	fi

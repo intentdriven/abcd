@@ -102,7 +102,7 @@ jobs:
         # From source, not from a release: this audit runs on a pull request, to
         # measure the page THIS change renders. There is no released binary that
         # could contain it.
-        run: go build -o "$RUNNER_TEMP/abcd" ./cmd/abcd
+        run: go build -trimpath -o "$RUNNER_TEMP/abcd" ./cmd/abcd
 
       - name: Render the site
         # No --version or --commit: the defaults read the newest CHANGELOG heading
