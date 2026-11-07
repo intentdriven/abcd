@@ -289,9 +289,10 @@ the entry, each regular file at its relative path, `0o600`, and a
 the SHA-256 of what was written). A symlink is recorded in the manifest as a
 link, target home-redacted, and not followed. The binary `scripts/abcd.sh`
 builds at `abcdrepo.CheckoutBuildRel`, and the `<binary>.<pid>` file it builds
-that binary through, are build products, not notes: the walk leaves those two
-regular files out, and they go with the worktree (iss-2611022247131866). Every
-other file in the tier's `bin/` is a note like any other (iss-2611041759314115).
+that binary through, are build products, not notes: the walk leaves a regular
+file at either name out when it is not text or is past the per-file cap, and it
+goes with the worktree (iss-2611022247131866). Text at those names, and every
+other file in the tier's `bin/`, is a note like any other (iss-2611041759314115).
 
 Every file and every manifest field is redacted on write through the same pass
 the transcript store uses. The body of `history.Capture` that does it (refuse a

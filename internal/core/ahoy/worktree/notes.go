@@ -47,17 +47,34 @@ const tierRel = ".abcd/.work.local"
 // it out, and prune removes it with the worktree.
 var builtBinaryRel = strings.TrimPrefix(abcdrepo.CheckoutBuildRel, tierRel+"/")
 
-// isBuildProduct reports whether the tier-relative rel is the built binary or
-// the <binary>.<pid> file the script builds it through, which a killed build
-// leaves behind. Nothing else counts: every other file in the tier's bin/ is a
-// note, since removing the worktree would delete its only copy
-// (iss-2611041759314115).
-func isBuildProduct(rel string) bool {
+// isBuildProduct reports whether the regular file at p, tier-relative rel, is
+// the built binary or the <binary>.<pid> file the script builds it through, which
+// a killed build leaves behind. It takes both the name and the contents: the build
+// is never text, so text at those names is what a person wrote, and every other
+// file in the tier's bin/ is a note too, since removing the worktree would delete
+// its only copy (iss-2611041759314115). A file it cannot read is no build product,
+// and the walk names it.
+func isBuildProduct(p, rel string) bool {
+	if !hasBuildName(rel) {
+		return false
+	}
+	data, err := fsutil.ReadGuarded(p, maxNoteBytes)
+	return errors.Is(err, fsutil.ErrTooBig) || (err == nil && !isText(data))
+}
+
+// hasBuildName reports whether the tier-relative rel is named as the built binary
+// or as its <binary>.<pid> file.
+func hasBuildName(rel string) bool {
 	pid, scratch := strings.CutPrefix(rel, builtBinaryRel+".")
 	if !scratch {
 		return rel == builtBinaryRel
 	}
 	return pid != "" && strings.Trim(pid, "0123456789") == ""
+}
+
+// isText reports whether data is what the redaction pass can vouch for.
+func isText(data []byte) bool {
+	return utf8.Valid(data) && bytes.IndexByte(data, 0) < 0
 }
 
 // manifestName is the manifest's name at the top of an archive entry.
@@ -138,7 +155,7 @@ func collectNotes(repoRoot, wt string) ([]note, error) {
 		if err != nil {
 			return named(repoRoot, rel, causeOf(err))
 		}
-		if d.IsDir() || (d.Type().IsRegular() && isBuildProduct(rel)) {
+		if d.IsDir() || (d.Type().IsRegular() && isBuildProduct(p, rel)) {
 			return nil
 		}
 		if len(notes) == maxNoteFiles {
@@ -164,7 +181,7 @@ func collectNotes(repoRoot, wt string) ([]note, error) {
 				return named(repoRoot, rel, fmt.Sprintf("over the archive's per-file cap of %d bytes", maxNoteBytes))
 			case err != nil:
 				return named(repoRoot, rel, causeOf(err))
-			case !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0:
+			case !isText(data):
 				return named(repoRoot, rel, "not text, which the redaction pass cannot vouch for")
 			}
 			red, err := history.Redact(repoRoot, string(data), rel)

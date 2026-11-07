@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/ahoy/worktree/notes.go"
 remedy: "Leave out only the file abcdrepo.CheckoutBuildRel names, plus the abcd.<pid> file scripts/abcd.sh builds it through, and archive everything else in the tier's bin/; a test prunes a worktree with a script beside the binary and finds the script in the archive."
-resolution: "Fixed: the notes archive leaves out only the binary scripts/abcd.sh builds and its <binary>.<pid> build file, and archives everything else in the tier's bin/, so a script kept there survives prune; TestPruneArchivesWhatElseTheTiersBinHolds."
+resolution: "Fixed: the notes archive leaves out only the binary scripts/abcd.sh builds and its <binary>.<pid> build file, and only when the file at that name is not text or is past the per-file cap. Everything else in the tier's bin/ is judged as a note, so a script kept there survives prune, and a file the archive cannot vouch for keeps the worktree; TestPruneArchivesWhatElseTheTiersBinHolds, TestPruneArchivesTextAtTheBuildsNames."
 impact: fix
 ---
 

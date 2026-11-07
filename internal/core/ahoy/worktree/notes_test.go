@@ -58,9 +58,73 @@ func TestPruneLeavesTheTiersBuiltBinaryOutOfTheNotes(t *testing.T) {
 	}
 }
 
-// TestPruneStillJudgesABinDeeperInTheTier: only the tier's top-level bin/ is
-// the build product; a bin/ under scratch/ is notes like any other, and a
-// binary there still keeps the worktree.
+// TestPruneArchivesTextAtTheBuildsNames: the build is never text, so text at the
+// binary's path or at a name of its abcd.<pid> shape is what a person wrote, and
+// removing the worktree would delete its only copy (iss-2611041759314115).
+func TestPruneArchivesTextAtTheBuildsNames(t *testing.T) {
+	for _, name := range []string{"abcd", "abcd.20261107"} {
+		t.Run(name, func(t *testing.T) {
+			repo, home := pruneFixture(t)
+			p := mergedWorktree(t, repo, "text-at-name")
+			bin := filepath.Join(p, ".abcd", ".work.local", "bin")
+			if err := os.MkdirAll(bin, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(bin, name), []byte("kept by hand\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			r := pruneRow(t, prune(t, repo, worktree.PruneOptions{}), "text-at-name")
+			if r.Outcome != "reclaimed" {
+				t.Fatalf("a merged, clean worktree whose bin/ holds only text is reclaimed: %+v", r)
+			}
+			entries := notesEntries(t, repo, home)
+			if len(entries) != 1 {
+				t.Fatalf("one archive entry: %v", entries)
+			}
+			entry := filepath.Join(abcdhome.Path(home, "notes", gittest.RootCommit(t, repo.Root())), entries[0])
+			b, err := os.ReadFile(filepath.Join(entry, "bin", name))
+			if err != nil {
+				t.Fatalf("the text at bin/%s is archived: %v", name, err)
+			}
+			if !strings.Contains(string(b), "kept by hand") {
+				t.Fatalf("the archived file holds what the person wrote: %q", b)
+			}
+		})
+	}
+}
+
+// TestPruneLeavesAShortBuildLeftoverOut: a killed build can leave a file under
+// the cap, and a file that is not text at the build's names is still the build.
+func TestPruneLeavesAShortBuildLeftoverOut(t *testing.T) {
+	repo, home := pruneFixture(t)
+	p := mergedWorktree(t, repo, "short-leftover")
+	tier := filepath.Join(p, ".abcd", ".work.local")
+	if err := os.MkdirAll(filepath.Join(tier, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tier, "bin", "abcd.12345"), []byte{0xcf, 0xfa, 0xed, 0xfe, 0}, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tier, "NEXT.md"), []byte("next: land it\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := pruneRow(t, prune(t, repo, worktree.PruneOptions{}), "short-leftover")
+	if r.Outcome != "reclaimed" {
+		t.Fatalf("a short build leftover does not keep the worktree: %+v", r)
+	}
+	entries := notesEntries(t, repo, home)
+	if len(entries) != 1 {
+		t.Fatalf("one archive entry: %v", entries)
+	}
+	entry := filepath.Join(abcdhome.Path(home, "notes", gittest.RootCommit(t, repo.Root())), entries[0])
+	if exists(filepath.Join(entry, "bin", "abcd.12345")) {
+		t.Fatal("the leftover is left out of the archive")
+	}
+}
+
+// TestPruneStillJudgesABinDeeperInTheTier: only the tier's top-level bin/ holds
+// the build; a bin/ under scratch/ is notes like any other, and a binary there
+// still keeps the worktree.
 func TestPruneStillJudgesABinDeeperInTheTier(t *testing.T) {
 	repo, _ := pruneFixture(t)
 	p := mergedWorktree(t, repo, "deep")
