@@ -604,23 +604,39 @@ func TrackedFilesContext(ctx context.Context, root string) ([]string, error) {
 // tree in its own environment, which changes nothing in the repository, so a
 // core.worktree set elsewhere neither hides what the index tracks nor reads
 // as a tree git cannot answer for.
+//
+// Every state read lands here, so a listing git gives is taken as it stands and
+// starts one git: told the tree by an absolute path and standing in it, git is
+// inside its working tree whenever it finds a repository at all, so asking first
+// could not change the answer. A relative top is not that case (git reads it
+// from inside the tree), and plain TrackedFilesContext is not either: with no
+// tree named, `ls-files` lists the index of a checkout with core.bare set, where
+// the question answers false. Only a failed listing costs more: it asks again in
+// full, so what a failure means (not a repository, a repository git refused, an
+// index it cannot read) stays decided in one place.
 func TrackedInTreeContext(ctx context.Context, top string) ([]string, error) {
-	return trackedFiles(ctx, top, "GIT_WORK_TREE="+top)
+	env := "GIT_WORK_TREE=" + top
+	if filepath.IsAbs(top) {
+		if out, err := trackedOutput(ctx, top, []string{env}, "ls-files", "-z"); err == nil {
+			return splitNUL(out), nil
+		}
+	}
+	return trackedFiles(ctx, top, env)
+}
+
+// trackedOutput runs one isolated git under root, env appended to its own, and
+// returns what it wrote to stdout.
+func trackedOutput(ctx context.Context, root string, env []string, args ...string) ([]byte, error) {
+	cmd := isolatedGitContext(ctx, root, args...)
+	cmd.Env = append(cmd.Env, env...)
+	var out bytes.Buffer
+	err := procgroup.RunToEOF(ctx, cmd, &out, nil)
+	return out.Bytes(), err
 }
 
 // trackedFiles is TrackedFilesContext with env appended to each git's own.
 func trackedFiles(ctx context.Context, root string, env ...string) ([]string, error) {
-	git := func(args ...string) *exec.Cmd {
-		cmd := isolatedGitContext(ctx, root, args...)
-		cmd.Env = append(cmd.Env, env...)
-		return cmd
-	}
-	output := func(args ...string) ([]byte, error) {
-		var out bytes.Buffer
-		err := procgroup.RunToEOF(ctx, git(args...), &out, nil)
-		return out.Bytes(), err
-	}
-	in, err := output("rev-parse", "--is-inside-work-tree")
+	in, err := trackedOutput(ctx, root, env, "rev-parse", "--is-inside-work-tree")
 	if err != nil || strings.TrimSpace(string(in)) != "true" {
 		if RepoShaped(root) {
 			// Repo-shaped, but git could not answer: absent from PATH, an
@@ -632,10 +648,15 @@ func trackedFiles(ctx context.Context, root string, env ...string) ([]string, er
 		// Not a repository → nothing tracked, not an error.
 		return nil, nil
 	}
-	out, err := output("ls-files", "-z")
+	out, err := trackedOutput(ctx, root, env, "ls-files", "-z")
 	if err != nil {
 		return nil, err
 	}
+	return splitNUL(out), nil
+}
+
+// splitNUL is the paths of a `ls-files -z` listing.
+func splitNUL(out []byte) []string {
 	parts := strings.Split(string(out), "\x00")
 	files := make([]string, 0, len(parts))
 	for _, p := range parts {
@@ -643,7 +664,7 @@ func trackedFiles(ctx context.Context, root string, env ...string) ([]string, er
 			files = append(files, p)
 		}
 	}
-	return files, nil
+	return files
 }
 
 // Run executes a read-only git command under root with the developer's global
