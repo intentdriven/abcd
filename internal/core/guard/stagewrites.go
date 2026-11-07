@@ -218,8 +218,8 @@ func (f *Files) stageWordsReachLogin(rc *readCtx, placed []placedSeg) bool {
 	return false
 }
 
-// pathReachesDir reports whether path is dir, below it or a parent of it, as it is spelled
-// or where it leads. A lone `/` is a word of many a command, so it is no parent here.
+// pathReachesDir reports whether path is dir, below it, or a parent of it below the
+// filesystem's root, as it is spelled or where it leads.
 func pathReachesDir(path, dir string, fold bool) bool {
 	for _, p := range []string{path, fsutil.RealExistingPath(path)} {
 		if fsutil.PathWithin(p, dir, fold) || (filepath.Dir(p) != p && fsutil.PathWithin(dir, p, fold)) {
@@ -290,15 +290,14 @@ func (f *Files) whereItRuns(rc *readCtx, st *shellState, s segment, i int) []str
 }
 
 // stagePlacesProvedFile reports whether a command that copies, links or moves a file has
-// the file the run proved among its operands.
+// among its operands the file the run proved, or anything in that file's directory.
 func (f *Files) stagePlacesProvedFile(rc *readCtx, placed []placedSeg) bool {
 	if f.stageHarness == "" {
 		return false
 	}
-	proved, err := f.stat(f.stageHarness, false)
-	if err != nil {
-		return false
-	}
+	proved, provedErr := f.stat(f.stageHarness, false)
+	dir := filepath.Dir(fsutil.RealExistingPath(f.stageHarness))
+	fold := approveFoldsCase()
 	for _, p := range placed {
 		for _, a := range commandSites(p.seg) {
 			switch strings.ToLower(filepath.Base(p.seg.tokens[a.idx])) {
@@ -312,7 +311,10 @@ func (f *Files) stagePlacesProvedFile(rc *readCtx, placed []placedSeg) bool {
 					if !ok {
 						continue
 					}
-					if fi, err := f.stat(operand, false); err == nil && os.SameFile(proved, fi) {
+					if fsutil.PathWithin(fsutil.RealExistingPath(operand), dir, fold) {
+						return true
+					}
+					if fi, err := f.stat(operand, false); err == nil && provedErr == nil && os.SameFile(proved, fi) {
 						return true
 					}
 				}
@@ -416,6 +418,9 @@ func (f *Files) stageStartsHarness(rc *readCtx, placed []placedSeg) bool {
 				return true
 			}
 			for _, st := range p.states {
+				if run, ok := f.programFile(rc, st, p.seg, a.idx); ok && stageVersionName.MatchString(filepath.Base(fsutil.RealExistingPath(run))) {
+					return true
+				}
 				if f.namesProvedHarness(rc, st, p.seg, a.idx) {
 					return true
 				}
@@ -431,12 +436,7 @@ func (f *Files) namesProvedHarness(rc *readCtx, st *shellState, s segment, i int
 	if f.stageHarness == "" {
 		return false
 	}
-	path, ok := "", false
-	if tok := s.tokens[i]; strings.ContainsRune(tok, filepath.Separator) || strings.HasPrefix(tok, "~") {
-		path, ok = st.resolveToken(rc, s, i)
-	} else {
-		path, ok = f.onPath(tok)
-	}
+	path, ok := f.programFile(rc, st, s, i)
 	if !ok {
 		return false
 	}
@@ -449,6 +449,14 @@ func (f *Files) namesProvedHarness(rc *readCtx, st *shellState, s segment, i int
 		return false
 	}
 	return os.SameFile(proved, named) || (proved.Size() == named.Size() && sameContent(f.stageHarness, path))
+}
+
+// programFile is the file word i of s runs, read where st places it.
+func (f *Files) programFile(rc *readCtx, st *shellState, s segment, i int) (string, bool) {
+	if tok := s.tokens[i]; strings.ContainsRune(tok, filepath.Separator) || strings.HasPrefix(tok, "~") {
+		return st.resolveToken(rc, s, i)
+	}
+	return f.onPath(s.tokens[i])
 }
 
 // onPath is the first file named name in a directory of the PATH f reads.

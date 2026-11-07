@@ -220,3 +220,48 @@ func TestAStagesOrdinaryWorkStaysOpen(t *testing.T) {
 		}
 	}
 }
+
+// TestAStageLeavesTheProvedFilesDirectoryWhereItIs: a copy, link or move of what stands
+// beside the file the run proved, and a program whose resolved file is named as a release
+// is named, whatever the link in front of it is called.
+func TestAStageLeavesTheProvedFilesDirectoryWhereItIs(t *testing.T) {
+	a := newStageApprover(t)
+	versions := filepath.Join(filepath.Dir(a.proved), "versions")
+	if err := os.Mkdir(versions, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	proved := filepath.Join(versions, "the-file")
+	sibling := filepath.Join(versions, "beside-it")
+	release := filepath.Join(a.other, "9.8.7")
+	for _, path := range []string{proved, sibling, release} {
+		if err := os.WriteFile(path, []byte(filepath.Base(path)), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, link := range []string{filepath.Join(a.dir, "plain-name"), filepath.Join(a.bin, "plain-on-path")} {
+		if err := os.Symlink(release, link); err != nil {
+			t.Fatal(err)
+		}
+	}
+	refused := []string{
+		"cp " + sibling + " ./made",
+		"ln -s " + sibling + " ./made",
+		"ln " + sibling + " ./made",
+		"mv " + sibling + " ./made",
+		"cp -R " + versions + " ./made",
+		"./plain-name --version",
+		"plain-on-path --version",
+	}
+	open := []string{"cat " + sibling, "ls -l " + versions, "cp note.txt copied.txt", "./tool --version", "go version"}
+	got := a.answers(t, []string{"--harness=" + proved}, append(append([]string{}, refused...), open...))
+	for _, line := range refused {
+		if got[line][0] != "deny" || !strings.Contains(got[line][1], "stage-further-agent") {
+			t.Errorf("%q: %q %q", line, got[line][0], got[line][1])
+		}
+	}
+	for _, line := range open {
+		if got[line][0] != "allow" {
+			t.Errorf("%q: %q %q", line, got[line][0], got[line][1])
+		}
+	}
+}
