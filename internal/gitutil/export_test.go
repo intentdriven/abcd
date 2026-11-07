@@ -46,3 +46,10 @@ func ColdGitVersionForTest(t *testing.T) {
 	gitVersion.set(probeGitVersion)
 	t.Cleanup(func() { gitVersion.set(probeGitVersion) })
 }
+
+// TrackedInTreeAskedTwice is the listing TrackedInTreeContext falls back to:
+// git asked whether this is a working tree, then for the index. It is the
+// reference a test holds the one-process listing against.
+func TrackedInTreeAskedTwice(ctx context.Context, top string) ([]string, error) {
+	return trackedFiles(ctx, top, "GIT_WORK_TREE="+top)
+}
