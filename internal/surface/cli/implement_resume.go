@@ -30,7 +30,9 @@ func newImplementResumeCommand(asJSON *bool) *cobra.Command {
 			"the driver, collects every receipt that has arrived before anything else, reserves\n" +
 			"again what a stop released, saves aside and names the uncommitted work a gone agent\n" +
 			"left, and re-tells its await. It starts no agent: `abcd implement step` does that\n" +
-			"next. An agent that may still be in its call is left alone and named. A run a drive\n" +
+			"next. An agent that may still be in its call is left alone and named. Where a lane\n" +
+			"names a pull request, it reads the forge once and names each that conflicts with\n" +
+			"the default branch, was closed or merged, or could not be read. A run a drive\n" +
 			"started names the profile it started on, in the listing and here, since what this\n" +
 			"session starts runs on this session's own login, whichever that is.\n\n" +
 			"Exit 2 on a refusal. Exit 3 while a stop holds, while another driver's process is\n" +

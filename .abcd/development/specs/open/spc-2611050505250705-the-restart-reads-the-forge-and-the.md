@@ -25,6 +25,7 @@ production_mode: hand-written
    - packages: internal/core/implement/loop/resume.go
    - tests: internal/core/implement/loop/resume_test.go
    The listing names each pull request from the state without a network read; reading the forge for its queue state (iss-2610241414414823) and sweeping records a crashed copy stranded (iss-2610241107435264) are later.
+   - landed: 48720858149d
 2. **Each agent's own process, from the launch ledger** (AFTER)
    - priority: AFTER
    - login: none
