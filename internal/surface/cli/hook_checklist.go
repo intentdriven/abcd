@@ -4,6 +4,7 @@ import (
 	"io"
 
 	"github.com/intentdriven/abcd/internal/core/checklist"
+	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/spf13/cobra"
 )
 
@@ -21,9 +22,8 @@ import (
 
 const (
 	// sessionStartOutputCap is the host's cap on a hook's whole output, in
-	// characters (the hooks reference, read 2026-10-22). The hook measures in
-	// bytes, which never undercounts characters.
-	sessionStartOutputCap = 10_000
+	// characters. The hook measures in bytes, which never undercounts characters.
+	sessionStartOutputCap = rules.HostOutputCap
 	// sessionStartMargin is kept free under the cap (the spec's margin).
 	sessionStartMargin = 500
 	// checklistRenderBudget is the checklist's budget when nothing else is

@@ -2865,6 +2865,19 @@ Verdicts at filing: 01 HOLD (its rule already filed, its amendment folded into t
 
 Grade: all three verdicts survived confirmation (HOLD, SPLIT, FILE-AS-IS), and the one place choice both 02 and 03 held open was settled once for both, as 03 asked. Over-flag: none. Missed part: 02's trust rule did not name the store ownership exception the place choice needs; it was added at filing. Two of 03's technical questions (the composer, the quiet day) and two of 01's (the reading's source, the staleness bound) were not put and took the draft's proposal under the standing stance that abcd ships a sensible default the person configures; graded as proposals the record carries, not as confirmed rulings.
 
+## itd-2611041636196213 (agents corrected and steered), filed 2026-11-04
+
+| Part | Kind | Home |
+| --- | --- | --- |
+| the prompt hook held under the host cap, and an honest session record | capability | the intent, resolving iss-2611041419354106 |
+| refused shell hazards carried by the guard, warned ones steered | capability | the intent, refining itd-103 |
+| rule-by-rule rewording of the snapshot of 129 | plumbing | a later change, once the product thinker has marked up the review page |
+| refusal counts per hazard | capability | not filed: the mechanism reads logs already kept |
+
+Verdict at filing: ONE, the two capabilities kept together because both change what one hook sends and each alone leaves the other overflowing. Typed links: builds on itd-3 and itd-103. Advisory reversal flags: the teaching plane of itd-103 (rulings J10, CK1), confirmed by the product thinker at sign-off.
+
+Grade: ONE held at planning; the design review removed the only part that wanted a second home, a state for sending the rest of an overflowing domain later.
+
 ## 2026-11-06: a drive takes new releases itself at a lane boundary (technical facilitator, routing named with the design)
 
 The proposal: `abcd drain --drive` runs for weeks and ends on a changed binary, so a release cannot reach a running drive without a stop and a restart, which the technical facilitator ruled a long run never has (dcn-2611062149362998). The settled design: at a lane boundary, about once an hour, the drive checks for a newer stable release, fetches it into a staging file through the update verb's verification, proves it in the drive's own live launch before the installed binary is touched, swaps atomically keeping the previous binary, and re-executes itself to resume from the drain's state; `--no-self-update` turns it off; a source build never self-updates. The design arrived with its routing named: the capability to an intent, the rule to a proposed ADR with a brief invariant.

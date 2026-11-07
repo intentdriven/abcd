@@ -17,8 +17,8 @@ type Request struct {
 	// Ledger is the session's recalled ledger (rules.SessionState.Recalled):
 	// item key to the content signature last sent.
 	Ledger map[string]string
-	// Budget is what the rules left of the loader's per-turn budget,
-	// rules.InjectionBudgetBytes less the rules text's length.
+	// Budget is what the rules and the blocks read before them left of the
+	// loader's per-turn budget, rules.InjectionBudgetBytes.
 	Budget int
 	// Disabled is the loader's kill switch: recall is the loader's, so the
 	// switch silences it too.
@@ -36,7 +36,7 @@ type Request struct {
 // Result is one prompt's recall. Text is empty when nothing new comes back.
 // Recalled names each item Text carries, in order; Omitted each new
 // candidate that did not fit this turn's budget, not recorded and so retried
-// on the next turn; TooLarge each new candidate whose block alone is larger
+// on the next turn; TooLarge each new candidate whose one line alone is larger
 // than the whole per-turn budget (rules.InjectionBudgetBytes), which no turn
 // can carry, so it is set aside without stopping the take and never
 // recorded. Ledger is the updated recalled ledger, a copy. RootErr is the
@@ -94,9 +94,8 @@ func (r Result) Labels(keys []string) []string {
 // full, then as one line each, within the row's bounds and the budget. The
 // first that does not fit a form ends that form's take, so an item never
 // comes back ahead of, or larger than, one ranked above it that a later turn
-// can still carry. An item larger than the whole per-turn budget is set
-// aside as TooLarge, or sent as one line in a row that has lines, so it
-// cannot hold back every item below it on every turn. The ledger records an
+// can still carry. An item larger than the whole per-turn budget is sent as
+// one line, so it cannot hold back every item below it on every turn. The ledger records an
 // item's content whatever its form, so a change of bracket never sends it
 // again. Its only I/O is req.Root, asked when a tied item matched, and it
 // never reflects prompt bytes into the block.
@@ -167,9 +166,7 @@ const (
 //
 // Two exceptions keep a candidate from holding back the rest. A candidate
 // whose full block alone is larger than the whole per-turn budget, which no
-// turn can carry, is passed to the lines in a row that has them, and set
-// aside as too large in one that has none (the fresh row), without ending
-// the full phase. And where the row has lines, the first candidate the take
+// turn can carry, is passed to the lines without ending the full phase. And where the row has lines, the first candidate the take
 // reaches, the top-ranked, comes back as one line at least whatever the
 // row's line bound, so the recall never sends nothing (the facilitator's
 // ruling of 2026-10-11) — though never past the per-turn budget, the
@@ -181,7 +178,6 @@ type take struct {
 	lineLeft int  // the row's line bound left; rules.MemoryAll for none
 	fullOpen bool // the full phase still takes
 	lineOpen bool // the line phase still takes
-	hasLines bool // the row sends lines at all
 	first    bool // no candidate reached yet
 }
 
@@ -193,7 +189,6 @@ func newTake(row rules.BracketRow, budget int) *take {
 		lineLeft: row.MemoryLineBytes,
 		fullOpen: row.MemoryFullBytes != 0,
 		lineOpen: row.MemoryLineBytes != 0,
-		hasLines: row.MemoryLineBytes != 0,
 		first:    true,
 	}
 }
@@ -211,7 +206,7 @@ func spend(left, n int) int {
 	return max(0, left-n)
 }
 
-// tooLarge reports whether a block alone is larger than the whole per-turn
+// tooLarge reports whether a block or line alone is larger than the whole per-turn
 // budget, which no turn can carry.
 func tooLarge(block string) bool { return len(headerLine)+len(block) > rules.InjectionBudgetBytes }
 
@@ -220,9 +215,6 @@ func (t *take) next(it Item) (block, form string, v takeVerdict) {
 	top := t.first
 	t.first = false
 	full := renderItem(it)
-	if tooLarge(full) && !t.hasLines {
-		return "", "", takeTooLarge
-	}
 	if t.fullOpen && !tooLarge(full) {
 		if within(len(full), t.fullLeft) && t.size+len(full) <= t.budget {
 			t.size += len(full)

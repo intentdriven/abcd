@@ -104,17 +104,26 @@ on an `also matched:` line. In either output form the hook answers the host
 by its exit code, its message on stderr, and on stdout only the host's deny
 above or the question's context object below.
 
-## Taught before it is refused
+## Steered first, corrected at the command
 
-The same registry drives a second plane that needs no hook at all. The rules
-loader bundles a `SHELL` domain generated from the registry: one rule per entry,
-carrying the command it matches, whether the guard refuses or warns, the why and
-the safe successor, recalled by the commands the registry names (`rm`,
-`git push`, `pkill`, …) and by shell work in general. A prompt about shell-heavy
-work injects those rules before the agent acts, so a host without hook support is
-still taught the safe form and a host with hooks is taught it before the guard
-would have to refuse. An entry added to the registry is taught and enforced from
-the same release, with no second edit. A hazard the guard reads in code rather
+The same registry drives a second plane. The rules loader bundles a `SHELL` domain
+generated from the registry: one rule per entry, carrying the command it matches,
+whether the guard refuses or warns, the why and the safe successor, recalled by the
+commands the registry names (`rm`, `git push`, `pkill`, …) and by shell work in
+general. A prompt about shell-heavy work sends one line saying a guard judges each
+command, and the rules of the entries that only warn, since a warned command still
+runs. A delete entry warns only once its target is proven safe and is refused otherwise,
+so it is not sent: the refusal gives the proof's reason, the warning gives the entry's
+own words, and only a repository's rewording of one goes ahead of time, since no refusal
+shows it. Where a bracket or a full turn shortens the domain, the line about the guard goes alone, with the command for the rest, or the command goes alone where a full turn has no room for the line. What it refuses is corrected at the refusal, which carries the why and
+the safe form, reaches sub-agents the prompt hook never does, and comes before the
+host's own permission prompt, so no person is asked (itd-2611041636196213, which
+narrows itd-103). Every rule stays listed by the rules verb, and a host without hook
+support reads them there. In the 30 days to 4 Nov 2026 the guard refused 478 of about
+145,000 shell commands, and in main sessions the latest prompt had named the command
+in only 11 of 110; if main-session refusals more than double on comparable work, the
+most refused hazards go back into what is sent. An entry added to the registry is
+listed and enforced from the same release, with no second edit. A hazard the guard reads in code rather
 than from the registry, such as `git-stash-shared-stack` (a bare `git stash` in
 a checkout with more than one worktree), `interpreter-reads-stream` (a shell
 handed its script through a pipe, as in `cat x | sh`) or `forge-text-outbound`
@@ -127,17 +136,19 @@ arm judges it, iss-2609061525437969) and `forge-text-mention` (a pull request
 whose title and body name an issue id no `Resolves:` or `Refs:` line declares,
 RS004 before the push, in a repository that also sets
 `outbound.declare_mentions`, iss-2610261152125261), and the merge rule below
-(all but its `abcd-land-approve` entry), are enforced but not taught; the scripts the guard reads, and the variable-built `bash -c` or `sh -c`
+(all but its `abcd-land-approve` entry), are enforced but not listed; the scripts the guard reads, and the variable-built `bash -c` or `sh -c`
 script that deletes, which the guard refuses as `shell-c-variable-delete`
-(iss-2610161612200864), are taught by two rules the generator adds after the
-entries', each written beside the code that reads it. The registry taught is the one the guard
+(iss-2610161612200864), are listed by two of the three rules the generator adds after the
+entries', the third being the delete it cannot prove safe; the last two are written beside the code that reads them and the first with the generator. The registry listed is the one the guard
 enforces in the repository: an entry the repository adds in its
-`.abcd/guard.json` is taught by the same generator as the bundled ones, its
+`.abcd/guard.json` is rendered by the same generator as the bundled ones, its
 rule marked `(repo)` after its entry id, and a guard file the guard refuses is
-named on stderr and never taught. An entry's why and successor are each at most
-1,024 bytes, since both are taught word for word. Under a committed
-`"disabled": true` every rule opens `Hazard (guard off)`, because the guard
-then refuses nothing. How the domain is recalled, overridden and
+named on stderr and never listed. An entry's why and successor are each at most
+1,024 bytes, since both are shown word for word. Under a committed
+`"disabled": true` the guard refuses nothing, so every rule is steering, each opening
+`Hazard (guard off)` under a first line saying the guard is off, in place of the line
+saying a guard judges each command. That is more than one turn holds, so the hook
+sends the first line and the command for the rest. How the domain is recalled, overridden and
 silenced is the rules loader's
 ([`05-internals/03-configuration.md`](../05-internals/03-configuration.md)).
 
@@ -192,7 +203,7 @@ The technical facilitator's approval act, the land verb's approval of a head
 ([`38-land.md`](38-land.md)), is refused to an agent in every mode: the merge
 gate counts that record as an approval of the head, so an agent that writes it
 records a false approval. Run through the binary it is refused by the registry
-entry `abcd-land-approve`, which the `SHELL` domain teaches. Under any other
+entry `abcd-land-approve`, which the `SHELL` domain lists. Under any other
 program name it is refused in code as `abcd-land-approve-any-program`: the
 guard reads the words the program is handed (the land verb and its approval
 flag, in either order, as the command parser reads them),
@@ -773,7 +784,7 @@ and, for a worktree, clean, unlocked and in use by nothing. A local branch
 delete is judged offline; only a delete that touches origin asks the network
 and the forge. Every check refuses when it cannot answer, and so does a line
 whose targets the guard cannot read. The refusal names the check that failed
-and what settles it, and the teaching plane carries the same words as one rule
+and what settles it, and the `SHELL` listing carries the same words as one rule
 beside the entries'.
 
 The person's way past is theirs alone: a one-shot allow of the one exact line,

@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -95,22 +96,18 @@ func TestLoadAcceptsDistinctKeys(t *testing.T) {
 }
 
 // TestInjectEnforcesBudgetWithLoudNotice (iss-2608261551077971) pins the
-// per-repo injection budget: a rendered set that overflows the budget is
-// truncated with an unmistakable notice, and the emitted text stays within the
-// budget. Without the budget the whole ~oversize set lands in context every
-// refresh.
+// budget at its limit: more domains than even their pointers can fit leave the
+// text within the budget, and a notice says some were left out.
 func TestInjectEnforcesBudgetWithLoudNotice(t *testing.T) {
-	// Eight domains, each rendering to ~12 KiB, all matching one keyword —
-	// ~96 KiB total, comfortably over the 64 KiB budget.
 	big := strings.Repeat("x", 12*1024)
 	domains := map[string]Domain{}
-	for _, n := range []string{"AA", "BB", "CC", "DD", "EE", "FF", "GG", "HH"} {
-		domains[n] = Domain{State: StateActive, Recall: []string{"flood"}, Rules: []string{big}}
+	for i := range 300 {
+		domains[fmt.Sprintf("D%03d", i)] = Domain{State: StateActive, Recall: []string{"flood"}, Rules: []string{big}}
 	}
 	rs := RuleSet{SchemaVersion: 1, Domains: domains}
 	res := Inject(rs, "a flood of rules", SessionState{}, 0, BracketUnknown)
-	if len(res.Text) > injectionBudgetBytes {
-		t.Fatalf("injected text %d bytes exceeds budget %d", len(res.Text), injectionBudgetBytes)
+	if len(res.Text) > RulesBudget(0) {
+		t.Fatalf("injected text %d bytes exceeds budget %d", len(res.Text), RulesBudget(0))
 	}
 	if !strings.Contains(res.Text, injectionTruncatedMarker) {
 		t.Fatalf("over-budget injection lacks the loud truncation notice:\n%.200s", res.Text)

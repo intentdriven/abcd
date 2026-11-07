@@ -72,6 +72,11 @@ type Domain struct {
 	Recall  []string `json:"recall,omitempty"`
 	Aliases []string `json:"aliases,omitempty"`
 	Rules   []string `json:"rules,omitempty"`
+	// Checked holds the rules a check carries rather than the hook: read at the
+	// refusal and listed by `abcd rules`, never sent ahead of time. Generated
+	// (only SHELL fills it, shellDomain), so no rule file can declare it and
+	// no rule can leave what is sent by being named here.
+	Checked []string `json:"-"`
 }
 
 // RuleSet is the merged, validated rule model: the bundled defaults overlaid
@@ -152,6 +157,24 @@ type ResolvedDomain struct {
 	Name   string `json:"name"`
 	Source string `json:"source"`
 	Domain
+}
+
+// MarshalJSON is the machine reader's view of a domain: both lists apart, and
+// the size of each, so the review of the rule set can be run again as rules
+// change. rules_bytes is what the hook sends for the domain in full, its heading
+// included; checked_bytes is what the second list adds to the listing.
+func (d ResolvedDomain) MarshalJSON() ([]byte, error) {
+	type plain ResolvedDomain
+	checked := d.Checked
+	if checked == nil {
+		checked = []string{}
+	}
+	return json.Marshal(struct {
+		plain
+		Checked      []string `json:"checked"`
+		RulesBytes   int      `json:"rules_bytes"`
+		CheckedBytes int      `json:"checked_bytes"`
+	}{plain(d), checked, len(renderDomain(d)), len(renderChecked(d))})
 }
 
 // domainNameRe constrains domain keys so a custom domain id can never be used
@@ -963,10 +986,14 @@ func isConsonant(b byte) bool {
 	return true
 }
 
-// Render is the single renderer both front doors use. It emits a header plus one
-// section per domain. An empty domain list renders to zero bytes (D3: no
-// model-facing tokens on a no-match).
-func Render(domains []ResolvedDomain) string {
+// checkedLead introduces the second list in the listing.
+const checkedLead = "Carried by the guard, answered when the command is judged and not sent ahead of time:\n"
+
+// RenderListing renders domains as a reader of `abcd rules` wants them: what
+// the hook sends for each, then what a check carries. Only a domain with a
+// Checked list differs from what the hook renders, and this is never what is
+// injected.
+func RenderListing(domains []ResolvedDomain) string {
 	if len(domains) == 0 {
 		return ""
 	}
@@ -974,6 +1001,22 @@ func Render(domains []ResolvedDomain) string {
 	fmt.Fprintf(&b, "# abcd rules — %d domain(s) active\n", len(domains))
 	for _, d := range domains {
 		b.WriteString(renderDomain(d))
+		b.WriteString(renderChecked(d))
+	}
+	return b.String()
+}
+
+// renderChecked renders a domain's second list, or "" for a domain with none.
+func renderChecked(d ResolvedDomain) string {
+	if len(d.Checked) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString(checkedLead)
+	for _, r := range d.Checked {
+		if body := sanitizeRuleBody(r); body != "" {
+			fmt.Fprintf(&b, "- %s\n", body)
+		}
 	}
 	return b.String()
 }
@@ -1015,8 +1058,9 @@ func renderedRuleBody(d ResolvedDomain, r string) string {
 	return sanitizeRuleBody(r)
 }
 
-// renderShrunk renders a domain in a bracket that shrinks rules
-// (BracketRow.ShrinkRules, spc-2610111627213138 step 6): its heading, its
+// renderShrunk renders a domain in its short form, in a bracket that shrinks
+// rules (BracketRow.ShrinkRules, spc-2610111627213138 step 6) and whenever a
+// turn cannot hold it in full (renderWithinBudget): its heading, its
 // first rule — the first its author wrote, or for a generated domain the
 // first its generator yields, never reordered — and a line saying how many
 // rules it holds and that `abcd rules <DOMAIN>` renders the rest. The pointer
@@ -1037,9 +1081,21 @@ func renderShrunk(d ResolvedDomain) (block string, ok bool) {
 	var b strings.Builder
 	fmt.Fprintf(&b, "## %s\n", Label(d.Name, d.Source))
 	fmt.Fprintf(&b, "- %s\n", bodies[0])
-	fmt.Fprintf(&b, "- (The first of the %d rules %s holds, shortened because the session's context is filling; `abcd rules %s` renders all %d.)\n",
+	if len(d.Checked) > 0 {
+		fmt.Fprintf(&b, "- (The first of the %d rules %s sends; `abcd rules %s` renders them and the %d the guard carries.)\n",
+			len(bodies), d.Name, d.Name, len(d.Checked))
+		return b.String(), true
+	}
+	fmt.Fprintf(&b, "- (The first of the %d rules %s holds; `abcd rules %s` renders all %d.)\n",
 		len(bodies), d.Name, d.Name, len(bodies))
 	return b.String(), true
+}
+
+// renderPointer renders a domain whose first rule does not fit the turn: its
+// heading and the command, so it is still never a heading alone.
+func renderPointer(d ResolvedDomain) string {
+	return fmt.Sprintf("## %s\n- (No room this turn for the rules %s holds; `abcd rules %s` renders them.)\n",
+		Label(d.Name, d.Source), d.Name, d.Name)
 }
 
 // FenceRuleBody renders an override's rule body as a fenced code block inside
@@ -1210,6 +1266,7 @@ func cloneRuleSet(rs RuleSet) RuleSet {
 				State:   d.State,
 				Recall:  append([]string(nil), d.Recall...),
 				Aliases: append([]string(nil), d.Aliases...),
+				Checked: append([]string(nil), d.Checked...),
 				Rules:   append([]string(nil), d.Rules...),
 			}
 		}
@@ -1219,7 +1276,7 @@ func cloneRuleSet(rs RuleSet) RuleSet {
 
 // CapPrompt is prompt cut to the bytes the loader scans (maxPromptBytes), so
 // a huge pasted prompt cannot blow up matching. Every reader of a prompt —
-// Inject, TermMatcher, Hits and the `rules --prompt` diagnostic — caps
+// InjectWithin, TermMatcher, Hits and the `rules --prompt` diagnostic — caps
 // through it, so a word past the cap matches nowhere.
 func CapPrompt(prompt string) string {
 	if len(prompt) > maxPromptBytes {
@@ -1231,7 +1288,7 @@ func CapPrompt(prompt string) string {
 // TermMatcher is the loader's term rule, exported so a memory note's recall
 // word hits on exactly the prompts a domain's recall word does
 // (spc-2610111627213138, "One recall for notes and pages"): it indexes prompt
-// once — capped at the bytes Inject scans, lower-cased, stemmed — and returns
+// once — capped at the bytes InjectWithin scans, lower-cased, stemmed — and returns
 // the match a domain's every recall word and alias is judged by (word
 // boundary, stems, multi-word phrases). One function, never a copy.
 func TermMatcher(prompt string) func(term string) bool {

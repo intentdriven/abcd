@@ -253,9 +253,8 @@ func TestRankingFindsATermWhereTheMatcherHits(t *testing.T) {
 
 // TestAnItemLargerThanTheWholeBudgetDoesNotBlockTheRest: an item whose block
 // alone is larger than the whole per-turn budget can never come back in
-// full, so it is set aside as too large, never recorded, and the items
-// ranked below it still come back; one that only misses this turn's
-// remainder still stops the take, as before.
+// full, so it comes back as one line, and the items ranked below it still
+// come back.
 func TestAnItemLargerThanTheWholeBudgetDoesNotBlockTheRest(t *testing.T) {
 	huge := strings.TrimSpace(strings.Repeat("kerberos deploy notes ", rules.InjectionBudgetBytes/20))
 	items := []Item{
@@ -267,21 +266,24 @@ func TestAnItemLargerThanTheWholeBudgetDoesNotBlockTheRest(t *testing.T) {
 		t.Fatalf("the fixture does not rank the huge page first: %v", rankedKeys(ranked))
 	}
 	res := Recall(Request{Items: items, Prompt: "deploy with kerberos", Budget: rules.InjectionBudgetBytes, Bracket: rules.BracketFresh})
-	if !slices.Equal(res.Recalled, []string{"mem-2610111200000002"}) || !slices.Equal(res.TooLarge, []string{"page:fact_eng_huge.md"}) ||
-		len(res.Omitted) != 0 {
+	if !slices.Contains(res.Recalled, "page:fact_eng_huge.md") || !slices.Contains(res.Recalled, "mem-2610111200000002") ||
+		len(res.TooLarge) != 0 || len(res.Omitted) != 0 {
 		t.Fatalf("recalled %v too large %v omitted %v", res.Recalled, res.TooLarge, res.Omitted)
 	}
-	if _, ok := res.Ledger["page:fact_eng_huge.md"]; ok {
-		t.Fatal("an item that never came back was recorded as sent")
+	if res.Form("page:fact_eng_huge.md") != FormLine {
+		t.Fatalf("the huge page came back as %q, want one line", res.Form("page:fact_eng_huge.md"))
+	}
+	if strings.Contains(res.Text, "kerberos deploy notes") {
+		t.Fatal("the huge page's body came back")
 	}
 	if len(res.Text) > rules.InjectionBudgetBytes {
 		t.Fatalf("the block is over the budget: %d", len(res.Text))
 	}
-	// With the rules leaving too little for the note this turn, the note is
-	// omitted and tried again, and the huge page is still only too large.
+	// With the rules leaving too little even for a line, nothing is recorded
+	// and both are tried again.
 	tight := Recall(Request{Items: items, Prompt: "deploy with kerberos", Budget: 10, Bracket: rules.BracketFresh})
-	if len(tight.Recalled) != 0 || !slices.Equal(tight.Omitted, []string{"mem-2610111200000002"}) || !slices.Equal(tight.TooLarge, []string{"page:fact_eng_huge.md"}) {
-		t.Fatalf("recalled %v too large %v omitted %v", tight.Recalled, tight.TooLarge, tight.Omitted)
+	if len(tight.Recalled) != 0 || len(tight.Ledger) != 0 {
+		t.Fatalf("recalled %v, ledger %v", tight.Recalled, tight.Ledger)
 	}
 }
 

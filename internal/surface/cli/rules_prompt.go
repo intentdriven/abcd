@@ -24,6 +24,23 @@ import (
 // rules, and the `rules --prompt "<text>"` diagnostic that shows what one
 // prompt brings back.
 
+// injectWithRecall is the turn's one use of the budget, the hook's and the
+// diagnostic's alike: the rules within what reserved leaves less the memory floor,
+// then the recall within what the rules left. Whatever of the floor the notes
+// leave unused goes back: the rules are rendered again within what the notes
+// really took, since Inject writes nothing and rules that fit are sent in full
+// (spc-2610111627213138).
+func injectWithRecall(rs rules.RuleSet, prompt string, prev rules.SessionState, backstop int, bracket rules.Bracket, reserved int,
+	recallWithin func(ledger map[string]string, budget int) recall.Result) (rules.InjectResult, recall.Result) {
+	res := rules.InjectWithin(rs, prompt, prev, backstop, bracket, rules.RulesBudget(reserved))
+	// The ledger Inject hands back, which its backstop may have cleared.
+	mem := recallWithin(res.State.Recalled, max(0, rules.InjectionBudgetBytes-reserved-len(res.Text)))
+	if len(mem.Text) < rules.MemoryFloorBytes {
+		res = rules.InjectWithin(rs, prompt, prev, backstop, bracket, max(0, rules.InjectionBudgetBytes-reserved-len(mem.Text)))
+	}
+	return res, mem
+}
+
 // recallMemory is the prompt router's recall: the notes both memory layers
 // hold and the pages both page scopes hold, matched against prompt and taken
 // within budget, what the rules left of the loader's per-turn budget. The
@@ -147,12 +164,14 @@ func refusalLoss(r recall.Refusal) string {
 }
 
 // The forms the diagnostic gives a matched domain, note or page: in full,
-// shrunk to its heading and first rule (a domain, in a bracket that shrinks
-// rules), as one line (a note or page, in a bracket that has lines), not
-// fitting this turn's budget, or larger than the whole budget.
+// shrunk to its heading and first rule (a domain, by its bracket or the
+// budget), as its heading and the command alone (a domain whose first rule
+// does not fit), as one line (a note or page), not fitting this turn's budget,
+// or larger than the whole budget.
 const (
 	promptFormFull       = "full"
 	promptFormShrunk     = "shrunk"
+	promptFormPointer    = "pointer"
 	promptFormLine       = "one-line"
 	promptFormOverBudget = "over-budget"
 	promptFormTooLarge   = "too-large"
@@ -268,7 +287,12 @@ func rulesPrompt(stderr io.Writer, rs rules.RuleSet, root, prompt string, used *
 	bracket := v.Bracket.bracket
 	// The hook's own cap, so a word past it matches here no more than there.
 	prompt = rules.CapPrompt(prompt)
-	res := rules.Inject(rs, prompt, rules.SessionState{}, 0, bracket)
+	items, refused := recall.ReadItems(rules.UserHome(), root)
+	v.Unreadable = append(v.Unreadable, refused...)
+	here := promptRoot(rootLookup{}, root)
+	res, mem := injectWithRecall(rs, prompt, rules.SessionState{}, 0, bracket, 0, func(_ map[string]string, budget int) recall.Result {
+		return recall.Recall(recall.Request{Items: items, Prompt: prompt, Budget: budget, Root: here, Bracket: bracket})
+	})
 	injected := map[string]bool{}
 	for _, name := range res.Injected {
 		injected[name] = true
@@ -277,9 +301,15 @@ func rulesPrompt(stderr io.Writer, rs rules.RuleSet, root, prompt string, used *
 	for _, name := range res.Shrunk {
 		shrunk[name] = true
 	}
+	pointed := map[string]bool{}
+	for _, name := range res.Pointed {
+		pointed[name] = true
+	}
 	for _, d := range rs.Match(prompt) {
 		form := promptFormOverBudget
 		switch {
+		case pointed[d.Name]:
+			form = promptFormPointer
 		case shrunk[d.Name]:
 			form = promptFormShrunk
 		case injected[d.Name]:
@@ -288,10 +318,6 @@ func rulesPrompt(stderr io.Writer, rs rules.RuleSet, root, prompt string, used *
 		v.Domains = append(v.Domains, rulesPromptDomain{Name: d.Name, Label: rules.Label(d.Name, d.Source), Source: d.Source,
 			Hits: rules.Hits(d, prompt), Form: form})
 	}
-	items, refused := recall.ReadItems(rules.UserHome(), root)
-	v.Unreadable = append(v.Unreadable, refused...)
-	here := promptRoot(rootLookup{}, root)
-	mem := recall.Recall(recall.Request{Items: items, Prompt: prompt, Budget: rules.InjectionBudgetBytes - len(res.Text), Root: here, Bracket: bracket})
 	tooLarge := map[string]bool{}
 	for _, key := range mem.TooLarge {
 		tooLarge[key] = true
@@ -407,10 +433,12 @@ func promptFormWords(form string) string {
 		return "in full"
 	case promptFormShrunk:
 		return "as its heading and first rule, with the line naming the command that renders the rest"
+	case promptFormPointer:
+		return "as its heading and the command that renders it, no room for a rule"
 	case promptFormLine:
 		return "as one line: its key and title, without its body"
 	case promptFormTooLarge:
-		return "larger than the whole per-turn budget, so it does not come back in full"
+		return "too long for any turn even as one line, so it does not come back"
 	}
 	return "does not fit this turn's budget"
 }

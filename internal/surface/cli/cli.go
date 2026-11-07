@@ -44,6 +44,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/provenance"
 	"github.com/intentdriven/abcd/internal/core/question"
+	"github.com/intentdriven/abcd/internal/core/recall"
 	"github.com/intentdriven/abcd/internal/core/record"
 	"github.com/intentdriven/abcd/internal/core/record/match"
 	"github.com/intentdriven/abcd/internal/core/rules"
@@ -1856,7 +1857,7 @@ envelope carries it as system_message.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// The hook's one deadline (C12), set before anything else runs:
 			// the status block is read, rendered and kept shown inside what
-			// the drain, the rules and the memory notes leave of it.
+			// the drain leaves of it, and the rules and the memory notes follow.
 			deadline := time.Now().Add(hookBudget)
 			in, err := readHookInput(cmd)
 			if err != nil {
@@ -1949,7 +1950,20 @@ envelope carries it as system_message.`,
 			bracket := rules.BracketFor(fill)
 			// The fixed-N backstop comes from the repo's config (default 15 when
 			// unset); event-driven reset is the primary refresh (D1).
-			res := rules.Inject(rs, in.Prompt, rules.LoadState(session), rules.LoadBackstop(root), bracket)
+			// The status block (itd-2609151838312703 C6, C8, C10 to C12, C18):
+			// what the last fetch of the status branches brought that this
+			// checkout has not shown, from disk alone. It and the away block
+			// are read first, so the rules and notes share what they leave of
+			// the host's cap on the hook's whole output.
+			status := routerStatus(cmd, root, session, promptRoot(drained, root), deadline)
+			defer status.MarkShown()
+			reserved := len(status.Text) + len(away.Block)
+			// The rules, then the memory recall within what they left of the one
+			// per-turn budget (spc-2610111627213138), in the same bracket. The
+			// recall shares the session's state file through its own ledger.
+			res, mem := injectWithRecall(rs, in.Prompt, rules.LoadState(session), rules.LoadBackstop(root), bracket, reserved, func(ledger map[string]string, budget int) recall.Result {
+				return recallMemory(cmd.ErrOrStderr(), rs, root, in.Prompt, ledger, budget, promptRoot(drained, root), bracket)
+			})
 			// An unknown fill is said once a session, on stderr; the state
 			// saved below records that it was. Under the kill switch nothing
 			// comes back, so there is nothing to say about its form.
@@ -1958,12 +1972,6 @@ envelope carries it as system_message.`,
 					diagnosticLine(cmd.ErrOrStderr(), "abcd %s", line)
 				}
 			}
-			// The memory recall, after the rules and within what they left
-			// of the one per-turn budget (spc-2610111627213138), in the same
-			// bracket. It shares the session's state file through its own
-			// ledger.
-			mem := recallMemory(cmd.ErrOrStderr(), rs, root, in.Prompt, res.State.Recalled, rules.InjectionBudgetBytes-len(res.Text),
-				promptRoot(drained, root), bracket)
 			res.State.Recalled = mem.Ledger
 			if err := rules.SaveState(session, res.State); err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: state save failed (%s)\n", termsafe.Sanitize(err.Error()))
@@ -1973,7 +1981,11 @@ envelope carries it as system_message.`,
 			// whose words went into the context (GHSA-22f8-qf5r-gjgq).
 			fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: turn %d, injected %d domain(s) %v, %d bytes", res.State.Count, len(res.Injected), res.Labels(), len(res.Text))
 			if len(res.Shrunk) > 0 {
-				fmt.Fprintf(cmd.ErrOrStderr(), "; %d shrunk to heading and first rule %v (%s bracket)", len(res.Shrunk), res.Shrunk, bracket)
+				fmt.Fprintf(cmd.ErrOrStderr(), "; %d shrunk to heading and first rule %v (%s bracket, %d bytes left of the turn)", len(res.Shrunk), res.Shrunk, bracket,
+					max(0, rules.InjectionBudgetBytes-reserved-len(res.Text)-len(mem.Text)))
+			}
+			if len(res.Pointed) > 0 {
+				fmt.Fprintf(cmd.ErrOrStderr(), "; %d sent as heading and command alone %v, no room for a rule", len(res.Pointed), res.Pointed)
 			}
 			fmt.Fprintln(cmd.ErrOrStderr())
 			// Each item carries its layer ("mem-… (project)", "page:… (machine)"),
@@ -1991,19 +2003,14 @@ envelope carries it as system_message.`,
 						len(mem.Omitted), strings.Join(mem.Labels(mem.Omitted), ", "))
 				}
 				if len(mem.TooLarge) > 0 {
-					fmt.Fprintf(cmd.ErrOrStderr(), "; %d matched item(s) [%s] are larger than the whole per-turn budget and do not come back in full",
+					fmt.Fprintf(cmd.ErrOrStderr(), "; %d matched item(s) [%s] are too long for any turn even as one line and do not come back",
 						len(mem.TooLarge), strings.Join(mem.Labels(mem.TooLarge), ", "))
 				}
 				fmt.Fprintln(cmd.ErrOrStderr())
 			}
 			text := res.Text + mem.Text
-			// The status block (itd-2609151838312703 C6, C8, C10 to C12,
-			// C18): what the last fetch of the status branches brought that
-			// this checkout has not shown, from disk alone, inside its own
-			// budget, after the rules and the memory notes. It joins text
-			// before the title is read, so both emit paths below carry it.
-			status := routerStatus(cmd, root, session, promptRoot(drained, root), deadline)
-			defer status.MarkShown()
+			// The status block joins text before the title is read, so both
+			// emit paths below carry it.
 			text = joinBlocks(text, status.Text)
 			text = joinBlocks(text, away.Block)
 			// The name this session's start reserved, set once at its first
@@ -2675,7 +2682,7 @@ renders bare and carries "source": "bundled".
 
 A list an override sets replaces the one it would inherit, so an override can
 hold back an entry abcd ships or, in SHELL, one the repository's
-.abcd/guard.json teaches. For the guardrail domains (COMMITTING, LOAD, PII,
+.abcd/guard.json only warns about. For the guardrail domains (COMMITTING, LOAD, PII,
 SHELL), every such recall keyword, alias or rule that an override's list leaves
 out is named on stderr, with the file that set the list, here and on every hook
 prompt. To keep an entry, restate it in the list, or leave the field out to
@@ -2683,12 +2690,18 @@ inherit the list.
 
 SHELL is generated from the shell-hazard registry that "abcd guard" enforces
 in this repository, the bundled entries and the repository's own
-.abcd/guard.json entries alike: one rule per registry entry, naming the
-command, why it is dangerous and what to run instead, recalled by the commands
-the registry names. A rule in the repository's words is marked "(repo)" after
-its entry id. A guard.json the guard refuses is named on stderr and not taught;
-SHELL then teaches the registry the guard enforces in its place. It teaches
-before shell work what the guard refuses at the moment a command runs.
+.abcd/guard.json entries alike, recalled by the commands the registry names.
+Only part of it is sent as shell work starts: a line saying a guard judges each
+command, and the rules of the entries that only warn, since a warned command
+still runs. What it refuses, a delete it cannot prove safe included, is
+explained at the refusal, and this command lists those rules after the rest; --json carries them as
+"checked", with each list's size in "rules_bytes" and "checked_bytes". With the
+guard switched off, every rule is steering, more than one turn holds, so a line
+saying the guard is off is sent and this command lists the rest. A rule in the
+repository's words is marked "(repo)" after its entry id. A guard.json the guard
+refuses is named on stderr and left out; SHELL then lists the registry the guard
+enforces in its place. A new rule a machine can catch in a shell command goes in
+.abcd/guard.json, and any other in .abcd/rules.json.
 
 GRILL is generated from the asking rules every abcd interview follows, every
 limit they state (the header chip's width, the options per question, the words
@@ -2703,10 +2716,12 @@ session: each rule domain it matches, with the recall words that hit, and
 each memory note it recalls from ` + abcdhome.Display("memory.json") + ` and .abcd/memory.json,
 and each memory page from .abcd/memory/ and ` + abcdhome.Display("memory") + `/, with its
 layer and the recall words that hit. Each comes back in the form the
-context bracket gives it — a domain in full or as its heading and first
-rule, a note or page in full or as one line — or as not fitting the
-per-turn budget, or as larger than the whole budget, which no turn can
-carry in full. Notes and pages share one ranked order, a BM25F relevance
+context bracket and the per-turn budget give it — a domain in full, as its
+heading and first rule, or as its heading and the command that renders it,
+a note or page in full or as one line — or as not fitting the per-turn
+budget, or as too long for any turn even as one line. The budget sits just under
+what the host keeps of one hook's output, so a domain that does not fit is sent
+short and never cut. Notes and pages share one ranked order, a BM25F relevance
 score that decides which of them fit the budget: each shows its rank and
 score and, under it, every matched term with the fields it was found in
 (recall words, title, body) and what it added to the score. It reads
@@ -2767,7 +2782,7 @@ Read-only.`,
 					return &exitError{Code: 2, Msg: "abcd rules: no domain of that name (the name is not repeated here); the domains are " + strings.Join(known, ", ")}
 				}
 				return render(cmd.OutOrStdout(), *asJSON, d, func(w io.Writer) {
-					fmt.Fprint(w, rules.Render([]rules.ResolvedDomain{d}))
+					fmt.Fprint(w, rules.RenderListing([]rules.ResolvedDomain{d}))
 				})
 			}
 			// Bare: render the full active set.
@@ -2779,7 +2794,7 @@ Read-only.`,
 					fmt.Fprintf(w, "abcd rules — disabled (kill switch set in %s)\n", strings.Join(killSwitchFiles(rs), " and "))
 					return
 				}
-				if out := rules.Render(active); out != "" {
+				if out := rules.RenderListing(active); out != "" {
 					fmt.Fprint(w, out)
 					return
 				}
