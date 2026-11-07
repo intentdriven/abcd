@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/autonomy"
 	"github.com/intentdriven/abcd/internal/core/recall"
 	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -272,29 +272,22 @@ type rulesPromptView struct {
 	Unreadable []recall.Refusal    `json:"unreadable"`
 }
 
-// promptReserved is the bytes the hook takes off the turn's budget before the
-// rules, read as the hook reads them for a session that has been shown nothing:
-// the status block and the away block. It writes nothing: no status line is
-// marked shown and no refresh is started.
+// promptReserved is the bytes the away block takes off the turn's budget before
+// the rules, read as the hook reads it. The status block the hook also reads
+// first is left out: reading it takes in the status branches, which writes the
+// local tier, and this diagnostic writes nothing. An unmanaged checkout holds no
+// away record, so the root commit is not looked up for it.
 func promptReserved(stderr io.Writer, root string, here recall.RootFunc) int {
-	if root == "" {
+	if root == "" || !autonomy.Managed(root) {
 		return 0
 	}
 	sha, err := here()
-	away := readPromptAway(stderr, rootLookup{sha: sha, err: err, asked: true}, root)
-	ctx, cancel := context.WithTimeout(context.Background(), hookBudget)
-	defer cancel()
-	now := time.Now().UTC().Truncate(time.Second)
-	status, err := claim.PromptNotes(ctx, root, now, claim.Options{Now: func() time.Time { return now }, RootCommit: here})
-	if err != nil {
-		fmt.Fprintf(stderr, "abcd status: %s\n", termsafe.Sanitize(fsutil.RedactHome(err.Error())))
-	}
-	return len(status.Text) + len(away.Block)
+	return len(readPromptAway(stderr, rootLookup{sha: sha, err: err, asked: true}, root).Block)
 }
 
 // rulesPrompt answers `rules --prompt "<text>"`: what that one prompt brings
 // back to a fresh session. It runs the router's own path — the rules on an
-// empty ledger within what the status and away blocks leave, then the recall
+// empty ledger within what the away block leaves, then the recall
 // within what the rules left, both in the bracket used (the --fill value, or
 // nil for an unknown fill) puts it in — and writes nothing: no session state
 // is loaded or saved. A root-commit

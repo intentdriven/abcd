@@ -1603,7 +1603,7 @@ memory, memory takes what the rules actually left, and whatever of those bytes t
 notes leave unused goes back to the rules. When the matched domains do not all fit, room
 goes up a ladder, the cheapest first at each step: every domain gets its heading and
 a line naming the command that renders it, then its first rule, then all of its rules,
-so one long domain never holds back the next. Every form that carries a rule is recorded as sent, since it names the command,
+so one long domain never holds back the next. Every form that carries a rule is recorded as sent,
 and never one the host cut; a heading and its command alone carry no rule, so that domain is tried again next turn. Where the context bracket keeps rules in full, they come
 back in full whenever they fit what the turn leaves them; a bracket that shrinks rules
 sends each domain at most as its heading and first rule, however much room is left
@@ -1765,7 +1765,9 @@ turn it leaves the active set, so if it comes back its text is injected again
 the next time a prompt matches it, even when its rules are unchanged. A client
 that pruned it gets it back, and a host that appends to a transcript pays one
 re-render of that domain for the round trip; a domain that stays in force is
-not re-injected unchanged within a session, short of a reset or the refresh backstop. The plain path meets this
+not re-injected unchanged within a session, short of a reset or the refresh backstop,
+unless no turn has had room for one of its rules: its heading and command, which
+carry none, come back each turn it matches until one does. The plain path meets this
 in two cases:
 
 - a domain whose `rules.json` entry is deleted, renamed or made dormant and

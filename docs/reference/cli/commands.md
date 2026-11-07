@@ -5730,8 +5730,9 @@ heading and first rule, or as its heading and the command that renders it,
 a note or page in full or as one line — or as not fitting the per-turn
 budget, or as too long for any turn even as one line. The budget sits just under
 what the host keeps of one hook's output, so a domain that does not fit is sent
-short and never cut, and the status and away blocks the hook reads first take
-their share of it here too. Notes and pages share one ranked order, a BM25F relevance
+short and never cut, and the away block the hook reads first takes its share
+of it here too. The status block it also reads first is not counted, since
+reading it would write this checkout's status state. Notes and pages share one ranked order, a BM25F relevance
 score that decides which of them fit the budget: each shows its rank and
 score and, under it, every matched term with the fields it was found in
 (recall words, title, body) and what it added to the score. It reads
