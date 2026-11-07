@@ -133,7 +133,7 @@ func laneForge(lane Lane, listed map[int]listedPR, unread string) *LaneForge {
 		return &LaneForge{State: ForgeClosed, Note: n + " was closed without merging: reopen it, or hand the lane back so the step is built again"}
 	case pr.Mergeable == MergeableConflicting:
 		return &LaneForge{State: ForgeConflicting, Note: n + " conflicts with the default branch as the forge computes it (merge state " + status +
-			"), so it drifts until the default branch is merged into its branch or it is closed: the next step at the landing refuses it and names how"}
+			"), so it drifts until the default branch is merged into its branch or it is closed: the next step at the landing merges the default branch in for a run on an issue, where it can, and otherwise stops and names how"}
 	case pr.armed():
 		return &LaneForge{State: ForgeArmed, Note: n + " is open and armed, waiting on its merge (merge state " + status + ")"}
 	default:
