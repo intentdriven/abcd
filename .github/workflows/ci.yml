@@ -377,6 +377,66 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      # Drift gate for the .abcd/development design record. Blocking: a
+      # blocker-severity finding exits non-zero and fails the job; warn-level
+      # findings surface in the log only.
+      #
+      # `-agent-diff` additionally arms agent_contract's unbumped-edit check,
+      # which needs a base revision to compare against.
+      #
+      # THE FALLBACK CHAIN, argued once here for the two range-scoped gates
+      # that share it (this step, and the RS001/RS002 step in the record-lint
+      # job). The two events that gate a merge name their base
+      # in different fields, and the chain must cover both or a gate goes quiet
+      # on the event it does not cover — which is what happened to the merge
+      # queue (iss-2609091258115663). `merge_group.base_sha` is the base the
+      # queue entry was formed against, and reaching it matters most: the queue
+      # entry is the run that actually GATES the merge, and the only run that
+      # sees the final base after a competing pull request merged ahead of it,
+      # which is exactly the race a range check exists to catch. The two fields
+      # are mutually exclusive — no event carries both — so the order states
+      # precedence rather than selecting between live values.
+      #
+      # The nightly schedule and a dispatched run carry no base at all: they
+      # check a branch tip, not a change, so the chain resolves to the empty
+      # string there and each range gate announces that it did not run. Neither
+      # field can name a commit this checkout lacks on the events that carry it,
+      # but the step still probes rather than assuming: an empty or unusable
+      # base falls back to the unarmed run rather than failing, and every
+      # tree-shaped rule (the agent-prompt frontmatter, the canary, the
+      # changelog entry) runs either way. The fallback is loud, as a warning on
+      # the two events that should always name a base and a notice on the ones
+      # that never do: a downgrade nobody can see is a gate nobody knows is off.
+      #
+      # GH_TOKEN, this job's read-only token, lets prose_citation_resolves ask
+      # the forge which pull requests are open (iss-2611031731385043). It asks
+      # only when a record cites an id this tree does not resolve, then reads
+      # each open pull request's head from this full-history checkout, which
+      # holds every branch at checkout, which is why this step runs before the
+      # long test steps: a pull request pushed or merged during them would turn
+      # this run red. An id one of them carries is a pending reference,
+      # reported and not refused, since the release cut is where it must have
+      # landed. Without the token the forge cannot be read, and the citation
+      # is refused as it always was, saying why.
+      - name: Record-lint (drift gate)
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -n "${BASE_SHA:-}" ] &&
+            [ "$BASE_SHA" != "0000000000000000000000000000000000000000" ] &&
+            git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            go run ./cmd/record-lint -agent-diff "${BASE_SHA}...HEAD"
+          else
+            case "${GITHUB_EVENT_NAME:-}" in
+              pull_request | merge_group) level=warning ;;
+              *) level=notice ;;
+            esac
+            echo "::${level}::record-lint ran unarmed on this ${GITHUB_EVENT_NAME:-unnamed} run: no base commit for -agent-diff (BASE_SHA='${BASE_SHA:-}'), so agent_contract's unbumped-edit check did not run"
+            go run ./cmd/record-lint
+          fi
+
       # ABCD_TEST_SKIP_FLUSH lets the test binaries skip the flush to stable
       # storage (internal/fsutil/flush.go), an F_FULLFSYNC of about 8.8 ms per
       # synced write on macOS that no test asserts anything about. It needs a
@@ -484,64 +544,6 @@ jobs:
           ABCD_TEST_SKIP_FLUSH: "1"
           ABCD_TEST_SHARDS: "3"
         run: go test -race -count=1 -timeout 70m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
-
-      # Drift gate for the .abcd/development design record. Blocking: a
-      # blocker-severity finding exits non-zero and fails the job; warn-level
-      # findings surface in the log only.
-      #
-      # `-agent-diff` additionally arms agent_contract's unbumped-edit check,
-      # which needs a base revision to compare against.
-      #
-      # THE FALLBACK CHAIN, argued once here for the two range-scoped gates
-      # that share it (this step, and the RS001/RS002 step in the record-lint
-      # job). The two events that gate a merge name their base
-      # in different fields, and the chain must cover both or a gate goes quiet
-      # on the event it does not cover — which is what happened to the merge
-      # queue (iss-2609091258115663). `merge_group.base_sha` is the base the
-      # queue entry was formed against, and reaching it matters most: the queue
-      # entry is the run that actually GATES the merge, and the only run that
-      # sees the final base after a competing pull request merged ahead of it,
-      # which is exactly the race a range check exists to catch. The two fields
-      # are mutually exclusive — no event carries both — so the order states
-      # precedence rather than selecting between live values.
-      #
-      # The nightly schedule and a dispatched run carry no base at all: they
-      # check a branch tip, not a change, so the chain resolves to the empty
-      # string there and each range gate announces that it did not run. Neither
-      # field can name a commit this checkout lacks on the events that carry it,
-      # but the step still probes rather than assuming: an empty or unusable
-      # base falls back to the unarmed run rather than failing, and every
-      # tree-shaped rule (the agent-prompt frontmatter, the canary, the
-      # changelog entry) runs either way. The fallback is loud, as a warning on
-      # the two events that should always name a base and a notice on the ones
-      # that never do: a downgrade nobody can see is a gate nobody knows is off.
-      #
-      # GH_TOKEN, this job's read-only token, lets prose_citation_resolves ask
-      # the forge which pull requests are open (iss-2611031731385043). It asks
-      # only when a record cites an id this tree does not resolve, then reads
-      # each open pull request's head from this full-history checkout, which
-      # holds every branch: an id one of them carries is a pending reference,
-      # reported and not refused, since the release cut is where it must have
-      # landed. Without the token the forge cannot be read, and the citation
-      # is refused as it always was, saying why.
-      - name: Record-lint (drift gate)
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          if [ -n "${BASE_SHA:-}" ] &&
-            [ "$BASE_SHA" != "0000000000000000000000000000000000000000" ] &&
-            git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
-            go run ./cmd/record-lint -agent-diff "${BASE_SHA}...HEAD"
-          else
-            case "${GITHUB_EVENT_NAME:-}" in
-              pull_request | merge_group) level=warning ;;
-              *) level=notice ;;
-            esac
-            echo "::${level}::record-lint ran unarmed on this ${GITHUB_EVENT_NAME:-unnamed} run: no base commit for -agent-diff (BASE_SHA='${BASE_SHA:-}'), so agent_contract's unbumped-edit check did not run"
-            go run ./cmd/record-lint
-          fi
 
       # Promote-join drift gate (itd-4 AC3): both halves of every promote join
       # (`related_issues` on the intent, `related_intents` on the ledger record)
