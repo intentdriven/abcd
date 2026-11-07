@@ -443,7 +443,7 @@ if [ "$own_repo" -eq 1 ]; then
     rc=0
     out="$(cd "$src" && unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
       GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX &&
-      "$go_bin" build -buildvcs=false -o "$work/record-lint" ./cmd/record-lint 2>&1)" || rc=$?
+      "$go_bin" build --trimpath -buildvcs=false -o "$work/record-lint" ./cmd/record-lint 2>&1)" || rc=$?
     if [ "$rc" -ne 0 ] || [ ! -x "$work/record-lint" ]; then
       echo "commit-msg: BLOCKED — the record slug cap could not judge this commit (\`go build ./cmd/record-lint\` failed)." >&2
       say "            " "$out"

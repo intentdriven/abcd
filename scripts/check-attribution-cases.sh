@@ -40,7 +40,7 @@ trap 'rm -rf "$tmp"' EXIT
 # refusal added since the last cut is simply unknown to it (AGENTS.md). A build
 # failure here is fatal rather than a fallback — a corpus that silently stopped
 # exercising one half of the gate is worse than one that does not run.
-if ! go build -o "$tmp/abcd" ./cmd/abcd; then
+if ! go build -trimpath -o "$tmp/abcd" ./cmd/abcd; then
 	echo "check-attribution-cases: cannot build the outbound checker from this checkout" >&2
 	exit 2
 fi

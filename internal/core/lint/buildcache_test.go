@@ -54,9 +54,11 @@ func TestMakeTargetsBuildUnderTrimpath(t *testing.T) {
 
 // TestCIBuildsUnderTrimpath: make preflight runs the check job's steps, so the job
 // builds and tests in the form preflight does. The workflow's env reaches every
-// step of every job, so no job saves a form of the build cache another cannot use,
-// and the workflow's own test lines stay as the Makefile reads them. A job that set
-// its own GOFLAGS would take itself out of that, so none does.
+// step of ci.yml's own jobs, so none saves a form of the build cache another cannot
+// use, and the workflow's own test lines stay as the Makefile reads them. A job that
+// set its own GOFLAGS would take itself out of that, so none does. A reusable
+// workflow it calls does not inherit that env: the macOS suite keeps a cache of its
+// own, so it splits nothing.
 func TestCIBuildsUnderTrimpath(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
 	head, jobs, ok := strings.Cut(readRepoFile(t, root, ".github/workflows/ci.yml"), "\njobs:\n")
@@ -71,20 +73,44 @@ func TestCIBuildsUnderTrimpath(t *testing.T) {
 	}
 }
 
-// TestCommitHooksBuildUnderTrimpath: each hook builds the checkout's own abcd on
+// TestCommitHooksBuildUnderTrimpath: each hook builds the checkout's own tools on
 // every commit, so a hook without the flag gives each worktree its own copy of
 // every package whatever the rest does.
 func TestCommitHooksBuildUnderTrimpath(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
-	build := regexp.MustCompile(`"\$go_bin" build ([^\n]*)\./cmd/abcd`)
+	build := regexp.MustCompile(`"\$go_bin" build ([^\n]*)\./cmd/[a-z-]+`)
 	for _, hook := range []string{".githooks/commit-msg", ".githooks/pre-commit"} {
 		found := build.FindAllStringSubmatch(readRepoFile(t, root, hook), -1)
 		if len(found) == 0 {
-			t.Errorf("%s: no build of ./cmd/abcd found; the check or the hook changed shape", hook)
+			t.Errorf("%s: no build of a ./cmd tool found; the check or the hook changed shape", hook)
 		}
 		for _, m := range found {
 			if !strings.Contains(m[1], "-trimpath") {
 				t.Errorf("%s: a build without -trimpath: %s", hook, m[0])
+			}
+		}
+	}
+}
+
+// TestOtherBuildsUnderTrimpath: the two workflows restore the Linux cache ci.yml
+// keeps, so a build there without the flag recompiles everything cold and can
+// save the other form under that key. The corpus script runs in the attribution
+// job's own steps. None of them sits under ci.yml's workflow env.
+func TestOtherBuildsUnderTrimpath(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+	build := regexp.MustCompile(`go build ([^\n]*)\./cmd/[a-z-]+`)
+	for _, file := range []string{
+		".github/workflows/attribution.yml",
+		".github/workflows/site-screenshots.yml",
+		"scripts/check-attribution-cases.sh",
+	} {
+		found := build.FindAllStringSubmatch(readRepoFile(t, root, file), -1)
+		if len(found) == 0 {
+			t.Errorf("%s: no build of a ./cmd tool found; the check or the file changed shape", file)
+		}
+		for _, m := range found {
+			if !strings.Contains(m[1], "-trimpath") {
+				t.Errorf("%s: a build without -trimpath: %s", file, m[0])
 			}
 		}
 	}
