@@ -337,6 +337,7 @@ func TestAStoredReviewSetTheLoopNeverWritesIsRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 	delete(m, "review")
+	delete(m, "admitted")
 	raw, _ := json.Marshal(m)
 	if err := os.WriteFile(path, raw, 0o600); err != nil {
 		t.Fatal(err)
@@ -366,6 +367,9 @@ func unreviewOlder(doc map[string]any) {
 	}
 	if v <= schemaVersionUnreviewed {
 		delete(doc, "review")
+	}
+	if v <= schemaVersionUnadmitted {
+		delete(doc, "admitted")
 	}
 	if v <= schemaVersionUnkeyed {
 		unkeyOlder(doc)

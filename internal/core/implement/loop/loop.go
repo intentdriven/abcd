@@ -20,6 +20,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/intent"
+	"github.com/intentdriven/abcd/internal/core/landings"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/recordid"
@@ -136,6 +137,12 @@ type Options struct {
 	// and an issue run handed back is over, so a lane the drain opens again
 	// on its issue is a new run rather than that run resumed (drain_readmit.go).
 	drain bool
+	// admitted is the rule a lane the drain opens is admitted under: the rule
+	// record drainrule.Load named for the drain's move, by id and path. A new
+	// run the drain starts without one is refused, so no records commit can
+	// read `Admitted-by: drain` with no id; a run `abcd build` starts takes its
+	// spec or issue instead (admission).
+	admitted *Admitted
 	// pace is the pace a new run starts on in place of the one the flags and
 	// configuration resolve: the drain's, so every lane it opens runs on the
 	// pace the drain does (spc-2610161044461448 step 16). Nil resolves it.
@@ -522,6 +529,27 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 	return res, err
 }
 
+// StageAdmitted is the run record's stage for the rule the run's lanes were
+// admitted under.
+const StageAdmitted = "admitted"
+
+// admission is the rule a new run's lanes are admitted under: the drain's rule
+// record for a lane the drain opens, else the issue an issue-keyed run fixes or
+// the spec an intent's run builds against. An auto-plan run plans a draft that
+// has no spec yet and lands nothing, so it records none.
+func admission(chk CheckResult, o Options) *Admitted {
+	switch {
+	case o.drain:
+		a := *o.admitted
+		return &a
+	case validIssueKey(chk.Key):
+		return &Admitted{Kind: landings.KindBuild, Record: chk.Key}
+	case chk.autoPlan != nil || chk.Spec == "":
+		return nil
+	}
+	return &Admitted{Kind: landings.KindBuild, Record: chk.Spec}
+}
+
 // startChecked is start past the checks that need no run.
 func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) {
 	if o.AutoPlan && validIssueKey(key) {
@@ -553,6 +581,10 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 			return StartResult{}, err
 		}
 		return res, nil
+	}
+	if o.drain && (o.admitted == nil || o.admitted.Kind != landings.KindDrain || o.admitted.Check() != "") {
+		return StartResult{}, refuse("check", "", "", "a lane the drain opens starts only under the repository's drain rule record, and none was given to this start",
+			"drain again: the drain passes the rule record drainrule.Load names to every lane it opens, and the bundled baseline is never one")
 	}
 	var pace Pace
 	if o.pace != nil {
@@ -677,6 +709,7 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 			Pace:            &pace,
 			Review:          &review,
 			ReservedAt:      rsv.at,
+			Admitted:        admission(chk, o),
 		}
 		if chk.autoPlan != nil {
 			if err := openAutoPlanLane(&st, *chk.autoPlan); err != nil {
@@ -696,6 +729,9 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 			Note: "pace " + pace.String() + "; the first window opens now"})
 		st.Record = append(st.Record, Entry{At: now, Stage: StageReview, Note: "review set " + review.String()})
 		st.Record = append(st.Record, Entry{At: now, Stage: CheckBudget, Note: budget.Detail})
+		if st.Admitted != nil {
+			st.Record = append(st.Record, Entry{At: now, Stage: StageAdmitted, Note: "admitted under " + st.Admitted.String()})
+		}
 		if rsv.note != "" {
 			st.Record = append(st.Record, Entry{At: now, Stage: StageReservation, Note: rsv.note})
 		}

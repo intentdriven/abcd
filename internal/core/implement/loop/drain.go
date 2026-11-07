@@ -37,6 +37,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/drainrule"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
+	"github.com/intentdriven/abcd/internal/core/landings"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -1210,6 +1211,9 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		lane.reserve = footprint
 		lane.plan = &plan
 		lane.drain = true
+		// The lane is admitted under the rule this move loaded and judged the
+		// issue by, which its records commit names (itd-2610301850454860).
+		lane.admitted = &Admitted{Kind: landings.KindDrain, Record: rule.Record, Path: rule.Path}
 		if owned {
 			lane.held = &heldReservation{at: hold.ClaimedAt, note: fmt.Sprintf("reserved %s on %s for this copy until %s before its judgement, footprint: %s",
 				v.ID, claim.Remote, stamp(hold.EffectiveExpiry), strings.Join(hold.Footprint, ", "))}

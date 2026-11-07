@@ -211,7 +211,17 @@ func TestLanesOnAnotherProfileAreTheLaneInProgress(t *testing.T) {
 func TestALaterVersionAloneCarriesAProfile(t *testing.T) {
 	repo, runID, _, _ := issueAwaiting(t)
 	path := filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(runID)))
+	// The admission joined at version 24, so a file of version 21 carries none.
 	good := stateBytes(t, repo.Root(), runID)
+	var doc map[string]any
+	if err := json.Unmarshal(good, &doc); err != nil {
+		t.Fatal(err)
+	}
+	delete(doc, "admitted")
+	good, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
 	cur := fmt.Sprintf(`"schema_version": %d,`, SchemaVersion)
 	const old = `"schema_version": 21,`
 	write := func(s string) {

@@ -57,6 +57,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/core/landing"
+	"github.com/intentdriven/abcd/internal/core/landings"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -68,6 +69,10 @@ import (
 // preflight's receipts live in too (landing.TierRelDir). It is never created
 // here.
 const TierRelDir = landing.TierRelDir
+
+// Admitted is the rule a run's lanes were admitted under, in the grammar of the
+// `Admitted-by:` trailer its records commits carry (landings.Admitted).
+type Admitted = landings.Admitted
 
 // RunRelDir is the directory every run of this checkout lives under.
 const RunRelDir = TierRelDir + "/run"
@@ -288,10 +293,22 @@ const lockFileName = ".lock"
 // that write version 22 refuse a version-23 file as a newer abcd's before any strict
 // decode.
 //
+// Version 24 added the run's `admitted` (itd-2610301850454860): the rule its
+// lanes were admitted under, which each records commit carries as its
+// `Admitted-by:` trailer. Version 23 is its strict subset, read as a run that
+// recorded no admission, whose records step is refused naming the field; a file
+// of version 23 or lower carrying one is not one its version wrote, and is
+// refused naming it. Releases that write version 23 refuse a version-24 file as
+// a newer abcd's before any strict decode.
+//
 // A version raises when the abcd driving the run writes it. A lane's own abcd
 // may be a version ahead of its driver, and what it saves leaves the version
 // where it was (mutateReservation, iss-2611020719494343).
-const SchemaVersion = 23
+const SchemaVersion = 24
+
+// schemaVersionUnadmitted is the last version before a run kept the rule its lanes
+// were admitted under: read, never written.
+const schemaVersionUnadmitted = 23
 
 // schemaVersionUnsettled is the last version before a landing kept that it took a
 // change to the lane's spec: read, never written.
@@ -480,6 +497,14 @@ type State struct {
 	// candidates, their scores and the grounds entry its first lane commits.
 	// Nil for a run `abcd build <itd-N>` started.
 	Pick *RunPick `json:"pick,omitempty"`
+	// Admitted is the rule the run's lanes were admitted under
+	// (itd-2610301850454860): the drain's rule record, with its path, for a lane
+	// the drain opened, else the spec the run builds against or the issue it
+	// fixes. Written at the start; every records commit carries it as its
+	// `Admitted-by:` trailer, and a records step over a state without it is
+	// refused. Nil in a run a state file before version 24 holds, and in an
+	// auto-plan run, which plans a draft and lands nothing.
+	Admitted *Admitted `json:"admitted,omitempty"`
 	// Lanes are the lanes opened so far, in the order they opened; several may
 	// be open at once, up to the ceiling (ruling DR6). A lane lands one step of
 	// the spec's `## Steps` (the whole spec when it lists none).
@@ -1344,7 +1369,10 @@ func readListedState(root *os.Root, runID string) (State, error) {
 	case st.SchemaVersion <= schemaVersionUnsettled && st.settledSpec() != "":
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.settledSpec(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnsettled:
+	case st.SchemaVersion <= schemaVersionUnadmitted && st.Admitted != nil:
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries an admission, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnadmitted:
 		// Read as the current version, its stages already carried over by
 		// decodeState when it named them `step`; the next write carries it, and
 		// this read writes nothing.
@@ -1356,6 +1384,15 @@ func readListedState(root *os.Root, runID string) (State, error) {
 	if st.Profile != "" && !runner.PlainProfileName(st.Profile) {
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s carries a profile that is no plain name (the value is not repeated here)", rel),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	}
+	// The admission reaches a commit message as its trailer, so a hand edit
+	// carrying anything but what the start writes is refused, never copied; the
+	// refusal does not echo it.
+	if st.Admitted != nil {
+		if why := st.Admitted.Check(); why != "" {
+			return State{}, refuse("state", "", "", rel+" carries an admission the loop never writes: "+why,
+				"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+		}
 	}
 	if st.RunID != runID {
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s names run %q, not the run it is stored under", rel, st.RunID),
