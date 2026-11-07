@@ -649,7 +649,9 @@ review is saved for HEAD:
 review is labelled with the commit it read and kept in the checkout's local
 tier, so a review saved on a feature branch does not carry over: a cut made on
 `main` needs one recorded there for the merge commit, which means running the
-reviewer after the merge. A cut that ships no intent needs no docs review, but
+reviewer after the merge. A head whose tree is a reviewed commit's own stands on
+that review, and the cut report says so under `docs review:` (`fidelity_note` in
+the JSON). A cut that ships no intent needs no docs review, but
 it still refuses (`doc-fidelity`) a verb, sub-verb or agent the binary ships
 that no brief chapter names.
 
@@ -888,7 +890,7 @@ has not admitted), the installability smoke at both tiers (the deep tier always 
 the cut), the parity diff against the anchor tag, and the warn-tier rows. A file the bundler
 rejected stops it at once; otherwise it refuses with every finding from every
 gate together (exit 2). It writes its pre-flight report whatever the verdict; the refusal names where it landed, and `--json` carries it as
-`preflight_report`. A working tree with uncommitted changes refuses unless the
+`preflight_report`. The hosted release run reuses no test result. A working tree with uncommitted changes refuses unless the
 ship is passed `--allow-dirty`, which carries them into the cut and records the
 override, with every path it carried, in the report (`allowed_dirty` in
 `--json`). The flag waives the dirty-tree gate and nothing else: never lockstep,

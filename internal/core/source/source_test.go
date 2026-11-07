@@ -154,6 +154,215 @@ func TestAddConfidentialLandsUnderItsClassFolder(t *testing.T) {
 	}
 }
 
+// TestIdentifyingKeyLeavesAnOpaqueKeyAlone: comparing a plain name word by word
+// refuses no key that holds none of its words, and a word under three runes is
+// too short to count on its own.
+func TestIdentifyingKeyLeavesAnOpaqueKeyAlone(t *testing.T) {
+	for _, tc := range []struct{ key, literal string }{
+		{"conf2026a", "Ada " + confAuthor},
+		{"conf2026a", "Ada Okoro-Bello"},
+		{"lixu2026", "Li Na"},
+		{"adler2026", "Ad Xu"},
+		{"conf2026a", "Quiet Harbour Group 2026"},
+		{"conf2026a", "Ada Okoro 2026"},
+	} {
+		e := Entry{ID: tc.key, Title: confTitle, Author: []Name{{Literal: tc.literal}}}
+		if field := identifyingKey(e); field != "" {
+			t.Errorf("key %q with author %q is refused for its %s", tc.key, tc.literal, field)
+		}
+	}
+	for _, tc := range []struct {
+		key  string
+		name Name
+	}{
+		{"conf2026a", Name{Family: confAuthor, Given: "Ada"}},
+		{"conf2026a", Name{Family: "Okoro-Bello", Given: "Mary-Anne"}},
+		{"lixu2026", Name{Family: "Na", Given: "Li"}},
+		{"conf2026a", Name{Family: "Okoro 2026", Given: "Ada"}},
+		{"linu2026", Name{Family: "Na", Given: "Li"}},
+	} {
+		e := Entry{ID: tc.key, Title: confTitle, Author: []Name{tc.name}}
+		if field := identifyingKey(e); field != "" {
+			t.Errorf("key %q with author %+v is refused for its %s", tc.key, tc.name, field)
+		}
+	}
+}
+
+// TestIdentifyingKeyReadsEveryFieldInEitherUnicodeForm: an accented value in its
+// composed and decomposed forms gives the same answer in each field fold reads,
+// against a key spelled in plain letters.
+func TestIdentifyingKeyReadsEveryFieldInEitherUnicodeForm(t *testing.T) {
+	const composed, decomposed = "M\u00fclo", "Mu\u0308lo"
+	for _, tc := range []struct {
+		field string
+		entry func(value string) Entry
+		key   string
+	}{
+		{"alias", func(v string) Entry { return Entry{Title: confTitle, Custom: Custom{Aliases: []string{v}}} }, "mulo2026"},
+		{"title", func(v string) Entry { return Entry{Title: v} }, "mulo2026"},
+		{"title", func(v string) Entry { return Entry{Title: "Some " + v + "ness Notes"} }, "muloness2026"},
+		{"author", func(v string) Entry { return Entry{Title: confTitle, Author: []Name{{Family: v}}} }, "mulo2026"},
+		{"author", func(v string) Entry { return Entry{Title: confTitle, Author: []Name{{Given: v, Family: confAuthor}}} }, "mulo2026"},
+		{"author", func(v string) Entry { return Entry{Title: confTitle, Author: []Name{{Literal: "Ada " + v}}} }, "mulo2026"},
+	} {
+		for name, value := range map[string]string{"composed": composed, "decomposed": decomposed} {
+			e := tc.entry(value)
+			e.ID = tc.key
+			if got := identifyingKey(e); got != tc.field {
+				t.Errorf("%s form of %+v with key %q: refused for %q, want %q", name, e, tc.key, got, tc.field)
+			}
+		}
+	}
+}
+
+// TestFoldGivesOneAnswerForEitherUnicodeForm: fold keeps letters and digits,
+// lowercased, whichever form a name arrives in.
+func TestFoldGivesOneAnswerForEitherUnicodeForm(t *testing.T) {
+	for in, want := range map[string]string{
+		"M\u00fcller":  "muller",
+		"Mu\u0308ller": "muller",
+		"O'Brien 2026": "obrien2026",
+	} {
+		if got := fold(in); got != want {
+			t.Errorf("fold(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// TestIdentifyingKeyReadsLettersByTheirPlainSpelling: a letter with no decomposition
+// compares by its usual plain spelling, in any field and in either case, since a
+// key is ASCII. A key holding none of the name still passes.
+func TestIdentifyingKeyReadsLettersByTheirPlainSpelling(t *testing.T) {
+	for _, tc := range []struct{ letter, value, want string }{
+		{"\u00f8", "S\u00f8rlo", "sorlo"},
+		{"\u0142", "Wa\u0142ek", "walek"},
+		{"\u0111", "\u0111urlo", "durlo"},
+		{"\u00f0", "E\u00f0valo", "edvalo"},
+		{"\u00fe", "\u00feorlo", "thorlo"},
+		{"\u00e6", "H\u00e6lor", "haelor"},
+		{"\u0153", "C\u0153lor", "coelor"},
+		{"\u00df", "Stra\u00dfer", "strasser"},
+		{"\u0131", "Y\u0131ldor", "yildor"},
+		{"capital \u00d8", "S\u00d8RLO", "sorlo"},
+	} {
+		t.Run(tc.letter, func(t *testing.T) {
+			if got := fold(tc.value); got != tc.want {
+				t.Errorf("fold(%q) = %q, want %q", tc.value, got, tc.want)
+			}
+			key := tc.want + "2026"
+			for field, e := range map[string]Entry{
+				"author": {ID: key, Title: confTitle, Author: []Name{{Family: tc.value}}},
+				"alias":  {ID: key, Title: confTitle, Custom: Custom{Aliases: []string{tc.value}}},
+				"title":  {ID: key, Title: tc.value},
+			} {
+				if got := identifyingKey(e); got != field {
+					t.Errorf("key %q with %s %q: refused for %q", key, field, tc.value, got)
+				}
+			}
+			if got := identifyingKey(Entry{ID: "conf2026a", Title: confTitle, Author: []Name{{Family: tc.value}}}); got != "" {
+				t.Errorf("an unrelated key with author %q is refused for its %s", tc.value, got)
+			}
+		})
+	}
+}
+
+// TestIdentifyingKeyReadsEveryUsualSpelling: a name is compared by each of its usual
+// plain spellings, in its compatibility forms too, and a format character inside a
+// word does not split it. A key holding none of the name still passes.
+func TestIdentifyingKeyReadsEveryUsualSpelling(t *testing.T) {
+	for _, tc := range []struct{ name, value, key, field string }{
+		{"u umlaut, second spelling", "M\u00fcller", "mueller2026", "author"},
+		{"u umlaut, decomposed", "Mu\u0308ller", "mueller2026", "author"},
+		{"u umlaut, first spelling", "M\u00fcller", "muller2026", "author"},
+		{"capital u umlaut", "M\u00dcLLER", "mueller2026", "author"},
+		{"o umlaut", "Sch\u00f6n", "schoen2026", "author"},
+		{"a umlaut", "B\u00e4r", "baer2026", "author"},
+		{"slashed o, second spelling", "S\u00f8rensen", "soerensen2026", "author"},
+		{"a ring, second spelling", "H\u00e5kon", "haakon2026", "author"},
+		{"a ring, first spelling", "H\u00e5kon", "hakon2026", "author"},
+		{"d stroke, second spelling", "\u0110okovi\u0107", "djokovic2026", "author"},
+		{"ligature", "Gri\ufb03ths", "griffiths2026", "author"},
+		{"fullwidth letters", "\uff2d\uff41\uff52\uff4c\uff4f", "marlo2026", "author"},
+		{"h stroke", "\u0126agar", "hagar2026", "author"},
+		{"t stroke", "\u0166alor", "talor2026", "author"},
+		{"eng, first spelling", "Ha\u014bor", "hangor2026", "author"},
+		{"eng, second spelling", "Ha\u014bor", "hanor2026", "author"},
+		{"schwa, first spelling", "\u018fliyev", "aliyev2026", "author"},
+		{"schwa, second spelling", "\u018fliyev", "eliyev2026", "author"},
+		{"f hook", "\u0192arlo", "farlo2026", "author"},
+		{"soft hyphen in a title word", "Harb\u00adour Notes", "harbour2026", "title"},
+		{"zero width joiner in a name", "Mar\u200dlo", "marlo2026", "author"},
+		{"schwa, spelt each way in one word", "M\u0259mm\u0259dov", "mammedov2026", "author"},
+		{"slashed o and a ring, spelt each way", "N\u00f8rg\u00e5rd", "norgaard2026", "author"},
+		{"modifier letter turned comma", "G\u02bbofurov", "gofurov2026", "author"},
+		{"modifier letter apostrophe, whole name", "O\u02bcBrien", "obrien2026", "author"},
+		{"modifier letter apostrophe, the part after it", "O\u02bcBrien", "brien2026", "author"},
+		{"Latin letter outside the table", "\u018aanjuma", "danjuma2026", "author"},
+		{"Latin letter outside the table, two of them", "\u0198a\u0253ir", "kabir2026", "author"},
+		{"compatibility form holding a middle dot", "Pa\u0140lar\u00e8s", "pallares2026", "author"},
+		{"compatibility form holding a modifier letter", "\u0149arlo", "narlo2026", "author"},
+		{"double acute", "Erd\u0151s", "erdoes2026", "author"},
+		{"s and c with marks, second spellings", "\u0160imi\u0107", "shimich2026", "author"},
+		{"z caron, second spelling", "\u017dukov", "zhukov2026", "author"},
+		{"zero width space between words", "Anna\u200bSmith", "smith2026", "author"},
+		{"symbol ending an alias", "Foobar\u2122", "foobar2026", "alias"},
+		{"symbol ending a short title", "Acme\u2122", "acme2026", "title"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := Entry{ID: tc.key, Title: confTitle, Author: []Name{{Family: tc.value}}}
+			switch tc.field {
+			case "title":
+				e = Entry{ID: tc.key, Title: tc.value}
+			case "alias":
+				e = Entry{ID: tc.key, Title: confTitle, Custom: Custom{Aliases: []string{tc.value}}}
+			}
+			if got := identifyingKey(e); got != tc.field {
+				t.Errorf("key %q with %q: refused for %q, want %q", tc.key, tc.value, got, tc.field)
+			}
+			if tc.field == "author" {
+				if got := identifyingKey(Entry{ID: "conf2026a", Title: confTitle, Author: []Name{{Family: tc.value}}}); got != "" {
+					t.Errorf("an unrelated key with author %q is refused for its %s", tc.value, got)
+				}
+			}
+		})
+	}
+}
+
+// TestIdentifyingKeyPassesWhatHoldsNoneOfTheName: an opaque key stands however its
+// source's name is spelt, a short name counts by the letters it can be spelt in, and a
+// name in another script is not compared.
+func TestIdentifyingKeyPassesWhatHoldsNoneOfTheName(t *testing.T) {
+	for _, tc := range []struct{ name, value, key string }{
+		{"two letters and a long second spelling", "\u00c5s", "aas2026"},
+		{"one letter and one outside the table", "\u018aa", "handbook2026"},
+		{"two letters and one outside the table", "\u018aan", "handbook2026"},
+		{"another script", "\u0418\u0432\u0430\u043d\u043e\u0432", "ivanov2026"},
+		{"opaque key, Latin letter outside the table", "\u018aanjuma", "conf2026a"},
+		{"opaque key, mixed spellings", "N\u00f8rg\u00e5rd", "conf2026a"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := Entry{ID: tc.key, Title: confTitle, Author: []Name{{Family: tc.value}}}
+			if got := identifyingKey(e); got != "" {
+				t.Errorf("key %q with author %q is refused for its %s", tc.key, tc.value, got)
+			}
+		})
+	}
+}
+
+// TestIdentifyingKeyReadsAnAuthorTheSameInEitherForm: a person entered plainly and
+// the same person entered as family and given name refuse the same keys.
+func TestIdentifyingKeyReadsAnAuthorTheSameInEitherForm(t *testing.T) {
+	plain := Name{Literal: "Mary-Anne Okoro-Bello"}
+	parts := Name{Family: "Okoro-Bello", Given: "Mary-Anne"}
+	for _, key := range []string{"mary2026", "anne2026", "okoro2026", "bello2026", "maryanne2026", "okorobello2026", "maryanneokorobello2026", "conf2026a"} {
+		a := identifyingKey(Entry{ID: key, Title: confTitle, Author: []Name{plain}})
+		b := identifyingKey(Entry{ID: key, Title: confTitle, Author: []Name{parts}})
+		if a != b {
+			t.Errorf("key %q: the plain form gives %q, the family and given form %q", key, a, b)
+		}
+	}
+}
+
 // TestAddRefusals: every refusal writes nothing, and none quotes a confidential
 // title or alias.
 func TestAddRefusals(t *testing.T) {
@@ -172,6 +381,23 @@ func TestAddRefusals(t *testing.T) {
 		{"unknown permission", func(r *AddRequest) { r.Permission = "whatever" }, ErrInvalidEntry},
 		{"key names an alias", func(r *AddRequest) { r.Key = "harbourwatch2026"; r.Aliases = []string{confAlias} }, ErrIdentifyingKey},
 		{"key names the author", func(r *AddRequest) { r.Key = "okonkwo2026"; r.Authors = []Name{{Family: confAuthor}} }, ErrIdentifyingKey},
+		{"key names a plain-name author's surname", func(r *AddRequest) { r.Key = "okonkwo2026"; r.Authors = []Name{{Literal: "Ada " + confAuthor}} }, ErrIdentifyingKey},
+		{"key names a plain-name author's first name", func(r *AddRequest) { r.Key = "adaeze2026"; r.Authors = []Name{{Literal: "Adaeze " + confAuthor}} }, ErrIdentifyingKey},
+		{"key names the second half of a hyphenated plain name", func(r *AddRequest) { r.Key = "bello2026"; r.Authors = []Name{{Literal: "Ada Okoro-Bello"}} }, ErrIdentifyingKey},
+		{"key names the part of a plain name after an apostrophe", func(r *AddRequest) { r.Key = "brien2026"; r.Authors = []Name{{Literal: "Ada O'Brien"}} }, ErrIdentifyingKey},
+		{"key names a whole plain name of short words", func(r *AddRequest) { r.Key = "lina2026"; r.Authors = []Name{{Literal: "Li Na"}} }, ErrIdentifyingKey},
+		{"key names the second half of a hyphenated family name", func(r *AddRequest) { r.Key = "bello2026"; r.Authors = []Name{{Family: "Okoro-Bello", Given: "Ada"}} }, ErrIdentifyingKey},
+		{"key names a word of a family name in several words", func(r *AddRequest) { r.Key = "berg2026"; r.Authors = []Name{{Family: "van der Berg", Given: "Ada"}} }, ErrIdentifyingKey},
+		{"key names the given name", func(r *AddRequest) { r.Key = "adaeze2026"; r.Authors = []Name{{Family: confAuthor, Given: "Adaeze"}} }, ErrIdentifyingKey},
+		{"key names a word of the given name", func(r *AddRequest) { r.Key = "anne2026"; r.Authors = []Name{{Family: confAuthor, Given: "Mary-Anne"}} }, ErrIdentifyingKey},
+		{"key names a family and given name of short words", func(r *AddRequest) { r.Key = "lina2026"; r.Authors = []Name{{Family: "Na", Given: "Li"}} }, ErrIdentifyingKey},
+		{"key names an accented plain name without its accent", func(r *AddRequest) { r.Key = "muller2026"; r.Authors = []Name{{Literal: "Ada M\u00fcller"}} }, ErrIdentifyingKey},
+		{"key names an accented family name without its accent", func(r *AddRequest) { r.Key = "muller2026"; r.Authors = []Name{{Family: "M\u00fcller", Given: "Ada"}} }, ErrIdentifyingKey},
+		{"key names a decomposed given name without its accent", func(r *AddRequest) { r.Key = "zoe2026"; r.Authors = []Name{{Family: confAuthor, Given: "Zoe\u0308"}} }, ErrIdentifyingKey},
+		{"key names a longer word of a hyphenated title", func(r *AddRequest) { r.Key = "harbour2026"; r.Title = "Quiet-Harbour Notes" }, ErrIdentifyingKey},
+		{"key names a longer word after an apostrophe in the title", func(r *AddRequest) { r.Key = "harbour2026"; r.Title = "O'Harbour Notes" }, ErrIdentifyingKey},
+		{"key names a family and given name, family first", func(r *AddRequest) { r.Key = "nali2026"; r.Authors = []Name{{Family: "Na", Given: "Li"}} }, ErrIdentifyingKey},
+		{"key names a word holding a combining mark", func(r *AddRequest) { r.Key = "mulo2026"; r.Authors = []Name{{Literal: "Ada Mu\u0308lo"}} }, ErrIdentifyingKey},
 		{"bad key", func(r *AddRequest) { r.Key = "../x" }, ErrInvalidEntry},
 		{"binary original with no text", func(r *AddRequest) { r.Text = "" }, ErrInvalidEntry},
 		{"fragment alias", func(r *AddRequest) { r.Aliases = []string{"hb"} }, ErrInvalidEntry},

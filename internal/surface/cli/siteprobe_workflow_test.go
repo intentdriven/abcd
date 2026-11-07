@@ -9,8 +9,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // siteprobe_workflow_test.go holds iss-2609260709386741: site.yml probes for the
@@ -124,7 +122,7 @@ func TestSiteWorkflowProbeFindsTheSiteVerb(t *testing.T) {
 	} {
 		for i, step := range steps {
 			t.Run(bin.name+"/step"+strconv.Itoa(i), func(t *testing.T) {
-				repo := gittest.NewRepo(t)
+				repo := newRepo(t)
 				repo.Commit("fixture")
 				root := repo.Root()
 				repo.Write("stub/flat.txt", bin.flat)

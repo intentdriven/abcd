@@ -180,6 +180,154 @@ func TestCheck_FlagsAToolIdentity(t *testing.T) {
 	}
 }
 
+// noIdentityEnv is isolateCommitter with the identity variables unset rather than
+// blank: git refuses a blank GIT_AUTHOR_NAME where the resolver reads it as unset,
+// so a blank one would stop `git var` before it stamped anything. EMAIL is pinned
+// because git falls back to it for an unset email.
+func noIdentityEnv(t *testing.T) {
+	t.Helper()
+	isolateCommitter(t)
+	t.Setenv("EMAIL", "")
+	for _, key := range []string{"GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL", "EMAIL"} {
+		if err := os.Unsetenv(key); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// TestCheck_JudgesTheIdentityGitWouldStamp: git removes some bytes when it stamps
+// an identity, and the check judges the stamped form, as the attribution gate
+// reads the commit.
+func TestCheck_JudgesTheIdentityGitWouldStamp(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		user, mail    string
+		env           map[string]string
+		wantAuthor    bool
+		wantCommitter bool
+	}{
+		{name: "an angle bracket inside the name and the email", user: "Cl<aude", mail: "no<reply@anthro>pic.com", wantAuthor: true, wantCommitter: true},
+		{name: "an angle bracket inside the name alone", user: "Cl>aude", mail: "alice@example.com", wantAuthor: true, wantCommitter: true},
+		{name: "an angle bracket inside the email alone", user: "Alice", mail: "alice@anthro<pic.com", wantAuthor: true, wantCommitter: true},
+		{name: "a trailing comma after a name shape", user: "ci-bot,", mail: "alice@example.com", wantAuthor: true, wantCommitter: true},
+		{name: "a mailbox noreply only once stamped, in the author role", user: "Alice", mail: "<noreply@example.com", wantAuthor: true},
+		{name: "the author's environment", user: "Alice", mail: "alice@example.com",
+			env: map[string]string{"GIT_AUTHOR_NAME": "Cl>aude"}, wantAuthor: true},
+		{name: "the committer's environment", user: "Alice", mail: "alice@example.com",
+			env: map[string]string{"GIT_COMMITTER_EMAIL": "ci@anthro>pic.com"}, wantCommitter: true},
+		{name: "a command-line entry, as a hook inherits it", user: "Alice", mail: "alice@example.com",
+			env: map[string]string{"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "committer.name", "GIT_CONFIG_VALUE_0": "ci-bot,"}, wantCommitter: true},
+		{name: "a person whose name carries the same bytes", user: "Carol Talbot,", mail: "carol.talbot@example.com"},
+		{name: "a person's name holding a machine's only in part", user: "Claudette<", mail: "claudette@example.com"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			noIdentityEnv(t)
+			dir := gitRepo(t, tc.user, tc.mail)
+			for k, v := range tc.env {
+				t.Setenv(k, v)
+			}
+			res, err := Check(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.AuthorIsTool != tc.wantAuthor || res.CommitterIsTool != tc.wantCommitter {
+				t.Fatalf("author=%v committer=%v, want author=%v committer=%v", res.AuthorIsTool, res.CommitterIsTool, tc.wantAuthor, tc.wantCommitter)
+			}
+			if tc.wantAuthor || tc.wantCommitter {
+				if !res.Blocks() {
+					t.Fatal("a machine identity as stamped must block")
+				}
+			}
+		})
+	}
+}
+
+// TestCheck_StampedIdentityUnderUseConfigOnly: user.useConfigOnly stops git
+// guessing a field, which fails `git var` only when a field is unset. A complete
+// identity is still read as stamped, and an incomplete one stays what it is, an
+// unset identity, with no error from the failed read.
+func TestCheck_StampedIdentityUnderUseConfigOnly(t *testing.T) {
+	t.Run("complete", func(t *testing.T) {
+		noIdentityEnv(t)
+		dir := gitRepo(t, "ci-bot,", "alice@example.com")
+		runGitT(t, dir, "config", "user.useConfigOnly", "true")
+		res, err := Check(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !res.AuthorIsTool || !res.CommitterIsTool {
+			t.Fatalf("author=%v committer=%v, want both flagged", res.AuthorIsTool, res.CommitterIsTool)
+		}
+	})
+	t.Run("no email", func(t *testing.T) {
+		noIdentityEnv(t)
+		dir := gitRepo(t, "ci-bot,", "")
+		runGitT(t, dir, "config", "user.useConfigOnly", "true")
+		res, err := Check(dir)
+		if err != nil {
+			t.Fatalf("a failed read of the stamped form is not a failed check: %v", err)
+		}
+		if res.Status != StatusUnset || !res.Blocks() {
+			t.Fatalf("status %v blocks %v, want an unset identity that blocks", res.Status, res.Blocks())
+		}
+		if res.AuthorIsTool || res.CommitterIsTool {
+			t.Fatalf("author=%v committer=%v, want neither: the set value is not a machine's and git stamps nothing", res.AuthorIsTool, res.CommitterIsTool)
+		}
+	})
+}
+
+// TestCheck_JudgesNoFieldGitWouldMakeUp: where a field is unset, `git var` fills
+// it from the environment or the account and exits 0. That field is left out of
+// the judgment, so an unset identity is reported as unset and never as a machine's.
+func TestCheck_JudgesNoFieldGitWouldMakeUp(t *testing.T) {
+	noIdentityEnv(t)
+	dir := gitRepo(t, "Alice", "")
+	t.Setenv("EMAIL", "noreply@anthropic.com")
+	res, err := Check(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.AuthorIsTool || res.CommitterIsTool {
+		t.Fatalf("author=%v committer=%v, want neither: the email is not configured", res.AuthorIsTool, res.CommitterIsTool)
+	}
+	if res.Status != StatusUnset || !res.Blocks() {
+		t.Fatalf("status %v blocks %v, want an unset identity that blocks", res.Status, res.Blocks())
+	}
+}
+
+// TestStampedIdentityReadsTheRepositoryAtRoot: the read runs under
+// commitConfigEnv, so an inherited GIT_DIR does not point it at another repository.
+func TestStampedIdentityReadsTheRepositoryAtRoot(t *testing.T) {
+	noIdentityEnv(t)
+	dir := gitRepo(t, "Alice", "alice@example.com")
+	other := gitRepo(t, "Bob", "bob@example.com")
+	t.Setenv("GIT_DIR", filepath.Join(other, ".git"))
+	for _, role := range []Role{RoleAuthor, RoleCommitter} {
+		got, ok := stampedIdentity(dir, role)
+		if !ok || got != (Effective{Name: "Alice", Email: "alice@example.com"}) {
+			t.Errorf("%s: read %+v, %v, want the identity of the repository at root", role, got, ok)
+		}
+	}
+}
+
+// TestParseIdent reads the line `git var` prints.
+func TestParseIdent(t *testing.T) {
+	for line, want := range map[string]Effective{
+		"Alice Example <alice@example.com> 1793945264 +0000\n": {Name: "Alice Example", Email: "alice@example.com"},
+		"Alice <> 1793945264 +0000":                            {Name: "Alice"},
+	} {
+		got, ok := parseIdent(line)
+		if !ok || got != want {
+			t.Errorf("parseIdent(%q) = %+v, %v, want %+v", line, got, ok, want)
+		}
+	}
+	for _, line := range []string{"", "no brackets 1793945264 +0000", "Alice >a@example.com< 1 +0000"} {
+		if got, ok := parseIdent(line); ok {
+			t.Errorf("parseIdent(%q) = %+v, want a refusal", line, got)
+		}
+	}
+}
+
 // TestIsToolIdentity pins the predicate to the attribution gate's reading,
 // including its role asymmetry: a `noreply@` mailbox is a machine as the
 // AUTHOR, but the forge stamps `GitHub <noreply@github.com>` as the committer

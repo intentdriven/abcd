@@ -16,8 +16,9 @@ import "sort"
 // Ids and values are placeholders of the right shape, and names come from the
 // reserved example namespace (examples-use-reserved-identifiers).
 var examples = map[string]string{
-	"abcd ahoy connect":      "abcd ahoy connect local --base-url http://127.0.0.1:8080/v1 --model example-model --home none",
-	"abcd ahoy worktree add": "abcd ahoy worktree add example-lane",
+	"abcd ahoy connect":       "abcd ahoy connect local --base-url http://127.0.0.1:8080/v1 --model example-model --home none",
+	"abcd ahoy worktree add":  "abcd ahoy worktree add example-lane",
+	"abcd ahoy shared-folder": "abcd ahoy shared-folder /Users/Shared",
 
 	"abcd banlist add":    "abcd banlist add --private acme-internal 'acme-internal\\.example\\.com'",
 	"abcd banlist remove": "abcd banlist remove --private acme-internal",
@@ -84,6 +85,8 @@ var examples = map[string]string{
 	"abcd implement outage record": "abcd implement outage record --session s-example --service network --kind tool --lane cli --what \"git push\"",
 	"abcd implement receipt":       "abcd implement receipt review-receipt.json --run run-2609010000000001",
 	"abcd implement widen":         "abcd implement widen internal/widget/b.go --lane lane-1 --run run-2609010000000001",
+	"abcd implement stop":          "abcd implement stop",
+	"abcd implement resume":        "abcd implement resume --take run-2609010000000001",
 	"abcd implement release":       "abcd implement release iss-2609010000000001 --session s-example",
 
 	"abcd inbox promote": "abcd inbox promote rpt-2609010000000001",

@@ -230,6 +230,11 @@ func number(q question.Question, value string) string {
 func drawnSetup(t *testing.T, args ...string) (string, error) {
 	t.Helper()
 	t.Setenv("ABCD_ACCESSIBLE", "1")
+	// A terminal in a UTF-8 locale, whatever the process's own: the marks
+	// are chosen for the locale, and a POSIX one draws them in ASCII.
+	t.Setenv("LC_ALL", "")
+	t.Setenv("LC_CTYPE", "")
+	t.Setenv("LANG", "C.UTF-8")
 	in, keys := pipeWith(t, "")
 	stdout, stderr := tempStream(t, "stdout"), tempStream(t, "stderr")
 	swapStream, swapPut := isTerminalStream, drawnPut

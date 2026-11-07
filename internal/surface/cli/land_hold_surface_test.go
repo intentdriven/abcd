@@ -13,6 +13,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/landing"
+	"github.com/intentdriven/abcd/internal/core/runstop"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -44,6 +45,9 @@ func landHoldWorld(t *testing.T) (dir, origin string) {
 		}
 		if slices.Contains(args, "--state=merged") {
 			return "[]", nil
+		}
+		if slices.Contains(args, "query="+landing.ArmingsQuery) {
+			return `{"data":{"repository":{"pullRequests":{"nodes":[]}}}}`, nil // nothing armed
 		}
 		return "", errors.New("no other forge call in this test")
 	}
@@ -132,5 +136,86 @@ func TestLandExitsTwoWhenTheReservationsCannotBeRead(t *testing.T) {
 	if code != 2 || !strings.Contains(stderr, "could not read the reservations from origin") ||
 		!strings.Contains(stderr, "run abcd land again once origin answers") {
 		t.Fatalf("exit %d, stderr %q: want exit 2 naming the failed read", code, stderr)
+	}
+}
+
+// TestLandExitsThreeUnderAStop: the verb reads the stop the other verbs read, here the one
+// in the account's own home, and exits 3 naming it with nothing pushed. An act that lands
+// nothing is not held: both acts off, and the person's own recorded approval, which the
+// landing it counts toward then answers for.
+func TestLandExitsThreeUnderAStop(t *testing.T) {
+	dir, origin := landHoldWorld(t)
+	head := gitCmd(t, dir, "rev-parse", "HEAD")
+	writeRel(t, dir, landing.ReceiptsRelDir+"/"+head, "")
+	if _, err := runstop.Set(os.Getenv("HOME"), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"land"}, {"land", "--no-enqueue"}, {"land", "--no-push"}} {
+		code, _, stderr := reserveRun(t, dir, args...)
+		if code != 3 || !strings.Contains(stderr, "a stop set by") || !strings.Contains(stderr, "abcd implement stop --lift") {
+			t.Fatalf("%v: exit %d, stderr %q: want exit 3 naming the stop", args, code, stderr)
+		}
+	}
+	if pushed := gitCmd(t, origin, "for-each-ref", "--format=%(objectname)", "refs/heads/feat/x"); pushed != "" {
+		t.Fatalf("origin feat/x is %q under a stop", pushed)
+	}
+	if code, _, stderr := reserveRun(t, dir, "land", "--no-push", "--no-enqueue"); code != 0 {
+		t.Fatalf("both acts off: exit %d, stderr %q", code, stderr)
+	}
+	if code, _, stderr := reserveRun(t, dir, "land", "--approve"); code != 0 {
+		t.Fatalf("--approve under a stop: exit %d, stderr %q", code, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".abcd", ".work.local", "approvals", head)); err != nil {
+		t.Fatalf("the approval was not written: %v", err)
+	}
+	if code, _, _ := reserveRun(t, dir, "land"); code != 3 {
+		t.Fatalf("a landing after the approval: exit %d, want 3", code)
+	}
+}
+
+// TestLandRecordsAReviewUnderAStop: a review's receipt lands nothing, so a stop leaves it to be
+// written, and the landing it counts toward is the one the stop holds.
+func TestLandRecordsAReviewUnderAStop(t *testing.T) {
+	dir, origin := landHoldWorld(t)
+	if err := os.MkdirAll(filepath.Join(dir, filepath.FromSlash(landing.TierRelDir)), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	head := gitCmd(t, dir, "rev-parse", "HEAD")
+	if _, err := runstop.Set(os.Getenv("HOME"), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	a, b := filepath.Join(t.TempDir(), "ruthless.md"), filepath.Join(t.TempDir(), "security.md")
+	writeReturn(t, a, head, "SHIP")
+	writeReturn(t, b, head, "APPROVE")
+	if code, _, stderr := reserveRun(t, dir, "land", "--record-review", a, "--record-review", b); code != 0 {
+		t.Fatalf("exit %d, stderr %q", code, stderr)
+	}
+	if fi, err := os.Lstat(filepath.Join(dir, filepath.FromSlash(landing.ReviewReceiptsRelDir), head)); err != nil || !fi.Mode().IsRegular() {
+		t.Fatalf("no receipt for %s: %v", head, err)
+	}
+	if pushed := gitCmd(t, origin, "for-each-ref", "--format=%(objectname)", "refs/heads/feat/x"); pushed != "" {
+		t.Fatalf("origin feat/x is %q", pushed)
+	}
+}
+
+// TestLandGoesOnOnceTheStopLifts: the landing a stop refused needs nothing but the lift.
+func TestLandGoesOnOnceTheStopLifts(t *testing.T) {
+	dir, origin := landHoldWorld(t)
+	head := gitCmd(t, dir, "rev-parse", "HEAD")
+	writeRel(t, dir, landing.ReceiptsRelDir+"/"+head, "")
+	if _, err := runstop.Set(os.Getenv("HOME"), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, stderr := reserveRun(t, dir, "land", "--no-enqueue"); code != 3 {
+		t.Fatalf("under the stop: exit %d, stderr %q", code, stderr)
+	}
+	if lifted, err := runstop.Lift(os.Getenv("HOME"), time.Now()); err != nil || !lifted {
+		t.Fatalf("the lift: %v, %v", lifted, err)
+	}
+	if code, _, stderr := reserveRun(t, dir, "land", "--no-enqueue"); code != 0 {
+		t.Fatalf("after the lift: exit %d, stderr %q", code, stderr)
+	}
+	if pushed := gitCmd(t, origin, "for-each-ref", "--format=%(objectname)", "refs/heads/feat/x"); pushed != head {
+		t.Fatalf("origin feat/x is %q, want %s", pushed, head)
 	}
 }

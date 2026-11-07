@@ -857,6 +857,9 @@ func renderCut(w io.Writer, verb string, cut release.Cut) {
 	if cut.TargetsError != "" {
 		fmt.Fprintf(w, "  targeted:   not read — %s\n", termsafe.Sanitize(scrubPaths(errors.New(cut.TargetsError))))
 	}
+	if cut.FidelityNote != "" {
+		fmt.Fprintf(w, "  docs review: %s\n", termsafe.Sanitize(cut.FidelityNote))
+	}
 	for _, refusal := range cut.Refusals {
 		fmt.Fprintf(w, "  refused (%s):\n", refusal.Kind)
 		// SanitizeBlock, not Sanitize: a refusal reason IS lines — the surface

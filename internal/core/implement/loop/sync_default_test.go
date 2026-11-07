@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -341,7 +342,7 @@ func TestAPullRequestThatStartsToConflictReentersTheSync(t *testing.T) {
 			l.Stage != StageValidate || l.pendingSync() == nil {
 			t.Fatalf("the lane re-enters its sync, the generated file's conflict going to an implementer: %+v", l)
 		}
-		if ld := l.Landing; ld == nil || ld.Pushed != "" || ld.Merge != "" || ld.Armed || l.PR != 7 || !ld.RecordsDone {
+		if ld := l.Landing; ld == nil || ld.Pushed != "" || ld.Merge != "" || ld.Armed || l.PR != 7 || !ld.RecordsDone || ld.GateUnreadSince != nil {
 			t.Fatalf("the push and the arming are to be made again, the records and the pull request kept: %+v", l.Landing)
 		}
 		if got := f.remoteBranch(t, l.Branch); got != pushed {
@@ -364,6 +365,16 @@ func TestAPullRequestThatStartsToConflictReentersTheSync(t *testing.T) {
 		l := currentLane(t, f.repo, f.runID)
 		if l.PR != 7 || l.Landing.Merge != "" {
 			t.Fatalf("the pull request is open and not yet armed: %+v", l.Landing)
+		}
+		if err := mutate(f.repo.Root(), f.runID, func(_ *os.Root, st *State) (bool, error) {
+			lane := &st.Lanes[st.current()]
+			ld := *lane.Landing
+			at := time.Now().UTC()
+			ld.GateUnreadSince = &at
+			lane.Landing = &ld
+			return true, nil
+		}); err != nil {
+			t.Fatal(err)
 		}
 		conflicting(t, f)
 		f.step(t)
@@ -581,5 +592,59 @@ func TestAParkedLaneWhoseSyncIsRefusedNamesTheRefusal(t *testing.T) {
 	}
 	if ld := currentLane(t, f.repo, f.runID).Landing; ld.Merge != l.Landing.Merge || ld.Pushed != l.Landing.Pushed {
 		t.Fatalf("the refused step changes nothing: %+v", ld)
+	}
+}
+
+// armedConflicting is a lane armed, then conflicting with the default branch.
+func armedConflicting(t *testing.T) *landFixture {
+	t.Helper()
+	f := syncFixture(t)
+	f.passToLandOnce(t, "fix.txt", "gen.txt")
+	f.step(t)
+	f.step(t)
+	l := currentLane(t, f.repo, f.runID)
+	preflighted(t, l, l.HeadSHA)
+	f.step(t)
+	f.step(t)
+	f.step(t)
+	if l = currentLane(t, f.repo, f.runID); !l.Landing.Armed || l.PR != 7 {
+		t.Fatalf("the pull request is armed: %+v", l.Landing)
+	}
+	f.moveMain(t, "generated again on main\n", "gen.txt")
+	if err := os.WriteFile(filepath.Join(f.gh, "mergeable.json"), []byte(`{"mergeable":"CONFLICTING","mergeStateStatus":"DIRTY"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return f
+}
+
+// The sync's withdrawal takes the pull request out of the queue too, and reads
+// the arming back before it records nothing armed.
+func TestTheSyncsWithdrawalDequeuesAndReadsBack(t *testing.T) {
+	f := armedConflicting(t)
+	l := currentLane(t, f.repo, f.runID)
+	f.queueAnswer(t, stubQueue{head: l.Landing.Pushed, queued: true, enabledAt: "2026-10-15T07:00:00Z", status: "DIRTY"})
+	stillArmed(t, f)
+	before := f.ghLog(t)
+	_, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
+	r := mustRefusal(t, err)
+	if !strings.Contains(r.Reason, "still reports") {
+		t.Fatalf("an arming the forge still reports is refused: %+v", r)
+	}
+	log := strings.TrimPrefix(f.ghLog(t), before)
+	off, out := strings.Index(log, "pr merge 7 --disable-auto"), strings.Index(log, "dequeuePullRequest")
+	if off < 0 || out < off {
+		t.Fatalf("auto-merge goes off, then it leaves the queue:\n%s", log)
+	}
+	if !currentLane(t, f.repo, f.runID).Landing.Armed {
+		t.Fatalf("the lane no longer records the arming the forge still reports")
+	}
+	if err := os.Remove(filepath.Join(f.gh, "armings.json")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := advance(f.repo.Root(), f.runID, f.stages, Options{}); err != nil {
+		t.Fatalf("the withdrawal read back is recorded: %v", err)
+	}
+	if currentLane(t, f.repo, f.runID).Landing.Armed {
+		t.Fatalf("the lane still records the arming the forge no longer reports")
 	}
 }

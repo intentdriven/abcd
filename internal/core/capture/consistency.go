@@ -12,6 +12,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/dryrun"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/record/match"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 )
@@ -53,6 +54,9 @@ func IngestConsistencyChunks(repoRoot string, payloads [][]byte, date string, mc
 // ingest runs and writes nothing. The ledger is read to say which findings a
 // record already holds; none is filed.
 func PlanConsistencyChunks(repoRoot string, payloads [][]byte, date string) (intent.ConsistencyIngestPlan, error) {
+	if _, err := layered.RecordSlugCap(repoRoot); err != nil {
+		return intent.ConsistencyIngestPlan{}, err
+	}
 	p, err := intent.PlanConsistencyIngest(consistencyRequest(repoRoot, payloads, date, nil))
 	if err != nil || len(p.Result.Filed) == 0 {
 		return p, err
@@ -169,8 +173,11 @@ func consistencyRequest(repoRoot string, payloads [][]byte, date string, mc *mat
 	// its slug, derived from the record's text as the capture derives it.
 	// The id is minted, and the record's size set, by the capture itself.
 	planned := func(f intent.ConsistencyFinding, reportRel string) dryrun.Write {
-		slug := deriveSlug(consistencyIssueText(f, reportRel))
-		if norm, err := normaliseSlug(slug); err == nil {
+		// PlanConsistencyChunks refused a cap it cannot read before any plan is
+		// asked for, as the filing would.
+		slugCap, _ := layered.RecordSlugCap(repoRoot)
+		slug := deriveSlug(consistencyIssueText(f, reportRel), slugCap)
+		if norm, err := normaliseSlug(slug, slugCap); err == nil {
 			slug = norm
 		}
 		return dryrun.Write{

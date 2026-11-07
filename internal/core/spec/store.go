@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/provenance"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -183,6 +184,39 @@ func CreateBundle(repoRoot string, members []string, bundle, productionMode stri
 	return create(repoRoot, members[0], append([]string(nil), members...), bundle, bundle, productionMode, nil)
 }
 
+// CloseShips names the intents a close of specID would move to shipped: each
+// member no other open spec still names. A reference the store cannot resolve
+// ships nothing here, and the close reports it itself.
+func CloseShips(repoRoot, specID string) []string {
+	store, err := Load(repoRoot)
+	if err != nil {
+		return nil
+	}
+	sp, ok := store.Lookup(specID)
+	if !ok || sp.Status != StatusOpen {
+		return nil
+	}
+	return store.Ships(sp)
+}
+
+// Ships names the members of sp no other open spec still names, the intents its
+// close moves to shipped, in whichever bucket the record stands.
+func (s Store) Ships(sp Spec) []string {
+	var out []string
+	for _, m := range sp.Members() {
+		others := 0
+		for _, o := range s.OpenSpecsForIntent(m) {
+			if o.ID != sp.ID {
+				others++
+			}
+		}
+		if others == 0 {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
 // create is the one mint-and-write both constructors share: intents and bundle
 // are empty for an ordinary spec.
 func create(repoRoot, intentID string, intents []string, bundle, slug, productionMode string, steps []Step) (Spec, error) {
@@ -192,7 +226,11 @@ func create(repoRoot, intentID string, intents []string, bundle, slug, productio
 	// The slug arrives whole — the intent's, a remainder's, a bundle's name —
 	// and may predate the record cap, so it is cut here, at the one mint every
 	// spec passes (iss-2610100626320367).
-	slug = recordid.CapSlug(slug, recordid.MaxSlugLen)
+	slugCap, err := layered.RecordSlugCap(repoRoot)
+	if err != nil {
+		return Spec{}, fmt.Errorf("spec: %w", err)
+	}
+	slug = recordid.CapSlug(slug, slugCap)
 	stamp, err := provenance.NewStamp(provenance.KindResearcherAuthored, productionMode)
 	if err != nil {
 		return Spec{}, fmt.Errorf("spec: %w", err)

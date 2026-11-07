@@ -49,7 +49,7 @@ override EVAL_TIMEOUT := 20m
 endif
 
 smoke:
-	go test -tags smoke -timeout $(EVAL_TIMEOUT) ./evals/...
+	go test -tags smoke -count=1 -timeout $(EVAL_TIMEOUT) ./evals/...
 
 # The cold-reading evals alone (evals/coldreading_*_test.go): the read-block eval
 # that falsifies the assembler's blindfold by planting sentinel warm content in a
@@ -75,7 +75,7 @@ smoke:
 # second cold-reading eval joins the lane by carrying that constraint, with no
 # edit to this target or to the workflow.
 evals-cold-reading:
-	go test -tags coldreading -timeout $(EVAL_TIMEOUT) ./evals/...
+	go test -tags coldreading -count=1 -timeout $(EVAL_TIMEOUT) ./evals/...
 
 # Format gate, resolved through the toolchain go.mod declares
 # (iss-2609081953452204). Not `gofmt` off PATH: gofmt's rules move between
@@ -309,7 +309,7 @@ asking-sync-check:
 # second rule's gates to every gate the full run runs (preflight-stages's) and
 # its test lines to precheck's. The records rule waits at no load gate.
 ifneq ($(filter preflight,$(MAKECMDGOALS)),)
-PREFLIGHT_RECORDS_ONLY := $(shell scripts/records-only.sh >/dev/null 2>&1 && echo yes)
+PREFLIGHT_RECORDS_ONLY := $(if $(PREFLIGHT_FRESH),,$(shell scripts/records-only.sh >/dev/null 2>&1 && echo yes))
 endif
 
 ifneq ($(PREFLIGHT_RECORDS_ONLY),yes)
@@ -327,6 +327,13 @@ ifneq ($(PREFLIGHT_RECORDS_ONLY),yes)
 # go.mod declares, which is the one CI's check job runs those same four Go
 # steps and its format gate on. Host-native `go build` (not the
 # cross-compiling build target) because it mirrors CI.
+#
+# The unit stage runs what the race stage cannot assert, the same two plain
+# passes as CI's check job (iss-2610171803053186): the packages outside
+# internal/, and by name the tests that assert only without the race detector.
+# The race stage runs every other test under internal/, so a plain rerun of them
+# was about nine minutes of a preflight for a verdict CI does not hold a change
+# to. TestPreflightUnitStageRunsWhatCIPlainPassRuns holds the two passes to CI's.
 #
 # The eval lanes are prerequisites because the untagged `go test ./...` step
 # below cannot reach them: every eval file carries a build tag, so a defect in
@@ -396,11 +403,56 @@ ifneq ($(PREFLIGHT_RECORDS_ONLY),yes)
 # (`cmd/test-parallelism -timeout`), since a package on a loaded machine runs
 # slower in proportion, and takes no value between, since go test's cache key
 # holds the timeout: three packages hit the timeout at a load of 17.8 on ten
-# cores, with no test hung (iss-2610241911052191). On a CI runner the budget is
-# the 40 minutes CI's own steps declare.
+# cores, with no test hung (iss-2610241911052191). On a CI runner it stays 40
+# minutes unscaled, so make preflight's own budget never moves with CI's steps,
+# which declare their own (dcn-2611062201286033).
 preflight:
 	go run ./cmd/abcd implement load --wait --timeout 12h -- $(PREFLIGHT_STAGES_MAKE)
 	@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)"
+
+# Both test stages run through cmd/check-tests (internal/testreuse,
+# itd-2611011325421304), which replays what Go's test cache holds for unchanged
+# inputs, reruns what is declared or found reading past that cache, and reports
+# `reused N of M` for each stage, and the receipt records both counts and how the
+# stage ran. A stage's reused lines run from one fixed check directory per repository
+# and account, ~/.abcd.noindex/tests/<root-sha>/, whose tree the sync reads back
+# against the commit, byte for byte, before the lines run and after, writing only the
+# files that differ, with file times derived from file content and -trimpath keeping
+# the worktree's path out of the binary. So a fresh worktree replays what another
+# worktree's check of the same inputs passed.
+#
+# A test named on .abcd/work/always-rerun-tests.txt on origin's default branch, or
+# that the classifier finds reading what the cache cannot see, reruns on every check,
+# in the worktree, and the report names a found one undeclared. The hosted run, whose
+# every test step passes -count=1, is the backstop. A race stage reuses race results
+# only, since its binary is another build. A working tree that differs from HEAD, and
+# a list that is missing, does not read or names what the tree does not hold, run in
+# the worktree reusing nothing.
+#
+# One check at a time holds the lock, for its reused lines and no longer, so under
+# load.preflights above one a second run's reused lines wait for the first's while
+# each run's rerun lines run side by side. A stage that waited takes its -p and
+# -timeout again from -budget, and a race stage goes back through the race gate,
+# holding nothing, since the recipe's reading of both is as old as the wait.
+#
+# `make preflight PREFLIGHT_FRESH=1` reuses nothing, for a person who wants that: it
+# takes the full rule whatever the change, a records-only one included, and the
+# receipt says `tests cut`. No cut requires it; the hosted release run reuses nothing.
+# The results to be reused run under one fixed -timeout, the larger of the two the
+# budget below takes, because go test's cache key holds the timeout and a result must
+# not stop being reusable when the load crosses the line.
+CHECK_TESTS_FLAGS = -cached-timeout 1h20m -budget 40m$(if $(PREFLIGHT_FRESH), -fresh,)
+
+# The flags of CI's "Test (plain-only guards)" step: the -run naming the tests
+# that assert only without the race detector, and the packages that hold them.
+# Read from the workflow rather than spelled again, so a guard added there
+# reaches preflight with no second list (TestEveryLegRunsEveryPlainOnlyGuard
+# holds the workflow's list to the test files), the way preflight-scans.sh reads
+# its pins. Both of the workflow's copies are held to one list, so the first
+# serves. A tree whose workflow stops matching names a package that does not
+# exist, so the stage fails there and names why, rather than running go test over
+# no packages, which tests the working directory and passes.
+PLAIN_ONLY_GUARDS = $(or $(shell sed -n "s/^ *run: go test -count=1 \(-run '^(.*)\$$' .*\)$$/\1/p" .github/workflows/ci.yml 2>/dev/null | sed -n 1p),./ci.yml-carries-no-plain-only-guards-step)
 
 # The make the gate runs the stages with. It is named through this variable so
 # the gate's line is an ordinary recipe line: make runs a line that names MAKE
@@ -426,11 +478,12 @@ preflight-stages: load-check fmt-check lint-reviews lint-issues record-lint issu
 	go vet ./...
 	p=$$(go run ./cmd/test-parallelism) && \
 	t=$$(go run ./cmd/test-parallelism -timeout 40m) && \
-	go test -p "$$p" -timeout "$$t" ./...
+	go run ./cmd/check-tests $(CHECK_TESTS_FLAGS) unit go test -p "$$p" -timeout "$$t" ./cmd/... && \
+	go run ./cmd/check-tests $(CHECK_TESTS_FLAGS) unit go test -p "$$p" -timeout "$$t" $(PLAIN_ONLY_GUARDS)
 	go run ./cmd/abcd implement load --race-gate --timeout 2h
 	p=$$(go run ./cmd/test-parallelism) && \
 	t=$$(go run ./cmd/test-parallelism -timeout 40m) && \
-	go test -race -p "$$p" -timeout "$$t" ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
+	go run ./cmd/check-tests $(CHECK_TESTS_FLAGS) race go test -race -p "$$p" -timeout "$$t" ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
 
 else
 preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution secrets-check vulncheck site-render smoke evals-cold-reading
@@ -438,7 +491,7 @@ preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift
 	@echo "preflight: a records-only change, so the unit and race stages are skipped and precheck's tests run in their place; CI's unit lane still runs every test"
 	go build ./...
 	go vet ./...
-	go test -timeout 20m ./internal/core/lint ./internal/core/launch/scaffold ./internal/core/mdrecord ./internal/core/issueschema ./internal/core/guard ./internal/core/glossary ./internal/core/reading ./internal/core/recordid ./internal/core/changelog ./internal/core/intent ./internal/core/release ./internal/core/releasedigest ./internal/core/decisions ./internal/core/record/match ./internal/core/lifeboat
+	go test -timeout 20m ./internal/core/lint ./internal/core/launch/scaffold ./internal/core/mdrecord ./internal/core/issueschema ./internal/core/guard ./internal/core/glossary ./internal/core/reading ./internal/core/recordid ./internal/core/changelog ./internal/core/intent ./internal/core/release ./internal/core/releasedigest ./internal/core/decisions ./internal/core/record/match ./internal/core/lifeboat ./internal/reachaudit ./internal/abcdhome
 	go test -timeout 20m -run '$(PRECHECK_AUDIT_TESTS)' ./internal/surface/cli ./internal/core/site
 	@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)" records-only
 endif
@@ -450,7 +503,9 @@ endif
 # tests audit the record, the generated pages and the agent definitions, in full,
 # and the packages whose tests read the committed record tree whole (record ids
 # and slugs, the changelog derivation, intents, release pages, decisions, the
-# brief's lifeboat table),
+# brief's lifeboat table), the audit that every exported core function has a
+# caller (internal/reachaudit), the audit that only the resolver spells the home
+# folder's name (internal/abcdhome),
 # and the command and site packages' audit tests, chosen by name: a test in those
 # two packages that reads the committed tree carries one of the PRECHECK_AUDIT_TESTS
 # words in its name, which is how a new one joins without a list to keep. It skips
@@ -463,7 +518,7 @@ PRECHECK_AUDIT_TESTS := Surface|Page|Brief|Parity|Reference|Snapshot|Appendix|Ap
 precheck: fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution secrets-check vulncheck site-render smoke evals-cold-reading
 	go build ./...
 	go vet ./...
-	go test -timeout 20m ./internal/core/lint ./internal/core/launch/scaffold ./internal/core/mdrecord ./internal/core/issueschema ./internal/core/guard ./internal/core/glossary ./internal/core/reading ./internal/core/recordid ./internal/core/changelog ./internal/core/intent ./internal/core/release ./internal/core/releasedigest ./internal/core/decisions ./internal/core/record/match ./internal/core/lifeboat
+	go test -timeout 20m ./internal/core/lint ./internal/core/launch/scaffold ./internal/core/mdrecord ./internal/core/issueschema ./internal/core/guard ./internal/core/glossary ./internal/core/reading ./internal/core/recordid ./internal/core/changelog ./internal/core/intent ./internal/core/release ./internal/core/releasedigest ./internal/core/decisions ./internal/core/record/match ./internal/core/lifeboat ./internal/reachaudit ./internal/abcdhome
 	go test -timeout 20m -run '$(PRECHECK_AUDIT_TESTS)' ./internal/surface/cli ./internal/core/site
 
 precheck: export GOTOOLCHAIN := go$(GO_TOOLCHAIN_VERSION)
@@ -495,8 +550,8 @@ endif
 preflight: export ABCD_LOAD_CHECKED := preflight
 
 # The three longest packages (internal/core/implement/loop, internal/core/claim
-# and internal/surface/cli) run their tests as three processes each in both
-# test stages, each process under the stage's package budget: as one process
+# and internal/surface/cli) run their tests as three processes each in the
+# race stage, each process under the stage's package budget: as one process
 # implement/loop took 60 minutes alone at a load of about 13 on a 10-core Mac
 # (2026-10-25) and was killed at 40 with no test hung, and its tests cannot run
 # in parallel, since nearly every one sets HOME through t.Setenv. Each opts in

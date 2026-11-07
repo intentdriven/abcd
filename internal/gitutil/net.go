@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -166,6 +167,9 @@ func runHookedContext(parent context.Context, dir string, network bool, stdin st
 		cmd.WaitDelay = netContextWaitDelay
 	}
 	cmd.Env = append(ScrubbedEnv(), "GIT_TERMINAL_PROMPT=0")
+	if !network {
+		cmd.Env = narrowHooked(cmd.Env)
+	}
 	if network {
 		cmd.Env = netEnv(cmd.Env)
 		if ssh := netSSHCommand(dir); ssh != "" {
@@ -291,4 +295,26 @@ func gitVerb(args []string) string {
 		return args[i]
 	}
 	return "git"
+}
+
+// hookedEnv narrows what a repository's hooks are given (SetHookedEnv).
+var hookedEnv atomic.Pointer[func([]string) []string]
+
+// SetHookedEnv narrows the environment of the commands that run a repository's
+// hooks on this process's behalf, the push's excepted, since a push is what needs
+// the person's credentials; nil leaves it as it is.
+func SetHookedEnv(f func([]string) []string) {
+	if f == nil {
+		hookedEnv.Store(nil)
+		return
+	}
+	hookedEnv.Store(&f)
+}
+
+// narrowHooked is env as a hooked command that opens no connection gets it.
+func narrowHooked(env []string) []string {
+	if f := hookedEnv.Load(); f != nil {
+		return (*f)(env)
+	}
+	return env
 }

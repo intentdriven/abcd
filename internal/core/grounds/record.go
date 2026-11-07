@@ -81,6 +81,14 @@ func ParseSection(content string) []Grounds {
 	return out
 }
 
+// SectionLines is the line range of the `## Grounds` section in a record's body
+// (Body), as the reader locates it, from the line after its heading up to the next
+// heading of its depth or higher, or the end of the text.
+func SectionLines(body string) (start, end int, ok bool) {
+	lines := strings.Split(body, "\n")
+	return mdrecord.SectionLineRangeIn(lines, mdrecord.Mask(lines), headingRe)
+}
+
 // sectionBullet is one top-level bullet under the `## Grounds` heading, read
 // through the grammar: the entry when it parses, the refusal when it does not.
 type sectionBullet struct {

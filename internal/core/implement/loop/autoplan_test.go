@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"testing"
@@ -65,7 +66,15 @@ func writeReturn(t *testing.T, root, rel, verdict string) string {
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(p, []byte("## Analysis\n\nRead the draft.\n\n### Verdict\n\n"+verdict+"\n"), 0o600); err != nil {
+	// A brief names the draft's digest for the verdict to name; a return with no brief
+	// beside it names none.
+	name := ""
+	if raw, err := os.ReadFile(filepath.Join(filepath.Dir(p), "brief.md")); err == nil {
+		if m := regexp.MustCompile("`(sha256:[0-9a-f]{64})`").FindStringSubmatch(string(raw)); m != nil {
+			name = "Head: " + m[1] + "\n"
+		}
+	}
+	if err := os.WriteFile(p, []byte("## Analysis\n\nRead the draft.\n\n### Verdict\n\n"+name+verdict+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return p

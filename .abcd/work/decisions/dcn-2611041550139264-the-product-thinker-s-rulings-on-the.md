@@ -1,0 +1,6 @@
+---
+id: dcn-2611041550139264
+slug: the-product-thinker-s-rulings-on-the
+date: 2026-11-04
+---
+2026-11-04 — The product thinker's rulings on the stop switch (itd-2611041549471712), the restart path (itd-2611041549461012) and the daily digest (itd-2611041549483696), at their filing. The stop lives on the machine that runs the work, in a shared folder chosen as an option at setup (/Users/Shared on macOS and its counterpart on Linux), on a machine no other person shares; the store ownership rule admits this one exception, and a stop that reaches the machine over a private network or through a cloud adapter is later work. The daily digest is a dated file in that same folder: the digest draft asked that one choice hold for both, and an unshared machine answers the privacy cost, so this followed from the ruling above and no question was put. A stop lets an agent in a call finish that call, then stops. A stop releases the run's claims on its work, so a peer may take it up. The drain's plugin page stays an agent's command and its terminal form stays the person's way to drive it; this changes the 2026-10-09 ruling on itd-2610090831227812 that the drain joins the person's menu when itd-82 ships.

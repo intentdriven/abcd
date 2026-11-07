@@ -431,7 +431,7 @@ func reconcileBundle(repoRoot string, store spec.Store, sp spec.Spec, impact str
 			return err
 		}
 		if members, skipped, err = judgeBundleMembers(store, corpus, sp); err != nil {
-			return err
+			return &CloseFactError{err}
 		}
 		type staged struct {
 			abs, content, stamp, dstRel string
@@ -584,17 +584,12 @@ func judgeBundleMembers(store spec.Store, corpus Corpus, sp spec.Spec) ([]Bundle
 		if !ok {
 			return nil, nil, fmt.Errorf("intent: %s (listed by spec %s) not found in any bucket; refusing to reconcile", name, sp.ID)
 		}
-		switch it.Bucket {
-		case BucketSuperseded:
+		if BundleMemberPassedOver(it.Bucket, it.Bundle, sp.Bundle) {
 			skipped = append(skipped, it.ID)
 			continue
-		case BucketPlanned, BucketShipped:
-		default:
-			return nil, nil, fmt.Errorf("intent: %s is in %s (listed by bundle spec %s); expected planned or shipped — refusing to reconcile", it.ID, it.Bucket, sp.ID)
 		}
-		if it.Bundle != sp.Bundle {
-			skipped = append(skipped, it.ID)
-			continue
+		if it.Bucket != BucketPlanned && it.Bucket != BucketShipped {
+			return nil, nil, fmt.Errorf("intent: %s is in %s (listed by bundle spec %s); expected planned or shipped — refusing to reconcile", it.ID, it.Bucket, sp.ID)
 		}
 		claimers := store.SpecsForIntent(it.ID)
 		backLinked := false
@@ -619,6 +614,15 @@ func judgeBundleMembers(store spec.Store, corpus Corpus, sp spec.Spec) ([]Bundle
 		return nil, nil, fmt.Errorf("intent: no member of bundle %s (spec %s) is planned or shipped under that bundle; refusing to reconcile", sp.Bundle, sp.ID)
 	}
 	return members, skipped, nil
+}
+
+// BundleMemberPassedOver reports whether a bundle's close passes over a member its spec
+// lists: one superseded, or one planned or shipped that no longer carries the bundle's name.
+func BundleMemberPassedOver(bucket, memberBundle, specBundle string) bool {
+	if bucket == BucketSuperseded {
+		return true
+	}
+	return (bucket == BucketPlanned || bucket == BucketShipped) && memberBundle != specBundle
 }
 
 // blockedBy returns the intents a record names in its `blocked_by` list, as

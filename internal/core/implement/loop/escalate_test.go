@@ -68,6 +68,8 @@ func tieredHandBackOne(t *testing.T, repo *gittest.Repo, runID string, o Options
 	path := filepath.Join(repo.Root(), filepath.FromSlash(res.Awaiting.Receipt))
 	if role == RoleAuditor {
 		body = auditorVerdict(t, filepath.Join(filepath.Dir(path), AuditRequestFileName), body)
+	} else {
+		body = statingHeadAt(t, repo.Root(), runID, res.Awaiting.Receipt, body)
 	}
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)

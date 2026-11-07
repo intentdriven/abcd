@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/provenance"
 	"github.com/intentdriven/abcd/internal/core/record/match"
 	"github.com/intentdriven/abcd/internal/core/recordid"
@@ -39,7 +40,7 @@ var minter recordid.Minter
 const mintRetryBudget = 8
 
 // maxTitleLen caps a derived H1 so a long first sentence stays a heading. It was
-// the slug cap until the slug moved to recordid.MaxSlugLen (iss-2610100626320367),
+// the slug cap until the slug moved to the one record cap (iss-2610100626320367),
 // and it keeps its own budget: the title is not part of the path.
 const maxTitleLen = 60
 
@@ -98,7 +99,11 @@ func createFromText(repoRoot, text string, opts TextOptions, m *Matcher) (Create
 	if err != nil {
 		return Created{}, err
 	}
-	slug, err := deriveIntentSlug(redacted)
+	slugCap, err := layered.RecordSlugCap(repoRoot)
+	if err != nil {
+		return Created{}, fmt.Errorf("intent: %w", err)
+	}
+	slug, err := deriveIntentSlug(redacted, slugCap)
 	if err != nil {
 		return Created{}, err
 	}
@@ -249,7 +254,11 @@ func createDraftMatched(repoRoot string, opts DraftOptions) (Intent, *match.Outc
 	// Every draft mint cuts its slug at the one record cap, whichever route
 	// handed it in: the promote routes carry a slug from the record they
 	// graduate, which may predate the cap (iss-2610100626320367).
-	opts.Slug = recordid.CapSlug(opts.Slug, recordid.MaxSlugLen)
+	slugCap, err := layered.RecordSlugCap(repoRoot)
+	if err != nil {
+		return Intent{}, nil, fmt.Errorf("intent: %w", err)
+	}
+	opts.Slug = recordid.CapSlug(opts.Slug, slugCap)
 	if strings.TrimSpace(opts.Title) == "" {
 		return Intent{}, nil, fmt.Errorf("intent: refusing to create a draft with an empty title")
 	}
@@ -392,8 +401,8 @@ func draftStamp(opts DraftOptions) (provenance.Stamp, error) {
 // hyphen, trims leading/trailing hyphens, caps the length, and insists the result
 // is kebab-case and non-empty — the slug becomes a filename, so it is validated
 // before any path is built (path-traversal / filename-safety defence).
-func deriveIntentSlug(text string) (string, error) {
-	collapsed := recordid.Slug(text, recordid.MaxSlugLen)
+func deriveIntentSlug(text string, maxLen int) (string, error) {
+	collapsed := recordid.Slug(text, maxLen)
 	if collapsed == "" {
 		return "", fmt.Errorf("intent: text %q has no slug-able characters", text)
 	}

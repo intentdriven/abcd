@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -74,7 +75,11 @@ func Record(dir, text string) (Decision, error) {
 	if err != nil {
 		return Decision{}, err
 	}
-	slug := recordid.Slug(redacted, recordid.MaxSlugLen)
+	slugCap, err := layered.RecordSlugCap(root)
+	if err != nil {
+		return Decision{}, fmt.Errorf("decisions: %w", err)
+	}
+	slug := recordid.Slug(redacted, slugCap)
 	if slug == "" {
 		return Decision{}, fmt.Errorf("decisions: %w", ErrNoSlug)
 	}

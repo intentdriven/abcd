@@ -143,6 +143,24 @@ func (entries tree) write(t *testing.T, root string) {
 	}
 }
 
+// Tree is a directory's contents in memory, for a fixture that keeps more than
+// one repository, or keeps one at a fixed place so that the paths its files hold
+// stay true. It holds every entry's exact mode, which a store whose folder must
+// be closed to other accounts depends on.
+type Tree struct{ entries tree }
+
+// ReadTree reads the directory root.
+func ReadTree(t *testing.T, root string) Tree {
+	t.Helper()
+	return Tree{entries: readTree(t, root)}
+}
+
+// Write lays the tree out under root, which it creates if need be.
+func (kept Tree) Write(t *testing.T, root string) {
+	t.Helper()
+	kept.entries.write(t, root)
+}
+
 // emptyRepositories keeps what `git init` and the maintenance config leave, so
 // NewRepo and InitBare spawn their five git processes once in a test process.
 var emptyRepositories Templates

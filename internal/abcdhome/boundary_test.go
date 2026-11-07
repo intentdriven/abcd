@@ -619,6 +619,8 @@ func TestOnlyTheHomeResolverNamesTheHome(t *testing.T) {
 // changes instead of seeding a folder the code no longer reads
 // (iss-2610042333573913). This package's own tests are exempt as its code is.
 var testHomeSpellers = map[string]string{
+	"internal/core/site/installsh_run_test.go": "the installer's old-home test: it plants the old folder " +
+		"alone and beside the new one, and its stand-in binary stops on the old folder by name",
 	"internal/surface/cli/homestop_test.go": "the stop test: it plants the old folder beside and " +
 		"instead of the new one and expects the stop to name both",
 	"internal/surface/cli/hooks_homestop_test.go": "the hooks' stop test: it plants the old folder " +
