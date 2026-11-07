@@ -315,26 +315,47 @@ func TestAHarnessChangedDuringItsProofIsNotPassed(t *testing.T) {
 	}
 }
 
-// TestANewHarnessWithNoIdentityStopsTheRun: a start that recorded no team, a new file of
-// another team and an unsigned one each stop, say why and what to do, and run nothing.
+// TestANewHarnessWithNoIdentityStopsTheRun: a start that recorded no team and a new file of
+// another team stop at once, an unsigned file and one that does not verify once their tries
+// are spent; each says why and what to do, and runs nothing.
 func TestANewHarnessWithNoIdentityStopsTheRun(t *testing.T) {
-	for name, set := range map[string]func(w *reproveWorld, t *testing.T){
-		"the start recorded no team": func(w *reproveWorld, t *testing.T) {
+	for name, c := range map[string]struct {
+		set   func(w *reproveWorld, t *testing.T)
+		waits int
+	}{
+		"the start recorded no team": {func(w *reproveWorld, t *testing.T) {
 			delete(w.signed, w.first)
 			if _, err := WriteWallSettings(w.p, w.c.approver); err != nil {
 				t.Fatal(err)
 			}
-		},
-		"another team":     func(w *reproveWorld, _ *testing.T) { w.signed[w.second] = otherTeam },
-		"an unsigned file": func(w *reproveWorld, _ *testing.T) { delete(w.signed, w.second) },
+		}, 0},
+		"another team":     {func(w *reproveWorld, _ *testing.T) { w.signed[w.second] = otherTeam }, 0},
+		"an unsigned file": {func(w *reproveWorld, _ *testing.T) { delete(w.signed, w.second) }, reproofTries - 1},
+		"a signature that does not verify": {func(w *reproveWorld, t *testing.T) {
+			verify := Signing.Verify
+			Signing.Verify = func(path, team string) error {
+				if path == w.second {
+					return errors.New("does not hold")
+				}
+				return verify(path, team)
+			}
+		}, reproofTries - 1},
 	} {
 		t.Run(name, func(t *testing.T) {
 			w := newReproveWorld(t, "")
-			set(w, t)
+			c.set(w, t)
 			w.update(t)
+			for try := 0; try < c.waits; try++ {
+				_, err := ReproveHarness(context.Background(), w.p, w.c.approver)
+				var none *NoVerdictError
+				if !errors.As(err, &none) || none.RetryAfter != reproofRetryWait {
+					t.Fatalf("try %d waits: %v", try, err)
+				}
+			}
 			said, err := ReproveHarness(context.Background(), w.p, w.c.approver)
 			var we *WallError
-			if said != "" || !errors.As(err, &we) || we.Wall != WallSettingsFile || !strings.Contains(err.Error(), "signing team") || !strings.Contains(err.Error(), "start the drive again") {
+			var none *NoVerdictError
+			if said != "" || errors.As(err, &none) || !errors.As(err, &we) || we.Wall != WallSettingsFile || !strings.Contains(err.Error(), "signing team") || !strings.Contains(err.Error(), "start the drive again") {
 				t.Fatalf("the stop says why and what to do: %q %v", said, err)
 			}
 			if got := w.ran(t); len(got) != 0 {
@@ -344,6 +365,102 @@ func TestANewHarnessWithNoIdentityStopsTheRun(t *testing.T) {
 				t.Fatal("no stage starts")
 			}
 		})
+	}
+}
+
+// TestAFileWithNoIdentityYetPassesOnALaterRead: a file caught as it is written has no
+// identity to read. The next read finds the team, and nothing has run it before then.
+func TestAFileWithNoIdentityYetPassesOnALaterRead(t *testing.T) {
+	w := newReproveWorld(t, "")
+	delete(w.signed, w.second)
+	w.update(t)
+	_, err := ReproveHarness(context.Background(), w.p, w.c.approver)
+	var none *NoVerdictError
+	if !errors.As(err, &none) || none.RetryAfter != reproofRetryWait || !strings.Contains(none.Detail, "no signing identity") {
+		t.Fatalf("it waits, saying which: %v", err)
+	}
+	if got := w.ran(t); len(got) != 0 {
+		t.Fatalf("nothing ran it: %q", got)
+	}
+	w.signed[w.second] = testTeam
+	line, err := ReproveHarness(context.Background(), w.p, w.c.approver)
+	if err != nil || line == "" {
+		t.Fatalf("it passes: %q %v", line, err)
+	}
+	if got := w.ran(t); len(got) == 0 {
+		t.Fatal("the proof ran it")
+	}
+	if HarnessOwed(w.p) {
+		t.Fatal("nothing is owed")
+	}
+}
+
+// TestAFileThatDoesNotVerifyYetSaysWhich: reading the run's team and failing verification
+// is told apart from reading none.
+func TestAFileThatDoesNotVerifyYetSaysWhich(t *testing.T) {
+	w := newReproveWorld(t, "")
+	Signing.Verify = func(string, string) error { return errors.New("does not hold") }
+	w.update(t)
+	_, err := ReproveHarness(context.Background(), w.p, w.c.approver)
+	var none *NoVerdictError
+	if !errors.As(err, &none) || !strings.Contains(none.Detail, "does not verify") || strings.Contains(none.Detail, "no signing identity") {
+		t.Fatalf("it says which: %v", err)
+	}
+	if got := w.ran(t); len(got) != 0 {
+		t.Fatalf("nothing ran it: %q", got)
+	}
+}
+
+// TestAFilesTriesAreOneCount: reads that failed and proofs that failed spend the same tries.
+func TestAFilesTriesAreOneCount(t *testing.T) {
+	w := newReproveWorld(t, fakeModeEnv+"=wall-tools; export "+fakeModeEnv+"\n")
+	delete(w.signed, w.second)
+	w.update(t)
+	var none *NoVerdictError
+	if _, err := ReproveHarness(context.Background(), w.p, w.c.approver); !errors.As(err, &none) || !strings.Contains(none.Detail, "try 1 of 3") {
+		t.Fatalf("the read's try: %v", err)
+	}
+	w.signed[w.second] = testTeam
+	if _, err := ReproveHarness(context.Background(), w.p, w.c.approver); !errors.As(err, &none) || !strings.Contains(none.Detail, "try 2 of 3") {
+		t.Fatalf("the proof's try: %v", err)
+	}
+	_, err := ReproveHarness(context.Background(), w.p, w.c.approver)
+	var we *WallError
+	if errors.As(err, &none) || !errors.As(err, &we) || we.Wall != WallTools {
+		t.Fatalf("the tries are spent: %v", err)
+	}
+}
+
+// TestAFileChangingAsItsSignatureIsReadIsTriedAgain: a file no check has pinned may still be
+// being written, and is read again. Once a file is pinned, new bytes stop the run.
+func TestAFileChangingAsItsSignatureIsReadIsTriedAgain(t *testing.T) {
+	w := newReproveWorld(t, fakeModeEnv+"=wall-tools; export "+fakeModeEnv+"\n")
+	w.update(t)
+	verify := Signing.Verify
+	Signing.Verify = func(path, team string) error {
+		harnessScript(t, path, "second", "2.1.321", fakeModeEnv+"=wall-tools; export "+fakeModeEnv+"\n")
+		return verify(path, team)
+	}
+	_, err := ReproveHarness(context.Background(), w.p, w.c.approver)
+	var none *NoVerdictError
+	if !errors.As(err, &none) || none.RetryAfter != reproofRetryWait {
+		t.Fatalf("not pinned yet, it waits: %v", err)
+	}
+	if got := w.ran(t); len(got) != 0 {
+		t.Fatalf("nothing ran it: %q", got)
+	}
+	Signing.Verify = verify
+	if _, err := ReproveHarness(context.Background(), w.p, w.c.approver); !errors.As(err, &none) {
+		t.Fatalf("its proof fails, with a try left, and it is pinned: %v", err)
+	}
+	Signing.Verify = func(path, team string) error {
+		harnessScript(t, path, "second", "2.1.322", "")
+		return verify(path, team)
+	}
+	_, err = ReproveHarness(context.Background(), w.p, w.c.approver)
+	var we *WallError
+	if errors.As(err, &none) || !errors.As(err, &we) || we.Wall != WallSettingsFile {
+		t.Fatalf("pinned, new bytes stop the run: %v", err)
 	}
 }
 

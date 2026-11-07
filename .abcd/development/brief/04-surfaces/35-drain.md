@@ -373,19 +373,21 @@ again, and the system must verify the new file as signed by that team before any
 it; a stage in its call is left to finish. The login check and the full proof then run on
 that file, from an empty stage home, before any stage. Passing, it is what the run pins, and
 one line says what was checked and names the old version and the new. The proof shows what a
-launch holds, not who wrote the file, and the team is what answers that, so a new file not
-verified as the team's stops the run with a line saying why and what to do, and so does a
-start that kept no team, as on a platform or an install whose file the system cannot verify.
-New contents at a path the run holds are no update, and stop the run wherever they are seen,
-during a proof too.
+launch holds, not who wrote the file, and the team is what answers that, so a new file that
+reads as another team's stops the run at once with a line saying why and what to do, and so
+does a start that kept no team, as on a platform or an install whose file the system cannot
+verify. A file caught as it is written has no identity to read yet, so one with none, one
+that fails verification and one that changes as it is read wait for another read, each wait
+line saying which, and nothing runs the file meanwhile. New contents at a path the run holds
+are no update, and stop the run wherever they are seen, during a proof too.
 
 A file that has gone with nothing yet in its place is waited for, since an upgrade leaves it
 that way for a moment; a harness that stays gone ends the run at the outage's limit or the
 bound, with the reason on its wait line. Going between the check and the launch costs the
 lane nothing: the launch's own full check starts nothing on it, the next check finds the proof
-owed, and the role runs again. A new file's failed proof has three tries, minutes apart,
-before it stands, since a status can read as failed under load; a run's first proof has one.
-The last failure ends the run as any wall does, exit 2 with the lane let go, naming the check
+owed, and the role runs again. A new file has three tries, minutes apart, across those reads
+and its proof together, since a status can read as failed under load; a run's first proof has
+one. The last failure ends the run as any wall does, exit 2 with the lane let go, naming the check
 and the version; a new version whose environment the wall does not admit ends it this way
 too. A limit or a launch with no verdict says nothing of a wall, so it waits as the first
 proof's does, the other walls checked at each turn, and a wall that fails in that wait is the

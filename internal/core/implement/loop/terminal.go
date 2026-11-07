@@ -1377,7 +1377,7 @@ func WaitOutProof(ctx context.Context, repoRoot string, o TerminalOptions, first
 		case errors.As(err, &none):
 			t.evidence.begin("suspect-live-proof", evidenceEntry{Event: "failure", Role: "live proof", Response: none.Detail, Seen: none.Seen}, t.now())
 			if none.RetryAfter > 0 {
-				t.sleep(ctx, none.RetryAfter, "the live check failed: "+none.Detail)
+				t.sleep(ctx, none.RetryAfter, none.Detail)
 			} else if t.failed(ctx, false, "the live check came to no verdict: "+none.Detail) {
 				return TerminalOutage, nil
 			}

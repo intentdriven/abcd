@@ -139,6 +139,65 @@ func TestADriveStopsOnANewHarnessItCannotVerify(t *testing.T) {
 	}
 }
 
+// noIdentityOnTheNewFile has every file the test team's until the new one is in place, then
+// that file readable only once ready says so.
+func noIdentityOnTheNewFile(t *testing.T, ready func() bool) func() {
+	t.Helper()
+	standInSigned(t)
+	return func() {
+		runner.Signing = runner.HarnessSigning{
+			Team: func(string) string {
+				if ready() {
+					return "TEAMAAAAAA"
+				}
+				return ""
+			},
+			Verify: func(string, string) error {
+				if ready() {
+					return nil
+				}
+				return errors.New("no")
+			},
+		}
+	}
+}
+
+// TestADriveWaitsForANewHarnessWithNoIdentityYet: each wait says which, the file read later
+// passes, and the run goes on.
+func TestADriveWaitsForANewHarnessWithNoIdentityYet(t *testing.T) {
+	readable := false
+	during := noIdentityOnTheNewFile(t, func() bool { return readable })
+	first, second, out := reproveDriveRun(t, strings.ReplaceAll(wallInit, "2.1.319", "2.1.320")+wallRefused+wallResult, func() {
+		during()
+		sleep := driveProofWait.sleep
+		driveProofWait.sleep = func(ctx context.Context, d time.Duration) {
+			readable = true
+			sleep(ctx, d)
+		}
+	}, nil)
+	if first != nil || second != nil {
+		t.Fatalf("the run goes on: %v, %v\n%s", first, second, out)
+	}
+	if strings.Count(out, "no signing identity") != 1 || !strings.Contains(out, "waiting 3m0s") || !strings.Contains(out, "from 2.1.319 to 2.1.320") {
+		t.Fatalf("one wait saying which, then the update's line:\n%s", out)
+	}
+}
+
+// TestADriveStopsOnceANewHarnessHasSpentItsTries: the wait lines say which, and the stop is
+// the one a file that cannot be verified always got.
+func TestADriveStopsOnceANewHarnessHasSpentItsTries(t *testing.T) {
+	first, _, out := reproveDriveRun(t, strings.ReplaceAll(wallInit, "2.1.319", "2.1.320")+wallRefused+wallResult,
+		noIdentityOnTheNewFile(t, func() bool { return false }), nil)
+	var we *runner.WallError
+	var none *runner.NoVerdictError
+	if errors.As(first, &none) || !errors.As(first, &we) || !strings.Contains(first.Error(), "start the drive again") {
+		t.Fatalf("the stop says why and what to do: %v", first)
+	}
+	if strings.Count(out, "no signing identity") != 2 || strings.Contains(out, "2.1.320") {
+		t.Fatalf("two waits saying which, and nothing ran:\n%s", out)
+	}
+}
+
 // TestAWallInTheProofsWaitIsTheReasonTheRunGives: a wall that fails while a re-proof waits
 // reaches the run as itself, so its end line says which.
 func TestAWallInTheProofsWaitIsTheReasonTheRunGives(t *testing.T) {

@@ -155,8 +155,8 @@ func (e *WallError) Error() string {
 const (
 	wallLoginTimeout = 30 * time.Second
 	wallProofTimeout = 5 * time.Minute
-	// reproofTries is how many proofs a new harness file has before a failure stands, and
-	// reproofRetryWait what parts them.
+	// reproofTries is how many tries a new harness file has, at its signature and its proof
+	// together, before a failure stands, and reproofRetryWait what parts them.
 	reproofTries     = 3
 	reproofRetryWait = 3 * time.Minute
 	// stageProbeTimeout bounds asking git and go what a stage's shell keeps.
@@ -297,8 +297,9 @@ type stageWritten struct {
 	// team is the signing team the start verified on the file it proved, "" when it could
 	// verify none: what a new file is held to, from outside that file.
 	team string
-	// failedProofs counts the failed proofs of the file pinned for a re-proof.
-	failedProofs int
+	// triedFile is the file a re-proof last spent a try on, failedTries how many.
+	triedFile   string
+	failedTries int
 }
 
 // stagesWritten holds this process's stageWritten, by walled directory.
@@ -737,7 +738,7 @@ func HarnessOwed(p Profile) bool {
 // what changed, "" when nothing was owed. Pinned first, the file is unproved until it passes,
 // so nothing starts on it. A limit or a launch with no verdict comes back as the first
 // proof's would, as does a file that goes, since an upgrade leaves that for a moment, and a
-// failed proof before its last try; called again it resolves and proves again, and still
+// signature or a proof that failed before the file's last try; called again it resolves and proves again, and still
 // names the version the run last proved. New bytes at a path it holds stop the run. It is
 // called between stages, never during one.
 func ReproveHarness(ctx context.Context, p Profile, bin string) (string, error) {
@@ -765,16 +766,19 @@ func ReproveHarness(ctx context.Context, p Profile, bin string) (string, error) 
 	}
 	harnessPath, _ := starts.lookPath("claude")
 	sum := fileSum(harness)
-	if err := holdToTeam(harness, written.team); err != nil {
+	if err := holdToTeam(p, harness, written.team); err != nil {
 		return "", err
 	}
 	if err := stillHarness(harness, sum, "its signature was read"); err != nil {
+		var none *NoVerdictError
+		if harness != written.harness && !errors.As(err, &none) {
+			return "", spendTry(p, harness, err, safeWord(filepath.Base(harness))+" changed as its signature was read, and may still be being written")
+		}
 		return "", err
 	}
+	v, _ = stagesWritten.Load(p.ShellHome)
+	written = v.(*stageWritten)
 	next := *written
-	if harness != written.harness {
-		next.failedProofs = 0
-	}
 	next.binaries = maps.Clone(written.binaries)
 	delete(next.binaries, written.harness)
 	next.binaries[harness] = sum
@@ -795,7 +799,7 @@ func ReproveHarness(ctx context.Context, p Profile, bin string) (string, error) 
 		if changed := stillHarness(harness, sum, "its proof ran"); changed != nil {
 			return "", changed
 		}
-		return "", tryAgainOrStop(p, err)
+		return "", tryAgainOrStop(p, harness, err)
 	}
 	if err := stillHarness(harness, sum, "its proof ran"); err != nil {
 		markUnproved(p)
@@ -819,38 +823,58 @@ func stillHarness(harness string, sum [sha256.Size]byte, during string) error {
 
 // tryAgainOrStop reads a re-proof that failed. A status can read as failed under load, and
 // ending the run here would expose it to the next update's proof all over again, so a
-// verdict has its tries, spaced apart, before it stands. Anything short of a verdict comes
-// back as it is.
-func tryAgainOrStop(p Profile, err error) error {
+// verdict has the file's tries before it stands. Anything short of a verdict comes back as
+// it is.
+func tryAgainOrStop(p Profile, harness string, err error) error {
 	var limit *LimitError
 	var none *NoVerdictError
 	var we *WallError
 	if errors.As(err, &limit) || errors.As(err, &none) || !errors.As(err, &we) {
 		return err
 	}
+	return spendTry(p, harness, err, err.Error())
+}
+
+// spendTry counts one failed try against harness: stop once its tries are spent, until then
+// a wait of the tries' own saying detail.
+func spendTry(p Profile, harness string, stop error, detail string) error {
 	v, ok := stagesWritten.Load(p.ShellHome)
 	if !ok {
-		return err
+		return stop
 	}
 	next := *v.(*stageWritten)
-	next.failedProofs++
-	stagesWritten.Store(p.ShellHome, &next)
-	if next.failedProofs >= reproofTries {
-		return err
+	if next.triedFile != harness {
+		next.triedFile, next.failedTries = harness, 0
 	}
-	return &NoVerdictError{Detail: fmt.Sprintf("%s (try %d of %d)", err, next.failedProofs, reproofTries), RetryAfter: reproofRetryWait}
+	next.failedTries++
+	stagesWritten.Store(p.ShellHome, &next)
+	if next.failedTries >= reproofTries {
+		return stop
+	}
+	return &NoVerdictError{Detail: fmt.Sprintf("%s (try %d of %d)", detail, next.failedTries, reproofTries), RetryAfter: reproofRetryWait}
 }
 
 // holdToTeam refuses harness unless the system verifies it as team's, saying why and what
-// to do; harness has not been run.
-func holdToTeam(harness, team string) error {
+// to do; harness has not been run. A start with no team, or a file that reads as another
+// team's, stops the run now, since waiting cannot change either. A file with no identity to
+// read, or one that fails verification, may still be being written, and has the file's tries.
+func holdToTeam(p Profile, harness, team string) error {
 	if team == "" {
 		return &WallError{WallSettingsFile, "the harness the run proved is gone, and the run holds no signing team to check a new file against, so nothing ran the new file; start the drive again, which proves what is installed now"}
 	}
-	if Signing.Verify(harness, team) != nil {
-		return &WallError{WallSettingsFile, "the harness the run proved is gone, and " + safeWord(filepath.Base(harness)) + " is not verified as signed by the signing team the run started on, so nothing ran it; look at that install, then start the drive again"}
+	if Signing.Verify(harness, team) == nil {
+		return nil
 	}
-	return nil
+	name := safeWord(filepath.Base(harness))
+	stop := &WallError{WallSettingsFile, "the harness the run proved is gone, and " + name + " is not verified as signed by the signing team the run started on, so nothing ran it; look at that install, then start the drive again"}
+	switch read := Signing.Team(harness); read {
+	case "":
+		return spendTry(p, harness, stop, name+" has no signing identity the system can read yet, and nothing has run it")
+	case team:
+		return spendTry(p, harness, stop, name+" reads the run's signing team but does not verify yet, and nothing has run it")
+	default:
+		return stop
+	}
 }
 
 // markUnproved marks p's harness file as owing a proof it had seemed to pass.
@@ -1029,7 +1053,7 @@ func ProveWall(ctx context.Context, p Profile, bin string) error {
 	}
 	if v, ok := stagesWritten.Load(p.ShellHome); ok {
 		next := *v.(*stageWritten)
-		next.version, next.unproved, next.failedProofs = harnessVersion(res.stdout), false, 0
+		next.version, next.unproved, next.failedTries = harnessVersion(res.stdout), false, 0
 		stagesWritten.Store(p.ShellHome, &next)
 	}
 	return nil
