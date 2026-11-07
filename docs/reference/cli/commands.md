@@ -277,7 +277,7 @@ List this repository's worktrees and its lane, or every lane with --all: Writes 
 
 ##### `abcd ahoy worktree prune`
 
-Reclaim this lane's merged, clean worktrees and stale Go cache entries: Writes the notes archive and removes both; refuses a store it cannot trust.
+Reclaim this lane's merged, clean worktrees and trim the Go cache to its limit: Writes the notes archive and removes both; refuses a store it cannot trust.
 
 **Usage:** `abcd ahoy worktree prune [flags]`
 
@@ -286,6 +286,39 @@ Reclaim this lane's merged, clean worktrees and stale Go cache entries: Writes t
 ```
       --dry-run           archive, remove and trim nothing; report what a real run would
       --yes stringArray   reclaim this quiet candidate too (repeatable); a name not in the lane refuses the run
+```
+
+##### `abcd ahoy worktree trim-cache`
+
+Delete the Go build cache's oldest entries down to its size limit: Writes its answer for the next lane; refuses a cache it cannot prove is Go's.
+
+**Usage:** `abcd ahoy worktree trim-cache [flags]`
+
+Delete the oldest entries of the Go build cache until the rest fit its limit, keeping
+every entry used in the last 3 hours whatever the limit; if those alone exceed it,
+they stay and the line says so. The limit is `load.go_cache_limit_gib` in
+`~/.abcd.noindex/config.json`, a whole number of GiB, 100 by default, and is never read from a
+repository; a value it cannot use, a file it cannot read, or a key under `load`
+that nothing reads (a misspelt one among them) deletes nothing.
+
+It acts only on the directory `go env GOCACHE` reports, and only when that is a real
+directory this account owns, has a Go build cache's shape and is not the home or above
+it, and there only on the entries Go's own layout defines. A build running beside it
+finds a miss and rebuilds, and an entry a build used since the walk stays, since each
+one is read again just before it goes; a build that looks one up in the instant
+between that read and the unlink can still fail to open it, and a rerun rebuilds it.
+Judge it by the cache's size: a local snapshot can hold
+what it deleted, so free disk can lag.
+
+The build loop runs this detached when it makes a lane, at most once an hour
+(`~/.abcd.noindex/go-cache-trim.json`), and the next lane says on stderr what it could not do.
+A dry run deletes nothing and records nothing. Exits 0 when the cache was walked and
+nothing refused, 1 when it was skipped or an entry could not be read or removed.
+
+**Flags:**
+
+```
+      --dry-run   delete nothing; report what a real run would
 ```
 
 ### `abcd announce`
@@ -2925,8 +2958,9 @@ and again just before it opens (the race gate at one preflight at a time reads
 it as it starts and at each look while memory holds it), and refuses at any such
 look. The refusal names
 each low volume, its free space and the floor, and, when the cache's own volume
-is low, the cache's size and a command that deletes its build entries unused for
-two days. A disk it cannot read, in whole or in part, is never refused: one line
+is low, the cache's size, `abcd ahoy worktree trim-cache`, which takes it down to
+its size limit, and a command that deletes its build entries unused for two
+days. A disk it cannot read, in whole or in part, is never refused: one line
 on stderr says it was not checked, and why. The load check (`--site`) prints the
 same finding as a warning and never fails for it.
 

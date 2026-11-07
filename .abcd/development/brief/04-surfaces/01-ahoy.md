@@ -37,6 +37,7 @@ repo whose stamp says it is current.
 | `worktree add` | — | shipped |
 | `worktree list` | — | shipped |
 | `worktree prune` | — | shipped |
+| `worktree trim-cache` | — | shipped |
 
 
 Bare `/abcd:ahoy` shows read-only status and mutates nothing. Four read-only
@@ -499,6 +500,9 @@ earlier version wrote wider is narrowed when abcd next writes it
                                  .abcd/.work.local/, redacted, beside a manifest;
                                  the worktree store's prune verb writes it before
                                  it removes the worktree (itd-2609091014076309)
+  go-cache-trim.json, .lock      when the Go build cache's trim last ran and what it
+                                 answered, pacing the trim a lane's start asks for to
+                                 once an hour (iss-2611041338455722)
   runs/<root-sha>/               an autonomous run's shared state: the run log, one
                                  claim per record, one record per joined session
                                  (itd-2609221656373558)
@@ -1686,7 +1690,7 @@ Sub-verbs: none.
 
 ### `abcd ahoy worktree`
 
-Sub-verbs: `abcd ahoy worktree add`, `abcd ahoy worktree list`, `abcd ahoy worktree prune`.
+Sub-verbs: `abcd ahoy worktree add`, `abcd ahoy worktree list`, `abcd ahoy worktree prune`, `abcd ahoy worktree trim-cache`.
 
 Flags: none.
 
@@ -1714,5 +1718,13 @@ Sub-verbs: none.
 |---|---|
 | `--dry-run` | bool |
 | `--yes` | stringArray |
+
+### `abcd ahoy worktree trim-cache`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--dry-run` | bool |
 
 <!-- surface-appendix:end -->

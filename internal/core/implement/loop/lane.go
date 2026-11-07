@@ -38,6 +38,14 @@ const BranchPrefix = "build/"
 // It is a variable only so a test can watch the lane go through it.
 var addWorktree = worktree.Add
 
+// LaneOpened, when set, is called once the worktree stage has made a lane's
+// worktree, for a build's lane and a drain's alike, and not when it adopts one it
+// made before. The front door sets it to ask for the Go build cache's trim, since
+// a lane is what fills the cache, and it must return at once: it runs in the
+// stage, under the run's lock. Nil calls nothing, so the loop's own tests start
+// no trim.
+var LaneOpened func()
+
 // laneIDRe is the shape of a lane id the loop opens (openNextLane).
 var laneIDRe = regexp.MustCompile(`^lane-[1-9][0-9]{0,3}$`)
 
@@ -284,6 +292,9 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 			return Outcome{}, refuse(string(StageWorktree), "", lane.ID,
 				"git could not add the lane's worktree: "+fsutil.RedactHome(err.Error()),
 				"settle what git reports, then run `abcd implement step` again")
+		}
+		if LaneOpened != nil {
+			LaneOpened()
 		}
 	}
 	// An adopted worktree is narrowed to 0700 here, as Add narrows one it

@@ -1158,11 +1158,12 @@ a time reads it as it starts and at each look while memory holds it), since
 other work fills the disk while it waits, and refuses at any such look rather than wait, since nothing
 frees disk while it sleeps. The refusal names each low volume, its free space
 and the floor, and, when the cache's own volume is low, the cache's path and
-size and two ways to free it: a `find` line deleting the build entries unused
-for two days (offered only for a directory with a Go build cache's shape, and
-keeping the fuzz corpora) and `go clean -cache`. The gate never deletes anything
-itself; `ahoy worktree prune` trims the cache's unused entries when it removes a
-worktree. A disk it cannot read, on a platform other than macOS and Linux or
+size and three ways to free it: `abcd ahoy worktree trim-cache` and a `find` line
+deleting the build entries unused for two days (each offered only for a directory
+with a Go build cache's shape, and keeping the fuzz corpora) and `go clean -cache`.
+The gate never deletes anything itself; abcd keeps the cache to its size limit
+when `ahoy worktree prune` removes a worktree and, detached and at most hourly,
+when the build loop makes a lane (`commands/ahoy.md`). A disk it cannot read, on a platform other than macOS and Linux or
 through a read that fails, is never refused, in whole or in part: one line on
 stderr says it was not checked and why (`disk_note` in `--json`). CI runners
 skip the check with the rest of the gate.

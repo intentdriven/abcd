@@ -2,6 +2,7 @@ package cli
 
 import (
 	"os"
+	"slices"
 	"testing"
 	"time"
 
@@ -56,6 +57,9 @@ func TestMain(m *testing.M) {
 	worktreeTrimCache = func(bool, time.Time) worktree.CacheTrim {
 		return worktree.CacheTrim{Skipped: "a test stands in for the trim"}
 	}
+	// Nor does a lane any test makes start a detached trim, or stamp the marker
+	// in whatever home the test runs under.
+	shippedLaneOpened, loop.LaneOpened = loop.LaneOpened, nil
 	// No `ahoy install` here asks GitHub's attestations API or the Sigstore
 	// TUF repository: a cache the fixtures bind is promoted through a
 	// stand-in that accepts it, and the provenance tests put the shipping
@@ -77,6 +81,12 @@ func TestMain(m *testing.M) {
 	// stands in for abcd when the runner marks it: the real subprocess path runs
 	// in every test that reaches it, and no test runs the suite recursively.
 	if actAsBinary(os.Getenv(cliTestAsBinaryEnv), os.Args[1:]) {
+		os.Exit(Run(os.Args[1:], os.Stdout, os.Stderr))
+	}
+	// The real spawn of the lane's trim re-executes this binary, which runs the
+	// trim's verb, against the stand-in above, under the test's private home
+	// (TestSpawnCacheTrimRunsTheVerbDetached).
+	if os.Getenv(trimChildEnv) == "1" && slices.Equal(os.Args[1:], []string{"ahoy", "worktree", "trim-cache"}) {
 		os.Exit(Run(os.Args[1:], os.Stdout, os.Stderr))
 	}
 	// The AI-written interviews' tests put a stub runner on PATH as claude:
