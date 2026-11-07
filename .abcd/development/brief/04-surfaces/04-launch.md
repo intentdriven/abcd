@@ -587,7 +587,7 @@ of records derives `1.0.0` from a `0.y.z` base.
 A cut that cannot proceed is **refused under a named kind**, and the kind is the
 wire format both front doors emit (`internal/core/release/emit.go`). Every one
 is fail-closed: the cut stops rather than deriving a number or a changelog that
-would be wrong. There are ten, and an operator sees them as
+would be wrong. There are eleven, and an operator sees them as
 `refused (<kind>)`.
 
 | Kind | Raised when |
@@ -600,6 +600,7 @@ would be wrong. There are ten, and an operator sees them as
 | `surface-guard` | the surface guardrail failed, or could not compare |
 | `unfixed-finding` | a consequential finding this cycle captured is still open, with no recorded decision to defer it; or an open issue record that differs from HEAD, where the gate reads the ledger, at any severity, every path named and no override waiving it |
 | `deleted-finding` | a consequential record the anchor held in `open/` is in no status directory at HEAD: the cut removed the finding instead of answering it |
+| `unlanded-reference` | a record's prose cites a record the tree being cut does not hold: a pending reference record-lint accepted while its record was in review, or a forward-looking marker's, whose record never landed; every citing line is named, and the remedy is to land that record or correct the reference (iss-2611031731385043) |
 | `doc-fidelity` | a surface the binary ships that no brief chapter names, whatever the cut ships; or, where the cut ships an intent, the brief lags the surface it delivered or no saved docs review names the commit being cut ([`10-docs.md`](10-docs.md), itd-60) |
 | `empty-cut` | nothing user-facing shipped, so there is no release |
 
@@ -664,6 +665,33 @@ than a design target.
   severity was wrong in the first place. The gate asks only whether the record is
   still open at `HEAD`, so deleting it outright clears the gate as well. That is
   a hole, not a fifth route.
+
+**Pending-reference guardrail.** A record is cited by id, never in words, even
+while the record it cites is still in review on another pull request, and
+record-lint accepts such a citation as a pending reference rather than refusing
+it ([`../05-internals/06-lint.md`](../05-internals/06-lint.md), section 1.2). The
+cut is where it must have landed (iss-2611031731385043), so the cut reads every
+record's prose citations exactly as `prose_citation_resolves` reads them, with
+no forge and nothing pending (`lint.AuditReferences`):
+
+- **What refuses.** A citation of an id the tree being cut does not resolve,
+  that the baseline does not carry and whose line carries no illustrative
+  marker, refuses the cut under `unlanded-reference`, whether record-lint
+  accepted it as pending or its line carries the forward-looking marker. No
+  release ships a citation to a record that never landed. The refusal names
+  every citing line (`file:line cites <id>`) and its records, and the way out is
+  to land the record it names, by merging the pull request that carries it, or
+  to correct the reference.
+- **What is left standing.** An illustrative number is not a citation. A
+  baseline entry is the record's own ruling on one id, with its class and
+  reason, and the baseline drains by its own ratchet: a cut that refused on it
+  would refuse every release until a separate ruling was made, the standing
+  backlog's reasoning above.
+- **What is reported.** A forward-looking marker whose every cited record is now
+  in the tree is reported for removal (`references.stale_markers` on the cut's
+  JSON, one `stale marker:` line each in the render) and refuses nothing, so a
+  pending citation can still be told from a dead one. The audit travels on a
+  ready cut and a refused one alike (`references.unlanded`).
 
 ### Where the version is written
 

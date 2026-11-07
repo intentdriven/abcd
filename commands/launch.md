@@ -632,7 +632,9 @@ Exit codes gate the flow:
   merged feature whose intent still sits in `planned/`, a missing surface
   baseline, a surface break with no `breaking` record, a
   consequential finding this cycle captured and never answered, or an open
-  issue record left uncommitted (see *The findings gate* below). A refusal is a result to relay, not a crash, and not
+  issue record left uncommitted (see *The findings gate* below), or a record
+  citing a record the tree being cut does not hold (`unlanded-reference`, see
+  *The references gate* below). A refusal is a result to relay, not a crash, and not
   something to work around.
 - **2** — a structural fault (the repository could not be read). Relay it and stop.
 
@@ -654,6 +656,31 @@ that review, and the cut report says so under `docs review:` (`fidelity_note` in
 the JSON). A cut that ships no intent needs no docs review, but
 it still refuses (`doc-fidelity`) a verb, sub-verb or agent the binary ships
 that no brief chapter names.
+
+### The references gate
+
+A record is cited by id, never in words, even while the record it cites is
+still in review on another pull request: record-lint accepts such a citation as
+a pending reference (`prose_citation_pending`, reported, never refused). The cut
+is where it must have landed, so both renders of the cut read every record's
+prose citations the way record-lint does, with nothing pending:
+
+- **What refuses.** A citation of a record the tree being cut does not hold
+  refuses the cut under `unlanded-reference`, whether record-lint accepted it as
+  pending or its line carries `<!-- record-lint: forward-looking -->`. The
+  refusal names every citing line (`<file>:<line> cites <id>`) and lists the ids
+  in `records`. Relay it and stop: the way out is to land the record it names,
+  by merging the pull request that carries it, or to correct the reference. An
+  `illustrative` marker and an entry in `.abcd/prose-citations-baseline.json`
+  are the record's own rulings and refuse nothing.
+- **What is reported.** A forward-looking marker whose every cited record is
+  now in the tree prints one `stale marker:` line each, naming the file, the
+  line and the ids, and is in `--json` as `references.stale_markers` (`file`,
+  `line`, `ids`). It never refuses and never changes the exit code; relay the
+  lines so the markers are removed, since a marker that outlives its reason
+  makes a pending citation look like a dead one. `references.unlanded` (`file`,
+  `line`, `id`, `marked_forward_looking`) carries the refusing citations on the
+  same cut.
 
 ### The findings gate
 
