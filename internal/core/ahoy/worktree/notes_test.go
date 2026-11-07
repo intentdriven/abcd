@@ -122,6 +122,31 @@ func TestPruneLeavesAShortBuildLeftoverOut(t *testing.T) {
 	}
 }
 
+// TestPruneKeepsAWorktreeWhenTheFileAtABuildNameCannotBeRead: a file the walk
+// cannot read could be anyone's, so it is no build product, and the worktree stays
+// with the file named rather than removing the only copy.
+func TestPruneKeepsAWorktreeWhenTheFileAtABuildNameCannotBeRead(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a file whatever its mode")
+	}
+	repo, _ := pruneFixture(t)
+	p := mergedWorktree(t, repo, "unreadable")
+	bin := filepath.Join(p, ".abcd", ".work.local", "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bin, "abcd.123"), []byte("kept by hand\n"), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	r := pruneRow(t, prune(t, repo, worktree.PruneOptions{}), "unreadable")
+	if r.Outcome != "kept" || !strings.Contains(r.Reason, "bin/abcd.123") {
+		t.Fatalf("an unreadable file at a build name keeps the worktree, naming it: %+v", r)
+	}
+	if !exists(p) {
+		t.Fatal("the kept worktree is still there")
+	}
+}
+
 // TestPruneStillJudgesABinDeeperInTheTier: only the tier's top-level bin/ holds
 // the build; a bin/ under scratch/ is notes like any other, and a binary there
 // still keeps the worktree.
