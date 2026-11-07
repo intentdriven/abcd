@@ -51,7 +51,7 @@ beside `cap` and `held` (`drain_wait.go`), with the same look-again.
 directory under the person's abcd home, links each program this repository lists and this computer has registered, checks each
 fingerprint, prepends the directory and removes it when the command ends. The landing
 preflight (`internal/core/landing/land.go`) and a runner's launch (`internal/core/runner/proc.go`)
-call it, and the preflight resolves `make` through the made directory rather than abcd's own PATH. Links are made only for listed, registered, unwaived programs, so a copy only another repository lists stays out. A mismatch stops the command
+call it, and the preflight resolves a listed `make` through the made directory rather than abcd's own PATH. Links are made only for listed, registered, unwaived programs, so a copy only another repository lists stays out. A mismatch stops the command
 and, in a lane, leaves the item in the tool wait.
 
 **An agent needing a tool.** `abcd needs ask <tool> --why` is the one sub-verb an agent may
