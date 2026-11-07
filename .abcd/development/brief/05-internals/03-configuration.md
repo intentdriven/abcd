@@ -1603,8 +1603,8 @@ memory, memory takes what the rules actually left, and whatever of those bytes t
 notes leave unused goes back to the rules. When the matched domains do not all fit, room
 goes up a ladder, the cheapest first at each step: every domain gets its heading and
 a line naming the command that renders it, then its first rule, then all of its rules,
-so one long domain never holds back the next. Every form sent is recorded as sent, since it names the command,
-and never one the host cut. Where the context bracket keeps rules in full, they come
+so one long domain never holds back the next. Every form that carries a rule is recorded as sent, since it names the command,
+and never one the host cut; a heading and its command alone carry no rule, so that domain is tried again next turn. Where the context bracket keeps rules in full, they come
 back in full whenever they fit what the turn leaves them; a bracket that shrinks rules
 sends each domain at most as its heading and first rule, however much room is left
 (spc-2610111627213138). A note or page that does not fit comes back as one line where that line fits; a page over 128 KiB is never read for recall and is named on stderr. A
