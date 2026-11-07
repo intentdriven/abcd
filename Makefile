@@ -250,14 +250,17 @@ docs-lint:
 # mkdocs — it excludes docs/ from its page walk, and link-targets leaves the
 # /docs/ targets of an output with no docs tree to a note — so a plain build
 # output suffices; the site workflow, which does run mkdocs, judges them. Roughly ten seconds, almost all of it writing files.
+#
+# Each run takes a directory of its own, so a make precheck and a make preflight
+# in one worktree do not remove what the other is writing
+# (iss-2611061656036069), and removes it however the run ends.
 site-render:
-	@rm -rf .abcd/.work.local/scratch/site-render-check
-	@go run ./cmd/abcd site build --out .abcd/.work.local/scratch/site-render-check >/dev/null
-	@go run ./cmd/abcd lint site --out .abcd/.work.local/scratch/site-render-check >/dev/null
-	@rm -rf .abcd/.work.local/scratch/site-render-check
-	@go run ./cmd/abcd site build --project --base-path /abcd/ --out .abcd/.work.local/scratch/site-render-check >/dev/null
-	@go run ./cmd/abcd lint site --project --base-path /abcd/ --out .abcd/.work.local/scratch/site-render-check >/dev/null
-	@rm -rf .abcd/.work.local/scratch/site-render-check
+	@mkdir -p .abcd/.work.local/scratch
+	@d=$$(mktemp -d .abcd/.work.local/scratch/site-render-check.XXXXXX) && trap 'rm -rf "$$d"' EXIT && \
+	go run ./cmd/abcd site build --out "$$d/personal" >/dev/null && \
+	go run ./cmd/abcd lint site --out "$$d/personal" >/dev/null && \
+	go run ./cmd/abcd site build --project --base-path /abcd/ --out "$$d/project" >/dev/null && \
+	go run ./cmd/abcd lint site --project --base-path /abcd/ --out "$$d/project" >/dev/null
 	@echo "site-render: the record and docs render and pass the site gates, and the record on the project route too"
 
 # Propagate the pinned action refs in the committed release workflows back into
@@ -491,8 +494,9 @@ preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift
 	@echo "preflight: a records-only change, so the unit and race stages are skipped and precheck's tests run in their place; CI's unit lane still runs every test"
 	go build ./...
 	go vet ./...
-	go test -timeout 20m ./internal/core/lint ./internal/core/launch/scaffold ./internal/core/mdrecord ./internal/core/issueschema ./internal/core/guard ./internal/core/glossary ./internal/core/reading ./internal/core/recordid ./internal/core/changelog ./internal/core/intent ./internal/core/release ./internal/core/releasedigest ./internal/core/decisions ./internal/core/record/match ./internal/core/lifeboat ./internal/reachaudit ./internal/abcdhome
-	go test -timeout 20m -run '$(PRECHECK_AUDIT_TESTS)' ./internal/surface/cli ./internal/core/site
+	go test -timeout 20m $(PRECHECK_AUDIT_PACKAGES)
+	go test -timeout 20m -run '$(PRECHECK_AUDIT_TESTS)' $(PRECHECK_NAMED_PACKAGES)
+	go run ./cmd/precheck-audits $(PRECHECK_AUDIT_PACKAGES) $(PRECHECK_NAMED_PACKAGES)
 	@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)" records-only
 endif
 
@@ -506,20 +510,26 @@ endif
 # brief's lifeboat table), the audit that every exported core function has a
 # caller (internal/reachaudit), the audit that only the resolver spells the home
 # folder's name (internal/abcdhome),
-# and the command and site packages' audit tests, chosen by name: a test in those
+# the command and site packages' audit tests, chosen by name: a test in those
 # two packages that reads the committed tree carries one of the PRECHECK_AUDIT_TESTS
-# words in its name, which is how a new one joins without a list to keep. It skips
+# words in its name, which is how a new one joins without a list to keep,
+# and the audit tests of every other package, chosen by what they do: cmd/precheck-audits
+# picks each test that reaches the repository root, so a new one there joins with no
+# word and no list (its own comment says what it cannot see). It skips
 # the full unit and race stages, needs no load gate, mints no receipt and replaces
 # no preflight: a pass says only that what it ran passes.
 # TestPrecheckRunsEveryPreflightGateButTheLoadCheck holds its gates to preflight's
 # and TestPrecheckRunsTheAuditTests its test lines to what this says.
+PRECHECK_AUDIT_PACKAGES := ./internal/core/lint ./internal/core/launch/scaffold ./internal/core/mdrecord ./internal/core/issueschema ./internal/core/guard ./internal/core/glossary ./internal/core/reading ./internal/core/recordid ./internal/core/changelog ./internal/core/intent ./internal/core/release ./internal/core/releasedigest ./internal/core/decisions ./internal/core/record/match ./internal/core/lifeboat ./internal/reachaudit ./internal/abcdhome ./cmd/precheck-audits
+PRECHECK_NAMED_PACKAGES := ./internal/surface/cli ./internal/core/site
 PRECHECK_AUDIT_TESTS := Surface|Page|Brief|Parity|Reference|Snapshot|Appendix|Appendices|Paragraph|Vocabulary|Scope|Relay|Chapter|Baseline|Domain|Definitions|Committed|Docs|Identity|InstallBlock|InstallCommand
 
 precheck: fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution secrets-check vulncheck site-render smoke evals-cold-reading
 	go build ./...
 	go vet ./...
-	go test -timeout 20m ./internal/core/lint ./internal/core/launch/scaffold ./internal/core/mdrecord ./internal/core/issueschema ./internal/core/guard ./internal/core/glossary ./internal/core/reading ./internal/core/recordid ./internal/core/changelog ./internal/core/intent ./internal/core/release ./internal/core/releasedigest ./internal/core/decisions ./internal/core/record/match ./internal/core/lifeboat ./internal/reachaudit ./internal/abcdhome
-	go test -timeout 20m -run '$(PRECHECK_AUDIT_TESTS)' ./internal/surface/cli ./internal/core/site
+	go test -timeout 20m $(PRECHECK_AUDIT_PACKAGES)
+	go test -timeout 20m -run '$(PRECHECK_AUDIT_TESTS)' $(PRECHECK_NAMED_PACKAGES)
+	go run ./cmd/precheck-audits $(PRECHECK_AUDIT_PACKAGES) $(PRECHECK_NAMED_PACKAGES)
 
 precheck: export GOTOOLCHAIN := go$(GO_TOOLCHAIN_VERSION)
 

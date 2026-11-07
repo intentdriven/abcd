@@ -39,6 +39,9 @@ var (
 // date, in one test's reach, compare nothing.
 type evidence struct {
 	program, tree, network, loopback, now, date bool
+	// spawn is any exec.Command, whatever it names: Audits stops at one, and the
+	// always-rerun verdict, which asks what the program can read, does not use it.
+	spawn bool
 }
 
 // reached is what a test reaches through every declaration it names.
@@ -721,7 +724,9 @@ func readSpawn(fn string, call *ast.CallExpr, e *evidence) {
 	first := 0
 	switch fn {
 	case "Command":
+		e.spawn = true
 	case "CommandContext":
+		e.spawn = true
 		first = 1
 	case "LookPath":
 		// A program found on PATH goes on to run under whatever name holds it.
@@ -752,4 +757,55 @@ func readSpawn(fn string, call *ast.CallExpr, e *evidence) {
 			e.tree = true
 		}
 	}
+}
+
+// Audits names the tests in one package's test files that read the committed
+// tree, the choice `make precheck` makes (cmd/precheck-audits): a test that
+// reaches the repository by what reached.tree counts, other than through a
+// helper that starts a process. That helper is the line between an audit and a
+// test that only finds a script at the root to run it, a line the always-rerun
+// classifier above has no need of. A test running a program in its own body is
+// still named, since an audit may list files through one, and naming one too
+// many costs seconds. A file that does not parse is an error: what cannot be
+// read cannot be shown to hold no audit.
+func Audits(paths []string) ([]string, error) {
+	files, err := parseFiles(paths)
+	if err != nil {
+		return nil, err
+	}
+	g := buildGraph(files, nil)
+	var names []string
+	for _, name := range g.tests {
+		if g.auditsTree(name) {
+			names = append(names, name)
+		}
+	}
+	slices.Sort(names)
+	return names, nil
+}
+
+// auditsTree walks what a test names as reach does, stopping at a helper that
+// starts a process.
+func (g *graph) auditsTree(test string) bool {
+	seen := map[string]bool{}
+	stack := []string{test}
+	for len(stack) > 0 {
+		key := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		n := g.nodes[key]
+		if n == nil || (key != test && (n.direct.program || n.direct.spawn)) {
+			continue
+		}
+		if n.direct.tree {
+			return true
+		}
+		for ref := range n.refs {
+			stack = append(stack, ref)
+		}
+	}
+	return false
 }

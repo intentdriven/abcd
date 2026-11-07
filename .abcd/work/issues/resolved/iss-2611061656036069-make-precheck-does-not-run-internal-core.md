@@ -10,6 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "Makefile"
 remedy: "Add the test by name to the precheck recipe and to the records-only rule in the Makefile, and read this beside iss-2610230048490215, whose mark on audit tests would stop the list being kept by hand."
+resolution: "make precheck now runs every audit test outside the command and site packages, chosen by what the test reaches, and site-render builds in a directory of its own"
+impact: internal
 ---
 
 make precheck does not run internal/core/launch's command-surface test, TestCommandSurfaceResolvesBinaryFromPluginRoot: it runs internal/core/launch/scaffold but not that package, so a fenced bare binary name in a command page passed precheck and failed 42 minutes into a preflight.
