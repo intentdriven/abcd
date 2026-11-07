@@ -52,14 +52,15 @@ The record is:
 ```markdown
 ---
 id: dcn-<yymmddHHMMSS><rrrr>
-slug: <at most 40 characters>
+slug: <at most the repository's records.slug_cap, 40 by default>
 date: <YYYY-MM-DD>
 ---
 <YYYY-MM-DD> — <the decision, in the words it was recorded in>
 ```
 
 The id comes from the same mint as every other family, the date from its stamp,
-and the slug is `recordid.Slug` over the text, cut at 40. The text is collapsed
+and the slug is `recordid.Slug` over the text, cut at the repository's
+`records.slug_cap`, 40 by default. The text is collapsed
 to one line and passes the canonical scanner first, failing closed on a
 degraded one, because it becomes committed prose and, through the slug, a
 filename. The file is created exclusively under a lock on the folder itself, so

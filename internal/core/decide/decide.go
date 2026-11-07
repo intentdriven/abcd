@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -122,7 +123,11 @@ func create(repoRoot, title string, render func(Decision) string) (Decision, err
 	if err != nil {
 		return Decision{}, err
 	}
-	slug, err := deriveSlug(redacted)
+	slugCap, err := layered.RecordSlugCap(repoRoot)
+	if err != nil {
+		return Decision{}, fmt.Errorf("decide: %w", err)
+	}
+	slug, err := deriveSlug(redacted, slugCap)
 	if err != nil {
 		return Decision{}, err
 	}
@@ -165,8 +170,8 @@ func create(repoRoot, title string, render func(Decision) string) (Decision, err
 // hyphen, trims the ends, caps the length, and insists the result is kebab-case
 // and non-empty — the slug becomes a filename, so it is validated before any
 // path is built.
-func deriveSlug(title string) (string, error) {
-	collapsed := recordid.Slug(title, recordid.MaxSlugLen)
+func deriveSlug(title string, maxLen int) (string, error) {
+	collapsed := recordid.Slug(title, maxLen)
 	if collapsed == "" {
 		return "", fmt.Errorf("decide: title %q has no slug-able characters", title)
 	}

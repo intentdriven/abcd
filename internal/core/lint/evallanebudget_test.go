@@ -25,14 +25,14 @@ import (
 // whose gates carry a run line only), and the
 // job's timeout-minutes must hold that budget after everything before it: the
 // -timeout of every earlier step in the job (release.yml's verify job runs smoke
-// after its 40m race step) plus evalJobHeadroom for the untimed steps.
+// after its 70m race step) plus evalJobHeadroom for the untimed steps.
 
 const minLocalEvalBudget = 20 * time.Minute
 
 // evalJobHeadroom is what a job spends in steps that declare no -timeout before
 // its eval step: checkout, setup-go and the load check took about half a minute
 // in CI's smoke and cold-reading-evals jobs (merge-group runs of 2026-10-24), and
-// release.yml's verify job 2.8 minutes before its race step (racelanebudget_test.go).
+// release.yml's verify job about two outside its timed steps on the v0.16.2 cut.
 // Rounded up to three.
 const evalJobHeadroom = 3 * time.Minute
 

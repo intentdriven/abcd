@@ -34,10 +34,10 @@ func standInHarness(t *testing.T, loggedIn bool, stream string) {
 
 // wallHomeLine has a stand-in report the shell's home the proof asks about.
 const wallHomeLine = `printf '{"type":"user","message":{"content":[{"type":"tool_result","content":"abcd-home:%s"}]}}\n' "$ABCD_STAGE_HOME"` + "\n" +
-	`printf '{"type":"user","message":{"content":[{"type":"tool_result","content":"abcd-env:PATH"}]}}\n'` + "\n"
+	`printf '{"type":"user","message":{"content":[{"type":"tool_result","content":"abcd-shell:hpBc\\nabcd-env:PATH"}]}}\n'` + "\n"
 
 const (
-	wallInit    = `{"type":"system","subtype":"init","session_id":"s","model":"m","tools":["Read","Bash","mcp__abcd__approve"],"apiKeySource":"none","mcp_servers":[{"name":"abcd"}],"plugins":[]}` + "\n"
+	wallInit    = `{"type":"system","subtype":"init","session_id":"s","model":"m","tools":["Read","Bash"],"apiKeySource":"none","claude_code_version":"2.1.319","mcp_servers":[{"name":"abcd","status":"connected"}],"plugins":[{"name":"cc-plugin-telemetry","path":"builtin","source":"cc-plugin-telemetry@builtin"}]}` + "\n"
 	wallRefused = `{"type":"system","subtype":"hook_response","hook_event":"PreToolUse","stdout":"Blocked by the abcd guard (git-push-force)"}` + "\n"
 	wallResult  = `{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"s"}` + "\n"
 )
@@ -99,6 +99,8 @@ func TestAWallThatDoesNotHoldRefusesNamingIt(t *testing.T) {
 		{"login", false, wallInit + wallRefused + wallResult, runner.WallLogin},
 		{"guard", true, wallInit + wallResult, runner.WallGuard},
 		{"tools", true, strings.Replace(wallInit, `"Read",`, `"Read","WebFetch",`, 1) + wallRefused + wallResult, runner.WallTools},
+		{"server", true, strings.Replace(wallInit, `"connected"`, `"failed"`, 1) + wallRefused + wallResult, runner.WallServers},
+		{"plugins", true, strings.Replace(wallInit, `"path":"builtin"`, `"path":"/plugins/persons-own"`, 1) + wallRefused + wallResult, runner.WallPlugins},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			w := newDriveWorld(t)

@@ -35,6 +35,24 @@ func TestCatFileBatchAnswersEachObjectInOrderUnderItsCap(t *testing.T) {
 	}
 }
 
+// TestCatFileBatchReadsObjectsAsStored: a replace ref stands in for no object the
+// batch reads.
+func TestCatFileBatchReadsObjectsAsStored(t *testing.T) {
+	repo := gittest.NewRepo(t)
+	repo.Write("a.txt", "the stored bytes\n")
+	a := strings.TrimSpace(repo.Git("hash-object", "-w", "--", "a.txt"))
+	repo.Write("b.txt", "what stands in\n")
+	b := strings.TrimSpace(repo.Git("hash-object", "-w", "--", "b.txt"))
+	repo.Git("replace", a, b)
+	got, err := gitutil.CatFileBatch(repo.Root(), []string{a}, 1<<10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Content != "the stored bytes\n" {
+		t.Fatalf("the batch = %+v", got)
+	}
+}
+
 // TestTreePathTypesAnswersEachPathOnItsOwn: one batch answers each path's
 // type in order, a directory asked beside a file beneath it still a tree and
 // an absent path ""; a path that cannot be asked on one line, and a commit

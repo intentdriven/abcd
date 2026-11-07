@@ -232,7 +232,8 @@ lane whose landing closes the spec. Rollup logic lives in
 
 **The loop's reviewer verdicts.** `ruthless-reviewer` states `SHIP` or
 `FIX FIRST` under its `### Verdict` heading, and `security-reviewer` states
-`APPROVE`, `BLOCK` or `NEEDS-INPUT`; the loop records the word and lets the lane
+`APPROVE`, `BLOCK` or `NEEDS-INPUT`, each naming the head it judges where the return is
+recorded; the loop records the word and lets the lane
 advance only on `SHIP` or `APPROVE`. They are each role's own words, not
 family 1: the ruthless reviewer's `SHIP` shares only its spelling.
 

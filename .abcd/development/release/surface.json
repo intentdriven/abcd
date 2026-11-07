@@ -1532,6 +1532,13 @@
       "sentence": "Fix the issues needing no decision, one lane at a time, and hand the rest back: Writes its state and user-visible drafts; refuses without the rule's record.",
       "flags": [
         {
+          "name": "after-update",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": true
+        },
+        {
           "name": "drive",
           "shorthand": "",
           "type": "bool",
@@ -1563,6 +1570,13 @@
           "name": "max",
           "shorthand": "",
           "type": "int",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "no-self-update",
+          "shorthand": "",
+          "type": "bool",
           "required": false,
           "hidden": false
         },
@@ -1621,6 +1635,13 @@
           "type": "string",
           "required": false,
           "hidden": false
+        },
+        {
+          "name": "update-refused",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": true
         },
         {
           "name": "yes",
@@ -1835,6 +1856,13 @@
         },
         {
           "name": "dir",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "harness",
           "shorthand": "",
           "type": "string",
           "required": false,

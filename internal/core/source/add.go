@@ -10,6 +10,9 @@ import (
 	"slices"
 	"strings"
 	"unicode"
+	"unicode/utf8"
+
+	"golang.org/x/text/unicode/norm"
 
 	"github.com/intentdriven/abcd/internal/core/banlist"
 	"github.com/intentdriven/abcd/internal/core/question"
@@ -337,26 +340,112 @@ func nameText(n Name) string {
 	return strings.TrimSpace(strings.TrimSpace(n.Given) + " " + strings.TrimSpace(n.Family))
 }
 
-// fold lowercases s and keeps only its letters and digits, for the key check.
+// letterSpellings holds a lowercase Latin letter's usual plain spellings, the forms an
+// ASCII key writes it in, the first first: the letters with no Unicode decomposition,
+// and the composed letters with a second spelling, read before a decomposition strips
+// the mark it comes from.
+var letterSpellings = map[rune][]string{
+	'\u00f8': {"o", "oe"}, '\u0142': {"l"}, '\u0111': {"d", "dj"}, '\u00f0': {"d"},
+	'\u00fe': {"th"}, '\u00e6': {"ae"}, '\u0153': {"oe"}, '\u00df': {"ss"},
+	'\u0131': {"i"}, '\u0127': {"h"}, '\u0167': {"t"}, '\u014b': {"ng", "n"},
+	'\u0259': {"a", "e"}, '\u0192': {"f"},
+	'\u00fc': {"u", "ue"}, '\u00f6': {"o", "oe"}, '\u00e4': {"a", "ae"}, '\u00e5': {"a", "aa"},
+	'\u0151': {"o", "oe"}, '\u0171': {"u", "ue"}, '\u0161': {"s", "sh"}, '\u017e': {"z", "zh"},
+	'\u010d': {"c", "ch"}, '\u0107': {"c", "ch"},
+}
+
+// keyLetter is one letter of a value as the key check reads it: the spellings it may
+// take in a key, or, for a Latin letter with none known, a short gap that holds it.
+// spellings[0] is the first spelling; a letter of another script keeps itself there,
+// which an ASCII key can never hold.
+type keyLetter struct {
+	spellings []string
+	gap       bool
+}
+
+// keyLetters reads s letter by letter for the key check: lowercase, with symbols,
+// format characters and modifier letters gone, one answer for either Unicode form,
+// and compatibility forms such as ligatures taken apart.
+func keyLetters(s string) []keyLetter {
+	var kept strings.Builder
+	for _, r := range s {
+		if (unicode.IsLetter(r) && !unicode.Is(unicode.Lm, r)) || unicode.IsMark(r) || unicode.IsDigit(r) {
+			kept.WriteRune(r)
+		}
+	}
+	var out []keyLetter
+	read := func(r rune) bool {
+		if spellings, ok := letterSpellings[r]; ok {
+			out = append(out, keyLetter{spellings: spellings})
+			return true
+		}
+		if r < utf8.RuneSelf {
+			out = append(out, keyLetter{spellings: []string{string(r)}})
+			return true
+		}
+		return false
+	}
+	for _, r := range strings.ToLower(norm.NFC.String(kept.String())) {
+		if read(r) {
+			continue
+		}
+		for _, d := range norm.NFKD.String(string(r)) {
+			d = unicode.ToLower(d)
+			if unicode.Is(unicode.Lm, d) || (!unicode.IsLetter(d) && !unicode.IsDigit(d)) || read(d) {
+				continue
+			}
+			out = append(out, keyLetter{spellings: []string{string(d)}, gap: unicode.Is(unicode.Latin, d)})
+		}
+	}
+	return out
+}
+
+// fold is s in the first spelling of each of its letters, for the key check.
 func fold(s string) string {
 	var b strings.Builder
-	for _, r := range strings.ToLower(s) {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			b.WriteRune(r)
-		}
+	for _, l := range keyLetters(s) {
+		b.WriteString(l.spellings[0])
 	}
 	return b.String()
 }
 
+// keyHolds reports that key holds s in any mix of its letters' usual spellings. A value
+// counts only by the letters it can be spelt in, at least min of them, so a gap never
+// makes a short value match most keys.
+func keyHolds(key, s string, min int) bool {
+	letters := keyLetters(s)
+	var pattern strings.Builder
+	spelt := 0
+	for _, l := range letters {
+		if l.gap {
+			pattern.WriteString("[a-z]{0,2}")
+			continue
+		}
+		spelt += utf8.RuneCountInString(l.spellings[0])
+		quoted := make([]string, len(l.spellings))
+		for i, spelling := range l.spellings {
+			quoted[i] = regexp.QuoteMeta(spelling)
+		}
+		pattern.WriteString("(?:" + strings.Join(quoted, "|") + ")")
+	}
+	if spelt < min {
+		return false
+	}
+	re, err := regexp.Compile(pattern.String())
+	if err != nil {
+		// Only a value too long to compile lands here; its first spelling still counts.
+		return strings.Contains(key, fold(s))
+	}
+	return re.MatchString(key)
+}
+
 // identifyingKey names the field a confidential entry's key would reveal, or "".
 // The key is printed by the guard and by cite-check, so it must not carry an alias,
-// the title or one of its longer words, or an author's name.
+// the title or one of its longer words, an author's name, or a word of three or
+// more runes from an author's name, however the name was entered.
 func identifyingKey(e Entry) string {
 	key := fold(e.ID)
-	has := func(s string, min int) bool {
-		f := fold(s)
-		return len([]rune(f)) >= min && strings.Contains(key, f)
-	}
+	has := func(s string, min int) bool { return keyHolds(key, s, min) }
 	for _, a := range e.Custom.Aliases {
 		if has(a, 3) {
 			return "alias"
@@ -365,19 +454,51 @@ func identifyingKey(e Entry) string {
 	if has(e.Title, 3) {
 		return "title"
 	}
-	for _, w := range strings.Fields(e.Title) {
+	for _, w := range keyWords(e.Title) {
 		if has(w, 5) {
 			return "title"
 		}
 	}
 	for _, n := range e.Author {
-		for _, part := range []string{n.Family, n.Literal} {
+		if has(nameText(n), 3) || has(n.Family+" "+n.Given, 3) {
+			return "author"
+		}
+		for _, part := range []string{n.Family, n.Given, n.Literal} {
 			if has(part, 3) {
 				return "author"
+			}
+			for _, word := range keyWords(part) {
+				if !allDigits(word) && has(word, 3) {
+					return "author"
+				}
 			}
 		}
 	}
 	return ""
+}
+
+// keyWords splits a title or one field of an author's name into the words a key
+// could carry on their own. Whitespace and punctuation separate, so each half of a
+// hyphenated word and the part after an apostrophe count. A combining mark does not
+// separate, so a decomposed word stays one word, as fold reads it.
+func keyWords(field string) []string {
+	return strings.FieldsFunc(strings.Map(func(r rune) rune {
+		if r == '\u200b' {
+			return ' '
+		}
+		if unicode.Is(unicode.Cf, r) {
+			return -1
+		}
+		return r
+	}, field), func(r rune) bool {
+		return unicode.Is(unicode.Lm, r) || (!unicode.IsLetter(r) && !unicode.IsDigit(r) && !unicode.IsMark(r))
+	})
+}
+
+// allDigits reports a word made only of digits: a year in an organisation's name
+// says nothing of who it is, and an opaque key is likely to hold one.
+func allDigits(word string) bool {
+	return strings.IndexFunc(word, func(r rune) bool { return !unicode.IsDigit(r) }) < 0
 }
 
 // copyFile copies a document into the corpus, creating the destination exclusively

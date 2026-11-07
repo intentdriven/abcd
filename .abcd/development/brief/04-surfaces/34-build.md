@@ -769,8 +769,11 @@ up to the run's ceiling, each with a brief the loop renders into
 `.abcd/.work.local/run/<run-id>/<lane-id>/validate/round-<n>/<role>/` (`<role>.<i>/`
 for a role's later reviewer): the reviewers the run's review set names (below)
 for the `ruthless-reviewer` and then the `security-reviewer`, each over the
-lane's diff from its base to its head, and, on the lane whose landing closes
-the spec, an `intent-auditor`. The fidelity audit runs once, on that lane, over the whole
+lane's diff from its base to its head, read as the objects store it (a file's
+text whatever its attributes say and every nested checkout; a file with a NUL
+byte is escaped under a bound, and past it one that git itself would call binary
+is named in one line of its path, modes, size and blob id, and is unread), and,
+on the lane whose landing closes the spec, an `intent-auditor`. The fidelity audit runs once, on that lane, over the whole
 delivery (ruling AI, 2026-09-29): its request carries the range from the base of
 the run's first lane to the closing lane's head, each lane's own range, and
 every spec step landed before the run by what landed it. A lane that does not
@@ -783,10 +786,15 @@ landing's close consumes; the delivered range sits after its Provenance block,
 outside the prompt hash. Only the loop writes a verdict (decision 9): each
 validator writes its return, and the loop parses the verdict out of it — a
 reviewer's one `### Verdict` section stating one verdict of its role (`SHIP` or
-`FIX FIRST`; `APPROVE`, `BLOCK` or `NEEDS-INPUT`), the auditor's fidelity
+`FIX FIRST`; `APPROVE`, `BLOCK` or `NEEDS-INPUT`) and naming the head it judges by its
+full object name, by the one rule the landing reads a return by, with a plan review's
+naming its draft's digest instead, the auditor's fidelity
 verdict checked against the request (its receipt, both provenance hashes, every
 criterion and scope condition) — and records it into the state file; a return
-the loop cannot read one verdict from is refused and the lane still awaits it.
+the loop cannot read one verdict from is refused and the lane still awaits it. So is a
+validator's return whose launch reports a stop for length, a provider's filter or
+refusal, or an error, whatever it says: it is set aside, the role pauses, and the next
+step starts a fresh validator.
 A round whose validators all pass completes the stage, unless a report the
 lane's receipts name states a verdict (`Verdict: SHIP`, or a Verdict heading
 over one), which is refused at the advance naming the report. A round one of
@@ -882,15 +890,35 @@ and finds what it made rather than making it twice. The lane stays at `land`
 until the last step, but for the review round its records commit takes where the
 mode is `auto`, back at `validate`, and a sync.
 
-1. It checks the lane's worktree is clean and its branch is at the head the
+1. It checks the lane's worktree is clean, an uncommitted edit to the lane's own
+   spec record aside, which its commit carries, and its branch is at the head the
    validators judged, and decides whether the landing closes the spec: the
    lane that took the fidelity audit does.
 2. In the lane's worktree it runs the spec's close (which ships the intent
    and parks the fidelity receipt) and ingests the verdict of the audit
    the lane took into that receipt, rather than asking for a second audit; and
    for every capture the lane's receipts declared fixed it runs the capture
-   store's resolve with the lane's commit that fixed it. It commits them on
-   the lane's branch with a computed message carrying `Delivers:` (when the
+   store's resolve with the lane's commit that fixed it. What a close ships and what holds it stay as the judged head has them, so an
+   uncommitted change to them is refused, and what that head itself holds against
+   the close (a hold, a drifted `spec_id`, a bundle member another open spec keeps)
+   hands the lane back as `stuck`, naming it and the way out: save the lane's
+   branch if its commits are wanted, since the discard deletes it, settle it on the
+   default branch, put back anything uncommitted in the lane's worktree, discard the
+   lane, and once the run's other lanes are finished or decided remove the run's
+   directory and build the intent again. An issue's landing moves no intent or spec.
+   Outside the records a store reads, in what the worktree holds, what it stages and
+   any commit it finds on the judged head, the landing commits a file only if it is
+   exactly what the repoint of its own records' moves writes over the head's, whether
+   this landing moved them or the head already holds them moved: a file holding anything
+   else stops it until that file is put back. A repoint that fails stops the call before
+   its commit, and the next call repoints again. A commit found on the judged head counts
+   as the landing's records only if that head is its one parent and it holds the lane's
+   own moves, its step's mark, the audit on the intent's record and the trailers the
+   landing writes; any other is refused until the branch is restored to that head. Inside
+   a store the landing still carries an edit to a record, which the reader judges, and
+   a record keeps the mode its writes give it: an ordinary file's, or the executable bit
+   the judged head already had. The landing reads what it judges as the objects store it.
+   It commits them on the lane's branch with a computed message carrying `Delivers:` (when the
    close ships the intent) and one `Resolves:` per capture, so RS005 and RS001
    find the records in the change. Unlike the pick's commit, whose text abcd
    computes, the records carry prose a model composed (the receipt's

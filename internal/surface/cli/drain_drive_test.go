@@ -82,6 +82,7 @@ func (w *driveWorld) passWalls(t *testing.T) {
 		static:   func(context.Context, runner.Profile) ([]string, error) { return nil, nil },
 		live:     func(context.Context, runner.Profile) error { return nil },
 		settings: func(runner.Profile) error { return nil },
+		binaries: func(runner.Profile) error { return nil },
 	}
 	driveTerminal = func(_ context.Context, _ string, o loop.TerminalOptions) (loop.TerminalResult, error) {
 		w.terminalCalls++

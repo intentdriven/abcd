@@ -10,6 +10,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/grounds"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/provenance"
 	"github.com/intentdriven/abcd/internal/core/record/match"
 	"github.com/intentdriven/abcd/internal/core/recordid"
@@ -586,7 +587,11 @@ func promoteReadingItem(repoRoot, issuesRoot string, req PromoteRequest) (Promot
 		// slugged from. The seed POINTS at the item rather than copying it: the
 		// reading record stays the single source of what the instrument returned.
 		title := asString(fm["pattern"])
-		slug, err := normaliseSlug(deriveSlug(title))
+		slugCap, err := layered.RecordSlugCap(repoRoot)
+		if err != nil {
+			return PromoteResult{}, err
+		}
+		slug, err := normaliseSlug(deriveSlug(title, slugCap), slugCap)
 		if err != nil {
 			return PromoteResult{}, err
 		}

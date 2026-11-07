@@ -193,13 +193,20 @@ Its inputs:
   once per reviewer's return, lands nothing. It needs at least two returns, no two
   the same text, each with a first line reading `Reviewed head: <name>`, naming
   the head by at least its first nine characters, and stating
-  under its one `### Verdict` heading, with no other line opening as a Verdict, a
-  verdict that passes the stop rule
-  (SHIP or APPROVE: no critical or major finding). It then writes
-  `.abcd/.work.local/review-receipts/<sha>`, holding the commit, when it was
+  under its one `### Verdict` heading, with no other line opening a verdict, whatever
+  qualifies it, a verdict that passes the stop rule
+  (SHIP or APPROVE: no critical or major finding) and names the head it judges by its
+  full object name, on the verdict's line or on a `Head: <full name>` line directly
+  under the heading. A head's name is a hash over the text a review reads, so that text cannot hold it. It
+  then writes
+  `.abcd/.work.local/review-receipts/<sha>`, holding the commit, the reading of a
+  verdict it was recorded under, when it was
   recorded and each return's name, verdict and SHA-256; the gate finds it in
   any worktree of the repository. A return that falls short is refused,
-  exit 2, naming it, and nothing is written.
+  exit 2, naming it, and nothing is written. A receipt recorded before a verdict named
+  its head does not count, at the gate or as a delta's base, whichever build wrote it:
+  it keeps digests and not text, so it cannot be read again, and the head records its
+  pair again.
   Where the mode is `auto` the build loop records this itself, in its own process
   and never through a stage, and only from a pair that read the head it pushes. The
   landing's records commit moves that head, so the commit takes a review round of its
@@ -214,8 +221,8 @@ Its inputs:
   pair: a delta pair reviews a wording fix after a full pair, so a corrected
   sentence costs a pair over that fix and not a pair over the branch. The review act names the base
   head, and each of the two returns' first line reads exactly
-  `Reviewed delta: <base>..<head>` in place of the head's, with no line stating a
-  head; a return carrying that line, in this or any near form, is refused for a full
+  `Reviewed delta: <base>..<head>` in place of the head's, with no `Reviewed head:`
+  line and its verdict still naming the head in full; a return carrying that line, in this or any near form, is refused for a full
   pair. A delta applies only when the base has a full pair's receipt (a
   delta's is not one, so a later change rests on the same pair and its reviewers
   read from that base again), the head descends from the base, and the branch's

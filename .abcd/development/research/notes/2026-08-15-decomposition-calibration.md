@@ -2810,6 +2810,22 @@ Verdict at filing: SPLIT, two intents and a held stance, the product thinker cho
 
 Grade: pending planning.
 
+## 2026-11-04: where work waits, a promise's test coming back, and what stalled a run (product thinker, routing confirmed)
+
+The proposal: two ideas that came through ideation reframed, plus local telemetry on abcd's own runs, which the product thinker asked about afterwards.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| stage waits on an explicit ask, with a first place to look | capability | itd-2611041409531723 |
+| a promise's own stated test comes back when due, for a dated judgement | capability | itd-2611041410013155 |
+| where runs stalled and when a person stepped in, across runs, on this machine | capability | itd-2611041410025208 |
+| what each agent cost | capability | already the launch ledger itd-2611031342011261; not filed again |
+| usage sent back across people; use of the products built with abcd | capability | discussed and not filed |
+
+Verdict at filing: SPLIT, three intents, the product thinker choosing a draft of its own for the promise's test where the review had pointed at itd-170 and itd-175. Typed links: the promise draft refines itd-170 and itd-175; the wait draft builds on itd-2610301850454860; the runs draft builds on itd-2611031342011261. Advisory reversal flags: none, since nothing filed leaves the machine or needs adr-38 replaced.
+
+Grade: initial routing proposed the promise's test as additions to the two drafts; the product thinker changed that part, and the rest survived. The runs draft narrowed at filing on finding that the run log and its report already exist.
+
 ## 2026-11-04: unattended work runs on a named profile, one per agent subscription (product thinker, routing proposed)
 
 The proposal: after the subscription test of 2026-11-03 found that the drive's dedicated configuration directory has no home abcd knows (iss-2611032326573729), that a wall defined by denying connected services left built-in tools reaching the person's account, that a session's tools can change after its start, and that nothing refuses an unwalled start (iss-2611032327111678), the product thinker ruled that the directory is a profile under `~/.abcd.noindex/profiles/`, one per agent subscription, never described as a sandbox.
@@ -2848,3 +2864,20 @@ The proposal: three scratch drafts written for an experiment testing a two-week 
 Verdicts at filing: 01 HOLD (its rule already filed, its amendment folded into the profiles draft); 02 SPLIT into two intents; 03 FILE-AS-IS. Typed links: the restart path and the stop switch each refine itd-2610222215485265 and build on itd-2609201925079472, itd-2611031342011261 and itd-2610180912189125; the digest builds on itd-2611031342011261, itd-2610240850336695 and itd-2610032150577708. Advisory reversal flags: the stop switch narrows the autonomous mode's reading that only `abcd mode back` ends it; the digest's file home sets aside the dashboard spec's one-renderer rule for where the page lives, not how it is composed.
 
 Grade: all three verdicts survived confirmation (HOLD, SPLIT, FILE-AS-IS), and the one place choice both 02 and 03 held open was settled once for both, as 03 asked. Over-flag: none. Missed part: 02's trust rule did not name the store ownership exception the place choice needs; it was added at filing. Two of 03's technical questions (the composer, the quiet day) and two of 01's (the reading's source, the staleness bound) were not put and took the draft's proposal under the standing stance that abcd ships a sensible default the person configures; graded as proposals the record carries, not as confirmed rulings.
+
+## 2026-11-06: a drive takes new releases itself at a lane boundary (technical facilitator, routing named with the design)
+
+The proposal: `abcd drain --drive` runs for weeks and ends on a changed binary, so a release cannot reach a running drive without a stop and a restart, which the technical facilitator ruled a long run never has (dcn-2611062149362998). The settled design: at a lane boundary, about once an hour, the drive checks for a newer stable release, fetches it into a staging file through the update verb's verification, proves it in the drive's own live launch before the installed binary is touched, swaps atomically keeping the previous binary, and re-executes itself to resume from the drain's state; `--no-self-update` turns it off; a source build never self-updates. The design arrived with its routing named: the capability to an intent, the rule to a proposed ADR with a brief invariant.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| the hourly check at a lane boundary, the staged fetch, the proof from the staging file, the atomic swap keeping the previous binary, the re-execution that resumes the drain's state, the one line, the consent line, the flag | capability | itd-2611062149308723, planned with spc-2611062151392235 |
+| an unattended process replaces its own binary only after the update verb's verification and a live proof the new binary passes, on the person's yes, and nothing a stage writes decides it; a source build never self-updates | trust rule | adr-2611062149324491, proposed; the invariant's wording in its consequences, added to the brief on acceptance |
+| a long unattended run has no stops and no restarts | ruling | dcn-2611062149362998; no principle |
+| a drive's own release check, which adr-38 names as needing a record in the open | trust rule, existing | adr-38, refined for this one verb by the ADR above; advisory reversal flag for a person to confirm as refinement, not reversal |
+| the running binary's classification, the staged fetch and the candidate proof, the swap with the kept copy, the hidden resume flag, the drain state read back | plumbing | the spec, then the brief's drain and update chapters |
+| the drain's state is what a drive resumes from | capability, existing | itd-2611041549461012; cited |
+
+Verdict at filing: FILE-AS-IS, with the trust rule in its own proposed ADR as the instruction named. Typed links: the intent refines itd-2610222215485265 and builds on itd-130 and itd-2611041549461012. Advisory reversal flag: adr-38's consequence that checking for updates is forever a verb the person runs.
+
+Grade: the prediction is the label here, since the routing came with the design, so this entry counts toward the protocol's history and not toward the ~50-capture threshold (the itd-92 precedent). What the table found that the design did not name: the adr-38 flag, which no part of the settled design mentioned and which the code's own records make binding, and the exposure of the staging file to the proof's own launch, which became a criterion. Over-flag: none. The ADR's acceptance and the reversal flag's ruling are a person's, pending.

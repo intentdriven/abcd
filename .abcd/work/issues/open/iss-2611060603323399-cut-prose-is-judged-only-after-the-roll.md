@@ -10,6 +10,12 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/changelog"
 remedy: "Give launch ship a prose-only review step on the changelog JSON before the roll, using the docs gate's reviewer on the payload, so a correction edits the payload and leaves no revert in the history."
+deferred_after: v0.16.2
+deferral_reason: "The cost is process only: a round of prose findings costs a revert and a re-roll at the cut, and nothing a release ships is affected. The fix adds a review step to the cut and wants its own review, so it follows in the next cycle."
 ---
 
 A cut's changelog and release page are judged only after the roll is committed, so each round of prose findings costs a revert and a re-roll; the v0.16.2 docs gate found 2 major and 9 minor overclaims after the first roll. launch ship cites records and nothing compares prose to code before the roll.
+
+## Deferral 2026-11-07
+
+Deferred past v0.16.2: The cost is process only: a round of prose findings costs a revert and a re-roll at the cut, and nothing a release ships is affected. The fix adds a review step to the cut and wants its own review, so it follows in the next cycle.

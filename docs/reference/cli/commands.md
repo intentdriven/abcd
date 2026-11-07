@@ -1443,7 +1443,7 @@ abcd docs fidelity record --verdict-json verdict.json
 
 Fix the issues needing no decision, one lane at a time, and hand the rest back: Writes its state and user-visible drafts; refuses without the rule's record.
 
-**Usage:** `abcd drain [--drive [--yes] [--until <date>] [--profile <name>]] [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]`
+**Usage:** `abcd drain [--drive [--yes] [--until <date>] [--profile <name>] [--no-self-update]] [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]`
 
 Work the open issue ledger unattended: fix the issues that need no decision, and
 hand the rest back by kind. Which issues need no decision is this repository's own
@@ -1533,6 +1533,28 @@ lane stays on its branch, and the last lines name the run, the lane and the comm
 that resumes it. A second kills the running agent's process group and exits at once
 (exit 130), naming when the reservation lapses. Without --drive a drain is one move,
 as below.
+
+A drive on a release binary takes each newer stable release of abcd itself, on the yes
+that names this: at a lane boundary, at most about once an hour, it asks the release
+origin for its latest release, the one request a drive makes on its own
+(adr-2611062149324491, proposed), and a newer one goes through what `abcd update`
+holds a swap to, into a staging file beside the binary, then a read-only `drain
+--dry-run`, then the live launch a drive proves itself with, before the binary is
+touched. Then it swaps the binary, keeps the previous one beside it as .abcd.previous,
+and starts itself again, asking nothing and going on from the drain's own state with
+the cap, pace and skips it holds, in one line naming both versions. A release that fails the checks or
+the live launch is said once and is not taken again in this run, and the drive goes on
+with the one it has; a read-only run that fails is said once per reason and tried again
+at later checks; and a network fault, a rate limit or a timeout while fetching it, and a limit or an
+outage met during the live launch, are no verdict on it, and the next check tries it
+again, with one line each time. A release that starts and cannot go on is tried again for
+about three minutes, and if it still cannot, before its first move, it goes back
+to the kept copy, which carries on and does not try that release again. --no-self-update
+turns all of this off. A source build, a plugin root's binary, a package manager's and
+the track-latest shim never self-update, and the question says so. A drive still
+compares the binary and the settings with what it started on before every stage, so a
+swap ends any other drive on this account, whatever flags that other drive has, and a
+start that may take a release says so in a line.
 
 --take-over moves your own live reservation of an issue from another copy to this one
 as the move reaches it, as `abcd build --take-over` does: a hosted session that
@@ -1689,6 +1711,7 @@ drain or run holds the state lock.
       --fix-rounds string    the fix rounds a lane may take before it is handed back; wins over every configured layer
       --judgement string     the host's answer to the judgement the drain awaits, at the path its request names
       --max int              cap the lanes this drain opens; the default is all
+      --no-self-update       with --drive: take no new release of abcd during the run, and ask the release origin nothing
       --pace string          the drain's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer
       --profile string       with --drive: the profile directory to run on, by name; needed when there are several
       --reason string        why --skip holds its issues back, shown in each pass-over
@@ -2116,6 +2139,7 @@ start it. It exits 0 when its input ends.
       --base string            the commit the run started on, by its full object name
       --declared stringArray   on a drive's stage, a path its work declares it changes, relative to --dir; repeatable
       --dir string             the working tree the agent runs in, as an absolute path
+      --harness string         on a drive's stage, the harness file its run proved, as an absolute path
       --protect stringArray    on a drive's stage, a directory it may not write, as an absolute path; repeatable
       --run-dir stringArray    a directory the run keeps its own files in (its brief, its receipt), as an absolute path; repeatable
       --stage-home string      on a drive's stage, the home its shell runs under, as an absolute path
@@ -3255,8 +3279,10 @@ note, the impact and the grounds; the landing resolves each.
 
 At the validate stage the receipt is the validator's return: a reviewer's is refused
 unless it has one Verdict section stating one verdict of its role (SHIP or FIX FIRST;
-APPROVE, BLOCK or NEEDS-INPUT), and the intent-auditor's unless it is the fidelity verdict
-the request asked for, echoing its receipt and both provenance hashes. The loop records
+APPROVE, BLOCK or NEEDS-INPUT) and naming the head it judges by its full object name, and
+the intent-auditor's unless it is the fidelity verdict the request asked for, echoing its
+receipt and both provenance hashes. Either is refused, whatever it says, when its launch
+reports a stop for length, a provider's filter or refusal, or an error. The loop records
 the verdict and the lane stays at validate for the next validator. A fresh implementer's
 receipt after a round is verified as an implementer's is.
 
@@ -3505,8 +3531,9 @@ the hand-back and each held lane. --release <lane-id> lands a held lane as it is
 --discard <lane-id> removes its worktree and branch, then closes its pull request, and
 leaves its step unlanded. Either is refused, changing nothing,
 for a lane that is not held or while any lane still has work. --discard also takes
-an issue run's lane a drain handed back as stuck or closed, and ends that run, and
-any lane of a run a drive stopped on because its state changed or could not be read.
+a lane handed back as stuck or closed, which ends an issue's run while an intent's run
+stays, and any lane of a run a drive stopped on because its state changed or could not
+be read.
 --restart <lane-id> restarts a lane whose implementer died, or yielded on a network
 failure (--yielded passes its `NETWORK: <cmd>` line), as a fresh agent from the lane's
 last commit: everything left uncommitted is saved aside under the lane's directory
@@ -3526,7 +3553,8 @@ alone. It is refused, changing nothing, while the run has an outage (open or giv
 for a blank --yielded, for a lane with neither an implementer out nor an await a rate
 limit kept, or for a worktree that is not the one the loop derives.
 land follows a passing round, one step per call: it checks the lane's worktree is clean
-at the judged head; on an intent lane it marks the lane's step landed on the open spec with a `- landed:`
+at the judged head, an uncommitted edit to the lane's own spec record aside, which its commit carries;
+on an intent lane it marks the lane's step landed on the open spec with a `- landed:`
 line naming the judged head (unless the spec lists no steps or already marks it); on
 the lane that closes the spec it runs `spec close` in the lane's
 worktree and ingests the audit that lane took, and for every capture the lane's receipts
@@ -4413,17 +4441,23 @@ naming who set it and when, or a read cannot tell whether one does, saying why.
 --record-review records the review pair's verdicts for the branch's head and
 lands nothing: given once per reviewer's return (at least two, no two the
 same), each with a first line reading Reviewed head: <name>, naming the head by at
-least its first nine characters, and one ### Verdict heading and no other line opening as a Verdict, fenced or not, it writes the head's
-review receipt in
+least its first nine characters, and one ### Verdict heading and no other line opening a verdict, qualified or not, fenced or not,
+where the first line under the heading opens with the verdict (SHIP, APPROVE, FIX
+FIRST, BLOCK or NEEDS-INPUT) and names the head by
+its full object name (**SHIP** <full name>, or a Head: <full name> line directly
+under the heading), it writes the head's review receipt in
 .abcd/.work.local/review-receipts/ when every verdict passes the stop rule
 (SHIP or APPROVE: no critical or major finding). A return that does not pass is
 refused naming it, exit 2, and nothing is written. It takes no --no-push or
---no-enqueue.
+--no-enqueue. A receipt recorded before a verdict named its head does not count at
+the merge gate or as a delta's base: its returns are not kept, so it cannot be read
+again, and the head records its pair again.
 
 --rests-on <base> makes that a delta review, of a wording fix after a full pair: the
 head's receipt rests on the full pair recorded for <base>, a
 full object name, and each return's first line reads exactly Reviewed delta:
-<base>..<head> in place of the head's, with no line stating a head. It is refused, and the head needs a full pair, unless the base
+<base>..<head> in place of the head's, with no Reviewed head: line, its verdict still
+naming the head in full. It is refused, and the head needs a full pair, unless the base
 has a full pair (a delta's receipt is not one), the head descends from it, and the
 branch's own commits since it change only plain text markdown files of mode 100644
 under docs/explanation/, docs/how-to/, docs/tutorials/, .abcd/development/plans/,
@@ -6083,6 +6117,8 @@ Moves the spec to closed/ and, when no open spec still names its intent, moves t
 
 The close that ships an intent also makes its fidelity review owed: it mints an OWED receipt (rcp-…), parks an `<!-- abcd-review: OWED receipt=rcp-… -->` marker in the intent's Audit Notes, and writes the review request to `.abcd/.work.local/reviews/<rcp>.request.md`, the input `abcd intent audit ingest` answers. A failed emit is a warning on stderr; the intent ships regardless.
 
+A close that ships an intent first runs issue-drift's check over it: an issue its `related_issues` names that is not in resolved/ refuses the close, naming each one and the ways out, and nothing moves.
+
 In the repository whose brief describes the binary, a close that ships an intent first runs the doc-fidelity gate (`abcd docs fidelity`): a surface no brief chapter names, a missing or stale docs review, or a confirmed false sentence refuses the close, and nothing moves. A close that ships no intent, a --remainder close included, still refuses a surface no brief chapter names, and needs no docs review.
 
 **Flags:**
@@ -6238,8 +6274,9 @@ trusted root, pinned to intentdriven/abcd's release.yml on main and to
 the commit the release tag names), and swaps the
 PATH-installed copy atomically. A binary whose provenance cannot be
 verified, offline included, is refused with the way to install it by hand;
-nothing is swapped unverified. The verb is the only ask: abcd
-never checks for or applies updates on its own (adr-38). A plugin-root
+nothing is swapped unverified. The verb is the only ask, but for a drive whose
+yes named the check (abcd drain --drive): abcd otherwise never checks for or
+applies updates on its own (adr-38). A plugin-root
 binary, the dev shim, and package-manager installs are refused with the
 command that owns them. The file being replaced must be provably abcd's:
 the binary running the command, an install ~/.abcd.noindex/path-entry records, or

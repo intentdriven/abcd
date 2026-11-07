@@ -20,10 +20,16 @@ import (
 // a merge-group run on a slow runner crossed 600s with no test hung and ejected
 // an unrelated pull request from the queue. The lane's ceiling was the default
 // rather than a budget anyone had sized, so it is written down here, in four
-// places that must agree: the merge gate (ci.yml's race lane on ubuntu), the
-// macOS suite (the race pass of macos-suite.yml's shards, nightly and on each
-// release cut), the release gate (release.yml's verify job) and the local
-// pre-push gate (make preflight).
+// places: the merge gate (ci.yml's race lane on ubuntu), the macOS suite (the
+// race pass of macos-suite.yml's shards, nightly and on each release cut), the
+// release gate (release.yml's verify job) and the local pre-push gate (make
+// preflight). The merge gate, the macOS suite and the release gate each carry a
+// longer budget than the local gate's, because a limit there only frees a stuck
+// runner and does not judge speed (dcn-2611062201286033, dcn-2611062222587959).
+// Each stays at or above the local gate's, so what the local gate passes has room
+// in CI, and inside its job's clock, so a hang in a package that starts with the
+// step still fails at its own timeout. The release gate's equals the merge gate's,
+// so a package the merge gate passed does not then fail the cut.
 //
 // The enclosing ceilings are the other half, and they differ by job.
 //
@@ -32,9 +38,10 @@ import (
 // concluded within the ruleset's check_response_timeout_minutes. That cap is the
 // outer ceiling on the event the lane was ejected on, and a job ceiling above it
 // is unreachable there: the queue gives up first, with no job failure to read.
-// So the check job may not carry a timeout-minutes above the cap the ruleset
-// mirror records, and it carries 45 since 2026-10-28 (dcn-2610280635092222),
-// after a first spell at 45 from 2026-10-17 (dcn-2610171803056931) and 30 between
+// So the check job's timeout-minutes stays below the cap the ruleset mirror
+// records, and it carries 85 (dcn-2611062201286033), after 60
+// (iss-2611061904457784), 45 from 2026-10-28 (dcn-2610280635092222), a first
+// spell at 45 from 2026-10-17 (dcn-2610171803056931) and 30 between
 // (iss-2610171803053186).
 //
 // The macOS suite's shards stand down on a merge-queue entry, so neither they nor
@@ -46,16 +53,16 @@ import (
 // left to the technical facilitator; this test reads the mirror, so the check
 // job's ceiling can rise only after the mirror records the raise. The step's
 // -timeout still earns its place under that cap: it lifts the ten-minute
-// per-package default, so a slow package fails on the job's clock rather than at
-// ten minutes.
+// per-package default, so a slow package runs on rather than failing at ten
+// minutes.
 //
 // release.yml's verify job is not a merge-queue job, so its own timeout-minutes
 // is its ceiling. A package timeout that reaches past it never fires: the
 // runner cancels the job first, and a cancellation carries no goroutine dump,
 // so a real hang would read as a slow runner. verify therefore holds the
-// package timeout plus the time its slowest package waits before it starts:
-// the steps ahead of the race step, and the packages `go test` runs ahead of
-// it inside the step.
+// package timeout plus the time its slowest package waits before it starts on a
+// slow runner: the steps ahead of the race step, and the packages `go test` runs
+// ahead of it inside the step.
 //
 // The commands also name one package list, in one order. go test starts
 // packages in the order its arguments list them, a few at a time on a runner
@@ -76,18 +83,21 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 	localPkgs := racePackages(t, "Makefile preflight", recipe)
 	sameRacePackageSet(t, root, "Makefile preflight", localPkgs, raceLanePattern)
 
-	// raceStep finds a job's race step by name and holds its -timeout to the
-	// local gate's and its package list to want, in order.
-	raceStep := func(where, block, name string, want []string) (time.Duration, bool) {
+	// raceStep finds a job's race step by name and holds its -timeout to budget
+	// and its package list to want, in order.
+	raceStep := func(where, block, name string, budget time.Duration, want []string) (time.Duration, bool) {
 		step, ok := workflowStepBlock(block, name)
 		if !ok {
 			t.Errorf("%s: no `%s` step", where, name)
 			return 0, false
 		}
 		pkg := raceTimeout(t, where, step)
-		if pkg != local {
-			t.Errorf("%s step %q runs under -timeout %s but make preflight uses %s; "+
-				"local and CI must judge the lane against one budget", where, name, pkg, local)
+		if pkg != budget {
+			t.Errorf("%s step %q runs under -timeout %s; want %s", where, name, pkg, budget)
+		}
+		if pkg < local {
+			t.Errorf("%s step %q runs under -timeout %s, below make preflight's %s; CI would "+
+				"fail a package the local gate passes", where, name, pkg, local)
 		}
 		if pkgs := racePackages(t, where, step); !slices.Equal(pkgs, want) {
 			t.Errorf("%s step %q runs over %q; want %q: local and CI start the same "+
@@ -96,32 +106,33 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 		return pkg, true
 	}
 	// raceJob returns a workflow job's block and the -timeout its race step
-	// carries, holding that timeout to the local gate's.
-	raceJob := func(file, job string) (string, time.Duration, bool) {
+	// carries, holding that timeout to budget.
+	raceJob := func(file, job string, budget time.Duration) (string, time.Duration, bool) {
 		where := file + " job " + job
 		block, ok := workflowJobBlock(readRepoFile(t, root, file), job)
 		if !ok {
 			t.Errorf("%s: no such job; the parser or the workflow changed shape", where)
 			return "", 0, false
 		}
-		pkg, ok := raceStep(where, block, "Test (race, internal)", localPkgs)
+		pkg, ok := raceStep(where, block, "Test (race, internal)", budget, localPkgs)
 		return block, pkg, ok
 	}
 
 	queue := mergeQueueResponseTimeout(t, root)
-	if check, _, ok := raceJob(".github/workflows/ci.yml", "check"); ok {
+	if check, pkg, ok := raceJob(".github/workflows/ci.yml", "check", checkPackageTimeoutMinutes*time.Minute); ok {
 		const where = ".github/workflows/ci.yml job check"
 		capMin := jobTimeoutMinutes(t, where, check)
-		if capMin > queue {
-			t.Errorf("%s: timeout-minutes is %s, above the merge queue's %s check response timeout in "+
+		if capMin >= queue {
+			t.Errorf("%s: timeout-minutes is %s, not below the merge queue's %s check response timeout in "+
 				"%s; on a merge-group run the queue fails the group first, so the job ceiling is "+
 				"unreachable there and any budget sized against it is false. Raise the live "+
 				"ruleset's cap (an admin act) before the job's", where, capMin, queue, rulesetMirror)
 		}
-		// It carries 45 since 2026-10-28 (dcn-2610280635092222).
+		// It carries 85 (dcn-2611062201286033).
 		if capMin != checkUbuntuCeilingMinutes*time.Minute {
 			t.Errorf("%s: timeout-minutes is %s; want %dm, the ubuntu job's ceiling", where, capMin, checkUbuntuCeilingMinutes)
 		}
+		packageTimeoutFitsItsWatchdog(t, root, ".github/workflows/ci.yml", where, pkg, capMin)
 	}
 
 	ci := readRepoFile(t, root, ".github/workflows/ci.yml")
@@ -129,9 +140,10 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 	if suite, ok := workflowJobBlock(readRepoFile(t, root, macOSSuiteWorkflow), macOSShardJob); !ok {
 		t.Errorf("%s: no such job; the parser or the workflow changed shape", where)
 	} else {
-		// A shard's race pass: the local gate's budget, over what cmd/ci-shard
-		// assigns it, and nothing but that.
-		if _, ok := raceStep(where, suite, macOSRaceStep, []string{macOSShardPackages}); ok {
+		// A shard's race pass: its own budget, over what cmd/ci-shard assigns it,
+		// and nothing but that.
+		pkg, ok := raceStep(where, suite, macOSRaceStep, macOSPackageTimeoutMinutes*time.Minute, []string{macOSShardPackages})
+		if ok {
 			step, _ := workflowStepBlock(suite, macOSRaceStep)
 			if !regexp.MustCompile(`(?m)^\s+ABCD_TEST_SKIP_FLUSH: "1"\s*$`).MatchString(step) {
 				t.Errorf("%s step %q does not set ABCD_TEST_SKIP_FLUSH; every synced write on the "+
@@ -142,6 +154,9 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 		suiteCap := jobTimeoutMinutes(t, where, suite)
 		if suiteCap != checkMacOSCeilingMinutes*time.Minute {
 			t.Errorf("%s: timeout-minutes is %s; want %dm", where, suiteCap, checkMacOSCeilingMinutes)
+		}
+		if ok {
+			packageTimeoutFitsItsWatchdog(t, root, macOSSuiteWorkflow, where, pkg, suiteCap)
 		}
 		if aggregator, ok := workflowJobBlock(ci, macOSCheckJob); !ok {
 			t.Errorf(".github/workflows/ci.yml job %s: no such job", macOSCheckJob)
@@ -156,12 +171,16 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 		}
 	}
 
-	// The last release (run 35963282477, ubuntu, uncached toolchain): 2.8
-	// minutes before the race step, 4.8 inside it before internal/surface/cli
-	// started, 0.5 after it; the ubuntu race step has grown by about two
-	// minutes since. Rounded up to 10.
-	const verifyHeadroom = 10 * time.Minute
-	if verify, pkg, ok := raceJob(".github/workflows/release.yml", "verify"); ok {
+	// The slowest package here is internal/core/implement/loop, named seventh, so it
+	// waits inside the step as well as behind the steps before it. On the v0.16.2
+	// cut (run 42201072965, ubuntu, uncached toolchain, one process) it started 25.0
+	// minutes into the job: 18.7 before the race step and 6.3 inside it. Shards do
+	// not clearly move that: in the check job (three runs of 2026-11-06) it starts
+	// 7.1 to 9.1 minutes into the race step, against which the plain step should
+	// shorten, though no verify run has measured that yet. Twice 25 on a slow runner
+	// is 50, which leaves the job's clock five minutes past the package timeout.
+	const verifyHeadroom = 50 * time.Minute
+	if verify, pkg, ok := raceJob(".github/workflows/release.yml", "verify", checkPackageTimeoutMinutes*time.Minute); ok {
 		const where = ".github/workflows/release.yml job verify"
 		capMin := jobTimeoutMinutes(t, where, verify)
 		if need := pkg + verifyHeadroom; capMin < need {
@@ -169,28 +188,94 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 				"the runner would cancel the job before go test could report a hang",
 				where, capMin, pkg, verifyHeadroom, need)
 		}
+		if capMin != verifyCeilingMinutes*time.Minute {
+			t.Errorf("%s: timeout-minutes is %s; want %dm", where, capMin, verifyCeilingMinutes)
+		}
+		// The plain step runs ahead of the race step in the same job, and each
+		// package in it gets the whole of this limit.
+		if step, ok := workflowStepBlock(verify, "Test"); !ok {
+			t.Errorf("%s: no `Test` step", where)
+		} else if m := regexp.MustCompile(`\bgo test\b.*\s-timeout[ =](\S+)`).FindStringSubmatch(step); m == nil {
+			t.Errorf("%s step Test sets no -timeout, so each package inherits go test's 10m default", where)
+		} else if d, err := time.ParseDuration(m[1]); err != nil {
+			t.Errorf("%s step Test: -timeout %q: %v", where, m[1], err)
+		} else if d != verifyPlainTimeoutMinutes*time.Minute {
+			t.Errorf("%s step Test runs under -timeout %s; want %dm", where, d, verifyPlainTimeoutMinutes)
+		}
 	}
 }
+
+// verifyCeilingMinutes is the timeout-minutes of release.yml's verify job. It holds
+// the limits that run in sequence, 40, 70 and the smoke step's 8, with three minutes
+// for the untimed steps, 121 in all (TestEvalLaneBudgetIsDeclaredAndFitsItsJob), and
+// about twice the job's 58.3 minutes on the v0.16.2 cut (dcn-2611062222587959). No
+// caller holds a shorter limit.
+const verifyCeilingMinutes = 125
+
+// verifyPlainTimeoutMinutes is the -timeout of the verify job's plain Test step:
+// twice its slowest package's 844 seconds on the v0.16.2 cut is about 28 minutes,
+// and the margin is left for that package's growth (dcn-2611062222587959).
+const verifyPlainTimeoutMinutes = 40
 
 // checkMacOSCeilingMinutes is the timeout-minutes of each shard of the macOS suite,
 // on the nightly run and on a release cut alike. The suite ran as one job until 2026-11-04, whose ceiling rose from
 // 45 to 85 as its runs grew (dcn-2610181756328249, dcn-2610282036219503) and which
 // still reached that ceiling on slow runners (iss-2610181757540736). A third of
-// the slowest passing run was about 30 minutes, so 50 is half as much again.
-const checkMacOSCeilingMinutes = 50
+// the slowest passing run was about 30 minutes, so it was 50, half as much again.
+// It is 90 since internal/core/implement/loop took 2137 to 2189 seconds on its own
+// shard: runners vary about twofold, so a slow one takes about 73 minutes, plus
+// set-up and a release cut's uncached build, and a slow runner may not fail a cut
+// with no failing test (dcn-2611062201286033).
+const checkMacOSCeilingMinutes = 90
+
+// macOSPackageTimeoutMinutes is the -timeout of a macOS shard's race pass: twice
+// the slowest package's own shard, about 73 minutes, rounded up.
+const macOSPackageTimeoutMinutes = 80
 
 // checkUbuntuCeilingMinutes is the check job's ceiling on the ubuntu runner: 30
 // under ruling Z; 45 from 2026-10-17, when the drain bundle
 // (spc-2610161044461448) grew the loop package's race run past 30
 // (dcn-2610171803056931); 30 when the plain pass stopped rerunning the race
-// lane's tests (iss-2610171803053186); 45 again since 2026-10-28, when
+// lane's tests (iss-2610171803053186); 45 again from 2026-10-28, when
 // merge-group runs took 29 minutes and one was cancelled at 30 a second after
-// its race tests passed (dcn-2610280635092222).
-const checkUbuntuCeilingMinutes = 45
+// its race tests passed (dcn-2610280635092222); 60 since the job clock's watchdog,
+// at 40 under that cap, ended queue runs with no test failed
+// (iss-2611061904457784); 85 since dcn-2611062201286033, because the limit only
+// frees a stuck queue, so it sits just under the queue's own 90.
+const checkUbuntuCeilingMinutes = 85
+
+// checkPackageTimeoutMinutes is the -timeout of the check job's go test steps. A
+// slow package is not failed at the local gate's 40 minutes when the job has room,
+// and a hang in a package that starts within the job's first ten minutes still
+// fails at this timeout, ahead of the watchdog at 80 (dcn-2611062201286033).
+const checkPackageTimeoutMinutes = 70
+
+// packageTimeoutFitsItsWatchdog holds a job's package -timeout inside the job
+// clock's watchdog, the job's cap less the workflow's margin. A timeout past that
+// deadline can never fire, in any package, and a hang would always read as the job
+// running out of time.
+func packageTimeoutFitsItsWatchdog(t *testing.T, root, file, where string, pkg, capMin time.Duration) {
+	t.Helper()
+	m := regexp.MustCompile(`(?m)^  ` + watchdogMarginVar + `: (\d+)\s*$`).FindStringSubmatch(readRepoFile(t, root, file))
+	if m == nil {
+		t.Errorf("%s: the workflow's env declares no %s", file, watchdogMarginVar)
+		return
+	}
+	n, err := strconv.Atoi(m[1])
+	if err != nil {
+		t.Errorf("%s: %s %q: %v", file, watchdogMarginVar, m[1], err)
+		return
+	}
+	if deadline := capMin - time.Duration(n)*time.Minute; pkg >= deadline {
+		t.Errorf("%s: the package -timeout %s does not fit inside the watchdog's %s; it could never fire "+
+			"first, even in a package that starts with the step", where, pkg, deadline)
+	}
+}
 
 // checkWarnLeadMinutes is how far ahead of each test job's ceiling the warning
-// step fires: ruling Z's cancel policy (2026-09-28) set the line ten minutes under
-// the cap, so a speed lane opens before anything is cancelled.
+// step fires: ten minutes under the cap, set on 2026-09-28 and kept when the rule
+// that a second cancellation stops a pull request was withdrawn
+// (dcn-2611062201286033), so a slow suite is reported before anything is cancelled.
 const checkWarnLeadMinutes = 10
 
 // checkWarnStep is the name of that warning step in each test job.
@@ -199,10 +284,11 @@ const checkWarnStep = "Warn when the check nears its job's cap"
 // checkClockStep is the step that records the job's start for the warning.
 const checkClockStep = "Record the job's start"
 
-// Each test job warns before its cap cancels it (ruling Z's cancel policy,
-// 2026-09-28). A cancellation at the cap carries nothing but the cancellation,
-// and the rule for it is rerun once, then stop that pull request and open a speed
-// lane; the warning moves that signal ahead of the first cancellation. It is a
+// Each test job warns before its cap cancels it. A cancellation at the cap carries
+// nothing but the cancellation, and the cap only frees a stuck run: it does not
+// judge speed, so a slow suite is reported here and answered by speed work, and a
+// queue entry dropped with no failing test is re-armed until it lands
+// (dcn-2611062201286033). It is a
 // warning and nothing else: it may not fail the job, it runs however the steps
 // before it ended, and each job's threshold sits below that job's ceiling, or it
 // could never fire before the cancellation it announces. The check job's line also
@@ -243,8 +329,8 @@ func TestEachTestJobWarnsBeforeItsCap(t *testing.T) {
 			t.Fatalf("%s step %q: no WARN_AFTER_MINUTES of whole minutes in its env", where, checkWarnStep)
 		}
 		if ceiling-warnAfter != lead {
-			t.Errorf("%s step %q warns after %s, %s before the job's %s ceiling; the cancel policy of "+
-				"ruling Z puts the line %s before it", where, checkWarnStep, warnAfter, ceiling-warnAfter, ceiling, lead)
+			t.Errorf("%s step %q warns after %s, %s before the job's %s ceiling; the line sits %s before it",
+				where, checkWarnStep, warnAfter, ceiling-warnAfter, ceiling, lead)
 		}
 		if jobName == "check" && warnAfter >= queue {
 			t.Errorf("%s step %q warns after %s, not below the merge queue's %s cap in %s",
@@ -293,14 +379,16 @@ func TestEachTestJobWarnsBeforeItsCap(t *testing.T) {
 		if strings.Contains(run, "macos") || strings.Contains(run, "ubuntu") {
 			t.Errorf("%s step %q: its script names a job; it names ${%s}, the job it ran in", where, checkWarnStep, watchdogLegVar)
 		}
-		if strings.Contains(run, "stops the pull request") {
-			t.Errorf("%s step %q: its script says a second cancellation stops the pull request, and a nightly "+
-				"macOS run has none; say what holds in both jobs", where, checkWarnStep)
+		for _, withdrawn := range []string{"stops the pull request", "stops any pull request", "speed lane", "rerun it once", "do not raise"} {
+			if strings.Contains(run, withdrawn) {
+				t.Errorf("%s step %q: its script still says %q, which dcn-2611062201286033 withdrew",
+					where, checkWarnStep, withdrawn)
+			}
 		}
-		for _, want := range []string{"::warning", "GITHUB_STEP_SUMMARY", "rerun", "speed lane", "stops any pull request it gates", "${" + watchdogLegVar + "}"} {
+		for _, want := range []string{"::warning", "GITHUB_STEP_SUMMARY", "speed work", "re-armed", "real failure gets fixed", "${" + watchdogLegVar + "}"} {
 			if !strings.Contains(run, want) {
-				t.Errorf("%s step %q: its script never mentions %q; the warning names the rerun-once "+
-					"rule and the speed lane, in the log and the step summary", where, checkWarnStep, want)
+				t.Errorf("%s step %q: its script never mentions %q; the warning says what answers a slow "+
+					"run and a dropped entry, in the log and the step summary", where, checkWarnStep, want)
 			}
 		}
 		if strings.Contains(run, "${{") {
@@ -464,7 +552,7 @@ func raceTimeout(t *testing.T, where, text string) time.Duration {
 	m := regexp.MustCompile(`\s-timeout[ =](\S+)`).FindStringSubmatch(cmd)
 	if m != nil && m[1] == `"$$t"` {
 		// make preflight's stage scales its base with the load as it starts
-		// (timeoutCall); the base is the budget CI's steps declare.
+		// (timeoutCall); the base is the local gate's budget.
 		m = nil
 		before := text
 		if i := strings.Index(text, cmd); i >= 0 {
@@ -550,10 +638,10 @@ func TestTheOutsideInternalStepRunsWhatTheRaceLaneDoesNot(t *testing.T) {
 // TestPlainTestStepRunsTheWholeModule: the check job's plain pass on an inert
 // change, where the race lane stands down and it is the job's only test pass,
 // names its slowest packages ahead of ./..., so they start with the step
-// instead of behind every faster package (a speed lane under the cancel policy
-// of 2026-09-28), and it still runs exactly the module: ./... last, no package
-// named twice, and the same set go list resolves ./... to. Its -timeout is
-// make preflight's unit-stage base, declared rather than go test's ten-minute
+// instead of behind every faster package, and it still runs exactly the module:
+// ./... last, no package named twice, and the same set go list resolves ./... to.
+// Its -timeout is the check job's own budget, never below make preflight's
+// unit-stage base, declared rather than go test's ten-minute
 // default: internal/core/implement/loop ran 466s to 593s here and crossed 600s
 // on 2026-10-30 with no test hung (iss-2610302058222905).
 func TestPlainTestStepRunsTheWholeModule(t *testing.T) {
@@ -613,9 +701,12 @@ func TestPlainTestStepRunsTheWholeModule(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%s step Test: -timeout %q: %v", where, timeout, err)
 	}
-	if d != local {
-		t.Errorf("%s step Test runs under -timeout %s but make preflight's unit stage scales from %s; "+
-			"local and CI must judge the module against one budget", where, d, local)
+	if want := checkPackageTimeoutMinutes * time.Minute; d != want {
+		t.Errorf("%s step Test runs under -timeout %s; want %s, as the job's race step", where, d, want)
+	}
+	if d < local {
+		t.Errorf("%s step Test runs under -timeout %s, below the %s make preflight's unit stage scales "+
+			"from; CI would fail a package the local gate passes", where, d, local)
 	}
 }
 

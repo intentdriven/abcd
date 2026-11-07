@@ -82,7 +82,7 @@ func fullPair(sha string) []ReviewReturn {
 
 // deltaReturn is a return that states the delta it read.
 func deltaReturn(base, head, who, verdict string) string {
-	return "Reviewed delta: " + base + ".." + head + "\n\n# " + who + "\n\n## Findings\n\nNone.\n\n### Verdict\n\n" + verdict + "\n"
+	return "Reviewed delta: " + base + ".." + head + "\n\n# " + who + "\n\n## Findings\n\nNone.\n\n### Verdict\n\nHead: " + head + "\n" + verdict + "\n"
 }
 
 func deltaPair(base, head string) []ReviewReturn {
@@ -190,7 +190,7 @@ func (w *deltaWorld) wantRefused(want string) {
 // writeDeltaReceipt writes a delta receipt that does not stand.
 func (w *deltaWorld) writeDeltaReceipt(head string) {
 	w.t.Helper()
-	data, err := json.Marshal(reviewRecord{Commit: head, Delta: &deltaRecord{Base: w.base}, Reviews: []reviewRecordEntry{
+	data, err := json.Marshal(reviewRecord{Commit: head, VerdictRule: verdictRule, Delta: &deltaRecord{Base: w.base}, Reviews: []reviewRecordEntry{
 		{Name: "a", Verdict: "SHIP", SHA256: "x"}, {Name: "b", Verdict: "SHIP", SHA256: "y"},
 	}})
 	if err != nil {
@@ -307,7 +307,7 @@ func TestAReturnThatDoesNotNameTheDeltaIsRefused(t *testing.T) {
 	}
 	// Abbreviated to the nine characters a brief uses, it stands.
 	if _, err := RecordDeltaReview(w.repo.Root(), head, w.base, []ReviewReturn{
-		{Name: "ruthless.md", Text: "\nReviewed delta: " + w.base[:9] + ".." + head[:9] + "\r\n\n### Verdict\n\nSHIP\n"},
+		{Name: "ruthless.md", Text: "\nReviewed delta: " + w.base[:9] + ".." + head[:9] + "\r\n\n### Verdict\n\nSHIP " + head + "\n"},
 		{Name: "security.md", Text: deltaReturn(w.base, head, "security", "APPROVE")},
 	}); err != nil {
 		t.Fatalf("a delta named by nine characters was refused: %v", err)
@@ -1194,14 +1194,18 @@ func TestADeltaKeepsEveryFilesFrontmatter(t *testing.T) {
 // The reviewers' pages say a return has one Verdict section and no other line opening
 // with the word, so a reviewer is told before a recording refuses the return.
 func TestTheReviewerPagesStateOneVerdictLine(t *testing.T) {
-	const want = "A return has one `### Verdict` section and no other line opening with the word Verdict."
-	for _, rel := range []string{"agents/ruthless-reviewer.md", "agents/security-reviewer.md"} {
-		data, err := os.ReadFile(filepath.Join("..", "..", "..", filepath.FromSlash(rel)))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !strings.Contains(strings.Join(strings.Fields(string(data)), " "), want) {
-			t.Errorf("%s does not say %q", rel, want)
+	for _, want := range []string{
+		"A return has one `### Verdict` section and no other line opening a verdict, whatever qualifies it.",
+		"A return so recorded, a delta's too, names the head in its verdict, by its full object name",
+	} {
+		for _, rel := range []string{"agents/ruthless-reviewer.md", "agents/security-reviewer.md"} {
+			data, err := os.ReadFile(filepath.Join("..", "..", "..", filepath.FromSlash(rel)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(strings.Join(strings.Fields(string(data)), " "), want) {
+				t.Errorf("%s does not say %q", rel, want)
+			}
 		}
 	}
 }
@@ -1227,7 +1231,7 @@ func TestTheReviewPagesStateTheFirstLine(t *testing.T) {
 	}
 	w := newDeltaWorld(t)
 	head := w.fix()
-	body := "\n\n### Verdict\n\nSHIP\n"
+	body := "\n\n### Verdict\n\nSHIP " + head + "\n"
 	for name, pair := range map[string][]ReviewReturn{
 		"the line first":  {{Name: "a.md", Text: "Reviewed delta: " + w.base + ".." + head + body}, {Name: "b.md", Text: "Reviewed delta: " + w.base[:9] + ".." + head[:9] + body}},
 		"the line second": {{Name: "a.md", Text: "### Analysis\n\nReviewed delta: " + w.base + ".." + head + body}, {Name: "b.md", Text: "Reviewed delta: " + w.base[:9] + ".." + head[:9] + body}},
@@ -1680,7 +1684,7 @@ func TestAReceiptThatProvesNothingIsARefusalOfTheHead(t *testing.T) {
 			return `{"commit":"0123456789abcdef0123456789abcdef01234567","reviews":[{"name":"a","verdict":"SHIP","sha256":"x"},{"name":"b","verdict":"APPROVE","sha256":"y"}]}`
 		},
 		"a delta refused": func(head string) string {
-			return `{"commit":"` + head + `","delta":{"base":"0123456789abcdef0123456789abcdef01234567"},"reviews":[{"name":"a","verdict":"SHIP","sha256":"x"},{"name":"b","verdict":"APPROVE","sha256":"y"}]}`
+			return `{"commit":"` + head + `","delta":{"base":"0123456789abcdef0123456789abcdef01234567"},"verdict_rule":2,"reviews":[{"name":"a","verdict":"SHIP","sha256":"x"},{"name":"b","verdict":"APPROVE","sha256":"y"}]}`
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -1735,7 +1739,7 @@ func writeReceiptAt(t *testing.T, root, sha, body string, mode os.FileMode) stri
 }
 
 func fullPairBody(sha string) string {
-	return `{"commit":"` + sha + `","reviews":[{"name":"a","verdict":"SHIP","sha256":"x"},{"name":"b","verdict":"APPROVE","sha256":"y"}]}`
+	return `{"commit":"` + sha + `","verdict_rule":2,"reviews":[{"name":"a","verdict":"SHIP","sha256":"x"},{"name":"b","verdict":"APPROVE","sha256":"y"}]}`
 }
 
 // Reading a file at mode 000 fails only for an account that is not root, so a test
@@ -1783,7 +1787,7 @@ func TestAReceiptTheGateCouldNotJudgeIsAnUnreadAnswer(t *testing.T) {
 		f := world(t)
 		const base = "0123456789abcdef0123456789abcdef01234567"
 		writeReceiptAt(t, f.repo.Root(), base, fullPairBody(base), 0o600)
-		writeReceiptAt(t, f.repo.Root(), f.head(), `{"commit":"`+f.head()+`","delta":{"base":"`+base+`"},"reviews":[{"name":"a","verdict":"SHIP","sha256":"x"},{"name":"b","verdict":"APPROVE","sha256":"y"}]}`, 0o600)
+		writeReceiptAt(t, f.repo.Root(), f.head(), `{"commit":"`+f.head()+`","verdict_rule":2,"delta":{"base":"`+base+`"},"reviews":[{"name":"a","verdict":"SHIP","sha256":"x"},{"name":"b","verdict":"APPROVE","sha256":"y"}]}`, 0o600)
 		wantUnread(t, f)
 		if d := gateAt(t, f); strings.Contains(d.Why, "does not stand") {
 			t.Fatalf("why = %q; a delta git could not judge is not one that does not stand", d.Why)
@@ -1797,7 +1801,7 @@ func TestAReceiptTheGateCouldNotJudgeIsAnUnreadAnswer(t *testing.T) {
 		f.repo.Write("docs/how-to/feature.md", "the change\n")
 		f.repo.Commit("a fix")
 		f.forge.head = f.head()
-		writeReceiptAt(t, f.repo.Root(), f.head(), `{"commit":"`+f.head()+`","delta":{"base":"`+base+`"},"reviews":[{"name":"a","verdict":"SHIP","sha256":"x"},{"name":"b","verdict":"APPROVE","sha256":"y"}]}`, 0o600)
+		writeReceiptAt(t, f.repo.Root(), f.head(), `{"commit":"`+f.head()+`","verdict_rule":2,"delta":{"base":"`+base+`"},"reviews":[{"name":"a","verdict":"SHIP","sha256":"x"},{"name":"b","verdict":"APPROVE","sha256":"y"}]}`, 0o600)
 		wantUnread(t, f)
 	})
 	t.Run("a receipt found wanting beside one that cannot be read", func(t *testing.T) {
@@ -1866,5 +1870,63 @@ func TestTheGateNamesADeltaThatDoesNotStand(t *testing.T) {
 	d := mergeGate(gateFacts{mode: Facilitator{Mode: ModeAuto, Layer: "repo", Origin: "x"}, head: "0123456789abcdef", role: RoleMaintainer, roleWhy: "write", deltaWhy: "past the bound"})
 	if d.arm || !strings.Contains(d.why, "past the bound") || !strings.Contains(d.why, "full review pair") {
 		t.Fatalf("decision = %+v", d)
+	}
+}
+
+// A delta's verdict names the head too: the delta's own, not its base.
+func TestADeltaVerdictNamesTheHead(t *testing.T) {
+	w := newDeltaWorld(t)
+	head := w.fix()
+	first := "Reviewed delta: " + w.base + ".." + head + "\n\n"
+	for name, section := range map[string]string{"no head": "SHIP", "its base": "SHIP " + w.base} {
+		t.Run(name, func(t *testing.T) {
+			_, err := RecordDeltaReview(w.repo.Root(), head, w.base, []ReviewReturn{
+				{Name: "ruthless.md", Text: first + "### Verdict\n\n" + section + "\n"},
+				{Name: "security.md", Text: first + "### Verdict\n\nAPPROVE " + head + "\n"},
+			})
+			if err == nil || !strings.Contains(err.Error(), "ruthless.md") {
+				t.Fatalf("err = %v; want ruthless.md refused", err)
+			}
+		})
+	}
+	if _, err := RecordDeltaReview(w.repo.Root(), head, w.base, []ReviewReturn{
+		{Name: "ruthless.md", Text: first + "### Verdict\n\nSHIP " + head + "\n"},
+		{Name: "security.md", Text: first + "### Verdict\n\nAPPROVE " + head + "\n"},
+	}); err != nil {
+		t.Fatalf("a delta naming its head was refused: %v", err)
+	}
+}
+
+// A receipt says which reading of a verdict it was recorded under, and the gate counts
+// only this one's: its returns are not kept, so an earlier reading cannot be read
+// again. The head records its pair again, and a delta cannot rest on it.
+func TestAReceiptStandsOnlyUnderTheReadingThatNamesTheHead(t *testing.T) {
+	w := newDeltaWorld(t)
+	head := w.fix()
+	earlier := func(sha string) string {
+		return `{"commit":"` + sha + `","reviews":[{"name":"a","verdict":"SHIP","sha256":"x"},{"name":"b","verdict":"APPROVE","sha256":"y"}]}`
+	}
+	writeReceiptAt(t, w.repo.Root(), head, earlier(head), 0o600)
+	proof := readReviewProof(w.repo.Root(), head, w.base)
+	if proof.reviewed || proof.unread || !strings.Contains(proof.unreadable, "again") {
+		t.Fatalf("a receipt from before the head was named: %+v", proof)
+	}
+	// A delta's receipt from before it is judged the same way.
+	writeReceiptAt(t, w.repo.Root(), head, `{"commit":"`+head+`","delta":{"base":"`+w.base+`"},"reviews":[{"name":"a","verdict":"SHIP","sha256":"x"},{"name":"b","verdict":"APPROVE","sha256":"y"}]}`, 0o600)
+	proof = readReviewProof(w.repo.Root(), head, w.base)
+	if proof.reviewed || proof.unread || !strings.Contains(proof.deltaWhy, "again") {
+		t.Fatalf("a delta's receipt from before the head was named: %+v", proof)
+	}
+	// A delta does not rest on one.
+	writeReceiptAt(t, w.repo.Root(), w.base, earlier(w.base), 0o600)
+	if err := hasFullPair(w.repo.Root(), w.base); err == nil || !strings.Contains(err.Error(), "again") {
+		t.Fatalf("a delta rests on a receipt from before the head was named: %v", err)
+	}
+	// Recording the pair again replaces it, and stands.
+	if _, err := RecordReview(w.repo.Root(), w.base, fullPair(w.base)); err != nil {
+		t.Fatal(err)
+	}
+	if err := hasFullPair(w.repo.Root(), w.base); err != nil {
+		t.Fatalf("the pair recorded again: %v", err)
 	}
 }

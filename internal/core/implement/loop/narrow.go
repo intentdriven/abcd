@@ -18,10 +18,10 @@ package loop
 
 import (
 	"bytes"
+	"context"
 	"path"
 	"slices"
 	"strconv"
-	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -92,11 +92,11 @@ func laneChangedFiles(repoRoot string, l Lane, head string) (files []string, dec
 		return nil, "the default branch on " + Remote + " cannot be read"
 	}
 	tracking := Remote + "/" + termsafe.Sanitize(def)
-	base, err := gitutil.Run(repoRoot, "merge-base", head, "refs/remotes/"+Remote+"/"+def)
-	if base = strings.TrimSpace(base); err != nil || !gitutil.IsFullSHA(base) {
+	base, err := gitutil.RunCappedAsStored(repoRoot, maxGitOutput, "merge-base", head, "refs/remotes/"+Remote+"/"+def)
+	if err != nil || !gitutil.IsFullSHA(base) {
 		return nil, "git could not read the merge base of the lane's head " + shortSHA(head) + " and " + tracking
 	}
-	out, err := gitutil.RunCappedBytes(repoRoot, maxGitOutput, "diff", "--no-renames", "--name-only", "-z", base, head, "--")
+	out, err := gitutil.RunCappedBytesAsStoredContext(context.Background(), repoRoot, "", maxGitOutput, "diff", "--no-renames", "--ignore-submodules=none", "--name-only", "-z", base, head, "--")
 	if err != nil {
 		return nil, "git could not read the files the lane changed since its merge base with " + tracking
 	}

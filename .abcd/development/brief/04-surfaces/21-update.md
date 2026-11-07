@@ -20,8 +20,14 @@ release's checksums is held to the same checks before it is called current. Wher
 offline included, the verb refuses and nothing is swapped.
 
 The verb is the explicit ask. abcd never checks for or applies updates on its own
-([adr-38](../../decisions/adrs/0038-implicit-checks-are-disk-only.md)); this verb,
-with its check, reaches the release origin only when invoked
+([adr-38](../../decisions/adrs/0038-implicit-checks-are-disk-only.md)), with one
+exception the person says yes to: a drive, whose question names the check, takes a
+newer stable release at a lane boundary, through these same checks and then a live
+proof of the staged binary
+([proposed adr-2611062149324491](../../decisions/adrs/2611062149324491-an-unattended-process-replaces-its-own.md);
+[the drain chapter](35-drain.md)). It shares the verification and the swap with this
+verb, and keeps the previous binary beside the installed one where this verb removes
+it. Otherwise this verb, with its check, reaches the release origin only when invoked
 ([itd-130](../../intents/shipped/itd-130-abcd-update-completes-a-chosen-update-in.md),
 spc-32). It is not the only **command** that reaches it. The launch preview and
 the release cut reach it too, and only when asked to read the parity baseline

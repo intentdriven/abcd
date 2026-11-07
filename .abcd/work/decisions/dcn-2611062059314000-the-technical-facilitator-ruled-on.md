@@ -1,0 +1,6 @@
+---
+id: dcn-2611062059314000
+slug: the-technical-facilitator-ruled-on
+date: 2026-11-06
+---
+2026-11-06 — The technical facilitator ruled on 2026-11-06 that the check job's ubuntu leg takes a 60-minute ceiling, with its warning at 50 and its watchdog at 55. This amends the cancel policy of dcn-2609280000000001, which rules out a further raise, for exactly this one change, and it departs once from dcn-2610280635092222, whose remedy for a leg past its warning is a faster suite; every other timeout stays as it is. Grounds: four merge-queue entries on different pull requests were killed by the watchdog at 40 minutes with no failing test, one of them a records-only change, and each drop lost its place and rebuilt the entries behind it; the queue's own check timeout is 90 minutes, so 60 fits within it; a hung run now holds the queue for 15 minutes longer. The policy otherwise stands: a check cancelled at this cap is rerun once, a second cancellation for the same reason stops that pull request and opens a speed lane, and a further raise needs a ruling of its own. A speed lane opens with this change regardless, because the leg is too long: internal/core/implement/loop is its largest package, at about 1400 to 1500 seconds under race.

@@ -43,7 +43,7 @@ func TestAReceiptACommitCarriesIsRefused(t *testing.T) {
 func TestTheGateRefusesAReviewReceiptACommitCarries(t *testing.T) {
 	repo, sha := reviewRepo(t)
 	rel := ReviewReceiptsRelDir + "/" + sha
-	body := `{"commit":"` + sha + `","reviews":[{"name":"a","verdict":"SHIP","sha256":"x"},{"name":"b","verdict":"APPROVE","sha256":"y"}]}`
+	body := `{"commit":"` + sha + `","verdict_rule":2,"reviews":[{"name":"a","verdict":"SHIP","sha256":"x"},{"name":"b","verdict":"APPROVE","sha256":"y"}]}`
 	repo.Write(rel, body+"\n")
 	if p := readReviewProof(repo.Root(), sha, ""); !p.reviewed {
 		t.Fatalf("this checkout's own receipt read as %+v", p)

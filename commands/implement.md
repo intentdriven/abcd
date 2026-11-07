@@ -604,10 +604,11 @@ has work left:
   refused the same way, before anything is removed, naming that checkout.
 
 Either is refused, changing nothing, for a lane that is not held or while a lane
-still has work. `--discard` also takes an issue run's lane a drain handed back
-as `stuck` or `closed` (`/abcd:drain`): its worktree and branch are removed, its pull
-request closed if it opened one, and the run is over, so no run directory is
-removed by hand. It takes a lane the land fence refuses because its run let its reservation go with no stop's mark standing too; the fence's other remedy is to reserve the record again with `abcd reserve <id> --footprint <path>` and step. It takes any lane of a run a drive stopped on because its state
+still has work. `--discard` also takes a lane handed back as `stuck` or `closed`, whatever else
+the run is doing: its worktree and branch are removed and its pull request closed if it
+opened one. A drain's issue run (`/abcd:drain`) is then over, so no run directory is
+removed by hand; an intent's run stays, and a landing's hand-back says when to remove its
+directory. It takes a lane the land fence refuses because its run let its reservation go with no stop's mark standing too; the fence's other remedy is to reserve the record again with `abcd reserve <id> --footprint <path>` and step. It takes any lane of a run a drive stopped on because its state
 changed or could not be read too, finding the pull request by the lane's branch; if your own
 `implement step` caused that stop, remove the file the message names instead. An issue run logs each refused step on its lane, until its pull
 request is armed or left open (`refused` in its state: the stage, the check, the reason and a count), which the drain
@@ -656,7 +657,9 @@ The closing lane, which reaches its landing with no
 step pending, no other lane open and none handed back, takes the fidelity audit
 over each of the run's lanes' own diff.
 
-1. It checks the lane's worktree is clean and its branch is at the head the
+1. It checks the lane's worktree holds no change beside an uncommitted edit to
+   the lane's own spec record, which step 2's commit then carries and which may
+   not change what the record links, and that its branch is at the head the
    validators judged.
 2. On an intent lane it marks the lane's step landed on the open spec, a
    `- landed:` line naming the judged head (not when the spec lists no steps or

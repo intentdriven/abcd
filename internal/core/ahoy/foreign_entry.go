@@ -199,6 +199,21 @@ func releaseOfBuild(bi *debug.BuildInfo) (string, error) {
 	return v, nil
 }
 
+// runningBuild is this process's own build metadata, a seam so a test can stand in
+// a build.
+var runningBuild = debug.ReadBuildInfo
+
+// RunningRelease is the release this process's own build claims (releaseOfBuild),
+// or why it claims none: the one reading a drive's self-update takes of what it is
+// running, since nothing a stage writes can change it.
+func RunningRelease() (string, error) {
+	bi, ok := runningBuild()
+	if !ok {
+		return "", errors.New("this process carries no Go build metadata, so it names no release")
+	}
+	return releaseOfBuild(bi)
+}
+
 // UnverifiedCopyGapID is the outstanding work an install reports when the
 // owned PATH copy it found on a cold cache did not verify (iss-2610120955431790).
 const UnverifiedCopyGapID = "symlink.unverified"

@@ -11,11 +11,13 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
+	"github.com/intentdriven/abcd/internal/core/runner"
 )
 
 const driveSignalChildEnv = "ABCD_DRIVE_SIGNAL_CHILD"
@@ -64,6 +66,50 @@ func TestTheFirstSignalLeavesTheContextLiveAndTheSecondEndsIt(t *testing.T) {
 				t.Fatalf("the child: %v\n%s", err, out)
 			}
 		})
+	}
+}
+
+// TestClosingWaitsForWhatASignalSays: the drive's last words are written with no lock once
+// it returns, so a line a signal is still saying has to be out by then.
+func TestClosingWaitsForWhatASignalSays(t *testing.T) {
+	entered := make(chan struct{})
+	var said atomic.Bool
+	s := watchDriveSignals(func() {
+		close(entered)
+		time.Sleep(50 * time.Millisecond)
+		said.Store(true)
+	}, func() {})
+	s.ch <- syscall.SIGTERM
+	<-entered
+	s.close()
+	if !said.Load() {
+		t.Fatal("the handling closed with a signal's line still being said")
+	}
+}
+
+// TestClosingDoesNotWaitOnALineThatCannotBeWritten: a terminal that stopped reading must not
+// hold the drive's exit.
+func TestClosingDoesNotWaitOnALineThatCannotBeWritten(t *testing.T) {
+	was := driveSayWait
+	t.Cleanup(func() { driveSayWait = was })
+	driveSayWait = 10 * time.Millisecond
+	entered, release := make(chan struct{}), make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	s := watchDriveSignals(func() {
+		close(entered)
+		<-release
+	}, func() {})
+	s.ch <- syscall.SIGTERM
+	<-entered
+	closed := make(chan struct{})
+	go func() {
+		s.close()
+		close(closed)
+	}()
+	select {
+	case <-closed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("closing waited on a line that cannot be written")
 	}
 }
 
@@ -286,5 +332,62 @@ func TestADrivesAgentsKeepTheDefaultSigpipe(t *testing.T) {
 	}
 	if !strings.Contains(string(out), "status 141") {
 		t.Fatalf("yes did not end on SIGPIPE:\n%s", out)
+	}
+}
+
+const driveClosedTerminalChildEnv = "ABCD_DRIVE_CLOSED_TERMINAL_CHILD"
+
+// TestAClosedTerminalDoesNotEndAResumesWait: nothing is listening for the signal between
+// two attempts, and a line to a terminal that went away is no reason to die there.
+func TestAClosedTerminalDoesNotEndAResumesWait(t *testing.T) {
+	if dir := os.Getenv(driveClosedTerminalChildEnv); dir != "" {
+		goBackWorld(t)
+		driveWalls.static = func(context.Context, runner.Profile) ([]string, error) {
+			if err := os.WriteFile(filepath.Join(dir, "ready"), nil, 0o600); err != nil {
+				os.Exit(4)
+			}
+			for range 2000 {
+				if _, err := os.Stat(filepath.Join(dir, "closed")); err == nil {
+					return nil, errors.New("a file was held for a moment")
+				}
+				time.Sleep(5 * time.Millisecond)
+			}
+			os.Exit(5)
+			return nil, nil
+		}
+		driveStartWait = func(context.Context, time.Duration) error {
+			fmt.Println("the wait was reached")
+			os.Exit(0)
+			return nil
+		}
+		Run(resumeArgs(), os.Stdout, os.Stderr)
+		os.Exit(6)
+	}
+	dir := t.TempDir()
+	cmd := exec.Command(os.Args[0], "-test.run=^TestAClosedTerminalDoesNotEndAResumesWait$", "-test.count=1", "-test.timeout=2m")
+	cmd.Env = append(os.Environ(), driveClosedTerminalChildEnv+"="+dir)
+	var stdout strings.Builder
+	cmd.Stdout = &stdout
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	for range 4000 {
+		if _, err := os.Stat(filepath.Join(dir, "ready")); err == nil {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if err := stderr.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "closed"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Wait(); err != nil || !strings.Contains(stdout.String(), "the wait was reached") {
+		t.Fatalf("%v:\n%s", err, stdout.String())
 	}
 }

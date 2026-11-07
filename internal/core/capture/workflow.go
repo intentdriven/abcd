@@ -14,6 +14,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/issuerecord"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/provenance"
 	"github.com/intentdriven/abcd/internal/core/record/findingkey"
 	"github.com/intentdriven/abcd/internal/core/record/match"
@@ -105,6 +106,10 @@ func captureWith(lock ledgerLocker, req CaptureRequest) (CaptureResult, error) {
 	// A found_at that names a path must name one in THIS checkout
 	// (iss-2609120511058115). Checked before the preamble, so a refused capture
 	// writes nothing at all — not even the ledger directories.
+	slugCap, err := layered.RecordSlugCap(repoRoot)
+	if err != nil {
+		return CaptureResult{}, err
+	}
 	if err := checkFoundAt(repoRoot, req.FoundAt); err != nil {
 		return CaptureResult{}, err
 	}
@@ -156,10 +161,10 @@ func captureWith(lock ledgerLocker, req CaptureRequest) (CaptureResult, error) {
 	// out of the filename; an explicit slug still flows through redactCaptureInputs
 	// above.
 	if strings.TrimSpace(req.Slug) == "" {
-		req.Slug = deriveSlug(req.Text)
+		req.Slug = deriveSlug(req.Text, slugCap)
 	}
 
-	slugNorm, err := normaliseSlug(req.Slug)
+	slugNorm, err := normaliseSlug(req.Slug, slugCap)
 	if err != nil {
 		return CaptureResult{}, err
 	}
@@ -722,6 +727,28 @@ func transition(repoRoot, issuesRoot, issID, verb, field, note string, extra []k
 	return result, nil
 }
 
+// RepointResolved repoints the links still naming an issue's record in open/ once
+// the record stands in resolved/, for a transition a killed call left without its
+// repoint. A link already following the move is left as it is. The record's own links
+// are read from where it stands, since it may have been edited there.
+func RepointResolved(repoRoot, id string) error {
+	rr, ir, err := resolveRoots(repoRoot, "")
+	if err != nil {
+		return err
+	}
+	found, err := filepath.Glob(filepath.Join(ir, statusDirName[StateResolved], id+"-*"))
+	if err != nil {
+		return err
+	}
+	for _, dst := range found {
+		src := filepath.Join(ir, statusDirName[StateOpen], filepath.Base(dst))
+		if _, errText := repointIssueMove(rr, ir, src, dst, false); errText != "" {
+			return fmt.Errorf("%s", errText)
+		}
+	}
+	return nil
+}
+
 // repointMovedIssue repoints the links that named an issue's path before a
 // transition moved it, through the one primitive every record-moving verb
 // shares. A ledger outside the repository (a custom issues root) is linked from
@@ -739,6 +766,11 @@ func transition(repoRoot, issuesRoot, issID, verb, field, note string, extra []k
 // be taken is reported as the repoint's error, with nothing repointed, and the
 // front door names record-lint's links_resolve as what finds each stale link.
 func repointMovedIssue(repoRoot, issuesRoot, src, dst string) ([]relink.Rewrite, string) {
+	return repointIssueMove(repoRoot, issuesRoot, src, dst, true)
+}
+
+// repointIssueMove is repointMovedIssue, saying whether this operation made the move.
+func repointIssueMove(repoRoot, issuesRoot, src, dst string, movedNow bool) ([]relink.Rewrite, string) {
 	from, err1 := filepath.Rel(repoRoot, src)
 	to, err2 := filepath.Rel(repoRoot, dst)
 	if err1 != nil || err2 != nil || !filepath.IsLocal(from) || !filepath.IsLocal(to) {
@@ -753,7 +785,7 @@ func repointMovedIssue(repoRoot, issuesRoot, src, dst string) ([]relink.Rewrite,
 		if duringIssueRepoint != nil {
 			duringIssueRepoint()
 		}
-		rw, rpErr = relink.Repoint(repoRoot, []relink.Move{{From: from, To: to, MovedNow: true}})
+		rw, rpErr = relink.Repoint(repoRoot, []relink.Move{{From: from, To: to, MovedNow: movedNow}})
 		return nil
 	}); err != nil {
 		return nil, err.Error()
