@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/testsecret"
 )
 
@@ -44,20 +43,20 @@ func reportPath(item string) string { return ".abcd/work/cloud-reports/" + item 
 func newForgeCase(t *testing.T, tracking string) *cloudCase {
 	t.Helper()
 	bin := builtAbcd.Path(t)
-	c := newCloudCase(t)
+	c := newEmptyCase(t)
 	logged := filepath.Join(filepath.Dir(c.bin), "abcd-logged")
+	key := "forge\x00" + tracking
+	if c.restore(key) {
+		c.env = append(c.env, "ABCD_BIN="+filepath.Join(c.dir, filepath.FromSlash(localAbcdRel)), "ABCD_OUTBOUND_BIN="+bin, "FAKE_ABCD="+logged, remoteMarker)
+		return c
+	}
+	c.standUp()
 	if err := os.WriteFile(logged, []byte("#!/bin/sh\necho \"abcd $*\" >>\"$CALLS\"\nexec '"+bin+"' \"$@\"\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	c.env = append(c.env, "ABCD_BIN="+c.localAbcd(logged), "ABCD_OUTBOUND_BIN="+bin, "FAKE_ABCD="+logged)
 
-	top := exec.Command("git", "rev-parse", "--show-toplevel")
-	top.Env = gittest.Env(t)
-	out, err := top.Output()
-	if err != nil {
-		t.Skip("not in a git checkout")
-	}
-	root := strings.TrimSpace(string(out))
+	root := checkoutRoot(t)
 	for _, rel := range []string{".githooks/pre-push", "scripts/preflight-receipt.sh"} {
 		c.copyFrom(root, rel)
 	}
@@ -91,6 +90,7 @@ func newForgeCase(t *testing.T, tracking string) *cloudCase {
 	c.fake("go", goFakeForAbcd)
 	c.fakeForge()
 	c.resetCalls()
+	c.keep(key)
 	return c
 }
 

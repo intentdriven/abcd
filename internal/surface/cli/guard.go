@@ -14,6 +14,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/guard"
 	"github.com/intentdriven/abcd/internal/core/landing"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
 )
@@ -249,9 +250,11 @@ func newGuardHookCommand() *cobra.Command {
 			"manifest hands it the shell tool, the question tool and the host's\n" +
 			"file-writing tools (Write, Edit, MultiEdit, NotebookEdit) and nothing else.\n" +
 			"A file one of those tools writes is not held to the registry: it is denied\n" +
-			"with the host's deny when it lands in a main checkout two or more live\n" +
-			"sessions started in, with the refusal the record verbs give, naming the\n" +
-			"worktree store. The file's working tree is found by walking up to its .git,\n" +
+			"with the host's deny when it is the stop file or the setting naming where a\n" +
+			"stop is read (the person's own, by `abcd implement stop`), and when it lands\n" +
+			"in a main checkout two or more live sessions started in, with the refusal\n" +
+			"the record verbs give, naming the worktree store. The file's working tree\n" +
+			"is found by walking up to its .git,\n" +
 			"so a linked worktree, a checkout one session or none works in, a path in no\n" +
 			"checkout, and a file in a checkout's own local tier (.abcd/.work.local/,\n" +
 			"which git ignores) are written silently. A file call naming no path, a\n" +
@@ -344,6 +347,9 @@ func guardHookDecide(cmd *cobra.Command) error {
 	// the command run and puts the warning in front of a human. Only a
 	// deny stops anything.
 	failOpen := func(format string, a ...any) error {
+		if stageActive() {
+			return stageUncheckedDeny()
+		}
 		diagnosticLine(cmd.ErrOrStderr(),
 			"abcd guard: NOT CHECKED — "+format+". This command runs UNGUARDED.", a...)
 		return &exitError{Code: 1}
@@ -369,6 +375,8 @@ func guardHookDecide(cmd *cobra.Command) error {
 			return questionFailOpen(cmd.ErrOrStderr(), "the question tool's hook payload could not be read (%s)", errUnreadableQuestionPayload)
 		case known && isFileWriteTool(tool):
 			return fileWriteFailOpen(cmd.ErrOrStderr(), "the %s tool's hook payload is not readable JSON", termsafe.Sanitize(tool))
+		case stageActive():
+			return stageUncheckedDeny()
 		case !known:
 			diagnosticLine(cmd.ErrOrStderr(),
 				"abcd guard: NOT CHECKED — the hook payload is not readable JSON, so the tool it calls is unknown. The call runs UNGUARDED.")
@@ -459,7 +467,7 @@ func guardHookDecide(cmd *cobra.Command) error {
 	if wd.Exists {
 		runDir = wd.Path
 	}
-	files := guard.NewFiles(runDir)
+	files := stageFilesFromEnv(guard.NewFiles(runDir))
 	// Both registries prove a delete's targets with one prover, so a
 	// delete the line makes is refused unless it is proven safe
 	// (iss-2610241239492159).
@@ -505,6 +513,13 @@ func guardHookDecide(cmd *cobra.Command) error {
 		}
 	}
 
+	// A stage's further agent stays refused whichever of the harness and the approver
+	// comes to answer for the line.
+	if stageActive() {
+		if why := guard.StageProgramRefusal(files, candidate); why != "" {
+			return denyCall(termsafe.Sanitize(why))
+		}
+	}
 	// A diagnostic changes no verdict (a script that does not exist, so
 	// there was nothing to read); it goes to stderr, where a warn's message
 	// goes, and on an allow the host keeps it only beside a loud exit.
@@ -679,7 +694,12 @@ func loadGuardRegistry(w io.Writer) (guard.Loaded, error) {
 // read, origin unreachable included, counts as human, and the refusal says
 // why, its text masked as every other facilitator.mode refusal is.
 func loadRepoGuard(root string) guard.Loaded {
-	ld := guard.LoadRepo(root)
+	var ld guard.Loaded
+	if base := os.Getenv(runner.StageBaseEnv); base != "" {
+		ld = guard.LoadRepoAt(root, base)
+	} else {
+		ld = guard.LoadRepo(root)
+	}
 	ld.Registry = ld.Registry.WithMergeMode(guardMergeMode(root))
 	return ld
 }

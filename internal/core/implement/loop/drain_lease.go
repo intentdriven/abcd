@@ -28,7 +28,8 @@ import (
 // the routing's (releaseHandedBack). It returns the
 // notes of renewals that failed or found the hold another's, for the move's
 // next step; a lane whose run cannot be read is left to the routing below,
-// which names it.
+// which names it. A run a drive let go is renewed by nothing here either: the tip of
+// a release that did not reach origin is the take-up's, which compares the record first.
 func renewInProgress(repoRoot string, st DrainState, view *claim.Snapshot, now time.Time) []string {
 	var notes []string
 	for _, l := range st.Lanes {
@@ -36,7 +37,7 @@ func renewInProgress(repoRoot string, st DrainState, view *claim.Snapshot, now t
 			continue
 		}
 		run, err := ReadState(repoRoot, l.RunID)
-		if err != nil || !renewable(run) {
+		if err != nil || !renewable(run) || letGoByDrive(run) {
 			continue
 		}
 		if view == nil {
@@ -50,12 +51,67 @@ func renewInProgress(repoRoot string, st DrainState, view *claim.Snapshot, now t
 			continue
 		}
 		note := ""
-		if err := mutate(repoRoot, l.RunID, func(_ *os.Root, st *State) (bool, error) {
+		if err := mutateReservation(repoRoot, l.RunID, func(st *State) (bool, error) {
 			if !renewable(*st) {
 				return false, nil
 			}
 			logged, updated := len(st.Record), st.UpdatedAt
 			note = renewReservation(repoRoot, st, now, view)
+			return len(st.Record) != logged || !st.UpdatedAt.Equal(updated), nil
+		}); err != nil {
+			continue
+		}
+		if note != "" {
+			notes = append(notes, note)
+		}
+	}
+	return notes
+}
+
+// renewParkedDue renews each lane parked at land whose reservation is at half its
+// lease, or read as another's, as a drain's move does (finishMerged), for a wait
+// long enough that no move comes: otherwise a peer could redo work that only awaits
+// its merge, and the land fence would not arm. The forge is read first, and only
+// when one is due, so a closed or conflicting pull request's lane is left to lapse.
+// It returns what a renewal that did not go through said.
+func renewParkedDue(repoRoot string, now time.Time) []string {
+	runs, err := Runs(repoRoot)
+	if err != nil {
+		return nil
+	}
+	var snap claim.Snapshot
+	var due []State
+	read := false
+	for _, run := range runs {
+		if parkedAtLand(run) < 0 || run.ReservedAt == nil {
+			continue
+		}
+		if !read {
+			if snap, err = claim.View(repoRoot, now); err != nil {
+				return nil
+			}
+			read = true
+		}
+		if _, d, lost := renewalDue(run, snap, now); d || lost != "" {
+			due = append(due, run)
+		}
+	}
+	if len(due) == 0 {
+		return nil
+	}
+	listed, unread := listParked(repoRoot)
+	var notes []string
+	for _, run := range due {
+		if !readParked(run, run.Lanes[parkedAtLand(run)], listed, unread).held() {
+			continue
+		}
+		note := ""
+		if err := mutate(repoRoot, run.RunID, func(_ *os.Root, st *State) (bool, error) {
+			if parkedAtLand(*st) < 0 {
+				return false, nil
+			}
+			logged, updated := len(st.Record), st.UpdatedAt
+			note = renewReservation(repoRoot, st, now, &snap)
 			return len(st.Record) != logged || !st.UpdatedAt.Equal(updated), nil
 		}); err != nil {
 			continue

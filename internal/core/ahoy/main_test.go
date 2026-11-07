@@ -4,6 +4,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/runstop"
 	"github.com/intentdriven/abcd/internal/core/shellpath"
 	"github.com/intentdriven/abcd/internal/core/vintage"
 )
@@ -16,6 +17,7 @@ import (
 const stubCopyRelease = "v0.13.4"
 
 func TestMain(m *testing.M) {
+	runstop.AccountHome = os.UserHomeDir
 	currentVintage = func() vintage.Current {
 		return vintage.Current{Revision: "testvintage", Known: true}
 	}

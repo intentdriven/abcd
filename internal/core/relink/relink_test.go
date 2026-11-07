@@ -207,3 +207,48 @@ func TestRepointIgnoresMovesThatDidNotHappenAndRefusesUnsafePaths(t *testing.T) 
 		t.Errorf("b.md rewritten: %q", g)
 	}
 }
+
+// Rewritten says what Repoint writes over a file that did not itself move, whatever form
+// the link takes and wherever the file is, and leaves what Repoint's walk does not reach.
+func TestRewrittenIsWhatRepointWrites(t *testing.T) {
+	const (
+		from = ".abcd/development/intents/planned/itd-10-a.md"
+		to   = ".abcd/development/intents/shipped/itd-10-a.md"
+	)
+	for name, c := range map[string]struct {
+		rel, content string
+		writes       bool
+	}{
+		"a link from outside the store":   {"docs/guide.md", "See [it](../" + from + "#f \"t\").\nMore.\n", true},
+		"a reference definition":          {"docs/ref.md", "[it]: ../" + from + "\n", true},
+		"a store's README":                {".abcd/development/intents/README.md", "The [it](planned/itd-10-a.md).\n", true},
+		"a file beside the record":        {".abcd/development/intents/planned/notes.md", "See [it](itd-10-a.md).\n", true},
+		"a file in the record's new home": {".abcd/development/intents/shipped/notes.md", "See [it](../planned/itd-10-a.md).\n", true},
+		"a link not in its shortest form": {"docs/long.md", "See [it](../docs/../" + from + ").\n", true},
+		"a link spelled from here":        {".abcd/development/intents/here.md", "See [it](./planned/itd-10-a.md).\n", true},
+		"the path as plain text":          {"docs/plain.md", "planned/itd-10-a.md and [it](../" + from + ").\n", true},
+		"only plain text":                 {"docs/text.md", "`planned/itd-10-a.md` by name.\n", false},
+		"another record's link":           {"docs/other.md", "See [it](../.abcd/development/intents/planned/itd-11-b.md).\n", false},
+		"a dependency tree":               {"node_modules/x/a.md", "See [it](../../" + from + ").\n", false},
+		"the local tier":                  {".abcd/.work.local/a.md", "See [it](../development/intents/planned/itd-10-a.md).\n", false},
+		"the reviews folder":              {".abcd/work/reviews/a.md", "See [it](../../development/intents/planned/itd-10-a.md).\n", false},
+		"a file that is not markdown":     {"docs/a.txt", "See [it](../" + from + ").\n", false},
+		"markdown in capitals":            {"docs/a.MD", "See [it](../" + from + ").\n", true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			write(t, root, c.rel, c.content)
+			write(t, root, to, "# moved\n")
+			wrote, err := Repoint(root, []Move{{From: from, To: to}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if (len(wrote) > 0) != c.writes {
+				t.Fatalf("premise: Repoint wrote %+v", wrote)
+			}
+			if got, want := Rewritten(c.rel, c.content, []Move{{From: from, To: to}}), read(t, root, c.rel); got != want {
+				t.Fatalf("Rewritten = %q, Repoint wrote %q", got, want)
+			}
+		})
+	}
+}

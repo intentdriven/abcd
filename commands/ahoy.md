@@ -1472,6 +1472,30 @@ what had already landed. Relay `status`, the resolved `repo`, every finding that
 is not `ok`, every `change`, and every `note`: a note is a thing abcd
 deliberately did not do, and the reason.
 
+## `shared-folder` — the option that lets a stop cross accounts
+
+For a person who runs abcd unattended on a second account of their computer. During
+an install, offer it once, as one question under a `Setup` chip, with what bare
+`abcd ahoy shared-folder` prints quoted in it: what the folder is for, that every
+account on the machine reads it, and that it is meant for a machine no other person
+shares. Declining is not running it, and every other part of abcd works without it;
+a stop then reaches only runs in the person's own account, and `abcd ahoy` says so
+on its `shared` line.
+
+The choice is the person's own act, and the guard refuses it to an agent. Hand them
+the line, to type in each account that takes part, naming the account they stop
+from: `abcd ahoy shared-folder /Users/Shared --person <account>`.
+
+The folder must be a real directory owned by root or the person, and one other
+accounts can write must carry the sticky bit; each parent above it is held to the same
+rule. The choice does not move while a stop stands in the folder: lift it first. `/Users/Shared` on macOS and `/var/tmp`
+on Linux both qualify. In the person's own account the verb makes the directory
+the stop lives in, named by their account's number. On Linux an age cleaner may remove
+what has stood in a temporary tree for weeks, a stop included (`systemd-tmpfiles` ages
+`/var/tmp` by default); a folder an administrator makes elsewhere avoids that. If setup says the directory for this
+account's number already stands and is not its own, choose a folder of your own that others
+cannot write, in each account, or have an administrator remove that entry.
+
 ## `--providers` and `connect` — the optional model provider
 
 ```bash

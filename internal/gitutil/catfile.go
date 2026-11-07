@@ -23,7 +23,8 @@ type BatchObject struct {
 // names reaches git's input. maxBytes caps git's whole answer, headers
 // included: an answer past it is an error, never a truncated one, so a caller
 // bounds it by what it already knows of each object's size. An answer whose
-// shape git does not document is an error too.
+// shape git does not document is an error too. Each object is read as stored
+// (asStored): no replace ref stands another's bytes in for the one named.
 //
 // The answer is read into one buffer sized to maxBytes up front, so it is
 // never grown by copying, and each object's content is a slice of it: what
@@ -40,7 +41,7 @@ func CatFileBatch(root string, objects []string, maxBytes int) ([]BatchObject, e
 		in.WriteString(o)
 		in.WriteByte('\n')
 	}
-	cmd := isolatedGit(root, "cat-file", "--batch")
+	cmd := asStored(isolatedGit(root, "cat-file", "--batch"))
 	cmd.Stdin = strings.NewReader(in.String())
 	w := &capBuilder{remaining: maxBytes}
 	w.b.Grow(maxBytes)
@@ -108,8 +109,10 @@ func (w *capBuilder) Write(p []byte) (int, error) {
 // submodule's gitlink, or "" for a path the tree does not hold, a path
 // beneath a gitlink or through a symbolic link among them. Git answers a
 // gitlink "<sha> commit" when this repository holds the commit it names, and
-// "<sha> submodule", ignoring the format asked, when it does not (git 2.52);
-// both are "commit" here, never an error. Each path is resolved on its own,
+// "<sha> submodule", ignoring the format asked, when it does not (git 2.51
+// and later); both are "commit" here, never an error. An older git answers
+// that absent gitlink "missing", as it answers a path the tree does not hold,
+// so there it is "". Each path is resolved on its own,
 // so a directory asked beside a path beneath it is still answered as a tree,
 // and the answer is one short line per path, whatever the trees beneath hold.
 // commit must be a full object name, and a path holding a newline or a NUL,

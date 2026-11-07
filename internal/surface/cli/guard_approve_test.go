@@ -4,13 +4,11 @@ import (
 	"bufio"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/guard"
-	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // rpcReply is one JSON-RPC response the approver wrote.
@@ -28,7 +26,7 @@ type rpcReply struct {
 // which it returns with the working tree.
 func approverRepo(t *testing.T) (dir, base string) {
 	t.Helper()
-	repo := gittest.NewRepo(t)
+	repo := newRepo(t)
 	repo.Write("README", "x\n")
 	repo.Commit("base")
 	if err := os.MkdirAll(filepath.Join(repo.Root(), ".abcd"), 0o755); err != nil {
@@ -44,6 +42,13 @@ func approverRepo(t *testing.T) (dir, base string) {
 func approverSession(t *testing.T, dir, base string, lines ...string) (map[string]rpcReply, int) {
 	t.Helper()
 	stdout, stderr, code := runGuard(strings.Join(lines, "\n")+"\n", "guard", "approve", "--dir="+dir, "--base="+base)
+	return parseApproverReplies(t, stdout, stderr), code
+}
+
+// parseApproverReplies is an approver's replies by id, failing on any stdout line that is
+// not one.
+func parseApproverReplies(t *testing.T, stdout, stderr string) map[string]rpcReply {
+	t.Helper()
 	out := map[string]rpcReply{}
 	sc := bufio.NewScanner(strings.NewReader(stdout))
 	sc.Buffer(make([]byte, 1<<20), 1<<20)
@@ -54,7 +59,7 @@ func approverSession(t *testing.T, dir, base string, lines ...string) (map[strin
 		}
 		out[string(r.ID)] = r
 	}
-	return out, code
+	return out
 }
 
 // callLine is a tools/call request for the approver's tool.
@@ -186,9 +191,7 @@ func TestGuardApproveJudgesAgainstTheRunsBase(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, args := range [][]string{{"add", ".abcd/guard.json"}, {"-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", "off"}} {
-		if out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput(); err != nil {
-			t.Fatalf("git %v: %v\n%s", args, err, out)
-		}
+		gitCmd(t, dir, args...)
 	}
 	replies, _ := approverSession(t, dir, base, callLine(t, 1, "Bash", map[string]any{"command": "go test ./..."}))
 	if b, msg, _ := answer(t, replies["1"]); b != "deny" || !strings.Contains(msg, "registry-not-in-force") {

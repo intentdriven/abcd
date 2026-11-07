@@ -11,7 +11,6 @@ import (
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/identity"
 	"github.com/intentdriven/abcd/internal/core/repolint"
-	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -201,7 +200,7 @@ func TestAhoyDryRunFlagPrintsTheDetectionEnvelope(t *testing.T) {
 // passes.
 func TestAhoyIdentityFlagHoldsTheCommitIdentityToThePin(t *testing.T) {
 	hermeticEnv(t)
-	repo := gittest.NewRepo(t)
+	repo := newRepo(t)
 	t.Chdir(repo.Root())
 	writeOwnRecord(t, `{"name":"Pinned Person","email":"pinned@example.com"}`)
 
@@ -392,7 +391,7 @@ func TestLintIdentityRendersTheIdentityReport(t *testing.T) {
 // did, under its own name.
 func TestLintSiteRefusesWithoutAComposition(t *testing.T) {
 	hermeticEnv(t)
-	repo := gittest.NewRepo(t)
+	repo := newRepo(t)
 	t.Chdir(repo.Root())
 	out, err := runCLIErr(t, "lint", "site", "--out", filepath.Join(t.TempDir(), "site"))
 	if code := exitCodeOf(err); code != 2 {
@@ -421,7 +420,7 @@ func TestBareLintRunsEveryTarget(t *testing.T) {
 	// The site rule reaches a repository that declares a site: a composition it
 	// cannot render is a finding, never a silent pass.
 	hermeticEnv(t)
-	repo := gittest.NewRepo(t)
+	repo := newRepo(t)
 	t.Chdir(repo.Root())
 	if err := os.MkdirAll(filepath.Join(repo.Root(), ".abcd"), 0o755); err != nil {
 		t.Fatal(err)

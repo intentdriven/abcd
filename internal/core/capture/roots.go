@@ -126,7 +126,7 @@ var reNonSlug = regexp.MustCompile(`[^a-z0-9]+`)
 
 // deriveSlug produces a filename-safe slug from free text: lowercase, collapse
 // every non-[a-z0-9] run to a single hyphen, trim, then cut on a word boundary
-// at recordid.MaxSlugLen, the cap every record-minting verb shares.
+// at maxLen, the cap every record-minting verb shares (layered.RecordSlugCap).
 //
 // It lives in core, not on the CLI, precisely so it runs on the ALREADY-REDACTED
 // text (Capture redacts its inputs before it calls this). A caller that
@@ -136,15 +136,15 @@ var reNonSlug = regexp.MustCompile(`[^a-z0-9]+`)
 // is redacted (gh-485). Deriving here, after redaction, closes that seam and
 // mirrors the intent engine's deriveIntentSlug, which likewise keeps derivation
 // in core rather than trusting a pre-kebab'd slug.
-func deriveSlug(text string) string { return recordid.Slug(text, recordid.MaxSlugLen) }
+func deriveSlug(text string, maxLen int) string { return recordid.Slug(text, maxLen) }
 
 // normaliseSlug lowercases, collapses non-alphanumeric runs to a single hyphen,
-// trims hyphens, and cuts the result at recordid.MaxSlugLen on a hyphen, so an
+// trims hyphens, and cuts the result at maxLen on a hyphen, so an
 // explicit slug is held to the same cap as a derived one (iss-2610100626320367).
 // Empty result is an error.
-func normaliseSlug(slug string) (string, error) {
+func normaliseSlug(slug string, maxLen int) (string, error) {
 	candidate := strings.Trim(reNonSlug.ReplaceAllString(strings.ToLower(slug), "-"), "-")
-	candidate = recordid.CapSlug(candidate, recordid.MaxSlugLen)
+	candidate = recordid.CapSlug(candidate, maxLen)
 	if candidate == "" {
 		return "", fmt.Errorf("slug normalises to empty: %q", slug)
 	}

@@ -29,7 +29,8 @@ import (
 // preflights and the waiters running their commands shut it only once they
 // take every slot, and a preflight queued at its race gate takes none
 // (Ahead.TakingSlots). A race waiter (`--race-gate`) is in a queue of its own
-// (RaceAhead), and never in the first gate's.
+// (RaceAhead), and never in the first gate's. A waiter whose command is a narrow
+// run is in neither (narrow.go).
 //
 // Every waiter reads the same table and orders the queue the same way, by when
 // each waiter started, earliest first, with a tie going to the lower pid
@@ -513,10 +514,11 @@ func readGate(snap Snapshot, self Self, args map[int][]string) gateTable {
 
 // waiters splits the waiters outside self's chain at one gate, the race gate's
 // when race is set and the first gate's otherwise, into those running their
-// command and those queued, each in pid order.
+// command and those queued, each in pid order. A narrow run's waiter is at
+// neither (isNarrowWaiter).
 func (t gateTable) waiters(args map[int][]string, race bool) (running, waiting []int) {
 	for _, pid := range t.candidates {
-		if t.chain[pid] || !isAbcdName(t.byPID[pid].Name) || !isLoadWaiter(args[pid]) || isRaceWaiter(args[pid]) != race {
+		if t.chain[pid] || !isAbcdName(t.byPID[pid].Name) || !isLoadWaiter(args[pid]) || isRaceWaiter(args[pid]) != race || isNarrowWaiter(args[pid]) {
 			continue
 		}
 		if t.running[pid] {
@@ -688,7 +690,7 @@ func JustOpened(snap Snapshot, self Self, args map[int][]string, window time.Dur
 	chain := lineage(snap.Procs, self.PID)
 	var out []int
 	for pid, age := range since {
-		if chain[pid] || age > window || !isLoadWaiter(args[pid]) || isRaceWaiter(args[pid]) != race {
+		if chain[pid] || age > window || !isLoadWaiter(args[pid]) || isRaceWaiter(args[pid]) != race || isNarrowWaiter(args[pid]) {
 			continue
 		}
 		out = append(out, pid)

@@ -211,9 +211,13 @@ not what the program is called, so `go run .`, a cross-compiled build, a
 wrapper script and a renamed copy are all refused (`go run ./cmd/abcd` is read
 as abcd, and the entry refuses it). A flag word a
 substitution prints is not read. The person's other acts are refused under any
-program name the same way: allowing one delete (`abcd-guard-allow-any-program`)
-and flipping a source-ledger line (`abcd-source-ledger-flip-any-program`, and
-`abcd-source-ledger-flip-retired-any-program` in the retired spelling). An
+program name the same way: allowing one delete (`abcd-guard-allow-any-program`),
+flipping a source-ledger line (`abcd-source-ledger-flip-any-program`, and
+`abcd-source-ledger-flip-retired-any-program` in the retired spelling), setting
+or lifting a stop (`abcd-implement-stop-any-program`) and choosing the folder a
+stop is read from (`abcd-ahoy-shared-folder-any-program`). Writes, moves and
+removals of the stop's files are refused as `implement-stop-store-write`, since
+removing a stop is lifting it. The guard and the verbs hold against an agent acting by mistake; a stop binds an agent only where an operating-system account separates them. An
 approving review posted on the forge,
 which the gate also counts as an approval, is refused the same way in every
 mode, as `forge-review-approve`: an approving `gh pr review`; a `gh api` call to the
@@ -222,7 +226,7 @@ line does not show; and one carrying the `addPullRequestReview` or
 `submitPullRequestReview` mutation with an `APPROVE` event. Reading the reviews
 is not refused, whatever its filter names. A review
 that comments or requests changes is not refused. The five merge ids,
-the four any-program ids and `forge-review-approve` are reserved, so a
+the six any-program ids, `implement-stop-store-write` and `forge-review-approve` are reserved, so a
 repository's `.abcd/guard.json` cannot declare an entry under them.
 
 The guard holds against an agent merging or approving by mistake, not against
@@ -513,6 +517,28 @@ that asked a question, and a verdict drawn from half the registry they thought
 they had is worse than being told the registry is broken.
 
 ## Turning it off is a diff
+
+History is not rewritten. The bundled blockers refuse `git filter-repo` and
+`git filter-branch` with any arguments, every form of `git update-ref` (none
+only reads, and a line cannot show whether the ref exists), `git replace` that
+stands one object in for another, `git reflog expire`, `delete` and `drop`,
+`git gc --prune`, `git prune` (a dry run passes), and a
+force push by these routes: its flags, a `+` refspec, `git push --mirror`,
+`git send-pack` forcing or reading its refs from `--stdin`,
+`git fast-import --force`, `gh repo sync --force`, and through the forge's API a
+PATCH of a ref with `force` set to anything but `false`, `0`, `null` or nothing, a value
+the line does not fix or `--input`, or
+a GraphQL `updateRef` with `force`, in the query or in a field beside it. Each asks for a new commit instead. A rebase
+or an amend stays allowed: a line cannot show whether its commits were pushed,
+and the force push a pushed one would need is refused. Each git entry here sets
+`subcommand_named`, so a word that is only a substitution (`git "$@"`) is not read
+as its subcommand and falls to the warning such a word already carries.
+
+Two pre-passes bring other spellings to those entries, as the alias pre-pass
+does. A `git-<sub>` program in command position, at any path, is also read as
+`git <sub>`. A setting on the line is also read as the flag or refspec it stands
+for: `remote.<name>.push`, `remote.<name>.mirror`, and on a gc `gc.pruneExpire`
+and the reflog expiries.
 
 The hazard entries are bundled in the binary and merged with a repo's
 `.abcd/guard.json`. That file is dedicated rather than a rules-loader domain, so
@@ -1085,8 +1111,12 @@ Sub-verbs: none.
 | Flag | Type |
 |---|---|
 | `--base` | string |
+| `--declared` | stringArray |
 | `--dir` | string |
+| `--harness` | string |
+| `--protect` | stringArray |
 | `--run-dir` | stringArray |
+| `--stage-home` | string |
 
 ### `abcd guard check`
 

@@ -19,9 +19,9 @@ recall-matches the prompt against keyword triggers declared in the plugin-bundle
 default domains, the machine's `~/.abcd.noindex/rules.json` and `<repo>/.abcd/rules.json`,
 and injects only the matched domain rules into context — instead of
 force-loading the full ruleset every turn.
-A prompt that matches no domain injects no rules (notes, status and an away block
-may still come back). The output stays under the host's 10,000-character cap: a domain that does not fit goes as
-its first rule and the command for the rest, or the command alone; with no room for that, it waits a turn.
+A prompt that matches no domain injects no rules. Output stays under the host's
+10,000-character cap: a domain that does not fit shrinks to its first rule or the
+command alone, or waits a turn.
 
 - Inspect rules: `abcd rules` renders the active set; `abcd rules <DOMAIN>`
   (case-insensitive) scopes to one domain.
@@ -83,18 +83,18 @@ in the abcd binary; a repo overrides them per-field via `.abcd/rules.json`.
 trust rule for load experiments: one owned process group killed together through
 a re-checked handle and never by pattern, clean proven by what is running, and
 explicit consent with a cap below the core count on a live development machine;
-and the load gate a preflight waits at: whole runs admitted as many at once as
-the person's own `load.preflights` in `~/.abcd.noindex/config.json` allows (one
-by default and four at most, never set by a repository), race stages kept apart
-among checkouts that have the race gate (one at a time within an account, and
-across accounts all but the narrow window the domain names), and no test stage
-started under memory pressure at or above the person's own floor.
-`SHELL` is generated from the hazard registry `abcd guard` enforces in the
-repository, and recalls on the commands it names (`rm`, `git push`, `pkill`, …) and
-on shell work in general. Ahead of time it sends a line about the guard and the
-rules of the entries that only warn; what the guard refuses, a delete it cannot
-prove safe included, reaches the agent at the refusal, and `abcd rules SHELL` lists
-every rule. With the guard off, it sends what fits.
+and the load gate a preflight waits at: as many whole runs at once as the
+person's own `load.preflights` in `~/.abcd.noindex/config.json` allows (one by
+default, four at most, never a repository's), a test of a few named
+packages on its own limit behind no whole run, race stages kept apart among
+checkouts with the race gate (one at a time within an account, and across accounts
+all but the window the domain names), and no test stage started under memory
+pressure at or above the person's own floor.
+`SHELL` is generated from the hazard registry `abcd guard` enforces, and recalls on
+the commands it names (`rm`, `git push`, `pkill`, …) and on shell work. Ahead of time
+it sends a line about the guard and the rules that only warn; what the guard refuses,
+an unprovable delete included, reaches the agent at the refusal, and `abcd rules
+SHELL` lists every rule. With the guard off, it sends what fits.
 `GRILL` carries the asking rules every abcd interview follows (one thing at a
 time, the thing being decided quoted in full before the question, options that
 widen rather than recommend); it is generated from the same limits the question
@@ -118,7 +118,7 @@ job.
 `SessionStart` and `PreCompact` clear the per-session dedup ledger, so a matched
 domain re-injects on the next prompt (the event-driven refresh that recovers
 after compaction). Within a session a domain that stays in force is not
-re-injected unchanged, short of the refresh backstop; one that leaves the active set (deleted, renamed, made
+re-injected unchanged, short of the backstop; one that leaves the active set (deleted, renamed, made
 dormant, or a `*<DOMAIN>` activation the next prompt does not repeat) is
 injected again when it returns.
 
@@ -207,19 +207,19 @@ For this repository the line is
 CI (`.github/workflows/ci.yml`) runs its `check` job on Linux on every event —
 build, vet, test and the race-enabled internal tests, with the `make fmt-check`
 format gate, the record-lint, issue-drift and docs-lint steps and the
-site-render gate. Off a pull request three `macos-suite` shard jobs run the
-macOS suite under -race, over what `cmd/ci-shard` assigns each; the first also
-builds, vets and runs the plain-only tests. `check-macos` reports
+site-render gate. Nightly and on demand the macOS suite runs in four
+`macos-suite` shards, the last holding `internal/core/implement/loop` alone.
+`check-macos` reports
 `check (macos-latest)` from ubuntu and fails unless every shard succeeded; on a
-pull request the shards stand down and it runs nothing (every push there passed
-`make preflight`). The merge-queue entry tests exactly the tree that lands.
+pull request or a queue entry the shards stand down and it says so (the pre-push
+hook holds a push to `make preflight`). The queue entry tests on Linux the tree that lands.
+Each release cut runs that suite too: `release.yml`'s tag and publish jobs need `macos-gate`.
 The workflow triggers on pull requests, merge-queue entries, a nightly
 schedule and by hand, never on a push to `main`: every commit there is a
 merge result its queue entry already tested, and the nightly run checks the
 default branch and saves its Go build cache for the runs that follow. On
 every merge-queue event `.github/workflows/queue-sweep.yml` cancels the runs
-of entries the queue has already dropped, and only those whose queue ref is
-gone; it is not a required check.
+of entries the queue has dropped; it is not a required check.
 Separate jobs run the reviews-charter check
 (`scripts/check-reviews.sh`) together with the issue-resolution gates
 (RS001–RS006), full-history secret scanning (`gitleaks`), a workflow audit
@@ -229,8 +229,8 @@ fail-closed classifier stands the race lane and the `zizmor`,
 `govulncheck` and smoke jobs down on a pull request confined to `docs/`,
 `.abcd/development/`, `.abcd/work/`, the root prose files and the
 community-health files in `.github/`; the Linux unit lane, the format gate and
-the record gates always run, and every other event — the merge-queue entry that
-gates the merge included — runs the lot.
+the record gates always run, and every other event, the merge-queue entry
+included, runs those lanes.
 
 ## Working-tree layout (three tiers under `.abcd/`)
 
@@ -277,10 +277,10 @@ new session, so it holds only throwaway files for the turn at hand (the
   plugin markdown surface and demonstrably executes there — no dead scaffolding.
 - **Host-delegated by default.** LLM review/agent work is delegated to the host;
   native/CLI/API/MCP oracles are opt-in adapters. The one written exception is
-  a drain the person drives from a plain terminal, which starts agents itself
-  on their own invocation
+  `abcd drain --drive`, typed by the person in a plain terminal, which starts
+  agents itself
   ([adr-2610222222326104](.abcd/development/decisions/adrs/2610222222326104-abcd-drives-agents-with-no-host-session.md));
-  it is not built until itd-2610222215485265 ships.
+  the key route waits for its budget (itd-2611011230226453).
 - **Single repo, curated release.** `.abcd/**` stays in-tree and is present in
   every repository checkout — marketplace installs and release source archives
   included — never in the released binaries; the launch bundler denies the
@@ -353,7 +353,8 @@ with `*CONCURRENCY` to force it).
   `lint-issues`, `record-lint`, `issue-drift`, `docs-lint`,
   `check-attribution`, `secrets-check`, `vulncheck`, `site-render`), both tagged eval
   lanes (`smoke`, `evals-cold-reading`), plus `go build ./...`,
-  `go vet ./...`, `go test -timeout 40m ./...`, and
+  `go vet ./...`, the two plain passes CI's check job runs (`go test ./cmd/...`
+  and, by name, the tests that assert only without the race detector), and
   `go test -race -timeout 40m ./internal/...`, under `ABCD_TEST_SHARDS=3`,
   which runs the three longest packages as three test processes each
   (`internal/testshard`). The load
@@ -420,7 +421,8 @@ with `*CONCURRENCY` to force it).
   gate, and so does `launch ship` for every intent shipped since the last tag:
   each refuses until `scripts/abcd.sh docs fidelity record` has saved a docs
   review for HEAD (`commands/docs.md` says how to run one). The review is
-  labelled with the commit it read and kept in the checkout's local tier, so a
+  labelled with the commit it read (a head with that commit's tree stands on it)
+  and kept in the checkout's local tier, so a
   cut made on `main` needs a review recorded there for the merge commit: the
   reviewer runs after the merge, not before it. A revert
   withdraws a `Delivers:` on the same terms, only for an intent its own diff

@@ -39,6 +39,7 @@ import (
 func (st State) masked() State {
 	st.RunID, st.Key, st.Intent, st.Spec = line(st.RunID), line(st.Key), line(st.Intent), line(st.Spec)
 	st.Driver = Driver(line(string(st.Driver)))
+	st.Profile = line(st.Profile)
 	st.Pace = maskPtr(st.Pace, Pace.masked)
 	st.Review = maskPtr(st.Review, ReviewSet.masked)
 	st.Pick = maskPtr(st.Pick, RunPick.masked)
@@ -140,6 +141,7 @@ func (l Lane) masked() Lane {
 // masked is State.masked for one validation round.
 func (r ValidationRound) masked() ValidationRound {
 	r.HeadSHA, r.Fix = line(r.HeadSHA), line(r.Fix)
+	r.ResolvesShown = maskEach(r.ResolvesShown, line)
 	r.Validators = maskEach(r.Validators, func(v ValidatorRun) ValidatorRun {
 		v.Role, v.Brief, v.Return, v.Verdict = line(v.Role), line(v.Brief), line(v.Return), line(v.Verdict)
 		v.Class, v.Model, v.ModelStatus = line(v.Class), line(v.Model), line(v.ModelStatus)

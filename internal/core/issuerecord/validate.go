@@ -260,7 +260,7 @@ func validateInvariants(fm map[string]any, status, path string) error {
 	}
 	// The slug is the other half of the same agreement, and it is checked the
 	// same way: exactly, not leniently. Capture derives the slug once (deriveSlug
-	// is where the 60-char cap is applied), normalises it once, and hands that one
+	// is where the record cap is applied), normalises it once, and hands that one
 	// string to both writers — reservePath builds issID+"-"+slug+".md" while
 	// commitCapture stores the identical variable as fm["slug"]. The cap therefore
 	// lands BEFORE the fork, so a filename is never a truncated form of a longer

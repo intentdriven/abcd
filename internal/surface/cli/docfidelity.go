@@ -15,37 +15,31 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/docfidelity"
-	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
-// closeShips names the intents a `spec close` of specID would move to
-// shipped: each member no other open spec still names. A reference the store
-// cannot resolve ships nothing here, and the close reports it itself.
-func closeShips(repoRoot, specID string) []string {
-	store, err := spec.Load(repoRoot)
+// enforceShipLinks refuses a close that would ship an intent still naming an
+// issue that is not in resolved/: the finding issue-drift would make at preflight,
+// made while it can still be answered with nothing moved. A close that ships
+// nothing, a --remainder close included, has no population and meets nothing here.
+func enforceShipLinks(repoRoot, verb string, population []string) error {
+	links, err := capture.UnresolvedLinks(repoRoot, population)
 	if err != nil {
+		return &exitError{Code: 2, Msg: verb + ": the issue ledger cannot be read to judge what this close ships (nothing moved): " + scrubPaths(err)}
+	}
+	if len(links) == 0 {
 		return nil
 	}
-	sp, ok := store.Lookup(specID)
-	if !ok || sp.Status != spec.StatusOpen {
-		return nil
+	var b strings.Builder
+	b.WriteString(verb + ": refused — " + strings.Join(population, ", ") + " would ship naming an issue that is not resolved, which issue-drift refuses (nothing moved):")
+	for _, l := range links {
+		b.WriteString("\n  - " + termsafe.Sanitize(l.String()))
 	}
-	var out []string
-	for _, m := range sp.Members() {
-		others := 0
-		for _, o := range store.OpenSpecsForIntent(m) {
-			if o.ID != sp.ID {
-				others++
-			}
-		}
-		if others == 0 {
-			out = append(out, m)
-		}
-	}
-	return out
+	b.WriteString("\n  (a change that delivers part of the intent closes with --remainder <slug>, which ships nothing)")
+	return &exitError{Code: 1, Msg: b.String()}
 }
 
 // enforceDocFidelity runs the gate for population and returns the refusal the
@@ -53,7 +47,7 @@ func closeShips(repoRoot, specID string) []string {
 // the binary its brief describes; elsewhere it judges nothing. An empty
 // population still meets layer 1, the coverage floor; only the saved docs
 // review waits on a shipped intent (iss-2610020728118137).
-func enforceDocFidelity(repoRoot, verb string, population []string) error {
+func enforceDocFidelity(stderr io.Writer, repoRoot, verb string, population []string) error {
 	if !docfidelity.Armed(repoRoot) {
 		return nil
 	}
@@ -66,6 +60,9 @@ func enforceDocFidelity(repoRoot, verb string, population []string) error {
 		return &exitError{Code: 2, Msg: verb + ": the doc-fidelity gate cannot read its inputs (nothing moved): " + scrubPaths(err)}
 	}
 	if !v.Refuse {
+		if v.Review != nil && v.Review.TreeNote() != "" {
+			fmt.Fprintln(stderr, verb+": "+v.Review.TreeNote())
+		}
 		return nil
 	}
 	lags := "the binary it ships"
@@ -258,6 +255,9 @@ func renderFidelity(w io.Writer, verb string, out docsFidelityReport) {
 		fmt.Fprintln(w, "  layer 2: not run — layer 1 refused, and an undocumented surface needs no reviewer")
 	} else {
 		fmt.Fprintf(w, "  layer 2: the saved docs review is %s for %s\n", v.Review.Status, termsafe.Sanitize(v.Review.Commit))
+		if note := v.Review.TreeNote(); note != "" {
+			fmt.Fprintf(w, "    %s\n", termsafe.Sanitize(note))
+		}
 	}
 	for _, f := range out.Flagged {
 		fmt.Fprintf(w, "  applied  %s: %q -> %q (flagged for review in %s)\n", f.Chapter,

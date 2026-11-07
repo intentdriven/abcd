@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner/augmenttest"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 func packSourceWithValue(t *testing.T) string {
@@ -36,6 +37,7 @@ func packSourceWithValue(t *testing.T) string {
 // opt-in augmenter reaches the CLI's pack scan, so what it flags refuses the
 // lifeboat, and the refusal does not echo the value (iss-2608291814575788).
 func TestDisembarkPackReportsTheAugmentersFinding(t *testing.T) {
+	gittest.NeutralCaller(t) // its scan judges the lifeboat, not the account that runs the test
 	augmenttest.Install(t, augmenttest.Fake())
 	source := packSourceWithValue(t)
 	dest := filepath.Join(t.TempDir(), "lifeboat")

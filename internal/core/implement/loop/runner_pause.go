@@ -16,7 +16,9 @@ package loop
 //     already with the host, from an earlier fallback or a step before its
 //     route existed, whose receipt nothing has written: so lanes parked before
 //     this change move too. A role whose receipt is written is the host's to
-//     hand back, and is never retried.
+//     hand back, and is never retried; nor is a routed implementer whose runner
+//     was started and whose receipt stands (receipt_standing.go), since a step
+//     collects it or says why it cannot.
 //   - `--route` for a held role retries it at once on that route, and a
 //     restart while a route is in force starts the fresh agent on its runner
 //     rather than re-telling it to the host.
@@ -54,10 +56,13 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"crypto/sha256"
+	"encoding/json"
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 )
 
 // StageRetry is the record's stage for a held role retried on its runner, and
@@ -174,6 +179,14 @@ func heldRole(repoRoot string, st State, cfg *runner.Config, now time.Time, only
 			if a.Running != nil && now.Before(a.Running.Until) {
 				continue
 			}
+			// The state shows a runner for this role and a receipt stands: the
+			// step has read it (collectStanding) and said why it was not taken. A second
+			// runner would pay again for work that is done, unless the first
+			// exited badly; a --route, whose step reads no receipt, starts
+			// none over it either way.
+			if _, ran := startedRunner(l, a); ran && received(repoRoot, a.Receipt) && (only != nil || !retriedOverReceipt(a)) {
+				continue
+			}
 			h := held{lane: l.ID, await: a, last: a.Since}
 			switch {
 			case a.Paused != nil:
@@ -267,6 +280,7 @@ func releaseToHost(repoRoot, runID string, o Options, rs Runners, res StepResult
 	if !released {
 		return res, false, nil
 	}
+	listWithHost(context.Background(), rs.Config, out.Awaiting.Role, repoRoot, runner.LaunchWork{Run: runID, Lane: out.Lane, Await: out.Awaiting.Receipt})
 	if res.PerformedStage == "" {
 		return out, true, nil
 	}
@@ -296,7 +310,7 @@ func retryHeld(ctx context.Context, repoRoot, runID string, steps Stages, o Opti
 	if !ok {
 		return res, nil
 	}
-	r, err := dispatchAwait(ctx, repoRoot, runID, steps, o, rs, h.lane, h.await, h.why, res)
+	r, err := dispatchAwait(ctx, repoRoot, runID, steps, o, rs, h.lane, h.await, h.why, res, false)
 	if errors.Is(err, errClaimed) {
 		return res, nil
 	}
@@ -320,7 +334,7 @@ func retrySentence(r Retry, ran bool) string {
 		return fmt.Sprintf("this step also retried %s's %s on the %s runner, which ran it", r.Lane, r.Role, r.Runner)
 	}
 	if r.Paused != nil {
-		return fmt.Sprintf("this step also retried %s's %s on the %s runner, which did not start it (%s), so it stays paused", r.Lane, r.Role, r.Runner, r.Paused.Why())
+		return fmt.Sprintf("this step also retried %s's %s on the %s runner, %s (%s), so it stays paused", r.Lane, r.Role, r.Runner, pauseCause(*r.Paused), r.Paused.Why())
 	}
 	return fmt.Sprintf("this step also retried %s's %s on the %s runner", r.Lane, r.Role, r.Runner)
 }
@@ -360,7 +374,7 @@ func retryRouted(ctx context.Context, repoRoot, runID string, steps Stages, o Op
 		return StepResult{}, true, err
 	}
 	why := h.why + ", under --route " + overrides[h.await.Role]
-	r, err := dispatchAwait(ctx, repoRoot, runID, steps, o, rs, h.lane, h.await, why, StepResult{})
+	r, err := dispatchAwait(ctx, repoRoot, runID, steps, o, rs, h.lane, h.await, why, StepResult{}, false)
 	if errors.Is(err, errClaimed) {
 		return StepResult{}, true, contend(StageRetry, "", h.lane, "another step's runner took "+h.lane+"'s "+h.await.Role+" first",
 			"run `abcd implement step` once it has finished; nothing was written")
@@ -373,8 +387,19 @@ func retryRouted(ctx context.Context, repoRoot, runID string, steps Stages, o Op
 // await this step handed out, and otherwise why the held role is retried,
 // which the record names. The await is claimed first, under the lock; a
 // runner that does not start the role pauses it (pauseAwait), and every other
-// end drops the claim. on is returned with any refusal, as the step's answer.
-func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o Options, rs Runners, laneID string, aw Await, why string, on StepResult) (StepResult, error) {
+// end drops the claim. on is returned with any refusal, as the step's answer. told
+// says this call itself handed the await out or re-told it, so no agent can have it
+// yet, which is what lets a stop refused here mark it as not started.
+func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o Options, rs Runners, laneID string, aw Await, why string, on StepResult, told bool) (StepResult, error) {
+	// The last moment before an agent starts: a stop set since the step began
+	// starts nothing (stop.go).
+	if _, err := stopCheck(repoRoot, runID, steps, o); err != nil {
+		if told {
+			return StepResult{}, notStartedUnderStop(repoRoot, runID, aw.Receipt, steps, o, err)
+		}
+		return StepResult{}, err
+	}
+	afterStopCheck()
 	route := rs.Config.RouteFor(aw.Role)
 	timeout := rs.Timeout
 	if timeout <= 0 {
@@ -382,7 +407,13 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 	}
 	session := fmt.Sprintf("%s-%s-%s-%d", runID, laneID, aw.Role, o.now().Unix())
 	var worktree, base string
-	err := mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+	err := mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+		// A stop may have come since the check: under the lock it starts nothing.
+		if c, err := readControl(root, runID); err != nil {
+			return false, err
+		} else if c.Stop != nil {
+			return false, stopRefusal(runID, *c.Stop)
+		}
 		now := o.now()
 		i, k := st.findAwait(repoRoot, aw.Receipt)
 		if i < 0 || st.Lanes[i].ID != laneID {
@@ -393,11 +424,17 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		if a.Running != nil && now.Before(a.Running.Until) {
 			return false, errClaimed
 		}
+		// A claim speaks for its own attempt: what an earlier one left at the
+		// path is kept aside, not read as this one's.
+		if err := setAsideForAgent(repoRoot, st, lane, a.Receipt, now); err != nil {
+			return false, err
+		}
 		a.Running = &RunnerClaim{Runner: route.Runner, Session: session, Until: now.Add(runner.LongestRun(timeout) + claimGrace)}
 		lane.Awaits = slices.Clone(lane.Awaits)
 		lane.Awaits[k] = a
 		st.Lanes[i] = lane
 		worktree, base = lane.Worktree, lane.BaseSHA
+		recordLaunch(root, st, Launch{Lane: laneID, Role: aw.Role, Runner: route.Runner, Route: route.Override(), Session: session, At: now})
 		if why != "" {
 			st.Record = append(st.Record, Entry{At: now, Lane: laneID, Stage: StageRetry,
 				Note: fmt.Sprintf("retried %s's %s on the %s runner: %s", laneID, aw.Role, route.Runner, why)})
@@ -405,12 +442,28 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		st.UpdatedAt = now
 		return true, nil
 	})
+	if rf, ok := AsRefusal(err); ok && rf.Stage == StageStop {
+		if told {
+			return StepResult{}, notStartedUnderStop(repoRoot, runID, aw.Receipt, steps, o, err)
+		}
+		return StepResult{}, err
+	}
 	if err != nil {
 		return on, err
 	}
 	release := func() error { return releaseClaim(repoRoot, runID, aw.Receipt, session) }
 
+	if aw.Paused != nil && aw.Paused.Reason == runner.ReasonInvalid {
+		noteRefusedReturn(repoRoot, runID, laneID, aw)
+	}
+	var declared []string
+	if rs.Config.OnWalledLogin() {
+		if st, err := ReadState(repoRoot, runID); err == nil {
+			declared, _ = runFootprint(repoRoot, st.Key, st.Spec, runID+" is unchanged")
+		}
+	}
 	req := runner.Request{
+		Declared: declared,
 		Role:     aw.Role,
 		Brief:    absIn(repoRoot, aw.Brief),
 		Receipt:  absIn(repoRoot, aw.Receipt),
@@ -426,8 +479,33 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		Model:     aw.Model,
 		SessionID: session,
 		Timeout:   timeout,
+		Work:      runner.LaunchWork{Run: runID, Lane: laneID, Await: aw.Receipt},
+	}
+	// A drive holds what it wrote, so a line that rewrites the run in the agent's
+	// call is seen before anything is done on what the line wrote.
+	var watched [sha256.Size]byte
+	var watchErr error
+	if o.RunStateWatch {
+		if watched, err = runFingerprint(repoRoot, runID); err != nil {
+			watchErr = err
+		}
+	}
+	validating := false
+	changed := func() error {
+		if watchErr != nil || !o.RunStateWatch || validating {
+			return watchErr
+		}
+		now, err := runFingerprint(repoRoot, runID)
+		switch {
+		case err != nil:
+			watchErr = err
+		case now != watched:
+			watchErr = errRunStateChanged
+		}
+		return watchErr
 	}
 	var done *StepResult
+	var refusedHandIn error
 	var fell *runner.FallbackReceipt
 	var tap *stderrTap
 	var transcripts runner.TranscriptStore
@@ -440,10 +518,16 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		HostSession: true,
 		Transcripts: transcripts,
 		Validate: func(ran string, _ runner.Request, ans runner.Answer) error {
+			if err := changed(); err != nil {
+				return err
+			}
+			// From here the driver writes the run itself.
+			validating = true
 			rec := runner.RecordOf(route.Runner, ran, ans)
 			rec.Override = route.Override()
 			r, err := receipt(repoRoot, runID, aw.Receipt, steps, o, &rec)
 			if err != nil {
+				refusedHandIn = err
 				return err
 			}
 			done = &r
@@ -454,7 +538,15 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		Record: func(fb runner.FallbackReceipt) error { fell = &fb; return nil },
 		Now:    o.Now,
 	}
+	o.startingLaunch(aw.Role)
 	out, err := d.Dispatch(ctx, req)
+	o.failedLaunch(aw.Role, err, out.Failure)
+	if cerr := changed(); cerr != nil {
+		if rerr := release(); rerr != nil {
+			return on, errors.Join(cerr, rerr)
+		}
+		return on, cerr
+	}
 	retry := func(r StepResult, p *RunnerPause) StepResult {
 		if why != "" {
 			r.Retried = &Retry{Lane: laneID, Role: aw.Role, Runner: route.Runner, Why: why, Paused: p}
@@ -481,7 +573,9 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 			fb = *fell
 		}
 		if out.Failure != nil && errors.Is(out.Failure, runner.ErrKilled) && aw.Role == RoleImplementer {
-			if n, ok := workStands(repoRoot, worktree, base, aw); ok {
+			// With its receipt written too there is nothing to keep the lane
+			// for: the pause leaves it for the next step to read.
+			if n, ok := workStands(repoRoot, worktree, base, aw); ok && !received(repoRoot, aw.Receipt) {
 				r, err := keepKilled(repoRoot, runID, laneID, aw, session, fb, n, o)
 				return retry(r, nil), err
 			}
@@ -490,7 +584,7 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 		if tap != nil {
 			stderr = redactStderr(repoRoot, tap.first)
 		}
-		r, p, err := pauseAwait(repoRoot, runID, laneID, aw, session, fb, stderr, o)
+		r, p, err := pauseAwait(repoRoot, runID, laneID, aw, session, fb, stderr, refusedHandIn, o)
 		return retry(r, p), err
 	}
 	if done == nil {
@@ -505,46 +599,142 @@ func dispatchAwait(ctx context.Context, repoRoot, runID string, steps Stages, o 
 	return retry(r, nil), nil
 }
 
-// pauseAwait records that the runner did not start the role: the await stays
-// out, paused with the reason and the runner's first stderr line, its claim
-// dropped; one fallback receipt naming none as the route that ran; and the
-// record's line. It returns the lane's result, which names the paused role.
-func pauseAwait(repoRoot, runID, laneID string, aw Await, session string, fb runner.FallbackReceipt, stderr string, o Options) (StepResult, *RunnerPause, error) {
+// pauseAwait records that the runner did not bring the role back: the await
+// stays out, paused with the reason and the runner's first stderr line, its
+// claim dropped; one fallback receipt naming none as the route that ran; and the
+// record's line. It returns the lane's result, which names the paused role. An
+// await that is gone by now has nothing to pause, nothing to retry and no failed
+// start to count, so the record and the answer say what happened instead
+// (noteRunnerEnded), handIn being the refusal of the runner's hand-in, if any.
+func pauseAwait(repoRoot, runID, laneID string, aw Await, session string, fb runner.FallbackReceipt, stderr string, handIn error, o Options) (StepResult, *RunnerPause, error) {
 	var res StepResult
 	var paused *RunnerPause
 	err := mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
 		now := o.now()
+		i, k := st.findAwait(repoRoot, aw.Receipt)
+		if i < 0 || st.Lanes[i].ID != laneID {
+			res = noteRunnerEnded(st, laneID, aw, fb, handIn, now)
+			return true, nil
+		}
+		if rf, ok := AsRefusal(handIn); ok && rf.cutShort {
+			if err := setAsideCutShort(repoRoot, st, st.Lanes[i], aw.Receipt, now); err != nil {
+				return false, err
+			}
+		}
 		fb.At, fb.Ran = now, ranNone
 		st.Fallbacks = append(st.Fallbacks, fb)
 		p := RunnerPause{Runner: fb.Asked, Reason: fb.Reason, Detail: fsutil.RedactHome(fb.Detail), Stderr: stderr, Since: now, At: now, Tries: 1}
-		i, k := st.findAwait(repoRoot, aw.Receipt)
-		var lane Lane
-		if i >= 0 && st.Lanes[i].ID == laneID {
-			lane = st.Lanes[i]
-			a := lane.Awaits[k]
-			if a.Running != nil && a.Running.Session == session {
-				a.Running = nil
-			}
-			if a.Paused != nil {
-				p.Since, p.Tries = a.Paused.Since, a.Paused.Tries+1
-			}
-			a.Paused = &p
-			lane.Awaits = slices.Clone(lane.Awaits)
-			lane.Awaits[k] = a
-			st.Lanes[i] = lane
-		} else if j := slices.IndexFunc(st.Lanes, func(l Lane) bool { return l.ID == laneID }); j >= 0 {
-			// The await was handed back while the runner ran: nothing waits.
-			lane = st.Lanes[j]
+		lane := st.Lanes[i]
+		a := lane.Awaits[k]
+		if a.Running != nil && a.Running.Session == session {
+			a.Running = nil
 		}
+		if a.Paused != nil {
+			p.Since, p.Tries = a.Paused.Since, a.Paused.Tries+1
+		}
+		a.Paused = &p
+		lane.Awaits = slices.Clone(lane.Awaits)
+		lane.Awaits[k] = a
+		st.Lanes[i] = lane
 		paused = &p
+		// A receipt stands for this attempt, and a step reads it rather than
+		// starting another runner over it (heldRole, collectStanding).
+		_, ran := startedRunner(lane, a)
+		stands := ran && received(repoRoot, aw.Receipt)
+		stops := stands && !retriedOverReceipt(a)
+		then := fmt.Sprintf("the next step retries it on the runner (try %d)", p.Tries)
+		switch {
+		case stops:
+			then = "no runner is started over the receipt that stands at " + aw.Receipt
+		case stands:
+			then = "the next step reads the receipt that stands at " + aw.Receipt + ", and retries the role on the runner if it does not verify"
+		}
 		st.Record = append(st.Record, Entry{At: now, Lane: laneID, Stage: StagePaused,
-			Note: fmt.Sprintf("the %s was routed to %s, which did not start it (%s); the lane is paused rather than handed to the host, and the next step retries it on the runner (try %d)",
-				aw.Role, fb.Asked, p.Why(), p.Tries)})
+			Note: fmt.Sprintf("the %s was routed to %s, %s (%s); the lane is paused rather than handed to the host, and %s",
+				aw.Role, fb.Asked, pauseCause(p), p.Why(), then)})
 		st.UpdatedAt = now
 		res = laneResult(*st, lane, "", nil)
+		switch {
+		case stops:
+			res.Next = stoppedNote(lane.ID, aw.Receipt, p.Why())
+		case stands:
+			res.Next = fmt.Sprintf("%s's %s is paused: the %s runner, %s (%s), and it is not handed to the host. A receipt stands at %s: the next `abcd implement step` reads it, and retries the role on the runner only if it is not taken. "+
+				"Do not start an agent for it; tell the user the reason",
+				lane.ID, aw.Role, p.Runner, pauseCause(p), p.Why(), aw.Receipt)
+		}
 		return true, nil
 	})
 	return res, paused, err
+}
+
+// retryHeading opens what a reviewer's brief says of its last return.
+const retryHeading = "## Your last return was refused"
+
+// noteRefusedReturn tells the fresh reviewer a retry starts why the last return did
+// not count: the first line the hand-in reads, spelled out, and what it refused. A
+// brief it cannot read or write is left as it was: the hand-in refuses the same way.
+func noteRefusedReturn(repoRoot, runID, laneID string, aw Await) {
+	if _, ok := reviewerVerdicts[aw.Role]; !ok {
+		return
+	}
+	st, err := ReadState(repoRoot, runID)
+	if err != nil {
+		return
+	}
+	i := slices.IndexFunc(st.Lanes, func(l Lane) bool { return l.ID == laneID })
+	if i < 0 || len(st.Lanes[i].Validation) == 0 {
+		return
+	}
+	root, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return
+	}
+	defer root.Close()
+	raw, err := localtier.ReadInRoot(root, aw.Brief, maxReturnBytes)
+	if err != nil {
+		return
+	}
+	brief, _, _ := strings.Cut(string(raw), "\n"+retryHeading)
+	head := st.Lanes[i].Validation[len(st.Lanes[i].Validation)-1].HeadSHA
+	note := fmt.Sprintf("%s\n\n%s\n\nThe loop refused the last one: %s\n\nIts first line reads exactly `Reviewed head: %s`. %s\n",
+		brief+"\n"+retryHeading, "Write the return again, whole.", aw.Paused.Detail, head, namesTheHeadLine(reviewerVerdicts[aw.Role], head))
+	_ = writeRoundFile(repoRoot, aw.Brief, []byte(note))
+}
+
+// pauseCause says what the runner of a pause did: an answer the contract refused
+// came from a run that ended, a runner that is absent did not start the role, and
+// every other reason covers both a run that never began and one that ended badly.
+func pauseCause(p RunnerPause) string {
+	switch p.Reason {
+	case runner.ReasonInvalid:
+		return "which ran it, and its answer was refused"
+	case runner.ReasonAbsent:
+		return "which did not start it"
+	}
+	return "which did not bring it back"
+}
+
+// noteRunnerEnded records a runner's end when its await is gone, taken by a
+// peer's step or handed back while it ran: what it ended on, and what it spent.
+// It returns the lane's result, which carries the same words.
+func noteRunnerEnded(st *State, laneID string, aw Await, fb runner.FallbackReceipt, handIn error, now time.Time) StepResult {
+	what := fmt.Sprintf("was %s (%s)", fb.Reason, fsutil.RedactHome(fb.Detail))
+	if handIn != nil {
+		what = "had its hand-in refused: " + fsutil.RedactHome(refusalReason(handIn))
+	}
+	note := fmt.Sprintf("the %s on the %s runner ended after nothing awaited it any more, and %s", aw.Role, fb.Asked, what)
+	if fb.Spent != nil {
+		note += "; it spent " + fb.Spent.Text(fb.Asked)
+	}
+	st.Record = append(st.Record, Entry{At: now, Lane: laneID, Stage: StageRunner, Note: note})
+	st.UpdatedAt = now
+	var lane Lane
+	if j := slices.IndexFunc(st.Lanes, func(l Lane) bool { return l.ID == laneID }); j >= 0 {
+		lane = st.Lanes[j]
+	}
+	res := laneResult(*st, lane, "", nil)
+	res.Next = note + "; " + res.Next
+	return res
 }
 
 // StageKilled is the record's stage for a role killed after its work stood:
@@ -646,10 +836,10 @@ func releaseClaim(repoRoot, runID, receipt, session string) error {
 // pausedRoleMove is the next move of a lane whose role waits for its runner.
 func pausedRoleMove(lane Lane, a Await) string {
 	p := a.Paused
-	return fmt.Sprintf("%s's %s is paused: the %s runner did not start it (%s), and it is not handed to the host. "+
-		"The next `abcd implement step` retries it on the runner once, or hands it to you if its route has since moved to the host; `abcd implement step --route %s=runner:<name>` retries it now. "+
+	return fmt.Sprintf("%s's %s is paused: the %s runner, %s (%s), and it is not handed to the host. "+
+		"The next `abcd implement step` retries it on the runner once, or hands it to you if its route has since moved to the host; `abcd implement step --route %s=runner:<name>` retries it now, unless a receipt stands at its path, which a plain step reads first. "+
 		"Do not start an agent for it; tell the user the reason",
-		lane.ID, a.Role, p.Runner, p.Why(), a.Role)
+		lane.ID, a.Role, p.Runner, pauseCause(*p), p.Why(), a.Role)
 }
 
 // stderrTap passes a runner's transcript to the store it wraps, keeping the
@@ -700,3 +890,35 @@ func redactStderr(repoRoot, line string) string {
 	}
 	return s
 }
+
+// runFingerprint is a run's state by hash, without what a renewal may write while
+// its call runs: its record, its time and its reservation's. A read that fails is
+// tried again, since one failure is no evidence of a change, and an error is what is
+// left when it still cannot be read.
+func runFingerprint(repoRoot, runID string) ([sha256.Size]byte, error) {
+	var st State
+	var err error
+	for try := range fingerprintTries {
+		if try > 0 {
+			time.Sleep(fingerprintWait)
+		}
+		if st, err = ReadState(repoRoot, runID); err == nil {
+			break
+		}
+	}
+	if err != nil {
+		return [sha256.Size]byte{}, fmt.Errorf("%w: %s", errRunStateUnread, fsutil.RedactHome(err.Error()))
+	}
+	st.Record, st.UpdatedAt, st.ReservedAt = nil, time.Time{}, nil
+	raw, err := json.Marshal(st)
+	if err != nil {
+		return [sha256.Size]byte{}, fmt.Errorf("%w: %s", errRunStateUnread, err.Error())
+	}
+	return sha256.Sum256(raw), nil
+}
+
+// How often, and how far apart, a run's state is read before it counts as unreadable.
+const (
+	fingerprintTries = 5
+	fingerprintWait  = 200 * time.Millisecond
+)

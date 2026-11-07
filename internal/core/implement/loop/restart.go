@@ -289,7 +289,7 @@ func RestartDrive(ctx context.Context, repoRoot, runID, laneID, yielded string, 
 		if text := route.Override(); text != "" {
 			why += " (--route " + text + ")"
 		}
-		r, err := dispatchAwait(ctx, repoRoot, runID, steps, o, rs, laneID, aw, why, res.StepResult)
+		r, err := dispatchAwait(ctx, repoRoot, runID, steps, o, rs, laneID, aw, why, res.StepResult, true)
 		if errors.Is(err, errClaimed) {
 			// A peer's step retried the role between the restart's write
 			// and this claim: its runner has it, so the host is handed
@@ -311,13 +311,27 @@ var restartGap = func(repoRoot, runID string) {}
 
 // restart is restartLane, also returning the awaits it re-told.
 func restart(repoRoot, runID, laneID, yielded string, o Options) (RestartResult, []Await, error) {
+	if err := markedRefusal(repoRoot, runID, o); err != nil {
+		return RestartResult{}, nil, err
+	}
 	why, err := whyOf(yielded)
 	if err != nil {
 		return RestartResult{}, nil, err
 	}
+	// A restart tells a fresh agent to start, so a stop refuses it first.
+	if _, err := stopCheck(repoRoot, runID, DefaultStages(), o); err != nil {
+		return RestartResult{}, nil, err
+	}
+	afterStopCheck()
 	var res RestartResult
 	var retold []Await
 	err = mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
+		// A stop may have come since the check: under the lock it re-tells no one.
+		if c, err := readControl(root, runID); err != nil {
+			return false, err
+		} else if c.Stop != nil {
+			return false, stopRefusal(runID, *c.Stop)
+		}
 		i := slices.IndexFunc(st.Lanes, func(l Lane) bool { return l.ID == laneID })
 		if i < 0 {
 			return false, refuse(stageRestart, "", "", fmt.Sprintf("%s has no lane of the name given (%s)", st.RunID, termsafe.DescribeRefused(laneID)),
@@ -430,34 +444,8 @@ func proveAside(repoRoot string, root *os.Root, runID string, lane Lane, aw Awai
 	}
 	p := provedAside{reset: reset, head: lane.HeadSHA, files: []string{}}
 	if reset {
-		var err error
-		if p.lw, err = restartWorktree(repoRoot, runID, lane); err != nil {
+		if err := proveLaneWork(repoRoot, runID, lane, &p); err != nil {
 			return provedAside{}, err
-		}
-		p.head, err = gitutil.Run(p.lw.Path, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
-		if err != nil || !gitutil.IsFullSHA(p.head) {
-			return provedAside{}, fmt.Errorf("resolving %s's last commit: %v", laneID, err)
-		}
-		tmp, err := os.MkdirTemp("", "abcd-restart-")
-		if err != nil {
-			return provedAside{}, err
-		}
-		defer os.RemoveAll(tmp)
-		p.patch, p.files, err = snapshot(p.lw.Path, p.head, tmp)
-		if err != nil {
-			return provedAside{}, refuse(stageRestart, "", laneID, "git could not capture the lane's uncommitted work: "+fsutil.RedactHome(err.Error()),
-				"settle what git reports in the lane's worktree, then run `abcd implement step --restart "+laneID+"` again; nothing was changed")
-		}
-		if len(p.patch) > 0 {
-			tmpPatch := filepath.Join(tmp, AsidePatchName)
-			if err := os.WriteFile(tmpPatch, p.patch, filePerm); err != nil {
-				return provedAside{}, err
-			}
-			if err := checkAsidePatch(p.lw.Path, tmpPatch); err != nil {
-				return provedAside{}, refuse(stageRestart, "", laneID,
-					"the uncommitted work's patch does not apply to the lane's last commit "+shortSHA(p.head)+", so it is not saved and the worktree is not reset: "+fsutil.RedactHome(err.Error()),
-					"save the lane's uncommitted work by hand, then run `abcd implement step --restart "+laneID+"` again; nothing was changed")
-			}
 		}
 	}
 
@@ -473,6 +461,43 @@ func proveAside(repoRoot string, root *os.Root, runID string, lane Lane, aw Awai
 			"move it out of the lane's directory yourself, then run `abcd implement step --restart "+laneID+"` again; nothing was changed")
 	}
 	return p, nil
+}
+
+// proveLaneWork is proveAside's worktree half: everything uncommitted in the
+// lane's worktree, proved to apply to the lane's last commit, read into p. A stop
+// that finds a lane with no await calls it alone. A refusal changes nothing.
+func proveLaneWork(repoRoot, runID string, lane Lane, p *provedAside) error {
+	laneID := lane.ID
+	var err error
+	if p.lw, err = restartWorktree(repoRoot, runID, lane); err != nil {
+		return err
+	}
+	p.head, err = gitutil.Run(p.lw.Path, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
+	if err != nil || !gitutil.IsFullSHA(p.head) {
+		return fmt.Errorf("resolving %s's last commit: %v", laneID, err)
+	}
+	tmp, err := os.MkdirTemp("", "abcd-restart-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmp)
+	p.patch, p.files, err = snapshot(p.lw.Path, p.head, tmp)
+	if err != nil {
+		return refuse(stageRestart, "", laneID, "git could not capture the lane's uncommitted work: "+fsutil.RedactHome(err.Error()),
+			"settle what git reports in the lane's worktree, then run `abcd implement step --restart "+laneID+"` again; nothing was changed")
+	}
+	if len(p.patch) > 0 {
+		tmpPatch := filepath.Join(tmp, AsidePatchName)
+		if err := os.WriteFile(tmpPatch, p.patch, filePerm); err != nil {
+			return err
+		}
+		if err := checkAsidePatch(p.lw.Path, tmpPatch); err != nil {
+			return refuse(stageRestart, "", laneID,
+				"the uncommitted work's patch does not apply to the lane's last commit "+shortSHA(p.head)+", so it is not saved and the worktree is not reset: "+fsutil.RedactHome(err.Error()),
+				"save the lane's uncommitted work by hand, then run `abcd implement step --restart "+laneID+"` again; nothing was changed")
+		}
+	}
+	return nil
 }
 
 // saveAside saves aside what proveAside read of the gone agent of aw: the

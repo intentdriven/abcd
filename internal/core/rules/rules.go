@@ -36,6 +36,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/guard"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
+	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"syscall"
 )
@@ -261,18 +262,47 @@ func readGuarded(path string, limit int64) ([]byte, error) {
 // unchanged; a present file that cannot be read, parsed or validated is a
 // fail-closed error naming that file, and no partial set is returned with it.
 func Load(repoRoot string) (RuleSet, error) {
+	ld := guard.LoadRepo(repoRoot)
+	return load(func() (RuleSet, bool, error) { return readRepoLayer(repoRoot) }, ld)
+}
+
+// LoadAt is Load with the repository's rules and guard registry as they stood at
+// commit base, for an agent whose working tree is not what it is judged by: what
+// it wrote there since, committed or not, is not read.
+func LoadAt(repoRoot, base string) (RuleSet, error) {
+	if !gitutil.IsFullSHA(base) {
+		return RuleSet{}, fmt.Errorf("rules: %q names no commit to read the rules at", base)
+	}
+	if _, err := gitutil.ResolveCommit(repoRoot, base); err != nil {
+		return RuleSet{}, fmt.Errorf("rules: %s is no commit in this repository", base)
+	}
+	return load(func() (RuleSet, bool, error) {
+		data, ok, err := guard.FileAtCommit(repoRoot, base, RepoRelPath, maxRulesFileBytes)
+		if err != nil || !ok {
+			return RuleSet{}, false, err
+		}
+		over, err := parseLayer(data, RepoRelPath)
+		if err != nil {
+			return RuleSet{}, false, err
+		}
+		return over, true, nil
+	}, guard.Loaded{Registry: guard.RegistryAt(repoRoot, base), Posture: guard.LoadClean})
+}
+
+// load is Load, given how to read the repository's layer and its guard registry.
+func load(readRepo func() (RuleSet, bool, error), ld guard.Loaded) (RuleSet, error) {
 	home, _ := userHomeDir()
 	user, haveUser, err := readUserLayer(home)
 	if err != nil {
 		return RuleSet{}, err
 	}
-	repo, haveRepo, err := readRepoLayer(repoRoot)
+	repo, haveRepo, err := readRepo()
 	if err != nil {
 		return RuleSet{}, err
 	}
 	// SHELL is regenerated from the guard registry in force for this
 	// repository before any rules.json layer lands on it (ruling CK1).
-	base := withRepoShellDomain(Defaults(), repoRoot)
+	base := withRepoShellDomain(Defaults(), ld)
 	if !haveUser && !haveRepo {
 		return base, nil
 	}

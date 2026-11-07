@@ -637,6 +637,12 @@ but only on the close after which no open spec names it:
 "${CLAUDE_PLUGIN_ROOT}/abcd" spec close <spc-N> --remainder <slug> --json   # partial delivery: close this spec, mint the rest, leave the intent planned
 ```
 
+**A close that ships needs its issue links settled first.** A close that would
+ship an intent whose `related_issues` names an issue not in `resolved/` refuses
+with exit 1, naming each one, and nothing moves: resolve the issue if the intent
+delivers it, or move the link to the intent that will. `--remainder` ships
+nothing, so it is not asked.
+
 **A close that ships needs a docs review for HEAD first.** Every close without
 `--remainder` that ships an intent runs the doc-fidelity gate, and refuses
 with "run the docs review first" until one is saved:
@@ -646,7 +652,8 @@ with "run the docs review first" until one is saved:
 ```
 
 `/abcd:docs` (its `fidelity` section) says how to compose the verdict. A commit
-after the review makes it stale, so review the commit you close on.
+after the review that changes the tree makes it stale, so review the commit you
+close on; a head with the reviewed tree stands on the review, and the close says so.
 
 **An intent owns one or more specs.** Where the work did not fit one piece of
 scheduled work, the spec that delivered part of it is closed on its own terms

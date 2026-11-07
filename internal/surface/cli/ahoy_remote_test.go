@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
-	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // TestAhoyRemoteRefusesAnUnmanagedFolderFromTheCLI is the front-door half of
@@ -56,7 +55,7 @@ func TestAhoyRemoteApplyExitsNonZeroWhenItChangesNothing(t *testing.T) {
 		t.Skip("bash unavailable")
 	}
 	hermeticEnv(t)
-	repo := gittest.NewRepo(t)
+	repo := newRepo(t)
 	repo.Git("remote", "add", "origin", "https://github.com/example-org/example-repo.git")
 	t.Chdir(repo.Root())
 	if _, err := runCLIErr(t, "ahoy", "install", "--yes", "--adopt",
@@ -100,7 +99,7 @@ func TestAhoyRemoteApplyRefusalAfterAToggleDoesNotSayNothingChanged(t *testing.T
 		t.Skip("bash unavailable")
 	}
 	hermeticEnv(t)
-	repo := gittest.NewRepo(t)
+	repo := newRepo(t)
 	repo.Git("remote", "add", "origin", "https://github.com/example-org/example-repo.git")
 	t.Chdir(repo.Root())
 	if _, err := runCLIErr(t, "ahoy", "install", "--yes", "--adopt",

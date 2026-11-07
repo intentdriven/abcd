@@ -33,7 +33,7 @@ func buildIntent() string {
 func buildRepo(t *testing.T) *gittest.Repo {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
-	repo := gittest.NewRepo(t)
+	repo := newRepo(t)
 	repo.Write(".gitignore", ".abcd/.work.local/\n")
 	repo.Write(buildPlanned, buildIntent())
 	repo.Write(buildSpec, "---\nid: spc-1\nslug: alpha\nintent: itd-10\n---\n# alpha\n\n## Summary\n\nA written design record.\n\n"+
@@ -289,7 +289,11 @@ func TestTheHostDrivesALaneThroughTheCLI(t *testing.T) {
 		t.Fatalf("the validate stage hands the lane to a fresh ruthless reviewer: %+v", review)
 	}
 	ret := filepath.Join(repo.Root(), filepath.FromSlash(review.Awaiting.Receipt))
-	if err := os.WriteFile(ret, []byte("### Verdict\n\n- **SHIP** — nothing survived.\n"), 0o600); err != nil {
+	reviewBrief, err := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(review.Awaiting.Brief)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ret, []byte(reviewedHeadLine(string(reviewBrief))+verdictSection(string(reviewBrief), "SHIP")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if res := mustStep(t, "implement", "receipt", review.Awaiting.Receipt, "--json"); res.PerformedStage != "" || res.Stage != "validate" {

@@ -5,24 +5,24 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
-// repoRoot returns the abcd-cli repo root from this test file's on-disk location
-// (internal/core/launch/scaffold → four levels up), so the parity test runs
+// repoRoot returns the abcd-cli repo root, found by walking up from the test's
+// working directory (its package directory) to go.mod, so the parity test runs
 // against the committed .github/workflows rather than a fixture.
 func repoRoot(t *testing.T) string {
 	t.Helper()
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller failed")
+	root, err := fsutil.ModuleRoot(".")
+	if err != nil {
+		t.Fatal(err)
 	}
-	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..", "..", ".."))
+	return root
 }
 
 // TestSelfScaffoldParity is the load-bearing decision-(b) test: rendering the
@@ -116,7 +116,7 @@ func TestBareRenderOmitsAbcdMachinery(t *testing.T) {
 	// The generic build + deterministic gates + rehearsal must be present. The
 	// race leg runs over the whole module, not the abcd-specific internal/ tree.
 	for _, needle := range []string{
-		"go build ./...", "go test -race ./...", "go-version-file: go.mod",
+		"go build ./...", "go test -race -count=1 ./...", "go-version-file: go.mod",
 		`"$goroot/bin/gofmt" -l .`,
 		"workflow_dispatch:", "rehearsal:", "gh release create",
 	} {

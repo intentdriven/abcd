@@ -19,6 +19,15 @@ import (
 // decision someone writes down, never a bypass nobody saw (review3-guard). An
 // entry that is not "exempt:" must also call something unknown.go defines.
 var wordReaders = map[string]string{
+	"startsAnAgent":         "exempt: reads the word commandSites places as the program, after a word no line fixes is refused",
+	"stageStartsHarness":    "exempt: reads the word commandSites places as the program, after a word no line fixes is refused",
+	"stagePlacesProvedFile": "exempt: reads the word commandSites places as the program, and a word no line fixes names no file",
+	"stageStartsAgent":      "exempt: reads the word commandSites places as the program, and a word no line fixes starts nothing it names",
+	"withFindActions":       "exempt: reads the word commandSites places as the program, and findActions reads a word no line fixes as -exec",
+	"isPathNameByte":        "exempt: reads a byte of a line's text, not a word",
+	"stageRunsWhatItWrites": "exempt: reads the word commandSites places as the program through whereItRuns",
+	"addsAWorktree":         "isUnknown on the words it decides by, after a program commandSites places",
+	"FileAtCommit":          "exempt: reads git's listing of a commit, not a word of the line",
 	// unknown.go: the rule and the walks that apply it.
 	"unknownFlagCouldBe": "the rule itself",
 	"flagCouldBe":        "the rule itself",
@@ -35,6 +44,18 @@ var wordReaders = map[string]string{
 	"operandReadings":    "the rule itself",
 	"firstOperands":      "the rule itself",
 	"firstOperandLimit":  "the rule itself",
+
+	// dashedgit.go: a `git-<sub>` program read as `git <sub>`.
+	"expandDashedGit":      "commandSites: every place a command can sit",
+	"dashedGitSubcommands": "isUnknown: only the text after the word's last substitution is fixed",
+	"lookupOnly":           "isUnknown: a word nothing fixes stands no command down",
+	// gitsettings.go: a setting on a git line read as the flag it stands for.
+	"rewriteGitSettings": "firstOperands",
+	"pushSettingWords":   "exempt: reads a configuration key, not a word of the line",
+	"gcSettingWords":     "exempt: reads a configuration key, not a word of the line",
+	// match.go: the words that stand an entry down.
+	"standsDown":    "isUnknown and readWord: a word a substitution helps to write stands nothing down",
+	"notFlagUndone": "exempt: standsDown hands it only typed words",
 
 	// branchacts.go: the away mode's created-branch recorder, which records
 	// and refuses nothing.
@@ -139,6 +160,8 @@ var wordReaders = map[string]string{
 	// the files it writes (adr-2610091150447054).
 	"after":          "commandSites and nameCouldBeAny: a name a substitution prints that can be cd leaves the directory unknown",
 	"targetsOf":      "commandSites and isUnknown: no file is read for a program name the line does not fix",
+	"actReadings":    "isUnknown, varMark and parseShellCall: a program the line does not fix is read as one, and a shell's call the line leaves open is read for the first word naming abcd",
+	"adjacentFrom":   "isUnknown through actWordsOf and unknownCouldBe: a word the line does not fix is read as the flag or verb it can print",
 	"parseShellCall": "isUnknown on every word: an argument the line does not fix leaves the rest of the call unread",
 	"optionName":     "exempt: folds the known long-option name parseShellCall hands it, after parseShellCall read the word by the rule",
 	"bashLongOption": "exempt: each caller (parseShellCall, shellReadsStreamAs, shellCPayloads) hands it only a word isUnknown cleared",
@@ -179,7 +202,7 @@ var wordReaders = map[string]string{
 	"sedTargets":         "exempt: reads sed's literal options; each target goes through resolveToken, which refuses an unknown word",
 	"gitTargets":         "exempt: reads git's literal options; each target goes through resolveToken or fixedToken, which refuse an unknown word",
 	"tarExtracts":        "exempt: reads tar's literal mode letters; an unknown mode word reads as no extraction, a write the reading misses",
-	"findRuns":           "isUnknown: an unknown word may be -exec, so what follows it is read as the command find runs",
+	"findActions":        "isUnknown: an unknown word may be -exec, so what follows it is read as the command find runs",
 	"goBuildTarget":      "exempt: reads go build's literal -o spellings; an unknown word reads as no -o, a write the reading misses",
 	"secondOf":           "exempt: compares a filter's output operand with `-`, standard output; an unknown operand goes through at, which reads it as not fixed",
 	"splitTarget":        "exempt: steps split's literal value options; an unknown word is an operand, which at reads as not fixed",
@@ -229,6 +252,10 @@ var wordReaders = map[string]string{
 	"factsFor":          "exempt: hands git its own options to read the repository's paths; reads no command word",
 	"unfixedSubstrings": "exempt: reads the command text whole for a substring expansion's operator and only ever refuses; it approves no word",
 	"commandNames":      "exempt: finds the name position to catch a builtin spelled with quotes, and only ever refuses; it approves no word",
+	"carriesAbcd":       "exempt: reads a program's name only to widen what adjacentAct refuses",
+	"shellProgram":      "exempt: reads a program's name only to widen what adjacentAct refuses",
+	"isStopDirName":     "exempt: reads a file name in a directory, not a word of the line",
+	"stopStoreUse":      "exempt: reads a path the line's reading already placed, not a word of the line",
 	"unfixedNames":      "exempt: reads the names a builtin is handed and only ever refuses; it approves no word",
 }
 

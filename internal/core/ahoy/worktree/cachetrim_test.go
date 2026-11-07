@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy/worktree"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 const (
@@ -294,6 +295,9 @@ func TestTrimGoCacheSkipsWhatDoesNotLookLikeACache(t *testing.T) {
 		mine := cacheFile(t, home, "ab/cafe-d", "mine", oldTime)
 		t.Setenv("HOME", home)
 		t.Setenv("GOCACHE", home)
+		// The go this asks for GOCACHE starts a telemetry process that writes
+		// under HOME; pinning the mode off keeps it from racing the cleanup.
+		gittest.Env(t)
 		got := worktree.TrimGoCache(false, trimNow)
 		if got.Skipped == "" || got.EntriesRemoved != 0 || !exists(mine) {
 			t.Fatalf("skipped: %+v", got)
@@ -346,6 +350,7 @@ func TestTrimGoCacheRefusesTheHomeOrAbove(t *testing.T) {
 	t.Run("the home itself", func(t *testing.T) {
 		dir, mine := shaped(t)
 		t.Setenv("HOME", dir)
+		gittest.Env(t)
 		t.Setenv("GOCACHE", dir)
 		if got := worktree.TrimGoCache(false, trimNow); !strings.Contains(got.Skipped, reason) || !exists(mine) {
 			t.Fatalf("skipped, naming the home: %+v", got)
@@ -358,6 +363,7 @@ func TestTrimGoCacheRefusesTheHomeOrAbove(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Setenv("HOME", home)
+		gittest.Env(t)
 		t.Setenv("GOCACHE", dir)
 		if got := worktree.TrimGoCache(false, trimNow); !strings.Contains(got.Skipped, reason) || !exists(mine) {
 			t.Fatalf("skipped, naming the home: %+v", got)
@@ -370,6 +376,7 @@ func TestTrimGoCacheRefusesTheHomeOrAbove(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Setenv("HOME", link)
+		gittest.Env(t)
 		t.Setenv("GOCACHE", dir)
 		if got := worktree.TrimGoCache(false, trimNow); !strings.Contains(got.Skipped, reason) || !exists(mine) {
 			t.Fatalf("skipped, naming the home: %+v", got)
@@ -392,6 +399,7 @@ func TestTrimGoCacheRefusesTheHomeOrAbove(t *testing.T) {
 		writeCacheREADME(t, dir)
 		old := cacheFile(t, dir, "ab/"+entryA, "x", oldTime)
 		t.Setenv("HOME", home)
+		gittest.Env(t)
 		t.Setenv("GOCACHE", dir)
 		if got := worktree.TrimGoCache(false, trimNow); got.Skipped != "" || got.EntriesRemoved != 1 || exists(old) {
 			t.Fatalf("trimmed: %+v", got)

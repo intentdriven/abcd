@@ -70,3 +70,15 @@ func TestReleaseProviderComparison(t *testing.T) {
 		}
 	})
 }
+
+// TestTheDrivesReleaseClientIsAShortCheck: the one request a drive makes each interval
+// is held to the check's own bound, so a dead network costs a lane boundary no more.
+func TestTheDrivesReleaseClientIsAShortCheck(t *testing.T) {
+	f, ok := NewGitHubReleaseFetcherWithRoots(nil).(*githubReleaseFetcher)
+	if !ok {
+		t.Fatal("not the release fetcher")
+	}
+	if f.client.Timeout != releaseCheckTimeout || releaseCheckTimeout > 15*time.Second {
+		t.Fatalf("the check's bound is %s", f.client.Timeout)
+	}
+}

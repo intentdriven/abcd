@@ -83,7 +83,16 @@ func loopFail(w io.Writer, asJSON bool, prefix string, err error) error {
 				return encErr
 			}
 		}
-		return &exitError{Code: code, Msg: prefix + ": " + termsafe.Sanitize(red.Error()) + " (nothing written)"}
+		written := " (nothing written)"
+		switch {
+		case red.Wrote != "":
+			written = " (" + termsafe.Sanitize(red.Wrote) + ")"
+		case red.Stage == loop.StageStop || red.Stage == loop.StageResume:
+			// A stop's refusal records the stop and what it settled, and a
+			// take-over's what it did before it refused.
+			written = ""
+		}
+		return &exitError{Code: code, Msg: prefix + ": " + termsafe.Sanitize(red.Error()) + written}
 	}
 	if errorsIsNoCheckout(err) {
 		return &exitError{Code: 2, Msg: prefix + ": " + err.Error() + " (nothing written)"}
@@ -165,6 +174,10 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"An unknown class or a malformed set is refused at the review stage and writes nothing.\n" +
 			"The result's review and the run record name each class with its model and each layer.\n\n" +
 			"The run then moves one step per `abcd implement step`, driven by the host session.\n\n" +
+			"While the away mode holds (`abcd mode autonomous`), or its record cannot be read, starting or resuming a\n" +
+			"run from a session whose setting reads as off a profile prints one line on stderr opening WARNING:,\n" +
+			"after the move, naming what abcd cannot check and addressed to the person; it never refuses and the exit\n" +
+			"code does not change. In the managed mode nothing prints. " + offProfileHelp + "\n\n" +
 			"The runner configuration is read before the run is created: roles.<role>.runner (host,\n" +
 			"the default, or a runner) and the runners this machine enables under runner.<name> in\n" +
 			abcdhome.Display("config.json") + ", each model route admitted against its provider's allowlist. A fault,\n" +
@@ -258,6 +271,7 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			if !res.Resumed {
 				noticeUnattended(cmd, prefix)
 			}
+			warnOffProfileWhileAway(cmd, prefix, root)
 			if err := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				verb := "started"
 				if res.Resumed {
@@ -429,6 +443,9 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 			// already told the person about.
 			if res.Start != nil && !res.Start.Resumed && (res.Series == nil || res.Series.Started) {
 				noticeUnattended(cmd, prefix)
+			}
+			if res.Start != nil {
+				warnOffProfileWhileAway(cmd, prefix, root)
 			}
 			for i := range res.Excluded {
 				res.Excluded[i].Reason = fsutil.RedactHome(res.Excluded[i].Reason)
@@ -909,8 +926,15 @@ func renderStepResult(w io.Writer, verb string, res loop.StepResult) {
 		fmt.Fprintf(w, "%s: %s completed %s's %s stage\n", verb, res.RunID, res.Lane, res.PerformedStage)
 	case res.Paused != nil && res.Paused.Paused != nil:
 		p := res.Paused.Paused
-		fmt.Fprintf(w, "%s: PAUSED: %s's %s waits for the %s runner, which did not start it; it is not handed to the host\n",
-			verb, res.Lane, termsafe.Sanitize(res.Paused.Role), termsafe.Sanitize(p.Runner))
+		cause := "which did not bring it back"
+		switch p.Reason {
+		case runner.ReasonInvalid:
+			cause = "whose answer was refused"
+		case runner.ReasonAbsent:
+			cause = "which did not start it"
+		}
+		fmt.Fprintf(w, "%s: PAUSED: %s's %s waits for the %s runner, %s; it is not handed to the host\n",
+			verb, res.Lane, termsafe.Sanitize(res.Paused.Role), termsafe.Sanitize(p.Runner), cause)
 		fmt.Fprintf(w, "  why:     %s\n", termsafe.Sanitize(fsutil.RedactHome(p.Why())))
 	case res.Awaiting != nil:
 		fmt.Fprintf(w, "%s: %s's %s stage awaits the %s's receipt\n", verb, res.Lane, res.Stage, termsafe.Sanitize(res.Awaiting.Role))
@@ -923,7 +947,11 @@ func renderStepResult(w io.Writer, verb string, res loop.StepResult) {
 			termsafe.Sanitize(fsutil.RedactHome(r.Why)))
 	}
 	if r := res.Route; r != nil {
-		fmt.Fprintf(w, "  ran on:  the %s runner (%s)\n", termsafe.Sanitize(r.Ran), routeDetail(r))
+		if r.Ran == "" {
+			fmt.Fprintf(w, "  routed to the %s runner, and no runner's report reached the loop (%s)\n", termsafe.Sanitize(r.Asked), routeDetail(r))
+		} else {
+			fmt.Fprintf(w, "  ran on:  the %s runner (%s)\n", termsafe.Sanitize(r.Ran), routeDetail(r))
+		}
 	}
 	if fb := res.Fallback; fb != nil {
 		fmt.Fprintf(w, "  fallback: %s was routed to %s, which was %s (%s); %s runs it\n", termsafe.Sanitize(fb.Role), termsafe.Sanitize(fb.Asked),
@@ -944,8 +972,11 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 		Use: "step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] [--accept-config-change] [--route <role>=runner:<name>[@<provider>/<model>]]...",
 		Long: "Perform the run's next move, write the state, and exit. At a stage that hands work to\n" +
 			"an agent, the result names the agent to start, the brief it is handed and the path its\n" +
-			"receipt goes to; that work advances only on `abcd implement receipt`. A lane lands one\n" +
-			"step of the spec; its stages are how it gets there. A complete run says so.\n\n" +
+			"receipt goes to; that work advances on `abcd implement receipt`. One thing is taken\n" +
+			"without it: a routed implementer the run started a runner for, whose receipt stands at\n" +
+			"the path it awaits and verifies, is collected by the step, so a refusal before its\n" +
+			"hand-in loses nothing. A lane lands one step of the spec; its stages are how it gets\n" +
+			"there. A complete run says so.\n\n" +
 			"A run works in parallel up to its ceiling (--sub-agents, pace.sub_agents): each agent\n" +
 			"handed work and not yet verified is a slot, implementers and validators alike. Each call\n" +
 			"first performs a stage the binary owns on any lane (the worktree, the brief, a round's\n" +
@@ -1015,7 +1046,9 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"--discard <lane-id> removes its worktree and branch, then closes its pull request, and\n" +
 			"leaves its step unlanded. Either is refused, changing nothing,\n" +
 			"for a lane that is not held or while any lane still has work. --discard also takes\n" +
-			"an issue run's lane a drain handed back as stuck or closed, and ends that run.\n" +
+			"a lane handed back as stuck or closed, which ends an issue's run while an intent's run\n" +
+			"stays, and any lane of a run a drive stopped on because its state changed or could not\n" +
+			"be read.\n" +
 			"--restart <lane-id> restarts a lane whose implementer died, or yielded on a network\n" +
 			"failure (--yielded passes its `NETWORK: <cmd>` line), as a fresh agent from the lane's\n" +
 			"last commit: everything left uncommitted is saved aside under the lane's directory\n" +
@@ -1035,7 +1068,8 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"for a blank --yielded, for a lane with neither an implementer out nor an await a rate\n" +
 			"limit kept, or for a worktree that is not the one the loop derives.\n" +
 			"land follows a passing round, one step per call: it checks the lane's worktree is clean\n" +
-			"at the judged head; on an intent lane it marks the lane's step landed on the open spec with a `- landed:`\n" +
+			"at the judged head, an uncommitted edit to the lane's own spec record aside, which its commit carries;\n" +
+			"on an intent lane it marks the lane's step landed on the open spec with a `- landed:`\n" +
 			"line naming the judged head (unless the spec lists no steps or already marks it); on\n" +
 			"the lane that closes the spec it runs `spec close` in the lane's\n" +
 			"worktree and ingests the audit that lane took, and for every capture the lane's receipts\n" +
@@ -1218,6 +1252,11 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 				printRunnerDiagnostics(cmd, cfg)
 				routed = cfg
 			}
+			// One driver steps a run: this session records itself as the live
+			// driver, and backs off at exit 3 while another's process is alive.
+			if err := loop.ClaimDriver(root, id, loop.Options{}); err != nil {
+				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
+			}
 			switch {
 			case yieldedSet && restart == "":
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: "restart",
@@ -1298,6 +1337,10 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 					// route instead when oracle.review selects one (itd-6).
 					res, err = loop.DriveReview(ctx, root, id, res, loop.DefaultStages(), loop.Options{}, review)
 				}
+				if err == nil {
+					// Only now is a role with the host known to stay there.
+					loop.ListHostRole(ctx, root, id, res, cfg)
+				}
 			}
 			var backOff *exitError
 			if errors.As(err, &backOff) {
@@ -1349,7 +1392,8 @@ func newImplementReceiptCommand(asJSON *bool) *cobra.Command {
 		Long: "Hand back the receipt a lane of the run named when its stage handed work to an agent.\n" +
 			"The path is looked up among every outstanding await of the run, and the lane it belongs\n" +
 			"to advances; a path no await names is refused, naming the awaits there are, and frees\n" +
-			"nothing. The stage's verifier checks it; a verified receipt frees its slot, and a\n" +
+			"nothing. A path a step already collected is answered while the file is what the step\n" +
+			"took, and refused once it has changed. The stage's verifier checks it; a verified receipt frees its slot, and a\n" +
 			"receipt that verifies completes the stage and the lane moves to its next stage, and one\n" +
 			"that does not is refused naming what is missing, with the lane left where it was. A\n" +
 			"stage whose verifier this abcd does not carry is refused naming the spec piece that\n" +
@@ -1363,8 +1407,10 @@ func newImplementReceiptCommand(asJSON *bool) *cobra.Command {
 			"note, the impact and the grounds; the landing resolves each.\n\n" +
 			"At the validate stage the receipt is the validator's return: a reviewer's is refused\n" +
 			"unless it has one Verdict section stating one verdict of its role (SHIP or FIX FIRST;\n" +
-			"APPROVE, BLOCK or NEEDS-INPUT), and the intent-auditor's unless it is the fidelity verdict\n" +
-			"the request asked for, echoing its receipt and both provenance hashes. The loop records\n" +
+			"APPROVE, BLOCK or NEEDS-INPUT) and naming the head it judges by its full object name, and\n" +
+			"the intent-auditor's unless it is the fidelity verdict the request asked for, echoing its\n" +
+			"receipt and both provenance hashes. Either is refused, whatever it says, when its launch\n" +
+			"reports a stop for length, a provider's filter or refusal, or an error. The loop records\n" +
 			"the verdict and the lane stays at validate for the next validator. A fresh implementer's\n" +
 			"receipt after a round is verified as an implementer's is.\n\n" +
 			"--run names the run; without it, the one run in progress in this checkout. Exit 2 on a\n" +
@@ -1568,6 +1614,9 @@ func countList(m map[string]int) string {
 func routeSuffix(r *runner.RouteRecord) string {
 	if r == nil {
 		return ""
+	}
+	if r.Ran == "" {
+		return fmt.Sprintf(" — routed to the %s runner, and no runner's report reached the loop (%s)", termsafe.Sanitize(r.Asked), routeDetail(r))
 	}
 	return fmt.Sprintf(" — ran on the %s runner (%s)", termsafe.Sanitize(r.Ran), routeDetail(r))
 }

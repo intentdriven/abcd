@@ -490,6 +490,7 @@ var knownRules = map[string]bool{
 	rulePrincipleInheritance:     true,
 	rulePrincipleFalsified:       true,
 	ruleRecordSchema:             true,
+	ruleRecordSlugCap:            true,
 	ruleStaleEdge:                true,
 	ruleEdgeCycle:                true,
 	ruleBuildsOnReciprocal:       true,

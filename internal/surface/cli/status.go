@@ -42,6 +42,20 @@ var statusPushers claim.PusherLookup = func(ctx context.Context, root, branch st
 	return out, nil
 }
 
+// statusScheduledRun is the forge adapter `abcd status` asks for the latest
+// completed scheduled run of the workflow the repository names.
+var statusScheduledRun claim.ScheduledRunLookup = func(ctx context.Context, root, workflow, branch string) ([]claim.ScheduledRun, error) {
+	runs, err := github.ScheduledRuns(ctx, root, workflow, branch)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]claim.ScheduledRun, 0, len(runs))
+	for _, r := range runs {
+		out = append(out, claim.ScheduledRun{Conclusion: r.Conclusion, URL: r.URL, CompletedAt: r.UpdatedAt})
+	}
+	return out, nil
+}
+
 // statusOutput is the --json document of `abcd status`: the status view, the
 // announcements, the doubtful branches, the count of status branches whose
 // names are not read (never the names: a pusher chose each, and an agent
@@ -62,8 +76,33 @@ type statusOutput struct {
 	NotDropped       string            `json:"not_dropped,omitempty"`
 	LocalTierMissing bool              `json:"local_tier_missing,omitempty"`
 	ReadError        string            `json:"read_error,omitempty"`
-	Grants           string            `json:"grants"`
+	// ScheduledFailure is the repository's last scheduled verdict when it was
+	// red, ScheduledDoubt what is said when there is no verdict to name, and
+	// ScheduledUnread why the runs could not be read; each absent otherwise.
+	ScheduledFailure *scheduledFailureRow `json:"scheduled_failure,omitempty"`
+	ScheduledDoubt   *scheduledDoubtRow   `json:"scheduled_doubt,omitempty"`
+	ScheduledUnread  string               `json:"scheduled_unread,omitempty"`
+	Grants           string               `json:"grants"`
 	reservationsBlock
+}
+
+// scheduledFailureRow is a failed latest scheduled run as the listing shows it.
+type scheduledFailureRow struct {
+	Workflow    string `json:"workflow"`
+	Branch      string `json:"branch"`
+	Conclusion  string `json:"conclusion"`
+	URL         string `json:"url"`
+	CompletedAt string `json:"completed_at"`
+	AgeSeconds  int64  `json:"age_seconds"`
+	RunsSince   int    `json:"runs_since,omitempty"`
+	Text        string `json:"text"`
+}
+
+// scheduledDoubtRow is what is said beside or in place of a verdict: its kind
+// (ended_without_verdict, no_verdict, unknown or invalid_name) and its line.
+type scheduledDoubtRow struct {
+	Kind string `json:"kind"`
+	Text string `json:"text"`
 }
 
 // statusView dates the announcements: when abcd last fetched the status
@@ -132,6 +171,26 @@ func newStatusCommand(asJSON *bool) *cobra.Command {
 			"someone else, and claimed when the forge cannot say or an app pushed it. A\n" +
 			"branch named by a holder id names no account the forge's record could\n" +
 			"match, so it is not asked about and its senders stay claimed.\n\n" +
+			"A repository that names a workflow a schedule runs on its default branch\n" +
+			"(status.scheduled_workflow in the .abcd/config.json at that branch's tip, the\n" +
+			"file's name, such as nightly.yml) has that workflow's latest scheduled verdict\n" +
+			"read too: after a fetch that succeeded it asks the forge (gh api) within five\n" +
+			"seconds for the latest completed scheduled runs and keeps what they say in the\n" +
+			"machine's store for the repository, which every checkout of it reads; the\n" +
+			"prompt hook does the same in the background when that answer is an hour old. A\n" +
+			"run that concluded failure, timed_out or startup_failure is named in one line\n" +
+			"with its URL and age, here and once to each session at a prompt, until a run\n" +
+			"that succeeds replaces it. A latest run that concluded cancelled, skipped or\n" +
+			"neutral, which is how a job past its time limit arrives, is not called a failure:\n" +
+			"it has a line of its own naming it and the last verdict, until a verdict\n" +
+			"replaces it. A green is silent while it is recent for the workflow's own cycle,\n" +
+			"and past that one line says no verdict has been reached. An answer that is\n" +
+			"missing or more than two days old, or due after a refresh that failed or, some\n" +
+			"hours on, kept nothing, says the state is unknown, naming the last successful\n" +
+			"ask; an answer that only aged through an idle night says nothing, and the next\n" +
+			"prompt carries what the refresh found. None of this changes an exit. With no\n" +
+			"such key nothing is asked, kept or shown; a key that could not name a workflow's\n" +
+			"file, and a config that could not be read here, each say so.\n\n" +
 			"An announcement stands for its life from when this checkout first fetched it,\n" +
 			"not by the sender's clock. One whose sender is not its branch's owner, one\n" +
 			"that does not read as an announcement (never shown but by its branch and the\n" +
@@ -173,6 +232,9 @@ func newStatusCommand(asJSON *bool) *cobra.Command {
 			o := claim.Options{Now: func() time.Time { return now }}
 			fetched, ferr := claim.FetchStatus(root, statusPushers, o)
 			out := statusOutput{Grants: claim.GrantsNothing, UnreadNames: new(int)}
+			if ferr == nil {
+				out.ScheduledUnread = claim.RefreshScheduledRun(root, statusScheduledRun, o)
+			}
 			// One read of the reservations (View, in the block) and one of
 			// the holds (ReadStatus's), shared by the listing and the view.
 			failed, listed := out.reservationsBlock.fillView(root, now, fetched.Gap, ferr)
@@ -239,6 +301,13 @@ func (out *statusOutput) addStatus(v claim.StatusView, now time.Time) {
 	}
 	for _, d := range v.Doubts {
 		out.Doubtful = append(out.Doubtful, doubtRow{Branch: "abcd-status/" + d.Branch, Reason: d.Reason, Tip: d.Tip, Text: claim.DoubtLine(d)})
+	}
+	if f := v.ScheduledFailure; f != nil {
+		out.ScheduledFailure = &scheduledFailureRow{Workflow: f.Workflow, Branch: f.Branch, Conclusion: f.Conclusion, URL: f.URL,
+			CompletedAt: rfc3339(f.CompletedAt), AgeSeconds: max(int64(now.Sub(f.CompletedAt).Seconds()), 0), RunsSince: f.RunsSince, Text: f.Line(now)}
+	}
+	if d := v.ScheduledDoubt; d != nil {
+		out.ScheduledDoubt = &scheduledDoubtRow{Kind: d.Kind, Text: d.Text}
 	}
 	out.BranchesNotRead, out.NotRead, out.BranchesLeft = v.BranchesNotRead, v.AnnouncementsNotRead, v.BranchesLeft
 	n := v.UnreadNames
@@ -320,6 +389,16 @@ func renderStatus(w io.Writer, out statusOutput) {
 	if out.SendersUnchecked != "" {
 		fmt.Fprintln(w, "  not checked against the forge, so shown as claimed: "+out.SendersUnchecked)
 	}
+	if out.ScheduledFailure != nil {
+		fmt.Fprintln(w, "  "+out.ScheduledFailure.Text)
+	}
+	if d := out.ScheduledDoubt; d != nil {
+		fmt.Fprintln(w, "  "+d.Text)
+	}
+	// An invalid key is one fact, said by both.
+	if out.ScheduledUnread != "" && (out.ScheduledDoubt == nil || out.ScheduledUnread != out.ScheduledDoubt.Text) {
+		fmt.Fprintln(w, "  "+out.ScheduledUnread)
+	}
 	renderReservations(w, out.reservationsBlock)
 	fmt.Fprintln(w, out.Grants)
 }
@@ -334,17 +413,22 @@ var hookBudget = time.Second
 // read, rendered and kept shown before deadline, the hook's one deadline
 // (claim.PromptNotes). A read that could not be made is named on stderr, and
 // its block says the status is unavailable. The caller marks the block shown
-// once it has written it.
-func routerStatus(cmd *cobra.Command, root string, deadline time.Time) claim.Notes {
+// once it has written it. A refresh the block says is due is started here, in
+// the background, and never waited for.
+func routerStatus(cmd *cobra.Command, root, session string, rootCommit func() (string, error), deadline time.Time) claim.Notes {
 	if root == "" {
 		return claim.Notes{}
 	}
 	ctx, cancel := context.WithDeadline(context.Background(), deadline)
 	defer cancel()
 	now := time.Now().UTC().Truncate(time.Second)
-	n, err := claim.PromptNotes(ctx, root, now, claim.Options{Now: func() time.Time { return now }})
+	o := claim.Options{Now: func() time.Time { return now }, Session: session, RootCommit: rootCommit}
+	n, err := claim.PromptNotes(ctx, root, now, o)
 	if err != nil {
 		fmt.Fprintf(cmd.ErrOrStderr(), "abcd status: %s\n", termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+	}
+	if n.RefreshDue {
+		startDueRefresh(cmd, n, root, now, deadline)
 	}
 	return n
 }

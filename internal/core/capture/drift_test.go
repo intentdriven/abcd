@@ -113,3 +113,50 @@ func TestIssueDriftIsSilentOnAHealthyTree(t *testing.T) {
 		t.Fatal("findings must be an empty list, not null, so the JSON says so")
 	}
 }
+
+// TestUnresolvedLinksAsksWhatTheWalkWouldFindOnShipping: the question a close
+// asks of an intent not yet shipped has the walk's answer once the intent has
+// shipped, so the close and the gate cannot read the join two ways
+// (iss-2611060603312990). It writes no receipt, since it is no drift run.
+func TestUnresolvedLinksAsksWhatTheWalkWouldFindOnShipping(t *testing.T) {
+	repo, ir := driftFixture(t)
+	const planned = ".abcd/development/intents/planned/itd-20-twenty.md"
+	writeTree(t, repo, planned, "---\nid: itd-20\nslug: twenty\nspec_id: null\nkind: standalone\nrelated_issues: [iss-20, iss-21, iss-22, iss-404, rdi-8]\n---\n\n# Twenty\n")
+	for _, rec := range []struct{ status, id string }{{"open", "iss-20"}, {"wontfix", "iss-21"}, {"resolved", "iss-22"}} {
+		writeTree(t, repo, ".abcd/work/issues/"+rec.status+"/"+rec.id+"-r.md", issueRecordText(rec.id, "r", "related_intents: [itd-20]\n"))
+	}
+	got, err := UnresolvedLinks(repo, []string{"itd-20", "itd-absent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []UnresolvedLink{{Intent: "itd-20", Issue: "iss-20", Status: "open"}, {Intent: "itd-20", Issue: "iss-21", Status: "wontfix"}}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("links = %+v, want %+v", got, want)
+	}
+	if !strings.Contains(got[0].String(), "capture resolve iss-20") || strings.Contains(got[1].String(), "capture resolve") {
+		t.Fatalf("resolving is a way out of an open issue only:\n%s\n%s", got[0], got[1])
+	}
+	if entries, err := os.ReadDir(filepath.Join(repo, driftReceiptRelDir)); err == nil && len(entries) != 0 {
+		t.Fatalf("the question wrote a drift receipt: %v", entries)
+	}
+
+	if err := os.MkdirAll(filepath.Join(repo, ".abcd/development/intents/shipped"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(filepath.Join(repo, planned), filepath.Join(repo, ".abcd/development/intents/shipped/itd-20-twenty.md")); err != nil {
+		t.Fatal(err)
+	}
+	res, err := IssueDrift(IssueDriftRequest{RepoRoot: repo, IssuesRoot: ir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	walk := map[string]bool{}
+	for _, f := range res.Findings {
+		if f.Kind == DriftShippedUnresolved && f.Record == "itd-20" {
+			walk[f.Other] = true
+		}
+	}
+	if len(walk) != len(want) || !walk["iss-20"] || !walk["iss-21"] {
+		t.Fatalf("the walk found %v once shipped; the question said %+v", walk, got)
+	}
+}

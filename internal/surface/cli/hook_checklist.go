@@ -58,6 +58,9 @@ func sessionStartChecklist(cwd string, budget int) (text string) {
 				Reason: "No checklist to show: it could not be read at this start; `abcd checklist` says why."}, budget)
 		}
 	}()
+	if stageActive() {
+		return ""
+	}
 	root, ok := managedRoot(cwd)
 	if !ok || !checklistFilesExist(root) {
 		return ""

@@ -66,8 +66,9 @@ func newUpdateCommand(asJSON *bool) *cobra.Command {
 			"the commit the release tag names), and swaps the\n" +
 			"PATH-installed copy atomically. A binary whose provenance cannot be\n" +
 			"verified, offline included, is refused with the way to install it by hand;\n" +
-			"nothing is swapped unverified. The verb is the only ask: abcd\n" +
-			"never checks for or applies updates on its own (adr-38). A plugin-root\n" +
+			"nothing is swapped unverified. The verb is the only ask, but for a drive whose\n" +
+			"yes named the check (abcd drain --drive): abcd otherwise never checks for or\n" +
+			"applies updates on its own (adr-38). A plugin-root\n" +
 			"binary, the dev shim, and package-manager installs are refused with the\n" +
 			"command that owns them. The file being replaced must be provably abcd's:\n" +
 			"the binary running the command, an install " + abcdhome.Display("path-entry") + " records, or\n" +

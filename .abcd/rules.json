@@ -54,6 +54,7 @@
     "DOGFOODING": {
       "recall": [
         "abcd",
+        "agents",
         "ahoy",
         "announce",
         "banlist",

@@ -62,23 +62,40 @@ func Receipt(repoRoot, sha string) (string, error) { return findReceipt(repoRoot
 // (localtier.Untracked) rather than counted. Preflight and review receipts
 // are found the same way.
 func findReceipt(repoRoot, rel, sha string) (string, error) {
+	found, err := findReceipts(repoRoot, rel, sha)
+	if err != nil || len(found) == 0 {
+		return "", err
+	}
+	if found[0].err != nil {
+		return "", found[0].err
+	}
+	return found[0].path, nil
+}
+
+// foundReceipt is one worktree's receipt: its path, or why it does not count.
+type foundReceipt struct {
+	path string
+	err  error
+}
+
+// findReceipts finds every worktree's receipt named sha under rel, in the order
+// git lists the worktrees, by findReceipt's rule.
+func findReceipts(repoRoot, rel, sha string) ([]foundReceipt, error) {
 	wts, err := gitutil.ListWorktrees(repoRoot, gitutil.MaxWorktreeListing)
 	if err != nil {
-		return "", fmt.Errorf("listing the repository's worktrees: %w", err)
+		return nil, fmt.Errorf("listing the repository's worktrees: %w", err)
 	}
+	var found []foundReceipt
 	for _, wt := range wts {
 		if wt.Bare {
 			continue
 		}
 		p := filepath.Join(wt.Path, filepath.FromSlash(rel), sha)
 		if fi, err := os.Lstat(p); err == nil && fi.Mode().IsRegular() {
-			if err := localtier.Untracked(wt.Path, rel+"/"+sha); err != nil {
-				return "", err
-			}
-			return p, nil
+			found = append(found, foundReceipt{p, localtier.Untracked(wt.Path, rel+"/"+sha)})
 		}
 	}
-	return "", nil
+	return found, nil
 }
 
 // runCapped runs cmd, returning its stdout within MaxOutput and, on a failure,

@@ -13,9 +13,9 @@ recall-matches the prompt against keyword triggers declared in the plugin-bundle
 default domains, the machine's `~/.abcd.noindex/rules.json` and `<repo>/.abcd/rules.json`,
 and injects only the matched domain rules into context — instead of
 force-loading the full ruleset every turn.
-A prompt that matches no domain injects no rules (notes, status and an away block
-may still come back). The output stays under the host's 10,000-character cap: a domain that does not fit goes as
-its first rule and the command for the rest, or the command alone; with no room for that, it waits a turn.
+A prompt that matches no domain injects no rules. Output stays under the host's
+10,000-character cap: a domain that does not fit shrinks to its first rule or the
+command alone, or waits a turn.
 
 - Inspect rules: `abcd rules` renders the active set; `abcd rules <DOMAIN>`
   (case-insensitive) scopes to one domain.
@@ -77,18 +77,18 @@ in the abcd binary; a repo overrides them per-field via `.abcd/rules.json`.
 trust rule for load experiments: one owned process group killed together through
 a re-checked handle and never by pattern, clean proven by what is running, and
 explicit consent with a cap below the core count on a live development machine;
-and the load gate a preflight waits at: whole runs admitted as many at once as
-the person's own `load.preflights` in `~/.abcd.noindex/config.json` allows (one
-by default and four at most, never set by a repository), race stages kept apart
-among checkouts that have the race gate (one at a time within an account, and
-across accounts all but the narrow window the domain names), and no test stage
-started under memory pressure at or above the person's own floor.
-`SHELL` is generated from the hazard registry `abcd guard` enforces in the
-repository, and recalls on the commands it names (`rm`, `git push`, `pkill`, …) and
-on shell work in general. Ahead of time it sends a line about the guard and the
-rules of the entries that only warn; what the guard refuses, a delete it cannot
-prove safe included, reaches the agent at the refusal, and `abcd rules SHELL` lists
-every rule. With the guard off, it sends what fits.
+and the load gate a preflight waits at: as many whole runs at once as the
+person's own `load.preflights` in `~/.abcd.noindex/config.json` allows (one by
+default, four at most, never a repository's), a test of a few named
+packages on its own limit behind no whole run, race stages kept apart among
+checkouts with the race gate (one at a time within an account, and across accounts
+all but the window the domain names), and no test stage started under memory
+pressure at or above the person's own floor.
+`SHELL` is generated from the hazard registry `abcd guard` enforces, and recalls on
+the commands it names (`rm`, `git push`, `pkill`, …) and on shell work. Ahead of time
+it sends a line about the guard and the rules that only warn; what the guard refuses,
+an unprovable delete included, reaches the agent at the refusal, and `abcd rules
+SHELL` lists every rule. With the guard off, it sends what fits.
 `GRILL` carries the asking rules every abcd interview follows (one thing at a
 time, the thing being decided quoted in full before the question, options that
 widen rather than recommend); it is generated from the same limits the question
@@ -112,7 +112,7 @@ job.
 `SessionStart` and `PreCompact` clear the per-session dedup ledger, so a matched
 domain re-injects on the next prompt (the event-driven refresh that recovers
 after compaction). Within a session a domain that stays in force is not
-re-injected unchanged, short of the refresh backstop; one that leaves the active set (deleted, renamed, made
+re-injected unchanged, short of the backstop; one that leaves the active set (deleted, renamed, made
 dormant, or a `*<DOMAIN>` activation the next prompt does not repeat) is
 injected again when it returns.
 

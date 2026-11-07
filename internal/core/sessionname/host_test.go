@@ -113,3 +113,31 @@ func TestAliveWidensForTheReadThatRecordedTheHost(t *testing.T) {
 		}
 	}
 }
+
+// TestAWalkSaysHowItEnded: only one that reached the machine's first process finished; one
+// the table cut short names where, and one with no end says neither.
+func TestAWalkSaysHowItEnded(t *testing.T) {
+	proc := func(pid, ppid int) machineload.Proc {
+		return machineload.Proc{PID: pid, PPID: ppid, Name: "zsh", Age: time.Hour}
+	}
+	tab := Table{ReadAt: time.Now(), Procs: []machineload.Proc{proc(700, 600), proc(600, 1), proc(500, 400), proc(300, 200), proc(200, 300)}}
+	for _, c := range []struct {
+		from, hosts, missing int
+		finished             bool
+	}{
+		{700, 2, 0, true},
+		{1, 0, 0, true},
+		{0, 0, 0, true},
+		{500, 1, 400, false},
+		{999, 0, 999, false},
+		{300, maxWalk, 0, false},
+	} {
+		w := Ancestors(tab, c.from)
+		if len(w.Hosts) != c.hosts || w.Missing != c.missing || w.Finished != c.finished {
+			t.Errorf("from %d: %d hosts, missing %d, finished %v; want %+v", c.from, len(w.Hosts), w.Missing, w.Finished, c)
+		}
+		if got := Lineage(tab, c.from); len(got) != c.hosts {
+			t.Errorf("from %d: the lineage holds %d", c.from, len(got))
+		}
+	}
+}

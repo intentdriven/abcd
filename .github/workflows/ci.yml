@@ -3,18 +3,19 @@ name: ci
 # Checks on every pull request, on every merge-queue entry, nightly on the
 # default branch, and on demand. Branch work is covered by the pull_request
 # trigger alone, so a PR push runs the matrix once, and the merge-queue entry
-# runs the full gate on exactly the tree that lands. There is no push trigger:
+# runs the Linux gate on exactly the tree that lands. There is no push trigger:
 # with the queue, every commit on the default branch is a merge result its
 # queue entry already tested, so a push run repeated that run in full
 # (iss-2610110938294826). The nightly run keeps the default branch itself
-# checked against what changes outside the tree (runner images, the advisory
-# databases) and saves its Go build cache (see the check job). The check job
+# checked on macOS and against what changes outside the tree (runner images, the
+# advisory databases) and saves its Go build cache (see the check job). The check job
 # builds, vets and tests on Linux on every event, with race-enabled internal
 # tests and the `make fmt-check` format gate, record-lint, the issue-drift check,
 # docs-lint and the site-render gate in that job. The macOS suite runs as shard
-# jobs on every event but a pull request: in the merge queue it tests exactly the
-# tree that lands, and on a pull request its required context reports from an
-# ubuntu runner without taking a macOS one (see macos-suite and check-macos).
+# jobs nightly and on demand: on a pull request and on a merge-queue entry its
+# required context reports from an ubuntu runner without taking a macOS one, and
+# says so (see macos-suite and check-macos). release.yml runs the same suite on
+# each release cut, through the same reusable workflow, macos-suite.yml.
 # Separate jobs run full-history
 # secret scanning, a workflow audit, the reviews-charter and issue-resolution
 # gates (RS001-RS003), dependency review, govulncheck, the smoke harness, the
@@ -53,9 +54,10 @@ name: ci
 # module, so a record-only change compiles most of the module either way.
 on:
   pull_request:
-  # Merge-queue entries run the full gate on the would-be merge result. The
+  # Merge-queue entries run the Linux gate on the would-be merge result. The
   # changes classifier below treats any non-pull_request event as never inert,
-  # so a merge_group run executes everything; so do the two below.
+  # so a merge_group run executes every job but the macOS suite's shards, which
+  # stand down there (see macos-suite); the two below run everything.
   merge_group:
   # Nightly on the default branch, at an off-peak minute (02:41 UTC) that is
   # not the top of an hour, when scheduled runs pile up. A scheduled run carries
@@ -257,7 +259,13 @@ jobs:
     # (.abcd/work/rulesets/main-protection.json), written out so it reads the
     # same as check (macos-latest), the other half of the pair.
     name: check (ubuntu-latest)
-    # The ceiling sits below the merge queue's check response timeout (90 minutes
+    # This ceiling exists only to free the queue when something is truly stuck; it
+    # does not judge speed (dcn-2611062201286033, which withdrew the rule that a
+    # second cancellation stops a pull request). A run nearing it is reported by the
+    # warning step below and answered by speed work, a queue entry dropped with no
+    # failing test is re-armed until it lands, and a real failure gets fixed.
+    #
+    # It sits just under the merge queue's check response timeout (90 minutes
     # since 2026-10-11, recorded in .abcd/work/rulesets/main-protection.json),
     # which is the outer ceiling on a merge-group run: the queue fails the group
     # when this required check has not concluded by then, so a job ceiling above
@@ -270,24 +278,29 @@ jobs:
     # again on 2026-10-28, on delegation from the technical facilitator
     # (dcn-2610280635092222): merge-group runs took 29, 29 and 29 minutes and a
     # fourth was cancelled at 30, a second after its race tests passed, which
-    # rebuilt every group queued behind it. Its warning, ten minutes ahead, fires
-    # at 35. The race step's -timeout lifts go test's 10m per-package default, so a
-    # slow package runs on to this ceiling instead of failing at ten minutes. The
-    # step names its slowest packages first, so they start with the step rather
-    # than behind every faster package; a hang in one of them fails at the package
-    # timeout, with a goroutine dump, before this ceiling cancels the job; a hang
-    # in a package that starts later meets the job clock's watchdog below first.
-    # TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds the ceiling at or below the
-    # cap, and TestCheckJobWarnsBeforeTheQueueCap holds the warning step at the
+    # rebuilt every group queued behind it. At 45 the job clock's watchdog fired at
+    # 40, the cap less its margin, and queue runs reach about 40 with no test
+    # failing, so an entry left the queue with nothing failed; 60
+    # (iss-2611061904457784) moved that to 55 and stayed close to the same runs. It
+    # is 85 since dcn-2611062201286033, 5 under the queue's timeout: the watchdog
+    # fires at 80 and the warning, ten minutes ahead of the cap, at 75. The test
+    # steps' -timeout, 70m, lifts go test's 10m per-package default, so a slow
+    # package is not failed while the job has room. The step names its slowest
+    # packages first, so they start with the step rather than behind every faster
+    # package; a hang in a package that starts within the job's first ten minutes
+    # fails at its own timeout, with a goroutine dump, and a hang in one that starts
+    # later meets the job clock's watchdog below first.
+    # TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds the ceiling below the queue's
+    # cap, and TestEachTestJobWarnsBeforeItsCap holds the warning step at the
     # end of the job below it.
-    timeout-minutes: 45
+    timeout-minutes: 85
     runs-on: ubuntu-latest
     # The job clock's watchdog (cmd/ci-watchdog). go test's -timeout counts
     # from each test binary's own start, so a package that starts late meets
     # this job's cap first and is cancelled with no goroutine dump: on a
     # passing merge-group run the last package started 23.8 minutes into this
-    # job, against a 40m -timeout and a cap of 45. Every step that runs go test,
-    # here and in macos-suite, therefore runs under the
+    # job, so a 70m -timeout there would run to 93.8, past the cap of 85. Every
+    # step that runs go test, here and in macos-suite, therefore runs under the
     # watchdog, which sends the test binaries under go test SIGQUIT (each prints
     # its goroutines and fails) at the cap less the margin on the clock the
     # "Record the job's start" step exports, then the step SIGKILL after 30
@@ -297,7 +310,7 @@ jobs:
     # go test step's shell.
     env:
       ABCD_CI_LEG: check (ubuntu-latest)
-      ABCD_CI_JOB_CAP_MINUTES: 45
+      ABCD_CI_JOB_CAP_MINUTES: 85
     steps:
       # The clock for the warning step at the end of the job. It is the first step
       # that runs, so the time the runner spent before it (queueing, set-up) is not
@@ -371,7 +384,7 @@ jobs:
       # that assert only without the race detector ("Test (plain-only
       # guards)", below). On an inert change the race lane stands down, and
       # the plain pass runs the whole module, as the job's only test pass.
-      # TestMacOSLegRunsItsSuiteOnlyWhereItLands holds which passes run on
+      # TestMacOSLegRunsItsSuiteOnlyNightlyAndOnDemand holds which passes run on
       # which event, here and in macos-suite.
       #
       # On an inert change, where it runs, the two packages named ahead of the
@@ -380,8 +393,8 @@ jobs:
       # internal/surface/cli started about three and a half minutes into the
       # step and finished it alone; named first, both start with the step. The set is still exactly ./... (go test runs a package
       # named twice once), which TestPlainTestStepRunsTheWholeModule pins.
-      # It shards the longest packages as preflight does, and its -timeout is
-      # the base preflight's unit stage scales from: as one process under go test's
+      # It shards the longest packages as preflight does, and its -timeout is this
+      # job's budget, the race step's below: as one process under go test's
       # ten-minute default, internal/core/implement/loop crossed 600s here on
       # 2026-10-30 with no test hung (iss-2610302058222905).
       # TestCIRacePassesShardLikePreflight holds the count, and
@@ -392,7 +405,7 @@ jobs:
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
           ABCD_TEST_SHARDS: "3"
-        run: go test -timeout 40m ./internal/core/implement/loop ./internal/surface/cli ./...
+        run: go test -count=1 -timeout 70m ./internal/core/implement/loop ./internal/surface/cli ./...
 
       # Every package ./... matches that ./internal/... does not;
       # TestTheOutsideInternalStepRunsWhatTheRaceLaneDoesNot holds the set.
@@ -401,7 +414,7 @@ jobs:
         shell: go run ./cmd/ci-watchdog bash --noprofile --norc -eo pipefail {0}
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
-        run: go test ./cmd/...
+        run: go test -count=1 ./cmd/...
 
       # The tests that assert only without the race detector: cost guards that
       # count work or bound CPU time, which under -race measure the
@@ -416,7 +429,7 @@ jobs:
         shell: go run ./cmd/ci-watchdog bash --noprofile --norc -eo pipefail {0}
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
-        run: go test -run '^(TestAHereDocBodyFeedStaysLinear|TestAPatternPastTheStepBudgetIsNotGenerated|TestAVeryDeepPathIsJudgedQuickly|TestAdjacencyProbeStaysLinearOnLongLines|TestAdjacencyProbeWindowIsBounded|TestBacktickPrePassStaysLinear|TestBraceScanStaysLinear|TestClosedOverDocumentsStayLinear|TestClosingScansAreLinear|TestDoubleQuotedBraceExpansionStaysLinear|TestExpandedHeredocBodyStaysLinear|TestForgeTextWorkIsLinear|TestGallopingProbeCostIsLinearInLineLength|TestGallopingProbeStaysBoundedOnLongLines|TestGluedFixedOutputStaysLinear|TestGluedSweepWorkIsLinear|TestHereDocumentPayloadStaysLinear|TestHistoryCaptureAcceptsWhatTheHooksAccept|TestHomeSpellingsStayLinear|TestIFSSplitCheckStaysLinear|TestJunctionBacktrackIsBounded|TestKillFeedGroupsAndStringsStayLinear|TestKillFeedReadingStaysLinear|TestMakerNoteWorkIsLinear|TestMetadataViewsWorkIsLinear|TestNestedHereDocumentPayloadStaysLinear|TestParameterExpansionReadingStaysLinear|TestPatternShapesStayLinear|TestQuotedSubstitutionStaysLinear|TestRawHeadingScanStaysLinearInTheOpenerCount|TestScanLineWorkIsLinear|TestScriptReadingStaysLinearOnAdversarialLines|TestSpeculationIsBoundedAtTheStdinCap|TestSpellingSetsStayLinear|TestSurfaceChapterProseStatesNoShape|TestSweepCallerHomeWorkIsLinear|TestSynopsisScanIsLinearInThePage|TestTheBudgetBoundsWallTimeOverLongLiterals|TestTheBudgetBoundsWallTimeOverManyLines|TestTheHiddenHTMLReadersStayLinear|TestTheTagWalksStayLinear|TestUTF16ViewWorkIsLinear|TestUnknownWordWalksStayLinear)$' ./internal/adapter/scanner ./internal/core/claim ./internal/core/guard ./internal/core/reading ./internal/surface/cli
+        run: go test -count=1 -run '^(TestAHereDocBodyFeedStaysLinear|TestAPatternPastTheStepBudgetIsNotGenerated|TestAVeryDeepPathIsJudgedQuickly|TestAdjacencyProbeStaysLinearOnLongLines|TestAdjacencyProbeWindowIsBounded|TestBacktickPrePassStaysLinear|TestBraceScanStaysLinear|TestClosedOverDocumentsStayLinear|TestClosingScansAreLinear|TestDoubleQuotedBraceExpansionStaysLinear|TestExpandedHeredocBodyStaysLinear|TestForgeTextWorkIsLinear|TestGallopingProbeCostIsLinearInLineLength|TestGallopingProbeStaysBoundedOnLongLines|TestGluedFixedOutputStaysLinear|TestGluedSweepWorkIsLinear|TestHereDocumentPayloadStaysLinear|TestHistoryCaptureAcceptsWhatTheHooksAccept|TestHomeSpellingsStayLinear|TestIFSSplitCheckStaysLinear|TestJunctionBacktrackIsBounded|TestKillFeedGroupsAndStringsStayLinear|TestKillFeedReadingStaysLinear|TestMakerNoteWorkIsLinear|TestMetadataViewsWorkIsLinear|TestNestedHereDocumentPayloadStaysLinear|TestParameterExpansionReadingStaysLinear|TestPatternShapesStayLinear|TestQuotedSubstitutionStaysLinear|TestRawHeadingScanStaysLinearInTheOpenerCount|TestScanLineWorkIsLinear|TestScriptReadingStaysLinearOnAdversarialLines|TestSpeculationIsBoundedAtTheStdinCap|TestSpellingSetsStayLinear|TestSurfaceChapterProseStatesNoShape|TestSweepCallerHomeWorkIsLinear|TestSynopsisScanIsLinearInThePage|TestTheBudgetBoundsWallTimeOverLongLiterals|TestTheBudgetBoundsWallTimeOverManyLines|TestTheHiddenHTMLReadersStayLinear|TestTheTagWalksStayLinear|TestUTF16ViewWorkIsLinear|TestUnknownWordWalksStayLinear)$' ./internal/adapter/scanner ./internal/core/claim ./internal/core/guard ./internal/core/reading ./internal/surface/cli
 
       # Only a source change can introduce a data race. On an inert change the
       # plain pass above runs the whole module in this lane's place.
@@ -425,14 +438,16 @@ jobs:
       # internal/surface/cli under -race on the macOS runner measured 418-568s
       # passing, and a slow runner crossed 600s with no test hung, ejecting an
       # unrelated pull request from the merge queue (iss-2609260319483365). The
-      # budget was first 20m, about twice the slowest passing run, and is 40m
-      # since 2026-10-17, so a real hang still fails with
-      # a goroutine dump where the enclosing ceiling leaves room for it: in
-      # release.yml's verify job it does, while on a late package this job's own
-      # ceiling, held below the merge queue's response cap, is the binding one (see
-      # the job header). The Makefile's preflight recipe and release.yml's verify
-      # job carry the same flag, and so does a macOS shard's race pass;
-      # TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds all four.
+      # budget was first 20m, about twice the slowest passing run, then 40m from
+      # 2026-10-17, and is 70m since dcn-2611062201286033, so a slow package is not
+      # failed at 40 minutes while the job has room. A real hang still fails with a
+      # goroutine dump where the enclosing ceiling leaves room for it: in a package
+      # that starts within this job's first ten minutes it does, while on a later
+      # package the job clock's watchdog, held below the merge queue's response cap,
+      # is the binding one (see the job header). release.yml's verify job carries the
+      # same flag, so a package this lane passed does not then fail a cut; the
+      # Makefile's preflight recipe carries 40m and a macOS shard's race pass its own
+      # budget. TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds all four.
       #
       # The packages named ahead of the pattern are the slowest under -race
       # (iss-2609281715083637). go test starts packages in the
@@ -451,16 +466,17 @@ jobs:
       # share of the tests under the same -timeout, as the preflight recipe does
       # (iss-2610290720087336). As one process implement/loop took 2244s of the
       # macOS pass's 40 minutes on a passing run, and a queue entry timed out on
-      # it with no test hung. This step and a macOS shard's race pass carry the
-      # same count as the preflight recipe; TestCIRacePassesShardLikePreflight
-      # holds them, and the plain Test step above, to it.
+      # it with no test hung. This step, a macOS shard's race pass and both of
+      # release.yml's verify test steps carry the same count as the preflight recipe;
+      # TestCIRacePassesShardLikePreflight holds them, and the plain Test step above,
+      # to it.
       - name: Test (race, internal)
         if: needs.changes.outputs.inert != 'true'
         shell: go run ./cmd/ci-watchdog bash --noprofile --norc -eo pipefail {0}
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
           ABCD_TEST_SHARDS: "3"
-        run: go test -race -timeout 40m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
+        run: go test -race -count=1 -timeout 70m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
 
       # Drift gate for the .abcd/development design record. Blocking: a
       # blocker-severity finding exits non-zero and fails the job; warn-level
@@ -544,27 +560,27 @@ jobs:
           go run ./cmd/abcd site build --project --base-path /abcd/ --out "$RUNNER_TEMP/project-site-render-check"
           go run ./cmd/abcd lint site --project --base-path /abcd/ --out "$RUNNER_TEMP/project-site-render-check"
 
-      # Warn before the cap cancels (ruling Z's cancel policy, 2026-09-28). A
-      # check that runs past WARN_AFTER_MINUTES is ten minutes from its job's
-      # ceiling, and a cancellation there carries nothing but the cancellation.
-      # The rule for a cancelled check is to rerun it once; a second cancellation
-      # for the same reason stops that pull request and opens a speed lane, never
-      # another raise of the timeout. This warning moves that signal ahead of the
-      # first cancellation: it is emitted at the job's end, for a run that
+      # Warn before the cap cancels. A check that runs past WARN_AFTER_MINUTES is ten
+      # minutes from its job's ceiling, and a cancellation there carries nothing but
+      # the cancellation. The cap only frees a stuck run and does not judge speed
+      # (dcn-2611062201286033), so this warning is how a slow suite is reported, and
+      # speed work answers it. A queue entry dropped at the cap with no failing test
+      # is re-armed until it lands, and a real failure gets fixed. The warning is
+      # emitted at the job's end, for a run that
       # finished past the line, so a check that passed within ten minutes of its
       # job's cap says so before one is cancelled at the cap. It never fails the
       # job: `always()` runs it however the steps before it ended, and
       # `continue-on-error` holds even a broken script to a warning. macos-suite
-      # carries the same script. TestCheckJobWarnsBeforeTheQueueCap pins each
+      # carries the same script. TestEachTestJobWarnsBeforeItsCap pins each
       # job's threshold ten minutes below that job's ceiling, CEILING_MINUTES, the
       # cap the message names, to that ceiling, and the two scripts to one.
-      - name: Warn when the check nears the queue's cap
+      - name: Warn when the check nears its job's cap
         if: always()
         continue-on-error: true
         env:
           STARTED_AT: ${{ steps.started.outputs.epoch }}
-          WARN_AFTER_MINUTES: 35
-          CEILING_MINUTES: 45
+          WARN_AFTER_MINUTES: 75
+          CEILING_MINUTES: 85
         run: |
           case "${STARTED_AT:-}" in
             '' | *[!0-9]*)
@@ -576,7 +592,7 @@ jobs:
           minutes=$((elapsed / 60))
           echo "${ABCD_CI_LEG} has run ${minutes}m $((elapsed % 60))s; the warning line is ${WARN_AFTER_MINUTES}m"
           if [ "$elapsed" -gt $((WARN_AFTER_MINUTES * 60)) ]; then
-            msg="${ABCD_CI_LEG} ran ${minutes} minutes, past the ${WARN_AFTER_MINUTES}-minute warning line and close to the job's ${CEILING_MINUTES}-minute cap. If it is cancelled at the cap, rerun it once; a second cancellation for the same reason stops the pull request: open a speed lane to make the suite faster, and do not raise the timeout."
+            msg="${ABCD_CI_LEG} ran ${minutes} minutes, past the ${WARN_AFTER_MINUTES}-minute warning line and close to the job's ${CEILING_MINUTES}-minute cap. The cap only frees a stuck run and does not judge speed, so nearing it calls for speed work on the suite. A queue entry dropped at the cap with no failing test is re-armed until it lands, and a real failure gets fixed."
             echo "::warning title=${ABCD_CI_LEG} near its cap::${msg}"
             printf '### %s near its cap\n\n%s\n' "$ABCD_CI_LEG" "$msg" >>"$GITHUB_STEP_SUMMARY"
           fi
@@ -585,32 +601,34 @@ jobs:
   # three test slots full, so its time is its total work on that runner, and
   # hosted macOS runners vary about twofold: one pass over the module took 32
   # minutes on one and 77 on another with the same work and the same restored
-  # cache, and past its 80-minute deadline on others, dropping the entry from the
-  # queue and restarting every run behind it. Only several runners shorten what
-  # one runner has to do. Three shards bring the slowest passing run's 76.6 minutes
-  # to about 27 of testing in a shard, and about 30 with its set-up and the
+  # cache, and past its 80-minute deadline on others. Only several runners shorten
+  # what one runner has to do. Three shards brought the slowest passing run's 76.6
+  # minutes to about 27 of testing in a shard, and about 30 with its set-up and the
   # compiling a single job shared.
   #
-  # Why three. macOS is the scarcest runner this account has, five jobs at once,
-  # and the queue builds up to four entries, so three shards can want twelve
-  # runners and two shards eight; a shard waits until one frees. With every runner
-  # at its slowest, the last shard ends at 30 minutes with one entry building, at
-  # 60 with two or three, and at 90 with four; two shards (41 minutes each) end at
-  # 41, 41, 82 and 82. So the worst case is about the same either way, and it is
-  # the one the queue's cap can still catch. Off that worst case, with runners as
-  # measured (about half of them take 33 minutes a pass), what decides is the last
-  # shard to get a runner, and three shards make it a third of the work rather
-  # than a half. A fourth shard would only ask for more of the same five runners.
+  # Why four. internal/core/implement/loop runs as three test processes, each with
+  # the whole of -timeout, and on a slow runner all three reached that limit in
+  # ordinary tests, with no test failing (run 42197788864). cmd/ci-shard gives it the
+  # last shard alone, which is meant to give it more of the runner's cores; its time
+  # alone is not yet measured. The other three shards share the rest. macOS is the
+  # scarcest runner this account has, five jobs at once: one run's four shards leave
+  # one free and a fifth would leave none, and what decides a run is the last shard
+  # to get a runner.
   #
-  # It runs where its answer is about what lands: on a merge-queue entry, which
-  # tests the would-be merge, and on every event that is not a pull request
-  # (iss-2610110938282654). Every push to a pull request has already passed the
-  # local preflight (the pre-push hook refuses a commit without its receipt), so a
-  # pull-request macOS run repeated a local run, on the developer's machine, while
-  # queue entries waited for a slot. A pull request skips this job at its `if:`,
-  # and check-macos below reports the required context all the same. It reads no
-  # classifier: no pull request reaches it, and every other event is never inert,
-  # so a need on `changes` would only add a way for the suite to be skipped.
+  # It runs nightly and by hand: on every event that is neither a pull request nor
+  # a merge-queue entry (dcn-2611042202509334). The pre-push hook refuses a
+  # commit without its local preflight receipt, a client-side check that a
+  # --no-verify push skips, so a pull-request macOS run repeated a local run, on the developer's machine
+  # (iss-2610110938282654), and in the queue a shard's wait for a runner ran on the
+  # queue's clock: on 2026-11-04 entries kept dropping because GitHub had no macOS
+  # runner to give, with no test failing. A pull request and a queue entry skip this
+  # job at its `if:`, and check-macos below reports the required context all the
+  # same. It reads no classifier: no pull request reaches it, and every other event
+  # is never inert, so a need on `changes` would only add a way for the suite to be
+  # skipped.
+  #
+  # A shard's steps and its ceiling are in macos-suite.yml, which release.yml's
+  # macOS gate calls too, so a cut runs the same suite (dcn-2611042202509334).
   #
   # The packages come from cmd/ci-shard, computed from `go list` under the race
   # build in every shard, so no list is kept by hand and a package added later is tested without
@@ -619,139 +637,37 @@ jobs:
   # the shard count comes from the matrix itself (strategy.job-total), so the two
   # cannot drift. To add a shard, add it to the matrix and resize the sums above.
   #
-  # fail-fast: a failed shard has decided the entry, and the rest would hold scarce
-  # runners and the queue, with every run behind it, for an answer already known.
-  # TestMacOSLegRunsItsSuiteOnlyWhereItLands holds all of this per event and shard.
+  # fail-fast: a failed shard has decided the run, and the rest would hold scarce
+  # runners for an answer already known.
+  # TestMacOSLegRunsItsSuiteOnlyNightlyAndOnDemand holds all of this per event and shard.
   macos-suite:
-    if: github.event_name != 'pull_request'
-    # A shard's ceiling. Its queue-side budget is a sum, since check-macos reports
-    # only after the shards end: the wait for a runner, this ceiling and check-macos's
-    # own, inside the merge queue's 90 minutes (.abcd/work/rulesets/main-protection.json).
-    # A job's timeout-minutes starts when a runner takes it, so it counts none of the
-    # wait; 50 is half as much again as the 30 a shard takes on a slow runner, and it
-    # leaves 35 minutes of the queue's clock for that wait. The single job before
-    # the split had reached 85 (dcn-2610282036219503); the remedy for a shard near
-    # this cap is a faster suite or a rebalance in cmd/ci-shard, because raising it
-    # takes from the wait's allowance. TestRaceLaneBudgetIsDeclaredAndFitsItsJob
-    # holds the sum.
-    timeout-minutes: 50
+    if: github.event_name != 'pull_request' && github.event_name != 'merge_group'
     strategy:
       fail-fast: true
       matrix:
-        shard: [1, 2, 3]
-    runs-on: macos-latest
-    env:
-      ABCD_CI_LEG: macos-suite (${{ matrix.shard }})
-      ABCD_CI_JOB_CAP_MINUTES: 50
-    steps:
-      # The clock for the warning and the watchdog, as in the check job.
-      - name: Record the job's start
-        id: started
-        run: |
-          epoch=$(date +%s)
-          echo "epoch=${epoch}" >>"$GITHUB_OUTPUT"
-          echo "ABCD_CI_JOB_STARTED=${epoch}" >>"$GITHUB_ENV"
-
-      # Full history, as in the check job: the tests read the same repository.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      # On a key miss every shard reaches the cache's save at its end, and the
-      # first to finish wins it, so the macOS cache the nightly run saves holds
-      # that shard's packages' builds, the standard library and third-party
-      # dependencies under -race among them. The check job has the rest of why.
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-
-      # What the suite does once rather than per shard runs in the first shard,
-      # and cmd/ci-shard gives that shard a lighter share for it.
-      - name: Build
-        if: matrix.shard == 1
-        run: go build ./...
-
-      - name: Vet
-        if: matrix.shard == 1
-        run: go vet ./...
-
-      # One race-enabled pass over this shard's packages (iss-2610110938293273).
-      # Two passes cost a median 13.6 minutes plain plus 23.1 race of a 39.9-minute
-      # job (8 queue runs, 2026-10-11), and the race pass already runs every test
-      # the plain pass would; the ones that assert only without the detector run
-      # after it, by name (the next step). cmd/ci-shard prints the shard heaviest
-      # first, so its slowest packages start with the step.
-      #
-      # The assignment is its own line, under the shell's -e: a failure inside
-      # `$(...)` on go test's own line would leave go test with no packages, which
-      # tests the working directory and reports success.
-      # TestAShardThatCannotReadItsPackagesFails runs this script against a stub go.
-      #
-      # ABCD_TEST_SKIP_FLUSH and ABCD_TEST_SHARDS are the check job's, for the
-      # reasons given there. -timeout is the local gate's, and a package that starts
-      # late meets the job clock's watchdog first.
-      - name: Test (race, this shard)
-        shell: go run ./cmd/ci-watchdog bash --noprofile --norc -eo pipefail {0}
-        env:
-          ABCD_TEST_SKIP_FLUSH: "1"
-          ABCD_TEST_SHARDS: "3"
-          ABCD_CI_SHARD: ${{ matrix.shard }}
-          ABCD_CI_SHARDS: ${{ strategy.job-total }}
-        run: |
-          pkgs=$(go run ./cmd/ci-shard -shard "$ABCD_CI_SHARD" -of "$ABCD_CI_SHARDS")
-          go test -race -timeout 40m $pkgs
-
-      # The plain-only guards on macOS (iss-2610180542030806): the same command as
-      # the check job's "Test (plain-only guards)", about a minute, in the first
-      # shard after its race pass. TestEveryLegRunsEveryPlainOnlyGuard holds both
-      # steps to the list it derives from the test files.
-      - name: Test (plain-only guards, macOS)
-        if: matrix.shard == 1
-        shell: go run ./cmd/ci-watchdog bash --noprofile --norc -eo pipefail {0}
-        env:
-          ABCD_TEST_SKIP_FLUSH: "1"
-        run: go test -run '^(TestAHereDocBodyFeedStaysLinear|TestAPatternPastTheStepBudgetIsNotGenerated|TestAVeryDeepPathIsJudgedQuickly|TestAdjacencyProbeStaysLinearOnLongLines|TestAdjacencyProbeWindowIsBounded|TestBacktickPrePassStaysLinear|TestBraceScanStaysLinear|TestClosedOverDocumentsStayLinear|TestClosingScansAreLinear|TestDoubleQuotedBraceExpansionStaysLinear|TestExpandedHeredocBodyStaysLinear|TestForgeTextWorkIsLinear|TestGallopingProbeCostIsLinearInLineLength|TestGallopingProbeStaysBoundedOnLongLines|TestGluedFixedOutputStaysLinear|TestGluedSweepWorkIsLinear|TestHereDocumentPayloadStaysLinear|TestHistoryCaptureAcceptsWhatTheHooksAccept|TestHomeSpellingsStayLinear|TestIFSSplitCheckStaysLinear|TestJunctionBacktrackIsBounded|TestKillFeedGroupsAndStringsStayLinear|TestKillFeedReadingStaysLinear|TestMakerNoteWorkIsLinear|TestMetadataViewsWorkIsLinear|TestNestedHereDocumentPayloadStaysLinear|TestParameterExpansionReadingStaysLinear|TestPatternShapesStayLinear|TestQuotedSubstitutionStaysLinear|TestRawHeadingScanStaysLinearInTheOpenerCount|TestScanLineWorkIsLinear|TestScriptReadingStaysLinearOnAdversarialLines|TestSpeculationIsBoundedAtTheStdinCap|TestSpellingSetsStayLinear|TestSurfaceChapterProseStatesNoShape|TestSweepCallerHomeWorkIsLinear|TestSynopsisScanIsLinearInThePage|TestTheBudgetBoundsWallTimeOverLongLiterals|TestTheBudgetBoundsWallTimeOverManyLines|TestTheHiddenHTMLReadersStayLinear|TestTheTagWalksStayLinear|TestUTF16ViewWorkIsLinear|TestUnknownWordWalksStayLinear)$' ./internal/adapter/scanner ./internal/core/claim ./internal/core/guard ./internal/core/reading ./internal/surface/cli
-
-      # The check job's warning, against this job's ceiling.
-      - name: Warn when the check nears the queue's cap
-        if: always()
-        continue-on-error: true
-        env:
-          STARTED_AT: ${{ steps.started.outputs.epoch }}
-          WARN_AFTER_MINUTES: 40
-          CEILING_MINUTES: 50
-        run: |
-          case "${STARTED_AT:-}" in
-            '' | *[!0-9]*)
-              echo "::notice::no job start was recorded, so the elapsed-time warning did not run"
-              exit 0
-              ;;
-          esac
-          elapsed=$(($(date +%s) - STARTED_AT))
-          minutes=$((elapsed / 60))
-          echo "${ABCD_CI_LEG} has run ${minutes}m $((elapsed % 60))s; the warning line is ${WARN_AFTER_MINUTES}m"
-          if [ "$elapsed" -gt $((WARN_AFTER_MINUTES * 60)) ]; then
-            msg="${ABCD_CI_LEG} ran ${minutes} minutes, past the ${WARN_AFTER_MINUTES}-minute warning line and close to the job's ${CEILING_MINUTES}-minute cap. If it is cancelled at the cap, rerun it once; a second cancellation for the same reason stops the pull request: open a speed lane to make the suite faster, and do not raise the timeout."
-            echo "::warning title=${ABCD_CI_LEG} near its cap::${msg}"
-            printf '### %s near its cap\n\n%s\n' "$ABCD_CI_LEG" "$msg" >>"$GITHUB_STEP_SUMMARY"
-          fi
+        shard: [1, 2, 3, 4]
+    uses: ./.github/workflows/macos-suite.yml
+    with:
+      shard: ${{ matrix.shard }}
+      shards: ${{ strategy.job-total }}
+      ref: ${{ github.sha }}
+      cache: true
 
   # The required context `check (macos-latest)`, reported from an ubuntu runner on
   # every event: the ruleset requires that name
   # (.abcd/work/rulesets/main-protection.json), and a shard must never read as the
   # whole suite. It runs however the shards ended, and passes in exactly two cases:
-  # off a pull request when every shard succeeded (a matrix job's result is success
-  # only when every leg's is), and on a pull request when the shards were skipped
-  # as they should be. A shard failed or cancelled, or skipped anywhere else, fails
-  # it: a green here may only stand for work that happened. `always()` is on the
-  # step as well as on the job, because a step's implicit success() is false on a
-  # cancelled run, and a job whose steps are all skipped concludes success. So a run
-  # cancelled mid-suite reads as failed, which is how a queue-sweep of a dropped
-  # entry's run ends too. A cancelled or superseded pull-request run still reports
-  # the stand-in: there the context never tested anything and says so, the run's
-  # other required contexts hold that commit, and the queue entry decides.
+  # on an event the suite runs on when every shard succeeded (a matrix job's result
+  # is success only when every leg's is), and on a pull request or a merge-queue
+  # entry when the shards were skipped as they should be, each with its own notice
+  # that no macOS suite ran. A shard failed, cancelled or abandoned (what a shard
+  # that never got a runner reads as, run 41901793293), or skipped anywhere else,
+  # fails it: a green here may only stand for work that happened. `always()` is on
+  # the step as well as on the job, because a step's implicit success() is false on
+  # a cancelled run, and a job whose steps are all skipped concludes success. So a
+  # run cancelled mid-suite reads as failed. A cancelled or superseded pull-request
+  # or queue run still reports the stand-in: there the context never tested anything
+  # and says so, and the run's other required contexts hold that commit.
   # TestMacOSCheckFailsUnlessEveryShardSucceeded runs this script over every result
   # per event.
   check-macos:
@@ -769,14 +685,24 @@ jobs:
           SUITE_RESULT: ${{ needs.macos-suite.result }}
         run: |
           echo "macos-suite concluded '${SUITE_RESULT}' on a ${EVENT_NAME} event"
-          if [ "$EVENT_NAME" = pull_request ]; then
+          case "$EVENT_NAME" in
+            pull_request)
+              msg="On a pull request check (macos-latest) reports without taking a macOS runner, so this run tested nothing on macOS. The macOS suite runs nightly on the default branch and on demand."
+              ;;
+            merge_group)
+              msg="No macOS suite ran on this entry: the merge queue tests on Linux, and this context reports without taking a macOS runner. The nightly run covers the default branch."
+              ;;
+            *)
+              msg=""
+              ;;
+          esac
+          if [ -n "$msg" ]; then
             if [ "$SUITE_RESULT" = skipped ]; then
-              msg="check (macos-latest) runs the macOS suite in the merge queue, on the tree that lands, and on every event that is not a pull request. On a pull request it reports this context without taking a macOS runner, so this run tested nothing on macOS."
-              echo "::notice title=macOS suite runs in the merge queue::${msg}"
-              printf '### macOS suite runs in the merge queue\n\n%s\n' "$msg" >>"$GITHUB_STEP_SUMMARY"
+              echo "::notice title=macOS suite runs nightly::${msg}"
+              printf '### macOS suite runs nightly\n\n%s\n' "$msg" >>"$GITHUB_STEP_SUMMARY"
               exit 0
             fi
-            echo "::error title=check (macos-latest)::the shards did not stand down on a pull request (result '${SUITE_RESULT}'), so this context cannot report as the stand-in it is there"
+            echo "::error title=check (macos-latest)::the shards did not stand down on a ${EVENT_NAME} event (result '${SUITE_RESULT}'), so this context cannot report as the stand-in it is there"
             exit 1
           fi
           if [ "$SUITE_RESULT" != success ]; then

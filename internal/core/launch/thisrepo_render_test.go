@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // thisRepoRender is one render of this repository's own payload, shared by the
@@ -82,10 +83,29 @@ func scanThisRepo(t *testing.T) scanner.ScanResult {
 	return thisRepoRender.scan
 }
 
+// TestMain runs the package as a neutral caller (gittest.NeutralCaller): its
+// scans judge the payload, so they must not read whoever runs the suite into
+// it. Under an account named for a word the payload holds, every scan of a
+// clean tree hard-fails on that word as the caller's username. A test that sets HOME itself still does so.
 func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "launch-caller-")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "launch: a neutral caller's home:", err)
+		os.Exit(1)
+	}
+	home, err := gittest.NeutralHomeIn(dir)
+	if err == nil {
+		err = os.Setenv("HOME", home)
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "launch: a neutral caller's home:", err)
+		_ = os.RemoveAll(dir)
+		os.Exit(1)
+	}
 	code := m.Run()
 	if thisRepoRender.dir != "" {
 		_ = os.RemoveAll(thisRepoRender.dir)
 	}
+	_ = os.RemoveAll(dir)
 	os.Exit(code)
 }

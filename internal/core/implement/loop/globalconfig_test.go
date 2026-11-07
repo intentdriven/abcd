@@ -145,7 +145,7 @@ func TestALaneRemovalJudgesTheTreeAsThePersonsGitDoes(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(l.Worktree, "notes.scratch"), []byte("the person's own scratch\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := removeLaneWorktree(Context{RepoRoot: repo.Root(), State: st}, l); err != nil {
+	if err := removeLaneWorktree(Context{RepoRoot: repo.Root(), State: st}, l, "run `abcd implement step` again"); err != nil {
 		t.Fatalf("a lane holding only what the person's git ignores or smudged is removed: %v", err)
 	}
 	if _, err := os.Lstat(l.Worktree); !os.IsNotExist(err) {

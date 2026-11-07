@@ -250,6 +250,12 @@ func readFacilitatorAt(r layered.Roots, repoRoot, tip, name string) (Facilitator
 	return readMode(r)
 }
 
+// AutoAt reports whether the facilitator mode the merge gate reads at tip is auto.
+func AutoAt(r layered.Roots, repoRoot, tip, name string) bool {
+	m, err := readFacilitatorAt(r, repoRoot, tip, name)
+	return err == nil && m.Mode == ModeAuto
+}
+
 // ReadDefaultFacilitator resolves facilitator.mode for the repository holding
 // cwd as the merge gate does (readFacilitatorAt), at the tip of the default
 // branch git tracks for it (gitutil.DefaultRef), with the machine layer of the

@@ -184,6 +184,9 @@ type Cut struct {
 	// refusal (adr-2609212115255771, decision 3), so it travels on a ready cut
 	// and a refused one alike.
 	Targets []launch.TargetedIntent `json:"targets,omitempty"`
+	// FidelityNote states that the docs review this cut stands on was saved for
+	// another commit with the same tree, "" where it names HEAD itself.
+	FidelityNote string `json:"fidelity_note,omitempty"`
 	// TargetsError is why the intent store could not be read for the list,
 	// empty when it was. It is reported rather than raised: a report that
 	// failed the cut would make the one field ruled never to refuse a refusal.
@@ -307,6 +310,9 @@ func Emit(root string, current surface.Snapshot) (Cut, error) {
 	fidelity, armed, err := docfidelity.Enforce(root, current.Commands, shipped)
 	if err != nil {
 		return Cut{}, err
+	}
+	if armed && fidelity.Review != nil {
+		cut.FidelityNote = fidelity.Review.TreeNote()
 	}
 	if armed && fidelity.Refuse {
 		cut.Refusals = append(cut.Refusals, Refusal{

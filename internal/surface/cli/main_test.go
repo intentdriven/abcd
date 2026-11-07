@@ -2,7 +2,6 @@ package cli
 
 import (
 	"os"
-	"slices"
 	"testing"
 	"time"
 
@@ -12,9 +11,11 @@ import (
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/rules"
+	"github.com/intentdriven/abcd/internal/core/runstop"
 	"github.com/intentdriven/abcd/internal/core/sessionname"
 	"github.com/intentdriven/abcd/internal/core/vintage"
 	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/surface/cli/testdata/interviewstub/stub"
 	"github.com/intentdriven/abcd/internal/testshard"
 )
 
@@ -43,6 +44,10 @@ var builtAbcd gittest.Abcd
 // own, the user layer reads as absent, and a test that sets HOME to a fixture
 // gets that fixture's user layer (spc-23).
 func TestMain(m *testing.M) {
+	// The verbs here read a stop from the fixture home each test names, and the
+	// machine's own shared folder stops no test.
+	runstop.AccountHome = os.UserHomeDir
+	runstop.WellKnownFolder = func() string { return "" }
 	// No test here, nor a child of one acting as the binary, trims the
 	// machine's own Go build cache through `ahoy worktree prune`. The shipping
 	// value is kept so the wiring itself stays asserted, against a temporary
@@ -74,11 +79,12 @@ func TestMain(m *testing.M) {
 	if actAsBinary(os.Getenv(cliTestAsBinaryEnv), os.Args[1:]) {
 		os.Exit(Run(os.Args[1:], os.Stdout, os.Stderr))
 	}
-	// The AI-written interviews' tests put this binary on PATH as the claude
-	// runner: with the script named and claude's own print flag, it plays
-	// the stub runner (written_interview_test.go) instead of the tests.
-	if dir := os.Getenv(interviewStubScriptEnv); dir != "" && slices.Contains(os.Args, "--print") {
-		os.Exit(interviewStubRunner(dir))
+	// The AI-written interviews' tests put a stub runner on PATH as claude:
+	// one built once from testdata/interviewstub, or, where no go is found
+	// to build it, this binary, which plays the same stub instead of the
+	// tests when started with the script named and claude's own print flag.
+	if dir := os.Getenv(interviewStubScriptEnv); stub.Runs(dir, os.Args) {
+		os.Exit(stub.Run(dir, os.Args, os.Stdout))
 	}
 	// The hidden key read's pseudo-terminal tests run `ahoy connect` as a
 	// child on the terminal end (ahoy_connect_pty_test.go).
@@ -163,6 +169,8 @@ func TestMain(m *testing.M) {
 	_ = os.RemoveAll(emptyHome)
 	showGHLogin()
 	builtAbcd.Remove()
+	removeFixtureTemplates()
+	removeInterviewStub()
 	os.Exit(code)
 }
 

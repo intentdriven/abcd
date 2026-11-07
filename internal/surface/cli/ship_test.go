@@ -27,7 +27,7 @@ import (
 // copy that would rot the moment a command is added.
 func shipFixture(t *testing.T) *gittest.Repo {
 	t.Helper()
-	r := gittest.NewRepo(t)
+	r := newRepo(t)
 	r.Write(".claude-plugin/plugin.json", `{"name":"abcd","description":"fixture"}`+"\n")
 	r.Write(".claude-plugin/marketplace.json", `{"name":"abcd","plugins":[{"name":"abcd","source":"./"}]}`+"\n")
 	// The empty [Unreleased] heading is the post-cutover state (outcome 7) and the
