@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -925,5 +926,144 @@ func TestWhatARunFileNamesIsMadeSafe(t *testing.T) {
 		if strings.ContainsRune(got, 0x1b) {
 			t.Fatalf("%q went out as it was read", got)
 		}
+	}
+}
+
+// forgeLists stands the forge's one listing of pull requests in, counting each
+// read, so a test sees what the take-over read and how often.
+func forgeLists(t *testing.T, listed map[int]listedPR, unread string) *int {
+	t.Helper()
+	calls := 0
+	old := takeForgePRs
+	takeForgePRs = func(string) (map[int]listedPR, string) {
+		calls++
+		return listed, unread
+	}
+	t.Cleanup(func() { takeForgePRs = old })
+	return &calls
+}
+
+// prLane gives the run's one lane pull request #7 on its branch, as a landing
+// that opened it and then lost its driver leaves it.
+func prLane(t *testing.T, repoRoot, runID string) string {
+	t.Helper()
+	branch := ""
+	if err := mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+		st.Lanes[0].PR = 7
+		branch = st.Lanes[0].Branch
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return branch
+}
+
+// TestATakeOverReadsEachPullRequestFromTheForge: a pull request a crash left
+// open drifts while nobody looks (iss-2610241414414823), so the take-over reads
+// its state from the forge once and names one that conflicts with the default
+// branch, where the bare listing reads nothing over the network.
+func TestATakeOverReadsEachPullRequestFromTheForge(t *testing.T) {
+	repo, runID, l, dir := awaitingLane(t)
+	home, _ := stopWorld(t, false)
+	writeReceipt(t, dir, goodReceipt(t, runID, l, dir, laneCommit(t, repo, l, "one.txt")))
+	branch := prLane(t, repo.Root(), runID)
+	driverGone(t, repo.Root(), runID, home)
+	calls := forgeLists(t, map[int]listedPR{7: {Number: 7, HeadRefName: branch, State: "OPEN", Mergeable: MergeableConflicting, MergeStateStatus: "DIRTY"}}, "")
+
+	listed, err := ListRuns(repo.Root(), "", Options{stopHome: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *calls != 0 || theRun(t, listed, runID).Lanes[0].Forge != nil {
+		t.Fatalf("the bare listing read the forge: %d call(s), %+v", *calls, theRun(t, listed, runID).Lanes[0])
+	}
+
+	res, err := TakeRun(repo.Root(), runID, Options{stopHome: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *calls != 1 {
+		t.Fatalf("the forge was listed %d time(s), not once", *calls)
+	}
+	if res.Run == nil || len(res.Run.Lanes) != 1 {
+		t.Fatalf("the run as it stands: %+v", res.Run)
+	}
+	f := res.Run.Lanes[0].Forge
+	if f == nil || f.State != ForgeConflicting || !strings.Contains(f.Note, "pull request #7 conflicts with the default branch") {
+		t.Fatalf("the lane's pull request: %+v", f)
+	}
+	if !slices.ContainsFunc(res.Left, func(s string) bool { return strings.Contains(s, "lane-1's pull request #7 conflicts") }) {
+		t.Fatalf("the take-over does not name the drifting pull request: %+v", res.Left)
+	}
+}
+
+// TestATakeOverThatCannotReadTheForgeSaysSo: a forge that cannot be read takes
+// nothing over less: the lane says why its pull request is unread, the take-over
+// names it among what it left, and goes on.
+func TestATakeOverThatCannotReadTheForgeSaysSo(t *testing.T) {
+	repo, runID, l, dir := awaitingLane(t)
+	home, _ := stopWorld(t, false)
+	writeReceipt(t, dir, goodReceipt(t, runID, l, dir, laneCommit(t, repo, l, "one.txt")))
+	prLane(t, repo.Root(), runID)
+	driverGone(t, repo.Root(), runID, home)
+	forgeLists(t, nil, "the forge client `gh` is not installed")
+
+	res, err := TakeRun(repo.Root(), runID, Options{stopHome: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := res.Run.Lanes[0].Forge
+	if f == nil || f.State != ForgeUnread || !strings.Contains(f.Note, "`gh` is not installed") {
+		t.Fatalf("the lane's pull request: %+v", f)
+	}
+	if !slices.ContainsFunc(res.Left, func(s string) bool { return strings.Contains(s, "lane-1's pull request #7 could not be read") }) {
+		t.Fatalf("the take-over does not name the unread pull request: %+v", res.Left)
+	}
+	if !strings.Contains(res.Next, "abcd implement step") {
+		t.Fatalf("the move: %q", res.Next)
+	}
+}
+
+// TestATakeOverWithNoPullRequestReadsNoForge: a run whose lanes name no pull
+// request costs no forge read.
+func TestATakeOverWithNoPullRequestReadsNoForge(t *testing.T) {
+	repo, runID, l, dir := awaitingLane(t)
+	home, _ := stopWorld(t, false)
+	writeReceipt(t, dir, goodReceipt(t, runID, l, dir, laneCommit(t, repo, l, "one.txt")))
+	driverGone(t, repo.Root(), runID, home)
+	calls := forgeLists(t, nil, "")
+
+	if _, err := TakeRun(repo.Root(), runID, Options{stopHome: home}); err != nil {
+		t.Fatal(err)
+	}
+	if *calls != 0 {
+		t.Fatalf("the forge was read %d time(s) for no pull request", *calls)
+	}
+}
+
+// TestEachForgeStateIsNamed: what the forge says of a lane's pull request, by
+// the listing's one reading, with a pull request the listing does not show, or
+// shows on another branch, read as unread.
+func TestEachForgeStateIsNamed(t *testing.T) {
+	lane := Lane{ID: "lane-1", Branch: "build/b", PR: 7}
+	for _, c := range []struct {
+		pr   listedPR
+		want ForgeState
+		note string
+	}{
+		{listedPR{Number: 7, HeadRefName: "build/b", State: "OPEN", Mergeable: "MERGEABLE", MergeStateStatus: "CLEAN"}, ForgeOpen, "waiting on a person's merge"},
+		{listedPR{Number: 7, HeadRefName: "build/b", State: "OPEN", Mergeable: "MERGEABLE", MergeStateStatus: "CLEAN", AutoMergeRequest: []byte(`{"mergeMethod":"MERGE"}`)}, ForgeArmed, "armed"},
+		{listedPR{Number: 7, HeadRefName: "build/b", State: "MERGED"}, ForgeMerged, "merged"},
+		{listedPR{Number: 7, HeadRefName: "build/b", State: "CLOSED"}, ForgeClosed, "closed without merging"},
+		{listedPR{Number: 7, HeadRefName: "build/other", State: "OPEN"}, ForgeUnread, "not among"},
+		{listedPR{Number: 8, HeadRefName: "build/b", State: "OPEN"}, ForgeUnread, "not among"},
+	} {
+		got := laneForge(lane, map[int]listedPR{c.pr.Number: c.pr}, "")
+		if got == nil || got.State != c.want || !strings.Contains(got.Note, c.note) {
+			t.Errorf("%+v: %+v, want %s naming %q", c.pr, got, c.want, c.note)
+		}
+	}
+	if got := laneForge(Lane{ID: "lane-1"}, nil, ""); got != nil {
+		t.Errorf("a lane with no pull request: %+v", got)
 	}
 }

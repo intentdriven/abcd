@@ -3401,7 +3401,9 @@ all a session that lost its context needs. It writes nothing and uses no network
 the driver, collects every receipt that has arrived before anything else, reserves
 again what a stop released, saves aside and names the uncommitted work a gone agent
 left, and re-tells its await. It starts no agent: `abcd implement step` does that
-next. An agent that may still be in its call is left alone and named. A run a drive
+next. An agent that may still be in its call is left alone and named. Where a lane
+names a pull request, it reads the forge once and names each that conflicts with
+the default branch, was closed or merged, or could not be read. A run a drive
 started names the profile it started on, in the listing and here, since what this
 session starts runs on this session's own login, whichever that is.
 
