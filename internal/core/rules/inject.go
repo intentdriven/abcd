@@ -174,10 +174,12 @@ func UnknownFillNotice(st *SessionState, f Fill) string {
 // when the bracket changes, nor the other way round, until a reset clears
 // the ledger.
 //
-// budget is the bytes the rules may take. A domain that does not fit in full goes
-// in its short form and is recorded as sent, the same form and the same record as
+// budget is the bytes the rules may take. A domain that does not fit in full but
+// has room for its first rule goes in its short form and is recorded as sent, the
+// same form and the same record as
 // in a bracket that shrinks, since the form names the command that renders the
-// rest.
+// rest. One with room only for its heading and the command carries no rule, so it
+// is not recorded, and the next turn tries it again.
 func InjectWithin(rs RuleSet, prompt string, prev SessionState, backstop int, bracket Bracket, budget int) InjectResult {
 	if backstop <= 0 {
 		backstop = DefaultRefreshBackstop
@@ -215,15 +217,18 @@ func InjectWithin(rs RuleSet, prompt string, prev SessionState, backstop int, br
 		fresh = append(fresh, d)
 	}
 
-	// The budget holds across ALL matched domains. Only a domain with no room
-	// even for its pointer is left out of the ledger, so it is tried again next
-	// turn; every form sent is recorded, by the domain's content (Signature
-	// hashes the full block), so a change of form never sends it again.
+	// The budget holds across ALL matched domains. A domain that carried a rule
+	// is recorded by its content (Signature hashes the full block), so a change
+	// of form never sends it again. A pointer carries none and says there was no
+	// room this turn, so it is left out of the ledger with a domain that got
+	// nothing, and both are tried again next turn.
 	text, kept := renderWithinBudget(fresh, rs.rulesFrom, bracket.Row().ShrinkRules, budget)
 	var injected, shrunk, pointed []string
 	sources := make(map[string]string, len(kept))
 	for _, k := range kept {
-		ledger[k.domain.Name] = Signature(k.domain)
+		if k.form != formPointer {
+			ledger[k.domain.Name] = Signature(k.domain)
+		}
 		injected = append(injected, k.domain.Name)
 		sources[k.domain.Name] = k.domain.Source
 		switch k.form {
@@ -312,7 +317,7 @@ const noticeReserve = 512
 // first rule. Whole blocks only, which keeps the "## NAME" contract: never half a
 // rule. A domain with no room even for a pointer is left out, and a notice says so
 // where the notice itself fits. It returns the text and the domains sent with their
-// forms, so the caller records exactly those. rulesFrom maps a domain to the file
+// forms, so the caller records those that carried a rule. rulesFrom maps a domain to the file
 // its rules came from (RuleSet.rulesFrom), which the notice names.
 func renderWithinBudget(fresh []ResolvedDomain, rulesFrom map[string]string, shrinks bool, budget int) (string, []sentDomain) {
 	if len(fresh) == 0 {

@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/autonomy"
 	"github.com/intentdriven/abcd/internal/core/recall"
 	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -109,7 +110,8 @@ type rootLookup struct {
 // reuses the lookup the live drain already made for this prompt, so the
 // router spawns that full-history rev-list once; only when the drain made
 // none does it ask git itself, about root, and then only when a tied note
-// matched. The drain asked about cwd and the recall needs root, the
+// matched or, in `rules --prompt`, a managed checkout's away record is read.
+// The drain asked about cwd and the recall needs root, the
 // repository the loader resolved from that same cwd: the two are one
 // repository, so they share one root commit — and where git cannot answer
 // for cwd (a refused foreign-uid root, which leaves cwd as root), it cannot
@@ -271,11 +273,31 @@ type rulesPromptView struct {
 	Unreadable []recall.Refusal    `json:"unreadable"`
 }
 
+// promptReserved is the bytes the away block takes off the turn's budget before
+// the rules, read as the hook reads it. The status block the hook also reads
+// first is left out: reading it takes in the status branches, which writes the
+// local tier, and this diagnostic writes nothing. An unmanaged checkout holds no
+// away record, so the root commit is not looked up for it. A lookup git did not
+// answer reads as not away, as in the hook, and is named on stderr with that
+// consequence, as the hook names each of its own.
+func promptReserved(stderr io.Writer, root string, here recall.RootFunc) int {
+	if root == "" || !autonomy.Managed(root) {
+		return 0
+	}
+	sha, err := here()
+	if err != nil {
+		diagnosticLine(stderr, "abcd mode: this repository's root commit: %s; read as not away this turn",
+			fsutil.RedactHome(err.Error()))
+	}
+	return len(readPromptAway(stderr, rootLookup{sha: sha, err: err, asked: true}, root).Block)
+}
+
 // rulesPrompt answers `rules --prompt "<text>"`: what that one prompt brings
-// back to a fresh session. It runs the router's own path — rules.Inject on an
-// empty ledger, then the recall within what the rules left, both in the
-// bracket used (the --fill value, or nil for an unknown fill) puts it in —
-// and writes nothing: no session state is loaded or saved. A root-commit
+// back to a fresh session. It runs the router's own path — the rules on an
+// empty ledger within what the away block leaves, then the recall
+// within what the rules left, both in the bracket used (the --fill value, or
+// nil for an unknown fill) puts it in — and writes nothing: no session state
+// is loaded or saved. A root-commit
 // lookup git did not answer in time leaves the tied notes out of the view,
 // and is named on stderr, once, as the hook names it.
 func rulesPrompt(stderr io.Writer, rs rules.RuleSet, root, prompt string, used *float64) rulesPromptView {
@@ -290,7 +312,7 @@ func rulesPrompt(stderr io.Writer, rs rules.RuleSet, root, prompt string, used *
 	items, refused := recall.ReadItems(rules.UserHome(), root)
 	v.Unreadable = append(v.Unreadable, refused...)
 	here := promptRoot(rootLookup{}, root)
-	res, mem := injectWithRecall(rs, prompt, rules.SessionState{}, 0, bracket, 0, func(_ map[string]string, budget int) recall.Result {
+	res, mem := injectWithRecall(rs, prompt, rules.SessionState{}, 0, bracket, promptReserved(stderr, root, here), func(_ map[string]string, budget int) recall.Result {
 		return recall.Recall(recall.Request{Items: items, Prompt: prompt, Budget: budget, Root: here, Bracket: bracket})
 	})
 	injected := map[string]bool{}
