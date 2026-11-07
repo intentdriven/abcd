@@ -62,6 +62,96 @@ type ListedLane struct {
 	UnreadWhy   string `json:"unread_why,omitempty"`
 	// Asides are the saved-aside directories of the lane, oldest first.
 	Asides []string `json:"asides,omitempty"`
+	// Forge is what the forge says of the lane's pull request, read by a take-over
+	// only; nil in the bare listing, which uses no network, and for no pull request.
+	Forge *LaneForge `json:"forge,omitempty"`
+}
+
+// ForgeState is what the forge says of a lane's pull request.
+type ForgeState string
+
+// The states a take-over reads a lane's pull request in.
+const (
+	ForgeOpen        ForgeState = "open"
+	ForgeArmed       ForgeState = "armed"
+	ForgeConflicting ForgeState = "conflicting"
+	ForgeMerged      ForgeState = "merged"
+	ForgeClosed      ForgeState = "closed"
+	ForgeUnread      ForgeState = "unread"
+)
+
+// LaneForge is a lane's pull request as the forge's one listing shows it.
+type LaneForge struct {
+	State ForgeState `json:"state"`
+	Note  string     `json:"note"`
+}
+
+// named reports whether a take-over names the pull request among what it left:
+// one the forge cannot merge, closed, merged with the lane's head unproven, or one
+// it could not read, which may be drifting unseen.
+func (f *LaneForge) named() bool {
+	return f != nil && f.State != ForgeOpen && f.State != ForgeArmed
+}
+
+// takeForgePRs is the forge's one listing of the person's latest pull requests a
+// take-over reads; a test stands it in.
+var takeForgePRs = listParked
+
+// laneForge is what the listing says of lane's pull request; nil for a lane that
+// names none. One the listing does not show, or shows on another branch, is unread,
+// never taken for the lane's.
+func laneForge(lane Lane, listed map[int]listedPR, unread string) *LaneForge {
+	if lane.PR <= 0 {
+		return nil
+	}
+	n := "pull request #" + strconv.Itoa(lane.PR)
+	if unread != "" {
+		return &LaneForge{State: ForgeUnread, Note: n + " could not be read from the forge (" + termsafe.Sanitize(unread) + ")"}
+	}
+	pr, ok := listed[lane.PR]
+	if !ok || pr.State == "" || pr.HeadRefName != lane.Branch {
+		return &LaneForge{State: ForgeUnread, Note: fmt.Sprintf("%s is not among the forge's listing of your latest %d pull requests on the lane's branch", n, parkedListLimit)}
+	}
+	status := termsafe.Sanitize(strings.ToLower(pr.MergeStateStatus))
+	switch {
+	case pr.State == "MERGED":
+		return &LaneForge{State: ForgeMerged, Note: n + " merged on the forge; the next step proves the lane's head reached the default branch, and a squash or rebase that rewrote it leaves a person to confirm it"}
+	case pr.State == "CLOSED":
+		return &LaneForge{State: ForgeClosed, Note: n + " was closed without merging: reopen it, or hand the lane back so the step is built again"}
+	case pr.Mergeable == MergeableConflicting:
+		return &LaneForge{State: ForgeConflicting, Note: n + " conflicts with the default branch as the forge computes it (merge state " + status +
+			"), so it drifts until the default branch is merged into its branch or it is closed: the next step at the landing refuses it and names how"}
+	case pr.armed():
+		return &LaneForge{State: ForgeArmed, Note: n + " is open and armed, waiting on its merge (merge state " + status + ")"}
+	default:
+		return &LaneForge{State: ForgeOpen, Note: n + " is open, waiting on a person's merge (merge state " + status + ")"}
+	}
+}
+
+// readForge fills each listed lane's pull request from the forge, listing it
+// once and only when a lane names one, and names in left each that wants a look.
+func readForge(repoRoot string, st State, run *ListedRun, left *[]string) {
+	byID := map[string]Lane{}
+	for _, lane := range st.Lanes {
+		if lane.PR > 0 {
+			byID[termsafe.Sanitize(lane.ID)] = lane
+		}
+	}
+	if len(byID) == 0 {
+		return
+	}
+	listed, unread := takeForgePRs(repoRoot)
+	for i := range run.Lanes {
+		lane, ok := byID[run.Lanes[i].ID]
+		if !ok {
+			continue
+		}
+		f := laneForge(lane, listed, unread)
+		run.Lanes[i].Forge = f
+		if f.named() {
+			*left = append(*left, run.Lanes[i].ID+"'s "+f.Note)
+		}
+	}
 }
 
 // ListedDriver is a run's recorded driver, with whether its process still runs.
@@ -583,6 +673,12 @@ func takeRun(repoRoot, runID string, o Options) (TakeResult, error) {
 	res.Next = "run `abcd implement step --run " + runID + "`"
 	if listed, err := ListRuns(repoRoot, runID, o); err == nil && len(listed.Runs) == 1 {
 		res.Run = &listed.Runs[0]
+		// A pull request a crash left open drifts while nobody looks
+		// (iss-2610241414414823): the take-over, which reaches origin already, reads
+		// what the forge says of each, where the bare listing uses no network.
+		if now, err := ReadState(repoRoot, runID); err == nil {
+			readForge(repoRoot, now, res.Run, &res.Left)
+		}
 	}
 	return res, nil
 }

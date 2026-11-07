@@ -954,7 +954,11 @@ every receipt that has arrived before anything else, reserves again what a stop
 released, saves aside and names the uncommitted work a gone agent left, and re-tells
 its await under `restarted`; a fresh agent takes each, started by the next
 `implement step`, and `collected` names what needs none. An agent that may still be
-in its call is named under `left` and not restarted. Work it could not save is a
+in its call is named under `left` and not restarted. Where a lane names a pull request,
+the take-over reads the forge once and gives each lane's `forge` state (open, armed,
+conflicting, merged, closed or unread); one that conflicts with the default branch, was
+closed or merged, or could not be read is named under `left` too, since a pull request a
+crash left open drifts while nobody looks. Work it could not save is a
 refusal, exit 2: settle it and take again, never step over it. Exit 3 while a stop holds, while
 another driver's process is alive or a recorded driver cannot be judged, or when a peer has
 taken the work a stop released: back off. A run a person's stop halted waits for this take-over,
