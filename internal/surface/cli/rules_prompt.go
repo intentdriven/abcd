@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/recall"
 	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -271,11 +272,32 @@ type rulesPromptView struct {
 	Unreadable []recall.Refusal    `json:"unreadable"`
 }
 
+// promptReserved is the bytes the hook takes off the turn's budget before the
+// rules, read as the hook reads them for a session that has been shown nothing:
+// the status block and the away block. It writes nothing: no status line is
+// marked shown and no refresh is started.
+func promptReserved(stderr io.Writer, root string, here recall.RootFunc) int {
+	if root == "" {
+		return 0
+	}
+	sha, err := here()
+	away := readPromptAway(stderr, rootLookup{sha: sha, err: err, asked: true}, root)
+	ctx, cancel := context.WithTimeout(context.Background(), hookBudget)
+	defer cancel()
+	now := time.Now().UTC().Truncate(time.Second)
+	status, err := claim.PromptNotes(ctx, root, now, claim.Options{Now: func() time.Time { return now }, RootCommit: here})
+	if err != nil {
+		fmt.Fprintf(stderr, "abcd status: %s\n", termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+	}
+	return len(status.Text) + len(away.Block)
+}
+
 // rulesPrompt answers `rules --prompt "<text>"`: what that one prompt brings
-// back to a fresh session. It runs the router's own path — rules.Inject on an
-// empty ledger, then the recall within what the rules left, both in the
-// bracket used (the --fill value, or nil for an unknown fill) puts it in —
-// and writes nothing: no session state is loaded or saved. A root-commit
+// back to a fresh session. It runs the router's own path — the rules on an
+// empty ledger within what the status and away blocks leave, then the recall
+// within what the rules left, both in the bracket used (the --fill value, or
+// nil for an unknown fill) puts it in — and writes nothing: no session state
+// is loaded or saved. A root-commit
 // lookup git did not answer in time leaves the tied notes out of the view,
 // and is named on stderr, once, as the hook names it.
 func rulesPrompt(stderr io.Writer, rs rules.RuleSet, root, prompt string, used *float64) rulesPromptView {
@@ -290,7 +312,7 @@ func rulesPrompt(stderr io.Writer, rs rules.RuleSet, root, prompt string, used *
 	items, refused := recall.ReadItems(rules.UserHome(), root)
 	v.Unreadable = append(v.Unreadable, refused...)
 	here := promptRoot(rootLookup{}, root)
-	res, mem := injectWithRecall(rs, prompt, rules.SessionState{}, 0, bracket, 0, func(_ map[string]string, budget int) recall.Result {
+	res, mem := injectWithRecall(rs, prompt, rules.SessionState{}, 0, bracket, promptReserved(stderr, root, here), func(_ map[string]string, budget int) recall.Result {
 		return recall.Recall(recall.Request{Items: items, Prompt: prompt, Budget: budget, Root: here, Bracket: bracket})
 	})
 	injected := map[string]bool{}

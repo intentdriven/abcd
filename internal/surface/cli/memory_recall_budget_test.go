@@ -243,6 +243,59 @@ func TestRulesPromptReportsAShortenedDomainTruthfully(t *testing.T) {
 	t.Fatalf("LONG did not match: %+v", env.Domains)
 }
 
+// TestRulesPromptTakesTheAwayBlockOffItsBudget: `rules --prompt` reads the
+// blocks the hook reads first, so a domain that fits a turn whole on its own is
+// reported shortened once the away block takes its share, as the hook sends it.
+func TestRulesPromptTakesTheAwayBlockOffItsBudget(t *testing.T) {
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	home, repo := memoryFixture(t)
+	var list []string
+	for j := range 8 {
+		list = append(list, strings.Repeat(fmt.Sprintf("rule %d ", j), 140))
+	}
+	body, err := json.Marshal(map[string]any{"schema_version": 1, "domains": map[string]any{
+		"LONG": map[string]any{"recall": []string{"zebra"}, "rules": list}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeRepoRules(t, repo, string(body))
+	form := func() string {
+		t.Helper()
+		jout, stderr, err := runCLISplit(t, "rules", "--prompt", "zebra", "--json")
+		if err != nil {
+			t.Fatalf("rules --prompt --json: %v\n%s", err, stderr)
+		}
+		var env struct {
+			Domains []struct {
+				Name string `json:"name"`
+				Form string `json:"form"`
+			} `json:"domains"`
+		}
+		if err := json.Unmarshal([]byte(jout), &env); err != nil {
+			t.Fatal(err)
+		}
+		for _, d := range env.Domains {
+			if d.Name == "LONG" {
+				return d.Form
+			}
+		}
+		t.Fatalf("LONG did not match: %+v", env.Domains)
+		return ""
+	}
+	if got := form(); got != promptFormFull {
+		t.Fatalf("with no away block, form = %q, want %q", got, promptFormFull)
+	}
+	if err := os.MkdirAll(filepath.Join(repo, ".abcd", ".work.local"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := autonomy.SetAway(repo, "", false, autonomy.Options{Home: home}); err != nil {
+		t.Fatal(err)
+	}
+	if got := form(); got != promptFormShrunk {
+		t.Fatalf("with the away block, form = %q, want %q", got, promptFormShrunk)
+	}
+}
+
 // TestRulesPromptCapsThePromptLikeTheHook (F5): `rules --prompt` scans the
 // same leading bytes of a prompt the hook does, so a recall word that lies
 // only past the cap matches no domain in the diagnostic, as it injects none
