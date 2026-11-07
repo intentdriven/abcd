@@ -11,7 +11,6 @@ severity: minor
 impact: additive
 origin: researcher-authored
 production_mode: hand-written
-target_release: next
 ---
 
 # A drive takes new releases itself at a lane boundary
@@ -102,7 +101,9 @@ Verdict: FILE-AS-IS, with the trust rule routed to its own proposed ADR as the f
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-513e8749c0fe -->
+Fidelity review OWED (receipt rcp-513e8749c0fe).
+<!-- abcd-review-end receipt=rcp-513e8749c0fe -->
 
 ## Grounds
 
