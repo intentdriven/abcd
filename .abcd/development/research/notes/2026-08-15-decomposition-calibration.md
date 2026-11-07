@@ -2810,6 +2810,22 @@ Verdict at filing: SPLIT, two intents and a held stance, the product thinker cho
 
 Grade: pending planning.
 
+## 2026-11-04: where work waits, a promise's test coming back, and what stalled a run (product thinker, routing confirmed)
+
+The proposal: two ideas that came through ideation reframed, plus local telemetry on abcd's own runs, which the product thinker asked about afterwards.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| stage waits on an explicit ask, with a first place to look | capability | itd-2611041409531723 |
+| a promise's own stated test comes back when due, for a dated judgement | capability | itd-2611041410013155 |
+| where runs stalled and when a person stepped in, across runs, on this machine | capability | itd-2611041410025208 |
+| what each agent cost | capability | already the launch ledger itd-2611031342011261; not filed again |
+| usage sent back across people; use of the products built with abcd | capability | discussed and not filed |
+
+Verdict at filing: SPLIT, three intents, the product thinker choosing a draft of its own for the promise's test where the review had pointed at itd-170 and itd-175. Typed links: the promise draft refines itd-170 and itd-175; the wait draft builds on itd-2610301850454860; the runs draft builds on itd-2611031342011261. Advisory reversal flags: none, since nothing filed leaves the machine or needs adr-38 replaced.
+
+Grade: initial routing proposed the promise's test as additions to the two drafts; the product thinker changed that part, and the rest survived. The runs draft narrowed at filing on finding that the run log and its report already exist.
+
 ## 2026-11-04: unattended work runs on a named profile, one per agent subscription (product thinker, routing proposed)
 
 The proposal: after the subscription test of 2026-11-03 found that the drive's dedicated configuration directory has no home abcd knows (iss-2611032326573729), that a wall defined by denying connected services left built-in tools reaching the person's account, that a session's tools can change after its start, and that nothing refuses an unwalled start (iss-2611032327111678), the product thinker ruled that the directory is a profile under `~/.abcd.noindex/profiles/`, one per agent subscription, never described as a sandbox.
