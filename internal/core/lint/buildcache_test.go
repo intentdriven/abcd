@@ -13,9 +13,11 @@ import (
 // checkout compiles its own copy of every package, and the build cache grows by
 // a whole module per worktree. So everything that builds this tree on a person's
 // machine, one checkout after another, builds under -trimpath: the script every
-// abcd invocation goes through, the two commit hooks, and every Go step a Makefile
-// target makes. And since those targets run tests under it, CI's check job does
-// too, or preflight would judge a form of the tests CI never runs.
+// abcd invocation goes through and every Go step a Makefile target makes. And
+// since those targets run tests under it, CI's check job does too, or preflight
+// would judge a form of the tests CI never runs. The commit hooks keep their own
+// builds as they were: a running drive pins the hooks' bytes and takes no git
+// step in a lane whose hooks differ (dcn-2611071820445224).
 
 // The flag reaches a Makefile target through the environment rather than on each
 // recipe line, so it reaches the go a script or a test starts as well, and leaves
@@ -70,25 +72,6 @@ func TestCIBuildsUnderTrimpath(t *testing.T) {
 	}
 	if regexp.MustCompile(`(?m)^\s+GOFLAGS:`).MatchString(jobs) {
 		t.Error("a job in ci.yml sets GOFLAGS of its own; it is declared once, in the workflow's env")
-	}
-}
-
-// TestCommitHooksBuildUnderTrimpath: each hook builds the checkout's own tools on
-// every commit, so a hook without the flag gives each worktree its own copy of
-// every package whatever the rest does.
-func TestCommitHooksBuildUnderTrimpath(t *testing.T) {
-	root := filepath.Join("..", "..", "..")
-	build := regexp.MustCompile(`"\$go_bin" build ([^\n]*)\./cmd/[a-z-]+`)
-	for _, hook := range []string{".githooks/commit-msg", ".githooks/pre-commit"} {
-		found := build.FindAllStringSubmatch(readRepoFile(t, root, hook), -1)
-		if len(found) == 0 {
-			t.Errorf("%s: no build of a ./cmd tool found; the check or the hook changed shape", hook)
-		}
-		for _, m := range found {
-			if !strings.Contains(m[1], "-trimpath") {
-				t.Errorf("%s: a build without -trimpath: %s", hook, m[0])
-			}
-		}
 	}
 }
 
