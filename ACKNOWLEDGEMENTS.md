@@ -554,6 +554,17 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   people with their steps run as tests, one site with separate owners, and a
   docs-impact mark on every change that alters behaviour. The evidence is
   `.abcd/development/research/notes/2026-11-01-documentation-sources-sota.md`.
+- **direnv and mise's approval of a file by its contents
+  (<https://mise.jdx.dev/paranoid.html>), Santa's hash rules
+  (<https://northpole.dev/features/binary-authorization/>), Invariant's tool
+  pinning
+  (<https://invariantlabs.ai/blog/mcp-security-notification-tool-poisoning-attacks>)
+  and Codex's named host executables
+  (<https://raw.githubusercontent.com/openai/codex/main/codex-rs/execpolicy/README.md>)**
+  — the grounds for adr-2611041815445203's approval of a repository's tool by
+  path and fingerprint, and for putting only that file first on PATH. The
+  evidence is
+  `.abcd/development/research/notes/2026-11-04-repository-tools-on-path-sota.md`.
 
 ## References & sources
 

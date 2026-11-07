@@ -2825,3 +2825,36 @@ The proposal: after the subscription test of 2026-11-03 found that the drive's d
 Verdict at filing: FILE-AS-IS, with the trust rule and the stance held for the product thinker rather than filed. Typed links: the intent refines itd-2610222215485265 (the drive's wall becomes a profile among several); the two sandbox drafts itd-2610161710315026 and itd-2610161710316538 are proposed to build on it. Advisory reversal flag: the draft reverses in part the wall list of spc-2610230813348813 (abcd's own hooks kept where the spec disabled all hooks, an allow-list of named tools where it denied connected services), for the product thinker to confirm.
 
 Grade: pending confirmation of the routing and the planning interview.
+
+## 2026-11-04: a dead run is noticed, can be finished, and problems are noted before they are taken (product thinker, routing proposed)
+
+The proposal: after a private idea review, an interview of six questions settled a check for dead runs, finishing a dead run alone, and notes the person approves into issues.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| a timer on the person's computer, off until they turn it on, that tells them a run died, with a pop-up first and the phone later | capability | itd-2611041656012738 |
+| a dead run the person started is finished inside its limit, on by default, wherever the check is on | capability | itd-2611041656024409 |
+| that permission is standing rather than per run, and a repository may only switch it off | trust rule | adr-2611041656056312 (proposed) |
+| a note of what abcd would have taken, which becomes an issue only on approval | capability | itd-2611041656042921 |
+| how a dead run is told from a waiting one, the timer per operating system, the limit on pick-ups | plumbing | open questions on the intents, for their specs to carry into the brief |
+
+Verdict at filing: SPLIT, three intents and an ADR, the product thinker choosing to keep the check and the finishing apart so the check can ship first. Typed links: adr-2611041656056312 refines adr-2610222222326104, narrowing condition 1, a reversal the product thinker confirmed in the interview; itd-2611041656012738 refines itd-2610161016391855 and the "schedules nothing" line of itd-2610180912189125.
+
+Grade: the initial routing changed under questioning before filing. The first framing, a timer on the same computer that reports the computer's death, was corrected by the product thinker, and the proposed tell-only check became a check that may also finish. Pending the planning interviews.
+
+## 2026-11-04: a run checks it has the repository's tools before it starts (product thinker, routing proposed)
+
+The proposal: abcd should help when the tools a repository needs are not on PATH, by checking before a run and finding a copy already on the machine, with installing later.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| a read-only report of what the repository needs and what was found, a start check, and a wrapper that runs a command with the found tools | capability | itd-2611041815429986 |
+| installing a missing tool on a per-tool yes | capability | itd-2611041815433220 |
+| declarations are data, the search is the person's, probes are sealed, a name from a repository is never run | trust rule | adr-2611041815445203 (proposed), with a brief invariant owed at planning |
+| the table of tools, files and store directories | plumbing | the brief's chapter for the verb, carried by the spec |
+
+Verdict at filing: SPLIT, two intents and an ADR, the product thinker having chosen finding before installing. Typed links: itd-2611041815429986 refines itd-63 (explain-then-install, for the repository's tools rather than abcd's own); no reversal is flagged.
+
+Grade: the routing survived two reviewers, while the design did not: a drain spent before the check, a host session passed falsely, and a Go that can switch was refused. The `scripts/abcd.sh` criterion left for an issue. The interview then changed the capability: a list the technical facilitator authorises and registers replaced inference from files and a table of places, so the routing's first row was right in home and wrong in content. Pending sign-off.
+
+Second grade, the same day: the security review then refuted the approval step and the product thinker ruled that a person always says where a tool lives. The routing changed again, to three stages of one capability plus the install: itd-2611041815429986 (list, registration, test), itd-2611042148411751 (an agent's request as a pull request, and the wrapper), itd-2611042148424105 (other languages' versions and a stage's exit 127). Typed links: itd-2611042148411751 refines itd-2611041815429986. No reversal is flagged. The first decomposition was too large and carried a trust rule inside a capability, which the two reviewers caught and the hand-run table did not. The product thinker confirmed the routing at sign-off on 2026-11-04, with invariant 2 read as covering abcd's own adapters and pointing to the new invariant 26.
